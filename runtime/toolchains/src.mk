@@ -112,9 +112,9 @@ $(SRC_ROOT)/xz: | prepare
 $(SRC_ROOT)/zstd: | prepare
 	$(call unpack_tar, https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz, zstd)
 
-# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 2 jun 2026
+# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 14 jul 2026
 $(SRC_ROOT)/libjpeg-turbo: | prepare
-	$(call unpack_tar, https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz, libjpeg-turbo)
+	$(call unpack_tar, https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz, libjpeg-turbo)
 
 # Move to github source releases; sourceforge distribution can block downloads from Russia
 # https://github.com/pnggroup/libpng # revised: 2 jun 2026
@@ -136,12 +136,13 @@ $(SRC_ROOT)/giflib: | prepare
 $(SRC_ROOT)/libwebp: | prepare
 	$(call unpack_tar, https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz, libwebp)
 
-# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 23 jun 2026
-# Security: 4.7.1 is the latest release; backport CVE-2026-4775 (no upstream release with the fix yet).
+# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 14 jul 2026
+# Security: 4.7.2 fixes CVE-2026-12912 (heap overflow in PixarLogDecode) and carries the
+#  CVE-2026-4775 (tif_getimage signed-int overflow) fix upstream - the local backport patch
+#  is no longer needed (would conflict against 4.7.2).
 #  CVE-2025-61143 / CVE-2025-61144 affect only the tiffcrop/tiffdither tools (built with tiff-tools=OFF) - N/A.
 $(SRC_ROOT)/tiff: | prepare
-	$(call unpack_tar, https://download.osgeo.org/libtiff/tiff-4.7.1.tar.xz, tiff)
-	cd $(SRC_ROOT)/tiff; git apply -p1 ../../replacements/tiff/0001-CVE-2026-4775-tif_getimage-signed-int-overflow.patch
+	$(call unpack_tar, https://download.osgeo.org/libtiff/tiff-4.7.2.tar.xz, tiff)
 
 # https://github.com/google/brotli/releases # revised: 2 jun 2026
 # TODO: Move to git release
@@ -150,21 +151,21 @@ $(SRC_ROOT)/brotli: | prepare
 
 # Use Mbed TLS 3.6 until at least 2027
 # TODO: Move to git release or exclude - unable to properly verify supply chain
-# https://github.com/Mbed-TLS/mbedtls/releases # revised: 2 jun 2026
+# https://github.com/Mbed-TLS/mbedtls/releases # revised: 14 jul 2026
 $(SRC_ROOT)/mbedtls: | prepare
-	$(call unpack_tar, https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.6/mbedtls-3.6.6.tar.bz2, mbedtls)
+	$(call unpack_tar, https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2, mbedtls)
 
-# https://github.com/ngtcp2/nghttp3/releases # revised: 2 jun 2026
+# https://github.com/ngtcp2/nghttp3/releases # revised: 14 jul 2026
 $(SRC_ROOT)/nghttp3: | prepare
-	$(call unpack_tar, https://github.com/ngtcp2/nghttp3/releases/download/v1.16.0/nghttp3-1.16.0.tar.xz, nghttp3)
+	$(call unpack_tar, https://github.com/ngtcp2/nghttp3/releases/download/v1.17.0/nghttp3-1.17.0.tar.xz, nghttp3)
 
 # https://github.com/ngtcp2/ngtcp2/releases # revised: 12 jul 2026
 $(SRC_ROOT)/ngtcp2: | prepare
 	$(call unpack_tar, https://github.com/ngtcp2/ngtcp2/releases/download/v1.24.0/ngtcp2-1.24.0.tar.xz, ngtcp2)
 
-# https://curl.se/download.html # revised: 2 jun 2026
+# https://curl.se/download.html # revised: 14 jul 2026
 $(SRC_ROOT)/curl: | prepare
-	$(call unpack_tar, https://curl.se/download/curl-8.20.0.tar.xz, curl)
+	$(call unpack_tar, https://curl.se/download/curl-8.21.0.tar.xz, curl)
 
 # https://download.savannah.gnu.org/releases/freetype/?C=M&O=D # revised: 2 jun 2026
 $(SRC_ROOT)/freetype: | prepare
@@ -184,23 +185,23 @@ $(SRC_ROOT)/sheenbidi: | prepare
 	cd $(SRC_ROOT); git clone --branch v3.0.0 --depth 1 https://github.com/Tehreer/SheenBidi.git sheenbidi
 
 
-# https://www.sqlite.org/download.html # revised: 23 jun 2026
+# https://www.sqlite.org/download.html # revised: 14 jul 2026
 # Weak supply chain validation: only sha3 provided
-SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530200.zip
+SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
 ifeq ($(findstring Windows,$(OS)),Windows)
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); Invoke-WebRequest -Uri "$(SQLITE_URL)" -OutFile "sqlite-amalgamation.zip";
 	cd $(TMP_DIR); Expand-Archive -Path sqlite-amalgamation.zip -DestinationPath .
 	$(RM) $(TMP_DIR)/sqlite-amalgamation.zip
-	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530200  -Destination $(SRC_ROOT)/sqlite
+	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530300  -Destination $(SRC_ROOT)/sqlite
 else
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); $(WGET) $(SQLITE_URL) -O sqlite-amalgamation.zip
 	cd $(TMP_DIR); unzip sqlite-amalgamation.zip -d .
 	rm $(TMP_DIR)/sqlite-amalgamation.zip
-	mv -f $(TMP_DIR)/sqlite-amalgamation-3530200 $(SRC_ROOT)/sqlite
+	mv -f $(TMP_DIR)/sqlite-amalgamation-3530300 $(SRC_ROOT)/sqlite
 endif
 
 
@@ -230,11 +231,11 @@ $(SRC_ROOT)/openssl-gost-engine: | prepare
 	$(call rule_rm,$(SRC_ROOT)/openssl-gost-engine)
 	cd $(SRC_ROOT); git clone  --recurse-submodules https://github.com/gost-engine/engine.git --depth 1 --branch v3.0.3 openssl-gost-engine
 
-# # https://github.com/bytecodealliance/wasm-micro-runtime # revised: 2 jun 2026
+# # https://github.com/bytecodealliance/wasm-micro-runtime # revised: 14 jul 2026
 $(SRC_ROOT)/wasm-micro-runtime: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/wasm-micro-runtime)
-	cd $(SRC_ROOT); git clone  --recurse-submodules  --branch WAMR-2.4.4 https://github.com/bytecodealliance/wasm-micro-runtime.git --depth 1 wasm-micro-runtime
+	cd $(SRC_ROOT); git clone  --recurse-submodules  --branch WAMR-2.4.5 https://github.com/bytecodealliance/wasm-micro-runtime.git --depth 1 wasm-micro-runtime
 
 # https://github.com/KhronosGroup/Vulkan-Headers # revised: 2 jun 2026
 $(SRC_ROOT)/vulkan-headers: | prepare
@@ -272,14 +273,14 @@ $(SRC_ROOT)/moltenvk: | prepare
 $(SRC_ROOT)/icu4c: | prepare
 	$(call unpack_tar, https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz, icu4c)
 
-# https://github.com/libffi/libffi/releases # revised: 23 jun 2026
+# https://github.com/libffi/libffi/releases # revised: 14 jul 2026
 # TODO: move to git releases
 $(SRC_ROOT)/ffi: | prepare
-	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.6.0/libffi-3.6.0.tar.gz, ffi)
+	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.7.1/libffi-3.7.1.tar.gz, ffi)
 
-# https://github.com/libexpat/libexpat/releases # revised: 2 jun 2026
+# https://github.com/libexpat/libexpat/releases # revised: 14 jul 2026
 $(SRC_ROOT)/expat: | prepare
-	$(call unpack_tar, https://github.com/libexpat/libexpat/releases/download/R_2_8_1/expat-2.8.1.tar.xz, expat)
+	$(call unpack_tar, https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz, expat)
 
 # Use upstream - releases bound with GCC
 #  Pin: 549b81b43b46c0f361680561a626bf0e7b79dcbd
@@ -308,6 +309,7 @@ $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0003-lldb-Fix-Wine-preloader-name-in-POSIX-Wine-DYLD.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-no-delayload/0001-Support-disable-shell32-ole32-delay-load-no-delayimp.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare
