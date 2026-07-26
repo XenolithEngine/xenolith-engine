@@ -109,11 +109,11 @@ public:
 
 	virtual void setTextureLoadedCallback(Function<void()> &&);
 
-	virtual void setOutlineOffset(float);
-	virtual float getOutlineOffset() const { return _outlineOffset; }
+	virtual void setShadedOutlineOffset(float);
+	virtual float getShadedOutlineOffset() const { return _shadedOutlineOffset; }
 
-	virtual void setOutlineColor(const Color4F &);
-	virtual const Color4F &getOutlineColor() const { return _outlineColor; }
+	virtual void setShadedOutlineColor(const Color4F &);
+	virtual const Color4F &getShadedOutlineColor() const { return _shadedOutlineColor; }
 
 protected:
 	using Node::init;
@@ -156,7 +156,7 @@ protected:
 
 	float _textureScale = 1.0f;
 	float _textureLayer = 0.0f;
-	float _outlineOffset = 0.0f;
+	float _shadedOutlineOffset = 0.0f;
 
 	ImagePlacementInfo _texturePlacement;
 
@@ -171,7 +171,7 @@ protected:
 	const core::PipelineFamilyInfo *_pipelineFamily = nullptr;
 	CommandFlags _commandFlags = CommandFlags::None;
 
-	Color4F _outlineColor = Color4F::WHITE;
+	Color4F _shadedOutlineColor = Color4F::WHITE;
 	Color4F _tmpColor;
 	core::ColorMode _colorMode;
 	core::BlendInfo _blendInfo;

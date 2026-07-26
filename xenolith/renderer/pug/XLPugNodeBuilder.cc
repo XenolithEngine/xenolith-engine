@@ -155,11 +155,8 @@ Node *NodeBuilder::materialize(Pending &pending, Node *parent) {
 	}
 
 	if (_config.styleSheet || _config.enableStyles) {
-		// css element type; id/classes were filled by the attribute pass above
-		node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-			identity->type = pending.tag;
-			return true;
-		});
+		// css element type; #id/classes were filled by the attribute pass above
+		node->setType(pending.tag);
 		node->addSystem(Rc<StyleApplier>::create());
 	}
 

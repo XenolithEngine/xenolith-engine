@@ -728,10 +728,46 @@ void WaylandDecoration::setGeometry(int32_t x, int32_t y, int32_t width, int32_t
 	_width = width;
 	_height = height;
 
-	wl_subsurface_set_position(subsurface, _x, _y);
-	wp_viewport_set_destination(viewport, _width, _height);
+	applyGeometry();
+}
+
+void WaylandDecoration::setCrop(int32_t left, int32_t top, int32_t right, int32_t bottom) {
+	if (_cropLeft == left && _cropTop == top && _cropRight == right && _cropBottom == bottom) {
+		return;
+	}
+
+	_cropLeft = left;
+	_cropTop = top;
+	_cropRight = right;
+	_cropBottom = bottom;
+
+	applyGeometry();
+}
+
+void WaylandDecoration::applyGeometry() {
+	if (_width <= 0 || _height <= 0) {
+		return;
+	}
+
+	auto destWidth = sprt::max(_width - _cropLeft - _cropRight, 1);
+	auto destHeight = sprt::max(_height - _cropTop - _cropBottom, 1);
+
+	wl_subsurface_set_position(subsurface, _x + _cropLeft, _y + _cropTop);
+	wp_viewport_set_destination(viewport, destWidth, destHeight);
 
 	auto &b = (active && isActive) ? active : buffer;
+	if (_cropLeft == 0 && _cropTop == 0 && _cropRight == 0 && _cropBottom == 0) {
+		wp_viewport_set_source(viewport, wl_fixed_from_int(-1), wl_fixed_from_int(-1),
+				wl_fixed_from_int(-1), wl_fixed_from_int(-1));
+	} else {
+		// crop insets are in destination units, source rect is in buffer coordinates
+		auto scaleX = double(b->width) / double(_width);
+		auto scaleY = double(b->height) / double(_height);
+		wp_viewport_set_source(viewport, wl_fixed_from_double(_cropLeft * scaleX),
+				wl_fixed_from_double(_cropTop * scaleY), wl_fixed_from_double(destWidth * scaleX),
+				wl_fixed_from_double(destHeight * scaleY));
+	}
+
 	wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 	dirty = true;
 }

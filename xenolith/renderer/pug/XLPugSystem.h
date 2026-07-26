@@ -53,6 +53,9 @@ class SP_PUBLIC TemplateSystem : public System {
 public:
 	virtual ~TemplateSystem();
 
+	// create empty system
+	bool init(BuilderConfig && = BuilderConfig());
+
 	// inline string template source
 	bool init(StringView inlineTemplate, BuilderConfig && = BuilderConfig());
 	// file template source

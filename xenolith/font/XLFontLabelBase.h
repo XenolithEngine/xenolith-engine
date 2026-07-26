@@ -336,7 +336,8 @@ public:
 	virtual void setStyles(const StyleVec &);
 
 	virtual bool updateFormatSpec(TextLayout *, const StyleVec &, float density,
-			uint8_t adjustValue);
+			uint8_t adjustValue,
+			font::Formatter::ContentRequest = font::Formatter::ContentRequest::Normal);
 
 	virtual bool empty() const { return _string16.empty(); }
 

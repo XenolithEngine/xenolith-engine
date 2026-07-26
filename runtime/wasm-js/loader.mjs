@@ -9,10 +9,11 @@
 // thread) route back here uniformly.
 //
 // run(wasmUrl, opts) -> Promise<exitCode>
-//   opts.onStdout / onStderr / onExit, opts.bundle (mount->url), opts.argv0
+//   opts.onStdout / onStderr / onExit, opts.bundle (mount->url), opts.argv0,
+//   opts.args (extra argv entries after argv0, e.g. a test-suite name)
 //   opts.canvas: an on-page <canvas> whose control is transferred to the engine worker as an
 //   OffscreenCanvas (the engine's WebGPU surface). The worker owns it for the app's lifetime.
-export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, canvas, density } = {}) {
+export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, canvas, density } = {}) {
 	return new Promise((resolve, reject) => {
 		let shared = null; // { module, memory, bundle, tidBuf, gpuCtrl } published by the engine worker
 		// Capture the canvas backing size BEFORE transfer (afterwards width/height read back 0) so
@@ -75,6 +76,6 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, canvas
 		const engine = new Worker(new URL("./worker.mjs", import.meta.url), { type: "module" });
 		wire(engine);
 		engine.onerror = (err) => reject(err);
-		engine.postMessage({ wasmUrl, bundleManifest: bundle, argv0, hasCanvas: !!offscreen, dispW, dispH, dispDensity });
+		engine.postMessage({ wasmUrl, bundleManifest: bundle, argv0, args, hasCanvas: !!offscreen, dispW, dispH, dispDensity });
 	});
 }

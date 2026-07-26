@@ -67,7 +67,7 @@ public:
 	virtual bool init(WindowDecorationsButtonType);
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleAncestorComponentsDirty() override;
 
 protected:
 	virtual void handleTap();

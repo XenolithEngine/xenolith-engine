@@ -159,122 +159,13 @@ bool readStyleMetric(const StringView &r, Metric &value, bool resolutionMetric,
 }
 
 bool readStyleMetric(StringReader &r, Metric &value, bool resolutionMetric, bool allowEmptyMetric) {
-	r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
-	if (!resolutionMetric && r.starts_with("auto")) {
-		r += 4;
-		value.metric = Metric::Units::Auto;
-		value.value = 0.0f;
-		return true;
-	}
-
-	auto fRes = r.readFloat();
-	if (!fRes.valid()) {
-		return false;
-	}
-
-	auto fvalue = fRes.get();
-	if (fvalue == 0.0f) {
-		value.value = fvalue;
-		value.metric = Metric::Units::Px;
-		return true;
-	}
-
-	r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
-
-	auto str = r.readUntil<StringView::CharGroup<CharGroupId::WhiteSpace>>();
-
-	if (!resolutionMetric) {
-		if (str.is('%')) {
-			++str;
-			value.value = fvalue / 100.0f;
-			value.metric = Metric::Units::Percent;
-			return true;
-		} else if (str == "em") {
-			str += 2;
-			value.value = fvalue;
-			value.metric = Metric::Units::Em;
-			return true;
-		} else if (str == "rem") {
-			str += 3;
-			value.value = fvalue;
-			value.metric = Metric::Units::Rem;
-			return true;
-		} else if (str == "px") {
-			str += 2;
-			value.value = fvalue;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "pt") {
-			str += 2;
-			value.value = fvalue * 4.0f / 3.0f;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "pc") {
-			str += 2;
-			value.value = fvalue * 15.0f;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "mm") {
-			str += 2;
-			value.value = fvalue * 3.543307f;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "cm") {
-			str += 2;
-			value.value = fvalue * 35.43307f;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "in") {
-			str += 2;
-			value.value = fvalue * 90.0f;
-			value.metric = Metric::Units::Px;
-			return true;
-		} else if (str == "vw") {
-			str += 2;
-			value.value = fvalue;
-			value.metric = Metric::Units::Vw;
-			return true;
-		} else if (str == "vh") {
-			str += 2;
-			value.value = fvalue;
-			value.metric = Metric::Units::Vh;
-			return true;
-		} else if (str == "vmin") {
-			str += 4;
-			value.value = fvalue;
-			value.metric = Metric::Units::VMin;
-			return true;
-		} else if (str == "vmax") {
-			str += 4;
-			value.value = fvalue;
-			value.metric = Metric::Units::VMax;
-			return true;
-		}
-	} else {
-		if (str == "dpi") {
-			str += 3;
-			value.value = fvalue;
-			value.metric = Metric::Units::Dpi;
-			return true;
-		} else if (str == "dpcm") {
-			str += 4;
-			value.value = fvalue / 2.54f;
-			value.metric = Metric::Units::Dpi;
-			return true;
-		} else if (str == "dppx") {
-			str += 4;
-			value.value = fvalue;
-			value.metric = Metric::Units::Dppx;
-			return true;
-		}
-	}
-
-	if (allowEmptyMetric) {
-		value.value = fvalue;
-		return true;
-	}
-
-	return false;
+	// single implementation lives in Metric::readStyleValue; a css dimension
+	// token is pure ASCII, so re-seating the utf8 reader on the byte
+	// remainder is exact
+	StringView sv(r.data(), r.size());
+	const bool ok = value.readStyleValue(sv, resolutionMetric, allowEmptyMetric);
+	r = StringReader(sv.data(), sv.size());
+	return ok;
 }
 
 void readBracedString(StringReader &r, String &target) {

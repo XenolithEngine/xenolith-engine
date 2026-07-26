@@ -1022,6 +1022,92 @@ PathWriter &PathWriter::addRect(float x, float y, float width, float height, flo
 	return *this;
 }
 
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float r) {
+	r = sprt::max(0.0f, r);
+	if (r == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+	return addBox(x, y, width, height, r, r, r, r);
+}
+
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float rtlbr,
+		float rtrbl) {
+	rtlbr = sprt::max(0.0f, rtlbr);
+	rtrbl = sprt::max(0.0f, rtrbl);
+	if (rtlbr == 0.0f && rtrbl == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+	// rtlbr = top-left & bottom-right; rtrbl = top-right & bottom-left
+	return addBox(x, y, width, height, rtlbr, rtrbl, rtlbr, rtrbl);
+}
+
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float rtl, float rtr,
+		float rbr, float rbl) {
+	// Clamp negative values to 0
+	rtl = sprt::max(0.0f, rtl);
+	rtr = sprt::max(0.0f, rtr);
+	rbr = sprt::max(0.0f, rbr);
+	rbl = sprt::max(0.0f, rbl);
+
+	// Clamp each radius to half the box dimensions
+	float halfW = width * 0.5f;
+	float halfH = height * 0.5f;
+	rtl = sprt::min(halfW, sprt::min(halfH, rtl));
+	rtr = sprt::min(halfW, sprt::min(halfH, rtr));
+	rbr = sprt::min(halfW, sprt::min(halfH, rbr));
+	rbl = sprt::min(halfW, sprt::min(halfH, rbl));
+
+	// Clamp adjacent corners so they do not overlap along edges
+	if (rtl + rtr > height) {
+		float s = height / (rtl + rtr);
+		rtl *= s;
+		rtr *= s;
+	}
+	if (rbr + rbl > height) {
+		float s = height / (rbr + rbl);
+		rbr *= s;
+		rbl *= s;
+	}
+	if (rtl + rbl > width) {
+		float s = width / (rtl + rbl);
+		rtl *= s;
+		rbl *= s;
+	}
+	if (rtr + rbr > width) {
+		float s = width / (rtr + rbr);
+		rtr *= s;
+		rbr *= s;
+	}
+
+	if (rtl == 0.0f && rtr == 0.0f && rbr == 0.0f && rbl == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+
+	float rx = x + width;
+	float ry = y + height;
+
+	// Start at top edge after TL corner
+	moveTo(x + rtl, y);
+	// Top edge to TR corner
+	lineTo(rx - rtr, y);
+	// TR corner arc
+	arcTo(rtr, rtr, 0, false, true, rx, y + rtr);
+	// Right edge to BR corner
+	lineTo(rx, ry - rbr);
+	// BR corner arc
+	arcTo(rbr, rbr, 0, false, true, rx - rbr, ry);
+	// Bottom edge to BL corner
+	lineTo(x + rbl, ry);
+	// BL corner arc
+	arcTo(rbl, rbl, 0, false, true, x, ry - rbl);
+	// Left edge back to TL corner
+	lineTo(x, y + rtl);
+	// TL corner arc (closes to moveTo point)
+	arcTo(rtl, rtl, 0, false, true, x + rtl, y);
+	closePath();
+	return *this;
+}
+
 bool PathWriter::addPath(const PathData<memory::StandartInterface> &d) {
 	commands.reserve(commands.size() + d.commands.size());
 	for (auto &it : d.commands) { commands.emplace_back(Command(it)); }
@@ -1069,7 +1155,8 @@ bool PathWriter::addPath(BytesView data) {
 	// each command/point consumes at least one input byte, so the remaining input
 	// length is a safe upper bound — avoids a huge allocation and a runaway loop
 	// from a forged count
-	size_t reserveCommands = (ncommands < int64_t(reader.size())) ? size_t(ncommands) : reader.size();
+	size_t reserveCommands =
+			(ncommands < int64_t(reader.size())) ? size_t(ncommands) : reader.size();
 	size_t reservePoints = (npoints < int64_t(reader.size())) ? size_t(npoints) : reader.size();
 	commands.reserve(reserveCommands);
 	uvPoints.reserve(reserveCommands);

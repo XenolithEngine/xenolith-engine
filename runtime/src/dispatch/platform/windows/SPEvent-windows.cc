@@ -30,6 +30,7 @@
 #include "SPEventPollIocp.h"
 #include "SPEventProcessIocp.h"
 #include "SPEventFileIocp.h"
+#include "SPEventWatchIocp.h"
 #include "../fd/SPEventFile.h"
 #include "platform/windows/SPEvent-iocp.h"
 
@@ -46,6 +47,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<ProcessIocpHandle, ProcessIocpSource>(&_info, &_iocpProcessClass, true);
 		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
 		setupIocpHandleClass<FileIocpHandle, FileIocpSource>(&_info, &_iocpFileClass, true);
+		setupIocpHandleClass<WatchIocpHandle, WatchIocpSource>(&_info, &_iocpWatchClass, true);
 		setupInlineFileHandleClass(&_info, &_iocpFileInlineClass);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
@@ -104,6 +106,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 					return makeFileIocpHandle(d, &data->_iocpFileClass, sprt::move(state));
 				}
 				return makeFileInlineHandle(d, &data->_iocpFileInlineClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+									Ref *ref) -> Rc<WatchHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				return makeWatchIocpHandle(d, &data->_iocpWatchClass, sprt::move(info), ref);
 			};
 
 			_platformQueue = iocp;

@@ -41,6 +41,7 @@ public:
 
 	VectorSprite();
 
+	virtual bool init() override;
 	virtual bool init(Rc<VectorImage> &&);
 	virtual bool init(Size2, StringView);
 	virtual bool init(Size2, VectorPath &&);

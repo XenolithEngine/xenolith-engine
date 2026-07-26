@@ -58,6 +58,16 @@ static float VectorSprite_getPseudoSdfOffset(float value) {
 
 VectorSprite::VectorSprite() { }
 
+bool VectorSprite::init() {
+	if (!Sprite::init()) {
+		return false;
+	}
+
+	_imageScissorComponent = addSystem(Rc<DynamicStateSystem>::create());
+
+	return true;
+}
+
 bool VectorSprite::init(Rc<VectorImage> &&img) {
 	XL_ASSERT(img, "Image should not be nullptr");
 

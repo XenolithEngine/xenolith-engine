@@ -17,7 +17,7 @@ async function loadBundle(manifest) {
 }
 
 self.onmessage = async (e) => {
-	const { wasmUrl, bundleManifest, argv0, hasCanvas, dispW, dispH, dispDensity } = e.data;
+	const { wasmUrl, bundleManifest, argv0, args, hasCanvas, dispW, dispH, dispDensity } = e.data;
 	const post = (m) => self.postMessage(m);
 	try {
 		const bundle = await loadBundle(bundleManifest);
@@ -47,7 +47,7 @@ self.onmessage = async (e) => {
 		};
 
 		const imports = makeImports({
-			memory, bundle, argv: [argv0 || "app"],
+			memory, bundle, argv: [argv0 || "app", ...(args || [])],
 			log: (s, t) => post({ type: s, text: t }),
 			spawn, opfsSab, dispW, dispH, dispDensity,
 			onExit: (c) => post({ type: "exit", code: c }),

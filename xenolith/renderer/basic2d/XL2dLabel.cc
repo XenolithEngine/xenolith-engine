@@ -266,6 +266,31 @@ Rc<LabelResult> Label::writeResult(TextLayout *format, const Color4F &color, flo
 	return result;
 }
 
+// Bridges the content measurement protocol (System::handleMeasure /
+// handleLayoutApplied) to the label's own shaping machinery; installed by
+// Label::init on every label, so any layout engine can measure text
+class LabelMeasureSystem : public System {
+public:
+	virtual ~LabelMeasureSystem() = default;
+
+	virtual bool init() override {
+		if (!System::init()) {
+			return false;
+		}
+		_systemFlags = SystemFlags::HandleMeasure;
+		return true;
+	}
+
+	virtual bool handleMeasure(const MeasureConstraints &c, Size2 &result) override {
+		result = static_cast<Label *>(_owner)->measureContent(c);
+		return true;
+	}
+
+	virtual void handleLayoutApplied(const Size2 &size) override {
+		static_cast<Label *>(_owner)->applyMeasuredSize(size);
+	}
+};
+
 Label::~Label() { _format = nullptr; }
 
 bool Label::init() { return init(nullptr); }
@@ -291,6 +316,7 @@ bool Label::init(font::FontController *source, const DescriptionStyle &style, St
 	setRenderingLevel(RenderingLevel::Surface);
 
 	_listener = addSystem(Rc<EventListener>::create());
+	addSystem(Rc<LabelMeasureSystem>::create());
 
 	_selection = addChild(Rc<Selection>::create());
 	_selection->setAnchorPoint(Vec2(0.0f, 0.0f));
@@ -353,6 +379,64 @@ void Label::tryUpdateLabel() {
 	if (_labelDirty) {
 		updateLabel();
 	}
+}
+
+Size2 Label::measureContent(const MeasureConstraints &c) {
+	if (!_source || !_source->isLoaded()) {
+		return getContentSize();
+	}
+
+	if (_parent) {
+		updateLabelDensity(_parent->getNodeToWorldTransform());
+	}
+
+	if (_string16.empty()) {
+		return Size2(0.0f, getFontHeight() / _labelDensity);
+	}
+
+	auto request = font::Formatter::ContentRequest::Normal;
+	const float savedWidth = _width;
+	switch (c.mode) {
+	case MeasureMode::Normal:
+		// Formatter's width is uint16_t: unconstrained must be 0 (no wrap)
+		_width = (c.maxWidth != maxOf<float>()) ? c.maxWidth : 0.0f;
+		break;
+	case MeasureMode::MinContent:
+		request = font::Formatter::ContentRequest::Minimize;
+		_width = 0.0f;
+		break;
+	case MeasureMode::MaxContent:
+		request = font::Formatter::ContentRequest::Maximize;
+		_width = 0.0f;
+		break;
+	}
+
+	auto spec = Rc<font::TextLayout>::alloc(_source, _string16.size(), _compiledStyles.size() + 1);
+
+	// mirror updateLabel's style setup so the measurement is bit-identical
+	// to what applyLayout will later produce
+	_compiledStyles = compileStyle();
+	_style.text.whiteSpace = font::WhiteSpace::PreWrap;
+
+	const bool ok = updateFormatSpec(spec, _compiledStyles, _labelDensity, _adjustValue, request);
+	_width = savedWidth;
+
+	if (!ok) {
+		return getContentSize();
+	}
+	if (spec->empty()) {
+		return Size2(0.0f, getFontHeight() / _labelDensity);
+	}
+	return Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity);
+}
+
+void Label::applyMeasuredSize(const Size2 &size) {
+	if (_width != size.width) {
+		setWidth(size.width);
+	}
+	tryUpdateLabel();
+	// the assigned box wins over the shaped extent committed by applyLayout
+	setContentSize(size);
 }
 
 void Label::setStyle(const DescriptionStyle &style) {
@@ -501,6 +585,14 @@ void Label::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 }
 
 void Label::updateLabelScale(const Mat4 &parent) {
+	updateLabelDensity(parent);
+
+	if (_labelDirty) {
+		updateLabel();
+	}
+}
+
+void Label::updateLabelDensity(const Mat4 &parent) {
 	Vec3 scale;
 	parent.decompose(&scale, nullptr, nullptr);
 
@@ -518,10 +610,6 @@ void Label::updateLabelScale(const Mat4 &parent) {
 	if (density != _labelDensity) {
 		_labelDensity = density;
 		setLabelDirty();
-	}
-
-	if (_labelDirty) {
-		updateLabel();
 	}
 }
 

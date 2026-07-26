@@ -75,6 +75,10 @@ struct __memfs_inode {
 	__SPRT_ID(size_t) size; // valid bytes
 	__SPRT_ID(size_t) cap; // allocated capacity
 	__SPRT_ID(mode_t) mode; // permission bits
+	// Stable identity for st_ino: assigned once at creation and preserved across
+	// rename (rename swaps the node's path, not the node), so a rename-over is
+	// observable as an inode change at the target name (dispatch watchFile).
+	__SPRT_ID(ino_t) inum;
 	bool isDir;
 	bool opfs; // backed by the persistent /opfs (OPFS) mount
 	bool dirty; // in-memory content differs from OPFS — write back on close/fsync
@@ -338,6 +342,7 @@ static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *st) {
 		st->st_mode = __SPRT_S_IFREG | (n->ino->mode ? (n->ino->mode & 0777) : 0644);
 		st->st_size = (__SPRT_ID(off_t))n->ino->size;
 		st->st_blocks = (__SPRT_ID(blkcnt_t))((n->ino->size + 511) / 512);
+		st->st_ino = n->ino->inum;
 		st->st_atim = n->ino->atim;
 		st->st_mtim = n->ino->mtim;
 		st->st_ctim = n->ino->ctim;
@@ -536,6 +541,8 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 	n->opfs = false;
 	n->dirty = false;
 	n->readonly = false;
+	static __SPRT_ID(ino_t) s_nextInum = 1;
+	n->inum = s_nextInum++;
 	__memfs_now(&n->mtim);
 	n->atim = n->mtim;
 	n->ctim = n->mtim;
