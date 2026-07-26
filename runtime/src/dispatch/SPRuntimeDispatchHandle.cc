@@ -52,11 +52,12 @@ Status Handle::pause() {
 
 	if (_status != Status::Ok) {
 		if (_status == Status::Suspended) {
+			// inform class that handle was suspended, remove async resources
+			_class->suspendFn(_class, this, _data);
+
 			// temporary suspended by system, mark as externally suspended
 			_status = Status::Declined;
 
-			// infrm class that handle was suspended
-			_class->suspendFn(_class, this, _data);
 			return Status::Ok;
 		}
 		// not running
