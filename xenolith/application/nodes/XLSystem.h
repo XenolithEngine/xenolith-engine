@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_NODES_XLSYSTEM_H_
 
 #include "XLNodeInfo.h"
+#include "XLComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -43,16 +44,18 @@ enum class SystemFlags : uint32_t {
 	HandleMeasure = 1 << 7, // Measure/LayoutApplied (content measurement protocol)
 	HandleChildNodeEvents = 1 << 8, // descendant ContentSizeDirty (via frame stack)
 	HandleAncestorComponents = 1 << 9, // system wants ancestor (parent) handleComponentsDirty
-	HandleLayoutChildren = 1 << 10, // LayoutChildren (position/size children, own size + order fixed)
+	HandleLayoutChildren =
+			1 << 10, // LayoutChildren (position/size children, own size + order fixed)
 	HandleChildMeasure = 1 << 11, // descendant Measure (via frame stack)
 	HandleChildLayoutChildren = 1 << 12, // descendant LayoutChildren (via frame stack)
+	HandleChildComponents = 1 << 13, // descendant ComponentsDirty (via frame stack)
 
 	// This flags reflects what kind of Node's events system can handle
 	// To work effectively, set flags you actually needed
 	EventFlagMask = HandleOwnerEvents | HandleSceneEvents | HandleNodeEvents | HandleVisitSelf
 			| HandleVisitControl | HandleComponents | HandleMeasure | HandleChildNodeEvents
 			| HandleAncestorComponents | HandleLayoutChildren | HandleChildMeasure
-			| HandleChildLayoutChildren,
+			| HandleChildLayoutChildren | HandleChildComponents,
 
 	// When this flag is set and FrameTag != InvalidTag, system will be added to frame stack by it's owner.
 	// It means, that descendant nodes can access this system with FrameInfo::systemStack and FrameTag.
@@ -110,7 +113,7 @@ public:
 	virtual void update(const UpdateTime &time);
 
 	virtual void handleContentSizeDirty();
-	virtual void handleComponentsDirty();
+	virtual void handleComponentsDirty(const ComponentMask &);
 	virtual void handleTransformDirty(const Mat4 &);
 	virtual void handleReorderChildDirty();
 	// Position the owner within its parent (parent's content size changed)
@@ -137,6 +140,14 @@ public:
 	// A descendant node laid out its children, delivered via the frame stack
 	// (requires SystemFlags::HandleChildLayoutChildren + AddToFrameStack + a valid FrameTag)
 	virtual void handleChildLayoutChildren(Node *child);
+
+	// A descendant node's own components changed, delivered during the descendant's visit via the
+	// frame stack (requires SystemFlags::HandleChildComponents + AddToFrameStack + a valid FrameTag).
+	// `child` is the nearest descendant whose components went dirty; this system is the nearest
+	// opted-in ancestor. Unlike HandleAncestorComponents (which pushes an ancestor's change DOWN to
+	// descendant systems), this bubbles a descendant's change UP - e.g. so a subtree-wide style
+	// resolver can re-resolve a node whose interactive :hover/:focus/:active state just flipped
+	virtual void handleChildComponentsDirty(Node *child, const ComponentMask &);
 
 	// Lay out the owner's children (requires SystemFlags::HandleLayoutChildren).
 	// Runs after child reorder with the owner's own size and child order fixed;
@@ -210,7 +221,7 @@ public:
 	virtual void update(const UpdateTime &time) override;
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 	virtual void handleTransformDirty(const Mat4 &) override;
 	virtual void handleReorderChildDirty() override;
 	virtual void handleLayoutInParent(Node *) override;
@@ -222,6 +233,7 @@ public:
 	virtual void handleChildContentSizeDirty(Node *child) override;
 	virtual void handleChildMeasure(Node *child) override;
 	virtual void handleChildLayoutChildren(Node *child) override;
+	virtual void handleChildComponentsDirty(Node *child, const ComponentMask &) override;
 
 	virtual void setUserdata(Rc<Ref> &&d) { _userdata = move(d); }
 	virtual Ref *getUserdata() const { return _userdata; }
@@ -288,8 +300,10 @@ public:
 		return _handleContentSizeDirty;
 	}
 
-	virtual void setComponentsDirtyCallback(Function<void(CallbackSystem *)> &&);
-	virtual auto getComponentsDirtyCallback() -> const Function<void(CallbackSystem *)> & {
+	virtual void setComponentsDirtyCallback(
+			Function<void(CallbackSystem *, const ComponentMask &mask)> &&);
+	virtual auto getComponentsDirtyCallback()
+			-> const Function<void(CallbackSystem *, const ComponentMask &mask)> & {
 		return _handleComponentsDirty;
 	}
 
@@ -320,8 +334,8 @@ public:
 	// fill the Size2 to answer, return false to fall through to other systems
 	virtual void setMeasureCallback(
 			Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> &&);
-	virtual auto getMeasureCallback() -> const
-			Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> & {
+	virtual auto getMeasureCallback()
+			-> const Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> & {
 		return _handleMeasure;
 	}
 
@@ -354,6 +368,15 @@ public:
 		return _handleChildLayoutChildren;
 	}
 
+	// descendant components-dirty event (see System::handleChildComponentsDirty); needs FrameTag +
+	// AddToFrameStack
+	virtual void setChildComponentsDirtyCallback(
+			Function<void(CallbackSystem *, Node *, const ComponentMask &)> &&);
+	virtual auto getChildComponentsDirtyCallback()
+			-> const Function<void(CallbackSystem *, Node *, const ComponentMask &)> & {
+		return _handleChildComponents;
+	}
+
 protected:
 	virtual void updateFlags();
 
@@ -372,7 +395,7 @@ protected:
 	Function<void(CallbackSystem *, FrameInfo &)> _handleVisitEnd;
 	Function<void(CallbackSystem *, const UpdateTime &time)> _handleUpdate;
 	Function<void(CallbackSystem *)> _handleContentSizeDirty;
-	Function<void(CallbackSystem *)> _handleComponentsDirty;
+	Function<void(CallbackSystem *, const ComponentMask &mask)> _handleComponentsDirty;
 	Function<void(CallbackSystem *, const Mat4 &)> _handleTransformDirty;
 	Function<void(CallbackSystem *)> _handleReorderChildDirty;
 	Function<void(CallbackSystem *, Node *)> _handleLayout;
@@ -382,6 +405,7 @@ protected:
 	Function<void(CallbackSystem *, Node *)> _handleChildContentSizeDirty;
 	Function<void(CallbackSystem *, Node *)> _handleChildMeasure;
 	Function<void(CallbackSystem *, Node *)> _handleChildLayoutChildren;
+	Function<void(CallbackSystem *, Node *, const ComponentMask &)> _handleChildComponents;
 };
 
 } // namespace stappler::xenolith

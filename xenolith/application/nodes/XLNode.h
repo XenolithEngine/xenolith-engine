@@ -129,8 +129,10 @@ public:
 	virtual void setContentSize(const Size2 &contentSize);
 	virtual Size2 getContentSize() const { return _contentSize; }
 
-	// Force handleContentSizeDirty processing on the next visit without
-	// changing the size (e.g. a layout engine wants to re-run its pass)
+	// Force handleComponentsDirty processing on the next visit
+	void markComponentsDirty() { _componentsDirty = true; }
+
+	// Force handleContentSizeDirty processing on the next visit
 	void markContentSizeDirty() { _contentSizeDirty = true; }
 
 	// Opt into the measure phase: handleMeasure will run on the next visit to (re)fix the
@@ -143,6 +145,16 @@ public:
 
 	virtual void setVisible(bool visible);
 	virtual bool isVisible() const { return _visible; }
+
+	// The visibility wrapVisit actually honors: the explicit setVisible flag combined with a
+	// style-driven VisibilityComponent (display: none / visibility: hidden). When false, the
+	// node reacts at visit exactly like setVisible(false) — the whole subtree is skipped.
+	bool isEffectivelyVisible() const;
+
+	// Whether the node occupies a layout box: false when explicitly invisible or hidden via
+	// `display: none`; a `visibility: hidden` node stays displayed (keeps its box), matching
+	// CSS semantics. Used by layout engines to decide which children to collapse.
+	bool isDisplayed() const;
 
 	virtual void setRotation(float rotationInRadians);
 	virtual void setRotation(const Vec3 &rotationInRadians);
@@ -320,16 +332,9 @@ public:
 	// ContentSize processed after Measure/Transform, size is fixed here
 	virtual void handleContentSizeDirty();
 
-	// Frame-stack overloads (phase dispatch, non-virtual plumbing). Run the no-arg virtual, then
-	// deliver the corresponding child event to the nearest ancestor system on FrameInfo::systemStack
-	// that opted in (HandleChildMeasure / HandleChildNodeEvents / HandleChildLayoutChildren).
-	// Called only from Node's own processParentFlags/wrapVisit; subclasses override the no-arg forms
-	void handleMeasure(FrameInfo &);
-	void handleContentSizeDirty(FrameInfo &);
-
 	// Some of node's components was updated
 	// Components processed after ContentSize and Transform, be sure not to modify them here
-	virtual void handleComponentsDirty();
+	virtual void handleComponentsDirty(const ComponentMask &);
 
 	// Some of an ancestor's components was updated. Dispatched to systems that opted in
 	// via SystemFlags::HandleAncestorComponents; Node subclasses can override (calling base)
@@ -366,10 +371,6 @@ public:
 	// reorder with this node's own size and child order fixed; dispatched to systems with
 	// SystemFlags::HandleLayoutChildren (this is where a layout engine positions/sizes children)
 	virtual void handleLayoutChildren();
-
-	// Frame-stack overload (see handleMeasure(FrameInfo&)): runs the no-arg virtual, then delivers
-	// the child-layout event to the nearest ancestor system with SystemFlags::HandleChildLayoutChildren
-	void handleLayoutChildren(FrameInfo &);
 
 	// Node should be positioned within parent (parent's content size changed)
 	virtual void handleLayoutInParent(Node *);
@@ -444,7 +445,7 @@ public:
 	virtual void setEnterCallback(Function<void(Scene *)> &&);
 	virtual void setExitCallback(Function<void()> &&);
 	virtual void setContentSizeDirtyCallback(Function<void()> &&);
-	virtual void setComponentsDirtyCallback(Function<void()> &&);
+	virtual void setComponentsDirtyCallback(Function<void(const ComponentMask &mask)> &&);
 	virtual void setTransformDirtyCallback(Function<void(const Mat4 &)> &&);
 	virtual void setReorderChildDirtyCallback(Function<void()> &&);
 	virtual void setLayoutCallback(Function<void(Node *)> &&);
@@ -500,6 +501,11 @@ protected:
 		mutable bool visibleByCamera = true;
 		mutable Vector<Rc<System>> visitableSystems;
 	};
+
+	void handleMeasure(FrameInfo &);
+	void handleComponentsDirty(FrameInfo &, const ComponentMask &);
+	void handleContentSizeDirty(FrameInfo &);
+	void handleLayoutChildren(FrameInfo &);
 
 	virtual void updateCascadeOpacity();
 	virtual void disableCascadeOpacity();

@@ -29,6 +29,7 @@
 #include "nodes/XLWindowDecorations.cc"
 #include "nodes/XLSystem.cc"
 #include "nodes/XLComponent.cc"
+#include "nodes/XLInheritedStyle.cc"
 #include "nodes/XLDynamicStateSystem.cc"
 #include "nodes/XLSubscriptionListener.cc"
 #include "nodes/XLEventListener.cc"

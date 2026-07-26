@@ -310,12 +310,10 @@ void WindowDecorationsDefault::handleContentSizeDirty() {
 
 	_header->setContentSize(Size2(_contentSize.width, HeaderHeight));
 	_header->setPosition(Vec2(_contentSize.width / 2.0f, _contentSize.height));
-
-	_componentsDirty = true;
 }
 
-void WindowDecorationsDefault::handleComponentsDirty() {
-	WindowDecorations::handleComponentsDirty();
+void WindowDecorationsDefault::handleComponentsDirty(const ComponentMask &mask) {
+	WindowDecorations::handleComponentsDirty(mask);
 
 	float buttonSize = HeaderHeight - 4.0f;
 	float buttonPadding = 2.0f;

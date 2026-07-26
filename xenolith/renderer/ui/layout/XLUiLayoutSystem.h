@@ -83,7 +83,7 @@ public:
 
 	virtual void handleAdded(Node *owner) override;
 
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	// content measurement protocol: report the container's natural size by
 	// dry-running the flex algorithm over the children (grid: no answer in v1,
@@ -95,6 +95,7 @@ public:
 	// re-measure automatically - the container's own resize is delivered to its ancestor container
 	// via the frame stack during the container's own visit, so no manual re-bubble is needed
 	virtual void handleChildContentSizeDirty(Node *) override;
+	virtual void handleChildComponentsDirty(Node *, const ComponentMask &) override;
 
 	// layout-children phase: position/size the children (own size + order fixed)
 	virtual void handleLayoutChildren() override;

@@ -111,6 +111,12 @@ enum class Display : EnumSize {
 	InlineGrid,
 };
 
+enum class Visibility : EnumSize {
+	Visible,
+	Hidden,
+	Collapse,
+};
+
 enum class FlexDirection : EnumSize {
 	Row,
 	RowReverse,
@@ -416,6 +422,8 @@ enum class ParameterName : NameSize {
 	CssBorderTopRightRadius, // size
 	CssBorderBottomRightRadius, // size
 	CssBorderBottomLeftRadius, // size
+
+	CssVisibility, // enum (Visibility; inheritable, unlike display)
 	__EndCssParameters,
 
 	/* media - specific */
@@ -591,6 +599,7 @@ union SP_PUBLIC StyleValue {
 	WhiteSpace whiteSpace;
 	Hyphens hyphens;
 	Display display;
+	Visibility visibility;
 	Float floating;
 	Clear clear;
 	MediaType mediaType;

@@ -510,6 +510,17 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 	}
 	return false;
 }),
+	pair("visibility",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("visible")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Visible));
+	} else if (value.equals("hidden")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Hidden));
+	} else if (value.equals("collapse")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Collapse));
+	}
+	return false;
+}),
 	pair("list-style-type",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
 	return css_readListStyleType(value, cb);
