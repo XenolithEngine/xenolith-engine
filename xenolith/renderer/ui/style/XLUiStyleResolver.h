@@ -189,8 +189,9 @@ Default v1 property mapping:
    components on the node (see XLInheritedStyle.h; Label accumulates them over the
    parent chain, a defined value overrides the label's explicit one)
  - width -> Label (non-inheritable, still pushed directly)
- - width/height (non-Label) -> setContentSize (percent/vw/vh resolved against
-   the parent size at apply time; parent resizes are not tracked in v1)
+ - width/height (non-Label) -> setContentSize (percent resolved against the parent size;
+   parent resizes ARE tracked: percent-styled nodes re-resolve when the parent size
+   changes - see the freshness map _nodesUpdated and NodeEventFlags::HandleParentContentSize)
  - margin-* -> FlexItemInfo::margin (when the parent is a flex container)
  - padding-* -> owner's FlexLayoutInfo::padding (when the node is one)
 Component writes are equality-guarded to avoid dirty loops. */
@@ -235,9 +236,21 @@ public:
 	// children phase so apply() re-resolves against the new sheet (sizes are settled by then).
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
-	// recursive styling: a descendant's content-size event arrived via the frame stack - resolve it
-	// once per source version (this is the path that styles descendants initially and re-styles the
-	// whole subtree after a CSS reload, see markSubtreeComponentsDirty in apply())
+	// owner's own content size changed - re-resolve when stale (own-size-relative
+	// paddings/gaps); gated by SystemFlags::HandleNodeEvents
+	virtual void handleContentSizeDirty() override;
+
+	// owner's PARENT content size changed - re-resolve when stale (percent metrics are computed
+	// against the parent size); gated by SystemFlags::HandleNodeEvents. Note: apply() cannot be
+	// used here - a resize changes neither the stylesheet version nor the interactive mask
+	virtual void handleLayoutInParent(Node *) override;
+
+	// recursive styling: a descendant's content-size event arrived via the frame stack - resolve
+	// it when stale (first touch this version, or the parent/own size changed since the last
+	// resolve). This is the path that styles descendants initially, re-styles the whole subtree
+	// after a CSS reload (see markSubtreeComponentsDirty in apply()), and tracks parent resizes
+	// (percent-styled nodes carry NodeEventFlags::HandleParentContentSize, so an ancestor resize
+	// re-fires their content-size phase)
 	virtual void handleChildContentSizeDirty(Node *) override;
 
 	// recursive styling: a descendant's own components changed (via the frame stack) - re-resolve it
@@ -253,6 +266,12 @@ protected:
 			sprt::bitset<toInt(document::ParameterName::Max)> &handled);
 
 	void resolveForNode(Node *);
+
+	// re-resolve the owner when its freshness key (parent/own size) no longer matches
+	void resolveOwnerIfStale();
+
+	// true when the node's style is fresh: resolved this version against the same sizes
+	bool isNodeFresh(Node *) const;
 
 	void applyDefault(Node *, const ResolvedStyle &);
 
@@ -270,7 +289,11 @@ protected:
 	uint32_t _sourceSystemVersion = 0;
 	uint64_t _sourceSystemId = 0;
 
-	HashSet<Node *> _nodesUpdated;
+	// Freshness map: a node's style is fresh while the stylesheet version is unchanged (the map
+	// is cleared in apply() on a version change) AND the (parent size, own size) pair recorded at
+	// resolve time still matches - percent metrics resolve against the parent size, paddings/gaps
+	// against the own size, so a resize of either invalidates the applied style.
+	HashMap<Node *, Pair<Size2, Size2>> _nodesUpdated;
 };
 
 } // namespace stappler::xenolith::ui

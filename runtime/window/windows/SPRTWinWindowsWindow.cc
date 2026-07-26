@@ -924,6 +924,30 @@ Status WindowsWindow::handleMinMaxInfo(MINMAXINFO *info) {
 	info->ptMaxPosition.x = mi.rcWork.left;
 	info->ptMaxPosition.y = mi.rcWork.top;
 
+	// Apply immutable min/max content constraints. ptMin/MaxTrackSize are full-window (track)
+	// sizes, so add the non-client frame to the client-space constraint. Kept in the same space
+	// as `_info->rect` (no density scaling, matching WindowsWindow::init). A 0 dimension leaves
+	// the Win32 default untouched (min => natural minimum, max => unbounded).
+	if (_info->minExtent != Extent2::ZERO || _info->maxExtent != Extent2::ZERO) {
+		RECT frame = {0, 0, 0, 0};
+		AdjustWindowRectEx(&frame, _currentState.style, FALSE, _currentState.exstyle);
+		const LONG frameW = frame.right - frame.left;
+		const LONG frameH = frame.bottom - frame.top;
+
+		if (_info->minExtent.width != 0) {
+			info->ptMinTrackSize.x = LONG(_info->minExtent.width) + frameW;
+		}
+		if (_info->minExtent.height != 0) {
+			info->ptMinTrackSize.y = LONG(_info->minExtent.height) + frameH;
+		}
+		if (_info->maxExtent.width != 0) {
+			info->ptMaxTrackSize.x = LONG(_info->maxExtent.width) + frameW;
+		}
+		if (_info->maxExtent.height != 0) {
+			info->ptMaxTrackSize.y = LONG(_info->maxExtent.height) + frameH;
+		}
+	}
+
 	XL_WIN32_LOG(sprt::source_location::current().function_name(), " ", info->ptMaxSize.x, " ",
 			info->ptMaxSize.y, " ", info->ptMaxPosition.x, " ", info->ptMaxPosition.y, " ",
 			info->ptMinTrackSize.x, " ", info->ptMinTrackSize.y, " ", info->ptMaxTrackSize.x, " ",
