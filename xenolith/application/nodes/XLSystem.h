@@ -41,18 +41,24 @@ enum class SystemFlags : uint32_t {
 	HandleVisitControl = 1 << 4, // VisitBegin/VisitNodesBelow/VisitNodesAbove/VisitEnd
 	HandleComponents = 1 << 5, // Components (owner's own components dirty)
 	HandleMeasure = 1 << 7, // Measure/LayoutApplied (content measurement protocol)
-	HandleChildNodeEvents = 1 << 8, // ChildContentSizeDirty
+	HandleChildNodeEvents = 1 << 8, // descendant ContentSizeDirty (via frame stack)
 	HandleAncestorComponents = 1 << 9, // system wants ancestor (parent) handleComponentsDirty
 	HandleLayoutChildren = 1 << 10, // LayoutChildren (position/size children, own size + order fixed)
+	HandleChildMeasure = 1 << 11, // descendant Measure (via frame stack)
+	HandleChildLayoutChildren = 1 << 12, // descendant LayoutChildren (via frame stack)
 
 	// This flags reflects what kind of Node's events system can handle
 	// To work effectively, set flags you actually needed
 	EventFlagMask = HandleOwnerEvents | HandleSceneEvents | HandleNodeEvents | HandleVisitSelf
 			| HandleVisitControl | HandleComponents | HandleMeasure | HandleChildNodeEvents
-			| HandleAncestorComponents | HandleLayoutChildren,
+			| HandleAncestorComponents | HandleLayoutChildren | HandleChildMeasure
+			| HandleChildLayoutChildren,
 
 	// When this flag is set and FrameTag != InvalidTag, system will be added to frame stack by it's owner.
-	// It means, that child nodes can access this system with FrameInfo::systemStack and FrameTag
+	// It means, that descendant nodes can access this system with FrameInfo::systemStack and FrameTag.
+	// Publishing on the stack is also what lets a descendant deliver its own events back UP to this
+	// system: pair AddToFrameStack with HandleChild{NodeEvents,Measure,LayoutChildren} and the nearest
+	// opted-in ancestor on the stack receives the descendant's ContentSize / Measure / LayoutChildren
 	AddToFrameStack = 1 << 6,
 
 	Default = HandleOwnerEvents | HandleSceneEvents | HandleNodeEvents | HandleVisitSelf
@@ -119,9 +125,18 @@ public:
 	// (requires SystemFlags::HandleMeasure); adapt content synchronously
 	virtual void handleLayoutApplied(const Size2 &);
 
-	// A direct child of the owner changed its content size
-	// (requires SystemFlags::HandleChildNodeEvents)
+	// A descendant node changed its content size, delivered during the descendant's visit via the
+	// frame stack (requires SystemFlags::HandleChildNodeEvents + AddToFrameStack + a valid FrameTag).
+	// `child` is the nearest descendant whose size changed; this system is the nearest opted-in ancestor
 	virtual void handleChildContentSizeDirty(Node *child);
+
+	// A descendant node ran its measure phase, delivered via the frame stack
+	// (requires SystemFlags::HandleChildMeasure + AddToFrameStack + a valid FrameTag)
+	virtual void handleChildMeasure(Node *child);
+
+	// A descendant node laid out its children, delivered via the frame stack
+	// (requires SystemFlags::HandleChildLayoutChildren + AddToFrameStack + a valid FrameTag)
+	virtual void handleChildLayoutChildren(Node *child);
 
 	// Lay out the owner's children (requires SystemFlags::HandleLayoutChildren).
 	// Runs after child reorder with the owner's own size and child order fixed;
@@ -203,6 +218,10 @@ public:
 	virtual bool handleMeasure(const MeasureConstraints &, Size2 &result) override;
 	virtual void handleLayoutApplied(const Size2 &) override;
 	virtual void handleLayoutChildren() override;
+
+	virtual void handleChildContentSizeDirty(Node *child) override;
+	virtual void handleChildMeasure(Node *child) override;
+	virtual void handleChildLayoutChildren(Node *child) override;
 
 	virtual void setUserdata(Rc<Ref> &&d) { _userdata = move(d); }
 	virtual Ref *getUserdata() const { return _userdata; }
@@ -313,6 +332,28 @@ public:
 		return _handleLayoutApplied;
 	}
 
+	// descendant content-size event (see System::handleChildContentSizeDirty); to actually receive
+	// it the system must also carry a FrameTag + SystemFlags::AddToFrameStack
+	virtual void setChildContentSizeDirtyCallback(Function<void(CallbackSystem *, Node *)> &&);
+	virtual auto getChildContentSizeDirtyCallback()
+			-> const Function<void(CallbackSystem *, Node *)> & {
+		return _handleChildContentSizeDirty;
+	}
+
+	// descendant measure event (see System::handleChildMeasure); needs FrameTag + AddToFrameStack
+	virtual void setChildMeasureCallback(Function<void(CallbackSystem *, Node *)> &&);
+	virtual auto getChildMeasureCallback() -> const Function<void(CallbackSystem *, Node *)> & {
+		return _handleChildMeasure;
+	}
+
+	// descendant layout-children event (see System::handleChildLayoutChildren); needs FrameTag +
+	// AddToFrameStack
+	virtual void setChildLayoutChildrenCallback(Function<void(CallbackSystem *, Node *)> &&);
+	virtual auto getChildLayoutChildrenCallback()
+			-> const Function<void(CallbackSystem *, Node *)> & {
+		return _handleChildLayoutChildren;
+	}
+
 protected:
 	virtual void updateFlags();
 
@@ -338,6 +379,9 @@ protected:
 	Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> _handleMeasure;
 	Function<void(CallbackSystem *, const Size2 &)> _handleLayoutApplied;
 	Function<void(CallbackSystem *)> _handleLayoutChildren;
+	Function<void(CallbackSystem *, Node *)> _handleChildContentSizeDirty;
+	Function<void(CallbackSystem *, Node *)> _handleChildMeasure;
+	Function<void(CallbackSystem *, Node *)> _handleChildLayoutChildren;
 };
 
 } // namespace stappler::xenolith

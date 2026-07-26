@@ -41,6 +41,9 @@
 #include "WatchCssLayout.h"
 #include "HoverLayout.h"
 #include "SpecificityLayout.h"
+#include "ButtonLayout.h"
+#include "WatchCssRecursiveLayout.h"
+#include "PlatformLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -105,6 +108,15 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	} else if (::getenv("XL_SPECIFICITY_TEST")) {
 		// CSS specificity-weighted cascade sort verification
 		content->pushLayout(Rc<SpecificityLayout>::create());
+	} else if (::getenv("XL_BUTTON_TEST")) {
+		// ui::Button type-applier (bg-color fill + outline stroke) + recursive StyleResolver
+		content->pushLayout(Rc<ButtonLayout>::create());
+	} else if (::getenv("XL_WATCH_CSS_RECURSIVE_TEST")) {
+		// CSS file reload reaching a descendant through one recursive StyleResolver
+		content->pushLayout(Rc<WatchCssRecursiveLayout>::create());
+	} else if (::getenv("XL_PLATFORM_TEST")) {
+		// custom `platform` CSS media feature (@media (platform: linux) ...)
+		content->pushLayout(Rc<PlatformLayout>::create());
 	} else {
 		content->pushLayout(Rc<GeneralLayout>::create());
 	}
