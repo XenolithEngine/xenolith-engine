@@ -59,7 +59,7 @@ constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) noexcept {
 	if (__builtin_is_constant_evaluated()) {
 		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
 	} else {
-		return __construct_at(__location, sprt::forward<_Args>(__args)...);
+		return sprt::__construct_at(__location, sprt::forward<_Args>(__args)...);
 	}
 }
 
