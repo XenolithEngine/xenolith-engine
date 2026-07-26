@@ -31,13 +31,21 @@
 #include "wayland/SPRTWinLinuxWaylandSeat.h"
 #include "wayland/SPRTWinLinuxWaylandDataDevice.h"
 #include "wayland/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
+#include "SPRTWinLinuxDisplay.h"
 #include "SPRTWinLinuxXkbLibrary.h"
 
 #include <sprt/runtime/utils/verutils.h>
 
 #include <stdlib.h>
+#include <unistd.h>
 
 namespace sprt::window {
+
+// True if a DRM/KMS device is present, so we can render directly to a display
+// via VK_KHR_display without any window system.
+static bool s_hasDrmDevice() {
+	return ::access("/dev/dri/card0", F_OK) == 0 || ::access("/dev/dri/card1", F_OK) == 0;
+}
 
 void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
 		NativeContextHandle *handle) {
@@ -114,13 +122,19 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 	_dbusController = Rc<dbus::Controller>::create(_dbus, _looper, this);
 
 	_looper->performOnThread([this] {
-		_dbusController->setup();
-
 		Rc<gapi::Instance> instance;
 
 		auto sessionType = ::getenv("SP_SESSION_TYPE");
 		if (!sessionType) {
 			sessionType = ::getenv("XDG_SESSION_TYPE");
+		}
+
+		// In direct-display (KMS) mode there is no session/system bus to talk to;
+		// skip D-Bus entirely so it does not log spurious connection failures.
+		bool willBeKms = StringView(sessionType) != "wayland"
+				&& StringView(sessionType) != "x11" && s_hasDrmDevice();
+		if (!willBeKms) {
+			_dbusController->setup();
 		}
 
 		if (StringView(sessionType) == "wayland") {
@@ -162,12 +176,18 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 				_xcbConnection = Rc<XcbConnection>::create(_xcb, _xkb);
 			}
 			instance = _context->makeInstance(_instanceInfo);
+		} else if (s_hasDrmDevice()) {
+			// No window system, but a DRM/KMS device is present: render directly
+			// to the display via VK_KHR_display (no Wayland/X11/D-Bus).
+			_kmsMode = true;
+
+			instance = _context->makeInstance(_instanceInfo);
 		} else {
 			oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
-									"No X11 or Wayland session detected; If there were, please "
-									"consider to " "set XDG_SESSION_TYPE appropiriately");
+									"No X11 or Wayland session detected and no DRM device found; "
+									"If there were, please consider to "
+									"set XDG_SESSION_TYPE appropiriately");
 
-			// maybe, on a rainy day, we implement DirectFramebuffer or something but for now in't time to...
 			destroy();
 			return;
 		}
@@ -223,6 +243,11 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 				return Status::Ok;
 			}, this);
 		}
+
+		if (_kmsMode) {
+			// No D-Bus to drive startup: kick it ourselves once graphics are loaded.
+			_looper->performOnThread([this] { tryStart(); }, this);
+		}
 	}, this);
 
 	_looper->run();
@@ -244,6 +269,10 @@ WindowCapabilities LinuxContextController::getCapabilities() const {
 		return _xcbConnection->getCapabilities();
 	} else if (_waylandDisplay) {
 		return _waylandDisplay->getCapabilities();
+	} else if (_kmsMode) {
+		// Direct display is inherently an exclusive fullscreen plane.
+		return WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenExclusive
+				| WindowCapabilities::FullscreenWithMode;
 	}
 	return WindowCapabilities::None;
 }
@@ -328,10 +357,36 @@ SurfaceSupportInfo LinuxContextController::getSupportInfo() const {
 		info.xcb.connection = _xcbConnection->getConnection();
 		info.xcb.visual_id = _xcbConnection->getDefaultScreen()->root_visual;
 	}
+	if (_kmsMode) {
+		// Enable VK_KHR_display so the instance enumerates displays/planes/modes
+		// and presentation support counts the direct-display path.
+		info.backendMask.set(toInt(SurfaceBackend::Display));
+	}
 	return info;
 }
 
 void LinuxContextController::tryStart() {
+	if (_kmsMode) {
+		// Direct-display: no D-Bus, no window-system connection, no
+		// DisplayConfigManager (screen config comes from VK_KHR_display).
+		_looper->performOnThread([this] {
+			if (!resume()) {
+				oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
+				destroy();
+				return;
+			}
+
+			if (_windowInfo) {
+				if (!loadWindow()) {
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
+							"Fail to load root native window");
+					destroy();
+				}
+			}
+		}, this);
+		return;
+	}
+
 	if (_dbusController && _dbusController->isConnectied() && (_xcbConnection || _waylandDisplay)) {
 		// native KDE output-management protocol reports applied/failed directly from
 		// the compositor, so prefer it over the DBus KScreen path
@@ -370,6 +425,13 @@ void LinuxContextController::tryStart() {
 
 bool LinuxContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
 	Rc<NativeWindow> window;
+	if (_kmsMode) {
+		window = Rc<DisplayWindow>::create(this, move(wInfo));
+		if (window) {
+			notifyWindowCreated(window);
+		}
+		return window != nullptr;
+	}
 
 	if (_waylandDisplay) {
 		window = Rc<WaylandWindow>::create(_waylandDisplay, move(wInfo), this);

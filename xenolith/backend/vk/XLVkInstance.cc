@@ -30,6 +30,46 @@
 #include "XLVkDevice.h"
 #include <vulkan/vulkan_core.h>
 
+// Direct-to-display: enumerate KMS connectors via raw DRM UAPI ioctls (no libdrm
+// dependency, ioctl() is libc). The kernel <drm/drm_mode.h> lives in the sysroot's
+// include_libc/drm which is not reliably on the angle-bracket search path for this
+// SDK, so the two structs + ioctl numbers we need are declared inline below — they
+// are stable kernel UAPI (drm_mode.h: drm_mode_card_res / drm_mode_get_connector,
+// drm.h: DRM_IOCTL_MODE_GETRESOURCES = DRM_IOWR(0xA0), GETCONNECTOR = 0xA7).
+#if defined(__linux__) && !defined(__ANDROID__)
+#define XL_VK_DRM_DISPLAY 1
+#include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+// ioctl() is declared directly: this SDK's <sys/ioctl.h> wrapper is broken (it
+// references an undeclared __cmd) and we only need this one call.
+extern "C" int ioctl(int, unsigned long, ...);
+
+namespace {
+struct xl_drm_mode_card_res {
+	uint64_t fb_id_ptr, crtc_id_ptr, connector_id_ptr, encoder_id_ptr;
+	uint32_t count_fbs, count_crtcs, count_connectors, count_encoders;
+	uint32_t min_width, max_width, min_height, max_height;
+};
+struct xl_drm_mode_get_connector {
+	uint64_t encoders_ptr, modes_ptr, props_ptr, prop_values_ptr;
+	uint32_t count_modes, count_props, count_encoders;
+	uint32_t encoder_id, connector_id, connector_type, connector_type_id;
+	uint32_t connection, mm_width, mm_height, subpixel, pad;
+};
+static_assert(sizeof(xl_drm_mode_card_res) == 64, "drm_mode_card_res ABI");
+static_assert(sizeof(xl_drm_mode_get_connector) == 80, "drm_mode_get_connector ABI");
+} // namespace
+
+// DRM ioctl numbers, precomputed (SDK's _IOWR macro is unavailable, see above):
+//   _IOWR('d', nr, T) = (3u<<30) | (sizeof(T)<<16) | ('d'<<8) | nr
+//   GETRESOURCES = _IOWR('d',0xA0, card_res[64B])     = 0xC04064A0
+//   GETCONNECTOR = _IOWR('d',0xA7, get_connector[80B]) = 0xC05064A7
+#define XL_DRM_IOCTL_MODE_GETRESOURCES 0xC04064A0ul
+#define XL_DRM_IOCTL_MODE_GETCONNECTOR 0xC05064A7ul
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 SPUNUSED static VkResult s_createDebugUtilsMessengerEXT(VkInstance instance,
@@ -962,6 +1002,262 @@ void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 			}
 		}
 	}
+}
+
+#if XL_VK_DRM_DISPLAY
+// Open the first available DRM primary node. Returns fd or -1.
+static int s_openDrmDevice() {
+	static const char *const paths[] = {"/dev/dri/card0", "/dev/dri/card1", nullptr};
+	for (auto p = paths; *p; ++p) {
+		int fd = ::open(*p, O_RDWR | O_CLOEXEC);
+		if (fd >= 0) {
+			return fd;
+		}
+	}
+	return -1;
+}
+
+// Find the first connected connector that has at least one mode. Returns its DRM
+// object id (>0) or 0 on failure. Pure UAPI two-pass ioctl — no libdrm.
+static uint32_t s_findConnectedDrmConnector(int fd) {
+	xl_drm_mode_card_res res{};
+	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res) != 0 || res.count_connectors == 0) {
+		return 0;
+	}
+
+	Vector<uint32_t> connectors;
+	connectors.resize(res.count_connectors);
+
+	// Second pass: only ask for the connector id array (leave other arrays empty).
+	xl_drm_mode_card_res res2{};
+	res2.connector_id_ptr = reinterpret_cast<uint64_t>(connectors.data());
+	res2.count_connectors = res.count_connectors;
+	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res2) != 0) {
+		return 0;
+	}
+
+	for (uint32_t i = 0; i < res2.count_connectors; ++i) {
+		xl_drm_mode_get_connector conn{};
+		conn.connector_id = connectors[i];
+		// Pass 1 fills connection status + counts without needing any array buffers.
+		if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn) != 0) {
+			continue;
+		}
+		if (conn.connection == 1 /* DRM_MODE_CONNECTED */ && conn.count_modes > 0) {
+			return connectors[i];
+		}
+	}
+	return 0;
+}
+#endif
+
+// Build a display-plane surface on an already-resolved VkDisplayKHR: pick the
+// largest/fastest mode, find a usable plane, then vkCreateDisplayPlaneSurfaceKHR.
+VkSurfaceKHR Instance::makeDisplayPlaneSurface(VkPhysicalDevice phys, VkDisplayKHR display,
+		StringView name, uint32_t prefW, uint32_t prefH) const {
+	uint32_t nModes = 0;
+	vkGetDisplayModePropertiesKHR(phys, display, &nModes, nullptr);
+	if (nModes == 0) {
+		return VK_NULL_HANDLE;
+	}
+	Vector<VkDisplayModePropertiesKHR> modes;
+	modes.resize(nModes);
+	vkGetDisplayModePropertiesKHR(phys, display, &nModes, modes.data());
+
+	// With a size hint, pick the mode whose area is nearest to it (QEMU virtio-gpu
+	// advertises bogus huge modes like 5120x2160 that OOM the swapchain). Without a
+	// hint, fall back to the largest mode.
+	const int64_t target = int64_t(prefW) * int64_t(prefH);
+	const VkDisplayModePropertiesKHR *best = nullptr;
+	for (auto &m : modes) {
+		auto &r = m.parameters.visibleRegion;
+		if (!best) {
+			best = &m;
+			continue;
+		}
+		auto &br = best->parameters.visibleRegion;
+		const int64_t ma = int64_t(r.width) * int64_t(r.height);
+		const int64_t ba = int64_t(br.width) * int64_t(br.height);
+		bool better;
+		if (target > 0) {
+			int64_t dm = ma - target, db = ba - target;
+			if (dm < 0) { dm = -dm; }
+			if (db < 0) { db = -db; }
+			better = dm < db || (dm == db && m.parameters.refreshRate > best->parameters.refreshRate);
+		} else {
+			better = ma > ba
+					|| (ma == ba && m.parameters.refreshRate > best->parameters.refreshRate);
+		}
+		if (better) {
+			best = &m;
+		}
+	}
+	if (!best) {
+		return VK_NULL_HANDLE;
+	}
+
+	uint32_t nPlanes = 0;
+	vkGetPhysicalDeviceDisplayPlanePropertiesKHR(phys, &nPlanes, nullptr);
+	Vector<VkDisplayPlanePropertiesKHR> planes;
+	planes.resize(nPlanes);
+	vkGetPhysicalDeviceDisplayPlanePropertiesKHR(phys, &nPlanes, planes.data());
+
+	uint32_t planeIndex = maxOf<uint32_t>();
+	uint32_t planeStack = 0;
+	for (uint32_t i = 0; i < nPlanes; ++i) {
+		uint32_t nd = 0;
+		vkGetDisplayPlaneSupportedDisplaysKHR(phys, i, &nd, nullptr);
+		if (nd == 0) {
+			// Plane not bound to any display yet — usable as a fallback.
+			if (planeIndex == maxOf<uint32_t>()) {
+				planeIndex = i;
+				planeStack = planes[i].currentStackIndex;
+			}
+			continue;
+		}
+		Vector<VkDisplayKHR> supported;
+		supported.resize(nd);
+		vkGetDisplayPlaneSupportedDisplaysKHR(phys, i, &nd, supported.data());
+		bool ok = false;
+		for (auto &d : supported) {
+			if (d == display) {
+				ok = true;
+				break;
+			}
+		}
+		if (ok) {
+			planeIndex = i;
+			planeStack = planes[i].currentStackIndex;
+			break;
+		}
+	}
+	if (planeIndex == maxOf<uint32_t>()) {
+		return VK_NULL_HANDLE;
+	}
+
+	VkDisplaySurfaceCreateInfoKHR info{};
+	info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
+	info.displayMode = best->displayMode;
+	info.planeIndex = planeIndex;
+	info.planeStackIndex = planeStack;
+	info.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	info.globalAlpha = 0.0f;
+	info.alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
+	info.imageExtent = best->parameters.visibleRegion;
+
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	auto result = vkCreateDisplayPlaneSurfaceKHR(_instance, &info, nullptr, &surface);
+	if (result == VK_SUCCESS) {
+		log::source().info("Vk", "Direct display surface created: ", name, " ",
+				best->parameters.visibleRegion.width, "x", best->parameters.visibleRegion.height,
+				"@", best->parameters.refreshRate / 1000, " (plane ", planeIndex, ")");
+		return surface;
+	}
+	log::source().error("Vk", "vkCreateDisplayPlaneSurfaceKHR failed: ", int(result));
+	return VK_NULL_HANDLE;
+}
+
+VkSurfaceKHR Instance::createDisplayPlaneSurface(uint32_t prefW, uint32_t prefH) const {
+	const int64_t target = int64_t(prefW) * int64_t(prefH);
+	for (auto &wrapper : _devices) {
+		wrapper.once([&] { getDeviceInfo(wrapper.info, wrapper.info.device); });
+
+		auto &dev = wrapper.info;
+		VkPhysicalDevice phys = dev.device;
+
+		// --- Path 1: driver auto-enumerated displays (HW drivers with a bound
+		// DRM fd, e.g. V3DV on RPi4). dev.displays/modes/planes already filled. ---
+		if (!dev.displays.empty()) {
+			const DisplayInfo *display = &dev.displays.front();
+
+			const ModeInfo *targetMode = nullptr;
+			for (auto &m : display->modes) {
+				if (m.planes.empty()) {
+					continue;
+				}
+				if (!targetMode) {
+					targetMode = &m;
+					continue;
+				}
+				const int64_t ma = int64_t(m.info.width) * int64_t(m.info.height);
+				const int64_t ta = int64_t(targetMode->info.width) * int64_t(targetMode->info.height);
+				bool better;
+				if (target > 0) {
+					int64_t dm = ma - target, dt = ta - target;
+					if (dm < 0) { dm = -dm; }
+					if (dt < 0) { dt = -dt; }
+					better = dm < dt || (dm == dt && m.info.rate > targetMode->info.rate);
+				} else {
+					better = ma > ta || (ma == ta && m.info.rate > targetMode->info.rate);
+				}
+				if (better) {
+					targetMode = &m;
+				}
+			}
+
+			if (targetMode) {
+				VkDisplaySurfaceCreateInfoKHR info{};
+				info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
+				info.displayMode = targetMode->mode;
+				info.planeIndex = targetMode->planes.front().index;
+				info.planeStackIndex = targetMode->planes.front().index;
+				info.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+				info.globalAlpha = 0.0f;
+				info.alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
+				info.imageExtent = VkExtent2D{targetMode->info.width, targetMode->info.height};
+
+				VkSurfaceKHR surface = VK_NULL_HANDLE;
+				auto result = vkCreateDisplayPlaneSurfaceKHR(_instance, &info, nullptr, &surface);
+				if (result == VK_SUCCESS) {
+					log::source().info("Vk", "Direct display surface created: ", display->name, " ",
+							targetMode->info.width, "x", targetMode->info.height, "@",
+							targetMode->info.rate / 1000);
+					return surface;
+				}
+				log::source().error("Vk", "vkCreateDisplayPlaneSurfaceKHR failed: ", int(result));
+			}
+		}
+
+#if XL_VK_DRM_DISPLAY
+		// --- Path 2: software/headless drivers (lavapipe) enumerate 0 displays
+		// because they hold no DRM fd. Open a KMS connector ourselves and acquire
+		// it via VK_EXT_acquire_drm_display, then build the surface as usual. ---
+		if (vkGetDrmDisplayEXT && vkAcquireDrmDisplayEXT) {
+			int fd = s_openDrmDevice();
+			if (fd >= 0) {
+				uint32_t connectorId = s_findConnectedDrmConnector(fd);
+				if (connectorId != 0) {
+					VkDisplayKHR display = VK_NULL_HANDLE;
+					auto gr = vkGetDrmDisplayEXT(phys, fd, connectorId, &display);
+					if (gr == VK_SUCCESS && display != VK_NULL_HANDLE) {
+						auto ar = vkAcquireDrmDisplayEXT(phys, fd, display);
+						if (ar == VK_SUCCESS) {
+							if (auto surface = makeDisplayPlaneSurface(phys, display,
+										StringView("drm-connector"), prefW, prefH)) {
+								// Keep fd open: it is the DRM master for the acquired
+								// display and must outlive the surface. Intentionally
+								// leaked (single fd, lives for the app's lifetime).
+								return surface;
+							}
+						} else {
+							log::source().error("Vk", "vkAcquireDrmDisplayEXT failed: ", int(ar));
+						}
+					} else {
+						log::source().error("Vk", "vkGetDrmDisplayEXT failed: ", int(gr));
+					}
+				} else {
+					log::source().error("Vk", "No connected DRM connector found on ", fd);
+				}
+				::close(fd);
+			} else {
+				log::source().error("Vk", "Fail to open /dev/dri/card* for direct display");
+			}
+		}
+#endif
+	}
+
+	log::source().error("Vk", "No VK_KHR_display display available for direct output");
+	return VK_NULL_HANDLE;
 }
 
 SurfaceBackendMask Instance::checkPresentationSupport(VkPhysicalDevice device,

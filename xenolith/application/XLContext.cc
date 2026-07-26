@@ -34,6 +34,8 @@
 #include "XLVkInstance.h"
 #endif
 
+#include <unistd.h>
+
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
@@ -612,8 +614,8 @@ void Context::createWindow(Rc<WindowInfo> &&info) {
 	performOnThread([this, info = move(info)]() mutable {
 		auto status = _controller->createWindow(move(info));
 		if (status != Status::Ok) {
-			log::source().error("Context", "Fail to create native window: ",
-					sprt::status::getStatusName(status));
+			log::source().error("Context",
+					"Fail to create native window: ", sprt::status::getStatusName(status));
 		}
 	}, this);
 }
@@ -706,6 +708,24 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 					ret.set(toInt(vk::SurfaceBackend::Metal));
 				}
 #endif
+
+#if defined(VK_KHR_display)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Display))) {
+					// Direct-display presentation is supported if the device drives
+					// at least one display through VK_KHR_display.
+					uint32_t ndisplays = 0;
+					inst->vkGetPhysicalDeviceDisplayPropertiesKHR(device, &ndisplays, nullptr);
+					// Software/headless drivers (lavapipe) report 0 displays but can
+					// still drive a KMS connector we acquire ourselves — accept if a
+					// DRM node is present. See Instance::createDisplayPlaneSurface().
+					bool hasDrm = false;
+					hasDrm = ::access("/dev/dri/card0", 0) == 0
+							|| ::access("/dev/dri/card1", 0) == 0;
+					if (ndisplays > 0 || hasDrm) {
+						ret.set(toInt(vk::SurfaceBackend::Display));
+					}
+				}
+#endif
 				return ret;
 			};
 			return true;
@@ -764,6 +784,25 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 			Vector<StringView> ret;
 			if (!isHeadless) {
 				ret.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+				// The VK_KHR_display swapchain path (Mesa wsi_common_drm) builds
+				// dmabuf-backed scanout images and calls vkGetMemoryFdKHR / the DRM
+				// modifier queries unconditionally. Those entrypoints are null unless
+				// the matching device extensions are enabled, so enable them when the
+				// device advertises them (harmless for windowed surfaces).
+				auto has = [&](const char *ext) {
+					return sprt::find(dev.availableExtensions.begin(),
+								   dev.availableExtensions.end(), String(ext))
+							!= dev.availableExtensions.end();
+				};
+				for (auto ext : {VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+						 VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+						 VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
+						 VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME}) {
+					if (has(ext)) {
+						ret.emplace_back(ext);
+					}
+				}
 			}
 			return ret;
 		};
