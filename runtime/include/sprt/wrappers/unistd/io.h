@@ -38,7 +38,9 @@ struct _stat {
 
 #ifndef _O_BINARY
 #define _O_BINARY 0
+#ifndef _LIBCPP_VERSION
 #define O_BINARY _O_BINARY
+#endif
 #endif
 
 #ifndef _O_TEXT
