@@ -91,7 +91,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	virtual Padding getPadding() const override;
 

@@ -192,7 +192,7 @@ public:
 
 	virtual void handleAdded(Node *) override;
 	virtual void handleEnter(Scene *) override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &mask) override;
 
 	void apply();
 

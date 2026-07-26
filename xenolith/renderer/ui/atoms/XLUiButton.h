@@ -41,12 +41,28 @@ struct ButtonStyleComponent {
 	float borderRadiusBottomLeft = 0.0f;
 };
 
+enum class ButtonType {
+	General,
+	OsMinimize,
+	OsMaximize,
+	OsClose,
+	OsMenu,
+	OsFullscreen
+};
+
+enum class ButtonIconTheme {
+	Default,
+	Apple,
+};
+
 class Button : public basic2d::VectorSprite {
 public:
 	virtual ~Button();
 
+	virtual bool init(ButtonType, Function<void()> && = nullptr);
 	virtual bool init(Function<void()> && = nullptr);
 
+	virtual void handleEnter(Scene *scene) override;
 	virtual void handleContentSizeDirty() override;
 
 	virtual void setString(StringView);
@@ -63,7 +79,17 @@ protected:
 	// outline stroke of _outlineColor/_outlineWidth when the width is > 0
 	virtual void updateBackgroundImage();
 
-	Function<void()> _callback;
+	virtual void updateState();
+
+	virtual bool handleLeftTap();
+	virtual bool handleRightTap();
+
+	ButtonType _type = ButtonType::General;
+	ButtonIconTheme _theme = ButtonIconTheme::Default;
+	WindowState _windowState = WindowState::None;
+
+	Function<void()> _leftCallback;
+	Function<void()> _rightCallback;
 
 	InputListener *_listener = nullptr;
 
