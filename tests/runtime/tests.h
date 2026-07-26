@@ -42,6 +42,7 @@ void performMallocStringTests();
 
 void performMallocUnorderedMapTests();
 void performMallocUnorderedSetTests();
+void performIntSetTests();
 void performMallocListTests();
 void performThreadTests();
 void performMallocForwardListTests();

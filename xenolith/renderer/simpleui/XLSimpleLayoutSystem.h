@@ -294,7 +294,7 @@ public:
 
 	virtual void handleAdded(Node *owner) override;
 
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &mask) override;
 
 	// layout-children phase: position/size the children (own size + order fixed)
 	virtual void handleLayoutChildren() override;

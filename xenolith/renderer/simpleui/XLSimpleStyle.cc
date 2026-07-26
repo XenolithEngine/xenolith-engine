@@ -429,7 +429,7 @@ void StyleApplier::handleEnter(Scene *scene) {
 	apply();
 }
 
-void StyleApplier::handleComponentsDirty() { apply(); }
+void StyleApplier::handleComponentsDirty(const ComponentMask &mask) { apply(); }
 
 void StyleApplier::apply() {
 	if (!_owner) {
@@ -570,6 +570,8 @@ void StyleApplier::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setOpacity(float(s.text.opacity) / 255.0f);
 	}
 
+	// legacy direct push; the ui module routes inheritable text/font/color properties
+	// through the Inherited*Style components instead (see XLInheritedStyle.h)
 	auto label = dynamic_cast<Label *>(node);
 	if (label) {
 		if (s.has(ParameterName::CssColor)) {

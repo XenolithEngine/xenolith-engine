@@ -79,6 +79,10 @@ void StyleParameter::set<ParameterName::CssDisplay, Display>(const Display &v) {
 	value.display = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssVisibility, Visibility>(const Visibility &v) {
+	value.visibility = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssListStyleType, ListStyleType>(const ListStyleType &v) {
 	value.listStyleType = v;
 }
@@ -1353,6 +1357,14 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Display::InlineFlex: stream << "inline-flex"; break;
 			case Display::Grid: stream << "grid"; break;
 			case Display::InlineGrid: stream << "inline-grid"; break;
+			};
+			break; // enum
+		case ParameterName::CssVisibility:
+			stream << "visibility: ";
+			switch (it.value.visibility) {
+			case Visibility::Visible: stream << "visible"; break;
+			case Visibility::Hidden: stream << "hidden"; break;
+			case Visibility::Collapse: stream << "collapse"; break;
 			};
 			break; // enum
 		case ParameterName::CssFloat:

@@ -24,6 +24,7 @@
 #include "XL2dLabel.h"
 #include "XLEventListener.h"
 #include "XLDirector.h"
+#include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -348,6 +349,10 @@ bool Label::init(const DescriptionStyle &style, StringView str, float w, TextAli
 void Label::handleEnter(xenolith::Scene *scene) {
 	Sprite::handleEnter(scene);
 
+	// a (re-)attached label may face a different set of inherited-style
+	// components in its new ancestor chain
+	setLabelDirty();
+
 	if (_source) {
 		return;
 	}
@@ -371,6 +376,19 @@ void Label::handleEnter(xenolith::Scene *scene) {
 }
 
 void Label::handleExit() { Sprite::handleExit(); }
+
+void Label::handleComponentsDirty(const ComponentMask &mask) {
+	Sprite::handleComponentsDirty(mask);
+
+	// Inherited-style components on the label's OWN node changed (typically rewritten or
+	// removed by ui::StyleResolver) — re-shape with the new effective style. This is the
+	// node's own dirty protocol; changes on ancestors are NOT tracked here (see
+	// XLInheritedStyle.h).
+	if (mask.contains(InheritedColorStyle::Id.value) || mask.contains(InheritedFontStyle::Id.value)
+			|| mask.contains(InheritedTextStyle::Id.value)) {
+		setLabelDirty();
+	}
+}
 
 void Label::tryUpdateLabel() {
 	if (_parent) {
@@ -504,6 +522,74 @@ void Label::updateLabel() {
 	}
 
 	applyLayout(spec);
+}
+
+void Label::makeEffectiveStyle(font::LabelBase::EffectiveStyle &out) const {
+	LabelBase::makeEffectiveStyle(out);
+
+	// Overlay inherited-style components (own node first, then ancestors — see
+	// XLInheritedStyle.h): a defined inherited value wins over the label's stored
+	// explicit value; the stored fields are left untouched, so they take effect
+	// again as soon as the components disappear.
+	auto color = accumulateInheritedStyle<InheritedColorStyle>(this);
+	auto font = accumulateInheritedStyle<InheritedFontStyle>(this);
+	auto text = accumulateInheritedStyle<InheritedTextStyle>(this);
+
+	if (color.defined & InheritedColorStyle::DefinedColor) {
+		out.style.text.color = color.color;
+		// keep the inherited color across _displayedColor refreshes (updateColor
+		// skips ranges with colorDirty)
+		out.style.colorDirty = true;
+	}
+	if (color.defined & InheritedColorStyle::DefinedOpacity) {
+		out.style.text.opacity = color.opacity;
+		out.style.opacityDirty = true;
+	}
+
+	if (font.defined & InheritedFontStyle::DefinedFontSize) {
+		out.style.font.fontSize = font.fontSize;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontStyle) {
+		out.style.font.fontStyle = font.fontStyle;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontWeight) {
+		out.style.font.fontWeight = font.fontWeight;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontStretch) {
+		out.style.font.fontStretch = font.fontStretch;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontGrade) {
+		out.style.font.fontGrade = font.fontGrade;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontVariant) {
+		out.style.font.fontVariant = font.fontVariant;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontFamily) {
+		out.fontFamilyStorage = sp::move(font.fontFamily);
+	}
+
+	if (text.defined & InheritedTextStyle::DefinedTextTransform) {
+		out.style.text.textTransform = text.textTransform;
+	}
+	if (text.defined & InheritedTextStyle::DefinedTextDecoration) {
+		out.style.text.textDecoration = text.textDecoration;
+	}
+	if (text.defined & InheritedTextStyle::DefinedWhiteSpace) {
+		out.style.text.whiteSpace = text.whiteSpace;
+	}
+	if (text.defined & InheritedTextStyle::DefinedHyphens) {
+		out.style.text.hyphens = text.hyphens;
+	}
+	if (text.defined & InheritedTextStyle::DefinedVerticalAlign) {
+		out.style.text.verticalAlign = text.verticalAlign;
+	}
+	if (text.defined & InheritedTextStyle::DefinedTextAlign) {
+		out.alignment = text.textAlign;
+	}
+	if (text.defined & InheritedTextStyle::DefinedLineHeight) {
+		out.lineHeight = text.lineHeight;
+		out.lineHeightAbsolute = text.lineHeightAbsolute;
+	}
 }
 
 void Label::handleContentSizeDirty() {
@@ -640,6 +726,8 @@ Label::LineLayout Label::getLine(uint32_t num) const {
 }
 
 uint16_t Label::getFontHeight() const {
+	// reads the stored explicit style: an empty label's height does not track
+	// inherited font components
 	auto l = _source->getLayout(_style.font);
 	if (l.get()) {
 		return l->getFontHeight();

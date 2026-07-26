@@ -106,6 +106,8 @@ public:
 	virtual void handleEnter(xenolith::Scene *) override;
 	virtual void handleExit() override;
 
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+
 	virtual void tryUpdateLabel();
 
 	// Measure the natural text size under the given constraints without
@@ -174,6 +176,8 @@ protected:
 			const Color4F &color);
 
 	virtual void applyLayout(TextLayout *);
+
+	virtual void makeEffectiveStyle(font::LabelBase::EffectiveStyle &) const override;
 
 	virtual void updateLabel();
 	virtual void onFontSourceUpdated();

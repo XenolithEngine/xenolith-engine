@@ -44,6 +44,8 @@
 #include "ButtonLayout.h"
 #include "WatchCssRecursiveLayout.h"
 #include "PlatformLayout.h"
+#include "InheritedStyleLayout.h"
+#include "VisibilityLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -117,6 +119,12 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	} else if (::getenv("XL_PLATFORM_TEST")) {
 		// custom `platform` CSS media feature (@media (platform: linux) ...)
 		content->pushLayout(Rc<PlatformLayout>::create());
+	} else if (::getenv("XL_INHERITED_TEST")) {
+		// inherited CSS properties via Inherited*Style components (Label consumption)
+		content->pushLayout(Rc<InheritedStyleLayout>::create());
+	} else if (::getenv("XL_VISIBILITY_TEST")) {
+		// display:none / visibility:hidden via VisibilityComponent (visit skip + layout collapse)
+		content->pushLayout(Rc<VisibilityLayout>::create());
 	} else {
 		content->pushLayout(Rc<GeneralLayout>::create());
 	}

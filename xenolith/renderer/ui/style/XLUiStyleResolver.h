@@ -92,7 +92,17 @@ public:
 	Color3B color() const; // color
 	uint8_t opacity() const; // opacity (0-255)
 	document::TextAlign textAlign() const; // text-align
+	document::TextTransform textTransform() const; // text-transform
+	document::TextDecoration textDecoration() const; // text-decoration
+	document::WhiteSpace whiteSpace() const; // white-space
+	document::Hyphens hyphens() const; // hyphens
+	document::VerticalAlign verticalAlign() const; // vertical-align
+	document::FontVariant fontVariant() const; // font-variant
+	// line-height as the raw metric; a unitless number ("line-height: 1.5") is
+	// stored as Units::Auto with the factor in `value`
+	document::Metric lineHeight() const;
 	document::Display display() const; // display
+	document::Visibility visibility() const; // visibility
 	document::Metric width() const;
 	document::Metric height() const;
 	document::Metric marginTop() const;
@@ -170,9 +180,15 @@ that descendant's content-size / layout-children event arrives, once per source 
 
 Default v1 property mapping:
  - opacity -> Node::setOpacity
- - color -> Label color (node color)
+ - display: none, visibility: hidden -> VisibilityComponent (wrapVisit skips the subtree
+   like setVisible(false); layout engines collapse display:none, visibility:hidden keeps
+   its box; the node's explicit setVisible state is never touched)
  - background-color -> Layer/Button color
- - font-size/-family/-weight/-style/-stretch, text-align, width -> Label
+ - color, font-size/-family/-weight/-style/-stretch/-variant, text-align/-transform/
+   -decoration, white-space, hyphens, vertical-align, line-height -> Inherited*Style
+   components on the node (see XLInheritedStyle.h; Label accumulates them over the
+   parent chain, a defined value overrides the label's explicit one)
+ - width -> Label (non-inheritable, still pushed directly)
  - width/height (non-Label) -> setContentSize (percent/vw/vh resolved against
    the parent size at apply time; parent resizes are not tracked in v1)
  - margin-* -> FlexItemInfo::margin (when the parent is a flex container)
@@ -217,11 +233,16 @@ public:
 	// a component changed on this node or (via HandleAncestorComponents) on a styled ancestor - most
 	// importantly the StyleSystemState version bump when the stylesheet reloads. Re-arm the layout-
 	// children phase so apply() re-resolves against the new sheet (sizes are settled by then).
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
-	// recursive styling: a descendant delivered its content-size / layout-children event via the
-	// frame stack; resolve that descendant's style once per source version (dedup via _nodesUpdated)
+	// recursive styling: a descendant's content-size event arrived via the frame stack - resolve it
+	// once per source version (this is the path that styles descendants initially and re-styles the
+	// whole subtree after a CSS reload, see markSubtreeComponentsDirty in apply())
 	virtual void handleChildContentSizeDirty(Node *) override;
+
+	// recursive styling: a descendant's own components changed (via the frame stack) - re-resolve it
+	// so an interactive :hover/:focus/:active flip restyles the node (see .cc for the dedup contract)
+	virtual void handleChildComponentsDirty(Node *, const ComponentMask &) override;
 
 	void apply();
 
@@ -249,7 +270,6 @@ protected:
 	uint32_t _sourceSystemVersion = 0;
 	uint64_t _sourceSystemId = 0;
 
-	// For which nodes we already resolve most recent styles
 	HashSet<Node *> _nodesUpdated;
 };
 

@@ -48,7 +48,13 @@ void Component::clear() const {
 
 void ComponentContainer::removeAllComponents() {
 	_components.clear();
+	_componentsDirtyMask.clear();
 	_componentsDirty = true;
+}
+
+void ComponentContainer::resetComponentsDirty() {
+	_componentsDirtyMask.clear();
+	_componentsDirty = false;
 }
 
 } // namespace stappler::xenolith
