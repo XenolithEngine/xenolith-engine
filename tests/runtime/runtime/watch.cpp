@@ -41,6 +41,7 @@ static void writeFileContent(const char *path, const char *data) {
 	}
 }
 
+#if SPRT_LINUX
 // Count open inotify *instances* for this process by scanning /proc/self/fd:
 // each inotify fd is a symlink to "anon_inode:inotify". The whole point of the
 // shared-reader design is that N watched files use exactly ONE instance.
@@ -65,6 +66,7 @@ static int countInotifyInstances() {
 	::closedir(dir);
 	return count;
 }
+#endif // SPRT_LINUX
 
 void performWatchFileTests() {
 	sprt::cout << "\n== runtime watchFile tests ==\n";
@@ -164,9 +166,12 @@ void performWatchFileTests() {
 	});
 	check(h2 != nullptr, "second watchFile returns a handle");
 
+#if SPRT_LINUX
+	// inotify-specific: other backends have no scarce per-user instance to share
 	auto instances = countInotifyInstances();
 	sprt::cout << "  inotify instances with 2 watches: " << instances << "\n";
 	check(instances == 1, "two watches share a single inotify instance");
+#endif
 
 	// both watches fire independently for their own file
 	observed = WatchFlags::None;

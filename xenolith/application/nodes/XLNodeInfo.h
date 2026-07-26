@@ -42,6 +42,7 @@ enum class NodeVisitFlags : uint32_t {
 	ContentSizeDirty = 1 << 1,
 	ComponentsDirty = 1 << 2,
 	ReorderChildDirty = 1 << 3,
+	MeasureDirty = 1 << 4,
 
 	GlobalTransformDirtyMask = TransformDirty | ContentSizeDirty
 };
@@ -60,14 +61,31 @@ enum class NodeEventFlags : uint32_t {
 	// Call Node::handleContentSizeDirty if parent ContentSize was dirty
 	HandleParentContentSize = 1 << 1,
 
-	// Call Node::handleComponentsDirty if parent components was updated
-	HandleComponents = 1 << 2,
+	// NB: bit 1 << 2 was NodeEventFlags::HandleComponents; ancestor components-dirty is now
+	// opted into per-System via SystemFlags::HandleAncestorComponents (or a Node subclass via
+	// Node::setWantsAncestorComponents), driven by a subtree listener counter
 
 	// Call Node::handleReorderChildDirty if parent childs was updated
 	HandleParentReorderChild = 1 << 3,
 };
 
 SP_DEFINE_ENUM_AS_MASK(NodeEventFlags)
+
+// How a content measurement request interprets its constraints.
+// Semantics mirror font::Formatter::ContentRequest.
+enum class MeasureMode : uint8_t {
+	Normal, // preferred size under the given constraints (wrap to fit)
+	MinContent, // smallest size that avoids overflow (widest unbreakable unit)
+	MaxContent, // ideal size without any wrapping
+};
+
+// Constraints for a content measurement request (see System::handleMeasure);
+// maxOf<float>() means the axis is unconstrained
+struct SP_PUBLIC MeasureConstraints {
+	MeasureMode mode = MeasureMode::Normal;
+	float maxWidth = maxOf<float>();
+	float maxHeight = maxOf<float>();
+};
 
 enum class CommandFlags : uint16_t {
 	None,

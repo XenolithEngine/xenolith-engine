@@ -88,7 +88,7 @@ public:
 	virtual void setGlobalLight(const Color4F &);
 	virtual const Color4F &getGlobalLight() const;
 
-	virtual bool visitGeometry(FrameInfo &, NodeVisitFlags parentFlags) override;
+	virtual bool visitDraw(FrameInfo &, NodeVisitFlags parentFlags) override;
 
 	virtual void draw(FrameInfo &, NodeVisitFlags flags) override;
 

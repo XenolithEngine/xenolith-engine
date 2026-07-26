@@ -26,6 +26,7 @@
 #include "SPEvent-wasm.h"
 
 #include "../fd/SPEventFile.h"
+#include "../fd/SPEventStatWatch.h"
 
 #include <sprt/runtime/dispatch/task.h>
 #include <sprt/runtime/log.h>
@@ -504,6 +505,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupWasmHandleClass<WasmTimerHandle, WasmTimerSource>(&_info, &_wasmTimerClass, true);
 		setupWasmHandleClass<WasmThreadHandle, WasmThreadSource>(&_info, &_wasmThreadClass, true);
 		setupInlineFileHandleClass(&_info, &_wasmFileInlineClass);
+		setupStatWatchClass(&_info, &_wasmWatchClass);
 
 		auto w = new (memory::pool::acquire()) WasmData(_info.queue, this, info);
 
@@ -539,8 +541,15 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			return makeFileInlineHandle(d, &data->_wasmFileInlineClass, sprt::move(state));
 		};
 
-		// _listenHandle / _spawnProcess / _watchFile stay null (sockets, processes,
-		// file-watch come later / stay ENOSYS).
+		// File-watch over the synchronous VFS: no change notifications exist, so
+		// the portable stat-polling watch (a repeating reactor timer) is used.
+		_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+			auto data = static_cast<Queue::Data *>(d);
+			return makeStatWatchHandle(d, &data->_wasmWatchClass, sprt::move(info), ref);
+		};
+
+		// _listenHandle / _spawnProcess stay null (sockets and processes come
+		// later / stay ENOSYS).
 
 		_platformQueue = w;
 		_engine = QueueEngine::Wasm;

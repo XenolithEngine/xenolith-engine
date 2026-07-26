@@ -131,8 +131,8 @@ void WindowDecorations::handleContentSizeDirty() {
 	_resizeLeft->setPosition(Vec2(inset, _contentSize.height / 2));
 }
 
-void WindowDecorations::handleLayout(Node *parent) {
-	Node::handleLayout(parent);
+void WindowDecorations::handleLayoutInParent(Node *parent) {
+	Node::handleLayoutInParent(parent);
 
 	if (!shouldBePresentedOnScene(parent->getScene())) {
 		setVisible(false);

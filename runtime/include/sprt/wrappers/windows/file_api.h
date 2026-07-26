@@ -220,6 +220,15 @@ __SPRT_WIN_IMPORT WINAPI BOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nN
 __SPRT_WIN_IMPORT WINAPI BOOL GetOverlappedResult(HANDLE hFile, LPOVERLAPPED lpOverlapped,
 		LPDWORD lpNumberOfBytesTransferred, BOOL bWait);
 
+typedef void (*LPOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwErrorCode,
+		DWORD dwNumberOfBytesTransfered, LPOVERLAPPED lpOverlapped);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ReadDirectoryChangesW(HANDLE hDirectory, LPVOID lpBuffer,
+		DWORD nBufferLength, BOOL bWatchSubtree, DWORD dwNotifyFilter, LPDWORD lpBytesReturned,
+		LPOVERLAPPED lpOverlapped, LPOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+
+__SPRT_WIN_IMPORT WINAPI BOOL CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped);
+
 __SPRT_WIN_IMPORT WINAPI BOOL SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove,
 		PLARGE_INTEGER lpNewFilePointer, DWORD dwMoveMethod);
 

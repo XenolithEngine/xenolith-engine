@@ -1568,6 +1568,17 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 		y = static_cast<uint32_t>(theme.decorations.shadowOffset.y);
 	}
 
+	// When window is docked to a tile or a monitor edge, its border matches that edge,
+	// so the corner sprite's strip that protrudes past the window border must be hidden
+	// (side sprites are hidden entirely by the WindowState handler).
+	// Top corners extend above the header in fallback CSD mode, hence the DecorOffset term.
+	const int32_t cropLeft = hasFlag(_info->state, WindowState::TiledLeft) ? width : 0;
+	const int32_t cropRight = hasFlag(_info->state, WindowState::TiledRight) ? width : 0;
+	const int32_t cropTop = hasFlag(_info->state, WindowState::TiledTop)
+			? (userDecor ? width : width - DecorOffset)
+			: 0;
+	const int32_t cropBottom = hasFlag(_info->state, WindowState::TiledBottom) ? width : 0;
+
 	for (auto &it : _decors) {
 		switch (it->name) {
 		case WaylandDecorationName::TopSide:
@@ -1584,16 +1595,20 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 			break;
 		case WaylandDecorationName::TopLeftCorner:
 			it->setGeometry(x - width, y + topOffet, cornerSize, cornerSize);
+			it->setCrop(cropLeft, cropTop, 0, 0);
 			break;
 		case WaylandDecorationName::TopRightCorner:
 			it->setGeometry(x + extent.width - inset, y + topOffet, cornerSize, cornerSize);
+			it->setCrop(0, cropTop, cropRight, 0);
 			break;
 		case WaylandDecorationName::BottomLeftCorner:
 			it->setGeometry(x - width, y + extent.height - inset, cornerSize, cornerSize);
+			it->setCrop(cropLeft, 0, 0, cropBottom);
 			break;
 		case WaylandDecorationName::BottomRightCorner:
 			it->setGeometry(x + extent.width - inset, y + extent.height - inset, cornerSize,
 					cornerSize);
+			it->setCrop(0, 0, cropRight, cropBottom);
 			break;
 		case WaylandDecorationName::HeaderLeft:
 			it->setGeometry(x, y - inset - DecorOffset, inset, inset);
@@ -1622,10 +1637,10 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 			it->setGeometry(x + extent.width - inset, y + topInset, inset, insetHeight);
 			break;
 		case WaylandDecorationName::TopShadowPanel:
-			it->setGeometry(x + inset, y + topOffet + inset, insetWidth, inset);
+			it->setGeometry(x + inset, y - topOffet + inset, insetWidth, inset);
 			break;
 		case WaylandDecorationName::LeftShadowPanel:
-			it->setGeometry(x - width + inset, y + topInset, inset, insetHeight);
+			it->setGeometry(x + width + inset, y + topInset, inset, insetHeight);
 			break;
 		case WaylandDecorationName::BottomShadowPanel:
 			it->setGeometry(x + inset, y + extent.height - inset, insetWidth, inset);
