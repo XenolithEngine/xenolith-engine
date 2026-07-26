@@ -27,7 +27,10 @@ STAGE0_CLANG_CXX := $(STAGE0_SYSROOT)/bin/clang++.exe
 STAGE0_MAKE_EXE := $(STAGE0_SYSROOT)/bin/make.exe
 STAGE0_GLSLANG := $(STAGE0_SYSROOT)/bin/glslang.exe
 
-PREBUILTS_PATH := $(HOST_ROOT)/bin
+PREBUILTS_PATH := $(abspath $(HOST_ROOT)/bin)
+
+STAGE0_NATIVE_CC ?= $(shell command -v clang)
+STAGE0_NATIVE_CXX ?= $(shell command -v clang++)
 
 STAGE0_HOST_TOOLCHAIN_CMAKE := $(STAGE0_SYSROOT)/host.cmake
 STAGE0_HOSTCXX_TOOLCHAIN_CMAKE := $(STAGE0_SYSROOT)/hostcxx.cmake
@@ -58,20 +61,21 @@ STAGE0_WARN_FLAGS := \
 	-Wno-extra-semi \
 	-Wno-unknown-pragmas \
 	-Wno-strict-prototypes \
-	-Wno-unused-local-typedef
+	-Wno-unused-local-typedef \
+	-Wno-reserved-identifier
 
 STAGE0_CXX_WARN_FLAGS := \
 	-Wno-cast-qual \
 	-Wno-non-virtual-dtor
 
 STAGE0_CFLAGS := $(OPT_FLAGS) \
-	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -fuse-ld=lld
+	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
 STAGE0_CXXFLAGS := $(OPT_FLAGS) \
-	$(STAGE0_WARN_FLAGS) $(STAGE0_CXX_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -fuse-ld=lld
+	$(STAGE0_WARN_FLAGS) $(STAGE0_CXX_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
 STAGE0_RCFLAGS := $(OPT_FLAGS) \
-	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -fuse-ld=lld
-STAGE0_EXE_LDFLAGS := $(STAGE0_LIB_PATH) -fuse-ld=lld
-STAGE0_LIB_LDFLAGS := $(STAGE0_LIB_PATH) -fuse-ld=lld
+	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
+STAGE0_EXE_LDFLAGS := $(STAGE0_LIB_PATH)
+STAGE0_LIB_LDFLAGS := $(STAGE0_LIB_PATH)
 
 STAGE0_LIBC_CFLAGS := $(OPT_FLAGS) \
 	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC \
@@ -93,8 +97,8 @@ export CXX=$(PREBUILTS_PATH)/clang++
 export RC=$(STAGE0_RC)
 export ASM_MASM=$(STAGE0_ML)
 
-export INCLUDE := $(CRT_DIR)/include;$(SDK_DIR)/include/cppwinrt;$(SDK_DIR)/include/shared;$(SDK_DIR)/include/ucrt;$(SDK_DIR)/include/um;$(SDK_DIR)/include/winrt
-export LIB := $(abspath $(STAGE0_SYSROOT))/lib;$(CRT_DIR)/lib/$(SP_ARCH_WINDOWS);$(SDK_DIR)/lib/ucrt/$(SP_ARCH_WINDOWS);$(SDK_DIR)/lib/um/$(SP_ARCH_WINDOWS)
+export INCLUDE := $(abspath ../../../include);$(abspath ../../../include_libc);$(abspath $(STAGE0_SYSROOT)/include);$(abspath ../../../include_libc/cxx);$(abspath ../../../libcxx/include);$(abspath ../../../include/sprt/wrappers/windows);$(abspath ../../../include/sprt/wrappers/windows/casemap)
+export LIB := $(abspath ../../target-windows/intermediate/$(notdir $(TARGET_SYSROOT))/lib);$(abspath ../../target-windows/intermediate/$(notdir $(TARGET_SYSROOT))/usr/lib);$(abspath $(STAGE0_SYSROOT)/lib)
 
 $(info INCLUDE: $(INCLUDE))
 $(info LIB: $(LIB))
@@ -102,17 +106,25 @@ $(info LIB: $(LIB))
 $(STAGE0_HOST_TOOLCHAIN_CMAKE):
 	@mkdir -p $(dir $@)
 	@echo 'set(CMAKE_SYSTEM_NAME Windows)' > $@
-	@echo 'set(CMAKE_SYSROOT $(realpath $(STAGE0_SYSROOT)))'>> $@
+	@echo 'set(CMAKE_C_SIMULATE_ID MSVC)' >> $@
+	@echo 'set(CMAKE_CXX_SIMULATE_ID MSVC)' >> $@
+	@echo 'set(CMAKE_MSVC_RUNTIME_LIBRARY "Sprt")' >> $@
+	@echo 'set(CMAKE_C_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt -std=gnu++20)' >> $@
+	@echo 'set(CMAKE_SYSROOT $(abspath $(STAGE0_SYSROOT)))'>> $@
 	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))'>> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))'>> $@
 	@echo 'set(CMAKE_C_FLAGS_INIT "$(STAGE0_CFLAGS)")'>> $@
 	@echo 'set(CMAKE_CXX_FLAGS_INIT "$(STAGE0_CXXFLAGS)")'>> $@
 	@echo 'set(CMAKE_RC_FLAGS_INIT "$(STAGE0_RCFLAGS)")'>> $@
+	@echo 'add_compile_definitions(_WIN32_WINNT=0x0A00)' >> $@
 	@echo 'set(CMAKE_C_COMPILER "$(STAGE0_CC)")'>> $@
 	@echo 'set(CMAKE_RC_COMPILER "$(STAGE0_RC)")'>> $@
 	@echo 'set(CMAKE_CXX_COMPILER "$(STAGE0_CXX)")'>> $@
 	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$(STAGE0_EXE_LDFLAGS)")'>> $@
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$(STAGE0_LIB_LDFLAGS)")'>> $@
+	@echo 'set(CMAKE_C_STANDARD_LIBRARIES "/NODEFAULTLIB sprt.lib" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_CXX_STANDARD_LIBRARIES "/NODEFAULTLIB sprt.lib" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_VERBOSE_MAKEFILE ON)'>> $@
 	@echo 'set(BUILD_SHARED_LIBS OFF)'>> $@
 	@echo 'set(CMAKE_LINKER_TYPE LLD)'>> $@
@@ -122,6 +134,12 @@ $(STAGE0_HOST_TOOLCHAIN_CMAKE):
 $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE):
 	@mkdir -p $(dir $@)
 	@echo 'set(CMAKE_SYSTEM_NAME Windows)' > $@
+	@echo 'set(CMAKE_C_SIMULATE_ID MSVC)' >> $@
+	@echo 'set(CMAKE_CXX_SIMULATE_ID MSVC)' >> $@
+	@echo 'set(CMAKE_MSVC_RUNTIME_LIBRARY "Sprt")' >> $@
+	@echo 'set(CMAKE_CXX_STANDARD 20)' >> $@ 
+	@echo 'set(CMAKE_C_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
 	@echo 'set(CMAKE_SYSROOT $(realpath $(STAGE0_SYSROOT)))'>> $@
 	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))'>> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))'>> $@
@@ -130,6 +148,7 @@ $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE):
 	@echo 'set(CMAKE_CXX_FLAGS_INIT "$(STAGE0_LIBC_CXXFLAGS)")'>> $@
 	@echo 'set(CMAKE_RC_FLAGS_INIT "$(STAGE0_LIBC_RCFLAGS)")'>> $@
 	@echo 'set(CMAKE_ASM_FLAGS_INIT "$(STAGE0_LIBC_CFLAGS)")' >> $@
+	@echo 'add_compile_definitions(_WIN32_WINNT=0x0A00)' >> $@
 	@echo 'set(CMAKE_C_COMPILER "$(abspath $(STAGE0_CC))")'>> $@
 	@echo 'set(CMAKE_CXX_COMPILER "$(abspath $(STAGE0_CXX))")'>> $@
 	@echo 'set(CMAKE_RC_COMPILER "$(abspath $(STAGE0_RC))")'>> $@
@@ -138,6 +157,8 @@ $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE):
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$(STAGE0_LIBCXX_LIB_LDFLAGS)")'>> $@
 	@echo 'set(CMAKE_EXE_LINKER_FLAGS "$(STAGE0_LIBCXX_EXE_LDFLAGS)")'>> $@
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS "$(STAGE0_LIBCXX_LIB_LDFLAGS)")'>> $@
+	@echo 'set(CMAKE_C_STANDARD_LIBRARIES "/NODEFAULTLIB sprt.lib" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_CXX_STANDARD_LIBRARIES "/NODEFAULTLIB sprt.lib" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_VERBOSE_MAKEFILE ON)'>> $@
 	@echo 'set(CMAKE_LINKER_TYPE LLD)'>> $@
 	@echo 'set(CMAKE_LINKER "$(STAGE0_LLD)")'>> $@
@@ -194,32 +215,6 @@ $(STAGE0_LIBXML2): $(ZLIB_DIR) $(STAGE0_HOST_TOOLCHAIN_CMAKE)
 	cmake --install build/libxml2
 
 #
-# libcxx
-#
-
-STAGE0_BUILD_LIBCXX := cmake \
-	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOST_TOOLCHAIN_CMAKE)) \
-	-G "Ninja" \
-	-S $(LLVM_DIR)/runtimes -B build/libcxx_runtime \
-	-DCMAKE_BUILD_TYPE=Release \
-	-DLLVM_ENABLE_RUNTIMES="libcxx" \
-	-DLLVM_TARGETS_TO_BUILD=X86 \
-	-DLIBCXX_ENABLE_STATIC=Off \
-	-DLIBCXX_ENABLE_SHARED=On \
-	-DLIBCXX_INCLUDE_TESTS=Off \
-	-DCMAKE_MSVC_RUNTIME_LIBRARY=$(MSCV_RUNTIME) \
-	-DLIBXML2_LIBRARY=$(abspath $(STAGE0_LIBXML2)) \
-	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT))
-
-$(STAGE0_LIBCXX): $(STAGE0_HOST_TOOLCHAIN_CMAKE) $(STAGE0_ZLIB) $(STAGE0_LIBXML2)
-	@echo "Build STAGE0_LIBCXX $(STAGE0_LIBCXX)"
-	$(call rule_rm,build/libcxx_runtime)
-	$(STAGE0_BUILD_LIBCXX)
-	cmake --build build/libcxx_runtime
-	cmake --install build/libcxx_runtime
-
-
-#
 # clang,lldb,lld
 #
 
@@ -238,20 +233,17 @@ STAGE0_BUILD_CC := cmake \
 	-DLLVM_ENABLE_RUNTIMES="compiler-rt" \
 	-DLLVM_FORCE_BUILD_RUNTIME=ON \
 	-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly" \
-	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLDB_INCLUDE_TESTS=Off \
+	-DLLVM_INCLUDE_TESTS=Off \
 	-DLLVM_ENABLE_SPHINX=Off \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
-	-DLLVM_ENABLE_EH=On \
+	-DLLVM_ENABLE_EH=Off \
 	-DLLVM_ENABLE_RTTI=On \
 	$(STAGE0_BUILD_CC_LTO) \
 	-DLLVM_BUILD_BENCHMARKS=Off \
 	-DLLVM_INCLUDE_BENCHMARKS=Off \
-	-DCROSS_TOOLCHAIN_FLAGS_NATIVE="-DCMAKE_C_COMPILER=/usr/bin/clang;-DCMAKE_CXX_COMPILER=/usr/bin/clang++;-DCMAKE_CXX_STANDARD=20" \
-	-DLIBCXX_ENABLE_STATIC=Off \
-	-DLIBCXX_ENABLE_SHARED=On \
-	-DCLANG_DEFAULT_CXX_STDLIB=libc++ \
+	-DCROSS_TOOLCHAIN_FLAGS_NATIVE="-DCMAKE_C_COMPILER=$(STAGE0_NATIVE_CC);-DCMAKE_CXX_COMPILER=$(STAGE0_NATIVE_CXX);-DCMAKE_CXX_STANDARD=20" \
 	-DCLANG_DEFAULT_RTLIB=compiler-rt \
 	-DCLANG_DEFAULT_LINKER=lld \
 	-DCOMPILER_RT_BUILD_BUILTINS=On \
@@ -271,6 +263,7 @@ STAGE0_BUILD_CC := cmake \
 	-DCMAKE_MSVC_RUNTIME_LIBRARY=$(MSCV_RUNTIME) \
 	-DLLDB_ENABLE_PYTHON=Off \
 	-DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
+	-DCMAKE_CXX_STANDARD=20 \
 	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT))
 
 $(STAGE0_CLANG_CC): $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)
