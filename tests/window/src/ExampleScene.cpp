@@ -46,6 +46,7 @@
 #include "PlatformLayout.h"
 #include "InheritedStyleLayout.h"
 #include "VisibilityLayout.h"
+#include "ParentResizeLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -125,6 +126,9 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	} else if (::getenv("XL_VISIBILITY_TEST")) {
 		// display:none / visibility:hidden via VisibilityComponent (visit skip + layout collapse)
 		content->pushLayout(Rc<VisibilityLayout>::create());
+	} else if (::getenv("XL_PARENT_RESIZE_TEST")) {
+		// style re-resolution when the parent size changes (percent metrics)
+		content->pushLayout(Rc<ParentResizeLayout>::create());
 	} else {
 		content->pushLayout(Rc<GeneralLayout>::create());
 	}

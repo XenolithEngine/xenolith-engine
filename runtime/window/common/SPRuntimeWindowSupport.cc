@@ -1037,4 +1037,31 @@ void getWindowStateDescription(const callback<void(StringView)> &out, WindowStat
 	}
 }
 
+Extent2 clampWindowExtent(Extent2 e, Extent2 minExtent, Extent2 maxExtent) {
+	// Per-dimension "0 = unconstrained". Max is clamped to be at least min when both are set.
+	if (maxExtent.width != 0) {
+		if (minExtent.width != 0 && maxExtent.width < minExtent.width) {
+			maxExtent.width = minExtent.width;
+		}
+		if (e.width > maxExtent.width) {
+			e.width = maxExtent.width;
+		}
+	}
+	if (maxExtent.height != 0) {
+		if (minExtent.height != 0 && maxExtent.height < minExtent.height) {
+			maxExtent.height = minExtent.height;
+		}
+		if (e.height > maxExtent.height) {
+			e.height = maxExtent.height;
+		}
+	}
+	if (minExtent.width != 0 && e.width < minExtent.width) {
+		e.width = minExtent.width;
+	}
+	if (minExtent.height != 0 && e.height < minExtent.height) {
+		e.height = minExtent.height;
+	}
+	return e;
+}
+
 } // namespace sprt::window
