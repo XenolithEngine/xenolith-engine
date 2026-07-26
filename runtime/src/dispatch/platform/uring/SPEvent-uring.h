@@ -210,6 +210,14 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 
 	Status cancelFd(int fd, URingCancelFlags = URingCancelFlags::None);
 
+	// Force-tear-down a single ring op by its EXACT user_data (as read from a live CQE),
+	// used to reap a retained multishot op that outlived its generation (stale serial) yet
+	// keeps delivering CQEs. Type-agnostic: issues ASYNC_CANCEL (matches poll/read/timeout
+	// by user_data) and TIMEOUT_REMOVE (guarantees a multishot timeout is removed); the
+	// non-matching one completes -ENOENT and is ignored. Unlike a handle's disarm(), which
+	// targets the handle's *current* serial, this targets the op the kernel actually holds.
+	void dropStaleOp(uint64_t userdata);
+
 	uint32_t pop();
 	void processEvent(int32_t res, uint32_t flags, uint64_t userdata);
 
