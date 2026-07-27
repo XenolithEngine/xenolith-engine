@@ -34,6 +34,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/constants.h>
 #include <sprt/wrappers/windows/winsock.h>
+#include <sprt/wrappers/windows/app_startup.h>
 
 #include "stdlib.h"
 #include "stdio.h"
@@ -44,7 +45,9 @@ THE SOFTWARE.
 
 #define DEFAULT_SECURITY_COOKIE 0x0000'2B99'2DDF'A232ll
 
+#if !defined(SPRT_BUILD_SHARED_RUNTIME)
 __cdecl int main(int argc, const char *argv[]);
+#endif
 
 struct NonTrivialType {
 	NonTrivialType() { printf("%s\n", "constructed"); }
@@ -257,7 +260,16 @@ static void __sprt_install_clean_crash() {
 	SetUnhandledExceptionFilter(&__sprt_clean_crash_filter);
 }
 
-__SPRT_C_FUNC int mainCRTStartup() {
+// Bring the runtime up inside the image that owns it. Shared by the freestanding
+// executable entry (mainCRTStartup) and the shared-runtime library entry
+// (_DllMainCRTStartup) - the sequence is identical, only what follows it differs:
+// the executable goes on to call main(), the DLL returns to the loader, which then
+// initializes the rest of the process.
+//
+// The __c_init_*/__cxx_init_* markers below are per-image: they bracket the .CRT
+// sections of whichever image this translation unit was linked into, so the DLL runs
+// the DLL's initializers here and the application runs its own from its startup stub.
+static int __sprt_runtime_attach() {
 	// Load all required DLLs for SPRT.
 	// If some DLLs are missed, or some required functions are missed - abort immediately
 	auto loader = sprt::DllLoader::construct();
@@ -283,9 +295,9 @@ __SPRT_C_FUNC int mainCRTStartup() {
 	// Show legacy floating point library support flag
 	_fltused = 1;
 
-	// At this moment, there are no other code running in application, except for mainCRTStartup.
-	// No other code -> no other threads -> no race conditions possible -> no need for locking
-	// This will change after static initializers calling.
+	// At this moment, there are no other code running in application, except for the
+	// entry point. No other code -> no other threads -> no race conditions possible ->
+	// no need for locking. This will change after static initializers calling.
 
 	// Call c initializers
 	if (__initterm(__c_init_start, __c_init_end) != 0) {
@@ -304,6 +316,60 @@ __SPRT_C_FUNC int mainCRTStartup() {
 
 	// This will attach and initialize main thread as pthread, if it was not initializd before
 	__sprt_pthread_self();
+
+	return 0;
+}
+
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+
+// Shared runtime: this image owns the process-wide C/C++ runtime state, and the loader
+// initializes it before the executable's entry point runs - so by the time application
+// static initializers execute, the heap, stdio, TLS and exception machinery are live.
+//
+// lld-link uses _DllMainCRTStartup as the default entry point for /DLL, so no explicit
+// -Wl,-entry: is needed.
+__SPRT_C_FUNC BOOL WINAPI _DllMainCRTStartup(void *, DWORD reason, void *) {
+	switch (reason) {
+	case DLL_PROCESS_ATTACH:
+		if (__sprt_runtime_attach() != 0) {
+			return FALSE;
+		}
+
+		// load WSA unconditionally so c socket API should work natively
+		{
+			WSADATA wsaData;
+			if (WSAStartup(0x0202, &wsaData) != 0) { // winsock 2.2
+				return FALSE;
+			}
+			if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+				WSACleanup();
+				return FALSE;
+			}
+		}
+		break;
+	case DLL_THREAD_ATTACH:
+		// Run thread_local constructors for threads created by code that does not go
+		// through sprt::thread (the loader calls us for every thread in the process).
+		__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+		break;
+	case DLL_PROCESS_DETACH: WSACleanup(); break;
+	case DLL_THREAD_DETACH:
+	default: break;
+	}
+	return TRUE;
+}
+
+#endif // SPRT_BUILD_SHARED_RUNTIME
+
+// Convert the (attacker-controlled) wide command line into argv and hand control to
+// main(). Never returns: it ends in exit(), which drains atexit handlers and static
+// destructors.
+//
+// manageWsa is false when the caller already brought Winsock up for the whole process
+// (the shared runtime does so in DLL_PROCESS_ATTACH and tears it down in
+// DLL_PROCESS_DETACH); the freestanding executable owns that lifetime itself.
+static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
+	int ret = 0;
 
 	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
 	__try {
@@ -370,19 +436,22 @@ __SPRT_C_FUNC int mainCRTStartup() {
 		}
 
 		// load WSA unconditionally so c socket API should work natively
-		WSADATA wsaData;
-		auto wsaStartupResult = WSAStartup(0x0202, &wsaData); // winsock 2.2
+		int wsaStartupResult = -1;
+		if (manageWsa) {
+			WSADATA wsaData;
+			wsaStartupResult = WSAStartup(0x0202, &wsaData); // winsock 2.2
 
-		if (wsaStartupResult != 0) {
-			printf("WSAStartup failed: %d\n", wsaStartupResult);
-		} else if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
-			printf("Could not find a usable version of Winsock.dll\n");
-			WSACleanup();
+			if (wsaStartupResult != 0) {
+				printf("WSAStartup failed: %d\n", wsaStartupResult);
+			} else if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+				printf("Could not find a usable version of Winsock.dll\n");
+				WSACleanup();
+			}
 		}
 
-		ret = main(outArgc, (const char **)argvTarget);
+		ret = mainFn(outArgc, (const char **)argvTarget);
 
-		if (wsaStartupResult == 0) {
+		if (manageWsa && wsaStartupResult == 0) {
 			WSACleanup();
 		}
 
@@ -399,3 +468,28 @@ __SPRT_C_FUNC int mainCRTStartup() {
 
 	return ret;
 }
+
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+
+// Entry point body for applications that link the shared runtime. The application
+// image keeps only a tiny stub (see include/sprt/wrappers/windows/app_startup.h): the
+// stub runs its own .CRT initializers - which are per-image and therefore invisible
+// from here - and then hands its main() to this exported function. Everything the stub
+// would otherwise have to duplicate (command-line conversion, exit sequencing) stays in
+// the one image that owns the runtime.
+__SPRT_C_FUNC SPRT_API int __sprt_app_startup(__sprt_main_fn mainFn) {
+	return __sprt_invoke_main(mainFn, false);
+}
+
+#else // SPRT_BUILD_SHARED_RUNTIME
+
+__SPRT_C_FUNC int mainCRTStartup() {
+	auto ret = __sprt_runtime_attach();
+	if (ret != 0) {
+		return ret;
+	}
+
+	return __sprt_invoke_main(&main, true);
+}
+
+#endif // SPRT_BUILD_SHARED_RUNTIME
