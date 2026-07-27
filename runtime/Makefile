@@ -23,9 +23,26 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../make
 
-LOCAL_OUTDIR ?= $(dir $(LOCAL_MAKEFILE))stappler-build
+# SPRT_SHARED=1 builds the runtime as a single shared object that owns the whole
+# C/C++ runtime state (heap, stdio, TLS, atexit, exception tables). Consumers then
+# link the generated import library and must be compiled with -DSPRT_SHARED_RUNTIME
+# so SPRT_API/SPRT_GLOBAL resolve to the import side of the ABI.
+SPRT_SHARED ?= 0
 
-ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
+# Separate output tree for the shared build. On Windows both modes would otherwise write
+# `sprt.lib`: the static archive in one case, sprt.dll's import library in the other -
+# same path, silently incompatible contents. Keep them apart so switching SPRT_SHARED
+# does not leave a consumer linking the wrong one.
+ifeq ($(SPRT_SHARED),1)
+LOCAL_OUTDIR ?= $(dir $(LOCAL_MAKEFILE))stappler-build-shared
+else
+LOCAL_OUTDIR ?= $(dir $(LOCAL_MAKEFILE))stappler-build
+endif
+
+ifeq ($(SPRT_SHARED),1)
+LOCAL_BUILD_STATIC := 0
+LOCAL_BUILD_SHARED := 1
+else ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
 LOCAL_BUILD_STATIC := 0
 LOCAL_BUILD_SHARED := 1
 else
@@ -58,6 +75,31 @@ LOCAL_OPTIMIZATION := -O3
 
 # Used by runtime.mk
 SPRT_BUILD_RUNTIME := 1
+
+ifeq ($(SPRT_SHARED),1)
+ifneq (,$(findstring windows,$(STAPPLER_TARGET)))
+# SPRT_API/__declspec(dllexport) covers everything a consumer names in source. It cannot
+# cover the symbols the *compiler* emits references to on its own, with no declaration
+# in scope: static-destructor registration and the MSVC C++ ABI entry points. Those have
+# to be named explicitly here.
+#
+# All of these are functions, so an unannotated reference in the consumer resolves
+# through the import library's thunk; no dllimport is needed on the other side. Data
+# symbols could not be handled this way - see libc_impl/app/windows/app_startup.cpp for
+# the ones that must instead be defined per image.
+# __tlregdtor is how clang registers a thread_local destructor. The list it feeds is
+# thread-local state inside the runtime, so unlike the rest of the TLS apparatus (which
+# is per-image - see libc_impl/app/windows/app_startup.cpp) it must be the runtime's.
+SPRT_ABI_EXPORTS := \
+	atexit \
+	__tlregdtor \
+	_CxxThrowException \
+	__CxxFrameHandler3 \
+	__std_terminate
+
+LOCAL_LDFLAGS := $(addprefix -Xlinker /EXPORT:,$(SPRT_ABI_EXPORTS))
+endif
+endif
 
 ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
 LOCAL_LDFLAGS := \

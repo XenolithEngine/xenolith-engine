@@ -2,6 +2,8 @@
 .project
 .cproject
 stappler-build
+stappler-build-shared
+stappler-build-static
 .DS_Store
 xcuserdata
 **/.idea
