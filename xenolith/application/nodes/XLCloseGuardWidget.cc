@@ -45,7 +45,7 @@ bool CloseGuardWidget::init() {
 
 void CloseGuardWidget::handleContentSizeDirty() { Node::handleContentSizeDirty(); }
 
-void CloseGuardWidget::handleLayout(Node *parent) { Node::handleLayout(parent); }
+void CloseGuardWidget::handleLayoutInParent(Node *parent) { Node::handleLayoutInParent(parent); }
 
 void CloseGuardWidget::handleExit() {
 	if (_director && _rejectWhenExit) {

@@ -46,7 +46,8 @@ struct SPRT_API Metric {
 		Vw,
 		Vh,
 		VMin,
-		VMax
+		VMax,
+		FitContent // CSS `fit-content`: size derived from the element's content
 	};
 
 	inline bool isAuto() const { return metric == Units::Auto; }
@@ -72,7 +73,9 @@ struct SPRT_API Metric {
 
 	Metric() = default;
 
-	bool readStyleValue(StringView r, bool resolutionMetric, bool allowEmptyMetric);
+	// Parses a css-style dimension token, advancing the reader past the
+	// consumed characters (shared implementation for all style parsers)
+	bool readStyleValue(StringView &r, bool resolutionMetric, bool allowEmptyMetric);
 
 	constexpr bool operator==(const Metric &other) const = default;
 	constexpr bool operator!=(const Metric &other) const = default;

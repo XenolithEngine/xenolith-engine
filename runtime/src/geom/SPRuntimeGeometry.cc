@@ -28,11 +28,17 @@ THE SOFTWARE.
 
 namespace sprt::geom {
 
-bool Metric::readStyleValue(StringView r, bool resolutionMetric, bool allowEmptyMetric) {
+bool Metric::readStyleValue(StringView &r, bool resolutionMetric, bool allowEmptyMetric) {
 	r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 	if (!resolutionMetric && r.starts_with("auto")) {
 		r += 4;
 		this->metric = Metric::Units::Auto;
+		this->value = 0.0f;
+		return true;
+	}
+	if (!resolutionMetric && r.starts_with("fit-content")) {
+		r += 11;
+		this->metric = Metric::Units::FitContent;
 		this->value = 0.0f;
 		return true;
 	}

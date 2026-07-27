@@ -707,9 +707,17 @@ void LabelBase::setStyles(const StyleVec &vec) {
 }
 
 bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledStyles, float density,
-		uint8_t _adjustValue) {
+		uint8_t _adjustValue, font::Formatter::ContentRequest request) {
 	bool success = true;
 	uint16_t adjustValue = maxOf<uint16_t>();
+
+	EffectiveStyle eff;
+	makeEffectiveStyle(eff);
+	if (!eff.fontFamilyStorage.empty()) {
+		// fontFamily is a non-owning view: re-point it at the owning storage only after
+		// the EffectiveStyle reached its final address
+		eff.style.font.fontFamily = eff.fontFamilyStorage;
+	}
 
 	do {
 		if (adjustValue == maxOf<uint16_t>()) {
@@ -724,7 +732,8 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			return format->getLayout(f);
 		}, format->getData());
 		formatter.setWidth(static_cast<uint16_t>(roundf(_width * density)));
-		formatter.setTextAlignment(_alignment);
+		formatter.setRequest(request);
+		formatter.setTextAlignment(eff.alignment);
 		formatter.setTextDirection(_direction);
 		formatter.setBidiEnabled(_bidiEnabled);
 		formatter.setShapingEnabled(_shapingEnabled);
@@ -734,11 +743,11 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 		formatter.setFillerChar(_fillerChar);
 		formatter.setEmplaceAllChars(_emplaceAllChars);
 
-		if (_lineHeight != 0.0f) {
-			if (_isLineHeightAbsolute) {
-				formatter.setLineHeightAbsolute(static_cast<uint16_t>(_lineHeight * density));
+		if (eff.lineHeight != 0.0f) {
+			if (eff.lineHeightAbsolute) {
+				formatter.setLineHeightAbsolute(static_cast<uint16_t>(eff.lineHeight * density));
 			} else {
-				formatter.setLineHeightRelative(_lineHeight);
+				formatter.setLineHeightRelative(eff.lineHeight);
 			}
 		}
 
@@ -746,7 +755,7 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 
 		size_t drawedChars = 0;
 		for (auto &it : compiledStyles) {
-			DescriptionStyle params = _style.merge(
+			DescriptionStyle params = eff.style.merge(
 					dynamic_cast<font::FontController *>(format->getController()), it.style);
 			specializeStyle(params, density);
 			if (adjustValue > 0) {
@@ -883,6 +892,13 @@ WideString LabelBase::resolveLocaleTags(const WideStringView &str) const {
 void LabelBase::specializeStyle(DescriptionStyle &style, float density) const {
 	style.font.density = density;
 	style.font.persistent = _persistentGlyphData;
+}
+
+void LabelBase::makeEffectiveStyle(EffectiveStyle &out) const {
+	out.style = _style;
+	out.alignment = _alignment;
+	out.lineHeight = _lineHeight;
+	out.lineHeightAbsolute = _isLineHeightAbsolute;
 }
 
 void LabelBase::setLabelDirty() { _labelDirty = true; }

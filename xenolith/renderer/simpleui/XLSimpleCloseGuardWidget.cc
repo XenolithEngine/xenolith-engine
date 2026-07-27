@@ -86,8 +86,8 @@ void CloseGuardWidgetDefault::handleContentSizeDirty() {
 			Vec2(_contentSize.width / 2.0f + 16.0f, _contentSize.height / 2.0f - 16.0f));
 }
 
-void CloseGuardWidgetDefault::handleLayout(Node *parent) {
-	CloseGuardWidget::handleLayout(parent);
+void CloseGuardWidgetDefault::handleLayoutInParent(Node *parent) {
+	CloseGuardWidget::handleLayoutInParent(parent);
 
 	setAnchorPoint(Anchor::Middle);
 	setContentSize(parent->getContentSize());

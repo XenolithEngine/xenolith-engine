@@ -53,6 +53,7 @@ static void __memfs_fill_stat(const __memfs_inode *ino, struct __SPRT_STAT_NAME 
 	__builtin_memset(st, 0, sizeof(*st));
 	st->st_nlink = 1;
 	st->st_blksize = 65536;
+	st->st_ino = ino->inum;
 	if (ino->isDir) {
 		st->st_mode = __SPRT_S_IFDIR | (ino->mode ? (ino->mode & 0777) : 0755);
 	} else {

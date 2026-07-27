@@ -103,7 +103,6 @@ Status TimerURingHandle::rearm(URingData *uring, TimerUringSource *source) {
 			}, URingPushFlags::Submit);
 		}
 	}
-	//log::source().debug("TimerURingHandle", uring->_tick, ": rearm");
 	return status;
 }
 
@@ -115,8 +114,6 @@ Status TimerURingHandle::disarm(URingData *uring, TimerUringSource *source) {
 				URingCancelFlags::Suspend);
 		++_timeline;
 	}
-
-	//log::source().debug("TimerURingHandle", uring->_tick, ": disarm");
 	return status;
 }
 
@@ -124,8 +121,6 @@ void TimerURingHandle::notify(URingData *uring, TimerUringSource *source, const 
 	if (_status != Status::Ok) {
 		return;
 	}
-
-	//log::source().debug("TimerURingHandle", uring->_tick, ": notify");
 
 	bool more = (data.queueFlags & IORING_CQE_F_MORE);
 	if (!more) {
@@ -135,6 +130,7 @@ void TimerURingHandle::notify(URingData *uring, TimerUringSource *source, const 
 
 	if (data.result != -ETIME && data.result < 0) {
 		cancel(URingData::getErrnoStatus(data.result));
+		return;
 	}
 
 	auto count = source->count;

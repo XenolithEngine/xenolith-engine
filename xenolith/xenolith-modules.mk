@@ -40,6 +40,7 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/renderer/richtext/richtext.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/simpleui/simpleui.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/pug/pug.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/ui/ui.mk \
 	$(XENOLITH_MODULE_DIR)/resources/storage/storage.mk \
 	$(XENOLITH_MODULE_DIR)/resources/network/network.mk \
 	$(XENOLITH_MODULE_DIR)/resources/assets/assets.mk

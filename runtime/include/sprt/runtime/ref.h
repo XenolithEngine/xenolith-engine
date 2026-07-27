@@ -1189,6 +1189,17 @@ inline void release(const NotNull<T> &t, uint64_t value) noexcept {
 	sprt::release(t.get(), value);
 }
 
+
+template <typename T>
+struct hash<Rc<T>> {
+	using is_transparent = void;
+
+	constexpr size_t operator()(const Rc<T> &value) const noexcept {
+		return hash<T *>()(value.get());
+	}
+};
+
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_

@@ -148,7 +148,9 @@ public:
 		return ret;
 	}
 
-	constexpr void drop_unused() {
+	// drop constexpr if empty sprt::construct_at is not supported
+	constexpr void drop_unused() requires requires(Type *t) { sprt::construct_at(t); }
+	{
 		auto _allocated = capacity();
 		if (_allocated > 0 && _allocated >= _used && _ptr) {
 			if (sprt::is_constant_evaluated()) {
@@ -165,6 +167,16 @@ public:
 				__builtin_memset((void *)(_ptr + _used), 0,
 						(_allocated - _used + Extra) * sizeof(Type));
 			}
+		}
+	}
+
+	void drop_unused() requires (!requires(Type *t) { sprt::construct_at(t); })
+	{
+		auto _allocated = capacity();
+		if (_allocated > 0 && _allocated >= _used && _ptr) {
+			// data is already garbage, bypass -Wclass-memaccess
+			__builtin_memset((void *)(_ptr + _used), 0,
+					(_allocated - _used + Extra) * sizeof(Type));
 		}
 	}
 

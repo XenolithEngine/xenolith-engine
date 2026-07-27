@@ -164,6 +164,7 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _wasmTimerClass;
 	HandleClass _wasmThreadClass;
 	HandleClass _wasmFileInlineClass;
+	HandleClass _wasmWatchClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

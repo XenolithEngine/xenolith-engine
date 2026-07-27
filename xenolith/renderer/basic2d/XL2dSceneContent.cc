@@ -562,7 +562,7 @@ void SceneContent2d::setGlobalLight(const Color4F &color) { _globalLight = color
 
 const Color4F &SceneContent2d::getGlobalLight() const { return _globalLight; }
 
-bool SceneContent2d::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) {
+bool SceneContent2d::visitDraw(FrameInfo &info, NodeVisitFlags parentFlags) {
 	if (_visible) {
 		auto tmp = sp::move(_visitNotification);
 		_visitNotification.clear();
@@ -570,7 +570,7 @@ bool SceneContent2d::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) 
 		for (auto &it : tmp) { it(); }
 	}
 
-	return SceneContent::visitGeometry(info, parentFlags);
+	return SceneContent::visitDraw(info, parentFlags);
 }
 
 void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
@@ -601,7 +601,10 @@ void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
 	auto &theme = _director->getApplication()->getThemeInfo();
 
 	auto window = _director->getRenderServer();
-	if (hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	auto state = _director->getRenderServer()->getWindowState();
+
+	if (!hasFlag(state, WindowState::Fullscreen) && !hasFlag(state, WindowState::Maximized)
+			&& hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		ctx->decorations.drawUserShadows =
 				hasFlag(_director->getRenderServer()->getInfo()->capabilities,
 						WindowCapabilities::UserShadowsRequired);

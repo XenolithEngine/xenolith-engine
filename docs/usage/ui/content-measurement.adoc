@@ -1,0 +1,356 @@
+# Content measurement and `fit-content`: making custom nodes and systems measurable
+
+The ui-module flex engine can size an item from its *content* instead of an
+explicit size: set `FlexItemInfo::basis = FlexItemInfo::FitContent` (or
+`flex-basis: fit-content` in CSS) and the container asks the child for its
+natural size through the *content measurement protocol*. `Label` and nested
+flex containers answer out of the box. This tutorial shows how to plug your own
+nodes and systems into the same protocol.
+
+## The protocol in one page
+
+Measurement is *answered* by systems — `Node` has no measurement logic of its
+own beyond driving the measure phase (`Node::handleMeasure`, see
+[the pipeline design](../../design/node-system-event-pipeline.adoc)). Three
+hooks on [System](../../../xenolith/application/nodes/XLSystem.h), all gated by
+`SystemFlags`:
+
+[source,cpp]
+----
+// SystemFlags::HandleMeasure
+virtual bool handleMeasure(const MeasureConstraints &, Size2 &result);
+virtual void handleLayoutApplied(const Size2 &);
+
+// SystemFlags::HandleChildNodeEvents (+ AddToFrameStack + a FrameTag)
+virtual void handleChildContentSizeDirty(Node *child);
+----
+
+* `handleMeasure` — "how big does the owner *want* to be under these
+  constraints?" Return `true` and fill `result`. Must not commit any node
+  state: no `setContentSize`, no `setPosition`, no reordering — a layout engine
+  may call it several times per pass, including from a dry-run.
+* `handleLayoutApplied` — "a layout engine has just committed this box to the
+  owner". Adapt the content synchronously (a label re-wraps its text to the
+  assigned width here). Called only for items the engine actually measured.
+* `handleChildContentSizeDirty` — a node inside the owner's subtree changed its
+  content size. Delivered via the frame stack during that descendant's visit
+  (the system must carry `AddToFrameStack` + a `FrameTag`), so the nearest
+  enclosing container gets it directly — this is how "label text changed →
+  container re-layouts" works without any manual wiring. `Node::setContentSize`
+  additionally notifies the direct parent immediately as a fallback. See the
+  design doc's _Child events: frame-stack delivery_ section for the full model.
+
+The query side lives in
+[XLNodeInfo.h](../../../xenolith/application/nodes/XLNodeInfo.h):
+
+[source,cpp]
+----
+enum class MeasureMode : uint8_t {
+	Normal,     // preferred size under the given constraints (wrap to fit)
+	MinContent, // smallest size that avoids overflow
+	MaxContent, // ideal size without any wrapping
+};
+
+struct MeasureConstraints {
+	MeasureMode mode = MeasureMode::Normal;
+	float maxWidth = maxOf<float>();  // maxOf<float>() == axis unconstrained
+	float maxHeight = maxOf<float>();
+};
+----
+
+To *consume* the protocol (e.g. from your own layout engine), use the
+dispatcher instead of iterating systems by hand:
+
+[source,cpp]
+----
+Size2 natural = ui::LayoutSystem::measureNode(child,
+		MeasureConstraints{MeasureMode::MaxContent});
+----
+
+It asks the node's systems in order (first `HandleMeasure` system that returns
+`true` wins), then falls back to a `MeasureComponent` if the node carries one
+(precomputed sizes, see below), and finally to `getContentSize()` for nodes that
+are not measurable — the same value the legacy `flex-basis: auto` path reads.
+
+### The measure phase and the `MeasureComponent` fallback
+
+The same protocol also drives a node's own **measure phase**: when
+`_measureDirty` is set (opt in with `Node::markMeasureDirty()`),
+`Node::handleMeasure` runs during the visit, asks the node's `HandleMeasure`
+systems under constraints derived from its current box, commits the answer with
+`setContentSize`, and notifies via `handleLayoutApplied` — a node fixing *its
+own* size, rather than a parent measuring a child. It must not change components.
+
+When no measuring system answers, both `Node::handleMeasure` and
+`LayoutSystem::measureNode` fall back to a
+[MeasureComponent](../../../xenolith/application/nodes/XLComponent.h) — a plain
+component holding precomputed sizes per measure mode, for nodes whose size is
+known ahead of time and need no measuring system at all:
+
+[source,cpp]
+----
+node->setComponent<MeasureComponent>(MeasureComponent{
+    .normal = Size2(120, 40),          // MeasureMode::Normal
+    // .minContent / .maxContent optional; a zero mode resolves to `normal`
+});
+node->markMeasureDirty();              // let the measure phase commit it
+----
+
+## How the flex engine uses it
+
+For an item with `basis == FitContent` the engine measures `MaxContent` along
+the main axis (cross axis bounded by the container's content box), then clamps
+to the available space and to `minMain`/`maxMain`. After flexing, when the
+final main size is known, it re-measures the *cross* axis with
+`{Normal, max<main> = finalMainSize}` — this is what turns "width 220" into
+"wrapped height 66" for a label. At commit it calls `setContentSize`,
+`setPosition`, and then `handleLayoutApplied` on the measured item.
+
+So a correct measurable node must satisfy one contract: **measurement must
+predict exactly what the node will render at the assigned size**. If
+`handleMeasure({Normal, maxWidth = W})` says "height 40", the node must
+actually need height 40 after `handleLayoutApplied({W, ...})` — otherwise the
+invalidation loop keeps re-running (it converges, but visibly late).
+
+## Recipe 1: a self-sizing Node subclass (the Label pattern)
+
+If your node owns its content state (text, image list, path...), keep the
+measurement math in the node and add a private bridging system. This is
+exactly how `Label` is wired in
+[XL2dLabel.cc](../../../xenolith/renderer/basic2d/XL2dLabel.cc):
+
+[source,cpp]
+----
+class TagCloud : public Node {
+public:
+	virtual bool init() override;
+
+	// pure: computes the size, commits nothing
+	Size2 measureContent(const MeasureConstraints &c) {
+		const float maxW = (c.maxWidth != maxOf<float>()) ? c.maxWidth : 0.0f;
+		switch (c.mode) {
+		case MeasureMode::MaxContent: return sizeForSingleRow();
+		case MeasureMode::MinContent: return sizeOfWidestTag();
+		case MeasureMode::Normal: return sizeWrappedTo(maxW);
+		}
+		return getContentSize();
+	}
+
+	// the layout assigned a box: re-flow the tags to that width now
+	void applyMeasuredSize(const Size2 &size) {
+		reflowTags(size.width);
+		setContentSize(size); // the assigned box wins
+	}
+
+	void setTags(Vector<String> &&tags) {
+		_tags = sp::move(tags);
+		// self-size to the new content: the setContentSize inside will notify
+		// the parent's systems, and a flex container re-applies automatically
+		reflowTags(getContentSize().width);
+		setContentSize(sizeWrappedTo(getContentSize().width));
+	}
+};
+
+// file-local bridge, installed once in TagCloud::init
+class TagCloudMeasureSystem : public System {
+public:
+	virtual bool init() override {
+		if (!System::init()) {
+			return false;
+		}
+		_systemFlags = SystemFlags::HandleMeasure;
+		return true;
+	}
+
+	virtual bool handleMeasure(const MeasureConstraints &c, Size2 &result) override {
+		result = static_cast<TagCloud *>(_owner)->measureContent(c);
+		return true;
+	}
+
+	virtual void handleLayoutApplied(const Size2 &size) override {
+		static_cast<TagCloud *>(_owner)->applyMeasuredSize(size);
+	}
+};
+
+bool TagCloud::init() {
+	if (!Node::init()) {
+		return false;
+	}
+	addSystem(Rc<TagCloudMeasureSystem>::create()); // every TagCloud is measurable
+	return true;
+}
+----
+
+Then it just works as a flex item:
+
+[source,cpp]
+----
+auto cloud = container->addChild(Rc<TagCloud>::create());
+ui::FlexItemInfo item;
+item.basis = ui::FlexItemInfo::FitContent; // cross size implied fit-content too
+ui::LayoutSystem::setItem(cloud, item);
+----
+
+Notes:
+
+* The `static_cast` is safe by construction — only `TagCloud::init` installs
+  the system.
+* Don't handle every mode if it makes no sense for your content: falling back
+  to `getContentSize()` (like the example's `default`) is always valid.
+* If measurement is expensive, cache it *inside the node* keyed by
+  (constraints, content generation) and invalidate the cache where the content
+  changes. Never cache in the layout components.
+
+## Recipe 2: a measuring System without subclassing
+
+When the size is derived from node parameters rather than owned content — an
+aspect-ratio box, a container sized by its children — a standalone system is
+enough. This is the `ui::LayoutSystem` pattern (it answers `handleMeasure` by
+dry-running the flex algorithm over the owner's children, so nested
+`fit-content` containers compose recursively):
+
+[source,cpp]
+----
+// keeps the owner at a fixed aspect ratio: width -> width / ratio
+class AspectRatioSystem : public System {
+public:
+	virtual bool init(float ratio) {
+		if (!System::init()) {
+			return false;
+		}
+		_ratio = ratio;
+		_systemFlags = SystemFlags::HandleMeasure;
+		return true;
+	}
+
+	virtual bool handleMeasure(const MeasureConstraints &c, Size2 &result) override {
+		const float w = (c.maxWidth != maxOf<float>())
+				? c.maxWidth : _owner->getContentSize().width;
+		result = Size2(w, w / _ratio);
+		return true;
+	}
+
+protected:
+	float _ratio = 1.0f;
+};
+----
+
+Attach it to any node (`node->addSystem(Rc<AspectRatioSystem>::create(16.0f / 9.0f))`)
+and the node becomes a valid `fit-content` flex item. Only the *first* system
+that returns `true` from `handleMeasure` answers, so avoid stacking several
+measuring systems on one node.
+
+### One-off: callbacks, no class at all
+
+For prototypes and one-off nodes the same two hooks are available as
+callbacks, right on the node (they route to the node's default
+`CallbackSystem`, which manages `SystemFlags::HandleMeasure` automatically):
+
+[source,cpp]
+----
+node->setMeasureCallback([](const MeasureConstraints &c, Size2 &result) {
+	const float w = (c.maxWidth != maxOf<float>()) ? c.maxWidth : 320.0f;
+	result = Size2(w, w * 0.25f);
+	return true; // return false to decline and fall through to other systems
+});
+node->setLayoutAppliedCallback([node = node.get()](const Size2 &size) {
+	// adapt the node's content to the committed box
+});
+----
+
+The same setters exist on `CallbackSystem` itself (`setMeasureCallback` /
+`setLayoutAppliedCallback`, with the system as the first callback argument) if
+you manage a callback system of your own.
+
+## Recipe 3: reacting to child changes in your own layout system
+
+If you write a container system (a custom layout), run the layout from the
+**layout-children phase** — opt into `SystemFlags::HandleLayoutChildren` and do
+the placement in `handleLayoutChildren`, where the owner's own size and child
+order are already fixed. To re-run it when a descendant resizes, opt into
+`SystemFlags::HandleChildNodeEvents` **and** `SystemFlags::AddToFrameStack` with a
+`FrameTag` (so you are published on the frame stack and reachable from your
+subtree), then coalesce: schedule a re-layout with `markLayoutChildrenDirty()`
+and let the next visit pass do the work. No manual bubble is needed — when this
+re-layout changes your own size, your container node delivers that content-size
+event to the next ancestor container via the frame stack during your own visit,
+so nested fit-content chains re-measure automatically. Guard against your own
+commits:
+
+[source,cpp]
+----
+bool MyLayoutSystem::init() {
+	// publish on the frame stack so descendants reach us; one shared tag per behaviour
+	static uint64_t FrameTag = System::GetNextSystemId();
+	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleChildNodeEvents
+			| SystemFlags::AddToFrameStack);
+	setFrameTag(FrameTag);
+	return true;
+}
+
+// SystemFlags::HandleLayoutChildren
+void MyLayoutSystem::handleLayoutChildren() {
+	apply(); // own size + child order are fixed here
+}
+
+void MyLayoutSystem::handleChildContentSizeDirty(Node *) {
+	if (_inApply || !_owner) {
+		return; // our own setContentSize commits during layout
+	}
+	_owner->markLayoutChildrenDirty(); // re-layout on the next visit, coalesced
+	// no re-bubble: the frame stack propagates our own resize up the ancestor chain
+}
+
+void MyLayoutSystem::apply() {
+	if (!_owner || _inApply) {
+		return;
+	}
+	_inApply = true;
+	// ... measure children via LayoutSystem::measureNode, commit sizes ...
+	_inApply = false;
+}
+----
+
+(`ui::LayoutSystem` itself is wired exactly this way: `apply()` runs from
+`handleLayoutChildren`.)
+
+Convergence is guaranteed by `Node::setContentSize` early-outing on an equal
+size: a re-layout over unchanged content produces identical sizes and no new
+notifications.
+
+## CSS
+
+With the ui style system (`ui::StyleSystem`), the same machinery is reachable
+from stylesheets — any measurable node works, not only labels:
+
+[source,css]
+----
+.chip   { flex-basis: fit-content; }   /* main axis from content            */
+.poster { width: fit-content; }        /* mapped onto basis/crossSize by the */
+                                       /* parent flex container's direction */
+----
+
+`fit-content` is a regular `Metric` unit (`Metric::Units::FitContent`), parsed
+by `Metric::readStyleValue`; the resolver
+([XLUiStyleResolver.cc](../../../xenolith/renderer/ui/style/XLUiStyleResolver.cc))
+maps it onto `FlexItemInfo::FitContent` for items of flex containers and
+ignores it elsewhere.
+
+## What to remember
+
+* `handleMeasure` is *pure*: compute, don't commit.
+* `maxOf<float>()` means "unconstrained", not zero and not NaN.
+* `MaxContent` sizes the main axis; `Normal` with a bounded axis answers
+  "given this width, how tall?" — implement at least these two honestly.
+* `handleLayoutApplied` is where content adapts to the committed box; commit
+  the final `setContentSize(assigned)` last.
+* To trigger a re-layout after a content change, just let the node resize
+  itself — the parent notification is built into `setContentSize`.
+* No measuring code at all? Attach a `MeasureComponent` with precomputed sizes
+  and `markMeasureDirty()`; the measure phase commits it.
+* Where this sits in the per-frame processing order (measure runs before
+  content-size, layout-children after reorder) is described in
+  [the Node/System event pipeline](../../design/node-system-event-pipeline.adoc).
+* A working end-to-end example lives in the test scene
+  [FitContentLayout.cpp](../../../tests/window/src/FitContentLayout.cpp)
+  (run `testapp` with `XL_FITCONTENT_TEST=1`).

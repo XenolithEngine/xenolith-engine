@@ -111,6 +111,12 @@ enum class Display : EnumSize {
 	InlineGrid,
 };
 
+enum class Visibility : EnumSize {
+	Visible,
+	Hidden,
+	Collapse,
+};
+
 enum class FlexDirection : EnumSize {
 	Row,
 	RowReverse,
@@ -228,6 +234,39 @@ enum class Scripting : EnumSize {
 	Enabled,
 };
 
+// Host platform the application runs on, exposed to CSS through the custom `platform` media feature
+// (e.g. `@media (platform: linux) { ... }`). Not a standard CSS feature.
+enum class Platform : EnumSize {
+	Unknown,
+	MacOS,
+	Ios,
+	Windows,
+	Android,
+	Linux,
+	Web, // WebAssembly / browser
+};
+
+// The platform this binary was built for. MediaParameters::platform defaults to it, so the
+// `platform` media feature resolves against the real host without any extra wiring (the runtime
+// SPRT_* macros are compile-time constants; a server rendering for another client can override it).
+constexpr Platform getBuildPlatform() {
+#if SPRT_MACOS
+	return Platform::MacOS;
+#elif SPRT_IOS
+	return Platform::Ios;
+#elif SPRT_WINDOWS
+	return Platform::Windows;
+#elif SPRT_ANDROID
+	return Platform::Android;
+#elif SPRT_LINUX
+	return Platform::Linux;
+#elif SPRT_WASM
+	return Platform::Web;
+#else
+	return Platform::Unknown;
+#endif
+}
+
 enum class ListStylePosition : EnumSize {
 	Outside,
 	Inside,
@@ -250,6 +289,17 @@ enum class CaptionSide : EnumSize {
 	Top,
 	Bottom,
 };
+
+enum class InteractiveFlags : uint32_t {
+	None = 0,
+	Enabled = 1 << 0, // :enabled
+	Focus = 1 << 1, // :focus
+	Hover = 1 << 2, // :hover
+	Active = 1 << 3, // :active
+	Checked = 1 << 4, // :checked
+};
+
+SP_DEFINE_ENUM_AS_MASK(InteractiveFlags)
 
 enum class ParameterName : NameSize {
 	/* css-selectors */
@@ -337,6 +387,7 @@ enum class ParameterName : NameSize {
 	CssXlAnchorPointY, // float
 	CssXlPositionX, // size
 	CssXlPositionY, // size
+	CssXlZOrder, // int (Node ZOrder; drives child placement order in flex/grid, applied pre-reorder)
 
 	/* flexbox & grid (parsed, not yet consumed by any layout) */
 	CssFlexDirection, // enum (FlexDirection)
@@ -363,6 +414,16 @@ enum class ParameterName : NameSize {
 	CssGridColumnEnd, // string id (raw line)
 	CssGridRowStart, // string id (raw line)
 	CssGridRowEnd, // string id (raw line)
+
+	CssBorderRadius, // size (uniform corner radius; transitional shorthand = first value)
+	// per-corner radii (the `border-radius` shorthand expands 1-4 values into these; elliptical
+	// "h / v" form is not supported). Order matches the CSS corner order.
+	CssBorderTopLeftRadius, // size
+	CssBorderTopRightRadius, // size
+	CssBorderBottomRightRadius, // size
+	CssBorderBottomLeftRadius, // size
+
+	CssVisibility, // enum (Visibility; inheritable, unlike display)
 	__EndCssParameters,
 
 	/* media - specific */
@@ -370,6 +431,7 @@ enum class ParameterName : NameSize {
 	CssMediaType,
 	CssMediaOrientation,
 	CssMediaPointer,
+	CssMediaPlatform, // enum (Platform) - custom: host platform
 	CssMediaHover,
 	CssMediaLightLevel,
 	CssMediaScripting,
@@ -381,6 +443,13 @@ enum class ParameterName : NameSize {
 	CssMediaMaxResolution,
 	CssMediaOption,
 	__EndCssMediaParameters,
+
+	// === Pseudo-parameters (commands)
+	__BeginCmds,
+	CmdReset, // drop all previuos styling
+	__EndCmds,
+
+	Max,
 };
 
 using FontStyleParameters = font::FontParameters;
@@ -530,11 +599,13 @@ union SP_PUBLIC StyleValue {
 	WhiteSpace whiteSpace;
 	Hyphens hyphens;
 	Display display;
+	Visibility visibility;
 	Float floating;
 	Clear clear;
 	MediaType mediaType;
 	Orientation orientation;
 	Pointer pointer;
+	Platform platform;
 	Hover hover;
 	LightLevel lightLevel;
 	Scripting scripting;
@@ -667,6 +738,7 @@ struct SP_PUBLIC MediaParameters {
 	MediaType mediaType = MediaType::Screen;
 	Orientation orientation = Orientation::Landscape;
 	Pointer pointer = Pointer::Coarse;
+	Platform platform = getBuildPlatform(); // host platform, for the `platform` media feature
 	Hover hover = Hover::None;
 	LightLevel lightLevel = LightLevel::Normal;
 	Scripting scripting = Scripting::None;
