@@ -354,6 +354,11 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 	// clang-format on
 
 	passBuilder.setAvailabilityChecker([this](const FrameQueue &queue, const QueuePassData &) {
+		auto *dev = static_cast<xenolith::vk::Device *>(queue.getFrame()->getDevice());
+		if (!dev->hasDynamicIndexedBuffers()) {
+			return false;
+		}
+
 		auto fHandle = queue.getAttachment(_emitters);
 		auto aHandle = fHandle->handle.get_cast<ParticleEmitterAttachmentHandle>();
 
@@ -365,6 +370,34 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 	}
 
 	return true;
+}
+
+void ParticlePass::prepare(core::Device &dev) {
+	auto &vkDev = static_cast<xenolith::vk::Device &>(dev);
+	if (vkDev.hasDynamicIndexedBuffers()) {
+		return;
+	}
+
+	log::source().info("vk::ParticlePass",
+			"shaderStorageBufferArrayDynamicIndexing unsupported; "
+			"ParticleUpdateComp pipeline disabled");
+
+	for (auto &subpass : _data->subpasses) {
+		const_cast<core::SubpassData *>(subpass)->computePipelines.clear();
+	}
+	for (auto &layout : _data->pipelineLayouts) {
+		const_cast<core::PipelineLayoutData *>(layout)->computePipelines.clear();
+		if (layout->defaultFamily) {
+			const_cast<core::PipelineFamilyData *>(layout->defaultFamily)->computePipelines.clear();
+		}
+		for (auto &family : layout->families) {
+			const_cast<core::PipelineFamilyData *>(family)->computePipelines.clear();
+		}
+	}
+	if (auto *q = const_cast<core::QueueData *>(_data->queue)) {
+		q->computePipelines.erase(UpdatePipelineName);
+		q->programs.erase("ParticleUpdateComp");
+	}
 }
 
 void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::FrameQueue &queue,

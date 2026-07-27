@@ -106,8 +106,9 @@ public:
 
 	// Create a VK_KHR_display surface on the primary display of the first device
 	// that drives one. Used for direct-to-display (no window system) startup.
-	// prefW/prefH hint the desired resolution (0 = pick the largest mode); the mode
-	// nearest that size is chosen (QEMU advertises bogus huge modes otherwise).
+	// prefW/prefH hint the desired resolution. 0x0 means auto: use the kernel's
+	// current CRTC mode / fb0 / EDID preferred (not "largest" — QEMU advertises
+	// bogus huge modes). With an explicit hint, the nearest mode is chosen.
 	// Returns VK_NULL_HANDLE if no display is available.
 	VkSurfaceKHR createDisplayPlaneSurface(uint32_t prefW = 0, uint32_t prefH = 0) const;
 
