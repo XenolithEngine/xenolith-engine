@@ -21,16 +21,6 @@
 #define _LIBCPP_HAS_MONOTONIC_CLOCK 1
 #define _LIBCPP_HAS_TERMINAL 1
 #define _LIBCPP_HAS_MUSL_LIBC 0
-// sprt overlay: sprt provides a full POSIX pthread implementation on EVERY target
-// (native on Linux/Apple, WinAPI-backed on Windows via pthread_native_winapi.cc, and
-// pthread_native_wasm.cc on wasm), so libc++'s low-level __libcpp_mutex_/__libcpp_cond_
-// API always maps onto sprt pthread. Force _LIBCPP_HAS_THREAD_API_PTHREAD instead of
-// leaving it 0 and letting libc++'s auto-detect (__config) run: that heuristic picks the
-// win32 backend under _LIBCPP_WIN32API (wanting <windows.h> CreateMutex/... sprt does not
-// wrap) and errors "No thread API" on bare wasm32. On Linux the heuristic already lands on
-// pthread, so forcing it here is identical there and merely extends the same wiring to the
-// other targets. The high-level std::mutex/condition_variable overlay (SPRT_STD_THREADING_
-// SPRT) is a separate layer and is unaffected.
 #define _LIBCPP_HAS_THREAD_API_PTHREAD 1
 #define _LIBCPP_HAS_THREAD_API_EXTERNAL 0
 #define _LIBCPP_HAS_THREAD_API_WIN32 0
