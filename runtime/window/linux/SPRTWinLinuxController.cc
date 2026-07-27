@@ -119,7 +119,13 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 	_context->handleConfigurationChanged(move(_contextInfo));
 
 	_contextInfo = nullptr;
-	_dbusController = Rc<dbus::Controller>::create(_dbus, _looper, this);
+	// _dbus is null when libdbus-1.so is absent (e.g. a minimal direct-KMS image).
+	// dbus::Controller::create takes NotNull<Library>, so guard it -- otherwise the
+	// null->NotNull conversion asserts even though KMS mode never uses D-Bus.
+	// Every _dbusController use below is already null-checked.
+	if (_dbus) {
+		_dbusController = Rc<dbus::Controller>::create(_dbus, _looper, this);
+	}
 
 	_looper->performOnThread([this] {
 		Rc<gapi::Instance> instance;
@@ -133,7 +139,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 		// skip D-Bus entirely so it does not log spurious connection failures.
 		bool willBeKms = StringView(sessionType) != "wayland"
 				&& StringView(sessionType) != "x11" && s_hasDrmDevice();
-		if (!willBeKms) {
+		if (!willBeKms && _dbusController) {
 			_dbusController->setup();
 		}
 

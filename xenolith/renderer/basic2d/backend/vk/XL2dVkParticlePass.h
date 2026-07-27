@@ -141,6 +141,8 @@ public:
 	virtual bool init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 			const AttachmentData *);
 
+	virtual void prepare(core::Device &) override;
+
 	const AttachmentData *getEmitters() const { return _emitters; }
 
 protected:
