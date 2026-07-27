@@ -330,11 +330,18 @@ THE SOFTWARE.
 #if SPRT_BUILD_RUNTIME
 
 #if SPRT_WINDOWS
-//#define SPRT_GLOBAL __SPRT_DLLEXPORT
-//#define SPRT_API __SPRT_DLLEXPORT
+// SPRT_BUILD_SHARED_RUNTIME is set by <root>/runtime/Makefile when SPRT_SHARED=1. Only
+// then does the runtime need an export surface; the default (static sprt.lib) leaves the
+// macros empty so nothing lands in an export directory.
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+#define SPRT_GLOBAL __SPRT_DLLEXPORT
+#define SPRT_API __SPRT_DLLEXPORT
+#define SPRT_LOCAL
+#else
 #define SPRT_GLOBAL
 #define SPRT_API
 #define SPRT_LOCAL
+#endif
 #else
 #define SPRT_GLOBAL __SPRT_VISIBLE
 #define SPRT_API __SPRT_VISIBLE
