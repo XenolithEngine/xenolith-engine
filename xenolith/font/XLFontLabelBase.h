@@ -336,7 +336,8 @@ public:
 	virtual void setStyles(const StyleVec &);
 
 	virtual bool updateFormatSpec(TextLayout *, const StyleVec &, float density,
-			uint8_t adjustValue);
+			uint8_t adjustValue,
+			font::Formatter::ContentRequest = font::Formatter::ContentRequest::Normal);
 
 	virtual bool empty() const { return _string16.empty(); }
 
@@ -433,11 +434,29 @@ public:
 	void setPersistentGlyphData(bool);
 	bool isPersistentGlyphData() const;
 
+	// Effective label-wide layout inputs consumed by updateFormatSpec. The default
+	// makeEffectiveStyle() mirrors the label's own stored fields (_style/_alignment/
+	// _lineHeight); a subclass overrides it to overlay externally-provided values
+	// (e.g. inherited style components) WITHOUT mutating the stored fields — the
+	// stored explicit values stay intact and win again as soon as the overlay
+	// source disappears.
+	struct EffectiveStyle {
+		DescriptionStyle style;
+		TextAlign alignment = TextAlign::Left;
+		float lineHeight = 0.0f;
+		bool lineHeightAbsolute = false;
+		// owning storage: when non-empty, updateFormatSpec re-points
+		// style.font.fontFamily (a non-owning view) at it
+		String fontFamilyStorage;
+	};
+
 protected:
 	virtual bool hasLocaleTags(const WideStringView &) const;
 	virtual WideString resolveLocaleTags(const WideStringView &) const;
 
 	virtual void specializeStyle(DescriptionStyle &style, float density) const;
+
+	virtual void makeEffectiveStyle(EffectiveStyle &) const;
 
 	virtual void setLabelDirty();
 

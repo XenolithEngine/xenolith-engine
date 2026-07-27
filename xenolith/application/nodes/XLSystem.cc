@@ -36,8 +36,22 @@ System::System() : _owner(nullptr), _enabled(true) { }
 
 bool System::init() { return true; }
 
-void System::handleAdded(Node *owner) { _owner = owner; }
+void System::handleAdded(Node *owner) {
+	_owner = owner;
+	reconcileAncestorComponents();
+}
 void System::handleRemoved() { _owner = nullptr; }
+
+void System::reconcileAncestorComponents() {
+	if (!_owner) {
+		return;
+	}
+	bool should = _enabled && hasFlag(_systemFlags, SystemFlags::HandleAncestorComponents);
+	if (should != _ancestorComponentsCounted) {
+		_ancestorComponentsCounted = should;
+		_owner->adjustAncestorComponentsListeners(should ? 1 : -1);
+	}
+}
 
 void System::handleEnter(Scene *sc) {
 	_running = true;
@@ -67,18 +81,42 @@ void System::handleVisitEnd(FrameInfo &) { }
 void System::update(const UpdateTime &time) { }
 
 void System::handleContentSizeDirty() { }
-void System::handleComponentsDirty() { }
+void System::handleComponentsDirty(const ComponentMask &mask) { }
 void System::handleTransformDirty(const Mat4 &) { }
 void System::handleReorderChildDirty() { }
-void System::handleLayout(Node *parent) { }
+void System::handleLayoutInParent(Node *parent) { }
+
+bool System::handleMeasure(const MeasureConstraints &, Size2 &) { return false; }
+void System::handleLayoutApplied(const Size2 &) { }
+void System::handleChildContentSizeDirty(Node *child) { }
+void System::handleChildMeasure(Node *child) { }
+void System::handleChildLayoutChildren(Node *child) { }
+void System::handleChildComponentsDirty(Node *child, const ComponentMask &) { }
+void System::handleLayoutChildren() { }
 
 bool System::isRunning() const { return _running; }
 
 bool System::isEnabled() const { return _enabled; }
 
-void System::setEnabled(bool b) { _enabled = b; }
+void System::setEnabled(bool b) {
+	_enabled = b;
+	reconcileAncestorComponents();
+}
 
-void System::setSystemFlags(SystemFlags flags) { _systemFlags = flags; }
+void System::setSystemFlags(SystemFlags flags) {
+	_systemFlags = flags;
+	reconcileAncestorComponents();
+}
+
+void System::setSystemPriority(uint32_t priority) {
+	if (priority == _systemPriority) {
+		return;
+	}
+	_systemPriority = priority;
+	if (_owner) {
+		_owner->updateSystemPriority(this);
+	}
+}
 
 bool System::isScheduled() const { return _scheduled; }
 
@@ -193,11 +231,11 @@ void CallbackSystem::handleContentSizeDirty() {
 	}
 }
 
-void CallbackSystem::handleComponentsDirty() {
-	System::handleComponentsDirty();
+void CallbackSystem::handleComponentsDirty(const ComponentMask &mask) {
+	System::handleComponentsDirty(mask);
 
 	if (_handleComponentsDirty) {
-		_handleComponentsDirty(this);
+		_handleComponentsDirty(this, mask);
 	}
 }
 
@@ -217,11 +255,66 @@ void CallbackSystem::handleReorderChildDirty() {
 	}
 }
 
-void CallbackSystem::handleLayout(Node *parent) {
-	System::handleLayout(parent);
+void CallbackSystem::handleLayoutInParent(Node *parent) {
+	System::handleLayoutInParent(parent);
 
 	if (_handleLayout) {
 		_handleLayout(this, parent);
+	}
+}
+
+bool CallbackSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
+	if (_handleMeasure) {
+		return _handleMeasure(this, c, result);
+	}
+	return System::handleMeasure(c, result);
+}
+
+void CallbackSystem::handleLayoutApplied(const Size2 &size) {
+	System::handleLayoutApplied(size);
+
+	if (_handleLayoutApplied) {
+		_handleLayoutApplied(this, size);
+	}
+}
+
+void CallbackSystem::handleLayoutChildren() {
+	System::handleLayoutChildren();
+
+	if (_handleLayoutChildren) {
+		_handleLayoutChildren(this);
+	}
+}
+
+void CallbackSystem::handleChildContentSizeDirty(Node *child) {
+	System::handleChildContentSizeDirty(child);
+
+	if (_handleChildContentSizeDirty) {
+		_handleChildContentSizeDirty(this, child);
+	}
+}
+
+void CallbackSystem::handleChildMeasure(Node *child) {
+	System::handleChildMeasure(child);
+
+	if (_handleChildMeasure) {
+		_handleChildMeasure(this, child);
+	}
+}
+
+void CallbackSystem::handleChildLayoutChildren(Node *child) {
+	System::handleChildLayoutChildren(child);
+
+	if (_handleChildLayoutChildren) {
+		_handleChildLayoutChildren(this, child);
+	}
+}
+
+void CallbackSystem::handleChildComponentsDirty(Node *child, const ComponentMask &mask) {
+	System::handleChildComponentsDirty(child, mask);
+
+	if (_handleChildComponents) {
+		_handleChildComponents(this, child, mask);
 	}
 }
 
@@ -285,7 +378,8 @@ void CallbackSystem::setContentSizeDirtyCallback(Function<void(CallbackSystem *)
 	updateFlags();
 }
 
-void CallbackSystem::setComponentsDirtyCallback(Function<void(CallbackSystem *)> &&cb) {
+void CallbackSystem::setComponentsDirtyCallback(
+		Function<void(CallbackSystem *, const ComponentMask &mask)> &&cb) {
 	_handleComponentsDirty = sp::move(cb);
 	updateFlags();
 }
@@ -303,6 +397,45 @@ void CallbackSystem::setReorderChildDirtyCallback(Function<void(CallbackSystem *
 
 void CallbackSystem::setLayoutCallback(Function<void(CallbackSystem *, Node *)> &&cb) {
 	_handleLayout = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setLayoutChildrenCallback(Function<void(CallbackSystem *)> &&cb) {
+	_handleLayoutChildren = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setMeasureCallback(
+		Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> &&cb) {
+	_handleMeasure = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setLayoutAppliedCallback(
+		Function<void(CallbackSystem *, const Size2 &)> &&cb) {
+	_handleLayoutApplied = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildContentSizeDirtyCallback(
+		Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildContentSizeDirty = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildMeasureCallback(Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildMeasure = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildLayoutChildrenCallback(Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildLayoutChildren = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildComponentsDirtyCallback(
+		Function<void(CallbackSystem *, Node *, const ComponentMask &)> &&cb) {
+	_handleChildComponents = sp::move(cb);
 	updateFlags();
 }
 
@@ -342,6 +475,44 @@ void CallbackSystem::updateFlags() {
 		_systemFlags |= SystemFlags::HandleComponents;
 	} else {
 		_systemFlags &= ~SystemFlags::HandleComponents;
+	}
+
+	if (_handleMeasure || _handleLayoutApplied) {
+		_systemFlags |= SystemFlags::HandleMeasure;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleMeasure;
+	}
+
+	if (_handleLayoutChildren) {
+		_systemFlags |= SystemFlags::HandleLayoutChildren;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleLayoutChildren;
+	}
+
+	// Child (descendant) events are delivered via the frame stack: to actually receive them the
+	// system must ALSO carry a FrameTag + SystemFlags::AddToFrameStack (set separately by the app)
+	if (_handleChildContentSizeDirty) {
+		_systemFlags |= SystemFlags::HandleChildNodeEvents;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildNodeEvents;
+	}
+
+	if (_handleChildMeasure) {
+		_systemFlags |= SystemFlags::HandleChildMeasure;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildMeasure;
+	}
+
+	if (_handleChildLayoutChildren) {
+		_systemFlags |= SystemFlags::HandleChildLayoutChildren;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildLayoutChildren;
+	}
+
+	if (_handleChildComponents) {
+		_systemFlags |= SystemFlags::HandleChildComponents;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildComponents;
 	}
 
 	if (_handleUpdate) {

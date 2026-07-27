@@ -106,7 +106,18 @@ public:
 	virtual void handleEnter(xenolith::Scene *) override;
 	virtual void handleExit() override;
 
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+
 	virtual void tryUpdateLabel();
+
+	// Measure the natural text size under the given constraints without
+	// committing any node state (content measurement protocol; served to
+	// layout engines via the label's internal HandleMeasure system)
+	Size2 measureContent(const MeasureConstraints &);
+
+	// Apply a size assigned by a layout engine: re-wrap the text to the new
+	// width synchronously, then adopt the assigned box as contentSize
+	void applyMeasuredSize(const Size2 &);
 
 	virtual void setStyle(const DescriptionStyle &);
 	virtual const DescriptionStyle &getStyle() const;
@@ -166,6 +177,8 @@ protected:
 
 	virtual void applyLayout(TextLayout *);
 
+	virtual void makeEffectiveStyle(font::LabelBase::EffectiveStyle &) const override;
+
 	virtual void updateLabel();
 	virtual void onFontSourceUpdated();
 	virtual void onFontSourceLoaded();
@@ -183,6 +196,10 @@ protected:
 	virtual void pushCommands(FrameInfo &, NodeVisitFlags flags) override;
 
 	void updateLabelScale(const Mat4 &parent);
+
+	// density refresh half of updateLabelScale: no re-shaping, only marks
+	// the label dirty when the accumulated world scale changed
+	void updateLabelDensity(const Mat4 &parent);
 
 	EventListener *_listener = nullptr;
 	Time _quadRequestTime;

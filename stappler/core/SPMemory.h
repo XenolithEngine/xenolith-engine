@@ -187,12 +187,12 @@ template <typename K, typename V, typename Compare = sprt::less<void>>
 using Map = sprt::__malloc_map<K, V, Compare>;
 
 template <typename T, typename V>
-using HashMap = sprt::__malloc_unordered_map<T, V, sprt::hash<T>, sprt::equal_to<T>>;
+using HashMap = sprt::__malloc_unordered_map<T, V, sprt::hash<void>, sprt::equal_to<void>>;
 
 template <typename T, typename Compare = sprt::less<void>>
 using Set = sprt::__malloc_set<T, Compare>;
 
-template <typename T, typename Hash = sprt::hash<T>, typename Equal = sprt::equal_to<void>>
+template <typename T, typename Hash = sprt::hash<void>, typename Equal = sprt::equal_to<void>>
 using HashSet = sprt::__malloc_unordered_set<T, Hash, Equal>;
 
 using StringStream = typename Interface::StringStreamType;

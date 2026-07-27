@@ -37,6 +37,7 @@
 #include "ShapingLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
+#include "ButtonLayout.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -135,30 +136,32 @@ void GeneralLayout::rebuildMenu() {
 
 	// Демонстрация раскладки flexbox, реализованной поверх системы компонентов
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Flexbox layout", [this] {
-			getSceneContent()->pushLayout(Rc<FlexboxLayout>::create());
-		});
+		return Rc<ButtonWithLabel>::create("Flexbox layout",
+				[this] { getSceneContent()->pushLayout(Rc<FlexboxLayout>::create()); });
+	}, 32.0f);
+
+	// Демонстрация раскладки flexbox, реализованной поверх системы компонентов
+	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create("ButtonLayout",
+				[this] { getSceneContent()->pushLayout(Rc<ButtonLayout>::create()); });
 	}, 32.0f);
 
 	// Демонстрация сборки графа сцены из pug-шаблона (xenolith_renderer_pug)
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Pug template UI", [this] {
-			getSceneContent()->pushLayout(Rc<PugLayout>::create());
-		});
+		return Rc<ButtonWithLabel>::create("Pug template UI",
+				[this] { getSceneContent()->pushLayout(Rc<PugLayout>::create()); });
 	}, 32.0f);
 
 	// Каскадное разрешение переменных/функций между вложенными TemplateSystem
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Pug cascade", [this] {
-			getSceneContent()->pushLayout(Rc<PugCascadeLayout>::create());
-		});
+		return Rc<ButtonWithLabel>::create("Pug cascade",
+				[this] { getSceneContent()->pushLayout(Rc<PugCascadeLayout>::create()); });
 	}, 32.0f);
 
 	// HarfBuzz shaping / bidi visual test bed
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Shaping test", [this] {
-			getSceneContent()->pushLayout(Rc<ShapingLayout>::create());
-		});
+		return Rc<ButtonWithLabel>::create("Shaping test",
+				[this] { getSceneContent()->pushLayout(Rc<ShapingLayout>::create()); });
 	}, 32.0f);
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {

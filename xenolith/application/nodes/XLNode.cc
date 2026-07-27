@@ -31,19 +31,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Component to store additional Node's data (to reduce Node's memory footprint)
-// Most nodes does not need this data to be stored within it
-//
-// When you use setTag, setName or setValue, this component will be added into Node
-struct NodeData {
-	static ComponentId Id;
-
-	uint64_t tag = InvalidTag;
-	String name;
-	Value value;
-};
-
-ComponentId NodeData::Id;
+ComponentId NodeIdentity::Id;
+ComponentId MeasureComponent::Id;
+ComponentId VisibilityComponent::Id;
 
 void ActionStorage::addAction(Rc<Action> &&a) { actionToStart.emplace_back(move(a)); }
 
@@ -313,6 +303,10 @@ void Node::setContentSize(const Size2 &size) {
 
 	_contentSize = size;
 	_transformInverseDirty = _transformCacheDirty = _transformDirty = _contentSizeDirty = true;
+
+	if (_parent) {
+		_parent->notifyChildContentSizeDirty(this);
+	}
 }
 
 void Node::setVisible(bool visible) {
@@ -379,9 +373,14 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 	}
 	child->setParent(this);
 
+	// pull the child subtree's ancestor-components listeners into this chain
+	if (child->_ancestorComponentsListeners) {
+		adjustAncestorComponentsListeners(int32_t(child->_ancestorComponentsListeners));
+	}
+
 	if (_running) {
 		child->handleEnter(_scene);
-		child->handleLayout(this);
+		child->handleLayoutInParent(this);
 	}
 
 	if (_cascadeColorEnabled) {
@@ -433,6 +432,12 @@ void Node::removeChild(Node *child, bool cleanup) {
 			child->cleanup();
 		}
 
+		// release the child subtree's remaining ancestor-components listeners from this chain,
+		// before detaching (cleanup already decremented any removed systems while still linked)
+		if (child->_ancestorComponentsListeners) {
+			adjustAncestorComponentsListeners(-int32_t(child->_ancestorComponentsListeners));
+		}
+
 		// set parent nil at the end
 		child->setParent(nullptr);
 		_children.erase(it);
@@ -462,6 +467,12 @@ void Node::removeAllChildren(bool cleanup) {
 		if (cleanup) {
 			child->cleanup();
 		}
+
+		// release the child subtree's remaining ancestor-components listeners from this chain
+		if (child->_ancestorComponentsListeners) {
+			adjustAncestorComponentsListeners(-int32_t(child->_ancestorComponentsListeners));
+		}
+
 		// set parent nil at the end
 		child->setParent(nullptr);
 	}
@@ -479,7 +490,6 @@ bool Node::sortAllChildren() {
 		sprt::sort(sprt::begin(_children), sprt::end(_children), [&](const Node *l, const Node *r) {
 			return l->getLocalZOrder() < r->getLocalZOrder();
 		});
-		handleReorderChildDirty();
 		ret = true;
 	}
 	_reorderChildDirty = false;
@@ -561,14 +571,14 @@ size_t Node::getNumberOfRunningActions() const {
 }
 
 StringView Node::getName() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->name;
 	}
 	return StringView();
 }
 
 void Node::setName(StringView str) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		if (data->name != str) {
 			data->name = str.str<Interface>();
 			return true;
@@ -577,29 +587,95 @@ void Node::setName(StringView str) {
 	});
 }
 
+StringView Node::getType() const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		return d->type;
+	}
+	return StringView();
+}
+
+void Node::setType(StringView str) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
+		if (data->type != str) {
+			data->type = str.str<Interface>();
+			return true;
+		}
+		return false;
+	});
+}
+
+void Node::addStyleClass(StringView cl) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it == d->classes.end()) {
+			d->classes.emplace(cl.str<Interface>());
+			return true;
+		}
+		return false;
+	});
+}
+
+void Node::removeStyleClass(StringView cl) {
+	updateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it != d->classes.end()) {
+			d->classes.erase(it);
+			return true;
+		}
+		return false;
+	});
+}
+
+void Node::toggleStyleClass(StringView cl) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it == d->classes.end()) {
+			d->classes.emplace(cl.str<Interface>());
+		} else {
+			d->classes.erase(it);
+		}
+		return true;
+	});
+}
+
+bool Node::hasStyleClass(StringView cl) const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		auto it = d->classes.find(cl);
+		return it != d->classes.end();
+	}
+	return false;
+}
+
+const HashSet<String, sprt::hash<void>> *Node::getStyleClasses() const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		return &d->classes;
+	}
+	return nullptr;
+}
+
 const Value &Node::getDataValue() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->value;
 	}
 	return Value::Null;
 }
 
 void Node::setDataValue(Value &&val) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		data->value = sp::move(val);
 		return true;
 	});
 }
 
 uint64_t Node::getTag() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->tag;
 	}
 	return InvalidTag;
 }
 
 void Node::setTag(uint64_t tag) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		if (data->tag != tag) {
 			data->tag = tag;
 			return true;
@@ -609,13 +685,31 @@ void Node::setTag(uint64_t tag) {
 }
 
 
-void Node::setEventFlags(NodeEventFlags flags) { _eventFlags = flags; }
+void Node::setEventFlags(NodeEventFlags flags) {
+	_eventFlags = flags;
+	if (_parent) {
+		_parent->notifyChildContentSizeDirty(this);
+	}
+}
 
-bool Node::addSystemItem(System *com) {
+bool Node::addSystemItem(System *com) { return addSystemItem(com, com->getSystemPriority()); }
+
+bool Node::addSystemItem(System *com, uint32_t priority) {
 	XLASSERT(com != nullptr, "Argument must be non-nil");
 	XLASSERT(com->getOwner() == nullptr, "System already added. It can't be added again");
 
-	_systems.push_back(com);
+	com->setSystemPriority(priority);
+
+	// keep _systems sorted by ascending priority: lower priority is dispatched earlier.
+	// stable — a new system is inserted after existing systems of equal priority (add order)
+	size_t pos = _systems.size();
+	for (size_t i = 0; i < _systems.size(); ++i) {
+		if (_systems[i]->getSystemPriority() > priority) {
+			pos = i;
+			break;
+		}
+	}
+	_systems.insert(_systems.begin() + pos, com);
 
 	com->handleAdded(this);
 
@@ -626,6 +720,36 @@ bool Node::addSystemItem(System *com) {
 	return true;
 }
 
+void Node::updateSystemPriority(System *com) {
+	auto it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it == _systems.end()) {
+		return;
+	}
+
+	const size_t idx = size_t(it - _systems.begin());
+	const uint32_t priority = com->getSystemPriority();
+
+	// nothing to do if the current position already keeps _systems sorted
+	const bool ordered = (idx == 0 || _systems[idx - 1]->getSystemPriority() <= priority)
+			&& (idx + 1 == _systems.size() || _systems[idx + 1]->getSystemPriority() >= priority);
+	if (ordered) {
+		return;
+	}
+
+	// hold a reference across the erase, then re-insert at the sorted position
+	Rc<System> sys = *it;
+	_systems.erase(it);
+
+	size_t pos = _systems.size();
+	for (size_t i = 0; i < _systems.size(); ++i) {
+		if (_systems[i]->getSystemPriority() > priority) {
+			pos = i;
+			break;
+		}
+	}
+	_systems.insert(_systems.begin() + pos, sp::move(sys));
+}
+
 bool Node::removeSystem(System *com) {
 	if (_systems.empty()) {
 		return false;
@@ -633,6 +757,11 @@ bool Node::removeSystem(System *com) {
 
 	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
 		if ((*iter) == com) {
+			if (com->isAncestorComponentsCounted()) {
+				adjustAncestorComponentsListeners(-1);
+				com->clearAncestorComponentsCounted();
+			}
+
 			if (this->isRunning()
 					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 				com->handleExit();
@@ -655,6 +784,10 @@ bool Node::removeSystemByTag(uint64_t tag) {
 	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
 		if ((*iter)->getFrameTag() == tag) {
 			auto com = (*iter);
+			if (com->isAncestorComponentsCounted()) {
+				adjustAncestorComponentsListeners(-1);
+				com->clearAncestorComponentsCounted();
+			}
 			if (this->isRunning()
 					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 				com->handleExit();
@@ -678,6 +811,10 @@ bool Node::removeAllSystemByTag(uint64_t tag) {
 	while (iter != _systems.end()) {
 		if ((*iter)->getFrameTag() == tag) {
 			auto com = (*iter);
+			if (com->isAncestorComponentsCounted()) {
+				adjustAncestorComponentsListeners(-1);
+				com->clearAncestorComponentsCounted();
+			}
 			if (this->isRunning()
 					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 				com->handleExit();
@@ -698,6 +835,10 @@ void Node::removeAllSystems() {
 	_systems.clear();
 
 	for (auto iter : tmp) {
+		if (iter->isAncestorComponentsCounted()) {
+			adjustAncestorComponentsListeners(-1);
+			iter->clearAncestorComponentsCounted();
+		}
 		if (this->isRunning() && hasFlag(iter->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 			iter->handleExit();
 		}
@@ -788,6 +929,96 @@ void Node::handleExit() {
 	_director = nullptr;
 }
 
+void Node::handleMeasure() {
+	// fix the node's own size via the HandleMeasure protocol (see LayoutSystem::measureNode /
+	// dispatchLayoutApplied, but applied to self). Must not change components.
+	// Constraints: treat the currently-assigned box as available (a non-zero dimension
+	// constrains wrapping); unconstrained axes fall back to maxOf<float>()
+	MeasureConstraints c;
+	if (_contentSize.width > 0.0f) {
+		c.maxWidth = _contentSize.width;
+	}
+	if (_contentSize.height > 0.0f) {
+		c.maxHeight = _contentSize.height;
+	}
+
+	auto tmpSystems = _systems;
+	bool measured = false;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
+			Size2 result;
+			if (it->handleMeasure(c, result)) {
+				setContentSize(result);
+				measured = true;
+				break;
+			}
+		}
+	}
+
+	// fallback: use the precomputed size stored in a MeasureComponent, if present. A per-axis value
+	// < 0 means "unspecified" (the style resolver only fills the axes CSS gave), so keep the current
+	// size on those axes rather than committing a negative size
+	if (!measured) {
+		if (auto mc = getComponent<MeasureComponent>()) {
+			Size2 cs = _contentSize;
+			const Size2 req = mc->measure(c);
+			if (req.width >= 0.0f) {
+				cs.width = req.width;
+			}
+			if (req.height >= 0.0f) {
+				cs.height = req.height;
+			}
+			setContentSize(cs);
+		}
+	}
+
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
+			it->handleLayoutApplied(_contentSize);
+		}
+	}
+}
+
+// Deliver a descendant event to the nearest opted-in ancestor system on each frame-stack tag.
+// The node's own systems are not on the stack yet during its phase processing (pushed later in
+// wrapVisit), so only strict ancestors are visited - exactly the intended bubble-up semantics
+template <typename Fn>
+static void notifyStackChildEvent(FrameInfo &info, SystemFlags flag, const Fn &fn) {
+	for (auto &it : info.systemStack) {
+		if (it.second.empty()) {
+			continue;
+		}
+		auto &sys = it.second.back();
+		if (sys->isEnabled() && hasFlag(sys->getSystemFlags(), flag)) {
+			fn(sys.get());
+		}
+	}
+}
+
+void Node::handleComponentsDirty(FrameInfo &info, const ComponentMask &mask) {
+	handleComponentsDirty(mask);
+	notifyStackChildEvent(info, SystemFlags::HandleChildComponents,
+			[&](System *sys) { sys->handleChildComponentsDirty(this, mask); });
+}
+
+void Node::handleMeasure(FrameInfo &info) {
+	handleMeasure();
+	notifyStackChildEvent(info, SystemFlags::HandleChildMeasure,
+			[&](System *sys) { sys->handleChildMeasure(this); });
+}
+
+void Node::handleContentSizeDirty(FrameInfo &info) {
+	handleContentSizeDirty();
+	notifyStackChildEvent(info, SystemFlags::HandleChildNodeEvents,
+			[&](System *sys) { sys->handleChildContentSizeDirty(this); });
+}
+
+void Node::handleLayoutChildren(FrameInfo &info) {
+	handleLayoutChildren();
+	notifyStackChildEvent(info, SystemFlags::HandleChildLayoutChildren,
+			[&](System *sys) { sys->handleChildLayoutChildren(this); });
+}
+
 void Node::handleContentSizeDirty() {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
@@ -797,16 +1028,46 @@ void Node::handleContentSizeDirty() {
 	}
 
 	auto tmp = _children;
-	for (auto &it : tmp) { it->handleLayout(this); }
+	for (auto &it : tmp) { it->handleLayoutInParent(this); }
 }
 
-void Node::handleComponentsDirty() {
+void Node::handleComponentsDirty(const ComponentMask &mask) {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleComponents)) {
-			it->handleComponentsDirty();
+			it->handleComponentsDirty(mask);
 		}
 	}
+}
+
+void Node::handleAncestorComponentsDirty() {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled()
+				&& hasFlag(it->getSystemFlags(), SystemFlags::HandleAncestorComponents)) {
+			it->handleComponentsDirty(ComponentMask());
+		}
+	}
+}
+
+void Node::adjustAncestorComponentsListeners(int32_t delta) {
+	if (delta == 0) {
+		return;
+	}
+	for (Node *n = this; n; n = n->_parent) {
+		XLASSERT(delta >= 0 || n->_ancestorComponentsListeners >= uint32_t(-delta),
+				"ancestor-components listener counter underflow");
+		n->_ancestorComponentsListeners =
+				uint32_t(int32_t(n->_ancestorComponentsListeners) + delta);
+	}
+}
+
+void Node::setWantsAncestorComponents(bool b) {
+	if (b == _wantsAncestorComponents) {
+		return;
+	}
+	_wantsAncestorComponents = b;
+	adjustAncestorComponentsListeners(b ? 1 : -1);
 }
 
 void Node::handleTransformDirty(const Mat4 &parentTransform) {
@@ -847,11 +1108,29 @@ void Node::handleReorderChildDirty() {
 	}
 }
 
-void Node::handleLayout(Node *parent) {
+void Node::handleLayoutInParent(Node *parent) {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleNodeEvents)) {
-			it->handleLayout(parent);
+			it->handleLayoutInParent(parent);
+		}
+	}
+}
+
+void Node::handleLayoutChildren() {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleLayoutChildren)) {
+			it->handleLayoutChildren();
+		}
+	}
+}
+
+void Node::notifyChildContentSizeDirty(Node *child) {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleChildNodeEvents)) {
+			it->handleChildContentSizeDirty(child);
 		}
 	}
 }
@@ -1114,22 +1393,6 @@ void Node::disableCascadeColor() {
 
 void Node::draw(FrameInfo &info, NodeVisitFlags flags) { }
 
-bool Node::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) {
-	VisitInfo visitInfo;
-
-	visitInfo.visitNodesBelow = [](const VisitInfo &visitInfo, SpanView<Rc<Node>> nodes) {
-		for (auto &it : nodes) { it->visitGeometry(*visitInfo.frameInfo, visitInfo.flags); }
-	};
-
-	visitInfo.visitNodesAbove = [](const VisitInfo &visitInfo, SpanView<Rc<Node>> nodes) {
-		for (auto &it : nodes) { it->visitGeometry(*visitInfo.frameInfo, visitInfo.flags); }
-	};
-
-	visitInfo.node = this;
-
-	return wrapVisit(info, parentFlags, visitInfo, false);
-}
-
 bool Node::visitDraw(FrameInfo &info, NodeVisitFlags parentFlags) {
 	VisitInfo visitInfo;
 
@@ -1217,9 +1480,9 @@ void Node::setContentSizeDirtyCallback(Function<void()> &&cb) {
 			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
 }
 
-void Node::setComponentsDirtyCallback(Function<void()> &&cb) {
+void Node::setComponentsDirtyCallback(Function<void(const ComponentMask &mask)> &&cb) {
 	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
-			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
+			[cb = sp::move(cb)](CallbackSystem *, const ComponentMask &mask) { cb(mask); });
 }
 
 void Node::setTransformDirtyCallback(Function<void(const Mat4 &)> &&cb) {
@@ -1237,52 +1500,104 @@ void Node::setLayoutCallback(Function<void(Node *)> &&cb) {
 			[cb = sp::move(cb)](CallbackSystem *, Node *node) { cb(node); });
 }
 
+void Node::setMeasureCallback(Function<bool(const MeasureConstraints &, Size2 &)> &&cb) {
+	makeDefaultCallbackSystem()->setMeasureCallback(
+			[cb = sp::move(cb)](CallbackSystem *, const MeasureConstraints &c, Size2 &result) {
+		return cb(c, result);
+	});
+}
+
+void Node::setLayoutAppliedCallback(Function<void(const Size2 &)> &&cb) {
+	makeDefaultCallbackSystem()->setLayoutAppliedCallback(
+			[cb = sp::move(cb)](CallbackSystem *, const Size2 &size) { cb(size); });
+}
+
 Mat4 Node::transform(const Mat4 &parentTransform) {
 	return parentTransform * this->getNodeToParentTransform();
 }
 
 NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) {
 	NodeVisitFlags flags = parentFlags;
+	const Mat4 &parentWorld = info.modelTransformStack.back();
 
+	// Phase 1: components. Handlers may change node structure AND the node's own components.
+	// If a handler re-dirties components, repeat handleComponentsDirty (bounded to 12 iterations)
+	const bool ownComponentsDirty = _componentsDirty;
+	const bool ancestorComponentsDirty = hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty);
+	if (ancestorComponentsDirty) {
+		handleAncestorComponentsDirty(); // may set _componentsDirty
+	}
+	for (int guard = 0; _componentsDirty;) {
+		auto mask = _componentsDirtyMask;
+		resetComponentsDirty();
+		handleComponentsDirty(info, mask); // may re-dirty components / change structure
+		if (++guard >= 12) {
+			if (_componentsDirty) {
+				log::source().warn("Node",
+						"handleComponentsDirty did not converge in 12 iterations");
+				_componentsDirty = false; // do not clear dirty mask
+			}
+			break;
+		}
+	}
+
+	if (ownComponentsDirty || ancestorComponentsDirty) {
+		// propagate downward only into subtrees that actually contain a listener; otherwise
+		// strip the flag so listener-less subtrees are skipped entirely
+		if (_ancestorComponentsListeners > 0) {
+			flags |= NodeVisitFlags::ComponentsDirty;
+		} else {
+			flags &= ~NodeVisitFlags::ComponentsDirty;
+		}
+	}
+
+	// Phase 2: measure - fix the node's size. Runs before the transform phase so a measure-induced
+	// setContentSize (which re-dirties _contentSizeDirty/_transformDirty) is visible to the transform
+	// notifications below. Must not change components. Feeds phase 4 and the matrix rebuild
+	if (_measureDirty) {
+		_measureDirty = false;
+		handleMeasure(info);
+	}
+
+	// Phase 3: transform notifications - the node's position is fixed. The world matrix itself
+	// is (re)built in phase 5, once the size is final (the matrix depends on content size)
 	if (_transformDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentTransform)
 					&& hasFlag(parentFlags, NodeVisitFlags::TransformDirty))) {
-		handleTransformDirty(info.modelTransformStack.back());
+		handleTransformDirty(parentWorld);
 	}
-
 	if ((flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None
 			|| _transformDirty || _contentSizeDirty) {
-		_modelViewTransform = this->transform(info.modelTransformStack.back());
-
-		handleGlobalTransformDirty(info.modelTransformStack.back());
+		handleGlobalTransformDirty(parentWorld);
 	}
 
-	if (_transformDirty) {
-		_transformDirty = false;
-		flags |= NodeVisitFlags::TransformDirty;
-	}
-
+	// Phase 4: content size - the node's size is now fixed
 	if (_contentSizeDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
 					&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
-		handleContentSizeDirty();
+		handleContentSizeDirty(info);
 		_contentSizeDirty = false;
 		flags |= NodeVisitFlags::ContentSizeDirty;
+		_layoutChildrenDirty = true; // own size changed -> re-lay-out children
 	}
 
-	if (_componentsDirty
-			|| (hasFlag(_eventFlags, NodeEventFlags::HandleComponents)
-					&& hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty))) {
-		handleComponentsDirty();
-		_componentsDirty = false;
-		flags |= NodeVisitFlags::ComponentsDirty;
+	// Phase 5: build the world matrix with the final size (anchor offset depends on content
+	// size), and publish TransformDirty to children if the transform changed this visit
+	if (_transformDirty
+			|| (flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None) {
+		_modelViewTransform = this->transform(parentWorld);
+	}
+	if (_transformDirty) {
+		_transformDirty = false;
+		flags |= NodeVisitFlags::TransformDirty;
 	}
 
 	return flags;
 }
 
 void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera) {
-	for (auto &it : _systems) {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitSelf)) {
 			it->handleVisitSelf(info, this, flags);
 		}
@@ -1294,12 +1609,33 @@ void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera
 	}
 }
 
+bool Node::isEffectivelyVisible() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return c->visible();
+	}
+	return true;
+}
+
+bool Node::isDisplayed() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return !c->displayNone;
+	}
+	return true;
+}
+
 bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInfo &visitInfo,
 		bool useContext) {
 	if (!_visible) {
 		return false;
 	}
 
+	bool reorderWasDirty = false;
 	bool hasFrameContext = false;
 	if (useContext && _frameContext) {
 		if (_parent && _parent->getFrameContext() != _frameContext) {
@@ -1310,7 +1646,11 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 
 	NodeVisitFlags flags = processParentFlags(info, parentFlags);
 
-	if (!_running || !_visible) {
+	// Style-driven visibility (VisibilityComponent) cuts the visit HERE, after the node's own
+	// data phases, not at the top like the explicit _visible flag: nothing below runs (no draw,
+	// no children, no input), yet the hidden node keeps processing its components each frame,
+	// so the styling protocol can still reach it and un-hide it (class change, CSS reload).
+	if (!_running || !isEffectivelyVisible()) {
 		if (hasFrameContext) {
 			info.popContext();
 		}
@@ -1330,9 +1670,41 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		info.depthStack.push_back(sprt::max(info.depthStack.back(), _depthIndex));
 	}
 
+	size_t i = 0;
+
+	visitInfo.flags = flags;
+	visitInfo.frameInfo = &info;
+	visitInfo.visibleByCamera = visibleByCamera;
+
+	if (sortAllChildren()) {
+		reorderWasDirty = true;
+	}
+
+	// handleReorderChildDirty не должен менять геометрию и компоненты - запускаем его последним
+	if (reorderWasDirty
+			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentReorderChild)
+					&& hasFlag(parentFlags, NodeVisitFlags::ReorderChildDirty))) {
+		handleReorderChildDirty();
+		visitInfo.flags |= NodeVisitFlags::ReorderChildDirty;
+		_layoutChildrenDirty = true; // child order changed -> re-lay-out children
+	}
+
+	// Phase 6: lay out children with this node's own size and child order now fixed
+	if (_layoutChildrenDirty) {
+		_layoutChildrenDirty = false;
+		handleLayoutChildren(info);
+	}
+
+	// End of node-local processing.
+	// Publish AddToFrameStack systems onto info.systemStack AFTER this node's own phases ran, so a
+	// node only ever sees ANCESTOR systems on the stack (never its own) - this is what makes the
+	// child-event dispatch in handle{Measure,ContentSizeDirty,LayoutChildren}(FrameInfo&) bubble up.
+	// The stack stays live while children are visited below, and is popped once they are done
+
 	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;
 
-	for (auto &it : _systems) {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
 		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
 				&& it->getFrameTag() != InvalidTag) {
 			systems.emplace_back(info.pushSystem(it));
@@ -1340,19 +1712,6 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitControl)) {
 			visitInfo.visitableSystems.emplace_back(it);
 		}
-	}
-
-	size_t i = 0;
-
-	visitInfo.flags = flags;
-	visitInfo.frameInfo = &info;
-	visitInfo.visibleByCamera = visibleByCamera;
-
-	if (!_reorderChildDirty && hasFlag(_eventFlags, NodeEventFlags::HandleParentReorderChild)
-			&& hasFlag(parentFlags, NodeVisitFlags::ReorderChildDirty)) {
-		handleReorderChildDirty();
-	} else if (sortAllChildren()) {
-		visitInfo.flags |= NodeVisitFlags::ReorderChildDirty;
 	}
 
 	if (visitInfo.visitBegin) {

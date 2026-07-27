@@ -114,7 +114,30 @@ void ContextController::releasePollDepth() {
 }
 
 bool ContextController::configureWindow(NotNull<WindowInfo> w) {
-	return _context->configureWindow(w);
+	if (!_context->configureWindow(w)) {
+		return false;
+	}
+
+	// Normalize immutable size constraints and clamp the initial size into them, so the window
+	// is born within bounds even before the WM/OS enforces them on first map/resize.
+	if (w->maxExtent.width != 0 && w->minExtent.width != 0
+			&& w->maxExtent.width < w->minExtent.width) {
+		oslog::vperror(__SPRT_LOCATION, "ContextController",
+				"WindowInfo::maxExtent.width is below minExtent.width, raising to minExtent");
+		w->maxExtent.width = w->minExtent.width;
+	}
+	if (w->maxExtent.height != 0 && w->minExtent.height != 0
+			&& w->maxExtent.height < w->minExtent.height) {
+		oslog::vperror(__SPRT_LOCATION, "ContextController",
+				"WindowInfo::maxExtent.height is below minExtent.height, raising to minExtent");
+		w->maxExtent.height = w->minExtent.height;
+	}
+
+	auto clamped = clampWindowExtent(Extent2(w->rect.width, w->rect.height), w->minExtent,
+			w->maxExtent);
+	w->rect.width = clamped.width;
+	w->rect.height = clamped.height;
+	return true;
 }
 
 void ContextController::notifyWindowCreated(NotNull<NativeWindow> w) {

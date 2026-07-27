@@ -510,6 +510,17 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 	}
 	return false;
 }),
+	pair("visibility",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("visible")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Visible));
+	} else if (value.equals("hidden")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Hidden));
+	} else if (value.equals("collapse")) {
+		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Collapse));
+	}
+	return false;
+}),
 	pair("list-style-type",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
 	return css_readListStyleType(value, cb);
@@ -793,7 +804,7 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssLeft>(data));
 	}
 	return false;
-}),
+}), 
 	pair("-xl-anchor-point",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
 	// `-xl-anchor-point: <x> [<y>]` - normalized anchor (0,0 bottom-left .. 1,1 top-right);
@@ -840,6 +851,17 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 	}
 	return cb(StyleParameter::create<ParameterName::CssXlPositionX>(vals[0]))
 			&& cb(StyleParameter::create<ParameterName::CssXlPositionY>(vals[1]));
+}),
+	pair("-xl-z-order",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	// `-xl-z-order: <int>` - the node's ZOrder. Nodes are placed in ZOrder sequence, so this sets
+	// the logical placement order of flex/grid items (applied before the reorder phase)
+	StringView tmp(value);
+	auto v = tmp.readInteger(10);
+	if (v) {
+		return cb(StyleParameter::create<ParameterName::CssXlZOrder>(int32_t(v.get())));
+	}
+	return false;
 }),
 
 	/* flexbox & grid */
@@ -1536,6 +1558,92 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
 	return css_readBorderWidth<ParameterName::CssOutlineWidth>(value, cb);
 }),
+	pair("border-radius",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	// CSS `border-radius` shorthand: 1-4 length values mapped to the four corners. The elliptical
+	// "horizontal / vertical" form is not supported - only the horizontal radii (before any '/')
+	// are read. Corner distribution follows the CSS spec:
+	//   1 value : all four corners           2 values: TL=BR, TR=BL
+	//   3 values: TL, TR=BL, BR              4 values: TL, TR, BR, BL   (CSS corner order)
+	StringView horiz = value;
+	horiz = horiz.readUntil<StringView::Chars<'/'>>(); // drop the elliptical (vertical) part
+	Metric vals[4];
+	int count = 0;
+	bool err = false;
+	horiz.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 4) {
+			if (!parser::readStyleMetric(r, vals[count])) {
+				err = true;
+				return;
+			}
+			++count;
+		}
+	});
+	if (err || count == 0) {
+		return false;
+	}
+	Metric tl, tr, br, bl;
+	switch (count) {
+	case 1: tl = tr = br = bl = vals[0]; break;
+	case 2:
+		tl = br = vals[0];
+		tr = bl = vals[1];
+		break;
+	case 3:
+		tl = vals[0];
+		tr = bl = vals[1];
+		br = vals[2];
+		break;
+	default:
+		tl = vals[0];
+		tr = vals[1];
+		br = vals[2];
+		bl = vals[3];
+		break;
+	}
+	// CssBorderRadius (= the first value) is kept for consumers that read the uniform shorthand
+	return cb(StyleParameter::create<ParameterName::CssBorderRadius>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssBorderTopLeftRadius>(tl))
+			&& cb(StyleParameter::create<ParameterName::CssBorderTopRightRadius>(tr))
+			&& cb(StyleParameter::create<ParameterName::CssBorderBottomRightRadius>(br))
+			&& cb(StyleParameter::create<ParameterName::CssBorderBottomLeftRadius>(bl));
+}),
+	pair("border-top-left-radius",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView horiz = value; // drop the elliptical (vertical) part after '/'
+	Metric data;
+	if (parser::readStyleMetric(horiz.readUntil<StringView::Chars<'/'>>(), data)) {
+		return cb(StyleParameter::create<ParameterName::CssBorderTopLeftRadius>(data));
+	}
+	return false;
+}),
+	pair("border-top-right-radius",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView horiz = value;
+	Metric data;
+	if (parser::readStyleMetric(horiz.readUntil<StringView::Chars<'/'>>(), data)) {
+		return cb(StyleParameter::create<ParameterName::CssBorderTopRightRadius>(data));
+	}
+	return false;
+}),
+	pair("border-bottom-right-radius",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView horiz = value;
+	Metric data;
+	if (parser::readStyleMetric(horiz.readUntil<StringView::Chars<'/'>>(), data)) {
+		return cb(StyleParameter::create<ParameterName::CssBorderBottomRightRadius>(data));
+	}
+	return false;
+}),
+	pair("border-bottom-left-radius",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView horiz = value;
+	Metric data;
+	if (parser::readStyleMetric(horiz.readUntil<StringView::Chars<'/'>>(), data)) {
+		return cb(StyleParameter::create<ParameterName::CssBorderBottomLeftRadius>(data));
+	}
+	return false;
+}),
 	pair("border-top",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
 	return css_readBorder<ParameterName::CssBorderTopStyle, ParameterName::CssBorderTopColor,
@@ -1807,6 +1915,27 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssMediaPointer>(Pointer::Coarse));
 	}
 	return false;
+}),
+	pair("platform",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	// custom media feature: `@media (platform: linux|windows|macos|ios|android|web)`
+	Platform p = Platform::Unknown;
+	if (value.equals("macos")) {
+		p = Platform::MacOS;
+	} else if (value.equals("ios")) {
+		p = Platform::Ios;
+	} else if (value.equals("windows")) {
+		p = Platform::Windows;
+	} else if (value.equals("android")) {
+		p = Platform::Android;
+	} else if (value.equals("linux")) {
+		p = Platform::Linux;
+	} else if (value.equals("web")) {
+		p = Platform::Web;
+	} else {
+		return false;
+	}
+	return cb(StyleParameter::create<ParameterName::CssMediaPlatform>(p));
 }),
 	pair("hover",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {

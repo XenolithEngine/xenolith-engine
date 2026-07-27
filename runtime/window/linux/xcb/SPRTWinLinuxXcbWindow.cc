@@ -291,6 +291,45 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE, _xinfo.window,
 			_connection->getAtom(XcbAtomIndex::_MOTIF_WM_HINTS), XCB_ATOM_CARDINAL, 32, 5, &hints);
 
+	// Immutable min/max size constraints via WM_NORMAL_HINTS. libxcb-icccm is not loaded, so we
+	// fill xcb_size_hints_t by hand and push it with the already-available xcb_change_property.
+	// Values describe the outer (bounding) window in device pixels, matching how boundingRect is
+	// built above: logical constraints are scaled by _density and, for user-space decorations,
+	// grown by the shadow border.
+	if (_info->minExtent != Extent2::ZERO || _info->maxExtent != Extent2::ZERO) {
+		// largest window edge X can express (CARD16), used as "unbounded" for a single dimension
+		constexpr int32_t Unbounded = 0x7FFF;
+
+		int32_t frame = 0;
+		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+			frame = _controller->getThemeInfo().decorations.shadowWidth * 2;
+		}
+
+		xcb_size_hints_t sizeHints{};
+		if (_info->minExtent.width != 0 || _info->minExtent.height != 0) {
+			sizeHints.flags |= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE;
+			if (_info->minExtent.width != 0) {
+				sizeHints.min_width = int32_t((_info->minExtent.width + frame) * _density);
+			}
+			if (_info->minExtent.height != 0) {
+				sizeHints.min_height = int32_t((_info->minExtent.height + frame) * _density);
+			}
+		}
+		if (_info->maxExtent.width != 0 || _info->maxExtent.height != 0) {
+			sizeHints.flags |= XCB_ICCCM_SIZE_HINT_P_MAX_SIZE;
+			sizeHints.max_width = _info->maxExtent.width != 0
+					? int32_t((_info->maxExtent.width + frame) * _density)
+					: Unbounded;
+			sizeHints.max_height = _info->maxExtent.height != 0
+					? int32_t((_info->maxExtent.height + frame) * _density)
+					: Unbounded;
+		}
+
+		_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE,
+				_xinfo.window, XCB_ATOM_WM_NORMAL_HINTS, XCB_ATOM_WM_SIZE_HINTS, 32,
+				XCB_ICCCM_NUM_WM_SIZE_HINTS_ELEMENTS, &sizeHints);
+	}
+
 	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		auto &theme = _controller->getThemeInfo();
 		generateShadowPixmaps(theme.decorations.shadowWidth * _density,
@@ -620,6 +659,10 @@ void XcbWindow::handleButtonPress(xcb_button_press_event_t *ev) {
 		updateUserTime(ev->time);
 	}
 
+	_lastPointerRootX = ev->root_x;
+	_lastPointerRootY = ev->root_y;
+	_lastPointerButton = ev->detail;
+
 	auto ext = getExtent();
 	auto mod = getModifiers(ev->state);
 	auto btn = getButton(ev->detail);
@@ -687,6 +730,9 @@ void XcbWindow::handleButtonRelease(xcb_button_release_event_t *ev) {
 		updateUserTime(ev->time);
 	}
 
+	_lastPointerRootX = ev->root_x;
+	_lastPointerRootY = ev->root_y;
+
 	auto ext = getExtent();
 	auto mod = getModifiers(ev->state);
 	auto btn = getButton(ev->detail);
@@ -729,6 +775,9 @@ void XcbWindow::handleMotionNotify(xcb_motion_notify_event_t *ev) {
 		updateUserTime(ev->time);
 	}
 
+	_lastPointerRootX = ev->root_x;
+	_lastPointerRootY = ev->root_y;
+
 	if (_buttonGripFlags != WindowLayerFlags::None) {
 		if (_buttons.test(toInt(InputMouseButton::MouseLeft)) && _buttons.count() == 1) {
 			auto grip = _buttonGripFlags;
@@ -761,6 +810,9 @@ void XcbWindow::handleEnterNotify(xcb_enter_notify_event_t *ev) {
 		dispatchPendingEvents();
 		updateUserTime(ev->time);
 	}
+
+	_lastPointerRootX = ev->root_x;
+	_lastPointerRootY = ev->root_y;
 
 	updateState(ev->time, _info->state | WindowState::Pointer);
 
@@ -1025,6 +1077,26 @@ void XcbWindow::startGrip(XcbMoveResize value, int32_t x, int32_t y, int32_t but
 			XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT,
 			(const char *)&message);
 	_xcb->xcb_flush(_connection->getConnection());
+}
+
+void XcbWindow::openWindowMenu(Vec2 pos) {
+	if (!_connection->hasCapability(XcbAtomIndex::_GTK_SHOW_WINDOW_MENU)) {
+		return;
+	}
+
+	int32_t rootX, rootY;
+	if (pos.isValid()) {
+		// pos: content-local, bottom-left origin -> root, top-left
+		auto ext = getExtent();
+		rootX = _xinfo.boundingRect.x + _xinfo.contentRect.x + int32_t(pos.x);
+		rootY = _xinfo.boundingRect.y + _xinfo.contentRect.y
+				+ int32_t(int32_t(ext.height) - int32_t(pos.y));
+	} else {
+		rootX = _lastPointerRootX;
+		rootY = _lastPointerRootY;
+	}
+
+	startGrip(XcbMoveResize::Menu, rootX, rootY, _lastPointerButton);
 }
 
 bool XcbWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) { return true; }

@@ -115,6 +115,8 @@ public:
 	virtual bool enableState(WindowState) override;
 	virtual bool disableState(WindowState) override;
 
+	virtual void openWindowMenu(Vec2 pos) override;
+
 	void startGrip(XcbMoveResize, int32_t x, int32_t y, int32_t button);
 
 protected:
@@ -164,6 +166,10 @@ protected:
 
 	Map<MonitorId, ModeInfo> _capturedModes;
 	sprt::bitset<64> _buttons;
+
+	int16_t _lastPointerRootX = 0;
+	int16_t _lastPointerRootY = 0;
+	int32_t _lastPointerButton = 1; // XCB_BUTTON_INDEX_1 (left)
 
 	float _shadowCurrentValue = 0.0f;
 };

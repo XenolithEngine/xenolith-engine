@@ -19,13 +19,14 @@ PORT="${XENOLITH_PORT:-8080}"
 
 # test -> "make-dir  built.wasm  served.wasm  page.html"
 tests_libc="tests/libc         libctest.wasm     libctest.wasm     libc-test.html"
+tests_runtime="tests/runtime     runtimetest.wasm  runtimetest.wasm  runtime-test.html"
 tests_thread="tests/wthread     wthreadtest.wasm  wthreadtest.wasm  wthread.html"
 tests_bundled="tests/wasm       wasmtest.wasm     bundled-demo.wasm bundled-demo.html"
 tests_gpu="tests/wgpu           wgpudemo.wasm     wgpu-demo.wasm    gpu.html"
 tests_gpuc="tests/wgpuc         wgpucdemo.wasm    wgpuc-demo.wasm   gpuc.html"
 tests_wwin="tests/wwin          wwin.wasm         wwin.wasm         wwin.html"
 
-list() { echo "available tests: libc thread bundled gpu gpuc wwin"; }
+list() { echo "available tests: libc runtime thread bundled gpu gpuc wwin"; }
 
 [ "${1:-}" = "--list" ] && { list; exit 0; }
 TEST="${1:-libc}"; shift || true

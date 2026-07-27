@@ -36,7 +36,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleLayout(Node *) override;
+	virtual void handleLayoutInParent(Node *) override;
 
 protected:
 	Layer *_background = nullptr;

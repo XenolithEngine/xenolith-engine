@@ -67,7 +67,7 @@ public:
 	virtual bool init(WindowDecorationsButtonType);
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleAncestorComponentsDirty() override;
 
 protected:
 	virtual void handleTap();
@@ -91,7 +91,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleComponentsDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	virtual Padding getPadding() const override;
 

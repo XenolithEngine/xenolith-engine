@@ -1,0 +1,494 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "XLUiButton.h"
+#include "XL2dIconSprite.h"
+#include "XLDirector.h"
+#include "XLUiStyleResolver.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+static constexpr StringView s_windowHeaderClose =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderMinimize =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M6 19h12v2H6z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderMaximize =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M19,4H5C3.9,4,3,4.9,3,6v12c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V6C21,4.9,20.1,4,19,4z M19,18H5V6h14V18z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderMaximizeExit =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M3 5H1v16c0 1.1.9 2 2 2h16v-2H3V5zm18-4H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 16H7V3h14v14z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderFullscreen =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderFullscreenExit =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+</svg>
+)";
+
+static constexpr StringView s_windowHeaderMenu =
+		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+<path fill="white" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+</svg>
+)";
+
+// Register the per-attribute style appliers for nodes of type "button" once, the first time a
+// Button is constructed. This is the "resolve styles by type, without a per-instance callback"
+// hook: the recursive StyleResolver on the button applies these instead of the generic defaults.
+static void ensureButtonStyleAppliers() {
+	using document::ParameterName;
+	static bool once = [] {
+		StyleResolver::registerTypeApplier("button",
+				[](StyleResolver &res, Node *node, const ResolvedStyle &s,
+						document::ParameterName name, const document::StyleValue &val) {
+			if (auto btn = dynamic_cast<Button *>(node)) {
+				return btn->setStyleValue(s, name, val);
+			}
+			return false;
+		},
+				StyleResolver::makeParameterMask({
+					ParameterName::CssBackgroundColor,
+					ParameterName::CssOutlineColor,
+					ParameterName::CssOutlineWidth,
+					ParameterName::CssBorderTopLeftRadius,
+					ParameterName::CssBorderTopRightRadius,
+					ParameterName::CssBorderBottomRightRadius,
+					ParameterName::CssBorderBottomLeftRadius,
+					ParameterName::CmdReset,
+				}));
+		return true;
+	}();
+	(void)once;
+}
+
+ComponentId ButtonStyleComponent::Id;
+
+Button::~Button() { }
+
+bool Button::init(ButtonType type, Function<void()> &&cb) {
+	if (!VectorSprite::init()) {
+		return false;
+	}
+
+	ensureButtonStyleAppliers();
+
+	_type = type;
+
+	_leftCallback = sp::move(cb);
+
+	setType("button");
+	addStyleClass("xl-ui-button");
+	setRenderingLevel(RenderingLevel::Surface);
+
+	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+	_label->setType("label");
+	_label->addStyleClass("xl-ui-button-label");
+	_label->setVisible(false);
+
+	_icon = addChild(Rc<basic2d::IconSprite>::create(), ZOrder(2));
+	_icon->setType("icon");
+	_icon->addStyleClass("xl-ui-button-icon");
+	_icon->setVisible(false);
+
+	_listener = addSystem(Rc<InputListener>::create());
+	_listener->addMouseOverRecognizer([this](const GestureData &data) {
+		switch (data.event) {
+		case GestureEvent::Began:
+			setOrUpdateComponent<InteractiveComponent>([](NotNull<InteractiveComponent> state) {
+				return state->handleHover(1); //
+			});
+			break;
+		case GestureEvent::Activated: break;
+		case GestureEvent::Ended:
+		case GestureEvent::Cancelled:
+			setOrUpdateComponent<InteractiveComponent>([](NotNull<InteractiveComponent> state) {
+				return state->handleHover(-1); //
+			});
+			break;
+		}
+		return true;
+	}, false);
+
+	if (_type != ButtonType::General) {
+		_listener->setWindowStateCallback([this](WindowState state, WindowState changes) {
+			_windowState = state;
+			updateState();
+			return true;
+		});
+	}
+
+	_listener->addTapRecognizer([this](const GestureTap &tap) {
+		switch (tap.event) {
+		case GestureEvent::Began: break;
+		case GestureEvent::Activated: return handleLeftTap(); break;
+		case GestureEvent::Ended: break;
+		case GestureEvent::Cancelled: break;
+		}
+		return true;
+	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 1});
+
+	_listener->addTapRecognizer([this](const GestureTap &tap) {
+		switch (tap.event) {
+		case GestureEvent::Began: break;
+		case GestureEvent::Activated: return handleRightTap(); break;
+		case GestureEvent::Ended: break;
+		case GestureEvent::Cancelled: break;
+		}
+		return true;
+	}, InputTapInfo{makeButtonMask({InputMouseButton::MouseRight}), 1});
+
+#if SPRT_APPLE
+	_theme = ButtonIconTheme::Apple;
+#else
+	_theme = ButtonIconTheme::Default;
+#endif
+
+	return true;
+}
+
+bool Button::init(Function<void()> &&cb) {
+	return Button::init(ButtonType::General, sp::move(cb)); //
+}
+
+void Button::handleEnter(Scene *scene) {
+	VectorSprite::handleEnter(scene);
+
+	_windowState = _director->getRenderServer()->getWindowState();
+
+	updateState();
+}
+
+void Button::handleContentSizeDirty() {
+	VectorSprite::handleContentSizeDirty();
+	updateBackgroundImage();
+}
+
+void Button::updateBackgroundImage() {
+	if (_contentSize.width <= 0.0f || _contentSize.height <= 0.0f) {
+		return;
+	}
+
+	// the resolved paint lives in a ButtonStyleComponent; when the button was never styled the
+	// component is absent and the struct's own defaults (white fill, no outline, no radius) apply
+	ButtonStyleComponent defaultStyle;
+	const ButtonStyleComponent *style = &defaultStyle;
+	if (auto c = getComponent<ButtonStyleComponent>()) {
+		style = c;
+	}
+
+	auto image = Rc<VectorImage>::create(_contentSize);
+
+	// inset the rect by half the stroke width so the outline is not clipped at the node's edges
+	const float inset = style->outlineWidth > 0.0f ? style->outlineWidth * 0.5f : 0.0f;
+	const Rect box(inset, inset, _contentSize.width - inset * 2.0f,
+			_contentSize.height - inset * 2.0f);
+
+	// shrink each corner radius by the inset so the OUTER edge of the stroke keeps the requested
+	// radius; addBox() itself clamps each corner to the half-box and resolves adjacent overlap
+	auto outer = [&](float r) { return r > 0.0f ? sprt::max(r - inset, 0.0f) : 0.0f; };
+	const float rtl = outer(style->borderRadiusTopLeft);
+	const float rtr = outer(style->borderRadiusTopRight);
+	const float rbr = outer(style->borderRadiusBottomRight);
+	const float rbl = outer(style->borderRadiusBottomLeft);
+	const bool rounded = rtl > 0.0f || rtr > 0.0f || rbr > 0.0f || rbl > 0.0f;
+
+	auto path = image->addPath();
+	path->openForWriting([&](PathWriter &writer) {
+		if (rounded) {
+			writer.addBox(box.origin.x, box.origin.y, box.size.width, box.size.height, rtl, rtr,
+					rbr, rbl);
+		} else {
+			writer.addRect(box);
+		}
+	})
+			.setFillColor(style->backgroundColor)
+			.setStyle(vg::DrawFlags::Fill);
+
+	if (style->outlineWidth > 0.0f) {
+		path->setStyle(vg::DrawFlags::FillAndStroke)
+				.setStrokeColor(style->outlineColor)
+				.setStrokeWidth(style->outlineWidth)
+				.setAntialiased(true);
+	}
+
+	setImage(sp::move(image));
+}
+
+bool Button::setStyleValue(const ResolvedStyle &style, document::ParameterName name,
+		const document::StyleValue &value) {
+	using document::ParameterName;
+
+	// `-xl-reset` (CmdReset): drop the styling so the fallback defaults take over on the next rebuild
+	if (name == ParameterName::CmdReset) {
+		if (removeComponent<ButtonStyleComponent>()) {
+			markContentSizeDirty();
+		}
+		return true;
+	}
+
+	// all button paint is stored in the ButtonStyleComponent (created on first styled attribute);
+	// writes are equality-guarded so an unchanged value neither rebuilds nor re-dirties components
+	bool known = true;
+	bool changed = false;
+	setOrUpdateComponent<ButtonStyleComponent>([&](NotNull<ButtonStyleComponent> c) {
+		// raw px magnitude of the metric (em/% are not resolved here)
+		const float px = value.sizeValue.value;
+		switch (name) {
+		case ParameterName::CssBackgroundColor:
+			changed = c->backgroundColor != value.color4;
+			c->backgroundColor = value.color4;
+			break;
+		case ParameterName::CssOutlineColor:
+			changed = c->outlineColor != value.color4;
+			c->outlineColor = value.color4;
+			break;
+		case ParameterName::CssOutlineWidth:
+			changed = c->outlineWidth != px;
+			c->outlineWidth = px;
+			break;
+		case ParameterName::CssBorderTopLeftRadius:
+			changed = c->borderRadiusTopLeft != px;
+			c->borderRadiusTopLeft = px;
+			break;
+		case ParameterName::CssBorderTopRightRadius:
+			changed = c->borderRadiusTopRight != px;
+			c->borderRadiusTopRight = px;
+			break;
+		case ParameterName::CssBorderBottomRightRadius:
+			changed = c->borderRadiusBottomRight != px;
+			c->borderRadiusBottomRight = px;
+			break;
+		case ParameterName::CssBorderBottomLeftRadius:
+			changed = c->borderRadiusBottomLeft != px;
+			c->borderRadiusBottomLeft = px;
+			break;
+		default: known = false; break;
+		}
+		return changed;
+	});
+
+	if (!known) {
+		slog().warn("ui::Button", "Unknown style parameter: ", name);
+		return false;
+	}
+	if (changed) {
+		markContentSizeDirty();
+	}
+	return true;
+}
+
+void Button::setString(StringView str) {
+	if (_label) {
+		_label->setString(str);
+		_label->setVisible(!str.empty());
+	}
+}
+
+StringView Button::getString() const {
+	if (_label) {
+		return _label->getString8();
+	}
+	return StringView();
+}
+
+void Button::setIcon(IconName name) {
+	if (_icon) {
+		_icon->setIconName(name);
+		_icon->setVisible(name != IconName::None);
+	}
+}
+
+IconName Button::getIcon() const {
+	if (_icon) {
+		return _icon->getIconName();
+	}
+	return IconName::None;
+}
+
+void Button::updateState() {
+	switch (_theme) {
+	case ButtonIconTheme::Default:
+		switch (_type) {
+		case ButtonType::OsClose:
+			_icon->setImage(Rc<VectorImage>::create(s_windowHeaderClose));
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsMinimize:
+			_icon->setImage(Rc<VectorImage>::create(s_windowHeaderMinimize));
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsMaximize:
+			if (hasFlagAll(_windowState, WindowState::Maximized)) {
+				_icon->setImage(Rc<VectorImage>::create(s_windowHeaderMaximizeExit));
+			} else {
+				_icon->setImage(Rc<VectorImage>::create(s_windowHeaderMaximize));
+			}
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsFullscreen:
+			if (hasFlagAll(_windowState, WindowState::Fullscreen)) {
+				_icon->setImage(Rc<VectorImage>::create(s_windowHeaderFullscreenExit));
+			} else {
+				_icon->setImage(Rc<VectorImage>::create(s_windowHeaderFullscreen));
+			}
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsMenu:
+			_icon->setImage(Rc<VectorImage>::create(s_windowHeaderMenu));
+			_icon->setVisible(true);
+			break;
+		default: break;
+		}
+		break;
+	case ButtonIconTheme::Apple: {
+		auto image = Rc<VectorImage>::create(Size2(24.0f, 24.0f));
+		image->addPath()
+				->setStyle(vg::DrawFlags::FillAndStroke)
+				.setFillColor(Color::White)
+				.setStrokeColor(Color::Grey_200)
+				.setStrokeWidth(0.25f)
+				.openForWriting([&](PathWriter &writer) { writer.addCircle(12.0f, 12.0f, 10.0f); });
+		_icon->setImage(sp::move(image));
+
+		switch (_type) {
+		case ButtonType::OsClose:
+			if (hasFlag(_windowState, WindowState::Focused)) {
+				_icon->setColor(Color4F(0.992f, 0.373f, 0.361f, 1.0f));
+			} else {
+				_icon->setColor(Color::Grey_400);
+			}
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsMinimize:
+			if (hasFlag(_windowState, WindowState::Focused)) {
+				_icon->setColor(Color4F(0.188f, 0.792f, 0.294f, 1.0f));
+			} else {
+				_icon->setColor(Color::Grey_400);
+			}
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsMaximize:
+			if (hasFlag(_windowState, WindowState::Focused)) {
+				_icon->setColor(Color4F(0.996f, 0.741f, 0.263f, 1.0f));
+			} else {
+				_icon->setColor(Color::Grey_400);
+			}
+			_icon->setVisible(true);
+			break;
+		case ButtonType::OsFullscreen:
+		case ButtonType::OsMenu: _icon->setVisible(false); break;
+		default: break;
+		}
+		break;
+	}
+	}
+}
+
+bool Button::handleLeftTap() {
+	if (_leftCallback) {
+		_leftCallback();
+		return true;
+	} else {
+		if (!_director) {
+			return false;
+		}
+
+		auto w = _director->getRenderServer();
+		if (!w) {
+			return false;
+		}
+
+		switch (_type) {
+		case ButtonType::OsClose:
+			w->close(true);
+			return true;
+			break;
+		case ButtonType::OsMinimize:
+			w->enableState(WindowState::Minimized);
+			return true;
+			break;
+		case ButtonType::OsMaximize:
+			if (hasFlagAll(_windowState, WindowState::Maximized)) {
+				w->disableState(WindowState::Maximized);
+			} else {
+				w->enableState(WindowState::Maximized);
+			}
+			return true;
+			break;
+		case ButtonType::OsFullscreen:
+			if (hasFlagAll(_windowState, WindowState::Fullscreen)) {
+				w->disableState(WindowState::Fullscreen);
+			} else {
+				w->enableState(WindowState::Fullscreen);
+			}
+			return true;
+			break;
+		default: break;
+		}
+	}
+	return false;
+}
+
+bool Button::handleRightTap() {
+	if (_rightCallback) {
+		_rightCallback();
+		return true;
+	} else {
+		if (!_director) {
+			return false;
+		}
+
+		auto w = _director->getRenderServer();
+		if (!w) {
+			return false;
+		}
+
+		switch (_type) {
+		case ButtonType::OsMenu:
+			w->openWindowMenu(Vec2::INVALID);
+			return true;
+			break;
+		default: break;
+		}
+	}
+	return false;
+}
+
+} // namespace stappler::xenolith::ui

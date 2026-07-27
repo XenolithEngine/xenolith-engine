@@ -24,6 +24,7 @@
 #include "XL2dLabel.h"
 #include "XLEventListener.h"
 #include "XLDirector.h"
+#include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -266,6 +267,31 @@ Rc<LabelResult> Label::writeResult(TextLayout *format, const Color4F &color, flo
 	return result;
 }
 
+// Bridges the content measurement protocol (System::handleMeasure /
+// handleLayoutApplied) to the label's own shaping machinery; installed by
+// Label::init on every label, so any layout engine can measure text
+class LabelMeasureSystem : public System {
+public:
+	virtual ~LabelMeasureSystem() = default;
+
+	virtual bool init() override {
+		if (!System::init()) {
+			return false;
+		}
+		_systemFlags = SystemFlags::HandleMeasure;
+		return true;
+	}
+
+	virtual bool handleMeasure(const MeasureConstraints &c, Size2 &result) override {
+		result = static_cast<Label *>(_owner)->measureContent(c);
+		return true;
+	}
+
+	virtual void handleLayoutApplied(const Size2 &size) override {
+		static_cast<Label *>(_owner)->applyMeasuredSize(size);
+	}
+};
+
 Label::~Label() { _format = nullptr; }
 
 bool Label::init() { return init(nullptr); }
@@ -291,6 +317,7 @@ bool Label::init(font::FontController *source, const DescriptionStyle &style, St
 	setRenderingLevel(RenderingLevel::Surface);
 
 	_listener = addSystem(Rc<EventListener>::create());
+	addSystem(Rc<LabelMeasureSystem>::create());
 
 	_selection = addChild(Rc<Selection>::create());
 	_selection->setAnchorPoint(Vec2(0.0f, 0.0f));
@@ -322,6 +349,10 @@ bool Label::init(const DescriptionStyle &style, StringView str, float w, TextAli
 void Label::handleEnter(xenolith::Scene *scene) {
 	Sprite::handleEnter(scene);
 
+	// a (re-)attached label may face a different set of inherited-style
+	// components in its new ancestor chain
+	setLabelDirty();
+
 	if (_source) {
 		return;
 	}
@@ -346,6 +377,19 @@ void Label::handleEnter(xenolith::Scene *scene) {
 
 void Label::handleExit() { Sprite::handleExit(); }
 
+void Label::handleComponentsDirty(const ComponentMask &mask) {
+	Sprite::handleComponentsDirty(mask);
+
+	// Inherited-style components on the label's OWN node changed (typically rewritten or
+	// removed by ui::StyleResolver) — re-shape with the new effective style. This is the
+	// node's own dirty protocol; changes on ancestors are NOT tracked here (see
+	// XLInheritedStyle.h).
+	if (mask.contains(InheritedColorStyle::Id.value) || mask.contains(InheritedFontStyle::Id.value)
+			|| mask.contains(InheritedTextStyle::Id.value)) {
+		setLabelDirty();
+	}
+}
+
 void Label::tryUpdateLabel() {
 	if (_parent) {
 		updateLabelScale(_parent->getNodeToWorldTransform());
@@ -353,6 +397,64 @@ void Label::tryUpdateLabel() {
 	if (_labelDirty) {
 		updateLabel();
 	}
+}
+
+Size2 Label::measureContent(const MeasureConstraints &c) {
+	if (!_source || !_source->isLoaded()) {
+		return getContentSize();
+	}
+
+	if (_parent) {
+		updateLabelDensity(_parent->getNodeToWorldTransform());
+	}
+
+	if (_string16.empty()) {
+		return Size2(0.0f, getFontHeight() / _labelDensity);
+	}
+
+	auto request = font::Formatter::ContentRequest::Normal;
+	const float savedWidth = _width;
+	switch (c.mode) {
+	case MeasureMode::Normal:
+		// Formatter's width is uint16_t: unconstrained must be 0 (no wrap)
+		_width = (c.maxWidth != maxOf<float>()) ? c.maxWidth : 0.0f;
+		break;
+	case MeasureMode::MinContent:
+		request = font::Formatter::ContentRequest::Minimize;
+		_width = 0.0f;
+		break;
+	case MeasureMode::MaxContent:
+		request = font::Formatter::ContentRequest::Maximize;
+		_width = 0.0f;
+		break;
+	}
+
+	auto spec = Rc<font::TextLayout>::alloc(_source, _string16.size(), _compiledStyles.size() + 1);
+
+	// mirror updateLabel's style setup so the measurement is bit-identical
+	// to what applyLayout will later produce
+	_compiledStyles = compileStyle();
+	_style.text.whiteSpace = font::WhiteSpace::PreWrap;
+
+	const bool ok = updateFormatSpec(spec, _compiledStyles, _labelDensity, _adjustValue, request);
+	_width = savedWidth;
+
+	if (!ok) {
+		return getContentSize();
+	}
+	if (spec->empty()) {
+		return Size2(0.0f, getFontHeight() / _labelDensity);
+	}
+	return Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity);
+}
+
+void Label::applyMeasuredSize(const Size2 &size) {
+	if (_width != size.width) {
+		setWidth(size.width);
+	}
+	tryUpdateLabel();
+	// the assigned box wins over the shaped extent committed by applyLayout
+	setContentSize(size);
 }
 
 void Label::setStyle(const DescriptionStyle &style) {
@@ -420,6 +522,74 @@ void Label::updateLabel() {
 	}
 
 	applyLayout(spec);
+}
+
+void Label::makeEffectiveStyle(font::LabelBase::EffectiveStyle &out) const {
+	LabelBase::makeEffectiveStyle(out);
+
+	// Overlay inherited-style components (own node first, then ancestors — see
+	// XLInheritedStyle.h): a defined inherited value wins over the label's stored
+	// explicit value; the stored fields are left untouched, so they take effect
+	// again as soon as the components disappear.
+	auto color = accumulateInheritedStyle<InheritedColorStyle>(this);
+	auto font = accumulateInheritedStyle<InheritedFontStyle>(this);
+	auto text = accumulateInheritedStyle<InheritedTextStyle>(this);
+
+	if (color.defined & InheritedColorStyle::DefinedColor) {
+		out.style.text.color = color.color;
+		// keep the inherited color across _displayedColor refreshes (updateColor
+		// skips ranges with colorDirty)
+		out.style.colorDirty = true;
+	}
+	if (color.defined & InheritedColorStyle::DefinedOpacity) {
+		out.style.text.opacity = color.opacity;
+		out.style.opacityDirty = true;
+	}
+
+	if (font.defined & InheritedFontStyle::DefinedFontSize) {
+		out.style.font.fontSize = font.fontSize;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontStyle) {
+		out.style.font.fontStyle = font.fontStyle;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontWeight) {
+		out.style.font.fontWeight = font.fontWeight;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontStretch) {
+		out.style.font.fontStretch = font.fontStretch;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontGrade) {
+		out.style.font.fontGrade = font.fontGrade;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontVariant) {
+		out.style.font.fontVariant = font.fontVariant;
+	}
+	if (font.defined & InheritedFontStyle::DefinedFontFamily) {
+		out.fontFamilyStorage = sp::move(font.fontFamily);
+	}
+
+	if (text.defined & InheritedTextStyle::DefinedTextTransform) {
+		out.style.text.textTransform = text.textTransform;
+	}
+	if (text.defined & InheritedTextStyle::DefinedTextDecoration) {
+		out.style.text.textDecoration = text.textDecoration;
+	}
+	if (text.defined & InheritedTextStyle::DefinedWhiteSpace) {
+		out.style.text.whiteSpace = text.whiteSpace;
+	}
+	if (text.defined & InheritedTextStyle::DefinedHyphens) {
+		out.style.text.hyphens = text.hyphens;
+	}
+	if (text.defined & InheritedTextStyle::DefinedVerticalAlign) {
+		out.style.text.verticalAlign = text.verticalAlign;
+	}
+	if (text.defined & InheritedTextStyle::DefinedTextAlign) {
+		out.alignment = text.textAlign;
+	}
+	if (text.defined & InheritedTextStyle::DefinedLineHeight) {
+		out.lineHeight = text.lineHeight;
+		out.lineHeightAbsolute = text.lineHeightAbsolute;
+	}
 }
 
 void Label::handleContentSizeDirty() {
@@ -501,6 +671,14 @@ void Label::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 }
 
 void Label::updateLabelScale(const Mat4 &parent) {
+	updateLabelDensity(parent);
+
+	if (_labelDirty) {
+		updateLabel();
+	}
+}
+
+void Label::updateLabelDensity(const Mat4 &parent) {
 	Vec3 scale;
 	parent.decompose(&scale, nullptr, nullptr);
 
@@ -518,10 +696,6 @@ void Label::updateLabelScale(const Mat4 &parent) {
 	if (density != _labelDensity) {
 		_labelDensity = density;
 		setLabelDirty();
-	}
-
-	if (_labelDirty) {
-		updateLabel();
 	}
 }
 
@@ -552,6 +726,8 @@ Label::LineLayout Label::getLine(uint32_t num) const {
 }
 
 uint16_t Label::getFontHeight() const {
+	// reads the stored explicit style: an empty label's height does not track
+	// inherited font components
 	auto l = _source->getLayout(_style.font);
 	if (l.get()) {
 		return l->getFontHeight();

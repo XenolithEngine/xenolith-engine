@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_NODES_XLCOMPONENT_H_
 
 #include "XLNodeInfo.h" // IWYU pragma: keep
+#include <sprt/cxx/int_set>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -44,7 +45,9 @@ Code style recomendations:
 */
 
 struct ComponentId {
-	uint32_t value;
+	using Value = uint32_t;
+
+	Value value;
 
 	ComponentId();
 };
@@ -190,6 +193,9 @@ struct ComponentHash {
 	sprt::size_t operator()(uint32_t id) const { return hash_type{}(id); }
 };
 
+// Fast int/hash set
+using ComponentMask = sprt::__malloc_int_set<ComponentId::Value>;
+
 class ComponentContainer {
 public:
 	// Set value for component of type T
@@ -223,14 +229,18 @@ public:
 
 	void removeAllComponents();
 
+	void resetComponentsDirty();
+
 protected:
 	bool _componentsDirty = false;
 	HashSet<Component, ComponentHash, ComponentEqual> _components;
+	ComponentMask _componentsDirtyMask;
 };
 
 template <typename T, typename... Args>
 T *ComponentContainer::setComponent(Args &&...args) {
 	_componentsDirty = true;
+	_componentsDirtyMask.emplace(T::Id.value);
 	auto it = _components.find(T::Id);
 	if (it == _components.end()) {
 		it = _components.emplace(T::Id).first;
@@ -246,6 +256,7 @@ const T *ComponentContainer::updateComponent(const Callback<bool(NotNull<T>)> &c
 	}
 	if (cb((*it).template get<T>())) {
 		_componentsDirty = true;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
 }
@@ -259,10 +270,12 @@ const T *ComponentContainer::setOrUpdateComponent(const Callback<bool(NotNull<T>
 		it = _components.emplace(T::Id).first;
 		(*it).template create<T>();
 		_componentsDirty = true;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 
 	if (cb((*it).template get<T>())) {
 		_componentsDirty = true;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
 }
@@ -281,11 +294,51 @@ bool ComponentContainer::removeComponent() {
 	auto it = _components.find(T::Id);
 	if (it != _components.end()) {
 		_componentsDirty = true;
+		_componentsDirtyMask.emplace(T::Id.value);
 		_components.erase(it);
 		return true;
 	}
 	return false;
 }
+
+// Style-driven visibility (CSS `display: none` / `visibility: hidden`). When either flag is
+// set, the node reacts at visit like setVisible(false): it is not drawn, receives no input and
+// its children are skipped entirely. Unlike setVisible(false), the hidden node's OWN data
+// phases (components/measure/content-size) keep running each visit, so the styling protocol
+// can still reach it and remove the component to un-hide it. The node's explicit `setVisible`
+// state is never touched — removing the component restores it. Layout engines additionally
+// collapse `displayNone` nodes (no box), while `visibilityHidden` nodes keep their layout box,
+// matching CSS semantics. The visit checks the component live, no extra invalidation needed.
+struct SP_PUBLIC VisibilityComponent {
+	static ComponentId Id;
+
+	bool displayNone = false; // display: none — skipped at visit AND collapsed by layout
+	bool visibilityHidden = false; // visibility: hidden — skipped at visit, keeps its box
+
+	bool visible() const { return !displayNone && !visibilityHidden; }
+
+	bool operator==(const VisibilityComponent &) const = default;
+};
+
+// Precomputed measurement fallback. When a node has no HandleMeasure system that answers a
+// measure request, the measure phase (Node::handleMeasure) and a parent layout engine
+// (LayoutSystem::measureNode) fall back to the size stored here for the requested mode.
+// Set the sizes you know ahead of time; a mode left at zero resolves to `normal`.
+struct SP_PUBLIC MeasureComponent {
+	static ComponentId Id;
+
+	Size2 normal = Size2::ZERO; // MeasureMode::Normal (preferred size)
+	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent (falls back to normal if unset)
+	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent (falls back to normal if unset)
+
+	Size2 measure(const MeasureConstraints &c) const {
+		switch (c.mode) {
+		case MeasureMode::MinContent: return (minContent == Size2::ZERO) ? normal : minContent;
+		case MeasureMode::MaxContent: return (maxContent == Size2::ZERO) ? normal : maxContent;
+		default: return normal;
+		}
+	}
+};
 
 } // namespace stappler::xenolith
 

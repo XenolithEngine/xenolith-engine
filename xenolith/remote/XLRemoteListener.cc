@@ -31,7 +31,7 @@
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 
-#include <arpa/inet.h> // AF_INET, SOCK_DGRAM (via the sprt socket layer)
+#include <sys/socket.h> // AF_INET, SOCK_DGRAM (via the sprt socket layer)
 #include <sys/time.h> // struct timeval (SSL_get_event_timeout)
 #include <sys/socket.h> // struct timeval (SSL_get_event_timeout)
 

@@ -25,6 +25,12 @@
 
 #include <unistd.h>
 #include <sprt/runtime/log.h>
+#include <sprt/runtime/filesystem/filepath.h>
+#include <sprt/c/__sprt_fcntl.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/cross/__sprt_fstypes.h>
 
 // macOS provides waitpid() in libSystem, but the runtime's freestanding include path does not expose
 // <sys/wait.h>; declare the prototype directly (the exit code is decoded via decodeWaitStatus()).
@@ -113,6 +119,16 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 			data.result = ev.data;
 			data.queueFlags = ev.flags;
 			data.userFlags = 0;
+
+			if (ev.filter == EVFILT_VNODE) {
+				// EVFILT_VNODE: `data` carries nothing, the change set is in fflags
+				// and the vnode identity is the ident fd — a handle registering
+				// several vnodes (see KQueueWatchHandle) needs both to route the
+				// event, so marshal ident through `result` and fflags through
+				// `userFlags` (unused by every other filter).
+				data.result = intptr_t(ev.ident);
+				data.userFlags = ev.fflags;
+			}
 
 			_data->notify(reinterpret_cast<Handle *>(ev.udata), data);
 		}
@@ -646,6 +662,214 @@ Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass,
 	proc->setUserdata(state);
 	state->readerHandle = createProcessReader(data, readFd, state.get());
 	return proc;
+}
+
+//
+// KQueueWatchHandle — EVFILT_VNODE file-watch
+//
+
+// the directory's own lifecycle plus entry changes under it
+static constexpr uint32_t KQueueWatchDirNotes = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME
+		| NOTE_REVOKE;
+// the watched inode: content, metadata and leaving-the-name events
+static constexpr uint32_t KQueueWatchFileNotes = NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB
+		| NOTE_DELETE | NOTE_RENAME;
+
+void KQueueWatchSource::cancel() {
+	// closing an fd drops its knote from the kqueue automatically
+	if (fileFd >= 0) {
+		::__sprt_close(fileFd);
+		fileFd = -1;
+	}
+	if (dirFd >= 0) {
+		::__sprt_close(dirFd);
+		dirFd = -1;
+	}
+}
+
+bool KQueueWatchHandle::init(HandleClass *cl, StringView path, WatchFlags mask,
+		CompletionHandle<WatchHandle> &&c) {
+	static_assert(sizeof(KQueueWatchSource) <= DataSize
+			&& sprt::is_standard_layout<KQueueWatchSource>::value);
+
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+
+	_path = path.str<decltype(_path)>();
+	_mask = (mask == WatchFlags::None) ? WatchFlags::Any : mask;
+
+	auto dir = filepath::root(_path);
+	if (dir.empty()) {
+		_dir = ".";
+	} else {
+		_dir = String(dir.data(), dir.size());
+	}
+
+	if (filepath::lastComponent(_path).empty()) {
+		return false;
+	}
+
+	return true;
+}
+
+Status KQueueWatchHandle::registerFile(KQueueData *queue, KQueueWatchSource *source) {
+	source->fileFd = ::__sprt_open(_path.c_str(), __SPRT_O_EVTONLY);
+	if (source->fileFd < 0) {
+		_exists = false;
+		_ino = 0;
+		return sprt::status::errnoToStatus(__sprt_errno);
+	}
+
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_fstat(source->fileFd, &st) == 0) {
+		_exists = true;
+		_ino = uint64_t(st.st_ino);
+	}
+
+	struct kevent ev;
+	EV_SET(&ev, source->fileFd, EVFILT_VNODE, EV_ADD | EV_CLEAR, KQueueWatchFileNotes, 0, this);
+	return queue->update(ev);
+}
+
+void KQueueWatchHandle::closeFile(KQueueData *queue, KQueueWatchSource *source) {
+	if (source->fileFd >= 0) {
+		struct kevent ev;
+		EV_SET(&ev, source->fileFd, EVFILT_VNODE, EV_DELETE, 0, 0, this);
+		queue->update(ev);
+		::__sprt_close(source->fileFd);
+		source->fileFd = -1;
+	}
+}
+
+void KQueueWatchHandle::rescan(KQueueData *queue, KQueueWatchSource *source, WatchFlags &pending) {
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_stat(_path.c_str(), &st) == 0) {
+		auto ino = uint64_t(st.st_ino);
+		if (!_exists) {
+			pending |= WatchFlags::Created;
+		} else if (ino != _ino) {
+			// a different inode took the watched name: atomic replace
+			pending |= WatchFlags::MovedTo;
+		}
+		if (!_exists || ino != _ino || source->fileFd < 0) {
+			// re-target the file vnode watch onto the inode now under the name
+			closeFile(queue, source);
+			registerFile(queue, source);
+		}
+		// same inode still in place: the directory write was about another entry
+	} else {
+		if (_exists) {
+			pending |= WatchFlags::Deleted;
+		}
+		closeFile(queue, source);
+		_exists = false;
+		_ino = 0;
+	}
+}
+
+Status KQueueWatchHandle::rearm(KQueueData *queue, KQueueWatchSource *source) {
+	auto status = prepareRearm();
+	if (status != Status::Ok) {
+		return status;
+	}
+
+	source->dirFd = ::__sprt_open(_dir.c_str(), __SPRT_O_EVTONLY);
+	if (source->dirFd < 0) {
+		return sprt::status::errnoToStatus(__sprt_errno);
+	}
+
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_fstat(source->dirFd, &st) != 0 || !__SPRT_S_ISDIR(st.st_mode)) {
+		::__sprt_close(source->dirFd);
+		source->dirFd = -1;
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	struct kevent ev;
+	EV_SET(&ev, source->dirFd, EVFILT_VNODE, EV_ADD | EV_CLEAR, KQueueWatchDirNotes, 0, this);
+	status = queue->update(ev);
+	if (status != Status::Ok) {
+		::__sprt_close(source->dirFd);
+		source->dirFd = -1;
+		return status;
+	}
+
+	// the watched file may not exist yet — that is fine, the directory watch
+	// reports its creation and registerFile() re-runs from rescan()
+	registerFile(queue, source);
+	return Status::Ok;
+}
+
+Status KQueueWatchHandle::disarm(KQueueData *queue, KQueueWatchSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		closeFile(queue, source);
+		if (source->dirFd >= 0) {
+			struct kevent ev;
+			EV_SET(&ev, source->dirFd, EVFILT_VNODE, EV_DELETE, 0, 0, this);
+			queue->update(ev);
+			::__sprt_close(source->dirFd);
+			source->dirFd = -1;
+		}
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void KQueueWatchHandle::notify(KQueueData *queue, KQueueWatchSource *source,
+		const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+
+	auto fd = int(data.result); // marshalled kevent ident (see processEvents)
+	auto fflags = data.userFlags; // marshalled kevent fflags
+
+	WatchFlags pending = WatchFlags::None;
+	bool dead = false;
+
+	if (fd == source->dirFd) {
+		if (fflags & (NOTE_DELETE | NOTE_REVOKE)) {
+			pending |= WatchFlags::DeleteSelf;
+			dead = true;
+		} else if (fflags & NOTE_RENAME) {
+			pending |= WatchFlags::MoveSelf;
+			dead = true;
+		} else if (fflags & NOTE_WRITE) {
+			rescan(queue, source, pending);
+		}
+	} else if (fd == source->fileFd) {
+		if (fflags & (NOTE_WRITE | NOTE_EXTEND)) {
+			pending |= WatchFlags::Modified;
+		}
+		if (fflags & NOTE_ATTRIB) {
+			pending |= WatchFlags::Attrib;
+		}
+		if (fflags & (NOTE_DELETE | NOTE_RENAME)) {
+			// the watched inode left the name; drop its watch and re-check what
+			// (if anything) the name now refers to
+			if (fflags & NOTE_RENAME) {
+				pending |= WatchFlags::MovedFrom;
+			}
+			closeFile(queue, source);
+			rescan(queue, source, pending);
+		}
+	}
+
+	// the user mask narrows only the maskable kinds; lifecycle events always pass
+	pending = (pending & _mask) | (pending & ~WatchFlags::Any);
+
+	if (pending != WatchFlags::None) {
+		_last = pending;
+		sendCompletion(toInt(pending), Status::Ok);
+	}
+
+	if (dead && _status == Status::Ok) {
+		cancel(Status::Done);
+	}
 }
 
 } // namespace sprt::dispatch

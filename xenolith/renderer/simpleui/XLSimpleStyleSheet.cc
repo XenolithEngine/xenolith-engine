@@ -37,20 +37,20 @@ struct StyleSheet::Container : document::StyleContainer {
 
 	// mirrors document::StyleContainer::resolveNodeStyle match/merge order
 	// (including the `*`-merges-inheritable-only quirk)
+	template <typename Container>
 	void resolve(document::StyleList &target, StringView type, StringView id,
-			SpanView<memory::StandartInterface::StringType> classes,
-			SpanView<bool> mediaResolved) const {
+			const Container &classes, SpanView<bool> mediaResolved) const {
 		PoolString key;
 
 		auto it = _styles.find(StringView("*"));
 		if (it != _styles.end()) {
-			target.merge(it->second, mediaResolved, true);
+			target.merge(it->second.style, mediaResolved, true);
 		}
 
 		if (!type.empty()) {
 			it = _styles.find(type);
 			if (it != _styles.end()) {
-				target.merge(it->second, mediaResolved);
+				target.merge(it->second.style, mediaResolved);
 			}
 		}
 
@@ -59,7 +59,7 @@ struct StyleSheet::Container : document::StyleContainer {
 			key.append(1, '.').append(cl.data(), cl.size());
 			it = _styles.find(StringView(key));
 			if (it != _styles.end()) {
-				target.merge(it->second, mediaResolved);
+				target.merge(it->second.style, mediaResolved);
 			}
 
 			if (!type.empty()) {
@@ -67,7 +67,7 @@ struct StyleSheet::Container : document::StyleContainer {
 				key.append(type.data(), type.size()).append(1, '.').append(cl.data(), cl.size());
 				it = _styles.find(StringView(key));
 				if (it != _styles.end()) {
-					target.merge(it->second, mediaResolved);
+					target.merge(it->second.style, mediaResolved);
 				}
 			}
 		}
@@ -77,7 +77,7 @@ struct StyleSheet::Container : document::StyleContainer {
 			key.append(1, '#').append(id.data(), id.size());
 			it = _styles.find(StringView(key));
 			if (it != _styles.end()) {
-				target.merge(it->second, mediaResolved);
+				target.merge(it->second.style, mediaResolved);
 			}
 
 			if (!type.empty()) {
@@ -85,7 +85,7 @@ struct StyleSheet::Container : document::StyleContainer {
 				key.append(type.data(), type.size()).append(1, '#').append(id.data(), id.size());
 				it = _styles.find(StringView(key));
 				if (it != _styles.end()) {
-					target.merge(it->second, mediaResolved);
+					target.merge(it->second.style, mediaResolved);
 				}
 			}
 		}
@@ -167,7 +167,7 @@ bool StyleSheet::addStyle(const FileInfo &file) {
 }
 
 void StyleSheet::resolveForIdentity(document::StyleList &target, StringView type, StringView id,
-		SpanView<String> classes, SpanView<bool> mediaResolved) const {
+		const HashSet<String, sprt::hash<void>> &classes, SpanView<bool> mediaResolved) const {
 	_container->resolve(target, type, id, classes, mediaResolved);
 }
 

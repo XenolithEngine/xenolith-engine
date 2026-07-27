@@ -32,6 +32,8 @@ EXPORTS
 	RtlPcToFileHeader
 	ReadFile
 	WriteFile
+	ReadDirectoryChangesW
+	CancelIoEx
 	GetOverlappedResult
 	SetFilePointerEx
 	SetEndOfFile
