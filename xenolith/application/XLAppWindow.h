@@ -80,6 +80,9 @@ public:
 	// To access WindowState in app thread, use getWindowState
 	virtual const WindowInfo *getInfo() const override;
 
+	// Native surface backend for this window (Display = direct KMS / embed).
+	sprt::window::SurfaceBackend getSurfaceBackend() const;
+
 	core::PresentationEngine *getPresentationEngine() const { return _presentationEngine; }
 
 	Director *getDirector() const { return _director; }

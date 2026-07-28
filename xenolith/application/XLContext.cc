@@ -358,9 +358,28 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 	core::PresentMode preferredPresentMode =
 			windowInfo ? windowInfo->preferredPresentMode : core::PresentMode::Mailbox;
 	core::ImageFormat imageFormat =
-			windowInfo ? windowInfo->imageFormat : core::ImageFormat::R8G8B8A8_UNORM;
+			windowInfo ? windowInfo->imageFormat : core::ImageFormat::Undefined;
 	core::ColorSpace colorSpace =
 			windowInfo ? windowInfo->colorSpace : core::ColorSpace::SRGB_NONLINEAR_KHR;
+
+	log::source().info("Context", "handleAppWindowSurfaceUpdate: surface backend=",
+			toInt(w->getSurfaceBackend()), " formats=", info.formats.size());
+	for (auto &fmt : info.formats) {
+		log::source().info("Context", "  surface format: ", core::getImageFormatName(fmt.first),
+				" / ", core::getColorSpaceName(fmt.second));
+	}
+
+	// Direct-KMS embed (Pi / QEMU Display): prefer RGB565 when the surface offers it —
+	// half the scanout bandwidth vs RGBA8 on HVS. Desktop WM paths keep their own default.
+	const bool embedDisplay =
+			w->getSurfaceBackend() == sprt::window::SurfaceBackend::Display;
+	if (embedDisplay) {
+		imageFormat = core::ImageFormat::R5G6B5_UNORM_PACK16;
+	} else if (imageFormat == core::ImageFormat::Undefined) {
+		imageFormat = core::ImageFormat::R8G8B8A8_UNORM;
+	}
+	log::source().info("Context", "handleAppWindowSurfaceUpdate: preferred format=",
+			core::getImageFormatName(imageFormat), " / ", core::getColorSpaceName(colorSpace));
 
 	if (preferredPresentMode != core::PresentMode::Unsupported) {
 		for (auto &it : info.presentModes) {
