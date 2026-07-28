@@ -209,7 +209,7 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 		auto dynamicData = new (pool) DynamicData;
 		dynamicData->surfaceExtent = _constraints.extent;
 		dynamicData->transform = _constraints.transform;
-		dynamicData->hasGpuSideAtlases = _device->hasDynamicIndexedBuffers();
+		dynamicData->hasGpuSideAtlases = _device->hasBufferDeviceAddresses();
 		dynamicData->pool = pool;
 
 		auto shadowExtent = _input->lights.getShadowExtent(_constraints.getScreenSize());
@@ -1283,6 +1283,11 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		if (!material) {
 			return;
 		}
+		if (material->getImages().empty()) {
+			stappler::log::source().error("MaterialRenderPassHandle",
+					"Material ", materialVertexSpan.material, " has no images");
+			return;
+		}
 
 		pcb.materialPointer =
 				UVec2::convertFromPacked(buf.bindBufferAddress(material->getBuffer()));
@@ -1293,13 +1298,21 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		//pcb.outlineOffset = materialVertexSpan.outlineOffset;
 
 		if (auto a = material->getAtlas()) {
-			pcb.atlasPointer =
-					UVec2::convertFromPacked(buf.bindBufferAddress(a->getBuffer().get()));
+			// Without BDA the font path keeps CPU-only DataAtlas (no GPU buffer).
+			if (auto atlasBuf = a->getBuffer()) {
+				pcb.atlasPointer =
+						UVec2::convertFromPacked(buf.bindBufferAddress(atlasBuf));
+			}
 		}
 
 		auto textureSetIndex = material->getLayoutIndex();
 
 		auto pipeline = material->getPipeline();
+		if (!pipeline || !pipeline->pipeline) {
+			stappler::log::source().error("MaterialRenderPassHandle",
+					"Material ", materialVertexSpan.material, " has no pipeline");
+			return;
+		}
 		buf.cmdBindPipelineWithDescriptors(pipeline);
 
 		if (textureSetIndex != boundTextureSetIndex) {
@@ -1322,6 +1335,9 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		applyDynamicState(commands, buf, materialVertexSpan.state);
 
 		if (materialVertexSpan.particleSystemId > 0) {
+			if (!_particles) {
+				return;
+			}
 
 			auto particleVertexes = _particles->getVertices();
 

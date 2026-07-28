@@ -643,7 +643,10 @@ Vector<const core::CommandBuffer *> FontRenderPassHandle::doPrepareCommands(Fram
 
 	auto allocator = _device->getAllocator();
 
-	if (_device->hasDynamicIndexedBuffers()) {
+	// Font atlas index buffer is consumed via GL_EXT_buffer_reference (BDA), not
+	// via SSBO descriptor-array indexing. Gate on bufferDeviceAddress — V3DV
+	// (Mesa get_features) exposes BDA=true while shaderStorageBufferArrayDynamicIndexing=false.
+	if (_device->hasBufferDeviceAddresses()) {
 		_targetImage =
 				allocator->preallocate(info.key, info, false, instance->data.image->getIndex());
 		_targetAtlas = allocator->preallocate(core::BufferInfo(atlas->getBufferData().size(),
@@ -819,7 +822,7 @@ void FontRenderPassHandle::submitResult(FrameHandle &frame) {
 	auto &input = _fontAttachment->getInput();
 
 	auto atlas = _fontAttachment->getAtlas();
-	if (_device->hasDynamicIndexedBuffers()) {
+	if (_device->hasBufferDeviceAddresses()) {
 		atlas->setBuffer(_targetAtlas);
 	}
 

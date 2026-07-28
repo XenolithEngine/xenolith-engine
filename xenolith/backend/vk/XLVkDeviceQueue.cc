@@ -630,6 +630,12 @@ void CommandBuffer::cmdBindPipeline(ComputePipeline *pipeline) {
 
 void CommandBuffer::cmdBindPipelineWithDescriptors(const core::GraphicPipelineData *data,
 		uint32_t firstSet) {
+	if (!data || !data->pipeline || !data->layout || !data->subpass || !data->subpass->pass
+			|| !data->subpass->pass->impl) {
+		log::source().error("CommandBuffer",
+				"cmdBindPipelineWithDescriptors: null graphic pipeline data");
+		return;
+	}
 	auto texPool = _availableDescriptors[data->layout->index];
 	auto renderPass = static_cast<RenderPass *>(data->subpass->pass->impl.get());
 	if (texPool) {

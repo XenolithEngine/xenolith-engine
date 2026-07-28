@@ -602,9 +602,19 @@ bool ShadowPassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 
 void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &buf) {
 	auto fb = getFramebuffer();
+	if (!fb) {
+		log::source().error("vk::ShadowPass", "prepareMaterialCommands: no framebuffer");
+		VertexPassHandle::prepareMaterialCommands(materials, buf);
+		buf.cmdNextSubpass();
+		buf.cmdNextSubpass();
+		return;
+	}
 	auto currentExtent = fb->getExtent();
 
 	auto drawFullscreen = [&](const core::GraphicPipelineData *pipeline) {
+		if (!pipeline || !pipeline->pipeline) {
+			return;
+		}
 		auto viewport = VkViewport{0.0f, 0.0f, float(currentExtent.width),
 			float(currentExtent.height), 0.0f, 1.0f};
 		buf.cmdSetViewport(0, makeSpanView(&viewport, 1));
@@ -624,7 +634,10 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 
 	uint32_t subpassIdx = 0;
 
-	if (_shadowData->getLightsCount()) {
+	// Always advance through SDF + Shadow subpasses to match the render pass.
+	const bool haveLights = _shadowData && _shadowData->getBuffer() && _shadowData->getLightsCount();
+
+	if (haveLights) {
 		// sdf drawing pipeline
 		subpassIdx = buf.cmdNextSubpass();
 		auto commands = _vertexBuffer->getCommands();
@@ -646,63 +659,71 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		pcb.pseudoSdfOffset = config::VGPseudoSdfOffset;
 		pcb.pseudoSdfMax = config::VGPseudoSdfMax;
 
-		buf.cmdBindPipelineWithDescriptors(solidPipeline);
+		if (solidPipeline && solidPipeline->pipeline) {
+			buf.cmdBindPipelineWithDescriptors(solidPipeline);
 
-		buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0,
-				BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(PSDFConstantData)));
+			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0,
+					BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(PSDFConstantData)));
 
-		clearDynamicState(buf);
+			clearDynamicState(buf);
 
-		for (auto &materialVertexSpan : _vertexBuffer->getShadowSolidData()) {
-			applyDynamicState(commands, buf, materialVertexSpan.state);
+			for (auto &materialVertexSpan : _vertexBuffer->getShadowSolidData()) {
+				applyDynamicState(commands, buf, materialVertexSpan.state);
 
-			buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
-					materialVertexSpan.instanceCount, // instanceCount
-					materialVertexSpan.firstIndex, // firstIndex
-					materialVertexSpan.vertexOffset, // int32_t   vertexOffset
-					materialVertexSpan.firstInstance // uint32_t  firstInstance
-			);
+				buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
+						materialVertexSpan.instanceCount, // instanceCount
+						materialVertexSpan.firstIndex, // firstIndex
+						materialVertexSpan.vertexOffset, // int32_t   vertexOffset
+						materialVertexSpan.firstInstance // uint32_t  firstInstance
+				);
+			}
 		}
 
-		buf.cmdBindPipelineWithDescriptors(sdfPipeline);
+		if (sdfPipeline && sdfPipeline->pipeline) {
+			buf.cmdBindPipelineWithDescriptors(sdfPipeline);
 
-		clearDynamicState(buf);
+			clearDynamicState(buf);
 
-		for (auto &materialVertexSpan : _vertexBuffer->getShadowSdfData()) {
-			applyDynamicState(commands, buf, materialVertexSpan.state);
+			for (auto &materialVertexSpan : _vertexBuffer->getShadowSdfData()) {
+				applyDynamicState(commands, buf, materialVertexSpan.state);
 
-			buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
-					materialVertexSpan.instanceCount, // instanceCount
-					materialVertexSpan.firstIndex, // firstIndex
-					materialVertexSpan.vertexOffset, // int32_t   vertexOffset
-					materialVertexSpan.firstInstance // uint32_t  firstInstance
-			);
+				buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
+						materialVertexSpan.instanceCount, // instanceCount
+						materialVertexSpan.firstIndex, // firstIndex
+						materialVertexSpan.vertexOffset, // int32_t   vertexOffset
+						materialVertexSpan.firstInstance // uint32_t  firstInstance
+				);
+			}
 		}
 
-		ImageMemoryBarrier inImageBarriers[] = {
-			ImageMemoryBarrier(static_cast<Image *>(_sdfImage->getImage()->getImage().get()),
-					VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-					VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
-					VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL)};
+		if (_sdfImage && _sdfImage->getImage() && _sdfImage->getImage()->getImage()) {
+			ImageMemoryBarrier inImageBarriers[] = {
+				ImageMemoryBarrier(static_cast<Image *>(_sdfImage->getImage()->getImage().get()),
+						VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+						VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+						VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL)};
 
-		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-						| VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				VK_DEPENDENCY_BY_REGION_BIT, inImageBarriers);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+							| VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+					VK_DEPENDENCY_BY_REGION_BIT, inImageBarriers);
+		}
 
-		buf.cmdBindPipelineWithDescriptors(backreadPipeline);
+		if (backreadPipeline && backreadPipeline->pipeline) {
+			buf.cmdBindPipelineWithDescriptors(backreadPipeline);
 
-		clearDynamicState(buf);
+			clearDynamicState(buf);
 
-		for (auto &materialVertexSpan : _vertexBuffer->getShadowSdfData()) {
-			applyDynamicState(commands, buf, materialVertexSpan.state);
+			for (auto &materialVertexSpan : _vertexBuffer->getShadowSdfData()) {
+				applyDynamicState(commands, buf, materialVertexSpan.state);
 
-			buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
-					materialVertexSpan.instanceCount, // instanceCount
-					materialVertexSpan.firstIndex, // firstIndex
-					materialVertexSpan.vertexOffset, // int32_t   vertexOffset
-					materialVertexSpan.firstInstance // uint32_t  firstInstance
-			);
+				buf.cmdDrawIndexed(materialVertexSpan.indexCount, // indexCount
+						materialVertexSpan.instanceCount, // instanceCount
+						materialVertexSpan.firstIndex, // firstIndex
+						materialVertexSpan.vertexOffset, // int32_t   vertexOffset
+						materialVertexSpan.firstInstance // uint32_t  firstInstance
+				);
+			}
 		}
 
 		subpassIdx = buf.cmdNextSubpass();
@@ -710,19 +731,21 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		// shadow drawing pipeline
 		auto pipeline = _data->subpasses[subpassIdx]->graphicPipelines.get(
 				StringView(ShadowPass::ShadowPipeline));
-		buf.cmdBindPipelineWithDescriptors(pipeline);
-		buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-				BytesView(reinterpret_cast<const uint8_t *>(&pcb.shadowDataPointer),
-						sizeof(uint64_t)));
-		drawFullscreen(pipeline);
+		if (pipeline && pipeline->pipeline) {
+			buf.cmdBindPipelineWithDescriptors(pipeline);
+			buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+					BytesView(reinterpret_cast<const uint8_t *>(&pcb.shadowDataPointer),
+							sizeof(uint64_t)));
+			drawFullscreen(pipeline);
+		}
 
 	} else {
 		subpassIdx = buf.cmdNextSubpass();
 		subpassIdx = buf.cmdNextSubpass();
 	}
 
-	auto input = _shadowData->getFrameInput();
-	if (input->decorations.borderRadius > 0.0f) {
+	const auto *input = _shadowData ? _shadowData->getFrameInput() : nullptr;
+	if (input && input->decorations.borderRadius > 0.0f) {
 		FrameClipperData data;
 		data.frameSize = Vec2(_constraints.extent.width, _constraints.extent.height);
 		data.radius = input->decorations.borderRadius * _constraints.surfaceDensity;
@@ -740,10 +763,12 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 
 		auto pipeline = _data->subpasses[subpassIdx]->graphicPipelines.get(
 				StringView(ShadowPass::FrameClipperPipeline));
-		buf.cmdBindPipelineWithDescriptors(pipeline);
-		buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-				BytesView(reinterpret_cast<const uint8_t *>(&data), sizeof(FrameClipperData)));
-		drawFullscreen(pipeline);
+		if (pipeline && pipeline->pipeline) {
+			buf.cmdBindPipelineWithDescriptors(pipeline);
+			buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+					BytesView(reinterpret_cast<const uint8_t *>(&data), sizeof(FrameClipperData)));
+			drawFullscreen(pipeline);
+		}
 	}
 }
 
