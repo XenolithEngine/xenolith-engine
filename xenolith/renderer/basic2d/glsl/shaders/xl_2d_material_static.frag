@@ -6,6 +6,11 @@
 // Constant-index MaterialFrag for devices without
 // shaderSampledImageArrayDynamicIndexing (V3DV / V3D 4.2).
 // Entry point name must end with "_static" (see XLVkPipeline).
+//
+// Only texture2D is declared here — V3DV rejects modules that alias
+// texture2D / texture2DArray / texture3D on the same binding. Hello and
+// typical 2d UI only need 2D; Tex2dArray/Tex3d pipelines stay on the
+// dynamic entry (desktop) or are unused on Pi4.
 
 // clang-format off
 
@@ -18,8 +23,6 @@ layout (constant_id = 2) const int IMAGE_TYPE = 0;
 
 layout (set = 0, binding = 0) uniform sampler immutableSamplers[SAMPLERS_ARRAY_SIZE];
 layout (set = 0, binding = 1) uniform texture2D images2d[IMAGES_ARRAY_SIZE];
-layout (set = 0, binding = 1) uniform texture2DArray images2dArray[IMAGES_ARRAY_SIZE];
-layout (set = 0, binding = 1) uniform texture3D images3d[IMAGES_ARRAY_SIZE];
 
 #include "XL2dGlslGradient.h"
 
@@ -39,19 +42,9 @@ layout (std430, push_constant) uniform pcb {
 };
 
 #define SAMPLER2D_0 sampler2D( images2d[0], immutableSamplers[0] )
-#define SAMPLER2DARR_0 sampler2DArray( images2dArray[0], immutableSamplers[0] )
-#define SAMPLER3D_0 sampler3D( images3d[0], immutableSamplers[0] )
 
 vec2 getTextureSize_pc() {
-	vec2 size;
-	if (IMAGE_TYPE == 1) {
-		size = textureSize(images2dArray[0], 0).xy;
-	} else if (IMAGE_TYPE == 2) {
-		size = textureSize(images3d[0], 0).xy;
-	} else {
-		size = textureSize(images2d[0], 0);
-	}
-	return size;
+	return textureSize(images2d[0], 0);
 }
 
 float getOutlineSample(in vec2 coord, float initColor, float z) {
@@ -65,13 +58,7 @@ float getOutlineSample(in vec2 coord, float initColor, float z) {
 
 	for (uint i = 0; i < nsamples; ++ i) {
 		for (uint j = 0; j < nsamples; ++ j) {
-			if (IMAGE_TYPE == 1) {
-				accum += texture(SAMPLER2DARR_0, vec3(origin + vec2(step.x * i, step.y * j), z)).a;
-			} else if (IMAGE_TYPE == 2) {
-				accum += texture(SAMPLER3D_0, vec3(origin + vec2(step.x * i, step.y * j), z)).a;
-			} else {
-				accum += texture(SAMPLER2D_0, origin + vec2(step.x * i, step.y * j)).a;
-			}
+			accum += texture(SAMPLER2D_0, origin + vec2(step.x * i, step.y * j)).a;
 		}
 	}
 
@@ -81,14 +68,8 @@ float getOutlineSample(in vec2 coord, float initColor, float z) {
 }
 
 void main() {
-	vec4 textureColor;
-	if (IMAGE_TYPE == 1) {
-		textureColor = texture(SAMPLER2DARR_0, fragTexCoord.xyz);
-	} else if (IMAGE_TYPE == 2) {
-		textureColor = texture(SAMPLER3D_0, fragTexCoord.xyz);
-	} else {
-		textureColor = texture(SAMPLER2D_0, fragTexCoord.xy);
-	}
+	// IMAGE_TYPE specialization is ignored: static path is 2D-only.
+	vec4 textureColor = texture(SAMPLER2D_0, fragTexCoord.xy);
 
 	if (outlineOffset > 0.0) {
 		float outlineSample = getOutlineSample(fragTexCoord.xy, textureColor.a, fragTexCoord.z);
