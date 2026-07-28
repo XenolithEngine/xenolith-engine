@@ -223,6 +223,13 @@ const WindowInfo *AppWindow::getInfo() const {
 	return nullptr;
 }
 
+sprt::window::SurfaceBackend AppWindow::getSurfaceBackend() const {
+	if (_window) {
+		return _window->getSurfaceInterfaceInfo().backend;
+	}
+	return sprt::window::SurfaceBackend::Surface;
+}
+
 core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cfg) const {
 	core::ImageInfo swapchainImageInfo;
 	swapchainImageInfo.format = cfg.imageFormat;
