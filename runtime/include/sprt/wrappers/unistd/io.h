@@ -38,7 +38,9 @@ struct _stat {
 
 #ifndef _O_BINARY
 #define _O_BINARY 0
-#ifndef _LIBCPP_VERSION
+
+// libc++ posix_compat redefines this unconditionally
+#ifndef POSIX_COMPAT_H
 #define O_BINARY _O_BINARY
 #endif
 #endif
@@ -81,6 +83,7 @@ struct _stat {
 #ifndef st_atime
 #define st_atime st_atim.tv_sec
 #define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
 #endif
 
 typedef __SPRT_ID(off_t) off_t;
@@ -183,6 +186,21 @@ int fopen_s(__SPRT_ID(FILE) * *f, const char *path, const char *mode) SPRT_UMBRE
 		return EINVAL;
 	}
 	*f = __sprt_fopen(path, mode);
+	if (!*f) {
+		return __sprt_errno;
+	}
+	return 0;
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _wfopen_s(__SPRT_ID(FILE) * *f, const wchar_t *path, const wchar_t *mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	if (!f) {
+		return EINVAL;
+	}
+	*f = _wfopen(path, mode);
 	if (!*f) {
 		return __sprt_errno;
 	}

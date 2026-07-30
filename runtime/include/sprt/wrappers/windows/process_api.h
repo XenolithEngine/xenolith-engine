@@ -140,6 +140,14 @@ __SPRT_WIN_IMPORT WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR l
 		LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
 		LPPROCESS_INFORMATION lpProcessInformation);
 
+__SPRT_WIN_IMPORT WINAPI LPSTR GetCommandLineA(VOID);
+
+__SPRT_WIN_IMPORT WINAPI BOOL CreateProcessA(LPCSTR lpApplicationName, LPSTR lpCommandLine,
+		LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
+		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
+		LPCSTR lpCurrentDirectory, LPSTARTUPINFOA lpStartupInfo,
+		LPPROCESS_INFORMATION lpProcessInformation);
+
 __SPRT_WIN_IMPORT WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetProcessMemoryInfo(HANDLE Process,

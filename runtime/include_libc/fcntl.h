@@ -88,7 +88,11 @@ THE SOFTWARE.
 
 #ifndef _O_BINARY
 #define _O_BINARY 0
+
+// libc++ posix_compat redefines this unconditionally
+#ifndef POSIX_COMPAT_H
 #define O_BINARY _O_BINARY
+#endif
 #endif
 
 #ifndef AT_FDCWD

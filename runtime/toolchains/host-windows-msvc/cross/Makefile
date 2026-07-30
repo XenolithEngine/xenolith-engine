@@ -56,6 +56,13 @@ unexport OUT_SYSROOT := ../../hosts/$(SP_ARCH_CLANG)
 unexport ROOT_DIR := $(abspath ../..)
 unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
+# Where target-windows/init-target.mk stages sprt.dll. Everything built against that
+# sysroot imports the runtime rather than embedding it, so the DLL has to ship next to
+# the toolchain binaries - Windows resolves imports from the directory of the running
+# image, and there is no rpath equivalent.
+unexport SPRT_INTERMEDIATE_BIN := \
+	$(ROOT_DIR)/target-windows/intermediate/$(SP_ARCH_CLANG)/usr/bin
+
 include stage0.mk
 
 $(OUT_SYSROOT)/release: $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
@@ -88,6 +95,7 @@ $(OUT_SYSROOT)/release: $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/lldb-dap.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LTO.dll,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/liblldb.dll,$(OUT_SYSROOT)/bin)
+	$(call rule_cp,$(SPRT_INTERMEDIATE_BIN)/sprt.dll,$(OUT_SYSROOT)/bin)
 	@echo '$(GIT_TAG)' > $@
 
 $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))

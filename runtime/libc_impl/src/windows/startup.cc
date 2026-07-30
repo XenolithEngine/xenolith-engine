@@ -43,8 +43,6 @@ THE SOFTWARE.
 #include "initterm.h"
 #include "dll/dllloader.h"
 
-#define DEFAULT_SECURITY_COOKIE 0x0000'2B99'2DDF'A232ll
-
 #if !defined(SPRT_BUILD_SHARED_RUNTIME)
 __cdecl int main(int argc, const char *argv[]);
 #endif
@@ -54,80 +52,16 @@ struct NonTrivialType {
 	~NonTrivialType() { printf("%s\n", "destroyed"); }
 };
 
-extern "C" {
-
-/*
-	Static initializers
-*/
-
-static __declspec(allocate(".CRT$XIA")) __ifuncptr __c_init_start[] = {nullptr};
-static __declspec(allocate(".CRT$XIZ")) __ifuncptr __c_init_end[] = {nullptr};
-static __declspec(allocate(".CRT$XCA")) __funcptr __cxx_init_start[] = {nullptr};
-static __declspec(allocate(".CRT$XCZ")) __funcptr __cxx_init_end[] = {nullptr};
-
-/*
-	TLS routines
-*/
-
-void WINAPI __dyn_tls_init(PVOID, DWORD dwReason, LPVOID) noexcept;
-
-ULONG _tls_index = 0;
-
-#pragma data_seg(".tls")
-
-static __declspec(allocate(".tls")) char _tls_index_start = 0;
-
-#pragma data_seg(".tls$ZZZ")
-
-static __declspec(allocate(".tls$ZZZ")) char _tls_index_end = 0;
-
-#pragma data_seg()
-
-static __declspec(allocate(".CRT$XLA")) PIMAGE_TLS_CALLBACK __tls_storage_start = 0;
-static __declspec(allocate(".CRT$XLZ")) PIMAGE_TLS_CALLBACK __tls_storage_end = 0;
-
-__declspec(allocate(".rdata$T")) extern const IMAGE_TLS_DIRECTORY64 _tls_used = {
-	(ULONGLONG)&_tls_index_start,
-	(ULONGLONG)&_tls_index_end,
-	(ULONGLONG)&_tls_index,
-	(ULONGLONG)(&__tls_storage_start + 1),
-	(ULONG)0,
-	{(ULONG)0},
-};
-
-extern const PIMAGE_TLS_CALLBACK __dyn_tls_init_callback = __dyn_tls_init;
-
-static __declspec(allocate(".CRT$XLC")) PIMAGE_TLS_CALLBACK __tls_delegate = __dyn_tls_init;
-static __declspec(allocate(".CRT$XDA")) __funcptr __tls_init_start_fn = nullptr;
-static __declspec(allocate(".CRT$XDZ")) __funcptr __tls_init_end_fn = nullptr;
-
-thread_local bool __tls_guard = false;
-
-void __dyn_tls_init(PVOID, DWORD dwReason, LPVOID) noexcept {
-	if (dwReason != DLL_THREAD_ATTACH || __tls_guard == true) {
-		return;
-	}
-
-	__tls_guard = true;
-
-	__initterm(&__tls_init_start_fn, &__tls_init_end_fn);
-}
-
-void __dyn_tls_on_demand_init() noexcept {
-	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr); //
-}
-
-int _fltused;
-
-} // extern "C"
-
+// The .CRT initializer sections, the TLS directory and _fltused - everything a PE image
+// carries for itself rather than sharing with the rest of the process. The executable
+// half of the shared-runtime build includes the same subunit; see its header comment.
+#include "crt_image.cc"
 
 /*
 	/Zc:threadSafeInit support
 */
 
 __SPRT_C_FUNC sprt::atomic<int> _Init_global_epoch = sprt::Min<int>;
-__SPRT_C_FUNC __declspec(thread) int _Init_thread_epoch = sprt::Min<int>;
 
 // With some compiler support, it's implementable with a pure futex, but not today...
 static sprt::mutex s_threadGuardMutex;
@@ -168,27 +102,24 @@ __SPRT_C_FUNC void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noe
 	GS support (based on https://github.com/sysfce2/nocrt/blob/main/nocrt_exe.c)
 */
 
-__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie = DEFAULT_SECURITY_COOKIE;
-__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie_complement =
-		~(DEFAULT_SECURITY_COOKIE);
-
-__SPRT_C_FUNC void __fastcall __security_check_cookie(UINT_PTR cookie) __SPRT_NOEXCEPT {
-	if (cookie != __security_cookie) {
-		__debugbreak();
-	}
-}
-
-SAFELOADER UINT_PTR __gencookie() {
-	auto loader = sprt::DllLoader::get();
+// The cookie variables and __security_check_cookie live in crt_image.cc: they are
+// per-image, and the executable half of a shared-runtime build needs its own set. Only
+// the entropy source is here, because reaching it needs the DLL loader.
+//
+// Exported so that half can seed its own cookie from the same source; declared in
+// <sprt/wrappers/windows/app_startup.h>.
+__SPRT_C_FUNC SPRT_API __declspec(safebuffers) UINT_PTR __sprt_gencookie() {
 	UINT_PTR cookie = 0;
-	if (__security_cookie != DEFAULT_SECURITY_COOKIE) {
+
+	auto loader = sprt::DllLoader::get();
+	if (loader) {
 		HMODULE BCryptPrimitives = loader->__LoadLibraryW(L"BCryptPrimitives.dll");
 		if (BCryptPrimitives) {
 			BOOL (*ProcessPrng)(PBYTE, SIZE_T) = nullptr;
 			ProcessPrng = reinterpret_cast<decltype(ProcessPrng)>(
 					loader->__GetProcAddress(BCryptPrimitives, "ProcessPrng"));
-			if (ProcessPrng) {
-				ProcessPrng((PBYTE)&__security_cookie, sizeof(__security_cookie));
+			if (ProcessPrng && !ProcessPrng((PBYTE)&cookie, sizeof(cookie))) {
+				cookie = 0;
 			}
 			loader->__FreeLibrary(BCryptPrimitives);
 		}
@@ -206,22 +137,12 @@ SAFELOADER UINT_PTR __gencookie() {
 		cookie = (counter ^ 0x7A2D'9F1B'4E63'C082ll) & 0x0000'ffff'ffff'ffffll;
 	}
 
-	if (cookie == DEFAULT_SECURITY_COOKIE) {
-		cookie = DEFAULT_SECURITY_COOKIE + 1;
+	// The default doubles as an "uninitialized" marker for callers, so never hand it back.
+	if (cookie == __SPRT_DEFAULT_SECURITY_COOKIE) {
+		cookie = __SPRT_DEFAULT_SECURITY_COOKIE + 1;
 	}
 
 	return cookie;
-}
-
-SAFELOADER void __security_init_cookie() {
-	if (__security_cookie != DEFAULT_SECURITY_COOKIE) {
-		return;
-	}
-
-	auto cookie = __gencookie();
-
-	__security_cookie = cookie;
-	__security_cookie_complement = ~cookie;
 }
 
 // The libc struct lives in this uninitialized static memory block,
@@ -266,10 +187,13 @@ static void __sprt_install_clean_crash() {
 // the executable goes on to call main(), the DLL returns to the loader, which then
 // initializes the rest of the process.
 //
-// The __c_init_*/__cxx_init_* markers below are per-image: they bracket the .CRT
-// sections of whichever image this translation unit was linked into, so the DLL runs
-// the DLL's initializers here and the application runs its own from its startup stub.
-static int __sprt_runtime_attach() {
+// The __sprt_image_init_* helpers come from crt_image.cc and act on the image this
+// translation unit was linked into, so the DLL runs the DLL's initializers here and the
+// application runs its own from its startup stub.
+// safebuffers: this function seeds the image's /GS cookie partway through, so it must
+// not be instrumented itself - a prologue that captured the pre-seed value would check
+// against the seeded one on return and trap.
+__declspec(safebuffers) static int __sprt_runtime_attach() {
 	// Load all required DLLs for SPRT.
 	// If some DLLs are missed, or some required functions are missed - abort immediately
 	auto loader = sprt::DllLoader::construct();
@@ -283,8 +207,8 @@ static int __sprt_runtime_attach() {
 	// Installed before static initializers and main() so a crash anywhere is covered.
 	__sprt_install_clean_crash();
 
-	// Init security cookie for stack protection
-	{ __security_init_cookie(); }
+	// Seed this image's /GS cookie. Needs the loader, so it goes after load() above.
+	__sprt_image_init_cookie();
 
 	// Create __libc struct in static memory block
 	// this will initialize fds locales, exceptions and all other required libc features
@@ -292,27 +216,22 @@ static int __sprt_runtime_attach() {
 
 	__libc_main_thread = libc->mainThread;
 
-	// Show legacy floating point library support flag
-	_fltused = 1;
-
 	// At this moment, there are no other code running in application, except for the
 	// entry point. No other code -> no other threads -> no race conditions possible ->
 	// no need for locking. This will change after static initializers calling.
 
 	// Call c initializers
-	if (__initterm(__c_init_start, __c_init_end) != 0) {
+	if (__sprt_image_init_c() != 0) {
 		return LOADER_ERROR_STATIC_C_INIT_FAILED; // Error in c initialization
 	}
 
 	// Call static c++ constructors
-	if (__initterm(__cxx_init_start, __cxx_init_end) != 0) {
+	if (__sprt_image_init_cxx() != 0) {
 		return LOADER_ERROR_STATIC_CXX_INIT_FAILED; // Error in c++ initialization
 	}
 
-	// Call thread_local constructors for the main thread.
-	// If static initializers uses thread_local variables - thread_local
-	// constructors should be already called, but, __tls_guard handles this case
-	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+	// Call thread_local constructors for the main thread
+	__sprt_image_init_tls();
 
 	// This will attach and initialize main thread as pthread, if it was not initializd before
 	__sprt_pthread_self();
@@ -328,7 +247,7 @@ static int __sprt_runtime_attach() {
 //
 // lld-link uses _DllMainCRTStartup as the default entry point for /DLL, so no explicit
 // -Wl,-entry: is needed.
-__SPRT_C_FUNC BOOL WINAPI _DllMainCRTStartup(void *, DWORD reason, void *) {
+__SPRT_C_FUNC __declspec(safebuffers) BOOL WINAPI _DllMainCRTStartup(void *, DWORD reason, void *) {
 	switch (reason) {
 	case DLL_PROCESS_ATTACH:
 		if (__sprt_runtime_attach() != 0) {
@@ -368,6 +287,10 @@ __SPRT_C_FUNC BOOL WINAPI _DllMainCRTStartup(void *, DWORD reason, void *) {
 // manageWsa is false when the caller already brought Winsock up for the whole process
 // (the shared runtime does so in DLL_PROCESS_ATTACH and tears it down in
 // DLL_PROCESS_DETACH); the freestanding executable owns that lifetime itself.
+
+__SPRT_C_FUNC SPRT_API int __argc = 0;
+__SPRT_C_FUNC SPRT_API char **__argv = nullptr;
+
 static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 	int ret = 0;
 
@@ -449,6 +372,9 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 			}
 		}
 
+		__argc = outArgc;
+		__argv = argvTarget;
+
 		ret = mainFn(outArgc, (const char **)argvTarget);
 
 		if (manageWsa && wsaStartupResult == 0) {
@@ -483,7 +409,10 @@ __SPRT_C_FUNC SPRT_API int __sprt_app_startup(__sprt_main_fn mainFn) {
 
 #else // SPRT_BUILD_SHARED_RUNTIME
 
-__SPRT_C_FUNC int mainCRTStartup() {
+// weak for the same reason as the shared-runtime stub's entry point: an application that
+// links the static runtime and wants to own its entry point can define mainCRTStartup
+// itself, and the strong definition wins rather than colliding with this one.
+__SPRT_C_FUNC __attribute__((weak)) __declspec(safebuffers) int mainCRTStartup() {
 	auto ret = __sprt_runtime_attach();
 	if (ret != 0) {
 		return ret;

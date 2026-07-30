@@ -885,6 +885,11 @@ long int sysconf(int __name) SPRT_UMBRELLA_END
 }
 #endif
 
+/*
+	Guarded because <process.h> declares getpid too - that is where MSVC puts it.
+*/
+#ifndef __SPRT_GETPID_DEFINED
+#define __SPRT_GETPID_DEFINED
 SPRT_UMBRELLA_FUNC
 pid_t getpid(void) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -892,6 +897,7 @@ pid_t getpid(void) SPRT_UMBRELLA_END
 	return __sprt_getpid();
 }
 #endif
+#endif // __SPRT_GETPID_DEFINED
 
 #if __SPRT_CONFIG_HAVE_UNISTD_GETPPID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC

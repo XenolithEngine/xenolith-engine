@@ -168,8 +168,8 @@ public:
 };
 
 using new_handler = void (*)();
-new_handler set_new_handler(new_handler) noexcept;
-new_handler get_new_handler() noexcept;
+SPRT_API new_handler set_new_handler(new_handler) noexcept;
+SPRT_API new_handler get_new_handler() noexcept;
 
 } // namespace std
 

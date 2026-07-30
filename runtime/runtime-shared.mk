@@ -49,10 +49,14 @@ MODULE_RUNTIME_SHARED_PRIVATE_STANDALONE := 1
 MODULE_RUNTIME_SHARED_DEPENDS_ON :=
 MODULE_RUNTIME_SHARED_SRCS_DIRS :=
 
-# The executable-side CRT startup stub. It carries the parts that are per-image on PE
-# and therefore cannot be imported: the .CRT initializer sections and the entry point.
-MODULE_RUNTIME_SHARED_SRCS_OBJS := \
-	$(RUNTIME_SHARED_MODULE_DIR)/libc_impl/app/windows/app_startup.cpp
+# No sources: the executable-side CRT startup stub - the per-image parts that cannot be
+# imported (.CRT sections, TLS directory, /GS cookie, entry point) - is baked into
+# sprt.lib as an archive member by the runtime's own Makefile, and the linker pulls it in
+# to resolve the entry point.
+#
+# A consumer that wants its own entry point just defines mainCRTStartup: the one in the
+# archive member is a weak external, so the strong definition wins.
+MODULE_RUNTIME_SHARED_SRCS_OBJS :=
 
 MODULE_RUNTIME_SHARED_INCLUDES_DIRS :=
 

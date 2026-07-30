@@ -153,11 +153,11 @@ inline namespace __cxx_thread {
 
 // namespace this_thread
 namespace this_thread {
-thread::id get_id() noexcept;
+SPRT_API thread::id get_id() noexcept;
 
-void yield() noexcept;
+SPRT_API void yield() noexcept;
 
-void sleep_for(const timeout_t &rel_time);
+SPRT_API void sleep_for(const timeout_t &rel_time);
 } // namespace this_thread
 
 } // namespace __cxx_thread

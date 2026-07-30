@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/sys/__sprt_random.h>
+#include <sprt/wrappers/windows/direct.h>
 
 #include "../../include/__impl_libc.h"
 #include "unistd.h"
@@ -1222,7 +1223,7 @@ int pipe2(int fds[2], int flags) __SPRT_NOEXCEPT {
 
 int pipe(int fds[2]) __SPRT_NOEXCEPT { return pipe2(fds, __SPRT_O_CLOEXEC); }
 
-char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
+static char *__getcwd_impl(char *buf, size_t bufSize, bool posix) __SPRT_NOEXCEPT {
 	if (buf && bufSize == 0) {
 		__sprt_errno = EINVAL;
 		return nullptr;
@@ -1263,14 +1264,21 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 		buf[retLen] = 0;
 	}
 
-	if (!__sprt_fpath_is_posix(buf, retLen)) {
-		// convert path in place
+	if (posix && !__sprt_fpath_is_posix(buf, retLen)) {
 		if (__sprt_fpath_to_posix(buf, retLen, buf, bufSize) == 0) {
 			*__sprt___errno_location() = EINVAL;
 			return nullptr;
 		}
 	}
 	return buf;
+}
+
+char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
+	return __getcwd_impl(buf, bufSize, true);
+}
+
+char *_getcwd(char *buf, int bufSize) __SPRT_NOEXCEPT {
+	return __getcwd_impl(buf, (bufSize < 0) ? (size_t)0 : (size_t)bufSize, false);
 }
 
 wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath, size_t maxLength) __SPRT_NOEXCEPT {

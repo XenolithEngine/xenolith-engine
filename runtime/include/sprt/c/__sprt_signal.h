@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SIGNAL_H_
 
 #include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/bits/__sprt_int.h>
 
 #define __SPRT_SIG_BLOCK 0
@@ -62,6 +63,7 @@ SPRT_API int __SPRT_ID(
 
 SPRT_API __SPRT_ID(sighandler) __SPRT_ID(signal)(int, __SPRT_ID(sighandler));
 SPRT_API int __SPRT_ID(raise)(int);
+SPRT_API int __SPRT_ID(kill)(__SPRT_ID(pid_t), int);
 
 __SPRT_END_DECL
 

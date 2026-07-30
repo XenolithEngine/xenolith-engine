@@ -310,6 +310,9 @@ $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-no-delayload/0001-Support-disable-shell32-ole32-delay-load-no-delayimp.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0001-lldb-Defer-to-sprt-libc-in-PosixApi.h.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0002-lldb-Use-real-terminal-interface-on-sprt-libc.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0003-compiler-rt-Build-ORC-runtime-as-C-20.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare

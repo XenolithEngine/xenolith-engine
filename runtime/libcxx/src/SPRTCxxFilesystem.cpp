@@ -22,6 +22,9 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <filesystem>: path/parser, directory_entry+iterator, operations, filesystem_error, filesystem_clock, int128 builtins (filesystem/*.cpp).
 
+// pre-include posix_compat to silence redefinition varinigs - sprt will adopt libc++ requirements for this TU
+#include "libcxx/filesystem/posix_compat.h"
+
 #include "libcxx/filesystem/path.cpp"
 #include "libcxx/filesystem/directory_entry.cpp"
 #include "libcxx/filesystem/directory_iterator.cpp"

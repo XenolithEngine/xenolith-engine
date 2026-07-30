@@ -68,12 +68,22 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 
 	// ReadFile's count is a DWORD; a size_t request may exceed 4 GiB, so clamp
 	// each chunk to a DWORD-sized maximum to avoid silent truncation.
-	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	const DWORD CHUNK_MAX = 0xFFFF'0000u; // page-aligned cap below 4 GiB
 	DWORD chunk = (nbytes > CHUNK_MAX) ? CHUNK_MAX : (DWORD)nbytes;
 
 	DWORD read;
 	if (!ReadFile(fp->handle, buf, chunk, &read, NULL)) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		DWORD err = GetLastError();
+
+		if (err == ERROR_BROKEN_PIPE || err == ERROR_PIPE_NOT_CONNECTED
+				|| err == ERROR_HANDLE_EOF) {
+			if (offset) {
+				SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
+			}
+			return 0;
+		}
+
+		__sprt_errno = platform::lastErrorToErrno(err);
 		// pread must not change the file offset, even on error
 		if (offset) {
 			SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
@@ -117,11 +127,16 @@ static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			return -1;
 		}
+	} else if (fp->flags & __SPRT_O_APPEND) {
+		if (!SetFilePointerEx(fp->handle, LARGE_INTEGER{{0, 0}}, NULL, FILE_END)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 	}
 
 	// WriteFile's count is a DWORD; a size_t request may exceed 4 GiB, so clamp
 	// each chunk to a DWORD-sized maximum to avoid silent truncation.
-	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	const DWORD CHUNK_MAX = 0xFFFF'0000u; // page-aligned cap below 4 GiB
 	DWORD chunk = (nbytes > CHUNK_MAX) ? CHUNK_MAX : (DWORD)nbytes;
 
 	DWORD written;
@@ -201,8 +216,18 @@ static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
 			fdSlot->ops->fo_close(fdSlot);
 		}
 
-		*fdSlot = __fd_slot{.handle = newHandle, .ops = &libc->fdFileOps, .flags = fp->flags,
+		*fdSlot = __fd_slot{.handle = newHandle,
+			.ops = &libc->fdFileOps,
+			.flags = fp->flags,
 			.mode = fp->mode};
+
+		switch (*target) {
+		case __libc::STDIN_FD: SetStdHandle(STD_INPUT_HANDLE, newHandle); break;
+		case __libc::STDOUT_FD: SetStdHandle(STD_OUTPUT_HANDLE, newHandle); break;
+		case __libc::STDERR_FD: SetStdHandle(STD_ERROR_HANDLE, newHandle); break;
+		default: break;
+		}
+
 		return *target;
 	}
 }
@@ -292,7 +317,7 @@ static bool __file_lock_range(HANDLE h, const struct flock *fl, ULARGE_INTEGER *
 	}
 
 	offset->QuadPart = (uint64_t)start;
-	length->QuadPart = (len == 0) ? (0xFFFFFFFFFFFFFFFFull - (uint64_t)start) : (uint64_t)len;
+	length->QuadPart = (len == 0) ? (0xFFFF'FFFF'FFFF'FFFFull - (uint64_t)start) : (uint64_t)len;
 	return true;
 }
 
@@ -341,7 +366,7 @@ static int __file_lock(__fd_slot *fp, int cmd, struct flock *fl) {
 			// type or owning process. Report a write lock held by an unknown
 			// pid, which is the conservative answer for any caller.
 			fl->l_type = __SPRT_F_WRLCK;
-			fl->l_pid = (__SPRT_ID(pid_t))-1;
+			fl->l_pid = (__SPRT_ID(pid_t)) - 1;
 			return 0;
 		}
 		__sprt_errno = platform::lastErrorToErrno(err);
@@ -390,8 +415,7 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 
 	if (mode == __fd_ctl_mode::fnctl) {
 		switch (cmd) {
-		// fds are close-on-exec (non-inheritable) by default on this platform.
-		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC); break;
+		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, 0); break;
 		case __SPRT_F_DUPFD_CLOEXEC: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC); break;
 		case __SPRT_F_GETFD: {
 			DWORD flags = 0;
@@ -458,9 +482,7 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 		case __SPRT_F_SETOWN_EX:
 		case __SPRT_F_GETSIG:
 		case __SPRT_F_SETSIG:
-		case __SPRT_F_GETOWNER_UIDS:
-			__sprt_errno = ENOSYS;
-			return -1;
+		case __SPRT_F_GETOWNER_UIDS: __sprt_errno = ENOSYS; return -1;
 		}
 	} else if (mode == __fd_ctl_mode::ioctl) {
 		switch (cmd) {
@@ -516,7 +538,7 @@ static ssize_t __file_readv(__fd_slot *fp, const struct iovec *iov, int iovcnt) 
 
 	// ReadFile's count is a DWORD; an iov_len may exceed 4 GiB, so drain each
 	// segment in DWORD-sized chunks to avoid silent truncation.
-	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	const DWORD CHUNK_MAX = 0xFFFF'0000u; // page-aligned cap below 4 GiB
 	ssize_t totalBytes = 0;
 	for (int i = 0; i < iovcnt; i++) {
 		size_t remaining = iov[i].iov_len;
@@ -558,7 +580,7 @@ static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt)
 
 	// WriteFile's count is a DWORD; an iov_len may exceed 4 GiB, so drain each
 	// segment in DWORD-sized chunks to avoid silent truncation.
-	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	const DWORD CHUNK_MAX = 0xFFFF'0000u; // page-aligned cap below 4 GiB
 	ssize_t totalWritten = 0;
 	for (int i = 0; i < iovcnt; i++) {
 		size_t remaining = iov[i].iov_len;
