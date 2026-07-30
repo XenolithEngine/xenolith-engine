@@ -9,3 +9,5 @@ EXPORTS
 	GetModuleFileNameExA
 	GetModuleFileNameExW
 	GetModuleInformation
+	GetMappedFileNameW
+	GetMappedFileNameA

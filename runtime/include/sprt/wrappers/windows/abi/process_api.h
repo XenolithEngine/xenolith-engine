@@ -174,6 +174,32 @@ typedef struct _STARTUPINFOEXW {
 	LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList;
 } STARTUPINFOEXW, *LPSTARTUPINFOEXW;
 
+typedef struct _STARTUPINFOA {
+	DWORD cb;
+	LPSTR lpReserved;
+	LPSTR lpDesktop;
+	LPSTR lpTitle;
+	DWORD dwX;
+	DWORD dwY;
+	DWORD dwXSize;
+	DWORD dwYSize;
+	DWORD dwXCountChars;
+	DWORD dwYCountChars;
+	DWORD dwFillAttribute;
+	DWORD dwFlags;
+	WORD wShowWindow;
+	WORD cbReserved2;
+	LPBYTE lpReserved2;
+	HANDLE hStdInput;
+	HANDLE hStdOutput;
+	HANDLE hStdError;
+} STARTUPINFOA, *LPSTARTUPINFOA;
+
+typedef struct _STARTUPINFOEXA {
+	STARTUPINFOA StartupInfo;
+	LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList;
+} STARTUPINFOEXA, *LPSTARTUPINFOEXA;
+
 typedef struct _SHELLEXECUTEINFOW {
 	DWORD cbSize; // in, required, sizeof of this structure
 	ULONG fMask; // in, SEE_MASK_XXX values

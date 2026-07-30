@@ -8,3 +8,4 @@ EXPORTS
 	SymGetSymFromAddr64
 	SymGetLineFromAddr64
 	UnDecorateSymbolName
+	MiniDumpWriteDump

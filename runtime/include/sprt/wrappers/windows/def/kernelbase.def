@@ -32,6 +32,7 @@ EXPORTS
 	GetConsoleMode
 	SetConsoleMode
 	SetConsoleTextAttribute
+	SetConsoleCursorPosition
 	WriteConsoleW
 	CreateFileW
 	CreateFileA

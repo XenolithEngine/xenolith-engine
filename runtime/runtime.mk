@@ -39,6 +39,8 @@ MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
 # export side of the ABI (__declspec(dllexport) on Windows) and swaps the freestanding
 # entry point from mainCRTStartup to _DllMainCRTStartup.
 ifeq ($(SPRT_SHARED),1)
+# This alone also settles libc++: __config_site derives _LIBCPP_BUILDING_LIBRARY from it,
+# so every TU of the shared runtime agrees that the visibility annotations mean dllexport.
 MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 

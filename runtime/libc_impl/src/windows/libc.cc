@@ -84,6 +84,8 @@ void __init_default_fds(__libc *libc) {
 	libc->fdDispatch->bits.set(__libc::STDIN_FD);
 	auto &stdinFd = libc->fdPages[0]->fds[__libc::STDIN_FD];
 	stdinFd.ops = &libc->fdFileOps;
+	stdinFd.flags = __SPRT_O_RDONLY;
+	stdinFd.mode = 0;
 	stdinFd.handle = GetStdHandle(STD_INPUT_HANDLE);
 	if (stdinFd.handle == INVALID_HANDLE_VALUE) {
 		stdinFd.handle = nullptr;
@@ -92,6 +94,8 @@ void __init_default_fds(__libc *libc) {
 	libc->fdDispatch->bits.set(__libc::STDOUT_FD);
 	auto &stdoutFd = libc->fdPages[0]->fds[__libc::STDOUT_FD];
 	stdoutFd.ops = &libc->fdFileOps;
+	stdoutFd.flags = __SPRT_O_WRONLY;
+	stdoutFd.mode = 0;
 	stdoutFd.handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (stdoutFd.handle == INVALID_HANDLE_VALUE) {
 		stdoutFd.handle = nullptr;
@@ -100,6 +104,8 @@ void __init_default_fds(__libc *libc) {
 	libc->fdDispatch->bits.set(__libc::STDERR_FD);
 	auto &stderrFd = libc->fdPages[0]->fds[__libc::STDERR_FD];
 	stderrFd.ops = &libc->fdFileOps;
+	stderrFd.flags = __SPRT_O_WRONLY;
+	stderrFd.mode = 0;
 	stderrFd.handle = GetStdHandle(STD_ERROR_HANDLE);
 	if (stderrFd.handle == INVALID_HANDLE_VALUE) {
 		stderrFd.handle = nullptr;
@@ -145,10 +151,27 @@ int _open_osfhandle(intptr_t osfhandle, int flags) __SPRT_NOEXCEPT {
 	if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
 		return -1;
 	}
-	// Adopt the handle into a regular file fd. The MSVC _O_* flags are passed through as
-	// the slot's open flags; callers that pass 0 (the common case) get the default r/w
-	// stream behaviour of the file ops table.
+	// Adopt the handle into a regular file fd.
+
+	auto openFlags = static_cast<uint32_t>(flags) & ~(uint32_t)__SPRT_O_ACCMODE;
+
+	PUBLIC_OBJECT_BASIC_INFORMATION obi;
+	ULONG obiLen = 0;
+	bool readable = true;
+	bool writable = true;
+	if (NtQueryObject(handle, ObjectBasicInformation, &obi, sizeof(obi), &obiLen) >= 0) {
+		readable = (obi.GrantedAccess & (FILE_READ_DATA | GENERIC_READ | GENERIC_ALL)) != 0;
+		writable = (obi.GrantedAccess
+						   & (FILE_WRITE_DATA | FILE_APPEND_DATA | GENERIC_WRITE | GENERIC_ALL))
+				!= 0;
+		if (!readable && !writable) {
+			readable = true;
+		}
+	}
+
+	openFlags |= writable ? (readable ? __SPRT_O_RDWR : __SPRT_O_WRONLY) : __SPRT_O_RDONLY;
+
 	auto libc = sprt::__libc::get();
-	int fd = libc->create_fd(handle, &libc->fdFileOps, static_cast<uint32_t>(flags), 0);
+	int fd = libc->create_fd(handle, &libc->fdFileOps, openFlags, 0);
 	return fd < 0 ? -1 : fd;
 }

@@ -240,6 +240,9 @@ void performFenvSignalTest();
 // map::emplace, move-only element support (vector/list/map/set move ctor)
 void performStlFixesTest();
 
+// <signal.h> kill(): liveness probe, delivery to self, ESRCH/EINVAL paths
+void performKillTest();
+
 } // namespace sprt::test
 
 #endif // TESTS_LIBC_TESTS_H

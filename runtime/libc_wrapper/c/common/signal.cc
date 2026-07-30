@@ -115,4 +115,8 @@ __SPRT_C_FUNC int __SPRT_ID(raise)(int sig) {
 	return ::raise(sig); //
 }
 
+__SPRT_C_FUNC int __SPRT_ID(kill)(__SPRT_ID(pid_t) pid, int sig) {
+	return ::kill(pid, sig); //
+}
+
 } // namespace sprt

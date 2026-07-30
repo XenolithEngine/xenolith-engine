@@ -62,7 +62,6 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-#if __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
 int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 		struct timezone *__SPRT_RESTRICT __tz) SPRT_UMBRELLA_END
@@ -79,7 +78,6 @@ int settimeofday(const struct timeval *__tv, const struct timezone *__tz) SPRT_U
 	return __sprt_settimeofday(__tv, __tz);
 }
 #endif
-#endif // __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY
 
 #if __SPRT_CONFIG_HAVE_TIME_TIMER || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC

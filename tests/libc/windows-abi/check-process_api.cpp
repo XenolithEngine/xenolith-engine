@@ -112,10 +112,38 @@ SPRT_OFFSET(STARTUPINFOW, hStdInput);
 SPRT_OFFSET(STARTUPINFOW, hStdOutput);
 SPRT_OFFSET(STARTUPINFOW, hStdError);
 
+// === STARTUPINFOA ===========================================================
+// A distinct type from STARTUPINFOW, not an alias: only the three string members
+// differ in pointee type, so the layout matches, but CreateProcessA takes this one.
+SPRT_SIZE(STARTUPINFOA);
+SPRT_OFFSET(STARTUPINFOA, cb);
+SPRT_OFFSET(STARTUPINFOA, lpReserved);
+SPRT_OFFSET(STARTUPINFOA, lpDesktop);
+SPRT_OFFSET(STARTUPINFOA, lpTitle);
+SPRT_OFFSET(STARTUPINFOA, dwX);
+SPRT_OFFSET(STARTUPINFOA, dwY);
+SPRT_OFFSET(STARTUPINFOA, dwXSize);
+SPRT_OFFSET(STARTUPINFOA, dwYSize);
+SPRT_OFFSET(STARTUPINFOA, dwXCountChars);
+SPRT_OFFSET(STARTUPINFOA, dwYCountChars);
+SPRT_OFFSET(STARTUPINFOA, dwFillAttribute);
+SPRT_OFFSET(STARTUPINFOA, dwFlags);
+SPRT_OFFSET(STARTUPINFOA, wShowWindow);
+SPRT_OFFSET(STARTUPINFOA, cbReserved2);
+SPRT_OFFSET(STARTUPINFOA, lpReserved2);
+SPRT_OFFSET(STARTUPINFOA, hStdInput);
+SPRT_OFFSET(STARTUPINFOA, hStdOutput);
+SPRT_OFFSET(STARTUPINFOA, hStdError);
+
 // === STARTUPINFOEXW =========================================================
 SPRT_SIZE(STARTUPINFOEXW);
 SPRT_OFFSET(STARTUPINFOEXW, StartupInfo);
 SPRT_OFFSET(STARTUPINFOEXW, lpAttributeList);
+
+// === STARTUPINFOEXA =========================================================
+SPRT_SIZE(STARTUPINFOEXA);
+SPRT_OFFSET(STARTUPINFOEXA, StartupInfo);
+SPRT_OFFSET(STARTUPINFOEXA, lpAttributeList);
 
 // === SHELLEXECUTEINFOW ======================================================
 SPRT_SIZE(SHELLEXECUTEINFOW);
