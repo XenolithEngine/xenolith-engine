@@ -979,6 +979,17 @@ void SurfaceInfo::description(const callback<void(StringView)> &stream) const {
 	stream << "\n";
 }
 
+StringView getWindowTypeName(WindowType type) {
+	switch (type) {
+	case WindowType::Root: return StringView("Root"); break;
+	case WindowType::Dialog: return StringView("Dialog"); break;
+	case WindowType::Utility: return StringView("Utility"); break;
+	case WindowType::Popup: return StringView("Popup"); break;
+	case WindowType::Tooltip: return StringView("Tooltip"); break;
+	}
+	return StringView("Unknown");
+}
+
 void getWindowStateDescription(const callback<void(StringView)> &out, WindowState f) {
 	for (auto value : flags(f)) {
 		switch (value) {

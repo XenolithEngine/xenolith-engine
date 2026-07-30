@@ -26,6 +26,7 @@ THE SOFTWARE.
 #define _LARGEFILE64_SOURCE 1
 
 #include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_sendfile.h>
 #include <sprt/c/sys/__sprt_statvfs.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_string.h>
@@ -35,6 +36,10 @@ THE SOFTWARE.
 #include "unistd.h"
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+
+#if SPRT_LINUX && SPRT_ANDROID
+#include <sys/sendfile.h>
+#endif
 
 namespace sprt {
 
@@ -290,6 +295,21 @@ __SPRT_C_FUNC int __SPRT_ID(fstatvfs)(int fd, struct __SPRT_STATVFS_NAME *buf) {
 		convertStatvfsFromNative(&native, buf);
 	}
 	return ret;
+#endif
+}
+
+__SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
+		sendfile)(int out_fd, int in_fd, __SPRT_ID(off_t) * offs, __SPRT_ID(size_t) noffs) {
+#if __STDC_HOSTED__ == 0
+	__sprt_errno = EINVAL;
+	return -1;
+#else
+#if SPRT_LINUX && SPRT_ANDROID
+	return ::sendfile64(out_fd, in_fd, offs, noffs);
+#else
+	__sprt_errno = EINVAL;
+	return -1;
+#endif
 #endif
 }
 

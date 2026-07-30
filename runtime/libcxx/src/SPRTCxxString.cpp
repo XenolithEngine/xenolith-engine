@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <string>: to_string/stoi family, __throw_* helpers, char_traits out-of-line and basic_string explicit instantiations.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/string.cpp"

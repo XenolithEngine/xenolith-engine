@@ -29,4 +29,6 @@ THE SOFTWARE.
 // Like the other libcxx-port TUs this is hosted-style libc++ code (pulls the full STL
 // layer); the libcxx module compiles it WITHOUT __SPRT_BUILD (see libcxx.mk).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/valarray.cpp"

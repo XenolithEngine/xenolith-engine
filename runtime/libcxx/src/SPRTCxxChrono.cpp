@@ -26,4 +26,6 @@ THE SOFTWARE.
 // The verbatim source is pulled by relative path so it compiles here, once, rather
 // than being scanned as a standalone unit (see libcxx.mk).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/chrono.cpp"

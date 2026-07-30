@@ -47,7 +47,7 @@ OSTYPE_EXEC_CFLAGS :=
 
 # -Wno-overloaded-virtual: complains about 'hides overloaded virtual function', that is normal for Stappler/Xenolith
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-elaborated-enum-base \
-	-frtti -fvisibility=hidden -fvisibility-inlines-hidden
+	-frtti -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions
 
 # A "+open" sysroot keeps the SDK-like headers in include_libc (usr/include is
 # reserved for the deps' own headers) and, when exported, ships no

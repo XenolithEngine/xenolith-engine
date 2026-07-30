@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <algorithm>: the extern-instantiated __sort<Comp,Iter> bodies for the scalar types (algorithm.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/algorithm.cpp"

@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <strstream> (deprecated): strstreambuf/istrstream/ostrstream (strstream.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/strstream.cpp"

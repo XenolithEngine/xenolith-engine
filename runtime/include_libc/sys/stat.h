@@ -85,6 +85,12 @@ THE SOFTWARE.
 #define st_ctime st_ctim.tv_sec
 #endif
 
+#if defined(__APPLE__) && !defined(st_atimespec)
+#define st_atimespec st_atim
+#define st_mtimespec st_mtim
+#define st_ctimespec st_ctim
+#endif
+
 #ifndef S_IFMT
 #define S_IFMT __SPRT_S_IFMT
 

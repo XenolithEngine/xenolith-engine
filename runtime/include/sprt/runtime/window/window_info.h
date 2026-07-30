@@ -45,6 +45,77 @@ enum class ViewConstraints : uint32_t {
 
 SPRT_DEFINE_ENUM_AS_MASK(ViewConstraints)
 
+// Window role within the application window hierarchy, immutable after creation.
+// Defines how the window is mapped to OS/WM concepts and what behavior engine enforces.
+// Every type except Root requires WindowInfo::parent to name a live window.
+enum class WindowType : uint8_t {
+	// Independent top-level window with its own taskbar/Alt-Tab entry.
+	// `parent` is optional and used only for window grouping.
+	Root,
+
+	// Transient window: stays above its parent, minimized with it, no taskbar entry.
+	// With WindowCreationFlags::Modal, engine blocks input in the parent chain while open.
+	Dialog,
+
+	// Floating tool palette above its parent; does not take activation away from it.
+	Utility,
+
+	// Menu/dropdown/combobox: undecorated, placed by WindowInfo::placement, grabs input,
+	// dismissed on outside click. Parent can be any type including another Popup
+	// (submenu chains). Creation requires a recent input event on some WM (Wayland grab).
+	Popup,
+
+	// Like Popup, but never takes focus and never grabs input.
+	Tooltip,
+};
+
+SPRT_API StringView getWindowTypeName(WindowType);
+
+// Point on the anchor rectangle (WindowPlacement::anchor) or direction in which the window
+// opens relative to the anchor point (WindowPlacement::gravity).
+// None means the center of the rectangle / centered on the anchor point.
+enum class WindowAnchor : uint8_t {
+	None,
+	Top,
+	Bottom,
+	Left,
+	Right,
+	TopLeft,
+	BottomLeft,
+	TopRight,
+	BottomRight,
+};
+
+// How placement may be adjusted when the window would cross a work-area edge
+enum class WindowPlacementAdjustment : uint32_t {
+	None = 0,
+	SlideX = 1 << 0,
+	SlideY = 1 << 1,
+	FlipX = 1 << 2,
+	FlipY = 1 << 3,
+	ResizeX = 1 << 4,
+	ResizeY = 1 << 5,
+	All = SlideX | SlideY | FlipX | FlipY | ResizeX | ResizeY,
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(WindowPlacementAdjustment)
+
+// Relative placement rule for auxiliary windows, modeled after xdg_positioner:
+// the window is attached to the `anchor` point of `anchorRect` (in parent window logical
+// coordinates) and opens in the `gravity` direction, shifted by `offset`.
+// There are no global coordinates in this API: on Wayland placement is computed by
+// the compositor, on other systems - by a common engine implementation with the same semantics.
+struct WindowPlacement {
+	IRect anchorRect = IRect(0, 0, 0, 0);
+	WindowAnchor anchor = WindowAnchor::None;
+	WindowAnchor gravity = WindowAnchor::None;
+	IVec2 offset = IVec2{0, 0};
+	WindowPlacementAdjustment adjustment = WindowPlacementAdjustment::None;
+
+	bool operator==(const WindowPlacement &) const = default;
+	bool operator!=(const WindowPlacement &) const = default;
+};
+
 // Cross-OS window state flags
 // Some OS/WN can support only some subset of this flags
 enum class WindowState : uint64_t {
@@ -304,6 +375,11 @@ enum class WindowCreationFlags : uint32_t {
 	// On android, allows setPreferredFrameRate only if seamless
 	OnlySeamlessFrameRateSwitch = 1 << 7,
 
+	// For WindowType::Dialog: block input in the parent chain while this window is open.
+	// OS-side hints (xdg_dialog_v1, _NET_WM_STATE_MODAL, EnableWindow, sheets) are advisory;
+	// input blocking is enforced by the engine itself.
+	Modal = 1 << 8,
+
 	// Use direct output to display, bypassing whole WM stack
 	// Check if it actually supported with WindowCapabilities::DirectOutput
 	DirectOutput = 1 << 27,
@@ -433,7 +509,15 @@ struct SPRT_API WindowInfo final : public Ref {
 	Extent2 minExtent = Extent2::ZERO;
 	Extent2 maxExtent = Extent2::ZERO;
 
-	// TODO: extra window attributes go here
+	// Window role; immutable after creation
+	WindowType type = WindowType::Root;
+
+	// `id` of the parent window (transient-for / popup parent).
+	// Must name a live window at creation time for any type except Root
+	String parent;
+
+	// Relative placement for Popup/Tooltip windows; other types are placed by the WM
+	WindowPlacement placement;
 
 	PresentMode preferredPresentMode = PresentMode::Mailbox;
 	ImageFormat imageFormat = ImageFormat::Undefined;

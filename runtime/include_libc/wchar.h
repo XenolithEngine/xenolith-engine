@@ -146,7 +146,10 @@ __SPRT_BEGIN_DECL
 #endif
 
 #if !__SPRT_MBSTATE_DIRECT
+#ifndef _MBSTATE_T
+#define _MBSTATE_T
 typedef __SPRT_MBSTATE_NAME mbstate_t;
+#endif
 #endif
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(wint_t) wint_t;

@@ -358,7 +358,7 @@ void LinuxContextController::tryStart() {
 
 			// check if root window is defined
 			if (_windowInfo) {
-				if (!loadWindow()) {
+				if (createWindow(move(_windowInfo)) != Status::Ok) {
 					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
 							"Fail to load root native window");
 					destroy();
@@ -368,31 +368,24 @@ void LinuxContextController::tryStart() {
 	}
 }
 
-bool LinuxContextController::loadWindow() {
+bool LinuxContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
 	Rc<NativeWindow> window;
-	auto wInfo = move(_windowInfo);
 
-	if (configureWindow(wInfo)) {
-		if (_waylandDisplay) {
-			window = Rc<WaylandWindow>::create(_waylandDisplay, move(wInfo), this);
-			_waylandDisplay->flush();
-			if (window) {
-				_activeWindows.emplace(window);
-			}
-		}
-		if (!window && _xcbConnection) {
-			window = Rc<XcbWindow>::create(_xcbConnection, move(wInfo), this);
-			if (window) {
-				notifyWindowCreated(window);
-			}
-		}
-
+	if (_waylandDisplay) {
+		window = Rc<WaylandWindow>::create(_waylandDisplay, move(wInfo), this);
+		_waylandDisplay->flush();
 		if (window) {
-			return true;
+			_activeWindows.emplace(window);
+		}
+	}
+	if (!window && _xcbConnection) {
+		window = Rc<XcbWindow>::create(_xcbConnection, move(wInfo), this);
+		if (window) {
+			notifyWindowCreated(window);
 		}
 	}
 
-	return false;
+	return window != nullptr;
 }
 
 void LinuxContextController::handleContextWillDestroy() {

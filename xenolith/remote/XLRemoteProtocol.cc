@@ -25,7 +25,11 @@
 #include "SPCoreCrypto.h"
 
 #include <sprt/runtime/utils/compress.h>
+
 #include <openssl/ssl.h>
+#ifdef DELETE
+#undef DELETE
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 

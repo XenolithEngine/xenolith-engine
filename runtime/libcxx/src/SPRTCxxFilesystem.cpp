@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <filesystem>: path/parser, directory_entry+iterator, operations, filesystem_error, filesystem_clock, int128 builtins (filesystem/*.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/filesystem/path.cpp"
 #include "libcxx/filesystem/directory_entry.cpp"
 #include "libcxx/filesystem/directory_iterator.cpp"

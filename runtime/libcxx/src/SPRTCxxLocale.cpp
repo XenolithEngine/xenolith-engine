@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <locale>: the facet zoo (ctype, codecvt, num/money/time get+put, collate, messages), locale::id/imp, classic/global locale (locale.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/locale.cpp"

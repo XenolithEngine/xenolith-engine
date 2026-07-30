@@ -142,9 +142,11 @@ public:
 	// std::function's converting constructor/assignment: participate only when the
 	// (decayed) target is Lvalue-Callable for R(ArgumentTypes...) and is copy
 	// constructible, so move-only callables cleanly do not match (SFINAE) rather
-	// than hard-error inside the copy trait. remove_cvref_t excludes any __function.
+	// than hard-error inside the copy trait. is_base_of excludes this __function AND
+	// wrappers derived from it (__pool_function/__malloc_function inherit this
+	// constructor;
 	template <typename FunctionT>
-	requires (!sprt::is_same_v<sprt::remove_cvref_t<FunctionT>, __function>
+	requires (!sprt::is_base_of_v<__function, sprt::remove_cvref_t<FunctionT>>
 			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
 			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
@@ -161,7 +163,7 @@ public:
 	}
 
 	template <typename FunctionT>
-	requires (!sprt::is_same_v<sprt::remove_cvref_t<FunctionT>, __function>
+	requires (!sprt::is_base_of_v<__function, sprt::remove_cvref_t<FunctionT>>
 			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
 			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function &operator=(FunctionT &&f) noexcept {

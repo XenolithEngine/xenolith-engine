@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <fstream>: basic_filebuf explicit instantiations (fstream.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/fstream.cpp"

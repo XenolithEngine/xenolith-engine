@@ -26,6 +26,8 @@ THE SOFTWARE.
 // set_default_resource) in the sprt environment. Like SPRTCxxRegex.cpp it is hosted
 // STL code (no __SPRT_BUILD); see libcxx.mk.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
 
 #include "libcxx/memory_resource.cpp"

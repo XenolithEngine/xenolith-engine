@@ -31,6 +31,8 @@ THE SOFTWARE.
 // the full STL layer (<string>, <locale>, <system_error>); the libcxx module compiles
 // it with hosted include flags (see libcxx.mk), not the freestanding runtime flags.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
 
 #include "libcxx/regex.cpp"

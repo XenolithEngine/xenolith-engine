@@ -31,6 +31,8 @@ THE SOFTWARE.
 // Hosted-style libc++ code (pulls the full STL layer); the libcxx module compiles it
 // WITHOUT __SPRT_BUILD (see libcxx.mk).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #define _LIBCPP_USING_GETENTROPY 1
 
 // random.cpp's random_device reports open/read failures via std::__throw_system_error,
@@ -40,7 +42,7 @@ THE SOFTWARE.
 #include <__config>
 #include <__verbose_abort>
 #if _LIBCPP_HAS_EXCEPTIONS
-#  include <system_error>
+#include <system_error>
 #endif
 
 // sprt's libc exposes getrandom() but not POSIX getentropy(), which the vendored
