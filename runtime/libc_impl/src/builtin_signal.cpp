@@ -24,6 +24,18 @@ THE SOFTWARE.
 
 #include "signal.h"
 #include "stdlib.h"
+#include "unistd.h"
+
+#if SPRT_WINDOWS
+#include "windows/signal.cc"
+#else
+// Nothing to talk to: a freestanding target with no process model can only report
+// that the pid does not name anything reachable.
+static int __sprt_kill_process(__SPRT_ID(pid_t), int) {
+	*__sprt___errno_location() = ESRCH;
+	return -1;
+}
+#endif
 
 // Thread-local signal handler state for freestanding environment.
 // Each thread maintains its own set of installed handlers and blocked signals.
@@ -233,6 +245,24 @@ int raise(int sig) __SPRT_NOEXCEPT {
 	__sprt_deliver_signal(sig);
 
 	return 0;
+}
+
+int kill(__SPRT_ID(pid_t) pid, int sig) __SPRT_NOEXCEPT {
+	if (sig < 0 || sig >= __SPRT__NSIG) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
+	}
+
+	if (pid == 0 || pid == getpid()) {
+		// sig 0 performs no delivery - it only checks that the target exists, and it
+		// plainly does.
+		if (sig != 0) {
+			__sprt_deliver_signal(sig);
+		}
+		return 0;
+	}
+
+	return __sprt_kill_process(pid, sig);
 }
 
 _Noreturn void abort() __SPRT_NOEXCEPT {

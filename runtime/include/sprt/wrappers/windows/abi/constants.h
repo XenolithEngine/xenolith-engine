@@ -232,6 +232,8 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define __SPRT_SEM_NOALIGNMENTFAULTEXCEPT  0x0004
 #define __SPRT_SEM_NOOPENFILEERRORBOX      0x8000
 
+#define __SPRT_ObjectBasicInformation           0
+
 #define __SPRT_GENERIC_READ                     (0x80000000L)
 #define __SPRT_GENERIC_WRITE                    (0x40000000L)
 #define __SPRT_GENERIC_EXECUTE                  (0x20000000L)

@@ -32,6 +32,9 @@ THE SOFTWARE.
 
 	Public surface: _mkdir, _rmdir, _chdir, _getcwd. _mkdir drops the MSVC no-mode form
 	onto POSIX mkdir with the usual 0777 (& umask) creation mode.
+
+	_getcwd is not a plain alias for getcwd: it reports the path in Win32 form, the way
+	the MSVC CRT does. See the note on it below.
 */
 
 #include <sys/stat.h>
@@ -44,9 +47,15 @@ extern "C" {
 static inline int _mkdir(const char *__path) { return mkdir(__path, 0777); }
 static inline int _rmdir(const char *__path) { return rmdir(__path); }
 static inline int _chdir(const char *__path) { return chdir(__path); }
-static inline char *_getcwd(char *__buf, int __size) {
-	return getcwd(__buf, (__size < 0) ? (size_t)0 : (size_t)__size);
-}
+/*
+	The MSVC spelling reports a Win32 path (Z:\dir), not the POSIX one getcwd() returns
+	(/z/dir).
+
+	That difference is the whole point of keeping it separate. sprt presents POSIX paths
+	through its POSIX API on Windows, but _getcwd is an MSVC CRT name, and code calling it
+	expects a path it can hand to the Win32 API.
+*/
+SPRT_API char *_getcwd(char *__buf, int __size) __SPRT_NOEXCEPT;
 
 #ifdef __cplusplus
 }

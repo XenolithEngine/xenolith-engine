@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
 
 namespace sprt::test {
 
@@ -94,6 +96,58 @@ void performTimeTest() {
 		int null_tm = localtime_s((struct tm *)0, &t);
 		int null_t = localtime_s(&lt, (const time_t *)0);
 		printf("localtime_s: ok=%d null_tm=%d null_t=%d\n", ok == 0, null_tm != 0, null_t != 0);
+	}
+
+	/*
+		mktime returns SECONDS, and reads its fields as LOCAL time.
+
+		Stated as a round-trip through localtime rather than against a fixed timestamp,
+		so the check holds in any zone: the freestanding Windows libc does not honour TZ
+		(localtime_r goes through SystemTimeToTzSpecificLocalTime, which only knows the
+		system zone), and a hard-coded expected value would only be comparing that.
+
+		Both halves were broken and neither round-trip noticed. mktime returned sprt's
+		internal MICROSECONDS - llvm's Chrono test read back the year 2143 for a 2006
+		timestamp - and it read the fields as UTC, because it applied the tm_gmtoff
+		field that portable callers leave at zero instead of the zone in force.
+	*/
+	{
+		struct tm tm = {};
+		tm.tm_year = 106; // 2006
+		tm.tm_mon = 0;
+		tm.tm_mday = 2;
+		tm.tm_hour = 15;
+		tm.tm_min = 4;
+		tm.tm_sec = 5;
+		tm.tm_isdst = -1;
+
+		time_t t = mktime(&tm);
+
+		// Seconds: a 2006 timestamp is ~1.13e9. Microseconds would be 10^6 times that.
+		printf("mktime magnitude ok=%d\n", t > 1'000'000'000LL && t < 2'000'000'000LL);
+
+		// Local: reading it back as local time returns the fields it was given.
+		struct tm back = {};
+		localtime_r(&t, &back);
+		printf("mktime localtime round-trip: %04d-%02d-%02d %02d:%02d:%02d\n",
+				back.tm_year + 1900, back.tm_mon + 1, back.tm_mday, back.tm_hour, back.tm_min,
+				back.tm_sec);
+
+		// ...and mktime normalizes the struct it was handed (POSIX).
+		printf("mktime normalized: wday-set=%d yday-set=%d\n", tm.tm_wday == back.tm_wday,
+				tm.tm_yday == back.tm_yday);
+	}
+
+	/*
+		gettimeofday's tv_usec is microseconds, so it never leaves 0..999999. A
+		nanosecond source divided by the wrong constant lands outside that range - which
+		no round-trip notices either.
+	*/
+	{
+		struct timeval tv = {};
+		int r = gettimeofday(&tv, nullptr);
+		printf("gettimeofday: ok=%d usec-in-range=%d\n", r == 0,
+				tv.tv_usec >= 0 && tv.tv_usec < 1'000'000);
 	}
 }
 

@@ -30,6 +30,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/__sprt_stdio.h>
 
 #if _UNICODE
 
@@ -39,24 +40,21 @@ THE SOFTWARE.
 #define _tcsncmp __sprt_wcsncmp
 
 SPRT_FORCEINLINE int _vsntprintf(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf, size_t n,
-		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list arg) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
+		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list arg) __SPRT_NOEXCEPT {
 	return __sprt_vswprintf(buf, n, fmt, arg);
 }
-#endif
 
 #else
 
-#define _tcscpy strcpy
+#define _tcscpy __sprt_strcpy
+#define _tcspbrk __sprt_strpbrk
+#define _tcslen __sprt_strlen
+#define _tcsncmp __sprt_strncmp
 
 SPRT_FORCEINLINE int _vsntprintf(char *__SPRT_RESTRICT buf, size_t n,
-		const char *__SPRT_RESTRICT fmt, __sprt_va_list arg) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
+		const char *__SPRT_RESTRICT fmt, __sprt_va_list arg) __SPRT_NOEXCEPT {
 	return __sprt_vsnprintf(buf, n, fmt, arg);
 }
-#endif
 
 #endif
 

@@ -46,10 +46,41 @@ THE SOFTWARE.
 */
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_uintptr_t.h>
 
 __SPRT_BEGIN_DECL
 
 typedef int(__cdecl *__sprt_main_fn)(int, const char **);
+
+/*
+	Produce a fresh /GS security cookie.
+
+	The cookie variable itself is per-image (below) - the image's own function prologues
+	reference it directly, so it cannot be shared through an import. Only the entropy
+	source is shared, and it has to be: reaching it needs the DLL loader, which is
+	runtime-internal.
+
+	Never returns __SPRT_DEFAULT_SECURITY_COOKIE, so a caller can use that value as an
+	"uninitialized" marker.
+*/
+SPRT_API __SPRT_ID(uintptr_t) __sprt_gencookie(void);
+
+/*
+	The value the cookie variables hold before the entry point seeds them.
+*/
+#define __SPRT_DEFAULT_SECURITY_COOKIE 0x00002B992DDFA232ll
+
+/*
+	This image's /GS cookie, defined by the startup stub (through crt_image.cc) and
+	seeded from __sprt_gencookie before any instrumented code in the image runs.
+
+	Deliberately NOT declared SPRT_API: these are per-image definitions, and marking them
+	dllimport would point the image's own prologues at sprt.dll's copy instead - a cookie
+	only ever has to agree with itself, so sharing one across images is at best pointless
+	and at worst a mismatch waiting to trap.
+*/
+extern __SPRT_ID(uintptr_t) __security_cookie;
+extern __SPRT_ID(uintptr_t) __security_cookie_complement;
 
 /*
 	Convert the command line to argv, call mainFn and exit. Never returns.

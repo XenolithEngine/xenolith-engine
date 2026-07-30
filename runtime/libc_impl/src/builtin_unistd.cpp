@@ -132,8 +132,7 @@ __SPRT_C_FUNC int dup(int __fd) __SPRT_NOEXCEPT {
 		return -1;
 	}
 
-	// dup follows open(): the new fd is close-on-exec (non-inheritable).
-	return fdSlot->ops->fo_dup(fdSlot, nullptr, __SPRT_FD_CLOEXEC);
+	return fdSlot->ops->fo_dup(fdSlot, nullptr, 0);
 }
 
 __SPRT_C_FUNC int dup2(int __fd, int __target) __SPRT_NOEXCEPT {
@@ -148,8 +147,7 @@ __SPRT_C_FUNC int dup2(int __fd, int __target) __SPRT_NOEXCEPT {
 		return __target;
 	}
 
-	// dup2 follows open(): the new fd is close-on-exec (non-inheritable).
-	return fdSlot->ops->fo_dup(fdSlot, &__target, __SPRT_FD_CLOEXEC);
+	return fdSlot->ops->fo_dup(fdSlot, &__target, 0);
 }
 
 __SPRT_C_FUNC int dup3(int __fd, int __target, int __flags) __SPRT_NOEXCEPT {
