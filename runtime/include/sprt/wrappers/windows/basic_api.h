@@ -208,6 +208,8 @@ __SPRT_WIN_IMPORT WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lp
 
 __SPRT_WIN_IMPORT WINAPI LPWCH GetEnvironmentStringsW();
 
+__SPRT_WIN_IMPORT WINAPI BOOL FreeEnvironmentStringsW(LPWCH penv);
+
 __SPRT_WIN_IMPORT WINAPI VOID Sleep(DWORD dwMilliseconds);
 
 __SPRT_WIN_IMPORT WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
@@ -221,7 +223,11 @@ __SPRT_WIN_IMPORT WINAPI VOID WakeByAddressAll(PVOID Address);
 
 __SPRT_WIN_IMPORT WINAPI BOOL IsDebuggerPresent();
 
+__SPRT_WIN_IMPORT WINAPI VOID DebugBreak();
+
 __SPRT_WIN_IMPORT WINAPI HANDLE GetStdHandle(DWORD nStdHandle);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetStdHandle(DWORD nStdHandle, HANDLE hHandle);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetConsoleScreenBufferInfo(HANDLE hConsoleOutput,
 		PCONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
@@ -234,7 +240,16 @@ __SPRT_WIN_IMPORT WINAPI BOOL GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMo
 
 __SPRT_WIN_IMPORT WINAPI BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
 
+__SPRT_WIN_IMPORT WINAPI BOOL FlushConsoleInputBuffer(HANDLE hConsoleInput);
+
+__SPRT_WIN_IMPORT WINAPI BOOL AllocConsole(VOID);
+
+__SPRT_WIN_IMPORT WINAPI BOOL FreeConsole(VOID);
+
 __SPRT_WIN_IMPORT WINAPI BOOL SetConsoleTextAttribute(HANDLE hConsoleOutput, WORD wAttributes);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetConsoleCursorPosition(HANDLE hConsoleOutput,
+		COORD dwCursorPosition);
 
 __SPRT_WIN_IMPORT WINAPI BOOL WriteConsoleW(HANDLE hConsoleOutput, const void *lpBuffer,
 		DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten, LPVOID lpReserved);

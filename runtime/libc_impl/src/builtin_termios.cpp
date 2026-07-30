@@ -20,12 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Terminal I/O (<termios.h>) compile unit. Backed only on the freestanding wasm
-// target (no-op ENOTTY stubs - see wasm/termios.cc); the hosted and Windows targets
-// use the platform libc, so this unit is empty there.
+// Terminal I/O (<termios.h>) compile unit. Backed on the two freestanding targets:
+// wasm has no controlling terminal, so it gets no-op ENOTTY stubs (wasm/termios.cc),
+// while Windows maps the interface onto the console mode (windows/termios.cc). Hosted
+// targets use the platform libc, so this unit is empty there.
 
 #include <sprt/c/bits/__sprt_def.h>
 
 #if SPRT_WASM
 #include "wasm/termios.cc"
+#elif SPRT_WINDOWS
+#include "windows/termios.cc"
 #endif

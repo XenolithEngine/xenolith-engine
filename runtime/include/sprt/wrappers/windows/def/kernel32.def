@@ -172,6 +172,7 @@ EXPORTS
 	GetACP
 	ReadConsoleA
 	ReadConsoleW
+	FlushConsoleInputBuffer
 	GetSystemDirectoryA
 	GetSystemDirectoryW
 	WaitForMultipleObjects
@@ -193,3 +194,44 @@ EXPORTS
 	UnregisterWaitEx
 	UnregisterWait
 	CreateNamedPipeW
+	CompareStringOrdinal
+	FreeEnvironmentStringsW
+	GetModuleFileNameA
+	GetWindowsDirectoryW
+	OpenFileMappingW
+	ContinueDebugEvent
+	CreateEventA
+	CreateNamedPipeA
+	DebugActiveProcess
+	DebugActiveProcessStop
+	DebugBreakProcess
+	GetErrorMode
+	GetProcessId
+	Module32FirstW
+	Module32NextW
+	QueryFullProcessImageNameW
+	ReadProcessMemory
+	SuspendThread
+	VirtualAllocEx
+	VirtualFreeEx
+	VirtualQueryEx
+	WaitForDebugEvent
+	WriteProcessMemory
+	GetLogicalDriveStringsW
+	GetThreadContext
+	QueryDosDeviceW
+	QueueUserAPC
+	SetThreadContext
+	Wow64GetThreadContext
+	Wow64SetThreadContext
+	CreateMemoryResourceNotification
+	GetCommandLineA
+	CreateProcessA
+	GetTempFileNameA
+	DebugBreak
+	AllocConsole
+	FreeConsole
+	SearchPathA
+	GetCurrentDirectoryA
+	SetCurrentDirectoryA
+	SetStdHandle

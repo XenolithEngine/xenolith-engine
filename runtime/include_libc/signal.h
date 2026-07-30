@@ -50,6 +50,9 @@ THE SOFTWARE.
 	  signal - install a disposition (handler) for a signal
 	  raise  - send a signal to the calling process
 
+	POSIX process-signal functions:
+	  kill   - send a signal to a process (or test for its existence with sig 0)
+
 	POSIX signal-set functions:
 	  sigemptyset  - clear all signals from a set
 	  sigfillset   - add every signal to a set
@@ -350,6 +353,14 @@ int raise(int sig) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __SPRT_ID(raise)(sig);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int kill(__SPRT_ID(pid_t) pid, int sig) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(kill)(pid, sig);
 }
 #endif
 

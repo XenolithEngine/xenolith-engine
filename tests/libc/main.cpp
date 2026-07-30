@@ -166,6 +166,8 @@ static const LibcTest s_tests[] = {
 	{"std_cfenv_csignal", &performFenvSignalTest},
 	// container/STL fixes: multiset, string+char, map::emplace, move-only elements
 	{"std_stl_fixes", &performStlFixesTest},
+	// <signal.h> kill(): liveness probe, self-delivery, ESRCH/EINVAL
+	{"kill", &performKillTest},
 
 	{nullptr, nullptr},
 };

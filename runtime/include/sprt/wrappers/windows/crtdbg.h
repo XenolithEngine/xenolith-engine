@@ -44,22 +44,45 @@ THE SOFTWARE.
 #define _CRTDBG_FILE_STDOUT __SPRT__CRTDBG_FILE_STDOUT
 #define _CRTDBG_FILE_STDERR __SPRT__CRTDBG_FILE_STDERR
 
+#define _CRTDBG_ALLOC_MEM_DF __SPRT__CRTDBG_ALLOC_MEM_DF
+#define _CRTDBG_DELAY_FREE_MEM_DF __SPRT__CRTDBG_DELAY_FREE_MEM_DF
+#define _CRTDBG_CHECK_ALWAYS_DF __SPRT__CRTDBG_CHECK_ALWAYS_DF
+#define _CRTDBG_RESERVED_DF __SPRT__CRTDBG_RESERVED_DF
+#define _CRTDBG_CHECK_CRT_DF __SPRT__CRTDBG_CHECK_CRT_DF
+#define _CRTDBG_LEAK_CHECK_DF __SPRT__CRTDBG_LEAK_CHECK_DF
+#define _CRTDBG_REPORT_FLAG __SPRT__CRTDBG_REPORT_FLAG
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 static inline _CRT_REPORT_HOOK _CrtSetReportHook(_CRT_REPORT_HOOK _Hook) {
-	(void) _Hook;
+	(void)_Hook;
 	return 0;
 }
 static inline int _CrtSetReportMode(int _ReportType, int _ReportMode) {
-	(void) _ReportType;
-	(void) _ReportMode;
+	(void)_ReportType;
+	(void)_ReportMode;
 	return 0;
 }
 static inline void *_CrtSetReportFile(int _ReportType, void *_ReportFile) {
-	(void) _ReportType;
+	(void)_ReportType;
 	return _ReportFile;
+}
+
+// Debug-heap flag word. Nothing here has a debug heap, so the flags are stored and
+// handed back rather than acted on.
+//
+// The state is local to the including translation unit, like the rest of this header:
+// it carries no semantics, and a per-image data symbol crossing the DLL boundary would
+// be real machinery in service of a value nothing reads.
+static inline int _CrtSetDbgFlag(int _Flag) {
+	static int _Flags = 0;
+	int _Old = _Flags;
+	if (_Flag != __SPRT__CRTDBG_REPORT_FLAG) {
+		_Flags = _Flag;
+	}
+	return _Old;
 }
 
 #ifdef __cplusplus

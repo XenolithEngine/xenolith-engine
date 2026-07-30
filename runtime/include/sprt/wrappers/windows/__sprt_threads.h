@@ -29,7 +29,9 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_errno.h>
 
-typedef __SPRT_ID(pthread_mutex_t) CRITICAL_SECTION, *PCRITICAL_SECTION, *LPCRITICAL_SECTION;
+typedef struct _RTL_CRITICAL_SECTION {
+	__SPRT_ID(pthread_mutex_t) __sprt_mutex;
+} CRITICAL_SECTION, *PCRITICAL_SECTION, *LPCRITICAL_SECTION;
 
 typedef __SPRT_ID(pthread_cond_t) CONDITION_VARIABLE, *PCONDITION_VARIABLE, *LPCONDITION_VARIABLE;
 
@@ -49,36 +51,50 @@ typedef BOOL(WINAPI *PINIT_ONCE_FN)(PINIT_ONCE InitOnce, PVOID Parameter, PVOID 
 
 __SPRT_BEGIN_DECL
 
+/*
+	RECURSIVE, not the default mutex kind.
+
+	A Win32 critical section is re-entrant by definition: "a thread that owns it can
+	enter it repeatedly without blocking".
+*/
+SPRT_FORCEINLINE VOID __sprt_init_critical_section(LPCRITICAL_SECTION lpCriticalSection) {
+	__SPRT_ID(pthread_mutexattr_t) attr;
+	__sprt_pthread_mutexattr_init(&attr);
+	__sprt_pthread_mutexattr_settype(&attr, __SPRT_PTHREAD_MUTEX_RECURSIVE);
+	__sprt_pthread_mutex_init(&lpCriticalSection->__sprt_mutex, &attr);
+	__sprt_pthread_mutexattr_destroy(&attr);
+}
+
 SPRT_FORCEINLINE VOID InitializeCriticalSection(
 		LPCRITICAL_SECTION lpCriticalSection) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
+	__sprt_init_critical_section(lpCriticalSection);
 }
 
 SPRT_FORCEINLINE VOID InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection,
 		DWORD dwSpinCount, DWORD Flags) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
+	__sprt_init_critical_section(lpCriticalSection);
 }
 
 SPRT_FORCEINLINE BOOL InitializeCriticalSectionAndSpinCount(LPCRITICAL_SECTION lpCriticalSection,
 		DWORD v) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
+	__sprt_init_critical_section(lpCriticalSection);
 	return TRUE;
 }
 
 SPRT_FORCEINLINE VOID EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_lock(lpCriticalSection);
+	__sprt_pthread_mutex_lock(&lpCriticalSection->__sprt_mutex);
 }
 
 SPRT_FORCEINLINE VOID LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_unlock(lpCriticalSection);
+	__sprt_pthread_mutex_unlock(&lpCriticalSection->__sprt_mutex);
 }
 
 SPRT_FORCEINLINE BOOL TryEnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection) {
-	return __sprt_pthread_mutex_trylock(lpCriticalSection) == 0;
+	return __sprt_pthread_mutex_trylock(&lpCriticalSection->__sprt_mutex) == 0;
 }
 
 SPRT_FORCEINLINE VOID DeleteCriticalSection(LPCRITICAL_SECTION lpCriticalSection) __SPRT_NOEXCEPT {
-	__sprt_pthread_mutex_destroy(lpCriticalSection);
+	__sprt_pthread_mutex_destroy(&lpCriticalSection->__sprt_mutex);
 }
 
 SPRT_FORCEINLINE VOID InitializeConditionVariable(
@@ -99,14 +115,15 @@ SPRT_FORCEINLINE BOOL SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVari
 		PCRITICAL_SECTION CriticalSection, DWORD dwMilliseconds) __SPRT_NOEXCEPT {
 	int ret = 0;
 	if (dwMilliseconds == INFINITE) {
-		ret = __sprt_pthread_cond_wait(ConditionVariable, CriticalSection);
+		ret = __sprt_pthread_cond_wait(ConditionVariable, &CriticalSection->__sprt_mutex);
 	} else {
 		// clang-format off
 		struct __SPRT_TIMESPEC_NAME ts;
 		ts.tv_sec = dwMilliseconds / 1000;
 		ts.tv_nsec = dwMilliseconds % 1000 * 1000000;
 		// clang-format on
-		ret = __sprt_pthread_cond_timedwait_relative_np(ConditionVariable, CriticalSection, &ts);
+		ret = __sprt_pthread_cond_timedwait_relative_np(ConditionVariable,
+				&CriticalSection->__sprt_mutex, &ts);
 	}
 
 	if (ret == 0) {
@@ -134,15 +151,16 @@ SPRT_FORCEINLINE BOOL SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVari
 SPRT_FORCEINLINE BOOL InitOnceExecuteOnce(PINIT_ONCE InitOnce, PINIT_ONCE_FN InitFn,
 		PVOID Parameter, LPVOID *Context) {
 	for (;;) {
-		__SPRT_ID(uint64_t) val = __atomic_fetch_or(
-				&InitOnce->u64, __SPRT_INIT_ONCE_VALUE_BIT, __ATOMIC_SEQ_CST);
+		__SPRT_ID(uint64_t)
+		val = __atomic_fetch_or(&InitOnce->u64, __SPRT_INIT_ONCE_VALUE_BIT, __ATOMIC_SEQ_CST);
 		if (val == 0) {
 			// The First One: run the initializer against a local context cell so we can
 			// persist whatever it stores.
 			PVOID ctx = __SPRT_NULL;
 			if (InitFn(InitOnce, Parameter, &ctx)) {
 				// Success: publish the context pointer + COMPLETE and broadcast to waiters.
-				__SPRT_ID(uint64_t) done = (__SPRT_ID(uint64_t))(__SPRT_ID(uintptr_t))ctx
+				__SPRT_ID(uint64_t)
+				done = (__SPRT_ID(uint64_t))(__SPRT_ID(uintptr_t))ctx
 						| __SPRT_INIT_ONCE_COMPLETE_BIT;
 				val = __atomic_exchange_n(&InitOnce->u64, done, __ATOMIC_SEQ_CST);
 				if (val & __SPRT_INIT_ONCE_WAIT_BIT) {

@@ -112,7 +112,17 @@ __SPRT_C_FUNC char *asctime_r(const struct tm *__restrict tm,
 
 __SPRT_C_FUNC time_t mktime(struct tm *tm) __SPRT_NOEXCEPT {
 	sprt::time::time_exp_t exp(*tm);
-	return exp.gmt_geti();
+
+	time_t t = (time_t)(exp.geti() / (int64_t)sprt::time::__USEC_PER_SEC);
+
+	struct tm probe;
+	if (localtime_r(&t, &probe)) {
+		t -= (time_t)probe.tm_gmtoff;
+
+		localtime_r(&t, tm);
+	}
+
+	return t;
 }
 
 __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
@@ -121,7 +131,7 @@ __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 		struct __SPRT_TIMESPEC_NAME ts;
 		if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
 			__tv->tv_sec = ts.tv_sec;
-			__tv->tv_usec = ts.tv_nsec / 100;
+			__tv->tv_usec = ts.tv_nsec / 1'000;
 		} else {
 			return -1;
 		}
@@ -134,6 +144,23 @@ __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 	}
 
 	return 0;
+}
+
+__SPRT_C_FUNC int settimeofday(const struct timeval *__tv,
+		const struct timezone *__tz) __SPRT_NOEXCEPT {
+	(void)__tz;
+
+	if (!__tv || __tv->tv_usec < 0 || __tv->tv_usec >= 1'000'000) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	struct __SPRT_TIMESPEC_NAME ts;
+	ts.tv_sec = __tv->tv_sec;
+	ts.tv_nsec = (long)__tv->tv_usec * 1'000;
+	// The runtime entry point, not the plain name: unlike clock_gettime, the setter has
+	// no unprefixed definition in this layer - it lives in core (runtime_core_defaults).
+	return __SPRT_ID(clock_settime)(__SPRT_CLOCK_REALTIME, &ts);
 }
 
 /* 2000-03-01 (mod 400 year, immediately after feb29 */

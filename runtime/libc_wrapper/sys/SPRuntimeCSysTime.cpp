@@ -44,7 +44,6 @@ namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(gettimeofday)(struct __SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __tv,
 		struct __SPRT_TIMEZONE_NAME *__SPRT_RESTRICT __tz) {
-#if __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY
 	struct timeval nativeTv;
 	struct timezone nativeTz;
 	auto ret = ::gettimeofday(&nativeTv, &nativeTz);
@@ -59,17 +58,10 @@ __SPRT_C_FUNC int __SPRT_ID(gettimeofday)(struct __SPRT_TIMEVAL_NAME *__SPRT_RES
 		}
 	}
 	return ret;
-#else
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMEOFDAY)");
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(
-		settimeofday)(const __SPRT_TIMEVAL_NAME *__tv, const struct __SPRT_ID(timezone) * __tz) {
-#if __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY
+__SPRT_C_FUNC int __SPRT_ID(settimeofday)(const struct __SPRT_TIMEVAL_NAME *__tv,
+		const struct __SPRT_TIMEZONE_NAME *__tz) {
 	struct timeval nativeTv;
 	struct timezone nativeTz;
 
@@ -84,15 +76,9 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	return ::settimeofday(__tv ? &nativeTv : nullptr, __tz ? &nativeTz : nullptr);
-#else
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMEOFDAY)");
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(getitimer)(int __w, struct __SPRT_ID(itimerval) * __tv) {
+__SPRT_C_FUNC int __SPRT_ID(getitimer)(int __w, struct __SPRT_ITIMERVAL_NAME *__tv) {
 #if __SPRT_CONFIG_HAVE_TIME_TIMER
 	struct itimerval nativeTv;
 	auto ret = ::getitimer(__w, &nativeTv);
@@ -112,8 +98,8 @@ __SPRT_C_FUNC int __SPRT_ID(getitimer)(int __w, struct __SPRT_ID(itimerval) * __
 }
 
 __SPRT_C_FUNC int __SPRT_ID(setitimer)(int __w,
-		const struct __SPRT_ID(itimerval) * __SPRT_RESTRICT __tv,
-		struct __SPRT_ID(itimerval) * __SPRT_RESTRICT __atv) {
+		const struct __SPRT_ITIMERVAL_NAME *__SPRT_RESTRICT __tv,
+		struct __SPRT_ITIMERVAL_NAME *__SPRT_RESTRICT __atv) {
 #if __SPRT_CONFIG_HAVE_TIME_TIMER
 	struct itimerval nativeInTv;
 	struct itimerval nativeOutTv;
