@@ -78,7 +78,7 @@ public:
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
 protected:
-	bool loadWindow();
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 
 	virtual void handleContextWillDestroy() override;
 	virtual void handleContextDidDestroy() override;

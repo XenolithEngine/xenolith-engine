@@ -1,14 +1,15 @@
 # Xenolith Engine
 
 **Xenolith** is a cross-platform SDK for building modern C and C++ applications: a Vulkan-based
-graphics engine, a custom system runtime (libc/STL/pthread) and a set of application libraries,
-all built with a single build system without relying on platform SDKs.
+graphics engine, a custom system runtime (libc/C++ standard library/pthread) and a set of
+application libraries, all built with a single build system without relying on platform SDKs.
 
 The SDK is organized as a monorepository and consists of three main layers:
 
-* **Xenolith Runtime** (`runtime/`) — an umbrella libc implementation, a partial C++ STL and a
-  custom pthread. It provides a single POSIX-compatible interface on top of the platform libc, and
-  on some platforms a fully custom implementation.
+* **Xenolith Runtime** (`runtime/`) — an umbrella libc implementation, a full C++ standard library
+  (a freestanding minimal one plus a complete libc++ port) and a custom pthread. It provides a
+  single POSIX-compatible interface on top of the platform libc, and on some platforms a fully
+  custom implementation.
 * **Stappler utilities** (`stappler/`) — application libraries: data and serialization, database
   access, cryptography, networking, raster and vector graphics, typography, documents.
 * **Xenolith Engine** (`xenolith/`) — a Vulkan-based graphics and compute engine: the core part of
@@ -65,8 +66,27 @@ Components:
   submodule).
 * `src/` — high-level utilities: UUID, hashing, compression, URL parsing, IDN (IDNA2008), task
   dispatch, filesystem, geometry with SIMD, and the windowing subsystem.
-* `include/sprt/` — SPRT headers, including a partial **C++ STL** implementation (libc++/libstdc++
-  are deliberately not used, for ABI isolation).
+* `libcxx/` — the **C++ standard library** (`runtime_libcxx` module): a full port of LLVM's libc++,
+  retargeted onto the runtime's own libc (see below).
+* `include/sprt/` — SPRT headers, including `sprt/cxx/` — a minimal **freestanding** standard-library
+  analogue (see below).
+
+### C++ standard library
+
+The runtime provides C++ support in two tiers:
+
+* **`sprt/cxx/`** — a minimal, **freestanding** standard-library analogue living in `namespace sprt`
+  (containers, type traits, atomics, `optional`/`variant`/`tuple`, mutexes, …). It has no hosted
+  dependencies and is what the runtime itself — including the libc and the low-level primitives — is
+  built with, so the lower layers never need a C++ standard library to exist yet.
+* **`runtime/libcxx/`** — a **full port of LLVM's libc++** (the `runtime_libcxx` module), providing
+  the real hosted `std::` for application code. The vendored libc++ tree is retargeted onto the
+  runtime's own libc through the overlay in `runtime/include_libc/cxx`, which supplies
+  `__config_site` and points every libc++ OS / threading / allocation hook at the sprt primitives.
+  For ABI isolation the port lives in the versioned namespace `std::__sprt`, so it never clashes
+  with a foreign system libc++ on ABI-shared targets. Conformance is measured with the **upstream
+  libc++ test suite** (`tests/libcxx/`), run against the port on Linux, Windows (via wine) and
+  WebAssembly (via Node.js).
 
 ## Graphics engine (Xenolith Engine)
 
@@ -253,12 +273,13 @@ cd tests/window
 make            # build for the current host
 ```
 
-Test applications live in the `tests/` directory (`window`, `stappler`, `runtime`, `builtin`).
+Test applications live in the `tests/` directory (`window`, `stappler`, `runtime`, …), along with
+the conformance suites for the runtime's libc (`tests/libc`) and its libc++ port (`tests/libcxx`).
 
 ## Project structure
 
 ```
-runtime/   — Xenolith Runtime (libc, STL, pthread, SPRT) and toolchains (runtime/toolchains)
+runtime/   — Xenolith Runtime (libc, libc++ port, pthread, SPRT) and toolchains (runtime/toolchains)
 stappler/  — application libraries (data, DB, crypto, networking, graphics, documents)
 xenolith/  — Vulkan graphics engine (core, backend, renderers, remote rendering)
 make/      — GNU Make build system

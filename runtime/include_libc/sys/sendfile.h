@@ -1,4 +1,5 @@
 /**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
 Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,8 +21,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Out-of-line TU for vendored libc++ __libcpp_verbose_abort (verbose_abort.cpp) — the hardening/assert abort entry the vendored TUs call.
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_SENDFILE_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_SYS_SENDFILE_H_
 
-#define _LIBCPP_BUILDING_LIBRARY
 
-#include "libcxx/verbose_abort.cpp"
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+#include_next <sys/sendfile.h>
+
+#else
+
+#include <sprt/c/sys/__sprt_sendfile.h>
+
+typedef __SPRT_ID(ssize_t) ssize_t;
+typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(size_t) size_t;
+
+__SPRT_BEGIN_DECL
+
+SPRT_UMBRELLA_FUNC ssize_t sendfile(int out_fd, int in_fd, off_t *ofs,
+		size_t count) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sendfile)(out_fd, in_fd, ofs, count);
+}
+#endif
+__SPRT_END_DECL
+
+#endif
+
+
+#endif

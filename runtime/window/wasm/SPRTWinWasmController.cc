@@ -43,15 +43,12 @@ WindowCapabilities WasmContextController::getCapabilities() const { return Windo
 
 void WasmContextController::openUrl(StringView) { } // TODO: host import -> window.open
 
-bool WasmContextController::loadWindow() {
-	auto wInfo = sprt::move(_windowInfo);
-	if (configureWindow(wInfo)) {
-		auto window = Rc<WasmWindow>::create(this, sprt::move(wInfo), getCapabilities());
-		if (window) {
-			notifyWindowCreated(window);
-			_activeWindows.emplace(window);
-			return true;
-		}
+bool WasmContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	auto window = Rc<WasmWindow>::create(this, sprt::move(wInfo), getCapabilities());
+	if (window) {
+		notifyWindowCreated(window);
+		_activeWindows.emplace(window);
+		return true;
 	}
 	return false;
 }
@@ -81,7 +78,7 @@ int WasmContextController::run(NotNull<ContextContainer> container) {
 			destroy();
 			return;
 		}
-		loadWindow();
+		createWindow(sprt::move(_windowInfo));
 	}, nullptr);
 
 	_looper->run();

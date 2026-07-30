@@ -104,6 +104,16 @@ public:
 
 	virtual bool configureWindow(NotNull<WindowInfo>);
 
+	// Find a live window by its WindowInfo::id
+	NativeWindow *findWindow(StringView id) const;
+
+	// Common entry point for window creation, safe to call at any point when context is active.
+	// Validates type/parent requirements and id uniqueness, then hands off to the backend
+	// implementation (`loadWindow`).
+	// Returns Status::ErrorNotSupported if the platform can not create this kind of window;
+	// caller may then fall back to an in-scene emulation.
+	virtual Status createWindow(Rc<WindowInfo> &&);
+
 	// Native window was created on WM side and now operational
 	virtual void notifyWindowCreated(NotNull<NativeWindow>);
 
@@ -171,6 +181,11 @@ public:
 
 protected:
 	virtual void notifyPendingWindows();
+
+	// Backend part of `createWindow`: create the native window for an already validated
+	// and configured WindowInfo. Platforms that can not create windows on demand
+	// (Android, iOS - windows come from the OS) keep the default.
+	virtual bool loadWindow(Rc<WindowInfo> &&) { return false; }
 
 	int _resultCode = 0;
 	ContextState _state = ContextState::Created;

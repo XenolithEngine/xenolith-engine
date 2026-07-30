@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+Copyright (c) 2026 Xenolith Team <admin@stappler.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,8 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Out-of-line TU for vendored libc++ __libcpp_verbose_abort (verbose_abort.cpp) — the hardening/assert abort entry the vendored TUs call.
+#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SENDFILE_H_
+#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SENDFILE_H_
 
-#define _LIBCPP_BUILDING_LIBRARY
+#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
 
-#include "libcxx/verbose_abort.cpp"
+__SPRT_BEGIN_DECL
+
+SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(sendfile)(int, int, __SPRT_ID(off_t) *, __SPRT_ID(size_t));
+
+__SPRT_END_DECL
+
+#endif

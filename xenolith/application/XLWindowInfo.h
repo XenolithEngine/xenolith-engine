@@ -41,6 +41,11 @@ using core::FullscreenInfo;
 using core::ViewConstraints;
 using core::WindowState;
 
+using sprt::window::WindowType;
+using sprt::window::WindowAnchor;
+using sprt::window::WindowPlacementAdjustment;
+using sprt::window::WindowPlacement;
+using sprt::window::getWindowTypeName;
 using sprt::window::WindowCursor;
 using sprt::window::WindowLayerFlags;
 using sprt::window::WindowLayer;

@@ -75,12 +75,17 @@ THE SOFTWARE.
 	active reaches it through a libc++ header (<__config> defines _LIBCPP_VERSION
 	first), so the order is reliable there; do not include sprt headers before the
 	first libc++ header in such TUs.
+
+	_LIBCPP___CONFIG_SITE covers the window INSIDE <__config> itself: its platform
+	detection (<__configuration/platform.h> -> <features.h>) can reach this header
+	through libc overlays (e.g. include_libc/android/api-level.h -> __sprt_def.h)
+	before _LIBCPP_VERSION is defined, but always after <__config_site>.
 */
 #define __SPRT_STD_OWNED_BEGIN inline namespace __sprt {
 #define __SPRT_STD_OWNED_END }
 
 #ifndef __SPRT_STD_EXTERNAL
-#if __SPRT_USE_STL || defined(_LIBCPP_VERSION)
+#if __SPRT_USE_STL || defined(_LIBCPP_VERSION) || defined(_LIBCPP___CONFIG_SITE)
 #define __SPRT_STD_EXTERNAL 1
 #else
 #define __SPRT_STD_EXTERNAL 0

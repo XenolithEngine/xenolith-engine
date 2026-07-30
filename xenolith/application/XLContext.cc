@@ -608,6 +608,16 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 	return true;
 }
 
+void Context::createWindow(Rc<WindowInfo> &&info) {
+	performOnThread([this, info = move(info)]() mutable {
+		auto status = _controller->createWindow(move(info));
+		if (status != Status::Ok) {
+			log::source().error("Context", "Fail to create native window: ",
+					sprt::status::getStatusName(status));
+		}
+	}, this);
+}
+
 void Context::updateMessageToken(BytesView tok) {
 	if (tok != _messageToken) {
 		onMessageToken(this, _messageToken);

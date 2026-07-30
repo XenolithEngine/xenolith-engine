@@ -30,7 +30,7 @@ public:
 	virtual void openUrl(StringView) override;
 
 protected:
-	bool loadWindow();
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 };
 
 } // namespace sprt::window

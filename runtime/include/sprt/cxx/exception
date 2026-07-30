@@ -233,7 +233,11 @@ public:
 template <class _Tp>
 [[noreturn]]
 void throw_with_nested(_Tp &&__t) {
+#if defined(__cpp_exceptions)
 	throw __t;
+#else
+	terminate();
+#endif
 }
 
 template <class _Ep>
