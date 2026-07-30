@@ -21,16 +21,6 @@
 #define _LIBCPP_HAS_MONOTONIC_CLOCK 1
 #define _LIBCPP_HAS_TERMINAL 1
 #define _LIBCPP_HAS_MUSL_LIBC 0
-// sprt overlay: sprt provides a full POSIX pthread implementation on EVERY target
-// (native on Linux/Apple, WinAPI-backed on Windows via pthread_native_winapi.cc, and
-// pthread_native_wasm.cc on wasm), so libc++'s low-level __libcpp_mutex_/__libcpp_cond_
-// API always maps onto sprt pthread. Force _LIBCPP_HAS_THREAD_API_PTHREAD instead of
-// leaving it 0 and letting libc++'s auto-detect (__config) run: that heuristic picks the
-// win32 backend under _LIBCPP_WIN32API (wanting <windows.h> CreateMutex/... sprt does not
-// wrap) and errors "No thread API" on bare wasm32. On Linux the heuristic already lands on
-// pthread, so forcing it here is identical there and merely extends the same wiring to the
-// other targets. The high-level std::mutex/condition_variable overlay (SPRT_STD_THREADING_
-// SPRT) is a separate layer and is unaffected.
 #define _LIBCPP_HAS_THREAD_API_PTHREAD 1
 #define _LIBCPP_HAS_THREAD_API_EXTERNAL 0
 #define _LIBCPP_HAS_THREAD_API_WIN32 0
@@ -51,21 +41,48 @@
 #if defined(_WIN32)
 #define _LIBCPP_SPRT_NO_WIN32API
 #endif
-// Match sprt's own import/export policy (see SPRT_API in <sprt/c/bits/__sprt_def.h>, keyed
-// on SPRT_BUILD_RUNTIME / SPRT_SHARED_RUNTIME): a symbol is dllimport ONLY when the code
-// consumes the runtime as an external shared DLL (SPRT_SHARED_RUNTIME); when building the
-// runtime (SPRT_BUILD_RUNTIME) or in a static application it is defined LOCALLY with no
-// dllimport/dllexport — the runtime DLL publishes its exports through a .def, not via
-// per-symbol annotations. libc++ must follow the same rule: otherwise the library TUs
-// (_LIBCPP_BUILDING_LIBRARY -> dllexport) and the consuming/test TUs (dllimport) disagree
-// inside one static image, corrupting the import/export tables (lld-link LNK4217, "locally
-// defined symbol imported") and letting an import resolve back into the application instead
-// of the intended system DLL (e.g. ntdll's wcslen/wcsnlen). Disabling the annotations makes
-// _LIBCPP_EXPORTED_FROM_ABI empty and takes precedence over _LIBCPP_BUILDING_LIBRARY, so all
-// TU kinds agree on plain local symbols. Only a shared-runtime consumer keeps dllimport.
-#if !defined(SPRT_SHARED_RUNTIME)
+// Export policy, mirroring SPRT_API in <sprt/c/bits/__sprt_def.h> — same three states,
+// same keys, so libc++ and the rest of the runtime always agree on who owns a symbol:
+//
+//   SPRT_BUILD_SHARED_RUNTIME  building sprt.dll        -> dllexport
+//   SPRT_SHARED_RUNTIME        consuming sprt.dll       -> dllimport
+//   neither                    static, one image        -> no annotation
+//
+// libc++ spells those states as _LIBCPP_BUILDING_LIBRARY (export) and its absence
+// (import), with _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS switching both off; translate
+// here rather than passing them from the build system, so the rule lives in one place.
+//
+// The static state must disable the annotations outright. Leaving them on would let the
+// library TUs (dllexport) and the consuming TUs (dllimport) disagree inside a single
+// image: lld-link reports LNK4217 "locally defined symbol imported", and an import can
+// resolve back into the application instead of the intended system DLL (ntdll's
+// wcslen/wcsnlen was the case that bit).
+//
+// The shared state must keep them on, and cannot be replaced by a .def: a consumer sees
+// the explicitly instantiated class templates (basic_ios<char>, basic_ostream<char>, ...)
+// as dllimport, and on COFF that demands EVERY member including the header-inline ones,
+// which an annotation-free library build never emits. There would be nothing to list.
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+#define _LIBCPP_BUILDING_LIBRARY
+#elif !defined(SPRT_SHARED_RUNTIME)
 #define _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS
 #endif
+
+// A weak external cannot be exported: lld writes the decorated `.weak.<name>.default`
+// alias into the import library instead of the plain name, so a consumer linking
+// sprt.lib finds no definition at all (__libcpp_verbose_abort is the one that bites —
+// every hardened assertion calls it). Drop the attribute for the shared runtime;
+// overridability survives, because a local definition still beats an import. __config
+// only defines this when unset, so no patch to the vendored header is needed.
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+#define _LIBCPP_WEAK
+#endif
+
+// NOTE: _LIBCPP_DEPRECATED_ABI_LEGACY_LIBRARY_DEFINITIONS_FOR_INLINE_FUNCTIONS must NOT
+// be set here. It looks like the answer to "the consumer imports __shared_count members
+// the library never emitted", but that gap only exists while the annotations are off.
+// With them on the explicit instantiations already emit those members as dllexport, and
+// memory.cpp's legacy out-of-line copies collide with them.
 #define _LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS 0
 // sprt overlay: on the *-windows-msvc triple libc++ auto-detects _LIBCPP_ABI_MICROSOFT
 // (_WIN32 && _MSC_VER) and would then enable _LIBCPP_ABI_VCRUNTIME, pulling the real

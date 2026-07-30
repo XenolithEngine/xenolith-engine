@@ -141,5 +141,26 @@ typedef struct _OSVERSIONINFOA {
 	CHAR szCSDVersion[128];
 } OSVERSIONINFOA, *POSVERSIONINFOA, *LPOSVERSIONINFOA;
 
+/* GetFileVersionInfoEx* flags (verrsrc.h) */
+#define __SPRT_FILE_VER_GET_LOCALISED  0x01
+#define __SPRT_FILE_VER_GET_NEUTRAL    0x02
+#define __SPRT_FILE_VER_GET_PREFETCHED 0x04
+
+typedef struct tagVS_FIXEDFILEINFO {
+	DWORD dwSignature;
+	DWORD dwStrucVersion;
+	DWORD dwFileVersionMS;
+	DWORD dwFileVersionLS;
+	DWORD dwProductVersionMS;
+	DWORD dwProductVersionLS;
+	DWORD dwFileFlagsMask;
+	DWORD dwFileFlags;
+	DWORD dwFileOS;
+	DWORD dwFileType;
+	DWORD dwFileSubtype;
+	DWORD dwFileDateMS;
+	DWORD dwFileDateLS;
+} VS_FIXEDFILEINFO;
+
 
 #endif // SPRT_WRAPPERS_WINDOWS_ABI_WINVER_H_

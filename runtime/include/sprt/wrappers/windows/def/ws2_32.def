@@ -48,3 +48,4 @@ EXPORTS
 	WSAResetEvent
 	WSACloseEvent
 	__WSAFDIsSet
+	WSADuplicateSocketW

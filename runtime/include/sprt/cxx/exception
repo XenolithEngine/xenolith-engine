@@ -67,7 +67,7 @@ void *operator new(__SIZE_TYPE__, void *) noexcept;
 
 namespace std {
 
-class exception {
+class SPRT_API exception {
 public:
 	exception() noexcept { }
 	exception(const exception &) noexcept = default;
@@ -76,7 +76,7 @@ public:
 	virtual const char *what() const noexcept;
 };
 
-class bad_exception : public exception {
+class SPRT_API bad_exception : public exception {
 public:
 	bad_exception() noexcept { }
 	~bad_exception() noexcept override;
@@ -95,17 +95,17 @@ unexpected_handler get_unexpected() noexcept;
 void unexpected();
 
 using terminate_handler = void (*)();
-terminate_handler set_terminate(terminate_handler) noexcept;
-terminate_handler get_terminate() noexcept;
+SPRT_API terminate_handler set_terminate(terminate_handler) noexcept;
+SPRT_API terminate_handler get_terminate() noexcept;
 [[noreturn]]
-void terminate() noexcept;
+SPRT_API void terminate() noexcept;
 
 // Handler trampolines (libc++ spelling): run the given handler, then abort /
 // terminate if it returns.
 [[noreturn]]
-void __unexpected(unexpected_handler);
+SPRT_API void __unexpected(unexpected_handler);
 [[noreturn]]
-void __terminate(terminate_handler) noexcept;
+SPRT_API void __terminate(terminate_handler) noexcept;
 
 // ---- sprt-defined entities ----------------------------------------------
 // Canonical std on ABI-owned targets (wasm/windows), inline namespace __sprt on
@@ -114,8 +114,8 @@ __SPRT_STD_OWNED_BEGIN
 
 // std wrappers over __cxa_uncaught_exception[s]; sprt owns them (libc++, not
 // libc++abi, defines these upstream).
-bool uncaught_exception() noexcept;
-int uncaught_exceptions() noexcept;
+SPRT_API bool uncaught_exception() noexcept;
+SPRT_API int uncaught_exceptions() noexcept;
 
 // --- exception_ptr -------------------------------------------------------
 
@@ -123,23 +123,23 @@ int uncaught_exceptions() noexcept;
 // declarations (which cannot carry the [[noreturn]] attribute themselves) refer
 // back to these first declarations rather than introducing conflicting ones.
 class exception_ptr;
-bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
-exception_ptr current_exception() noexcept;
+SPRT_API bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
+SPRT_API exception_ptr current_exception() noexcept;
 [[noreturn]]
-void rethrow_exception(exception_ptr);
-void swap(exception_ptr &, exception_ptr &) noexcept;
+SPRT_API void rethrow_exception(exception_ptr);
+SPRT_API void swap(exception_ptr &, exception_ptr &) noexcept;
 
 // Non-template back-end for make_exception_ptr: allocates a refcounted block,
 // copy-constructs the exception object into it (__copy), and remembers how to
 // destroy it (__destroy). Defined in SPRTCxxException.cpp.
-exception_ptr __make_exception_ptr(__SIZE_TYPE__ __size, __SIZE_TYPE__ __align, void *__src,
+SPRT_API exception_ptr __make_exception_ptr(__SIZE_TYPE__ __size, __SIZE_TYPE__ __align, void *__src,
 		void (*__copy)(void *, void *), void (*__destroy)(void *)) noexcept;
 
 #if SPRT_WINDOWS
 // MSVC-ABI back-end for make_exception_ptr: libc++ lowers make_exception_ptr(e) to
 // __copy_exception_ptr(&e, __GetExceptionInfo(e)) on the Microsoft ABI. Defined in
 // SPRTCxxException.cpp. (The Itanium path uses __make_exception_ptr above instead.)
-exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
+SPRT_API exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
 #endif
 
 // exception_ptr is a refcounted handle to a copied exception object (a single
@@ -147,7 +147,7 @@ exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
 // built without C++ exceptions it can never be rethrown-and-caught, so this stores
 // a copy and terminates on rethrow — the honest maximum for a no-EH platform, and
 // identical on every target.
-class exception_ptr {
+class SPRT_API exception_ptr {
 	void *__ptr_ = nullptr;
 
 	explicit exception_ptr(void *__p) noexcept : __ptr_(__p) { }

@@ -39,6 +39,14 @@ THE SOFTWARE.
 #define __SPRT__CRTDBG_HFILE_ERROR  ((void *) -2)
 #define __SPRT__CRTDBG_FILE_STDOUT  ((void *) -4)
 #define __SPRT__CRTDBG_FILE_STDERR  ((void *) -5)
+
+#define __SPRT__CRTDBG_ALLOC_MEM_DF       0x01
+#define __SPRT__CRTDBG_DELAY_FREE_MEM_DF  0x02
+#define __SPRT__CRTDBG_CHECK_ALWAYS_DF    0x04
+#define __SPRT__CRTDBG_RESERVED_DF        0x08
+#define __SPRT__CRTDBG_CHECK_CRT_DF       0x10
+#define __SPRT__CRTDBG_LEAK_CHECK_DF      0x20
+#define __SPRT__CRTDBG_REPORT_FLAG        (-1)
 // clang-format on
 
 typedef int(__cdecl *_CRT_REPORT_HOOK)(int, char *, int *);

@@ -105,6 +105,10 @@ THE SOFTWARE.
 #define VFT2_FONT_VECTOR __SPRT_VFT2_FONT_VECTOR
 #define VFT2_FONT_TRUETYPE __SPRT_VFT2_FONT_TRUETYPE
 
+#define FILE_VER_GET_LOCALISED __SPRT_FILE_VER_GET_LOCALISED
+#define FILE_VER_GET_NEUTRAL __SPRT_FILE_VER_GET_NEUTRAL
+#define FILE_VER_GET_PREFETCHED __SPRT_FILE_VER_GET_PREFETCHED
+
 #include <sprt/wrappers/windows/winapifamily.h>
 
 __SPRT_BEGIN_DECL
@@ -119,9 +123,43 @@ __SPRT_WIN_IMPORT WINAPI ULONGLONG VerSetConditionMask(ULONGLONG ConditionMask, 
 __SPRT_WIN_IMPORT WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation,
 		DWORD dwTypeMask, DWORDLONG dwlConditionMask);
 
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeW(LPCWSTR lptstrFilename, LPDWORD lpdwHandle);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle,
+		DWORD dwLen, LPVOID lpData);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoW(LPCWSTR lptstrFilename, DWORD dwHandle,
+		DWORD dwLen, LPVOID lpData);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeExA(DWORD dwFlags, LPCSTR lpwstrFilename,
+		LPDWORD lpdwHandle);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeExW(DWORD dwFlags, LPCWSTR lpwstrFilename,
+		LPDWORD lpdwHandle);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoExA(DWORD dwFlags, LPCSTR lpwstrFilename,
+		DWORD dwHandle, DWORD dwLen, LPVOID lpData);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoExW(DWORD dwFlags, LPCWSTR lpwstrFilename,
+		DWORD dwHandle, DWORD dwLen, LPVOID lpData);
+
+__SPRT_WIN_IMPORT WINAPI BOOL VerQueryValueA(LPCVOID pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer,
+		PUINT puLen);
+
+__SPRT_WIN_IMPORT WINAPI BOOL VerQueryValueW(LPCVOID pBlock, LPCWSTR lpSubBlock, LPVOID *lplpBuffer,
+		PUINT puLen);
+
 #ifdef UNICODE
 #define VerifyVersionInfo VerifyVersionInfoW
 #define GetVersionEx GetVersionExW
+#define GetFileVersionInfoSize GetFileVersionInfoSizeW
+#define GetFileVersionInfo GetFileVersionInfoW
+#define GetFileVersionInfoSizeEx GetFileVersionInfoSizeExW
+#define GetFileVersionInfoEx GetFileVersionInfoExW
+#define VerQueryValue VerQueryValueW
 typedef OSVERSIONINFOW OSVERSIONINFO;
 typedef POSVERSIONINFOW POSVERSIONINFO;
 typedef LPOSVERSIONINFOW LPOSVERSIONINFO;

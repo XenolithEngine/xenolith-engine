@@ -24,6 +24,9 @@ THE SOFTWARE.
 
 #define _LIBCPP_BUILDING_LIBRARY
 
+// pre-include posix_compat to silence redefinition varinigs - sprt will adopt libc++ requirements for this TU
+#include "libcxx/filesystem/posix_compat.h"
+
 #include "libcxx/filesystem/path.cpp"
 #include "libcxx/filesystem/directory_entry.cpp"
 #include "libcxx/filesystem/directory_iterator.cpp"

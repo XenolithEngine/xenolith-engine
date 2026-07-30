@@ -39,6 +39,9 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameW(HANDLE hProcess, LPVOID lpv, L
 __SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameA(HANDLE hProcess, LPVOID lpv, LPSTR lpFilename,
 		DWORD nSize);
 
+__SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameA(HANDLE hProcess, LPVOID lpv, LPSTR lpFilename,
+		DWORD nSize);
+
 #ifdef UNICODE
 #define GetModuleFileNameEx GetModuleFileNameExW
 #else
