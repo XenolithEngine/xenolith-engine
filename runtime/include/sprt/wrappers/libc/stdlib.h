@@ -162,21 +162,31 @@ __SPRT_BEGIN_DECL
 // x86_64_sprt, so it was false on every arch -- breaking aarch64-windows.)
 #if SPRT_WINDOWS
 
-__SPRT_C_FUNC unsigned short _byteswap_ushort(unsigned short _Number);
-__SPRT_C_FUNC unsigned long _byteswap_ulong(unsigned long _Number);
-__SPRT_C_FUNC __SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number);
+unsigned short _byteswap_ushort(unsigned short _Number);
+unsigned long _byteswap_ulong(unsigned long _Number);
+__SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number);
 
 #endif
 
-__SPRT_C_FUNC int qsort_s(void *a, size_t b, size_t c,
-		int (*cmp)(void *, const void *, const void *), void *ctx) __SPRT_NOEXCEPT;
+SPRT_API int qsort_s(void *a, size_t b, size_t c, int (*cmp)(void *, const void *, const void *),
+		void *ctx) __SPRT_NOEXCEPT;
 
-__SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
+SPRT_API int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
 		char const *name) __SPRT_NOEXCEPT;
 
-__SPRT_C_FUNC size_t _msize(void *) __SPRT_NOEXCEPT;
+SPRT_API size_t _msize(void *) __SPRT_NOEXCEPT;
 
-__SPRT_C_FUNC __SPRT_ID(wchar_t) * _wgetenv(const __SPRT_ID(wchar_t) * varname) __SPRT_NOEXCEPT;
+SPRT_API __SPRT_ID(wchar_t) * _wgetenv(const __SPRT_ID(wchar_t) * varname) __SPRT_NOEXCEPT;
+
+SPRT_API int _putenv_s(const char *name, const char *value) __SPRT_NOEXCEPT;
+
+SPRT_API int _wputenv_s(const __SPRT_ID(wchar_t) * name,
+		const __SPRT_ID(wchar_t) * value) __SPRT_NOEXCEPT;
+
+SPRT_API extern __SPRT_ID(wchar_t) * *_wenviron;
+
+SPRT_API extern int __argc;
+SPRT_API extern char **__argv;
 
 #if SPRT_WINDOWS
 

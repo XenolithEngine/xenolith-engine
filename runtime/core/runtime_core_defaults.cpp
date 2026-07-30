@@ -110,7 +110,7 @@ __SPRT_C_FUNC void __SPRT_ID(perror_impl)(const char *err) { return ::perror(err
 
 __SPRT_C_FUNC int __SPRT_ID(fflush_impl)(__SPRT_ID(FILE) * file) { return ::fflush(file); }
 
-__SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
+__SPRT_C_FUNC SPRT_API int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
 	// The argument must be forwarded at pointer width: commands such as
 	// F_GETLK/F_SETLK take a `struct flock *`, and on LLP64 (Windows) an
 	// `unsigned long` is only 32 bits and would truncate the pointer.

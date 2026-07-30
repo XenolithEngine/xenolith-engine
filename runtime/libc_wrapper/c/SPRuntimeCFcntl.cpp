@@ -31,15 +31,18 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/sys/__sprt_ioctl.h>
 
 #include <sprt/runtime/log.h>
 
 #if __STDC_HOSTED__ == 0
 #include "unistd.h"
 #include "fcntl.h"
+#include "sys/ioctl.h"
 #else
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
 
 // musl diverges from the glibc/bionic ABI for a couple of O_* constants checked
 // below (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, so it keeps the
@@ -226,6 +229,33 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 #else
 	return open64(path, __flags, __mode);
 #endif
+}
+
+/*
+	Device control.
+
+	Variadic in the public interface, but the umbrella inline in <sys/ioctl.h> has
+	already collapsed the variadic argument to a single intptr_t by the time it calls
+	in here - that is the whole point of routing through __sprt_*, since a va_list
+	cannot cross the ABI boundary. So this takes one intptr_t and hands it straight to
+	the platform, which is what every request expects: a flags word or a pointer to a
+	request-specific struct, at pointer width so neither is truncated on LLP64.
+
+	__sprt_fcntl is the same shape but lives in core/runtime_core_defaults.cpp, next
+	to the other descriptor-level defaults.
+
+	The request parameter is int on the SPRT ABI. glibc declares ioctl's as unsigned
+	long and musl/bionic/Darwin as int; the value is a bit pattern in every case and
+	the conversion is value-preserving for every defined request.
+*/
+__SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
+	__SPRT_ID(intptr_t) arg;
+	__sprt_va_list ap;
+	__sprt_va_start(ap, __cmd);
+	arg = __sprt_va_arg(ap, __SPRT_ID(intptr_t));
+	__sprt_va_end(ap);
+
+	return ::ioctl(__fd, __cmd, arg);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {

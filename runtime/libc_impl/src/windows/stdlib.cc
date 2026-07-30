@@ -203,7 +203,58 @@ struct _EnvBlock {
 thread_local _EnvBlock tl_env;
 static _EnvBlock s_env;
 
+__SPRT_C_FUNC SPRT_API wchar_t **_wenviron = nullptr;
+
+static void __build_wenviron() {
+	auto block = GetEnvironmentStringsW();
+	if (!block) {
+		return;
+	}
+
+	// Two passes over "name=value\0name=value\0\0": count, then copy into one
+	// allocation holding the pointer array followed by the strings.
+	size_t count = 0;
+	size_t chars = 0;
+	for (const wchar_t *p = block; *p;) {
+		size_t len = __sprt_wcslen(p);
+		++count;
+		chars += len + 1;
+		p += len + 1;
+	}
+
+	size_t bytes = (count + 1) * sizeof(wchar_t *) + chars * sizeof(wchar_t);
+	auto buf = (unsigned char *)__sprt_malloc(bytes);
+	if (!buf) {
+		FreeEnvironmentStringsW(block);
+		return;
+	}
+
+	auto table = (wchar_t **)buf;
+	auto strings = (wchar_t *)(buf + (count + 1) * sizeof(wchar_t *));
+
+	size_t i = 0;
+	for (const wchar_t *p = block; *p;) {
+		size_t len = __sprt_wcslen(p);
+		__builtin_memcpy(strings, p, (len + 1) * sizeof(wchar_t));
+		table[i++] = strings;
+		strings += len + 1;
+		p += len + 1;
+	}
+	table[count] = nullptr;
+
+	FreeEnvironmentStringsW(block);
+
+	auto old = _wenviron;
+	_wenviron = table;
+	if (old) {
+		__sprt_free(old);
+	}
+}
+
 __SPRT_C_FUNC wchar_t *_wgetenv(const wchar_t *name) __SPRT_NOEXCEPT {
+	// Touching the wide environment is what materializes _wenviron in the CRT.
+	__build_wenviron();
+
 	if (__libc::get()->mainThread == __sprt_gettid()) {
 		return s_env.get(name);
 	} else {
@@ -231,6 +282,32 @@ __SPRT_C_FUNC int setenv(const char *name, const char *value, int override) __SP
 	}
 	__sprt_errno = platform::lastErrorToErrno(GetLastError());
 	return -1;
+}
+
+__SPRT_C_FUNC int _putenv_s(const char *name, const char *value) __SPRT_NOEXCEPT {
+	if (!name || !value || name[0] == '\0' || __builtin_strchr(name, '=')) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+	if (SetEnvironmentVariableA(name, value[0] == '\0' ? nullptr : value)) {
+		return 0;
+	}
+	auto err = platform::lastErrorToErrno(GetLastError());
+	__sprt_errno = err;
+	return err;
+}
+
+__SPRT_C_FUNC int _wputenv_s(const wchar_t *name, const wchar_t *value) __SPRT_NOEXCEPT {
+	if (!name || !value || name[0] == L'\0') {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+	if (SetEnvironmentVariableW(name, value[0] == L'\0' ? nullptr : value)) {
+		return 0;
+	}
+	auto err = platform::lastErrorToErrno(GetLastError());
+	__sprt_errno = err;
+	return err;
 }
 
 __SPRT_C_FUNC int unsetenv(const char *name) __SPRT_NOEXCEPT {

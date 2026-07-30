@@ -35,6 +35,15 @@ RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # link the runtime never see this define and get the libc++ value-type projection.
 MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
 
+# Set by <root>/runtime/Makefile when SPRT_SHARED=1. Flips SPRT_API/SPRT_GLOBAL to the
+# export side of the ABI (__declspec(dllexport) on Windows) and swaps the freestanding
+# entry point from mainCRTStartup to _DllMainCRTStartup.
+ifeq ($(SPRT_SHARED),1)
+# This alone also settles libc++: __config_site derives _LIBCPP_BUILDING_LIBRARY from it,
+# so every TU of the shared runtime agrees that the visibility annotations mean dllexport.
+MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
+endif
+
 include $(RUNTIME_MODULE_DIR)/core/core.mk
 include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk

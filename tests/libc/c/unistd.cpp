@@ -80,6 +80,10 @@ void performUnistdTest() {
 	printf("dup ok=%d distinct=%d\n", fd2 >= 0 ? 1 : 0, fd2 != fd ? 1 : 0);
 	read(fd, buf, 2);
 	printf("dup shares offset=%lld\n", ll(lseek(fd2, 0, SEEK_CUR)));
+	// POSIX: dup() clears FD_CLOEXEC on the new descriptor (== fcntl F_DUPFD);
+	// both targets must report 0. Guards libc_impl against regressing to a
+	// close-on-exec default for dup().
+	printf("dup fd_cloexec=%d\n", (fcntl(fd2, F_GETFD) & FD_CLOEXEC) != 0);
 	close(fd2);
 	int fd3 = open(path, O_RDONLY, 0);
 	int dd = dup2(fd, fd3); // fd3 now refers to the same description as fd
@@ -145,6 +149,37 @@ void performUnistdTest() {
 	int ua = unlink(path);
 	int ue = errno;
 	printf("unlink(again)=%d errno=%s\n", ua, errnoName(ue));
+
+	/*
+		The standard descriptors are writable.
+
+		Worth its own check because nothing else here reaches them: stdio drives the
+		console handle directly, so printf can keep working while raw write() to the
+		very same descriptor fails. That is not hypothetical - the freestanding
+		Windows libc left fd 0/1/2 at flags 0 (which is O_RDONLY), so every write to
+		stdout returned EBADF while this suite stayed green, and any consumer that
+		writes through a descriptor rather than a FILE* (LLVM's raw_fd_ostream, for
+		one) silently produced nothing at all.
+
+		stdout is flushed on both sides of the raw write so the interleaving is
+		determined here rather than by whatever buffering policy each libc applies.
+	*/
+	fflush(stdout);
+	errno = 0;
+	long long dw = ll(write(STDOUT_FILENO, "write(stdout) ok\n", 17));
+	int dwe = errno;
+	errno = 0;
+	long long ew = ll(write(STDERR_FILENO, "", 0));
+	int ewe = errno;
+	fflush(stdout);
+	printf("write(stdout)=%lld errno=%s\n", dw, errnoName(dwe));
+	printf("write(stderr,0)=%lld errno=%s\n", ew, errnoName(ewe));
+
+	// ...and stdin is not. POSIX reports EBADF for a write to a read-only descriptor.
+	errno = 0;
+	long long iw = ll(write(STDIN_FILENO, "x", 1));
+	int iwe = errno;
+	printf("write(stdin)=%lld errno=%s\n", iw, errnoName(iwe));
 }
 
 } // namespace sprt::test

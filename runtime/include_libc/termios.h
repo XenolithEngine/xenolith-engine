@@ -29,12 +29,26 @@ THE SOFTWARE.
 	On platforms without a controlling terminal (notably freestanding wasm) there is
 	no TTY to configure, so the tc* functions are implemented as no-op stubs in the
 	sprt libc that report failure (return -1, errno = ENOTTY) or succeed vacuously;
-	callers such as OpenSSL's UI console fall back gracefully. The struct layout and
-	constant values mirror the Linux/musl asm-generic termbits so that the header,
-	the stubs, and any musl-provided symbol all agree on the ABI.
+	callers such as OpenSSL's UI console fall back gracefully. On Windows there IS a
+	terminal, and the tc* functions are backed by the console mode (see
+	libc_impl/src/windows/termios.cc) - the subset of the interface a Win32 console can
+	express (echo, canonical input, signal generation, output post-processing) maps onto
+	SetConsoleMode, and the rest is accepted and stored. The struct layout and constant
+	values mirror the Linux/musl asm-generic termbits so that the header, the backends,
+	and any musl-provided symbol all agree on the ABI.
 
 	- hosted SPRT build -> forwards to the system <termios.h> (#include_next)
 	- otherwise         -> SPRT-own declarations below
+
+	Unlike the rest of the libc surface there is no umbrella here: the declarations
+	below are the plain public names, resolved straight out of the sprt libc. That
+	limits them to the targets whose libc carries a terminal backend - wasm and
+	Windows - and leaves the header empty on the hosted targets, where an sprt
+	application does not get <termios.h> at all. Adding it there means giving
+	__sprt_tc* a wrapper over the platform libc (libc_wrapper/c/common), and a
+	conversion for the platforms whose struct termios is not the asm-generic one
+	this header describes (notably Darwin: 20 control characters, long flags and
+	literal baud values).
 */
 
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
@@ -46,7 +60,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/cross/__sprt_sysid.h> // pid_t
 
-#ifdef SPRT_WASM
+#if SPRT_WASM || SPRT_WINDOWS
 
 typedef unsigned char cc_t;
 typedef unsigned int speed_t;
@@ -111,6 +125,28 @@ struct termios {
 #define OFILL   0000100
 #define OFDEL   0000200
 
+// c_cflag baud rates, and the field they occupy. Kept for source compatibility and
+// for cfsetspeed round-trips: neither backend drives a serial line, so the value is
+// stored and reported back rather than acted on.
+#define B0      0000000
+#define B50     0000001
+#define B75     0000002
+#define B110    0000003
+#define B134    0000004
+#define B150    0000005
+#define B200    0000006
+#define B300    0000007
+#define B600    0000010
+#define B1200   0000011
+#define B1800   0000012
+#define B2400   0000013
+#define B4800   0000014
+#define B9600   0000015
+#define B19200  0000016
+#define B38400  0000017
+
+#define CBAUD   0010017
+
 // c_cflag bits
 #define CSIZE   0000060
 #define CS5     0000000
@@ -171,7 +207,7 @@ SPRT_API __SPRT_ID(pid_t) tcgetsid(int __fd);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM
+#endif // SPRT_WASM || SPRT_WINDOWS
 
 #endif
 

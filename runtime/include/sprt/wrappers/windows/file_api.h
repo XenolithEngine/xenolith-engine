@@ -220,8 +220,8 @@ __SPRT_WIN_IMPORT WINAPI BOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nN
 __SPRT_WIN_IMPORT WINAPI BOOL GetOverlappedResult(HANDLE hFile, LPOVERLAPPED lpOverlapped,
 		LPDWORD lpNumberOfBytesTransferred, BOOL bWait);
 
-typedef void (*LPOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwErrorCode,
-		DWORD dwNumberOfBytesTransfered, LPOVERLAPPED lpOverlapped);
+typedef void (*LPOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwErrorCode, DWORD dwNumberOfBytesTransfered,
+		LPOVERLAPPED lpOverlapped);
 
 __SPRT_WIN_IMPORT WINAPI BOOL ReadDirectoryChangesW(HANDLE hDirectory, LPVOID lpBuffer,
 		DWORD nBufferLength, BOOL bWatchSubtree, DWORD dwNotifyFilter, LPDWORD lpBytesReturned,
@@ -253,6 +253,9 @@ __SPRT_WIN_IMPORT WINAPI BOOL CreateDirectoryW(LPCWSTR lpPathName,
 __SPRT_WIN_IMPORT WINAPI DWORD GetTempFileNameW(LPCWSTR lpPathName, LPCWSTR lpTemplateFile,
 		UINT uUnique, LPWSTR lpTempFileName);
 
+__SPRT_WIN_IMPORT WINAPI DWORD GetTempFileNameA(LPCSTR lpPathName, LPCSTR lpTemplateFile,
+		UINT uUnique, LPSTR lpTempFileName);
+
 __SPRT_WIN_IMPORT WINAPI BOOL GetFileInformationByHandleEx(HANDLE hFile,
 		FILE_INFO_BY_HANDLE_CLASS FileInformationClass, LPVOID lpFileInformation,
 		DWORD dwBufferSize);
@@ -262,6 +265,8 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetLogicalDrives();
 __SPRT_WIN_IMPORT WINAPI BOOL PathIsRelativeW(LPCWSTR pszPath);
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetCurrentDirectoryW(DWORD nBufferLength, LPWSTR lpBuffer);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer);
 
 __SPRT_WIN_IMPORT WINAPI DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove,
 		LONG *lpDistanceToMoveHigh, DWORD dwMoveMethod);
@@ -315,6 +320,8 @@ __SPRT_WIN_IMPORT WINAPI BOOL MoveFileExA(LPCSTR lpExistingFileName, LPCSTR lpNe
 		DWORD dwFlags);
 
 __SPRT_WIN_IMPORT WINAPI BOOL SetCurrentDirectoryW(LPCWSTR lpPathName);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetCurrentDirectoryA(LPCSTR lpPathName);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetVolumeInformationW(LPCWSTR lpRootPathName,
 		LPWSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber,

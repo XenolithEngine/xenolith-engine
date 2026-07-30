@@ -41,6 +41,10 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/__sprt_threads.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#include <sprt/wrappers/windows/winsock_constants.h>
+#endif
+
 #include <sprt/wrappers/windows/abi/windows.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/windows.h) */
@@ -548,6 +552,9 @@ __SPRT_WIN_IMPORT WINAPI BOOL GetThreadGroupAffinity(HANDLE hThread, PGROUP_AFFI
 __SPRT_WIN_IMPORT WINAPI DWORD SearchPathW(LPCWSTR lpPath, LPCWSTR lpFileName, LPCWSTR lpExtension,
 		DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart);
 
+__SPRT_WIN_IMPORT WINAPI DWORD SearchPathA(LPCSTR lpPath, LPCSTR lpFileName, LPCSTR lpExtension,
+		DWORD nBufferLength, LPSTR lpBuffer, LPSTR *lpFilePart);
+
 __SPRT_WIN_IMPORT WINAPI BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetComputerNameExW(COMPUTER_NAME_FORMAT NameType, LPWSTR lpBuffer,
@@ -574,6 +581,11 @@ __SPRT_WIN_IMPORT WINAPI BOOL PostQueuedCompletionStatus(HANDLE CompletionPort,
 		DWORD dwNumberOfBytesTransferred, ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped);
 
 __SPRT_WIN_IMPORT WINAPI NTSTATUS NtClose(HANDLE Handle);
+
+#define ObjectBasicInformation __SPRT_ObjectBasicInformation
+
+__SPRT_WIN_IMPORT WINAPI NTSTATUS NtQueryObject(HANDLE Handle, int ObjectInformationClass,
+		PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength);
 
 __SPRT_WIN_IMPORT WINAPI int LCMapStringEx(LPCWSTR lpLocaleName, DWORD dwMapFlags, LPCWSTR lpSrcStr,
 		int cchSrc, LPWSTR lpDestStr, int cchDest, LPNLSVERSIONINFO lpVersionInformation,
@@ -627,8 +639,6 @@ __SPRT_WIN_IMPORT WINAPI UINT GetWindowsDirectoryA(LPSTR lpBuffer, UINT uSize);
 __SPRT_WIN_IMPORT WINAPI UINT GetWindowsDirectoryW(LPWSTR lpBuffer, UINT uSize);
 
 __SPRT_WIN_IMPORT WINAPI LPWCH GetEnvironmentStringsW(void);
-
-__SPRT_WIN_IMPORT WINAPI BOOL FreeEnvironmentStringsW(LPWCH penv);
 
 __SPRT_WIN_IMPORT WINAPI BOOL ReadProcessMemory(HANDLE hProcess, LPCVOID lpBaseAddress,
 		LPVOID lpBuffer, SIZE_T nSize, SIZE_T *lpNumberOfBytesRead);
