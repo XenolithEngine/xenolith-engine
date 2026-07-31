@@ -23,15 +23,15 @@
 #ifndef TESTS_WINDOW_SRC_PLATFORMLAYOUT_H_
 #define TESTS_WINDOW_SRC_PLATFORMLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 // Verification layout for the custom `platform` CSS media feature. A swatch is styled per host
 // platform via @media (platform: <name>) blocks: on the reference Linux build the swatch is green,
-// a windows-only rule (red) must NOT apply. Reach via XL_PLATFORM_TEST.
-class PlatformLayout : public basic2d::SceneLayout2d {
+// a windows-only rule (red) must NOT apply.
+class PlatformLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

@@ -31,22 +31,8 @@
 #include "XLEntryPoint.h"
 
 #include "ExampleScene.h"
-#include "GeneralLayout.h"
-#include "ShapingLayout.h"
-#include "PugLayout.h"
-#include "PugCascadeLayout.h"
-#include "FlexboxLayout.h"
-#include "FitContentLayout.h"
-#include "CombinatorLayout.h"
-#include "WatchCssLayout.h"
-#include "HoverLayout.h"
-#include "SpecificityLayout.h"
-#include "ButtonLayout.h"
-#include "WatchCssRecursiveLayout.h"
-#include "PlatformLayout.h"
-#include "InheritedStyleLayout.h"
-#include "VisibilityLayout.h"
-#include "ParentResizeLayout.h"
+#include "TestRegistry.h"
+#include "GeneralLayout.h" // MonitorModeSelectionLayout.cc, included below, builds on it
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -85,53 +71,9 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// но модуль material2d настраивает себе свет сам
 	content->setDefaultLights();
 
-	// Запускаем основной слой интерфейса (или тестовый слой, если задана
-	// одна из переменных окружения XL_SHAPING_TEST / XL_PUG_TEST / XL_FLEX_TEST)
-	if (::getenv("XL_SHAPING_TEST")) {
-		content->pushLayout(Rc<ShapingLayout>::create());
-	} else if (::getenv("XL_PUG_TEST")) {
-		content->pushLayout(Rc<PugLayout>::create());
-	} else if (::getenv("XL_PUG_CASCADE_TEST")) {
-		content->pushLayout(Rc<PugCascadeLayout>::create());
-	} else if (::getenv("XL_FLEX_TEST")) {
-		// LayoutSystem flexbox/grid demo (toggle with the in-scene "Mode" button)
-		content->pushLayout(Rc<FlexboxLayout>::create());
-	} else if (::getenv("XL_FITCONTENT_TEST")) {
-		// fit-content sizing demo for the ui-module LayoutSystem
-		content->pushLayout(Rc<FitContentLayout>::create());
-	} else if (::getenv("XL_COMBINATOR_TEST")) {
-		// CSS combinator selector demo/verification (descendant/child/adjacent/general)
-		content->pushLayout(Rc<CombinatorLayout>::create());
-	} else if (::getenv("XL_WATCH_CSS_TEST")) {
-		// ui::StyleSystem live CSS reload (watchFile) verification
-		content->pushLayout(Rc<WatchCssLayout>::create());
-	} else if (::getenv("XL_HOVER_TEST")) {
-		// interactive pseudo-class (:hover/:active/:checked/:disabled) verification
-		content->pushLayout(Rc<HoverLayout>::create());
-	} else if (::getenv("XL_SPECIFICITY_TEST")) {
-		// CSS specificity-weighted cascade sort verification
-		content->pushLayout(Rc<SpecificityLayout>::create());
-	} else if (::getenv("XL_BUTTON_TEST")) {
-		// ui::Button type-applier (bg-color fill + outline stroke) + recursive StyleResolver
-		content->pushLayout(Rc<ButtonLayout>::create());
-	} else if (::getenv("XL_WATCH_CSS_RECURSIVE_TEST")) {
-		// CSS file reload reaching a descendant through one recursive StyleResolver
-		content->pushLayout(Rc<WatchCssRecursiveLayout>::create());
-	} else if (::getenv("XL_PLATFORM_TEST")) {
-		// custom `platform` CSS media feature (@media (platform: linux) ...)
-		content->pushLayout(Rc<PlatformLayout>::create());
-	} else if (::getenv("XL_INHERITED_TEST")) {
-		// inherited CSS properties via Inherited*Style components (Label consumption)
-		content->pushLayout(Rc<InheritedStyleLayout>::create());
-	} else if (::getenv("XL_VISIBILITY_TEST")) {
-		// display:none / visibility:hidden via VisibilityComponent (visit skip + layout collapse)
-		content->pushLayout(Rc<VisibilityLayout>::create());
-	} else if (::getenv("XL_PARENT_RESIZE_TEST")) {
-		// style re-resolution when the parent size changes (percent metrics)
-		content->pushLayout(Rc<ParentResizeLayout>::create());
-	} else {
-		content->pushLayout(Rc<GeneralLayout>::create());
-	}
+	// Запускаем основной слой интерфейса — либо тестовый слой, если задана выбирающая его
+	// переменная окружения. Список тестов, их описания и переменные живут в TestRegistry.
+	content->pushLayout(makeSelectedTestLayout());
 
 	// Устанавливаем стандартный виджет для подтверждения выхода
 	content->setCloseGuardWidgetContructor([](NotNull<SceneContent>) -> Rc<CloseGuardWidget> {
@@ -141,6 +83,7 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// Применяем содержимое сцены
 	setContent(content);
 
+	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter)
 	setFpsVisible(true);
 
 	return true;
@@ -196,33 +139,180 @@ void ExampleScene::handlePresented(Director *dir) {
 	}*/
 #endif
 
-	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
+	// Безголовый сценарий снятия скриншотов, управляемый переменными окружения,
 	// чтобы графический вывод можно было проверить из скрипта (сборка -> запуск
-	// -> чтение PNG):
-	//   XL_SCREENSHOT_FILE  - путь к итоговому PNG (включает сценарий)
-	//   XL_SCREENSHOT_DELAY - задержка в секундах перед снимком (по умолчанию 1.0)
-	if (const char *file = ::getenv("XL_SCREENSHOT_FILE")) {
-		float delay = 1.0f;
-		if (const char *d = ::getenv("XL_SCREENSHOT_DELAY")) {
-			delay = float(::atof(d));
-		}
-
-		// Ждём заданное время через DelayTime, затем снимаем кадр и выходим
-		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(delay), [this, path = String(file)] {
-			_director->getRenderServer()->captureScreenshot(
-					[this, path](const core::ImageInfoData &image, BytesView data) {
-				if (core::saveImage(FileInfo(path), image, data)) {
-					log::info("ExampleScene", "Screenshot saved: ", path);
-				} else {
-					log::error("ExampleScene", "Failed to save screenshot: ", path);
-				}
-				_director->getRenderServer()->close(true);
-			});
-		}));
+	// -> чтение PNG). Разбор переменных — в setupScreenshotSequence.
+	if (setupScreenshotSequence()) {
+		runScreenshotStep(0);
 	}
 }
 
-void ExampleScene::buildQueueResources(QueueInfo &, core::Queue::Builder &builder) {
+// Пакетная съёмка: за один запуск снимаются все запрошенные тесты, укладки между снимками
+// переключаются действием.
+//
+//   XL_SCREENSHOT_TESTS - список тестов через запятую (включает сценарий); имена — те же
+//                         переменные, что выбирают тест поодиночке (XL_BUTTON_TEST и т.п.),
+//                         `default` — главный экран, `all` — весь реестр по порядку.
+//                         Повтор имени подряд означает «остаться на этой укладке и снять ещё
+//                         раз спустя задержку» — так снимается пара до/после для одного теста.
+//   XL_SCREENSHOT_DIR   - каталог для PNG (по умолчанию текущий)
+//   XL_SCREENSHOT_DELAY - пауза в секундах перед каждым снимком (по умолчанию 1.0)
+//
+// Имя файла — имя теста; для повторных снимков того же теста добавляется -2, -3 и так далее.
+bool ExampleScene::setupScreenshotSequence() {
+	const char *tests = ::getenv("XL_SCREENSHOT_TESTS");
+	if (!tests) {
+		return false;
+	}
+
+	if (const char *d = ::getenv("XL_SCREENSHOT_DELAY")) {
+		_screenshotDelay = float(::atof(d));
+	}
+
+	const char *dirEnv = ::getenv("XL_SCREENSHOT_DIR");
+	StringView dir(dirEnv ? dirEnv : ".");
+
+	auto registry = getTestRegistry();
+
+	auto addStep = [&](const TestInfo &info) {
+		auto name = info.env.empty() ? StringView("default") : info.env;
+
+		// Сколько раз этот тест уже снимали — чтобы имена файлов не сталкивались
+		size_t seen = 0;
+		for (auto &it : _screenshotSteps) {
+			if (it.test == &info) {
+				++seen;
+			}
+		}
+
+		auto path = (seen == 0) ? toString(dir, "/", name, ".png")
+								: toString(dir, "/", name, "-", seen + 1, ".png");
+		_screenshotSteps.emplace_back(ScreenshotStep{&info, sp::move(path)});
+	};
+
+	StringView list(tests);
+	list.trimChars<StringView::WhiteSpace>();
+
+	if (list == "all") {
+		for (auto &it : registry) { addStep(it); }
+	} else {
+		while (!list.empty()) {
+			auto name = list.readUntil<StringView::Chars<','>>();
+			list.skipChars<StringView::Chars<','>>();
+
+			name.trimChars<StringView::WhiteSpace>();
+			if (name.empty()) {
+				continue;
+			}
+
+			const TestInfo *found = nullptr;
+			for (auto &it : registry) {
+				if (it.env == name || (it.env.empty() && name == "default")) {
+					found = &it;
+					break;
+				}
+			}
+
+			if (!found) {
+				log::source().error("ExampleScene", "Unknown test in XL_SCREENSHOT_TESTS: ", name);
+				continue;
+			}
+
+			addStep(*found);
+		}
+	}
+
+	if (_screenshotSteps.empty()) {
+		log::source().error("ExampleScene", "XL_SCREENSHOT_TESTS selected no tests");
+		_director->getRenderServer()->close(true);
+		return false;
+	}
+
+	// Держим отрисовку непрерывной на всё время съёмки — см. _screenshotKeepAlive
+	_screenshotKeepAlive = Rc<RepeatForever>::create(Rc<DelayTime>::create(1.0f));
+	runAction(_screenshotKeepAlive);
+
+	return true;
+}
+
+void ExampleScene::runScreenshotStep(size_t index) {
+	if (index >= _screenshotSteps.size()) {
+		if (_screenshotKeepAlive) {
+			stopAction(_screenshotKeepAlive);
+			_screenshotKeepAlive = nullptr;
+		}
+		_director->getRenderServer()->close(true);
+		return;
+	}
+
+	auto &step = _screenshotSteps[index];
+
+	// Укладку меняем только когда сменился тест: повтор того же теста — это второй снимок той же
+	// сцены, и пересборка укладки отмотала бы её анимации в начало.
+	const bool needsLayout = (index == 0) || _screenshotSteps[index - 1].test != step.test;
+
+	auto content = static_cast<basic2d::SceneContent2d *>(getContent());
+
+	// Снимок асинхронный: его колбэк и есть переход к следующему шагу
+	Function<void()> capture = [this, index] {
+		auto path = _screenshotSteps[index].path;
+		_director->getRenderServer()->captureScreenshot(
+				[this, index, path](const core::ImageInfoData &image, BytesView data) {
+			if (core::saveImage(FileInfo(path), image, data)) {
+				log::source().info("ExampleScene", "Screenshot saved: ", path);
+			} else {
+				log::source().error("ExampleScene", "Failed to save screenshot: ", path);
+			}
+
+			// Колбэк приходит на потоке презентации, а граф сцены (и runAction) принадлежит
+			// потоку приложения — возвращаемся туда, прежде чем трогать сцену
+			_director->getApplication()->performOnAppThread(
+					[this, index] { runScreenshotStep(index + 1); }, this);
+		});
+	};
+
+	if (needsLayout) {
+		auto info = step.test;
+		// Смена укладки — первым звеном последовательности, чтобы задержка отсчитывалась уже
+		// по новой сцене и та успела разложиться и доиграть свои анимации входа
+		runAction(Rc<Sequence>::create(
+				Function<void()>([content, info] {
+			content->replaceLayout(makeTestLayout(*info).get());
+		}),
+				_screenshotDelay, sp::move(capture)));
+	} else {
+		runAction(Rc<Sequence>::create(_screenshotDelay, sp::move(capture)));
+	}
+}
+
+void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
+	// XL_FLAT_QUEUE=1 — облегчённая очередь отрисовки: без теней, частиц, буфера глубины
+	// и шейдера постобработки
+	if (auto value = ::getenv("XL_FLAT_QUEUE")) {
+		if (StringView(value) != "0") {
+			info.type = QueueType::Flat;
+			log::source().info("ExampleScene", "Using flat (lightweight) 2d render queue");
+		}
+	}
+
+	// XL_NO_PARTIAL_REDRAW=1 — оставить damage только подсказкой композитору, перерисовывая
+	// кадр целиком. Нужно, чтобы измерить выигрыш от частичной перерисовки на одной сцене.
+	if (auto value = ::getenv("XL_NO_PARTIAL_REDRAW")) {
+		if (StringView(value) != "0") {
+			info.damage = core::QueueDamageFlags::PresentHint;
+			log::source().info("ExampleScene", "Partial redraw disabled");
+		}
+	}
+
+	// XL_NO_SKIP_FRAMES=1 — оставить частичную перерисовку, но всегда перерисовывать кадр,
+	// даже если в нём ничего не изменилось. Для сравнения с включённым пропуском.
+	if (auto value = ::getenv("XL_NO_SKIP_FRAMES")) {
+		if (StringView(value) != "0") {
+			info.damage = core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw;
+			log::source().info("ExampleScene", "Empty frame skipping disabled");
+		}
+	}
+
 	builder.addImage("xenolith-2-480.png",
 			core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled,
 					core::ImageHints::Opaque),

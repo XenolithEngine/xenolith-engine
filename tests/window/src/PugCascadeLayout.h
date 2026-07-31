@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_PUGCASCADELAYOUT_H_
 #define TESTS_WINDOW_SRC_PUGCASCADELAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XLPugSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -32,7 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // Two nodes are arranged manually (outer -> inner); the OUTER system defines a function brand()
 // and a variable year, the INNER system's template references #{brand()} and #{year} without
 // defining them - they resolve through the ancestor system's Context via the VarScope chain.
-class PugCascadeLayout : public basic2d::SceneLayout2d {
+class PugCascadeLayout : public TestLayout {
 public:
 	virtual ~PugCascadeLayout() = default;
 

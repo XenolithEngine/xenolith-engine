@@ -42,7 +42,7 @@ R"Pug(flex(direction="column" justify-content="center" align-items="center" gap=
 )Pug";
 
 bool PugCascadeLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
@@ -81,7 +81,7 @@ bool PugCascadeLayout::init() {
 }
 
 void PugCascadeLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	// the container nodes and the flex roots built into them all fill the layout, so the flex
 	// engine centers/positions the labels

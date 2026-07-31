@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "ParentResizeLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 
@@ -48,11 +47,11 @@ static bool nearSize(const Size2 &got, const Size2 &want) {
 } // namespace
 
 bool ParentResizeLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(s_css));
+	setStyleSheet(s_css);
 
 	// A: recursive resolver on the container; percent metrics through the whole subtree
 	_containerRec = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
@@ -137,7 +136,7 @@ void ParentResizeLayout::runPhase2() {
 }
 
 void ParentResizeLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 
@@ -150,7 +149,7 @@ void ParentResizeLayout::handleContentSizeDirty() {
 		}
 		containers[i]->setAnchorPoint(Vec2(0.0f, 0.0f));
 		containers[i]->setPosition(
-				Vec2(24.0f, cs.height - 340.0f - float(i) * 340.0f));
+				Vec2(24.0f, getWorkTop() - 340.0f - float(i) * 340.0f));
 	}
 }
 

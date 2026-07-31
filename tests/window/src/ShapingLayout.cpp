@@ -25,7 +25,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool ShapingLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
@@ -101,7 +101,7 @@ bool ShapingLayout::init() {
 }
 
 void ShapingLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	_background->setPosition(Vec2(_contentSize.width / 2.0f, _contentSize.height / 2.0f));
 	_background->setContentSize(_contentSize);
@@ -110,7 +110,7 @@ void ShapingLayout::handleContentSizeDirty() {
 	// the right of it so they stay readable in screenshots.
 	const float overlayWidth = 480.0f;
 	const float overlayHeight = 160.0f;
-	float y = _contentSize.height - 40.0f;
+	float y = getWorkTop() - 40.0f;
 	for (auto *l : _rows) {
 		const float x = (y < overlayHeight) ? overlayWidth : 40.0f;
 		l->setPosition(Vec2(x, y));

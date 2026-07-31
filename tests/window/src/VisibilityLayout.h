@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_VISIBILITYLAYOUT_H_
 #define TESTS_WINDOW_SRC_VISIBILITYLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -35,8 +35,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // Then both classes are removed: the components must disappear and the items must render
 // again in identical positions, verifying that a style-hidden node stays reachable by the
 // styling protocol (its own data phases keep running while the subtree is skipped).
-// Reach via XL_VISIBILITY_TEST.
-class VisibilityLayout : public basic2d::SceneLayout2d {
+class VisibilityLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

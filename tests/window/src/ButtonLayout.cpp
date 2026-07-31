@@ -23,7 +23,7 @@
 #include "XLCommon.h"
 
 #include "ButtonLayout.h"
-#include "XLUiStyleSystem.h"
+#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -62,11 +62,15 @@ label {
 } // namespace
 
 bool ButtonLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(s_buttonCss));
+	setStyleSheet(s_buttonCss);
+
+	// StyleSystem only supplies the stylesheet - a StyleResolver is what actually applies it.
+	// One recursive resolver on the layout covers both buttons and their label/icon children.
+	addSystem(Rc<ui::StyleResolver>::create(true));
 
 	auto primary = addChild(Rc<ui::Button>::create(), ZOrder(1));
 	primary->setString("Primary");
@@ -82,10 +86,10 @@ bool ButtonLayout::init() {
 }
 
 void ButtonLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
-	const float top = cs.height - 140.0f;
+	const float top = getWorkTop() - 140.0f;
 	for (size_t i = 0; i < _buttons.size(); ++i) {
 		auto b = _buttons[i];
 		b->setAnchorPoint(Vec2(0.0f, 1.0f));
