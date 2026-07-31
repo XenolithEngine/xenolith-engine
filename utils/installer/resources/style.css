@@ -61,6 +61,7 @@ button.danger {
 #title-bar > .os-button {
   border-radius: 16px;
   width: 32px;
+  height: 32px;
 }
 
 #title-bar > .os-button:hover {
@@ -101,6 +102,66 @@ button.danger {
 #os-minimize { order: 98; }
 #os-maximize { order: 99; }
 #os-close { order: 100; }
+
+/* macOS title-bar (the engine exposes the host as a custom `platform` media feature,
+   SPDocStyle.h — defaults to the build platform, no wiring needed):
+   - traffic lights (close/minimize/maximize) on the LEFT, tight cluster;
+   - unused slots (menu/profile/icon) collapsed via display:none so they reserve no
+     flex space (visibility:hidden left gaps and interleaved with visible buttons);
+   - smaller buttons; the title panel absolutely centered across the whole bar. */
+@media (platform: macos) {
+  #title-bar {
+    padding-left: 8px;
+    column-gap: 6px;
+    align-items: center;
+  }
+
+  #title-bar > #os-close { order: 0; }
+  #title-bar > #os-minimize { order: 1; }
+  #title-bar > #os-maximize { order: 2; }
+
+  #title-bar > #os-menu,
+  #title-bar > #title-profile,
+  #title-bar > #title-icon {
+    display: none;
+  }
+
+  #title-bar > .os-button {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background-color: transparent;
+  }
+  #title-bar > .os-button:hover {
+    background-color: transparent;
+  }
+
+  #title-bar > .os-button > icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* no distinct title pill: paint the panel with the window background so it blends
+     (no dark bands above/below), but keep opacity 1 — `background-color: transparent` would
+     set the layer's opacity to 0 (resolver maps bg-color with withOpacity=true) and hide the
+     title text along with the pill. */
+  #title-bar > .title-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 4px;
+    flex-grow: 0;
+    background-color: #0f110e;
+  }
+
+  /* the title label itself: force a visible color + native macOS title weight
+     (titleBarFontOfSize = bold) — color inheritance from .title-line was not reaching the label. */
+  #title-bar .title-line label {
+    color: #e6e6e6;
+    font-size: 13px;
+    font-weight: 700;
+  }
+}
 
 #promo-bar {
   height: 120px;

@@ -80,7 +80,11 @@
 	NSSPWIN::MacosWindow *_engineWindow;
 	NSSPWIN::WindowLayerFlags _buttonGripFlags;
 	sprt::bitset<64> _buttons;
+	CGSize _lastNotifiedDrawableSize;
+	CFAbsoluteTime _lastConstraintsNotifyTime;
 };
+
+@property (nonatomic, assign) BOOL displayLinkPaused;
 
 - (instancetype _Nonnull)init:(NSSP::NotNull<NSSPWIN::MacosWindow>)constroller
 					   window:(NSWindow *_Nonnull)window;
@@ -190,6 +194,10 @@ void MacosWindow::mapWindow() {
 	[_window orderWindow:NSWindowAbove relativeTo:0];
 
 	[NSApp activateIgnoringOtherApps:YES];
+
+	if (_rootViewController) {
+		_rootViewController.displayLinkPaused = NO;
+	}
 }
 
 void MacosWindow::unmapWindow() {
@@ -538,6 +546,8 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 	_buttonGripFlags = NSSPWIN::WindowLayerFlags::None;
 	_buttons.reset();
+	_lastNotifiedDrawableSize = CGSizeZero;
+	_lastConstraintsNotifyTime = 0;
 
 	window.delegate = self;
 
@@ -552,6 +562,14 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 - (void)invalidate {
 	_engineWindow = nullptr;
+}
+
+- (BOOL)displayLinkPaused {
+	return _displayLink.paused;
+}
+
+- (void)setDisplayLinkPaused:(BOOL)value {
+	_displayLink.paused = value;
 }
 
 - (SPRTMacosView *)targetView {
@@ -583,6 +601,8 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	_displayLink.paused = NO;
 	_engineWindow->updateState(0,
 			_engineWindow->getInfo()->state & ~NSSPWIN::WindowState::Background);
+	// Barrier mode may have raised _waitForDisplayLink before the link was running.
+	_engineWindow->emitAppFrame();
 }
 
 - (void)viewWillDisappear {
@@ -607,6 +627,23 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 											  window:_engineWindow];
 
 	view.wantsLayer = YES;
+	view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+	CAMetalLayer *metalLayer = (CAMetalLayer *)view.layer;
+	metalLayer.drawableSize = [view convertSizeToBacking:view.frame.size];
+
+	// In user-space-decorations (borderless) mode there is no native chrome, so round the
+	// content layer ourselves and let the window cast a shadow — matches standard macOS
+	// windows. The clear window background (set in MacosWindow::init) shows through the corners.
+	if (NSSP::hasFlag(_engineWindow->getInfo()->flags,
+				NSSPWIN::WindowCreationFlags::UserSpaceDecorations)) {
+		metalLayer.cornerRadius = 10.0;
+		metalLayer.masksToBounds = YES;
+		// thin light hairline hugging the rounded edge, like native macOS windows
+		metalLayer.borderWidth = 0.5;
+		metalLayer.borderColor = [NSColor colorWithWhite:0.85 alpha:0.7].CGColor;
+		[_engineWindow->getWindow() setHasShadow:YES];
+	}
 
 	self.view = view;
 }
@@ -625,11 +662,34 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 			" ", self.view.window.contentLayoutRect.size.height);
 
 	CAMetalLayer *metalLayer = (CAMetalLayer *)self.view.layer;
-	metalLayer.drawableSize = [self.view convertSizeToBacking:self.view.frame.size];
+	CGSize drawableSize = [self.view convertSizeToBacking:self.view.frame.size];
+	metalLayer.drawableSize = drawableSize;
 
-	_engineWindow->getController()->notifyWindowConstraintsChanged(_engineWindow,
-			self.view.inLiveResize ? NSSPWIN::UpdateConstraintsFlags::EnableLiveResize
-								   : NSSPWIN::UpdateConstraintsFlags::None);
+	const bool live = self.view.inLiveResize;
+	const CGFloat dx = fabs(drawableSize.width - _lastNotifiedDrawableSize.width);
+	const CGFloat dy = fabs(drawableSize.height - _lastNotifiedDrawableSize.height);
+	const bool sizeChanged = dx >= 1.0 || dy >= 1.0;
+
+	// During live resize, MoltenVK cannot keep up with a swapchain recreate on every
+	// AppKit callback — frames get invalidated, FPS collapses, the UI goes white.
+	// EnableLiveResize is armed once in windowWillStartLiveResize; here we only
+	// deprecate when the drawable actually moved, and at most ~20 Hz while dragging.
+	bool shouldNotify = sizeChanged;
+	if (live && sizeChanged) {
+		const CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+		constexpr CFAbsoluteTime kMinInterval = 0.05; // 20 Hz
+		constexpr CGFloat kMinDelta = 8.0; // backing pixels
+		if ((dx < kMinDelta && dy < kMinDelta) && (now - _lastConstraintsNotifyTime) < kMinInterval) {
+			shouldNotify = false;
+		}
+	}
+
+	if (shouldNotify) {
+		_lastNotifiedDrawableSize = drawableSize;
+		_lastConstraintsNotifyTime = CFAbsoluteTimeGetCurrent();
+		_engineWindow->getController()->notifyWindowConstraintsChanged(_engineWindow,
+				NSSPWIN::UpdateConstraintsFlags::WindowResized);
+	}
 	_engineWindow->emitAppFrame();
 
 	auto isZoomed = _engineWindow->getWindow().zoomed;
@@ -655,6 +715,10 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	}
 
 	_engineWindow->updateState(0, _engineWindow->getInfo()->state | NSSPWIN::WindowState::Resizing);
+	// Switch to Immediate present mode once for the drag; per-frame recreates happen
+	// via WindowResized in windowDidResize (throttled).
+	_engineWindow->getController()->notifyWindowConstraintsChanged(_engineWindow,
+			NSSPWIN::UpdateConstraintsFlags::EnableLiveResize);
 }
 
 - (void)windowDidEndLiveResize:(NSNotification *)notification {
@@ -664,8 +728,14 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 	_engineWindow->updateState(0,
 			_engineWindow->getInfo()->state & ~NSSPWIN::WindowState::Resizing);
+
+	CAMetalLayer *metalLayer = (CAMetalLayer *)self.view.layer;
+	_lastNotifiedDrawableSize = metalLayer.drawableSize;
+	_lastConstraintsNotifyTime = CFAbsoluteTimeGetCurrent();
+
 	_engineWindow->getController()->notifyWindowConstraintsChanged(_engineWindow,
 			NSSPWIN::UpdateConstraintsFlags::DisableLiveResize);
+	_engineWindow->emitAppFrame();
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {

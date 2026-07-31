@@ -69,6 +69,11 @@ bool TitleBar::init() {
 
 		auto titleLabel = _titleLine->addChild(Rc<basic2d::Label>::create());
 		titleLabel->setString("Xenolith SDK Installer");
+		// type "label" so CSS (.title-line label) can drive font-size etc.; set the render color
+		// directly — the label's style accumulation doesn't update its render color in time, so the
+		// inherited #CCC never reaches the glyphs and the title renders black-on-dark (invisible).
+		titleLabel->setType("label");
+		titleLabel->setColor(Color4F(0.86f, 0.86f, 0.86f, 1.0f));
 
 		auto l = _titleLine->addSystem(Rc<InputListener>::create());
 		l->setLayerFlags(WindowLayerFlags::MoveGrip | WindowLayerFlags::WindowMenuRight);

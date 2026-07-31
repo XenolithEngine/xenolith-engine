@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,28 +20,29 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#ifndef XENOLITH_APPLICATION_NODES_XLSCENEINSPECTOR_H_
+#define XENOLITH_APPLICATION_NODES_XLSCENEINSPECTOR_H_
 
-#include "nodes/XLNode.cc"
-#include "nodes/XLScene.cc"
-#include "nodes/XLSceneInspector.cc"
-#include "nodes/XLSceneContent.cc"
-#include "nodes/XLCloseGuardWidget.cc"
-#include "nodes/XLWindowDecorations.cc"
-#include "nodes/XLSystem.cc"
-#include "nodes/XLComponent.cc"
-#include "nodes/XLInheritedStyle.cc"
-#include "nodes/XLDynamicStateSystem.cc"
-#include "nodes/XLSubscriptionListener.cc"
-#include "nodes/XLEventListener.cc"
+#include "XLNode.h"
 
-#include "input/XLGestureRecognizer.cc"
-#include "input/XLInputDispatcher.cc"
-#include "input/XLInputListener.cc"
-#include "input/XLFocusGroup.cc"
-#include "input/XLTextInputManager.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-#include "actions/XLAction.cc"
-#include "actions/XLActionEase.cc"
-#include "actions/XLActionManager.cc"
-#include "actions/XLInterpolation.cc"
+// Debug-only scene-graph inspector.
+//
+// In DEBUG builds (on hosted non-Windows targets) inspector::attach(root) starts a process-wide
+// UNIX-socket server at /tmp/xenolith-inspector.sock that serves the live node tree to any
+// connector (e.g. an MCP server), and adds a per-node system that refreshes the snapshot. This
+// lets an external tool inspect the scene on demand without a display.
+//
+// In release builds attach() is a no-op inline, so there is zero overhead and no socket at all.
+namespace inspector {
+#if defined(DEBUG) && !defined(SPRT_WINDOWS)
+void attach(Node *root);
+#else
+inline void attach(Node *) { }
+#endif
+}
+
+} // namespace stappler::xenolith
+
+#endif /* XENOLITH_APPLICATION_NODES_XLSCENEINSPECTOR_H_ */

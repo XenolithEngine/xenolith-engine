@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,28 +20,20 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#ifndef INSTALLER_CORE_INSTALLERCORE_SCU_CPP_
+#define INSTALLER_CORE_INSTALLERCORE_SCU_CPP_
 
-#include "nodes/XLNode.cc"
-#include "nodes/XLScene.cc"
-#include "nodes/XLSceneInspector.cc"
-#include "nodes/XLSceneContent.cc"
-#include "nodes/XLCloseGuardWidget.cc"
-#include "nodes/XLWindowDecorations.cc"
-#include "nodes/XLSystem.cc"
-#include "nodes/XLComponent.cc"
-#include "nodes/XLInheritedStyle.cc"
-#include "nodes/XLDynamicStateSystem.cc"
-#include "nodes/XLSubscriptionListener.cc"
-#include "nodes/XLEventListener.cc"
+#include "SPICommon.h"
 
-#include "input/XLGestureRecognizer.cc"
-#include "input/XLInputDispatcher.cc"
-#include "input/XLInputListener.cc"
-#include "input/XLFocusGroup.cc"
-#include "input/XLTextInputManager.cc"
+#include "SPIDirs.cc"
+#include "SPITriple.cc"
+#include "SPITransport.cc"
+#include "SPICatalogue.cc"
+#include "SPIState.cc"
+#include "SPIEngineSource.cc"
+#include "SPIProcess.cc"
+#include "SPIInstall.cc"
+#include "SPIScaffold.cc"
+#include "SPIBuild.cc"
 
-#include "actions/XLAction.cc"
-#include "actions/XLActionEase.cc"
-#include "actions/XLActionManager.cc"
-#include "actions/XLInterpolation.cc"
+#endif // INSTALLER_CORE_INSTALLERCORE_SCU_CPP_

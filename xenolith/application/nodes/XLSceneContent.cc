@@ -28,6 +28,7 @@
 #include "XLAppWindow.h"
 #include "XLWindowDecorations.h"
 #include "XLCloseGuardWidget.h"
+#include "XLSceneInspector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -63,6 +64,9 @@ bool SceneContent::init() {
 	_inputListener->setLayerFlags(WindowLayerFlags::BackButtonHandler);
 
 	_scissor = addSystem(Rc<DynamicStateSystem>::create());
+
+	// debug-only: expose the live node tree over a local socket for an external inspector.
+	inspector::attach(this);
 
 	return true;
 }

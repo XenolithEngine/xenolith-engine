@@ -89,17 +89,20 @@ static CFMutableStringRef makeString(StringViewUtf8 str) {
 }
 
 static bool toString(CFMutableStringRef str, const callback<void(StringView)> &cb) {
+	// Fast path: the CFString already stores UTF-8 internally.
+	if (auto bytes = CFStringGetCStringPtr(str, kCFStringEncodingUTF8)) {
+		cb(StringView(bytes));
+		return true;
+	}
+	// Fallback: copy out as a NUL-terminated UTF-8 C string. (The previous code used
+	// kCFStringEncodingUTF16 and a StringView of `len` BYTES, but `len` was the UTF-16 *char*
+	// count — the UTF-16 bytes were `g\0i\0…`, so the view stopped at the first NUL high byte and
+	// tolower("Git-Protocol") returned "g". Use UTF-8 so the byte length matches.)
 	auto len = CFStringGetLength(str);
-	auto bytes = (const char *)CFStringGetCStringPtr(str, kCFStringEncodingUTF16);
-
-	if (bytes == nullptr) {
-		char32_t buf[len + 1];
-		if (CFStringGetCString(str, (char *)buf, len * sizeof(char32_t), kCFStringEncodingUTF16)) {
-			cb(StringView((char *)buf, len));
-			return true;
-		}
-	} else {
-		cb(StringView(bytes, len));
+	auto maxLen = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
+	char buf[maxLen];
+	if (CFStringGetCString(str, buf, maxLen, kCFStringEncodingUTF8)) {
+		cb(StringView(buf));
 		return true;
 	}
 	return false;

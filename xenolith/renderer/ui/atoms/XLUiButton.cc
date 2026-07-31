@@ -134,6 +134,7 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 			setOrUpdateComponent<InteractiveComponent>([](NotNull<InteractiveComponent> state) {
 				return state->handleHover(1); //
 			});
+			updateState();
 			break;
 		case GestureEvent::Activated: break;
 		case GestureEvent::Ended:
@@ -141,6 +142,7 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 			setOrUpdateComponent<InteractiveComponent>([](NotNull<InteractiveComponent> state) {
 				return state->handleHover(-1); //
 			});
+			updateState();
 			break;
 		}
 		return true;
@@ -385,6 +387,45 @@ void Button::updateState() {
 				.setStrokeColor(Color::Grey_200)
 				.setStrokeWidth(0.25f)
 				.openForWriting([&](PathWriter &writer) { writer.addCircle(12.0f, 12.0f, 10.0f); });
+
+		// macOS traffic-light hover: a dark glyph over the colored circle.
+		bool hovered = false;
+		if (auto ic = getComponent<InteractiveComponent>()) {
+			hovered = ic->hoverCounter > 0;
+		}
+		if (hovered) {
+			// macOS hover glyphs. All FILLED: a path with only a stroke does not render on the
+			// icon sprite, so the ✕/− lines were invisible while the filled zoom triangles showed.
+			// close = ✕ (filled outline), minimize = − (filled bar), zoom = two filled triangles.
+			image->addPath()
+					->setStyle(vg::DrawFlags::FillAndStroke)
+					.setFillColor(Color4B(0x33, 0x33, 0x33, 0xFF))
+					.setStrokeColor(Color4B(0x33, 0x33, 0x33, 0xFF))
+					.setStrokeWidth(1.0f)
+					.openForWriting([&](PathWriter &writer) {
+						switch (_type) {
+						case ButtonType::OsClose:
+							// filled ✕, two thin diagonal bars (bigger span, thin)
+							writer.moveTo(7.61f, 8.39f).lineTo(15.61f, 16.39f).lineTo(16.39f, 15.61f)
+									.lineTo(8.39f, 7.61f);
+							writer.closePath();
+							writer.moveTo(16.39f, 8.39f).lineTo(8.39f, 16.39f).lineTo(7.61f, 15.61f)
+									.lineTo(15.61f, 7.61f);
+							writer.closePath();
+							break;
+						case ButtonType::OsMinimize:
+							writer.addRect(7.0f, 11.45f, 10.0f, 1.1f);
+							break;
+						case ButtonType::OsMaximize:
+							writer.moveTo(16.0f, 8.0f).lineTo(16.0f, 12.0f).lineTo(12.0f, 8.0f);
+							writer.closePath();
+							writer.moveTo(8.0f, 16.0f).lineTo(8.0f, 12.0f).lineTo(12.0f, 16.0f);
+							writer.closePath();
+							break;
+						default: break;
+						}
+					});
+		}
 		_icon->setImage(sp::move(image));
 
 		switch (_type) {
@@ -392,23 +433,23 @@ void Button::updateState() {
 			if (hasFlag(_windowState, WindowState::Focused)) {
 				_icon->setColor(Color4F(0.992f, 0.373f, 0.361f, 1.0f));
 			} else {
-				_icon->setColor(Color::Grey_400);
+				_icon->setColor(Color4F(0.5f, 0.5f, 0.5f, 1.0f));
 			}
 			_icon->setVisible(true);
 			break;
 		case ButtonType::OsMinimize:
 			if (hasFlag(_windowState, WindowState::Focused)) {
-				_icon->setColor(Color4F(0.188f, 0.792f, 0.294f, 1.0f));
+				_icon->setColor(Color4F(0.996f, 0.741f, 0.263f, 1.0f));
 			} else {
-				_icon->setColor(Color::Grey_400);
+				_icon->setColor(Color4F(0.5f, 0.5f, 0.5f, 1.0f));
 			}
 			_icon->setVisible(true);
 			break;
 		case ButtonType::OsMaximize:
 			if (hasFlag(_windowState, WindowState::Focused)) {
-				_icon->setColor(Color4F(0.996f, 0.741f, 0.263f, 1.0f));
+				_icon->setColor(Color4F(0.188f, 0.792f, 0.294f, 1.0f));
 			} else {
-				_icon->setColor(Color::Grey_400);
+				_icon->setColor(Color4F(0.5f, 0.5f, 0.5f, 1.0f));
 			}
 			_icon->setVisible(true);
 			break;
