@@ -31,20 +31,16 @@
 #include "XLAppWindow.h"
 #include "XL2dSceneContent.h"
 #include "MonitorModeSelectionLayout.h"
-#include "FlexboxLayout.h"
-#include "PugLayout.h"
-#include "PugCascadeLayout.h"
-#include "ShapingLayout.h"
+#include "TestRegistry.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
-#include "ButtonLayout.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool GeneralLayout::init() {
 	using namespace simpleui;
 
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
@@ -85,7 +81,7 @@ void GeneralLayout::handleEnter(Scene *scene) {
 
 void GeneralLayout::handleContentSizeDirty() {
 	log::debug("GeneralLayout", "handleContentSizeDirty");
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	auto cs = getContentSize();
 
@@ -134,35 +130,18 @@ void GeneralLayout::rebuildMenu() {
 		});
 	}, 32.0f);
 
-	// Демонстрация раскладки flexbox, реализованной поверх системы компонентов
-	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Flexbox layout",
-				[this] { getSceneContent()->pushLayout(Rc<FlexboxLayout>::create()); });
-	}, 32.0f);
-
-	// Демонстрация раскладки flexbox, реализованной поверх системы компонентов
-	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("ButtonLayout",
-				[this] { getSceneContent()->pushLayout(Rc<ButtonLayout>::create()); });
-	}, 32.0f);
-
-	// Демонстрация сборки графа сцены из pug-шаблона (xenolith_renderer_pug)
-	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Pug template UI",
-				[this] { getSceneContent()->pushLayout(Rc<PugLayout>::create()); });
-	}, 32.0f);
-
-	// Каскадное разрешение переменных/функций между вложенными TemplateSystem
-	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Pug cascade",
-				[this] { getSceneContent()->pushLayout(Rc<PugCascadeLayout>::create()); });
-	}, 32.0f);
-
-	// HarfBuzz shaping / bidi visual test bed
-	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Shaping test",
-				[this] { getSceneContent()->pushLayout(Rc<ShapingLayout>::create()); });
-	}, 32.0f);
+	// Каждый тест из реестра — по кнопке. Список берётся оттуда же, откуда его берёт разбор
+	// переменных окружения, так что новый тест появляется здесь сам, без правки этого файла.
+	for (auto &test : getTestRegistry()) {
+		if (test.env.empty()) {
+			continue; // сам этот слой
+		}
+		// Ссылка на элемент реестра безопасна: таблица статическая
+		controller->addItem([this, &test](const ScrollController::Item &) -> Rc<Node> {
+			return Rc<ButtonWithLabel>::create(test.title,
+					[this, &test] { getSceneContent()->pushLayout(makeTestLayout(test)); });
+		}, 32.0f);
+	}
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Probe clibboard", [this] {

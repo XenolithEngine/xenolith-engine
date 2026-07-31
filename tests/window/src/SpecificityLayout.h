@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_SPECIFICITYLAYOUT_H_
 #define TESTS_WINDOW_SRC_SPECIFICITYLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
@@ -33,8 +33,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // several rules of different specificity (and some with conflicting source order); the
 // resolved background-color must be the one from the highest-specificity rule (ties broken
 // by source order). The key case (`#id` beating a lower-specificity descendant rule) is what
-// the old fixed lookup order got wrong. Reach via XL_SPECIFICITY_TEST.
-class SpecificityLayout : public basic2d::SceneLayout2d {
+// the old fixed lookup order got wrong.
+class SpecificityLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

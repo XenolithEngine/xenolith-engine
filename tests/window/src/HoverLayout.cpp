@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "HoverLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiInteractiveComponent.h"
 #include "XLAction.h"
 
@@ -73,11 +72,11 @@ Layer *HoverLayout::makeSwatch(Node *parent, InteractiveState state, ui::StyleRe
 }
 
 bool HoverLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(s_hoverCss));
+	setStyleSheet(s_hoverCss);
 
 	auto makeRowLabel = [this](StringView text) {
 		auto label = addChild(Rc<Label>::create(), ZOrder(1));
@@ -125,12 +124,12 @@ bool HoverLayout::init() {
 }
 
 void HoverLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	const float swatch = 64.0f;
 	const float rowH = 88.0f;
-	const float top = cs.height - 96.0f;
+	const float top = getWorkTop() - 96.0f;
 
 	for (size_t i = 0; i < _rows.size(); ++i) {
 		const float y = top - float(i) * rowH;

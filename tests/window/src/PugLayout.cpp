@@ -64,7 +64,7 @@ R"Css(
 )Css");
 
 bool PugLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
@@ -111,7 +111,7 @@ bool PugLayout::init() {
 	});
 
 	// headless check of post-enter re-resolution: switch the whole stylesheet
-	// after entering the scene, before the XL_SCREENSHOT_FILE capture
+	// after entering the scene, before the screenshot capture
 	if (::getenv("XL_PUG_DARK")) {
 		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.5f), [this] { toggleTheme(); }));
 	}
@@ -142,7 +142,7 @@ Node *PugLayout::findByName(Node *root, StringView name) const {
 }
 
 void PugLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	if (_tree) {
 		_tree->setAnchorPoint(Anchor::BottomLeft);

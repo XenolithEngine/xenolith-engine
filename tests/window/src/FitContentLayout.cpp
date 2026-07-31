@@ -58,7 +58,7 @@ Rc<Label> makeFitLabel(StringView text, const Color4F &bg) {
 } // namespace
 
 bool FitContentLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
@@ -197,19 +197,19 @@ void FitContentLayout::toggleWrap() {
 }
 
 void FitContentLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 
 	// control bar pinned to the top, spanning the full width
 	_controls->setAnchorPoint(Anchor::BottomLeft);
-	_controls->setPosition(Vec2(0.0f, cs.height - _controlsHeight));
+	_controls->setPosition(Vec2(0.0f, getWorkTop() - _controlsHeight));
 	_controls->setContentSize(Size2(cs.width, _controlsHeight));
 
 	// demonstration container fills the remaining area below the control bar
 	_demo->setAnchorPoint(Anchor::BottomLeft);
 	_demo->setPosition(Vec2(0.0f, 0.0f));
-	_demo->setContentSize(Size2(cs.width, sprt::max(cs.height - _controlsHeight, 0.0f)));
+	_demo->setContentSize(Size2(cs.width, sprt::max(getWorkTop() - _controlsHeight, 0.0f)));
 }
 
 } // namespace stappler::xenolith::app

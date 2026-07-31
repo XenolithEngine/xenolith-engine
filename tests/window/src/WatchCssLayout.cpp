@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "WatchCssLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 #include "SPFilesystem.h"
@@ -57,12 +56,12 @@ bool WatchCssLayout::init() {
 	// seed the file BEFORE the StyleSystem reads it
 	writeCss("#e53935"); // red
 
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
 	// stylesheet loaded from the file -> this is the source the watch reloads
-	addSystem(Rc<ui::StyleSystem>::create(FileInfo(_cssPath, FileCategory::Custom)));
+	setStyleSheet(FileInfo(_cssPath, FileCategory::Custom));
 
 	_swatch = addChild(Rc<Layer>::create(Color::Black), ZOrder(1));
 	_swatch->addStyleClass("wsw");
@@ -88,7 +87,7 @@ bool WatchCssLayout::init() {
 }
 
 void WatchCssLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	_swatch->setAnchorPoint(Vec2(0.5f, 0.5f));

@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_WATCHCSSLAYOUT_H_
 #define TESTS_WINDOW_SRC_WATCHCSSLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -34,8 +34,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // fire, rebuild the sheet and re-apply the style, turning the swatch green. Logs a
 // PASS/FAIL by re-resolving the swatch's color after the rewrite.
 //
-// Reach via XL_WATCH_CSS_TEST. Optional XL_WATCH_CSS_FILE overrides the temp path.
-class WatchCssLayout : public basic2d::SceneLayout2d {
+// XL_WATCH_CSS_FILE overrides the temp path the stylesheet is written to.
+class WatchCssLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_PUGLAYOUT_H_
 #define TESTS_WINDOW_SRC_PUGLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XLPugSystem.h"
 #include "XLSimpleStyle.h"
 
@@ -37,7 +37,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // - "Toggle accent" flips a css class on a label (subtree re-resolution);
 // - "Toggle theme" swaps the whole stylesheet (light <-> dark);
 // - "Rebuild" re-runs the template with updated context data.
-class PugLayout : public basic2d::SceneLayout2d {
+class PugLayout : public TestLayout {
 public:
 	virtual ~PugLayout() = default;
 

@@ -23,12 +23,12 @@
 #ifndef EXAMPLES_VK_GUI_SRC_GENERALLAYOUT_H_
 #define EXAMPLES_VK_GUI_SRC_GENERALLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dScrollView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-class GeneralLayout : public basic2d::SceneLayout2d {
+class GeneralLayout : public TestLayout {
 public:
 	virtual ~GeneralLayout() = default;
 

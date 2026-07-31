@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_FITCONTENTLAYOUT_H_
 #define TESTS_WINDOW_SRC_FITCONTENTLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 #include "XLUiLayoutSystem.h"
@@ -36,7 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // nested fit-content flex container measured through its own LayoutSystem,
 // upward invalidation on runtime text changes, and the CSS
 // `flex-basis: fit-content` path through ui::StyleSystem.
-class FitContentLayout : public basic2d::SceneLayout2d {
+class FitContentLayout : public TestLayout {
 public:
 	virtual ~FitContentLayout() = default;
 
