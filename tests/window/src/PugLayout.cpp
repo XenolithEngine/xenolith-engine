@@ -31,7 +31,7 @@ using namespace pugui;
 // The demo UI: a flex column; geometry comes from pug attributes, colors and
 // fonts come from the CSS stylesheet attached to the layout node.
 static constexpr auto s_pugTemplate =
-R"Pug(flex(direction="column" align-items="center" justify-content="center" gap=12 padding=16)
+		R"Pug(flex(direction="column" align-items="center" justify-content="center" gap=12 padding=16)
 	label#hero(flex-basis=36) Pug + CSS demo
 	label#greet.subtitle(flex-basis=24) Hello, #{user}!
 	layer.stripe(flex-basis=28 cross-size=280)
@@ -42,7 +42,7 @@ R"Pug(flex(direction="column" align-items="center" justify-content="center" gap=
 )Pug";
 
 static constexpr StringView s_lightCss(
-R"Css(
+		R"Css(
 	label { color: #212121; }
 	#hero { font-size: 28px; }
 	label.subtitle { font-size: 18px; color: #616161; }
@@ -53,7 +53,7 @@ R"Css(
 )Css");
 
 static constexpr StringView s_darkCss(
-R"Css(
+		R"Css(
 	label { color: #ECEFF1; }
 	#hero { font-size: 28px; }
 	label.subtitle { font-size: 18px; color: #90A4AE; }
@@ -101,8 +101,8 @@ bool PugLayout::init() {
 	};
 	config.onError = [](StringView err) { log::source().warn("PugLayout", err); };
 
-	_template = addSystem(Rc<pugui::TemplateSystem>::create(StringView(s_pugTemplate),
-			move(config)));
+	_template =
+			addSystem(Rc<pugui::TemplateSystem>::create(StringView(s_pugTemplate), move(config)));
 	_template->setVariable("user", Value("Xenolith"));
 	_template->setVariable("taps", Value(_taps));
 	_template->setBuildCallback([this](pugui::TemplateSystem *, SpanView<Rc<Node>> roots) {
@@ -147,7 +147,7 @@ void PugLayout::handleContentSizeDirty() {
 	if (_tree) {
 		_tree->setAnchorPoint(Anchor::BottomLeft);
 		_tree->setPosition(Vec2::ZERO);
-		_tree->setContentSize(_contentSize);
+		_tree->setContentSize(getWorkSize());
 	}
 }
 

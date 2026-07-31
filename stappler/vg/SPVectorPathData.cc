@@ -1049,34 +1049,25 @@ PathWriter &PathWriter::addBox(float x, float y, float width, float height, floa
 	rbr = sprt::max(0.0f, rbr);
 	rbl = sprt::max(0.0f, rbl);
 
-	// Clamp each radius to half the box dimensions
-	float halfW = width * 0.5f;
-	float halfH = height * 0.5f;
-	rtl = sprt::min(halfW, sprt::min(halfH, rtl));
-	rtr = sprt::min(halfW, sprt::min(halfH, rtr));
-	rbr = sprt::min(halfW, sprt::min(halfH, rbr));
-	rbl = sprt::min(halfW, sprt::min(halfH, rbl));
 
-	// Clamp adjacent corners so they do not overlap along edges
-	if (rtl + rtr > height) {
-		float s = height / (rtl + rtr);
-		rtl *= s;
-		rtr *= s;
-	}
-	if (rbr + rbl > height) {
-		float s = height / (rbr + rbl);
-		rbr *= s;
-		rbl *= s;
-	}
-	if (rtl + rbl > width) {
-		float s = width / (rtl + rbl);
-		rtl *= s;
-		rbl *= s;
-	}
-	if (rtr + rbr > width) {
-		float s = width / (rtr + rbr);
-		rtr *= s;
-		rbr *= s;
+	float f = 1.0f;
+	auto fitEdge = [&f](float length, float a, float b) {
+		const float sum = a + b;
+		if (sum > 0.0f) {
+			f = sprt::min(f, length / sum);
+		}
+	};
+
+	fitEdge(width, rtl, rtr); // top edge
+	fitEdge(width, rbl, rbr); // bottom edge
+	fitEdge(height, rtl, rbl); // left edge
+	fitEdge(height, rtr, rbr); // right edge
+
+	if (f < 1.0f) {
+		rtl *= f;
+		rtr *= f;
+		rbr *= f;
+		rbl *= f;
 	}
 
 	if (rtl == 0.0f && rtr == 0.0f && rbr == 0.0f && rbl == 0.0f) {
@@ -1086,24 +1077,46 @@ PathWriter &PathWriter::addBox(float x, float y, float width, float height, floa
 	float rx = x + width;
 	float ry = y + height;
 
+	auto hasStraightPart = [](float length, float a, float b) {
+		constexpr float epsilon = 1.0f / 4'096.0f;
+		return a + b < length - epsilon;
+	};
+
 	// Start at top edge after TL corner
 	moveTo(x + rtl, y);
+
 	// Top edge to TR corner
-	lineTo(rx - rtr, y);
-	// TR corner arc
-	arcTo(rtr, rtr, 0, false, true, rx, y + rtr);
+	if (hasStraightPart(width, rtl, rtr)) {
+		lineTo(rx - rtr, y);
+	}
+	if (rtr > 0.0f) {
+		arcTo(rtr, rtr, 0, false, true, rx, y + rtr);
+	}
+
 	// Right edge to BR corner
-	lineTo(rx, ry - rbr);
-	// BR corner arc
-	arcTo(rbr, rbr, 0, false, true, rx - rbr, ry);
+	if (hasStraightPart(height, rtr, rbr)) {
+		lineTo(rx, ry - rbr);
+	}
+	if (rbr > 0.0f) {
+		arcTo(rbr, rbr, 0, false, true, rx - rbr, ry);
+	}
+
 	// Bottom edge to BL corner
-	lineTo(x + rbl, ry);
-	// BL corner arc
-	arcTo(rbl, rbl, 0, false, true, x, ry - rbl);
+	if (hasStraightPart(width, rbr, rbl)) {
+		lineTo(x + rbl, ry);
+	}
+	if (rbl > 0.0f) {
+		arcTo(rbl, rbl, 0, false, true, x, ry - rbl);
+	}
+
 	// Left edge back to TL corner
-	lineTo(x, y + rtl);
-	// TL corner arc (closes to moveTo point)
-	arcTo(rtl, rtl, 0, false, true, x + rtl, y);
+	if (rtl > 0.0f) {
+		if (hasStraightPart(height, rtl, rbl)) {
+			lineTo(x, y + rtl);
+		}
+		// TL corner arc (closes to moveTo point)
+		arcTo(rtl, rtl, 0, false, true, x + rtl, y);
+	}
 	closePath();
 	return *this;
 }

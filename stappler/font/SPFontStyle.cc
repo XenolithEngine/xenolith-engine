@@ -123,7 +123,7 @@ FontParameters FontParameters::create(StringView str, memory::pool_t *pool) {
 template <>
 auto FontParameters::getFontConfigName<memory::PoolInterface>(StringView fontFamily,
 		FontSize fontSize, FontStyle fontStyle, FontWeight fontWeight, FontStretch fontStretch,
-		FontGrade fontGrade, FontVariant fontVariant, bool caps)
+		FontGrade fontGrade, FontVariant fontVariant, float density, bool caps)
 		-> memory::PoolInterface::StringType {
 	auto size = fontSize;
 	memory::PoolInterface::StringType name;
@@ -145,16 +145,15 @@ auto FontParameters::getFontConfigName<memory::PoolInterface>(StringView fontFam
 		break;
 	}
 
-	name += mem_pool::toString(".", fontWeight.get());
-	name += mem_pool::toString(".", fontStretch.get());
-	name += mem_pool::toString(".", fontGrade.get());
+	name += mem_pool::toString(".", fontWeight.get(), ".", fontStretch.get(), ".", fontGrade.get(),
+			".", density);
 	return name;
 }
 
 template <>
 auto FontParameters::getFontConfigName<memory::StandartInterface>(StringView fontFamily,
 		FontSize fontSize, FontStyle fontStyle, FontWeight fontWeight, FontStretch fontStretch,
-		FontGrade fontGrade, FontVariant fontVariant, bool caps)
+		FontGrade fontGrade, FontVariant fontVariant, float density, bool caps)
 		-> memory::StandartInterface::StringType {
 	auto size = fontSize;
 	memory::StandartInterface::StringType name;
@@ -176,9 +175,8 @@ auto FontParameters::getFontConfigName<memory::StandartInterface>(StringView fon
 		break;
 	}
 
-	name += mem_std::toString(".", fontWeight.get());
-	name += mem_std::toString(".", fontStretch.get());
-	name += mem_std::toString(".", fontGrade.get());
+	name += mem_std::toString(".", fontWeight.get(), ".", fontStretch.get(), ".", fontGrade.get(),
+			".", density);
 	return name;
 }
 

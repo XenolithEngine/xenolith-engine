@@ -24,6 +24,7 @@
 
 #include "FitContentLayout.h"
 #include "XLUiStyleSystem.h"
+#include "XLUiStyleResolver.h"
 #include "XLAction.h"
 
 #include <stdlib.h> // getenv for the headless append hook
@@ -37,22 +38,43 @@ using ui::FlexWrap;
 
 namespace {
 
-// A label whose committed box is made visible by a background layer kept in
-// sync with the content size assigned by the layout.
-Rc<Label> makeFitLabel(StringView text, const Color4F &bg) {
-	auto label = Rc<Label>::create();
+// A label whose committed box is made visible by a coloured background.
+//
+// The background is the label's PARENT, not a child of it. An opaque Layer parented *under* a
+// Label is drawn over the text in the depth-buffered queue (and under it in the flat one), so the
+// text came out nearly invisible in one queue and crisp in the other - the test then showed a
+// rendering quirk rather than fit-content sizing. The box hugs the label through its own
+// LayoutSystem, exactly like the nested chip in case 3, which always rendered correctly.
+//
+// `out` receives the label itself, since it is the label's metrics the test is about.
+Rc<Layer> makeFitBox(StringView text, const Color4F &bg, Label **out = nullptr) {
+	using ui::FlexAlign;
+	using ui::FlexItemInfo;
+	using ui::FlexLayoutInfo;
+	using ui::LayoutSystem;
+
+	auto box = Rc<Layer>::create(bg);
+
+	FlexLayoutInfo boxInfo;
+	boxInfo.direction = FlexDirection::Row;
+	boxInfo.alignItems = FlexAlign::FlexStart;
+	box->addSystem(Rc<LayoutSystem>::create(boxInfo));
+
+	auto label = box->addChild(Rc<Label>::create(), ZOrder(1));
 	label->setFontSize(20);
 	label->setString(text);
 	label->setColor(Color::White);
 
-	auto layer = label->addChild(Rc<Layer>::create(bg), ZOrder(-1));
-	layer->setAnchorPoint(Anchor::BottomLeft);
-	layer->setPosition(Vec2(0.0f, 0.0f));
+	// the box hugs the label, so the label's own fit-content measurement is what sizes both
+	FlexItemInfo labelItem;
+	labelItem.basis = FlexItemInfo::FitContent;
+	LayoutSystem::setItem(label, labelItem);
 
-	label->setContentSizeDirtyCallback(
-			[label = label.get(), layer] { layer->setContentSize(label->getContentSize()); });
+	if (out) {
+		*out = label;
+	}
 
-	return label;
+	return box;
 }
 
 } // namespace
@@ -103,22 +125,22 @@ bool FitContentLayout::init() {
 
 	// 1. a short label sized to its text: max-content basis + measured cross
 	{
-		auto label = _demo->addChild(makeFitLabel("Fit", Color::Red_400), ZOrder(1));
+		auto box = _demo->addChild(makeFitBox("Fit", Color::Red_400), ZOrder(1));
 		FlexItemInfo item;
 		item.basis = FlexItemInfo::FitContent;
-		LayoutSystem::setItem(label, item);
+		LayoutSystem::setItem(box, item);
 	}
 
 	// 2. a long label clamped by maxMain: the committed width re-wraps the
 	// text, the re-measured cross grows to the wrapped height
 	{
-		auto label = _demo->addChild(
-				makeFitLabel("A long fit-content label that wraps when clamped", Color::Blue_400),
+		auto box = _demo->addChild(
+				makeFitBox("A long fit-content label that wraps when clamped", Color::Blue_400),
 				ZOrder(1));
 		FlexItemInfo item;
 		item.basis = FlexItemInfo::FitContent;
 		item.maxMain = 220.0f;
-		LayoutSystem::setItem(label, item);
+		LayoutSystem::setItem(box, item);
 	}
 
 	// 3. a nested fit-content chip: the outer row measures the chip through
@@ -150,8 +172,11 @@ bool FitContentLayout::init() {
 
 	// 4. CSS path: the fit-content basis comes from the stylesheet above
 	{
-		auto label = _demo->addChild(makeFitLabel("CSS", Color::Purple_400), ZOrder(1));
-		label->addStyleClass("css-fit");
+		auto box = _demo->addChild(makeFitBox("CSS", Color::Purple_400), ZOrder(1));
+		box->addStyleClass("css-fit");
+		// the basis now has to come from the stylesheet for real: the box is the flex item, and
+		// unlike a Label it has no intrinsic size to fall back on, so a resolver must apply the rule
+		box->addSystem(Rc<ui::StyleResolver>::create());
 	}
 
 	// headless invalidation hook for the screenshot workflow: extend the
@@ -192,8 +217,7 @@ void FitContentLayout::appendText() {
 
 void FitContentLayout::toggleWrap() {
 	auto info = _demoFlex->getInfo();
-	_demoFlex->setWrap(
-			(info && info->wrap == FlexWrap::Wrap) ? FlexWrap::NoWrap : FlexWrap::Wrap);
+	_demoFlex->setWrap((info && info->wrap == FlexWrap::Wrap) ? FlexWrap::NoWrap : FlexWrap::Wrap);
 }
 
 void FitContentLayout::handleContentSizeDirty() {
