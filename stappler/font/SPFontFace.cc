@@ -593,7 +593,8 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 
 auto FontFaceSet::constructName(StringView family, const FontSpecializationVector &vec) -> String {
 	return FontParameters::getFontConfigName<Interface>(family, vec.fontSize, vec.fontStyle,
-			vec.fontWeight, vec.fontStretch, vec.fontGrade, FontVariant::Normal, false);
+			vec.fontWeight, vec.fontStretch, vec.fontGrade, FontVariant::Normal, vec.density,
+			false);
 }
 
 bool FontFaceSet::init(String &&name, StringView family, FontSpecializationVector &&spec,

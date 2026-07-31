@@ -85,11 +85,13 @@ void PugCascadeLayout::handleContentSizeDirty() {
 
 	// the container nodes and the flex roots built into them all fill the layout, so the flex
 	// engine centers/positions the labels
+	// the work area, not the full layout: the outer template puts its title at the top of whatever
+	// box it is given, which against the full height lands under the caption strip
 	for (auto n : {_outer, _inner, _outerTree, _innerTree}) {
 		if (n) {
 			n->setAnchorPoint(Anchor::BottomLeft);
 			n->setPosition(Vec2::ZERO);
-			n->setContentSize(_contentSize);
+			n->setContentSize(getWorkSize());
 		}
 	}
 }

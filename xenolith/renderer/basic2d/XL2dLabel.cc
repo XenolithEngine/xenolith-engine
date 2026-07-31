@@ -671,6 +671,8 @@ void Label::updateQuadsForeground(font::FontController *controller, TextLayout *
 bool Label::checkVertexDirty() const { return _vertexesDirty || _labelDirty; }
 
 NodeVisitFlags Label::processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) {
+	updateLabelDensity(info.modelTransformStack.back());
+
 	if (_labelDirty) {
 		updateLabel();
 	}
