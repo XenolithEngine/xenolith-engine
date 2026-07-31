@@ -89,10 +89,48 @@ struct SP_PUBLIC MeasureConstraints {
 
 enum class CommandFlags : uint16_t {
 	None,
-	DoNotCount = 1 << 0
+	DoNotCount = 1 << 0,
+
+	// The command is always treated as changed: the generation comparison is skipped for it and
+	// its bounds go into the frame damage unconditionally. For content that changes without its
+	// data set changing (particles, video, the FPS overlay).
+	AlwaysDirty = 1 << 1,
+
+	// Bounds cannot be determined for this command; the frame escalates to full-surface damage.
+	UnknownBounds = 1 << 2,
 };
 
 SP_DEFINE_ENUM_AS_MASK(CommandFlags)
+
+// Identity + version for a copy-on-write data set, used to compute damage rectangles between
+// frames. `id` is stable for the lifetime of the object, `generation` changes whenever the
+// contents may have changed. A model-space AABB is cached alongside, so damage collection never
+// has to rescan the data of an unchanged set.
+struct SP_PUBLIC DataIdentity {
+	uint64_t id = 0;
+	uint32_t generation = 0;
+	uint32_t boundsGeneration = maxOf<uint32_t>();
+	Rect bounds;
+
+	// Whether the AABB may be derived by scanning the data. False for atlas-driven geometry.
+	bool derivable = true;
+
+	DataIdentity() : id(allocate()) { }
+
+	void invalidate() {
+		++generation;
+		boundsGeneration = maxOf<uint32_t>();
+	}
+
+	void setBounds(const Rect &r) {
+		bounds = r;
+		boundsGeneration = generation;
+	}
+
+	bool hasBounds() const { return boundsGeneration == generation; }
+
+	static uint64_t allocate();
+};
 
 struct SP_PUBLIC MaterialInfo {
 	sprt::array<uint64_t, config::MaxMaterialImages> images = {0};

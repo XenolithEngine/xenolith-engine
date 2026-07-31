@@ -53,7 +53,11 @@ bool LinearGradient::updateWithData(const Vec2 &start, const Vec2 &end,
 		_data = Rc<LinearGradientData>::alloc();
 		_copyOnWrite = false;
 	} else if (_copyOnWrite) {
+		// detaching allocates a fresh set, which carries a fresh identity already
 		_data = Rc<LinearGradientData>::alloc(*_data);
+	} else {
+		// mutated in place: the generation is the only signal damage tracking can see
+		_data->identity.invalidate();
 	}
 
 	_data->start = start;

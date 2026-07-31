@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_RESOURCES_XLLINEARGRADIENT_H_
 
 #include "XLCommon.h"
+#include "XLNodeInfo.h" // DataIdentity
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -46,6 +47,10 @@ struct SP_PUBLIC LinearGradientData : public Ref {
 	Vec2 start;
 	Vec2 end;
 	Vector<GradientStep> steps;
+
+	// a gradient change repaints without any VertexData changing, so the damage signature of a
+	// command has to include this.
+	DataIdentity identity;
 
 	LinearGradientData() = default;
 	LinearGradientData(const LinearGradientData &);

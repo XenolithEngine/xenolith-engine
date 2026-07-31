@@ -257,6 +257,10 @@ bool PresentationEngine::init(NotNull<Loop> loop, NotNull<Device> device,
 	_originalSurface = _surface = _window->makeSurface(loop->getInstance());
 	_constraints = _window->exportConstraints(_serial);
 
+	if (auto value = ::getenv("XL_DAMAGE_DEBUG")) {
+		_damageDebug = StringView(value) != "0";
+	}
+
 	// Bound the frame rate. On platforms with a display-link (vsync) callback presentation is
 	// driven by that; without one — e.g. the WebGPU/wasm backend — nothing limits the rate and the
 	// engine renders on every scheduler tick/event (hundreds of fps, wasted work + churn). Fall
@@ -404,8 +408,40 @@ void PresentationEngine::presentWithQueue(DeviceQueue &queue, NotNull<Presentati
 
 	_window->handleFrameReady(frame);
 
+	// Diff this frame against what the compositor currently shows. Incremental-present rectangles
+	// are relative to the previously presented image, so the baseline is the presented snapshot,
+	// not the one describing this particular image buffer (which is what bounds partial redraw).
+	auto request = frame->getRequest();
+
+	Vector<URect> damage;
+	bool partial = _swapchain->getDamage().computePresentDamage(
+			request ? request->getDamageState().get() : nullptr,
+			Extent2(_constraints.extent.width, _constraints.extent.height), damage);
+
+	if (partial && damage.empty()) {
+		// Screen and frame already agree. There is no way to say "nothing changed" - a rectangle
+		// count of zero means the whole image changed - so hand over the smallest legal region.
+		damage.emplace_back(URect{0, 0, 1, 1});
+	}
+
+	if (_damageDebug) {
+		float covered = 0.0f;
+		for (auto &it : damage) { covered += float(it.width) * float(it.height); }
+		const float surface = float(_constraints.extent.width) * float(_constraints.extent.height);
+		log::source().info("DamageDebug", "image=", image->getImageIndex(),
+				partial ? " partial rects=" : " FULL rects=", damage.size(),
+				" area=", surface > 0.0f ? covered / surface : 1.0f,
+				request && request->isRedrawSkipped() ? " [redraw skipped]" : "");
+		for (auto &it : damage) {
+			log::source().info("DamageDebug", "  rect ", it.x, ",", it.y, " ", it.width, "x",
+					it.height);
+		}
+	}
+
+	core::PresentInfo presentInfo{presentWindow, partial ? makeSpanView(damage) : SpanView<URect>()};
+
 	auto clock = sp::platform::clock(ClockType::Monotonic);
-	auto res = _swapchain->present(queue, image, presentWindow);
+	auto res = _swapchain->present(queue, image, presentInfo);
 	auto dt = updatePresentationInterval();
 
 	if (res == Status::ErrorFullscreenLost) {

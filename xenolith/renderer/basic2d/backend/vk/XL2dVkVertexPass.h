@@ -27,6 +27,7 @@
 #include "XL2dVkMaterial.h"
 #include "XL2dCommandList.h"
 #include "XL2dVkParticlePass.h"
+#include "XLCoreFrameDamage.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 
@@ -36,9 +37,16 @@ class SP_PUBLIC VertexAttachment : public core::GenericAttachment {
 public:
 	virtual ~VertexAttachment() = default;
 
-	virtual bool init(AttachmentBuilder &builder, const AttachmentData *);
+	virtual bool init(AttachmentBuilder &builder, const AttachmentData *, bool flatOrder = false,
+			bool damageTracked = false);
 
 	const AttachmentData *getMaterials() const { return _materials; }
+
+	// Queues without a depth buffer (FlatPass) need every draw emitted in painter's order.
+	bool isFlatOrder() const { return _flatOrder; }
+
+	// Whether this queue asked for per-frame damage tracking at all.
+	bool isDamageTracked() const { return _damageTracked; }
 
 	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
 	virtual Rc<core::AttachmentInputData> makeInputData(
@@ -55,11 +63,21 @@ protected:
 	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &) override;
 
 	const AttachmentData *_materials = nullptr;
+	bool _flatOrder = false;
+	bool _damageTracked = false;
 };
 
 class SP_PUBLIC VertexAttachmentHandle : public core::AttachmentHandle {
 public:
 	virtual ~VertexAttachmentHandle() = default;
+
+	bool isFlatOrder() const {
+		return static_cast<VertexAttachment *>(_attachment.get())->isFlatOrder();
+	}
+
+	bool isDamageTracked() const {
+		return static_cast<VertexAttachment *>(_attachment.get())->isDamageTracked();
+	}
 
 	virtual bool setup(FrameQueue &, Function<void(bool)> &&) override;
 
@@ -84,7 +102,11 @@ public:
 	void loadData(Rc<FrameContextHandle2d> &&data, Rc<Buffer> &&indexes, Rc<Buffer> &&vertexes,
 			Rc<Buffer> &&transforms, Vector<VertexSpan> &&spans,
 			Vector<VertexSpan> &&shadowSolidSpans, Vector<VertexSpan> &&shadowSdfSpans,
-			float maxShadowValue);
+			float maxShadowValue, Rc<core::FrameDamageState> &&damage);
+
+	// Written once on the worker that builds the vertex data, before the attachment signals
+	// readiness; read afterwards on the loop thread at present time.
+	const Rc<core::FrameDamageState> &getDamageState() const { return _damage; }
 
 protected:
 	Rc<FrameContextHandle2d> _commands;
@@ -98,6 +120,7 @@ protected:
 	Rc<core::MaterialSet> _materialSet;
 	const MaterialAttachmentHandle *_materials = nullptr;
 	float _maxShadowValue = 0.0f;
+	Rc<core::FrameDamageState> _damage;
 };
 
 class SP_PUBLIC VertexPass : public QueuePass {

@@ -44,6 +44,8 @@ enum class PseudoSdfSpecialization {
 bool ShadowPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
+	builder.setDamageFlags(info.damage);
+
 	const AttachmentData *particleEmitters = nullptr;
 
 	particleEmitters = builder.addAttachemnt(FrameContext2d::ParticleEmittersAttachment,
@@ -66,6 +68,7 @@ bool ShadowPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info)
 					.flags = info.flags | Flags::UsePseudoSdf,
 					.backgroundColor = info.backgroundColor,
 					.particleAttachment = particleEmitters,
+					.damage = info.damage,
 				});
 	});
 
@@ -179,7 +182,8 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 	_vertexes = queueBuilder.addAttachemnt(FrameContext2d::VertexAttachmentName,
 			[&, this](AttachmentBuilder &builder) -> Rc<Attachment> {
 		builder.defineAsInput();
-		return Rc<VertexAttachment>::create(builder, _materials);
+		return Rc<VertexAttachment>::create(builder, _materials, false,
+				hasFlag(info.damage, core::QueueDamageFlags::PresentHint));
 	});
 
 	_lightsData = queueBuilder.addAttachemnt(FrameContext2d::LightDataAttachmentName,

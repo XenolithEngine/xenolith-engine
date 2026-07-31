@@ -271,6 +271,9 @@ bool WaylandLibrary::init() {
 void WaylandLibrary::close() { }
 
 bool WaylandLibrary::ownsProxy(wl_proxy *proxy) {
+	if (!proxy) {
+		return false;
+	}
 	auto tag = wl_proxy_get_tag(proxy);
 	return tag == &s_XenolithWaylandTag;
 }

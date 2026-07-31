@@ -86,7 +86,27 @@ public:
 
 	void setQueueIdleFlags(core::DeviceIdleFlags);
 
+	// Fills `out` with the rectangle this frame is allowed to restrict rendering to, and returns
+	// true when partial redraw applies. Computed once in prepare(), because the render pass needs
+	// it before recording starts.
+	bool hasPartialRedrawArea(VkRect2D &out) const;
+
+	// True when the target image already holds this exact frame, so the pass must record nothing at
+	// all - no barriers, no render pass, no draws. The image keeps its content and its PRESENT_SRC
+	// layout, and is presented untouched.
+	bool isRedrawSkipped() const { return _skipRedraw; }
+
 protected:
+	// Diff this frame against the swapchain image it will be rendered into, and commit the
+	// resulting snapshot. Committing here — rather than at present — keeps the invariant that a
+	// snapshot describes what was last *rendered into* that image, which is what LOAD_OP_LOAD
+	// relies on.
+	void preparePartialRedraw(FrameQueue &);
+
+	bool _partialRedraw = false;
+	bool _skipRedraw = false;
+	VkRect2D _partialRedrawArea = {};
+
 	virtual Vector<const core::CommandBuffer *> doPrepareCommands(FrameHandle &);
 	virtual bool doSubmit(FrameHandle &frame, Function<void(bool)> &&onSubmited);
 

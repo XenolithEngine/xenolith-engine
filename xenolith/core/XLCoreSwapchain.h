@@ -26,6 +26,7 @@
 
 #include "XLCoreInstance.h"
 #include "XLCoreImageStorage.h"
+#include "XLCoreFrameDamage.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -45,6 +46,74 @@ public:
 protected:
 	Rc<Ref> _window;
 	Rc<Instance> _instance;
+};
+
+// What is handed to the platform present call. `damage` being empty means "the whole surface
+// changed"; a non-empty list is a hint that only those regions differ from the previously
+// presented image.
+struct SP_PUBLIC PresentInfo {
+	uint64_t presentWindow = 0;
+	SpanView<URect> damage;
+};
+
+// Turns "current frame vs a stored snapshot of what was drawn" into a list of damaged rectangles.
+//
+// Two different snapshots are kept, because the two consumers ask different questions:
+//
+//   * per swapchain image index - "what does this particular image buffer already hold?", which is
+//     what bounds a LOAD_OP_LOAD partial redraw. Diffing against a per-index snapshot rather than
+//     against "the previous frame" is what makes this correct: image indexes are pooled and reused
+//     out of order, and frames can be dropped after their data was built. A dropped frame simply
+//     never updates a snapshot.
+//
+//   * the presented snapshot - "what is on screen right now?". VK_KHR_incremental_present
+//     rectangles are relative to the previously presented image, not to the previous contents of
+//     the image being presented, so the per-index snapshot is the wrong baseline for them: with
+//     content going A -> B -> A the per-index diff can come out empty while the screen still shows
+//     B, and the compositor would then never repaint.
+class SP_PUBLIC SwapchainDamage {
+public:
+	// beyond this, the compositor gains nothing over a plain full present
+	static constexpr size_t MaxRects = 8;
+
+	void resize(uint32_t imageCount);
+
+	// What has to be re-rendered into image `imageIndex` for it to hold this frame. Commits the
+	// per-index snapshot. Returns false when the whole image must be re-rendered; an empty `out`
+	// with a true return means the image already holds exactly this frame.
+	bool computeRedrawArea(uint32_t imageIndex, const FrameDamageState *, Extent2 imageExtent,
+			Vector<URect> &out);
+
+	// What changed on screen. Commits the presented snapshot. Returns false when the whole surface
+	// must be considered damaged; an empty `out` with a true return means the screen already shows
+	// this frame.
+	bool computePresentDamage(const FrameDamageState *, Extent2 imageExtent, Vector<URect> &out);
+
+	void invalidateImage(uint32_t imageIndex);
+	void invalidateAll();
+
+protected:
+	struct ImageState {
+		Vector<DamageEntry> snapshot;
+		bool valid = false;
+	};
+
+	// Shared body of both diffs. Callers hold the lock and have already established that `state` is
+	// usable and `prev` is valid; they also commit the snapshot afterwards.
+	bool diff(const ImageState &prev, const FrameDamageState *, Extent2 imageExtent,
+			Vector<URect> &out);
+
+	// Store what this frame drew as the new baseline. A frame that could not be described at all
+	// (`full`) leaves the baseline unusable, so the next frame starts over from a full redraw.
+	static void commit(ImageState &, const FrameDamageState *);
+
+	// A resize invalidates every stored rectangle
+	void checkExtent(Extent2 imageExtent);
+
+	Vector<ImageState> _images;
+	ImageState _presented;
+	Extent2 _extent;
+	mutable sprt::mutex _mutex;
 };
 
 class SP_PUBLIC Swapchain : public Object {
@@ -93,7 +162,9 @@ public:
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<Fence> &fence, Status &) = 0;
 
-	virtual Status present(DeviceQueue &queue, ImageStorage *, uint64_t presentWindow) = 0;
+	virtual Status present(DeviceQueue &queue, ImageStorage *, const PresentInfo &) = 0;
+
+	SwapchainDamage &getDamage() { return _damage; }
 	virtual void invalidateImage(const ImageStorage *, bool release) = 0;
 	virtual void invalidateImage(uint32_t, bool release) = 0;
 
@@ -120,6 +191,9 @@ protected:
 
 	sprt::mutex _resourceMutex;
 	Rc<Surface> _surface;
+
+	// owned by the swapchain, so recreation resets the history for free
+	SwapchainDamage _damage;
 
 	Vector<Rc<Semaphore>> _invalidatedSemaphores;
 };

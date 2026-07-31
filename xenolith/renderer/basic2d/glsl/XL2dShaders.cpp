@@ -36,6 +36,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::shaders {
 #include "xl_2d_pseudosdf_shadow.vert.h"
 #include "xl_2d_frameclipper.frag.h"
 #include "xl_2d_particle_update.comp.h"
+#include "xl_2d_flat.frag.h"
+#include "xl_2d_flat.vert.h"
 
 SpanView<uint32_t> MaterialFrag(reinterpret_cast<const uint32_t *>(xl_2d_material_frag),
 		sizeof(xl_2d_material_frag) / sizeof(uint32_t));
@@ -54,6 +56,11 @@ SpanView<uint32_t> PseudoSdfShadowVert(
 
 SpanView<uint32_t> FrameClipperFrag(reinterpret_cast<const uint32_t *>(xl_2d_frameclipper_frag),
 		sizeof(xl_2d_frameclipper_frag) / sizeof(uint32_t));
+
+SpanView<uint32_t> FlatFrag(reinterpret_cast<const uint32_t *>(xl_2d_flat_frag),
+		sizeof(xl_2d_flat_frag) / sizeof(uint32_t));
+SpanView<uint32_t> FlatVert(reinterpret_cast<const uint32_t *>(xl_2d_flat_vert),
+		sizeof(xl_2d_flat_vert) / sizeof(uint32_t));
 
 SpanView<uint32_t> ParticleUpdateComp(
 		reinterpret_cast<const uint32_t *>(xl_2d_particle_update_comp),

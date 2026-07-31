@@ -24,6 +24,7 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "XL2dCommandList.cc"
+#include "XL2dDamage.cc"
 #include "XL2dVertexArray.cc"
 #include "XL2dFrameContext.cc"
 
@@ -56,6 +57,7 @@
 #include "backend/vk/XL2dVkShadow.cc"
 #include "backend/vk/XL2dVkParticlePass.cc"
 #include "backend/vk/XL2dVkShadowPass.cc"
+#include "backend/vk/XL2dVkFlatPass.cc"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
