@@ -398,6 +398,33 @@ SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 #endif
 #endif // __SPRT_DEFINED_strncasecmp
 
+// The MSVC spellings of the same two comparators. Separate entry points rather than
+// macros so a caller can take their address, and routed to the same __sprt_* backends -
+// on this libc the "current locale" the MSVC forms are documented against is the UTF-8
+// one, where case folding of the ASCII range is what both pairs do.
+SPRT_UMBRELLA_FUNC int _stricmp(const char *s1, const char *s2) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcasecmp(s1, s2);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC int _strnicmp(const char *s1, const char *s2,
+		__SPRT_ID(rsize_t) size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strncasecmp(s1, s2, size);
+}
+#endif
+
+// Pre-standard alias MSVC still ships for _stricmp; same function.
+SPRT_UMBRELLA_FUNC int _strcmpi(const char *s1, const char *s2) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcasecmp(s1, s2);
+}
+#endif
+
 #ifndef __SPRT_DEFINED_strcasecmp_l
 #define __SPRT_DEFINED_strcasecmp_l
 SPRT_UMBRELLA_FUNC int strcasecmp_l(const char *s1, const char *s2,

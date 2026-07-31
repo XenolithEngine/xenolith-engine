@@ -82,6 +82,8 @@ void mi_free_size_aligned(void *p, size_t size, size_t alignment) noexcept;
 
 #if defined(SPRT_WASM) && !defined(SPRT_WEAK_OPERATOR_NEW_DELETE)
 #define SPRT_REPLACEABLE_OP
+#elif defined(SPRT_BUILD_SHARED_RUNTIME)
+#define SPRT_REPLACEABLE_OP
 #else
 #define SPRT_REPLACEABLE_OP __attribute__((weak))
 #endif

@@ -33,8 +33,17 @@ include ../common/utils/init-shell.mk
 
 SP_CLANG_CL := $(dir $(SP_CC))clang-cl
 
-export INCLUDE := $(abspath ../../../runtime/include_libc);$(abspath ../../../runtime/include_libc/cxx);$(abspath ../../../runtime/libcxx/include);$(abspath ../../../runtime/include);$(abspath ../../../runtime/include/sprt/wrappers/windows)
 export LIB := $(SP_INSTALL_PREFIX)/lib
+
+CRT_C_INCLUDES := \
+	-I$(abspath ../../../runtime/include_libc) \
+	-I$(abspath ../../../runtime/include) \
+	-I$(abspath ../../../runtime/include/sprt/wrappers/windows)
+
+CRT_CXX_INCLUDES := \
+	-I$(abspath ../../../runtime/include_libc/cxx) \
+	-I$(abspath ../../../runtime/libcxx/include) \
+	$(CRT_C_INCLUDES)
 
 CRT_WARN_FLAGS := \
 	-Wno-nonportable-include-path \
@@ -62,8 +71,9 @@ CRT_CONFIGURE := \
 	-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
 	-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
 	-DCMAKE_LINKER_TYPE=LLD \
-	-DCMAKE_C_FLAGS_INIT="$(CRT_WARN_FLAGS)" \
-	-DCMAKE_CXX_FLAGS_INIT="$(CRT_WARN_FLAGS)" \
+	-DCMAKE_C_FLAGS_INIT="$(CRT_WARN_FLAGS) $(CRT_C_INCLUDES)" \
+	-DCMAKE_CXX_FLAGS_INIT="$(CRT_WARN_FLAGS) $(CRT_CXX_INCLUDES)" \
+	-DCMAKE_ASM_FLAGS_INIT="$(CRT_C_INCLUDES)" \
 	-DCMAKE_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	-DCMAKE_VERBOSE_MAKEFILE=On \
 	-DCMAKE_CXX_STANDARD=20 \
