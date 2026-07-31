@@ -48,8 +48,8 @@ void Surface::invalidate() {
 	_window = nullptr;
 }
 
-core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &dev,
-		core::FullScreenExclusiveMode, void *) const {
+core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &dev, core::FullScreenExclusiveMode,
+		void *) const {
 	core::SurfaceInfo ret;
 
 	// CAMetalLayer does not expose capability queries; limits are nominal.
@@ -78,8 +78,8 @@ core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &dev,
 	ret.supportedTransforms = core::SurfaceTransformFlags::Identity;
 	ret.currentTransform = core::SurfaceTransformFlags::Identity;
 
-	ret.supportedUsageFlags = core::ImageUsage::ColorAttachment
-			| core::ImageUsage::TransferSrc | core::ImageUsage::TransferDst;
+	ret.supportedUsageFlags = core::ImageUsage::ColorAttachment | core::ImageUsage::TransferSrc
+			| core::ImageUsage::TransferDst;
 
 	ret.formats.emplace_back(
 			sprt::pair(core::ImageFormat::B8G8R8A8_UNORM, core::ColorSpace::SRGB_NONLINEAR_KHR));
@@ -146,8 +146,7 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 	@autoreleasepool {
 		// blocks while all drawables are in flight (frame pacing); returns nil
 		// after the layer's timeout - the engine retries via its timer
-		id<CAMetalDrawable> drawable =
-				[_surface.get_cast<Surface>()->getLayer() nextDrawable];
+		id<CAMetalDrawable> drawable = [_surface.get_cast<Surface>()->getLayer() nextDrawable];
 		if (!drawable) {
 			status = Status::Timeout;
 			return nullptr;
@@ -184,7 +183,8 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 	}
 }
 
-Status Swapchain::present(core::DeviceQueue &, core::ImageStorage *image, uint64_t) {
+Status Swapchain::present(core::DeviceQueue &, core::ImageStorage *image,
+		const core::PresentInfo &) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
 	}

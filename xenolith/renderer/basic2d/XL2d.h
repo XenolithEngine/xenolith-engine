@@ -100,6 +100,9 @@ struct VertexSpan {
 struct alignas(16) VertexData : public Ref {
 	Vector<Vertex> data;
 	Vector<uint32_t> indexes;
+	DataIdentity identity;
+
+	bool getBounds(Rect &out) const;
 };
 
 struct InstanceVertexData {

@@ -34,9 +34,23 @@ class VectorSprite;
 
 class SP_PUBLIC Scene2d : public Scene {
 public:
+	enum class QueueType {
+		// full-featured queue: shadows, pseudo-SDF, particles, depth buffer, post-processing
+		Default,
+
+		// lightweight queue: no shadows, no particles, no depth buffer, no post-processing
+		// (Vulkan only; the WebGPU and Metal queues are already of this shape)
+		Flat,
+	};
+
 	struct QueueInfo {
 		Extent2 extent;
 		Color4F backgroundColor = Color4F::WHITE;
+		QueueType type = QueueType::Default;
+
+		// Defaulted per QueueType in Scene2d::init and overridable from buildQueueResources.
+		// maxOf<uint32_t> means "not set, use the type's default".
+		core::QueueDamageFlags damage = core::QueueDamageFlags(maxOf<uint32_t>());
 	};
 
 	class FpsDisplay;

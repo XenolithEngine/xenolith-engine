@@ -1669,6 +1669,8 @@ void Queue::Builder::setDefaultSyncPassState(FrameRenderPassState val) {
 
 void Queue::Builder::setRecordingMode(PassRecordingMode val) { _data->recordingMode = val; }
 
+void Queue::Builder::setDamageFlags(QueueDamageFlags val) { _data->damage = val; }
+
 const AttachmentData *Queue::Builder::addAttachemnt(StringView name,
 		const Callback<Rc<Attachment>(AttachmentBuilder &)> &cb) {
 	auto it = _data->attachments.find(name);

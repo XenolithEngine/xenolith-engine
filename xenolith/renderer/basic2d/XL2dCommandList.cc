@@ -186,6 +186,7 @@ void CommandList::pushVertexArray(Rc<VertexData> &&vert, const Mat4 &t, CmdInfo 
 		cmdData->state = info.state;
 		cmdData->renderingLevel = info.renderingLevel;
 		cmdData->depthValue = info.depthValue;
+		cmdData->bounds = info.bounds;
 
 		addCommand(cmd);
 	});
@@ -212,6 +213,7 @@ void CommandList::pushVertexArray(
 		cmdData->state = info.state;
 		cmdData->renderingLevel = info.renderingLevel;
 		cmdData->depthValue = info.depthValue;
+		cmdData->bounds = info.bounds;
 
 		addCommand(cmd);
 	});
@@ -240,6 +242,7 @@ void CommandList::pushDeferredVertexResult(const Rc<DeferredVertexResult> &res, 
 		cmdData->state = info.state;
 		cmdData->renderingLevel = info.renderingLevel;
 		cmdData->depthValue = info.depthValue;
+		cmdData->bounds = info.bounds;
 
 		addCommand(cmd);
 	});
@@ -262,6 +265,7 @@ uint32_t CommandList::pushParticleEmitter(uint64_t id, const Mat4 &t, CmdInfo &&
 		cmdData->state = info.state;
 		cmdData->renderingLevel = info.renderingLevel;
 		cmdData->depthValue = info.depthValue;
+		cmdData->bounds = info.bounds;
 
 		// note: prefix increment, NOT suffix
 		ret = cmdData->transformIndex = ++_preallocatedTransforms;

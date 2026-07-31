@@ -474,6 +474,28 @@ protected:
 	Vec3 _endPosition;
 };
 
+// Displaces a node in discrete jumps rather than interpolating: the node stays put for a step's
+// worth of time, then teleports to the next position. Unlike MoveTo it never produces an
+// intermediate position.
+class SP_PUBLIC MoveStep : public ActionInterval {
+public:
+	virtual ~MoveStep() = default;
+
+	// `offset` is applied once per step, so the node ends at start + offset * steps
+	virtual bool init(float duration, const Vec2 &offset, uint32_t steps = 1);
+
+	virtual void startWithTarget(Node *target) override;
+	virtual void update(float time) override;
+
+	uint32_t getCurrentStep() const { return _currentStep; }
+
+protected:
+	Vec3 _startPosition;
+	Vec3 _offset;
+	uint32_t _steps = 1;
+	uint32_t _currentStep = maxOf<uint32_t>();
+};
+
 class SP_PUBLIC ScaleTo : public ActionInterval {
 public:
 	virtual ~ScaleTo() = default;

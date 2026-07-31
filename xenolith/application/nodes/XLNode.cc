@@ -79,6 +79,13 @@ Action *ActionStorage::getActionByTag(uint32_t tag) {
 	return nullptr;
 }
 
+uint64_t DataIdentity::allocate() {
+	// data sets are also built on worker threads (VectorCanvas, deferred Label), so this must be
+	// atomic; 0 is reserved for "no identity"
+	static sprt::atomic<uint64_t> s_dataIdentity(1);
+	return s_dataIdentity.fetch_add(1);
+}
+
 String MaterialInfo::description() const {
 	StringStream stream;
 

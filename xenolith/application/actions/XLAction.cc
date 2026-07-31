@@ -579,6 +579,42 @@ void MoveTo::update(float time) {
 	_target->setPosition(progress(_startPosition, _endPosition, time));
 }
 
+bool MoveStep::init(float duration, const Vec2 &offset, uint32_t steps) {
+	if (!ActionInterval::init(duration)) {
+		return false;
+	}
+
+	if (steps == 0) {
+		return false;
+	}
+
+	_offset = Vec3(offset.x, offset.y, 0.0f);
+	_steps = steps;
+	return true;
+}
+
+void MoveStep::startWithTarget(Node *target) {
+	ActionInterval::startWithTarget(target);
+	_startPosition = target->getPosition();
+	_currentStep = maxOf<uint32_t>();
+}
+
+void MoveStep::update(float time) {
+	// `time` is the normalized progress; the last step must be reachable at exactly 1.0
+	auto step = uint32_t(time * float(_steps));
+	if (step > _steps) {
+		step = _steps;
+	}
+
+	// only touch the node when the step actually changes, so an unmoved frame stays unmoved
+	if (step == _currentStep) {
+		return;
+	}
+
+	_currentStep = step;
+	_target->setPosition(_startPosition + _offset * float(step));
+}
+
 bool ScaleTo::init(float duration, float scale) {
 	if (!ActionInterval::init(duration)) {
 		return false;

@@ -26,6 +26,7 @@
 
 #include "XLCorePipelineInfo.h"
 #include "XLCoreResource.h"
+#include "XLCoreFrameDamage.h"
 
 #include <sprt/cxx/typeindex>
 
@@ -456,6 +457,7 @@ struct SP_PUBLIC QueueData : NamedMem {
 	Queue *queue = nullptr;
 	FrameRenderPassState defaultSyncPassState = FrameRenderPassState::Submitted;
 	PassRecordingMode recordingMode = PassRecordingMode::Default;
+	QueueDamageFlags damage = QueueDamageFlags::None;
 
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedInput;
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedOutput;

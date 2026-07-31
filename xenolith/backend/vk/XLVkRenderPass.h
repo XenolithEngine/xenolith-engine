@@ -113,9 +113,11 @@ protected:
 
 class SP_PUBLIC RenderPass : public core::RenderPass {
 public:
+	using Variant = RenderPassVariant;
+
 	struct Data {
-		VkRenderPass renderPass = VK_NULL_HANDLE;
-		VkRenderPass renderPassAlternative = VK_NULL_HANDLE;
+		VkRenderPass renderPasses[toInt(Variant::Count)] = {VK_NULL_HANDLE, VK_NULL_HANDLE,
+			VK_NULL_HANDLE};
 		Vector<Rc<PipelineLayout>> layouts;
 
 		bool cleanup(Device &dev);
@@ -125,7 +127,7 @@ public:
 
 	virtual bool init(Device &dev, QueuePassData &);
 
-	VkRenderPass getRenderPass(bool alt = false) const;
+	VkRenderPass getRenderPass(Variant = Variant::Default) const;
 	PipelineLayout *getPipelineLayout(uint32_t idx) const { return _data->layouts[idx]; }
 
 	//const Vector<Rc<DescriptorSetBindings>> &getDescriptorSets(uint32_t idx) const { return _data->layouts[idx].descriptors[0].sets; }

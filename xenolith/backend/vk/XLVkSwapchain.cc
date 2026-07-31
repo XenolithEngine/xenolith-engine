@@ -160,6 +160,10 @@ bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
 		data->images.reserve(imageCount);
 		data->presentSemaphores.resize(imageCount);
 
+		// deliberately NOT carried over from `old`: the new images have undefined content, so the
+		// first frame into each index must report full-surface damage
+		_damage.resize(imageCount);
+
 		if (old) {
 			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 			sprt::unique_lock<sprt::mutex > lock2(old->_resourceMutex);
@@ -339,10 +343,12 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 }
 
 Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *image,
-		uint64_t presentWindow) {
+		const core::PresentInfo &info) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
 	}
+
+	const auto presentWindow = info.presentWindow;
 
 	auto waitSem = (Semaphore *)image->getSignalSem().get();
 	auto waitSemObj = waitSem->getSemaphore();
@@ -381,6 +387,30 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 	if (!dev->isPortabilityMode() && dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
 		presentTimeInfo.pNext = presentInfo.pNext;
 		presentInfo.pNext = &presentTimeInfo;
+	}
+
+	// VK_KHR_incremental_present: tell the compositor which regions differ from what this image
+	// last showed. Purely a hint - the image is fully rendered either way - so an inaccurate list
+	// costs correctness nothing here. `rects` must outlive the call below, which it does.
+	//
+	// An empty damage list means "full surface": deliberately chain nothing rather than pass
+	// rectangleCount == 0, which would claim nothing changed at all.
+	Vector<VkRectLayerKHR> rects;
+	VkPresentRegionKHR region{};
+	VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR, nullptr, 1, &region};
+
+	if (!info.damage.empty() && dev->hasExtension(OptionalDeviceExtension::IncrementalPresent)) {
+		rects.reserve(info.damage.size());
+		for (auto &it : info.damage) {
+			rects.emplace_back(
+					VkRectLayerKHR{{int32_t(it.x), int32_t(it.y)}, {it.width, it.height}, 0});
+		}
+
+		region.rectangleCount = uint32_t(rects.size());
+		region.pRectangles = rects.data();
+
+		regions.pNext = presentInfo.pNext;
+		presentInfo.pNext = &regions;
 	}
 
 	VkResult result = VK_ERROR_UNKNOWN;
@@ -448,16 +478,21 @@ void SwapchainHandle::invalidateImage(const core::ImageStorage *image, bool rele
 }
 
 void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
+	// The image is going back without having been presented: whatever was rendered into it (if
+	// anything) is unknown, so the snapshot describing it can no longer be trusted as the base
+	// for a LOAD_OP_LOAD partial redraw.
+	_damage.invalidateImage(idx);
+
 	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	auto it = _acquiredIndexes.find(idx);
 	if (it != _acquiredIndexes.end()) {
 		_acquiredIndexes.erase(it);
 		auto dev = static_cast<Device *>(_object.device);
 		// Never release images back to a swapchain that has been invalidated (e.g. a frame discarded
-			// *because* its swapchain was invalidated): the handle is on its way out and
-			// vkReleaseSwapchainImagesEXT on it is illegal. The --_acquiredImages bookkeeping below still
-			// runs; the images are reclaimed when the swapchain itself is destroyed.
-			if (release && !_invalid
+		// *because* its swapchain was invalidated): the handle is on its way out and
+		// vkReleaseSwapchainImagesEXT on it is illegal. The --_acquiredImages bookkeeping below still
+		// runs; the images are reclaimed when the swapchain itself is destroyed.
+		if (release && !_invalid
 				&& dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
 				&& dev->getTable()->vkReleaseSwapchainImagesEXT) {
 			VkReleaseSwapchainImagesInfoEXT info;

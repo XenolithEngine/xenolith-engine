@@ -1185,9 +1185,11 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 	const xkb_keysym_t *keysyms = nullptr;
 	const xkb_keycode_t keycode = scancode + 8;
 
+	const bool hasXkbState = _display->xkb && _display->seat->state;
+
 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		char32_t codepoint = 0;
-		if (_display->xkb && isTextInputEnabled()) {
+		if (hasXkbState && isTextInputEnabled()) {
 			if (_display->xkb->xkb_state_key_get_syms(_display->seat->state, keycode, &keysyms)
 					== 1) {
 				const xkb_keysym_t keysym =
@@ -1204,7 +1206,7 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 								   sprt::platform::clock(platform::ClockType::Monotonic), false})
 						  .first;
 
-		if (_display->xkb
+		if (hasXkbState
 				&& _display->xkb->xkb_keymap_key_repeats(
 						_display->xkb->xkb_state_get_keymap(_display->seat->state), keycode)) {
 			it->second.repeats = true;

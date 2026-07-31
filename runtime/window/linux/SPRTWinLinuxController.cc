@@ -137,8 +137,8 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 
 		// In direct-display (KMS) mode there is no session/system bus to talk to;
 		// skip D-Bus entirely so it does not log spurious connection failures.
-		bool willBeKms = StringView(sessionType) != "wayland"
-				&& StringView(sessionType) != "x11" && s_hasDrmDevice();
+		bool willBeKms = StringView(sessionType) != "wayland" && StringView(sessionType) != "x11"
+				&& s_hasDrmDevice();
 		if (!willBeKms && _dbusController) {
 			_dbusController->setup();
 		}
@@ -383,7 +383,7 @@ void LinuxContextController::tryStart() {
 			}
 
 			if (_windowInfo) {
-				if (!loadWindow()) {
+				if (createWindow(sprt::move(_windowInfo)) != Status::Ok) {
 					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
 							"Fail to load root native window");
 					destroy();

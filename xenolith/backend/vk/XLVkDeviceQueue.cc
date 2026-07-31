@@ -574,17 +574,21 @@ void CommandBuffer::cmdClearColorImage(Image *image, XImageLayout layout, const 
 }
 
 void CommandBuffer::cmdBeginRenderPass(RenderPass *pass, Framebuffer *fb, VkSubpassContents subpass,
-		bool alt) {
+		RenderPassVariant variant, const VkRect2D *renderArea) {
 	auto &clearValues = pass->getClearValues();
 	auto currentExtent = fb->getExtent();
 
 	VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassInfo.pNext = nullptr;
-	renderPassInfo.renderPass = pass->getRenderPass(alt);
+	renderPassInfo.renderPass = pass->getRenderPass(variant);
 	renderPassInfo.framebuffer = fb->getFramebuffer();
-	renderPassInfo.renderArea.offset = {0, 0};
-	renderPassInfo.renderArea.extent = VkExtent2D{currentExtent.width, currentExtent.height};
+	if (renderArea) {
+		renderPassInfo.renderArea = *renderArea;
+	} else {
+		renderPassInfo.renderArea.offset = {0, 0};
+		renderPassInfo.renderArea.extent = VkExtent2D{currentExtent.width, currentExtent.height};
+	}
 	renderPassInfo.clearValueCount = uint32_t(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
 
