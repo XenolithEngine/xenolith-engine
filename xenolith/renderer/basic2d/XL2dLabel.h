@@ -100,7 +100,7 @@ public:
 	virtual bool init(StringView, float w, TextAlign = TextAlign::Left);
 	virtual bool init(font::FontController *, const DescriptionStyle & = DescriptionStyle(),
 			StringView = StringView(), float w = 0.0f, TextAlign = TextAlign::Left);
-	virtual bool init(const DescriptionStyle &, StringView = StringView(), float w = 0.0f,
+	virtual void init(const DescriptionStyle &, StringView = StringView(), float w = 0.0f,
 			TextAlign = TextAlign::Left);
 
 	virtual void handleEnter(xenolith::Scene *) override;

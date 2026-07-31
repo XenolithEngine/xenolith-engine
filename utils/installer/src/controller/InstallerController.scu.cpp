@@ -20,16 +20,6 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#include "XLCommon.h"
 
-#include "style/XLUiStyleSheet.cc"
-#include "style/XLUiStyleSystem.cc"
-#include "style/XLUiStyleResolver.cc"
-
-#include "layout/XLUiLayoutSystem.cc"
-
-#include "atoms/XLUiInteractiveComponent.cc"
-#include "atoms/XLUiButton.cc"
-#include "atoms/XLUiPanel.cc"
-#include "atoms/XLUiBadge.cc"
-#include "atoms/XLUiCheckbox.cc"
+#include "InstallerController.cc"

@@ -342,8 +342,8 @@ bool Label::init(font::FontController *source, const DescriptionStyle &style, St
 	return true;
 }
 
-bool Label::init(const DescriptionStyle &style, StringView str, float w, TextAlign a) {
-	return init(nullptr, style, str, w, a);
+void Label::init(const DescriptionStyle &style, StringView str, float w, TextAlign a) {
+	init(nullptr, style, str, w, a);
 }
 
 void Label::handleEnter(xenolith::Scene *scene) {

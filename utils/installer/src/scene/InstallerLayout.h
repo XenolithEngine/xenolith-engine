@@ -24,6 +24,9 @@
 #define UTILS_INSTALLER_SRC_SCENE_INSTALLERLAYOUT_H_
 
 #include "XL2dSceneLayout.h"
+#include "XL2dScrollView.h"
+#include "XL2dLayer.h"
+#include "InstallerController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -32,11 +35,37 @@ public:
 	virtual ~InstallerLayout();
 
 	virtual bool init() override;
+	virtual void handleContentSizeDirty() override;
+
+	// Called by InstallerSceneContent once the controller has loaded its catalogue; rebuilds the
+	// table from controller->catalog().
+	void onCatalogReady(InstallerController *controller);
+
+	// Reverts the pre-warm window expansion (see onCatalogReady) once the loading overlay hides, so
+	// the virtualizer keeps only the visible rows on screen.
+	void dropScrollWarmup();
+
+	// True once the header's meta labels have actually been shaped (width > 0). The loading overlay
+	// hides only when this is true, so the user never sees the empty/glued label state.
+	bool labelsReady() const;
 
 protected:
 	Node *_titleBar = nullptr;
-	Node *_promoBar = nullptr;
-	Node *_content = nullptr;
+	Node *_packagesArea = nullptr;
+	basic2d::Layer *_header = nullptr;
+	basic2d::ScrollView *_scroll = nullptr;
+	Rc<basic2d::ScrollController> _scrollController;
+	basic2d::Layer *_footer = nullptr;
+
+	basic2d::Label *_titleLabel = nullptr;
+	basic2d::Label *_releaseLabel = nullptr;
+	basic2d::Label *_nativeLabel = nullptr;
+
+	InstallerController *_controller = nullptr;
+
+	void rebuildPackages();
+	Rc<Node> makeRow(StringView name, StringView sizeText, StringView statusVariant,
+			StringView statusText, bool isHead, bool isNative);
 };
 
 } // namespace stappler::xenolith::installer

@@ -104,6 +104,10 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 	return YES;
 }
 
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+	return YES;
+}
+
 - (void)viewDidMoveToWindow {
 }
 

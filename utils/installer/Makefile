@@ -31,21 +31,24 @@ LOCAL_PRIVATE_INCLUDE_PCH := XLCommon.h
 
 LOCAL_MODULES_PATHS = \
 	stappler/stappler-modules.mk \
-	xenolith/xenolith-modules.mk
+	xenolith/xenolith-modules.mk \
+	utils/installer/installer-modules.mk
 
 # xenolith_application_main provides application main()
 # xenolith_backend_vk - use Vulkan backend
+# installer_core - UI-agnostic core (dirs/catalogue/install/state/engine) shared with the CLI
 LOCAL_MODULES ?= \
 	xenolith_application_main \
 	xenolith_backend_vk \
-	xenolith_renderer_ui
+	xenolith_renderer_ui \
+	installer_core
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
 LOCAL_SRCS_DIRS := src
 LOCAL_SRCS_OBJS :=
 
-LOCAL_INCLUDES_DIRS :=
+LOCAL_INCLUDES_DIRS := src
 LOCAL_INCLUDES_OBJS :=
 
 APPCONFIG_APP_NAME := xenolith-installer

@@ -19,6 +19,7 @@ import socket
 import sys
 
 SOCK = os.environ.get("XENOLITH_INSPECTOR_SOCK", "/tmp/xenolith-inspector.sock")
+SOCK_LOGS = os.environ.get("XENOLITH_LOGS_SOCK", "/tmp/xenolith-logs.sock")
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "xenolith-scene-inspector", "version": "0.1.0"}
 
@@ -40,7 +41,27 @@ TOOLS = [
                 },
             },
         },
-    }
+    },
+    {
+        "name": "get_logs",
+        "description": (
+            "Read the application log ring buffer of the running Xenolith app (DEBUG builds "
+            "only) and return it as text: one log entry per line, formatted [LEVEL][tag] message. "
+            "Use this to verify business logic (e.g. the installer controller: catalogue load, "
+            "install progress, errors) works BEFORE building UI, or to diagnose crashes/misbehavior. "
+            "Each call returns the whole current buffer (capped at the last ~4096 lines). The app "
+            "must be running in debug mode."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "timeout": {
+                    "type": "number",
+                    "description": "Per-connect timeout in seconds (default 3).",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -48,6 +69,23 @@ def read_snapshot(timeout: float = 3.0) -> str:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(timeout)
     s.connect(SOCK)
+    chunks = []
+    while True:
+        try:
+            c = s.recv(8192)
+        except socket.timeout:
+            break
+        if not c:
+            break
+        chunks.append(c)
+    s.close()
+    return b"".join(chunks).decode("utf-8", "replace")
+
+
+def read_logs(timeout: float = 3.0) -> str:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    s.connect(SOCK_LOGS)
     chunks = []
     while True:
         try:
@@ -112,24 +150,38 @@ def main() -> None:
             send({"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}})
         elif method == "tools/call":
             name = params.get("name")
-            if name != "inspect_scene":
-                error(req_id, -32601, f"unknown tool: {name}")
-                continue
             timeout = float(params.get("arguments", {}).get("timeout", 3.0))
-            try:
-                text = read_snapshot(timeout)
-            except (OSError, socket.error) as e:
-                error(
-                    req_id,
-                    -32603,
-                    f"cannot reach inspector at {SOCK}: {e}. "
-                    "Is the app running in DEBUG mode?",
-                )
-                continue
-            if not text:
-                error(req_id, -32603, f"inspector at {SOCK} returned no data")
-                continue
-            result(req_id, text)
+            if name == "inspect_scene":
+                try:
+                    text = read_snapshot(timeout)
+                except (OSError, socket.error) as e:
+                    error(
+                        req_id,
+                        -32603,
+                        f"cannot reach inspector at {SOCK}: {e}. "
+                        "Is the app running in DEBUG mode?",
+                    )
+                    continue
+                if not text:
+                    error(req_id, -32603, f"inspector at {SOCK} returned no data")
+                    continue
+                result(req_id, text)
+            elif name == "get_logs":
+                try:
+                    text = read_logs(timeout)
+                except (OSError, socket.error) as e:
+                    error(
+                        req_id,
+                        -32603,
+                        f"cannot reach log socket at {SOCK_LOGS}: {e}. "
+                        "Is the app running in DEBUG mode?",
+                    )
+                    continue
+                if not text:
+                    text = "(no logs captured yet)"
+                result(req_id, text)
+            else:
+                error(req_id, -32601, f"unknown tool: {name}")
         else:
             if req_id is not None:
                 error(req_id, -32601, f"method not found: {method}")

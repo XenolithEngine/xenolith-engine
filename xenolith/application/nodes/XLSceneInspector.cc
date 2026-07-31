@@ -27,11 +27,14 @@
 #include "XLContextInfo.h"
 #include "XLInheritedStyle.h"
 
+#include "SPLog.h"
+
 #include <unistd.h>
 #include <thread>
 #include <mutex>
 #include <cstring>
 #include <cstdio>
+#include <cstdarg>
 #include <memory>
 #include <cstdint>
 
@@ -59,6 +62,8 @@ namespace inspector {
 namespace {
 
 constexpr const char *kInspectorSock = "/tmp/xenolith-inspector.sock";
+constexpr const char *kInspectorLogsSock = "/tmp/xenolith-logs.sock";
+constexpr size_t kLogBufferLimit = 4096;
 
 struct SockAddrUn {
 #if defined(__APPLE__)
@@ -121,10 +126,69 @@ struct State {
 	std::mutex mu;
 	String snapshot = "# inspector ready, waiting for first scene snapshot...\n";
 	bool started = false;
+
+	// Process-wide log ring buffer, fed by a CustomLog hook (registered lazily in startLogs()).
+	// Served to MCP via a second UNIX socket (kInspectorLogsSock).
+	std::mutex logMu;
+	Vector<String> logBuffer;
+	bool logsStarted = false;
+	std::unique_ptr<stappler::log::CustomLog> logHook;
 };
 State &state() {
 	static State s;
 	return s;
+}
+
+// CustomLog sink: format every log entry as "[T][tag] message" and append it to the ring buffer.
+// Returns true so the default sink (stderr/os_log) still runs — we only mirror, never replace.
+bool logHookFn(stappler::log::LogType type, stappler::StringView tag,
+		const sprt::source_location &, stappler::log::CustomLog::Type t,
+		stappler::log::CustomLog::VA &va) {
+	char tc = '?';
+	switch (type) {
+	case stappler::log::LogType::Verbose: tc = 'V'; break;
+	case stappler::log::LogType::Debug: tc = 'D'; break;
+	case stappler::log::LogType::Info: tc = 'I'; break;
+	case stappler::log::LogType::Warn: tc = 'W'; break;
+	case stappler::log::LogType::Error: tc = 'E'; break;
+	case stappler::log::LogType::Fatal: tc = 'F'; break;
+	}
+
+	String line;
+	line += '[';
+	line += tc;
+	line += ']';
+	if (!tag.empty()) {
+		line += '[';
+		line.append(tag.data(), tag.size());
+		line += ']';
+	}
+	line += ' ';
+
+	if (t == stappler::log::CustomLog::Text) {
+		line.append(va.text.data(), va.text.size());
+	} else {
+		char stackBuf[2048];
+		__sprt_va_list tmp;
+		va_copy(tmp, va.format.args);
+		int n = ::vsnprintf(stackBuf, sizeof(stackBuf) - 1, va.format.format, tmp);
+		va_end(tmp);
+		if (n < 0) {
+			n = 0;
+		}
+		if (size_t(n) > sizeof(stackBuf) - 1) {
+			n = sizeof(stackBuf) - 1;
+		}
+		line.append(stackBuf, size_t(n));
+	}
+
+	auto &s = state();
+	std::lock_guard<std::mutex> lk(s.logMu);
+	s.logBuffer.push_back(sp::move(line));
+	if (s.logBuffer.size() > kLogBufferLimit) {
+		s.logBuffer.erase(s.logBuffer.begin());
+	}
+	return true;
 }
 
 void start() {
@@ -172,11 +236,69 @@ void start() {
 	}).detach();
 }
 
+void startLogs() {
+	auto &s = state();
+	std::lock_guard<std::mutex> lk(s.logMu);
+	if (s.logsStarted) { return; }
+	s.logsStarted = true;
+
+	// Register the CustomLog sink so every log call is mirrored into the ring buffer.
+	s.logHook = std::unique_ptr<stappler::log::CustomLog>(
+			new stappler::log::CustomLog(logHookFn));
+	{
+		String boot = "[I][inspector] log capture started";
+		s.logBuffer.push_back(sp::move(boot));
+	}
+
+	std::thread([]() {
+		::unlink(kInspectorLogsSock);
+		int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+		if (fd < 0) { return; }
+		SockAddrUn addr{};
+#if defined(__APPLE__)
+		addr.sun_len = (uint8_t)sizeof(SockAddrUn);
+		addr.sun_family = (uint8_t)AF_UNIX;
+#else
+		addr.sun_family = (uint16_t)AF_UNIX;
+#endif
+		std::strncpy(addr.sun_path, kInspectorLogsSock, sizeof(addr.sun_path) - 1);
+		if (::bind(fd, (const struct sockaddr *)&addr, (unsigned int)sizeof(addr)) < 0
+				|| ::listen(fd, 8) < 0) {
+			::close(fd);
+			return;
+		}
+		for (;;) {
+			int c = ::accept(fd, nullptr, nullptr);
+			if (c < 0) { continue; }
+			String dump;
+			{
+				std::lock_guard<std::mutex> lk2(state().logMu);
+				for (const auto &l : state().logBuffer) {
+					dump += l;
+					dump += '\n';
+				}
+			}
+			if (!dump.empty()) {
+				const char *p = dump.data();
+				size_t left = dump.size();
+				while (left > 0) {
+					auto w = ::write(c, p, left);
+					if (w <= 0) { break; }
+					p += w;
+					left -= (size_t)w;
+				}
+			}
+			::close(c);
+		}
+	}).detach();
+}
+
 } // namespace
 
 void attach(Node *root) {
 	if (!root) { return; }
 	start();
+	startLogs();
 	// Use the node's own scheduler (reliable per-frame dispatch) rather than a CallbackSystem,
 	// whose update() is not driven by the director. Schedule on enter, unschedule on exit.
 	struct Ctx {

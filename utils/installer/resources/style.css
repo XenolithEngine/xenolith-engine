@@ -44,6 +44,82 @@ button.danger {
 	outline-width: 10px;
 }
 
+button.primary {
+	background-color: #FCB400;
+	width: 240px;
+	height: 44px;
+	border-radius: 10px;
+}
+button.primary:hover {
+	background-color: #e8a800;
+}
+button.primary > label {
+  color: #1A1A1A;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+button.primary > icon {
+	width: 18px;
+	height: 18px;
+}
+
+/* Atom types from xenolith/renderer/ui. */
+
+.xl-ui-flex {
+	display: flex;
+	flex-direction: column;
+}
+
+checkbox {
+	width: 17px;
+	height: 17px;
+	border-radius: 4px;
+	background-color: #292929;
+	outline-color: rgba(255,255,255,0.3);
+	outline-width: 1px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+checkbox.checked {
+	background-color: #FCB400;
+	outline-color: #FCB400;
+	outline-width: 1px;
+}
+checkbox > icon {
+	width: 14px;
+	height: 14px;
+	color: #1A1A1A;
+}
+
+badge {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 22px;
+	padding: 0 12px;
+	border-radius: 5px;
+	background-color: #292929;
+}
+badge > label {
+	color: #B8B8B8;
+	font-size: 12px;
+	text-align: center;
+}
+badge.installed {
+	background-color: rgba(252,180,0,0.2);
+}
+badge.installed > label {
+	color: #FCB400;
+}
+badge.not-installed {
+	background-color: transparent;
+}
+badge.not-installed > label {
+	color: #B8B8B8;
+}
+
 #installer-layout {
   display: flex;
   flex-direction: column;  /* Вертикальная ось */
@@ -169,4 +245,219 @@ button.danger {
 
 .content-space {
    flex: 1;
+}
+
+/* ===========================================================================
+   Packages screen (Фаза 1 каркас) — palette as literals per the Figma dump:
+   window #050708 / panel #232323 / cell #1A1A1A / control #292929 /
+   border-neutral #424242 / border-faint rgba(255,255,255,0.3) / accent #FCB400 /
+   accent-dim rgba(252,180,0,0.2) / tab-active #68531D / text #FFFFFF / secondary #B8B8B8.
+   Radii: 5 / 7 / 10 / 20.
+   =========================================================================== */
+
+#packages-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+}
+
+.pkg-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  column-gap: 16px;
+  height: 56px;
+  padding: 0 24px;
+  background-color: #0f110e;
+}
+
+.pkg-header .pkg-title {
+  color: #FFFFFF;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* grow-only spacer between the title and the meta labels — pushes meta to the right edge. The
+   engine's flex has NO auto-margins (margin-left:auto is ignored), so an explicit flex-grow:1
+   spacer is the way to right-align within a flex row. */
+.pkg-header .pkg-spacer {
+  flex-grow: 1;
+}
+
+.pkg-header .pkg-release {
+  color: #B8B8B8;
+  font-size: 12px;
+}
+
+.pkg-header .pkg-native {
+  color: #FCB400;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pkg-footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  column-gap: 12px;
+  height: 64px;
+  padding: 0 24px;
+  background-color: #111518;
+}
+
+.pkg-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+/* The table card: a rounded panel holding the header row + group/element rows. */
+.pkg-table {
+  display: flex;
+  flex-direction: column;
+  background-color: #1A1A1A;
+  border-radius: 10px;
+  margin: 6px 24px;
+}
+
+.pkg-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  column-gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.pkg-row.head {
+  height: 36px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+.pkg-row.native .c-name {
+  color: #FCB400;
+}
+
+.pkg-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  column-gap: 8px;
+  height: 40px;
+  padding: 8px 16px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Column slots inside a row. Fixed widths keep columns aligned across rows/groups. */
+.pkg-row .c-check {
+  width: 40px;
+  flex: 0 0 40px;
+}
+.pkg-row .c-name {
+  flex: 1;
+  color: #FFFFFF;
+  font-size: 14px;
+}
+.pkg-row .c-size {
+  width: 90px;
+  flex: 0 0 90px;
+  color: #B8B8B8;
+  font-size: 13px;
+  text-align: right;
+}
+/* c-status is now a right-aligned Label (was a flex container hosting a Badge). width is fixed so
+   the column lines up across rows; text-align:right pins the status text to the column's right
+   edge. No display:flex — that would turn the label into a flex container. */
+.pkg-row .c-status {
+  width: 200px;
+  flex: 0 0 200px;
+  color: #B8B8B8;
+  font-size: 13px;
+  text-align: right;
+}
+
+.pkg-row.head .c-name,
+.pkg-row.head .c-size,
+.pkg-row.head .c-status {
+  color: #B8B8B8;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Badge — status pill. */
+.pkg-badge {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  background-color: #292929;
+  color: #B8B8B8;
+}
+.pkg-badge.installed {
+  background-color: rgba(252,180,0,0.2);
+  color: #FCB400;
+}
+.pkg-badge.not-installed {
+  background-color: transparent;
+  color: #B8B8B8;
+}
+
+/* Checkbox atom. */
+.pkg-check {
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background-color: #292929;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.pkg-check.checked {
+  background-color: #FCB400;
+  border: 1px solid #FCB400;
+}
+
+/* Expand toggle (group chevron). */
+.pkg-chev {
+  width: 20px;
+  height: 20px;
+  color: #B8B8B8;
+}
+
+/* Loading overlay — absolutely positioned fullscreen surface (lifted out of the flex flow so it
+   covers header+scroll+footer), with a centred spinner + caption. Explicit width/height:100%
+   (the engine stretches an absolute node from opposite offsets only when both are set, but the
+   reliable form is width:100% height:100% anchored top-left). */
+.loading-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  row-gap: 20px;
+  background-color: rgba(5,7,8,0.96);
+}
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  color: #FCB400;
+}
+.loading-label {
+  color: #B8B8B8;
+  font-size: 14px;
 }
