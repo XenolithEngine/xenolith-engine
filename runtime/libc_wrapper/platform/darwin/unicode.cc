@@ -89,17 +89,17 @@ static CFMutableStringRef makeString(StringViewUtf8 str) {
 }
 
 static bool toString(CFMutableStringRef str, const callback<void(StringView)> &cb) {
-	auto len = CFStringGetLength(str);
-	auto bytes = (const char *)CFStringGetCStringPtr(str, kCFStringEncodingUTF16);
+	// Fast path: the CFString already stores UTF-8 internally.
+	if (auto bytes = CFStringGetCStringPtr(str, kCFStringEncodingUTF8)) {
+		cb(StringView(bytes));
+		return true;
+	}
 
-	if (bytes == nullptr) {
-		char32_t buf[len + 1];
-		if (CFStringGetCString(str, (char *)buf, len * sizeof(char32_t), kCFStringEncodingUTF16)) {
-			cb(StringView((char *)buf, len));
-			return true;
-		}
-	} else {
-		cb(StringView(bytes, len));
+	auto len = CFStringGetLength(str);
+	auto maxLen = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
+	char buf[maxLen];
+	if (CFStringGetCString(str, buf, maxLen, kCFStringEncodingUTF8)) {
+		cb(StringView(buf));
 		return true;
 	}
 	return false;
