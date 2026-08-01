@@ -28,6 +28,10 @@ Value encodeWindowInfo(const WindowInfo &info) {
 	Value ret;
 	ret.setString(info.id, "id");
 	ret.setString(info.title, "title");
+	ret.setString(getWindowTypeName(info.type), "type");
+	if (!info.parent.empty()) {
+		ret.setString(info.parent, "parent");
+	}
 	ret.setValue(
 			Value{
 				Value(info.rect.x),
@@ -55,6 +59,10 @@ Value encodeWindowInfo(const WindowInfo &info) {
 	ret.setString(core::getPresentModeName(info.preferredPresentMode), "preferredPresentMode");
 
 	Value f;
+	if (hasFlag(info.flags, WindowCreationFlags::Modal)) {
+		f.addString("Modal");
+	}
+
 	if (hasFlag(info.flags, WindowCreationFlags::DirectOutput)) {
 		f.addString("DirectOutput");
 	}

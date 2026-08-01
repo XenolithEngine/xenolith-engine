@@ -1,0 +1,54 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_SENDFILE_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_SYS_SENDFILE_H_
+
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+#include_next <sys/sendfile.h>
+
+#else
+
+#include <sprt/c/sys/__sprt_sendfile.h>
+
+typedef __SPRT_ID(ssize_t) ssize_t;
+typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(size_t) size_t;
+
+__SPRT_BEGIN_DECL
+
+SPRT_UMBRELLA_FUNC ssize_t sendfile(int out_fd, int in_fd, off_t *ofs,
+		size_t count) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sendfile)(out_fd, in_fd, ofs, count);
+}
+#endif
+__SPRT_END_DECL
+
+#endif
+
+
+#endif

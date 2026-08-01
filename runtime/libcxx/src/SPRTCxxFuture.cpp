@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <future>: future_category, future_error, __assoc_sub_state (future.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/future.cpp"

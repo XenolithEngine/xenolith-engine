@@ -23,7 +23,7 @@
 #ifndef EXAMPLES_VK_GUI_SRC_FLEXBOXLAYOUT_H_
 #define EXAMPLES_VK_GUI_SRC_FLEXBOXLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XLSimpleLayoutSystem.h"
 #include "XLSimpleButton.h"
@@ -37,7 +37,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // colored boxes; the "Mode" button flips it between flexbox and grid, so the two
 // backends of the unified LayoutSystem can be compared on the same boxes (flex
 // reads their FlexItemInfo, grid reads their GridItemInfo components).
-class FlexboxLayout : public basic2d::SceneLayout2d {
+class FlexboxLayout : public TestLayout {
 public:
 	virtual ~FlexboxLayout() = default;
 

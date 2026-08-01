@@ -237,6 +237,12 @@ struct SPRT_API SurfaceSupportInfo {
 	struct {
 		void *display = nullptr;
 	} wayland;
+	// Direct-to-display (KMS): the DRM primary node opened by the window system.
+	// fd >= 0 means a usable device with a connected connector was found.
+	struct {
+		int fd = -1;
+		uint32_t connectorId = 0;
+	} display;
 };
 
 struct SPRT_API SurfaceInterfaceInfo {
@@ -267,6 +273,17 @@ struct SPRT_API SurfaceInterfaceInfo {
 		struct {
 			void *handle; // opaque; the JS binding owns the OffscreenCanvas
 		} canvas;
+		// Direct-to-display (no window system). The fd is owned by the window
+		// system (DrmDevice) and outlives the surface; the gAPI must not close it.
+		struct {
+			int fd;
+			uint32_t connectorId;
+			uint32_t crtcId;
+			uint32_t width; // mode picked by the window system, not WindowInfo
+			uint32_t height;
+			uint32_t rate; // FPS multiplied by 1000
+			// largest variant, so it carries the union's default initializer
+		} display = {};
 	};
 };
 

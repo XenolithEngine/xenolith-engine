@@ -223,6 +223,13 @@ const WindowInfo *AppWindow::getInfo() const {
 	return nullptr;
 }
 
+sprt::window::SurfaceBackend AppWindow::getSurfaceBackend() const {
+	if (_window) {
+		return _window->getSurfaceInterfaceInfo().backend;
+	}
+	return sprt::window::SurfaceBackend::Surface;
+}
+
 core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cfg) const {
 	core::ImageInfo swapchainImageInfo;
 	swapchainImageInfo.format = cfg.imageFormat;
@@ -479,6 +486,19 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			return nullptr;
 		}
 #endif
+		break;
+	}
+	case sprt::window::SurfaceBackend::Display: {
+#if defined(VK_KHR_display)
+		// Direct-to-display (no window system): create a plane surface on the
+		// connector the window system opened, at the mode it resolved. Both travel
+		// in info.display — NOT WindowInfo (often a desktop default like 1024x768).
+		surface = instance->createDisplayPlaneSurface(info);
+		if (surface == VK_NULL_HANDLE) {
+			return nullptr;
+		}
+#endif
+		break;
 	}
 	default: break;
 	}

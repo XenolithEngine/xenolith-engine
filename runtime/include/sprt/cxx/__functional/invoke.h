@@ -29,6 +29,11 @@ THE SOFTWARE.
 namespace sprt {
 inline namespace __cxx_type_traits {
 
+template <typename _Tp>
+class reference_wrapper;
+
+inline namespace __cxx_type_traits {
+
 /*
 	Invokable
 	(based on llvm-libc++ code)
@@ -114,9 +119,6 @@ template <typename _Ret, typename _ClassType>
 struct __member_pointer_typename_type<_Ret _ClassType::*> {
 	typedef _ClassType type;
 };
-
-template <typename _Tp>
-class reference_wrapper;
 
 template <typename _Tp>
 struct __is_reference_wrapper_impl {

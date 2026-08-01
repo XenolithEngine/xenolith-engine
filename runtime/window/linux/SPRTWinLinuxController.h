@@ -28,6 +28,8 @@
 
 #if SPRT_LINUX
 
+#include "drm/SPRTWinLinuxDrmDevice.h"
+
 namespace sprt::window::dbus {
 
 class Library;
@@ -77,8 +79,11 @@ public:
 
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
+	// Opens (once, then caches) the DRM/KMS device used for direct-to-display mode
+	bool hasDrmDevice();
+
 protected:
-	bool loadWindow();
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 
 	virtual void handleContextWillDestroy() override;
 	virtual void handleContextDidDestroy() override;
@@ -98,6 +103,13 @@ protected:
 
 	Rc<dispatch::Handle> _xcbPollHandle;
 	Rc<dispatch::Handle> _waylandPollHandle;
+
+	Rc<DrmLibrary> _drm;
+	Rc<DrmDevice> _drmDevice;
+
+	// Direct-to-display (KMS) mode: no Wayland/X11/D-Bus.
+	// Set in run() when no session type is detected but a usable DRM device exists.
+	bool _kmsMode = false;
 };
 
 } // namespace sprt::window

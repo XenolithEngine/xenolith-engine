@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <functional> bind: the placeholders::_1.._10 globals (bind.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/bind.cpp"

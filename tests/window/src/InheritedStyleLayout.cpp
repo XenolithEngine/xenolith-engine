@@ -24,7 +24,6 @@
 
 #include "InheritedStyleLayout.h"
 #include "XLInheritedStyle.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 #include "SPFilesystem.h"
@@ -72,11 +71,11 @@ bool InheritedStyleLayout::init() {
 	// seed the file BEFORE the StyleSystem reads it
 	writeCss(true);
 
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(FileInfo(_cssPath, FileCategory::Custom)));
+	setStyleSheet(FileInfo(_cssPath, FileCategory::Custom));
 
 	auto makeLabel = [](Node *parent, StringView text) {
 		auto label = parent->addChild(Rc<Label>::create(), ZOrder(1));
@@ -210,11 +209,11 @@ void InheritedStyleLayout::runPhase2() {
 }
 
 void InheritedStyleLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	const float rowH = 120.0f;
-	const float top = cs.height - 160.0f;
+	const float top = getWorkTop() - 160.0f;
 
 	Layer *containers[] = {_containerRecursive, _containerAncestor};
 	for (size_t i = 0; i < 2; ++i) {

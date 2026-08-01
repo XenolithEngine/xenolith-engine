@@ -240,7 +240,7 @@ target-aarch64-apple-ios-simulator:
 
 target-macosx: \
 	target-x86_64-apple-macosx \
-	target-aarch64-apple-macosx \
+	target-aarch64-apple-macosx
 
 # Xcode-SDK-free macOS sysroots (Apple open-source headers mixed in). Kept out of
 # the default `target-macosx` aggregate for now — build explicitly by name.

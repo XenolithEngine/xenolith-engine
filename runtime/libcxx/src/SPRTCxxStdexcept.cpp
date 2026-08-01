@@ -40,9 +40,7 @@ THE SOFTWARE.
 // deprecated ::operator new; __uses_refcount() is always true (the GCC empty-string
 // interop is an Apple-libstdc++ concern that does not apply here).
 
-#ifndef _LIBCPP_BUILDING_LIBRARY
-#  define _LIBCPP_BUILDING_LIBRARY 1
-#endif
+#define _LIBCPP_BUILDING_LIBRARY
 
 #include <cstddef>
 #include <stdexcept>
@@ -54,7 +52,7 @@ THE SOFTWARE.
 #include <vector>
 #include <__verbose_abort>
 #if _LIBCPP_STD_VER >= 23
-#  include <expected>
+#include <expected>
 #endif
 
 // ===========================================================================
@@ -103,7 +101,8 @@ __libcpp_refstring::__libcpp_refstring(const char *__msg) {
 	__imp_ = __data;
 }
 
-__libcpp_refstring::__libcpp_refstring(const __libcpp_refstring &__s) noexcept : __imp_(__s.__imp_) {
+__libcpp_refstring::__libcpp_refstring(const __libcpp_refstring &__s) noexcept
+: __imp_(__s.__imp_) {
 	if (__uses_refcount()) {
 		atomic_add(&rep_from_data(__imp_)->count, 1);
 	}
@@ -139,8 +138,8 @@ void __throw_runtime_error(const char *__msg) {
 #if _LIBCPP_HAS_EXCEPTIONS
 	throw runtime_error(__msg);
 #else
-	_LIBCPP_VERBOSE_ABORT(
-			"runtime_error was thrown in -fno-exceptions mode with message \"%s\"", __msg);
+	_LIBCPP_VERBOSE_ABORT("runtime_error was thrown in -fno-exceptions mode with message \"%s\"",
+			__msg);
 #endif
 }
 
@@ -157,12 +156,18 @@ struct __vector_base_common;
 
 template <>
 struct __vector_base_common<true> {
-	[[noreturn]] _LIBCPP_EXPORTED_FROM_ABI void __throw_length_error() const;
-	[[noreturn]] _LIBCPP_EXPORTED_FROM_ABI void __throw_out_of_range() const;
+	[[noreturn]]
+	_LIBCPP_EXPORTED_FROM_ABI void __throw_length_error() const;
+	[[noreturn]]
+	_LIBCPP_EXPORTED_FROM_ABI void __throw_out_of_range() const;
 };
 
-void __vector_base_common<true>::__throw_length_error() const { std::__throw_length_error("vector"); }
-void __vector_base_common<true>::__throw_out_of_range() const { std::__throw_out_of_range("vector"); }
+void __vector_base_common<true>::__throw_length_error() const {
+	std::__throw_length_error("vector");
+}
+void __vector_base_common<true>::__throw_out_of_range() const {
+	std::__throw_out_of_range("vector");
+}
 #endif
 
 _LIBCPP_END_NAMESPACE_STD
@@ -218,7 +223,9 @@ bad_function_call::~bad_function_call() noexcept { }
 const char *bad_function_call::what() const noexcept { return "std::bad_function_call"; }
 
 #if _LIBCPP_STD_VER >= 23
-const char *bad_expected_access<void>::what() const noexcept { return "bad access to std::expected"; }
+const char *bad_expected_access<void>::what() const noexcept {
+	return "bad access to std::expected";
+}
 #endif
 
 _LIBCPP_END_NAMESPACE_STD

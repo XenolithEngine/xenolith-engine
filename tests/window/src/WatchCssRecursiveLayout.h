@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_WATCHCSSRECURSIVELAYOUT_H_
 #define TESTS_WINDOW_SRC_WATCHCSSRECURSIVELAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -34,8 +34,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // child must turn green even though its geometry never changes - which only happens because the
 // resolver marks its subtree dirty on a source-version change so the child re-fires its event.
 //
-// Reach via XL_WATCH_CSS_RECURSIVE_TEST. Optional XL_WATCH_CSS_FILE overrides the temp path.
-class WatchCssRecursiveLayout : public basic2d::SceneLayout2d {
+// XL_WATCH_CSS_FILE overrides the temp path the stylesheet is written to.
+class WatchCssRecursiveLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

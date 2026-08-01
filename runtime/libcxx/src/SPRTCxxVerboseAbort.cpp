@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ __libcpp_verbose_abort (verbose_abort.cpp) — the hardening/assert abort entry the vendored TUs call.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/verbose_abort.cpp"

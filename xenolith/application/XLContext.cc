@@ -356,9 +356,23 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 	core::PresentMode preferredPresentMode =
 			windowInfo ? windowInfo->preferredPresentMode : core::PresentMode::Mailbox;
 	core::ImageFormat imageFormat =
-			windowInfo ? windowInfo->imageFormat : core::ImageFormat::R8G8B8A8_UNORM;
+			windowInfo ? windowInfo->imageFormat : core::ImageFormat::Undefined;
 	core::ColorSpace colorSpace =
 			windowInfo ? windowInfo->colorSpace : core::ColorSpace::SRGB_NONLINEAR_KHR;
+
+	// if we do not know format - use defaults
+	if (imageFormat == core::ImageFormat::Undefined) {
+		// Direct-KMS embed (Pi / QEMU Display): prefer RGB565 when the surface offers it —
+		// half the scanout bandwidth vs RGBA8 on HVS. Desktop WM paths keep their own default.
+		const bool embedDisplay = w->getSurfaceBackend() == sprt::window::SurfaceBackend::Display;
+		if (embedDisplay) {
+			imageFormat = core::ImageFormat::R5G6B5_UNORM_PACK16;
+		} else {
+			imageFormat = core::ImageFormat::R8G8B8A8_UNORM;
+		}
+	}
+	log::source().info("Context", "handleAppWindowSurfaceUpdate: preferred format=",
+			core::getImageFormatName(imageFormat), " / ", core::getColorSpaceName(colorSpace));
 
 	if (preferredPresentMode != core::PresentMode::Unsupported) {
 		for (auto &it : info.presentModes) {
@@ -608,6 +622,16 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 	return true;
 }
 
+void Context::createWindow(Rc<WindowInfo> &&info) {
+	performOnThread([this, info = move(info)]() mutable {
+		auto status = _controller->createWindow(move(info));
+		if (status != Status::Ok) {
+			log::source().error("Context",
+					"Fail to create native window: ", sprt::status::getStatusName(status));
+		}
+	}, this);
+}
+
 void Context::updateMessageToken(BytesView tok) {
 	if (tok != _messageToken) {
 		onMessageToken(this, _messageToken);
@@ -696,6 +720,21 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 					ret.set(toInt(vk::SurfaceBackend::Metal));
 				}
 #endif
+
+#if defined(VK_KHR_display)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Display))) {
+					// Direct-display presentation is supported if the device drives
+					// at least one display through VK_KHR_display.
+					uint32_t ndisplays = 0;
+					inst->vkGetPhysicalDeviceDisplayPropertiesKHR(device, &ndisplays, nullptr);
+					// Software/headless drivers (lavapipe) report 0 displays but can
+					// still drive the KMS connector the window system opened, which we
+					// acquire through its fd. See Instance::createDisplayPlaneSurface().
+					if (ndisplays > 0 || supportInfo.display.fd >= 0) {
+						ret.set(toInt(vk::SurfaceBackend::Display));
+					}
+				}
+#endif
 				return ret;
 			};
 			return true;
@@ -754,6 +793,25 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 			Vector<StringView> ret;
 			if (!isHeadless) {
 				ret.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+				// The VK_KHR_display swapchain path (Mesa wsi_common_drm) builds
+				// dmabuf-backed scanout images and calls vkGetMemoryFdKHR / the DRM
+				// modifier queries unconditionally. Those entrypoints are null unless
+				// the matching device extensions are enabled, so enable them when the
+				// device advertises them (harmless for windowed surfaces).
+				auto has = [&](const char *ext) {
+					return sprt::find(dev.availableExtensions.begin(),
+								   dev.availableExtensions.end(), String(ext))
+							!= dev.availableExtensions.end();
+				};
+				for (auto ext : {VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+						 VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+						 VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
+						 VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME}) {
+					if (has(ext)) {
+						ret.emplace_back(ext);
+					}
+				}
 			}
 			return ret;
 		};

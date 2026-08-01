@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_INHERITEDSTYLELAYOUT_H_
 #define TESTS_WINDOW_SRC_INHERITEDSTYLELAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
@@ -37,8 +37,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // covered: a recursive resolver (label gets its own components) and an ancestor walk
 // (non-recursive resolver, label reads the parent chain). Rewriting the CSS to drop the
 // rule must remove the components and revert the labels to their explicit style.
-// Reach via XL_INHERITED_TEST.
-class InheritedStyleLayout : public basic2d::SceneLayout2d {
+class InheritedStyleLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

@@ -64,6 +64,8 @@ public:
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
 protected:
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
 	SPRTMacosAppDelegate *_appDelegate = nullptr;
 	Rc<ContextContainer> _container;
 

@@ -32,6 +32,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_socket.h>
+#include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/runtime/log.h>
 
 #if SPRT_WASM
@@ -94,6 +95,7 @@ __SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp
 #endif
 #include <netinet/tcp.h> // native TCP_* option numbers for the asserts
 #include <sprt/c/cross/__sprt_netinet.h> // __SPRT_IPPROTO_/IP_/IPV6_/MCAST_ for the asserts
+#include <sys/time.h> // native ::timeval for the ILP32 Android SO_*TIMEO payload translation
 #include <fcntl.h>
 #include <time.h>
 #include <unistd.h>
@@ -1886,6 +1888,19 @@ __SPRT_C_FUNC int __SPRT_ID(shutdown)(SOCKET __fd, int __how) {
 #endif
 }
 
+#if SPRT_ANDROID && !defined(__LP64__)
+// ILP32 Bionic: SO_RCVTIMEO/SO_SNDTIMEO resolve to the _OLD values and the kernel
+// expects the native `struct timeval` (32-bit long fields), while the sprt public
+// struct carries 64-bit fields - translate the payload at the boundary.
+// Note: SO_TIMESTAMP*/SCM_TIMESTAMP* ancillary payloads (recvmsg cmsg) also carry
+// the native 32-bit layout on ILP32 and are NOT translated here - rewriting cmsg
+// buffers would need a full control-message repack; no engine code consumes them
+static bool __sprt_sockopt_is_timeo(int __level, int __optname) {
+	return __level == __SPRT_SOL_SOCKET
+			&& (__optname == __SPRT_SO_RCVTIMEO || __optname == __SPRT_SO_SNDTIMEO);
+}
+#endif
+
 __SPRT_C_FUNC int __SPRT_ID(getsockopt)(SOCKET __fd, int __level, int __optname,
 		sockdata_t *__SPRT_RESTRICT __optval, __SPRT_ID(socklen_t) * __SPRT_RESTRICT __optlen) {
 #if SPRT_WASM
@@ -1893,6 +1908,20 @@ __SPRT_C_FUNC int __SPRT_ID(getsockopt)(SOCKET __fd, int __level, int __optname,
 #elif SPRT_WINDOWS
 	return ::getsockopt(__fd, __level, __optname, __optval, __optlen);
 #else
+#if SPRT_ANDROID && !defined(__LP64__)
+	if (__sprt_sockopt_is_timeo(__level, __optname) && __optval && __optlen
+			&& *__optlen == sizeof(struct __SPRT_TIMEVAL_NAME)) {
+		::timeval __ntv;
+		::socklen_t __nlen = sizeof(__ntv);
+		auto __ret = ::getsockopt(__fd, __level, __optname, &__ntv, &__nlen);
+		if (__ret == 0) {
+			auto __tv = (struct __SPRT_TIMEVAL_NAME *)__optval;
+			__tv->tv_sec = __ntv.tv_sec;
+			__tv->tv_usec = __ntv.tv_usec;
+		}
+		return __ret;
+	}
+#endif
 	return ::getsockopt(__fd, __level, __optname, __optval, (::socklen_t *)__optlen);
 #endif
 }
@@ -1904,6 +1933,16 @@ __SPRT_C_FUNC int __SPRT_ID(setsockopt)(SOCKET __fd, int __level, int __optname,
 #elif SPRT_WINDOWS
 	return ::setsockopt(__fd, __level, __optname, __optval, __optlen);
 #else
+#if SPRT_ANDROID && !defined(__LP64__)
+	if (__sprt_sockopt_is_timeo(__level, __optname) && __optval
+			&& __optlen == sizeof(struct __SPRT_TIMEVAL_NAME)) {
+		auto __tv = (const struct __SPRT_TIMEVAL_NAME *)__optval;
+		::timeval __ntv;
+		__ntv.tv_sec = (long)__tv->tv_sec;
+		__ntv.tv_usec = (long)__tv->tv_usec;
+		return ::setsockopt(__fd, __level, __optname, &__ntv, sizeof(__ntv));
+	}
+#endif
 	return ::setsockopt(__fd, __level, __optname, __optval, (::socklen_t)__optlen);
 #endif
 }

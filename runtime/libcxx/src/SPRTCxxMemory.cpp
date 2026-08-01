@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <memory>: shared_ptr control-block, __shared_weak_count, bad_weak_ptr, __sp_mut (memory.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/memory.cpp"

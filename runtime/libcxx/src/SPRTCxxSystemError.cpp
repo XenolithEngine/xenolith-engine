@@ -27,4 +27,6 @@ THE SOFTWARE.
 // path so it compiles here, once, rather than as a standalone unit (see libcxx.mk).
 // It reaches its src-private include/config_elast.h via src/libcxx/include/.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/system_error.cpp"

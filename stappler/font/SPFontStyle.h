@@ -279,7 +279,7 @@ struct SP_PUBLIC FontParameters : FontSpecializationVector {
 	template <typename Interface>
 	static auto getFontConfigName(StringView fontFamily, FontSize fontSize, FontStyle fontStyle,
 			FontWeight fontWeight, FontStretch fontStretch, FontGrade fontGrade,
-			FontVariant fontVariant, bool caps) -> typename Interface::StringType;
+			FontVariant fontVariant, float density, bool caps) -> typename Interface::StringType;
 
 	FontVariant fontVariant = FontVariant::Normal;
 	ListStyleType listStyleType = ListStyleType::None;
@@ -289,7 +289,7 @@ struct SP_PUBLIC FontParameters : FontSpecializationVector {
 	template <typename Interface>
 	auto getConfigName(bool caps = false) const -> typename Interface::StringType {
 		return getFontConfigName<Interface>(fontFamily, fontSize, fontStyle, fontWeight,
-				fontStretch, fontGrade, fontVariant, caps);
+				fontStretch, fontGrade, fontVariant, density, caps);
 	}
 
 	FontParameters getSmallCaps() const;

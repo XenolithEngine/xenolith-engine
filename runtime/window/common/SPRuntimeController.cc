@@ -137,7 +137,55 @@ bool ContextController::configureWindow(NotNull<WindowInfo> w) {
 			w->maxExtent);
 	w->rect.width = clamped.width;
 	w->rect.height = clamped.height;
+
+	// `id` keys Director preservation and per-window caches - it should be unique
+	// among live windows
+	if (w->id.empty()) {
+		w->id = StringView("window").str<String>();
+	}
+	if (findWindow(w->id)) {
+		auto base = w->id;
+		uint32_t counter = 1;
+		do {
+			w->id = StreamTraits<char>::toString<String>(StringView(base), "-", counter++);
+		} while (findWindow(w->id));
+	}
 	return true;
+}
+
+NativeWindow *ContextController::findWindow(StringView id) const {
+	for (auto &it : _allWindows) {
+		if (it->getInfo() && it->getInfo()->id == id) {
+			return it;
+		}
+	}
+	return nullptr;
+}
+
+Status ContextController::createWindow(Rc<WindowInfo> &&info) {
+	if (!info) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	if (info->type != WindowType::Root) {
+		if (!hasFlag(getCapabilities(), WindowCapabilities::Subwindows)) {
+			return Status::ErrorNotSupported;
+		}
+		if (info->parent.empty() || !findWindow(info->parent)) {
+			oslog::vperror(__SPRT_LOCATION, "ContextController",
+					"Parent window is not defined or not found for a non-Root window");
+			return Status::ErrorInvalidArguemnt;
+		}
+	}
+
+	if (!configureWindow(info)) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	if (!loadWindow(move(info))) {
+		return Status::ErrorNotSupported;
+	}
+	return Status::Ok;
 }
 
 void ContextController::notifyWindowCreated(NotNull<NativeWindow> w) {

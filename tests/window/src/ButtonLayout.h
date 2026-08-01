@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_BUTTONLAYOUT_H_
 #define TESTS_WINDOW_SRC_BUTTONLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XLUiButton.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -33,9 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // into the button's VectorImage as fill + stroke, via the registered "button" attribute appliers)
 // and gives the button's `label` child its color/font. Each button carries a single recursive
 // StyleResolver that styles both itself and its label child through the frame-stack child events.
-//
-// Reach via XL_BUTTON_TEST.
-class ButtonLayout : public basic2d::SceneLayout2d {
+class ButtonLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

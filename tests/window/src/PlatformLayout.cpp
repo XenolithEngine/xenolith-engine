@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "PlatformLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -59,11 +58,11 @@ static constexpr auto s_platformCss = StringView(R"css(
 } // namespace
 
 bool PlatformLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(s_platformCss));
+	setStyleSheet(s_platformCss);
 
 	_swatch = addChild(Rc<Layer>::create(Color::Black), ZOrder(1));
 	_swatch->addStyleClass("sw");
@@ -73,7 +72,7 @@ bool PlatformLayout::init() {
 }
 
 void PlatformLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	_swatch->setAnchorPoint(Vec2(0.5f, 0.5f));

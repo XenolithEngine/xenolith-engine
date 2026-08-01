@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_HOVERLAYOUT_H_
 #define TESTS_WINDOW_SRC_HOVERLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 #include "XLUiStyleResolver.h"
@@ -36,9 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // a fixed InteractiveComponent state; its background-color comes from the matching pseudo rule
 // (grey base, red :hover, blue :active, green :checked, purple :disabled). A sixth swatch flips
 // to :hover at runtime through StyleResolver::handleInteractiveState, exercising the mask cache.
-//
-// Reach via XL_HOVER_TEST.
-class HoverLayout : public basic2d::SceneLayout2d {
+class HoverLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

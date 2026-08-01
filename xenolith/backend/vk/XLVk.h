@@ -99,6 +99,8 @@ enum class OptionalInstanceExtension {
 	Display,
 	SurfaceCapabilities2,
 	SurfaceMaintenance1,
+	DirectModeDisplay,
+	AcquireDrmDisplay,
 	Max
 };
 
@@ -106,6 +108,8 @@ static const char * const s_optionalExtension[] = {
 	VK_KHR_DISPLAY_EXTENSION_NAME,
 	VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
 	VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+	VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
+	VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME,
 	nullptr
 };
 
@@ -115,6 +119,21 @@ static const char * const s_requiredDeviceExtensions[] = {
 	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
 #endif
 	nullptr
+};
+
+// Which flavour of the same render pass to begin. Vulkan render-pass compatibility ignores
+// loadOp/storeOp and layouts, so all variants share one framebuffer cache.
+enum class RenderPassVariant : uint32_t {
+	// clear the swapchain attachment and present it
+	Default = 0,
+
+	// final layout TransferSrcOptimal, for reading the result back (screenshots, offscreen)
+	Offscreen = 1,
+
+	// preserve what the image already holds instead of clearing it, for partial redraw
+	Load = 2,
+
+	Count = 3,
 };
 
 enum class OptionalDeviceExtension {
@@ -132,6 +151,7 @@ enum class OptionalDeviceExtension {
 	SwapchainMaintenance1,
 	FullscreenExclusive,
 	DisplayTiming,
+	IncrementalPresent,
 	Portability,
 	Max
 };
@@ -158,6 +178,7 @@ static const char * const s_optionalDeviceExtensions[] = {
 	VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
 	VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,
 	VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME,
+	VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME,
 	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
 	nullptr
 };

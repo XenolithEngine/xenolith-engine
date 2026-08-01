@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "VisibilityLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 
@@ -43,11 +42,11 @@ static constexpr auto s_css = StringView(R"css(
 } // namespace
 
 bool VisibilityLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(s_css));
+	setStyleSheet(s_css);
 
 	auto makeRow = [this](Layer **mid, Layer **last, StringView midClass) {
 		auto row = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
@@ -143,10 +142,10 @@ void VisibilityLayout::runPhase2() {
 }
 
 void VisibilityLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
-	const float top = cs.height - 180.0f;
+	const float top = getWorkTop() - 180.0f;
 
 	Layer *rows[] = {_rowNone, _rowHidden};
 	for (size_t i = 0; i < 2; ++i) {

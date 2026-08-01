@@ -66,7 +66,7 @@ public:
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
 protected:
-	bool loadWindow();
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 
 	Rc<MessageWindow> _messageWindow;
 	Map<WideStringView, Rc<WindowClass>> _classes;

@@ -1,0 +1,83 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_samplerless_texture_functions : enable
+
+// Constant-index MaterialFrag for devices without
+// shaderSampledImageArrayDynamicIndexing (V3DV / V3D 4.2).
+// Entry point name must end with "_static" (see XLVkPipeline).
+//
+// Only texture2D is declared here — V3DV rejects modules that alias
+// texture2D / texture2DArray / texture3D on the same binding. Hello and
+// typical 2d UI only need 2D; Tex2dArray/Tex3d pipelines stay on the
+// dynamic entry (desktop) or are unused on Pi4.
+
+// clang-format off
+
+#include "sprt_glsl.h"
+#include "XL2dGlslVertexData.h"
+
+layout (constant_id = 0) const int SAMPLERS_ARRAY_SIZE = 2;
+layout (constant_id = 1) const int IMAGES_ARRAY_SIZE = 1;
+layout (constant_id = 2) const int IMAGE_TYPE = 0;
+
+layout (set = 0, binding = 0) uniform sampler immutableSamplers[SAMPLERS_ARRAY_SIZE];
+layout (set = 0, binding = 1) uniform texture2D images2d[IMAGES_ARRAY_SIZE];
+
+#include "XL2dGlslGradient.h"
+
+layout (location = 0) in vec4 fragColor;
+layout (location = 1) in vec4 fragTexCoord;
+layout (location = 2) in vec4 shadowColor;
+layout (location = 3) in vec4 outlineColor;
+layout (location = 4) in float outlineOffset;
+layout (location = 5) in vec2 fragPosition;
+layout (location = 6) in flat uvec4 tex;
+
+layout (location = 0) out vec4 outColor;
+layout (location = 1) out vec4 outShadow;
+
+layout (std430, push_constant) uniform pcb {
+	VertexConstantData pushConstants;
+};
+
+#define SAMPLER2D_0 sampler2D( images2d[0], immutableSamplers[0] )
+
+vec2 getTextureSize_pc() {
+	return textureSize(images2d[0], 0);
+}
+
+float getOutlineSample(in vec2 coord, float initColor, float z) {
+	const uint nsamples = min(4, max(uint(ceil(outlineOffset)), 2));
+
+	const vec2 offset = outlineOffset / getTextureSize_pc();
+	const vec2 step = offset / float(nsamples - 1);
+	const vec2 origin = coord - offset / 2.0;
+
+	float accum = initColor;
+
+	for (uint i = 0; i < nsamples; ++ i) {
+		for (uint j = 0; j < nsamples; ++ j) {
+			accum += texture(SAMPLER2D_0, origin + vec2(step.x * i, step.y * j)).a;
+		}
+	}
+
+	const float result = (0.5 - abs(0.5 - accum / (nsamples * nsamples + 1))) * 2.0 - 1.0;
+
+	return -(result * result * result * result - 1);
+}
+
+void main() {
+	// IMAGE_TYPE specialization is ignored: static path is 2D-only.
+	vec4 textureColor = texture(SAMPLER2D_0, fragTexCoord.xy);
+
+	if (outlineOffset > 0.0) {
+		float outlineSample = getOutlineSample(fragTexCoord.xy, textureColor.a, fragTexCoord.z);
+
+		outColor = outlineColor * outlineSample + textureColor * (1.0 - outlineSample);
+	} else {
+		outColor = fragColor * textureColor;
+	}
+
+	outShadow = shadowColor;
+}

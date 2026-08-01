@@ -352,6 +352,9 @@ public:
 	// currently honors it.
 	void setRecordingMode(PassRecordingMode);
 
+	// What this queue opts into for per-frame damage tracking; see QueueDamageFlags.
+	void setDamageFlags(QueueDamageFlags);
+
 	const AttachmentData *addAttachemnt(StringView name,
 			const Callback<Rc<Attachment>(AttachmentBuilder &)> &);
 

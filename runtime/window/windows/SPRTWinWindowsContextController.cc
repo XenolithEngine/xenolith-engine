@@ -120,7 +120,7 @@ int WindowsContextController::run(NotNull<ContextContainer> ctx) {
 
 					// check if root window is defined
 					if (_windowInfo) {
-						if (!loadWindow()) {
+						if (createWindow(move(_windowInfo)) != Status::Ok) {
 							oslog::vperror(__SPRT_LOCATION, "WindowsContextController",
 									"Fail to load root native window");
 							destroy();
@@ -256,16 +256,10 @@ SurfaceSupportInfo WindowsContextController::getSupportInfo() const {
 	return ret;
 }
 
-bool WindowsContextController::loadWindow() {
-	Rc<NativeWindow> window;
-	auto wInfo = move(_windowInfo);
-
-	if (configureWindow(wInfo)) {
-		window = Rc<WindowsWindow>::create(this, move(wInfo));
-		if (window) {
-			notifyWindowCreated(window);
-			return true;
-		}
+bool WindowsContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	if (auto window = Rc<WindowsWindow>::create(this, move(wInfo))) {
+		notifyWindowCreated(window);
+		return true;
 	}
 
 	return false;

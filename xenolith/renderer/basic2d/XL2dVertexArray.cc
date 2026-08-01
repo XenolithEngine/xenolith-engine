@@ -25,6 +25,36 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
+bool VertexData::getBounds(Rect &out) const {
+	if (identity.hasBounds()) {
+		out = identity.bounds;
+		return true;
+	}
+
+	if (!identity.derivable) {
+		// the producer owes us setBounds() and did not deliver; scanning would be wrong
+		return false;
+	}
+
+	auto &id = const_cast<DataIdentity &>(identity);
+	if (data.empty()) {
+		id.bounds = Rect::ZERO;
+	} else {
+		float minX = data.front().pos.x, maxX = minX;
+		float minY = data.front().pos.y, maxY = minY;
+		for (auto &it : data) {
+			minX = sprt::min(minX, it.pos.x);
+			maxX = sprt::max(maxX, it.pos.x);
+			minY = sprt::min(minY, it.pos.y);
+			maxY = sprt::max(maxY, it.pos.y);
+		}
+		id.bounds = Rect(minX, minY, maxX - minX, maxY - minY);
+	}
+	id.boundsGeneration = id.generation;
+	out = id.bounds;
+	return true;
+}
+
 VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float texWidth,
 		float texHeight, bool flippedX, bool flippedY, bool rotated) {
 
@@ -236,9 +266,7 @@ bool VertexArray::init(const Rc<VertexData> &data) {
 }
 
 void VertexArray::reserve(uint32_t bufferCapacity, uint32_t indexCapacity) {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	if (_data->data.capacity() > bufferCapacity) {
 		_data->data.reserve(bufferCapacity);
@@ -266,15 +294,14 @@ void VertexArray::clear() {
 	if (_copyOnWrite) {
 		_data = Rc<VertexData>::alloc();
 	} else {
+		_data->identity.invalidate();
 		_data->data.clear();
 		_data->indexes.clear();
 	}
 }
 
 VertexArray::Quad VertexArray::addQuad() {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	auto firstVertex = uint32_t(_data->data.size());
 	auto firstIndex = uint32_t(_data->indexes.size());
@@ -300,26 +327,20 @@ VertexArray::Quad VertexArray::addQuad() {
 }
 
 VertexArray::Quad VertexArray::getQuad(size_t firstVertex, size_t firstIndex) {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	return Quad({SpanView<Vertex>(_data->data.data() + firstVertex, 4),
 		SpanView<uint32_t>(_data->indexes.data() + firstIndex, 6), firstVertex, firstIndex});
 }
 
 void VertexArray::updateColor(const Color4F &color) {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	for (auto &it : _data->data) { it.color = color; }
 }
 
 void VertexArray::updateColor(const Color4F &color, const Vector<ColorMask> &mask) {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	auto count = sprt::min(_data->data.size(), mask.size());
 
@@ -352,9 +373,7 @@ void VertexArray::updateColor(const Color4F &color, const Vector<ColorMask> &mas
 }
 
 void VertexArray::updateColorQuads(const Color4F &color, const Vector<ColorMask> &mask) {
-	if (_copyOnWrite) {
-		copy();
-	}
+	mutate();
 
 	auto quadsCount = _data->data.size() / 4;
 	auto count = sprt::min(quadsCount, mask.size());
@@ -406,6 +425,27 @@ void VertexArray::copy() {
 		data->indexes = _data->indexes;
 		_data = data;
 		_copyOnWrite = false;
+	}
+}
+
+void VertexArray::setBoundsDerivable(bool value) {
+	mutate();
+	_data->identity.derivable = value;
+}
+
+void VertexArray::setBounds(const Rect &r) {
+	// deliberately not mutate(): supplying bounds is not a content change
+	_data->identity.setBounds(r);
+}
+
+void VertexArray::mutate() {
+	if (_copyOnWrite) {
+		// detaching allocates a fresh VertexData, which carries a fresh identity already
+		copy();
+	} else {
+		// we own the set exclusively: nothing else observes the change, so the generation is
+		// the only signal damage tracking can see
+		_data->identity.invalidate();
 	}
 }
 

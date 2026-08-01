@@ -106,6 +106,90 @@ void QueuePassHandle::invalidate() {
 	_sync = nullptr;
 }
 
+bool QueuePassHandle::hasPartialRedrawArea(VkRect2D &out) const {
+	if (!_partialRedraw) {
+		return false;
+	}
+	out = _partialRedrawArea;
+	return true;
+}
+
+void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
+	_partialRedraw = false;
+	_skipRedraw = false;
+
+	if (!hasFlag(_data->queue->damage, core::QueueDamageFlags::PartialRedraw)) {
+		return;
+	}
+
+	// Find the presented attachment: partial redraw only makes sense for the image the compositor
+	// keeps, and only that image carries a per-index snapshot.
+	core::ImageStorage *image = nullptr;
+	for (auto &it : _data->attachments) {
+		if (it->finalLayout != core::AttachmentLayout::PresentSrc) {
+			continue;
+		}
+		if (auto aData = q.getAttachment(it->attachment)) {
+			if (auto img = aData->image.get()) {
+				if (img->isSwapchainImage()) {
+					image = img;
+				}
+			}
+		}
+		break;
+	}
+
+	if (!image) {
+		return;
+	}
+
+	auto swapchainImage = static_cast<core::SwapchainImage *>(image);
+	auto swapchain = swapchainImage->getSwapchain();
+	if (!swapchain) {
+		return;
+	}
+
+	auto request = q.getFrame()->getRequest();
+
+	Vector<URect> damage;
+	const auto extent = Extent2(_constraints.extent.width, _constraints.extent.height);
+	const bool partial = swapchain->getDamage().computeRedrawArea(uint32_t(image->getImageIndex()),
+			request->getDamageState().get(), extent, damage);
+
+	if (!partial) {
+		// full surface: keep the clearing variant, which is also what leaves the image in a
+		// defined state for the next frame's LOAD
+		return;
+	}
+
+	if (damage.empty()) {
+		// This image already holds exactly what the frame wants to draw, down to the last vertex.
+		// With the queue opted into frame skipping, record nothing at all: the image keeps its
+		// content and stays in PRESENT_SRC, so it can be presented untouched. The frame itself is
+		// not cancelled - it still submits (an empty command buffer) and still presents, which
+		// keeps the semaphore chain and the presentation pacing exactly as they always are.
+		if (hasFlag(_data->queue->damage, core::QueueDamageFlags::SkipEmptyFrames)) {
+			_skipRedraw = true;
+			request->setRedrawSkipped(true);
+		}
+		return;
+	}
+
+	// One render area, so the union of the damaged rectangles. renderArea is what bounds the
+	// load/store ops; a per-draw scissor would not, and the load is most of the saving.
+	uint32_t x0 = damage.front().x, y0 = damage.front().y;
+	uint32_t x1 = x0 + damage.front().width, y1 = y0 + damage.front().height;
+	for (auto &it : damage) {
+		x0 = sprt::min(x0, it.x);
+		y0 = sprt::min(y0, it.y);
+		x1 = sprt::max(x1, it.x + it.width);
+		y1 = sprt::max(y1, it.y + it.height);
+	}
+
+	_partialRedrawArea = VkRect2D{{int32_t(x0), int32_t(y0)}, {x1 - x0, y1 - y0}};
+	_partialRedraw = true;
+}
+
 bool QueuePassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 	_onPrepared = sp::move(cb);
 	_device = static_cast<Device *>(q.getFrame()->getDevice());
@@ -119,6 +203,8 @@ bool QueuePassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 	}
 
 	prepareSubpasses(q);
+
+	preparePartialRedraw(q);
 
 	for (uint32_t i = 0; i < _data->pipelineLayouts.size(); ++i) {
 		_descriptors.emplace_back(

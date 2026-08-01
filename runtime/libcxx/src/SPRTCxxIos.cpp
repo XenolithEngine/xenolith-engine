@@ -22,5 +22,7 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <ios>: ios_base init/copyfmt/move, __iostream_category, failure, and the extern-template stream instantiations (ios.cpp + ios.instantiations.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/ios.cpp"
 #include "libcxx/ios.instantiations.cpp"
