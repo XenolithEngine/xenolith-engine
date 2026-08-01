@@ -280,47 +280,128 @@ static void emitResolvedPath(const Callback<void(StringView)> &out, StringView p
 #endif
 }
 
+// True when a path component carries a glob metacharacter and therefore has to be resolved
+// against the filesystem rather than appended literally.
+static bool Function_wildcard_isGlob(StringView comp) {
+	for (auto c : comp) {
+		if (c == '*' || c == '?') {
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool Function_wildcard(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	auto patterns = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 	bool first = true;
+
+	auto emit = [&](StringView path, bool wantDir) {
+		if (first) {
+			first = false;
+		} else {
+			out << ' ';
+		}
+		emitResolvedPath(out, path);
+		if (wantDir) {
+			out << "/";
+		}
+	};
+
 	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
 		// A trailing '/' restricts the match to directories (e.g. `dir/*/`).
 		bool wantDir = pattern.ends_with("/");
 		StringView pat = wantDir ? pattern.sub(0, pattern.size() - 1) : pattern;
-
-		// Split into the directory prefix (up to and including the last '/') and the filename
-		// glob applied to each entry. The glob is the last path component; a glob inside the
-		// directory part (e.g. `a/*/b`) is not expanded, matching the build's usage.
-		size_t sl = pat.size();
-		while (sl > 0 && pat[sl - 1] != '/') { --sl; }
-		StringView dirPart = pat.sub(0, sl);
-		StringView glob = pat.sub(sl);
-
-		auto targetPath = engine.getAbsolutePath(dirPart.empty() ? StringView(".") : dirPart);
-		if (targetPath.empty()) {
+		if (pat.empty()) {
 			return;
 		}
 
-		filesystem::ftw(FileInfo{targetPath}, [&](const FileInfo &info, FileType type) {
-			if (info.path != targetPath) {
-				if (wantDir && type != FileType::Dir) {
-					return true;
+		// A glob may sit in ANY path component (`a/*/b`, `*/*.mk`), not just the last one, so the
+		// pattern is expanded component by component: everything before the first glob-bearing
+		// component is a literal prefix resolved once, and each later component either filters the
+		// current candidate directories or is appended verbatim.
+		size_t globStart = pat.size(); // offset where the first glob-bearing component begins
+		size_t compStart = 0;
+		for (size_t i = 0; i <= pat.size(); ++i) {
+			if (i == pat.size() || pat[i] == '/') {
+				if (Function_wildcard_isGlob(pat.sub(compStart, i - compStart))) {
+					globStart = compStart;
+					break;
 				}
-				if (Function_wildcard_match(glob, filepath::lastComponent(info.path))) {
-					if (first) {
-						first = false;
+				compStart = i + 1;
+			}
+		}
+
+		StringView literalPrefix = pat.sub(0, globStart); // "" or ends with '/'
+		StringView tail = pat.sub(globStart);
+
+		auto basePath = engine.getAbsolutePath(
+				literalPrefix.empty() ? StringView(".") : literalPrefix);
+		if (basePath.empty()) {
+			return;
+		}
+
+		if (tail.empty()) {
+			// No glob at all: `$(wildcard path)` is an existence test.
+			filesystem::Stat stat;
+			if (filesystem::stat(FileInfo{basePath}, stat)
+					&& (!wantDir || stat.type == FileType::Dir)) {
+				emit(basePath, wantDir);
+			}
+			return;
+		}
+
+		Vector<String> current;
+		current.emplace_back(basePath.str<Interface>());
+
+		size_t pos = 0;
+		while (pos < tail.size() && !current.empty()) {
+			auto next = tail.sub(pos).readUntil<StringView::Chars<'/'>>();
+			StringView comp(next);
+			pos += comp.size() + 1; // skip the separator (past-the-end when it was the last one)
+			bool isLast = pos >= tail.size();
+			if (comp.empty()) {
+				continue; // tolerate a doubled '/'
+			}
+
+			Vector<String> produced;
+			for (auto &dir : current) {
+				if (Function_wildcard_isGlob(comp)) {
+					StringView dirPath(dir);
+					filesystem::ftw(FileInfo{dirPath}, [&](const FileInfo &info, FileType type) {
+						if (info.path == dirPath) {
+							return true;
+						}
+						// An intermediate component can only continue through a directory.
+						if ((!isLast || wantDir) && type != FileType::Dir) {
+							return true;
+						}
+						if (Function_wildcard_match(comp, filepath::lastComponent(info.path))) {
+							if (isLast) {
+								emit(info.path, wantDir);
+							} else {
+								produced.emplace_back(info.path.str<Interface>());
+							}
+						}
+						return true;
+					}, 1);
+				} else {
+					String path;
+					path.reserve(dir.size() + 1 + comp.size());
+					path.append(dir).append("/").append(comp.data(), comp.size());
+					if (isLast) {
+						filesystem::Stat stat;
+						if (filesystem::stat(FileInfo{StringView(path)}, stat)
+								&& (!wantDir || stat.type == FileType::Dir)) {
+							emit(path, wantDir);
+						}
 					} else {
-						out << ' ';
-					}
-					emitResolvedPath(out, info.path);
-					if (wantDir) {
-						out << "/";
+						produced.emplace_back(move(path));
 					}
 				}
 			}
-			return true;
-		}, 1);
+			current = move(produced);
+		}
 	});
 
 	return true;

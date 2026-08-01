@@ -27,7 +27,6 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/common.h>
 
 namespace sprt {
-inline namespace __cxx_type_traits {
 
 template <typename _Tp>
 class reference_wrapper;

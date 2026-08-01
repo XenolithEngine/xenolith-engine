@@ -53,3 +53,61 @@ LOCAL_INCLUDES_OBJS :=
 LOCAL_MAIN := main.cpp
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk
+
+#
+# Cross-target build helpers
+#
+# "Available" targets are the ones for which a toolchain description is actually
+# installed in this checkout, i.e. every <root>/[runtime/]toolchains/targets/*/target.mk.
+# The list is therefore discovered, not hardcoded: a target appears here as soon as
+# its toolchain is built/unpacked (e.g. wasm32-unknown-unknown once target-wasm is
+# installed) and disappears when it is not available.
+#
+#   make list-targets                          # print the discovered target list
+#   make all-targets                           # build the suite for every target
+#   make -k all-targets                        # ... without stopping on first failure
+#   make all-targets -j8                       # targets build in parallel
+#   make all-targets RELEASE=1                 # command-line vars are forwarded
+#   make all-targets-clean                     # clean every target
+#   make target-x86_64-pc-windows-msvc         # build a single target
+#   make all-targets TARGETS="a b"             # restrict the list explicitly
+#   make all-targets TARGETS_EXCLUDE="aarch64-apple-ios"
+#
+# Note that cross-targets are only compiled here, not run: compare.sh/wine drive
+# execution for the targets that can actually be executed on this host.
+
+# Only meaningful in the dispatch pass (no STAPPLER_TARGET/STAPPLER_BUILD yet);
+# inside a per-target sub-make universal.mk has already switched to host.mk.
+ifeq ($(or $(STAPPLER_TARGET),$(STAPPLER_BUILD)),)
+
+LOCAL_STAPPLER_ROOT := $(abspath $(STAPPLER_BUILD_ROOT)/..)
+
+LOCAL_TARGET_FILES := \
+	$(wildcard $(LOCAL_STAPPLER_ROOT)/toolchains/targets/*/target.mk) \
+	$(wildcard $(LOCAL_STAPPLER_ROOT)/runtime/toolchains/targets/*/target.mk)
+
+TARGETS_EXCLUDE ?= unknown-ndk-linux-android %+dll %+sprt %-ios %-ios-simulator
+
+TARGETS ?= $(sort $(foreach f,$(LOCAL_TARGET_FILES),$(notdir $(patsubst %/,%,$(dir $(f))))))
+TARGETS := $(filter-out $(TARGETS_EXCLUDE),$(TARGETS))
+
+LOCAL_TARGET_GOALS := $(addprefix target-,$(TARGETS))
+LOCAL_TARGET_CLEAN_GOALS := $(addsuffix -clean,$(LOCAL_TARGET_GOALS))
+
+$(LOCAL_TARGET_GOALS): target-%:
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=$* all
+
+$(LOCAL_TARGET_CLEAN_GOALS): target-%-clean:
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=$* clean
+
+all-targets: $(LOCAL_TARGET_GOALS)
+
+all-targets-clean: $(LOCAL_TARGET_CLEAN_GOALS)
+
+list-targets:
+	$(info Available targets ($(words $(TARGETS))):)$(foreach t,$(TARGETS),$(info - $(t)))
+
+.PHONY: all-targets all-targets-clean list-targets
+.PHONY: $(LOCAL_TARGET_GOALS) $(LOCAL_TARGET_CLEAN_GOALS)
+
+endif

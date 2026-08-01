@@ -157,7 +157,7 @@ void performAlgorithmExtTest() {
 	printv("copy_backward", cb, 6);
 
 	// ---- minmax (two-arg + initializer_list) ------------------------------
-	auto mm = std::minmax(7, 3);
+	std::pair<int, int> mm = std::minmax(7, 3);
 	printf("minmax2=%d,%d\n", mm.first, mm.second);
 	auto mmi = std::minmax({4, 1, 7, 3, 9, 2});
 	printf("minmax_il=%d,%d\n", mmi.first, mmi.second);

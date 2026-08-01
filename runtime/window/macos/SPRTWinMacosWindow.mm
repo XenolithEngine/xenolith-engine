@@ -546,7 +546,9 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 	_buttonGripFlags = NSSPWIN::WindowLayerFlags::None;
 	_buttons.reset();
-	_lastNotifiedDrawableSize = CGSizeZero;
+	// Note: a literal, not CGSizeZero — that is an imported data symbol from
+	// CoreGraphics, which the SDK-free "+open" link stubs do not export
+	_lastNotifiedDrawableSize = CGSize{0, 0};
 	_lastConstraintsNotifyTime = 0;
 
 	window.delegate = self;
