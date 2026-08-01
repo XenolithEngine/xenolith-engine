@@ -548,8 +548,11 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			return makeStatWatchHandle(d, &data->_wasmWatchClass, sprt::move(info), ref);
 		};
 
-		// _listenHandle / _spawnProcess stay null (sockets and processes come
-		// later / stay ENOSYS).
+		// _listenHandle / _spawnProcess / _socketPoll stay null (sockets and
+		// processes stay ENOSYS in the browser sandbox) - so
+		// listenSocket/connectSocket return nullptr cleanly here; a future
+		// client-side transport would go through a JS WebSocket/WebTransport
+		// bridge over OpenSSL memory BIOs, not through these syscalls.
 
 		_platformQueue = w;
 		_engine = QueueEngine::Wasm;

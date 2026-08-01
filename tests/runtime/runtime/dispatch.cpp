@@ -24,8 +24,6 @@ THE SOFTWARE.
 #include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/platform.h>
 
-#include <sprt/cxx/chrono>
-
 namespace sprt {
 
 void performDispatchTests() {
@@ -99,11 +97,11 @@ void performDispatchTests() {
 	});
 
 	sprt::thread thread([](dispatch::Looper *looper) {
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(100));
+		sprt::this_thread::sleep_for(100'000'000); // 100ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread1\n"; //
 		}, nullptr);
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(500));
+		sprt::this_thread::sleep_for(500'000'000); // 500ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread1\n"; //
 		}, nullptr);
@@ -111,11 +109,11 @@ void performDispatchTests() {
 	thread.detach();
 
 	sprt::thread thread2([](dispatch::Looper *looper) {
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(100));
+		sprt::this_thread::sleep_for(100'000'000); // 100ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread2\n"; //
 		}, nullptr);
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(500));
+		sprt::this_thread::sleep_for(500'000'000); // 500ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread2\n"; //
 		}, nullptr);

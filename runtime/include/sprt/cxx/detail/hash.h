@@ -103,6 +103,23 @@ struct hash<const char (&)[N]> {
 	}
 };
 
+// The transparent hash<void> deduces T from `const T &` as the ARRAY type
+// (char[N] / const char[N]), never as a reference-to-array - these are the
+// specializations such lookups actually reach (same first-NUL contract).
+template <size_t N>
+struct hash<char[N]> {
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
+template <size_t N>
+struct hash<const char[N]> {
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
 template <typename T>
 struct hash<T *> {
 	size_t operator()(const T *value) const noexcept {

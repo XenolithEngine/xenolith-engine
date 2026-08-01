@@ -108,6 +108,22 @@ public:
 	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
 			Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
 
+	// Listen for stream-socket connections on ListenInfo::address (see
+	// SocketAddress for the accepted text forms): onAccept runs on this thread
+	// once per connection, the completion fires once when the listener
+	// terminates. Returns nullptr where the backend has no socket support
+	// (wasm, CFRunLoop) or when bind/listen fails.
+	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref * = nullptr);
+	Rc<ListenHandle> listenSocket(const SocketAddress &, ListenInfo::AcceptCallback &&onAccept,
+			Ref * = nullptr);
+
+	// Open a stream-socket connection (non-blocking); the completion fires
+	// exactly once with the connect result (possibly synchronously). Reads and
+	// writes may be issued on the returned handle right away.
+	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref * = nullptr);
+	Rc<StreamHandle> connectSocket(const SocketAddress &,
+			Function<void(StreamHandle *, Status)> &&onConnect, Ref * = nullptr);
+
 	// Perform task on this thread (only Complete callback will be executed)
 	// If current thread is looper thread - performs in place
 	Status performOnThread(Rc<Task> &&task, bool immediate = false);

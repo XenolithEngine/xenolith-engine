@@ -113,11 +113,20 @@ protected:
 	sprt::mutex _mutex;
 };
 
-// EVFILT_READ pollable-fd handle. kqueue has no generic listenPollableHandle path of its own; this
-// provides one so the process reader sub-handle (and any other fd watcher) can reuse it.
+// Pollable-fd handle over EVFILT_READ (+ EVFILT_WRITE when PollFlags::Out is
+// requested — needed by the stream-socket machinery for writability and
+// non-blocking connect). kqueue has no generic listenPollableHandle path of its
+// own; this provides one so the process reader sub-handle (and any other fd
+// watcher) can reuse it.
 struct SPRT_API ReadKQueueSource {
+	// which filters are actually registered (rearm sets, disarm consumes) —
+	// `flags` alone is not enough: reset() rewrites it before the disarm runs
+	static constexpr uint16_t ArmedRead = 1 << 0;
+	static constexpr uint16_t ArmedWrite = 1 << 1;
+
 	int fd = -1;
 	PollFlags flags = PollFlags::None;
+	uint16_t armed = 0;
 
 	bool init(int, PollFlags);
 	void cancel();

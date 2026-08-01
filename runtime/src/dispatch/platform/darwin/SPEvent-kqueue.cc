@@ -128,6 +128,11 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 				// `userFlags` (unused by every other filter).
 				data.result = intptr_t(ev.ident);
 				data.userFlags = ev.fflags;
+			} else {
+				// carry the filter so a handle registered with several filters
+				// (ReadKQueueHandle polling both EVFILT_READ and EVFILT_WRITE for
+				// sockets) can tell which one fired
+				data.userFlags = uint32_t(int32_t(ev.filter));
 			}
 
 			_data->notify(reinterpret_cast<Handle *>(ev.udata), data);
@@ -514,9 +519,30 @@ bool ReadKQueueHandle::init(HandleClass *cl, int fd, PollFlags flags,
 Status ReadKQueueHandle::rearm(KQueueData *queue, ReadKQueueSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		struct kevent ev;
-		EV_SET(&ev, source->fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, this);
-		status = queue->update(ev);
+		// EVFILT_READ also carries EV_EOF, so it serves In, HungUp and Err
+		// interest; EVFILT_WRITE is registered only when writability is wanted
+		const bool wantRead = !hasFlag(source->flags, PollFlags::Out)
+				|| hasFlag(source->flags, PollFlags::In);
+		const bool wantWrite = hasFlag(source->flags, PollFlags::Out);
+		source->armed = 0;
+		if (wantRead) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, this);
+			status = queue->update(ev);
+			if (status != Status::Ok) {
+				return status;
+			}
+			source->armed |= ReadKQueueSource::ArmedRead;
+		}
+		if (wantWrite) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, this);
+			status = queue->update(ev);
+			if (status != Status::Ok) {
+				return status;
+			}
+			source->armed |= ReadKQueueSource::ArmedWrite;
+		}
 	}
 	return status;
 }
@@ -524,9 +550,20 @@ Status ReadKQueueHandle::rearm(KQueueData *queue, ReadKQueueSource *source) {
 Status ReadKQueueHandle::disarm(KQueueData *queue, ReadKQueueSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
-		struct kevent ev;
-		EV_SET(&ev, source->fd, EVFILT_READ, EV_DELETE, 0, 0, this);
-		status = queue->update(ev);
+		// delete exactly what rearm registered; tolerate individual failures
+		// (kqueue removes filters itself when the descriptor is closed)
+		if (source->armed & ReadKQueueSource::ArmedRead) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_READ, EV_DELETE, 0, 0, this);
+			(void)queue->update(ev);
+		}
+		if (source->armed & ReadKQueueSource::ArmedWrite) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_WRITE, EV_DELETE, 0, 0, this);
+			(void)queue->update(ev);
+		}
+		source->armed = 0;
+		status = Status::Ok;
 		++_timeline;
 	} else if (status == Status::ErrorAlreadyPerformed) {
 		return Status::Ok;
@@ -538,7 +575,8 @@ void ReadKQueueHandle::notify(KQueueData *queue, ReadKQueueSource *source, const
 	if (_status != Status::Ok) {
 		return;
 	}
-	PollFlags pollFlags = PollFlags::In; // EVFILT_READ fired: data (or EOF) available
+	// userFlags carries ev.filter (see KQueueData::runPoll)
+	PollFlags pollFlags = (int32_t(data.userFlags) == EVFILT_WRITE) ? PollFlags::Out : PollFlags::In;
 	if (data.queueFlags & EV_EOF) {
 		pollFlags |= PollFlags::HungUp;
 	}
