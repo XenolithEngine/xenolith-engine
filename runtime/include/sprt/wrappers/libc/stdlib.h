@@ -212,6 +212,102 @@ static inline int _set_error_mode(int _Mode) {
 	return 0;
 }
 
+// MSVC's radix conversions. Code that formats an integer by hand tends to reach for these
+// behind a _MSC_VER test and never see the portable branch next to it
+//
+// Digits come out least-significant first and are reversed in place. Following MSVC: a
+// radix other than 10 makes the value unsigned, so only base 10 can produce a sign; a bad
+// argument yields EINVAL and a buffer too small yields ERANGE with the buffer emptied.
+// The values are spelled out because <errno.h> is not pulled in this early.
+static inline int __sprt_radix_to_str(unsigned long long _Value, char *_Buf, size_t _Size,
+		int _Radix, int _Negative) {
+	char _Digits[66];
+	size_t _Len = 0;
+	size_t _I;
+
+	if (!_Buf || _Size == 0 || _Radix < 2 || _Radix > 36) {
+		if (_Buf && _Size) {
+			_Buf[0] = '\0';
+		}
+		return 22; // EINVAL
+	}
+
+	do {
+		unsigned _Digit = (unsigned)(_Value % (unsigned long long)_Radix);
+		_Digits[_Len++] = (char)(_Digit < 10 ? '0' + _Digit : 'a' + (_Digit - 10));
+		_Value /= (unsigned long long)_Radix;
+	} while (_Value);
+
+	if (_Negative) {
+		_Digits[_Len++] = '-';
+	}
+
+	if (_Len + 1 > _Size) {
+		_Buf[0] = '\0';
+		return 34; // ERANGE
+	}
+
+	for (_I = 0; _I < _Len; ++_I) { _Buf[_I] = _Digits[_Len - 1 - _I]; }
+	_Buf[_Len] = '\0';
+	return 0;
+}
+
+static inline int _i64toa_s(long long _Value, char *_Buf, size_t _Size, int _Radix) {
+	if (_Radix == 10 && _Value < 0) {
+		return __sprt_radix_to_str((unsigned long long)(-(_Value + 1)) + 1u, _Buf, _Size, _Radix,
+				1);
+	}
+	return __sprt_radix_to_str((unsigned long long)_Value, _Buf, _Size, _Radix, 0);
+}
+
+static inline int _ui64toa_s(unsigned long long _Value, char *_Buf, size_t _Size, int _Radix) {
+	return __sprt_radix_to_str(_Value, _Buf, _Size, _Radix, 0);
+}
+
+static inline int _itoa_s(int _Value, char *_Buf, size_t _Size, int _Radix) {
+	if (_Radix == 10) {
+		return _i64toa_s((long long)_Value, _Buf, _Size, _Radix);
+	}
+	return __sprt_radix_to_str((unsigned long long)(unsigned int)_Value, _Buf, _Size, _Radix, 0);
+}
+
+static inline int _ltoa_s(long _Value, char *_Buf, size_t _Size, int _Radix) {
+	if (_Radix == 10) {
+		return _i64toa_s((long long)_Value, _Buf, _Size, _Radix);
+	}
+	return __sprt_radix_to_str((unsigned long long)(unsigned long)_Value, _Buf, _Size, _Radix, 0);
+}
+
+static inline int _ultoa_s(unsigned long _Value, char *_Buf, size_t _Size, int _Radix) {
+	return __sprt_radix_to_str((unsigned long long)_Value, _Buf, _Size, _Radix, 0);
+}
+
+// The pre-Secure-CRT spellings, which take no size and so cannot report anything.
+static inline char *_itoa(int _Value, char *_Buf, int _Radix) {
+	_itoa_s(_Value, _Buf, (size_t)-1, _Radix);
+	return _Buf;
+}
+
+static inline char *_ltoa(long _Value, char *_Buf, int _Radix) {
+	_ltoa_s(_Value, _Buf, (size_t)-1, _Radix);
+	return _Buf;
+}
+
+static inline char *_ultoa(unsigned long _Value, char *_Buf, int _Radix) {
+	_ultoa_s(_Value, _Buf, (size_t)-1, _Radix);
+	return _Buf;
+}
+
+static inline char *_i64toa(long long _Value, char *_Buf, int _Radix) {
+	_i64toa_s(_Value, _Buf, (size_t)-1, _Radix);
+	return _Buf;
+}
+
+static inline char *_ui64toa(unsigned long long _Value, char *_Buf, int _Radix) {
+	_ui64toa_s(_Value, _Buf, (size_t)-1, _Radix);
+	return _Buf;
+}
+
 #endif
 
 __SPRT_END_DECL

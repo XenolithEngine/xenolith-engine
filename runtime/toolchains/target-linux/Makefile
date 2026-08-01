@@ -72,7 +72,8 @@ LIBS := \
 	libxml2.a \
 	libffi.a \
 	libexpat.a \
-	libwayland-client.a
+	libwayland-client.a \
+	libdrm.so.2
 
 WASM_LIBS := \
 	libiwasm-release.a \
@@ -275,6 +276,12 @@ $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a: $(MAKE_ROOT)expat.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libwayland-client.a: $(MAKE_ROOT)wayland.mk $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a $(SP_INSTALL_PREFIX)/usr/lib/libffi.a $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# The only shared library in the set (for why, see common/libdrm.mk). Direct KMS
+# rendering needs it, and there must be exactly ONE per process: the GPU driver
+# links it too.
+$(SP_INSTALL_PREFIX)/usr/lib/libdrm.so.2: ../common/libdrm.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk

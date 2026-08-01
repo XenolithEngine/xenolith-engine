@@ -89,4 +89,9 @@
 #define __SPRT_AT_EACCESS 0x200
 #define __SPRT_AT_REMOVEDIR 0x200
 
+// name_to_handle_at: AT_HANDLE_FID переиспользует бит AT_REMOVEDIR (Linux 6.7,
+// glibc 2.39), AT_HANDLE_MNT_ID_UNIQUE — бит AT_SYMLINK_NOFOLLOW (Linux 6.12).
+#define __SPRT_AT_HANDLE_FID 0x200
+#define __SPRT_AT_HANDLE_MNT_ID_UNIQUE 0x001
+
 // clang-format on

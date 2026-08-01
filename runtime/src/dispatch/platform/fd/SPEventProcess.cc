@@ -30,9 +30,6 @@
 #include <fcntl.h>
 
 #if SPRT_APPLE
-// macOS provides these in libSystem, but the freestanding include path exposes neither
-// <sys/wait.h> nor a kill() prototype; declare them directly.
-extern "C" int kill(int __pid, int __sig);
 extern "C" int waitpid(int __pid, int *__status, int __options);
 #else
 // Linux/Android: reach the kernel directly (the freestanding libc offers no kill()/wait4()),

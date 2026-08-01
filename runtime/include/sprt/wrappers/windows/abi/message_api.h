@@ -425,6 +425,11 @@ THE SOFTWARE.
 
 #define __SPRT_MAKELANGID(p, s)       ((((WORD  )(s)) << 10) | (WORD  )(p))
 
+/* Format selector for the MUI language-list APIs: which of the two
+   representations GetUserPreferredUILanguages fills the buffer with. */
+#define __SPRT_MUI_LANGUAGE_ID   0x4
+#define __SPRT_MUI_LANGUAGE_NAME 0x8
+
 #define __SPRT_MWMO_WAITALL        0x0001
 #define __SPRT_MWMO_ALERTABLE      0x0002
 #define __SPRT_MWMO_INPUTAVAILABLE 0x0004

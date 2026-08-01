@@ -68,19 +68,25 @@ STAGE0_CXX_WARN_FLAGS := \
 	-Wno-cast-qual \
 	-Wno-non-virtual-dtor
 
-STAGE0_CFLAGS := $(OPT_FLAGS) \
+STAGE0_CXX_INCLUDE_PATH := \
+	-I$(abspath ../../../include_libc/cxx) \
+	-I$(abspath ../../../libcxx/include)
+
+SPRT_CONSUMER_FLAGS := -DSPRT_SHARED_RUNTIME
+
+STAGE0_CFLAGS := $(OPT_FLAGS) $(SPRT_CONSUMER_FLAGS) \
 	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
-STAGE0_CXXFLAGS := $(OPT_FLAGS) \
-	$(STAGE0_WARN_FLAGS) $(STAGE0_CXX_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
+STAGE0_CXXFLAGS := $(OPT_FLAGS) $(SPRT_CONSUMER_FLAGS) \
+	$(STAGE0_WARN_FLAGS) $(STAGE0_CXX_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) $(STAGE0_CXX_INCLUDE_PATH)
 STAGE0_RCFLAGS := $(OPT_FLAGS) \
 	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH)
 STAGE0_EXE_LDFLAGS := $(STAGE0_LIB_PATH)
 STAGE0_LIB_LDFLAGS := $(STAGE0_LIB_PATH)
 
-STAGE0_LIBC_CFLAGS := $(OPT_FLAGS) \
+STAGE0_LIBC_CFLAGS := $(OPT_FLAGS) $(SPRT_CONSUMER_FLAGS) \
 	$(STAGE0_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC \
 	$(STAGE0_LIB_PATH)
-STAGE0_LIBC_CXXFLAGS := $(OPT_FLAGS) \
+STAGE0_LIBC_CXXFLAGS := $(OPT_FLAGS) $(SPRT_CONSUMER_FLAGS) $(STAGE0_CXX_INCLUDE_PATH) \
 	$(STAGE0_WARN_FLAGS) $(STAGE0_CXX_WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC \
 	$(STAGE0_LIB_PATH)
 STAGE0_LIBC_RCFLAGS := $(OPT_FLAGS) \
@@ -97,13 +103,13 @@ export CXX=$(PREBUILTS_PATH)/clang++
 export RC=$(STAGE0_RC)
 export ASM_MASM=$(STAGE0_ML)
 
-export INCLUDE := $(abspath ../../../include);$(abspath ../../../include_libc);$(abspath $(STAGE0_SYSROOT)/include);$(abspath ../../../include_libc/cxx);$(abspath ../../../libcxx/include);$(abspath ../../../include/sprt/wrappers/windows);$(abspath ../../../include/sprt/wrappers/windows/casemap)
+export INCLUDE := $(abspath ../../../include);$(abspath $(STAGE0_SYSROOT)/include);$(abspath ../../../include/sprt/wrappers/windows);$(abspath ../../../include/sprt/wrappers/windows/casemap);$(abspath ../../../include_libc)
 export LIB := $(abspath ../../target-windows/intermediate/$(notdir $(TARGET_SYSROOT))/lib);$(abspath ../../target-windows/intermediate/$(notdir $(TARGET_SYSROOT))/usr/lib);$(abspath $(STAGE0_SYSROOT)/lib)
 
 $(info INCLUDE: $(INCLUDE))
 $(info LIB: $(LIB))
 
-$(STAGE0_HOST_TOOLCHAIN_CMAKE):
+$(STAGE0_HOST_TOOLCHAIN_CMAKE): $(lastword $(MAKEFILE_LIST))
 	@mkdir -p $(dir $@)
 	@echo 'set(CMAKE_SYSTEM_NAME Windows)' > $@
 	@echo 'set(CMAKE_C_SIMULATE_ID MSVC)' >> $@
@@ -131,13 +137,14 @@ $(STAGE0_HOST_TOOLCHAIN_CMAKE):
 	@echo 'set(CMAKE_LINKER "$(STAGE0_LLD)")'>> $@
 	@echo 'set(CMAKE_ASM_MASM_COMPILER "$(STAGE0_ML)")'>> $@
 
-$(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE):
+$(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE): $(lastword $(MAKEFILE_LIST))
 	@mkdir -p $(dir $@)
 	@echo 'set(CMAKE_SYSTEM_NAME Windows)' > $@
 	@echo 'set(CMAKE_C_SIMULATE_ID MSVC)' >> $@
 	@echo 'set(CMAKE_CXX_SIMULATE_ID MSVC)' >> $@
 	@echo 'set(CMAKE_MSVC_RUNTIME_LIBRARY "Sprt")' >> $@
-	@echo 'set(CMAKE_CXX_STANDARD 20)' >> $@ 
+	@echo 'set(CMAKE_CXX_STANDARD 20)' >> $@
+	@echo 'set(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX "$(abspath $(STAGE0_SYSROOT))/cxxstd.cmake")' >> $@
 	@echo 'set(CMAKE_C_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
 	@echo 'set(CMAKE_CXX_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
 	@echo 'set(CMAKE_SYSROOT $(realpath $(STAGE0_SYSROOT)))'>> $@
@@ -163,6 +170,14 @@ $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE):
 	@echo 'set(CMAKE_LINKER_TYPE LLD)'>> $@
 	@echo 'set(CMAKE_LINKER "$(STAGE0_LLD)")'>> $@
 	@echo 'set(CMAKE_ASM_MASM_COMPILER "$(STAGE0_ML)")'>> $@
+	@echo 'set(CMAKE_CXX17_STANDARD_COMPILE_OPTION "-std:c++20")' > $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX17_EXTENSION_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX14_STANDARD_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX14_EXTENSION_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX11_STANDARD_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX11_EXTENSION_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX98_STANDARD_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
+	@echo 'set(CMAKE_CXX98_EXTENSION_COMPILE_OPTION "-std:c++20")' >> $(STAGE0_SYSROOT)/cxxstd.cmake
 
 
 STAGE0_BUILD_ZLIB := cmake -G "Ninja" \
@@ -220,6 +235,35 @@ $(STAGE0_LIBXML2): $(ZLIB_DIR) $(STAGE0_HOST_TOOLCHAIN_CMAKE)
 
 STAGE0_BUILD_CC_LTO := -DLLVM_ENABLE_LTO=Full -DLLVM_PARALLEL_LINK_JOBS=6
 
+# LLVM's own test suites - the lit trees and the googletest unit tests. Off by default:
+# a released toolchain does not need them, and they cost build time and disk space. Set
+# STAGE0_TESTS=1 to build them; everything about running them - what the three CMake
+# switches below do, how the suites are made runnable from a Linux host, which failure
+# classes are not sprt bugs - is in README.md next to this file.
+STAGE0_TESTS ?= 0
+
+ifeq ($(STAGE0_TESTS),1)
+STAGE0_BUILD_CC_TESTS := -DLLVM_INCLUDE_TESTS=On -DLLVM_BUILD_TESTS=On \
+	-DCLANG_INCLUDE_TESTS=On -DLLDB_INCLUDE_TESTS=On
+else
+STAGE0_BUILD_CC_TESTS := -DLLVM_INCLUDE_TESTS=Off -DLLDB_INCLUDE_TESTS=Off
+endif
+
+# Extensionless aliases for the tools lit drives by name (`FileCheck`, `llvm-config`) -
+# what CreateProcess supplies implicitly on Windows. bin/ only; see README.md.
+STAGE0_LIT_TOOL_ALIASES = cd build/llvm_stage0/bin && for f in *.exe; do \
+		b="$${f%.exe}"; [ -e "$$b" ] || ln -s "$$f" "$$b"; \
+	done
+
+# Stage sprt.dll into bin/ and beside every unit-test binary - nothing in the generated
+# build does it, and without it nothing here starts at all. See README.md; the failure
+# modes it prevents are misleading enough to be worth reading about before debugging one.
+STAGE0_LIT_RUNTIME_STAGING = cp -f $(SPRT_TARGET_BIN)/sprt.dll build/llvm_stage0/bin/ && \
+	cd build/llvm_stage0 && \
+	for d in $$(find . -name '*Tests.exe' -printf '%h\n' | sort -u); do \
+		[ -e "$$d/sprt.dll" ] || ln -s "$$(realpath --relative-to=$$d bin/sprt.dll)" "$$d/sprt.dll"; \
+	done
+
 STAGE0_BUILD_CC := cmake \
 	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)) \
 	-G "Ninja" -S $(LLVM_DIR)/llvm -B build/llvm_stage0 \
@@ -233,8 +277,7 @@ STAGE0_BUILD_CC := cmake \
 	-DLLVM_ENABLE_RUNTIMES="compiler-rt" \
 	-DLLVM_FORCE_BUILD_RUNTIME=ON \
 	-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly" \
-	-DLLDB_INCLUDE_TESTS=Off \
-	-DLLVM_INCLUDE_TESTS=Off \
+	$(STAGE0_BUILD_CC_TESTS) \
 	-DLLVM_ENABLE_SPHINX=Off \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
@@ -262,15 +305,22 @@ STAGE0_BUILD_CC := cmake \
 	-DRUNTIMES_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE))" \
 	-DCMAKE_MSVC_RUNTIME_LIBRARY=$(MSCV_RUNTIME) \
 	-DLLDB_ENABLE_PYTHON=Off \
+	-DHAVE_TERMIOS_H=0 \
+	-DCLANG_TOOL_CLANG_REPL_BUILD=Off \
 	-DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
 	-DCMAKE_CXX_STANDARD=20 \
 	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT))
 
 $(STAGE0_CLANG_CC): $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)
 	@echo "Build STAGE0_CLANG_CC $(STAGE0_CLANG_CC)"
+	-chmod -R u+rwX build/llvm_stage0 2>/dev/null
 	$(call rule_rm,build/llvm_stage0)
 	$(STAGE0_BUILD_CC)
 	cmake --build build/llvm_stage0 --parallel
+ifeq ($(STAGE0_TESTS),1)
+	$(STAGE0_LIT_TOOL_ALIASES)
+	$(STAGE0_LIT_RUNTIME_STAGING)
+endif
 	cmake --install build/llvm_stage0
 	touch $(STAGE0_CLANG_CC)
 
@@ -322,10 +372,7 @@ STAGE0_SPIRV_CONF := cmake \
 	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT)) \
 	-DSPIRV_TOOLS_BUILD_STATIC=On \
 	-DSPIRV_TOOLS_LIBRARY_TYPE=STATIC \
-	-DCMAKE_C_FLAGS_INIT="-flto" \
-	-DCMAKE_CXX_FLAGS_INIT="-flto" \
-	-DCMAKE_C_FLAGS="-flto" \
-	-DCMAKE_CXX_FLAGS="-flto" \
+	-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
 	-DCMAKE_EXE_LINKER_FLAGS="-flto" \
 	-DCMAKE_SHARED_LINKER_FLAGS="-flto"
 
@@ -352,10 +399,7 @@ STAGE0_GLSLANG_CONF := cmake \
 	-DENABLE_OPT=On \
 	-DALLOW_EXTERNAL_SPIRV_TOOLS=On \
 	-DGLSLANG_ENABLE_INSTALL=On \
-	-DCMAKE_C_FLAGS_INIT="-flto" \
-	-DCMAKE_CXX_FLAGS_INIT="-flto" \
-	-DCMAKE_C_FLAGS="-flto" \
-	-DCMAKE_CXX_FLAGS="-flto" \
+	-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
 	-DCMAKE_EXE_LINKER_FLAGS="-flto" \
 	-DCMAKE_SHARED_LINKER_FLAGS="-flto"
 
@@ -367,8 +411,16 @@ $(STAGE0_GLSLANG): $(STAGE0_SYSROOT)/bin/spirv-opt.exe $(STAGE0_SYSROOT)/include
 	cmake --install build/stage0-glslang
 	$(call rule_touch,$@)
 
+# Everything installed into this sysroot links the runtime as a DLL, so the DLL belongs
+# beside it - otherwise nothing here is runnable in place (under wine, say) even though
+# it links fine.
+$(STAGE0_SYSROOT)/bin/sprt.dll: $(SPRT_TARGET_BIN)/sprt.dll
+	$(call rule_mkdir,$(STAGE0_SYSROOT)/bin)
+	$(call rule_cp,$<,$@)
+
 stage0: $(STAGE0_ZLIB) $(STAGE0_LIBXML2) $(STAGE0_CLANG_CC) \
 	$(STAGE0_SYSROOT)/include/vulkan/vulkan.h \
 	$(STAGE0_SYSROOT)/include/spirv/unified1/spirv.h \
 	$(STAGE0_SYSROOT)/bin/spirv-opt.exe \
+	$(STAGE0_SYSROOT)/bin/sprt.dll \
 	$(STAGE0_GLSLANG)

@@ -580,6 +580,18 @@ headers: $(HEADER_STAMPS)
 # Each closed framework is a proper bundle: Foundation.framework/Foundation.tbd
 # (linker: -framework Foundation) + Foundation.framework/Headers/Foundation.h
 # (compiler: #import <Foundation/Foundation.h> resolves via framework search).
+#
+# The overlay carries stubs ONLY for libraries the platform owns. It must NOT carry
+# libc++.tbd / libc++abi.tbd / libunwind.tbd: those are produced by llvm-readtapi from
+# the dylibs libcxx.mk cross-builds (see gen-oss-stubs.sh, which classifies the whole
+# C++ ABI symbol set as "cxxabi-skip" for exactly this reason). The copy below is
+# FORCE'd and unconditional, so an overlay copy of one of them silently overwrites the
+# generated stub on every re-run of the +open pipeline — and it does so INVISIBLY,
+# because the pipeline's up-to-date marker for the libcxx stage is libc++.tbd
+# (target-apple/Makefile), which a stale libc++abi.tbd leaves untouched. The symptom is
+# a link that suddenly cannot resolve the canonical C++ ABI (typeinfo/vtable for
+# std::exception, __dynamic_cast, __cxa_uncaught_exception[s], std::get_new_handler,
+# the builtin typeinfos) against a sysroot that used to link fine.
 OPEN_SYSROOT_FILES := $(shell find $(OPEN_SYSROOT) \( -type f -o -type l \) 2>/dev/null)
 
 $(OSS_STAMP)/stubs: $(OPEN_SYSROOT_FILES) | $(OSS_STAMP)

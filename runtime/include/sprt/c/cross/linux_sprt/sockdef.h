@@ -276,5 +276,9 @@
 
 #define __SPRT_SCM_RIGHTS 0x01
 #define __SPRT_SCM_CREDENTIALS 0x02
+// SCM_SECURITY: в bits/socket.h у glibc 2.33 ещё нет, у 2.39 уже есть. Гвард в
+// SPRuntimeCSysSocket.cpp двусторонний, так что отсутствие имени здесь — ошибка
+// сборки на новой libc, а не молчаливый пропуск.
+#define __SPRT_SCM_SECURITY 0x03
 
 // clang-format on

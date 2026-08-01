@@ -104,10 +104,10 @@ host-cross-aarch64-unknown-linux-musl: target-aarch64-unknown-linux-musl
 host-cross-riscv64-unknown-linux-musl: target-riscv64-unknown-linux-musl
 	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-musl) SP_ARCH_HOST=riscv64
 
-host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc
+host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc+dll
 	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/x86_64-pc-windows-msvc) SP_ARCH_HOST=x86_64
 
-host-cross-aarch64-pc-windows-msvc: target-aarch64-pc-windows-msvc
+host-cross-aarch64-pc-windows-msvc: target-aarch64-pc-windows-msvc+dll
 	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/aarch64-pc-windows-msvc) SP_ARCH_HOST=aarch64
 
 host-cross-x86_64-apple-macosx: target-x86_64-apple-macosx+open
@@ -190,6 +190,30 @@ target-linux-musl: \
 
 
 #
+# Xenolith OS device targets
+#
+# Отдельный вендор в триплете обязателен: libc здесь другая (glibc 2.39 против
+# 2.33 у -unknown-linux-gnu), а одинаковое имя при разном ABI ведёт прямо к
+# перепутанным сборкам. Кроме sysroot таргет несёт рантайм устройства
+# (base-rootfs с userland), из которого xenolith-os собирает образ для железа.
+#
+
+target-x86_64-xenolithos-linux-gnu: host
+	$(MAKE) -C target-xenolithos TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-xenolithos-linux-gnu
+
+target-aarch64-xenolithos-linux-gnu: host
+	$(MAKE) -C target-xenolithos TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-xenolithos-linux-gnu
+
+target-riscv64-xenolithos-linux-gnu: host
+	$(MAKE) -C target-xenolithos TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64-xenolithos-linux-gnu
+
+# riscv64 собирается по имени: реальных борд под него пока нет.
+target-xenolithos: \
+	target-aarch64-xenolithos-linux-gnu \
+	target-x86_64-xenolithos-linux-gnu \
+	target-riscv64-xenolithos-linux-gnu
+
+#
 # Apple targets
 #
 
@@ -198,12 +222,6 @@ target-x86_64-apple-macosx:
 
 target-aarch64-apple-macosx:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx
-
-target-x86_64-apple-macosx+sprt:
-	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-macosx+sprt
-
-target-aarch64-apple-macosx+sprt:
-	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx+sprt
 
 target-x86_64-apple-macosx+open:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-macosx+open
@@ -223,8 +241,6 @@ target-aarch64-apple-ios-simulator:
 target-macosx: \
 	target-x86_64-apple-macosx \
 	target-aarch64-apple-macosx \
-	target-x86_64-apple-macosx+sprt \
-	target-aarch64-apple-macosx+sprt
 
 # Xcode-SDK-free macOS sysroots (Apple open-source headers mixed in). Kept out of
 # the default `target-macosx` aggregate for now — build explicitly by name.
@@ -254,6 +270,22 @@ target-windows: \
 	target-x86_64-pc-windows-msvc \
 	target-aarch64-pc-windows-msvc
 
+# Sysroots built around sprt.dll instead of the static runtime archive. Separate targets,
+# not a flag: the two write the same file names with incompatible content, and the sprt.lib
+# rule does not depend on the flag, so switching modes over an up-to-date sysroot rebuilds
+# nothing and silently hands out the previous mode's artifact. They carry the runtime layer
+# only - see the "+dll" recipes in target-windows/Makefile. Kept out of `target-windows`,
+# the way target-macosx-open is kept out of target-macosx.
+target-x86_64-pc-windows-msvc+dll: host
+	$(MAKE) -C target-windows TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64+dll
+
+target-aarch64-pc-windows-msvc+dll: host
+	$(MAKE) -C target-windows TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64+dll
+
+target-windows-dll: \
+	target-x86_64-pc-windows-msvc+dll \
+	target-aarch64-pc-windows-msvc+dll
+
 target-wasm32-unknown-unknown: host
 	$(MAKE) -C target-wasm TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) wasm32
 
@@ -261,15 +293,17 @@ target-wasm: target-wasm32-unknown-unknown
 
 target-all: \
 	target-linux target-linux-musl \
+	target-xenolithos \
 	target-android target-android-ndk \
 	target-apple \
-	target-windows \
+	target-windows target-windows-dll \
 	target-wasm
 
 clean-targets:
 	rm -rf targets
 	rm -rf target-windows/intermediate
 	rm -rf target-linux/intermediate
+	rm -rf target-xenolithos/intermediate
 	rm -rf target-apple/intermediate
 	rm -rf target-android/intermediate
 
@@ -310,6 +344,10 @@ targets-export:\
 	target-x86_64-unknown-linux-musl \
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
+	target-xenolithos \
+	target-x86_64-xenolithos-linux-gnu \
+	target-aarch64-xenolithos-linux-gnu \
+	target-riscv64-xenolithos-linux-gnu \
 	target-android-ndk \
 	target-unknown-ndk-linux-android \
 	target-android \
@@ -322,8 +360,6 @@ targets-export:\
 	target-macosx \
 	target-x86_64-apple-macosx \
 	target-aarch64-apple-macosx \
-	target-x86_64-apple-macosx+sprt \
-	target-aarch64-apple-macosx+sprt \
 	target-macosx-open \
 	target-x86_64-apple-macosx+open \
 	target-aarch64-apple-macosx+open \
@@ -334,6 +370,9 @@ targets-export:\
 	target-windows \
 	target-x86_64-pc-windows-msvc \
 	target-aarch64-pc-windows-msvc \
+	target-windows-dll \
+	target-x86_64-pc-windows-msvc+dll \
+	target-aarch64-pc-windows-msvc+dll \
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \

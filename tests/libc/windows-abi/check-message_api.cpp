@@ -449,6 +449,12 @@ SPRT_CONST(QS_ALLINPUT);
 SPRT_CONST(LANG_ENGLISH);
 SPRT_CONST(SUBLANG_ENGLISH_US);
 
+// Format selector for the MUI language-list APIs (winnls.h). These pick between the
+// two representations GetUserPreferredUILanguages writes into its buffer, so the two
+// values are not interchangeable and a swap would be caught only at runtime.
+SPRT_CONST(MUI_LANGUAGE_ID);
+SPRT_CONST(MUI_LANGUAGE_NAME);
+
 // === OMITTED ===============================================================
 // Function-like macros (skipped per spec): LOWORD, HIWORD, GET_X_LPARAM,
 // GET_Y_LPARAM, GET_KEYSTATE_WPARAM, GET_NCHITTEST_WPARAM, GET_XBUTTON_WPARAM,
