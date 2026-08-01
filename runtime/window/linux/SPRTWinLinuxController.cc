@@ -33,6 +33,8 @@
 #include "wayland/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
 #include "SPRTWinLinuxDisplay.h"
 #include "SPRTWinLinuxXkbLibrary.h"
+#include "drm/SPRTWinLinuxDrmLibrary.h"
+#include "drm/SPRTWinLinuxDrmDisplayConfigManager.h"
 
 #include <sprt/runtime/utils/verutils.h>
 
@@ -41,10 +43,24 @@
 
 namespace sprt::window {
 
-// True if a DRM/KMS device is present, so we can render directly to a display
-// via VK_KHR_display without any window system.
-static bool s_hasDrmDevice() {
-	return ::access("/dev/dri/card0", F_OK) == 0 || ::access("/dev/dri/card1", F_OK) == 0;
+// Opens the DRM/KMS device on first use, so we can render directly to a display
+// without any window system. Cached: the fd stays open for the whole session --
+// the gAPI acquires the display through it and stays DRM master.
+bool LinuxContextController::hasDrmDevice() {
+	if (!_drmDevice) {
+		if (!_drm) {
+			// Null where libdrm is missing at build or at run time; then no device
+			// is ever opened and direct-to-display mode simply stays off.
+			_drm = Rc<DrmLibrary>::create();
+		}
+		if (_drm) {
+			_drmDevice = DrmDevice::openFirst(_drm);
+			if (_drmDevice) {
+				_drmDevice->logConnectors();
+			}
+		}
+	}
+	return _drmDevice != nullptr;
 }
 
 void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
@@ -138,7 +154,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 		// In direct-display (KMS) mode there is no session/system bus to talk to;
 		// skip D-Bus entirely so it does not log spurious connection failures.
 		bool willBeKms = StringView(sessionType) != "wayland" && StringView(sessionType) != "x11"
-				&& s_hasDrmDevice();
+				&& hasDrmDevice();
 		if (!willBeKms && _dbusController) {
 			_dbusController->setup();
 		}
@@ -182,7 +198,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 				_xcbConnection = Rc<XcbConnection>::create(_xcb, _xkb);
 			}
 			instance = _context->makeInstance(_instanceInfo);
-		} else if (s_hasDrmDevice()) {
+		} else if (hasDrmDevice()) {
 			// No window system, but a DRM/KMS device is present: render directly
 			// to the display via VK_KHR_display (no Wayland/X11/D-Bus).
 			_kmsMode = true;
@@ -363,18 +379,24 @@ SurfaceSupportInfo LinuxContextController::getSupportInfo() const {
 		info.xcb.connection = _xcbConnection->getConnection();
 		info.xcb.visual_id = _xcbConnection->getDefaultScreen()->root_visual;
 	}
-	if (_kmsMode) {
-		// Enable VK_KHR_display so the instance enumerates displays/planes/modes
-		// and presentation support counts the direct-display path.
+	if (_kmsMode && _drmDevice) {
+		// Enable the direct-display backend so the instance enumerates
+		// displays/planes/modes and presentation support counts that path.
 		info.backendMask.set(toInt(SurfaceBackend::Display));
+		info.display.fd = _drmDevice->getFd();
+		info.display.connectorId = _drmDevice->getConnectorId();
 	}
 	return info;
 }
 
 void LinuxContextController::tryStart() {
 	if (_kmsMode) {
-		// Direct-display: no D-Bus, no window-system connection, no
-		// DisplayConfigManager (screen config comes from VK_KHR_display).
+		// Direct-display: no D-Bus and no window-system connection, but the DRM
+		// device itself enumerates monitors and modes.
+		if (_drmDevice && !_displayConfigManager) {
+			_displayConfigManager = Rc<DrmDisplayConfigManager>::create(_drmDevice,
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
 		_looper->performOnThread([this] {
 			if (!resume()) {
 				oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
@@ -432,7 +454,7 @@ void LinuxContextController::tryStart() {
 bool LinuxContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
 	Rc<NativeWindow> window;
 	if (_kmsMode) {
-		window = Rc<DisplayWindow>::create(this, move(wInfo));
+		window = Rc<DisplayWindow>::create(this, Rc<DrmDevice>(_drmDevice), move(wInfo));
 		if (window) {
 			notifyWindowCreated(window);
 		}
@@ -486,6 +508,9 @@ void LinuxContextController::handleContextDidDestroy() {
 	_waylandDisplay = nullptr;
 	_dbus = nullptr;
 	_xkb = nullptr;
+	// Closes the DRM fd; safe here, every surface built from it is already gone.
+	_drmDevice = nullptr;
+	_drm = nullptr;
 
 	if (_looper) {
 		_looper->wakeup(dispatch::WakeupFlags::Graceful);

@@ -32,12 +32,22 @@ DisplayWindow::~DisplayWindow() { }
 
 DisplayWindow::DisplayWindow() { }
 
-bool DisplayWindow::init(NotNull<LinuxContextController> c, Rc<WindowInfo> &&info) {
+bool DisplayWindow::init(NotNull<LinuxContextController> c, Rc<DrmDevice> &&dev,
+		Rc<WindowInfo> &&info) {
+	if (!dev) {
+		return false;
+	}
+
 	// Direct display: exclusive fullscreen on a plane, no server-side chrome.
 	auto caps = WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenExclusive
 			| WindowCapabilities::FullscreenWithMode;
 
-	_extent = Extent2(info->rect.width, info->rect.height);
+	_drm = sprt::move(dev);
+
+	// The scanout size is whatever the connector's mode is, NOT WindowInfo::rect
+	// (which carries a desktop default like 1024x768).
+	auto mode = _drm->getMode();
+	_extent = Extent2(mode.width, mode.height);
 
 	if (!NativeWindow::init(c, move(info), caps)) {
 		return false;
@@ -62,8 +72,18 @@ Extent2 DisplayWindow::getExtent() const { return _extent; }
 SurfaceInterfaceInfo DisplayWindow::getSurfaceInterfaceInfo() const {
 	SurfaceInterfaceInfo ret;
 	ret.backend = SurfaceBackend::Display;
-	// The concrete display/mode/plane is resolved from the physical device in
-	// AppWindow::makeSurface (VK_KHR_display), so no per-window handle is needed here.
+	if (_drm) {
+		// The gAPI acquires this connector and builds a plane surface at this mode.
+		// The fd stays owned by _drm and must outlive the surface (the gAPI becomes
+		// DRM master for the acquired display), so it is passed, never transferred.
+		auto mode = _drm->getMode();
+		ret.display.fd = _drm->getFd();
+		ret.display.connectorId = _drm->getConnectorId();
+		ret.display.crtcId = _drm->getCrtcId();
+		ret.display.width = mode.width;
+		ret.display.height = mode.height;
+		ret.display.rate = mode.rate;
+	}
 	return ret;
 }
 

@@ -30,24 +30,26 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/native_window.h>
 
+#include "drm/SPRTWinLinuxDrmDevice.h"
+
 namespace sprt::window {
 
 class LinuxContextController;
 
 // Direct-to-display native window: no window system (no Wayland/X11).
 //
-// Uses VK_KHR_display: the actual surface is created from the physical device's
-// enumerated display/plane/mode (see AppWindow::makeSurface Display case, which
-// mirrors PresentationEngine::setFullscreenSurface). This class is a thin holder
-// for the target extent + a Display-tagged SurfaceInterfaceInfo. There is no OS
-// window to map/unmap and (for now) no input/cursor/text-input.
+// The KMS device (connector + mode) is resolved by DrmDevice and handed to the
+// gAPI through a Display-tagged SurfaceInterfaceInfo, which is where the actual
+// surface is built from (see AppWindow::makeSurface Display case). This class is
+// a thin holder for the device + the target extent. There is no OS window to
+// map/unmap and (for now) no input/cursor/text-input.
 class DisplayWindow final : public NativeWindow {
 public:
 	virtual ~DisplayWindow();
 
 	DisplayWindow();
 
-	bool init(NotNull<LinuxContextController>, Rc<WindowInfo> &&);
+	bool init(NotNull<LinuxContextController>, Rc<DrmDevice> &&, Rc<WindowInfo> &&);
 
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
@@ -70,6 +72,7 @@ protected:
 			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
 	virtual void cancelTextInput() override;
 
+	Rc<DrmDevice> _drm;
 	Extent2 _extent;
 };
 

@@ -34,8 +34,6 @@
 #include "XLVkInstance.h"
 #endif
 
-#include <unistd.h>
-
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
@@ -730,12 +728,9 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 					uint32_t ndisplays = 0;
 					inst->vkGetPhysicalDeviceDisplayPropertiesKHR(device, &ndisplays, nullptr);
 					// Software/headless drivers (lavapipe) report 0 displays but can
-					// still drive a KMS connector we acquire ourselves — accept if a
-					// DRM node is present. See Instance::createDisplayPlaneSurface().
-					bool hasDrm = false;
-					hasDrm = ::access("/dev/dri/card0", 0) == 0
-							|| ::access("/dev/dri/card1", 0) == 0;
-					if (ndisplays > 0 || hasDrm) {
+					// still drive the KMS connector the window system opened, which we
+					// acquire through its fd. See Instance::createDisplayPlaneSurface().
+					if (ndisplays > 0 || supportInfo.display.fd >= 0) {
 						ret.set(toInt(vk::SurfaceBackend::Display));
 					}
 				}
