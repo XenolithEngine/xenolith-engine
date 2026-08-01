@@ -84,7 +84,7 @@
 	CFAbsoluteTime _lastConstraintsNotifyTime;
 };
 
-@property (nonatomic, assign) BOOL displayLinkPaused;
+@property(nonatomic, assign) BOOL displayLinkPaused;
 
 - (instancetype _Nonnull)init:(NSSP::NotNull<NSSPWIN::MacosWindow>)constroller
 					   window:(NSWindow *_Nonnull)window;
@@ -163,9 +163,9 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 				static_cast<CGFloat>(_info->minExtent.height));
 	}
 	if (_info->maxExtent != Extent2::ZERO) {
-		_window.contentMaxSize = NSMakeSize(
-				_info->maxExtent.width != 0 ? static_cast<CGFloat>(_info->maxExtent.width)
-											: CGFLOAT_MAX,
+		_window.contentMaxSize = NSMakeSize(_info->maxExtent.width != 0
+						? static_cast<CGFloat>(_info->maxExtent.width)
+						: CGFLOAT_MAX,
 				_info->maxExtent.height != 0 ? static_cast<CGFloat>(_info->maxExtent.height)
 											 : CGFLOAT_MAX);
 	}
@@ -634,6 +634,16 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	CAMetalLayer *metalLayer = (CAMetalLayer *)view.layer;
 	metalLayer.drawableSize = [view convertSizeToBacking:view.frame.size];
 
+	if (NSSP::hasFlag(_engineWindow->getInfo()->flags,
+				NSSPWIN::WindowCreationFlags::UserSpaceDecorations)) {
+		metalLayer.cornerRadius = 10.0;
+		metalLayer.masksToBounds = YES;
+		// thin light hairline hugging the rounded edge, like native macOS windows
+		metalLayer.borderWidth = 0.5;
+		metalLayer.borderColor = [NSColor colorWithWhite:0.85 alpha:0.7].CGColor;
+		[_engineWindow->getWindow() setHasShadow:YES];
+	}
+
 	self.view = view;
 }
 
@@ -668,7 +678,8 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		const CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
 		constexpr CFAbsoluteTime kMinInterval = 0.05; // 20 Hz
 		constexpr CGFloat kMinDelta = 8.0; // backing pixels
-		if ((dx < kMinDelta && dy < kMinDelta) && (now - _lastConstraintsNotifyTime) < kMinInterval) {
+		if ((dx < kMinDelta && dy < kMinDelta)
+				&& (now - _lastConstraintsNotifyTime) < kMinInterval) {
 			shouldNotify = false;
 		}
 	}
