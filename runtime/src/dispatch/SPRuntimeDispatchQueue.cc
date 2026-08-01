@@ -265,6 +265,53 @@ Rc<WatchHandle> Queue::watchFile(StringView path, WatchFlags mask,
 	return watchFile(move(info), data);
 }
 
+Rc<ListenHandle> Queue::listenSocket(ListenInfo &&info, Ref *ref) {
+	auto h = _data->listenSocket(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<ListenHandle> Queue::listenSocket(const SocketAddress &addr,
+		ListenInfo::AcceptCallback &&onAccept, Ref *ref) {
+	ListenInfo info;
+	info.address = addr;
+	info.onAccept = sprt::move(onAccept);
+	return listenSocket(move(info), ref);
+}
+
+Rc<StreamHandle> Queue::connectSocket(ConnectInfo &&info, Ref *ref) {
+	auto h = _data->connectSocket(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<StreamHandle> Queue::connectSocket(const SocketAddress &addr,
+		dispatch::Function<void(StreamHandle *, Status)> &&onConnect, Ref *ref) {
+	struct ConnectCbData : public Ref {
+		dispatch::Function<void(StreamHandle *, Status)> cb;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<ConnectCbData>::alloc();
+	data->cb = sprt::move(onConnect);
+	data->ref = ref;
+
+	ConnectInfo info;
+	info.address = addr;
+	info.completion = ConnectInfo::Completion::create<ConnectCbData>(data,
+			[](ConnectCbData *data, StreamHandle *handle, uint32_t value, Status st) {
+		if (data->cb) {
+			data->cb(handle, st);
+		}
+	});
+
+	return connectSocket(move(info), data);
+}
+
 Rc<ThreadHandle> Queue::addThreadHandle() {
 	auto h = _data->addThreadHandle();
 	_data->runHandle(h);

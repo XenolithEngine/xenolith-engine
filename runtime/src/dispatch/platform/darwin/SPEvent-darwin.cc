@@ -25,6 +25,7 @@
 #include "SPEvent-runloop.h"
 #include "../fd/SPEventFile.h"
 #include "../fd/SPEventStatWatch.h"
+#include "../fd/SPEventSocket.h"
 
 #include <signal.h>
 
@@ -66,6 +67,15 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			// own (CFFileDescriptor/CFSocket are outside the freestanding CF surface),
 			// so the child process is reaped and its output drained by a repeating
 			// reactor timer — the same inline strategy used for file I/O below.
+			// Socket readiness follows the same pattern: the portable probe poller
+			// (a repeating reactor timer + zero-timeout poll(2)) backs _socketPoll,
+			// so listenSocket/connectSocket work on the main RunLoop too — with
+			// probe-interval latency; latency-sensitive socket work is still better
+			// placed on a KQueue-engine looper (e.g. the app thread).
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				return makeSocketProbeHandle(d, sock, flags, sprt::move(cb));
+			};
 			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
 									Ref *ref) -> Rc<ProcessHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
@@ -93,6 +103,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			setupRunLoopProcessHandleClass(&_info, &_runloopProcessClass);
 			setupInlineFileHandleClass(&_info, &_runloopFileClass);
 			setupStatWatchClass(&_info, &_runloopWatchClass);
+			setupSocketHandleClasses(&_info, this);
+			setupSocketProbeClass(&_info, &_socketProbeClass);
 
 			_platformQueue = runloop;
 			_engine = QueueEngine::RunLoop;
@@ -139,6 +151,13 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 						sprt::move(cb));
 			};
 
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<ReadKQueueHandle>::create(&data->_kqueuePollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
 			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
 									Ref *ref) -> Rc<ProcessHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
@@ -174,6 +193,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			setupKQueueHandleClass<KQueueWatchHandle, KQueueWatchSource>(&_info, &_kqueueWatchClass,
 					true);
 			setupInlineFileHandleClass(&_info, &_kqueueFileClass);
+			setupSocketHandleClasses(&_info, this);
 
 			_platformQueue = queue;
 			_engine = QueueEngine::KQueue;

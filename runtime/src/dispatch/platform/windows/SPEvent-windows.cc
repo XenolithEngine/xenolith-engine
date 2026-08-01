@@ -31,7 +31,9 @@
 #include "SPEventProcessIocp.h"
 #include "SPEventFileIocp.h"
 #include "SPEventWatchIocp.h"
+#include "SPEventSocketIocp.h"
 #include "../fd/SPEventFile.h"
+#include "../fd/SPEventSocket.h"
 #include "platform/windows/SPEvent-iocp.h"
 
 #include <sprt/c/__sprt_fcntl.h>
@@ -48,6 +50,11 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
 		setupIocpHandleClass<FileIocpHandle, FileIocpSource>(&_info, &_iocpFileClass, true);
 		setupIocpHandleClass<WatchIocpHandle, WatchIocpSource>(&_info, &_iocpWatchClass, true);
+		setupIocpHandleClass<SocketPollIocpHandle, SocketPollIocpSource>(&_info,
+				&_iocpSocketPollClass, true);
+		setupSocketHandleClasses(&_info, this);
+		setupSocketProbeClass(&_info, &_socketProbeClass);
+		setupIocpSocketStreamClass(&_info, &_iocpSocketStreamClass);
 		setupInlineFileHandleClass(&_info, &_iocpFileInlineClass);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
@@ -86,6 +93,34 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = static_cast<Queue::Data *>(d);
 				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle.handle, flags,
 						sprt::move(cb));
+			};
+
+			// a winsock SOCKET is not a waitable HANDLE - route socket readiness
+			// through the WSAEventSelect adapter; without wait-completion packets
+			// (wine aborts in the NtCreateWaitCompletionPacket stub) fall back to
+			// the portable probe poller (timer + zero-timeout WSAPoll)
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto iocp = static_cast<IocpData *>(ptr);
+				auto data = static_cast<Queue::Data *>(d);
+				if (iocp->_hasCompletionPackage) {
+					return Rc<SocketPollIocpHandle>::create(&data->_iocpSocketPollClass, sock,
+							flags, sprt::move(cb));
+				}
+				return makeSocketProbeHandle(d, sock, flags, sprt::move(cb));
+			};
+
+			// native overlapped streams for established connections (accepted
+			// ones foremost); a still-connecting stream resolves its connect on
+			// the readiness path (ConnectEx lives in the unwrapped mswsock.dll)
+			_makeSocketStream = [](QueueData *d, void *ptr,
+										   Rc<StreamState> &&state) -> Rc<StreamHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				if (state->connecting) {
+					return makeSocketStreamPollHandle(d, sprt::move(state));
+				}
+				return makeSocketStreamIocpHandle(d, &data->_iocpSocketStreamClass,
+						sprt::move(state));
 			};
 
 			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,

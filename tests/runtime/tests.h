@@ -57,6 +57,7 @@ void performDispatchTests();
 void performWatchFileTests();
 void performProcessTests();
 void performFileTests();
+void performSocketTests();
 void performUnicodeTests();
 void performDtoaTests();
 

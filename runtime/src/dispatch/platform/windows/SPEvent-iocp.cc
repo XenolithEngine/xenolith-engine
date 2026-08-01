@@ -127,6 +127,7 @@ uint32_t IocpData::processEvents(RunContext *ctx) {
 			data.result = ev.dwNumberOfBytesTransferred;
 			data.queueFlags = 0;
 			data.userFlags = 0;
+			data.ptr = ev.lpOverlapped;
 
 			_data->notify(h, data);
 

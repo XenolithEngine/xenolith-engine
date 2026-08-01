@@ -34,6 +34,10 @@ struct SPRT_API NotifyData {
 	intptr_t result = 0;
 	uint32_t queueFlags = 0;
 	uint32_t userFlags = 0;
+	// backend-specific routing pointer: the IOCP backend forwards lpOverlapped
+	// here so a handle with several outstanding overlapped ops (socket RECV +
+	// SEND) can tell which one completed; null elsewhere
+	void *ptr = nullptr;
 };
 
 struct SPRT_API QueueHandleClassInfo {

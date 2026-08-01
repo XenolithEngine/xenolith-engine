@@ -42,6 +42,8 @@ namespace sprt::dispatch {
 
 struct PlatformQueueData;
 struct FileState;
+struct ListenState;
+struct StreamState;
 
 // PerformEngine can be used for resumable nested 'perform' variants
 // Action, that performed within engine, can safely call Queue::run, that also can cause 'perform'
@@ -92,6 +94,20 @@ struct SPRT_API QueueData : public PerformEngine {
 	// (io_uring native, IOCP/overlapped native, or the portable inline handle).
 	using MakeFileHandleCallback = Rc<FileHandle> (*)(QueueData *, void *, Rc<FileState> &&);
 	using WatchFileCallback = Rc<WatchHandle> (*)(QueueData *, void *, WatchInfo &&, Ref *);
+	// Per-backend readiness poll for a socket descriptor - the single primitive
+	// the shared stream-socket state machine (SPEventSocket) needs from a
+	// backend for the readiness-based strategy. Takes the socket directly (not
+	// NativeHandle) so the 64-bit winsock SOCKET never truncates. Backends
+	// without one (wasm) leave it null and listenSocket/connectSocket return
+	// nullptr.
+	using SocketPollCallback = Rc<PollHandle> (*)(QueueData *, void *, SocketHandle, PollFlags,
+			CompletionHandle<PollHandle> &&);
+	// Optional native-strategy overrides (io_uring ACCEPT/RECV/SEND SQEs, IOCP
+	// overlapped I/O): turn a prepared socket state into the strategy's handle.
+	// When null, the shared readiness-based handles (driven by _socketPoll) are
+	// used. _makeSocketStream also wraps every ACCEPTED connection.
+	using MakeSocketListenCallback = Rc<ListenHandle> (*)(QueueData *, void *, Rc<ListenState> &&);
+	using MakeSocketStreamCallback = Rc<StreamHandle> (*)(QueueData *, void *, Rc<StreamState> &&);
 
 	QueueHandleClassInfo _info;
 	QueueFlags _flags = QueueFlags::None;
@@ -118,6 +134,22 @@ struct SPRT_API QueueData : public PerformEngine {
 	SpawnProcessCallback _spawnProcess = nullptr;
 	MakeFileHandleCallback _makeFileHandle = nullptr;
 	WatchFileCallback _watchFile = nullptr;
+	SocketPollCallback _socketPoll = nullptr;
+	MakeSocketListenCallback _makeSocketListen = nullptr;
+	MakeSocketStreamCallback _makeSocketStream = nullptr;
+
+	// Backend-agnostic socket handle classes (like the inotify watch class):
+	// set up via setupSocketHandleClasses() by every backend that assigns
+	// _socketPoll; untouched otherwise. _socketProbeClass is the portable
+	// timer + poll(2) readiness prober for backends without an fd primitive
+	// (CFRunLoop) - set up via setupSocketProbeClass().
+	HandleClass _socketListenClass;
+	HandleClass _socketStreamClass;
+	HandleClass _socketProbeClass;
+
+	// Wrap an (accepted) socket into the active stream strategy: native when
+	// _makeSocketStream is set, the shared readiness-based handle otherwise.
+	Rc<StreamHandle> makeStreamFromSocket(SocketHandle, bool connecting);
 
 	Thread::Id _threadId;
 
@@ -162,6 +194,9 @@ struct SPRT_API QueueData : public PerformEngine {
 	Rc<FileHandle> readFile(FileReadInfo &&, Ref *);
 	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref *);
 	Rc<WatchHandle> watchFile(WatchInfo &&, Ref *);
+	// Implemented in SPEventSocket.cc; nullptr when _socketPoll is not wired.
+	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref *);
+	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref *);
 	Rc<ThreadHandle> addThreadHandle();
 
 	~QueueData();

@@ -44,6 +44,9 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _uringProcessFdClass;
 	HandleClass _uringFileClass;
 	HandleClass _uringInotifyReaderClass;
+	HandleClass _uringSocketListenClass;
+	HandleClass _uringSocketStreamClass;
+	HandleClass _uringSocketSendClass;
 
 	HandleClass _epollThreadClass;
 	HandleClass _epollTimerFdClass;

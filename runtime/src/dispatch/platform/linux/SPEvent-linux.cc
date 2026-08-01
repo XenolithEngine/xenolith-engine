@@ -32,6 +32,8 @@
 #include "../fd/SPEventFile.h"
 #include "../fd/SPEventFileFd.h"
 #include "../fd/SPEventInotify.h"
+#include "../fd/SPEventSocket.h"
+#include "../fd/SPEventSocketFd.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
@@ -64,6 +66,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				&_alooperInotifyReaderClass, true);
 		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupInlineFileHandleClass(&_info, &_alooperFileClass);
+		setupSocketHandleClasses(&_info, this);
 
 		auto alooper = new (memory::pool::acquire())
 				ALooperData(_info.queue, this, info, SignalsToIntercept);
@@ -90,6 +93,20 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<ThreadEPollHandle>::create(&data->_alooperThreadClass);
+			};
+
+			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
+									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdALooperHandle>::create(&data->_alooperPollFdClass, handle.fd, flags,
+						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdALooperHandle>::create(&data->_alooperPollFdClass, int(sock), flags,
+						sprt::move(cb));
 			};
 
 			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
@@ -141,6 +158,9 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<InotifyReaderURingHandle, InotifySource>(&_info,
 				&_uringInotifyReaderClass, true);
 		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
+		setupSocketHandleClasses(&_info, this);
+		setupUringSocketClasses(&_info, &_uringSocketListenClass, &_uringSocketStreamClass,
+				&_uringSocketSendClass);
 
 		auto uring = new (memory::pool::acquire())
 				URingData(_info.queue, this, info, SignalsToIntercept);
@@ -183,6 +203,28 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<PollFdURingHandle>::create(&data->_uringPollFdClass, handle.fd, flags,
 						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdURingHandle>::create(&data->_uringPollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
+			// native strategy: operations as SQEs instead of readiness polling
+			_makeSocketListen = [](QueueData *d, void *ptr,
+										   Rc<ListenState> &&state) -> Rc<ListenHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeSocketListenUringHandle(d, &data->_uringSocketListenClass,
+						sprt::move(state));
+			};
+
+			_makeSocketStream = [](QueueData *d, void *ptr,
+										   Rc<StreamState> &&state) -> Rc<StreamHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeSocketStreamUringHandle(d, &data->_uringSocketStreamClass,
+						&data->_uringSocketSendClass, sprt::move(state));
 			};
 
 			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
@@ -239,6 +281,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				&_epollInotifyReaderClass, true);
 		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupInlineFileHandleClass(&_info, &_epollFileClass);
+		setupSocketHandleClasses(&_info, this);
 
 		auto epoll = new (memory::pool::acquire())
 				EPollData(_info.queue, this, info, SignalsToIntercept);
@@ -270,6 +313,13 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, handle.fd, flags,
+						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, int(sock), flags,
 						sprt::move(cb));
 			};
 

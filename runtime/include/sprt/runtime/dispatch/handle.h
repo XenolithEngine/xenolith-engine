@@ -209,6 +209,53 @@ protected:
 	WatchFlags _last = WatchFlags::None;
 };
 
+// Handle representing a listening stream socket (see Looper/Queue::listenSocket).
+// ListenInfo::onAccept runs on the looper thread once per accepted connection;
+// the handle's completion fires once when the listener terminates. Cancel the
+// handle to stop listening (an owned unix socket path is unlinked on teardown).
+class SPRT_API ListenHandle : public Handle {
+public:
+	virtual ~ListenHandle() = default;
+
+	// The address the socket is actually bound to: for TCP with port 0 the
+	// resolved ephemeral port, otherwise the address as configured.
+	const SocketAddress &getAddress() const;
+
+	// The underlying socket descriptor (for diagnostics; owned by the handle).
+	SocketHandle getSocket() const;
+};
+
+// Handle representing one stream-socket connection - either accepted by a
+// ListenHandle or created by Looper/Queue::connectSocket. All callbacks run on
+// the looper thread. The handle finalizes once both directions are finished
+// (peer EOF + local shutdownWrite, an error, or cancel()).
+class SPRT_API StreamHandle : public Handle {
+public:
+	virtual ~StreamHandle() = default;
+
+	// Start async reading: `reader` receives each incoming chunk; an empty
+	// BytesView signals EOF (the peer closed its write side). Return anything
+	// other than Status::Ok to stop further read delivery (the connection and
+	// its write side stay usable). Only one reader is active at a time; calling
+	// read() again replaces it.
+	Status read(Function<Status(BytesView)> &&reader);
+
+	// Copy `data` into the outgoing queue; it is flushed to the socket as
+	// writability allows. Returns Ok when queued (or fully sent inline).
+	Status write(BytesView data);
+
+	// Flush everything already queued, then shut down the write direction
+	// (the peer observes EOF). Further write() calls fail.
+	Status shutdownWrite();
+
+	// Optional terminal notification, fired once with the final status when the
+	// connection finishes (in addition to the Handle completion).
+	void setCloseCallback(Function<void(Status)> &&);
+
+	// The underlying socket descriptor (for diagnostics; owned by the handle).
+	SocketHandle getSocket() const;
+};
+
 class SPRT_API ThreadHandle : public Handle, public PerformInterface {
 public:
 	virtual ~ThreadHandle();

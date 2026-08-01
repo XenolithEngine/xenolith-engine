@@ -39,6 +39,8 @@ class PollHandle;
 class ProcessHandle;
 class FileHandle;
 class WatchHandle;
+class ListenHandle;
+class StreamHandle;
 
 struct BufferChain;
 
@@ -183,6 +185,73 @@ enum class WatchFlags : uint32_t {
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WatchFlags)
+
+// Cross-platform socket descriptor as it travels through the dispatch layer:
+// wide enough for both a POSIX int fd and the 64-bit winsock SOCKET, without
+// pulling socket headers into this public header. -1 is the invalid value on
+// every platform (INVALID_SOCKET is the all-ones pattern on winsock).
+using SocketHandle = intptr_t;
+static constexpr SocketHandle InvalidSocket = SocketHandle(-1);
+
+// Stream-socket endpoint address for Looper/Queue::listenSocket/connectSocket.
+// Parsed from and serialized to a single text form:
+//   "unix:/path/to.sock" - unix-domain (AF_UNIX) filesystem socket
+//   "unix:@name"         - unix-domain abstract-namespace socket (Linux/Android only)
+//   "host:port"          - numeric IPv4 endpoint (no DNS resolution)
+//   "[v6-literal]:port"  - numeric IPv6 endpoint (e.g. "[::1]:4490"; no zone ids)
+//   ":port"              - IPv4 loopback (listen and connect default to 127.0.0.1;
+//                          a debug-friendly secure default, not all-interfaces)
+// DNS names are future work.
+struct SPRT_API SocketAddress {
+	enum class Family : uint8_t {
+		None,
+		Unix,
+		IPv4,
+		IPv6,
+	};
+
+	Family family = Family::None;
+	String host; // numeric IPv4/IPv6 text (no brackets); empty = loopback
+	String path; // unix path; leading '@' marks the abstract namespace
+	uint16_t port = 0;
+
+	static SocketAddress parse(StringView);
+
+	bool isValid() const { return family != Family::None; }
+
+	String description() const;
+};
+
+// Parameters for Looper/Queue::listenSocket.
+//
+// Binds and listens on `address`; `onAccept` runs on the looper thread once per
+// accepted connection with a ready StreamHandle (already registered on the
+// queue). Dropping the passed Rc without calling StreamHandle::cancel leaves
+// the connection open until the peer disconnects. `completion` fires once when
+// the listener terminates. With port 0 the actually bound port is available via
+// ListenHandle::getAddress().
+struct SPRT_API ListenInfo {
+	using AcceptCallback = Function<void(Rc<StreamHandle> &&)>;
+	using Completion = CompletionHandle<ListenHandle>;
+
+	SocketAddress address;
+	uint32_t backlog = 8;
+	AcceptCallback onAccept;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::connectSocket.
+//
+// Starts a non-blocking connect to `address`; `completion` fires exactly once
+// on the looper thread - with Status::Ok when the connection is established, or
+// with the error otherwise. Reads/writes may be issued on the returned
+// StreamHandle right away; they are queued until the connect finishes.
+struct SPRT_API ConnectInfo {
+	using Completion = CompletionHandle<StreamHandle>;
+
+	SocketAddress address;
+	Completion completion;
+};
 
 // Parameters for Looper/Queue::watchFile.
 //

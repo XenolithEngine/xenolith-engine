@@ -241,6 +241,24 @@ Rc<WatchHandle> Looper::watchFile(StringView path, WatchFlags mask,
 	return _data->queue->watchFile(path, mask, sprt::move(onChange), ref);
 }
 
+Rc<ListenHandle> Looper::listenSocket(ListenInfo &&info, Ref *ref) {
+	return _data->queue->listenSocket(move(info), ref);
+}
+
+Rc<ListenHandle> Looper::listenSocket(const SocketAddress &addr,
+		ListenInfo::AcceptCallback &&onAccept, Ref *ref) {
+	return _data->queue->listenSocket(addr, sprt::move(onAccept), ref);
+}
+
+Rc<StreamHandle> Looper::connectSocket(ConnectInfo &&info, Ref *ref) {
+	return _data->queue->connectSocket(move(info), ref);
+}
+
+Rc<StreamHandle> Looper::connectSocket(const SocketAddress &addr,
+		Function<void(StreamHandle *, Status)> &&onConnect, Ref *ref) {
+	return _data->queue->connectSocket(addr, sprt::move(onConnect), ref);
+}
+
 Status Looper::performOnThread(Rc<Task> &&task, bool immediate) {
 	bool isOnThread = isOnThisThread();
 	if (immediate && isOnThread) {

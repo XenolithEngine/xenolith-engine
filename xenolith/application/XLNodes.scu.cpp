@@ -24,6 +24,7 @@
 
 #include "nodes/XLNode.cc"
 #include "nodes/XLScene.cc"
+#include "nodes/XLSceneInspector.cc"
 #include "nodes/XLSceneContent.cc"
 #include "nodes/XLCloseGuardWidget.cc"
 #include "nodes/XLWindowDecorations.cc"

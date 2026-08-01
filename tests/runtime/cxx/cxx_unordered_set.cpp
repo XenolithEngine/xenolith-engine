@@ -524,7 +524,10 @@ void performMallocUnorderedSetTests() {
 		l.insert(1);
 		auto range = l.equal_range(1);
 		sprt::cout << "Test 16 - Equal range: ";
-		if (range.first != l.end() && range.second != l.end()) {
+		// the range of the single stored key holds exactly one element; for the
+		// last element `second` == end(), so compare range extent, not end()
+		auto it = range.first;
+		if (range.first != range.second && ++it == range.second) {
 			sprt::cout << "PASS\n";
 		} else {
 			sprt::cout << "FAIL\n";

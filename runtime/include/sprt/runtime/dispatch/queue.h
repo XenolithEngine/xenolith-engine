@@ -160,6 +160,29 @@ public:
 	// for the Ref.
 	Rc<WatchHandle> watchFile(WatchInfo &&, Ref * = nullptr);
 
+	// Listen for stream-socket connections on ListenInfo::address:
+	// ListenInfo::onAccept runs on the looper thread once per accepted
+	// connection; the completion fires once when the listener terminates.
+	// Returns nullptr (firing the completion with ErrorNotImplemented) where the
+	// backend has no socket support (wasm, CFRunLoop), or with the error when
+	// bind/listen fails.
+	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref * = nullptr);
+
+	// Convenience form: address + accept callback.
+	Rc<ListenHandle> listenSocket(const SocketAddress &, ListenInfo::AcceptCallback &&onAccept,
+			Ref * = nullptr);
+
+	// Open a stream-socket connection to ConnectInfo::address (non-blocking):
+	// the completion fires exactly once - Status::Ok when established, the error
+	// otherwise (possibly synchronously, before this method returns). Reads and
+	// writes may be issued on the returned handle right away.
+	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onConnect` receives the connect result. Uses the Handle
+	// userdata slot for private data.
+	Rc<StreamHandle> connectSocket(const SocketAddress &,
+			dispatch::Function<void(StreamHandle *, Status)> &&onConnect, Ref * = nullptr);
+
 	// Convenience form: `onChange` receives the WatchFlags of each change; return
 	// anything other than Status::Ok to cancel the watch. Uses the Handle userdata
 	// slot for private data.

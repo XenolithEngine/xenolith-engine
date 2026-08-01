@@ -74,6 +74,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"runtime_watch", &sprt::performWatchFileTests},
 	{"runtime_process", &sprt::performProcessTests},
 	{"runtime_file", &sprt::performFileTests},
+	{"runtime_socket", &sprt::performSocketTests},
 	{"runtime_unicode", &sprt::performUnicodeTests},
 	{"runtime_dtoa", &sprt::performDtoaTests},
 };

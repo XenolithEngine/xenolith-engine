@@ -86,6 +86,27 @@
 // ReadDirectoryChangesW, kqueue uses EVFILT_VNODE instead.
 #include "platform/fd/SPEventStatWatch.cc"
 
+// Platform-neutral stream-socket API (shared state machine + SocketAddress +
+// QueueData::listenSocket/connectSocket + the portable probe poller). Each
+// backend contributes a readiness poll (QueueData::_socketPoll) and may
+// override the strategy with native handles (_makeSocketListen/_makeSocketStream
+// - io_uring below); wasm keeps everything null and the factories return
+// nullptr. Compiles against the ENOSYS socket stubs on wasm but is never
+// invoked there.
+#include "platform/fd/SPEventSocket.cc"
+
+#if SPRT_LINUX || SPRT_ANDROID
+// io_uring-native socket strategy (ACCEPT/RECV/SEND SQEs); uses helpers from
+// SPEventSocket.cc, so it must follow it in this SCU
+#include "platform/fd/SPEventSocketFd.cc"
+#endif
+
+#if SPRT_WINDOWS
+// WSAEventSelect readiness adapter + IOCP-native overlapped stream strategy;
+// uses helpers from SPEventSocket.cc, so it must follow it in this SCU
+#include "platform/windows/SPEventSocketIocp.cc"
+#endif
+
 #include "detail/SPRuntimeDispatchHandleClass.cc"
 #include "detail/SPRuntimeDispatchQueueData.cc"
 #include "SPRuntimeDispatchHandle.cc"
