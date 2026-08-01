@@ -120,7 +120,11 @@ public:
 	bool eval(const Callback<void(StringView)> &, StringView name, StringView content);
 
 	Target *addTarget(StringView name);
-	bool addTargetPrerequisite(SpanView<Target *>, StringView decl, ErrorReporter &);
+	// `targetPattern` is non-empty only for a static pattern rule (`targets: t-pat: p-pats`); it has
+	// already been matched against every target (setting their stems), and any '%' in a prerequisite
+	// is replaced by the stem of the target the prerequisite is attached to.
+	bool addTargetPrerequisite(SpanView<Target *>, StringView decl, ErrorReporter &,
+			StringView targetPattern = StringView());
 
 	bool undefineVariable(StringView, Origin, ErrorReporter &);
 

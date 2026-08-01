@@ -187,18 +187,17 @@ static bool Function_flavor(const Callback<void(StringView)> &out, void *, Varia
 	return true;
 }
 
+// $(error)/$(warning)/$(info) are pure side effects: GNU make expands each of them to the EMPTY
+// string, so `list: ; $(info text)` runs an empty recipe rather than handing `text` to the shell,
+// and `X := $(info text)` leaves X empty. Nothing is written to `out` here for that reason.
 static bool Function_error(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	StringStream str;
 	for (auto &it : args) {
 		if (!str.empty()) {
 			str << " ";
-			out << " ";
 		}
-		engine.resolve([&](StringView s) {
-			str << s;
-			out << s;
-		}, it, 0, *engine.getCallContext()->err);
+		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
 	// The message may carry path-space placeholders (e.g. from $(CURDIR)/$(wildcard)); show real spaces.
 	memory::StandartInterface::StringType ds;
@@ -212,12 +211,8 @@ static bool Function_warning(const Callback<void(StringView)> &out, void *, Vari
 	for (auto &it : args) {
 		if (!str.empty()) {
 			str << " ";
-			out << " ";
 		}
-		engine.resolve([&](StringView s) {
-			str << s;
-			out << s;
-		}, it, 0, *engine.getCallContext()->err);
+		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
 	memory::StandartInterface::StringType ds;
 	engine.getCallContext()->err->reportWarning(decodePathSpaces(str.weak(), ds), nullptr, nullptr,
@@ -231,12 +226,8 @@ static bool Function_info(const Callback<void(StringView)> &out, void *, Variabl
 	for (auto &it : args) {
 		if (!str.empty()) {
 			str << " ";
-			out << " ";
 		}
-		engine.resolve([&](StringView s) {
-			str << s;
-			out << s;
-		}, it, 0, *engine.getCallContext()->err);
+		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
 
 	memory::StandartInterface::StringType ds;

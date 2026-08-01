@@ -416,7 +416,7 @@ Target *Makefile::getDefaultGoal() {
 }
 
 bool Makefile::addTargetPrerequisite(SpanView<Target *> targets, StringView decl,
-		ErrorReporter &err) {
+		ErrorReporter &err, StringView targetPattern) {
 	Stmt::skipWhitespace(decl);
 
 	Stmt *prerequisiteListStmt = nullptr;
@@ -443,17 +443,30 @@ bool Makefile::addTargetPrerequisite(SpanView<Target *> targets, StringView decl
 		return false;
 	}
 
+	// In a static pattern rule each prerequisite pattern is instantiated per target, substituting
+	// that target's stem for '%'. Outside one, the word is attached verbatim.
+	auto instantiate = [&](StringView word, Target *t) -> StringView {
+		if (targetPattern.empty()) {
+			return word;
+		}
+		auto info = getPatternComponents(word);
+		if (!info.isPattern) {
+			return word;
+		}
+		return StringView(toString(info.start, t->stem, info.end)).pdup(_pool);
+	};
+
 	if (prerequisiteListStmt) {
 		auto prerequisiteList = _engine.resolve(prerequisiteListStmt, err);
 		prerequisiteList.split<StringView::WhiteSpace>([&](StringView s) {
-			for (auto &it : targets) { it->addPrerequisite(s); }
+			for (auto &it : targets) { it->addPrerequisite(instantiate(s, it)); }
 		});
 	}
 
 	if (orderOnlyListStmt) {
 		auto OrderOnlyList = _engine.resolve(orderOnlyListStmt, err);
 		OrderOnlyList.split<StringView::WhiteSpace>([&](StringView s) {
-			for (auto &it : targets) { it->addOrderOnly(s); }
+			for (auto &it : targets) { it->addOrderOnly(instantiate(s, it)); }
 		});
 	}
 
@@ -1096,11 +1109,53 @@ bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ExportMode e
 		identifier.split<StringView::WhiteSpace>(
 				[&](StringView s) { emplace_ordered(targets, addTarget(s)); });
 
+		// GNU static pattern rule: `targets… : target-pattern : prereq-patterns…`. It is recognized
+		// by a SECOND rule ':' whose left side holds a '%'. Requiring the '%' is what keeps a
+		// target-specific variable (`prog: CFLAGS = -g`), an inline recipe (`t: ; cmd`) and a
+		// Windows drive letter in a prerequisite from being mistaken for one — and GNU itself
+		// rejects a static pattern rule whose target pattern has no '%'.
+		StringView targetPattern;
+		if (!targets.empty() && !str.empty()) {
+			StringView probe = str;
+			if (auto patternStmt =
+							Stmt::readScoped(probe, StmtType::WordList, ReadContext::LineStart, err)) {
+				if (Stmt::getOperator(probe, true) == ":") {
+					auto pattern = _engine.resolve(patternStmt, err);
+					pattern.trimChars<StringView::WhiteSpace>();
+					if (!pattern.empty() && pattern.find('%') != maxOf<size_t>()) {
+						targetPattern = pattern;
+						++probe; // consume the second ':'
+						Stmt::skipWhitespace(probe);
+						str = probe;
+					}
+				}
+			}
+		}
+
+		if (!targetPattern.empty()) {
+			// Match the pattern against every target now: the stem it captures drives both the
+			// prerequisite instantiation below and `$*` in the recipe.
+			auto info = getPatternComponents(targetPattern);
+			for (auto &t : targets) {
+				StringView stem;
+				if (matchPattern(info, t->name, stem)) {
+					t->stem = stem.pdup(_pool);
+				} else {
+					err.reportError(toString("Target '", t->name,
+							"' does not match the target pattern '", targetPattern, "'"));
+				}
+			}
+		}
+
 		if (targets.empty()) {
 			targets.emplace_back(nullptr);
 		} else {
 			// `targets : VAR = value` is a target-specific variable; otherwise prerequisites.
-			if (!str.empty() && !tryParseTargetVariable(targets, str, err)) {
+			if (!targetPattern.empty()) {
+				if (!str.empty() && !addTargetPrerequisite(targets, str, err, targetPattern)) {
+					return false;
+				}
+			} else if (!str.empty() && !tryParseTargetVariable(targets, str, err)) {
 				if (!addTargetPrerequisite(targets, str, err)) {
 					return false;
 				}

@@ -208,6 +208,14 @@ These are the behaviors to be aware of when porting a makefile:
   `.DELETE_ON_ERROR`, `.SILENT`, `.IGNORE` are parsed but not yet enforced.
 - **stdout/stderr are merged** for every recipe (one pipe), and non-recursive recipe output is
   buffered until the target completes (see [How it works](#how-it-works)).
+- **`$(wildcard)` returns absolute paths.** A glob may sit in any path component (`a/*/b.mk`), but
+  every match is emitted resolved against the makefile root, where GNU make echoes the matches in
+  the same relative form the pattern was written in. Feed the result to `$(notdir)`/`$(dir)` rather
+  than comparing it to a literal relative path.
+- **`$(info)` goes to the diagnostic channel**, not bare to stdout. Its *expansion* is empty, exactly
+  as in GNU make, but the message is printed through the reporter (`xlmake: info: <file>:<line>: …`,
+  or the host's callback when the library is embedded) instead of GNU's unprefixed stdout line.
+  `$(warning)`/`$(error)` carry the same prefix GNU gives them.
 - **Diagnostic markers in `--print-data-base` are fixed English byte-strings** (GNU localizes
   them); this is deliberate, so parsers stay stable across locales.
 - **One mode per invocation**, selected by the first token (no mixing inspect and build actions).
@@ -461,6 +469,18 @@ see [In-process recipe directives](#in-process-recipe-directives).
 
 **Special targets acted on:** `.PHONY` `.PRECIOUS` `.SECONDARY` `.INTERMEDIATE` `.SUFFIXES`
 `.DEFAULT`.
+
+**Rule forms:** explicit (`t: prereqs`), pattern (`%.o: %.c`), static pattern
+(`targets…: target-pattern: prereq-patterns…`), order-only prerequisites (`t: a | b`),
+inline recipes (`t: ; cmd`) and target-specific variables (`t: VAR = value`). In a static
+pattern rule the stem captured by the target pattern is available as `$*` and substituted
+into every `%` of the prerequisite patterns:
+
+```make
+TARGETS := aaa bbb
+$(addprefix target-,$(TARGETS)): target-%:
+	@echo "building $*"
+```
 
 ---
 

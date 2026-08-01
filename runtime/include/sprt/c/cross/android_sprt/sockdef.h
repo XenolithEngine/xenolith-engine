@@ -268,19 +268,11 @@
 #define __SPRT_SO_DEVMEM_DMABUF 79
 #define __SPRT_SO_DEVMEM_DONTNEED 80
 
-#if __BITS_PER_LONG == 64 || defined(__x86_64__) && defined(__ILP32__)
 #define __SPRT_SO_TIMESTAMP __SPRT_SO_TIMESTAMP_OLD
 #define __SPRT_SO_TIMESTAMPNS __SPRT_SO_TIMESTAMPNS_OLD
 #define __SPRT_SO_TIMESTAMPING __SPRT_SO_TIMESTAMPING_OLD
 #define __SPRT_SO_RCVTIMEO __SPRT_SO_RCVTIMEO_OLD
 #define __SPRT_SO_SNDTIMEO __SPRT_SO_SNDTIMEO_OLD
-#else
-#define __SPRT_SO_TIMESTAMP (sizeof(__sprt_time_t) == sizeof(long) ? __SPRT_SO_TIMESTAMP_OLD : __SPRT_SO_TIMESTAMP_NEW)
-#define __SPRT_SO_TIMESTAMPNS (sizeof(__sprt_time_t) == sizeof(long) ? __SPRT_SO_TIMESTAMPNS_OLD : __SPRT_SO_TIMESTAMPNS_NEW)
-#define __SPRT_SO_TIMESTAMPING (sizeof(__sprt_time_t) == sizeof(long) ? __SPRT_SO_TIMESTAMPING_OLD : __SPRT_SO_TIMESTAMPING_NEW)
-#define __SPRT_SO_RCVTIMEO (sizeof(__sprt_time_t) == sizeof(long) ? __SPRT_SO_RCVTIMEO_OLD : __SPRT_SO_RCVTIMEO_NEW)
-#define __SPRT_SO_SNDTIMEO (sizeof(__sprt_time_t) == sizeof(long) ? __SPRT_SO_SNDTIMEO_OLD : __SPRT_SO_SNDTIMEO_NEW)
-#endif
 
 #define __SPRT_SCM_TIMESTAMPING_OPT_STATS 54
 #define __SPRT_SCM_TIMESTAMPING_PKTINFO 58

@@ -241,6 +241,7 @@ $(TARGET_RUNTIMES): $(TARGET_MUSL)
 		-DLIBUNWIND_USE_COMPILER_RT=On \
 		-DLIBUNWIND_ENABLE_SHARED=Off \
 		-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
+		-DLIBUNWIND_INSTALL_INCLUDE_DIR=usr/include \
 		-DCMAKE_INSTALL_PREFIX=$(ABS_SYSROOT)
 	cmake --build build/runtimes
 	cmake --install build/runtimes
