@@ -165,6 +165,7 @@ EXPORTS
 	GetLocaleInfoEx
 	IsValidLocaleName
 	GetUserDefaultLocaleName
+	GetUserPreferredUILanguages
 	IdnToAscii
 	IdnToUnicode
 	GetVersionExA

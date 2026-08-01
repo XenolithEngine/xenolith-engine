@@ -50,6 +50,7 @@ LIBS = \
 	vulkan-loader \
 	vulkan-validationlayers \
 	vulkan-utility \
+	vulkan-tools \
 	moltenvk \
 	spirv-headers \
 	glslang \
@@ -63,7 +64,8 @@ LIBS = \
 	libxml2 \
 	wayland \
 	wayland-protocols \
-	plasma-wayland-protocols
+	plasma-wayland-protocols \
+	libdrm
 
 TAR_XF = tar -xf
 
@@ -265,6 +267,12 @@ $(SRC_ROOT)/vulkan-validationlayers: | prepare
 $(SRC_ROOT)/vulkan-utility: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Utility-Libraries vulkan-utility
 
+# https://github.com/KhronosGroup/Vulkan-Tools # revised: 31 jul 2026
+# Используется только target-xenolithos и только ради vulkaninfo — девайсового
+# пробника «нашёл ли лоадер ICD и перечисляет ли драйвер физическое устройство».
+$(SRC_ROOT)/vulkan-tools: | prepare
+	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Tools.git vulkan-tools
+
 # https://github.com/KhronosGroup/MoltenVK/releases # revised: 2 jun 2026
 $(SRC_ROOT)/moltenvk: | prepare
 	$(call unpack_tar, https://github.com/KhronosGroup/MoltenVK/archive/refs/tags/v1.4.1.tar.gz, moltenvk)
@@ -313,6 +321,9 @@ $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0001-lldb-Defer-to-sprt-libc-in-PosixApi.h.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0002-lldb-Use-real-terminal-interface-on-sprt-libc.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0003-compiler-rt-Build-ORC-runtime-as-C-20.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare
@@ -329,6 +340,13 @@ $(SRC_ROOT)/wayland-protocols: | prepare
 # https://github.com/KDE/plasma-wayland-protocols # revised: 2 jun 2026
 $(SRC_ROOT)/plasma-wayland-protocols: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/KDE/plasma-wayland-protocols.git --branch v1.21.0  --depth 1
+ 
+# Keep the version within 2.4.x: patch_ver feeds the SONAME version
+# (libdrm.so.2.<minor>.0), so moving to 2.5 would roll it backwards — see the
+# note at the top of libdrm's own meson.build.
+# https://dri.freedesktop.org/libdrm/ # revised: 1 aug 2026
+$(SRC_ROOT)/libdrm: | prepare
+	$(call unpack_tar, https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz, libdrm)
 
 # Inject Russia Ministry of Digital Development certificates
 # https://curl.se/ca # revised: 2 jun 2026

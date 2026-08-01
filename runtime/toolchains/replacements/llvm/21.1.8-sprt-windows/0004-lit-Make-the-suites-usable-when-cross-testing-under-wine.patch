@@ -1,0 +1,163 @@
+Subject: [PATCH 4/6] [lit] Make the suites usable when cross-testing under wine
+
+This toolchain runs its Windows build on a Linux host: a binfmt_misc handler
+makes the cross-built .exe directly executable and llvm-lit is host Python.
+Several host/target mismatches get in the way.
+
+Test discovery: the GoogleTest format only looks for the .exe suffix when the
+host is Windows, so test/Unit finds nothing at all ("did not discover any tests").
+Matching *Tests.exe regardless of host is what makes the unit suites visible;
+naming them some other way is not an option, since CommandLineTest asserts on
+argv[0] ending in .exe.
+
+Test output: wine writes its own diagnostics (fixme:, semi-stub:) to the
+inferior's stderr. lit builds a clean environment, so WINEDEBUG cannot be passed
+in from outside, and tests that assert on stderr exactly - a trailing CHECK-NOT,
+or `2>&1 | count 0` - fail on that noise.
+
+Test encoding: wine derives its unix codepage from LANG/LC_ALL. Scrubbed from
+the environment it is not UTF-8, and a non-ASCII filename can no longer be
+encoded on the host filesystem (FileSystemTest.UTF8ToUTF16DirectoryIteration
+fails to create a directory named U+03C0).
+
+Builtin header path: a Windows clang answers -print-file-name=include with a
+dosish path, and the shell that re-parses the RUN line eats the separators -
+lit's own lexer runs shlex in posix mode, and so does msys bash.exe. Every
+%clang_cc1 line then loses its backslashes and clang cannot find its builtin
+headers. Clang accepts forward slashes on either platform, so normalize.
+
+/dev/null: the tools a RUN line drives are Windows binaries and have no
+/dev/null, so the ~740 tests that pass it as an output path fail to open it.
+lit already substitutes a temporary file, but only for arguments and only when
+lit itself runs on Windows, which is a property of the host rather than of the
+build under test. Key it off the latter and substitute one empty per-test file
+for every use, argument or redirection alike: it reads as empty and absorbs
+writes, so it does not matter which of the two shells runs the script. It has
+to travel on the test config and not on the TestRunner global that kAvoidDevNull
+already is - the configs are read in the parent process while the tests run in
+workers, and the default start method has not been fork since Python 3.14.
+
+diff --git a/llvm/test/Unit/lit.cfg.py b/llvm/test/Unit/lit.cfg.py
+index e29fd76bd..4eaeb28cf 100644
+--- a/llvm/test/Unit/lit.cfg.py
++++ b/llvm/test/Unit/lit.cfg.py
+@@ -37,6 +37,14 @@ if "TEMP" in os.environ:
+ if "HOME" in os.environ:
+     config.environment["HOME"] = os.environ["HOME"]
+ 
++# Propagate the wine environment. This suite does not build an LLVMConfig, so it
++# does not get the list that lit/llvm/config.py passes through: WINEDEBUG=-all to
++# keep wine's own diagnostics off the inferior's stderr, LANG/LC_ALL to make wine's
++# unix codepage UTF-8 so non-ASCII filenames can be encoded on the host.
++for var in ["WINEDEBUG", "XDG_RUNTIME_DIR", "LANG", "LC_ALL"]:
++    if var in os.environ:
++        config.environment[var] = os.environ[var]
++
+ # Propagate sanitizer options.
+ for var in [
+     "ASAN_SYMBOLIZER_PATH",
+diff --git a/llvm/utils/lit/lit/TestRunner.py b/llvm/utils/lit/lit/TestRunner.py
+index 73db67aed..976339aa1 100644
+--- a/llvm/utils/lit/lit/TestRunner.py
++++ b/llvm/utils/lit/lit/TestRunner.py
+@@ -2265,6 +2265,21 @@ def _runShTest(test, litConfig, useExternalSh, script, tmpBase) -> lit.Test.Resu
+     # Create the output directory if it does not already exist.
+     lit.util.mkdir_p(os.path.dirname(tmpBase))
+ 
++    # The tools a RUN line drives may be Windows binaries even though lit is not
++    # running on Windows - a cross-built toolchain tested through an emulator.
++    # Those have no /dev/null, and the string reaches them verbatim. kAvoidDevNull
++    # below handles this, but only for arguments and only when lit itself is on
++    # Windows, so key it off the build under test instead and point every use,
++    # argument or redirection, at a single empty per-test file: it reads as empty
++    # and absorbs writes, and needs no help from whichever shell runs the script.
++    if getattr(test.config, "avoid_dev_null", False) and any(
++        kDevNull in ln for ln in script
++    ):
++        devNullSubstitute = tmpBase + ".devnull"
++        with open(devNullSubstitute, "w"):
++            pass
++        script = [ln.replace(kDevNull, devNullSubstitute) for ln in script]
++
+     # Re-run failed tests up to test.allowed_retries times.
+     execdir = os.path.dirname(test.getExecPath())
+     attempts = test.allowed_retries + 1
+diff --git a/llvm/utils/lit/lit/formats/googletest.py b/llvm/utils/lit/lit/formats/googletest.py
+index 172cd0bee..11d4e7732 100644
+--- a/llvm/utils/lit/lit/formats/googletest.py
++++ b/llvm/utils/lit/lit/formats/googletest.py
+@@ -19,13 +19,15 @@ class GoogleTest(TestFormat):
+         self.seen_executables = set()
+         self.test_sub_dirs = str(test_sub_dirs).split(";")
+ 
+-        # On Windows, assume tests will also end in '.exe'.
++        # On Windows, assume tests will also end in '.exe'. Accept the suffix on
++        # other hosts too: a Windows build cross-tested from POSIX has .exe test
++        # binaries, and matching them by name is what lets them be found at all.
+         exe_suffix = str(test_suffix)
+         if kIsWindows:
+             exe_suffix += ".exe"
+ 
+         # Also check for .py files for testing purposes.
+-        self.test_suffixes = {exe_suffix, test_suffix + ".py"}
++        self.test_suffixes = {exe_suffix, test_suffix + ".exe", test_suffix + ".py"}
+         self.test_prefixes = {test_prefix} if test_prefix else None
+         self.run_under = run_under
+ 
+diff --git a/llvm/utils/lit/lit/llvm/config.py b/llvm/utils/lit/lit/llvm/config.py
+index 649636d4b..3b6ef0c6b 100644
+--- a/llvm/utils/lit/lit/llvm/config.py
++++ b/llvm/utils/lit/lit/llvm/config.py
+@@ -71,6 +71,16 @@ class LLVMConfig(object):
+         if lit_shell_env:
+             self.use_lit_shell = lit.util.pythonize_bool(lit_shell_env)
+ 
++        # Cross-testing a Windows build from a POSIX host: lit and the shell that
++        # runs the RUN lines are native, but every tool they launch is a Windows
++        # binary with no /dev/null. Have TestRunner substitute a per-test empty
++        # file; it cannot decide this itself, since it only sees the host. This
++        # must be a config attribute rather than a TestRunner global: the configs
++        # are read in the parent, the tests run in worker processes, and the
++        # default start method has not been fork since Python 3.14.
++        if "windows" in getattr(config, "host_triple", ""):
++            config.avoid_dev_null = True
++
+         if not self.use_lit_shell:
+             features.add("shell")
+ 
+@@ -86,6 +96,18 @@ class LLVMConfig(object):
+                 "RTSAN_OPTIONS",
+                 "TSAN_OPTIONS",
+                 "UBSAN_OPTIONS",
++                # Running a Windows build under wine, whose noise on the
++                # inferior's stderr is read as output by every test that checks
++                # stderr exactly (CHECK-NOT, `2>&1 | count 0`, -Werror runs).
++                # WINEDEBUG=-all silences wine's own channels; XDG_RUNTIME_DIR
++                # lets its display driver start, without which it falls back and
++                # Mesa prints libEGL warnings. LANG/LC_ALL set wine's unix
++                # codepage: otherwise it is not UTF-8 and a non-ASCII filename
++                # cannot be encoded on the host filesystem.
++                "WINEDEBUG",
++                "XDG_RUNTIME_DIR",
++                "LANG",
++                "LC_ALL",
+             ]
+         )
+ 
+@@ -314,9 +336,13 @@ class LLVMConfig(object):
+             )
+ 
+         clang_dir = clang_dir.strip()
+-        if sys.platform in ["win32"] and not self.use_lit_shell:
+-            # Don't pass dosish path separator to msys bash.exe.
+-            clang_dir = clang_dir.replace("\\", "/")
++        # Never let a dosish separator reach the shell that re-parses the RUN line:
++        # msys bash.exe eats it, and so does lit's own shell on a POSIX host, where
++        # shlex runs in posix mode. The latter is the cross-testing case - a Windows
++        # clang reports "Z:\...\include", every %clang_cc1 line then loses its
++        # backslashes and clang cannot find its builtin headers. Clang takes forward
++        # slashes here on either platform.
++        clang_dir = clang_dir.replace("\\", "/")
+         # Ensure the result is an ascii string, across Python2.5+ - Python3.
+         return clang_dir
+ 

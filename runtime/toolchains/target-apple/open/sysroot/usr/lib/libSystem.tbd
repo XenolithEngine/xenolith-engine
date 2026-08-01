@@ -434,6 +434,7 @@ exports:
         _fstatat$INODE64,
         _fstatfs,
         _fstatfs$INODE64,
+        _fstatvfs,
         _fsync,
         _ftell,
         _ftello,

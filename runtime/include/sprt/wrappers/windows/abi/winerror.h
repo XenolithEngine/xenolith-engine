@@ -443,6 +443,7 @@ THE SOFTWARE.
 #define __SPRT_ERROR_INVALID_HANDLE_STATE       1609L
 #define __SPRT_ERROR_NOT_CONNECTED              2250L
 #define __SPRT_ERROR_DEVICE_IN_USE              2404L
+#define __SPRT_ERROR_IPSEC_IKE_TIMED_OUT        13805L
 
 #define __SPRT_NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define __SPRT_NT_INFORMATION(Status) ((((ULONG)(Status)) >> 30) == 1)

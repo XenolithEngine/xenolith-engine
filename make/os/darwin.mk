@@ -47,16 +47,12 @@ OSTYPE_EXEC_CFLAGS :=
 
 # -Wno-overloaded-virtual: complains about 'hides overloaded virtual function', that is normal for Stappler/Xenolith
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-elaborated-enum-base \
-	-frtti -fvisibility=hidden -fvisibility-inlines-hidden
+	-frtti -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions
 
 # A "+open" sysroot keeps the SDK-like headers in include_libc (usr/include is
 # reserved for the deps' own headers) and, when exported, ships no
 # usr/local/include search-path link — reach include_libc via -idirafter so app
 # TUs resolve the libc/system headers AFTER the runtime's own wrappers.
-ifneq ($(findstring +open,$(TARGET_SYSROOT)),)
-OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/include_libc
-OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/include_libc
-endif
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 

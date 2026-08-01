@@ -580,3 +580,8 @@ SPRT_STATUS(STATUS_INVALID_PARAMETER_12);
 
 // === new values (wrapper completion) =======================================
 SPRT_CONST(ERROR_NOT_FOUND);
+
+// Far outside the low ERROR_* block the rest of this header covers: lldb formats it
+// through FormatMessage to prove Win32 error rendering works for a code the CRT does
+// not know (lldb/unittests/Utility/StatusTest.cpp).
+SPRT_CONST(ERROR_IPSEC_IKE_TIMED_OUT);

@@ -121,6 +121,11 @@ MODULE_RUNTIME_LIBCXX_PRIVATE_INCLUDES += \
 MODULE_RUNTIME_LIBCXX_PRIVATE_CXXFLAGS += -fbuiltin -fasynchronous-unwind-tables
 endif # Windows
 
+ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
+MODULE_RUNTIME_LIBCXX_PRIVATE_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+endif # Darwin
+
 ifeq ($(TARGET_SYSTEM),WASM)
 MODULE_RUNTIME_LIBCXX_PRIVATE_INCLUDES += \
 	$(RUNTIME_MODULE_DIR)/include_libc

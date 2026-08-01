@@ -130,6 +130,14 @@ typedef const WCHAR *PCWSTR, *LPCWSTR, *LPCWCH, *PCWCH;
 typedef char *PSTR, *LPSTR;
 typedef const char *PCSTR, *LPCSTR;
 
+/* Double-null-terminated ("multi") strings: a run of NUL-terminated strings
+   ended by one more NUL. Used by the MUI language APIs, which return the whole
+   preferred-language list in a single buffer. */
+typedef WCHAR *PZZWSTR;
+typedef const WCHAR *PCZZWSTR;
+typedef char *PZZSTR;
+typedef const char *PCZZSTR;
+
 typedef const void *PCVOID, *LPCVOID;
 
 typedef __SPRT_ID(size_t) SIZE_T, *PSIZE_T;

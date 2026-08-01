@@ -54,6 +54,7 @@ SPRT_ABI_EXPORTS := \
 	__chkstk \
 	_purecall \
 	_beginthreadex \
+	_endthreadex \
 	_Init_thread_header \
 	_Init_thread_footer \
 	_Init_thread_abort \
@@ -171,7 +172,15 @@ SPRT_MERGED_LIB := $(dir $(BUILD_SHARED_LIBRARY))sprt.lib
 # does. BUILD_LIB_CXXFLAGS supplies the target, sysroot and consumer include set; the
 # runtime's own -DSPRT_BUILD_RUNTIME lives in per-module private flags and correctly does
 # not reach here.
-SPRT_APP_STARTUP_CXXFLAGS := $(BUILD_LIB_CXXFLAGS) -DSPRT_SHARED_RUNTIME -nostdinc++
+#
+# _LIBCPP_NO_AUTO_LINK because these two objects end up inside sprt.lib: libc++'s <__config>
+# answers _LIBCPP_ABI_MICROSOFT with `#pragma comment(lib, "c++.lib")`, and a /DEFAULTLIB in
+# an archive member is inherited by every image that pulls the member in. There is no
+# c++.lib in this toolchain - libc++ lives in sprt.dll - so each of them would ask the
+# linker for a library that does not exist. The LLVM build hides this behind /NODEFAULTLIB;
+# the third-party target libraries do not, and fail in CMake's compiler probe.
+SPRT_APP_STARTUP_CXXFLAGS := $(BUILD_LIB_CXXFLAGS) -DSPRT_SHARED_RUNTIME -nostdinc++ \
+	-D_LIBCPP_NO_AUTO_LINK
 
 $(SPRT_APP_STARTUP_OBJDIR)/%.cpp.o: $(LOCAL_ROOT)/libc_impl/app/windows/%.cpp $(LOCAL_MAKEFILE)
 	@$(call rule_mkdir,$(dir $@))

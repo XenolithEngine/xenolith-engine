@@ -97,6 +97,22 @@ target-linux: \
 
 
 #
+# Xenolith OS device targets
+#
+# Помимо обычного sysroot несут рантайм устройства (runtime/rootfs), из которого
+# xenolith-os собирает образ для железа.
+#
+
+target-x86_64-xenolithos-linux-gnu: targets/x86_64-xenolithos-linux-gnu
+target-aarch64-xenolithos-linux-gnu: targets/aarch64-xenolithos-linux-gnu
+target-riscv64-xenolithos-linux-gnu: targets/riscv64-xenolithos-linux-gnu
+
+target-xenolithos: \
+	target-aarch64-xenolithos-linux-gnu \
+	target-x86_64-xenolithos-linux-gnu \
+
+
+#
 # Apple targets
 #
 
@@ -129,14 +145,26 @@ target-apple: target-macosx # target-ios
 target-x86_64-pc-windows-msvc: targets/x86_64-pc-windows-msvc
 target-aarch64-pc-windows-msvc: targets/aarch64-pc-windows-msvc
 
+# Sysroots built around sprt.dll instead of the static runtime archive.
+target-x86_64-pc-windows-msvc+dll: targets/x86_64-pc-windows-msvc+dll
+target-aarch64-pc-windows-msvc+dll: targets/aarch64-pc-windows-msvc+dll
+
 target-windows: \
 	target-x86_64-pc-windows-msvc \
 #	target-aarch64-pc-windows-msvc
+
+target-windows-dll: \
+	target-x86_64-pc-windows-msvc+dll \
+#	target-aarch64-pc-windows-msvc+dll
 
 .PHONY:\
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-xenolithos \
+	target-x86_64-xenolithos-linux-gnu \
+	target-aarch64-xenolithos-linux-gnu \
+	target-riscv64-xenolithos-linux-gnu \
 	target-android-ndk \
 	target-unknown-ndk-linux-android \
 	target-android \
@@ -157,4 +185,7 @@ target-windows: \
 	target-aarch64-apple-ios-simulator \
 	target-windows \
 	target-x86_64-pc-windows-msvc \
-	target-aarch64-pc-windows-msvc
+	target-aarch64-pc-windows-msvc \
+	target-windows-dll \
+	target-x86_64-pc-windows-msvc+dll \
+	target-aarch64-pc-windows-msvc+dll

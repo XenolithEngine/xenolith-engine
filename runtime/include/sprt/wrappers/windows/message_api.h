@@ -407,6 +407,8 @@ THE SOFTWARE.
 #define LANG_ENGLISH __SPRT_LANG_ENGLISH
 #define SUBLANG_ENGLISH_US __SPRT_SUBLANG_ENGLISH_US
 #define MAKELANGID(p, s) __SPRT_MAKELANGID(p, s)
+#define MUI_LANGUAGE_ID __SPRT_MUI_LANGUAGE_ID
+#define MUI_LANGUAGE_NAME __SPRT_MUI_LANGUAGE_NAME
 #define MWMO_WAITALL __SPRT_MWMO_WAITALL
 #define MWMO_ALERTABLE __SPRT_MWMO_ALERTABLE
 #define MWMO_INPUTAVAILABLE __SPRT_MWMO_INPUTAVAILABLE
@@ -435,6 +437,12 @@ __SPRT_WIN_IMPORT WINAPI DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, D
 
 __SPRT_WIN_IMPORT WINAPI DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
 		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
+
+/* Companion to FormatMessage*: the language list it should be asked to render
+   a message in. dwFlags selects MUI_LANGUAGE_ID or MUI_LANGUAGE_NAME, and
+   pwszLanguagesBuffer receives a double-null-terminated list. */
+__SPRT_WIN_IMPORT WINAPI BOOL GetUserPreferredUILanguages(DWORD dwFlags, PULONG pulNumLanguages,
+		PZZWSTR pwszLanguagesBuffer, PULONG pcchLanguagesBuffer);
 
 __SPRT_WIN_IMPORT WINAPI LRESULT SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 

@@ -33,6 +33,7 @@
         _wctob_l,
         _localeconv_l,
         _statvfs,
+        _fstatvfs,
         ___divti3,
         ___udivti3,
         _gmtime,

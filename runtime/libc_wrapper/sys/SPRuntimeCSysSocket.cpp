@@ -622,7 +622,7 @@ static_assert(__SPRT_SCM_RIGHTS == SCM_RIGHTS, "PF_SMC/XDP differ from native");
 static_assert(__SPRT_SCM_CREDENTIALS == SCM_CREDENTIALS, "PF_SMC/XDP differ from native");
 #endif
 
-#if defined(__SPRT_SCM_SECURITY) || defined(SCM_SECURITY)
+#if defined(SCM_SECURITY)
 static_assert(__SPRT_SCM_SECURITY == SCM_SECURITY, "PF_SMC/XDP differ from native");
 #endif
 

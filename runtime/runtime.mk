@@ -89,7 +89,7 @@ MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
 	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm -ldl
 endif
 
 

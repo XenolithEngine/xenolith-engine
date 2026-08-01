@@ -1,0 +1,59 @@
+Subject: [PATCH 5/6] [clang] Do not require clang-repl for the test suites
+
+clang/test and clang/unittests key off HAVE_CLANG_REPL_SUPPORT, which only
+records whether the platform could host a REPL. Whether the tool is built
+is CLANG_TOOL_CLANG_REPL_BUILD, applied by add_clang_subdirectory. This
+toolchain switches the tool off, because clang-repl asks the linker to
+re-export the MSVC C++ runtime ABI by name (__type_info_root_node,
+std::nothrow, the operator new/delete set) and sprt keeps those in its own
+inline namespace.
+
+With the tool off, CLANG_INCLUDE_TESTS=On first fails to configure:
+
+  CMake Error at cmake/modules/AddLLVM.cmake:2118 (add_dependencies):
+    The dependency target "clang-repl" of target
+    "check-clang-utils-update_cc_test_checks" does not exist.
+
+and then fails to build, because clang/unittests/Interpreter links the same
+re-export list:
+
+  lld-link: error: <root>: undefined symbol: struct __type_info_node __type_info_root_node
+  lld-link: error: <root>: undefined symbol: struct std::nothrow_t const std::nothrow
+
+Key both off the target instead. clang/tools is added before clang/test and
+clang/unittests, so the target is already known.
+
+diff --git a/clang/test/CMakeLists.txt b/clang/test/CMakeLists.txt
+index 286c9d40d..47e5e7900 100644
+--- a/clang/test/CMakeLists.txt
++++ b/clang/test/CMakeLists.txt
+@@ -195,7 +195,12 @@ if(CLANG_ENABLE_STATIC_ANALYZER)
+   endif()
+ endif()
+ 
+-if (HAVE_CLANG_REPL_SUPPORT)
++# HAVE_CLANG_REPL_SUPPORT only says the platform could support a REPL; whether the tool
++# is actually built is CLANG_TOOL_CLANG_REPL_BUILD, applied by add_clang_subdirectory in
++# clang/tools. Depend on the target only if it exists, or configuring with the tool
++# switched off fails outright ("The dependency target clang-repl does not exist").
++# clang/tools is added before clang/test, so the target is known by now.
++if (TARGET clang-repl)
+   list(APPEND CLANG_TEST_DEPS
+     clang-repl
+     )
+diff --git a/clang/unittests/CMakeLists.txt b/clang/unittests/CMakeLists.txt
+index 54c781a35..9677a800b 100644
+--- a/clang/unittests/CMakeLists.txt
++++ b/clang/unittests/CMakeLists.txt
+@@ -92,7 +92,10 @@ add_subdirectory(Frontend)
+ add_subdirectory(Rewrite)
+ add_subdirectory(Sema)
+ add_subdirectory(CodeGen)
+-if(HAVE_CLANG_REPL_SUPPORT)
++# Same distinction as in clang/test: HAVE_CLANG_REPL_SUPPORT is a platform capability,
++# CLANG_TOOL_CLANG_REPL_BUILD is whether the tool is built. These tests link the same
++# re-exported MSVC C++ runtime ABI the tool does, so they are only buildable where it is.
++if(TARGET clang-repl)
+   add_subdirectory(Interpreter)
+ endif()
+ # FIXME: libclang unit tests are disabled on Windows due

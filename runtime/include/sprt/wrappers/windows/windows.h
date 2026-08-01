@@ -516,9 +516,6 @@ __SPRT_WIN_IMPORT WINAPI BOOL GetLogicalProcessorInformationEx(
 		LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
 		PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer, PDWORD ReturnedLength);
 
-__SPRT_WIN_IMPORT WINAPI BOOL GetProcessGroupAffinity(HANDLE hProcess, PUSHORT GroupCount,
-		PUSHORT GroupArray);
-
 __SPRT_WIN_IMPORT WINAPI BOOL FlushInstructionCache(HANDLE hProcess, LPCVOID lpBaseAddress,
 		SIZE_T dwSize);
 
@@ -538,11 +535,24 @@ __SPRT_WIN_IMPORT WINAPI BOOL SetInformationJobObject(HANDLE hJob,
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetThreadId(HANDLE Thread);
 
-__SPRT_WIN_IMPORT WINAPI BOOL GetProcessAffinityMask(HANDLE hProcess,
-		PDWORD_PTR lpProcessAffinityMask, PDWORD_PTR lpSystemAffinityMask);
+/*
+	Exported by the runtime, not imported from the system.
 
-__SPRT_WIN_IMPORT WINAPI BOOL SetProcessAffinityMask(HANDLE hProcess,
-		DWORD_PTR dwProcessAffinityMask);
+	These three are defined in libc_impl/src/windows/dll/dllstub_nt_extras.cc and are
+	deliberately absent from def/kernel32.def and def/kernelbase.def - were they listed
+	there, a consumer would bind straight to kernelbase.dll and never reach the wrapper.
+	Each wrapper resolves the system export dynamically and forwards to it where it
+	behaves; where it does not (wine has no GetProcessAffinityMask/SetProcessAffinityMask
+	export at all, so a direct bind aborts the process, and its GetProcessGroupAffinity
+	breaks the two-call protocol) it degrades to a documented failure or a substitute.
+*/
+SPRT_API WINAPI BOOL GetProcessAffinityMask(HANDLE hProcess, PDWORD_PTR lpProcessAffinityMask,
+		PDWORD_PTR lpSystemAffinityMask);
+
+SPRT_API WINAPI BOOL SetProcessAffinityMask(HANDLE hProcess, DWORD_PTR dwProcessAffinityMask);
+
+SPRT_API WINAPI BOOL GetProcessGroupAffinity(HANDLE hProcess, PUSHORT GroupCount,
+		PUSHORT GroupArray);
 
 __SPRT_WIN_IMPORT WINAPI BOOL SetThreadGroupAffinity(HANDLE hThread,
 		const GROUP_AFFINITY *GroupAffinity, PGROUP_AFFINITY PreviousGroupAffinity);

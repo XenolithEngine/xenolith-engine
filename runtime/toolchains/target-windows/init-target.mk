@@ -108,27 +108,66 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 RUNTIME_IMPORT_DEFS := $(wildcard $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/*.def)
 RUNTIME_IMPORT_LIBS := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/lib/,$(notdir $(RUNTIME_IMPORT_DEFS:.def=.lib)))
 
-$(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/%.def
+# llvm-lib is reached through the `host` symlink, which the toolchain.cmake rule creates as
+# a side effect. `all` lists the two as siblings, so with -j they race, and from an empty
+# intermediate directory this rule usually wins: every import lib then fails with
+# "host/bin/llvm-lib: No such file or directory". Order-only, because the symlink is
+# recreated on every toolchain.cmake rebuild and would otherwise redo all of them.
+$(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/%.def \
+		| $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
 	$(call rule_rm,$@)
 	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /def:$< /out:$@ /machine:$(SP_ARCH_WIN)
 
-# Merge import libs with SPRT for dependencies build
+# By default usr/lib/sprt.lib is the static runtime archive merged with the Win32 import
+# libraries, and every image built against this sysroot carries its own copy of the runtime.
+# That is what a target sysroot is expected to hand out: the result is self-contained, and
+# the archive keeps the whole libc surface linkable by plain name, which link-time feature
+# probes (check_function_exists and its autotools equivalents) depend on.
+#
+# SPRT_TOOLCHAIN_SHARED=1 opts into the other arrangement: the runtime is built as sprt.dll,
+# sprt.lib becomes its import library (already carrying the executable-side startup stub as
+# an archive member, see <root>/runtime/Makefile), and the DLL is staged into usr/bin so it
+# can travel with whatever links against it. Consumers must then be compiled with
+# -DSPRT_SHARED_RUNTIME, and only the annotated surface plus SPRT_ABI_EXPORTS is reachable -
+# the header-inline libc umbrellas resolve to __sprt_* imports and their plain names are no
+# longer symbols at all.
+SPRT_TOOLCHAIN_SHARED ?= 0
+
+# Keyed on the sysroot directory, so the static and the "+dll" variant never share it: the
+# tree is rule_rm'd before and after every run, and a `make -j target-windows
+# target-windows-dll` would otherwise have one variant delete the other's build in flight.
+SPRT_RUNTIME_BUILD_DIR := $(abspath build/$(notdir $(TOOLCHAIN_OUTPUT_DIR)))
+SPRT_RUNTIME_OUT := $(SPRT_RUNTIME_BUILD_DIR)/$(SP_ARCH_TARGET_CLANG)/release/cc
+
+# Merge import libs with SPRT for dependencies build.
+#
+# import.lib is a real prerequisite, not just a sibling in `all`: the runtime module links
+# -limport (runtime.mk), so building sprt here fails outright if it is missing.
 $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: $(RUNTIME_IMPORT_LIBS) \
+		$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib \
 		$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
 		$(TOOLCHAIN_OUTPUT_DIR)/target.mk
 	$(call rule_rm,$@)
-	$(call rule_rm,$(abspath build/xlmake))
+	$(call rule_rm,$(SPRT_RUNTIME_BUILD_DIR))
 	$(MAKE) -j8 -C $(SP_RUNTIME_ROOT) \
 		STAPPLER_HOST_FILE=$(TOOLCHAIN_OUTPUT_DIR)/host/host.mk \
 		STAPPLER_TARGET_FILE=$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
 		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) \
-		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		LOCAL_OUTDIR=$(SPRT_RUNTIME_BUILD_DIR) \
+		SPRT_SHARED=$(SPRT_TOOLCHAIN_SHARED) \
 		RELEASE=1
 	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /out:$@ \
 			$(RUNTIME_IMPORT_LIBS) \
-			$(abspath build/xlmake)/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib \
+			$(SPRT_RUNTIME_OUT)/sprt.lib \
 			/machine:$(SP_ARCH_WIN)
-	$(call rule_rm,$(abspath build/xlmake))
+# Every image linked against the library above now imports sprt.dll, so the DLL has to
+# travel with the toolchain. Stage it in the intermediate sysroot; the cross Makefile
+# picks it up from there when it assembles the released bin/ directory.
+ifeq ($(SPRT_TOOLCHAIN_SHARED),1)
+	$(call rule_mkdir,$(TOOLCHAIN_OUTPUT_DIR)/usr/bin)
+	$(call rule_cp,$(SPRT_RUNTIME_OUT)/sprt.dll,$(TOOLCHAIN_OUTPUT_DIR)/usr/bin)
+endif
+	$(call rule_rm,$(SPRT_RUNTIME_BUILD_DIR))
 
 $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib: $(RUNTIME_IMPORT_LIBS)
 	$(call rule_rm,$@)
@@ -143,5 +182,14 @@ all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
 	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib \
 	$(RUNTIME_IMPORT_LIBS_USR)
 
-.PHONY: all
+# Just the part compiler-rt needs before it can be cross-built: the toolchain file (whose
+# recipe also plants the `host` symlink) and the Win32 import libraries it links against.
+# sprt cannot be in this phase - linking sprt.dll pulls in clang_rt.builtins, so it has to
+# come after compiler-rt, which is what the arch recipes in Makefile sequence.
+toolchain: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+	$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+	$(RUNTIME_IMPORT_LIBS) \
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib
+
+.PHONY: all toolchain
 .DEFAULT_GOAL := all

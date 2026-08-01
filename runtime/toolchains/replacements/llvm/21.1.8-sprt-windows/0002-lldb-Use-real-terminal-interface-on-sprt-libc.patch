@@ -1,0 +1,85 @@
+Subject: [PATCH 2/6] [lldb] Use the real terminal interface on the sprt libc
+
+tools/driver/Platform.{h,cpp} carries a terminal shim for MSVC: it defines struct
+termios and struct winsize, redefines timeval and pid_t, and supplies ioctl, kill
+and tcsetattr/tcgetattr - the last two as llvm_unreachable and a hard -1.
+
+The sprt runtime provides all of it for real. <termios.h> and <sys/ioctl.h> are
+genuine headers there, and tcgetattr/tcsetattr/ioctl are backed by the Win32
+console (echo, line input and Ctrl-C map onto Get/SetConsoleMode, TIOCGWINSZ onto
+GetConsoleScreenBufferInfo), so lldb gets working raw-mode switching and terminal
+sizing instead of stubs.
+
+The shim is also actively wrong there: it redefines struct timeval, and typedefs
+pid_t to long where sprt has int.
+
+Take the POSIX headers when __SPRT_PLATFORM_ID is defined - the same probe
+PosixApi.h uses - and leave the MSVC shim untouched for every other Windows build.
+
+diff --git a/lldb/tools/driver/Platform.cpp b/lldb/tools/driver/Platform.cpp
+index 0891cfa1f..43de85026 100644
+--- a/lldb/tools/driver/Platform.cpp
++++ b/lldb/tools/driver/Platform.cpp
+@@ -9,11 +9,18 @@
+ // this file is only relevant for Visual C++
+ #if defined(_WIN32)
+ 
++#include "Platform.h"
++
++// Against the sprt freestanding libc these four come from the C library itself (see
++// the note in Platform.h), where ioctl and the tc* functions are backed by the Win32
++// console. Defining them here would be a redefinition of what <sys/ioctl.h> and
++// <termios.h> already declared - and a downgrade, since the versions below abort.
++#if !defined(__SPRT_PLATFORM_ID)
++
+ #include <cassert>
+ #include <cstdlib>
+ #include <process.h>
+ 
+-#include "Platform.h"
+ #include "llvm/Support/ErrorHandling.h"
+ 
+ int ioctl(int d, int request, ...) {
+@@ -56,4 +63,6 @@ int tcgetattr(int fildes, struct termios *termios_p) {
+   return -1;
+ }
+ 
++#endif // !__SPRT_PLATFORM_ID
++
+ #endif
+diff --git a/lldb/tools/driver/Platform.h b/lldb/tools/driver/Platform.h
+index ff017c442..5ec14c3d4 100644
+--- a/lldb/tools/driver/Platform.h
++++ b/lldb/tools/driver/Platform.h
+@@ -20,6 +20,22 @@
+ #include <cinttypes>
+ #include <sys/types.h>
+ 
++// The sprt freestanding libc (detected via its always-present __SPRT_PLATFORM_ID,
++// pulled in by <sys/types.h> above - the same probe lldb/Host/windows/PosixApi.h
++// uses) targets the MSVC ABI but ships a POSIX libc, terminal interface included:
++// <termios.h> and <sys/ioctl.h> are real headers there, and tcgetattr/tcsetattr/ioctl
++// are backed by the Win32 console instead of being stubbed out. Take those rather
++// than the compatibility shims below, which would redefine timeval and pid_t (as
++// long, against sprt's int) and hide a working tcsetattr behind one that aborts.
++#if defined(__SPRT_PLATFORM_ID)
++
++#include <limits.h>
++#include <sys/ioctl.h>
++#include <termios.h>
++#include <unistd.h>
++
++#else // __SPRT_PLATFORM_ID
++
+ struct winsize {
+   long ws_col;
+ };
+@@ -72,6 +88,8 @@ extern int tcsetattr(int fd, int optional_actions,
+                      const struct termios *termios_p);
+ extern int tcgetattr(int fildes, struct termios *termios_p);
+ 
++#endif // __SPRT_PLATFORM_ID
++
+ #else
+ #include <cinttypes>
+ 

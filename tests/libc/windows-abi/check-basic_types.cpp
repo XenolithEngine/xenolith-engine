@@ -82,3 +82,13 @@ SPRT_TYPE_SAME(LPCCH);
 SPRT_TYPE_SAME(PCCH);
 SPRT_TYPE_SAME(LPCWCH);
 SPRT_TYPE_SAME(PCWCH);
+
+// === new values (wrapper completion) =======================================
+// Double-null-terminated ("multi") strings, winnt.h. The SDK spells them with the
+// _NullNull_terminated_ SAL annotation, which expands to nothing, so exact-type
+// parity holds and is worth asserting: these are passed by address to the MUI
+// language APIs, where a wrong element type would be silently accepted.
+SPRT_TYPE_SAME(PZZWSTR);
+SPRT_TYPE_SAME(PCZZWSTR);
+SPRT_TYPE_SAME(PZZSTR);
+SPRT_TYPE_SAME(PCZZSTR);

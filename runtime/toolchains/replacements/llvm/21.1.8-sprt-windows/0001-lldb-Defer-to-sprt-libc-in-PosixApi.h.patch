@@ -1,0 +1,54 @@
+Subject: [PATCH 1/6] [lldb] Defer to the sprt libc for the POSIX names PosixApi.h shims
+
+lldb/Host/windows/PosixApi.h assumes a Windows build means the bare MSVC CRT and
+declares the POSIX names LLDB needs itself. Against the sprt runtime that is no
+longer true: sprt targets the MSVC ABI but ships a POSIX libc, so pid_t and fork()
+are already declared - as int and as noexcept respectively - and the shims here
+collide with them.
+
+Probe for sprt with __SPRT_PLATFORM_ID (always defined by its headers, and pulled
+in by the <sys/types.h> above) and skip only the declarations sprt provides.
+
+diff --git a/lldb/include/lldb/Host/windows/PosixApi.h b/lldb/include/lldb/Host/windows/PosixApi.h
+index 981261a3e..e125cb9fd 100644
+--- a/lldb/include/lldb/Host/windows/PosixApi.h
++++ b/lldb/include/lldb/Host/windows/PosixApi.h
+@@ -71,12 +71,24 @@
+ // open(), close(), creat(), etc.
+ #include <io.h>
+ 
++// When built against the sprt freestanding libc (detected via its always-present
++// __SPRT_PLATFORM_ID, pulled in by <sys/types.h> above) rather than the bare MSVC
++// CRT, sprt already provides some of these POSIX names: mode_t (as unsigned short,
++// matching the typedef below), pid_t, and a noexcept fork(). Defer to sprt for the
++// ones it declares so these compat declarations are compatible, not conflicting.
++#if defined(__SPRT_PLATFORM_ID)
++#define LLDB_SPRT_LIBC 1
++#define LLDB_POSIX_NOEXCEPT noexcept
++#else
++#define LLDB_POSIX_NOEXCEPT
++#endif
++
+ typedef unsigned short mode_t;
+ 
+ // pyconfig.h typedefs this.  We require python headers to be included before
+ // any LLDB headers, but there's no way to prevent python's pid_t definition
+ // from leaking, so this is the best option.
+-#ifndef NO_PID_T
++#if !defined(NO_PID_T) && !defined(LLDB_SPRT_LIBC)
+ typedef uint32_t pid_t;
+ #endif
+ 
+@@ -93,7 +105,10 @@ inline int unlockpt(int fd) { LLVM_BUILTIN_UNREACHABLE; }
+ inline int grantpt(int fd) { LLVM_BUILTIN_UNREACHABLE; }
+ inline char *ptsname(int fd) { LLVM_BUILTIN_UNREACHABLE; }
+ 
+-inline pid_t fork(void) { LLVM_BUILTIN_UNREACHABLE; }
+-inline pid_t setsid(void) { LLVM_BUILTIN_UNREACHABLE; }
++// sprt already provides fork() (declared noexcept); don't redefine it there.
++#if !defined(LLDB_SPRT_LIBC)
++inline pid_t fork(void) LLDB_POSIX_NOEXCEPT { LLVM_BUILTIN_UNREACHABLE; }
++#endif
++inline pid_t setsid(void) LLDB_POSIX_NOEXCEPT { LLVM_BUILTIN_UNREACHABLE; }
+ 
+ #endif

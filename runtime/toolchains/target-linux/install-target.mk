@@ -27,6 +27,9 @@ ALL_STATIC_LIBS := $(filter-out %/libc++.a %/libc++experimental.a,\
 	$(wildcard $(T_INTERMEDIATE)/usr/lib/*.a))
 ALL_INSTALL_STATIC_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_STATIC_LIBS))
 
+ALL_SHARED_LIBS := $(wildcard $(T_INTERMEDIATE)/usr/lib/*.so*)
+ALL_INSTALL_SHARED_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_SHARED_LIBS))
+
 $(T_TARGET):
 	mkdir -p $(T_TARGET)/share $(T_TARGET)/usr/lib
 
@@ -62,7 +65,7 @@ $(T_TARGET)/release: $(T_TARGET)
 	echo "$(GIT_TAG)" > $@
 	touch $@
 
-all: $(ALL_INSTALL_STATIC_LIBS) \
+all: $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) \
 		$(T_TARGET)/include_libc $(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
 	$(T_TARGET) $(T_TARGET)/release
 
