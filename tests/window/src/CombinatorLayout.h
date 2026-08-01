@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_COMBINATORLAYOUT_H_
 #define TESTS_WINDOW_SRC_COMBINATORLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
@@ -37,9 +37,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // (colored) and one SHOULD NOT (stays grey base). Each swatch carries a StyleResolver so
 // the resolved `background-color` becomes its on-screen color, making the match visible.
 // init() also asserts the resolved colors programmatically and logs a pass/fail summary.
-//
-// Reach via the XL_COMBINATOR_TEST env var (ExampleScene dispatch).
-class CombinatorLayout : public basic2d::SceneLayout2d {
+class CombinatorLayout : public TestLayout {
 public:
 	virtual ~CombinatorLayout() = default;
 

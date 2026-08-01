@@ -87,8 +87,18 @@ public:
 	size_t getVertexCount() const;
 	size_t getIndexCount() const;
 
+	// Declare that the AABB cannot be derived from the vertex data (atlas-driven geometry) and
+	// supply it directly. Must be called after the last mutation, since mutating invalidates it.
+	void setBoundsDerivable(bool);
+	void setBounds(const Rect &);
+
 protected:
 	void copy();
+
+	// Prologue of every mutator: either detach a shared set (new object -> new id) or bump the
+	// generation of the set we own exclusively. Mutating in place without the bump would be
+	// invisible to damage tracking.
+	void mutate();
 
 	bool _copyOnWrite = false;
 	Rc<VertexData> _data;

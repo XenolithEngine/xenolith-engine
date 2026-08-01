@@ -257,6 +257,9 @@ protected:
 	bool _running = false;
 	bool _readyForNextFrame = false;
 	bool _waitUntilFrame = false;
+
+	// XL_DAMAGE_DEBUG=1 - log the computed damage of every presented frame
+	bool _damageDebug = false;
 	bool _waitUntilSwapchainRecreation = false;
 	bool _waitForDisplayLink = false;
 	bool _swapchainRecreationScheduled = false;

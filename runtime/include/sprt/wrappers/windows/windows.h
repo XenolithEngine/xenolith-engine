@@ -516,6 +516,9 @@ __SPRT_WIN_IMPORT WINAPI BOOL GetLogicalProcessorInformationEx(
 		LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
 		PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer, PDWORD ReturnedLength);
 
+__SPRT_WIN_IMPORT WINAPI BOOL GetProcessGroupAffinity(HANDLE hProcess, PUSHORT GroupCount,
+		PUSHORT GroupArray);
+
 __SPRT_WIN_IMPORT WINAPI BOOL FlushInstructionCache(HANDLE hProcess, LPCVOID lpBaseAddress,
 		SIZE_T dwSize);
 

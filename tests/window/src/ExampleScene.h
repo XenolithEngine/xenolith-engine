@@ -28,6 +28,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
+struct TestInfo;
+
 // Используем базовую 2D-сцену в качестве основы
 class ExampleScene : public basic2d::Scene2d {
 public:
@@ -49,7 +51,32 @@ protected:
 
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &) override;
 
+	// One screenshot to take: which layout has to be on screen for it, and where the PNG goes.
+	// A step whose test repeats the previous one keeps the layout in place and simply shoots again
+	// after another delay - that is how a before/after pair of the same test is captured.
+	struct ScreenshotStep {
+		const TestInfo *test = nullptr;
+		String path;
+	};
+
+	// Build the step list from the environment; returns false when batch capture was not requested.
+	bool setupScreenshotSequence();
+
+	// Run one step and chain to the next. Layout switching and the settle delay are an action
+	// sequence, so the scene is driven exactly as it would be by a user walking the tests.
+	void runScreenshotStep(size_t index);
+
 	Rc<Queue> _remoteQueue;
+
+	Vector<ScreenshotStep> _screenshotSteps;
+	float _screenshotDelay = 1.0f;
+
+	// Rendering is on-demand: a frame is only produced while there is input or a running action
+	// (Director::hasActiveInteractions). Between two steps the step sequence has ended and the next
+	// one has not started, so the action manager would go empty, frames would stop - and the next
+	// step's DelayTime, which only advances on a frame, would never fire. This never-ending action
+	// keeps the loop alive for the whole capture run.
+	Rc<Action> _screenshotKeepAlive;
 };
 
 } // namespace stappler::xenolith::app

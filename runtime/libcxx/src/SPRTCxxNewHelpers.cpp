@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <new> helpers: get/set_new_handler, __throw_bad_alloc, __throw_bad_array_new_length (new_helpers.cpp). The replaceable operator new/delete themselves stay sprt-native (SPRTCxxNewDelete.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/new_helpers.cpp"

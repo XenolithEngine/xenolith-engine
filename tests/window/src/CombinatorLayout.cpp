@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "CombinatorLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -68,12 +67,12 @@ Layer *CombinatorLayout::makeSwatch(Node *parent, StringView cls, ZOrder z) {
 }
 
 bool CombinatorLayout::init() {
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
 	// one stylesheet scope for the whole subtree
-	addSystem(Rc<ui::StyleSystem>::create(s_combinatorCss));
+	setStyleSheet(s_combinatorCss);
 
 	auto makeRowLabel = [this](StringView text) {
 		auto label = addChild(Rc<Label>::create(), ZOrder(1));
@@ -199,12 +198,12 @@ bool CombinatorLayout::init() {
 }
 
 void CombinatorLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	const float swatch = 72.0f;
 	const float rowH = 108.0f;
-	const float top = cs.height - 96.0f;
+	const float top = getWorkTop() - 96.0f;
 	const float labelX = 24.0f;
 	const float hitX = 320.0f;
 	const float missX = 420.0f;

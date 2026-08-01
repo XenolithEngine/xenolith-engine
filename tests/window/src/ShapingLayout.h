@@ -23,7 +23,7 @@
 #ifndef EXAMPLES_VK_GUI_SRC_SHAPINGLAYOUT_H_
 #define EXAMPLES_VK_GUI_SRC_SHAPINGLAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
@@ -31,8 +31,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 // Visual test bed for HarfBuzz shaping (stages 3-4): rows of text rendered with shaping/bidi off vs
 // on, so the shaped glyphs (kerning, ligatures, Arabic joining, RTL order) can be eyeballed from a
-// screenshot. Reachable from the GeneralLayout menu, or directly via the XL_SHAPING_TEST env var.
-class ShapingLayout : public basic2d::SceneLayout2d {
+// screenshot.
+class ShapingLayout : public TestLayout {
 public:
 	virtual ~ShapingLayout() = default;
 

@@ -32,6 +32,7 @@
 #include "XLVkTextureSet.h"
 #include "XLVkPipeline.h"
 #include "XL2dFrameContext.h"
+#include "XL2dDamage.h"
 #include "XLLinearGradient.h"
 #include "backend/vk/XL2dVkParticlePass.h"
 #include "glsl/include/XL2dGlslVertexData.h"
@@ -66,6 +67,10 @@ struct VertexMaterialDynamicData : public InterfaceObject<memory::PoolInterface>
 		uint32_t vertexCount = 0;
 		uint32_t transformOffset = 0;
 		uint32_t transformCount = 0;
+
+		// traversal order; `packed`/`instanced` are head-insertion lists, so the chain itself is
+		// in reverse command order. Used as the tie-breaker for equal zPaths in flat mode.
+		uint32_t order = 0;
 	};
 
 	struct StatePlanInfo {
@@ -110,6 +115,10 @@ struct VertexMaterialDynamicData : public InterfaceObject<memory::PoolInterface>
 	Vec2 shadowSize = Vec2(1.0f, 1.0f);
 	bool hasGpuSideAtlases = false;
 
+	// FlatPass has no depth buffer: draws are emitted in painter's order and particles are dropped
+	bool flatOrder = false;
+	uint32_t orderCounter = 0;
+
 	uint32_t excludeVertexes = 0;
 	uint32_t excludeIndexes = 0;
 	float maxShadowValue = 0.0f;
@@ -135,6 +144,7 @@ struct VertexMaterialDynamicData : public InterfaceObject<memory::PoolInterface>
 			Map<core::MaterialId, MaterialWritePlan> &writePlan);
 	void drawWritePlan(VertexProcessor *processor, WriteTarget &writeTarget,
 			Map<core::MaterialId, MaterialWritePlan> &writePlan);
+	void drawWritePlanFlat(VertexProcessor *processor, WriteTarget &writeTarget);
 	void pushAll(VertexProcessor *, WriteTarget &writeTarget);
 };
 
@@ -168,6 +178,12 @@ struct VertexMaterialVertexProcessor : public Ref {
 	Function<void(bool)> _callback;
 	DrawStat _drawStat;
 
+	// Damage is collected by this very walk: the commands are visited once anyway, and deferred
+	// results are already resolved here, so their bounds are exact.
+	bool _collectDamage = false;
+	DamageCollector _damage;
+	Rc<core::FrameRequest> _request;
+
 	VertexMaterialVertexProcessor(VertexAttachmentHandle *, Rc<FrameContextHandle2d> &&,
 			Function<void(bool)> &&cb);
 
@@ -186,6 +202,7 @@ VertexMaterialVertexProcessor::VertexMaterialVertexProcessor(VertexAttachmentHan
 
 void VertexMaterialVertexProcessor::run(core::FrameHandle &frame) {
 	_constraints = frame.getFrameConstraints();
+	_request = frame.getRequest();
 	_persistentMapping = frame.isPersistentMapping();
 	_cache = frame.getLoop()->getFrameCache();
 	_device = static_cast<Device *>(frame.getDevice());
@@ -209,8 +226,14 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 		auto dynamicData = new (pool) DynamicData;
 		dynamicData->surfaceExtent = _constraints.extent;
 		dynamicData->transform = _constraints.transform;
-		dynamicData->hasGpuSideAtlases = _device->hasDynamicIndexedBuffers();
+		dynamicData->hasGpuSideAtlases = _device->hasBufferDeviceAddresses();
+		dynamicData->flatOrder = _attachment->isFlatOrder();
 		dynamicData->pool = pool;
+
+		_collectDamage = _attachment->isDamageTracked();
+		if (_collectDamage) {
+			_damage.init(_input, _constraints);
+		}
 
 		auto shadowExtent = _input->lights.getShadowExtent(_constraints.getScreenSize());
 		auto shadowSize = _input->lights.getShadowSize(_constraints.getScreenSize());
@@ -399,6 +422,7 @@ void VertexMaterialDynamicData::emplaceWritePlan(FrameContextHandle2d *input,
 					vertexData->vertexes = makeSpanView(packedStart, packedCommands);
 					vertexData->zOrder = cmd->zPath;
 					vertexData->depthValue = cmd->depthValue;
+					vertexData->order = orderCounter++;
 					statePlan->packed = vertexData;
 				}
 
@@ -407,6 +431,7 @@ void VertexMaterialDynamicData::emplaceWritePlan(FrameContextHandle2d *input,
 				vertexData->vertexes = makeSpanView(&vIt, 1);
 				vertexData->zOrder = cmd->zPath;
 				vertexData->depthValue = cmd->depthValue;
+				vertexData->order = orderCounter++;
 				statePlan->instanced = vertexData;
 
 				packedCommands = 0;
@@ -424,6 +449,7 @@ void VertexMaterialDynamicData::emplaceWritePlan(FrameContextHandle2d *input,
 			vertexData->vertexes = makeSpanView(packedStart, packedCommands);
 			vertexData->zOrder = cmd->zPath;
 			vertexData->depthValue = cmd->depthValue;
+			vertexData->order = orderCounter++;
 			statePlan->packed = vertexData;
 		}
 	}
@@ -435,6 +461,11 @@ void VertexMaterialDynamicData::pushVertexData(VertexProcessor *processor, const
 	if (!material) {
 		return;
 	}
+
+	if (processor->_collectDamage) {
+		for (auto &iv : cmd->vertexes) { processor->_damage.addInstances(c, cmd, iv); }
+	}
+
 	if (material->getPipeline()->isSolid()) {
 		emplaceWritePlan(processor->_input, material, solidWritePlan, c, cmd, cmd->vertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
@@ -513,6 +544,11 @@ void VertexMaterialDynamicData::pushDeferred(VertexProcessor *processor, const C
 		storedVertexes = v;
 	});
 
+	// the result is resolved by now, so a deferred command is bounded exactly like an immediate one
+	if (processor->_collectDamage) {
+		for (auto &iv : storedVertexes) { processor->_damage.addInstances(c, cmd, iv); }
+	}
+
 	if (cmd->renderingLevel == RenderingLevel::Solid) {
 		emplaceWritePlan(processor->_input, material, solidWritePlan, c, cmd, storedVertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
@@ -529,9 +565,21 @@ void VertexMaterialDynamicData::pushDeferred(VertexProcessor *processor, const C
 
 void VertexMaterialDynamicData::pushParticleEmitter(VertexProcessor *processor, const Command *c,
 		const CmdParticleEmitter *cmd) {
+	if (flatOrder) {
+		// FlatPass has no particle compute pass - drop the command instead of emitting a draw
+		// span that would reference a missing emitter attachment
+		return;
+	}
+
 	auto material = processor->_attachment->getMaterialSet()->getMaterialById(cmd->material);
 	if (!material) {
 		return;
+	}
+
+	if (processor->_collectDamage) {
+		// particles are simulated on the GPU and carry no CPU geometry at all, so they can be
+		// neither versioned nor bounded: the whole frame has to be treated as damaged
+		processor->_damage.escalate();
 	}
 
 	auto emplacePlan = [&](Map<core::MaterialId, MaterialWritePlan> &writePlan) {
@@ -849,7 +897,7 @@ void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteT
 			auto lb = sprt::lower_bound(drawOrder.begin(), drawOrder.end(), &it,
 					[](const sprt::pair<const core::MaterialId, MaterialWritePlan> *l,
 							const sprt::pair<const core::MaterialId, MaterialWritePlan> *r) {
-				if (l->second.material->getPipeline() != l->second.material->getPipeline()) {
+				if (l->second.material->getPipeline() != r->second.material->getPipeline()) {
 					return GraphicPipeline::comparePipelineOrdering(
 							*l->second.material->getPipeline(), *r->second.material->getPipeline());
 				} else if (l->second.material->getLayoutIndex()
@@ -1011,11 +1059,139 @@ void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteT
 	}
 }
 
+// Painter-order span emission for queues without a depth buffer.
+//
+// Routing into solid/surface/transparent plans stays untouched (that is what keeps geometry batched
+// per material); only the order in which spans are emitted changes. Every VertexDataPlanInfo across
+// all three plans is collected, sorted by (zPath, traversal order), and written out with absolute
+// vertex indexes so that adjacent entries sharing a material+state collapse into a single draw.
+void VertexMaterialDynamicData::drawWritePlanFlat(VertexProcessor *processor,
+		WriteTarget &writeTarget) {
+	struct FlatDrawEntry {
+		SpanView<ZOrder> zOrder;
+		core::MaterialId material;
+		StateId state;
+		const StatePlanInfo *statePlan;
+		const VertexDataPlanInfo *data;
+		bool instanced;
+		uint32_t order;
+	};
+
+	Vector<FlatDrawEntry> entries;
+
+	auto collectPlan = [&](Map<core::MaterialId, MaterialWritePlan> &writePlan) {
+		for (auto &plan : writePlan) {
+			for (auto &state : plan.second.states) {
+				auto collectChain = [&](const VertexDataPlanInfo *it, bool instanced) {
+					while (it) {
+						entries.emplace_back(FlatDrawEntry{it->zOrder, plan.first, state.first,
+							&state.second, it, instanced, it->order});
+						it = it->next;
+					}
+				};
+
+				collectChain(state.second.instanced, true);
+				collectChain(state.second.packed, false);
+			}
+		}
+	};
+
+	collectPlan(solidWritePlan);
+	collectPlan(surfaceWritePlan);
+	for (auto &it : transparentWritePlan) { collectPlan(it.second); }
+
+	if (entries.empty()) {
+		return;
+	}
+
+	ZOrderLess zLess;
+	sprt::sort(entries.begin(), entries.end(), [&](const FlatDrawEntry &l, const FlatDrawEntry &r) {
+		if (zLess(l.zOrder, r.zOrder)) {
+			return true;
+		}
+		if (zLess(r.zOrder, l.zOrder)) {
+			return false;
+		}
+		return l.order < r.order;
+	});
+
+	auto writeIndexes = [](uint32_t *indexTarget, const uint32_t *indexSource, uint32_t indexCount,
+								uint32_t vertexOffset) {
+		for (size_t i = 0; i < indexCount; ++i) {
+			*(indexTarget++) = *(indexSource++) + vertexOffset;
+		}
+		return indexCount;
+	};
+
+	// index of the span that a following entry may be merged into
+	size_t currentIdx = maxOf<size_t>();
+	const StatePlanInfo *currentStatePlan = nullptr;
+
+	for (auto &entry : entries) {
+		auto firstIndex = writeTarget.indexOffset;
+
+		// absolute vertex base, so the span itself can use vertexOffset = 0 and stay mergeable
+		uint32_t vertexBase = entry.data->vertexOffset;
+
+		for (auto &vertexes : entry.data->vertexes) {
+			writeTarget.indexOffset += writeIndexes(
+					reinterpret_cast<uint32_t *>(writeTarget.indexes) + writeTarget.indexOffset,
+					vertexes.data->indexes.data(),
+					uint32_t(vertexes.data->indexes.size() - vertexes.sdfIndexes), vertexBase);
+			vertexBase += uint32_t(vertexes.data->data.size());
+		}
+
+		auto indexCount = writeTarget.indexOffset - firstIndex;
+		if (indexCount == 0) {
+			continue;
+		}
+
+		// indexes are written sequentially, so a non-instanced entry that follows a non-instanced
+		// span of the same material+state just extends it
+		if (!entry.instanced && currentIdx != maxOf<size_t>() && currentStatePlan == entry.statePlan
+				&& processor->materialSpans[currentIdx].material == entry.material
+				&& processor->materialSpans[currentIdx].state == entry.state
+				&& processor->materialSpans[currentIdx].instanceCount == 1) {
+			processor->materialSpans[currentIdx].indexCount += indexCount;
+			continue;
+		}
+
+		processor->materialSpans.emplace_back(VertexSpan{.material = entry.material,
+			.indexCount = indexCount,
+			.instanceCount = entry.instanced ? entry.data->transformCount : 1,
+			.firstIndex = firstIndex,
+			.vertexOffset = 0,
+			.firstInstance = entry.instanced ? entry.data->transformOffset : 0,
+			.state = entry.state,
+			.gradientOffset = entry.statePlan->gradientStart,
+			.gradientCount = entry.statePlan->gradientCount,
+			.outlineOffset = (entry.statePlan->stateData ? entry.statePlan->stateData->outlineOffset
+														 : 0.0f)});
+
+		if (entry.instanced) {
+			// instanced spans carry their own instanceCount/firstInstance and cannot absorb others
+			currentIdx = maxOf<size_t>();
+			currentStatePlan = nullptr;
+		} else {
+			currentIdx = processor->materialSpans.size() - 1;
+			currentStatePlan = entry.statePlan;
+		}
+	}
+}
+
 void VertexMaterialDynamicData::pushAll(VertexProcessor *processor, WriteTarget &writeTarget) {
 	pushInitial(writeTarget);
 	pushPlanVertexes(writeTarget, solidWritePlan);
 	pushPlanVertexes(writeTarget, surfaceWritePlan);
 	for (auto &it : transparentWritePlan) { pushPlanVertexes(writeTarget, it.second); }
+
+	if (flatOrder) {
+		drawWritePlanFlat(processor, writeTarget);
+
+		// everything is drawn in painter's order, so there is no solid/surface split to report
+		processor->transparentCmds = uint32_t(processor->materialSpans.size());
+		return;
+	}
 
 	uint32_t counter = 0;
 	drawWritePlan(processor, writeTarget, solidWritePlan);
@@ -1048,16 +1224,26 @@ void VertexMaterialVertexProcessor::finalize(DynamicData *data) {
 		_input->client->pushDrawStat(_drawStat);
 	}
 
+	// Publish before the attachment reports readiness, so the loop thread sees a fully written
+	// state by the time it records the pass or presents.
+	auto damageState = _collectDamage ? _damage.finalize() : Rc<core::FrameDamageState>();
+	if (_request) {
+		_request->setDamageState(Rc<core::FrameDamageState>(damageState));
+	}
+
 	_attachment->loadData(sp::move(_input), sp::move(_indexes), sp::move(_vertexes),
 			sp::move(_transforms), sp::move(materialSpans), sp::move(shadowSolidSpans),
-			sp::move(shadowSdfSpans), data->maxShadowValue);
+			sp::move(shadowSdfSpans), data->maxShadowValue, sp::move(damageState));
 
 	_callback(true);
 }
 
-bool VertexAttachment::init(AttachmentBuilder &builder, const AttachmentData *m) {
+bool VertexAttachment::init(AttachmentBuilder &builder, const AttachmentData *m, bool flatOrder,
+		bool damageTracked) {
 	if (core::GenericAttachment::init(builder)) {
 		_materials = m;
+		_flatOrder = flatOrder;
+		_damageTracked = damageTracked;
 		return true;
 	}
 	return false;
@@ -1104,7 +1290,8 @@ bool VertexAttachmentHandle::empty() const { return !_indexes || !_vertexes || !
 void VertexAttachmentHandle::loadData(Rc<FrameContextHandle2d> &&data, Rc<Buffer> &&indexes,
 		Rc<Buffer> &&vertexes, Rc<Buffer> &&transforms, Vector<VertexSpan> &&spans,
 		Vector<VertexSpan> &&shadowSolidSpans, Vector<VertexSpan> &&shadowSdfSpans,
-		float maxShadowValue) {
+		float maxShadowValue, Rc<core::FrameDamageState> &&damage) {
+	_damage = sp::move(damage);
 	_commands = move(data);
 	_indexes = move(indexes);
 	_vertexes = move(vertexes);
@@ -1283,6 +1470,11 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		if (!material) {
 			return;
 		}
+		if (material->getImages().empty()) {
+			stappler::log::source().error("MaterialRenderPassHandle", "Material ",
+					materialVertexSpan.material, " has no images");
+			return;
+		}
 
 		pcb.materialPointer =
 				UVec2::convertFromPacked(buf.bindBufferAddress(material->getBuffer()));
@@ -1293,13 +1485,20 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		//pcb.outlineOffset = materialVertexSpan.outlineOffset;
 
 		if (auto a = material->getAtlas()) {
-			pcb.atlasPointer =
-					UVec2::convertFromPacked(buf.bindBufferAddress(a->getBuffer().get()));
+			// Without BDA the font path keeps CPU-only DataAtlas (no GPU buffer).
+			if (auto atlasBuf = a->getBuffer()) {
+				pcb.atlasPointer = UVec2::convertFromPacked(buf.bindBufferAddress(atlasBuf));
+			}
 		}
 
 		auto textureSetIndex = material->getLayoutIndex();
 
 		auto pipeline = material->getPipeline();
+		if (!pipeline || !pipeline->pipeline) {
+			stappler::log::source().error("MaterialRenderPassHandle", "Material ",
+					materialVertexSpan.material, " has no pipeline");
+			return;
+		}
 		buf.cmdBindPipelineWithDescriptors(pipeline);
 
 		if (textureSetIndex != boundTextureSetIndex) {
@@ -1322,6 +1521,9 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		applyDynamicState(commands, buf, materialVertexSpan.state);
 
 		if (materialVertexSpan.particleSystemId > 0) {
+			if (!_particles) {
+				return;
+			}
 
 			auto particleVertexes = _particles->getVertices();
 

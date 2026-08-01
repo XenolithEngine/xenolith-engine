@@ -85,6 +85,7 @@ EXPORTS
 	EnumProcessModulesEx
 	GetProcessMemoryInfo
 	GetLogicalProcessorInformationEx
+	GetProcessGroupAffinity
 	FlushInstructionCache
 	GetLargePageMinimum
 	GetLongPathNameW
@@ -92,6 +93,8 @@ EXPORTS
 	AssignProcessToJobObject
 	SetInformationJobObject
 	GetThreadId
+	GetProcessAffinityMask
+	SetProcessAffinityMask
 	SetThreadGroupAffinity
 	GetThreadGroupAffinity
 	SearchPathW

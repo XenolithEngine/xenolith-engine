@@ -33,6 +33,23 @@
 #define SPRT_DEFINE_PROTO(name) decltype(&::name) name = nullptr;
 #define SPRT_LOAD_PROTO(handle, name) this->name = handle.sym<decltype(this->name)>(#name);
 
+// Direct-to-display (DRM/KMS) support compiles in only where the target sysroot
+// ships the libdrm headers. libdrm itself is dlopen'd, not linked, so this gate
+// is purely about having the declarations for SPRT_DEFINE_PROTO.
+//
+// It must never change the layout of a class: DrmDevice, DisplayWindow and
+// LinuxContextController keep their shape either way, only what their functions
+// answer changes (DrmLibrary is the sole exception - it owns the proto table and
+// is never embedded by value). Can be forced from the command line to build-test
+// the no-libdrm path.
+#ifndef SPRT_HAS_LIBDRM
+#if __has_include(<xf86drmMode.h>)
+#define SPRT_HAS_LIBDRM 1
+#else
+#define SPRT_HAS_LIBDRM 0
+#endif
+#endif
+
 namespace sprt {
 
 template <typename T>

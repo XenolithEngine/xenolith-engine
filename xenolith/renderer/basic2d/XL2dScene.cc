@@ -33,6 +33,7 @@
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "backend/vk/XL2dVkShadowPass.h"
+#include "backend/vk/XL2dVkFlatPass.h"
 #endif
 
 #if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
@@ -88,7 +89,9 @@ bool Scene2d::FpsDisplay::init() {
 	_label->setFontSize(16);
 	_label->setContentSizeDirtyCallback([this] { setContentSize(_label->getContentSize()); });
 	_label->setPersistentGlyphData(true);
-	_label->addCommandFlags(CommandFlags::DoNotCount);
+	// the text changes every frame, so rebuilding its identity each time would only churn the
+	// damage entry list; state the fact instead
+	_label->addCommandFlags(CommandFlags::DoNotCount | CommandFlags::AlwaysDirty);
 
 	addCommandFlags(CommandFlags::DoNotCount);
 	scheduleUpdate();
@@ -200,20 +203,42 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 		buildQueueResources(queueInfo, builder);
 
+		if (queueInfo.damage == core::QueueDamageFlags(maxOf<uint32_t>())) {
+			// Partial redraw and frame skipping both rest on being able to preserve an image between
+			// frames, which only the lightweight queue can do; the full queue only pays for damage
+			// tracking when asked.
+			queueInfo.damage = (queueInfo.type == QueueType::Flat)
+					? (core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw
+							  | core::QueueDamageFlags::SkipEmptyFrames)
+					: core::QueueDamageFlags::None;
+		}
+
 		[[maybe_unused]]
 		auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
 		bool queueBuilt = false;
 
 #if MODULE_XENOLITH_BACKEND_VK
 		if (!queueBuilt && api == core::InstanceApi::Vulkan) {
-			basic2d::vk::ShadowPass::RenderQueueInfo info{
-				app->getGlLoop(),
-				queueInfo.extent,
-				basic2d::vk::ShadowPass::Flags::None,
-				queueInfo.backgroundColor,
-			};
+			if (queueInfo.type == QueueType::Flat) {
+				basic2d::vk::FlatPass::RenderQueueInfo info{
+					app->getGlLoop(),
+					queueInfo.extent,
+					queueInfo.backgroundColor,
+					queueInfo.damage,
+				};
 
-			basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+				basic2d::vk::FlatPass::makeRenderQueue(builder, info);
+			} else {
+				basic2d::vk::ShadowPass::RenderQueueInfo info{
+					app->getGlLoop(),
+					queueInfo.extent,
+					basic2d::vk::ShadowPass::Flags::None,
+					queueInfo.backgroundColor,
+					queueInfo.damage,
+				};
+
+				basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+			}
 			queueBuilt = true;
 		}
 #endif

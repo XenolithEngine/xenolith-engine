@@ -23,7 +23,7 @@
 #ifndef TESTS_WINDOW_SRC_PARENTRESIZELAYOUT_H_
 #define TESTS_WINDOW_SRC_PARENTRESIZELAYOUT_H_
 
-#include "XL2dSceneLayout.h"
+#include "TestLayout.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -33,8 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // styles are re-resolved: a recursive-resolver subtree (child 50%, grandchild 50% of the child
 // - transitive cascade, plus a position:absolute left:25% node) and a standalone node with its
 // own non-recursive resolver (the System::handleLayoutInParent path).
-// Reach via XL_PARENT_RESIZE_TEST.
-class ParentResizeLayout : public basic2d::SceneLayout2d {
+class ParentResizeLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;

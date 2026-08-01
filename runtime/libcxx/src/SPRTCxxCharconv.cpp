@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <charconv>: to_chars/from_chars integer + floating-point, plus the ryu backend (charconv.cpp + ryu/{d2s,f2s,d2fixed}.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/charconv.cpp"
 #include "libcxx/ryu/d2s.cpp"
 #include "libcxx/ryu/f2s.cpp"

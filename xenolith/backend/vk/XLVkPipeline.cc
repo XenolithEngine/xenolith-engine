@@ -263,10 +263,22 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &params, const Subpas
 		info.pName = shader.data->entryPoints.front().name.data();
 
 		if (!dev.getInfo().features.device10.features.shaderSampledImageArrayDynamicIndexing) {
+			bool foundStatic = false;
 			for (auto &it : shader.data->entryPoints) {
 				if (StringView(it.name).ends_with("_static")) {
 					info.pName = it.name.data();
+					foundStatic = true;
 				}
+			}
+			if (foundStatic) {
+				log::source().info("GraphicPipeline", "pipeline '", params.key,
+						"': using static entry '", info.pName,
+						"' (no shaderSampledImageArrayDynamicIndexing)");
+			} else if (shader.data->entryPoints.size() > 1
+					|| StringView(info.pName).starts_with("xl_2d_material")) {
+				log::source().warn("GraphicPipeline", "pipeline '", params.key,
+						"': no *_static entry in '", info.pName,
+						"' — V3DV may fault on dynamic texture indexing");
 			}
 		}
 

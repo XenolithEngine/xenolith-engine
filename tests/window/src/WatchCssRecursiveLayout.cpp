@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "WatchCssRecursiveLayout.h"
-#include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 #include "SPFilesystem.h"
@@ -58,11 +57,11 @@ bool WatchCssRecursiveLayout::init() {
 	// seed the file BEFORE the StyleSystem reads it
 	writeCss("#e53935"); // red
 
-	if (!SceneLayout2d::init()) {
+	if (!TestLayout::init()) {
 		return false;
 	}
 
-	addSystem(Rc<ui::StyleSystem>::create(FileInfo(_cssPath, FileCategory::Custom)));
+	setStyleSheet(FileInfo(_cssPath, FileCategory::Custom));
 
 	// parent carries the ONE recursive resolver; it styles the child through the frame stack
 	_parent = addChild(Rc<Layer>::create(Color::Grey_400), ZOrder(1));
@@ -86,7 +85,7 @@ bool WatchCssRecursiveLayout::init() {
 }
 
 void WatchCssRecursiveLayout::handleContentSizeDirty() {
-	SceneLayout2d::handleContentSizeDirty();
+	TestLayout::handleContentSizeDirty();
 
 	const auto cs = getContentSize();
 	_parent->setAnchorPoint(Vec2(0.5f, 0.5f));

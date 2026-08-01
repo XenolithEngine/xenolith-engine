@@ -449,8 +449,12 @@ void LineDrawer::drawClose(bool closed) {
 
 	if (stroke) {
 		if (closed && count > 2) {
-			pushStroke(target->prev->point, target->point, origin[0]);
-			pushStroke(target->point, origin[0], origin[1]);
+			if (target->point.fuzzyEquals(origin[0], getCloseControlDistance())) {
+				pushStroke(target->prev->point, origin[0], origin[1]);
+			} else {
+				pushStroke(target->prev->point, target->point, origin[0]);
+				pushStroke(target->point, origin[0], origin[1]);
+			}
 
 			stroke->closeStrokeContour(strokeCursor);
 		} else {

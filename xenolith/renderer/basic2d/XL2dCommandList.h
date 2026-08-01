@@ -44,6 +44,9 @@ struct SP_PUBLIC CmdInfo {
 	StateId state = StateIdNone;
 	RenderingLevel renderingLevel = RenderingLevel::Solid;
 	float depthValue = 0.0f;
+
+	// Optional model-space AABB
+	Rect bounds;
 };
 
 struct SP_PUBLIC CmdVertexArray : CmdInfo {

@@ -172,10 +172,12 @@ void MacosContextController::handleContextDidStart() {
 			Rc<MacosDisplayConfigManager>::create(this, [](NotNull<DisplayConfigManager> m) { });
 
 	if (_windowInfo) {
-		if (configureWindow(_windowInfo)) {
-			Rc<MacosWindow>::create(this, sprt::move(_windowInfo));
-		}
+		createWindow(sprt::move(_windowInfo));
 	}
+}
+
+bool MacosContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	return Rc<MacosWindow>::create(this, sprt::move(wInfo)) != nullptr;
 }
 
 void MacosContextController::handleContextDidDestroy() {

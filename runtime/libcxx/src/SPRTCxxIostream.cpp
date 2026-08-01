@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <iostream>: the global stream objects cin/cout/cerr/clog (+ wide) and ios_base::Init (iostream.cpp). Pairs with the ios/ostream/fstream TUs.
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/iostream.cpp"

@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ <ostream>: __put_character_sequence out-of-line and std::endl/flush instantiations (ostream.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/ostream.cpp"

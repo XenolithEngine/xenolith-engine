@@ -38,6 +38,15 @@ MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS) \
 	-nostdinc++ -Wno-unused-command-line-argument
 
+# libdrm installs xf86drm.h/xf86drmMode.h into usr/include (already on the path via
+# the runtime module), but their <drm.h>/<drm_mode.h> live in usr/include/libdrm.
+# Direct-to-display (KMS) support compiles out where the sysroot has no libdrm --
+# see SPRT_HAS_LIBDRM in linux/SPRTWinLinux.h.
+ifeq ($(TARGET_SYSTEM),Linux)
+MODULE_RUNTIME_WINDOW_PRIVATE_INCLUDES += \
+	$(TARGET_INCLUDE_DIR)/libdrm
+endif # ($(TARGET_SYSTEM),Linux)
+
 # If target toolchain have include_libc dir, use it
 ifdef TARGET_INCLUDE_DIR_LIBC
 MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))

@@ -22,4 +22,6 @@ THE SOFTWARE.
 
 // Out-of-line TU for vendored libc++ hash support: __murmur2_or_cityhash backends and __hash_memory (hash.cpp).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/hash.cpp"

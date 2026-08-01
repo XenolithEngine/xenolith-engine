@@ -232,8 +232,11 @@ void Button::updateBackgroundImage() {
 	auto path = image->addPath();
 	path->openForWriting([&](PathWriter &writer) {
 		if (rounded) {
-			writer.addBox(box.origin.x, box.origin.y, box.size.width, box.size.height, rtl, rtr,
-					rbr, rbl);
+			writer.addBox(box.origin.x, box.origin.y, box.size.width, box.size.height,
+					/* addBox TL = visual bottom-left  */ rbl,
+					/* addBox TR = visual bottom-right */ rbr,
+					/* addBox BR = visual top-right    */ rtr,
+					/* addBox BL = visual top-left     */ rtl);
 		} else {
 			writer.addRect(box);
 		}

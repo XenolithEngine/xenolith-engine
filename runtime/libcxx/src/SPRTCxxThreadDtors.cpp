@@ -30,6 +30,9 @@ THE SOFTWARE.
 // against sprt-backed classes. <__config> first so _LIBCPP_VERSION is defined before
 // __sprt_config.h locks __SPRT_STD_EXTERNAL (project std-owned types onto libc++, not
 // hand-define them).
+
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include <__config>
 #include <sprt/c/bits/__sprt_config.h>
 #ifndef SPRT_STD_THREADING_SPRT

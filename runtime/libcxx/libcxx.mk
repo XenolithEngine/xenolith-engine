@@ -77,22 +77,8 @@ MODULE_RUNTIME_LIBCXX_PRIVATE_INCLUDES := \
 MODULE_RUNTIME_LIBCXX_PRIVATE_CFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS)
 
-# libc++ TU flags: -nostdinc++, and the same overlay-first include chain the rest of
-# the runtime uses (see runtime.mk) — include_libc/cxx (the sprt overlay: __config_site
-# etc.) BEFORE libcxx/include (full libc++), then include_libc (sprt libc). The overlay
-# must precede libcxx/include or these TUs fail to find <__config_site>. -frtti because
-# the vendored regex_error derives runtime_error and the tests exercise typeid.
-#
-# -D_LIBCPP_BUILDING_LIBRARY is the canonical flag libc++ sets for ALL its out-of-line
-# src TUs; it exposes the legacy-ABI members (e.g. basic_string::__init) these units
-# define. The two -idirafter roots are quoted-include last resorts used ONLY by the
-# charconv float path: src/libcxx resolves its "include/ryu/*.h" ryu backend, and
-# src/libcxx/libc-shared resolves the vendored llvm-libc "shared/*.h" + "src/__support"
-# float-conversion chain (from/to_chars_floating_point.h). Being -idirafter, they never
-# shadow the sprt libc / libc++ headers on the -isystem chain.
 MODULE_RUNTIME_LIBCXX_PRIVATE_CXXFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS) \
-	-D_LIBCPP_BUILDING_LIBRARY \
 	-frtti -funwind-tables -Wno-unused-command-line-argument -nostdinc++\
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
 	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
@@ -100,14 +86,13 @@ MODULE_RUNTIME_LIBCXX_PRIVATE_CXXFLAGS := \
 	-idirafter $(RUNTIME_MODULE_DIR)/libcxx/src/libcxx \
 	-idirafter $(RUNTIME_MODULE_DIR)/libcxx/src/libcxx/libc-shared
 
-# The runtime owns the whole libc, exposed through include_libc (the explicit -isystem
-# chain + the target's -nostdinc already resolve every libc include to sprt; there is no
-# hosted sysroot to fall back to). The libc includes therefore resolve to sprt regardless
-# of __STDC_HOSTED__, so the module is built HOSTED (no -ffreestanding): __STDC_HOSTED__ == 1
-# makes sprt's umbrella libc entry points (SPRT_UMBRELLA_FUNC: _close/_fseeki64/strcoll_l/
-# _snwprintf/getrandom/...) expand as inline forwarders to their __sprt_* primitives, which
-# the runtime provides — rather than declaration-only references with no defining object,
-# which left them undefined at link. This matches the (already-hosted) Linux/default path.
+
+ifeq ($(TARGET_SYSTEM),Android-NDK)
+MODULE_RUNTIME_LIBCXX_GENERAL_CXXFLAGS := \
+	-idirafter $(RUNTIME_MODULE_DIR)/libcxx/src/libcxx \
+	-idirafter $(RUNTIME_MODULE_DIR)/libcxx/src/libcxx/libc-shared
+endif
+
 ifeq ($(TARGET_SYSTEM),Windows)
 # sprt/wrappers/windows is the sprt <windows.h> (+ casemap) surface: several vendored
 # libc++ TUs (system_error.cpp, chrono.cpp, fstream.cpp, filesystem/*) include <windows.h>

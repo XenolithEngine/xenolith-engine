@@ -40,8 +40,8 @@ public:
 
 	virtual void invalidate() override;
 
-	virtual core::SurfaceInfo getSurfaceOptions(const core::Device &,
-			core::FullScreenExclusiveMode, void *) const override;
+	virtual core::SurfaceInfo getSurfaceOptions(const core::Device &, core::FullScreenExclusiveMode,
+			void *) const override;
 
 #if __OBJC__
 	CAMetalLayer *getLayer() const { return bridgeHandle<CAMetalLayer *>(_layer); }
@@ -70,7 +70,7 @@ public:
 			Status &) override;
 
 	virtual Status present(core::DeviceQueue &queue, core::ImageStorage *,
-			uint64_t presentWindow) override;
+			const core::PresentInfo &) override;
 	virtual void invalidateImage(const core::ImageStorage *, bool release) override;
 	virtual void invalidateImage(uint32_t, bool release) override;
 

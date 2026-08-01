@@ -60,7 +60,11 @@ typedef __SPRT_ID(char32_t) char32_t;
 typedef __SPRT_ID(size_t) size_t;
 
 #if !__SPRT_MBSTATE_DIRECT
+// see wchar.h: _MBSTATE_T coordinates the public typedef with Darwin headers
+#ifndef _MBSTATE_T
+#define _MBSTATE_T
 typedef __SPRT_MBSTATE_NAME mbstate_t;
+#endif
 #endif
 
 #ifndef NULL

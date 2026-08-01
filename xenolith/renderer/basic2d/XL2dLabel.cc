@@ -121,6 +121,27 @@ static void Label_writeTextureQuad(float height, const font::Metrics &m,
 	}
 }
 
+// Model-space AABB of a laid-out label, in the same units as the written quads (layout units:
+// x = char pos, y = format->height - line.pos).
+//
+// It cannot be derived from the vertices: Quad::drawChar writes all four corners of a glyph at the
+// same point with Size2(0, 0), and the actual glyph box is added by the vertex shader from the GPU
+// atlas. So use the layout's own extent, padded by the tallest line to cover ascender/descender
+// overhang, glyph bearings and decorations. A superset is always safe for damage tracking.
+template <typename Interface>
+static Rect Label_computeBounds(const font::TextLayoutData<Interface> *format) {
+	if (format->chars.empty()) {
+		return Rect::ZERO;
+	}
+
+	uint16_t maxLineHeight = 0;
+	for (auto &line : format->lines) { maxLineHeight = sprt::max(maxLineHeight, line.height); }
+
+	const float margin = float(maxLineHeight);
+	return Rect(-margin, -margin, float(format->width) + margin * 2.0f,
+			float(format->height) + margin * 2.0f);
+}
+
 template <typename Interface>
 static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<Interface> *format,
 		Vector<ColorMask> &colorMap, float layer) {
@@ -242,6 +263,10 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 			}
 		}
 	}
+
+	// after the last mutation: every addQuad() invalidates the cached bounds
+	vertexes.setBoundsDerivable(false);
+	vertexes.setBounds(Label_computeBounds(format));
 }
 
 void Label::writeQuads(VertexArray &vertexes,
@@ -646,6 +671,8 @@ void Label::updateQuadsForeground(font::FontController *controller, TextLayout *
 bool Label::checkVertexDirty() const { return _vertexesDirty || _labelDirty; }
 
 NodeVisitFlags Label::processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) {
+	updateLabelDensity(info.modelTransformStack.back());
+
 	if (_labelDirty) {
 		updateLabel();
 	}

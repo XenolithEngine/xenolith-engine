@@ -22,13 +22,13 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <sprt/c/__sprt_complex.h>
-
 #if __STDC_HOSTED__ == 0
 #include "complex.h"
 #else
 #include <complex.h>
 #endif
+
+#include <sprt/c/__sprt_complex.h>
 
 // Host: forward each __sprt_*_impl to the native libm complex function. The same
 // translation unit serves the freestanding target, where ::cabs/::cexp/... resolve
@@ -46,6 +46,10 @@ THE SOFTWARE.
 // complex/real-math functions (cabs, cexp, ctan, creall, logl, csqrtl, ...), which
 // are left unrenamed and resolve to Bionic's libm at link time.
 extern "C" {
+// The borrowed musl sources and the prototypes below spell `double complex`: that
+// relies on C's `complex` macro, which the C++ <complex.h> overlay deliberately
+// does not define (it would shadow std::complex). Scope it to this block.
+#define complex _Complex
 #define clog __sprt_musl_clog
 #define clogf __sprt_musl_clogf
 #define clogl __sprt_musl_clogl
@@ -126,57 +130,98 @@ __SPRT_C_FUNC float __SPRT_ID(crealf_impl)(float _Complex __z) { return ::crealf
 __SPRT_C_FUNC long double __SPRT_ID(creall_impl)(long double _Complex __z) { return ::creall(__z); }
 __SPRT_C_FUNC double _Complex __SPRT_ID(cacos_impl)(double _Complex __z) { return ::cacos(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(cacosf_impl)(float _Complex __z) { return ::cacosf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(cacosl_impl)(long double _Complex __z) { return ::cacosl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(cacosl_impl)(long double _Complex __z) {
+	return ::cacosl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(cacosh_impl)(double _Complex __z) { return ::cacosh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(cacoshf_impl)(float _Complex __z) { return ::cacoshf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(cacoshl_impl)(long double _Complex __z) { return ::cacoshl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(cacoshl_impl)(long double _Complex __z) {
+	return ::cacoshl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(casin_impl)(double _Complex __z) { return ::casin(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(casinf_impl)(float _Complex __z) { return ::casinf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(casinl_impl)(long double _Complex __z) { return ::casinl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(casinl_impl)(long double _Complex __z) {
+	return ::casinl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(casinh_impl)(double _Complex __z) { return ::casinh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(casinhf_impl)(float _Complex __z) { return ::casinhf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(casinhl_impl)(long double _Complex __z) { return ::casinhl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(casinhl_impl)(long double _Complex __z) {
+	return ::casinhl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(catan_impl)(double _Complex __z) { return ::catan(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(catanf_impl)(float _Complex __z) { return ::catanf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(catanl_impl)(long double _Complex __z) { return ::catanl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(catanl_impl)(long double _Complex __z) {
+	return ::catanl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(catanh_impl)(double _Complex __z) { return ::catanh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(catanhf_impl)(float _Complex __z) { return ::catanhf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(catanhl_impl)(long double _Complex __z) { return ::catanhl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(catanhl_impl)(long double _Complex __z) {
+	return ::catanhl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(ccos_impl)(double _Complex __z) { return ::ccos(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(ccosf_impl)(float _Complex __z) { return ::ccosf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(ccosl_impl)(long double _Complex __z) { return ::ccosl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(ccosl_impl)(long double _Complex __z) {
+	return ::ccosl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(ccosh_impl)(double _Complex __z) { return ::ccosh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(ccoshf_impl)(float _Complex __z) { return ::ccoshf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(ccoshl_impl)(long double _Complex __z) { return ::ccoshl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(ccoshl_impl)(long double _Complex __z) {
+	return ::ccoshl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(cexp_impl)(double _Complex __z) { return ::cexp(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(cexpf_impl)(float _Complex __z) { return ::cexpf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(cexpl_impl)(long double _Complex __z) { return ::cexpl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(cexpl_impl)(long double _Complex __z) {
+	return ::cexpl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(clog_impl)(double _Complex __z) { return ::clog(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(clogf_impl)(float _Complex __z) { return ::clogf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(clogl_impl)(long double _Complex __z) { return ::clogl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(clogl_impl)(long double _Complex __z) {
+	return ::clogl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(conj_impl)(double _Complex __z) { return ::conj(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(conjf_impl)(float _Complex __z) { return ::conjf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(conjl_impl)(long double _Complex __z) { return ::conjl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(conjl_impl)(long double _Complex __z) {
+	return ::conjl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(cproj_impl)(double _Complex __z) { return ::cproj(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(cprojf_impl)(float _Complex __z) { return ::cprojf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(cprojl_impl)(long double _Complex __z) { return ::cprojl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(cprojl_impl)(long double _Complex __z) {
+	return ::cprojl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(csin_impl)(double _Complex __z) { return ::csin(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(csinf_impl)(float _Complex __z) { return ::csinf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(csinl_impl)(long double _Complex __z) { return ::csinl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(csinl_impl)(long double _Complex __z) {
+	return ::csinl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(csinh_impl)(double _Complex __z) { return ::csinh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(csinhf_impl)(float _Complex __z) { return ::csinhf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(csinhl_impl)(long double _Complex __z) { return ::csinhl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(csinhl_impl)(long double _Complex __z) {
+	return ::csinhl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(csqrt_impl)(double _Complex __z) { return ::csqrt(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(csqrtf_impl)(float _Complex __z) { return ::csqrtf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(csqrtl_impl)(long double _Complex __z) { return ::csqrtl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(csqrtl_impl)(long double _Complex __z) {
+	return ::csqrtl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(ctan_impl)(double _Complex __z) { return ::ctan(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(ctanf_impl)(float _Complex __z) { return ::ctanf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(ctanl_impl)(long double _Complex __z) { return ::ctanl(__z); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(ctanl_impl)(long double _Complex __z) {
+	return ::ctanl(__z);
+}
 __SPRT_C_FUNC double _Complex __SPRT_ID(ctanh_impl)(double _Complex __z) { return ::ctanh(__z); }
 __SPRT_C_FUNC float _Complex __SPRT_ID(ctanhf_impl)(float _Complex __z) { return ::ctanhf(__z); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(ctanhl_impl)(long double _Complex __z) { return ::ctanhl(__z); }
-__SPRT_C_FUNC double _Complex __SPRT_ID(cpow_impl)(double _Complex __x, double _Complex __y) { return ::cpow(__x, __y); }
-__SPRT_C_FUNC float _Complex __SPRT_ID(cpowf_impl)(float _Complex __x, float _Complex __y) { return ::cpowf(__x, __y); }
-__SPRT_C_FUNC long double _Complex __SPRT_ID(cpowl_impl)(long double _Complex __x, long double _Complex __y) { return ::cpowl(__x, __y); }
+__SPRT_C_FUNC long double _Complex __SPRT_ID(ctanhl_impl)(long double _Complex __z) {
+	return ::ctanhl(__z);
+}
+__SPRT_C_FUNC double _Complex __SPRT_ID(cpow_impl)(double _Complex __x, double _Complex __y) {
+	return ::cpow(__x, __y);
+}
+__SPRT_C_FUNC float _Complex __SPRT_ID(cpowf_impl)(float _Complex __x, float _Complex __y) {
+	return ::cpowf(__x, __y);
+}
+__SPRT_C_FUNC long double _Complex __SPRT_ID(
+		cpowl_impl)(long double _Complex __x, long double _Complex __y) {
+	return ::cpowl(__x, __y);
+}
 
 } // namespace sprt

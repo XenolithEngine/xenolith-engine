@@ -80,7 +80,7 @@ THE SOFTWARE.
 #define __SPRT_STD_OWNED_END }
 
 #ifndef __SPRT_STD_EXTERNAL
-#if __SPRT_USE_STL || defined(_LIBCPP_VERSION)
+#if __SPRT_USE_STL || defined(_LIBCPP_VERSION) || defined(_LIBCPP___CONFIG_SITE)
 #define __SPRT_STD_EXTERNAL 1
 #else
 #define __SPRT_STD_EXTERNAL 0

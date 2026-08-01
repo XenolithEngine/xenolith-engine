@@ -26,4 +26,6 @@ THE SOFTWARE.
 // paired with SPRTCxxSystemError.cpp here. The verbatim source is pulled by relative
 // path so it compiles here, once, rather than as a standalone unit (see libcxx.mk).
 
+#define _LIBCPP_BUILDING_LIBRARY
+
 #include "libcxx/error_category.cpp"
