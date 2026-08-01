@@ -106,11 +106,13 @@ public:
 
 	// Create a VK_KHR_display surface on the primary display of the first device
 	// that drives one. Used for direct-to-display (no window system) startup.
-	// prefW/prefH hint the desired resolution. 0x0 means auto: use the kernel's
-	// current CRTC mode / fb0 / EDID preferred (not "largest" — QEMU advertises
-	// bogus huge modes). With an explicit hint, the nearest mode is chosen.
+	//
+	// The connector to use and the target mode come from the window system through
+	// SurfaceInterfaceInfo::display (a DRM fd it keeps open plus a connector id);
+	// the nearest advertised mode to that size is chosen. Nothing is discovered
+	// here — see sprt::window::DrmDevice for the connector/mode policy.
 	// Returns VK_NULL_HANDLE if no display is available.
-	VkSurfaceKHR createDisplayPlaneSurface(uint32_t prefW = 0, uint32_t prefH = 0) const;
+	VkSurfaceKHR createDisplayPlaneSurface(const sprt::window::SurfaceInterfaceInfo &) const;
 
 	VkInstance getInstance() const;
 
@@ -137,6 +139,7 @@ private:
 
 	// Build a VK_KHR_display plane surface on a resolved VkDisplayKHR (shared by
 	// the auto-enumerated and acquire-drm-display paths of createDisplayPlaneSurface).
+	// prefW/prefH is the window system's mode; the nearest advertised one is used.
 	VkSurfaceKHR makeDisplayPlaneSurface(VkPhysicalDevice, VkDisplayKHR, StringView name,
 			uint32_t prefW, uint32_t prefH) const;
 

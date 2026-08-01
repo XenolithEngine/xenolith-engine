@@ -491,11 +491,9 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	case sprt::window::SurfaceBackend::Display: {
 #if defined(VK_KHR_display)
 		// Direct-to-display (no window system): create a plane surface on the
-		// primary display. Pass 0x0 so createDisplayPlaneSurface resolves the
-		// size from the kernel modeset / EDID preferred mode — NOT WindowInfo
-		// (often a desktop default like 1024x768). Do not pick "largest Vulkan
-		// mode": QEMU virtio-gpu advertises bogus huge EDID modes.
-		surface = instance->createDisplayPlaneSurface(0, 0);
+		// connector the window system opened, at the mode it resolved. Both travel
+		// in info.display — NOT WindowInfo (often a desktop default like 1024x768).
+		surface = instance->createDisplayPlaneSurface(info);
 		if (surface == VK_NULL_HANDLE) {
 			return nullptr;
 		}

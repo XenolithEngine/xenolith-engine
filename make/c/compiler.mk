@@ -63,11 +63,17 @@ BUILD_TYPE_CXXFLAGS_DEBUG := -g -funwind-tables
 BUILD_TYPE_LDFLAGS_DEBUG :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
-BUILD_TYPE_CFLAGS_DEBUG += -gsplit-dwarf -ftime-trace
-BUILD_TYPE_CXXFLAGS_DEBUG += -gsplit-dwarf -ftime-trace
+BUILD_TYPE_CFLAGS_DEBUG += -ftime-trace
+BUILD_TYPE_CXXFLAGS_DEBUG += -ftime-trace
 # use --ld-path=mold for fast linking
-BUILD_TYPE_LDFLAGS_DEBUG := -gsplit-dwarf -Wl,-O0 -Wl,--build-id=none -ldl
-endif
+BUILD_TYPE_LDFLAGS_DEBUG := -Wl,-O0 -Wl,--build-id=none -ldl
+
+ifneq ($(TARGET_ARCH),riscv64)
+BUILD_TYPE_CFLAGS_DEBUG += -gsplit-dwarf
+BUILD_TYPE_CXXFLAGS_DEBUG += -gsplit-dwarf
+BUILD_TYPE_LDFLAGS_DEBUG += -gsplit-dwarf
+endif # ($(TARGET_ARCH),riscv64)
+endif # ($(TARGET_SYSTEM),Linux)
 
 BUILD_TYPE_CFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage
 BUILD_TYPE_CXXFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage

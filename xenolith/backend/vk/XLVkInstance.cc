@@ -30,75 +30,6 @@
 #include "XLVkDevice.h"
 #include <vulkan/vulkan_core.h>
 
-// Direct-to-display: enumerate KMS connectors via raw DRM UAPI ioctls (no libdrm
-// dependency, ioctl() is libc). The kernel <drm/drm_mode.h> lives in the sysroot's
-// include_libc/drm which is not reliably on the angle-bracket search path for this
-// SDK, so the two structs + ioctl numbers we need are declared inline below — they
-// are stable kernel UAPI (drm_mode.h: drm_mode_card_res / drm_mode_get_connector,
-// drm.h: DRM_IOCTL_MODE_GETRESOURCES = DRM_IOWR(0xA0), GETCONNECTOR = 0xA7).
-#if defined(__linux__) && !defined(__ANDROID__)
-#define XL_VK_DRM_DISPLAY 1
-#include <stdint.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-// ioctl() is declared directly: this SDK's <sys/ioctl.h> wrapper is broken (it
-// references an undeclared __cmd) and we only need this one call.
-extern "C" int ioctl(int, unsigned long, ...);
-
-namespace {
-struct xl_drm_mode_card_res {
-	uint64_t fb_id_ptr, crtc_id_ptr, connector_id_ptr, encoder_id_ptr;
-	uint32_t count_fbs, count_crtcs, count_connectors, count_encoders;
-	uint32_t min_width, max_width, min_height, max_height;
-};
-struct xl_drm_mode_modeinfo {
-	uint32_t clock;
-	uint16_t hdisplay, hsync_start, hsync_end, htotal, hskew;
-	uint16_t vdisplay, vsync_start, vsync_end, vtotal, vscan;
-	uint32_t vrefresh;
-	uint32_t flags;
-	uint32_t type;
-	char name[32];
-};
-struct xl_drm_mode_get_connector {
-	uint64_t encoders_ptr, modes_ptr, props_ptr, prop_values_ptr;
-	uint32_t count_modes, count_props, count_encoders;
-	uint32_t encoder_id, connector_id, connector_type, connector_type_id;
-	uint32_t connection, mm_width, mm_height, subpixel, pad;
-};
-struct xl_drm_mode_get_encoder {
-	uint32_t encoder_id, encoder_type, crtc_id, possible_crtcs, possible_clones;
-};
-struct xl_drm_mode_crtc {
-	uint64_t set_connectors_ptr;
-	uint32_t count_connectors;
-	uint32_t crtc_id, fb_id;
-	uint32_t x, y;
-	uint32_t gamma_size;
-	uint32_t mode_valid;
-	xl_drm_mode_modeinfo mode;
-};
-static_assert(sizeof(xl_drm_mode_card_res) == 64, "drm_mode_card_res ABI");
-static_assert(sizeof(xl_drm_mode_modeinfo) == 68, "drm_mode_modeinfo ABI");
-static_assert(sizeof(xl_drm_mode_get_connector) == 80, "drm_mode_get_connector ABI");
-static_assert(sizeof(xl_drm_mode_get_encoder) == 20, "drm_mode_get_encoder ABI");
-static_assert(sizeof(xl_drm_mode_crtc) == 104, "drm_mode_crtc ABI");
-} // namespace
-
-// DRM ioctl numbers, precomputed (SDK's _IOWR macro is unavailable, see above):
-//   _IOWR('d', nr, T) = (3u<<30) | (sizeof(T)<<16) | ('d'<<8) | nr
-//   GETRESOURCES = _IOWR('d',0xA0, card_res[64B])     = 0xC04064A0
-//   GETCRTC      = _IOWR('d',0xA1, crtc[104B])        = 0xC06864A1
-//   GETENCODER   = _IOWR('d',0xA6, encoder[20B])      = 0xC01464A6
-//   GETCONNECTOR = _IOWR('d',0xA7, get_connector[80B]) = 0xC05064A7
-#define XL_DRM_IOCTL_MODE_GETRESOURCES 0xC04064A0ul
-#define XL_DRM_IOCTL_MODE_GETCRTC 0xC06864A1ul
-#define XL_DRM_IOCTL_MODE_GETENCODER 0xC01464A6ul
-#define XL_DRM_IOCTL_MODE_GETCONNECTOR 0xC05064A7ul
-#define XL_DRM_MODE_TYPE_PREFERRED (1u << 3)
-#endif
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 SPUNUSED static VkResult s_createDebugUtilsMessengerEXT(VkInstance instance,
@@ -1033,315 +964,11 @@ void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 	}
 }
 
-#if XL_VK_DRM_DISPLAY
-// Open the first available DRM primary node. Returns fd or -1.
-static int s_openDrmDevice() {
-	static const char *const paths[] = {"/dev/dri/card0", "/dev/dri/card1", nullptr};
-	for (auto p = paths; *p; ++p) {
-		int fd = ::open(*p, O_RDWR | O_CLOEXEC);
-		if (fd >= 0) {
-			return fd;
-		}
-	}
-	return -1;
-}
-
-static const char *s_drmConnectionName(uint32_t c) {
-	switch (c) {
-	case 1: return "connected";
-	case 2: return "disconnected";
-	case 3: return "unknown";
-	default: return "?";
-	}
-}
-
-static const char *s_drmConnectorTypeName(uint32_t t) {
-	switch (t) {
-	case 1: return "VGA";
-	case 10: return "DP";
-	case 11: return "HDMI-A";
-	case 12: return "HDMI-B";
-	case 14: return "eDP";
-	case 15: return "Virtual";
-	case 16: return "DSI";
-	default: return "type";
-	}
-}
-
-// Dump every connector + modes so HW logs show whether we painted the wrong
-// HDMI (e.g. forced HDMI-A-1 @640x480 vs real HDMI-A-2 @1080p). Diagnostic only.
-static void s_logDrmConnectors(int fd) {
-	xl_drm_mode_card_res res{};
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res) != 0 || res.count_connectors == 0) {
-		log::source().info("Vk", "DRM: no connectors (getresources failed or empty)");
-		return;
-	}
-	Vector<uint32_t> connectors;
-	connectors.resize(res.count_connectors);
-	xl_drm_mode_card_res res2{};
-	res2.connector_id_ptr = reinterpret_cast<uint64_t>(connectors.data());
-	res2.count_connectors = res.count_connectors;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res2) != 0) {
-		return;
-	}
-	log::source().info("Vk", "DRM: ", res2.count_connectors, " connector(s):");
-	for (uint32_t i = 0; i < res2.count_connectors; ++i) {
-		xl_drm_mode_get_connector conn{};
-		conn.connector_id = connectors[i];
-		if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn) != 0) {
-			continue;
-		}
-		uint32_t curW = 0, curH = 0;
-		if (conn.encoder_id != 0) {
-			xl_drm_mode_get_encoder enc{};
-			enc.encoder_id = conn.encoder_id;
-			if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETENCODER, &enc) == 0 && enc.crtc_id != 0) {
-				xl_drm_mode_crtc crtc{};
-				crtc.crtc_id = enc.crtc_id;
-				if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCRTC, &crtc) == 0 && crtc.mode_valid) {
-					curW = crtc.mode.hdisplay;
-					curH = crtc.mode.vdisplay;
-				}
-			}
-		}
-		log::source().info("Vk", "  [", i, "] id=", connectors[i], " ",
-				s_drmConnectorTypeName(conn.connector_type), "-", conn.connector_type_id,
-				" status=", s_drmConnectionName(conn.connection),
-				" modes=", conn.count_modes,
-				" crtc=", curW, "x", curH);
-
-		if (conn.count_modes == 0) {
-			continue;
-		}
-		Vector<xl_drm_mode_modeinfo> modes;
-		modes.resize(conn.count_modes);
-		xl_drm_mode_get_connector conn2{};
-		conn2.connector_id = connectors[i];
-		conn2.count_modes = conn.count_modes;
-		conn2.modes_ptr = reinterpret_cast<uint64_t>(modes.data());
-		if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn2) != 0) {
-			continue;
-		}
-		// Cap log spam: preferred + first few + largest.
-		uint32_t shown = 0;
-		uint32_t largestIdx = 0;
-		uint64_t largestArea = 0;
-		for (uint32_t m = 0; m < conn2.count_modes; ++m) {
-			const auto area = uint64_t(modes[m].hdisplay) * uint64_t(modes[m].vdisplay);
-			if (area > largestArea) {
-				largestArea = area;
-				largestIdx = m;
-			}
-		}
-		for (uint32_t m = 0; m < conn2.count_modes; ++m) {
-			auto &md = modes[m];
-			const bool preferred = (md.type & XL_DRM_MODE_TYPE_PREFERRED) != 0;
-			const bool largest = (m == largestIdx);
-			if (!preferred && !largest && m >= 3) {
-				continue;
-			}
-			log::source().info("Vk", "      mode ", md.hdisplay, "x", md.vdisplay,
-					"@", md.vrefresh,
-					preferred ? " preferred" : "",
-					largest ? " largest" : "");
-			if (++shown >= 8) {
-				log::source().info("Vk", "      … ", conn2.count_modes - shown, " more mode(s)");
-				break;
-			}
-		}
-	}
-}
-
-// Find the first connected connector that has at least one mode. Returns its DRM
-// object id (>0) or 0 on failure. Pure UAPI two-pass ioctl — no libdrm.
-// (Pick policy unchanged — dump above proves which monitor we would skip.)
-static uint32_t s_findConnectedDrmConnector(int fd) {
-	s_logDrmConnectors(fd);
-
-	xl_drm_mode_card_res res{};
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res) != 0 || res.count_connectors == 0) {
-		return 0;
-	}
-
-	Vector<uint32_t> connectors;
-	connectors.resize(res.count_connectors);
-
-	// Second pass: only ask for the connector id array (leave other arrays empty).
-	xl_drm_mode_card_res res2{};
-	res2.connector_id_ptr = reinterpret_cast<uint64_t>(connectors.data());
-	res2.count_connectors = res.count_connectors;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETRESOURCES, &res2) != 0) {
-		return 0;
-	}
-
-	for (uint32_t i = 0; i < res2.count_connectors; ++i) {
-		xl_drm_mode_get_connector conn{};
-		conn.connector_id = connectors[i];
-		// Pass 1 fills connection status + counts without needing any array buffers.
-		if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn) != 0) {
-			continue;
-		}
-		if (conn.connection == 1 /* DRM_MODE_CONNECTED */ && conn.count_modes > 0) {
-			log::source().info("Vk", "DRM: using first connected id=", connectors[i], " ",
-					s_drmConnectorTypeName(conn.connector_type), "-", conn.connector_type_id,
-					" (index ", i, ")");
-			return connectors[i];
-		}
-	}
-	return 0;
-}
-
-// Active CRTC mode for a connected connector (what the kernel already modeset —
-// QEMU video=1024x768, RPi preferred EDID after boot). Returns false if unbound.
-static bool s_queryDrmCurrentMode(int fd, uint32_t *w, uint32_t *h) {
-	const uint32_t connectorId = s_findConnectedDrmConnector(fd);
-	if (connectorId == 0) {
-		return false;
-	}
-	xl_drm_mode_get_connector conn{};
-	conn.connector_id = connectorId;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn) != 0 || conn.encoder_id == 0) {
-		return false;
-	}
-	xl_drm_mode_get_encoder enc{};
-	enc.encoder_id = conn.encoder_id;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETENCODER, &enc) != 0 || enc.crtc_id == 0) {
-		return false;
-	}
-	xl_drm_mode_crtc crtc{};
-	crtc.crtc_id = enc.crtc_id;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCRTC, &crtc) != 0 || !crtc.mode_valid) {
-		return false;
-	}
-	if (crtc.mode.hdisplay == 0 || crtc.mode.vdisplay == 0) {
-		return false;
-	}
-	*w = crtc.mode.hdisplay;
-	*h = crtc.mode.vdisplay;
-	return true;
-}
-
-// EDID preferred (or largest listed) mode on the connected connector.
-static bool s_queryDrmPreferredMode(int fd, uint32_t *w, uint32_t *h) {
-	const uint32_t connectorId = s_findConnectedDrmConnector(fd);
-	if (connectorId == 0) {
-		return false;
-	}
-	xl_drm_mode_get_connector conn{};
-	conn.connector_id = connectorId;
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn) != 0 || conn.count_modes == 0) {
-		return false;
-	}
-	Vector<xl_drm_mode_modeinfo> modes;
-	modes.resize(conn.count_modes);
-	xl_drm_mode_get_connector conn2{};
-	conn2.connector_id = connectorId;
-	conn2.count_modes = conn.count_modes;
-	conn2.modes_ptr = reinterpret_cast<uint64_t>(modes.data());
-	if (::ioctl(fd, XL_DRM_IOCTL_MODE_GETCONNECTOR, &conn2) != 0 || conn2.count_modes == 0) {
-		return false;
-	}
-	const xl_drm_mode_modeinfo *best = nullptr;
-	for (uint32_t i = 0; i < conn2.count_modes; ++i) {
-		auto &m = modes[i];
-		if (m.hdisplay == 0 || m.vdisplay == 0) {
-			continue;
-		}
-		const bool preferred = (m.type & XL_DRM_MODE_TYPE_PREFERRED) != 0;
-		if (!best) {
-			best = &m;
-			continue;
-		}
-		const bool bestPreferred = (best->type & XL_DRM_MODE_TYPE_PREFERRED) != 0;
-		if (preferred && !bestPreferred) {
-			best = &m;
-			continue;
-		}
-		if (preferred == bestPreferred) {
-			const auto ma = uint64_t(m.hdisplay) * uint64_t(m.vdisplay);
-			const auto ba = uint64_t(best->hdisplay) * uint64_t(best->vdisplay);
-			if (ma > ba || (ma == ba && m.vrefresh > best->vrefresh)) {
-				best = &m;
-			}
-		}
-	}
-	if (!best) {
-		return false;
-	}
-	*w = best->hdisplay;
-	*h = best->vdisplay;
-	return true;
-}
-
-static bool s_queryFbVirtualSize(uint32_t *w, uint32_t *h) {
-	int fd = ::open("/sys/class/graphics/fb0/virtual_size", O_RDONLY | O_CLOEXEC);
-	if (fd < 0) {
-		return false;
-	}
-	char buf[64] = {};
-	const auto n = ::read(fd, buf, sizeof(buf) - 1);
-	::close(fd);
-	if (n <= 0) {
-		return false;
-	}
-	unsigned long ww = 0, hh = 0;
-	const char *p = buf;
-	while (*p >= '0' && *p <= '9') {
-		ww = ww * 10u + unsigned(*p - '0');
-		++p;
-	}
-	if (*p != ',') {
-		return false;
-	}
-	++p;
-	while (*p >= '0' && *p <= '9') {
-		hh = hh * 10u + unsigned(*p - '0');
-		++p;
-	}
-	if (ww == 0 || hh == 0) {
-		return false;
-	}
-	*w = uint32_t(ww);
-	*h = uint32_t(hh);
-	return true;
-}
-
-// When the caller passes 0x0, do NOT blindly pick the largest Vulkan mode —
-// QEMU virtio-gpu advertises bogus EDID modes (e.g. 5120x2160). Prefer the
-// kernel's current modeset, then fb0, then EDID preferred.
-static void s_resolveDisplaySizeHint(uint32_t &prefW, uint32_t &prefH) {
-	if (prefW != 0 && prefH != 0) {
-		return;
-	}
-	uint32_t w = 0, h = 0;
-	const char *src = nullptr;
-	int fd = s_openDrmDevice();
-	if (fd >= 0) {
-		if (s_queryDrmCurrentMode(fd, &w, &h)) {
-			src = "drm-crtc";
-		} else if (s_queryDrmPreferredMode(fd, &w, &h)) {
-			src = "drm-preferred";
-		}
-		::close(fd);
-	}
-	if (!src && s_queryFbVirtualSize(&w, &h)) {
-		src = "fb0";
-	}
-	if (src) {
-		prefW = w;
-		prefH = h;
-		log::source().info("Vk", "Display mode hint from ", src, ": ", w, "x", h);
-	}
-}
-#endif
-
 // Build a display-plane surface on an already-resolved VkDisplayKHR: pick the
-// largest/fastest mode, find a usable plane, then vkCreateDisplayPlaneSurfaceKHR.
+// mode nearest to the window system's, find a usable plane, then
+// vkCreateDisplayPlaneSurfaceKHR.
 VkSurfaceKHR Instance::makeDisplayPlaneSurface(VkPhysicalDevice phys, VkDisplayKHR display,
 		StringView name, uint32_t prefW, uint32_t prefH) const {
-#if XL_VK_DRM_DISPLAY
-	s_resolveDisplaySizeHint(prefW, prefH);
-#endif
 	uint32_t nModes = 0;
 	vkGetDisplayModePropertiesKHR(phys, display, &nModes, nullptr);
 	if (nModes == 0) {
@@ -1353,7 +980,9 @@ VkSurfaceKHR Instance::makeDisplayPlaneSurface(VkPhysicalDevice phys, VkDisplayK
 
 	// With a size hint, pick the mode whose area is nearest to it (QEMU virtio-gpu
 	// advertises bogus huge modes like 5120x2160 that OOM the swapchain). Without a
-	// hint, fall back to the largest mode.
+	// hint, fall back to the largest mode. The hint comes from the window system
+	// (DrmDevice via SurfaceInterfaceInfo), which resolved it from the kernel's
+	// current modeset / EDID preferred mode.
 	const int64_t target = int64_t(prefW) * int64_t(prefH);
 	const VkDisplayModePropertiesKHR *best = nullptr;
 	for (auto &m : modes) {
@@ -1444,10 +1073,12 @@ VkSurfaceKHR Instance::makeDisplayPlaneSurface(VkPhysicalDevice phys, VkDisplayK
 	return VK_NULL_HANDLE;
 }
 
-VkSurfaceKHR Instance::createDisplayPlaneSurface(uint32_t prefW, uint32_t prefH) const {
-#if XL_VK_DRM_DISPLAY
-	s_resolveDisplaySizeHint(prefW, prefH);
-#endif
+VkSurfaceKHR Instance::createDisplayPlaneSurface(
+		const sprt::window::SurfaceInterfaceInfo &surfaceInfo) const {
+	// Connector and mode are resolved by the window system (DrmDevice) and handed
+	// over here; this function only turns them into a VkSurfaceKHR.
+	const uint32_t prefW = surfaceInfo.display.width;
+	const uint32_t prefH = surfaceInfo.display.height;
 	const int64_t target = int64_t(prefW) * int64_t(prefH);
 	for (auto &wrapper : _devices) {
 		wrapper.once([&] { getDeviceInfo(wrapper.info, wrapper.info.device); });
@@ -1508,39 +1139,29 @@ VkSurfaceKHR Instance::createDisplayPlaneSurface(uint32_t prefW, uint32_t prefH)
 			}
 		}
 
-#if XL_VK_DRM_DISPLAY
+#if defined(VK_EXT_acquire_drm_display)
 		// --- Path 2: software/headless drivers (lavapipe) enumerate 0 displays
-		// because they hold no DRM fd. Open a KMS connector ourselves and acquire
-		// it via VK_EXT_acquire_drm_display, then build the surface as usual. ---
-		if (vkGetDrmDisplayEXT && vkAcquireDrmDisplayEXT) {
-			int fd = s_openDrmDevice();
-			if (fd >= 0) {
-				uint32_t connectorId = s_findConnectedDrmConnector(fd);
-				if (connectorId != 0) {
-					VkDisplayKHR display = VK_NULL_HANDLE;
-					auto gr = vkGetDrmDisplayEXT(phys, fd, connectorId, &display);
-					if (gr == VK_SUCCESS && display != VK_NULL_HANDLE) {
-						auto ar = vkAcquireDrmDisplayEXT(phys, fd, display);
-						if (ar == VK_SUCCESS) {
-							if (auto surface = makeDisplayPlaneSurface(phys, display,
-										StringView("drm-connector"), prefW, prefH)) {
-								// Keep fd open: it is the DRM master for the acquired
-								// display and must outlive the surface. Intentionally
-								// leaked (single fd, lives for the app's lifetime).
-								return surface;
-							}
-						} else {
-							log::source().error("Vk", "vkAcquireDrmDisplayEXT failed: ", int(ar));
-						}
-					} else {
-						log::source().error("Vk", "vkGetDrmDisplayEXT failed: ", int(gr));
+		// because they hold no DRM fd. Acquire the connector the window system
+		// opened for us via VK_EXT_acquire_drm_display, then build the surface as
+		// usual. The fd stays owned by the window system (it must outlive the
+		// surface, since we become DRM master for the acquired display). ---
+		if (vkGetDrmDisplayEXT && vkAcquireDrmDisplayEXT && surfaceInfo.display.fd >= 0
+				&& surfaceInfo.display.connectorId != 0) {
+			VkDisplayKHR display = VK_NULL_HANDLE;
+			auto gr = vkGetDrmDisplayEXT(phys, surfaceInfo.display.fd,
+					surfaceInfo.display.connectorId, &display);
+			if (gr == VK_SUCCESS && display != VK_NULL_HANDLE) {
+				auto ar = vkAcquireDrmDisplayEXT(phys, surfaceInfo.display.fd, display);
+				if (ar == VK_SUCCESS) {
+					if (auto surface = makeDisplayPlaneSurface(phys, display,
+								StringView("drm-connector"), prefW, prefH)) {
+						return surface;
 					}
 				} else {
-					log::source().error("Vk", "No connected DRM connector found on ", fd);
+					log::source().error("Vk", "vkAcquireDrmDisplayEXT failed: ", int(ar));
 				}
-				::close(fd);
 			} else {
-				log::source().error("Vk", "Fail to open /dev/dri/card* for direct display");
+				log::source().error("Vk", "vkGetDrmDisplayEXT failed: ", int(gr));
 			}
 		}
 #endif
