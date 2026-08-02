@@ -132,7 +132,7 @@ void StyleSystem::registerWatches() {
 		}
 
 		// watchFile needs a concrete on-disk path; resolve the FileInfo now
-		auto real = filesystem::findPath<memory::StandartInterface>(
+		auto real = filesystem::findPath<mem_std::Interface>(
 				FileInfo(StringView(s.value), s.category, s.flags), filesystem::Access::Read);
 		if (real.empty()) {
 			continue;

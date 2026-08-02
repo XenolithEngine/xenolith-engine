@@ -64,6 +64,7 @@ public:
 
 	virtual void handleEnter(Scene *scene) override;
 	virtual void handleContentSizeDirty() override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	virtual void setString(StringView);
 	virtual StringView getString() const;

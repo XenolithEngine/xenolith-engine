@@ -240,7 +240,7 @@ bool ResolvedStyle::has(document::ParameterName name) const {
 String ResolvedStyle::getString(document::ParameterName name) const {
 	document::StyleValue v;
 	if (getValue(name, v)) {
-		return _iface.resolveString(v.stringId).str<memory::StandartInterface>();
+		return _iface.resolveString(v.stringId).str<mem_std::Interface>();
 	}
 	return String();
 }
