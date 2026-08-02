@@ -187,4 +187,5 @@ know about its subtree" without owning a special node type.
 * [10-node-geometry.adoc](10-node-geometry.adoc) — what `Node` itself provides
 * [node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc) — phases, flags, frame stack
 * [content-measurement.adoc](../ui/content-measurement.adoc) — the measure protocol
+* [css-subset.adoc](../ui/css-subset.adoc) — the CSS subset and the components the resolver writes
 * [03-naming.adoc](03-naming.adoc) — `handleXxx` hooks and `init()` + `Rc<T>::create()`

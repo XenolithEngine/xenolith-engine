@@ -34,16 +34,30 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 // Makefile::init(). `rootDir` becomes $(CURDIR). Shared by the loadProject() loader and by xlmake.
 SP_PUBLIC void setupStandardVariables(Makefile *, StringView rootDir, ErrorReporter &);
 
+// One `NAME=VALUE` command-line assignment for loadProject. It is applied with Origin::CommandLine
+// after the loader's own STAPPLER_BUILD=1 and BEFORE the project makefile is read — the only point
+// at which parse-time-read variables (STAPPLER_TARGET, RELEASE, STAPPLER_ROOT) still take effect.
+struct SP_PUBLIC ProjectVariable {
+	StringView name;
+	StringView value;
+};
+
 // Load a Stappler/GNU-make project's compile graph for the current host target, ready for read-only
-// introspection (e.g. Makefile::getSourceInputs / SourceObserver). Creates a Makefile (which
-// auto-carries the xlmake identity from init(), so the Stappler build takes its `init-xlmake.mk`
-// path), applies setupStandardVariables, sets STAPPLER_BUILD=1 (so universal.mk expands the real
-// source graph rather than its recursive launcher), and includes the project's
-// GNUmakefile/makefile/Makefile from `projectDir` by absolute path. Returns null if none is found.
+// introspection (e.g. Makefile::getSourceInputs / SourceObserver) or for runBuild. Creates a
+// Makefile (which auto-carries the xlmake identity from init(), so the Stappler build takes its
+// `init-xlmake.mk` path), applies setupStandardVariables, sets STAPPLER_BUILD=1 (so universal.mk
+// expands the real source graph rather than its recursive launcher), applies `variables`, and
+// includes the project's GNUmakefile/makefile/Makefile from `projectDir` by absolute path. Returns
+// null if none is found.
 //
 // Trust model (see SPMakefile.h): loading fully evaluates the makefile, including $(shell) and the
 // build's configuration side effects — point it only at trusted project directories.
-SP_PUBLIC Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &);
+SP_PUBLIC Rc<MakefileRef> loadProject(StringView projectDir, SpanView<ProjectVariable> variables,
+		ErrorReporter &);
+
+inline Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &err) {
+	return loadProject(projectDir, SpanView<ProjectVariable>(), err);
+}
 
 } // namespace stappler::makefile
 

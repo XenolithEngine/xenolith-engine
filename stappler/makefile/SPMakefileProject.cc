@@ -113,7 +113,8 @@ void setupStandardVariables(Makefile *mk, StringView rootDir, ErrorReporter &err
 	simple("CURDIR", encodePathSpaces(rootDir, curdirStorage));
 }
 
-Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &err) {
+Rc<MakefileRef> loadProject(StringView projectDir, SpanView<ProjectVariable> variables,
+		ErrorReporter &err) {
 	auto mk = Rc<MakefileRef>::create(SharedRefMode::Allocator);
 	if (!mk) {
 		err.reportError("loadProject: failed to create makefile");
@@ -141,6 +142,12 @@ Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &err) {
 	// (Origin::CommandLine) so the full object/source graph is present. STAPPLER_TARGET is left to
 	// default to the host — the current platform's target.
 	mk->assignSimpleVariable("STAPPLER_BUILD", Origin::CommandLine, "1", err);
+
+	// Caller-supplied command-line variables. They must land here — before the include — because the
+	// build reads STAPPLER_TARGET/RELEASE at parse time; assigning them afterwards is a no-op.
+	for (auto &var : variables) {
+		mk->assignSimpleVariable(var.name, Origin::CommandLine, var.value, err);
+	}
 
 	// Find and include the project makefile by absolute path (so LOCAL_ROOT and $(shell find …) stay
 	// absolute and no chdir is needed).
