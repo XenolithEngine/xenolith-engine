@@ -152,6 +152,15 @@ no emulator on an x86_64 Linux host, so build-verify only there).
   to actually open a window need a display server (XCB/Wayland) and a Vulkan ICD.
   `…/testapp --help` works without a GUI; a full run needs a graphical session.
   In a headless environment, treat a clean build as the verification signal.
+- **Rendering is on demand.** With nothing dirty the engine stops producing
+  frames, so a window nobody is touching freezes: scheduled actions do not tick,
+  timed phases never fire, and a state change made off-screen is only laid out
+  once something (a mouse move over the window) wakes the loop. **Anything meant
+  to verify reactivity or interactivity has to hold the loop open itself** —
+  `runAction(Rc<RenderContinuously>::create())` (`XLAction.h`) draws nothing and
+  damages nothing, it only keeps the frames coming. `tests/window` does this for
+  every test in `TestLayout::init()`; an app of your own does not. See the
+  `gui-debug` skill.
 
 ### 3.2 Windows (cross-compiled; runs on Windows or under Wine)
 

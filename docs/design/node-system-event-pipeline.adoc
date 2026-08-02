@@ -13,7 +13,8 @@ Sources:
 * [XLNodeInfo.h](../../xenolith/application/nodes/XLNodeInfo.h) — `NodeVisitFlags`, `MeasureConstraints`
 * [XLComponent.h](../../xenolith/application/nodes/XLComponent.h) — `MeasureComponent`
 
-Related tutorial: [content-measurement.adoc](../usage/ui/content-measurement.adoc).
+Related tutorial: [content-measurement.adoc](../usage/ui/content-measurement.adoc);
+CSS reference: [css-subset.adoc](../usage/ui/css-subset.adoc).
 
 ## Model
 

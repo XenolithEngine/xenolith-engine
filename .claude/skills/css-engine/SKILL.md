@@ -6,7 +6,7 @@ description: >-
   Use before writing or debugging any .css in this repo (resources/style.css,
   pug templates, ui:: atoms). Covers what flex/position/measure/selectors/units
   properties are really supported, and — critically — what web CSS features are
-  silently ignored (margin:auto, var(), :nth-child, min/max-width on flex items,
+  silently ignored (var(), :nth-child, min/max on a flex item's CROSS axis,
   position:relative offsets, prefers-color-scheme, transform/box-shadow).
 ---
 
@@ -17,6 +17,11 @@ scene graph by `xenolith_renderer_ui` (`ui::StyleSystem` + `ui::StyleResolver` +
 `ui::LayoutSystem`). It is NOT a browser. Many web CSS features parse silently and
 do nothing. This card lists what REALLY works, so you don't waste an iteration
 writing CSS that the engine drops on the floor.
+
+Full reference, with the rationale, the cookbook of workarounds and the test that
+pins every claim: **[docs/usage/ui/css-subset.adoc](../../../docs/usage/ui/css-subset.adoc)**.
+Read it when this card is not enough; edit it (not just this card) when the
+engine changes.
 
 Origin: Y is **up** (scene graph). Styling is component-driven — the resolver reads
 CSS into `ResolvedStyle` and per-type appliers (e.g. `button`, `panel`, `label`)
@@ -30,15 +35,16 @@ DO NOT use these (they parse but do nothing, or don't exist):
 | Web feature | Status here |
 |---|---|
 | `var(--x)` / custom properties | **absent** — no `var()`, no `--name` registry |
-| `margin: auto` (flex auto-margins) | parsed, **ignored by layout** — use `justify-content` or a `flex-grow:1` spacer |
-| `min-width`/`max-width` on a flex item | parsed, **not applied to flex layout** — use `flex-basis`/`grow`/`shrink` |
+| `min-width`/`max-width` on a flex item's **cross** axis | parsed, **not applied** — the main axis IS enforced, see below |
 | `position: relative` offsets | **no effect** — only `position: absolute` is implemented |
+| `position: fixed` / `sticky` | **no effect** |
 | `:nth-child`/`:first-child`/`:not()`/`:empty`/`:lang()` | **unsupported** — rule is skipped |
 | `::before`/`::after`/`::marker` pseudo-elements | **unsupported** — rule is skipped |
 | `[attr]`/`[attr=val]` attribute selectors | parsed, **never match** |
 | `prefers-color-scheme` | **absent** — use `@media (light-level: dim)` or `x-option` |
 | `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `overflow` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
 | `background` shorthand | **absent** — write `background-color` etc. individually |
+| `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`) can draw them |
 | bare number for size (`width: 100`) | **rejected** — must have a unit (`100px`/`100%`/`1em`); only `line-height: 1.5` takes a bare number |
 | elliptical `border-radius: H / V` | only H read; `/ V` dropped |
 
@@ -64,15 +70,18 @@ Item (on a direct child):
 - `flex` shorthand: `none`(=0 0 auto) | `initial`(=0 1 auto) | `[<grow> <shrink>?] [<basis>]`. Bare `flex: 1` → grow=1, shrink=1, basis=0px.
 - `order`: `<integer>` (lower first; default 0)
 - `align-self`: `auto`(inherit) | flex-start | flex-end | center | stretch
-- `margin` / `margin-{top,right,bottom,left}`: `%` vs parent width. **`auto` ignored** — no flex auto-margins.
+- `margin` / `margin-{top,right,bottom,left}`: `%` vs parent width. **`auto` works**: on the main
+  axis the auto margins of a line split the leftover space and `justify-content` gets none of it
+  (`margin-left:auto` → push to the end, `margin: 0 auto` → centre); on the cross axis an item's
+  own auto margins centre/push it and OVERRIDE `align-self`, `stretch` included. Grid ignores it.
 
 ## Right-aligning inside a flex row (the common need)
 
-`margin-left: auto` does NOT work. Use ONE of:
+Any of these works:
 ```css
-.row { justify-content: space-between; }   /* first & last to the edges */
-/* OR a grow spacer between the left and right groups: */
-.row .spacer { flex-grow: 1; }
+.row > .last  { margin-left: auto; }               /* just this item to the end */
+.row          { justify-content: space-between; }  /* first & last to the edges */
+.row > .spacer { flex-grow: 1; }                   /* explicit slack-eating gap */
 ```
 
 ## Width / height
@@ -84,18 +93,30 @@ Item (on a direct child):
   `MeasureComponent` as the intrinsic size; `LayoutSystem` still controls the final
   `ContentSize`. Explicit width/height wins over fit-content.
 - Outside any layout parent: `width`/`height` → direct `setContentSize`.
-- `min-*`/`max-*` parse but **don't constrain flex items**.
+- `min-width`/`max-width` (and `min-height`/`max-height`) **do constrain a flex item on the
+  container's MAIN axis** — `min-*`/`max-*` along the row for `flex-direction: row`, along the
+  column for `column`. They bound the flex base size and the size grow/shrink produces, and the
+  space a clamped item gives up is redistributed to the others (CSS "resolve the flexible
+  lengths"). On the **cross** axis they still do nothing — size that with `align-self`/`height`.
+- Outside a flex/grid container `min-*`/`max-*` are not applied at all.
 
 ## fit-content / measure — who can be measured
 
-- `flex-basis: fit-content` (or `width: fit-content` / `flex: 0 0 fit-content`) asks
-  the layout to measure the node's content via `handleMeasure`.
-- **Only `Label` measures natively** (text reflow). A flex container also measures
-  itself (flex dry-run) when used as a fit-content item.
-- **Layer / Button / Sprite / Panel / empty Node do NOT measure** — give them an
-  explicit `width`/`height`, or `flex-grow`, or make them a flex container with
-  fit-content basis. A badge sized to its label needs an explicit width unless it's
-  a fit-content flex container.
+Who can answer is NOT a fixed class list — it is whoever implements the protocol:
+- a system with `SystemFlags::HandleMeasure` (`Label` has one; `ui::LayoutSystem` has one, which
+  is why a nested flex container measures itself; your own widget can have one);
+- or the `MeasureComponent` fallback (fill `maxContent`/`minContent`/`normal`, no code needed).
+
+When it is asked:
+- `flex-basis: fit-content` (or `width: fit-content` / `flex: 0 0 fit-content`) — always;
+- `flex-basis: auto` (the default) with NO definite CSS size on that axis — also measured (plain
+  CSS: auto → size property → content);
+- an explicit CSS `width`/`height` is definite and wins — never measured on that axis;
+- the cross axis is re-measured at the final main size (wrapped label: width → height).
+
+**Layer / Sprite / an empty Node answer neither**, so their current ContentSize stands in: give
+them an explicit size, a `flex-grow`, or make them a flex container with a measurable child.
+A measured item gets `handleLayoutApplied` with the box it finally received.
 
 ## Position
 
@@ -105,6 +126,11 @@ Item (on a direct child):
     `parentWidth - left - right`. Same for height with `top`+`bottom`. **Absolute stretch works.**
   - If size + both offsets are set, right/bottom is ignored.
   - Anchor is forced to (0,1) (top-left, since engine Y is up).
+  - **The box leaves the flow.** Inside a `display:flex`/`grid` parent it is not an item: it
+    takes no space, is not moved by the container, and its siblings are sized as if it were not
+    there (the resolver marks it with `ui::OutOfFlowComponent`). So an overlay belongs INSIDE
+    the container it covers — no need to keep it outside any more. Its `width`/`height` are
+    committed directly rather than handed to the layout.
 - `relative`/`fixed`/`sticky`/`static`: **no positional effect** (only `-xl-anchor-point`/`-xl-position` run).
 
 ## Colors
@@ -170,7 +196,19 @@ pseudo-classes (`:nth-child :first-child :not() :empty …`), attribute selector
 ## z-order (NOT `z-index`)
 
 There is no `z-index`. Use **`-xl-z-order: <int>`** → `Node::setZOrder` (higher = drawn/placed later).
-Within flex/grid it sets logical placement order (applied before the `order`-based reorder).
+
+**It is also the placement order.** Inside a flex/grid container the layout reads the children
+already sorted by z-order, so raising a node to draw it on top also moves it in the row or
+column. That is by design, and it means:
+
+- to set the order *within* the container without touching drawing → **`order: <int>`** (lower
+  first, applied after the z-order sort);
+- to lift a node above the content without disturbing the layout → take it out of the flow with
+  `position: absolute`, then raise it with `-xl-z-order`.
+
+`RenderingLevel` (`Solid`/`Surface`/`Transparent`, code-side only) is NOT an alternative: it
+picks the render pass, and geometry behind opaque solid geometry is depth-rejected in the later
+passes whatever level it has.
 
 ## Engine extensions (`-xl-*`)
 
@@ -184,19 +222,20 @@ Within flex/grid it sets logical placement order (applied before the `order`-bas
 
 1. Root layout = a flex column (`display:flex; flex-direction:column`). It fills its parent (`height: 100%` or `flex: 1`).
 2. Fixed-height bands (`header`, `footer`) take `height: <px>; width: 100%`. The flexible middle takes `flex: 1`.
-3. Right-align within a row: `justify-content: space-between`, or a `flex-grow:1` spacer — never `margin: auto`.
-4. Overlays/fullscreen covers: `position: absolute; top:0; right:0; bottom:0; left:0;` (stretches) — kept out of the flex flow.
+3. Right-align within a row: `margin-left: auto` on the item, `justify-content: space-between`, or a `flex-grow:1` spacer.
+4. Overlays/fullscreen covers: `position: absolute; top:0; right:0; bottom:0; left:0;` (stretches). It leaves the flow, so put it inside the container it covers and raise it with `-xl-z-order`.
 5. Anything text-sized (badge, chip, tag) needs either an explicit width or to be a `display:flex` fit-content container with a `Label` child (Label is the one node that measures).
 6. Never hand-position children of a `display:flex` container in `handleContentSizeDirty` — it fights the layout pass. Let flex do it; only size `position:absolute` nodes by hand (the engine doesn't auto-stretch an absolute node unless both opposite offsets are set, which is the recommended way).
 
 ## Anti-pattern checklist
 
-- `margin: auto` for flex centering/right-align → use `justify-content` or `flex-grow` spacer.
 - `var(--x)` → no custom properties.
 - `transform`/`box-shadow`/`overflow`/`transition`/`cursor` → don't exist.
 - `:nth-child`/`::before`/`[attr]` selectors → rule never matches.
-- `min-width`/`max-width` constraining a flex item → use `flex-basis`/`grow`/`shrink`.
+- `min-width`/`max-width` on a flex item's CROSS axis → no effect (the main axis works).
 - `position: relative` expecting an offset → only `absolute` is implemented.
+- `-xl-z-order` to raise a node *without* moving it in a flex row → it is the placement order
+  too. Use `order` for placement, `position: absolute` to leave the flow entirely.
 - `prefers-color-scheme` → use `light-level` or `x-option`.
 - Sizes need units: `width: 100` is invalid; `100px`/`100%`/`1em`. `line-height: 1.5` is the only bare-number exception.
 
@@ -210,6 +249,11 @@ Within flex/grid it sets logical placement order (applied before the `order`-bas
 - Flex model: `xenolith/renderer/ui/layout/XLUiLayoutFlex.h:58`
 - Flex algorithm: `xenolith/renderer/ui/layout/XLUiLayoutSystem.cc:639`
 - CSS→layout bridge: `xenolith/renderer/ui/style/XLUiStyleResolver.cc:1307` (`applyLayout`), `:982` (`applyDefault`)
+
+## Related
+
+- Full reference: [docs/usage/ui/css-subset.adoc](../../../docs/usage/ui/css-subset.adoc)
+- Measurement protocol: [docs/usage/ui/content-measurement.adoc](../../../docs/usage/ui/content-measurement.adoc)
 
 ## Related skills
 

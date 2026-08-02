@@ -93,10 +93,64 @@ build (debug)  →  run  →  get_logs / inspect_scene  →  read & find the off
 Re-call a tool after each fix to confirm — no need to close/reopen between reads
 (each call reconnects), but you **must rebuild + relaunch** for code/CSS changes.
 
+## Rendering is on demand — an untouched window does not advance
+
+The engine only produces a frame when something is dirty. A window nobody is
+touching therefore **freezes**: a scheduled action does not tick, a timed phase
+never fires, a state change made from a callback is never laid out — and then
+everything catches up at once as soon as you move the mouse over the window. In a
+headless/automated check nobody moves the mouse, so this reads as "my fix did
+nothing" or "the test never ran".
+
+**Anything you want to verify for reactivity or interactivity must hold the loop
+open itself.** Attach a render-lock action to the layout under test:
+
+```cpp
+#include "XLAction.h"
+runAction(Rc<RenderContinuously>::create());       // forever
+runAction(Rc<RenderContinuously>::create(3.0f));   // for N seconds
+```
+
+It draws nothing, damages nothing and changes no state — it just keeps frames
+coming. `tests/window` does this for every test in `TestLayout::init()`, so a new
+layout there inherits it; a scaffolded app or the installer does not, and needs
+its own.
+
+Symptoms that are really this and not a bug in your change: the scene inspector
+shows stale sizes that become correct after you touch the window; an animation
+that only runs while the pointer moves; `get_logs` missing a phase you scheduled
+with `DelayTime`.
+
+**A sleeping monitor stops the loop the same way, and there the render lock does
+not help** — the compositor stops delivering frame callbacks, so nothing chains
+the next frame and every timed phase in the app silently stalls. It looks exactly
+like a hung test. Wake the screen before a headless run and it all proceeds:
+
+```sh
+kscreen-doctor --dpms on     # KDE/Wayland; the same trap on any idle session
+```
+
+Take this seriously: a run that reports no phase output at all, on a test that
+worked minutes ago, is almost always this and not your change.
+
+Screenshots on a KDE/Wayland session: `spectacle -b -n -a -o shot.png` grabs the
+active window (the app, freshly launched, usually is it), `-f` grabs the whole
+screen. `import -window root` does NOT work — Xwayland here is rootless, so the
+root window is empty.
+
+One thing hides the freeze by accident: the FPS counter is marked `AlwaysDirty`,
+so a scene showing it looks busier than it is. Turning it off
+(`setFpsVisible(false)`, as the damage test does) exposes the real behaviour.
+
 ## Known pitfalls (Xenolith-specific)
 
-- **`background-color: transparent` hides children.** It flips a node's opacity to
-  0, suppressing its children's rendering. Use an opaque-or-near-opaque color.
+- **A transparent node hides its children — by design.** Setting a colour with alpha
+  (CSS `background-color: transparent`, or `setColor(c, /*withOpacity*/true)`) writes
+  that alpha into the node's opacity, and opacity multiplies down the whole subtree,
+  exactly like CSS `opacity`. `inspect_scene` still marks the children `V`, because
+  that flag is `setVisible`, not the resulting transparency. If you want an invisible
+  container with visible children, use a plain `Node` — it draws nothing and leaves
+  opacity alone — instead of a transparent `Layer`.
 - **Custom window chrome** (traffic-light buttons, rounding, border) lives in
   `XLUiButton.cc` / `SPRTWinMacosWindow.mm` / `SPRTWinMacosView.mm`. First-click on
   the OS buttons being swallowed = missing `acceptsFirstMouse:` in the view.

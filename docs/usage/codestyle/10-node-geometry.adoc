@@ -200,4 +200,5 @@ layout, input and data belong in a `System` or a `Component`.
 * [11-node-system-component.adoc](11-node-system-component.adoc) — why to prefer systems and components
 * [node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc) — the visit phases in detail
 * [content-measurement.adoc](../ui/content-measurement.adoc) — making a node measurable
+* [css-subset.adoc](../ui/css-subset.adoc) — styling and placing a node from CSS; z-order vs `order`
 * [09-threads-and-dispatch.adoc](09-threads-and-dispatch.adoc) — the scene graph is app-thread-only
