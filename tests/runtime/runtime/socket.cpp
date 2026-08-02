@@ -281,8 +281,13 @@ static int runSocketSuite(dispatch::Looper *looper) {
 		}
 		if (!supported) {
 			sprt::cout << "SKIP  AF_UNIX path echo + stale-file rebind (AF_UNIX unsupported)\n";
+			sprt::cout << "SKIP  AF_UNIX cancel unlinks the socket path (AF_UNIX unsupported)\n";
 		} else {
 			report(ok, "AF_UNIX path echo + stale-file rebind", failed);
+			// cancel() owns the bound path: a cancelled listener must not leave the socket file
+			// behind (the loop above already drove the cancel to completion)
+			report(::__sprt_access(path, __SPRT_F_OK) != 0,
+					"AF_UNIX cancel unlinks the socket path", failed);
 		}
 		::__sprt_unlink(path);
 	}
