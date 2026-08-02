@@ -30,6 +30,7 @@
 #include <sprt/cxx/__functional/invoke.h>
 #include <sprt/cxx/__algorithm/minmax.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/runtime/detail/errno_canonical.h>
 
 namespace sprt::status {
 
@@ -48,6 +49,63 @@ constexpr inline int GENERIC_ERROR_NUMBER(int __errno) { return -STATUS_GENERIC_
 constexpr inline int GAPI_ERROR_NUMBER(int __errno) { return -STATUS_GAPI_OFFSET - __errno; }
 
 constexpr inline int WINAPI_ERROR_NUMBER(int __errno) { return -STATUS_WINAPI_OFFSET - __errno; }
+
+/* Canonical errno numbers used by the Status enumerators below.
+ *
+ * These are literals on purpose: writing ERRNO_ERROR_NUMBER(EAGAIN) would bake the *native*
+ * errno of the platform being compiled for into the enumerator, and EAGAIN is 11 on Linux,
+ * 35 on Darwin and 11-but-not-EWOULDBLOCK on Windows - the same error would then be a
+ * different Status number per OS. The canonical numbering is the Linux/asm-generic one;
+ * detail/errno_canonical.h converts native <-> canonical at the boundary.
+ *
+ * The static_asserts below pin these to the platform list on the platforms that define the
+ * canonical numbering, so the table cannot silently drift.
+ */
+constexpr int32_t CANON_EPERM = 1;
+constexpr int32_t CANON_ENOENT = 2;
+constexpr int32_t CANON_ESRCH = 3;
+constexpr int32_t CANON_EINTR = 4;
+constexpr int32_t CANON_E2BIG = 7;
+constexpr int32_t CANON_EAGAIN = 11;
+constexpr int32_t CANON_ENOMEM = 12;
+constexpr int32_t CANON_EBUSY = 16;
+constexpr int32_t CANON_EEXIST = 17;
+constexpr int32_t CANON_EXDEV = 18;
+constexpr int32_t CANON_EINVAL = 22;
+constexpr int32_t CANON_ENOSPC = 28;
+constexpr int32_t CANON_EDEADLK = 35;
+constexpr int32_t CANON_ENOSYS = 38;
+constexpr int32_t CANON_ETIME = 62;
+constexpr int32_t CANON_ENOTSUP = 95;
+constexpr int32_t CANON_ENOBUFS = 105;
+constexpr int32_t CANON_ETIMEDOUT = 110;
+constexpr int32_t CANON_EALREADY = 114;
+constexpr int32_t CANON_EINPROGRESS = 115;
+constexpr int32_t CANON_ECANCELED = 125;
+constexpr int32_t CANON_EOWNERDEAD = 130;
+constexpr int32_t CANON_ENOTRECOVERABLE = 131;
+
+#if !SPRT_APPLE && !SPRT_WINDOWS
+// Linux, Android and wasm carry the canonical numbering natively.
+static_assert(CANON_EPERM == EPERM && CANON_ENOENT == ENOENT && CANON_ESRCH == ESRCH
+				&& CANON_EINTR == EINTR && CANON_E2BIG == E2BIG && CANON_EAGAIN == EAGAIN
+				&& CANON_ENOMEM == ENOMEM && CANON_EBUSY == EBUSY && CANON_EEXIST == EEXIST
+				&& CANON_EXDEV == EXDEV && CANON_EINVAL == EINVAL && CANON_ENOSPC == ENOSPC
+				&& CANON_EDEADLK == EDEADLK && CANON_ENOSYS == ENOSYS && CANON_ETIME == ETIME
+				&& CANON_ENOTSUP == ENOTSUP && CANON_ENOBUFS == ENOBUFS
+				&& CANON_ETIMEDOUT == ETIMEDOUT && CANON_EALREADY == EALREADY
+				&& CANON_EINPROGRESS == EINPROGRESS && CANON_ECANCELED == ECANCELED
+				&& CANON_EOWNERDEAD == EOWNERDEAD && CANON_ENOTRECOVERABLE == ENOTRECOVERABLE,
+		"Canonical errno table drifted from the platform errno list");
+#endif
+
+// The named errno statuses must round-trip through the platform tables on every platform.
+static_assert(errnoToCanonical(canonicalToErrno(CANON_EAGAIN)) == CANON_EAGAIN
+				&& errnoToCanonical(canonicalToErrno(CANON_EDEADLK)) == CANON_EDEADLK
+				&& errnoToCanonical(canonicalToErrno(CANON_ENOTSUP)) == CANON_ENOTSUP
+				&& errnoToCanonical(canonicalToErrno(CANON_ETIMEDOUT)) == CANON_ETIMEDOUT
+				&& errnoToCanonical(canonicalToErrno(CANON_EOWNERDEAD)) == CANON_EOWNERDEAD,
+		"errno canonicalization is not round-trippable");
 
 // clang-format off
 enum class Status : int32_t {
@@ -73,29 +131,29 @@ enum class Status : int32_t {
 	// general errors
 	// This errors matched their errno codes, but can occurs in any subsystem
 	ErrorNumber =				status::ERRNO_ERROR_NUMBER(0),
-	ErrorNotPermitted =			status::ERRNO_ERROR_NUMBER(EPERM), // EPERM, VK_ERROR_NOT_PERMITTED_KHR
-	ErrorNotFound =				status::ERRNO_ERROR_NUMBER(ENOENT), // ENOENT
-	ErrorNoSuchProcess  =		status::ERRNO_ERROR_NUMBER(ESRCH), // ESRCH
-	ErrorInterrupted  =			status::ERRNO_ERROR_NUMBER(EINTR), // EINTR
-	ErrorTooManyObjects =		status::ERRNO_ERROR_NUMBER(E2BIG), // E2BIG, VK_ERROR_TOO_MANY_OBJECTS
-	ErrorAgain =				status::ERRNO_ERROR_NUMBER(EAGAIN), // EAGAIN
-	ErrorOutOfHostMemory =		status::ERRNO_ERROR_NUMBER(ENOMEM), // ENOMEM, VK_ERROR_OUT_OF_HOST_MEMORY
-	ErrorBusy =					status::ERRNO_ERROR_NUMBER(EBUSY), // EBUSY
-	ErrorFileExists =			status::ERRNO_ERROR_NUMBER(EEXIST), // EEXIST
-	ErrorIncompatibleDevice =	status::ERRNO_ERROR_NUMBER(EXDEV), // EXDEV, VK_ERROR_INCOMPATIBLE_DRIVER
-	ErrorInvalidArguemnt =		status::ERRNO_ERROR_NUMBER(EINVAL), // EINVAL, VK_ERROR_INITIALIZATION_FAILED
-	ErrorOutOfDeviceMemory =	status::ERRNO_ERROR_NUMBER(ENOSPC), // ENOSPC, VK_ERROR_OUT_OF_DEVICE_MEMORY
-	ErrorDeadLock =				status::ERRNO_ERROR_NUMBER(EDEADLK), // EDEADLK
-	ErrorNotImplemented =		status::ERRNO_ERROR_NUMBER(ENOSYS), // ENOSYS
-	ErrorTimerExpired =			status::ERRNO_ERROR_NUMBER(ETIME), // ETIME; when it's not an error - return Suspended
-	ErrorNotSupported =			status::ERRNO_ERROR_NUMBER(ENOTSUP), // ENOTSUP, VK_ERROR_FORMAT_NOT_SUPPORTED
-	ErrorBufferOverflow =		status::ERRNO_ERROR_NUMBER(ENOBUFS), // ENOBUFS
-	ErrorTimeout =				status::ERRNO_ERROR_NUMBER(ETIMEDOUT), // ETIMEDOUT
-	ErrorAlreadyPerformed =		status::ERRNO_ERROR_NUMBER(EALREADY), // EALREADY
-	ErrorInProgress =			status::ERRNO_ERROR_NUMBER(EINPROGRESS), // EINPROGRESS
-	ErrorCancelled =			status::ERRNO_ERROR_NUMBER(ECANCELED), // ECANCELED, VK_ERROR_OUT_OF_DATE_KHR
-	ErrorNotRecoverable =		status::ERRNO_ERROR_NUMBER(ENOTRECOVERABLE), // ENOTRECOVERABLE
-	ErrorDeviceLost =			status::ERRNO_ERROR_NUMBER(EOWNERDEAD), // EOWNERDEAD, VK_ERROR_DEVICE_LOST
+	ErrorNotPermitted =			status::ERRNO_ERROR_NUMBER(status::CANON_EPERM), // EPERM, VK_ERROR_NOT_PERMITTED_KHR
+	ErrorNotFound =				status::ERRNO_ERROR_NUMBER(status::CANON_ENOENT), // ENOENT
+	ErrorNoSuchProcess  =		status::ERRNO_ERROR_NUMBER(status::CANON_ESRCH), // ESRCH
+	ErrorInterrupted  =			status::ERRNO_ERROR_NUMBER(status::CANON_EINTR), // EINTR
+	ErrorTooManyObjects =		status::ERRNO_ERROR_NUMBER(status::CANON_E2BIG), // E2BIG, VK_ERROR_TOO_MANY_OBJECTS
+	ErrorAgain =				status::ERRNO_ERROR_NUMBER(status::CANON_EAGAIN), // EAGAIN
+	ErrorOutOfHostMemory =		status::ERRNO_ERROR_NUMBER(status::CANON_ENOMEM), // ENOMEM, VK_ERROR_OUT_OF_HOST_MEMORY
+	ErrorBusy =					status::ERRNO_ERROR_NUMBER(status::CANON_EBUSY), // EBUSY
+	ErrorFileExists =			status::ERRNO_ERROR_NUMBER(status::CANON_EEXIST), // EEXIST
+	ErrorIncompatibleDevice =	status::ERRNO_ERROR_NUMBER(status::CANON_EXDEV), // EXDEV, VK_ERROR_INCOMPATIBLE_DRIVER
+	ErrorInvalidArguemnt =		status::ERRNO_ERROR_NUMBER(status::CANON_EINVAL), // EINVAL, VK_ERROR_INITIALIZATION_FAILED
+	ErrorOutOfDeviceMemory =	status::ERRNO_ERROR_NUMBER(status::CANON_ENOSPC), // ENOSPC, VK_ERROR_OUT_OF_DEVICE_MEMORY
+	ErrorDeadLock =				status::ERRNO_ERROR_NUMBER(status::CANON_EDEADLK), // EDEADLK
+	ErrorNotImplemented =		status::ERRNO_ERROR_NUMBER(status::CANON_ENOSYS), // ENOSYS
+	ErrorTimerExpired =			status::ERRNO_ERROR_NUMBER(status::CANON_ETIME), // ETIME; when it's not an error - return Suspended
+	ErrorNotSupported =			status::ERRNO_ERROR_NUMBER(status::CANON_ENOTSUP), // ENOTSUP, VK_ERROR_FORMAT_NOT_SUPPORTED
+	ErrorBufferOverflow =		status::ERRNO_ERROR_NUMBER(status::CANON_ENOBUFS), // ENOBUFS
+	ErrorTimeout =				status::ERRNO_ERROR_NUMBER(status::CANON_ETIMEDOUT), // ETIMEDOUT
+	ErrorAlreadyPerformed =		status::ERRNO_ERROR_NUMBER(status::CANON_EALREADY), // EALREADY
+	ErrorInProgress =			status::ERRNO_ERROR_NUMBER(status::CANON_EINPROGRESS), // EINPROGRESS
+	ErrorCancelled =			status::ERRNO_ERROR_NUMBER(status::CANON_ECANCELED), // ECANCELED, VK_ERROR_OUT_OF_DATE_KHR
+	ErrorNotRecoverable =		status::ERRNO_ERROR_NUMBER(status::CANON_ENOTRECOVERABLE), // ENOTRECOVERABLE
+	ErrorDeviceLost =			status::ERRNO_ERROR_NUMBER(status::CANON_EOWNERDEAD), // EOWNERDEAD, VK_ERROR_DEVICE_LOST
 
 	// Generic errors, can occurs in any subsystem
 	ErrorMemoryMapFailed =		status::GENERIC_ERROR_NUMBER(1), // VK_ERROR_MEMORY_MAP_FAILED
@@ -154,7 +212,16 @@ constexpr inline int isWinApi(Status st) {
 	return toInt(st) <= -STATUS_WINAPI_OFFSET && toInt(st) > -STATUS_END_OFFSET;
 }
 
+// The errno carried by a Status is the canonical (portable) number - see
+// detail/errno_canonical.h. Translate it back into what this platform's libc uses.
+// Returns 0 when the status is not an errno status, or when the canonical code has no
+// counterpart on this platform.
 constexpr inline int toErrno(Status st) {
+	return isErrno(st) ? canonicalToErrno(-toInt(st) - STATUS_ERRNO_OFFSET) : 0;
+}
+
+// The raw canonical code, without translating it back to the local libc.
+constexpr inline int toCanonicalErrno(Status st) {
 	return isErrno(st) ? -toInt(st) - STATUS_ERRNO_OFFSET : 0;
 }
 
@@ -168,7 +235,16 @@ constexpr inline int toWinApi(Status st) {
 	return isWinApi(st) ? -toInt(st) - STATUS_WINAPI_OFFSET : 0;
 }
 
-constexpr inline Status errnoToStatus(int _errno) { return Status(-STATUS_ERRNO_OFFSET - _errno); }
+// Takes a NATIVE errno of the platform being compiled for and canonicalizes it, so the same
+// error yields the same Status everywhere (see detail/errno_canonical.h).
+constexpr inline Status errnoToStatus(int _errno) {
+	return Status(-STATUS_ERRNO_OFFSET - errnoToCanonical(_errno));
+}
+
+// For codes that are already canonical (e.g. received from another platform).
+constexpr inline Status canonicalErrnoToStatus(int _errno) {
+	return Status(-STATUS_ERRNO_OFFSET - _errno);
+}
 
 constexpr inline Status lastErrorToStatus(int _GetLastErrorResult) {
 	return Status(-STATUS_WINAPI_OFFSET - _GetLastErrorResult);

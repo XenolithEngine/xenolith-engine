@@ -52,7 +52,7 @@ bool VectorPath::init(BytesView data) {
 	return _data.getWriter().readFromBytes(data);
 }
 
-bool VectorPath::init(const PathData<memory::StandartInterface> &data) {
+bool VectorPath::init(const PathData<mem_std::Interface> &data) {
 	_data.clear();
 	_data = data;
 	return true;

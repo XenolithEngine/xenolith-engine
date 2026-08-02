@@ -114,7 +114,8 @@ struct Job {
 	Rc<dispatch::FileHandle> file; // live in-process file write for the current command line
 	JobString output; // buffered echo + captured bytes, flushed atomically when the target finishes
 	JobString name; // display name for the progress counter (.TARGET_NAME, else the target name)
-	uint64_t startMicros = 0; // recipe wall-clock start; per-target elapsed is shown on the counter line
+	uint64_t startMicros =
+			0; // recipe wall-clock start; per-target elapsed is shown on the counter line
 	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
 	bool failed = false; // a command failed: always show the block regardless of verbosity
 	bool headerDone = false; // streaming started: counter + buffered prefix already written live
@@ -193,7 +194,8 @@ private:
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
-	void emitCounter(Job *job, bool showTime); // print one "[depth][N/M] name (time)" line, advancing _done
+	void emitCounter(Job *job,
+			bool showTime); // print one "[depth][N/M] name (time)" line, advancing _done
 	void beginStream(Job *job); // start live streaming: emit counter + buffered prefix once
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
 	bool isLineBuffered(BuildNode *bn); // .TARGET_BUFFER=line (target scope): stream output live
@@ -363,7 +365,7 @@ void Builder::dispatchNode(NodeState *st) {
 		// as a (recipe-less) rule target (`all: a b` just makes its prerequisites); otherwise it was
 		// only named as a prerequisite and there is no rule to make it
 		if (!bn->phony && !bn->target->fileExists && !bn->target->declared) {
-			memory::StandartInterface::StringType ns;
+			mem_std::Interface::StringType ns;
 			emitErr(toString("xlmake: *** No rule to make target '",
 					decodePathSpaces(StringView(bn->name.data(), bn->name.size()), ns), "'\n"));
 			finishNode(st, false, false);
@@ -429,9 +431,8 @@ void Builder::spawn(Job *job) {
 		case Command::Kind::Process: {
 			// Echo exactly what will run: decode path spaces to the shell form (so the printed line is
 			// copy-pasteable and matches execution).
-			decodePathSpacesForShell([&](StringView s) {
-				job->output.append(s.data(), s.size());
-			}, StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
+			decodePathSpacesForShell([&](StringView s) { job->output.append(s.data(), s.size()); },
+					StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
 			job->output.append("\n");
 			break;
 		}
@@ -463,7 +464,7 @@ void Builder::spawn(Job *job) {
 			default: break;
 			}
 			// Show real spaces in the echoed operand (the path is make-visible / placeholder-encoded).
-			memory::StandartInterface::StringType payloadStorage;
+			mem_std::Interface::StringType payloadStorage;
 			payload = decodePathSpaces(payload, payloadStorage);
 			job->output.append(verb.data(), verb.size());
 			if (!payload.empty()) {
@@ -512,10 +513,10 @@ void Builder::spawn(Job *job) {
 
 		// Decode the destination path to a real filesystem path; decode the content too, in case an
 		// expanded path with a placeholder leaked into it (the file must hold real spaces, not 0x1F).
-		memory::StandartInterface::StringType pathStorage;
-		StringView path = decodePathSpaces(
-				StringView(cmd.writePath.data(), cmd.writePath.size()), pathStorage);
-		memory::StandartInterface::StringType dataStorage;
+		mem_std::Interface::StringType pathStorage;
+		StringView path = decodePathSpaces(StringView(cmd.writePath.data(), cmd.writePath.size()),
+				pathStorage);
+		mem_std::Interface::StringType dataStorage;
 		StringView dataView = decodePathSpaces(
 				StringView(cmd.writeData.data(), cmd.writeData.size()), dataStorage);
 		BytesView data(reinterpret_cast<const uint8_t *>(dataView.data()), dataView.size());
@@ -600,10 +601,10 @@ void Builder::onCommandDone(Job *job, int code) {
 	bool ok = (code == 0) || cmd.ignoreErr;
 
 	if (!ok) {
-		memory::StandartInterface::StringType ns;
+		mem_std::Interface::StringType ns;
 		auto msg = toString("xlmake: *** [",
-				decodePathSpaces(
-						StringView(job->st->node->name.data(), job->st->node->name.size()), ns),
+				decodePathSpaces(StringView(job->st->node->name.data(), job->st->node->name.size()),
+						ns),
 				"] error ", code, "\n");
 		job->output.append(msg.data(), msg.size());
 		job->failed = true; // a failed recipe is always shown, even in non-verbose mode
@@ -680,8 +681,8 @@ void Builder::emitCounter(Job *job, bool showTime) {
 		emit(toString("[", _cfg.makeLevel, "][", _done, "/", _total, "] ",
 				StringView(job->name.data(), job->name.size()), timing, "\n"));
 	} else {
-		emit(toString("[", _done, "/", _total, "] ",
-				StringView(job->name.data(), job->name.size()), timing, "\n"));
+		emit(toString("[", _done, "/", _total, "] ", StringView(job->name.data(), job->name.size()),
+				timing, "\n"));
 	}
 }
 
@@ -904,7 +905,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 			p.backwardSkipChars<StringView::Chars<'/'>>();
 			// The operand is make-visible (a space inside the path is PathSpacePlaceholder); decode it
 			// to a real filesystem path. tokenizeArgs already split on the real separator spaces.
-			memory::StandartInterface::StringType ps;
+			mem_std::Interface::StringType ps;
 			StringView dp = decodePathSpaces(p, ps);
 			FileInfo fi(dp);
 			// mkdir -p: an already-existing directory is success; mkdir_recursive returns false on an
@@ -930,7 +931,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 			return fail("xlmake: *** malformed $(REMOVE) directive (no path)");
 		}
 		for (auto &p : paths) {
-			memory::StandartInterface::StringType ps;
+			mem_std::Interface::StringType ps;
 			StringView dp = decodePathSpaces(p, ps);
 			FileInfo fi(dp);
 			// rm -rf: a missing path is success; otherwise remove recursively.
@@ -946,8 +947,8 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		if (toks.size() != 2) {
 			return fail("xlmake: *** malformed $(CP) directive (expected: $(CP) <src> <dst>)");
 		}
-		memory::StandartInterface::StringType ss;
-		memory::StandartInterface::StringType ds;
+		mem_std::Interface::StringType ss;
+		mem_std::Interface::StringType ds;
 		StringView srcPath = decodePathSpaces(toks[0], ss);
 		StringView dstPath = decodePathSpaces(toks[1], ds);
 		FileInfo dst(dstPath);
@@ -976,7 +977,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 			}
 		}
 		// Decode any path-space placeholder so an echoed path shows real spaces (and no 0x1F leaks).
-		memory::StandartInterface::StringType ts;
+		mem_std::Interface::StringType ts;
 		text = decodePathSpaces(text, ts);
 		job->output.append(text.data(), text.size());
 		job->output.append("\n");
@@ -1000,7 +1001,7 @@ JobString Builder::displayName(BuildNode *bn) {
 	// The name is make-visible (a space inside a path target is PathSpacePlaceholder); show real spaces
 	// on the progress line.
 	StringView src = val.empty() ? StringView(bn->name.data(), bn->name.size()) : val;
-	memory::StandartInterface::StringType storage;
+	mem_std::Interface::StringType storage;
 	src = decodePathSpaces(src, storage);
 	JobString out;
 	out.assign(src.data(), src.size());
@@ -1160,7 +1161,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 			if (auto t = mk->getTarget(tn)) {
 				goals.emplace_back(t);
 			} else {
-				memory::StandartInterface::StringType ns;
+				mem_std::Interface::StringType ns;
 				emitErr(toString("xlmake: *** No rule to make target '", decodePathSpaces(tn, ns),
 						"'.  Stop.\n"));
 				return finish(2);
@@ -1223,9 +1224,8 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		case BuildResult::Built: break;
 		case BuildResult::UpToDate:
 			if (!cfg.dryRun) {
-				memory::StandartInterface::StringType gs;
-				auto gname = decodePathSpaces(
-						StringView(goal->name.data(), goal->name.size()), gs);
+				mem_std::Interface::StringType gs;
+				auto gname = decodePathSpaces(StringView(goal->name.data(), goal->name.size()), gs);
 				if (cfg.makeLevel > 0) {
 					emit(toString("xlmake[", cfg.makeLevel, "]: ", gname, "' is up to date\n"));
 				} else {
@@ -1235,7 +1235,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 			break;
 		case BuildResult::Failed: rc = 2; break;
 		case BuildResult::Cycle: {
-			memory::StandartInterface::StringType gs;
+			mem_std::Interface::StringType gs;
 			emitErr(toString("xlmake: dependency cycle involving '",
 					decodePathSpaces(StringView(goal->name.data(), goal->name.size()), gs), "'\n"));
 			rc = 2;

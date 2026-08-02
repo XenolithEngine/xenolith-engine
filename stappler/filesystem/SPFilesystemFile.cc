@@ -294,8 +294,7 @@ bool File::close_rename(const FileInfo &info) {
 					OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate);
 
 			if (fFrom && fTo) {
-				BufferTemplate<memory::StandartInterface> buffer(
-						sprt::min(size_t(4_MiB), fFrom.size()));
+				BufferTemplate<mem_std::Interface> buffer(sprt::min(size_t(4_MiB), fFrom.size()));
 				if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 					success = true;
 					return false;

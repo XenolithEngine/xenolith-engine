@@ -1977,7 +1977,7 @@ float MediaParameters::getDefaultFontSize() const { return FontSize::Medium.get(
 
 void MediaParameters::addOption(const StringView &str) {
 	auto value = sprt::hash32(str.data(), str.size());
-	_options.insert(pair(value, str.str<memory::StandartInterface>()));
+	_options.insert(pair(value, str.str<mem_std::Interface>()));
 }
 void MediaParameters::removeOption(const StringView &str) {
 	auto value = sprt::hash32(str.data(), str.size());
@@ -2122,9 +2122,9 @@ auto MediaParameters::resolveMediaQueries<memory::PoolInterface>(
 }
 
 template <>
-auto MediaParameters::resolveMediaQueries<memory::StandartInterface>(
-		const SpanView<MediaQuery> &vec) const -> memory::StandartInterface::VectorType<bool> {
-	memory::StandartInterface::VectorType<bool> ret;
+auto MediaParameters::resolveMediaQueries<mem_std::Interface>(const SpanView<MediaQuery> &vec) const
+		-> mem_std::Interface::VectorType<bool> {
+	mem_std::Interface::VectorType<bool> ret;
 	for (auto &it : vec) { ret.push_back(resolveQuery(it)); }
 	return ret;
 }

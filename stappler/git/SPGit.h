@@ -33,7 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::git {
 // This module speaks the Git Smart HTTP protocol (protocol v2) over the
 // stappler_network HTTP client. Objects here outlive individual calls and cross
 // thread boundaries (the async Remote runs on its own worker thread), so all
-// owning containers use the malloc-backed StandartInterface (mem_std).
+// owning containers use the malloc-backed StandardInterface (mem_std).
 
 using String = mem_std::String;
 using Bytes = mem_std::Bytes;

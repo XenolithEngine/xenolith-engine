@@ -36,7 +36,7 @@ static constexpr uint32_t MAX_SUBMODULE_DEPTH = 10;
 // Strip trailing slashes from a repository URL so we can append protocol paths.
 static String normalizeBaseUrl(StringView url) {
 	while (!url.empty() && url.back() == '/') { url = StringView(url.data(), url.size() - 1); }
-	return url.str<memory::StandartInterface>();
+	return url.str<mem_std::Interface>();
 }
 
 bool Remote::init(StringView url, sprt::dispatch::Looper *target) {
@@ -46,8 +46,8 @@ bool Remote::init(StringView url, sprt::dispatch::Looper *target) {
 }
 
 void Remote::setCredentials(StringView user, StringView password) {
-	_authUser = user.str<memory::StandartInterface>();
-	_authPassword = password.str<memory::StandartInterface>();
+	_authUser = user.str<mem_std::Interface>();
+	_authPassword = password.str<mem_std::Interface>();
 }
 
 void Remote::listRefs(RefListCallback &&cb) {
@@ -111,7 +111,7 @@ static void applyAuth(mem_std::NetworkHandle &h, StringView baseUrl, StringView 
 
 Status Remote::httpGet(StringView baseUrl, StringView pathSuffix, Bytes &out, long &httpCode) {
 	mem_std::NetworkHandle h;
-	String url = baseUrl.str<memory::StandartInterface>();
+	String url = baseUrl.str<mem_std::Interface>();
 	url.append(pathSuffix.data(), pathSuffix.size());
 
 	h.init(network::Method::Get, url);
@@ -135,7 +135,7 @@ Status Remote::httpPost(StringView baseUrl, StringView pathSuffix, BytesView bod
 		StringView contentType, Bytes &out, long &httpCode,
 		const Function<void(int64_t, int64_t)> &onDownload) {
 	mem_std::NetworkHandle h;
-	String url = baseUrl.str<memory::StandartInterface>();
+	String url = baseUrl.str<mem_std::Interface>();
 	url.append(pathSuffix.data(), pathSuffix.size());
 
 	h.init(network::Method::Post, url);
@@ -316,8 +316,7 @@ Status Remote::cloneInto(StringView baseUrl, const Oid &want, StringView destDir
 				continue;
 			}
 
-			String subDir =
-					filepath::merge<memory::StandartInterface>(destDir, StringView(gl.path));
+			String subDir = filepath::merge<mem_std::Interface>(destDir, StringView(gl.path));
 			auto subStatus =
 					cloneInto(StringView(subUrl), gl.oid, StringView(subDir), recursion + 1, agg);
 			if (subStatus == Status::Ok) {

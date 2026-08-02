@@ -114,10 +114,15 @@ static void do_unwind(PVOID EstablisherFrame, PDISPATCHER_CONTEXT DispatcherCont
 			break;
 		}
 		if (unwind_table[initLevel].action) {
-			auto handler = reinterpret_cast<void (*)()>(
+			// A cleanup funclet is not a nullary function: on x64 it is entered with RCX unused
+			// (it carries the exception object for a catch funclet) and RDX = the establisher
+			// frame of the parent, which is how it addresses the parent's locals. Calling it
+			// with no arguments leaves RDX holding garbage, and the destructor faults on the
+			// first member access instead of running.
+			auto handler = reinterpret_cast<void (*)(void *, void *)>(
 					(uint8_t *)DispatcherContext->ImageBase + unwind_table[initLevel].action);
 
-			handler();
+			handler(nullptr, EstablisherFrame);
 		}
 		initLevel = unwind_table[initLevel].state;
 	}

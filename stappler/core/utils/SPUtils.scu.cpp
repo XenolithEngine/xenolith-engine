@@ -32,7 +32,7 @@ SubscriptionId SubscriptionTemplate<memory::PoolInterface>::getNextId() {
 }
 
 template <>
-SubscriptionId SubscriptionTemplate<memory::StandartInterface>::getNextId() {
+SubscriptionId SubscriptionTemplate<mem_std::Interface>::getNextId() {
 	static sprt::atomic<SubscriptionId::Type> nextId(0);
 	return Id(nextId.fetch_add(1));
 }

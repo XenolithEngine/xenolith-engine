@@ -36,7 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 class FontLibrary;
 
-class SP_PUBLIC FontFaceData : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceData : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~FontFaceData() = default;
 
@@ -68,7 +68,7 @@ protected:
 	FontLayoutParameters _params;
 };
 
-class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~FontFaceObject();
 
@@ -133,7 +133,7 @@ protected:
 	mutable sprt::mutex _requiredMutex;
 };
 
-class SP_PUBLIC FontFaceSet : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceSet : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	static String constructName(StringView, const FontSpecializationVector &);
 

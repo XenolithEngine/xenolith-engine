@@ -34,7 +34,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-using StdString = memory::StandartInterface::StringType;
+using StdString = mem_std::Interface::StringType;
 
 bool ProjectBuildThread::init(StringView watchDir) {
 	_watchDir.assign(watchDir.data(), watchDir.size());
@@ -141,7 +141,7 @@ void ProjectBuildThread::doBuild() {
 		// Copy to a unique <reloadBase>/<N>/<exe> for launching. (Inside memory::perform, so a plain
 		// pool-backed toString has an active context.)
 		auto dstDir = toString(StringView(_reloadBase), "/", _counter);
-		auto dst = filepath::merge<memory::StandartInterface>(StringView(dstDir),
+		auto dst = filepath::merge<mem_std::Interface>(StringView(dstDir),
 				filepath::lastComponent(exe));
 		filesystem::mkdir_recursive(FileInfo{StringView(dstDir)});
 		if (filesystem::copy(FileInfo{exe}, FileInfo{StringView(dst)})) {

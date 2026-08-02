@@ -42,8 +42,7 @@ protected:
 	FT_Library _library = nullptr;
 };
 
-class SP_PUBLIC FontFaceObjectHandle : public Ref,
-									   public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceObjectHandle : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~FontFaceObjectHandle();
 
@@ -60,7 +59,7 @@ protected:
 	Function<void(const FontFaceObjectHandle *)> _onDestroy;
 };
 
-class SP_PUBLIC FontLibrary : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontLibrary : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	enum class DefaultFontName {
 		None,

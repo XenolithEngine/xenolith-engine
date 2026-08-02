@@ -220,7 +220,7 @@ void Cache::regenerate(StringView key) {
 }
 
 void Cache::regenerate(const FileInfo &path) {
-	auto key = filepath::canonical<memory::StandartInterface>(path);
+	auto key = filepath::canonical<mem_std::Interface>(path);
 	regenerate(key);
 }
 
@@ -232,7 +232,7 @@ void Cache::drop(StringView key) {
 }
 
 void Cache::drop(const FileInfo &path) {
-	auto key = filepath::canonical<memory::StandartInterface>(path);
+	auto key = filepath::canonical<mem_std::Interface>(path);
 	drop(key);
 }
 
@@ -307,7 +307,7 @@ bool Cache::runTemplate(StringView key, const RunCallback &cb, NodeStream &sink,
 }
 
 bool Cache::addFile(const FileInfo &path) {
-	auto key = filepath::canonical<memory::StandartInterface>(path);
+	auto key = filepath::canonical<mem_std::Interface>(path);
 
 	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
@@ -370,13 +370,13 @@ Rc<FileRef> Cache::get(StringView key) const {
 }
 
 Rc<FileRef> Cache::get(const FileInfo &path) const {
-	auto key = filepath::canonical<memory::StandartInterface>(path);
+	auto key = filepath::canonical<mem_std::Interface>(path);
 	return get(key);
 }
 
 Rc<FileRef> Cache::acquireTemplate(const FileInfo &path, bool readOnly,
 		const Template::Options &opts) {
-	auto key = filepath::canonical<memory::StandartInterface>(path);
+	auto key = filepath::canonical<mem_std::Interface>(path);
 
 	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);

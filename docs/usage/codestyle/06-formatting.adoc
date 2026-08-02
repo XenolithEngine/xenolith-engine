@@ -1,0 +1,101 @@
+# Formatting: what clang-format already decides
+
+**TL;DR**
+
+* [.clang-format](../../../.clang-format) is authoritative. Do not hand-align
+  code — format the file instead.
+* Indentation is **tabs**, width 4; continuation lines indent 8. Column limit
+  100.
+* `*` and `&` bind to the **name** (`Node *node`, `const Mat4 &m`).
+* Braces are attached (`if (x) {`); `catch` goes on its own line. Missing braces
+  are inserted automatically.
+* Includes are **not** sorted and comments are **not** reflowed — those stay
+  under your control.
+
+## Running it
+
+VSCode formats on save through clangd (see
+[.vscode/settings.json](../../../.vscode/settings.json)). From a shell, use the
+SDK toolchain's binary so the version matches the config:
+
+[source,sh]
+----
+runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin/clang-format -i <files…>
+----
+
+A system `clang-format` usually works too, but an older one may not understand
+every option in the file (the config uses recent keys such as
+`BreakFunctionDefinitionParameters` and `KeepEmptyLines`) and will warn.
+
+## The settings that actually surprise people
+
+The style is `BasedOnStyle: LLVM` with the deltas below.
+
+[cols="2,3"]
+|===
+| Setting | Effect
+
+| `UseTab: Always`, `TabWidth: 4`, `IndentWidth: 4`
+| Real tab characters for indentation. Do not "fix" tabs to spaces.
+
+| `ContinuationIndentWidth: 8`
+| A wrapped expression or parameter list indents by two levels, which is how
+wrapped signatures in the codebase look.
+
+| `ColumnLimit: 100`
+| Wider than LLVM's 80.
+
+| `PointerAlignment: Right`, `ReferenceAlignment: Right`
+| `Node *node`, `const StyleValue &value`.
+
+| `AlignAfterOpenBracket: DontAlign`, `AlignOperands: DontAlign`, `AlignTrailingComments: Never`, `AlignConsecutive*: None`
+| No column alignment anywhere. Manually aligned `=` or trailing comments will be
+collapsed on the next format — do not create them.
+
+| `BreakBeforeBraces: Custom` with `BeforeCatch: true`
+| Attached braces everywhere except `catch`, which starts a new line.
+
+| `InsertBraces: true`
+| A brace-less `if`/`for` body gets braces added for you.
+
+| `AllowShortFunctionsOnASingleLine: All`, `AllowShortBlocksOnASingleLine: Always`, `AllowShortLoopsOnASingleLine: true`
+| One-line accessors and tiny blocks stay on one line — expected in headers.
+
+| `AllowShortIfStatementsOnASingleLine: Never`
+| …but a one-line `if` is always split.
+
+| `NamespaceIndentation: None`, `FixNamespaceComments: true`
+| Namespace bodies are not indented; the closing comment is maintained.
+
+| `AccessModifierOffset: -4`, `IndentAccessModifiers: false`
+| `public:` / `protected:` sit at the class's own indentation level.
+
+| `SortIncludes: Never`, `IncludeBlocks: Preserve`
+| Include order is *yours* and is significant in SCU builds — see
+[02-file-layout.adoc](02-file-layout.adoc).
+
+| `ReflowComments: false`
+| Comment wrapping is preserved. Keep prose comments inside 100 columns yourself.
+
+| `BreakBeforeBinaryOperators: NonAssignment`, `BreakBeforeTernaryOperators: true`
+| A wrapped expression starts the line with the operator.
+
+| `BreakConstructorInitializers: BeforeComma`, `ConstructorInitializerIndentWidth: 0`, `PackConstructorInitializers: NextLine`
+| The member-init list style you see in existing constructors.
+
+| `IntegerLiteralSeparator: {Binary: 4, Decimal: 3, Hex: 4}`
+| Digit separators are inserted/normalized in numeric literals (`1'000'000`).
+
+| `InsertNewlineAtEOF: true`, `MaxEmptyLinesToKeep: 2`, `KeepEmptyLines.AtStartOfFile: false`
+| Trailing newline enforced; at most two blank lines in a row.
+
+| `Standard: c++20`
+| The dialect the whole SDK is written in.
+|===
+
+## What formatting does not cover
+
+clang-format normalizes layout, not structure. Naming
+([03-naming.adoc](03-naming.adoc)), file organization
+([02-file-layout.adoc](02-file-layout.adoc)), include order, and comment content
+are review concerns, not tool output. A formatted diff is not a reviewed diff.

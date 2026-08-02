@@ -411,6 +411,17 @@ inline constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothro
 	return ptr;
 }
 
+// Pool placement (`new (pool) T`) is only meaningful for sprt::detail::AllocPool
+// subclasses, which declare their own operator new(size_t, memory::pool_t *) and are
+// therefore resolved in class scope, never reaching these declarations. For any other
+// type the argument would silently decay to the standard placement form
+// (memory::pool_t * -> void *) and CONSTRUCT THE OBJECT AT THE POOL'S OWN ADDRESS,
+// allocating nothing and overwriting the pool header. Deleting the exact-match global
+// overloads turns that into a compile error instead. AllocBase deletes the same pair in
+// class scope, for classes whose own operator new set would otherwise hide these.
+void *operator new(sprt::size_t, sprt::memory::pool_t *) = delete;
+void *operator new[](sprt::size_t, sprt::memory::pool_t *) = delete;
+
 namespace sprt {
 
 struct SPRT_API AllocPlacement {

@@ -28,7 +28,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
-StringView toPosixPath(StringView path, memory::StandartInterface::StringType &storage) {
+StringView toPosixPath(StringView path, mem_std::Interface::StringType &storage) {
 #if SPRT_WINDOWS
 	// Accept a Windows-native path from the caller but operate in posix internally: detect it and
 	// rewrite it (C:\dir -> /c/dir, '\\' -> '/', strip the \\?\ prefix). fpath_to_posix is
@@ -48,7 +48,7 @@ StringView toPosixPath(StringView path, memory::StandartInterface::StringType &s
 
 void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Access a,
 		const Callback<bool(const LocationInfo &, StringView)> &cb) {
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	filename = toPosixPath(filename, posixStorage);
 
 	if (filepath::isAboveRoot(filename)) {
@@ -86,7 +86,7 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 
 FileCategory detectResourceCategory(StringView ipath,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	ipath = toPosixPath(ipath, posixStorage);
 
 	if (filepath::isAboveRoot(ipath)) {
@@ -231,7 +231,7 @@ FileCategory detectResourceCategory(StringView ipath,
 
 FileCategory detectResourceCategory(FileCategory category, StringView ipath, FileFlags flags,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	ipath = toPosixPath(ipath, posixStorage);
 
 	if (category == FileCategory::Custom) {

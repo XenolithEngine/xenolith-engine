@@ -36,10 +36,10 @@ SP_PUBLIC bool validateText(StringView str);
 
 SP_PUBLIC bool validateEmailWithoutNormalization(StringView str);
 SP_PUBLIC bool validateEmail(memory::PoolInterface::StringType &str);
-SP_PUBLIC bool validateEmail(memory::StandartInterface::StringType &str);
+SP_PUBLIC bool validateEmail(mem_std::Interface::StringType &str);
 
 SP_PUBLIC bool validateUrl(memory::PoolInterface::StringType &str);
-SP_PUBLIC bool validateUrl(memory::StandartInterface::StringType &str);
+SP_PUBLIC bool validateUrl(mem_std::Interface::StringType &str);
 
 SP_PUBLIC bool validateNumber(const StringView &str);
 SP_PUBLIC bool validateHexadecimial(const StringView &str);

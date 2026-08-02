@@ -32,13 +32,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // The --watch <dir> project directory, captured from the command line by parseConfigCmd and read by
 // makeAppThread. A file-local static: there is exactly one app instance, and both seams run before
 // the app thread starts.
-static memory::StandartInterface::StringType s_watchDir;
+static mem_std::Interface::StringType s_watchDir;
 
 // Custom command-line parse (Context::SymbolParseConfigCmd): --watch <dir> is an app-level flag, not
 // an engine ContextConfig option, so we peel it off here and hand the remaining arguments to the
 // standard ContextConfig parser.
 static ContextConfig parseConfigCmd(int argc, const char **argv) {
-	memory::StandartInterface::VectorType<const char *> filtered;
+	mem_std::Interface::VectorType<const char *> filtered;
 	filtered.reserve(size_t(argc));
 	for (int i = 0; i < argc; ++i) {
 		StringView a(argv[i]);

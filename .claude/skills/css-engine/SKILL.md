@@ -131,6 +131,12 @@ Fully supported: `border-radius: 1..4 values` (TL TR BR BL ordering), or per-cor
 Supported: `*`, tag, `.class`, `#id`, compound (`tag.cls`, `tag.a.b`),
 descendant (`A B`), child (`A > B`), adjacent sibling (`A + B`), general sibling (`A ~ B`),
 comma lists. Specificity is standard (a=id, b=class+pseudo, c=tag).
+
+**Where the selector operands come from** (`NodeIdentity` in `XLNode.h`):
+`#id` ← **`Node::setName()`** — a node's *name* IS its CSS id; tag/type selector ←
+`Node::setType()`; `.class` ← `Node::addStyleClass()`. `Node::setTag()` (numeric) and
+`setDataValue()` are invisible to CSS. Names are not unique — two nodes with the same
+name are both matched by `#name`.
 Interactive pseudo-classes that DO work: **`:hover :focus :active :checked :enabled :disabled`**.
 
 NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, structural

@@ -42,7 +42,7 @@ Rc<SourceObserver> SourceObserver::createForProject(StringView projectDir, Strin
 		}
 		// Collect the source inputs; the paths point into the makefile's pool and are copied into the
 		// observer's own heap storage by init() before the makefile is dropped below.
-		memory::StandartInterface::VectorType<StringView> paths;
+		mem_std::Interface::VectorType<StringView> paths;
 		mk->getSourceInputs(goal.empty() ? StringView("all") : goal,
 				[&](StringView p) { paths.emplace_back(p); }, err);
 		result = Rc<SourceObserver>::create(SpanView<StringView>(paths.data(), paths.size()));
@@ -63,8 +63,8 @@ uint64_t SourceObserver::computeFingerprint() const {
 	// path's name hash as well as its mtime means an add/remove/rename flips the result even when two
 	// files share an mtime; a missing file folds in a 0 mtime. The path list is fixed after init(), so
 	// the fingerprint is deterministic per call.
-	constexpr uint64_t kOffset = 1469598103934665603ull;
-	constexpr uint64_t kPrime = 1099511628211ull;
+	constexpr uint64_t kOffset = 1'469'598'103'934'665'603ull;
+	constexpr uint64_t kPrime = 1'099'511'628'211ull;
 
 	uint64_t fp = kOffset;
 	auto mix = [&](uint64_t v) {

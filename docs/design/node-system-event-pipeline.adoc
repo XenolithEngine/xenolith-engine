@@ -150,9 +150,10 @@ bit ([XLSystem.h](../../xenolith/application/nodes/XLSystem.h)):
 | `HandleLayoutChildren`     | `handleLayoutChildren`
 | `HandleChildMeasure`       | `handleChildMeasure` (descendant measure, via frame stack)
 | `HandleChildLayoutChildren`| `handleChildLayoutChildren` (descendant layout-children, via frame stack)
+| `HandleChildComponents`    | `handleChildComponentsDirty` (descendant components-dirty, via frame stack)
 |===
 
-The three `HandleChild*` flags are delivered through the **frame stack**: the
+The four `HandleChild*` flags are delivered through the **frame stack**: the
 receiving system must also carry `AddToFrameStack` + a valid `FrameTag`. See
 _Child events: frame-stack delivery_ below.
 
@@ -176,6 +177,7 @@ setters were used (`updateFlags`), so lambda-driven nodes need no manual flags.
 | Descendant resized   | `handleContentSizeDirty(FrameInfo&)` (+ `notifyChildContentSizeDirty` fallback) | `handleChildContentSizeDirty` (`HandleChildNodeEvents`)
 | Descendant measured  | `handleMeasure(FrameInfo&)`     | `handleChildMeasure` (`HandleChildMeasure`)
 | Descendant laid out  | `handleLayoutChildren(FrameInfo&)` | `handleChildLayoutChildren` (`HandleChildLayoutChildren`)
+| Descendant components changed | `handleComponentsDirty(FrameInfo&, const ComponentMask&)` | `handleChildComponentsDirty` (`HandleChildComponents`)
 |===
 
 `handleGlobalTransformDirty` is Node-only (recomputes input density); it is not
@@ -197,8 +199,9 @@ How it is wired:
   that tag, and popped once the owner's children have been visited. So while a
   descendant runs its phases, the stack holds its **ancestors only, never
   itself** — exactly the bubble-up direction.
-* `Node` has three non-virtual frame-stack overloads called from the phase
-  drivers: `handleMeasure(FrameInfo&)`, `handleContentSizeDirty(FrameInfo&)`,
+* `Node` has four non-virtual frame-stack overloads called from the phase
+  drivers: `handleComponentsDirty(FrameInfo&, const ComponentMask&)`,
+  `handleMeasure(FrameInfo&)`, `handleContentSizeDirty(FrameInfo&)`,
   `handleLayoutChildren(FrameInfo&)`. Each runs the normal no-arg virtual, then
   walks `systemStack`, takes `back()` per tag (the nearest ancestor) and, if that
   system is enabled and carries the matching flag, delivers:
@@ -207,6 +210,7 @@ How it is wired:
 |===
 | Descendant phase | System hook (flag)
 
+| Components     | `handleChildComponentsDirty` (`HandleChildComponents`) — carries the descendant's `ComponentMask`
 | Measure        | `handleChildMeasure` (`HandleChildMeasure`)
 | ContentSize    | `handleChildContentSizeDirty` (`HandleChildNodeEvents`)
 | LayoutChildren | `handleChildLayoutChildren` (`HandleChildLayoutChildren`)
@@ -218,9 +222,10 @@ re-lays-out and its own size changes, its own visit delivers the event to the
 next container up — so multi-level fit-content chains converge without any manual
 re-bubble.
 
-`CallbackSystem` exposes all three as `setChildContentSizeDirtyCallback` /
-`setChildMeasureCallback` / `setChildLayoutChildrenCallback` (each still needs a
-`FrameTag` + `AddToFrameStack` to actually receive, since the tag is app-supplied).
+`CallbackSystem` exposes all four as `setChildContentSizeDirtyCallback` /
+`setChildMeasureCallback` / `setChildLayoutChildrenCallback` /
+`setChildComponentsDirtyCallback` (each still needs a `FrameTag` +
+`AddToFrameStack` to actually receive, since the tag is app-supplied).
 
 ### `notifyChildContentSizeDirty`: the immediate fallback
 
@@ -338,3 +343,9 @@ a measuring system when its size is known ahead of time.
   `HandleChildMeasure` / `HandleChildLayoutChildren` and System hooks
   `handleChildMeasure` / `handleChildLayoutChildren` are framework plumbing (no
   consumer wired yet).
+* **`HandleChildComponents` is wired and in use.** Two ui systems consume it:
+  `LayoutSystem::handleChildComponentsDirty` re-lays-out the container when a
+  direct child's `VisibilityComponent` flips (the set of in-flow items changed),
+  and the recursive `StyleResolver` uses it to catch a descendant's own component
+  change — an interactive `:hover`/`:focus`/`:active` flip, a `NodeIdentity` or
+  `StyleSystemState` change — which the content-size cascade alone would miss.

@@ -1,0 +1,163 @@
+# The runtime as a libc: POSIX everywhere, `sprt` primitives over libc++
+
+**TL;DR**
+
+* The runtime is a **POSIX libc on every platform**, including Windows and wasm.
+  Write POSIX; do not `#if` your way to a platform API.
+* Paths are **POSIX** everywhere. On Windows `C:\Dir` is `/c/Dir`; conversion is
+  the runtime's job at the syscall boundary, not yours.
+* Some POSIX calls cannot exist on some platforms (`fork`/`exec` on Windows and
+  wasm, epoll/eventfd/futex on wasm, …). They are gated by
+  `__SPRT_CONFIG_HAVE_*`; by default the call still links, warns, and fails with
+  `ENOSYS`.
+* **The replacement for a missing libc call is a higher-level runtime interface** —
+  `Looper::spawnProcess` instead of `exec`, `Looper::watchFile` instead of
+  inotify, `Looper::connectSocket` instead of BSD sockets
+  ([09](09-threads-and-dispatch.adoc)).
+* The runtime ships libc++, **but engine code (`runtime/`, `stappler/`,
+  `xenolith/`) uses `sprt` primitives**: they are guaranteed on every target,
+  while the libc++ port for a given platform can lag. `std::` is fine in `utils/`
+  and `tests/`.
+
+## One libc, every platform
+
+[runtime/include_libc/](../../../runtime/include_libc/) is a complete POSIX
+header set implemented on top of the runtime. Its README states the policy: the
+headers work as a redirect to the system libc, as the internal headers of the
+standalone implementation, or as an umbrella over either — and **application code
+always sees the umbrella**, so the same source compiles against glibc, musl,
+bionic, Darwin's libSystem, the freestanding Windows libc and wasm.
+
+Two consequences for how you write code:
+
+* **No feature-test dances.** `_GNU_SOURCE` / `_BSD_SOURCE` gates are deliberately
+  not implemented; the most general form of each function is the one you get.
+* **Where a function is absent from the target OS but present in SPRT**, it
+  follows that OS's rules if they apply, otherwise the Linux documentation. So
+  Linux is the reference semantics, not just the reference build.
+
+## Missing functionality is declared, not hidden
+
+A function the platform cannot support is gated by
+`__SPRT_CONFIG_HAVE_<X>` ([cross/<platform>/config.h](../../../runtime/include/sprt/c/cross/)).
+The default (`__SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS = 1`) keeps the symbol
+declared: calling it produces a **compile-time warning** and a runtime failure
+with `errno = ENOSYS`. Define the macro to `0` if you would rather have a link
+error.
+
+What is actually missing, per platform:
+
+| Platform | Not available |
+|---|---|
+| **Windows** | `fork`, `chown`, `dup3`, `nice`, `setuid`/`setgid`, `setlogin`, `sethostname`, `brk`; `splice`/`tee`/`fallocate`/`posix_fadvise`/`readahead`/`sync_file_range`; `open_memstream`; `clock_settime` |
+| **wasm** | all of the above **plus** `exec`/`fexecve`/`getppid`, epoll, eventfd, signalfd, timerfd, io_uring, futex, `copy_file_range`, POSIX timers, `adjtime`, `sched_setscheduler`, pthread affinity |
+
+Check the platform's `config.h` before assuming — the lists above are what the
+files say today, and they grow as platforms gain support.
+
+**Networking is deliberately out of scope for the libc layer**: the README says
+functions that cannot be implemented uniformly (networking among them) are not
+implemented there and belong to higher-level modules.
+
+### The replacement is a runtime interface, not an `#if`
+
+When a libc call is unavailable, the answer is almost never a platform branch in
+your code — it is the runtime API that covers the same need portably:
+
+| Instead of | Use |
+|---|---|
+| `fork` + `exec`, `posix_spawn`, `popen` | `Looper::spawnProcess(...)` |
+| `inotify` / `ReadDirectoryChangesW` / kqueue | `Looper::watchFile(...)` |
+| BSD sockets (`socket`/`bind`/`accept`) | `Looper::listenSocket` / `connectSocket`, or the OpenSSL BIO API |
+| `epoll` / `kqueue` / `IOCP` directly | `Looper::listenPollableHandle`, `Looper::run/poll/wait` |
+| `timerfd` / POSIX timers | `Looper::scheduleTimer` / `schedule` |
+| blocking `read`/`write` on the loop thread | `Looper::readFile` / `writeFile` |
+
+These live on `Looper` precisely because the platform backends differ
+([09-threads-and-dispatch.adoc](09-threads-and-dispatch.adoc)). Where a backend
+genuinely cannot provide something, the call returns `nullptr` or
+`ErrorNotImplemented` — check it, and degrade, rather than reaching for the
+native API.
+
+## Paths are POSIX
+
+Every path that crosses an engine API is a POSIX path — forward slashes, no drive
+letters — on every platform. On Windows the runtime converts at the boundary
+([__sprt_stdio.h](../../../runtime/include/sprt/c/__sprt_stdio.h)):
+
+[source,cpp]
+----
+size_t fpath_to_posix (const char *, size_t, char *buf, size_t bufSize);
+size_t fpath_to_native(const char *, size_t, char *buf, size_t bufSize);
+int    fpath_is_native(const char *, size_t);   // always 1 off Windows
+int    fpath_is_posix (const char *, size_t);
+----
+
+The mapping, as implemented in
+[libc_impl/src/windows/stdio.cc](../../../runtime/libc_impl/src/windows/stdio.cc):
+
+| Windows native | POSIX form |
+|---|---|
+| `C:\Users\me` | `/c/Users/me` (drive letter lower-cased) |
+| `C:` | `/c` |
+| `/` | `C:` |
+| `\\?\C:\…` | DOS device prefix stripped |
+| `\` separators | `/` separators |
+
+A path is treated as Windows-native if it starts with `\`, has a drive letter, or
+contains a backslash — so both forms are accepted on input and normalized.
+
+For your own code:
+
+* **Do not build paths with string concatenation or platform separators.** Use
+  `filepath::merge`, `root`, `lastComponent`, `name`, `fullExtension`,
+  `isAbsolute`, `validatePath`
+  ([SPFilepath.h](../../../stappler/filesystem/SPFilepath.h), re-exporting
+  `sprt::filepath`).
+* **Do not resolve paths by hand.** `filesystem::findPath<Interface>(FileInfo{…})`
+  resolves through the location categories (bundled resources, app data, cache,
+  …), which is what makes the same code work on Android and in a macOS bundle.
+* `filepath::canonical` encodes a path for long-term storage by replacing the
+  well-known application directories with a canonical prefix — use it before
+  persisting a path, not `realpath`.
+
+## `sprt` primitives, not the STL
+
+The runtime ships its own libc++ ([runtime/libcxx/](../../../runtime/libcxx/)),
+and in *hosted* builds sprt headers integrate with the STL (`__SPRT_USE_STL`).
+That is what makes third-party code build. It is **not** an invitation to write
+`std::` in engine code.
+
+**Rule: inside `runtime/`, `stappler/` and `xenolith/`, use the `sprt`
+primitives.** `utils/` and `tests/` are exempt — they are host-side tools and
+harnesses.
+
+The reason is availability, not taste: an `sprt` primitive is part of the runtime
+and is brought up on every target as part of porting it, so it is guaranteed to
+work wherever the engine builds. The libc++ port for a new or freestanding target
+lags behind — a `std::` facility can be missing, partially implemented, or
+subtly different exactly on the platform you are trying to bring up, and the
+failure appears at the worst moment.
+
+| Instead of | Use |
+|---|---|
+| `std::mutex`, `std::lock_guard`, `std::unique_lock` | `sprt::mutex`, `sprt::unique_lock`, `sprt::qmutex`, `sprt::rmutex` |
+| `std::thread`, `std::condition_variable`, `std::atomic` | `sprt::thread`, `sprt::condition_variable`, `sprt::atomic` |
+| `std::shared_ptr`, `std::make_shared`, `std::unique_ptr` | `Rc<T>` + `Rc<T>::create()` ([05](05-memory-and-ownership.adoc)) |
+| `std::string`, `std::vector`, `std::map`, `std::function` | `mem_std::` / `mem_pool::` families, `sprt::__malloc_*` ([07](07-strings.adoc)) |
+| `std::string_view` | `StringView` |
+| `std::optional`-style "value or nothing" | `Result<T>` ([08](08-errors-and-status.adoc)) |
+| `<algorithm>`, `<iterator>`, type traits | `<sprt/cxx/algorithm>`, `<sprt/cxx/iterator>`, `<sprt/cxx/type_traits>` |
+| `printf`-style formatting into a string | `toString(...)` / `Callback<void(StringView)>` ([07](07-strings.adoc)) |
+
+Include the sprt headers (`<sprt/cxx/mutex>`, `<sprt/cxx/atomic>`, …), not the
+`std` ones, so the TU keeps working when `__SPRT_USE_STL == 0`. There is still
+some `std::` left in engine code from earlier work; treat it as debt, not as
+precedent, and do not add more.
+
+## Related
+
+* [09-threads-and-dispatch.adoc](09-threads-and-dispatch.adoc) — the `Looper` APIs that replace missing syscalls
+* [04-platform-guards.adoc](04-platform-guards.adoc) — when a platform `#if` *is* correct
+* [07-strings.adoc](07-strings.adoc) — the string/container families
+* [AGENTS.md](../../../AGENTS.md) — building and verifying each target

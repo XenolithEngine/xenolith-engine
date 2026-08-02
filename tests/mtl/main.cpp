@@ -222,8 +222,9 @@ static Rc<core::Queue> makeTriangleQueue() {
 					}),
 					core::PipelineMaterialInfo());
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.graphicPipelines.get("TrianglePipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -320,8 +321,9 @@ static Rc<core::Queue> makeComputeQueue() {
 			subpassBuilder.addComputePipeline("PatternPipeline", layout->defaultFamily,
 					core::SpecializationInfo(compProg));
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.computePipelines.get("PatternPipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -368,8 +370,9 @@ static Rc<core::Queue> makeComputeQueue() {
 					}),
 					core::PipelineMaterialInfo());
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.graphicPipelines.get("ResolvePipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -423,8 +426,8 @@ static Rc<core::Queue> makeTextureSetQueue() {
 	core::SamplerInfo samplers[2];
 	samplers[0] = core::SamplerInfo{.magFilter = core::Filter::Nearest,
 		.minFilter = core::Filter::Nearest};
-	samplers[1] = core::SamplerInfo{.magFilter = core::Filter::Linear,
-		.minFilter = core::Filter::Linear};
+	samplers[1] =
+			core::SamplerInfo{.magFilter = core::Filter::Linear, .minFilter = core::Filter::Linear};
 
 	auto texLayout = builder.addTextureSetLayout("TexSet", makeSpanView(samplers, 2), 8,
 			xenolith::config::MaxBufferArrayObjects, 8);
@@ -487,8 +490,9 @@ static Rc<core::Queue> makeTextureSetQueue() {
 					}),
 					core::PipelineMaterialInfo());
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.graphicPipelines.get("TexArrayPipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -559,8 +563,8 @@ static Rc<core::Queue> makeMaterialQueue() {
 	core::SamplerInfo samplers[2];
 	samplers[0] = core::SamplerInfo{.magFilter = core::Filter::Nearest,
 		.minFilter = core::Filter::Nearest};
-	samplers[1] = core::SamplerInfo{.magFilter = core::Filter::Linear,
-		.minFilter = core::Filter::Linear};
+	samplers[1] =
+			core::SamplerInfo{.magFilter = core::Filter::Linear, .minFilter = core::Filter::Linear};
 
 	auto texLayout = builder.addTextureSetLayout("TexSet", makeSpanView(samplers, 2), 8,
 			xenolith::config::MaxBufferArrayObjects, 8);
@@ -627,13 +631,13 @@ static Rc<core::Queue> makeMaterialQueue() {
 					},
 					core::AttachmentLayout::ColorAttachmentOptimal);
 
-			auto pipeline = subpassBuilder.addGraphicPipeline("MaterialPipeline",
-					layout->defaultFamily,
-					Vector<core::SpecializationInfo>({
-						core::SpecializationInfo(vertProg),
-						core::SpecializationInfo(fragProg),
-					}),
-					core::PipelineMaterialInfo());
+			auto pipeline =
+					subpassBuilder.addGraphicPipeline("MaterialPipeline", layout->defaultFamily,
+							Vector<core::SpecializationInfo>({
+								core::SpecializationInfo(vertProg),
+								core::SpecializationInfo(fragProg),
+							}),
+							core::PipelineMaterialInfo());
 
 			// predefined materials, compiled with the queue
 			const_cast<core::MaterialAttachment *>(materialAttachment)
@@ -642,8 +646,9 @@ static Rc<core::Queue> makeMaterialQueue() {
 						Rc<core::Material>::create(core::MaterialId(2), pipeline, greenImage),
 					}));
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.graphicPipelines.get("MaterialPipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -693,8 +698,8 @@ static Rc<core::Queue> makeBasic2dQueue() {
 	core::SamplerInfo samplers[2];
 	samplers[0] = core::SamplerInfo{.magFilter = core::Filter::Nearest,
 		.minFilter = core::Filter::Nearest};
-	samplers[1] = core::SamplerInfo{.magFilter = core::Filter::Linear,
-		.minFilter = core::Filter::Linear};
+	samplers[1] =
+			core::SamplerInfo{.magFilter = core::Filter::Linear, .minFilter = core::Filter::Linear};
 
 	auto texLayout = builder.addTextureSetLayout("TexSet", makeSpanView(samplers, 2), 8,
 			xenolith::config::MaxBufferArrayObjects, 8);
@@ -758,13 +763,13 @@ static Rc<core::Queue> makeBasic2dQueue() {
 					},
 					core::AttachmentLayout::ColorAttachmentOptimal);
 
-			auto pipeline = subpassBuilder.addGraphicPipeline("Material2dPipeline",
-					layout->defaultFamily,
-					Vector<core::SpecializationInfo>({
-						core::SpecializationInfo(vertProg),
-						core::SpecializationInfo(fragProg),
-					}),
-					core::PipelineMaterialInfo());
+			auto pipeline =
+					subpassBuilder.addGraphicPipeline("Material2dPipeline", layout->defaultFamily,
+							Vector<core::SpecializationInfo>({
+								core::SpecializationInfo(vertProg),
+								core::SpecializationInfo(fragProg),
+							}),
+							core::PipelineMaterialInfo());
 
 			const_cast<core::MaterialAttachment *>(materialAttachment)
 					->addPredefinedMaterials(Vector<Rc<core::Material>>({
@@ -773,8 +778,7 @@ static Rc<core::Queue> makeBasic2dQueue() {
 					}));
 		});
 
-		return Rc<basic2d::mtl::MaterialVertexPass>::create(passBuilder, vertexesAtt,
-				materialsAtt);
+		return Rc<basic2d::mtl::MaterialVertexPass>::create(passBuilder, vertexesAtt, materialsAtt);
 	});
 
 	return Rc<core::Queue>::create(move(builder));
@@ -854,8 +858,9 @@ static Rc<core::Queue> makePresentQueue(core::ImageFormat format) {
 					}),
 					core::PipelineMaterialInfo());
 
-			subpassBuilder.setCommandsCallback([](core::FrameQueue &frameQueue,
-					const core::SubpassData &subpass, core::CommandBuffer &commands) {
+			subpassBuilder.setCommandsCallback(
+					[](core::FrameQueue &frameQueue, const core::SubpassData &subpass,
+							core::CommandBuffer &commands) {
 				auto &buf = static_cast<mtl::CommandBuffer &>(commands);
 				if (auto pipeline = subpass.graphicPipelines.get("TrianglePipeline")) {
 					buf.cmdBindPipeline(pipeline);
@@ -878,8 +883,7 @@ public:
 	TestPresentationWindow(void *layer, mtl::Loop *loop, Extent2 extent)
 	: _layer(layer), _loop(loop), _extent(extent) { }
 
-	virtual core::ImageInfo getSwapchainImageInfo(
-			const core::SwapchainConfig &cfg) const override {
+	virtual core::ImageInfo getSwapchainImageInfo(const core::SwapchainConfig &cfg) const override {
 		core::ImageInfo info;
 		info.format = cfg.imageFormat;
 		info.imageType = core::ImageType::Image2D;
@@ -898,8 +902,8 @@ public:
 
 	virtual core::SurfaceInfo getSurfaceOptions(const core::Device &dev,
 			NotNull<core::Surface> surface) const override {
-		auto info = surface->getSurfaceOptions(dev, core::FullScreenExclusiveMode::Default,
-				nullptr);
+		auto info =
+				surface->getSurfaceOptions(dev, core::FullScreenExclusiveMode::Default, nullptr);
 		info.currentExtent = _extent;
 		info.minImageExtent = _extent;
 		info.maxImageExtent = _extent;
@@ -1026,8 +1030,9 @@ static int runOffscreenQueue(sprt::dispatch::Looper *looper, mtl::Loop *mtlLoop,
 			return true;
 		}
 
-		mtlLoop->captureImage([&, pngFile = pngFile.str<memory::StandartInterface>()](
-									  const core::ImageInfoData &info, BytesView view) {
+		mtlLoop->captureImage(
+				[&, pngFile = pngFile.str<mem_std::Interface>()](const core::ImageInfoData &info,
+						BytesView view) {
 			if (view.empty()) {
 				sprt::cerr << "Readback failed\n";
 				renderResult = -11;
@@ -1035,8 +1040,8 @@ static int runOffscreenQueue(sprt::dispatch::Looper *looper, mtl::Loop *mtlLoop,
 				return;
 			}
 
-			const uint64_t bytesPerRow = uint64_t(info.extent.width)
-					* core::getFormatBlockSize(info.format);
+			const uint64_t bytesPerRow =
+					uint64_t(info.extent.width) * core::getFormatBlockSize(info.format);
 
 			renderResult = verify(view.data(), bytesPerRow) ? 0 : -6;
 
@@ -1047,7 +1052,8 @@ static int runOffscreenQueue(sprt::dispatch::Looper *looper, mtl::Loop *mtlLoop,
 			}
 
 			captureComplete = true;
-		}, data.image->getImage(), core::AttachmentLayout::TransferSrcOptimal);
+		},
+				data.image->getImage(), core::AttachmentLayout::TransferSrcOptimal);
 		return true;
 	});
 
@@ -1172,8 +1178,8 @@ int main(int argc, const char *argv[]) {
 
 			bool centerOk = checkPixel(center, 0, 255, 0, 2);
 
-			sprt::cout << "TextureSet center: [" << int(center[0]) << ", " << int(center[1])
-					   << ", " << int(center[2]) << "] " << (centerOk ? "OK" : "FAILED") << "\n";
+			sprt::cout << "TextureSet center: [" << int(center[0]) << ", " << int(center[1]) << ", "
+					   << int(center[2]) << "] " << (centerOk ? "OK" : "FAILED") << "\n";
 
 			return centerOk;
 		}, [&](const Rc<core::Queue> &queue) {
@@ -1365,9 +1371,8 @@ int main(int argc, const char *argv[]) {
 			// red bar across the top, scissored to the left half of the target
 			basic2d::CmdInfo barInfo;
 			barInfo.material = core::MaterialId(1);
-			barInfo.state = contextHandle->addState(DrawStateValues{
-				core::DynamicState::Scissor, URect{}, URect{0, 0, RenderSize / 2, RenderSize},
-				nullptr});
+			barInfo.state = contextHandle->addState(DrawStateValues{core::DynamicState::Scissor,
+				URect{}, URect{0, 0, RenderSize / 2, RenderSize}, nullptr});
 			contextHandle->commands->pushVertexArray(makeQuad(-0.8f, 0.85f, 0.8f, 0.95f),
 					Mat4::IDENTITY, sp::move(barInfo));
 
@@ -1386,8 +1391,8 @@ int main(int argc, const char *argv[]) {
 			bool fontCompiled = false;
 			mtlLoop->compileQueue(fontQueue, [&](bool success) { fontCompiled = success; });
 
-			auto dynImage = Rc<core::DynamicImage>::create(
-					[](core::DynamicImage::Builder &builder) {
+			auto dynImage =
+					Rc<core::DynamicImage>::create([](core::DynamicImage::Builder &builder) {
 				static const uint8_t s_white[1] = {255};
 				builder.setImageByRef("FontAtlas",
 						core::ImageInfo(Extent2(1, 1), core::ImageFormat::R8_UNORM,
@@ -1435,9 +1440,8 @@ int main(int argc, const char *argv[]) {
 						   << (outputCalled && outputValid ? "OK" : "FAILED")
 						   << "; instance: " << (instanceUpdated ? "OK" : "FAILED") << "\n";
 
-				fontResult = (frameComplete && outputCalled && outputValid && instanceUpdated)
-						? 0
-						: -21;
+				fontResult =
+						(frameComplete && outputCalled && outputValid && instanceUpdated) ? 0 : -21;
 
 				dynImage->finalize();
 			} else {
@@ -1456,8 +1460,8 @@ int main(int argc, const char *argv[]) {
 			auto window = Rc<TestPresentationWindow>::alloc(layerHandle, mtlLoop,
 					Extent2(RenderSize, RenderSize));
 
-			auto engine = mtlLoop->makePresentationEngine(window.get(),
-					core::PresentationOptions());
+			auto engine =
+					mtlLoop->makePresentationEngine(window.get(), core::PresentationOptions());
 			if (engine && engine->run()) {
 				engine->scheduleNextImage();
 

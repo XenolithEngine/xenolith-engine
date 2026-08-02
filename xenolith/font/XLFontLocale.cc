@@ -400,7 +400,7 @@ WideStringView LocaleManager::resolveTag(WideStringView token) {
 WideString LocaleManager::resolveLocaleTags(WideStringView r) {
 	if (r.is(u"@Locale:")) { // raw locale string
 		r += "@Locale:"_len;
-		return string(r).str<memory::StandartInterface>();
+		return string(r).str<mem_std::Interface>();
 	} else {
 		mem_std::WideString ret;
 		ret.reserve(r.size());
@@ -422,7 +422,7 @@ WideString LocaleManager::resolveLocaleTags(WideStringView r) {
 						ret.append(token.data(), token.size());
 						ret.push_back(u'%');
 					} else {
-						ret.append(replacement.str<memory::StandartInterface>());
+						ret.append(replacement.str<mem_std::Interface>());
 					}
 				}
 			}

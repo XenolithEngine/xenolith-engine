@@ -223,8 +223,7 @@ bool remove(const FileInfo &info, bool recursive) {
 
 		if (haveStat && S_ISDIR(st.st_mode)) {
 			if (!recursive) {
-				slog().error("filesystem",
-						"Fail to remove directory in non recursive mode: ", str);
+				slog().error("filesystem", "Fail to remove directory in non recursive mode: ", str);
 				return false;
 			}
 			found = removeTree(loc, str);
@@ -315,7 +314,7 @@ bool ftw(const FileInfo &info, const Callback<bool(const FileInfo &, FileType)> 
 	}
 
 	auto fn = [&](StringView p, FileType t) -> bool {
-		auto tmpPath = filepath::merge<memory::StandartInterface>(info.path, p);
+		auto tmpPath = filepath::merge<mem_std::Interface>(info.path, p);
 		FileInfo newInfo = info;
 		newInfo.path = tmpPath;
 		return cb(newInfo, t);
@@ -340,8 +339,7 @@ static bool doCopyFile(const LocationInfo &fromLoc, StringView from, const Locat
 		auto fTo =
 				File::open(toLoc, to, OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate);
 		if (fFrom && fTo) {
-			BufferTemplate<memory::StandartInterface> buffer(
-					sprt::min(size_t(4_MiB), fFrom.size()));
+			BufferTemplate<mem_std::Interface> buffer(sprt::min(size_t(4_MiB), fFrom.size()));
 			if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 				return true;
 			}
@@ -356,15 +354,15 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 	}
 
 	struct __SPRT_STAT_NAME stat;
-	memory::StandartInterface::StringType source;
+	mem_std::Interface::StringType source;
 	const LocationInfo *sourceLoc = nullptr;
 
-	memory::StandartInterface::StringType dest;
+	mem_std::Interface::StringType dest;
 	const LocationInfo *destLoc = nullptr;
 
 	enumerateWritablePaths(isource, Access::Exists, [&](const LocationInfo &info, StringView str) {
 		info.interface->_stat(info, str, &stat);
-		source = str.str<memory::StandartInterface>();
+		source = str.str<mem_std::Interface>();
 		sourceLoc = &info;
 		return false;
 	});
@@ -374,7 +372,7 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 	}
 
 	enumerateWritablePaths(idest, Access::None, [&](const LocationInfo &info, StringView str) {
-		dest = str.str<memory::StandartInterface>();
+		dest = str.str<mem_std::Interface>();
 		destLoc = &info;
 		return false;
 	});
@@ -393,7 +391,7 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 		// copy directory recursive
 		if (sourceLoc->interface->_ftw(*sourceLoc, source,
 					[&](StringView isource, FileType type) {
-			auto idest = filepath::replace<memory::StandartInterface>(isource, source, dest);
+			auto idest = filepath::replace<mem_std::Interface>(isource, source, dest);
 
 			if (type == FileType::Dir) {
 				return destLoc->interface->_mkdir(*destLoc, idest,
@@ -429,17 +427,17 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 	}
 
 	struct __SPRT_STAT_NAME sourceStat;
-	memory::StandartInterface::StringType source;
+	mem_std::Interface::StringType source;
 	const LocationInfo *sourceLoc = nullptr;
 
 	bool destExists = false;
 	struct __SPRT_STAT_NAME destStat;
-	memory::StandartInterface::StringType dest;
+	mem_std::Interface::StringType dest;
 	const LocationInfo *destLoc = nullptr;
 
 	enumeratePaths(isource, Access::Exists, [&](const LocationInfo &info, StringView str) {
 		info.interface->_stat(info, str, &sourceStat);
-		source = str.str<memory::StandartInterface>();
+		source = str.str<mem_std::Interface>();
 		sourceLoc = &info;
 		return false;
 	});
@@ -453,7 +451,7 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 		if (info.interface->_stat(info, str, &destStat) == Status::Ok) {
 			destExists = true;
 		}
-		dest = str.str<memory::StandartInterface>();
+		dest = str.str<mem_std::Interface>();
 		destLoc = &info;
 		return false;
 	});
@@ -470,10 +468,10 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 	if (dest.back() == '/') {
 		// cp sourcedir targetdir/
 		// extend dest with the first source component
-		dest = filepath::merge<memory::StandartInterface>(dest, sourceLastComponent);
+		dest = filepath::merge<mem_std::Interface>(dest, sourceLastComponent);
 	} else if (destExists && S_ISDIR(destStat.st_mode)
 			&& sourceLastComponent != filepath::lastComponent(dest)) {
-		dest = filepath::merge<memory::StandartInterface>(dest, sourceLastComponent);
+		dest = filepath::merge<mem_std::Interface>(dest, sourceLastComponent);
 	} else if (destExists) {
 		slog().error("filesystem", "Fail to copy '", source, "' to '", dest,
 				"': destination exists");

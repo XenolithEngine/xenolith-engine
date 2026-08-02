@@ -244,9 +244,7 @@ static bool Function_wildcard_match(StringView pat, StringView str) {
 // exactly as GNU make does.
 static void emitResolvedPath(const Callback<void(StringView)> &out, StringView path) {
 #if SPRT_WINDOWS
-	auto isDriveLetter = [](char c) {
-		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-	};
+	auto isDriveLetter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
 	auto upper = [](char c) { return (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c; };
 
 	auto s = path.str<Interface>(); // mutable, same-length rewrite (kept alive across the emit)
@@ -275,7 +273,7 @@ static void emitResolvedPath(const Callback<void(StringView)> &out, StringView p
 	out << StringView(s);
 #else
 	// Encode any space discovered on disk to PathSpacePlaceholder so the path stays one make word.
-	memory::StandartInterface::StringType spaceStorage;
+	mem_std::Interface::StringType spaceStorage;
 	out << encodePathSpaces(path, spaceStorage);
 #endif
 }
@@ -335,8 +333,8 @@ static bool Function_wildcard(const Callback<void(StringView)> &out, void *, Var
 		StringView literalPrefix = pat.sub(0, globStart); // "" or ends with '/'
 		StringView tail = pat.sub(globStart);
 
-		auto basePath = engine.getAbsolutePath(
-				literalPrefix.empty() ? StringView(".") : literalPrefix);
+		auto basePath =
+				engine.getAbsolutePath(literalPrefix.empty() ? StringView(".") : literalPrefix);
 		if (basePath.empty()) {
 			return;
 		}

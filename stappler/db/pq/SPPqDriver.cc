@@ -209,7 +209,7 @@ struct DriverLibStorage {
 	DriverSym *openLib(StringView lib) {
 		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 
-		auto target = lib.str<stappler::memory::StandartInterface>();
+		auto target = lib.str<stappler::mem_std::Interface>();
 		auto it = s_driverLibs.find(target);
 		if (it != s_driverLibs.end()) {
 			++it->second.refCount;
@@ -231,7 +231,7 @@ struct DriverLibStorage {
 	void closeLib(DriverSym *sym) {
 		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 		if (sym->refCount == 1) {
-			s_driverLibs.erase(sym->name.str<stappler::memory::StandartInterface>());
+			s_driverLibs.erase(sym->name.str<stappler::mem_std::Interface>());
 		} else {
 			--sym->refCount;
 		}

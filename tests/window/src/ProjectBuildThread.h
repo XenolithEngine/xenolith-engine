@@ -57,8 +57,8 @@ protected:
 	virtual bool worker() override;
 	void doBuild();
 
-	memory::StandartInterface::StringType _watchDir;
-	memory::StandartInterface::StringType _reloadBase; // <watchDir>/stappler-build/live-reload
+	mem_std::Interface::StringType _watchDir;
+	mem_std::Interface::StringType _reloadBase; // <watchDir>/stappler-build/live-reload
 	uint64_t _counter = 0; // unique subdir per successful build
 	BuiltCallback _onBuilt; // fired on this thread after a successful stage
 

@@ -1,0 +1,128 @@
+# Naming: files, types, members, event handlers
+
+**TL;DR**
+
+* File names carry a subtree prefix: `SP*` for stappler, `XL*` for xenolith,
+  lowercase for runtime (`ref.h`, `pool_ref.h`). SCU aggregators end in
+  `.scu.cpp`.
+* Types, enum values: `PascalCase`. Functions and variables: `camelCase`.
+* Non-static members: `_leadingUnderscore`. File-scope statics: `s_name`.
+* Virtual notification hooks are `handleXxx()`, not `onXxx()`.
+* Accessors are `getX()` / `setX()`; construction is `init()` + `Rc<T>::create()`.
+
+## Files
+
+| Subtree | Pattern | Example |
+|---|---|---|
+| `stappler/` | `SP` + PascalCase module/class | `SPDataCbor.h`, `SPDocLayoutObject.h` |
+| `xenolith/` | `XL` + PascalCase (`XLUi…` inside the ui module) | `XLNode.h`, `XLUiButton.cc` |
+| `runtime/include/sprt/` | lowercase, `_`-separated, C++-header names without extension | `ref.h`, `mem/pool_ref.h`, `cxx/atomic` |
+
+The prefix exists because headers are installed into a flat include path — the
+`SP`/`XL` prefix is what keeps `Node.h` from colliding with the world.
+
+An SCU aggregator is named after what it assembles and ends in `.scu.cpp`:
+[XLUi.scu.cpp](../../../xenolith/renderer/ui/XLUi.scu.cpp),
+[SPCore.scu.cpp](../../../stappler/core/SPCore.scu.cpp). Its subunits are `.cc`
+files in topic subdirectories (`style/`, `layout/`, `atoms/`).
+
+## Identifiers
+
+[source,cpp]
+----
+// xenolith/renderer/ui/atoms/XLUiButton.h
+struct ButtonStyleComponent {           // type: PascalCase
+	static ComponentId Id;
+
+	Color4B backgroundColor = Color4B::WHITE;   // public field: camelCase, no underscore
+	float outlineWidth = 0.0f;
+};
+
+enum class ButtonType {                 // enum class, values PascalCase
+	General,
+	OsMinimize,
+	OsMaximize,
+};
+
+class Button : public basic2d::VectorSprite {
+public:
+	virtual bool init(ButtonType, Function<void()> && = nullptr);
+
+	virtual void setString(StringView);         // setter/getter pair
+	virtual StringView getString() const;
+
+	virtual void handleEnter(Scene *scene) override;      // notification hook
+	virtual void handleContentSizeDirty() override;
+
+protected:
+	ButtonType _type = ButtonType::General;     // member: leading underscore
+	basic2d::Label *_label = nullptr;
+};
+----
+
+Rules:
+
+* **Types** (class/struct/enum/using-alias) — `PascalCase`.
+* **Enumerators** — `PascalCase`, inside `enum class` (plain `enum` only for
+  C-compatible flag sets and bitmask helpers).
+* **Functions and local variables** — `camelCase`.
+* **Non-static data members** — `_camelCase`. Public aggregate fields (POD-ish
+  structs, style components, descriptors) drop the underscore.
+* **File-scope statics and constants** — `s_camelCase`
+  (`static constexpr StringView s_windowHeaderClose` in
+  [XLUiButton.cc](../../../xenolith/renderer/ui/atoms/XLUiButton.cc)).
+* **Macros** — `SCREAMING_SNAKE_CASE` with a subtree prefix: `SP_PUBLIC`,
+  `SPRT_API`, `STAPPLER_VERSIONIZED`, `XL_*` for test-mode switches. Internal
+  runtime macros use a double-underscore prefix (`__SPRT_PLATFORM_ID`) — do not
+  invent new names in that space.
+
+## `handle*`, not `on*`
+
+Virtual methods that a base class calls to notify a subclass are named
+`handleXxx`. [XLNode.h](../../../xenolith/application/nodes/XLNode.h) is the
+canonical list:
+
+[source,cpp]
+----
+virtual void handleEnter(Scene *);
+virtual void handleExit();
+virtual void handleMeasure();
+virtual void handleContentSizeDirty();
+virtual void handleComponentsDirty(const ComponentMask &);
+virtual void handleTransformDirty(const Mat4 &);
+virtual void handleLayoutChildren();
+virtual void handleLayoutInParent(Node *);
+----
+
+When you add a phase or an event to a node/system, follow the same pattern —
+`handle` + the *thing that happened*, past-tense-ish (`…Dirty`, `…Enter`), no
+`on` prefix. Callback *fields* stored on an object are different: those are
+plain nouns (`_callback`, `Function<void()> &&`).
+
+**Which of these hooks to implement** — and the `SystemFlags` bit that makes it
+fire — is decided by the phase your behaviour belongs to, documented in
+[design/node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc):
+it gives the phase order, what each phase may and may not mutate, and how a
+descendant's event reaches an ancestor. Read it instead of copying whichever
+hook a nearby class happened to override.
+
+## Construction
+
+Reference-counted objects are not constructed with `new`. They expose a
+`virtual bool init(...)` returning success and are created through the `Rc`
+factory, which allocates, calls `init`, and destroys on failure:
+
+[source,cpp]
+----
+_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+auto image = Rc<VectorImage>::create(_contentSize);
+----
+
+Name the initializer `init` (overloaded as needed), keep the constructor
+protected/trivial, and never expose a public constructor that can fail. Details
+in [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc).
+
+## Related
+
+* [02-file-layout.adoc](02-file-layout.adoc) — guards, namespaces, includes
+* [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc) — `Rc`, `Ref`, pools

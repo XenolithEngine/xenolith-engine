@@ -92,7 +92,7 @@ Vector<SubmoduleSpec> parseGitmodules(BytesView data) {
 					while (q2 < line.size() && line.data()[q2] != '"') { ++q2; }
 					if (q2 < line.size()) {
 						cur.name = StringView(line.data() + q1 + 1, q2 - q1 - 1)
-										   .str<memory::StandartInterface>();
+										   .str<mem_std::Interface>();
 					}
 				}
 			}
@@ -112,9 +112,9 @@ Vector<SubmoduleSpec> parseGitmodules(BytesView data) {
 		StringView key = trimWs(StringView(line.data(), eq));
 		StringView val = trimWs(StringView(line.data() + eq + 1, line.size() - eq - 1));
 		if (key == "path") {
-			cur.path = val.str<memory::StandartInterface>();
+			cur.path = val.str<mem_std::Interface>();
 		} else if (key == "url") {
-			cur.url = val.str<memory::StandartInterface>();
+			cur.url = val.str<mem_std::Interface>();
 		}
 	}
 	flush();
@@ -137,10 +137,10 @@ String resolveSubmoduleUrl(StringView baseUrl, StringView subUrl) {
 	subUrl = trimWs(subUrl);
 
 	if (isHttpUrl(subUrl)) {
-		return subUrl.str<memory::StandartInterface>();
+		return subUrl.str<mem_std::Interface>();
 	}
 	if (!(subUrl.starts_with("../") || subUrl.starts_with("./"))) {
-		return subUrl.str<memory::StandartInterface>(); // leave as-is; caller filters non-http
+		return subUrl.str<mem_std::Interface>(); // leave as-is; caller filters non-http
 	}
 
 	sprt::UrlView u;

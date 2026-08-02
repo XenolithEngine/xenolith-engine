@@ -56,8 +56,7 @@ void performFilesystemTests() {
 	check(fst.type == FileType::File, "fs: stat() reports a regular file");
 
 	// absolute posix path to the same file
-	auto absPosix =
-			filesystem::currentDir<memory::StandartInterface>(StringView("xlfs_probe.txt"), false);
+	auto absPosix = filesystem::currentDir<mem_std::Interface>(StringView("xlfs_probe.txt"), false);
 	check(!absPosix.empty()
 					&& filesystem::exists(FileInfo(StringView(absPosix.data(), absPosix.size()))),
 			"fs: exists() via absolute posix path");
@@ -67,7 +66,7 @@ void performFilesystemTests() {
 	// backslashes, e.g. C:\dir\file or Z:\... under wine) and confirm the filesystem layer still
 	// resolves it — i.e. toPosixPath() converted it back to posix internally.
 	if (!absPosix.empty()) {
-		memory::StandartInterface::StringType nativeBuf;
+		mem_std::Interface::StringType nativeBuf;
 		nativeBuf.resize(absPosix.size() + 8);
 		auto n = __sprt_fpath_to_native(absPosix.data(), absPosix.size(), nativeBuf.data(),
 				nativeBuf.size());
@@ -92,12 +91,12 @@ void performFilesystemTests() {
 	filesystem::remove(dir, true); // drop any leftover from a previous run
 	filesystem::mkdir(dir);
 	filesystem::mkdir(FileInfo("xlfs_rmdir/sub", LocationCategory::Custom));
-	filesystem::write(FileInfo("xlfs_rmdir/a.txt", LocationCategory::Custom),
-			(const uint8_t *)"a", 1);
+	filesystem::write(FileInfo("xlfs_rmdir/a.txt", LocationCategory::Custom), (const uint8_t *)"a",
+			1);
 	filesystem::write(FileInfo("xlfs_rmdir/sub/b.txt", LocationCategory::Custom),
 			(const uint8_t *)"b", 1);
 	check(filesystem::remove(dir, true), "fs: remove (recursive directory tree)");
 	check(!filesystem::exists(dir), "fs: removed directory tree is gone");
 }
 
-} // namespace stappler
+} // namespace STAPPLER_VERSIONIZED stappler

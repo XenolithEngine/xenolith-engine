@@ -348,7 +348,7 @@ DriverSym *DriverLibStorage::openLib(StringView lib) {
 	sprt::unique_lock<sprt::mutex> lock(_driverMutex);
 
 #if STAPPLER_SHARED && !defined(STAPPLER_SQLITE_LINKED)
-	auto target = lib.str<stappler::memory::StandartInterface>();
+	auto target = lib.str<stappler::mem_std::Interface>();
 	auto it = _driverLibs.find(target);
 	if (it != _driverLibs.end()) {
 		++it->second.refCount;
@@ -383,7 +383,7 @@ DriverSym *DriverLibStorage::openLib(StringView lib) {
 void DriverLibStorage::closeLib(DriverSym *sym) {
 	sprt::unique_lock<sprt::mutex> lock(_driverMutex);
 	if (sym->refCount == 1) {
-		_driverLibs.erase(sym->name.str<stappler::memory::StandartInterface>());
+		_driverLibs.erase(sym->name.str<stappler::mem_std::Interface>());
 	} else {
 		--sym->refCount;
 	}

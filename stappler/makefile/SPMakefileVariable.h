@@ -40,10 +40,10 @@ struct Variable;
 // when it contains no space; otherwise writes the encoded copy into `storage` and returns a view of
 // it. `storage` is a caller-owned scratch buffer (mirrors the toPosixPath idiom in getAbsolutePath),
 // so the helper is usable without an active memory pool.
-SP_PUBLIC StringView encodePathSpaces(StringView, memory::StandartInterface::StringType &storage);
+SP_PUBLIC StringView encodePathSpaces(StringView, mem_std::Interface::StringType &storage);
 
 // Decode: each PathSpacePlaceholder -> real space (0x20). Inverse of encodePathSpaces.
-SP_PUBLIC StringView decodePathSpaces(StringView, memory::StandartInterface::StringType &storage);
+SP_PUBLIC StringView decodePathSpaces(StringView, mem_std::Interface::StringType &storage);
 
 // Decode a command line for the shell, streaming the result to `out` in chunks: each verbatim span is
 // emitted whole and only the placeholder replacements are separate pieces (so the caller appends into

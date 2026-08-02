@@ -336,7 +336,7 @@ T *Binding<T>::get() const {
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using Subscription = stappler::SubscriptionTemplate<memory::StandartInterface>;
+using Subscription = stappler::SubscriptionTemplate<memory::StandardInterface>;
 
 }
 

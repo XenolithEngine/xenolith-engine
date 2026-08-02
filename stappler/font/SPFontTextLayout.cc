@@ -80,7 +80,8 @@ static void emitLineSelectionRects(const TextLayoutData<Interface> &f, const Lin
 		// Start a new rectangle when the writing direction (embedding level) changes -- so a selection
 		// spanning a direction boundary yields two rects even when the runs are visually adjacent --
 		// or when there is a visual gap (a logical range split across non-adjacent visual runs).
-		const bool sameRun = have && c.bidiLevel == runLevel && a <= curHi + tol && b + tol >= curLo;
+		const bool sameRun =
+				have && c.bidiLevel == runLevel && a <= curHi + tol && b + tol >= curLo;
 		if (sameRun) {
 			curLo = sprt::min(curLo, a);
 			curHi = sprt::max(curHi, b);
@@ -362,7 +363,7 @@ void TextLayoutData_getLabelRects(const TextLayoutData<Interface> &f,
 }
 
 template <>
-void TextLayoutData<memory::StandartInterface>::reserve(size_t nchars, size_t nranges) {
+void TextLayoutData<mem_std::Interface>::reserve(size_t nchars, size_t nranges) {
 	if (nchars) {
 		chars.reserve(nchars);
 		lines.reserve(nchars / 60);
@@ -384,7 +385,7 @@ void TextLayoutData<memory::PoolInterface>::reserve(size_t nchars, size_t nrange
 }
 
 template <>
-void TextLayoutData<memory::StandartInterface>::str(const Callback<void(char32_t)> &cb,
+void TextLayoutData<mem_std::Interface>::str(const Callback<void(char32_t)> &cb,
 		bool filter) const {
 	TextLayoutData_str(*this, cb, filter);
 }
@@ -396,8 +397,8 @@ void TextLayoutData<memory::PoolInterface>::str(const Callback<void(char32_t)> &
 }
 
 template <>
-void TextLayoutData<memory::StandartInterface>::str(const Callback<void(char32_t)> &cb,
-		uint32_t s_start, uint32_t s_end, size_t maxWords, bool ellipsis, bool filter) const {
+void TextLayoutData<mem_std::Interface>::str(const Callback<void(char32_t)> &cb, uint32_t s_start,
+		uint32_t s_end, size_t maxWords, bool ellipsis, bool filter) const {
 	TextLayoutData_str(*this, cb, s_start, s_end, maxWords, ellipsis, filter);
 }
 
@@ -408,8 +409,8 @@ void TextLayoutData<memory::PoolInterface>::str(const Callback<void(char32_t)> &
 }
 
 template <>
-Pair<uint32_t, CharSelectMode> TextLayoutData<memory::StandartInterface>::getChar(int32_t x,
-		int32_t y, CharSelectMode mode) const {
+Pair<uint32_t, CharSelectMode> TextLayoutData<mem_std::Interface>::getChar(int32_t x, int32_t y,
+		CharSelectMode mode) const {
 	return TextLayoutData_getChar(*this, x, y, mode);
 }
 
@@ -420,7 +421,7 @@ Pair<uint32_t, CharSelectMode> TextLayoutData<memory::PoolInterface>::getChar(in
 }
 
 template <>
-const LineLayoutData *TextLayoutData<memory::StandartInterface>::getLine(uint32_t charIndex) const {
+const LineLayoutData *TextLayoutData<mem_std::Interface>::getLine(uint32_t charIndex) const {
 	return TextLayoutData_getLine(*this, charIndex);
 }
 
@@ -430,7 +431,7 @@ const LineLayoutData *TextLayoutData<memory::PoolInterface>::getLine(uint32_t ch
 }
 
 template <>
-uint32_t TextLayoutData<memory::StandartInterface>::getLineForChar(uint32_t charIndex) const {
+uint32_t TextLayoutData<mem_std::Interface>::getLineForChar(uint32_t charIndex) const {
 	return TextLayoutData_getLineNumber(*this, charIndex);
 }
 
@@ -440,8 +441,8 @@ uint32_t TextLayoutData<memory::PoolInterface>::getLineForChar(uint32_t charInde
 }
 
 template <>
-float TextLayoutData<memory::StandartInterface>::getLinePosition(uint32_t firstCharId,
-		uint32_t lastCharId, float density) const {
+float TextLayoutData<mem_std::Interface>::getLinePosition(uint32_t firstCharId, uint32_t lastCharId,
+		float density) const {
 	return TextLayoutData_getLinePosition(*this, firstCharId, lastCharId, density);
 }
 
@@ -452,8 +453,7 @@ float TextLayoutData<memory::PoolInterface>::getLinePosition(uint32_t firstCharI
 }
 
 template <>
-Pair<uint32_t, uint32_t> TextLayoutData<memory::StandartInterface>::selectWord(
-		uint32_t originChar) const {
+Pair<uint32_t, uint32_t> TextLayoutData<mem_std::Interface>::selectWord(uint32_t originChar) const {
 	return TextLayoutData_selectWord(*this, originChar);
 }
 
@@ -464,7 +464,7 @@ Pair<uint32_t, uint32_t> TextLayoutData<memory::PoolInterface>::selectWord(
 }
 
 template <>
-Rect TextLayoutData<memory::StandartInterface>::getLineRect(uint32_t lineId, float density,
+Rect TextLayoutData<mem_std::Interface>::getLineRect(uint32_t lineId, float density,
 		const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, lineId, density, origin);
 }
@@ -476,8 +476,8 @@ Rect TextLayoutData<memory::PoolInterface>::getLineRect(uint32_t lineId, float d
 }
 
 template <>
-Rect TextLayoutData<memory::StandartInterface>::getLineRect(const LineLayoutData &line,
-		float density, const Vec2 &origin) const {
+Rect TextLayoutData<mem_std::Interface>::getLineRect(const LineLayoutData &line, float density,
+		const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, line, density, origin);
 }
 
@@ -488,7 +488,7 @@ Rect TextLayoutData<memory::PoolInterface>::getLineRect(const LineLayoutData &li
 }
 
 template <>
-void TextLayoutData<memory::StandartInterface>::getLabelRects(const Callback<void(Rect)> &cb,
+void TextLayoutData<mem_std::Interface>::getLabelRects(const Callback<void(Rect)> &cb,
 		uint32_t first, uint32_t last, float density, const Vec2 &origin, const Padding &p) const {
 	return TextLayoutData_getLabelRects(*this, cb, first, last, density, origin, p);
 }

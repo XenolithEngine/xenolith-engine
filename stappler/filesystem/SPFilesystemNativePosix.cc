@@ -47,13 +47,13 @@ memory::PoolInterface::StringType posixToNative<memory::PoolInterface>(StringVie
 }
 
 template <>
-memory::StandartInterface::StringType nativeToPosix<memory::StandartInterface>(StringView path) {
-	return path.str<memory::StandartInterface>();
+mem_std::Interface::StringType nativeToPosix<mem_std::Interface>(StringView path) {
+	return path.str<mem_std::Interface>();
 }
 
 template <>
-memory::StandartInterface::StringType posixToNative<memory::StandartInterface>(StringView path) {
-	return path.str<memory::StandartInterface>();
+mem_std::Interface::StringType posixToNative<mem_std::Interface>(StringView path) {
+	return path.str<mem_std::Interface>();
 }
 
 Status remove_fn(StringView path) {

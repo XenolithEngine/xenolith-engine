@@ -601,7 +601,7 @@ static uint32_t VariableEngine_parseArguments(StmtType t, StmtValue *args, StmtV
 	return count;
 }
 
-StringView encodePathSpaces(StringView in, memory::StandartInterface::StringType &storage) {
+StringView encodePathSpaces(StringView in, mem_std::Interface::StringType &storage) {
 	if (in.find(' ') == maxOf<size_t>()) {
 		return in;
 	}
@@ -614,7 +614,7 @@ StringView encodePathSpaces(StringView in, memory::StandartInterface::StringType
 	return StringView(storage.data(), storage.size());
 }
 
-StringView decodePathSpaces(StringView in, memory::StandartInterface::StringType &storage) {
+StringView decodePathSpaces(StringView in, mem_std::Interface::StringType &storage) {
 	if (in.find(PathSpacePlaceholder) == maxOf<size_t>()) {
 		return in;
 	}
@@ -675,14 +675,14 @@ StringView VariableEngine::getAbsolutePath(StringView str) const {
 	// Decode it back to a real space first: everything below (toPosixPath/merge/reconstruct/findPath)
 	// and every consumer of the result (stat, ::realpath, file open) needs the real filesystem path.
 	// $(realpath)/$(abspath) re-encode their result via emitResolvedPath.
-	memory::StandartInterface::StringType spaceStorage;
+	mem_std::Interface::StringType spaceStorage;
 	str = decodePathSpaces(str, spaceStorage);
 
 	// A path may arrive in the platform-native form — on Windows that includes the `C:/dir` form the
 	// path functions emit (and `C:\dir`, `c:/dir`). Normalize it to the internal posix form (`/c/dir`)
 	// so the posix-based logic below recognizes a drive-rooted path as absolute instead of mistaking
 	// it for a relative path and merging it onto the root. toPosixPath is a no-op on POSIX builds.
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	str = filesystem::toPosixPath(str, posixStorage);
 
 	if (filepath::isAbsolute(str)) {
@@ -732,7 +732,7 @@ void VariableEngine::appendMakefileList(StringView name) {
 	// the block stack is gone (recipe / recursive-variable expansion), instead of crashing.
 	// A makefile path may contain a space (e.g. ".../runtime 2/Makefile"); encode it so the list stays
 	// one word per file and $(lastword)/$(dir $(lastword …)) keep resolving the whole path.
-	memory::StandartInterface::StringType spaceStorage;
+	mem_std::Interface::StringType spaceStorage;
 	name = encodePathSpaces(name, spaceStorage);
 
 	StringView value;

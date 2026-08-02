@@ -45,7 +45,8 @@ void performShapeTests() {
 	spec.fontSize = font::FontSize(uint16_t(32));
 
 	auto face = lib->openFontFace(
-			font::FontLibrary::getFontName(font::FontLibrary::DefaultFontName::DejaVuSans), spec, [] {
+			font::FontLibrary::getFontName(font::FontLibrary::DefaultFontName::DejaVuSans), spec,
+			[] {
 		return font::FontLibrary::FontData(
 				font::FontLibrary::getFont(font::FontLibrary::DefaultFontName::DejaVuSans), true);
 	});
@@ -86,7 +87,7 @@ void performShapeTests() {
 	auto csA = face->getChar('A');
 	mem_std::Vector<font::ShapedGlyph> one;
 	face->shape(pre.data(), 1, font::TextDirection::LeftToRight, one);
-	int advDiff = !one.empty() ? (int(one[0].xAdvance) - int(csA.xAdvance)) : 1000;
+	int advDiff = !one.empty() ? (int(one[0].xAdvance) - int(csA.xAdvance)) : 1'000;
 	if (advDiff < 0) {
 		advDiff = -advDiff;
 	}
@@ -142,7 +143,7 @@ void performShapeTests() {
 	};
 
 	// one line: [a,b] LTR at x 0..20, [c,d] RTL reversed at x 90..110 -> a visual gap in the middle
-	font::TextLayoutData<memory::StandartInterface> tl;
+	font::TextLayoutData<mem_std::Interface> tl;
 	tl.chars.emplace_back(mk('a', 0, 10, 0));
 	tl.chars.emplace_back(mk('b', 10, 10, 0));
 	tl.chars.emplace_back(mk('c', 100, 10, 0));
@@ -162,11 +163,12 @@ void performShapeTests() {
 	// min(pos)=0 .. max(pos+advance)=110, not logical-first(0)..logical-last(100)
 	auto lineRect = tl.getLineRect(tl.lines[0], 1.0f, font::Vec2::ZERO);
 	check(lineRect.origin.x == 0.0f && lineRect.size.width == 110.0f,
-			"line rect: a bidi line spans its full visual extent (min..max), not logical first/last");
+			"line rect: a bidi line spans its full visual extent (min..max), not logical "
+			"first/last");
 
 	// a direction change inside the selection splits into 2 rects even when the runs are ADJACENT
 	// (no visual gap): [a,b] level 0 at x 0..20, [c,d] level 1 (RTL) at x 20..40
-	font::TextLayoutData<memory::StandartInterface> td;
+	font::TextLayoutData<mem_std::Interface> td;
 	td.chars.emplace_back(mk('a', 0, 10, 0, 0));
 	td.chars.emplace_back(mk('b', 10, 10, 0, 0));
 	td.chars.emplace_back(mk('c', 30, 10, 0, 1));
@@ -184,7 +186,7 @@ void performShapeTests() {
 			"selection: a direction change splits into 2 rects even when the runs are adjacent");
 
 	// a glyph-continuation entry is skipped by selection rects and by text extraction
-	font::TextLayoutData<memory::StandartInterface> tc;
+	font::TextLayoutData<mem_std::Interface> tc;
 	tc.chars.emplace_back(mk('x', 0, 10, 0));
 	tc.chars.emplace_back(mk(font::CharLayoutData::ContinuationChar, 5, 0,
 			font::CharLayoutData::FlagGlyphContinuation));
@@ -210,4 +212,4 @@ void performShapeTests() {
 	check(s == "xy", "selection: text extraction skips the continuation virtual code point");
 }
 
-} // namespace stappler
+} // namespace STAPPLER_VERSIONIZED stappler

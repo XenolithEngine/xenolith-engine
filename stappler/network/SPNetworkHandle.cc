@@ -53,12 +53,12 @@ bool Handle<memory::PoolInterface>::init(Method method, StringView url) {
 }
 
 template <>
-bool Handle<memory::StandartInterface>::init(Method method, StringView url) {
+bool Handle<mem_std::Interface>::init(Method method, StringView url) {
 	if (url.size() == 0 || method == Method::Unknown) {
 		return false;
 	}
 
-	send.url = url.str<memory::StandartInterface>();
+	send.url = url.str<mem_std::Interface>();
 	send.method = method;
 	return true;
 }
@@ -69,7 +69,7 @@ bool Handle<memory::PoolInterface>::perform() {
 }
 
 template <>
-bool Handle<memory::StandartInterface>::perform() {
+bool Handle<mem_std::Interface>::perform() {
 	return network::perform(*this, nullptr, nullptr);
 }
 
@@ -158,15 +158,15 @@ bool MultiHandle<memory::PoolInterface>::perform(
 }
 
 template <>
-bool MultiHandle<memory::StandartInterface>::perform(
-		const Callback<bool(Handle<memory::StandartInterface> *, Ref *)> &cb) {
+bool MultiHandle<mem_std::Interface>::perform(
+		const Callback<bool(Handle<mem_std::Interface> *, Ref *)> &cb) {
 	auto m = curl_multi_init();
-	memory::StandartInterface::MapType<CURL *, Context<memory::StandartInterface>> handles;
+	mem_std::Interface::MapType<CURL *, Context<mem_std::Interface>> handles;
 
 	auto initPending = [&, this]() -> int {
 		for (auto &it : pending) {
 			auto h = CurlHandle_alloc();
-			auto i = handles.emplace(h, Context<memory::StandartInterface>()).first;
+			auto i = handles.emplace(h, Context<mem_std::Interface>()).first;
 			i->second.userdata = it.second;
 			i->second.curl = h;
 			i->second.origHandle = it.first;
@@ -197,7 +197,7 @@ bool MultiHandle<memory::StandartInterface>::perform(
 		auto err = curl_multi_perform(m, &running);
 		if (err != CURLM_OK) {
 			log::source().error("CURL",
-					string::toString<memory::StandartInterface>("Fail to perform multi: ", err));
+					string::toString<mem_std::Interface>("Fail to perform multi: ", err));
 			return false;
 		}
 
@@ -205,7 +205,7 @@ bool MultiHandle<memory::StandartInterface>::perform(
 			err = curl_multi_poll(m, NULL, 0, 1'000, nullptr);
 			if (err != CURLM_OK) {
 				log::source().error("CURL",
-						string::toString<memory::StandartInterface>("Fail to poll multi: ", err));
+						string::toString<mem_std::Interface>("Fail to poll multi: ", err));
 				return false;
 			}
 		}

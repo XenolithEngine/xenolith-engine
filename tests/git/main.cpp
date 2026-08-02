@@ -124,8 +124,7 @@ static void runOfflineTests() {
 		check(refs[0].isHead() && StringView(refs[0].symref) == "refs/heads/main",
 				"HEAD symref target parsed");
 		check(refs[0].oid.str() == oidHead, "oid hex roundtrip");
-		check(refs[1].isBranch() && StringView(refs[1].name) == "refs/heads/main",
-				"branch parsed");
+		check(refs[1].isBranch() && StringView(refs[1].name) == "refs/heads/main", "branch parsed");
 		check(refs[2].isTag() && !refs[2].peeled.empty() && refs[2].peeled.str() == oidPeeled,
 				"annotated tag with peeled parsed");
 	}
@@ -142,7 +141,7 @@ static void runOfflineStage2Tests() {
 	oid.format = ObjectFormat::Sha1;
 	oid.bytes[19] = 1;
 	String hex;
-	oid.toHex([&](StringView h) { hex = h.str<memory::StandartInterface>(); });
+	oid.toHex([&](StringView h) { hex = h.str<mem_std::Interface>(); });
 
 	auto req = buildFetchRequest(oid, 1, ObjectFormat::Sha1);
 	String exp;
@@ -157,7 +156,8 @@ static void runOfflineStage2Tests() {
 	appendStr(exp, "\n");
 	appendStr(exp, "0009done\n");
 	appendStr(exp, "0000");
-	check(bytesEq(BytesView(req.data(), req.size()), StringView(exp)), "build fetch request framing");
+	check(bytesEq(BytesView(req.data(), req.size()), StringView(exp)),
+			"build fetch request framing");
 
 	// (2) git object identity hashes (well-known empty objects).
 	uint8_t none[1] = {0};
@@ -203,7 +203,8 @@ static void runOfflineStage3Tests() {
 					"[submodule \"bar\"]\n"
 					"\tpath = third/bar\n"
 					"\turl = https://other.example/bar.git\n";
-	auto specs = parseGitmodules(BytesView(reinterpret_cast<const uint8_t *>(gm.data()), gm.size()));
+	auto specs =
+			parseGitmodules(BytesView(reinterpret_cast<const uint8_t *>(gm.data()), gm.size()));
 	check(specs.size() == 2, "parse .gitmodules: 2 submodules");
 	if (specs.size() == 2) {
 		check(StringView(specs[0].path) == "libs/foo" && StringView(specs[0].url) == "../foo.git",
@@ -225,7 +226,8 @@ static void runOfflineStage3Tests() {
 
 	check(sameHost("https://github.com/a/b.git", "https://github.com/c/d.git"), "sameHost true");
 	check(!sameHost("https://github.com/a", "https://gitlab.com/a"), "sameHost false");
-	check(isHttpUrl("https://x/y") && !isHttpUrl("git@github.com:a/b.git") && !isHttpUrl("git://x/y"),
+	check(isHttpUrl("https://x/y") && !isHttpUrl("git@github.com:a/b.git")
+					&& !isHttpUrl("git://x/y"),
 			"isHttpUrl classification");
 }
 
@@ -375,13 +377,13 @@ static void runLiveTest(StringView url) {
 		static const char *names[] = {"connecting", "downloading", "unpacking", "checking-out"};
 		bool stageChanged = int(p.stage) != lastStage;
 		bool bigDownload = p.stage == CloneStage::Downloading
-				&& p.bytesReceived - lastBytes >= 8 * 1024 * 1024;
+				&& p.bytesReceived - lastBytes >= 8 * 1'024 * 1'024;
 		if (stageChanged || bigDownload) {
 			lastStage = int(p.stage);
 			lastBytes = p.bytesReceived;
 			sprt::cout << "  [progress] depth=" << p.submoduleDepth << " " << names[int(p.stage)];
 			if (p.stage == CloneStage::Downloading && p.bytesReceived > 0) {
-				sprt::cout << " " << (p.bytesReceived / 1024) << "KB";
+				sprt::cout << " " << (p.bytesReceived / 1'024) << "KB";
 			}
 			sprt::cout << " " << p.url << "\n";
 		}
@@ -396,7 +398,7 @@ static void runLiveTest(StringView url) {
 	});
 
 	int cguard = 0;
-	while (!cdone && cguard < 1800) {
+	while (!cdone && cguard < 1'800) {
 		looper->run(dispatch::TimeInterval::milliseconds(100));
 		++cguard;
 	}
@@ -406,9 +408,9 @@ static void runLiveTest(StringView url) {
 		return;
 	}
 
-	sprt::cout << "clone: http " << cres.httpCode << ", status " << int32_t(cres.status) << ", objects "
-			   << cres.objectsReceived << ", files " << cres.filesWritten << ", bytes "
-			   << cres.bytesWritten << "\n";
+	sprt::cout << "clone: http " << cres.httpCode << ", status " << int32_t(cres.status)
+			   << ", objects " << cres.objectsReceived << ", files " << cres.filesWritten
+			   << ", bytes " << cres.bytesWritten << "\n";
 	check(cres.status == Status::Ok, "shallow clone succeeded");
 	if (cres.status != Status::Ok) {
 		return;
@@ -418,7 +420,7 @@ static void runLiveTest(StringView url) {
 
 	// Integrity: re-read the first written blob and hash it back to its tree oid.
 	if (!cres.firstBlobPath.empty()) {
-		auto data = filesystem::readIntoMemory<memory::StandartInterface>(
+		auto data = filesystem::readIntoMemory<mem_std::Interface>(
 				FileInfo(StringView(cres.firstBlobPath)));
 		auto rehash = hashObject(ObjectType::Blob, BytesView(data.data(), data.size()));
 		check(rehash.str() == cres.firstBlobOid.str(),
@@ -432,9 +434,9 @@ static void runLiveTest(StringView url) {
 	check(filesystem::exists(FileInfo(StringView(topDir))), "top-level 'stappler' dir exists");
 
 	// --- recursive submodules ---
-	sprt::cout << "submodules: found " << cres.submodulesFound << ", cloned " << cres.submodulesCloned
-			   << ", skipped " << cres.submodulesSkipped << ", failed " << cres.submodulesFailed
-			   << "\n";
+	sprt::cout << "submodules: found " << cres.submodulesFound << ", cloned "
+			   << cres.submodulesCloned << ", skipped " << cres.submodulesSkipped << ", failed "
+			   << cres.submodulesFailed << "\n";
 	check(cres.submodulesFound >= 1, "at least one submodule discovered (.gitmodules gitlink)");
 	check(cres.submodulesFailed == 0, "no submodule hard failures");
 	check(cres.submodulesCloned >= 1, "at least one submodule cloned (musl-libc)");
@@ -490,7 +492,7 @@ static int run(int argc, const char *argv[]) {
 	} else {
 		const char *env = ::getenv("GIT_REMOTE_TEST_URL");
 		StringView url = (argc > 1) ? StringView(argv[1])
-				: (env ? StringView(env) : StringView(DEFAULT_URL));
+									: (env ? StringView(env) : StringView(DEFAULT_URL));
 		runLiveTest(url);
 	}
 

@@ -131,7 +131,7 @@ SP_PUBLIC StringView detectMimeType(StringView path);
 template <typename Interface>
 SP_PUBLIC inline auto currentDir(StringView ipath, bool relative) ->
 		typename Interface::StringType {
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	ipath = toPosixPath(ipath, posixStorage);
 
 	if (filepath::isAboveRoot(ipath)) {
@@ -217,12 +217,11 @@ struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::filesystem::Stat> {
 			const STAPPLER_VERSIONIZED_NAMESPACE::filesystem::Stat &stat) {
 		stream << "Stat { size: " << stat.size << "; u: " << stat.user << "; g: " << stat.group
 			   << "; " << stat.type << "; " << stat.prot << "; ctime: "
-			   << stat.ctime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
+			   << stat.ctime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::mem_std::Interface>()
 			   << "; mtime: "
-			   << stat.mtime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
+			   << stat.mtime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::mem_std::Interface>()
 			   << "; atime: "
-			   << stat.atime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
-			   << " };";
+			   << stat.atime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::mem_std::Interface>() << " };";
 	}
 };
 

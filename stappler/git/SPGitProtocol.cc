@@ -111,7 +111,7 @@ void Oid::toHex(const Callback<void(StringView)> &cb) const {
 
 String Oid::str() const {
 	String ret;
-	toHex([&](StringView v) { ret = v.str<memory::StandartInterface>(); });
+	toHex([&](StringView v) { ret = v.str<mem_std::Interface>(); });
 	return ret;
 }
 
@@ -228,7 +228,7 @@ ServiceAdvertisement parseServiceAdvertisement(BytesView data) {
 			continue;
 		}
 
-		adv.capabilities.emplace_back(s.str<memory::StandartInterface>());
+		adv.capabilities.emplace_back(s.str<mem_std::Interface>());
 
 		if (s.starts_with("object-format=")) {
 			StringView v(s.data() + 14, s.size() - 14);
@@ -288,13 +288,13 @@ Status parseLsRefsResponse(BytesView data, ObjectFormat fmt, Vector<RefInfo> &ou
 
 		RefInfo ref;
 		ref.oid = Oid::fromHex(oidTok, fmt);
-		ref.name = nameTok.str<memory::StandartInterface>();
+		ref.name = nameTok.str<mem_std::Interface>();
 
 		while (!s.empty()) {
 			StringView attr = nextToken(s);
 			if (attr.starts_with("symref-target:")) {
 				StringView v(attr.data() + 14, attr.size() - 14);
-				ref.symref = v.str<memory::StandartInterface>();
+				ref.symref = v.str<mem_std::Interface>();
 			} else if (attr.starts_with("peeled:")) {
 				StringView v(attr.data() + 7, attr.size() - 7);
 				ref.peeled = Oid::fromHex(v, fmt);

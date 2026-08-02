@@ -55,7 +55,7 @@ public:
 
 	static bool readFile(PathWriter *p, const FileInfo &str) {
 		if (!str.path.empty()) {
-			auto content = filesystem::readTextFile<memory::StandartInterface>(str);
+			auto content = filesystem::readTextFile<mem_std::Interface>(str);
 			return readFileContent(p, content);
 		}
 		return false;
@@ -730,7 +730,7 @@ void PathData<memory::PoolInterface>::clear() {
 }
 
 template <>
-void PathData<memory::StandartInterface>::clear() {
+void PathData<mem_std::Interface>::clear() {
 	points.clear();
 	commands.clear();
 }
@@ -741,7 +741,7 @@ PathWriter PathData<memory::PoolInterface>::getWriter() {
 }
 
 template <>
-PathWriter PathData<memory::StandartInterface>::getWriter() {
+PathWriter PathData<mem_std::Interface>::getWriter() {
 	return PathWriter(*this);
 }
 
@@ -754,23 +754,23 @@ auto PathData<memory::PoolInterface>::encode<memory::PoolInterface>() const
 
 template <>
 template <>
-auto PathData<memory::PoolInterface>::encode<memory::StandartInterface>() const
-		-> memory::StandartInterface::BytesType {
-	return encodePath<memory::StandartInterface>(*this);
+auto PathData<memory::PoolInterface>::encode<mem_std::Interface>() const
+		-> mem_std::Interface::BytesType {
+	return encodePath<mem_std::Interface>(*this);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::encode<memory::PoolInterface>() const
+auto PathData<mem_std::Interface>::encode<memory::PoolInterface>() const
 		-> memory::PoolInterface::BytesType {
 	return encodePath<memory::PoolInterface>(*this);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::encode<memory::StandartInterface>() const
-		-> memory::StandartInterface::BytesType {
-	return encodePath<memory::StandartInterface>(*this);
+auto PathData<mem_std::Interface>::encode<mem_std::Interface>() const
+		-> mem_std::Interface::BytesType {
+	return encodePath<mem_std::Interface>(*this);
 }
 
 template <>
@@ -782,23 +782,23 @@ auto PathData<memory::PoolInterface>::toString<memory::PoolInterface>(bool newli
 
 template <>
 template <>
-auto PathData<memory::PoolInterface>::toString<memory::StandartInterface>(bool newline) const
-		-> memory::StandartInterface::StringType {
-	return pathToString<memory::StandartInterface>(*this, newline);
+auto PathData<memory::PoolInterface>::toString<mem_std::Interface>(bool newline) const
+		-> mem_std::Interface::StringType {
+	return pathToString<mem_std::Interface>(*this, newline);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::toString<memory::PoolInterface>(bool newline) const
+auto PathData<mem_std::Interface>::toString<memory::PoolInterface>(bool newline) const
 		-> memory::PoolInterface::StringType {
 	return pathToString<memory::PoolInterface>(*this, newline);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::toString<memory::StandartInterface>(bool newline) const
-		-> memory::StandartInterface::StringType {
-	return pathToString<memory::StandartInterface>(*this, newline);
+auto PathData<mem_std::Interface>::toString<mem_std::Interface>(bool newline) const
+		-> mem_std::Interface::StringType {
+	return pathToString<mem_std::Interface>(*this, newline);
 }
 
 PathWriter::PathWriter(PathData<mem_std::Interface> &d)
@@ -1121,7 +1121,7 @@ PathWriter &PathWriter::addBox(float x, float y, float width, float height, floa
 	return *this;
 }
 
-bool PathWriter::addPath(const PathData<memory::StandartInterface> &d) {
+bool PathWriter::addPath(const PathData<mem_std::Interface> &d) {
 	commands.reserve(commands.size() + d.commands.size());
 	for (auto &it : d.commands) { commands.emplace_back(Command(it)); }
 

@@ -64,7 +64,7 @@ public:
 
 	VectorAdapter() noexcept = default;
 
-	VectorAdapter(memory::StandartInterface::VectorType<T> &vec) noexcept;
+	VectorAdapter(mem_std::Interface::VectorType<T> &vec) noexcept;
 	VectorAdapter(memory::PoolInterface::VectorType<T> &vec) noexcept;
 
 public:
@@ -168,7 +168,7 @@ using stappler::WideStringView;
 using stappler::BytesView;
 using stappler::SpanView;
 
-using AllocBase = stappler::memory::StandartInterface::AllocBaseType;
+using AllocBase = stappler::mem_std::Interface::AllocBaseType;
 
 template <typename T>
 using Allocator = sprt::detail::AllocatorMalloc<T>;
@@ -246,7 +246,7 @@ inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using Value = data::ValueTemplate<stappler::memory::StandartInterface>;
+using Value = data::ValueTemplate<stappler::mem_std::Interface>;
 using Array = Value::ArrayType;
 using Dictionary = Value::DictionaryType;
 using EncodeFormat = stappler::data::EncodeFormat;
@@ -276,7 +276,7 @@ inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
 namespace STAPPLER_VERSIONIZED stappler {
 
 template <typename T>
-VectorAdapter<T>::VectorAdapter(memory::StandartInterface::VectorType<T> &vec) noexcept
+VectorAdapter<T>::VectorAdapter(mem_std::Interface::VectorType<T> &vec) noexcept
 : target(&vec)
 , size_fn([](void *target) { return ((mem_std::Vector<T> *)target)->size(); })
 , back_fn([](void *target) -> T & { return ((mem_std::Vector<T> *)target)->back(); })

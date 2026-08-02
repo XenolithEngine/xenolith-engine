@@ -100,13 +100,13 @@ template <typename StringType>
 struct InterfaceForString;
 
 template <>
-struct InterfaceForString<typename memory::StandartInterface::StringType> {
-	using Type = memory::StandartInterface;
+struct InterfaceForString<typename memory::StandardInterface::StringType> {
+	using Type = memory::StandardInterface;
 };
 
 template <>
-struct InterfaceForString<typename memory::StandartInterface::WideStringType> {
-	using Type = memory::StandartInterface;
+struct InterfaceForString<typename memory::StandardInterface::WideStringType> {
+	using Type = memory::StandardInterface;
 };
 
 template <>
@@ -121,13 +121,13 @@ struct InterfaceForString<typename memory::PoolInterface::WideStringType> {
 
 
 template <>
-struct InterfaceForString<const typename memory::StandartInterface::StringType> {
-	using Type = memory::StandartInterface;
+struct InterfaceForString<const typename memory::StandardInterface::StringType> {
+	using Type = memory::StandardInterface;
 };
 
 template <>
-struct InterfaceForString<const typename memory::StandartInterface::WideStringType> {
-	using Type = memory::StandartInterface;
+struct InterfaceForString<const typename memory::StandardInterface::WideStringType> {
+	using Type = memory::StandardInterface;
 };
 
 template <>
@@ -684,7 +684,7 @@ namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
 using String = sprt::__malloc_string;
 using WideString = sprt::__malloc_u16string;
-using Interface = stappler::memory::StandartInterface;
+using Interface = stappler::memory::StandardInterface;
 
 template <typename... Args>
 inline String toString(Args &&...args) {

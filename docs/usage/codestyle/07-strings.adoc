@@ -1,0 +1,296 @@
+# Strings: `StringView`, owned strings, and the two memory worlds
+
+**TL;DR**
+
+* `StringView` is a **non-owning** `ptr + len` view. It is the parameter type for
+  every string argument — pass it **by value**.
+* A view is **not** a C string: `data()` may be non-terminated. Check with
+  `terminated()`, or materialize a string.
+* Owned strings come in two flavours, chosen by an *interface* type:
+  `mem_std::String` (malloc) and `mem_pool::String` (pool). Generic code takes
+  `template <typename Interface>` and returns `typename Interface::StringType`.
+* View → owned: `.str<Interface>()`. View → pool copy that stays a view:
+  `.pdup(pool)`.
+* Build strings with `mem_std::toString(...)` / `mem_pool::toString(...)`.
+* To *produce* a string without allocating, take a
+  `const Callback<void(StringView)> &` (a.k.a. `CallbackStream`) instead of
+  returning `String`. It supports `<<` through `sprt::io_traits<T>`; specialize
+  that for your own type and `<<`, `toString` and `slog()` all learn it at once.
+  A `Callback` does not own its functor — parameter only, never a member.
+* Parse with the reader API (`readUntil<>`, `readChars<>`, `skipChars<>`,
+  `Result<int64_t> readInteger()`), not by hand-indexing.
+
+## `StringView` is a view
+
+[stringview.h](../../../runtime/include/sprt/runtime/stringview.h) defines
+`StringViewBase<CharType>` over `BytesReader`, with the aliases:
+
+| Alias | Element |
+|---|---|
+| `StringView` | `char` (UTF-8 bytes, byte-indexed) |
+| `WideStringView` | `char16_t` (UTF-16 units) |
+| `StringViewUtf8` | `char` storage, iterated by *code points* |
+
+It stores a pointer and a length and owns nothing. Consequences:
+
+* **Pass by value.** `void setString(StringView)` — not `const StringView &`,
+  not `const String &`.
+* **`data()` is not a C string.** `terminated()` tells you whether a `\0`
+  happens to follow; only then may you hand `data()` to a C API. Otherwise copy
+  first.
+* **The view's lifetime is the buffer's lifetime.** Storing a `StringView` that
+  points into a temporary `String`, into a pool that is about to be destroyed,
+  or into a re-allocated container is a dangling read. If a class keeps a view
+  as a member, the owner of the bytes must outlive it — otherwise store an
+  owned string, or `pdup` into a pool the class controls.
+
+## Owned strings: interfaces, not hard-coded types
+
+There is no single `String` type. `stappler::memory` defines two interfaces
+([SPMemInterface.h](../../../stappler/core/memory/SPMemInterface.h)):
+
+| Interface | `StringType` | Backing |
+|---|---|---|
+| `memory::PoolInterface` | `sprt::__pool_string` | current memory pool |
+| `memory::StandardInterface` | `sprt::__malloc_string` | malloc |
+
+`memory::StandartInterface` (without the `d`) still exists as an alias of
+`StandardInterface` — the historical spelling, kept so old code keeps compiling.
+Write `StandardInterface` in new code.
+
+Convenience namespaces re-export the concrete types and the interface itself:
+`mem_pool::String` / `mem_pool::Vector` / `mem_pool::Map` / `mem_pool::Interface`
+and `mem_std::String` / `mem_std::Vector` / `mem_std::Interface`
+([SPMemory.h](../../../stappler/core/SPMemory.h)) — `mem_std::Interface` *is*
+`memory::StandardInterface`, so use whichever reads better in context.
+
+Generic code is templated on the interface and names the result through it:
+
+[source,cpp]
+----
+template <typename Interface>
+auto urlencode(const StringView &data) -> typename Interface::StringType;
+
+template <typename Interface>
+auto tolower(StringView data) -> typename Interface::StringType;
+----
+
+Inside a class, `InterfaceObject<Interface>` provides the whole family
+(`String`, `WideString`, `Bytes`, `Vector`, `Map`, `Function`, …) so the class
+body can just say `String`.
+
+Pick the interface by lifetime, not by taste: data that lives and dies with a
+pool-scoped operation (parsing, a request, a layout pass) → `PoolInterface`;
+data owned by a long-lived object → `StandardInterface`.
+
+## Converting between them
+
+[source,cpp]
+----
+StringView v = …;
+
+auto s1 = v.str<memory::StandardInterface>();   // owned malloc string (copy)
+auto s2 = v.str<memory::PoolInterface>();       // owned pool string (copy)
+
+StringView v2 = v.pdup(pool);   // copy the bytes INTO pool, keep a view of them
+StringView v3 = v.pdup();       // ... into the current pool
+----
+
+`pdup` is the idiom for "I need this text to outlive the caller's buffer, but I
+want to keep passing it around as a view". Everything stored that way dies with
+the pool — see [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc).
+Real use: [SPDocLayoutResult.cc](../../../stappler/layout/SPDocLayoutResult.cc)
+interns every string of a layout result with `str.pdup(pool)`.
+
+## Building strings
+
+[source,cpp]
+----
+auto s = mem_std::toString("frame ", idx, " of ", total);    // malloc String
+auto p = mem_pool::toString(name, ":", value);               // pool String
+auto x = string::toString<Interface>(a, b, c);               // interface-generic
+----
+
+`toString` streams every argument through `StreamTraits`, so numbers, views and
+anything with a stream operator concatenate without a format string.
+
+## Producing strings without allocating: `Callback<void(StringView)>`
+
+A function that *emits* text takes a callback rather than returning a string —
+the caller decides where the bytes go (a stream, a pool string, stdout, a
+socket):
+
+[source,cpp]
+----
+// runtime/include/sprt/runtime/stringview.h
+SPRT_API void getStatusDescription(Status st, const callback<void(StringView)> &cb);
+
+// stappler/core/SPCore.h
+using CallbackStream = Callback<void(StringView)>;
+----
+
+Use `const Callback<void(StringView)> &` (or `CallbackStream`) for serializers,
+formatters and `write`-style APIs. Returning `String` is for the cases where the
+result really is a value the caller keeps.
+
+**`Callback` is to a functor what `StringView` is to bytes** — a non-owning
+view: it stores a `const void *` to the functor plus a thunk
+([callback.h](../../../runtime/include/sprt/runtime/callback.h)), and it is
+neither copyable nor movable. So it is a *parameter* type, always taken as
+`const Callback<…> &`. Never store one in a member or return it: binding it to a
+temporary lambda and keeping it outlives the lambda.
+
+### `operator<<` and `io_traits`
+
+The stream syntax comes from one generic operator in
+[io_traits.h](../../../runtime/include/sprt/runtime/io_traits.h):
+
+[source,cpp]
+----
+template <typename T, typename StringType>
+static inline const callback<void(StringType)> &operator<<(
+		const callback<void(StringType)> &cb, const T &val) {
+	io_traits<T>::encode(cb, val);
+	return cb;
+}
+----
+
+It works for any callback whose argument is `StringView`, `WideStringView`,
+`StringViewBase<char32_t>`, `StringViewUtf8` or `BytesView` — two `static_assert`s
+enforce that and report a readable message when `io_traits<T>` is missing or has
+the wrong shape. Each `<<` may invoke the callback **several times**: a sink must
+append, not overwrite.
+
+Out of the box `io_traits` covers integers, floating point, `char`/`char16_t`/
+`char32_t`, all the string views, `__basic_string`, C arrays and
+`sprt::array<char, N>`, pointers (printed as `(type)0xADDR`), `type_info`,
+`thread::id`, `Status` (rendered through `getStatusDescription`), any
+`enum` (via its underlying type) and `atomic<T>` (via `load()`). Formatting
+manipulators wrap the value rather than setting stream state:
+
+[source,cpp]
+----
+cb << sprt::io_hex(mask);                 // hexadecimal
+cb << sprt::io_precision(value, 3);       // N significant digits
+cb << sprt::io_fixed(value, 2);           // fixed notation
+cb << sprt::io_scientific(value);         // scientific notation
+----
+
+### Sinks
+
+Anything invocable with `StringView` binds to the parameter:
+
+[source,cpp]
+----
+// a lambda that appends
+mem_std::String out;
+encode([&](StringView str) { out.append(str.data(), str.size()); });
+
+// the process streams (callbacks over stdout/stderr)
+sprt::cout << "value: " << x << "\n";
+
+// a StringStream IS a callback with an owned buffer, so pass it directly
+mem_std::StringStream stream;
+stream << "frame " << idx;
+encode(stream);              // no adapter needed
+auto text = stream.weak();   // StringView into the stream's buffer
+----
+
+`__basic_stringstream` derives from `callback_storage`, i.e. from
+`callback<void(StringView)>` itself
+([stream.h](../../../runtime/include/sprt/runtime/stream.h)) — that is why a
+stream can be handed to any `CallbackStream` parameter, and why `.str()` /
+`.weak()` are how you get the accumulated text out.
+
+### Teaching `<<` about your own type
+
+Specialize `sprt::io_traits<T>` next to the type. Provide `encode` for the
+generic character view and for `StringViewUtf8`; add `length<CharType>` only if
+you can compute an **upper bound** cheaply:
+
+[source,cpp]
+----
+// stappler/makefile/SPMakefileStmt.h
+namespace sprt {
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::makefile::Origin> {
+	using Origin = STAPPLER_VERSIONIZED_NAMESPACE::makefile::Origin;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const Origin &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::makefile::getOriginName(value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const Origin &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::makefile::getOriginName(value);
+	}
+};
+
+} // namespace sprt
+----
+
+The specialization must live in `namespace sprt`, and the type is spelled with
+`STAPPLER_VERSIONIZED_NAMESPACE` so it still names the right type in a
+versionized build (see [02-file-layout.adoc](02-file-layout.adoc)). `encode`
+composes: write it in terms of `cb << …` of already-supported types, as above,
+or emit a local buffer (`filesystem::ProtFlags` builds a `drwxr-xr-x` string and
+streams it).
+
+**One specialization buys three things**, because they all run through
+`io_traits`: `cb << value`, `mem_std::toString(…, value, …)`, and
+`slog().error("Tag", value)`.
+
+`length<CharType>` is what `StreamTraits::calculateSize` uses to pre-size the
+buffer in `toString` / `allocateStringView`; when it is absent, the value is
+encoded once into a counting callback to measure it. If you do define it and it
+*under*-estimates, `strappend` clamps and the output is silently **truncated** —
+so return an upper bound, not a guess.
+
+## Parsing with the reader API
+
+`StringViewBase` *is* a reader: it advances in place. Character sets are
+compile-time types (`Chars<'a','b'>`, `Range<char,'0','9'>`,
+`CharGroup<CharGroupId::WhiteSpace>`, composed via
+[chargroup.h](../../../runtime/include/sprt/runtime/chargroup.h)), so matching is
+a template parameter rather than a runtime predicate:
+
+[source,cpp]
+----
+// stappler/document/SPDocParser.cc
+str.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+String name(s.readChars<HtmlIdentifier>().str<Interface>());
+auto value = s.readUntil<Chars<u'\\'>, DoubleQuote>();
+----
+
+Numbers come back as a `Result<T>`, so a parse failure is a value, not a
+sentinel:
+
+[source,cpp]
+----
+Result<int64_t> readInteger(int base = 0);
+Result<double> readDouble();
+----
+
+See [08-errors-and-status.adoc](08-errors-and-status.adoc) for how to consume a
+`Result`. Prefer these primitives over manual index arithmetic: they keep the
+view's invariants and handle the empty-input cases.
+
+## Unicode
+
+* `StringView` is byte-oriented UTF-8; use `StringViewUtf8` when you need to
+  iterate code points.
+* Wide text is **UTF-16** (`char16_t`, `WideStringView`), matching Windows —
+  where `wchar_t` is 16-bit and surrogate pairs are a real code path. Do not
+  assume `wchar_t` is `char32_t`; see
+  [04-platform-guards.adoc](04-platform-guards.adoc).
+* Case folding and comparison that must be Unicode-aware live in
+  `platform::` / `string::` ([SPString.h](../../../stappler/core/string/SPString.h)):
+  `platform::tolower/toupper/totitle`, `platform::compare_u`,
+  `platform::caseCompare_u`. For ASCII-only fast paths there are
+  `string::apply_tolower_c` / `apply_toupper_c` and `sprt::tolower_c`.
+
+## Related
+
+* [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc) — what a pool is and when it dies
+* [08-errors-and-status.adoc](08-errors-and-status.adoc) — `Result<T>` and `Status`

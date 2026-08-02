@@ -30,7 +30,7 @@ typedef struct _HyphenDict HyphenDict;
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
-class SP_PUBLIC HyphenMap : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC HyphenMap : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~HyphenMap();
 	bool init();
@@ -47,6 +47,6 @@ protected:
 	Map<CharGroupId, HyphenDict *> _dicts;
 };
 
-}
+} // namespace stappler::font
 
 #endif /* CORE_FONT_SPFONTHYPHENMAP_H_ */

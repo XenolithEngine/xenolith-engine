@@ -35,7 +35,7 @@ static void setFileMode(const String &path, uint32_t mode) { ::chmod(path.data()
 
 // Create a symbolic link; returns false if the platform/libc doesn't support it.
 static bool makeSymlink(StringView target, const String &path) {
-	String t = target.str<memory::StandartInterface>();
+	String t = target.str<mem_std::Interface>();
 	return ::symlink(t.data(), path.data()) == 0;
 }
 
@@ -48,11 +48,10 @@ static Status walkTree(const ObjectStore &store, const Oid &treeOid, const Strin
 
 	auto entries = parseTree(BytesView(tree->data.data(), tree->data.size()), fmt);
 	for (auto &e : entries) {
-		String path =
-				filepath::merge<memory::StandartInterface>(StringView(dir), StringView(e.name));
-		String rel = relDir.empty() ? e.name
-									: filepath::merge<memory::StandartInterface>(StringView(relDir),
-											  StringView(e.name));
+		String path = filepath::merge<mem_std::Interface>(StringView(dir), StringView(e.name));
+		String rel = relDir.empty()
+				? e.name
+				: filepath::merge<mem_std::Interface>(StringView(relDir), StringView(e.name));
 
 		if (e.isGitlink()) {
 			// record the submodule; the caller resolves and clones it recursively
@@ -138,7 +137,7 @@ Status checkout(const ObjectStore &store, const Oid &want, StringView destDir, C
 		}
 	}
 
-	String dest = destDir.str<memory::StandartInterface>();
+	String dest = destDir.str<mem_std::Interface>();
 	if (!filesystem::mkdir_recursive(FileInfo(StringView(dest)))) {
 		return Status::ErrorNotPermitted;
 	}

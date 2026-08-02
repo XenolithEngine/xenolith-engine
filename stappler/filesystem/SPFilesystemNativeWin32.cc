@@ -76,8 +76,8 @@ memory::PoolInterface::StringType nativeToPosix<memory::PoolInterface>(StringVie
 }
 
 template <>
-memory::StandartInterface::StringType nativeToPosix<memory::StandartInterface>(StringView ipath) {
-	memory::StandartInterface::StringType path(ipath.str<memory::StandartInterface>());
+mem_std::Interface::StringType nativeToPosix<mem_std::Interface>(StringView ipath) {
+	mem_std::Interface::StringType path(ipath.str<mem_std::Interface>());
 	nativeToPosix_c(path.data(), path.size());
 	return path;
 }
@@ -90,8 +90,8 @@ memory::PoolInterface::StringType posixToNative<memory::PoolInterface>(StringVie
 }
 
 template <>
-memory::StandartInterface::StringType posixToNative<memory::StandartInterface>(StringView ipath) {
-	memory::StandartInterface::StringType path(ipath.str<memory::StandartInterface>());
+mem_std::Interface::StringType posixToNative<mem_std::Interface>(StringView ipath) {
+	mem_std::Interface::StringType path(ipath.str<mem_std::Interface>());
 	posixToNative_c(path.data(), path.size());
 	return path;
 }
@@ -107,13 +107,13 @@ memory::PoolInterface::StringType getcwd_fn<memory::PoolInterface>() {
 }
 
 template <>
-memory::StandartInterface::StringType getcwd_fn<memory::StandartInterface>() {
+mem_std::Interface::StringType getcwd_fn<mem_std::Interface>() {
 	wchar_t cwd[1'024] = {0};
 	if (_wgetcwd(cwd, 1'024 - 1) != NULL) {
-		return nativeToPosix<memory::StandartInterface>(
-				string::toUtf8<memory::StandartInterface>((const char16_t *)cwd));
+		return nativeToPosix<mem_std::Interface>(
+				string::toUtf8<mem_std::Interface>((const char16_t *)cwd));
 	}
-	return memory::StandartInterface::StringType();
+	return mem_std::Interface::StringType();
 }
 
 Status remove_fn(StringView path) {
@@ -123,8 +123,8 @@ Status remove_fn(StringView path) {
 		return Status::Declined;
 	}
 
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 	if (_wremove((wchar_t *)str.c_str()) == 0) {
 		return Status::Ok;
 	}
@@ -138,8 +138,8 @@ Status unlink_fn(StringView path) {
 		return Status::Declined;
 	}
 
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 	if (_wunlink((wchar_t *)str.c_str()) == 0) {
 		return Status::Ok;
 	}
@@ -147,8 +147,8 @@ Status unlink_fn(StringView path) {
 }
 
 Status mkdir_fn(StringView path, ProtFlags flags) {
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 	int oldmask, tmp;
 	int newmask = 0;
 
@@ -196,8 +196,8 @@ Status access_fn(StringView path, Access mode) {
 		m |= F_OK;
 	}
 
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 	auto st = _waccess((wchar_t *)str.c_str(), m);
 	if (st == 0) {
 		if (hasFlag(mode, Access::Empty)) {
@@ -220,8 +220,7 @@ Status stat_fn(StringView path, Stat &stat) {
 		return Status::Declined;
 	}
 
-	auto str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	auto str = string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 
 	struct _stat64 s;
 	if (_wstat64((wchar_t *)str.c_str(), &s) == 0) {
@@ -267,8 +266,7 @@ Status touch_fn(StringView path) {
 		return Status::Declined;
 	}
 
-	auto str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
+	auto str = string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
 	if (_wutime((wchar_t *)str.c_str(), NULL) == 0) {
 		return Status::Ok;
 	}
@@ -305,7 +303,7 @@ static int __islink(FtwHandle &ftw, const wchar_t *name) {
 
 struct DirHandle {
 	DirHandle(FtwHandle &h, StringView path) {
-		auto nativePath = native::posixToNative<memory::StandartInterface>(path);
+		auto nativePath = native::posixToNative<mem_std::Interface>(path);
 		ftw = &h;
 		size_t len = 0;
 		auto st = unicode::toUtf16((char16_t *)&ftw->pathBuffer[0], FtwHandle::PathBufferSize,
@@ -396,7 +394,7 @@ struct DirHandle {
 
 static Status _ftw_fn(FtwHandle &ftw, DirHandle &handle, StringView path,
 		const Callback<bool(StringView, FileType)> &callback, int depth, bool dirFirst) {
-	memory::StandartInterface::StringType newPath;
+	mem_std::Interface::StringType newPath;
 
 	if (!handle) {
 		auto result = status::errnoToStatus(errno);
@@ -415,11 +413,11 @@ static Status _ftw_fn(FtwHandle &ftw, DirHandle &handle, StringView path,
 		if (depth < 0 || depth > 0) {
 			do {
 				if (handle.currentName != u".." && handle.currentName != u".") {
-					auto dname = string::toUtf8<memory::StandartInterface>(handle.currentName);
+					auto dname = string::toUtf8<mem_std::Interface>(handle.currentName);
 					if (path.empty()) {
 						newPath = dname;
 					} else {
-						newPath = filepath::merge<memory::StandartInterface>(path, dname);
+						newPath = filepath::merge<mem_std::Interface>(path, dname);
 					}
 					if (handle.currentType == FileType::Dir) {
 						DirHandle nextDir(ftw, handle);
@@ -477,10 +475,10 @@ Status ftw_fn(StringView path, const Callback<bool(StringView, FileType)> &callb
 }
 
 Status rename_fn(StringView source, StringView dest) {
-	memory::StandartInterface::WideStringType wsource = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(source));
-	memory::StandartInterface::WideStringType wdest = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(dest));
+	mem_std::Interface::WideStringType wsource =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(source));
+	mem_std::Interface::WideStringType wdest =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(dest));
 	if (_wrename((const wchar_t *)wsource.c_str(), (const wchar_t *)wdest.c_str()) == 0) {
 		return Status::Ok;
 	}
@@ -489,10 +487,9 @@ Status rename_fn(StringView source, StringView dest) {
 
 FILE *fopen_fn(StringView path, StringView mode) {
 	FILE *ret = nullptr;
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(path));
-	memory::StandartInterface::WideStringType wmode =
-			string::toUtf16<memory::StandartInterface>(mode);
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(path));
+	mem_std::Interface::WideStringType wmode = string::toUtf16<mem_std::Interface>(mode);
 	_wfopen_s(&ret, (const wchar_t *)str.c_str(), (const wchar_t *)wmode.c_str());
 	return ret;
 }
@@ -504,8 +501,8 @@ Status write_fn(StringView ipath, const unsigned char *data, size_t len, ProtFla
 		return Status::Declined;
 	}
 
-	memory::StandartInterface::WideStringType str = string::toUtf16<memory::StandartInterface>(
-			posixToNative<memory::StandartInterface>(ipath));
+	mem_std::Interface::WideStringType str =
+			string::toUtf16<mem_std::Interface>(posixToNative<mem_std::Interface>(ipath));
 
 	HANDLE fileToWrite = INVALID_HANDLE_VALUE;
 	fileToWrite = CreateFileW((const wchar_t *)str.data(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,

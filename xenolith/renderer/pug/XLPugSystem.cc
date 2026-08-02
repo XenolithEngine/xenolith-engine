@@ -76,14 +76,14 @@ bool TemplateSystem::init(const FileInfo &file, BuilderConfig &&config) {
 }
 
 void TemplateSystem::setTemplate(StringView inlineTemplate) {
-	_source = inlineTemplate.str<memory::StandartInterface>();
+	_source = inlineTemplate.str<mem_std::Interface>();
 	_isFile = false;
 	_category = FileCategory::Custom;
 	_templateDirty = true;
 }
 
 void TemplateSystem::setTemplateFile(const FileInfo &file) {
-	_source = file.path.str<memory::StandartInterface>();
+	_source = file.path.str<mem_std::Interface>();
 	_isFile = true;
 	_category = file.category;
 	_templateDirty = true;
@@ -145,14 +145,14 @@ void TemplateSystem::ensureTemplate() {
 
 	memory::perform([&] {
 		if (_isFile) {
-			auto bytes = filesystem::readIntoMemory<memory::StandartInterface>(
-					FileInfo{_source, _category});
+			auto bytes =
+					filesystem::readIntoMemory<mem_std::Interface>(FileInfo{_source, _category});
 			StringView content((const char *)bytes.data(), bytes.size());
 			_template = spug::Template::read(_pool, content, spug::Template::Options::getNodes(),
 					errCb);
 		} else {
-			_template = spug::Template::read(_pool, _source,
-					spug::Template::Options::getNodes(), errCb);
+			_template = spug::Template::read(_pool, _source, spug::Template::Options::getNodes(),
+					errCb);
 		}
 	}, _pool);
 
@@ -182,9 +182,7 @@ void TemplateSystem::build() {
 	}
 
 	Vector<Node *> before;
-	for (auto &c : _owner->getChildren()) {
-		before.emplace_back(c.get());
-	}
+	for (auto &c : _owner->getChildren()) { before.emplace_back(c.get()); }
 
 	// run the persistent Context; run-time temporaries go to a throwaway scratch pool so
 	// the persistent pool does not grow across rebuilds

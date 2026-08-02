@@ -29,16 +29,16 @@
 
 namespace STAPPLER_VERSIONIZED stappler::data {
 
-class SP_PUBLIC Source : public SubscriptionTemplate<memory::StandartInterface>,
-						 public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC Source : public SubscriptionTemplate<mem_std::Interface>,
+						 public InterfaceObject<mem_std::Interface> {
 public:
 	using ChildsCount = ValueWrapper<size_t, class ChildsCountClassFlag>;
 
 	static Id Self;
 
-	using Interface = memory::StandartInterface;
+	using Interface = mem_std::Interface;
 	using Value = ValueTemplate<Interface>;
-	using Subscription = SubscriptionTemplate<memory::StandartInterface>;
+	using Subscription = SubscriptionTemplate<mem_std::Interface>;
 	using Id = Subscription::Id;
 
 	using BatchCallback = Function<void(Map<Id, Value> &)>;

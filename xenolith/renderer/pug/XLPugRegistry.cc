@@ -364,17 +364,16 @@ bool Registry::applyGenericAttribute(const BuilderContext &ctx, Node *node, Stri
 		}
 	} else if (name.starts_with("data-")) {
 		Value data(node->getDataValue());
-		data.setValue(value, name.str<memory::StandartInterface>());
+		data.setValue(value, name.str<mem_std::Interface>());
 		node->setDataValue(move(data));
 		return true;
 	} else if (applyFlexItemAttribute(ctx, node, name, value)) {
 		return true;
 	}
 
-	if (name == "position" || name == "x" || name == "y" || name == "size"
-			|| name == "content-size" || name == "anchor" || name == "anchor-point"
-			|| name == "color" || name == "opacity" || name == "scale" || name == "rotation"
-			|| name == "id" || name == "name") {
+	if (name == "position" || name == "x" || name == "y" || name == "size" || name == "content-size"
+			|| name == "anchor" || name == "anchor-point" || name == "color" || name == "opacity"
+			|| name == "scale" || name == "rotation" || name == "id" || name == "name") {
 		ctx.error(toString("pug: invalid value for attribute '", name, "'"));
 		return true;
 	}
@@ -385,121 +384,131 @@ bool Registry::applyGenericAttribute(const BuilderContext &ctx, Node *node, Stri
 Rc<Registry> Registry::createDefault() {
 	auto ret = Rc<Registry>::alloc();
 
-	ret->set("node", TagFactory{
-		.create = [](const BuilderContext &, StringView, const Value &) -> Rc<Node> {
-			return Rc<Node>::create();
-		},
-	});
+	ret->set("node",
+			TagFactory{
+				.create = [](const BuilderContext &, StringView, const Value &) -> Rc<Node> {
+		return Rc<Node>::create();
+	},
+			});
 
-	ret->set("layer", TagFactory{
-		.create = [](const BuilderContext &, StringView, const Value &attrs) -> Rc<Node> {
-			Color4F color = Color4F::WHITE;
-			parseColor(attrs.getValue("color"), color);
-			return Rc<Layer>::create(color);
-		},
-	});
+	ret->set("layer",
+			TagFactory{
+				.create = [](const BuilderContext &, StringView, const Value &attrs) -> Rc<Node> {
+		Color4F color = Color4F::WHITE;
+		parseColor(attrs.getValue("color"), color);
+		return Rc<Layer>::create(color);
+	},
+			});
 
-	ret->set("label", TagFactory{
-		.create = [](const BuilderContext &, StringView, const Value &) -> Rc<Node> {
-			return Rc<Label>::create();
-		},
-		.applyAttribute = [](const BuilderContext &ctx, Node *node, StringView name,
-				const Value &value) -> bool {
-			auto label = static_cast<Label *>(node);
-			float f = 0.0f;
-			if (name == "font-size") {
-				if (parseFloat(value, f)) {
-					label->setFontSize(uint16_t(f));
-				}
-				return true;
-			} else if (name == "align") {
-				font::TextAlign align = font::TextAlign::Left;
-				if (value.isString() && parseTextAlign(value.getString(), align)) {
-					label->setAlignment(align);
-				} else {
-					ctx.error(toString("pug: label: invalid align '", value.getString(), "'"));
-				}
-				return true;
-			} else if (name == "width") {
-				if (parseFloat(value, f)) {
-					label->setWidth(f);
-				}
-				return true;
+	ret->set("label",
+			TagFactory{
+				.create = [](const BuilderContext &, StringView, const Value &) -> Rc<Node> {
+		return Rc<Label>::create();
+	},
+				.applyAttribute = [](const BuilderContext &ctx, Node *node, StringView name,
+										  const Value &value) -> bool {
+		auto label = static_cast<Label *>(node);
+		float f = 0.0f;
+		if (name == "font-size") {
+			if (parseFloat(value, f)) {
+				label->setFontSize(uint16_t(f));
 			}
-			return false;
-		},
-		.applyText = [](const BuilderContext &, Node *node, StringView text) {
-			static_cast<Label *>(node)->setString(text);
-		},
-	});
+			return true;
+		} else if (name == "align") {
+			font::TextAlign align = font::TextAlign::Left;
+			if (value.isString() && parseTextAlign(value.getString(), align)) {
+				label->setAlignment(align);
+			} else {
+				ctx.error(toString("pug: label: invalid align '", value.getString(), "'"));
+			}
+			return true;
+		} else if (name == "width") {
+			if (parseFloat(value, f)) {
+				label->setWidth(f);
+			}
+			return true;
+		}
+		return false;
+	},
+				.applyText =
+						[](const BuilderContext &, Node *node, StringView text) {
+		static_cast<Label *>(node)->setString(text);
+	},
+			});
 
 	TagFactory spriteFactory{
 		.create = [](const BuilderContext &ctx, StringView, const Value &attrs) -> Rc<Node> {
-			auto &src = attrs.getValue("src");
-			if (src.isString()) {
-				return Rc<VectorSprite>::create(FileInfo(src.getString()));
-			}
-			ctx.error("pug: sprite: missing 'src' attribute");
-			return Rc<Node>::create();
-		},
+		auto &src = attrs.getValue("src");
+		if (src.isString()) {
+			return Rc<VectorSprite>::create(FileInfo(src.getString()));
+		}
+		ctx.error("pug: sprite: missing 'src' attribute");
+		return Rc<Node>::create();
+	},
 		.applyAttribute = [](const BuilderContext &, Node *, StringView name,
-				const Value &) -> bool {
-			return name == "src"; // consumed by create
-		},
+								  const Value &) -> bool {
+		return name == "src"; // consumed by create
+	},
 	};
 	ret->set("sprite", TagFactory(spriteFactory));
 	ret->set("image", move(spriteFactory));
 
-	ret->set("flex", TagFactory{
-		.create = [](const BuilderContext &ctx, StringView, const Value &attrs) -> Rc<Node> {
-			auto node = Rc<Node>::create();
-			node->addSystem(Rc<LayoutSystem>::create(parseFlexLayoutInfo(ctx, attrs)));
-			return node;
-		},
-		.applyAttribute = [](const BuilderContext &, Node *, StringView name,
-				const Value &) -> bool {
-			// container parameters are consumed by create
-			return name == "direction" || name == "wrap" || name == "justify-content"
-					|| name == "align-items" || name == "align-content" || name == "gap"
-					|| name == "row-gap" || name == "column-gap" || name == "padding";
-		},
-	});
+	ret->set("flex",
+			TagFactory{
+				.create = [](const BuilderContext &ctx, StringView,
+								  const Value &attrs) -> Rc<Node> {
+		auto node = Rc<Node>::create();
+		node->addSystem(Rc<LayoutSystem>::create(parseFlexLayoutInfo(ctx, attrs)));
+		return node;
+	},
+				.applyAttribute = [](const BuilderContext &, Node *, StringView name,
+										  const Value &) -> bool {
+		// container parameters are consumed by create
+		return name == "direction" || name == "wrap" || name == "justify-content"
+				|| name == "align-items" || name == "align-content" || name == "gap"
+				|| name == "row-gap" || name == "column-gap" || name == "padding";
+	},
+			});
 
-	ret->set("button", TagFactory{
-		.create = [](const BuilderContext &ctx, StringView, const Value &attrs) -> Rc<Node> {
-			return Rc<Button>::create(ctx.resolve(attrs.getString("on-tap")));
-		},
-		.applyAttribute = [](const BuilderContext &, Node *node, StringView name,
-				const Value &value) -> bool {
-			if (name == "on-tap") {
-				return true; // consumed by create
-			} else if (name == "enabled") {
-				static_cast<Button *>(node)->setEnabled(value.asBool());
-				return true;
-			}
-			return false;
-		},
-	});
+	ret->set("button",
+			TagFactory{
+				.create = [](const BuilderContext &ctx, StringView,
+								  const Value &attrs) -> Rc<Node> {
+		return Rc<Button>::create(ctx.resolve(attrs.getString("on-tap")));
+	},
+				.applyAttribute = [](const BuilderContext &, Node *node, StringView name,
+										  const Value &value) -> bool {
+		if (name == "on-tap") {
+			return true; // consumed by create
+		} else if (name == "enabled") {
+			static_cast<Button *>(node)->setEnabled(value.asBool());
+			return true;
+		}
+		return false;
+	},
+			});
 
-	ret->set("button-label", TagFactory{
-		.create = [](const BuilderContext &ctx, StringView, const Value &attrs) -> Rc<Node> {
-			return Rc<ButtonWithLabel>::create(StringView(),
-					ctx.resolve(attrs.getString("on-tap")));
-		},
-		.applyAttribute = [](const BuilderContext &, Node *node, StringView name,
-				const Value &value) -> bool {
-			if (name == "on-tap") {
-				return true; // consumed by create
-			} else if (name == "enabled") {
-				static_cast<ButtonWithLabel *>(node)->setEnabled(value.asBool());
-				return true;
-			}
-			return false;
-		},
-		.applyText = [](const BuilderContext &, Node *node, StringView text) {
-			static_cast<ButtonWithLabel *>(node)->setString(text);
-		},
-	});
+	ret->set("button-label",
+			TagFactory{
+				.create = [](const BuilderContext &ctx, StringView,
+								  const Value &attrs) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create(StringView(), ctx.resolve(attrs.getString("on-tap")));
+	},
+				.applyAttribute = [](const BuilderContext &, Node *node, StringView name,
+										  const Value &value) -> bool {
+		if (name == "on-tap") {
+			return true; // consumed by create
+		} else if (name == "enabled") {
+			static_cast<ButtonWithLabel *>(node)->setEnabled(value.asBool());
+			return true;
+		}
+		return false;
+	},
+				.applyText =
+						[](const BuilderContext &, Node *node, StringView text) {
+		static_cast<ButtonWithLabel *>(node)->setString(text);
+	},
+			});
 
 	return ret;
 }
@@ -509,7 +518,7 @@ void Registry::set(StringView tag, TagFactory &&factory) {
 	if (it != _tags.end()) {
 		it->second = move(factory);
 	} else {
-		_tags.emplace(tag.str<memory::StandartInterface>(), move(factory));
+		_tags.emplace(tag.str<mem_std::Interface>(), move(factory));
 	}
 }
 

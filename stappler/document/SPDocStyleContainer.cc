@@ -560,7 +560,7 @@ bool StyleContainer::readStyle(StringReader &s) {
 
 bool StyleContainer::readStyle(FileInfo path) {
 	if (filesystem::exists(path)) {
-		auto d = filesystem::readIntoMemory<memory::StandartInterface>(path);
+		auto d = filesystem::readIntoMemory<mem_std::Interface>(path);
 		StringReader r((const char *)d.data(), d.size());
 		return readStyle(r);
 	}
@@ -849,8 +849,8 @@ void StyleContainer::resolveNodeStyle(StyleList &style, const Node &node,
 	auto add = [&](StringView key) {
 		auto it = _styles.find(key);
 		if (it != _styles.end()) {
-			matches.push_back(
-					MatchedRule{&it->second.style, resolved, it->second.specificity, it->second.order});
+			matches.push_back(MatchedRule{&it->second.style, resolved, it->second.specificity,
+				it->second.order});
 		}
 	};
 
@@ -867,9 +867,7 @@ void StyleContainer::resolveNodeStyle(StyleList &style, const Node &node,
 	}
 
 	sortMatchedRules(matches);
-	for (auto &m : matches) {
-		style.merge(*m.style, m.media);
-	}
+	for (auto &m : matches) { style.merge(*m.style, m.media); }
 }
 
 namespace {
@@ -1109,8 +1107,7 @@ void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) 
 			if (!comp.id.empty()) {
 				++idC;
 			}
-			clsC += uint32_t(comp.classes.size())
-					+ uint32_t(__builtin_popcount(comp.pseudoRequire))
+			clsC += uint32_t(comp.classes.size()) + uint32_t(__builtin_popcount(comp.pseudoRequire))
 					+ uint32_t(__builtin_popcount(comp.pseudoForbid));
 			if (!comp.universal && !comp.tag.empty()) {
 				++typeC;
