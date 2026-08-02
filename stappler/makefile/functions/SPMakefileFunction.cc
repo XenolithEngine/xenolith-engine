@@ -200,8 +200,9 @@ static bool Function_error(const Callback<void(StringView)> &out, void *, Variab
 		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
 	// The message may carry path-space placeholders (e.g. from $(CURDIR)/$(wildcard)); show real spaces.
-	memory::StandartInterface::StringType ds;
-	engine.getCallContext()->err->reportError(decodePathSpaces(str.weak(), ds), nullptr, nullptr, false);
+	mem_std::Interface::StringType ds;
+	engine.getCallContext()->err->reportError(decodePathSpaces(str.weak(), ds), nullptr, nullptr,
+			false);
 	return true;
 }
 
@@ -214,7 +215,7 @@ static bool Function_warning(const Callback<void(StringView)> &out, void *, Vari
 		}
 		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
-	memory::StandartInterface::StringType ds;
+	mem_std::Interface::StringType ds;
 	engine.getCallContext()->err->reportWarning(decodePathSpaces(str.weak(), ds), nullptr, nullptr,
 			false);
 	return true;
@@ -230,7 +231,7 @@ static bool Function_info(const Callback<void(StringView)> &out, void *, Variabl
 		engine.resolve([&](StringView s) { str << s; }, it, 0, *engine.getCallContext()->err);
 	}
 
-	memory::StandartInterface::StringType ds;
+	mem_std::Interface::StringType ds;
 	auto result = decodePathSpaces(str.weak(), ds);
 	engine.getCallContext()->err->reportInfo(result, nullptr, nullptr, false);
 	return true;

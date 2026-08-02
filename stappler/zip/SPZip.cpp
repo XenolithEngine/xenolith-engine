@@ -139,7 +139,7 @@ static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
 }
 
 template <>
-ZipArchive<memory::StandartInterface>::ZipArchive(FileInfo info) {
+ZipArchive<mem_std::Interface>::ZipArchive(FileInfo info) {
 	_handle = _createZipArchive(info, &_data);
 }
 
@@ -311,7 +311,7 @@ static bool addFileToArchive(zip_t *_handle, StringView name, BytesView data, bo
 }
 
 template <>
-ZipArchive<memory::StandartInterface>::ZipArchive(BytesView b, bool readonly) {
+ZipArchive<mem_std::Interface>::ZipArchive(BytesView b, bool readonly) {
 	_handle = _createZipArchive(b, &_data, readonly);
 }
 
@@ -321,7 +321,7 @@ ZipArchive<memory::PoolInterface>::ZipArchive(BytesView b, bool readonly) {
 }
 
 template <>
-ZipArchive<memory::StandartInterface>::ZipArchive(FILE *file, bool readonly) {
+ZipArchive<mem_std::Interface>::ZipArchive(FILE *file, bool readonly) {
 	_handle = _createZipArchive(file, readonly);
 	_data.readonly = readonly;
 }
@@ -333,7 +333,7 @@ ZipArchive<memory::PoolInterface>::ZipArchive(FILE *file, bool readonly) {
 }
 
 template <>
-ZipArchive<memory::StandartInterface>::~ZipArchive() {
+ZipArchive<mem_std::Interface>::~ZipArchive() {
 	if (_handle) {
 		zip_discard(_handle);
 		_handle = nullptr;
@@ -355,9 +355,9 @@ ZipArchive<memory::PoolInterface>::~ZipArchive() {
 }
 
 template <>
-bool ZipArchive<memory::StandartInterface>::addDir(StringView name) {
+bool ZipArchive<mem_std::Interface>::addDir(StringView name) {
 	return zip_dir_add(_handle,
-				   name.terminated() ? name.data() : name.str<memory::StandartInterface>().data(),
+				   name.terminated() ? name.data() : name.str<mem_std::Interface>().data(),
 				   ZIP_FL_ENC_UTF_8)
 			>= 0;
 }
@@ -371,9 +371,8 @@ bool ZipArchive<memory::PoolInterface>::addDir(StringView name) {
 }
 
 template <>
-bool ZipArchive<memory::StandartInterface>::addFile(StringView name, BytesView data,
-		bool uncompressed) {
-	return addFileToArchive<memory::StandartInterface>(_handle, name, data, uncompressed);
+bool ZipArchive<mem_std::Interface>::addFile(StringView name, BytesView data, bool uncompressed) {
+	return addFileToArchive<mem_std::Interface>(_handle, name, data, uncompressed);
 }
 
 template <>
@@ -383,9 +382,9 @@ bool ZipArchive<memory::PoolInterface>::addFile(StringView name, BytesView data,
 }
 
 template <>
-auto ZipArchive<memory::StandartInterface>::save() -> BufferTemplate<memory::StandartInterface> {
+auto ZipArchive<mem_std::Interface>::save() -> BufferTemplate<mem_std::Interface> {
 	if (_data.readonly) {
-		return BufferTemplate<memory::StandartInterface>();
+		return BufferTemplate<mem_std::Interface>();
 	}
 
 	auto err = zip_close(_handle);
@@ -413,7 +412,7 @@ auto ZipArchive<memory::PoolInterface>::save() -> BufferTemplate<memory::PoolInt
 }
 
 template <>
-size_t ZipArchive<memory::StandartInterface>::size(bool original) const {
+size_t ZipArchive<mem_std::Interface>::size(bool original) const {
 	return zip_get_num_entries(_handle, original ? ZIP_FL_UNCHANGED : 0);
 }
 
@@ -423,9 +422,9 @@ size_t ZipArchive<memory::PoolInterface>::size(bool original) const {
 }
 
 template <>
-uint64_t ZipArchive<memory::StandartInterface>::locateFile(StringView path) const {
+uint64_t ZipArchive<mem_std::Interface>::locateFile(StringView path) const {
 	auto ret = zip_name_locate(_handle,
-			path.terminated() ? path.data() : path.str<memory::StandartInterface>().data(),
+			path.terminated() ? path.data() : path.str<mem_std::Interface>().data(),
 			ZIP_FL_ENC_GUESS);
 	if (ret == -1) {
 		return maxOf<uint64_t>();
@@ -436,7 +435,7 @@ uint64_t ZipArchive<memory::StandartInterface>::locateFile(StringView path) cons
 template <>
 uint64_t ZipArchive<memory::PoolInterface>::locateFile(StringView path) const {
 	auto ret = zip_name_locate(_handle,
-			path.terminated() ? path.data() : path.str<memory::StandartInterface>().data(),
+			path.terminated() ? path.data() : path.str<mem_std::Interface>().data(),
 			ZIP_FL_ENC_GUESS);
 	if (ret == -1) {
 		return maxOf<uint64_t>();
@@ -445,7 +444,7 @@ uint64_t ZipArchive<memory::PoolInterface>::locateFile(StringView path) const {
 }
 
 template <>
-StringView ZipArchive<memory::StandartInterface>::getFileName(uint64_t idx, bool original) const {
+StringView ZipArchive<mem_std::Interface>::getFileName(uint64_t idx, bool original) const {
 	if (idx == maxOf<uint64_t>()) {
 		return StringView();
 	}
@@ -463,7 +462,7 @@ StringView ZipArchive<memory::PoolInterface>::getFileName(uint64_t idx, bool ori
 }
 
 template <>
-void ZipArchive<memory::StandartInterface>::ftw(
+void ZipArchive<mem_std::Interface>::ftw(
 		const Callback<void(uint64_t, StringView path, size_t size, Time time)> &cb,
 		bool original) const {
 	zip_stat_t stat;
@@ -532,7 +531,7 @@ static bool _readFile(zip_t *handle, StringView path, const Callback<void(BytesV
 	}
 
 	auto ret = zip_name_locate(handle,
-			path.terminated() ? path.data() : path.str<memory::StandartInterface>().data(),
+			path.terminated() ? path.data() : path.str<mem_std::Interface>().data(),
 			ZIP_FL_ENC_GUESS);
 	if (ret == -1) {
 		return false;
@@ -542,13 +541,13 @@ static bool _readFile(zip_t *handle, StringView path, const Callback<void(BytesV
 }
 
 template <>
-bool ZipArchive<memory::StandartInterface>::readFile(StringView name,
+bool ZipArchive<mem_std::Interface>::readFile(StringView name,
 		const Callback<void(BytesView)> &cb) const {
 	return _readFile(_handle, name, cb);
 }
 
 template <>
-bool ZipArchive<memory::StandartInterface>::readFile(uint64_t index,
+bool ZipArchive<mem_std::Interface>::readFile(uint64_t index,
 		const Callback<void(BytesView)> &cb) const {
 	return _readFile(_handle, index, cb);
 }

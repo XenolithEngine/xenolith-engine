@@ -32,8 +32,12 @@
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 void setupStandardVariables(Makefile *mk, StringView rootDir, ErrorReporter &err) {
-	auto simple = [&](StringView n, StringView v) { mk->assignSimpleVariable(n, Origin::Default, v, err); };
-	auto rec = [&](StringView n, StringView v) { mk->assignRecursiveVariable(n, Origin::Default, v, err); };
+	auto simple = [&](StringView n, StringView v) {
+		mk->assignSimpleVariable(n, Origin::Default, v, err);
+	};
+	auto rec = [&](StringView n, StringView v) {
+		mk->assignRecursiveVariable(n, Origin::Default, v, err);
+	};
 
 	// Program names
 	simple("AR", "ar");
@@ -105,7 +109,7 @@ void setupStandardVariables(Makefile *mk, StringView rootDir, ErrorReporter &err
 
 	// CURDIR is make-visible and routinely joined into paths ($(CURDIR)/build/x.o), so a space in the
 	// working directory must be encoded to PathSpacePlaceholder or the join would split into two words.
-	memory::StandartInterface::StringType curdirStorage;
+	mem_std::Interface::StringType curdirStorage;
 	simple("CURDIR", encodePathSpaces(rootDir, curdirStorage));
 }
 
@@ -122,7 +126,7 @@ Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &err) {
 	// on first use (Origin::Environment), without bulk-importing the whole environment.
 	mk->addSubstitutionCallback(Origin::Environment,
 			[](void *, const Callback<void(StringView)> &out, StringView name) -> bool {
-		memory::StandartInterface::StringType key(name.data(), name.size());
+		mem_std::Interface::StringType key(name.data(), name.size());
 		if (const char *value = ::getenv(key.data())) {
 			out(StringView(value));
 			return true;
@@ -140,9 +144,9 @@ Rc<MakefileRef> loadProject(StringView projectDir, ErrorReporter &err) {
 
 	// Find and include the project makefile by absolute path (so LOCAL_ROOT and $(shell find …) stay
 	// absolute and no chdir is needed).
-	memory::StandartInterface::StringType path;
+	mem_std::Interface::StringType path;
 	for (auto def : {StringView("GNUmakefile"), StringView("makefile"), StringView("Makefile")}) {
-		auto p = filepath::merge<memory::StandartInterface>(projectDir, def);
+		auto p = filepath::merge<mem_std::Interface>(projectDir, def);
 		if (filesystem::exists(FileInfo{StringView(p)})) {
 			path = sp::move(p);
 			break;

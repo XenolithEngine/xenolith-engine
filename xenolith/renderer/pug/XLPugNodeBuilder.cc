@@ -45,7 +45,7 @@ bool NodeBuilder::pushNode(StringView tag) {
 	}
 
 	auto &pending = _stack.emplace_back();
-	pending.tag = tag.str<memory::StandartInterface>();
+	pending.tag = tag.str<mem_std::Interface>();
 	pending.factory = _config.registry->get(tag);
 	if (!pending.factory) {
 		onError(toString("pug: unknown tag '", tag, "', falling back to 'node'"));
@@ -98,7 +98,7 @@ bool NodeBuilder::setAttribute(StringView name, const spug::Value &value, bool) 
 			Registry::applyGenericAttribute(ctx, pending.node, name, converted);
 		}
 	} else {
-		pending.attrs.setValue(move(converted), name.str<memory::StandartInterface>());
+		pending.attrs.setValue(move(converted), name.str<mem_std::Interface>());
 	}
 	return true;
 }

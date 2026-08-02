@@ -30,7 +30,7 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 class FontFaceObject;
 
-class SP_PUBLIC Formatter : public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC Formatter : public InterfaceObject<mem_std::Interface> {
 public:
 	struct LinePosition {
 		uint16_t offset;
@@ -47,12 +47,12 @@ public:
 	};
 
 	Formatter();
-	Formatter(FontCallback &&, TextLayoutData<memory::StandartInterface> *);
+	Formatter(FontCallback &&, TextLayoutData<mem_std::Interface> *);
 	Formatter(FontCallback &&, TextLayoutData<memory::PoolInterface> *);
 
 	void setFontCallback(FontCallback &&);
 
-	void reset(TextLayoutData<memory::StandartInterface> *);
+	void reset(TextLayoutData<mem_std::Interface> *);
 	void reset(TextLayoutData<memory::PoolInterface> *);
 	void reset();
 	void finalize();
@@ -162,7 +162,7 @@ protected:
 		VectorAdapter<LineLayoutData> lines;
 
 		Output() = default;
-		Output(TextLayoutData<memory::StandartInterface> *);
+		Output(TextLayoutData<mem_std::Interface> *);
 		Output(TextLayoutData<memory::PoolInterface> *);
 
 		Output &operator=(Output &&) = default;

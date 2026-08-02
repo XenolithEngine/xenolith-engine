@@ -158,9 +158,9 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 				if (auto t = mk->getTarget(tn)) {
 					targets.emplace_back(t);
 				} else {
-					memory::StandartInterface::StringType ns;
-					sprt::cerr << "xlmake: unknown target: "
-							   << makefile::decodePathSpaces(tn, ns) << "\n";
+					mem_std::Interface::StringType ns;
+					sprt::cerr << "xlmake: unknown target: " << makefile::decodePathSpaces(tn, ns)
+							   << "\n";
 				}
 			}
 		}

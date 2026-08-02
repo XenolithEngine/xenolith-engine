@@ -39,10 +39,9 @@ auto tolower<memory::PoolInterface>(StringView data) -> memory::PoolInterface::S
 }
 
 template <>
-auto tolower<memory::StandartInterface>(StringView data) -> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
-	sprt::unicode::tolower([&](StringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+auto tolower<mem_std::Interface>(StringView data) -> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
+	sprt::unicode::tolower([&](StringView str) { ret = str.str<mem_std::Interface>(); }, data);
 	return ret;
 }
 
@@ -54,10 +53,9 @@ auto toupper<memory::PoolInterface>(StringView data) -> memory::PoolInterface::S
 }
 
 template <>
-auto toupper<memory::StandartInterface>(StringView data) -> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
-	sprt::unicode::toupper([&](StringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+auto toupper<mem_std::Interface>(StringView data) -> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
+	sprt::unicode::toupper([&](StringView str) { ret = str.str<mem_std::Interface>(); }, data);
 	return ret;
 }
 
@@ -69,10 +67,9 @@ auto totitle<memory::PoolInterface>(StringView data) -> memory::PoolInterface::S
 }
 
 template <>
-auto totitle<memory::StandartInterface>(StringView data) -> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
-	sprt::unicode::totitle([&](StringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+auto totitle<mem_std::Interface>(StringView data) -> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
+	sprt::unicode::totitle([&](StringView str) { ret = str.str<mem_std::Interface>(); }, data);
 	return ret;
 }
 
@@ -86,12 +83,10 @@ auto tolower<memory::PoolInterface>(WideStringView data) -> memory::PoolInterfac
 }
 
 template <>
-auto tolower<memory::StandartInterface>(WideStringView data)
-		-> memory::StandartInterface::WideStringType {
-	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::tolower([&](WideStringView str) {
-		ret = str.str<memory::StandartInterface::WideStringType>();
-	}, data);
+auto tolower<mem_std::Interface>(WideStringView data) -> mem_std::Interface::WideStringType {
+	mem_std::Interface::WideStringType ret;
+	sprt::unicode::tolower(
+			[&](WideStringView str) { ret = str.str<mem_std::Interface::WideStringType>(); }, data);
 	return ret;
 }
 
@@ -105,12 +100,10 @@ auto toupper<memory::PoolInterface>(WideStringView data) -> memory::PoolInterfac
 }
 
 template <>
-auto toupper<memory::StandartInterface>(WideStringView data)
-		-> memory::StandartInterface::WideStringType {
-	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::toupper([&](WideStringView str) {
-		ret = str.str<memory::StandartInterface::WideStringType>();
-	}, data);
+auto toupper<mem_std::Interface>(WideStringView data) -> mem_std::Interface::WideStringType {
+	mem_std::Interface::WideStringType ret;
+	sprt::unicode::toupper(
+			[&](WideStringView str) { ret = str.str<mem_std::Interface::WideStringType>(); }, data);
 	return ret;
 }
 
@@ -124,12 +117,10 @@ auto totitle<memory::PoolInterface>(WideStringView data) -> memory::PoolInterfac
 }
 
 template <>
-auto totitle<memory::StandartInterface>(WideStringView data)
-		-> memory::StandartInterface::WideStringType {
-	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::totitle([&](WideStringView str) {
-		ret = str.str<memory::StandartInterface::WideStringType>();
-	}, data);
+auto totitle<mem_std::Interface>(WideStringView data) -> mem_std::Interface::WideStringType {
+	mem_std::Interface::WideStringType ret;
+	sprt::unicode::totitle(
+			[&](WideStringView str) { ret = str.str<mem_std::Interface::WideStringType>(); }, data);
 	return ret;
 }
 

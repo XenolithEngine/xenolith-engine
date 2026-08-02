@@ -1,0 +1,47 @@
+# Code style reference
+
+The conventions that make code in this monorepo look and behave like the code
+around it. Each topic is a standalone article: a TL;DR block for a quick check,
+then the rule with its rationale and real examples from the tree.
+
+Article 00 is different in kind: it states the **design principle** the engine is
+built on — *computation that can be deferred, must be deferred* — which is what
+most of the mechanisms in the later articles are instances of.
+
+This reference is also the source for the `code-style` agent skill
+([.claude/skills/code-style/SKILL.md](../../../.claude/skills/code-style/SKILL.md)) —
+the skill routes to these files rather than duplicating them, so an edit here
+reaches both the humans and the tooling.
+
+Build and verification live elsewhere: see [AGENTS.md](../../../AGENTS.md) and
+[makefiles.adoc](../makefiles.adoc). To decide **which node processing phase**
+(and therefore which `SystemFlags` bit and which `handle*` hook) a behaviour
+belongs in, the authority is
+[design/node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc);
+articles 10 and 11 route to it rather than restating it.
+
+## Articles
+
+| # | Article | Read it when |
+|---|---|---|
+| 00 | [**Defer every computation you can**](00-deferred-computation.adoc) | designing anything — the principle behind most of the rules below |
+| 01 | [Compilation units and subunits](01-units-and-files.adoc) | adding a source file, deciding `.cpp` vs `.cc`, compile-checking one file |
+| 02 | [File layout: license, guards, namespaces, includes](02-file-layout.adoc) | creating a header or a new SCU |
+| 03 | [Naming](03-naming.adoc) | naming a file, type, member, event handler, or factory |
+| 04 | [Platform and architecture guards](04-platform-guards.adoc) | writing anything behind `#if SPRT_*` or touching per-platform values |
+| 05 | [Memory and ownership](05-memory-and-ownership.adoc) | allocating, ref-counting, or using a memory pool |
+| 06 | [Formatting](06-formatting.adoc) | wondering whether to align/wrap something by hand |
+| 07 | [Strings](07-strings.adoc) | passing, building, parsing or storing text |
+| 08 | [Errors: `Status`, `Result`, logging, assertions](08-errors-and-status.adoc) | a function can fail, or you need to log/assert |
+| 09 | [Threads and `sprt::dispatch`](09-threads-and-dispatch.adoc) | posting work to a thread, timers, async I/O, anything concurrent |
+| 10 | [`Node`: geometry, tree, subclasses](10-node-geometry.adoc) | placing, sizing or hit-testing a node; picking a base class |
+| 11 | [Node / System / Component](11-node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
+| 12 | [The runtime as a libc](12-runtime-libc.adoc) | calling libc, handling paths, or reaching for anything `std::` |
+
+## Planned
+
+Topics with rules that exist in the codebase but are not written up yet. Add the
+article here (and to the skill's routing table) when you write it.
+
+* **Tests** — where a test belongs, the self-checking CLI harness, GUI/screenshot
+  verification, debug-only switches (`XL_*_TEST`, `SPRT_REF_DEBUG`).

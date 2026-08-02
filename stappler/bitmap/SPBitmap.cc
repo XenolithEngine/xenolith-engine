@@ -77,7 +77,7 @@ struct BitmapPoolTarget {
 };
 
 struct BitmapStdTarget {
-	memory::StandartInterface::BytesType *bytes;
+	mem_std::Interface::BytesType *bytes;
 	const StrideFn *strideFn;
 };
 
@@ -103,7 +103,7 @@ bool BitmapTemplate<memory::PoolInterface>::loadData(const uint8_t *data, size_t
 }
 
 template <>
-bool BitmapTemplate<memory::StandartInterface>::loadData(const uint8_t *data, size_t dataLen,
+bool BitmapTemplate<mem_std::Interface>::loadData(const uint8_t *data, size_t dataLen,
 		const StrideFn &strideFn) {
 	BitmapBytesTarget<mem_std::Interface::BytesType> target{&_data, strideFn ? &strideFn : nullptr};
 	BitmapWriter w;
@@ -123,10 +123,9 @@ bool BitmapTemplate<memory::StandartInterface>::loadData(const uint8_t *data, si
 }
 
 template <>
-bool BitmapTemplate<memory::StandartInterface>::save(FileFormat fmt, const FileInfo &path,
-		bool invert) {
+bool BitmapTemplate<mem_std::Interface>::save(FileFormat fmt, const FileInfo &path, bool invert) {
 	BitmapWriter w;
-	_setupWriter<memory::StandartInterface::BytesType>(w, nullptr);
+	_setupWriter<mem_std::Interface::BytesType>(w, nullptr);
 	auto support = getDefaultFormat(fmt);
 	if (support->isWritable()) {
 		return support->save(path, _data.data(), w, invert);
@@ -153,8 +152,7 @@ bool BitmapTemplate<memory::PoolInterface>::save(FileFormat fmt, const FileInfo 
 }
 
 template <>
-bool BitmapTemplate<memory::StandartInterface>::save(StringView name, const FileInfo &path,
-		bool invert) {
+bool BitmapTemplate<mem_std::Interface>::save(StringView name, const FileInfo &path, bool invert) {
 	BitmapFormat::save_fn fn = nullptr;
 
 	auto lock = lockFormatList();
@@ -169,7 +167,7 @@ bool BitmapTemplate<memory::StandartInterface>::save(StringView name, const File
 
 	if (fn) {
 		BitmapWriter w;
-		_setupWriter<memory::StandartInterface::BytesType>(w, nullptr);
+		_setupWriter<mem_std::Interface::BytesType>(w, nullptr);
 		return fn(path, _data.data(), w, invert);
 	}
 	return false;

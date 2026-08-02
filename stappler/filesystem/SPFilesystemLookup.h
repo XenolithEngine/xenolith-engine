@@ -153,7 +153,7 @@ SP_PUBLIC inline auto findWritablePath(const FileInfo &info, Access a = Access::
 // backs the converted bytes, so the returned view stays valid while both `path` and `storage` live.
 // This is the single point where the public filesystem API accepts Windows paths — every operation
 // resolves through enumeratePaths()/detectResourceCategory()/currentDir(), which call it on entry.
-SP_PUBLIC StringView toPosixPath(StringView path, memory::StandartInterface::StringType &storage);
+SP_PUBLIC StringView toPosixPath(StringView path, mem_std::Interface::StringType &storage);
 
 using sprt::filesystem::enumeratePaths;
 

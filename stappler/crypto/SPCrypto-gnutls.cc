@@ -177,7 +177,7 @@ static KeyType getGnuTLSKeyType(int a) {
 }
 
 struct Pkcs1RsaPubKeyReader {
-	using Decoder = Asn1Decoder<memory::StandartInterface, Pkcs1RsaPubKeyReader>;
+	using Decoder = Asn1Decoder<mem_std::Interface, Pkcs1RsaPubKeyReader>;
 
 	enum State {
 		Init,
@@ -247,8 +247,8 @@ static BackendCtx s_gnuTLSCtx = {
 	gnutls_global_init();
 },
 	.finalize = [](BackendCtx &) { gnutls_global_deinit(); },
-	.encryptBlock = [](const BlockKey256 &key, BytesView d,
-							const Callback<void(BytesView)> &cb, BytesView ivBytes) -> bool {
+	.encryptBlock = [](const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb,
+							BytesView ivBytes) -> bool {
 	auto cipherBlockSize = getBlockSize(key.cipher);
 	auto algo = getGnuTLSAlgo(key.cipher);
 
@@ -299,8 +299,8 @@ static BackendCtx s_gnuTLSCtx = {
 	cb(BytesView(output, blockSize + sizeof(BlockCryptoHeader) - cipherBlockSize));
 	return true;
 },
-	.decryptBlock = [](const BlockKey256 &key, BytesView b,
-							const Callback<void(BytesView)> &cb, BytesView ivBytes) -> bool {
+	.decryptBlock = [](const BlockKey256 &key, BytesView b, const Callback<void(BytesView)> &cb,
+							BytesView ivBytes) -> bool {
 	if (b.size() < sizeof(BlockCryptoHeader)) {
 		return false;
 	}

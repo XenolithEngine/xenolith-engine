@@ -31,7 +31,7 @@ public:
 	// use the shared decoder dimension cap (SPBitmapFormat.h) as the single source
 	// of truth; pixel indices below are stored as unsigned short, so the cap must
 	// stay within that range
-	static_assert(MaxImageDimension <= 65535, "MaxImageDimension must fit in unsigned short");
+	static_assert(MaxImageDimension <= 65'535, "MaxImageDimension must fit in unsigned short");
 
 	struct Contrib {
 		Real weight;
@@ -1314,9 +1314,9 @@ auto BitmapTemplate<memory::PoolInterface>::resample(uint32_t width, uint32_t he
 }
 
 template <>
-auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint32_t width,
-		uint32_t height, uint32_t stride) const -> BitmapTemplate<memory::StandartInterface> {
-	BitmapTemplate<memory::StandartInterface> ret;
+auto BitmapTemplate<mem_std::Interface>::resample(ResampleFilter f, uint32_t width, uint32_t height,
+		uint32_t stride) const -> BitmapTemplate<mem_std::Interface> {
+	BitmapTemplate<mem_std::Interface> ret;
 	if (empty()) {
 		return ret;
 	}
@@ -1353,8 +1353,8 @@ auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint3
 }
 
 template <>
-auto BitmapTemplate<memory::StandartInterface>::resample(uint32_t width, uint32_t height,
-		uint32_t stride) const -> BitmapTemplate<memory::StandartInterface> {
+auto BitmapTemplate<mem_std::Interface>::resample(uint32_t width, uint32_t height,
+		uint32_t stride) const -> BitmapTemplate<mem_std::Interface> {
 	return resample(ResamplerData::Filter::Default, width, height, stride);
 }
 

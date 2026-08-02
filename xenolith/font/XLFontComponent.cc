@@ -59,7 +59,7 @@ Rc<FontController> FontComponent::createDefaultController(FontComponent *ext,
 
 static Bytes openResourceFont(FontLibrary::DefaultFontName name) {
 	auto d = FontLibrary::getFont(name);
-	return data::decompress<memory::StandartInterface>(d.data(), d.size());
+	return data::decompress<mem_std::Interface>(d.data(), d.size());
 }
 
 static String getResourceFontName(FontLibrary::DefaultFontName name) {

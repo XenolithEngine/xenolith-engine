@@ -182,7 +182,7 @@ const document::StyleList *StyleSheet::getInlineStyle(StringView css) {
 }
 
 Vector<bool> StyleSheet::resolveMedia(const document::MediaParameters &media) const {
-	return media.resolveMediaQueries<memory::StandartInterface>(_data->queries);
+	return media.resolveMediaQueries<mem_std::Interface>(_data->queries);
 }
 
 SpanView<StringView> StyleSheet::getStrings() const { return _data->strings; }

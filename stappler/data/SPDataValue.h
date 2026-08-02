@@ -1413,7 +1413,7 @@ auto ValueTemplate<Interface>::getType(Key &&key) const -> Type {
 // would be ill-formed if they followed an explicit instantiation of the class.
 #ifndef SP_DATA_VALUE_EXPLICIT_INSTANTIATION
 extern template class ValueTemplate<memory::PoolInterface>;
-extern template class ValueTemplate<memory::StandartInterface>;
+extern template class ValueTemplate<mem_std::Interface>;
 #endif
 
 } // namespace stappler::data
@@ -1427,7 +1427,7 @@ extern template class ValueTemplate<memory::StandartInterface>;
 namespace sprt {
 
 #define SP_DATA_VALUE_POOL ::stappler::data::ValueTemplate<::stappler::memory::PoolInterface>
-#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::memory::StandartInterface>
+#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::mem_std::Interface>
 
 extern template class __vector<SP_DATA_VALUE_POOL,
 		SP_DATA_VALUE_POOL::InterfaceType::Allocator<SP_DATA_VALUE_POOL>>;

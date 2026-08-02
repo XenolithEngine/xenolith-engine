@@ -722,12 +722,12 @@ struct SP_PUBLIC MediaQuery : public memory::AllocPool {
 
 struct SP_PUBLIC MediaParameters {
 	template <typename T, typename V>
-	using Map = memory::StandartInterface::MapType<T, V>;
+	using Map = mem_std::Interface::MapType<T, V>;
 
 	template <typename T>
-	using Vector = memory::StandartInterface::VectorType<T>;
+	using Vector = mem_std::Interface::VectorType<T>;
 
-	using String = memory::StandartInterface::StringType;
+	using String = mem_std::Interface::StringType;
 
 	Size2 surfaceSize;
 

@@ -40,6 +40,10 @@ require the target platform.
   paths, not `cd`.
 - **App code cannot use POSIX sockets** (the runtime libc lacks them). Use the
   OpenSSL BIO socket API instead.
+- **Before writing code, read the code style reference** —
+  [docs/usage/codestyle/index.adoc](docs/usage/codestyle/index.adoc) (summary in
+  §9 below). This document covers building; that one covers how the sources are
+  written.
 
 ---
 
@@ -443,3 +447,32 @@ scope, you are probably either (a) on a target that excludes that file, or
 - [ ] Treated a clean **build** as the signal when no runner is available
       (GUI/macOS/Android); ran the **binary** for native CLI tests and via Wine.
 - [ ] Ran with `verbose=1` when a configure/module/toolchain problem is unclear.
+
+---
+
+## 9. Code style
+
+Full reference: **[docs/usage/codestyle/index.adoc](docs/usage/codestyle/index.adoc)**
+— one article per topic. Read the relevant article before creating a file, a
+header, a platform branch, or an allocation. The essentials:
+
+- `.cpp`/`.c` = compile units (SCU); `.cc` = `#include`-only subunits
+  ([01](docs/usage/codestyle/01-units-and-files.adoc)).
+- MIT license block, path-derived include guard (`XENOLITH_..._H_`, no `#pragma
+  once`), `namespace STAPPLER_VERSIONIZED stappler::…` (runtime: `namespace
+  sprt`), `SP_PUBLIC` / `SPRT_API` on exported entities, includes never sorted
+  ([02](docs/usage/codestyle/02-file-layout.adoc)).
+- Types `PascalCase`, functions `camelCase`, members `_camelCase`, file statics
+  `s_name`; virtual hooks are `handleXxx()`, not `onXxx()`; files are `SP*` /
+  `XL*` / lowercase-in-`sprt`, aggregators `*.scu.cpp`
+  ([03](docs/usage/codestyle/03-naming.adoc)).
+- Platform tests are `#if SPRT_WINDOWS` / `SPRT_APPLE` / … — `#if`, not `#ifdef`,
+  never raw `_WIN32`; arch via `__SPRT_ARCH_ID == __SPRT_ARCH_ID_*`
+  ([04](docs/usage/codestyle/04-platform-guards.adoc)).
+- Ref-counted objects: `Rc<T>::create()` + `virtual bool init(...)`, never bare
+  `new`. Pool-allocated types must derive from `AllocPool`; `new (pool) T` on
+  anything else is a silent corruption, and aggregate `Type{value}` initializes
+  the base class ([05](docs/usage/codestyle/05-memory-and-ownership.adoc)).
+- Layout is [.clang-format](.clang-format)'s job: tabs (4), continuation 8,
+  column limit 100, `Node *node`, attached braces
+  ([06](docs/usage/codestyle/06-formatting.adoc)).

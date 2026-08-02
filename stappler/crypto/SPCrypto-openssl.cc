@@ -304,7 +304,7 @@ static ECDSA_SIG *hook_ossl_gost_ec_sign(const unsigned char *dgst, int dlen, EC
 	do {
 		do {
 			auto hexPrivKey = BN_bn2hex(priv_key);
-			auto privBytes = base16::decode<memory::StandartInterface>(StringView(hexPrivKey));
+			auto privBytes = base16::decode<mem_std::Interface>(StringView(hexPrivKey));
 			sprt::reverse(privBytes.begin(), privBytes.end());
 			OPENSSL_free(hexPrivKey);
 

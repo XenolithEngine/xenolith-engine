@@ -1,0 +1,203 @@
+# `xenolith::Node`: geometry, tree, and the subclass family
+
+**TL;DR**
+
+* Origin is **bottom-left, Y up**. `anchorPoint` is normalized (`0,0` = bottom
+  left, `0.5,0.5` = centre — the default), and it is the pin around which
+  position, scale and rotation act.
+* `contentSize` is the **untransformed** size; scale and rotation do not change
+  it.
+* Rotation is in **radians**.
+* Never recompute geometry by hand — read the cached transforms
+  (`getNodeToParentTransform()`, `getNodeToWorldTransform()`) and convert points
+  with `convertToNodeSpace` / `convertToWorldSpace`.
+* Changing geometry marks the node dirty and the change is applied during the
+  next visit — see the [phase pipeline](../../design/node-system-event-pipeline.adoc).
+* Nodes live on the **app thread** only ([09](09-threads-and-dispatch.adoc)), and
+  are created with `Rc<T>::create()` ([03](03-naming.adoc)).
+
+## The geometry fields
+
+[XLNode.h](../../../xenolith/application/nodes/XLNode.h):
+
+| Property | Type | Notes |
+|---|---|---|
+| `position` | `Vec3` | in the parent's space; `setPosition(Vec2)` keeps Z |
+| `anchorPoint` | `Vec2` | normalized; values outside `[0,1]` are legal |
+| `contentSize` | `Size2` | untransformed; the layout box |
+| `scale` | `Vec3` | `setScale(float)` sets X and Y |
+| `rotation` | `float` (Z) / `Vec3` / `Quaternion` | **radians** |
+| `skew` | `Vec2` | `setSkewX` / `setSkewY` |
+| `localZOrder` | `ZOrder` | sibling ordering; `ZOrderTransparent` keeps the node out of the z-path |
+| `depthIndex` | `float` | depth for the render pass |
+
+`anchorPoint` and `contentSize` together define the box: the node's own origin
+sits at `-anchorPoint * contentSize`, so moving the anchor moves the content
+under the same `position` without touching the layout.
+
+## Transforms and spaces
+
+The node caches its matrices and invalidates them on change; read them, don't
+rebuild them:
+
+[source,cpp]
+----
+const Mat4 &getNodeToParentTransform() const;
+const Mat4 &getParentToNodeTransform() const;
+Mat4 getNodeToWorldTransform() const;   // walks up the chain
+Mat4 getWorldToNodeTransform() const;
+
+Vec2 convertToNodeSpace(const Vec2 &worldPoint) const;
+Vec2 convertToWorldSpace(const Vec2 &nodePoint) const;
+Vec2 convertToNodeSpaceAR(const Vec2 &worldPoint) const;   // relative to anchorPoint
+Vec2 convertToWorldSpaceAR(const Vec2 &nodePoint) const;
+----
+
+`setNodeToParentTransform()` overrides the composed matrix directly — use it only
+when you genuinely have a matrix (physics, a custom controller), because the
+individual properties no longer describe the node afterwards.
+
+For hit-testing use `isTouched(worldPoint, padding)` /
+`isTouchedNodeSpace(nodePoint, padding)` rather than comparing rectangles
+yourself; `getBoundingBox()` returns the node's box **in the parent's space**.
+
+Static helpers `getChainNodeToParentTransform(parent, node, withParent)` and
+`getChainParentToNodeTransform(...)` compose a transform across a known ancestor
+chain — cheaper and clearer than repeated world round-trips.
+
+## Dirty marks
+
+Geometry setters mark the node internally; the work happens on the next visit.
+When you change something the engine cannot see (a data source, a computed size),
+say so explicitly:
+
+[source,cpp]
+----
+markComponentsDirty();      // re-run the components phase
+markContentSizeDirty();     // re-run handleContentSizeDirty
+markMeasureDirty();         // re-run the measure phase (fit-content protocol)
+markLayoutChildrenDirty();  // ask a layout engine to re-lay-out the children
+----
+
+The order in which these phases run, what flags flow parent→child, and how a
+descendant's change reaches an ancestor are all described once in
+[docs/design/node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc).
+Read it before adding a phase-driven behaviour; do not re-derive the order from
+the sources.
+
+## Visibility and the layout box
+
+Two questions, two answers:
+
+* `isEffectivelyVisible()` — the explicit `setVisible()` flag **combined with** the
+  style-driven `VisibilityComponent` (`display: none` / `visibility: hidden`).
+  When false, `wrapVisit` skips the whole subtree.
+* `isDisplayed()` — whether the node still occupies a layout box. `display: none`
+  collapses it; `visibility: hidden` keeps the box, matching CSS.
+
+A layout engine must consult `isDisplayed()`, not `isVisible()`.
+
+## Colour and opacity
+
+`setColor()` / `setOpacity()` set the node's *own* values; `getDisplayedColor()`
+/ `getDisplayedOpacity()` are what the render pass uses after the parent cascade.
+The cascade is opt-in per node: `setCascadeColorEnabled()` /
+`setCascadeOpacityEnabled()`.
+
+## The tree
+
+[source,cpp]
+----
+_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));   // returns the child, typed
+node->addChildNode(child, ZOrder(2), tag);
+
+node->getChildByTag(tag);
+node->getChildren();            // SpanView<Rc<Node>>
+node->removeFromParent();
+node->reorderChild(child, ZOrder(3));
+----
+
+`addChild` is the template wrapper that returns the concrete type — that is the
+idiom used everywhere, since it keeps the child pointer typed without a cast.
+Children are sorted lazily before drawing (`sortAllChildren()` is called for you;
+call it manually only when a node added this frame must be removed this frame).
+
+Beyond the tree itself a node carries identity used by input, styling and
+debugging. All of it lives in one `NodeIdentity` **component**
+([XLNode.h](../../../xenolith/application/nodes/XLNode.h)), which the setters
+create or update for you:
+
+[source,cpp]
+----
+struct SP_PUBLIC NodeIdentity {
+	static ComponentId Id;
+
+	uint64_t tag = InvalidTag;
+	String type;   // element/tag name ("label", "layer", "flex", ...)
+	String name;   // css #id
+	HashSet<String, sprt::hash<void>> classes; // css .classes
+	Value value;
+};
+----
+
+This is how the fields map onto CSS selectors — note the second row, which is the
+one that surprises people:
+
+| Node API | CSS |
+|---|---|
+| `setType("button")` | element/type selector `button` |
+| **`setName("submit")`** | **id selector `#submit`** — `name` *is* the CSS id |
+| `addStyleClass("primary")` | class selector `.primary` |
+| `setTag(42)` / `setDataValue(…)` | not visible to CSS (code-side lookup only) |
+
+So a node's `name` is not just a debug label: give two nodes the same name and a
+`#name` rule matches both. Pick names as you would pick ids in a stylesheet. See
+the [css-engine skill](../../../.claude/skills/css-engine/SKILL.md) for what the
+selector subset actually supports.
+
+## Lifecycle
+
+| Hook | When |
+|---|---|
+| `init()` | construction, via `Rc<T>::create()` — return `false` to fail |
+| `handleEnter(Scene *)` / `handleExit()` | added to / removed from a running scene |
+| `cleanup()` | tear-down; stops actions and scheduled updates |
+| `update(const UpdateTime &)` | per frame, only after `scheduleUpdate()` |
+
+Inside `handleEnter` the node has a `Scene`, a `Director`, a `Scheduler` and an
+`ActionManager` (`getScene()`, `getDirector()`, …); before that they are null.
+Always call the superclass implementation of any `handle*` you override.
+
+Actions run through `runAction(Rc<Action>)` / `stopAllActionsByTag(tag)` and are
+owned by the `ActionManager`, not by you.
+
+## The subclass family
+
+| Class | Base | Purpose |
+|---|---|---|
+| `Sprite` | `Node` | textured quad; the base for everything that draws |
+| `VectorSprite` | `Sprite` | renders a `VectorImage` (paths, strokes) |
+| `Layer` | `Sprite` | flat colour rectangle |
+| `Label` | `Sprite` + `font::LabelBase` | text |
+| `LayerRounded`, `IconSprite`, `Surface` | `VectorSprite` | rounded rect, icon, material surface |
+| `Scene` | `Node` | root of a scene graph |
+| `SceneContent` | `Node` | content layer inside a scene |
+| `ui::Button`, `ui::Panel`, … | `VectorSprite` etc. | ui atoms |
+
+Note there are two `Button`s: `ui::Button`
+([XLUiButton.h](../../../xenolith/renderer/ui/atoms/XLUiButton.h), a
+`basic2d::VectorSprite`) and `simpleui::Button`
+([XLSimpleButton.h](../../../xenolith/renderer/simpleui/XLSimpleButton.h), a
+`Layer`). Check which renderer module you are in before deriving.
+
+**Before adding another class to this table, read
+[11-node-system-component.adoc](11-node-system-component.adoc).** A new `Node`
+subclass is the right answer only when the node *draws differently*; behaviour,
+layout, input and data belong in a `System` or a `Component`.
+
+## Related
+
+* [11-node-system-component.adoc](11-node-system-component.adoc) — why to prefer systems and components
+* [node-system-event-pipeline.adoc](../../design/node-system-event-pipeline.adoc) — the visit phases in detail
+* [content-measurement.adoc](../ui/content-measurement.adoc) — making a node measurable
+* [09-threads-and-dispatch.adoc](09-threads-and-dispatch.adoc) — the scene graph is app-thread-only

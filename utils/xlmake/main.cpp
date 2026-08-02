@@ -439,7 +439,7 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 	// $(MAKE) re-invokes this xlmake (argv[0]). The path may itself contain a space (e.g.
 	// "/opt/My Tools/xlmake"); encode it so $(MAKE) stays one word and the recipe shell receives the
 	// whole program path as a single argument.
-	memory::StandartInterface::StringType makeCmdStorage;
+	mem_std::Interface::StringType makeCmdStorage;
 	mk->assignSimpleVariable("MAKE_COMMAND", O::Default,
 			makefile::encodePathSpaces(makeCommand, makeCmdStorage).pdup(), err);
 
@@ -459,13 +459,13 @@ static String resolvePath(StringView root, StringView file) {
 	// An include path written with an escaped space ("foo\ bar.mk") arrives make-visible, i.e. with
 	// PathSpacePlaceholder in place of the space; decode it back to a real space before any filesystem
 	// access. No-op when there is no placeholder.
-	memory::StandartInterface::StringType spaceStorage;
+	mem_std::Interface::StringType spaceStorage;
 	file = makefile::decodePathSpaces(file, spaceStorage);
 
 	// Normalize a platform-native path to the internal posix form first — on Windows an include path
 	// may be written (or produced by $(abspath)) as `C:/dir/file`, which the posix-based isAbsolute
 	// would otherwise treat as relative and merge onto the root. No-op on POSIX builds.
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	file = filesystem::toPosixPath(file, posixStorage);
 
 	if (filepath::isAbsolute(file)) {
@@ -535,8 +535,8 @@ static int runWatch(Makefile *mk, StringView goalName, const Vector<String> &mak
 		return 1;
 	}
 
-	sprt::cout << toString("xlmake: watching ", observer->getWatchedCount(), " files of '", goalName,
-			"' (interval ", intervalMs, "ms); fingerprint=", observer->getFingerprint(),
+	sprt::cout << toString("xlmake: watching ", observer->getWatchedCount(), " files of '",
+			goalName, "' (interval ", intervalMs, "ms); fingerprint=", observer->getFingerprint(),
 			"; Ctrl-C to stop\n");
 
 	s_watchInterrupted = 0;
@@ -546,13 +546,14 @@ static int runWatch(Makefile *mk, StringView goalName, const Vector<String> &mak
 	// Consumer-owned loop: poll on the requested interval and report changes. A signal interrupts the
 	// sleep, so Ctrl-C is handled promptly.
 	while (s_watchInterrupted == 0) {
-		struct timespec ts { time_t(intervalMs / 1000), long((intervalMs % 1000) * 1000 * 1000) };
+		struct timespec ts{time_t(intervalMs / 1'000), long((intervalMs % 1'000) * 1'000 * 1'000)};
 		::nanosleep(&ts, nullptr);
 		if (s_watchInterrupted != 0) {
 			break;
 		}
 		if (observer->check()) {
-			sprt::cout << toString("xlmake: change: fingerprint=", observer->getFingerprint(), "\n");
+			sprt::cout << toString("xlmake: change: fingerprint=", observer->getFingerprint(),
+					"\n");
 		}
 	}
 	sprt::cout << "xlmake: watch stopped\n";
@@ -646,7 +647,7 @@ static int runXlmake(int argc, const char *argv[]) {
 		mk->addSubstitutionCallback(Origin::Environment,
 				[](void *, const Callback<void(StringView)> &out, StringView name) -> bool {
 			// getenv needs a NUL-terminated key; a make variable name is not guaranteed to be one.
-			memory::StandartInterface::StringType key(name.data(), name.size());
+			mem_std::Interface::StringType key(name.data(), name.size());
 			if (const char *value = ::getenv(key.data())) {
 				// Verbatim, like the curated HOME injection: a space stays a word separator (use
 				// $(xl_make_path ...) in the makefile when an environment value is a path with spaces).
@@ -732,7 +733,7 @@ static int runXlmake(int argc, const char *argv[]) {
 		Vector<StringView> goals;
 		goals.reserve(cfg.targets.size());
 		for (auto &g : cfg.targets) {
-			memory::StandartInterface::StringType tmp;
+			mem_std::Interface::StringType tmp;
 			goals.emplace_back(makefile::encodePathSpaces(g, tmp).pdup());
 		}
 
@@ -778,7 +779,7 @@ static int runXlmake(int argc, const char *argv[]) {
 			StringView value = a.value;
 			if (name.size() > 2 && name.starts_with("P:")) {
 				name = name.sub(2);
-				memory::StandartInterface::StringType encStorage;
+				mem_std::Interface::StringType encStorage;
 				value = makefile::encodePathSpaces(a.value, encStorage).pdup();
 			}
 			if (a.op == ":=" || a.op == "::=" || a.op == ":::=") {
@@ -810,13 +811,14 @@ static int runXlmake(int argc, const char *argv[]) {
 		Vector<StringView> exportNames;
 		mk->foreachExportedVariable([&](StringView name) { exportNames.emplace_back(name); });
 		for (auto name : exportNames) {
-			memory::StandartInterface::StringType key(name.data(), name.size());
-			memory::StandartInterface::StringType valBuf;
-			mk->getVariableValue(name, [&](StringView s) { valBuf.append(s.data(), s.size()); }, err);
-			memory::StandartInterface::StringType decoded;
+			mem_std::Interface::StringType key(name.data(), name.size());
+			mem_std::Interface::StringType valBuf;
+			mk->getVariableValue(name, [&](StringView s) { valBuf.append(s.data(), s.size()); },
+					err);
+			mem_std::Interface::StringType decoded;
 			auto decodedView =
 					makefile::decodePathSpaces(StringView(valBuf.data(), valBuf.size()), decoded);
-			memory::StandartInterface::StringType value(decodedView.data(), decodedView.size());
+			mem_std::Interface::StringType value(decodedView.data(), decodedView.size());
 			::setenv(key.data(), value.data(), 1);
 		}
 

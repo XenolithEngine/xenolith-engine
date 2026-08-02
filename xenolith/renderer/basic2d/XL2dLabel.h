@@ -86,8 +86,8 @@ public:
 	};
 
 	static void writeQuads(VertexArray &vertexes,
-			const font::TextLayoutData<memory::StandartInterface> *format,
-			Vector<ColorMask> &colorMap, float layer);
+			const font::TextLayoutData<mem_std::Interface> *format, Vector<ColorMask> &colorMap,
+			float layer);
 	static void writeQuads(VertexArray &vertexes,
 			const font::TextLayoutData<memory::PoolInterface> *format, Vector<ColorMask> &colorMap,
 			float layer);

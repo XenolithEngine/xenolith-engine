@@ -64,6 +64,17 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
 	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
 
+# -fexceptions is required on Windows even though the SDK never throws: the freestanding libc
+# implements longjmp on top of SEH unwinding (see libc_impl/src/windows/except.cc), and the
+# destructors of the frames being unwound are run from the MSVC C++ EH cleanup funclets. Both
+# those funclets and the FuncInfo tables that index them are emitted ONLY for translation units
+# compiled with C++ exception support.
+#
+# Do NOT add -fno-cxx-exceptions here. It looks like the natural counterpart of the
+# -fno-exceptions used on every other platform, but on Windows it strips exactly the tables and
+# funclets that stack unwinding and destructor calls depend on. "No C++ exceptions" is a rule
+# for the code in this SDK, not something the compiler can enforce here without taking the
+# unwind machinery down with it.
 TOOLCHAIN_TARGET_FLAGS := -D_WIN32_WINNT=0x0A00 -fexceptions -fms-compatibility-version=19.40
 
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))

@@ -1,12 +1,20 @@
-# Code style: compilation units (`.cpp`) and subunits (`.cc`)
+# Compilation units (`.cpp`) and subunits (`.cc`)
+
+**TL;DR**
+
+* `.cpp` / `.c` — real translation units (SCU). Only these are compiled.
+* `.cc` — subunits, `#include`d by exactly one `.cpp`. Never compiled standalone.
+* A new `.cc` enters the build only when some `.cpp` includes it.
+* To compile-check a `.cc`, build its parent `.cpp` — compiling the `.cc`
+  directly produces false errors.
 
 The project uses the file extension to mark a source file's role in the build:
 
 * **`.cpp` (and `.c`) — single compilation units (SCU).** These are the
   translation units the build actually compiles. The build collects them by
-  glob: [make/c/rules.mk](../../make/c/rules.mk) sets
+  glob: [make/c/rules.mk](../../../make/c/rules.mk) sets
   `SP_SOURCE_FILES_PATTERN := *.cpp *.c *.S *.s`. There is no `*.cc` in that
-  pattern anywhere in [make/](../../make/).
+  pattern anywhere in [make/](../../../make/).
 * **`.cc` — subunits.** A `.cc` file is never compiled on its own. It is
   `#include`d by exactly one `.cpp` SCU and becomes part of that SCU's
   translation unit (a "unity"/SCU build). Because `.cc` is not in the source

@@ -110,7 +110,7 @@ bool Makefile::include(const FileInfo &iinfo, ErrorReporter *err, bool optional)
 	// Normalize a platform-native include path to the internal posix form before lookup — on Windows
 	// an include may be written (or produced by $(abspath)) as `C:/dir/file.mk`, which the posix-based
 	// lookup would otherwise treat as relative. toPosixPath is a no-op on POSIX builds.
-	memory::StandartInterface::StringType posixStorage;
+	mem_std::Interface::StringType posixStorage;
 	FileInfo info = iinfo;
 	info.path = filesystem::toPosixPath(info.path, posixStorage);
 
@@ -404,7 +404,7 @@ Target *Makefile::getDefaultGoal() {
 	// up the named target. A present-but-empty value means "no default goal"; only when the variable was
 	// never set do we fall back to the cached first target.
 	if (getVariable(StringView(".DEFAULT_GOAL"))) {
-		memory::StandartInterface::StringType buf;
+		mem_std::Interface::StringType buf;
 		ErrorReporter err(nullptr);
 		getVariableValue(StringView(".DEFAULT_GOAL"),
 				[&](StringView v) { buf.append(v.data(), v.size()); }, err);
@@ -1117,8 +1117,8 @@ bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ExportMode e
 		StringView targetPattern;
 		if (!targets.empty() && !str.empty()) {
 			StringView probe = str;
-			if (auto patternStmt =
-							Stmt::readScoped(probe, StmtType::WordList, ReadContext::LineStart, err)) {
+			if (auto patternStmt = Stmt::readScoped(probe, StmtType::WordList,
+						ReadContext::LineStart, err)) {
 				if (Stmt::getOperator(probe, true) == ":") {
 					auto pattern = _engine.resolve(patternStmt, err);
 					pattern.trimChars<StringView::WhiteSpace>();

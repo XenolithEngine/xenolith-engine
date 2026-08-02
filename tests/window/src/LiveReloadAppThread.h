@@ -66,11 +66,11 @@ protected:
 	// address on its command line. Kills any previously launched client first. App-thread only.
 	void launchClient(StringView stagedExe);
 
-	memory::StandartInterface::StringType _watchDir;
+	mem_std::Interface::StringType _watchDir;
 	// Per-session negotiated endpoint (generated in handleThreadInitialized when live reload is active).
-	memory::StandartInterface::StringType _serverAddress; // "127.0.0.1:<random port>"
-	memory::StandartInterface::StringType _bearerToken; // random token; passed to the client on argv
-	memory::StandartInterface::BytesType _bearerKey; // Sha512(token); the server's expected bearer key
+	mem_std::Interface::StringType _serverAddress; // "127.0.0.1:<random port>"
+	mem_std::Interface::StringType _bearerToken; // random token; passed to the client on argv
+	mem_std::Interface::BytesType _bearerKey; // Sha512(token); the server's expected bearer key
 	Rc<makefile::SourceObserver> _observer;
 	Rc<ProjectBuildThread> _buildThread; // owns its own OS thread; built on demand
 	Rc<sprt::dispatch::ProcessHandle> _clientProc; // the currently running client child, if any

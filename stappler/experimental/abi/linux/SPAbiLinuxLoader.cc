@@ -706,7 +706,7 @@ ForeignDso *openForeign(StringView name, DsoFlags flags, const char **err) {
 		f |= RTLD_GLOBAL;
 	}
 
-	auto path = name.str<memory::StandartInterface>();
+	auto path = name.str<mem_std::Interface>();
 
 	_setTcbAddr(s_loader._header.foreignTcb);
 
@@ -732,7 +732,7 @@ void closeForeign(DsoFlags flags, ForeignDso *handle) { ForeignDso::close(handle
 
 void *symForeign(ForeignDso *h, StringView name, DsoSymFlags flags, const char **err) {
 	auto sym = s_loader.dso.z_dlsym(h->handle,
-			name.terminated() ? name.data() : name.str<memory::StandartInterface>().data());
+			name.terminated() ? name.data() : name.str<mem_std::Interface>().data());
 	if (sym) {
 		if (hasFlag(flags, DsoSymFlags::Executable)) {
 			sym = h->compiler.compileForeignCall(sym);

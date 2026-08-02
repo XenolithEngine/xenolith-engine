@@ -769,8 +769,8 @@ bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx,
 
 	if (!check) {
 		if (!iface.process.silent) {
-			log::source().error("CURL", "Fail to setup: ",
-					_redactUrlForLog<Interface>(iface.send.url));
+			log::source().error("CURL",
+					"Fail to setup: ", _redactUrlForLog<Interface>(iface.send.url));
 		}
 		return false;
 	}
@@ -948,12 +948,11 @@ bool perform(HandleData<memory::PoolInterface> &iface,
 }
 
 template <>
-bool perform(HandleData<memory::StandartInterface> &iface,
-		const Callback<bool(CURL *)> &onBeforePerform,
+bool perform(HandleData<mem_std::Interface> &iface, const Callback<bool(CURL *)> &onBeforePerform,
 		const Callback<bool(CURL *)> &onAfterPerform) {
-	Context<memory::StandartInterface> ctx;
+	Context<mem_std::Interface> ctx;
 	ctx.curl = CurlHandle_getHandle(iface.process.reuse, nullptr);
-	auto ret = _perform<memory::StandartInterface>(ctx, iface, onBeforePerform, onAfterPerform);
+	auto ret = _perform<mem_std::Interface>(ctx, iface, onBeforePerform, onAfterPerform);
 	CurlHandle_releaseHandle(ctx.curl, iface.process.reuse,
 			!iface.process.invalidate && ctx.code == CURLE_OK, nullptr);
 	return ret;

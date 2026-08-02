@@ -421,7 +421,7 @@ HANDLE_NAME(void, setVerifyTls, bool value) { process.verifyTsl = value; }
 #undef HANDLE_INTERFACE
 
 
-#define HANDLE_INTERFACE memory::StandartInterface
+#define HANDLE_INTERFACE mem_std::Interface
 
 HANDLE_NAME(, ~HandleData) { Handle_destroy(*this); }
 HANDLE_NAME(bool, reset, Method method, StringView url) { return Handle_reset(*this, method, url); }
@@ -535,8 +535,8 @@ HANDLE_NAME(void, setVerifyTls, bool value) { process.verifyTsl = value; }
 #undef HANDLE_INTERFACE
 
 template <>
-const ReceiveData<memory::StandartInterface>::DataSource &
-HandleData<memory::StandartInterface>::getReceiveDataSource() const {
+const ReceiveData<mem_std::Interface>::DataSource &
+HandleData<mem_std::Interface>::getReceiveDataSource() const {
 	return receive.data;
 }
 
@@ -547,8 +547,8 @@ HandleData<memory::PoolInterface>::getReceiveDataSource() const {
 }
 
 template <>
-const SendData<memory::StandartInterface>::DataSource &
-HandleData<memory::StandartInterface>::getSendDataSource() const {
+const SendData<mem_std::Interface>::DataSource &
+HandleData<mem_std::Interface>::getSendDataSource() const {
 	return send.data;
 }
 
@@ -559,7 +559,7 @@ HandleData<memory::PoolInterface>::getSendDataSource() const {
 }
 
 template <>
-void HandleData<memory::StandartInterface>::setHeaderCallback(HeaderCallback &&cb) {
+void HandleData<mem_std::Interface>::setHeaderCallback(HeaderCallback &&cb) {
 	receive.headerCallback = sp::move(cb);
 }
 
@@ -569,8 +569,8 @@ void HandleData<memory::PoolInterface>::setHeaderCallback(HeaderCallback &&cb) {
 }
 
 template <>
-const HandleData<memory::StandartInterface>::HeaderCallback &
-HandleData<memory::StandartInterface>::getHeaderCallback() const {
+const HandleData<mem_std::Interface>::HeaderCallback &
+HandleData<mem_std::Interface>::getHeaderCallback() const {
 	return receive.headerCallback;
 }
 

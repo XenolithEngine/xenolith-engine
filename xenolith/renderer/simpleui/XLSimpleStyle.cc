@@ -278,13 +278,13 @@ ResolvedStyle resolveStyleForNode(NotNull<Node> node) {
 				nearest.system->getStyleSheet()->getStrings(), 1.0f, ret.media.fontScale);
 
 		ret.font = style.compileFontStyle(&iface);
-		ret.fontFamily = ret.font.fontFamily.str<memory::StandartInterface>();
+		ret.fontFamily = ret.font.fontFamily.str<mem_std::Interface>();
 		ret.font.fontFamily = StringView();
 		ret.text = style.compileTextLayout(&iface);
 		ret.paragraph = style.compileParagraphLayout(&iface);
 		ret.block = style.compileBlockModel(&iface);
 		ret.background = style.compileBackground(&iface);
-		ret.backgroundImage = ret.background.backgroundImage.str<memory::StandartInterface>();
+		ret.backgroundImage = ret.background.backgroundImage.str<mem_std::Interface>();
 		ret.background.backgroundImage = StringView();
 
 		// positioning parameters are not part of any compiled document structure;
@@ -378,7 +378,7 @@ ResolvedStyle resolveStyleForNode(NotNull<Node> node) {
 		// into std memory (as with font-family / background-image)
 		auto getString = [&](ParameterName name, String &out) {
 			if (getValue(name, sv)) {
-				out = iface.resolveString(sv.stringId).str<memory::StandartInterface>();
+				out = iface.resolveString(sv.stringId).str<mem_std::Interface>();
 			}
 		};
 		getString(ParameterName::CssGridTemplateColumns, ret.gridTemplateColumns);

@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::vg {
 
-using Interface = memory::StandartInterface;
+using Interface = mem_std::Interface;
 
 struct PathXRef {
 	Interface::StringType id;
@@ -58,7 +58,7 @@ public:
 	bool init(const FileInfo &);
 	bool init(BytesView);
 
-	bool init(const PathData<memory::StandartInterface> &);
+	bool init(const PathData<mem_std::Interface> &);
 	bool init(const PathData<memory::PoolInterface> &);
 
 	VectorPath &addPath(const VectorPath &);

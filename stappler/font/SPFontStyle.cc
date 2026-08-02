@@ -50,9 +50,9 @@ auto FontSpecializationVector::getSpecializationArgs<memory::PoolInterface>() co
 }
 
 template <>
-auto FontSpecializationVector::getSpecializationArgs<memory::StandartInterface>() const
-		-> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringStreamType out;
+auto FontSpecializationVector::getSpecializationArgs<mem_std::Interface>() const
+		-> mem_std::Interface::StringType {
+	mem_std::Interface::StringStreamType out;
 	s_getSpecializationArgs(out, *this);
 	return out.str();
 }
@@ -151,14 +151,13 @@ auto FontParameters::getFontConfigName<memory::PoolInterface>(StringView fontFam
 }
 
 template <>
-auto FontParameters::getFontConfigName<memory::StandartInterface>(StringView fontFamily,
-		FontSize fontSize, FontStyle fontStyle, FontWeight fontWeight, FontStretch fontStretch,
-		FontGrade fontGrade, FontVariant fontVariant, float density, bool caps)
-		-> memory::StandartInterface::StringType {
+auto FontParameters::getFontConfigName<mem_std::Interface>(StringView fontFamily, FontSize fontSize,
+		FontStyle fontStyle, FontWeight fontWeight, FontStretch fontStretch, FontGrade fontGrade,
+		FontVariant fontVariant, float density, bool caps) -> mem_std::Interface::StringType {
 	auto size = fontSize;
-	memory::StandartInterface::StringType name;
+	mem_std::Interface::StringType name;
 	name.reserve(fontFamily.size() + 14);
-	name += fontFamily.str<memory::StandartInterface>();
+	name += fontFamily.str<mem_std::Interface>();
 
 	if (caps && fontVariant == FontVariant::SmallCaps) {
 		size -= size / 5.0f;

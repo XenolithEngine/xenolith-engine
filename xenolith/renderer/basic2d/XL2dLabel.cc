@@ -270,7 +270,7 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 }
 
 void Label::writeQuads(VertexArray &vertexes,
-		const font::TextLayoutData<memory::StandartInterface> *format, Vector<ColorMask> &colorMap,
+		const font::TextLayoutData<mem_std::Interface> *format, Vector<ColorMask> &colorMap,
 		float layer) {
 	Label_writeQuads(vertexes, format, colorMap, layer);
 }

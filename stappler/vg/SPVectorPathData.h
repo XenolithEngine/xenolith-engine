@@ -171,7 +171,7 @@ struct SP_PUBLIC PathWriter {
 	PathWriter &addBox(float x, float y, float width, float height, float rtl, float rtr, float rbr,
 			float rbl);
 
-	bool addPath(const PathData<memory::StandartInterface> &);
+	bool addPath(const PathData<mem_std::Interface> &);
 	bool addPath(const PathData<memory::PoolInterface> &);
 	bool addPath(BytesView);
 	bool addPath(StringView);

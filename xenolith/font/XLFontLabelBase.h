@@ -30,7 +30,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-class SP_PUBLIC TextLayout : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC TextLayout : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~TextLayout();
 	TextLayout(FontController *h, size_t = 0, size_t = 0);
@@ -79,7 +79,7 @@ public:
 			const Vec2 & = Vec2(), const Padding &p = Padding()) const;
 
 protected:
-	TextLayoutData<memory::StandartInterface> _data;
+	TextLayoutData<mem_std::Interface> _data;
 	Rc<FontController> _handle;
 	Set<Rc<FontFaceSet>> _fonts;
 };

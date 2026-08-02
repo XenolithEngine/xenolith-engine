@@ -155,7 +155,7 @@ static bool Function_xl_make_path(const Callback<void(StringView)> &out, void *,
 	auto name = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 	name.trimChars<StringView::WhiteSpace>();
 
-	memory::StandartInterface::StringType storage;
+	mem_std::Interface::StringType storage;
 	out << encodePathSpaces(name, storage);
 	return true;
 }
@@ -170,7 +170,7 @@ static bool Function_xl_make_plain(const Callback<void(StringView)> &out, void *
 		VariableEngine &engine, SpanView<StmtValue *> args) {
 	auto name = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 
-	memory::StandartInterface::StringType storage;
+	mem_std::Interface::StringType storage;
 	out << decodePathSpaces(name, storage);
 	return true;
 }

@@ -282,8 +282,8 @@ bool validateEmail(memory::PoolInterface::StringType &str) {
 	return _validateEmail<memory::PoolInterface>(str);
 }
 
-bool validateEmail(memory::StandartInterface::StringType &str) {
-	return _validateEmail<memory::StandartInterface>(str);
+bool validateEmail(mem_std::Interface::StringType &str) {
+	return _validateEmail<mem_std::Interface>(str);
 }
 
 template <typename Interface>
@@ -322,8 +322,8 @@ bool validateUrl(memory::PoolInterface::StringType &str) {
 	return _validateUrl<memory::PoolInterface>(str);
 }
 
-bool validateUrl(memory::StandartInterface::StringType &str) {
-	return _validateUrl<memory::StandartInterface>(str);
+bool validateUrl(mem_std::Interface::StringType &str) {
+	return _validateUrl<mem_std::Interface>(str);
 }
 
 bool validateNumber(const StringView &str) {
@@ -399,9 +399,8 @@ auto makeRandomBytes<memory::PoolInterface>(size_t count) -> memory::PoolInterfa
 }
 
 template <>
-auto makeRandomBytes<memory::StandartInterface>(size_t count)
-		-> memory::StandartInterface::BytesType {
-	memory::StandartInterface::BytesType ret;
+auto makeRandomBytes<mem_std::Interface>(size_t count) -> mem_std::Interface::BytesType {
+	mem_std::Interface::BytesType ret;
 	ret.resize(count);
 	makeRandomBytes(ret.data(), count);
 	return ret;
@@ -444,16 +443,16 @@ auto makePassword<memory::PoolInterface>(const StringView &str, const StringView
 }
 
 template <>
-auto makePassword<memory::StandartInterface>(const StringView &str, const StringView &key)
-		-> memory::StandartInterface::BytesType {
+auto makePassword<mem_std::Interface>(const StringView &str, const StringView &key)
+		-> mem_std::Interface::BytesType {
 	if (str.empty() || key.empty()) {
-		return memory::StandartInterface::BytesType();
+		return mem_std::Interface::BytesType();
 	}
 
-	memory::StandartInterface::BytesType passwdKey;
+	mem_std::Interface::BytesType passwdKey;
 	passwdKey.resize(16 + string::Sha512::Length);
 	if (!makePassword_buf(passwdKey.data(), str, key)) {
-		return memory::StandartInterface::BytesType();
+		return mem_std::Interface::BytesType();
 	}
 	return passwdKey;
 }
@@ -541,14 +540,13 @@ auto generatePassword<memory::PoolInterface>(size_t len) -> memory::PoolInterfac
 }
 
 template <>
-auto generatePassword<memory::StandartInterface>(size_t len)
-		-> memory::StandartInterface::StringType {
+auto generatePassword<mem_std::Interface>(size_t len) -> mem_std::Interface::StringType {
 	if (len < MIN_GENPASSWORD_LENGTH) {
-		return memory::StandartInterface::StringType();
+		return mem_std::Interface::StringType();
 	}
 
-	auto bytes = makeRandomBytes<memory::StandartInterface>(len + 2);
-	memory::StandartInterface::StringType ret;
+	auto bytes = makeRandomBytes<mem_std::Interface>(len + 2);
+	mem_std::Interface::StringType ret;
 	ret.reserve(len);
 	generatePassword_buf(len, bytes.data(), [&](char c) { ret.push_back(c); });
 	return ret;

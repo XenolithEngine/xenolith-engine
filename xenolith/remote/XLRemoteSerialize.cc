@@ -29,7 +29,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-using DataValue = data::ValueTemplate<memory::StandartInterface>;
+using DataValue = data::ValueTemplate<mem_std::Interface>;
 
 static constexpr uint32_t kCodecVersion = 3;
 
@@ -312,7 +312,7 @@ Bytes QueueCodec::encodeResource(const core::Resource &res, ObjectRegistry &regi
 }
 
 Rc<core::Resource> QueueCodec::decodeResource(BytesView bytes, ObjectFactory &factory) {
-	auto root = data::read<memory::StandartInterface>(bytes);
+	auto root = data::read<mem_std::Interface>(bytes);
 	if (!root.isArray()) {
 		return nullptr;
 	}
@@ -1181,7 +1181,7 @@ static MaterialLayout decodeMaterialLayout(const DataValue &ln, ObjectFactory &f
 } // namespace
 
 bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory &factory) {
-	auto root = data::read<memory::StandartInterface>(bytes);
+	auto root = data::read<mem_std::Interface>(bytes);
 	if (!root.isDictionary() || root.getInteger("v") != int64_t(kCodecVersion)) {
 		return false;
 	}
@@ -1637,7 +1637,9 @@ Bytes QueueCodec::encodeMaterials(uint64_t queueId, core::MaterialSet &set,
 	root.setInteger(int64_t(set.getGeneration()), "generation");
 
 	DataValue mats(DataValue::Type::ARRAY);
-	for (auto &it : set.getMaterials()) { mats.addValue(encodeMaterial(it.second.get(), registry)); }
+	for (auto &it : set.getMaterials()) {
+		mats.addValue(encodeMaterial(it.second.get(), registry));
+	}
 	root.setValue(sp::move(mats), "materials");
 
 	DataValue layouts(DataValue::Type::ARRAY);
@@ -1654,7 +1656,7 @@ Bytes QueueCodec::encodeMaterials(uint64_t queueId, core::MaterialSet &set,
 }
 
 bool QueueCodec::decodeMaterials(BytesView bytes, ObjectFactory &factory) {
-	auto root = data::read<memory::StandartInterface>(bytes);
+	auto root = data::read<mem_std::Interface>(bytes);
 	if (!root.isDictionary() || root.getInteger("v") != int64_t(kCodecVersion)) {
 		return false;
 	}

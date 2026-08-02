@@ -69,9 +69,9 @@ void LiveReloadAppThread::handleThreadInitialized() {
 	// getBearerKey), and launchClient hands the same address + token to each client on its command
 	// line — so client and server agree on a unique key+port every run, replacing the fixed dev
 	// key/4480.
-	auto tokenBytes = valid::makeRandomBytes<memory::StandartInterface>(16);
-	_bearerToken = base16::encode<memory::StandartInterface>(
-			BytesView(tokenBytes.data(), tokenBytes.size()));
+	auto tokenBytes = valid::makeRandomBytes<mem_std::Interface>(16);
+	_bearerToken =
+			base16::encode<mem_std::Interface>(BytesView(tokenBytes.data(), tokenBytes.size()));
 	auto keyBuf = crypto::Sha512::perform(StringView(_bearerToken));
 	_bearerKey.assign(keyBuf.data(), keyBuf.data() + keyBuf.size());
 
@@ -103,7 +103,7 @@ void LiveReloadAppThread::handleThreadInitialized() {
 	_buildThread = Rc<ProjectBuildThread>::create(StringView(_watchDir));
 	if (_buildThread) {
 		_buildThread->setOnBuilt([this](StringView stagedExe) {
-			memory::StandartInterface::StringType exe(stagedExe.data(), stagedExe.size());
+			mem_std::Interface::StringType exe(stagedExe.data(), stagedExe.size());
 			_appLooper->performOnThread([this, exe]() { launchClient(StringView(exe)); }, this);
 		});
 		_buildThread->run();
@@ -133,7 +133,7 @@ void LiveReloadAppThread::launchClient(StringView stagedExe) {
 	// `'<exe>' <address> <token>` run via the app looper (/bin/sh -c). The client reads argv[1] as the
 	// server address to dial and argv[2] as the token (key = Sha512(token)) — this is how the server
 	// "прокидывает" the negotiated address + secret on the command line.
-	memory::StandartInterface::StringType cmd;
+	mem_std::Interface::StringType cmd;
 	cmd.append("'").append(stagedExe.data(), stagedExe.size()).append("' ").append(_serverAddress);
 	cmd.append(" ").append(_bearerToken);
 

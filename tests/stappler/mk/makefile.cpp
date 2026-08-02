@@ -210,7 +210,8 @@ void performMakefileTests() {
 			err2.filename = StringView("<chars>");
 			check(mk2->include("chars.mk", kChars, true, &err2), "special-char fixture parses");
 
-			check(mk2->getTarget("foo+bar") != nullptr, "target 'foo+bar' kept '+' (single target)");
+			check(mk2->getTarget("foo+bar") != nullptr,
+					"target 'foo+bar' kept '+' (single target)");
 			check(mk2->getTarget("libc++") != nullptr, "target 'libc++' kept trailing '++'");
 			check(mk2->getTarget("a?b") != nullptr, "target 'a?b' kept '?'");
 			check(mk2->getTarget("a,b") != nullptr, "target 'a,b' kept ','");
@@ -260,14 +261,14 @@ void performMakefileTests() {
 			check(aggRes == BuildResult::Built && errA.nerrors == 0,
 					"recipe-less aggregator 'all: a b' builds prereqs without 'No rule' error");
 
-			static constexpr StringView kMissing = "goal: nope\n"
-												   "\t@echo never\n";
+			static constexpr StringView kMissing = "goal: nope\n" "\t@echo never\n";
 			auto mkM = Rc<MakefileRef>::create(SharedRefMode::Allocator);
 			mkM->setLogCallback(logcb);
 			ErrorReporter errM(nullptr);
 			errM.callback = logcb;
 			errM.filename = StringView("<missing>");
-			check(mkM->include("missing.mk", kMissing, true, &errM), "missing-prereq fixture parses");
+			check(mkM->include("missing.mk", kMissing, true, &errM),
+					"missing-prereq fixture parses");
 			// (the executor logs "No rule to make target 'nope'" below — that diagnostic is expected)
 			auto missRes = mkM->execute(mkM->getTarget("goal"), errM);
 			check(missRes == BuildResult::Failed,
@@ -277,7 +278,7 @@ void performMakefileTests() {
 		// --- fixture C: real-file out-of-date check against filesystem ground truth ---
 		bool wroteP = filesystem::write(FileInfo("mk_prereq", LocationCategory::AppCache),
 				(const uint8_t *)"p", 1);
-		auto prereqAbs = filesystem::findPath<memory::StandartInterface>(
+		auto prereqAbs = filesystem::findPath<mem_std::Interface>(
 				FileInfo("mk_prereq", LocationCategory::AppCache));
 		if (wroteP && !prereqAbs.empty()) {
 			auto rootDir = filepath::root(StringView(prereqAbs));
@@ -411,4 +412,4 @@ void performMakefileTests() {
 	memory::pool::destroy(pool);
 }
 
-} // namespace stappler
+} // namespace STAPPLER_VERSIONIZED stappler

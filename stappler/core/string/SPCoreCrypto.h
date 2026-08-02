@@ -36,10 +36,10 @@ struct SP_PUBLIC CoderSource {
 	CoderSource(const StringView &d);
 
 	CoderSource(const typename memory::PoolInterface::BytesType &d);
-	CoderSource(const typename memory::StandartInterface::BytesType &d);
+	CoderSource(const typename memory::StandardInterface::BytesType &d);
 
 	CoderSource(const typename memory::PoolInterface::StringType &d);
-	CoderSource(const typename memory::StandartInterface::StringType &d);
+	CoderSource(const typename memory::StandardInterface::StringType &d);
 
 	template <sprt::endian Order>
 	CoderSource(const BytesViewTemplate<Order> &d);
@@ -276,9 +276,7 @@ inline bool isEqualConstantTime(BytesView a, BytesView b) {
 		return false;
 	}
 	uint8_t diff = 0;
-	for (size_t i = 0; i < a.size(); ++i) {
-		diff = uint8_t(diff | (a.data()[i] ^ b.data()[i]));
-	}
+	for (size_t i = 0; i < a.size(); ++i) { diff = uint8_t(diff | (a.data()[i] ^ b.data()[i])); }
 	return diff == 0;
 }
 
@@ -298,13 +296,13 @@ inline CoderSource::CoderSource(const StringView &d) : _data((uint8_t *)d.data()
 inline CoderSource::CoderSource(const typename memory::PoolInterface::BytesType &d)
 : _data(d.data(), d.size()) { }
 
-inline CoderSource::CoderSource(const typename memory::StandartInterface::BytesType &d)
+inline CoderSource::CoderSource(const typename memory::StandardInterface::BytesType &d)
 : _data(d.data(), d.size()) { }
 
 inline CoderSource::CoderSource(const typename memory::PoolInterface::StringType &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
-inline CoderSource::CoderSource(const typename memory::StandartInterface::StringType &d)
+inline CoderSource::CoderSource(const typename memory::StandardInterface::StringType &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
 template <sprt::endian Order>

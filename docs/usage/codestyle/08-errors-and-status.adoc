@@ -1,0 +1,216 @@
+# Errors: `Status`, `Result<T>`, logging, assertions
+
+**TL;DR**
+
+* **Nothing throws.** The engine is built `-fno-exceptions` on Linux, macOS,
+  Android and wasm. Windows keeps `-fexceptions` — SEH unwinding and the
+  destructor funclets `longjmp` depends on need it — so there the rule is enforced
+  by convention, not by the compiler. Do not add `throw`, `try`/`catch`, or APIs
+  that rely on them.
+* Report failure by **value**: `Status` for operations, `Result<T>` for
+  "value or nothing", `bool` for `init()`.
+* Test success with `status::isSuccessful(st)` / `result.valid()` — **not**
+  `st == Status::Ok` (`Done` and `Suspended` are successes too).
+* Map platform errors into the `Status` space with `errnoToStatus()` /
+  `lastErrorToStatus()`; don't invent a parallel error enum.
+* Log at the point of failure with `slog().error("Tag", …)` — the source location
+  is captured for you.
+* `assert` / `sprt_passert` are **debug-only** (`NDEBUG` compiles them to
+  nothing). Never put required side effects inside one.
+
+## No exceptions
+
+[make/os/linux.mk](../../../make/os/linux.mk) (and the darwin/android/wasm
+counterparts) compile every C++ TU with `-fno-exceptions`; the same file's ABI
+notes state it plainly — *"the runtime is built `-fno-exceptions` and nothing
+throws across the boundary"*. `__cxa_throw` and friends are deliberately not
+exported, so an exception that did escape would meet `std::terminate`, not a
+handler.
+
+Practical consequences:
+
+* No `throw`, no `try`/`catch` in engine code. A constructor cannot fail — that
+  is why creation goes through `virtual bool init(...)` and `Rc<T>::create()`
+  (see [03-naming.adoc](03-naming.adoc)).
+* Third-party libraries that throw internally must be contained inside their
+  own boundary and converted to a `Status` at the seam.
+
+### Windows: `-fexceptions`, and why `-fno-cxx-exceptions` is wrong here
+
+Windows is the one target that is **not** built `-fno-exceptions`, and the reason
+is not C++ at all: in the freestanding libc, `longjmp` is implemented on top of
+**SEH** unwinding (`RtlUnwindEx` / `RtlVirtualUnwind`). The header comment of
+[except.cc](../../../runtime/libc_impl/src/windows/except.cc) states the policy
+directly:
+
+> We don't use c++ exceptions in SPRT, but we must handle extended longjmp,
+> which on Windows implemented through SEH exceptions.
+
+That unwind is what runs the **destructors** of the frames it passes over:
+`__CxxFrameHandler3` walks the MSVC `FuncInfo` unwind map and calls the cleanup
+funclets clang emitted for each scope. Both the funclets and the tables indexing
+them exist only in translation units compiled with C++ exception support.
+
+So `-fexceptions` stays, and **`-fno-cxx-exceptions` must not be added.** It
+looks like the natural Windows counterpart of the `-fno-exceptions` used
+everywhere else, but it strips exactly the machinery that unwinding and
+destructor calls depend on: with it, a `longjmp` over a frame holding an object
+with a destructor faults instead of unwinding. "Nothing throws" is therefore a
+rule for the code in this SDK, not something the compiler enforces on this
+target — a stray `throw` compiles, and ends in `terminate`
+([terminate.cc](../../../runtime/libc_impl/src/windows/terminate.cc)), the same
+outcome as on Linux by a different route.
+
+Destructors **are** run across a `setjmp`/`longjmp` boundary on Windows — inner
+scope before outer, across any number of frames — which the libjpeg/libpng error
+paths in [stappler/bitmap](../../../stappler/bitmap/) rely on. That guarantee is
+carried by `do_unwind()` in `except.cc`; a cleanup funclet is entered with `RDX`
+holding the establisher frame, and calling it as a nullary function is what
+breaks it.
+
+## `Status`
+
+[runtime/include/sprt/runtime/status.h](../../../runtime/include/sprt/runtime/status.h)
+defines one process-wide error space: `enum class Status : int32_t`.
+
+Non-error outcomes (all `<= 0`):
+
+| Value | Meaning |
+|---|---|
+| `Ok` | success |
+| `Done` | success, and the operation is finished/complete |
+| `Suspended` | success, work continues later |
+| `Declined` | refusal **without** an error |
+| `Pending` / `Timeout` / `Propagate` | in progress / timed out / pass to the next handler |
+| `EventSet`, `Incomplete`, `Suboptimal`, `ThreadIdle`, … | Vulkan-style operational codes |
+
+Errors live in numbered sub-spaces, all negative and non-overlapping:
+
+* **errno space** — `ErrorNotFound` (`ENOENT`), `ErrorInvalidArguemnt`
+  (`EINVAL`), `ErrorAgain`, `ErrorTimeout`, `ErrorNotImplemented` (`ENOSYS`), …
+* **generic**, **graphics-API** (`ErrorSurfaceLost`, `ErrorOutOfPoolMemory`, …),
+  and **WinAPI** spaces.
+
+Helpers, all `constexpr`:
+
+[source,cpp]
+----
+status::isSuccessful(st);              // Ok | Done | Suspended
+status::isErrno(st) / toErrno(st);     // which sub-space, and back to the local errno
+status::errnoToStatus(errno);          // native errno -> Status (canonicalizing)
+status::lastErrorToStatus(GetLastError());  // WinAPI -> Status
+getStatusName(st);                     // StringView, for logs
+getStatusDescription(st, cb);          // human-readable text into a callback
+----
+
+**The errno sub-space is canonical, not native.** errno numbering is OS-specific — `EAGAIN`
+is 11 on Linux and 35 on Darwin, `EDEADLK` is 35 / 11 / 36 on Linux / Darwin / Windows — so
+storing the native number would make the same error a different `Status` per platform, and a
+`Status` crossing a wire (or a log, or a database) would change meaning. The errno space
+therefore uses one portable numbering, the Linux/asm-generic one that Android and wasm already
+share, and
+[detail/errno_canonical.h](../../../runtime/include/sprt/runtime/detail/errno_canonical.h)
+converts at the boundary: `errnoToStatus()` canonicalizes the native code, `toErrno()`
+translates back to what the local libc understands. Consequences for your code:
+
+* Never build a `Status` by hand from an errno arithmetic — call `errnoToStatus()`. Use
+  `canonicalErrnoToStatus()` only for a code that is *already* canonical (e.g. one received
+  from another machine).
+* Never feed `toCanonicalErrno()` to a libc function; use `toErrno()` for that, and expect 0
+  when the canonical code has no local counterpart.
+* Codes that exist on one OS only (Darwin `EPWROFF`, Windows `EOTHER`, …) are mapped into a
+  reserved band so they can never be confused with a canonical code of another meaning.
+
+Rules of use:
+
+* A function that can fail returns `Status`. Do not return `bool` and stash the
+  reason somewhere, and do not define a module-local error enum for something
+  the shared space already names.
+* Check with `isSuccessful()`. Writing `if (st == Status::Ok)` silently treats
+  `Done` and `Suspended` as failures — a real source of hangs in event code.
+* Use `Declined` for "no, and that is fine" (a handler that does not want the
+  event); reserve `Error*` for actual failures.
+* Wrapping a platform call: convert immediately at the call site with
+  `errnoToStatus` / `lastErrorToStatus` so the platform-specific number never
+  escapes the platform layer.
+
+## `Result<T>`
+
+For "a value, or nothing" — `Result<T>` carries the `Status` alongside:
+
+[source,cpp]
+----
+Result<int64_t> readInteger(int base = 0);   // StringView reader
+
+if (auto r = view.readInteger()) {
+	use(r.get());
+}
+
+int64_t v = 0;
+if (!view.readInteger().grab(v)) { … }          // move out if valid
+
+view.readInteger().unwrap([&](const int64_t &v) { … });   // callback if valid
+auto n = view.readInteger().get(0);                       // value or default
+----
+
+`valid()` (and `operator bool`) is `isSuccessful(status)`, so the same
+`Ok/Done/Suspended` rule applies. Construct failures with
+`Result<T>::error(Status)`.
+
+`StatusValue<T>` is the packed variant for hot paths: a union where negative
+values are a `Status` and non-negative values are the result.
+
+## `bool init()`
+
+Reference-counted objects report construction failure by returning `false` from
+`init()`; `Rc<T>::create()` then destroys the object and yields `nullptr`. Log
+the reason inside `init()` before returning `false` — the caller only sees a
+null pointer.
+
+## Logging
+
+[SPLog.h](../../../stappler/core/utils/SPLog.h). The dominant form in the
+codebase (and the one to use in new code) is `slog()`, which captures
+`source_location` at the call site:
+
+[source,cpp]
+----
+slog().error("Vk", "Failed to acquire swapchain image: ", getStatusName(st));
+slog().warn("Ui", "style not found: ", name);
+slog().debug("Loop", "frame ", idx, " submitted");
+----
+
+* First argument is a **tag** (subsystem), then any number of streamable values —
+  concatenated through `toString`, so no format string is needed.
+* Levels: `verbose`, `debug`, `info`, `warn`, `error`, `fatal`.
+* `log::format(...)` (printf-style) and `log::text(...)` exist for the cases
+  where a preformatted or already-assembled message is passed through.
+* `plog()` is the variant that does not attach a source location.
+
+Log **once**, at the layer that can describe the failure usefully; propagate the
+`Status` upward instead of re-logging it at every frame.
+
+## Assertions
+
+[__sprt_assert.h](../../../runtime/include/sprt/c/__sprt_assert.h):
+
+| Macro | Notes |
+|---|---|
+| `assert(expr)` | standard spelling, debug-only |
+| `__sprt_assert(expr)` | runtime-internal equivalent |
+| `sprt_passert(expr, "text")` | assert with a message |
+| `XL_ASSERT(cond, msg)` | logs `Fatal` **and then** asserts ([XLCore.h](../../../xenolith/core/XLCore.h)) |
+
+Under `NDEBUG` (any `RELEASE=1` build) all of them expand to nothing — the
+expression is not evaluated. So:
+
+* Never write `assert(doSomething())`; the call disappears in release.
+* Assert on **programmer errors** (broken invariants, impossible states). Runtime
+  conditions — a missing file, a lost device, bad user input — are `Status`, not
+  assertions.
+
+## Related
+
+* [07-strings.adoc](07-strings.adoc) — `Result<T>` from the string readers, `getStatusName`
+* [03-naming.adoc](03-naming.adoc) — the `init()` + `Rc<T>::create()` contract
+* [04-platform-guards.adoc](04-platform-guards.adoc) — per-platform `errno` values

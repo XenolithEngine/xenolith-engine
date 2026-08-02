@@ -30,8 +30,8 @@ static SharedSymbol s_dataSharedSymbols[] = {
 		static_cast<ValueTemplate<memory::PoolInterface> (*)(StringView, size_t)>(
 				readUrlencoded<memory::PoolInterface>)},
 	SharedSymbol{"readUrlencoded",
-		static_cast<ValueTemplate<memory::StandartInterface> (*)(StringView, size_t)>(
-				readUrlencoded<memory::StandartInterface>)},
+		static_cast<ValueTemplate<mem_std::Interface> (*)(StringView, size_t)>(
+				readUrlencoded<mem_std::Interface>)},
 };
 
 SP_USED static SharedModule s_dataSharedModule(buildconfig::MODULE_STAPPLER_DATA_NAME,

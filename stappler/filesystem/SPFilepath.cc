@@ -99,9 +99,8 @@ auto canonical_fn(const FileInfo &info) -> typename Interface::StringType {
 }
 
 template <>
-auto canonical<memory::StandartInterface>(StringView path)
-		-> memory::StandartInterface::StringType {
-	return canonical_fn<memory::StandartInterface>(path);
+auto canonical<mem_std::Interface>(StringView path) -> mem_std::Interface::StringType {
+	return canonical_fn<mem_std::Interface>(path);
 }
 
 template <>
@@ -110,9 +109,8 @@ auto canonical<memory::PoolInterface>(StringView path) -> memory::PoolInterface:
 }
 
 template <>
-auto canonical<memory::StandartInterface>(const FileInfo &info)
-		-> memory::StandartInterface::StringType {
-	return canonical_fn<memory::StandartInterface>(info);
+auto canonical<mem_std::Interface>(const FileInfo &info) -> mem_std::Interface::StringType {
+	return canonical_fn<mem_std::Interface>(info);
 }
 
 template <>
@@ -171,9 +169,9 @@ static void doMerge(const Callback<void(StringView)> &cb, const SourceVector &ve
 }
 
 template <>
-auto _merge<memory::StandartInterface>(StringView root, StringView path)
-		-> memory::StandartInterface::StringType {
-	return do_merge<memory::StandartInterface>(root, path);
+auto _merge<mem_std::Interface>(StringView root, StringView path)
+		-> mem_std::Interface::StringType {
+	return do_merge<mem_std::Interface>(root, path);
 }
 
 template <>
@@ -205,9 +203,9 @@ void merge(const Callback<void(StringView)> &cb, SpanView<sprt::__pool_string> v
 void merge(const Callback<void(StringView)> &cb, SpanView<StringView> vec) { doMerge(cb, vec); }
 
 template <>
-auto merge<memory::StandartInterface>(SpanView<sprt::__malloc_string> vec)
-		-> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
+auto merge<mem_std::Interface>(SpanView<sprt::__malloc_string> vec)
+		-> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
 	ret.reserve(getMergeSize(vec));
 	doMerge([&](StringView str) { ret.append(str.data(), str.size()); }, vec);
 	return ret;
@@ -224,9 +222,9 @@ auto merge<memory::PoolInterface>(SpanView<sprt::__malloc_string> vec)
 
 
 template <>
-auto merge<memory::StandartInterface>(SpanView<sprt::__pool_string> vec)
-		-> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
+auto merge<mem_std::Interface>(SpanView<sprt::__pool_string> vec)
+		-> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
 	ret.reserve(getMergeSize(vec));
 	doMerge([&](StringView str) { ret.append(str.data(), str.size()); }, vec);
 	return ret;
@@ -243,9 +241,8 @@ auto merge<memory::PoolInterface>(SpanView<sprt::__pool_string> vec)
 
 
 template <>
-auto merge<memory::StandartInterface>(SpanView<StringView> vec)
-		-> memory::StandartInterface::StringType {
-	memory::StandartInterface::StringType ret;
+auto merge<mem_std::Interface>(SpanView<StringView> vec) -> mem_std::Interface::StringType {
+	mem_std::Interface::StringType ret;
 	ret.reserve(getMergeSize(vec));
 	doMerge([&](StringView str) { ret.append(str.data(), str.size()); }, vec);
 	return ret;
@@ -260,22 +257,22 @@ auto merge<memory::PoolInterface>(SpanView<StringView> vec) -> memory::PoolInter
 }
 
 template <>
-auto merge<memory::StandartInterface>(stappler::memory::StandartInterface::StringType &&str)
-		-> memory::StandartInterface::StringType {
+auto merge<mem_std::Interface>(stappler::mem_std::Interface::StringType &&str)
+		-> mem_std::Interface::StringType {
 	return str;
 }
 
 template <>
-auto merge<memory::PoolInterface>(stappler::memory::StandartInterface::StringType &&str)
+auto merge<memory::PoolInterface>(stappler::mem_std::Interface::StringType &&str)
 		-> memory::PoolInterface::StringType {
 	return StringView(str).str<memory::PoolInterface>();
 }
 
 
 template <>
-auto merge<memory::StandartInterface>(stappler::memory::PoolInterface::StringType &&str)
-		-> memory::StandartInterface::StringType {
-	return StringView(str).str<memory::StandartInterface>();
+auto merge<mem_std::Interface>(stappler::memory::PoolInterface::StringType &&str)
+		-> mem_std::Interface::StringType {
+	return StringView(str).str<mem_std::Interface>();
 }
 
 template <>

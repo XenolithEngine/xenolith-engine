@@ -28,7 +28,7 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 Formatter::Formatter() { }
 
-Formatter::Formatter(FontCallback &&cb, TextLayoutData<memory::StandartInterface> *d)
+Formatter::Formatter(FontCallback &&cb, TextLayoutData<mem_std::Interface> *d)
 : fontCallback(sp::move(cb)) {
 	reset(d);
 }
@@ -40,7 +40,7 @@ Formatter::Formatter(FontCallback &&cb, TextLayoutData<memory::PoolInterface> *d
 
 void Formatter::setFontCallback(FontCallback &&cb) { fontCallback = sp::move(cb); }
 
-void Formatter::reset(TextLayoutData<memory::StandartInterface> *d) {
+void Formatter::reset(TextLayoutData<mem_std::Interface> *d) {
 	_output = Output(d);
 	reset();
 }
@@ -140,9 +140,7 @@ void Formatter::expandGlyphContinuations() {
 			insBefore[p.insertAfter + 1] += 1;
 		}
 	}
-	for (size_t i = 1; i <= origChars; ++i) {
-		insBefore[i] += insBefore[i - 1];
-	}
+	for (size_t i = 1; i <= origChars; ++i) { insBefore[i] += insBefore[i - 1]; }
 
 	// shift each line/range by the insertions before its start, grow it by those within its span
 	auto reindex = [&](auto &collection) {
@@ -260,21 +258,21 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 
 		// Base level: explicit `direction` wins; for `auto` reuse the paragraph's already-resolved
 		// base so wrapped continuation lines stay consistent (#2), else derive it from this line.
-		const TextDirection base = (_defaultDirection == TextDirection::Neutral) ? _paragraphDirection
-																				 : _defaultDirection;
+		const TextDirection base = (_defaultDirection == TextDirection::Neutral)
+				? _paragraphDirection
+				: _defaultDirection;
 
 		// TextBidi allocates from the current pool; run it in a transient pool scope so the Formatter
 		// does not depend on an ambient pool context.
 		auto pool = memory::pool::create((memory::pool_t *)nullptr);
-		memory::perform(
-				[&] {
+		memory::perform([&] {
 			TextBidi bidi;
 			if (!bidi.init(buf.data(), buf.size(), base)) {
 				return;
 			}
 			// resolved embedding levels + the line's paragraph base direction
 			bidi.foreachParagraph([&](uint32_t off, uint32_t length, uint8_t baseLevel,
-										   SpanView<uint8_t> levels) {
+										  SpanView<uint8_t> levels) {
 				for (uint32_t i = 0; i < length && i < uint32_t(levels.size()) && (off + i) < len;
 						++i) {
 					_output.chars.at(uint16_t(first + off + i)).bidiLevel = levels[i];
@@ -292,8 +290,7 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 			});
 			// visual run order (rules L1-L2): runs come back already ordered left-to-right
 			bidi.foreachVisualRun(0, len, [&](const BidiRun &run) { runs.emplace_back(run); });
-		},
-				pool);
+		}, pool);
 		memory::pool::destroy(pool);
 	}
 
@@ -333,7 +330,8 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 			for (uint16_t i = runFirst; i < runEnd; ++i) {
 				auto &cd = _output.chars.at(i);
 				if (const int16_t sp = graphemeSpacing(cd.charID)) {
-					cd.advance = uint16_t(cd.advance + sp); // letter/word-spacing folds into the cell
+					cd.advance =
+							uint16_t(cd.advance + sp); // letter/word-spacing folds into the cell
 				}
 				cd.pos = int16_t(x);
 				x += cd.advance;
@@ -387,9 +385,7 @@ int32_t Formatter::shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, 
 	for (uint16_t s = runFirst; s < runEnd;) {
 		const uint16_t f = _output.chars.at(s).face;
 		uint16_t e = s;
-		while (e < runEnd && _output.chars.at(e).face == f) {
-			++e;
-		}
+		while (e < runEnd && _output.chars.at(e).face == f) { ++e; }
 		subs.emplace_back(SubRun{s, uint16_t(e - s)});
 		s = e;
 	}
@@ -420,10 +416,10 @@ int32_t Formatter::shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, 
 		// decomposition) keeps its first glyph on the base char and routes the rest to continuation
 		// entries spliced in at finalize (#7). HarfBuzz emits a cluster's glyphs contiguously.
 		// Letter/word-spacing (#9) is added once per grapheme, after the whole cluster.
-		uint32_t prevCluster = 0xFFFFFFFFu;
+		uint32_t prevCluster = 0xFFFF'FFFFu;
 		uint16_t prevBaseIdx = 0;
 		auto closeGrapheme = [&]() {
-			if (prevCluster == 0xFFFFFFFFu) {
+			if (prevCluster == 0xFFFF'FFFFu) {
 				return;
 			}
 			auto &pcd = _output.chars.at(prevBaseIdx);
@@ -467,13 +463,9 @@ int32_t Formatter::shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, 
 	};
 
 	if (!rtl) {
-		for (auto &s : subs) {
-			placeSub(s.first, s.len);
-		}
+		for (auto &s : subs) { placeSub(s.first, s.len); }
 	} else {
-		for (size_t i = subs.size(); i-- > 0;) {
-			placeSub(subs[i].first, subs[i].len);
-		}
+		for (size_t i = subs.size(); i-- > 0;) { placeSub(subs[i].first, subs[i].len); }
 	}
 
 	return x;
@@ -813,8 +805,8 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 			for (uint16_t i = first; i < first + len; i++) {
 				_output.chars.at(i).pos += offsetLeft;
 			}
-		} else if ((offsetLeft > 0 || (advance > width + lineOffset))
-				&& align == TextAlign::Justify && forceAlign && len > 0) {
+		} else if ((offsetLeft > 0 || (advance > width + lineOffset)) && align == TextAlign::Justify
+				&& forceAlign && len > 0) {
 			int16_t joffset =
 					(advance > width + lineOffset) ? (width + lineOffset - advance) : offsetLeft;
 			uint16_t spacesCount = 0;
@@ -891,7 +883,7 @@ void Formatter::updateLineHeight(uint16_t first, uint16_t last) {
 	}
 }
 
-Formatter::Output::Output(TextLayoutData<memory::StandartInterface> *d)
+Formatter::Output::Output(TextLayoutData<mem_std::Interface> *d)
 : width(&d->width)
 , height(&d->height)
 , maxAdvance(&d->maxAdvance)
