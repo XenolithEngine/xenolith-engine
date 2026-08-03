@@ -107,11 +107,17 @@ bool Makefile::include(StringView name, StringView data, bool copyData, ErrorRep
 }
 
 bool Makefile::include(const FileInfo &iinfo, ErrorReporter *err, bool optional) {
+	// This is an OS boundary, so a make-visible path has to become a real one: a space inside it
+	// travels through the engine as PathSpacePlaceholder (an `include $(STAPPLER_ROOT)/make/x.mk`
+	// where the root holds a space), and the filesystem knows nothing about that byte.
+	mem_std::Interface::StringType spaceStorage;
+	FileInfo info = iinfo;
+	info.path = decodePathSpaces(info.path, spaceStorage);
+
 	// Normalize a platform-native include path to the internal posix form before lookup — on Windows
 	// an include may be written (or produced by $(abspath)) as `C:/dir/file.mk`, which the posix-based
 	// lookup would otherwise treat as relative. toPosixPath is a no-op on POSIX builds.
 	mem_std::Interface::StringType posixStorage;
-	FileInfo info = iinfo;
 	info.path = filesystem::toPosixPath(info.path, posixStorage);
 
 	auto path = filesystem::findPath<Interface>(info, filesystem::Access::Read);

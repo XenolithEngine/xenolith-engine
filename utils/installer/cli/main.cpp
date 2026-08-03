@@ -533,13 +533,15 @@ static int run(int argc, const char *argv[]) {
 } // namespace stappler::xenolith::installer
 
 int main(int argc, const char *argv[]) {
-	// The CLI does not run the application framework, so the runtime platform is brought up
-	// explicitly (writable-root registration, default filesystem interface). Without it,
-	// filesystem::mkdir_recursive/write — used by the git checkout — resolve to nothing.
-	int initResult = 0;
-	sprt::initialize(sprt::AppConfig{sprt::StringView("org.stappler.xenolith.cli"),
-						 sprt::StringView("xenolith-cli"), sprt::StringView()},
-			initResult);
-
-	return stappler::xenolith::installer::run(argc, argv);
+	// The CLI does not run the application framework, so the runtime platform still has to be
+	// brought up (writable-root registration, default filesystem interface) — without it
+	// filesystem::mkdir_recursive/write, used by the git checkout, resolve to nothing.
+	//
+	// perform_main is what does it: it reads the appconfig module the build generates, so the
+	// bundle name and APPCONFIG_APP_PATH_COMMON from this project's Makefile actually reach the
+	// runtime. A hand-written AppConfig here used to bypass both, which pinned the tool to the
+	// ExecutableRelative scheme (App* directories next to the binary) and gave it a bundle name of
+	// its own — the two things that must match the GUI for both to share one SDK store.
+	return stappler::perform_main(argc, argv,
+			[&] { return stappler::xenolith::installer::run(argc, argv); });
 }

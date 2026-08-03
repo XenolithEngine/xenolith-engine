@@ -49,7 +49,7 @@ LOCAL_MODULES ?= \
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
-LOCAL_SRCS_DIRS := mk filesystem font pug document
+LOCAL_SRCS_DIRS := mk filesystem font pug document core
 LOCAL_SRCS_OBJS :=
 
 LOCAL_INCLUDES_DIRS :=

@@ -109,8 +109,19 @@ void setupStandardVariables(Makefile *mk, StringView rootDir, ErrorReporter &err
 
 	// CURDIR is make-visible and routinely joined into paths ($(CURDIR)/build/x.o), so a space in the
 	// working directory must be encoded to PathSpacePlaceholder or the join would split into two words.
+	//
+	// The value has to OUTLIVE this call: a variable's Stmt keeps a StringView into the text it was
+	// assigned from, it does not copy (every other assignment here passes a string literal). When the
+	// path holds no space encodePathSpaces returns `rootDir` unchanged, which the caller owns — but
+	// the encoded copy lives in a local buffer, so it must be duplicated into the makefile's pool.
+	// Without this, CURDIR (and everything joined onto it) read freed memory the moment a project
+	// path contained a space.
 	mem_std::Interface::StringType curdirStorage;
-	simple("CURDIR", encodePathSpaces(rootDir, curdirStorage));
+	auto curdir = encodePathSpaces(rootDir, curdirStorage);
+	if (curdir.data() != rootDir.data()) {
+		curdir = curdir.pdup(mk->getPool());
+	}
+	simple("CURDIR", curdir);
 }
 
 Rc<MakefileRef> loadProject(StringView projectDir, SpanView<ProjectVariable> variables,

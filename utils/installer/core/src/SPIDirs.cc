@@ -34,22 +34,53 @@ Layout Layout::fromHome(StringView home) {
 	return l;
 }
 
+// Where an installation made before the switch to location categories lives: one root under the
+// shared data dir, holding config/data/cache side by side.
+static constexpr StringView kLegacyDir("xenolith");
+
+// First location the runtime offers for a category — the user-level, writable one. Empty when the
+// platform does not populate that category at all (macOS fills AppData/AppCache but not AppConfig;
+// Windows has no CommonConfig).
+static String categoryRoot(FileCategory category) {
+	String ret;
+	filesystem::enumeratePaths(category, [&](const LocationInfo &, StringView path) -> bool {
+		ret = toString(path);
+		return false; // stop at the first
+	});
+	return ret;
+}
+
 Layout Layout::system() {
-#if SPRT_WINDOWS
-	const char *base = ::getenv("LOCALAPPDATA");
-	if (!base || !*base) {
-		base = "C:/Users/Public";
+	// Nothing here is spelled out per platform: the App* categories are the runtime's app-specific,
+	// read-write locations, placed from APPCONFIG_BUNDLE_NAME (XDG on Linux, the system AppData
+	// folder on Windows, ~/Library on macOS). The CLI and the GUI declare the SAME bundle name and
+	// the same APPCONFIG_APP_PATH_COMMON, which is what makes both land on one store — see the note
+	// in utils/installer/Makefile.
+	auto dataRoot = categoryRoot(FileCategory::AppData);
+	if (dataRoot.empty()) {
+		// No app directory at all (a stripped or sandboxed environment) — stay runnable rather than
+		// hand back empty paths that would fail much later.
+		return fromHome(mergePath(StringView("/tmp"), kLegacyDir));
 	}
-	return fromHome(mergePath(StringView(base), "xenolith"));
-#else
-	// macOS/Linux: ~/.local/share/xenolith (avoid ~/Library/Application Support — it has a SPACE,
-	// which the build cannot handle in STAPPLER_ROOT/include paths).
-	const char *home = ::getenv("HOME");
-	if (!home || !*home) {
-		home = "/tmp";
+
+	// Compatibility: an installation made before this switch keeps config, data and cache under one
+	// root in the SHARED data dir (<CommonData>/xenolith/{config,data,cache}). Keep using it when it
+	// is there, so an already-installed SDK is not stranded.
+	if (auto commonRoot = categoryRoot(FileCategory::CommonData); !commonRoot.empty()) {
+		auto legacyRoot = mergePath(commonRoot, kLegacyDir);
+		if (isDirectory(mergePath(legacyRoot, "data"))) {
+			return fromHome(legacyRoot);
+		}
 	}
-	return fromHome(mergePath(StringView(home), ".local/share", "xenolith"));
-#endif
+
+	auto configRoot = categoryRoot(FileCategory::AppConfig);
+	auto cacheRoot = categoryRoot(FileCategory::AppCache);
+
+	Layout l;
+	l.config = configRoot.empty() ? mergePath(dataRoot, "config") : toString(configRoot);
+	l.data = dataRoot;
+	l.cache = cacheRoot.empty() ? mergePath(dataRoot, "cache") : toString(cacheRoot);
+	return l;
 }
 
 Layout Layout::resolve(StringView prefix, StringView envHome) {

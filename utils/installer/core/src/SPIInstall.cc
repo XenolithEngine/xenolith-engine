@@ -318,7 +318,34 @@ InstallResult installComponent(StringView id, const Layout &layout, bool wantHos
 	return result;
 }
 
+static bool hasOwnToolchains(StringView engineRoot) {
+	auto engineTc = mergePath(engineRoot, "toolchains");
+	for (auto kind : {Kind::Host, Kind::Target}) {
+		auto dir = mergePath(engineTc, getKindDirName(kind));
+		if (!isDirectory(dir)) {
+			continue;
+		}
+		// listChildDirs walks with stat(), which follows symlinks, so a link to the store also
+		// reports as a directory — isLink is what separates the two.
+		for (const auto &name : listChildDirs(StringView(dir))) {
+			if (!isLink(mergePath(dir, name))) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool linkToolchainsIntoEnginePath(const Layout &layout, StringView engineRoot) {
+	// An engine root holding a REAL toolchain directory is a developer's working tree that builds
+	// its own toolchains: refuse outright rather than replace them. Linking is destructive by
+	// design (clearLink removes what is in the way), and a locally built sysroot is not
+	// reproducible from the store — so a "heal the links" call must never touch one. Only links,
+	// which this function itself created, are replaced without asking.
+	if (hasOwnToolchains(engineRoot)) {
+		return false;
+	}
+
 	auto engineTc = mergePath(engineRoot, "toolchains");
 	bool ok = true;
 	for (auto kind : {Kind::Host, Kind::Target}) {

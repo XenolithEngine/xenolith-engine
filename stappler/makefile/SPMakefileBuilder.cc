@@ -128,6 +128,14 @@ struct Job {
 	bool inSyncWindow = false;
 	bool cmdSettled = false;
 	int cmdSyncCode = 0;
+
+	// Decoded operands of the current $(WRITE)/$(APPEND). Looper::writeFile is ASYNCHRONOUS: it
+	// borrows the path and the payload until its completion runs, so neither may live in a scratch
+	// buffer local to spawn(). They only differ from cmd.writePath/writeData when the operand carries
+	// a PathSpacePlaceholder — i.e. exactly when a path contains a space, which is why a scratch
+	// buffer here read as freed memory only under a space-bearing path (see the JobString note above).
+	JobString writePathDecoded;
+	JobString writeDataDecoded;
 };
 
 // Render an elapsed wall-clock duration (microseconds) as a compact string ("742ms", "12.3s", ...);
@@ -513,13 +521,20 @@ void Builder::spawn(Job *job) {
 
 		// Decode the destination path to a real filesystem path; decode the content too, in case an
 		// expanded path with a placeholder leaked into it (the file must hold real spaces, not 0x1F).
+		// The decoded copies are parked on the Job because writeFile borrows them until its
+		// completion fires — see writePathDecoded/writeDataDecoded.
 		mem_std::Interface::StringType pathStorage;
-		StringView path = decodePathSpaces(StringView(cmd.writePath.data(), cmd.writePath.size()),
+		auto pathDecoded = decodePathSpaces(StringView(cmd.writePath.data(), cmd.writePath.size()),
 				pathStorage);
+		job->writePathDecoded.assign(pathDecoded.data(), pathDecoded.size());
+		StringView path(job->writePathDecoded.data(), job->writePathDecoded.size());
+
 		mem_std::Interface::StringType dataStorage;
-		StringView dataView = decodePathSpaces(
-				StringView(cmd.writeData.data(), cmd.writeData.size()), dataStorage);
-		BytesView data(reinterpret_cast<const uint8_t *>(dataView.data()), dataView.size());
+		auto dataDecoded = decodePathSpaces(StringView(cmd.writeData.data(), cmd.writeData.size()),
+				dataStorage);
+		job->writeDataDecoded.assign(dataDecoded.data(), dataDecoded.size());
+		BytesView data(reinterpret_cast<const uint8_t *>(job->writeDataDecoded.data()),
+				job->writeDataDecoded.size());
 
 		// writeFile may fire its completion synchronously on an open error (then return null), unlike
 		// spawnProcess. While inSyncWindow the completion only records the result instead of

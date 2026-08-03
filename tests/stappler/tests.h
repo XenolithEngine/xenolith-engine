@@ -67,6 +67,7 @@ void performShapeTests();
 void performPugTests();
 void performCssTests();
 void performFlexboxGridCssTests();
+void performCommandLineTests();
 
 } // namespace stappler
 

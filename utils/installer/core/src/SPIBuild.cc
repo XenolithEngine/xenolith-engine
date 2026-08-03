@@ -183,9 +183,15 @@ BuildResult buildProject(StringView path, const Layout &layout, const BuildOptio
 
 		// STAPPLER_ROOT goes in as a make variable rather than an environment one: nothing under
 		// make/ reads it from the environment, and Origin::CommandLine beats the project's `?=`.
+		// It is a PATH, so a space in it has to be handed over make-visible (encoded to
+		// PathSpacePlaceholder) — a raw space would make the assignment a two-word list and every
+		// $(STAPPLER_ROOT)/… join would split. `encodedRoot` must outlive the build: a variable
+		// keeps a view of the text it was assigned.
+		mem_std::String encodedRootStorage;
+		auto encodedRoot = makefile::encodePathSpaces(StringView(engineRoot), encodedRootStorage);
+
 		Vector<makefile::ProjectVariable> variables;
-		variables.emplace_back(
-				makefile::ProjectVariable{StringView("STAPPLER_ROOT"), StringView(engineRoot)});
+		variables.emplace_back(makefile::ProjectVariable{StringView("STAPPLER_ROOT"), encodedRoot});
 		if (target != host.native) {
 			variables.emplace_back(
 					makefile::ProjectVariable{StringView("STAPPLER_TARGET"), StringView(target)});
