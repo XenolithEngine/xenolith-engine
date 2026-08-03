@@ -121,6 +121,27 @@ void performCssTests() {
 				"css: no tag/class/id match for unrelated node");
 		check(!otherStyle.get(ParameterName::CssOpacity, &iface).empty(),
 				"css: universal selector still applies");
+
+		// A stylesheet may open with a comment. `*` is a selector start, so the opening `/*` used
+		// to be mistaken for a universal selector and the WHOLE file was rejected as ill-formed.
+		auto leadingData = new (pool) DocumentData(pool);
+		auto leadingContainer = new (pool) StyleContainer(leadingData);
+		StringViewUtf8 leadingCss(R"Css(/* a leading comment, with a : and a * inside */
+			label { color: #123456; }
+		)Css");
+		check(leadingContainer->readStyle(leadingCss), "css: stylesheet may start with a comment");
+
+		Node leadingNode("label");
+		StyleList leadingStyle;
+		leadingContainer->resolveNodeStyle(leadingStyle, leadingNode, SpanView<const Node *>(),
+				media, resolved);
+		SimpleStyleInterface leadingIface(resolved, leadingData->strings, 1.0f, 1.0f);
+		check(!leadingStyle.get(ParameterName::CssColor, &leadingIface).empty(),
+				"css: the rule after a leading comment still applies");
+
+		// NB: multi-class compounds (`.a.b`) are matched by the scene-graph path only
+		// (StyleSheet::collectMatches / XL_SPECIFICITY_TEST). resolveNodeStyle here is the
+		// document renderer's simple-key path, which reads no structured rule at all.
 	}, pool);
 
 	memory::pool::destroy(pool);

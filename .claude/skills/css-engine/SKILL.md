@@ -6,7 +6,7 @@ description: >-
   Use before writing or debugging any .css in this repo (resources/style.css,
   pug templates, ui:: atoms). Covers what flex/position/measure/selectors/units
   properties are really supported, and — critically — what web CSS features are
-  silently ignored (var(), :nth-child, min/max on a flex item's CROSS axis,
+  silently ignored (:not(), ::before, [attr], min/max on a flex item's CROSS axis,
   position:relative offsets, prefers-color-scheme, transform/box-shadow).
 ---
 
@@ -34,11 +34,10 @@ DO NOT use these (they parse but do nothing, or don't exist):
 
 | Web feature | Status here |
 |---|---|
-| `var(--x)` / custom properties | **absent** — no `var()`, no `--name` registry |
 | `min-width`/`max-width` on a flex item's **cross** axis | parsed, **not applied** — the main axis IS enforced, see below |
 | `position: relative` offsets | **no effect** — only `position: absolute` is implemented |
 | `position: fixed` / `sticky` | **no effect** |
-| `:nth-child`/`:first-child`/`:not()`/`:empty`/`:lang()` | **unsupported** — rule is skipped |
+| `:not()` / `:is()` / `:where()` / `:lang()` | **unsupported** — rule is skipped (`:nth-child` and friends DO work, see Selectors) |
 | `::before`/`::after`/`::marker` pseudo-elements | **unsupported** — rule is skipped |
 | `[attr]`/`[attr=val]` attribute selectors | parsed, **never match** |
 | `prefers-color-scheme` | **absent** — use `@media (light-level: dim)` or `x-option` |
@@ -165,8 +164,36 @@ comma lists. Specificity is standard (a=id, b=class+pseudo, c=tag).
 name are both matched by `#name`.
 Interactive pseudo-classes that DO work: **`:hover :focus :active :checked :enabled :disabled`**.
 
-NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, structural
-pseudo-classes (`:nth-child :first-child :not() :empty …`), attribute selectors `[attr]`.
+Structural pseudo-classes that DO work: **`:nth-child(An+B|odd|even) :nth-last-child()
+:first-child :last-child :only-child`**, the four **`*-of-type`** forms, **`:empty`**, **`:root`**.
+Each counts as a class for specificity. Two engine-specific rules:
+- **`:nth-child` counts in z-order**, not insertion order (the child list is sorted by
+  `getLocalZOrder()`, same as `+`/`~`). Give siblings explicit distinct z-orders when it matters.
+- **`:root` = the node owning the nearest `ui::StyleSystem`**, not the scene root. That is the
+  place to declare custom properties.
+Sibling-dependent styles stay live: add/remove/reorder re-arms the siblings automatically.
+
+NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, `:not()`/`:is()`/
+`:where()`/`:lang()`, attribute selectors `[attr]`.
+
+## Custom properties (`--x` / `var()`) — supported
+
+```css
+:root  { --brand: #3949ab; --pad: 12px; --accent: var(--brand); }
+.card  { background-color: var(--brand); padding: var(--pad); }
+.card  { outline-color: var(--outline, #cfd8dc); }   /* fallback */
+.dark  { --brand: #fdd835; }                          /* re-theme a subtree */
+```
+- Untyped: the value is raw text parsed where it is substituted, so a variable can be a colour,
+  a length or a shorthand. A typo is diagnosed at the USE, not at the declaration.
+- **The variable inherits; a declaration using it does not.** `width: var(--w)` on a parent is
+  not the child's width.
+- Full cascade of variables is resolved before substitution, so a variable from a MORE specific
+  rule is visible to a use in a less specific one. But the substituted declaration still loses
+  to a more specific literal one.
+- Unresolvable reference (undeclared with no fallback, or a cycle) drops that DECLARATION.
+- Names are **case-insensitive** here (web is case-sensitive). Values keep their case.
+- Changing a variable on an ancestor repaints the subtree.
 
 ## @media queries
 
@@ -229,15 +256,28 @@ passes whatever level it has.
 
 ## Anti-pattern checklist
 
-- `var(--x)` → no custom properties.
 - `transform`/`box-shadow`/`overflow`/`transition`/`cursor` → don't exist.
-- `:nth-child`/`::before`/`[attr]` selectors → rule never matches.
+- `::before`/`:not()`/`[attr]` selectors → rule never matches.
+- `:nth-child` assuming insertion order → it counts in z-order.
+- `:root` assuming the scene root → it is the stylesheet owner.
 - `min-width`/`max-width` on a flex item's CROSS axis → no effect (the main axis works).
 - `position: relative` expecting an offset → only `absolute` is implemented.
 - `-xl-z-order` to raise a node *without* moving it in a flex row → it is the placement order
   too. Use `order` for placement, `position: absolute` to leave the flow entirely.
 - `prefers-color-scheme` → use `light-level` or `x-option`.
 - Sizes need units: `width: 100` is invalid; `100px`/`100%`/`1em`. `line-height: 1.5` is the only bare-number exception.
+
+## Writing a type applier (engine side, not CSS)
+
+`StyleResolver::registerTypeApplier(type, applier, mask)` lets a widget claim attributes for
+its own node type. One contract is easy to miss: **list `ParameterName::CmdReset` in the mask**.
+It is a pseudo-parameter (no CSS produces it) delivered FIRST on EVERY pass, meaning "drop
+everything the previous pass left". Without it, a rule that stops matching (class removed,
+CSS reloaded, `@media` flipped) just goes missing from the resolved style and its paint stays
+applied forever. Canonical implementation: keep the styling in a component and
+`removeComponent<T>()` in the reset (`ui::Button`); a widget holding paint directly restores
+its `init()` defaults (`ui::Panel`). Return `true` from that branch. Details + the failure it
+prevents: css-subset.adoc §"Writing a type applier: the reset command". [`XL_PANEL_TEST`]
 
 ## Source map (for deeper questions)
 

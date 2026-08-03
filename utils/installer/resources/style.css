@@ -1,17 +1,57 @@
+/* Xenolith SDK Installer — stylesheet.
 
-#global-background {
-	width: 100%;
-	height: 100%;
-	background-color: #0f110e;
-	-xl-anchor-point: 0.5;
-	-xl-position: 50%;
+   Loaded by InstallerSceneContent as a ui::StyleSystem on the scene content, so `:root` below is
+   the scene content node and every declaration here reaches the whole window.
+
+   Only the engine's CSS subset is used — see docs/usage/ui/css-subset.adoc. In particular there is
+   no `border`/`border-bottom`, no `letter-spacing`, and `outline-*` exists on `button` only. */
+
+/* ===========================================================================
+   Palette and metrics. Single source of truth: C++ sets no colours at all, it
+   only assigns types/ids/classes. Values come from the Figma dump.
+   =========================================================================== */
+
+:root {
+	--window: #050808; /* the area behind the packages table */
+	--surface: #0f110e; /* window chrome: title bar, header, buttons */
+	--surface-alt: #111518; /* footer */
+	--control: #292929; /* unchecked checkbox, neutral badge */
+
+	--accent: #fcb400;
+	--accent-hover: #e8a800;
+	--accent-dim: rgba(252, 180, 0, 0.2);
+	--on-accent: #1a1a1a; /* text/glyphs drawn on top of --accent */
+
+	--text: #ffffff;
+	--text-dim: #b8b8b8;
+	--text-title: #cccccc;
+
+	--hover: #444444;
+	--overlay: rgba(5, 7, 8, 0.85);
+
+	--radius-s: 5px;
+	--radius-m: 10px;
+
+	/* kept in sync with InstallerSceneContent::kTitleBarH — the loading overlay is positioned in
+	   code (it lives outside the flex tree) and must stop below the bar */
+	--title-bar-h: 32px;
+	/* kept in sync with InstallerLayout::kRowHeight — the scroll virtualizer needs the row height
+	   up front, before a row node exists to measure */
+	--row-h: 44px;
+	--row-head-h: 36px;
+	--group-h: 40px;
 }
 
+/* ===========================================================================
+   Atoms from xenolith/renderer/ui. Each is a registered type applier, so
+   background-color / border-radius / outline-* reach the widget's own paint.
+   =========================================================================== */
+
 button {
-	background-color: #0f110e;
+	background-color: var(--surface);
 	width: 280px;
 	height: 60px;
-	border-radius: 10px;
+	border-radius: var(--radius-m);
 	display: flex;
 	justify-content: center;
 	align-items: center;
@@ -19,17 +59,11 @@ button {
 }
 
 button:hover {
-	background-color: #ff0000;
-}
-
-button.outlined {
-	background-color: #232323;
-	outline-color: #FFF;
-	outline-width: 2px;
+	background-color: var(--control);
 }
 
 button > label {
-	color: #000000;
+	color: var(--text);
 	font-size: 28px;
 }
 
@@ -38,33 +72,115 @@ button > icon {
 	height: 20px;
 }
 
-button.danger {
-	background-color: #e53935;
-	outline-color: #7f0000;
-	outline-width: 10px;
+button.primary {
+	background-color: var(--accent);
+	width: 240px;
+	height: var(--row-h);
+	border-radius: var(--radius-m);
+}
+
+button.primary:hover {
+	background-color: var(--accent-hover);
+}
+
+button.primary > label {
+	color: var(--on-accent);
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+button.primary > icon {
+	width: 18px;
+	height: 18px;
+}
+
+/* ui::Checkbox is a Panel: only background-color and border-radius route to its paint, an
+   outline would be silently dropped. */
+checkbox {
+	width: 17px;
+	height: 17px;
+	border-radius: 4px;
+	background-color: var(--control);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+checkbox.checked {
+	background-color: var(--accent);
+}
+
+checkbox > icon {
+	width: 14px;
+	height: 14px;
+	color: var(--on-accent);
+}
+
+/* ui::Badge — a pill that hugs its label, hence flex-basis: fit-content. */
+badge {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-basis: fit-content;
+	padding: 4px 12px;
+	border-radius: var(--radius-s);
+	background-color: var(--control);
+}
+
+badge > label {
+	color: var(--text-dim);
+	font-size: 12px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+badge.installed {
+	background-color: var(--accent-dim);
+}
+
+badge.installed > label {
+	color: var(--accent);
+}
+
+badge.not-installed {
+	background-color: transparent;
+}
+
+/* ===========================================================================
+   Window shell
+   =========================================================================== */
+
+#global-background {
+	width: 100%;
+	height: 100%;
+	background-color: var(--surface);
+	-xl-anchor-point: 0.5;
+	-xl-position: 50%;
 }
 
 #installer-layout {
-  display: flex;
-  flex-direction: column;  /* Вертикальная ось */
-  height: 100%;       /* Минимальная высота = весь экран */
+	display: flex;
+	flex-direction: column;
+	height: 100%;
 }
 
 #title-bar {
-  height: 32px;
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  color: #aaaaaa;
+	height: var(--title-bar-h);
+	display: flex;
+	flex-direction: row;
+	width: 100%;
+	color: var(--text-dim);
 }
 
 #title-bar > .os-button {
-  border-radius: 16px;
-  width: 32px;
+	border-radius: 16px;
+	width: 32px;
+	height: 32px;
 }
 
 #title-bar > .os-button:hover {
-	background-color: #444;
+	background-color: var(--hover);
 }
 
 #title-bar > .title-button {
@@ -73,39 +189,280 @@ button.danger {
 }
 
 #title-bar > .title-line {
-  flex: 1;
+	flex: 1;
 	height: 24px;
 	background-color: #2f2f25;
-  align-self: center;
-  margin: 10px;
-  order: 50;
+	align-self: center;
+	margin: 10px;
+	order: 50;
 	display: flex;
 	justify-content: center;
 	align-items: center;
-  color: #CCC;
-  font-size: 18px;
-  font-weight: 700;
+	color: var(--text-title);
+	font-size: 18px;
+	font-weight: 700;
 }
 
-#title-icon { order: 0; }
+#title-icon {
+	order: 0;
+}
 
 #title-profile {
-  visibility: hidden;
+	visibility: hidden;
 }
 
 #os-menu {
-  order: 1;
-  visibility: hidden;
+	order: 1;
+	visibility: hidden;
 }
 
-#os-minimize { order: 98; }
-#os-maximize { order: 99; }
-#os-close { order: 100; }
-
-#promo-bar {
-  height: 120px;
+#os-minimize {
+	order: 98;
+}
+#os-maximize {
+	order: 99;
+}
+#os-close {
+	order: 100;
 }
 
-.content-space {
-   flex: 1;
+/* macOS title-bar (the engine exposes the host as a custom `platform` media feature,
+   SPDocStyle.h — defaults to the build platform, no wiring needed):
+   - traffic lights (close/minimize/maximize) on the LEFT, tight cluster;
+   - unused slots (menu/profile/icon) collapsed via display:none so they reserve no
+     flex space (visibility:hidden left gaps and interleaved with visible buttons);
+   - smaller buttons; the title panel absolutely centered across the whole bar. */
+@media (platform: macos) {
+	#title-bar {
+		padding-left: 8px;
+		column-gap: 6px;
+		align-items: center;
+	}
+
+	#title-bar > #os-close {
+		order: 0;
+	}
+	#title-bar > #os-minimize {
+		order: 1;
+	}
+	#title-bar > #os-maximize {
+		order: 2;
+	}
+
+	#title-bar > #os-menu,
+	#title-bar > #title-profile,
+	#title-bar > #title-icon {
+		display: none;
+	}
+
+	#title-bar > .os-button {
+		width: 14px;
+		height: 14px;
+		border-radius: 7px;
+		background-color: transparent;
+	}
+	#title-bar > .os-button:hover {
+		background-color: transparent;
+	}
+
+	#title-bar > .os-button > icon {
+		width: 14px;
+		height: 14px;
+	}
+
+	/* no distinct title pill: paint the panel with the window background so it blends
+	   (no dark bands above/below), but keep opacity 1 — `background-color: transparent` would
+	   set the layer's opacity to 0 (resolver maps bg-color with withOpacity=true) and hide the
+	   title text along with the pill. */
+	#title-bar > .title-line {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 4px;
+		flex-grow: 0;
+		background-color: var(--surface);
+	}
+
+	/* native macOS title weight (titleBarFontOfSize = bold) */
+	#title-bar .title-line label {
+		font-size: 13px;
+		font-weight: 700;
+	}
+}
+
+/* ===========================================================================
+   Packages screen
+   =========================================================================== */
+
+#packages-area {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	width: 100%;
+	background-color: var(--window);
+}
+
+.pkg-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	column-gap: 16px;
+	height: 56px;
+	padding: 0 24px;
+	background-color: var(--surface);
+}
+
+.pkg-header .pkg-title {
+	color: var(--text);
+	font-size: 18px;
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+/* grow-only spacer between the title and the meta labels — pushes meta to the right edge. The
+   engine's flex has NO auto-margins (margin-left:auto is ignored), so an explicit flex-grow:1
+   spacer is the way to right-align within a flex row. */
+.pkg-header .pkg-spacer {
+	flex-grow: 1;
+}
+
+.pkg-header .pkg-release {
+	color: var(--text-dim);
+	font-size: 12px;
+}
+
+.pkg-header .pkg-native {
+	color: var(--accent);
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.pkg-footer {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	column-gap: 12px;
+	height: 64px;
+	padding: 0 24px;
+	background-color: var(--surface-alt);
+}
+
+.pkg-scroll {
+	flex: 1;
+	width: 100%;
+}
+
+/* A row: check slot | name | size | status. There are no row separators — `border-bottom` does
+   not exist in this CSS subset (docs/usage/ui/css-subset.adoc), and a separator child would take
+   flex space away from the columns. */
+.pkg-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: var(--row-h);
+	padding: 0 16px;
+	column-gap: 12px;
+}
+
+.pkg-row.head {
+	height: var(--row-head-h);
+}
+
+.pkg-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	column-gap: 8px;
+	height: var(--group-h);
+	padding: 8px 16px;
+	color: var(--text);
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+/* Column slots inside a row. Fixed widths keep columns aligned across rows/groups; the slots that
+   host a widget (check, status) are flex containers so the widget needs no manual placement. */
+.pkg-row .c-check {
+	flex: 0 0 40px;
+	align-self: stretch;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+}
+
+.pkg-row .c-name {
+	flex: 1;
+	color: var(--text);
+	font-size: 14px;
+}
+
+.pkg-row.native .c-name {
+	color: var(--accent);
+}
+
+.pkg-row .c-size {
+	width: 90px;
+	flex: 0 0 90px;
+	color: var(--text-dim);
+	font-size: 13px;
+	text-align: right;
+}
+
+.pkg-row .c-status {
+	flex: 0 0 200px;
+	align-self: stretch;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+.pkg-row.head .c-name,
+.pkg-row.head .c-size,
+.pkg-row.head .c-status {
+	color: var(--text-dim);
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+/* Uninstall control on an installed row — a ui::Button with only an icon, so it hovers and taps
+   like every other button instead of carrying a hand-rolled InputListener. */
+button.c-trash {
+	width: 24px;
+	height: 24px;
+	border-radius: 12px;
+	background-color: transparent;
+}
+
+button.c-trash:hover {
+	background-color: var(--control);
+}
+
+button.c-trash > icon {
+	width: 20px;
+	height: 20px;
+	color: var(--text-dim);
+}
+
+/* ===========================================================================
+   Loading overlay. It is a direct child of the scene content, deliberately
+   OUTSIDE the flex tree, so its geometry comes from
+   InstallerSceneContent::handleContentSizeDirty and CSS only paints it.
+   =========================================================================== */
+
+.loading-overlay {
+	background-color: var(--overlay);
+}
+
+.loading-spinner {
+	color: var(--accent);
+}
+
+.loading-label {
+	color: var(--text);
+	font-size: 14px;
 }

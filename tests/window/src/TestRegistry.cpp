@@ -24,6 +24,9 @@
 
 #include "TestRegistry.h"
 
+#include "AutoMarginLayout.h"
+#include "NthChildLayout.h"
+#include "CssVarLayout.h"
 #include "ButtonLayout.h"
 #include "CombinatorLayout.h"
 #include "DamageLayout.h"
@@ -31,11 +34,17 @@
 #include "FlexboxLayout.h"
 #include "GeneralLayout.h"
 #include "HoverLayout.h"
+#include "CssFlowLayout.h"
 #include "InheritedStyleLayout.h"
+#include "LabelUpdateLayout.h"
+#include "MeasureProtocolLayout.h"
+#include "PanelLayout.h"
 #include "ParentResizeLayout.h"
 #include "PlatformLayout.h"
 #include "PugCascadeLayout.h"
 #include "PugLayout.h"
+#include "RenderLevelLayout.h"
+#include "ScrollThrashLayout.h"
 #include "ShapingLayout.h"
 #include "SpecificityLayout.h"
 #include "VisibilityLayout.h"
@@ -78,6 +87,12 @@ static const TestInfo s_tests[] = {
 				   "Changing a label's text must resize its ancestors."),
 		TestRegistry_make<FitContentLayout>},
 
+	TestInfo{StringView("XL_LABEL_UPDATE_TEST"), StringView("Label text change after layout"),
+		StringView("Three identical chains per group; the last one gets its text after the first "
+				   "layout and then loses it again. Every box must match the chain built with that "
+				   "text."),
+		TestRegistry_make<LabelUpdateLayout>},
+
 	TestInfo{StringView("XL_COMBINATOR_TEST"), StringView("CSS combinators"),
 		StringView("Descendant, child, adjacent and general sibling. Per row the left swatch must "
 				   "take the rule's colour and the right one must stay grey."),
@@ -108,6 +123,17 @@ static const TestInfo s_tests[] = {
 				   "recursive resolver. The lower button verifies per-corner radii."),
 		TestRegistry_make<ButtonLayout>},
 
+	TestInfo{StringView("XL_PANEL_TEST"), StringView("ui::Panel / Checkbox / Badge styling"),
+		StringView("Panel, checkbox and badge take their fill and corners from CSS through their "
+				   "own type appliers; the last box is a plain Layer under the same rule."),
+		TestRegistry_make<PanelLayout>},
+
+	TestInfo{StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
+		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "
+				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
+				   "`order`, drawn red-blue-green by `-xl-z-order`."),
+		TestRegistry_make<CssFlowLayout>},
+
 	TestInfo{StringView("XL_PLATFORM_TEST"), StringView("@media (platform: ...)"),
 		StringView("The swatch takes the colour of the platform it runs on; the rules for every "
 				   "other platform must be filtered out."),
@@ -127,6 +153,39 @@ static const TestInfo s_tests[] = {
 		StringView("Percent metrics resolved against the parent: the nested boxes must keep their "
 				   "proportions when the containers change size."),
 		TestRegistry_make<ParentResizeLayout>},
+
+	TestInfo{StringView("XL_AUTO_MARGIN_TEST"), StringView("margin: auto on a flex item"),
+		StringView("Row 1 pushes its last box to the right edge, row 2 centres its only box, rows 3 "
+				   "and 4 centre one box vertically against align-items: flex-start and stretch."),
+		TestRegistry_make<AutoMarginLayout>},
+
+	TestInfo{StringView("XL_NTH_TEST"), StringView("Structural pseudo-class selectors"),
+		StringView("Rows of swatches coloured by :nth-child and friends; the last two rows are "
+				   "mutated at runtime, so their colours must shift as items are inserted, "
+				   "removed and re-ordered."),
+		TestRegistry_make<NthChildLayout>},
+
+	TestInfo{StringView("XL_CSSVAR_TEST"), StringView("CSS custom properties and var()"),
+		StringView("Boxes coloured and sized through variables, including a fallback, a nested "
+				   "reference and a cycle that must be dropped; the last box repaints when a "
+				   "class on its ancestor overrides the variable."),
+		TestRegistry_make<CssVarLayout>},
+
+	TestInfo{StringView("XL_MEASURE_TEST"), StringView("Content measurement protocol"),
+		StringView("Six boxes sized by six different routes: a custom measure system, the "
+				   "MeasureComponent fallback, a Label, and one fixed box that must not be "
+				   "measured at all."),
+		TestRegistry_make<MeasureProtocolLayout>},
+
+	TestInfo{StringView("XL_RENDER_LEVEL_TEST"), StringView("RenderingLevel passes"),
+		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
+				   "must show none - behind opaque geometry every level is hidden."),
+		TestRegistry_make<RenderLevelLayout>},
+
+	TestInfo{StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
+		StringView("Rows that never match the size their item declared. The list must still scroll "
+				   "and the run must end with 0 failures instead of stalling on a rebuild loop."),
+		TestRegistry_make<ScrollThrashLayout>},
 
 	TestInfo{StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "

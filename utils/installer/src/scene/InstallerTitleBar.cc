@@ -21,7 +21,12 @@
  **/
 
 #include "InstallerTitleBar.h"
+
 #include "XLUiButton.h"
+#include "XLInputListener.h"
+#include "XL2dLabel.h"
+#include "XL2dLayer.h"
+#include "XL2dSprite.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -34,48 +39,53 @@ bool TitleBar::init() {
 
 	setName("title-bar");
 
+	// The OS buttons are created in a fixed order and reordered by CSS (`order`), so the macOS
+	// media block can move the traffic lights to the left without touching this code.
 	_osMinimize = addChild(Rc<ui::Button>::create(ui::ButtonType::OsMinimize));
-	_osMinimize->addStyleClass("os-button");
 	_osMinimize->setName("os-minimize");
+	_osMinimize->addStyleClass("os-button");
 
 	_osMaximize = addChild(Rc<ui::Button>::create(ui::ButtonType::OsMaximize));
-	_osMaximize->addStyleClass("os-button");
 	_osMaximize->setName("os-maximize");
+	_osMaximize->addStyleClass("os-button");
 
 	_osClose = addChild(Rc<ui::Button>::create(ui::ButtonType::OsClose));
-	_osClose->addStyleClass("os-button");
 	_osClose->setName("os-close");
+	_osClose->addStyleClass("os-button");
 
 	_osMenu = addChild(Rc<ui::Button>::create(ui::ButtonType::OsMenu));
-	_osMenu->addStyleClass("os-button");
 	_osMenu->setName("os-menu");
+	_osMenu->addStyleClass("os-button");
 
 	{
 		_osIcon = addChild(Rc<basic2d::Sprite>::create("app-icon.png"));
-		_osIcon->addStyleClass("title-button");
 		_osIcon->setName("title-icon");
+		_osIcon->addStyleClass("title-button");
 
-		auto l = _osIcon->addSystem(Rc<InputListener>::create());
-		l->setLayerFlags(WindowLayerFlags::WindowMenuRight | WindowLayerFlags::WindowMenuLeft);
+		auto listener = _osIcon->addSystem(Rc<InputListener>::create());
+		listener->setLayerFlags(
+				WindowLayerFlags::WindowMenuRight | WindowLayerFlags::WindowMenuLeft);
 	}
 
 	_profile = addChild(Rc<Node>::create());
-	_profile->addStyleClass("title-button");
 	_profile->setName("title-profile");
+	_profile->addStyleClass("title-button");
 
 	{
-		_titleLine = addChild(Rc<basic2d::Layer>::create(Color::White));
+		// The strip is created opaque: `background-color` from CSS replaces the colour, but a
+		// transparent placeholder would zero the subtree's opacity and hide the title.
+		_titleLine = addChild(Rc<basic2d::Layer>::create(Color::Black));
 		_titleLine->addStyleClass("title-line");
 
 		auto titleLabel = _titleLine->addChild(Rc<basic2d::Label>::create());
+		titleLabel->setType("label");
 		titleLabel->setString("Xenolith SDK Installer");
 
-		auto l = _titleLine->addSystem(Rc<InputListener>::create());
-		l->setLayerFlags(WindowLayerFlags::MoveGrip | WindowLayerFlags::WindowMenuRight);
+		auto listener = _titleLine->addSystem(Rc<InputListener>::create());
+		listener->setLayerFlags(WindowLayerFlags::MoveGrip | WindowLayerFlags::WindowMenuRight);
 	}
 
 	return true;
 }
-
 
 } // namespace stappler::xenolith::installer

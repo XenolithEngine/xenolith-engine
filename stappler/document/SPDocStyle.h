@@ -445,8 +445,15 @@ enum class ParameterName : NameSize {
 	__EndCssMediaParameters,
 
 	// === Pseudo-parameters (commands)
+	// No CSS syntax produces these; they are synthesized by the consumer and delivered through
+	// the same per-attribute channel as real parameters.
 	__BeginCmds,
-	CmdReset, // drop all previuos styling
+	// "Drop everything you took from a previous style pass." Sent BEFORE the parameters of a
+	// style application, so a consumer starts from a clean slate. It exists because a style pass
+	// can only carry the declarations that ARE present: when a rule stops matching (a class
+	// flip, an edited stylesheet), its properties simply go missing from the resolved style and
+	// nothing would otherwise tell the consumer to undo them. See ui::StyleResolver.
+	CmdReset,
 	__EndCmds,
 
 	Max,
@@ -662,12 +669,41 @@ struct SP_PUBLIC StyleList : public memory::AllocPool {
 
 	using StyleVec = Vector<Pair<String, String>>;
 
+	/* A `--name: value` declaration. Custom properties have no fixed type, so both the name and
+	the raw value text are interned into the document's string table instead of being converted
+	into a StyleValue. They cannot be StyleParameters: `set(p, force)` overwrites by
+	ParameterName, so every custom property would collapse into one slot. */
+	struct CustomProperty {
+		StringId name = StringIdNone;
+		StringId value = StringIdNone;
+		MediaQueryId mediaQuery = MediaQueryIdNone;
+		StyleRule rule = StyleRule::None;
+	};
+
+	/* A declaration whose value text contains `var()`. It cannot be parsed until the element's
+	custom properties are known, so the raw text is kept and re-parsed at resolve time (see
+	expandCssVariables). The property name is kept as TEXT: a name maps to a parse function,
+	not to a ParameterName, and a shorthand yields several parameters at once.
+
+	Pending declarations are never inherited - only the variable is (plain CSS: `width:
+	var(--w)` on a parent does not become the child's width; the child's own `var(--w)` sees the
+	inherited variable). */
+	struct PendingParameter {
+		StringId nameText = StringIdNone;
+		StringId rawValue = StringIdNone;
+		MediaQueryId mediaQuery = MediaQueryIdNone;
+		StyleRule rule = StyleRule::None;
+	};
+
 	static bool isInheritable(ParameterName name);
 
 	template <ParameterName Name, class Value>
 	void set(const Value &value, MediaQueryId mediaQuery = MediaQueryIdNone);
 	void set(const StyleParameter &p, bool force = false);
 
+	// `merge` deliberately carries only `data`: `custom` and `pending` are rule-local inputs to
+	// the cascade, which reads them off each matched rule (their StringIds index the string
+	// table of the sheet that parsed them, so they cannot be pooled into one merged list).
 	void merge(const StyleList &, bool inherit = false);
 	void merge(const StyleList &, const SpanView<bool> &, bool inherit = false);
 
@@ -690,7 +726,18 @@ struct SP_PUBLIC StyleList : public memory::AllocPool {
 	String css(const StyleInterface * = nullptr) const;
 
 	Vector<StyleParameter> data;
+	Vector<CustomProperty> custom; // `--name: value` declarations
+	Vector<PendingParameter> pending; // declarations still holding an unexpanded var()
 };
+
+/* Substitute every `var(--name[, fallback])` in a raw declaration value and stream the result
+to `out`. `lookup` returns a custom property's raw text, or an empty view when it is not
+declared; the substituted text is itself expanded, so a variable may be defined in terms of
+another. Returns false when a reference resolves to nothing and has no fallback, or when the
+expansion nests deeper than a fixed limit (which is how a `--a: var(--b); --b: var(--a)` cycle
+ends) - in CSS both make the declaration invalid, and the caller drops it. */
+SP_PUBLIC bool expandCssVariables(StringView value, const Callback<StringView(StringView)> &lookup,
+		const Callback<void(StringView)> &out, uint32_t depth = 0);
 
 struct SP_PUBLIC MediaQuery : public memory::AllocPool {
 	template <typename T, typename V>

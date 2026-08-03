@@ -347,6 +347,8 @@ void Sprite::setRenderingLevel(RenderingLevel level) {
 		_renderingLevel = level;
 		if (_running) {
 			updateBlendAndDepth();
+		} else {
+			_materialDirty = true;
 		}
 	}
 }

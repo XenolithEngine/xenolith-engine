@@ -27,7 +27,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-// Используем базовую 2D-сцену в качестве основы
+// The application's primary scene: a stock 2D scene whose content is InstallerSceneContent.
 class MainScene : public basic2d::Scene2d {
 public:
 	virtual ~MainScene() = default;
@@ -35,14 +35,8 @@ public:
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &constraints) override;
 
-	virtual void handleContentSizeDirty() override;
-
-	virtual void handleEnter(Scene *) override;
-
 protected:
 	using Scene::init;
-
-	virtual void handlePresented(Director *) override;
 
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &builder) override;
 };

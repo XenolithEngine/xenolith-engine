@@ -61,6 +61,24 @@ public:
 	// the merged parameter list, for consumers that iterate raw parameters directly
 	const document::StyleList *parameters() const { return _style; }
 
+	// did any sheet in scope use a structural pseudo-class (`:nth-child` and friends)? Such a
+	// style depends on the node's position among its siblings, so the StyleResolver must
+	// invalidate the whole sibling set when the parent's child list changes.
+	bool hasStructuralSelectors() const { return _structural; }
+
+	// raw text of the custom property `--name` in effect for this node (declarations from the
+	// node's own rules plus every inherited one), empty when it is not declared. `var()` inside
+	// a declaration's value is already substituted by the time a parameter is read - this is
+	// for consumers that want the variable itself.
+	StringView getCustomProperty(StringView name) const;
+
+	// every custom property in effect, in no particular order
+	void foreachCustomProperty(const Callback<void(StringView, StringView)> &) const;
+
+	// digest of every custom property in effect; 0 when there are none. Custom properties are
+	// inherited, so a node whose digest changed has invalidated its whole subtree.
+	uint64_t getCustomPropertiesHash() const;
+
 	// was a parameter defined for this node (media-filtered)?
 	bool has(ParameterName) const;
 	// last matching raw value for a parameter (media-filtered); false if absent
@@ -105,6 +123,12 @@ public:
 	document::Visibility visibility() const; // visibility
 	document::Metric width() const;
 	document::Metric height() const;
+	// min-/max-width/height. Only the flex MAIN axis is enforced (FlexItemInfo::minMain/maxMain);
+	// on the cross axis they are read but nothing applies them yet.
+	document::Metric minWidth() const;
+	document::Metric minHeight() const;
+	document::Metric maxWidth() const;
+	document::Metric maxHeight() const;
 	document::Metric marginTop() const;
 	document::Metric marginRight() const;
 	document::Metric marginBottom() const;
@@ -153,9 +177,26 @@ public:
 private:
 	friend class StyleResolver;
 
+	// Custom properties resolved for the node, plus the strings that `var()` substitution had
+	// to intern. Pool-allocated with the parameter list; defined in the .cc.
+	struct VariableTable;
+
+	// create the variable table, seeding its string overlay from the nearest sheet's table so
+	// ids that already exist keep their meaning. Must run inside this style's pool.
+	void initVariables(SpanView<StringView> sheetStrings);
+
+	// intern a string produced by var() substitution; the id is valid against this style only
+	document::StringId internSubstitutedString(StringView);
+
+	// expand and parse one matched rule's deferred var() declarations into `dst`, at the point
+	// in the cascade where that rule is being merged
+	void expandPendingRule(document::StyleList &dst, const document::StyleContainer::MatchedRule &);
+
 	bool _valid = false;
+	bool _structural = false; // see hasStructuralSelectors()
 	memory::pool_t *_pool = nullptr;
 	document::StyleList *_style = nullptr; // merged parameters, allocated in _pool (AllocPool)
+	VariableTable *_variables = nullptr; // null when no sheet in scope declares one
 	// non-owning views into the nearest sheet's media bits + string table; a plain value
 	// (NOT pool-allocated: SimpleStyleInterface is not an AllocPool)
 	document::SimpleStyleInterface _iface;
@@ -174,7 +215,15 @@ true suppresses the defaults (widget-specific extension point).
 Per-type extension without a callback: a widget can statically register per-attribute
 appliers for its node type via registerTypeApplier(type, attr, applier). During apply,
 each attribute the type registered is applied by its handler; every other attribute falls
-through to the default mapping below. A recursive resolver (init(true)) styles its whole
+through to the default mapping below.
+
+An applier that lists `document::ParameterName::CmdReset` in its mask additionally receives
+that pseudo-parameter FIRST, on every pass, with an unspecified value: the signal to drop
+everything the previous pass left on the node, because a pass carries only the declarations
+that are present and a rule that stopped matching would otherwise stay applied forever. The
+intended shape is that the styling lives in a component, and the reset removes it (see
+`ui::Button` / `ButtonStyleComponent`); a widget holding its paint directly restores its
+construction-time defaults instead (see `ui::Panel`). Pinned by `XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
 subtree from one system: it publishes on the frame stack and resolves each descendant as
 that descendant's content-size / layout-children event arrives, once per source version.
 
@@ -280,8 +329,27 @@ protected:
 	// container's per-item component
 	void applyLayout(Node *, const ResolvedStyle &);
 
+	// Freshness key of an applied style. Percent metrics resolve against the parent size and
+	// paddings/gaps against the own size, so a resize of either invalidates the style; with
+	// structural selectors (`:nth-child`) it also depends on the node's position among its
+	// siblings, which the parent's child-list version tracks.
+	struct StyleFreshness {
+		Size2 parentSize;
+		Size2 ownSize;
+		uint32_t parentChildrenVersion = 0;
+
+		bool operator==(const StyleFreshness &) const = default;
+	};
+
+	StyleFreshness makeStyleFreshness(Node *) const;
+
 	bool _recursive = false;
 	ApplyCallback _callback;
+
+	// does any sheet in scope use a structural pseudo-class? Learned from each resolve; puts
+	// the parent's child-list version into the freshness key, so a sheet without them pays
+	// nothing when a sibling is inserted or removed.
+	bool _structuralSelectors = false;
 
 	// local copy of the owner's InteractiveComponent state bits at the last resolve, so
 	// handleInteractiveState() can skip rebuilds when the mask is unchanged
@@ -290,10 +358,14 @@ protected:
 	uint64_t _sourceSystemId = 0;
 
 	// Freshness map: a node's style is fresh while the stylesheet version is unchanged (the map
-	// is cleared in apply() on a version change) AND the (parent size, own size) pair recorded at
-	// resolve time still matches - percent metrics resolve against the parent size, paddings/gaps
-	// against the own size, so a resize of either invalidates the applied style.
-	HashMap<Node *, Pair<Size2, Size2>> _nodesUpdated;
+	// is cleared in apply() on a version change) AND its recorded StyleFreshness still matches.
+	HashMap<Node *, StyleFreshness> _nodesUpdated;
+
+	// digest of the custom properties each node resolved to, for nodes that have any. Custom
+	// properties are inherited and are substituted at resolve time, so when a node's set
+	// changes (a class flip on it bringing in a different `--brand`) every descendant's applied
+	// style is stale - the descendants themselves saw no event at all.
+	HashMap<Node *, uint64_t> _nodeCustomProperties;
 };
 
 } // namespace stappler::xenolith::ui

@@ -185,6 +185,19 @@ public:
 	virtual SpanView<Rc<Node>> getChildren() const { return _children; }
 	virtual size_t getChildrenCount() const { return _children.size(); }
 
+	/** Monotonic counter of changes to the child list: add, remove and reorder each bump it.
+	 * Consumers whose result depends on a child's position among its siblings (CSS structural
+	 * selectors such as `:nth-child`) use it to detect that their cached answer is stale.
+	 * `sortAllChildren` does NOT bump it - the sort only applies a reorder already counted. */
+	uint32_t getChildrenVersion() const { return _childrenVersion; }
+
+	/** The child list changed (add / remove / reorder): bump the version and, while running,
+	 * re-arm every remaining child's content-size phase. A sibling's position among its
+	 * siblings is an input to its style (`:nth-child`) and to layout, and a plain add/remove
+	 * moves nothing, so without this nudge the siblings would never signal and would keep
+	 * answers computed for the old child list. */
+	void markChildrenStructureDirty();
+
 	virtual void setParent(Node *parent);
 	virtual Node *getParent() const { return _parent; }
 
@@ -533,6 +546,9 @@ protected:
 
 	bool _cascadeColorEnabled = false;
 	bool _cascadeOpacityEnabled = true;
+
+	// bumped on every add/remove/reorder of a child - see getChildrenVersion()
+	uint32_t _childrenVersion = 0;
 
 	bool _contentSizeDirty = true;
 	bool _reorderChildDirty = true;

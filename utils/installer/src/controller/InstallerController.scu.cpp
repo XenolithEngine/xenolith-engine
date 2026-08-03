@@ -20,28 +20,6 @@
  THE SOFTWARE.
  **/
 
-#ifndef XENOLITH_RENDERER_UI_ATOMS_XLUIPANEL_H_
-#define XENOLITH_RENDERER_UI_ATOMS_XLUIPANEL_H_
+#include "XLCommon.h"
 
-#include "XLUiConfig.h"
-#include "XL2dLayerRounded.h"
-#include "XLUiStyleResolver.h" // ResolvedStyle + document::ParameterName of setStyleValue below
-
-namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
-
-// Passive rounded container: background-color + border-radius driven by CSS (type "panel"). A
-// flex-capable surface for cards, working panels, table backings. CSS:
-//   panel { background-color:#232323; border-radius:20px; padding:25px; display:flex; ... }
-class SP_PUBLIC Panel : public basic2d::LayerRounded {
-public:
-	virtual ~Panel();
-
-	virtual bool init() override;
-
-	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
-			const document::StyleValue &);
-};
-
-} // namespace stappler::xenolith::ui
-
-#endif // XENOLITH_RENDERER_UI_ATOMS_XLUIPANEL_H_
+#include "InstallerController.cc"

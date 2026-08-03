@@ -68,6 +68,10 @@ bool Panel::init() {
 bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 		const document::StyleValue &value) {
 	using document::ParameterName;
+	// CmdReset arrives before the parameters of every style pass, so that a declaration which
+	// stopped matching is undone rather than left applied. Panel keeps its paint in LayerRounded
+	// rather than in a component, so instead of dropping a component it restores the values
+	// init() set - the pass then re-applies whatever it still declares.
 	if (name == ParameterName::CmdReset) {
 		setPathColor(Color::White, true);
 		setBorderRadius(0.0f);

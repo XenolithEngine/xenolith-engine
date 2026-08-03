@@ -372,8 +372,8 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 		}
 	}
 
-	_reorderChildDirty = true;
 	_children.push_back(child);
+	markChildrenStructureDirty();
 	child->setLocalZOrder(localZOrder);
 	if (tag != InvalidTag) {
 		child->setTag(tag);
@@ -397,6 +397,16 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 	if (_cascadeOpacityEnabled) {
 		updateCascadeOpacity();
 	}
+}
+
+void Node::markChildrenStructureDirty() {
+	_reorderChildDirty = true;
+	++_childrenVersion;
+	if (!_running) {
+		// nothing has been resolved or laid out yet - building a scene must stay O(n)
+		return;
+	}
+	for (auto &child : _children) { child->markContentSizeDirty(); }
 }
 
 Node *Node::getChildByTag(uint64_t tag) const {
@@ -448,6 +458,9 @@ void Node::removeChild(Node *child, bool cleanup) {
 		// set parent nil at the end
 		child->setParent(nullptr);
 		_children.erase(it);
+		// the child list is also the layout order, so a removal must re-run the reorder and
+		// layout-children phases just like an insertion does
+		markChildrenStructureDirty();
 	}
 }
 
@@ -465,6 +478,9 @@ void Node::removeChildByTag(uint64_t tag, bool cleanup) {
 void Node::removeAllChildren(bool cleanup) {
 	auto childs = sp::move(_children);
 	_children.clear();
+	if (!childs.empty()) {
+		markChildrenStructureDirty(); // no children left to nudge - this only bumps the version
+	}
 
 	for (const auto &child : childs) {
 		if (_running) {
@@ -487,6 +503,10 @@ void Node::removeAllChildren(bool cleanup) {
 
 void Node::reorderChild(Node *child, ZOrder localZOrder) {
 	XLASSERT(child != nullptr, "Child must be non-nil");
+	// the child list is ordered by z-order, so a reorder changes sibling positions. Marked
+	// unconditionally: setLocalZOrder writes _zOrder before delegating here, so comparing
+	// against the child's current value would always see them equal.
+	markChildrenStructureDirty();
 	_reorderChildDirty = true;
 	child->setLocalZOrder(localZOrder);
 }

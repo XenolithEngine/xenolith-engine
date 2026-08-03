@@ -2039,4 +2039,83 @@ void StyleContainer::readCssParameter(const StringView &name, const StringView &
 	}
 }
 
+bool expandCssVariables(StringView value, const Callback<StringView(StringView)> &lookup,
+		const Callback<void(StringView)> &out, uint32_t depth) {
+	// a substituted value is expanded in turn, so a cycle would recurse forever; CSS calls a
+	// cyclic reference invalid, and this is where that is detected
+	constexpr uint32_t MaxDepth = 16;
+	if (depth > MaxDepth) {
+		return false;
+	}
+
+	const size_t n = value.size();
+	size_t i = 0, plain = 0;
+	while (i < n) {
+		if (value[i] != 'v' || n - i < 4 || value.sub(i, 4) != "var(") {
+			++i;
+			continue;
+		}
+
+		// the argument list runs to the matching paren
+		size_t argStart = i + 4;
+		size_t j = argStart;
+		uint32_t nest = 1;
+		while (j < n && nest > 0) {
+			if (value[j] == '(') {
+				++nest;
+			} else if (value[j] == ')') {
+				--nest;
+			}
+			++j;
+		}
+		if (nest != 0) {
+			return false; // unbalanced - not a usable declaration
+		}
+		auto args = value.sub(argStart, (j - 1) - argStart);
+
+		// split off the fallback at the first TOP-LEVEL comma (a fallback may itself be a
+		// var() with its own comma)
+		StringView name = args;
+		StringView fallback;
+		{
+			uint32_t argNest = 0;
+			for (size_t k = 0; k < args.size(); ++k) {
+				if (args[k] == '(') {
+					++argNest;
+				} else if (args[k] == ')') {
+					if (argNest > 0) {
+						--argNest;
+					}
+				} else if (args[k] == ',' && argNest == 0) {
+					name = args.sub(0, k);
+					fallback = args.sub(k + 1);
+					break;
+				}
+			}
+		}
+		name.trimChars<StringView::WhiteSpace>();
+		fallback.trimChars<StringView::WhiteSpace>();
+
+		out << value.sub(plain, i - plain);
+
+		auto resolved = lookup(name);
+		if (!resolved.empty()) {
+			if (!expandCssVariables(resolved, lookup, out, depth + 1)) {
+				return false;
+			}
+		} else if (!fallback.empty()) {
+			if (!expandCssVariables(fallback, lookup, out, depth + 1)) {
+				return false;
+			}
+		} else {
+			return false; // undefined variable, no fallback
+		}
+
+		i = plain = j;
+	}
+
+	out << value.sub(plain, n - plain);
+	return true;
+}
+
 } // namespace stappler::document

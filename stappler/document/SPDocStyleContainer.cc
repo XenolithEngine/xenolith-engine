@@ -342,8 +342,16 @@ void readCssStyleRules(StyleContainer::StyleBuffers &buffers, StyleContainer::St
 		name = buffers.name.get<StyleContainer::StringReader>();
 		name.trimChars<StyleContainer::StringReader::WhiteSpace>();
 
+		// A custom property (`--name`) has no grammar of its own - its value is kept verbatim
+		// and only interpreted where it is substituted, so it must not be case-folded. The
+		// NAME is still folded: a `var(--Brand)` reference sits inside an ordinary value, which
+		// is folded, so keeping declaration names case-sensitive could never match.
+		const bool customProperty = name.starts_with("--");
+
 		readCssValue<F>(buffers.getValueStream(), s);
-		buffers.valueToLower();
+		if (!customProperty) {
+			buffers.valueToLower();
+		}
 		value = buffers.value.get<StyleContainer::StringReader>();
 		value.trimChars<StyleContainer::StringReader::WhiteSpace>();
 
@@ -426,6 +434,15 @@ bool StyleContainer::readStyle(StringReader &s) {
 	while (!s.empty() && !s.is('<')) {
 		selector.clear();
 		style.data.clear();
+		style.custom.clear();
+		style.pending.clear();
+
+		// Comments first: `*` is a selector start (the universal selector), so the skipUntil below
+		// would stop on the `*` of an opening `/*` and hand readCssSelector the comment body -
+		// which fails and drops the WHOLE stylesheet. Every other position already checks comments
+		// on the way out of a rule; this is the one that was missing, so a stylesheet simply could
+		// not begin with a comment.
+		checkCssComments(s);
 
 		s.skipUntil<CssSelectorStart, Chars<'}'>>();
 		if (s.empty()) {
@@ -515,19 +532,20 @@ bool StyleContainer::readStyle(StringReader &s) {
 					[&](const StringReader &name, const StringReader &value, StyleRule rule) {
 				if (!blockStack.back().disabled) {
 					// log::source().verbose("document::StyleContainer", selector, " {", name, ": ", value, "}");
-					readStyleParameters(name, value, [&](StyleParameter &&param) {
-						param.rule = rule;
-						param.mediaQuery = blockStack.back().media;
-						style.data.emplace_back(move(param));
-						return true;
-					});
+					readStyleDeclaration(style, name, value, blockStack.back().media, rule);
 				}
 			});
 		}
 
-		if (!selector.empty() && !style.data.empty()) {
-			string::split(selector, ",", [&](StringView r) {
+		// a rule may carry only custom properties (`:root { --brand: … }`) or only deferred
+		// var() declarations - it must still be indexed
+		if (!selector.empty()
+				&& (!style.data.empty() || !style.custom.empty() || !style.pending.empty())) {
+			splitSelectorList(selector, [&](StringView r) {
 				r.trimChars<StringView::WhiteSpace>();
+				if (r.empty()) {
+					return;
+				}
 				if (selectorNeedsStructured(r)) {
 					// combinator or pseudo-class selector: parse into a structured, bucketed rule
 					addComplexSelector(r, style);
@@ -571,12 +589,7 @@ bool StyleContainer::readStyle(StyleList &target, StringReader &r) {
 	StyleBuffers buffers;
 	readCssStyleRules<'}'>(buffers, r,
 			[&](const StringReader &name, const StringReader &value, StyleRule rule) {
-		readStyleParameters(name, value, [&](StyleParameter &&param) {
-			param.rule = rule;
-			param.mediaQuery = MediaQueryIdNone;
-			target.data.emplace_back(move(param));
-			return true;
-		});
+		readStyleDeclaration(target, name, value, MediaQueryIdNone, rule);
 	});
 	return r.empty();
 }
@@ -849,8 +862,8 @@ void StyleContainer::resolveNodeStyle(StyleList &style, const Node &node,
 	auto add = [&](StringView key) {
 		auto it = _styles.find(key);
 		if (it != _styles.end()) {
-			matches.push_back(MatchedRule{&it->second.style, resolved, it->second.specificity,
-				it->second.order});
+			matches.push_back(MatchedRule{&it->second.style, resolved, _document->strings,
+				it->second.specificity, it->second.order});
 		}
 	};
 
@@ -881,9 +894,10 @@ static bool isSelIdent(char c) {
 			|| c == '-';
 }
 
-// map a bare interactive pseudo-class name to its require/forbid bits; false = unsupported
+// map a bare interactive or structural pseudo-class name to its predicate; false = unsupported
 static bool applyPseudoClass(StringView name, StyleContainer::CompoundSelector &out) {
 	using P = InteractiveFlags;
+	using NthTest = StyleContainer::NthTest;
 	if (name == "hover") {
 		out.pseudoRequire |= uint32_t(P::Hover);
 	} else if (name == "focus") {
@@ -896,10 +910,127 @@ static bool applyPseudoClass(StringView name, StyleContainer::CompoundSelector &
 		out.pseudoRequire |= uint32_t(P::Enabled);
 	} else if (name == "disabled") {
 		out.pseudoForbid |= uint32_t(P::Enabled);
+	} else if (name == "root") {
+		out.requireRoot = true;
+	} else if (name == "empty") {
+		out.requireEmpty = true;
+	} else if (name == "first-child") {
+		out.nth.emplace_back(NthTest{0, 1, false, false});
+	} else if (name == "last-child") {
+		out.nth.emplace_back(NthTest{0, 1, true, false});
+	} else if (name == "only-child") {
+		out.nth.emplace_back(NthTest{0, 1, false, false});
+		out.nth.emplace_back(NthTest{0, 1, true, false});
+	} else if (name == "first-of-type") {
+		out.nth.emplace_back(NthTest{0, 1, false, true});
+	} else if (name == "last-of-type") {
+		out.nth.emplace_back(NthTest{0, 1, true, true});
+	} else if (name == "only-of-type") {
+		out.nth.emplace_back(NthTest{0, 1, false, true});
+		out.nth.emplace_back(NthTest{0, 1, true, true});
 	} else {
-		// structural/functional pseudo-classes, pseudo-elements, etc. are unsupported
+		// pseudo-elements and everything not listed above are unsupported
 		return false;
 	}
+	return true;
+}
+
+// CSS An+B: `odd`, `even`, `<int>`, `n`, `-n`, `An`, `An+B`, `An-B`, with optional spaces
+// around the sign (the selector reader normalizes runs of whitespace to a single space)
+static bool parseAnPlusB(StringView arg, int32_t &a, int32_t &b) {
+	arg.trimChars<StringView::WhiteSpace>();
+	if (arg.empty()) {
+		return false;
+	}
+	if (arg == "odd") {
+		a = 2;
+		b = 1;
+		return true;
+	}
+	if (arg == "even") {
+		a = 2;
+		b = 0;
+		return true;
+	}
+
+	size_t i = 0;
+	const size_t n = arg.size();
+	auto skipSpace = [&] {
+		while (i < n && isSelSpace(arg[i])) { ++i; }
+	};
+	// a signed integer; `hasDigits` reports whether any digit was actually present, `sign` is
+	// reported separately because `-n` carries a sign with no digits at all
+	int32_t sign = 1;
+	auto readSigned = [&](int32_t &out, bool &hasDigits) {
+		sign = 1;
+		if (i < n && (arg[i] == '+' || arg[i] == '-')) {
+			sign = (arg[i] == '-') ? -1 : 1;
+			++i;
+			skipSpace();
+		}
+		int32_t value = 0;
+		hasDigits = false;
+		while (i < n && arg[i] >= '0' && arg[i] <= '9') {
+			value = value * 10 + (arg[i] - '0');
+			hasDigits = true;
+			++i;
+		}
+		out = sign * value;
+	};
+
+	bool digits = false;
+	int32_t first = 0;
+	readSigned(first, digits);
+	const int32_t firstSign = sign;
+	skipSpace();
+
+	if (i >= n || (arg[i] != 'n' && arg[i] != 'N')) {
+		// a plain integer: `:nth-child(3)` == 0n+3
+		if (!digits || i != n) {
+			return false;
+		}
+		a = 0;
+		b = first;
+		return true;
+	}
+	++i; // consume 'n'
+	// no digits before 'n' means a coefficient of 1, signed as written (`n`, `-n`, `+n`)
+	a = digits ? first : firstSign;
+	skipSpace();
+	if (i == n) {
+		b = 0;
+		return true;
+	}
+	if (arg[i] != '+' && arg[i] != '-') {
+		return false;
+	}
+	bool tailDigits = false;
+	readSigned(b, tailDigits);
+	skipSpace();
+	return tailDigits && i == n;
+}
+
+// a functional pseudo-class `name(arg)`; false = unsupported or ill-formed argument
+static bool applyFunctionalPseudoClass(StringView name, StringView arg,
+		StyleContainer::CompoundSelector &out) {
+	bool fromEnd = false;
+	bool ofType = false;
+	if (name == "nth-child") {
+	} else if (name == "nth-last-child") {
+		fromEnd = true;
+	} else if (name == "nth-of-type") {
+		ofType = true;
+	} else if (name == "nth-last-of-type") {
+		fromEnd = ofType = true;
+	} else {
+		return false;
+	}
+
+	int32_t a = 0, b = 0;
+	if (!parseAnPlusB(arg, a, b)) {
+		return false;
+	}
+	out.nth.emplace_back(StyleContainer::NthTest{a, b, fromEnd, ofType});
 	return true;
 }
 
@@ -935,7 +1066,30 @@ static bool parseCompound(StringView t, StyleContainer::CompoundSelector &out) {
 			}
 			size_t s = j;
 			while (j < t.size() && isSelIdent(t[j])) { ++j; }
-			if (j == s || !applyPseudoClass(StringView(t.data() + s, j - s), out)) {
+			if (j == s) {
+				return false;
+			}
+			auto name = StringView(t.data() + s, j - s);
+			if (j < t.size() && t[j] == '(') {
+				// functional form `:name(arg)`; the argument runs to the matching paren
+				size_t argStart = ++j;
+				uint32_t depth = 1;
+				while (j < t.size() && depth > 0) {
+					if (t[j] == '(') {
+						++depth;
+					} else if (t[j] == ')') {
+						--depth;
+					}
+					++j;
+				}
+				if (depth != 0) {
+					return false; // unbalanced
+				}
+				auto arg = StringView(t.data() + argStart, (j - 1) - argStart);
+				if (!applyFunctionalPseudoClass(name, arg, out)) {
+					return false;
+				}
+			} else if (!applyPseudoClass(name, out)) {
 				return false;
 			}
 		} else if (isSelIdent(c)) {
@@ -994,7 +1148,40 @@ uint32_t StyleContainer::specificityOfSimpleKey(StringView key) {
 	return packSpecificity(id, cls, type);
 }
 
+void StyleContainer::splitSelectorList(StringView sel, const Callback<void(StringView)> &cb) {
+	size_t start = 0;
+	uint32_t paren = 0, bracket = 0;
+	char quote = 0;
+	for (size_t i = 0; i < sel.size(); ++i) {
+		const char c = sel[i];
+		if (quote != 0) {
+			if (c == quote) {
+				quote = 0;
+			}
+		} else if (c == '\'' || c == '"') {
+			quote = c;
+		} else if (c == '(') {
+			++paren;
+		} else if (c == ')') {
+			if (paren > 0) {
+				--paren;
+			}
+		} else if (c == '[') {
+			++bracket;
+		} else if (c == ']') {
+			if (bracket > 0) {
+				--bracket;
+			}
+		} else if (c == ',' && paren == 0 && bracket == 0) {
+			cb(StringView(sel.data() + start, i - start));
+			start = i + 1;
+		}
+	}
+	cb(StringView(sel.data() + start, sel.size() - start));
+}
+
 bool StyleContainer::selectorNeedsStructured(StringView sel) {
+	uint32_t tokens = 0; // '.' and '#' qualifiers past the (optional) leading tag
 	for (size_t i = 0; i < sel.size(); ++i) {
 		char c = sel[i];
 		// combinator (space/>/+/~) or an interactive pseudo-class (':') - the simple string
@@ -1002,8 +1189,15 @@ bool StyleContainer::selectorNeedsStructured(StringView sel) {
 		if (isSelSpace(c) || c == '>' || c == '+' || c == '~' || c == ':') {
 			return true;
 		}
+		if (c == '.' || c == '#') {
+			++tokens;
+		}
 	}
-	return false;
+	// The simple-key lookup (StyleSheet::collectMatches) only ever builds "tag", ".class",
+	// "tag.class", "#id" and "tag#id" - one qualifier at most. A compound carrying two or more
+	// ('.a.b', 'tag.a.b', '#a.b') has a key nothing looks up, so it would silently never match.
+	// Hand those to the structured path, which matches compounds token by token.
+	return tokens > 1;
 }
 
 void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) {
@@ -1037,15 +1231,34 @@ void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) 
 			continue;
 		}
 
-		// start of a compound run ('*', tag, '.class', '#id', ':pseudo')
+		// start of a compound run ('*', tag, '.class', '#id', ':pseudo', ':pseudo(arg)').
+		// Inside a functional argument everything is consumed verbatim, spaces included, so
+		// `:nth-child(2n + 1)` stays one compound.
 		size_t start = i;
+		uint32_t argDepth = 0;
 		while (i < n) {
 			char d = sel[i];
-			if (d == '*' || d == '.' || d == '#' || d == ':' || isSelIdent(d)) {
+			if (d == '(') {
+				++argDepth;
+				++i;
+			} else if (d == ')') {
+				if (argDepth == 0) {
+					break;
+				}
+				--argDepth;
+				++i;
+			} else if (argDepth > 0) {
+				++i;
+			} else if (d == '*' || d == '.' || d == '#' || d == ':' || isSelIdent(d)) {
 				++i;
 			} else {
 				break;
 			}
+		}
+		if (argDepth != 0) {
+			log::source().verbose("document::StyleContainer",
+					"Unbalanced parentheses in selector, skipped: '", sel, "'");
+			return;
 		}
 		if (i == start) {
 			// unsupported character ('[', '(', ...) - not representable, skip the rule
@@ -1094,9 +1307,12 @@ void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) 
 		}
 	}
 
-	if (cnt == 1 && cs.compounds[0].pseudoRequire == 0 && cs.compounds[0].pseudoForbid == 0) {
-		// a single plain compound (no combinator, no pseudo) belongs in the simple-key store,
-		// not here - shouldn't happen (selectorNeedsStructured wouldn't route it), skip safely
+	if (cnt == 1 && !cs.compounds[0].hasPredicates()
+			&& cs.compounds[0].classes.size() + (cs.compounds[0].id.empty() ? 0u : 1u) <= 1u) {
+		// a single plain compound with at most one qualifier ('tag', '.a', 'tag.a', '#a',
+		// 'tag#a') belongs in the simple-key store, not here - shouldn't happen
+		// (selectorNeedsStructured wouldn't route it), skip safely. Anything richer ('.a.b',
+		// '#a.b') has no simple key the matcher ever builds, so it must stay here.
 		return;
 	}
 
@@ -1107,10 +1323,13 @@ void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) 
 			if (!comp.id.empty()) {
 				++idC;
 			}
-			clsC += uint32_t(comp.classes.size()) + uint32_t(__builtin_popcount(comp.pseudoRequire))
-					+ uint32_t(__builtin_popcount(comp.pseudoForbid));
+			clsC += uint32_t(comp.classes.size()) + comp.countPseudoSpecificity();
 			if (!comp.universal && !comp.tag.empty()) {
 				++typeC;
+			}
+			if (!comp.nth.empty() || comp.requireEmpty || comp.requireRoot) {
+				// consumers gate sibling-order invalidation on this
+				_hasStructuralSelectors = true;
 			}
 		}
 		cs.specificity = packSpecificity(idC, clsC, typeC);
@@ -1177,6 +1396,33 @@ void StyleContainer::readStyleParameters(const StringView &name, const StringVie
 		readCssParameter(name, value, cb,
 				[&](const StringView &str) -> StringId { return _document->addString(str); });
 	}
+}
+
+void StyleContainer::readStyleDeclaration(StyleList &target, StringView name, StringView value,
+		MediaQueryId mediaQuery, StyleRule rule) {
+	if (name.starts_with("--")) {
+		// a custom property: keep the raw text, there is nothing to parse until it is used
+		_hasCustomProperties = true;
+		target.custom.emplace_back(StyleList::CustomProperty{_document->addString(name),
+			_document->addString(value), mediaQuery, rule});
+		return;
+	}
+
+	if (value.find("var(") != maxOf<size_t>()) {
+		// the value depends on custom properties, which are only known per element - defer the
+		// whole declaration to resolve time (see StyleList::PendingParameter)
+		_hasCustomProperties = true;
+		target.pending.emplace_back(StyleList::PendingParameter{_document->addString(name),
+			_document->addString(value), mediaQuery, rule});
+		return;
+	}
+
+	readStyleParameters(name, value, [&](StyleParameter &&param) {
+		param.rule = rule;
+		param.mediaQuery = mediaQuery;
+		target.data.emplace_back(move(param));
+		return true;
+	});
 }
 
 } // namespace stappler::document
