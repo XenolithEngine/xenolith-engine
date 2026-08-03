@@ -24,19 +24,45 @@
 #define UTILS_INSTALLER_SRC_SCENE_INSTALLERLAYOUT_H_
 
 #include "XL2dSceneLayout.h"
+#include "XL2dScrollView.h"
+#include "XL2dLabel.h"
+#include "XL2dLayer.h"
+
+#include "InstallerController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
+// The packages screen: title bar, header, virtualized component table, footer. The whole layout is
+// driven by resources/style.css — this class only builds the node tree and assigns identity
+// (type / name / style class). It sets no colours, sizes or positions.
 class InstallerLayout : public basic2d::SceneLayout2d {
 public:
 	virtual ~InstallerLayout();
 
 	virtual bool init() override;
 
+	// Called by InstallerSceneContent once the controller has loaded its catalogue; refreshes the
+	// header meta labels and rebuilds the table from controller->catalog().
+	void onCatalogReady(InstallerController *controller);
+
+	// Reverts the pre-warm window expansion (see onCatalogReady) once the loading overlay hides, so
+	// the virtualizer keeps only the visible rows on screen.
+	void dropScrollWarmup();
+
 protected:
+	void rebuildPackages();
+
 	Node *_titleBar = nullptr;
-	Node *_promoBar = nullptr;
-	Node *_content = nullptr;
+	Node *_packagesArea = nullptr;
+	basic2d::Layer *_header = nullptr;
+	basic2d::ScrollView *_scroll = nullptr;
+	Rc<basic2d::ScrollController> _scrollController;
+	basic2d::Layer *_footer = nullptr;
+
+	basic2d::Label *_releaseLabel = nullptr;
+	basic2d::Label *_nativeLabel = nullptr;
+
+	InstallerController *_controller = nullptr;
 };
 
 } // namespace stappler::xenolith::installer

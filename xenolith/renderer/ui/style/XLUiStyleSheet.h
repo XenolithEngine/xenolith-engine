@@ -35,12 +35,16 @@ registry) and a `document::StyleContainer` (parsed rules). It is Rc-managed and 
 a node via `StyleSheetSystem` (see XLSimpleStyle.h).
 
 Selector support:
-`*`, `tag`, `.class`, `tag.class`, `#id`, `tag#id`, `A B` (descendant), `A > B` (child).
+`*`, `tag`, `.class`, `tag.class`, `#id`, `tag#id`, compound selectors, the four combinators
+(`A B`, `A > B`, `A + B`, `A ~ B`), interactive pseudo-classes (`:hover` `:focus` `:active`
+`:checked` `:enabled` `:disabled`) and structural pseudo-classes (`:nth-child()`
+`:nth-last-child()` `:first-child` `:last-child` `:only-child`, the four `*-of-type` forms,
+`:empty`, `:root`).
 
 Combinator rules are bucketed by their rightmost ("target") compound and matched right-to-left
-against the scene-graph tree (see `resolveComplexForNode`). Attribute selectors, pseudo-classes
-and specificity are NOT supported (such rules are parsed but never match); the cascade is
-fixed-order last-write-wins. `@media` queries are fully supported. */
+against the scene-graph tree. Full CSS specificity is honored by the caller (see
+`collectMatches`). Attribute selectors and pseudo-elements are NOT supported (such rules are
+dropped at parse time). `@media` queries are fully supported. */
 class SP_PUBLIC StyleSheet : public Ref {
 public:
 	virtual ~StyleSheet();
@@ -62,9 +66,19 @@ public:
 	`ancestorFilterBits` is the Bloom filter of the node's ancestor tokens (lets descendant/
 	child rules be rejected in O(1) before the right-to-left walk). `orderBias` folds the
 	sheet's scope rank into the tie-break; `mediaResolved` is stamped on each matched rule and
-	applied when the caller merges. Must be called within a memory pool context. */
+	applied when the caller merges. `scopeRoot` is the node owning the nearest stylesheet
+	scope - what `:root` matches. Must be called within a memory pool context. */
 	void collectMatches(Vector<document::StyleContainer::MatchedRule> &out, NotNull<Node> node,
-			uint64_t ancestorFilterBits, uint64_t orderBias, SpanView<bool> mediaResolved) const;
+			uint64_t ancestorFilterBits, uint64_t orderBias, SpanView<bool> mediaResolved,
+			const Node *scopeRoot) const;
+
+	// does any rule in the sheet use a structural pseudo-class? A node's style then depends on
+	// its position among its siblings, so the resolver must invalidate on child-list changes.
+	bool hasStructuralSelectors() const;
+
+	// does any rule declare a custom property or reference one with var()? Lets the cascade
+	// skip its custom-property pass for an ordinary sheet.
+	bool hasCustomProperties() const;
 
 	/* Parse an inline `style="..."` declaration list; parsed once per distinct text,
 	cached for the sheet's lifetime. Returned pointer is valid while the sheet lives. */

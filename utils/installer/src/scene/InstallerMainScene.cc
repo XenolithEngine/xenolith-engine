@@ -24,36 +24,23 @@
 #include "InstallerSceneContent.h"
 
 #include "XLEntryPoint.h"
-#include "XL2dSceneContent.h"
-
-#include "XLWindowDecorations.h"
-#include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 bool MainScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
-
 	if (!Scene2d::init(app, window, constraints)) {
 		return false;
 	}
 
 	auto content = Rc<InstallerSceneContent>::create();
-
 	content->setDefaultLights();
 
 	setContent(content);
-
 	setFpsVisible(true);
 
 	return true;
 }
-
-void MainScene::handleContentSizeDirty() { Scene2d::handleContentSizeDirty(); }
-
-void MainScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
-
-void MainScene::handlePresented(Director *dir) { Scene2d::handlePresented(dir); }
 
 void MainScene::buildQueueResources(QueueInfo &, core::Queue::Builder &builder) {
 	builder.addImage("app-icon.png",

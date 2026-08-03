@@ -31,8 +31,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 `getParent()`; the preceding sibling is the entry before the node in its parent's child list
 (insertion / z-order). A compound matches a node's `NodeIdentity` (type/id/classes) and its
 interactive pseudo-state (`:hover` etc.) read live from its `InteractiveComponent`; a node
-without an identity component matches only the universal `*`. */
+without an identity component matches only the universal `*`.
+
+Structural pseudo-classes read the node's position in its parent's child list. That list is
+ordered by z-order once sorted (`Node::sortAllChildren`), so `:nth-child` counts in DRAWING
+order, not insertion order - the same rule the `+`/`~` combinators already follow. */
 struct SceneNodeAccess {
+	// the node owning the nearest stylesheet scope; what `:root` matches
+	const Node *scopeRoot = nullptr;
+
 	bool valid(Node *n) const { return n != nullptr; }
 
 	Node *parent(Node *n) const { return n->getParent(); }
@@ -49,6 +56,43 @@ struct SceneNodeAccess {
 			}
 		}
 		return nullptr;
+	}
+
+	bool isEmpty(Node *n) const { return n->getChildrenCount() == 0; }
+
+	bool isRoot(Node *n) const {
+		return scopeRoot ? (n == scopeRoot) : (n->getParent() == nullptr);
+	}
+
+	// 1-based index of `n` among its parent's children and their total count; with
+	// `sameTypeOnly` only siblings sharing the node's CSS type are counted (`:nth-of-type`)
+	bool siblingIndex(Node *n, bool sameTypeOnly, uint32_t &index, uint32_t &total) const {
+		auto p = n->getParent();
+		if (!p) {
+			return false;
+		}
+		StringView type;
+		if (sameTypeOnly) {
+			if (auto identity = n->getComponent<NodeIdentity>()) {
+				type = StringView(identity->type);
+			}
+		}
+		index = 0;
+		total = 0;
+		for (auto &child : p->getChildren()) {
+			if (sameTypeOnly) {
+				auto identity = child->getComponent<NodeIdentity>();
+				auto childType = identity ? StringView(identity->type) : StringView();
+				if (childType != type) {
+					continue;
+				}
+			}
+			++total;
+			if (child.get() == n) {
+				index = total;
+			}
+		}
+		return index != 0;
 	}
 
 	bool matchCompound(Node *n, const document::StyleContainer::CompoundSelector &c) const {
@@ -102,7 +146,7 @@ struct StyleSheet::Container : document::StyleContainer {
 	// `orderBias` folds the sheet's scope rank into the tie-break; `media` is stamped per rule.
 	template <typename Vec>
 	void collectMatches(Vec &out, Node *node, uint64_t filterBits, uint64_t orderBias,
-			SpanView<bool> media) const {
+			SpanView<bool> media, const Node *scopeRoot) const {
 		auto identity = node->getComponent<NodeIdentity>();
 		PoolString key;
 
@@ -110,8 +154,8 @@ struct StyleSheet::Container : document::StyleContainer {
 		auto addSimple = [&](StringView k) {
 			auto it = _styles.find(k);
 			if (it != _styles.end()) {
-				out.push_back(MatchedRule{&it->second.style, media, it->second.specificity,
-					orderBias | it->second.order});
+				out.push_back(MatchedRule{&it->second.style, media, _document->strings,
+					it->second.specificity, orderBias | it->second.order});
 			}
 		};
 		addSimple(StringView("*"));
@@ -147,7 +191,7 @@ struct StyleSheet::Container : document::StyleContainer {
 
 		// structured combinator/pseudo rules, matched right-to-left
 		if (!_complexStyles.empty()) {
-			SceneNodeAccess access;
+			SceneNodeAccess access{scopeRoot};
 			auto tryBucket = [&](StringView bkey) {
 				auto bit = _complexStyles.find(bkey);
 				if (bit == _complexStyles.end()) {
@@ -159,8 +203,8 @@ struct StyleSheet::Container : document::StyleContainer {
 						continue;
 					}
 					if (matchComplex(*sel, node, access)) {
-						out.push_back(MatchedRule{&sel->style, media, sel->specificity,
-							orderBias | sel->order});
+						out.push_back(MatchedRule{&sel->style, media, _document->strings,
+							sel->specificity, orderBias | sel->order});
 					}
 				}
 			};
@@ -261,9 +305,13 @@ bool StyleSheet::addStyle(const FileInfo &file) {
 
 void StyleSheet::collectMatches(Vector<document::StyleContainer::MatchedRule> &out,
 		NotNull<Node> node, uint64_t ancestorFilterBits, uint64_t orderBias,
-		SpanView<bool> mediaResolved) const {
-	_container->collectMatches(out, node, ancestorFilterBits, orderBias, mediaResolved);
+		SpanView<bool> mediaResolved, const Node *scopeRoot) const {
+	_container->collectMatches(out, node, ancestorFilterBits, orderBias, mediaResolved, scopeRoot);
 }
+
+bool StyleSheet::hasStructuralSelectors() const { return _container->hasStructuralSelectors(); }
+
+bool StyleSheet::hasCustomProperties() const { return _container->hasCustomProperties(); }
 
 const document::StyleList *StyleSheet::getInlineStyle(StringView css) {
 	if (css.empty()) {

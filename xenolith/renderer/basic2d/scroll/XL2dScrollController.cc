@@ -86,7 +86,26 @@ void ScrollController::onScrollPosition(bool force) {
 		return;
 	}
 
+	// Convergence loop. A node built below can turn out to be a different size than the item
+	// declared, which shifts every following item (resizeItem) and re-dirties the info - so the
+	// visible window has to be recomputed against the new geometry and the pass repeated. Normally
+	// that settles in one or two rounds.
+	//
+	// It does NOT settle when an item's node reports a fresh size every time it is built (a row
+	// whose label re-shapes on construction is the usual source). Each round then destroys the
+	// nodes that fell out of the moved window and builds their replacements, all inside a single
+	// frame - which is how this loop used to run away and eat gigabytes. Bound it like the
+	// component cascade in Node::visit: give up, say so, and let the frame finish.
+	uint32_t guard = 0;
 	do {
+		if (++guard > 12) {
+			log::source().warn("ScrollController",
+					"item sizes did not converge in 12 passes - a node function that returns a "
+					"different size on every call keeps re-dirtying the layout");
+			_infoDirty = false;
+			break;
+		}
+
 		if (_infoDirty || force) {
 			float start = nan();
 			float end = nan();

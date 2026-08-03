@@ -29,6 +29,7 @@ ComponentId FlexLayoutInfo::Id;
 ComponentId FlexItemInfo::Id;
 ComponentId GridLayoutInfo::Id;
 ComponentId GridItemInfo::Id;
+ComponentId OutOfFlowComponent::Id;
 
 // All LayoutSystems share one frame-stack tag, so a descendant's stack lookup resolves to the
 // nearest ancestor container (back() of the tag's stack)
@@ -61,15 +62,59 @@ struct FlexItem {
 	float crossMarginStart = 0.0f;
 	float crossMarginEnd = 0.0f;
 
+	// `margin: auto` on the projected sides. An auto margin contributes nothing while sizes are
+	// being resolved and is filled from the leftover space afterwards, so it is kept apart from
+	// the fixed margins above rather than folded into them.
+	bool mainMarginStartAuto = false;
+	bool mainMarginEndAuto = false;
+	bool crossMarginStartAuto = false;
+	bool crossMarginEndAuto = false;
+
+	// space handed to the main-axis auto margins once the free space is known
+	float mainAutoStart = 0.0f;
+	float mainAutoEnd = 0.0f;
+
 	// margin-box start positions in the flow (0 == start of the content box / line)
 	float mainStart = 0.0f;
 	float crossStart = 0.0f;
 
-	float outerMain() const { return mainMarginStart + mainSize + mainMarginEnd; }
+	uint32_t mainAutoCount() const {
+		return (mainMarginStartAuto ? 1u : 0u) + (mainMarginEndAuto ? 1u : 0u);
+	}
+	uint32_t crossAutoCount() const {
+		return (crossMarginStartAuto ? 1u : 0u) + (crossMarginEndAuto ? 1u : 0u);
+	}
+
+	float outerMain() const {
+		return mainMarginStart + mainAutoStart + mainSize + mainAutoEnd + mainMarginEnd;
+	}
 	float outerCross() const { return crossMarginStart + crossSize + crossMarginEnd; }
 	float outerBaseMain() const { return mainMarginStart + baseMain + mainMarginEnd; }
 	float outerNaturalCross() const { return crossMarginStart + naturalCross + crossMarginEnd; }
 };
+
+// Can this node answer the content-measurement protocol at all? Either a system opted into it
+// (`SystemFlags::HandleMeasure` — Label's own, a flex container's, or one an application wrote),
+// or the precomputed MeasureComponent fallback is present. Both are resolved by measureNode();
+// this is only the cheap "is it worth asking" predicate, so it calls nothing.
+static bool LayoutSystem_canMeasure(Node *node) {
+	for (auto &it : node->getSystems()) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
+			return true;
+		}
+	}
+	return node->getComponent<MeasureComponent>() != nullptr;
+}
+
+// Does the style give this node a definite size on the axis? That is what the resolver publishes
+// in MeasureComponent::normal (a per-axis value < 0 means "unspecified"), and it is the CSS
+// `width`/`height` of the item - which wins over content sizing.
+static bool LayoutSystem_hasDefiniteSize(Node *node, bool horizontal) {
+	if (auto mc = node->getComponent<MeasureComponent>()) {
+		return (horizontal ? mc->normal.width : mc->normal.height) >= 0.0f;
+	}
+	return false;
+}
 
 // A run of items placed on a single line, plus its resolved cross extent.
 struct FlexLine {
@@ -543,6 +588,43 @@ bool LayoutSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
 	return true;
 }
 
+// True when a layout engine computes this node's size FROM its content instead of taking the
+// node's own content size as given: a fit-content flex item, or a grid item left to its content
+// on either axis.
+static bool LayoutSystem_isContentSized(Node *node) {
+	if (auto item = node->getComponent<FlexItemInfo>()) {
+		if (item->basis == FlexItemInfo::FitContent
+				|| item->crossSize == FlexItemInfo::FitContent) {
+			return true;
+		}
+	}
+	if (auto item = node->getComponent<GridItemInfo>()) {
+		return item->width == GridItemInfo::Auto || item->height == GridItemInfo::Auto;
+	}
+	return false;
+}
+
+// Re-arm every ancestor container whose measured size can still depend on this subtree.
+//
+// The content-size bubble carries a resize outwards only as long as each container's OWN
+// ContentSize changes: the container node then delivers its own content-size event to the next
+// ancestor through the frame stack. That chain breaks at a content-sized container - a
+// fit-content item does NOT own its size, the container above it does, so re-laying out its
+// children leaves its ContentSize untouched and the ancestor never learns that the size it
+// measured from this subtree went stale (a label deep inside kept its old box, so the text
+// overflowed it). Walk out explicitly instead, stopping at the first container whose size the
+// content no longer determines.
+static void LayoutSystem_invalidateMeasuredAncestors(Node *node) {
+	while (LayoutSystem_isContentSized(node)) {
+		auto parent = node->getParent();
+		if (!parent) {
+			return;
+		}
+		parent->markLayoutChildrenDirty();
+		node = parent;
+	}
+}
+
 void LayoutSystem::handleChildContentSizeDirty(Node *child) {
 	if (_inApply || !_owner) {
 		return;
@@ -552,10 +634,8 @@ void LayoutSystem::handleChildContentSizeDirty(Node *child) {
 		// coalesced: any number of child changes per frame ends up as a single
 		// re-layout through the layout-children phase on the next visit; convergence
 		// is guaranteed by setContentSize's equal-size early-out.
-		// No manual re-bubble: when this re-layout changes our own size, our container node delivers
-		// that content-size event to the next ancestor LayoutSystem via the frame stack during our
-		// own visit, so nested fit-content chains re-measure automatically
 		_owner->markLayoutChildrenDirty();
+		LayoutSystem_invalidateMeasuredAncestors(_owner);
 	}
 }
 
@@ -568,6 +648,8 @@ void LayoutSystem::handleChildComponentsDirty(Node *child, const ComponentMask &
 	// written or removed) - the set of in-flow items changes, re-lay-out the container
 	if (child->getParent() == _owner && mask.contains(VisibilityComponent::Id.value)) {
 		_owner->markLayoutChildrenDirty();
+		// the item set changed, so our own measured size did too
+		LayoutSystem_invalidateMeasuredAncestors(_owner);
 	}
 }
 
@@ -653,41 +735,82 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			continue;
 		}
 
+		// `position: absolute` and friends: not an item at all, so it neither takes space nor
+		// receives any (see OutOfFlowComponent)
+		if (child->getComponent<OutOfFlowComponent>()) {
+			continue;
+		}
+
 		FlexItem item;
 		item.node = child;
 		if (auto cfg = child->getComponent<FlexItemInfo>()) {
 			item.cfg = *cfg;
 		}
 
+		const auto autoMargin = item.cfg.autoMargin;
 		if (isRow) {
 			// main is horizontal, cross is vertical (cross-start == top)
 			item.mainMarginStart = item.cfg.margin.left;
 			item.mainMarginEnd = item.cfg.margin.right;
 			item.crossMarginStart = item.cfg.margin.top;
 			item.crossMarginEnd = item.cfg.margin.bottom;
+			item.mainMarginStartAuto = hasFlag(autoMargin, FlexAutoMargin::Left);
+			item.mainMarginEndAuto = hasFlag(autoMargin, FlexAutoMargin::Right);
+			item.crossMarginStartAuto = hasFlag(autoMargin, FlexAutoMargin::Top);
+			item.crossMarginEndAuto = hasFlag(autoMargin, FlexAutoMargin::Bottom);
 		} else {
 			// main is vertical (main-start == top), cross is horizontal
 			item.mainMarginStart = item.cfg.margin.top;
 			item.mainMarginEnd = item.cfg.margin.bottom;
 			item.crossMarginStart = item.cfg.margin.left;
 			item.crossMarginEnd = item.cfg.margin.right;
+			item.mainMarginStartAuto = hasFlag(autoMargin, FlexAutoMargin::Top);
+			item.mainMarginEndAuto = hasFlag(autoMargin, FlexAutoMargin::Bottom);
+			item.crossMarginStartAuto = hasFlag(autoMargin, FlexAutoMargin::Left);
+			item.crossMarginEndAuto = hasFlag(autoMargin, FlexAutoMargin::Right);
+		}
+
+		// an auto margin is free space, not a distance: it contributes nothing until the sizes
+		// are settled (CSS resolves auto margins to zero for intrinsic sizing as well)
+		if (item.mainMarginStartAuto) {
+			item.mainMarginStart = 0.0f;
+		}
+		if (item.mainMarginEndAuto) {
+			item.mainMarginEnd = 0.0f;
+		}
+		if (item.crossMarginStartAuto) {
+			item.crossMarginStart = 0.0f;
+		}
+		if (item.crossMarginEndAuto) {
+			item.crossMarginEnd = 0.0f;
 		}
 
 		const Size2 cs = intrinsicSize(child);
 		const float nodeMain = isRow ? cs.width : cs.height;
 		const float nodeCross = isRow ? cs.height : cs.width;
 
-		// a fit-content basis re-derives the main size from content, so the
-		// stale contentSize-based cross is meaningless - imply fit-content
-		// cross unless an explicit crossSize was given
-		item.fitCross = item.cfg.crossSize == FlexItemInfo::FitContent
-				|| (item.cfg.basis == FlexItemInfo::FitContent
-						&& item.cfg.crossSize == FlexItemInfo::Auto);
-		item.measured = item.fitCross || item.cfg.basis == FlexItemInfo::FitContent;
+		// Who gets asked for its content size. `flex-basis: fit-content` always measures; and so
+		// does `flex-basis: auto` when the style gave the item no definite main size - that is
+		// plain CSS ("auto" falls through to the size property, and an auto size falls through to
+		// `content"). Which nodes can answer is not a fixed list: any node with a HandleMeasure
+		// system or a MeasureComponent does, Label and nested flex containers being the two the
+		// engine ships.
+		const bool canMeasure = LayoutSystem_canMeasure(child);
+		const bool measureMain = item.cfg.basis == FlexItemInfo::FitContent
+				|| (item.cfg.basis == FlexItemInfo::Auto && canMeasure
+						&& !LayoutSystem_hasDefiniteSize(child, isRow));
 
-		if (item.cfg.basis == FlexItemInfo::FitContent) {
-			// flex-basis: fit-content -> min(max-content, available main),
-			// clamped to [minMain, maxMain]
+		// The cross size is re-measured at the final main size (a wrapped label: width -> height).
+		// Same rule: an explicit fit-content, or an auto cross the node can answer for. A measured
+		// main size also invalidates the stale contentSize-based cross, so it implies a re-measure.
+		item.fitCross = item.cfg.crossSize == FlexItemInfo::FitContent
+				|| (item.cfg.crossSize == FlexItemInfo::Auto
+						&& (measureMain
+								|| (canMeasure && !LayoutSystem_hasDefiniteSize(child, !isRow))));
+		item.measured = item.fitCross || measureMain;
+
+		if (measureMain) {
+			// content sizing -> min(max-content, available main), clamped to [minMain, maxMain]
 			MeasureConstraints mc;
 			mc.mode = MeasureMode::MaxContent;
 			if (contentCross != maxOf<float>()) {
@@ -707,7 +830,8 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			}
 			item.baseMain = sprt::max(base, 0.0f);
 		} else {
-			// flex-basis: an explicit value wins, otherwise fall back to the node's size
+			// an explicit flex-basis wins; otherwise the node's own size stands in for its
+			// content (a node that cannot be measured has nothing better to offer)
 			item.baseMain = (item.cfg.basis >= 0.0f) ? item.cfg.basis : nodeMain;
 		}
 		// hypothetical cross size used for line sizing and non-stretch alignment;
@@ -776,32 +900,71 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 				item.mainSize = sprt::max(size, 0.0f);
 			}
 		} else {
+			// CSS "resolve the flexible lengths": distribute the free space, clamp each item to
+			// its own [minMain, maxMain], and whenever a clamp actually moved an item, freeze it
+			// there and share what is left among the others. Doing it in one pass instead would
+			// drop the space a clamped item gave up: three items growing into 600px, one with
+			// min-width 260 and one with max-width 120, must end at 260/120/220 - a single pass
+			// leaves the third at its 200px share and the row 20px short.
 			float sumOuterBase = 0.0f;
-			float sumGrow = 0.0f;
-			float sumShrinkScaled = 0.0f;
 			for (size_t k = line.begin; k < line.end; ++k) {
 				sumOuterBase += items[k].outerBaseMain();
-				sumGrow += items[k].cfg.grow;
-				sumShrinkScaled += items[k].cfg.shrink * items[k].baseMain;
 			}
+			const bool growing = (contentMain - sumOuterBase - gapTotal) > 0.0f;
 
-			const float freeMain = contentMain - sumOuterBase - gapTotal;
-
+			// an item that cannot flex in the needed direction is frozen from the start; its
+			// baseMain was already clamped when it was resolved
+			mem_std::Vector<uint8_t> frozen(line.count(), 0);
 			for (size_t k = line.begin; k < line.end; ++k) {
 				auto &item = items[k];
-				float size = item.baseMain;
-				if (freeMain > 0.0f && sumGrow > 0.0f) {
-					size = item.baseMain + (item.cfg.grow / sumGrow) * freeMain;
-				} else if (freeMain < 0.0f && sumShrinkScaled > 0.0f) {
-					const float ratio = (item.cfg.shrink * item.baseMain) / sumShrinkScaled;
-					size = item.baseMain + ratio * freeMain; // freeMain is negative
+				item.mainSize = item.baseMain;
+				if ((growing ? item.cfg.grow : item.cfg.shrink) <= 0.0f) {
+					frozen[k - line.begin] = 1;
+				}
+			}
+
+			// every pass freezes at least one item, so n + 1 of them is an exhaustive bound
+			for (size_t pass = 0; pass <= n; ++pass) {
+				float used = gapTotal;
+				float sumFactor = 0.0f;
+				for (size_t k = line.begin; k < line.end; ++k) {
+					auto &item = items[k];
+					if (frozen[k - line.begin]) {
+						used += item.mainMarginStart + item.mainSize + item.mainMarginEnd;
+					} else {
+						used += item.outerBaseMain();
+						sumFactor += growing ? item.cfg.grow : item.cfg.shrink * item.baseMain;
+					}
+				}
+				if (sumFactor <= 0.0f) {
+					break; // nothing left that can take the remainder
 				}
 
-				size = sprt::max(size, item.cfg.minMain);
-				if (item.cfg.maxMain >= 0.0f) {
-					size = sprt::min(size, item.cfg.maxMain);
+				const float freeMain = contentMain - used;
+				bool clampedAny = false;
+				for (size_t k = line.begin; k < line.end; ++k) {
+					auto &item = items[k];
+					if (frozen[k - line.begin]) {
+						continue;
+					}
+					const float factor = growing ? item.cfg.grow : item.cfg.shrink * item.baseMain;
+					const float size = item.baseMain + (factor / sumFactor) * freeMain;
+
+					float clamped = sprt::max(size, item.cfg.minMain);
+					if (item.cfg.maxMain >= 0.0f) {
+						clamped = sprt::min(clamped, item.cfg.maxMain);
+					}
+					clamped = sprt::max(clamped, 0.0f);
+
+					item.mainSize = clamped;
+					if (sprt::abs(clamped - size) > FlexEpsilon) {
+						frozen[k - line.begin] = 1;
+						clampedAny = true;
+					}
 				}
-				item.mainSize = sprt::max(size, 0.0f);
+				if (!clampedAny) {
+					break;
+				}
 			}
 		}
 
@@ -953,9 +1116,30 @@ void LayoutSystem::layoutFlex() {
 		const size_t n = line.count();
 
 		float usedMain = 0.0f;
-		for (size_t k = line.begin; k < line.end; ++k) { usedMain += items[k].outerMain(); }
+		uint32_t autoMainCount = 0;
+		for (size_t k = line.begin; k < line.end; ++k) {
+			usedMain += items[k].outerMain();
+			autoMainCount += items[k].mainAutoCount();
+		}
 		const float gapTotal = (n > 1) ? mainGap * static_cast<float>(n - 1) : 0.0f;
 		float freeMain = sprt::max(contentMain - usedMain - gapTotal, 0.0f);
+
+		// Auto main margins are served first and take everything: they split the free space
+		// equally, and `justify-content` is left with nothing to distribute (CSS 9.5). This is
+		// what makes `margin-left: auto` push an item to the end and `margin: 0 auto` centre it.
+		if (autoMainCount > 0 && freeMain > 0.0f) {
+			const float share = freeMain / static_cast<float>(autoMainCount);
+			for (size_t k = line.begin; k < line.end; ++k) {
+				auto &item = items[k];
+				if (item.mainMarginStartAuto) {
+					item.mainAutoStart = share;
+				}
+				if (item.mainMarginEndAuto) {
+					item.mainAutoEnd = share;
+				}
+			}
+			freeMain = 0.0f;
+		}
 
 		float offset = 0.0f;
 		float between = mainGap;
@@ -990,19 +1174,32 @@ void LayoutSystem::layoutFlex() {
 			FlexAlign align =
 					(item.cfg.alignSelf == FlexAlign::Auto) ? info.alignItems : item.cfg.alignSelf;
 
+			const uint32_t autoCross = item.crossAutoCount();
+
 			const float availCross =
 					sprt::max(line.crossSize - item.crossMarginStart - item.crossMarginEnd, 0.0f);
-			// stretched items fill the line's cross extent; everyone else keeps
-			// their hypothetical cross size
-			const float cross = (align == FlexAlign::Stretch) ? availCross : item.naturalCross;
+			// stretched items fill the line's cross extent; everyone else keeps their
+			// hypothetical cross size. An auto cross margin outranks alignment, stretch
+			// included - there would be no free space left for the margin to take otherwise.
+			const float cross = (align == FlexAlign::Stretch && autoCross == 0) ? availCross
+																				: item.naturalCross;
 			item.crossSize = sprt::max(cross, 0.0f);
 
 			float crossPos = 0.0f;
 			const float outerCross = item.outerCross();
-			switch (align) {
-			case FlexAlign::FlexEnd: crossPos = line.crossSize - outerCross; break;
-			case FlexAlign::Center: crossPos = (line.crossSize - outerCross) / 2.0f; break;
-			default: break; // FlexStart / Stretch / Auto
+			if (autoCross > 0) {
+				// the item's own auto margins split what is left of its line; one auto margin
+				// pushes it to the opposite edge, two centre it
+				const float freeCross = sprt::max(line.crossSize - outerCross, 0.0f);
+				if (item.crossMarginStartAuto) {
+					crossPos = (autoCross == 2) ? freeCross / 2.0f : freeCross;
+				}
+			} else {
+				switch (align) {
+				case FlexAlign::FlexEnd: crossPos = line.crossSize - outerCross; break;
+				case FlexAlign::Center: crossPos = (line.crossSize - outerCross) / 2.0f; break;
+				default: break; // FlexStart / Stretch / Auto
+				}
 			}
 			item.crossStart = line.crossStart + crossPos;
 		}
@@ -1015,7 +1212,7 @@ void LayoutSystem::layoutFlex() {
 		if (mainReverse) {
 			mainBox = contentMain - (item.mainStart + item.outerMain());
 		}
-		const float mainPos = mainBox + item.mainMarginStart;
+		const float mainPos = mainBox + item.mainMarginStart + item.mainAutoStart;
 
 		float crossBox = item.crossStart;
 		if (crossReverse) {
@@ -1135,6 +1332,10 @@ void LayoutSystem::layoutGrid() {
 		// collapsed when explicitly invisible or `display: none`; a `visibility: hidden`
 		// child keeps its layout box (isDisplayed stays true)
 		if (!child->isDisplayed()) {
+			continue;
+		}
+		// out of the grid flow entirely, like an absolutely positioned box (OutOfFlowComponent)
+		if (child->getComponent<OutOfFlowComponent>()) {
 			continue;
 		}
 		GridItem item;

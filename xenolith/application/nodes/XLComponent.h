@@ -320,23 +320,59 @@ struct SP_PUBLIC VisibilityComponent {
 	bool operator==(const VisibilityComponent &) const = default;
 };
 
-// Precomputed measurement fallback. When a node has no HandleMeasure system that answers a
-// measure request, the measure phase (Node::handleMeasure) and a parent layout engine
-// (LayoutSystem::measureNode) fall back to the size stored here for the requested mode.
-// Set the sizes you know ahead of time; a mode left at zero resolves to `normal`.
+// Precomputed measurement fallback, and the second way a node takes part in content sizing: when
+// it has no HandleMeasure system to answer a request, the measure phase (Node::handleMeasure) and
+// a parent layout engine (LayoutSystem::measureNode) read the sizes stored here instead. Fill in
+// whichever you know ahead of time.
+//
+// A whole entry left at Size2::ZERO means "not filled in"; a negative value on one axis of an
+// entry means "that axis is unspecified" (which is how the style resolver publishes a CSS width
+// with no height). `normal` doubles as the node's definite size for the layout: an axis it
+// specifies is treated as an explicit `width`/`height` and is never replaced by a measurement.
 struct SP_PUBLIC MeasureComponent {
 	static ComponentId Id;
 
 	Size2 normal = Size2::ZERO; // MeasureMode::Normal (preferred size)
-	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent (falls back to normal if unset)
-	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent (falls back to normal if unset)
+	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent
+	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent
 
+	// The entry for the requested mode, per axis, falling back to the other entries where it has
+	// nothing to say. So a component that only carries `maxContent` still answers a Normal
+	// request - without the fallback it measured as nothing and the node collapsed to zero.
+	// An axis no entry specifies is returned negative, and the caller keeps its current size.
 	Size2 measure(const MeasureConstraints &c) const {
+		Size2 ret(-1.0f, -1.0f);
+
+		auto take = [&](const Size2 &v) {
+			if (v == Size2::ZERO) {
+				return; // whole entry unset
+			}
+			if (ret.width < 0.0f && v.width >= 0.0f) {
+				ret.width = v.width;
+			}
+			if (ret.height < 0.0f && v.height >= 0.0f) {
+				ret.height = v.height;
+			}
+		};
+
 		switch (c.mode) {
-		case MeasureMode::MinContent: return (minContent == Size2::ZERO) ? normal : minContent;
-		case MeasureMode::MaxContent: return (maxContent == Size2::ZERO) ? normal : maxContent;
-		default: return normal;
+		case MeasureMode::MinContent:
+			take(minContent);
+			take(normal);
+			take(maxContent);
+			break;
+		case MeasureMode::MaxContent:
+			take(maxContent);
+			take(normal);
+			take(minContent);
+			break;
+		default:
+			take(normal);
+			take(maxContent);
+			take(minContent);
+			break;
 		}
+		return ret;
 	}
 };
 

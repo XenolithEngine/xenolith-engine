@@ -25,25 +25,44 @@
 
 #include "XL2dSceneContent.h"
 #include "XL2dLayer.h"
-#include "XLUiButton.h"
+#include "XL2dLabel.h"
+#include "XL2dIconSprite.h"
 #include "XLUiStyleSystem.h"
+
+#include "InstallerController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
+class InstallerLayout;
+
+// Owns the window-wide pieces: the stylesheet every node below resolves against, the background
+// behind the layout, and the loading overlay shown until the catalogue arrives.
 class InstallerSceneContent : public basic2d::SceneContent2d {
 public:
 	virtual ~InstallerSceneContent();
 
 	virtual bool init() override;
 
+	virtual void handleEnter(Scene *) override;
 	virtual void handleContentSizeDirty() override;
 
 protected:
-	basic2d::Layer *_top = nullptr;
+	// Hides the overlay, stops the spinner and returns the renderer to on-demand frames.
+	void hideLoadingState();
+
 	ui::StyleSystem *_rootStyle = nullptr;
 	basic2d::Layer *_globalBackground = nullptr;
 
-	Node *_testNode = nullptr;
+	// Loading overlay: a semi-opaque surface dimming the content area (everything below the title
+	// bar) while the catalogue loads, plus a spinner and a caption. The three are SIBLINGS, not
+	// parent/child — see init() for why.
+	basic2d::Layer *_loadingOverlay = nullptr;
+	basic2d::IconSprite *_spinner = nullptr;
+	basic2d::Label *_loadingLabel = nullptr;
+	bool _spinnerScheduled = false;
+
+	Rc<InstallerController> _controller;
+	Rc<InstallerLayout> _layout;
 };
 
 } // namespace stappler::xenolith::installer

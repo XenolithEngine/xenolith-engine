@@ -101,6 +101,100 @@ static uint64_t foldIdentityBits(const NodeIdentity *identity) {
 
 } // namespace
 
+/* Custom properties in effect for one node, plus the strings that `var()` substitution had to
+intern. Lives in the ResolvedStyle's pool.
+
+`vars` maps a property name to its raw, unexpanded text; both views point into the string table
+of whichever sheet declared it, which outlives the ResolvedStyle.
+
+`strings` is empty unless substitution produced a STRING-valued parameter (`font-family:
+var(--face)`). It cannot go through DocumentData::addString - that table never dedupes, so
+re-resolving a node every frame would grow the sheet without bound. Instead it starts as a copy
+of the nearest sheet's table, so ids already handed out stay valid, and the substituted strings
+are appended to it. */
+struct ResolvedStyle::VariableTable : memory::AllocPool {
+	memory::PoolInterface::MapType<StringView, StringView> vars;
+	memory::PoolInterface::VectorType<StringView> strings;
+};
+
+void ResolvedStyle::initVariables(SpanView<StringView> sheetStrings) {
+	_variables = new (_pool) VariableTable();
+	_variables->strings.assign(sheetStrings.begin(), sheetStrings.end());
+}
+
+document::StringId ResolvedStyle::internSubstitutedString(StringView str) {
+	_variables->strings.emplace_back(str.pdup(_pool));
+	return document::StringId(_variables->strings.size() - 1);
+}
+
+StringView ResolvedStyle::getCustomProperty(StringView name) const {
+	if (!_variables) {
+		return StringView();
+	}
+	auto it = _variables->vars.find(name);
+	return (it == _variables->vars.end()) ? StringView() : it->second;
+}
+
+void ResolvedStyle::foreachCustomProperty(const Callback<void(StringView, StringView)> &cb) const {
+	if (_variables) {
+		for (auto &it : _variables->vars) { cb(it.first, it.second); }
+	}
+}
+
+uint64_t ResolvedStyle::getCustomPropertiesHash() const {
+	if (!_variables || _variables->vars.empty()) {
+		return 0;
+	}
+	// FNV-1a over the whole set; the map is ordered, so the digest is stable
+	uint64_t h = 1'469'598'103'934'665'603ull;
+	auto fold = [&](StringView s) {
+		for (size_t i = 0; i < s.size(); ++i) {
+			h ^= static_cast<unsigned char>(s[i]);
+			h *= 1'099'511'628'211ull;
+		}
+		h ^= 0xffu; // separator, so "ab"+"c" and "a"+"bc" differ
+		h *= 1'099'511'628'211ull;
+	};
+	for (auto &it : _variables->vars) {
+		fold(it.first);
+		fold(it.second);
+	}
+	return h ? h : 1; // 0 is reserved for "no custom properties"
+}
+
+// Expand and parse the deferred `var()` declarations of one matched rule into `dst`, at the
+// point in the cascade where the rule itself is being merged. A declaration whose expansion
+// fails (undefined variable with no fallback, or a reference cycle) is dropped, exactly as CSS
+// requires - it never reaches `dst`, so whatever a less specific rule set simply stands.
+void ResolvedStyle::expandPendingRule(document::StyleList &dst,
+		const document::StyleContainer::MatchedRule &rule) {
+	for (auto &p : rule.style->pending) {
+		if (p.mediaQuery != document::MediaQueryIdNone && !rule.media.at(p.mediaQuery.get())) {
+			continue;
+		}
+
+		auto name = rule.strings.at(p.nameText);
+		mem_pool::String expanded;
+		if (!document::expandCssVariables(rule.strings.at(p.rawValue), [&](StringView var) {
+			return getCustomProperty(var);
+		}, [&](StringView chunk) { expanded.append(chunk.data(), chunk.size()); })) {
+			log::source().verbose("ui::StyleResolver", "Unresolved var() in '", name,
+					"', declaration dropped");
+			continue;
+		}
+
+		document::StyleContainer::readCssParameter(name, expanded,
+				[&](document::StyleParameter &&param) {
+			param.rule = p.rule;
+			param.mediaQuery = document::MediaQueryIdNone;
+			dst.set(param, true);
+			return true;
+		}, [&](const StringView &str) -> document::StringId {
+			return internSubstitutedString(str);
+		});
+	}
+}
+
 ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 	ResolvedStyle ret;
 
@@ -135,23 +229,28 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 
 	auto &nearest = scopes.front();
 
-	// Resolve one cascade level: gather every matching rule (simple + combinator/pseudo) from
-	// every scope visible at `chainIndex`, across sheets, into one list; sort by CSS specificity
-	// (ties broken by scope rank + source order); then merge in that order so the most specific
-	// / latest declaration wins. `inherit` restricts an ancestor level to inheritable params.
-	auto resolveLevel = [&](document::StyleList &dst, Node *levelNode, size_t chainIndex,
-								bool inherit) {
-		Vector<document::StyleContainer::MatchedRule> matches;
+	bool anyCustom = false;
+	for (auto &scope : scopes) {
+		auto sheet = scope.system->getStyleSheet();
+		ret._structural = ret._structural || sheet->hasStructuralSelectors();
+		anyCustom = anyCustom || sheet->hasCustomProperties();
+	}
+
+	// Gather every rule matching `levelNode` (simple + combinator/pseudo) from every scope
+	// visible at `chainIndex`, across sheets, into one list sorted by CSS specificity (ties
+	// broken by scope rank + source order) - i.e. in the order the cascade must apply them.
+	auto gatherLevel = [&](Vector<document::StyleContainer::MatchedRule> &matches, Node *levelNode,
+							   size_t chainIndex) {
 		uint64_t rank = 0; // outer sheets get a lower rank -> lose ties to nearer sheets
 		for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
 			if (it->chainIndex >= chainIndex) {
+				// `:root` is scope-relative: for each sheet it means the node that owns it
 				it->system->getStyleSheet()->collectMatches(matches, levelNode,
-						ancestorBitsFrom[chainIndex + 1], rank << 32, it->media);
+						ancestorBitsFrom[chainIndex + 1], rank << 32, it->media, it->owner);
 				++rank;
 			}
 		}
 		document::StyleContainer::sortMatchedRules(matches);
-		for (auto &m : matches) { dst.merge(*m.style, m.media, inherit); }
 	};
 
 	// Build ONLY the raw merged parameter list plus the interpretation context here.
@@ -159,8 +258,57 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 	// returned ResolvedStyle. The pool is owned by `ret` and freed with it.
 	ret._pool = memory::pool::create(static_cast<memory::pool_t *>(nullptr));
 	ret._media = &nearest.system->getMediaParameters();
+	auto nearestStrings = nearest.system->getStyleSheet()->getStrings();
+
 	memory::perform([&] {
 		auto style = new (ret._pool) document::StyleList();
+
+		// PASS 1 - custom properties only, every level, outermost first. They are always
+		// inherited, and the whole cascade of them must be known before a single var() is
+		// substituted: CSS resolves a variable to its computed value on the element, so a
+		// variable declared by a MORE specific rule is visible to a use in a less specific one.
+		if (anyCustom) {
+			ret.initVariables(nearestStrings);
+			auto collect = [&](Node *levelNode, size_t chainIndex) {
+				Vector<document::StyleContainer::MatchedRule> matches;
+				gatherLevel(matches, levelNode, chainIndex);
+				for (auto &m : matches) {
+					for (auto &c : m.style->custom) {
+						if (c.mediaQuery != document::MediaQueryIdNone
+								&& !m.media.at(c.mediaQuery.get())) {
+							continue;
+						}
+						auto key = m.strings.at(c.name);
+						auto value = m.strings.at(c.value);
+						// merged in cascade order, so a later declaration overrides
+						auto vit = ret._variables->vars.find(key);
+						if (vit != ret._variables->vars.end()) {
+							vit->second = value;
+						} else {
+							ret._variables->vars.emplace(key, value);
+						}
+					}
+				}
+			};
+			for (size_t i = scopes.back().chainIndex; i >= 1; --i) { collect(chain[i], i); }
+			collect(node.get(), 0);
+		}
+
+		// PASS 2 - the parameters themselves, in cascade order. A rule's deferred var()
+		// declarations are expanded right after its literal ones, so a substituted value takes
+		// exactly the cascade position it was written at instead of winning by arriving last.
+		auto resolveLevel = [&](document::StyleList &dst, Node *levelNode, size_t chainIndex,
+									bool inherit) {
+			Vector<document::StyleContainer::MatchedRule> matches;
+			gatherLevel(matches, levelNode, chainIndex);
+			for (auto &m : matches) {
+				dst.merge(*m.style, m.media, inherit);
+				// a `width: var(--w)` on an ancestor is not inherited - only the variable is
+				if (!inherit && !m.style->pending.empty()) {
+					ret.expandPendingRule(dst, m);
+				}
+			}
+		};
 
 		// inheritable parameters cascade from the outermost styled ancestor down
 		for (size_t i = scopes.back().chainIndex; i >= 1; --i) {
@@ -175,9 +323,11 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 
 	// note: string parameters (font-family, background-image, grid tracks) resolve against
 	// the NEAREST sheet's string table; with multiple sheets in scope, string values defined
-	// by outer sheets may resolve incorrectly - documented v1 limitation
+	// by outer sheets may resolve incorrectly - documented v1 limitation. Strings produced by
+	// var() substitution are appended to a private copy of that table (see VariableTable).
 	ret._iface = document::SimpleStyleInterface(nearest.media,
-			nearest.system->getStyleSheet()->getStrings(), 1.0f, ret._media->fontScale);
+			ret._variables ? SpanView<StringView>(ret._variables->strings) : nearestStrings, 1.0f,
+			ret._media->fontScale);
 
 	ret._valid = true;
 	return ret;
@@ -192,10 +342,17 @@ ResolvedStyle::~ResolvedStyle() {
 }
 
 ResolvedStyle::ResolvedStyle(ResolvedStyle &&o) noexcept
-: _valid(o._valid), _pool(o._pool), _style(o._style), _iface(o._iface), _media(o._media) {
+: _valid(o._valid)
+, _structural(o._structural)
+, _pool(o._pool)
+, _style(o._style)
+, _variables(o._variables)
+, _iface(o._iface)
+, _media(o._media) {
 	o._valid = false;
 	o._pool = nullptr;
 	o._style = nullptr;
+	o._variables = nullptr;
 }
 
 ResolvedStyle &ResolvedStyle::operator=(ResolvedStyle &&o) noexcept {
@@ -204,13 +361,16 @@ ResolvedStyle &ResolvedStyle::operator=(ResolvedStyle &&o) noexcept {
 			memory::pool::destroy(_pool);
 		}
 		_valid = o._valid;
+		_structural = o._structural;
 		_pool = o._pool;
 		_style = o._style;
+		_variables = o._variables;
 		_iface = o._iface;
 		_media = o._media;
 		o._valid = false;
 		o._pool = nullptr;
 		o._style = nullptr;
+		o._variables = nullptr;
 	}
 	return *this;
 }
@@ -421,6 +581,26 @@ document::Metric ResolvedStyle::width() const {
 document::Metric ResolvedStyle::height() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssHeight, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::minWidth() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMinWidth, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::minHeight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMinHeight, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::maxWidth() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMaxWidth, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::maxHeight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMaxHeight, v) ? v.sizeValue : document::Metric();
 }
 
 document::Metric ResolvedStyle::marginTop() const {
@@ -729,6 +909,13 @@ static void markSubtreeComponentsDirty(Node *node) {
 	}
 }
 
+static void forEachInSubtree(Node *node, const Callback<void(Node *)> &cb) {
+	for (auto &child : node->getChildren()) {
+		cb(child);
+		forEachInSubtree(child, cb);
+	}
+}
+
 void StyleResolver::apply() {
 	if (!_owner) {
 		return;
@@ -762,6 +949,8 @@ void StyleResolver::apply() {
 			currentSourceId != _sourceSystemId || currentSourceVersion != _sourceSystemVersion;
 
 	_nodesUpdated.clear();
+	// the subtree is re-armed below when the source changed, so no digest needs to survive
+	_nodeCustomProperties.clear();
 
 	_interactiveMask = currentInteractiveMask;
 	_sourceSystemId = currentSourceId;
@@ -884,11 +1073,14 @@ static GridAlign toGridAlignSelf(Align a) {
 
 } // namespace
 
-// the sizes the style is applied against: percent metrics resolve vs the parent size,
-// paddings/gaps vs the own size - together they form the style's freshness key
-static Pair<Size2, Size2> makeStyleSizeKey(Node *node) {
+// the state the style was applied against - see StyleResolver::StyleFreshness
+StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) const {
 	auto p = node->getParent();
-	return pair(p ? p->getContentSize() : Size2::ZERO, node->getContentSize());
+	// the child-list version enters the key only when some sheet in scope actually uses a
+	// structural pseudo-class; otherwise a sibling insertion would needlessly re-resolve the
+	// whole child list (Node::markChildrenStructureDirty re-arms every sibling's phase)
+	return StyleFreshness{p ? p->getContentSize() : Size2::ZERO, node->getContentSize(),
+		(p && _structuralSelectors) ? p->getChildrenVersion() : 0};
 }
 
 // does the resolved style contain a parent-size-relative (Percent) metric? Such nodes must
@@ -912,7 +1104,7 @@ static bool hasParentRelativeMetrics(const ResolvedStyle &s) {
 
 bool StyleResolver::isNodeFresh(Node *node) const {
 	auto it = _nodesUpdated.find(node);
-	return it != _nodesUpdated.end() && it->second == makeStyleSizeKey(node);
+	return it != _nodesUpdated.end() && it->second == makeStyleFreshness(node);
 }
 
 void StyleResolver::resolveOwnerIfStale() {
@@ -927,11 +1119,35 @@ void StyleResolver::resolveForNode(Node *node) {
 		return;
 	}
 
+	// Whether the sibling order matters is learned from the resolve rather than scanned up
+	// front: apply() early-outs when the sheet lives on the resolver's own node, so it is not a
+	// reliable place to look. Never cleared - a sheet that loses its structural selectors on
+	// reload only costs a redundant freshness field.
+	_structuralSelectors = _structuralSelectors || style.hasStructuralSelectors();
+
+	// Custom properties are inherited and are substituted into values at resolve time, so when
+	// a node's set changes - a class flip on it that brings in a different `--brand` - every
+	// descendant's applied style is stale. The descendants get no event of their own (nothing
+	// moved or resized), so re-arm the subtree by hand.
+	if (auto hash = style.getCustomPropertiesHash()) {
+		auto vit = _nodeCustomProperties.find(node);
+		if (vit == _nodeCustomProperties.end()) {
+			_nodeCustomProperties.emplace(node, hash);
+		} else if (vit->second != hash) {
+			vit->second = hash;
+			// dropping the freshness entries is what makes the nudge land: nothing about the
+			// descendants' geometry changed, so isNodeFresh() would otherwise swallow the
+			// re-fired phase and they would keep the old variable's value
+			forEachInSubtree(node, [&](Node *child) { _nodesUpdated.erase(child); });
+			markSubtreeComponentsDirty(node);
+		}
+	}
+
 	// pre-mark to guard against re-entry while applying; the final key is recorded below
 	// (applyDefault may change the node's own content size)
 	auto it = _nodesUpdated.find(node);
 	if (it == _nodesUpdated.end()) {
-		it = _nodesUpdated.emplace(node, makeStyleSizeKey(node)).first;
+		it = _nodesUpdated.emplace(node, makeStyleFreshness(node)).first;
 	}
 
 	// a node whose style depends on the parent size must re-run its content-size phase when an
@@ -943,7 +1159,7 @@ void StyleResolver::resolveForNode(Node *node) {
 	}
 
 	if (_callback && _callback(node, style)) {
-		it->second = makeStyleSizeKey(node);
+		it->second = makeStyleFreshness(node);
 		return;
 	}
 
@@ -951,7 +1167,7 @@ void StyleResolver::resolveForNode(Node *node) {
 
 	// re-find: applyDefault may have resolved other nodes and rehashed the map
 	if (auto fit = _nodesUpdated.find(node); fit != _nodesUpdated.end()) {
-		fit->second = makeStyleSizeKey(node);
+		fit->second = makeStyleFreshness(node);
 	}
 }
 
@@ -963,6 +1179,19 @@ void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
 		return;
 	}
 
+	// The reset command, delivered BEFORE any parameter and on EVERY pass (not only when
+	// something changed). A style pass carries only the declarations that are present, so when a
+	// rule stops matching - a class flip, an edited stylesheet - its properties just go missing
+	// and nothing below would undo them. The applier answers by dropping whatever it took from
+	// the previous pass; the loop underneath then re-applies what is still declared.
+	//
+	// It is a pseudo-parameter: no CSS syntax produces it, so it never appears in `s` and an
+	// applier only sees it if it listed CmdReset in its ParameterMask. Its value is unspecified.
+	//
+	// An applier may freely add or remove components here: a component change on the styled node
+	// carries only that component's id, and handleChildComponentsDirty re-resolves a node it has
+	// already seen only for NodeIdentity / InteractiveComponent / StyleSystemState - so the
+	// remove-then-recreate this causes does not feed back into another resolve.
 	if (it->second.mask.test(toInt(document::ParameterName::CmdReset))) {
 		document::StyleValue val;
 		if (it->second.applier(*this, node, s, document::ParameterName::CmdReset, val)) {
@@ -1185,10 +1414,13 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		// a re-resolve then re-imposes the CSS size over the laid-out size (the os-button double-height
 		// bug). Instead hand the requested size to the layout as intrinsic INPUT in a MeasureComponent
 		// (a per-axis value < 0 means "unspecified"); the layout reads it and owns ContentSize.
+		// ...unless this node is out of the container's flow (`position: absolute`), in which case
+		// no layout will ever read that component and the CSS size has to be committed directly.
 		auto parent = node->getParent();
 		const bool parentManagesSize = parent
 				&& (parent->getComponent<FlexLayoutInfo>()
-						|| parent->getComponent<GridLayoutInfo>());
+						|| parent->getComponent<GridLayoutInfo>())
+				&& s.position() != document::Position::Absolute;
 
 		if (parentManagesSize) {
 			if (widthExplicit || heightExplicit) {
@@ -1227,6 +1459,11 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 	// positioning: `position: absolute` places the node via top/right/bottom/left
 	// offsets against the parent; every other `position` value applies -xl-anchor-point
 	if (s.position() == document::Position::Absolute) {
+		// An absolutely positioned box is not a flex/grid item: it must not take space in its
+		// container nor be moved by it, or the offsets computed below are overwritten by the
+		// container's own placement on the very next layout pass. Tell the layout to skip it.
+		node->setComponent<OutOfFlowComponent>();
+
 		auto nodeSize = node->getContentSize();
 
 		const auto left = s.left();
@@ -1285,6 +1522,9 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setAnchorPoint(Vec2(0.0f, 1.0f));
 		node->setPosition(Vec2(x, y));
 	} else {
+		// back in flow if the rule that took it out is gone
+		node->removeComponent<OutOfFlowComponent>();
+
 		if (s.has(ParameterName::CssXlAnchorPointX) || s.has(ParameterName::CssXlAnchorPointY)) {
 			node->setAnchorPoint(s.anchorPoint());
 		}
@@ -1337,20 +1577,31 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			pad.left = computeMetric(m, ownSize.width);
 		}
 	};
-	// map the CSS margin-* onto an item Margin (percent against parent width)
-	auto fillMargin = [&](Padding &mrg) {
-		if (auto m = s.marginTop(); s.has(ParameterName::CssMarginTop) && !m.isAuto()) {
-			mrg.top = computeMetric(m, parentSize.width);
-		}
-		if (auto m = s.marginRight(); s.has(ParameterName::CssMarginRight) && !m.isAuto()) {
-			mrg.right = computeMetric(m, parentSize.width);
-		}
-		if (auto m = s.marginBottom(); s.has(ParameterName::CssMarginBottom) && !m.isAuto()) {
-			mrg.bottom = computeMetric(m, parentSize.width);
-		}
-		if (auto m = s.marginLeft(); s.has(ParameterName::CssMarginLeft) && !m.isAuto()) {
-			mrg.left = computeMetric(m, parentSize.width);
-		}
+	// Map the CSS margin-* onto an item Margin (percent against parent width). `auto` is not a
+	// length: it is recorded in the mask instead and resolved from the free space by the flex
+	// engine (see FlexAutoMargin). `autoMask` is null for containers that cannot honour it.
+	auto fillMargin = [&](Padding &mrg, FlexAutoMargin *autoMask) {
+		auto side = [&](ParameterName name, const document::Metric &m, float &out,
+							FlexAutoMargin flag) {
+			if (!s.has(name)) {
+				return;
+			}
+			if (m.isAuto()) {
+				if (autoMask) {
+					*autoMask |= flag;
+					out = 0.0f;
+				}
+				return;
+			}
+			out = computeMetric(m, parentSize.width);
+			if (autoMask) {
+				*autoMask &= ~flag;
+			}
+		};
+		side(ParameterName::CssMarginTop, s.marginTop(), mrg.top, FlexAutoMargin::Top);
+		side(ParameterName::CssMarginRight, s.marginRight(), mrg.right, FlexAutoMargin::Right);
+		side(ParameterName::CssMarginBottom, s.marginBottom(), mrg.bottom, FlexAutoMargin::Bottom);
+		side(ParameterName::CssMarginLeft, s.marginLeft(), mrg.left, FlexAutoMargin::Left);
 	};
 
 	const bool wantFlex = display == Display::Flex || display == Display::InlineFlex;
@@ -1515,7 +1766,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if (s.has(ParameterName::CssOrder)) {
 				next.order = s.order();
 			}
-			fillMargin(next.margin);
+			// grid has no auto-margin alignment yet: an `auto` side resolves to zero
+			fillMargin(next.margin, nullptr);
 			if (next != *info) {
 				*info = next;
 				return true;
@@ -1558,13 +1810,36 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if ((parentIsRow ? widthFit : heightFit) && !s.has(ParameterName::CssFlexBasis)) {
 				next.basis = FlexItemInfo::FitContent;
 			}
+			// min-/max-width/height on the MAIN axis map onto the item's own clamps, which the flex
+			// algorithm already honours for both the base size and the flexed size. The cross axis
+			// has no equivalent in FlexItemInfo, so those two are still ignored - which is why the
+			// CSS reference tells you to size a flex item with basis/grow/shrink rather than
+			// min-/max- on the cross axis.
+			{
+				const auto minMain = parentIsRow ? s.minWidth() : s.minHeight();
+				const auto maxMain = parentIsRow ? s.maxWidth() : s.maxHeight();
+				const auto minName =
+						parentIsRow ? ParameterName::CssMinWidth : ParameterName::CssMinHeight;
+				const auto maxName =
+						parentIsRow ? ParameterName::CssMaxWidth : ParameterName::CssMaxHeight;
+				const float base = parentIsRow ? parentSize.width : parentSize.height;
+
+				if (s.has(minName) && !minMain.isAuto()) {
+					next.minMain = sprt::max(computeMetric(minMain, base), 0.0f);
+				}
+				if (s.has(maxName)) {
+					// `max-*: none` parses as auto here, and auto means "unbounded" for maxMain
+					next.maxMain = maxMain.isAuto() ? FlexItemInfo::Auto
+													: sprt::max(computeMetric(maxMain, base), 0.0f);
+				}
+			}
 			if (s.has(ParameterName::CssAlignSelf)) {
 				next.alignSelf = toFlexAlignSelf(s.alignSelf());
 			}
 			if (s.has(ParameterName::CssOrder)) {
 				next.order = s.order();
 			}
-			fillMargin(next.margin);
+			fillMargin(next.margin, &next.autoMargin);
 			if (next != *info) {
 				*info = next;
 				return true;

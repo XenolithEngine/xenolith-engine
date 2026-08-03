@@ -81,6 +81,21 @@ struct SP_PUBLIC FlexLayoutInfo {
 	bool operator!=(const FlexLayoutInfo &) const = default;
 };
 
+// Which of an item's margins were written as `auto`. An auto margin is not a distance: it
+// absorbs free space. Along the MAIN axis every auto margin on a line shares the space left
+// after flexing, and `justify-content` gets none of it (`margin-left: auto` pushes an item to
+// the end, `margin: 0 auto` centres it). Along the CROSS axis an item's own auto margins share
+// the space left in its line, and they override `align-self` — including `stretch`.
+enum class FlexAutoMargin : uint8_t {
+	None = 0,
+	Top = 1 << 0,
+	Right = 1 << 1,
+	Bottom = 1 << 2,
+	Left = 1 << 3,
+};
+
+SP_DEFINE_ENUM_AS_MASK(FlexAutoMargin)
+
 // Component attached to a *direct child* of the container in flex mode.
 // Describes the per-node properties, like a CSS flex item.
 struct SP_PUBLIC FlexItemInfo {
@@ -123,6 +138,10 @@ struct SP_PUBLIC FlexItemInfo {
 	// outer margin around the item, kept outside of its flex base size
 	// (Padding and Margin are the same geometry type: top, right, bottom, left)
 	Padding margin;
+
+	// the sides of `margin` that were `auto`; those entries of `margin` are ignored and the
+	// side is resolved from the free space instead (see FlexAutoMargin)
+	FlexAutoMargin autoMargin = FlexAutoMargin::None;
 
 	bool operator==(const FlexItemInfo &) const = default;
 	bool operator!=(const FlexItemInfo &) const = default;

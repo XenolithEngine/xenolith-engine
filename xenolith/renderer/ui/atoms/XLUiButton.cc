@@ -268,7 +268,10 @@ bool Button::setStyleValue(const ResolvedStyle &style, document::ParameterName n
 		const document::StyleValue &value) {
 	using document::ParameterName;
 
-	// `-xl-reset` (CmdReset): drop the styling so the fallback defaults take over on the next rebuild
+	// CmdReset arrives before the parameters of every style pass (it is not a CSS property, and
+	// no stylesheet can produce it). Dropping the component is the whole implementation: whatever
+	// the pass still declares recreates it below, and whatever it no longer declares is gone -
+	// which is the only way a rule that stopped matching can be undone.
 	if (name == ParameterName::CmdReset) {
 		if (removeComponent<ButtonStyleComponent>()) {
 			markContentSizeDirty();

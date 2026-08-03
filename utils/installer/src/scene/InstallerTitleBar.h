@@ -27,11 +27,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
+// Client-side window decorations: the OS buttons, the app icon, and the draggable title strip.
+// Order and per-platform arrangement (the macOS traffic-light cluster) live in
+// resources/style.css — this class only creates the parts and names them.
 class TitleBar : public Node {
 public:
 	virtual ~TitleBar();
 
-	virtual bool init();
+	virtual bool init() override;
 
 protected:
 	Node *_osMaximize = nullptr;

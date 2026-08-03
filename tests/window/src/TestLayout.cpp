@@ -25,6 +25,7 @@
 #include "TestLayout.h"
 #include "XL2dScene.h"
 #include "XLUiStyleSystem.h"
+#include "XLAction.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -51,6 +52,13 @@ bool TestLayout::init() {
 	_captionDescription->setFontSize(16);
 	_captionDescription->setColor(Color::Grey_400);
 	_captionDescription->setVisible(false);
+
+	// The engine renders on demand: with nothing dirty it stops producing frames, and a scheduled
+	// action or a state change made off-screen is only picked up the next time something wakes the
+	// loop (moving the mouse over the window). Every test here either animates, runs timed phases,
+	// or is watched for reactivity, so hold the loop open for all of them - a lone RenderContinuously
+	// changes nothing on screen and damages nothing, it only keeps the frames coming.
+	runAction(Rc<RenderContinuously>::create());
 
 	return true;
 }

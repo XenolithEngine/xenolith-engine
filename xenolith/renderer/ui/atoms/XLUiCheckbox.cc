@@ -21,7 +21,7 @@
  **/
 
 #include "XLUiCheckbox.h"
-#include "XL2dIconSprite.h"
+#include "XL2dIconSprite.h" // IWYU pragma: keep
 #include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {

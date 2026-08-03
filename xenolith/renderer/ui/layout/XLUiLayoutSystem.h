@@ -50,6 +50,22 @@ while CSS uses a top-left origin. The engine compensates internally, so
 `FlexStart` on the main axis means "left" for rows and "top" for columns, and
 grid row 0 is the top row, just like in CSS. */
 
+// Marker on a direct child: leave it out of the container's flow entirely.
+//
+// The CSS counterpart is `position: absolute` - an absolutely positioned box is not a flex item
+// or a grid item, it does not take part in sizing or in distributing free space, and its
+// container behaves as if it were not there. The node is still visited and drawn; only the
+// layout ignores it, so whoever placed it (the style resolver's absolute positioning, or the
+// application) keeps full control of its position and size.
+//
+// Written by ui::StyleResolver from `position: absolute`; an overlay built in code can set it
+// directly instead of having to live outside the container.
+struct SP_PUBLIC OutOfFlowComponent {
+	static ComponentId Id;
+
+	bool operator==(const OutOfFlowComponent &) const = default;
+};
+
 // Which layout model the LayoutSystem runs for its owner.
 enum class LayoutMode : uint8_t {
 	Flex, // CSS Flexible Box, reads FlexLayoutInfo / FlexItemInfo

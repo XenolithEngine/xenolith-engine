@@ -25,6 +25,7 @@
 
 #include "XLUiPanel.h"
 #include "XLInputListener.h"
+#include "XL2dIconSprite.h" // the check mark held below
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 

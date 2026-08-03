@@ -41,7 +41,10 @@ public:
 			chars::Chars<char32_t, u'_', u'-', u'!', u'.', u',', u'*', u'#', u'@', '+', '-', '~',
 					'>', '%'> >;
 
-	using CssSelectorStart = chars::Compose<char32_t, CssIdentifier, chars::Chars<char32_t, u'['> >;
+	// a selector may start with a pseudo-class (`:root { ... }`), so ':' has to count as a
+	// selector start even though it is not a CssIdentifier character
+	using CssSelectorStart =
+			chars::Compose<char32_t, CssIdentifier, chars::Chars<char32_t, u'[', u':'> >;
 
 	using CssIdentifierExtended = chars::Compose<char32_t, CssIdentifier,
 			chars::Chars<char32_t, '=', '|', '^', '$', ',', ':', '/', '?', '&'> >;
@@ -84,6 +87,31 @@ public:
 		GeneralSibling, // 'A ~ B' - A is some preceding sibling of B
 	};
 
+	// One structural test: the CSS An+B formula against a node's 1-based index among its
+	// siblings. Every structural pseudo-class reduces to this, so the compound stores a list
+	// of tests instead of a flag per selector:
+	//   :first-child   -> {0, 1}            :last-child  -> {0, 1, fromEnd}
+	//   :only-child    -> both of the above :nth-child(odd) -> {2, 1}
+	//   :nth-of-type(n) -> {1, 0, ofType}   (the same tests with a same-type sibling filter)
+	struct NthTest {
+		int32_t a = 0;
+		int32_t b = 0;
+		bool fromEnd = false; // :nth-last-child / :nth-last-of-type - count from the end
+		bool ofType = false; // :nth-of-type - count only siblings sharing the node's type
+
+		bool operator==(const NthTest &) const = default;
+
+		// does a 1-based index within a sibling run of `total` satisfy this test?
+		bool matches(uint32_t index, uint32_t total) const {
+			int32_t i = fromEnd ? int32_t(total) - int32_t(index) + 1 : int32_t(index);
+			if (a == 0) {
+				return i == b;
+			}
+			int32_t d = i - b;
+			return (d % a) == 0 && (d / a) >= 0;
+		}
+	};
+
 	// a single compound (tag/id/classes/pseudo) with its leading combinator; strings are
 	// owned (pool-backed) so they stay valid for the container's lifetime
 	struct CompoundSelector {
@@ -96,9 +124,28 @@ public:
 		uint32_t pseudoRequire = 0; // InteractiveFlags bits that must be SET on the node
 		uint32_t pseudoForbid = 0; // InteractiveFlags bits that must be CLEAR (e.g. :disabled)
 
+		// structural pseudo-classes; ALL of these must pass
+		Vector<NthTest> nth;
+		bool requireEmpty = false; // :empty - the node has no children
+		bool requireRoot = false; // :root - the node owns the nearest style scope
+
 		// does `state` (InteractiveFlags bits) satisfy this compound's pseudo-class requirements?
 		bool matchesPseudo(uint32_t state) const {
 			return (state & pseudoRequire) == pseudoRequire && (state & pseudoForbid) == 0;
+		}
+
+		// is there anything here beyond tag/id/classes, i.e. something the plain string-keyed
+		// rule store cannot express?
+		bool hasPredicates() const {
+			return pseudoRequire != 0 || pseudoForbid != 0 || !nth.empty() || requireEmpty
+					|| requireRoot;
+		}
+
+		// number of predicates counting as a class for CSS specificity
+		uint32_t countPseudoSpecificity() const {
+			return uint32_t(__builtin_popcount(pseudoRequire))
+					+ uint32_t(__builtin_popcount(pseudoForbid)) + uint32_t(nth.size())
+					+ (requireEmpty ? 1u : 0u) + (requireRoot ? 1u : 0u);
 		}
 	};
 
@@ -126,6 +173,10 @@ public:
 	struct MatchedRule {
 		const StyleList *style = nullptr;
 		SpanView<bool> media; // resolved @media bits of the owning sheet (per-rule media filter)
+		// string table of the sheet that parsed the rule; the raw text of its custom properties
+		// and of its deferred var() declarations is indexed into THIS table, not the nearest
+		// sheet's, so it has to travel with the rule
+		SpanView<StringView> strings;
 		uint32_t specificity = 0;
 		uint64_t order = 0; // (scopeRank << 32) | source-order; higher wins ties
 	};
@@ -144,7 +195,8 @@ public:
 			size_t j = i;
 			while (j > 0
 					&& (v[j - 1].specificity > x.specificity
-							|| (v[j - 1].specificity == x.specificity && v[j - 1].order > x.order))) {
+							|| (v[j - 1].specificity == x.specificity
+									&& v[j - 1].order > x.order))) {
 				v[j] = v[j - 1];
 				--j;
 			}
@@ -162,6 +214,18 @@ public:
 	// complex-selector path instead of the simple-key store: it contains a combinator OR an
 	// interactive pseudo-class (`:hover`, ...), neither of which the simple keys can express
 	static bool selectorNeedsStructured(StringView);
+
+	// split a selector list on top-level commas only, stepping over `(...)`, `[...]` and
+	// quoted spans (a naked split would cut `:not(.a, .b)` and `[attr="a,b"]` in half)
+	static void splitSelectorList(StringView, const Callback<void(StringView)> &);
+
+	// does any parsed rule use a structural pseudo-class? Consumers gate their sibling-order
+	// invalidation on this, so a sheet without them pays nothing.
+	bool hasStructuralSelectors() const { return _hasStructuralSelectors; }
+
+	// does any parsed rule declare a custom property or reference one with var()? Lets the
+	// cascade skip its custom-property pass entirely for an ordinary sheet.
+	bool hasCustomProperties() const { return _hasCustomProperties; }
 
 	static StringView resolveCssString(const StringView &origStr);
 	static void readQuotedString(StringReader &s, String &str, char quoted);
@@ -184,9 +248,34 @@ public:
 	void resolveNodeStyle(StyleList &style, const Node &node, const SpanView<const Node *> &stack,
 			const MediaParameters &media, const SpanView<bool> &resolved) const;
 
+	// Evaluate the structural part of a compound (An+B / :empty / :root). Kept here rather
+	// than in each `Access` so the An+B arithmetic exists exactly once; the adapter only
+	// answers the primitive queries.
+	template <typename NodeT, typename Access>
+	static bool matchStructural(const CompoundSelector &c, NodeT node, const Access &access) {
+		if (c.requireRoot && !access.isRoot(node)) {
+			return false;
+		}
+		if (c.requireEmpty && !access.isEmpty(node)) {
+			return false;
+		}
+		for (auto &test : c.nth) {
+			uint32_t index = 0, total = 0;
+			if (!access.siblingIndex(node, test.ofType, index, total)
+					|| !test.matches(index, total)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	// Right-to-left combinator match. `Access` adapts an arbitrary node model, providing:
 	//   bool matchCompound(NodeT, const CompoundSelector &)
 	//   NodeT parent(NodeT)  / NodeT prevSibling(NodeT)  / bool valid(NodeT)
+	//   bool siblingIndex(NodeT, bool sameTypeOnly, uint32_t &index, uint32_t &total)
+	//       - 1-based index among the parent's children and their count; false without a parent
+	//   bool isEmpty(NodeT)  - the node has no children (:empty)
+	//   bool isRoot(NodeT)   - the node owns the nearest style scope (:root)
 	// The target ([0]) compound is verified too (bucketing only guarantees one token).
 	template <typename NodeT, typename Access>
 	bool matchComplex(const ComplexSelector &sel, NodeT target, const Access &access) const {
@@ -197,7 +286,8 @@ protected:
 	template <typename NodeT, typename Access>
 	bool matchComplexFrom(const ComplexSelector &sel, size_t idx, NodeT node,
 			const Access &access) const {
-		if (!access.matchCompound(node, sel.compounds[idx])) {
+		if (!access.matchCompound(node, sel.compounds[idx])
+				|| !matchStructural(sel.compounds[idx], node, access)) {
 			return false;
 		}
 		if (idx + 1 == sel.compounds.size()) {
@@ -245,8 +335,18 @@ protected:
 	void readStyleParameters(const StringView &name, const StringView &value,
 			const StyleCallback &);
 
+	// route one parsed declaration into `target`: a `--name` custom property and a value
+	// containing var() are stored as raw text, everything else is parsed immediately
+	void readStyleDeclaration(StyleList &target, StringView name, StringView value,
+			MediaQueryId mediaQuery, StyleRule rule);
+
 	DocumentData *_document = nullptr;
 	StyleType _type = StyleType::Css;
+	// set while parsing when any rule uses a structural pseudo-class - see
+	// hasStructuralSelectors()
+	bool _hasStructuralSelectors = false;
+	// set while parsing when any rule declares or references a custom property
+	bool _hasCustomProperties = false;
 	Map<String, SimpleRule> _styles;
 	Map<String, Vector<FontFace>> _fonts;
 
