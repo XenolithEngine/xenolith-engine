@@ -159,7 +159,10 @@ inspector::addCommand(getContent(), "reload", "Reload the catalogue",
 This is the cheapest way to make an app driveable: one command per action you want
 to trigger from outside, and the whole flow becomes scriptable without synthesizing
 input. `tests/headless` is a minimal worked example (a coloured box exposing
-`set-color` and `box-size`).
+`set-color` and `box-size`); `tests/window` is the full one — `layouts` lists its
+26 demo layouts, `layout` switches to one (and answers only once the new layout has
+settled, so the reply is the signal to shoot), and whichever layout is on screen
+adds its own `<name>.<action>` commands for the duration.
 
 ## Windowed mode — only when the window manager is the subject
 

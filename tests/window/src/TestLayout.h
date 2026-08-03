@@ -29,6 +29,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
+struct TestInfo;
+
 // Common base for every layout in this test app.
 //
 // It carries the two things each test used to repeat by hand:
@@ -47,20 +49,24 @@ class TestLayout : public basic2d::SceneLayout2d {
 public:
 	static constexpr float CaptionHeight = 76.0f;
 
+	// Seconds of real rendering a command lets pass before it answers, so whoever asked can
+	// screenshot the settled result instead of guessing how long the relayout takes. Overridable
+	// per call through the command's "settle" argument.
+	static constexpr float DefaultSettle = 0.5f;
+
+	// One action of this layout, reachable over the inspector socket. Runs on the app thread with
+	// the scene graph fully available; whatever it returns is the command's result.
+	using CommandHandler = Function<Value(Value &&args)>;
+
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;
 
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 
-	// Called by the registry right after construction. A layout that never gets one (the app's own
-	// general demo, an overlay) simply shows no caption and keeps its full content area.
-	virtual void setTestInfo(StringView title, StringView description, StringView env);
-
-	// Hide the scene's FPS counter while this test is on screen. It is marked AlwaysDirty, so it
-	// damages a region every frame - which a test about damage tracking can not tolerate. Restored
-	// when the test is left, so it also works when the test is opened from the menu.
-	void setHideFps(bool);
+	// Called by the registry right after construction. A layout that never gets one (an overlay
+	// pushed by a test) shows no caption, keeps its full content area and registers no commands.
+	virtual void setTestInfo(const TestInfo &);
 
 	// 0 when there is no caption
 	float getCaptionHeight() const;
@@ -72,6 +78,16 @@ public:
 	Size2 getWorkSize() const;
 
 protected:
+	// Override to expose this layout's own actions over the inspector socket - that is how a
+	// headless run drives a test that a person would drive with the control bar. Called on enter;
+	// everything registered here is dropped again on exit, so a command can never outlive the
+	// layout that implements it.
+	virtual void registerCommands() { }
+
+	// Register one, as "<test>.<name>" so two layouts can not collide. `description` is what the
+	// `commands` protocol command reports.
+	void addCommand(StringView name, StringView description, CommandHandler &&);
+
 	// Attach a ui::StyleSystem carrying this stylesheet. Note that a stylesheet alone changes
 	// nothing: a ui::StyleResolver somewhere below is what applies it.
 	void setStyleSheet(StringView css);
@@ -83,6 +99,8 @@ protected:
 	basic2d::Layer *_captionBackground = nullptr;
 	basic2d::Label *_captionTitle = nullptr;
 	basic2d::Label *_captionDescription = nullptr;
+	const TestInfo *_info = nullptr;
+	Vector<String> _registeredCommands;
 	bool _hasCaption = false;
 	bool _hideFps = false;
 	bool _fpsWasVisible = false;

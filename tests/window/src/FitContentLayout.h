@@ -44,6 +44,8 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
+	virtual void registerCommands() override;
+
 	basic2d::Layer *addControlButton(StringView, Function<void()> &&);
 
 	// extend the nested chip's label: exercises the child -> chip -> demo

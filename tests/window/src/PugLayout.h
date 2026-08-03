@@ -45,7 +45,11 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
+	virtual void registerCommands() override;
+
 	void toggleTheme();
+	void toggleAccent();
+	void rebuildTemplate();
 	Node *findByName(Node *, StringView name) const;
 
 	pugui::TemplateSystem *_template = nullptr;

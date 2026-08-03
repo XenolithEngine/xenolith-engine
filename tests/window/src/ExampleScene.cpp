@@ -28,6 +28,7 @@
 #include "XLDirector.h"
 #include "XLAppWindow.h"
 #include "XLSimpleCloseGuardWidget.h"
+#include "XLSceneInspector.h"
 #include "XLEntryPoint.h"
 
 #include "ExampleScene.h"
@@ -36,8 +37,6 @@
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
-#include "SPBitmap.h"
-
 #include "MonitorModeSelectionLayout.cc"
 
 #if MODULE_XENOLITH_BACKEND_VK
@@ -45,10 +44,15 @@
 #endif
 
 #include <sys/random.h>
-#include <stdlib.h> // getenv / atof for the screenshot workflow
+#include <stdlib.h> // getenv for the render-queue variants below
 #include <sprt/runtime/utils/base16.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
+
+// Сколько секунд новая укладка должна отрисовываться, прежде чем команда `layout` ответит.
+// Этого достаточно, чтобы отработали и раскладка, и анимации входа, и таймерные фазы теста,
+// которые запускаются при входе.
+static constexpr float s_layoutSettle = 1.0f;
 
 bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
@@ -82,6 +86,10 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 
 	// Применяем содержимое сцены
 	setContent(content);
+
+	// Внешнее управление сценой через сокет инспектора: список укладок и переключение между ними.
+	// Инспектор живёт на SceneContent, поэтому регистрируем команды уже после setContent.
+	registerCommands();
 
 	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter)
 	setFpsVisible(true);
@@ -139,150 +147,75 @@ void ExampleScene::handlePresented(Director *dir) {
 	}*/
 #endif
 
-	// Безголовый сценарий снятия скриншотов, управляемый переменными окружения,
-	// чтобы графический вывод можно было проверить из скрипта (сборка -> запуск
-	// -> чтение PNG). Разбор переменных — в setupScreenshotSequence.
-	if (setupScreenshotSequence()) {
-		runScreenshotStep(0);
-	}
 }
 
-// Пакетная съёмка: за один запуск снимаются все запрошенные тесты, укладки между снимками
-// переключаются действием.
+// Внешнее управление приложением: реестр тестов, доступный через сокет инспектора.
 //
-//   XL_SCREENSHOT_TESTS - список тестов через запятую (включает сценарий); имена — те же
-//                         переменные, что выбирают тест поодиночке (XL_BUTTON_TEST и т.п.),
-//                         `default` — главный экран, `all` — весь реестр по порядку.
-//                         Повтор имени подряд означает «остаться на этой укладке и снять ещё
-//                         раз спустя задержку» — так снимается пара до/после для одного теста.
-//   XL_SCREENSHOT_DIR   - каталог для PNG (по умолчанию текущий)
-//   XL_SCREENSHOT_DELAY - пауза в секундах перед каждым снимком (по умолчанию 1.0)
+//   layouts            -> { "layouts": [ { "name", "title", "description", "hideFps" } ] }
+//   layout {name, settle} -> сменить укладку; ответ приходит, когда новая укладка уже
+//                            отрисовывается settle секунд (по умолчанию 1 с) — то есть
+//                            сразу после ответа можно снимать screenshot.
 //
-// Имя файла — имя теста; для повторных снимков того же теста добавляется -2, -3 и так далее.
-bool ExampleScene::setupScreenshotSequence() {
-	const char *tests = ::getenv("XL_SCREENSHOT_TESTS");
-	if (!tests) {
-		return false;
-	}
+// Команды самих укладок регистрируются ими же (TestLayout::registerCommands) и видны в общем
+// списке `commands`, пока укладка на экране.
+void ExampleScene::registerCommands() {
+	auto content = getContent();
 
-	if (const char *d = ::getenv("XL_SCREENSHOT_DELAY")) {
-		_screenshotDelay = float(::atof(d));
-	}
-
-	const char *dirEnv = ::getenv("XL_SCREENSHOT_DIR");
-	StringView dir(dirEnv ? dirEnv : ".");
-
-	auto registry = getTestRegistry();
-
-	auto addStep = [&](const TestInfo &info) {
-		auto name = info.env.empty() ? StringView("default") : info.env;
-
-		// Сколько раз этот тест уже снимали — чтобы имена файлов не сталкивались
-		size_t seen = 0;
-		for (auto &it : _screenshotSteps) {
-			if (it.test == &info) {
-				++seen;
+	inspector::addCommand(content, "layouts", "List the test layouts this app can show",
+			[](Value &&, Function<void(Value &&)> &&done) {
+		Value layouts(Value::Type::ARRAY);
+		for (auto &it : getTestRegistry()) {
+			Value entry;
+			entry.setString(it.name, "name");
+			entry.setString(it.title, "title");
+			entry.setString(it.description, "description");
+			if (!it.env.empty()) {
+				entry.setString(it.env, "env");
 			}
+			if (it.hideFps) {
+				entry.setBool(true, "hideFps");
+			}
+			layouts.addValue(sp::move(entry));
 		}
 
-		auto path = (seen == 0) ? toString(dir, "/", name, ".png")
-								: toString(dir, "/", name, "-", seen + 1, ".png");
-		_screenshotSteps.emplace_back(ScreenshotStep{&info, sp::move(path)});
-	};
+		Value result;
+		result.setValue(sp::move(layouts), "layouts");
+		done(sp::move(result));
+	});
 
-	StringView list(tests);
-	list.trimChars<StringView::WhiteSpace>();
-
-	if (list == "all") {
-		for (auto &it : registry) { addStep(it); }
-	} else {
-		while (!list.empty()) {
-			auto name = list.readUntil<StringView::Chars<','>>();
-			list.skipChars<StringView::Chars<','>>();
-
-			name.trimChars<StringView::WhiteSpace>();
-			if (name.empty()) {
-				continue;
-			}
-
-			const TestInfo *found = nullptr;
-			for (auto &it : registry) {
-				if (it.env == name || (it.env.empty() && name == "default")) {
-					found = &it;
-					break;
-				}
-			}
-
-			if (!found) {
-				log::source().error("ExampleScene", "Unknown test in XL_SCREENSHOT_TESTS: ", name);
-				continue;
-			}
-
-			addStep(*found);
+	inspector::addCommand(content, "layout",
+			"Show a test layout: { name, settle } - answers once it has settled",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		auto name = args.getString("name");
+		auto info = findTest(name);
+		if (!info) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString(toString("unknown layout: ", name), "error");
+			done(sp::move(result));
+			return;
 		}
-	}
 
-	if (_screenshotSteps.empty()) {
-		log::source().error("ExampleScene", "XL_SCREENSHOT_TESTS selected no tests");
-		_director->getRenderServer()->close(true);
-		return false;
-	}
-
-	// Держим отрисовку непрерывной на всё время съёмки — см. _screenshotKeepAlive
-	_screenshotKeepAlive = Rc<RepeatForever>::create(Rc<DelayTime>::create(1.0f));
-	runAction(_screenshotKeepAlive);
-
-	return true;
+		auto settle = args.hasValue("settle") ? float(args.getDouble("settle")) : s_layoutSettle;
+		switchLayout(*info, settle, sp::move(done));
+	});
 }
 
-void ExampleScene::runScreenshotStep(size_t index) {
-	if (index >= _screenshotSteps.size()) {
-		if (_screenshotKeepAlive) {
-			stopAction(_screenshotKeepAlive);
-			_screenshotKeepAlive = nullptr;
-		}
-		_director->getRenderServer()->close(true);
-		return;
-	}
-
-	auto &step = _screenshotSteps[index];
-
-	// Укладку меняем только когда сменился тест: повтор того же теста — это второй снимок той же
-	// сцены, и пересборка укладки отмотала бы её анимации в начало.
-	const bool needsLayout = (index == 0) || _screenshotSteps[index - 1].test != step.test;
-
+void ExampleScene::switchLayout(const TestInfo &info, float settle,
+		Function<void(Value &&)> &&done) {
 	auto content = static_cast<basic2d::SceneContent2d *>(getContent());
 
-	// Снимок асинхронный: его колбэк и есть переход к следующему шагу
-	Function<void()> capture = [this, index] {
-		auto path = _screenshotSteps[index].path;
-		_director->getRenderServer()->captureScreenshot(
-				[this, index, path](const core::ImageInfoData &image, BytesView data) {
-			if (core::saveImage(FileInfo(path), image, data)) {
-				log::source().info("ExampleScene", "Screenshot saved: ", path);
-			} else {
-				log::source().error("ExampleScene", "Failed to save screenshot: ", path);
-			}
-
-			// Колбэк приходит на потоке презентации, а граф сцены (и runAction) принадлежит
-			// потоку приложения — возвращаемся туда, прежде чем трогать сцену
-			_director->getApplication()->performOnAppThread(
-					[this, index] { runScreenshotStep(index + 1); }, this);
-		});
-	};
-
-	if (needsLayout) {
-		auto info = step.test;
-		// Смена укладки — первым звеном последовательности, чтобы задержка отсчитывалась уже
-		// по новой сцене и та успела разложиться и доиграть свои анимации входа
-		runAction(Rc<Sequence>::create(
-				Function<void()>([content, info] {
-			content->replaceLayout(makeTestLayout(*info).get());
-		}),
-				_screenshotDelay, sp::move(capture)));
-	} else {
-		runAction(Rc<Sequence>::create(_screenshotDelay, sp::move(capture)));
-	}
+	// Смена укладки — первым звеном последовательности, чтобы задержка отсчитывалась уже
+	// по новой сцене и та успела разложиться и доиграть свои анимации входа. Кадры на это время
+	// обеспечивает RenderContinuously самой укладки (TestLayout::init).
+	runAction(Rc<Sequence>::create(Function<void()>([content, info = &info] {
+		content->replaceLayout(makeTestLayout(*info).get());
+	}), settle, Function<void()>([done = sp::move(done), name = info.name]() mutable {
+		Value result;
+		result.setBool(true, "ok");
+		result.setString(name, "layout");
+		done(sp::move(result));
+	})));
 }
 
 void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {

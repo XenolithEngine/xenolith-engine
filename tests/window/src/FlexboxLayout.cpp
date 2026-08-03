@@ -25,8 +25,6 @@
 #include "FlexboxLayout.h"
 #include "XL2dLabel.h"
 
-#include <stdlib.h> // getenv for the headless start-in-grid hook
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 using namespace simpleui;
@@ -221,12 +219,48 @@ bool FlexboxLayout::init() {
 
 	updateControlLabels();
 
-	// headless start-in-grid hook for the screenshot workflow
-	if (::getenv("XL_FLEX_GRID")) {
-		cycleMode();
-	}
-
 	return true;
+}
+
+// The control bar, as socket commands: a headless run cycles the container exactly as a person
+// cycles it with the buttons, and reads the resulting configuration back from the answer.
+void FlexboxLayout::registerCommands() {
+	addCommand("mode", "Cycle the demo container between flexbox and grid",
+			[this](Value &&) -> Value {
+		cycleMode();
+		return getLayoutState();
+	});
+	addCommand("dir", "Cycle flex-direction (row / column / reversed)", [this](Value &&) -> Value {
+		cycleDirection();
+		return getLayoutState();
+	});
+	addCommand("wrap", "Cycle flex-wrap (nowrap / wrap / wrap-reverse)", [this](Value &&) -> Value {
+		cycleWrap();
+		return getLayoutState();
+	});
+	addCommand("justify", "Cycle justify-content", [this](Value &&) -> Value {
+		cycleJustify();
+		return getLayoutState();
+	});
+	addCommand("align", "Cycle align-items", [this](Value &&) -> Value {
+		cycleAlign();
+		return getLayoutState();
+	});
+}
+
+Value FlexboxLayout::getLayoutState() const {
+	Value result;
+	result.setString(_demoFlex->getMode() == LayoutMode::Grid ? "grid" : "flex", "mode");
+
+	// direction/wrap/justify/align describe the flex configuration and are kept even while the
+	// container is in grid mode, exactly like the control bar labels
+	if (auto info = _demoFlex->getInfo()) {
+		result.setString(directionName(info->direction), "direction");
+		result.setString(wrapName(info->wrap), "wrap");
+		result.setString(justifyName(info->justifyContent), "justify");
+		result.setString(alignName(info->alignItems), "align");
+	}
+	return result;
 }
 
 basic2d::Layer *FlexboxLayout::addControlButton(StringView title, Function<void()> &&cb) {
