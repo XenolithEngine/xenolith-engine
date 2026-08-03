@@ -109,6 +109,11 @@ public:
 
 	virtual Status setPreferredFrameRate(float);
 
+	// Resize the window from within the application. Only windows that own their extent outright
+	// (the headless pseudo-window) can honour this; with a window system in play the size is the
+	// WM's to decide. From the context thread.
+	virtual Status setExtent(Extent2) { return Status::ErrorNotSupported; }
+
 protected:
 	// Run text input mode or update text input buffer
 	//

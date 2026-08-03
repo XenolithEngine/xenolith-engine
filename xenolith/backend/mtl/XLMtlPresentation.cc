@@ -183,7 +183,7 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 	}
 }
 
-Status Swapchain::present(core::DeviceQueue &, core::ImageStorage *image,
+Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		const core::PresentInfo &) {
 	if (_invalid) {
 		return Status::ErrorCancelled;

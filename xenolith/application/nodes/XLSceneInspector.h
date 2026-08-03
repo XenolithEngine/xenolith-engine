@@ -25,24 +25,32 @@
 
 #include "XLSystem.h"
 
-#if defined(DEBUG)
 #include <sprt/runtime/dispatch/handle.h> // ListenHandle
-#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-#if defined(DEBUG)
-
-// Debug-only scene-graph inspector, attached to a node as a System.
+// Scene-graph inspector and external control channel, attached to a node as a System.
 //
 // While its owner is on a running scene, the system holds a stream-socket listener (the
-// platform-independent dispatch::Looper socket API, on the app thread's looper) that serves the
-// live node tree and the process log ring buffer to any connector (e.g. an MCP server).
+// platform-independent dispatch::Looper socket API, on the app thread's looper). Everything runs on
+// the app thread - the same thread that owns the scene graph - so no snapshot, no timer and no
+// scene-graph locking are needed; the tree is walked on demand inside the serve callback.
 //
-// Protocol: the client sends a single text command line - "scene\n" or "logs\n" - and receives
-// the text dump followed by EOF. Nothing is computed until a command arrives: the tree is walked
-// on demand inside the serve callback, which runs on the app thread (the listener lives on the
-// app looper), so no snapshot, no timer and no scene-graph locking are needed.
+// Two protocols share the socket, chosen by the first line a client sends:
+//
+//  * legacy text: "scene\n" or "logs\n" -> text dump followed by EOF. One command per connection.
+//
+//  * framed session: "xenolith/1\n" (optionally "xenolith/1 json") -> the server answers
+//    "# xenolith/1 ok <enc>\n" and both sides switch to length-prefixed frames:
+//        [u32 little-endian payload size][payload]
+//    where the payload is a data::Value encoded as CBOR (default) or JSON. The connection stays
+//    open and requests are correlated by serial:
+//        request  { "serial": u32, "cmd": "...", ...arguments }
+//        response { "serial": u32, "status": "ok"|"error", "error": "...", "result": ... }
+//    Replies may arrive out of order - screenshots and scene commands complete asynchronously.
+//
+// Commands: `scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `frame`, `window`,
+// `quit`. `commands`/`invoke` expose whatever the running scene registered through addCommand.
 //
 // Address: the XENOLITH_INSPECTOR_ADDRESS environment variable ("unix:/path", "unix:@abstract",
 // "host:port" or ":port"), with per-platform defaults: unix:/tmp/xenolith-inspector.sock on
@@ -50,10 +58,16 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // localabstract:xenolith-inspector), 127.0.0.1:4490 on Windows. On platforms without socket
 // support (wasm) the inspector silently does not start.
 //
-// Only one inspector per process holds the listener; a second one attaches, finds the address
-// taken and stays idle until the first releases it on exit.
+// The listener is armed in debug builds, whenever XENOLITH_INSPECTOR_ADDRESS is set, and always in
+// headless mode (where it is the only way to talk to the process). Otherwise the system is present
+// but idle. Only one inspector per process holds the listener; a second one attaches, finds the
+// address taken and stays idle until the first releases it on exit.
 class SP_PUBLIC SceneInspector : public System {
 public:
+	// A command the scene exposes to the outside world. `done` reports the result and must be
+	// called exactly once; it may be called later and from another thread hop.
+	using CommandCallback = Function<void(Value &&args, Function<void(Value &&)> &&done)>;
+
 	virtual ~SceneInspector();
 
 	virtual bool init() override;
@@ -64,24 +78,70 @@ public:
 	// Walks the owner's subtree and writes the text dump; app thread only
 	void writeSceneDump(const Callback<void(StringView)> &) const;
 
+	// Register a command reachable through the `invoke` protocol command. Replaces an existing
+	// command with the same name. App thread only.
+	void addCommand(StringView name, StringView description, CommandCallback &&);
+	bool removeCommand(StringView name);
+
+	// { "commands": [ { "name", "description" } ] }
+	Value getCommandList() const;
+
 protected:
-	// Serve one accepted connection: read the command line, reply, close
+	struct Command {
+		String description;
+		CommandCallback callback;
+	};
+
+	// One accepted connection. Starts in line mode and either serves a single legacy text command
+	// or upgrades to the framed protocol and stays open.
+	struct Session : Ref {
+		Rc<sprt::dispatch::StreamHandle> handle;
+		Rc<SceneInspector> inspector;
+		String line; // accumulates the handshake line
+		Bytes buffer; // accumulates framed payloads
+		bool framed = false;
+		bool json = false;
+	};
+
 	void serveConnection(Rc<sprt::dispatch::StreamHandle> &&);
 
+	// Stop reading and release the handle (see the .cc: an armed handle blocks app-thread shutdown)
+	Status finishSession(NotNull<Session>);
+
+	// Consume as much of the accumulated buffer as forms complete frames
+	Status readSession(NotNull<Session>, BytesView);
+	Status readHandshake(NotNull<Session>, BytesView);
+
+	void handleRequest(NotNull<Session>, Value &&request);
+	void sendResponse(NotNull<Session>, int64_t serial, Value &&result);
+	void sendError(NotNull<Session>, int64_t serial, StringView error);
+	void sendFrame(NotNull<Session>, const Value &);
+
+	// The render session of the owner's director, or null if the scene is not attached yet
+	core::RenderServerChannel *getRenderServer() const;
+
+	void handleScreenshot(NotNull<Session>, int64_t serial, Value &&args);
+	void handleInvoke(NotNull<Session>, int64_t serial, Value &&args);
+	void handleInput(NotNull<Session>, int64_t serial, Value &&args);
+	void handleWindow(NotNull<Session>, int64_t serial, Value &&args);
+
 	Rc<sprt::dispatch::ListenHandle> _listener;
+	Set<Rc<Session>> _sessions;
+	Map<String, Command> _commands;
 };
 
-#endif
-
-// In release builds this is a no-op inline, so there is zero overhead and no socket at all.
 namespace inspector {
 
-#if defined(DEBUG)
 // Attach a SceneInspector to `root` (no-op if one is already attached to it)
 SP_PUBLIC void attach(Node *root);
-#else
-inline void attach(Node *) { }
-#endif
+
+// The inspector attached to `root`, if any. Scenes use this to register commands:
+//   if (auto i = inspector::get(getContent())) { i->addCommand("reload", "...", ...); }
+SP_PUBLIC SceneInspector *get(Node *root);
+
+// Convenience wrapper around get() + addCommand(); returns false if `root` has no inspector
+SP_PUBLIC bool addCommand(Node *root, StringView name, StringView description,
+		SceneInspector::CommandCallback &&);
 
 } // namespace inspector
 

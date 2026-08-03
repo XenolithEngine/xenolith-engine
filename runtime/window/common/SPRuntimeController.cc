@@ -25,6 +25,8 @@
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/log.h>
 
+#include <sprt/c/__sprt_stdlib.h> // getenv for the XENOLITH_HEADLESS override
+
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
 
 #if SPRT_LINUX
@@ -51,10 +53,32 @@
 #include "../wasm/SPRTWinWasmController.h"
 #endif
 
+#include "../headless/SPRTWinHeadlessController.h"
+
 namespace sprt::window {
+
+namespace {
+
+// The only controller selected at runtime rather than by platform: headless has to be able to
+// replace the native controller on any target.
+bool isHeadlessRequested(const ContextConfig &config) {
+	if (config.context && hasFlag(config.context->flags, ContextFlags::Headless)) {
+		return true;
+	}
+	if (auto env = __sprt_getenv("XENOLITH_HEADLESS")) {
+		auto value = StringView(env);
+		return value == "1" || value == "true" || value == "yes";
+	}
+	return false;
+}
+
+} // namespace
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
 		NotNull<dispatch::Looper> a) {
+	if (isHeadlessRequested(info)) {
+		return HeadlessContextController::create(ctx, move(info), a);
+	}
 #if SPRT_LINUX
 	return LinuxContextController::create(ctx, move(info), a);
 #endif
@@ -78,6 +102,12 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 }
 
 void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContextHandle *handle) {
+	// Runs after the command line was parsed (see ContextConfig(argc, argv)), so --headless is
+	// already visible here and the native defaults must not be applied on top of it.
+	if (isHeadlessRequested(config)) {
+		HeadlessContextController::acquireDefaultConfig(config, handle);
+		return;
+	}
 #if SPRT_LINUX
 	LinuxContextController::acquireDefaultConfig(config, handle);
 #endif

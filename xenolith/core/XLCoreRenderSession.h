@@ -159,6 +159,11 @@ public:
 
 	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&, Ref * = nullptr) = 0;
 
+	// Resize the window from the application side. Only a window that owns its extent outright
+	// (the headless pseudo-window) can honour this; anything backed by a window manager reports
+	// ErrorNotSupported, because the size is the WM's to decide.
+	virtual void setWindowExtent(Extent2, Function<void(Status)> && = nullptr, Ref * = nullptr);
+
 	// Try to set preferred framerate for OS WM.
 	// WindowCapabilities::PreferredFrameRate should be available
 	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) = 0;

@@ -28,7 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
-class SP_PUBLIC PresentationEngine final : public core::PresentationEngine {
+// Not final: HeadlessPresentationEngine reuses run()/recreateSwapchain() and only replaces
+// swapchain creation and screenshot capture.
+class SP_PUBLIC PresentationEngine : public core::PresentationEngine {
 public:
 	virtual ~PresentationEngine() = default;
 

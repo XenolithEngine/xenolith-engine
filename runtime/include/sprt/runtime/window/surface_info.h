@@ -222,6 +222,11 @@ enum class SurfaceBackend {
 	QNX,
 	OpenHarmony,
 	Display,
+	// No window system at all: the gAPI renders into ordinary offscreen images that imitate
+	// swapchain images (see HeadlessWindow). Carries no native handle, and is deliberately never
+	// reported in SurfaceSupportInfo::backendMask - an empty mask is what makes the gAPI skip
+	// every WSI instance extension.
+	Headless,
 	Max
 };
 
