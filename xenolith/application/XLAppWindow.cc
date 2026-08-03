@@ -36,6 +36,7 @@
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
 #include "XLVkSwapchain.h"
+#include "XLVkHeadlessPresentation.h"
 #endif
 
 #if MODULE_XENOLITH_BACKEND_WEBGPU
@@ -398,6 +399,12 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	}
 
 	auto instance = static_cast<vk::Instance *>(cinstance.get());
+
+	if (info.backend == sprt::window::SurfaceBackend::Headless) {
+		// No window system: the surface is synthesized from the window extent and backs a
+		// pseudo-swapchain of ordinary device images.
+		return Rc<vk::HeadlessSurface>::create(instance, _window->getExtent(), this);
+	}
 
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 
@@ -773,6 +780,19 @@ bool AppWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb
 		}
 	}, this);
 	return true;
+}
+
+void AppWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref *ref) {
+	_context->performOnThread(
+			[this, extent, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
+		auto st = _window ? _window->setExtent(extent) : Status::ErrorInvalidArguemnt;
+		_application->performOnAppThread([st, cb = sp::move(cb), ref = move(ref)]() mutable {
+			if (cb) {
+				cb(st);
+			}
+			ref = nullptr;
+		}, this);
+	}, this);
 }
 
 bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) {

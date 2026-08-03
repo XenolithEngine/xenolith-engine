@@ -33,6 +33,7 @@
 #include "XLVkMeshCompiler.h"
 #include "XLVkMaterialCompiler.h"
 #include "XLVkPresentationEngine.h"
+#include "XLVkHeadlessPresentation.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -706,6 +707,9 @@ void Loop::captureBuffer(Function<void(const BufferInfo &info, BytesView view)> 
 Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::PresentationWindow> w,
 		core::PresentationOptions opts) {
 	if (_internal->device) {
+		if (opts.headless) {
+			return Rc<HeadlessPresentationEngine>::create(this, _internal->device.get(), w, opts);
+		}
 		return Rc<PresentationEngine>::create(this, _internal->device.get(), w, opts);
 	}
 	return nullptr;

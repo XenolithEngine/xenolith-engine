@@ -162,7 +162,14 @@ public:
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<Fence> &fence, Status &) = 0;
 
-	virtual Status present(DeviceQueue &queue, ImageStorage *, const PresentInfo &) = 0;
+	// `queue` is null when isPresentQueueRequired() is false; only a real WSI swapchain
+	// (vkQueuePresentKHR) actually needs it.
+	virtual Status present(DeviceQueue *queue, ImageStorage *, const PresentInfo &) = 0;
+
+	// Whether presentation goes through a queue from the Present family. A headless device has no
+	// such family at all, so its pseudo-swapchain answers false and the presentation engine skips
+	// the acquisition entirely.
+	virtual bool isPresentQueueRequired() const { return true; }
 
 	SwapchainDamage &getDamage() { return _damage; }
 	virtual void invalidateImage(const ImageStorage *, bool release) = 0;

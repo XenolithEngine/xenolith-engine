@@ -231,11 +231,19 @@ bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &f
 
 	_presentMask = info.presentFamily.presentSurfaceMask;
 
-	info.presentFamily.count = 1;
-
 	emplaceQueueFamily(info.graphicsFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Graphics);
-	emplaceQueueFamily(info.presentFamily, 1, core::QueueFlags::Present);
+
+	// A headless device has no presentation-capable family at all: Instance::getDeviceInfo leaves a
+	// default-constructed QueueFamilyInfo (count == 0) when no WSI backend reports support.
+	// Emplacing it would merge into family 0 and clamp the graphics family down to a single queue
+	// (`count` is min'ed against info.count) while still leaving getQueueFamily(Present) unable to
+	// match it. The presentation engine presents without a queue in that case - see
+	// Swapchain::isPresentQueueRequired.
+	if (info.presentFamily.count > 0) {
+		info.presentFamily.count = 1;
+		emplaceQueueFamily(info.presentFamily, 1, core::QueueFlags::Present);
+	}
 	emplaceQueueFamily(info.transferFamily, 2, core::QueueFlags::Transfer);
 	emplaceQueueFamily(info.computeFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Compute);

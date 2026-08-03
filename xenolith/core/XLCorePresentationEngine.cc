@@ -402,7 +402,7 @@ void PresentationEngine::update(PresentationUpdateFlags flags) {
 
 void PresentationEngine::setTargetFrameInterval(uint64_t value) { _targetFrameInterval = value; }
 
-void PresentationEngine::presentWithQueue(DeviceQueue &queue, NotNull<PresentationFrame> frame,
+void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<PresentationFrame> frame,
 		ImageStorage *image, uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("presentWithQueue: ", _activeFrames.size());
 
@@ -959,6 +959,14 @@ void PresentationEngine::runScheduledPresent(NotNull<PresentationFrame> frame, I
 	if (!_loop->isRunning() || frame->hasFlag(PresentationFrame::Invalidated)) {
 		return;
 	}
+
+	// A pseudo-swapchain (headless) presents without touching the GPU, and its device has no
+	// Present family to acquire from in the first place.
+	if (!_swapchain->isPresentQueueRequired()) {
+		presentSwapchainImage(nullptr, frame, image, presentWindow);
+		return;
+	}
+
 	auto queue = _device->tryAcquireQueue(QueueFlags::Present);
 	if (queue) {
 		presentSwapchainImage(move(queue), frame, image, presentWindow);
@@ -976,9 +984,11 @@ void PresentationEngine::presentSwapchainImage(Rc<DeviceQueue> &&queue,
 		NotNull<PresentationFrame> frame, ImageStorage *image, uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("presentSwapchainImage");
 	if (frame->getSwapchain() == _swapchain && frame->getSwapchainImage()->isSubmitted()) {
-		presentWithQueue(*queue, frame, image, presentWindow);
+		presentWithQueue(queue.get(), frame, image, presentWindow);
 	}
-	_device->releaseQueue(move(queue));
+	if (queue) {
+		_device->releaseQueue(move(queue));
+	}
 }
 
 bool PresentationEngine::canScheduleNextFrame() const {

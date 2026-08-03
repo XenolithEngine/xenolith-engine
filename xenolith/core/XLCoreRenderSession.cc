@@ -36,6 +36,12 @@ RenderServerChannel::~RenderServerChannel() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
+void RenderServerChannel::setWindowExtent(Extent2, Function<void(Status)> &&cb, Ref *) {
+	if (cb) {
+		cb(Status::ErrorNotSupported);
+	}
+}
+
 void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) {
 	_clientRef = nullptr;
 	_client = c;

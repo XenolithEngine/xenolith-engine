@@ -66,7 +66,7 @@ public:
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
 			Status &) override;
 
-	virtual Status present(core::DeviceQueue &queue, core::ImageStorage *,
+	virtual Status present(core::DeviceQueue *queue, core::ImageStorage *,
 			const core::PresentInfo &) override;
 	virtual void invalidateImage(const core::ImageStorage *image, bool release) override;
 	virtual void invalidateImage(uint32_t, bool release) override;

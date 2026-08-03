@@ -1198,6 +1198,9 @@ StringView getSurfaceBackendExtension(SurfaceBackend backend) {
 	case SurfaceBackend::OpenHarmony: return StringView("VK_OHOS_surface"); break;
 	case SurfaceBackend::Display: return StringView("VK_KHR_display"); break;
 	case SurfaceBackend::Canvas: break;
+	// Not a WSI backend at all: there is no surface extension to enable, which is exactly what
+	// lets a headless instance be created without VK_KHR_surface.
+	case SurfaceBackend::Headless: break;
 	case SurfaceBackend::Max: break;
 	}
 	return StringView();

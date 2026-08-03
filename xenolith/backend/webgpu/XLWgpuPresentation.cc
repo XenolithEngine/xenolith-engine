@@ -250,7 +250,7 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 	return nullptr;
 }
 
-Status Swapchain::present(core::DeviceQueue &, core::ImageStorage *image,
+Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		const core::PresentInfo &) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
@@ -457,7 +457,7 @@ auto SimpleSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 	return nullptr;
 }
 
-Status SimpleSwapchain::present(core::DeviceQueue &, core::ImageStorage *image,
+Status SimpleSwapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		const core::PresentInfo &) {
 	if (_invalid) {
 		return Status::ErrorCancelled;

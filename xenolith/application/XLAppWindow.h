@@ -173,6 +173,9 @@ public:
 	// Without WindowCapabilities::FullscreenSeamlessModeSwitch, to set new display mode
 	// for already-fullscreened window, engine will exit fullscreen mode, then re-enter
 	// it with the new mode
+	virtual void setWindowExtent(Extent2, Function<void(Status)> && = nullptr,
+			Ref * = nullptr) override;
+
 	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&,
 			Ref * = nullptr) override;
 

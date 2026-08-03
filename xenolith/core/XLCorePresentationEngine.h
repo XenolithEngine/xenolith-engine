@@ -201,7 +201,8 @@ protected:
 	void presentSwapchainImage(Rc<DeviceQueue> &&queue, NotNull<PresentationFrame> frame,
 			ImageStorage *image, uint64_t presentWindow);
 
-	void presentWithQueue(DeviceQueue &queue, NotNull<PresentationFrame> frame, ImageStorage *image,
+	// `queue` is null for a swapchain that presents without one (Swapchain::isPresentQueueRequired)
+	void presentWithQueue(DeviceQueue *queue, NotNull<PresentationFrame> frame, ImageStorage *image,
 			uint64_t presentWindow);
 
 	bool canScheduleNextFrame() const;

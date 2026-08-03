@@ -150,6 +150,18 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.instance->flags |= core::InstanceFlags::Validation;
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--headless"},
+			.description = StringView(
+					"Run without a window system: render into offscreen images and accept control "
+					"over the inspector socket"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::Headless;
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--decor <decoration-description>"},
 			.description = StringView("Define window decoration paddings"),
 			.callback = [](ContextConfig &target, StringView pattern,

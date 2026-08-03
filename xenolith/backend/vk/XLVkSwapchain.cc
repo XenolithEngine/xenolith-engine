@@ -342,7 +342,7 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 	return nullptr;
 }
 
-Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *image,
+Status SwapchainHandle::present(core::DeviceQueue *queue, core::ImageStorage *image,
 		const core::PresentInfo &info) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
@@ -418,7 +418,7 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 #if XL_VKAPI_DEBUG
 		auto t = sp::platform::clock(ClockType::Monotonic);
 		result =
-				table.vkQueuePresentKHR(static_cast<DeviceQueue &>(queue).getQueue(), &presentInfo);
+				table.vkQueuePresentKHR(static_cast<DeviceQueue *>(queue)->getQueue(), &presentInfo);
 		XL_VKAPI_LOG("[", image->getFrameIndex(), "] vkQueuePresentKHR: ", imageIndex, " ", result,
 				" [", sp::platform::clock(ClockType::Monotonic) - t,
 				"] [timeout: ", t - _presentTime,
@@ -426,7 +426,7 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 		_presentTime = t;
 #else
 		result =
-				table.vkQueuePresentKHR(static_cast<DeviceQueue &>(queue).getQueue(), &presentInfo);
+				table.vkQueuePresentKHR(static_cast<DeviceQueue *>(queue)->getQueue(), &presentInfo);
 #endif
 	});
 

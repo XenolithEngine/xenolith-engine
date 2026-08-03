@@ -1,45 +1,77 @@
 ---
 name: gui-debug
 description: >-
-  Debug a running Xenolith GUI app by inspecting its live scene graph and reading
-  its application logs, via two MCP tools: `inspect_scene` (the node tree) and
-  `get_logs` (the log ring buffer). Use when a Xenolith GUI app (installer,
-  scaffolded app, tests/window) is misbehaving visually — missing elements, wrong
-  layout, invisible nodes, overlap, wrong stacking, an element you can't find,
-  "why is this hidden", "where did this node go"; OR when verifying business
-  logic (catalogue load, install progress, errors, crashes) works BEFORE or
-  independently of the UI. Complements source-level debugging (lldb/wine-debug).
+  Debug and drive a Xenolith app over its inspector socket — headless by default
+  (`--headless`, no window system), so a GUI can be inspected, screenshotted and
+  driven with no display, no compositor and no mouse. MCP tools: `inspect_scene`
+  (the node tree), `get_logs` (the log ring buffer), `screenshot`,
+  `list_commands`/`invoke_command` (scene-registered actions), `send_input`,
+  `step_frame`, `window_control`, `quit_app`. Use when a Xenolith GUI app
+  (installer, scaffolded app, tests/window) is misbehaving visually — missing
+  elements, wrong layout, invisible nodes, overlap, wrong stacking, an element you
+  can't find, "why is this hidden", "where did this node go"; when verifying
+  business logic (catalogue load, install progress, errors, crashes) works BEFORE
+  or independently of the UI; or when you need a screenshot of an app on a machine
+  with no session at all. Complements source-level debugging (lldb/wine-debug).
 ---
 
-# Debugging a Xenolith GUI: scene inspector + logs (MCP)
+# Debugging a Xenolith GUI: run it headless, drive it over the socket
 
-A DEBUG build of any Xenolith GUI app exposes one process-wide debug listener
-(served through the platform-independent `dispatch::Looper` socket API on the app
-thread), consumed by two MCP tools:
+**Default to `--headless`.** It is the same engine and the same renderer with the
+window system removed: Vulkan draws into a pseudo-swapchain of ordinary device
+images instead of a compositor surface. Measured on `tests/window`
+(Linux/Vulkan), the headless frame is **byte-identical to the windowed one** —
+0 differing pixels out of 3 145 728 outside the live FPS counter. So a headless
+screenshot is evidence about the real rendering, not an approximation.
 
-1. **`inspect_scene`** — the live scene graph as an indented text tree (one node
-   per line).
-2. **`get_logs`** — the application log ring buffer (last ~4096 entries, formatted
-   `[LEVEL][tag] message`).
+What you gain by not opening a window:
 
-**Transport:** one listener address; the client sends a one-line text command
-(`scene\n` or `logs\n`) and reads the reply until EOF. The address comes from the
-`XENOLITH_INSPECTOR_ADDRESS` environment variable (both the app and `server.py`
-honor it), format `unix:/path`, `unix:@abstract`, `host:port` or `:port`.
-Per-platform defaults:
+- **No display needed** — works over SSH, in CI, on a server, with the monitor
+  asleep.
+- **Deterministic frames.** Headless renders on demand: `step_frame` draws
+  exactly N frames. No "the window froze because nobody moved the mouse", no
+  render-lock actions, no sleeping-compositor stalls (see "Windowed mode" below).
+- **Resizable from the client.** `window_control op:"resize"` really works; with
+  a WM in play the size is the WM's to decide.
+- **Nothing to clean up.** No stray window stealing focus, no screenshot tool.
 
-| Platform | Default |
+Reach for a real window only for the short list under "Windowed mode" below.
+
+## Start the app
+
+```sh
+XENOLITH_INSPECTOR_ADDRESS=unix:/tmp/xl-$$.sock \
+  ./myapp --headless --width 1024 --height 768 &
+```
+
+- **Use a per-run socket path.** The default `/tmp/xenolith-inspector.sock` is
+  unlinked before bind, so two apps silently fight over it. Point the MCP client
+  at the same `XENOLITH_INSPECTOR_ADDRESS`.
+- **`--width/--height` are the surface in pixels.** `--density` only changes the
+  logical scale — it does *not* multiply the surface. To reproduce a HiDPI window
+  (a 1024×768 window at density 2), pass the physical size explicitly:
+  `--width 2048 --height 1536 --density 2`.
+- **Stop it with `quit_app`**, not a kill: it closes the window, tears the context
+  down and exits with status 0.
+
+The listener is armed in DEBUG builds, whenever `XENOLITH_INSPECTOR_ADDRESS` is
+set, and always in headless mode — so a release build works too.
+
+## Tools
+
+| Tool | What it does |
 |---|---|
-| Linux / macOS | `unix:/tmp/xenolith-inspector.sock` |
-| Android | `unix:@xenolith-inspector` (abstract; from the host: `adb forward tcp:4490 localabstract:xenolith-inspector` and point the client at `127.0.0.1:4490`) |
-| Windows | `127.0.0.1:4490` (TCP loopback — Python has no practical AF_UNIX there) |
-| wasm | not available (no sockets in the browser sandbox; the inspector stays off) |
+| `inspect_scene` | live scene graph as an indented text tree (one node per line) |
+| `get_logs` | application log ring buffer (last ~4096 entries, `[LEVEL][tag] message`) |
+| `step_frame` | render N frames — headless draws nothing until you ask |
+| `screenshot` | write the current frame to a PNG |
+| `list_commands` | the actions this scene registered for external control |
+| `invoke_command` | run one of them |
+| `send_input` | inject synthetic pointer/key events |
+| `window_control` | read constraints, resize, close |
+| `quit_app` | shut the process down |
 
-Wired in `xenolith/application/nodes/XLSceneInspector.cc` (scene snapshot
-refreshed ~5×/s; a `stappler::log::CustomLog` sink mirrors every log call into the
-ring buffer). Release builds ship neither — zero overhead, no listener.
-
-## When to use which
+### When to use which
 
 - **`inspect_scene`** — visual/structural problems: invisible button, wrong layout,
   overlap, z-order, "did my node appear", "why is everything gone" (ancestor
@@ -48,13 +80,37 @@ ring buffer). Release builds ship neither — zero overhead, no listener.
   what error did the worker throw? did the controller init? Use it to verify
   business logic **before** building UI (call the controller methods from a scene
   hook, then `get_logs`), and to diagnose crashes/misbehavior without a debugger.
+- **`screenshot`** — "what does it actually look like", when the tree reads fine
+  but the render does not. **Always `step_frame` first** (see below).
+- **`list_commands` / `invoke_command`** — drive app-specific actions the scene
+  chose to expose, without synthesizing input.
+- **`send_input`** — exercise the real input path (hit-testing, gestures, focus)
+  rather than calling code directly.
 
-## Prerequisites
+### The order that matters: step, then shoot
 
-1. **A DEBUG build** of the app (release ships no sockets). Build via the
-   `cli-build` skill, e.g. `xenolith-cli build utils/installer --engine <engine>`.
-2. **The app must be running.** Launch it: macOS `open <name>.app`, or pass
-   `--run` to `xenolith-cli build`.
+Headless renders only when asked. A `screenshot` without a preceding `step_frame`
+returns the *previous* frame — or falls back to rendering one offscreen if nothing
+has ever been presented. So every visual check is:
+
+```
+step_frame (count: 1-3)  →  short pause  →  screenshot
+```
+
+Same after anything that changes the scene: `invoke_command` / `send_input` /
+`window_control resize` → `step_frame` → `screenshot`. If a screenshot looks
+stale, you skipped the step.
+
+## Debug loop
+
+```
+build (debug)  →  run --headless  →  get_logs / inspect_scene / step_frame+screenshot
+     ↑                                                        ↓
+     └──────── fix code/CSS, rebuild, quit_app, relaunch, re-check ←┘
+```
+
+Re-call a tool after each fix to confirm — no need to close/reopen between reads
+(each call reconnects), but you **must rebuild + relaunch** for code/CSS changes.
 
 ## Inspecting the scene
 
@@ -82,28 +138,47 @@ InstallerController (catalogue load, install/uninstall, engine query/prepare);
 engine/framework tags (`Director`, `Context`, `vk::Loop`, `FontController`, …) come
 from the engine itself.
 
-## Debug loop
+## Scene-registered commands
 
+`list_commands` / `invoke_command` reach whatever the running scene chose to
+expose. A scene registers them in its `init()`:
+
+```cpp
+#include "XLSceneInspector.h"
+
+inspector::addCommand(getContent(), "reload", "Reload the catalogue",
+        [this](Value &&args, Function<void(Value &&)> &&done) {
+    _controller->loadCatalog([done = sp::move(done)](bool ok) mutable {
+        Value result;
+        result.setBool(ok, "ok");
+        done(sp::move(result));   // may be called later, from another thread hop
+    });
+});
 ```
-build (debug)  →  run  →  get_logs / inspect_scene  →  read & find the offender
-     ↑                                                        ↓
-     └──────────── fix code/CSS, rebuild, relaunch, re-check ←┘
-```
 
-Re-call a tool after each fix to confirm — no need to close/reopen between reads
-(each call reconnects), but you **must rebuild + relaunch** for code/CSS changes.
+This is the cheapest way to make an app driveable: one command per action you want
+to trigger from outside, and the whole flow becomes scriptable without synthesizing
+input. `tests/headless` is a minimal worked example (a coloured box exposing
+`set-color` and `box-size`).
 
-## Rendering is on demand — an untouched window does not advance
+## Windowed mode — only when the window manager is the subject
 
-The engine only produces a frame when something is dirty. A window nobody is
-touching therefore **freezes**: a scheduled action does not tick, a timed phase
-never fires, a state change made from a callback is never laid out — and then
-everything catches up at once as soon as you move the mouse over the window. In a
-headless/automated check nobody moves the mouse, so this reads as "my fix did
-nothing" or "the test never ran".
+Drop `--headless` when the thing under test *is* the window system:
 
-**Anything you want to verify for reactivity or interactivity must hold the loop
-open itself.** Attach a render-lock action to the layout under test:
+- window decorations, chrome, traffic-light buttons, rounding, borders;
+- real WM-delivered input, IME/text input, cursors, drag & drop;
+- fullscreen, multi-monitor, per-monitor DPI, display-link pacing;
+- compositor-specific bugs (Wayland vs XCB paths).
+
+The rest of this section applies to that mode only — headless has none of these
+traps.
+
+**An untouched window does not advance.** The engine only produces a frame when
+something is dirty, so a window nobody is touching **freezes**: a scheduled action
+does not tick, a timed phase never fires, a state change from a callback is never
+laid out — and everything catches up at once as soon as you move the mouse. In an
+automated check nobody moves the mouse, so this reads as "my fix did nothing".
+Anything you want to verify for reactivity must hold the loop open itself:
 
 ```cpp
 #include "XLAction.h"
@@ -111,36 +186,34 @@ runAction(Rc<RenderContinuously>::create());       // forever
 runAction(Rc<RenderContinuously>::create(3.0f));   // for N seconds
 ```
 
-It draws nothing, damages nothing and changes no state — it just keeps frames
-coming. `tests/window` does this for every test in `TestLayout::init()`, so a new
-layout there inherits it; a scaffolded app or the installer does not, and needs
-its own.
+`tests/window` does this for every test in `TestLayout::init()`; a scaffolded app
+or the installer does not. Symptoms that are really this: stale sizes in
+`inspect_scene` that become correct after you touch the window; an animation that
+only runs while the pointer moves; `get_logs` missing a `DelayTime` phase.
 
-Symptoms that are really this and not a bug in your change: the scene inspector
-shows stale sizes that become correct after you touch the window; an animation
-that only runs while the pointer moves; `get_logs` missing a phase you scheduled
-with `DelayTime`.
-
-**A sleeping monitor stops the loop the same way, and there the render lock does
-not help** — the compositor stops delivering frame callbacks, so nothing chains
-the next frame and every timed phase in the app silently stalls. It looks exactly
-like a hung test. Wake the screen before a headless run and it all proceeds:
+**A sleeping monitor stops the loop the same way, and the render lock does not
+help** — the compositor stops delivering frame callbacks, so nothing chains the
+next frame. It looks exactly like a hung test:
 
 ```sh
 kscreen-doctor --dpms on     # KDE/Wayland; the same trap on any idle session
 ```
 
-Take this seriously: a run that reports no phase output at all, on a test that
-worked minutes ago, is almost always this and not your change.
+A run that reports no phase output at all, on a test that worked minutes ago, is
+almost always this. **Both traps vanish in headless mode** — `step_frame` drives
+the loop directly.
 
-Screenshots on a KDE/Wayland session: `spectacle -b -n -a -o shot.png` grabs the
-active window (the app, freshly launched, usually is it), `-f` grabs the whole
-screen. `import -window root` does NOT work — Xwayland here is rootless, so the
-root window is empty.
+**Screenshots.** Prefer the `screenshot` tool even here: it captures the app's own
+frame, without decorations or compositor scaling. Grab the composited window only
+when the decorations are what you are checking: `spectacle -b -n -a -o shot.png`
+(active window), `-f` (whole screen). `import -window root` does NOT work —
+Xwayland here is rootless, so the root window is empty.
 
 One thing hides the freeze by accident: the FPS counter is marked `AlwaysDirty`,
 so a scene showing it looks busier than it is. Turning it off
-(`setFpsVisible(false)`, as the damage test does) exposes the real behaviour.
+(`setFpsVisible(false)`, as the damage test does) exposes the real behaviour — and
+also makes two screenshots comparable, since the counter is the one region that
+differs between any two runs.
 
 ## Known pitfalls (Xenolith-specific)
 
@@ -151,6 +224,9 @@ so a scene showing it looks busier than it is. Turning it off
   that flag is `setVisible`, not the resulting transparency. If you want an invisible
   container with visible children, use a plain `Node` — it draws nothing and leaves
   opacity alone — instead of a transparent `Layer`.
+- **Bundled resources still have to be found.** Headless changes nothing about
+  resource lookup: `Fail to add image: …, file not found` in `get_logs` means the
+  app was launched from the wrong working directory, not that headless broke it.
 - **Custom window chrome** (traffic-light buttons, rounding, border) lives in
   `XLUiButton.cc` / `SPRTWinMacosWindow.mm` / `SPRTWinMacosView.mm`. First-click on
   the OS buttons being swallowed = missing `acceptsFirstMouse:` in the view.
@@ -159,10 +235,29 @@ so a scene showing it looks busier than it is. Turning it off
   `get_logs` — confirm `[I][installer] loadCatalog: ok, rows=N` before building the
   table that displays them.
 
+## Transport (only if you are writing a client)
+
+One listener address, two protocols sharing it. `inspect_scene` and `get_logs` use
+the original one-shot text form (send `scene\n` / `logs\n`, read until EOF).
+Everything else opens a framed session (`xenolith/1 json\n`, then
+`[u32 LE size][JSON payload]` request/response frames correlated by `serial`),
+which is what makes binary screenshots and long-lived sessions work. Binary
+payloads arrive as `"BASE64:<base64url, unpadded>"`. Address format:
+`unix:/path`, `unix:@abstract`, `host:port` or `:port`. Per-platform defaults:
+
+| Platform | Default |
+|---|---|
+| Linux / macOS | `unix:/tmp/xenolith-inspector.sock` |
+| Android | `unix:@xenolith-inspector` (abstract; from the host: `adb forward tcp:4490 localabstract:xenolith-inspector` and point the client at `127.0.0.1:4490`) |
+| Windows | `127.0.0.1:4490` (TCP loopback — Python has no practical AF_UNIX there) |
+| wasm | not available (no sockets in the browser sandbox; the inspector stays off) |
+
 ## Related
 
 - `cli-build` skill — build/run the debug app.
 - `xenolith-build` skill — low-level engine/target builds.
-- Engine side: `XLSceneInspector.cc` (listener + log sink, built on
-  `Looper::listenSocket`); scene graph nodes under `xenolith/application/nodes/`;
-  UI atoms under `xenolith/renderer/ui/atoms/`.
+- Engine side: `XLSceneInspector.cc` (listener, protocols, command registry and
+  log sink, built on `Looper::listenSocket`); the headless controller in
+  `runtime/window/headless/`; the pseudo-swapchain in
+  `xenolith/backend/vk/XLVkHeadlessPresentation.cc`; scene graph nodes under
+  `xenolith/application/nodes/`; UI atoms under `xenolith/renderer/ui/atoms/`.
