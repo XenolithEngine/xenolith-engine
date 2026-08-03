@@ -30,12 +30,21 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 namespace {
 
-// A path in forward-slash form. The build REQUIRES `/` (a backslash is an escape on Windows); a
-// no-op where the path already has none.
+// A path as make itself must read it: forward slashes (the build REQUIRES `/`, a backslash is an
+// escape on Windows), and every space escaped as `\ ` so the assignment stays ONE word. The escape
+// is what a human would write by hand, and the lexer turns it back into the engine's internal
+// placeholder — a raw space would make `$(STAPPLER_ROOT)/make/universal.mk` split into two words.
 String toMakePath(StringView p) {
 	String out;
 	out.reserve(p.size());
-	for (auto c : p) { out.push_back(c == '\\' ? '/' : c); }
+	for (auto c : p) {
+		if (c == ' ') {
+			out.push_back('\\');
+			out.push_back(' ');
+		} else {
+			out.push_back(c == '\\' ? '/' : c);
+		}
+	}
 	return out;
 }
 
@@ -159,14 +168,9 @@ ScaffoldResult scaffoldProject(StringView name, StringView location, const Layou
 		return result;
 	}
 
-	StringView locationReader(location);
-	locationReader.skipUntil<StringView::WhiteSpace>();
-	if (!locationReader.empty()) {
-		result.setError(Status::ErrorInvalidArguemnt,
-				"project location must not contain spaces (the build breaks on them)");
-		return result;
-	}
-
+	// A space in the location is fine — the project directory reaches make through
+	// Makefile::setRootPath / CURDIR, both of which encode it (PathSpacePlaceholder). Only the
+	// project NAME stays space-free: it is used verbatim as the executable identifier.
 	auto host = resolveHost(getNativeArch(), getNativeOs());
 	if (host.native.empty()) {
 		result.setError(Status::ErrorNotSupported, "no SDK host for ", getNativeArch(), "-",

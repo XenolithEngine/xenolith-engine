@@ -59,6 +59,10 @@ SP_PUBLIC InstallResult installComponent(StringView id, const Layout &layout, bo
 // Symlink every toolchain from the shared store into an engine root's `toolchains/` dir, so that
 // engine's build (STAPPLER_ROOT = engine root) can find them. Targets are RELATIVE so they survive
 // the data root moving. Works for installed bundles and an external checkout.
+//
+// REFUSES (returns false, changes nothing) when the engine root already holds a REAL toolchain
+// directory rather than a link: that is an engine developer's tree building its own toolchains, and
+// linking would delete them. Existing links — the ones this function made — are replaced silently.
 SP_PUBLIC bool linkToolchainsIntoEnginePath(const Layout &layout, StringView engineRoot);
 
 // Refresh toolchain links in one installed engine (`<data>/engines/<ref>`).

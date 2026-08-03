@@ -26,6 +26,8 @@ THE SOFTWARE.
 #include "SPFilesystem.h"
 #include "SPFilepath.h"
 #include "SPMakefile.h"
+#include "SPMakefileBuilder.h"
+#include "SPMakefileProject.h"
 
 #include "../tests.h"
 
@@ -406,6 +408,60 @@ void performMakefileTests() {
 			});
 			check(tvCount == 1 && tvName == "CFLAGS" && tvOp == "=",
 					"external: foreachTargetVariable(prog) -> CFLAGS '='");
+		}
+
+		// --- a project directory whose path contains a SPACE ---
+		// The engine carries a path-internal space as PathSpacePlaceholder and decodes it at every
+		// OS boundary. Two of those boundaries used to hand the reactor a scratch buffer that had
+		// already been freed (the async $(WRITE)/$(APPEND) payload, and CURDIR itself), which showed
+		// up as the first 16 bytes of every path turning into allocator garbage — and only ever for
+		// a path with a space, since that is the only case that allocates.
+		{
+			auto dirName = StringView("xlmk space dir");
+			FileInfo dirInfo(dirName, LocationCategory::Custom);
+			filesystem::remove(dirInfo, true); // drop any leftover from a previous run
+			filesystem::mkdir(dirInfo);
+
+			auto absDir = filesystem::currentDir<mem_std::Interface>(dirName, false);
+
+			static constexpr StringView kSpaceMakefile =
+					"OUT := $(CURDIR)/out.txt\n"
+					"all:\n"
+					"\t@$(WRITE) $(OUT) \"start\"\n"
+					"\t@$(APPEND) $(OUT) $(CURDIR)\n";
+			filesystem::write(FileInfo(filepath::merge<mem_std::Interface>(absDir, "Makefile")),
+					BytesView(reinterpret_cast<const uint8_t *>(kSpaceMakefile.data()),
+							kSpaceMakefile.size()));
+
+			ErrorReporter errS(nullptr);
+			errS.callback = logcb;
+			errS.filename = StringView("<space>");
+
+			auto mkS = loadProject(StringView(absDir), SpanView<ProjectVariable>(), errS);
+			check(mkS != nullptr, "space: project in a directory with a space loads");
+			if (mkS) {
+				mem_std::String buildLog;
+				Callback<void(StringView)> sink(
+						[&](StringView chunk) { buildLog.append(chunk.data(), chunk.size()); });
+
+				BuildConfig cfg;
+				cfg.targets.emplace_back(StringView("all"));
+				cfg.jobs = 1;
+				cfg.rootDir = StringView(absDir);
+				cfg.output = &sink;
+
+				check(runBuild(mkS, cfg, errS) == 0, "space: the build runs");
+
+				auto out = filesystem::readTextFile<mem_std::Interface>(
+						FileInfo(filepath::merge<mem_std::Interface>(absDir, "out.txt")));
+				StringView reader(out);
+				reader.readUntil<StringView::Chars<'\n'>>(); // "start"
+				reader.skipChars<StringView::Chars<'\n'>>();
+				auto curdir = reader.readUntil<StringView::Chars<'\n'>>();
+				checkEq(curdir, StringView(absDir), "space: CURDIR survives into a written file");
+			}
+
+			filesystem::remove(dirInfo, true);
 		}
 	}, pool);
 

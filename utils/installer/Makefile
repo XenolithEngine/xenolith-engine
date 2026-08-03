@@ -52,8 +52,13 @@ LOCAL_INCLUDES_DIRS := src
 LOCAL_INCLUDES_OBJS :=
 
 APPCONFIG_APP_NAME := xenolith-installer
+# Shared with utils/installer/cli — see the note there: the bundle name and the path scheme are what
+# place the App* location categories, and both tools must land on the same SDK store.
 APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.installer
-APPCONFIG_APP_PATH_COMMON := 3
+# 1 = XDG locations on Linux, the system AppData folder on Windows. Was 3 (run inside an
+# AppContainer), which both sandboxed the installer away from the toolchains it installs and put its
+# App* paths somewhere the CLI could not reach.
+APPCONFIG_APP_PATH_COMMON := 1
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 

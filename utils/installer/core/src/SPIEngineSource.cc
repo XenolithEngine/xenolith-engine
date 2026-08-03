@@ -172,11 +172,9 @@ String resolveEngineRoot(const Layout &layout, StringView engineOverride, bool *
 }
 
 String validateEngineRoot(StringView path) {
-	StringView reader(path);
-	reader.skipUntil<StringView::WhiteSpace>();
-	if (!reader.empty()) {
-		return toString("engine path must not contain spaces (the build breaks on them)");
-	}
+	// A space in the path is fine: the build hands STAPPLER_ROOT to make encoded
+	// (makefile::encodePathSpaces, see buildProject), and the make engine carries path-internal
+	// spaces through to the shell itself.
 	if (!isFile(mergePath(path, "make/universal.mk"))) {
 		return toString("not a valid engine root (missing make/universal.mk): ", path);
 	}

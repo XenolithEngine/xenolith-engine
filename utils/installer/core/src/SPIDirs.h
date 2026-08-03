@@ -28,10 +28,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-// Per-platform install directories. Precedence (highest first): explicit prefix → $XENOLITH_HOME →
-// OS conventions. An override `home` puts everything under one root (home/{config,data,cache}); the
-// OS path is deliberately space-free, since the build breaks on spaces in STAPPLER_ROOT and include
-// paths.
+// Install directories. Precedence (highest first): explicit prefix → $XENOLITH_HOME → OS
+// conventions. An override puts everything under one root (home/{config,data,cache}).
+//
+// The OS conventions are NOT spelled out here: `system()` asks the runtime for the App* location
+// categories (XDG on Linux, the system AppData folder on Windows, ~/Library on macOS), which the
+// runtime places from APPCONFIG_BUNDLE_NAME. The CLI and the GUI declare the same bundle name and
+// the same APPCONFIG_APP_PATH_COMMON on purpose — that is what makes both reach one store.
 struct SP_PUBLIC Layout {
 	String config; // config + the installed-state registry (installed.json)
 	String data; // where the SDK is unpacked (toolchains, engines)

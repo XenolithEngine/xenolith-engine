@@ -23,7 +23,15 @@ LOCAL_SRCS_DIRS :=
 LOCAL_INCLUDES_OBJS :=
 
 APPCONFIG_APP_NAME := xenolith-cli
-APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.cli
-APPCONFIG_APP_PATH_COMMON := 0
+# The CLI and the GUI are two front ends of ONE product and share the SDK store, so they must share
+# the bundle name and the path scheme: both feed the runtime's App* location categories, and a
+# mismatch in either would give the two tools different directories.
+APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.installer
+# 1 = XDG locations on Linux, the system AppData folder on Windows. Deliberately NOT 3
+# (AppContainer): this tool unpacks toolchains and spawns builds outside its own container.
+APPCONFIG_APP_PATH_COMMON := 1
+# A command line tool is not an application bundle — and two bundles must never claim the same
+# CFBundleIdentifier, which is what sharing APPCONFIG_BUNDLE_NAME with the GUI would do.
+LOCAL_MACOS_BUNDLE := 0
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

@@ -108,7 +108,10 @@ bool CommandLinePatternParsingData::parsePatternString() {
 				}
 			} else {
 				StringView data;
-				if (args.empty() || args.is<StringView::WhiteSpace>()) {
+				if (args.empty()) {
+					data = target;
+					target += target.size();
+				} else if (args.is<StringView::WhiteSpace>()) {
 					data = target.readUntil<StringView::WhiteSpace>();
 				} else {
 					data = target.readUntilString(args.sub(0, 1));
