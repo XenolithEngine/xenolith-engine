@@ -37,15 +37,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // the old position is left on screen as a trail. The static node is the control: it must never
 // contribute damage.
 //
-// Pair it with XL_DAMAGE_DEBUG=1 and the batch capture harness to get a before/after pair:
-// XL_SCREENSHOT_TESTS=XL_DAMAGE_TEST,XL_DAMAGE_TEST names the test twice, which shoots the same
-// layout again after another delay.
+// Pair it with XL_DAMAGE_DEBUG=1 and two `screenshot` commands more than StepDelay apart (the
+// layout keeps moving on its own, so no command in between is needed) to get a before/after pair.
 //
-// Be careful about what those screenshots prove: captureScreenshot renders a fresh OFFSCREEN frame
-// (OffscreenTarget | DoNotPresent), so it shows what the scene data produces and is blind to
-// anything that goes wrong in the presentation path itself - a trail left by an under-reported
-// damage rectangle lives only in the swapchain image, and the PNG will look perfect. This layout
-// has to be watched on screen.
+// Be careful about what those screenshots prove, and where they were taken. In a window,
+// captureScreenshot renders a fresh OFFSCREEN frame (OffscreenTarget | DoNotPresent): it shows
+// what the scene data produces and is blind to anything that goes wrong in the presentation path
+// itself - a trail left by an under-reported damage rectangle lives only in the swapchain image,
+// and the PNG will look perfect. Headless is the case that does catch it: there the screenshot is
+// the last PRESENTED pseudo-swapchain image, trail included.
 class DamageLayout : public TestLayout {
 public:
 	// Several jumps of MoveDistance each, spaced StepDelay apart, so a screenshot pair taken more

@@ -22,7 +22,6 @@
 
 #include "PugLayout.h"
 
-#include <stdlib.h> // getenv for the headless dark-theme screenshot check
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -83,19 +82,11 @@ bool PugLayout::init() {
 	config.enableStyles = true; // attach StyleApplier to every produced node
 	config.resolveHandler = [this](StringView name) -> Function<void()> {
 		if (name == "tap") {
-			return [this] {
-				++_taps;
-				_template->setVariable("taps", Value(_taps));
-				_template->rebuild();
-			};
+			return [this] { rebuildTemplate(); };
 		} else if (name == "theme") {
 			return [this] { toggleTheme(); };
 		} else if (name == "accent") {
-			return [this] {
-				if (auto greet = findByName(_tree, "greet")) {
-					greet->toggleStyleClass("accent");
-				}
-			};
+			return [this] { toggleAccent(); };
 		}
 		return nullptr;
 	};
@@ -110,13 +101,34 @@ bool PugLayout::init() {
 		handleContentSizeDirty();
 	});
 
-	// headless check of post-enter re-resolution: switch the whole stylesheet
-	// after entering the scene, before the screenshot capture
-	if (::getenv("XL_PUG_DARK")) {
-		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.5f), [this] { toggleTheme(); }));
-	}
-
 	return true;
+}
+
+// The three template buttons, as socket commands. `theme` is also the headless check of
+// post-enter re-resolution: swapping the whole stylesheet after the layout has entered the scene
+// must restyle the already-built tree.
+void PugLayout::registerCommands() {
+	addCommand("theme", "Swap the whole stylesheet (light <-> dark)", [this](Value &&) -> Value {
+		toggleTheme();
+
+		Value result;
+		result.setString(_dark ? "dark" : "light", "theme");
+		return result;
+	});
+
+	addCommand("accent", "Flip the accent class on the greeting label", [this](Value &&) -> Value {
+		toggleAccent();
+		return Value(true);
+	});
+
+	addCommand("rebuild", "Re-run the template with an incremented tap counter",
+			[this](Value &&) -> Value {
+		rebuildTemplate();
+
+		Value result;
+		result.setInteger(_taps, "taps");
+		return result;
+	});
 }
 
 void PugLayout::toggleTheme() {
@@ -124,6 +136,18 @@ void PugLayout::toggleTheme() {
 	if (_styles) {
 		_styles->setStyleSheet(Rc<StyleSheet>(_dark ? _darkSheet : _lightSheet));
 	}
+}
+
+void PugLayout::toggleAccent() {
+	if (auto greet = findByName(_tree, "greet")) {
+		greet->toggleStyleClass("accent");
+	}
+}
+
+void PugLayout::rebuildTemplate() {
+	++_taps;
+	_template->setVariable("taps", Value(_taps));
+	_template->rebuild();
 }
 
 Node *PugLayout::findByName(Node *root, StringView name) const {

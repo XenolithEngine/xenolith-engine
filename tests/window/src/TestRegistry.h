@@ -33,6 +33,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // called, what to look at, and how to build it. It used to be a hand-maintained if/else chain in
 // ExampleScene plus a comment in each header, which meant three copies of the same knowledge.
 struct TestInfo {
+	// Short stable id: what the `layout` inspector command takes, and the prefix every command the
+	// layout registers gets ("flex" -> "flex.mode"). "default" for the front page.
+	StringView name;
+
 	// Environment variable that selects this test; empty for the default layout. Must be a string
 	// literal - it is handed to getenv(), which needs it null-terminated.
 	StringView env;
@@ -52,6 +56,9 @@ struct TestInfo {
 };
 
 SpanView<TestInfo> getTestRegistry();
+
+// The entry with this short name, or null. `name` is what the `layout` command receives.
+const TestInfo *findTest(StringView name);
 
 // The entry selected by the environment, or the default one.
 const TestInfo &getSelectedTest();

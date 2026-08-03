@@ -23,7 +23,10 @@
 #include "XLCommon.h"
 
 #include "TestLayout.h"
+#include "TestRegistry.h"
 #include "XL2dScene.h"
+#include "XLSceneContent.h"
+#include "XLSceneInspector.h"
 #include "XLUiStyleSystem.h"
 #include "XLAction.h"
 
@@ -63,8 +66,17 @@ bool TestLayout::init() {
 	return true;
 }
 
-void TestLayout::setTestInfo(StringView title, StringView description, StringView env) {
-	_hasCaption = !title.empty();
+void TestLayout::setTestInfo(const TestInfo &info) {
+	_info = &info;
+
+	// The FPS counter is marked AlwaysDirty, so it damages a region every frame - which a test
+	// about damage tracking can not tolerate. Restored when the test is left, so it also works
+	// when the test is opened from the menu.
+	_hideFps = info.hideFps;
+
+	// The front page carries no selecting variable and gets no caption: it is the app itself, not
+	// a test, and a caption over it would just take space from the menu.
+	_hasCaption = !info.env.empty();
 
 	_captionBackground->setVisible(_hasCaption);
 	_captionTitle->setVisible(_hasCaption);
@@ -76,17 +88,41 @@ void TestLayout::setTestInfo(StringView title, StringView description, StringVie
 
 	// The selecting variable goes on screen too: it is what someone watching the window needs in
 	// order to reproduce the run.
-	if (env.empty()) {
-		_captionTitle->setString(title);
-	} else {
-		_captionTitle->setString(string::toString<Interface>(title, "   ", env));
-	}
-	_captionDescription->setString(description);
+	_captionTitle->setString(string::toString<Interface>(info.title, "   ", info.env));
+	_captionDescription->setString(info.description);
 
 	_contentSizeDirty = true;
 }
 
-void TestLayout::setHideFps(bool value) { _hideFps = value; }
+void TestLayout::addCommand(StringView name, StringView description, CommandHandler &&handler) {
+	// A layout built outside the registry (an overlay a test pushes) has no name to key commands
+	// on, and nothing external ever asks for it - leave it alone.
+	if (!_info || _info->name.empty() || !_scene || !handler) {
+		return;
+	}
+
+	auto content = _scene->getContent();
+	auto full = toString(_info->name, ".", name);
+
+	if (!inspector::addCommand(content, full, description,
+				[this, handler = sp::move(handler)](Value &&args,
+						Function<void(Value &&)> &&done) mutable {
+		auto settle = args.hasValue("settle") ? float(args.getDouble("settle")) : DefaultSettle;
+		auto result = handler(sp::move(args));
+
+		// Answer only once the change has been on screen for `settle` seconds. Every test layout
+		// holds a RenderContinuously (see init), so that is real rendering time and a screenshot
+		// taken when the reply lands shows the settled scene, not a half-finished relayout.
+		runAction(Rc<Sequence>::create(settle,
+				Function<void()>([done = sp::move(done), result = sp::move(result)]() mutable {
+			done(sp::move(result));
+		})));
+	})) {
+		return; // no inspector on this scene - the app was not built with one
+	}
+
+	_registeredCommands.emplace_back(sp::move(full));
+}
 
 void TestLayout::handleEnter(Scene *scene) {
 	SceneLayout2d::handleEnter(scene);
@@ -97,9 +133,18 @@ void TestLayout::handleEnter(Scene *scene) {
 			s->setFpsVisible(false);
 		}
 	}
+
+	registerCommands();
 }
 
 void TestLayout::handleExit() {
+	if (!_registeredCommands.empty()) {
+		if (auto i = inspector::get(_scene ? _scene->getContent() : nullptr)) {
+			for (auto &it : _registeredCommands) { i->removeCommand(it); }
+		}
+		_registeredCommands.clear();
+	}
+
 	if (_hideFps && _fpsWasVisible) {
 		if (auto s = dynamic_cast<basic2d::Scene2d *>(_scene)) {
 			s->setFpsVisible(true);

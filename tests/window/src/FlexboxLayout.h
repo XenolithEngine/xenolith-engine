@@ -45,8 +45,14 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
+	virtual void registerCommands() override;
+
 	basic2d::Layer *addControlButton(StringView, Function<void()> &&);
 	void updateControlLabels();
+
+	// What the control bar currently shows, as data: the answer of every cycle command, so a
+	// headless caller can drive the container to a known configuration without reading the screen.
+	Value getLayoutState() const;
 
 	void cycleMode();
 	void cycleDirection();

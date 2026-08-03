@@ -27,7 +27,6 @@
 #include "XLUiStyleResolver.h"
 #include "XLAction.h"
 
-#include <stdlib.h> // getenv for the headless append hook
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -179,17 +178,27 @@ bool FitContentLayout::init() {
 		box->addSystem(Rc<ui::StyleResolver>::create());
 	}
 
-	// headless invalidation hook for the screenshot workflow: extend the
-	// nested label after the first layouts settled, so the capture shows the
-	// child -> chip -> container reflow, not the initial placement
-	if (::getenv("XL_FITCONTENT_APPEND")) {
-		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.5f), [this] {
-			appendText();
-			appendText();
-		}));
-	}
-
 	return true;
+}
+
+// The control bar, as socket commands. `append` is the invalidation hook a headless run needs:
+// extending the nested label after the first layouts settled shows the
+// child -> chip -> container reflow, not the initial placement.
+void FitContentLayout::registerCommands() {
+	addCommand("append", "Extend the nested chip label: { count } (default 1)",
+			[this](Value &&args) -> Value {
+		auto count = args.hasValue("count") ? args.getInteger("count") : 1;
+		for (int64_t i = 0; i < count; ++i) { appendText(); }
+
+		Value result;
+		result.setInteger(_appendCount, "appends");
+		return result;
+	});
+
+	addCommand("wrap", "Toggle wrapping of the demo container", [this](Value &&) -> Value {
+		toggleWrap();
+		return Value(true);
+	});
 }
 
 basic2d::Layer *FitContentLayout::addControlButton(StringView title, Function<void()> &&cb) {
