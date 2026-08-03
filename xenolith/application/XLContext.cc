@@ -760,6 +760,14 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 	}
 #endif
 
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (!instanceInfo && info->api == core::InstanceApi::Software) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+	}
+#endif
+
 	if (instanceInfo) {
 		return core::Instance::create(move(instanceInfo));
 	}
@@ -829,6 +837,14 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 
 #if MODULE_XENOLITH_BACKEND_MTL
 	if (!loopInfo && instance->getApi() == core::InstanceApi::Metal) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (!loopInfo && instance->getApi() == core::InstanceApi::Software) {
 		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
 		loopInfo->deviceIdx = info->deviceIdx;
 		loopInfo->defaultFormat = info->defaultFormat;

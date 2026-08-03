@@ -49,6 +49,11 @@
 #include "XLMtlPresentation.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_SOFT
+#include "XLSoftInstance.h"
+#include "XLSoftPresentation.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
@@ -389,6 +394,23 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 
 		return Rc<mtl::Surface>::create(static_cast<mtl::Instance *>(cinstance.get()),
 				ifaceInfo.metal.layer, this);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (cinstance->getApi() == core::InstanceApi::Software) {
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		// M0 renders offscreen only: the surface is synthesized from the window extent. Presenting
+		// into a real window (wl_shm / XCB-SHM / KMS dumb buffer) is a later milestone.
+		if (ifaceInfo.backend != sprt::window::SurfaceBackend::Headless) {
+			log::source().error("AppWindow",
+					"Surface backend is not supported for Software: ", toInt(ifaceInfo.backend),
+					" (only headless is implemented)");
+			return nullptr;
+		}
+
+		return Rc<soft::Surface>::create(static_cast<soft::Instance *>(cinstance.get()),
+				_window->getExtent(), this);
 	}
 #endif
 
