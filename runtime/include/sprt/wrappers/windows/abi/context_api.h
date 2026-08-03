@@ -439,6 +439,8 @@ typedef union _NEON128 {
 	};
 	double D[2];
 	float S[4];
+	WORD H[8];
+	BYTE B[16];
 } NEON128, *PNEON128;
 
 // AArch64 CONTEXT (ARM64_NT_CONTEXT) -- see splat sdk/include/um/winnt.h

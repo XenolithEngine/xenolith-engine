@@ -31,12 +31,12 @@ THE SOFTWARE.
 namespace sprt {
 
 template <size_t BufferSize, typename UnusedType>
-class SPRT_API static_function;
+class SPRT_TEMPLATE_API static_function;
 
 // analogue of std::function without memory allocation with a pre-allocated block for data storage
 
 template <size_t BufferSize, typename ReturnType, typename... ArgumentTypes>
-class SPRT_API static_function<BufferSize, ReturnType(ArgumentTypes...)> {
+class SPRT_TEMPLATE_API static_function<BufferSize, ReturnType(ArgumentTypes...)> {
 public:
 	static constexpr size_t FunctionBufferSize = BufferSize;
 
@@ -194,14 +194,14 @@ private:
 };
 
 template <typename Allocator, typename UnusedType>
-class SPRT_API __function;
+class SPRT_TEMPLATE_API __function;
 
 template <typename UnusedType>
-class SPRT_API callback;
+class SPRT_TEMPLATE_API callback;
 
 // Modern version. inspired by http://bannalia.blogspot.com/2016/07/passing-capturing-c-lambda-functions-as.html
 template <typename ReturnType, typename... ArgumentTypes>
-class SPRT_API callback<ReturnType(ArgumentTypes...)> {
+class SPRT_TEMPLATE_API callback<ReturnType(ArgumentTypes...)> {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 
@@ -288,7 +288,7 @@ private:
 };
 
 template <typename ReturnType, size_t BufferSize, size_t Alignment, typename... ArgumentTypes>
-class SPRT_API callback_storage : public callback<ReturnType(ArgumentTypes...)> {
+class SPRT_TEMPLATE_API callback_storage : public callback<ReturnType(ArgumentTypes...)> {
 public:
 	static constexpr size_t _BufferSize = BufferSize;
 	static constexpr size_t _Alignment = Alignment;
@@ -358,15 +358,15 @@ template <typename Sig>
 using Callback = callback<Sig>;
 
 template <typename Function>
-struct SPRT_API callback_traits;
+struct SPRT_TEMPLATE_API callback_traits;
 
 template <typename ClassType, typename ReturnType, typename... Args>
-struct SPRT_API callback_traits<ReturnType (ClassType::*)(Args...) const> {
+struct SPRT_TEMPLATE_API callback_traits<ReturnType (ClassType::*)(Args...) const> {
 	using type = callback_storage<ReturnType, sizeof(ClassType), alignof(ClassType), Args...>;
 };
 
 template <typename ClassType, typename ReturnType, typename... Args>
-struct SPRT_API callback_traits<ReturnType (ClassType::*)(Args...)> {
+struct SPRT_TEMPLATE_API callback_traits<ReturnType (ClassType::*)(Args...)> {
 	using type = callback_storage<ReturnType, sizeof(ClassType), alignof(ClassType), Args...>;
 };
 
