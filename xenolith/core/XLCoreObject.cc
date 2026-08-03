@@ -583,4 +583,20 @@ void Fence::doRelease(Loop *loop, bool success) {
 	autorelease.clear();
 }
 
+bool GraphicPipeline::comparePipelineOrdering(const PipelineInfo &l, const PipelineInfo &r) {
+	if (l.material.getDepthInfo().writeEnabled != r.material.getDepthInfo().writeEnabled) {
+		if (l.material.getDepthInfo().writeEnabled) {
+			return true; // pipelines with depth write comes first
+		}
+		return false;
+	} else if (l.material.getBlendInfo().enabled != r.material.getBlendInfo().enabled) {
+		if (!l.material.getBlendInfo().enabled) {
+			return true; // pipelines without blending comes first
+		}
+		return false;
+	} else {
+		return &l < &r;
+	}
+}
+
 } // namespace stappler::xenolith::core

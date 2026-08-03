@@ -82,22 +82,6 @@ bool Shader::setup(Device &dev, const ProgramData &programData, SpanView<uint32_
 	return false;
 }
 
-bool GraphicPipeline::comparePipelineOrdering(const PipelineInfo &l, const PipelineInfo &r) {
-	if (l.material.getDepthInfo().writeEnabled != r.material.getDepthInfo().writeEnabled) {
-		if (l.material.getDepthInfo().writeEnabled) {
-			return true; // pipelines with depth write comes first
-		}
-		return false;
-	} else if (l.material.getBlendInfo().enabled != r.material.getBlendInfo().enabled) {
-		if (!l.material.getBlendInfo().enabled) {
-			return true; // pipelines without blending comes first
-		}
-		return false;
-	} else {
-		return &l < &r;
-	}
-}
-
 bool GraphicPipeline::init(Device &dev, const PipelineData &params, const SubpassData &pass,
 		const Queue &queue) {
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};

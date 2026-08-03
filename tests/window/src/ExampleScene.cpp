@@ -117,14 +117,19 @@ void ExampleScene::handlePresented(Director *dir) {
 	buildQueueResources(queueInfo, builder);
 
 #if MODULE_XENOLITH_BACKEND_VK
-	basic2d::vk::ShadowPass::RenderQueueInfo info{
-		dir->getApplication()->getGlLoop(),
-		queueInfo.extent,
-		basic2d::vk::ShadowPass::Flags::None,
-		queueInfo.backgroundColor,
-	};
+	// The shared queue is vk-specific: building it on any other loop (e.g. --gapi soft, which has
+	// no depth formats at all) would describe passes that device can not compile.
+	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
+			== core::InstanceApi::Vulkan) {
+		basic2d::vk::ShadowPass::RenderQueueInfo info{
+			dir->getApplication()->getGlLoop(),
+			queueInfo.extent,
+			basic2d::vk::ShadowPass::Flags::None,
+			queueInfo.backgroundColor,
+		};
 
-	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+		basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+	}
 #endif
 
 // Window sharing is Linux-only for now; the shared queue is vk-based and

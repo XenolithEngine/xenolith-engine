@@ -39,8 +39,9 @@ Rc<HeadlessContextController> HeadlessContextController::create(NotNull<Context>
 
 void HeadlessContextController::acquireDefaultConfig(ContextConfig &config, NativeContextHandle *) {
 	if (config.instance && config.instance->api == gapi::InstanceApi::None) {
-		// The pseudo-swapchain is implemented for Vulkan only; WebGPU and Metal still require a
-		// real surface.
+		// Vulkan and Software both implement a pseudo-swapchain and work here; WebGPU and Metal
+		// still require a real surface. Vulkan stays the default because it is the backend every
+		// build enables - an explicit `--gapi soft` is honoured, since this only fills in None.
 		config.instance->api = gapi::InstanceApi::Vulkan;
 	}
 

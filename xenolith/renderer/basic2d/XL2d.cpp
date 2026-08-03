@@ -25,6 +25,9 @@
 
 #include "XL2dCommandList.cc"
 #include "XL2dDamage.cc"
+
+// backend-neutral draw plan: must precede every backend pass that consumes it
+#include "XL2dVertexPlan.cc"
 #include "XL2dVertexArray.cc"
 #include "XL2dFrameContext.cc"
 

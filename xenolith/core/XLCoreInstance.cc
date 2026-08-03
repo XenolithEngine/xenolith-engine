@@ -36,6 +36,10 @@
 #include "XLMtlPlatform.h"
 #endif
 
+#ifdef MODULE_XENOLITH_BACKEND_SOFT
+#include "XLSoftPlatform.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Value encodeInstanceInfo(const InstanceInfo &info) {
@@ -99,6 +103,16 @@ Rc<Instance> Instance::create(Rc<InstanceInfo> &&info) {
 		}
 	}
 #endif
+#ifdef MODULE_XENOLITH_BACKEND_SOFT
+	if (info->api == InstanceApi::Software) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&soft::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_SOFT_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
 	return nullptr;
 }
 
@@ -122,6 +136,7 @@ StringView getInstanceApiName(InstanceApi backend) {
 	case InstanceApi::Vulkan: return "Vulkan"; break;
 	case InstanceApi::WebGPU: return "WebGPU"; break;
 	case InstanceApi::Metal: return "Metal"; break;
+	case InstanceApi::Software: return "Software"; break;
 	}
 	return StringView();
 }

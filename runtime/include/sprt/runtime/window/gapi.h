@@ -36,6 +36,7 @@ enum class InstanceApi {
 	Vulkan = 1,
 	WebGPU = 2,
 	Metal = 3,
+	Software = 4, // CPU rasterizer, no GPU driver involved
 };
 
 enum class InstanceFlags : uint32_t {

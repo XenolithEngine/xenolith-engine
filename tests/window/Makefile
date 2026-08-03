@@ -64,6 +64,14 @@ LOCAL_MODULES += \
 	xenolith_renderer_basic2d_mtl
 endif
 
+# Software rasterizer build variant: `make SOFT=1` adds the CPU backend and the
+# 2d renderer flat pass for it; select at runtime with `testapp --headless --gapi soft`
+ifeq ($(SOFT),1)
+LOCAL_MODULES += \
+	xenolith_backend_soft \
+	xenolith_renderer_basic2d_soft
+endif
+
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=
 
