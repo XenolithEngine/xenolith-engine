@@ -378,6 +378,15 @@ THE SOFTWARE.
 
 #endif
 
+// For class templates and their partial specializations. dllexport/dllimport has no
+// meaning there - only instantiations have linkage on Windows, and clang warns the
+// attribute away on partial specializations - while ELF/Mach-O visibility does apply.
+#if SPRT_WINDOWS
+#define SPRT_TEMPLATE_API
+#else
+#define SPRT_TEMPLATE_API SPRT_API
+#endif
+
 // clang-format off
 #if defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define SPRT_ALIGNAS(N) __declspec(align(N))

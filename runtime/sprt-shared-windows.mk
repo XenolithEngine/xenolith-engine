@@ -85,8 +85,15 @@ SPRT_ABI_EXPORTS += \
 
 # String libcalls
 SPRT_ABI_EXPORTS += \
-	_alloca_probe \
 	strcat strcspn strpbrk strrchr strspn
+
+# _alloca_probe is the stack probe under its older MSVC name. clang emits __chkstk on
+# both 64-bit targets, but object code produced elsewhere still references _alloca_probe
+# by plain name regardless of arch (LLVM's DynamicLibrary explicit_symbols.inc guards it
+# with _MSC_VER only), so both chkstk.s files define it as an alias and it is exported
+# unconditionally. /EXPORT: of an undefined symbol fails the link - if this breaks, the
+# alias went missing in libc_impl/asm/Windows/$(arch)/chkstk.s.
+SPRT_ABI_EXPORTS += _alloca_probe
 
 # The replaceable operators, by mangled name - the one part of the C++ surface an
 # annotation cannot reach. The compiler implicitly declares operator new/delete in every

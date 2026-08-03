@@ -47,7 +47,7 @@ struct check_signature<Func, Ret(Args...),
 				void>::type> : true_type { };
 
 template <typename Allocator, typename UnusedType>
-class SPRT_API __function;
+class SPRT_TEMPLATE_API __function;
 
 // Empty marker base of every __function specialization; used to recognize any
 // __function AND its derived wrappers (__pool_function / __malloc_function /
@@ -66,7 +66,7 @@ constexpr bool __is_function_type_v =
 		sprt::is_base_of_v<__function_base_tag, sprt::remove_cvref_t<T>>;
 
 template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
-class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class,
+class SPRT_TEMPLATE_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class,
 																	 public __function_base_tag {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
