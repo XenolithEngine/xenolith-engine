@@ -29,29 +29,48 @@ THE SOFTWARE.
 using namespace stappler;
 
 // One entry per module test (defined in the matching per-topic subdirectory). Run all with no
-// argument, or a single one by name: `stapplertest filesystem`.
-static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
+// argument, or some of them by name: `stapplertest filesystem raster`.
+//
+// An array, not a hash map: the run order has to be the order written here. With an unordered_map
+// the order is a function of the hash of the names, so adding one test silently reshuffles all the
+// others - which turns any interaction between two of them into a bug that appears and disappears
+// as unrelated tests are added.
+struct TestEntry {
+	sprt::StringView name;
+	void (*fn)();
+};
+
+static const TestEntry s_testList[] = {
 	{"makefile", &stappler::performMakefileTests},
 	{"filesystem", &stappler::performFilesystemTests},
 	{"bidi", &stappler::performBidiTests},
 	{"shape", &stappler::performShapeTests},
+	{"glyph", &stappler::performGlyphTests},
 	{"pug", &stappler::performPugTests},
 	{"css", &stappler::performCssTests},
 	{"css-flexgrid", &stappler::performFlexboxGridCssTests},
 	{"cmdline", &stappler::performCommandLineTests},
+	{"raster", &stappler::performRasterTests},
 };
 
 int main(int argc, const char *argv[]) {
 	return perform_main(argc, argv, [&]() -> int {
 		if (argc <= 1) {
-			for (auto &it : s_testList) { it.second(); }
+			for (auto &it : s_testList) { it.fn(); }
 		} else {
-			auto it = s_testList.find(argv[1]);
-			if (it == s_testList.end()) {
-				sprt::cerr << "Test not found: " << argv[1] << "\n";
-				return -1;
+			for (int i = 1; i < argc; ++i) {
+				const TestEntry *found = nullptr;
+				for (auto &it : s_testList) {
+					if (it.name == sprt::StringView(argv[i])) {
+						found = &it;
+					}
+				}
+				if (!found) {
+					sprt::cerr << "Test not found: " << argv[i] << "\n";
+					return -1;
+				}
+				found->fn();
 			}
-			it->second();
 		}
 
 		sprt::cout << "\ntotal failures: " << stappler::test::failures() << "\n";

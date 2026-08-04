@@ -386,16 +386,9 @@ enum class ImageHints : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(ImageHints);
 
-// VkComponentSwizzle
-enum class ComponentMapping : uint32_t {
-	Identity = 0,
-	Zero = 1,
-	One = 2,
-	R = 3,
-	G = 4,
-	B = 5,
-	A = 6,
-};
+// VkComponentSwizzle. Defined in sprt::geom next to the colour types: the permutation is a
+// property of colour data, and the CPU rasterizer needs it without knowing about xenolith.
+using sprt::geom::ComponentMapping;
 
 // VkFilter
 enum class Filter {

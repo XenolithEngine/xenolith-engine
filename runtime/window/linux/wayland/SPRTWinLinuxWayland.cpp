@@ -32,6 +32,7 @@
 #include "SPRTWinLinuxWaylandSeat.cc"
 #include "SPRTWinLinuxWaylandDisplay.cc"
 #include "SPRTWinLinuxWaylandDataDevice.cc"
+#include "SPRTWinLinuxWaylandSoftwareSurface.cc"
 #include "SPRTWinLinuxWaylandWindow.cc"
 #include "SPRTWinLinuxWaylandKdeDisplayConfigManager.cc"
 

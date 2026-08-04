@@ -143,6 +143,18 @@ struct SP_PUBLIC CharTexture final {
 	uint8_t *bitmap;
 };
 
+// Where a caller wants a glyph rasterized. Returned from the measuring callback of
+// FontFaceObject::renderTextureUnsafe, which then makes FreeType write there directly instead of
+// into its own slot bitmap - so a glyph reaches an atlas, a staging buffer or a glyph cache
+// without an intermediate copy.
+//
+// The memory must be zeroed: FreeType composites (ORs) coverage into the target rather than
+// overwriting it. A bump-allocated slab whose pages are cleared once satisfies this for free.
+struct SP_PUBLIC GlyphTarget final {
+	uint8_t *buffer = nullptr; // nullptr skips the glyph
+	int32_t pitch = 0; // bytes per row; may exceed the glyph width
+};
+
 struct SP_PUBLIC FontAtlasValue {
 	sprt::geom::Vec2 pos;
 	sprt::geom::Vec2 tex;

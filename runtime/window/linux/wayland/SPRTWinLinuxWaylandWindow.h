@@ -122,6 +122,8 @@ public:
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
+	virtual Rc<SoftwareSurface> makeSoftwareSurface() override;
+
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&) const override;
 
 	virtual Extent2 getExtent() const override;

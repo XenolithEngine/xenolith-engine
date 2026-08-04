@@ -82,6 +82,14 @@ namespace sprt::window {
 // memory on paste from a hostile or buggy source.
 static constexpr size_t MaxClipboardTransferSize = 64 << 22; // 256 MiB
 
+// An anonymous shared-memory file of exactly `size` bytes, for buffers handed to the window
+// system: wl_shm pools, X SHM segments. memfd where the kernel has it (sealed, so the receiver can
+// trust the size), otherwise an unlinked file in XDG_RUNTIME_DIR. Returns -1 with errno set.
+//
+// The caller owns the descriptor and, once it has mapped the file and passed the fd on, should
+// close it - both wl_shm_create_pool and xcb_shm_attach_fd keep their own reference.
+SPRT_API int createAnonymousFile(size_t size);
+
 SPRT_API SpanView<StringView> getCursorNames(WindowCursor);
 
 SPRT_API InputKeyCode getKeysymCode(uint32_t sym);

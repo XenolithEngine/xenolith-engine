@@ -429,6 +429,7 @@ InputKeyCode getKeysymCode(uint32_t sym) {
 
 } // namespace sprt::window
 
+#include "SPRTWinLinuxShm.cc"
 #include "SPRTWinLinuxXkbLibrary.cc"
 #include "SPRTWinLinuxDisplay.cc"
 #include "SPRTWinLinuxController.cc"

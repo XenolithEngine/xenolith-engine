@@ -53,6 +53,10 @@ public:
 
 	bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 
+	// Zero-copy counterpart: rasterize into storage the callback picks. See
+	// FontFaceObject::renderTextureUnsafe.
+	bool renderTexture(char32_t, const Callback<GlyphTarget(const CharTexture &)> &);
+
 protected:
 	Rc<FontLibrary> _library;
 	Rc<FontFaceObject> _face;

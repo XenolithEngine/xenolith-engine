@@ -27,6 +27,7 @@
 #include <sprt/runtime/window/text_input.h>
 #include <sprt/runtime/window/interface.h>
 #include <sprt/runtime/window/surface_info.h>
+#include <sprt/runtime/window/software_surface.h>
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
@@ -61,6 +62,11 @@ public:
 	virtual void handleSwapchainUpdated(const FrameConstraints &) { }
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const = 0;
+
+	// CPU-writable presentation, for a gAPI that rasterizes on the host (see software_surface.h).
+	// Null means this window system cannot hand out a pixel buffer, which is the only check a
+	// caller needs; getSurfaceInterfaceInfo() stays the seam for GPU surfaces.
+	virtual Rc<SoftwareSurface> makeSoftwareSurface() { return nullptr; }
 
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const;
 

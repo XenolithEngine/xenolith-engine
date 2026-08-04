@@ -71,6 +71,23 @@ enum class ColorMask : uint8_t {
 
 SPRT_DEFINE_ENUM_AS_MASK(ColorMask)
 
+// Per-channel source of a colour after a permutation: what a graphics API calls a component
+// swizzle. Lives here rather than in a rendering layer because it is a property of colour data,
+// not of any one backend - a CPU rasterizer applies it while sampling, a GPU one hands it to the
+// driver, and both need the same vocabulary.
+//
+// The numeric values are VkComponentSwizzle's and MUST stay as they are: backends pass them into
+// the API structure by a plain cast.
+enum class ComponentMapping : uint32_t {
+	Identity = 0,
+	Zero = 1,
+	One = 2,
+	R = 3,
+	G = 4,
+	B = 5,
+	A = 6,
+};
+
 SPRT_API bool readColor(const StringView &str, Color4B &color);
 SPRT_API bool readColor(const StringView &str, Color3B &color);
 

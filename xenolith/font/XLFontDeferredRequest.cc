@@ -37,6 +37,19 @@ void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<Fo
 	}
 }
 
+void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
+		const Rc<FontComponent> &ext, const Vector<FontUpdateRequest> &req,
+		Function<GlyphTarget(uint32_t reqIdx, const CharTexture &texData)> &&onRender,
+		Function<void()> &&onComp) {
+	auto data = Rc<DeferredRequest>::alloc(ext, req);
+	data->onRender = sp::move(onRender);
+	data->onComplete = sp::move(onComp);
+
+	for (uint32_t i = 0; i < queue->getThreadPool()->getInfo().threadCount; ++i) {
+		queue->performAsync([data]() { data->runThread(); });
+	}
+}
+
 DeferredRequest::~DeferredRequest() { }
 
 DeferredRequest::DeferredRequest(const Rc<FontComponent> &ext, const Vector<FontUpdateRequest> &req)
@@ -68,8 +81,13 @@ void DeferredRequest::runThread() {
 			threadFaces[v.first] = ext->getLibrary()->makeThreadHandle(faces[v.first]);
 		}
 
-		threadFaces[v.first]->acquireTexture(v.second,
-				[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
+		if (onRender) {
+			threadFaces[v.first]->renderTexture(v.second,
+					[&, this](const font::CharTexture &tex) { return onRender(v.first, tex); });
+		} else {
+			threadFaces[v.first]->acquireTexture(v.second,
+					[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
+		}
 		c = complete.fetch_add(1);
 		target = current.fetch_add(1);
 	}

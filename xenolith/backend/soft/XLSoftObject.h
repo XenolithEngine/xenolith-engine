@@ -58,20 +58,38 @@ public:
 };
 
 // A linear bitmap. Rows are tightly packed (stride == width * pixelSize): there is no hardware
-// alignment to respect, and a predictable stride keeps the capture path a straight memcpy.
+// alignment to respect, and a predictable stride keeps the capture path a straight memcpy. An
+// externally backed image keeps whatever stride its provider chose, but the capture path only
+// accepts the packed one - see _external below.
 class SP_PUBLIC Image final : public core::ImageObject {
 public:
 	virtual ~Image() = default;
 
 	bool init(Device &, StringView, const core::ImageInfoData &);
 
+	// with an explicit object index: swapchain images are keyed by their slot, which is what the
+	// damage tracker indexes its per-image snapshots by
+	bool init(Device &, StringView, const core::ImageInfoData &, uint64_t index);
+
+	// Backed by memory the window system owns - a wl_shm buffer, an X SHM segment - so the
+	// rasterizer writes the frame straight into what gets presented, with no copy in between.
+	// The image does not own the memory and must outlive nothing: the swapchain that handed it
+	// over keeps the mapping alive.
+	bool init(Device &, StringView, const core::ImageInfoData &, uint64_t index, uint8_t *external,
+			uint32_t stride, size_t size);
+
 	// create from resource data (an already decoded bitmap)
 	bool init(Device &, const core::ImageData &);
 
-	uint8_t *getData() const { return const_cast<uint8_t *>(_storage.data()); }
+	uint8_t *getData() const {
+		return _external ? _external : const_cast<uint8_t *>(_storage.data());
+	}
 	uint32_t getStride() const { return _stride; }
 
-	BytesView getView() const { return BytesView(_storage.data(), _storage.size()); }
+	BytesView getView() const {
+		return _external ? BytesView(_external, _externalSize)
+						 : BytesView(_storage.data(), _storage.size());
+	}
 
 	// Address of the first pixel of a layer, or null if the layer is out of range.
 	uint8_t *getLayerData(uint32_t layer) const;
@@ -81,8 +99,17 @@ protected:
 			const Callback<size_t(uint8_t *, uint64_t)> *fill);
 
 	Bytes _storage;
+	// Window-system memory, when the image is externally backed. Non-owning: `_storage` stays
+	// empty, the buffer is never cleared on creation (its previous frame is what partial redraw
+	// diffs against), and `_externalSize` must cover exactly one slot - the capture path feeds it
+	// to the bitmap encoder, which rejects any length that is not extent * bytes-per-pixel.
+	uint8_t *_external = nullptr;
+	size_t _externalSize = 0;
 	uint32_t _stride = 0;
 	uint32_t _layerSize = 0;
+	// set only by the indexed init; the base class's _index already defaults to a valid value, so
+	// it cannot double as "not requested"
+	uint64_t _requestedIndex = maxOf<uint64_t>();
 };
 
 // There is no view object to create: this records the swizzle/range the sampler must apply and

@@ -84,6 +84,18 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 		}
 	}
 
+	xcb_shm_query_version_cookie_t shmVersionCookie;
+	if (_xcb->hasShm()) {
+		auto ext = _xcb->xcb_get_extension_data(_connection->getConnection(), _xcb->xcb_shm_id);
+		if (ext && ext->present) {
+			_shm.enabled = true;
+			_shm.firstEvent = ext->first_event;
+			_shm.firstError = ext->first_error;
+
+			shmVersionCookie = _xcb->xcb_shm_query_version(_connection->getConnection());
+		}
+	}
+
 	// make fake window for clipboard
 	uint32_t mask = XCB_CW_EVENT_MASK;
 	uint32_t values[2];
@@ -136,6 +148,17 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 			_shape.majorVersion = versionReply->major_version;
 			_shape.minorVersion = versionReply->minor_version;
 			_shape.initialized = true;
+		}
+	}
+
+	if (_shm.enabled) {
+		if (auto versionReply = _connection->perform(_xcb->xcb_shm_query_version_reply,
+					shmVersionCookie)) {
+			_shm.majorVersion = versionReply->major_version;
+			_shm.minorVersion = versionReply->minor_version;
+			// shared_pixmaps says nothing about our use: we only ever put_image from a segment,
+			// never wrap one in a pixmap.
+			_shm.initialized = true;
 		}
 	}
 
@@ -519,6 +542,11 @@ void XcbSupportWindow::handleMappingNotify(xcb_mapping_notify_event_t *ev) {
 	}
 }
 
+void XcbSupportWindow::getShmVersion(uint32_t &major, uint32_t &minor) const {
+	major = _shm.initialized ? _shm.majorVersion : 0;
+	minor = _shm.initialized ? _shm.minorVersion : 0;
+}
+
 void XcbSupportWindow::handleExtensionEvent(int et, xcb_generic_event_t *e) {
 	if (et == _xkb.firstEvent) {
 		switch (e->pad0) {
@@ -546,6 +574,12 @@ void XcbSupportWindow::handleExtensionEvent(int et, xcb_generic_event_t *e) {
 			break;
 		default: break;
 		}
+	} else if (_shm.initialized && et == _shm.firstEvent + XCB_SHM_COMPLETION) {
+		// The server is done reading this segment, so the slot it came from is reusable. The
+		// `initialized` guard matters: an absent extension leaves firstEvent at 0, which would
+		// otherwise match everything.
+		auto ev = reinterpret_cast<xcb_shm_completion_event_t *>(e);
+		_connection->handleShmCompletion(ev->shmseg, ev->offset);
 	} else {
 		//XL_X11_LOG("Unknown event: %d", et);
 	}

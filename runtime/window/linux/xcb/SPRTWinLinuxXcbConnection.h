@@ -49,6 +49,7 @@ class XcbDisplayConfigManager;
 class XcbSupportWindow;
 class XcbLibrary;
 class XkbLibrary;
+class XcbSoftwareSwapchain;
 
 struct XcbShadowCornerContext {
 	uint32_t width = 0;
@@ -154,6 +155,17 @@ public:
 	void attachWindow(xcb_window_t, XcbWindow *);
 	void detachWindow(xcb_window_t);
 
+	// MIT-SHM swapchains are keyed by segment rather than by window: the completion event carries
+	// the shmseg it finished with, and the blit goes to the output window, which is not the one
+	// the window map is keyed by.
+	void attachShmSwapchain(xcb_shm_seg_t, XcbSoftwareSwapchain *);
+	void detachShmSwapchain(xcb_shm_seg_t);
+	void handleShmCompletion(xcb_shm_seg_t, uint32_t offset);
+
+	// Whether MIT-SHM is usable, and whether it can take a file descriptor (1.2+) instead of a
+	// System V segment. Zero major version means the extension is not there at all.
+	void getShmVersion(uint32_t &major, uint32_t &minor) const;
+
 	void notifyScreenChange();
 
 	xcb_cursor_t loadCursor(WindowCursor);
@@ -224,6 +236,7 @@ protected:
 	bool _syncEnabled = true;
 
 	Map<xcb_window_t, XcbWindow *> _windows;
+	Map<xcb_shm_seg_t, XcbSoftwareSwapchain *> _shmSwapchains;
 
 	Rc<XcbSupportWindow> _support;
 	Rc<XcbDisplayConfigManager> _displayConfig;

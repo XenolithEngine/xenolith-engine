@@ -22,6 +22,7 @@ SPDX-License-Identifier: MIT
 #include "XL2dLayer.h"
 #include "XL2dSprite.h"
 #include "XL2dVectorSprite.h"
+#include "XL2dLabel.h"
 #include "XLSceneInspector.h"
 #include "XLDynamicStateSystem.h"
 
@@ -32,6 +33,17 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 using namespace basic2d;
 
 static constexpr auto CheckerTextureName = "headless-checker";
+
+// A second, deliberately large texture. The checker above is 16x16, so a sprite of any real size
+// magnifies it enormously: every fetch lands in L1 and neighbouring pixels read the same texel.
+// That measures nothing about a sampler. This one is bigger than L2, so a 1:1 or minified draw
+// actually streams texels from memory, which is what a real sprite does.
+//
+// Tiles rather than noise: noise would measure the memory system and nothing else, while a
+// structured pattern keeps a wrong fetch visible to the eye on a screenshot.
+static constexpr auto LargeTextureName = "headless-large";
+static constexpr uint32_t LargeExtent = 1'024;
+static constexpr uint32_t LargeCell = 32;
 
 // Procedural texture: a 4px checker in two saturated colours inside a white frame. The frame is
 // what makes nearest and linear tell each other apart - a checker alone repeats its edges, while a
@@ -54,6 +66,24 @@ static void HeadlessScene_writeChecker(uint8_t *mem, uint64_t size) {
 				src = colors[((x / CheckerCell) + (y / CheckerCell)) % 2];
 			}
 			sprt::memcpy(mem + (y * CheckerExtent + x) * 4, src, 4);
+		}
+	}
+}
+
+static void HeadlessScene_writeLarge(uint8_t *mem, uint64_t size) {
+	if (size < uint64_t(LargeExtent) * LargeExtent * 4) {
+		return;
+	}
+
+	for (uint32_t y = 0; y < LargeExtent; ++y) {
+		for (uint32_t x = 0; x < LargeExtent; ++x) {
+			// Cell index drives the colour, and the position inside the cell shades it: enough
+			// variety that no two neighbouring tiles look alike, so a misaddressed fetch shows.
+			auto cell = (x / LargeCell) + (y / LargeCell) * (LargeExtent / LargeCell);
+			uint8_t px[4] = {uint8_t(40 + (cell * 37) % 200), uint8_t(40 + (cell * 91) % 200),
+				uint8_t(40 + (cell * 53) % 200), 255};
+			px[(cell % 3)] = uint8_t(px[cell % 3] / 2 + (x % LargeCell) * 4);
+			sprt::memcpy(mem + (uint64_t(y) * LargeExtent + x) * 4, px, 4);
 		}
 	}
 }
@@ -104,6 +134,15 @@ public:
 		_box->setAnchorPoint(Anchor::Middle);
 		_box->setContentSize(Size2(200.0f, 120.0f));
 
+		// Text. The only drawable here that needs a font backend at all, and the reason the scene
+		// can no longer be rendered by a backend without one. Latin + Cyrillic + digits, so a
+		// missing glyph shows up as a hole rather than as an empty frame.
+		_label = content->addChild(Rc<Label>::create(), ZOrder(4));
+		_label->setAnchorPoint(Anchor::Middle);
+		_label->setFontSize(20);
+		_label->setString("Xenolith Кириллица 0123");
+		_label->setColor(Color4F(0.05f, 0.05f, 0.1f, 1.0f));
+
 		setContent(content);
 
 		// The FPS counter changes every frame and is text, so it is the one region that can never
@@ -132,6 +171,9 @@ public:
 		}
 		if (_vector) {
 			_vector->setPosition(center);
+		}
+		if (_label) {
+			_label->setPosition(center);
 		}
 	}
 
@@ -182,8 +224,102 @@ protected:
 			done(sp::move(result));
 		});
 
+		// Same as box-size, for the sprite. Parity does not need it - a checkerboard is a
+		// checkerboard at any size - but the rasterizer benchmark does: at the default 128x128 a
+		// textured span kernel is measured mostly on per-command overhead, and the whole question
+		// there is throughput over a large area.
+		inspector::addCommand(content, "sprite-size",
+				"Resize the sprite and its clip node: args { width, height }",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			if (!_sprite || !_clip) {
+				done(makeError("no sprite"));
+				return;
+			}
+			auto size = Size2(float(args.getDouble("width", 128.0)),
+					float(args.getDouble("height", 128.0)));
+			_sprite->setContentSize(size);
+			// The clip node bounds the sprite, so it has to grow too or the resize is invisible.
+			_clip->setContentSize(size);
+
+			Value result;
+			result.setDouble(double(_sprite->getContentSize().width), "width");
+			result.setDouble(double(_sprite->getContentSize().height), "height");
+			done(sp::move(result));
+		});
+
+		// Which texture the sprite samples. Only the benchmark needs it: the 16x16 checker is
+		// magnified by any real sprite size, and a magnified fetch measures the cache, not the
+		// sampler. With the large texture at 1:1 every pixel reads its own texel.
+		inspector::addCommand(content, "sprite-image",
+				"Pick the sprite's texture: args { name } = checker | large",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			if (!_sprite) {
+				done(makeError("no sprite"));
+				return;
+			}
+			auto name = args.getString("name");
+			if (name == "large") {
+				_sprite->setTexture(StringView(LargeTextureName));
+			} else if (name == "checker" || name.empty()) {
+				_sprite->setTexture(StringView(CheckerTextureName));
+			} else {
+				done(makeError("unknown texture: use checker or large"));
+				return;
+			}
+
+			Value result;
+			result.setString(name.empty() ? StringView("checker") : name, "name");
+			done(sp::move(result));
+		});
+
+		// A grid of small quads. The rest of the scene is a handful of large objects, which hides
+		// everything that costs per primitive rather than per pixel - triangle setup, the bounding
+		// box scan, the division by area. At count=40 this is 1600 quads instead of two.
+		//
+		// The gap matters: without it the cells merge into one flat fill and the case goes back to
+		// measuring memory bandwidth.
+		inspector::addCommand(content, "grid",
+				"Grid of small quads: args { count } cells per side, 0 removes it",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			auto content2d = getContent();
+			if (!content2d) {
+				done(makeError("no content"));
+				return;
+			}
+
+			for (auto &it : _grid) { it->removeFromParent(); }
+			_grid.clear();
+
+			auto count = uint32_t(sprt::max(args.getInteger("count", 0), int64_t(0)));
+			if (count > 0) {
+				auto cs = getContentSize();
+				auto cellW = cs.width / float(count);
+				auto cellH = cs.height / float(count);
+				constexpr float gap = 2.0f;
+
+				for (uint32_t y = 0; y < count; ++y) {
+					for (uint32_t x = 0; x < count; ++x) {
+						auto tint = float((x + y) % 3) / 3.0f;
+						auto node = content2d->addChild(
+								Rc<Layer>::create(Color4F(0.15f + tint, 0.55f - tint * 0.4f, 0.85f,
+										1.0f)),
+								ZOrder(0));
+						node->setAnchorPoint(Anchor::BottomLeft);
+						node->setContentSize(Size2(sprt::max(cellW - gap, 1.0f),
+								sprt::max(cellH - gap, 1.0f)));
+						node->setPosition(Vec2(float(x) * cellW, float(y) * cellH));
+						_grid.emplace_back(node);
+					}
+				}
+			}
+
+			Value result;
+			result.setInteger(int64_t(_grid.size()), "quads");
+			done(sp::move(result));
+		});
+
 		inspector::addCommand(content, "show",
-				"Show only some drawables: args { layer, sprite, vector } as booleans",
+				"Show only some drawables: args { layer, sprite, vector, label } as booleans",
 				[this](Value &&args, Function<void(Value &&)> &&done) {
 			auto apply = [&](Node *node, StringView key) {
 				if (node && args.hasValue(key)) {
@@ -193,11 +329,60 @@ protected:
 			apply(_box, "layer");
 			apply(_clip, "sprite");
 			apply(_vector, "vector");
+			apply(_label, "label");
 
 			Value result;
 			result.setBool(_box && _box->isVisible(), "layer");
 			result.setBool(_clip && _clip->isVisible(), "sprite");
 			result.setBool(_vector && _vector->isVisible(), "vector");
+			result.setBool(_label && _label->isVisible(), "label");
+			done(sp::move(result));
+		});
+
+		inspector::addCommand(content, "text", "Set the label string: args { value }",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			if (!_label) {
+				done(makeError("no label"));
+				return;
+			}
+			_label->setString(args.getString("value"));
+
+			Value result;
+			result.setString(args.getString("value"), "value");
+			done(sp::move(result));
+		});
+
+		inspector::addCommand(content, "font-size",
+				"Set the label font size in points: args { value }",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			if (!_label) {
+				done(makeError("no label"));
+				return;
+			}
+			auto size = uint16_t(args.getInteger("value", 20));
+			_label->setFontSize(size);
+
+			Value result;
+			result.setInteger(int64_t(size), "value");
+			done(sp::move(result));
+		});
+
+		// Underlines do not come from a glyph: they are quads keyed to CharId::SourceMax, whose
+		// atlas entry is a single white pixel. That is a separate path through the renderer from
+		// every other quad in this scene.
+		inspector::addCommand(content, "underline",
+				"Underline the label: args { enabled }",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			if (!_label) {
+				done(makeError("no label"));
+				return;
+			}
+			auto enabled = args.getBool("enabled");
+			_label->setTextDecoration(
+					enabled ? font::TextDecoration::Underline : font::TextDecoration::None);
+
+			Value result;
+			result.setBool(enabled, "enabled");
 			done(sp::move(result));
 		});
 
@@ -303,6 +488,13 @@ protected:
 				[](uint8_t *mem, uint64_t size, const core::ImageData::DataCallback &) {
 			HeadlessScene_writeChecker(mem, size);
 		});
+
+		builder.addImage(LargeTextureName,
+				core::ImageInfo(Extent2(LargeExtent, LargeExtent), core::ImageFormat::R8G8B8A8_UNORM,
+						core::ImageUsage::Sampled, core::ImageHints::Opaque),
+				[](uint8_t *mem, uint64_t size, const core::ImageData::DataCallback &) {
+			HeadlessScene_writeLarge(mem, size);
+		});
 	}
 
 	Layer *_box = nullptr;
@@ -310,6 +502,10 @@ protected:
 	DynamicStateSystem *_clipState = nullptr;
 	Sprite *_sprite = nullptr;
 	VectorSprite *_vector = nullptr;
+	// Non-owning: the nodes belong to the content, this is just the list to take down on the next
+	// `grid` command.
+	Vector<Node *> _grid;
+	Label *_label = nullptr;
 };
 
 DEFINE_PRIMARY_SCENE_CLASS(HeadlessScene)

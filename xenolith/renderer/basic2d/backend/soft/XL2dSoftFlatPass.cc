@@ -26,6 +26,7 @@
 
 #include "XLSoftPipeline.h"
 #include "XLSoftObject.h"
+#include "XLSoftGlyphStore.h"
 #include "XLSoftTextureSet.h"
 #include "XLCoreFrameQueue.h"
 #include "XLCoreFrameHandle.h"
@@ -47,12 +48,14 @@ Rc<core::AttachmentHandle> IgnoredInputAttachment::makeFrameHandle(const core::F
 	return Rc<IgnoredInputAttachmentHandle>::create(*this, queue);
 }
 
-bool VertexAttachment::init(AttachmentBuilder &builder, const core::AttachmentData *materials) {
+bool VertexAttachment::init(AttachmentBuilder &builder, const core::AttachmentData *materials,
+		bool damageTracked) {
 	if (!core::GenericAttachment::init(builder)) {
 		return false;
 	}
 
 	_materials = materials;
+	_damageTracked = damageTracked;
 	return true;
 }
 
@@ -113,6 +116,10 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		// the same branch a Vulkan device without buffer device addresses takes.
 		plan->hasGpuSideAtlases = false;
 
+		// Glyphs are drawn from their own storage rather than from an atlas image, so the object id
+		// has to reach the renderer instead of being consumed by the atlas resolution.
+		plan->keepAtlasObjects = true;
+
 		auto shadowExtent = commands->lights.getShadowExtent(constraints.getScreenSize());
 		auto shadowSize = commands->lights.getShadowSize(constraints.getScreenSize());
 		plan->shadowSize = Vec2(shadowSize.width / float(shadowExtent.width),
@@ -121,6 +128,11 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		VertexPlanContext ctx;
 		ctx.input = commands;
 		ctx.materialSet = _materialSet;
+		ctx.damage = &_damage;
+		ctx.collectDamage = isDamageTracked();
+		if (ctx.collectDamage) {
+			_damage.init(commands, constraints);
+		}
 
 		for (auto cmd = commands->commands->getFirst(); cmd; cmd = cmd->next) {
 			plan->pushCommand(ctx, cmd);
@@ -152,6 +164,14 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 
 		_spans = sp::move(ctx.materialSpans);
 		_drawStates = commands->states;
+
+		// Publish before the attachment reports readiness: the pass reads it back when it decides
+		// how much of the image it has to repaint.
+		if (ctx.collectDamage) {
+			if (auto request = fhandle.getRequest()) {
+				request->setDamageState(_damage.finalize());
+			}
+		}
 
 		delete plan;
 		return true;
@@ -228,7 +248,8 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 	_vertexes = queueBuilder.addAttachemnt(FrameContext2d::VertexAttachmentName,
 			[&, this](AttachmentBuilder &builder) -> Rc<Attachment> {
 		builder.defineAsInput();
-		return Rc<VertexAttachment>::create(builder, _materials);
+		return Rc<VertexAttachment>::create(builder, _materials,
+				hasFlag(info.damage, core::QueueDamageFlags::PresentHint));
 	});
 
 	// FrameContext2d submits lights and particle emitters unconditionally and refuses to
@@ -408,7 +429,7 @@ ResolvedTexture FlatPass_resolveTexture(const core::Material *material,
 	out.texture.stride = img->getStride();
 	out.texture.layerSize = img->getStride() * out.texture.height;
 	out.texture.baseLayer = viewInfo.baseArrayLayer.get();
-	out.texture.format = info.format;
+	out.texture.format = sf::getRasterFormat(info.format);
 	out.texture.swizzle[0] = viewInfo.r;
 	out.texture.swizzle[1] = viewInfo.g;
 	out.texture.swizzle[2] = viewInfo.b;
@@ -442,6 +463,20 @@ ResolvedTexture FlatPass_resolveTexture(const core::Material *material,
 
 	out.valid = true;
 	return out;
+}
+
+// The glyph storage behind a font material, or null for everything else. The store rides on the
+// dynamic image's instance, which is the same seam the Vulkan backend uses to carry its persistent
+// glyph buffers from frame to frame.
+const sf::GlyphStore *FlatPass_resolveGlyphStore(const core::Material *material) {
+	if (!material->getAtlas()) {
+		return nullptr;
+	}
+	auto &image = material->getImages().front();
+	if (!image.dynamic) {
+		return nullptr;
+	}
+	return image.dynamic->userdata.get_cast<sf::GlyphStore>();
 }
 
 // Intersection of two clip rectangles, collapsing to empty rather than wrapping around zero.
@@ -488,6 +523,146 @@ sf::raster::Vertex FlatPass_runVertexStage(const Vertex &v, const TransformData 
 	return out;
 }
 
+struct GlyphEmitStats {
+	uint32_t blits = 0;
+	uint32_t sampled = 0;
+	uint32_t missing = 0;
+};
+
+// One run of triangles that all name the same glyph, turned into draw work.
+//
+// The engine's typography guarantee makes the common case exact: a Label is normalized, so
+// VertexPlan::applyNormalized rebuilds its model matrix as identity plus a floored translation, and
+// the label's scale went into the font size rather than the quad. The glyph therefore covers a
+// whole number of pixels at 1:1 and can simply be copied. Everything else - a caller that turned
+// normalization off, an underline rectangle stretched from a single texel - falls back to sampling
+// the glyph as an ordinary texture, and is counted so the fallback is never silent.
+void FlatPass_emitGlyphRun(sf::raster::DrawList &list, const sf::GlyphStore::Glyph &glyph,
+		uint32_t firstIndex, uint32_t indexCount, uint32_t base, uint32_t minIndex,
+		SpanView<uint32_t> srcIndexes, uint32_t vertexOffset, sf::BlendMode blend,
+		const URect &scissor, Map<const uint8_t *, uint32_t> &textureIndexes,
+		GlyphEmitStats &stats) {
+	// Corners of the run in target pixels, plus which of them carries the first texel.
+	float minX = maxOf<float>(), minY = maxOf<float>();
+	float maxX = -maxOf<float>(), maxY = -maxOf<float>();
+	float originX = 0.0f, originY = 0.0f;
+	float minU = maxOf<float>(), minV = maxOf<float>();
+	Color4F color;
+	bool uniformColor = true;
+	bool first = true;
+
+	for (uint32_t i = 0; i < indexCount; ++i) {
+		auto idx = base + (srcIndexes[firstIndex + i] + vertexOffset - minIndex);
+		auto &v = list.vertexes[idx];
+
+		minX = sprt::min(minX, v.x);
+		maxX = sprt::max(maxX, v.x);
+		minY = sprt::min(minY, v.y);
+		maxY = sprt::max(maxY, v.y);
+
+		if (v.u <= minU) {
+			minU = v.u;
+			originX = v.x;
+		}
+		if (v.v <= minV) {
+			minV = v.v;
+			originY = v.y;
+		}
+
+		if (first) {
+			color = v.color;
+			first = false;
+		} else if (v.color != color) {
+			uniformColor = false;
+		}
+	}
+
+	auto isIntegral = [](float value) {
+		auto rounded = sprt::round(value);
+		return sprt::fabs(value - rounded) < (1.0f / 512.0f);
+	};
+
+	// XL_SOFT_GLYPH_SAMPLING=1 forces every glyph down the fallback. The blit is supposed to
+	// produce exactly what a nearest fetch of the same coverage produces, and this is how that is
+	// checked: render a scene both ways and diff. It is a verification hook, not a feature.
+	static const bool forceSampling = [] {
+		auto value = ::getenv("XL_SOFT_GLYPH_SAMPLING");
+		return value && StringView(value) != "0";
+	}();
+
+	const float width = maxX - minX;
+	const float height = maxY - minY;
+
+	// Every condition here is a property the blit relies on: one texel per pixel, no rotation or
+	// mirroring (the first texel sits at the top-left corner), a single colour for the whole glyph,
+	// and a destination that starts on a pixel boundary.
+	const bool blittable = !forceSampling && uniformColor && glyph.metricWidth == glyph.width
+			&& glyph.metricHeight == glyph.rows && isIntegral(width) && isIntegral(height)
+			&& uint32_t(sprt::round(width)) == glyph.width
+			&& uint32_t(sprt::round(height)) == glyph.rows && isIntegral(minX) && isIntegral(minY)
+			&& originX == minX && originY == minY;
+
+	if (blittable) {
+		sf::raster::GlyphBlit blit;
+		blit.coverage = glyph.pixels;
+		blit.pitch = glyph.pitch;
+		blit.x = int32_t(sprt::round(minX));
+		blit.y = int32_t(sprt::round(minY));
+		blit.width = glyph.width;
+		blit.height = glyph.rows;
+		blit.color = color;
+		blit.blend = blend;
+		blit.scissor = scissor;
+
+		list.addGlyph(sp::move(blit));
+		++stats.blits;
+		return;
+	}
+
+	// Fallback: the glyph becomes an ordinary single-image texture and goes through the sampler.
+	uint32_t textureIndex = 0;
+	auto it = textureIndexes.find(glyph.pixels);
+	if (it == textureIndexes.end()) {
+		sf::raster::Texture texture;
+		texture.pixels = glyph.pixels;
+		texture.width = glyph.width;
+		texture.height = glyph.rows;
+		texture.stride = glyph.pitch;
+		texture.layerSize = glyph.pitch * glyph.rows;
+		texture.format = sf::raster::PixelFormat::R8;
+		// what a font atlas view resolves to: the coverage is the alpha, the colour is the vertex's
+		texture.swizzle[0] = core::ComponentMapping::One;
+		texture.swizzle[1] = core::ComponentMapping::One;
+		texture.swizzle[2] = core::ComponentMapping::One;
+		texture.swizzle[3] = core::ComponentMapping::R;
+
+		textureIndex = uint32_t(list.textures.size());
+		list.textures.emplace_back(texture);
+		textureIndexes.emplace(glyph.pixels, textureIndex);
+	} else {
+		textureIndex = it->second;
+	}
+
+	sf::raster::Command command;
+	command.firstIndex = uint32_t(list.indexes.size());
+	command.indexCount = indexCount;
+	command.blend = blend;
+	command.scissor = scissor;
+	command.kind = sf::raster::TextureKind::Texture2D;
+	command.texture = textureIndex;
+	command.sampler.filter = sf::raster::Filter::Nearest;
+	command.sampler.addressU = sf::raster::AddressMode::ClampToEdge;
+	command.sampler.addressV = sf::raster::AddressMode::ClampToEdge;
+	command.sampler.addressW = sf::raster::AddressMode::ClampToEdge;
+
+	for (uint32_t i = 0; i < indexCount; ++i) {
+		list.indexes.emplace_back(base + (srcIndexes[firstIndex + i] + vertexOffset - minIndex));
+	}
+
+	list.addCommand(sp::move(command));
+	++stats.sampled;
+}
+
 } // namespace
 
 void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
@@ -514,6 +689,11 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 	// A scene draws from a handful of images, so spans share textures; dedup by view.
 	Map<const core::ImageView *, uint32_t> textureIndexes;
 
+	// Glyphs are their own textures and are keyed by their storage instead; only the sampling
+	// fallback ever puts anything here.
+	Map<const uint8_t *, uint32_t> glyphTextures;
+	GlyphEmitStats glyphStats;
+
 	uint32_t missingMaterials = 0;
 	uint32_t brokenSpans = 0;
 
@@ -529,6 +709,8 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 			continue;
 		}
 
+		auto glyphStore = FlatPass_resolveGlyphStore(material);
+
 		auto resolved = FlatPass_resolveTexture(material, layout);
 		if (!resolved.valid) {
 			++missingMaterials;
@@ -536,7 +718,7 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 		}
 
 		uint32_t textureIndex = 0;
-		if (resolved.kind != sf::raster::TextureKind::Solid) {
+		if (!glyphStore && resolved.kind != sf::raster::TextureKind::Solid) {
 			auto it = textureIndexes.find(resolved.view);
 			if (it == textureIndexes.end()) {
 				textureIndex = uint32_t(list.textures.size());
@@ -599,6 +781,42 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 						FlatPass_runVertexStage(v, transforms[transformIndex], target));
 			}
 
+			// Text does not go through the sampler. Each glyph is drawn from its own coverage
+			// bitmap, so the span is split into runs of triangles that name the same glyph - the
+			// object id survives the vertex plan for exactly this (VertexPlan::keepAtlasObjects).
+			// Splitting per glyph costs nothing: the triangle count is the same, only the source
+			// pointer changes between them.
+			if (glyphStore) {
+				uint32_t i = 0;
+				while (i + 2 < span.indexCount) {
+					auto firstSrc = srcIndexes[span.firstIndex + i] + span.vertexOffset;
+					auto glyphId = sf::GlyphStore::getGlyphId(srcVertexes[firstSrc].object);
+
+					uint32_t runEnd = i;
+					while (runEnd + 2 < span.indexCount) {
+						auto src = srcIndexes[span.firstIndex + runEnd] + span.vertexOffset;
+						if (sf::GlyphStore::getGlyphId(srcVertexes[src].object) != glyphId) {
+							break;
+						}
+						runEnd += 3;
+					}
+
+					if (auto glyph = glyphStore->getGlyph(glyphId)) {
+						FlatPass_emitGlyphRun(list, *glyph, span.firstIndex + i, runEnd - i, base,
+								minIndex, srcIndexes, span.vertexOffset, blend, scissor,
+								glyphTextures, glyphStats);
+					} else {
+						// Not in the store: it was never rasterized (an unsupported code point, or
+						// storage ran out). Drawing the placeholder here would put a solid block
+						// where a character belongs, so draw nothing and report it.
+						++glyphStats.missing;
+					}
+
+					i = runEnd;
+				}
+				continue;
+			}
+
 			sf::raster::Command command;
 			command.firstIndex = uint32_t(list.indexes.size());
 			command.indexCount = span.indexCount;
@@ -614,7 +832,7 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 						base + (srcIndexes[span.firstIndex + i] + span.vertexOffset - minIndex));
 			}
 
-			list.commands.emplace_back(command);
+			list.addCommand(sp::move(command));
 		}
 	}
 
@@ -623,6 +841,22 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 				" span(s) with no usable material and ", brokenSpans,
 				" span(s) with out-of-range indexes");
 	}
+
+	if (glyphStats.missing > 0) {
+		log::source().warn("basic2d::soft", "Dropped ", glyphStats.missing,
+				" glyph(s) missing from the store");
+	}
+
+#if DEBUG
+	// Sampling a glyph means the 1:1 integer placement the engine guarantees did not hold. It is
+	// handled correctly, but it is worth knowing about: the usual cause is a caller that turned
+	// normalization off, and the visible result is slightly soft text.
+	if (glyphStats.sampled > 0) {
+		log::source().debug("basic2d::soft", "Sampled ", glyphStats.sampled, " of ",
+				glyphStats.sampled + glyphStats.blits,
+				" glyph run(s): not an integral 1:1 placement");
+	}
+#endif
 }
 
 

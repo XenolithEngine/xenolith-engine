@@ -44,7 +44,8 @@ LOCAL_MODULES ?= \
 	stappler_pug \
 	stappler_makefile \
 	stappler_layout \
-	stappler_network
+	stappler_network \
+	stappler_raster
 
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))

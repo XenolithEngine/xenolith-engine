@@ -39,6 +39,7 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/search/search.mk \
 	$(STAPPLER_MODULE_DIR)/sql/sql.mk \
 	$(STAPPLER_MODULE_DIR)/font/font.mk \
+	$(STAPPLER_MODULE_DIR)/raster/raster.mk \
 	$(STAPPLER_MODULE_DIR)/tess/tess.mk \
 	$(STAPPLER_MODULE_DIR)/vg/vg.mk \
 	$(STAPPLER_MODULE_DIR)/zip/zip.mk \

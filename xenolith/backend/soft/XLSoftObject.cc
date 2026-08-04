@@ -93,26 +93,70 @@ bool Image::setup(Device &dev, const core::ImageInfoData &info,
 	}
 
 	// Tightly packed rows: no hardware alignment to honour, and a stride that is exactly
-	// width * pixelSize keeps readback a single memcpy.
-	_stride = info.extent.width * pixelSize;
+	// width * pixelSize keeps readback a single memcpy. An externally backed image keeps the
+	// stride its provider chose - which for the transports that exist today is this same packed
+	// value, because the allocation is ours to size (see the note on _external in the header).
+	if (!_external) {
+		_stride = info.extent.width * pixelSize;
+	}
 	_layerSize = _stride * info.extent.height;
 
 	auto layers = sprt::max(uint32_t(info.arrayLayers.get()), uint32_t(1));
 	auto total = uint64_t(_layerSize) * uint64_t(layers) * uint64_t(sprt::max(info.extent.depth, 1U));
 
-	if (total > 0) {
-		_storage.resize(size_t(total), uint8_t(0));
-	}
+	if (_external) {
+		// Deliberately neither allocated nor cleared: this is the window system's buffer, and it
+		// still holds the frame it last displayed. Partial redraw is correct only because that
+		// content survives - zeroing here would show as a flash on every swapchain recreation,
+		// with the frame after it looking right and hiding the cause.
+		if (_externalSize < size_t(total)) {
+			log::source().error("soft::Image", "External buffer is too small: ", _externalSize,
+					" < ", total);
+			return false;
+		}
+	} else {
+		if (total > 0) {
+			_storage.resize(size_t(total), uint8_t(0));
+		}
 
-	if (fill && total > 0) {
-		(*fill)(_storage.data(), total);
+		if (fill && total > 0) {
+			(*fill)(_storage.data(), total);
+		}
 	}
 
 	return core::ImageObject::init(dev, SoftObject_clear, core::ObjectType::Image,
-			core::ObjectHandle::zero(), nullptr, dev.getNextObjectIndex());
+			core::ObjectHandle::zero(), nullptr,
+			(_requestedIndex != maxOf<uint64_t>()) ? _requestedIndex : dev.getNextObjectIndex());
 }
 
 bool Image::init(Device &dev, StringView name, const core::ImageInfoData &info) {
+	if (!setup(dev, info, nullptr)) {
+		return false;
+	}
+	setName(name);
+	return true;
+}
+
+bool Image::init(Device &dev, StringView name, const core::ImageInfoData &info, uint64_t index) {
+	// A swapchain image is addressed by its slot, not by an object counter: the damage tracker
+	// keeps one snapshot per slot and looks it up by this index. The Vulkan backend does the same
+	// when it wraps the images the driver hands it.
+	_requestedIndex = index;
+
+	if (!setup(dev, info, nullptr)) {
+		return false;
+	}
+	setName(name);
+	return true;
+}
+
+bool Image::init(Device &dev, StringView name, const core::ImageInfoData &info, uint64_t index,
+		uint8_t *external, uint32_t stride, size_t size) {
+	_requestedIndex = index;
+	_external = external;
+	_externalSize = size;
+	_stride = stride;
+
 	if (!setup(dev, info, nullptr)) {
 		return false;
 	}
@@ -145,7 +189,7 @@ uint8_t *Image::getLayerData(uint32_t layer) const {
 	if (layer >= layers) {
 		return nullptr;
 	}
-	return const_cast<uint8_t *>(_storage.data()) + size_t(layer) * size_t(_layerSize);
+	return getData() + size_t(layer) * size_t(_layerSize);
 }
 
 bool ImageView::init(Device &dev, const Rc<core::ImageObject> &image,

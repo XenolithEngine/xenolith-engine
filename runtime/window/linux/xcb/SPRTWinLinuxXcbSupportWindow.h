@@ -87,6 +87,9 @@ public:
 	void fillTextInputData(InputEventData &, xcb_keycode_t, uint16_t state, bool textInputEnabled,
 			bool compose);
 
+	// Zero major version means MIT-SHM is not usable at all.
+	void getShmVersion(uint32_t &major, uint32_t &minor) const;
+
 protected:
 	struct RandrInfo {
 		bool enabled = true;
@@ -115,6 +118,23 @@ protected:
 
 		uint32_t majorVersion = 0;
 		uint32_t minorVersion = 0;
+	};
+
+	// MIT-SHM. Only firstEvent really matters at runtime: SHM completion is an extension event,
+	// so its code is whatever the server assigned, never the literal in xcb/shm.h.
+	struct ShmInfo {
+		bool enabled = false;
+		bool initialized = false;
+		uint8_t firstEvent = 0;
+		uint8_t firstError = 0;
+
+		uint32_t majorVersion = 0;
+		uint32_t minorVersion = 0;
+
+		// SHM 1.2 added fd passing, which avoids leaving a System V segment behind on a crash.
+		bool hasFdPassing() const {
+			return majorVersion > 1 || (majorVersion == 1 && minorVersion >= 2);
+		}
 	};
 
 	struct ClipboardTransfer {
@@ -174,6 +194,7 @@ protected:
 	RandrInfo _randr;
 	XfixesInfo _xfixes;
 	ShapeInfo _shape;
+	ShmInfo _shm;
 	XSettingsInfo _xsettings;
 	KeyInfo _keys;
 	XkbInfo _xkb;

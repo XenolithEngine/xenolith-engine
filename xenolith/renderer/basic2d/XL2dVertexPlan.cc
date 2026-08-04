@@ -424,7 +424,9 @@ void VertexPlan::pushPlanVertexes(WriteTarget &writeTarget,
 								plan.atlas->getObjectByName(t.object))) {
 						t.pos += Vec4(d->pos.x, d->pos.y, 0, 0);
 						t.tex = d->tex;
-						t.object = 0;
+						if (!keepAtlasObjects) {
+							t.object = 0;
+						}
 					} else {
 #if DEBUG
 						log::source().warn("VertexMaterialDrawPlan", "Object not found: ", t.object,

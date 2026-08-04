@@ -21,15 +21,17 @@
 MODULE_XENOLITH_BACKEND_SOFT_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_XENOLITH_BACKEND_SOFT_PRIVATE_INCLUDE_PCH := XLCommon.h
 MODULE_XENOLITH_BACKEND_SOFT_PRECOMPILED_HEADERS :=
-MODULE_XENOLITH_BACKEND_SOFT_SRCS_DIRS := $(XENOLITH_MODULE_DIR)/backend/soft
-MODULE_XENOLITH_BACKEND_SOFT_SRCS_OBJS :=
+MODULE_XENOLITH_BACKEND_SOFT_SRCS_DIRS :=
+MODULE_XENOLITH_BACKEND_SOFT_SRCS_OBJS := $(XENOLITH_MODULE_DIR)/backend/soft/XLSoft.scu.cpp
 MODULE_XENOLITH_BACKEND_SOFT_INCLUDES_DIRS :=
-MODULE_XENOLITH_BACKEND_SOFT_INCLUDES_OBJS := \
-	$(XENOLITH_MODULE_DIR)/backend/soft \
-	$(XENOLITH_MODULE_DIR)/backend/soft/raster
-MODULE_XENOLITH_BACKEND_SOFT_DEPENDS_ON := xenolith_core
+MODULE_XENOLITH_BACKEND_SOFT_INCLUDES_OBJS := $(XENOLITH_MODULE_DIR)/backend/soft
+MODULE_XENOLITH_BACKEND_SOFT_DEPENDS_ON := xenolith_core stappler_raster
 
-# There is nothing to link: the rasterizer is plain portable C++ and the "device" is the CPU.
+# The single source is listed explicitly rather than by directory: the rasterizer lives in its own
+# module now (stappler_raster, built with its own optimization flags), and a recursive directory
+# scan would silently pull a future subdirectory back into this one.
+#
+# There is nothing to link: the "device" is the CPU.
 
 #spec
 

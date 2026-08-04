@@ -27,7 +27,7 @@
 #include "XLSoftPipeline.h"
 #include "XLCoreQueuePass.h"
 #include "XLCoreAttachment.h"
-#include "raster/XLSoftRaster.h"
+#include "SPRaster.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
@@ -89,6 +89,14 @@ protected:
 	// Resolve the pass output into a rasterizer target, apply its load op, then record and
 	// execute every subpass. Returns false when the pass has no usable colour output.
 	bool runPass(core::FrameQueue &);
+
+	// Regions of the target this frame has to repaint, from the swapchain's damage tracker. Kept
+	// as a list rather than collapsed into a bounding box, so that changes far apart do not cost
+	// everything between them; the regions are pairwise disjoint, which is what makes it safe to
+	// rasterize each one separately.
+	//
+	// Returns false when the image already holds this frame and it can be skipped outright.
+	bool computeRedrawArea(core::FrameQueue &, const raster::Target &, Vector<URect> &areas);
 
 	Device *_device = nullptr;
 	Loop *_softLoop = nullptr;

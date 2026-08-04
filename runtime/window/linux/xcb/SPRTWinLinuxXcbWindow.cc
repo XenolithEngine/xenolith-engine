@@ -24,6 +24,7 @@
 #include "../SPRTWinLinuxController.h"
 #include "../SPRTWinLinux.h"
 #include "SPRTWinLinuxXcbDisplayConfigManager.h"
+#include "SPRTWinLinuxXcbSoftwareSurface.h"
 
 #include <sprt/runtime/enum.h>
 
@@ -975,6 +976,10 @@ bool XcbWindow::close() {
 		return true;
 	}
 	return true;
+}
+
+Rc<SoftwareSurface> XcbWindow::makeSoftwareSurface() {
+	return Rc<XcbSoftwareSurface>::create(this);
 }
 
 void XcbWindow::handleFramePresented(const PresentationFrameInfo &frame) {
