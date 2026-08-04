@@ -14,5 +14,6 @@ open-sysroot.mk.
 #include <CoreGraphics/CGDirectDisplay.h>
 #include <CoreGraphics/CGDisplayConfiguration.h>
 #include <CoreGraphics/CGColorSpace.h>
+#include <CoreGraphics/CGColor.h>
 
 #endif /* COREGRAPHICS_H_ */
