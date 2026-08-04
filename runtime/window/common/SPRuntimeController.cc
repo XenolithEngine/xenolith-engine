@@ -197,6 +197,10 @@ Status ContextController::createWindow(Rc<WindowInfo> &&info) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
+	emitWindowDiag(StreamTraits<char>::toString<String>("createWindow type=",
+			getWindowTypeName(info->type), " id='", info->id, "' parent='", info->parent,
+			"' rect=", info->rect.width, "x", info->rect.height));
+
 	if (info->type != WindowType::Root) {
 		if (!hasFlag(getCapabilities(), WindowCapabilities::Subwindows)) {
 			return Status::ErrorNotSupported;
@@ -208,14 +212,133 @@ Status ContextController::createWindow(Rc<WindowInfo> &&info) {
 		}
 	}
 
+	// One live window per (parent, type): auxiliary windows are never pooled, so re-opening the
+	// same slot closes the old one instead of stacking a second surface on it.
+	if (info->type == WindowType::Popup || info->type == WindowType::Tooltip) {
+		closeWindows("same-slot", [&](const WindowInfo &wi) {
+			return wi.parent == info->parent && wi.type == info->type;
+		});
+	}
+
 	if (!configureWindow(info)) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
 	if (!loadWindow(move(info))) {
+		emitWindowDiag("loadWindow failed");
 		return Status::ErrorNotSupported;
 	}
 	return Status::Ok;
+}
+
+uint32_t ContextController::closeWindows(StringView reason,
+		const callback<bool(const WindowInfo &)> &pred) {
+	// A close request cascades into children, so a list collected up front can hold freed pointers
+	// by the time we reach them. Re-scan after every request; `requested` keeps a window whose
+	// close is deferred (queued for the end of the poll) or refused from spinning the loop.
+	Set<NativeWindow *> requested;
+	uint32_t closed = 0;
+	for (;;) {
+		NativeWindow *target = nullptr;
+		for (auto *w : _allWindows) {
+			auto wi = w->getInfo();
+			if (wi && requested.find(w) == requested.end() && pred(*wi)) {
+				target = w;
+				break;
+			}
+		}
+		if (!target) {
+			break;
+		}
+		++closed;
+		emitWindowDiag(StreamTraits<char>::toString<String>("close id='", target->getInfo()->id,
+				"' reason=", reason));
+		requested.emplace(target);
+		target->close();
+	}
+	return closed;
+}
+
+void ContextController::emitWindowDiag(StringView line) const {
+	// One destination only: when the app layer installs a sink it forwards to its own log, and
+	// writing to both duplicates every line.
+	if (_windowDiagSink) {
+		_windowDiagSink(line);
+	} else {
+		oslog::vpdebug(__SPRT_LOCATION, "WindowDiag", line);
+	}
+}
+
+void ContextController::dismissPopupChain(NotNull<NativeWindow> w) {
+	auto *info = w->getInfo();
+	if (!info || (info->type != WindowType::Popup && info->type != WindowType::Tooltip)) {
+		return;
+	}
+
+	// Climb to the outermost auxiliary window: its close cascades down the whole chain.
+	NativeWindow *top = w;
+	for (;;) {
+		auto *ti = top->getInfo();
+		if (!ti || ti->parent.empty()) {
+			break;
+		}
+		auto *parent = findWindow(ti->parent);
+		auto *pi = parent ? parent->getInfo() : nullptr;
+		if (!pi || (pi->type != WindowType::Popup && pi->type != WindowType::Tooltip)) {
+			break;
+		}
+		top = parent;
+	}
+
+	const auto topId = top->getInfo()->id;
+	closeWindows("popup-chain-dismissed", [&](const WindowInfo &wi) { return wi.id == topId; });
+}
+
+void ContextController::dismissChildPopups(NotNull<NativeWindow> parent, StringView reason) {
+	auto *info = parent->getInfo();
+	if (!info || info->id.empty()) {
+		return;
+	}
+	const auto parentId = info->id;
+	closeWindows(reason, [&](const WindowInfo &wi) {
+		return wi.parent == parentId
+				&& (wi.type == WindowType::Popup || wi.type == WindowType::Tooltip);
+	});
+}
+
+void ContextController::notifyWindowFocusLost(NotNull<NativeWindow> w) {
+	auto *info = w->getInfo();
+	if (!info || _focusDismissScheduled) {
+		return;
+	}
+	// Nothing to dismiss unless a menu is actually up.
+	bool anyPopup = false;
+	for (auto *win : _allWindows) {
+		auto *wi = win->getInfo();
+		if (wi && (wi->type == WindowType::Popup || wi->type == WindowType::Tooltip)) {
+			anyPopup = true;
+			break;
+		}
+	}
+	if (!anyPopup) {
+		return;
+	}
+
+	_focusDismissScheduled = true;
+	_looper->performOnThread([this] {
+		_focusDismissScheduled = false;
+		// Focus that moved to another window of ours (the popup taking a Wayland grab, or the
+		// user switching between our own windows) is not a dismiss.
+		for (auto *win : _allWindows) {
+			auto *wi = win->getInfo();
+			if (wi && hasFlag(wi->state, WindowState::Focused)) {
+				return;
+			}
+		}
+		closeWindows("focus-lost", [](const WindowInfo &wi) {
+			return wi.type == WindowType::Popup || wi.type == WindowType::Tooltip;
+		});
+	}, this);
 }
 
 void ContextController::notifyWindowCreated(NotNull<NativeWindow> w) {
@@ -233,6 +356,22 @@ void ContextController::notifyWindowConstraintsChanged(NotNull<NativeWindow> w,
 }
 void ContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
 		Vector<InputEventData> &&ev) {
+	// An xdg_popup grab is owner-relative: the compositor dismisses the menu only for input that
+	// lands outside the client, and hands input on our own surfaces straight to us. Closing the
+	// menu when the press belongs to another window of ours is therefore the application's job —
+	// on every backend, so it lives here rather than in one of them.
+	//
+	// A press on a window closes the auxiliary windows *owned by it*: on the Root that is the
+	// whole menu, on a menu level it is the submenus below it, which is exactly how a press in a
+	// parent menu is expected to behave. The press that opens a menu is delivered before that
+	// menu exists, so it has nothing to dismiss.
+	for (auto &it : ev) {
+		if (it.event == InputEventName::Begin) {
+			dismissChildPopups(w, "owner-pressed");
+			break;
+		}
+	}
+
 	_context->handleNativeWindowInputEvents(w, sprt::move(ev));
 }
 
@@ -242,24 +381,51 @@ void ContextController::notifyWindowTextInput(NotNull<NativeWindow> w,
 }
 
 bool ContextController::notifyWindowClosed(NotNull<NativeWindow> w, WindowCloseOptions opts) {
-	if (isWithinPoll()) {
-		_closedWindows.emplace_back(w, opts);
-		return !hasFlag(w->getInfo()->state, WindowState::CloseGuard);
-	} else if (!hasFlag(opts, WindowCloseOptions::IgnoreExitGuard)
+	auto info = w->getInfo();
+
+	// Cascade first, so the WM sees the whole tree come down even if the parent itself was torn
+	// down off-thread. Closing a child unwinds its own subtree through this same function.
+	if (info && !info->id.empty()) {
+		const auto parentId = info->id;
+		closeWindows("parent-closing", [&](const WindowInfo &wi) { return wi.parent == parentId; });
+	}
+
+	if (!hasFlag(opts, WindowCloseOptions::IgnoreExitGuard)
 			&& hasFlag(w->getInfo()->state, WindowState::CloseGuard)) {
+		// The application owns the decision (an "unsaved changes" prompt and the like).
 		return false;
-	} else {
-		if (hasFlag(opts, WindowCloseOptions::CloseInPlace)) {
-			auto it = _activeWindows.find(w.get());
-			if (it != _activeWindows.end()) {
-				w->unmapWindow();
-				if (_context) {
-					_context->handleNativeWindowDestroyed(w);
-				}
-				_activeWindows.erase(it);
-			}
-		}
+	}
+
+	if (isWithinPoll()) {
+		// Retiring a window in the middle of an event dispatch would free structures the platform
+		// loop is still walking, so hand it to the end of the iteration. The Rc keeps it alive
+		// until then even if this was the last reference.
+		_closedWindows.emplace_back(Rc<NativeWindow>(w), opts);
 		return true;
+	}
+
+	if (hasFlag(opts, WindowCloseOptions::CloseInPlace)) {
+		performWindowTeardown(w);
+	}
+	return true;
+}
+
+void ContextController::performWindowTeardown(NotNull<NativeWindow> w) {
+	auto it = _activeWindows.find(w.get());
+	if (it == _activeWindows.end()) {
+		// Already retired — the cascade re-enters this for windows a parent has taken down.
+		return;
+	}
+
+	// Erase first so re-entry through handleNativeWindowDestroyed (which closes the AppWindow,
+	// which asks the native window to close again) terminates instead of recursing. The local Rc
+	// keeps the window alive for the rest of this function.
+	Rc<NativeWindow> hold = *it;
+	_activeWindows.erase(it);
+
+	hold->unmapWindow();
+	if (_context) {
+		_context->handleNativeWindowDestroyed(hold);
 	}
 }
 
@@ -271,7 +437,18 @@ void ContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
 	auto it = _allWindows.find(w);
 	if (it != _allWindows.end()) {
 		_allWindows.erase(it);
-		if (_allWindows.empty()) {
+
+		// The exit trigger is "no Root remains", not "nothing remains": an auxiliary window must
+		// neither keep the app alive on its own nor quit it when dismissed.
+		bool anyRoot = false;
+		for (auto *win : _allWindows) {
+			auto wi = win->getInfo();
+			if (wi && wi->type == WindowType::Root) {
+				anyRoot = true;
+				break;
+			}
+		}
+		if (!anyRoot) {
 			handleAllWindowsClosed();
 		}
 	}
@@ -404,6 +581,19 @@ void ContextController::handleContextWillPause() {
 	if (!_context) {
 		return;
 	}
+
+	// Losing focus dismisses menus and hints, the same as any native menu does. A Tooltip that has
+	// not mapped yet is left alone: tearing it down mid-first-frame strands its swapchain.
+	closeWindows("app-deactivated", [this](const WindowInfo &wi) {
+		if (wi.type == WindowType::Popup) {
+			return true;
+		}
+		if (wi.type != WindowType::Tooltip) {
+			return false;
+		}
+		auto *w = findWindow(wi.id);
+		return w && w->isMapped();
+	});
 
 	_context->handleWillPause();
 	_looper->poll();
@@ -578,11 +768,13 @@ void ContextController::notifyPendingWindows() {
 	_closedWindows.clear();
 
 	for (auto &it : tmpClosed) {
-		// Close windows
-		if (hasFlag(it.first->getInfo()->state, WindowState::CloseGuard)) {
-			ContextController::notifyWindowClosed(it.first, it.second);
-		} else {
-			it.first->close();
+		// Re-check the guard: the application may have raised it while the close was queued.
+		if (!hasFlag(it.second, WindowCloseOptions::IgnoreExitGuard)
+				&& hasFlag(it.first->getInfo()->state, WindowState::CloseGuard)) {
+			continue;
+		}
+		if (hasFlag(it.second, WindowCloseOptions::CloseInPlace)) {
+			performWindowTeardown(it.first);
 		}
 	}
 }

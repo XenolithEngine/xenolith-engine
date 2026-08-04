@@ -36,6 +36,9 @@ EXPORTS
 	EnableWindow
 	IsWindowEnabled
 	GetWindowRect
+	GetClientRect
+	ClientToScreen
+	ScreenToClient
 	AdjustWindowRect
 	AdjustWindowRectEx
 	DefWindowProcW

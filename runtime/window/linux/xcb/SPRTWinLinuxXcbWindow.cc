@@ -197,7 +197,9 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_defaultScreen = _connection->getDefaultScreen();
 
 	_xinfo.parent = _defaultScreen->root;
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	const bool auxiliary =
+			_info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 		_xinfo.depth = 32;
 		_xinfo.visual = _connection->getVisualByDepth(32); //_defaultScreen->root_visual;
 	} else {
@@ -213,16 +215,50 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 			| XCB_EVENT_MASK_PROPERTY_CHANGE | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT
 			| XCB_EVENT_MASK_COLOR_MAP_CHANGE | XCB_EVENT_MASK_OWNER_GRAB_BUTTON;
 
-	_xinfo.overrideRedirect = 0;
+	_xinfo.overrideRedirect = auxiliary ? 1 : 0;
 	_xinfo.overrideClose = true;
-	_xinfo.enableSync = true;
+	_xinfo.enableSync = !auxiliary;
 
 	auto udpi = _connection->getUnscaledDpi();
 	auto dpi = _connection->getDpi();
 
 	_density = float(dpi) / float(udpi);
 
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	auto *auxParent =
+			auxiliary ? dynamic_cast<XcbWindow *>(_controller->findWindow(_info->parent)) : nullptr;
+	if (auxiliary && !auxParent) {
+		oslog::vperror(__SPRT_LOCATION, "XCB", "Auxiliary window parent is not available");
+		return false;
+	}
+
+	if (auxiliary) {
+		auto parentRect = auxParent->getContentScreenRect();
+
+		// Constrain to the monitor the parent is on, not to the whole desktop: sliding a menu
+		// across a monitor edge to keep it "on screen" would drop it onto the neighbour display.
+		IRect workArea(0, 0, int32_t(_defaultScreen->width_in_pixels / _density),
+				int32_t(_defaultScreen->height_in_pixels / _density));
+		if (auto cfg = _controller->getDisplayConfigManager()->getCurrentConfig()) {
+			workArea = cfg->desktopRect;
+			const auto center = IVec2(parentRect.x + parentRect.width / 2,
+					parentRect.y + parentRect.height / 2);
+			for (auto &logical : cfg->logical) {
+				if (center.x >= logical.rect.x && center.y >= logical.rect.y
+						&& center.x < logical.rect.x + logical.rect.width
+						&& center.y < logical.rect.y + logical.rect.height) {
+					workArea = logical.rect;
+					break;
+				}
+			}
+		}
+		auto placed = computeWindowPlacement(_info->placement,
+				Extent2(_info->rect.width, _info->rect.height), parentRect, workArea);
+		_info->rect = placed;
+		_xinfo.boundingRect = xcb_rectangle_t{static_cast<int16_t>(placed.x * _density),
+			static_cast<int16_t>(placed.y * _density),
+			static_cast<uint16_t>(placed.width * _density),
+			static_cast<uint16_t>(placed.height * _density)};
+	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		auto &theme = _controller->getThemeInfo();
 		_xinfo.boundingRect = xcb_rectangle_t{static_cast<int16_t>(_info->rect.x * _density),
 			static_cast<int16_t>(_info->rect.y * _density),
@@ -252,11 +288,21 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 
 	_frameRate = getCurrentFrameRate();
 
-	auto windowType = _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_NORMAL);
+	auto windowType = auxiliary
+			? _connection->getAtom(_info->type == WindowType::Popup
+							? StringView("_NET_WM_WINDOW_TYPE_POPUP_MENU")
+							: StringView("_NET_WM_WINDOW_TYPE_TOOLTIP"))
+			: _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_NORMAL);
 
 	_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE, _xinfo.window,
 			_connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE), XCB_ATOM_ATOM, 32, 1,
 			&windowType);
+
+	if (auxParent) {
+		auto parentWindow = auxParent->getWindow();
+		_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE,
+				_xinfo.window, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 32, 1, &parentWindow);
+	}
 
 	struct MotifWmHints hints;
 	hints.flags = MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS;
@@ -285,8 +331,12 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 		}
 	}
 
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 		hints.decorations = 0;
+	}
+	if (auxiliary) {
+		hints.decorations = 0;
+		hints.functions = 0;
 	}
 
 	_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE, _xinfo.window,
@@ -331,7 +381,7 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 				XCB_ICCCM_NUM_WM_SIZE_HINTS_ELEMENTS, &sizeHints);
 	}
 
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 		auto &theme = _controller->getThemeInfo();
 		generateShadowPixmaps(theme.decorations.shadowWidth * _density,
 				theme.decorations.borderRadius * _density);
@@ -459,6 +509,14 @@ void XcbWindow::handleConfigureNotify(xcb_configure_notify_event_t *ev) {
 	XL_X11_LOG("XCB_CONFIGURE_NOTIFY: %d (%d) rect:%d,%d,%d,%d border:%d override:%d monitor:%s",
 			ev->event, ev->window, ev->x, ev->y, ev->width, ev->height, uint32_t(ev->border_width),
 			uint32_t(ev->override_redirect), mon.data());
+	// A click on the WM decoration never reaches us: under a compositor the title bar is the
+	// compositor's own surface, so neither our pointer grab nor a focus change sees it. The
+	// restack/move it produces on the owner does arrive here, and it is reason enough to take
+	// the menu down — a popup must not outlive its owner being raised or moved.
+	if (_info->type != WindowType::Popup && _info->type != WindowType::Tooltip) {
+		_controller->dismissChildPopups(this, "owner-reconfigured");
+	}
+
 	_xinfo.boundingRect.x = ev->x;
 	_xinfo.boundingRect.y = ev->y;
 	_xinfo.outputName = mon;
@@ -655,6 +713,16 @@ void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 }
 
 void XcbWindow::handleButtonPress(xcb_button_press_event_t *ev) {
+	// With an active pointer grab the press is reported relative to the grab window, so
+	// out-of-bounds coordinates mean "clicked outside the menu" — dismiss the whole chain.
+	if (_popupGrabbed
+			&& (ev->event_x < 0 || ev->event_y < 0
+					|| ev->event_x >= int16_t(_xinfo.boundingRect.width)
+					|| ev->event_y >= int16_t(_xinfo.boundingRect.height))) {
+		_controller->dismissPopupChain(this);
+		return;
+	}
+
 	if (_lastInputTime != ev->time) {
 		dispatchPendingEvents();
 		updateUserTime(ev->time);
@@ -916,7 +984,9 @@ void XcbWindow::handleSyncRequest(xcb_timestamp_t syncTime, xcb_sync_int64_t val
 	_xinfo.syncFrameOrder = _frameOrder;
 }
 
-void XcbWindow::handleCloseRequest() { _controller->notifyWindowClosed(this); }
+// WM_DELETE_WINDOW. Routed through close() rather than straight to the controller, so a guarded
+// window raises WindowState::CloseRequest and the application gets to answer for it.
+void XcbWindow::handleCloseRequest() { close(); }
 
 void XcbWindow::notifyScreenChange() {
 	auto newFrameRate = getCurrentFrameRate();
@@ -944,13 +1014,42 @@ void XcbWindow::handleSettingsUpdated() {
 
 xcb_connection_t *XcbWindow::getConnection() const { return _connection->getConnection(); }
 
+IRect XcbWindow::getContentScreenRect() const {
+	// ConfigureNotify on a reparented toplevel reports coordinates relative to the WM frame, not
+	// to the root, so boundingRect.x/y is not a screen position — ask the server for the real one.
+	int16_t originX = _xinfo.boundingRect.x;
+	int16_t originY = _xinfo.boundingRect.y;
+	if (_xcb->xcb_translate_coordinates && _xcb->xcb_translate_coordinates_reply) {
+		auto cookie = _xcb->xcb_translate_coordinates(_connection->getConnection(), _xinfo.window,
+				_defaultScreen->root, 0, 0);
+		if (auto reply = _connection->perform(_xcb->xcb_translate_coordinates_reply, cookie)) {
+			originX = int16_t(reply->dst_x - _xinfo.contentRect.x);
+			originY = int16_t(reply->dst_y - _xinfo.contentRect.y);
+		}
+	}
+	return IRect(int32_t((originX + _xinfo.contentRect.x) / _density),
+			int32_t((originY + _xinfo.contentRect.y) / _density),
+			int32_t(_xinfo.contentRect.width / _density),
+			int32_t(_xinfo.contentRect.height / _density));
+}
+
 void XcbWindow::mapWindow() {
 	_connection->attachWindow(_xinfo.window, this);
 	_xcb->xcb_map_window(_connection->getConnection(), _xinfo.window);
+	_mapped = true;
 
 	_xcb->xcb_flush(_connection->getConnection());
 
 	configureOutputWindow();
+
+	if (_info->type == WindowType::Popup) {
+		auto cookie = _xcb->xcb_grab_pointer(_connection->getConnection(), 0, _xinfo.window,
+				XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+						| XCB_EVENT_MASK_POINTER_MOTION,
+				XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME);
+		auto reply = _connection->perform(_xcb->xcb_grab_pointer_reply, cookie);
+		_popupGrabbed = reply && reply->status == XCB_GRAB_STATUS_SUCCESS;
+	}
 
 	if (_info->fullscreen != FullscreenInfo::None) {
 		setFullscreen(FullscreenInfo(_info->fullscreen), nullptr, this);
@@ -958,6 +1057,11 @@ void XcbWindow::mapWindow() {
 }
 
 void XcbWindow::unmapWindow() {
+	_mapped = false;
+	if (_popupGrabbed) {
+		_xcb->xcb_ungrab_pointer(_connection->getConnection(), XCB_CURRENT_TIME);
+		_popupGrabbed = false;
+	}
 	_xcb->xcb_unmap_window(_connection->getConnection(), _xinfo.window);
 	_xcb->xcb_flush(_connection->getConnection());
 	_connection->detachWindow(_xinfo.window);

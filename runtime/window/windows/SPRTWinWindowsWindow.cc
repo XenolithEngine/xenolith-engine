@@ -38,6 +38,10 @@ namespace sprt::window {
 
 WindowsWindow::~WindowsWindow() {
 	if (_window) {
+		if (GetCapture() == _window) {
+			_popupCapture = false;
+			ReleaseCapture();
+		}
 		SetWindowLongPtrW(_window, GWLP_USERDATA, 0);
 		DestroyWindow(_window);
 		_window = nullptr;
@@ -67,8 +71,48 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 	}, _info->id);
 
 	RECT rect = {0, 0, long(_info->rect.width), long(_info->rect.height)};
+	const bool auxiliary =
+			_info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	HWND owner = nullptr;
+	int windowX = CW_USEDEFAULT;
+	int windowY = CW_USEDEFAULT;
 
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	if (auxiliary) {
+		auto *parent = dynamic_cast<WindowsWindow *>(_controller->findWindow(_info->parent));
+		if (!parent || !parent->getWindow()) {
+			return false;
+		}
+		owner = parent->getWindow();
+		_currentState.style = WS_POPUP | WS_CLIPCHILDREN;
+		_currentState.exstyle = WS_EX_TOOLWINDOW;
+		if (_info->type == WindowType::Tooltip) {
+			_currentState.exstyle |= WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+		}
+
+		RECT parentClient;
+		GetClientRect(owner, &parentClient);
+		POINT parentOrigin = {parentClient.left, parentClient.top};
+		ClientToScreen(owner, &parentOrigin);
+		IRect parentContentRect(parentOrigin.x, parentOrigin.y,
+				parentClient.right - parentClient.left, parentClient.bottom - parentClient.top);
+
+		IRect workArea = parentContentRect;
+		if (auto monitor = MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST)) {
+			MONITORINFO monitorInfo = {sizeof(MONITORINFO)};
+			if (GetMonitorInfoW(monitor, &monitorInfo)) {
+				workArea = IRect(monitorInfo.rcWork.left, monitorInfo.rcWork.top,
+						monitorInfo.rcWork.right - monitorInfo.rcWork.left,
+						monitorInfo.rcWork.bottom - monitorInfo.rcWork.top);
+			}
+		}
+
+		auto placed = computeWindowPlacement(_info->placement,
+				Extent2(_info->rect.width, _info->rect.height), parentContentRect, workArea);
+		_info->rect = placed;
+		rect = RECT{0, 0, LONG(placed.width), LONG(placed.height)};
+		windowX = placed.x;
+		windowY = placed.y;
+	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		_currentState.style =
 				WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME | WS_CAPTION | WS_CLIPCHILDREN;
 		_currentState.exstyle = WS_EX_APPWINDOW;
@@ -84,7 +128,9 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 
 	_info->state |= WindowState::Enabled;
 
-	AdjustWindowRect(&rect, _currentState.style, FALSE);
+	if (!auxiliary) {
+		AdjustWindowRect(&rect, _currentState.style, FALSE);
+	}
 
 	_currentState.position = IVec2(rect.left, rect.top);
 	_currentState.extent = Extent2(rect.right - rect.left, rect.bottom - rect.top);
@@ -95,9 +141,9 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 			_currentState.style, // Window style
 
 			// Size and position
-			CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top,
+			windowX, windowY, rect.right - rect.left, rect.bottom - rect.top,
 
-			NULL, // Parent window
+			owner, // Owner window for popup/tooltip
 			NULL, // Menu
 			_class->getModule(), // Instance handle
 			nullptr);
@@ -105,7 +151,7 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 	if (_window) {
 		SetWindowLongPtrW(_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
-		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 			// To force-enable rounded corners and shadows - uncomment this
 			/*DWM_WINDOW_CORNER_PREFERENCE pref = DWMWCP_ROUND;
 			if (::DwmSetWindowAttribute(_window, DWMWA_WINDOW_CORNER_PREFERENCE, &pref,
@@ -129,13 +175,31 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 }
 
 void WindowsWindow::mapWindow() {
+	_mapped = true;
+	if (_info->type == WindowType::Tooltip) {
+		// Tooltips never take activation away from the owner.
+		ShowWindow(_window, SW_SHOWNOACTIVATE);
+		return;
+	}
 	ShowWindow(_window, SW_SHOW);
 	SetForegroundWindow(_window);
 	SetActiveWindow(_window);
 	SetFocus(_window);
+	if (_info->type == WindowType::Popup) {
+		SetCapture(_window);
+		_popupCapture = GetCapture() == _window;
+	}
 }
 
-void WindowsWindow::unmapWindow() { }
+void WindowsWindow::unmapWindow() {
+	_mapped = false;
+	if (_popupCapture && GetCapture() == _window) {
+		_popupCapture = false;
+		ReleaseCapture();
+	}
+	_popupCapture = false;
+	ShowWindow(_window, SW_HIDE);
+}
 
 bool WindowsWindow::close() {
 	if (!_controller->notifyWindowClosed(this)) {
@@ -608,6 +672,11 @@ Status WindowsWindow::handleDecorationsMouseLeave() {
 }
 
 Status WindowsWindow::handleKeyPress(InputKeyCode keyCode, int scancode, char32_t c) {
+	if (_info->type == WindowType::Popup && keyCode == InputKeyCode::ESCAPE) {
+		_controller->dismissPopupChain(this);
+		return Status::Ok;
+	}
+
 	_enabledModifiers = KeyCodes::getKeyMods();
 
 	c = makeKeyChar(c);
@@ -733,6 +802,14 @@ Status WindowsWindow::handleMouseLeave() {
 }
 
 Status WindowsWindow::handleMouseEvent(IVec2 pos, InputMouseButton btn, InputEventName ev) {
+	// Mouse capture reports out-of-bounds coordinates for a click outside the menu.
+	if (_info->type == WindowType::Popup && ev == InputEventName::Begin
+			&& (pos.x < 0 || pos.y < 0 || pos.x >= int32_t(_currentState.extent.width)
+					|| pos.y >= int32_t(_currentState.extent.height))) {
+		_controller->dismissPopupChain(this);
+		return Status::Ok;
+	}
+
 	switch (ev) {
 	case InputEventName::Begin:
 		if (_pointerButtonCapture++ == 0) {
@@ -740,7 +817,7 @@ Status WindowsWindow::handleMouseEvent(IVec2 pos, InputMouseButton btn, InputEve
 		}
 		break;
 	case InputEventName::End:
-		if (_pointerButtonCapture > 0 && --_pointerButtonCapture == 0) {
+		if (_pointerButtonCapture > 0 && --_pointerButtonCapture == 0 && !_popupCapture) {
 			::ReleaseCapture();
 		}
 		break;
@@ -797,6 +874,12 @@ Status WindowsWindow::handleMouseWheel(Vec2 value) {
 }
 
 Status WindowsWindow::handleMouseCaptureChanged() {
+	if (_popupCapture && _info->type == WindowType::Popup) {
+		_popupCapture = false;
+		_pointerButtonCapture = 0;
+		_controller->dismissPopupChain(this);
+		return Status::Ok;
+	}
 	if (_pointerButtonCapture > 0) {
 		::ReleaseCapture();
 		_pointerButtonCapture = 0;

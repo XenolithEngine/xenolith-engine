@@ -153,6 +153,8 @@ typedef struct {
 + (instancetype)arrayWithObjects:(const ObjectType _Nonnull [_Nullable])objects count:(NSUInteger)cnt;
 + (instancetype)arrayWithObject:(ObjectType)anObject;
 - (BOOL)containsObject:(ObjectType)anObject;
+- (NSUInteger)indexOfObject:(ObjectType)anObject;
+- (NSUInteger)indexOfObjectIdenticalTo:(ObjectType)anObject;
 @end
 
 @interface NSDictionary<__covariant KeyType, __covariant ObjectType> : NSObject <NSFastEnumeration>

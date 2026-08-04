@@ -48,6 +48,7 @@ struct SP_PUBLIC DeferredRequest : Ref {
 
 	sprt::atomic<uint32_t> current = 0;
 	sprt::atomic<uint32_t> complete = 0;
+	sprt::atomic<bool> completed = false;
 	uint32_t nrequests = 0;
 	Vector<Rc<font::FontFaceObject>> faces;
 	Vector<Pair<uint32_t, char32_t>> fontRequests;

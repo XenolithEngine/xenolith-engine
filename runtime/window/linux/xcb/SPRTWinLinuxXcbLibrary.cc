@@ -95,6 +95,9 @@ bool XcbLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, xcb_intern_atom_unchecked)
 	SPRT_LOAD_PROTO(handle, xcb_intern_atom_reply)
 	SPRT_LOAD_PROTO(handle, xcb_grab_pointer)
+	SPRT_LOAD_PROTO(handle, xcb_grab_pointer_reply)
+	SPRT_LOAD_PROTO(handle, xcb_translate_coordinates)
+	SPRT_LOAD_PROTO(handle, xcb_translate_coordinates_reply)
 	SPRT_LOAD_PROTO(handle, xcb_ungrab_pointer)
 
 	SPRT_LOAD_PROTO(handle, xcb_screen_allowed_depths_iterator)

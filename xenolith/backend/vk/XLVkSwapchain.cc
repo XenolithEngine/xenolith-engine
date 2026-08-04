@@ -268,7 +268,6 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		XL_VKAPI_LOG("vkAcquireNextImageKHR: ", imageIndex, " ", ret, " [",
 				sp::platform::clock(ClockType::Monotonic) - t, "]");
 #endif
-		table.vkDeviceWaitIdle(device);
 	});
 
 	if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {
@@ -335,7 +334,8 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		break;
 	default:
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
-		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", getStatus(result));
+		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", getStatus(result),
+				" (VkResult ", int32_t(result), ")");
 		break;
 	}
 
@@ -414,7 +414,7 @@ Status SwapchainHandle::present(core::DeviceQueue *queue, core::ImageStorage *im
 	}
 
 	VkResult result = VK_ERROR_UNKNOWN;
-	dev->makeApiCall([&](const DeviceTable &table, VkDevice device) {
+	dev->makeQueueApiCall([&](const DeviceTable &table, VkDevice device) {
 #if XL_VKAPI_DEBUG
 		auto t = sp::platform::clock(ClockType::Monotonic);
 		result =

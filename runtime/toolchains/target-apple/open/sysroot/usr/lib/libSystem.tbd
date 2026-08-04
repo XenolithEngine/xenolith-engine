@@ -293,6 +293,8 @@ exports:
         __dispatch_source_type_proc,
         _dispatch_sync,
         _dispatch_sync_f,
+        _dispatch_time,
+        _dispatch_walltime,
         _dispatch_write,
         _div,
         ___divdc3,

@@ -33,3 +33,6 @@
 #include "atoms/XLUiPanel.cc"
 #include "atoms/XLUiBadge.cc"
 #include "atoms/XLUiCheckbox.cc"
+
+#include "XLUiAuxWindow.cc"
+#include "XLUiAuxSession.cc"

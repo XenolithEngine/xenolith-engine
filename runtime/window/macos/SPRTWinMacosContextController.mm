@@ -177,6 +177,8 @@ void MacosContextController::handleContextDidStart() {
 }
 
 bool MacosContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	// MacosWindow::_startupHold keeps the object alive until handleWindowLoaded hands it to
+	// notifyWindowCreated, so this temporary Rc may safely be the only one.
 	return Rc<MacosWindow>::create(this, sprt::move(wInfo)) != nullptr;
 }
 
@@ -343,7 +345,8 @@ WindowCapabilities MacosContextController::getCapabilities() const {
 	WindowCapabilities caps = WindowCapabilities::FullscreenWithMode
 			| WindowCapabilities::FullscreenSeamlessModeSwitch | WindowCapabilities::Fullscreen
 			| WindowCapabilities::ServerSideDecorations | WindowCapabilities::UserSpaceDecorations
-			| WindowCapabilities::CloseGuard | WindowCapabilities::AllowMoveFromMaximized;
+			| WindowCapabilities::CloseGuard | WindowCapabilities::AllowMoveFromMaximized
+			| WindowCapabilities::Subwindows;
 
 	return caps;
 }

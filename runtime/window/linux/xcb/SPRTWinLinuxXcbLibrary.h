@@ -141,6 +141,9 @@ public:
 	SPRT_DEFINE_PROTO(xcb_intern_atom_unchecked)
 	SPRT_DEFINE_PROTO(xcb_intern_atom_reply)
 	SPRT_DEFINE_PROTO(xcb_grab_pointer)
+	SPRT_DEFINE_PROTO(xcb_grab_pointer_reply)
+	SPRT_DEFINE_PROTO(xcb_translate_coordinates)
+	SPRT_DEFINE_PROTO(xcb_translate_coordinates_reply)
 	SPRT_DEFINE_PROTO(xcb_ungrab_pointer)
 
 	SPRT_DEFINE_PROTO(xcb_screen_allowed_depths_iterator)

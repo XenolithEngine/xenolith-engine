@@ -114,10 +114,12 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 - (void)updateTrackingAreas {
 	[self removeTrackingArea:_mainArea];
 
+	// ActiveInActiveApp, not ActiveInKeyWindow: auxiliary windows never become key, so
+	// key-window tracking would never deliver them a mouse-move and menu hover could not work.
 	_mainArea = [[NSTrackingArea alloc]
 			initWithRect:[self bounds]
 				 options:NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited
-			| NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+			| NSTrackingActiveInActiveApp | NSTrackingInVisibleRect
 				   owner:self
 				userInfo:nil];
 	[self addTrackingArea:_mainArea];

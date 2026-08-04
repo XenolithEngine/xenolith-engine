@@ -562,7 +562,10 @@ bool Device::isPortabilityMode() const {
 void Device::waitIdle() const {
 	sprt::unique_lock lock(_resourceMutex);
 
-	_table->vkDeviceWaitIdle(_device);
+	// vkDeviceWaitIdle must be externally synchronized against every queue of the device, and a
+	// sibling window may be submitting or presenting right now.
+	const_cast<Device *>(this)->makeQueueApiCall(
+			[](const DeviceTable &table, VkDevice device) { table.vkDeviceWaitIdle(device); });
 
 	core::Device::waitIdle();
 }

@@ -261,6 +261,12 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 				(oldSwapchain && oldSwapchainValid) ? oldSwapchain.get_cast<SwapchainHandle>()
 													: nullptr);
 
+		if (!_swapchain) {
+			log::source().error("WindowDiag", "createSwapchain failed id=",
+					_window ? _window->getPresentationDebugId() : StringView(), " extent=",
+					cfg.extent.width, "x", cfg.extent.height);
+		}
+
 		if (_swapchain) {
 			if (cfg.fullscreenMode == core::FullScreenExclusiveMode::ApplicationControlled) {
 				if (!_swapchain.get_cast<SwapchainHandle>()->enableExclusiveFullscreen(*dev)) {
@@ -276,18 +282,26 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 
 			_constraints = sp::move(newConstraints);
 
+			// FrameCache is loop-thread state and carries no lock, but a swapchain is (re)created
+			// while a sibling window may be rendering. Post the bookkeeping to the loop instead
+			// of mutating the cache here, exactly like the mtl/webgpu backends do.
 			Vector<uint64_t> ids;
-			auto cache = _loop->getFrameCache();
 			for (auto &it : static_cast<SwapchainHandle *>(_swapchain.get())->getImages()) {
 				for (auto &iit : it.views) {
 					auto id = iit.second->getIndex();
-					ids.emplace_back(iit.second->getIndex());
-					iit.second->setReleaseCallback(
-							[loop = _loop, cache, id] { cache->removeImageView(id); });
+					ids.emplace_back(id);
+					iit.second->setReleaseCallback([loop = Rc<core::Loop>(_loop), id] {
+						loop->performOnThread(
+								[loop, id] { loop->getFrameCache()->removeImageView(id); }, nullptr,
+								true);
+					});
 				}
 			}
 
-			for (auto &id : ids) { cache->addImageView(id); }
+			_loop->performOnThread([loop = Rc<core::Loop>(_loop), ids = sp::move(ids)] {
+				auto cache = loop->getFrameCache();
+				for (auto &id : ids) { cache->addImageView(id); }
+			}, nullptr, true);
 
 			if constexpr (showSwapchainConfig) {
 				StringStream out;

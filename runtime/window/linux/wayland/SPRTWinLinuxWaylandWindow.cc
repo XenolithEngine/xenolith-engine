@@ -88,6 +88,17 @@ static const xdg_toplevel_listener s_XdgToplevelListener{
 	}
 };
 
+static const xdg_popup_listener s_XdgPopupListener{
+	.configure = [](void *data, xdg_popup *popup, int32_t x, int32_t y, int32_t width,
+						 int32_t height) {
+		reinterpret_cast<WaylandWindow *>(data)->handlePopupConfigure(popup, x, y, width, height);
+	},
+	.popup_done = [](void *data, xdg_popup *popup) {
+		reinterpret_cast<WaylandWindow *>(data)->handlePopupDone(popup);
+	},
+	.repositioned = [](void *, xdg_popup *, uint32_t) { },
+};
+
 static zxdg_toplevel_decoration_v1_listener s_serverDecorationListener {
 	.configure = [](void *data, zxdg_toplevel_decoration_v1 *decor, uint32_t mode) {
 		reinterpret_cast<WaylandWindow *>(data)->handleDecorConfigure(decor, mode);
@@ -112,6 +123,10 @@ WaylandWindow::~WaylandWindow() {
 	if (_toplevel) {
 		xdg_toplevel_destroy(_toplevel);
 		_toplevel = nullptr;
+	}
+	if (_popup) {
+		xdg_popup_destroy(_popup);
+		_popup = nullptr;
 	}
 	if (_xdgSurface) {
 		xdg_surface_destroy(_xdgSurface);
@@ -150,7 +165,11 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 		wl_surface_set_user_data(_surface, this);
 		wl_surface_add_listener(_surface, &s_WaylandSurfaceListener, this);
 
-		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		if (_info->type == WindowType::Popup || _info->type == WindowType::Tooltip) {
+			if (!initPopup()) {
+				return false;
+			}
+		} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 			if (!initWithAppDecor()) {
 				return false;
 			}
@@ -621,6 +640,16 @@ void WaylandWindow::handleToplevelClose(xdg_toplevel *xdg_toplevel) {
 	_controller->notifyWindowClosed(this);
 }
 
+void WaylandWindow::handlePopupConfigure(xdg_popup *, int32_t x, int32_t y, int32_t width,
+		int32_t height) {
+	_info->rect = IRect(x, y, width, height);
+	handleToplevelGeometry(nullptr, width, height, false, nullptr);
+}
+
+void WaylandWindow::handlePopupDone(xdg_popup *) {
+	_controller->notifyWindowClosed(this, WindowCloseOptions::CloseInPlace);
+}
+
 void WaylandWindow::handleToplevelBounds(xdg_toplevel *xdg_toplevel, int32_t width,
 		int32_t height) {
 	XL_WAYLAND_LOG("handleToplevelBounds: width: ", width, ", height: ", height);
@@ -808,6 +837,14 @@ static InputMouseButton getWaylandButton(uint32_t button) {
 
 void WaylandWindow::handlePointerButton(uint32_t serial, uint32_t time, uint32_t button,
 		uint32_t state) {
+	// Only presses: xdg_popup.grab is validated against the implicit pointer grab, which starts on
+	// press and ends when the last button is released. Handing the compositor a release serial
+	// (the app opens menus on tap, so that is the newest event by then) gets the grab denied — the
+	// popup then behaves like an ordinary surface: clicks in the parent are delivered to the
+	// parent instead of dismissing the menu.
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		_controller->notePointerSerial(serial);
+	}
 	if (!_pointerInit) {
 		return;
 	}
@@ -1730,6 +1767,105 @@ void WaylandWindow::updateSizeConstraints() {
 		maxH = sprt::max(int32_t(_info->maxExtent.height) + decorContentOffsetH, minH);
 	}
 	xdg_toplevel_set_max_size(_toplevel, maxW, maxH);
+}
+
+static uint32_t getPositionerAnchor(WindowAnchor anchor) {
+	switch (anchor) {
+	case WindowAnchor::None: return XDG_POSITIONER_ANCHOR_NONE;
+	case WindowAnchor::Top: return XDG_POSITIONER_ANCHOR_TOP;
+	case WindowAnchor::Bottom: return XDG_POSITIONER_ANCHOR_BOTTOM;
+	case WindowAnchor::Left: return XDG_POSITIONER_ANCHOR_LEFT;
+	case WindowAnchor::Right: return XDG_POSITIONER_ANCHOR_RIGHT;
+	case WindowAnchor::TopLeft: return XDG_POSITIONER_ANCHOR_TOP_LEFT;
+	case WindowAnchor::BottomLeft: return XDG_POSITIONER_ANCHOR_BOTTOM_LEFT;
+	case WindowAnchor::TopRight: return XDG_POSITIONER_ANCHOR_TOP_RIGHT;
+	case WindowAnchor::BottomRight: return XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT;
+	}
+	return XDG_POSITIONER_ANCHOR_NONE;
+}
+
+// WindowPlacement::gravity names the window corner that lands on the anchor point, so TopLeft
+// means "expand down and right". xdg_positioner gravity names the side of the anchor point the
+// surface is pushed towards, so its TOP_LEFT means "expand up and left" — the opposite corner.
+static uint32_t getPositionerGravity(WindowAnchor gravity) {
+	switch (gravity) {
+	case WindowAnchor::None: return XDG_POSITIONER_GRAVITY_NONE;
+	case WindowAnchor::Top: return XDG_POSITIONER_GRAVITY_BOTTOM;
+	case WindowAnchor::Bottom: return XDG_POSITIONER_GRAVITY_TOP;
+	case WindowAnchor::Left: return XDG_POSITIONER_GRAVITY_RIGHT;
+	case WindowAnchor::Right: return XDG_POSITIONER_GRAVITY_LEFT;
+	case WindowAnchor::TopLeft: return XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
+	case WindowAnchor::BottomLeft: return XDG_POSITIONER_GRAVITY_TOP_RIGHT;
+	case WindowAnchor::TopRight: return XDG_POSITIONER_GRAVITY_BOTTOM_LEFT;
+	case WindowAnchor::BottomRight: return XDG_POSITIONER_GRAVITY_TOP_LEFT;
+	}
+	return XDG_POSITIONER_GRAVITY_NONE;
+}
+
+bool WaylandWindow::initPopup() {
+	auto *parent = dynamic_cast<WaylandWindow *>(_controller->findWindow(_info->parent));
+	if (!parent || !parent->_xdgSurface) {
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Popup parent is not available");
+		return false;
+	}
+
+	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
+	xdg_surface_add_listener(_xdgSurface, &s_XdgSurfaceListener, this);
+
+	auto *positioner = xdg_wm_base_create_positioner(_display->xdgWmBase);
+	const auto &placement = _info->placement;
+	// xdg_positioner rejects a zero size or a zero-sized anchor rect with a protocol error, and a
+	// protocol error takes down the whole wl_display connection. WindowPlacement allows a point
+	// anchor (0x0 rect), so widen it to the smallest rect the protocol accepts.
+	auto atLeastOne = [](int32_t v) { return v > 1 ? v : 1; };
+	xdg_positioner_set_size(positioner, atLeastOne(int32_t(_currentExtent.width)),
+			atLeastOne(int32_t(_currentExtent.height)));
+	xdg_positioner_set_anchor_rect(positioner, placement.anchorRect.x, placement.anchorRect.y,
+			atLeastOne(placement.anchorRect.width), atLeastOne(placement.anchorRect.height));
+	xdg_positioner_set_anchor(positioner, getPositionerAnchor(placement.anchor));
+	xdg_positioner_set_gravity(positioner, getPositionerGravity(placement.gravity));
+	xdg_positioner_set_offset(positioner, placement.offset.x, placement.offset.y);
+
+	uint32_t adjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_NONE;
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::SlideX)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+	}
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::SlideY)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y;
+	}
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::FlipX)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X;
+	}
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::FlipY)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
+	}
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::ResizeX)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_X;
+	}
+	if (hasFlag(placement.adjustment, WindowPlacementAdjustment::ResizeY)) {
+		adjustment |= XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_Y;
+	}
+	xdg_positioner_set_constraint_adjustment(positioner, adjustment);
+
+	_popup = xdg_surface_get_popup(_xdgSurface, parent->_xdgSurface, positioner);
+	xdg_positioner_destroy(positioner);
+	if (!_popup) {
+		return false;
+	}
+	xdg_popup_add_listener(_popup, &s_XdgPopupListener, this);
+
+	if (_info->type == WindowType::Popup) {
+		auto serial = _controller->getLastPointerSerial();
+		if (serial != 0 && _display->seat) {
+			xdg_popup_grab(_popup, _display->seat->seat, serial);
+		}
+	}
+
+	xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width,
+			_currentExtent.height);
+	wl_surface_commit(_surface);
+	_display->flush();
+	return true;
 }
 
 bool WaylandWindow::initWithServerDecor() {

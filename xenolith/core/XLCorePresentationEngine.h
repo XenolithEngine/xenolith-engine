@@ -63,6 +63,9 @@ public:
 	virtual FrameConstraints exportConstraints(uint64_t &serial) const = 0;
 
 	virtual void setFrameOrder(uint64_t) = 0;
+
+	// Stable id for multi-window diagnostics (WindowInfo::id). Empty if unknown.
+	virtual StringView getPresentationDebugId() const { return StringView(); }
 };
 
 using sprt::window::UpdateConstraintsFlags;

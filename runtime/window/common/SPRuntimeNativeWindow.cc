@@ -468,6 +468,12 @@ void NativeWindow::updateState(uint32_t id, WindowState state) {
 
 	_info->state = state;
 
+	// A menu must not outlive focus; the controller defers the decision because focus may simply
+	// be moving onto the popup itself.
+	if (hasFlag(changes, WindowState::Focused) && !hasFlag(state, WindowState::Focused)) {
+		_controller->notifyWindowFocusLost(this);
+	}
+
 	// try to rewrite state in already pending event
 	for (auto &it : _pendingEvents) {
 		if (it.event == InputEventName::WindowState) {

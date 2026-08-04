@@ -42,8 +42,14 @@ public:
 
 	// exclusive ownership
 	void lock() {
-		qrwlock_base::_wrlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one, nullptr>(
-				&__native, nullptr, 0);
+		// A blocking lock has exactly one correct outcome: hold the lock on return. The underlying
+		// wait can come back interrupted (EINTR on the futex), and there is no way to report that
+		// here — unique_lock marks itself owning unconditionally, so a silent failure becomes an
+		// unmatched unlock later, which drives the rwlock counters out of balance and wedges the
+		// lock for good. Retry instead of dropping the status.
+		while (qrwlock_base::_wrlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one,
+					   nullptr>(&__native, nullptr, 0)
+				== Status::ErrorInterrupted) { }
 	}
 	bool try_lock() {
 		auto st = qrwlock_base::_trywrlock_fair(&__native, 0);
@@ -53,8 +59,12 @@ public:
 
 	// shared ownership
 	void lock_shared() {
-		qrwlock_base::_rdlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one, nullptr>(
-				&__native, nullptr, 0);
+		// Same contract as lock(): shared_lock assumes ownership on return, so an interrupted
+		// wait must be retried rather than swallowed. Dropping it here is what let ~shared_lock
+		// decrement a reader count it never incremented, leaving ReadLock set forever.
+		while (qrwlock_base::_rdlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one,
+					   nullptr>(&__native, nullptr, 0)
+				== Status::ErrorInterrupted) { }
 	}
 	bool try_lock_shared() {
 		auto st = qrwlock_base::_tryrdlock_fair(&__native, 0);

@@ -744,6 +744,12 @@ __SPRT_WIN_IMPORT WINAPI BOOL IsWindowEnabled(HWND hWnd);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetWindowRect(HWND hWnd, LPRECT lpRect);
 
+__SPRT_WIN_IMPORT WINAPI BOOL GetClientRect(HWND hWnd, LPRECT lpRect);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ClientToScreen(HWND hWnd, LPPOINT lpPoint);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+
 __SPRT_WIN_IMPORT WINAPI LONG SetWindowLongW(HWND hWnd, int nIndex, LONG dwNewLong);
 
 __SPRT_WIN_IMPORT WINAPI BOOL AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);

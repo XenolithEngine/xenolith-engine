@@ -81,7 +81,12 @@ public:
 						if (__sprt_errno == ETIMEDOUT) {
 							return Status::Timeout;
 						}
-						if (__sprt_errno != EAGAIN) {
+						// EINTR (signal) and EAGAIN (spurious / value changed) are both "the wait
+						// came back without the lock being ours" — this function is wrapped in a
+						// do/while that re-reads the value and retries the CAS, so treat them the
+						// same way and let the loop run again instead of surfacing a status a
+						// blocking caller cannot unwind.
+						if (__sprt_errno != EINTR && __sprt_errno != EAGAIN) {
 							return status::errnoToStatus(__sprt_errno);
 						}
 					}
@@ -118,11 +123,22 @@ public:
 	static Status _unlock(value_type *__value, flags_type flags) {
 		// unset all, return true if WAIT was set
 		if ((_atomic::exchange(__value, uint32_t(0)) & WAIT_BIT) != 0) {
-			// WAIT was set, we need to signal
+			// WAIT was set, we need to signal. A wake with no actual waiter is not an error —
+			// WAIT_BIT is set optimistically (a waiter sets it before parking, and may have been
+			// released by an earlier wake or a spurious return before we got here), so the wake
+			// call comes back with ENOENT/ESRCH/EAGAIN. Treating that as a hard error here makes
+			// every fair lock on such a mutex (the rwlock gatekeeper, the counter mutex) fail its
+			// unlock and wedge: a blocking caller cannot retry an unlock, and the next acquirer
+			// sees the mutex already cleared anyway. EOWNERDEAD and friends are still propagated.
 			if (WakeFn(__value, flags) == 0) {
 				return Status::Ok;
 			}
-			return status::errnoToStatus(__sprt_errno);
+			auto canon = status::errnoToStatus(__sprt_errno);
+			if (canon == Status::ErrorNotFound || canon == Status::ErrorNoSuchProcess
+					|| canon == Status::ErrorAgain) {
+				return Status::Done;
+			}
+			return canon;
 		}
 		return Status::Done;
 	}

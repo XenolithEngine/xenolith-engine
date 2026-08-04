@@ -488,7 +488,8 @@ bool WaylandDisplay::isCursorSupported(WindowCursor cursor, bool serverSide) con
 
 WindowCapabilities WaylandDisplay::getCapabilities() const {
 	auto caps = WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenWithMode
-			| WindowCapabilities::UserSpaceDecorations | WindowCapabilities::CloseGuard;
+			| WindowCapabilities::UserSpaceDecorations | WindowCapabilities::CloseGuard
+			| WindowCapabilities::Subwindows;
 
 	if (decorationManager) {
 		caps |= WindowCapabilities::ServerSideDecorations;

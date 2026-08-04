@@ -54,7 +54,15 @@ public:
 	virtual void mapWindow() = 0;
 	virtual void unmapWindow() = 0;
 
-	// true if successfully closed
+	// Stop presenting / input monitors. Safe to call multiple times.
+	virtual void prepareClose() { }
+
+	virtual bool isMapped() const { return false; }
+
+	// Resize the native content area (points). Keeps the top-left corner fixed when possible.
+	virtual bool setContentExtent(Extent2) { return false; }
+
+	// true if successfully closed (destroyed)
 	virtual bool close() = 0;
 
 	virtual void handleFrameReady(const PresentationFrameInfo &) { }

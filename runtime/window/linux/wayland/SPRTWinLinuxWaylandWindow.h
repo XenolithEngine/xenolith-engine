@@ -111,6 +111,7 @@ public:
 
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
+	virtual bool isMapped() const override { return _mapped; }
 	virtual bool close() override;
 
 	virtual void handleFrameReady(const PresentationFrameInfo &) override;
@@ -144,6 +145,8 @@ public:
 	void handleToplevelClose(xdg_toplevel *xdg_toplevel);
 	void handleToplevelBounds(xdg_toplevel *xdg_toplevel, int32_t width, int32_t height);
 	void handleToplevelCapabilities(xdg_toplevel *xdg_toplevel, wl_array *capabilities);
+	void handlePopupConfigure(xdg_popup *, int32_t x, int32_t y, int32_t width, int32_t height);
+	void handlePopupDone(xdg_popup *);
 	void handleSurfaceFrameDone(wl_callback *wl_callback, uint32_t callback_data);
 
 	void handleDecorConfigure(zxdg_toplevel_decoration_v1 *decor, uint32_t mode);
@@ -199,6 +202,7 @@ protected:
 
 	bool initWithServerDecor();
 	bool initWithAppDecor();
+	bool initPopup();
 
 	// Forward the immutable min/max size constraints (WindowInfo::minExtent/maxExtent) to the
 	// xdg_toplevel, merged with the client-side decoration minimums.
@@ -215,6 +219,7 @@ protected:
 	wl_callback *_frameCallback = nullptr;
 	xdg_surface *_xdgSurface = nullptr;
 	xdg_toplevel *_toplevel = nullptr;
+	xdg_popup *_popup = nullptr;
 	Extent2 _currentExtent;
 	Extent2 _commitedExtent;
 	Extent2 _awaitingExtent;

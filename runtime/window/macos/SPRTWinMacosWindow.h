@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +48,9 @@ public:
 
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
+	virtual void prepareClose() override;
+	virtual bool isMapped() const override { return _mapped; }
+	virtual bool setContentExtent(Extent2) override;
 	virtual bool close() override;
 
 	virtual void handleFramePresented(const PresentationFrameInfo &) override;
@@ -76,6 +80,16 @@ public:
 
 	WindowLayerFlags getGripFlags() const { return _gripFlags; }
 
+	bool hasBeenKey() const { return _hasBeenKey; }
+	void setHasBeenKey(bool v) { _hasBeenKey = v; }
+
+	bool wasCreatedNotified() const { return _createdNotified; }
+
+	// Popup/Tooltip: borderless surfaces that must not take key/main status or activate the app.
+	bool isAuxiliary() const {
+		return _info && (_info->type == WindowType::Popup || _info->type == WindowType::Tooltip);
+	}
+
 	virtual bool enableState(WindowState) override;
 	virtual bool disableState(WindowState) override;
 
@@ -92,12 +106,28 @@ protected:
 
 	virtual void setCursor(WindowCursor) override;
 
+	void applyAuxiliaryPlacement();
+	void attachToParentWindow();
+	void detachFromParentWindow();
+	void installPopupDismissMonitor();
+	void removePopupDismissMonitor();
+
 	SPRTMacosViewController *_rootViewController = nullptr;
 	SPRTMacosWindow *_window = nullptr;
 	WindowCursor _currentCursor = WindowCursor::Undefined;
 
+	// Keeps the window alive until notifyWindowCreated puts it into _activeWindows: the view
+	// load can outrun loadWindow's temporary Rc.
+	Rc<MacosWindow> _startupHold;
+
+	id _popupDismissMonitor = nil;
+
 	bool _initialized = false;
 	bool _windowLoaded = false;
+	bool _createdNotified = false;
+	bool _hasBeenKey = false;
+	bool _mapped = false;
+	bool _dismissScheduled = false;
 
 	bool _hasOriginalFrame = false;
 	CGRect _originalFrame;

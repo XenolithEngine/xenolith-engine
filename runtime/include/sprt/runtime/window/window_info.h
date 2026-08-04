@@ -540,6 +540,12 @@ SPRT_API void getWindowStateDescription(const callback<void(StringView)> &, Wind
 // If a maxExtent dimension is non-zero and below the corresponding minExtent, minExtent wins.
 SPRT_API Extent2 clampWindowExtent(Extent2 e, Extent2 minExtent, Extent2 maxExtent);
 
+// Resolve WindowPlacement into a content rect, in the same Y-down space as `parentContentRect`
+// and `workArea` (the space WindowPlacement::anchorRect uses). Wayland hands the same inputs to
+// xdg_positioner instead; X11/Win32/macOS use the returned rect.
+SPRT_API IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSize,
+		IRect parentContentRect, IRect workArea);
+
 } // namespace sprt::window
 
 namespace sprt {

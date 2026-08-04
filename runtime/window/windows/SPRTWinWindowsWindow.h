@@ -46,6 +46,7 @@ public:
 
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
+	virtual bool isMapped() const override { return _mapped; }
 	virtual bool close() override;
 
 	virtual void handleFramePresented(const PresentationFrameInfo &) override;
@@ -170,6 +171,8 @@ protected:
 	InputModifier _enabledModifiers = InputModifier::None;
 	char32_t _highSurrogate = 0;
 	uint32_t _pointerButtonCapture = 0;
+	bool _popupCapture = false;
+	bool _mapped = false;
 	WindowCursor _currentCursor = WindowCursor::Default;
 
 	Vector<WPARAM> _activeCommands;

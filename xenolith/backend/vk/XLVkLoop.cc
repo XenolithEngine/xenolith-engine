@@ -214,27 +214,41 @@ struct Loop::Internal final : memory::AllocPool {
 
 	void signalDependencies(const Vector<Rc<DependencyEvent>> &events, Queue *queue, bool success) {
 		for (auto &it : events) {
-			if (it->signal(queue, success)) {
-				auto iit = dependencyRequests.find(it.get());
-				if (iit != dependencyRequests.end()) {
-					for (auto &v : iit->second) {
-						if (!success) {
-							v->success = false;
-						}
-						++v->signaled;
-						if (v->signaled == v->events.size()) {
-#if XL_VK_DEPS_DEBUG
-							StringStream str;
-							str << "signalDependencies:";
-							for (auto &it : v->events) { str << " " << it->getId(); }
-							str << "\n";
-							log::source().debug("vk::Loop", "Signal: ", str.str());
-#endif
-							v->callback(v->success);
-						}
-					}
+			if (!it->signal(queue, success)) {
+				continue;
+			}
+
+			auto iit = dependencyRequests.find(it.get());
+			if (iit == dependencyRequests.end()) {
+				// Nothing waits on this event. The erase below used to run unconditionally, on an
+				// end() iterator.
+				continue;
+			}
+
+			// Detach the waiter list and drop the map entry before running any callback: a
+			// callback starts the next frame, which re-enters waitForDependencies (and through it
+			// signalDependencies) and mutates this very map. Iterating it across a callback — and
+			// erasing with an iterator taken before one — walks freed nodes.
+			Vector<Rc<DependencyRequest>> waiters;
+			mem_pool::perform([&] {
+				waiters = sp::move(iit->second);
+				dependencyRequests.erase(iit);
+			}, pool);
+
+			for (auto &v : waiters) {
+				if (!success) {
+					v->success = false;
 				}
-				mem_pool::perform([&] { dependencyRequests.erase(iit); }, pool);
+				++v->signaled;
+				if (v->signaled == v->events.size()) {
+#if XL_VK_DEPS_DEBUG
+					StringStream str;
+					str << "signalDependencies:";
+					for (auto &e : v->events) { str << " " << e->getId(); }
+					log::source().debug("vk::Loop", "Signal: ", str.str());
+#endif
+					v->callback(v->success);
+				}
 			}
 		}
 	}

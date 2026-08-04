@@ -333,7 +333,6 @@ void setupIocpSocketStreamClass(QueueHandleClassInfo *info, HandleClass *cl) {
 	};
 	cl->notifyFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize],
 							const NotifyData &n) {
-		auto h = static_cast<SocketStreamIocpHandle *>(handle);
 		auto state = static_cast<StreamState *>(handle->getUserdata());
 		if (!state) {
 			return;

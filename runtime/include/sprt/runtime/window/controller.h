@@ -37,6 +37,7 @@
 #include <sprt/runtime/window/context.h>
 #include <sprt/runtime/window/gapi.h>
 #include <sprt/runtime/window/clipboard.h>
+#include <sprt/cxx/function>
 
 namespace sprt::window {
 
@@ -107,12 +108,38 @@ public:
 	// Find a live window by its WindowInfo::id
 	NativeWindow *findWindow(StringView id) const;
 
+	// Last pointer/button serial seen by the backend. xdg_popup.grab needs the serial of a fresh
+	// input event; other platforms ignore it.
+	void notePointerSerial(uint32_t serial) { _lastPointerSerial = serial; }
+	uint32_t getLastPointerSerial() const { return _lastPointerSerial; }
+
 	// Common entry point for window creation, safe to call at any point when context is active.
 	// Validates type/parent requirements and id uniqueness, then hands off to the backend
 	// implementation (`loadWindow`).
 	// Returns Status::ErrorNotSupported if the platform can not create this kind of window;
 	// caller may then fall back to an in-scene emulation.
 	virtual Status createWindow(Rc<WindowInfo> &&);
+
+	// Dismiss the whole menu chain `w` belongs to: walks up to the outermost Popup/Tooltip and
+	// closes it, which cascades back down through every nested level. This is the "clicked
+	// outside" / "Esc" / "lost focus" path — a single level must never be dismissed alone,
+	// or the parent menus stay on screen with no way to reach them.
+	void dismissPopupChain(NotNull<NativeWindow> w);
+
+	// Take down every Popup/Tooltip owned by `parent` (the cascade carries on to nested levels).
+	// Called when something happens to the owner that a menu must not survive: a press inside it,
+	// or the window system raising, moving or resizing it.
+	void dismissChildPopups(NotNull<NativeWindow> parent, StringView reason);
+
+	// A window lost WindowState::Focused. Menus must not outlive focus, but the check has to be
+	// deferred: on Wayland an xdg_popup grab moves keyboard focus off the toplevel and onto the
+	// popup itself, so "the parent lost focus" alone would dismiss the menu that just opened.
+	void notifyWindowFocusLost(NotNull<NativeWindow>);
+
+	// Optional sink so app-layer log capture (SceneInspector) sees window diagnostics.
+	void setWindowDiagSink(Function<void(StringView line)> &&sink) {
+		_windowDiagSink = sprt::move(sink);
+	}
 
 	// Native window was created on WM side and now operational
 	virtual void notifyWindowCreated(NotNull<NativeWindow>);
@@ -187,6 +214,18 @@ protected:
 	// (Android, iOS - windows come from the OS) keep the default.
 	virtual bool loadWindow(Rc<WindowInfo> &&) { return false; }
 
+	void emitWindowDiag(StringView line) const;
+
+	// Request a close on every live window matching `pred`, re-scanning after each step because a
+	// close cascades into children. Returns the number of windows asked to close; the teardown
+	// itself may be deferred to the end of the poll iteration.
+	uint32_t closeWindows(StringView reason, const callback<bool(const WindowInfo &)> &pred);
+
+	// Actually retire a window: unmap it, tell the Context (which winds down its AppWindow and
+	// presentation engine) and drop the controller's reference. Idempotent — a window that is no
+	// longer active is silently skipped, which is what makes the cascade safe to re-enter.
+	void performWindowTeardown(NotNull<NativeWindow>);
+
 	int _resultCode = 0;
 	ContextState _state = ContextState::Created;
 	Context *_context = nullptr;
@@ -205,10 +244,14 @@ protected:
 	Set<Rc<NativeWindow>> _activeWindows;
 	Set<NativeWindow *> _allWindows;
 
+	uint32_t _lastPointerSerial = 0;
 	uint32_t _pollDepth = 0;
+	bool _focusDismissScheduled = false;
 
 	Vector<pair<NativeWindow *, UpdateConstraintsFlags>> _resizedWindows;
-	Vector<pair<NativeWindow *, WindowCloseOptions>> _closedWindows;
+	Vector<pair<Rc<NativeWindow>, WindowCloseOptions>> _closedWindows;
+
+	Function<void(StringView)> _windowDiagSink;
 };
 
 } // namespace sprt::window

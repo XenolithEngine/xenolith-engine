@@ -1075,4 +1075,128 @@ Extent2 clampWindowExtent(Extent2 e, Extent2 minExtent, Extent2 maxExtent) {
 	return e;
 }
 
+static IVec2 pointOnRect(IRect rect, WindowAnchor a) {
+	const int32_t midX = rect.x + rect.width / 2;
+	const int32_t midY = rect.y + rect.height / 2;
+	const int32_t right = rect.x + rect.width;
+	const int32_t bottom = rect.y + rect.height;
+	switch (a) {
+	case WindowAnchor::None: return IVec2{midX, midY};
+	case WindowAnchor::Top: return IVec2{midX, rect.y};
+	case WindowAnchor::Bottom: return IVec2{midX, bottom};
+	case WindowAnchor::Left: return IVec2{rect.x, midY};
+	case WindowAnchor::Right: return IVec2{right, midY};
+	case WindowAnchor::TopLeft: return IVec2{rect.x, rect.y};
+	case WindowAnchor::TopRight: return IVec2{right, rect.y};
+	case WindowAnchor::BottomLeft: return IVec2{rect.x, bottom};
+	case WindowAnchor::BottomRight: return IVec2{right, bottom};
+	}
+	return IVec2{midX, midY};
+}
+
+static IVec2 originForGravity(IVec2 gravityPoint, WindowAnchor gravity, Extent2 size) {
+	const int32_t w = int32_t(size.width);
+	const int32_t h = int32_t(size.height);
+	switch (gravity) {
+	case WindowAnchor::None: return IVec2{gravityPoint.x - w / 2, gravityPoint.y - h / 2};
+	case WindowAnchor::Top: return IVec2{gravityPoint.x - w / 2, gravityPoint.y};
+	case WindowAnchor::Bottom: return IVec2{gravityPoint.x - w / 2, gravityPoint.y - h};
+	case WindowAnchor::Left: return IVec2{gravityPoint.x, gravityPoint.y - h / 2};
+	case WindowAnchor::Right: return IVec2{gravityPoint.x - w, gravityPoint.y - h / 2};
+	case WindowAnchor::TopLeft: return gravityPoint;
+	case WindowAnchor::TopRight: return IVec2{gravityPoint.x - w, gravityPoint.y};
+	case WindowAnchor::BottomLeft: return IVec2{gravityPoint.x, gravityPoint.y - h};
+	case WindowAnchor::BottomRight: return IVec2{gravityPoint.x - w, gravityPoint.y - h};
+	}
+	return gravityPoint;
+}
+
+IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSize,
+		IRect parentContentRect, IRect workArea) {
+	// Anchor rect is specified in parent content coordinates; shift into the same space as
+	// parentContentRect so callers can pass either a local (0,0-based) or absolute rect.
+	IRect anchor = placement.anchorRect;
+	anchor.x += parentContentRect.x;
+	anchor.y += parentContentRect.y;
+
+	IVec2 anchorPt = pointOnRect(anchor, placement.anchor);
+	anchorPt.x += placement.offset.x;
+	anchorPt.y += placement.offset.y;
+
+	IVec2 origin = originForGravity(anchorPt, placement.gravity, windowSize);
+	IRect result(origin.x, origin.y, int32_t(windowSize.width), int32_t(windowSize.height));
+
+	const auto adj = placement.adjustment;
+	if (adj == WindowPlacementAdjustment::None || workArea.width <= 0 || workArea.height <= 0) {
+		return result;
+	}
+
+	const int32_t workRight = workArea.x + workArea.width;
+	const int32_t workBottom = workArea.y + workArea.height;
+
+	auto overflowsX = [&](const IRect &r) {
+		return r.x < workArea.x || r.x + r.width > workRight;
+	};
+	auto overflowsY = [&](const IRect &r) {
+		return r.y < workArea.y || r.y + r.height > workBottom;
+	};
+
+	if (hasFlag(adj, WindowPlacementAdjustment::FlipX) && overflowsX(result)) {
+		// Mirror horizontally around the anchor point.
+		const int32_t mirroredX = 2 * anchorPt.x - (result.x + result.width);
+		IRect flipped(mirroredX, result.y, result.width, result.height);
+		if (!overflowsX(flipped) || hasFlag(adj, WindowPlacementAdjustment::SlideX)) {
+			result.x = flipped.x;
+		}
+	}
+	if (hasFlag(adj, WindowPlacementAdjustment::FlipY) && overflowsY(result)) {
+		const int32_t mirroredY = 2 * anchorPt.y - (result.y + result.height);
+		IRect flipped(result.x, mirroredY, result.width, result.height);
+		if (!overflowsY(flipped) || hasFlag(adj, WindowPlacementAdjustment::SlideY)) {
+			result.y = flipped.y;
+		}
+	}
+	if (hasFlag(adj, WindowPlacementAdjustment::SlideX)) {
+		if (result.x < workArea.x) {
+			result.x = workArea.x;
+		}
+		if (result.x + result.width > workRight) {
+			result.x = workRight - result.width;
+		}
+	}
+	if (hasFlag(adj, WindowPlacementAdjustment::SlideY)) {
+		if (result.y < workArea.y) {
+			result.y = workArea.y;
+		}
+		if (result.y + result.height > workBottom) {
+			result.y = workBottom - result.height;
+		}
+	}
+	if (hasFlag(adj, WindowPlacementAdjustment::ResizeX)) {
+		if (result.x < workArea.x) {
+			result.width -= (workArea.x - result.x);
+			result.x = workArea.x;
+		}
+		if (result.x + result.width > workRight) {
+			result.width = workRight - result.x;
+		}
+		if (result.width < 1) {
+			result.width = 1;
+		}
+	}
+	if (hasFlag(adj, WindowPlacementAdjustment::ResizeY)) {
+		if (result.y < workArea.y) {
+			result.height -= (workArea.y - result.y);
+			result.y = workArea.y;
+		}
+		if (result.y + result.height > workBottom) {
+			result.height = workBottom - result.y;
+		}
+		if (result.height < 1) {
+			result.height = 1;
+		}
+	}
+	return result;
+}
+
 } // namespace sprt::window
