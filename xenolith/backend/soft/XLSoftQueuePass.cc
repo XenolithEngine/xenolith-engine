@@ -26,6 +26,8 @@
 
 #include "XLCoreFrameQueue.h"
 #include "XLCoreFrameHandle.h"
+#include "XLCoreFrameRequest.h"
+#include "XLCoreSwapchain.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
@@ -98,6 +100,243 @@ URect QueuePassHandle::rotateScissor(const core::FrameConstraints &constraints,
 	return URect{uint32_t(x), uint32_t(y), width, height};
 }
 
+// How much of the presented image this frame actually has to repaint.
+//
+// The machinery is the swapchain's and is shared with every backend: it diffs this frame's damage
+// snapshot against what the target image already holds. What differs here is the payoff. A GPU
+// backend saves the load/store of a render pass; a software rasterizer saves the rasterization
+// itself, which is the whole cost of the frame - so a blinking cursor stops costing a full screen.
+//
+// Returns false when the frame can be skipped entirely; `area` is the region to repaint.
+// The single rectangle the regions would collapse into. Used as the recording scissor, and as the
+// number the damage log compares against so it is visible when keeping them apart bought anything.
+static URect QueuePassHandle_boundingRect(SpanView<URect> areas) {
+	if (areas.empty()) {
+		return URect{0, 0, 0, 0};
+	}
+	auto x0 = areas.front().x, y0 = areas.front().y;
+	auto x1 = x0 + areas.front().width, y1 = y0 + areas.front().height;
+	for (auto &it : areas) {
+		x0 = sprt::min(x0, it.x);
+		y0 = sprt::min(y0, it.y);
+		x1 = sprt::max(x1, it.x + it.width);
+		y1 = sprt::max(y1, it.y + it.height);
+	}
+	return URect{x0, y0, x1 - x0, y1 - y0};
+}
+
+bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Target &target,
+		Vector<URect> &areas) {
+	areas.clear();
+	areas.emplace_back(URect{0, 0, target.width, target.height});
+
+	// XL_SOFT_DAMAGE_LOG=1 reports what each frame decided. Without it there is no way to tell a
+	// working partial redraw from a silently disabled one - the picture is identical either way.
+	static const bool damageLog = [] {
+		auto value = ::getenv("XL_SOFT_DAMAGE_LOG");
+		return value && StringView(value) != "0";
+	}();
+
+	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame. It exists for the
+	// benchmark: with damage tracking on, a static scene skips its frames entirely and every kernel
+	// set measures the same zero. Never for production - it throws away the biggest win M2 bought.
+	static const bool forceFull = [] {
+		auto value = ::getenv("XL_SOFT_FORCE_FULL_REDRAW");
+		return value && StringView(value) != "0";
+	}();
+
+	if (forceFull) {
+		return true;
+	}
+
+	if (!hasFlag(_data->queue->damage, core::QueueDamageFlags::PartialRedraw)) {
+		if (damageLog) {
+			log::source().debug("soft::QueuePassHandle",
+					"damage: full repaint, the queue did not ask for partial redraw");
+		}
+		return true;
+	}
+
+	// Only the presented image carries a per-index snapshot of what it holds.
+	core::ImageStorage *image = nullptr;
+	for (auto &it : _data->attachments) {
+		if (it->finalLayout != core::AttachmentLayout::PresentSrc) {
+			continue;
+		}
+		if (auto aData = q.getAttachment(it->attachment)) {
+			if (auto img = aData->image.get()) {
+				if (img->isSwapchainImage()) {
+					image = img;
+				}
+			}
+		}
+		break;
+	}
+
+	if (!image) {
+		if (damageLog) {
+			log::source().debug("soft::QueuePassHandle",
+					"damage: full repaint, no presented swapchain attachment");
+		}
+		return true;
+	}
+
+	auto swapchainImage = static_cast<core::SwapchainImage *>(image);
+	auto swapchain = swapchainImage->getSwapchain();
+	if (!swapchain) {
+		if (damageLog) {
+			log::source().debug("soft::QueuePassHandle",
+					"damage: full repaint, the image has no swapchain");
+		}
+		return true;
+	}
+
+	auto request = q.getFrame()->getRequest();
+
+	Vector<URect> damage;
+	const auto extent = Extent2(target.width, target.height);
+	if (!swapchain->getDamage().computeRedrawArea(uint32_t(image->getImageIndex()),
+				request->getDamageState().get(), extent, damage)) {
+		if (damageLog) {
+			auto state = request->getDamageState().get();
+			log::source().debug("soft::QueuePassHandle", "damage: full repaint (state=",
+					state ? "present" : "absent", ", full=", state ? state->full : false,
+					", entries=", state ? state->entries.size() : 0, ", image=",
+					image->getImageIndex(), ")");
+		}
+		return true; // the whole surface
+	}
+
+	if (damage.empty()) {
+		// This image already holds exactly what the frame wants to draw. With the queue opted into
+		// frame skipping there is nothing to do at all - not a cheaper frame, no frame.
+		if (hasFlag(_data->queue->damage, core::QueueDamageFlags::SkipEmptyFrames)) {
+			request->setRedrawSkipped(true);
+			if (damageLog) {
+				log::source().debug("soft::QueuePassHandle", "damage: frame skipped, nothing "
+															"changed");
+			}
+			return false;
+		}
+		return true;
+	}
+
+	// Keep the regions apart rather than collapsing them into their bounding box. The damage
+	// tracker already merged the list down to at most SwapchainDamage::MaxRects, and it merged the
+	// pairs that wasted the least area doing so - taking the union here would throw that away, and
+	// two small changes in opposite corners would cost a full-screen repaint.
+	//
+	// They do have to be pairwise disjoint, though: each region is a separate rasterization pass,
+	// so a pixel covered twice would have every transparent command blended into it twice. The
+	// outward one-pixel padding the tracker applies is enough to make neighbours touch, so this is
+	// not a theoretical case.
+	areas.clear();
+	for (auto &it : damage) {
+		auto rect = it;
+		bool merged = true;
+		while (merged) {
+			merged = false;
+			for (size_t i = 0; i < areas.size(); ++i) {
+				auto &existing = areas[i];
+				if (raster::intersectRects(existing, rect).width == 0) {
+					continue;
+				}
+				auto x0 = sprt::min(existing.x, rect.x);
+				auto y0 = sprt::min(existing.y, rect.y);
+				auto x1 = sprt::max(existing.x + existing.width, rect.x + rect.width);
+				auto y1 = sprt::max(existing.y + existing.height, rect.y + rect.height);
+				rect = URect{x0, y0, x1 - x0, y1 - y0};
+				areas.erase(areas.begin() + i);
+				merged = true;
+				break;
+			}
+		}
+		areas.emplace_back(rect);
+	}
+
+	if (damageLog) {
+		uint64_t full = sprt::max(uint64_t(target.width) * uint64_t(target.height), uint64_t(1));
+		uint64_t part = 0;
+		for (auto &it : areas) { part += uint64_t(it.width) * uint64_t(it.height); }
+
+		auto box = QueuePassHandle_boundingRect(areas);
+		uint64_t boxArea = uint64_t(box.width) * uint64_t(box.height);
+
+		log::source().debug("soft::QueuePassHandle", "damage: repainting ", areas.size(),
+				" region(s), ", (part * 100) / full, "% of the surface (their bounding box would "
+												  "have been ",
+				(boxArea * 100) / full, "%)");
+	}
+
+	return true;
+}
+
+// XL_SOFT_PROFILE=1 reports what the rasterizer actually costs.
+//
+// It times raster::draw and nothing else, deliberately. A frame-level number would be useless
+// here: in a debug build everything except this module is unoptimized, so the scene graph and the
+// renderer would swamp the pixel loops - which are the only thing an ISA kernel can change.
+//
+// Runs on the loop thread only, so the counters need no synchronization. Tiles are fanned out to a
+// pool now, but the timing is still taken here - around the whole fork and join - so the counters
+// are still touched by one thread and the number still covers all the work, not one worker's share
+// of it.
+static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> areas,
+		const raster::TilingStats &tiling) {
+	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. The
+	// interval is settable because the counters are cumulative - every line is the running
+	// average over the whole run, so a short run just needs a short interval to say anything.
+	static const uint64_t reportEvery = [] () -> uint64_t {
+		auto value = ::getenv("XL_SOFT_PROFILE");
+		if (!value) {
+			return 0;
+		}
+		auto str = StringView(value);
+		if (str == "0") {
+			return 0;
+		}
+		auto n = str.readInteger(10).get(0);
+		return n > 0 ? uint64_t(n) : 60;
+	}();
+
+	if (reportEvery == 0) {
+		return;
+	}
+
+	static uint64_t frames = 0;
+	static uint64_t micros = 0;
+	static uint64_t pixels = 0;
+	static uint64_t regions = 0;
+	static uint64_t tileCount = 0;
+	static uint64_t workerCount = 0;
+
+	++frames;
+	micros += elapsed.toMicros();
+	regions += areas.size();
+	tileCount += tiling.tiles;
+	workerCount += tiling.workers;
+	for (auto &it : areas) { pixels += uint64_t(it.width) * uint64_t(it.height); }
+
+	if (frames % reportEvery != 0) {
+		return;
+	}
+
+	// Mpx/s is the number to compare between kernel sets: it is independent of how much of the
+	// surface the damage tracker happened to hand over on these particular frames.
+	// kernels=, threads= and tiles/frame= are reported for the same reason: a benchmark must never
+	// print a number under a label it did not actually run. A fallback that went unnoticed produces
+	// a real measurement of the wrong thing, and nothing in the picture gives it away.
+	// threads= and tiles/frame= are what the rasterizer *did*, not what it was asked for: a pool
+	// that could not supply the workers, or a region too small to cut, turns a measurement of the
+	// parallel path into one of the serial path and looks exactly the same from here.
+	auto usec = sprt::max(micros, uint64_t(1));
+	log::source().debug("soft::profile", "kernels=", raster::getActiveKernelSetName(),
+			" threads=", double(workerCount) / double(frames), " frames=", frames,
+			" regions/frame=", double(regions) / double(frames),
+			" tiles/frame=", double(tileCount) / double(frames), " px/frame=", pixels / frames,
+			" us/frame=", double(micros) / double(frames), " Mpx/s=", double(pixels) / double(usec));
+}
+
 bool QueuePassHandle::runPass(core::FrameQueue &q) {
 	auto getViewForAttachment =
 			[&](const core::AttachmentSubpassData *desc) -> Rc<core::ImageView> {
@@ -149,12 +388,22 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		target.width = info.extent.width;
 		target.height = info.extent.height;
 		target.stride = image->getStride();
-		target.format = info.format;
+		target.format = getRasterFormat(info.format);
 
-		if (target.empty() || getPixelSize(target.format) == 0) {
+		if (target.empty() || raster::getPixelSize(target.format) == 0) {
 			log::source().error("soft::QueuePassHandle", "Attachment is not rasterizable: ",
-					out->key, " (format ", core::getImageFormatName(target.format), ")");
+					out->key, " (format ", core::getImageFormatName(info.format), ")");
 			return false;
+		}
+
+		Vector<URect> redrawAreas;
+		if (!computeRedrawArea(q, target, redrawAreas)) {
+			// the image already holds this frame; leave every pixel untouched
+			return true;
+		}
+
+		if (redrawAreas.empty()) {
+			return true;
 		}
 
 		auto buf = Rc<CommandBuffer>::create(*_device);
@@ -163,20 +412,35 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		}
 
 		buf->setTarget(target);
-		buf->setScissor(URect{0, 0, target.width, target.height});
 
-		// Load op. Clear is the only one that touches memory: Load keeps what is already there,
-		// which is what makes partial redraw free for this backend later on.
+		// The base scissor is the bounding box of the damage: it bounds the work done while
+		// *recording* (clipping, span setup), which is per command and not per region. Each region
+		// then narrows it further at draw time.
+		buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
+
+		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
+		// outside them the image keeps the previous frame, which is exactly what makes the partial
+		// redraw correct rather than merely cheaper.
 		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
 			auto imgAttachment =
 					static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
-			raster::fillRect(target, URect{0, 0, target.width, target.height},
-					imgAttachment->getClearColor());
+			for (auto &it : redrawAreas) {
+				raster::fillRect(target, it, imgAttachment->getClearColor());
+			}
 		}
 
 		recordSubpass(q, *subpass, *buf);
 
-		raster::draw(target, buf->getDrawList());
+		// The command list is built once; only the rasterization repeats, per tile of per region,
+		// and a command outside a tile is rejected before any pixel work. The tiling and the
+		// thread count come from the process settings - untiled and single-threaded unless
+		// SP_RASTER_TILE / SP_RASTER_THREADS say otherwise - so this is the same one call per
+		// region it always was until something asks for more.
+		raster::TilingStats tiling;
+		auto started = Time::now();
+		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
+				&tiling);
+		QueuePassHandle_profileFrame(Time::now() - started, redrawAreas, tiling);
 	}
 
 	return true;

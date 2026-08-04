@@ -39,6 +39,7 @@
 #include <xcb/xcb_cursor.h>
 #include <xcb/xfixes.h>
 #include <xcb/shape.h>
+#include <xcb/shm.h>
 #include <xcb/xcb_errors.h>
 #include <xcb/xcb_icccm.h>
 
@@ -94,6 +95,7 @@ public:
 	bool hasSync() const;
 	bool hasXfixes() const;
 	bool hasShape() const;
+	bool hasShm() const;
 	bool hasErrors() const;
 
 	decltype(&_null_fn) _xcb_first_fn = &_null_fn;
@@ -373,6 +375,24 @@ public:
 	SPRT_DEFINE_PROTO(xcb_shape_get_rectangles_reply)
 	decltype(&_null_fn) _xcb_shape_last_fn = &_null_fn;
 
+	// MIT-SHM. The only way an X client can present without copying its frame through the
+	// protocol socket: the segment is shared with the server, so a host rasterizer writes
+	// straight into what gets blitted.
+	decltype(&_null_fn) _xcb_shm_first_fn = &_null_fn;
+	SPRT_DEFINE_PROTO(xcb_shm_id)
+	SPRT_DEFINE_PROTO(xcb_shm_query_version)
+	SPRT_DEFINE_PROTO(xcb_shm_query_version_unchecked)
+	SPRT_DEFINE_PROTO(xcb_shm_query_version_reply)
+	SPRT_DEFINE_PROTO(xcb_shm_attach)
+	SPRT_DEFINE_PROTO(xcb_shm_attach_checked)
+	SPRT_DEFINE_PROTO(xcb_shm_attach_fd)
+	SPRT_DEFINE_PROTO(xcb_shm_attach_fd_checked)
+	SPRT_DEFINE_PROTO(xcb_shm_detach)
+	SPRT_DEFINE_PROTO(xcb_shm_detach_checked)
+	SPRT_DEFINE_PROTO(xcb_shm_put_image)
+	SPRT_DEFINE_PROTO(xcb_shm_put_image_checked)
+	decltype(&_null_fn) _xcb_shm_last_fn = &_null_fn;
+
 	decltype(&_null_fn) _xcb_errors_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_errors_context_new)
 	SPRT_DEFINE_PROTO(xcb_errors_context_free)
@@ -395,6 +415,7 @@ protected:
 	Dso _cursor;
 	Dso _xfixes;
 	Dso _shape;
+	Dso _shm;
 	Dso _errors;
 };
 

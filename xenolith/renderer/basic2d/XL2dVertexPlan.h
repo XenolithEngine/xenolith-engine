@@ -150,6 +150,11 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	// vertex shader; a backend without buffer device addresses (or without shaders at all) sets it.
 	bool hasGpuSideAtlases = false;
 
+	// The CPU atlas resolution normally consumes the object id: it becomes texture coordinates and
+	// the field is cleared. A backend that draws each glyph from its own storage rather than from a
+	// packed atlas image needs the id to survive into the vertex, and sets this.
+	bool keepAtlasObjects = false;
+
 	// FlatPass has no depth buffer: draws are emitted in painter's order and particles are dropped
 	bool flatOrder = false;
 	uint32_t orderCounter = 0;

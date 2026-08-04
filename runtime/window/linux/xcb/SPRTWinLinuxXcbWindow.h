@@ -100,6 +100,16 @@ public:
 	xcb_window_t getWindow() const { return _xinfo.window; }
 	xcb_connection_t *getConnection() const;
 
+	XcbConnection *getXcbConnection() const { return _connection; }
+
+	// The window a gAPI draws into, which is not the frame that carries the decoration shadows.
+	xcb_window_t getOutputWindow() const { return _xinfo.outputWindow; }
+
+	// May still be the XCB_COPY_FROM_PARENT sentinel; resolve against the screen before use.
+	uint8_t getDepth() const { return _xinfo.depth; }
+
+	virtual Rc<SoftwareSurface> makeSoftwareSurface() override;
+
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
 	virtual bool close() override;

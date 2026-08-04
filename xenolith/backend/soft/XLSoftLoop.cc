@@ -26,6 +26,7 @@
 #include "XLSoftTextureSet.h"
 #include "XLSoftQueuePass.h"
 #include "XLSoftPresentation.h"
+#include "XLSoftHeadlessPresentation.h"
 
 #include "XLCoreFrameHandle.h"
 #include "XLCoreFrameRequest.h"
@@ -39,6 +40,11 @@ bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<core::Instance> 
 	if (!core::Loop::init(looper, instance, move(info))) {
 		return false;
 	}
+
+	// The rasterizer fans tiles out to this looper's pool and takes part in the work itself, so
+	// what it can use is the pool plus the thread that submits. Filled in here because it has been
+	// a stub since M0 and a stub that reports 1 reads as "this build has no tiling".
+	_backendFeatures.threadCount = uint32_t(looper->getWorkersCount()) + 1;
 
 	looper->performOnThread([&] {
 		if (auto dev = _instance.get_cast<Instance>()->makeDevice(*_info)) {
@@ -635,6 +641,9 @@ void Loop::captureBuffer(Function<void(const core::BufferInfo &info, BytesView v
 
 Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::PresentationWindow> w,
 		core::PresentationOptions opts) {
+	if (opts.headless) {
+		return Rc<HeadlessPresentationEngine>::create(this, _device.get(), w, opts);
+	}
 	return Rc<PresentationEngine>::create(this, _device.get(), w, opts);
 }
 

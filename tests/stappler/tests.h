@@ -64,10 +64,12 @@ void performMakefileTests();
 void performFilesystemTests();
 void performBidiTests();
 void performShapeTests();
+void performGlyphTests();
 void performPugTests();
 void performCssTests();
 void performFlexboxGridCssTests();
 void performCommandLineTests();
+void performRasterTests();
 
 } // namespace stappler
 

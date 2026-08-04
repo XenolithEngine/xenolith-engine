@@ -739,6 +739,23 @@ void XcbConnection::attachWindow(xcb_window_t window, XcbWindow *iface) {
 
 void XcbConnection::detachWindow(xcb_window_t window) { _windows.erase(window); }
 
+void XcbConnection::attachShmSwapchain(xcb_shm_seg_t seg, XcbSoftwareSwapchain *swapchain) {
+	_shmSwapchains.emplace(seg, swapchain);
+}
+
+void XcbConnection::detachShmSwapchain(xcb_shm_seg_t seg) { _shmSwapchains.erase(seg); }
+
+void XcbConnection::handleShmCompletion(xcb_shm_seg_t seg, uint32_t offset) {
+	auto it = _shmSwapchains.find(seg);
+	if (it != _shmSwapchains.end()) {
+		it->second->handleCompletion(offset);
+	}
+}
+
+void XcbConnection::getShmVersion(uint32_t &major, uint32_t &minor) const {
+	_support->getShmVersion(major, minor);
+}
+
 void XcbConnection::notifyScreenChange() {
 	for (auto &it : _windows) { it.second->notifyScreenChange(); }
 }

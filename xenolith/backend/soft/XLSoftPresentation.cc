@@ -27,56 +27,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-bool Surface::init(Instance *instance, Extent2 extent, Ref *win) {
-	if (!core::Surface::init(instance, win)) {
-		return false;
-	}
+SwapchainBase::~SwapchainBase() { }
 
-	_extent = extent;
-	return true;
-}
-
-void Surface::invalidate() { _window = nullptr; }
-
-core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &, core::FullScreenExclusiveMode,
-		void *) const {
-	core::SurfaceInfo info;
-
-	// Nothing is compositing this: one image is enough to render into, and the engine's default
-	// of three costs only host memory.
-	info.minImageCount = 1;
-	info.maxImageCount = 8;
-
-	info.currentExtent = _extent;
-	info.minImageExtent = Extent2(1, 1);
-	info.maxImageExtent = _extent;
-	info.maxImageArrayLayers = 1;
-
-	info.supportedCompositeAlpha = core::CompositeAlphaFlags::Opaque;
-	info.supportedTransforms = core::SurfaceTransformFlags::Identity;
-	info.currentTransform = core::SurfaceTransformFlags::Identity;
-
-	info.supportedUsageFlags = core::ImageUsage::ColorAttachment | core::ImageUsage::TransferSrc
-			| core::ImageUsage::TransferDst | core::ImageUsage::Sampled;
-
-	// B8G8R8A8 first, so a capture is byte-comparable with what the Vulkan backend produces on
-	// the same machine (core::getBitmap un-swizzles it on save).
-	info.formats.emplace_back(core::ImageFormat::B8G8R8A8_UNORM,
-			core::ColorSpace::SRGB_NONLINEAR_KHR);
-	info.formats.emplace_back(core::ImageFormat::R8G8B8A8_UNORM,
-			core::ColorSpace::SRGB_NONLINEAR_KHR);
-
-	// Nothing paces us, so every mode is "present immediately".
-	info.presentModes.emplace_back(core::PresentMode::Immediate);
-	info.presentModes.emplace_back(core::PresentMode::Fifo);
-	info.presentModes.emplace_back(core::PresentMode::Mailbox);
-
-	return info;
-}
-
-Swapchain::~Swapchain() { invalidateViews(); }
-
-void Swapchain::invalidateViews() {
+void SwapchainBase::invalidateViews() {
 	for (auto &it : _images) {
 		for (auto &v : it.views) {
 			if (v.second) {
@@ -89,44 +42,18 @@ void Swapchain::invalidateViews() {
 	}
 }
 
-bool Swapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceInfo &info,
+bool SwapchainBase::finalize(Device &dev, const core::SurfaceInfo &info,
 		const core::SwapchainConfig &cfg, core::ImageInfo &&swapchainImageInfo,
-		core::PresentMode presentMode, Surface *surface) {
-	swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
-
-	auto imageCount = sprt::max(cfg.imageCount, uint32_t(1));
-	auto viewInfo = getSwapchainImageViewInfo(swapchainImageInfo);
-
-	_images.reserve(imageCount);
-	for (uint32_t i = 0; i < imageCount; ++i) {
-		auto image = Rc<Image>::create(dev, toString("SoftSwapchainImage[", i, "]"),
-				core::ImageInfoData(swapchainImageInfo));
-		if (!image) {
-			log::source().error("soft::Swapchain", "Fail to allocate image ", i);
-			return false;
-		}
-
-		auto view = Rc<ImageView>::create(dev, Rc<core::ImageObject>(image.get()), viewInfo);
-		if (!view) {
-			log::source().error("soft::Swapchain", "Fail to create view for image ", i);
-			return false;
-		}
-
-		Map<core::ImageViewInfo, Rc<core::ImageView>> views;
-		views.emplace(viewInfo, sp::move(view));
-
-		_images.emplace_back(SwapchainImageData{sp::move(image), sp::move(views)});
-	}
-
-	_acquired.resize(imageCount, false);
+		core::PresentMode presentMode, core::Surface *surface) {
+	_acquired.resize(_images.size(), false);
 
 	// Freshly allocated images hold nothing, so the first frame into each must repaint everything.
-	_damage.resize(imageCount);
+	_damage.resize(uint32_t(_images.size()));
 
 	_presentMode = presentMode;
 	_imageInfo = move(swapchainImageInfo);
 	_config = cfg;
-	_config.imageCount = imageCount;
+	_config.imageCount = uint32_t(_images.size());
 	_surface = surface;
 	_surfaceInfo = info;
 
@@ -135,94 +62,45 @@ bool Swapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceI
 			core::ObjectType::Swapchain, core::ObjectHandle::zero());
 }
 
-auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
-		-> Rc<SwapchainAcquiredImage> {
-	if (_deprecated || _invalid) {
-		status = Status::ErrorCancelled;
-		return nullptr;
-	}
-
-	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
-
-	auto count = uint32_t(_images.size());
-	for (uint32_t i = 0; i < count; ++i) {
-		auto index = (_nextIndex + i) % count;
-		if (_acquired[index]) {
-			continue;
-		}
-
-		_acquired[index] = true;
-		_nextIndex = (index + 1) % count;
-		++_acquiredImages;
-
-		// Acquisition is instantaneous, so a fence handed in here is already satisfied. Unlike
-		// vk::Fence, ours can say so.
-		if (fence) {
-			fence->setTag("soft::Swapchain::acquire");
-			static_cast<Fence *>(fence.get())->signal();
-		}
-
-		status = Status::Ok;
-
-		return Rc<SwapchainAcquiredImage>::alloc(index, &_images[index], nullptr, this);
-	}
-
-	// Every image is in flight - the engine retries through its acquisition timer.
-	status = Status::Timeout;
-	return nullptr;
+void SwapchainBase::markAcquired(uint32_t index) {
+	_acquired[index] = true;
+	++_acquiredImages;
 }
 
-Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
-		const core::PresentInfo &) {
-	if (_invalid) {
-		return Status::ErrorCancelled;
-	}
-
-	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
-
-	if (image) {
-		// getImageIndex is the underlying object's global id, not a slot number.
-		auto id = image->getImageIndex();
-		for (uint32_t i = 0; i < uint32_t(_images.size()); ++i) {
-			if (_images[i].image && _images[i].image->getIndex() == id) {
-				_acquired[i] = false;
-				_lastPresentedIndex = i;
-				break;
-			}
-		}
-	}
-
-	if (_acquiredImages > 0) {
-		--_acquiredImages;
-	}
-	++_presentedFrames;
-	_presentTime = sp::platform::clock(ClockType::Monotonic);
-
-	return Status::Ok;
+void SwapchainBase::markPresented(uint32_t index) {
+	_acquired[index] = false;
+	_lastPresentedIndex = index;
 }
 
-void Swapchain::invalidateImage(const core::ImageStorage *image, bool) {
+uint32_t SwapchainBase::findSlot(const core::ImageStorage *image) const {
+	// getImageIndex is the slot the image was created with, which is also what the damage tracker
+	// keys its per-slot snapshots on.
+	auto id = image->getImageIndex();
+	for (uint32_t i = 0; i < uint32_t(_images.size()); ++i) {
+		if (_images[i].image && _images[i].image->getIndex() == id) {
+			return i;
+		}
+	}
+	return maxOf<uint32_t>();
+}
+
+void SwapchainBase::invalidateImage(const core::ImageStorage *image, bool) {
 	if (!image) {
 		return;
 	}
 
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
-	auto id = image->getImageIndex();
-	for (uint32_t i = 0; i < uint32_t(_images.size()); ++i) {
-		if (_images[i].image && _images[i].image->getIndex() == id) {
-			if (_acquired[i]) {
-				_acquired[i] = false;
-				if (_acquiredImages > 0) {
-					--_acquiredImages;
-				}
-			}
-			break;
+	auto index = findSlot(image);
+	if (index != maxOf<uint32_t>() && _acquired[index]) {
+		_acquired[index] = false;
+		if (_acquiredImages > 0) {
+			--_acquiredImages;
 		}
 	}
 }
 
-void Swapchain::invalidateImage(uint32_t index, bool) {
+void SwapchainBase::invalidateImage(uint32_t index, bool) {
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
 	if (index < _acquired.size() && _acquired[index]) {
@@ -233,7 +111,7 @@ void Swapchain::invalidateImage(uint32_t index, bool) {
 	}
 }
 
-Rc<core::ImageView> Swapchain::makeView(const Rc<core::ImageObject> &image,
+Rc<core::ImageView> SwapchainBase::makeView(const Rc<core::ImageObject> &image,
 		const core::ImageViewInfo &info) {
 	auto dev = static_cast<Device *>(_object.device);
 	auto view = Rc<ImageView>::create(*dev, image, info);
@@ -251,25 +129,193 @@ Rc<core::ImageView> Swapchain::makeView(const Rc<core::ImageObject> &image,
 	return view;
 }
 
-Rc<core::Semaphore> Swapchain::acquireSemaphore() {
-	// Present is a bookkeeping no-op, so the frame is submitted without a signal semaphore.
+Rc<core::Semaphore> SwapchainBase::acquireSemaphore() {
+	// Nothing produced the image asynchronously, so the frame is submitted without a signal
+	// semaphore to wait on.
 	return nullptr;
 }
 
-bool Swapchain::releaseSemaphore(Rc<core::Semaphore> &&) { return true; }
+bool SwapchainBase::releaseSemaphore(Rc<core::Semaphore> &&) { return true; }
 
-core::ImageObject *Swapchain::getLastPresentedImage() const {
+core::ImageObject *SwapchainBase::getLastPresentedImage() const {
 	if (_lastPresentedIndex >= _images.size()) {
 		return nullptr;
 	}
 	return _images[_lastPresentedIndex].image.get();
 }
 
+bool Surface::init(Instance *instance, Rc<sprt::window::SoftwareSurface> &&software, Ref *win) {
+	if (!software) {
+		return false;
+	}
+
+	if (!core::Surface::init(instance, win)) {
+		return false;
+	}
+
+	_software = move(software);
+	return true;
+}
+
+void Surface::invalidate() {
+	if (_software) {
+		_software->invalidate();
+		_software = nullptr;
+	}
+	_window = nullptr;
+}
+
+core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &, core::FullScreenExclusiveMode,
+		void *) const {
+	core::SurfaceInfo info;
+
+	info.supportedUsageFlags = core::ImageUsage::ColorAttachment | core::ImageUsage::TransferSrc
+			| core::ImageUsage::TransferDst | core::ImageUsage::Sampled;
+	info.maxImageArrayLayers = 1;
+	info.supportedCompositeAlpha = core::CompositeAlphaFlags::Opaque;
+	info.supportedTransforms = core::SurfaceTransformFlags::Identity;
+	info.currentTransform = core::SurfaceTransformFlags::Identity;
+
+	// The transport fills in the formats, image counts, present modes and extent it can honour.
+	// The extent is its job and not the window's: only WaylandWindow overrides
+	// NativeWindow::getSurfaceOptions (to scale by output density), and the base is a pass-through
+	// - so on X nothing else would ever set it, and the swapchain would be asked for 0x0 buffers.
+	return _software->getSurfaceOptions(move(info));
+}
+
+Swapchain::~Swapchain() {
+	invalidateViews();
+	if (_software) {
+		_software->invalidate();
+		_software = nullptr;
+	}
+}
+
+bool Swapchain::init(Device &dev, NotNull<core::Loop>, const core::SurfaceInfo &info,
+		const core::SwapchainConfig &cfg, core::ImageInfo &&swapchainImageInfo,
+		core::PresentMode presentMode, Surface *surface) {
+	swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
+
+	auto imageCount = sprt::max(cfg.imageCount, uint32_t(1));
+
+	_software = surface->getSoftwareSurface()->makeSwapchain(sprt::window::SoftwareSwapchainInfo{
+		.extent = Extent2(swapchainImageInfo.extent.width, swapchainImageInfo.extent.height),
+		.format = swapchainImageInfo.format,
+		.imageCount = imageCount,
+	});
+
+	if (!_software) {
+		log::source().error("soft::Swapchain", "Window system refused to provide ", imageCount,
+				" buffers of ", swapchainImageInfo.extent.width, "x",
+				swapchainImageInfo.extent.height);
+		return false;
+	}
+
+	auto buffers = _software->getBuffers();
+	auto viewInfo = getSwapchainImageViewInfo(swapchainImageInfo);
+
+	_images.reserve(buffers.size());
+	for (uint32_t i = 0; i < uint32_t(buffers.size()); ++i) {
+		auto &buf = buffers[i];
+
+		// The image is a view onto the window system's memory, keyed by its slot: the damage
+		// tracker indexes per-slot snapshots by exactly this number, and partial redraw is only
+		// correct because the buffer still holds the frame it last displayed.
+		auto image = Rc<Image>::create(dev, toString("SoftSwapchainImage[", i, "]"),
+				core::ImageInfoData(swapchainImageInfo), uint64_t(i), buf.data, buf.stride,
+				buf.size);
+		if (!image) {
+			log::source().error("soft::Swapchain", "Fail to wrap buffer ", i);
+			return false;
+		}
+
+		auto view = Rc<ImageView>::create(dev, Rc<core::ImageObject>(image.get()), viewInfo);
+		if (!view) {
+			log::source().error("soft::Swapchain", "Fail to create view for image ", i);
+			return false;
+		}
+
+		Map<core::ImageViewInfo, Rc<core::ImageView>> views;
+		views.emplace(viewInfo, sp::move(view));
+
+		_images.emplace_back(SwapchainImageData{sp::move(image), sp::move(views)});
+	}
+
+	return finalize(dev, info, cfg, move(swapchainImageInfo), presentMode, surface);
+}
+
+auto Swapchain::acquire(bool, const Rc<core::Fence> &fence, Status &status)
+		-> Rc<SwapchainAcquiredImage> {
+	if (_deprecated || _invalid) {
+		status = Status::ErrorCancelled;
+		return nullptr;
+	}
+
+	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+
+	// Never blocking, regardless of what `lockfree` asks for: the window system's release event is
+	// dispatched by this very thread, so waiting here would be waiting for ourselves. Timeout is
+	// the expected answer when every buffer is in flight, and the engine retries on it.
+	auto index = _software->acquire(status);
+	if (index >= _images.size()) {
+		return nullptr;
+	}
+
+	markAcquired(index);
+
+	// Acquisition is instantaneous, so a fence handed in here is already satisfied.
+	if (fence) {
+		fence->setTag("soft::Swapchain::acquire");
+		static_cast<Fence *>(fence.get())->signal();
+	}
+
+	status = Status::Ok;
+
+	return Rc<SwapchainAcquiredImage>::alloc(index, &_images[index], nullptr, this);
+}
+
+Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
+		const core::PresentInfo &info) {
+	if (_invalid) {
+		return Status::ErrorCancelled;
+	}
+
+	Status st = Status::Ok;
+
+	do {
+		sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+
+		auto index = image ? findSlot(image) : maxOf<uint32_t>();
+		if (index == maxOf<uint32_t>()) {
+			return Status::ErrorInvalidArguemnt;
+		}
+
+		st = _software->present(index, info.damage);
+
+		markPresented(index);
+
+		if (_acquiredImages > 0) {
+			--_acquiredImages;
+		}
+		++_presentedFrames;
+		_presentTime = sp::platform::clock(ClockType::Monotonic);
+	} while (0);
+
+	if (!sprt::status::isSuccessful(st)) {
+		_invalid = true;
+	}
+
+	return st;
+}
+
 bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> device,
 		NotNull<core::PresentationWindow> window, core::PresentationOptions opts) {
-	// Acquisition is synchronous and host-side; an external fence carries no information.
+	// Acquisition is host-side and instantaneous; an external fence carries no information.
 	opts.acquireImageWithoutFence = true;
-	opts.usePresentWindow = false;
+
+	// Rendering happens on the CPU, so starting the next frame before the previous one finished
+	// does not fill an idle pipeline - it just makes two frames compete for the same cores.
+	opts.preStartFrame = false;
 
 	return core::PresentationEngine::init(loop, device, window, opts);
 }
@@ -308,6 +354,7 @@ bool PresentationEngine::recreateSwapchain() {
 	}
 
 	_device->waitIdle();
+	_waitForDisplayLink = false;
 
 	bool oldSwapchainValid = true;
 	if (hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::SwitchToNext)) {
@@ -332,7 +379,15 @@ bool PresentationEngine::recreateSwapchain() {
 		return false;
 	}
 
-	auto fastModeSelected = hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::SwitchToFastMode);
+	if (hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::EnableLiveResize)) {
+		_liveResizeEnabled = true;
+	} else if (hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::DisableLiveResize)) {
+		_liveResizeEnabled = false;
+	}
+
+	auto fastModeSelected = _liveResizeEnabled
+			|| hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::SwitchToFastMode);
+
 	auto info = _window->getSurfaceOptions(*_device, _surface);
 	auto cfg = _window->selectConfig(info, fastModeSelected);
 
@@ -344,6 +399,10 @@ bool PresentationEngine::recreateSwapchain() {
 
 	if (cfg.extent.width == 0 || cfg.extent.height == 0) {
 		return false;
+	}
+
+	if (_liveResizeEnabled) {
+		cfg.liveResize = true;
 	}
 
 	auto mode = cfg.presentMode;
@@ -368,37 +427,30 @@ bool PresentationEngine::recreateSwapchain() {
 	return ret;
 }
 
-bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::SwapchainConfig &&cfg,
-		core::PresentMode presentMode, bool) {
-	auto dev = static_cast<Device *>(_device);
+bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
+		core::SwapchainConfig &&cfg, core::PresentMode presentMode, bool) {
+	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
-	auto surface = _surface.get_cast<Surface>();
-	if (!surface) {
-		log::source().error("soft::PresentationEngine", "No software surface bound");
-		return false;
-	}
+	// Build the new swapchain BEFORE retiring the old one. With window-system memory the previous
+	// buffers may still be held by the compositor, and the transport keeps its pool alive until
+	// they come back - tearing down first would pull the mapping out from under them.
+	auto newSwapchain = makeSwapchain(info, cfg, move(swapchainImageInfo), presentMode);
 
-	// The swapchain owns its images outright, so there is no handoff to the new one. Retire it
-	// explicitly (views first) while everything is still alive.
 	auto oldSwapchain = move(_swapchain);
 	if (oldSwapchain) {
 		if (oldSwapchain->getAcquiredImagesCount() != 0) {
 			log::source().warn("soft::PresentationEngine", "Some swapchain images still active");
 		}
-		oldSwapchain.get_cast<Swapchain>()->invalidateViews();
+		oldSwapchain.get_cast<SwapchainBase>()->invalidateViews();
 		oldSwapchain = nullptr;
 	}
 
-	surface->setExtent(cfg.extent);
-
-	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
-
-	_swapchain = Rc<Swapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
-			presentMode, surface);
-	if (!_swapchain) {
+	if (!newSwapchain) {
 		log::source().error("soft::PresentationEngine", "Fail to create swapchain");
 		return false;
 	}
+
+	_swapchain = move(newSwapchain);
 
 	auto newConstraints = _window->exportConstraints(_serial);
 	newConstraints.extent = Extent3(cfg.extent, 1);
@@ -408,7 +460,7 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 
 	Vector<uint64_t> ids;
 	auto cache = _loop->getFrameCache();
-	for (auto &it : _swapchain.get_cast<Swapchain>()->getImages()) {
+	for (auto &it : _swapchain.get_cast<SwapchainBase>()->getImages()) {
 		for (auto &iit : it.views) {
 			auto id = iit.second->getIndex();
 			ids.emplace_back(id);
@@ -424,9 +476,24 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 	return true;
 }
 
+Rc<SwapchainBase> PresentationEngine::makeSwapchain(const core::SurfaceInfo &info,
+		const core::SwapchainConfig &cfg, core::ImageInfo &&swapchainImageInfo,
+		core::PresentMode presentMode) {
+	auto dev = static_cast<Device *>(_device);
+
+	auto surface = _surface.get_cast<Surface>();
+	if (!surface) {
+		log::source().error("soft::PresentationEngine", "No software surface bound");
+		return nullptr;
+	}
+
+	return Rc<Swapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo), presentMode,
+			surface);
+}
+
 void PresentationEngine::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
-	auto swapchain = _swapchain.get_cast<Swapchain>();
+	auto swapchain = _swapchain.get_cast<SwapchainBase>();
 	auto image = swapchain ? swapchain->getLastPresentedImage() : nullptr;
 
 	if (!image) {
@@ -435,6 +502,8 @@ void PresentationEngine::captureScreenshot(
 		return;
 	}
 
+	// The buffer stays mapped and readable while the window system displays it, so this is a plain
+	// read of what is on screen - never a place to draw into.
 	_loop->captureImage(sp::move(cb), Rc<core::ImageObject>(image),
 			core::AttachmentLayout::PresentSrc);
 }

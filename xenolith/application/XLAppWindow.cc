@@ -52,6 +52,7 @@
 #if MODULE_XENOLITH_BACKEND_SOFT
 #include "XLSoftInstance.h"
 #include "XLSoftPresentation.h"
+#include "XLSoftHeadlessPresentation.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -399,18 +400,37 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 
 #if MODULE_XENOLITH_BACKEND_SOFT
 	if (cinstance->getApi() == core::InstanceApi::Software) {
+		auto instance = static_cast<soft::Instance *>(cinstance.get());
 		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
-		// M0 renders offscreen only: the surface is synthesized from the window extent. Presenting
-		// into a real window (wl_shm / XCB-SHM / KMS dumb buffer) is a later milestone.
-		if (ifaceInfo.backend != sprt::window::SurfaceBackend::Headless) {
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Headless) {
+			// No window system: the surface is synthesized from the window extent and backs a
+			// pseudo-swapchain of ordinary bitmaps.
+			return Rc<soft::HeadlessSurface>::create(instance, _window->getExtent(), this);
+		}
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Display) {
 			log::source().error("AppWindow",
-					"Surface backend is not supported for Software: ", toInt(ifaceInfo.backend),
-					" (only headless is implemented)");
+					"Direct-display (KMS) presentation is not implemented for the software "
+					"backend: it needs dumb buffers and page flipping, which the DRM binding does "
+					"not carry yet");
 			return nullptr;
 		}
 
-		return Rc<soft::Surface>::create(static_cast<soft::Instance *>(cinstance.get()),
-				_window->getExtent(), this);
+		// Everything else goes through the window system's own CPU buffers, so the rasterizer
+		// writes the frame straight into what gets presented. A window system that cannot provide
+		// them answers null, and there is no copying fallback: it would silently give up the one
+		// property this path exists for.
+		auto software = _window->makeSoftwareSurface();
+		if (!software) {
+			log::source().error("AppWindow",
+					"Window system cannot provide a CPU-writable buffer for the software backend "
+					"(surface backend ",
+					toInt(ifaceInfo.backend), ")");
+			return nullptr;
+		}
+
+		return Rc<soft::Surface>::create(instance, sp::move(software), this);
 	}
 #endif
 

@@ -71,6 +71,11 @@ bool FontFaceObjectHandle::acquireTexture(char32_t theChar,
 	return _face->acquireTextureUnsafe(theChar, cb);
 }
 
+bool FontFaceObjectHandle::renderTexture(char32_t theChar,
+		const Callback<GlyphTarget(const CharTexture &)> &cb) {
+	return _face->renderTextureUnsafe(theChar, cb);
+}
+
 BytesView FontLibrary::getFont(DefaultFontName name) {
 	switch (name) {
 	case DefaultFontName::None: return BytesView(); break;

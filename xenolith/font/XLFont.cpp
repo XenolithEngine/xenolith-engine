@@ -37,3 +37,4 @@
 #include "backend/vk/XLVkFontQueue.cc"
 #include "backend/webgpu/XLWgpuFontQueue.cc"
 #include "backend/mtl/XLMtlFontQueue.cc"
+#include "backend/soft/XLSoftFontQueue.cc"

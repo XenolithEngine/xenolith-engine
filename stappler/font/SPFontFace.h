@@ -89,6 +89,12 @@ public:
 	// bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 	bool acquireTextureUnsafe(char32_t, const Callback<void(const CharTexture &)> &);
 
+	// Same glyph, without the copy. Loads and hints the glyph once, hands its metrics to `cb`
+	// (with `bitmap == nullptr`, since there is none yet), and rasterizes into whatever storage
+	// `cb` returns. Producing the same bytes as acquireTextureUnsafe is a hard requirement, and
+	// tests/font checks it glyph by glyph.
+	bool renderTextureUnsafe(char32_t, const Callback<GlyphTarget(const CharTexture &)> &);
+
 	// Shape a run of code points with HarfBuzz over this face. Appends the glyphs HarfBuzz proposes
 	// (the RENDERING set) together with their advances/offsets (the POSITIONING set) to `out`. Locks
 	// the face (FT_Face carries mutable glyph state and is not thread-safe).

@@ -23,12 +23,7 @@
 #include "XLCommon.h"
 #include "XLSoft.h"
 
-// Kernels first: the triangle setup calls into them, and in an SCU that means the definitions
-// have to be seen before the caller.
-#include "raster/XLSoftRasterSample.cc"
-#include "raster/XLSoftRasterKernels.cc"
-#include "raster/XLSoftRasterSetup.cc"
-
+#include "XLSoftGlyphStore.cc"
 #include "XLSoftInstance.cc"
 #include "XLSoftDevice.cc"
 #include "XLSoftObject.cc"
@@ -37,6 +32,7 @@
 #include "XLSoftMaterial.cc"
 #include "XLSoftQueuePass.cc"
 #include "XLSoftPresentation.cc"
+#include "XLSoftHeadlessPresentation.cc"
 #include "XLSoftLoop.cc"
 #include "XLSoftPlatform.cc"
 

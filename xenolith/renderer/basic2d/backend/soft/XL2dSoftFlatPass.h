@@ -51,9 +51,13 @@ class SP_PUBLIC VertexAttachment : public core::GenericAttachment {
 public:
 	virtual ~VertexAttachment() = default;
 
-	virtual bool init(AttachmentBuilder &, const core::AttachmentData *materials);
+	virtual bool init(AttachmentBuilder &, const core::AttachmentData *materials,
+			bool damageTracked = false);
 
 	const core::AttachmentData *getMaterials() const { return _materials; }
+
+	// Whether this queue asked for per-frame damage tracking at all.
+	bool isDamageTracked() const { return _damageTracked; }
 
 	virtual Rc<core::AttachmentHandle> makeFrameHandle(const core::FrameQueue &) override;
 
@@ -61,6 +65,7 @@ protected:
 	using core::GenericAttachment::init;
 
 	const core::AttachmentData *_materials = nullptr;
+	bool _damageTracked = false;
 };
 
 class SP_PUBLIC VertexAttachmentHandle : public core::AttachmentHandle {
@@ -86,6 +91,10 @@ public:
 
 	bool empty() const { return _spans.empty(); }
 
+	bool isDamageTracked() const {
+		return static_cast<VertexAttachment *>(_attachment.get())->isDamageTracked();
+	}
+
 protected:
 	// Builds the backend-neutral VertexPlan and writes it into host arrays. Everything the flat
 	// queue can emit goes through it - vertex arrays, deferred results (vector images, labels)
@@ -93,6 +102,7 @@ protected:
 	bool loadVertexes(core::FrameHandle &, const Rc<FrameContextHandle2d> &);
 
 	Rc<core::MaterialSet> _materialSet;
+	DamageCollector _damage;
 	Vector<VertexSpan> _spans;
 	Vector<Vertex> _vertexes;
 	Vector<uint32_t> _indexes;

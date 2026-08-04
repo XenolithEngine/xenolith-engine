@@ -390,45 +390,6 @@ KeyState::KeyState() {
 	keycodes[KEY_102ND] = InputKeyCode::WORLD_2;
 }
 
-static int createAnonymousFile(off_t size) {
-	static const char tpl[] = "/xl-wayland-XXXXXX";
-	const char *path;
-	int fd;
-	int ret;
-
-	fd = ::memfd_create("xl-wayland", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-	if (fd >= 0) {
-		::fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_SEAL);
-	} else {
-		path = getenv("XDG_RUNTIME_DIR");
-		if (!path) {
-			errno = ENOENT;
-			return -1;
-		}
-
-		char *tmpname = (char *)::calloc(strlen(path) + sizeof(tpl), 1);
-		::strcpy(tmpname, path);
-		::strcat(tmpname, tpl);
-
-		fd = ::mkostemp(tmpname, O_CLOEXEC);
-		if (fd >= 0) {
-			::unlink(tmpname);
-			::free(tmpname);
-		} else {
-			::free(tmpname);
-			return -1;
-		}
-	}
-
-	ret = ::posix_fallocate(fd, 0, size);
-	if (ret != 0) {
-		::close(fd);
-		errno = ret;
-		return -1;
-	}
-	return fd;
-}
-
 template <typename T>
 struct SharedSuballocation {
 	T *data = nullptr;

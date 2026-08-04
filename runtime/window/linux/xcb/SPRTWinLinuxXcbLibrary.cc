@@ -157,6 +157,8 @@ bool XcbLibrary::hasXfixes() const { return _xfixes ? true : false; }
 
 bool XcbLibrary::hasShape() const { return _shape ? true : false; }
 
+bool XcbLibrary::hasShm() const { return _shm ? true : false; }
+
 void XcbLibrary::openAux() {
 	if (auto randr = Dso("libxcb-randr.so")) {
 		SPRT_LOAD_PROTO(randr, xcb_randr_id)
@@ -390,6 +392,27 @@ void XcbLibrary::openAux() {
 			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-shape function");
 		} else {
 			_shape = move(shape);
+		}
+	}
+
+	if (auto shm = Dso("libxcb-shm.so")) {
+		SPRT_LOAD_PROTO(shm, xcb_shm_id)
+		SPRT_LOAD_PROTO(shm, xcb_shm_query_version)
+		SPRT_LOAD_PROTO(shm, xcb_shm_query_version_unchecked)
+		SPRT_LOAD_PROTO(shm, xcb_shm_query_version_reply)
+		SPRT_LOAD_PROTO(shm, xcb_shm_attach)
+		SPRT_LOAD_PROTO(shm, xcb_shm_attach_checked)
+		SPRT_LOAD_PROTO(shm, xcb_shm_attach_fd)
+		SPRT_LOAD_PROTO(shm, xcb_shm_attach_fd_checked)
+		SPRT_LOAD_PROTO(shm, xcb_shm_detach)
+		SPRT_LOAD_PROTO(shm, xcb_shm_detach_checked)
+		SPRT_LOAD_PROTO(shm, xcb_shm_put_image)
+		SPRT_LOAD_PROTO(shm, xcb_shm_put_image_checked)
+
+		if (!validateFunctionList(&_xcb_shm_first_fn, &_xcb_shm_last_fn)) {
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-shm function");
+		} else {
+			_shm = move(shm);
 		}
 	}
 

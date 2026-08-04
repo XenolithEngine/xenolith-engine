@@ -27,6 +27,7 @@
 #include "SPRTWinLinuxWaylandLibrary.h"
 #include "SPRTWinLinuxWaylandSeat.h"
 #include "SPRTWinLinuxWaylandDisplay.h"
+#include "SPRTWinLinuxWaylandSoftwareSurface.h"
 #include "../SPRTWinLinuxController.h"
 #include "../SPRTWinLinuxXkbLibrary.h"
 #include "SPRTWinLinuxWaylandKeys.h"
@@ -288,7 +289,14 @@ void WaylandWindow::handleFrameReady(const PresentationFrameInfo &frame) {
 }
 
 void WaylandWindow::handleFramePresented(const PresentationFrameInfo &frame) {
-	// New frame was presented, so, wl_surface_commit was valled before this func
+	// New frame was presented, so, wl_surface_commit was сalled before this func
+
+	// ...but a commit only reaches the compositor once the connection is flushed, and nothing else
+	// here is guaranteed to do it: the presentation engine does not necessarily return to the
+	// looper's poll before the next frame. Without this the picture updates only when some
+	// unrelated event happens to pump the socket. Mesa flushes for the Vulkan path; for a
+	// host-rasterized frame it is ours to do, exactly as XcbWindow does.
+	wl_display_flush(_display->display);
 
 	// With interactive resize, we can miss some last resizing frames due async rendering;
 	// It this case, _awaitingExtent (target extent for resize op) != _commitedExtent (last frame's extent)
@@ -302,6 +310,10 @@ void WaylandWindow::handleFramePresented(const PresentationFrameInfo &frame) {
 }
 
 void WaylandWindow::handleSwapchainUpdated(const FrameConstraints &c) { }
+
+Rc<SoftwareSurface> WaylandWindow::makeSoftwareSurface() {
+	return Rc<WaylandSoftwareSurface>::create(this);
+}
 
 FrameConstraints WaylandWindow::exportConstraints(uint64_t &serial) const {
 	auto ret = NativeWindow::exportConstraints(serial);

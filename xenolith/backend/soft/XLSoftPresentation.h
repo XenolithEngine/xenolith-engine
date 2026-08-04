@@ -27,49 +27,18 @@
 #include "XLCoreSwapchain.h"
 #include "XLCorePresentationEngine.h"
 
+#include <sprt/runtime/window/software_surface.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
 class Instance;
 
-// A surface with no window system behind it. Capabilities are synthesized from the window
-// extent, exactly as vk::HeadlessSurface does - there is nothing to query.
-class SP_PUBLIC Surface final : public core::Surface {
+// Everything a soft swapchain does that does not depend on where the pixels end up. Only init,
+// acquire and present differ between presenting into a window and presenting into nothing, so
+// they are the only three left to the subclasses.
+class SP_PUBLIC SwapchainBase : public core::Swapchain {
 public:
-	virtual ~Surface() = default;
-
-	bool init(Instance *, Extent2 extent, Ref *window = nullptr);
-
-	virtual void invalidate() override;
-
-	virtual core::SurfaceInfo getSurfaceOptions(const core::Device &,
-			core::FullScreenExclusiveMode, void *) const override;
-
-	void setExtent(Extent2 extent) { _extent = extent; }
-
-protected:
-	Extent2 _extent;
-};
-
-// Pseudo-swapchain: a ring of ordinary bitmaps that stand in for swapchain images.
-//
-// Acquisition is synchronous and hands out no semaphore - nothing produced the image
-// asynchronously, so there is nothing to wait on - and present is bookkeeping only. The image
-// that was presented last is kept addressable, which is what lets a screenshot read "the current
-// screen" without rendering another frame.
-class SP_PUBLIC Swapchain final : public core::Swapchain {
-public:
-	virtual ~Swapchain();
-
-	bool init(Device &, NotNull<core::Loop>, const core::SurfaceInfo &,
-			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode, Surface *);
-
-	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
-			Status &) override;
-
-	virtual Status present(core::DeviceQueue *, core::ImageStorage *,
-			const core::PresentInfo &) override;
-
-	virtual bool isPresentQueueRequired() const override { return false; }
+	virtual ~SwapchainBase();
 
 	virtual void invalidateImage(const core::ImageStorage *image, bool release) override;
 	virtual void invalidateImage(uint32_t, bool release) override;
@@ -79,6 +48,10 @@ public:
 
 	virtual Rc<core::Semaphore> acquireSemaphore() override;
 	virtual bool releaseSemaphore(Rc<core::Semaphore> &&) override;
+
+	// Present is bookkeeping plus, at most, a window-system call: there is no queue from a Present
+	// family to acquire, and soft::Device has no queue families at all.
+	virtual bool isPresentQueueRequired() const override { return false; }
 
 	SpanView<SwapchainImageData> getImages() const { return _images; }
 
@@ -92,13 +65,67 @@ public:
 protected:
 	using core::Object::init;
 
+	// Shared tail of every init: publish the negotiated configuration and size the damage tracker.
+	bool finalize(Device &, const core::SurfaceInfo &, const core::SwapchainConfig &,
+			core::ImageInfo &&, core::PresentMode, core::Surface *);
+
+	void markAcquired(uint32_t index);
+
+	// Release the slot as far as the engine is concerned. This must happen at present, not when
+	// the window system hands the buffer back: swapchain recreation waits for
+	// getAcquiredImagesCount() to reach zero, and a compositor is free to hold the last presented
+	// buffer indefinitely - tying the two together wedges every resize. Whether the buffer itself
+	// is reusable is a separate question, and the transport answers it.
+	void markPresented(uint32_t index);
+
+	uint32_t findSlot(const core::ImageStorage *) const;
+
 	Vector<SwapchainImageData> _images;
 	Vector<bool> _acquired;
-	uint32_t _nextIndex = 0;
 	uint32_t _lastPresentedIndex = maxOf<uint32_t>();
 };
 
-class SP_PUBLIC PresentationEngine final : public core::PresentationEngine {
+// A surface backed by a window system that can hand out CPU-writable buffers. Capabilities come
+// from the transport, unlike the headless one which has nothing to ask and synthesizes them.
+class SP_PUBLIC Surface final : public core::Surface {
+public:
+	virtual ~Surface() = default;
+
+	bool init(Instance *, Rc<sprt::window::SoftwareSurface> &&, Ref *window = nullptr);
+
+	virtual void invalidate() override;
+
+	virtual core::SurfaceInfo getSurfaceOptions(const core::Device &,
+			core::FullScreenExclusiveMode, void *) const override;
+
+	const Rc<sprt::window::SoftwareSurface> &getSoftwareSurface() const { return _software; }
+
+protected:
+	Rc<sprt::window::SoftwareSurface> _software;
+};
+
+// Swapchain over window-system memory: every image is a view onto a buffer the compositor (or the
+// X server) owns, so the rasterizer writes the frame straight into what gets presented.
+class SP_PUBLIC Swapchain final : public SwapchainBase {
+public:
+	virtual ~Swapchain();
+
+	bool init(Device &, NotNull<core::Loop>, const core::SurfaceInfo &,
+			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode, Surface *);
+
+	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &,
+			Status &) override;
+
+	virtual Status present(core::DeviceQueue *, core::ImageStorage *,
+			const core::PresentInfo &) override;
+
+protected:
+	using SwapchainBase::init;
+
+	Rc<sprt::window::SoftwareSwapchain> _software;
+};
+
+class SP_PUBLIC PresentationEngine : public core::PresentationEngine {
 public:
 	virtual ~PresentationEngine() = default;
 
@@ -116,6 +143,12 @@ public:
 
 	virtual void captureScreenshot(
 			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
+
+protected:
+	// The transport-specific half of createSwapchain. Everything around it - constraints, the
+	// frame cache registration, retiring the previous swapchain - is the same either way.
+	virtual Rc<SwapchainBase> makeSwapchain(const core::SurfaceInfo &,
+			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode);
 };
 
 } // namespace stappler::xenolith::soft

@@ -28,9 +28,13 @@
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_LINUX
 
 #include "SPRTWinLinuxXcbLibrary.cc"
+// before the connection: XcbConnection routes SHM completion events into the swapchain, so it
+// needs the complete type
+#include "SPRTWinLinuxXcbSoftwareSurface.h"
 #include "SPRTWinLinuxXcbConnection.cc"
 #include "SPRTWinLinuxXcbSupportWindow.cc"
 #include "SPRTWinLinuxXcbDisplayConfigManager.cc"
+#include "SPRTWinLinuxXcbSoftwareSurface.cc"
 #include "SPRTWinLinuxXcbWindow.cc"
 
 #endif
