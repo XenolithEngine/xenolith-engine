@@ -353,6 +353,7 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @property BOOL restorable;
 @property(nullable, strong) NSAppearance *appearance;
 @property(readonly, strong) NSAppearance *effectiveAppearance;
+@property BOOL hasShadow;
 - (void)invalidateShadow;
 - (void)display;
 - (void)orderFrontRegardless;
