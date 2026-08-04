@@ -75,6 +75,28 @@ typedef NS_ENUM(NSUInteger, NSEventType) {
 	NSEventTypeMagnify = 30,
 };
 
+// Event-monitor masks: 1 << NSEventType, as in the SDK.
+typedef NS_OPTIONS(unsigned long long, NSEventMask) {
+	NSEventMaskLeftMouseDown = 1ULL << NSEventTypeLeftMouseDown,
+	NSEventMaskLeftMouseUp = 1ULL << NSEventTypeLeftMouseUp,
+	NSEventMaskRightMouseDown = 1ULL << NSEventTypeRightMouseDown,
+	NSEventMaskRightMouseUp = 1ULL << NSEventTypeRightMouseUp,
+	NSEventMaskMouseMoved = 1ULL << NSEventTypeMouseMoved,
+	NSEventMaskLeftMouseDragged = 1ULL << NSEventTypeLeftMouseDragged,
+	NSEventMaskRightMouseDragged = 1ULL << NSEventTypeRightMouseDragged,
+	NSEventMaskMouseEntered = 1ULL << NSEventTypeMouseEntered,
+	NSEventMaskMouseExited = 1ULL << NSEventTypeMouseExited,
+	NSEventMaskKeyDown = 1ULL << NSEventTypeKeyDown,
+	NSEventMaskKeyUp = 1ULL << NSEventTypeKeyUp,
+	NSEventMaskFlagsChanged = 1ULL << NSEventTypeFlagsChanged,
+	NSEventMaskScrollWheel = 1ULL << NSEventTypeScrollWheel,
+	NSEventMaskOtherMouseDown = 1ULL << NSEventTypeOtherMouseDown,
+	NSEventMaskOtherMouseUp = 1ULL << NSEventTypeOtherMouseUp,
+	NSEventMaskOtherMouseDragged = 1ULL << NSEventTypeOtherMouseDragged,
+	NSEventMaskMagnify = 1ULL << NSEventTypeMagnify,
+	NSEventMaskAny = NSUIntegerMax,
+};
+
 typedef NS_OPTIONS(NSUInteger, NSEventPhase) {
 	NSEventPhaseNone = 0,
 	NSEventPhaseBegan = 1 << 0,
@@ -94,9 +116,17 @@ typedef NS_ENUM(NSInteger, NSApplicationActivationPolicy) {
 typedef NS_OPTIONS(NSUInteger, NSWindowCollectionBehavior) {
 	NSWindowCollectionBehaviorDefault = 0,
 	NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0,
+	NSWindowCollectionBehaviorMoveToActiveSpace = 1 << 1,
 	NSWindowCollectionBehaviorManaged = 1 << 2,
+	NSWindowCollectionBehaviorTransient = 1 << 3,
+	NSWindowCollectionBehaviorStationary = 1 << 4,
+	NSWindowCollectionBehaviorParticipatesInCycle = 1 << 5,
+	NSWindowCollectionBehaviorIgnoresCycle = 1 << 6,
 	NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7,
 	NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8,
+	NSWindowCollectionBehaviorFullScreenNone = 1 << 9,
+	NSWindowCollectionBehaviorAllowsTiling = 1 << 11,
+	NSWindowCollectionBehaviorDisallowsTiling = 1 << 12,
 };
 
 typedef NS_OPTIONS(NSUInteger, NSAutoresizingMaskOptions) {
@@ -130,6 +160,17 @@ typedef NS_ENUM(NSUInteger, NSWindowButton) {
 };
 
 typedef NSInteger NSWindowLevel;
+
+// Window levels, in CGWindowLevel units (CGWindowLevel.h), as the SDK derives them.
+static const NSWindowLevel NSNormalWindowLevel = 0;
+static const NSWindowLevel NSFloatingWindowLevel = 3;
+static const NSWindowLevel NSTornOffMenuWindowLevel = 3;
+static const NSWindowLevel NSSubmenuWindowLevel = 3;
+static const NSWindowLevel NSModalPanelWindowLevel = 8;
+static const NSWindowLevel NSMainMenuWindowLevel = 24;
+static const NSWindowLevel NSStatusWindowLevel = 25;
+static const NSWindowLevel NSPopUpMenuWindowLevel = 101;
+static const NSWindowLevel NSScreenSaverWindowLevel = 1000;
 
 typedef NS_ENUM(NSInteger, NSWindowOrderingMode) {
 	NSWindowAbove = 1,
@@ -301,6 +342,11 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (nullable id)animationForKey:(NSString *)key;
 @property(readonly, strong) id animator;
 @property BOOL hidesOnDeactivate;
+@property BOOL hasShadow;
+- (void)addChildWindow:(NSWindow *)childWin ordered:(NSWindowOrderingMode)place;
+- (void)removeChildWindow:(NSWindow *)childWin;
+@property(readonly, copy) NSArray<NSWindow *> *childWindows;
+@property(nullable, weak) NSWindow *parentWindow;
 @property BOOL canHide;
 @property BOOL displaysWhenScreenProfileChanges;
 @property BOOL releasedWhenClosed;
@@ -354,6 +400,9 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @property(class, readonly) NSPoint mouseLocation;
 @property(class, readonly) NSEventModifierFlags modifierFlags;
 @property(class, readonly) NSTimeInterval doubleClickInterval;
++ (nullable id)addLocalMonitorForEventsMatchingMask:(NSEventMask)mask
+											handler:(NSEvent *_Nullable (^)(NSEvent *event))block;
++ (void)removeMonitor:(id)eventMonitor;
 @end
 
 /* ---- NSCursor ------------------------------------------------------------ */
@@ -394,6 +443,16 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @property(class, readonly) NSColor *whiteColor;
 @property(class, readonly) NSColor *blackColor;
 @property(class, readonly) NSColor *windowBackgroundColor;
+@property(readonly) CGColorRef CGColor;
++ (NSColor *)colorWithWhite:(CGFloat)white alpha:(CGFloat)alpha;
++ (NSColor *)colorWithCalibratedRed:(CGFloat)red
+							  green:(CGFloat)green
+							   blue:(CGFloat)blue
+							  alpha:(CGFloat)alpha;
++ (NSColor *)colorWithSRGBRed:(CGFloat)red
+						green:(CGFloat)green
+						 blue:(CGFloat)blue
+						alpha:(CGFloat)alpha;
 - (void)set;
 @end
 

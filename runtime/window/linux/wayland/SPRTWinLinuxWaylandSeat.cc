@@ -101,6 +101,7 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 
 	.button = [](void *data, wl_pointer *wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
 		auto seat = reinterpret_cast<WaylandSeat *>(data);
+		seat->serial = serial;
 		for (auto &it : seat->pointerViews) { it->handlePointerButton(serial, time, button, state); }
 		for (auto &it : seat->pointerDecorations) { it->handlePress(seat, serial, button, state); }
 	},

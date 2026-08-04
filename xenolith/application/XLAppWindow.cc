@@ -75,13 +75,31 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 }
 
 void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
-	if (!_presentationEngine->isRunning()) {
-		_presentationEngine->run();
+	// attachRenderQueue defers this onto the context thread, and an auxiliary window can be
+	// dismissed before it gets there. Starting the engine on a window that is winding down
+	// strands a swapchain that never presents and poisons the present path for later windows.
+	if (!_window || !_presentationEngine || _inCloseRequest) {
+		log::source().debug("WindowDiag", "runWithQueue skipped (dismissed) id=", _windowId);
+		return;
+	}
 
-		_presentationEngine->scheduleNextImage([this](core::PresentationFrame *, bool success) {
-			// Map windows after frame was rendered
+	if (!_presentationEngine->isRunning()) {
+		// Auxiliary windows map before the first present: hit-testing and dismiss monitors need a
+		// placed window from the moment the menu exists. Root waits until it has something to
+		// show, and that map hangs off handleFrameReady rather than off the scheduleNextImage
+		// callback below: scheduling is dropped without a word when the swapchain does not exist
+		// yet (it is built asynchronously from the first WM configure), and a callback that never
+		// runs leaves the window unmapped forever — a black or missing window and a hung app.
+		const auto type = _window->getInfo()->type;
+		if (type == sprt::window::WindowType::Popup
+				|| type == sprt::window::WindowType::Tooltip) {
 			_window->mapWindow();
-		});
+		} else {
+			_mapOnFirstFrame = true;
+		}
+
+		_presentationEngine->run();
+		_presentationEngine->scheduleNextImage(nullptr);
 	}
 }
 
@@ -139,11 +157,14 @@ void AppWindow::close(bool graceful) {
 	}
 
 	if (_context->getLooper()->isOnThisThread()
-			&& _presentationEngine->getOptions().syncConstraintsUpdate) {
+			&& _presentationEngine && _presentationEngine->getOptions().syncConstraintsUpdate) {
 		_syncClose = true;
 	}
 
 	_inCloseRequest = true;
+
+	// Auxiliary windows tear down through the very same path as every other window: the EndOfLife
+	// handshake below is what makes the app thread let go before the engine goes away.
 	_context->performOnThread([this, w = Rc<NativeWindow>(_window), graceful] {
 		if (w) {
 			if (!w->close()) {
@@ -157,23 +178,38 @@ void AppWindow::close(bool graceful) {
 
 		if (!graceful) {
 			end();
-		} else {
+		} else if (_presentationEngine) {
 			_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::EndOfLife,
 					[this, w = Rc<NativeWindow>(w)](bool) {
-				// successful stop
 				end();
 				_window = nullptr;
 			});
+		} else {
+			end();
+			_window = nullptr;
 		}
-	}, this);
+	}, this, true);
 
 	if (_syncClose) {
-		// run looper until successful close
-		// wakeup signal should be in AppWindow::end()
 		_context->getLooper()->run();
 		_syncClose = true;
 		_window = nullptr;
 	}
+}
+
+void AppWindow::hide() {
+	// Auxiliary windows are not pooled, so a dismiss is just a graceful close.
+	close(true);
+}
+
+void AppWindow::setContentExtent(Extent2 extent) {
+	_context->performOnThread([this, extent] {
+		if (_window && _window->setContentExtent(extent)) {
+			if (_presentationEngine) {
+				_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::WindowResized);
+			}
+		}
+	}, this);
 }
 
 void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
@@ -320,12 +356,27 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 					cb(frame); //
 				}, guard);
 			});
+		} else {
+			// No client (or proxy): the window is mid-teardown or never got a Director. Dropping
+			// the callback would leave the frame in _activeFrames forever and wedge EndOfLife —
+			// invalidate it instead so the completion runs and the engine unwinds.
+			log::source().debug("WindowDiag", "acquireFrameData dropped id=", _windowId);
+			_context->performOnThread([frame = move(frame)]() mutable {
+				if (frame) {
+					frame->invalidate();
+				}
+			}, this);
 		}
 	},
 			this);
 }
 
 void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
+	_firstFrameCompleted = true;
+	if (_mapOnFirstFrame && !_inCloseRequest && _window) {
+		_mapOnFirstFrame = false;
+		_window->mapWindow();
+	}
 	if (_window) {
 		_window->handleFrameReady(frame->getInfo());
 	}
@@ -576,6 +627,11 @@ void AppWindow::setFrameOrder(uint64_t frameOrder) {
 
 void AppWindow::updateConstraints(core::UpdateConstraintsFlags flags) {
 	_context->performOnThread([this, flags] {
+		// While closing, only EndOfLife may touch the engine: a resize deprecate here would
+		// recreate a swapchain on a window that is already tearing down.
+		if (_inCloseRequest && !hasFlag(flags, core::UpdateConstraintsFlags::EndOfLife)) {
+			return;
+		}
 		if (_presentationEngine) {
 			_presentationEngine->updateConstraints(flags);
 		}
@@ -584,6 +640,9 @@ void AppWindow::updateConstraints(core::UpdateConstraintsFlags flags) {
 
 void AppWindow::setReadyForNextFrame() {
 	_context->performOnThread([this] {
+		if (_inCloseRequest) {
+			return;
+		}
 		if (_presentationEngine) {
 			_presentationEngine->setReadyForNextFrame();
 		}

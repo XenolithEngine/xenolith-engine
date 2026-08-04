@@ -5,8 +5,11 @@ project and how to **build and test** it for the four primary targets: Linux/gli
 Windows, Android (NDK), and macOS.
 
 Read this before running any build. Prefer these patterns over inventing your own
-`clang`/`cmake` invocations — the repo has a single make-based build system and
-almost everything goes through it.
+`clang`/`cmake` invocations. The engine's build machinery lives under
+`make/universal.mk`, but **agents drive builds through `xenolith-cli`**
+whenever it is installed — that CLI configures the SDK toolchains and then
+invokes make for you. Raw `make` is only the fallback when the CLI is missing
+(see §0).
 
 Whether a freshly built binary can be **run** depends on having the matching OS:
 a Linux binary runs on Linux, a Windows `.exe` runs on Windows or under Wine, an
@@ -18,14 +21,33 @@ require the target platform.
 
 ## 0. Golden rules (read first)
 
-- **One build system.** Every project is a small `Makefile` that sets `LOCAL_*`
-  variables and `include`s `make/universal.mk`. Project makefiles contain **no
-  build rules**. Never hand-roll a compiler command line to "test a build" —
-  drive `make` so flags, includes, modules and the toolchain match.
+- **Build with `xenolith-cli` when available; `make` is the fallback.**
+  Check once per session: `command -v xenolith-cli`. If it is on
+  `PATH`, **always** build through it — do **not** call `make` / `gmake` /
+  `xlmake` directly. Only if the CLI is absent may you fall back to absolute
+  `make -C <abs-path>` (the rest of this document documents that fallback and
+  the underlying make system the CLI drives).
+  ```sh
+  # Preferred (CLI present) — engine checkout as STAPPLER_ROOT:
+  xenolith-cli build <abs-proj-path> --engine <abs-engine-root> \
+      [--target <triple>] [--release] [--run]
+
+  # Fallback ONLY when `command -v xenolith-cli` fails:
+  make -C <abs-proj-path> STAPPLER_TARGET=<triple> -j8
+  ```
+  Inside this monorepo, pass `--engine` (or `$XENOLITH_ENGINE`) pointing at the
+  engine root so the live tree is used instead of a baked snapshot. Outside the
+  monorepo (scaffolded apps with an installed SDK) omit `--engine`. Never
+  hand-roll a compiler command line to "test a build".
+- **One build system underneath.** Every project is a small `Makefile` that sets
+  `LOCAL_*` variables and `include`s `make/universal.mk`. Project makefiles
+  contain **no build rules**. The CLI (or raw `make` as fallback) is what
+  drives them so flags, includes, modules and the toolchain match.
 - **Every build is a cross-compile.** The target is the triple
-  `STAPPLER_TARGET=<arch>-<vendor>-<os>[-<env>][+sprt]`. With no target the host
-  is auto-detected from `uname` (e.g. `x86_64-unknown-linux-gnu`); passing the
-  matching triple explicitly is equivalent and recommended for reproducibility.
+  `STAPPLER_TARGET=<arch>-<vendor>-<os>[-<env>][+sprt]` (CLI: `--target <triple>`).
+  With no target the host is auto-detected from `uname` (e.g.
+  `x86_64-unknown-linux-gnu`); passing the matching triple explicitly is
+  equivalent and recommended for reproducibility.
 - **A successful build is `exit 0`.** Check the exit status. For CLI test apps a
   clean run also prints `N checks, 0 failures`.
 - **`.cpp`/`.c` are compile units (SCU); `.cc` files are `#include`-only
@@ -36,8 +58,8 @@ require the target platform.
   code, and macOS-only code compile to *nothing* on a native Linux build. To
   verify changes there you **must** build the matching target (see §3 and §6).
   A green native build does **not** prove those files even compiled.
-- **Shell cwd can drift between calls.** Always use absolute `make -C <abs-path>`
-  paths, not `cd`.
+- **Shell cwd can drift between calls.** Always pass **absolute** project (and
+  `--engine`) paths to the CLI / `make -C`; never rely on `cd`.
 - **App code cannot use POSIX sockets** (the runtime libc lacks them). Use the
   OpenSSL BIO socket API instead.
 - **Before writing code, read the code style reference** —
@@ -109,15 +131,19 @@ $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)/cc/<artifact>
 
 ## 2. Quick reference: build + run/verify per target
 
-Run any of these from a project directory (the `tests/*` examples are ready to
-use). Replace `tests/window` with your project. Success = `exit 0`.
+Replace `<engine>` with the absolute path to this repo and `tests/window` with
+your project. Success = `exit 0`. **Use the CLI column when
+`xenolith-cli` is installed**; the `make` column is fallback-only (§0).
 
-| Target | Triple | Build command | Run | Notes |
-|---|---|---|---|---|
-| **Linux glibc x86_64** *(reference)* | `x86_64-unknown-linux-gnu` | `make -C tests/window STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8` | run the binary on Linux | bare `make` builds the same (host triple); CLI apps self-verify, GUI apps need display + Vulkan (§3.1) |
-| **Windows x86_64** | `x86_64-pc-windows-msvc` | `make -C tests/window STAPPLER_TARGET=x86_64-pc-windows-msvc -j8` | on Windows, or under Wine | only way to exercise `runtime/libc_impl` (§6) |
-| **Android (all ABIs)** | `unknown-ndk-linux-android` | `make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android` | on an Android device/emulator | **no `-j`**, clear `MAKEFLAGS`; full APK via Gradle; see §3.3 |
-| **macOS x86_64 / arm64** | `aarch64-apple-macosx` *(or `x86_64-…`, `…+sprt`)* | `make -C tests/window STAPPLER_TARGET=aarch64-apple-macosx -j8` | on macOS | compile/build verification when no Mac is available |
+| Target | Triple | Build (CLI — preferred) | Build (`make` fallback) | Run | Notes |
+|---|---|---|---|---|---|
+| **Linux glibc x86_64** *(reference)* | `x86_64-unknown-linux-gnu` | `xenolith-cli build tests/window --engine <engine> --target x86_64-unknown-linux-gnu` | `make -C tests/window STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8` | run the binary on Linux | omit `--target` for native host; CLI apps self-verify, GUI apps need display + Vulkan (§3.1) |
+| **Windows x86_64** | `x86_64-pc-windows-msvc` | `xenolith-cli build tests/window --engine <engine> --target x86_64-pc-windows-msvc` | `make -C tests/window STAPPLER_TARGET=x86_64-pc-windows-msvc -j8` | on Windows, or under Wine | only way to exercise `runtime/libc_impl` (§6) |
+| **Android (all ABIs)** | `unknown-ndk-linux-android` | `xenolith-cli build tests/window --engine <engine> --target unknown-ndk-linux-android -j1` | `env -u MAKEFLAGS -u MFLAGS make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android` | on an Android device/emulator | **no nested `-j`**, clear `MAKEFLAGS` if using make fallback; full APK via Gradle; see §3.3 |
+| **macOS x86_64 / arm64** | `aarch64-apple-macosx` *(or `x86_64-…`, `…+sprt`)* | `xenolith-cli build tests/window --engine <engine> --target aarch64-apple-macosx` | `make -C tests/window STAPPLER_TARGET=aarch64-apple-macosx -j8` | on macOS | compile/build verification when no Mac is available |
+
+Add `--release` / `RELEASE=1` for optimized builds; add `--run` on the CLI to
+launch a native artifact after a successful build.
 
 Additional target triples build the same way (full cross-compile); running them
 requires the matching OS/emulator: `aarch64-unknown-linux-gnu`,
@@ -132,10 +158,15 @@ no emulator on an x86_64 Linux host, so build-verify only there).
 ### 3.1 Linux / glibc (reference platform)
 
 - Triple `x86_64-unknown-linux-gnu` (or `aarch64-unknown-linux-gnu`). This is also
-  the auto-detected host triple, so bare `make` builds the host equivalently.
+  the auto-detected host triple, so omitting `--target` / bare `make` builds the
+  host equivalently.
 - Build with the explicit triple (recommended):
   ```sh
-  make -C tests/runtime STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8     # add RELEASE=1 for optimized
+  # preferred:
+  xenolith-cli build tests/runtime --engine <abs-engine-root> \
+      --target x86_64-unknown-linux-gnu    # add --release for optimized
+  # fallback if CLI missing:
+  make -C tests/runtime STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8
   ```
 - Run the produced binary (path includes the triple and build type):
   ```sh
@@ -168,14 +199,18 @@ no emulator on an x86_64 Linux host, so build-verify only there).
   MSVCRT/UCRT or the Windows SDK** — it links the engine's own freestanding libc
   (`runtime/libc_impl`, mimalloc) and binds to system DLLs via a vendored
   `import.lib`.
-- Build: `make -C <proj> STAPPLER_TARGET=x86_64-pc-windows-msvc -j8`
+- Build (CLI preferred; `make` only if CLI missing):
+  ```sh
+  xenolith-cli build <proj> --engine <abs-engine-root> --target x86_64-pc-windows-msvc
+  # fallback: make -C <proj> STAPPLER_TARGET=x86_64-pc-windows-msvc -j8
+  ```
 - Artifact: `…/x86_64-pc-windows-msvc/debug/cc/<exe>.exe` (+ `.pdb`).
 - Run/verify: on Windows directly, or — from a non-Windows host — under Wine if it
   is installed:
   ```sh
   WINEDEBUG=-all wine tests/runtime/stappler-build/x86_64-pc-windows-msvc/debug/cc/runtimetest.exe
   ```
-  A clean CLI run is `exit 0` + `N checks, 0 failures`.
+  A clean CLI-test-app run is `exit 0` + `N checks, 0 failures`.
 - **This is the only way to exercise `runtime/libc_impl`** — those sources are
   skipped entirely by the Linux host build (§6). The dedicated harness for it is
   `tests/libc` (§5), which builds the same sources for the host and for this
@@ -183,10 +218,10 @@ no emulator on an x86_64 Linux host, so build-verify only there).
   Windows `wchar_t` is 16-bit (`== char16_t`), so surrogate-pair code paths only
   get exercised on this target.
 - **arm64 Windows** (`aarch64-pc-windows-msvc`) is now a **full target with its
-  own sysroot** (and a supported host) — build it through the standard make flow
-  exactly like x86_64:
+  own sysroot** (and a supported host) — build it like x86_64:
   ```sh
-  make -C <proj> STAPPLER_TARGET=aarch64-pc-windows-msvc -j8
+  xenolith-cli build <proj> --engine <abs-engine-root> --target aarch64-pc-windows-msvc
+  # fallback: make -C <proj> STAPPLER_TARGET=aarch64-pc-windows-msvc -j8
   ```
   There is still **no emulator** to *run* arm64-Windows binaries on an x86_64
   Linux host (the Wine flow does not apply to execution), so from Linux this is
@@ -206,9 +241,12 @@ no emulator on an x86_64 Linux host, so build-verify only there).
 
 - Triple `unknown-ndk-linux-android`; builds **all four ABIs** (`armeabi-v7a`,
   `arm64-v8a`, `x86`, `x86_64`) into `lib<name>.so` via `ndk-build`.
-- **Build with the triple directly** (the core build step):
+- **Build Android via CLI with `-j1`** (nested `ndk-build` hates a parent
+  jobserver). Make fallback still works if the CLI is missing:
   ```sh
-  env -u MAKEFLAGS -u MFLAGS make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android
+  xenolith-cli build tests/window --engine <abs-engine-root> \
+      --target unknown-ndk-linux-android -j1
+  # fallback: env -u MAKEFLAGS -u MFLAGS make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android
   ```
   This compiles every ABI. It expects the NDK project to have been staged once by
   the `android-export` goal (which `tests/window` wires into its build); if it has
@@ -243,7 +281,11 @@ no emulator on an x86_64 Linux host, so build-verify only there).
 - Triples `x86_64-apple-macosx`, `aarch64-apple-macosx`, optionally `+sprt`
   (`aarch64-apple-macosx+sprt`) to use the toolchain with the integrated Xenolith
   Runtime (then the macOS SDK is not needed).
-- Build: `make -C <proj> STAPPLER_TARGET=aarch64-apple-macosx -j8`
+- Build (CLI preferred; `make` only if CLI missing):
+  ```sh
+  xenolith-cli build <proj> --engine <abs-engine-root> --target aarch64-apple-macosx
+  # fallback: make -C <proj> STAPPLER_TARGET=aarch64-apple-macosx -j8
+  ```
 - Artifact: a `name.app` bundle (`…/cc/<name>.app/Contents/MacOS/<name>`, with a
   `.dSYM` for debug builds).
 - **macOS binaries run only on macOS.** From a non-macOS host this target is
@@ -310,8 +352,11 @@ APPCONFIG_BUNDLE_NAME := org.stappler.MyApp
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 ```
 
-Then `make -C myproject -j8` for a native debug build; add `RELEASE=1` or a
-`STAPPLER_TARGET=` once that works.
+Then build with the CLI (preferred) or `make` fallback (§0):
+```sh
+xenolith-cli build myproject --engine <abs-engine-root>   # add --release / --target …
+# fallback: make -C myproject -j8
+```
 
 ### 4.3 Key `LOCAL_*` variables
 
@@ -336,7 +381,7 @@ Then `make -C myproject -j8` for a native debug build; add `RELEASE=1` or a
 |---|---|
 | `APPCONFIG_APP_NAME` | human-readable name (default = `LOCAL_EXECUTABLE`) |
 | `APPCONFIG_BUNDLE_NAME` | reverse-DNS id, e.g. `org.stappler.MyApp` (used for macOS bundle id, Windows AppContainer name) |
-| `APPCONFIG_APP_PATH_COMMON` | resource/sandbox mode. Linux: `>0` = use XDG dirs, `0` = self-contained next to exe. Windows: `1` AppData, `2` AppContainer paths, `3` run inside an AppContainer |
+| `APPCONFIG_APP_PATH_COMMON` | resource/sandbox mode. **Don't set on macOS** — non-default values break app activation and the window never maps (leave it unset, like `tests/window`). Linux: `>0` = use XDG dirs, `0` = self-contained next to exe. Windows: `1` AppData, `2` AppContainer paths, `3` run inside an AppContainer |
 | `APPCONFIG_VERSION_API` / `_REV` / `_BUILD` / `_VARIANT` | version components |
 | `APPCONFIG_STRINGS` / `APPCONFIG_VALUES` | extra string / numeric defines |
 
@@ -379,7 +424,7 @@ what you need.
 
 **Which to use:**
 - Changed a `stappler/` module → build `tests/window` (preferred — full stack) or
-  `tests/stappler` (faster smoke). Both via `make/universal.mk`.
+  `tests/stappler` (faster smoke). Drive either through the CLI (§0 / §2).
 - Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
   the libc wrappers themselves also run `tests/libc`.
 - Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its
@@ -387,10 +432,11 @@ what you need.
   `tests/runtime`; either way the Windows cross-build is what actually compiles
   `libc_impl` (§3.2, §6).
 
-A clean CLI verify (native):
+A clean CLI-test-app verify (native):
 ```sh
-make -C tests/runtime -j8 \
+xenolith-cli build tests/runtime --engine <abs-engine-root> \
   && tests/runtime/stappler-build/x86_64-unknown-linux-gnu/debug/cc/runtimetest
+# fallback if CLI missing: make -C tests/runtime -j8 && <same binary>
 # expect exit 0 and "N checks, 0 failures"
 ```
 
@@ -447,7 +493,9 @@ scope, you are probably either (a) on a target that excludes that file, or
 
 ## 8. Common pitfalls checklist
 
-- [ ] Used absolute `make -C <abs-path>` (cwd drifts between calls).
+- [ ] Built via `xenolith-cli` when it is on `PATH` (raw `make` only as
+      fallback — §0). Inside this monorepo, passed `--engine <abs-engine-root>`.
+- [ ] Used absolute project / `--engine` paths (cwd drifts between calls).
 - [ ] Did **not** try to compile a `.cc` subunit standalone (build its `.cpp` SCU).
 - [ ] For Android: no `-j`, cleared `MAKEFLAGS`, `touch`ed edited sources, cleared
       a stale `Android.mk.tmp` if export failed with exit 126.

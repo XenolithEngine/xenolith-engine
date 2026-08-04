@@ -50,7 +50,7 @@ bool DeviceQueue::init(Device &device, VkQueue queue, uint32_t index, core::Queu
 
 Status DeviceQueue::waitIdle() {
 	VkResult result;
-	static_cast<Device *>(_device)->makeApiCall(
+	static_cast<Device *>(_device)->makeQueueApiCall(
 			[&, this](const DeviceTable &table, VkDevice device) {
 		result = table.vkQueueWaitIdle(_queue);
 	});
@@ -121,7 +121,7 @@ Status DeviceQueue::doSubmit(const FrameSync *sync, core::CommandPool *commandPo
 	VkResult result;
 	auto dev = static_cast<Device *>(_device);
 
-	dev->makeApiCall([&, this](const DeviceTable &table, VkDevice device) {
+	dev->makeQueueApiCall([&, this](const DeviceTable &table, VkDevice device) {
 		if (hasFlag(idle, core::DeviceIdleFlags::PreDevice)) {
 			table.vkDeviceWaitIdle(dev->getDevice());
 		} else if (hasFlag(idle, core::DeviceIdleFlags::PreQueue)) {
@@ -1126,16 +1126,21 @@ void CommandPool::reset(core::Device &cdev) {
 						static_cast<const CommandBuffer *>(it.get())->getBuffer());
 			}
 		}
-		if (buffersToFree.size() > 0) {
-			dev.getTable()->vkFreeCommandBuffers(dev.getDevice(), _commandPool,
-					static_cast<uint32_t>(buffersToFree.size()), buffersToFree.data());
-		}
+		// Under the queue lock: a pool is recycled from the thread that invalidates the frame,
+		// while its command buffers may still be inside vkQueueSubmit on a worker. The lock keeps
+		// the free ordered after that submit.
+		dev.makeQueueApiCall([&](const DeviceTable &table, VkDevice device) {
+			if (buffersToFree.size() > 0) {
+				table.vkFreeCommandBuffers(device, _commandPool,
+						static_cast<uint32_t>(buffersToFree.size()), buffersToFree.data());
+			}
 
-		if (dev.isPortabilityMode()) {
-			_invalidated = true;
-		} else {
-			recreatePool(dev);
-		}
+			if (dev.isPortabilityMode()) {
+				_invalidated = true;
+			} else {
+				recreatePool(dev);
+			}
+		});
 	}
 
 	core::CommandPool::reset(cdev);

@@ -46,7 +46,9 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 bool PresentationEngine::isFrameValid(const PresentationFrame *frame) const {
-	if (frame->getSwapchain() == _swapchain && !_swapchain->isDeprecated()) {
+	// Both sides null must not count as equal: after end() that let callers touch a dead
+	// swapchain.
+	if (_swapchain && frame->getSwapchain() == _swapchain && !_swapchain->isDeprecated()) {
 		return true;
 	}
 	return false;
@@ -90,7 +92,6 @@ void PresentationEngine::scheduleNextImage(Function<void(PresentationFrame *, bo
 	if (_options.followDisplayLinkBarrier && _waitForDisplayLink) {
 		return;
 	}
-
 	XL_COREPRESENT_LOG("scheduleNextImage");
 
 	if (_options.renderImageOffscreen) {
@@ -114,7 +115,7 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 	XL_COREPRESENT_LOG("scheduleSwapchainImage");
 
 	acquireFrameData(frame, [this](core::PresentationFrame *frame) mutable {
-		if (isRunning() && frame->getSwapchain() == _swapchain) {
+		if (isRunning() && _swapchain && frame->getSwapchain() == _swapchain) {
 			XL_COREPRESENT_LOG("scheduleSwapchainImage: setup frame request");
 			auto a = frame->setupOutputAttachment();
 			if (!a) {
@@ -190,6 +191,11 @@ void PresentationEngine::updateConstraints(UpdateConstraintsFlags flags,
 		Function<void(bool)> &&cb) {
 	XL_COREPRESENT_LOG("deprecateSwapchain");
 	if (!_running || !_swapchain) {
+		// The callback is a handshake, not a notification: close() waits on it to release the
+		// window. Report the failure rather than going silent and stranding the AppWindow.
+		if (cb) {
+			cb(false);
+		}
 		return;
 	}
 
@@ -231,9 +237,17 @@ void PresentationEngine::updateConstraints(UpdateConstraintsFlags flags,
 
 	_acquiredSwapchainImages.clear();
 
-	auto acquiredImages = _swapchain->getAcquiredImagesCount();
-	if (acquiredImages == 0) {
+	// EndOfLife cannot wait for acquiredImages==0 the way a resize deprecate does: the display
+	// link may already be paused, so an in-flight frame never finishes, recreation never
+	// schedules and the close callback never fires. Abort the frames and recreate unconditionally.
+	if (hasFlag(flags, UpdateConstraintsFlags::EndOfLife)) {
+		resetFrames();
 		scheduleSwapchainRecreation();
+	} else {
+		auto acquiredImages = _swapchain->getAcquiredImagesCount();
+		if (acquiredImages == 0) {
+			scheduleSwapchainRecreation();
+		}
 	}
 
 	if (_options.syncConstraintsUpdate && hasFlag(flags, UpdateConstraintsFlags::SyncUpdate)
@@ -278,6 +292,12 @@ bool PresentationEngine::run() {
 
 void PresentationEngine::end() {
 	_running = false;
+
+	// The swapchain and its images go away below; with several windows on one device a sibling
+	// may still be rendering, so drain the GPU first — the same barrier recreateSwapchain takes.
+	if (_device && _swapchain) {
+		_device->waitIdle();
+	}
 
 	if (_acquisitionTimer) {
 		_acquisitionTimer->cancel();
@@ -818,8 +838,11 @@ void PresentationEngine::resetFrames() {
 	frames = _detachedFrames;
 	for (auto &it : frames) { it->invalidate(); }
 
-	for (auto &it : _scheduledPresentHandles) { it->cancel(); }
+	// Move out before cancelling: a cancel runs its completion, which erases the handle from this
+	// very set and would invalidate the iterator underneath us.
+	auto scheduledPresentHandles = sp::move(_scheduledPresentHandles);
 	_scheduledPresentHandles.clear();
+	for (auto &it : scheduledPresentHandles) { it->cancel(); }
 
 	_framesAwaitingImages.clear();
 	_scheduledForPresent.clear();
@@ -893,7 +916,9 @@ Status PresentationEngine::acquireScheduledImage() {
 		if (fence) {
 			fence->schedule(*loop);
 		}
-		if (status == Status::Timeout) {
+		// Timeout and Declined both mean "no image available yet" for a lockfree acquire
+		// (VK_TIMEOUT and VK_NOT_READY); either way this timer is the only thing that retries.
+		if (status == Status::Timeout || status == Status::Declined) {
 			// schedule timed waiter
 			scheduleImageAcquisition();
 		}
@@ -906,7 +931,9 @@ void PresentationEngine::scheduleImageAcquisition() {
 		.completion = sprt::dispatch::CompletionHandle<sprt::dispatch::TimerHandle>::create<
 				PresentationEngine>(this,
 				[](PresentationEngine *e, sprt::dispatch::TimerHandle *h, uint32_t, Status st) {
-		if (st == Status::Ok && e->acquireScheduledImage() != Status::Timeout) {
+		auto acquireStatus = st == Status::Ok ? e->acquireScheduledImage() : st;
+		if (st == Status::Ok && acquireStatus != Status::Timeout
+				&& acquireStatus != Status::Declined) {
 			h->cancel();
 			if (e->_acquisitionTimer == h) {
 				e->_acquisitionTimer = nullptr;
@@ -956,7 +983,10 @@ void PresentationEngine::runScheduledPresent(NotNull<PresentationFrame> frame, I
 		uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("runScheduledPresent");
 
-	if (!_loop->isRunning() || frame->hasFlag(PresentationFrame::Invalidated)) {
+	// EndOfLife/resetFrames can null _swapchain while a Present queue acquire is in flight — the
+	// release callback must not present into a dead engine.
+	if (!_running || !_swapchain || !_loop->isRunning()
+			|| frame->hasFlag(PresentationFrame::Invalidated)) {
 		return;
 	}
 
@@ -983,7 +1013,11 @@ void PresentationEngine::runScheduledPresent(NotNull<PresentationFrame> frame, I
 void PresentationEngine::presentSwapchainImage(Rc<DeviceQueue> &&queue,
 		NotNull<PresentationFrame> frame, ImageStorage *image, uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("presentSwapchainImage");
-	if (frame->getSwapchain() == _swapchain && frame->getSwapchainImage()->isSubmitted()) {
+	// After end()/EndOfLife both _swapchain and the frame's swapchain can be null, and `null ==
+	// null` used to pass the equality check straight into a null SwapchainImage deref.
+	auto *swImage = frame->getSwapchainImage();
+	if (_running && _swapchain && swImage && frame->getSwapchain() == _swapchain
+			&& !frame->hasFlag(PresentationFrame::Invalidated) && swImage->isSubmitted()) {
 		presentWithQueue(queue.get(), frame, image, presentWindow);
 	}
 	if (queue) {

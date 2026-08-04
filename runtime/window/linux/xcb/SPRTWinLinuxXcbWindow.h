@@ -99,6 +99,7 @@ public:
 
 	xcb_window_t getWindow() const { return _xinfo.window; }
 	xcb_connection_t *getConnection() const;
+	IRect getContentScreenRect() const;
 
 	XcbConnection *getXcbConnection() const { return _connection; }
 
@@ -112,6 +113,7 @@ public:
 
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
+	virtual bool isMapped() const override { return _mapped; }
 	virtual bool close() override;
 
 	virtual void handleFramePresented(const PresentationFrameInfo &) override;
@@ -182,6 +184,8 @@ protected:
 	int32_t _lastPointerButton = 1; // XCB_BUTTON_INDEX_1 (left)
 
 	float _shadowCurrentValue = 0.0f;
+	bool _popupGrabbed = false;
+	bool _mapped = false;
 };
 
 } // namespace sprt::window

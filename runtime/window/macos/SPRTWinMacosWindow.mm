@@ -47,6 +47,8 @@
 #include "SPRTWinMacosWindow.h"
 #include "SPRTWinMacosView.h"
 
+#include <sprt/runtime/log.h>
+
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkSwapchain.h"
 #endif
@@ -99,7 +101,11 @@
 
 @interface SPRTMacosWindow : NSWindow {
 	NSWindowStyleMask _defaultStyle;
+	BOOL _allowKey;
+	BOOL _allowMain;
 }
+
+- (void)configureRole:(BOOL)allowKey allowMain:(BOOL)allowMain;
 
 - (void)setFrame:(NSRect)frameRect
 				  display:(BOOL)displayFlag
@@ -115,6 +121,9 @@
 namespace sprt::window {
 
 MacosWindow::~MacosWindow() {
+	removePopupDismissMonitor();
+	detachFromParentWindow();
+	_startupHold = nullptr;
 	_rootViewController = nullptr;
 	if (_window) {
 		_window = nullptr;
@@ -126,8 +135,12 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		return false;
 	}
 
+	const bool auxiliary = isAuxiliary();
 	NSWindowStyleMask style = 0;
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	if (auxiliary) {
+		// Borderless surface: no title bar, no fullscreen chrome.
+		style = NSWindowStyleMaskBorderless;
+	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		style = NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
 				| NSWindowStyleMaskClosable;
 
@@ -145,29 +158,56 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		{static_cast<CGFloat>(_info->rect.width), static_cast<CGFloat>(_info->rect.height)},
 	};
 
+	// A borderless NSWindow covers the auxiliary roles; no separate NSPanel subclass is needed
+	// for the Metal content-view path. Auxiliary windows must not defer creation: a MoltenVK
+	// present into a never-shown deferred window returns DEVICE_LOST on the shared VkDevice.
 	_window = [[SPRTMacosWindow alloc] initWithContentRect:rect
 												 styleMask:style
 												   backing:NSBackingStoreBuffered
-													 defer:YES];
+													 defer:auxiliary ? NO : YES];
 
-	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	if (auxiliary) {
+		[_window setOpaque:YES];
+		[_window setBackgroundColor:[NSColor colorWithCalibratedRed:0x2A / 255.0
+															  green:0x2A / 255.0
+															   blue:0x2E / 255.0
+															  alpha:1.0]];
+	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		[_window setOpaque:NO];
 		[_window setBackgroundColor:[NSColor clearColor]];
+	}
+
+	if (auxiliary) {
+		[_window setLevel:NSPopUpMenuWindowLevel];
+		[_window setHasShadow:YES];
+		[_window setHidesOnDeactivate:NO];
+		// Never become key/main — Root keeps focus. Esc is handled by a local key monitor.
+		[_window configureRole:NO allowMain:NO];
+		// Never a fullscreen primary space citizen.
+		_window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace
+				| NSWindowCollectionBehaviorTransient
+				| NSWindowCollectionBehaviorFullScreenAuxiliary;
+	} else {
+		[_window configureRole:YES allowMain:YES];
+		_window.collectionBehavior |=
+				_window.collectionBehavior | NSWindowCollectionBehaviorFullScreenPrimary;
 	}
 
 	// Apply immutable min/max content constraints. `_info->rect` is content-space in points,
 	// so the constraints map directly onto contentMin/MaxSize (Cocoa enforces them on resize).
 	// A 0 dimension means "unconstrained": 0 for the minimum, CGFLOAT_MAX for the maximum.
-	if (_info->minExtent != Extent2::ZERO) {
-		_window.contentMinSize = NSMakeSize(static_cast<CGFloat>(_info->minExtent.width),
-				static_cast<CGFloat>(_info->minExtent.height));
-	}
-	if (_info->maxExtent != Extent2::ZERO) {
-		_window.contentMaxSize = NSMakeSize(_info->maxExtent.width != 0
-						? static_cast<CGFloat>(_info->maxExtent.width)
-						: CGFLOAT_MAX,
-				_info->maxExtent.height != 0 ? static_cast<CGFloat>(_info->maxExtent.height)
-											 : CGFLOAT_MAX);
+	if (!auxiliary) {
+		if (_info->minExtent != Extent2::ZERO) {
+			_window.contentMinSize = NSMakeSize(static_cast<CGFloat>(_info->minExtent.width),
+					static_cast<CGFloat>(_info->minExtent.height));
+		}
+		if (_info->maxExtent != Extent2::ZERO) {
+			_window.contentMaxSize = NSMakeSize(_info->maxExtent.width != 0
+							? static_cast<CGFloat>(_info->maxExtent.width)
+							: CGFLOAT_MAX,
+					_info->maxExtent.height != 0 ? static_cast<CGFloat>(_info->maxExtent.height)
+												 : CGFLOAT_MAX);
+		}
 	}
 
 	[_window setReleasedWhenClosed:false];
@@ -175,25 +215,116 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	_window.contentViewController = _rootViewController;
 	_window.contentView = _window.contentViewController.view;
 	_window.title = [NSString stringWithCString:_info->title.data() encoding:NSUTF8StringEncoding];
-	_window.collectionBehavior |=
-			_window.collectionBehavior | NSWindowCollectionBehaviorFullScreenPrimary;
 
 	_initialized = true;
 
+	// Hold a self-ref until notifyWindowCreated retains us: otherwise loadWindow's temporary Rc
+	// dies and takes the window with it before the view finishes loading.
+	_startupHold = this;
+
 	if (_windowLoaded) {
-		_controller->notifyWindowCreated(this);
-		[_window display];
+		handleWindowLoaded();
 	}
 	return true;
 }
 
+void MacosWindow::attachToParentWindow() {
+	if (!isAuxiliary() || _info->parent.empty()) {
+		return;
+	}
+	auto *parent = dynamic_cast<MacosWindow *>(_controller->findWindow(_info->parent));
+	if (!parent || !parent->getWindow() || !_window) {
+		return;
+	}
+	NSWindow *parentWin = parent->getWindow();
+	if ([parentWin.childWindows indexOfObjectIdenticalTo:_window] == NSNotFound) {
+		[parentWin addChildWindow:_window ordered:NSWindowAbove];
+	}
+}
+
+void MacosWindow::detachFromParentWindow() {
+	if (!_window) {
+		return;
+	}
+	NSWindow *parent = _window.parentWindow;
+	if (parent) {
+		[parent removeChildWindow:_window];
+	}
+}
+
+void MacosWindow::applyAuxiliaryPlacement() {
+	if (!isAuxiliary() || !_window) {
+		return;
+	}
+	auto *parent = dynamic_cast<MacosWindow *>(_controller->findWindow(_info->parent));
+	if (!parent || !parent->getWindow()) {
+		return;
+	}
+
+	NSWindow *parentWin = parent->getWindow();
+	NSRect parentFrame = parentWin.frame;
+	// Engine placement space is Y-down from the parent content top-left.
+	NSRect parentContent = [parentWin contentRectForFrameRect:parentFrame];
+	IRect parentContentRect(0, 0, int32_t(parentContent.size.width),
+			int32_t(parentContent.size.height));
+
+	NSScreen *screen = parentWin.screen ?: [NSScreen mainScreen];
+	NSRect visible = screen.visibleFrame;
+	// Work area in parent-content Y-down space: convert screen visible rect.
+	const CGFloat parentTop = parentContent.origin.y + parentContent.size.height;
+	IRect workArea(int32_t(visible.origin.x - parentContent.origin.x),
+			int32_t(parentTop - (visible.origin.y + visible.size.height)),
+			int32_t(visible.size.width), int32_t(visible.size.height));
+
+	Extent2 size(_info->rect.width, _info->rect.height);
+	IRect placed = computeWindowPlacement(_info->placement, size, parentContentRect, workArea);
+
+	// Convert Y-down parent-content coords back to Cocoa screen (Y-up).
+	const CGFloat cocoaX = parentContent.origin.x + CGFloat(placed.x);
+	const CGFloat cocoaY =
+			parentTop - CGFloat(placed.y) - CGFloat(placed.height);
+	NSRect frame = NSMakeRect(cocoaX, cocoaY, CGFloat(placed.width), CGFloat(placed.height));
+	[_window setFrame:[_window frameRectForContentRect:frame] display:NO];
+
+	_info->rect = IRect(placed.x, placed.y, placed.width, placed.height);
+}
+
 void MacosWindow::mapWindow() {
-	// show window in front and activate;
+	// A late first-frame callback must not resurrect a window that is already winding down.
+	if (_mapped || _dismissScheduled) {
+		return;
+	}
+
+	if (isAuxiliary()) {
+		applyAuxiliaryPlacement();
+		attachToParentWindow();
+		// Never steal key focus from Root — that greys its title bar and churns Context
+		// pause/resume. Esc arrives through the local key monitor instead.
+		[_window orderFront:nil];
+		if (_info->type == WindowType::Popup || _info->type == WindowType::Tooltip) {
+			// Arm outside-click / Esc dismiss after a short delay so the opening click cannot
+			// also dismiss in the same gesture.
+			MacosWindow *self = this;
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
+					dispatch_get_main_queue(), ^{
+				if (self && self->_mapped && self->_window && !self->_dismissScheduled) {
+					self->installPopupDismissMonitor();
+				}
+			});
+		}
+		_mapped = true;
+		if (_rootViewController) {
+			_rootViewController.displayLinkPaused = NO;
+		}
+		return;
+	}
+
+	// Root (and future Dialog/Utility): show in front and activate.
 	[_window makeKeyAndOrderFront:nil];
 	[_window orderFrontRegardless];
 	[_window orderWindow:NSWindowAbove relativeTo:0];
-
 	[NSApp activateIgnoringOtherApps:YES];
+	_mapped = true;
 
 	if (_rootViewController) {
 		_rootViewController.displayLinkPaused = NO;
@@ -201,18 +332,156 @@ void MacosWindow::mapWindow() {
 }
 
 void MacosWindow::unmapWindow() {
+	removePopupDismissMonitor();
+	detachFromParentWindow();
 	[_rootViewController invalidate];
 	_rootViewController = nullptr;
 }
 
+// Whole subtree, not just direct children: a click in a third-level submenu is still "inside"
+// for the top-level menu. A plain function, not a self-referencing block — that would retain
+// itself and leak on every event.
+static BOOL pointInsideWindowTree(NSWindow *root, NSPoint pt) {
+	if (!root) {
+		return NO;
+	}
+	if (NSPointInRect(pt, root.frame)) {
+		return YES;
+	}
+	for (NSWindow *child in root.childWindows) {
+		if (pointInsideWindowTree(child, pt)) {
+			return YES;
+		}
+	}
+	return NO;
+}
+
+void MacosWindow::installPopupDismissMonitor() {
+	if (_popupDismissMonitor || !isAuxiliary() || !_window) {
+		return;
+	}
+	// A tooltip has no dismiss affordance, so any click takes it away — and it must never swallow
+	// that click. For a popup, outside clicks dismiss and are swallowed so the button that opened
+	// it cannot reopen in the same gesture. The popup is never key, so this monitor is also the
+	// only path Esc can arrive by.
+	const bool isTooltip = _info->type == WindowType::Tooltip;
+	MacosWindow *self = this;
+	auto scheduleDismiss = ^(const char * /*reason*/) {
+		if (!self || self->_dismissScheduled) {
+			return;
+		}
+		// Tooltip and Popup share hide()/EndOfLife dismiss.
+		self->_dismissScheduled = true;
+		self->removePopupDismissMonitor();
+		Rc<ContextController> ctrl = self->_controller;
+		ctrl->getLooper()->performOnThread([self] {
+			if (!self) {
+				return;
+			}
+			if (auto *aw = self->getAppWindow()) {
+				aw->hide();
+			} else {
+				self->close();
+			}
+		}, ctrl);
+	};
+	_popupDismissMonitor = [NSEvent
+			addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown
+														 | NSEventMaskKeyDown)
+										 handler:^NSEvent *(NSEvent *event) {
+		if (!self || !self->_window || self->_dismissScheduled) {
+			return event;
+		}
+		if (event.type == NSEventTypeKeyDown) {
+			if (event.keyCode == 53 /* kVK_Escape */) {
+				scheduleDismiss("escape");
+				return nil;
+			}
+			return event;
+		}
+		if (isTooltip) {
+			scheduleDismiss("click-any");
+			return event;
+		}
+		const NSPoint screenPt = [NSEvent mouseLocation];
+		auto pointInsideTree = [&](NSWindow *root) { return pointInsideWindowTree(root, screenPt); };
+		if (pointInsideTree(self->_window)) {
+			return event;
+		}
+		// Climb to the root-level Popup (parent is Root). Nested + root monitors must not
+		// both hide on an outside click — that double-parks Metal and races DeviceLost.
+		MacosWindow *treeRoot = self;
+		while (treeRoot && treeRoot->_info) {
+			auto parentId = treeRoot->_info->parent;
+			if (parentId.empty() || !self->_controller) {
+				break;
+			}
+			auto *pw = self->_controller->findWindow(parentId);
+			auto *pi = pw ? pw->getInfo() : nullptr;
+			if (!pi || pi->type != WindowType::Popup) {
+				break;
+			}
+			treeRoot = static_cast<MacosWindow *>(pw);
+		}
+		if (treeRoot != self) {
+			// Outside submenu: dismiss only when the click is still inside the parent menu tree.
+			// Clicks outside the whole tree are handled solely by the root popup's monitor.
+			if (treeRoot && pointInsideTree(treeRoot->_window)) {
+				scheduleDismiss("click-in-parent-menu");
+			}
+			return event;
+		}
+		scheduleDismiss("click-outside-tree");
+		// Swallow so parent widgets (Open Popup) do not fire on the dismiss click.
+		return nil;
+	}];
+}
+
+void MacosWindow::removePopupDismissMonitor() {
+	if (_popupDismissMonitor) {
+		[NSEvent removeMonitor:_popupDismissMonitor];
+		_popupDismissMonitor = nil;
+	}
+}
+
+void MacosWindow::prepareClose() {
+	removePopupDismissMonitor();
+	_dismissScheduled = true;
+	_mapped = false;
+	if (_rootViewController) {
+		_rootViewController.displayLinkPaused = YES;
+	}
+}
+
+bool MacosWindow::setContentExtent(Extent2 extent) {
+	if (!_window || extent.width == 0 || extent.height == 0) {
+		return false;
+	}
+	_info->rect.width = int32_t(extent.width);
+	_info->rect.height = int32_t(extent.height);
+
+	NSRect content = [_window contentRectForFrameRect:_window.frame];
+	const CGFloat top = content.origin.y + content.size.height;
+	NSRect next = NSMakeRect(content.origin.x, top - CGFloat(extent.height),
+			CGFloat(extent.width), CGFloat(extent.height));
+	[_window setFrame:[_window frameRectForContentRect:next] display:YES];
+	_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::None);
+	return true;
+}
+
 bool MacosWindow::close() {
-	if (!_controller->notifyWindowClosed(this)) {
+	prepareClose();
+
+	// Use None (not CloseInPlace): let AppKit drive windowWillClose → CloseInPlace so the
+	// presentation engine can wind down instead of being ripped out mid-acquire.
+	if (!_controller->notifyWindowClosed(this, WindowCloseOptions::None)) {
 		if (hasFlag(_info->state, WindowState::CloseGuard)) {
 			updateState(0, _info->state | WindowState::CloseRequest);
 		}
 		return false;
 	}
 
+	detachFromParentWindow();
 	if (_window) {
 		[_window close];
 	}
@@ -262,9 +531,19 @@ PresentationOptions MacosWindow::getPreferredOptions() const {
 
 void MacosWindow::handleWindowLoaded() {
 	_windowLoaded = true;
-	if (_initialized) {
-		[_window makeKeyAndOrderFront:_rootViewController];
+	if (!_initialized) {
+		return;
 	}
+
+	if (!_createdNotified) {
+		_createdNotified = true;
+		_controller->notifyWindowCreated(this);
+		_startupHold = nullptr;
+		[_window display];
+	}
+
+	// Do not makeKeyAndOrderFront here — mapWindow owns first show, and for auxiliary
+	// windows an early key steal from Root is exactly the hang/focus bug we are fixing.
 }
 
 void MacosWindow::handleDisplayLink() {
@@ -772,6 +1051,9 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	}
 
 	_engineWindow->updateState(0, _engineWindow->getInfo()->state | NSSPWIN::WindowState::Focused);
+	if (auto *macosWin = dynamic_cast<NSSPWIN::MacosWindow *>(_engineWindow)) {
+		macosWin->setHasBeenKey(true);
+	}
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
@@ -780,6 +1062,8 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	}
 
 	_engineWindow->updateState(0, _engineWindow->getInfo()->state & ~NSSPWIN::WindowState::Focused);
+	// Popup dismiss lives in the mapWindow NSEvent monitor, not here: resignKey also fires on
+	// ordinary key transfers and would self-close the popup immediately.
 }
 
 - (NSRect)windowWillUseStandardFrame:(NSWindow *)window defaultFrame:(NSRect)newFrame {
@@ -1384,6 +1668,25 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	event.key.keysym = NSSP::StringViewUtf8(ichars).getChar();
 	event.key.keychar = NSSP::StringViewUtf8(chars).getChar();
 
+	// Esc dismisses Popup windows via a deferred close on the controller looper —
+	// never call close() synchronously from inside keyDown (AppKit deadlock).
+	if (code == 53 /* kVK_Escape */ && _engineWindow
+			&& _engineWindow->getInfo()->type == NSSPWIN::WindowType::Popup) {
+		auto *ctrl = _engineWindow->getController();
+		auto *win = _engineWindow;
+		ctrl->getLooper()->performOnThread([win] {
+			if (!win) {
+				return;
+			}
+			if (auto *aw = win->getAppWindow()) {
+				aw->hide();
+			} else {
+				win->close();
+			}
+		}, ctrl);
+		return;
+	}
+
 	_engineWindow->handleInputEvents(NSSPWIN::Vector<NSSPWIN::InputEventData>{event});
 }
 
@@ -1481,15 +1784,22 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 							  backing:backingStoreType
 								defer:flag];
 	_defaultStyle = style;
+	_allowKey = YES;
+	_allowMain = YES;
 	return self;
 }
 
+- (void)configureRole:(BOOL)allowKey allowMain:(BOOL)allowMain {
+	_allowKey = allowKey;
+	_allowMain = allowMain;
+}
+
 - (BOOL)canBecomeKeyWindow {
-	return YES;
+	return _allowKey;
 }
 
 - (BOOL)canBecomeMainWindow {
-	return YES;
+	return _allowMain;
 }
 
 - (NSWindowStyleMask)defaultStyle {

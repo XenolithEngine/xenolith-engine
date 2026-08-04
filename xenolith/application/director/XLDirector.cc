@@ -152,6 +152,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	if (!_scene) {
 		log::source().error("xenolith::Director", "No scene defined for a FrameRequest");
 		cb(false);
+		return;
 	}
 
 	auto t = sp::platform::clock(ClockType::Monotonic);

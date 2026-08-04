@@ -201,7 +201,7 @@ Executables get a generated config header from `APPCONFIG_*` variables
 | `APPCONFIG_APP_NAME` | Human-readable application name (default: `LOCAL_EXECUTABLE`).
 | `APPCONFIG_BUNDLE_NAME` | Reverse-DNS bundle identifier, e.g. `org.stappler.MyApp`.
 | `APPCONFIG_BUNDLE_PATH` | Search path for bundled resources (default `$EXEC_DIR:$CWD`).
-| `APPCONFIG_APP_PATH_COMMON` | Where to look for app files on platforms without a bundle. Linux: `>0` = use XDG dirs. Windows: `1` AppData, `2` AppContainer paths, `3` run inside an AppContainer.
+| `APPCONFIG_APP_PATH_COMMON` | Where to look for app files on platforms without a bundle. **Don't set on macOS** — non-default values break app activation and the window never maps (leave it unset, like `tests/window`). Linux: `>0` = use XDG dirs. Windows: `1` AppData, `2` AppContainer paths, `3` run inside an AppContainer.
 | `APPCONFIG_VERSION_API` / `_REV` / `_BUILD` / `_VARIANT` | Version components baked into the binary.
 | `APPCONFIG_STRINGS` / `APPCONFIG_VALUES` | Extra string / numeric defines for the config header.
 |===

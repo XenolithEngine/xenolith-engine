@@ -246,6 +246,11 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 		return false;
 	}
 
+	// Route runtime window diagnostics into the app log, so scene-side log capture sees them.
+	_controller->setWindowDiagSink([](StringView line) {
+		log::source().debug("WindowDiag", line);
+	});
+
 #if MODULE_XENOLITH_FONT
 	auto setLocale = SharedModule::acquireTypedSymbol<decltype(&locale::setLocale)>(
 			buildconfig::MODULE_XENOLITH_FONT_NAME, "locale::setLocale");

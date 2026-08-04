@@ -65,14 +65,27 @@ DeferredRequest::DeferredRequest(const Rc<FontComponent> &ext, const Vector<Font
 }
 
 void DeferredRequest::runThread() {
+	// The batch is fanned out to every worker of the pool, so most of the threads below may find
+	// nothing to do. Completion has to be reported exactly once, by whoever finishes the last
+	// request — see the guard at the end.
 	Vector<Rc<FontFaceObjectHandle>> threadFaces;
 	threadFaces.resize(faces.size(), nullptr);
+
+	// An empty batch still has to report: the frame that waits on this input has no other way to
+	// become ready. (It also cannot be caught below — `nrequests - 1` underflows to UINT32_MAX.)
+	if (nrequests == 0) {
+		if (!completed.exchange(true)) {
+			onComplete();
+		}
+		return;
+	}
+
 	uint32_t target = current.fetch_add(1);
-	uint32_t c = 0;
+	bool finishedLast = false;
 	while (target < nrequests) {
 		auto &v = fontRequests[target];
 		if (v.second == 0) {
-			c = complete.fetch_add(1);
+			finishedLast = (complete.fetch_add(1) + 1 == nrequests);
 			target = current.fetch_add(1);
 			continue;
 		}
@@ -88,11 +101,15 @@ void DeferredRequest::runThread() {
 			threadFaces[v.first]->acquireTexture(v.second,
 					[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
 		}
-		c = complete.fetch_add(1);
+		finishedLast = (complete.fetch_add(1) + 1 == nrequests);
 		target = current.fetch_add(1);
 	}
 	threadFaces.clear();
-	if (c == nrequests - 1) {
+
+	// Only the thread that pushed the counter to nrequests reports, and only once. The previous
+	// test compared a counter that stayed 0 on a thread which never got a request, so a
+	// single-request batch fired the completion once per idle worker.
+	if (finishedLast && !completed.exchange(true)) {
 		onComplete();
 	}
 }

@@ -132,6 +132,17 @@ public:
 			bool shouldWake = false;
 			auto fs = _atomic::fetchSub(&__data->counter, uint32_t(1));
 
+#if DEBUG
+			// An unbalanced read-unlock takes the counter below zero, and from then on the lock
+			// is wedged for good: `value` keeps its ReadLock bit because the `fs == 1` branch
+			// below can never be reached again, so every later writer waits forever and the fair
+			// queue parks all readers behind it. Fail here, where the offending call stack is
+			// still live, instead of the deadlock it causes much later.
+			if (fs == 0) {
+				__builtin_trap();
+			}
+#endif
+
 			if ((expected & ReadLock) != 0) {
 				if (fs == 1) {
 					auto current = _atomic::exchange(&__data->value, value_type(0));
@@ -220,15 +231,31 @@ public:
 			desired |= Waiters;
 
 			auto doLock = [&](value_type lockValue) {
-				auto st = WaitFn(__value, lockValue,
-						timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
-				if (st != 0) {
-					if (__sprt_errno == ETIMEDOUT) {
-						return Status::Timeout;
-					}
-					if (__sprt_errno != EAGAIN) {
+				// A blocking lock may be woken spuriously by a signal (EINTR) or by a stale
+				// wakeup (EAGAIN). Neither means the lock is ours, and neither is an error worth
+				// reporting to a caller that has already incremented the reader counter — it
+				// simply means "go around": leave the wait and let the outer loop re-read the
+				// value and retry the CAS. The only outcomes propagated are the hard ones: a
+				// timeout (when one was asked for) or an unrecoverable errno.
+				for (;;) {
+					auto st = WaitFn(__value, lockValue,
+							timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
+					if (st != 0) {
+						if (__sprt_errno == ETIMEDOUT) {
+							return Status::Timeout;
+						}
+						if (__sprt_errno == EINTR || __sprt_errno == EAGAIN) {
+							// Stop waiting, but do not report failure: the caller's outer loop
+							// re-reads the lock value and retries the CAS. Waiting again from
+							// here would re-arm the futex with the value we expected *before*
+							// the wakeup — and EAGAIN means exactly that the value has since
+							// changed, so the wait returns EAGAIN again immediately and the
+							// thread spins in place instead of ever reconsidering the lock.
+							break;
+						}
 						return status::errnoToStatus(__sprt_errno);
 					}
+					break;
 				}
 
 				if constexpr (ClockFn != nullptr) {
@@ -397,15 +424,28 @@ public:
 			desired |= Waiters;
 
 			auto doLock = [&](value_type lockValue) {
-				auto st = WaitFn(__value, lockValue,
-						timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
-				if (st != 0) {
-					if (__sprt_errno == ETIMEDOUT) {
-						return Status::Timeout;
-					}
-					if (__sprt_errno != EAGAIN) {
+				// See the matching loop in _rdlock: EINTR/EAGAIN are spurious wakeups, not a
+				// held lock and not a failure the caller (which has already taken the
+				// gatekeeper) could unwind. Leave the wait and let the outer loop re-read.
+				for (;;) {
+					auto st = WaitFn(__value, lockValue,
+							timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
+					if (st != 0) {
+						if (__sprt_errno == ETIMEDOUT) {
+							return Status::Timeout;
+						}
+						if (__sprt_errno == EINTR || __sprt_errno == EAGAIN) {
+							// Stop waiting, but do not report failure: the caller's outer loop
+							// re-reads the lock value and retries the CAS. Waiting again from
+							// here would re-arm the futex with the value we expected *before*
+							// the wakeup — and EAGAIN means exactly that the value has since
+							// changed, so the wait returns EAGAIN again immediately and the
+							// thread spins in place instead of ever reconsidering the lock.
+							break;
+						}
 						return status::errnoToStatus(__sprt_errno);
 					}
+					break;
 				}
 
 				if constexpr (ClockFn != nullptr) {
@@ -467,6 +507,13 @@ public:
 		}
 
 		st = qrwlock_base::_wrlock<WaitFn, ClockFn>(&__data->value, timeout, flags);
+		if (!status::isSuccessful(st)) {
+			// We took the gatekeeper but never acquired the write lock. Leaving without unlocking
+			// it would wedge every later reader (they block on the gatekeeper in _rdlock_fair) and
+			// every later fair writer. The write lock itself was never taken, so there is nothing
+			// to release on __data->value — only the gatekeeper.
+			qmutex_base::_unlock<WakeFn>(&__data->gatekeeper_mutex, flags);
+		}
 		return st;
 	}
 

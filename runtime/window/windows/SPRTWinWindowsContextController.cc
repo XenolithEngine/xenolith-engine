@@ -196,7 +196,7 @@ WindowCapabilities WindowsContextController::getCapabilities() const {
 			| WindowCapabilities::FullscreenSeamlessModeSwitch | WindowCapabilities::CloseGuard
 			| WindowCapabilities::EnabledState | WindowCapabilities::UserSpaceDecorations
 			| WindowCapabilities::GripGuardsRequired | WindowCapabilities::AllowMoveFromMaximized
-			| WindowCapabilities::DemandsAttentionState;
+			| WindowCapabilities::DemandsAttentionState | WindowCapabilities::Subwindows;
 }
 
 WindowClass *WindowsContextController::acquuireWindowClass(WideStringView str) {

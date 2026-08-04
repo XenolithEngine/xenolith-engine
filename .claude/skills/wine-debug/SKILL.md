@@ -135,5 +135,7 @@ with `XENOLITH_HOSTS=/path/to/hosts` if your layout differs.
 ## Building the target first
 
 The `.exe` + `.pdb` must exist. Build the Windows target via the `xenolith-build`
-skill, e.g. `make -C tests/libc STAPPLER_TARGET=x86_64-pc-windows-msvc`. A debug
-build (default, not `RELEASE=1`) gives the richest line info.
+skill — CLI preferred (`xenolith-cli build tests/libc --engine <engine>
+--target x86_64-pc-windows-msvc`), raw `make -C tests/libc
+STAPPLER_TARGET=x86_64-pc-windows-msvc` only if the CLI is missing. A debug build
+(default, not `--release` / `RELEASE=1`) gives the richest line info.

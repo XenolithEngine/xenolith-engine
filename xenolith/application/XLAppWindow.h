@@ -68,6 +68,19 @@ public:
 
 	virtual void close(bool graceful = true) override;
 
+	// Popup/Tooltip dismiss — a graceful close, auxiliary windows are not reused.
+	virtual void hide() override;
+
+	// True from the moment close() is accepted until the window is destroyed. Refuses engine
+	// start and non-teardown constraint updates on a window that is already winding down.
+	bool isInCloseRequest() const { return _inCloseRequest; }
+
+	// True once the first scheduled present has reported, success or not.
+	bool hasCompletedFirstFrame() const { return _firstFrameCompleted; }
+
+	// Resize the native content (points).
+	void setContentExtent(Extent2);
+
 	virtual void handleInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
@@ -230,6 +243,8 @@ protected:
 
 	virtual void setFrameOrder(uint64_t) override;
 
+	virtual StringView getPresentationDebugId() const override { return _windowId; }
+
 	virtual void handleContextStateUpdate(WindowState state);
 	virtual void synchronizeClose();
 
@@ -244,6 +259,8 @@ protected:
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;
+	bool _firstFrameCompleted = false;
+	bool _mapOnFirstFrame = false;
 };
 
 } // namespace stappler::xenolith

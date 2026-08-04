@@ -34,6 +34,7 @@ exports:
         _objc_retainAutorelease,
         _objc_retainAutoreleasedReturnValue,
         _objc_retainAutoreleaseReturnValue,
+        _objc_retainBlock,
         _objc_storeStrong,
         _objc_sync_enter,
         _objc_sync_exit,

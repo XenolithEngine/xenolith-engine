@@ -1,0 +1,71 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "XLCommon.h"
+
+#include "AuxTooltipScene.h"
+
+#include "XL2dLabel.h"
+#include "XL2dLayer.h"
+#include "XL2dSceneLayout.h"
+#include "XLDirector.h"
+#include "XLUiAuxWindow.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
+
+Rc<basic2d::SceneLayout2d> AuxTooltipScene::buildContent(SceneRegistry::Builder &&builder) {
+	if (auto aux = ui::AuxWindow::takeContentBuilder(_id)) {
+		if (auto layout = aux(_id)) {
+			return layout;
+		}
+	}
+	if (builder) {
+		if (auto layout = builder(this, _id)) {
+			return layout;
+		}
+	}
+
+	auto layout = Rc<basic2d::SceneLayout2d>::create();
+
+	auto bg = layout->addChild(Rc<basic2d::Layer>::create());
+	bg->setAnchorPoint(Anchor::TopLeft);
+	bg->setPosition(Vec2::ZERO);
+	bg->setContentSize(layout->getContentSize());
+	bg->setColor(Color::Black);
+
+	auto label = layout->addChild(Rc<basic2d::Label>::create());
+	label->setString(toString("Tooltip: ", _id));
+	label->setFontSize(13);
+	label->setColor(Color::White);
+	label->setAnchorPoint(Anchor::Middle);
+	label->setPosition(Vec2(layout->getContentSize().width / 2.0f,
+			layout->getContentSize().height / 2.0f));
+
+	return layout;
+}
+
+void AuxTooltipScene::handlePresented(Director *dir) {
+	basic2d::Scene2d::handlePresented(dir);
+	pushContentLayout();
+}
+
+} // namespace stappler::xenolith::app
