@@ -169,9 +169,9 @@ $(SRC_ROOT)/ngtcp2: | prepare
 $(SRC_ROOT)/curl: | prepare
 	$(call unpack_tar, https://curl.se/download/curl-8.21.0.tar.xz, curl)
 
-# https://download.savannah.gnu.org/releases/freetype/?C=M&O=D # revised: 2 jun 2026
+# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 5 aug 2026
 $(SRC_ROOT)/freetype: | prepare
-	$(call unpack_tar, https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz, freetype)
+	$(call unpack_tar, https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz, freetype)
 
 # https://github.com/harfbuzz/harfbuzz/releases/ # revised: 23 jun 2026
 # TODO: Move to git release
