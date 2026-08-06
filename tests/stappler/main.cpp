@@ -51,6 +51,7 @@ static const TestEntry s_testList[] = {
 	{"css-flexgrid", &stappler::performFlexboxGridCssTests},
 	{"cmdline", &stappler::performCommandLineTests},
 	{"raster", &stappler::performRasterTests},
+	{"datavalue", &stappler::performDataValueTests},
 };
 
 int main(int argc, const char *argv[]) {

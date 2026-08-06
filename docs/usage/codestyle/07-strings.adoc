@@ -294,3 +294,4 @@ view's invariants and handle the empty-input cases.
 
 * [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc) — what a pool is and when it dies
 * [08-errors-and-status.adoc](08-errors-and-status.adoc) — `Result<T>` and `Status`
+* [13-data-value.adoc](13-data-value.adoc) — `data::Value`, the same interface split applied to a whole data tree

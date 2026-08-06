@@ -12,7 +12,10 @@ description: >-
   Handle), the scene graph (Node geometry, and using System/Component instead of
   subclassing Node), strings (StringView lifetime, mem_std vs
   mem_pool, CallbackStream, reader API), error handling with no exceptions
-  (Status, Result<T>, slog(), asserts), and what .clang-format already enforces.
+  (Status, Result<T>, slog(), asserts), weakly-typed data (data::Value: the
+  mem_std/mem_pool interfaces, setValue(value, key) order, the read-only
+  Value::Null sentinel, JSON/CBOR round-tripping), and what .clang-format
+  already enforces.
 ---
 
 # Xenolith/Stappler code style
@@ -146,6 +149,25 @@ lifetime, or for error detection. Details and examples:
     backend doesn't support it). Never block a looper thread, and never pass data
     from a thread's own pool to another thread (rule 11 is the way to move a
     dataset).
+23. **`data::Value` is the boundary type** (config, files, IPC, command line,
+    inspector) — a `struct` is what you use inside a subsystem. It is templated
+    on the memory interface: `mem_std::Value` (malloc) vs `mem_pool::Value`
+    (dies with the pool); in `xenolith::` an unqualified `Value` is the mem_std
+    one, and only those two interfaces link. Setters take **`setValue(value,
+    key)` — value first**. A failed lookup or rejected write returns a
+    reference to the shared `Value::Null`: reading it is safe by design,
+    **writing through it is a bug** (debug asserts, release drops it, a write
+    past the guards faults — the sentinel is in read-only memory), so insert by
+    naming the key and bind sub-values as `const Value &`. The non-const
+    `getString()`/`getArray()`/`getDict()`/`as*()` assert in debug when the type
+    misses — read containers through a `const Value &`, mutate only after an
+    `is*()` check. Type conversion only
+    happens from `EMPTY` (a key write makes a dict, an append makes an array);
+    an indexed write takes the next free slot when the index is past the end, so
+    it grows an array by one at most. Encode
+    with `data::write` / `data::toString` / `data::save`, decode with
+    `data::read<Interface>` (format auto-detected, failure = `EMPTY` value, so
+    check the shape). Bytes survive CBOR/Serenity, **not** JSON.
 
 ## Where to read more
 
@@ -165,6 +187,8 @@ lifetime, or for error detection. Details and examples:
 | Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [11-node-system-component.adoc](../../../docs/usage/codestyle/11-node-system-component.adoc) |
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
 | Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [12-runtime-libc.adoc](../../../docs/usage/codestyle/12-runtime-libc.adoc) |
+| Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [13-data-value.adoc](../../../docs/usage/codestyle/13-data-value.adoc) |
+| **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |
 
 Adjacent skills: `xenolith-build` (how to build/verify), `css-engine` (CSS
