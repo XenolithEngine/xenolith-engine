@@ -55,7 +55,7 @@ public:
 	constexpr access_token &operator=(const mapped_type &value) noexcept {
 		if (_container) {
 			if (_iterator == sprt::end(*_container)) {
-				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref(), value));
+				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref()), value);
 				if (_iterator != sprt::end(*_container)) {
 					sprt::destroy_at(_key.ptr());
 				}
@@ -87,8 +87,8 @@ public:
 	constexpr access_token &emplace(Args &&...args) noexcept {
 		if (_container) {
 			if (_iterator == sprt::end(*_container)) {
-				_iterator = _container->emplace_with_token(
-						sprt::move_unsafe(_key.ref(), sprt::forward<Args>(args)...));
+				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref()),
+						sprt::forward<Args>(args)...);
 				if (_iterator != sprt::end(*_container)) {
 					sprt::destroy_at(_key.ptr());
 				}

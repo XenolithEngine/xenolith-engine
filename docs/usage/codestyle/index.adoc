@@ -37,6 +37,17 @@ articles 10 and 11 route to it rather than restating it.
 | 10 | [`Node`: geometry, tree, subclasses](10-node-geometry.adoc) | placing, sizing or hit-testing a node; picking a base class |
 | 11 | [Node / System / Component](11-node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
 | 12 | [The runtime as a libc](12-runtime-libc.adoc) | calling libc, handling paths, or reaching for anything `std::` |
+| 13 | [Weakly-typed data: `data::Value`](13-data-value.adoc) | reading/writing a `Value`, JSON/CBOR, config, IPC or any payload at a boundary |
+
+## Guides
+
+Long-form tutorials for one subsystem, referenced from the articles above.
+
+| Guide | Read it when |
+|---|---|
+| [data/value.adoc](../data/value.adoc) | working with `data::Value` in depth — accessors, serialization, custom encoders, the `Value::Null` trap |
+| [ui/content-measurement.adoc](../ui/content-measurement.adoc) | making a node or system answer `fit-content` measurement |
+| [ui/css-subset.adoc](../ui/css-subset.adoc) | writing CSS for the engine's CSS subset |
 
 ## Planned
 

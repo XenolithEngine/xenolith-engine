@@ -1,0 +1,112 @@
+# Weakly-typed data: `data::Value`
+
+**TL;DR**
+
+* `data::ValueTemplate<Interface>` (spelled `Value`) is the engine's tagged
+  union — null / integer / double / bool / string / bytes / array / dict — and
+  the only thing the JSON / CBOR / Serenity codecs speak.
+* Interface picks the memory: `mem_std::Value` (malloc) or `mem_pool::Value`
+  (current pool). **In `xenolith::`, `Value` is the mem_std one**
+  (`using namespace mem_std`). Only those two interfaces link.
+* `setValue(value, key)` — **value first, key second**. Same for `setInteger`,
+  `setString`, …
+* A failed lookup or a rejected write returns a reference to the shared global
+  `Value::Null`. Reading it is safe by design; **writing through it is a bug** —
+  debug asserts, release drops the write, and a write that bypasses the guards
+  faults (the sentinel lives in read-only memory). Insert by naming the key,
+  read with `getInteger(key, def)`, bind sub-values as `const Value &`.
+* Scalar constructors are `explicit` (integers are not), and brace-init means
+  container: `Value{5}` is `[5]`, `Value(5)` is `5`.
+* Serialize with `data::write` / `data::toString` / `data::save`; decode with
+  `data::read<Interface>` / `data::readFile<Interface>` — the format is
+  detected. Byte strings do **not** survive JSON (only CBOR / Serenity).
+* Use `Value` at boundaries (files, IPC, sockets, config, command line), a
+  `struct` inside a subsystem.
+
+Full guide, with the traps demonstrated:
+[../data/value.adoc](../data/value.adoc).
+
+## Pick the interface by lifetime
+
+[source,cpp]
+----
+mem_std::Value  msg;    // malloc: self-contained, may outlive any pool, may
+                        // be moved to another thread
+mem_pool::Value tmp;    // pool: nested strings/containers come from the pool
+                        // CURRENT AT EACH CALL, and die with it
+----
+
+A pool `Value` must be built and consumed inside one pool scope, and never
+handed to another thread — move the pool instead
+([05-memory-and-ownership.adoc](05-memory-and-ownership.adoc)), or encode to
+CBOR. To lift data out of a dying pool, convert:
+`mem_std::Value v(poolValue)` / `stdValue.convert<memory::PoolInterface>()`.
+
+## The write API in one block
+
+[source,cpp]
+----
+Value v;                          // EMPTY — the first write decides the type
+v.setInteger(1, "count");         // -> DICTIONARY
+v.setString("name", "key");
+Value &items = v.newArray("items");
+items.addValue(Value(2));         // append; ARRAY
+Value &entry = items.addDict();   // append a dict and keep the reference
+v.erase("key");
+----
+
+Conversion happens only from `EMPTY`. Writing a key into a scalar, or appending
+to a dictionary, is **dropped** — the return value is `Value::Null`. An indexed
+write (`setValue(v, i)`) lands on element `i` when it exists and on the next free
+slot otherwise: one write appends one element at most, never a hole. A negative
+index is refused.
+
+## Never write through a returned reference you did not check
+
+[source,cpp]
+----
+// WRONG — inserts nothing: asserts in a debug build, dropped in release, and
+// faults outright if it slips past the guards (the sentinel is read-only):
+cfg.getValue("nope") = 42;
+
+// RIGHT
+cfg.setInteger(42, "nope");
+if (cfg.isDictionary()) { cfg.emplace("nope") = Value(42); }
+
+// RIGHT — read with a default, bind as const
+auto n = cfg.getInteger("nope", 5);
+const Value &sub = cfg.getValue("nope");
+----
+
+The same applies to the non-const `getString()` / `getBytes()` / `getArray()` /
+`getDict()` / `asArray()` / `asDict()`: on a type mismatch (or a missing key) they
+hand out a shared global container, and **a debug build asserts** on that path.
+Read defensively through a `const Value &` (the const overloads are silent by
+design), and check the type (`isArray("k")`) before taking a mutable reference.
+
+## Serialization
+
+[source,cpp]
+----
+Bytes  b = data::write(v, data::EncodeFormat::Cbor);   // Bytes
+String s = data::toString(v, /* pretty */ true);       // JSON text
+data::save(v, FileInfo{"state.cbor"});                 // needs stappler_filesystem
+
+auto in = data::read<mem_std::Interface>(b);           // format auto-detected
+auto f  = data::readFile<mem_std::Interface>(FileInfo{"state.cbor"});
+----
+
+Decoding never throws: a bad payload yields an `EMPTY` value, so check the shape
+(`isDictionary()`) before reading. Nesting deeper than
+`data::MaxDecodeDepth` (256) is rejected. Binary payloads must use CBOR — JSON
+writes bytes as `"BASE64:…"` and reads them back as a string.
+
+`sprt::cout << data::EncodeFormat::Pretty << value` works for debug dumps, but
+the manipulator sets a process-global format flag — use explicit
+`data::write` / `data::toString` in real code.
+
+## Related
+
+* [../data/value.adoc](../data/value.adoc) — the full guide (type model, accessors, custom encoders, pitfalls table)
+* [07-strings.adoc](07-strings.adoc) — memory interfaces, `StringView`, `CallbackStream`
+* [05-memory-and-ownership.adoc](05-memory-and-ownership.adoc) — pool lifetime, moving data between threads

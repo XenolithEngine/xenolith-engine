@@ -1,0 +1,590 @@
+# `data::Value`: the weakly-typed data container
+
+`data::ValueTemplate<Interface>` — almost always spelled `Value` — is the
+engine's dynamically typed tree: a tagged union of null / integer / double /
+bool / string / byte-string / array / dictionary that encodes to and decodes
+from JSON, CBOR, Serenity and urlencoded form data. It is what every
+configuration file, IPC message, inspector command, saved app state and
+remote-render packet is made of.
+
+This is the long-form guide. The short, rule-shaped version for a quick check
+lives in [codestyle/13-data-value.adoc](../codestyle/13-data-value.adoc).
+
+**TL;DR**
+
+* `Value` is a *tagged union*, not a map. `Value()` is empty; it becomes a dict
+  or an array the first time you write a key or append.
+* Pick the interface by lifetime: `mem_std::Value` (malloc) for anything that
+  outlives a scope, `mem_pool::Value` (pool) inside a pool-scoped operation.
+  In `xenolith::` an unqualified `Value` is the **mem_std** one.
+* Only two interfaces exist and link — `mem_std::Interface` and
+  `memory::PoolInterface`.
+* `setValue(value, key)` — **value first, key second**.
+* A failed lookup returns a reference to the shared `Value::Null`. Reading it is
+  the design; **writing through it is a bug** — it aborts on an assert in debug,
+  is dropped in release, and faults if it slips past the guards (the sentinel
+  lives in read-only memory). Insert by naming the key.
+* Scalar constructors are `explicit`; integers are not. Brace-init means
+  "array": `Value{5}` is `[5]`, `Value(5)` is `5`.
+* `data::write` / `data::read` / `data::save` / `data::readFile` are the
+  serialization entry points; format detection on read is automatic.
+* Byte strings survive CBOR and Serenity, **not** JSON (they arrive back as a
+  `"BASE64:…"` string).
+
+---
+
+## 1. When to use it — and when not to
+
+`Value` buys you a schema-free tree with serialization for free. It costs an
+allocation per string/array/dict node, a type tag check on every read, and it
+loses all compile-time type safety.
+
+Use it for:
+
+* data crossing a boundary you don't control — files, sockets, IPC, the
+  inspector protocol, HTTP bodies, command lines;
+* configuration and saved state, where fields are optional and versions differ;
+* anything you want a human-readable dump of (`data::toString(v, true)`).
+
+Do **not** use it as an internal data structure just because it is convenient.
+Inside a subsystem, a `struct` with real fields is faster, smaller, and checked
+by the compiler. The idiomatic split — as in
+[XLRemoteSerialize.cc](../../../xenolith/remote/XLRemoteSerialize.cc) — is:
+structs everywhere, `Value` only in the encode/decode layer.
+
+## 2. Which `Value` do you have?
+
+There is no single `Value` type: it is templated on a *memory interface* exactly
+like the strings and containers around it (see
+[codestyle/07-strings.adoc](../codestyle/07-strings.adoc)).
+
+| Spelling | Interface | Strings/containers allocated from |
+|---|---|---|
+| `mem_std::Value` | `mem_std::Interface` (== `memory::StandardInterface`) | malloc |
+| `mem_pool::Value` | `memory::PoolInterface` | the current memory pool |
+| `data::ValueTemplate<Interface>` | generic code | whatever `Interface` says |
+
+Both aliases (plus `Array`, `Dictionary`, `EncodeFormat`) come from
+[SPMemory.h](../../../stappler/core/SPMemory.h) and only exist when the
+`stappler_data` module is enabled (`MODULE_STAPPLER_DATA`).
+
+**In `xenolith::` an unqualified `Value` is `mem_std::Value`** —
+[XLCore.h](../../../xenolith/core/XLCore.h) does `using namespace mem_std;`.
+Some stappler subsystems do the opposite: `stappler::db`,
+`document::parser`, `search` and `makefile` pull in `mem_pool`, so `Value`
+there is the pool one. When in doubt, spell the interface out.
+
+Generic code takes the interface as a parameter and names everything through it:
+
+[source,cpp]
+----
+template <typename Interface>
+auto readMessage(BytesView bytes) -> data::ValueTemplate<Interface> {
+	return data::read<Interface>(bytes);
+}
+----
+
+**Only these two interfaces work.** `ValueTemplate` is explicitly instantiated
+for them in [SPData.cc](../../../stappler/data/SPData.cc), and several members
+(`getStringNull()` and friends, `readUrlencoded`) exist *only* as explicit
+specializations for those two. A third interface compiles and then fails to
+link.
+
+## 3. Pools and lifetime
+
+A `mem_pool::Value` allocates each nested string, array and dictionary from the
+pool that is current **at the moment of that call** — not from a pool captured
+at construction time. Two consequences:
+
+[source,cpp]
+----
+mem_pool::Value cfg;
+memory::perform([&] {
+	cfg.setString("value", "key");   // this string lives in the INNER pool
+}, tempPool);
+// tempPool is gone: cfg now holds a dangling string
+----
+
+* Build and consume a pool `Value` inside one pool scope. If a part of it must
+  outlive that scope, copy it into a `mem_std::Value` (see §11) or into a
+  longer-lived pool.
+* A pool `Value` must not be handed to another thread. To move a dataset
+  between threads, move the pool that owns it (`Rc<PoolRef>`,
+  `Rc<SharedRef<T>>` — see
+  [codestyle/05-memory-and-ownership.adoc](../codestyle/05-memory-and-ownership.adoc)),
+  or serialize to CBOR and decode on the other side.
+
+A `mem_std::Value` is malloc-backed and self-contained: it can be moved
+anywhere, including into another thread's queue, and it frees itself.
+
+## 4. The type model
+
+[source,cpp]
+----
+enum class Type : uint8_t {
+	EMPTY = 0,      // "no value" — the default-constructed state
+	INTEGER,        // int64_t
+	DOUBLE,         // double
+	BOOLEAN,
+	CHARSTRING,     // StringType   (UTF-8 text)
+	BYTESTRING,     // BytesType    (opaque bytes)
+	ARRAY,          // Vector<Value>
+	DICTIONARY,     // Map<String, Value>, ordered
+	NONE = 0xFF,    // "not found" — only ever returned by getType(key)
+};
+----
+
+Notes that matter in practice:
+
+* `EMPTY` and `NONE` are both "null": `isNull()` is true for both, and
+  `explicit operator bool()` is false for both. Everything else is true —
+  including `Value(false)` and `Value(int64_t(0))`.
+* `NONE` is a *return value*, not a state you can hold. `Value(Type::NONE)`
+  constructs an `EMPTY` value (the constructor maps it), and the decoders never
+  produce `NONE`. It only comes out of `getType(key)` for a missing key.
+* The dictionary is an **ordered** map (`sprt::__map<String, Value,
+  less<void>>`): iteration and encoded output are sorted by key, so a
+  JSON/CBOR round trip reorders keys. `less<void>` is transparent, so lookups
+  by `StringView` do not allocate a key.
+* `size()` and `empty()` are container *and* string aware: on `CHARSTRING` /
+  `BYTESTRING` they report the byte length. On a number or a bool, `size()` is
+  `0` but `empty()` is **false**.
+
+## 5. Creating values
+
+Most scalar constructors are `explicit`; the integer ones (a concept-constrained
+template over signed and unsigned) are not:
+
+[source,cpp]
+----
+Value n;                          // EMPTY
+Value i = 42;                     // INTEGER   (implicit — integers only)
+Value d(2.5);                     // DOUBLE
+Value b(true);                    // BOOLEAN
+Value s(StringView("text"));      // CHARSTRING
+Value s2("literal");              // CHARSTRING (const char *)
+Value by(BytesView(ptr, len));    // BYTESTRING
+Value t(Time::now());             // INTEGER, microseconds
+Value arr(Value::Type::ARRAY);    // empty array
+Value dict(Value::Type::DICTIONARY);
+----
+
+`Time` and `TimeInterval` collapse to an integer of microseconds — a `Value`
+cannot tell you it was a timestamp. The JSON pretty printer guesses (see §9).
+
+### Brace-init builds containers
+
+`Value` has both `InitializerList<Value>` and
+`InitializerList<Pair<String, Value>>` constructors, and list-initialization
+always prefers them:
+
+[source,cpp]
+----
+Value a{1, 2, 3};                       // ARRAY [1,2,3]
+Value one{5};                           // ARRAY [5]   <-- not the integer 5
+Value five(5);                          // INTEGER 5
+Value d{Pair<String, Value>("k", Value(1)),
+	Pair<String, Value>("n", Value(2))}; // DICTIONARY {"k":1,"n":2}
+----
+
+Because `Value{5}` is an array of one, write scalars with parentheses. Verified
+behaviour, not folklore: with braces `getType()` is `ARRAY` and `size()` is `1`.
+
+### The building idiom
+
+Most real code starts from an `EMPTY` value and lets the first write decide the
+type ([XLSceneInspector.cc](../../../xenolith/application/nodes/XLSceneInspector.cc)):
+
+[source,cpp]
+----
+Value lines(Value::Type::ARRAY);
+for (auto &it : log) { lines.addString(it); }
+
+Value ret;
+ret.setValue(sp::move(lines), "lines");   // ret becomes a DICTIONARY here
+ret.setInteger(count, "count");
+----
+
+`sp::move` matters: a `Value` copy is a deep copy of the whole subtree.
+
+## 6. Reading
+
+Every reader comes in two shapes: on the value itself, and with a key (a string
+for dictionaries, an integer for arrays). The keyed form never inserts and never
+asserts — a missing key just yields the default.
+
+[source,cpp]
+----
+// typed, with conversion, safe on the wrong type
+bool     f = v.getBool("flag");                 // false if missing
+int64_t  n = v.getInteger("count", 10);         // 10 if missing or a container
+double   x = v.getDouble("scale", 1.0);
+const String &s = v.getString("name");          // "" if missing or not a string
+const Bytes  &b = v.getBytes("blob");
+const Array  &a = v.getArray("items");          // empty array if missing
+const Dictionary &d = v.getDict("props");
+
+// tests
+v.hasValue("key");        // present at all?
+v.isNull("key");          // absent or explicitly null
+v.isInteger("key");       // exact type test
+v.getType("key");         // Type::NONE if absent
+
+// the sub-value itself
+const Value &sub = v.getValue("key");           // Value::Null if absent
+----
+
+`get*` are *typed* accessors: they return the default when the type does not
+match. `as*` are *converting* accessors — they coerce:
+
+| Call | On a string | On a number | On a bool | On a container |
+|---|---|---|---|---|
+| `asInteger()` | parsed (`0` if unparsable) | value / truncated | `0`/`1` | `0` |
+| `asDouble()` | parsed | value | `0.0`/`1.0` | `0.0` |
+| `asBool()` | false only for `""`, `"0"`, `"false"` | `!= 0` | value | `false` |
+| `asString()` | itself | decimal text | `"true"`/`"false"` | `""` |
+| `asBytes()` | its bytes | raw little-endian image | one byte | empty |
+
+`asString()` on a `BYTESTRING` returns `"BASE64:…"`, and on a `DOUBLE` it trims
+trailing zeros but keeps one decimal (`2.0` → `"2.0"`, `2.5` → `"2.5"`).
+
+Reading a whole subtree defensively:
+
+[source,cpp]
+----
+if (auto &items = value.getValue("items"); items.isArray()) {
+	for (auto &it : items.getArray()) {
+		process(it.getString("name"), it.getInteger("id"));
+	}
+}
+----
+
+### Read defensively through a `const` reference
+
+The **non-const** `getString()` / `getBytes()` / `getArray()` / `getDict()` /
+`asArray()` / `asDict()` cannot answer a type mismatch (or a missing key) with a
+value, so they return a reference to a shared, process-global "null" container (a
+`const_cast`-ed static in [SPData.cc](../../../stappler/data/SPData.cc)). Two
+different values get the *same* object, so a write through it corrupts every
+other caller that missed the same way, and even a read of it hides the type
+error. **A debug build asserts on that path** ("non-const `get*()`/`as*()` on a
+missing key or a value of another type"); a release build stays lenient and hands
+the null container out.
+
+So there are exactly two correct ways to reach a container:
+
+[source,cpp]
+----
+// 1. defensive read — through const, which is silent by design
+const Value &ro = value;
+for (auto &it : ro.getArray("items")) { … }        // empty when absent
+auto n = ro.getString("name").size();
+
+// 2. mutation — check the type first, then take the mutable reference
+if (value.isArray("items")) {
+	value.getArray("items").emplace_back(Value(1));
+}
+----
+
+A `const Value &` parameter or member gets this for free — which is another
+reason to pass values around as `const Value &`. The scalar accessors
+(`getInteger(key, def)`, `getBool`, `getDouble`) answer with a *value* and need
+none of this: they are always safe on a missing key.
+
+Unlike `Value::Null` (§8), these four null containers cannot be placed in
+read-only memory — their constructors run (the pool ones over the zero pool) — so
+the debug assert is the whole protection they get.
+
+## 7. Writing
+
+[source,cpp]
+----
+v.setValue(Value(1), "key");        // value FIRST, key SECOND
+v.setInteger(1, "key");             // typed shorthands, same order
+v.setString("text", "key");
+v.setBool(true, "key");
+v.setBytes(bytes, "key");
+v.setDict(dict, "key");
+
+Value &d = v.newDict("props");      // insert an empty dict, return it
+Value &a = v.newArray("items");
+Value &slot = v.emplace("key");     // get-or-insert an EMPTY value
+
+v.addValue(Value(1));               // append (makes an ARRAY)
+v.addInteger(1);
+Value &item = v.addDict();          // append a dict, return it
+Value &back = v.emplace();          // append an EMPTY value, return it
+
+v.erase("key");                     // by key, or by index on an array
+Value head = v.slice(1, 2);         // cut [1,2) out of an array and return it
+v.setNull();                        // become EMPTY, freeing the payload
+v.clear();                          // same
+----
+
+The argument order (`value, key`) is the opposite of most APIs and of
+`Map::emplace`. It is what the whole tree uses; do not wrap it.
+
+Type conversion on write is *one-way and only from `EMPTY`*:
+
+* writing a string key converts an `EMPTY` value to a `DICTIONARY`; appending
+  converts it to an `ARRAY`;
+* a value that is already a scalar (or the wrong container) is **not**
+  converted — the write is dropped and you get `Value::Null` back (§8).
+
+### Array index writes take the next free slot
+
+An indexed write resolves to an element that exists, or to the one right after
+the last — so a single write appends **at most one** element and never leaves
+holes:
+
+| Target | `setValue(Value(9), 3)` |
+|---|---|
+| `ARRAY` of size 5 | element 3 replaced |
+| `ARRAY` of size 3 | appended as element 3 (size 4) |
+| `ARRAY` of size 2 | appended as element 2 (size 3) — *not* index 3 |
+| `EMPTY` value | becomes the array `[9]` |
+| a scalar / dictionary | refused, returns `Value::Null` |
+| a negative index | refused, returns `Value::Null` |
+
+The returned reference is always the element actually written, so
+`setValue(v, i)` followed by a read of the return value is consistent even when
+the index moved. What you cannot do is *reserve* index `i`: to build a sparse
+array, fill the gaps yourself (`addValue(Value())`).
+
+`addValue` / `addDict` / `emplace()` remain the direct way to append, and they
+say what they mean — prefer them when the index is not the point.
+
+## 8. The `Null` sink
+
+Every failed lookup and every rejected write returns a reference to the single
+static `Value::Null`:
+
+[source,cpp]
+----
+Value &missing = v.getValue("nope");                // -> Value::Null
+Value &rejected = scalar.setValue(Value(1), "k");   // -> Value::Null (not a dict)
+----
+
+**Reading it is the design.** It is what makes
+`v.getValue("a").getValue("b").getInteger()` safe on a missing key, and it is
+why a rejected write can be reported without a `Status`. `Value::Null` holds
+`Type::NONE`, so `isNull()` is true, `operator bool()` is false, and it encodes
+as `null`.
+
+**Writing it is always a bug**, and the engine makes sure you find out:
+
+[source,cpp]
+----
+Value cfg;
+cfg.setInteger(1, "a");
+cfg.getValue("nope") = 42;     // does NOT insert "nope"
+----
+
+| Build | What happens |
+|---|---|
+| debug | `sprt_passert` fires at the offending line: *"write into the shared Null sentinel"* |
+| release | the write is dropped; the sentinel and every later missing-key read are unaffected |
+| a write that bypasses the guards (raw memory) | `SIGSEGV` / access violation — the sentinel is constant-initialized into read-only memory |
+
+That protection is deliberate: the sentinel is a process-global, so a write into
+it used to poison *every* missing-key read in the process — a default coming
+back as another subsystem's number, arbitrarily far from the write.
+Wasm has no page protection, so there the guards and the debug assert are all
+there is.
+
+The rules that keep you out of it:
+
+1. **Never assign through a reference returned by `getValue`, `setValue`,
+   `addValue` or `emplace(key)` without knowing the lookup succeeded.** To
+   insert, name the key: `v.setInteger(42, "nope")`, or `v.emplace("nope") = …`
+   on a value that *is* a dictionary.
+2. Read with the keyed accessors (`getInteger(key, def)`), not by taking a
+   mutable sub-reference.
+3. Bind sub-values as `const Value &` — a `const` reference cannot be written
+   through by accident.
+4. Moving *out of* a missing key is safe (`Value v = sp::move(src.getValue(0))`
+   yields an empty value and leaves the sentinel alone) — a dozen call sites in
+   the tree rely on it.
+
+The regression test for all of this is `tests/stappler/core/datavalue.cpp`
+(`stapplertest datavalue`); the two destructive cases run under
+`XL_NULL_WRITE=guarded` / `XL_NULL_WRITE=raw`.
+
+## 9. Serialization
+
+Four formats, one API:
+
+| Format | `EncodeFormat::` | Round-trips bytes | Notes |
+|---|---|---|---|
+| JSON | `Json`, `Pretty`, `PrettyTime` | **no** | text; bytes become `"BASE64:…"` |
+| CBOR | `Cbor` (and `DefaultFormat`) | yes | binary, self-describing tag `d9 d9 f7` |
+| Serenity | `Serenity`, `SerenityPretty` | yes | urlencoded-ish text form |
+| urlencoded | — (`data::readUrlencoded`) | n/a | HTML form bodies, decode only |
+
+[source,cpp]
+----
+// generic: format chosen by an EncodeFormat
+Bytes  bytes = data::write(value, data::EncodeFormat::Cbor);
+String text  = data::toString(value, true /* pretty JSON */);
+bool ok      = data::write(stream, value, data::EncodeFormat::Pretty);
+bool saved   = data::save(value, FileInfo{"state.cbor"});
+
+// decode: the format is detected from the payload
+auto v  = data::read<mem_std::Interface>(bytes);      // Bytes/BytesView/String/StringView
+auto v2 = data::readFile<mem_std::Interface>(FileInfo{"state.cbor"});
+
+// or a specific codec
+String  js = data::json::write(value, /* pretty */ true);
+auto    j  = data::json::read<Interface>(StringView(js));
+Bytes   cb = data::cbor::write(value, /* reserve */ 4_KiB);
+auto    c  = data::cbor::read<Interface>(BytesView(cb));
+String  sr = data::serenity::write(value, false);
+----
+
+* `data::read` sniffs the payload
+  ([detectDataFormat](../../../stappler/data/SPDataDecode.h)): CBOR tag,
+  base64-CBOR (`2dn3`), LZ4 / Brotli marks, a leading `(` for Serenity,
+  anything else is JSON. An empty or unrecognized payload decodes to an `EMPTY`
+  value — **check the result** (`isDictionary()`, `isArray()`), do not assume a
+  shape.
+* Decoders cap nesting at `MaxDecodeDepth` (256): they parse iteratively, but
+  destroying and re-encoding the resulting tree is recursive, so a deeper input
+  would blow the native stack.
+* `data::save` with `DefaultFormat` picks JSON for a `.json` extension and CBOR
+  otherwise. Requires `stappler_filesystem`.
+* Compression and the `CborCompressed` / `JsonCompressed` presets are part of
+  `EncodeFormat` (LZ4, LZ4HC, Brotli when `stappler_brotli_lib` is in the
+  build). Compressed output carries its own `LZ4…` / `SBr…` mark, so
+  `data::read` handles it transparently.
+* `EncodeFormat::PrettyTime` annotates integers whose key contains
+  `time`/`date` and whose magnitude looks like microseconds with a comment
+  holding the HTTP date — a debugging aid, not a data type.
+* Bytes are the one real asymmetry: JSON writes them as `"BASE64:<base64url>"`
+  and the JSON *decoder* has no matching rule, so they come back as a string
+  (verified). If a payload carries binary, use CBOR.
+
+### Streaming a value, and the format manipulator
+
+`Value` has an `io_traits` specialization, so it streams into any
+`Callback<void(StringView)>` — including `sprt::cout`, a `StringStream`, or a
+log line:
+
+[source,cpp]
+----
+sprt::cout << data::EncodeFormat::Pretty << value << "\n";
+----
+
+Be aware of the mechanism: streaming an `EncodeFormat` does not emit anything —
+it *sets the process-global* `data::s_currentEncodeFormat`, which the next
+streamed `Value` reads. It is a manipulator with global state and no
+restoration. For anything but a debug dump, call `data::write` /
+`data::toString` with an explicit format instead.
+
+### Writing your own encoder
+
+`Value::encode(stream)` walks the tree and calls whatever hooks your sink
+happens to define — `StreamTraits`
+([SPDataTraits.h](../../../stappler/data/SPDataTraits.h)) detects them at
+compile time, so you implement only what you need: `write(nullptr_t)`,
+`write(bool/int64_t/double/String/Bytes)`, plus any of `onBeginArray`,
+`onEndArray`, `onBeginDict`, `onEndDict`, `onKey`, `onKeyValuePair`,
+`onNextValue`, `onValue`, `onArrayValue`.
+[json::RawEncoder](../../../stappler/data/SPDataEncodeJson.h) is a 30-line
+reference implementation. This is the right way to add a projection (a CSV
+dump, a hash of the tree, a debug pretty-printer) without materializing an
+intermediate string.
+
+## 10. The containers, directly
+
+`getArray()` / `getDict()` (and `asArray()` / `asDict()`, which convert rather
+than default) hand you the real `Vector<Value>` / `Map<String, Value>`, so the
+full container API is available:
+
+[source,cpp]
+----
+for (auto &it : value.getArray("items")) { … }             // ordered by index
+for (auto &[key, sub] : value.getDict("props")) { … }      // ordered by key
+
+auto &arr = value.getArray("items");
+arr.reserve(64);
+sprt::sort(arr.begin(), arr.end(), [](const Value &l, const Value &r) {
+	return l.getInteger("id") < r.getInteger("id");
+});
+----
+
+`Value` is registered as bitwise-relocatable
+(`sprt::detail::mem_sso_test<ValueTemplate<…>>` is `true`), which is why its
+move assignment is a `memcpy` and why `Vector<Value>` relocates elements with
+raw memory operations. It also means **any reference or pointer into a
+`Value`'s array is invalidated by the next insertion** — hold indices or keys
+across mutations, not references.
+
+## 11. Moving between interfaces
+
+A `Value` of one interface converts to the other, deep-copying every string and
+container:
+
+[source,cpp]
+----
+mem_std::Value  s(poolValue);                       // converting constructor
+auto p = stdValue.convert<memory::PoolInterface>(); // explicit conversion
+----
+
+This is the sanctioned way to lift data out of a dying pool
+(`mem_pool::Value` → `mem_std::Value`) or to move a long-lived config into a
+pool for a parse-heavy operation. Both directions were verified to preserve the
+tree. It is a full copy — do it once at the boundary, not per field.
+
+## 12. Cost and code size
+
+* Every `CHARSTRING`, `BYTESTRING`, `ARRAY` and `DICTIONARY` payload is a
+  separate heap (or pool) allocation; the `Value` itself is a tag plus a union.
+* Copying is deep. Prefer `sp::move` when handing a subtree to a parent
+  (`ret.setValue(sp::move(child), "key")`).
+* `ValueTemplate` and its `Vector<Value>` / `Map<String, Value>` are explicitly
+  instantiated once in `SPData.cc`, with `extern template` declarations in the
+  header — that is what keeps `Value` from being re-instantiated in every TU.
+  Do not add local explicit instantiations, and do not introduce a third
+  interface.
+* `cbor::write(value, reserve)` takes a reserve hint (default 1 KiB); pass a
+  real estimate for large payloads.
+
+## 13. Around `Value`
+
+| Need | API |
+|---|---|
+| A typed façade over a `Value` (field access, protected keys, iteration) | `data::WrapperTemplate` — [SPDataWrapper.h](../../../stappler/data/SPDataWrapper.h) |
+| An observable, sliceable data provider for lists/scrolls | `data::Source` — [SPDataSource.h](../../../stappler/data/SPDataSource.h) |
+| Command-line arguments into a `Value` | `data::parseCommandLineOptions` — [SPData.h](../../../stappler/data/SPData.h) (richer alternative: `CommandLineParser`) |
+| HTML form bodies | `data::readUrlencoded<Interface>(StringView)` |
+| MIME strings for the formats | `data::MIME_JSON`, `MIME_CBOR`, `MIME_SERENITY`, `MIME_URLENCODED` |
+
+Real users worth reading: the inspector protocol
+([XLSceneInspector.cc](../../../xenolith/application/nodes/XLSceneInspector.cc)),
+the remote render codec
+([XLRemoteSerialize.cc](../../../xenolith/remote/XLRemoteSerialize.cc)), and
+saved app state ([XLContext.cc](../../../xenolith/application/XLContext.cc)).
+
+## 14. Pitfalls checklist
+
+| Symptom | Cause |
+|---|---|
+| `Value{5}` is an array | list-init prefers the `InitializerList` constructor — use `Value(5)` |
+| `Value v = "text"` does not compile | the string constructors are `explicit` — `Value v(StringView("text"))` |
+| A write "does nothing" | the target was not `EMPTY` or the right container, so `setValue` returned `Value::Null` |
+| An assert about "the shared Null sentinel", or a fault writing a `Value` | code assigned through the reference a failed lookup returned — §8 |
+| An assert about "non-const `get*()`/`as*()`" | a container/string accessor missed its type — read through `const Value &`, or check `is*()` first (§6) |
+| An indexed write landed at a lower index than asked | past-the-end writes take the next free slot; the array grows by one at most |
+| Keys come back reordered | the dictionary is an ordered map; encoded output is sorted |
+| Bytes turn into a `"BASE64:…"` string | the payload went through JSON — use CBOR |
+| A pool `Value` holds garbage | it was built in a pool that is already gone (§3) |
+| A number that was a `Time` prints as a huge integer | `Time`/`TimeInterval` are stored as plain microsecond integers |
+| Link error on `getStringNull` / `readUrlencoded` | a third memory interface — only `mem_std` and pool are instantiated |
+| A reference into an array went stale | `Value` is bitwise-relocated on insert; hold indices, not references |
+
+## 15. Related
+
+* [codestyle/13-data-value.adoc](../codestyle/13-data-value.adoc) — the rule card
+* [codestyle/07-strings.adoc](../codestyle/07-strings.adoc) — interfaces, `StringView`, `CallbackStream`
+* [codestyle/05-memory-and-ownership.adoc](../codestyle/05-memory-and-ownership.adoc) — pools, `AllocPool`, moving data between threads
+* [codestyle/08-errors-and-status.adoc](../codestyle/08-errors-and-status.adoc) — why decode failures are values, not exceptions

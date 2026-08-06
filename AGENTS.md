@@ -533,3 +533,11 @@ header, a platform branch, or an allocation. The essentials:
 - Layout is [.clang-format](.clang-format)'s job: tabs (4), continuation 8,
   column limit 100, `Node *node`, attached braces
   ([06](docs/usage/codestyle/06-formatting.adoc)).
+- `data::Value` is the boundary type (config, files, IPC, command line):
+  `setValue(value, key)` takes the **value first**, a failed lookup returns the
+  shared `Value::Null` — read-only memory, so assigning through it asserts in
+  debug and faults if it gets past the guards — an indexed write past the end of
+  an array takes the next free slot, `Value{5}` is the array `[5]`, and bytes
+  survive CBOR but not JSON
+  ([13](docs/usage/codestyle/13-data-value.adoc), full guide:
+  [docs/usage/data/value.adoc](docs/usage/data/value.adoc)).
