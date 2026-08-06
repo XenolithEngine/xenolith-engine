@@ -1,25 +1,69 @@
-# Xenolith Toolchains — `sdk-v0beta1`
+# Xenolith Toolchains — `sdk-v0beta2`
 
 Universal, self-contained C/C++ toolchains for building **Xenolith Runtime** and
 projects based on it, on **Linux, Windows and macOS**, cross-compiling to every
 supported platform without installing a vendor SDK (Windows SDK, Android SDK,
 macOS/iOS SDK) on the build machine.
 
-> **Beta.** The toolchains work, compile and are mostly tested. Release packages
-> are assembled on **x86_64 Linux**; other build hosts have not been validated
-> for full builds. Apple hosts/targets are built on Apple hardware due to SDK
-> licensing.
+> **Beta.** The toolchains work, compile and are mostly tested. Every package in
+> this release — *including the Windows and macOS hosts* — was assembled on
+> **x86_64 Linux**; other build hosts have not been validated for full builds.
 
 This release publishes two sets of binary packages:
 
 * **Hosts** — a complete clang/LLVM toolchain (compiler, linkers, debugger,
   shader tooling) that *runs* on a given platform.
-* **Targets** — a complete sysroot (libc, compiler-rt, system headers,
-  bundled libraries) that you *build for*.
+* **Targets** — a complete sysroot (system headers, libc where the target has
+  one, compiler-rt, bundled libraries) that you *build for*.
 
 You pick one host (matching the machine you compile on) and one or more targets
 (the platforms you ship to). All packages are `.tar.xz` with a detached GnuPG
-signature (`.tar.xz.sig`).
+signature (`.tar.xz.sig`), and every package carries a `release` file holding
+the SDK tag (`sdk-v0beta2`).
+
+---
+
+## What changed since `sdk-v0beta1`
+
+### No vendor machine, and (almost) no vendor SDK
+
+* **The Windows host toolchains are cross-built on Linux against sprt** instead
+  of the MSVC CRT and the Windows SDK. clang, lld, lldb, glslang and the SPIR-V
+  tools link against the Xenolith Runtime as their libc/libm/C++ runtime; the
+  Win32 API surface comes from the runtime's own `.def` files turned into import
+  libraries. The packages ship `sprt.dll` in `bin/` next to the tools. The build
+  was validated by running LLVM's own `check-llvm` / `check-clang` / `check-lld`
+  suites against the cross-built `.exe` files under wine.
+* **The macOS host toolchains are cross-built on Linux too**, against the new
+  Xcode-SDK-free `+open` sysroot — SDK-less end to end, Mach-O signing done with
+  `rcodesign`. Apple hardware is no longer required to produce the macOS hosts or
+  the `+open` targets. It is still required for the plain `*-apple-macosx` /
+  `*-apple-ios` targets, which cross-compile against a real Apple SDK.
+
+### New targets
+
+| Target | What it is |
+|---|---|
+| `wasm32-unknown-unknown` | freestanding WebAssembly sysroot (LLVM runtimes + the dependency suite built for wasm32 with threads/bulk-memory/sign-ext) |
+| `x86_64-xenolithos-linux-gnu`<br>`aarch64-xenolithos-linux-gnu`<br>`riscv64-xenolithos-linux-gnu` | Xenolith OS device targets: glibc **2.39** sysroot **plus the device runtime** (`runtime/rootfs`, a stripped base rootfs with busybox/dropbear/vulkaninfo) from which `xenolith-os` assembles a hardware image |
+| `x86_64-apple-macosx+open`<br>`aarch64-apple-macosx+open` | macOS sysroots assembled entirely from Apple's open-source releases plus a small hand-written overlay — no Xcode SDK is compiled against or shipped. These replace the `+sprt` packages published in beta1 (the `+sprt` recipes remain in the tree but are not published this time). |
+
+### Everything else
+
+* `xlmake` **1.1** (was 1.0).
+* New bundled libraries: **SheenBidi** 3.0.0 (Unicode BiDi), **ngtcp2** 1.24.0
+  (QUIC for the HTTP/3 curl variant), **libffi** 3.7.1, **expat** 2.8.2,
+  **libdrm** 2.4.134.
+* Linux targets now ship **built** `libwayland-client/cursor/egl` static
+  libraries (wayland 1.25.0), not just protocol headers. DBus/XCB/XKB/X11 remain
+  headers-only.
+* Vulkan SDK bumped to **1.4.350.0** everywhere; MoltenVK 1.4.1.
+* The LLVM patch set grew from 4 to **11 patches** (wine-lldb, non-`__ulock`,
+  wasm libunwind, no-delayload, and six `sprt-windows` patches covering lldb,
+  compiler-rt and the lit suites under cross-testing).
+* Dependency bumps across the board — see the manifest below. Notably
+  libtiff 4.7.2 carries the CVE-2026-12912 and CVE-2026-4775 fixes upstream, so
+  the local backport patch is gone.
 
 ---
 
@@ -27,11 +71,12 @@ signature (`.tar.xz.sig`).
 
 ### Hosts (10)
 
-Each host package ships clang 21 with the full LLVM tool suite (`clang`,
-`clang++`, `clang-cl`, `lld`/`ld.lld`/`ld64.lld`/`lld-link`, `lldb`, `llvm-ar`,
-`llvm-objcopy`, `llvm-nm`, …), the bundled shader tools `glslang` and
-`spirv-link`, and the **`xlmake`** build driver (`xlmake.exe` on Windows). The
-`lldb` builds carry patches for debugging Wine-hosted binaries.
+Each host package ships clang 21 with the LLVM tool suite (`clang`, `clang++`,
+`clang-cl`, `lld`/`ld.lld`/`ld64.lld`/`lld-link`/`wasm-ld`, `lldb`, `llvm-ar`,
+`llvm-objcopy`, `llvm-nm`, `clang-format`, …), the bundled shader tools
+`glslang` and the `spirv-*` suite, and the **`xlmake`** build driver
+(`xlmake.exe` on Windows). The `lldb` builds carry patches for debugging
+Wine-hosted binaries.
 
 | Package | Runs on |
 |---|---|
@@ -46,7 +91,17 @@ Each host package ships clang 21 with the full LLVM tool suite (`clang`,
 | `x86_64-apple-macosx`        | macOS, Intel |
 | `aarch64-apple-macosx`       | macOS, Apple Silicon |
 
-### Targets (20)
+Notes:
+
+* Linux and macOS hosts also ship **GNU Make 4.3** as `bin/make`. The Windows
+  hosts do not (use `xlmake.exe`), and carry a reduced tool set overall.
+* The Windows hosts require **`sprt.dll` to sit next to the executables** —
+  Windows resolves imports from the directory of the running image and has no
+  rpath equivalent. It is inside `bin/`; keep it there.
+* The macOS `lldb` is built with `LLDB_USE_SYSTEM_DEBUGSERVER` — `debugserver`
+  needs `task_for_pid` entitlements and Apple code signing, so it is not shipped.
+
+### Targets (24)
 
 | Package | Builds for |
 |---|---|
@@ -56,34 +111,63 @@ Each host package ships clang 21 with the full LLVM tool suite (`clang`,
 | `x86_64-unknown-linux-musl`           | Linux / musl, x86-64 |
 | `aarch64-unknown-linux-musl`          | Linux / musl, ARM64 |
 | `riscv64-unknown-linux-musl`          | Linux / musl, RISC-V 64 |
+| `x86_64-xenolithos-linux-gnu`         | Xenolith OS device, x86-64 |
+| `aarch64-xenolithos-linux-gnu`        | Xenolith OS device, ARM64 |
+| `riscv64-xenolithos-linux-gnu`        | Xenolith OS device, RISC-V 64 |
 | `aarch64-unknown-linux-android`       | Android, arm64-v8a |
 | `armv7a-unknown-linux-androideabi`    | Android, armeabi-v7a |
 | `i686-unknown-linux-android`          | Android, x86 |
 | `x86_64-unknown-linux-android`        | Android, x86-64 |
 | `unknown-ndk-linux-android`           | Android, bridge sysroot for use with an installed Android NDK |
-| `x86_64-apple-macosx`                 | macOS, Intel |
-| `aarch64-apple-macosx`                | macOS, Apple Silicon |
-| `x86_64-apple-macosx+sprt`            | macOS, Intel — with integrated Xenolith Runtime (`libsprt`) |
-| `aarch64-apple-macosx+sprt`           | macOS, Apple Silicon — with integrated Xenolith Runtime (`libsprt`) |
+| `x86_64-apple-macosx`                 | macOS, Intel (against a real Apple SDK) |
+| `aarch64-apple-macosx`                | macOS, Apple Silicon (against a real Apple SDK) |
+| `x86_64-apple-macosx+open`            | macOS, Intel — Xcode-SDK-free sysroot |
+| `aarch64-apple-macosx+open`           | macOS, Apple Silicon — Xcode-SDK-free sysroot |
 | `aarch64-apple-ios`                   | iOS device, ARM64 |
 | `aarch64-apple-ios-simulator`         | iOS Simulator, Apple Silicon |
 | `x86_64-apple-ios-simulator`          | iOS Simulator, Intel |
 | `x86_64-pc-windows-msvc`              | Windows, x86-64 |
 | `aarch64-pc-windows-msvc`             | Windows, ARM64 |
+| `wasm32-unknown-unknown`              | WebAssembly, 32-bit |
 
 Notes:
 
-* **`+sprt`** targets bundle the prebuilt Xenolith Runtime (`libsprt`) and its
-  headers, so applications link the runtime directly from the sysroot. With a
-  `+sprt` target you do **not** build the `runtime` module yourself.
 * **`unknown-ndk-linux-android`** is a thin bridge sysroot: it ships the Xenolith
-  libc shim/headers but compiles through an externally installed Android NDK
-  (`ndk-build` / `$NDK`), rather than the bundled clang. The four concrete
-  `*-linux-android(eabi)` targets are self-contained and use the bundled clang.
-* Apple targets require the matching Apple SDKs. On a macOS host they are located
-  automatically via `xcrun`; when cross-building they must be supplied as
-  `MacOSX.sdk` / `iPhoneOS.sdk` / `iPhoneSimulator.sdk` (Apple SDK license
-  applies — these are **not** redistributed in these packages).
+  libc shim/headers for all four ABIs but compiles through an externally
+  installed Android NDK (`ndk-build` / `$NDK`), rather than the bundled clang.
+  The four concrete `*-linux-android(eabi)` targets are self-contained, use the
+  bundled clang and target **API level 24**.
+* **Apple targets other than `+open`** require the matching Apple SDKs. On a
+  macOS host they are located automatically via `xcrun`; when cross-building they
+  must be supplied as `MacOSX.sdk` / `iPhoneOS.sdk` / `iPhoneSimulator.sdk`
+  (Apple SDK license applies — these are **not** redistributed here).
+* On iOS the Vulkan validation layer is shipped as
+  `VkLayer_khronos_validation.framework` (upstream forces a framework there)
+  instead of a flat `.dylib`.
+* The Windows `+dll` sysroot variants (`*-pc-windows-msvc+dll`, built around
+  `sprt.dll` instead of the static runtime archive) exist as build targets and
+  are what the Windows host toolchain is produced from, but they are **not
+  published** as packages.
+
+### What a target sysroot actually contains
+
+| Target family | libc in the sysroot | C++ runtime bits | Vulkan runtime |
+|---|---|---|---|
+| `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**) + Linux 5.10 LTS UAPI headers | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
+| `*-unknown-linux-musl` | musl **1.2.6** (pinned upstream) | same | headers only — system loader |
+| `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.350** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
+| `*-linux-android(eabi)` | bionic stubs + headers, API 24 | same | headers only — system loader |
+| `*-apple-macosx`, `*-apple-ios*` | the Apple SDK's (not redistributed) | provided by the platform | **`libvulkan.dylib` + MoltenVK + validation layer** bundled |
+| `*-apple-macosx+open` | apple-oss headers in `include_libc` + generated `.tbd` link stubs, `System/Library/Frameworks/` | `libc++.tbd`/`libc++abi.tbd` stubs, apple-oss headers | same as above |
+| `*-pc-windows-msvc` | **none** — sprt is built from the engine sources; the sysroot supplies the Win32 import libraries (`usr/lib/import.lib`) | none — sprt provides libc++ | headers only — system loader |
+| `wasm32-unknown-unknown` | **none** — sprt is built from the engine sources | `libc++abi.a`, `libunwind.a`, `c++` headers | n/a |
+
+Every target ships `share/licenses` (49 entries), and every target except the
+`unknown-ndk-linux-android` bridge ships `lib/clang` — the compiler-rt resource
+dir, with sanitizers where the platform supports them.
+
+The Windows target export deliberately **drops `sprt.lib`**: consumers rebuild
+the runtime from source and would otherwise link a stale copy by accident.
 
 ---
 
@@ -95,12 +179,23 @@ the complete manifest shipped in this release.
 ### Compiler & toolchain
 | Component | Version |
 |---|---|
-| LLVM / Clang / LLD / LLDB | 21.1.8 (`llvmorg-21.1.8`, + Wine-LLDB & non-`__ulock` patches) |
+| LLVM / Clang / LLD / LLDB | 21.1.8 (`llvmorg-21.1.8`, + 11 patches: wine-LLDB ×3, non-`__ulock`, wasm libunwind, no-delayload, sprt-windows ×6) |
 | libc++ / libc++abi / libunwind / compiler-rt | 21.1.8 (from LLVM) |
-| GNU Make | 4.4.1 (not present on Windows) |
-| xlmake (build driver) | 1.0 |
+| GNU Make | 4.3 (not present on Windows hosts) |
+| xlmake (build driver) | 1.1 |
 | SIMDe | pinned `f3e8262` |
 | libbacktrace | pinned `549b81b` |
+| binutils / GCC (glibc bootstrap only, not shipped) | 2.46.0 / 15.2.0 |
+
+### System libc sources
+| Component | Version |
+|---|---|
+| glibc (Linux targets) | 2.33 — riscv64: 2.35 |
+| glibc (Xenolith OS targets) | 2.39 |
+| musl | 1.2.6 (`runtime/musl-libc` submodule, v1.2.6 + upstream fixes) |
+| Linux UAPI headers | 5.10.258 (LTS) |
+| Android API level | 24 |
+| macOS / iOS deployment target | 14.5 / 17.4 |
 
 ### Vulkan / shaders (Vulkan SDK 1.4.350.0)
 | Component | Version |
@@ -109,9 +204,10 @@ the complete manifest shipped in this release.
 | Vulkan-Loader | `vulkan-sdk-1.4.350.0` |
 | Vulkan-ValidationLayers | `vulkan-sdk-1.4.350.0` |
 | Vulkan-Utility-Libraries | `vulkan-sdk-1.4.350.0` |
+| Vulkan-Tools (`vulkaninfo`, Xenolith OS rootfs only) | `vulkan-sdk-1.4.350.0` |
 | SPIRV-Headers | `vulkan-sdk-1.4.350.0` |
 | SPIRV-Tools | `vulkan-sdk-1.4.350.0` |
-| glslang | `vulkan-sdk-1.4.350.0` |
+| glslang | `vulkan-sdk-1.4.350.0` (16.3.0) |
 | MoltenVK (Apple) | 1.4.1 |
 
 ### Compression & archive
@@ -127,50 +223,59 @@ the complete manifest shipped in this release.
 ### Image
 | Component | Version |
 |---|---|
-| libjpeg-turbo | 3.1.4.1 |
+| libjpeg-turbo | 3.2.0 |
 | libpng | 1.6.58 |
 | giflib | 5.2.2 (+ backports: CVE-2026-26740, CVE-2026-23868) |
 | libwebp | 1.6.0 |
-| libtiff | 4.7.1 (+ backport: CVE-2026-4775) |
+| libtiff | 4.7.2 (CVE-2026-12912 + CVE-2026-4775 fixed upstream) |
 
 ### Text, fonts & i18n
 | Component | Version |
 |---|---|
 | FreeType | 2.14.3 |
 | HarfBuzz | 14.2.1 |
+| SheenBidi | 3.0.0 (Unicode 17.0) |
 | ICU4C | 78.3 |
 | libxml2 | 2.15.3 |
+| expat | 2.8.2 |
+| libuidna (IDN2 replacement) | upstream `SBKarr/libuidna` |
 
 ### Crypto & network
 | Component | Version |
 |---|---|
 | OpenSSL (LTS) | 3.5.7 |
 | openssl-gost-engine | 3.0.3 |
-| MbedTLS (LTS) | 3.6.6 |
-| nghttp3 | 1.16.0 |
-| libcurl | 8.20.0 (MbedTLS **and** OpenSSL variants; HTTP/3 in the OpenSSL variant) |
+| MbedTLS (LTS) | 3.6.7 |
+| nghttp3 | 1.17.0 |
+| ngtcp2 | 1.24.0 |
+| libcurl | 8.21.0 (MbedTLS **and** OpenSSL variants; HTTP/3 in the OpenSSL variant) |
 | CA bundle | `cacert-2026-05-14.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
 
 ### Database & runtime
 | Component | Version |
 |---|---|
-| SQLite | 3.53.2 (amalgamation 3530200) |
-| WAMR (wasm-micro-runtime) | 2.4.4 |
+| SQLite | 3.53.3 (amalgamation 3530300) |
+| WAMR (wasm-micro-runtime) | 2.4.5 |
+| libffi | 3.7.1 |
 
-### Linux windowing / system headers
+### Linux windowing / system
 | Component | Version |
 |---|---|
+| wayland (client/cursor/egl, built) | 1.25.0 |
 | wayland-protocols | 1.49 |
 | plasma-wayland-protocols | 1.21.0 |
-| DBus / XCB / XKB / wayland-client | essential headers only (libraries not bundled) |
+| libdrm | 2.4.134 |
+| DBus / XCB / XKB / X11 | essential headers only (libraries not bundled) |
 
 ### Windows
 | Component | Version |
 |---|---|
-| xwin (used to splat the MSVC CRT / Windows SDK headers & import libs) | 0.9.0 |
+| xwin (legacy Windows-native bootstrap only) | 0.9.0 |
 
-> The MSVC CRT and Windows SDK themselves are Microsoft-licensed and are fetched
-> on demand via `xwin`; they are not redistributed in these packages.
+> The published Windows host and target packages contain **no MSVC CRT and no
+> Windows SDK**: the toolchain runs on sprt and the Win32 surface is described by
+> the runtime's own `.def` files. `xwin` remains in the tree for the legacy
+> Windows-native bootstrap; nothing Microsoft-licensed is redistributed.
 
 ---
 
@@ -189,8 +294,9 @@ tar xJf x86_64-unknown-linux-gnu.tar.xz
 ```
 
 Each host package extracts to `bin/ lib/ share/ host.mk release`; each target to
-`usr/ lib/ include_libc/ share/ target.mk release`. The `release` file holds the
-SDK tag (`sdk-v0beta1`).
+`usr/ lib/ share/ target.mk release` plus `include_libc/` where the target
+carries libc headers. Xenolith OS targets additionally carry `target.ini` (meson
+cross-file), `toolchain.cmake` and `runtime/rootfs`.
 
 ### 2. Use with the Xenolith / Stappler build system (recommended)
 
@@ -237,13 +343,20 @@ $HOST/bin/clang \
     main.c -o main
 ```
 
-Swap `--target` / `--sysroot` / `-resource-dir` to retarget. Android `*-linux-android`
-targets work the same way with the bundled clang; the `unknown-ndk-linux-android`
-sysroot is meant to be driven through an installed Android NDK instead.
+Swap `--target` / `--sysroot` / `-resource-dir` to retarget. Android
+`*-linux-android` targets work the same way with the bundled clang; the
+`unknown-ndk-linux-android` sysroot is meant to be driven through an installed
+Android NDK instead.
+
+The Windows and wasm32 targets are the exception: they carry no libc, so a plain
+`clang hello.c` will not link against them. They are meant to be consumed
+together with the engine's `runtime` module, which builds sprt from source; the
+link line names `sprt.lib` (Windows) with `/NODEFAULTLIB`, and the MSVC default
+libraries must be suppressed.
 
 ### 4. `xlmake` — bundled build driver
 
-Every host package includes **`xlmake`** (version 1.0; `xlmake.exe` on Windows)
+Every host package includes **`xlmake`** (version 1.1; `xlmake.exe` on Windows)
 in `bin/` — a GNU-make-compatible makefile engine and build driver. *"It's like
 Ninja, but it's make."* It reads GNU-make-style makefiles and runs recipes as
 child processes multiplexed through a single-threaded, non-blocking build
@@ -273,6 +386,29 @@ xlmake -i -V STAPPLER_HOST # inspect: print one variable's expanded value
 Russian national CA authorities (Ministry of Digital Development Root / Sub /
 Sub-2024). GOST ciphers can be loaded statically through the
 `stappler_crypto` module via the bundled `openssl-gost-engine`.
+
+## Known limitations
+
+* **`riscv64-xenolithos-linux-gnu` is built by name only** — there is no real
+  board for it yet. x86-64 and ARM64 are the validated device architectures.
+* **Xenolith OS targets carry no GPU driver.** The mesa driver differs per board
+  (v3dv, panvk, venus, lavapipe) and is applied as an overlay by `xenolith-os`;
+  lavapipe additionally needs a native LLVM for the target architecture, which
+  cross-compilation does not provide.
+* **`+sprt` Apple packages are not published** in this release; the `+open`
+  sysroots supersede them. The recipes are still in `target-apple/Makefile`.
+* **The `+open` framework headers are not complete framework headers.** They
+  declare only what real code in this repository and the host projects use, with
+  every constant and symbol validated against the real SDK.
+* **sprt does not implement the MSVC C++ exception ABI**, so the Windows host
+  toolchain is built with exceptions off; `throw` terminates.
+* **The Windows host clang cannot link an ad-hoc program on its own**
+  (`clang hello.c -o hello.exe` fails on `libcmt.lib`): the driver emits the MSVC
+  default libraries and there is no `.cfg` in `bin/` redirecting the target to
+  sprt. Builds driven by the engine's `target.mk` or a CMake toolchain file are
+  unaffected.
+* **`libcurl`'s MbedTLS variant is not built for Windows and wasm32**, and those
+  two targets also omit ICU, libxml2, expat, libffi and the WAMR runtime.
 
 ## License
 
