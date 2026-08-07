@@ -1,0 +1,185 @@
+# System dialogs and shell actions
+
+**TL;DR**
+
+* One API for all of them: fill an `Rc<sprt::window::DialogRequest>`, pass it to
+  `openDialog`. There is **no synchronous dialog** and nothing to block on.
+* **Window-owned:** `AppWindow::openDialog(req)` — parented to that window,
+  cancelled when it closes, completion on the **app thread**. That is the normal
+  case. **Windowless:** `Context::openDialog(looper, sp::move(req))`.
+* **Keep the `Rc<DialogRequest>` — it is the cancellation token.** The backend's
+  `DialogHandle` never crosses to your thread; `cancelDialog(req)` is how you take
+  a dialog down.
+* `callback` is **required** and runs **exactly once**, on the target looper —
+  including when the platform has no dialogs at all, or the parent window died.
+  There is no "it silently did not happen" case to code around.
+* Test the answer with `status::isSuccessful(res.status)`, and treat
+  `Status::Declined` (the user cancelled) as an ordinary outcome, not an error.
+* `RevealInFileManager` and `MoveToTrash` are **not dialogs**: no UI of ours,
+  `paths` is the *input*, only `status` in the result means anything. They ride
+  the same seam so lifetime and cancellation have one implementation.
+* Ask `WindowCapabilities` first: `FileDialogs`, `ColorDialog`, `FontDialog`,
+  `SystemFileActions`, `NativeDialogParenting`.
+
+## The request
+
+[dialog.h](../../../../runtime/include/sprt/runtime/window/dialog.h). The whole
+description is one refcounted struct, constructed on any thread and consumed on
+the controller's looper — **do not mutate it after `openDialog`**:
+
+[source,cpp]
+----
+auto req = Rc<sprt::window::DialogRequest>::create();
+req->type = sprt::window::DialogType::OpenDirectory;
+req->flags |= sprt::window::DialogFlags::Modal;
+req->title = prompt.str<sprt::window::String>();
+
+// `target` is kept alive by the implementation until `callback` has run, so the
+// capture below can be raw.
+req->target = this;
+req->callback = [this, req = req.get()](const sprt::window::DialogResult &res) {
+	if (_dialogRequest == req) {           // still ours? a newer pick may have replaced it
+		_dialogRequest = nullptr;
+	}
+	if (res.status == Status::Ok && !res.paths.empty()) {
+		…                                  // copy what you keep - see below
+	}
+};
+
+_dialogRequest = req;                      // the cancellation token
+window->openDialog(req);
+----
+
+(`utils/installer/src/controller/InstallerController.cc` — one picker at a time,
+the previous one cancelled rather than stacked.)
+
+Fields worth knowing:
+
+| Field | Meaning |
+|---|---|
+| `type` | which dialog, or which shell action |
+| `flags` | `Modal`, `Multiple`, `ShowHidden`, `ConfirmOverwrite`, `AlphaChannel` |
+| `path` / `filename` | initial directory; `SaveFile` also uses `filename` as the suggested name |
+| `paths` | **input** for `RevealInFileManager` / `MoveToTrash` |
+| `filters` / `filter` | the file-type dropdown, and which entry starts selected |
+| `title`, `acceptLabel` | empty `acceptLabel` takes the platform default |
+| `color`, `font` | initial value for the colour / font pickers |
+| `callback` | required; exactly once, on the looper passed to `openDialog` |
+| `target` | kept alive until the callback has run |
+| `parentWindowId` | set **for** you by `AppWindow::openDialog`; empty means unparented |
+
+A `FileFilter` carries both `patterns` (globs, `"*.png"`) and `mimeTypes` —
+xdg-desktop-portal and macOS prefer the latter, glob-only backends ignore it, and
+at least one of the two must be non-empty.
+
+**These are runtime containers**, `sprt::window::String` / `Vector`, not the
+`mem_std` ones the scene graph uses. Convert with
+`view.str<sprt::window::String>()` going in, and **copy anything you keep** out
+of the result — it does not outlive the callback.
+
+## The answer
+
+`DialogResult::status` answers "did this work":
+
+| Status | Meaning |
+|---|---|
+| `Ok` | the user confirmed; the payload fields are valid |
+| `Declined` | cancelled or dismissed — an ordinary outcome, payload empty |
+| `ErrorCancelled` | *you* cancelled it, or the parent window died |
+| `ErrorNotImplemented` | the platform has no dialog backend at all |
+| `ErrorNotSupported` | a backend exists but cannot serve this `DialogType` |
+| anything else | a backend failure — D-Bus error, `HRESULT`, failed spawn |
+
+So: `status::isSuccessful(st)`, never `st == Status::Ok`, and never a bare
+`else → "error"` that reports the user pressing Cancel as a failure.
+
+* `paths` are absolute **native** paths, never URIs.
+* `filter` is an index into `DialogRequest::filters`, or `DialogFilterUnknown`
+  where the platform does not report which type was chosen.
+* `font.description` is the backend's own descriptor (`"Sans Bold 12"`, a
+  PostScript name, a Win32 face name) and is the only font field guaranteed to
+  round-trip back into `DialogRequest::font`.
+* `color.a` is 1 unless you asked for `DialogFlags::AlphaChannel`.
+
+## Ownership, cancellation, teardown
+
+The caller keeps the `Rc<DialogRequest>` because the backend's `DialogHandle` is
+created on the controller's looper and cannot be handed back synchronously to a
+caller on another thread. That one object is therefore both the description and
+the token:
+
+[source,cpp]
+----
+if (_dialogRequest) {
+	window->cancelDialog(_dialogRequest);  // completion still fires, with ErrorCancelled
+}
+----
+
+* Cancellation is **not** a drop. Every path to a finished dialog — confirmed,
+  cancelled, application-cancelled, parent window closed, backend failed — goes
+  through one `finalize`, so the callback always runs and the modal block is
+  always released.
+* A window that is winding down needs no special case: either its dialog is
+  cancelled by the teardown, or `openDialog` declines because the named parent no
+  longer resolves. Both answer the callback.
+* `AppWindow::hasPendingDialogs()` is true while any dialog opened through that
+  window is still up.
+
+## Modality
+
+`DialogFlags::Modal` blocks input to the parent chain **engine-side** — that is
+the portable guarantee, and it holds everywhere. What
+`WindowCapabilities::NativeDialogParenting` adds is a real OS parent
+relationship, so clicking the blocked parent raises the dialog. Without that bit
+the parent is still blocked, the OS just does not help — **show that yourself**
+rather than leaving a window that ignores clicks with no explanation.
+
+## What exists where
+
+| Capability | Covers |
+|---|---|
+| `FileDialogs` | `OpenFile`, `OpenDirectory`, `SaveFile` |
+| `ColorDialog` | `Color` |
+| `FontDialog` | `Font` |
+| `SystemFileActions` | `RevealInFileManager`, `MoveToTrash` |
+| `NativeDialogParenting` | OS-level parenting of a modal dialog |
+
+Without the matching bit the request is answered with `ErrorNotSupported`
+(or `ErrorNotImplemented` where there is no backend at all) — it is answered,
+not ignored, so a capability check is about *not offering the control*, not about
+avoiding a crash.
+
+`MoveToTrash` is Trash / Recycle Bin: recoverable, never a hard delete. If you
+need a real delete, that is `filesystem`, not a dialog.
+
+## Exercising them
+
+`tests/window` exposes the whole surface over the inspector socket as the
+`dialog` command (`src/app/ExampleScene.cpp`):
+
+```
+dialog {type, path, filename, paths, title, modal, multiple}
+   type: open-file | open-directory | save-file | color | font | reveal | trash
+```
+
+`reveal` and `trash` show no UI of ours, so those two can be driven with no
+display at all; the rest need a session with a dialog backend.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| no `callback` | `openDialog` returns `ErrorInvalidArguemnt` and nothing opens |
+| mutating the request after `openDialog` | it is being consumed on another looper — data race |
+| dropping the `Rc` | you can no longer cancel; the dialog outlives the code that wanted it |
+| `st == Status::Ok` as the success test | `Declined` is the user cancelling, not a failure to report |
+| keeping a `StringView` into `DialogResult` | the result dies with the callback — copy it |
+| assuming a modal parent looks blocked | without `NativeDialogParenting` only input is blocked; the visuals are yours |
+| a second dialog on top of the first | cancel the previous request first; do not stack pickers |
+
+## Related
+
+* [windows.adoc](windows.adoc) — the windows dialogs are parented to, and the capability bits
+* [threads-and-dispatch.adoc](../core/threads-and-dispatch.adoc) — loopers, completions, and keeping the owner alive
+* [errors-and-status.adoc](../core/errors-and-status.adoc) — `Status`, `isSuccessful`, why nothing throws
+* [strings.adoc](../core/strings.adoc) — `StringView` lifetime and converting between string interfaces

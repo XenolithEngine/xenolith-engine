@@ -1,0 +1,118 @@
+# Platform and architecture guards
+
+**TL;DR**
+
+* Use `#if SPRT_WINDOWS` / `#if SPRT_LINUX` / `#if SPRT_APPLE` — **`#if`, not
+  `#ifdef`**, and never the raw compiler predefines (`_WIN32`, `__APPLE__`) in
+  SDK code.
+* `SPRT_APPLE` covers macOS + iOS + darwin-unknown; use `SPRT_MACOS` /
+  `SPRT_IOS` only for genuinely OS-specific code.
+* The `__SPRT_*` (double-underscore) macros are internal detection inputs — read
+  them, do not define or extend them outside
+  [__sprt_def.h](../../../../runtime/include/sprt/c/bits/__sprt_def.h).
+* Architecture: compare ids — `#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64`.
+  For pointer size use `__SIZEOF_POINTER__`, not `INTPTR_MAX`.
+* Code behind a foreign-platform guard is **not compiled by a native Linux
+  build**. It must be verified by building that target — see
+  [AGENTS.md](../../../../AGENTS.md) §6.
+
+## The platform macros
+
+[__sprt_def.h](../../../../runtime/include/sprt/c/bits/__sprt_def.h) inspects the
+compiler predefines once and defines exactly one platform macro, set to a
+non-zero platform id:
+
+| Macro | Platform |
+|---|---|
+| `SPRT_MACOS` | desktop macOS |
+| `SPRT_IOS` | iOS and the simulator |
+| `SPRT_DARWIN_UNKNOWN` | other Darwin |
+| `SPRT_APPLE` | **any** of the three above |
+| `SPRT_WINDOWS` | Windows (including the freestanding MSVC-target build) |
+| `SPRT_ANDROID` | Android/NDK |
+| `SPRT_LINUX` | Linux (glibc or musl) |
+| `SPRT_WASM` | freestanding WebAssembly |
+
+Only the current platform's macro exists. That is why the idiom is `#if`:
+
+[source,cpp]
+----
+// runtime/include/sprt/runtime/ref.h
+#if SPRT_WINDOWS
+#define SPRT_REF_SAFE_INSTANIATION 1
+#else
+#define SPRT_REF_SAFE_INSTANIATION 0
+#endif
+----
+
+An undefined identifier evaluates to `0` in `#if`, so a single expression
+handles "this platform / not this platform" without an `#ifdef`/`#else` ladder,
+and a typo in the macro name is *silently false* — which is exactly why the
+names must be copied, not typed from memory.
+
+**Do not use `#ifdef __SPRT_WASM`** (or any other `__SPRT_*` spelling) as a
+platform test. `__SPRT_WASM` / `__SPRT_WINDOWS` are *external overrides* that
+force detection for odd cross-compilation targets; the resulting public macro is
+`SPRT_WASM`. Guarding on the override compiles nothing on a normal wasm build.
+
+Apple layering matters, and the detection order in the header encodes it:
+`TARGET_OS_MAC` is 1 on *every* Apple OS, so iOS is tested first. In your own
+code prefer `SPRT_APPLE` for libSystem/XNU behaviour shared by the family and
+reserve `SPRT_MACOS` / `SPRT_IOS` for real OS differences (window system,
+bundle layout).
+
+## Architecture guards
+
+Arch detection produces `__SPRT_ARCH_ID`, compared against the
+`__SPRT_ARCH_ID_*` constants:
+
+[source,cpp]
+----
+// runtime/libc_wrapper/runtime/SPRuntimeBacktrace.cpp
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+----
+
+Two traps, both of which have already cost a release:
+
+* Comparing against `__SPRT_ARCH_NAME_*` instead of `__SPRT_ARCH_ID_*`. The
+  `_NAME_` macros expand to a *token* (`x86_64_sprt`), so the comparison is a
+  number-vs-identifier test that is false everywhere — the bug documented in
+  [stdlib.h](../../../../runtime/include/sprt/wrappers/libc/stdlib.h) around
+  `_byteswap_ulong`, which silently disabled the declarations on aarch64-Windows.
+* Deriving pointer size from `INTPTR_MAX` or `SIZE_MAX`. Those come from headers
+  that may not be in scope in a freestanding build; the compiler always
+  predefines `__SIZEOF_POINTER__` (see the note in
+  [sprt/cxx/new](../../../../runtime/include/sprt/cxx/new)).
+
+Data-model differences follow from this: Windows is LLP64 on every arch
+(`unsigned long` is 32-bit) while Linux/Apple are LP64, and `wchar_t` is 16-bit
+on Windows. Do not encode assumptions from the host platform into shared code.
+
+## Per-platform values are not portable constants
+
+`errno` values, `O_*` flags and similar numbers differ per platform and are
+defined per-platform in the cross headers — macOS uses the native `__error()`
+and `EAGAIN == 35`; aarch64 Linux differs from x86_64 in some `O_*` bits. Never
+hard-code such a value or assume the Linux one; include the platform header and,
+where a mismatch would be silent, back it with a `static_assert`.
+
+## Verifying guarded code
+
+A native Linux build compiles *nothing* inside `#if SPRT_WINDOWS`,
+`#if SPRT_ANDROID` or `#if SPRT_APPLE`. A green host build is not evidence that
+guarded code even parses. Build the matching target:
+
+[source,sh]
+----
+make -C tests/window STAPPLER_TARGET=x86_64-pc-windows-msvc -j8
+env -u MAKEFLAGS -u MFLAGS make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android
+make -C tests/window STAPPLER_TARGET=aarch64-apple-macosx -j8
+----
+
+The full matrix, with the run/verify story per target, is in
+[AGENTS.md](../../../../AGENTS.md) §3 and §6.
+
+## Related
+
+* [AGENTS.md](../../../../AGENTS.md) — build and verification per target
+* [sources/file-layout.adoc](../sources/file-layout.adoc) — `SP_PUBLIC` / `SPRT_API` visibility macros

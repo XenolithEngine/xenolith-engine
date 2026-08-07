@@ -1,0 +1,191 @@
+# Node / System / Component: use composition, not `Node` subclasses
+
+**TL;DR**
+
+* **Default to a `System` or a `Component`. Subclass `Node` only when the node
+  draws differently.** The engine's own header says it: *"In most cases, you
+  should consider to implement some System instead of subclassing Node."*
+* `Node` = identity, geometry and children. `System` = behaviour. `Component` =
+  data attached to a node.
+* A `System` opts into exactly the phases it needs via `SystemFlags`; it receives
+  nothing it did not ask for.
+* A `Component` is a per-type data record keyed by `static ComponentId Id`, one
+  per id per node, addressed by type: `setComponent<T>()` / `getComponent<T>()`.
+* For a one-off callback there is no need for a class at all — the `set*Callback`
+  setters on `Node` create a `CallbackSystem` for you.
+
+## The three roles
+
+This is the engine's variant of ECS, adapted to a scene graph rather than a flat
+world:
+
+| | Holds | Added with | Sees |
+|---|---|---|---|
+| **`Node`** | geometry, children, identity ([node geometry](../scene/node-geometry.adoc)) | `addChild` | itself and its children |
+| **`System`** | behaviour: reacts to phases, mutates the owner | `addSystem` | its owner node, and — via the frame stack — descendants |
+| **`Component`** | plain data, no behaviour | `setComponent<T>()` | nothing; systems read it |
+
+The split matters because they have different costs. A node is a heavy
+refcounted object in the tree; a system is a small object dispatched only for the
+phases it requested; a component is a POD stored inline in the node when it fits
+in 28 bytes ([XLComponent.h](../../../../xenolith/application/nodes/XLComponent.h)).
+
+## Why not subclass `Node`
+
+A subclass fuses behaviour with identity, and that has concrete consequences:
+
+* **Behaviours stop composing.** Two subclasses cannot be combined; two systems on
+  one node can. Draggable + tooltip + style-driven is three systems, or one
+  impossible class hierarchy.
+* **You pay for every phase.** A `Node` subclass overriding `handleContentSizeDirty`
+  is called on every content-size change forever. A system with the matching
+  `SystemFlags` is dispatched only while it is attached — and can be removed.
+* **It is not reusable.** A behaviour written as a system attaches to *any* node,
+  including nodes from other modules that you cannot subclass.
+* **It fights the style system.** CSS matches on `type` and classes; a resolver
+  applies results through components. Behaviour that lives in a subclass is
+  invisible to that pipeline.
+
+Subclass `Node` when — and only when — the node **draws** something new (a new
+`Sprite`/`VectorSprite` variant), or when it is a structural root the engine
+itself needs (`Scene`, `SceneContent`).
+
+## Systems
+
+[XLSystem.h](../../../../xenolith/application/nodes/XLSystem.h). A system is a `Ref`
+added to a node; it declares which events it wants through `SystemFlags` and
+implements the matching `handle*` hooks:
+
+[source,cpp]
+----
+class DragSystem : public System {
+public:
+	virtual bool init() {
+		if (!System::init()) {
+			return false;
+		}
+		_flags = SystemFlags::HandleSceneEvents | SystemFlags::HandleNodeEvents;
+		return true;
+	}
+
+	virtual void handleContentSizeDirty() override { … }
+};
+
+node->addSystem(Rc<DragSystem>::create());
+node->addSystem(Rc<InputListener>::create());          // input, as a system
+node->addSystem(Rc<LayoutSystem>::create(), priority); // explicit dispatch order
+----
+
+Points to keep in mind:
+
+* **Ask for the minimum.** `SystemFlags` is a mask; every extra bit costs a
+  dispatch per node per frame. `Default` covers owner + scene + node events +
+  `handleVisitSelf`.
+* **Order is a priority number.** Systems are dispatched in ascending priority,
+  `System::DefaultPriority` sits mid-range so you can order both before and after
+  it. Pass a priority to `addSystem` when the order matters; do not rely on
+  insertion order.
+* **Reaching descendants** (a layout engine watching its subtree) needs
+  `AddToFrameStack` + a valid `FrameTag` plus the `HandleChild*` flag — the
+  frame-stack mechanism, described in
+  [node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc).
+  Do not walk the tree manually each frame.
+* Look one up with `node->getSystemByType<T>()` (optionally by tag) rather than
+  keeping a raw pointer to something the node owns.
+
+Existing systems to model yours on: `InputListener`, `EventListener`,
+`LayoutSystem`, `StyleResolver`, `DynamicStateSystem`, `ScrollController`.
+
+### The zero-class option
+
+For a single callback, do not write a system at all — `Node` has setters that
+lazily create a `CallbackSystem` (tagged `DefaultCallbackSystemTag`) and derive
+its flags from which setters you used:
+
+[source,cpp]
+----
+node->setContentSizeDirtyCallback([this] { … });
+node->setEnterCallback([this](Scene *) { … });
+node->setLayoutCallback([this](Node *parent) { … });
+node->setMeasureCallback([](const MeasureConstraints &c, Size2 &out) { … return true; });
+----
+
+This is the preferred shape for glue code inside one screen. Promote it to a real
+system when the same logic is needed twice.
+
+## Components
+
+A component is data, addressed by type. Declare the id in the header and define
+it in the SCU — the default constructor allocates a process-unique value:
+
+[source,cpp]
+----
+// XLUiButton.h
+struct ButtonStyleComponent {
+	static ComponentId Id;
+
+	Color4B backgroundColor = Color4B::WHITE;
+	float outlineWidth = 0.0f;
+};
+
+// XLUiButton.cc
+ComponentId ButtonStyleComponent::Id;
+----
+
+Then:
+
+[source,cpp]
+----
+node->setComponent<ButtonStyleComponent>(args…);        // create or replace
+node->getComponent<ButtonStyleComponent>();             // const T * or nullptr
+node->updateComponent<ButtonStyleComponent>([](NotNull<ButtonStyleComponent> c) {
+	c->outlineWidth = 2.0f;
+	return true;              // returning true marks the node's components dirty
+});
+node->setOrUpdateComponent<T>(cb);                      // create with defaults if absent
+node->removeComponent<T>();
+----
+
+Rules that come straight from the header:
+
+* One component **per id per node**.
+* Prefer a **standard-layout, trivially-constructible** struct — such a component
+  is stored inline (`STATIC_SIZE == 28` bytes). Anything larger or non-trivial is
+  heap-allocated behind the scenes.
+* Components carry **no behaviour**. A system reacts to them: it sets
+  `SystemFlags::HandleComponents` and receives `handleComponentsDirty(const
+  ComponentMask &)` with the ids that changed — check the mask instead of
+  re-reading everything.
+* `HandleAncestorComponents` gets the same event when an *ancestor's* components
+  change (that is how inherited CSS properties reach a node); it is demand-driven,
+  so it costs nothing on nodes that do not ask.
+* Searching by data rather than by type: `findParentWithComponent<T>(cb)` and the
+  matching child enumeration walk the tree and hand you nodes that carry `T`.
+
+Real components in-tree: `ButtonStyleComponent`, `VisibilityComponent`
+(`display` / `visibility`), the inherited-style records in
+[XLInheritedStyle.h](../../../../xenolith/application/nodes/XLInheritedStyle.h),
+`FlexLayoutInfo` / `FlexItemInfo`, `InteractiveComponent`.
+
+## Choosing, in practice
+
+| You want to… | Use |
+|---|---|
+| draw something new | a `Sprite` / `VectorSprite` subclass |
+| react to size, transform, enter/exit, input | a `System` (or a `set*Callback`) |
+| lay out children | a `System` with `HandleLayoutChildren` (+ frame stack for child events) |
+| answer "how big do you want to be?" | a `System` with `HandleMeasure` — see [content-measurement.adoc](../../ui/content-measurement.adoc) |
+| attach data a style or another system will read | a `Component` |
+| store one value used only by your own code | a member of your system, not a component |
+
+If a design still seems to need a `Node` subclass, the usual missing piece is a
+system with `AddToFrameStack` — that is the mechanism for "a parent that must
+know about its subtree" without owning a special node type.
+
+## Related
+
+* [scene/node-geometry.adoc](../scene/node-geometry.adoc) — what `Node` itself provides
+* [node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — phases, flags, frame stack
+* [content-measurement.adoc](../../ui/content-measurement.adoc) — the measure protocol
+* [css-subset.adoc](../../ui/css-subset.adoc) — the CSS subset and the components the resolver writes
+* [sources/naming.adoc](../sources/naming.adoc) — `handleXxx` hooks and `init()` + `Rc<T>::create()`

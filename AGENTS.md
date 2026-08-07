@@ -514,30 +514,40 @@ Full reference: **[docs/usage/codestyle/index.adoc](docs/usage/codestyle/index.a
 header, a platform branch, or an allocation. The essentials:
 
 - `.cpp`/`.c` = compile units (SCU); `.cc` = `#include`-only subunits
-  ([01](docs/usage/codestyle/01-units-and-files.adoc)).
+  ([units](docs/usage/codestyle/sources/units-and-files.adoc)).
 - MIT license block, path-derived include guard (`XENOLITH_..._H_`, no `#pragma
   once`), `namespace STAPPLER_VERSIONIZED stappler::…` (runtime: `namespace
   sprt`), `SP_PUBLIC` / `SPRT_API` on exported entities, includes never sorted
-  ([02](docs/usage/codestyle/02-file-layout.adoc)).
+  ([file layout](docs/usage/codestyle/sources/file-layout.adoc)).
 - Types `PascalCase`, functions `camelCase`, members `_camelCase`, file statics
   `s_name`; virtual hooks are `handleXxx()`, not `onXxx()`; files are `SP*` /
   `XL*` / lowercase-in-`sprt`, aggregators `*.scu.cpp`
-  ([03](docs/usage/codestyle/03-naming.adoc)).
+  ([naming](docs/usage/codestyle/sources/naming.adoc)).
 - Platform tests are `#if SPRT_WINDOWS` / `SPRT_APPLE` / … — `#if`, not `#ifdef`,
   never raw `_WIN32`; arch via `__SPRT_ARCH_ID == __SPRT_ARCH_ID_*`
-  ([04](docs/usage/codestyle/04-platform-guards.adoc)).
+  ([platform guards](docs/usage/codestyle/platform/platform-guards.adoc)).
 - Ref-counted objects: `Rc<T>::create()` + `virtual bool init(...)`, never bare
   `new`. Pool-allocated types must derive from `AllocPool`; `new (pool) T` on
   anything else is a silent corruption, and aggregate `Type{value}` initializes
-  the base class ([05](docs/usage/codestyle/05-memory-and-ownership.adoc)).
+  the base class ([memory](docs/usage/codestyle/core/memory-and-ownership.adoc)).
 - Layout is [.clang-format](.clang-format)'s job: tabs (4), continuation 8,
   column limit 100, `Node *node`, attached braces
-  ([06](docs/usage/codestyle/06-formatting.adoc)).
+  ([formatting](docs/usage/codestyle/sources/formatting.adoc)).
 - `data::Value` is the boundary type (config, files, IPC, command line):
   `setValue(value, key)` takes the **value first**, a failed lookup returns the
   shared `Value::Null` — read-only memory, so assigning through it asserts in
   debug and faults if it gets past the guards — an indexed write past the end of
   an array takes the next free slot, `Value{5}` is the array `[5]`, and bytes
   survive CBOR but not JSON
-  ([13](docs/usage/codestyle/13-data-value.adoc), full guide:
+  ([data::Value](docs/usage/codestyle/core/data-value.adoc), full guide:
   [docs/usage/data/value.adoc](docs/usage/data/value.adoc)).
+- Windows are asked for with `Context::createWindow`, and what a window **is**
+  travels with the request as `WindowInfo::appData` — never look one up by `id`,
+  which the runtime may re-unique. Popups/dialogs/tooltips are `ui::SubWindow`
+  (native subwindow or in-scene overlay); check `WindowCapabilities` before
+  offering fullscreen or decoration controls
+  ([windows](docs/usage/codestyle/window/windows.adoc)).
+- OS dialogs are an `Rc<sprt::window::DialogRequest>` you **keep** — it is the
+  cancellation token; the callback is required, runs exactly once, and
+  `Status::Declined` is the user cancelling, not a failure
+  ([dialogs](docs/usage/codestyle/window/dialogs.adoc)).
