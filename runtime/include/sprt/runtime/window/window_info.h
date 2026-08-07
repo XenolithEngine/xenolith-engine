@@ -486,6 +486,24 @@ enum class WindowCapabilities : uint32_t {
 
 	// Decoration state can be changed by application (mostly Android)
 	DecorationState = 1 << 21,
+
+	// ContextController::openDialog serves OpenFile / OpenDirectory / SaveFile
+	FileDialogs = 1 << 22,
+
+	// ... DialogType::Color
+	ColorDialog = 1 << 23,
+
+	// ... DialogType::Font
+	FontDialog = 1 << 24,
+
+	// ... RevealInFileManager and MoveToTrash
+	SystemFileActions = 1 << 25,
+
+	// DialogFlags::Modal additionally gets a real OS parent relationship (owner HWND, a macOS
+	// sheet, portal parent_window), so clicking the blocked parent raises the dialog. Without this
+	// bit Modal still blocks input — the OS just does not help, and the application should show
+	// that the window is blocked itself.
+	NativeDialogParenting = 1 << 26,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowCapabilities)

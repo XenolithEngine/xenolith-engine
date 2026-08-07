@@ -48,7 +48,7 @@ BasicValue BasicValue::makeSignature(StringView val) {
 }
 BasicValue BasicValue::makeFd(int val) {
 	BasicValue ret;
-	ret.type = Type::Path;
+	ret.type = Type::Fd;
 	ret.value.fd = val;
 	return ret;
 }
@@ -91,6 +91,12 @@ const char *BasicValue::getSig() const {
 }
 
 BusFilter::~BusFilter() {
+	// Only worth unsaying to a bus that is still listening. After close() there is no connection at
+	// all, and after a disconnect the removal is a blocking call that can only fail — in both cases
+	// the rule died with the connection anyway.
+	if (added && (!connection->connection || !connection->connected)) {
+		added = false;
+	}
 	if (added) {
 		if (connection->lib->dbus_error_is_set(&error)) {
 			connection->lib->dbus_error_free(&error);
@@ -193,6 +199,19 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 				[](DBusConnection *, DBusMessage *msg, void *data) -> DBusHandlerResult {
 			auto conn = reinterpret_cast<Connection *>(data);
 			conn->lib->dbus_message_ref(msg);
+
+			// libdbus synthesises this one locally when the connection breaks; it never comes from
+			// the bus. Nothing more will ever arrive here, so mark the connection dead before any
+			// filter gets a chance to act on a bus that is no longer there.
+			if (conn->lib->dbus_message_is_signal(msg, "org.freedesktop.DBus.Local",
+						"Disconnected")) {
+				conn->connected = false;
+				conn->failed = true;
+				conn->callback(conn, Event{Event::Disconnected, {.message = msg}});
+				conn->lib->dbus_message_unref(msg);
+				return DBUS_HANDLER_RESULT_HANDLED;
+			}
+
 			for (auto &it : conn->matchFilters) {
 				if (it->handler) {
 					// check if interface message
@@ -1103,16 +1122,18 @@ bool WriteIterator::add(StringView key, BasicValue val) {
 	DBusMessageIter sub;
 	lib->dbus_message_iter_open_container(&iter, toInt(Type::DictEntry), nullptr, &sub);
 
+	// Both members go into the open DictEntry container, not into the iterator it was opened on:
+	// appending to `iter` while `sub` is open corrupts the message.
 	if (key.terminated()) {
 		const char *ptr = key.data();
-		lib->dbus_message_iter_append_basic(&iter, toInt(Type::String), &ptr);
+		lib->dbus_message_iter_append_basic(&sub, toInt(Type::String), &ptr);
 	} else {
 		d = key.str<String>();
 		const char *ptr = d.data();
-		lib->dbus_message_iter_append_basic(&iter, toInt(Type::String), &ptr);
+		lib->dbus_message_iter_append_basic(&sub, toInt(Type::String), &ptr);
 	}
 
-	lib->dbus_message_iter_append_basic(&iter, toInt(val.type), &val.value);
+	lib->dbus_message_iter_append_basic(&sub, toInt(val.type), &val.value);
 	lib->dbus_message_iter_close_container(&iter, &sub);
 	++index;
 	return true;

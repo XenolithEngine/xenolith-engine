@@ -26,17 +26,38 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/abi/shellapi.h>
 
-// FILEOP_FLAGS (SHFILEOPSTRUCT / IFileOperation::SetOperationFlags). Only the bits
-// llvm's Path.inc combines into a no-UI recycle delete are defined; FOF_NO_UI is the
-// SDK's convenience aggregate, FOFX_NOCOPYHOOKS is a shobjidl extended flag.
-typedef unsigned int FILEOP_FLAGS;
+// FILEOP_FLAGS bits shared by SHFileOperationW and IFileOperation::SetOperationFlags.
+// FOF_NO_UI is the SDK's convenience aggregate; the FOFX_ ones are shobjidl extensions,
+// reachable only through IFileOperation because they do not fit in a WORD.
+// The FILEOP_FLAGS type itself and SHFILEOPSTRUCTW live in abi/shellapi.h.
 
 #define FOF_SILENT __SPRT_FOF_SILENT
 #define FOF_NOCONFIRMATION __SPRT_FOF_NOCONFIRMATION
 #define FOF_NOCONFIRMMKDIR __SPRT_FOF_NOCONFIRMMKDIR
 #define FOF_NOERRORUI __SPRT_FOF_NOERRORUI
 #define FOF_NO_UI __SPRT_FOF_NO_UI
+#define FOF_ALLOWUNDO __SPRT_FOF_ALLOWUNDO
 
 #define FOFX_NOCOPYHOOKS __SPRT_FOFX_NOCOPYHOOKS
+#define FOFX_RECYCLEONDELETE __SPRT_FOFX_RECYCLEONDELETE
+#define FOFX_EARLYFAILURE __SPRT_FOFX_EARLYFAILURE
+
+#define FO_MOVE __SPRT_FO_MOVE
+#define FO_COPY __SPRT_FO_COPY
+#define FO_DELETE __SPRT_FO_DELETE
+#define FO_RENAME __SPRT_FO_RENAME
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// The pre-Vista file operation. IFileOperation superseded it, but this one is still supported and
+// is the only shell delete some hosts implement, so it stays as a fallback. Returns 0 on success;
+// the non-zero codes are its own, not GetLastError's.
+__SPRT_WIN_IMPORT WINAPI int SHFileOperationW(LPSHFILEOPSTRUCTW lpFileOp);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // SPRT_WRAPPERS_WINDOWS_SHELLAPI_H_

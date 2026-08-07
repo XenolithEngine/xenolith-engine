@@ -8,3 +8,6 @@ EXPORTS
 	ILCreateFromPathW
 	ILFree
 	SHCreateItemFromIDList
+	SHCreateItemFromParsingName
+	SHOpenFolderAndSelectItems
+	SHFileOperationW

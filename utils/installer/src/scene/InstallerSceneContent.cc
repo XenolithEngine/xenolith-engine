@@ -196,6 +196,37 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 	addConfirmCommand("open-confirm", "Open Delete confirm dialog (danger)", ConfirmTone::Danger);
 	addConfirmCommand("open-confirm-install", "Open Install confirm dialog (primary)",
 			ConfirmTone::Primary);
+
+	// The two system dialogs, reachable without hunting for a button. Both answer only once the
+	// dialog is gone, so they double as a check that the callback really does arrive.
+	inspector::addCommand(this, "pick-folder", "Open the system folder picker",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
+		if (!window || !_controller) {
+			Value r;
+			r.setString("no window", "error");
+			done(sp::move(r));
+			return;
+		}
+		_controller->pickFolder(window, strings::projectChoose(),
+				[done = sp::move(done)](String picked) mutable {
+			Value r;
+			r.setString(picked, "path");
+			r.setBool(!picked.empty(), "ok");
+			done(sp::move(r));
+		});
+	});
+
+	inspector::addCommand(this, "open-folder", "Reveal the data directory in the file manager",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
+		if (window && _controller) {
+			_controller->openFolder(window, _controller->layout().data);
+		}
+		Value r;
+		r.setBool(window != nullptr, "opened");
+		done(sp::move(r));
+	});
 }
 
 void InstallerSceneContent::hideLoadingState() {

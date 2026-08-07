@@ -29,6 +29,8 @@
 #include "XLCorePresentationEngine.h"
 #include "XLCoreTextInput.h"
 
+#include <sprt/runtime/window/dialog.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 //
@@ -181,6 +183,22 @@ public:
 	// Use Vec2::INVALID to open window menu in current pointer location;
 	// WindowState::AlloedWindowMenu should be enabled
 	virtual bool openWindowMenu(Vec2 pos) = 0;
+
+	// Open an OS dialog (file picker, colour, font, reveal, trash) owned by this window. The
+	// request's `parentWindowId` is filled in by the implementation and its completion runs on
+	// the app thread. Keep the Rc<DialogRequest>: it is the cancellation token.
+	//
+	// Status::Ok means the dialog was accepted. Anything else means the completion has already
+	// been scheduled with that status, so the caller never answers its own callback.
+	//
+	// Gate on WindowCapabilities::FileDialogs / ColorDialog / FontDialog / SystemFileActions and
+	// fall back to an in-scene picker where the platform has none.
+	//
+	// Non-pure on purpose: RemoteWindow has no OS to ask, and must not be forced to implement it.
+	virtual Status openDialog(NotNull<sprt::window::DialogRequest>);
+
+	// Dismiss a dialog opened with `req`; its completion still runs, with Status::ErrorCancelled.
+	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events) = 0;
 

@@ -29,6 +29,7 @@
 #if SPRT_LINUX
 
 #include "drm/SPRTWinLinuxDrmDevice.h"
+#include "SPRTWinLinuxDialogShell.h"
 
 namespace sprt::window::dbus {
 
@@ -71,6 +72,11 @@ public:
 	virtual Status probeClipboard(Rc<ClipboardProbe> &&) override;
 	virtual Status writeToClipboard(Rc<ClipboardData> &&) override;
 
+	virtual Status openDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&) override;
+
+	// The session bus went away under us. Called from dbus::Controller.
+	void handleDBusDisconnected();
+
 	virtual void handleThemeInfoChanged(ThemeInfo &&) override;
 
 	void tryStart();
@@ -84,6 +90,21 @@ public:
 
 protected:
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
+	// Find out, once, which dialog backends this session has. Called from run().
+	void detectDialogBackends();
+
+	// Should the portal serve this dialog? Detection alone is not enough: the session bus has to be
+	// alive right now as well.
+	bool canUsePortalDialogs() const;
+
+	// The portal's identifier for `parent` ("x11:<hex xid>"), or empty when the session cannot
+	// produce one.
+	String getDialogParentHandle(NativeWindow *parent) const;
+
+	// The zenity/kdialog path. Also the portal's fallback: it is called a second time when the
+	// portal rejects a request before showing anything.
+	Status openShellDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&, NativeWindow *parent);
 
 	virtual void handleContextWillDestroy() override;
 	virtual void handleContextDidDestroy() override;
@@ -103,6 +124,12 @@ protected:
 
 	Rc<dispatch::Handle> _xcbPollHandle;
 	Rc<dispatch::Handle> _waylandPollHandle;
+
+	// Probed once at startup by detectDialogBackends(), because a capability bit has to be a stable
+	// property of the machine rather than of whichever backend happened to answer last. Which of
+	// the two is actually used for a given dialog is decided per request, in openDialog.
+	ShellDialogTool _shellDialogTool = ShellDialogTool::None;
+	bool _portalDialogs = false;
 
 	Rc<DrmLibrary> _drm;
 	Rc<DrmDevice> _drmDevice;

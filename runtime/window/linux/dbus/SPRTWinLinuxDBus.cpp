@@ -29,6 +29,7 @@
 
 #include "SPRTWinLinuxDBusLibrary.cc"
 #include "SPRTWinLinuxDBusController.cc"
+#include "SPRTWinLinuxDBusPortal.cc"
 #include "SPRTWinLinuxDBusGnome.cc"
 #include "SPRTWinLinuxDBusKde.cc"
 

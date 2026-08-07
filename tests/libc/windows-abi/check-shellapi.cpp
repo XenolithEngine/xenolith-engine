@@ -19,10 +19,38 @@ SPRT_CONST(FOF_NOCONFIRMATION);
 SPRT_CONST(FOF_NOCONFIRMMKDIR);
 SPRT_CONST(FOF_NOERRORUI);
 
+// The move-to-trash bit: without it IFileOperation::DeleteItem deletes for good.
+SPRT_CONST(FOF_ALLOWUNDO);
+
 // === FOF_NO_UI aggregate ===================================================
 // __SPRT_FOF_NO_UI expands to the OR of the __SPRT_FOF_* bits; the SDK's FOF_NO_UI
 // ORs the same four flags. Compare the resolved numeric values.
 SPRT_CONST(FOF_NO_UI);
 
-// === FOFX_ extended flag ===================================================
+// === FOFX_ extended flags ==================================================
 SPRT_CONST(FOFX_NOCOPYHOOKS);
+SPRT_CONST(FOFX_RECYCLEONDELETE);
+SPRT_CONST(FOFX_EARLYFAILURE);
+
+// === SHFileOperationW ======================================================
+SPRT_CONST(FO_MOVE);
+SPRT_CONST(FO_COPY);
+SPRT_CONST(FO_DELETE);
+SPRT_CONST(FO_RENAME);
+
+// FILEOP_FLAGS is WORD, not DWORD — get that wrong and every field after it shifts.
+static_assert(sizeof(sprt_abi::FILEOP_FLAGS) == sizeof(::FILEOP_FLAGS),
+		"sizeof(FILEOP_FLAGS) != SDK");
+
+// The SDK puts all of <shellapi.h> inside pshpack1.h, so this struct is byte-packed and none of
+// its fields past wFunc are naturally aligned. It is passed to the shell by address, so every
+// offset is load-bearing.
+SPRT_SIZE(SHFILEOPSTRUCTW);
+SPRT_OFFSET(SHFILEOPSTRUCTW, hwnd);
+SPRT_OFFSET(SHFILEOPSTRUCTW, wFunc);
+SPRT_OFFSET(SHFILEOPSTRUCTW, pFrom);
+SPRT_OFFSET(SHFILEOPSTRUCTW, pTo);
+SPRT_OFFSET(SHFILEOPSTRUCTW, fFlags);
+SPRT_OFFSET(SHFILEOPSTRUCTW, fAnyOperationsAborted);
+SPRT_OFFSET(SHFILEOPSTRUCTW, hNameMappings);
+SPRT_OFFSET(SHFILEOPSTRUCTW, lpszProgressTitle);

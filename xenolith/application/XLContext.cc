@@ -247,9 +247,8 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 	}
 
 	// Route runtime window diagnostics into the app log, so scene-side log capture sees them.
-	_controller->setWindowDiagSink([](StringView line) {
-		log::source().debug("WindowDiag", line);
-	});
+	_controller->setWindowDiagSink(
+			[](StringView line) { log::source().debug("WindowDiag", line); });
 
 #if MODULE_XENOLITH_FONT
 	auto setLocale = SharedModule::acquireTypedSymbol<decltype(&locale::setLocale)>(
@@ -285,6 +284,31 @@ Status Context::readFromClipboard(sprt::window::Function<void(Status, BytesView,
 	request->target = target;
 
 	return _controller->readFromClipboard(sp::move(request));
+}
+
+Status Context::openDialog(NotNull<sprt::dispatch::Looper> target,
+		Rc<sprt::window::DialogRequest> &&req) {
+	if (_looper->isOnThisThread()) {
+		return _controller->openDialog(target, sp::move(req));
+	}
+
+	// Off the context thread the answer cannot be reported synchronously; the completion carries
+	// it instead, exactly as it does for a dialog the OS actually opened.
+	performOnThread(
+			[this, target = Rc<sprt::dispatch::Looper>(target), req = sp::move(req)]() mutable {
+		_controller->openDialog(target, sp::move(req));
+	}, this);
+	return Status::Ok;
+}
+
+Status Context::cancelDialog(NotNull<sprt::window::DialogRequest> req) {
+	if (_looper->isOnThisThread()) {
+		return _controller->cancelDialog(req);
+	}
+	performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		_controller->cancelDialog(req);
+	}, this);
+	return Status::Ok;
 }
 
 Status Context::probeClipboard(sprt::window::Function<void(Status, SpanView<StringView>)> &&cb,

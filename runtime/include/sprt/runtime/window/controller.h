@@ -37,6 +37,7 @@
 #include <sprt/runtime/window/context.h>
 #include <sprt/runtime/window/gapi.h>
 #include <sprt/runtime/window/clipboard.h>
+#include <sprt/runtime/window/dialog.h>
 #include <sprt/cxx/function>
 
 namespace sprt::window {
@@ -168,6 +169,39 @@ public:
 	virtual Status probeClipboard(Rc<ClipboardProbe> &&);
 	virtual Status writeToClipboard(Rc<ClipboardData> &&);
 
+	// Open an OS dialog described by `req`; its completion runs on `target`. Call on this
+	// controller's looper. `req->parentWindowId`, when set, must name a live window: the dialog is
+	// parented to it, DialogFlags::Modal blocks it, and the dialog is cancelled if it closes.
+	//
+	// Status::Ok means the dialog was handed to the OS. ANY other return means the completion has
+	// ALREADY been posted to `target` with that same status — callers never answer their own
+	// callback.
+	virtual Status openDialog(NotNull<dispatch::Looper> target, Rc<DialogRequest> &&req);
+
+	// Dismiss a dialog opened with `req`; its completion still runs, with Status::ErrorCancelled.
+	// Status::ErrorNotFound if it already finished.
+	virtual Status cancelDialog(NotNull<DialogRequest> req);
+
+	// Refuse `req` with `st`, delivering the completion on `target` rather than dropping it.
+	// Returns `st`, so a caller can `return declineDialog(...)`.
+	Status declineDialog(NotNull<dispatch::Looper> target, Rc<DialogRequest> &&req, Status st);
+
+	// Cancel every dialog owned by `w`, completing each callback with `st`. A dialog must never
+	// outlive its parent window.
+	void cancelWindowDialogs(NotNull<NativeWindow> w, Status st = Status::ErrorCancelled);
+
+	// The user poked a window blocked by a modal dialog: ask its dialogs to come forward. On
+	// platforms with real OS parenting the WM has already done this and the backends no-op.
+	void raiseWindowDialogs(NotNull<NativeWindow> w);
+
+	bool isModalBlocked(NotNull<NativeWindow> w) const;
+
+	// Backends call these once the OS has accepted / finished a dialog. registerDialog also takes
+	// the modal block on the parent; unregisterDialog releases it, which is why every completion
+	// path must go through DialogHandle::finalize (that is where unregisterDialog is called from).
+	void registerDialog(NotNull<DialogHandle>);
+	void unregisterDialog(NotNull<DialogHandle>);
+
 	virtual Rc<ScreenInfo> getScreenInfo() const;
 
 	virtual const ThemeInfo &getThemeInfo() const { return _themeInfo; }
@@ -216,6 +250,16 @@ protected:
 
 	void emitWindowDiag(StringView line) const;
 
+	void retainModalBlock(NotNull<NativeWindow>);
+	void releaseModalBlock(NotNull<NativeWindow>);
+
+	// Note which pointers/keys go down and come back up, so that cancelWindowInput knows what to
+	// release. Called for every dispatched input batch.
+	void trackHeldInput(NotNull<NativeWindow>, const Vector<InputEventData> &);
+
+	// Release anything the scene is holding down before input to `w` is cut off.
+	void cancelWindowInput(NotNull<NativeWindow>);
+
 	// Request a close on every live window matching `pred`, re-scanning after each step because a
 	// close cascades into children. Returns the number of windows asked to close; the teardown
 	// itself may be deferred to the end of the poll iteration.
@@ -243,6 +287,20 @@ protected:
 
 	Set<Rc<NativeWindow>> _activeWindows;
 	Set<NativeWindow *> _allWindows;
+
+	// Dialogs on screen, grouped by the window that owns them (nullptr = parentless). Drained in
+	// performWindowTeardown while the native parent is still valid.
+	Map<NativeWindow *, Vector<Rc<DialogHandle>>> _dialogs;
+
+	// How many modal dialogs currently block each window. Counted, so nested modals compose and
+	// the parent is only unblocked when the last one goes away.
+	Map<NativeWindow *, uint32_t> _modalBlocks;
+
+	// Pointers and keys currently down in each window: the Begin / KeyPressed event that has not
+	// yet been matched by an End / Cancel / KeyReleased. Kept only so that cancelWindowInput can
+	// echo them back as Cancel / KeyCanceled when input to the window is cut off — otherwise the
+	// scene keeps a phantom press for as long as a modal dialog is up, and past it.
+	Map<NativeWindow *, Vector<InputEventData>> _heldInput;
 
 	uint32_t _lastPointerSerial = 0;
 	uint32_t _pollDepth = 0;

@@ -61,6 +61,12 @@ struct Event {
 		Connected,
 		Message,
 		Failed,
+
+		// The bus went away after we were connected to it. Distinct from Failed, which means "we
+		// never got on in the first place": a user session daemon that dies (or is restarted) under
+		// a running application leaves everything that depends on it — the portal above all —
+		// permanently unanswerable, and that has to be actionable rather than just logged.
+		Disconnected,
 	};
 
 	Type type = None;

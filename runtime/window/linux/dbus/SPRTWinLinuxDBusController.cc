@@ -100,6 +100,10 @@ void Controller::cancel() {
 	_controller = nullptr;
 }
 
+bool Controller::isSessionBusAlive() const {
+	return _sessionBus && _sessionBus->connection && _sessionBus->connected && !_sessionBus->failed;
+}
+
 bool Controller::isConnectied() const {
 	return (_sessionBus->connected || _sessionBus->failed)
 			&& (_systemBus->connected || _systemBus->failed);
@@ -327,6 +331,18 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 			_controller->tryStart();
 		}
 		result = 1;
+		break;
+	case dbus::Event::Disconnected:
+		oslog::vperror(__SPRT_LOCATION, "dbus::Controller",
+				c == _sessionBus ? "Session bus disconnected" : "System bus disconnected");
+		// Deliberately not tearing the filters down here: ~BusFilter runs inside the very dispatch
+		// that delivered this, and they are harmless on a dead connection anyway. cancel() still
+		// owns their lifetime.
+		if (c == _sessionBus && _controller) {
+			_controller->handleDBusDisconnected();
+		}
+		result = 1;
+		break;
 	}
 	c->busy = isBusy;
 	return result;

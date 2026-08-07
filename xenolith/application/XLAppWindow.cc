@@ -91,8 +91,7 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 		// yet (it is built asynchronously from the first WM configure), and a callback that never
 		// runs leaves the window unmapped forever — a black or missing window and a hung app.
 		const auto type = _window->getInfo()->type;
-		if (type == sprt::window::WindowType::Popup
-				|| type == sprt::window::WindowType::Tooltip) {
+		if (type == sprt::window::WindowType::Popup || type == sprt::window::WindowType::Tooltip) {
 			_window->mapWindow();
 		} else {
 			_mapOnFirstFrame = true;
@@ -156,8 +155,8 @@ void AppWindow::close(bool graceful) {
 		return;
 	}
 
-	if (_context->getLooper()->isOnThisThread()
-			&& _presentationEngine && _presentationEngine->getOptions().syncConstraintsUpdate) {
+	if (_context->getLooper()->isOnThisThread() && _presentationEngine
+			&& _presentationEngine->getOptions().syncConstraintsUpdate) {
 		_syncClose = true;
 	}
 
@@ -474,10 +473,11 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 		// property this path exists for.
 		auto software = _window->makeSoftwareSurface();
 		if (!software) {
-			log::source().error("AppWindow",
-					"Window system cannot provide a CPU-writable buffer for the software backend "
-					"(surface backend ",
-					toInt(ifaceInfo.backend), ")");
+			log::source()
+					.error("AppWindow",
+							"Window system cannot provide a CPU-writable buffer for the software "
+							"backend " "(surface backend ",
+							toInt(ifaceInfo.backend), ")");
 			return nullptr;
 		}
 
@@ -884,8 +884,7 @@ bool AppWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb
 }
 
 void AppWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref *ref) {
-	_context->performOnThread(
-			[this, extent, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
+	_context->performOnThread([this, extent, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
 		auto st = _window ? _window->setExtent(extent) : Status::ErrorInvalidArguemnt;
 		_application->performOnAppThread([st, cb = sp::move(cb), ref = move(ref)]() mutable {
 			if (cb) {
@@ -894,6 +893,50 @@ void AppWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref
 			ref = nullptr;
 		}, this);
 	}, this);
+}
+
+Status AppWindow::openDialog(NotNull<sprt::window::DialogRequest> req) {
+	if (!req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	// This window owns the dialog: it parents it, blocks for it, and takes it down with itself.
+	req->parentWindowId = _windowId;
+	_pendingDialogs.emplace_back(req);
+
+	// Wrap the caller's callback so the pending list is pruned on the thread that owns it. The
+	// completion is delivered on the app looper, which is this same thread.
+	auto cb = sp::move(req->callback);
+	req->callback = [this, self = Rc<AppWindow>(this), r = Rc<sprt::window::DialogRequest>(req),
+							cb = sp::move(cb)](const sprt::window::DialogResult &res) mutable {
+		for (auto it = _pendingDialogs.begin(); it != _pendingDialogs.end(); ++it) {
+			if (*it == r) {
+				_pendingDialogs.erase(it);
+				break;
+			}
+		}
+		cb(res);
+	};
+
+	_context->performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		auto looper = _application->getLooper();
+		if (!looper) {
+			return; // app thread already gone; nothing can deliver a completion any more
+		}
+		// A window that is winding down needs no special case here: either it is already out of
+		// the controller's active set, and openDialog declines with ErrorCancelled because the
+		// named parent cannot be resolved, or it is still there and performWindowTeardown cancels
+		// the dialog moments later. Both answer the callback rather than dropping it.
+		_context->openDialog(looper, sp::move(req));
+	}, this);
+	return Status::Ok;
+}
+
+Status AppWindow::cancelDialog(NotNull<sprt::window::DialogRequest> req) {
+	_context->performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		_context->cancelDialog(req);
+	}, this);
+	return Status::Ok;
 }
 
 bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) {

@@ -459,6 +459,16 @@ void NativeWindow::emitAppFrame() {
 	}
 }
 
+void NativeWindow::setModalBlocked(bool blocked) {
+	// Only the observable bit here; the actual input cut-off is in the controller, and the OS
+	// hint (if the platform has one) is added by the override.
+	if (blocked) {
+		updateState(0, _info->state & ~WindowState::Enabled);
+	} else {
+		updateState(0, _info->state | WindowState::Enabled);
+	}
+}
+
 void NativeWindow::updateState(uint32_t id, WindowState state) {
 	if (state == _info->state) {
 		return;

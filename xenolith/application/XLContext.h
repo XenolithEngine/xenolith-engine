@@ -184,6 +184,15 @@ public:
 	virtual Status writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&,
 			SpanView<String>, Ref * = nullptr, StringView label = StringView());
 
+	// Open an OS dialog with no owning window — CLI-ish paths, or a reveal/trash on a context that
+	// has no visible window. Safe to call from any thread; the completion runs on `target`.
+	//
+	// Dialogs that DO belong to a window go through AppWindow::openDialog instead, which parents
+	// them and cancels them if the window dies.
+	virtual Status openDialog(NotNull<sprt::dispatch::Looper> target,
+			Rc<sprt::window::DialogRequest> &&);
+	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>);
+
 	virtual void handleConfigurationChanged(Rc<ContextInfo> &&) override;
 
 	virtual void handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop>) override;

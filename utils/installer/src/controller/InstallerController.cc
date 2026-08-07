@@ -23,6 +23,7 @@
 #include "InstallerController.h"
 
 #include "XLAppThread.h"
+#include "XLAppWindow.h"
 #include "SPLog.h"
 
 #include <cstdint>
@@ -575,36 +576,69 @@ void InstallerController::buildProject(StringView path, StringView target, bool 
 	}, this);
 }
 
-// No worker hop for any of the three: spawnProcess watches the child on the app looper and fires
-// its callbacks there, so the answer arrives on the app thread without a thread ever blocking.
-// The handles are kept because dropping the last Rc kills the child.
+// Nothing here blocks and nothing hops to a worker: the runtime answers its dialogs on the looper
+// it was handed (the app thread), and spawnProcess watches its child on that same looper.
 
-void InstallerController::pickFolder(StringView prompt, Function<void(String)> &&onDone) {
-	// One picker at a time — a second request supersedes the first, and releasing that handle
-	// dismisses the dialog still on screen.
-	_dialogHandle = pickFolderAsync(_app, prompt, sp::move(onDone), this);
+void InstallerController::pickFolder(NotNull<AppWindow> window, StringView prompt,
+		Function<void(String)> &&onDone) {
+	// One picker at a time. Cancelling the previous request dismisses the dialog still on screen;
+	// its callback then fires with ErrorCancelled and clears the slot on its own, which is why the
+	// slot is overwritten rather than relied upon to be empty.
+	if (_dialogRequest) {
+		window->cancelDialog(_dialogRequest);
+	}
+
+	auto req = Rc<sprt::window::DialogRequest>::create();
+	req->type = sprt::window::DialogType::OpenDirectory;
+	req->flags |= sprt::window::DialogFlags::Modal;
+	req->title = sprt::window::String(prompt.data(), prompt.size());
+
+	// `target` keeps the controller alive until the callback has run, so the capture can be raw.
+	req->target = this;
+	req->callback = [this, req = req.get(), onDone = sp::move(onDone)](
+							const sprt::window::DialogResult &res) mutable {
+		// Only clear the slot if it is still ours: a superseding pick has already replaced it.
+		if (_dialogRequest == req) {
+			_dialogRequest = nullptr;
+		}
+		if (onDone) {
+			String path;
+			if (res.status == Status::Ok && !res.paths.empty()) {
+				auto &first = res.paths.front();
+				path = String(first.data(), first.size());
+			}
+			onDone(sp::move(path));
+		}
+	};
+
+	_dialogRequest = req;
+	window->openDialog(req);
+}
+
+void InstallerController::openFolder(NotNull<AppWindow> window, StringView path) {
+	if (path.empty()) {
+		return;
+	}
+
+	auto req = Rc<sprt::window::DialogRequest>::create();
+	req->type = sprt::window::DialogType::RevealInFileManager;
+	req->paths.emplace_back(path.data(), path.size());
+
+	// Not modal and nothing to collect, but a callback is still required — the runtime guarantees
+	// exactly one, and that is the only place a failure can be reported.
+	req->callback = [path = path.str<String>()](const sprt::window::DialogResult &res) {
+		if (res.status != Status::Ok) {
+			log::source().debug("installer", "openFolder failed for ", path, ": ",
+					sprt::status::getStatusName(res.status));
+		}
+	};
+
+	window->openDialog(req);
 }
 
 void InstallerController::promptText(StringView title, StringView def,
 		Function<void(String)> &&onDone) {
-	_dialogHandle = promptTextAsync(_app, title, def, sp::move(onDone), this);
-}
-
-void InstallerController::openFolder(StringView path) {
-	// Fire-and-forget, but the helper still has to survive until it exits. There is no reference
-	// to a handle from inside its own completion, so finished spawns are pruned on the way in
-	// instead — the list only ever holds the few that are still running.
-	auto out = _spawned.begin();
-	for (auto &it : _spawned) {
-		if (it && it->isRunning()) {
-			*out++ = sp::move(it);
-		}
-	}
-	_spawned.erase(out, _spawned.end());
-
-	if (auto handle = openInFileManagerAsync(_app, path, this)) {
-		_spawned.emplace_back(sp::move(handle));
-	}
+	_promptHandle = promptTextAsync(_app, title, def, sp::move(onDone), this);
 }
 
 } // namespace stappler::xenolith::installer

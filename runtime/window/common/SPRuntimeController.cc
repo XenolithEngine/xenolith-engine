@@ -163,8 +163,8 @@ bool ContextController::configureWindow(NotNull<WindowInfo> w) {
 		w->maxExtent.height = w->minExtent.height;
 	}
 
-	auto clamped = clampWindowExtent(Extent2(w->rect.width, w->rect.height), w->minExtent,
-			w->maxExtent);
+	auto clamped =
+			clampWindowExtent(Extent2(w->rect.width, w->rect.height), w->minExtent, w->maxExtent);
 	w->rect.width = clamped.width;
 	w->rect.height = clamped.height;
 
@@ -197,9 +197,9 @@ Status ContextController::createWindow(Rc<WindowInfo> &&info) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
-	emitWindowDiag(StreamTraits<char>::toString<String>("createWindow type=",
-			getWindowTypeName(info->type), " id='", info->id, "' parent='", info->parent,
-			"' rect=", info->rect.width, "x", info->rect.height));
+	emitWindowDiag(StreamTraits<char>::toString<String>(
+			"createWindow type=", getWindowTypeName(info->type), " id='", info->id, "' parent='",
+			info->parent, "' rect=", info->rect.width, "x", info->rect.height));
 
 	if (info->type != WindowType::Root) {
 		if (!hasFlag(getCapabilities(), WindowCapabilities::Subwindows)) {
@@ -365,11 +365,39 @@ void ContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
 	// whole menu, on a menu level it is the submenus below it, which is exactly how a press in a
 	// parent menu is expected to behave. The press that opens a menu is delivered before that
 	// menu exists, so it has nothing to dismiss.
+	bool pressed = false;
 	for (auto &it : ev) {
 		if (it.event == InputEventName::Begin) {
-			dismissChildPopups(w, "owner-pressed");
+			pressed = true;
 			break;
 		}
+	}
+	if (pressed) {
+		dismissChildPopups(w, "owner-pressed");
+	}
+
+	if (isModalBlocked(w)) {
+		// A modal dialog owns this window's input. Drop pointer and key events, but let
+		// WindowState through: the application still has to learn that it was resized, minimized
+		// or unfocused while the dialog was up.
+		auto out = ev.begin();
+		for (auto &it : ev) {
+			if (it.event == InputEventName::WindowState) {
+				*out++ = sprt::move(it);
+			}
+		}
+		ev.erase(out, ev.end());
+
+		// Poking a blocked window should surface the dialog. Where the OS gives the dialog a real
+		// parent it has already done this and the backends no-op.
+		if (pressed) {
+			raiseWindowDialogs(w);
+		}
+		if (ev.empty()) {
+			return;
+		}
+	} else {
+		trackHeldInput(w, ev);
 	}
 
 	_context->handleNativeWindowInputEvents(w, sprt::move(ev));
@@ -423,6 +451,11 @@ void ContextController::performWindowTeardown(NotNull<NativeWindow> w) {
 	Rc<NativeWindow> hold = *it;
 	_activeWindows.erase(it);
 
+	// Before unmapping: a dialog parented to this window must not outlive it, and its backend
+	// still needs the native parent handle (HWND / xid / NSWindow) to dismiss itself cleanly.
+	// Every pending callback is answered with ErrorCancelled rather than dropped.
+	cancelWindowDialogs(hold, Status::ErrorCancelled);
+
 	hold->unmapWindow();
 	if (_context) {
 		_context->handleNativeWindowDestroyed(hold);
@@ -434,6 +467,11 @@ void ContextController::notifyWindowAllocated(NotNull<NativeWindow> w) {
 }
 
 void ContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
+	// Belt and braces: performWindowTeardown already drained these, but a window that never
+	// became active never went through it, and a stale entry here would outlive the object.
+	cancelWindowDialogs(w, Status::ErrorCancelled);
+	_heldInput.erase(w.get());
+
 	auto it = _allWindows.find(w);
 	if (it != _allWindows.end()) {
 		_allWindows.erase(it);

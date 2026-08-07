@@ -84,9 +84,9 @@ void showGearMenu(NotNull<AppWindow> parent, InstallerController *controller) {
 		itemTop -= kGearItemHeight;
 	};
 
-	addItem(strings::gearOpenDataDir(), [controller] {
+	addItem(strings::gearOpenDataDir(), [parent, controller] {
 		if (controller) {
-			controller->openFolder(controller->layout().data);
+			controller->openFolder(parent, controller->layout().data);
 		}
 	});
 	addItem(strings::gearStorage(),

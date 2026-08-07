@@ -128,6 +128,15 @@ public:
 	// WM's to decide. From the context thread.
 	virtual Status setExtent(Extent2) { return Status::ErrorNotSupported; }
 
+	// A modal dialog opened on top of this window, or the last one closed.
+	//
+	// The base clears/sets WindowState::Enabled so the application can SEE that it is blocked —
+	// input to it is dropped in ContextController::notifyWindowInputEvents regardless. An override
+	// should call the base and then add the advisory OS hint (Win32 EnableWindow,
+	// _NET_WM_STATE_MODAL, xdg_dialog_v1); macOS needs none, a sheet blocks its parent by itself.
+	// Context thread.
+	virtual void setModalBlocked(bool);
+
 protected:
 	// Run text input mode or update text input buffer
 	//

@@ -22,6 +22,7 @@
 
 #include "SPRTWinLinuxController.h"
 #include "dbus/SPRTWinLinuxDBusController.h"
+#include "dbus/SPRTWinLinuxDBusPortal.h"
 #include "xcb/SPRTWinLinuxXcbConnection.h"
 #include "xcb/SPRTWinLinuxXcbWindow.h"
 #include "xcb/SPRTWinLinuxXcbLibrary.h"
@@ -142,6 +143,8 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 	if (_dbus) {
 		_dbusController = Rc<dbus::Controller>::create(_dbus, _looper, this);
 	}
+
+	detectDialogBackends();
 
 	_looper->performOnThread([this] {
 		Rc<gapi::Instance> instance;
@@ -287,10 +290,21 @@ bool LinuxContextController::isCursorSupported(WindowCursor cursor, bool serverS
 }
 
 WindowCapabilities LinuxContextController::getCapabilities() const {
+	// Dialogs are a property of the desktop session, not of the display backend, so they are ORed
+	// on top of whatever the backend reports.
+	auto dialogs = getShellDialogCapabilities(_shellDialogTool)
+			| dbus::getPortalDialogCapabilities(_portalDialogs);
+
 	if (_xcbConnection) {
-		return _xcbConnection->getCapabilities();
+		// Only X11 can hand a native parent to a dialog today: the portal wants an
+		// "x11:<xid>"/"wayland:<handle>" string, and xdg-foreign (which is what produces the
+		// Wayland form) is not bound in SPRTWinLinuxWaylandProtocols.c.
+		if (dialogs != WindowCapabilities::None) {
+			dialogs |= WindowCapabilities::NativeDialogParenting;
+		}
+		return _xcbConnection->getCapabilities() | dialogs;
 	} else if (_waylandDisplay) {
-		return _waylandDisplay->getCapabilities();
+		return _waylandDisplay->getCapabilities() | dialogs;
 	} else if (_kmsMode) {
 		// Direct display is inherently an exclusive fullscreen plane.
 		return WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenExclusive
@@ -308,6 +322,124 @@ void LinuxContextController::notifyScreenChange(NotNull<DisplayConfigManager> in
 	}
 
 	_context->handleSystemNotification(SystemNotification::DisplayChanged);
+}
+
+void LinuxContextController::detectDialogBackends() {
+	// Probed once, at startup, and never revisited. getCapabilities() must answer the same thing for
+	// the whole run, so what it reports has to describe the machine — what is installed — and not
+	// what happens to be reachable at the moment it is asked.
+	_shellDialogTool = detectShellDialogTool();
+	_portalDialogs = _dbus ? dbus::detectDesktopPortal() : false;
+
+	oslog::vpdebug(__SPRT_LOCATION, "LinuxContextController",
+			"Dialog backends: portal=", _portalDialogs ? "yes" : "no",
+			", helper=", getShellDialogToolName(_shellDialogTool));
+
+	if (!_portalDialogs && _shellDialogTool == ShellDialogTool::None) {
+		oslog::vpdebug(__SPRT_LOCATION, "LinuxContextController",
+				"No dialog backend found; system dialogs will report ErrorNotSupported");
+	}
+}
+
+bool LinuxContextController::canUsePortalDialogs() const {
+	// Detection at startup is not the whole answer: the session bus has to still be there. A user
+	// D-Bus daemon does die under running applications, and when it does the portal becomes
+	// unreachable for the rest of the run — which is exactly why the shell helper is kept around
+	// even on a machine that has a perfectly good portal installed.
+	return _portalDialogs && _dbusController && _dbusController->isSessionBusAlive();
+}
+
+void LinuxContextController::handleDBusDisconnected() {
+	// Every portal dialog on screen is now orphaned: its Response can never arrive. Answer them
+	// rather than leave their callers waiting forever. Dialogs drawn by the shell helper are child
+	// processes of ours and are untouched by somebody else's daemon dying, which is why the decision
+	// belongs to each handle rather than to this loop.
+	//
+	// Copy first: handleBackendLost finalizes, which unregisters and so mutates _dialogs.
+	Vector<Rc<DialogHandle>> handles;
+	for (auto &it : _dialogs) {
+		for (auto &handle : it.second) { handles.emplace_back(handle); }
+	}
+	for (auto &handle : handles) {
+		if (handle && handle->isActive()) {
+			handle->handleBackendLost();
+		}
+	}
+}
+
+String LinuxContextController::getDialogParentHandle(NativeWindow *parent) const {
+	// The portal's window identifier. Only the X11 form can be produced today: the Wayland one comes
+	// from xdg-foreign, which SPRTWinLinuxWaylandProtocols.c does not bind. An empty string is
+	// legal — the portal then places the dialog on its own.
+	if (parent && _xcbConnection) {
+		// Every window is an XcbWindow whenever the XCB connection is the active backend.
+		auto window = uint64_t(static_cast<XcbWindow *>(parent)->getWindow());
+
+		// The portal parses the tail with strtol(…, 16), so plain unpadded lowercase hex.
+		char digits[sizeof(window) * 2];
+		size_t count = 0;
+		do {
+			digits[count++] = "0123456789abcdef"[window & 0xF];
+			window >>= 4;
+		} while (window);
+
+		String out("x11:");
+		while (count > 0) { out.push_back(digits[--count]); }
+		return out;
+	}
+	return String();
+}
+
+Status LinuxContextController::openShellDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req, NativeWindow *parent) {
+	if (_shellDialogTool != ShellDialogTool::None) {
+		auto handle = Rc<ShellDialogHandle>::create(this, target, Rc<DialogRequest>(req), parent,
+				_shellDialogTool);
+		if (handle) {
+			registerDialog(handle);
+			return Status::Ok;
+		}
+		// init() refused: this helper has no command for this dialog type.
+	}
+
+	return declineDialog(target, sprt::move(req), Status::ErrorNotSupported);
+}
+
+Status LinuxContextController::openDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req) {
+	if (!req || !req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	NativeWindow *parent = nullptr;
+	if (!req->parentWindowId.empty()) {
+		parent = findWindow(req->parentWindowId);
+		if (!parent) {
+			// A named parent that is already gone — the window closed between the request being
+			// built on the app thread and it arriving here. Answer rather than un-parenting it.
+			return declineDialog(target, sprt::move(req), Status::ErrorCancelled);
+		}
+	}
+
+	// The portal comes first where it can serve the type at all: it is the desktop's own picker, it
+	// honours the session's file permissions, and it is the only backend that works from inside a
+	// sandbox. Colors and fonts have no portal interface and always take the helper.
+	if (canUsePortalDialogs() && dbus::isPortalDialogType(req->type)) {
+		auto handle = Rc<dbus::PortalDialogHandle>::create(this, _dbusController, target,
+				Rc<DialogRequest>(req), parent, getDialogParentHandle(parent),
+				[this, target = Rc<dispatch::Looper>(target), parent](Rc<DialogRequest> &&req) {
+			// The portal turned the call down before showing anything, so the helper can still take
+			// over without the user noticing anything happened.
+			openShellDialog(target, sprt::move(req), parent);
+		});
+		if (handle) {
+			registerDialog(handle);
+			return Status::Ok;
+		}
+		// init() refused before the request went out — fall through to the helper.
+	}
+
+	return openShellDialog(target, sprt::move(req), parent);
 }
 
 Status LinuxContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {

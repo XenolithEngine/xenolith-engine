@@ -63,6 +63,8 @@ public:
 
 	virtual void openUrl(StringView) override;
 
+	virtual Status openDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&) override;
+
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
 protected:

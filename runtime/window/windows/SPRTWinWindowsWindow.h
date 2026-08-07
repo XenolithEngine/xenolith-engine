@@ -141,6 +141,10 @@ protected:
 
 	virtual Status setFullscreenState(FullscreenInfo &&) override;
 
+	// EnableWindow on top of the base's WindowState::Enabled bit: with the OS itself refusing input
+	// to the parent, a click on it makes Windows flash and raise the dialog that owns it.
+	virtual void setModalBlocked(bool) override;
+
 	char32_t makeKeyChar(char32_t);
 
 	void enableMouseTracked(bool nonclient);
