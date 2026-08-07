@@ -48,6 +48,7 @@
 #include <sprt/runtime/log.h>
 
 #include "SPRTWinMacosContextController.h"
+#include "SPRTWinMacosDialog.h"
 #include "SPRTWinMacosDisplayConfigManager.h"
 #include "SPRTWinMacosWindow.h"
 
@@ -349,7 +350,33 @@ WindowCapabilities MacosContextController::getCapabilities() const {
 			| WindowCapabilities::CloseGuard | WindowCapabilities::AllowMoveFromMaximized
 			| WindowCapabilities::Subwindows;
 
-	return caps;
+	return caps | getMacosDialogCapabilities();
+}
+
+Status MacosContextController::openDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req) {
+	if (!req || !req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	NativeWindow *parent = nullptr;
+	if (!req->parentWindowId.empty()) {
+		parent = findWindow(req->parentWindowId);
+		if (!parent) {
+			// A named parent that is already gone — the window closed between the request being
+			// built on the app thread and it arriving here. Answer rather than un-parenting it.
+			return declineDialog(target, sprt::move(req), Status::ErrorCancelled);
+		}
+	}
+
+	auto handle = Rc<MacosDialogHandle>::create(this, target, Rc<DialogRequest>(req), parent);
+	if (handle) {
+		registerDialog(handle);
+		return Status::Ok;
+	}
+
+	// init() refused: a reveal or trash naming nothing, or AppKit would not give us a panel.
+	return declineDialog(target, sprt::move(req), Status::ErrorNotSupported);
 }
 
 void MacosContextController::openUrl(StringView url) {

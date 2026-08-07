@@ -23,6 +23,7 @@
 #define __SPRT_BUILD
 
 #include "SPRuntimeController.cc"
+#include "SPRuntimeDialog.cc"
 #include "SPRuntimeDisplayConfig.cc"
 #include "SPRuntimeInput.cc"
 #include "SPRuntimeNativeWindow.cc"

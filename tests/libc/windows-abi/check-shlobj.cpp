@@ -1,0 +1,57 @@
+// Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+//
+// abi/shlobj.h <-> Windows SDK parity. Compile-time only; see check.sh.
+//
+// These feed the system-dialog backend (runtime/window/windows): SIGDN selects which spelling
+// IShellItem::GetDisplayName hands back, FILEOPENDIALOGOPTIONS is what turns IFileDialog into a
+// folder picker or a multi-select, and COMDLG_FILTERSPEC is passed to SetFileTypes by address.
+// All three go straight to the shell with no translation, so every value and offset has to match.
+
+#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/shlobj.h>
+#include "abi_check.h"
+
+#include <windows.h>
+#include <ShObjIdl_core.h> // SIGDN, _FILEOPENDIALOGOPTIONS, COMDLG_FILTERSPEC
+
+// === SIGDN ==================================================================
+SPRT_ENUM(SIGDN_NORMALDISPLAY);
+SPRT_ENUM(SIGDN_PARENTRELATIVEPARSING);
+SPRT_ENUM(SIGDN_DESKTOPABSOLUTEPARSING);
+SPRT_ENUM(SIGDN_PARENTRELATIVEEDITING);
+SPRT_ENUM(SIGDN_DESKTOPABSOLUTEEDITING);
+SPRT_ENUM(SIGDN_FILESYSPATH);
+SPRT_ENUM(SIGDN_URL);
+SPRT_ENUM(SIGDN_PARENTRELATIVEFORADDRESSBAR);
+SPRT_ENUM(SIGDN_PARENTRELATIVE);
+SPRT_ENUM(SIGDN_PARENTRELATIVEFORUI);
+
+// === FILEOPENDIALOGOPTIONS =================================================
+SPRT_ENUM(FOS_OVERWRITEPROMPT);
+SPRT_ENUM(FOS_STRICTFILETYPES);
+SPRT_ENUM(FOS_NOCHANGEDIR);
+SPRT_ENUM(FOS_PICKFOLDERS);
+SPRT_ENUM(FOS_FORCEFILESYSTEM);
+SPRT_ENUM(FOS_ALLNONSTORAGEITEMS);
+SPRT_ENUM(FOS_NOVALIDATE);
+SPRT_ENUM(FOS_ALLOWMULTISELECT);
+SPRT_ENUM(FOS_PATHMUSTEXIST);
+SPRT_ENUM(FOS_FILEMUSTEXIST);
+SPRT_ENUM(FOS_CREATEPROMPT);
+SPRT_ENUM(FOS_SHAREAWARE);
+SPRT_ENUM(FOS_NOREADONLYRETURN);
+SPRT_ENUM(FOS_NOTESTFILECREATE);
+SPRT_ENUM(FOS_HIDEMRUPLACES);
+SPRT_ENUM(FOS_HIDEPINNEDPLACES);
+SPRT_ENUM(FOS_NODEREFERENCELINKS);
+SPRT_ENUM(FOS_OKBUTTONNEEDSINTERACTION);
+SPRT_ENUM(FOS_DONTADDTORECENT);
+SPRT_ENUM(FOS_FORCESHOWHIDDEN);
+SPRT_ENUM(FOS_DEFAULTNOMINIMODE);
+SPRT_ENUM(FOS_FORCEPREVIEWPANEON);
+SPRT_ENUM(FOS_SUPPORTSTREAMABLEITEMS);
+
+// === COMDLG_FILTERSPEC =====================================================
+// Handed to IFileDialog::SetFileTypes as an array, so the stride matters as much as the fields.
+SPRT_SIZE(COMDLG_FILTERSPEC);
+SPRT_OFFSET(COMDLG_FILTERSPEC, pszName);
+SPRT_OFFSET(COMDLG_FILTERSPEC, pszSpec);

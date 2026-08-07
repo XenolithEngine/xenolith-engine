@@ -152,7 +152,6 @@ void ExampleScene::handlePresented(Director *dir) {
 		dir->shareQueue(sp::move(builder), shareAddr, shareKey);
 	}*/
 #endif
-
 }
 
 // Внешнее управление приложением: реестр тестов, доступный через сокет инспектора.
@@ -205,6 +204,85 @@ void ExampleScene::registerCommands() {
 		auto settle = args.hasValue("settle") ? float(args.getDouble("settle")) : s_layoutSettle;
 		switchLayout(*info, settle, sp::move(done));
 	});
+
+	// Системные диалоги (runtime/window/dialog.h). Каждый принадлежит окну и отменяется вместе
+	// с ним; ответ приходит на app-треде, поэтому его можно отдать прямо в `done`.
+	//
+	//   dialog {type, path, title, modal, multiple}
+	//     type: open-file | open-directory | save-file | color | font | reveal | trash
+	//
+	// `trash` и `reveal` не открывают UI, поэтому проверяются без дисплея.
+	inspector::addCommand(content, "dialog",
+			"Open a system dialog: { type, path, title, modal, multiple }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		static const Map<String, sprt::window::DialogType> types{
+			{"open-file", sprt::window::DialogType::OpenFile},
+			{"open-directory", sprt::window::DialogType::OpenDirectory},
+			{"save-file", sprt::window::DialogType::SaveFile},
+			{"color", sprt::window::DialogType::Color},
+			{"font", sprt::window::DialogType::Font},
+			{"reveal", sprt::window::DialogType::RevealInFileManager},
+			{"trash", sprt::window::DialogType::MoveToTrash},
+		};
+
+		const Value &req = args;
+		auto typeName = req.getString("type");
+		auto typeIt = types.find(typeName);
+		if (typeIt == types.end()) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString(toString("unknown dialog type: ", typeName), "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
+		if (!window) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("no window", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto request = Rc<sprt::window::DialogRequest>::create();
+		request->type = typeIt->second;
+		request->title = req.getString("title");
+		request->path = req.getString("path");
+		request->filename = req.getString("filename");
+		if (req.getBool("modal")) {
+			request->flags |= sprt::window::DialogFlags::Modal;
+		}
+		if (req.getBool("multiple")) {
+			request->flags |= sprt::window::DialogFlags::Multiple;
+		}
+		for (auto &it : req.getValue("paths").asArray()) {
+			request->paths.emplace_back(it.getString());
+		}
+
+		request->callback = [done = sp::move(done)](const sprt::window::DialogResult &res) mutable {
+			Value result;
+			result.setBool(sprt::status::isSuccessful(res.status), "ok");
+			result.setString(sprt::status::getStatusName(res.status), "status");
+			Value paths(Value::Type::ARRAY);
+			for (auto &it : res.paths) { paths.addString(it); }
+			result.setValue(sp::move(paths), "paths");
+			result.setString(
+					toString(res.color.r, " ", res.color.g, " ", res.color.b, " ", res.color.a),
+					"color");
+			if (!res.font.description.empty()) {
+				result.setString(res.font.description, "font");
+			}
+			done(sp::move(result));
+		};
+
+		auto st = window->openDialog(request);
+		if (!sprt::status::isSuccessful(st)) {
+			// openDialog already answered through the callback; nothing more to do here.
+			log::source().debug("ExampleScene",
+					"openDialog refused: ", sprt::status::getStatusName(st));
+		}
+	});
 }
 
 void ExampleScene::switchLayout(const TestInfo &info, float settle,
@@ -216,7 +294,8 @@ void ExampleScene::switchLayout(const TestInfo &info, float settle,
 	// обеспечивает RenderContinuously самой укладки (TestLayout::init).
 	runAction(Rc<Sequence>::create(Function<void()>([content, info = &info] {
 		content->replaceLayout(makeTestLayout(*info).get());
-	}), settle, Function<void()>([done = sp::move(done), name = info.name]() mutable {
+	}),
+			settle, Function<void()>([done = sp::move(done), name = info.name]() mutable {
 		Value result;
 		result.setBool(true, "ok");
 		result.setString(name, "layout");
@@ -247,7 +326,8 @@ void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &bu
 	// даже если в нём ничего не изменилось. Для сравнения с включённым пропуском.
 	if (auto value = ::getenv("XL_NO_SKIP_FRAMES")) {
 		if (StringView(value) != "0") {
-			info.damage = core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw;
+			info.damage =
+					core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw;
 			log::source().info("ExampleScene", "Empty frame skipping disabled");
 		}
 	}

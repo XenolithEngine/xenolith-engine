@@ -42,6 +42,22 @@ void RenderServerChannel::setWindowExtent(Extent2, Function<void(Status)> &&cb, 
 	}
 }
 
+Status RenderServerChannel::openDialog(NotNull<sprt::window::DialogRequest> req) {
+	// No OS behind this channel (RemoteWindow). Answer rather than drop, so the caller does not
+	// wait forever for a callback that will never come.
+	if (req->callback) {
+		sprt::window::DialogResult result;
+		result.status = Status::Declined;
+		result.type = req->type;
+		req->callback(result);
+	}
+	return Status::Declined;
+}
+
+Status RenderServerChannel::cancelDialog(NotNull<sprt::window::DialogRequest>) {
+	return Status::ErrorNotFound;
+}
+
 void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) {
 	_clientRef = nullptr;
 	_client = c;

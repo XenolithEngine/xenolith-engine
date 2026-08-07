@@ -192,6 +192,18 @@ public:
 	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&,
 			Ref * = nullptr) override;
 
+	// Open an OS dialog owned by this window; its completion runs on the app thread. The dialog is
+	// cancelled if the window closes — the callback still fires, with Status::ErrorCancelled,
+	// rather than being dropped.
+	//
+	// Keep the Rc<DialogRequest>: it is the cancellation token. The backend's DialogHandle never
+	// crosses to this thread.
+	virtual Status openDialog(NotNull<sprt::window::DialogRequest>) override;
+	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>) override;
+
+	// True while any dialog opened through this window is still on screen. App thread.
+	bool hasPendingDialogs() const { return !_pendingDialogs.empty(); }
+
 	// Try to set preferred framerate for OS WM.
 	// WindowCapabilities::PreferredFrameRate should be available
 	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) override;
@@ -256,6 +268,11 @@ protected:
 	Rc<core::PresentationEngine> _presentationEngine;
 
 	core::WindowState _contextState = core::WindowState::None; // for context thread
+
+	// Dialogs opened through this window that have not answered yet. App thread only. Kept so a
+	// teardown can answer whatever is still outstanding, and so a scene can ask whether a dialog
+	// is up. Entries remove themselves from the completion wrapper installed in openDialog.
+	Vector<Rc<sprt::window::DialogRequest>> _pendingDialogs;
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;

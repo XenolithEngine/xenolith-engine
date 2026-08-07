@@ -113,6 +113,11 @@ public:
 
 	bool isConnectied() const;
 
+	// Can something still be asked of the session bus right now? Unlike isConnectied(), which is
+	// about startup having settled, this goes false again if the bus dies later — which a user
+	// session daemon does often enough that every caller has to have somewhere else to go.
+	bool isSessionBusAlive() const;
+
 	// available only if  `isConnectied`
 	Rc<DisplayConfigManager> makeDisplayConfigManager(
 			Function<void(NotNull<DisplayConfigManager>)> &&);

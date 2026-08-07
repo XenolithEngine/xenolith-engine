@@ -28,6 +28,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/abi/structures.h> // GUID
 #include <sprt/wrappers/windows/abi/com_api.h>
+#include <sprt/wrappers/windows/abi/shlobj.h> // SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC
 #include <sprt/wrappers/windows/basic_api.h> // HANDLE / DWORD / HRESULT
 #include <sprt/wrappers/windows/com_api.h> // CoInitializeEx / CoUninitialize / CoCreateInstance
 
@@ -57,6 +58,16 @@ __SPRT_WIN_IMPORT WINAPI PIDLIST_ABSOLUTE ILCreateFromPathW(PCWSTR pszPath);
 __SPRT_WIN_IMPORT WINAPI void ILFree(PIDLIST_ABSOLUTE pidl);
 __SPRT_WIN_IMPORT WINAPI HRESULT SHCreateItemFromIDList(PCIDLIST_ABSOLUTE pidl, REFIID riid,
 		void **ppv);
+
+// Wraps a path as an IShellItem. Unlike SHCreateItemFromIDList this does not require the item to
+// exist, which is what makes it usable for a save dialog's target directory.
+__SPRT_WIN_IMPORT WINAPI HRESULT SHCreateItemFromParsingName(PCWSTR pszPath, void *pbc, REFIID riid,
+		void **ppv);
+
+// Opens the containing folder with the given items selected — "reveal in Explorer". With cidl 0
+// and apidl null it opens `pidlFolder` itself.
+__SPRT_WIN_IMPORT WINAPI HRESULT SHOpenFolderAndSelectItems(PCIDLIST_ABSOLUTE pidlFolder, UINT cidl,
+		PCUITEMID_CHILD_ARRAY apidl, DWORD dwFlags);
 }
 #endif
 

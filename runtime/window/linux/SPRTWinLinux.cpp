@@ -432,6 +432,7 @@ InputKeyCode getKeysymCode(uint32_t sym) {
 #include "SPRTWinLinuxShm.cc"
 #include "SPRTWinLinuxXkbLibrary.cc"
 #include "SPRTWinLinuxDisplay.cc"
+#include "SPRTWinLinuxDialogShell.cc"
 #include "SPRTWinLinuxController.cc"
 
 #endif

@@ -107,8 +107,10 @@ bool InstallerProjectsView::init() {
 		_footer->addStyleClass("proj-footer");
 
 		_btnOpenFolder = _footer->addChild(Rc<ui::Button>::create([this] {
-			if (_controller) {
-				_controller->openFolder(_location);
+			if (auto *window = appWindow()) {
+				if (_controller) {
+					_controller->openFolder(window, _location);
+				}
 			}
 		}));
 		_btnOpenFolder->addStyleClass("ghost");
@@ -343,7 +345,11 @@ void InstallerProjectsView::onBrowse() {
 	if (!_controller) {
 		return;
 	}
-	_controller->pickFolder(strings::projectChoose(),
+	auto *window = appWindow();
+	if (!window) {
+		return;
+	}
+	_controller->pickFolder(window, strings::projectChoose(),
 			[this, self = Rc<InstallerProjectsView>(this)](String picked) {
 		if (picked.empty()) {
 			return;

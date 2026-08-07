@@ -101,57 +101,6 @@ Rc<ProcessHandle> runCapturedAsync(NotNull<AppThread> app, StringView command,
 
 } // namespace
 
-Rc<ProcessHandle> pickFolderAsync(NotNull<AppThread> app, StringView prompt,
-		Function<void(String)> &&onDone, Ref *owner) {
-	const auto title = prompt.empty() ? StringView("Choose folder") : prompt;
-#if SPRT_APPLE
-	return runCapturedAsync(app,
-			osascriptCommand(toString("POSIX path of (choose folder with prompt \"",
-					applescriptEscape(title), "\")")),
-			[onDone = sp::move(onDone)](String path) {
-		// osascript reports a directory with a trailing slash; the registry stores it without.
-		while (!path.empty() && path.back() == '/') { path.pop_back(); }
-		if (onDone) {
-			onDone(sp::move(path));
-		}
-	}, owner);
-#elif SPRT_LINUX
-	// No desktop-neutral picker exists: try the GTK one, fall back to the KDE one. Both exit
-	// non-zero when cancelled or absent, which runCapturedAsync collapses to "".
-	auto zenity = toString("zenity --file-selection --directory --title=", shellQuote(title));
-	auto kdialog = toString("kdialog --getexistingdirectory . --title ", shellQuote(title));
-	return runCapturedAsync(app, zenity,
-			[app, owner, kdialog = sp::move(kdialog), onDone = sp::move(onDone)](
-					String path) mutable {
-		if (!path.empty()) {
-			if (onDone) {
-				onDone(sp::move(path));
-			}
-			return;
-		}
-		// Chaining the fallback from the completion keeps the whole probe asynchronous. The
-		// second handle is owned by the app thread only for the length of this call — the caller
-		// already dropped its Rc, so the child would die immediately; keep it alive by handing
-		// ownership to its own completion.
-		auto second = std::make_shared<Rc<ProcessHandle>>();
-		*second = runCapturedAsync(app, kdialog,
-				[second, onDone = sp::move(onDone)](String fallback) {
-			*second = nullptr;
-			if (onDone) {
-				onDone(sp::move(fallback));
-			}
-		}, owner);
-	},
-			owner);
-#else
-	(void)title;
-	if (onDone) {
-		onDone(String());
-	}
-	return nullptr;
-#endif
-}
-
 Rc<ProcessHandle> promptTextAsync(NotNull<AppThread> app, StringView title, StringView def,
 		Function<void(String)> &&onDone, Ref *owner) {
 #if SPRT_APPLE
@@ -191,26 +140,6 @@ Rc<ProcessHandle> promptTextAsync(NotNull<AppThread> app, StringView title, Stri
 	}
 	return nullptr;
 #endif
-}
-
-Rc<ProcessHandle> openInFileManagerAsync(NotNull<AppThread> app, StringView path, Ref *owner) {
-	if (path.empty()) {
-		return nullptr;
-	}
-#if SPRT_APPLE
-	StringView argv[] = {StringView("open"), path};
-#elif SPRT_LINUX
-	StringView argv[] = {StringView("xdg-open"), path};
-#elif SPRT_WINDOWS
-	StringView argv[] = {StringView("explorer"), path};
-#else
-	(void)app;
-	(void)owner;
-	return nullptr; // no file manager on this target
-#endif
-	// makeShellCommand quotes every word, so a directory name with spaces, quotes or shell
-	// metacharacters is never interpreted. The output is discarded — only the exit matters.
-	return runCapturedAsync(app, makeShellCommand(argv), nullptr, owner);
 }
 
 } // namespace stappler::xenolith::installer

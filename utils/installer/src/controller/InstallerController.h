@@ -37,9 +37,12 @@
 #include "SPIProjects.h"
 #include "InstallerNativeDialogs.h"
 
+#include <sprt/runtime/window/dialog.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppThread;
-}
+class AppWindow;
+} // namespace stappler::xenolith
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -138,12 +141,22 @@ public:
 			Function<void(bool ok, String message)> &&onDone = nullptr);
 
 	// --- native OS dialogs / file manager ---
-	// Spawned on the app looper (see InstallerNativeDialogs.h), so nothing blocks and `onDone`
-	// arrives on the app thread. The controller keeps the child handles alive for you.
-	void pickFolder(StringView prompt, Function<void(String path)> &&onDone = nullptr);
+	//
+	// The first two go through the runtime's system-dialog API (sprt/runtime/window/dialog.h),
+	// which picks the best thing the platform has — the portal or IFileDialog where there is one, a
+	// desktop helper where there is not. They need the owning window: the dialog is parented to it,
+	// blocks it while it is up, and is dismissed (with the callback still answered) if it closes.
+	//
+	// `onDone` always runs, exactly once, on the app thread. An empty path means the user declined
+	// or the platform had nothing to offer, which the callers treat the same way.
+	void pickFolder(NotNull<AppWindow> window, StringView prompt,
+			Function<void(String path)> &&onDone = nullptr);
+	void openFolder(NotNull<AppWindow> window, StringView path);
+
+	// Still a spawned helper: there is no system "ask for a line of text" dialog to wrap. Runs on
+	// the app looper, so nothing blocks — see InstallerNativeDialogs.h.
 	void promptText(StringView title, StringView def,
 			Function<void(String text)> &&onDone = nullptr);
-	void openFolder(StringView path);
 
 	Vector<String> engines() const;
 	Vector<String> targets() const;
@@ -174,11 +187,13 @@ protected:
 	AppThread *_app = nullptr;
 	Layout _layout;
 
-	// Spawned helper processes. An Rc<ProcessHandle> IS the child — dropping the last one kills
-	// it — so these slots are what keeps a picker on screen and an xdg-open alive long enough to
-	// hand off. `_dialogHandle` holds the single modal picker; `_spawned` the fire-and-forget ones.
-	Rc<ProcessHandle> _dialogHandle;
-	Vector<Rc<ProcessHandle>> _spawned;
+	// The text prompt is still a spawned helper, and an Rc<ProcessHandle> IS the child — dropping
+	// the last one kills it — so this slot is what keeps the prompt on screen.
+	Rc<ProcessHandle> _promptHandle;
+
+	// The live folder picker, kept because the request doubles as its cancellation token: opening a
+	// second picker dismisses the first, and the callback of the dismissed one still fires.
+	Rc<sprt::window::DialogRequest> _dialogRequest;
 
 	bool _hasCatalog = false;
 	CatalogueData _catalog;

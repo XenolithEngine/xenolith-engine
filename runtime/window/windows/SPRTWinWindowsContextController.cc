@@ -22,6 +22,7 @@
 
 
 #include "SPRTWinWindowsContextController.h"
+#include "SPRTWinWindowsDialog.h"
 #include "SPRTWinWindowsDisplayConfigManager.h"
 #include "SPRTWinWindowsMessageWindow.h"
 #include "SPRTWinWindowsWindow.h"
@@ -196,7 +197,8 @@ WindowCapabilities WindowsContextController::getCapabilities() const {
 			| WindowCapabilities::FullscreenSeamlessModeSwitch | WindowCapabilities::CloseGuard
 			| WindowCapabilities::EnabledState | WindowCapabilities::UserSpaceDecorations
 			| WindowCapabilities::GripGuardsRequired | WindowCapabilities::AllowMoveFromMaximized
-			| WindowCapabilities::DemandsAttentionState | WindowCapabilities::Subwindows;
+			| WindowCapabilities::DemandsAttentionState | WindowCapabilities::Subwindows
+			| getWindowsDialogCapabilities();
 }
 
 WindowClass *WindowsContextController::acquuireWindowClass(WideStringView str) {
@@ -248,6 +250,37 @@ void WindowsContextController::openUrl(StringView str) {
 	str.performWithTerminated([](const char *cmd, size_t) {
 		ShellExecuteA(NULL, "open", cmd, NULL, NULL, SW_SHOWNORMAL);
 	});
+}
+
+Status WindowsContextController::openDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req) {
+	if (!req || !req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	NativeWindow *parent = nullptr;
+	HWND parentWindow = nullptr;
+	if (!req->parentWindowId.empty()) {
+		parent = findWindow(req->parentWindowId);
+		if (!parent) {
+			// A named parent that is already gone — the window closed between the request being
+			// built on the app thread and it arriving here. Answer rather than un-parenting it.
+			return declineDialog(target, sprt::move(req), Status::ErrorCancelled);
+		}
+		// Every NativeWindow here is a WindowsWindow; the owner HWND is what makes the OS treat the
+		// dialog as modal to it and raise it when the parent is clicked.
+		parentWindow = static_cast<WindowsWindow *>(parent)->getWindow();
+	}
+
+	auto handle = Rc<WindowsDialogHandle>::create(this, target, Rc<DialogRequest>(req), parent,
+			parentWindow);
+	if (handle) {
+		registerDialog(handle);
+		return Status::Ok;
+	}
+
+	// init() refused: a reveal or trash request naming nothing, or a thread that would not start.
+	return declineDialog(target, sprt::move(req), Status::ErrorNotSupported);
 }
 
 SurfaceSupportInfo WindowsContextController::getSupportInfo() const {

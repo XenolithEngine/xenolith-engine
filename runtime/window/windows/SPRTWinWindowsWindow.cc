@@ -71,8 +71,7 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 	}, _info->id);
 
 	RECT rect = {0, 0, long(_info->rect.width), long(_info->rect.height)};
-	const bool auxiliary =
-			_info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	const bool auxiliary = _info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
 	HWND owner = nullptr;
 	int windowX = CW_USEDEFAULT;
 	int windowY = CW_USEDEFAULT;
@@ -369,6 +368,18 @@ void WindowsWindow::handleDisplayChanged(const DisplayConfig *cfg) {
 			SetFocus(_window);
 			EnableWindow(_window, TRUE);
 		}
+	}
+}
+
+void WindowsWindow::setModalBlocked(bool value) {
+	// The base clears WindowState::Enabled so the application can see it is blocked; EnableWindow is
+	// the OS half, and it is what makes a click on the parent raise the dialog instead of doing
+	// nothing. Note the asymmetry: re-enabling does not restore focus, which the dialog closing
+	// does for us.
+	NativeWindow::setModalBlocked(value);
+
+	if (_window) {
+		EnableWindow(_window, value ? FALSE : TRUE);
 	}
 }
 

@@ -24,6 +24,9 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_COM_CXX_H_
 
 #include <sprt/wrappers/windows/com_api.h>
+// SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC: the value tables IFileDialog's methods are
+// spelled in terms of. They are ABI, so they live under abi/ and are pinned against the SDK there.
+#include <sprt/wrappers/windows/abi/shlobj.h>
 
 #ifdef __cplusplus
 
@@ -49,6 +52,12 @@ typedef struct _ITEMIDLIST {
 typedef ITEMIDLIST ITEMIDLIST_ABSOLUTE;
 typedef ITEMIDLIST_ABSOLUTE *PIDLIST_ABSOLUTE;
 typedef const ITEMIDLIST_ABSOLUTE *PCIDLIST_ABSOLUTE;
+
+// A single-level ("child") id relative to some folder, and an array of them: what
+// SHOpenFolderAndSelectItems takes to say which entries to highlight.
+typedef ITEMIDLIST ITEMID_CHILD;
+typedef const ITEMID_CHILD *PCUITEMID_CHILD;
+typedef PCUITEMID_CHILD const *PCUITEMID_CHILD_ARRAY;
 
 struct IWbemCallResult;
 struct IWbemObjectSink;
@@ -604,6 +613,90 @@ public:
 // TU shares one definition and it is not flagged unused.
 inline constexpr GUID CLSID_FileOperation = {0x3ad0'5575, 0x8857, 0x4850,
 	{0x92, 0x77, 0x11, 0xb8, 0x5b, 0xdb, 0x8e, 0x09}};
+
+// ---- IFileDialog and friends ([shobjidl_core]) ----------------------------
+//
+// SIGDN, FOS_* and COMDLG_FILTERSPEC live in abi/shlobj.h, pulled in above: they are plain values
+// and layouts that have to be pinned against the SDK, which is what the abi/ half is for.
+
+MIDL_INTERFACE("b4db1657-70d7-485e-8e3e-6fcb5a5c1802")
+IModalWindow : public IUnknown {
+public:
+	// Runs its own modal message loop and does not return until the dialog closes. S_OK means the
+	// user accepted; HRESULT_FROM_WIN32(ERROR_CANCELLED) means they dismissed it.
+	virtual HRESULT STDMETHODCALLTYPE Show(HANDLE hwndOwner) = 0;
+};
+
+MIDL_INTERFACE("42f85136-db7e-439c-85f1-e4075d135fc8")
+IFileDialog : public IModalWindow {
+public:
+	virtual HRESULT STDMETHODCALLTYPE SetFileTypes(UINT cFileTypes,
+			const COMDLG_FILTERSPEC *rgFilterSpec) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileTypeIndex(UINT iFileType) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileTypeIndex(UINT * piFileType) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Advise(void *pfde, DWORD *pdwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Unadvise(DWORD dwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOptions(DWORD fos) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetOptions(DWORD * pfos) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetDefaultFolder(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFolder(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFolder(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCurrentSelection(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileName(LPCWSTR pszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileName(LPWSTR * pszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetTitle(LPCWSTR pszTitle) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOkButtonLabel(LPCWSTR pszText) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileNameLabel(LPCWSTR pszLabel) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetResult(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE AddPlace(IShellItem * psi, int fdap) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetDefaultExtension(LPCWSTR pszDefaultExtension) = 0;
+	// Dismisses the dialog from another thread; hr becomes Show()'s return value.
+	virtual HRESULT STDMETHODCALLTYPE Close(HRESULT hr) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetClientGuid(const GUID &guid) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ClearClientData(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFilter(void *pFilter) = 0;
+};
+
+MIDL_INTERFACE("b63ea76d-1f85-456f-a19c-48159efa858b")
+IShellItemArray : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE BindToHandler(void *pbc, const GUID &bhid, REFIID riid,
+			void **ppvOut) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStore(int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyDescriptionList(const void *keyType, REFIID riid,
+			void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAttributes(int AttribFlags, ULONG sfgaoMask,
+			ULONG *psfgaoAttribs) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCount(DWORD * pdwNumItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetItemAt(DWORD dwIndex, IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE EnumItems(void **ppenumShellItems) = 0;
+};
+
+MIDL_INTERFACE("d57c7288-d4ad-4768-be02-9d969532d960")
+IFileOpenDialog : public IFileDialog {
+public:
+	virtual HRESULT STDMETHODCALLTYPE GetResults(IShellItemArray * *ppenum) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetSelectedItems(IShellItemArray * *ppsai) = 0;
+};
+
+MIDL_INTERFACE("84bccd23-5fde-4cdb-aea4-af64b83d78ab")
+IFileSaveDialog : public IFileDialog {
+public:
+	virtual HRESULT STDMETHODCALLTYPE SetSaveAsItem(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProperties(void *pStore) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetCollectedProperties(void *pList, BOOL fAppendDefault) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetProperties(void **ppStore) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyProperties(IShellItem * psi, void *pStore, HANDLE hwnd,
+			void *pSink) = 0;
+};
+
+// coclass {dc1c5a9c-e88a-4dde-a5a1-60f82a20aef7}
+inline constexpr GUID CLSID_FileOpenDialog = {0xdc1c'5a9c, 0xe88a, 0x4dde,
+	{0xa5, 0xa1, 0x60, 0xf8, 0x2a, 0x20, 0xae, 0xf7}};
+
+// coclass {c0b4e2f3-ba21-4773-8dba-335ec946eb8b}
+inline constexpr GUID CLSID_FileSaveDialog = {0xc0b4'e2f3, 0xba21, 0x4773,
+	{0x8d, 0xba, 0x33, 0x5e, 0xc9, 0x46, 0xeb, 0x8b}};
 
 #endif
 
