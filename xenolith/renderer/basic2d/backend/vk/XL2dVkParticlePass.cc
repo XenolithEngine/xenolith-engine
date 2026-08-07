@@ -265,12 +265,20 @@ bool ParticleEmitterAttachment::init(AttachmentBuilder &builder) {
 
 void ParticleEmitterAttachment::handleInput(FrameQueue &q, ParticleEmitterAttachmentHandle &handle,
 		core::AttachmentInputData *d, Function<void(bool)> &&complete) {
-	auto ctx = static_cast<FrameContextHandle2d *>(d);
 	auto dFrame = q.getFrame().get_cast<DeviceFrameHandle>();
 
-	if (!d) {
+	// The frame can be gone by now. When the input waits on dependencies, submitInput defers this
+	// callback and keeps only the FrameQueue alive - and FrameQueue::tryReleaseFrame() drops
+	// _frame as soon as every pass and attachment has finalized. Signalling the dependency after
+	// that (routine during shutdown, where several windows finish at once) used to arrive here with
+	// a null frame and crash on the very next line. The missing `return` below did the same for a
+	// null input.
+	if (!d || !dFrame) {
 		complete(false);
+		return;
 	}
+
+	auto ctx = static_cast<FrameContextHandle2d *>(d);
 
 	Vector<uint64_t> ids;
 

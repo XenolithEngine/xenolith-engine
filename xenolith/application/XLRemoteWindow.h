@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_XLREMOTEWINDOW_H_
 
 #include "XLCoreRenderSession.h"
+#include "XLWindowSceneInfo.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -66,6 +67,12 @@ public:
 
 	virtual const sprt::window::WindowInfo *getInfo() const override;
 
+	// Mirror of AppWindow::getSceneInfo(). A remote window is announced by the server rather than
+	// created locally, so the client sets this itself before the window takes a Director. App
+	// thread.
+	WindowSceneInfo *getSceneInfo() const { return _sceneInfo; }
+	void setSceneInfo(Rc<WindowSceneInfo> &&s) { _sceneInfo = sp::move(s); }
+
 	virtual bool enableState(core::WindowState) override;
 	virtual bool disableState(core::WindowState) override;
 
@@ -103,6 +110,9 @@ protected:
 	Rc<sprt::window::WindowInfo> _info;
 	Vector<RemoteQueueInfo> _queues;
 	Rc<ClientAppThread> _thread; // creates cyclic reference until windows is closed/detached
+
+	// Set by the client; consulted by ClientAppThread::makeScene before the process-wide symbol.
+	Rc<WindowSceneInfo> _sceneInfo;
 
 	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
 	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;

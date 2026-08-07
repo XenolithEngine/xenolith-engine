@@ -30,6 +30,7 @@
 #include "resources/XLCurveBuffer.cc"
 #include "resources/XLMeshIndex.cc"
 #include "resources/XLResourceCache.cc"
+#include "resources/XLQueueCache.cc"
 #include "resources/XLResourceObject.cc"
 #include "resources/XLTemporaryResource.cc"
 #include "resources/XLTexture.cc"

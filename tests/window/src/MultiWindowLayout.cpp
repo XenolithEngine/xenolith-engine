@@ -131,7 +131,8 @@ void MultiWindowLayout::handleContentSizeDirty() {
 }
 
 void MultiWindowLayout::handleExit() {
-	SecondaryWindow::close(kSecondWindowId);
+	SecondaryWindow::close(_secondWindow);
+	_secondWindow = nullptr;
 	s_secondContent = nullptr;
 	TestLayout::handleExit();
 }
@@ -145,11 +146,15 @@ void MultiWindowLayout::openSecondWindow() {
 
 	log::source().warn("MultiWindowTest", "opening the second Root window '", kSecondWindowId, "'");
 
-	SecondaryWindow::open(static_cast<AppWindow *>(server), kSecondWindowId, Extent2(640, 200),
-			[](StringView) -> Rc<basic2d::SceneLayout2d> {
+	_secondWindow = SecondaryWindow::open(static_cast<AppWindow *>(server), kSecondWindowId,
+			Extent2(640, 200), [](StringView) -> Rc<basic2d::SceneLayout2d> {
 		auto content = Rc<SecondWindowContent>::create();
 		s_secondContent = content;
 		return content;
+	}, [](NotNull<WindowSceneInfo>) {
+		// Fires however the window went away. On the native path this used to never run at all -
+		// there was no engine-side hook to hang it on.
+		log::source().warn("MultiWindowTest", "second window closed");
 	});
 }
 
@@ -170,7 +175,7 @@ void MultiWindowLayout::raceStepSecondary() {
 }
 
 void MultiWindowLayout::captureSecondWindow() {
-	auto scene = SecondaryWindow::getScene(kSecondWindowId);
+	auto scene = SecondaryWindow::getScene(_secondWindow);
 	auto director = scene ? scene->getDirector() : nullptr;
 	auto server = director ? director->getRenderServer() : nullptr;
 	if (!server) {
@@ -231,7 +236,8 @@ void MultiWindowLayout::expect(bool cond, StringView what) {
 }
 
 void MultiWindowLayout::runChecks() {
-	expect(SecondaryWindow::isOpen(kSecondWindowId), "the second Root window did not open");
+	expect(SecondaryWindow::getScene(_secondWindow) != nullptr,
+			"the second Root window did not open");
 	expect(s_secondContent != nullptr, "the second window's content was never built");
 
 	if (s_secondContent) {

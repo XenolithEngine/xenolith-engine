@@ -651,12 +651,34 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 	return true;
 }
 
-void Context::createWindow(Rc<WindowInfo> &&info) {
-	performOnThread([this, info = move(info)]() mutable {
-		auto status = _controller->createWindow(move(info));
+void Context::createWindow(Rc<WindowInfo> &&info, Function<void(Status, StringView)> &&complete) {
+	performOnThread([this, info = move(info), complete = move(complete)]() mutable {
+		// Keep our own reference: the controller moves the argument away, but we still need the
+		// final id for the completion, and the payload back if creation failed.
+		auto status = _controller->createWindow(Rc<WindowInfo>(info));
 		if (status != Status::Ok) {
 			log::source().error("Context",
 					"Fail to create native window: ", sprt::status::getStatusName(status));
+
+			// This frame holds the last reference to a payload that was built on the app thread
+			// and may own scene-graph objects. It must not be released here — hand it back, and
+			// let its close callback answer the opener that asked for a window it never got.
+			if (auto payload = info->takeAppData()) {
+				_application->performOnAppThread([payload = move(payload)]() mutable {
+					if (auto sceneInfo = dynamic_cast<WindowSceneInfo *>(payload.get())) {
+						sceneInfo->fireClose();
+					}
+					payload = nullptr;
+				}, this);
+			}
+		}
+
+		if (complete) {
+			auto id = status == Status::Ok ? info->id : String();
+			_application->performOnAppThread(
+					[complete = move(complete), status, id = move(id)]() mutable {
+				complete(status, id);
+			}, this);
 		}
 	}, this);
 }

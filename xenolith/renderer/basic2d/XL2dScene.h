@@ -67,6 +67,18 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &) override;
 
+	// Adopt an already-built (usually already-compiled) queue instead of building one.
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
+			Rc<core::Queue> &&, const core::FrameConstraints &);
+
+	// Fill `builder` with the standard 2d render graph for the current gAPI, honouring
+	// QueueInfo::type and defaulting QueueInfo::damage for it.
+	//
+	// Static on purpose: this is the part of scene construction that needs no Scene, so a queue
+	// can be built - and cached, and compiled - before the scene or the window that will use it
+	// exists. QueueCache is the intended caller.
+	static bool buildQueue(NotNull<AppThread>, QueueInfo &, core::Queue::Builder &);
+
 	virtual void update(const UpdateTime &time) override;
 
 	virtual void handleContentSizeDirty() override;

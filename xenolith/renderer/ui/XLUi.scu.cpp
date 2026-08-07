@@ -34,5 +34,6 @@
 #include "atoms/XLUiBadge.cc"
 #include "atoms/XLUiCheckbox.cc"
 
-#include "XLUiAuxWindow.cc"
-#include "XLUiAuxSession.cc"
+#include "XLUiSubWindow.cc"
+#include "XLUiSubWindowScene.cc"
+#include "XLUiSubWindowSession.cc"

@@ -338,25 +338,10 @@ void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &bu
 			FileInfo("resources/xenolith-2-480.png", FileCategory::Bundled));
 }
 
-// Функция выбора сцены для окна (регистрируется через SharedModule как Context::SymbolMakeScene).
-//
-// Раньше здесь стоял DEFINE_PRIMARY_SCENE_CLASS(ExampleScene), который отдаёт ExampleScene любому
-// окну. Теперь приложение умеет открывать вторые Root-окна (SecondaryWindow), и различает их по
-// WindowInfo::id: если под этим id зарегистрирован построитель содержимого — это наше вторичное
-// окно, всем остальным по-прежнему достаётся ExampleScene.
-static Rc<Scene> testapp_makeScene(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints) {
-	auto appWindow = static_cast<AppWindow *>(window.get());
-	auto info = appWindow ? appWindow->getInfo() : nullptr;
-	if (info) {
-		if (auto builder = SecondaryWindow::takeContentBuilder(info->id)) {
-			return Rc<SecondaryScene>::create(app, window, constraints, StringView(info->id),
-					sp::move(builder));
-		}
-	}
-	return Rc<ExampleScene>::create(app, window, constraints);
-}
-
-DEFINE_SCENE_FACTORY(testapp_makeScene)
+// Фабрика сцены по умолчанию: она отвечает только за окна, которые приложение не создавало само —
+// прежде всего за корневое. Вторичные окна (SecondaryWindow) называют свою сцену прямо в данных
+// окна, через WindowSceneInfo, поэтому диспетчер по WindowInfo::id, который был здесь раньше,
+// больше не нужен.
+DEFINE_PRIMARY_SCENE_CLASS(ExampleScene)
 
 } // namespace stappler::xenolith::app

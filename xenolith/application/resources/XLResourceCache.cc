@@ -70,10 +70,25 @@ void ResourceCache::addImage(StringView name, const Rc<core::ImageObject> &img) 
 }
 
 void ResourceCache::addResource(const Rc<core::Resource> &req) {
-	_resources.emplace(req->getName(), req);
+	auto it = _resources.find(req->getName());
+	if (it != _resources.end()) {
+		++it->second.refCount;
+		return;
+	}
+	_resources.emplace(req->getName(), ResourceSlot{req, 1});
 }
 
-void ResourceCache::removeResource(StringView requestName) { _resources.erase(requestName); }
+void ResourceCache::removeResource(StringView requestName) {
+	auto it = _resources.find(requestName);
+	if (it == _resources.end()) {
+		return;
+	}
+	if (it->second.refCount > 1) {
+		--it->second.refCount;
+		return;
+	}
+	_resources.erase(it);
+}
 
 Rc<Texture> ResourceCache::acquireTexture(StringView str) const {
 	auto iit = _images.find(str);
@@ -88,8 +103,8 @@ Rc<Texture> ResourceCache::acquireTexture(StringView str) const {
 	}
 
 	for (auto &it : _resources) {
-		if (auto v = it.second->getImage(str)) {
-			return Rc<Texture>::create(v, it.second);
+		if (auto v = it.second.resource->getImage(str)) {
+			return Rc<Texture>::create(v, it.second.resource);
 		}
 	}
 
@@ -105,8 +120,8 @@ Rc<MeshIndex> ResourceCache::acquireMeshIndex(StringView str) const {
 	}
 
 	for (auto &it : _resources) {
-		if (auto v = it.second->getBuffer(str)) {
-			return Rc<MeshIndex>::create(v, it.second);
+		if (auto v = it.second.resource->getBuffer(str)) {
+			return Rc<MeshIndex>::create(v, it.second.resource);
 		}
 	}
 

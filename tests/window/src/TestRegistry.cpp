@@ -39,6 +39,7 @@
 #include "LabelUpdateLayout.h"
 #include "MeasureProtocolLayout.h"
 #include "MultiWindowLayout.h"
+#include "QueueCacheLayout.h"
 #include "PanelLayout.h"
 #include "ParentResizeLayout.h"
 #include "PlatformLayout.h"
@@ -154,6 +155,12 @@ static const TestInfo s_tests[] = {
 		StringView("A second top-level window opens with the same string as the first; both must "
 				   "render it identically, because the atlas they sample is the same object."),
 		TestRegistry_make<MultiWindowLayout>},
+
+	TestInfo{StringView("queue-cache"), StringView("XL_QUEUE_CACHE_TEST"),
+		StringView("One compiled render graph, many windows"),
+		StringView("A render queue is built and compiled before any of the windows that use it "
+				   "exist; three secondary windows then open on that same compiled graph."),
+		TestRegistry_make<QueueCacheLayout>},
 
 	TestInfo{StringView("parent-resize"), StringView("XL_PARENT_RESIZE_TEST"), StringView("Restyle on parent resize"),
 		StringView("Percent metrics resolved against the parent: the nested boxes must keep their "

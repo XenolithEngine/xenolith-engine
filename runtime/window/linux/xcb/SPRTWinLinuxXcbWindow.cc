@@ -197,8 +197,13 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_defaultScreen = _connection->getDefaultScreen();
 
 	_xinfo.parent = _defaultScreen->root;
+	// `auxiliary` is the undecorated, WM-bypassing kind (menus and hints): it drives the visual,
+	// the placement and the grab. `transient` is the wider "belongs to another window" set, which
+	// additionally covers Dialog and Utility - those stay WM-managed and decorated, they just get a
+	// parent, a type hint and no taskbar entry of their own.
 	const bool auxiliary =
 			_info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	const bool transient = _info->type != WindowType::Root;
 	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 		_xinfo.depth = 32;
 		_xinfo.visual = _connection->getVisualByDepth(32); //_defaultScreen->root_visual;
@@ -225,8 +230,8 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_density = float(dpi) / float(udpi);
 
 	auto *auxParent =
-			auxiliary ? dynamic_cast<XcbWindow *>(_controller->findWindow(_info->parent)) : nullptr;
-	if (auxiliary && !auxParent) {
+			transient ? dynamic_cast<XcbWindow *>(_controller->findWindow(_info->parent)) : nullptr;
+	if (transient && !auxParent) {
 		oslog::vperror(__SPRT_LOCATION, "XCB", "Auxiliary window parent is not available");
 		return false;
 	}
@@ -288,11 +293,25 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 
 	_frameRate = getCurrentFrameRate();
 
-	auto windowType = auxiliary
-			? _connection->getAtom(_info->type == WindowType::Popup
-							? StringView("_NET_WM_WINDOW_TYPE_POPUP_MENU")
-							: StringView("_NET_WM_WINDOW_TYPE_TOOLTIP"))
-			: _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_NORMAL);
+	// EWMH taxonomy: the WM applies its own decoration, stacking and taskbar policy from this.
+	xcb_atom_t windowType = XCB_NONE;
+	switch (_info->type) {
+	case WindowType::Popup:
+		windowType = _connection->getAtom(StringView("_NET_WM_WINDOW_TYPE_POPUP_MENU"));
+		break;
+	case WindowType::Tooltip:
+		windowType = _connection->getAtom(StringView("_NET_WM_WINDOW_TYPE_TOOLTIP"));
+		break;
+	case WindowType::Dialog:
+		windowType = _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_DIALOG);
+		break;
+	case WindowType::Utility:
+		windowType = _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_UTILITY);
+		break;
+	case WindowType::Root:
+		windowType = _connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE_NORMAL);
+		break;
+	}
 
 	_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE, _xinfo.window,
 			_connection->getAtom(XcbAtomIndex::_NET_WM_WINDOW_TYPE), XCB_ATOM_ATOM, 32, 1,
@@ -302,6 +321,30 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 		auto parentWindow = auxParent->getWindow();
 		_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE,
 				_xinfo.window, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 32, 1, &parentWindow);
+	}
+
+	// Initial _NET_WM_STATE, set as a property before the window is mapped (the client-message form
+	// used by enableState only works on a mapped window).
+	{
+		Vector<xcb_atom_t> initialState;
+		if (_info->type == WindowType::Dialog
+				&& hasFlag(_info->flags, WindowCreationFlags::Modal)) {
+			// A hint, nothing more: the WM may raise the dialog with its parent and dim the parent's
+			// decorations, but the input block is enforced by ContextController::_modalBlocks.
+			initialState.emplace_back(_connection->getAtom(XcbAtomIndex::_NET_WM_STATE_MODAL));
+		}
+		if (_info->type == WindowType::Utility) {
+			// A palette belongs to its owner, not to the desktop. UTILITY alone is enough for
+			// EWMH-strict WMs; these two cover the ones that only look at the state.
+			initialState.emplace_back(
+					_connection->getAtom(XcbAtomIndex::_NET_WM_STATE_SKIP_TASKBAR));
+			initialState.emplace_back(_connection->getAtom(XcbAtomIndex::_NET_WM_STATE_SKIP_PAGER));
+		}
+		if (!initialState.empty()) {
+			_xcb->xcb_change_property(_connection->getConnection(), XCB_PROP_MODE_REPLACE,
+					_xinfo.window, _connection->getAtom(XcbAtomIndex::_NET_WM_STATE), XCB_ATOM_ATOM,
+					32, uint32_t(initialState.size()), initialState.data());
+		}
 	}
 
 	struct MotifWmHints hints;

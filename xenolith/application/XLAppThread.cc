@@ -23,6 +23,7 @@
  **/
 
 #include "XLAppThread.h"
+#include "resources/XLQueueCache.h"
 #include "XLEvent.h"
 #include "XLRemoteBlockTransfer.h"
 
@@ -315,7 +316,10 @@ void AppThread::performUpdate(bool wakeup) {
 	_lastUpdate = _clock;
 }
 
-void AppThread::loadExtensions() { _resourceCache = addExtension(Rc<ResourceCache>::create(this)); }
+void AppThread::loadExtensions() {
+	_resourceCache = addExtension(Rc<ResourceCache>::create(this));
+	addExtension(Rc<QueueCache>::create(this));
+}
 
 void AppThread::initializeExtensions() {
 	for (auto &it : _extensions) { it.second->initialize(this); }

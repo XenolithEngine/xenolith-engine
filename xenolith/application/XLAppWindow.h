@@ -26,6 +26,7 @@
 
 #include "XLContext.h"
 #include "XLEvent.h"
+#include "XLWindowSceneInfo.h"
 #include "XLCoreTextInput.h"
 #include "XLCorePresentationEngine.h"
 #include "XLCoreRenderSession.h"
@@ -99,6 +100,11 @@ public:
 	core::PresentationEngine *getPresentationEngine() const { return _presentationEngine; }
 
 	Director *getDirector() const { return _director; }
+
+	// The application payload this window was created with, or null for a window the application
+	// did not create itself (above all the root one, whose WindowInfo is built from the command
+	// line before the app thread exists). App thread.
+	WindowSceneInfo *getSceneInfo() const { return _sceneInfo; }
 
 	// Run constraints update process
 	void updateConstraints(core::UpdateConstraintsFlags); // from any thread
@@ -260,12 +266,20 @@ protected:
 	virtual void handleContextStateUpdate(WindowState state);
 	virtual void synchronizeClose();
 
+	// Hand _sceneInfo back to the app thread, where it is destroyed and its close callback fires.
+	// Used by the teardown path that never gets there on its own.
+	void releaseSceneInfo();
+
 	Rc<Context> _context;
 
 	Rc<ServerAppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
 	Rc<core::PresentationEngine> _presentationEngine;
+
+	// Taken off WindowInfo::appData in init() (context thread), handed to the app thread in end()
+	// so it is destroyed there and its close callback fires there. See WindowSceneInfo.
+	Rc<WindowSceneInfo> _sceneInfo;
 
 	core::WindowState _contextState = core::WindowState::None; // for context thread
 

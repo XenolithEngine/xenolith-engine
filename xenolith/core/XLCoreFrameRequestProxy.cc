@@ -42,6 +42,8 @@ bool LocalFrameRequestProxy::init(NotNull<FrameRequest> req) {
 
 void LocalFrameRequestProxy::selectQueue(NotNull<core::Queue> q) { _request->setQueue(q); }
 
+void LocalFrameRequestProxy::setSceneRef(Rc<Ref> &&ref) { _request->setSceneRef(sp::move(ref)); }
+
 bool LocalFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {
 	return _request->addInput(a, sp::move(data));
 }
@@ -91,6 +93,11 @@ void RemoteFrameRequestProxy::selectQueue(NotNull<core::Queue> q) {
 	// The client may only pick one of the server-announced queues; store its name (the server
 	// resolves it back against its registry). The mirror queue's name equals the server's.
 	_selectedQueue = q->getName().str<Interface>();
+}
+
+void RemoteFrameRequestProxy::setSceneRef(Rc<Ref> &&) {
+	// No local FrameRequest to pin to: the server owns the request, and this pin never applied on
+	// the remote path even when it lived in the queue callbacks.
 }
 
 bool RemoteFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {

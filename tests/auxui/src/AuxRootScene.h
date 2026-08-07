@@ -27,6 +27,7 @@
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
 #include "XLSimpleButton.h"
+#include "XLUiSubWindow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -34,29 +35,22 @@ class AppWindow;
 
 namespace app {
 
-// Root panel of the scaffold: opens Popup/Tooltip via ui::AuxSession
+// Root panel of the scaffold: opens Popup/Tooltip through this window's own ui::SubWindowSession
 // (native when Subwindows is advertised, in-scene overlay otherwise).
 class AuxRootScene : public basic2d::Scene2d {
 public:
-	static Rc<AuxRootScene> create(NotNull<AppThread> app,
-			NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints,
-			StringView id) {
-		auto ret = Rc<AuxRootScene>::create();
-		if (ret && ret->init(app, window, constraints, id)) {
-			return ret;
-		}
-		return nullptr;
-	}
-
 	virtual ~AuxRootScene() = default;
 
+	// Signature of Context::SymbolMakeSceneSignature: this is the one scene the process-wide
+	// factory still produces (DEFINE_PRIMARY_SCENE_CLASS at the bottom of the .cpp).
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-			const core::FrameConstraints &constraints, StringView id);
+			const core::FrameConstraints &constraints);
 
 protected:
 	virtual void handlePresented(Director *) override;
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &) override;
 
+	void registerCommands();
 	void layoutRootPanel();
 	void openMenuAt(Vec2 anchorWorld);
 	void openTooltipAt(Vec2 anchorWorld, StringView text);
@@ -68,6 +62,13 @@ protected:
 	simpleui::ButtonWithLabel *_btnTooltip = nullptr;
 
 	AppWindow *_appWindow = nullptr;
+
+	// The menu this panel opened. Holding it is what keeps the surface addressable without a
+	// lookup by id.
+	Rc<ui::SubWindow> _menu;
+	Rc<ui::SubWindow> _dialog;
+	Rc<ui::SubWindow> _utility;
+
 	String _myWindowId;
 	bool _hoverArmed = false;
 	static constexpr uint32_t kHeadingHoverTipTag = 0x41555831; // 'AUX1'

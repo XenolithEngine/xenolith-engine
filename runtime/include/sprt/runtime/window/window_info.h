@@ -550,6 +550,21 @@ struct SPRT_API WindowInfo final : public Ref {
 	// Insets for decorations, that appears above user-drawing space
 	// Canvas inside this inset always be visible for user
 	Padding decorationInsets;
+
+	// Opaque application payload, carried unchanged from createWindow() through to the thread that
+	// owns the window's content, and never interpreted by the runtime. It is how an application
+	// says what a window IS (which scene it runs, what happens when it closes) at the moment it
+	// asks for the window, instead of looking that up later by `id` — which it must not do,
+	// because `id` is re-uniqued below if it collides with a live window.
+	//
+	// Ownership: the runtime moves it and never copies it. It drops its reference only when this
+	// WindowInfo is destroyed, and that happens on the context thread — so an application whose
+	// payload must not die there is responsible for calling takeAppData() from a thread that may
+	// destroy it. See xenolith::WindowSceneInfo for the engine's contract.
+	Rc<Ref> appData;
+
+	// Move the payload out. Legal from any thread: moving a Rc does not touch the pointee.
+	Rc<Ref> takeAppData() { return sprt::move(appData); }
 };
 
 SPRT_API void getWindowStateDescription(const callback<void(StringView)> &, WindowState);

@@ -47,6 +47,14 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &);
 
+	// Adopt an already-built (usually already-compiled) queue instead of building one.
+	//
+	// The scene does NOT own it: whoever owns the queue also owns the registration of its internal
+	// resource in the ResourceCache. That matters - ResourceCache entries are keyed by name with no
+	// refcount, so if two scenes sharing a queue each registered and unregistered it, the first one
+	// to finish would pull the resource out from under the second.
+	virtual bool init(Rc<Queue> &&, const core::FrameConstraints &);
+
 	virtual void renderRequest(const Rc<core::FrameRequestProxy> &, sprt::PoolRef *pool);
 	virtual void render(FrameInfo &info);
 
@@ -63,12 +71,6 @@ public:
 
 	virtual void handlePresented(Director *);
 	virtual void handleFinished(Director *);
-
-	virtual void handleFrameStarted(FrameRequest &);
-	virtual void handleFrameEnded(FrameRequest &);
-
-	virtual void handleFrameAttached(const FrameHandle *);
-	virtual void handleFrameDetached(const FrameHandle *);
 
 	virtual void setFrameConstraints(const core::FrameConstraints &);
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
@@ -95,6 +97,10 @@ protected:
 	SceneContent *_content = nullptr;
 
 	Rc<Queue> _queue;
+
+	// False when the queue was adopted (see init(Rc<Queue>&&)): the scene then neither registers
+	// nor unregisters the queue's internal resource.
+	bool _ownsQueue = true;
 
 	core::FrameConstraints _constraints;
 };

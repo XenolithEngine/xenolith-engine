@@ -170,12 +170,18 @@ public:
 	bool isCursorSupported(WindowCursor, bool serverSide) const;
 	WindowCapabilities getWindowCapabilities() const;
 
-	// Request creation of an additional native window; safe to call from any thread.
+	// Request creation of an additional native window; safe to call from any thread. `info` (and
+	// its appData) must not be touched afterwards.
 	// On success, the window arrives through the usual pipeline:
 	// handleNativeWindowCreated -> makeAppWindow -> AppThread::handleAppWindowCreated.
 	// Non-Root types require WindowInfo::parent and native subwindow support
 	// (WindowCapabilities::Subwindows)
-	virtual void createWindow(Rc<WindowInfo> &&);
+	//
+	// `complete` runs once on the app thread with the outcome and the FINAL, uniqued
+	// WindowInfo::id (empty on failure) — the id the caller asked for may have been renamed to
+	// avoid a collision. It reports that the window system accepted the window, NOT the first
+	// frame; the scene arrives separately, through WindowSceneInfo::makeScene.
+	virtual void createWindow(Rc<WindowInfo> &&, Function<void(Status, StringView id)> && = nullptr);
 
 	virtual Status readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&,
 			sprt::window::Function<StringView(SpanView<StringView>)> &&, Ref * = nullptr);

@@ -28,22 +28,10 @@
 #include "XL2dLayer.h"
 #include "XL2dSceneLayout.h"
 #include "XLDirector.h"
-#include "XLUiAuxWindow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-Rc<basic2d::SceneLayout2d> AuxTooltipScene::buildContent(SceneRegistry::Builder &&builder) {
-	if (auto aux = ui::AuxWindow::takeContentBuilder(_id)) {
-		if (auto layout = aux(_id)) {
-			return layout;
-		}
-	}
-	if (builder) {
-		if (auto layout = builder(this, _id)) {
-			return layout;
-		}
-	}
-
+Rc<basic2d::SceneLayout2d> AuxTooltipScene::buildContent() {
 	auto layout = Rc<basic2d::SceneLayout2d>::create();
 
 	auto bg = layout->addChild(Rc<basic2d::Layer>::create());

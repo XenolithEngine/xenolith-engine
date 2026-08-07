@@ -202,6 +202,10 @@ protected:
 
 	bool initWithServerDecor();
 	bool initWithAppDecor();
+
+	// xdg_toplevel.set_parent for any non-Root window; a no-op for Root and for popups (those get
+	// their parent through xdg_surface.get_popup instead).
+	void applyTransientParent();
 	bool initPopup();
 
 	// Forward the immutable min/max size constraints (WindowInfo::minExtent/maxExtent) to the

@@ -68,6 +68,19 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 	_capabilities = _window->getInfo()->capabilities;
 	_windowId = StringView(_window->getInfo()->id).str<String>();
 
+	// Take the application's payload off the WindowInfo here, on the context thread. Taking is a
+	// Rc move, which is legal on any thread; leaving it in place is not, because the WindowInfo
+	// is destroyed here and the payload holds app-thread objects. It goes back to the app thread
+	// in end().
+	if (auto data = _window->takeAppData()) {
+		_sceneInfo = static_cast<WindowSceneInfo *>(data.get());
+		if (_sceneInfo) {
+			_sceneInfo->setWindow(this);
+		} else {
+			log::source().error("AppWindow", "WindowInfo::appData is not a WindowSceneInfo");
+		}
+	}
+
 	_presentationEngine = static_cast<core::Loop *>(_context->getGlLoop())
 								  ->makePresentationEngine(this, w->getPreferredOptions());
 
@@ -84,14 +97,23 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 	}
 
 	if (!_presentationEngine->isRunning()) {
-		// Auxiliary windows map before the first present: hit-testing and dismiss monitors need a
-		// placed window from the moment the menu exists. Root waits until it has something to
-		// show, and that map hangs off handleFrameReady rather than off the scheduleNextImage
-		// callback below: scheduling is dropped without a word when the swapchain does not exist
-		// yet (it is built asynchronously from the first WM configure), and a callback that never
-		// runs leaves the window unmapped forever — a black or missing window and a hung app.
+		// Every non-Root window maps before its first present; only Root defers.
+		//
+		// For Popup/Tooltip that has always been about behaviour: hit-testing and the dismiss
+		// monitors need a placed window from the moment the menu exists. Dialog and Utility are here
+		// for a harder reason - deferring their map is actively broken. With TWO decorated auxiliary
+		// windows open at once, tearing either of them down poisons the present path (the surviving
+		// windows start failing MaterialSwapchainPass and the process goes down). One such window
+		// alone is fine, and four override-redirect popups are fine; it takes two windows on the
+		// deferred path. Mapping them immediately avoids it entirely.
+		//
+		// NOTE: that is a containment, not a root-cause fix. The defect lives in the deferred path
+		// itself (the map hangs off handleFrameReady, because scheduleNextImage is dropped without a
+		// word while the swapchain does not exist yet - it is built asynchronously from the first WM
+		// configure). Root still uses it, and is safe only because there is normally one of them;
+		// the cost of deferring for Root is what it buys - no unpainted window at startup.
 		const auto type = _window->getInfo()->type;
-		if (type == sprt::window::WindowType::Popup || type == sprt::window::WindowType::Tooltip) {
+		if (type != sprt::window::WindowType::Root) {
 			_window->mapWindow();
 		} else {
 			_mapOnFirstFrame = true;
@@ -117,8 +139,25 @@ void AppWindow::update(core::PresentationUpdateFlags flags) {
 	}
 }
 
+void AppWindow::releaseSceneInfo() {
+	if (!_sceneInfo) {
+		return;
+	}
+	// Destroyed on the app thread, never here: it holds scene-graph objects captured by the
+	// opener. `this` is not captured — the window may be gone by the time this runs.
+	_application->performOnAppThread([sceneInfo = move(_sceneInfo)]() mutable {
+		sceneInfo->setWindow(nullptr);
+		sceneInfo->fireClose();
+		sceneInfo = nullptr;
+	}, _application);
+	_sceneInfo = nullptr;
+}
+
 void AppWindow::end() {
 	if (!_presentationEngine) {
+		// The engine never came up (or end() ran twice). The payload still has to go home: this is
+		// the only path where a window can die without ever reaching the app thread below.
+		releaseSceneInfo();
 		synchronizeClose();
 		return;
 	}
@@ -136,9 +175,18 @@ void AppWindow::end() {
 		_capabilities = _window->getInfo()->capabilities;
 	}
 
-	_application->performOnAppThread([this, engine = move(engine)]() mutable {
+	_application->performOnAppThread([this, engine = move(engine),
+											 sceneInfo = move(_sceneInfo)]() mutable {
 		_client = nullptr; // the Director (client endpoint) is being destroyed below
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
+		if (sceneInfo) {
+			// Every teardown route reaches here — own close, parent cascade, WM-side dismiss — so
+			// this is the one place the opener's callback has to fire, and it fires with no id
+			// lookup and no way to be missed.
+			sceneInfo->setWindow(nullptr);
+			sceneInfo->fireClose();
+			sceneInfo = nullptr;
+		}
 		_context->performOnThread([this, engine = move(engine)]() mutable {
 			if (_syncClose) {
 				engine->synchronizeClose();
@@ -721,6 +769,12 @@ void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bo
 }
 
 void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
+	// Announce it to the client (the Director) so it can resolve this graph by name per frame.
+	// Director::handleRenderQueueAttached / _availableQueues had no caller at all before this.
+	if (_client && queue) {
+		_client->handleRenderQueueAttached(queue);
+	}
+
 	_context->performOnThread([this, queue] {
 		runWithQueue(queue);
 		setReadyForNextFrame();

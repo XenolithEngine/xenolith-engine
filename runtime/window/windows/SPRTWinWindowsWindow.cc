@@ -111,6 +111,34 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 		rect = RECT{0, 0, LONG(placed.width), LONG(placed.height)};
 		windowX = placed.x;
 		windowY = placed.y;
+	} else if (_info->type == WindowType::Dialog || _info->type == WindowType::Utility) {
+		// Owned, decorated, WM-managed. The owner is what makes Win32 keep it above its parent,
+		// minimize it with the parent and destroy it with the parent; leaving WS_EX_APPWINDOW off
+		// is what keeps it out of the taskbar and Alt-Tab.
+		auto *parent = dynamic_cast<WindowsWindow *>(_controller->findWindow(_info->parent));
+		if (!parent || !parent->getWindow()) {
+			return false;
+		}
+		owner = parent->getWindow();
+
+		const bool resizable = hasFlag(_info->flags, WindowCreationFlags::AllowResize);
+		_currentState.style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN
+				| (resizable ? WS_THICKFRAME : 0);
+
+		// A dialog frame for Dialog; a narrow palette title bar for Utility, which additionally
+		// must not take activation away from its owner.
+		_currentState.exstyle = _info->type == WindowType::Dialog ? WS_EX_DLGMODALFRAME
+																 : WS_EX_TOOLWINDOW;
+
+		_info->state |= WindowState::AllowedMove | WindowState::AllowedClose
+				| WindowState::AllowedWindowMenu;
+		if (resizable) {
+			_info->state |= WindowState::AllowedResize;
+		}
+
+		// Modality is NOT set up here: ContextController::retainModalBlock already reaches
+		// WindowsWindow::setModalBlocked, which does the EnableWindow(owner, FALSE). Doing it again
+		// here would leave a block nothing releases.
 	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		_currentState.style =
 				WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME | WS_CAPTION | WS_CLIPCHILDREN;
@@ -177,6 +205,12 @@ void WindowsWindow::mapWindow() {
 	_mapped = true;
 	if (_info->type == WindowType::Tooltip) {
 		// Tooltips never take activation away from the owner.
+		ShowWindow(_window, SW_SHOWNOACTIVATE);
+		return;
+	}
+	if (_info->type == WindowType::Utility) {
+		// A tool palette appears without stealing focus from the document it belongs to; a Dialog,
+		// which the user just asked for, does take focus and falls through below.
 		ShowWindow(_window, SW_SHOWNOACTIVATE);
 		return;
 	}

@@ -90,6 +90,10 @@ public:
 		return _info && (_info->type == WindowType::Popup || _info->type == WindowType::Tooltip);
 	}
 
+	// Every window that belongs to another one. Wider than isAuxiliary(): Dialog and Utility are
+	// decorated and WM-managed, they just get attached to their parent as child windows.
+	bool isTransient() const { return _info && _info->type != WindowType::Root; }
+
 	virtual bool enableState(WindowState) override;
 	virtual bool disableState(WindowState) override;
 

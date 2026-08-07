@@ -25,6 +25,7 @@
 
 #include "XL2dScene.h"
 #include "XL2dSceneLayout.h"
+#include "XLWindowSceneInfo.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppWindow;
@@ -42,39 +43,36 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // HeadlessWindow per call with no single-window restriction.
 //
 // App-thread only.
-class SecondaryWindow {
-public:
-	// Builds the content of the secondary window's scene. Called from the scene factory, on the app
-	// thread, while the new window's Director is being constructed.
-	using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
+namespace SecondaryWindow {
 
-	// Ask the context for a Root window named `id` and register `builder` as its content. Returns
-	// false if the request could not even be posted; the window itself appears asynchronously, so
-	// wait for isOpen(id) (or for the builder to run) rather than assuming it exists on return.
-	static bool open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
-			ContentBuilder &&builder);
+// Builds the content of the secondary window's scene. Called on the app thread while the new
+// window's Director is being constructed.
+using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
 
-	// Scene-factory side: consume the builder registered for `id` (moved out). Null when `id` is
-	// not one of ours - that is how the factory tells the primary window from a secondary one.
-	static ContentBuilder takeContentBuilder(StringView id);
+// Ask the context for a Root window named `id`, with `builder` as its content. The returned
+// WindowSceneInfo IS the handle - keep it; the window itself appears asynchronously, so wait for
+// getScene() to become non-null rather than assuming it exists on return. Null means the request
+// could not even be posted.
+//
+// `onClose` fires on the app thread when the window goes away, however it went away.
+// `queue`, when set, is adopted by the new window's scene instead of it building its own - that
+// is what a prewarmed QueueCache entry is for.
+Rc<WindowSceneInfo> open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
+		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose = nullptr,
+		Rc<core::Queue> &&queue = nullptr);
 
-	// True once the secondary window's scene has been built and entered.
-	static bool isOpen(StringView id);
+// The scene of the window behind `handle`, or null while it has none. Lets a test reach into the
+// other window's graph.
+basic2d::Scene2d *getScene(WindowSceneInfo *handle);
 
-	// The scene of the window named `id`, or null. Lets a test reach into the other window's graph.
-	static basic2d::Scene2d *getScene(StringView id);
+// Close the window behind `handle`. Safe on a null handle, and on one whose window never appeared.
+void close(WindowSceneInfo *handle);
 
-	// Close the window named `id`. Safe to call for an id that was never opened.
-	static void close(StringView id);
+} // namespace SecondaryWindow
 
-	// Called by the secondary scene itself - not part of the test-facing API.
-	static void handleSceneEntered(StringView id, basic2d::Scene2d *);
-	static void handleSceneExited(StringView id);
-};
-
-// Scene of a secondary Root window: a SceneContent2d holding whatever the registered builder
-// produced. Deliberately minimal - no caption, no close guard, no inspector commands, so that what
-// a test observes in the second window is only what the test itself put there.
+// Scene of a secondary Root window: a SceneContent2d holding whatever the builder produced.
+// Deliberately minimal - no caption, no close guard, no inspector commands, so that what a test
+// observes in the second window is only what the test itself put there.
 class SecondaryScene : public basic2d::Scene2d {
 public:
 	virtual ~SecondaryScene() = default;

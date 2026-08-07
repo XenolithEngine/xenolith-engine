@@ -927,17 +927,41 @@ Status PresentationEngine::acquireScheduledImage() {
 }
 
 void PresentationEngine::scheduleImageAcquisition() {
+	// One retry timer per engine, and it repeats on its own (count = Infinite), so a second one is
+	// never useful.
+	//
+	// Without this guard every failed acquire armed a NEW infinite timer while leaving the previous
+	// one running - and since each firing retries and, on another failure, schedules again, the
+	// timer population DOUBLED every interval. A handful of consecutive VK_NOT_READY / VK_TIMEOUT
+	// results (routine as soon as a second window shares the present queue) was enough to saturate
+	// the completion queue, and from there the context thread never leaves its poll loop: closing a
+	// window is a queued task, so the application could no longer be shut down at all - it just kept
+	// spinning at 100% CPU.
+	//
+	// Status::Ok is "armed and running"; anything else means the handle is spent and a new one is
+	// needed (see Handle::getStatus).
+	if (_acquisitionTimer && _acquisitionTimer->getStatus() == Status::Ok) {
+		return;
+	}
+
 	_acquisitionTimer = _loop->getLooper()->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::CompletionHandle<sprt::dispatch::TimerHandle>::create<
 				PresentationEngine>(this,
 				[](PresentationEngine *e, sprt::dispatch::TimerHandle *h, uint32_t, Status st) {
 		auto acquireStatus = st == Status::Ok ? e->acquireScheduledImage() : st;
-		if (st == Status::Ok && acquireStatus != Status::Timeout
-				&& acquireStatus != Status::Declined) {
+
+		// Timeout/Declined both mean "still no image": keep the timer, it will retry. Anything else
+		// ends the retry - either an image arrived, or the timer itself is finishing (cancelled,
+		// failed). Forget the handle in both cases, so the next failed acquire can arm a fresh one
+		// instead of finding a dead handle parked in _acquisitionTimer and never retrying again.
+		if (acquireStatus == Status::Timeout || acquireStatus == Status::Declined) {
+			return;
+		}
+		if (st == Status::Ok) {
 			h->cancel();
-			if (e->_acquisitionTimer == h) {
-				e->_acquisitionTimer = nullptr;
-			}
+		}
+		if (e->_acquisitionTimer == h) {
+			e->_acquisitionTimer = nullptr;
 		}
 	}),
 		.interval = config::PresentationSchedulerInterval,

@@ -244,7 +244,13 @@ One listener address, two protocols sharing it. `inspect_scene` and `get_logs` u
 the original one-shot text form (send `scene\n` / `logs\n`, read until EOF).
 Everything else opens a framed session (`xenolith/1 json\n`, then
 `[u32 LE size][JSON payload]` request/response frames correlated by `serial`),
-which is what makes binary screenshots and long-lived sessions work. Binary
+which is what makes binary screenshots and long-lived sessions work. **The
+handshake is answered with a greeting LINE — `# xenolith/1 ok json\n` — before
+any frame; read it to the newline first.** A client that starts framing straight
+away consumes those bytes as a length and then blocks forever, which looks
+exactly like "the app executes commands but never answers". The request key is
+`cmd` (`scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `frame`,
+`window`, `quit`), not `command`. Binary
 payloads arrive as `"BASE64:<base64url, unpadded>"`. Address format:
 `unix:/path`, `unix:@abstract`, `host:port` or `:port`. Per-platform defaults:
 

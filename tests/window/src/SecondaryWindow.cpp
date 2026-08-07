@@ -31,23 +31,32 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-// App-thread only, so plain statics are enough (same reasoning as ui::AuxWindow).
-static Map<String, SecondaryWindow::ContentBuilder> s_builders;
-static Map<String, basic2d::Scene2d *> s_scenes;
-
-bool SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
-		ContentBuilder &&builder) {
+Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
+		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose,
+		Rc<core::Queue> &&queue) {
 	if (!builder || id.empty()) {
 		log::source().error("SecondaryWindow", "open: id and builder are required");
-		return false;
+		return nullptr;
 	}
 
 	auto ctx = anyWindow->getContext();
 	if (!ctx) {
-		return false;
+		return nullptr;
 	}
 
-	s_builders.insert_or_assign(id.str<Interface>(), sp::move(builder));
+	// The builder travels WITH the window instead of being parked in a table keyed by `id`. That
+	// also removes a latent hazard: ContextController re-uniques a colliding id, so the id the
+	// scene factory used to look up was not necessarily the one asked for here.
+	auto sceneInfo = Rc<WindowSceneInfo>::create(
+			[builder = sp::move(builder), id = id.str<Interface>()](NotNull<AppThread> app,
+					NotNull<core::RenderServerChannel> window,
+					const core::FrameConstraints &c) mutable -> Rc<Scene> {
+		return Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
+	}, sp::move(onClose));
+
+	if (queue) {
+		sceneInfo->setQueue(sp::move(queue));
+	}
 
 	auto info = Rc<sprt::window::WindowInfo>::create();
 	info->id = id.str<Interface>();
@@ -57,49 +66,37 @@ bool SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 
 	info->type = sprt::window::WindowType::Root;
 	info->rect = IRect(0, 0, int32_t(size.width), int32_t(size.height));
 	info->flags = sprt::window::WindowCreationFlags::None;
+	info->appData = sceneInfo;
 
 	ctx->createWindow(sp::move(info));
-	return true;
+	return sceneInfo;
 }
 
-auto SecondaryWindow::takeContentBuilder(StringView id) -> ContentBuilder {
-	auto it = s_builders.find(id);
-	if (it == s_builders.end()) {
-		return nullptr;
-	}
-	auto builder = sp::move(it->second);
-	s_builders.erase(it);
-	return builder;
+basic2d::Scene2d *SecondaryWindow::getScene(WindowSceneInfo *handle) {
+	auto window = handle ? handle->getWindow() : nullptr;
+	auto director = window ? window->getDirector() : nullptr;
+	return director ? dynamic_cast<basic2d::Scene2d *>(director->getScene()) : nullptr;
 }
 
-bool SecondaryWindow::isOpen(StringView id) { return getScene(id) != nullptr; }
-
-basic2d::Scene2d *SecondaryWindow::getScene(StringView id) {
-	auto it = s_scenes.find(id);
-	return it != s_scenes.end() ? it->second : nullptr;
-}
-
-void SecondaryWindow::close(StringView id) {
-	s_builders.erase(id.str<Interface>());
-	if (auto scene = getScene(id)) {
-		if (auto director = scene->getDirector()) {
-			if (auto server = director->getRenderServer()) {
-				static_cast<AppWindow *>(server)->close(true);
-			}
-		}
+void SecondaryWindow::close(WindowSceneInfo *handle) {
+	if (auto window = handle ? handle->getWindow() : nullptr) {
+		window->close(true);
 	}
 }
-
-void SecondaryWindow::handleSceneEntered(StringView id, basic2d::Scene2d *scene) {
-	s_scenes.insert_or_assign(id.str<Interface>(), scene);
-}
-
-void SecondaryWindow::handleSceneExited(StringView id) { s_scenes.erase(id.str<Interface>()); }
 
 bool SecondaryScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints, StringView id,
 		SecondaryWindow::ContentBuilder &&builder) {
-	if (!Scene2d::init(app, window, constraints)) {
+	// Adopt the queue the opener prewarmed, if any - see QueueCache.
+	auto appWindow = dynamic_cast<AppWindow *>(window.get());
+	auto sceneInfo = appWindow ? appWindow->getSceneInfo() : nullptr;
+	auto queue = sceneInfo ? sceneInfo->getQueue() : nullptr;
+
+	if (queue) {
+		if (!Scene2d::init(app, window, Rc<core::Queue>(queue), constraints)) {
+			return false;
+		}
+	} else if (!Scene2d::init(app, window, constraints)) {
 		return false;
 	}
 
@@ -120,12 +117,10 @@ bool SecondaryScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 
 void SecondaryScene::handleEnter(Scene *scene) {
 	Scene2d::handleEnter(scene);
-	SecondaryWindow::handleSceneEntered(_windowId, this);
 	log::source().info("SecondaryWindow", "scene entered id=", _windowId);
 }
 
 void SecondaryScene::handleExit() {
-	SecondaryWindow::handleSceneExited(_windowId);
 	log::source().info("SecondaryWindow", "scene exited id=", _windowId);
 	Scene2d::handleExit();
 }
