@@ -98,8 +98,11 @@ public:
 
 	bool isPersistentMapping() const { return _persistentMappings; }
 
-	void setSceneId(uint64_t val) { _sceneId = val; }
-	uint64_t getSceneId() const { return _sceneId; }
+	// Keeps whatever produced this frame's content alive for the frame's whole lifetime. It used
+	// to be a manual retain()/release() pair driven by the queue's begin/end callbacks, which is
+	// what made a Queue impossible to share between two scenes - the callbacks captured one Scene.
+	void setSceneRef(Rc<Ref> &&ref) { _sceneRef = sp::move(ref); }
+	Ref *getSceneRef() const { return _sceneRef; }
 
 	// Damage snapshot for this frame. Written once by the worker that builds the renderer's
 	// vertex data, before the attachment signals readiness; read afterwards on the loop thread.
@@ -142,7 +145,7 @@ protected:
 
 	// try to map per-frame GPU memory persistently
 	bool _persistentMappings = true;
-	uint64_t _sceneId = 0;
+	Rc<Ref> _sceneRef;
 	Rc<FrameDamageState> _damage;
 	bool _redrawSkipped = false;
 	uint64_t _deadline = 0; // absolute monotonic-clock deadline (us); 0 = none

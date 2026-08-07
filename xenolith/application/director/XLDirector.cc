@@ -165,6 +165,11 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	// compiled queues (selectQueue logs if the name is unknown).
 	req->selectQueue(_scene->getQueue());
 
+	// Keep the scene alive for as long as the frame it produced. This used to be done by the
+	// queue's begin/end callbacks, which had to capture the Scene and therefore welded the queue
+	// to it; here the pin belongs to the request, and the queue stays shareable.
+	req->setSceneRef(Rc<Ref>(_scene.get()));
+
 	// break current stack frame, perform on next one
 	_application->performOnAppThread([this, req = Rc<core::FrameRequestProxy>(req.get())] {
 		if (!_scene || !req) {
@@ -356,6 +361,16 @@ void Director::runScene(Rc<Scene> &&scene) {
 	auto &queue = scene->getQueue();
 
 	_nextScene = scene;
+
+	// An already-compiled queue (one adopted from QueueCache) must not go through the compiler a
+	// second time. That is not just wasted work: Queue::setCompiled OVERWRITES the queue's release
+	// callback, so a second compile silently drops the first one and re-creates every render pass -
+	// a GPU-object leak with no crash to point at it.
+	if (queue->isCompiled()) {
+		_server->attachRenderQueue(queue);
+		sprt::release(this, linkId);
+		return;
+	}
 
 	// Compile the render graph on the server, then make it the active graph (attachRenderQueue
 	// performs the server-side context-thread hop + runWithQueue + setReadyForNextFrame).

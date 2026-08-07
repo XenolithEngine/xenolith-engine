@@ -1868,6 +1868,24 @@ bool WaylandWindow::initPopup() {
 	return true;
 }
 
+// Transient-for on Wayland: xdg_toplevel.set_parent is the whole mechanism. There are no window
+// roles here (no DIALOG, no UTILITY - see multi-window-research.md §2.1), so what a Dialog or a
+// Utility palette IS gets emulated by "has a parent" plus the decoration choice; the compositor
+// keeps such a toplevel above its parent, minimizes it with it, and keeps it out of the taskbar.
+//
+// Modality is NOT hinted here. That would be xdg_wm_dialog_v1, a staging protocol that is not in
+// the scanner list; the engine's own _modalBlocks enforces the behaviour regardless, so its absence
+// costs a compositor hint, not correctness.
+void WaylandWindow::applyTransientParent() {
+	if (_info->type == WindowType::Root || _info->parent.empty() || !_toplevel) {
+		return;
+	}
+	auto parent = dynamic_cast<WaylandWindow *>(_controller->findWindow(_info->parent));
+	if (parent && parent->_toplevel) {
+		xdg_toplevel_set_parent(_toplevel, parent->_toplevel);
+	}
+}
+
 bool WaylandWindow::initWithServerDecor() {
 	// make server-size decorations
 	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
@@ -1879,6 +1897,7 @@ bool WaylandWindow::initWithServerDecor() {
 	xdg_toplevel_set_title(_toplevel, _info->title.data());
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	applyTransientParent();
 	updateSizeConstraints();
 
 	_serverDecor = zxdg_decoration_manager_v1_get_toplevel_decoration(_display->decorationManager,
@@ -1903,6 +1922,7 @@ bool WaylandWindow::initWithAppDecor() {
 	xdg_toplevel_set_title(_toplevel, _info->title.data());
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	applyTransientParent();
 	updateSizeConstraints();
 
 	if (!_display->viewporter) {

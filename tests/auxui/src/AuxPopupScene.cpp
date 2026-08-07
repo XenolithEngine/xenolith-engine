@@ -31,7 +31,7 @@
 #include "XLAppThread.h"
 #include "XLDirector.h"
 #include "XLSimpleButton.h"
-#include "XLUiAuxWindow.h"
+#include "XLUiSubWindow.h"
 #include "XLAction.h"
 #include "XLInputListener.h"
 
@@ -44,7 +44,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 using simpleui::ButtonWithLabel;
-using ui::AuxWindow;
+using ui::SubWindow;
 
 static constexpr float kMenuWidth = 220.0f;
 static constexpr float kItemHeight = 30.0f;
@@ -79,8 +79,18 @@ static String getTooltipText(uint32_t level) {
 	return toString("Tip: level ", level, " is the last one");
 }
 
+bool AuxPopupScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		const core::FrameConstraints &constraints, NotNull<ui::SubWindow> subWindow,
+		uint32_t level) {
+	if (!AuxBaseScene::init(app, window, constraints, subWindow)) {
+		return false;
+	}
+	_level = level;
+	return true;
+}
+
 void AuxPopupScene::openSubmenu() {
-	if (!_appWindow || _level >= kMaxLevel) {
+	if (!_appWindow || !_subWindow || _level >= kMaxLevel) {
 		return;
 	}
 
@@ -101,21 +111,21 @@ void AuxPopupScene::openSubmenu() {
 			| sprt::window::WindowPlacementAdjustment::SlideX
 			| sprt::window::WindowPlacementAdjustment::SlideY;
 
-	// The AuxWindow builder cannot reach the new scene, so it declines and the real content comes
-	// from SceneRegistry below — that builder is handed the scene and can therefore wire "More"
-	// and the tooltip probe to it. Registering after open() is safe: the id is known here, and the
-	// child scene reads the registry later on this same (app) thread.
-	auto id = ui::AuxWindow::openPopup(_appWindow, placement,
-			Extent2(uint32_t(childSize.width), uint32_t(childSize.height)),
-			[](StringView) { return nullptr; }, toString("auxui ", getMenuTitle(childLevel)));
+	// The child's level is captured right here, in the scene builder that travels with the window
+	// request - which is what used to need a side registry keyed by the id createWindow returned.
+	SubWindow::Config config;
+	config.type = sprt::window::WindowType::Popup;
+	config.placement = placement;
+	config.size = Extent2(uint32_t(childSize.width), uint32_t(childSize.height));
+	config.title = toString("auxui ", getMenuTitle(childLevel));
+	config.idPrefix = StringView("menu");
+	config.scene = [childLevel](NotNull<SubWindow> surface, NotNull<AppThread> app,
+							  NotNull<core::RenderServerChannel> window,
+							  const core::FrameConstraints &c) -> Rc<Scene> {
+		return AuxPopupScene::create(app, window, c, surface, childLevel);
+	};
 
-	if (id.empty()) {
-		return;
-	}
-
-	SceneRegistry::set(id, [childLevel](AuxBaseScene *scene, StringView) {
-		return static_cast<AuxPopupScene *>(scene)->buildMenuPanel(childLevel);
-	});
+	_childMenu = SubWindow::open(_appWindow, sp::move(config));
 }
 
 Rc<basic2d::SceneLayout2d> AuxPopupScene::buildMenuPanel(uint32_t level) {
@@ -198,22 +208,7 @@ Rc<basic2d::SceneLayout2d> AuxPopupScene::buildMenuPanel(uint32_t level) {
 	return layout;
 }
 
-Rc<basic2d::SceneLayout2d> AuxPopupScene::buildContent(SceneRegistry::Builder &&builder) {
-	// A builder registered through AuxWindow wins (fully custom content).
-	if (auto aux = AuxWindow::takeContentBuilder(_id)) {
-		if (auto layout = aux(_id)) {
-			return layout;
-		}
-	}
-	// Then the SceneRegistry one — this is how a parent menu tells us which level we are.
-	if (builder) {
-		if (auto layout = builder(this, _id)) {
-			return layout;
-		}
-	}
-	// Nothing registered: we are the menu Root opened, i.e. level 1.
-	return buildMenuPanel(1);
-}
+Rc<basic2d::SceneLayout2d> AuxPopupScene::buildContent() { return buildMenuPanel(_level); }
 
 void AuxPopupScene::handlePresented(Director *dir) {
 	basic2d::Scene2d::handlePresented(dir);

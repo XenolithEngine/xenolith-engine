@@ -194,6 +194,108 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 	return init(app, window, [](Queue::Builder &) { }, constraints);
 }
 
+// Fill `builder` with the standard 2d render graph for the current gAPI.
+//
+// Static on purpose: this is the part of scene construction that needs no Scene, so a queue can be
+// built - and cached, and compiled - before the scene or the window that will use it exists.
+// See QueueCache.
+bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
+		core::Queue::Builder &builder) {
+	if (queueInfo.damage == core::QueueDamageFlags(maxOf<uint32_t>())) {
+		// Partial redraw and frame skipping both rest on being able to preserve an image between
+		// frames, which only the lightweight queue can do; the full queue only pays for damage
+		// tracking when asked.
+		queueInfo.damage = (queueInfo.type == QueueType::Flat)
+				? (core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw
+						  | core::QueueDamageFlags::SkipEmptyFrames)
+				: core::QueueDamageFlags::None;
+	}
+
+	[[maybe_unused]]
+	auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
+	bool queueBuilt = false;
+
+#if MODULE_XENOLITH_BACKEND_VK
+	if (!queueBuilt && api == core::InstanceApi::Vulkan) {
+		if (queueInfo.type == QueueType::Flat) {
+			basic2d::vk::FlatPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				queueInfo.backgroundColor,
+				queueInfo.damage,
+			};
+
+			basic2d::vk::FlatPass::makeRenderQueue(builder, info);
+		} else {
+			basic2d::vk::ShadowPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				basic2d::vk::ShadowPass::Flags::None,
+				queueInfo.backgroundColor,
+				queueInfo.damage,
+			};
+
+			basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+		}
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
+	if (!queueBuilt && api == core::InstanceApi::WebGPU) {
+		basic2d::webgpu::MaterialVertexPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+		};
+
+		basic2d::webgpu::MaterialVertexPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
+	if (!queueBuilt && api == core::InstanceApi::Metal) {
+		basic2d::mtl::MaterialVertexPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+		};
+
+		basic2d::mtl::MaterialVertexPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_SOFT
+	if (!queueBuilt && api == core::InstanceApi::Software) {
+		// The CPU rasterizer implements the flat contract only - there is no shadow/SDF/particle
+		// path to fall back to, so a Default request is served with the flat queue anyway.
+		if (queueInfo.type != QueueType::Flat) {
+			log::source().info("Scene2d",
+					"Software backend supports the flat queue only, building it instead of the "
+					"default one");
+		}
+
+		basic2d::soft::FlatPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+			queueInfo.damage,
+		};
+
+		basic2d::soft::FlatPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+	if (!queueBuilt) {
+		log::source().error("Scene2d", "No available GAPI found");
+		return false;
+	}
+	return true;
+}
+
 bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const Callback<void(Queue::Builder &)> &cb, const core::FrameConstraints &constraints) {
 	// direct gAPI initialization
@@ -207,96 +309,7 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 		buildQueueResources(queueInfo, builder);
 
-		if (queueInfo.damage == core::QueueDamageFlags(maxOf<uint32_t>())) {
-			// Partial redraw and frame skipping both rest on being able to preserve an image between
-			// frames, which only the lightweight queue can do; the full queue only pays for damage
-			// tracking when asked.
-			queueInfo.damage = (queueInfo.type == QueueType::Flat)
-					? (core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw
-							  | core::QueueDamageFlags::SkipEmptyFrames)
-					: core::QueueDamageFlags::None;
-		}
-
-		[[maybe_unused]]
-		auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
-		bool queueBuilt = false;
-
-#if MODULE_XENOLITH_BACKEND_VK
-		if (!queueBuilt && api == core::InstanceApi::Vulkan) {
-			if (queueInfo.type == QueueType::Flat) {
-				basic2d::vk::FlatPass::RenderQueueInfo info{
-					app->getGlLoop(),
-					queueInfo.extent,
-					queueInfo.backgroundColor,
-					queueInfo.damage,
-				};
-
-				basic2d::vk::FlatPass::makeRenderQueue(builder, info);
-			} else {
-				basic2d::vk::ShadowPass::RenderQueueInfo info{
-					app->getGlLoop(),
-					queueInfo.extent,
-					basic2d::vk::ShadowPass::Flags::None,
-					queueInfo.backgroundColor,
-					queueInfo.damage,
-				};
-
-				basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
-			}
-			queueBuilt = true;
-		}
-#endif
-
-#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
-		if (!queueBuilt && api == core::InstanceApi::WebGPU) {
-			basic2d::webgpu::MaterialVertexPass::RenderQueueInfo info{
-				app->getGlLoop(),
-				queueInfo.extent,
-				queueInfo.backgroundColor,
-			};
-
-			basic2d::webgpu::MaterialVertexPass::makeRenderQueue(builder, info);
-			queueBuilt = true;
-		}
-#endif
-
-#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
-		if (!queueBuilt && api == core::InstanceApi::Metal) {
-			basic2d::mtl::MaterialVertexPass::RenderQueueInfo info{
-				app->getGlLoop(),
-				queueInfo.extent,
-				queueInfo.backgroundColor,
-			};
-
-			basic2d::mtl::MaterialVertexPass::makeRenderQueue(builder, info);
-			queueBuilt = true;
-		}
-#endif
-
-#if MODULE_XENOLITH_RENDERER_BASIC2D_SOFT
-		if (!queueBuilt && api == core::InstanceApi::Software) {
-			// The CPU rasterizer implements the flat contract only - there is no shadow/SDF/particle
-			// path to fall back to, so a Default request is served with the flat queue anyway.
-			if (queueInfo.type != QueueType::Flat) {
-				log::source().info("Scene2d",
-						"Software backend supports the flat queue only, building it instead of the "
-						"default one");
-			}
-
-			basic2d::soft::FlatPass::RenderQueueInfo info{
-				app->getGlLoop(),
-				queueInfo.extent,
-				queueInfo.backgroundColor,
-				queueInfo.damage,
-			};
-
-			basic2d::soft::FlatPass::makeRenderQueue(builder, info);
-			queueBuilt = true;
-		}
-#endif
-
-		if (!queueBuilt) {
-			log::source().error("Scene2d", "No available GAPI found");
+		if (!buildQueue(app, queueInfo, builder)) {
 			return false;
 		}
 
@@ -326,6 +339,20 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 bool Scene2d::init(Queue::Builder &&builder, const core::FrameConstraints &constraints) {
 	if (!xenolith::Scene::init(move(builder), constraints)) {
+		return false;
+	}
+
+	initialize();
+
+	return true;
+}
+
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		Rc<core::Queue> &&queue, const core::FrameConstraints &constraints) {
+	// Adopting a queue skips the whole build-and-dispatch block above: the graph already exists and
+	// is already compiled, which is the point of the cache. buildQueueResources is NOT called - the
+	// resources belong to the queue, and the queue was built once, for everyone.
+	if (!xenolith::Scene::init(sp::move(queue), constraints)) {
 		return false;
 	}
 

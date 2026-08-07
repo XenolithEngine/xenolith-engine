@@ -344,6 +344,17 @@ void ContextController::notifyWindowFocusLost(NotNull<NativeWindow> w) {
 void ContextController::notifyWindowCreated(NotNull<NativeWindow> w) {
 	_context->handleNativeWindowCreated(w);
 	_activeWindows.emplace(w);
+
+	// A modal Dialog blocks its parent through the very same counter the system dialogs use: the
+	// OS-side hints (xdg_dialog_v1, _NET_WM_STATE_MODAL, EnableWindow, a macOS child window) are
+	// advisory, and the engine is what actually stops input from reaching the parent.
+	if (auto info = w->getInfo()) {
+		if (info->type == WindowType::Dialog && hasFlag(info->flags, WindowCreationFlags::Modal)) {
+			if (auto parent = findWindow(info->parent)) {
+				retainModalBlock(parent);
+			}
+		}
+	}
 }
 
 void ContextController::notifyWindowConstraintsChanged(NotNull<NativeWindow> w,
@@ -450,6 +461,17 @@ void ContextController::performWindowTeardown(NotNull<NativeWindow> w) {
 	// keeps the window alive for the rest of this function.
 	Rc<NativeWindow> hold = *it;
 	_activeWindows.erase(it);
+
+	// Symmetric to notifyWindowCreated: releasing here rather than in notifyWindowClosed means a
+	// window whose close is refused or deferred keeps blocking its parent, which is correct — it is
+	// still on screen.
+	if (auto info = hold->getInfo()) {
+		if (info->type == WindowType::Dialog && hasFlag(info->flags, WindowCreationFlags::Modal)) {
+			if (auto parent = findWindow(info->parent)) {
+				releaseModalBlock(parent);
+			}
+		}
+	}
 
 	// Before unmapping: a dialog parented to this window must not outlive it, and its backend
 	// still needs the native parent handle (HWND / xid / NSWindow) to dismiss itself cleanly.

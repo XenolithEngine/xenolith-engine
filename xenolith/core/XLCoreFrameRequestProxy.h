@@ -46,6 +46,11 @@ public:
 	// Pick, for this frame, one of the render queues the server has announced (by name).
 	virtual void selectQueue(NotNull<core::Queue>) = 0;
 
+	// Keep the object that produced this frame's content alive until the frame is done. Local mode
+	// stores it on the real FrameRequest; remote mode ignores it (the server owns that request, and
+	// this pin never applied there).
+	virtual void setSceneRef(Rc<Ref> &&) = 0;
+
 	// Per-frame input the client owns (the command batch is the primary payload).
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) = 0;
 
@@ -75,6 +80,7 @@ public:
 	FrameRequest *getRequest() const { return _request; }
 
 	virtual void selectQueue(NotNull<core::Queue>) override;
+	virtual void setSceneRef(Rc<Ref> &&) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
 	virtual bool addInput(SpanView<const AttachmentData *>, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;
@@ -106,6 +112,7 @@ public:
 			Function<void()> &&sendCommit);
 
 	virtual void selectQueue(NotNull<core::Queue>) override;
+	virtual void setSceneRef(Rc<Ref> &&) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
 	virtual bool addInput(SpanView<const AttachmentData *>, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;

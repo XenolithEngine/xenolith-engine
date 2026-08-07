@@ -26,6 +26,7 @@
 
 #include "XLEvent.cc"
 #include "XLWindowInfo.cc"
+#include "XLWindowSceneInfo.cc"
 #include "XLContextInfo.cc"
 #include "XLContext.cc"
 #include "XLAppThread.cc"

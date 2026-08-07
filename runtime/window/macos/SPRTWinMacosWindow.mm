@@ -136,10 +136,28 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	}
 
 	const bool auxiliary = isAuxiliary();
+	const bool utility = _info->type == WindowType::Utility;
+	const bool dialog = _info->type == WindowType::Dialog;
+
 	NSWindowStyleMask style = 0;
 	if (auxiliary) {
 		// Borderless surface: no title bar, no fullscreen chrome.
 		style = NSWindowStyleMaskBorderless;
+	} else if (utility) {
+		// NOT an NSPanel, so no narrow palette title bar: NSWindowStyleMaskUtilityWindow is only
+		// honoured on NSPanel, and SPRTMacosWindow's role/fullscreen/live-resize overrides would
+		// all have to be duplicated onto a panel subclass to get it. The behaviour that actually
+		// matters - floats above its parent, never becomes main, moves with the parent - comes
+		// from the window level, configureRole: and addChildWindow: below.
+		style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+				| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
+								? NSWindowStyleMaskResizable
+								: 0);
+	} else if (dialog) {
+		style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+				| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
+								? NSWindowStyleMaskResizable
+								: 0);
 	} else if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		style = NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
 				| NSWindowStyleMaskClosable;
@@ -161,10 +179,14 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	// A borderless NSWindow covers the auxiliary roles; no separate NSPanel subclass is needed
 	// for the Metal content-view path. Auxiliary windows must not defer creation: a MoltenVK
 	// present into a never-shown deferred window returns DEVICE_LOST on the shared VkDevice.
+	// `defer:NO` for any transient window, not only the borderless ones: the MoltenVK hazard the
+	// comment above describes (a present into a never-shown deferred window returns DEVICE_LOST on
+	// the shared VkDevice) applies to any window that may be created and torn down without ever
+	// being ordered front - which is exactly what a dialog does.
 	_window = [[SPRTMacosWindow alloc] initWithContentRect:rect
 												 styleMask:style
 												   backing:NSBackingStoreBuffered
-													 defer:auxiliary ? NO : YES];
+													 defer:isTransient() ? NO : YES];
 
 	if (auxiliary) {
 		[_window setOpaque:YES];
@@ -186,6 +208,20 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		// Never a fullscreen primary space citizen.
 		_window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace
 				| NSWindowCollectionBehaviorTransient
+				| NSWindowCollectionBehaviorFullScreenAuxiliary;
+	} else if (utility) {
+		// Floats over its parent and never becomes the main window, so the document keeps its
+		// "active" chrome while the palette is up. It may still take key, or the controls in it
+		// would be dead.
+		[_window setLevel:NSFloatingWindowLevel];
+		[_window configureRole:YES allowMain:NO];
+		_window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace
+				| NSWindowCollectionBehaviorFullScreenAuxiliary;
+	} else if (dialog) {
+		// A dialog the user just asked for does take key and main; it is attached to its parent
+		// below, which is what keeps it above and moves it along.
+		[_window configureRole:YES allowMain:YES];
+		_window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace
 				| NSWindowCollectionBehaviorFullScreenAuxiliary;
 	} else {
 		[_window configureRole:YES allowMain:YES];
@@ -229,7 +265,10 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 }
 
 void MacosWindow::attachToParentWindow() {
-	if (!isAuxiliary() || _info->parent.empty()) {
+	// Any transient window, not only the borderless ones: addChildWindow: is what makes a Dialog or
+	// a Utility palette stay above its parent, travel with it and go away with it. macOS has no
+	// transient-for property - the child relationship IS the mechanism.
+	if (!isTransient() || _info->parent.empty()) {
 		return;
 	}
 	auto *parent = dynamic_cast<MacosWindow *>(_controller->findWindow(_info->parent));
@@ -319,7 +358,20 @@ void MacosWindow::mapWindow() {
 		return;
 	}
 
-	// Root (and future Dialog/Utility): show in front and activate.
+	// Dialog and Utility are WM-managed and decorated, but still belong to their parent.
+	attachToParentWindow();
+
+	if (_info->type == WindowType::Utility) {
+		// A palette must not pull activation off the document it belongs to.
+		[_window orderFront:nil];
+		_mapped = true;
+		if (_rootViewController) {
+			_rootViewController.displayLinkPaused = NO;
+		}
+		return;
+	}
+
+	// Root and Dialog: show in front and activate.
 	[_window makeKeyAndOrderFront:nil];
 	[_window orderFrontRegardless];
 	[_window orderWindow:NSWindowAbove relativeTo:0];

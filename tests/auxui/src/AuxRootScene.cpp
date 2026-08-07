@@ -23,7 +23,6 @@
 #include "XLCommon.h"
 
 #include "AuxRootScene.h"
-#include "AuxPopupScene.h"
 #include "AuxTooltipScene.h"
 
 #include "XL2dLabel.h"
@@ -35,8 +34,10 @@
 #include "XLDirector.h"
 #include "XLEntryPoint.h"
 #include "XLSimpleButton.h"
-#include "XLUiAuxWindow.h"
-#include "XLUiAuxSession.h"
+#include "XLUiSubWindow.h"
+#include "XLUiSubWindowSession.h"
+#include "AuxPopupScene.h"
+#include "XLSceneInspector.h"
 #include "XLAction.h"
 #include "XLInputListener.h"
 #include "AuxSelfTest.h"
@@ -47,25 +48,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 using simpleui::ButtonWithLabel;
-using ui::AuxWindow;
-
-static Rc<Scene> auxui_makeScene(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints) {
-	auto appWindow = static_cast<AppWindow *>(window.get());
-	auto info = appWindow->getInfo();
-
-	if (info) {
-		if (info->type == sprt::window::WindowType::Popup) {
-			return AuxPopupScene::create(app, window, constraints, info->id);
-		}
-		if (info->type == sprt::window::WindowType::Tooltip) {
-			return AuxTooltipScene::create(app, window, constraints, info->id);
-		}
-	}
-
-	return AuxRootScene::create(app, window, constraints,
-			info ? StringView(info->id) : StringView());
-}
+using ui::SubWindow;
 
 static sprt::window::WindowPlacement placementAt(Vec2 anchorSceneYUp, float parentHeight,
 		sprt::window::WindowAnchor a, sprt::window::WindowAnchor g) {
@@ -83,13 +66,15 @@ static sprt::window::WindowPlacement placementAt(Vec2 anchorSceneYUp, float pare
 }
 
 bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints, StringView id) {
+		const core::FrameConstraints &constraints) {
 	if (!basic2d::Scene2d::init(app, window, constraints)) {
 		return false;
 	}
 
-	_myWindowId = id.str<mem_std::Interface>();
 	_appWindow = static_cast<AppWindow *>(window.get());
+	if (auto info = _appWindow ? _appWindow->getInfo() : nullptr) {
+		_myWindowId = info->id;
+	}
 
 	auto content = Rc<basic2d::SceneContent2d>::create();
 	setContent(content);
@@ -158,6 +143,8 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 void AuxRootScene::handlePresented(Director *dir) {
 	basic2d::Scene2d::handlePresented(dir);
 	layoutRootPanel();
+
+	registerCommands();
 
 	runAction(Rc<RenderContinuously>::create());
 
@@ -243,10 +230,134 @@ void AuxRootScene::openMenuAt(Vec2 anchorWorld) {
 	const auto menuSize = AuxPopupScene::getMenuSize(1);
 	auto size = Extent2(uint32_t(menuSize.width), uint32_t(menuSize.height));
 
-	// Builder returns nullptr: AuxPopupScene owns the default menu (needs scene-bound More/close).
-	// AuxSession dismisses any live tip before opening the popup.
-	ui::AuxSession::instance().openPopup(_appWindow, placement, size,
-			[](StringView) { return nullptr; }, "auxui Menu");
+	// The menu's level travels with the window request, in the scene builder itself - that is what
+	// removed the id-keyed registry this used to need.
+	SubWindow::Config config;
+	config.type = sprt::window::WindowType::Popup;
+	config.placement = placement;
+	config.size = size;
+	config.title = StringView("auxui Menu");
+	config.idPrefix = StringView("menu");
+	config.scene = [](NotNull<SubWindow> surface, NotNull<AppThread> app,
+							 NotNull<core::RenderServerChannel> window,
+							 const core::FrameConstraints &c) -> Rc<Scene> {
+		return AuxPopupScene::create(app, window, c, surface, 1);
+	};
+
+	// The session drops any live tip before the menu takes over.
+	if (auto session = ui::SubWindowSession::get(_appWindow)) {
+		_menu = session->openPopup(sp::move(config));
+	}
+}
+
+// Dialog and Utility have no buttons in the panel: they are exercised from the inspector, which
+// is what lets a headless run drive them and then look at the resulting graph.
+void AuxRootScene::registerCommands() {
+	auto content = getContent();
+	if (!content || !_appWindow) {
+		return;
+	}
+
+	auto openSurface = [this](sprt::window::WindowType type, bool modal, StringView label) {
+		ui::SubWindow::Config config;
+		config.type = type;
+		config.flags = sprt::window::WindowCreationFlags::AllowClose
+				| sprt::window::WindowCreationFlags::AllowMove;
+		if (modal) {
+			config.flags |= sprt::window::WindowCreationFlags::Modal;
+		}
+		config.size = Extent2(360, 200);
+		config.title = label;
+		config.idPrefix = type == sprt::window::WindowType::Dialog ? StringView("dialog")
+																   : StringView("utility");
+		config.content = [label = label.str<Interface>()](
+								 NotNull<ui::SubWindow> surface) -> Rc<basic2d::SceneLayout2d> {
+			auto layout = Rc<basic2d::SceneLayout2d>::create();
+			layout->setContentSize(Size2(360.0f, 200.0f));
+			layout->setName("aux-dialog");
+
+			auto bg = layout->addChild(Rc<basic2d::Layer>::create());
+			bg->setAnchorPoint(Anchor::BottomLeft);
+			bg->setPosition(Vec2::ZERO);
+			bg->setContentSize(Size2(360.0f, 200.0f));
+			bg->setColor(Color(0x24303A));
+
+			auto title = layout->addChild(Rc<basic2d::Label>::create());
+			title->setString(label);
+			title->setFontSize(18);
+			title->setColor(Color::White);
+			title->setAnchorPoint(Anchor::Middle);
+			title->setPosition(Vec2(180.0f, 140.0f));
+
+			auto close = layout->addChild(Rc<simpleui::ButtonWithLabel>::create("Close"));
+			close->setAnchorPoint(Anchor::Middle);
+			close->setPosition(Vec2(180.0f, 60.0f));
+			close->setContentSize(Size2(120.0f, 32.0f));
+			close->setColor(Color(0x3A3A3A));
+			close->setCallback([surface = Rc<ui::SubWindow>(surface)] { surface->dismiss(); });
+
+			return layout;
+		};
+		return ui::SubWindow::open(_appWindow, sp::move(config));
+	};
+
+	inspector::addCommand(content, "open-dialog", "Open a modal Dialog surface",
+			[this, openSurface](Value &&, Function<void(Value &&)> &&done) {
+		_dialog = openSurface(sprt::window::WindowType::Dialog, true, "auxui Dialog");
+		Value r;
+		r.setBool(_dialog != nullptr, "opened");
+		r.setBool(_dialog && _dialog->isNative(), "native");
+		if (_dialog) {
+			r.setString(_dialog->getId(), "id");
+		}
+		done(sp::move(r));
+	});
+
+	inspector::addCommand(content, "open-utility", "Open a Utility palette surface",
+			[this, openSurface](Value &&, Function<void(Value &&)> &&done) {
+		_utility = openSurface(sprt::window::WindowType::Utility, false, "auxui Utility");
+		Value r;
+		r.setBool(_utility != nullptr, "opened");
+		r.setBool(_utility && _utility->isNative(), "native");
+		done(sp::move(r));
+	});
+
+	inspector::addCommand(content, "dismiss-dialog", "Dismiss only the Dialog surface",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value r;
+		r.setBool(_dialog != nullptr, "had");
+		if (_dialog) {
+			_dialog->dismiss();
+			_dialog = nullptr;
+		}
+		done(sp::move(r));
+	});
+
+	inspector::addCommand(content, "dismiss-utility", "Dismiss only the Utility surface",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value r;
+		r.setBool(_utility != nullptr, "had");
+		if (_utility) {
+			_utility->dismiss();
+			_utility = nullptr;
+		}
+		done(sp::move(r));
+	});
+
+	inspector::addCommand(content, "dismiss-aux", "Dismiss the Dialog / Utility surfaces",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value r;
+		r.setBool(_dialog != nullptr, "hadDialog");
+		if (_dialog) {
+			_dialog->dismiss();
+			_dialog = nullptr;
+		}
+		if (_utility) {
+			_utility->dismiss();
+			_utility = nullptr;
+		}
+		done(sp::move(r));
+	});
 }
 
 void AuxRootScene::openTooltipAt(Vec2 anchorWorld, StringView text) {
@@ -254,11 +365,19 @@ void AuxRootScene::openTooltipAt(Vec2 anchorWorld, StringView text) {
 		return;
 	}
 	const float parentH = getContent() ? getContent()->getContentSize().height : 0.0f;
-	ui::AuxSession::instance().showTip(_appWindow, text, anchorWorld, parentH);
+	if (auto session = ui::SubWindowSession::get(_appWindow)) {
+		session->showTip(text, anchorWorld, parentH);
+	}
 }
 
-void AuxRootScene::dismissTooltip() { ui::AuxSession::instance().dismissTip(); }
+void AuxRootScene::dismissTooltip() {
+	if (auto session = ui::SubWindowSession::get(_appWindow)) {
+		session->dismissTip();
+	}
+}
 
 } // namespace stappler::xenolith::app
 
-DEFINE_SCENE_FACTORY(STAPPLER_VERSIONIZED_NAMESPACE::xenolith::app::auxui_makeScene)
+// Only the root window comes through the process-wide factory now: Popup/Tooltip windows name
+// their own scene in the window data (SubWindow::Config::scene), so there is nothing to dispatch.
+DEFINE_PRIMARY_SCENE_CLASS(STAPPLER_VERSIONIZED_NAMESPACE::xenolith::app::AuxRootScene)

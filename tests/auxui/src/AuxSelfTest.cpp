@@ -28,7 +28,8 @@
 #include "XLAppWindow.h"
 #include "XLScene.h"
 #include "XL2dSceneLayout.h"
-#include "XLUiAuxSession.h"
+#include "XLUiSubWindowSession.h"
+#include "AuxPopupScene.h"
 
 #include <cstdio>
 
@@ -118,21 +119,26 @@ void AuxSelfTest::writeStatus(int code) {
 }
 
 void AuxSelfTest::evaluateReplacePhase() {
-	using TipState = ui::AuxSession::TipState;
-	auto &session = ui::AuxSession::instance();
-	check(session.getTipState() == TipState::Ready, "tip Ready after replace");
-	check(session.getTipId().starts_with("tooltip-"), "tip id is overlay tooltip-*");
-	check(ui::AuxWindow::hasOverlay(session.getTipId()), "tip overlay still parented");
+	auto session = _root ? ui::SubWindowSession::get(_root) : nullptr;
+	check(session != nullptr, "root window has a SubWindowSession");
+	check(session && session->hasTip(), "tip still up after replace");
+	check(session && !session->getTipText().empty(), "tip carries its text");
 	check(_nativeTipCreates == 0, "no native Tooltip window");
 	check(_poisonFirstFrame == 0, "no tooltip firstFrame success=0");
 	check(_submitFails == 0, "no MaterialSwapchainPass fail");
 }
+
+void AuxSelfTest::noteMenuClosed() { _menuCloseFired = true; }
 
 void AuxSelfTest::finish() {
 	if (_done) {
 		return;
 	}
 	_done = true;
+
+	// The opener must have heard that its popup went away. On the native path this callback had no
+	// caller at all before the window data carried it, so it never ran.
+	check(_menuCloseFired, "popup close callback fired");
 
 	check(_nativeTipCreates == 0, "no native Tooltip after popup race");
 	check(_poisonFirstFrame == 0, "no tooltip firstFrame success=0 after popup race");
@@ -155,12 +161,16 @@ void AuxSelfTest::startScenario(NotNull<AppWindow> root, NotNull<Scene> scene) {
 	auto *rootPtr = root.get();
 
 	scene->runAction(Rc<Sequence>::create(0.35f, [rootPtr, parentH] {
-		ui::AuxSession::instance().showTip(rootPtr, "Tip: hovering the heading",
-				Vec2(24.0f, parentH - 32.0f), parentH, kLongHide);
+		if (auto session = ui::SubWindowSession::get(rootPtr)) {
+			session->showTip("Tip: hovering the heading", Vec2(24.0f, parentH - 32.0f), parentH,
+					kLongHide);
+		}
 	}));
 	scene->runAction(Rc<Sequence>::create(0.7f, [rootPtr, parentH] {
-		ui::AuxSession::instance().showTip(rootPtr, "Tip: shown from the button",
-				Vec2(144.0f, parentH - 132.0f), parentH, kLongHide);
+		if (auto session = ui::SubWindowSession::get(rootPtr)) {
+			session->showTip("Tip: shown from the button", Vec2(144.0f, parentH - 132.0f), parentH,
+					kLongHide);
+		}
 	}));
 	scene->runAction(Rc<Sequence>::create(1.1f, [life = _life] {
 		if (life && life->test) {
@@ -168,18 +178,55 @@ void AuxSelfTest::startScenario(NotNull<AppWindow> root, NotNull<Scene> scene) {
 		}
 	}));
 
-	scene->runAction(Rc<Sequence>::create(1.4f, [] { ui::AuxSession::instance().dismissTip(); }));
-	scene->runAction(Rc<Sequence>::create(1.7f, [rootPtr, parentH] {
-		ui::AuxSession::instance().showTip(rootPtr, "Tip: race create",
-				Vec2(24.0f, parentH - 32.0f), parentH, kLongHide);
+	scene->runAction(Rc<Sequence>::create(1.4f, [rootPtr] {
+		if (auto session = ui::SubWindowSession::get(rootPtr)) {
+			session->dismissTip();
+		}
+	}));
+	scene->runAction(Rc<Sequence>::create(1.7f, [life = _life, rootPtr, parentH] {
+		auto session = ui::SubWindowSession::get(rootPtr);
+		if (!session) {
+			return;
+		}
+		session->showTip("Tip: race create", Vec2(24.0f, parentH - 32.0f), parentH, kLongHide);
 
-		sprt::window::WindowPlacement placement;
-		placement.anchorRect = IRect(200, 100, 0, 0);
-		placement.anchor = sprt::window::WindowAnchor::BottomRight;
-		placement.gravity = sprt::window::WindowAnchor::TopLeft;
-		ui::AuxSession::instance().openPopup(rootPtr, placement, Extent2(220, 220),
-				[](StringView) -> Rc<basic2d::SceneLayout2d> { return nullptr; },
-				"auxui SelfTest Menu");
+		ui::SubWindow::Config config;
+		config.type = sprt::window::WindowType::Popup;
+		config.placement.anchorRect = IRect(200, 100, 0, 0);
+		config.placement.anchor = sprt::window::WindowAnchor::BottomRight;
+		config.placement.gravity = sprt::window::WindowAnchor::TopLeft;
+		config.size = Extent2(220, 220);
+		config.title = StringView("auxui SelfTest Menu");
+		config.idPrefix = StringView("menu");
+		config.scene = [](NotNull<ui::SubWindow> surface, NotNull<AppThread> app,
+								 NotNull<core::RenderServerChannel> window,
+								 const core::FrameConstraints &c) -> Rc<Scene> {
+			return AuxPopupScene::create(app, window, c, surface, 1);
+		};
+		// The close callback is the fix this test now covers: on the native path it used to have no
+		// caller at all, so an opener could never learn that its popup was gone.
+		config.onClose = [life](NotNull<ui::SubWindow>) {
+			if (life && life->test) {
+				life->test->noteMenuClosed();
+			}
+		};
+
+		if (life && life->test) {
+			life->test->_menu = session->openPopup(sp::move(config));
+		}
+	}));
+
+	// Dismiss and assert are separate steps on purpose: on the native path dismiss() routes through
+	// the context thread and back, so the close callback cannot have fired by the time it returns.
+	// Checking in the same tick passes on the overlay path and fails on the native one - which is
+	// exactly what it did the first time this ran with a window system attached.
+	scene->runAction(Rc<Sequence>::create(2.8f, [life = _life] {
+		if (life && life->test) {
+			if (auto menu = sp::move(life->test->_menu)) {
+				life->test->_menu = nullptr;
+				menu->dismiss();
+			}
+		}
 	}));
 
 	scene->runAction(Rc<Sequence>::create(3.5f, [life = _life] {

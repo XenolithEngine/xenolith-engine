@@ -24,6 +24,7 @@
 #define TESTS_WINDOW_SRC_MULTIWINDOWLAYOUT_H_
 
 #include "TestLayout.h"
+#include "XLWindowSceneInfo.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -74,6 +75,11 @@ protected:
 	void expect(bool cond, StringView what);
 
 	basic2d::Label *_primaryLabel = nullptr;
+
+	// Handle of the second window: the object SecondaryWindow::open returned. It is what the test
+	// reaches the other window through, in place of a lookup by id.
+	Rc<WindowSceneInfo> _secondWindow;
+
 	bool _raceApplied = false;
 	bool _captureDone = false;
 	uint64_t _litPixels = 0;

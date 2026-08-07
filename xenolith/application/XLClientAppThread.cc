@@ -461,6 +461,15 @@ Rc<Director> ClientAppThread::makeDirector(NotNull<RemoteWindow> w,
 
 Rc<Scene> ClientAppThread::makeScene(NotNull<RemoteWindow> w, const core::FrameConstraints &c) {
 	Rc<Scene> scene;
+
+	// Same order as on the server: the window's own data first (see ServerAppThread::makeScene).
+	if (auto sceneInfo = w->getSceneInfo()) {
+		scene = sceneInfo->makeScene(this, w, c);
+		if (scene) {
+			return scene;
+		}
+	}
+
 	auto makeSceneSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeSceneSignature>(
 			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeSceneName);
 	if (makeSceneSymbol) {

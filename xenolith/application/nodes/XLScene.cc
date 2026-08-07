@@ -58,6 +58,21 @@ bool Scene::init(Queue::Builder &&builder, const core::FrameConstraints &constra
 	return true;
 }
 
+bool Scene::init(Rc<Queue> &&queue, const core::FrameConstraints &constraints) {
+	if (!queue || !Node::init()) {
+		return false;
+	}
+
+	setLocalZOrder(ZOrderTransparent);
+
+	_queue = sp::move(queue);
+	_ownsQueue = false;
+
+	setFrameConstraints(_constraints);
+
+	return true;
+}
+
 void Scene::renderRequest(const Rc<core::FrameRequestProxy> &req, sprt::PoolRef *pool) {
 	if (!_director) {
 		return;
@@ -134,12 +149,18 @@ void Scene::handlePresented(Director *dir) {
 		setContentSize(Size2(_constraints.getScreenSize()) / _constraints.density);
 	}
 
-	if (auto res = _queue->getInternalResource()) {
-		auto cache = dir->getResourceCache();
-		if (cache) {
-			cache->addResource(res);
-		} else {
-			log::source().error("Director", "ResourceCache is not loaded");
+	// Only for a queue this scene built. A shared queue's internal resource is registered by its
+	// owner (QueueCache) for as long as the cache entry lives; registering it again here would let
+	// whichever scene finishes first erase it for everyone (ResourceCache is name-keyed, no
+	// refcount).
+	if (_ownsQueue) {
+		if (auto res = _queue->getInternalResource()) {
+			auto cache = dir->getResourceCache();
+			if (cache) {
+				cache->addResource(res);
+			} else {
+				log::source().error("Director", "ResourceCache is not loaded");
+			}
 		}
 	}
 
@@ -150,24 +171,18 @@ void Scene::handleFinished(Director *dir) {
 	handleExit();
 
 	if (_director == dir) {
-		if (auto res = _queue->getInternalResource()) {
-			auto cache = dir->getResourceCache();
-			if (cache) {
-				cache->removeResource(res->getName());
+		if (_ownsQueue) {
+			if (auto res = _queue->getInternalResource()) {
+				auto cache = dir->getResourceCache();
+				if (cache) {
+					cache->removeResource(res->getName());
+				}
 			}
 		}
 
 		_director = nullptr;
 	}
 }
-
-void Scene::handleFrameStarted(FrameRequest &req) { req.setSceneId(sprt::retain(this)); }
-
-void Scene::handleFrameEnded(FrameRequest &req) { sprt::release(this, req.getSceneId()); }
-
-void Scene::handleFrameAttached(const FrameHandle *frame) { }
-
-void Scene::handleFrameDetached(const FrameHandle *frame) { }
 
 void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 	if (_constraints != constraints) {
@@ -202,11 +217,13 @@ void Scene::setClipContent(bool value) {
 bool Scene::isClipContent() const { return _content ? _content->isScissorEnabled() : false; }
 
 auto Scene::makeQueue(Queue::Builder &&builder) -> Rc<Queue> {
-	builder.setBeginCallback([this](FrameRequest &frame) { handleFrameStarted(frame); });
-	builder.setEndCallback([this](FrameRequest &frame) { handleFrameEnded(frame); });
-	builder.setAttachCallback([this](const FrameHandle *frame) { handleFrameAttached(frame); });
-	builder.setDetachCallback([this](const FrameHandle *frame) { handleFrameDetached(frame); });
-
+	// No begin/end/attach/detach callbacks are installed here any more. They existed only to pin
+	// this Scene's refcount for the duration of a frame, and because they captured `this` they made
+	// the queue permanently scene-specific - two scenes could never share one. The pin now rides on
+	// the FrameRequest itself (Director::acquireFrame -> FrameRequestProxy::setSceneRef), which has
+	// exactly the same lifetime and leaves the queue free of any scene identity.
+	//
+	// Queue::Builder::set*Callback remain in the API for queues that are not scene-backed.
 	return Rc<Queue>::create(move(builder));
 }
 

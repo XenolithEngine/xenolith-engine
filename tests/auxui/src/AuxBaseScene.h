@@ -25,8 +25,7 @@
 
 #include "XL2dScene.h"
 #include "XL2dSceneContent.h"
-
-#include "SceneRegistry.h"
+#include "XLUiSubWindow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -36,37 +35,36 @@ namespace app {
 
 // Common base for the auxiliary-window scenes (Popup and Tooltip).
 //
-// The scene factory (`main.cpp`) hands the new window's `WindowInfo::id` here, and the base uses
-// it to look up the per-open content builder that Root registered in `SceneRegistry` before the
-// `Context::createWindow` call. Subclasses only customise how the returned layout is presented
-// (e.g. flush against the cursor for a tooltip, fill the window for a popup).
+// Each of these scenes is produced by its own SubWindow's scene builder (SubWindow::Config::scene),
+// so everything it needs - which surface it belongs to, and for a menu, which level it is - was
+// captured at the moment the window was requested. There is no per-id lookup anywhere.
 //
 // Closing the window from inside the scene (Esc handler, menu-item activation) goes through
-// `closeThisWindow`, which routes to the context's close path. In Phase 0 that simply drops the
-// window; later phases add parent/children cascade close on top of the same entry point.
+// `closeThisWindow`, which dismisses the surface and cascades to its children.
 class AuxBaseScene : public basic2d::Scene2d {
 public:
 	virtual ~AuxBaseScene() = default;
 
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-			const core::FrameConstraints &constraints, StringView id);
+			const core::FrameConstraints &constraints, NotNull<ui::SubWindow>);
 
 	StringView getId() const { return _id; }
+
+	ui::SubWindow *getSubWindow() const { return _subWindow; }
 
 	// Close this window via AppWindow::hide. Subclasses may clear transient child UI first.
 	virtual void closeThisWindow();
 
-	// Open / dismiss a tooltip as a child of this window via the process-wide AuxSession.
+	// Open / dismiss a tooltip on THIS window's own session (one tip slot per window).
 	void showSceneTooltip(StringView text, Vec2 anchorSceneYUp);
 	void dismissSceneTooltip();
 
 protected:
-	// Subclass hook: build the content layout to push onto the scene content. `builder` is
-	// whatever Root registered for our id (or null — subclass falls back to a placeholder).
-	virtual Rc<basic2d::SceneLayout2d> buildContent(SceneRegistry::Builder &&builder) = 0;
+	// Subclass hook: build the content layout to push onto the scene content.
+	virtual Rc<basic2d::SceneLayout2d> buildContent() = 0;
 
-	// Push the built layout. Called from handlePresented so the content is constructed on the
-	// app thread (where the registry must be touched) and after the director is fully wired.
+	// Push the built layout. Called from handlePresented, so the content is constructed after the
+	// director is fully wired and can reach back through the scene.
 	// Also starts the frame pump — see the RenderContinuously note in the implementation.
 	void pushContentLayout();
 
@@ -74,6 +72,9 @@ protected:
 	// does not need to reach back through the director (Director has no public RenderServerChannel
 	// accessor today).
 	AppWindow *_appWindow = nullptr;
+
+	// The surface this scene belongs to; also how it dismisses itself.
+	Rc<ui::SubWindow> _subWindow;
 
 	String _id;
 	Rc<basic2d::SceneContent2d> _content;

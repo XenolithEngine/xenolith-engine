@@ -873,6 +873,18 @@ Rc<Director> ServerAppThread::makeDirector(NotNull<AppWindow> w, const core::Fra
 
 Rc<Scene> ServerAppThread::makeScene(NotNull<AppWindow> w, const core::FrameConstraints &c) {
 	Rc<Scene> scene;
+
+	// The window's own data wins: a window created with a WindowSceneInfo says what it runs, so
+	// nothing has to be looked up by id afterwards.
+	if (auto sceneInfo = w->getSceneInfo()) {
+		scene = sceneInfo->makeScene(this, w, c);
+		if (scene) {
+			return scene;
+		}
+	}
+
+	// Fallback for windows the application did not create itself — above all the root window,
+	// whose WindowInfo is built from the command line before the app thread exists.
 	auto makeSceneSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeSceneSignature>(
 			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeSceneName);
 	if (makeSceneSymbol) {

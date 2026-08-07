@@ -27,22 +27,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-// Scene presented inside a Tooltip window. The content is supplied the same way as for Popup
-// (per-id builder in SceneRegistry), with its own placeholder fallback.
+// Scene presented inside a Tooltip window, on the rare path where one is materialized natively.
+// The engine's default is an in-scene tip (SubWindow::showTooltip sets preferNative=false).
 class AuxTooltipScene : public AuxBaseScene {
 public:
 	static Rc<AuxTooltipScene> create(NotNull<AppThread> app,
 			NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints,
-			StringView id) {
+			NotNull<ui::SubWindow> subWindow) {
 		auto ret = Rc<AuxTooltipScene>::create();
-		if (ret && ret->init(app, window, constraints, id)) {
+		if (ret && ret->init(app, window, constraints, subWindow)) {
 			return ret;
 		}
 		return nullptr;
 	}
 
 protected:
-	virtual Rc<basic2d::SceneLayout2d> buildContent(SceneRegistry::Builder &&builder) override;
+	virtual Rc<basic2d::SceneLayout2d> buildContent() override;
 
 	virtual void handlePresented(Director *) override;
 };

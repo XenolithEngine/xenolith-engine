@@ -88,7 +88,10 @@ using InputButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 using InputKeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 SP_PUBLIC extern InputEventMask EventMaskTouch;
-SP_PUBLIC extern InputEventMask EventMaskKey;
+
+// Was declared as EventMaskKey while XLInputListener.cc defined EventMaskKeyboard, so the first
+// user of either name got a link error. The definition's spelling wins.
+SP_PUBLIC extern InputEventMask EventMaskKeyboard;
 
 SP_PUBLIC InputButtonMask makeButtonMask(sprt::initializer_list<InputMouseButton> &&);
 SP_PUBLIC InputButtonMask makeButtonMask(InputMouseButton);

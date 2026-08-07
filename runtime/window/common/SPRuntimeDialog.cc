@@ -191,12 +191,31 @@ void ContextController::cancelWindowDialogs(NotNull<NativeWindow> w, Status st) 
 
 void ContextController::raiseWindowDialogs(NotNull<NativeWindow> w) {
 	auto it = _dialogs.find(w.get());
-	if (it == _dialogs.end()) {
+	if (it != _dialogs.end()) {
+		for (auto &handle : it->second) {
+			if (handle && handle->isActive()) {
+				handle->raise();
+			}
+		}
+	}
+
+	// Modal Dialog WINDOWS block their parent through the same counter, so a click on the blocked
+	// parent has to point at them too — otherwise the user gets a window that ignores them with
+	// nothing visible to explain why.
+	//
+	// DemandsAttention rather than a raise primitive: it is the portable "look at me" every desktop
+	// backend already implements, and it leaves the decision to the WM, which is what the user's
+	// focus-stealing settings are for. A linear scan is fine; the live window count is tiny.
+	auto info = w->getInfo();
+	if (!info) {
 		return;
 	}
-	for (auto &handle : it->second) {
-		if (handle && handle->isActive()) {
-			handle->raise();
+	for (auto *child : _allWindows) {
+		auto ci = child->getInfo();
+		if (ci && ci->type == WindowType::Dialog && hasFlag(ci->flags, WindowCreationFlags::Modal)
+				&& ci->parent == info->id
+				&& hasFlag(ci->capabilities, WindowCapabilities::DemandsAttentionState)) {
+			child->enableState(WindowState::DemandsAttention);
 		}
 	}
 }

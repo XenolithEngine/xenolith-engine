@@ -35,16 +35,17 @@ public:
 
 	static Rc<AuxPopupScene> create(NotNull<AppThread> app,
 			NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints,
-			StringView id) {
+			NotNull<ui::SubWindow> subWindow, uint32_t level) {
 		auto ret = Rc<AuxPopupScene>::create();
-		if (ret && ret->init(app, window, constraints, id)) {
+		if (ret && ret->init(app, window, constraints, subWindow, level)) {
 			return ret;
 		}
 		return nullptr;
 	}
 
-	// Content for a menu at `level`. Public because the builder a parent menu registers for its
-	// child window (SceneRegistry) is what carries the level across the window boundary.
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+			const core::FrameConstraints &constraints, NotNull<ui::SubWindow>, uint32_t level);
+
 	Rc<basic2d::SceneLayout2d> buildMenuPanel(uint32_t level);
 
 	// Window size a menu at `level` needs — the parent has to pass it to createWindow before the
@@ -52,7 +53,9 @@ public:
 	static Size2 getMenuSize(uint32_t level);
 
 protected:
-	virtual Rc<basic2d::SceneLayout2d> buildContent(SceneRegistry::Builder &&builder) override;
+	using AuxBaseScene::init;
+
+	virtual Rc<basic2d::SceneLayout2d> buildContent() override;
 
 	virtual void handlePresented(Director *) override;
 
@@ -64,6 +67,11 @@ protected:
 	void runHoverStress(bool alsoRefresh);
 
 	basic2d::SceneLayout2d *_menuLayout = nullptr;
+
+	// The submenu this menu opened, if any. Held so the chain has an owner other than the window
+	// system - dismissing this level takes its children with it.
+	Rc<ui::SubWindow> _childMenu;
+
 	uint32_t _level = 1;
 };
 

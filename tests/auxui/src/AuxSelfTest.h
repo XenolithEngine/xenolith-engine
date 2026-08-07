@@ -27,6 +27,8 @@
 
 #include "SPLog.h"
 
+#include "XLUiSubWindow.h"
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppWindow;
@@ -46,6 +48,13 @@ public:
 	void onLogLine(StringView line);
 
 	bool isDone() const { return _done; }
+
+	// Called from the menu's close callback. Public because that callback is a plain closure
+	// registered on the SubWindow, not a member.
+	void noteMenuClosed();
+
+	// The menu the scenario opened. Public for the same reason.
+	Rc<ui::SubWindow> _menu;
 
 protected:
 	struct Lifetime : public Ref {
@@ -67,6 +76,9 @@ protected:
 	uint32_t _checks = 0;
 	uint32_t _failures = 0;
 	bool _done = false;
+
+	// Set by noteMenuClosed(): proves the close callback fired on whichever path materialized.
+	bool _menuCloseFired = false;
 
 	uint32_t _nativeTipCreates = 0;
 	uint32_t _poisonFirstFrame = 0;

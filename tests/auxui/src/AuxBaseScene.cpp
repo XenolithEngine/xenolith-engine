@@ -28,17 +28,18 @@
 #include "XLAppWindow.h"
 #include "XLDirector.h"
 #include "XLAction.h"
-#include "XLUiAuxSession.h"
+#include "XLUiSubWindowSession.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool AuxBaseScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints, StringView id) {
+		const core::FrameConstraints &constraints, NotNull<ui::SubWindow> subWindow) {
 	if (!Scene2d::init(app, window, constraints)) {
 		return false;
 	}
 
-	_id = id.str<mem_std::Interface>();
+	_subWindow = subWindow.get();
+	_id = subWindow->getId().str<mem_std::Interface>();
 	_appWindow = static_cast<AppWindow *>(window.get());
 
 	_content = Rc<basic2d::SceneContent2d>::create();
@@ -54,8 +55,7 @@ void AuxBaseScene::pushContentLayout() {
 		return;
 	}
 
-	auto builder = SceneRegistry::take(_id);
-	_content->pushLayout(buildContent(sprt::move(builder)));
+	_content->pushLayout(buildContent());
 
 	// Timed phases / hover-stress Sequences only advance while frames are produced. Aux windows
 	// are otherwise on-demand and freeze without pointer motion — keep a quiet pump running.
@@ -67,27 +67,26 @@ void AuxBaseScene::showSceneTooltip(StringView text, Vec2 anchorSceneYUp) {
 		return;
 	}
 	const float height = getContent() ? getContent()->getContentSize().height : 0.0f;
-	ui::AuxSession::instance().showTip(_appWindow, text, anchorSceneYUp, height);
+	if (auto session = ui::SubWindowSession::get(_appWindow)) {
+		session->showTip(text, anchorSceneYUp, height);
+	}
 }
 
-void AuxBaseScene::dismissSceneTooltip() { ui::AuxSession::instance().dismissTip(); }
-
-void AuxBaseScene::closeThisWindow() {
+void AuxBaseScene::dismissSceneTooltip() {
 	if (!_appWindow) {
 		return;
 	}
-	// Ordered tip dismiss before this popup closes (cascade would tear it down anyway).
-	ui::AuxSession::instance().dismissTip();
-	Rc<AppWindow> w = _appWindow;
-	if (auto dir = w->getDirector()) {
-		if (auto app = dir->getApplication()) {
-			app->performOnAppThread([w = sprt::move(w)] {
-				if (w) {
-					w->hide();
-				}
-			}, w.get());
-			return;
-		}
+	if (auto session = ui::SubWindowSession::get(_appWindow)) {
+		session->dismissTip();
+	}
+}
+
+void AuxBaseScene::closeThisWindow() {
+	// Ordered tip dismiss before this surface goes: the cascade would tear it down anyway, but a
+	// tip that outlives its own scene by even one frame is a visible flicker.
+	dismissSceneTooltip();
+	if (_subWindow) {
+		_subWindow->dismiss();
 	}
 }
 
