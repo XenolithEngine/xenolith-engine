@@ -12,10 +12,11 @@
    =========================================================================== */
 
 :root {
-	--window: #050808; /* the area behind the packages table */
-	--surface: #0f110e; /* window chrome: title bar, header, buttons */
-	--surface-alt: #111518; /* footer */
-	--control: #292929; /* unchecked checkbox, neutral badge */
+	/* Tauri UI Kit tokens (xenolith-installer/ui/src/app.css) */
+	--window: #0d0d0d; /* --xeno-bg-page — packages table / page */
+	--surface: #1a1a1a; /* --xeno-bg — title bar, header */
+	--surface-alt: #1a1a1a; /* footer (same surface family) */
+	--control: #292929; /* --xeno-surface-3 */
 
 	--accent: #fcb400;
 	--accent-hover: #e8a800;
@@ -27,7 +28,7 @@
 	--text-title: #cccccc;
 
 	--hover: #444444;
-	--overlay: rgba(5, 7, 8, 0.85);
+	--overlay: rgba(0, 0, 0, 0.55); /* Tauri `.overlay` */
 
 	--radius-s: 5px;
 	--radius-m: 10px;
@@ -70,6 +71,8 @@ button > label {
 button > icon {
 	width: 20px;
 	height: 20px;
+	/* IconSprite only reads InheritedColorStyle on itself — not ancestors. */
+	color: #ffffff;
 }
 
 button.primary {
@@ -93,6 +96,53 @@ button.primary > label {
 button.primary > icon {
 	width: 18px;
 	height: 18px;
+	color: var(--on-accent);
+}
+
+/* Ghost button: muted fill + outline (outline-* only works on typed widgets). Do NOT use
+   background-color:transparent — alpha on colour zeroes subtree opacity and kills the label. */
+button.ghost {
+	background-color: var(--surface);
+	width: 240px;
+	height: var(--row-h);
+	border-radius: var(--radius-m);
+	outline-color: #424242;
+	outline-width: 1px;
+}
+
+button.ghost > label {
+	color: var(--text-dim);
+	font-size: 14px;
+	white-space: nowrap;
+}
+
+button.ghost > icon {
+	width: 18px;
+	height: 18px;
+	color: #ffffff;
+}
+
+button.ghost:hover {
+	background-color: var(--hover);
+}
+
+/* Destructive button (delete/uninstall confirm): the UI Kit danger red #ff6b6b, dark text. */
+button.danger {
+	background-color: #ff6b6b;
+	width: 240px;
+	height: var(--row-h);
+	border-radius: var(--radius-m);
+}
+
+button.danger > label {
+	color: #1a1a1a;
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+button.danger:hover {
+	background-color: #e85555;
 }
 
 /* ui::Checkbox is a Panel: only background-color and border-radius route to its paint, an
@@ -122,8 +172,10 @@ badge {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-basis: fit-content;
-	padding: 4px 12px;
+	flex: 0 0 fit-content;
+	width: fit-content;
+	height: 22px;
+	padding: 0 12px;
 	border-radius: var(--radius-s);
 	background-color: var(--control);
 }
@@ -136,15 +188,23 @@ badge > label {
 }
 
 badge.installed {
-	background-color: var(--accent-dim);
+	background-color: #3d3010;
 }
 
 badge.installed > label {
 	color: var(--accent);
 }
 
+badge.update {
+	background-color: #4a3a10;
+}
+
+badge.update > label {
+	color: var(--accent);
+}
+
 badge.not-installed {
-	background-color: transparent;
+	background-color: var(--control);
 }
 
 /* ===========================================================================
@@ -165,12 +225,73 @@ badge.not-installed {
 	height: 100%;
 }
 
+/* Shell children of #installer-layout: placement via `order`, stacking via `-xl-z-order`.
+   Equal `order` falls back to z-order for placement — that is what shoved the header to the
+   bottom when it got -xl-z-order:12 with order:0 (same as the tab bodies). */
+#installer-layout > #title-bar {
+	order: 0;
+	-xl-z-order: 0;
+}
+
+#installer-layout > .pkg-header {
+	order: 1;
+	-xl-z-order: 12;
+	flex-shrink: 0;
+}
+
+#installer-layout > #packages-area,
+#installer-layout > #projects-area,
+#installer-layout > .projects-area {
+	order: 2;
+	-xl-z-order: 0;
+}
+
+/* Header tabs. Button chrome flips via `.selected` on the button.
+   Label colour MUST flip via a class on the label itself — parent-class changes do not
+   re-resolve the child, and InheritedColorStyle beats setLabelColor. */
+button.nav-tab {
+	width: 96px;
+	height: 28px;
+	flex-shrink: 0;
+	background-color: var(--surface);
+	border-radius: 6px;
+	outline-width: 0px;
+}
+
+button.nav-tab.selected {
+	background-color: rgba(252, 180, 0, 0.22);
+	outline-color: var(--accent);
+	outline-width: 1px;
+}
+
+button.nav-tab:hover {
+	background-color: var(--hover);
+}
+
+button.nav-tab.selected:hover {
+	background-color: rgba(252, 180, 0, 0.30);
+}
+
+label.nav-tab-off {
+	color: var(--text-dim);
+	font-size: 13px;
+	font-weight: 600;
+}
+
+label.nav-tab-on {
+	color: var(--accent);
+	font-size: 13px;
+	font-weight: 600;
+}
+
 #title-bar {
 	height: var(--title-bar-h);
+	flex-shrink: 0;
 	display: flex;
 	flex-direction: row;
 	width: 100%;
 	color: var(--text-dim);
+	background-color: var(--surface);
 }
 
 #title-bar > .os-button {
@@ -270,17 +391,20 @@ badge.not-installed {
 		height: 14px;
 	}
 
-	/* no distinct title pill: paint the panel with the window background so it blends
-	   (no dark bands above/below), but keep opacity 1 — `background-color: transparent` would
-	   set the layer's opacity to 0 (resolver maps bg-color with withOpacity=true) and hide the
-	   title text along with the pill. */
+	/* Full-bleed title strip: same colour as the bar, flex-centres the label with the
+	   traffic lights. Do NOT set -xl-z-order negative — Node draws z<0 children BEFORE
+	   the parent's own Layer quad, so a negative z title would be covered by TitleBar's
+	   fill and the text would vanish. Buttons still win via their render pass. Height is
+	   a literal: var() inside @media has failed to apply here before. */
 	#title-bar > .title-line {
 		position: absolute;
 		left: 0;
 		right: 0;
-		top: 4px;
+		top: 0;
+		height: 32px;
+		margin: 0;
 		flex-grow: 0;
-		background-color: var(--surface);
+		background-color: #0f110e;
 	}
 
 	/* native macOS title weight (titleBarFontOfSize = bold) */
@@ -306,10 +430,13 @@ badge.not-installed {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	column-gap: 16px;
+	column-gap: 12px;
 	height: 56px;
+	flex-shrink: 0;
 	padding: 0 24px;
 	background-color: var(--surface);
+	/* order / -xl-z-order for this node as a layout child are set on
+	   #installer-layout > .pkg-header — do not set them here (ties send it to the bottom). */
 }
 
 .pkg-header .pkg-title {
@@ -317,11 +444,10 @@ badge.not-installed {
 	font-size: 18px;
 	font-weight: 700;
 	white-space: nowrap;
+	flex-shrink: 0;
 }
 
-/* grow-only spacer between the title and the meta labels — pushes meta to the right edge. The
-   engine's flex has NO auto-margins (margin-left:auto is ignored), so an explicit flex-grow:1
-   spacer is the way to right-align within a flex row. */
+/* Push release/native/gear to the right; tabs sit between title and this spacer (Tauri). */
 .pkg-header .pkg-spacer {
 	flex-grow: 1;
 }
@@ -346,11 +472,144 @@ badge.not-installed {
 	height: 64px;
 	padding: 0 24px;
 	background-color: var(--surface-alt);
+	order: 2;
+	-xl-z-order: 10;
+}
+
+.pkg-footer > button.ghost {
+	width: 140px;
+	height: var(--row-h);
+	outline-color: #424242;
+	outline-width: 1px;
+	background-color: var(--surface-alt);
+}
+
+/* Must beat `.pkg-footer > button.ghost` (same specificity, later source) or hover is a no-op. */
+.pkg-footer > button.ghost:hover {
+	background-color: var(--hover);
+}
+
+.pkg-footer > button.ghost > label {
+	color: var(--text-dim);
+	font-size: 14px;
+}
+
+.pkg-footer > button.ghost > icon {
+	width: 16px;
+	height: 16px;
+	color: #ffffff;
+}
+
+.pkg-footer > button.footer-refresh {
+	width: 160px;
+}
+
+.pkg-footer > button.install-selected {
+	width: 200px;
+}
+
+/* Disabled only — when selected count > 0 this must match Refresh ghost exactly. */
+.pkg-footer > button.install-selected.disabled {
+	outline-color: #333333;
+}
+
+.pkg-footer > button.install-selected.disabled > label {
+	color: #666666;
+}
+
+.pkg-footer > button.footer-install-all {
+	width: 220px;
+}
+
+.pkg-footer > button.primary.footer-install-all {
+	background-color: var(--accent);
+}
+
+.pkg-footer > button.primary.footer-install-all:hover {
+	background-color: var(--accent-hover);
+}
+
+.pkg-footer > button.primary.footer-install-all > label,
+.pkg-footer > button.primary.footer-install-all > icon {
+	color: var(--on-accent);
+}
+
+/* Gear dropdown rows — solid hit target, readable label. */
+button.gear-item {
+	width: 220px;
+	height: 36px;
+	background-color: #2a2a2a;
+	border-radius: 6px;
+	outline-color: #424242;
+	outline-width: 1px;
+}
+
+button.gear-item > label {
+	color: #ffffff;
+	font-size: 13px;
+	white-space: nowrap;
+}
+
+button.gear-item:hover {
+	background-color: var(--hover);
+}
+
+/* Icon-only controls: match the parent surface; colour must be on `icon` itself
+   (IconSprite reads InheritedColorStyle on its own node only). */
+.pkg-header > button.gear {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background-color: var(--surface);
+}
+
+.pkg-header > button.gear:hover {
+	background-color: var(--hover);
+}
+
+.pkg-header > button.gear > icon {
+	width: 18px;
+	height: 18px;
+	color: #ffffff;
+}
+
+button.group-toggle {
+	width: 28px;
+	height: 28px;
+	border-radius: 6px;
+	background-color: var(--window);
+}
+
+button.group-toggle > icon {
+	width: 18px;
+	height: 18px;
+	color: #ffffff;
+}
+
+button.c-trash {
+	width: 28px;
+	height: 28px;
+	border-radius: 6px;
+	background-color: var(--window);
+}
+
+button.c-trash:hover {
+	background-color: var(--control);
+}
+
+button.c-trash > icon {
+	width: 16px;
+	height: 16px;
+	color: #ffffff;
 }
 
 .pkg-scroll {
 	flex: 1;
 	width: 100%;
+	/* Sits between the header (order 0) and footer (order 2) in placement, and BELOW both in draw
+	   order so they cover the rows that escape its unclipped bottom edge. */
+	order: 1;
+	-xl-z-order: 0;
 }
 
 /* A row: check slot | name | size | status. There are no row separators — `border-bottom` does
@@ -412,7 +671,7 @@ badge.not-installed {
 }
 
 .pkg-row .c-status {
-	flex: 0 0 200px;
+	flex: 0 0 220px;
 	align-self: stretch;
 	display: flex;
 	flex-direction: row;
@@ -427,25 +686,6 @@ badge.not-installed {
 	font-size: 12px;
 	font-weight: 600;
 	text-transform: uppercase;
-}
-
-/* Uninstall control on an installed row — a ui::Button with only an icon, so it hovers and taps
-   like every other button instead of carrying a hand-rolled InputListener. */
-button.c-trash {
-	width: 24px;
-	height: 24px;
-	border-radius: 12px;
-	background-color: transparent;
-}
-
-button.c-trash:hover {
-	background-color: var(--control);
-}
-
-button.c-trash > icon {
-	width: 20px;
-	height: 20px;
-	color: var(--text-dim);
 }
 
 /* ===========================================================================
@@ -465,4 +705,300 @@ button.c-trash > icon {
 .loading-label {
 	color: var(--text);
 	font-size: 14px;
+}
+
+/* ===========================================================================
+   Confirm dialog — in-scene modal mirroring Tauri UI Kit
+   (xenolith-installer/ui/src/App.svelte `.overlay` / `.dialog` / `.btn`):
+     overlay dim rgba(0,0,0,0.55); dialog 380×128, padding 20px,
+     border 1px #424242, bg #232323, radius 10 (chrome = LayerRounded in C++);
+     actions flex-end gap 10px; Cancel = ghost; confirm = primary gold or danger red.
+   =========================================================================== */
+
+#confirm-overlay {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+}
+
+#confirm-overlay .confirm-dim {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	-xl-z-order: 0;
+}
+
+#confirm-overlay .confirm-card {
+	width: 380px;
+	height: 172px;
+	-xl-z-order: 1;
+}
+
+/* Tauri `.dialog { padding: 20px }` — title + message pack at top, actions pinned bottom.
+   Sized by code to the card; do not use position:absolute here (it fought the first style pass).
+   Keep body above Solid card chrome via draw order (no -xl-z-order fight with border/bg). */
+#confirm-overlay .confirm-body {
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-start;
+	width: 100%;
+	height: 100%;
+	padding: 20px;
+	/* Title → message: 24px so glyph boxes don't look glued (15px bold + 13px body). */
+	row-gap: 24px;
+}
+
+#confirm-overlay .confirm-title {
+	color: var(--text);
+	font-size: 15px;
+	font-weight: 700;
+	margin-bottom: 0;
+}
+
+#confirm-overlay .confirm-message {
+	color: var(--text-dim);
+	font-size: 13px;
+	width: 340px;
+	/* Space before action row; row-gap already separates title/message. */
+	margin-bottom: 2px;
+}
+
+/* Tauri `.dialog-actions { justify-content: flex-end; gap: 10px }` */
+#confirm-overlay .confirm-actions {
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-end;
+	column-gap: 10px;
+	margin-top: auto;
+}
+
+/* Compact dialog buttons (Tauri `.btn` padding 6px 16px, radius-control 6px). */
+#confirm-overlay button.ghost,
+#confirm-overlay button.primary,
+#confirm-overlay button.danger {
+	width: 100px;
+	height: 32px;
+	border-radius: 6px;
+}
+
+#confirm-overlay button.ghost {
+	background-color: transparent;
+	outline-color: rgba(255, 255, 255, 0.3);
+	outline-width: 1px;
+}
+
+#confirm-overlay button.ghost:hover {
+	background-color: var(--hover);
+	outline-color: rgba(255, 255, 255, 0.3);
+	outline-width: 1px;
+}
+
+#confirm-overlay button.ghost > label {
+	color: var(--text);
+	font-size: 13px;
+}
+
+#confirm-overlay button.primary:hover {
+	background-color: var(--accent-hover);
+}
+
+#confirm-overlay button.danger:hover {
+	background-color: #e85555;
+}
+
+#confirm-overlay button.primary > label,
+#confirm-overlay button.danger > label {
+	color: #1a1a1a;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+/* ===========================================================================
+   Projects tab
+   =========================================================================== */
+
+#projects-area,
+.projects-area {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	width: 100%;
+	background-color: var(--window);
+}
+
+.proj-pane {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	width: 100%;
+}
+
+.proj-scroll {
+	flex: 1;
+	width: 100%;
+	order: 1;
+}
+
+/* Bottom console: solid fill + scissor + high z so scroll rows never bleed through.
+   Tall enough to read a real build log; list keeps the leftover flex space. */
+.proj-console-panel {
+	display: flex;
+	flex-direction: column;
+	height: 280px;
+	flex-shrink: 0;
+	width: 100%;
+	padding: 10px 16px;
+	background-color: #111111;
+	order: 2;
+	-xl-z-order: 10;
+}
+
+.proj-console {
+	flex: 1;
+	width: 100%;
+	color: #b8b8b8;
+	font-size: 11px;
+	white-space: pre-wrap;
+}
+
+.proj-footer {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	column-gap: 12px;
+	height: 64px;
+	padding: 0 24px;
+	background-color: var(--surface-alt);
+	order: 3;
+	-xl-z-order: 11;
+}
+
+.proj-footer > button.ghost {
+	width: 160px;
+	height: var(--row-h);
+	outline-color: #424242;
+	outline-width: 1px;
+}
+
+.proj-footer > button.primary {
+	width: 200px;
+}
+
+.proj-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	column-gap: 10px;
+	height: 56px;
+	padding: 0 24px;
+	width: 100%;
+}
+
+.proj-row-name {
+	flex: 0 0 160px;
+	color: var(--text);
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.proj-row-path {
+	flex: 1;
+	color: var(--text-dim);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+button.proj-row-btn {
+	width: 100px;
+	height: 32px;
+}
+
+button.proj-row-btn > label {
+	font-size: 12px;
+}
+
+button.proj-row-btn > icon {
+	width: 14px;
+	height: 14px;
+}
+
+button.proj-row-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
+}
+
+button.proj-row-icon > icon {
+	width: 16px;
+	height: 16px;
+	color: #ffffff;
+}
+
+.proj-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	padding: 24px;
+}
+
+.proj-empty-label {
+	color: var(--text-dim);
+	font-size: 14px;
+}
+
+.proj-form-title {
+	color: var(--text);
+	font-size: 18px;
+	font-weight: 700;
+	margin: 16px 24px 8px 24px;
+}
+
+.proj-field-label {
+	color: var(--text-dim);
+	font-size: 12px;
+	margin: 12px 24px 4px 24px;
+}
+
+.proj-location {
+	color: var(--text);
+	font-size: 13px;
+	margin: 0 24px;
+}
+
+.proj-status {
+	color: var(--accent);
+	font-size: 12px;
+	margin: 12px 24px;
+}
+
+button.proj-back {
+	width: 120px;
+	height: 32px;
+	margin: 16px 24px 0 24px;
+}
+
+button.proj-browse {
+	width: 120px;
+	height: 32px;
+	margin: 8px 24px;
+}
+
+button.proj-create {
+	width: 160px;
+	height: var(--row-h);
+	margin: 16px 24px;
+}
+
+.proj-input {
+	width: 360px;
+	height: 36px;
+	margin: 0 24px;
+	background-color: var(--control);
 }

@@ -46,6 +46,15 @@ public:
 	virtual void handleEnter(Scene *) override;
 	virtual void handleContentSizeDirty() override;
 
+	// Single modal slot shared by the confirm dialog and the gear popup: presenting one dismisses
+	// whatever was up. It lives here, not in a file-scope Rc, so the overlay dies with the scene
+	// instead of at static destruction — long after the renderer has gone.
+	void presentOverlay(basic2d::SceneLayout2d *overlay);
+	// No-op unless `overlay` is still the current one, so a stale dismiss cannot close a newer
+	// dialog that replaced it.
+	void dismissOverlay(basic2d::SceneLayout2d *overlay);
+	basic2d::SceneLayout2d *getModalOverlay() const { return _modalOverlay; }
+
 protected:
 	// Hides the overlay, stops the spinner and returns the renderer to on-demand frames.
 	void hideLoadingState();
@@ -63,7 +72,11 @@ protected:
 
 	Rc<InstallerController> _controller;
 	Rc<InstallerLayout> _layout;
+	Rc<basic2d::SceneLayout2d> _modalOverlay;
 };
+
+// The content behind `window`, or nullptr — how the dialog/gear helpers reach the modal slot.
+InstallerSceneContent *getSceneContent(NotNull<AppWindow> window);
 
 } // namespace stappler::xenolith::installer
 

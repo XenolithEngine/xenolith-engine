@@ -140,6 +140,27 @@ public:
 
 	Rc<core::DependencyEvent> addTextureChars(const Rc<FontFaceSet> &, SpanView<CharLayoutData>);
 
+	// The glyph set a node laid out against. Record it at layout time and hand it back to
+	// isGlyphGenerationUploaded() on every later frame - a node cannot tell from its own vertex data
+	// whether the atlas still holds its glyphs, because the shader resolves them by CharId through
+	// whatever atlas instance is current when the frame runs.
+	uint64_t getGlyphGeneration() const { return _glyphGeneration; }
+
+	// True when everything required up to `gen` is confirmed present in the atlas and nothing is
+	// being uploaded. False means a node that laid out at `gen` must gate its frames.
+	bool isGlyphGenerationUploaded(uint64_t gen) const {
+		return _uploadsInFlight.load() == 0 && _uploadedGeneration.load() >= gen;
+	}
+
+	// A dependency to hold frames back until the atlas catches up, for a node whose generation
+	// isGlyphGenerationUploaded() rejects. Opens a batch if none is accumulating; the already-sent
+	// one is never re-handed out, so at most one extra batch per flush interval is created while the
+	// atlas is behind, and none once it has caught up.
+	Rc<core::DependencyEvent> acquireGatingDependency() {
+		initDependency();
+		return _dependency;
+	}
+
 	uint32_t getFamilyIndex(StringView) const;
 	StringView getFamilyName(uint32_t idx) const;
 
@@ -205,7 +226,26 @@ protected:
 	Vector<StringView> _familiesNames;
 	Map<String, FamilySpec> _families;
 	HashMap<StringView, Rc<FontFaceSet>> _layouts;
+	// The batch being accumulated for the next flush. Handed to submitGlyphs() and dropped there, so
+	// it reaches the frames built before that flush and never a later one.
 	Rc<core::DependencyEvent> _dependency;
+
+	// "Is every required glyph actually in the atlas the shader samples?" - the question
+	// addTextureChars() has to answer, and the one FontFaceObject::_required cannot: that set is
+	// permanent and process-wide, so it says "already required" to a window that has never had its
+	// glyphs uploaded.
+	//
+	// _glyphGeneration is bumped whenever any face gains a new required glyph, and a batch carries
+	// the generation that was current when it was submitted.
+	//
+	// A generation may only be declared present once NOTHING is in flight. Confirming it per batch
+	// is wrong: flushes overlap (a batch is submitted every tick for as long as the atlas is
+	// behind), and a later batch can reach the atlas first - it then confirmed a generation whose
+	// own, slower batch was still rasterising, and the gate opened too early.
+	uint64_t _glyphGeneration = 0;
+	sprt::atomic<uint64_t> _submittedGeneration = 0;
+	sprt::atomic<uint64_t> _uploadedGeneration = 0;
+	sprt::atomic<uint32_t> _uploadsInFlight = 0;
 
 	bool _dirty = false;
 	mutable sprt::shared_mutex _layoutSharedMutex;

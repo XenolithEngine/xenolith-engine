@@ -134,6 +134,12 @@ protected:
 
 	virtual bool checkVertexDirty() const;
 
+	// Called on every frame this node draws, right before its pending dependencies are handed to the
+	// frame. A node whose vertex data is resolved on the GPU against asynchronously uploaded data
+	// (Label: glyph ids resolved through the font atlas) overrides this to re-arm its gate - the data
+	// can go stale AFTER the node was laid out, and its own vertices carry no sign of it.
+	virtual void refreshPendingDependencies() { }
+
 	virtual CmdInfo buildCmdInfo(const FrameInfo &) const;
 
 	virtual void doScheduleTextureUpdate(Rc<Texture> &&);

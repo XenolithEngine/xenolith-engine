@@ -31,8 +31,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // Verification layout for style re-resolution on parent resize. Percent metrics are computed
 // against the parent size at apply time; this test resizes the containers and checks that the
 // styles are re-resolved: a recursive-resolver subtree (child 50%, grandchild 50% of the child
-// - transitive cascade, plus a position:absolute left:25% node) and a standalone node with its
-// own non-recursive resolver (the System::handleLayoutInParent path).
+// - transitive cascade, plus a position:absolute left:25% node and a px-only absolute inset
+// that must also re-resolve) and a standalone node with its own non-recursive resolver
+// (the System::handleLayoutInParent path).
 class ParentResizeLayout : public TestLayout {
 public:
 	virtual bool init() override;
@@ -46,6 +47,7 @@ protected:
 	basic2d::Layer *_child = nullptr;
 	basic2d::Layer *_grandchild = nullptr;
 	basic2d::Layer *_absolute = nullptr;
+	basic2d::Layer *_absolutePx = nullptr;
 
 	basic2d::Layer *_containerOwn = nullptr;
 	basic2d::Layer *_childOwn = nullptr;

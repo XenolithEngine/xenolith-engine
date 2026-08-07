@@ -344,6 +344,20 @@ StringView Button::getString() const {
 	return StringView();
 }
 
+void Button::setLabelColor(const Color4F &color) {
+	if (_label) {
+		_label->setColor(color);
+	}
+}
+
+void Button::setLabelFontWeight(font::FontWeight weight) {
+	if (_label) {
+		_label->setFontWeight(weight);
+	}
+}
+
+basic2d::Label *Button::getLabel() const { return _label; }
+
 void Button::setIcon(IconName name) {
 	if (_icon) {
 		_icon->setIconName(name);
@@ -394,6 +408,13 @@ void Button::updateState() {
 		}
 		break;
 	case ButtonIconTheme::Apple: {
+		// Traffic-light chrome is ONLY for OS window buttons. General buttons keep whatever
+		// setIcon()/IconName drew — unconditionally replacing _icon with a circle here is what
+		// turned every toolbar/row icon into a grey disk on macOS.
+		if (_type == ButtonType::General) {
+			break;
+		}
+
 		auto image = Rc<VectorImage>::create(Size2(24.0f, 24.0f));
 		image->addPath()
 				->setStyle(vg::DrawFlags::FillAndStroke)

@@ -27,34 +27,59 @@
 #include "XL2dScrollView.h"
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
+#include "XLUiBadge.h"
+#include "XLUiButton.h"
 
 #include "InstallerController.h"
+#include "InstallerProjects.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+class AppWindow;
+}
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-// The packages screen: title bar, header, virtualized component table, footer. The whole layout is
-// driven by resources/style.css — this class only builds the node tree and assigns identity
-// (type / name / style class). It sets no colours, sizes or positions.
+// Packages screen: title bar, header, virtualized table, footer. CSS owns paint/geometry.
 class InstallerLayout : public basic2d::SceneLayout2d {
 public:
 	virtual ~InstallerLayout();
 
 	virtual bool init() override;
 
-	// Called by InstallerSceneContent once the controller has loaded its catalogue; refreshes the
-	// header meta labels and rebuilds the table from controller->catalog().
 	void onCatalogReady(InstallerController *controller);
-
-	// Reverts the pre-warm window expansion (see onCatalogReady) once the loading overlay hides, so
-	// the virtualizer keeps only the visible rows on screen.
 	void dropScrollWarmup();
 
+	void setEngineStatus(const EngineStatusInfo &info);
+	void setBusy(bool busy);
+	void reloadCatalogue();
+	void confirmInstallEverything();
+
+	void showPackagesTab();
+	void showProjectsTab();
+
 protected:
+	void setNavTabSelected(ui::Button *on, ui::Button *off);
 	void rebuildPackages();
+	// Progress must NEVER full-rebuild the table — only setText on the status badge.
+	void requestRebuildPackages(bool immediate = false);
+	void setRowProgress(StringView key, StringView text);
+	void bindStatusBadge(StringView key, ui::Badge *badge);
+	void updateFooterButtons();
+	void setSelection(Kind kind, StringView id, bool on);
+	bool isSelected(Kind kind, StringView id) const;
+	AppWindow *appWindow() const;
+
+	void confirmInstallSelected();
+	void confirmUninstall(Kind kind, StringView id, StringView label);
+	void confirmPrepareEngine();
+	void onRefreshAll();
 
 	Node *_titleBar = nullptr;
-	Node *_packagesArea = nullptr;
 	basic2d::Layer *_header = nullptr;
+	ui::Button *_tabPackages = nullptr;
+	ui::Button *_tabProjects = nullptr;
+	Node *_packagesArea = nullptr;
+	InstallerProjectsView *_projectsView = nullptr;
 	basic2d::ScrollView *_scroll = nullptr;
 	Rc<basic2d::ScrollController> _scrollController;
 	basic2d::Layer *_footer = nullptr;
@@ -62,7 +87,22 @@ protected:
 	basic2d::Label *_releaseLabel = nullptr;
 	basic2d::Label *_nativeLabel = nullptr;
 
+	ui::Button *_btnRefresh = nullptr;
+	ui::Button *_btnInstallSelected = nullptr;
+	ui::Button *_btnInstallEverything = nullptr;
+	ui::Button *_gearButton = nullptr;
+
 	InstallerController *_controller = nullptr;
+	EngineStatusInfo _engineInfo;
+	Set<String> _selected; // rowKeys of checked rows
+	Map<String, String> _progressText; // rowKey → status override while busy
+	// Live status badges (valid until next rebuildPackages clear). KeepNodes=true.
+	Map<String, ui::Badge *> _statusBadges;
+	bool _hostsCollapsed = false;
+	bool _targetsCollapsed = false;
+	bool _busy = false;
+	bool _packagesDirty = false;
+	bool _rebuildPending = false;
 };
 
 } // namespace stappler::xenolith::installer

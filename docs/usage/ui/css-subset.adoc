@@ -357,14 +357,19 @@ supported and needs no manual `markLayoutChildrenDirty`. [`XL_LABEL_UPDATE_TEST`
 
 `%` metrics are re-resolved when the parent is resized, too — a percent-styled
 node carries `NodeEventFlags::HandleParentContentSize` and the resolver keeps a
-freshness key of (parent size, own size). [`XL_PARENT_RESIZE_TEST`]
+freshness key of (parent size, own size). The same bit is set for
+`position: absolute` nodes with any non-auto inset (`top`/`right`/`bottom`/`left`),
+even in px: placement is computed against the parent box
+(`y = parentHeight - top`), so a first resolve against a still-zero parent must
+not stick. [`XL_PARENT_RESIZE_TEST`]
 
 ## Position, and getting out of the flow
 
 `position: absolute` is the only implemented scheme.
 
 * Offsets `top right bottom left` resolve against the **parent**, and the anchor
-  is forced to (0, 1) — the top-left corner, since Y grows up.
+  is forced to (0, 1) — the top-left corner, since Y grows up. A parent resize
+  re-resolves them (see above).
 * With `width: auto` and **both** `left` and `right` given, the width stretches to
   `parentWidth - left - right`; the same for `top`+`bottom` and the height. This
   is the recommended way to make a full-cover overlay.

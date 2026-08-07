@@ -52,13 +52,19 @@ SP_PUBLIC Vector<RemoteEntry> parseListing(StringView text);
 // are DROPPED (security rule: never present an unsigned artifact).
 SP_PUBLIC Vector<CatalogueComponent> buildCatalogue(StringView hostsText, StringView targetsText);
 
-// Default FTP server + release.
+// Default FTP server + release fallback when discovery fails.
 inline StringView getDefaultServer() { return "stappler.dev"; }
 
 inline StringView getDefaultRelease() { return "sdk-v0beta1"; }
 
-inline String getFtpReleaseBase() {
-	return toString("ftp://", getDefaultServer(), "/releases/", getDefaultRelease());
+inline String getFtpReleasesRoot() { return toString("ftp://", getDefaultServer(), "/releases/"); }
+
+// Pick the newest `sdk-v*` directory from an FTP LIST of /releases/. Falls back to getDefaultRelease().
+SP_PUBLIC String resolveActiveRelease(StringView releasesListing);
+
+inline String getFtpReleaseBase(StringView release = StringView()) {
+	const auto rel = release.empty() ? getDefaultRelease() : release;
+	return toString("ftp://", getDefaultServer(), "/releases/", rel);
 }
 
 } // namespace stappler::xenolith::installer

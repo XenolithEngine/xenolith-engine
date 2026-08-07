@@ -32,6 +32,7 @@
 #include "XLEntryPoint.h"
 
 #include "ExampleScene.h"
+#include "SecondaryWindow.h"
 #include "TestRegistry.h"
 #include "GeneralLayout.h" // MonitorModeSelectionLayout.cc, included below, builds on it
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
@@ -257,10 +258,25 @@ void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &bu
 			FileInfo("resources/xenolith-2-480.png", FileCategory::Bundled));
 }
 
-// Регистрируем ExampleScene как основной класс сцены для приложения
-// Под капотом:
-// - Создаётся функция, сопоставляющая окно приложения и сцену
-// - Эта функция регистрируется через механизм ShaderModule в качестве функции выбора сцены
-DEFINE_PRIMARY_SCENE_CLASS(ExampleScene)
+// Функция выбора сцены для окна (регистрируется через SharedModule как Context::SymbolMakeScene).
+//
+// Раньше здесь стоял DEFINE_PRIMARY_SCENE_CLASS(ExampleScene), который отдаёт ExampleScene любому
+// окну. Теперь приложение умеет открывать вторые Root-окна (SecondaryWindow), и различает их по
+// WindowInfo::id: если под этим id зарегистрирован построитель содержимого — это наше вторичное
+// окно, всем остальным по-прежнему достаётся ExampleScene.
+static Rc<Scene> testapp_makeScene(NotNull<AppThread> app,
+		NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints) {
+	auto appWindow = static_cast<AppWindow *>(window.get());
+	auto info = appWindow ? appWindow->getInfo() : nullptr;
+	if (info) {
+		if (auto builder = SecondaryWindow::takeContentBuilder(info->id)) {
+			return Rc<SecondaryScene>::create(app, window, constraints, StringView(info->id),
+					sp::move(builder));
+		}
+	}
+	return Rc<ExampleScene>::create(app, window, constraints);
+}
+
+DEFINE_SCENE_FACTORY(testapp_makeScene)
 
 } // namespace stappler::xenolith::app

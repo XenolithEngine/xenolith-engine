@@ -233,6 +233,9 @@ SpanView<SwapchainHandle::SwapchainImageData> SwapchainHandle::getImages() const
 auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
 		-> Rc<SwapchainAcquiredImage> {
 	if (_deprecated) {
+		// PresentationEngine retries only on Timeout/Declined; a dead swapchain must not
+		// leave status unset (that looked like Ok and cancelled the acquisition timer).
+		status = Status::ErrorCancelled;
 		return nullptr;
 	}
 
@@ -275,7 +278,6 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 				"acquire: VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT");
 	}
 
-	Rc<SwapchainAcquiredImage> image;
 	switch (result) {
 	case VK_SUCCESS: {
 		if (sem) {
@@ -296,9 +298,9 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 			++_acquiredImages;
 		}
 
+		status = Status::Ok;
 		return Rc<SwapchainAcquiredImage>::alloc(imageIndex, &_data->images.at(imageIndex),
 				move(sem), this);
-		break;
 	}
 	case VK_SUBOPTIMAL_KHR: {
 		if (sem) {
@@ -320,21 +322,27 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 			++_acquiredImages;
 		}
 
+		status = Status::Ok;
 		return Rc<SwapchainAcquiredImage>::alloc(imageIndex, &_data->images.at(imageIndex),
 				move(sem), this);
-		break;
 	}
 	case VK_ERROR_OUT_OF_DATE_KHR:
 	case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT:
 		_deprecated = true;
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
+		status = getStatus(result);
 		break;
 	case VK_TIMEOUT:
-		releaseSemaphore(ref_cast<Semaphore>(move(sem))); //
+	case VK_NOT_READY:
+		// Lockfree miss (or drawable not ready yet). PresentationEngine arms its
+		// acquisition timer only when status is Timeout or Declined — write it.
+		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
+		status = getStatus(result);
 		break;
 	default:
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
-		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", getStatus(result),
+		status = getStatus(result);
+		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", status,
 				" (VkResult ", int32_t(result), ")");
 		break;
 	}

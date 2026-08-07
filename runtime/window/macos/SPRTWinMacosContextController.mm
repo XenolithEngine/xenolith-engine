@@ -38,6 +38,7 @@
 #pragma clang diagnostic ignored "-Wavailability"
 
 #import <AppKit/NSApplication.h>
+#import <AppKit/NSImage.h>
 #import <AppKit/NSPasteboardItem.h>
 #import <Network/Network.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -492,6 +493,22 @@ SurfaceSupportInfo MacosContextController::getSupportInfo() const {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
 	XL_MACOS_LOG("XLMacosAppDelegate", "applicationDidFinishLaunching");
+
+	// CFBundleIconFile alone is often ignored for linker-/ad-hoc-signed bundles until
+	// IconServices caches catch up. Force the Dock / Cmd-Tab tile from the bundle icon.
+	NSBundle *bundle = [NSBundle mainBundle];
+	NSString *iconName = [bundle objectForInfoDictionaryKey:@"CFBundleIconFile"];
+	if (iconName.length > 0) {
+		NSImage *icon = [bundle imageForResource:iconName];
+		if (!icon) {
+			icon = [[NSImage alloc] initWithContentsOfFile:[bundle pathForResource:iconName
+																			ofType:@"icns"]];
+		}
+		if (icon) {
+			_application.applicationIconImage = icon;
+		}
+	}
+
 	_controller->handleContextDidStart();
 
 	_pathMonitor = nw_path_monitor_create();

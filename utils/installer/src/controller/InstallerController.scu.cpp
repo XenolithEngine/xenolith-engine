@@ -22,4 +22,5 @@
 
 #include "XLCommon.h"
 
+#include "InstallerNativeDialogs.cc"
 #include "InstallerController.cc"

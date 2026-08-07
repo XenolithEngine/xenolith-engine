@@ -60,6 +60,9 @@ APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.installer
 # App* paths somewhere the CLI could not reach.
 APPCONFIG_APP_PATH_COMMON := 1
 
+# Dock / Finder / Cmd-Tab icon — same asset as the Tauri installer (crates/gui/icons/icon.icns).
+LOCAL_MACOS_ICON := $(LOCAL_ROOT)resources/icon.icns
+
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 
 # Bundle app resources into the .app on macOS: the runtime resolves

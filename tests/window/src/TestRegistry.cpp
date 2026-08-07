@@ -38,6 +38,7 @@
 #include "InheritedStyleLayout.h"
 #include "LabelUpdateLayout.h"
 #include "MeasureProtocolLayout.h"
+#include "MultiWindowLayout.h"
 #include "PanelLayout.h"
 #include "ParentResizeLayout.h"
 #include "PlatformLayout.h"
@@ -148,6 +149,11 @@ static const TestInfo s_tests[] = {
 		StringView("Row 1 must collapse the hidden box, row 2 must keep its gap. Removing the "
 				   "classes must restore both rows identically."),
 		TestRegistry_make<VisibilityLayout>},
+
+	TestInfo{StringView("multi-window"), StringView("XL_MULTIWINDOW_TEST"), StringView("Two Root windows, one font atlas"),
+		StringView("A second top-level window opens with the same string as the first; both must "
+				   "render it identically, because the atlas they sample is the same object."),
+		TestRegistry_make<MultiWindowLayout>},
 
 	TestInfo{StringView("parent-resize"), StringView("XL_PARENT_RESIZE_TEST"), StringView("Restyle on parent resize"),
 		StringView("Percent metrics resolved against the parent: the nested boxes must keep their "

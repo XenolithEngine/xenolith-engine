@@ -33,6 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // App-thread only (see AuxWindow docs), so plain statics are enough.
 static Map<String, AuxWindow::ContentBuilder> s_auxBuilders;
+static Map<String, AuxWindow::CloseCallback> s_auxCloseCallbacks;
 static Map<String, Rc<basic2d::SceneLayout2d>> s_overlayLayouts;
 static uint32_t s_auxCounter = 0;
 
@@ -71,6 +72,9 @@ bool AuxWindow::dismissOverlay(StringView id) {
 	if (layout) {
 		layout->removeFromParent();
 	}
+	// An overlay-backed aux surface is dismissed here rather than through a scene teardown, so
+	// fire the same close callback a native subwindow fires from its scene's handleExit.
+	fireCloseCallback(id);
 	return true;
 }
 
@@ -130,10 +134,23 @@ String AuxWindow::open(NotNull<AppWindow> parent, OpenRequest &&req) {
 					? (isTooltip ? StringView("tooltip") : StringView("popup"))
 					: req.idPrefix);
 
+	// Register before either materialisation path: the overlay fallback also dismisses via
+	// fireCloseCallback (dismissOverlay), and dropping onClose here stranded modal backdrops.
+	if (req.onClose) {
+		s_auxCloseCallbacks.insert_or_assign(id, sprt::move(req.onClose));
+	}
+
 	// Tooltips are always in-scene: a native tip window costs a swapchain for a few hundred
 	// milliseconds of hint, and it takes hover away from the node it describes.
 	if (isTooltip || !platformSupportsSubwindows(parent)) {
-		return openAsOverlay(parent, sprt::move(req), id, isTooltip) ? id : String();
+		if (openAsOverlay(parent, sprt::move(req), id, isTooltip)) {
+			return id;
+		}
+		// Nothing was materialised and the caller gets no id back, so dismissOverlay() can never
+		// reach this entry: fire it now, both to drop the map entry and to let an opener that
+		// already added a modal backdrop take it back down.
+		fireCloseCallback(id);
+		return String();
 	}
 
 	s_auxBuilders.insert_or_assign(id, sprt::move(req.builder));
@@ -161,6 +178,38 @@ String AuxWindow::openPopup(NotNull<AppWindow> parent, const sprt::window::Windo
 	req.title = title;
 	req.builder = sprt::move(builder);
 	return open(parent, sprt::move(req));
+}
+
+String AuxWindow::openPopup(NotNull<AppWindow> parent, const sprt::window::WindowPlacement &placement,
+		Extent2 size, ContentBuilder &&builder, CloseCallback &&onClose, StringView title) {
+	OpenRequest req;
+	req.type = sprt::window::WindowType::Popup;
+	req.placement = placement;
+	req.size = size;
+	req.title = title;
+	req.builder = sprt::move(builder);
+	req.onClose = sprt::move(onClose);
+	return open(parent, sprt::move(req));
+}
+
+void AuxWindow::setCloseCallback(StringView id, CloseCallback &&cb) {
+	if (cb) {
+		s_auxCloseCallbacks.insert_or_assign(id.str<Interface>(), sprt::move(cb));
+	}
+}
+
+void AuxWindow::fireCloseCallback(StringView id) {
+	auto it = s_auxCloseCallbacks.find(id);
+	if (it == s_auxCloseCallbacks.end()) {
+		return;
+	}
+	// Move out before invoking: a callback that opens another aux window with the same id-prefix
+	// (unlikely but possible) would otherwise rehash the map under us.
+	auto cb = sprt::move(it->second);
+	s_auxCloseCallbacks.erase(it);
+	if (cb) {
+		cb();
+	}
 }
 
 String AuxWindow::showTooltip(NotNull<AppWindow> parent,

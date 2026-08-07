@@ -20,40 +20,28 @@
  THE SOFTWARE.
  **/
 
-#include "InstallerMainScene.h"
-#include "InstallerSceneContent.h"
+#ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERDIALOGS_H_
+#define UTILS_INSTALLER_SRC_SCENE_INSTALLERDIALOGS_H_
 
-#include "XLAppWindow.h"
-#include "XLEntryPoint.h"
+#include "XLCommon.h"
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-bool MainScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints) {
-	if (!Scene2d::init(app, window, constraints)) {
-		return false;
-	}
+class AppWindow;
 
-	auto content = Rc<InstallerSceneContent>::create();
-	content->setDefaultLights();
+namespace installer {
 
-	setContent(content);
-	setFpsVisible(true);
+// Confirm button paint — Install uses accent gold; Delete uses danger red.
+enum class ConfirmTone {
+	Primary,
+	Danger,
+};
 
-	return true;
-}
+// In-scene confirm overlay (dim + centred card). Confirm runs `onConfirm`; Cancel / outside dismiss.
+void showConfirmDialog(NotNull<AppWindow> parent, StringView title, StringView message,
+		StringView confirmLabel, ConfirmTone tone, Function<void()> &&onConfirm);
 
-void MainScene::buildQueueResources(QueueInfo &, core::Queue::Builder &builder) {
-	builder.addImage("app-icon.png",
-			core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled),
-			FileInfo("resources/app-icon.png", FileCategory::Bundled));
-}
+} // namespace installer
+} // namespace stappler::xenolith
 
-static Rc<Scene> installer_makeScene(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints) {
-	return Rc<MainScene>::create(app, window, constraints);
-}
-
-DEFINE_SCENE_FACTORY(installer_makeScene)
-
-} // namespace stappler::xenolith::installer
+#endif // UTILS_INSTALLER_SRC_SCENE_INSTALLERDIALOGS_H_

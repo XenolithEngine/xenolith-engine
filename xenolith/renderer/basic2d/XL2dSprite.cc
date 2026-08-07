@@ -229,8 +229,26 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		_materialDirty = false;
 	}
 
-	for (auto &it : _pendingDependencies) {
-		emplace_ordered(frame.currentContext->waitDependencies, move(it));
+	// Gate EVERY frame that would draw before the data is on the GPU, not just the one in which this
+	// node happened to re-render. The dependency used to be moved into the first frame and dropped;
+	// with continuous rendering several more frames are produced while the upload is still running,
+	// and those drew against data that is not there yet - for a Label that means point sprites whose
+	// CharId the atlas cannot resolve, which collapse to zero size, i.e. missing text. So keep the
+	// dependency until it fires, and hand a reference to each frame in between.
+	//
+	// The list is also re-armed here rather than only at layout time: the resource can be replaced
+	// after this node was laid out, and nothing in its vertex data would show it.
+	refreshPendingDependencies();
+
+	auto depIt = _pendingDependencies.begin();
+	while (depIt != _pendingDependencies.end()) {
+		if ((*depIt)->isSignaled()) {
+			depIt = _pendingDependencies.erase(depIt);
+		} else {
+			emplace_ordered(frame.currentContext->waitDependencies,
+					Rc<core::DependencyEvent>(*depIt));
+			++depIt;
+		}
 	}
 
 	if (_linearGradient || _shadedOutlineOffset > 0.0f) {
@@ -271,8 +289,6 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	if (hasExtraState) {
 		frame.contextStack.back()->stateStack.pop_back();
 	}
-
-	_pendingDependencies.clear();
 }
 
 void Sprite::handleEnter(Scene *scene) {

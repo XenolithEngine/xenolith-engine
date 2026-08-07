@@ -71,6 +71,9 @@ public:
 
 	bool signal(Queue *, bool);
 
+	// Safe to poll from any thread: it reads a flag the signalling thread publishes, not the queue
+	// set itself. Consumers outside the loop rely on this - a node holds a gating dependency until it
+	// fires (see basic2d::Sprite::visitDraw), and it checks from the app thread.
 	bool isSignaled() const;
 	bool isSuccessful() const;
 
@@ -88,6 +91,10 @@ protected:
 	QueueSet _queues;
 	StringView _tag;
 	bool _success = true;
+	// Mirrors "_queues is empty", published for readers off the signalling thread. An event built
+	// with no queues starts out signalled - that is how a client-side mirror event (nothing signals
+	// it locally, the server gates on its own copy) reads as already satisfied.
+	sprt::atomic<bool> _signaled;
 	Function<void()> _signalCallback;
 };
 

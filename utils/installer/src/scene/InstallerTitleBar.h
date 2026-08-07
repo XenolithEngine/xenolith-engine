@@ -23,14 +23,16 @@
 #ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERTITLEBAR_H_
 #define UTILS_INSTALLER_SRC_SCENE_INSTALLERTITLEBAR_H_
 
-#include "XLNode.h"
+#include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 // Client-side window decorations: the OS buttons, the app icon, and the draggable title strip.
 // Order and per-platform arrangement (the macOS traffic-light cluster) live in
 // resources/style.css — this class only creates the parts and names them.
-class TitleBar : public Node {
+// Derives from Layer so `#title-bar { background-color }` actually paints (a plain Node
+// ignores fill — any inset around the title strip would show the window backdrop).
+class TitleBar : public basic2d::Layer {
 public:
 	virtual ~TitleBar();
 

@@ -33,7 +33,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 TitleBar::~TitleBar() { }
 
 bool TitleBar::init() {
-	if (!Node::init()) {
+	// Opaque placeholder: CSS `background-color` replaces the colour. A transparent
+	// create would zero subtree opacity (Layer maps colour alpha onto node opacity).
+	if (!Layer::init(Color::Black)) {
 		return false;
 	}
 
