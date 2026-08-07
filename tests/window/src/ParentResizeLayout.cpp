@@ -35,6 +35,10 @@ namespace {
 static constexpr auto s_css = StringView(R"css(
 .half { width: 50%; height: 50%; background-color: #1e88e5; }
 .abs  { position: absolute; left: 25%; top: 0px; width: 25%; height: 100%; background-color: #43a047; }
+/* px-only insets still depend on the parent box (y = parentHeight - top). Without
+   HandleParentContentSize this sticks at the first resolve against a zero parent —
+   the installer title-line bug. */
+.abs-px { position: absolute; left: 10px; top: 8px; width: 40px; height: 20px; background-color: #e53935; }
 )css");
 
 static const Size2 s_initial(400.0f, 200.0f);
@@ -70,6 +74,9 @@ bool ParentResizeLayout::init() {
 	_absolute = _containerRec->addChild(Rc<Layer>::create(Color::Black), ZOrder(2));
 	_absolute->addStyleClass("abs");
 
+	_absolutePx = _containerRec->addChild(Rc<Layer>::create(Color::Black), ZOrder(3));
+	_absolutePx->addStyleClass("abs-px");
+
 	// B: the node carries its OWN non-recursive resolver; the parent resize reaches it
 	// through System::handleLayoutInParent
 	_containerOwn = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
@@ -101,6 +108,11 @@ void ParentResizeLayout::runPhase1() {
 			"grandchild != 50% of the child");
 	expect(nearSize(_absolute->getContentSize(), Size2(100.0f, 200.0f)),
 			"absolute node != 25%x100% of initial container");
+	// engine Y is up, anchor (0,1): top: 8px → y = parentHeight - 8
+	expect(sprt::abs(_absolutePx->getPosition().y - (s_initial.height - 8.0f)) < 1.0f,
+			"px-absolute top did not resolve against the initial parent height");
+	expect(sprt::abs(_absolutePx->getPosition().x - 10.0f) < 1.0f,
+			"px-absolute left != 10");
 	expect(nearSize(_childOwn->getContentSize(), Size2(200.0f, 100.0f)),
 			"own-resolver child != 50% of initial container");
 
@@ -128,6 +140,8 @@ void ParentResizeLayout::runPhase2() {
 			"absolute node did not re-resolve its 25%x100% box");
 	expect(sprt::abs(_absolute->getPosition().x - 150.0f) < 1.0f,
 			"absolute node did not re-resolve left: 25%");
+	expect(sprt::abs(_absolutePx->getPosition().y - (s_resized.height - 8.0f)) < 1.0f,
+			"px-absolute top did not re-resolve after parent resize");
 	expect(nearSize(_childOwn->getContentSize(), Size2(300.0f, 150.0f)),
 			"own-resolver child did not re-resolve via handleLayoutInParent");
 

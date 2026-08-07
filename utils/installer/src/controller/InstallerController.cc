@@ -26,6 +26,7 @@
 #include "SPLog.h"
 
 #include <cstdint>
+#include <ctime>
 #include <memory>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
@@ -64,10 +65,16 @@ void InstallerController::loadCatalog(Function<void(bool ok, String err)> &&onDo
 	auto errStr = std::make_shared<String>();
 	auto built = std::make_shared<CatalogueData>();
 
-	log::info(kLogTag, "loadCatalog: fetching catalogue from ", getFtpReleaseBase());
+	log::info(kLogTag, "loadCatalog: discovering release under ", getFtpReleasesRoot());
 
 	_app->perform([this, errStr, built](const AppThread::Task &) -> bool {
-		auto base = getFtpReleaseBase();
+		String release = toString(getDefaultRelease());
+		String releasesText;
+		if (fetchText(getFtpReleasesRoot(), releasesText)) {
+			release = resolveActiveRelease(releasesText);
+		}
+
+		auto base = getFtpReleaseBase(release);
 		String hostsText, targetsText;
 		auto hostsResult = fetchText(toString(base) + "/hosts/", hostsText);
 		if (!hostsResult) {
@@ -85,7 +92,7 @@ void InstallerController::loadCatalog(Function<void(bool ok, String err)> &&onDo
 
 		auto host = resolveHost(getNativeArch(), getNativeOs());
 		built->nativeId = host.native;
-		built->release = toString(getDefaultRelease());
+		built->release = release;
 		for (const auto &c : comps) {
 			CatalogRow row;
 			row.kind = c.kind;
@@ -93,8 +100,12 @@ void InstallerController::loadCatalog(Function<void(bool ok, String err)> &&onDo
 			row.triple = c.triple;
 			row.variant = c.variant;
 			row.size = c.size;
-			row.status = (state.get(c.id, c.kind) != nullptr) ? RowStatus::Installed
-															  : RowStatus::NotInstalled;
+			if (auto *ic = state.get(c.id, c.kind)) {
+				row.status = (ic->release != release) ? RowStatus::UpdateAvailable
+													  : RowStatus::Installed;
+			} else {
+				row.status = RowStatus::NotInstalled;
+			}
 			row.isNative = (c.triple == built->nativeId);
 			built->rows.push_back(sp::move(row));
 		}
@@ -106,7 +117,7 @@ void InstallerController::loadCatalog(Function<void(bool ok, String err)> &&onDo
 
 			size_t installed = 0;
 			for (const auto &row : _catalog.rows) {
-				if (row.status == RowStatus::Installed) {
+				if (row.status != RowStatus::NotInstalled) {
 					++installed;
 				}
 			}
@@ -355,6 +366,244 @@ void InstallerController::setRowStatus(Kind kind, StringView id, RowStatus s) {
 			row.status = s;
 			return;
 		}
+	}
+}
+
+void InstallerController::installSelected(Vector<Pair<Kind, String>> items,
+		Function<void(const InstallProgress &)> &&onProgress,
+		Function<void(bool ok, String err)> &&onDone) {
+	if (items.empty()) {
+		if (onDone) {
+			onDone(true, String());
+		}
+		return;
+	}
+	auto progCb = std::make_shared<Function<void(const InstallProgress &)>>(sp::move(onProgress));
+	auto doneCb = std::make_shared<Function<void(bool, String)>>(sp::move(onDone));
+	auto queue = std::make_shared<Vector<Pair<Kind, String>>>(sp::move(items));
+	auto errStr = std::make_shared<String>();
+
+	auto runNext = std::make_shared<Function<void()>>();
+	std::weak_ptr<Function<void()>> runNextWeak(runNext);
+	// The closure holds `runNext` only as a weak_ptr: a strong self-reference would be a
+	// shared_ptr cycle leaking this whole closure on every call. The strong ref threads through
+	// one installComponent() at a time — each per-step completion locks the weak ptr and holds the
+	// result, installComponent retains that completion until it fires, and the last strong ref
+	// drops when the queue drains (so the Function, and every captured shared_ptr, is freed).
+	*runNext = [this, queue, progCb, doneCb, errStr, runNextWeak]() {
+		if (queue->empty()) {
+			if (*doneCb) {
+				(*doneCb)(errStr->empty(), *errStr);
+			}
+			return;
+		}
+		auto item = sp::move(queue->front());
+		queue->erase(queue->begin());
+		auto runNextStrong = runNextWeak.lock();
+		installComponent(item.first, item.second, [progCb](const InstallProgress &p) {
+			if (*progCb) {
+				(*progCb)(p);
+			}
+		}, [this, item, errStr, runNextStrong](bool ok, String err) {
+			if (ok) {
+				setRowStatus(item.first, item.second, RowStatus::Installed);
+			} else if (errStr->empty()) {
+				*errStr = err;
+			}
+			if (runNextStrong) {
+				(*runNextStrong)();
+			}
+		});
+	};
+	(*runNext)();
+}
+
+void InstallerController::refreshComponents(bool allInstalled,
+		Function<void(const InstallProgress &)> &&onProgress,
+		Function<void(bool ok, String err)> &&onDone) {
+	Vector<Pair<Kind, String>> items;
+	for (const auto &row : _catalog.rows) {
+		if (row.status == RowStatus::UpdateAvailable
+				|| (allInstalled && row.status == RowStatus::Installed)) {
+			items.emplace_back(row.kind, row.id);
+		}
+	}
+	installSelected(sp::move(items), sp::move(onProgress), sp::move(onDone));
+}
+
+Vector<String> InstallerController::engines() const { return listInstalledEngines(_layout); }
+
+Vector<String> InstallerController::targets() const { return listInstalledTargets(_layout); }
+
+void InstallerController::loadProjects(Function<void(Vector<ProjectEntry>)> &&onDone) {
+	auto doneCb = std::make_shared<Function<void(Vector<ProjectEntry>)>>(sp::move(onDone));
+	auto list = std::make_shared<Vector<ProjectEntry>>();
+	_app->perform([this, list](const AppThread::Task &) -> bool {
+		*list = ProjectRegistry::load(_layout.getProjectsManifest()).projects;
+		return true;
+	}, [doneCb, list](const AppThread::Task &, bool) {
+		if (*doneCb) {
+			(*doneCb)(sp::move(*list));
+		}
+	}, this);
+}
+
+void InstallerController::createProject(StringView name, StringView location, StringView engine,
+		StringView target, Function<void(bool ok, String err, ProjectEntry entry)> &&onDone) {
+	auto doneCb = std::make_shared<Function<void(bool, String, ProjectEntry)>>(sp::move(onDone));
+	auto errStr = std::make_shared<String>();
+	auto entry = std::make_shared<ProjectEntry>();
+	const auto nameStr = toString(name);
+	const auto locStr = toString(location);
+	const auto engStr = toString(engine);
+	const auto tgtStr = toString(target);
+
+	log::info(kLogTag, "createProject: name=", nameStr, " loc=", locStr);
+
+	_app->perform(
+			[this, nameStr, locStr, engStr, tgtStr, errStr, entry](
+					const AppThread::Task &) -> bool {
+		String engineOverride;
+		if (!engStr.empty()) {
+			auto engPath = _layout.getEngineDir(engStr);
+			if (isDirectory(engPath)) {
+				engineOverride = engPath;
+			} else if (isDirectory(engStr)) {
+				engineOverride = engStr;
+			}
+		}
+		auto r = scaffoldProject(nameStr, locStr, _layout, engineOverride);
+		if (!r) {
+			*errStr = r.error.empty() ? String("scaffold failed") : r.error;
+			return false;
+		}
+		entry->name = nameStr;
+		entry->path = r.path;
+		entry->engine = engStr;
+		entry->target = tgtStr;
+		entry->makeTool = "make";
+		char buf[64];
+		const auto t = std::time(nullptr);
+		std::tm tm{};
+		::gmtime_r(&t, &tm); // thread-safe; this runs on the worker job thread
+		std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+		entry->createdAt = buf;
+
+		auto reg = ProjectRegistry::load(_layout.getProjectsManifest());
+		reg.upsert(*entry);
+		if (!reg.save(_layout.getProjectsManifest())) {
+			*errStr = "failed to save projects.json";
+			return false;
+		}
+		return true;
+	},
+			[doneCb, errStr, entry](const AppThread::Task &, bool ok) {
+		if (*doneCb) {
+			(*doneCb)(ok, *errStr, ok ? *entry : ProjectEntry{});
+		}
+	}, this);
+}
+
+void InstallerController::removeProject(StringView path, Function<void(bool ok)> &&onDone) {
+	auto doneCb = std::make_shared<Function<void(bool)>>(sp::move(onDone));
+	const auto pathStr = toString(path);
+	_app->perform([this, pathStr](const AppThread::Task &) -> bool {
+		auto reg = ProjectRegistry::load(_layout.getProjectsManifest());
+		if (!reg.remove(pathStr)) {
+			return false;
+		}
+		return reg.save(_layout.getProjectsManifest());
+	}, [doneCb](const AppThread::Task &, bool ok) {
+		if (*doneCb) {
+			(*doneCb)(ok);
+		}
+	}, this);
+}
+
+void InstallerController::buildProject(StringView path, StringView target, bool run, bool release,
+		Function<void(StringView line)> &&onOutput,
+		Function<void(bool ok, String message)> &&onDone) {
+	auto doneCb = std::make_shared<Function<void(bool, String)>>(sp::move(onDone));
+	auto outCb = std::make_shared<Function<void(StringView)>>(sp::move(onOutput));
+	auto msg = std::make_shared<String>();
+	const auto pathStr = toString(path);
+	const auto tgtStr = toString(target);
+
+	log::info(kLogTag, "buildProject: path=", pathStr, " target=", tgtStr, " run=", run);
+
+	_app->perform(
+			[this, pathStr, tgtStr, run, release, outCb, msg](const AppThread::Task &) -> bool {
+		BuildOptions opts;
+		opts.target = tgtStr;
+		opts.run = run;
+		opts.release = release;
+
+		String engineOverride;
+		auto reg = ProjectRegistry::load(_layout.getProjectsManifest());
+		if (auto *p = reg.find(pathStr)) {
+			if (!p->engine.empty()) {
+				auto engPath = _layout.getEngineDir(p->engine);
+				if (isDirectory(engPath)) {
+					engineOverride = engPath;
+				} else if (isDirectory(p->engine)) {
+					engineOverride = p->engine;
+				}
+			}
+		}
+
+		// `sink` must be a NAMED local: Callback does not own its functor, and binding a temporary
+		// lambda (which owns a copy of the outCb shared_ptr) would destroy it at the end of the
+		// declaration, leaving `stream` — and every line routed through it — pointing at freed
+		// storage.
+		auto sink = [this, outCb](StringView line) {
+			_app->performOnAppThread([outCb, s = toString(line)] {
+				if (*outCb) {
+					(*outCb)(s);
+				}
+			}, this);
+		};
+		const Callback<void(StringView)> stream(sink);
+		const Callback<void(StringView)> *outPtr = *outCb ? &stream : nullptr;
+
+		auto r = installer::buildProject(pathStr, _layout, opts, engineOverride, outPtr);
+		*msg = r.message.empty() ? r.error : r.message;
+		return static_cast<bool>(r);
+	}, [doneCb, msg](const AppThread::Task &, bool ok) {
+		if (*doneCb) {
+			(*doneCb)(ok, *msg);
+		}
+	}, this);
+}
+
+// No worker hop for any of the three: spawnProcess watches the child on the app looper and fires
+// its callbacks there, so the answer arrives on the app thread without a thread ever blocking.
+// The handles are kept because dropping the last Rc kills the child.
+
+void InstallerController::pickFolder(StringView prompt, Function<void(String)> &&onDone) {
+	// One picker at a time — a second request supersedes the first, and releasing that handle
+	// dismisses the dialog still on screen.
+	_dialogHandle = pickFolderAsync(_app, prompt, sp::move(onDone), this);
+}
+
+void InstallerController::promptText(StringView title, StringView def,
+		Function<void(String)> &&onDone) {
+	_dialogHandle = promptTextAsync(_app, title, def, sp::move(onDone), this);
+}
+
+void InstallerController::openFolder(StringView path) {
+	// Fire-and-forget, but the helper still has to survive until it exits. There is no reference
+	// to a handle from inside its own completion, so finished spawns are pruned on the way in
+	// instead — the list only ever holds the few that are still running.
+	auto out = _spawned.begin();
+	for (auto &it : _spawned) {
+		if (it && it->isRunning()) {
+			*out++ = sp::move(it);
+		}
+	}
+	_spawned.erase(out, _spawned.end());
+
+	if (auto handle = openInFileManagerAsync(_app, path, this)) {
+		_spawned.emplace_back(sp::move(handle));
 	}
 }
 

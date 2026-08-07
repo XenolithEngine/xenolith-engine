@@ -26,3 +26,8 @@
 #include "InstallerSceneContent.cc"
 #include "InstallerLayout.cc"
 #include "InstallerTitleBar.cc"
+#include "InstallerDialogs.cc"
+#include "InstallerStrings.cc"
+#include "InstallerGearMenu.cc"
+#include "InstallerProjects.cc"
+#include "InstallerDoctor.cc"

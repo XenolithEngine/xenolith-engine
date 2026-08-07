@@ -670,6 +670,28 @@ void Label::updateQuadsForeground(font::FontController *controller, TextLayout *
 
 bool Label::checkVertexDirty() const { return _vertexesDirty || _labelDirty; }
 
+void Label::refreshPendingDependencies() {
+	if (!_source || !_format) {
+		return;
+	}
+
+	// Asking once, at layout time, is not enough. addTextureChars() answers for the moment the label
+	// was laid out; an upload started AFTER that replaces the atlas instance, and this label - which
+	// has nothing to re-shape and so never calls addTextureChars() again - would keep drawing CharIds
+	// the current atlas cannot resolve. Nothing in its vertex data would show it: the quads are
+	// degenerate points and the glyph box comes from the atlas at draw time.
+	//
+	// So the gate is re-checked every frame against the generation these quads belong to, and re-armed
+	// while the atlas is behind it. Once it catches up this costs one atomic load per frame.
+	if (_source->isGlyphGenerationUploaded(_glyphGeneration)) {
+		return;
+	}
+
+	if (auto dep = _source->acquireGatingDependency()) {
+		emplace_ordered(_pendingDependencies, move(dep));
+	}
+}
+
 NodeVisitFlags Label::processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) {
 	updateLabelDensity(info.modelTransformStack.back());
 
@@ -786,6 +808,11 @@ void Label::updateVertexes(FrameInfo &frame) {
 		}
 	}
 
+	// Remember which glyph set these quads belong to. They carry CharIds, not atlas coordinates, so
+	// they stay drawable only for as long as the atlas holds that generation - and whether it does
+	// is decided later, by uploads this label knows nothing about.
+	_glyphGeneration = _source->getGlyphGeneration();
+
 	if (_deferred) {
 		_deferredResult =
 				runDeferred(_director->getApplication()->getLooper(), _format, _displayedColor);
@@ -807,6 +834,7 @@ void Label::onFontSourceUpdated() {
 	}
 	setLabelDirty();
 	_vertexesDirty = true;
+	_deferredResult = nullptr;
 }
 
 void Label::onFontSourceLoaded() {

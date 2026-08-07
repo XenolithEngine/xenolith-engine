@@ -477,7 +477,31 @@ Rc<FontFaceSet> FontController::getLayoutForString(const FontParameters &f, cons
 
 Rc<core::DependencyEvent> FontController::addTextureChars(const Rc<FontFaceSet> &l,
 		SpanView<CharLayoutData> chars) {
+	// The caller needs a gating dependency whenever the glyphs it just laid out may not be in the
+	// atlas yet - and that is NOT the same question as "are they new".
+	//
+	// FontFaceObject::_required is permanent and process-wide, so it reports "new" only to the very
+	// first requester of a glyph, ever. Every later caller used to get whatever _dependency happened
+	// to be, which is null once the flush handed it over. With one window that is mostly harmless -
+	// the same node usually is the first requester. With two windows it is the bug: window A lays
+	// the string out, gets the dependency and waits for the atlas; window B lays the SAME string out
+	// a tick later, is told nothing is new, waits for nothing, and draws point sprites whose CharId
+	// is not in the atlas index yet - they collapse to zero size, i.e. invisible text. Each window
+	// must wait for the glyphs it needs; only one of them did.
+	//
+	// So gate on the atlas being confirmed current instead. The already-sent event is never re-handed
+	// out (a frame must not wait on a batch it is not part of): a fresh batch is opened instead, and
+	// since a flush re-uploads the whole required set, its upload covers the in-flight glyphs too.
+	// Once the atlas has caught up, a known-glyph request opens nothing and returns null.
+	//
+	// "Caught up" needs both halves. A batch still running means glyphs that are laid out but not
+	// rasterised, whatever the generation counter says - batches overlap, and a later one can land
+	// first. So: gate while anything is in flight, and gate while new glyphs have appeared since the
+	// last quiet moment.
 	if (l->addTextureChars(chars)) {
+		++_glyphGeneration;
+		initDependency();
+	} else if (_uploadsInFlight.load() > 0 || _uploadedGeneration.load() < _glyphGeneration) {
 		initDependency();
 	}
 	// return dependency if it set
@@ -537,10 +561,61 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 			}
 		}
 		if (!objects.empty()) {
+			// EVERY flush replaces the atlas instance (FontRenderPassHandle::submitResult ->
+			// DynamicImage::updateInstance), and every replacement makes each window recompile the
+			// materials that sample it. So every flush needs a gating dependency - including the ones
+			// _dirty was raised for by removeUnusedLayouts() or addFont() rather than by a glyph
+			// request, which used to be submitted with none at all.
+			//
+			// An ungated flush is what actually breaks a second window: the atlas is swapped under it
+			// and its material recompile is gated on nothing, so it keeps sampling the previous
+			// instance and renders only the glyphs that instance happened to hold. Minting the
+			// dependency here also puts the batch into _uploadsInFlight below, which is what makes
+			// addTextureChars() gate everyone who lays glyphs out while it runs.
+			if (!_dependency) {
+				_dependency = makeDependency();
+			}
+
 			// Hand the batch (+ gating dependency) to the leaf's gAPI endpoint (local: FontComponent ->
 			// gl Loop; remote: proxy -> server). The dependency gates the frame that uses these glyphs.
-			submitGlyphs(app, sp::move(objects), move(_dependency));
+			auto dep = move(_dependency);
 			_dependency = nullptr;
+
+			// This batch carries every glyph required so far, so it is the generation the atlas will
+			// hold once EVERY outstanding batch has landed - see the field comments.
+			const uint64_t submitted = _glyphGeneration;
+			auto prevSubmitted = _submittedGeneration.load();
+			while (prevSubmitted < submitted
+					&& !_submittedGeneration.compare_exchange_weak(prevSubmitted, submitted)) { }
+
+			if (dep) {
+				if (dep->isSignaled()) {
+					// No queues to wait on: FontControllerRemote mints such an event because the
+					// server gates on its own mirror event instead, and nothing will ever signal it
+					// here. Waiting on it locally is a no-op, so treat the batch as confirmed at
+					// submission - otherwise the generation would never advance and every request
+					// would open another batch.
+					_uploadedGeneration.store(submitted);
+				} else {
+					_uploadsInFlight.fetch_add(1);
+					// Fires exactly once, on the signalling thread; the fields are atomic, so no
+					// thread hop is needed. The Rc keeps the controller alive until the upload lands.
+					// Only the batch that empties the queue publishes a generation: while others are
+					// still running, some laid-out glyph is still missing from the atlas.
+					dep->setSignalCallback([self = Rc<FontController>(this)] {
+						if (self->_uploadsInFlight.fetch_sub(1) == 1) {
+							self->_uploadedGeneration.store(self->_submittedGeneration.load());
+						}
+					});
+				}
+			}
+			// dep == nullptr: _dirty was raised by something other than a glyph request (a font or
+			// alias was added), so this batch is ungated and cannot confirm anything. Leaving the
+			// generation behind is the safe answer - marking it current here is what let a second
+			// window through while the previous upload was still running. The next flush carries a
+			// real dependency, because addTextureChars() opens one for as long as the atlas is behind.
+
+			submitGlyphs(app, sp::move(objects), sp::move(dep));
 		}
 		_dirty = false;
 	}

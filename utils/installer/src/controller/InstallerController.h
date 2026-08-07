@@ -32,6 +32,10 @@
 #include "SPITransport.h"
 #include "SPITriple.h"
 #include "SPIEngineSource.h"
+#include "SPIScaffold.h"
+#include "SPIBuild.h"
+#include "SPIProjects.h"
+#include "InstallerNativeDialogs.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppThread;
@@ -41,7 +45,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 enum class RowStatus {
 	NotInstalled,
-	Installed
+	Installed,
+	UpdateAvailable,
 };
 enum class InstallPhase {
 	Downloading,
@@ -123,6 +128,26 @@ public:
 	void prepareEngine(Function<void(int64_t bytes, int64_t total)> &&onProgress = nullptr,
 			Function<void(bool ok, String err)> &&onDone = nullptr);
 
+	// --- projects ---
+	void loadProjects(Function<void(Vector<ProjectEntry>)> &&onDone = nullptr);
+	void createProject(StringView name, StringView location, StringView engine, StringView target,
+			Function<void(bool ok, String err, ProjectEntry entry)> &&onDone = nullptr);
+	void removeProject(StringView path, Function<void(bool ok)> &&onDone = nullptr);
+	void buildProject(StringView path, StringView target, bool run, bool release,
+			Function<void(StringView line)> &&onOutput = nullptr,
+			Function<void(bool ok, String message)> &&onDone = nullptr);
+
+	// --- native OS dialogs / file manager ---
+	// Spawned on the app looper (see InstallerNativeDialogs.h), so nothing blocks and `onDone`
+	// arrives on the app thread. The controller keeps the child handles alive for you.
+	void pickFolder(StringView prompt, Function<void(String path)> &&onDone = nullptr);
+	void promptText(StringView title, StringView def,
+			Function<void(String text)> &&onDone = nullptr);
+	void openFolder(StringView path);
+
+	Vector<String> engines() const;
+	Vector<String> targets() const;
+
 	// --- app-thread data accessors ---
 	const CatalogueData *catalog() const { return _hasCatalog ? &_catalog : nullptr; }
 	bool hasCatalog() const { return _hasCatalog; }
@@ -133,11 +158,27 @@ public:
 	// updates without waiting for a full catalogue reload.
 	void setRowStatus(Kind kind, StringView id, RowStatus s);
 
+	// Install every NotInstalled/UpdateAvailable row currently selected in the UI.
+	void installSelected(Vector<Pair<Kind, String>> items,
+			Function<void(const InstallProgress &)> &&onProgress = nullptr,
+			Function<void(bool ok, String err)> &&onDone = nullptr);
+
+	// Reinstall every UpdateAvailable row (and optionally every Installed row when `all`).
+	void refreshComponents(bool allInstalled,
+			Function<void(const InstallProgress &)> &&onProgress = nullptr,
+			Function<void(bool ok, String err)> &&onDone = nullptr);
+
 	const Layout &layout() const { return _layout; }
 
 protected:
 	AppThread *_app = nullptr;
 	Layout _layout;
+
+	// Spawned helper processes. An Rc<ProcessHandle> IS the child — dropping the last one kills
+	// it — so these slots are what keeps a picker on screen and an xdg-open alive long enough to
+	// hand off. `_dialogHandle` holds the single modal picker; `_spawned` the fire-and-forget ones.
+	Rc<ProcessHandle> _dialogHandle;
+	Vector<Rc<ProcessHandle>> _spawned;
 
 	bool _hasCatalog = false;
 	CatalogueData _catalog;

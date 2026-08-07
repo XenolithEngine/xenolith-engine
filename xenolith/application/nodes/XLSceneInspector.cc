@@ -169,9 +169,7 @@ Value getLogDump(uint64_t since) {
 	// entries older than `since` are already known to the client; entries dropped from the ring
 	// since then are simply gone, so clamp instead of failing
 	auto start = since > capture.firstIndex ? size_t(since - capture.firstIndex) : size_t(0);
-	for (size_t i = start; i < capture.buffer.size(); ++i) {
-		lines.addString(capture.buffer[i]);
-	}
+	for (size_t i = start; i < capture.buffer.size(); ++i) { lines.addString(capture.buffer[i]); }
 
 	Value ret;
 	ret.setValue(sp::move(lines), "lines");
@@ -286,9 +284,8 @@ sprt::window::InputKeyCode parseKeyCodeName(StringView name) {
 // One protocol event -> one InputEventData. Returns false for an event name the engine does not
 // know, so the caller can report which entry was rejected instead of injecting garbage.
 bool readInputEvent(const Value &src, core::InputEventData &out) {
-	auto name = src.isInteger("event")
-			? sprt::window::InputEventName(src.getInteger("event"))
-			: parseEventName(src.getString("event"));
+	auto name = src.isInteger("event") ? sprt::window::InputEventName(src.getInteger("event"))
+									   : parseEventName(src.getString("event"));
 	if (name == sprt::window::InputEventName::None
 			|| toInt(name) >= toInt(sprt::window::InputEventName::Max)) {
 		return false;
@@ -358,8 +355,7 @@ void SceneInspector::addCommand(StringView name, StringView description,
 	if (name.empty() || !callback) {
 		return;
 	}
-	_commands[name.str<Interface>()] =
-			Command{description.str<Interface>(), sp::move(callback)};
+	_commands[name.str<Interface>()] = Command{description.str<Interface>(), sp::move(callback)};
 }
 
 bool SceneInspector::removeCommand(StringView name) {
@@ -465,9 +461,8 @@ void SceneInspector::serveConnection(Rc<sprt::dispatch::StreamHandle> &&stream) 
 	// Tracked so scene teardown can drop it: an armed handle keeps the app looper spinning, and
 	// Context::handleDidStop blocks in AppThread::waitStopped() until that looper returns.
 	_sessions.emplace(session);
-	session->handle->setCloseCallback([this, session = Rc<Session>(session)](Status) mutable {
-		_sessions.erase(session);
-	});
+	session->handle->setCloseCallback(
+			[this, session = Rc<Session>(session)](Status) mutable { _sessions.erase(session); });
 
 	session->handle->read([session](BytesView data) {
 		if (session->framed) {
@@ -506,8 +501,8 @@ Status SceneInspector::readHandshake(NotNull<Session> session, BytesView data) {
 
 				auto greeting = toString("# ", PROTOCOL_HANDSHAKE, " ok ",
 						session->json ? "json" : "cbor", "\n");
-				session->handle->write(BytesView(
-						reinterpret_cast<const uint8_t *>(greeting.data()), greeting.size()));
+				session->handle->write(BytesView(reinterpret_cast<const uint8_t *>(greeting.data()),
+						greeting.size()));
 
 				// whatever follows the handshake line in this same read is already frame data
 				auto tail = data.sub(i + 1);
@@ -615,8 +610,15 @@ void SceneInspector::sendError(NotNull<Session> session, int64_t serial, StringV
 }
 
 void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
-	auto serial = request.getInteger("serial", 0);
-	auto cmd = request.getString("cmd");
+	// Every read of `request` below goes through this const reference. The request is untrusted
+	// socket input, so a key may simply be absent; a NON-const get*() on a missing key hands out
+	// the shared null container and aborts the debug build (assertMutableNullAccess). The const
+	// accessors are the sanctioned defensive read and return the sentinel harmlessly — without
+	// them a single malformed frame (`{"command":…}` instead of `{"cmd":…}`) kills the app.
+	const Value &req = request;
+
+	auto serial = req.getInteger("serial", 0);
+	auto cmd = req.getString("cmd");
 
 	if (cmd == "scene") {
 		StringStream dump;
@@ -626,7 +628,7 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		result.setString(dump.str(), "text");
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "logs") {
-		sendResponse(session, serial, getLogDump(uint64_t(request.getInteger("since", 0))));
+		sendResponse(session, serial, getLogDump(uint64_t(req.getInteger("since", 0))));
 	} else if (cmd == "commands") {
 		sendResponse(session, serial, getCommandList());
 	} else if (cmd == "invoke") {
@@ -642,7 +644,7 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 			return;
 		}
 		// The headless window renders on demand, so this is what actually produces frames.
-		auto count = sprt::max(request.getInteger("count", 1), int64_t(1));
+		auto count = sprt::max(req.getInteger("count", 1), int64_t(1));
 		for (int64_t i = 0; i < count; ++i) { server->setReadyForNextFrame(); }
 
 		Value result;
@@ -664,14 +666,16 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		sendResponse(session, serial, sp::move(result));
 		session->handle->shutdownWrite();
 
-		server->close(!request.hasValue("graceful") || request.getBool("graceful"));
+		server->close(!req.hasValue("graceful") || req.getBool("graceful"));
 	} else {
 		sendError(session, serial, toString("unknown command: ", cmd));
 	}
 }
 
 void SceneInspector::handleInvoke(NotNull<Session> session, int64_t serial, Value &&request) {
-	auto name = request.getString("name");
+	const Value &req = request;
+
+	auto name = req.getString("name");
 	auto it = _commands.find(name);
 	if (it == _commands.end()) {
 		sendError(session, serial, toString("unknown scene command: ", name));
@@ -680,10 +684,11 @@ void SceneInspector::handleInvoke(NotNull<Session> session, int64_t serial, Valu
 
 	// The callback may complete later; `done` carries the session (and through it this system)
 	// alive until it does.
-	it->second.callback(sp::move(request.getValue("args")),
-			[this, session = Rc<Session>(session), serial](Value &&result) {
-		sendResponse(session, serial, sp::move(result));
-	});
+	// `args` is optional: take it only when it is really there, or the non-const getValue would
+	// hand back (and move from) the shared null container.
+	it->second.callback(req.hasValue("args") ? sp::move(request.getValue("args")) : Value(),
+			[this, session = Rc<Session>(session), serial](
+					Value &&result) { sendResponse(session, serial, sp::move(result)); });
 }
 
 void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, Value &&request) {
@@ -693,7 +698,7 @@ void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, 
 		return;
 	}
 
-	auto raw = request.getString("format") == "raw";
+	auto raw = static_cast<const Value &>(request).getString("format") == "raw";
 	auto director = _owner ? _owner->getDirector() : nullptr;
 	auto app = director ? director->getApplication() : nullptr;
 	if (!app) {
@@ -701,9 +706,9 @@ void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, 
 		return;
 	}
 
-	server->captureScreenshot([this, session = Rc<Session>(session), serial, raw,
-									  app = Rc<AppThread>(app)](const core::ImageInfoData &info,
-									  BytesView view) mutable {
+	server->captureScreenshot(
+			[this, session = Rc<Session>(session), serial, raw, app = Rc<AppThread>(app)](
+					const core::ImageInfoData &info, BytesView view) mutable {
 		// This runs on the device-task thread and `view` points into a mapped staging buffer that
 		// dies with the task, so the pixels must be consumed right here.
 		Value result;
@@ -749,7 +754,7 @@ void SceneInspector::handleInput(NotNull<Session> session, int64_t serial, Value
 		return;
 	}
 
-	auto &events = request.getValue("events");
+	const Value &events = static_cast<const Value &>(request).getValue("events");
 	if (!events.isArray()) {
 		sendError(session, serial, "'events' must be an array");
 		return;
@@ -757,7 +762,7 @@ void SceneInspector::handleInput(NotNull<Session> session, int64_t serial, Value
 
 	Vector<core::InputEventData> data;
 	data.reserve(events.size());
-	for (auto &it : events.asArray()) {
+	for (const auto &it : events.asArray()) {
 		core::InputEventData event;
 		if (!readInputEvent(it, event)) {
 			sendError(session, serial, toString("unknown input event: ", it.getString("event")));
@@ -781,12 +786,14 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		return;
 	}
 
-	auto op = request.getString("op");
+	const Value &req = request;
+
+	auto op = req.getString("op");
 	if (op == "constraints") {
 		sendResponse(session, serial, encodeConstraints(server->getConstraints()));
 	} else if (op == "resize") {
-		auto width = uint32_t(request.getInteger("width", 0));
-		auto height = uint32_t(request.getInteger("height", 0));
+		auto width = uint32_t(req.getInteger("width", 0));
+		auto height = uint32_t(req.getInteger("height", 0));
 		if (width == 0 || height == 0) {
 			sendError(session, serial, "'width' and 'height' are required and must be non-zero");
 			return;
@@ -806,11 +813,11 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		Value result;
 		result.setBool(true, "closing");
 		sendResponse(session, serial, sp::move(result));
-		server->close(!request.hasValue("graceful") || request.getBool("graceful"));
+		server->close(!req.hasValue("graceful") || req.getBool("graceful"));
 	} else {
 		sendError(session, serial,
-				toString("unknown window op: ", op, "; expected 'resize', 'constraints' or "
-														"'close'"));
+				toString("unknown window op: ", op,
+						"; expected 'resize', 'constraints' or " "'close'"));
 	}
 }
 
@@ -823,9 +830,7 @@ void attach(Node *root) {
 	root->addSystem(Rc<SceneInspector>::create());
 }
 
-SceneInspector *get(Node *root) {
-	return root ? root->getSystemByType<SceneInspector>() : nullptr;
-}
+SceneInspector *get(Node *root) { return root ? root->getSystemByType<SceneInspector>() : nullptr; }
 
 bool addCommand(Node *root, StringView name, StringView description,
 		SceneInspector::CommandCallback &&cb) {

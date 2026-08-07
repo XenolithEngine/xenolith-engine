@@ -190,6 +190,7 @@ protected:
 	virtual void updateQuadsForeground(font::FontController *, TextLayout *, Vector<ColorMask> &);
 
 	virtual bool checkVertexDirty() const override;
+	virtual void refreshPendingDependencies() override;
 
 	virtual NodeVisitFlags processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) override;
 
@@ -204,6 +205,9 @@ protected:
 	EventListener *_listener = nullptr;
 	Time _quadRequestTime;
 	Rc<font::FontController> _source;
+	// Glyph generation this label's quads were laid out against. Its CharIds are only resolvable
+	// while the atlas holds that generation - see refreshPendingDependencies().
+	uint64_t _glyphGeneration = 0;
 	Rc<TextLayout> _format;
 	Vector<ColorMask> _colorMap;
 

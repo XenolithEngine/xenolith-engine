@@ -22,7 +22,23 @@
 
 #include "XLFontDeferredRequest.h"
 
+#include <sprt/runtime/platform.h>
+
+#include <stdlib.h> // getenv
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
+
+// Debug knob (XL_FONT_GLYPH_DELAY_US): sleep this long after rasterising each glyph, on the worker
+// thread that does it. It stretches the interval between "the batch was handed to the GPU" and "the
+// glyphs are in the atlas" - normally shorter than one app tick, so anything that draws ungated in
+// that interval gets away with it and the gating cannot be tested end to end. Off unless set.
+static uint64_t getGlyphRenderDelay() {
+	static const uint64_t s_delay = [] {
+		auto v = ::getenv("XL_FONT_GLYPH_DELAY_US");
+		return v ? uint64_t(::strtoull(v, nullptr, 10)) : uint64_t(0);
+	}();
+	return s_delay;
+}
 
 void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<FontComponent> &ext,
 		const Vector<FontUpdateRequest> &req,
@@ -101,6 +117,11 @@ void DeferredRequest::runThread() {
 			threadFaces[v.first]->acquireTexture(v.second,
 					[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
 		}
+
+		if (auto delay = getGlyphRenderDelay()) {
+			sprt::platform::sleep(delay);
+		}
+
 		finishedLast = (complete.fetch_add(1) + 1 == nrequests);
 		target = current.fetch_add(1);
 	}

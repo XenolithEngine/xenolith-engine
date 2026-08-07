@@ -42,10 +42,14 @@ void DependencyEvent::SetIdGenerationMask(uint32_t mask) { s_eventIdMask = mask;
 
 DependencyEvent::~DependencyEvent() { }
 
-DependencyEvent::DependencyEvent(QueueSet &&q, StringView str) : _queues(sp::move(q)), _tag(str) { }
+DependencyEvent::DependencyEvent(QueueSet &&q, StringView str) : _queues(sp::move(q)), _tag(str) {
+	_signaled.store(_queues.empty());
+}
 
 DependencyEvent::DependencyEvent(InitializerList<Rc<Queue>> &&il, StringView str)
-: _queues(sp::move(il)), _tag(str) { }
+: _queues(sp::move(il)), _tag(str) {
+	_signaled.store(_queues.empty());
+}
 
 bool DependencyEvent::signal(Queue *q, bool success) {
 	if (!success) {
@@ -58,6 +62,9 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 	}
 
 	const bool signaled = _queues.empty();
+	// Publish before running the callback: the callback may hand control to another thread, and a
+	// reader that gets there first must already see the event as fired.
+	_signaled.store(signaled);
 	if (signaled && _signalCallback) {
 		// Fire once on full signal. Move the callback out first so it cannot re-fire on a later signal()
 		// and so a callback that releases the last external reference to this event cannot re-enter here.
@@ -69,11 +76,14 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 	return signaled;
 }
 
-bool DependencyEvent::isSignaled() const { return _queues.empty(); }
+bool DependencyEvent::isSignaled() const { return _signaled.load(); }
 
 bool DependencyEvent::isSuccessful() const { return _success; }
 
-void DependencyEvent::addQueue(Rc<Queue> &&q) { _queues.emplace(move(q)); }
+void DependencyEvent::addQueue(Rc<Queue> &&q) {
+	_queues.emplace(move(q));
+	_signaled.store(false);
+}
 
 void DependencyEvent::setSignalCallback(Function<void()> &&cb) { _signalCallback = sp::move(cb); }
 

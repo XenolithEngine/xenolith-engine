@@ -49,6 +49,14 @@ namespace ui {
 class SP_PUBLIC AuxWindow {
 public:
 	using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
+	// Fired once when the aux window for `id` is dismissed — regardless of how (button, outside
+	// click, escape, parent teardown). Registered by the opener, e.g. to drop a modal backdrop it
+	// added to the parent scene. Runs on the app thread.
+	//
+	// An overlay-backed surface fires it from dismissOverlay(). A native subwindow has no
+	// engine-side scene to hang it on: its scene must call fireCloseCallback(id) from handleExit,
+	// otherwise the callback never runs.
+	using CloseCallback = Function<void()>;
 
 	struct OpenRequest {
 		sprt::window::WindowType type = sprt::window::WindowType::Popup;
@@ -57,6 +65,7 @@ public:
 		StringView title;
 		StringView idPrefix; // used to generate a unique WindowInfo::id
 		ContentBuilder builder;
+		CloseCallback onClose;
 	};
 
 	// Returns the WindowInfo::id on success (native or overlay), empty on failure.
@@ -65,11 +74,21 @@ public:
 	static String openPopup(NotNull<AppWindow> parent, const sprt::window::WindowPlacement &,
 			Extent2 size, ContentBuilder &&, StringView title = StringView());
 
+	static String openPopup(NotNull<AppWindow> parent, const sprt::window::WindowPlacement &,
+			Extent2 size, ContentBuilder &&, CloseCallback &&, StringView title = StringView());
+
 	static String showTooltip(NotNull<AppWindow> parent, const sprt::window::WindowPlacement &,
 			Extent2 size, ContentBuilder &&, StringView title = StringView());
 
 	// Scene-factory side: consume the builder registered for `id` (moved out).
 	static ContentBuilder takeContentBuilder(StringView id);
+
+	// Register a callback fired when the aux window for `id` is dismissed. Safe to call between
+	// open() and the scene's handleExit; the entry is erased after firing.
+	static void setCloseCallback(StringView id, CloseCallback &&);
+	// Fires and drops the callback registered for `id`. Called by dismissOverlay() for in-scene
+	// surfaces, and by the aux scene's handleExit for native subwindows.
+	static void fireCloseCallback(StringView id);
 
 	static bool platformSupportsSubwindows(NotNull<AppWindow> parent);
 

@@ -875,9 +875,10 @@ void StyleResolver::handleLayoutInParent(Node *parent) {
 
 void StyleResolver::handleChildContentSizeDirty(Node *child) {
 	// A descendant's content-size phase fired (delivered via the frame stack): its own size
-	// changed, or - for percent-styled nodes carrying NodeEventFlags::HandleParentContentSize -
-	// an ancestor resized. Re-resolve unless the style is still fresh (same version, resolved
-	// against the same parent/own sizes); equality-guarded writes make re-resolution converge.
+	// changed, or - for nodes carrying NodeEventFlags::HandleParentContentSize (percent metrics
+	// OR absolute insets) - an ancestor resized. Re-resolve unless the style is still fresh
+	// (same version, resolved against the same parent/own sizes); equality-guarded writes make
+	// re-resolution converge.
 	if (_recursive && _owner && !isNodeFresh(child)) {
 		resolveForNode(child);
 	}
@@ -962,9 +963,11 @@ void StyleResolver::apply() {
 	resolveForNode(_owner);
 
 	if (_recursive && sourceChanged) {
-		// nudge every descendant so it re-fires its child event and gets re-resolved this frame;
-		// resolution is deduped per version via _nodesUpdated, so each descendant runs once
-		markSubtreeComponentsDirty(_owner);
+		// Sync-resolve every descendant now. markSubtreeComponentsDirty alone only arms a later
+		// content-size phase; a layout pushed after the scene's enter pass (aux popup bodies) would
+		// otherwise present its first frame with unresolved Inherited* styles on labels. Deduped
+		// per node via _nodesUpdated inside resolveForNode.
+		forEachInSubtree(_owner, [&](Node *child) { resolveForNode(child); });
 	}
 }
 
@@ -1083,10 +1086,27 @@ StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) cons
 		(p && _structuralSelectors) ? p->getChildrenVersion() : 0};
 }
 
-// does the resolved style contain a parent-size-relative (Percent) metric? Such nodes must
-// re-resolve when an ancestor resizes - they opt into NodeEventFlags::HandleParentContentSize
+// Does the resolved style depend on the parent's content size? Such nodes must re-resolve when
+// an ancestor resizes — they opt into NodeEventFlags::HandleParentContentSize.
+//
+// Two cases:
+// 1. Any Percent metric (width/height/margin/inset/…) — classic `%` against the parent box.
+// 2. `position: absolute` with a non-auto inset (`top`/`right`/`bottom`/`left`), even in px —
+//    placement is `y = parentHeight - top` (and left+right / top+bottom stretch the size), so a
+//    first resolve against a zero-sized parent would stick forever. That is the installer
+//    title-line bug: the bar's height arrives only after the flex pass writes MeasureComponent
+//    into ContentSize, and without this bit the absolute child never sees the update.
 static bool hasParentRelativeMetrics(const ResolvedStyle &s) {
 	using document::ParameterName;
+
+	if (s.position() == document::Position::Absolute) {
+		// an undeclared inset resolves to a default-constructed Metric, i.e. Auto
+		for (auto &inset : {s.top(), s.right(), s.bottom(), s.left()}) {
+			if (!inset.isAuto()) {
+				return true;
+			}
+		}
+	}
 
 	for (auto name : {ParameterName::CssWidth, ParameterName::CssHeight, ParameterName::CssTop,
 			 ParameterName::CssRight, ParameterName::CssBottom, ParameterName::CssLeft,

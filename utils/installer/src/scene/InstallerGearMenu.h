@@ -20,40 +20,21 @@
  THE SOFTWARE.
  **/
 
-#include "InstallerMainScene.h"
-#include "InstallerSceneContent.h"
+#ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_
+#define UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_
 
-#include "XLAppWindow.h"
-#include "XLEntryPoint.h"
+#include "XLCommon.h"
+#include "InstallerController.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+class AppWindow;
+}
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-bool MainScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints) {
-	if (!Scene2d::init(app, window, constraints)) {
-		return false;
-	}
-
-	auto content = Rc<InstallerSceneContent>::create();
-	content->setDefaultLights();
-
-	setContent(content);
-	setFpsVisible(true);
-
-	return true;
-}
-
-void MainScene::buildQueueResources(QueueInfo &, core::Queue::Builder &builder) {
-	builder.addImage("app-icon.png",
-			core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled),
-			FileInfo("resources/app-icon.png", FileCategory::Bundled));
-}
-
-static Rc<Scene> installer_makeScene(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window, const core::FrameConstraints &constraints) {
-	return Rc<MainScene>::create(app, window, constraints);
-}
-
-DEFINE_SCENE_FACTORY(installer_makeScene)
+// Gear popup: open data dir / storage / settings / doctor / projects (in-scene overlays).
+void showGearMenu(NotNull<AppWindow> parent, InstallerController *controller);
 
 } // namespace stappler::xenolith::installer
+
+#endif // UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_

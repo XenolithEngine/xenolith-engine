@@ -100,6 +100,8 @@ Layout Layout::resolveFromEnv(StringView prefix) {
 
 String Layout::getInstalledManifest() const { return mergePath(config, "installed.json"); }
 
+String Layout::getProjectsManifest() const { return mergePath(config, "projects.json"); }
+
 String Layout::getToolchainsDir() const { return mergePath(data, "toolchains"); }
 
 String Layout::getHostsDir() const { return mergePath(getToolchainsDir(), "hosts"); }

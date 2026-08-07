@@ -25,6 +25,7 @@
 
 #include "XLUiInteractiveComponent.h"
 #include "XL2dIconSprite.h"
+#include "XL2dLabel.h"
 #include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -71,6 +72,14 @@ public:
 
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
+
+	// Direct label styling, for buttons built outside a stylesheet (auxiliary windows that do not
+	// share the main StyleSystem). These forward to the internal label; CSS `color`/`font-weight`
+	// remain the primary path for normally-styled buttons, but a popup/dialog needs the colour set
+	// without a stylesheet in scope.
+	virtual void setLabelColor(const Color4F &);
+	virtual void setLabelFontWeight(font::FontWeight);
+	virtual basic2d::Label *getLabel() const;
 
 	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
 			const document::StyleValue &);

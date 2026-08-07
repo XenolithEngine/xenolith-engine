@@ -917,6 +917,11 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 				NSSPWIN::WindowCreationFlags::UserSpaceDecorations)) {
 		metalLayer.cornerRadius = 10.0;
 		metalLayer.masksToBounds = YES;
+		// Opaque fill under the drawable: with a clear window the rounded-rect AA fringe
+		// composites against the desktop and reads as a dark hairline along the top edge.
+		metalLayer.backgroundColor = [NSColor colorWithCalibratedRed:0.059 green:0.067 blue:0.055
+																alpha:1.0]
+											 .CGColor;
 		// thin light hairline hugging the rounded edge, like native macOS windows
 		metalLayer.borderWidth = 0.5;
 		metalLayer.borderColor = [NSColor colorWithWhite:0.85 alpha:0.7].CGColor;

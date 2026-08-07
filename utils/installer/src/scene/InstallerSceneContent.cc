@@ -22,7 +22,11 @@
 
 #include "InstallerSceneContent.h"
 #include "InstallerLayout.h"
+#include "InstallerDialogs.h"
+#include "InstallerStrings.h"
 
+#include "XLAppWindow.h"
+#include "XLSceneInspector.h"
 #include "XLUiStyleResolver.h"
 #include "XLWindowDecorations.h"
 #include "XLAction.h"
@@ -30,17 +34,11 @@
 #include "XLDirector.h"
 #include "XLScheduler.h"
 
-#include <sprt/runtime/dispatch/looper.h>
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 // Height of the title bar the overlay must not cover. Mirrors --title-bar-h in
 // resources/style.css; the overlay is positioned here because it lives outside the flex tree.
 static constexpr float kTitleBarHeight = 32.0f;
-
-// How long to keep the overlay up after the catalogue resolves, so the pre-warmed rows get a frame
-// to render before the user sees them.
-static constexpr auto kOverlayLingerMs = 300;
 
 InstallerSceneContent::~InstallerSceneContent() { }
 
@@ -128,15 +126,13 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 	basic2d::SceneContent2d::handleEnter(scene);
 
 	// Spin the loading icon while it is visible. Two parts:
-	//  - RenderContinuously action: the renderer otherwise only produces frames on demand (a dirty
-	//    region / live input), so without this the spinner advances ONLY while you move the mouse.
-	//    Run it on the spinner while it is shown, stop it once hidden to return to low-power
-	//    rendering.
-	//  - schedulePerFrame: the actual rotation (there is no RotateBy action). It lives on Scheduler,
-	//    not Node; grab the node's scheduler and target the spinner.
+	//  - RenderContinuously on THIS content (not only the spinner): schedulePerFrame and
+	//    Node rotation only advance when frames are produced; on-demand rendering otherwise
+	//    freezes the spinner until the mouse moves over the window.
+	//  - schedulePerFrame: the actual rotation (there is no RotateBy action).
 	if (!_spinnerScheduled && _spinner && _spinner->getScheduler()) {
 		_spinnerScheduled = true;
-		_spinner->runAction(Rc<RenderContinuously>::create(), "RenderContinuously"_tag);
+		runAction(Rc<RenderContinuously>::create(), "LoadingRender"_tag);
 		_spinner->getScheduler()->schedulePerFrame([this](const UpdateTime &) {
 			if (_spinner && _spinner->isVisible()) {
 				_spinner->setRotation(_spinner->getRotation() + 0.25f);
@@ -153,24 +149,57 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 		return;
 	}
 
-	_controller->loadCatalog([this](bool, String) {
+	_controller->loadCatalog([this](bool ok, String) {
 		if (!_layout || !_controller) {
 			return;
 		}
 		_layout->onCatalogReady(_controller);
 
-		// Hide the overlay only once the catalogue has loaded and the table is built — NOT on a
-		// fixed timer. The catalogue comes over FTP and can take many seconds; a timer would lift
-		// the overlay onto an empty table. A short extra delay lets the pre-warmed rows render.
-		if (auto looper = getDirector()->getApplication()->getLooper()) {
-			looper->schedule(sprt::dispatch::TimeInterval::milliseconds(kOverlayLingerMs),
-					[this](sprt::dispatch::Handle *, bool) { hideLoadingState(); }, this);
+		// Hide loading BEFORE any confirm/onboarding. Dialogs used to snapshot+restore the
+		// loading chrome on dismiss, which left "Loading catalogue…" stuck forever after the
+		// first onboard dismiss — and without RenderContinuously the restored spinner froze.
+		hideLoadingState();
+
+		// Onboarding confirm is opt-in via inspector for now — opening it immediately after
+		// catalogue rebuild has been crashing the headless process (and used to re-show the
+		// stuck loader). Packages UI must be usable first.
+		(void)ok;
+	});
+	_controller->queryEngine([this](const EngineStatusInfo &info) {
+		if (_layout) {
+			_layout->setEngineStatus(info);
 		}
 	});
-	_controller->queryEngine([](const EngineStatusInfo &) { });
+
+	// Inspector: open a confirm dialog without a pointer click. Both tones are exposed — the
+	// primary one is what looked empty on first open when StyleResolver painted labels black.
+	auto addConfirmCommand = [this](StringView name, StringView help, ConfirmTone tone) {
+		inspector::addCommand(this, name, help,
+				[this, tone](Value &&, Function<void(Value &&)> &&done) {
+			auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
+			if (window) {
+				if (tone == ConfirmTone::Danger) {
+					showConfirmDialog(window, strings::confirmDeleteTitle(),
+							strings::confirmDeleteMessage("aarch64-apple-macosx"),
+							strings::actionDelete(), tone, [] { });
+				} else {
+					showConfirmDialog(window, strings::confirmInstallTitle(),
+							strings::confirmInstallMessage(), strings::actionInstall(), tone,
+							[] { });
+				}
+			}
+			Value r;
+			r.setBool(window != nullptr, "opened");
+			done(sp::move(r));
+		});
+	};
+	addConfirmCommand("open-confirm", "Open Delete confirm dialog (danger)", ConfirmTone::Danger);
+	addConfirmCommand("open-confirm-install", "Open Install confirm dialog (primary)",
+			ConfirmTone::Primary);
 }
 
 void InstallerSceneContent::hideLoadingState() {
+	stopActionByTag("LoadingRender"_tag);
 	if (_layout) {
 		_layout->dropScrollWarmup();
 	}
@@ -184,6 +213,33 @@ void InstallerSceneContent::hideLoadingState() {
 	if (_loadingLabel) {
 		_loadingLabel->setVisible(false);
 	}
+}
+
+void InstallerSceneContent::presentOverlay(basic2d::SceneLayout2d *overlay) {
+	if (_modalOverlay) {
+		popOverlay(_modalOverlay);
+		_modalOverlay = nullptr;
+		stopActionByTag("OverlayRender"_tag);
+	}
+	_modalOverlay = overlay;
+	if (overlay) {
+		pushOverlay(overlay);
+		// A dialog has hover states and a relayout pass; on-demand rendering would otherwise
+		// leave it half-painted until the mouse moves.
+		runAction(Rc<RenderContinuously>::create(), "OverlayRender"_tag);
+	}
+}
+
+void InstallerSceneContent::dismissOverlay(basic2d::SceneLayout2d *overlay) {
+	if (overlay && _modalOverlay == overlay) {
+		presentOverlay(nullptr);
+	}
+}
+
+InstallerSceneContent *getSceneContent(NotNull<AppWindow> window) {
+	auto *director = window->getDirector();
+	auto *scene = director ? director->getScene() : nullptr;
+	return scene ? dynamic_cast<InstallerSceneContent *>(scene->getContent()) : nullptr;
 }
 
 } // namespace stappler::xenolith::installer
