@@ -1,0 +1,273 @@
+# Memory and ownership: `Rc`, `Ref`, and memory pools
+
+**TL;DR**
+
+* Ref-counted objects: `Rc<T>::create(args…)` → calls `init()`, returns a strong
+  reference. No bare `new T`.
+* Own with `Rc<T>`; hold non-owning back-references as raw pointers.
+* Two allocation worlds: **malloc-backed** (`RefAlloc::__new`, `AllocBase`) and
+  **pool-backed** (`memory::pool_t`, `AllocPool`). Never free across the border.
+* A type allocated from a pool must derive from `AllocPool` — that is what makes
+  `sprt::__delete` skip the `free()`.
+* `new (pool) T` is only correct when `T : AllocPool` — for any other `T` the
+  compiler now rejects it (it used to become placement new *at the pool's
+  address*).
+* A pool need not belong to a thread: a **self-contained** pool (own internal
+  allocator) or a pool over an **external** `allocator_t` can be moved to another
+  thread together with its data. `Rc<PoolRef>` packages a refcounted pool;
+  `Rc<SharedRef<T>>` packages an object that lives in — and owns — its own pool.
+  Transfer of ownership, never concurrent sharing.
+* Aggregate `Type{value}` on a type with a base class initializes the **base**,
+  not the first field.
+
+## Reference counting
+
+[runtime/include/sprt/runtime/ref.h](../../../../runtime/include/sprt/runtime/ref.h)
+defines the hierarchy: `RefAlloc` (allocation policy + atomic counter) →
+`Ref` (the public base) → `Rc<T>` (the smart pointer).
+
+`RefAlloc` **deletes** the ordinary `operator new`/`operator delete` and the
+placement forms. Ref-counted objects can therefore only be produced by the
+factories:
+
+[source,cpp]
+----
+_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));   // allocate + init()
+auto image = Rc<VectorImage>::create(_contentSize);
+auto layout = node->addSystem(Rc<LayoutSystem>::create());
+----
+
+`create()` allocates via `RefAlloc::__new` (which is `__sprt_malloc` +
+`construct_at`), calls the object's `virtual bool init(...)`, and destroys the
+object returning `nullptr` if `init` reports failure. This is why constructors
+stay trivial and initialization that can fail lives in `init` — see
+[sources/naming.adoc](../sources/naming.adoc).
+
+Ownership conventions:
+
+* `Rc<T>` — a strong reference; use it for anything you keep alive.
+* Raw `T *` — a non-owning observer, for objects whose lifetime is guaranteed by
+  someone else (a scene-graph child owned by its parent, e.g.
+  `basic2d::Label *_label = nullptr` in
+  [XLUiButton.h](../../../../xenolith/renderer/ui/atoms/XLUiButton.h)).
+* `sprt::retain()` / `sprt::release()` — manual counting, only where an `Rc`
+  cannot be stored (C callbacks, cross-thread handoff). Never call
+  `incrementReferenceCount` / `decrementReferenceCount` directly; the header
+  says so and means it.
+
+For leak hunting, build with `SPRT_REF_DEBUG=1` — retain/release then carry an
+id so an unbalanced pair can be traced back to its source.
+
+## Pools vs malloc
+
+Pool allocation (`memory::pool_t`, `sprt::memory::pool::palloc`) hands out
+memory that is reclaimed **wholesale** when the pool is destroyed; individual
+blocks are never freed. `sprt::detail::AllocPool`
+([allocator_pool.h](../../../../runtime/include/sprt/cxx/detail/allocator_pool.h))
+is the marker base for objects living in that world. It provides
+`operator new(size_t, memory::pool_t *)`, a no-op `operator delete`, and the
+`__sprt_pool_owned_tag` typedef.
+
+That typedef is load-bearing. `sprt::__delete`
+([construct.h](../../../../runtime/include/sprt/cxx/__new/construct.h)) runs the
+destructor and then decides how to release the storage:
+
+[source,cpp]
+----
+template <typename T>
+inline void __delete(T *t) noexcept {
+	sprt::destroy_at(t);
+	if constexpr (requires { typename T::__sprt_pool_owned_tag; }) {
+		return;                       // pool reclaims the block
+	} else if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+----
+
+Consequence: **a pool-allocated type that does not derive from `AllocPool` will
+be `free()`d on a pool pointer** — undefined behaviour, usually a heap
+corruption far from the call site. If you allocate a type from a pool (directly
+with `palloc`, via `RefAlloc::__pnew`, or through a pool-backed container), give
+it the `AllocPool` base.
+
+Ordinary heap types derive from `sprt::AllocBase`
+([sprt/cxx/new](../../../../runtime/include/sprt/cxx/new)), whose `operator new`
+uses `__sprt_malloc`/`__sprt_aligned_alloc`. `AllocBase` explicitly `= delete`s
+the `pool_t *` overloads: allocating a plain class from a pool is meant to be a
+compile error.
+
+## Independent pools: data that can travel between threads
+
+The default pool is a *child* pool: `pool::create(parent)` borrows the parent's
+allocator and must not outlive it. That is the thread-bound case — the parent is
+usually the thread's own pool, so its contents belong to that thread. But a pool
+does not have to be attached to a thread. From
+[mem/pool.h](../../../../runtime/include/sprt/runtime/mem/pool.h):
+
+| Constructor | What you get |
+|---|---|
+| `pool::create(pool_t *parent)` | child pool on the parent's allocator; dies with the parent |
+| `pool::create()` / `create_tagged(name)` | **self-contained** pool with its own internal allocator; needs no runtime pre-init |
+| `pool::create(allocator_t *)` | pool over an **external** allocator you created with `allocator::create()` and carry next to it |
+
+The header states the threading contract exactly:
+
+> All allocators in stappler are thread-safe (but allocating memory from pools is
+> not). That is, you can freely transfer allocators between threads.
+
+So the unit that may cross a thread boundary is **(allocator + pool + everything
+allocated from it)**, moved as a whole. This is *transfer of ownership, not
+sharing*: exactly one thread may allocate from that pool at a time. Nothing is
+locked for you.
+
+That is what makes the blunt "pool memory is per thread" rule of
+[threads](../core/threads-and-dispatch.adoc) precise. A `StringView` into *another thread's*
+pool is a dangling read; a self-contained pool handed over together with its data
+is a supported pattern — and the two containers below are how it is packaged.
+
+### `PoolRef` / `AllocRef` — a refcounted pool
+
+[mem/pool_ref.h](../../../../runtime/include/sprt/runtime/mem/pool_ref.h):
+
+[source,cpp]
+----
+auto p = Rc<sprt::PoolRef>::alloc();      // own AllocRef + a pool on it
+p->perform([&] { … });                    // run with this pool as the current one
+p->getPool();                             // raw pool_t * when an API needs it
+
+Rc<sprt::PoolRef>::alloc(existingAllocRef);  // share an external allocator
+Rc<sprt::PoolRef>::alloc(otherPoolRef);      // sibling pool on the same allocator
+----
+
+The pool is destroyed with the last reference, so the data's lifetime *is* the
+`Rc`'s lifetime — there is no "who clears this pool" question left. Use `alloc()`,
+not `create()`: `PoolRef` has constructors, not an `init()`.
+
+This is what the frame pipeline runs on:
+[FrameRequest](../../../../xenolith/core/XLCoreFrameRequest.cc),
+[FrameQueue](../../../../xenolith/core/XLCoreFrameQueue.h) and
+[CommandList](../../../../xenolith/renderer/basic2d/XL2dCommandList.h) each hold an
+`Rc<PoolRef>`, so everything a frame allocates lives in the frame's own pool and
+is released when the frame is.
+
+### `SharedRef<T>` — an object that owns its pool
+
+[ref.h](../../../../runtime/include/sprt/runtime/ref.h) goes one step further and
+puts the *object itself* inside the pool it owns. Used as `Rc<SharedRef<T>>`,
+which behaves like an `Rc<T>` (`->`, `get()`, `operator bool`):
+
+[source,cpp]
+----
+// runtime/src/dispatch/SPRuntimeDispatchQueue.cc
+using QueueRef = SharedRef<Queue>;
+
+Rc<SharedRef<Queue>> Queue::create(QueueInfo &&info) {
+	return Rc<QueueRef>::create(SharedRefMode::Allocator, move(info));
+}
+----
+
+Three creation forms, and the choice is the whole point:
+
+| Form | Backing | Use for |
+|---|---|---|
+| `create(args…)` | pool under the app root pool | process-lifetime objects |
+| `create(pool_t *parent, args…)` | child pool of `parent` | an object scoped to an existing pool |
+| `create(SharedRefMode::Allocator, args…)` | **own allocator + own pool** | a self-contained object that can be handed to another thread, or that must exist before the pool subsystem is initialized |
+
+The payload is constructed as `T(SharedRef *owner, pool_t *pool, args…)` — which
+is precisely `memory::PoolObject`'s constructor, so `T` normally derives from
+[`PoolObject`](../../../../runtime/include/sprt/runtime/mem/pool_ref.h). That base
+gives it the pool-backed type family (`String`, `Vector`, `Map`, `Function`, …)
+and `perform()` to enter its own pool.
+
+Teardown is ordered so nothing can dangle: destroy the object → destroy the pool
+→ destroy the allocator. Releasing the last `Rc` therefore takes the whole memory
+region with it, which is why such an object can be dropped from any thread.
+
+The parent-pool form additionally registers a pre-cleanup on the parent: if the
+parent pool is cleared first, the `SharedRef` is *invalidated* (its payload
+pointer nulled) rather than left pointing into freed memory — so check
+`operator bool` on a `SharedRef` whose parent you do not control.
+
+In-tree users: `dispatch::Queue` (`QueueRef`, `Allocator` mode — the event queue
+owns its memory, so a `Looper` can hold one per thread), `LocaleManager`
+([XLFontLocale.cc](../../../../xenolith/font/XLFontLocale.cc): a static singleton in
+`Allocator` mode, because it must be constructible before the pool subsystem is
+up), `makefile::MakefileRef`, `pug::FileRef`.
+
+### Rules
+
+* **Transfer, don't share.** Moving an `Rc<PoolRef>` / `Rc<SharedRef<T>>` to
+  another thread is fine; using it from two threads at once is not. Hand it over
+  through `performOnThread` and stop touching it on the sending side.
+* **Enter the pool before allocating** — `perform()` on the `PoolRef` /
+  `PoolObject`, or `memory::perform(cb, pool)`. Pool-backed containers created
+  outside that scope land in whatever pool happens to be current.
+* **Don't cross-pollinate.** An object in pool A must not hold views into pool B
+  unless B provably outlives A. Inside one self-contained pool everything is
+  consistent by construction; the moment two pools mix, the ordering is yours to
+  guarantee.
+
+## `new (pool) T` requires an `AllocPool` base — the compiler now enforces it
+
+`memory::pool_t *` converts implicitly to `void *`, and the global placement
+`operator new(size_t, void *)` is visible. So for a type with neither `AllocPool`
+nor `AllocBase` in its bases, `new (pool) MyStruct()` used to compile and do
+something entirely different from what it reads like: global placement new,
+constructing the object *at the address of the pool object* and allocating
+nothing.
+
+[sprt/cxx/new](../../../../runtime/include/sprt/cxx/new) closes that hole by
+declaring the exact-match global overloads as deleted:
+
+[source,cpp]
+----
+void *operator new(sprt::size_t, sprt::memory::pool_t *) = delete;
+void *operator new[](sprt::size_t, sprt::memory::pool_t *) = delete;
+----
+
+Now the three cases resolve like this:
+
+* `T : AllocPool` — class-scope lookup finds `AllocPool`'s own
+  `operator new(size_t, pool_t *)` and never reaches the global one. Works.
+* `T : AllocBase` — the class deletes the same pair itself. Compile error.
+* anything else — the deleted global exact match beats the `pool_t * → void *`
+  conversion. Compile error:
+  `error: call to deleted function 'operator new'`.
+
+Remaining gap: a class that declares its *own* `operator new` set without a
+`pool_t *` overload hides the global declarations, so the old silent conversion
+can still happen there. And allocating raw storage with `palloc` for a
+non-`AllocPool` type is still your responsibility to get right.
+
+When the type genuinely should live in a pool, give it the `AllocPool` base.
+Otherwise use `palloc` + `construct_at` explicitly, or `RefAlloc::__pnew` for
+ref-counted objects.
+
+## Trap: aggregate initialization picks the base class
+
+For an aggregate with a base class, the *first* element of the braced list
+initializes the **base subobject**:
+
+[source,cpp]
+----
+struct Item : memory::AllocPool {
+	StringView name;
+	uint32_t index = 0;
+};
+
+Item item{"value"};      // initializes the AllocPool base — `name` stays empty
+Item item{{}, "value"};  // correct: empty base initializer first
+----
+
+The failure is silent — the intended field keeps its default. Prefer designated
+initializers (`Item{.name = "value"}`) or plain assignment for aggregates that
+carry a base.
+
+## Related
+
+* [sources/naming.adoc](../sources/naming.adoc) — the `init()` + `Rc<T>::create()` pattern
+* [platform/platform-guards.adoc](../platform/platform-guards.adoc) — freestanding/platform constraints

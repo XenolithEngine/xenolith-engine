@@ -14,16 +14,20 @@ description: >-
   mem_pool, CallbackStream, reader API), error handling with no exceptions
   (Status, Result<T>, slog(), asserts), weakly-typed data (data::Value: the
   mem_std/mem_pool interfaces, setValue(value, key) order, the read-only
-  Value::Null sentinel, JSON/CBOR round-tripping), and what .clang-format
-  already enforces.
+  Value::Null sentinel, JSON/CBOR round-tripping), windows and OS integration
+  (Context::createWindow + WindowSceneInfo, ui::SubWindow popups/tooltips,
+  WindowCapabilities, DialogRequest and the reveal/trash shell actions), and what
+  .clang-format already enforces.
 ---
 
 # Xenolith/Stappler code style
 
-Full articles live in [docs/usage/codestyle/](../../../docs/usage/codestyle/) —
-this card holds the rules that are cheap to keep in context, and routes to the
-article when you need the detail. Read the article before writing a new file or
-touching an unfamiliar layer; the rules below are enough for an ordinary edit.
+Full articles live in [docs/usage/codestyle/](../../../docs/usage/codestyle/),
+grouped by what you are touching — `sources/`, `platform/`, `core/`, `scene/`,
+`window/`, plus the standalone `deferred-computation.adoc`. This card holds the
+rules that are cheap to keep in context, and routes to the article when you need
+the detail. Read the article before writing a new file or touching an unfamiliar
+layer; the rules below are enough for an ordinary edit.
 
 ## The design principle
 
@@ -36,7 +40,7 @@ per-field style accessors, `Callback<void(StringView)>` instead of returned
 strings, and demand-driven dispatch (subtree listener counters, frame stack).
 Don't defer when the bookkeeping costs more than the work, when it muddies
 lifetime, or for error detection. Details and examples:
-[00-deferred-computation.adoc](../../../docs/usage/codestyle/00-deferred-computation.adoc).
+[deferred-computation.adoc](../../../docs/usage/codestyle/deferred-computation.adoc).
 
 ## Golden rules
 
@@ -168,26 +172,45 @@ lifetime, or for error detection. Details and examples:
     with `data::write` / `data::toString` / `data::save`, decode with
     `data::read<Interface>` (format auto-detected, failure = `EMPTY` value, so
     check the shape). Bytes survive CBOR/Serenity, **not** JSON.
+24. **A window carries its own identity; an OS dialog is a request you keep.**
+    Ask for a window with `Context::createWindow(Rc<WindowInfo> &&)` and put what
+    it *is* — scene builder, prebuilt queue, close callback — in
+    `WindowInfo::appData` as an `Rc<WindowSceneInfo>`; **never look a window up by
+    `id`** (the runtime re-uniques a colliding one). That handle is app-thread
+    only, its `getWindow()` is null until the window appears, and its close
+    callback fires exactly once however the window went away — including "never
+    opened". A popup/dialog/tooltip belonging to a window is **`ui::SubWindow`**,
+    which becomes a native subwindow or an in-scene overlay depending on
+    `WindowCapabilities::Subwindows` — check capabilities before offering
+    fullscreen, decorations or mode switching too. OS dialogs are an
+    `Rc<sprt::window::DialogRequest>` handed to `AppWindow::openDialog` (parented,
+    cancelled with the window) or `Context::openDialog` (windowless); **keep the
+    `Rc` — it is the cancellation token**, `callback` is required and runs exactly
+    once on the target looper, and `Status::Declined` means the user cancelled,
+    not that something failed. `RevealInFileManager`/`MoveToTrash` are shell
+    actions on the same seam, with `paths` as input.
 
 ## Where to read more
 
 | Task | Article |
 |---|---|
-| Designing a subsystem, an API or a data structure; deciding what to compute when | [00-deferred-computation.adoc](../../../docs/usage/codestyle/00-deferred-computation.adoc) |
-| Adding a source file; `.cpp` vs `.cc`; compile-checking one file | [01-units-and-files.adoc](../../../docs/usage/codestyle/01-units-and-files.adoc) |
-| New header: license, guard, namespace, visibility macro, include order | [02-file-layout.adoc](../../../docs/usage/codestyle/02-file-layout.adoc) |
-| Naming a file, type, member, handler; the `init()`/`create()` pattern | [03-naming.adoc](../../../docs/usage/codestyle/03-naming.adoc) |
-| Platform/arch `#if`, per-platform values, how to verify guarded code | [04-platform-guards.adoc](../../../docs/usage/codestyle/04-platform-guards.adoc) |
-| `Rc`/`Ref`, pools vs malloc, `AllocPool`, `__delete`, pool traps; independent pools (`PoolRef`, `SharedRef<T>`) that travel between threads | [05-memory-and-ownership.adoc](../../../docs/usage/codestyle/05-memory-and-ownership.adoc) |
-| What the formatter enforces and what it deliberately leaves alone | [06-formatting.adoc](../../../docs/usage/codestyle/06-formatting.adoc) |
-| Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [07-strings.adoc](../../../docs/usage/codestyle/07-strings.adoc) |
-| A function that can fail; `Status`/`Result<T>`, logging, assertions | [08-errors-and-status.adoc](../../../docs/usage/codestyle/08-errors-and-status.adoc) |
-| Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [09-threads-and-dispatch.adoc](../../../docs/usage/codestyle/09-threads-and-dispatch.adoc) |
-| Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [10-node-geometry.adoc](../../../docs/usage/codestyle/10-node-geometry.adoc) |
-| Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [11-node-system-component.adoc](../../../docs/usage/codestyle/11-node-system-component.adoc) |
+| Designing a subsystem, an API or a data structure; deciding what to compute when | [deferred-computation.adoc](../../../docs/usage/codestyle/deferred-computation.adoc) |
+| Adding a source file; `.cpp` vs `.cc`; compile-checking one file | [units-and-files.adoc](../../../docs/usage/codestyle/sources/units-and-files.adoc) |
+| New header: license, guard, namespace, visibility macro, include order | [file-layout.adoc](../../../docs/usage/codestyle/sources/file-layout.adoc) |
+| Naming a file, type, member, handler; the `init()`/`create()` pattern | [naming.adoc](../../../docs/usage/codestyle/sources/naming.adoc) |
+| Platform/arch `#if`, per-platform values, how to verify guarded code | [platform-guards.adoc](../../../docs/usage/codestyle/platform/platform-guards.adoc) |
+| `Rc`/`Ref`, pools vs malloc, `AllocPool`, `__delete`, pool traps; independent pools (`PoolRef`, `SharedRef<T>`) that travel between threads | [memory-and-ownership.adoc](../../../docs/usage/codestyle/core/memory-and-ownership.adoc) |
+| What the formatter enforces and what it deliberately leaves alone | [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc) |
+| Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [strings.adoc](../../../docs/usage/codestyle/core/strings.adoc) |
+| A function that can fail; `Status`/`Result<T>`, logging, assertions | [errors-and-status.adoc](../../../docs/usage/codestyle/core/errors-and-status.adoc) |
+| Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [threads-and-dispatch.adoc](../../../docs/usage/codestyle/core/threads-and-dispatch.adoc) |
+| Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |
+| Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [node-system-component.adoc](../../../docs/usage/codestyle/scene/node-system-component.adoc) |
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
-| Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [12-runtime-libc.adoc](../../../docs/usage/codestyle/12-runtime-libc.adoc) |
-| Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [13-data-value.adoc](../../../docs/usage/codestyle/13-data-value.adoc) |
+| Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [runtime-libc.adoc](../../../docs/usage/codestyle/platform/runtime-libc.adoc) |
+| Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [data-value.adoc](../../../docs/usage/codestyle/core/data-value.adoc) |
+| Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
+| Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |
 

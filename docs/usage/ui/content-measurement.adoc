@@ -352,5 +352,5 @@ ignores it elsewhere.
   content-size, layout-children after reorder) is described in
   [the Node/System event pipeline](../../design/node-system-event-pipeline.adoc).
 * A working end-to-end example lives in the test scene
-  [FitContentLayout.cpp](../../../tests/window/src/FitContentLayout.cpp)
+  [FitContentLayout.cpp](../../../tests/window/src/layout/FitContentLayout.cpp)
   (run `testapp` with `XL_FITCONTENT_TEST=1`).

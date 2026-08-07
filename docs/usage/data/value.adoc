@@ -8,7 +8,7 @@ configuration file, IPC message, inspector command, saved app state and
 remote-render packet is made of.
 
 This is the long-form guide. The short, rule-shaped version for a quick check
-lives in [codestyle/13-data-value.adoc](../codestyle/13-data-value.adoc).
+lives in [codestyle/core/data-value.adoc](../codestyle/core/data-value.adoc).
 
 **TL;DR**
 
@@ -56,7 +56,7 @@ structs everywhere, `Value` only in the encode/decode layer.
 
 There is no single `Value` type: it is templated on a *memory interface* exactly
 like the strings and containers around it (see
-[codestyle/07-strings.adoc](../codestyle/07-strings.adoc)).
+[codestyle/core/strings.adoc](../codestyle/core/strings.adoc)).
 
 | Spelling | Interface | Strings/containers allocated from |
 |---|---|---|
@@ -111,7 +111,7 @@ memory::perform([&] {
 * A pool `Value` must not be handed to another thread. To move a dataset
   between threads, move the pool that owns it (`Rc<PoolRef>`,
   `Rc<SharedRef<T>>` — see
-  [codestyle/05-memory-and-ownership.adoc](../codestyle/05-memory-and-ownership.adoc)),
+  [codestyle/core/memory-and-ownership.adoc](../codestyle/core/memory-and-ownership.adoc)),
   or serialize to CBOR and decode on the other side.
 
 A `mem_std::Value` is malloc-backed and self-contained: it can be moved
@@ -584,7 +584,7 @@ saved app state ([XLContext.cc](../../../xenolith/application/XLContext.cc)).
 
 ## 15. Related
 
-* [codestyle/13-data-value.adoc](../codestyle/13-data-value.adoc) — the rule card
-* [codestyle/07-strings.adoc](../codestyle/07-strings.adoc) — interfaces, `StringView`, `CallbackStream`
-* [codestyle/05-memory-and-ownership.adoc](../codestyle/05-memory-and-ownership.adoc) — pools, `AllocPool`, moving data between threads
-* [codestyle/08-errors-and-status.adoc](../codestyle/08-errors-and-status.adoc) — why decode failures are values, not exceptions
+* [codestyle/core/data-value.adoc](../codestyle/core/data-value.adoc) — the rule card
+* [codestyle/core/strings.adoc](../codestyle/core/strings.adoc) — interfaces, `StringView`, `CallbackStream`
+* [codestyle/core/memory-and-ownership.adoc](../codestyle/core/memory-and-ownership.adoc) — pools, `AllocPool`, moving data between threads
+* [codestyle/core/errors-and-status.adoc](../codestyle/core/errors-and-status.adoc) — why decode failures are values, not exceptions

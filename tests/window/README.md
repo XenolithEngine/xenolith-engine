@@ -9,14 +9,32 @@ Build tools: a C and a C++ compiler, make. Vulkan installed system-wide, or the
 
 ## Layout
 
+Sources are grouped by the subsystem a test exercises, one directory per group. Everything under
+`src/` is compiled (the source scan is recursive) and `src/` itself is the include root, so a header
+is included by its group-qualified path: `#include "app/TestLayout.h"`.
+
     Makefile                  project description
-    src/AppSetup.cpp          application entry point and command-line hooks
-    src/ExampleScene.cpp,.h   the base scene
-    src/TestRegistry.cpp,.h   the list of demo layouts - the single place a test is declared
-    src/TestLayout.cpp,.h     common base of every layout: caption, stylesheet, socket commands
-    src/*Layout.cpp,.h        the demo layouts themselves
+    src/app/                  the application itself, not a test of anything
+      AppSetup.cpp              entry point and command-line hooks
+      ExampleScene.cpp,.h       the base scene; the `layout`, `layouts` and `dialog` commands
+      TestRegistry.cpp,.h       the list of demo layouts - the single place a test is declared
+      TestLayout.cpp,.h         common base of every layout: caption, stylesheet, socket commands
+      GeneralLayout.cpp,.h      the front page: menu of the demos, window and clipboard controls
+      LiveReloadAppThread.*     `--watch`: rebuild and relaunch the client app
+      ProjectBuildThread.*      the off-thread builder it drives
+    src/css/                  CSS engine: selectors, cascade, live reload
+    src/layout/               placement and measurement: flex/grid, fit-content, margins, resize
+    src/widgets/              ui:: widgets and their styling; scroll virtualization
+    src/text/                 text shaping
+    src/template/             pug templates and the template-system cascade
+    src/render/               what reaches the screen: damage tracking, rendering levels
+    src/window/               windows: a second Root window, prewarmed queues, monitors/fullscreen
     resources/                bundled assets
     client/                   companion app for the shared-queue (remote rendering) demo
+
+A new test is a `*Layout.cpp,.h` pair in the group it belongs to, plus one entry in
+`src/app/TestRegistry.cpp` - nothing else has to be told about it, neither the Makefile nor the
+menu on the front page.
 
 ## Building
 
@@ -111,6 +129,7 @@ Things worth knowing:
 |---|---|---|
 | `layouts` | — | the list of layouts: `name`, `title`, `description`, `env`, `hideFps` |
 | `layout` | `name`, `settle` (seconds, 1.0 by default) | switch the layout; the answer arrives once the new one has been rendering for `settle` seconds |
+| `dialog` | `type` (`open-file`, `open-directory`, `save-file`, `color`, `font`, `reveal`, `trash`), `path`, `filename`, `paths`, `title`, `modal`, `multiple` | open a system dialog on the main window; answers with the `DialogResult` once the user is done. `reveal` and `trash` show no UI of ours, so they are the two that can be exercised without a display |
 
 The answer to `layout` *is* the "you may shoot now" signal: the command deliberately does not reply
 before the scene has laid out and finished its entry animations. That is why the script below needs

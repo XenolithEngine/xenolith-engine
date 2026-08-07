@@ -1,0 +1,234 @@
+# Windows: opening them, owning them, closing them
+
+**TL;DR**
+
+* One process, many windows. The **root** window is built for you from the
+  command line / platform handle; every other one the application asks for.
+* Ask through `Context::createWindow(Rc<WindowInfo> &&, complete)`. What the
+  window **is** — its scene, its prebuilt queue, what happens when it dies —
+  travels *with the request*, as `WindowInfo::appData` = `Rc<WindowSceneInfo>`.
+* **Never look a window up by `id` afterwards.** The runtime re-uniques a
+  colliding id, so the id you asked for is not necessarily the one that exists.
+* The `Rc<WindowSceneInfo>` the opener keeps **is** the handle. `getWindow()` is
+  null until the window actually appears — creation is asynchronous.
+* A popup / dialog / tooltip that belongs to another window is
+  **`ui::SubWindow`**, not a hand-built `WindowInfo`: it becomes a native
+  subwindow where the platform has them and an in-scene overlay where it does
+  not, with the same placement and dismiss rules on both paths.
+* **Check `WindowCapabilities` before asking.** Fullscreen, subwindows,
+  decoration state, mode switching — each of them is missing somewhere.
+* Closing is `AppWindow::close(graceful)` / `hide()` / `SubWindow::dismiss()`.
+  The close callback fires **exactly once**, however the window went away.
+
+## The three kinds of window
+
+| | What it is | How you get it |
+|---|---|---|
+| **Root window** | the application's own top-level window, its own taskbar entry | built by the context at start-up; the scene comes from the `makeScene` symbol |
+| **Another root window** | a second, equally independent top-level window in the same process | `Context::createWindow` with `WindowType::Root` |
+| **Auxiliary surface** | `Dialog`, `Utility`, `Popup`, `Tooltip` — hangs off a parent window | `ui::SubWindow::open` |
+
+`WindowType` ([window_info.h](../../../../runtime/include/sprt/runtime/window/window_info.h))
+is immutable after creation, and everything except `Root` requires
+`WindowInfo::parent` to name a **live** window.
+
+## The root window
+
+You do not create it. The context does, from `ContextConfig` (command line on
+desktop, the native handle on Android/iOS). What you supply is the scene, as a
+process-wide symbol:
+
+[source,cpp]
+----
+// ExampleScene.cpp
+DEFINE_PRIMARY_SCENE_CLASS(ExampleScene)
+----
+
+That macro defines the `makeScene` symbol
+([XLEntryPoint.h](../../../../xenolith/application/XLEntryPoint.h)) which the
+engine calls for any window that did not bring a scene of its own — above all the
+root one, whose `WindowInfo` exists before the app thread does. A window that
+*did* bring one (see below) never reaches this symbol.
+
+## Opening another top-level window
+
+Fill a `WindowInfo`, attach a `WindowSceneInfo` as its `appData`, hand it to the
+context. `tests/window/src/window/SecondaryWindow.cpp` is the whole pattern:
+
+[source,cpp]
+----
+auto sceneInfo = Rc<WindowSceneInfo>::create(
+		// SceneBuilder: runs on the app thread when this window needs its scene.
+		[builder = sp::move(builder), id = id.str<Interface>()](NotNull<AppThread> app,
+				NotNull<core::RenderServerChannel> window,
+				const core::FrameConstraints &c) mutable -> Rc<Scene> {
+	return Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
+}, sp::move(onClose));
+
+auto info = Rc<sprt::window::WindowInfo>::create();
+info->id = id.str<Interface>();
+info->title = toString("testapp ", id);
+info->type = sprt::window::WindowType::Root; // no parent, no Subwindows capability needed
+info->rect = IRect(0, 0, int32_t(size.width), int32_t(size.height));
+info->appData = sceneInfo;                   // the payload IS the window's identity
+
+ctx->createWindow(sp::move(info));
+return sceneInfo;                            // ... and the caller's handle
+----
+
+Points that are easy to get wrong:
+
+* **`createWindow` is safe from any thread**, but `info` (and its `appData`) must
+  not be touched after the call — the runtime has taken it.
+* **The completion is not the first frame.** `complete(Status, StringView id)`
+  runs on the app thread and reports that the window system accepted the window.
+  The scene arrives separately, through `WindowSceneInfo::makeScene`, so poll
+  `getWindow()` / `getScene()` rather than assuming either exists on return.
+* **`id` may be renamed.** A collision with a live window is resolved by
+  re-uniquing (`ContextController::configureWindow`), which is exactly why the
+  scene builder is carried in `appData` instead of being parked in a table keyed
+  by the id you chose. `complete` reports the final id;
+  `WindowSceneInfo::getId()` returns it once the window exists.
+* **A second `Root` window works headless.** It needs no parent and no
+  `WindowCapabilities::Subwindows`, and the headless controller builds one window
+  per call — which is what makes multi-window behaviour testable with no display
+  at all (`tests/window`, layout `multi-window`).
+
+### The handle and its thread
+
+`WindowSceneInfo` ([XLWindowSceneInfo.h](../../../../xenolith/application/XLWindowSceneInfo.h))
+is **app-thread only**: constructed, used and destroyed there, and a DEBUG build
+asserts it in the destructor. The one thing that silently breaks it is leaving
+the payload on a `WindowInfo` that dies on the *context* thread — hence
+`WindowInfo::takeAppData()`, which is legal from any thread because moving an
+`Rc` does not touch the pointee.
+
+`CloseCallback` fires exactly once, on the app thread, however the window went
+away: its own close, the parent's teardown, a WM-side dismiss, or a creation that
+never succeeded. Do not write a separate "it failed to open" path.
+
+## Auxiliary surfaces: `ui::SubWindow`
+
+A menu, a tooltip, a modal dialog of your own drawing — do **not** hand-build a
+`WindowInfo` with `WindowType::Popup`. Use
+[XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h):
+
+[source,cpp]
+----
+auto popup = ui::SubWindow::openPopup(window, placement, Extent2(240, 320),
+		[](NotNull<ui::SubWindow> self) -> Rc<basic2d::SceneLayout2d> {
+	return Rc<MyMenu>::create(self); // the content can dismiss itself
+});
+…
+popup->dismiss();                    // idempotent; onClose still fires once
+----
+
+Why this and not `createWindow`: the same call materializes as a **native
+subwindow** where the platform advertises `WindowCapabilities::Subwindows`, and
+as an **in-scene overlay** on the parent's `SceneContent2d` where it does not
+(Android, wasm, headless, direct output). Both honour the same placement, the
+same dismiss rules and the same close callback, so the caller never branches on
+the platform. `isNative()` tells you which one you got, if you care.
+
+* `openPopup` / `openDialog` / `openUtility` / `showTooltip` are the shorthands;
+  `open(parent, Config &&)` is the full form.
+* `Config` takes **exactly one** of `content` (a `SceneLayout2d`, portable) or
+  `scene` (your own `Scene` subclass, native path only — with no subwindow
+  support `open` fails rather than quietly producing something else).
+* Tooltips default to `preferNative = false`: a native tip costs a swapchain for
+  a few hundred milliseconds of hint and takes hover away from the node it
+  describes.
+* Per-window hint and menu bookkeeping — one tip at a time, a menu superseding a
+  tip, the hide timer — is `ui::SubWindowSession::get(window)`
+  ([XLUiSubWindowSession.h](../../../../xenolith/renderer/ui/XLUiSubWindowSession.h)),
+  not something to re-implement per screen.
+
+### Placement
+
+`Popup` and `Tooltip` are placed by `WindowPlacement`, modelled on
+`xdg_positioner`: the surface attaches to the `anchor` point of `anchorRect` (in
+**parent window logical coordinates**) and opens in the `gravity` direction,
+shifted by `offset`, with `adjustment` saying how it may slide/flip/resize at a
+work-area edge. `Dialog` and `Utility` are placed by the window manager.
+
+**There are no global coordinates in this API.** On Wayland the compositor
+computes the position; elsewhere the engine computes the same thing
+(`computeWindowPlacement`). Do not try to convert to screen coordinates yourself.
+
+## Capabilities, state and fullscreen
+
+Every interesting window operation is behind a `WindowCapabilities` bit, and each
+of them is absent on some platform. Ask before you offer the button:
+
+[source,cpp]
+----
+auto w = _director->getRenderServer();
+if (hasFlag(w->getCapabilities(), WindowCapabilities::Fullscreen)) {
+	w->setFullscreen(FullscreenInfo(FullscreenInfo::Current), [](Status s) {
+		if (s != Status::Ok) {
+			log::error("…", "Fail to set fullscreen: ", s);
+		}
+	});
+}
+----
+
+* `FullscreenInfo::Current` / `None` need only `Fullscreen`; anything else needs
+  `FullscreenWithMode`, exclusive output needs `FullscreenExclusive`, and without
+  `FullscreenSeamlessModeSwitch` the engine exits and re-enters fullscreen to
+  change mode.
+* Monitors and their modes come from `acquireScreenInfo(cb, ref)` — asynchronous,
+  answered on the app thread — and change under you: listen for
+  `SystemNotification::DisplayChanged` and re-read rather than caching.
+* `enableState` / `disableState` take **one** flag per call and only the flags in
+  `getUpdatableStateFlags()`. `WindowState::CloseRequest` is the close-guard seam:
+  setting it when unset runs `close()` (so an exit guard can veto), setting it
+  again forces the close.
+* `WindowInfo` describes the window **on the context thread**. From the app
+  thread read `getWindowState()` / `getCapabilities()`, not `getInfo()` — only
+  its constant fields are safe there.
+
+`tests/window`, layout `default` (`src/app/GeneralLayout.cpp`) is the live
+example of all of this: it rebuilds its menu from the capability bits and from
+`ScreenInfo`.
+
+## Sharing a compiled render queue
+
+A scene normally builds and compiles its own render graph, which is the slow part
+of opening a window. `WindowSceneInfo::setQueue()` makes the new scene **adopt**
+an already-compiled queue instead:
+
+[source,cpp]
+----
+cache->acquire(kQueueName, server, [app](core::Queue::Builder &builder) {
+	// The extent here is a placeholder: FrameQueue::setup rewrites every image
+	// attachment from the frame's constraints - that is why one graph serves
+	// windows of different sizes.
+	return basic2d::Scene2d::buildQueue(app, info, builder);
+}, [this](Rc<core::Queue> &&queue) { _prewarmed = sp::move(queue); });
+----
+
+The queue can be built and compiled before any window that uses it exists
+(`QueueCache`, `AppThread::getExtension<QueueCache>()`); a scene adopting one
+does not own it. `tests/window`, layout `queue-cache`, opens three windows on one
+prewarmed graph.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| looking a window up by the `id` you passed | the runtime may have re-uniqued it; put the payload in `appData` instead |
+| using the handle right after `createWindow` | the window is asynchronous — `getWindow()` is null until it exists |
+| destroying a `WindowSceneInfo` off the app thread | DEBUG assert; move the payload out with `takeAppData()` if the `WindowInfo` may die on the context thread |
+| a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
+| hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
+| calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
+| reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` |
+| a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
+
+## Related
+
+* [dialogs.adoc](dialogs.adoc) — OS dialogs and shell actions, which are parented to a window the same way
+* [threads-and-dispatch.adoc](../core/threads-and-dispatch.adoc) — which thread runs what, and how completions get back
+* [memory-and-ownership.adoc](../core/memory-and-ownership.adoc) — `Rc`, handles, and why the request is the token
+* [node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — what a scene does once the window has one
+* `tests/window` — layouts `multi-window`, `queue-cache` and `default`; `tests/auxui` — subwindow types end to end
