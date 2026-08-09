@@ -40,11 +40,23 @@
 
 #include "SPRTWinMacos.h"
 
+// The view IS the IME on this platform.
+//
+// Unlike X11/Wayland/Win32, where TextInputProcessor does the editing itself, here AppKit's input
+// context does it: interpretKeyEvents: turns keystrokes into insertText:/setMarkedText:/
+// doCommandBySelector:, and this view forwards those into the window's TextInputProcessor, which
+// exists only to hold the state and propagate it to the application. Every NSTextInputClient query
+// is answered out of that same state — AppKit must see the document the application sees, or
+// composition lands in the wrong place.
 @interface SPRTMacosView
 : NSView <NSTextInputClient, NSViewLayerContentScaleDelegate, CALayerDelegate> {
 	NSSPWIN::MacosWindow *_window;
 	NSArray<NSAttributedStringKey> *_validAttributesForMarkedText;
-	bool _textDirty;
+
+	// Set by whichever NSTextInputClient callback the input context invoked while
+	// interpretKeyEventForTextInput: was running; that is the only way to learn whether AppKit
+	// actually consumed the keystroke.
+	bool _textConsumedEvent;
 
 	NSTrackingArea *_mainArea;
 	NSArray<NSTrackingArea *> *_cursorAreas;
@@ -52,19 +64,14 @@
 
 - (instancetype)initWithFrame:(NSRect)frameRect window:(NSSPWIN::MacosWindow *)window;
 
-- (void)updateTextCursorWithPosition:(uint32_t)pos length:(uint32_t)len;
-
-- (void)updateTextInputWithText:(NSSP::WideStringView)str
-					   position:(uint32_t)pos
-						 length:(uint32_t)len
-						   type:(NSSPWIN::TextInputType)type;
-
-- (void)runTextInputWithText:(NSSP::WideStringView)str
-					position:(uint32_t)pos
-					  length:(uint32_t)len
-						type:(NSSPWIN::TextInputType)type;
-
+// Take/release the OS input context, and report enablement to the processor. Called from
+// MacosWindow::updateTextInput / cancelTextInput
+- (void)runTextInput;
 - (void)cancelTextInput;
+
+// Offer a key event to the input method. Returns YES when the IME consumed it, so the caller can
+// cancel the corresponding scene event instead of letting the widget act on it twice
+- (BOOL)interpretKeyEventForTextInput:(NSEvent *)event;
 
 @end
 

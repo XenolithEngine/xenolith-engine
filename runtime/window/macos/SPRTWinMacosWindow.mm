@@ -99,11 +99,10 @@
 
 @end
 
-@interface SPRTMacosWindow : NSWindow {
-	NSWindowStyleMask _defaultStyle;
-	BOOL _allowKey;
-	BOOL _allowMain;
-}
+// Everything the engine calls on its window beyond plain NSWindow. It is a protocol rather than a
+// base class because the two window classes below cannot share one: NSPanel behaviour is only
+// available by deriving from NSPanel, so the pair has to hang off two different AppKit classes.
+@protocol SPRTMacosWindowRole <NSObject>
 
 - (void)configureRole:(BOOL)allowKey allowMain:(BOOL)allowMain;
 
@@ -116,6 +115,26 @@
 
 - (NSWindowStyleMask)defaultStyle;
 
+@end
+
+// The Root window, and any window that draws its own decorations: a plain NSWindow, which is what
+// full-screen primaries and main windows have to be.
+@interface SPRTMacosWindow : NSWindow <SPRTMacosWindowRole> {
+	NSWindowStyleMask _defaultStyle;
+	BOOL _allowKey;
+	BOOL _allowMain;
+}
+@end
+
+// Every window that belongs to another one. NSPanel is what makes NSWindowStyleMaskUtilityWindow
+// (the narrow palette title bar) and NSWindowStyleMaskNonactivatingPanel (a menu surface that does
+// not activate the app) mean anything - both bits are silently ignored on a plain NSWindow. In
+// every other respect it is the class above, which is why both share one implementation subunit.
+@interface SPRTMacosPanel : NSPanel <SPRTMacosWindowRole> {
+	NSWindowStyleMask _defaultStyle;
+	BOOL _allowKey;
+	BOOL _allowMain;
+}
 @end
 
 namespace sprt::window {
@@ -139,21 +158,33 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	const bool utility = _info->type == WindowType::Utility;
 	const bool dialog = _info->type == WindowType::Dialog;
 
+	// NSPanel for every window that belongs to another one: it is the only way to get the narrow
+	// palette title bar for Utility and a non-activating surface for Popup/Tooltip, since both
+	// style bits are ignored on a plain NSWindow. User-space decorations are the exception - that
+	// path draws the entire frame itself and wants the plain NSWindow it was built against, with
+	// no panel defaults (hidesOnDeactivate, key-only-if-needed) in the way.
+	const bool panel =
+			isTransient() && !hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations);
+
 	NSWindowStyleMask style = 0;
 	if (auxiliary) {
-		// Borderless surface: no title bar, no fullscreen chrome.
-		style = NSWindowStyleMaskBorderless;
+		// Borderless surface: no title bar, no fullscreen chrome. As a panel it additionally never
+		// activates the app on a click, which is how a menu is supposed to behave and what
+		// configureRole: below asks for anyway.
+		style = NSWindowStyleMaskBorderless
+				| (panel ? NSWindowStyleMaskNonactivatingPanel : NSWindowStyleMask(0));
 	} else if (utility) {
-		// NOT an NSPanel, so no narrow palette title bar: NSWindowStyleMaskUtilityWindow is only
-		// honoured on NSPanel, and SPRTMacosWindow's role/fullscreen/live-resize overrides would
-		// all have to be duplicated onto a panel subclass to get it. The behaviour that actually
-		// matters - floats above its parent, never becomes main, moves with the parent - comes
-		// from the window level, configureRole: and addChildWindow: below.
+		// The narrow palette title bar. The rest of what makes a palette - floats above its
+		// parent, never becomes main, moves with the parent - comes from the window level,
+		// configureRole: and addChildWindow: below.
 		style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+				| (panel ? NSWindowStyleMaskUtilityWindow : NSWindowStyleMask(0))
 				| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
 								? NSWindowStyleMaskResizable
 								: 0);
 	} else if (dialog) {
+		// A full-width title bar, unlike the palette above: a dialog is something the user is
+		// working in, not a tool shelf. Being a panel is what keeps it out of the window menu.
 		style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
 				| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
 								? NSWindowStyleMaskResizable
@@ -176,17 +207,26 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		{static_cast<CGFloat>(_info->rect.width), static_cast<CGFloat>(_info->rect.height)},
 	};
 
-	// A borderless NSWindow covers the auxiliary roles; no separate NSPanel subclass is needed
-	// for the Metal content-view path. Auxiliary windows must not defer creation: a MoltenVK
-	// present into a never-shown deferred window returns DEVICE_LOST on the shared VkDevice.
-	// `defer:NO` for any transient window, not only the borderless ones: the MoltenVK hazard the
-	// comment above describes (a present into a never-shown deferred window returns DEVICE_LOST on
-	// the shared VkDevice) applies to any window that may be created and torn down without ever
-	// being ordered front - which is exactly what a dialog does.
-	_window = [[SPRTMacosWindow alloc] initWithContentRect:rect
-												 styleMask:style
-												   backing:NSBackingStoreBuffered
-													 defer:isTransient() ? NO : YES];
+	// `defer:NO` for any transient window, not only the borderless ones: a MoltenVK present into a
+	// never-shown deferred window returns DEVICE_LOST on the shared VkDevice, and that applies to
+	// any window that may be created and torn down without ever being ordered front - which is
+	// exactly what a dialog does.
+	const BOOL defer = isTransient() ? NO : YES;
+	if (panel) {
+		_window = [[SPRTMacosPanel alloc] initWithContentRect:rect
+													styleMask:style
+													  backing:NSBackingStoreBuffered
+														defer:defer];
+
+		// NSPanel hides itself when the app deactivates; our panels belong to a window, not to the
+		// active application, and have to stay where the user left them.
+		[_window setHidesOnDeactivate:NO];
+	} else {
+		_window = [[SPRTMacosWindow alloc] initWithContentRect:rect
+													 styleMask:style
+													   backing:NSBackingStoreBuffered
+														 defer:defer];
+	}
 
 	if (auxiliary) {
 		[_window setOpaque:YES];
@@ -202,7 +242,11 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	if (auxiliary) {
 		[_window setLevel:NSPopUpMenuWindowLevel];
 		[_window setHasShadow:YES];
-		[_window setHidesOnDeactivate:NO];
+		if (!panel) {
+			// The panel path has already done this; a popup drawing its own decorations is an
+			// ordinary NSWindow and needs it spelled out.
+			[_window setHidesOnDeactivate:NO];
+		}
 		// Never become key/main — Root keeps focus. Esc is handled by a local key monitor.
 		[_window configureRole:NO allowMain:NO];
 		// Never a fullscreen primary space citizen.
@@ -215,6 +259,11 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		// would be dead.
 		[_window setLevel:NSFloatingWindowLevel];
 		[_window configureRole:YES allowMain:NO];
+		if (panel) {
+			// Palette behaviour proper: clicking the panel's background does not pull key away
+			// from the document, only clicking something that needs it does.
+			[(NSPanel *)_window setBecomesKeyOnlyIfNeeded:YES];
+		}
 		_window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace
 				| NSWindowCollectionBehaviorFullScreenAuxiliary;
 	} else if (dialog) {
@@ -755,14 +804,38 @@ Status MacosWindow::setFullscreenState(FullscreenInfo &&info) {
 	}
 }
 
-// Declined: the NSTextInputClient conformance on the view is not wired to the processor yet. When
-// it is, the view - being the real IME - must report enablement itself with
-// _textInput->handleInputEnabled(true/false); this must not be reported from the application side.
+// Handed to the view, which is the real IME here. Note who reports what: this only ASKS for input,
+// and the view answers by calling _textInput->handleInputEnabled(true) once AppKit's input context
+// is actually live. Reporting enablement from here instead would claim a keyboard the OS might
+// not have given us.
 bool MacosWindow::updateTextInput(const TextInputRequest &req, TextInputFlags flags) {
-	return false;
+	if (!_rootViewController) {
+		return false;
+	}
+
+	auto view = [_rootViewController targetView];
+	if (!view) {
+		return false;
+	}
+
+	// An update to a field that does not hold input is a no-op unless the caller means to start it
+	if (!isTextInputEnabled() && !hasFlag(flags, TextInputFlags::RunIfDisabled)) {
+		return false;
+	}
+
+	[view runTextInput];
+	return true;
 }
 
-void MacosWindow::cancelTextInput() { }
+void MacosWindow::cancelTextInput() {
+	if (!_rootViewController) {
+		return;
+	}
+
+	if (auto view = [_rootViewController targetView]) {
+		[view cancelTextInput];
+	}
+}
 
 void MacosWindow::setCursor(WindowCursor cursor) {
 #pragma clang diagnostic push
@@ -1190,10 +1263,10 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	[window setStyleMask:([window styleMask] | NSWindowStyleMaskFullScreen)];
 	[window setFrame:frame display:YES];
 
-	[(SPRTMacosWindow *)window setFrame:screen.frame
-								display:YES
-							   duration:duration
-					  completionHandler:nil];
+	[(SPRTMacosAnyWindow *)window setFrame:screen.frame
+								   display:YES
+								  duration:duration
+						 completionHandler:nil];
 }
 
 - (NSArray<NSWindow *> *)customWindowsToExitFullScreenForWindow:(NSWindow *)window {
@@ -1204,7 +1277,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		startCustomAnimationToExitFullScreenWithDuration:(NSTimeInterval)duration {
 	XL_MACOS_LOG("MacosWindow", "startCustomAnimationToExitFullScreenWithDuration");
 
-	__weak SPRTMacosWindow *w = _engineWindow->getWindow();
+	__weak SPRTMacosAnyWindow *w = _engineWindow->getWindow();
 
 	auto frame = w.screen.frame;
 	[w setStyleMask:w.defaultStyle];
@@ -1724,9 +1797,21 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	NSSPWIN::String ichars = theEvent.charactersIgnoringModifiers.UTF8String;
 
 	event.key.keycode = _keycodes[static_cast<uint8_t>(code)];
+
+	// Disabled, always: the shared TextInputProcessor stands in for an IME on the platforms that
+	// have none, and macOS has one. Text is produced by AppKit's input context below, never by
+	// the processor auto-consuming keystrokes - letting both run would insert every character
+	// twice.
 	event.key.compose = NSSPWIN::InputKeyComposeState::Disabled;
 	event.key.keysym = NSSP::StringViewUtf8(ichars).getChar();
 	event.key.keychar = NSSP::StringViewUtf8(chars).getChar();
+
+	// Offer it to the input method first. What it consumes is reported to the scene as a cancel
+	// rather than dropped, so that a press the widget already saw always gets its matching end -
+	// the same thing NativeWindow::handleInputEvents does for the non-IME backends.
+	if ([[self targetView] interpretKeyEventForTextInput:theEvent]) {
+		event.event = NSSPWIN::InputEventName::KeyCanceled;
+	}
 
 	// Esc dismisses Popup windows via a deferred close on the controller looper —
 	// never call close() synchronously from inside keyDown (AppKit deadlock).
@@ -1833,108 +1918,20 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 @end
 
+// Both classes have the same body: everything below the superclass is identical, and ObjC has no
+// way to share method implementations between two classes with different superclasses. So the
+// bodies live in an include-only subunit, expanded once per @implementation with the class name
+// passed in for the debug log.
+#define SPRT_MACOS_WINDOW_ROLE_NAME "SPRTMacosWindow"
 @implementation SPRTMacosWindow
-
-- (instancetype)initWithContentRect:(NSRect)contentRect
-						  styleMask:(NSWindowStyleMask)style
-							backing:(NSBackingStoreType)backingStoreType
-							  defer:(BOOL)flag {
-	self = [super initWithContentRect:contentRect
-							styleMask:style
-							  backing:backingStoreType
-								defer:flag];
-	_defaultStyle = style;
-	_allowKey = YES;
-	_allowMain = YES;
-	return self;
-}
-
-- (void)configureRole:(BOOL)allowKey allowMain:(BOOL)allowMain {
-	_allowKey = allowKey;
-	_allowMain = allowMain;
-}
-
-- (BOOL)canBecomeKeyWindow {
-	return _allowKey;
-}
-
-- (BOOL)canBecomeMainWindow {
-	return _allowMain;
-}
-
-- (NSWindowStyleMask)defaultStyle {
-	return _defaultStyle;
-}
-
-- (void)setFrame:(NSRect)frameRect
-				  display:(BOOL)displayFlag
-				 duration:(NSTimeInterval)duration
-		completionHandler:(nullable void (^)(void))completionHandler {
-	[(SPRTMacosViewController *)self.contentViewController setEngineLiveResize:YES];
-	[NSAnimationContext
-			runAnimationGroup:^(NSAnimationContext *_Nonnull context) {
-			  context.duration = duration;
-			  [self.animator setFrame:frameRect display:displayFlag];
-			}
-			completionHandler:^(void) {
-			  [(SPRTMacosViewController *)self.contentViewController setEngineLiveResize:NO];
-			  if (completionHandler) {
-				  completionHandler();
-			  }
-			}];
-}
-
-- (void)setFrame:(NSRect)frameRect display:(BOOL)displayFlag {
-	XL_MACOS_LOG("SPRTMacosWindow", "setFrame: ", frameRect.origin.x, " ", frameRect.origin.y, " ",
-			frameRect.size.width, " ", frameRect.size.height);
-	[super setFrame:frameRect display:displayFlag];
-}
-
-- (void)setFrame:(NSRect)frameRect display:(BOOL)displayFlag animate:(BOOL)animateFlag {
-	XL_MACOS_LOG("SPRTMacosWindow", "setFrame: ", frameRect.origin.x, " ", frameRect.origin.y, " ",
-			frameRect.size.width, " ", frameRect.size.height);
-	if (!animateFlag) {
-		[super setFrame:frameRect display:displayFlag animate:NO];
-	} else {
-		[self setFrame:frameRect
-						  display:displayFlag
-						 duration:[self animationResizeTime:frameRect]
-				completionHandler:nil];
-	}
-}
-
-- (void)toggleFullScreen:(id)sender withScreen:(NSScreen *)screen {
-	if (screen == self.screen) {
-		[self toggleFullScreen:sender];
-	} else {
-		auto screenFrame = screen.frame;
-		auto windowFrame = self.frame;
-		auto x = (screenFrame.size.width - windowFrame.size.width) / 2.0;
-		auto y = (screenFrame.size.height - windowFrame.size.height) / 2.0;
-		auto targetRect = NSRect{NSPoint{screenFrame.origin.x + x, screenFrame.origin.y + y},
-			windowFrame.size};
-
-		__weak NSWindow *ref = self;
-
-		[self setFrame:targetRect
-						  display:YES
-						 duration:[self animationResizeTime:targetRect]
-				completionHandler:^() { [ref toggleFullScreen:sender]; }];
-	}
-}
-
-- (NSTimeInterval)animationResizeTime:(NSRect)newFrame {
-	return [super animationResizeTime:newFrame];
-}
-
-- (instancetype)animator {
-	return [super animator];
-}
-
-- (id)animationForKey:(NSAnimatablePropertyKey)key {
-	return [super animationForKey:key];
-}
-
+#include "SPRTWinMacosWindowRole.cc"
 @end
+#undef SPRT_MACOS_WINDOW_ROLE_NAME
+
+#define SPRT_MACOS_WINDOW_ROLE_NAME "SPRTMacosPanel"
+@implementation SPRTMacosPanel
+#include "SPRTWinMacosWindowRole.cc"
+@end
+#undef SPRT_MACOS_WINDOW_ROLE_NAME
 
 #endif // SPRT_MACOS

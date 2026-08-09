@@ -1207,8 +1207,11 @@ auto ValueTemplate<Interface>::emplace(Key &&key) -> Self & {
 	if (convertToDict()) {
 		auto it = dictVal->find(key);
 		if (it == dictVal->end()) {
+			// remove_reference_t, not remove_reference: without the _t this compares StringView
+			// against the trait itself, never matches, and a StringView key falls into the branch
+			// below - where the dictionary cannot build its key from a view
 			if constexpr (sprt::is_same_v<StringView,
-								  sprt::remove_cv_t<typename sprt::remove_reference<Key>>>) {
+								  sprt::remove_cv_t<sprt::remove_reference_t<Key>>>) {
 				return dictVal->emplace(key.template str<Interface>(), Type::EMPTY).first->second;
 			} else {
 				return dictVal->emplace(sprt::forward<Key>(key), Type::EMPTY).first->second;

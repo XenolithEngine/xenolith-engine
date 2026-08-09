@@ -323,12 +323,12 @@ void GestureTapRecognizer::update(uint64_t dt) {
 
 	auto now = Time::now();
 	if (_gesture.count > 0 && _gesture.time - now > TapIntervalAllowed) {
-		_gesture.event = GestureEvent::Activated;
-		_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
-		_callback(_gesture);
-		_gesture.event = GestureEvent::Cancelled;
-		_gesture.input = nullptr;
-		_gesture.time = Time();
+		// An immediate recognizer has already reported every tap of the series, so the expiry only
+		// closes it and the next tap counts from one again. It does not ask for updates itself, but
+		// it can still be updated - another recognizer on the same listener may need them.
+		if (!_info.isImmediate()) {
+			sendTap();
+		}
 		_gesture.cleanup();
 	}
 }
@@ -339,7 +339,10 @@ void GestureTapRecognizer::cancel() {
 }
 
 InputEventState GestureTapRecognizer::addEvent(const InputEvent &ev, float density) {
-	if (_gesture.count > 0
+	// A series must stay in one place, but only while it is still running: once the interval has
+	// run out the previous tap is history, and a tap anywhere is simply the start of a new series.
+	// (An immediate recognizer has no update() to expire it, so the check has to be made here.)
+	if (_gesture.count > 0 && Time::now() - _gesture.time < TapIntervalAllowed
 			&& _gesture.pos.distance(ev.currentLocation) > TapDistanceAllowedMulti * density) {
 		_gesture.cleanup();
 		return InputEventState::Declined;
@@ -367,10 +370,10 @@ InputEventState GestureTapRecognizer::removeEvent(const InputEvent &ev, bool suc
 		if (successful
 				&& _gesture.pos.distance(ev.currentLocation) <= TapDistanceAllowed * density) {
 			if (!registerTap()) {
-				ret = _info.exclusive ? InputEventState::DelayedCaptured
-									  : InputEventState::DelayedProcessed;
+				ret = _info.isExclusive() ? InputEventState::DelayedCaptured
+										  : InputEventState::DelayedProcessed;
 			} else {
-				ret = _info.exclusive ? InputEventState::Captured : InputEventState::Processed;
+				ret = _info.isExclusive() ? InputEventState::Captured : InputEventState::Processed;
 			}
 		} else {
 			ret = InputEventState::Processed;
@@ -399,17 +402,34 @@ bool GestureTapRecognizer::registerTap() {
 	}
 
 	_gesture.time = currentTime;
+
+	if (_info.isImmediate()) {
+		// Nothing is held back: the tap goes out now, carrying its number in the series, and the
+		// callback refines what it did for the previous one. Reporting immediately also means the
+		// event is never Delayed*, so no listener is kept alive (and no frames are forced) just to
+		// wait the interval out.
+		sendTap();
+		if (_gesture.count >= _info.maxTapCount) {
+			// the series is complete - the next tap counts from one again
+			_gesture.cleanup();
+		}
+		return true;
+	}
+
 	if (_gesture.count == _info.maxTapCount) {
-		_gesture.event = GestureEvent::Activated;
-		_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
-		_callback(_gesture);
-		_gesture.event = GestureEvent::Cancelled;
-		_gesture.input = nullptr;
+		sendTap();
 		_gesture.cleanup();
 		return true;
-	} else {
-		return false;
 	}
+	return false;
+}
+
+void GestureTapRecognizer::sendTap() {
+	_gesture.event = GestureEvent::Activated;
+	_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
+	_callback(_gesture);
+	_gesture.event = GestureEvent::Cancelled;
+	_gesture.input = nullptr;
 }
 
 bool GesturePressRecognizer::init(InputCallback &&cb, InputPressInfo &&info) {

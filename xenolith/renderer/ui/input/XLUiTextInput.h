@@ -95,8 +95,15 @@ public:
 	virtual void setEnabled(bool);
 	virtual bool isEnabled() const { return _enabled; }
 
-	virtual void setCursor(TextCursor);
+	// `activePosition` is the end of the selection the user is moving (the one opposite the
+	// selection anchor); scrolling and the caret follow it, so extending a selection rightwards
+	// keeps its right edge in view instead of jumping back to its left one. maxOf<uint32_t>() means
+	// "no moving end known" and falls back to the start of the range.
+	virtual void setCursor(TextCursor, uint32_t activePosition = maxOf<uint32_t>());
 	virtual TextCursor getCursor() const { return _cursor; }
+
+	// character index the caret and the auto-scroll track; equals _cursor.start without a selection
+	virtual uint32_t getCursorActivePosition() const { return _cursorActive; }
 
 	virtual void setMarked(TextCursor);
 	virtual TextCursor getMarked() const { return _marked; }
@@ -140,6 +147,7 @@ protected:
 	DynamicStateSystem *_scissor = nullptr;
 
 	TextCursor _cursor = TextCursor::InvalidCursor;
+	uint32_t _cursorActive = 0;
 	TextCursor _marked = TextCursor::InvalidCursor;
 	Vec2 _autoScrollTarget = Vec2::INVALID;
 	bool _enabled = false;
@@ -171,16 +179,25 @@ protected:
 // locally - see the comment at that call site.
 //
 // KEYBOARD. The runtime's TextInputProcessor claims events BEFORE the scene sees them: printable
-// characters, Backspace, Delete and Escape never reach this widget's key recognizer, and neither
-// do Enter and Tab (they carry a keychar, '\r' being remapped to '\n'). So Enter/Tab are handled
-// where they actually arrive - in validateInput(), which strips the character out of the echoed
-// string, re-pushes the correction and fires the enter callback. Escape is not bound at all; the
-// widget learns about it from an echo with enabled=false. What the recognizer does handle is
-// everything without a keychar: arrows, Home/End, Shift-selection, Ctrl+A.
+// characters, Backspace and Delete never reach this widget's key recognizer. What it declines, and
+// this widget therefore binds, is everything that is a command rather than text: the arrows,
+// Home/End and Shift-selection; the Ctrl chords (A/C/X/V) - which the processor has to decline
+// explicitly, because the backends disagree on whether Ctrl+C's keychar is 'c' or 0x03 and either
+// one would be typed into the field; and Tab/Enter, which need their modifiers intact so Shift+Tab
+// can mean "the previous field". Escape stays with the processor, which cancels input; the widget
+// learns about it from an echo with enabled=false.
+//
+// validateInput() still strips '\n'/'\r'/'\t' out of the echoed string. That is the degraded path
+// for a platform that delivers Enter/Tab as text anyway (macOS insertText:) - it fires the enter
+// callback, but a character carries no modifiers, so Shift+Tab degrades to Tab there.
 class SP_PUBLIC TextInput : public basic2d::VectorSprite {
 public:
 	using ChangeCallback = Function<void(StringView)>;
 	using EnterCallback = Function<void()>;
+
+	// Tab on a focused field, `backwards` when Shift was held. Return true to consume it; with no
+	// callback installed the field blurs, which is what a standalone field has always done
+	using NavigateCallback = Function<bool(bool backwards)>;
 
 	virtual ~TextInput();
 
@@ -211,11 +228,23 @@ public:
 	// a cursor-only change - a marked range is not committed text yet.
 	virtual void setCallback(ChangeCallback &&);
 	virtual void setEnterCallback(EnterCallback &&);
+	virtual void setNavigateCallback(NavigateCallback &&);
 
 	virtual void focus();
 	virtual void blur();
 	virtual bool isFocused() const { return _focused; }
 	virtual void selectAll();
+
+	// The selection to and from the OS clipboard. A password field refuses to copy or cut - its
+	// contents are exactly what must not leave the widget.
+	//
+	// paste() is ASYNCHRONOUS and returns whether the read was STARTED: the clipboard answer comes
+	// back on the app thread, and the insert it performs is a text-input request like any other,
+	// so nothing has moved by the time this returns. A read that lands after the field was edited,
+	// blurred or pasted into again is discarded.
+	virtual bool copy();
+	virtual bool cut();
+	virtual bool paste();
 
 	virtual void setEnabled(bool);
 	virtual bool isEnabled() const { return _enabled; }
@@ -262,6 +291,11 @@ protected:
 	virtual void pushRequest(TextInputString *, TextCursor,
 			TextCursor marked = TextCursor::InvalidCursor);
 
+	// Replace `replace` with `text` as a REQUEST. Falls back to a local write when no handler is
+	// active, for the same reason setText() does: with no platform authority there is nothing to
+	// defer to. Length and character filtering are left to validateInput() on the echo
+	virtual void insertText(WideStringView text, TextCursor replace);
+
 	// TextInputHandler::onData - the only writer of _inputState
 	virtual void handleTextInput(const TextInputState &);
 
@@ -305,6 +339,11 @@ protected:
 	// a platform-side rewrite always wins.
 	TextCursor pendingCursor() const;
 
+	// End of `cursor` the user is moving: the one opposite _selectionAnchor. The container scrolls
+	// to it, so widening a selection to the right shows its right edge and not its left one.
+	// maxOf<uint32_t>() when no selection is being extended.
+	uint32_t activeCursorPosition(TextCursor cursor) const;
+
 	TextInputContainer *_container = nullptr;
 	InputListener *_listener = nullptr;
 	InputListener *_focusListener = nullptr;
@@ -314,6 +353,7 @@ protected:
 
 	ChangeCallback _callback;
 	EnterCallback _enterCallback;
+	NavigateCallback _navigateCallback;
 
 	String _placeholderText;
 	mutable String _textCache;
@@ -324,6 +364,10 @@ protected:
 
 	// anchor of a Shift-selection or a drag-selection; InvalidCursor when none is running
 	uint32_t _selectionAnchor = maxOf<uint32_t>();
+
+	// Bumped by every paste request, so the answer to a superseded one can be recognized and
+	// dropped instead of landing on top of a newer edit
+	uint64_t _pasteSerial = 0;
 
 	// see pendingCursor()
 	TextCursor _pendingCursor = TextCursor::InvalidCursor;

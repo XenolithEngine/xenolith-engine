@@ -183,8 +183,13 @@ typedef struct {
 - (BOOL)isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion)version;
 @end
 
+@class NSURL;
+@class NSError;
+
 @interface NSFileManager : NSObject
 @property (class, readonly) NSFileManager *defaultManager;
+/* Move to the Trash. `outResultingURL` may be NULL; it reports where the item landed. */
+- (BOOL)trashItemAtURL:(NSURL *)url resultingItemURL:(NSURL **)outResultingURL error:(NSError **)error;
 @property (readonly, copy) NSString *currentDirectoryPath;
 - (BOOL)isWritableFileAtPath:(NSString *)path;
 - (BOOL)isReadableFileAtPath:(NSString *)path;
@@ -195,6 +200,8 @@ typedef struct {
 @interface NSBundle : NSObject
 @property (class, readonly) NSBundle *mainBundle;
 @property (readonly) NSString *resourcePath;
+- (nullable id)objectForInfoDictionaryKey:(NSString *)key;
+- (nullable NSString *)pathForResource:(nullable NSString *)name ofType:(nullable NSString *)ext;
 @end
 
 /* --- standard directory search API (NSPathUtilities.h) --- */
@@ -309,6 +316,8 @@ typedef NS_ENUM(NSUInteger, NSStringEncoding) {
 + (void)cancelPreviousPerformRequestsWithTarget:(id)aTarget selector:(SEL)aSelector object:(nullable id)anArgument;
 @end
 
+typedef unsigned short unichar;
+
 /* --- string (extends the base NSString above via a category-style re-open) --- */
 @interface NSString ()
 @property (readonly) NSUInteger length;
@@ -320,6 +329,11 @@ typedef NS_ENUM(NSUInteger, NSStringEncoding) {
 - (BOOL)isEqualToString:(NSString *)aString;
 - (NSString *)stringByAppendingString:(NSString *)aString;
 - (unsigned short)characterAtIndex:(NSUInteger)index;
++ (instancetype)stringWithCharacters:(const unichar *)characters length:(NSUInteger)length;
+- (instancetype)initWithCharacters:(const unichar *)characters length:(NSUInteger)length;
+- (void)getCharacters:(unichar *)buffer range:(NSRange)range;
+- (NSString *)substringFromIndex:(NSUInteger)from;
+- (NSString *)substringToIndex:(NSUInteger)to;
 - (NSString *)substringWithRange:(NSRange)range;
 + (instancetype)stringWithFormat:(NSString *)format, ...;
 - (NSComparisonResult)compare:(NSString *)string;
@@ -427,9 +441,15 @@ static inline unsigned long long NSSwapBigLongLongToHost(unsigned long long x) {
 @property (readonly, nullable) NSDictionary *userInfo;
 @end
 
+@class NSOperationQueue;
+
 @interface NSNotificationCenter : NSObject
 @property (class, readonly) NSNotificationCenter *defaultCenter;
 - (void)addObserver:(id)observer selector:(SEL)aSelector name:(nullable NSNotificationName)aName object:(nullable id)anObject;
+/* Block form: the returned token is the observer to hand back to removeObserver:. A nil queue
+   means "deliver synchronously on the posting thread", which is what a main-thread-only caller
+   wants. */
+- (id<NSObject>)addObserverForName:(nullable NSNotificationName)name object:(nullable id)obj queue:(nullable NSOperationQueue *)queue usingBlock:(void (^)(NSNotification *note))block;
 - (void)removeObserver:(id)observer;
 - (void)postNotificationName:(NSNotificationName)aName object:(nullable id)anObject;
 @end
@@ -443,6 +463,9 @@ SPRT_FOUNDATION_EXTERN NSRunLoopMode const NSDefaultRunLoopMode;
 
 @interface NSAttributedString : NSObject
 - (instancetype)initWithString:(NSString *)str;
+- (instancetype)initWithString:(NSString *)str
+					attributes:(nullable NSDictionary<NSAttributedStringKey, id> *)attrs;
+- (instancetype)initWithString:(NSString *)str;
 @property (readonly, copy) NSString *string;
 @property (readonly) NSUInteger length;
 - (NSAttributedString *)attributedSubstringFromRange:(NSRange)range;
@@ -454,7 +477,9 @@ SPRT_FOUNDATION_EXTERN NSRunLoopMode const NSDefaultRunLoopMode;
 
 @interface NSURL : NSObject
 + (nullable instancetype)fileURLWithPath:(NSString *)path;
++ (nullable instancetype)fileURLWithPath:(NSString *)path isDirectory:(BOOL)isDir;
 + (nullable instancetype)URLWithString:(NSString *)URLString;
+@property (readonly, getter=isFileURL) BOOL fileURL;
 @property (readonly, copy, nullable) NSString *path;
 @property (readonly, copy, nullable) NSString *absoluteString;
 @end

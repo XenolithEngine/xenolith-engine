@@ -117,6 +117,10 @@ public:
 	bool setFocused();
 	bool isFocused() const;
 
+	// Fired from handleFocusIn/handleFocusOut. A subclass should override those instead; this is
+	// for the listeners that are not subclassed
+	void setFocusCallback(Function<void(bool)> &&);
+
 	FocusGroup *getFocusGroup() const;
 
 	GestureRecognizer *addTouchRecognizer(InputCallback<GestureData> &&,
@@ -148,8 +152,8 @@ public:
 protected:
 	friend class FocusGroup;
 
-	void handleFocusIn(FocusGroup *);
-	void handleFocusOut(FocusGroup *);
+	virtual void handleFocusIn(FocusGroup *);
+	virtual void handleFocusOut(FocusGroup *);
 
 	bool shouldProcessEvent(const InputEvent &) const;
 	bool _shouldProcessEvent(const InputEvent &) const; // default realization

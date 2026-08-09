@@ -280,6 +280,34 @@ bool TextInputProcessor::canHandleInputEvent(const InputEventData &data) {
 		case InputEventName::KeyRepeated:
 		case InputEventName::KeyReleased:
 		case InputEventName::KeyCanceled:
+			// A chord is a command, not text, and `keychar` alone cannot tell the two apart: the
+			// backends disagree about what Ctrl+C even is. Wayland reports the untransformed
+			// keysym, so it arrives as a plain 'c' and would be typed into the field; xcb's
+			// non-compose path applies libxkbcommon's ctrl transformation and reports 0x03, which
+			// would be typed as a control character. Declining here is what lets the scene bind
+			// Ctrl+A/C/X/V at all - before this, every such binding was unreachable.
+			// Ctrl+Alt is left alone: that is AltGr on several layouts, and it does produce text
+			if (hasFlag(data.input.modifiers, InputModifier::Ctrl)
+					&& !hasFlag(data.input.modifiers, InputModifier::Alt)) {
+				return false;
+			}
+
+			// Tab is navigation everywhere, multi-line fields included - the same choice browsers
+			// make. Enter is text only in a multi-line field; elsewhere it is "submit", and the
+			// widget has to see the key to know whether Shift was held.
+			// While a composition is running both still belong to the IME: that is how a
+			// candidate list is navigated and committed
+			if (_state.compose != InputKeyComposeState::Composing) {
+				if (data.key.keycode == InputKeyCode::TAB) {
+					return false;
+				}
+				if ((data.key.keycode == InputKeyCode::ENTER
+							|| data.key.keycode == InputKeyCode::KP_ENTER)
+						&& !hasFlag(_state.type, TextInputType::MultiLineBit)) {
+					return false;
+				}
+			}
+
 			if (data.key.keychar || data.key.keycode == InputKeyCode::BACKSPACE
 					|| data.key.keycode == InputKeyCode::DELETE
 					|| data.key.keycode == InputKeyCode::ESCAPE) {

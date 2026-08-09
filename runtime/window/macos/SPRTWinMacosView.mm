@@ -63,7 +63,7 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 - (instancetype)initWithFrame:(NSRect)frameRect window:(NSSPWIN::MacosWindow *)window {
 	self = [super initWithFrame:frameRect];
 	_validAttributesForMarkedText = [NSArray array];
-	_textDirty = false;
+	_textConsumedEvent = false;
 	_window = window;
 
 	_mainArea = nullptr;
@@ -125,136 +125,339 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 	[self addTrackingArea:_mainArea];
 }
 
-- (void)keyDown:(NSEvent *)theEvent {
-	//TextInputManager *m = _textInput.get();
-	//if (m->isInputEnabled()) {
-	//[self interpretKeyEvents:[NSArray arrayWithObject:theEvent]];
-	if (_textDirty) {
-		//[(XLMacViewController *)self.window.contentViewController submitTextData:m->getString() cursor:m->getCursor() marked:m->getMarked()];
-		_textDirty = false;
+
+// ---------------------------------------------------------------------------------------------
+// Text input.
+//
+// The state lives in the window's TextInputProcessor; this view is the IME driving it. AppKit
+// calls the NSTextInputClient methods below out of interpretKeyEvents:, and every query is
+// answered from that same state so the input method sees the document the application sees.
+// ---------------------------------------------------------------------------------------------
+
+- (NSSPWIN::TextInputProcessor *)textInputProcessor {
+	return _window ? _window->getTextInputProcessor() : nullptr;
+}
+
+static NSSPWIN::WideString SPRTMacosView_makeWideString(id string) {
+	NSString *characters = [string isKindOfClass:[NSAttributedString class]]
+			? [(NSAttributedString *)string string]
+			: (NSString *)string;
+
+	NSSPWIN::WideString str;
+	if (!characters) {
+		return str;
 	}
-	//}
-	[super keyDown:theEvent];
+
+	// NSString is already UTF-16, so characterAtIndex: hands back exactly the code units the
+	// processor stores - no transcoding, and surrogate pairs survive intact
+	str.reserve(characters.length);
+	for (size_t i = 0; i < characters.length; ++i) { str.push_back([characters characterAtIndex:i]); }
+	return str;
+}
+
+static NSString *SPRTMacosView_makeNSString(NSSP::WideStringView str) {
+	if (str.empty()) {
+		return @"";
+	}
+	return [NSString stringWithCharacters:(const unichar *)str.data() length:str.size()];
+}
+
+// AppKit passes NSNotFound for "the range I am replacing is the one that is currently marked".
+// The processor has no such implicit rule - it replaces exactly the range it is given - so the
+// marked range has to be spelled out here, or the second keystroke of a composition would append
+// to the first instead of replacing it.
+- (NSSPWIN::TextCursor)resolveReplacementRange:(NSRange)range {
+	if (range.location != NSNotFound) {
+		return NSSPWIN::TextCursor(uint32_t(range.location), uint32_t(range.length));
+	}
+
+	if (auto textInput = [self textInputProcessor]) {
+		auto marked = textInput->getState().marked;
+		if (marked != NSSPWIN::TextCursor::InvalidCursor && marked.length > 0) {
+			return marked;
+		}
+	}
+
+	// No composition running: insert at the caret, replacing whatever is selected
+	return NSSPWIN::TextCursor::InvalidCursor;
+}
+
+// Which keystrokes the input method is allowed to see. Deliberately the same rule the shared
+// TextInputProcessor applies for the backends that have no IME of their own, because a widget
+// cannot tell Shift+Tab from Tab once the keystroke has been turned into text.
+- (BOOL)shouldInterpretKeyEvent:(NSEvent *)event
+					   forInput:(NSSPWIN::TextInputProcessor *)textInput {
+	// While a composition is running everything belongs to the IME - that is how a candidate list
+	// is navigated and committed
+	if ([self hasMarkedText]) {
+		return YES;
+	}
+
+	const NSEventModifierFlags mods = [event modifierFlags];
+
+	// A chord is a command, not text. Ctrl+Alt is left alone: that combination still produces
+	// characters on a number of layouts
+	if ((mods & NSEventModifierFlagCommand) != 0) {
+		return NO;
+	}
+	if ((mods & NSEventModifierFlagControl) != 0 && (mods & NSEventModifierFlagOption) == 0) {
+		return NO;
+	}
+
+	const bool multiline = NSSP::hasFlag(textInput->getState().type,
+			NSSPWIN::TextInputType::MultiLineBit);
+
+	switch ([event keyCode]) {
+	case 48: // kVK_Tab - navigation everywhere, multi-line fields included
+	case 53: // kVK_Escape - releases input; the processor's cancel path handles it
+		return NO;
+	case 36: // kVK_Return
+	case 76: // kVK_ANSI_KeypadEnter
+		return multiline ? YES : NO;
+	default: break;
+	}
+	return YES;
+}
+
+- (BOOL)interpretKeyEventForTextInput:(NSEvent *)event {
+	auto textInput = [self textInputProcessor];
+	if (!textInput || !textInput->isRunning()) {
+		return NO;
+	}
+
+	if (![self shouldInterpretKeyEvent:event forInput:textInput]) {
+		return NO;
+	}
+
+	// interpretKeyEvents: reports nothing back, so the callbacks below raise this flag; without it
+	// there is no way to know whether AppKit turned the keystroke into text or ignored it
+	_textConsumedEvent = false;
+	[self interpretKeyEvents:[NSArray arrayWithObject:event]];
+	return _textConsumedEvent ? YES : NO;
+}
+
+- (void)runTextInput {
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return;
+	}
+
+	if ([self window] && [[self window] firstResponder] != self) {
+		[[self window] makeFirstResponder:self];
+	}
+	[[self inputContext] activate];
+
+	// The application only ever REQUESTED input; enablement is the IME's answer, and this is the
+	// IME. Until this lands the application sees enabled=false and shows no caret.
+	textInput->handleInputEnabled(true);
+}
+
+- (void)cancelTextInput {
+	[[self inputContext] discardMarkedText];
+	[[self inputContext] deactivate];
+
+	if (auto textInput = [self textInputProcessor]) {
+		// Re-entrant by design: this may itself have come from TextInputProcessor::cancel(), and
+		// the second handleInputEnabled(false) finds the flag already down and stops there
+		textInput->handleInputEnabled(false);
+	}
+}
+
+- (BOOL)resignFirstResponder {
+	// Input follows the responder: the OS took the keyboard away, so the application has to learn
+	// that its handler is no longer live
+	if (auto textInput = [self textInputProcessor]) {
+		if (textInput->isRunning()) {
+			[[self inputContext] discardMarkedText];
+			textInput->handleInputEnabled(false);
+		}
+	}
+	return [super resignFirstResponder];
+}
+
+// AppKit routes everything that is not plain text through here: Backspace, Delete, the arrows,
+// Enter. Only the two deletions are ours - the rest is left alone ON PURPOSE, because the widget
+// handles them from the key event itself. Calling super for an unhandled selector would beep.
+- (void)doCommandBySelector:(SEL)selector {
+	if (selector == @selector(deleteBackward:)) {
+		[self deleteBackward:nil];
+	} else if (selector == @selector(deleteForward:)) {
+		[self deleteForward:nil];
+	} else if (selector == @selector(insertNewline:)) {
+		[self insertNewline:nil];
+	}
+}
+
+// Only reachable in a multi-line field: shouldInterpretKeyEvent: keeps Enter away from the input
+// method everywhere else, because there it means "submit" and the widget has to see the key
+- (void)insertNewline:(nullable id)sender {
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return;
+	}
+
+	_textConsumedEvent = true;
+
+	static const char16_t newline[] = {u'\n'};
+	textInput->insertText(NSSP::WideStringView(newline, 1),
+			NSSPWIN::TextCursor::InvalidCursor);
 }
 
 - (void)deleteForward:(nullable id)sender {
-	__sprt_printf("deleteForward\n");
-	//TextInputManager *m = _textInput.get();
-	//m->deleteForward();
+	if (auto textInput = [self textInputProcessor]) {
+		_textConsumedEvent = true;
+		textInput->deleteForward();
+	}
 }
 
 - (void)deleteBackward:(nullable id)sender {
-	__sprt_printf("deleteBackward\n");
-	//TextInputManager *m = _textInput.get();
-	//m->deleteBackward();
-}
-
-- (void)insertTab:(nullable id)sender {
-	//TextInputManager *m = _textInput.get();
-	//m->insertText(u"\t");
-}
-
-- (void)insertBacktab:(nullable id)sender {
-}
-
-- (void)insertNewline:(nullable id)sender {
-	//TextInputManager *m = _textInput.get();
-	//m->insertText(u"\n");
+	if (auto textInput = [self textInputProcessor]) {
+		_textConsumedEvent = true;
+		textInput->deleteBackward();
+	}
 }
 
 /* The receiver inserts string replacing the content specified by replacementRange. string can be either an NSString or NSAttributedString instance. */
 - (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
-	NSString *characters;
-	if ([string isKindOfClass:[NSAttributedString class]]) {
-		characters = [(NSAttributedString *)string string];
-	} else {
-		characters = string;
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return;
 	}
 
-	NSSPWIN::WideString str;
-	str.reserve(characters.length);
-	for (size_t i = 0; i < characters.length; ++i) {
-		str.push_back([characters characterAtIndex:i]);
-	}
+	auto str = SPRTMacosView_makeWideString(string);
+	auto replacement = [self resolveReplacementRange:replacementRange];
 
-	//TextInputManager *m = _textInput.get();
-	//m->insertText(str, TextCursor(uint32_t(replacementRange.location), uint32_t(replacementRange.length)));
+	_textConsumedEvent = true;
+
+	// Composed, not Nothing: this is the committed result of whatever was being assembled, and it
+	// takes the place of the temporary composition
+	textInput->insertText(NSSP::WideStringView(str), replacement);
+
+	// The processor does not clear the marked range on insert, and a stale one would make the
+	// widget keep underlining text that is no longer being composed
+	if ([self hasMarkedText]) {
+		textInput->unmarkText();
+	}
 }
 
 /* The receiver inserts string replacing the content specified by replacementRange. string can be either an NSString or NSAttributedString instance. selectedRange specifies the selection inside the string being inserted; hence, the location is relative to the beginning of string. When string is an NSString, the receiver is expected to render the marked text with distinguishing appearance (i.e. NSTextView renders with -markedTextAttributes). */
 - (void)setMarkedText:(id)string
 		   selectedRange:(NSRange)selectedRange
 		replacementRange:(NSRange)replacementRange {
-	__sprt_printf("setMarkedText\n");
-	NSString *characters;
-	if ([string isKindOfClass:[NSAttributedString class]]) {
-		characters = [(NSAttributedString *)string string];
-	} else {
-		characters = string;
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return;
 	}
 
-	NSSPWIN::WideString str;
-	str.reserve(characters.length);
-	for (size_t i = 0; i < characters.length; ++i) {
-		str.push_back([characters characterAtIndex:i]);
+	auto str = SPRTMacosView_makeWideString(string);
+	auto replacement = [self resolveReplacementRange:replacementRange];
+
+	_textConsumedEvent = true;
+
+	if (str.empty()) {
+		// An empty marked string ends the composition and takes the marked run with it
+		if (replacement != NSSPWIN::TextCursor::InvalidCursor && replacement.length > 0) {
+			textInput->cursorChanged(replacement);
+			// cursor.length > 0 makes this remove the whole range and drop the compose state
+			textInput->deleteBackward();
+		}
+		textInput->unmarkText();
+		return;
 	}
 
-	//TextInputManager *m = _textInput.get();
-	//m->setMarkedText(str, TextCursor(uint32_t(replacementRange.location), uint32_t(replacementRange.length)), TextCursor(uint32_t(selectedRange.location), uint32_t(selectedRange.length)));
+	// Where the run will start once `replacement` has been taken out
+	const uint32_t base = (replacement != NSSPWIN::TextCursor::InvalidCursor)
+			? replacement.start
+			: textInput->getState().cursor.start;
+
+	// The whole inserted run is what is marked; `marked` is relative to the insertion point
+	textInput->setMarkedText(NSSP::WideStringView(str), replacement,
+			NSSPWIN::TextCursor(0, uint32_t(str.size())));
+
+	// AppKit's selectedRange is the caret INSIDE the run being composed. The processor keeps the
+	// caret and the marked range apart, and setMarkedText leaves the caret past the run, so the
+	// position has to be restated
+	if (selectedRange.location != NSNotFound) {
+		textInput->cursorChanged(NSSPWIN::TextCursor(base + uint32_t(selectedRange.location),
+				uint32_t(selectedRange.length)));
+	}
 }
 
 /* The receiver unmarks the marked text. If no marked text, the invocation of this method has no effect. */
 - (void)unmarkText {
-	//TextInputManager *m = _textInput.get();
-	//m->unmarkText();
+	if (auto textInput = [self textInputProcessor]) {
+		if ([self hasMarkedText]) {
+			_textConsumedEvent = true;
+			textInput->unmarkText();
+		}
+	}
+	[[self inputContext] discardMarkedText];
 }
 
 /* Returns the selection range. The valid location is from 0 to the document length. */
 - (NSRange)selectedRange {
-	//TextInputManager *m = _textInput.get();
-	//auto cursor = m->getCursor();
-	//if (cursor.length > 0) {
-	//	return NSRange{cursor.start, cursor.length};
-	//}
-	return kEmptyRange;
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return kEmptyRange;
+	}
+
+	auto cursor = textInput->getState().cursor;
+	if (cursor == NSSPWIN::TextCursor::InvalidCursor) {
+		return kEmptyRange;
+	}
+
+	// A caret is a valid selection of length 0 - returning kEmptyRange (NSNotFound) here would
+	// tell the input method there is no insertion point at all, and composition would not start
+	return NSMakeRange(cursor.start, cursor.length);
 }
 
 /* Returns the marked range. Returns {NSNotFound, 0} if no marked range. */
 - (NSRange)markedRange {
-	//TextInputManager *m = _textInput.get();
-	//auto cursor = m->getMarked();
-	//if (cursor.length > 0) {
-	//	return NSRange{cursor.start, cursor.length};
-	//}
-	return kEmptyRange;
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return kEmptyRange;
+	}
+
+	auto marked = textInput->getState().marked;
+	if (marked == NSSPWIN::TextCursor::InvalidCursor || marked.length == 0) {
+		return kEmptyRange;
+	}
+	return NSMakeRange(marked.start, marked.length);
 }
 
 /* Returns whether or not the receiver has marked text. */
 - (BOOL)hasMarkedText {
-	//TextInputManager *m = _textInput.get();
-	//auto cursor = m->getMarked();
-	//if (cursor.length > 0) {
-	//	return YES;
-	//}
-	return NO;
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return NO;
+	}
+
+	auto marked = textInput->getState().marked;
+	return (marked != NSSPWIN::TextCursor::InvalidCursor && marked.length > 0) ? YES : NO;
 }
 
 /* Returns attributed string specified by range. It may return nil. If non-nil return value and actualRange is non-NULL, it contains the actual range for the return value. The range can be adjusted from various reasons (i.e. adjust to grapheme cluster boundary, performance optimization, etc). */
 - (nullable NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range
 														 actualRange:(nullable NSRangePointer)
 																			 actualRange {
-	__sprt_printf("attributedSubstringForProposedRange\n");
-	//TextInputManager *m = _textInput.get();
-	//WideStringView str = m->getStringByRange(TextCursor{uint32_t(range.location), uint32_t(range.length)});
-	//if (actualRange != nil) {
-	//	auto fullString = m->getString();
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return nil;
+	}
 
-	//	actualRange->location = (str.data() - fullString.data());
-	//	actualRange->length = str.size();
-	//}
+	auto str = textInput->getState().getStringView();
+	if (range.location == NSNotFound || range.location > str.size()) {
+		return nil;
+	}
 
-	//return [[NSAttributedString alloc] initWithString:[NSString stringWithCharacters:(const unichar *)str.data() length:str.size()]];
-	return nil;
+	const size_t length = NSSP::min(size_t(range.length), str.size() - range.location);
+	if (actualRange != nil) {
+		actualRange->location = range.location;
+		actualRange->length = length;
+	}
+
+	return [[NSAttributedString alloc]
+			initWithString:SPRTMacosView_makeNSString(str.sub(range.location, length))];
 }
 
 /* Returns an array of attribute names recognized by the receiver.
@@ -267,75 +470,56 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 */
 - (NSRect)firstRectForCharacterRange:(NSRange)range
 						 actualRange:(nullable NSRangePointer)actualRange {
-	__sprt_printf("firstRectForCharacterRange\n");
-	return self.frame;
+	if (actualRange != nil) {
+		*actualRange = range;
+	}
+
+	// LIMITATION: the runtime has no caret geometry - TextInputState carries the string and the
+	// cursor, not where either is drawn; only the widget knows that. So the candidate window is
+	// anchored to the view's leading edge instead of to the caret. Everything else about
+	// composition works; fixing this means plumbing a caret rect from the application side.
+	NSRect rect = NSMakeRect(0.0, 0.0, 1.0, NSHeight([self bounds]));
+	rect = [self convertRect:rect toView:nil];
+	if (auto window = [self window]) {
+		return [window convertRectToScreen:rect];
+	}
+	return rect;
 }
 
 /* Returns the index for character that is nearest to point. point is in the screen coordinate system.
 */
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-	__sprt_printf("characterIndexForPoint\n");
-	return 0;
+	// Same reason as firstRectForCharacterRange: without the widget's layout there is no mapping
+	// from a point to a character. NSNotFound is the documented "no character here"
+	return NSNotFound;
 }
 
 - (NSAttributedString *)attributedString {
-	__sprt_printf("attributedString\n");
-	//TextInputManager *m = _textInput.get();
-	//auto str = m->getString();
+	auto textInput = [self textInputProcessor];
+	if (!textInput) {
+		return nil;
+	}
 
-	//return [[NSAttributedString alloc] initWithString:[NSString stringWithCharacters:(const unichar *)str.data() length:str.size()]];
-	return nil;
+	return [[NSAttributedString alloc]
+			initWithString:SPRTMacosView_makeNSString(textInput->getState().getStringView())];
 }
 
 /* Returns the fraction of distance for point from the left side of the character. This allows caller to perform precise selection handling.
 */
 - (CGFloat)fractionOfDistanceThroughGlyphForPoint:(NSPoint)point {
-	__sprt_printf("fractionOfDistanceThroughGlyphForPoint\n");
 	return 0.0f;
 }
 
 /* Returns the baseline position relative to the origin of rectangle returned by -firstRectForCharacterRange:actualRange:. This information allows the caller to access finer-grained character position inside the NSTextInputClient document.
 */
 - (CGFloat)baselineDeltaForCharacterAtIndex:(NSUInteger)anIndex {
-	__sprt_printf("baselineDeltaForCharacterAtIndex\n");
 	return 0.0f;
 }
 
 /* Returns if the marked text is in vertical layout.
  */
 - (BOOL)drawsVerticallyForCharacterAtIndex:(NSUInteger)charIndex {
-	__sprt_printf("drawsVerticallyForCharacterAtIndex\n");
 	return NO;
-}
-
-- (void)updateTextCursorWithPosition:(uint32_t)pos length:(uint32_t)len {
-	//TextInputManager *m = _textInput.get();
-	//m->cursorChanged(TextCursor(pos, len));
-}
-
-- (void)updateTextInputWithText:(NSSP::WideStringView)str
-					   position:(uint32_t)pos
-						 length:(uint32_t)len
-						   type:(NSSPWIN::TextInputType)type {
-	_textDirty = false;
-	//TextInputManager *m = _textInput.get();
-	//m->run(&_textHandler, str, TextCursor(pos, len), TextCursor::InvalidCursor, type);
-}
-
-- (void)runTextInputWithText:(NSSP::WideStringView)str
-					position:(uint32_t)pos
-					  length:(uint32_t)len
-						type:(NSSPWIN::TextInputType)type {
-	_textDirty = false;
-	//TextInputManager *m = _textInput.get();
-	//m->run(&_textHandler, str, TextCursor(pos, len), TextCursor::InvalidCursor, type);
-	//m->setInputEnabled(true);
-}
-
-- (void)cancelTextInput {
-	//TextInputManager *m = _textInput.get();
-	//m->cancel();
-	_textDirty = false;
 }
 
 @end

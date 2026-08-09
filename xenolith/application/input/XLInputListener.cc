@@ -297,6 +297,8 @@ bool InputListener::setFocused() {
 
 bool InputListener::isFocused() const { return _hasFocus; }
 
+void InputListener::setFocusCallback(Function<void(bool)> &&cb) { _focusCallback = sp::move(cb); }
+
 FocusGroup *InputListener::getFocusGroup() const {
 	auto owner = getOwner();
 	while (owner) {

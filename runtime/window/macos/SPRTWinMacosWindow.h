@@ -68,7 +68,11 @@ public:
 	void handleWindowLoaded();
 	void handleDisplayLink();
 
-	SPRTMacosWindow *getWindow() const { return _window; }
+	SPRTMacosAnyWindow *getWindow() const { return _window; }
+
+	// The view is the IME here: it drives this processor from NSTextInputClient and answers
+	// AppKit's queries out of its state
+	TextInputProcessor *getTextInputProcessor() const { return _textInput.get(); }
 
 	bool hasOriginalFrame() const { return _hasOriginalFrame; }
 	CGRect getOriginalFrame() const { return _originalFrame; }
@@ -117,7 +121,7 @@ protected:
 	void removePopupDismissMonitor();
 
 	SPRTMacosViewController *_rootViewController = nullptr;
-	SPRTMacosWindow *_window = nullptr;
+	SPRTMacosAnyWindow *_window = nullptr;
 	WindowCursor _currentCursor = WindowCursor::Undefined;
 
 	// Keeps the window alive until notifyWindowCreated puts it into _activeWindows: the view
