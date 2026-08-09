@@ -11,6 +11,7 @@ Articles are grouped by what you are about to touch — one directory per group:
     platform/                   what differs per platform: guards, and the runtime as a libc
     core/                       the runtime primitives: memory, strings, errors, threads, data
     scene/                      the scene graph: node geometry, systems and components
+    ui/                         the widget kit: forms, fields and focus
     window/                     windows, subwindows and OS dialogs
 
 [deferred-computation.adoc](deferred-computation.adoc) is different in kind: it
@@ -70,6 +71,12 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [`Node`: geometry, tree, subclasses](scene/node-geometry.adoc) | placing, sizing or hit-testing a node; picking a base class |
 | [Node / System / Component](scene/node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
+
+### `ui/` — the widget kit
+
+| Article | Read it when |
+|---|---|
+| [Forms: `FormSystem`, fields and focus](ui/forms.adoc) | building a form, adding a field to one, driving Tab/submit/validation, or joining a widget of your own to a form |
 
 ### `window/` — windows and OS integration
 

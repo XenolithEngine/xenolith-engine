@@ -551,3 +551,10 @@ header, a platform branch, or an allocation. The essentials:
   cancellation token; the callback is required, runs exactly once, and
   `Status::Declined` is the user cancelling, not a failure
   ([dialogs](docs/usage/codestyle/window/dialogs.adoc)).
+- A form is one `ui::FormSystem` on the node it is rooted at, and that system
+  **is** the focus group; fields are attached to the widgets (`ui::addFormField`,
+  `addFormButton`, or `FormFieldSlots` for a widget of your own) and join the
+  nearest form above them. The field name is the node's name (= its CSS id), a
+  focus change is committed only on the next frame (`getPendingField()` is what
+  was asked for), and the tab ring is document order — so give siblings distinct
+  `ZOrder` ([forms](docs/usage/codestyle/ui/forms.adoc)).
