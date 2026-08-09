@@ -76,7 +76,18 @@ void TestLayout::setTestInfo(const TestInfo &info) {
 
 	// The front page carries no selecting variable and gets no caption: it is the app itself, not
 	// a test, and a caption over it would just take space from the menu.
-	_hasCaption = !info.env.empty();
+	if (info.env.empty()) {
+		setCaption(StringView(), StringView());
+		return;
+	}
+
+	// The selecting variable goes on screen too: it is what someone watching the window needs in
+	// order to reproduce the run.
+	setCaption(string::toString<Interface>(info.title, "   ", info.env), info.description);
+}
+
+void TestLayout::setCaption(StringView title, StringView description) {
+	_hasCaption = !title.empty();
 
 	_captionBackground->setVisible(_hasCaption);
 	_captionTitle->setVisible(_hasCaption);
@@ -86,10 +97,8 @@ void TestLayout::setTestInfo(const TestInfo &info) {
 		return;
 	}
 
-	// The selecting variable goes on screen too: it is what someone watching the window needs in
-	// order to reproduce the run.
-	_captionTitle->setString(string::toString<Interface>(info.title, "   ", info.env));
-	_captionDescription->setString(info.description);
+	_captionTitle->setString(title);
+	_captionDescription->setString(description);
 
 	_contentSizeDirty = true;
 }

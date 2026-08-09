@@ -88,7 +88,6 @@ bool ButtonLayout::init() {
 void ButtonLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float top = getWorkTop() - 140.0f;
 	for (size_t i = 0; i < _buttons.size(); ++i) {
 		auto b = _buttons[i];

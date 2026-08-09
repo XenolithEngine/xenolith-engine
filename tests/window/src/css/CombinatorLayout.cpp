@@ -200,7 +200,6 @@ bool CombinatorLayout::init() {
 void CombinatorLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float swatch = 72.0f;
 	const float rowH = 108.0f;
 	const float top = getWorkTop() - 96.0f;

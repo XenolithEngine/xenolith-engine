@@ -53,7 +53,7 @@ public:
 	virtual ~MacosDialogHandle();
 
 	virtual bool init(NotNull<ContextController>, NotNull<dispatch::Looper> target,
-			Rc<DialogRequest> &&, NativeWindow *parent);
+			Rc<DialogRequest> &&, NativeWindow *parent) override;
 
 	virtual Status cancel(Status st = Status::ErrorCancelled) override;
 

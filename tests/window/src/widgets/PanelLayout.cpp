@@ -177,14 +177,14 @@ void PanelLayout::runPhase2() {
 	// CmdReset: `button.tinted` is the only rule that styles this button, so dropping the class
 	// leaves NOT A SINGLE styled attribute in the resolved style. A style pass driven by the
 	// present parameters alone could never undo the old paint - only the reset command can.
-	expect(_resettable->getComponent<ui::ButtonStyleComponent>() != nullptr, "checked",
+	expect(_resettable->getComponent<ui::PanelStyleComponent>() != nullptr, "checked",
 			"button has no style component while `.tinted` is applied");
 
 	_resettable->removeStyleClass("tinted");
 }
 
 void PanelLayout::runPhase3() {
-	expect(_resettable->getComponent<ui::ButtonStyleComponent>() == nullptr, "reset",
+	expect(_resettable->getComponent<ui::PanelStyleComponent>() == nullptr, "reset",
 			"CmdReset did not drop the button's style component when its rule stopped matching");
 
 	log::source().warn("PanelTest", "SUMMARY: ", _checks, " checks, ", _failures, " failures");

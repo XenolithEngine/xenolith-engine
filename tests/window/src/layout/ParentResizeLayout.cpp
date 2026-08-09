@@ -111,8 +111,7 @@ void ParentResizeLayout::runPhase1() {
 	// engine Y is up, anchor (0,1): top: 8px → y = parentHeight - 8
 	expect(sprt::abs(_absolutePx->getPosition().y - (s_initial.height - 8.0f)) < 1.0f,
 			"px-absolute top did not resolve against the initial parent height");
-	expect(sprt::abs(_absolutePx->getPosition().x - 10.0f) < 1.0f,
-			"px-absolute left != 10");
+	expect(sprt::abs(_absolutePx->getPosition().x - 10.0f) < 1.0f, "px-absolute left != 10");
 	expect(nearSize(_childOwn->getContentSize(), Size2(200.0f, 100.0f)),
 			"own-resolver child != 50% of initial container");
 
@@ -152,8 +151,6 @@ void ParentResizeLayout::runPhase2() {
 void ParentResizeLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
-
 	// initial container sizes only: the test itself resizes them later, and this
 	// handler must not overwrite that on unrelated relayouts
 	Layer *containers[] = {_containerRec, _containerOwn};
@@ -162,8 +159,7 @@ void ParentResizeLayout::handleContentSizeDirty() {
 			containers[i]->setContentSize(s_initial);
 		}
 		containers[i]->setAnchorPoint(Vec2(0.0f, 0.0f));
-		containers[i]->setPosition(
-				Vec2(24.0f, getWorkTop() - 340.0f - float(i) * 340.0f));
+		containers[i]->setPosition(Vec2(24.0f, getWorkTop() - 340.0f - float(i) * 340.0f));
 	}
 }
 

@@ -41,6 +41,7 @@
 #include "window/MultiWindowLayout.h"
 #include "window/QueueCacheLayout.h"
 #include "widgets/PanelLayout.h"
+#include "widgets/TextInputLayout.h"
 #include "layout/ParentResizeLayout.h"
 #include "css/PlatformLayout.h"
 #include "template/PugCascadeLayout.h"
@@ -62,84 +63,41 @@ static Rc<basic2d::SceneLayout2d> TestRegistry_make() {
 	return Rc<T>::create();
 }
 
-// Order matters only for the environment scan: the first entry whose variable is set wins.
-static const TestInfo s_tests[] = {
-	TestInfo{StringView("shaping"), StringView("XL_SHAPING_TEST"), StringView("Text shaping"),
-		StringView("Rows of the same text with shaping and bidi off, then on: kerning, ligatures, "
-				   "Arabic joining and RTL order must differ between them."),
-		TestRegistry_make<ShapingLayout>},
+// The registry is the source tree: one array of tests per directory under `src/`, tied together by
+// the group list at the bottom, and a test is addressed the way its sources are - `css/nth`.
+//
+// Order matters twice, and both times it is the order written here: the menu shows a group's
+// entries in it, and the environment scan walks the groups in the order they are declared, taking
+// the first entry whose variable is set.
 
-	TestInfo{StringView("pug"), StringView("XL_PUG_TEST"), StringView("Pug template + CSS"),
-		StringView("Node tree built from a pug template and styled by selectors. The buttons flip "
-				   "a class, swap the whole stylesheet, and re-run the template."),
-		TestRegistry_make<PugLayout>},
-
-	TestInfo{StringView("pug-cascade"), StringView("XL_PUG_CASCADE_TEST"), StringView("Pug template cascade"),
-		StringView("The inner template uses a function and a variable it never defines: both must "
-				   "resolve through the outer template system."),
-		TestRegistry_make<PugCascadeLayout>},
-
-	TestInfo{StringView("flex"), StringView("XL_FLEX_TEST"), StringView("Flexbox / grid placement"),
-		StringView("The same boxes placed by both LayoutSystem backends; the control bar cycles "
-				   "the container parameters, Mode switches flex and grid."),
-		TestRegistry_make<FlexboxLayout>},
-
-	TestInfo{StringView("fit-content"), StringView("XL_FITCONTENT_TEST"), StringView("fit-content sizing"),
-		StringView("Boxes sized from their own content, including a nested fit-content container. "
-				   "Changing a label's text must resize its ancestors."),
-		TestRegistry_make<FitContentLayout>},
-
-	TestInfo{StringView("label-update"), StringView("XL_LABEL_UPDATE_TEST"), StringView("Label text change after layout"),
-		StringView("Three identical chains per group; the last one gets its text after the first "
-				   "layout and then loses it again. Every box must match the chain built with that "
-				   "text."),
-		TestRegistry_make<LabelUpdateLayout>},
-
+// src/css - CSS engine: selectors, cascade, live reload
+static const TestInfo s_cssTests[] = {
 	TestInfo{StringView("combinator"), StringView("XL_COMBINATOR_TEST"), StringView("CSS combinators"),
 		StringView("Descendant, child, adjacent and general sibling. Per row the left swatch must "
 				   "take the rule's colour and the right one must stay grey."),
 		TestRegistry_make<CombinatorLayout>},
-
-	TestInfo{StringView("watch-css"), StringView("XL_WATCH_CSS_TEST"), StringView("CSS live reload"),
-		StringView("The stylesheet file is rewritten while running: the swatch must turn from red "
-				   "to green with no restart."),
-		TestRegistry_make<WatchCssLayout>},
-
-	TestInfo{StringView("watch-css-recursive"), StringView("XL_WATCH_CSS_RECURSIVE_TEST"), StringView("CSS live reload (descendant)"),
-		StringView("Same rewrite, but the styled node is a child covered by one recursive "
-				   "resolver: the inner square must turn green too."),
-		TestRegistry_make<WatchCssRecursiveLayout>},
-
-	TestInfo{StringView("hover"), StringView("XL_HOVER_TEST"), StringView("Interactive pseudo-classes"),
-		StringView("Fixed states first (grey, red, blue, green, purple), then one swatch that must "
-				   "follow the pointer through :hover at runtime."),
-		TestRegistry_make<HoverLayout>},
 
 	TestInfo{StringView("specificity"), StringView("XL_SPECIFICITY_TEST"), StringView("CSS specificity"),
 		StringView("Every swatch matches several conflicting rules; the colour of the "
 				   "highest-specificity one must win, source order only breaking ties."),
 		TestRegistry_make<SpecificityLayout>},
 
-	TestInfo{StringView("button"), StringView("XL_BUTTON_TEST"), StringView("ui::Button styling"),
-		StringView("Fill and outline drawn by the button type appliers, label styled by the same "
-				   "recursive resolver. The lower button verifies per-corner radii."),
-		TestRegistry_make<ButtonLayout>},
+	TestInfo{StringView("nth"), StringView("XL_NTH_TEST"), StringView("Structural pseudo-class selectors"),
+		StringView("Rows of swatches coloured by :nth-child and friends; the last two rows are "
+				   "mutated at runtime, so their colours must shift as items are inserted, "
+				   "removed and re-ordered."),
+		TestRegistry_make<NthChildLayout>},
 
-	TestInfo{StringView("panel"), StringView("XL_PANEL_TEST"), StringView("ui::Panel / Checkbox / Badge styling"),
-		StringView("Panel, checkbox and badge take their fill and corners from CSS through their "
-				   "own type appliers; the last box is a plain Layer under the same rule."),
-		TestRegistry_make<PanelLayout>},
+	TestInfo{StringView("hover"), StringView("XL_HOVER_TEST"), StringView("Interactive pseudo-classes"),
+		StringView("Fixed states first (grey, red, blue, green, purple), then one swatch that must "
+				   "follow the pointer through :hover at runtime."),
+		TestRegistry_make<HoverLayout>},
 
-	TestInfo{StringView("css-flow"), StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
-		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "
-				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
-				   "`order`, drawn red-blue-green by `-xl-z-order`."),
-		TestRegistry_make<CssFlowLayout>},
-
-	TestInfo{StringView("platform"), StringView("XL_PLATFORM_TEST"), StringView("@media (platform: ...)"),
-		StringView("The swatch takes the colour of the platform it runs on; the rules for every "
-				   "other platform must be filtered out."),
-		TestRegistry_make<PlatformLayout>},
+	TestInfo{StringView("css-var"), StringView("XL_CSSVAR_TEST"), StringView("CSS custom properties and var()"),
+		StringView("Boxes coloured and sized through variables, including a fallback, a nested "
+				   "reference and a cycle that must be dropped; the last box repaints when a "
+				   "class on its ancestor overrides the variable."),
+		TestRegistry_make<CssVarLayout>},
 
 	TestInfo{StringView("inherited"), StringView("XL_INHERITED_TEST"), StringView("Inherited CSS properties"),
 		StringView("Labels with explicit small black text must render with the inherited style "
@@ -151,6 +109,126 @@ static const TestInfo s_tests[] = {
 				   "classes must restore both rows identically."),
 		TestRegistry_make<VisibilityLayout>},
 
+	TestInfo{StringView("platform"), StringView("XL_PLATFORM_TEST"), StringView("@media (platform: ...)"),
+		StringView("The swatch takes the colour of the platform it runs on; the rules for every "
+				   "other platform must be filtered out."),
+		TestRegistry_make<PlatformLayout>},
+
+	TestInfo{StringView("watch-css"), StringView("XL_WATCH_CSS_TEST"), StringView("CSS live reload"),
+		StringView("The stylesheet file is rewritten while running: the swatch must turn from red "
+				   "to green with no restart."),
+		TestRegistry_make<WatchCssLayout>},
+
+	TestInfo{StringView("watch-css-recursive"), StringView("XL_WATCH_CSS_RECURSIVE_TEST"), StringView("CSS live reload (descendant)"),
+		StringView("Same rewrite, but the styled node is a child covered by one recursive "
+				   "resolver: the inner square must turn green too."),
+		TestRegistry_make<WatchCssRecursiveLayout>},
+};
+
+// src/layout - placement and measurement
+static const TestInfo s_layoutTests[] = {
+	TestInfo{StringView("flex"), StringView("XL_FLEX_TEST"), StringView("Flexbox / grid placement"),
+		StringView("The same boxes placed by both LayoutSystem backends; the control bar cycles "
+				   "the container parameters, Mode switches flex and grid."),
+		TestRegistry_make<FlexboxLayout>},
+
+	TestInfo{StringView("css-flow"), StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
+		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "
+				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
+				   "`order`, drawn red-blue-green by `-xl-z-order`."),
+		TestRegistry_make<CssFlowLayout>},
+
+	TestInfo{StringView("auto-margin"), StringView("XL_AUTO_MARGIN_TEST"), StringView("margin: auto on a flex item"),
+		StringView("Row 1 pushes its last box to the right edge, row 2 centres its only box, rows 3 "
+				   "and 4 centre one box vertically against align-items: flex-start and stretch."),
+		TestRegistry_make<AutoMarginLayout>},
+
+	TestInfo{StringView("fit-content"), StringView("XL_FITCONTENT_TEST"), StringView("fit-content sizing"),
+		StringView("Boxes sized from their own content, including a nested fit-content container. "
+				   "Changing a label's text must resize its ancestors."),
+		TestRegistry_make<FitContentLayout>},
+
+	TestInfo{StringView("measure"), StringView("XL_MEASURE_TEST"), StringView("Content measurement protocol"),
+		StringView("Six boxes sized by six different routes: a custom measure system, the "
+				   "MeasureComponent fallback, a Label, and one fixed box that must not be "
+				   "measured at all."),
+		TestRegistry_make<MeasureProtocolLayout>},
+
+	TestInfo{StringView("label-update"), StringView("XL_LABEL_UPDATE_TEST"), StringView("Label text change after layout"),
+		StringView("Three identical chains per group; the last one gets its text after the first "
+				   "layout and then loses it again. Every box must match the chain built with that "
+				   "text."),
+		TestRegistry_make<LabelUpdateLayout>},
+
+	TestInfo{StringView("parent-resize"), StringView("XL_PARENT_RESIZE_TEST"), StringView("Restyle on parent resize"),
+		StringView("Percent metrics resolved against the parent: the nested boxes must keep their "
+				   "proportions when the containers change size."),
+		TestRegistry_make<ParentResizeLayout>},
+};
+
+// src/widgets - ui:: widgets and their styling; scroll virtualization
+static const TestInfo s_widgetsTests[] = {
+	TestInfo{StringView("button"), StringView("XL_BUTTON_TEST"), StringView("ui::Button styling"),
+		StringView("Fill and outline drawn by the button type appliers, label styled by the same "
+				   "recursive resolver. The lower button verifies per-corner radii."),
+		TestRegistry_make<ButtonLayout>},
+
+	TestInfo{StringView("panel"), StringView("XL_PANEL_TEST"), StringView("ui::Panel / Checkbox / Badge styling"),
+		StringView("Panel, checkbox and badge take their fill and corners from CSS through their "
+				   "own type appliers; the last box is a plain Layer under the same rule."),
+		TestRegistry_make<PanelLayout>},
+
+	TestInfo{StringView("text-input"), StringView("XL_TEXT_INPUT_TEST"), StringView("ui::TextInput"),
+		StringView("Four fields: plain, password, read-only and one whose text overflows. Typing "
+				   "must move the caret, selection must highlight, a long press must select the "
+				   "word under the finger and then, held on, everything, the focused field must "
+				   "take the accent outline from `text-input:focus`, and the long field must clip "
+				   "at its border. Drive it over the inspector: text-input.focus, send_input "
+				   "native=true, send_text."),
+		TestRegistry_make<TextInputLayout>, true},
+
+	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
+		StringView("Rows that never match the size their item declared. The list must still scroll "
+				   "and the run must end with 0 failures instead of stalling on a rebuild loop."),
+		TestRegistry_make<ScrollThrashLayout>},
+};
+
+// src/text - text shaping
+static const TestInfo s_textTests[] = {
+	TestInfo{StringView("shaping"), StringView("XL_SHAPING_TEST"), StringView("Text shaping"),
+		StringView("Rows of the same text with shaping and bidi off, then on: kerning, ligatures, "
+				   "Arabic joining and RTL order must differ between them."),
+		TestRegistry_make<ShapingLayout>},
+};
+
+// src/template - pug templates and the template-system cascade
+static const TestInfo s_templateTests[] = {
+	TestInfo{StringView("pug"), StringView("XL_PUG_TEST"), StringView("Pug template + CSS"),
+		StringView("Node tree built from a pug template and styled by selectors. The buttons flip "
+				   "a class, swap the whole stylesheet, and re-run the template."),
+		TestRegistry_make<PugLayout>},
+
+	TestInfo{StringView("pug-cascade"), StringView("XL_PUG_CASCADE_TEST"), StringView("Pug template cascade"),
+		StringView("The inner template uses a function and a variable it never defines: both must "
+				   "resolve through the outer template system."),
+		TestRegistry_make<PugCascadeLayout>},
+};
+
+// src/render - what reaches the screen
+static const TestInfo s_renderTests[] = {
+	TestInfo{StringView("render-level"), StringView("XL_RENDER_LEVEL_TEST"), StringView("RenderingLevel passes"),
+		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
+				   "must show none - behind opaque geometry every level is hidden."),
+		TestRegistry_make<RenderLevelLayout>},
+
+	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
+		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "
+				   "square must be visible at any moment - a second one is a trail."),
+		TestRegistry_make<DamageLayout>, true},
+};
+
+// src/window - windows and the render graphs behind them
+static const TestInfo s_windowTests[] = {
 	TestInfo{StringView("multi-window"), StringView("XL_MULTIWINDOW_TEST"), StringView("Two Root windows, one font atlas"),
 		StringView("A second top-level window opens with the same string as the first; both must "
 				   "render it identically, because the atlas they sample is the same object."),
@@ -161,61 +239,78 @@ static const TestInfo s_tests[] = {
 		StringView("A render queue is built and compiled before any of the windows that use it "
 				   "exist; three secondary windows then open on that same compiled graph."),
 		TestRegistry_make<QueueCacheLayout>},
+};
 
-	TestInfo{StringView("parent-resize"), StringView("XL_PARENT_RESIZE_TEST"), StringView("Restyle on parent resize"),
-		StringView("Percent metrics resolved against the parent: the nested boxes must keep their "
-				   "proportions when the containers change size."),
-		TestRegistry_make<ParentResizeLayout>},
+// One entry per directory. Nesting is arbitrary - a group may declare `groups` of its own - but the
+// source tree is one level deep, so this list is flat as well.
+static const TestGroup s_groups[] = {
+	TestGroup{StringView("css"), StringView("CSS engine"),
+		StringView("Selectors, the cascade, custom properties and live reload of a stylesheet."), {},
+		s_cssTests},
 
-	TestInfo{StringView("auto-margin"), StringView("XL_AUTO_MARGIN_TEST"), StringView("margin: auto on a flex item"),
-		StringView("Row 1 pushes its last box to the right edge, row 2 centres its only box, rows 3 "
-				   "and 4 centre one box vertically against align-items: flex-start and stretch."),
-		TestRegistry_make<AutoMarginLayout>},
+	TestGroup{StringView("layout"), StringView("Layout and measurement"),
+		StringView("Flex and grid placement, content-driven sizing, margins, resize propagation."),
+		{}, s_layoutTests},
 
-	TestInfo{StringView("nth"), StringView("XL_NTH_TEST"), StringView("Structural pseudo-class selectors"),
-		StringView("Rows of swatches coloured by :nth-child and friends; the last two rows are "
-				   "mutated at runtime, so their colours must shift as items are inserted, "
-				   "removed and re-ordered."),
-		TestRegistry_make<NthChildLayout>},
+	TestGroup{StringView("widgets"), StringView("Widgets"),
+		StringView("ui:: widgets taking their look from CSS, and scroll virtualization."), {},
+		s_widgetsTests},
 
-	TestInfo{StringView("css-var"), StringView("XL_CSSVAR_TEST"), StringView("CSS custom properties and var()"),
-		StringView("Boxes coloured and sized through variables, including a fallback, a nested "
-				   "reference and a cycle that must be dropped; the last box repaints when a "
-				   "class on its ancestor overrides the variable."),
-		TestRegistry_make<CssVarLayout>},
+	TestGroup{StringView("text"), StringView("Text"),
+		StringView("Shaping, kerning, ligatures and bidirectional order."), {}, s_textTests},
 
-	TestInfo{StringView("measure"), StringView("XL_MEASURE_TEST"), StringView("Content measurement protocol"),
-		StringView("Six boxes sized by six different routes: a custom measure system, the "
-				   "MeasureComponent fallback, a Label, and one fixed box that must not be "
-				   "measured at all."),
-		TestRegistry_make<MeasureProtocolLayout>},
+	TestGroup{StringView("template"), StringView("Templates"),
+		StringView("Scene graphs built from pug templates, and the template-system cascade."), {},
+		s_templateTests},
 
-	TestInfo{StringView("render-level"), StringView("XL_RENDER_LEVEL_TEST"), StringView("RenderingLevel passes"),
-		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
-				   "must show none - behind opaque geometry every level is hidden."),
-		TestRegistry_make<RenderLevelLayout>},
+	TestGroup{StringView("render"), StringView("Rendering"),
+		StringView("What actually reaches the screen: damage tracking and rendering levels."), {},
+		s_renderTests},
 
-	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
-		StringView("Rows that never match the size their item declared. The list must still scroll "
-				   "and the run must end with 0 failures instead of stalling on a rebuild loop."),
-		TestRegistry_make<ScrollThrashLayout>},
+	TestGroup{StringView("window"), StringView("Windows"),
+		StringView("A second Root window, and render queues compiled before any window exists."),
+		{}, s_windowTests},
+};
 
-	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
-		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "
-				   "square must be visible at any moment - a second one is a trail."),
-		TestRegistry_make<DamageLayout>, true},
-
-	// Default, selected when nothing above is set. Must stay last.
+// Belongs to no group: it is the app itself rather than a test of anything. Selected when no
+// variable is set, which is why it is the only entry without one.
+static const TestInfo s_rootTests[] = {
 	TestInfo{StringView("default"), StringView(), StringView("General demo"),
 		StringView("Application menu: the other demos, plus window, monitor and fullscreen "
 				   "controls."),
 		TestRegistry_make<GeneralLayout>},
 };
 
-SpanView<TestInfo> getTestRegistry() { return makeSpanView(s_tests); }
+static const TestGroup s_root{StringView(), StringView("Tests"),
+	StringView("Everything this app can show, grouped the way its sources are."), s_groups,
+	s_rootTests};
 
-const TestInfo *findTest(StringView name) {
-	for (auto &it : s_tests) {
+const TestGroup &getTestRegistry() { return s_root; }
+
+size_t getTestCount(const TestGroup &group) {
+	auto ret = group.tests.size();
+	for (auto &it : group.groups) { ret += getTestCount(it); }
+	return ret;
+}
+
+// Depth-first, groups in declaration order: the walk both the environment scan and the path lookup
+// are built on.
+static const TestInfo *TestRegistry_findByName(const TestGroup &group, StringView name) {
+	for (auto &it : group.tests) {
+		if (it.name == name) {
+			return &it;
+		}
+	}
+	for (auto &it : group.groups) {
+		if (auto ret = TestRegistry_findByName(it, name)) {
+			return ret;
+		}
+	}
+	return nullptr;
+}
+
+static const TestGroup *TestRegistry_findChild(const TestGroup &group, StringView name) {
+	for (auto &it : group.groups) {
 		if (it.name == name) {
 			return &it;
 		}
@@ -223,13 +318,96 @@ const TestInfo *findTest(StringView name) {
 	return nullptr;
 }
 
-const TestInfo &getSelectedTest() {
-	for (auto &it : s_tests) {
-		if (!it.env.empty() && ::getenv(it.env.data()) != nullptr) {
-			return it;
+const TestInfo *findTest(StringView path) {
+	StringView r(path);
+	auto group = &s_root;
+
+	// Every segment but the last names a group; the last one names the test in it.
+	while (true) {
+		auto segment = r.readUntil<StringView::Chars<'/'>>();
+		if (r.is('/')) {
+			++r;
+			group = TestRegistry_findChild(*group, segment);
+			if (!group) {
+				return nullptr;
+			}
+			continue;
+		}
+
+		for (auto &it : group->tests) {
+			if (it.name == segment) {
+				return &it;
+			}
+		}
+
+		// A bare id names the same test wherever it sits, so an unqualified name is searched
+		// through the whole tree - that is the form the inspector tooling has always used.
+		return group == &s_root ? TestRegistry_findByName(s_root, segment) : nullptr;
+	}
+}
+
+const TestGroup *findTestGroup(StringView path) {
+	StringView r(path);
+	auto group = &s_root;
+	while (!r.empty()) {
+		auto segment = r.readUntil<StringView::Chars<'/'>>();
+		if (r.is('/')) {
+			++r;
+		}
+		if (segment.empty()) {
+			continue;
+		}
+		group = TestRegistry_findChild(*group, segment);
+		if (!group) {
+			return nullptr;
 		}
 	}
-	return s_tests[sizeof(s_tests) / sizeof(s_tests[0]) - 1];
+	return group;
+}
+
+// Builds the path on the way out of the recursion, so a group only appears in it when the test was
+// actually found below it.
+static bool TestRegistry_buildPath(const TestGroup &group, const TestInfo &info, String &path) {
+	for (auto &it : group.tests) {
+		if (&it == &info) {
+			return true;
+		}
+	}
+	for (auto &it : group.groups) {
+		if (TestRegistry_buildPath(it, info, path)) {
+			path = path.empty() ? toString(it.name) : toString(it.name, "/", path);
+			return true;
+		}
+	}
+	return false;
+}
+
+String getTestGroupPath(const TestInfo &info) {
+	String path;
+	TestRegistry_buildPath(s_root, info, path);
+	return path;
+}
+
+static const TestInfo *TestRegistry_findByEnv(const TestGroup &group) {
+	for (auto &it : group.tests) {
+		if (!it.env.empty() && ::getenv(it.env.data()) != nullptr) {
+			return &it;
+		}
+	}
+	for (auto &it : group.groups) {
+		if (auto ret = TestRegistry_findByEnv(it)) {
+			return ret;
+		}
+	}
+	return nullptr;
+}
+
+const TestInfo &getSelectedTest() {
+	if (auto ret = TestRegistry_findByEnv(s_root)) {
+		return *ret;
+	}
+	// Nothing selected: the front page, which is the last entry of the root group.
+	return s_root.tests.back();
 }
 
 Rc<basic2d::SceneLayout2d> makeTestLayout(const TestInfo &info) {

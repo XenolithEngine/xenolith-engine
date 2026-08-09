@@ -55,7 +55,8 @@ static Color4B resolvedColor(Layer *sw) {
 
 } // namespace
 
-Layer *HoverLayout::makeSwatch(Node *parent, InteractiveState state, ui::StyleResolver **outResolver) {
+Layer *HoverLayout::makeSwatch(Node *parent, InteractiveState state,
+		ui::StyleResolver **outResolver) {
 	auto swatch = parent->addChild(Rc<Layer>::create(Color::Black), ZOrder(1));
 	swatch->addStyleClass("sw");
 	// fixed interactive state for the test (normally driven by an input listener); mutate in
@@ -88,10 +89,10 @@ bool HoverLayout::init() {
 
 	using S = InteractiveState;
 	_rows.emplace_back(Row{makeRowLabel(":none/base   .sw"), makeSwatch(this, S::Enabled)});
-	_rows.emplace_back(Row{makeRowLabel(":hover       .sw:hover"),
-		makeSwatch(this, S::Enabled | S::Hover)});
-	_rows.emplace_back(Row{makeRowLabel(":active      .sw:active"),
-		makeSwatch(this, S::Enabled | S::Active)});
+	_rows.emplace_back(
+			Row{makeRowLabel(":hover       .sw:hover"), makeSwatch(this, S::Enabled | S::Hover)});
+	_rows.emplace_back(
+			Row{makeRowLabel(":active      .sw:active"), makeSwatch(this, S::Enabled | S::Active)});
 	_rows.emplace_back(Row{makeRowLabel(":checked     .sw:checked"),
 		makeSwatch(this, S::Enabled | S::Checked)});
 	_rows.emplace_back(Row{makeRowLabel(":disabled    .sw:disabled"), makeSwatch(this, S::None)});
@@ -126,7 +127,6 @@ bool HoverLayout::init() {
 void HoverLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float swatch = 64.0f;
 	const float rowH = 88.0f;
 	const float top = getWorkTop() - 96.0f;

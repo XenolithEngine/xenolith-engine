@@ -166,12 +166,44 @@ struct SPRT_API TextInputRequest {
 	TextInputState getState() const;
 };
 
+enum class TextInputCommandOp : uint32_t {
+	Insert,
+	SetMarked,
+	Unmark,
+	DeleteBackward,
+	DeleteForward,
+	Cancel,
+};
+
+// One editing operation addressed to a window's TextInputProcessor, as an IME would issue it.
+//
+// This exists because a key event cannot express composition: SetMarked/Unmark are what an IME
+// does while a CJK syllable or a dead-key sequence is being assembled, and there is no keystroke
+// that means "the marked range is now these three characters". Delivered through
+// NativeWindow::performTextInput.
+struct SPRT_API TextInputCommand {
+	TextInputCommandOp op = TextInputCommandOp::Insert;
+	WideString text;
+	TextCursor replacement = TextCursor::InvalidCursor;
+	TextCursor marked = TextCursor::InvalidCursor;
+	InputKeyComposeState compose = InputKeyComposeState::Nothing;
+};
+
 struct SPRT_API TextInputInfo {
 	Function<bool(const TextInputRequest &)> update;
 	Function<void(const TextInputState &)> propagate;
 	Function<void()> cancel;
 };
 
+// The editing engine behind a window's text input.
+//
+// Ownership rule: the state belongs to the IME on the OS side, never to the application. The
+// application only ever *requests* a state through run()/update; what it gets back through
+// TextInputInfo::propagate is the answer. That is what makes system autocorrection, CJK
+// composition and platform paste work - all of them rewrite the text without the application
+// asking. A window backend that has no separate IME (X11, Wayland, Win32, headless) plays the
+// IME role itself: this processor does the editing on its behalf, and the backend reports
+// enablement through handleInputEnabled().
 class SPRT_API TextInputProcessor : public Ref {
 public:
 	virtual ~TextInputProcessor();
@@ -190,11 +222,19 @@ public:
 	void cursorChanged(TextCursor);
 	void markedChanged(TextCursor);
 
+	// Called by the window backend (the IME) to report that it has taken or released text input.
+	// run() never sets this flag: enablement is the IME's answer, not the application's request.
+	// Until it is reported, isRunning() stays false, keyboard interception does not happen and the
+	// application-side manager tears its handler down on the first propagate.
 	void handleInputEnabled(bool enabled);
 	void handleTextChanged(TextInputState &&);
 
 	// run input capture (or update it with new params)
 	// propagates all data to device input manager, enables screen keyboard if needed
+	//
+	// This is a *request*: it hands the desired string/cursor/type to the backend through
+	// TextInputInfo::update and rolls the state back if the backend declines. Whether input is
+	// actually enabled is reported separately, by the backend, through handleInputEnabled().
 	void run(const TextInputRequest &);
 
 	// disable text input, disables keyboard connection and keyboard input event interception

@@ -32,6 +32,7 @@
 #include "XL2dSceneContent.h"
 #include "window/MonitorModeSelectionLayout.h"
 #include "app/TestRegistry.h"
+#include "app/TestMenuLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
 
@@ -130,18 +131,11 @@ void GeneralLayout::rebuildMenu() {
 		});
 	}, 32.0f);
 
-	// Каждый тест из реестра — по кнопке. Список берётся оттуда же, откуда его берёт разбор
-	// переменных окружения, так что новый тест появляется здесь сам, без правки этого файла.
-	for (auto &test : getTestRegistry()) {
-		if (test.env.empty()) {
-			continue; // сам этот слой
-		}
-		// Ссылка на элемент реестра безопасна: таблица статическая
-		controller->addItem([this, &test](const ScrollController::Item &) -> Rc<Node> {
-			return Rc<ButtonWithLabel>::create(test.title,
-					[this, &test] { getSceneContent()->pushLayout(makeTestLayout(test)); });
-		}, 32.0f);
-	}
+	// Корневой уровень меню тестов: по кнопке на группу реестра (то есть на директорию в src/),
+	// каждая открывает свой уровень TestMenuLayout. Список берётся оттуда же, откуда его берёт
+	// разбор переменных окружения, так что и новый тест, и новая группа появляются здесь сами,
+	// без правки этого файла.
+	TestMenuLayout::buildGroupItems(controller, this, getTestRegistry());
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Probe clibboard", [this] {

@@ -42,6 +42,8 @@ using core::TextCursorLength;
 using core::TextInputString;
 using core::TextInputState;
 using core::TextInputRequest;
+using core::TextInputCommand;
+using core::TextInputCommandOp;
 
 static constexpr float TapDistanceAllowed = 12.0f;
 static constexpr float TapDistanceAllowedMulti = 32.0f;

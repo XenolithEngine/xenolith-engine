@@ -121,12 +121,14 @@ void TextInputProcessor::deleteBackward() {
 	}
 
 	if (_state.cursor.length > 0) {
-		// Composing will also have cursor.length > 0
+		// Composing will also have cursor.length > 0.
+		// TextCursor::length is a count, so the tail starts at start + length - no +1, which would
+		// swallow the character right after the selection.
 		TextInputState newState = _state;
 		auto oldStr = newState.getStringView();
 
 		newState.string = TextInputString::create(oldStr.sub(0, newState.cursor.start),
-				oldStr.sub(newState.cursor.start + newState.cursor.length + 1));
+				oldStr.sub(newState.cursor.start + newState.cursor.length));
 		newState.cursor.length = 0;
 		newState.compose = InputKeyComposeState::Nothing; // composing should be dropped on delete
 		handleTextChanged(move(newState));
@@ -177,7 +179,7 @@ void TextInputProcessor::deleteForward() {
 		auto oldStr = newState.getStringView();
 
 		newState.string = TextInputString::create(oldStr.sub(0, newState.cursor.start),
-				oldStr.sub(newState.cursor.start + newState.cursor.length + 1));
+				oldStr.sub(newState.cursor.start + newState.cursor.length));
 		newState.cursor.length = 0;
 		newState.compose = InputKeyComposeState::Nothing; // composing should be dropped on delete
 		handleTextChanged(move(newState));
@@ -219,6 +221,10 @@ void TextInputProcessor::deleteForward() {
 
 void TextInputProcessor::unmarkText() { markedChanged(TextCursor::InvalidCursor); }
 
+// Reported by the window backend, which is the IME (or stands in for one). Backends without a
+// separate IME call this from updateTextInput()/cancelTextInput(); at that point run() has already
+// installed the requested string and cursor in _state, so the propagate below carries the fresh
+// content. The application never calls this.
 void TextInputProcessor::handleInputEnabled(bool enabled) {
 	if (_state.enabled != enabled) {
 		TextInputState newState = _state;
@@ -356,18 +362,15 @@ bool TextInputProcessor::doInsertText(TextInputState &data, WideStringView sInse
 		auto oldStr = data.getStringView();
 
 		data.string = TextInputString::create(oldStr.sub(0, data.cursor.start),
-				oldStr.sub(data.cursor.start + data.cursor.length + 1));
+				oldStr.sub(data.cursor.start + data.cursor.length));
 		data.cursor.length = 0;
 	}
 
+	// Head, the new text, then the tail. `sub(pos)` runs to the end of the string and yields an
+	// empty view when the cursor is past it, so an insert at the very end needs no special case.
 	auto oldStr = data.getStringView();
-	if (data.cursor.start < data.size()) {
-		data.string = TextInputString::create(WideStringView(oldStr, 0, data.cursor.start), sInsert,
-				WideStringView(oldStr, data.cursor.start));
-	} else {
-		data.string =
-				TextInputString::create(WideStringView(oldStr, 0, data.cursor.start), sInsert);
-	}
+	data.string = TextInputString::create(oldStr.sub(0, data.cursor.start), sInsert,
+			oldStr.sub(data.cursor.start));
 
 	if (compose == InputKeyComposeState::Composing) {
 		// When we are in composition process - do not shift cursor,

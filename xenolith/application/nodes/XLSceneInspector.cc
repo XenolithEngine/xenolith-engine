@@ -27,6 +27,7 @@
 #include "XLDirector.h"
 #include "XLAppThread.h"
 #include "XLCoreRenderSession.h"
+#include "XLTextInputManager.h"
 
 #include "SPLog.h"
 #include "SPData.h"
@@ -308,7 +309,15 @@ bool readInputEvent(const Value &src, core::InputEventData &out) {
 				: parseKeyCodeName(src.getString("keycode"));
 		out.key.compose = sprt::window::InputKeyComposeState(src.getInteger("compose", 0));
 		out.key.keysym = uint32_t(src.getInteger("keysym", 0));
-		out.key.keychar = char32_t(src.getInteger("keychar", 0));
+		// A codepoint is easier to write as the character itself than as a number; only the first
+		// one is taken, since one key event carries one character.
+		if (src.isString("keychar")) {
+			auto str = src.getString("keychar");
+			out.key.keychar =
+					str.empty() ? char32_t(0) : sprt::unicode::utf8Decode32(str.data(), str.size());
+		} else {
+			out.key.keychar = char32_t(src.getInteger("keychar", 0));
+		}
 	} else {
 		out.point.valueX = float(src.getDouble("valueX", 0.0));
 		out.point.valueY = float(src.getDouble("valueY", 0.0));
@@ -637,6 +646,8 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		handleScreenshot(session, serial, sp::move(request));
 	} else if (cmd == "input") {
 		handleInput(session, serial, sp::move(request));
+	} else if (cmd == "text") {
+		handleText(session, serial, sp::move(request));
 	} else if (cmd == "frame") {
 		auto server = getRenderServer();
 		if (!server) {
@@ -771,11 +782,105 @@ void SceneInspector::handleInput(NotNull<Session> session, int64_t serial, Value
 		data.emplace_back(event);
 	}
 
+	// "native" routes through the OS window instead of straight into the client, which is what puts
+	// the events in front of the text-input processor. Without it a typed character never becomes
+	// text, it stays a key event nobody consumes.
+	auto native = static_cast<const Value &>(request).getBool("native");
+
 	auto count = int64_t(data.size());
-	server->handleInputEvents(sp::move(data));
+	if (native) {
+		server->handleNativeInputEvents(sp::move(data));
+	} else {
+		server->handleInputEvents(sp::move(data));
+	}
 
 	Value result;
 	result.setInteger(count, "accepted");
+	result.setBool(native, "native");
+	sendResponse(session, serial, sp::move(result));
+}
+
+void SceneInspector::handleText(NotNull<Session> session, int64_t serial, Value &&request) {
+	const Value &req = request;
+	auto op = req.getString("op");
+
+	if (op == "state") {
+		// The application-side mirror of what the platform last reported. It lives on the app
+		// thread, which is this thread, so it can be read directly.
+		auto director = _owner ? _owner->getDirector() : nullptr;
+		auto manager = director ? director->getTextInputManager() : nullptr;
+		if (!manager) {
+			sendError(session, serial, "no text input manager");
+			return;
+		}
+
+		const auto &state = manager->getState();
+
+		Value result;
+		result.setBool(state.enabled, "enabled");
+		result.setString(string::toUtf8<Interface>(state.getStringView()), "text");
+		result.setInteger(int64_t(state.cursor.start), "cursorStart");
+		result.setInteger(int64_t(state.cursor.length), "cursorLength");
+		result.setInteger(int64_t(state.marked.start), "markedStart");
+		result.setInteger(int64_t(state.marked.length), "markedLength");
+		result.setInteger(int64_t(toInt(state.type)), "type");
+		result.setInteger(int64_t(toInt(state.compose)), "compose");
+		result.setBool(manager->getHandler() != nullptr, "hasHandler");
+		sendResponse(session, serial, sp::move(result));
+		return;
+	}
+
+	auto server = getRenderServer();
+	if (!server) {
+		sendError(session, serial, "no render session");
+		return;
+	}
+
+	core::TextInputCommand cmd;
+	if (op == "insert") {
+		cmd.op = core::TextInputCommandOp::Insert;
+	} else if (op == "marked") {
+		cmd.op = core::TextInputCommandOp::SetMarked;
+	} else if (op == "unmark") {
+		cmd.op = core::TextInputCommandOp::Unmark;
+	} else if (op == "delete-backward") {
+		cmd.op = core::TextInputCommandOp::DeleteBackward;
+	} else if (op == "delete-forward") {
+		cmd.op = core::TextInputCommandOp::DeleteForward;
+	} else if (op == "cancel") {
+		cmd.op = core::TextInputCommandOp::Cancel;
+	} else {
+		sendError(session, serial,
+				toString("unknown text op: ", op,
+						"; expected insert, marked, unmark, delete-backward, delete-forward, "
+						"cancel or state"));
+		return;
+	}
+
+	if (req.hasValue("text")) {
+		auto utf8 = req.getString("text");
+		size_t size = sprt::unicode::getUtf16Length(utf8);
+		cmd.text.resize(size);
+		sprt::unicode::toUtf16(cmd.text.data(), cmd.text.size(), utf8, &size);
+		cmd.text.resize(size);
+	}
+	if (req.hasValue("replaceStart")) {
+		cmd.replacement = core::TextCursor(uint32_t(req.getInteger("replaceStart")),
+				uint32_t(req.getInteger("replaceLength", 0)));
+	}
+	if (req.hasValue("markedStart")) {
+		cmd.marked = core::TextCursor(uint32_t(req.getInteger("markedStart")),
+				uint32_t(req.getInteger("markedLength", 0)));
+	}
+	cmd.compose = core::InputKeyComposeState(req.getInteger("compose", 0));
+
+	server->performTextInput(sp::move(cmd));
+
+	// The edit is applied on the context thread and comes back as a propagate, so a caller that
+	// wants to observe it must let a frame pass before reading the state again.
+	Value result;
+	result.setString(op, "op");
+	result.setBool(true, "applied");
 	sendResponse(session, serial, sp::move(result));
 }
 

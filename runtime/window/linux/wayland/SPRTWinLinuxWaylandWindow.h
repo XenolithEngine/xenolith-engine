@@ -31,6 +31,7 @@
 #include <sprt/runtime/window/theme_info.h>
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/types.h>
+#include <sprt/runtime/dispatch/looper.h>
 #include <sprt/cxx/bitset>
 
 #include "SPRTWinLinuxWaylandProtocol.h"
@@ -169,6 +170,10 @@ public:
 	void handleKeyModifiers(uint32_t depressed, uint32_t latched, uint32_t locked);
 	void handleKeyRepeat();
 
+	// Starts the repeat timer while a repeating key is held and stops it when the last one goes up.
+	// Wayland sends no repeats of its own - the client is told the rate and has to make them.
+	void updateKeyRepeatTimer();
+
 	void notifyScreenChange();
 	void motifyThemeChanged(const ThemeInfo &);
 
@@ -255,15 +260,21 @@ protected:
 	float _density = 0.0f;
 	uint64_t _frameRate = 0;
 
+	// A key held down right now. The keysym and the character are resolved once, when the key goes
+	// down, and replayed on the release, on every auto-repeat and on focus loss: the modifiers may
+	// change while the key is held, and those events have to describe the key that was pressed.
 	struct KeyData {
 		uint32_t scancode;
+		uint32_t keysym;
 		char32_t codepoint;
+		InputKeyComposeState compose;
 		uint64_t time;
 		bool repeats;
 		uint64_t lastRepeat = 0;
 	};
 
 	Map<uint32_t, KeyData> _keys;
+	Rc<dispatch::TimerHandle> _keyRepeatTimer;
 	WindowCursor _cursor = WindowCursor::Default;
 
 	uint32_t _buttonGripSerial = 0;

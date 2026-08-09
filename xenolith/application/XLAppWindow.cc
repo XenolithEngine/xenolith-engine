@@ -293,6 +293,18 @@ void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	}, this, true);
 }
 
+void AppWindow::handleNativeInputEvents(Vector<InputEventData> &&events) {
+	// Deliberately NOT handleInputEvents(): the point is to enter one level lower, at the native
+	// window, so the events pass through NativeWindow::handleInputEvents - pointer bookkeeping and,
+	// above all, the text-input processor's keyboard interception - before reaching the scene. The
+	// native window then calls back into handleInputEvents() through the controller.
+	_context->performOnThread([this, events = sp::move(events)]() mutable {
+		if (_window) {
+			_window->handleInputEvents(sp::move(events));
+		}
+	}, this);
+}
+
 void AppWindow::handleTextInput(const TextInputState &state) {
 	if (!_presentationEngine) {
 		return;
@@ -878,6 +890,14 @@ void AppWindow::releaseTextInput() {
 	_context->performOnThread([this]() {
 		if (_window) {
 			_window->releaseTextInput();
+		}
+	}, this);
+}
+
+void AppWindow::performTextInput(TextInputCommand &&cmd) {
+	_context->performOnThread([this, cmd = sp::move(cmd)]() {
+		if (_window) {
+			_window->performTextInput(cmd);
 		}
 	}, this);
 }

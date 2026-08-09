@@ -45,13 +45,14 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 		auto seat = reinterpret_cast<WaylandSeat *>(data);
 		seat->pointerFocus = surface;
 		seat->serial = serial;
+		seat->pointerEnterSerial = serial;
 
 		if (seat->root->isDecoration(surface)) {
 			if (auto decor =
 							(WaylandDecoration *)wl_surface_get_user_data(surface)) {
-				if (decor->image != seat->cursorImage) {
-					seat->setCursor(decor->image, true);
-				}
+				// Unconditionally: entering a surface leaves the pointer image undefined, so the
+				// client owes the compositor a cursor even when it is the same one as before
+				seat->setCursor(decor->image, true);
 				seat->pointerDecorations.emplace(decor);
 				decor->onEnter();
 			}
@@ -62,9 +63,7 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 			auto window = reinterpret_cast<WaylandWindow *>(wl_surface_get_user_data(surface));
 			if (window) {
 				seat->pointerViews.emplace(window);
-				if (window->getCursor() != seat->cursorImage) {
-					seat->setCursor(window->getCursor(), window->isServerSideCursors());
-				}
+				seat->setCursor(window->getCursor(), window->isServerSideCursors());
 				window->handlePointerEnter(x, y);
 			}
 		}
@@ -371,7 +370,7 @@ void WaylandSeat::setCursor(WindowCursor image, bool serverSide) {
 	auto waylandCursor = getWaylandCursor(cursorImage);
 	if (serverSide && cursorShape && waylandCursor) {
 		serverSideCursor = true;
-		wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
+		wp_cursor_shape_device_v1_set_shape(cursorShape, pointerEnterSerial, waylandCursor);
 	} else if (cursorTheme) {
 		serverSideCursor = false;
 		cursorTheme->setCursor(this);
@@ -394,7 +393,7 @@ void WaylandSeat::setCursors(StringView theme, int32_t size) {
 void WaylandSeat::tryUpdateCursor() {
 	auto waylandCursor = getWaylandCursor(cursorImage);
 	if (serverSideCursor && cursorShape && waylandCursor) {
-		wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
+		wp_cursor_shape_device_v1_set_shape(cursorShape, pointerEnterSerial, waylandCursor);
 	} else {
 		serverSideCursor = false;
 		if (cursorTheme) {
@@ -526,7 +525,7 @@ bool WaylandCursorTheme::init(WaylandDisplay *display, StringView name, int size
 }
 
 void WaylandCursorTheme::setCursor(WaylandSeat *seat) {
-	setCursor(seat->pointer, seat->cursorSurface, seat->serial, seat->cursorImage,
+	setCursor(seat->pointer, seat->cursorSurface, seat->pointerEnterSerial, seat->cursorImage,
 			seat->pointerScale);
 }
 

@@ -21,35 +21,8 @@
  **/
 
 #include "XLUiBadge.h"
-#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
-
-// Reuse the Panel style appliers under the "badge" type too: background-color / border-radius route
-// to the inherited Panel::setStyleValue (Badge is-a Panel).
-static void ensureBadgeStyleAppliers() {
-	using document::ParameterName;
-	static bool once = [] {
-		StyleResolver::registerTypeApplier("badge",
-				[](StyleResolver &, Node *node, const ResolvedStyle &s,
-						document::ParameterName name, const document::StyleValue &val) {
-			if (auto p = dynamic_cast<Panel *>(node)) {
-				return p->setStyleValue(s, name, val);
-			}
-			return false;
-		},
-				StyleResolver::makeParameterMask({
-					ParameterName::CssBackgroundColor,
-					ParameterName::CssBorderTopLeftRadius,
-					ParameterName::CssBorderTopRightRadius,
-					ParameterName::CssBorderBottomRightRadius,
-					ParameterName::CssBorderBottomLeftRadius,
-					ParameterName::CmdReset,
-				}));
-		return true;
-	}();
-	(void)once;
-}
 
 Badge::~Badge() { }
 
@@ -60,7 +33,8 @@ bool Badge::init() {
 	setType("badge");
 	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-badge");
-	ensureBadgeStyleAppliers();
+	// the same fill / outline / border-radius appliers Panel registers for itself, under "badge"
+	registerStyleAppliers("badge");
 
 	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
 	_label->setType("label");

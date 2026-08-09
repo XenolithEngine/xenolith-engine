@@ -49,8 +49,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 //        response { "serial": u32, "status": "ok"|"error", "error": "...", "result": ... }
 //    Replies may arrive out of order - screenshots and scene commands complete asynchronously.
 //
-// Commands: `scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `frame`, `window`,
-// `quit`. `commands`/`invoke` expose whatever the running scene registered through addCommand.
+// Commands: `scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `text`, `frame`,
+// `window`, `quit`. `commands`/`invoke` expose whatever the running scene registered through
+// addCommand.
+//
+// `input` injects events; with "native": true they go through the OS window first, so the
+// platform's text-input processor claims printable keys, Backspace, Delete and Escape exactly as
+// it would for a real keyboard. `text` drives that processor directly - insert, marked/unmark
+// (IME composition, which no keystroke can express), delete-backward/forward, cancel - and
+// `{"op":"state"}` reads the application-side mirror back.
 //
 // Address: the XENOLITH_INSPECTOR_ADDRESS environment variable ("unix:/path", "unix:@abstract",
 // "host:port" or ":port"), with per-platform defaults: unix:/tmp/xenolith-inspector.sock on
@@ -123,6 +130,7 @@ protected:
 	void handleScreenshot(NotNull<Session>, int64_t serial, Value &&args);
 	void handleInvoke(NotNull<Session>, int64_t serial, Value &&args);
 	void handleInput(NotNull<Session>, int64_t serial, Value &&args);
+	void handleText(NotNull<Session>, int64_t serial, Value &&args);
 	void handleWindow(NotNull<Session>, int64_t serial, Value &&args);
 
 	Rc<sprt::dispatch::ListenHandle> _listener;

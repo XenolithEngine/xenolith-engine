@@ -82,10 +82,11 @@ public:
 
 	virtual Extent2 getExtent() const = 0;
 
-	// Pointer enter layer
+	// Pointer enter layer. Notification: the aggregate pointer state (cursor, layer flags, grips)
+	// is already recomputed by the time this is called.
 	virtual void handleLayerEnter(const WindowLayer &);
 
-	// Pointer exit layer
+	// Pointer exit layer. Notification, see handleLayerEnter.
 	virtual void handleLayerExit(const WindowLayer &);
 
 	virtual PresentationOptions getPreferredOptions() const { return PresentationOptions(); }
@@ -108,6 +109,11 @@ public:
 	// application requests
 	void acquireTextInput(const TextInputRequest &);
 	void releaseTextInput();
+
+	// Drive this window's TextInputProcessor as the platform IME would. Used by a test harness to
+	// reproduce composition, autocorrection and paste - edits that arrive without a keystroke and
+	// therefore cannot be injected as input events. Context thread.
+	void performTextInput(const TextInputCommand &);
 
 	void setAppWindow(Rc<AppWindow> &&);
 	AppWindow *getAppWindow() const;
@@ -157,6 +163,10 @@ protected:
 
 	virtual void handleMotionEvent(const InputEventData &);
 
+	// Recompute cursor, layer flags and grips from the layers currently under the pointer, and
+	// push the cursor down to the window system if the result changed.
+	void updateLayerState();
+
 	virtual Status setFullscreenState(FullscreenInfo &&) { return Status::ErrorNotImplemented; }
 
 	// Force-emit application frame rendering request
@@ -194,6 +204,10 @@ protected:
 
 	WindowLayerFlags _currentLayerFlags = WindowLayerFlags::None;
 	WindowLayerFlags _gripFlags = WindowLayerFlags::None;
+
+	// Last cursor pushed to setCursor(). Starts at the shape a window with no layers already has,
+	// so a window the pointer never visited does not touch the window system's cursor at all.
+	WindowCursor _layerCursor = WindowCursor::Default;
 };
 
 } // namespace sprt::window

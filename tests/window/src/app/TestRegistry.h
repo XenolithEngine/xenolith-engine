@@ -33,8 +33,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // called, what to look at, and how to build it. It used to be a hand-maintained if/else chain in
 // ExampleScene plus a comment in each header, which meant three copies of the same knowledge.
 struct TestInfo {
-	// Short stable id: what the `layout` inspector command takes, and the prefix every command the
-	// layout registers gets ("flex" -> "flex.mode"). "default" for the front page.
+	// Short stable id, unique across the whole registry: what the `layout` inspector command takes,
+	// and the prefix every command the layout registers gets ("flex" -> "flex.mode"). The group it
+	// sits in is not part of it - a test keeps its id when it moves between groups, and the command
+	// names built from it stay flat. "default" for the front page.
 	StringView name;
 
 	// Environment variable that selects this test; empty for the default layout. Must be a string
@@ -55,10 +57,45 @@ struct TestInfo {
 	bool hideFps = false;
 };
 
-SpanView<TestInfo> getTestRegistry();
+// A node of the registry tree: one source directory under `src/`.
+//
+// The tree is the directory layout - `src/css/NthChildLayout.cpp` is `css/nth` here - so there is
+// one place to look for where a test belongs, and the menu on the front page is built by walking
+// it. Nesting is arbitrary: a group may hold groups, tests, or both.
+struct TestGroup {
+	// Path segment, the directory name: "css". Empty for the root.
+	StringView name;
 
-// The entry with this short name, or null. `name` is what the `layout` command receives.
-const TestInfo *findTest(StringView name);
+	// Shown on the menu button that opens the group
+	StringView title;
+
+	// One line, shown under the title in the group menu
+	StringView description;
+
+	// Subgroups, listed before the tests. TestGroup is still incomplete here, which is fine: the
+	// span only holds a pointer and a count.
+	SpanView<TestGroup> groups;
+
+	// Tests declared directly in this group
+	SpanView<TestInfo> tests;
+};
+
+// The root of the tree. Its own `tests` hold the entries that belong to no group - the front page.
+const TestGroup &getTestRegistry();
+
+// The entry named by `path`, or null. `path` is what the `layout` command receives: either the
+// group-qualified path ("css/nth") or the bare id ("nth"), which is searched through the whole
+// tree - ids are unique and that is the form the inspector tooling used before the groups existed.
+const TestInfo *findTest(StringView path);
+
+// The group named by `path` ("css"), or null. The empty path is the root.
+const TestGroup *findTestGroup(StringView path);
+
+// Slash-joined path of the group holding this test ("css"), empty when it belongs to no group.
+String getTestGroupPath(const TestInfo &);
+
+// How many tests the whole subtree holds, subgroups included.
+size_t getTestCount(const TestGroup &);
 
 // The entry selected by the environment, or the default one.
 const TestInfo &getSelectedTest();

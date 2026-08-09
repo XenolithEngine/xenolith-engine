@@ -755,6 +755,9 @@ Status MacosWindow::setFullscreenState(FullscreenInfo &&info) {
 	}
 }
 
+// Declined: the NSTextInputClient conformance on the view is not wired to the processor yet. When
+// it is, the view - being the real IME - must report enablement itself with
+// _textInput->handleInputEnabled(true/false); this must not be reported from the application side.
 bool MacosWindow::updateTextInput(const TextInputRequest &req, TextInputFlags flags) {
 	return false;
 }

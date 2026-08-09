@@ -77,7 +77,16 @@ struct SPRT_API WaylandSeat : Ref {
 	wl_touch *touch = nullptr;
 	float pointerScale = 1.0f;
 	wl_surface *pointerFocus = nullptr;
+
+	// Latest input serial, for the requests that want one: xdg_toplevel move/resize/show_window_menu,
+	// xdg_popup.grab. A button serial is what those actually need, so this follows wl_pointer.button.
 	uint32_t serial = 0;
+
+	// Latest wl_pointer.enter serial, and nothing else. wl_pointer.set_cursor and
+	// wp_cursor_shape_device_v1.set_shape are validated against exactly that serial and are
+	// silently dropped when given any other - so reusing `serial` here would freeze the pointer
+	// shape from the first click until the pointer leaves the surface and comes back.
+	uint32_t pointerEnterSerial = 0;
 	wl_surface *cursorSurface = nullptr;
 	xkb_state *state = nullptr;
 	xkb_compose_state *compose = nullptr;

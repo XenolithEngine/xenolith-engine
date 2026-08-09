@@ -150,6 +150,13 @@ public:
 	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) = 0;
 	virtual void acquireTextInput(TextInputRequest &&) = 0;
 	virtual void releaseTextInput() = 0;
+
+	// Drive the window's text-input processor as the platform IME would: composition (marked text),
+	// insertion at an explicit range, deletion. These edits arrive without a keystroke, so they
+	// cannot be expressed as input events; a test harness reproduces them through here.
+	//
+	// Non-pure on purpose: a channel with no native window behind it has no processor to drive.
+	virtual void performTextInput(TextInputCommand &&);
 	virtual void close(bool graceful = true) = 0;
 
 	virtual void handleBackButton() = 0;
@@ -201,6 +208,15 @@ public:
 	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events) = 0;
+
+	// Inject events at the native-window level instead of straight into the client, so they take
+	// exactly the path a platform backend's events take: NativeWindow::handleInputEvents runs
+	// first, which is where the text-input processor claims printable keys, Backspace, Delete and
+	// Escape before the scene ever sees them. handleInputEvents() bypasses all of that.
+	//
+	// Non-pure on purpose: a channel with no native window behind it falls back to
+	// handleInputEvents().
+	virtual void handleNativeInputEvents(Vector<InputEventData> &&events);
 
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) = 0;
 
