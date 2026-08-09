@@ -42,6 +42,7 @@
 #include "window/QueueCacheLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/TextInputLayout.h"
+#include "widgets/FormLayout.h"
 #include "layout/ParentResizeLayout.h"
 #include "css/PlatformLayout.h"
 #include "template/PugCascadeLayout.h"
@@ -186,6 +187,15 @@ static const TestInfo s_widgetsTests[] = {
 				   "at its border. Drive it over the inspector: text-input.focus, send_input "
 				   "native=true, send_text."),
 		TestRegistry_make<TextInputLayout>, true},
+
+	TestInfo{StringView("form"), StringView("XL_FORM_TEST"), StringView("ui::FormSystem"),
+		StringView("Two text fields, a checkbox, a transient field, one collapsed field and "
+				   "submit/reset buttons. Tab must walk them in document order and wrap, Shift+Tab "
+				   "must walk back, a collapsed or disabled field must drop out of the ring, Enter "
+				   "must submit, and a missing or malformed required field must block the submit "
+				   "and take the `.invalid` outline. Drive it over the inspector: form.state, "
+				   "form.collect, send_input native=true."),
+		TestRegistry_make<FormLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

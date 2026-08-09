@@ -106,6 +106,47 @@ void HeadlessContextController::openUrl(StringView url) {
 	oslog::vpwarn(__SPRT_LOCATION, "HeadlessContextController", "openUrl is not available");
 }
 
+Status HeadlessContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
+	if (!_clipboard) {
+		req->dataCallback(Status::ErrorNotFound, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	Vector<StringView> types;
+	for (auto &it : _clipboard->types) { types.emplace_back(it); }
+
+	auto type = req->typeCallback(types);
+	if (type.empty()) {
+		// The requester wants none of what is on offer; that is a normal outcome, not a failure
+		req->dataCallback(Status::Declined, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	auto data = _clipboard->encodeCallback(type);
+	req->dataCallback(Status::Ok, data, type);
+	return Status::Ok;
+}
+
+Status HeadlessContextController::probeClipboard(Rc<ClipboardProbe> &&probe) {
+	if (!_clipboard) {
+		probe->typeCallback(Status::ErrorNotFound, SpanView<StringView>());
+		return Status::Ok;
+	}
+
+	Vector<StringView> types;
+	for (auto &it : _clipboard->types) { types.emplace_back(it); }
+
+	probe->typeCallback(Status::Ok, types);
+	return Status::Ok;
+}
+
+Status HeadlessContextController::writeToClipboard(Rc<ClipboardData> &&data) {
+	// Holding the Rc is what keeps the encode callback (and whatever it captured) alive for as long
+	// as this data is the clipboard's, which is the contract every backend follows
+	_clipboard = sprt::move(data);
+	return Status::Ok;
+}
+
 bool HeadlessContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
 	auto window = Rc<HeadlessWindow>::create(this, sprt::move(wInfo));
 	if (!window) {

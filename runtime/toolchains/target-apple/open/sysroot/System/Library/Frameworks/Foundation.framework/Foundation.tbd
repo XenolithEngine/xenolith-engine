@@ -19,7 +19,7 @@ exports:
         _OBJC_CLASS_$_NSAttributedString,
         _OBJC_CLASS_$_NSBundle,
         _OBJC_CLASS_$_NSError,
-        _OBJC_CLASS_$_NSFileManager,
+        _OBJC_CLASS_$_NSArray, _OBJC_CLASS_$_NSFileManager, _OBJC_CLASS_$_NSMutableArray, _OBJC_CLASS_$_NSURL,
         _OBJC_CLASS_$_NSMutableAttributedString,
         _OBJC_CLASS_$_NSMutableString,
         _OBJC_CLASS_$_NSNotification,

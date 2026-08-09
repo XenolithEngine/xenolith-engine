@@ -119,7 +119,9 @@ bool TextInputContainer::init() {
 void TextInputContainer::update(const UpdateTime &time) {
 	Node::update(time);
 
-	if (_autoScrollTarget == Vec2::INVALID || !hasHorizontalOverflow()) {
+	// Vec2::INVALID is a pair of NaNs, and NaN compares equal to nothing - "is a target set" has to
+	// be asked as isValid(), never as == Vec2::INVALID.
+	if (!_autoScrollTarget.isValid() || !hasHorizontalOverflow()) {
 		return;
 	}
 
@@ -177,12 +179,26 @@ void TextInputContainer::setEnabled(bool value) {
 	updateCaretBlink();
 }
 
-void TextInputContainer::setCursor(TextCursor cursor) {
+void TextInputContainer::setCursor(TextCursor cursor, uint32_t activePosition) {
+	// without a selection there is only one end, and an unknown moving end keeps the historical
+	// behaviour of following the start of the range
+	if (cursor.length == 0 || activePosition == maxOf<uint32_t>()) {
+		activePosition = cursor.start;
+	}
+
+	if (_cursor == cursor && _cursorActive == activePosition) {
+		return;
+	}
+
 	if (_cursor == cursor) {
+		// same range, other end moving: only what the viewport follows has changed
+		_cursorActive = activePosition;
+		_caretDirty = true;
 		return;
 	}
 
 	_cursor = cursor;
+	_cursorActive = activePosition;
 	_caretDirty = true;
 
 	// the selection highlight is drawn by the Label itself (Label::Selection), so this is the whole
@@ -255,30 +271,41 @@ void TextInputContainer::moveHorizontalOverflow(float d) {
 float TextInputContainer::getLabelOffset() const { return _label->getPosition().x; }
 
 void TextInputContainer::setAutoScrollTarget(const Vec2 &worldLocation) {
-	if (_autoScrollTarget == worldLocation) {
+	// NaN != NaN, so "already stopped" has to be tested through isValid() as well - otherwise every
+	// stop request would fall into the start branch below and leave the field rendering forever
+	if (_autoScrollTarget == worldLocation
+			|| (!_autoScrollTarget.isValid() && !worldLocation.isValid())) {
 		return;
 	}
 
 	_autoScrollTarget = worldLocation;
-	if (_autoScrollTarget == Vec2::INVALID) {
+	if (!_autoScrollTarget.isValid()) {
 		if (_scheduled) {
 			unscheduleUpdate();
 		}
 		stopAllActionsByTag("RenderContinuously"_tag);
 	} else {
 		scheduleUpdate();
-		runAction(Rc<RenderContinuously>::create(), "RenderContinuously"_tag);
+		if (!getActionByTag("RenderContinuously"_tag)) {
+			runAction(Rc<RenderContinuously>::create(), "RenderContinuously"_tag);
+		}
 	}
 }
 
 void TextInputContainer::updateCaretPosition() {
 	const auto cpos =
-			_label->empty() ? _label->getCursorOrigin() : _label->getCursorPosition(_cursor.start);
+			_label->empty() ? _label->getCursorOrigin() : _label->getCursorPosition(_cursorActive);
 
 	// Only the horizontal position comes from the label; vertically the caret is pinned to the
 	// bottom of the container, whose height it has. The caret is a child of the label, so the
 	// container's bottom edge is at -label.y in this space.
 	_caret->setPosition(Vec2(cpos.x, -_label->getPosition().y));
+
+	// While a drag-selection pulls the text past an edge, the pointer owns the offset (see update):
+	// a re-centring action on top of it would fight the per-frame slide.
+	if (_autoScrollTarget.isValid()) {
+		return;
+	}
 
 	const auto labelWidth = _label->getContentSize().width;
 	const auto width = _contentSize.width;
@@ -336,7 +363,9 @@ void TextInputContainer::runAdjustLabel(float pos) {
 		t = progress(minT, maxT, (dist - 16.0f) / 64.0f);
 	}
 
-	_label->runAction(Rc<MoveTo>::create(t, Vec2(pos, _label->getPosition().y)),
+	_label->runAction(
+			Rc<EaseActionTyped>::create(Rc<MoveTo>::create(t, Vec2(pos, _label->getPosition().y)),
+					interpolation::Type::QuadEaseInOut),
 			TextInputAdjustTag);
 }
 
@@ -382,10 +411,13 @@ bool TextInput::init() {
 		return true;
 	}, false);
 
-	// maxTapCount 3: one tap places the caret, two select a word, three select everything
-	_listener->addTapRecognizer([this](const GestureTap &tap) {
-		return handleTap(tap);
-	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 3});
+	// maxTapCount 3: one tap places the caret, two select a word, three select everything - and
+	// Immediate, because these three are refinements of each other, not alternatives. Waiting to
+	// learn whether a second tap follows would delay the caret of every single click by
+	// TapIntervalAllowed, which is exactly the lag the user sees.
+	_listener->addTapRecognizer([this](const GestureTap &tap) { return handleTap(tap); },
+			InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 3,
+				InputTapFlags::Immediate});
 
 	// Continuous, so the hold keeps reporting every interval instead of firing once: that is what
 	// turns "keep holding" into the next, wider selection.
@@ -417,8 +449,9 @@ bool TextInput::init() {
 	}, InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft})});
 
 	// Everything the runtime does NOT claim for text: it swallows printable characters, Backspace,
-	// Delete, Escape, Enter and Tab before the scene sees them, so what is left to bind is the
-	// navigation set.
+	// Delete and Escape before the scene sees them, so what is left to bind is the navigation set,
+	// the chords, and Tab/Enter - which the processor declines precisely so a widget can tell
+	// Shift+Tab from Tab.
 	InputKeyMask keys;
 	keys.set(toInt(InputKeyCode::LEFT));
 	keys.set(toInt(InputKeyCode::RIGHT));
@@ -426,7 +459,13 @@ bool TextInput::init() {
 	keys.set(toInt(InputKeyCode::DOWN));
 	keys.set(toInt(InputKeyCode::HOME));
 	keys.set(toInt(InputKeyCode::END));
+	keys.set(toInt(InputKeyCode::TAB));
+	keys.set(toInt(InputKeyCode::ENTER));
+	keys.set(toInt(InputKeyCode::KP_ENTER));
 	keys.set(toInt(InputKeyCode::A));
+	keys.set(toInt(InputKeyCode::C));
+	keys.set(toInt(InputKeyCode::X));
+	keys.set(toInt(InputKeyCode::V));
 	_listener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
 
@@ -742,6 +781,106 @@ void TextInput::setCallback(ChangeCallback &&cb) { _callback = sp::move(cb); }
 
 void TextInput::setEnterCallback(EnterCallback &&cb) { _enterCallback = sp::move(cb); }
 
+void TextInput::setNavigateCallback(NavigateCallback &&cb) { _navigateCallback = sp::move(cb); }
+
+void TextInput::insertText(WideStringView text, TextCursor replace) {
+	const auto str = _inputState.getStringView();
+	const auto size = uint32_t(str.size());
+
+	auto start = sprt::min(replace.start, size);
+	auto length = sprt::min(replace.length, size - start);
+
+	WideString result;
+	result.reserve(str.size() - length + text.size());
+	result.append(str.data(), start);
+	result.append(text.data(), text.size());
+	result.append(str.data() + start + length, str.size() - start - length);
+
+	auto string = TextInputString::create(WideStringView(result));
+	auto cursor = TextCursor(start + uint32_t(text.size()));
+
+	if (_handler.isActive()) {
+		pushRequest(string, cursor);
+		return;
+	}
+
+	// Same reasoning as setText(): with no handler there is no platform authority to defer to
+	_inputState.string = string;
+	_inputState.cursor = cursor;
+	_inputState.marked = TextCursor::InvalidCursor;
+	_pendingCursor = cursor;
+
+	_container->setCursor(cursor);
+	_container->setMarked(TextCursor::InvalidCursor);
+	_container->handleLabelChanged();
+	_container->setPlaceholderVisible(_inputState.empty() && !_focused);
+	updateDisplayString();
+
+	if (_callback) {
+		_callback(getText());
+	}
+}
+
+bool TextInput::copy() {
+	const auto cursor = _inputState.cursor;
+	if (cursor.length == 0 || !_director) {
+		return false;
+	}
+
+	// A masked field's contents are exactly what must not leave the widget
+	if (_passwordMode != TextInputPasswordMode::NotPassword) {
+		return false;
+	}
+
+	auto str = string::toUtf8<Interface>(
+			WideStringView(_inputState.getStringView(), cursor.start, cursor.length));
+
+	// writeToClipboard copies the bytes and retains the Ref, so the local String may die here
+	_director->getApplication()->writeToClipboard(
+			BytesView(reinterpret_cast<const uint8_t *>(str.data()), str.size()),
+			StringView("text/plain"), this);
+	return true;
+}
+
+bool TextInput::cut() {
+	if (_readOnly || !copy()) {
+		return false;
+	}
+	insertText(WideStringView(), _inputState.cursor);
+	return true;
+}
+
+bool TextInput::paste() {
+	if (_readOnly || !_director) {
+		return false;
+	}
+
+	const auto serial = ++_pasteSerial;
+	_director->getApplication()->readFromClipboard(
+			[this, serial](Status st, BytesView data, StringView) {
+		// A superseded answer: the field was pasted into again, or blurred while the read was in
+		// flight. Applying it would drop text on top of a newer edit
+		if (!sprt::status::isSuccessful(st) || serial != _pasteSerial) {
+			return;
+		}
+
+		auto text = string::toUtf16<Interface>(
+				StringView(reinterpret_cast<const char *>(data.data()), data.size()));
+
+		// The caret as it is NOW, not as it was when the read started - the user may have moved it.
+		// Length and character filtering happen in validateInput() on the echo
+		insertText(WideStringView(text), pendingCursor());
+	}, [](SpanView<StringView> types) -> StringView {
+		for (auto &it : types) {
+			if (it.starts_with("text/plain")) {
+				return it;
+			}
+		}
+		return StringView();
+	}, this);
+	return true;
+}
+
 void TextInput::focus() {
 	if (!_enabled || _readOnly || _handler.isActive()) {
 		return;
@@ -836,7 +975,7 @@ void TextInput::setCursor(TextCursor cursor) {
 
 	_inputState.cursor = cursor;
 	_pendingCursor = cursor;
-	_container->setCursor(cursor);
+	_container->setCursor(cursor, activeCursorPosition(cursor));
 }
 
 void TextInput::setCaretBlink(bool value) { _container->setCaretBlink(value); }
@@ -929,7 +1068,7 @@ void TextInput::handleTextInput(const TextInputState &data) {
 	_pendingCursor = _inputState.cursor;
 
 	_container->setEnabled(_focused);
-	_container->setCursor(_inputState.cursor);
+	_container->setCursor(_inputState.cursor, activeCursorPosition(_inputState.cursor));
 	_container->setMarked(_inputState.marked);
 
 	const bool stringChanged = _inputState.string != previousString;
@@ -1048,17 +1187,33 @@ TextCursor TextInput::pendingCursor() const {
 	return _pendingCursor == TextCursor::InvalidCursor ? _inputState.cursor : _pendingCursor;
 }
 
+uint32_t TextInput::activeCursorPosition(TextCursor cursor) const {
+	if (cursor.length == 0 || _selectionAnchor == maxOf<uint32_t>()) {
+		// no selection, or one that was made in a single act (a word, select-all): nothing is being
+		// dragged, so there is no end to follow
+		return maxOf<uint32_t>();
+	}
+
+	// the anchor is the end that stays put; the user is moving the other one
+	return _selectionAnchor <= cursor.start ? cursor.start + cursor.length : cursor.start;
+}
+
 uint32_t TextInput::offsetCursor(int32_t delta) const {
 	const auto cursor = pendingCursor();
 	const auto size = int64_t(_inputState.size());
 
-	// moving off a selection collapses it to the edge you are moving towards, as every editor does
 	int64_t from = cursor.start;
 	if (cursor.length > 0) {
-		from = delta < 0 ? cursor.start : cursor.start + cursor.length;
 		if (_selectionAnchor == maxOf<uint32_t>()) {
-			return uint32_t(math::clamp(from, int64_t(0), size));
+			// nothing is being extended: moving off a selection collapses it to the edge you are
+			// moving towards, as every editor does
+			return uint32_t(math::clamp(delta < 0 ? cursor.start : cursor.start + cursor.length,
+					uint32_t(0), uint32_t(size)));
 		}
+
+		// a selection IS being extended: the step continues from the end the user is moving, so
+		// Shift+Left after a rightwards selection shrinks it instead of jumping to its other end
+		from = activeCursorPosition(cursor);
 	}
 
 	return uint32_t(math::clamp(from + delta, int64_t(0), size));
@@ -1102,10 +1257,43 @@ bool TextInput::handleKey(const GestureData &data) {
 	case InputKeyCode::HOME: moveCursor(0, select); return true;
 	case InputKeyCode::DOWN:
 	case InputKeyCode::END: moveCursor(size, select); return true;
+	case InputKeyCode::TAB:
+		// Shift is the only reason Tab has to be a key event rather than the '\t' the platform
+		// used to insert: a stripped character carries no modifiers, so backwards navigation
+		// cannot be expressed on that path
+		if (_navigateCallback) {
+			return _navigateCallback(select);
+		}
+		blur();
+		return true;
+	case InputKeyCode::ENTER:
+	case InputKeyCode::KP_ENTER:
+		// Declining when no callback is set is what lets a form's listener below this one submit.
+		// An explicitly installed callback wins over the form on purpose
+		if (_enterCallback) {
+			_enterCallback();
+			return true;
+		}
+		return false;
 	case InputKeyCode::A:
 		if (ctrl) {
 			selectAll();
 			return true;
+		}
+		break;
+	case InputKeyCode::C:
+		if (ctrl) {
+			return copy();
+		}
+		break;
+	case InputKeyCode::X:
+		if (ctrl) {
+			return cut();
+		}
+		break;
+	case InputKeyCode::V:
+		if (ctrl) {
+			return paste();
 		}
 		break;
 	default: break;
@@ -1172,7 +1360,9 @@ bool TextInput::handlePress(const GesturePress &press, bool begin) {
 
 		// The recognizer counts the hold in update(), which only runs while frames are produced -
 		// and a resting finger produces none. Held for exactly as long as the press is.
-		runAction(Rc<RenderContinuously>::create(), TextInputPressTag);
+		if (!getActionByTag(TextInputPressTag)) {
+			runAction(Rc<RenderContinuously>::create(), TextInputPressTag);
+		}
 	} else {
 		stopAllActionsByTag(TextInputPressTag);
 	}

@@ -59,8 +59,18 @@ public:
 	virtual WindowCapabilities getCapabilities() const override;
 	virtual void openUrl(StringView) override;
 
+	// An in-process clipboard. There is no window system to own a selection here, so the base
+	// class's ErrorNotImplemented would make copy/paste untestable in exactly the mode the test
+	// harness runs in. This keeps the last written data in the controller and hands it back: same
+	// API, same callbacks, no OS involved
+	virtual Status readFromClipboard(Rc<ClipboardRequest> &&) override;
+	virtual Status probeClipboard(Rc<ClipboardProbe> &&) override;
+	virtual Status writeToClipboard(Rc<ClipboardData> &&) override;
+
 protected:
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
+	Rc<ClipboardData> _clipboard;
 };
 
 } // namespace sprt::window

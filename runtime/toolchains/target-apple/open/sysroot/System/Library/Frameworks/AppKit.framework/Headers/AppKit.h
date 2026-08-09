@@ -33,7 +33,10 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
 	NSWindowStyleMaskUnifiedTitleAndToolbar = 1 << 12,
 	NSWindowStyleMaskFullScreen = 1 << 14,
 	NSWindowStyleMaskFullSizeContentView = 1 << 15,
+	/* The three below are honoured only on NSPanel (or a subclass); on a plain NSWindow they
+	   are silently ignored. */
 	NSWindowStyleMaskUtilityWindow = 1 << 4,
+	NSWindowStyleMaskNonactivatingPanel = 1 << 7,
 	NSWindowStyleMaskHUDWindow = 1 << 13,
 };
 
@@ -240,7 +243,43 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (void)magnifyWithEvent:(NSEvent *)event;
 - (void)interpretKeyEvents:(NSArray<NSEvent *> *)eventArray;
 - (void)doCommandBySelector:(SEL)selector;
+- (void)noResponderFor:(SEL)eventSelector;
+- (void)flushBufferedKeyEvents;
 @property(nullable, readonly) NSTextInputContext *inputContext;
+
+/* Standard editing actions. interpretKeyEvents: turns a keystroke into one of these and sends it
+   through doCommandBySelector:, so a text client overrides the ones it implements and lets the
+   rest fall through. */
+- (void)insertText:(id)insertString;
+- (void)insertNewline:(nullable id)sender;
+- (void)insertLineBreak:(nullable id)sender;
+- (void)insertParagraphSeparator:(nullable id)sender;
+- (void)insertTab:(nullable id)sender;
+- (void)insertBacktab:(nullable id)sender;
+- (void)deleteBackward:(nullable id)sender;
+- (void)deleteForward:(nullable id)sender;
+- (void)deleteWordBackward:(nullable id)sender;
+- (void)deleteWordForward:(nullable id)sender;
+- (void)deleteToBeginningOfLine:(nullable id)sender;
+- (void)deleteToEndOfLine:(nullable id)sender;
+- (void)moveLeft:(nullable id)sender;
+- (void)moveRight:(nullable id)sender;
+- (void)moveUp:(nullable id)sender;
+- (void)moveDown:(nullable id)sender;
+- (void)moveLeftAndModifySelection:(nullable id)sender;
+- (void)moveRightAndModifySelection:(nullable id)sender;
+- (void)moveUpAndModifySelection:(nullable id)sender;
+- (void)moveDownAndModifySelection:(nullable id)sender;
+- (void)moveWordLeft:(nullable id)sender;
+- (void)moveWordRight:(nullable id)sender;
+- (void)moveToBeginningOfLine:(nullable id)sender;
+- (void)moveToEndOfLine:(nullable id)sender;
+- (void)moveToBeginningOfDocument:(nullable id)sender;
+- (void)moveToEndOfDocument:(nullable id)sender;
+- (void)selectAll:(nullable id)sender;
+- (void)selectLine:(nullable id)sender;
+- (void)selectWord:(nullable id)sender;
+- (void)cancelOperation:(nullable id)sender;
 @end
 
 /* ---- NSView -------------------------------------------------------------- */
@@ -269,11 +308,29 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (NSRect)convertRectFromBacking:(NSRect)rect;
 - (NSPoint)convertPoint:(NSPoint)point fromView:(nullable NSView *)view;
 - (NSPoint)convertPoint:(NSPoint)point toView:(nullable NSView *)view;
+- (NSRect)convertRect:(NSRect)rect fromView:(nullable NSView *)view;
+- (NSRect)convertRect:(NSRect)rect toView:(nullable NSView *)view;
+- (NSSize)convertSize:(NSSize)size fromView:(nullable NSView *)view;
+- (NSSize)convertSize:(NSSize)size toView:(nullable NSView *)view;
 @property NSAutoresizingMaskOptions autoresizingMask;
 @property NSViewLayerContentsRedrawPolicy layerContentsRedrawPolicy;
 @property NSViewLayerContentsPlacement layerContentsPlacement;
 @property(getter=inLiveResize, readonly) BOOL inLiveResize;
 - (void)display;
+@end
+
+/* ---- NSTextInputContext --------------------------------------------------- */
+@interface NSTextInputContext : NSObject
+@property(class, nullable, readonly) NSTextInputContext *currentInputContext;
+- (void)activate;
+- (void)deactivate;
+- (void)discardMarkedText;
+- (void)invalidateCharacterCoordinates;
+- (BOOL)handleEvent:(NSEvent *)event;
+@property(readonly, weak) id<NSTextInputClient> client;
+@property(nullable, copy) NSArray<NSString *> *allowedInputSourceLocales;
+@property(readonly) NSArray<NSString *> *keyboardInputSources;
+@property(nullable, copy) NSString *selectedKeyboardInputSource;
 @end
 
 /* ---- NSViewController ---------------------------------------------------- */
@@ -353,7 +410,6 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @property BOOL restorable;
 @property(nullable, strong) NSAppearance *appearance;
 @property(readonly, strong) NSAppearance *effectiveAppearance;
-@property BOOL hasShadow;
 - (void)invalidateShadow;
 - (void)display;
 - (void)orderFrontRegardless;
@@ -438,6 +494,8 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (void)pop;
 @end
 
+@class NSColorSpace;
+
 /* ---- NSColor ------------------------------------------------------------- */
 @interface NSColor : NSObject
 @property(class, readonly) NSColor *clearColor;
@@ -455,7 +513,48 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 						 blue:(CGFloat)blue
 						alpha:(CGFloat)alpha;
 - (void)set;
+/* Reading components is only defined once the colour has been converted into a component-based
+   space — a colour straight out of the picker may be a pattern or a catalogue entry. */
+- (nullable NSColor *)colorUsingColorSpace:(NSColorSpace *)space;
+@property(readonly) CGFloat redComponent;
+@property(readonly) CGFloat greenComponent;
+@property(readonly) CGFloat blueComponent;
+@property(readonly) CGFloat alphaComponent;
 @end
+
+/* ---- NSColorSpace -------------------------------------------------------- */
+@interface NSColorSpace : NSObject
+@property(class, readonly) NSColorSpace *sRGBColorSpace;
+@property(class, readonly) NSColorSpace *genericRGBColorSpace;
+@end
+
+/* ---- modal responses and font traits ------------------------------------- */
+typedef NSInteger NSModalResponse;
+enum : NSModalResponse {
+	NSModalResponseStop = (-1000),
+	NSModalResponseAbort = (-1001),
+	NSModalResponseContinue = (-1002),
+	NSModalResponseOK = 1,
+	NSModalResponseCancel = 0,
+};
+
+typedef NSUInteger NSFontTraitMask;
+enum : NSFontTraitMask {
+	NSItalicFontMask = 0x00000001,
+	NSBoldFontMask = 0x00000002,
+	NSUnboldFontMask = 0x00000004,
+	NSNonStandardCharacterSetFontMask = 0x00000008,
+	NSNarrowFontMask = 0x00000010,
+	NSExpandedFontMask = 0x00000020,
+	NSCondensedFontMask = 0x00000040,
+	NSSmallCapsFontMask = 0x00000080,
+	NSPosterFontMask = 0x00000100,
+	NSCompressedFontMask = 0x00000200,
+	NSFixedPitchFontMask = 0x00000400,
+	NSUnitalicFontMask = 0x01000000,
+};
+
+@class UTType;
 
 /* ---- NSTrackingArea ------------------------------------------------------ */
 @interface NSTrackingArea : NSObject
@@ -529,6 +628,8 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @end
 
 /* ---- NSApplication ------------------------------------------------------- */
+@class NSImage;
+
 @interface NSApplication : NSResponder
 @property(class, readonly, strong) NSApplication *sharedApplication;
 @property(weak, nullable) id delegate;
@@ -539,6 +640,9 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (void)activateIgnoringOtherApps:(BOOL)flag;
 - (void)finishLaunching;
 @property(nullable, strong) NSMenu *mainMenu;
+/* The Dock / Cmd-Tab tile. Set explicitly because CFBundleIconFile alone is often ignored for
+   linker- or ad-hoc-signed bundles until the IconServices caches catch up. */
+@property(nullable, strong) NSImage *applicationIconImage;
 @property(nullable, readonly, weak) NSWindow *keyWindow;
 @property(nullable, readonly, weak) NSWindow *mainWindow;
 @property(readonly, copy) NSArray<NSWindow *> *windows;
@@ -557,6 +661,8 @@ SPRT_FOUNDATION_EXTERN NSApplication *NSApp;
 @property(class, readonly, strong) NSWorkspace *sharedWorkspace;
 @property(readonly, strong) NSNotificationCenter *notificationCenter;
 - (BOOL)openURL:(NSURL *)url;
+/* Reveal: opens each item's containing folder with the item selected. */
+- (void)activateFileViewerSelectingURLs:(NSArray<NSURL *> *)fileURLs;
 @end
 
 @interface NSRunningApplication : NSObject
@@ -622,6 +728,96 @@ SPRT_FOUNDATION_EXTERN NSApplication *NSApp;
 - (NSRect)firstRectForCharacterRange:(NSRange)range
 						 actualRange:(nullable NSRangePointer)actualRange;
 - (NSUInteger)characterIndexForPoint:(NSPoint)point;
+
+@optional
+/* Not required, but an input method asks for them: attributedString feeds inline candidate
+   display, the two geometry callbacks let it place a candidate window against a glyph, and
+   windowLevel keeps that window above a full-screen surface. */
+- (NSAttributedString *)attributedString;
+- (CGFloat)fractionOfDistanceThroughGlyphForPoint:(NSPoint)point;
+- (CGFloat)baselineDeltaForCharacterAtIndex:(NSUInteger)anIndex;
+- (BOOL)drawsVerticallyForCharacterAtIndex:(NSUInteger)charIndex;
+- (NSInteger)windowLevel;
+@end
+
+/* ---- NSImage ------------------------------------------------------------- */
+@interface NSImage : NSObject
+- (nullable instancetype)initWithContentsOfFile:(NSString *)fileName;
+@property NSSize size;
+@end
+
+@interface NSBundle (SPRTAppKitImages)
+- (nullable NSImage *)imageForResource:(NSString *)name;
+@end
+
+/* ---- NSPanel and the system dialogs -------------------------------------- */
+
+/* A panel is an auxiliary window; every dialog below is one, which is what makes
+   makeKeyAndOrderFront:/close work on them. Deriving from it is also the only way to get the
+   panel-only style bits (utility title bar, non-activating) - and note the inherited defaults
+   differ from NSWindow: hidesOnDeactivate is YES, releasedWhenClosed is NO. */
+@interface NSPanel : NSWindow
+@property(getter=isFloatingPanel) BOOL floatingPanel;
+@property BOOL becomesKeyOnlyIfNeeded;
+@property BOOL worksWhenModal;
+@end
+
+/* NSSavePanel doubles as the base of NSOpenPanel, so everything shared lives here. Note the two
+   ways to run one: beginSheetModalForWindow: attaches it to a parent (a real sheet, which the OS
+   blocks and raises for us), beginWithCompletionHandler: leaves it free-standing. Neither blocks. */
+@interface NSSavePanel : NSPanel
++ (NSSavePanel *)savePanel;
+@property(copy) NSString *message;
+@property(copy) NSString *prompt;
+@property(copy) NSString *nameFieldStringValue;
+@property(nullable, copy) NSURL *directoryURL;
+@property BOOL canCreateDirectories;
+@property BOOL showsHiddenFiles;
+@property BOOL allowsOtherFileTypes;
+@property(copy) NSArray<UTType *> *allowedContentTypes;
+@property(nullable, readonly, copy) NSURL *URL;
+- (void)beginSheetModalForWindow:(NSWindow *)window
+			   completionHandler:(void (^)(NSModalResponse result))handler;
+- (void)beginWithCompletionHandler:(void (^)(NSModalResponse result))handler;
+- (void)cancel:(nullable id)sender;
+@end
+
+@interface NSOpenPanel : NSSavePanel
++ (NSOpenPanel *)openPanel;
+@property BOOL canChooseFiles;
+@property BOOL canChooseDirectories;
+@property BOOL allowsMultipleSelection;
+@property(readonly, copy) NSArray<NSURL *> *URLs;
+@end
+
+/* Both of these are process-wide singletons with no completion handler: they report through the
+   shared font manager / their own colour property, and "the user is done" is the window closing. */
+@interface NSColorPanel : NSPanel
+@property(class, readonly, strong) NSColorPanel *sharedColorPanel;
+@property BOOL showsAlpha;
+@property(copy) NSColor *color;
+@end
+
+@interface NSFontPanel : NSPanel
+@end
+
+@interface NSFont : NSObject
++ (nullable NSFont *)fontWithName:(NSString *)fontName size:(CGFloat)fontSize;
++ (NSFont *)systemFontOfSize:(CGFloat)fontSize;
+@property(readonly, copy) NSString *fontName;
+@property(readonly, nullable, copy) NSString *familyName;
+@property(readonly) CGFloat pointSize;
+@end
+
+@interface NSFontManager : NSObject
+@property(class, readonly, strong) NSFontManager *sharedFontManager;
+- (NSFontPanel *)fontPanel:(BOOL)create;
+- (void)setSelectedFont:(NSFont *)fontObj isMultiple:(BOOL)flag;
+- (nullable NSFont *)selectedFont;
+/* Applies whatever the user changed in the panel to `fontObj` — the documented way to read the
+   panel's choice, since the panel itself exposes no font. */
+- (NSFont *)convertFont:(NSFont *)fontObj;
+- (NSFontTraitMask)traitsOfFont:(NSFont *)fontObj;
 @end
 
 /* ---- pasteboard type + appearance-name constants ------------------------- */
@@ -635,5 +831,8 @@ SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeRTF;
 SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeHTML;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameAqua;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameDarkAqua;
+
+/* ---- window notifications ------------------------------------------------ */
+SPRT_FOUNDATION_EXTERN NSNotificationName const NSWindowWillCloseNotification;
 
 #endif /* __SPRT_OPEN_APPKIT_H_ */

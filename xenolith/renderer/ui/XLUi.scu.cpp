@@ -28,12 +28,17 @@
 
 #include "layout/XLUiLayoutSystem.cc"
 
-#include "atoms/XLUiInteractiveComponent.cc"
-#include "atoms/XLUiButton.cc"
 #include "atoms/XLUiPanel.cc"
 #include "atoms/XLUiBadge.cc"
-#include "atoms/XLUiCheckbox.cc"
-#include "atoms/XLUiTextInput.cc"
+
+#include "input/XLUiInteractiveComponent.cc"
+#include "input/XLUiButton.cc"
+#include "input/XLUiCheckbox.cc"
+#include "input/XLUiTextInput.cc"
+
+#include "forms/XLUiFormInputListener.cc"
+#include "forms/XLUiFormSystem.cc"
+#include "forms/XLUiFormAdapters.cc"
 
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"

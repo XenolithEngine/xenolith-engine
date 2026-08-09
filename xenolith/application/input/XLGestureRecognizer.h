@@ -203,7 +203,9 @@ public:
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
 
-	virtual bool requiresUpdate() const override { return true; }
+	// An immediate recognizer has nothing to wait for: every tap is reported as it happens, so the
+	// interval timer in update() is not needed at all
+	virtual bool requiresUpdate() const override { return !_info.isImmediate(); }
 
 protected:
 	using GestureRecognizer::init;
@@ -215,6 +217,9 @@ protected:
 
 	// return true if tap was sent
 	virtual bool registerTap();
+
+	// hands the current _gesture to the callback as GestureEvent::Activated
+	void sendTap();
 
 	GestureTap _gesture;
 	InputCallback _callback;
@@ -232,6 +237,11 @@ public:
 
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
+
+	// The hold is counted in update(), so the listener has to be scheduled for it. This used to be
+	// carried by whatever tap recognizer happened to share the listener; an immediate tap
+	// recognizer no longer asks for updates, so the dependency has to be declared here.
+	virtual bool requiresUpdate() const override { return true; }
 
 protected:
 	using GestureRecognizer::init;

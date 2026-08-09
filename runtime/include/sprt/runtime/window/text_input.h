@@ -243,6 +243,11 @@ public:
 
 	bool isRunning() const { return _state.enabled; }
 
+	// The state as it stands. Read-only by design - the same rule as everywhere else here: the
+	// state is the IME's, and everyone else only requests changes. A backend that IS the IME
+	// (macOS answers NSTextInputClient queries out of this) needs to read it to reply.
+	const TextInputState &getState() const { return _state; }
+
 	bool canHandleInputEvent(const InputEventData &);
 	bool handleInputEvent(const InputEventData &);
 

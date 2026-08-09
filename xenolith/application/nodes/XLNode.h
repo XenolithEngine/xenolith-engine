@@ -668,7 +668,7 @@ bool Node::enumerateChildsWithComponent(
 			}
 		}
 		if (depth != maxDepth) {
-			if (it->enumerateChildsWithComponent(cb, maxDepth, depth + 1, shouldStop, found)) {
+			if (it->enumerateChildsWithComponent(cb, maxDepth, depth + 1, shouldStop)) {
 				found = true;
 			}
 			if (shouldStop == true) {

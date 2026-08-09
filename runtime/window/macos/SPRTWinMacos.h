@@ -65,8 +65,22 @@ SPRT_OBJC_INTERFACE_FORWARD(SPRTMacosAppDelegate);
 SPRT_OBJC_INTERFACE_FORWARD(SPRTMacosViewController);
 SPRT_OBJC_INTERFACE_FORWARD(SPRTMacosView);
 SPRT_OBJC_INTERFACE_FORWARD(SPRTMacosWindow);
+SPRT_OBJC_INTERFACE_FORWARD(SPRTMacosPanel);
 SPRT_OBJC_INTERFACE_FORWARD(CAMetalLayer);
 SPRT_OBJC_INTERFACE_FORWARD(NSScreen);
+
+// A MacosWindow's NSWindow is one of the two classes above: SPRTMacosWindow (an NSWindow) for Root
+// and for anything drawing its own decorations, SPRTMacosPanel (an NSPanel) for the windows that
+// belong to another one. Everything the engine calls on it beyond plain NSWindow is declared in
+// SPRTMacosWindowRole, so the engine side holds this qualified type and never has to know which of
+// the two it got.
+#if __OBJC__
+@class NSWindow;
+@protocol SPRTMacosWindowRole;
+typedef NSWindow<SPRTMacosWindowRole> SPRTMacosAnyWindow;
+#else
+typedef void SPRTMacosAnyWindow;
+#endif
 
 namespace sprt::window {
 
