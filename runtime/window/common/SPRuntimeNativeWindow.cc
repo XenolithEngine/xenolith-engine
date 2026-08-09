@@ -81,23 +81,17 @@ FrameConstraints NativeWindow::exportConstraints(uint64_t &serial) const {
 }
 
 void NativeWindow::handleLayerEnter(const WindowLayer &layer) {
-	if (layer.cursor != WindowCursor::Undefined) {
-		setCursor(layer.cursor);
-	}
-	if (hasFlag(layer.flags, WindowLayerFlags::GripMask)) {
-		// update grip value only if it's greater then current
-		// so, resize grip has priority over move grip
-		auto newGrip = layer.flags & WindowLayerFlags::GripMask;
-		if (toInt(newGrip) > toInt(_gripFlags)) {
-			_gripFlags = newGrip;
-		}
-	}
-	_currentLayerFlags |= layer.flags & ~WindowLayerFlags::GripMask;
+	// Notification only - the aggregate state is recomputed in updateLayerState()
 }
 
 void NativeWindow::handleLayerExit(const WindowLayer &layer) {
+	// Notification only - the aggregate state is recomputed in updateLayerState()
+}
+
+void NativeWindow::updateLayerState() {
 	auto cursor = WindowCursor::Undefined;
 	auto gripFlags = WindowLayerFlags::None;
+
 	_currentLayerFlags = WindowLayerFlags::None;
 	for (auto &it : _currentLayers) {
 		if (it.cursor != WindowCursor::Undefined) {
@@ -114,15 +108,48 @@ void NativeWindow::handleLayerExit(const WindowLayer &layer) {
 		_currentLayerFlags |= it.flags & ~WindowLayerFlags::GripMask;
 	}
 
-	if (gripFlags != _gripFlags) {
-		_gripFlags = gripFlags;
+	_gripFlags = gripFlags;
+
+	// No layer under the pointer asks for a shape - that means the default arrow, not "keep
+	// whatever was set last". Undefined is not a shape a backend can apply: the Wayland
+	// cursor-shape protocol has no value for it, so handing it down would leave the pointer
+	// frozen in the shape of the layer it just left.
+	if (cursor == WindowCursor::Undefined) {
+		cursor = WindowCursor::Default;
 	}
-	setCursor(cursor);
+
+	if (cursor != _layerCursor) {
+		_layerCursor = cursor;
+		setCursor(cursor);
+	}
 }
 
 void NativeWindow::acquireTextInput(const TextInputRequest &req) { _textInput->run(req); }
 
 void NativeWindow::releaseTextInput() { _textInput->cancel(); }
+
+void NativeWindow::performTextInput(const TextInputCommand &cmd) {
+	if (!_textInput) {
+		return;
+	}
+
+	switch (cmd.op) {
+	case TextInputCommandOp::Insert:
+		if (cmd.replacement == TextCursor::InvalidCursor) {
+			_textInput->insertText(cmd.text, cmd.compose);
+		} else {
+			_textInput->insertText(cmd.text, cmd.replacement);
+		}
+		break;
+	case TextInputCommandOp::SetMarked:
+		_textInput->setMarkedText(cmd.text, cmd.replacement, cmd.marked);
+		break;
+	case TextInputCommandOp::Unmark: _textInput->unmarkText(); break;
+	case TextInputCommandOp::DeleteBackward: _textInput->deleteBackward(); break;
+	case TextInputCommandOp::DeleteForward: _textInput->deleteForward(); break;
+	case TextInputCommandOp::Cancel: _textInput->cancel(); break;
+	}
+}
 
 void NativeWindow::setAppWindow(Rc<AppWindow> &&w) {
 	_appWindow = move(w);
@@ -417,39 +444,63 @@ static bool containsPoint(const Rect &rect, const Vec2 &point, float padding = 0
 }
 
 void NativeWindow::handleMotionEvent(const InputEventData &event) {
-	if (_handleLayerForMotion) {
-		_layerLocation = event.getLocation();
+	if (!_handleLayerForMotion) {
+		return;
+	}
 
-		Vector<WindowLayer> layersToExit;
+	_layerLocation = event.getLocation();
 
-		auto it = _currentLayers.begin();
-		while (it != _currentLayers.end()) {
-			if (!containsPoint(it->rect, _layerLocation)) {
-				auto l = *it;
-				it = _currentLayers.erase(it);
-				layersToExit.emplace_back(l);
-			} else {
-				++it;
+	auto isInLayerSet = [this](const WindowLayer &layer) {
+		for (auto &it : _layers) {
+			if (it == layer) {
+				return true;
 			}
 		}
+		return false;
+	};
 
-		for (auto &it : layersToExit) { handleLayerExit(it); }
-
-		for (auto &it : _layers) {
-			if (containsPoint(it.rect, _layerLocation)) {
-				bool found = false;
-				for (auto &cit : _currentLayers) {
-					if (cit == it) {
-						found = true;
-						break;
-					}
-				}
-				if (!found) {
-					handleLayerEnter(_currentLayers.emplace_back(it));
-				}
-			}
+	// A layer stays entered only while it is both under the pointer and still in the layer set.
+	// The application replaces the whole set on every input commit, so a layer that was dropped
+	// while the pointer stood still - a menu item whose own click replaced the layout - has to be
+	// exited as well. Otherwise it lingers in _currentLayers and keeps imposing its cursor and
+	// flags for as long as the pointer stays within the rect it used to occupy.
+	Vector<WindowLayer> layersToExit;
+	auto it = _currentLayers.begin();
+	while (it != _currentLayers.end()) {
+		if (!containsPoint(it->rect, _layerLocation) || !isInLayerSet(*it)) {
+			layersToExit.emplace_back(*it);
+			it = _currentLayers.erase(it);
+		} else {
+			++it;
 		}
 	}
+
+	Vector<WindowLayer> layersToEnter;
+	for (auto &lit : _layers) {
+		if (!containsPoint(lit.rect, _layerLocation)) {
+			continue;
+		}
+		bool found = false;
+		for (auto &cit : _currentLayers) {
+			if (cit == lit) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			layersToEnter.emplace_back(_currentLayers.emplace_back(lit));
+		}
+	}
+
+	if (layersToExit.empty() && layersToEnter.empty()) {
+		return;
+	}
+
+	// Aggregate once, so a batch of exits does not walk the cursor through intermediate shapes
+	updateLayerState();
+
+	for (auto &it : layersToExit) { handleLayerExit(it); }
+	for (auto &it : layersToEnter) { handleLayerEnter(it); }
 }
 
 void NativeWindow::emitAppFrame() {

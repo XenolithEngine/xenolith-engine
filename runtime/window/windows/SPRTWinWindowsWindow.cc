@@ -1212,9 +1212,21 @@ void WindowsWindow::popCommand(WPARAM cmd) {
 	_activeCommands.pop_back();
 }
 
-bool WindowsWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) { return true; }
+// The IMM/TSF connection is limited to the WM_CHAR path (see the _textInput->insertText above), so
+// this window reports enablement itself and lets the shared TextInputProcessor edit from raw key
+// events. Without the report the processor never intercepts the keyboard.
+bool WindowsWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) {
+	if (_textInput) {
+		_textInput->handleInputEnabled(true);
+	}
+	return true;
+}
 
-void WindowsWindow::cancelTextInput() { }
+void WindowsWindow::cancelTextInput() {
+	if (_textInput) {
+		_textInput->handleInputEnabled(false);
+	}
+}
 
 void WindowsWindow::setCursor(WindowCursor cursor) {
 	_currentCursor = cursor;

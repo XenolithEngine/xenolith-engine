@@ -1251,9 +1251,21 @@ void XcbWindow::openWindowMenu(Vec2 pos) {
 	startGrip(XcbMoveResize::Menu, rootX, rootY, _lastPointerButton);
 }
 
-bool XcbWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) { return true; }
+// X11 has no IME connection here, so this window *is* the IME: the request is always accepted and
+// the shared TextInputProcessor does the editing from raw key events. Report enablement, otherwise
+// the processor never intercepts the keyboard (see TextInputProcessor::handleInputEnabled).
+bool XcbWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) {
+	if (_textInput) {
+		_textInput->handleInputEnabled(true);
+	}
+	return true;
+}
 
-void XcbWindow::cancelTextInput() { }
+void XcbWindow::cancelTextInput() {
+	if (_textInput) {
+		_textInput->handleInputEnabled(false);
+	}
+}
 
 void XcbWindow::updateWindowAttributes() {
 	uint32_t mask = XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;

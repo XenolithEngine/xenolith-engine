@@ -108,6 +108,11 @@ static zxdg_toplevel_decoration_v1_listener s_serverDecorationListener {
 // clang-format on
 
 WaylandWindow::~WaylandWindow() {
+	if (_keyRepeatTimer) {
+		_keyRepeatTimer->cancel();
+		_keyRepeatTimer = nullptr;
+	}
+
 	if (_frameCallback) {
 		wl_callback_destroy(_frameCallback);
 		_frameCallback = nullptr;
@@ -1204,13 +1209,19 @@ void WaylandWindow::handleKeyboardLeave() {
 		});
 
 		event.key.keycode = _display->seat->translateKey(it.second.scancode);
-		event.key.keysym = it.second.scancode;
+		event.key.keysym = it.second.keysym;
 		event.key.keychar = it.second.codepoint;
 
 		_pendingEvents.emplace_back(move(event));
 
 		++n;
 	}
+
+	// The keys are cancelled, so they are no longer held: without this they would stay in the map
+	// for good - the compositor sends no release for a key the window lost focus on - and the
+	// repeat timer would go on typing into a window nobody is looking at.
+	_keys.clear();
+	updateKeyRepeatTimer();
 }
 
 void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) {
@@ -1238,20 +1249,33 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 
 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		char32_t codepoint = 0;
-		if (hasXkbState && isTextInputEnabled()) {
-			if (_display->xkb->xkb_state_key_get_syms(_display->seat->state, keycode, &keysyms)
-					== 1) {
-				const xkb_keysym_t keysym =
+		uint32_t keysym = scancode;
+		if (hasXkbState
+				&& _display->xkb->xkb_state_key_get_syms(_display->seat->state, keycode, &keysyms)
+						== 1) {
+			keysym = keysyms[0];
+
+			// Only the character is gated on text input, like the X11 backend does it: the compose
+			// state machine must not be fed while nobody is typing.
+			if (isTextInputEnabled()) {
+				const xkb_keysym_t composed =
 						_display->seat->composeSymbol(keysyms[0], event.key.compose);
-				const uint32_t cp = _display->xkb->xkb_keysym_to_utf32(keysym);
-				if (cp != 0 && keysym != XKB_KEY_NoSymbol) {
+				const uint32_t cp = _display->xkb->xkb_keysym_to_utf32(composed);
+				if (cp != 0 && composed != XKB_KEY_NoSymbol) {
 					codepoint = cp;
 				}
 			}
 		}
 
+		// The character belongs on the press: that is the event TextInputProcessor inserts from -
+		// it drops a release unless the backend marks it as carrying composed text (Win32 does,
+		// this one does not). Storing it in _keys as well, because the release, the auto-repeat
+		// and the focus-loss cancel all have to report the same key.
+		event.key.keysym = keysym;
+		event.key.keychar = codepoint;
+
 		auto it = _keys.emplace(scancode,
-							   KeyData{scancode, codepoint,
+							   KeyData{scancode, keysym, codepoint, event.key.compose,
 								   sprt::platform::clock(platform::ClockType::Monotonic), false})
 						  .first;
 
@@ -1259,6 +1283,7 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 				&& _display->xkb->xkb_keymap_key_repeats(
 						_display->xkb->xkb_state_get_keymap(_display->seat->state), keycode)) {
 			it->second.repeats = true;
+			updateKeyRepeatTimer();
 		}
 	} else {
 		auto it = _keys.find(scancode);
@@ -1266,8 +1291,14 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 			return;
 		}
 
+		// Replayed from the press, not recomputed: the modifiers may well have changed since, and
+		// InputDispatcher matches a release to its press by this very keysym. The compose state is
+		// deliberately left at Nothing - a key going up composes nothing.
+		event.key.keysym = it->second.keysym;
 		event.key.keychar = it->second.codepoint;
 		_keys.erase(it);
+
+		updateKeyRepeatTimer();
 	}
 
 	_pendingEvents.emplace_back(sprt::move(event));
@@ -1316,11 +1347,14 @@ void WaylandWindow::handleKeyModifiers(uint32_t depressed, uint32_t latched, uin
 	}
 }
 
+// Wayland has no repeat events: wl_keyboard.repeat_info only states the rate and the delay, and
+// making the repeats out of them is the client's job. Driven by the timer below.
 void WaylandWindow::handleKeyRepeat() {
-	Vector<InputEventData> events;
+	auto t = sprt::platform::clock(platform::ClockType::Monotonic);
+
 	auto spawnRepeatEvent = [&, this](const KeyData &it) {
 		InputEventData event({
-			uint32_t(events.size() + 1),
+			uint32_t(t),
 			InputEventName::KeyRepeated,
 			{{
 				InputMouseButton::None,
@@ -1331,36 +1365,102 @@ void WaylandWindow::handleKeyRepeat() {
 		});
 
 		event.key.keycode = _display->seat->translateKey(it.scancode);
-		event.key.keysym = it.scancode;
+		// Everything the press resolved is replayed as it was: a repeat is the same key producing
+		// the same character again, and re-running it through the compose state machine here would
+		// feed it a symbol the user never pressed a second time.
+		event.key.compose = it.compose;
+		event.key.keysym = it.keysym;
 		event.key.keychar = it.codepoint;
 
-		events.emplace_back(move(event));
+		_pendingEvents.emplace_back(move(event));
 	};
 
-	uint64_t repeatDelay = _display->seat->keyState.keyRepeatDelay;
-	uint64_t repeatInterval = _display->seat->keyState.keyRepeatInterval;
-	auto t = sprt::platform::clock(platform::ClockType::Monotonic);
+	// delay is in milliseconds (as the protocol gives it), interval already in microseconds
+	uint64_t repeatDelay = uint64_t(_display->seat->keyState.keyRepeatDelay) * 1'000;
+	uint64_t repeatInterval = uint64_t(_display->seat->keyState.keyRepeatInterval);
+	if (repeatInterval == 0) {
+		return;
+	}
+
 	for (auto &it : _keys) {
-		if (it.second.repeats) {
-			if (!it.second.lastRepeat) {
-				auto dt = t - it.second.time;
-				if (dt > repeatDelay * 1'000) {
-					dt -= repeatDelay * 1'000;
-					it.second.lastRepeat = t - dt;
-				}
+		if (!it.second.repeats) {
+			continue;
+		}
+
+		if (!it.second.lastRepeat) {
+			auto dt = t - it.second.time;
+			if (dt < repeatDelay) {
+				continue; // still inside the initial delay
 			}
-			if (it.second.lastRepeat) {
-				auto dt = t - it.second.lastRepeat;
-				while (dt > repeatInterval) {
-					spawnRepeatEvent(it.second);
-					dt -= repeatInterval;
-					it.second.lastRepeat += repeatInterval;
-				}
+			// Backdate the first repeat to the moment the delay ran out, so the cadence does not
+			// drift with the tick the timer happened to land on.
+			it.second.lastRepeat = it.second.time + repeatDelay;
+			spawnRepeatEvent(it.second);
+		}
+
+		// Catching up is capped: after a stall (a long frame, a breakpoint) the honest count of
+		// missed repeats would arrive as a burst of dozens of characters at once. Past the cap the
+		// cadence is re-based on now, which is what a user holding a key through a hiccup expects.
+		constexpr uint32_t MaxCatchUp = 4;
+		uint32_t n = 0;
+		auto dt = t - it.second.lastRepeat;
+		while (dt >= repeatInterval) {
+			spawnRepeatEvent(it.second);
+			if (++n >= MaxCatchUp) {
+				it.second.lastRepeat = t;
+				break;
+			}
+			dt -= repeatInterval;
+			it.second.lastRepeat += repeatInterval;
+		}
+	}
+}
+
+void WaylandWindow::updateKeyRepeatTimer() {
+	auto looper = _controller ? _controller->getLooper() : nullptr;
+	auto interval = _display && _display->seat ? _display->seat->keyState.keyRepeatInterval : 0;
+
+	bool wanted = false;
+	if (looper && interval > 0 && !_shouldClose) {
+		for (auto &it : _keys) {
+			if (it.second.repeats) {
+				wanted = true;
+				break;
 			}
 		}
 	}
 
-	for (auto &it : events) { _pendingEvents.emplace_back(it); }
+	if (!wanted) {
+		if (_keyRepeatTimer) {
+			_keyRepeatTimer->cancel();
+			_keyRepeatTimer = nullptr;
+		}
+		return;
+	}
+
+	if (_keyRepeatTimer) {
+		return;
+	}
+
+	// One timer for the window, not one per key: handleKeyRepeat decides which of the held keys
+	// are due, so a tick at the repeat interval is all it needs. It runs on the looper that owns
+	// this window, which is the thread every other event of it is delivered on.
+	//
+	// `this` is captured raw: the window cancels the timer when the last key goes up, when the
+	// keyboard leaves it and when it is destroyed, so the timer can not outlive it.
+	_keyRepeatTimer = looper->scheduleTimer(dispatch::TimerInfo{
+		.completion = dispatch::TimerInfo::Completion::create<WaylandWindow>(this,
+				[](WaylandWindow *w, dispatch::TimerHandle *, uint32_t, Status status) {
+		if (!isSuccessful(status)) {
+			return;
+		}
+		w->handleKeyRepeat();
+		w->NativeWindow::dispatchPendingEvents();
+	}),
+		.timeout = dispatch::TimeInterval::microseconds(uint64_t(interval)),
+		.interval = dispatch::TimeInterval::microseconds(uint64_t(interval)),
+		.count = dispatch::TimerInfo::Infinite,
+	});
 }
 
 void WaylandWindow::notifyScreenChange() { XL_WAYLAND_LOG("notifyScreenChange"); }
@@ -1468,12 +1568,6 @@ void WaylandWindow::setPreferredScale(int32_t scale) {
 void WaylandWindow::setPreferredTransform(uint32_t) { }
 
 void WaylandWindow::dispatchPendingEvents() {
-	if (!_shouldClose) {
-		if (!_keys.empty()) {
-			handleKeyRepeat();
-		}
-	}
-
 	if (_appWindow) {
 		NativeWindow::dispatchPendingEvents();
 	}
@@ -1539,9 +1633,21 @@ bool WaylandWindow::disableState(WindowState state) {
 	return false;
 }
 
-bool WaylandWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) { return true; }
+// No zwp_text_input_v3 binding yet, so this window stands in for the IME: the request is always
+// accepted and the shared TextInputProcessor edits from raw key events. Report enablement,
+// otherwise the processor never intercepts the keyboard.
+bool WaylandWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) {
+	if (_textInput) {
+		_textInput->handleInputEnabled(true);
+	}
+	return true;
+}
 
-void WaylandWindow::cancelTextInput() { }
+void WaylandWindow::cancelTextInput() {
+	if (_textInput) {
+		_textInput->handleInputEnabled(false);
+	}
+}
 
 Status WaylandWindow::setFullscreenState(FullscreenInfo &&info) {
 	auto enable = info != FullscreenInfo::None;

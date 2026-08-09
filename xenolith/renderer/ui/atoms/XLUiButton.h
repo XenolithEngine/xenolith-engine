@@ -23,24 +23,12 @@
 #ifndef XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
 #define XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
 
+#include "XLUiPanel.h"
 #include "XLUiInteractiveComponent.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
-#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
-
-struct ButtonStyleComponent {
-	static ComponentId Id;
-
-	Color4B backgroundColor = Color4B::WHITE;
-	Color4B outlineColor = Color4B::BLACK;
-	float outlineWidth = 0.0f;
-	float borderRadiusTopLeft = 0.0f;
-	float borderRadiusTopRight = 0.0f;
-	float borderRadiusBottomRight = 0.0f;
-	float borderRadiusBottomLeft = 0.0f;
-};
 
 enum class ButtonType {
 	General,
@@ -56,7 +44,12 @@ enum class ButtonIconTheme {
 	Apple,
 };
 
-class Button : public basic2d::VectorSprite {
+// An interactive Panel: the fill / outline / border-radius chrome and its CSS appliers come from
+// Panel (type "button"), the button itself adds the label, the icon and the input handling. CSS:
+//   button { background-color:#1e88e5; outline-color:#0d47a1; outline-width:2px;
+//            border-radius:20px; display:flex; align-items:center; ... }
+//   button > label { color:#ffffff; font-size:16px; }
+class SP_PUBLIC Button : public Panel {
 public:
 	virtual ~Button();
 
@@ -64,7 +57,6 @@ public:
 	virtual bool init(Function<void()> && = nullptr);
 
 	virtual void handleEnter(Scene *scene) override;
-	virtual void handleContentSizeDirty() override;
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	virtual void setString(StringView);
@@ -81,14 +73,7 @@ public:
 	virtual void setLabelFontWeight(font::FontWeight);
 	virtual basic2d::Label *getLabel() const;
 
-	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
-			const document::StyleValue &);
-
 protected:
-	// (re)build the VectorImage: a (optionally rounded) rect filled with _backgroundColor, plus an
-	// outline stroke of _outlineColor/_outlineWidth when the width is > 0
-	virtual void updateBackgroundImage();
-
 	virtual void updateState();
 
 	virtual bool handleLeftTap();

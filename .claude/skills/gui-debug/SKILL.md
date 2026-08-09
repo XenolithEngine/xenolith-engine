@@ -6,7 +6,7 @@ description: >-
   driven with no display, no compositor and no mouse. MCP tools: `inspect_scene`
   (the node tree), `get_logs` (the log ring buffer), `screenshot`,
   `list_commands`/`invoke_command` (scene-registered actions), `send_input`,
-  `step_frame`, `window_control`, `quit_app`. Use when a Xenolith GUI app
+  `send_text`, `step_frame`, `window_control`, `quit_app`. Use when a Xenolith GUI app
   (installer, scaffolded app, tests/window) is misbehaving visually — missing
   elements, wrong layout, invisible nodes, overlap, wrong stacking, an element you
   can't find, "why is this hidden", "where did this node go"; when verifying
@@ -67,7 +67,8 @@ set, and always in headless mode — so a release build works too.
 | `screenshot` | write the current frame to a PNG |
 | `list_commands` | the actions this scene registered for external control |
 | `invoke_command` | run one of them |
-| `send_input` | inject synthetic pointer/key events |
+| `send_input` | inject synthetic pointer/key events (`native: true` to type text) |
+| `send_text` | drive the text-input processor: insert, composition, delete, read state |
 | `window_control` | read constraints, resize, close |
 | `quit_app` | shut the process down |
 
@@ -86,6 +87,18 @@ set, and always in headless mode — so a release build works too.
   chose to expose, without synthesizing input.
 - **`send_input`** — exercise the real input path (hit-testing, gestures, focus)
   rather than calling code directly.
+- **Typing into a text field** — a plain `send_input` key event never becomes
+  text: the platform's text-input processor sits *below* the scene, so the event
+  has to enter there. Pass `native: true`; then printable keys, Backspace, Delete
+  and Escape are consumed by the focused field, and everything else (arrows,
+  Home/End, Shift-selection) still reaches the widget. Note that Enter and Tab
+  are consumed too — they arrive as `\n`/`\t` in the text, and a widget is
+  expected to strip them.
+- **`send_text`** — the IME-level path for what no keystroke can express:
+  `op:"marked"` + `op:"unmark"` reproduce composition (CJK, dead keys),
+  `op:"insert"` can replace an explicit range, and `op:"state"` reads back the
+  string, cursor and marked range. Mutating ops land asynchronously, so
+  `step_frame` before reading state or shooting.
 
 ### The order that matters: step, then shoot
 
@@ -160,7 +173,8 @@ This is the cheapest way to make an app driveable: one command per action you wa
 to trigger from outside, and the whole flow becomes scriptable without synthesizing
 input. `tests/headless` is a minimal worked example (a coloured box exposing
 `set-color` and `box-size`); `tests/window` is the full one — `layouts` lists its
-26 demo layouts, `layout` switches to one (and answers only once the new layout has
+28 demo layouts, flat and as the group tree they are declared in, `layout` switches
+to one by id (`nth`) or path (`css/nth`) (and answers only once the new layout has
 settled, so the reply is the signal to shoot), and whichever layout is on screen
 adds its own `<name>.<action>` commands for the duration.
 

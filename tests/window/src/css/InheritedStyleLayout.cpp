@@ -107,8 +107,7 @@ bool InheritedStyleLayout::init() {
 	// phase 1 checks run after the initial style application settles, then the CSS is
 	// rewritten without the .box rule; phase 2 verifies the revert to explicit values
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(1.2f), [this] { runPhase1(); },
-			Rc<DelayTime>::create(0.6f),
-			[this] {
+			Rc<DelayTime>::create(0.6f), [this] {
 		// the CSS reload has settled by now; play the user's role for the ancestor-walk
 		// label (no reactivity to ancestor component changes by design)
 		nudgeAncestorLabel();
@@ -211,7 +210,6 @@ void InheritedStyleLayout::runPhase2() {
 void InheritedStyleLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float rowH = 120.0f;
 	const float top = getWorkTop() - 160.0f;
 

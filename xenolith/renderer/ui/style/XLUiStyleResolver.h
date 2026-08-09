@@ -221,9 +221,9 @@ An applier that lists `document::ParameterName::CmdReset` in its mask additional
 that pseudo-parameter FIRST, on every pass, with an unspecified value: the signal to drop
 everything the previous pass left on the node, because a pass carries only the declarations
 that are present and a rule that stopped matching would otherwise stay applied forever. The
-intended shape is that the styling lives in a component, and the reset removes it (see
-`ui::Button` / `ButtonStyleComponent`); a widget holding its paint directly restores its
-construction-time defaults instead (see `ui::Panel`). Pinned by `XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
+intended shape is that the styling lives in a component, and the reset removes it - a widget
+with no component paints its defaults (see `ui::Panel` / `PanelStyleComponent`, shared by every
+atom built on a Panel: badge, checkbox, button). Pinned by `XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
 subtree from one system: it publishes on the frame stack and resolves each descendant as
 that descendant's content-size / layout-children event arrives, once per source version.
 

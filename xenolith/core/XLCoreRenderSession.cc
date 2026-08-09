@@ -58,6 +58,16 @@ Status RenderServerChannel::cancelDialog(NotNull<sprt::window::DialogRequest>) {
 	return Status::ErrorNotFound;
 }
 
+void RenderServerChannel::performTextInput(TextInputCommand &&) {
+	// No native window behind this channel (RemoteWindow), so there is no processor to drive.
+}
+
+void RenderServerChannel::handleNativeInputEvents(Vector<InputEventData> &&events) {
+	// No native window to route through: deliver straight to the client, which is what
+	// handleInputEvents does anyway.
+	handleInputEvents(sp::move(events));
+}
+
 void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) {
 	_clientRef = nullptr;
 	_client = c;

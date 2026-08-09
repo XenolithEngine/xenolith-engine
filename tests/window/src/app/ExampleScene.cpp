@@ -156,10 +156,15 @@ void ExampleScene::handlePresented(Director *dir) {
 
 // Внешнее управление приложением: реестр тестов, доступный через сокет инспектора.
 //
-//   layouts            -> { "layouts": [ { "name", "title", "description", "hideFps" } ] }
+//   layouts            -> { "layouts": [ { "name", "path", "group", "title", "description",
+//                            "hideFps" } ], "tree": { вложенные группы реестра } }
 //   layout {name, settle} -> сменить укладку; ответ приходит, когда новая укладка уже
 //                            отрисовывается settle секунд (по умолчанию 1 с) — то есть
 //                            сразу после ответа можно снимать screenshot.
+//
+// Реестр — дерево (директории в src/), поэтому список отдаётся дважды: плоским, каким он был
+// всегда, и деревом, чтобы была видна группировка. Имя укладки при этом остаётся коротким и
+// уникальным: `layout` принимает и его, и полный путь ("css/nth").
 //
 // Команды самих укладок регистрируются ими же (TestLayout::registerCommands) и видны в общем
 // списке `commands`, пока укладка на экране.
@@ -169,9 +174,16 @@ void ExampleScene::registerCommands() {
 	inspector::addCommand(content, "layouts", "List the test layouts this app can show",
 			[](Value &&, Function<void(Value &&)> &&done) {
 		Value layouts(Value::Type::ARRAY);
-		for (auto &it : getTestRegistry()) {
+
+		// Обход дерева: плоский список наполняется попутно, чтобы путь до укладки считался один раз
+		auto makeEntry = [](const TestInfo &it, StringView group) {
 			Value entry;
 			entry.setString(it.name, "name");
+			entry.setString(group.empty() ? toString(it.name) : toString(group, "/", it.name),
+					"path");
+			if (!group.empty()) {
+				entry.setString(group, "group");
+			}
 			entry.setString(it.title, "title");
 			entry.setString(it.description, "description");
 			if (!it.env.empty()) {
@@ -180,16 +192,50 @@ void ExampleScene::registerCommands() {
 			if (it.hideFps) {
 				entry.setBool(true, "hideFps");
 			}
-			layouts.addValue(sp::move(entry));
-		}
+			return entry;
+		};
+
+		auto walk = [&](auto &&self, const TestGroup &group, StringView path) -> Value {
+			Value node;
+			if (!group.name.empty()) {
+				node.setString(group.name, "name");
+				node.setString(path, "path");
+			}
+			node.setString(group.title, "title");
+			node.setString(group.description, "description");
+
+			Value tests(Value::Type::ARRAY);
+			for (auto &it : group.tests) {
+				auto entry = makeEntry(it, path);
+				tests.addValue(entry);
+				layouts.addValue(sp::move(entry));
+			}
+			if (!tests.empty()) {
+				node.setValue(sp::move(tests), "tests");
+			}
+
+			Value groups(Value::Type::ARRAY);
+			for (auto &it : group.groups) {
+				groups.addValue(self(self, it,
+						path.empty() ? toString(it.name) : toString(path, "/", it.name)));
+			}
+			if (!groups.empty()) {
+				node.setValue(sp::move(groups), "groups");
+			}
+			return node;
+		};
+
+		auto tree = walk(walk, getTestRegistry(), StringView());
 
 		Value result;
 		result.setValue(sp::move(layouts), "layouts");
+		result.setValue(sp::move(tree), "tree");
 		done(sp::move(result));
 	});
 
 	inspector::addCommand(content, "layout",
-			"Show a test layout: { name, settle } - answers once it has settled",
+			"Show a test layout: { name, settle } - name is \"nth\" or \"css/nth\"; "
+			"answers once it has settled",
 			[this](Value &&args, Function<void(Value &&)> &&done) {
 		auto name = args.getString("name");
 		auto info = findTest(name);

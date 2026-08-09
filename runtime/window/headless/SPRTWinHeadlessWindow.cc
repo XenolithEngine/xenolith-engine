@@ -122,9 +122,23 @@ Status HeadlessWindow::setExtent(Extent2 extent) {
 	return Status::Ok;
 }
 
-bool HeadlessWindow::updateTextInput(const TextInputRequest &, TextInputFlags) { return false; }
+// There is no on-screen keyboard to raise, but the window still stands in for the IME so that a
+// headless run can be driven through the real text-input path: events injected into
+// handleInputEvents are intercepted by the shared TextInputProcessor, and performTextInput() can
+// reproduce composition. Declining here would leave isTextInputEnabled() false and make text input
+// untestable without a display.
+bool HeadlessWindow::updateTextInput(const TextInputRequest &, TextInputFlags) {
+	if (_textInput) {
+		_textInput->handleInputEnabled(true);
+	}
+	return true;
+}
 
-void HeadlessWindow::cancelTextInput() { }
+void HeadlessWindow::cancelTextInput() {
+	if (_textInput) {
+		_textInput->handleInputEnabled(false);
+	}
+}
 
 } // namespace sprt::window
 

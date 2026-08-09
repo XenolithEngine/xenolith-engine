@@ -78,6 +78,10 @@ public:
 	Size2 getWorkSize() const;
 
 protected:
+	// Fill the caption strip directly, for a layout that has no registry record of its own - the
+	// menu of a test group is one. An empty title hides the strip and gives the whole area back.
+	void setCaption(StringView title, StringView description);
+
 	// Override to expose this layout's own actions over the inspector socket - that is how a
 	// headless run drives a test that a person would drive with the control bar. Called on enter;
 	// everything registered here is dropped again on exit, so a command can never outlive the

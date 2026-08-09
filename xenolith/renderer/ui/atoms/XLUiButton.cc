@@ -23,7 +23,6 @@
 #include "XLUiButton.h"
 #include "XL2dIconSprite.h"
 #include "XLDirector.h"
-#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -69,53 +68,22 @@ static constexpr StringView s_windowHeaderMenu =
 </svg>
 )";
 
-// Register the per-attribute style appliers for nodes of type "button" once, the first time a
-// Button is constructed. This is the "resolve styles by type, without a per-instance callback"
-// hook: the recursive StyleResolver on the button applies these instead of the generic defaults.
-static void ensureButtonStyleAppliers() {
-	using document::ParameterName;
-	static bool once = [] {
-		StyleResolver::registerTypeApplier("button",
-				[](StyleResolver &res, Node *node, const ResolvedStyle &s,
-						document::ParameterName name, const document::StyleValue &val) {
-			if (auto btn = dynamic_cast<Button *>(node)) {
-				return btn->setStyleValue(s, name, val);
-			}
-			return false;
-		},
-				StyleResolver::makeParameterMask({
-					ParameterName::CssBackgroundColor,
-					ParameterName::CssOutlineColor,
-					ParameterName::CssOutlineWidth,
-					ParameterName::CssBorderTopLeftRadius,
-					ParameterName::CssBorderTopRightRadius,
-					ParameterName::CssBorderBottomRightRadius,
-					ParameterName::CssBorderBottomLeftRadius,
-					ParameterName::CmdReset,
-				}));
-		return true;
-	}();
-	(void)once;
-}
-
-ComponentId ButtonStyleComponent::Id;
-
 Button::~Button() { }
 
 bool Button::init(ButtonType type, Function<void()> &&cb) {
-	if (!VectorSprite::init()) {
+	if (!Panel::init()) {
 		return false;
 	}
-
-	ensureButtonStyleAppliers();
 
 	_type = type;
 
 	_leftCallback = sp::move(cb);
 
 	setType("button");
+	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-button");
-	setRenderingLevel(RenderingLevel::Surface);
+	// same fill / outline / border-radius appliers Panel registers for itself, under "button"
+	registerStyleAppliers("button");
 
 	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
 	_label->setType("label");
@@ -188,146 +156,21 @@ bool Button::init(Function<void()> &&cb) {
 }
 
 void Button::handleEnter(Scene *scene) {
-	VectorSprite::handleEnter(scene);
+	Panel::handleEnter(scene);
 
 	_windowState = _director->getRenderServer()->getWindowState();
 
 	updateState();
 }
 
-void Button::handleContentSizeDirty() {
-	VectorSprite::handleContentSizeDirty();
-	updateBackgroundImage();
-}
-
 void Button::handleComponentsDirty(const ComponentMask &mask) {
-	VectorSprite::handleComponentsDirty(mask);
+	Panel::handleComponentsDirty(mask);
 
 	// the icon is derived from the interactive state (hover glyphs on the Apple theme), so it is
 	// rebuilt here - once per visit - rather than from every mutation that touches the component
 	if (mask.contains(InteractiveComponent::Id.value)) {
 		updateState();
 	}
-}
-
-void Button::updateBackgroundImage() {
-	if (_contentSize.width <= 0.0f || _contentSize.height <= 0.0f) {
-		return;
-	}
-
-	// the resolved paint lives in a ButtonStyleComponent; when the button was never styled the
-	// component is absent and the struct's own defaults (white fill, no outline, no radius) apply
-	ButtonStyleComponent defaultStyle;
-	const ButtonStyleComponent *style = &defaultStyle;
-	if (auto c = getComponent<ButtonStyleComponent>()) {
-		style = c;
-	}
-
-	auto image = Rc<VectorImage>::create(_contentSize);
-
-	// inset the rect by half the stroke width so the outline is not clipped at the node's edges
-	const float inset = style->outlineWidth > 0.0f ? style->outlineWidth * 0.5f : 0.0f;
-	const Rect box(inset, inset, _contentSize.width - inset * 2.0f,
-			_contentSize.height - inset * 2.0f);
-
-	// shrink each corner radius by the inset so the OUTER edge of the stroke keeps the requested
-	// radius; addBox() itself clamps each corner to the half-box and resolves adjacent overlap
-	auto outer = [&](float r) { return r > 0.0f ? sprt::max(r - inset, 0.0f) : 0.0f; };
-	const float rtl = outer(style->borderRadiusTopLeft);
-	const float rtr = outer(style->borderRadiusTopRight);
-	const float rbr = outer(style->borderRadiusBottomRight);
-	const float rbl = outer(style->borderRadiusBottomLeft);
-	const bool rounded = rtl > 0.0f || rtr > 0.0f || rbr > 0.0f || rbl > 0.0f;
-
-	auto path = image->addPath();
-	path->openForWriting([&](PathWriter &writer) {
-		if (rounded) {
-			writer.addBox(box.origin.x, box.origin.y, box.size.width, box.size.height,
-					/* addBox TL = visual bottom-left  */ rbl,
-					/* addBox TR = visual bottom-right */ rbr,
-					/* addBox BR = visual top-right    */ rtr,
-					/* addBox BL = visual top-left     */ rtl);
-		} else {
-			writer.addRect(box);
-		}
-	})
-			.setFillColor(style->backgroundColor)
-			.setStyle(vg::DrawFlags::Fill);
-
-	if (style->outlineWidth > 0.0f) {
-		path->setStyle(vg::DrawFlags::FillAndStroke)
-				.setStrokeColor(style->outlineColor)
-				.setStrokeWidth(style->outlineWidth)
-				.setAntialiased(true);
-	}
-
-	setImage(sp::move(image));
-}
-
-bool Button::setStyleValue(const ResolvedStyle &style, document::ParameterName name,
-		const document::StyleValue &value) {
-	using document::ParameterName;
-
-	// CmdReset arrives before the parameters of every style pass (it is not a CSS property, and
-	// no stylesheet can produce it). Dropping the component is the whole implementation: whatever
-	// the pass still declares recreates it below, and whatever it no longer declares is gone -
-	// which is the only way a rule that stopped matching can be undone.
-	if (name == ParameterName::CmdReset) {
-		if (removeComponent<ButtonStyleComponent>()) {
-			markContentSizeDirty();
-		}
-		return true;
-	}
-
-	// all button paint is stored in the ButtonStyleComponent (created on first styled attribute);
-	// writes are equality-guarded so an unchanged value neither rebuilds nor re-dirties components
-	bool known = true;
-	bool changed = false;
-	setOrUpdateComponent<ButtonStyleComponent>([&](NotNull<ButtonStyleComponent> c) {
-		// raw px magnitude of the metric (em/% are not resolved here)
-		const float px = value.sizeValue.value;
-		switch (name) {
-		case ParameterName::CssBackgroundColor:
-			changed = c->backgroundColor != value.color4;
-			c->backgroundColor = value.color4;
-			break;
-		case ParameterName::CssOutlineColor:
-			changed = c->outlineColor != value.color4;
-			c->outlineColor = value.color4;
-			break;
-		case ParameterName::CssOutlineWidth:
-			changed = c->outlineWidth != px;
-			c->outlineWidth = px;
-			break;
-		case ParameterName::CssBorderTopLeftRadius:
-			changed = c->borderRadiusTopLeft != px;
-			c->borderRadiusTopLeft = px;
-			break;
-		case ParameterName::CssBorderTopRightRadius:
-			changed = c->borderRadiusTopRight != px;
-			c->borderRadiusTopRight = px;
-			break;
-		case ParameterName::CssBorderBottomRightRadius:
-			changed = c->borderRadiusBottomRight != px;
-			c->borderRadiusBottomRight = px;
-			break;
-		case ParameterName::CssBorderBottomLeftRadius:
-			changed = c->borderRadiusBottomLeft != px;
-			c->borderRadiusBottomLeft = px;
-			break;
-		default: known = false; break;
-		}
-		return changed;
-	});
-
-	if (!known) {
-		slog().warn("ui::Button", "Unknown style parameter: ", name);
-		return false;
-	}
-	if (changed) {
-		markContentSizeDirty();
-	}
-	return true;
 }
 
 void Button::setString(StringView str) {

@@ -17,9 +17,10 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     src/app/                  the application itself, not a test of anything
       AppSetup.cpp              entry point and command-line hooks
       ExampleScene.cpp,.h       the base scene; the `layout`, `layouts` and `dialog` commands
-      TestRegistry.cpp,.h       the list of demo layouts - the single place a test is declared
+      TestRegistry.cpp,.h       the tree of demo layouts - the single place a test is declared
       TestLayout.cpp,.h         common base of every layout: caption, stylesheet, socket commands
-      GeneralLayout.cpp,.h      the front page: menu of the demos, window and clipboard controls
+      TestMenuLayout.cpp,.h     one level of the test menu: the subgroups of a group, then its tests
+      GeneralLayout.cpp,.h      the front page: the top level of that menu, window and clipboard controls
       LiveReloadAppThread.*     `--watch`: rebuild and relaunch the client app
       ProjectBuildThread.*      the off-thread builder it drives
     src/css/                  CSS engine: selectors, cascade, live reload
@@ -31,10 +32,35 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     src/window/               windows: a second Root window, prewarmed queues, monitors/fullscreen
     resources/                bundled assets
     client/                   companion app for the shared-queue (remote rendering) demo
+    text-input-check.py       headless assertions for the ui::TextInput demo (see below)
 
-A new test is a `*Layout.cpp,.h` pair in the group it belongs to, plus one entry in
-`src/app/TestRegistry.cpp` - nothing else has to be told about it, neither the Makefile nor the
-menu on the front page.
+The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
+list at the bottom of `src/app/TestRegistry.cpp`. So a test is addressed the way its sources are -
+`css/nth` - and the menu, which is built by walking the registry, has the same levels: the front
+page lists the groups, a group lists its tests, and a group may hold groups of its own.
+
+A new test is a `*Layout.cpp,.h` pair in the group it belongs to, plus one entry in that group's
+array - nothing else has to be told about it, neither the Makefile nor the menu. A new group is a
+new directory plus one `TestGroup` entry pointing at its array.
+
+The short id (`nth`) stays unique across the whole registry: it is what prefixes the commands a
+layout registers (`nth.insert`), and the `layout` command takes either form.
+
+## Headless checks
+
+Most demos are verified by looking at them. `ui::TextInput` is not: what it does - the caret
+following the platform's echo, a composition that must not count as a text change, Enter arriving
+as text rather than as a key - is invisible in a screenshot. `text-input-check.py` drives it over
+the inspector socket instead, starting its own headless instance:
+
+```
+python3 text-input-check.py [path-to-testapp]
+```
+
+It prints `N checks, M failures` and exits non-zero on a failure. Note how text gets in: a key
+event only becomes text when it is injected with `native: true`, which routes it through the OS
+window and therefore through the platform's text-input processor; IME composition has no keystroke
+at all and goes through the separate `text` command.
 
 ## Building
 
@@ -127,8 +153,8 @@ Things worth knowing:
 
 | Command | Arguments | What it does |
 |---|---|---|
-| `layouts` | — | the list of layouts: `name`, `title`, `description`, `env`, `hideFps` |
-| `layout` | `name`, `settle` (seconds, 1.0 by default) | switch the layout; the answer arrives once the new one has been rendering for `settle` seconds |
+| `layouts` | — | the layouts twice over: `layouts`, the flat list (`name`, `path`, `group`, `title`, `description`, `env`, `hideFps`), and `tree`, the same entries grouped the way the registry is |
+| `layout` | `name` (the id `nth` or the path `css/nth`), `settle` (seconds, 1.0 by default) | switch the layout; the answer arrives once the new one has been rendering for `settle` seconds |
 | `dialog` | `type` (`open-file`, `open-directory`, `save-file`, `color`, `font`, `reveal`, `trash`), `path`, `filename`, `paths`, `title`, `modal`, `multiple` | open a system dialog on the main window; answers with the `DialogResult` once the user is done. `reveal` and `trash` show no UI of ours, so they are the two that can be exercised without a display |
 
 The answer to `layout` *is* the "you may shoot now" signal: the command deliberately does not reply

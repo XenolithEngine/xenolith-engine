@@ -136,7 +136,7 @@ bool CssVarLayout::init() {
 	setStyleSheet(s_css);
 	addSystem(Rc<ui::StyleResolver>::create(true));
 
-	auto makeBox = [this](Node *parent, StringView cls) {
+	auto makeBox = [](Node *parent, StringView cls) {
 		auto box = parent->addChild(Rc<Layer>::create(Color::Black), ZOrder(1));
 		box->addStyleClass("box");
 		box->addStyleClass(cls);

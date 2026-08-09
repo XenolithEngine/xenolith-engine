@@ -160,7 +160,6 @@ bool SpecificityLayout::init() {
 void SpecificityLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float swatch = 52.0f;
 	const float rowH = 72.0f;
 	const float top = getWorkTop() - 96.0f;

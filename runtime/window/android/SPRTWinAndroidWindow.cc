@@ -430,6 +430,9 @@ void AndroidWindow::updateLayers(Vector<WindowLayer> &&layers) {
 
 void AndroidWindow::handleBackButton() { _activity->handleBackButton(); }
 
+// Declined: the Java-side InputConnection is not wired to the processor yet. When it is, it - being
+// the real IME - must report enablement itself with _textInput->handleInputEnabled(true/false);
+// this must not be reported from the application side.
 bool AndroidWindow::updateTextInput(const TextInputRequest &, TextInputFlags flags) {
 	return false;
 }

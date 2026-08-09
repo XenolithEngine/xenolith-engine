@@ -134,17 +134,14 @@ void VisibilityLayout::runPhase2() {
 	// with all three items in flow, both rows place the third item identically
 	const float xNone = _lastNone->getPosition().x;
 	const float xHidden = _lastHidden->getPosition().x;
-	expect(sprt::abs(xNone - xHidden) < 1.0f,
-			"rows differ after both middle items were restored");
+	expect(sprt::abs(xNone - xHidden) < 1.0f, "rows differ after both middle items were restored");
 
-	log::source().warn("VisibilityTest", "SUMMARY: ", _checks, " checks, ", _failures,
-			" failures");
+	log::source().warn("VisibilityTest", "SUMMARY: ", _checks, " checks, ", _failures, " failures");
 }
 
 void VisibilityLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
-	const auto cs = getContentSize();
 	const float top = getWorkTop() - 180.0f;
 
 	Layer *rows[] = {_rowNone, _rowHidden};

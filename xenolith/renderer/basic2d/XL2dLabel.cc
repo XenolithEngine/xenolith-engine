@@ -47,7 +47,15 @@ void Label::Selection::emplaceRect(const Rect &rect) {
 			rect.size);
 }
 
-void Label::Selection::updateColor() { Sprite::updateColor(); }
+// Sprite::updateColor only marks the vertexes when the colour VALUE changed, which is right for a
+// sprite whose quad outlives the call. Here every call rebuilds the quads (clear + emplaceRect),
+// and a fresh quad starts out fully transparent, so the colour has to be re-applied every time.
+// Without this only the very first selection after a text change was visible: every later one -
+// a drag, Shift+arrows, Ctrl+A, a long press - was drawn with alpha 0.
+void Label::Selection::updateColor() {
+	Sprite::updateColor();
+	_vertexColorDirty = true;
+}
 
 void Label::Selection::updateVertexes(FrameInfo &frame) {
 	//_vertexes.clear();
@@ -878,6 +886,13 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 }
 
 Vec2 Label::getCursorOrigin() const {
+	// No layout yet - a label that has never been laid out, which is exactly the state a freshly
+	// created empty text field is in when it first asks where to put its caret. getCursorPosition()
+	// guards the same way.
+	if (!_format) {
+		return Vec2::ZERO;
+	}
+
 	switch (_alignment) {
 	case TextAlign::Left:
 	case TextAlign::Justify:

@@ -51,6 +51,7 @@ public:
 	using InputEventName = core::InputEventName;
 	using TextInputRequest = core::TextInputRequest;
 	using TextInputState = core::TextInputState;
+	using TextInputCommand = core::TextInputCommand;
 
 	// In most cases, this can be received via InputListener,
 	// but for objects without scene binding you can use this event
@@ -83,6 +84,7 @@ public:
 	void setContentExtent(Extent2);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&) override;
+	virtual void handleNativeInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
 	Context *getContext() const { return _context; }
@@ -155,6 +157,7 @@ public:
 
 	virtual void acquireTextInput(TextInputRequest &&) override;
 	virtual void releaseTextInput() override;
+	virtual void performTextInput(TextInputCommand &&) override;
 
 	virtual void updateLayers(sprt::window::Vector<WindowLayer> &&) override; // from app thread
 

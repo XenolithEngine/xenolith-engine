@@ -22,33 +22,8 @@
 
 #include "XLUiCheckbox.h"
 #include "XL2dIconSprite.h" // IWYU pragma: keep
-#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
-
-static void ensureCheckboxStyleAppliers() {
-	using document::ParameterName;
-	static bool once = [] {
-		StyleResolver::registerTypeApplier("checkbox",
-				[](StyleResolver &, Node *node, const ResolvedStyle &s,
-						document::ParameterName name, const document::StyleValue &val) {
-			if (auto p = dynamic_cast<Panel *>(node)) {
-				return p->setStyleValue(s, name, val);
-			}
-			return false;
-		},
-				StyleResolver::makeParameterMask({
-					ParameterName::CssBackgroundColor,
-					ParameterName::CssBorderTopLeftRadius,
-					ParameterName::CssBorderTopRightRadius,
-					ParameterName::CssBorderBottomRightRadius,
-					ParameterName::CssBorderBottomLeftRadius,
-					ParameterName::CmdReset,
-				}));
-		return true;
-	}();
-	(void)once;
-}
 
 Checkbox::~Checkbox() { }
 
@@ -59,7 +34,8 @@ bool Checkbox::init() {
 	setType("checkbox");
 	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-checkbox");
-	ensureCheckboxStyleAppliers();
+	// the same fill / outline / border-radius appliers Panel registers for itself, under "checkbox"
+	registerStyleAppliers("checkbox");
 
 	_check = addChild(Rc<basic2d::IconSprite>::create(), ZOrder(1));
 	_check->setType("icon");

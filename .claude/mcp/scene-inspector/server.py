@@ -132,7 +132,9 @@ TOOLS = [
             "(Begin/Move/End/Cancel/MouseMove/Scroll) or {event, keycode, keysym, keychar} for key "
             "events (KeyPressed/KeyRepeated/KeyReleased/KeyCanceled). Names match the engine's "
             "own (getInputEventName / getInputButtonName / getInputKeyCodeName); integers are "
-            "accepted too. A click is a Begin followed by an End at the same point."
+            "accepted too, and keychar may be written as the character itself. A click is a Begin "
+            "followed by an End at the same point. Set native=true to type into a focused text "
+            "field — see that flag's description."
         ),
         "inputSchema": {
             "type": "object",
@@ -142,9 +144,50 @@ TOOLS = [
                     "items": {"type": "object"},
                     "description": "Events to inject, in order.",
                 },
+                "native": {
+                    "type": "boolean",
+                    "description": (
+                        "Inject at the OS-window level, so the events pass through the platform's "
+                        "text-input processor first: printable keys, Backspace, Delete and Escape "
+                        "are consumed by the focused text field exactly as a real keystroke would "
+                        "be. REQUIRED to type text. Default false, which delivers straight to the "
+                        "scene and bypasses text input entirely."
+                    ),
+                },
                 "timeout": TIMEOUT_PROP,
             },
             "required": ["events"],
+        },
+    },
+    {
+        "name": "send_text",
+        "description": (
+            "Drive the focused text field's input processor directly — the IME-level path that "
+            "key events cannot express. op='marked' then op='unmark' reproduces composition (CJK, "
+            "dead keys); op='insert' inserts text, optionally replacing the range "
+            "[replaceStart, replaceLength); op='delete-backward'/'delete-forward' delete around "
+            "the cursor; op='cancel' releases text input. op='state' reads the current state back "
+            "(text, cursor, marked range, enabled, hasHandler). Mutating ops are applied "
+            "asynchronously — call step_frame before reading state or taking a screenshot. Use "
+            "send_input with native=true when you want the real keyboard path instead."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": ["insert", "marked", "unmark", "delete-backward", "delete-forward",
+                             "cancel", "state"],
+                },
+                "text": {"type": "string", "description": "Text for insert/marked."},
+                "replaceStart": {"type": "number"},
+                "replaceLength": {"type": "number"},
+                "markedStart": {"type": "number"},
+                "markedLength": {"type": "number"},
+                "compose": {"type": "number", "description": "InputKeyComposeState, default 0."},
+                "timeout": TIMEOUT_PROP,
+            },
+            "required": ["op"],
         },
     },
     {
@@ -325,9 +368,18 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
             return json.dumps(response["result"], indent=2)
 
         if name == "send_input":
-            response = session.call("input", events=args["events"])
+            response = session.call("input", events=args["events"],
+                                    native=bool(args.get("native", False)))
             check(response)
-            return f"injected {response['result']['accepted']} event(s)"
+            result = response["result"]
+            how = "natively" if result.get("native") else "into the scene"
+            return f"injected {result['accepted']} event(s) {how}"
+
+        if name == "send_text":
+            payload = {k: v for k, v in args.items() if k != "timeout"}
+            response = session.call("text", **payload)
+            check(response)
+            return json.dumps(response["result"], indent=2)
 
         if name == "step_frame":
             count = int(args.get("count", 1))
