@@ -16,15 +16,16 @@ description: >-
   mem_std/mem_pool interfaces, setValue(value, key) order, the read-only
   Value::Null sentinel, JSON/CBOR round-tripping), windows and OS integration
   (Context::createWindow + WindowSceneInfo, ui::SubWindow popups/tooltips,
-  WindowCapabilities, DialogRequest and the reveal/trash shell actions), and what
-  .clang-format already enforces.
+  WindowCapabilities, DialogRequest and the reveal/trash shell actions), forms
+  (ui::FormSystem as the focus group, addFormField adapters, FormFieldSlots,
+  deferred focus), and what .clang-format already enforces.
 ---
 
 # Xenolith/Stappler code style
 
 Full articles live in [docs/usage/codestyle/](../../../docs/usage/codestyle/),
 grouped by what you are touching — `sources/`, `platform/`, `core/`, `scene/`,
-`window/`, plus the standalone `deferred-computation.adoc`. This card holds the
+`ui/`, `window/`, plus the standalone `deferred-computation.adoc`. This card holds the
 rules that are cheap to keep in context, and routes to the article when you need
 the detail. Read the article before writing a new file or touching an unfamiliar
 layer; the rules below are enough for an ordinary edit.
@@ -189,6 +190,22 @@ lifetime, or for error detection. Details and examples:
     once on the target looper, and `Status::Declined` means the user cancelled,
     not that something failed. `RevealInFileManager`/`MoveToTrash` are shell
     actions on the same seam, with `paths` as input.
+25. **A form is one `ui::FormSystem` on the node it is rooted at, and that system
+    *is* the focus group.** Fields are attached to the widgets, not declared in
+    the form — `ui::addFormField(input)` / `addFormField(checkbox)` /
+    `addFormButton(button, role)`, or `addFormField(node, FormFieldSlots{…})` for
+    a widget of your own; each joins the **nearest** form above it, so nesting is
+    by construction. The form never touches a widget: the whole seam is
+    `FormFieldSlots` (an empty slot is a no-op, no `collect` means never
+    collected), and **the field name is the node's name**, which is also its CSS
+    id. **A focus change is deferred to the next commit** — `focusField()` /
+    `focusNext()` only record a request, `getFocusedField()` is what is
+    committed and `getPendingField()` what was asked for, so never read focus
+    back on the same hop. The tab ring is document order (= z-order: give
+    siblings **distinct** `ZOrder`, `sortAllChildren` is unstable) and is rebuilt
+    per frame, so hidden and disabled fields fall out of it for free. A rejected
+    field is marked with a **style class** (`invalid`), because the CSS subset has
+    no `:invalid`.
 
 ## Where to read more
 
@@ -209,6 +226,7 @@ lifetime, or for error detection. Details and examples:
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
 | Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [runtime-libc.adoc](../../../docs/usage/codestyle/platform/runtime-libc.adoc) |
 | Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [data-value.adoc](../../../docs/usage/codestyle/core/data-value.adoc) |
+| Building a form; adding a field, a validator or a widget of your own to one; Tab order, focus, submit/reset | [ui/forms.adoc](../../../docs/usage/codestyle/ui/forms.adoc) |
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |

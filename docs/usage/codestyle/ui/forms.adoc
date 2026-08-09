@@ -1,0 +1,250 @@
+# Forms: `FormSystem`, fields and focus
+
+**TL;DR**
+
+* A form is **one system on the node the form is rooted at**:
+  `addSystem(Rc<ui::FormSystem>::create())`. Everything below that node that has a
+  `FormInputListener` is one of its fields — nesting is by construction, a field
+  joins the **nearest** form above it.
+* A field is attached to the widget, not declared in the form:
+  `ui::addFormField(input)` / `ui::addFormField(checkbox)` /
+  `ui::addFormButton(button, role)` from
+  [XLUiFormAdapters.h](../../../../xenolith/renderer/ui/forms/XLUiFormAdapters.h).
+  Any other node joins with `addFormField(node, FormFieldSlots{...})`.
+* **`FormSystem` *is* a `FocusGroup`** — it owns the tab ring and arbitrates the
+  keyboard. There is no separate focus object to create.
+* The form never touches a widget directly. The whole seam is `FormFieldSlots`:
+  an empty slot is a no-op, and a field with no `collect` never appears in the
+  collected value.
+* **The field name is the node's name**, which is also its CSS id. `setName("email")`
+  once and the field is named. An unnamed field is never collected.
+* **A focus change is deferred to the next commit.** `focusField()`/`focusNext()`
+  record a request; `getFocusedField()` is what is committed, `getPendingField()`
+  is what was asked for. Do not read focus back on the same hop.
+* Validation failure marks the offender's node with a **style class**
+  (`invalid` by default) — the engine's CSS subset has no `:invalid`.
+* `collect()` returns a `Value`; `submit()` validates first and returns `false`
+  without calling the submit callback if anything was rejected.
+
+## Building a form
+
+The form is a system; the fields are listeners on the widgets. Nothing registers
+anything with anything — a field finds its form by walking up the parent chain
+when it enters the scene.
+
+[source,cpp]
+----
+_form = addSystem(Rc<ui::FormSystem>::create());
+_form->setSubmitCallback([this](Value &&value) { send(sp::move(value)); });
+_form->setInvalidCallback([this](SpanView<ui::FormValidationError> errors) { … });
+
+_name = addChild(Rc<ui::TextInput>::create(), ZOrder(1));
+_name->setName("name");                       // the field name AND the CSS id
+ui::addFormField(_name, StringView(), ui::FormFieldFlags::Required);
+
+_email = addChild(Rc<ui::TextInput>::create(), ZOrder(2));
+_email->setName("email");
+auto email = ui::addFormField(_email, StringView(), ui::FormFieldFlags::Required);
+email->setValidator([](const Value &value, String &message) {
+	if (value.getString().find('@') == maxOf<size_t>()) {
+		message = String("must contain @");
+		return false;
+	}
+	return true;
+});
+
+_submit = addChild(Rc<ui::Button>::create(), ZOrder(6));
+_submit->setName("submit");
+ui::addFormButton(_submit, ui::FormFieldRole::Submit);
+----
+
+(`tests/window/src/widgets/FormLayout.cpp`.)
+
+**Give siblings distinct z-orders.** The tab ring is document order, and document
+order is z-order; `Node::sortAllChildren` sorts on `z` alone with an *unstable*
+sort, so fields sharing a z-order may be permuted on any reorder pass.
+
+The form's own callbacks:
+
+| Callback | Fires |
+|---|---|
+| `setSubmitCallback(Function<void(Value &&)>)` | validation passed, with `collect()` |
+| `setInvalidCallback(Function<void(SpanView<FormValidationError>)>)` | validation failed; the offenders are already marked and the first one focused |
+| `setResetCallback(Function<void()>)` | after every `Field`-role field was cleared |
+
+## The field: identity here, behaviour in the widget
+
+`FormInputListener` knows the field's **identity** — name, role, flags, validator
+— and nothing about how the widget works. What it needs the widget to *do* goes
+through `FormFieldSlots`, which the adapter (or you) fills in.
+
+| Piece | Where it lives |
+|---|---|
+| name, `FormFieldRole`, `FormFieldFlags`, validator | `FormInputListener` |
+| collect / assign / clear / setFocused / activate / copy / cut / paste / selectAll | `FormFieldSlots`, filled by the widget's adapter |
+| key bindings for editing (arrows, Home/End, Ctrl+A) | the widget's own listener |
+| Tab / Enter / Space / Escape | `FormInputListener`, as a **fallback** |
+
+`FormInputListener` sits at `System::DefaultPriority - 16`, so it is visited
+before the widget's own listener and therefore dispatched **after** it. It only
+ever sees the keys the widget declined — which is how `ui::TextInput`'s own Enter
+callback wins over the form's submit without either knowing about the other.
+
+Roles and flags:
+
+| | Meaning |
+|---|---|
+| `FormFieldRole::Field` | collected, validated, cleared by `reset()` |
+| `FormFieldRole::Submit` / `Reset` | in the tab ring, fires the form on Enter, never collected |
+| `FormFieldFlags::Required` | rejected when its value is null, an empty string or an empty container |
+| `FormFieldFlags::Transient` | focusable, but never collected and never validated — a search box that merely stands inside the form |
+
+A validator runs **after** the `Required` check and only on a value that passed
+it, so it never has to handle "empty" itself.
+
+### A widget the kit does not ship
+
+Describe what it can do; the form learns nothing about its type:
+
+[source,cpp]
+----
+ui::FormFieldSlots slots;
+slots.collect = [slider = _slider.get()] { return Value(slider->getValue()); };
+slots.assign = [slider = _slider.get()](const Value &v) { slider->setValue(v.getDouble()); };
+slots.clear = [slider = _slider.get()] { slider->setValue(0.0f); };
+slots.focusable = true;              // read once per frame while the ring is rebuilt
+
+ui::addFormField(_slider, sp::move(slots), "volume");
+----
+
+`ownsFocusStyle` is the one field that must be got right: exactly one side writes
+`InteractiveComponent`'s focus counter. `ui::TextInput` writes it itself (its
+focus is really the IME's, and only the echo knows when it changed), so its
+adapter sets `ownsFocusStyle = true`; a `Checkbox` has no focus of its own, so the
+listener paints `:focus` for it. **Never both** — the counter is cumulative and a
+double write leaves it stuck.
+
+## Values
+
+`collect()` walks the fields in registration order and writes every `Field`-role,
+non-`Transient`, named field that has a `collect` slot. `assign()` is the inverse
+and **skips keys that are absent** — a partial value updates part of the form and
+leaves the rest alone. `reset()` clears every `Field`-role field and fires the
+reset callback.
+
+`FormValueMode` decides how a name becomes a key:
+
+| Mode | `"user.name"` becomes |
+|---|---|
+| `Flat` (default) | one key, `"user.name"` |
+| `Nested` | `{ "user": { "name": … } }` |
+
+## Focus, the tab ring, and why it is deferred
+
+`FormSystem` overrides two things the base `FocusGroup` cannot do, and both are
+load-bearing:
+
+* **Focus is per widget, not per listener.** Every `InputListener` in the subtree
+  joins the nearest group, so plain `SingleFocus` would silence the focused
+  widget's own listener the moment its field took focus — no arrows, no
+  Shift-selection, no Ctrl+A inside the focused field. Here a listener passes the
+  filter when its owner *is* the focused field's node or sits below it.
+* **The fallback can only land on a real field.** The base class falls back to
+  `listeners.front()`, which after the priority sort is typically not a field at
+  all.
+
+The ring itself is rebuilt every frame from the listeners the dispatcher
+collected, so **what is not visited is not in it, for free**: a `display:none`,
+`visibility:hidden` or invisible subtree never registered its listeners, a
+disabled listener never registered either, and a nested form's fields joined that
+form's group instead. Collapsing a container removes its fields from the tab
+order with nothing told to the form.
+
+**The swap is deferred to the next commit.** `focusField()` and `focusNext()` only
+record a request, because the group has to know which listeners are actually live
+this frame before it can honour it. That yields two accessors and one rule:
+
+| Accessor | Answers |
+|---|---|
+| `getFocusedField()` / `getFocusedIndex()` | what holds focus **as of the last committed frame** |
+| `getPendingField()` / `getPendingIndex()` | what has been **asked for** and not yet committed |
+| `getTabRing()` | focusable fields in document order, as of that same frame |
+
+A pending request is also what a second `focusNext()` steps from — two Tabs in one
+frame would otherwise read the same committed focus, compute the same target and
+silently lose one.
+
+An untouched form does **not** take focus: merely showing a form must not raise
+the on-screen keyboard.
+
+Key handling in a field, in order:
+
+| Key | Effect |
+|---|---|
+| Tab / Shift+Tab | step the ring, wrapping |
+| Enter | `Submit`/`Reset` button → fire the form; a field → `activate()` if the widget consumes it, otherwise submit |
+| Space | `activate()` — a checkbox toggles; a text field never gets here, the IME took it |
+| Escape | reset, **only** when `setResetOnEscape(true)` — off by default, since losing what was typed to a stray Escape is worse than reaching for the button |
+
+## Marking what was rejected
+
+`submit()` recomputes the marks wholesale, so a field fixed since the last attempt
+loses its outline even while another is still wrong. The mark is a style class on
+the field's node — the engine's CSS subset has neither `:invalid` nor attribute
+selectors:
+
+[source,css]
+----
+text-input.invalid { outline-color: #e53935; }
+text-input:focus   { outline-color: #fcb400; }
+----
+
+`setInvalidStyleClass("error")` changes the class; an empty class disables marking
+entirely.
+
+## Nesting and outer groups
+
+`FormSystem` is deliberately **not** `Exclusive`. An exclusive group makes the
+dispatcher re-collect listeners scoped to it, which would cut the form off from
+everything outside. Conversely, an outer exclusive group — `basic2d::OverlayLayout`
+installs one — needs `FocusGroup::Flags::Propagate` for a form nested inside it to
+receive input at all.
+
+Two forms nest by simply existing: a field joins the nearest form above it, so
+neither form ever sees the other's fields, values or tab ring.
+
+## Exercising it
+
+`tests/window` carries the stand behind `XL_FORM_TEST=1`
+(`src/widgets/FormLayout.cpp`), driven headless over the inspector socket:
+`state`, `field-state`, `collect`, `assign`, `submit`, `reset`, `focus`,
+`focus-next`, `set-value-mode`, `set-field-name`, `set-visible`, `set-enabled`,
+`set-text`, `set-password`, `reset-counters`.
+
+`tests/window/form-check.py` runs the whole set with no display, no compositor and
+no mouse. Two timing facts shape any such script: a focus change is committed a
+frame later (and a text field then has to acquire the IME and wait for the echo),
+so **step frames after moving focus**; and every mutating command answers with a
+bare ack, so state is always read back separately.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| field node not under the form's node | no form is found; a warning is logged and the field is never collected nor reachable by Tab |
+| field with no name (`setName` never called) | skipped by `collect()` and `assign()` entirely |
+| reading `getFocusedField()` right after `focusField()` | still the previous field — the swap lands on the next commit; use `getPendingField()` |
+| siblings sharing a `ZOrder` | the unstable sort may permute them, and the tab order permutes with them |
+| expecting `assign()` to clear absent keys | absent means "leave it alone"; use `reset()` to clear |
+| a `Value` from `collect()` for a `Submit` button | buttons carry no value and are never collected, by role |
+| writing the focus counter from both the widget and the listener | `ownsFocusStyle` exists for exactly this; a double write leaves `:focus` stuck |
+| changing `FormInputListener`'s priority | priority 0 is what makes the reversed listener vector document order — the tab ring breaks |
+| a form inside an exclusive group with no `Propagate` | the form receives no input at all |
+| styling a rejected field with `:invalid` | not in the CSS subset — style the `.invalid` class the form adds |
+
+## Related
+
+* [node-system-component.adoc](../scene/node-system-component.adoc) — why a form is a `System` and a field a listener, not `Node` subclasses
+* [design/node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — the phases the ring rebuild and the deferred focus swap ride on
+* [ui/css-subset.adoc](../../ui/css-subset.adoc) — what `:focus`, class selectors and the missing `:invalid` really do
+* [data-value.adoc](../core/data-value.adoc) — the `Value` `collect()`/`assign()` speak
