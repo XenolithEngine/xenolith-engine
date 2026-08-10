@@ -94,9 +94,11 @@ make distclean >/dev/null 2>&1 || true
 ./tools/configure.sh -l "$NUTTX_CONFIG" || true
 
 # `olddefconfig` triggers the make rule that creates arch/dummy/Kconfig, then
-# re-runs genconfig successfully and settles .config.
+# re-runs genconfig successfully and settles .config. It is non-interactive —
+# feed /dev/null as stdin (an earlier `yes "" | ...` form tripped SIGPIPE 141
+# under `set -o pipefail` when olddefconfig closed its stdin early).
 echo "info: olddefconfig (settles arch/dummy/Kconfig + .config)"
-yes "" | make olddefconfig >/dev/null
+make olddefconfig </dev/null >/dev/null
 
 # Apply the CONFIG_* overrides the Xenolith runtime needs. These are the
 # deltas between the stock NuttX arm64 defconfigs and what the runtime
@@ -110,7 +112,7 @@ kconfig-tweak --file .config --enable  CONFIG_CXX_EXCEPTION      || true
 # Inverted-convention opt-out: keep environment support on.
 kconfig-tweak --file .config --disable CONFIG_DISABLE_ENVIRON    || true
 # Re-settle after the overrides.
-yes "" | make olddefconfig >/dev/null
+make olddefconfig </dev/null >/dev/null
 
 echo "info: make export"
 make export
