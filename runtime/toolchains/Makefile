@@ -291,13 +291,26 @@ target-wasm32-unknown-unknown: host
 
 target-wasm: target-wasm32-unknown-unknown
 
+#
+# NuttX targets. Hosted POSIX on NuttX's own libc — sysroot is imported from a
+# `make export` package produced by a NuttX tree (see target-nuttx/README.adoc).
+# Not registered for prebuilt download: Apache-2.0 + board-specific sysroots
+# mean the target is always assembled at the user's site from their export pkg.
+#
+
+target-aarch64-nuttx-none-elf: host
+	$(MAKE) -C target-nuttx TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) target-aarch64
+
+target-nuttx: target-aarch64-nuttx-none-elf
+
 target-all: \
 	target-linux target-linux-musl \
 	target-xenolithos \
 	target-android target-android-ndk \
 	target-apple \
 	target-windows target-windows-dll \
-	target-wasm
+	target-wasm \
+	target-nuttx
 
 clean-targets:
 	rm -rf targets
@@ -306,6 +319,7 @@ clean-targets:
 	rm -rf target-xenolithos/intermediate
 	rm -rf target-apple/intermediate
 	rm -rf target-android/intermediate
+	rm -rf target-nuttx/intermediate
 
 
 HOSTS_AVAILABLE = $(wildcard hosts/*/)
