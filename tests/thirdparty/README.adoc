@@ -97,13 +97,12 @@ symbol.
 .Windows, `x86_64-pc-windows-msvc` (under wine)
 [source]
 ----
-251 checks, 5 failures
+257 checks, 0 failures     (with --network; 251 without)
 ----
 
-All of libcrypto, all of libssl (including a full TLS 1.3 handshake), and every
-part of curl except the loopback TLS transfer pass identically on both targets.
-The five remaining failures are all in `curl_tls_loopback` and all follow from
-one cause: curl cannot open a TCP connection on the Windows target (see below).
+All of libcrypto, all of libssl (including a full TLS 1.3 handshake) and all of
+curl -- including the loopback TLS transfer and a real `https://` fetch -- pass
+identically on both targets.
 
 == Fixed: the miscompiled strchr that killed TLS on Windows
 
@@ -178,23 +177,51 @@ Every third-party library in `toolchains/targets/x86_64-pc-windows-msvc` other
 than OpenSSL was built before this fix and is built at `-O3`, so any of them may
 carry the same miscompile. They should be rebuilt.
 
-== Open: curl cannot connect on x86_64-pc-windows-msvc
+== Fixed: socket(SOCK_NONBLOCK) rejected by winsock
 
-`curl_tls_loopback` fails with `CURLE_COULDNT_CONNECT` (7) against an in-process
-OpenSSL server on an ephemeral 127.0.0.1 port; the server side times out waiting
-for a connection that never arrives. This is *not* the strchr defect and not a
-runtime socket problem:
+`curl_tls_loopback` failed with `CURLE_COULDNT_CONNECT` (7) against an in-process
+OpenSSL server on an ephemeral 127.0.0.1 port, and `curl_https` failed the same
+way -- curl could not open *any* outgoing connection on the Windows target. The
+fault was neither in curl nor in the strchr defect above, and `tests/libc
+socket_stream` did not catch it because it only opens plain blocking sockets.
 
-* `tests/libc socket_stream` -- bind / listen / connect / accept and stream I/O
-  over loopback TCP with the same runtime sockets -- passes on the same target;
-* the port is assigned and read back correctly (no byte-order fault);
-* every non-transport curl test passes.
+=== Root cause
 
-So the fault is in curl's own connect path on this target (it uses a
-non-blocking connect driven by poll/select through the winsock forwarders).
-Since `curl-openssl.lib` predates the strchr fix, rebuilding curl is the first
-thing to try. Note the practical consequence: `stappler_network` cannot open a
-connection on Windows either until this is resolved.
+`WINEDEBUG=+winsock` shows the socket that is never created:
+
+[source]
+----
+socket af=AF_INET6 type=SOCK_DGRAM protocol=IPPROTO_IP     <1>
+socket af=AF_INET  type=0x80801    protocol=IPPROTO_TCP    <2>
+WSASocketW failed to initialize socket, status 0xc001273c
+----
+<1> curl's IPv6 probe -- a bare `SOCK_*` value, accepted
+<2> the connect socket -- `SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC`, rejected
+
+`runtime/include/sprt/c/cross/windows_sprt/sockdef.h` gives `SOCK_CLOEXEC` and
+`SOCK_NONBLOCK` their Linux values (`02000000` / `04000`) on the Windows target,
+and `runtime/include_libc/sys/__sockdef.h` publishes them under their public
+names. curl therefore sees the macros defined and tucks the flags into the
+socket type for every outgoing connection (`lib/cf-socket.c`, `socket_open()`
+and `cf_socket_open()`) -- which is correct POSIX usage.
+
+But `__SPRT_ID(socket)` in `runtime/libc_wrapper/sys/SPRuntimeCSysSocket.cpp`
+forwarded `__type` to ws2_32 unchanged, and winsock's `socket()` takes a bare
+`SOCK_*` value: any bit above it is an invalid parameter, so no socket was ever
+created and curl reported the failure as "could not connect".
+
+`__SPRT_ID(accept4)` in the same file already carried the matching emulation --
+`socket()` simply never got it.
+
+=== The fix
+
+`__SPRT_ID(socket)` now strips the two flag bits before the native call and
+applies them afterwards, exactly as `accept4()` does: `ioctlsocket(FIONBIO)` on
+Windows (`SOCK_CLOEXEC` is a no-op there), `fcntl()` on macOS -- which ships no
+`SOCK_NONBLOCK`/`SOCK_CLOEXEC` for `socket()` either and had the same latent gap.
+Linux and the other POSIX targets keep the straight pass-through.
+
+No third-party rebuild was needed: `curl-openssl.lib` was always fine.
 
 == Platform notes
 

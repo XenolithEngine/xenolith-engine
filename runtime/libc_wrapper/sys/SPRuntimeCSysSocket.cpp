@@ -1760,6 +1760,35 @@ namespace sprt {
 __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();
+#elif SPRT_WINDOWS
+	// winsock's socket() takes a bare SOCK_* value and rejects anything above it, so the
+	// SOCK_NONBLOCK/SOCK_CLOEXEC bits <sys/socket.h> publishes have to be applied here
+	// instead: strip them, then map SOCK_NONBLOCK to FIONBIO (CLOEXEC is a no-op on
+	// Windows). Same emulation as accept4() below.
+	SOCKET __s = ::socket(__domain, __type & ~(__SPRT_SOCK_NONBLOCK | __SPRT_SOCK_CLOEXEC),
+			__protocol);
+	if (__s == INVALID_SOCKET) {
+		return __s;
+	}
+	if (__type & __SPRT_SOCK_NONBLOCK) {
+		unsigned long __nb = 1;
+		::ioctlsocket(__s, (long)FIONBIO, &__nb);
+	}
+	return __s;
+#elif SPRT_APPLE
+	// macOS ships no SOCK_CLOEXEC/SOCK_NONBLOCK for socket() either: strip them and
+	// emulate with fcntl(), as accept4() does.
+	int __s = ::socket(__domain, __type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC), __protocol);
+	if (__s < 0) {
+		return -1;
+	}
+	if (__type & SOCK_CLOEXEC) {
+		::fcntl(__s, F_SETFD, ::fcntl(__s, F_GETFD, 0) | FD_CLOEXEC);
+	}
+	if (__type & SOCK_NONBLOCK) {
+		::fcntl(__s, F_SETFL, ::fcntl(__s, F_GETFL, 0) | O_NONBLOCK);
+	}
+	return __s;
 #else
 	// SOCKET (int on POSIX, winsock SOCKET on Windows); the native error sentinel passes
 	// through - INVALID_SOCKET == (SOCKET)-1 == the POSIX -1.
