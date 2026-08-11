@@ -31,6 +31,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+void MaterialInputData::setAttachment(const MaterialAttachment *a) {
+	attachment = a;
+	attachmentOwner = a ? a->getQueue() : nullptr;
+}
+
 bool MaterialSet::init(uint32_t imagesInSet, const MaterialAttachment *owner) {
 	_imagesInSet = imagesInSet;
 	_owner = owner;
@@ -637,7 +642,7 @@ void MaterialAttachment::removeDynamicTracker(MaterialId id, const Rc<DynamicIma
 void MaterialAttachment::updateDynamicImage(Loop &loop, const DynamicImage *image,
 		const Vector<Rc<DependencyEvent>> &deps) const {
 	auto input = Rc<MaterialInputData>::alloc();
-	input->attachment = this;
+	input->setAttachment(this);
 	sprt::unique_lock<sprt::mutex > lock(_dynamicMutex);
 	auto it = _dynamicTrackers.find(image);
 	if (it != _dynamicTrackers.end()) {

@@ -826,6 +826,19 @@ void ServerAppThread::loadExtensions() {
 #endif
 }
 
+void ServerAppThread::finalizeExtensions() {
+	AppThread::finalizeExtensions();
+
+	// The font endpoint is created in loadExtensions but held as a plain member rather than a
+	// registered extension, so the loop above never reaches it. Release it here, on the same hook and
+	// therefore while the gapi device is still up: its atlas is a device image, and a plain member
+	// would otherwise only be dropped with the thread itself - after the device is gone.
+	if (_fontServer) {
+		_fontServer->invalidate();
+		_fontServer = nullptr;
+	}
+}
+
 bool ServerAppThread::shouldPreserveDirector(NotNull<AppWindow> w, NotNull<Director>) {
 	return hasFlag(w->getCapabilities(), WindowCapabilities::PreserveDirector);
 }

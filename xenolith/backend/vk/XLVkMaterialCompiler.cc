@@ -140,6 +140,10 @@ void MaterialCompiler::appendRequest(const MaterialAttachment *a, Rc<MaterialInp
 		it = _requests.emplace(a, MaterialRequest()).first;
 	}
 
+	if (!it->second.owner) {
+		it->second.owner = req->attachmentOwner;
+	}
+
 	for (auto &rem : req->materialsToRemove) {
 		auto m = it->second.materials.find(rem);
 		if (m != it->second.materials.end()) {
@@ -210,14 +214,19 @@ void MaterialCompiler::runMaterialCompilationFrame(core::Loop &loop, Rc<Material
 		Vector<Rc<core::DependencyEvent>> &&deps) {
 	auto targetAttachment = req->attachment;
 
+	// The callback below outlives the frame's input data and re-submits against `targetAttachment`.
+	// Holding the attachment's queue keeps that pointer - and the pool its data lives in - valid
+	// even if the window that owns the queue closes while this frame is in flight.
+	auto targetOwner = req->attachmentOwner;
+
 	auto h = loop.makeFrame(makeRequest(sp::move(req), sp::move(deps)), 0);
-	h->setCompleteCallback([this, targetAttachment](FrameHandle &handle) {
+	h->setCompleteCallback([this, targetAttachment, targetOwner](FrameHandle &handle) {
 		auto reqIt = _requests.find(targetAttachment);
 		if (reqIt != _requests.end()) {
 			if (handle.getLoop()->isRunning()) {
 				auto deps = sp::move(reqIt->second.deps);
 				Rc<MaterialInputData> req = Rc<MaterialInputData>::alloc();
-				req->attachment = targetAttachment;
+				req->setAttachment(targetAttachment);
 				req->materialsToAddOrUpdate.reserve(reqIt->second.materials.size());
 				for (auto &m : reqIt->second.materials) {
 					req->materialsToAddOrUpdate.emplace_back(m.second);

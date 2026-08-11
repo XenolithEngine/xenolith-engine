@@ -49,6 +49,7 @@ public:
 	virtual uint64_t pinAtlasImage() override;
 	virtual Rc<core::DynamicImageInstance> resolveAtlasInstance(uint64_t imageId) override;
 	virtual void reset() override;
+	virtual void invalidate() override;
 
 protected:
 	void preloadDefaultFonts();

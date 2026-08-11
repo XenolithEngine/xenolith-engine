@@ -269,7 +269,7 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	}
 
 	auto input = Rc<core::MaterialInputData>::alloc();
-	input->attachment = att;
+	input->setAttachment(att);
 
 	// Resolve a material pipeline by key the same way FrameContext::readMaterials does: walk the material
 	// attachment's target texture-set-layout -> binding pipeline layouts -> families -> graphic pipelines.

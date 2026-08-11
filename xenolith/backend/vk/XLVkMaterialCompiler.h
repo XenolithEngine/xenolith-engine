@@ -66,6 +66,10 @@ protected:
 	using core::Queue::init;
 
 	struct MaterialRequest {
+		// The map is keyed by a raw MaterialAttachment*, which is only an identity: this keeps the
+		// attachment's queue alive so that key cannot become a dangling pointer into a destroyed
+		// pool while the entry waits for a frame (see MaterialInputData::attachmentOwner).
+		Rc<Ref> owner;
 		Map<MaterialId, Rc<Material>> materials;
 		Set<MaterialId> dynamic;
 		Set<MaterialId> remove;

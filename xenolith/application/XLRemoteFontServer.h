@@ -67,6 +67,12 @@ public:
 	// Drop per-connection transient state (the dependency registry) on client disconnect; the persistent
 	// font store and the network atlas survive for the next client.
 	virtual void reset() = 0;
+
+	// Final teardown, as opposed to reset(): release the network atlas and everything behind it. The
+	// endpoint is not a registered ApplicationExtension, so nothing else gives it the invalidate() the
+	// local-scene controller gets - it has to be called while the render device is still alive, or the
+	// atlas image outlives the device it was allocated on.
+	virtual void invalidate() = 0;
 };
 
 } // namespace stappler::xenolith

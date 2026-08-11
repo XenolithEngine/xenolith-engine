@@ -127,6 +127,7 @@ protected:
 	virtual void performAppUpdate(const UpdateTime &, bool wakeup) override;
 
 	virtual void loadExtensions() override;
+	virtual void finalizeExtensions() override;
 
 	// Pump the listener's QUIC events (poll-readable or update tick) and accept new connections.
 	void pumpListener();
