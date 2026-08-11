@@ -56,11 +56,27 @@ public:
 	virtual bool init(ButtonType, Function<void()> && = nullptr);
 	virtual bool init(Function<void()> && = nullptr);
 
+	// convenience: a general button that carries a label from the start
+	virtual bool init(StringView, Function<void()> && = nullptr);
+
 	virtual void handleEnter(Scene *scene) override;
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
+	// Fallback placement for a button built without a stylesheet: when nothing owns the layout of
+	// the children (no LayoutSystem, so no `display:flex` came from CSS), the label and the icon
+	// are centered here. A styled button gets its LayoutSystem from the resolver and this is a
+	// no-op - the flex pass places them instead.
+	virtual void handleContentSizeDirty() override;
+
 	virtual void setString(StringView);
 	virtual StringView getString() const;
+
+	virtual void setCallback(Function<void()> &&);
+
+	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match), adds
+	// the `disabled` style class and stops the tap callbacks from firing
+	virtual void setEnabled(bool);
+	virtual bool isEnabled() const { return _enabled; }
 
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
@@ -82,6 +98,7 @@ protected:
 	ButtonType _type = ButtonType::General;
 	ButtonIconTheme _theme = ButtonIconTheme::Default;
 	WindowState _windowState = WindowState::None;
+	bool _enabled = true;
 
 	Function<void()> _leftCallback;
 	Function<void()> _rightCallback;

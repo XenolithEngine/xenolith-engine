@@ -376,8 +376,8 @@ enum class ParameterName : NameSize {
 	CssOrphans, // uint
 	CssWidows, // uint
 
-	/* xenolith simpleui-only positioning parameters (ignored by the document layout
-	   engine, consumed by simpleui::StyleApplier) */
+	/* xenolith ui-only positioning parameters (ignored by the document layout
+	   engine, consumed by xenolith::ui::StyleResolver) */
 	CssPosition, // enum (Position)
 	CssTop, // size
 	CssRight, // size

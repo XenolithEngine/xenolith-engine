@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Verifies the stappler_document CSS semantics that the simpleui style
-// subsystem (xenolith/renderer/simpleui/XLSimpleStyle*) relies on:
+// Verifies the stappler_document CSS semantics that the ui style
+// subsystem (xenolith/renderer/ui/style/XLUiStyle*) relies on:
 // selector matching order, merge/override behavior, inheritance filtering
 // and media query evaluation.
 

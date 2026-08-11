@@ -264,7 +264,7 @@ public:
 	static ParameterMask makeParameterMask(sprt::initializer_list<document::ParameterName> &&);
 
 	/* Resolve the style for a node against all stylesheet scopes on its ancestor
-	chain (nearest StyleSheetSystem and above).
+	chain (nearest StyleSystem and above).
 
 	Resolution: for every ancestor with a StyleIdentity, inheritable parameters
 	cascade down (outermost ancestor first); then the node's own matches are

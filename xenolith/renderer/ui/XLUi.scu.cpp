@@ -33,6 +33,7 @@
 
 #include "input/XLUiInteractiveComponent.cc"
 #include "input/XLUiButton.cc"
+#include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiCheckbox.cc"
 #include "input/XLUiTextInput.cc"
 

@@ -336,7 +336,7 @@ LOCAL_MODULES_PATHS = \
 LOCAL_MODULES := \
 	runtime \
 	xenolith_application \
-	xenolith_renderer_simpleui \
+	xenolith_renderer_ui \
 	xenolith_backend_vk
 
 # Sources
@@ -402,8 +402,8 @@ time as `Enabled modules: …`.
   `stappler_brotli_lib`.
 - **xenolith** (`xenolith/xenolith-modules.mk`): `xenolith_core`,
   `xenolith_application`, `xenolith_backend_vk`, `xenolith_font`,
-  `xenolith_renderer_basic2d` (+ `_shaders`), `xenolith_renderer_material2d`,
-  `xenolith_renderer_richtext`, `xenolith_renderer_simpleui`,
+  `xenolith_renderer_basic2d` (+ `_shaders`), `xenolith_renderer_ui`,
+  `xenolith_renderer_pug`, `xenolith_renderer_richtext`,
   `xenolith_resources_assets`, `xenolith_resources_network`,
   `xenolith_resources_storage`, `xenolith_remote`.
 
@@ -420,7 +420,7 @@ what you need.
 | `tests/runtime` | `runtimetest` | `runtime_libc_wrapper` + `runtime` — the Xenolith Runtime (libc/STL/pthread) | CLI, self-checking |
 | `tests/libc` | `libctest` | the internal libc implementation — `runtime/libc_impl` **and** the `runtime_libc_wrapper` wrappers (including the substitute/replacement functions the wrappers supply when a function is missing on the platform). Built for the host **and** `x86_64-pc-windows-msvc`; `compare.sh` diffs the two for behavioural identity | CLI, host-vs-Windows diff |
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
-| `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `simpleui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
+| `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
 - Changed a `stappler/` module → build `tests/window` (preferred — full stack) or

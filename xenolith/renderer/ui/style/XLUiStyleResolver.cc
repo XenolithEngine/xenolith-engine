@@ -1001,7 +1001,7 @@ namespace {
 
 using document::Align;
 
-// document flex/grid enums -> simpleui layout enums
+// document flex/grid enums -> ui layout enums
 
 static FlexDirection toFlexDirection(document::FlexDirection d) {
 	switch (d) {

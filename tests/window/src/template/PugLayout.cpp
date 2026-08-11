@@ -35,9 +35,9 @@ static constexpr auto s_pugTemplate =
 	label#greet.subtitle(flex-basis=24) Hello, #{user}!
 	layer.stripe(flex-basis=28 cross-size=280)
 	layer.stripe.alt(flex-basis=28 cross-size=240)
-	button-label(on-tap="accent" flex-basis=36 cross-size=220) Toggle accent
-	button-label(on-tap="theme" flex-basis=36 cross-size=220) Toggle theme
-	button-label(on-tap="tap" flex-basis=36 cross-size=220) Rebuild: #{taps}
+	button(on-tap="accent" flex-basis=36 cross-size=220) Toggle accent
+	button(on-tap="theme" flex-basis=36 cross-size=220) Toggle theme
+	button(on-tap="tap" flex-basis=36 cross-size=220) Rebuild: #{taps}
 )Pug";
 
 static constexpr StringView s_lightCss(
@@ -48,7 +48,7 @@ static constexpr StringView s_lightCss(
 	label.accent { color: #E91E63; }
 	.stripe { background-color: #3F51B5; }
 	.alt { background-color: #009688; }
-	button-label { background-color: #CFD8DC; }
+	button { background-color: #CFD8DC; }
 )Css");
 
 static constexpr StringView s_darkCss(
@@ -59,7 +59,7 @@ static constexpr StringView s_darkCss(
 	label.accent { color: #FFC107; }
 	.stripe { background-color: #7986CB; }
 	.alt { background-color: #4DB6AC; }
-	button-label { background-color: #455A64; }
+	button { background-color: #455A64; }
 )Css");
 
 bool PugLayout::init() {
@@ -74,12 +74,12 @@ bool PugLayout::init() {
 	_darkSheet->addStyle(s_darkCss);
 
 	// the stylesheet is attached to THIS node; every descendant resolves against it
-	_styles = addSystem(Rc<StyleSheetSystem>::create(Rc<StyleSheet>(_lightSheet)));
+	_styles = addSystem(Rc<StyleSystem>::create(Rc<StyleSheet>(_lightSheet)));
 
 	// the pug template is rendered by a TemplateSystem attached to this node; it holds its
 	// Context (variables/functions) persistently and rebuilds the subtree on demand
 	BuilderConfig config;
-	config.enableStyles = true; // attach StyleApplier to every produced node
+	config.enableStyles = true; // attach a recursive StyleResolver to the produced tree
 	config.resolveHandler = [this](StringView name) -> Function<void()> {
 		if (name == "tap") {
 			return [this] { rebuildTemplate(); };

@@ -30,7 +30,7 @@
 #include "XLAppWindow.h"
 #include "XLAppThread.h"
 #include "XLDirector.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLUiSubWindow.h"
 #include "XLAction.h"
 #include "XLInputListener.h"
@@ -43,7 +43,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-using simpleui::ButtonWithLabel;
+using ui::Button;
 using ui::SubWindow;
 
 static constexpr float kMenuWidth = 220.0f;
@@ -173,7 +173,7 @@ Rc<basic2d::SceneLayout2d> AuxPopupScene::buildMenuPanel(uint32_t level) {
 	const float itemWidth = size.width - kSidePadding * 2.0f;
 	float y = size.height - kHeaderHeight;
 	for (auto &it : items) {
-		auto item = layout->addChild(Rc<ButtonWithLabel>::create(it.text));
+		auto item = layout->addChild(Rc<Button>::create(it.text));
 		item->setAnchorPoint(Anchor::TopLeft);
 		item->setPosition(Vec2(kSidePadding, y));
 		item->setContentSize(Size2(itemWidth, kItemHeight));

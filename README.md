@@ -111,8 +111,8 @@ Main modules:
 * `xenolith_backend_vk` — the Vulkan backend.
 * `xenolith_application` — the application framework: threading model, context, windows, scene
   director.
-* `xenolith_renderer_basic2d` / `material2d` / `richtext` / `simpleui` — 2D rendering, Material
-  Design, Rich Text, a simple UI toolkit (flexbox).
+* `xenolith_renderer_basic2d` / `ui` / `pug` / `richtext` — 2D rendering, the UI toolkit
+  (flexbox/grid layout, CSS styling, widgets), pug templates, Rich Text.
 * `xenolith_font` — typography.
 * `xenolith_resources_assets` / `storage` / `network` — resources, local storage, networking.
 
@@ -314,7 +314,7 @@ LOCAL_MODULES_PATHS = \
 LOCAL_MODULES := \
 	xenolith_application \
 	xenolith_application_main \
-	xenolith_renderer_simpleui \
+	xenolith_renderer_ui \
 	xenolith_backend_vk \
 	xenolith_resources_assets
 

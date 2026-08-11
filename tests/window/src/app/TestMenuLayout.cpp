@@ -25,7 +25,7 @@
 #include "app/TestMenuLayout.h"
 #include "XL2dScrollController.h"
 #include "XL2dSceneContent.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -35,14 +35,14 @@ static constexpr float MenuTestHeight = 32.0f;
 
 void TestMenuLayout::buildGroupItems(basic2d::ScrollController *controller,
 		NotNull<basic2d::SceneLayout2d> owner, const TestGroup &group) {
-	using namespace simpleui;
+	using namespace ui;
 
 	// Сначала вложенные группы: они открывают следующий уровень того же меню. Ссылки на записи
 	// реестра безопасны — таблица статическая.
 	for (auto &it : group.groups) {
 		auto name = toString(it.title, "  (", getTestCount(it), ") >");
 		controller->addItem([owner, name, sub = &it](const ScrollController::Item &) -> Rc<Node> {
-			return Rc<ButtonWithLabel>::create(name, [owner, sub] {
+			return makeButton(name, [owner, sub] {
 				owner->getSceneContent()->pushLayout(Rc<TestMenuLayout>::create(*sub));
 			});
 		}, MenuGroupHeight);
@@ -55,14 +55,14 @@ void TestMenuLayout::buildGroupItems(basic2d::ScrollController *controller,
 			continue;
 		}
 		controller->addItem([owner, test = &it](const ScrollController::Item &) -> Rc<Node> {
-			return Rc<ButtonWithLabel>::create(test->title,
+			return makeButton(test->title,
 					[owner, test] { owner->getSceneContent()->pushLayout(makeTestLayout(*test)); });
 		}, MenuTestHeight);
 	}
 }
 
 bool TestMenuLayout::init(const TestGroup &group) {
-	using namespace simpleui;
+	using namespace ui;
 
 	if (!TestLayout::init()) {
 		return false;
@@ -86,7 +86,7 @@ bool TestMenuLayout::init(const TestGroup &group) {
 	controller->addPlaceholder(32.0f);
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Go back", [this] { this->pop(); });
+		return makeButton("Go back", [this] { this->pop(); });
 	}, MenuTestHeight);
 
 	buildGroupItems(controller, this, group);

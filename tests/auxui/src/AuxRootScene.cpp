@@ -33,7 +33,7 @@
 #include "XLContext.h"
 #include "XLDirector.h"
 #include "XLEntryPoint.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLUiSubWindow.h"
 #include "XLUiSubWindowSession.h"
 #include "AuxPopupScene.h"
@@ -47,7 +47,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-using simpleui::ButtonWithLabel;
+using ui::Button;
 using ui::SubWindow;
 
 static sprt::window::WindowPlacement placementAt(Vec2 anchorSceneYUp, float parentHeight,
@@ -91,7 +91,7 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	_heading->setColor(Color::White);
 	_heading->setAnchorPoint(Anchor::TopLeft);
 
-	_btnPopup = layout->addChild(Rc<ButtonWithLabel>::create("Open Popup"));
+	_btnPopup = layout->addChild(Rc<Button>::create("Open Popup"));
 	_btnPopup->setAnchorPoint(Anchor::TopLeft);
 	_btnPopup->setContentSize(Size2(240.0f, 40.0f));
 	_btnPopup->setColor(Color::Indigo_500);
@@ -101,7 +101,7 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 		openMenuAt(Vec2(p.x + sz.width, p.y - sz.height));
 	});
 
-	_btnTooltip = layout->addChild(Rc<ButtonWithLabel>::create("Show Tooltip"));
+	_btnTooltip = layout->addChild(Rc<Button>::create("Show Tooltip"));
 	_btnTooltip->setAnchorPoint(Anchor::TopLeft);
 	_btnTooltip->setContentSize(Size2(240.0f, 40.0f));
 	_btnTooltip->setColor(Color::Indigo_500);
@@ -289,7 +289,7 @@ void AuxRootScene::registerCommands() {
 			title->setAnchorPoint(Anchor::Middle);
 			title->setPosition(Vec2(180.0f, 140.0f));
 
-			auto close = layout->addChild(Rc<simpleui::ButtonWithLabel>::create("Close"));
+			auto close = layout->addChild(Rc<ui::Button>::create("Close"));
 			close->setAnchorPoint(Anchor::Middle);
 			close->setPosition(Vec2(180.0f, 60.0f));
 			close->setContentSize(Size2(120.0f, 32.0f));

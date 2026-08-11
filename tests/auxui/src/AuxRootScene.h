@@ -26,7 +26,7 @@
 #include "XL2dScene.h"
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLUiSubWindow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -58,8 +58,8 @@ protected:
 
 	basic2d::Label *_heading = nullptr;
 	basic2d::Layer *_bg = nullptr;
-	simpleui::ButtonWithLabel *_btnPopup = nullptr;
-	simpleui::ButtonWithLabel *_btnTooltip = nullptr;
+	ui::Button *_btnPopup = nullptr;
+	ui::Button *_btnTooltip = nullptr;
 
 	AppWindow *_appWindow = nullptr;
 

@@ -25,12 +25,12 @@
 
 #include "app/TestLayout.h"
 #include "XL2dLayer.h"
-#include "XLSimpleLayoutSystem.h"
-#include "XLSimpleButton.h"
+#include "XLUiLayoutSystem.h"
+#include "XLUiButton.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-// Demonstration layout for the simpleui LayoutSystem placement engine.
+// Demonstration layout for the ui LayoutSystem placement engine.
 //
 // A control bar (itself a flex container) lets the user cycle the demo
 // container's parameters at runtime. The demo container below holds a handful of
@@ -47,7 +47,7 @@ public:
 protected:
 	virtual void registerCommands() override;
 
-	basic2d::Layer *addControlButton(StringView, Function<void()> &&);
+	ui::Button *addControlButton(StringView, Function<void()> &&);
 	void updateControlLabels();
 
 	// What the control bar currently shows, as data: the answer of every cycle command, so a
@@ -61,21 +61,21 @@ protected:
 	void cycleAlign();
 
 	// grid parameters used when the demo container is in grid mode
-	simpleui::GridLayoutInfo makeDemoGridInfo() const;
+	ui::GridLayoutInfo makeDemoGridInfo() const;
 
 	// control bar: a horizontal flex container holding the buttons
 	basic2d::Layer *_controls = nullptr;
-	simpleui::LayoutSystem *_controlsFlex = nullptr;
+	ui::LayoutSystem *_controlsFlex = nullptr;
 
 	// demonstration container, reconfigured by the control buttons
 	basic2d::Layer *_demo = nullptr;
-	simpleui::LayoutSystem *_demoFlex = nullptr;
+	ui::LayoutSystem *_demoFlex = nullptr;
 
-	simpleui::ButtonWithLabel *_btnMode = nullptr;
-	simpleui::ButtonWithLabel *_btnDirection = nullptr;
-	simpleui::ButtonWithLabel *_btnWrap = nullptr;
-	simpleui::ButtonWithLabel *_btnJustify = nullptr;
-	simpleui::ButtonWithLabel *_btnAlign = nullptr;
+	ui::Button *_btnMode = nullptr;
+	ui::Button *_btnDirection = nullptr;
+	ui::Button *_btnWrap = nullptr;
+	ui::Button *_btnJustify = nullptr;
+	ui::Button *_btnAlign = nullptr;
 
 	float _controlsHeight = 44.0f;
 };

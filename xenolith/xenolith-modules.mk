@@ -38,9 +38,7 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/webgpu/basic2d-webgpu.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/mtl/basic2d-mtl.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/soft/basic2d-soft.mk \
-	$(XENOLITH_MODULE_DIR)/renderer/material2d/material2d.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/richtext/richtext.mk \
-	$(XENOLITH_MODULE_DIR)/renderer/simpleui/simpleui.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/pug/pug.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/ui/ui.mk \
 	$(XENOLITH_MODULE_DIR)/resources/storage/storage.mk \

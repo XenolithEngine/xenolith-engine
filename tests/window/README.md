@@ -97,7 +97,7 @@ A successful build looks like this:
 ```
 Build for x86_64
 Build executable: stappler-build/host/debug/gcc/testapp
-Enabled modules: xenolith_backend_vkgui xenolith_renderer_material2d stappler_build_debug_module xenolith_backend_vk xenolith_renderer_basic2d xenolith_renderer_basic2d_shaders xenolith_scene xenolith_font xenolith_application xenolith_platform xenolith_resources_icons xenolith_core  stappler_font stappler_bitmap stappler_brotli_lib stappler_vg stappler_tess stappler_geom stappler_data stappler_filesystem stappler_core
+Enabled modules: xenolith_backend_vkgui xenolith_renderer_ui stappler_build_debug_module xenolith_backend_vk xenolith_renderer_basic2d xenolith_renderer_basic2d_shaders xenolith_scene xenolith_font xenolith_application xenolith_platform xenolith_resources_icons xenolith_core  stappler_font stappler_bitmap stappler_brotli_lib stappler_vg stappler_tess stappler_geom stappler_data stappler_filesystem stappler_core
 Modules was updated
 [glslangValidator] xl_2d_material.frag/main.frag
 ...

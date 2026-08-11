@@ -47,8 +47,8 @@
 #include "XL2dScrollView.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
-#include "XLSimpleButton.h"
-#include "XLSimpleCloseGuardWidget.h"
+#include "XLUiButton.h"
+#include "XLUiCloseGuardWidget.h"
 
 // окружение приложения
 #include "XLDirector.h"

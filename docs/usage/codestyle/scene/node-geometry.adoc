@@ -184,11 +184,10 @@ owned by the `ActionManager`, not by you.
 | `SceneContent` | `Node` | content layer inside a scene |
 | `ui::Button`, `ui::Panel`, … | `VectorSprite` etc. | ui atoms |
 
-Note there are two `Button`s: `ui::Button`
-([XLUiButton.h](../../../../xenolith/renderer/ui/atoms/XLUiButton.h), a
-`basic2d::VectorSprite`) and `simpleui::Button`
-([XLSimpleButton.h](../../../../xenolith/renderer/simpleui/XLSimpleButton.h), a
-`Layer`). Check which renderer module you are in before deriving.
+`ui::Button`
+([XLUiButton.h](../../../../xenolith/renderer/ui/input/XLUiButton.h)) is a
+`basic2d::VectorSprite` through `ui::Panel`: its whole chrome is a vector image
+driven by CSS, so derive from it rather than from a `Layer`.
 
 **Before adding another class to this table, read
 [scene/node-system-component.adoc](../scene/node-system-component.adoc).** A new `Node`

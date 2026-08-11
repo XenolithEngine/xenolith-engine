@@ -29,8 +29,15 @@ NodeBuilder::NodeBuilder(NotNull<Node> root, BuilderConfig &&config)
 	if (!_config.registry) {
 		_config.registry = Registry::createDefault();
 	}
-	if (_config.styleSheet) {
-		_root->addSystem(Rc<StyleSheetSystem>::create(Rc<StyleSheet>(_config.styleSheet)));
+	if (_config.styleSheet && !_root->getSystemByType<StyleSystem>()) {
+		_root->addSystem(Rc<StyleSystem>::create(Rc<StyleSheet>(_config.styleSheet)));
+	}
+	if (_config.styleSheet || _config.enableStyles) {
+		// ONE recursive resolver covers the whole produced subtree; a rebuild reuses the
+		// resolver already on the root instead of stacking a second writer of the same styles
+		if (!_root->getSystemByType<StyleResolver>()) {
+			_root->addSystem(Rc<StyleResolver>::create(true));
+		}
 	}
 }
 
@@ -155,9 +162,9 @@ Node *NodeBuilder::materialize(Pending &pending, Node *parent) {
 	}
 
 	if (_config.styleSheet || _config.enableStyles) {
-		// css element type; #id/classes were filled by the attribute pass above
+		// css element type; #id/classes were filled by the attribute pass above. The recursive
+		// resolver on the root styles the node itself - nothing per-node is attached here
 		node->setType(pending.tag);
-		node->addSystem(Rc<StyleApplier>::create());
 	}
 
 	pending.node = parent->addChild(node);

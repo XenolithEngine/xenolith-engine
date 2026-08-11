@@ -27,7 +27,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-using namespace simpleui;
+using namespace ui;
 
 namespace {
 
@@ -118,13 +118,11 @@ bool FlexboxLayout::init() {
 	_controlsFlex = _controls->addSystem(Rc<LayoutSystem>::create(controlsInfo));
 
 	addControlButton("Back", [this] { pop(); });
-	_btnMode = static_cast<ButtonWithLabel *>(addControlButton("Mode", [this] { cycleMode(); }));
-	_btnDirection = static_cast<ButtonWithLabel *>(
-			addControlButton("Dir", [this] { cycleDirection(); }));
-	_btnWrap = static_cast<ButtonWithLabel *>(addControlButton("Wrap", [this] { cycleWrap(); }));
-	_btnJustify = static_cast<ButtonWithLabel *>(
-			addControlButton("Justify", [this] { cycleJustify(); }));
-	_btnAlign = static_cast<ButtonWithLabel *>(addControlButton("Align", [this] { cycleAlign(); }));
+	_btnMode = addControlButton("Mode", [this] { cycleMode(); });
+	_btnDirection = addControlButton("Dir", [this] { cycleDirection(); });
+	_btnWrap = addControlButton("Wrap", [this] { cycleWrap(); });
+	_btnJustify = addControlButton("Justify", [this] { cycleJustify(); });
+	_btnAlign = addControlButton("Align", [this] { cycleAlign(); });
 
 	// --- demonstration container ------------------------------------------
 	// The container node carries the FlexLayoutInfo component (shared params),
@@ -263,8 +261,8 @@ Value FlexboxLayout::getLayoutState() const {
 	return result;
 }
 
-basic2d::Layer *FlexboxLayout::addControlButton(StringView title, Function<void()> &&cb) {
-	auto btn = _controls->addChild(Rc<ButtonWithLabel>::create(title, sp::move(cb)), ZOrder(1));
+ui::Button *FlexboxLayout::addControlButton(StringView title, Function<void()> &&cb) {
+	auto btn = _controls->addChild(makeButton(title, sp::move(cb)), ZOrder(1));
 
 	// every control button shares the width evenly and may shrink when narrow
 	FlexItemInfo item;

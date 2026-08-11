@@ -41,7 +41,6 @@ LOCAL_MODULES_PATHS = \
 LOCAL_MODULES := \
 	xenolith_application \
 	xenolith_application_main \
-	xenolith_renderer_simpleui \
 	xenolith_renderer_ui \
 	xenolith_renderer_pug \
 	xenolith_backend_vk \
