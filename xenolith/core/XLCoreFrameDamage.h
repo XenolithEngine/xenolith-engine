@@ -27,18 +27,23 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-// What a render queue opts into at build time. Only PresentHint is implemented; the other two are
-// the switches for the follow-up stages and are accepted but inert for now.
+// What a render queue opts into at build time. All three are implemented, on both the Vulkan and
+// the software backend; Scene2d turns the whole set on for the flat queue and leaves it off for the
+// full one, because preserving an image between frames is what the last two rest on.
 enum class QueueDamageFlags : uint32_t {
 	None = 0,
 
 	// track damage and pass it to the platform present call as a compositor hint
 	PresentHint = 1 << 0,
 
-	// restrict rendering to the damaged area (requires a queue whose attachments can be preserved)
+	// restrict rendering to the damaged area (requires a queue whose attachments can be preserved).
+	// The render area is what bounds the load/store ops, and the load is most of the saving - see
+	// QueuePassHandle::preparePartialRedraw.
 	PartialRedraw = 1 << 1,
 
-	// drop a frame entirely when nothing changed
+	// drop a frame entirely when nothing changed: with the image already holding what the frame
+	// would draw, nothing is recorded. On Vulkan the frame still submits and presents, so the
+	// semaphore chain and the presentation pacing are unchanged.
 	SkipEmptyFrames = 1 << 2,
 };
 
