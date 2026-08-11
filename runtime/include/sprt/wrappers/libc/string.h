@@ -214,13 +214,18 @@ char *strchr(const char *str, int c) SPRT_UMBRELLA_END
 #endif
 #endif
 
-SPRT_UMBRELLA_FUNC
-const void *memchr(const void *str, int c, size_t size) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_memchr(str, c, size);
-}
-#endif
+// memchr is a PROTOTYPE, not an umbrella inline, and must stay one.
+//
+// LLVM synthesises memchr calls on its own - folding `strchr(<constant string>, c)`
+// into `memchr(<constant string>, c, len + 1)` is the common case - and resolves
+// them BY NAME against whatever the module already contains. A forced-inline
+// internal-linkage function named `memchr` is therefore not merely an inline:
+// interprocedural constant propagation may specialise it on the arguments of the
+// one call the source actually wrote, and the call LLVM synthesises afterwards
+// inherits those constants, silently searching for the wrong byte. Any -O2 or
+// higher translation unit that called memchr AND did strchr() over a string
+// literal was miscompiled that way.
+__SPRT_C_FUNC void *memchr(const void *str, int c, size_t size) __SPRT_NOEXCEPT;
 
 SPRT_UMBRELLA_FUNC
 char *strcat(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src) SPRT_UMBRELLA_END

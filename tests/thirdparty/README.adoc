@@ -1,0 +1,220 @@
+= tests/thirdparty - functional tests for the shipped third-party libraries
+:toc: macro
+:toclevels: 2
+
+Tests the libraries that the toolchain sysroot ships, *directly*: through their
+own public headers and ABI, with no stappler/xenolith module in the link. Only
+`runtime` is linked, because that is what the libraries themselves were built
+against (glibc on Linux, the freestanding libc on Windows).
+
+That isolation is the point. When `stappler_network` or `stappler_crypto`
+misbehaves on a target, this suite answers the first question -- *is the shipped
+library itself healthy on this target?* -- without engine code in the way.
+
+toc::[]
+
+== Running
+
+[source,sh]
+----
+tests/thirdparty/run.sh                 # build + run host and Windows (wine)
+tests/thirdparty/run.sh --host-only
+tests/thirdparty/run.sh --win-only
+tests/thirdparty/run.sh --network       # also hit the public internet
+tests/thirdparty/run.sh -v openssl_ec   # one test, full output
+----
+
+Or drive the binary directly:
+
+[source,sh]
+----
+make -C tests/thirdparty STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8
+tests/thirdparty/stappler-build/x86_64-unknown-linux-gnu/debug/cc/thirdpartytest --list
+tests/thirdparty/stappler-build/x86_64-unknown-linux-gnu/debug/cc/thirdpartytest openssl_digest
+----
+
+Every check prints one `[ OK ]` / `[FAIL]` line; the exit status is the number of
+failed checks. A test named on the command line always runs, whatever its flags
+say -- naming it *is* the opt-in.
+
+[cols="1,4"]
+|===
+| `--network` | run the tests that need a route to the public internet (`curl_https`)
+| `--no-sockets` | skip the tests that need loopback TCP (`curl_tls_loopback`)
+| `--list` | print the test names, one per line
+|===
+
+== What is covered
+
+=== OpenSSL (`lib/openssl.cpp`)
+
+Where a published test vector exists it is checked byte for byte, so a
+miscompiled or misconfigured build shows up as a *wrong value*, not as a missing
+symbol.
+
+[cols="1,3"]
+|===
+| `openssl_version` | linked libcrypto matches the headers; the default provider is available
+| `openssl_digest` | MD5 / SHA-1 / SHA-2 / SHA-3 over `"abc"`; empty input; chunked == one-shot; `EVP_MD_fetch`
+| `openssl_hmac` | RFC 4231 cases 1-2 (SHA-256/512), RFC 2202 case 2 (SHA-1), the same via `EVP_MAC`
+| `openssl_cipher` | AES-128-ECB (FIPS-197 C.1), AES-128-GCM (spec case 3, ciphertext *and* tag, plus tag rejection), AES-256-CBC round trip, ChaCha20-Poly1305 with AAD
+| `openssl_kdf` | PBKDF2-HMAC-SHA1 (RFC 6070 case 3), HKDF-SHA256 (RFC 5869 case 1)
+| `openssl_bignum` | `BN_mod_exp`, hex round trip, modular inverse, primality
+| `openssl_random` | `RAND_status` / `RAND_bytes` / `RAND_priv_bytes`
+| `openssl_encoding` | RFC 4648 base64 vectors, `OPENSSL_buf2hexstr` / `hexstr2buf`
+| `openssl_rsa` | 2048-bit keygen, PKCS#1 v1.5 + PSS sign/verify (incl. tamper rejection), OAEP round trip, PEM round trip
+| `openssl_ec` | P-256 keygen, ECDSA sign/verify + tamper rejection, ECDH agreement, X25519 derive, Ed25519 sign/verify
+| `openssl_x509` | self-signed certificate: build, self-verify, name/SAN checks, DER + PEM round trips, `X509_STORE` verification
+| `openssl_error` | the error stack: raise, format, clear
+| `openssl_tls_memory` | *a full TLS 1.3 handshake* between a client and a server `SSL` over a `BIO` pair -- no sockets, no threads -- then application data both ways
+|===
+
+=== cURL (`lib/curl.cpp`)
+
+[cols="1,3"]
+|===
+| `curl_version` | version matches the headers; TLS backend is OpenSSL; SSL/libz/brotli/zstd/HTTP3/IPv6/AsynchDNS features; protocol table
+| `curl_easy_options` | `setopt`/`getinfo` round trips, unknown-option rejection, the option metadata table, `duphandle`, `reset`, `strerror`
+| `curl_url_api` | full URL split into parts, relative-reference resolution, scheme requirement, `CURLU_DEFAULT_SCHEME`
+| `curl_escape` | percent-encoding incl. binary input with an embedded NUL, RFC 3986 unreserved set
+| `curl_slist` | insertion order, use as `CURLOPT_HTTPHEADER`
+| `curl_date` | the three date formats RFC 9110 requires, plus garbage rejection
+| `curl_mime` | multipart body construction and `CURLOPT_MIMEPOST`
+| `curl_file_transfer` | *a real transfer* over `file://`: body, `SIZE_DOWNLOAD`, effective URL, missing-file failure, protocol-allowlist rejection
+| `curl_multi` | three concurrent transfers through `curl_multi_perform` / `curl_multi_poll` / `curl_multi_info_read`
+| `curl_tls_loopback` | *curl over real TLS*: an in-process OpenSSL server on an ephemeral 127.0.0.1 port, a generated certificate as the only trust anchor (`CURLOPT_CAINFO_BLOB`), peer + host verification on. This is what proves the curl <-> OpenSSL pairing in the toolchain actually works end to end.
+| `curl_https` | `https://example.com/` (opt-in, `--network`)
+|===
+
+== Results
+
+.Linux, `x86_64-unknown-linux-gnu`
+[source]
+----
+257 checks, 0 failures     (with --network; 251 without)
+----
+
+.Windows, `x86_64-pc-windows-msvc` (under wine)
+[source]
+----
+251 checks, 5 failures
+----
+
+All of libcrypto, all of libssl (including a full TLS 1.3 handshake), and every
+part of curl except the loopback TLS transfer pass identically on both targets.
+The five remaining failures are all in `curl_tls_loopback` and all follow from
+one cause: curl cannot open a TCP connection on the Windows target (see below).
+
+== Fixed: the miscompiled strchr that killed TLS on Windows
+
+The suite's first run found `SSL_CTX_new()` returning `NULL` for *every* method
+on `x86_64-pc-windows-msvc` -- no TLS at all, neither libssl directly nor curl
+over `https` -- with only an unhelpful
+`error:0A080014:SSL routines:SSL_CTX_new_ex:reason(20)` on the stack.
+
+=== Root cause
+
+Not OpenSSL, and not OpenSSL's build configuration: a *runtime header* made
+clang miscompile `strchr()` in any translation unit that also called `memchr()`.
+
+`runtime/include/sprt/wrappers/libc/string.h` defined `memchr` as a forced-inline,
+internal-linkage umbrella wrapper -- a module-local function literally named
+`memchr`. But LLVM *synthesises* memchr calls on its own: at `-O2` and above it
+folds `strchr(<string literal>, c)` into `memchr(<string literal>, c, len + 1)`,
+and it resolves that call **by name** against whatever the module already
+contains. Interprocedural constant propagation, meanwhile, is free to specialise
+an internal function on the arguments of its only call site. The synthesised call
+then inherits those constants and searches for the wrong byte.
+
+Reduced to two functions -- any TU that does both is affected:
+
+[source,c]
+----
+static const char prefixes[] = {'/', ':', '?', '*', '-', '\0'};
+int hasZero(const void *p, size_t n) { return memchr(p, 0, n) != NULL; }
+const char *findPrefix(const char *e) { return strchr(prefixes, e[0]); }
+----
+
+`findPrefix` compiled to `__sprt_memchr_impl(prefixes, 0, 6)` -- the search
+character taken from the *other* function's call.
+
+In OpenSSL this hit `gid_cb()` (`ssl/t1_lib.c`), which classifies group-list
+prefix characters with `strchr(prefixes, elem[0])`:
+
+[source]
+----
+Linux    movsbl (%r15),%esi     ; c = elem[0]      correct
+Windows  movl   $0x2,%edx       ; c = 2            the load is gone
+----
+
+`prefixes` holds no `0x02`, so `strchr` always returned `NULL`, the `?`
+(ignore-unknown) and `*` (key-share) prefixes were never consumed, and the first
+entry of OpenSSL's built-in default group list -- `?*X25519MLKEM768` -- became an
+unknown group that must not be ignored. `gid_cb` returned 0, so
+`SSL_CTX_set1_groups_list()` failed, so `ssl_load_groups()` failed, so
+`SSL_CTX_new()` aborted.
+
+=== The fix
+
+`memchr` is now a plain prototype instead of an umbrella inline
+(`runtime/include/sprt/wrappers/libc/string.h`). It is the only umbrella wrapper
+whose name LLVM emits -- its neighbours (`memcpy`, `memset`, `strchr`, ...) are
+already plain declarations on the targets that route them through an import
+library -- and the runtime defines the symbol itself from musl-libc, so a
+prototype links exactly like any other libc call.
+
+Verified after the change:
+
+* the two-function reduction and the real `ssl/t1_lib.c` both emit
+  `movsbl (%rbx),%edx` again;
+* OpenSSL rebuilt for `x86_64-pc-windows-msvc` -- `openssl_tls_memory` completes a
+  TLS 1.3 handshake (`TLS_AES_256_GCM_SHA384`) with peer verification and
+  application data in both directions;
+* `tests/libc` compare.sh: 78/78 identical, no regression.
+
+=== Still to do
+
+Every third-party library in `toolchains/targets/x86_64-pc-windows-msvc` other
+than OpenSSL was built before this fix and is built at `-O3`, so any of them may
+carry the same miscompile. They should be rebuilt.
+
+== Open: curl cannot connect on x86_64-pc-windows-msvc
+
+`curl_tls_loopback` fails with `CURLE_COULDNT_CONNECT` (7) against an in-process
+OpenSSL server on an ephemeral 127.0.0.1 port; the server side times out waiting
+for a connection that never arrives. This is *not* the strchr defect and not a
+runtime socket problem:
+
+* `tests/libc socket_stream` -- bind / listen / connect / accept and stream I/O
+  over loopback TCP with the same runtime sockets -- passes on the same target;
+* the port is assigned and read back correctly (no byte-order fault);
+* every non-transport curl test passes.
+
+So the fault is in curl's own connect path on this target (it uses a
+non-blocking connect driven by poll/select through the winsock forwarders).
+Since `curl-openssl.lib` predates the strchr fix, rebuilding curl is the first
+thing to try. Note the practical consequence: `stappler_network` cannot open a
+connection on Windows either until this is resolved.
+
+== Platform notes
+
+`file://` URLs are built differently per target (`writeTempFile` in
+`lib/curl.cpp`). libcurl is a Windows build there and applies DOS path rules to
+a `file:` path -- it drops the leading slash when the path starts with a drive
+spec and rewrites `/` as `\` -- while the runtime spells paths POSIX-style
+(`/c/dir`). The URL therefore has to name the drive the way curl expects
+(`file:///c:/dir/...`) for the two conventions to meet in `open()`. A Windows
+libcurl also normalises that back to `file://c:/dir/...` in
+`CURLINFO_EFFECTIVE_URL`.
+
+== Adding a library
+
+. Add a module to `thirdparty-modules.mk` with just the link line
+  (`-l:libfoo.a`); headers need no `-I`, the sysroot's `usr/include` is already
+  on the global include path.
+. List the module in `LOCAL_MODULES` in the `Makefile`.
+. Add `lib/foo.cpp` with the test functions, declare them in `tests.h`, and
+  register them in the `s_tests` table in `main.cpp`.
+
+Prefer published test vectors over round trips: a round trip still passes when
+the library is consistently wrong.
