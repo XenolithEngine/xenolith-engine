@@ -69,11 +69,10 @@ struct SP_PUBLIC TagFactory {
  - `layer`        basic2d::Layer (`color` attribute)
  - `label`        basic2d::Label (`font-size`, `align`, `width`; text content)
  - `sprite`/`image` basic2d::VectorSprite (`src` attribute)
- - `flex`         Node + simpleui::LayoutSystem in flex mode (container attributes: `direction`,
+ - `flex`         Node + ui::LayoutSystem in flex mode (container attributes: `direction`,
                   `wrap`, `justify-content`, `align-items`, `align-content`,
                   `gap`, `row-gap`, `column-gap`, `padding`)
- - `button`       simpleui::Button (`on-tap` handler name, `enabled`)
- - `button-label` simpleui::ButtonWithLabel (`on-tap`; text content)
+ - `button`       ui::Button (`on-tap` handler name, `enabled`; text content -> its label)
 
 Generic Node attributes handled for every tag: `position` ([x,y]), `x`, `y`,
 `size`/`content-size` ([w,h]), `anchor`/`anchor-point` ([x,y] or a keyword like

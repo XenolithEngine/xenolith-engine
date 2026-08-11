@@ -28,6 +28,3 @@
 #include "XLRTCommonView.cc"
 #include "XLRTListenerView.cc"
 #include "XLRTView.cc"
-
-#include "XLRTImageLayout.cc"
-#include "XLRTTooltip.cc"

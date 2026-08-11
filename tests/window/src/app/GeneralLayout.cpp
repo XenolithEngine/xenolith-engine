@@ -26,7 +26,7 @@
 #include "SPLog.h"
 #include "XL2dSceneLayout.h"
 #include "XLContextInfo.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
 #include "XL2dSceneContent.h"
@@ -39,7 +39,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool GeneralLayout::init() {
-	using namespace simpleui;
+	using namespace ui;
 
 	if (!TestLayout::init()) {
 		return false;
@@ -104,7 +104,7 @@ void GeneralLayout::handleForeground(basic2d::SceneContent2d *l, basic2d::SceneL
 }
 
 void GeneralLayout::rebuildMenu() {
-	using namespace simpleui;
+	using namespace ui;
 
 	auto controller = _menu->getController();
 
@@ -124,7 +124,7 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		// Cоздаём простую конпку
 		// Её позиционирование и размер контроллер прокрутки настроит сам
-		return Rc<ButtonWithLabel>::create("Hello world", [this] {
+		return makeButton("Hello world", [this] {
 			log::debug("ExampleScene", "Hello world");
 			++_helloWorldCounter;
 			rebuildMenu();
@@ -138,7 +138,7 @@ void GeneralLayout::rebuildMenu() {
 	TestMenuLayout::buildGroupItems(controller, this, getTestRegistry());
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Probe clibboard", [this] {
+		return makeButton("Probe clibboard", [this] {
 			_director->getApplication()->probeClipboard([](Status st, SpanView<StringView> types) {
 				slog().debug("GeneralLayout", "Clipboard status: ", st);
 				for (auto &it : types) { slog().debug("GeneralLayout", "Clipboard type: ", it); }
@@ -147,7 +147,7 @@ void GeneralLayout::rebuildMenu() {
 	}, 32.0f, ZOrder(0), "ClipboardButton");
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Read from clibboard", [this] {
+		return makeButton("Read from clibboard", [this] {
 			_director->getApplication()->readFromClipboard(
 					[this](Status, BytesView bytes, StringView type) {
 				if ((type == "image/png" || type == "image/jpeg") && !bytes.empty()) {
@@ -201,13 +201,13 @@ void GeneralLayout::rebuildMenu() {
 	}, 32.0f, ZOrder(0), "ClipboardButton");
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Write to clipboard", [this] {
+		return makeButton("Write to clipboard", [this] {
 			_director->getApplication()->writeToClipboard(BytesView("Xenolith clipboard text"));
 		});
 	}, 32.0f);
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Capture screenshot", [this] {
+		return makeButton("Capture screenshot", [this] {
 			_director->getRenderServer()->captureScreenshot(
 					[this](const core::ImageInfoData &image, BytesView data) {
 				struct BitmapContainer : public Ref {
@@ -238,7 +238,7 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		// Cоздаём простую конпку
 		// Её позиционирование и размер контроллер прокрутки настроит сам
-		return Rc<ButtonWithLabel>::create(_exitGuardRetained ? "Disable Exit Guard"
+		return makeButton(_exitGuardRetained ? "Disable Exit Guard"
 															  : "Enable Exit Guard",
 				[this] { toggleExitGuard(); });
 	}, 32.0f, ZOrder(0), "ExitGuardButton");
@@ -248,14 +248,14 @@ void GeneralLayout::rebuildMenu() {
 		if (hasFlag(w->getCapabilities(), WindowCapabilities::Fullscreen)) {
 			if (hasFlag(w->getWindowState(), WindowState::Fullscreen)) {
 				_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-					return Rc<ButtonWithLabel>::create("Exit fullscreen", [this] {
+					return makeButton("Exit fullscreen", [this] {
 						_director->getRenderServer()->setFullscreen(
 								FullscreenInfo(FullscreenInfo::None), [](Status) { });
 					});
 				}, 64.0f, ZOrder(0));
 			} else {
 				_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-					return Rc<ButtonWithLabel>::create("Fullscreen on current", [this] {
+					return makeButton("Fullscreen on current", [this] {
 						_director->getRenderServer()->setFullscreen(
 								FullscreenInfo(FullscreenInfo::Current), [](Status s) {
 							if (s != Status::Ok) {
@@ -274,7 +274,7 @@ void GeneralLayout::rebuildMenu() {
 					_menu->getController()->addItem(
 							[this, name, mon = it, index](
 									const ScrollController::Item &) -> Rc<Node> {
-						return Rc<ButtonWithLabel>::create(name, [this, mon, index] {
+						return makeButton(name, [this, mon, index] {
 							auto l = Rc<MonitorModeSelectionLayout>::create(_screenInfo, index);
 							getSceneContent()->pushLayout(l);
 						});
@@ -287,7 +287,7 @@ void GeneralLayout::rebuildMenu() {
 
 		if (hasFlag(w->getCapabilities(), WindowCapabilities::DecorationState)) {
 			_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-				return Rc<ButtonWithLabel>::create("Toggle status bar", [this] {
+				return makeButton("Toggle status bar", [this] {
 					if (_director) {
 						auto w = _director->getRenderServer();
 						auto state = w->getWindowState();
@@ -303,7 +303,7 @@ void GeneralLayout::rebuildMenu() {
 
 		if (hasFlag(w->getCapabilities(), WindowCapabilities::DecorationState)) {
 			_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-				return Rc<ButtonWithLabel>::create("Toggle navigation bar", [this] {
+				return makeButton("Toggle navigation bar", [this] {
 					if (_director) {
 						auto w = _director->getRenderServer();
 						auto state = w->getWindowState();
@@ -321,7 +321,7 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		// Cоздаём простую конпку
 		// Её позиционирование и размер контроллер прокрутки настроит сам
-		return Rc<ButtonWithLabel>::create("Close", [this] {
+		return makeButton("Close", [this] {
 			auto w = _director->getRenderServer();
 			w->close(true);
 		});
@@ -339,7 +339,7 @@ void GeneralLayout::toggleExitGuard() {
 
 		auto item = _menu->getController()->getItem("ExitGuardButton");
 		if (item && item->node) {
-			static_cast<simpleui::ButtonWithLabel *>(item->node)->setString("Disable Exit guard");
+			static_cast<ui::Button *>(item->node)->setString("Disable Exit guard");
 		}
 	} else {
 		_sceneContent->setCloseGuardEnabled(false);
@@ -347,14 +347,14 @@ void GeneralLayout::toggleExitGuard() {
 
 		auto item = _menu->getController()->getItem("ExitGuardButton");
 		if (item && item->node) {
-			static_cast<simpleui::ButtonWithLabel *>(item->node)->setString("Enable Exit guard");
+			static_cast<ui::Button *>(item->node)->setString("Enable Exit guard");
 		}
 	}
 }
 
 void GeneralLayout::updateScreenInfo() {
 	log::debug("GeneralLayout", "updateScreenInfo");
-	using namespace simpleui;
+	using namespace ui;
 	if (_director) {
 		_director->getRenderServer()->acquireScreenInfo([this](NotNull<ScreenInfo> screenInfo) {
 			_screenInfo = screenInfo;

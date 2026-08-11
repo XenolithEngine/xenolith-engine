@@ -201,8 +201,8 @@ void FitContentLayout::registerCommands() {
 	});
 }
 
-basic2d::Layer *FitContentLayout::addControlButton(StringView title, Function<void()> &&cb) {
-	auto btn = _controls->addChild(Rc<simpleui::ButtonWithLabel>::create(title, sp::move(cb)),
+ui::Button *FitContentLayout::addControlButton(StringView title, Function<void()> &&cb) {
+	auto btn = _controls->addChild(makeButton(title, sp::move(cb)),
 			ZOrder(1));
 
 	ui::FlexItemInfo item;

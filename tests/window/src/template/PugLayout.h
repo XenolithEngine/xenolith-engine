@@ -25,15 +25,15 @@
 
 #include "app/TestLayout.h"
 #include "XLPugSystem.h"
-#include "XLSimpleStyle.h"
+#include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 // Demonstration layout for the pug -> scene-graph pipeline (xenolith_renderer_pug)
-// and the simpleui CSS styling subsystem:
+// and the ui CSS styling subsystem:
 // - a pug template builds the node tree (flex, labels, buttons);
-// - a CSS stylesheet is attached to this layout node via StyleSheetSystem, styles
-//   resolve by selectors (tag/.class/#id) and auto-apply through StyleApplier;
+// - a CSS stylesheet is attached to this layout node via StyleSystem, styles
+//   resolve by selectors (tag/.class/#id) and auto-apply through StyleResolver;
 // - "Toggle accent" flips a css class on a label (subtree re-resolution);
 // - "Toggle theme" swaps the whole stylesheet (light <-> dark);
 // - "Rebuild" re-runs the template with updated context data.
@@ -54,9 +54,9 @@ protected:
 
 	pugui::TemplateSystem *_template = nullptr;
 	Node *_tree = nullptr;
-	Rc<simpleui::StyleSheet> _lightSheet;
-	Rc<simpleui::StyleSheet> _darkSheet;
-	simpleui::StyleSheetSystem *_styles = nullptr;
+	Rc<ui::StyleSheet> _lightSheet;
+	Rc<ui::StyleSheet> _darkSheet;
+	ui::StyleSystem *_styles = nullptr;
 	bool _dark = false;
 	uint32_t _taps = 0;
 };

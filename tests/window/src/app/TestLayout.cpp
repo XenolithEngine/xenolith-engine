@@ -173,6 +173,13 @@ Size2 TestLayout::getWorkSize() const {
 	return Size2(cs.width, sprt::max(cs.height - getCaptionHeight(), 0.0f));
 }
 
+Rc<ui::Button> TestLayout::makeButton(StringView title, Function<void()> &&cb) {
+	auto btn = Rc<ui::Button>::create(title, sp::move(cb));
+	btn->setPathColor(Color4B(Color::Grey_400), false);
+	btn->setLabelColor(Color::Black);
+	return btn;
+}
+
 void TestLayout::setStyleSheet(StringView css) { addSystem(Rc<ui::StyleSystem>::create(css)); }
 
 void TestLayout::setStyleSheet(const FileInfo &file) {

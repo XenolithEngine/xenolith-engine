@@ -21,8 +21,6 @@
  **/
 
 #include "XLRTView.h"
-#include "XLRTTooltip.h"
-#include "XLRTImageLayout.h"
 #include "XLEventListener.h"
 #include "XLRTRenderer.h"
 #include "XL2dLinearProgress.h"
@@ -470,18 +468,8 @@ void View::onFigure(const document::Node *node) {
 }
 
 void View::onImageFigure(StringView src, StringView alt, const document::Node *node) {
-	/*Rc<ImageLayout> image;
-	if (!node || node->getHtmlId().empty()) {
-		image = Rc<ImageLayout>::create(_renderer->getResult(), StringView(), src, alt);
-	} else {
-		image = Rc<ImageLayout>::create(_renderer->getResult(), node->getHtmlId(), src, alt);
-	}
-	if (image) {
-		auto content = dynamic_cast<material2d::SceneContent2d *>(_scene->getContent());
-		if (content) {
-			content->pushLayout(image);
-		}
-	}*/
+	// A full-screen image viewer used to be pushed here; it lived on the Material Design kit that
+	// is gone. Nothing is opened until it is rebuilt on the ui kit.
 }
 
 void View::onVideoFigure(StringView src) { _director->getApplication()->openUrl(src); }

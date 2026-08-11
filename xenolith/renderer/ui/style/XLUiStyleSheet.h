@@ -32,7 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 The sheet owns a dedicated memory pool with a `document::DocumentData` (string/media-query
 registry) and a `document::StyleContainer` (parsed rules). It is Rc-managed and attached to
-a node via `StyleSheetSystem` (see XLSimpleStyle.h).
+a node via `StyleSystem` (see XLUiStyleSystem.h).
 
 Selector support:
 `*`, `tag`, `.class`, `tag.class`, `#id`, `tag#id`, compound selectors, the four combinators

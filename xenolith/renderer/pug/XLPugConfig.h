@@ -23,10 +23,11 @@
 #ifndef XENOLITH_RENDERER_PUG_XLPUGCONFIG_H_
 #define XENOLITH_RENDERER_PUG_XLPUGCONFIG_H_
 
-#include "XLSimpleUiConfig.h" // IWYU pragma: keep
-#include "XLSimpleLayoutSystem.h" // IWYU pragma: keep
-#include "XLSimpleButton.h" // IWYU pragma: keep
-#include "XLSimpleStyle.h" // IWYU pragma: keep
+#include "XLUiConfig.h" // IWYU pragma: keep
+#include "XLUiLayoutSystem.h" // IWYU pragma: keep
+#include "XLUiButton.h" // IWYU pragma: keep
+#include "XLUiStyleSystem.h" // IWYU pragma: keep
+#include "XLUiStyleResolver.h" // IWYU pragma: keep
 #include "SPPugCache.h" // IWYU pragma: keep
 #include "SPPugContext.h" // IWYU pragma: keep
 
@@ -35,7 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::pugui {
 // stappler::pug works with pool-backed types, the alias keeps them clearly marked
 namespace spug = STAPPLER_VERSIONIZED_NAMESPACE::pug;
 
-using namespace simpleui; // pulls basic2d in as well
+using namespace ui; // pulls basic2d in as well
 
 } // namespace stappler::xenolith::pugui
 

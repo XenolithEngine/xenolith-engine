@@ -119,7 +119,7 @@ String renderMakefile(StringView engineRoot, StringView exe) {
 			"\truntime \\\n"
 			"\txenolith_application \\\n"
 			"\txenolith_application_main \\\n"
-			"\txenolith_renderer_simpleui \\\n"
+			"\txenolith_renderer_ui \\\n"
 			"\txenolith_backend_vk \\\n"
 			"\txenolith_resources_assets\n\n"
 			"LOCAL_SRCS_DIRS := src\n"

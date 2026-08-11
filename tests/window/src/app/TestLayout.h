@@ -26,6 +26,7 @@
 #include "XL2dSceneLayout.h"
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
+#include "XLUiButton.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -76,6 +77,11 @@ public:
 
 	// Content size minus the caption strip
 	Size2 getWorkSize() const;
+
+	// A plain push button for a test UI that has no stylesheet of its own (the menus, the control
+	// bars). ui::Button takes its whole chrome from CSS, and with no rule matching it that chrome
+	// is a white rectangle on a white scene - so the grey fill is painted here directly.
+	static Rc<ui::Button> makeButton(StringView title, Function<void()> && = nullptr);
 
 protected:
 	// Fill the caption strip directly, for a layout that has no registry record of its own - the

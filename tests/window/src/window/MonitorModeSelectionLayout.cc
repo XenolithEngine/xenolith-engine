@@ -21,9 +21,10 @@
  **/
 
 #include "window/MonitorModeSelectionLayout.h"
+#include "app/TestLayout.h"
 #include "SPLog.h"
 #include "XL2dScrollController.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
 #include "XlCoreMonitorInfo.h"
@@ -31,7 +32,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool MonitorModeSelectionLayout::init(NotNull<ScreenInfo> info, uint32_t index) {
-	using namespace simpleui;
+	using namespace ui;
 
 	if (!SceneLayout2d::init()) {
 		return false;
@@ -52,7 +53,7 @@ bool MonitorModeSelectionLayout::init(NotNull<ScreenInfo> info, uint32_t index) 
 	controller->addPlaceholder(32.0f);
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create("Go back", [this] { this->pop(); });
+		return TestLayout::makeButton("Go back", [this] { this->pop(); });
 	}, 32.0f);
 
 	if (_monitorIndex < _screenInfo->monitors.size()) {
@@ -61,7 +62,7 @@ bool MonitorModeSelectionLayout::init(NotNull<ScreenInfo> info, uint32_t index) 
 		auto monName = toString("Fullscreen to: ", mon.name, " (", mon.edid.vendor, " ",
 				mon.edid.model, " ", mon.edid.serial, ")");
 		controller->addItem([monName](const ScrollController::Item &) -> Rc<Node> {
-			return Rc<ButtonWithLabel>::create(monName);
+			return TestLayout::makeButton(monName);
 		}, 48.0f);
 
 		uint32_t modeIndex = 0;
@@ -75,7 +76,7 @@ bool MonitorModeSelectionLayout::init(NotNull<ScreenInfo> info, uint32_t index) 
 				name = toString(name, " (preferred)");
 			}
 			controller->addItem([this, name, mode](const ScrollController::Item &) -> Rc<Node> {
-				return Rc<ButtonWithLabel>::create(name, [this, mode] {
+				return TestLayout::makeButton(name, [this, mode] {
 					_director->getRenderServer()->setFullscreen(
 							FullscreenInfo{_screenInfo->monitors[_monitorIndex], mode,
 								FullscreenFlags::Exclusive},

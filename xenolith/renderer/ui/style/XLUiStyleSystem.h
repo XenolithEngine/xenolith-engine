@@ -75,7 +75,7 @@ SP_PUBLIC bool setStyleVariable(NotNull<Node>, StringView name, StringView value
 // Drop a property declared by setStyleVariable. Returns true when it was there.
 SP_PUBLIC bool removeStyleVariable(NotNull<Node>, StringView name);
 
-// Marker recording that THIS StyleApplier created the node's LayoutSystem. The
+// Marker recording that THIS StyleResolver created the node's LayoutSystem. The
 // applier only removes layouts it added, so pug `flex` tags and programmatic
 // LayoutSystems (which carry no marker) are left untouched.
 struct StyleManagedLayout {

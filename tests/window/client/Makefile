@@ -46,7 +46,7 @@ LOCAL_MODULES_PATHS = \
 # Используемые модули
 LOCAL_MODULES := \
 	xenolith_application \
-	xenolith_renderer_simpleui \
+	xenolith_renderer_ui \
 
 LOCAL_MAIN := main.cpp
 

@@ -177,7 +177,7 @@ void TemplateSystem::build() {
 
 	// a stylesheet is attached to the owner once (NodeBuilder would re-add it every build)
 	if (_config.styleSheet && !_styleSheetAttached) {
-		_owner->addSystem(Rc<StyleSheetSystem>::create(Rc<StyleSheet>(_config.styleSheet)));
+		_owner->addSystem(Rc<StyleSystem>::create(Rc<StyleSheet>(_config.styleSheet)));
 		_styleSheetAttached = true;
 	}
 
@@ -190,7 +190,7 @@ void TemplateSystem::build() {
 	memory::perform([&] {
 		BuilderConfig cfg = _config;
 		if (cfg.styleSheet) {
-			// keep per-node StyleApplier, but do not let NodeBuilder re-attach the sheet system
+			// keep the recursive StyleResolver, but do not let NodeBuilder re-attach the sheet
 			cfg.enableStyles = true;
 			cfg.styleSheet = nullptr;
 		}

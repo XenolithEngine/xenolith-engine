@@ -39,11 +39,11 @@ struct SP_PUBLIC BuilderConfig {
 	// strip leading/trailing whitespace from accumulated node text
 	bool trimText = true;
 
-	// CSS stylesheet: a simpleui::StyleSheetSystem is attached to the tree root
+	// CSS stylesheet: a ui::StyleSystem is attached to the tree root
 	// (or the target parent node) and styles auto-apply to every produced node
-	Rc<simpleui::StyleSheet> styleSheet;
+	Rc<ui::StyleSheet> styleSheet;
 
-	// attach simpleui::StyleApplier to every produced node even without styleSheet
+	// attach a recursive ui::StyleResolver to the tree root even without styleSheet
 	// (styles then resolve against stylesheet scopes above the tree)
 	bool enableStyles = false;
 };

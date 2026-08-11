@@ -27,7 +27,7 @@
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 #include "XLUiLayoutSystem.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -46,7 +46,7 @@ public:
 protected:
 	virtual void registerCommands() override;
 
-	basic2d::Layer *addControlButton(StringView, Function<void()> &&);
+	ui::Button *addControlButton(StringView, Function<void()> &&);
 
 	// extend the nested chip's label: exercises the child -> chip -> demo
 	// container invalidation chain, including the bubbled nested case

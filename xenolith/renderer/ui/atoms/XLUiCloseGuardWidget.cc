@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "XLSimpleCloseGuardWidget.h"
+#include "XLUiCloseGuardWidget.h"
 #include "XLFocusGroup.h"
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith::simpleui {
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 bool CloseGuardWidgetDefault::init() {
 	if (!CloseGuardWidget::init()) {
@@ -57,11 +57,16 @@ bool CloseGuardWidgetDefault::init() {
 	_description->setAnchorPoint(Anchor::Middle);
 	_description->setColor(Color::Black);
 
-	_commitButton = addChild(Rc<ButtonWithLabel>::create("Commit", [this]() { commit(); }));
+	// no stylesheet is in scope here, so the buttons are painted directly
+	_commitButton = addChild(Rc<Button>::create("Commit", [this]() { commit(); }));
 	_commitButton->setAnchorPoint(Anchor::TopRight);
+	_commitButton->setPathColor(Color4B(Color::Grey_400), false);
+	_commitButton->setLabelColor(Color::Black);
 
-	_rejectButton = addChild(Rc<ButtonWithLabel>::create("Reject", [this]() { reject(); }));
+	_rejectButton = addChild(Rc<Button>::create("Reject", [this]() { reject(); }));
 	_rejectButton->setAnchorPoint(Anchor::TopLeft);
+	_rejectButton->setPathColor(Color4B(Color::Grey_400), false);
+	_rejectButton->setLabelColor(Color::Black);
 
 	return true;
 }
@@ -95,4 +100,4 @@ void CloseGuardWidgetDefault::handleLayoutInParent(Node *parent) {
 	setLocalZOrder(ZOrder::max() - ZOrder(2));
 }
 
-} // namespace stappler::xenolith::simpleui
+} // namespace stappler::xenolith::ui

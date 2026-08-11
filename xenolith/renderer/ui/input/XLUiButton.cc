@@ -21,10 +21,14 @@
  **/
 
 #include "XLUiButton.h"
+#include "XLUiLayoutSystem.h"
 #include "XL2dIconSprite.h"
 #include "XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+// inset used by the no-stylesheet fallback placement in handleContentSizeDirty
+static constexpr float s_labelPadding = 8.0f;
 
 static constexpr StringView s_windowHeaderClose =
 		R"(<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
@@ -155,6 +159,15 @@ bool Button::init(Function<void()> &&cb) {
 	return Button::init(ButtonType::General, sp::move(cb)); //
 }
 
+bool Button::init(StringView str, Function<void()> &&cb) {
+	if (!Button::init(ButtonType::General, sp::move(cb))) {
+		return false;
+	}
+
+	setString(str);
+	return true;
+}
+
 void Button::handleEnter(Scene *scene) {
 	Panel::handleEnter(scene);
 
@@ -173,11 +186,58 @@ void Button::handleComponentsDirty(const ComponentMask &mask) {
 	}
 }
 
+void Button::handleContentSizeDirty() {
+	Panel::handleContentSizeDirty();
+
+	// a LayoutSystem - created by the style resolver for `display:flex`, or added by hand - owns
+	// the children's geometry; the fallback below would be a second writer of the same positions
+	if (getSystemByType<LayoutSystem>()) {
+		return;
+	}
+
+	const bool hasIcon = _icon && _icon->isVisible();
+	if (hasIcon) {
+		_icon->setAnchorPoint(Anchor::MiddleLeft);
+		_icon->setPosition(Vec2(s_labelPadding, _contentSize.height / 2.0f));
+	}
+
+	if (_label) {
+		// the label takes what the icon left of the content box, and is centered in it
+		const float offset = hasIcon ? _icon->getContentSize().width + s_labelPadding : 0.0f;
+		_label->setAnchorPoint(Anchor::Middle);
+		_label->setAlignment(font::TextAlign::Center);
+		_label->setPosition(
+				Vec2((_contentSize.width + offset) / 2.0f, _contentSize.height / 2.0f));
+		_label->setWidth(sprt::max(_contentSize.width - offset - s_labelPadding * 2.0f, 0.0f));
+	}
+}
+
 void Button::setString(StringView str) {
 	if (_label) {
 		_label->setString(str);
 		_label->setVisible(!str.empty());
 	}
+}
+
+void Button::setCallback(Function<void()> &&cb) { _leftCallback = sp::move(cb); }
+
+void Button::setEnabled(bool value) {
+	if (_enabled == value) {
+		return;
+	}
+
+	_enabled = value;
+
+	if (value) {
+		removeStyleClass("disabled");
+	} else {
+		addStyleClass("disabled");
+	}
+
+	setOrUpdateComponent<InteractiveComponent>([&](NotNull<InteractiveComponent> state) {
+		return state->updateState(value ? (state->state | InteractiveState::Enabled)
+										: (state->state & ~InteractiveState::Enabled));
+	});
 }
 
 StringView Button::getString() const {
@@ -343,6 +403,9 @@ void Button::updateState() {
 }
 
 bool Button::handleLeftTap() {
+	if (!_enabled) {
+		return false;
+	}
 	if (_leftCallback) {
 		_leftCallback();
 		return true;
@@ -388,6 +451,9 @@ bool Button::handleLeftTap() {
 }
 
 bool Button::handleRightTap() {
+	if (!_enabled) {
+		return false;
+	}
 	if (_rightCallback) {
 		_rightCallback();
 		return true;

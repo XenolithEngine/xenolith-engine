@@ -25,11 +25,11 @@
 #include "XLContext.h"
 #include "XL2dSceneContent.h"
 #include "XLRemoteWindow.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
 #include "XLInputListener.h" // DEBUG: verify forwarded input reaches the scene
-#include "XLSimpleCloseGuardWidget.h"
+#include "XLUiCloseGuardWidget.h"
 #include "XLEntryPoint.h"
 
 #include <stdlib.h> // getenv for the screenshot output path
@@ -40,9 +40,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
 
 bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
-	// Используем примитивы из пакета simpleui
-	// Это также подключает и примитивы из basic2d, поверх которого реализован simpleui
-	using namespace simpleui;
+	// Используем примитивы из пакета ui
+	// Это также подключает и примитивы из basic2d, поверх которого реализован ui
+	using namespace ui;
 
 	// Инициализируем суперкласс
 	if (!Scene2d::init(app, window, constraints)) {
@@ -55,8 +55,7 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	auto content = Rc<SceneContent2d>::create();
 
 	// Задаём параметры освещения по умолчанию, чтобы эффекты теней работали
-	// Модуль simpleui этого не делает, поскольку не использует тени,
-	// но модуль material2d настраивает себе свет сам
+	// Модуль ui этого не делает, поскольку не использует тени
 	content->setDefaultLights();
 
 	// Простой закрашенный квадрат (узел Layer на базе SolidImage). Шрифты пока недоступны,

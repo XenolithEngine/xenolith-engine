@@ -24,10 +24,10 @@
 
 #include "XLContext.h"
 #include "XL2dSceneContent.h"
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
-#include "XLSimpleCloseGuardWidget.h"
+#include "XLUiCloseGuardWidget.h"
 #include "XLSceneInspector.h"
 #include "XLEntryPoint.h"
 
@@ -57,9 +57,9 @@ static constexpr float s_layoutSettle = 1.0f;
 
 bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
-	// Используем примитивы из пакета simpleui
-	// Это также подключает и примитивы из basic2d, поверх которого реализован simpleui
-	using namespace simpleui;
+	// Используем примитивы из пакета ui
+	// Это также подключает и примитивы из basic2d, поверх которого реализован ui
+	using namespace ui;
 
 	// Инициализируем суперкласс
 	if (!Scene2d::init(app, window, constraints)) {
@@ -72,8 +72,7 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	auto content = Rc<SceneContent2d>::create();
 
 	// Задаём параметры освещения по умолчанию, чтобы эффекты теней работали
-	// Модуль simpleui этого не делает, поскольку не использует тени,
-	// но модуль material2d настраивает себе свет сам
+	// Модуль ui этого не делает, поскольку не использует тени
 	content->setDefaultLights();
 
 	// Запускаем основной слой интерфейса — либо тестовый слой, если задана выбирающая его

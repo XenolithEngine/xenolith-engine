@@ -28,7 +28,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** A CSS-inspired placement engine for the simpleui kit, covering both the
+/** A CSS-inspired placement engine for the ui kit, covering both the
 Flexible Box (flexbox) and Grid layout models.
 
 The layout is driven entirely through the engine's component system:

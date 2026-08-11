@@ -122,7 +122,7 @@ geometry or components**; it also sets `_layoutChildrenDirty`.
 
 `Node::handleLayoutChildren` — with the node's own size and child order both
 fixed, a layout engine positions and sizes the children here. This is where the
-ui/simpleui `LayoutSystem` runs its flex/grid pass. Runs before the children are
+ui `LayoutSystem` runs its flex/grid pass. Runs before the children are
 themselves visited.
 
 **Model matrix**: after phases 1–4 the node's `_modelViewTransform` is rebuilt
@@ -326,7 +326,7 @@ a measuring system when its size is known ahead of time.
 * `Node::handleLayout(Node*)` was renamed to `handleLayoutInParent(Node*)` (same
   on `System`); the child-layout responsibility moved to the new
   `handleLayoutChildren` phase.
-* The flex/grid `LayoutSystem` (ui + simpleui) now runs its `apply()` from
+* The flex/grid `LayoutSystem` (ui) now runs its `apply()` from
   `handleLayoutChildren` (flag `HandleLayoutChildren`) instead of
   `handleContentSizeDirty`/`handleReorderChildDirty`; a re-layout is scheduled via
   `markLayoutChildrenDirty()`.

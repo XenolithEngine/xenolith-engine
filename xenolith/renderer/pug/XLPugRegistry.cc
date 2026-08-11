@@ -486,27 +486,9 @@ Rc<Registry> Registry::createDefault() {
 		}
 		return false;
 	},
-			});
-
-	ret->set("button-label",
-			TagFactory{
-				.create = [](const BuilderContext &ctx, StringView,
-								  const Value &attrs) -> Rc<Node> {
-		return Rc<ButtonWithLabel>::create(StringView(), ctx.resolve(attrs.getString("on-tap")));
-	},
-				.applyAttribute = [](const BuilderContext &, Node *node, StringView name,
-										  const Value &value) -> bool {
-		if (name == "on-tap") {
-			return true; // consumed by create
-		} else if (name == "enabled") {
-			static_cast<ButtonWithLabel *>(node)->setEnabled(value.asBool());
-			return true;
-		}
-		return false;
-	},
 				.applyText =
 						[](const BuilderContext &, Node *node, StringView text) {
-		static_cast<ButtonWithLabel *>(node)->setString(text);
+		static_cast<Button *>(node)->setString(text);
 	},
 			});
 

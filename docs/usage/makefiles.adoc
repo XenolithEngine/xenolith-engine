@@ -123,7 +123,7 @@ LOCAL_MODULES_PATHS = \
 LOCAL_MODULES := \
 	runtime \
 	xenolith_application \
-	xenolith_renderer_simpleui \
+	xenolith_renderer_ui \
 	xenolith_backend_vk
 
 # Project's own sources

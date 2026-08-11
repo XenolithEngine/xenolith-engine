@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,15 +20,17 @@
  THE SOFTWARE.
  **/
 
-#ifndef XENOLITH_RENDERER_SIMPLEUI_XLSIMPLECLOSEGUARDWIDGET_H_
-#define XENOLITH_RENDERER_SIMPLEUI_XLSIMPLECLOSEGUARDWIDGET_H_
+#ifndef XENOLITH_RENDERER_UI_ATOMS_XLUICLOSEGUARDWIDGET_H_
+#define XENOLITH_RENDERER_UI_ATOMS_XLUICLOSEGUARDWIDGET_H_
 
-#include "XLSimpleButton.h"
+#include "XLUiButton.h"
 #include "XLCloseGuardWidget.h"
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith::simpleui {
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// Simple window header implementation
+// Default "the window asks to be closed" prompt: a dimmed backdrop over the whole scene with a
+// modal card carrying the question and the commit/reject buttons. Built without a stylesheet, so
+// an application can install it as the SceneContent close-guard constructor as is.
 class SP_PUBLIC CloseGuardWidgetDefault : public CloseGuardWidget {
 public:
 	virtual ~CloseGuardWidgetDefault() = default;
@@ -42,10 +44,10 @@ protected:
 	Layer *_background = nullptr;
 	Layer *_layer = nullptr;
 	Label *_description = nullptr;
-	ButtonWithLabel *_commitButton = nullptr;
-	ButtonWithLabel *_rejectButton = nullptr;
+	Button *_commitButton = nullptr;
+	Button *_rejectButton = nullptr;
 };
 
-} // namespace stappler::xenolith::simpleui
+} // namespace stappler::xenolith::ui
 
-#endif
+#endif /* XENOLITH_RENDERER_UI_ATOMS_XLUICLOSEGUARDWIDGET_H_ */
