@@ -427,6 +427,21 @@ InputKeyCode getKeysymCode(uint32_t sym) {
 	return InputKeyCode::Unknown;
 }
 
+InputModifier getKeySideModifier(InputKeyCode code) {
+	switch (code) {
+	case InputKeyCode::LEFT_SHIFT: return InputModifier::ShiftL; break;
+	case InputKeyCode::RIGHT_SHIFT: return InputModifier::ShiftR; break;
+	case InputKeyCode::LEFT_CONTROL: return InputModifier::CtrlL; break;
+	case InputKeyCode::RIGHT_CONTROL: return InputModifier::CtrlR; break;
+	case InputKeyCode::LEFT_ALT: return InputModifier::AltL; break;
+	case InputKeyCode::RIGHT_ALT: return InputModifier::AltR; break;
+	case InputKeyCode::LEFT_SUPER: return InputModifier::Mod4L; break;
+	case InputKeyCode::RIGHT_SUPER: return InputModifier::Mod4R; break;
+	default: break;
+	}
+	return InputModifier::None;
+}
+
 } // namespace sprt::window
 
 #include "SPRTWinLinuxShm.cc"

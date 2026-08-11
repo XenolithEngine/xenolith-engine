@@ -94,6 +94,18 @@ SPRT_API SpanView<StringView> getCursorNames(WindowCursor);
 
 SPRT_API InputKeyCode getKeysymCode(uint32_t sym);
 
+/* The InputModifier side bit a physically-sided modifier key stands for; None for every other key.
+
+   Both Linux backends already resolve which physical key was pressed - xcb through the XKB key
+   name (LCTL/RCTL/...), Wayland through the evdev code (KEY_LEFTCTRL/...) - but the modifier mask
+   they report comes from the *effective* modifier state, which has no notion of sides at all. This
+   is what turns the keys currently held into the sided bits a hotkey can bind to.
+
+   Super maps to Mod4 here, not Mod3, because that is what both Linux backends report as its base
+   bit (X11 conventionally puts Super on Mod4). The Windows backend uses Mod3 for the same key;
+   base and side have to stay in the same family or normalization would pair them up wrongly. */
+SPRT_API InputModifier getKeySideModifier(InputKeyCode);
+
 // Generates linear bitmap <size> with shadow data
 template <typename Callback>
 static void makeShadowVector(const Callback &cb, uint32_t size) {

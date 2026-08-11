@@ -168,6 +168,14 @@ public:
 	void handleKeyboardLeave();
 	void handleKey(uint32_t time, uint32_t key, uint32_t state);
 	void handleKeyModifiers(uint32_t depressed, uint32_t latched, uint32_t locked);
+
+	/* Rewrites the sided part of _activeModifiers from the keys currently held.
+
+	   The compositor's `modifiers` event reports the effective modifier state, which has no
+	   notion of sides; the keys held are the only place that information exists. _keys is
+	   authoritative for it - `enter` replays the compositor's pressed-key array through
+	   handleKey, and `leave` clears the map - so this is exact, with no resync to arrange. */
+	void updateSideModifiers();
 	void handleKeyRepeat();
 
 	// Starts the repeat timer while a repeating key is held and stops it when the last one goes up.

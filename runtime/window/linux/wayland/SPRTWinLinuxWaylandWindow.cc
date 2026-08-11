@@ -1225,19 +1225,28 @@ void WaylandWindow::handleKeyboardLeave() {
 }
 
 void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) {
+	auto inputKey = _display->seat->translateKey(scancode);
+
+	// A modifier key reports its own side on its own press, which is what the Win32 backend does
+	// too - it queries the key state at event time, by which point the key is already down
+	auto mods = _activeModifiers;
+	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		mods |= getKeySideModifier(inputKey);
+	}
+
 	InputEventData event({
 		time,
 		(state == WL_KEYBOARD_KEY_STATE_PRESSED) ? InputEventName::KeyPressed
 												 : InputEventName::KeyReleased,
 		{{
 			InputMouseButton::None,
-			_activeModifiers,
+			mods,
 			float(_surfaceX),
 			float(_surfaceY),
 		}},
 	});
 
-	event.key.keycode = _display->seat->translateKey(scancode);
+	event.key.keycode = inputKey;
 	event.key.compose = InputKeyComposeState::Nothing;
 	event.key.keysym = scancode;
 	event.key.keychar = 0;
@@ -1301,6 +1310,9 @@ void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) 
 		updateKeyRepeatTimer();
 	}
 
+	// _keys just changed, and it is what the sided bits are derived from
+	updateSideModifiers();
+
 	_pendingEvents.emplace_back(sprt::move(event));
 }
 
@@ -1345,6 +1357,22 @@ void WaylandWindow::handleKeyModifiers(uint32_t depressed, uint32_t latched, uin
 			== 1) {
 		_activeModifiers |= InputModifier::NumLock;
 	}
+
+	// The mask above was rebuilt from scratch, so the sided bits have to go back on
+	updateSideModifiers();
+}
+
+void WaylandWindow::updateSideModifiers() {
+	static constexpr InputModifier SideMask = InputModifier::ShiftL | InputModifier::ShiftR
+			| InputModifier::CtrlL | InputModifier::CtrlR | InputModifier::AltL
+			| InputModifier::AltR | InputModifier::Mod4L | InputModifier::Mod4R;
+
+	InputModifier sides = InputModifier::None;
+	for (auto &it : _keys) {
+		sides |= getKeySideModifier(_display->seat->translateKey(it.second.scancode));
+	}
+
+	_activeModifiers = (_activeModifiers & ~SideMask) | sides;
 }
 
 // Wayland has no repeat events: wl_keyboard.repeat_info only states the rate and the delay, and
@@ -1967,8 +1995,7 @@ bool WaylandWindow::initPopup() {
 		}
 	}
 
-	xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width,
-			_currentExtent.height);
+	xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width, _currentExtent.height);
 	wl_surface_commit(_surface);
 	_display->flush();
 	return true;

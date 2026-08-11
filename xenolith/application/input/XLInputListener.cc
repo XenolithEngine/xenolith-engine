@@ -370,6 +370,75 @@ void InputListener::setWindowStateCallback(Function<bool(WindowState, WindowStat
 void InputListener::clear() {
 	_eventMask.reset();
 	_recognizers.clear();
+	_hotkeys.clear();
+}
+
+void InputListener::addHotkey(HotkeyId id, HotkeyCallback &&cb, HotkeyFlags flags) {
+	if (id.empty() || !cb) {
+		log::source().error("InputListener", "A hotkey subscription needs a valid id and callback");
+		return;
+	}
+
+	// No event mask and no recognizer: hotkeys are delivered by the dispatcher out of band, so
+	// subscribing must not make this listener a candidate for ordinary key events
+	_hotkeys[id] = HotkeyBinding{sp::move(cb), flags};
+}
+
+void InputListener::removeHotkey(HotkeyId id) { _hotkeys.erase(id); }
+
+bool InputListener::hasHotkey(HotkeyId id) const { return _hotkeys.find(id) != _hotkeys.end(); }
+
+bool InputListener::isHotkeyEligible(const HotkeyBinding &binding, bool focused, bool repeated,
+		bool exclusiveScoped) const {
+	if (repeated && !hasFlag(binding.flags, HotkeyFlags::Repeatable)) {
+		return false;
+	}
+	if (hasFlag(binding.flags, HotkeyFlags::FocusedOnly) && !focused) {
+		return false;
+	}
+	if (exclusiveScoped && !hasFlag(binding.flags, HotkeyFlags::BypassExclusive)) {
+		return false;
+	}
+	return true;
+}
+
+bool InputListener::canHandleHotkey(SpanView<HotkeyId> ids, bool focused, bool repeated,
+		bool exclusiveScoped) const {
+	if (_hotkeys.empty() || !_running || !_owner) {
+		return false;
+	}
+	for (auto &id : ids) {
+		auto it = _hotkeys.find(id);
+		if (it != _hotkeys.end()
+				&& isHotkeyEligible(it->second, focused, repeated, exclusiveScoped)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool InputListener::handleHotkey(SpanView<HotkeyId> ids, const InputEvent &event, bool focused,
+		bool repeated, bool exclusiveScoped) {
+	if (_hotkeys.empty() || !_running || !_owner) {
+		return false;
+	}
+
+	// A combination can carry several hotkeys at once (Escape is both a form reset and an app
+	// back); the first one this listener actually subscribed to and consumed wins
+	for (auto &id : ids) {
+		if (!_running || !_owner) {
+			break;
+		}
+		auto it = _hotkeys.find(id);
+		if (it == _hotkeys.end()
+				|| !isHotkeyEligible(it->second, focused, repeated, exclusiveScoped)) {
+			continue;
+		}
+		if (it->second.callback(id, event)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 void InputListener::handleFocusIn(FocusGroup *) {

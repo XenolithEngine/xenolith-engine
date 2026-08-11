@@ -272,9 +272,10 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 		// The CPU rasterizer implements the flat contract only - there is no shadow/SDF/particle
 		// path to fall back to, so a Default request is served with the flat queue anyway.
 		if (queueInfo.type != QueueType::Flat) {
-			log::source().info("Scene2d",
-					"Software backend supports the flat queue only, building it instead of the "
-					"default one");
+			log::source()
+					.info("Scene2d",
+							"Software backend supports the flat queue only, building it instead of "
+							"the " "default one");
 		}
 
 		basic2d::soft::FlatPass::RenderQueueInfo info{
@@ -393,13 +394,14 @@ void Scene2d::buildQueueResources(QueueInfo &, core::Queue::Builder &) { }
 
 void Scene2d::initialize() {
 	_listener = addSystem(Rc<InputListener>::create());
-	_listener->addKeyRecognizer([this](const GestureData &ev) {
-		if (ev.event == GestureEvent::Ended) {
-			_fps->incrementMode();
-		}
+	_listener->addHotkey(EngineHotkeys::get().toggleFps,
+			[this](HotkeyId, const InputEvent &) -> bool {
+		_fps->incrementMode();
 		return true;
-	}, InputKeyInfo{makeKeyMask({InputKeyCode::F12})});
+	});
 
+	// Not a hotkey: this shows the pointer overlay for as long as the key is HELD, so it needs the
+	// press/release pair a recognizer gives. A hotkey is a single moment - the press.
 	_listener->addKeyRecognizer([this](const GestureData &ev) {
 		_pointerReal->setVisible(
 				ev.event != GestureEvent::Ended && ev.event != GestureEvent::Cancelled);

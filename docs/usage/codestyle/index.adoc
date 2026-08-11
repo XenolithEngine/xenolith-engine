@@ -73,6 +73,7 @@ the `scene/` articles route to it rather than restating it.
 | [`Node`: geometry, tree, subclasses](scene/node-geometry.adoc) | placing, sizing or hit-testing a node; picking a base class |
 | [Node / System / Component](scene/node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
 | [Drag and drop](scene/drag-and-drop.adoc) | making something draggable or droppable; the payload a drag and the clipboard share |
+| [Global hotkeys](scene/hotkeys.adoc) | a named key combination delivered ahead of the ordinary key route; registering, subscribing, delivery order |
 
 ### `ui/` — the widget kit
 

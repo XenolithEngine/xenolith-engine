@@ -62,6 +62,8 @@ bool XcbLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, xcb_connect)
 	SPRT_LOAD_PROTO(handle, xcb_get_maximum_request_length)
 	SPRT_LOAD_PROTO(handle, xcb_get_setup)
+	SPRT_LOAD_PROTO(handle, xcb_query_keymap)
+	SPRT_LOAD_PROTO(handle, xcb_query_keymap_reply)
 	SPRT_LOAD_PROTO(handle, xcb_setup_roots_iterator)
 	SPRT_LOAD_PROTO(handle, xcb_screen_next)
 	SPRT_LOAD_PROTO(handle, xcb_connection_has_error)

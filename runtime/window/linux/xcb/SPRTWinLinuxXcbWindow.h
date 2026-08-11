@@ -85,6 +85,9 @@ public:
 	void handleMotionNotify(xcb_motion_notify_event_t *);
 	void handleEnterNotify(xcb_enter_notify_event_t *);
 	void handleLeaveNotify(xcb_leave_notify_event_t *);
+	// Rebuilds _sideModifiers from the server's own view of which keys are physically down
+	void resyncSideModifiers();
+
 	void handleFocusIn(xcb_focus_in_event_t *);
 	void handleFocusOut(xcb_focus_out_event_t *);
 	void handleKeyPress(xcb_key_press_event_t *);
@@ -168,6 +171,14 @@ protected:
 	bool _pendingExpose = false;
 	xcb_timestamp_t _lastInputTime = 0;
 	xcb_timestamp_t _lastSyncTime = 0;
+
+	/* The sided modifier bits of the modifier keys currently held.
+
+	   X11's `state` mask reports the effective modifiers only, with no notion of sides, so this
+	   is tracked from the key events themselves - which do carry the physical key. It is
+	   resynchronized from the server on focus-in, because a modifier released while this window
+	   was unfocused produces no release event here. */
+	InputModifier _sideModifiers = InputModifier::None;
 
 	uint32_t _forcedFrames = 0;
 	uint16_t _borderWidth = 0;

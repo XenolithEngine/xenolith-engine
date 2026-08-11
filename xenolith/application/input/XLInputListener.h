@@ -26,6 +26,7 @@
 #include "XLSystem.h"
 #include "XLNodeInfo.h"
 #include "XLGestureRecognizer.h"
+#include "XLHotkey.h"
 
 #include <sprt/cxx/variant>
 
@@ -143,6 +144,25 @@ public:
 	GestureKeyRecognizer *addKeyRecognizer(InputCallback<GestureData> &&,
 			InputKeyInfo && = InputKeyInfo());
 
+	/* Subscribe to a global hotkey (see XLHotkey.h). Return true from the callback to consume the
+	   key: the dispatcher stops the walk there and the ordinary key route never runs.
+
+	   Unlike a key recognizer, this needs no key mask and is NOT hit-tested against the pointer
+	   position — the dispatcher calls handleHotkey directly, bypassing canHandleEvent and the
+	   touch filter. What still applies is the focus group: see HotkeyFlags::FocusedOnly. */
+	void addHotkey(HotkeyId, HotkeyCallback &&, HotkeyFlags = HotkeyFlags::None);
+	void removeHotkey(HotkeyId);
+	bool hasHotkey(HotkeyId) const;
+
+	// Any of `ids` this listener is subscribed to, honouring `focused` for FocusedOnly bindings.
+	// `repeated` is true for a key auto-repeat, which only Repeatable bindings receive.
+	bool canHandleHotkey(SpanView<HotkeyId> ids, bool focused, bool repeated,
+			bool exclusiveScoped) const;
+
+	// Delivers the first matching binding; returns true when the callback consumed the hotkey
+	bool handleHotkey(SpanView<HotkeyId> ids, const InputEvent &, bool focused, bool repeated,
+			bool exclusiveScoped);
+
 	void setWindowStateCallback(Function<bool(WindowState, WindowState)> &&);
 
 	void clear();
@@ -159,6 +179,15 @@ protected:
 	bool _shouldProcessEvent(const InputEvent &) const; // default realization
 
 	void addEventMask(const EventMask &);
+
+	struct HotkeyBinding {
+		HotkeyCallback callback;
+		HotkeyFlags flags = HotkeyFlags::None;
+	};
+
+	// True when this binding is eligible for the current delivery pass
+	bool isHotkeyEligible(const HotkeyBinding &, bool focused, bool repeated,
+			bool exclusiveScoped) const;
 
 	using EventCallback = sprt::variant<Function<bool()>, Function<bool(WindowState, WindowState)>>;
 
@@ -187,6 +216,7 @@ protected:
 	Vector<Rc<GestureRecognizer>> _recognizers;
 	Map<InputEventName, EventCallback> _callbacks;
 	Map<InputEventName, uint32_t> _retainedEvents;
+	Map<HotkeyId, HotkeyBinding> _hotkeys;
 	Function<void(bool)> _focusCallback;
 };
 

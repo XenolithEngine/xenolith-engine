@@ -273,6 +273,18 @@ void TextInputProcessor::cancel() {
 	}
 }
 
+// Published atomically: written once on the application thread during startup, read on whichever
+// thread the window backend delivers input from
+static sprt::atomic<TextInputProcessor::ReservedKeyFilter> s_reservedKeyFilter = nullptr;
+
+void TextInputProcessor::setReservedKeyFilter(ReservedKeyFilter filter) {
+	s_reservedKeyFilter.store(filter, sprt::memory_order_release);
+}
+
+TextInputProcessor::ReservedKeyFilter TextInputProcessor::getReservedKeyFilter() {
+	return s_reservedKeyFilter.load(sprt::memory_order_acquire);
+}
+
 bool TextInputProcessor::canHandleInputEvent(const InputEventData &data) {
 	if (_state.enabled && data.key.compose != InputKeyComposeState::Disabled) {
 		switch (data.event) {
@@ -290,6 +302,14 @@ bool TextInputProcessor::canHandleInputEvent(const InputEventData &data) {
 			if (hasFlag(data.input.modifiers, InputModifier::Ctrl)
 					&& !hasFlag(data.input.modifiers, InputModifier::Alt)) {
 				return false;
+			}
+
+			// Whatever the application reserved for itself is a command too, by the same logic -
+			// this is what makes an Alt or Super chord reachable while a field holds the IME
+			if (auto filter = getReservedKeyFilter()) {
+				if (filter(data)) {
+					return false;
+				}
 			}
 
 			// Tab is navigation everywhere, multi-line fields included - the same choice browsers

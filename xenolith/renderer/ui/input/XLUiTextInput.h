@@ -315,6 +315,7 @@ protected:
 	virtual void updateStyleColors();
 
 	virtual bool handleKey(const GestureData &);
+	virtual bool handleTextHotkey(HotkeyId, const InputEvent &);
 	virtual bool handleTap(const GestureTap &);
 	virtual bool handlePress(const GesturePress &, bool begin);
 

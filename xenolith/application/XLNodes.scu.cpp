@@ -35,6 +35,7 @@
 #include "nodes/XLSubscriptionListener.cc"
 #include "nodes/XLEventListener.cc"
 
+#include "input/XLHotkey.cc"
 #include "input/XLGestureRecognizer.cc"
 #include "input/XLInputDispatcher.cc"
 #include "input/XLInputListener.cc"

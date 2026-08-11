@@ -541,6 +541,19 @@ header, a platform branch, or an allocation. The essentials:
   survive CBOR but not JSON
   ([data::Value](docs/usage/codestyle/core/data-value.adoc), full guide:
   [docs/usage/data/value.adoc](docs/usage/data/value.adoc)).
+- A key combination is a **named global hotkey**: register it once
+  (`HotkeyRegistry::add("org.example.app.save", HotkeyCombo::parse("Ctrl+S"))`)
+  and subscribe with `listener->addHotkey(id, cb, flags)`. Delivery is in
+  `InputDispatcher`, **ahead of the ordinary key route**, so a subscriber needs no
+  key mask and is **not hit-tested against the pointer**; return `true` to consume,
+  `false` to pass it on. The keyboard owner is offered it first, then the normal
+  walk order. `FocusedOnly` means "entitled to keys in this focus group", not
+  `isFocused()`. A hotkey is the press only — something shown *while a key is held*
+  still wants a recognizer. A combination may demand one side of a modifier
+  (`"CtrlL+K"`), which every backend but wasm reports; and
+  `HotkeyOptions::ReserveFromTextInput` makes the text-input processor decline it,
+  so an `Alt`/`Super` chord survives a focused field — opt-in, because `Escape` and
+  `Backspace` belong to the IME ([hotkeys](docs/usage/codestyle/scene/hotkeys.adoc)).
 - A directory named in `LOCAL_EMBED_DIRS` / `MODULE_<X>_EMBED_DIRS` is compiled
   into the binary (BundleFS) and read back through **`FileCategory::Embedded`**,
   where the bundle's mount name is the directory's own name. `Embedded` is

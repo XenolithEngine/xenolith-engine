@@ -391,8 +391,7 @@ bool TextInput::init() {
 	// Text dropped onto the field lands the same way pasted text does - same type rule, same
 	// insertion point, same validation. A drop target and a paste target really are one handler
 	addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept =
-				[this](const DragEvent &event) -> DragResponse {
+		.accept = [this](const DragEvent &event) -> DragResponse {
 		if (_readOnly || !event.data) {
 			return DragResponse();
 		}
@@ -467,10 +466,12 @@ bool TextInput::init() {
 		return false;
 	}, InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft})});
 
-	// Everything the runtime does NOT claim for text: it swallows printable characters, Backspace,
-	// Delete and Escape before the scene sees them, so what is left to bind is the navigation set,
-	// the chords, and Tab/Enter - which the processor declines precisely so a widget can tell
-	// Shift+Tab from Tab.
+	/* Cursor movement stays on a recognizer: Left and Shift+Left are the same motion with a
+	   different flag, not two commands, and the runtime never claims those keys anyway.
+
+	   Everything that IS a command - navigation away from the field, accept, and the clipboard
+	   chords - is a hotkey, so it can be rebound and so the precedence against the form's own
+	   bindings is the walk order rather than two key masks that have to agree. */
 	InputKeyMask keys;
 	keys.set(toInt(InputKeyCode::LEFT));
 	keys.set(toInt(InputKeyCode::RIGHT));
@@ -478,15 +479,24 @@ bool TextInput::init() {
 	keys.set(toInt(InputKeyCode::DOWN));
 	keys.set(toInt(InputKeyCode::HOME));
 	keys.set(toInt(InputKeyCode::END));
-	keys.set(toInt(InputKeyCode::TAB));
-	keys.set(toInt(InputKeyCode::ENTER));
-	keys.set(toInt(InputKeyCode::KP_ENTER));
-	keys.set(toInt(InputKeyCode::A));
-	keys.set(toInt(InputKeyCode::C));
-	keys.set(toInt(InputKeyCode::X));
-	keys.set(toInt(InputKeyCode::V));
 	_listener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
+
+	auto &hk = EngineHotkeys::get();
+	auto bind = [this](HotkeyId id) {
+		_listener->addHotkey(id, [this](HotkeyId id, const InputEvent &ev) {
+			return handleTextHotkey(id, ev);
+		}, HotkeyFlags::FocusedOnly | HotkeyFlags::Repeatable);
+	};
+
+	bind(hk.focusNext);
+	bind(hk.focusPrev);
+	bind(hk.textAccept);
+	bind(hk.textAcceptKeypad);
+	bind(hk.textSelectAll);
+	bind(hk.textCopy);
+	bind(hk.textCut);
+	bind(hk.textPaste);
 
 	_listener->setCursor(WindowCursor::Text);
 
@@ -1288,7 +1298,6 @@ bool TextInput::handleKey(const GestureData &data) {
 	}
 
 	const bool select = hasFlag(ev.input.modifiers, InputModifier::Shift);
-	const bool ctrl = hasFlag(ev.input.modifiers, InputModifier::Ctrl);
 	const auto size = uint32_t(_inputState.size());
 
 	switch (ev.key.keycode) {
@@ -1299,46 +1308,45 @@ bool TextInput::handleKey(const GestureData &data) {
 	case InputKeyCode::HOME: moveCursor(0, select); return true;
 	case InputKeyCode::DOWN:
 	case InputKeyCode::END: moveCursor(size, select); return true;
-	case InputKeyCode::TAB:
-		// Shift is the only reason Tab has to be a key event rather than the '\t' the platform
-		// used to insert: a stripped character carries no modifiers, so backwards navigation
-		// cannot be expressed on that path
+	default: break;
+	}
+	return false;
+}
+
+bool TextInput::handleTextHotkey(HotkeyId id, const InputEvent &) {
+	if (!_focused) {
+		return false;
+	}
+
+	auto &hk = EngineHotkeys::get();
+
+	if (id == hk.focusNext || id == hk.focusPrev) {
+		/* Shift is the only reason navigation has to be a key event rather than the '\t' the
+		   platform used to insert: a stripped character carries no modifiers, so backwards
+		   navigation cannot be expressed on that path. Inside a form the navigate callback hands
+		   this to the form; standalone, the field just gives up focus. */
 		if (_navigateCallback) {
-			return _navigateCallback(select);
+			return _navigateCallback(id == hk.focusPrev);
 		}
 		blur();
 		return true;
-	case InputKeyCode::ENTER:
-	case InputKeyCode::KP_ENTER:
-		// Declining when no callback is set is what lets a form's listener below this one submit.
-		// An explicitly installed callback wins over the form on purpose
+	} else if (id == hk.textAccept || id == hk.textAcceptKeypad) {
+		// Declining when no callback is set is what lets the form's submit binding, which is
+		// visited after this one, have the key. An explicitly installed callback wins on purpose
 		if (_enterCallback) {
 			_enterCallback();
 			return true;
 		}
 		return false;
-	case InputKeyCode::A:
-		if (ctrl) {
-			selectAll();
-			return true;
-		}
-		break;
-	case InputKeyCode::C:
-		if (ctrl) {
-			return copy();
-		}
-		break;
-	case InputKeyCode::X:
-		if (ctrl) {
-			return cut();
-		}
-		break;
-	case InputKeyCode::V:
-		if (ctrl) {
-			return paste();
-		}
-		break;
-	default: break;
+	} else if (id == hk.textSelectAll) {
+		selectAll();
+		return true;
+	} else if (id == hk.textCopy) {
+		return copy();
+	} else if (id == hk.textCut) {
+		return cut();
+	} else if (id == hk.textPaste) {
+		return paste();
 	}
 	return false;
 }
