@@ -111,7 +111,7 @@
 				 duration:(NSTimeInterval)duration
 		completionHandler:(nullable void (^)(void))completionHandler;
 
-- (void)toggleFullScreen:(id)sender withScreen:(NSScreen *)screen;
+- (void)toggleFullScreen:(id _Nullable)sender withScreen:(NSScreen *_Nonnull)screen;
 
 - (NSWindowStyleMask)defaultStyle;
 

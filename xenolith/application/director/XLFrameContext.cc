@@ -238,7 +238,7 @@ void FrameContext::submitMaterials(const FrameInfo &info) {
 
 		if (!_pendingMaterialsToAdd.empty() || !_pendingMaterialsToRemove.empty()) {
 			auto req = Rc<core::MaterialInputData>::alloc();
-			req->attachment = _materialAttachment;
+			req->setAttachment(_materialAttachment);
 			req->materialsToAddOrUpdate = sp::move(_pendingMaterialsToAdd);
 			req->materialsToRemove = sp::move(_pendingMaterialsToRemove);
 			req->callback =

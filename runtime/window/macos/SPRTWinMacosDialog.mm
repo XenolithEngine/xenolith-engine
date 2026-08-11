@@ -30,7 +30,9 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
 #pragma clang diagnostic ignored "-Wunguarded-availability-new"
+#pragma clang diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
 #pragma clang diagnostic ignored "-Wavailability"
 
 #import <AppKit/NSApplication.h>
@@ -399,8 +401,25 @@ Status MacosDialogHandle::cancel(Status st) {
 		return Status::ErrorAlreadyPerformed;
 	}
 
-	// Take the panel down first. Its completion handler / close notification still fires, but
-	// finalize() below has already answered by then, so the late result is dropped.
+	// finalize() drops the registry's reference, and the teardown below still touches `this`.
+	Rc<MacosDialogHandle> guard(this);
+
+	// Stop listening BEFORE the panel goes down: -close posts NSWindowWillCloseNotification
+	// synchronously, so an observer still installed here answers first — and the colour and font
+	// observers answer with Status::Ok plus whatever the panel happens to hold, which the caller
+	// cannot tell apart from a real confirmation.
+	if (_observer) {
+		// __bridge_transfer hands the retain we took back to ARC, which then releases it.
+		id observer = (__bridge_transfer id)_observer;
+		_observer = nullptr;
+		[[NSNotificationCenter defaultCenter] removeObserver:observer];
+	}
+
+	// Answer before taking the panel down, for the same reason: -cancel: invokes the file panel's
+	// completion handler synchronously, and finalize() is one-shot, so answering first makes that
+	// late Status::Declined a no-op instead of the reported status.
+	auto ret = DialogHandle::cancel(st);
+
 	if (_panel) {
 		switch (_request->type) {
 		case DialogType::OpenFile:
@@ -410,21 +429,14 @@ Status MacosDialogHandle::cancel(Status st) {
 			[(__bridge NSSavePanel *)_panel cancel:nil];
 			break;
 		default:
-			// The shared colour and font panels are ordinary windows; closing one fires the
-			// notification we are listening for.
+			// The shared colour and font panels are ordinary windows; closing one is what takes
+			// them off the screen.
 			[(__bridge NSWindow *)_panel close];
 			break;
 		}
 	}
 
-	if (_observer) {
-		// __bridge_transfer hands the retain we took back to ARC, which then releases it.
-		id observer = (__bridge_transfer id)_observer;
-		_observer = nullptr;
-		[[NSNotificationCenter defaultCenter] removeObserver:observer];
-	}
-
-	return DialogHandle::cancel(st);
+	return ret;
 }
 
 void MacosDialogHandle::raise() {

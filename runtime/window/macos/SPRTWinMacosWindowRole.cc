@@ -25,10 +25,10 @@
 // class, with SPRT_MACOS_WINDOW_ROLE_NAME naming the class for the debug log. Both classes declare
 // the three ivars this touches; everything else is plain NSWindow API, which NSPanel inherits.
 
-- (instancetype)initWithContentRect:(NSRect)contentRect
-						  styleMask:(NSWindowStyleMask)style
-							backing:(NSBackingStoreType)backingStoreType
-							  defer:(BOOL)flag {
+- (instancetype _Nonnull)initWithContentRect:(NSRect)contentRect
+								   styleMask:(NSWindowStyleMask)style
+									 backing:(NSBackingStoreType)backingStoreType
+									   defer:(BOOL)flag {
 	self = [super initWithContentRect:contentRect
 							styleMask:style
 							  backing:backingStoreType
@@ -93,7 +93,7 @@
 	}
 }
 
-- (void)toggleFullScreen:(id)sender withScreen:(NSScreen *)screen {
+- (void)toggleFullScreen:(id _Nullable)sender withScreen:(NSScreen *_Nonnull)screen {
 	if (screen == self.screen) {
 		[self toggleFullScreen:sender];
 	} else {
@@ -117,10 +117,10 @@
 	return [super animationResizeTime:newFrame];
 }
 
-- (instancetype)animator {
+- (instancetype _Nonnull)animator {
 	return [super animator];
 }
 
-- (id)animationForKey:(NSAnimatablePropertyKey)key {
+- (id _Nullable)animationForKey:(NSAnimatablePropertyKey _Nonnull)key {
 	return [super animationForKey:key];
 }

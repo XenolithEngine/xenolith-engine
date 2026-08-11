@@ -257,4 +257,21 @@ void RemoteFontServerEndpoint::reset() {
 	_atlasStableId = 0;
 }
 
+void RemoteFontServerEndpoint::invalidate() {
+	reset();
+
+	// The atlas holds a cycle through its DynamicImage instances, which is what finalize() breaks -
+	// the same teardown the local-scene controller gets from AppThread::finalizeExtensions(). Dropping
+	// the controller without it leaves the image (and its device memory) alive past the gapi device.
+	if (_controller) {
+		_controller->invalidate(_owner);
+		_controller = nullptr;
+	}
+
+	_store.clear();
+	_library = nullptr;
+	_component = nullptr;
+	_owner = nullptr;
+}
+
 } // namespace stappler::xenolith::font

@@ -25,6 +25,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+void MeshInputData::setAttachment(const MeshAttachment *a) {
+	attachment = a;
+	attachmentOwner = a ? a->getQueue() : nullptr;
+}
+
 MeshSet::~MeshSet() { }
 
 bool MeshSet::init(Vector<Index> &&idx, BufferObject *index, BufferObject *vertex) {

@@ -652,7 +652,10 @@ VectorCanvasCache::VectorCanvasCache() {
 	auto path = FileInfo("vector_cache.cbor", FileCategory::AppCache);
 
 	if (filesystem::exists(path)) {
-		auto val = data::readFile<Interface>(path);
+		// Read-only: the file may be unreadable or hold something that is not the array we wrote
+		// (a truncated or foreign cache). A const Value answers such reads with the shared null
+		// container instead of asserting, so a bad cache is skipped rather than fatal.
+		const auto val = data::readFile<Interface>(path);
 		for (auto &it : val.asArray()) {
 			if (it.getInteger("version") != 2) {
 				continue;
@@ -679,10 +682,10 @@ VectorCanvasCache::VectorCanvasCache() {
 			}
 
 			data.data = Rc<VertexData>::alloc();
-			data.data->data.assign(reinterpret_cast<Vertex *>(vertexes.data()),
-					reinterpret_cast<Vertex *>(vertexes.data() + vertexes.size()));
-			data.data->indexes.assign(reinterpret_cast<uint32_t *>(indexes.data()),
-					reinterpret_cast<uint32_t *>(indexes.data() + indexes.size()));
+			data.data->data.assign(reinterpret_cast<const Vertex *>(vertexes.data()),
+					reinterpret_cast<const Vertex *>(vertexes.data() + vertexes.size()));
+			data.data->indexes.assign(reinterpret_cast<const uint32_t *>(indexes.data()),
+					reinterpret_cast<const uint32_t *>(indexes.data() + indexes.size()));
 
 			cacheData.emplace(move(data));
 		}

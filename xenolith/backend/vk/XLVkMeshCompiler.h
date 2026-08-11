@@ -58,6 +58,9 @@ protected:
 	using Queue::init;
 
 	struct MeshRequest {
+		// Keeps the queue behind the raw MeshAttachment* key alive - see
+		// MaterialCompiler::MaterialRequest::owner.
+		Rc<Ref> owner;
 		Set<Rc<MeshIndex>> toAdd;
 		Set<Rc<MeshIndex>> toRemove;
 		Vector<Rc<core::DependencyEvent>> deps;

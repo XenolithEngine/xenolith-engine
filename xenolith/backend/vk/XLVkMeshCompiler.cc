@@ -145,6 +145,10 @@ void MeshCompiler::appendRequest(const MeshAttachment *a, Rc<MeshInputData> &&re
 		it = _requests.emplace(a, MeshRequest()).first;
 	}
 
+	if (!it->second.owner) {
+		it->second.owner = req->attachmentOwner;
+	}
+
 	for (auto &rem : req->meshesToRemove) {
 		auto m = it->second.toAdd.find(rem);
 		if (m != it->second.toAdd.end()) {
@@ -186,14 +190,18 @@ void MeshCompiler::runMeshCompilationFrame(core::Loop &loop, Rc<MeshInputData> &
 		Vector<Rc<core::DependencyEvent>> &&deps) {
 	auto targetAttachment = req->attachment;
 
+	// Outlives the frame's input data and re-submits against `targetAttachment`, so it has to keep
+	// the attachment's queue alive itself - see MaterialCompiler::runMaterialCompilationFrame.
+	auto targetOwner = req->attachmentOwner;
+
 	auto h = loop.makeFrame(makeRequest(sp::move(req), sp::move(deps)), 0);
-	h->setCompleteCallback([this, targetAttachment](FrameHandle &handle) {
+	h->setCompleteCallback([this, targetAttachment, targetOwner](FrameHandle &handle) {
 		auto reqIt = _requests.find(targetAttachment);
 		if (reqIt != _requests.end()) {
 			if (handle.getLoop()->isRunning()) {
 				auto deps = sp::move(reqIt->second.deps);
 				Rc<MeshInputData> req = Rc<MeshInputData>::alloc();
-				req->attachment = targetAttachment;
+				req->setAttachment(targetAttachment);
 				req->meshesToAdd.reserve(reqIt->second.toAdd.size());
 				for (auto &m : reqIt->second.toAdd) { req->meshesToAdd.emplace_back(m); }
 				req->meshesToRemove.reserve(reqIt->second.toRemove.size());

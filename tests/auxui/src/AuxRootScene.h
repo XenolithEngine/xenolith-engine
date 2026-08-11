@@ -44,7 +44,7 @@ public:
 	// Signature of Context::SymbolMakeSceneSignature: this is the one scene the process-wide
 	// factory still produces (DEFINE_PRIMARY_SCENE_CLASS at the bottom of the .cpp).
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-			const core::FrameConstraints &constraints);
+			const core::FrameConstraints &constraints) override;
 
 protected:
 	virtual void handlePresented(Director *) override;

@@ -129,6 +129,8 @@ Rc<AttachmentHandle> Attachment::makeFrameHandle(const FrameQueue &queue) {
 	return nullptr;
 }
 
+Queue *Attachment::getQueue() const { return _data && _data->queue ? _data->queue->queue : nullptr; }
+
 Vector<const QueuePassData *> Attachment::getRenderPasses() const {
 	Vector<const PassData *> ret;
 	for (auto &it : _data->passes) { ret.emplace_back(it->pass); }

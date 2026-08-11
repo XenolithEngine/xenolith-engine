@@ -162,6 +162,15 @@ public:
 
 	const AttachmentData *getData() const { return _data; }
 
+	// The render queue this attachment belongs to, or null before the queue took ownership.
+	//
+	// Everything reachable through getData() - the passes, the texture-set layout, the attachment
+	// data itself - lives in that queue's memory pool, which Queue::~Queue destroys. So anything
+	// that holds an attachment across a thread hop or a frame has to keep the QUEUE alive, not
+	// just the attachment: an Rc<Attachment> leaves the object valid but its data pointing into a
+	// destroyed pool.
+	Queue *getQueue() const;
+
 	virtual void setCompiled(Device &);
 
 protected:

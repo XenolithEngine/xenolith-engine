@@ -113,7 +113,11 @@ bool TextureSetLayout::init(Device &dev, const core::TextureSetLayoutData &data)
 	return core::Object::init(dev,
 			[](core::Device *dev, core::ObjectType, core::ObjectHandle ptr, void *data) {
 		auto d = ((Device *)dev);
-		if (d->isPortabilityMode()) {
+		// The deferral holds a raw device pointer and runs whenever the current pool is cleaned up,
+		// which can be long after the device is gone. During invalidateObjects() the device is
+		// being destroyed right now, so there is no later to defer to - destroy it inline, exactly
+		// as the non-portability branch always does.
+		if (d->isPortabilityMode() && !d->isFinalizingObjects()) {
 			auto pool = memory::pool::acquire();
 			memory::pool::pre_cleanup_register(pool, [d, ptr = (VkDescriptorSetLayout)ptr.get()]() {
 				d->getTable()->vkDestroyDescriptorSetLayout(d->getDevice(), ptr, nullptr);
@@ -168,7 +172,9 @@ bool TextureSet::init(Device &dev, const core::TextureSetLayout &layout) {
 	return core::Object::init(dev,
 			[](core::Device *dev, core::ObjectType, ObjectHandle ptr, void *) {
 		auto d = ((Device *)dev);
-		if (d->isPortabilityMode()) {
+		// See the descriptor-set-layout callback above: no deferring past a device that is already
+		// being destroyed.
+		if (d->isPortabilityMode() && !d->isFinalizingObjects()) {
 			auto pool = memory::pool::acquire();
 			memory::pool::pre_cleanup_register(pool, [d, ptr = (VkDescriptorPool)ptr.get()]() {
 				d->getTable()->vkDestroyDescriptorPool(d->getDevice(), ptr, nullptr);
