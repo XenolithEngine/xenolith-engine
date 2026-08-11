@@ -49,7 +49,8 @@ THE SOFTWARE.
 // musl provides the float strto*_l variants but not the integer ones; integer
 // conversion is locale-independent, so fall back to the plain functions there
 // (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, and keeps the _l calls).
-#if SPRT_LINUX && !defined(__GLIBC__)
+// NuttX libc has neither the integer nor the float _l variants.
+#if (SPRT_LINUX && !defined(__GLIBC__)) || SPRT_NUTTX
 #define __SPRT_NO_STRTO_INT_L 1
 #else
 #define __SPRT_NO_STRTO_INT_L 0
@@ -183,7 +184,17 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return posix_memalign(ptr, align, size);
 }
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
-__SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) { return mkostemp(tpl, n); }
+__SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
+#if SPRT_NUTTX
+	// NuttX libc has no mkostemp; fall back to mkstemp (the flags argument is
+	// silently dropped — NuttX does not honour O_CLOEXEC on tempfile creation
+	// anyway, callers must fcntl FD_CLOEXEC afterwards).
+	(void)n;
+	return mkstemp(tpl);
+#else
+	return mkostemp(tpl, n);
+#endif
+}
 __SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) { return mkdtemp(tpl); }
 
 __SPRT_C_FUNC char *__SPRT_ID(
@@ -272,6 +283,9 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
 #if SPRT_APPLE
 	return ___mb_cur_max();
+#elif SPRT_NUTTX
+	// NuttX has no __ctype_get_mb_cur_max; MB_CUR_MAX is a compile-time macro.
+	return MB_CUR_MAX;
 #else
 	return ::__ctype_get_mb_cur_max();
 #endif

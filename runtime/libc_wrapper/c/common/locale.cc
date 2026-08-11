@@ -61,7 +61,10 @@ static_assert((__SPRT_LC_ALL_MASK & LC_ALL_MASK) == __SPRT_LC_ALL_MASK);
 // field present in both structs validates the shared layout member by member.
 // Hosted only: on a freestanding build `lconv` is the SPRT type itself (the cast
 // is identity) and there is no distinct platform `struct lconv` tag to compare.
-#if __STDC_HOSTED__ == 1
+// NuttX's lconv lacks the int_* currency fields entirely and uses locale_t as
+// an opaque void* (not glibc's __locale_struct*), so the layout-equality pin
+// and the locale_t type-identity do not hold there.
+#if __STDC_HOSTED__ == 1 && !SPRT_NUTTX
 #define __SPRT_LCONV_SAME(field) \
 	static_assert(offsetof(struct lconv, field) == offsetof(struct __SPRT_ID(lconv), field))
 static_assert(sizeof(struct lconv) == sizeof(struct __SPRT_ID(lconv)));
@@ -103,15 +106,34 @@ __SPRT_C_FUNC struct __SPRT_ID(lconv) * __SPRT_ID(localeconv)(void) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(locale_t) __SPRT_ID(duplocale)(__SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	// NuttX locale_t is an opaque void* (not glibc's __locale_struct*).
+	return (__SPRT_ID(locale_t))(uintptr_t)::duplocale((locale_t)(uintptr_t)loc);
+#else
 	return ::duplocale(loc);
+#endif
 }
-__SPRT_C_FUNC void __SPRT_ID(freelocale)(__SPRT_ID(locale_t) loc) { ::freelocale(loc); }
+__SPRT_C_FUNC void __SPRT_ID(freelocale)(__SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	::freelocale((locale_t)(uintptr_t)loc);
+#else
+	::freelocale(loc);
+#endif
+}
 __SPRT_C_FUNC __SPRT_ID(locale_t)
 		__SPRT_ID(newlocale)(int v, const char *name, __SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	return (__SPRT_ID(locale_t))(uintptr_t)::newlocale(v, name, (locale_t)(uintptr_t)loc);
+#else
 	return ::newlocale(v, name, loc);
+#endif
 }
 __SPRT_C_FUNC __SPRT_ID(locale_t) __SPRT_ID(uselocale)(__SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	return (__SPRT_ID(locale_t))(uintptr_t)::uselocale((locale_t)(uintptr_t)loc);
+#else
 	return ::uselocale(loc);
+#endif
 }
 
 } // namespace sprt

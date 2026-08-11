@@ -88,12 +88,19 @@ __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo)(__SPRT_ID(nl_item) item) {
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo_l)(__SPRT_ID(nl_item) item, __SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	// NuttX libc has no nl_langinfo_l; per-locale data is the C/POSIX default,
+	// so forward to the locale-less variant.
+	(void)loc;
+	return ::nl_langinfo(item);
+#else
 	auto *fn = nl_langinfo_l;
 	if (fn) {
 		return fn(item, loc);
 	}
 	// No per-locale data in the fallback: the C/POSIX answer ignores the locale.
 	return __nl_langinfo_default(item);
+#endif
 }
 
 } // namespace sprt

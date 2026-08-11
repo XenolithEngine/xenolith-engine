@@ -63,6 +63,22 @@ THE SOFTWARE.
 #include "wasm/clock_gettime.cc"
 #include "wasm/sched.cc"
 #include "wasm/libc.h"
+#elif SPRT_NUTTX
+// NuttX is hosted POSIX on its own libc, so the Linux libc/sched/clock_gettime
+// adapters apply verbatim — NuttX's <sched.h>, <time.h>, <stdio.h>, <pthread.h>
+// expose the same POSIX surface the Linux adapter uses. dlfcn is a no-op in a
+// flat build (no DSOs) but the prototypes are present in <dlfcn.h>.
+#include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "linux/clock_gettime.cc"
+#include "linux/libc.cc"
 #else
 #error Not implemented
 #endif
@@ -547,7 +563,9 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 			sprt::memcpy(buf->machine, _native.machine,
 					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
 		}
-#ifndef SPRT_APPLE
+		// domainname is a Linux extension to POSIX utsname; Apple and NuttX both
+		// ship the plain struct without it.
+#if !SPRT_APPLE && !SPRT_NUTTX
 		if (_native.domainname[0]) {
 			sprt::memcpy(buf->domainname, _native.domainname,
 					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));

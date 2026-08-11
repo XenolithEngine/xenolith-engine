@@ -49,6 +49,12 @@ INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
 TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 
+# Source tree for header-only deps that init-target.mk builds into the sysroot
+# (simde for the geom SIMD headers). Defaults to runtime/toolchains/src/, the
+# same place `make download` populates; override LIB_SRC_DIR when running
+# out-of-tree (CI, our VM tests where engine is mounted ro).
+LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
+
 SP_OPT := -O2
 
 # A NuttX export package is REQUIRED input. We accept either a prebuilt tarball
@@ -117,8 +123,12 @@ target-aarch64:
 		$(SP_ARCH_aarch64_INFO) \
 		NUTTX_EXPORT="$(NUTTX_EXPORT)" NUTTX_DIR="$(NUTTX_DIR)" \
 		NUTTX_CONFIG="$(NUTTX_CONFIG)" NUTTX_BOARD="$(NUTTX_BOARD)"
-	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_aarch64_INFO)
-	# M2 will insert the LLVM runtimes inner pass here.
+	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_aarch64_INFO) \
+		LIB_SRC_DIR="$(LIB_SRC_DIR)"
+	# M2: build libclang_rt.builtins-aarch64.a + sme_stub against the NuttX libc.
+	$(MAKE) -f $(COMPILER_RT_FILE) \
+		$(SP_ARCH_aarch64_INFO_BASE) \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf
 	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_ARCH_aarch64_INSTALL)
 
 .PHONY: all clean target-aarch64

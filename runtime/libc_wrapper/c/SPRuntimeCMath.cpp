@@ -32,6 +32,11 @@ THE SOFTWARE.
 
 #include <math.h>
 
+// NuttX <math.h> does not define MATH_ERRNO/MATH_ERREXCEPT/math_errhandling and
+// uses different FP_/M_ numeric values than the glibc layout sprt pins against.
+// Skip the canonical-equality pin block on NuttX; the wrapper re-exports the
+// symbols under __sprt_-prefixed names regardless.
+#if !SPRT_NUTTX
 static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
 static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
 
@@ -64,6 +69,8 @@ static_assert(INFINITY == __SPRT_INFINITY);
 static_assert(HUGE_VAL == __SPRT_HUGE_VAL);
 static_assert(HUGE_VALF == __SPRT_HUGE_VALF);
 static_assert(HUGE_VALL == __SPRT_HUGE_VALL);
+
+#endif // !SPRT_NUTTX
 
 #endif
 

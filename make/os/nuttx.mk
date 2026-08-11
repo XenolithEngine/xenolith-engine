@@ -45,8 +45,25 @@ OSTYPE_EXEC_CFLAGS :=
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual \
 	-frtti -fexceptions -fvisibility=hidden -fvisibility-inlines-hidden \
 	-ffunction-sections -fdata-sections
+
+# NuttX flat-build arm64 linker scripts have no .tbss/.tdata sections, so the
+# link fails with "STT_TLS symbol but no PT_TLS segment" when libsprt.a uses
+# `thread_local`. -femulated-tls routes thread_local through __emutls_* calls
+# (which live in the regular .bss/.data) instead of ELF TLS sections, sidestepping
+# the missing PT_TLS without changes to the NuttX linker scripts.
+OSTYPE_GENERAL_CFLAGS += -femulated-tls
+OSTYPE_GENERAL_CXXFLAGS += -femulated-tls
 OSTYPE_LIB_CXXFLAGS :=
 OSTYPE_EXEC_CXXFLAGS :=
+
+# simde (SIMD-everywhere) headers live in the sysroot usr/include; the geom SIMD
+# headers pull <simde/x86/*.h>. -idirafter puts the NuttX libc at the lowest
+# search priority so the sprt libc++ wrappers in include_libc/cxx/ (which
+# intercept <stddef.h>, <ctype.h>, ... and re-export the libc symbols under
+# std::) resolve first. -isystem here breaks libc++ by putting the raw libc
+# ahead of the wrappers.
+OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
+OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
 
 ifeq ($(RELEASE),1)
 OSTYPE_GENERAL_CFLAGS += -O2

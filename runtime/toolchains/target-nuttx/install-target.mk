@@ -34,10 +34,11 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/sysroot/usr/include | $(T_TARGET)
 # <arm_neon.h>, ... resolve); after M2 it will be a real directory carrying
 # our freshly-built builtins plus the host's include/.
 #
-# The host toolchain sits at ../../host/ relative to the target sysroot, so the
-# absolute path is $(T_TARGET)/../../host/lib/clang/21. We compute it via
-# $(abspath) once instead of relative links so it survives being tarred/moved.
-HOST_CLANG_RESOURCE := $(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)/lib/clang/21)
+# SP_RUNTIME_ROOT is the engine runtime/ dir (passed in by the outer Makefile);
+# the prebuilt host ships at <engine-root>/toolchains/hosts/$(HOST_ID), i.e.
+# one level above SP_RUNTIME_ROOT. Compute it once via $(abspath) instead of a
+# relative link so it survives being tarred/moved.
+HOST_CLANG_RESOURCE := $(abspath $(SP_RUNTIME_ROOT)/../toolchains/hosts/$(HOST_ID)/lib/clang/21)
 
 $(T_TARGET)/lib/clang: | $(T_TARGET)
 	@mkdir -p $(dir $@)

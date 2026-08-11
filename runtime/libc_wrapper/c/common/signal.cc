@@ -74,7 +74,13 @@ static_assert(SIG_DFL == __SPRT_SIG_DFL);
 //static_assert(SIG_HOLD == __SPRT_SIG_HOLD);
 //static_assert(SIG_ERR == __SPRT_SIG_ERR);
 
+// NuttX declares sig_atomic_t as `volatile int`, while sprt's canonical
+// __sprt_sig_atomic_t is plain `int`. The volatile-qualification is harmless
+// to the runtime's use (it only stores/restores the value), so skip the
+// type-identity check there.
+#if !SPRT_NUTTX
 static_assert(sprt::is_same_v<sig_atomic_t, __sprt_sig_atomic_t>);
+#endif
 
 #endif // __STDC_HOSTED__
 

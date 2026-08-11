@@ -47,6 +47,13 @@
 __SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
 #endif
 
+#if SPRT_NUTTX
+// NuttX libc declares strerror_r in <string.h>; pull it the same way the Linux
+// path does (NuttX has strerror_r, no __STDC_LIB_EXT1__ bounds-checked variant).
+#undef _GNU_SOURCE
+#include <string.h>
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(errno_t)
@@ -431,6 +438,16 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 // The browser/DevTools console does not interpret ANSI escape sequences, so no
 // terminal features are advertised (plain text only), matching the Android path.
+static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
+
+#endif
+
+#if SPRT_NUTTX
+
+// NuttX NSH console: assume ANSI-compatible (the QEMU virtio-serial console and
+// most HDMI-attached terminals handle ANSI escapes). Probe TERM/TERMINFO like
+// the Linux path later — for now plain text matches the wasm/android default
+// and keeps the runtime quiet on terminals that strip escapes.
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 #endif

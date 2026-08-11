@@ -55,6 +55,7 @@ THE SOFTWARE.
 
 #if __STDC_HOSTED__ == 1
 
+#if !SPRT_NUTTX
 static_assert(sizeof(struct __SPRT_ID(pollfd)) == sizeof(struct ::pollfd),
 		"pollfd size differs from native");
 static_assert(__builtin_offsetof(struct __SPRT_ID(pollfd), fd)
@@ -83,6 +84,7 @@ static_assert(__SPRT_POLLRDHUP == POLLRDHUP, "POLLRDHUP differs from native");
 
 static_assert(sizeof(__SPRT_ID(fd_set)) == sizeof(::fd_set), "fd_set size differs from native");
 static_assert(__SPRT_FD_SETSIZE == FD_SETSIZE, "FD_SETSIZE differs from native");
+#endif // !SPRT_NUTTX
 
 #elif SPRT_WINDOWS
 

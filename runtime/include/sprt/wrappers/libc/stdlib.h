@@ -81,6 +81,20 @@ using namespace sprt::_cstdlib_types;
 namespace sprt {
 inline namespace _cstdlib {
 
+// NuttX <stdlib.h> defines several *_l and srandom as macros that would
+// re-write the sprt umbrella prototypes below after preprocessing (causing
+// redefinition errors). Drop them before pulling stdlib_impl.h.
+#if SPRT_NUTTX
+#undef srandom
+#undef strtold_l
+#undef strtoll_l
+#undef strtoull_l
+#undef strtof_l
+#undef strtod_l
+#undef strtol_l
+#undef strtoul_l
+#endif
+
 #define SPRT_FUNC_BEGIN SPRT_FORCEINLINE
 #define SPRT_FUNC_END SPRT_NOEXCEPT
 #define SPRT_FUNC_END_EXCEPT

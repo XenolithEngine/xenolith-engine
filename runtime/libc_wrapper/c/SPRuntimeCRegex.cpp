@@ -70,6 +70,10 @@ extern "C" void __sprt_musl_globfree(__SPRT_ID(glob_t) * __pglob);
 // ---------------------------------------------------------------------------
 
 // regex_t is an opaque cell; the native one must fit.
+// NuttX <regex.h> uses different REG_*/FNM_*/GLOB_* numeric values than the
+// glibc layout sprt pins against, so skip the canonical-equality pin block
+// there. The wrapper re-exports the symbols under __sprt_-prefixed names.
+#if !SPRT_NUTTX
 static_assert(sizeof(::regex_t) <= sizeof(__SPRT_ID(regex_t)),
 		"native regex_t does not fit in the SPRT regex_t cell");
 static_assert(sizeof(::regoff_t) <= sizeof(__SPRT_ID(regoff_t)), "native regoff_t is wider than SPRT's");
@@ -92,11 +96,12 @@ static_assert(__SPRT_FNM_LEADING_DIR == FNM_LEADING_DIR, "FNM_LEADING_DIR differ
 #ifdef FNM_CASEFOLD
 static_assert(__SPRT_FNM_CASEFOLD == FNM_CASEFOLD, "FNM_CASEFOLD differs from native");
 #endif
+#endif // !SPRT_NUTTX
 
 // glob_t + GLOB_* are validated against the native <glob.h> everywhere it is
 // reachable (Android borrows musl's glob, so its layout is checked in
 // SPRuntimeCGlobMusl.c instead).
-#if !SPRT_ANDROID
+#if !SPRT_ANDROID && !SPRT_NUTTX
 static_assert(sizeof(__SPRT_ID(glob_t)) == sizeof(::glob_t), "glob_t size differs from native");
 static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathc) == __builtin_offsetof(::glob_t, gl_pathc),
 		"gl_pathc offset differs from native");

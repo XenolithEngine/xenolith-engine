@@ -42,6 +42,13 @@ THE SOFTWARE.
 #include <fcntl.h>
 #endif
 
+#if SPRT_NUTTX
+// NuttX scandirat fallback (the musl path below) reaches AT_FDCWD/getcwd/
+// readlink through <fcntl.h> and <unistd.h>.
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
 #include <dirent.h>
 
 // musl provides neither scandirat() nor scandirat64(), so it needs a dedicated
@@ -57,7 +64,13 @@ THE SOFTWARE.
 #define __SPRT_DIRENT_MUSL 0
 #endif
 
+// NuttX's struct dirent has a different size than sprt's canonical layout
+// (no d_off/d_reclen padding). Skip the size-equality pin on NuttX; the cast
+// through the sprt type is still safe because readdir_r writes into a
+// user-supplied buffer of the libc type, not the sprt type.
+#if !SPRT_NUTTX
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
+#endif
 
 namespace sprt {
 
@@ -70,7 +83,8 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) {
 }
 
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
+	// NuttX has no LFS readdir64 — the plain readdir is the only spelling.
 	return (struct __SPRT_DIRENT_NAME *)readdir((DIR *)__dir);
 #else
 	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
@@ -103,7 +117,7 @@ __SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd((DIR *
 
 __SPRT_C_FUNC int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ::alphasort((const struct dirent **)__lhs, (const struct dirent **)__rhs);
 #else
 	return ::alphasort64((const struct dirent64 **)__lhs, (const struct dirent64 **)__rhs);
@@ -119,7 +133,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ::scandir(path, (struct dirent ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
@@ -180,7 +194,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
 					__comparator));
-#elif __SPRT_DIRENT_MUSL
+#elif __SPRT_DIRENT_MUSL || SPRT_NUTTX
 	// musl provides neither scandirat() nor scandirat64(); resolve the directory
 	// descriptor to a path through /proc and reuse our (already 64-bit) scandir().
 	if (path[0] == '/') {

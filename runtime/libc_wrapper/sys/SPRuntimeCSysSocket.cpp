@@ -257,6 +257,7 @@ static_assert(__builtin_offsetof(struct __SPRT_ID(sockaddr_in6), sin6_family)
 
 // The __SPRT_-prefixed socket constants (cross/<platform>/sockdef.h) are validated here
 // against the native <sys/socket.h>; the plain SOCK_*/AF_*/... alias the __SPRT_ ones.
+#if !SPRT_NUTTX
 static_assert(__SPRT_SHUT_RD == SHUT_RD && __SPRT_SHUT_WR == SHUT_WR
 				&& __SPRT_SHUT_RDWR == SHUT_RDWR,
 		"SHUT_* differ from native");
@@ -1748,6 +1749,8 @@ static_assert(__SPRT_TCP_ZEROCOPY_RECEIVE == TCP_ZEROCOPY_RECEIVE,
 
 #endif // hosted
 
+#endif // !SPRT_NUTTX
+
 namespace sprt {
 
 #if SPRT_WASM
@@ -2076,7 +2079,7 @@ __SPRT_C_FUNC int __SPRT_ID(sendmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 		unsigned int __vlen, unsigned int __flags) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();
-#elif SPRT_WINDOWS || SPRT_APPLE
+#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_NUTTX
 	// No native sendmmsg(): loop sendmsg() over the batch (Linux semantics - return the
 	// count sent, or -1 if the first one fails).
 	unsigned int __i = 0;
@@ -2100,7 +2103,7 @@ __SPRT_C_FUNC int __SPRT_ID(recvmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 		unsigned int __vlen, unsigned int __flags, struct __SPRT_TIMESPEC_NAME *__timeout) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();
-#elif SPRT_WINDOWS || SPRT_APPLE
+#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_NUTTX
 	// No native recvmmsg(): loop recvmsg(). The timeout is best-effort (not applied
 	// between messages), matching how the batch degrades without kernel support.
 	(void)__timeout;

@@ -74,6 +74,14 @@
 #include "platform/wasm/SPEvent-wasm.cc"
 #endif
 
+// NuttX: a poll-based reactor. NuttX has poll() but no epoll/uring, so this is
+// a darwin-style kqueue-free reactor built on poll()+timer heap. The real
+// poll-based platform arrives in M5; for M3 the stub below makes Queue::Data a
+// complete type so libsprt.a links.
+#if SPRT_NUTTX
+#include "platform/nuttx/SPEvent-nuttx.cc"
+#endif
+
 // Platform-neutral async file I/O (shared op-state machine + inline handle +
 // QueueData::readFile/writeFile). The io_uring-native handle lives in
 // SPEventFileFd.cc (Linux/Android only); the inline handle here serves every

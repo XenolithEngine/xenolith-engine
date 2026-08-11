@@ -82,6 +82,18 @@ static int __wasm_setjmp_noop(__SPRT_ID(native_jmp_buf)) { return 0; }
 static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; }
 #endif
 
+#if SPRT_NUTTX
+// NuttX flat build has no unwinder (no libgcc_s.so / libunwind), so sprt's
+// forced-unwind longjmp — the path that walks frames calling C++ destructors —
+// has nothing to drive it. libc setjmp/longjmp work for the plain non-local
+// goto, but the runtime contract requires destructor-calling longjmp, which is
+// what the rest of this file builds on _Unwind_ForcedUnwind. Treat NuttX like
+// wasm for now: no-op setjmp, abort on longjmp. The M5 milestone (real
+// threads/Looper) is where a poll-based reactor + a NuttX unwinder would land.
+static int __nuttx_setjmp_noop(__SPRT_ID(native_jmp_buf)) { return 0; }
+static int __nuttx_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; }
+#endif
+
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
@@ -90,6 +102,9 @@ __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 #elif SPRT_WASM
 	// No-op setjmp (returns 0); see __wasm_setjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&__wasm_setjmp_noop);
+#elif SPRT_NUTTX
+	// No-op setjmp; see __nuttx_setjmp_noop above.
+	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&__nuttx_setjmp_noop);
 #else
 #error Not implemented
 #endif
@@ -111,6 +126,9 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 #elif SPRT_WASM
 	// No-op sigsetjmp (returns 0); see __wasm_sigsetjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__wasm_sigsetjmp_noop);
+#elif SPRT_NUTTX
+	// No-op sigsetjmp; see __nuttx_sigsetjmp_noop above.
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__nuttx_sigsetjmp_noop);
 #else
 #error Not implemented
 #endif
@@ -234,11 +252,18 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
 #elif SPRT_WASM
-	// TODO(wasm-eh): unwind via wasm exceptions. Until then a longjmp cannot be
-	// honored; trap rather than silently returning into a dead frame.
-	(void)buf;
-	(void)ret;
-	__builtin_trap();
+		// TODO(wasm-eh): unwind via wasm exceptions. Until then a longjmp cannot be
+		// honored; trap rather than silently returning into a dead frame.
+		(void)buf;
+		(void)ret;
+		__builtin_trap();
+#elif SPRT_NUTTX
+		// No unwinder in a flat build: longjmp into a dead frame cannot be
+		// honored. Trap; the no-op setjmp above means no live setjmp exists
+		// anyway. See __nuttx_setjmp_noop for the rationale.
+		(void)buf;
+		(void)ret;
+		__builtin_trap();
 #else
 #error Not implemented
 #endif
@@ -295,10 +320,15 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 	}
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
 #elif SPRT_WASM
-	// TODO(wasm-eh): see __sprt_longjmp above.
-	(void)buf;
-	(void)ret;
-	__builtin_trap();
+		// TODO(wasm-eh): see __sprt_longjmp above.
+		(void)buf;
+		(void)ret;
+		__builtin_trap();
+#elif SPRT_NUTTX
+		// See __sprt_longjmp above: no unwinder in a flat build.
+		(void)buf;
+		(void)ret;
+		__builtin_trap();
 #else
 #error Not implemented
 #endif

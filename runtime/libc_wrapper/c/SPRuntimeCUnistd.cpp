@@ -62,6 +62,11 @@ THE SOFTWARE.
 #include <pthread.h>
 #endif
 
+#if SPRT_NUTTX
+#include <pthread.h>
+#include <sys/types.h>
+#endif
+
 #if __STDC_HOSTED__ == 0
 #include "unistd.h"
 #include "utime.h"
@@ -80,6 +85,9 @@ THE SOFTWARE.
 #include "../src/private/SPRTSpecific.h"
 #endif
 
+#if !SPRT_NUTTX
+// NuttX <unistd.h> uses different numeric values for SEEK_*/R_OK/_SC_*/_PC_*
+// than the glibc layout sprt pins against; skip the canonical-equality pin block there.
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
 static_assert(SEEK_CUR == __SPRT_SEEK_CUR);
 static_assert(SEEK_END == __SPRT_SEEK_END);
@@ -806,6 +814,8 @@ static_assert(_PC_2_SYMLINKS == __SPRT_PC_2_SYMLINKS);
 #endif
 #endif
 
+#endif // !SPRT_NUTTX
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEPT {
@@ -813,7 +823,7 @@ __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEP
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	return ::faccessat(-1, path, __type, __SPRT_AT_EACCESS);
 #else
 	return eaccess(path, __type);
@@ -822,7 +832,7 @@ __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCE
 
 __SPRT_C_FUNC __SPRT_ID(off_t)
 		__SPRT_ID(lseek)(int __fd, __SPRT_ID(off_t) __offset, int __whence) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ::lseek(__fd, __offset, __whence);
 #else
 	return ::lseek64(__fd, __offset, __whence);
@@ -843,7 +853,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return pread(__fd, __buf, __count, __offset);
 #else
 	return pread64(__fd, __buf, __count, __offset);
@@ -852,7 +862,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pwrite)(int __fd, const void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return pwrite(__fd, __buf, __count, __offset);
 #else
 	return pwrite64(__fd, __buf, __count, __offset);
@@ -963,7 +973,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_NUTTX
 	return ::execve(__file, _argv, __envp);
 #else
 	return ::execvpe(__file, _argv, __envp);
@@ -1195,7 +1205,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
 		__SPRT_ID(uid_t) __suid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ::setreuid(__ruid, __euid);
 #else
 	return ::setresuid(__ruid, __euid, __suid);
@@ -1210,7 +1220,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid,
 		__SPRT_ID(gid_t) __sgid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ::setregid(__rgid, __egid);
 #else
 	return ::setresgid(__rgid, __egid, __sgid);
@@ -1280,15 +1290,21 @@ __SPRT_C_FUNC int __SPRT_ID(unlink)(const char *__name) __SPRT_NOEXCEPT { return
 
 __SPRT_C_FUNC int __SPRT_ID(rmdir)(const char *__path) __SPRT_NOEXCEPT { return rmdir(__path); }
 
-__SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) { return getlogin(); }
+__SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
+#if SPRT_NUTTX
+	// NuttX has no getlogin in flat builds; return ENOSYS via nullptr.
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
+	return getlogin();
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_len) {
-#if SPRT_ANDROID
-	if (platform::_getlogin_r) {
-		return platform::_getlogin_r(__name, __name_len);
-	}
+#if SPRT_ANDROID || SPRT_NUTTX
+	// Neither Android nor NuttX expose a usable getlogin_r in flat builds.
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
+			" not available for this platform");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
@@ -1367,7 +1383,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return truncate(__file, length);
 #else
 	return truncate64(__file, length);
@@ -1375,7 +1391,7 @@ __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) lengt
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return ftruncate(__fd, length);
 #else
 	return ftruncate64(__fd, length);
@@ -1386,7 +1402,7 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_BRK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	::brk(__addr);
 	return 0;
 #else
@@ -1416,7 +1432,7 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 }
 
 __SPRT_C_FUNC int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return lockf(__fd, __cmd, len);
 #else
 	return lockf64(__fd, __cmd, len);
@@ -1497,6 +1513,10 @@ __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __fla
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 #if SPRT_APPLE
 	return gethostid();
+#elif SPRT_NUTTX
+	// NuttX has no gethostid; synthesize one from a kernel timer so callers
+	// that only need "some per-host value" do not break.
+	return static_cast<long>(::time(nullptr));
 #else
 	auto dev = platform::getUniqueDeviceId();
 
@@ -1511,7 +1531,7 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 __SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return pipe(fds); }
 
 __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	static auto setnonblock = [](int fd) {
 		int flags = fcntl(fd, F_GETFL, 0);
 		if (flags == -1) {

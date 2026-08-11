@@ -373,11 +373,16 @@ using atomic_uintmax_t = atomic<uintmax_t>;
 
 
 inline void atomic_thread_fence(memory_order __order) noexcept {
-	__c11_atomic_thread_fence(static_cast<int>(__order));
+	// Use the GCC __atomic_* builtins rather than __c11_atomic_*: the C11 spellings
+	// are only declared by clang after <stdatomic.h> is seen, which the freestanding
+	// NuttX/wasm targets do not pull into every TU that transitively reaches this
+	// header. __atomic_thread_fence is the language-independent form and is always
+	// available on clang/gcc.
+	__atomic_thread_fence(static_cast<int>(__order));
 }
 
 inline void atomic_signal_fence(memory_order __order) noexcept {
-	__c11_atomic_signal_fence(static_cast<int>(__order));
+	__atomic_signal_fence(static_cast<int>(__order));
 }
 
 // [atomics.nonmembers] atomic_init (deprecated in C++20): non-atomically seed the
