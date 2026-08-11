@@ -541,6 +541,12 @@ header, a platform branch, or an allocation. The essentials:
   survive CBOR but not JSON
   ([data::Value](docs/usage/codestyle/core/data-value.adoc), full guide:
   [docs/usage/data/value.adoc](docs/usage/data/value.adoc)).
+- A directory named in `LOCAL_EMBED_DIRS` / `MODULE_<X>_EMBED_DIRS` is compiled
+  into the binary (BundleFS) and read back through **`FileCategory::Embedded`**,
+  where the bundle's mount name is the directory's own name. `Embedded` is
+  independent of `Bundled` (the on-disk app bundle) and is strictly read-only;
+  compression is per-bundle, needs `stappler_data`, and only `xlmake` performs it
+  ([embedded files](docs/usage/codestyle/core/embedded-files.adoc)).
 - Windows are asked for with `Context::createWindow`, and what a window **is**
   travels with the request as `WindowInfo::appData` — never look one up by `id`,
   which the runtime may re-unique. Popups/dialogs/tooltips are `ui::SubWindow`

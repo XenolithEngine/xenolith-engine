@@ -53,6 +53,7 @@ void Makefile::setupBuiltinVariables() {
 	simple("REMOVE", RemoveDirectiveMarker);
 	simple("CP", CopyDirectiveMarker);
 	simple("ECHO", EchoDirectiveMarker);
+	simple("EMBED", EmbedDirectiveMarker);
 
 	// Host detection: `init-xlmake.mk` reads XL_UNAME_SYSNAME (as UNAME), XL_UNAME_MACHINE (as the
 	// host arch) and XL_GLIBC_VERSION (glibc vs musl) to compute STAPPLER_HOST for the current

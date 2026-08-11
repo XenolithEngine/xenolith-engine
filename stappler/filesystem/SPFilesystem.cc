@@ -178,8 +178,8 @@ bool remove(const FileInfo &info, bool recursive) {
 		return false;
 	}
 
-	if (info.category == FileCategory::Bundled) {
-		return false; // we can not remove anything from bundle
+	if (info.category == FileCategory::Bundled || info.category == FileCategory::Embedded) {
+		return false; // we can not remove anything from a bundle or from embedded data
 	}
 
 	// Recursively remove a directory's contents and then the directory itself. _ftw walks entries
@@ -246,8 +246,8 @@ bool touch(const FileInfo &info) {
 		return false;
 	}
 
-	if (info.category == FileCategory::Bundled) {
-		return false; // we can not remove anything from bundle
+	if (info.category == FileCategory::Bundled || info.category == FileCategory::Embedded) {
+		return false; // we can not remove anything from a bundle or from embedded data
 	}
 
 	bool found = false;

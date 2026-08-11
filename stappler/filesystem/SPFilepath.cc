@@ -31,6 +31,14 @@ FileInfo::FileInfo(StringView _path) {
 		category = filesystem::detectResourceCategory(_path);
 		if (category == FileCategory::Custom) {
 			slog().warn("filesystem", "Invalid category prefix in path: ", _path);
+		} else {
+			// The prefix has done its job — it named the category. Everything downstream merges
+			// `path` onto a location root, so it must be the bare path from here on.
+			_path.skipUntil<StringView::Chars<':'>>();
+			if (_path.is(':')) {
+				++_path;
+			}
+			_path.skipChars<StringView::Chars<'/'>>();
 		}
 	}
 	path = _path;

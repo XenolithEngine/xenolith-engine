@@ -32,6 +32,19 @@ define BUILD_write_appconfig_string
 @echo '$(tab)SharedSymbol("$(2)", $(2)),' >> $(1)$(newline)$(tab)
 endef
 
+# BundleFS codegen: turn a directory into a translation unit (see make/embed/apply.mk)
+# $(1) - target .cpp
+# $(2) - bundle name
+# $(3) - source directory
+# $(4) - compression flag (0/1)
+# $(5) - content prerequisites
+define BUILD_embed_source
+$(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(5)
+	@$(call rule_mkdir,$(dir $(1)))
+	@sh $(BUILD_ROOT)/embed/embedfs.sh $(1) $(2) $(3) $(4)
+$(1):.TARGET_NAME := [embed] $(2)
+endef
+
 define BUILD_appconfig_source
 $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(BUILD_APP_CONFIG)
 	@$(call rule_mkdir,$(dir $(1)))

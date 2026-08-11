@@ -32,6 +32,7 @@ THE SOFTWARE.
 
 #include "SPMakefileBuilder.h"
 #include "SPFilesystem.h" // in-process $(MKDIR)/$(REMOVE)/$(CP) directives (mkdir/remove/copy)
+#include "SPMakefileEmbed.h" // in-process $(EMBED) directive (BundleFS codegen)
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -69,7 +70,8 @@ struct Command {
 		Mkdir,
 		Remove,
 		Copy,
-		Echo
+		Echo,
+		Embed
 	};
 
 	JobString text;
@@ -189,6 +191,8 @@ public:
 				[&](StringView v) { _copyMarker.append(v.data(), v.size()); }, _err);
 		_mk->getVariableValue(StringView("ECHO"),
 				[&](StringView v) { _echoMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("EMBED"),
+				[&](StringView v) { _embedMarker.append(v.data(), v.size()); }, _err);
 	}
 
 	BuildResult buildGoal(Target *goal);
@@ -261,6 +265,7 @@ private:
 	JobString _removeMarker; // expanded $(REMOVE); leading token => in-process rm -rf
 	JobString _copyMarker; // expanded $(CP); leading token => in-process cp -f
 	JobString _echoMarker; // expanded $(ECHO); leading token => in-process console output
+	JobString _embedMarker; // expanded $(EMBED); leading token => in-process BundleFS codegen
 	uint32_t _total = 0; // M: recipe-running nodes for the current goal (computed before dispatch)
 	uint32_t _done = 0; // N: recipes completed so far (incremented at flush, in completion order)
 };
@@ -814,6 +819,9 @@ bool Builder::parseDirective(StringView line, Command &c) const {
 	} else if (matchMarker(_echoMarker)) {
 		c.kind = Command::Kind::Echo;
 		marker = &_echoMarker;
+	} else if (matchMarker(_embedMarker)) {
+		c.kind = Command::Kind::Embed;
+		marker = &_embedMarker;
 	} else {
 		return false;
 	}
@@ -825,7 +833,8 @@ bool Builder::parseDirective(StringView line, Command &c) const {
 	// directives, escape authored "\ " so a space-bearing operand survives tokenizeArgs as one token;
 	// $(ECHO) prints arbitrary text, so its remainder is kept verbatim.
 	if (c.kind == Command::Kind::Mkdir || c.kind == Command::Kind::Remove
-			|| c.kind == Command::Kind::Copy || c.kind == Command::Kind::Echo) {
+			|| c.kind == Command::Kind::Copy || c.kind == Command::Kind::Echo
+			|| c.kind == Command::Kind::Embed) {
 		StringView rest = s;
 		rest.trimChars<StringView::WhiteSpace>();
 		if (c.kind == Command::Kind::Echo) {
@@ -997,6 +1006,34 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		job->output.append(text.data(), text.size());
 		job->output.append("\n");
 		job->hadOutput = true;
+		return 0;
+	}
+	case Command::Kind::Embed: {
+		// BundleFS codegen: turn a directory into a translation unit (see SPMakefileEmbed.cc).
+		// Done in-process rather than by a helper script, so it also works where there is no
+		// POSIX shell; make/embed/embedfs.sh is the GNU-make fallback for the same job.
+		JobVector<StringView> toks;
+		tokenizeArgs(args, toks);
+		if (toks.size() < 3) {
+			return fail("xlmake: *** malformed $(EMBED) directive (expected: $(EMBED) <out.cpp> "
+						"<bundle-name> <src-dir> [compress])");
+		}
+
+		mem_std::Interface::StringType os;
+		mem_std::Interface::StringType ds;
+
+		EmbedConfig cfg;
+		cfg.output = decodePathSpaces(toks[0], os);
+		cfg.bundleName = toks[1];
+		cfg.sourceDir = decodePathSpaces(toks[2], ds);
+		cfg.compress = toks.size() > 3 && toks[3] != "0";
+
+		mem_std::Interface::StringType errText;
+		auto st = generateEmbeddedSource(cfg,
+				[&](StringView msg) { errText.append(msg.data(), msg.size()); });
+		if (!sprt::status::isSuccessful(st)) {
+			return fail(toString("xlmake: *** ", errText));
+		}
 		return 0;
 	}
 	default: break;

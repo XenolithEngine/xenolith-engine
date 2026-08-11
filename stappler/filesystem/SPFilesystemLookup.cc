@@ -22,6 +22,7 @@
 
 #include "SPFilesystemLookup.h"
 #include "SPFilesystem.h"
+#include "SPFilesystemEmbedded.h"
 #include "SPString.h"
 #include <sprt/runtime/stream.h>
 #include <stdio.h> // __sprt_fpath_is_native / __sprt_fpath_to_posix + SPRT_WINDOWS
@@ -48,6 +49,8 @@ StringView toPosixPath(StringView path, mem_std::Interface::StringType &storage)
 
 void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Access a,
 		const Callback<bool(const LocationInfo &, StringView)> &cb) {
+	embedded::ensureRegistered();
+
 	mem_std::Interface::StringType posixStorage;
 	filename = toPosixPath(filename, posixStorage);
 
@@ -86,6 +89,8 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 
 FileCategory detectResourceCategory(StringView ipath,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	embedded::ensureRegistered();
+
 	mem_std::Interface::StringType posixStorage;
 	ipath = toPosixPath(ipath, posixStorage);
 
@@ -231,6 +236,8 @@ FileCategory detectResourceCategory(StringView ipath,
 
 FileCategory detectResourceCategory(FileCategory category, StringView ipath, FileFlags flags,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	embedded::ensureRegistered();
+
 	mem_std::Interface::StringType posixStorage;
 	ipath = toPosixPath(ipath, posixStorage);
 

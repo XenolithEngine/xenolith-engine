@@ -1,0 +1,144 @@
+# Embedded files: BundleFS and `FileCategory::Embedded`
+
+**TL;DR**
+
+* Name a directory in **`LOCAL_EMBED_DIRS`** (project) or
+  **`MODULE_<X>_EMBED_DIRS`** (module) and the build turns it into a translation
+  unit — its files ship inside the binary.
+* Read them through the ordinary filesystem API under
+  **`FileCategory::Embedded`**. The bundle's mount name is the directory's own
+  name, so `FileInfo{"resources/style.css", …}` addresses the same file whether it
+  is on disk or embedded.
+* `Embedded` and `Bundled` are **independent**. `Bundled` is the app bundle on
+  disk (`$EXEC_DIR:$CWD`, `Contents/Resources`, the APK); `Embedded` has no
+  on-disk location at all. Pick one explicitly.
+* Everything is **read-only**: `exists`, `stat`, `openForReading`,
+  `readIntoMemory`, `readTextFile`, `ftw` and `mmap` work; every write, remove,
+  rename or `touch` fails.
+* Compression is opt-in per bundle (`*_EMBED_COMPRESSED_DIRS`) and needs
+  `stappler_data`. **Only `xlmake` compresses** — the GNU-make fallbacks write
+  such a bundle uncompressed with a warning.
+* A raw entry is **zero-copy**: `mmap` hands back a pointer straight into
+  `.rodata`. A compressed entry is materialized on open, so it is not mappable.
+
+## Declaring a bundle
+
+[tests/stappler/Makefile](../../../../tests/stappler/Makefile):
+
+[source,make]
+----
+LOCAL_EMBED_DIRS := resources
+LOCAL_EMBED_COMPRESSED_DIRS := resources-packed
+----
+
+A module declares the same thing with its own prefix, and the paths are then
+resolved against the engine root instead of the project:
+
+[source,make]
+----
+MODULE_MY_THING_EMBED_DIRS := $(STAPPLER_MODULE_DIR)/my-thing/resources
+----
+
+Each directory becomes **one** translation unit,
+`$(BUILD_С_OUTDIR)/embed/stappler-embed-<name>.cpp`, which is compiled and linked
+like any other source. Every file below the directory — and the directories
+themselves, so that adding or deleting a file counts — is a prerequisite of that
+TU, so a bundle regenerates when, and only when, its content changes.
+
+## Reading
+
+[source,cpp]
+----
+auto css = filesystem::readIntoMemory<mem_std::Interface>(
+        FileInfo{"resources/style.css", FileCategory::Embedded});
+
+filesystem::ftw(FileInfo{"resources", FileCategory::Embedded},
+        [](const FileInfo &info, FileType type) {
+    // paths arrive merged onto the walked root, exactly as for an on-disk walk
+    return true;
+}, -1, true);
+----
+
+The `%EMBEDDED%:` prefix selects the category from a bare string, the way
+`%PLATFORM%:` does for `Bundled`:
+
+[source,cpp]
+----
+FileInfo info{StringView("%EMBEDDED%:resources/style.css")};
+// info.category == FileCategory::Embedded, info.path == "resources/style.css"
+----
+
+Because the mount name is the source directory's name, moving an app from on-disk
+resources to embedded ones is a change of category and nothing else — the path
+string stays as it was.
+
+## Why a separate category
+
+`Bundled` already means something on Apple and Android: the *app bundle* — the
+`.app`'s `Contents/Resources`, the APK's assets, and on Linux/Windows whatever
+`APPCONFIG_BUNDLE_PATH` expands to. Those are real directories, served by a real
+`LocationInterface`, and an app that ships files that way still wants them.
+
+`Embedded` is a different thing with a different lifetime: data compiled into the
+image, which can not be replaced without relinking. Keeping the categories apart
+means a lookup never silently falls through from one storage to the other, and
+the code says which one it meant.
+
+One place they do meet: the auto-detecting `FileInfo(StringView)` constructor
+probes categories in enum order, and `Embedded` sits **after** `Bundled` — so a
+bare relative path resolves to a file on disk when there is one, and to the
+embedded copy otherwise.
+
+## The format
+
+`stappler/filesystem/SPFilesystemEmbedded.h` is the single source of truth: both
+the reader and the generator include it, so they can not drift.
+
+A bundle is one blob of bytes plus a table of entries, sorted, and a
+self-registration through an extensible `SharedModule` (`SharedExtension`), which
+is why no init-order dance is needed — the registry is complete before `main`.
+
+The sort order is *not* plain bytewise: **`/` compares below every other
+character**. That is what keeps a directory's subtree contiguous in the table, so
+a lookup is a binary search and enumeration is a range scan. Under a plain
+bytewise sort a sibling `a.txt` would fall between `a` and `a/b` (`.` is `0x2E`,
+`/` is `0x2F`) and split the subtree of `a` in two. `comparePath()` in the header
+is the definition; every generator implements it.
+
+Directories are stored explicitly, so `stat` on a directory and empty directories
+both work — the engine's `ftw` contract (relative paths, the empty string for the
+root, pre- and post-order, a depth limit) falls out of the table for free.
+
+## Compression
+
+`*_EMBED_COMPRESSED_DIRS` compresses an entry when that actually makes it
+smaller; the flag lives **per entry**, so a bundle is normally a mix. Reading is
+transparent.
+
+Decompression reaches `stappler_data` through a `SharedModule` seam rather than a
+direct dependency: a shared `stappler_data` links against `stappler_filesystem`,
+so a hard dependency the other way would be a cycle. The build refuses a
+compressed bundle when `stappler_data` is not among the modules, rather than
+letting it fail at runtime.
+
+**Only `xlmake` compresses.** LZ4 is out of reach for a shell script, so
+`make/embed/embedfs.sh` and `embedfs.ps1` write such a bundle uncompressed and say
+so. The result is still valid — the per-entry flag simply reads "not compressed"
+— and only the size saving is lost.
+
+## Generators
+
+[cols="1,3"]
+|===
+| `xlmake` | the in-process `$(EMBED)` directive (no shell, no child process, works on Windows) — `stappler/makefile/SPMakefileEmbed.cc`
+| GNU make, POSIX | `make/embed/embedfs.sh` — `find` + `od` + `awk` only (`od` is in coreutils and busybox alike, unlike `xxd`, which ships with vim)
+| GNU make, Windows | `make/embed/embedfs.ps1`
+|===
+
+For an uncompressed bundle all three emit **byte-identical** output; that is the
+parity check when touching any of them.
+
+One asymmetry is unavoidable: GNU make can not express a path containing a space,
+so such a file is embedded correctly but does not act as a rebuild trigger on its
+own (the mtime of its directory does). `xlmake` carries spaces through as a
+placeholder and has no such gap.

@@ -41,6 +41,7 @@
 #include "SPMakefileProject.cc"
 #include "SPMakefileObserver.cc"
 #include "SPMakefileBuilder.cc"
+#include "SPMakefileEmbed.cc"
 
 #include "xcode/SPPBXObject.cc"
 #include "xcode/SPPBXBuildPhase.cc"

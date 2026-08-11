@@ -207,6 +207,34 @@ lifetime, or for error detection. Details and examples:
     field is marked with a **style class** (`invalid`), because the CSS subset has
     no `:invalid`.
 
+26. **A dock is one `ui::DockSystem` on the node it is rooted at, and every frame
+    and divider is a FLAT child of that node** — the split tree is pure data
+    inside the system, nothing in the scene graph nests. So the dock root must
+    not carry a `LayoutSystem` and must never be `display: flex` (a
+    `SystemManagedLayout` marker enforces the second and tells the style resolver
+    the dock owns its children's `ContentSize`), and a frame is identified by its
+    `DockNodeHandle`, **never** by child index — `sortAllChildren` is unstable.
+    A panel is registered once (`id`, title, icon, minimum, **lazy builder**) and
+    its node is built at most once and then kept across every move. Constraints
+    only ever get stronger: a frame's minimum is its declared floor raised to the
+    largest panel in it plus the tab strip, and a split's is its children's sum
+    along its axis plus the divider. `ratio` divides the space left **after** the
+    minimums, not the whole extent. A mutation writes the tree immediately but
+    the **rects follow on the next layout pass**.
+
+26. **Drag and drop is one `DragSystem` per scene, and a drop target registers
+    itself by being DRAWN.** Add a `DropTarget` to a node and it publishes its
+    world rect from inside its own visit, so the topmost target receives and an
+    invisible one does not exist. `accept` is a **pure predicate** — it runs during
+    hit testing, for targets that never become current; feedback belongs in
+    `enter`/`over`/`leave`, which bracket exactly. A source captures the pointer
+    (`setExclusive()`) or the drag dies at its own edge, and `updateDrag` takes a
+    world **position**, never an accumulated delta. The payload is the clipboard's
+    model — a live object for the in-process path plus a lazy MIME encoder — so a
+    drop target and a paste target are one handler, and an encode callback must be
+    thread-agnostic. Actions are a negotiation: the source offers a mask, the
+    modifier states a *preference*, the target has the last word.
+
 ## Where to read more
 
 | Task | Article |
@@ -223,10 +251,13 @@ lifetime, or for error detection. Details and examples:
 | Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [threads-and-dispatch.adoc](../../../docs/usage/codestyle/core/threads-and-dispatch.adoc) |
 | Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |
 | Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [node-system-component.adoc](../../../docs/usage/codestyle/scene/node-system-component.adoc) |
+| Making a node draggable or droppable; the payload a drag shares with the clipboard | [drag-and-drop.adoc](../../../docs/usage/codestyle/scene/drag-and-drop.adoc) |
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
 | Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [runtime-libc.adoc](../../../docs/usage/codestyle/platform/runtime-libc.adoc) |
 | Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [data-value.adoc](../../../docs/usage/codestyle/core/data-value.adoc) |
+| Shipping a directory of resources inside the binary; `FileCategory::Embedded`, `LOCAL_EMBED_DIRS`, the BundleFS format | [embedded-files.adoc](../../../docs/usage/codestyle/core/embedded-files.adoc) |
 | Building a form; adding a field, a validator or a widget of your own to one; Tab order, focus, submit/reset | [ui/forms.adoc](../../../docs/usage/codestyle/ui/forms.adoc) |
+| An IDE-style layout of parked panels: frames, tabs, dividers, drag & drop between frames, saving the arrangement | [ui/docking.adoc](../../../docs/usage/codestyle/ui/docking.adoc) |
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
