@@ -282,12 +282,20 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		break;
 	}
 	case InputEventName::KeyPressed: {
+		if (handleHotkey(event, false)) {
+			break;
+		}
 		auto v = resetKey(event);
 		v->addListenersFromStorage(_events);
 		v->handle(true);
 		break;
 	}
-	case InputEventName::KeyRepeated: handleKey(event, false); break;
+	case InputEventName::KeyRepeated:
+		if (handleHotkey(event, true)) {
+			break;
+		}
+		handleKey(event, false);
+		break;
 	case InputEventName::KeyReleased:
 	case InputEventName::KeyCanceled: handleKey(event, true); break;
 	}
@@ -488,6 +496,93 @@ void InputDispatcher::EventHandlersInfo::addListenersFromStorage(
 
 void InputDispatcher::setListenerExclusive(EventHandlersInfo &info, const InputListener *l) const {
 	info.setExclusive(l);
+}
+
+FocusGroup *InputDispatcher::getExclusiveGroup(const InputEvent &event) const {
+	FocusGroup *ret = nullptr;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.focus && hasFlag(l.focus->getFlags(), FocusGroup::Flags::Exclusive)
+				&& l.focus->canHandleEvent(event)) {
+			// Same arbitration as addListenersFromStorage: higher priority wins, and at equal
+			// priority the innermost group does
+			if (!ret || l.focus->getPriority() > ret->getPriority()
+					|| (l.focus->getPriority() <= ret->getPriority()
+							&& l.focus->isParentGroup(ret))) {
+				ret = l.focus;
+			}
+		}
+		return true;
+	}, nullptr);
+	return ret;
+}
+
+bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
+	if (!_events) {
+		return false;
+	}
+
+	// Materialized once: the walk offers the same set to every listener, and a sided binding and a
+	// base one live in different buckets, so there is no single stored span to borrow
+	Vector<HotkeyId> ids;
+	HotkeyRegistry::getInstance()->match(data, [&](HotkeyId id) {
+		ids.emplace_back(id);
+		return true;
+	});
+	if (ids.empty()) {
+		return false;
+	}
+
+	auto event = getEventInfo(data);
+	auto exclusiveGroup = getExclusiveGroup(event);
+
+	// A listener is "focused" when its group would let it have keyboard events at all. That is
+	// the group's own rule rather than InputListener::isFocused(), which is what makes this work
+	// for ui::FormSystem, where focus belongs to a field's whole subtree - see XLHotkey.h
+	auto isFocused = [&](const InputListenerStorage::Rec &l) {
+		return !l.focus || l.focus->canHandleEventWithListener(event, l.listener);
+	};
+
+	// Outside the winning exclusive group only BypassExclusive bindings may fire
+	auto isScoped = [&](const InputListenerStorage::Rec &l) {
+		if (!exclusiveGroup) {
+			return false;
+		}
+		return l.focus != exclusiveGroup && !(l.focus && l.focus->isParentGroup(exclusiveGroup));
+	};
+
+	// The listener that currently owns the keyboard gets the first word, whatever the walk order
+	// would otherwise be. Only a SingleFocus group actually designates one; a group without it
+	// lets everybody through and would swallow the whole first pass.
+	Rc<InputListener> focusedListener;
+	bool focusedScoped = false;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.focus && hasFlag(l.focus->getFlags(), FocusGroup::Flags::SingleFocus) && isFocused(l)
+				&& l.listener->canHandleHotkey(ids, true, repeated, isScoped(l))) {
+			focusedListener = l.listener;
+			focusedScoped = isScoped(l);
+			return false;
+		}
+		return true;
+	}, nullptr);
+
+	if (focusedListener
+			&& focusedListener->handleHotkey(ids, event, true, repeated, focusedScoped)) {
+		return true;
+	}
+
+	bool handled = false;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.listener == focusedListener) {
+			return true; // already had its turn
+		}
+		if (l.listener->handleHotkey(ids, event, isFocused(l), repeated, isScoped(l))) {
+			handled = true;
+			return false;
+		}
+		return true;
+	}, nullptr);
+
+	return handled;
 }
 
 void InputDispatcher::clearKey(const InputEventData &event) {

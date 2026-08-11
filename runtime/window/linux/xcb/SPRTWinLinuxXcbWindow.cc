@@ -201,8 +201,7 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	// the placement and the grab. `transient` is the wider "belongs to another window" set, which
 	// additionally covers Dialog and Utility - those stay WM-managed and decorated, they just get a
 	// parent, a type hint and no taskbar entry of their own.
-	const bool auxiliary =
-			_info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	const bool auxiliary = _info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
 	const bool transient = _info->type != WindowType::Root;
 	if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 		_xinfo.depth = 32;
@@ -955,7 +954,39 @@ void XcbWindow::handleLeaveNotify(xcb_leave_notify_event_t *ev) {
 	updateState(ev->time, _info->state & ~WindowState::Pointer);
 }
 
-void XcbWindow::handleFocusIn(xcb_focus_in_event_t *ev) { _forcedFrames += 2; }
+/* X11 delivers key events only to the focused window, so a modifier released elsewhere leaves
+   _sideModifiers stale. QueryKeymap is the server's own answer to "which keys are physically
+   down": a 32-byte bitmap indexed by keycode. One round trip, on focus-in only. */
+void XcbWindow::resyncSideModifiers() {
+	_sideModifiers = InputModifier::None;
+
+	if (!_xcb->xcb_query_keymap || !_xcb->xcb_query_keymap_reply) {
+		return;
+	}
+
+	auto cookie = _xcb->xcb_query_keymap(_connection->getConnection());
+	auto reply = _xcb->xcb_query_keymap_reply(_connection->getConnection(), cookie, nullptr);
+	if (!reply) {
+		return;
+	}
+
+	for (uint32_t byte = 0; byte < 32; ++byte) {
+		auto bits = reply->keys[byte];
+		while (bits) {
+			auto bit = __builtin_ctz(bits);
+			bits &= bits - 1;
+			_sideModifiers |=
+					getKeySideModifier(_connection->getKeyCode(xcb_keycode_t(byte * 8 + bit)));
+		}
+	}
+
+	::__sprt_free(reply);
+}
+
+void XcbWindow::handleFocusIn(xcb_focus_in_event_t *ev) {
+	resyncSideModifiers();
+	_forcedFrames += 2;
+}
 
 void XcbWindow::handleFocusOut(xcb_focus_out_event_t *ev) { _forcedFrames += 2; }
 
@@ -965,7 +996,9 @@ void XcbWindow::handleKeyPress(xcb_key_press_event_t *ev) {
 		updateUserTime(ev->time);
 	}
 
-	auto mod = getModifiers(ev->state);
+	// The sided bits belong in the mask before the autorepeat check below compares it against the
+	// pending event, which already carries them
+	auto mod = getModifiers(ev->state) | _sideModifiers;
 	auto ext = getExtent();
 
 	// in case of key autorepeat, ev->time will match
@@ -993,6 +1026,13 @@ void XcbWindow::handleKeyPress(xcb_key_press_event_t *ev) {
 
 	_connection->fillTextInputData(event, ev->detail, ev->state, isTextInputEnabled(), true);
 
+	// A modifier key reports its own side on its own press, the way the Win32 backend does (it
+	// queries the key state at event time, by which point the key is already down)
+	if (auto side = getKeySideModifier(event.key.keycode); side != InputModifier::None) {
+		_sideModifiers |= side;
+		event.input.modifiers |= side;
+	}
+
 	_pendingEvents.emplace_back(event);
 }
 
@@ -1002,7 +1042,7 @@ void XcbWindow::handleKeyRelease(xcb_key_release_event_t *ev) {
 		updateUserTime(ev->time);
 	}
 
-	auto mod = getModifiers(ev->state);
+	auto mod = getModifiers(ev->state) | _sideModifiers;
 	auto ext = getExtent();
 
 	InputEventData event({
@@ -1017,6 +1057,13 @@ void XcbWindow::handleKeyRelease(xcb_key_release_event_t *ev) {
 	});
 
 	_connection->fillTextInputData(event, ev->detail, ev->state, isTextInputEnabled(), false);
+
+	// The key is up as of this event, so its side goes away with it - again matching Win32, which
+	// would no longer see it in the key state
+	if (auto side = getKeySideModifier(event.key.keycode); side != InputModifier::None) {
+		_sideModifiers &= ~side;
+		event.input.modifiers &= ~side;
+	}
 
 	_pendingEvents.emplace_back(event);
 }

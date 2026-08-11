@@ -1,0 +1,221 @@
+# Global hotkeys
+
+**TL;DR**
+
+* A hotkey is a **named** key combination in a process-wide registry
+  (`HotkeyRegistry`), subscribed to by any `InputListener` with
+  **`addHotkey(id, callback, flags)`**.
+* Delivery happens in **`InputDispatcher`, ahead of the ordinary key route**. A
+  subscriber therefore needs **no key mask, no recognizer and no touch filter** —
+  and, critically, is **not hit-tested against the pointer position**.
+* Return **`true` to consume**: the walk stops there and the ordinary key route
+  never runs. Return `false` and the next subscriber is offered it.
+* Order: the listener that currently **owns the keyboard goes first**, then
+  everybody else in the dispatcher's normal walk order.
+* The name is the identity (`org.stappler.xenolith.<area>.<action>`); the
+  combination is data and can be **rebound at runtime** without invalidating the id.
+* One combination can carry **several** hotkeys — `Escape` is both
+  `…form.reset` and `…app.back`. Which fires is decided by the walk, not the registry.
+* A combination may demand one **side** of a modifier (`"CtrlL+K"`); every
+  backend but wasm reports which side was pressed.
+* A combination registered with **`HotkeyOptions::ReserveFromTextInput`** is
+  declined by the text-input processor, so an `Alt`/`Super` chord works while a
+  field holds the IME.
+
+## Registering
+
+[source,cpp]
+----
+auto reg = HotkeyRegistry::getInstance();
+auto save = reg->add("org.example.editor.save", HotkeyCombo::parse("Ctrl+S"), "Save");
+----
+
+`add` is **idempotent by name**: two modules that declare the same hotkey get the
+same id. Re-registering a name with a different combination is a *rebind*, not a
+duplicate — the later configuration wins, and it is logged. A keymap loaded from
+config uses `setCombo(id, combo)`, which leaves the id alone.
+
+The engine's own bindings live in one place, `EngineHotkeys::get()` — `back`,
+`toggleFps`, `focusNext`/`focusPrev`, the `form*` set and the `text*` set. They
+are registered on first access, so an application that rebinds them finds the
+registry already populated.
+
+`HotkeyCombo::parse` accepts `"Ctrl+Shift+P"`, `"F12"`, `"Alt+LEFT"`,
+`"CtrlR+K"`. Modifier spellings follow `InputModifier` (`Shift`, `Ctrl`, `Alt`,
+`Mod3` — which *is* `Command`/`Meta`/`Win` — `Mod4`, `Mod5`), each of the first
+five also in a sided form; key names follow `InputKeyCode`, i.e. what
+`getInputKeyCodeName` prints.
+
+**Modifiers are normalized.** `HotkeyCombo::normalize` adds the base bit for
+every sided modifier (`CtrlL` implies `Ctrl`) and drops everything that is not
+part of a chord: `CapsLock`, `NumLock`, `ScrollLock`, the mouse buttons,
+`LayoutAlternative`, and the overloaded bit 31. So a plain `Ctrl+K` matches
+whichever Ctrl was pressed, and NumLock being on never changes whether anything
+matches.
+
+### Binding one side specifically
+
+A combination may name a side — `"CtrlL+K"`, `"ShiftR+F5"` — and then only that
+side fires it. The two forms coexist on the same key:
+
+[source,cpp]
+----
+reg->add("org.example.a", HotkeyCombo::parse("Ctrl+K"));   // either Ctrl
+reg->add("org.example.b", HotkeyCombo::parse("CtrlL+K"));  // the left one only
+----
+
+A press of the **left** Ctrl reports both, the sided one first; the **right**
+Ctrl reports only the base one. Internally that is two buckets — a combination
+with no side constraint is filed under its base modifiers, a sided one under
+base+side — and a lookup probes the event's full modifiers and then its base ones.
+
+A sided binding only fires where the window backend reports which side was
+pressed. **Windows, macOS, Android and both Linux backends** (xcb and Wayland) do.
+**wasm does not** — the browser knows (`KeyboardEvent.location`), the backend does
+not pass it on — so a sided binding is never matched there: the two bucket keys
+coincide and the sided bucket is never probed.
+
+How the two Linux backends arrive at it is worth knowing, because neither
+protocol reports a side directly — X11's `state` mask and Wayland's `modifiers`
+event both carry the *effective* modifiers, which have no such notion. What both
+do carry is which physical key was pressed, so the side is derived from the keys
+currently held (`getKeySideModifier`, `runtime/window/linux/SPRTWinLinux.h`):
+
+* **Wayland** — `WaylandWindow::_keys` is already authoritative and needs no
+  resync: `wl_keyboard::enter` replays the compositor's pressed-key array and
+  `leave` clears the map.
+* **xcb** — X11 delivers key events only to the focused window, so a modifier
+  released elsewhere would leave the set stale. `XcbWindow::resyncSideModifiers`
+  rebuilds it from `xcb_query_keymap` on focus-in — one round trip, and the
+  server's own answer to which keys are physically down.
+
+NOTE: A side is a physical *key*, not a modifier. Under a remapped keymap
+(Caps→Ctrl) the key is not `LCTL`/`RCTL`, so no side bit is set and only the base
+`Ctrl` matches — which is the right answer, since there is no side to speak of.
+
+## Subscribing
+
+[source,cpp]
+----
+listener->addHotkey(save, [this](HotkeyId, const InputEvent &) {
+    return doSave();
+}, HotkeyFlags::FocusedOnly);
+----
+
+`HotkeyFlags`:
+
+`FocusedOnly`:: deliver only while this listener is entitled to keyboard events
+in its focus group.
+`BypassExclusive`:: deliver even when an `Exclusive` focus group has scoped the
+walk to itself. For the few bindings that must survive a modal dialog.
+`Repeatable`:: also fire on key auto-repeat, not just the initial press.
+
+**`FocusedOnly` is not `isFocused()`.** `ui::TextInput`'s own listener never holds
+focus — the `FormInputListener` above it does — so the test that actually works is
+the one the dispatcher already uses:
+`FocusGroup::canHandleEventWithListener`. For a plain `SingleFocus` group that
+means "this is the focused listener"; for `ui::FormSystem` it means "inside the
+focused field's subtree". A listener with no focus group above it always qualifies.
+
+## Delivery order
+
+`InputDispatcher::handleHotkey` runs at the top of the `KeyPressed` (and
+`KeyRepeated`) branch:
+
+. `HotkeyRegistry::match()` — no match, and the key goes down the ordinary route
+  untouched.
+. The winning `Exclusive` focus group is resolved by the same rule
+  `addListenersFromStorage` uses (priority, then innermost).
+. **The keyboard owner first.** The first listener in walk order whose group has
+  `SingleFocus` and which the group lets have keys is offered every matching
+  subscription, whatever its flags.
+. **Then everybody else**, in the dispatcher's normal walk order: the pre-scene
+  band by descending priority, then the scene in reverse visit order (front-most
+  node first), then the post-scene band.
+. The first `true` stops the walk. If nobody consumed it — including "a hotkey
+  matched but nobody handled it" — the key is dispatched normally.
+
+That last point is what keeps an unused binding harmless: an unhandled `Ctrl+S`
+is still a plain `S` press with Ctrl held.
+
+Because a consumed press never opens a key chain, the matching `KeyReleased`
+finds nothing and is a no-op. Nothing has to be cleaned up.
+
+## Sharing a combination
+
+Two hotkeys on one combination is the normal case, not a conflict:
+
+[cols="1,1,2"]
+|===
+| Combination | Hotkeys | Who wins
+
+| `Escape`
+| `…form.reset`, `…app.back`
+| The focused field's form, because it is in the scene band; `SceneContent`'s
+  listener sits at priority −1, in the post-scene band, and is asked last.
+
+| `Enter`
+| `…text-input.accept`, `…form.submit`
+| The field's own accept callback, because `ui::TextInput`'s listener is
+  dispatched before the `FormInputListener` under it. With no accept callback it
+  declines and the form submits — exactly the precedence the two key masks used
+  to encode by hand.
+|===
+
+## What a hotkey is not
+
+Migrating a binding is not automatic. A hotkey is **one moment — the press**. A
+binding that needs the press/release pair still wants a key recognizer:
+`basic2d::Scene2d` keeps its Ctrl pointer-overlay on a recognizer for exactly
+that reason, because the overlay is shown *while the key is held*.
+
+Cursor movement is the other case that stays on a recognizer:
+`Left` and `Shift+Left` are the same motion with a different flag, not two
+commands, and turning them into two hotkeys would say the opposite.
+
+## The text-input gate
+
+`TextInputProcessor::canHandleInputEvent` in the runtime claims key events **for
+text before the scene ever sees them** — a claimed event is rewritten to
+`KeyCanceled`. Its hard-coded rules decline `Ctrl`-without-`Alt`, `Tab`, and
+`Enter` in a single-line field; everything else carrying a `keychar` is swallowed,
+which would make `Alt+F` or `Super+P` unusable as hotkeys while a field is focused.
+
+That is what `TextInputProcessor::setReservedKeyFilter` exists for.
+`HotkeyRegistry` installs one as soon as anything registers a hotkey, and the
+processor then declines every combination registered with
+**`HotkeyOptions::ReserveFromTextInput`**:
+
+[source,cpp]
+----
+reg->add("org.example.app.find", HotkeyCombo::parse("Alt+F"), "Find",
+        HotkeyOptions::ReserveFromTextInput);
+----
+
+**Opt-in, not automatic.** Reserving every registered combination would be wrong:
+the engine registers `…app.back` on `Escape`, and `Escape` is exactly how a field
+releases the IME — reserving it would take that away. Backspace and Delete are the
+same story. Set the option only for a combination that must win over typing,
+which in practice means an `Alt` or `Super` chord that the processor would
+otherwise swallow because it carries a `keychar`. An application that never uses
+hotkeys never touches the registry and the filter stays null.
+
+The filter is a process-wide **function pointer**, published atomically, not a
+closure — the reservation is application policy rather than per-window state, and
+it is read on whatever thread the backend delivers input from. Setting it is a
+startup-time action; passing null clears it.
+
+An ordinary character is of course still text, and so is a hotkey that did not
+ask to be reserved.
+
+## Testing
+
+The stand is `XL_HOTKEY_TEST` (`tests/window/src/widgets/HotkeyLayout.cpp`), driven
+by `tests/window/hotkey-check.py`. Two things that harness has to get right, and
+so does any other:
+
+* a synthetic key event must carry **`keychar`** and be sent with
+  **`native=True`** — a keychar-less event never meets the text-input processor,
+  which is the false positive that once hid the Ctrl-chord bug;
+* a focus change is **deferred to the next commit**, so anything that moves focus
+  is followed by `step(3)`.

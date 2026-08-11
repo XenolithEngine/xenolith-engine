@@ -251,6 +251,24 @@ public:
 	bool canHandleInputEvent(const InputEventData &);
 	bool handleInputEvent(const InputEventData &);
 
+	/* A predicate that marks a key event as RESERVED for something other than text — a global
+	   hotkey, in practice. canHandleInputEvent consults it and declines whatever it claims, which
+	   is the only way such a combination can reach the scene at all: everything this processor
+	   claims is rewritten to KeyCanceled before the application ever sees it.
+
+	   Without it only the combinations hard-coded above survive a focused text field: Ctrl
+	   without Alt, Tab, and Enter outside a multi-line field. Anything else that carries a
+	   `keychar` — Alt+F, Super+P — is typed instead of dispatched.
+
+	   Process-wide on purpose: the reservation is an application-level policy, not a per-window
+	   one, and the filter runs on whatever thread delivers input. It is therefore a plain
+	   function pointer published atomically, not a closure: nothing to own, nothing to keep
+	   alive, and no lock on the hot path. Set it once during startup; null clears it. */
+	using ReservedKeyFilter = bool (*)(const InputEventData &);
+
+	static void setReservedKeyFilter(ReservedKeyFilter);
+	static ReservedKeyFilter getReservedKeyFilter();
+
 protected:
 	bool doInsertText(TextInputState &, WideStringView, InputKeyComposeState);
 

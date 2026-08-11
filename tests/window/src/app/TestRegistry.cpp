@@ -44,6 +44,7 @@
 #include "widgets/PanelLayout.h"
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
+#include "widgets/HotkeyLayout.h"
 #include "layout/ParentResizeLayout.h"
 #include "css/PlatformLayout.h"
 #include "template/PugCascadeLayout.h"
@@ -206,6 +207,15 @@ static const TestInfo s_widgetsTests[] = {
 				   "and take the `.invalid` outline. Drive it over the inspector: form.state, "
 				   "form.collect, send_input native=true."),
 		TestRegistry_make<FormLayout>, true},
+
+	TestInfo{StringView("hotkey"), StringView("XL_HOTKEY_TEST"), StringView("Global hotkeys"),
+		StringView("Four subscribers on one combination: one that declines, one global, one "
+				   "FocusedOnly inside a SingleFocus group and one inside an Exclusive group. The "
+				   "focused subscriber must be offered the key first, a decline must fall through "
+				   "to the next, the first to accept must stop the walk, and a combination nobody "
+				   "handled must still reach an ordinary key recognizer. Drive it over the "
+				   "inspector: hotkey.log, hotkey.list, hotkey.rebind, send_input native=true."),
+		TestRegistry_make<HotkeyLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

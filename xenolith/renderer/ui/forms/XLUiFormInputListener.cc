@@ -40,25 +40,23 @@ bool FormInputListener::init(StringView name, FormFieldRole role) {
 	// Dispatched after the widget's own listener, so this only sees what the widget declined
 	setSystemPriority(SystemPriority);
 
-	InputKeyMask keys;
-	keys.set(toInt(InputKeyCode::TAB));
-	keys.set(toInt(InputKeyCode::ENTER));
-	keys.set(toInt(InputKeyCode::KP_ENTER));
-	keys.set(toInt(InputKeyCode::SPACE));
-	keys.set(toInt(InputKeyCode::ESCAPE));
+	/* Navigation and submission are hotkeys, so this listener needs neither a key mask nor a
+	   touch filter: the dispatcher delivers them out of band, and FocusedOnly means "entitled to
+	   keyboard events in this form" - which is exactly the question, where the old hit test
+	   ("is the mouse over the widget?") was exactly the wrong one. */
+	auto &hk = EngineHotkeys::get();
+	auto bind = [this](HotkeyId id) {
+		addHotkey(id, [this](HotkeyId id, const InputEvent &ev) {
+			return handleFormHotkey(id, ev);
+		}, HotkeyFlags::FocusedOnly | HotkeyFlags::Repeatable);
+	};
 
-	addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
-			InputKeyInfo{sp::move(keys)});
-
-	// A key event carries the pointer's position, so the default hit test asks whether the mouse
-	// happens to be over the widget - which for Tab and Enter is the wrong question entirely.
-	// Focus is what decides who gets keys here; the pointer decides nothing.
-	setTouchFilter([this](const InputEvent &event, const DefaultEventFilter &cb) {
-		if (event.data.isKeyEvent()) {
-			return isFocused();
-		}
-		return cb(event);
-	});
+	bind(hk.focusNext);
+	bind(hk.focusPrev);
+	bind(hk.formSubmit);
+	bind(hk.formSubmitKeypad);
+	bind(hk.formActivate);
+	bind(hk.formReset);
 
 	return true;
 }
@@ -242,21 +240,20 @@ void FormInputListener::handleFocusOut(FocusGroup *group) {
 	}
 }
 
-bool FormInputListener::handleKey(const GestureData &data) {
-	if (!isFocused() || !data.input) {
+bool FormInputListener::handleFormHotkey(HotkeyId id, const InputEvent &) {
+	// FocusedOnly already restricted delivery to the focused field's subtree, but this listener
+	// may sit on a field that is disabled or has lost focus within the same frame
+	if (!isFocused()) {
 		return false;
 	}
 
-	const auto &ev = data.input->data;
-	if (ev.event != InputEventName::KeyPressed && ev.event != InputEventName::KeyRepeated) {
-		return false;
-	}
+	auto &hk = EngineHotkeys::get();
 
-	switch (ev.key.keycode) {
-	case InputKeyCode::TAB:
-		return requestNavigate(hasFlag(ev.input.modifiers, InputModifier::Shift));
-	case InputKeyCode::ENTER:
-	case InputKeyCode::KP_ENTER:
+	if (id == hk.focusNext) {
+		return requestNavigate(false);
+	} else if (id == hk.focusPrev) {
+		return requestNavigate(true);
+	} else if (id == hk.formSubmit || id == hk.formSubmitKeypad) {
 		switch (_role) {
 		case FormFieldRole::Submit: return requestSubmit();
 		case FormFieldRole::Reset: return requestReset();
@@ -267,17 +264,14 @@ bool FormInputListener::handleKey(const GestureData &data) {
 			}
 			return requestSubmit();
 		}
-		break;
-	case InputKeyCode::SPACE:
+	} else if (id == hk.formActivate) {
 		// Only for the widgets that have something to toggle - a text field never gets here,
 		// because Space is a character and the IME claimed it long before
 		return activate();
-	case InputKeyCode::ESCAPE:
+	} else if (id == hk.formReset) {
 		if (_form && _form->isResetOnEscape()) {
 			return requestReset();
 		}
-		break;
-	default: break;
 	}
 	return false;
 }

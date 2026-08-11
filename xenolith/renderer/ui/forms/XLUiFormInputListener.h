@@ -109,7 +109,7 @@ public:
 protected:
 	using InputListener::init;
 
-	virtual bool handleKey(const GestureData &);
+	virtual bool handleFormHotkey(HotkeyId, const InputEvent &);
 
 	virtual void handleFocusIn(FocusGroup *) override;
 	virtual void handleFocusOut(FocusGroup *) override;

@@ -120,6 +120,18 @@ protected:
 	EventHandlersInfo *resetKey(const InputEventData &);
 	void handleKey(const InputEventData &, bool clear);
 
+	/* Global hotkeys, delivered ahead of the ordinary key route (see XLHotkey.h).
+
+	   Returns true when a subscriber consumed the combination: the key then never reaches the
+	   listener storage at all, so no chain is opened for it and the matching release is a no-op.
+	   Returns false — including "matched a hotkey nobody handled" — and the key is dispatched
+	   normally. */
+	bool handleHotkey(const InputEventData &, bool repeated);
+
+	// The Exclusive focus group that would scope this event, by the same rule
+	// EventHandlersInfo::addListenersFromStorage uses. Null when no group claims it.
+	FocusGroup *getExclusiveGroup(const InputEvent &) const;
+
 	void cancelTouchEvents(float x, float y, InputModifier mods);
 	void cancelKeyEvents(float x, float y, InputModifier mods);
 

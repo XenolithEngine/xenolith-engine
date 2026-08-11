@@ -41,20 +41,22 @@ bool SceneContent::init() {
 
 	_inputListener = addSystem(Rc<InputListener>::create());
 	_inputListener->setPriority(-1);
-	_inputListener->addKeyRecognizer([this](GestureData data) {
-		if (data.event == GestureEvent::Ended) {
-			if (!handleBackButton()) {
-				// propagate back button to Window
-				if (_director) {
-					if (auto w = _director->getRenderServer()) {
-						w->handleBackButton();
-					}
+
+	// The scene-wide back/close. As a hotkey it is delivered ahead of the ordinary key route and
+	// last among subscribers (priority -1 puts this listener in the post-scene band), so anything
+	// focused - a form resetting on Escape - still gets first refusal.
+	_inputListener->addHotkey(EngineHotkeys::get().back,
+			[this](HotkeyId, const InputEvent &) -> bool {
+		if (!handleBackButton()) {
+			// propagate back button to Window
+			if (_director) {
+				if (auto w = _director->getRenderServer()) {
+					w->handleBackButton();
 				}
 			}
-			return true;
 		}
-		return data.event == GestureEvent::Began;
-	}, InputKeyInfo{makeKeyMask(InputKeyCode::ESCAPE)});
+		return true;
+	});
 
 	_inputListener->setWindowStateCallback([this](WindowState state, WindowState changes) -> bool {
 		handleWindowStateChanged(state, changes);

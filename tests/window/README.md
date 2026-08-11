@@ -33,6 +33,9 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     resources/                bundled assets
     client/                   companion app for the shared-queue (remote rendering) demo
     text-input-check.py       headless assertions for the ui::TextInput demo (see below)
+    form-check.py             headless assertions for the ui::FormSystem demo
+    hotkey-check.py           headless assertions for the global hotkey controller
+    xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
 list at the bottom of `src/app/TestRegistry.cpp`. So a test is addressed the way its sources are -
@@ -61,6 +64,18 @@ It prints `N checks, M failures` and exits non-zero on a failure. Note how text 
 event only becomes text when it is injected with `native: true`, which routes it through the OS
 window and therefore through the platform's text-input processor; IME composition has no keystroke
 at all and goes through the separate `text` command.
+
+`xcb-side-check.py` is the exception to all of this: it needs a live X11 server and python-xlib,
+because it drives a real window with XTEST. That is the only way to check that the backend reports
+which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
+never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
+
+`form-check.py` and `hotkey-check.py` work the same way, for the same reason: the order in which
+listeners are offered a key, and who declined it, leaves no trace on the screen at all. The hotkey
+stand carries four subscribers on one combination - one that declines, one global, one FocusedOnly
+inside a focus group and one inside an exclusive group - and every check reads back the delivery
+log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
+text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
 
 ## Building
 

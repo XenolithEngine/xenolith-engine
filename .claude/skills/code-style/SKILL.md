@@ -252,6 +252,7 @@ lifetime, or for error detection. Details and examples:
 | Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |
 | Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [node-system-component.adoc](../../../docs/usage/codestyle/scene/node-system-component.adoc) |
 | Making a node draggable or droppable; the payload a drag shares with the clipboard | [drag-and-drop.adoc](../../../docs/usage/codestyle/scene/drag-and-drop.adoc) |
+| Binding a key combination; registering a named hotkey, subscribing an `InputListener`, delivery order vs focus | [hotkeys.adoc](../../../docs/usage/codestyle/scene/hotkeys.adoc) |
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
 | Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [runtime-libc.adoc](../../../docs/usage/codestyle/platform/runtime-libc.adoc) |
 | Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [data-value.adoc](../../../docs/usage/codestyle/core/data-value.adoc) |
