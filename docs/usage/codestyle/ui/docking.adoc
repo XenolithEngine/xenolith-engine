@@ -1,0 +1,271 @@
+# Docking: `DockSystem`, frames, panels and the split tree
+
+**TL;DR**
+
+* A dock is **one system on the node it is rooted at**:
+  `addSystem(Rc<ui::DockSystem>::create())`. Every frame and every divider is a
+  **flat direct child** of that node — nothing in the scene graph nests.
+* The split tree is **pure data inside the system**. It is what divides the space;
+  the scene graph only materializes what the tree decided.
+* **The dock root must not carry a `LayoutSystem`** and must never be
+  `display: flex`. Two systems writing every child's geometry is not a layout,
+  it is a fight. `handleAdded` asserts the first and a `SystemManagedLayout`
+  marker prevents the second.
+* A **panel** is registered once as a `DockPanelDescriptor` — id, title, icon,
+  minimum size, flags, and a **lazy builder**. The node is built on first show
+  and then kept: switching tabs, moving between frames and collapsing a frame
+  never rebuild it.
+* A **frame** is a parking place: it holds panels as tabs and shows one. The
+  application declares the initial frames and their constraints; from there the
+  system splits, merges and re-measures on its own.
+* **Constraints only ever get stronger.** A frame's minimum is its declared
+  floor raised to the largest panel parked in it plus the tab strip; a split's is
+  the sum of its children along its axis plus the divider. A frame can never be
+  smaller than the panel it holds.
+* **`ratio` divides the space left AFTER both minimums**, not the whole extent —
+  which is why shrinking a dock does not crush the smaller pane to nothing.
+* `save()` / `restore()` persist the **shape and the membership only**. Title,
+  icon and minimum come back from the registry, never from the file.
+* Identify a frame by its `DockNodeHandle`, **never by its index among the
+  children** — `sortAllChildren` is not a stable sort.
+
+## Building a dock
+
+[source,cpp]
+----
+auto dock = _root->addSystem(Rc<ui::DockSystem>::create());
+
+dock->registerPanel({
+	.id = "explorer",
+	.title = "Explorer",
+	.icon = IconName::File_folder_solid,
+	.minSize = Size2(180.0f, 120.0f),
+	.builder = [] { return Rc<ExplorerPanel>::create(); },
+});
+dock->registerPanel({.id = "editor", .title = "Editor", .minSize = Size2(320.0f, 200.0f),
+	.builder = [] { return Rc<EditorPanel>::create(); }});
+dock->registerPanel({.id = "console", .title = "Console", .minSize = Size2(240.0f, 100.0f),
+	.builder = [] { return Rc<ConsolePanel>::create(); }});
+
+using Spec = ui::DockLayoutSpec;
+dock->setLayout(Spec::hsplit(0.22f,
+	Spec::leaf({String("explorer")}, {.name = String("sidebar"), .minSize = Size2(160.0f, 0.0f)}),
+	Spec::vsplit(0.72f,
+		Spec::leaf({String("editor")},
+			{.name = String("main"),
+				.flags = ui::DockFrameFlags::Default & ~ui::DockFrameFlags::AllowClose}),
+		Spec::leaf({String("console")}, {.name = String("bottom")}))));
+----
+
+`DockLayoutSpec` is a plain aggregate that reads like the tree it describes.
+`hsplit` divides left from right, `vsplit` top from bottom, and in both cases
+`first` is the low side of the axis — **left, or TOP**. The scene's Y axis points
+up, so the first child of a vertical split starts at the *higher* Y; the system
+compensates, and everything you write is in the CSS-like "first is top" order.
+
+A frame's `name` is written onto its node with `setName`, which makes it the
+frame's CSS id and the handle `findFrameByName` looks up.
+
+## What the application declares, and what the system then owns
+
+| Declared once | Owned by the system afterwards |
+|---|---|
+| the panel registry (id, title, icon, minimum, flags, builder) | when each panel's node is built, and how long it lives |
+| the initial frames, their names, minimums and flags | every later split, merge and move |
+| the divider thickness, the edge-drop band, the drag threshold | every rect, every ratio, every minimum |
+
+`DockFrameFlags` is the vocabulary for "what this place permits":
+`AllowSplit`, `AllowDrop`, `AllowClose`, `AllowResize`, and `Permanent` (never
+collapsed, even with no panel in it). A frame produced by a later split inherits
+the flags of the frame it was carved out of, unless the caller names its own.
+
+`DockPanelFlags` is the same for a panel: `Closable`, `Movable`,
+`OpenByDefault` and `Singleton`.
+
+## How the space is divided
+
+Three passes run in this order, and they are kept strictly apart:
+
+| Pass | Direction | Writes |
+|---|---|---|
+| `updateMinimums` | bottom-up | `DockTreeNode::minSize` only — pure, safe inside `handleMeasure` |
+| `distribute` | top-down | `DockTreeNode::rect` and `::splitterRect` — the arena only |
+| `commitGeometry` | flat | `setContentSize` / `setPosition` on the nodes — the only node writer |
+
+A **leaf's** minimum is `max(declared floor, largest parked panel)` with the tab
+strip's measured size folded into the axis it eats. `max`, not a sum: only one
+panel shows at a time, so the frame has to fit the biggest of them.
+
+A **split's** minimum is the sum of its children along its axis **plus the
+divider**, and the maximum across it. Leaving the divider out would let the tree
+claim it fits in less than it does, and the distribution would then hand out
+negative extents.
+
+Distribution satisfies both minimums first and divides only what is left:
+
+----
+usable = extent - splitterThickness
+free   = usable - minFirst - minSecond
+first  = minFirst + free * ratio
+second = usable - first
+----
+
+When the root is smaller than the tree's minimum, `DockOverflowPolicy::Scale`
+(the default) shrinks every minimum on that axis proportionally: everything stays
+visible and inside the root, and the layout snaps back exactly once the root
+grows again. `Clip` honours the minimums instead and lets the tail run outside.
+
+`DockSystem` answers the measurement protocol with the tree's minimum, so a
+`fit-content` ancestor can size around a whole dock. A dock has no "preferred
+larger" size — it always fills what it is given.
+
+## Panels
+
+[source,cpp]
+----
+dock->openPanel("console");                       // into its defaultFrame, or the largest frame
+dock->openPanel("console", frame, 0);             // into a named frame, at a tab index
+dock->activatePanel("console");                   // bring its tab forward
+dock->movePanel("console", otherFrame);           // carry it across
+dock->closePanel("console");                      // the last one out folds the frame away
+----
+
+The builder runs **at most once**. The node it returns is held by the system
+across every move, so a panel keeps its scroll position, its selection and its
+half-typed text when it is dragged somewhere else — none of which would show up
+in a layout dump, which is why the test counts builder calls.
+
+Closing the last panel of a frame collapses it and its sibling takes the space,
+unless the frame was declared `Permanent`.
+
+## Dragging
+
+A **divider** is dragged with the pointer and re-derives its split's ratio from
+where it landed, clamped so neither side goes below its propagated minimum. The
+derivation is the exact inverse of the distribution formula, in ratio space —
+so a hundred small deltas land exactly where one large one does, whether or not
+a layout pass ran in between.
+
+A **tab** dragged more than `DragThreshold` points pulls its panel out of the
+frame. The drop zones, in the order the hit test tries them:
+
+| Zone | Where | What it does |
+|---|---|---|
+| `TabStrip` | over a frame's tab strip | insert at the caret index |
+| `SplitLeft` / `Right` / `Top` / `Bottom` | within `EdgeDropBand` of a body edge | subdivide the frame and take that side |
+| `Center` | the rest of the body | append as another tab |
+| `None` | outside, or a frame that refuses drops | nothing |
+
+The hit test is **pure arithmetic over the tree**, not a scene hit test: it costs
+O(tree depth), it is not confused by whatever the panels' own input listeners are
+doing, and it answers with a handle rather than a node. A panel that is the only
+occupant of a frame gets **no zone at all** in that frame — appending it,
+reordering it or splitting the frame off all amount to nothing.
+
+Every drop commits through the same public operations an application would call
+(`movePanel`, `splitFrameWithPanel`), so drag and drop can never reach a path the
+API does not already expose — which is also what makes it drivable from a test.
+
+## Styling
+
+Everything is reachable with the CSS subset as it already is; the dock adds no
+properties.
+
+[source,css]
+----
+dock-frame            { background-color: #1e1e1e; border-radius: 4px; }
+dock-frame#sidebar    { background-color: #1b3a5c; }   /* the frame's declared name */
+
+/* `display: flex` is what lets a rule reach the layout the widget built for itself:
+   padding, the gaps and the alignment are read only inside the resolver's flex
+   branch. Without it, `padding` here would be silently ignored. */
+dock-frame-body       { display: flex; padding: 4px; }
+dock-tab              { display: flex; padding: 4px 10px; background-color: #2b2b2b; }
+
+dock-tab-bar          { background-color: #171717; }
+dock-tab-bar.vertical { }                              /* a Left/Right strip */
+dock-tab:hover        { background-color: #2c2c2c; }
+dock-tab.active       { background-color: #1e1e1e; }
+dock-tab > label      { color: #c8c8c8; font-size: 13px; }
+dock-splitter         { background-color: #2a2a2a; }
+dock-splitter:hover,
+dock-splitter.dragging { background-color: #3d7ecf; }
+dock-drop-indicator   { background-color: #3d7ecf; }
+dock-drag-ghost       { background-color: #2c2c2c; }
+----
+
+The **icon is imperative** — it comes from `DockPanelDescriptor::icon`, because
+the CSS subset has no `icon` property. The **divider thickness is a system
+parameter** (`setSplitterThickness`), not CSS: it is an input of the layout, and
+CSS has no way to feed one.
+
+## Persistence
+
+[source,cpp]
+----
+data::save(dock->save(), FileInfo{"layout.cbor"});
+…
+if (auto saved = data::readFile<Interface>(FileInfo{"layout.cbor"})) {
+	dock->restore(saved);
+}
+----
+
+The saved value carries the shape (`split`/`frame`, axis as `"h"`/`"v"`, ratio),
+each frame's declared name, floor, flags and tab-bar side, and its tab list with
+the active index. It carries **no rects, no node ids, no divider geometry, and
+nothing about a panel except its id** — all of that is derived or comes from the
+registry, and a stale copy of it would be worse than none.
+
+`restore` builds a candidate tree and swaps it in only when the whole build
+succeeds, so a malformed file leaves what is on screen untouched.
+
+| Situation | What happens |
+|---|---|
+| an id in the file the registry does not know | dropped from that frame, with a warning |
+| a frame left empty by that | collapsed, unless `Permanent` |
+| the whole tree left empty | one default frame |
+| a registered panel the file never mentions | **stays closed** — that is the point of persisting |
+| ...unless it is `OpenByDefault` | opened, into its `defaultFrame` or the largest frame |
+| the same id twice | the first wins, the rest are dropped with a warning |
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| A `LayoutSystem` on the dock root | two systems write every child's geometry and neither wins. `handleAdded` asserts; never write `display: flex` for the dock root |
+| Identifying a frame by child index | `sortAllChildren` is unstable, so equal-ZOrder siblings permute between frames. Use `DockNodeHandle` or `DockFrameComponent` |
+| Reading a rect right after a `movePanel`/`splitFrame`/divider drag | the tree updates immediately, the **rects follow on the next layout pass**. Read the ratio, or wait a frame |
+| Keeping a `DockNodeHandle` across a collapse | the slot is reused with a bumped generation, so the handle stops resolving — by design. `isValid()` says so; it never silently retargets |
+| `dock-frame { width: 300px }` | it becomes an intrinsic *hint* in a `MeasureComponent`, not a committed size. The dock owns its children's `ContentSize` — see [SystemManagedLayout](../../../../xenolith/renderer/ui/style/XLUiStyleSystem.h) |
+| `dock-tab { padding: 4px }` with no `display: flex` in the same rule | **silently ignored**. `padding`, the gaps and the alignment are read only inside the resolver's flex branch, which a rule without `display` never enters. The widget's own built-in values stay in force |
+| Expecting a panel to be sized by the body it is parked in | it is, but only because the body carries a layout of its own. A panel parked in a node with no layout would keep whatever size it was built with — none |
+| A tab bar side of `Bottom`/`Right` | the flow is reversed, not the geometry. `first` is still the strip; `FlexItemInfo::order` is what fixes the flow order, because child order follows ZOrder |
+
+## Trying it
+
+`tests/window` carries four dock tests, each self-checking:
+
+[source,sh]
+----
+XL_DOCK_LAYOUT_TEST=1   ./testapp --headless   # the tree, the minimums, the tiling
+XL_DOCK_SPLITTER_TEST=1 ./testapp --headless   # dividers, clamping, the drag fixed point
+XL_DOCK_TABS_TEST=1     ./testapp --headless   # tabs, lazy content, the drop zones
+XL_DOCK_PERSIST_TEST=1  ./testapp --headless   # save / rearrange / restore round trip
+----
+
+Each registers inspector commands for its own state — `dock-layout.layout` dumps
+the whole tree, `dock-tabs.hit-test` resolves a drop point, `dock-tabs.builds`
+reports how many times each panel was built — so a headless run can drive and
+read the dock without synthesizing a single input event. And with `send_input`,
+it can synthesize them too: that is how the divider drag and the tab drag are
+verified through the real input path rather than through the arithmetic alone.
+
+## Related
+
+* [node-system-component.adoc](../scene/node-system-component.adoc) — why a dock
+  is a `System` and not a `Node` subclass.
+* [content-measurement.adoc](../../ui/content-measurement.adoc) — the
+  `fit-content` protocol the tab strip and the frame minimum are built on.
+* [css-subset.adoc](../../ui/css-subset.adoc) — what the stylesheet above can and
+  cannot say.
+* [forms.adoc](forms.adoc) — the same coordinator-system shape, for a form.

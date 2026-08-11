@@ -138,6 +138,13 @@ public:
 			sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
 			SpanView<StringView> types, Ref *ref = nullptr, StringView label = StringView()) = 0;
 
+	// Provide already-assembled clipboard data
+	//
+	// This is the same object an OS drag carries, so a source that can be dragged and a source
+	// that can be copied build their payload once and hand it to either path. `data->owner` is
+	// what keeps the encode callback's captures alive, exactly as with the overloads above
+	virtual void writeToClipboard(Rc<sprt::window::ClipboardData> &&data) = 0;
+
 	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) = 0;
 
 	virtual void openUrl(StringView) = 0;

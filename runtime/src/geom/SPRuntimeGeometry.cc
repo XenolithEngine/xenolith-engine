@@ -296,7 +296,8 @@ bool Metric::readStyleValue(StringView &r, bool resolutionMetric, bool allowEmpt
 	// two can never drift apart.
 	Metric::Units unit = Metric::Units::Px;
 	float scale = 1.0f;
-	if (auto tail = str; readMetricUnitPrefix(tail, resolutionMetric, unit, scale) && tail.empty()) {
+	if (auto tail = str;
+			readMetricUnitPrefix(tail, resolutionMetric, unit, scale) && tail.empty()) {
 		this->value = fvalue * scale;
 		this->metric = unit;
 		return true;

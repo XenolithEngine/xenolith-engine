@@ -41,6 +41,11 @@
 #include "input/XLFocusGroup.cc"
 #include "input/XLTextInputManager.cc"
 
+#include "drag/XLDragTypes.cc"
+#include "drag/XLDropTarget.cc"
+#include "drag/XLDragSystem.cc"
+#include "drag/XLDragSource.cc"
+
 #include "actions/XLAction.cc"
 #include "actions/XLActionEase.cc"
 #include "actions/XLActionManager.cc"

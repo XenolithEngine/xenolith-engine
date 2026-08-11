@@ -308,6 +308,10 @@ void ClientAppThread::writeToClipboard(sprt::window::Function<sprt::window::Byte
 	// TODO(remote transport): forward clipboard contents to the remote server.
 }
 
+void ClientAppThread::writeToClipboard(Rc<sprt::window::ClipboardData> &&) {
+	// TODO(remote transport): forward clipboard contents to the remote server.
+}
+
 void ClientAppThread::acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref *) {
 	// TODO(remote transport): request screen info from the remote server.
 }

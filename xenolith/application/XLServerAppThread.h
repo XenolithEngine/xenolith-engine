@@ -74,6 +74,7 @@ public:
 			sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
 			SpanView<StringView> types, Ref *ref = nullptr,
 			StringView label = StringView()) override;
+	virtual void writeToClipboard(Rc<sprt::window::ClipboardData> &&data) override;
 	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&,
 			Ref * = nullptr) override;
 	virtual void openUrl(StringView) override;

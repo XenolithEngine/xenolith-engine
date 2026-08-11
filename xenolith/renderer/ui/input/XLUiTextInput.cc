@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiTextInput.h"
+#include "XLDropTarget.h"
 #include "XLAction.h"
 #include "XLDirector.h"
 
@@ -386,6 +387,24 @@ bool TextInput::init() {
 	_container->setAnchorPoint(Anchor::BottomLeft);
 
 	_listener = addSystem(Rc<InputListener>::create());
+
+	// Text dropped onto the field lands the same way pasted text does - same type rule, same
+	// insertion point, same validation. A drop target and a paste target really are one handler
+	addSystem(Rc<DropTarget>::create(DropTargetSlots{
+		.accept =
+				[this](const DragEvent &event) -> DragResponse {
+		if (_readOnly || !event.data) {
+			return DragResponse();
+		}
+		auto want = StringView("text/plain");
+		if (event.data->preferType(makeSpanView(&want, 1)).empty()) {
+			return DragResponse();
+		}
+		// Either is fine here: whether the source deletes its original is the SOURCE's business
+		return DragResponse{event.allowed & (DragActions::Copy | DragActions::Move)};
+	},
+		.drop = [this](const DragEvent &event, DragActions) { return handleTextDrop(event); },
+	}));
 
 	// A key event carries the pointer location (the platform backends fill it in from the last
 	// mouse position), so the default filter - "is the node under the pointer" - would only deliver
@@ -871,13 +890,36 @@ bool TextInput::paste() {
 		// Length and character filtering happen in validateInput() on the echo
 		insertText(WideStringView(text), pendingCursor());
 	}, [](SpanView<StringView> types) -> StringView {
-		for (auto &it : types) {
-			if (it.starts_with("text/plain")) {
-				return it;
-			}
-		}
-		return StringView();
+		// The same rule a dropped payload is matched with, so a field cannot end up accepting a
+		// type on drop that it refuses on paste. It runs on an unknown thread and only looks at
+		// strings, which is exactly what preferMimeType is
+		auto want = StringView("text/plain");
+		return preferMimeType(types, makeSpanView(&want, 1));
 	}, this);
+	return true;
+}
+
+bool TextInput::handleTextDrop(const DragEvent &event) {
+	if (_readOnly || !event.data) {
+		return false;
+	}
+
+	auto want = StringView("text/plain");
+	auto type = event.data->preferType(makeSpanView(&want, 1));
+	if (type.empty()) {
+		return false;
+	}
+
+	auto bytes = event.data->encode(type);
+	if (bytes.empty()) {
+		return false;
+	}
+
+	auto text = string::toUtf16<Interface>(
+			StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+
+	// the caret as it is NOW, exactly as a paste does; filtering happens in validateInput()
+	insertText(WideStringView(text), pendingCursor());
 	return true;
 }
 

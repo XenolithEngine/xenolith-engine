@@ -33,6 +33,7 @@ MODULE_XENOLITH_APPLICATION_INCLUDES_OBJS := \
 	$(XENOLITH_MODULE_DIR)/application \
 	$(XENOLITH_MODULE_DIR)/application/actions \
 	$(XENOLITH_MODULE_DIR)/application/director \
+	$(XENOLITH_MODULE_DIR)/application/drag \
 	$(XENOLITH_MODULE_DIR)/application/input \
 	$(XENOLITH_MODULE_DIR)/application/resources \
 	$(XENOLITH_MODULE_DIR)/application/nodes

@@ -1,0 +1,243 @@
+# Drag and drop: `DragSystem`, sources, targets and the payload
+
+**TL;DR**
+
+* One `DragSystem` per scene, on the `SceneContent`. `DragSystem::acquireForNode(node)`
+  finds it or installs it — a widget never has to demand that the application
+  arranged one first.
+* **A drop target registers itself by being drawn.** Add a `DropTarget` system to
+  a node; during its owner's visit it publishes its world rect to the nearest
+  `DragSystem` above it. So the topmost target receives, and an invisible one
+  does not exist.
+* **A source is an `InputListener`** — `DragSource` — because the three things a
+  source must get right (the threshold, the pointer capture, the abort on exit)
+  are all listener-level.
+* **The payload is the clipboard's own data model.** `DragData` carries a live
+  object for the in-process path *and* a lazy MIME encoder for everything else,
+  so a drop target and a paste target are the same handler.
+* `DragActions{Copy, Move, Link}`: the source offers a set, the modifier states a
+  **preference**, the target has the last word.
+* v1 is in-process only. The OS path is not implemented, but nothing in the
+  source or target API has to change when it is.
+
+## Making a node draggable
+
+```cpp
+node->addSystem(Rc<DragSource>::create([this](DragOffer &offer) {
+    offer.local = _item;                       // the live object, for a local drop
+    offer.localType = StringView("app/item");  // what a target checks before touching it
+    offer.label = _item->getTitle();
+    offer.allowedActions = DragActions::Move | DragActions::Copy;
+    offer.defaultAction = DragActions::Move;
+    offer.decorator = [this] { return makeGhost(); };
+    offer.completion = [this](DragActions action) {
+        if (action == DragActions::Move) { detach(); }
+    };
+    return true;   // false refuses: this item is not draggable right now
+}));
+```
+
+The builder runs once per drag, at the moment the pointer passes the threshold.
+Returning `false` is a normal outcome, not an error.
+
+A widget that already owns an `InputListener` — anything derived from
+`ui::Button`, for instance — does not need a second one. It can add a swipe
+recognizer to its own listener and call `DragSystem::acquireForNode(this)->beginDrag(...)`
+directly; that is what `ui::DockTab` does, so that the tap it also handles keeps
+working. `DragSource` exists for the widgets that have no listener of their own.
+
+## Making a node a drop target
+
+```cpp
+node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
+    .accept = [](const DragEvent &e) -> DragResponse {
+        if (!e.data->isLocal("app/item")) { return DragResponse(); }
+        return DragResponse{e.allowed & DragActions::Move};
+    },
+    .enter = [this](const DragEvent &) { showHighlight(); },
+    .leave = [this](const DragEvent &) { hideHighlight(); },
+    .drop  = [this](const DragEvent &e, DragActions) { return take(e.data->getLocal()); },
+}));
+```
+
+`accept` is a **predicate and must be pure**. It is called during hit testing, for
+candidates that may never become the current target, possibly several times in one
+frame. All visual feedback belongs in `enter` / `over` / `leave`, which fire only
+for the current target.
+
+`enter` and `leave` are an exact bracket on every path out — a drop, a
+cancellation, the target leaving the scene mid-drag. A `leave` always precedes the
+`drop`, so a highlight is down before the structural change runs.
+
+Returning `DragResponse()` (no accepted action) means *not here*, and the search
+continues with whatever is underneath. That is what makes a decorative overlay
+transparent to a drag rather than a wall.
+
+## How a target is found
+
+Not by a registry, and not by walking the scene. `DropTarget::handleVisitSelf`
+publishes the target and its world rect into the nearest `DragSystem` on the frame
+stack, once per frame. Three things follow, and none of them is otherwise cheap to
+get right:
+
+* the world rect is the one that was **drawn** — it comes from the visit's own
+  transform stack, so there is nothing to re-derive and nothing to fall out of
+  sync with;
+* registration order is visit order is **paint order**, so the drag walks the
+  roster backwards and the first hit is the topmost target;
+* a node that is not visited is not registered. Invisible, `display: none`,
+  detached — all of them stop being drop targets for free.
+
+The roster is therefore one frame old when a pointer event reads it. That is the
+same staleness ordinary input already has: the dispatcher resolves every event
+against the previously committed listener storage.
+
+**Do not** hit-test drop targets with `Node::isTouched`: it checks `isVisible()`
+rather than the effective visibility, and it redoes a transform the roster already
+holds.
+
+## The payload
+
+`DragData` has two ways in, and a target should normally be written against the
+second one:
+
+| | `getLocal()` / `isLocal(type)` | `getTypes()` / `preferType()` / `encode()` |
+|---|---|---|
+| What it is | the live object, by pointer | MIME types and a lazy encoder |
+| Cost | nothing | one call to the encoder, per type actually asked for |
+| Works for a drag from another process | **no** — it is null | yes |
+
+Listing and matching types never materializes bytes. `encode()` is the only thing
+that runs the encoder, and only for a type that was actually offered.
+
+**An encode callback must be thread-agnostic**: capture copies of what it needs,
+never capture a scene node, never touch the scene graph. In v1 it happens to run on
+the app thread; the contract it is stored under (`sprt::window::ClipboardData`) says
+it may run anywhere, and once the OS path exists it will.
+
+The same `DragOffer` describes a payload for the clipboard:
+
+```cpp
+app->writeToClipboard(offer.takeClipboardData(this));
+```
+
+which is why `ui::TextInput` accepts a dropped payload through exactly the machinery
+it pastes with — same type rule (`preferMimeType`, prefix matching, so `text/plain`
+selects `text/plain;charset=utf-8`), same caret, same refusal when read-only.
+
+## Actions
+
+The source publishes a mask of what it can do; the modifier picks one of them
+(`Ctrl` = Copy, `Shift` = Move, `Ctrl+Shift` = Link, nothing = the source's
+default); the target answers with a subset.
+
+**The modifier is a preference, not a demand.** If the target cannot do the
+preferred action but can do another one the source offers, that other one happens.
+Collapsing the two into a single value is the obvious simplification and it is
+wrong: it makes a Copy-only target refuse any drag the user happens to be holding
+Shift over. Hence `DragEvent` carries `allowed` and `preferred` as separate fields,
+and an `accept` slot is written as `event.allowed & whatICanDo` — never as a bare
+constant, or the target claims actions the source never had.
+
+The cursor follows the resolved action (`Copy`/`Move`/`Alias`), becomes `NoDrop`
+where nothing is accepted and `Grabbing` where there is no candidate at all.
+
+## Where the cursor comes from
+
+During a drag the pointer is over the **target**, so nothing the source owns can
+set the cursor. The `DragSystem` keeps its own `InputListener` on its owner —
+disabled when idle, no recognizers, nothing but a window layer — at a deeply
+negative priority. Negative-priority listeners land in the dispatcher's post-scene
+band, which is walked last, and the window applies the **last** non-`Undefined`
+cursor it is handed. So that one window-wide layer outranks every widget under the
+pointer, for exactly as long as the drag lasts.
+
+## Lifetime
+
+The source node is routinely destroyed by the very drop that ends the drag — that
+is what a move *is*. Two rules make that safe, and both are already in place:
+
+* **`finish()` is a single funnel and runs its body at most once.** Drop, cancel,
+  the source leaving the scene, the system leaving the scene — all of them go
+  through it.
+* **The system detaches the session before finishing it.** Anything that re-enters
+  during the drop — a source's `handleExit`, a target's — finds no drag in flight
+  and becomes a no-op instead of recursing.
+
+Everything living longer than a frame is held by `Rc`: the source, the target, the
+decorator, the data. The roster holds `Rc` too, but is rebuilt every frame and
+cannot dangle.
+
+Inside a `drop` slot, **read everything first, then mutate**. The handle you were
+given may not resolve afterwards, and the node that delivered the drag may not
+exist.
+
+## The decorator
+
+The source supplies a factory; the session owns the node and parks it at
+`DragSystem::DecoratorZOrder` — above ordinary content, below `WindowDecorations`,
+in a band of its own because `sortAllChildren` is unstable.
+
+It is parked under the drag system's owner by default. A decorator that takes its
+look from a stylesheet must set `DragOffer::decoratorParent` to a node **inside**
+the subtree its `StyleResolver` covers, or it comes out unstyled — a resolver only
+ever sees its own subtree.
+
+The decorator must carry no `InputListener`: it would sit between the pointer and
+the source that owns the drag.
+
+## What is not implemented
+
+Only the in-process path. There is no OS-level drag: nothing calls
+`wl_data_device.start_drag`, `DoDragDrop` or the XDND protocol, and an incoming
+drop from another application is discarded by the backends.
+
+The seams are in place — `DragData` already holds the `ClipboardData` an OS drag
+would carry, `DragSession::isExternal()` already exists so a local-only target can
+branch on it today, and `DragOffer::externalPolicy` marks where the decision goes.
+Two things will genuinely change, and are worth knowing now:
+
+* **"start internally, escalate when the pointer leaves the window" is not
+  implementable.** Wayland's `start_drag` needs the serial of a live button press
+  and X11 needs a grab taken at press time. The decision has to be made at
+  `beginDrag` — which is why `externalPolicy` is on the offer.
+* **The decorator stops being a `Node`** for external drags: every OS wants a
+  surface or a bitmap. The target API is unaffected; the source API grows one
+  optional field.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| `acquireForNode` in a constructor or `init()` | a node has no scene until it is added to one, so there is nothing to install the system on. Do it in `handleEnter`, like `FormInputListener` finds its form |
+| Side effects in an `accept` slot | it is called during hit testing, for targets that never become current, several times a frame. Feedback belongs in `enter`/`over`/`leave` |
+| A source without `setExclusive()` | the dispatcher freezes an event chain's listener set at `Begin` and never re-targets, so the drag stops receiving `Move` the moment the pointer leaves the source. `DragSource` does this for you |
+| Accumulating `swipe.delta` | `updateDrag` takes a **position**, in world space and physical pixels. Deltas are not density-divided and a burst of moves in one frame would drift |
+| Two overlapping targets at the same `ZOrder` | `sortAllChildren` is unstable, so which one is "topmost" permutes between frames. Give siblings distinct orders |
+| A hover highlight written as a `Component` | the components phase re-converges up to 12 times per frame; writing one every frame can thrash it. Change a property on a node the target already owns |
+| A stylesheet-styled decorator with no `decoratorParent` | it is parked on the `SceneContent`, outside the `StyleResolver`'s subtree, and renders unstyled |
+| An encode callback capturing `this` of a node | it may run on any thread once the OS path lands. Capture copies |
+| Expecting a clipboard round trip to work in a windowed test | taking the OS selection needs an input serial from a focused window. Run those headless, where the controller keeps the data in process |
+
+## Trying it
+
+```sh
+XL_DRAG_BASIC_TEST=1   ./testapp   # roster, bracket, topmost-wins, exactly-once
+XL_DRAG_ACTIONS_TEST=1 ./testapp   # modifiers, negotiation, cursor
+XL_DRAG_TEXT_TEST=1    ./testapp   # a text field receiving a drop
+XL_DRAG_PAYLOAD_TEST=1 ./testapp --headless   # lazy encoding + clipboard round trip
+```
+
+`drag-actions` also registers `drag-actions.points` and `drag-actions.state` for
+the `SceneInspector`, so a synthetic pointer drag can be driven and read back step
+by step — the only way to exercise the threshold and the pointer capture, which the
+API-driven phases bypass.
+
+## Related
+
+* [Node / System / Component](node-system-component.adoc) — which phase and which
+  `SystemFlags` a behaviour belongs in
+* [Docking](../ui/docking.adoc) — the first consumer: `DockSystem` is one drop
+  target over its own split tree
+* [Forms](../ui/forms.adoc) — the same shape one layer up: a coordinator system
+  found by a parent-chain walk, widgets joined through a slot struct

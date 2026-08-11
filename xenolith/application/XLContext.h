@@ -190,6 +190,10 @@ public:
 	virtual Status writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&,
 			SpanView<String>, Ref * = nullptr, StringView label = StringView());
 
+	// Hand the controller an already-assembled ClipboardData. Same thread contract as the rest of
+	// this group: call it on the context thread
+	virtual Status writeToClipboard(Rc<sprt::window::ClipboardData> &&);
+
 	// Open an OS dialog with no owning window — CLI-ish paths, or a reveal/trash on a context that
 	// has no visible window. Safe to call from any thread; the completion runs on `target`.
 	//
