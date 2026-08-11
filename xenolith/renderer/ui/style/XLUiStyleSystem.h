@@ -36,11 +36,74 @@ struct SP_PUBLIC StyleSystemState {
 	uint32_t version = 0; // track system content update
 };
 
+/* Custom CSS properties declared on ONE node, outside any stylesheet.
+
+This is the per-element channel a stylesheet cannot express: a rule reaches a SET of nodes, so a
+value that differs per node — a tree row's depth, a progress bar's ratio, a chart bar's height —
+has nowhere to live in the sheet. Declared here, it participates in the cascade exactly like a
+`--name: value` declaration written for that node: it is inherited by the subtree, it is visible
+to `var()` in any declaration that node resolves, and being node-local it beats every rule that
+matched the same node.
+
+	setStyleVariable(row, "--depth", "3");
+
+	.fs-row { padding-left: calc(8px + var(--depth, 0) * var(--indent)); }
+
+The value is raw text, like every custom property: it is parsed only where it is substituted, so
+the same variable can carry a length, a colour or a whole shorthand — and a typo is diagnosed at
+the use, not here.
+
+Changing it re-resolves the node and its subtree through the ordinary components-dirty path. */
+struct SP_PUBLIC StyleVariables {
+	static ComponentId Id;
+
+	// "--name" -> raw value text. Names are stored normalised (leading "--", lower case), so
+	// `get("depth")` and `get("--DEPTH")` find the same entry.
+	Map<String, String> vars;
+
+	// Raw text of a property, or empty when this node does not declare it. Does NOT consult
+	// ancestors — inheritance happens during resolution, not here.
+	StringView get(StringView name) const;
+
+	bool operator==(const StyleVariables &) const = default;
+};
+
+// Declare or replace a custom property on `node`. `name` may be written with or without the
+// leading "--". Returns true when the value actually changed (and the node was marked dirty).
+SP_PUBLIC bool setStyleVariable(NotNull<Node>, StringView name, StringView value);
+
+// Drop a property declared by setStyleVariable. Returns true when it was there.
+SP_PUBLIC bool removeStyleVariable(NotNull<Node>, StringView name);
+
 // Marker recording that THIS StyleApplier created the node's LayoutSystem. The
 // applier only removes layouts it added, so pug `flex` tags and programmatic
 // LayoutSystems (which carry no marker) are left untouched.
 struct StyleManagedLayout {
 	static ComponentId Id;
+};
+
+// Marker recording that a SYSTEM on this node owns the layout of its children - it writes their
+// ContentSize and positions them itself. The exact counterpart of StyleManagedLayout: that one says
+// "the resolver created this layout", this one says "the resolver keeps out of it".
+//
+// It changes two decisions in StyleResolver:
+//
+// - a CSS width/height on a CHILD is handed to the owner as a MeasureComponent input instead of
+//   being committed with setContentSize, exactly as under a flex/grid container. Without it a
+//   container that lays its children out by other means (ui::DockSystem) would fight the resolver
+//   for ContentSize on every frame: style writes the size, the owner overwrites it, the resulting
+//   ContentSizeDirty re-runs the resolver;
+//
+// - `display: flex|grid` on THIS node neither creates nor reconfigures a LayoutSystem, so a
+//   stylesheet can neither silently reshape a hand-built layout nor add a second writer of the
+//   children's geometry beside the system that already owns them.
+//
+// Unlike FlexLayoutInfo / GridLayoutInfo it publishes no parameters, so no per-item component is
+// derived from it either - the owner system reads whatever it needs by itself.
+struct SP_PUBLIC SystemManagedLayout {
+	static ComponentId Id;
+
+	bool operator==(const SystemManagedLayout &) const = default;
 };
 
 /* Attaches a StyleSheet to a node: the sheet applies to the owner and its subtree.

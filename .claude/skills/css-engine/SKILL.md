@@ -195,6 +195,32 @@ NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, `:not()`/
 - Names are **case-insensitive** here (web is case-sensitive). Values keep their case.
 - Changing a variable on an ancestor repaints the subtree.
 
+### Per-node custom properties — supported
+
+A rule reaches a SET of nodes, so a value that differs per node (a tree row's depth, a ratio)
+cannot live in the sheet. Declare it on the node:
+
+```cpp
+ui::setStyleVariable(row, "--depth", "3");     // "--" optional; names normalised
+ui::removeStyleVariable(row, "--depth");
+```
+- Behaves as a `--name:` declaration written for that node: inherited by the subtree, visible to
+  `var()`, and it **beats every rule that matched the same node**.
+- Changing it re-resolves the node and its subtree.
+
+## calc() — supported, over ONE unit
+
+```css
+width:        calc(8px + 16px);       /* 24px */
+width:        calc(2 * 16px);         /* 32px */
+padding-left: calc(8px + var(--depth, 0) * var(--indent));
+```
+`+ - * /` and parentheses, evaluated AFTER `var()` substitution.
+- A sum combines like with like; a product needs a plain number on one side; a divisor must be a
+  plain number and non-zero.
+- **`calc(100% - 20px)` is REJECTED** (a Metric holds one value + one unit), and the declaration
+  is dropped, not approximated. Use `width: 100%` plus `padding`/`margin` for the fixed part.
+
 ## @media queries
 
 `@media (feature: value) [and …] [,…]`, optional `not`/`only`. Features resolved at runtime:
@@ -266,6 +292,9 @@ passes whatever level it has.
   too. Use `order` for placement, `position: absolute` to leave the flow entirely.
 - `prefers-color-scheme` → use `light-level` or `x-option`.
 - Sizes need units: `width: 100` is invalid; `100px`/`100%`/`1em`. `line-height: 1.5` is the only bare-number exception.
+- `calc()` mixing a percentage with a length → the declaration is dropped; only one unit survives.
+- A per-node number written as a class per value (`.d1 .d2 .d3 …`) → declare it on the node with
+  `ui::setStyleVariable` and multiply it with `calc()`.
 
 ## Writing a type applier (engine side, not CSS)
 

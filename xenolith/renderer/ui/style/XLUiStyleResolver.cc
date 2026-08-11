@@ -29,6 +29,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 ComponentId StyleManagedLayout::Id;
+ComponentId SystemManagedLayout::Id;
 
 struct ApplierRegistryNode {
 	StyleResolver::AttrApplier applier;
@@ -236,6 +237,19 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		anyCustom = anyCustom || sheet->hasCustomProperties();
 	}
 
+	// A node-local declaration (StyleVariables) is a source of custom properties no sheet knows
+	// about, so the variable table has to exist even when not one sheet in scope declares any.
+	// Only the levels PASS 1 actually visits are checked, which is the same range gatherLevel
+	// covers.
+	if (!anyCustom) {
+		for (size_t i = 0; i <= scopes.back().chainIndex; ++i) {
+			if (chain[i]->getComponent<StyleVariables>()) {
+				anyCustom = true;
+				break;
+			}
+		}
+	}
+
 	// Gather every rule matching `levelNode` (simple + combinator/pseudo) from every scope
 	// visible at `chainIndex`, across sheets, into one list sorted by CSS specificity (ties
 	// broken by scope rank + source order) - i.e. in the order the cascade must apply them.
@@ -269,6 +283,15 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		// variable declared by a MORE specific rule is visible to a use in a less specific one.
 		if (anyCustom) {
 			ret.initVariables(nearestStrings);
+			auto declare = [&](StringView key, StringView value) {
+				// merged in cascade order, so a later declaration overrides
+				auto vit = ret._variables->vars.find(key);
+				if (vit != ret._variables->vars.end()) {
+					vit->second = value;
+				} else {
+					ret._variables->vars.emplace(key, value);
+				}
+			};
 			auto collect = [&](Node *levelNode, size_t chainIndex) {
 				Vector<document::StyleContainer::MatchedRule> matches;
 				gatherLevel(matches, levelNode, chainIndex);
@@ -278,16 +301,16 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 								&& !m.media.at(c.mediaQuery.get())) {
 							continue;
 						}
-						auto key = m.strings.at(c.name);
-						auto value = m.strings.at(c.value);
-						// merged in cascade order, so a later declaration overrides
-						auto vit = ret._variables->vars.find(key);
-						if (vit != ret._variables->vars.end()) {
-							vit->second = value;
-						} else {
-							ret._variables->vars.emplace(key, value);
-						}
+						declare(m.strings.at(c.name), m.strings.at(c.value));
 					}
+				}
+
+				// The node's own declarations go in after every rule that matched it: a
+				// node-local property is the most specific source there is, the same standing an
+				// inline style would have. The views point into the component, which outlives
+				// this resolve - a ResolvedStyle is produced and consumed inside one apply().
+				if (auto vars = levelNode->getComponent<StyleVariables>()) {
+					for (auto &it : vars->vars) { declare(it.first, it.second); }
 				}
 			};
 			for (size_t i = scopes.back().chainIndex; i >= 1; --i) { collect(chain[i], i); }
@@ -893,7 +916,10 @@ void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask 
 		if (_nodesUpdated.find(child) == _nodesUpdated.end()
 				|| mask.count(NodeIdentity::Id.value) != 0
 				|| mask.count(InteractiveComponent::Id.value) != 0
-				|| mask.count(StyleSystemState::Id.value) != 0) {
+				|| mask.count(StyleSystemState::Id.value) != 0
+				// a node-local custom property changed: nothing moved and no rule started or
+				// stopped matching, so this is the only signal that its style is stale
+				|| mask.count(StyleVariables::Id.value) != 0) {
 			resolveForNode(child);
 		}
 	}
@@ -1436,10 +1462,14 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		// (a per-axis value < 0 means "unspecified"); the layout reads it and owns ContentSize.
 		// ...unless this node is out of the container's flow (`position: absolute`), in which case
 		// no layout will ever read that component and the CSS size has to be committed directly.
+		//
+		// SystemManagedLayout is the same claim made without flex/grid parameters: a container that
+		// places its children by its own rules (ui::DockSystem) is just as much the sole writer of
+		// their ContentSize, and reads the MeasureComponent as an intrinsic hint the same way.
 		auto parent = node->getParent();
 		const bool parentManagesSize = parent
-				&& (parent->getComponent<FlexLayoutInfo>()
-						|| parent->getComponent<GridLayoutInfo>())
+				&& (parent->getComponent<FlexLayoutInfo>() || parent->getComponent<GridLayoutInfo>()
+						|| parent->getComponent<SystemManagedLayout>())
 				&& s.position() != document::Position::Absolute;
 
 		if (parentManagesSize) {
@@ -1624,10 +1654,19 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		side(ParameterName::CssMarginLeft, s.marginLeft(), mrg.left, FlexAutoMargin::Left);
 	};
 
-	const bool wantFlex = display == Display::Flex || display == Display::InlineFlex;
-	const bool wantGrid = display == Display::Grid || display == Display::InlineGrid;
+	// A system on this node already owns its children's geometry (SystemManagedLayout): a
+	// stylesheet must neither add a second writer of it, nor reshape the layout that system built
+	// for itself. Pretending the node asked for no container at all, with no layout to tear down,
+	// disables the whole container block below. The per-item mapping after it still runs - this
+	// node remains an item of whatever lays IT out.
+	const bool systemManaged = node->getComponent<SystemManagedLayout>() != nullptr;
 
-	auto layout = node->getSystemByType<LayoutSystem>();
+	const bool wantFlex =
+			!systemManaged && (display == Display::Flex || display == Display::InlineFlex);
+	const bool wantGrid =
+			!systemManaged && (display == Display::Grid || display == Display::InlineGrid);
+
+	auto layout = systemManaged ? nullptr : node->getSystemByType<LayoutSystem>();
 
 	if (!wantFlex && !wantGrid) {
 		// only tear down layouts that WE added (marker present)

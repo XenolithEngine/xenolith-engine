@@ -30,6 +30,7 @@
 #include "XL2dVectorSprite.h"
 #include "XLDynamicStateSystem.h"
 #include "XLTextInputManager.h"
+#include "XLDragTypes.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -245,6 +246,10 @@ public:
 	virtual bool copy();
 	virtual bool cut();
 	virtual bool paste();
+
+	// Insert the text of a dropped payload at the caret. Wired to this field's DropTarget; public
+	// so a subclass can reuse it, and so a test can exercise the insertion without a pointer
+	virtual bool handleTextDrop(const DragEvent &);
 
 	virtual void setEnabled(bool);
 	virtual bool isEnabled() const { return _enabled; }

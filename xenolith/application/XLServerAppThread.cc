@@ -169,6 +169,14 @@ void ServerAppThread::writeToClipboard(sprt::window::Function<sprt::window::Byte
 			this);
 }
 
+void ServerAppThread::writeToClipboard(Rc<sprt::window::ClipboardData> &&data) {
+	// The object is already whole and its members are malloc-backed, so it crosses to the context
+	// thread as-is - nothing to copy apart from the Rc
+	_context->performOnThread([this, data = sp::move(data)]() mutable {
+		_context->writeToClipboard(sp::move(data));
+	}, this);
+}
+
 void ServerAppThread::acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&cb, Ref *ref) {
 	_context->performOnThread([this, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
 		auto info = _context->getScreenInfo();

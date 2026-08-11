@@ -334,6 +334,10 @@ Status Context::writeToClipboard(sprt::window::Function<sprt::window::Bytes(Stri
 	return _controller->writeToClipboard(move(data));
 }
 
+Status Context::writeToClipboard(Rc<sprt::window::ClipboardData> &&data) {
+	return _controller->writeToClipboard(sp::move(data));
+}
+
 void Context::handleConfigurationChanged(Rc<ContextInfo> &&info) { _info = move(info); }
 
 void Context::handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop> loop) {

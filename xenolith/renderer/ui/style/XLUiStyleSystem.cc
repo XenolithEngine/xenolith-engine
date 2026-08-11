@@ -31,6 +31,65 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 ComponentId StyleSystemState::Id;
+ComponentId StyleVariables::Id;
+
+// Custom property names are case-insensitive in this engine (a deviation from the web) and are
+// stored by the stylesheet with their leading "--". Normalising here is what lets a caller write
+// either form and still collide with a sheet-declared property of the same name.
+static String normalizeVariableName(StringView name) {
+	String result;
+	result.reserve(name.size() + 2);
+	if (!name.starts_with("--")) {
+		result.append("--");
+	}
+	for (size_t i = 0; i < name.size(); ++i) {
+		auto c = name[i];
+		result.push_back((c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c);
+	}
+	return result;
+}
+
+StringView StyleVariables::get(StringView name) const {
+	auto it = vars.find(normalizeVariableName(name));
+	return (it == vars.end()) ? StringView() : StringView(it->second);
+}
+
+bool setStyleVariable(NotNull<Node> node, StringView name, StringView value) {
+	auto key = normalizeVariableName(name);
+	bool changed = false;
+	node->setOrUpdateComponent<StyleVariables>([&](NotNull<StyleVariables> vars) {
+		auto it = vars->vars.find(key);
+		if (it != vars->vars.end()) {
+			if (StringView(it->second) == value) {
+				return false;
+			}
+			it->second = value.str<Interface>();
+		} else {
+			vars->vars.emplace(sp::move(key), value.str<Interface>());
+		}
+		changed = true;
+		return true;
+	});
+	return changed;
+}
+
+bool removeStyleVariable(NotNull<Node> node, StringView name) {
+	auto existing = node->getComponent<StyleVariables>();
+	if (!existing) {
+		return false;
+	}
+
+	auto key = normalizeVariableName(name);
+	if (existing->vars.find(key) == existing->vars.end()) {
+		return false;
+	}
+
+	node->setOrUpdateComponent<StyleVariables>([&](NotNull<StyleVariables> vars) {
+		vars->vars.erase(key);
+		return true;
+	});
+	return true;
+}
 
 static sprt::atomic<uint64_t> s_styleSystemId = 1;
 

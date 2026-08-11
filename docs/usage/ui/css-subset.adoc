@@ -34,6 +34,10 @@ engine and a claim here stops holding, that test is where you will hear about it
 * Structural selectors (`:nth-child` and friends) and custom properties
   (`--name` / `var()`) work. `:nth-child` counts siblings in **z-order**, and
   `:root` is the node holding the stylesheet, not the scene root.
+* `calc()` works, over one unit: a sum must combine like with like, so
+  `calc(100% - 20px)` is rejected rather than approximated.
+* A per-node value (a row's depth, a ratio) goes in a custom property declared on
+  that node — `ui::setStyleVariable` — since a rule can only reach a whole set.
 
 ## How a rule reaches a node
 
@@ -132,6 +136,7 @@ selectors (`[attr]`, `[attr=val]` — these parse but never match).
 | `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `overflow` `box-sizing` `object-fit` `letter-spacing` | **not registered** (logged as an unknown parameter) |
 | elliptical `border-radius: H / V` | only `H` is read |
 | bare number as a size (`width: 100`) | **rejected** — units are mandatory; `line-height: 1.5` is the only exception |
+| `calc()` mixing units (`calc(100% - 20px)`) | **rejected** — a Metric holds one unit; see below |
 
 An unknown property whose name starts with `-` is dropped silently (that is what
 makes `-webkit-*` harmless); any other unknown name logs "Unknown CSS parameter".
@@ -183,6 +188,66 @@ What to expect:
 
 `ResolvedStyle::getCustomProperty(name)` reads a variable's raw text directly,
 for a widget or a test that wants the value rather than its effect.
+
+### Custom properties declared on ONE node
+
+A rule reaches a *set* of nodes, so a value that differs per node — a tree row's
+depth, a progress ratio, a bar's height — has nowhere to live in a stylesheet.
+`ui::StyleVariables` is that channel: a component holding `--name` → raw text for
+a single node ([XLUiStyleSystem.h](../../../xenolith/renderer/ui/style/XLUiStyleSystem.h)).
+
+[source,cpp]
+----
+ui::setStyleVariable(row, "--depth", "3");   // name may omit the leading "--"
+ui::removeStyleVariable(row, "--depth");
+----
+
+[source,css]
+----
+.row { padding-left: calc(8px + var(--depth, 0) * var(--indent)); }
+----
+
+It participates in the cascade exactly like a `--name:` declaration written for
+that node:
+
+* it is **inherited** by the subtree, like any custom property;
+* it is visible to `var()` in every declaration that node resolves;
+* being node-local it **beats every rule that matched the same node**, the
+  standing an inline style would have;
+* changing it re-resolves the node and its subtree — nothing moved and no rule
+  started matching, so this is the only signal the resolver gets.
+
+Names are normalised (leading `--`, lower case), so a property set as `"K"`
+collides with a sheet's `--k` as it should. [`XL_CALC_TEST`]
+
+### calc()
+
+`calc()` is accepted anywhere a length is: `+`, `-`, `*`, `/` and parentheses,
+evaluated **after** `var()` substitution, so an expression may be assembled from
+variables.
+
+[source,css]
+----
+width:        calc(8px + 16px);          /* 24px  */
+width:        calc(2 * 16px);            /* 32px  */
+width:        calc(64px / 4);            /* 16px  */
+padding-left: calc((2 + 1) * var(--step));
+----
+
+A `Metric` carries **one value and one unit**, and calc() folds an expression
+down to exactly that. The arithmetic rules follow from it, and each is CSS's own:
+
+* a sum combines like with like — both plain numbers, or both the same unit;
+* a product needs a plain number on at least one side;
+* a divisor must be a plain number, and not zero.
+
+An expression that cannot reduce is **not** approximated: the declaration is
+dropped like any unparseable value, and whatever less specific rule stands is
+used. That covers `calc(100% - 20px)` — the one everyday web idiom this cannot
+express, because a percentage and a pixel length only combine once the containing
+box is known, which is after style resolution. Where you would reach for it, give
+the element `width: 100%` and put the fixed part in `padding`/`margin` instead.
+[`XL_CALC_TEST`]
 
 ### Rounded corners and outlines need a widget that can draw them
 

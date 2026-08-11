@@ -40,6 +40,14 @@
 #include "forms/XLUiFormSystem.cc"
 #include "forms/XLUiFormAdapters.cc"
 
+#include "dock/XLUiDockTree.cc"
+#include "dock/XLUiDockTab.cc"
+#include "dock/XLUiDockTabBar.cc"
+#include "dock/XLUiDockSplitter.cc"
+#include "dock/XLUiDockFrame.cc"
+#include "dock/XLUiDockDragVisuals.cc"
+#include "dock/XLUiDockSystem.cc"
+
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"
 #include "XLUiSubWindowSession.cc"

@@ -27,6 +27,7 @@
 #include "layout/AutoMarginLayout.h"
 #include "css/NthChildLayout.h"
 #include "css/CssVarLayout.h"
+#include "css/CalcLayout.h"
 #include "widgets/ButtonLayout.h"
 #include "css/CombinatorLayout.h"
 #include "render/DamageLayout.h"
@@ -72,6 +73,8 @@ static Rc<basic2d::SceneLayout2d> TestRegistry_make() {
 // the first entry whose variable is set.
 
 // src/css - CSS engine: selectors, cascade, live reload
+
+// clang-format off
 static const TestInfo s_cssTests[] = {
 	TestInfo{StringView("combinator"), StringView("XL_COMBINATOR_TEST"), StringView("CSS combinators"),
 		StringView("Descendant, child, adjacent and general sibling. Per row the left swatch must "
@@ -88,7 +91,7 @@ static const TestInfo s_cssTests[] = {
 				   "mutated at runtime, so their colours must shift as items are inserted, "
 				   "removed and re-ordered."),
 		TestRegistry_make<NthChildLayout>},
-
+ 
 	TestInfo{StringView("hover"), StringView("XL_HOVER_TEST"), StringView("Interactive pseudo-classes"),
 		StringView("Fixed states first (grey, red, blue, green, purple), then one swatch that must "
 				   "follow the pointer through :hover at runtime."),
@@ -99,6 +102,13 @@ static const TestInfo s_cssTests[] = {
 				   "reference and a cycle that must be dropped; the last box repaints when a "
 				   "class on its ancestor overrides the variable."),
 		TestRegistry_make<CssVarLayout>},
+
+	TestInfo{StringView("calc"), StringView("XL_CALC_TEST"), StringView("calc() and per-node custom properties"),
+		StringView("Rows of boxes sized by arithmetic; the five after them use expressions that "
+				   "cannot reduce to one unit and must fall back to 40px. The last rows take "
+				   "their width from a property declared on the node itself - one widens and one "
+				   "falls back to a default while the test runs."),
+		TestRegistry_make<CalcLayout>},
 
 	TestInfo{StringView("inherited"), StringView("XL_INHERITED_TEST"), StringView("Inherited CSS properties"),
 		StringView("Labels with explicit small black text must render with the inherited style "
@@ -296,6 +306,8 @@ static const TestGroup s_root{StringView(), StringView("Tests"),
 	s_rootTests};
 
 const TestGroup &getTestRegistry() { return s_root; }
+
+// clang-format on
 
 size_t getTestCount(const TestGroup &group) {
 	auto ret = group.tests.size();
