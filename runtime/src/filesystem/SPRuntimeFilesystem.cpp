@@ -245,6 +245,7 @@ static StringView getResourcePrefix(LocationCategory cat) {
 	case LocationCategory::AppRuntime: return StringView("%APP_RUNTIME%:"); break;
 
 	case LocationCategory::Bundled: return StringView("%PLATFORM%:"); break;
+	case LocationCategory::Embedded: return StringView("%EMBEDDED%:"); break;
 	case LocationCategory::Max: break;
 	}
 	return StringView();
@@ -301,6 +302,28 @@ const LookupInfo *getLookupInfo(LocationCategory cat) {
 		return &detail::LookupData::get()->_resourceLocations[toInt(cat)];
 	}
 	return nullptr;
+}
+
+Status addLocation(LocationCategory cat, StringView path, LookupFlags lookupFlags,
+		LocationFlags locationFlags, const LocationInterface *iface) {
+	if (toInt(cat) >= toInt(LocationCategory::Custom) || !iface) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	auto data = detail::LookupData::get();
+	auto &res = data->_resourceLocations[toInt(cat)];
+
+	// The list lives in the config pool, so allocate the copy of the path there too
+	memory::perform([&] {
+		sprt::unique_lock lock(res.mutex);
+
+		auto storedPath = path.pdup(data->_pool);
+		storedPath.backwardSkipChars<StringView::Chars<'/'>>();
+
+		res.paths.emplace_back(LocationInfo{storedPath, lookupFlags, locationFlags, iface});
+	}, data->_pool);
+
+	return Status::Ok;
 }
 
 using EnumListType = __pool_list<sprt::filesystem::LocationInfo>;

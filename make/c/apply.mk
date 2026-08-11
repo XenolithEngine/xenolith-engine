@@ -230,10 +230,14 @@ $(foreach target,$(TOOLKIT_PRECOMPILED_HEADERS),\
 $(call print_verbose,(c/apply.mk) Build target source list)
 
 # Список полных путей к компилируемым файлам фреймворка
-TOOLKIT_SRCS := $(call sp_toolkit_source_list, $(TOOLKIT_SRCS_DIRS), $(TOOLKIT_SRCS_OBJS))
+# Сгенерированные BundleFS файлы добавляются отдельно: их ещё не существует на чистой сборке,
+# а sp_*_source_list проходит через $(realpath), который отбросил бы несуществующий путь
+TOOLKIT_SRCS := $(call sp_toolkit_source_list, $(TOOLKIT_SRCS_DIRS), $(TOOLKIT_SRCS_OBJS)) \
+	$(BUILD_EMBED_TOOLKIT_SRCS)
 
 # Список полных путей к компилируемым файлам приложения
-BUILD_SRCS := $(call sp_local_source_list,$(LOCAL_SRCS_DIRS),$(LOCAL_SRCS_OBJS))
+BUILD_SRCS := $(call sp_local_source_list,$(LOCAL_SRCS_DIRS),$(LOCAL_SRCS_OBJS)) \
+	$(BUILD_EMBED_LOCAL_SRCS)
 
 BUILD_MAIN_SRC := $(if $(LOCAL_MAIN),$(realpath $(addprefix $(LOCAL_ROOT)/,$(LOCAL_MAIN))))
 

@@ -53,6 +53,11 @@ LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 LOCAL_SRCS_DIRS := mk filesystem font pug document core
 LOCAL_SRCS_OBJS :=
 
+# BundleFS: `resources` is embedded into the binary twice — raw, and compressed — so that the
+# filesystem tests can exercise both storage forms of the same content
+LOCAL_EMBED_DIRS := resources
+LOCAL_EMBED_COMPRESSED_DIRS := resources-packed
+
 LOCAL_INCLUDES_DIRS :=
 LOCAL_INCLUDES_OBJS :=
 

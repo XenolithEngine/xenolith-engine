@@ -119,7 +119,7 @@ auto readIntoMemory(const FileInfo &info, size_t off = 0, size_t size = maxOf<si
 		typename Interface::BytesType {
 	auto f = openForReading(info);
 	if (f) {
-		auto ret = f.readIntoMemory<Interface>();
+		auto ret = f.readIntoMemory<Interface>(off, size);
 		f.close();
 		return ret;
 	}

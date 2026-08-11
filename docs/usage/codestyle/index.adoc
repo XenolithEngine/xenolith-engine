@@ -64,6 +64,7 @@ the `scene/` articles route to it rather than restating it.
 | [Errors: `Status`, `Result`, logging, assertions](core/errors-and-status.adoc) | a function can fail, or you need to log/assert |
 | [Threads and `sprt::dispatch`](core/threads-and-dispatch.adoc) | posting work to a thread, timers, async I/O, anything concurrent |
 | [Weakly-typed data: `data::Value`](core/data-value.adoc) | reading/writing a `Value`, JSON/CBOR, config, IPC or any payload at a boundary |
+| [Embedded files: BundleFS](core/embedded-files.adoc) | shipping a directory of resources inside the binary, reading it through `FileCategory::Embedded` |
 
 ### `scene/` — the scene graph
 
@@ -71,12 +72,14 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [`Node`: geometry, tree, subclasses](scene/node-geometry.adoc) | placing, sizing or hit-testing a node; picking a base class |
 | [Node / System / Component](scene/node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
+| [Drag and drop](scene/drag-and-drop.adoc) | making something draggable or droppable; the payload a drag and the clipboard share |
 
 ### `ui/` — the widget kit
 
 | Article | Read it when |
 |---|---|
 | [Forms: `FormSystem`, fields and focus](ui/forms.adoc) | building a form, adding a field to one, driving Tab/submit/validation, or joining a widget of your own to a form |
+| [Docking: `DockSystem`, frames, panels and the split tree](ui/docking.adoc) | building an IDE-style layout of parked panels: declaring frames and their constraints, tabs, dividers, drag and drop between frames, saving and restoring the arrangement |
 
 ### `window/` — windows and OS integration
 

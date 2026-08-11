@@ -1,0 +1,176 @@
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+# BundleFS generator for the Windows GNU-make build path — the PowerShell twin of
+# make/embed/embedfs.sh (see that file for the full rationale). The engine-native path uses
+# xlmake's in-process $(EMBED) directive, which needs no shell at all.
+#
+# Output must stay byte-for-byte identical to the other two generators for an uncompressed
+# bundle: same entry order, same 16-bytes-per-row layout, LF line endings, no BOM.
+#
+# Usage: embedfs.ps1 <out.cpp> <bundle-name> <src-dir> [compress]
+#
+# Limitation: compression is not implemented here (LZ4/brotli are out of reach for a script).
+# A bundle asking for it is written uncompressed with a warning; the format records compression
+# per entry, so the result is valid and only the size saving is lost. Build with xlmake for
+# compression.
+
+[CmdletBinding()]
+param(
+	[Parameter(Mandatory = $true)][string] $Out,
+	[Parameter(Mandatory = $true)][string] $Name,
+	[Parameter(Mandatory = $true)][string] $Dir,
+	[string] $Compress = "0"
+)
+
+$ErrorActionPreference = "Stop"
+
+if (-not (Test-Path -LiteralPath $Dir -PathType Container)) {
+	Write-Error "embedfs: not a directory: $Dir"
+	exit 1
+}
+
+if ($Compress -ne "0" -and $Compress -ne "") {
+	Write-Warning ("embedfs: compression is unavailable in the PowerShell fallback; " +
+		"writing bundle '$Name' uncompressed (build with xlmake for compression)")
+}
+
+$root = (Resolve-Path -LiteralPath $Dir).ProviderPath.TrimEnd('\', '/')
+$ident = [System.Text.RegularExpressions.Regex]::Replace($Name, '[^A-Za-z0-9_]', '_')
+
+# Entry order is part of the format: bytewise, except that '/' sorts below every other character,
+# which keeps a directory's subtree contiguous (see comparePath in SPFilesystemEmbedded.h).
+# Sorting on a key with '/' replaced by U+0001, with an ordinal comparison, reproduces it.
+$items = Get-ChildItem -LiteralPath $root -Recurse -Force |
+	ForEach-Object {
+		$rel = $_.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+		[PSCustomObject]@{
+			Rel = $rel
+			Key = $rel.Replace('/', [char]1)
+			IsDir = $_.PSIsContainer
+			Full = $_.FullName
+		}
+	} |
+	Sort-Object -Property Key -CaseSensitive
+
+# mtime is content-derived, not "now", so that regenerating an unchanged bundle produces an
+# identical file (and matches what the other generators compute)
+$newest = 0
+foreach ($item in $items) {
+	if ($item.IsDir) { continue }
+	$secs = [long][Math]::Floor(
+		((Get-Item -LiteralPath $item.Full).LastWriteTimeUtc -
+			[datetime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds)
+	if ($secs -gt $newest) { $newest = $secs }
+}
+
+# Escape a path for a C string literal. Anything outside printable ASCII becomes a 3-digit octal
+# escape, which — unlike \x — can not swallow the character that follows it.
+function Convert-ToLiteral([string] $value) {
+	$sb = New-Object System.Text.StringBuilder
+	foreach ($b in [System.Text.Encoding]::UTF8.GetBytes($value)) {
+		if ($b -eq 34) { [void]$sb.Append('\"') }
+		elseif ($b -eq 92) { [void]$sb.Append('\\') }
+		elseif ($b -ge 32 -and $b -lt 127) { [void]$sb.Append([char]$b) }
+		else { [void]$sb.AppendFormat('\{0}', [System.Convert]::ToString($b, 8).PadLeft(3, '0')) }
+	}
+	return $sb.ToString()
+}
+
+$blob = New-Object System.Collections.Generic.List[byte]
+$entries = New-Object System.Collections.Generic.List[string]
+
+foreach ($item in $items) {
+	$escaped = Convert-ToLiteral $item.Rel
+	$len = [System.Text.Encoding]::UTF8.GetByteCount($item.Rel)
+
+	if ($item.IsDir) {
+		$entries.Add("`t{ ""$escaped"", $len, EntryFlags::Dir, 0, 0, 0 },")
+		continue
+	}
+
+	$offset = $blob.Count
+	$bytes = [System.IO.File]::ReadAllBytes($item.Full)
+	$blob.AddRange($bytes)
+	$entries.Add("`t{ ""$escaped"", $len, EntryFlags::None, $offset, $($bytes.Length), $($bytes.Length) },")
+}
+
+$lines = New-Object System.Collections.Generic.List[string]
+[void]$lines.Add("/**")
+[void]$lines.Add(" Autogenerated by BundleFS. Do not edit.")
+[void]$lines.Add("")
+[void]$lines.Add(" Bundle: $Name")
+[void]$lines.Add(" **/")
+[void]$lines.Add("///@ SP_EXCLUDE")
+[void]$lines.Add("")
+[void]$lines.Add('#include "SPFilesystemEmbedded.h"')
+[void]$lines.Add('#include "SPSharedModule.h"')
+[void]$lines.Add("")
+[void]$lines.Add("namespace STAPPLER_VERSIONIZED stappler::filesystem::embedded {")
+[void]$lines.Add("")
+[void]$lines.Add("alignas(16) static const uint8_t s_data_$ident[] = {")
+
+if ($blob.Count -eq 0) {
+	[void]$lines.Add("`t0x00,")
+} else {
+	$row = New-Object System.Text.StringBuilder
+	for ($i = 0; $i -lt $blob.Count; ++$i) {
+		if ($i % 16 -eq 0) {
+			if ($i -gt 0) {
+				[void]$lines.Add($row.ToString())
+				[void]$row.Clear()
+			}
+			[void]$row.Append("`t")
+		} else {
+			[void]$row.Append(' ')
+		}
+		[void]$row.AppendFormat('0x{0:x2},', $blob[$i])
+	}
+	[void]$lines.Add($row.ToString())
+}
+
+[void]$lines.Add("};")
+[void]$lines.Add("")
+[void]$lines.Add("static const Entry s_entries_$ident[] = {")
+if ($entries.Count -eq 0) {
+	[void]$lines.Add("`t{ """", 0, EntryFlags::Dir, 0, 0, 0 },")
+} else {
+	foreach ($entry in $entries) { [void]$lines.Add($entry) }
+}
+[void]$lines.Add("};")
+[void]$lines.Add("")
+[void]$lines.Add("static const Bundle s_bundle_$ident = {")
+[void]$lines.Add("`tBundleVersion,")
+[void]$lines.Add("`t""$Name"",")
+[void]$lines.Add("`ts_entries_$ident,")
+[void]$lines.Add("`t$($entries.Count),")
+[void]$lines.Add("`ts_data_$ident,")
+[void]$lines.Add("`t$($blob.Count),")
+[void]$lines.Add("`t$($newest * 1000000),")
+[void]$lines.Add("};")
+[void]$lines.Add("")
+[void]$lines.Add("SP_USED static SharedExtension s_extension_$ident(BundleModuleName, ""$Name"",")
+[void]$lines.Add("`t`t&s_bundle_$ident);")
+[void]$lines.Add("")
+[void]$lines.Add("} // namespace stappler::filesystem::embedded")
+
+# LF endings and no BOM: the output has to match the other generators byte for byte
+$text = [string]::Join("`n", $lines) + "`n"
+[System.IO.File]::WriteAllText($Out, $text, (New-Object System.Text.UTF8Encoding($false)))

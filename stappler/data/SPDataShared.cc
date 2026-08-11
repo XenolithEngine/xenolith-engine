@@ -26,6 +26,11 @@
 namespace STAPPLER_VERSIONIZED stappler::data {
 
 static SharedSymbol s_dataSharedSymbols[] = {
+	// stappler_filesystem's embedded (BundleFS) reader decompresses through this symbol: a hard
+	// dependency the other way round would be a cycle, since a shared stappler_data links against
+	// stappler_filesystem. See SPFilesystemEmbedded.cc.
+	SharedSymbol{"decompress",
+		static_cast<size_t (*)(const uint8_t *, size_t, uint8_t *, size_t)>(decompress)},
 	SharedSymbol{"readUrlencoded",
 		static_cast<ValueTemplate<memory::PoolInterface> (*)(StringView, size_t)>(
 				readUrlencoded<memory::PoolInterface>)},

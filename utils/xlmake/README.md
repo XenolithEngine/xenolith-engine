@@ -338,6 +338,7 @@ Windows**, where there is no POSIX shell.
 | `$(WRITE) <file> <text>` | `echo text > file` | truncate/create; one surrounding quote layer is stripped and a trailing newline ensured |
 | `$(APPEND) <file> <text>` | `echo text >> file` | append; same quoting/newline rule |
 | `$(ECHO) <text>` | `echo` | print one line to xlmake's output (shown even in non-verbose mode) |
+| `$(EMBED) <out.cpp> <name> <dir> [compress]` | — | BundleFS codegen: turn `<dir>` into a translation unit that ships its files inside the binary (see below) |
 
 ```makefile
 $(OUTDIR):
@@ -351,6 +352,23 @@ clean:
 
 Their path operands accept spaces (write an authored space as `\ `) — see
 [Paths with spaces](#paths-with-spaces).
+
+#### `$(EMBED)` — BundleFS codegen
+
+```makefile
+build/embed/resources.cpp: ; $(EMBED) $@ resources $(SRCDIR)/resources
+```
+
+Walks `<dir>` and writes a C++ translation unit holding every file's bytes plus a sorted index,
+which `stappler_filesystem` then serves under `FileCategory::Embedded` — the way an application
+ships its resources inside its own binary. `<name>` is the mount name; a non-zero fourth operand
+compresses entries that actually get smaller (LZ4, via `stappler_data`).
+
+The Stappler make system drives this for you from `LOCAL_EMBED_DIRS` / `MODULE_<X>_EMBED_DIRS`
+(see `make/MODULES.md`), so a makefile rarely writes the directive by hand. Doing the work
+in-process means it also runs where there is no POSIX shell; `make/embed/embedfs.sh` and
+`embedfs.ps1` are the GNU-make fallbacks and produce byte-identical output for an uncompressed
+bundle.
 
 ### Extension functions
 
@@ -461,8 +479,8 @@ error warning info
 **xlmake extension functions:** `xl_cat` `xl_write` `xl_append` `xl_mkdir` `xl_make_path` `xl_make_plain` — see
 [Extension functions](#extension-functions).
 
-**In-process recipe directives:** `$(WRITE)` `$(APPEND)` `$(MKDIR)` `$(REMOVE)` `$(CP)` `$(ECHO)` —
-see [In-process recipe directives](#in-process-recipe-directives).
+**In-process recipe directives:** `$(WRITE)` `$(APPEND)` `$(MKDIR)` `$(REMOVE)` `$(CP)` `$(ECHO)`
+`$(EMBED)` — see [In-process recipe directives](#in-process-recipe-directives).
 
 **Directives:** `ifdef` `ifndef` `ifeq` `ifneq` `else` `endif` `define` `endef`
 `include` `-include` `sinclude` `override` `undefine` `export` `unexport`.

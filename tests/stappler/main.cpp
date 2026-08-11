@@ -43,6 +43,7 @@ struct TestEntry {
 static const TestEntry s_testList[] = {
 	{"makefile", &stappler::performMakefileTests},
 	{"filesystem", &stappler::performFilesystemTests},
+	{"embedded", &stappler::performEmbeddedFilesystemTests},
 	{"bidi", &stappler::performBidiTests},
 	{"shape", &stappler::performShapeTests},
 	{"glyph", &stappler::performGlyphTests},

@@ -45,6 +45,7 @@ static constexpr StringView MkdirDirectiveMarker("\x01xlmake-mkdir");
 static constexpr StringView RemoveDirectiveMarker("\x01xlmake-remove");
 static constexpr StringView CopyDirectiveMarker("\x01xlmake-copy");
 static constexpr StringView EchoDirectiveMarker("\x01xlmake-echo");
+static constexpr StringView EmbedDirectiveMarker("\x01xlmake-embed");
 
 } // namespace stappler::makefile
 
