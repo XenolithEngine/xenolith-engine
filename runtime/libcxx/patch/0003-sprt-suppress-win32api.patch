@@ -1,6 +1,6 @@
 --- a/include/__config
 +++ b/include/__config
-@@ -268,7 +268,13 @@ _LIBCPP_HARDENING_MODE_DEBUG
+@@ -81,7 +81,13 @@
  #  endif
  
  #  if defined(_WIN32)
@@ -15,7 +15,7 @@
  #    define _LIBCPP_SHORT_WCHAR 1
  // Both MinGW and native MSVC provide a "MSVC"-like environment
  #    define _LIBCPP_MSVCRT_LIKE
-@@ -282,7 +288,13 @@ _LIBCPP_HARDENING_MODE_DEBUG
+@@ -95,7 +101,13 @@
  #    else
  #      define _LIBCPP_HAS_BITSCAN64 0
  #    endif

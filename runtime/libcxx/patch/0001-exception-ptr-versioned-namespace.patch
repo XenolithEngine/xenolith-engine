@@ -1,6 +1,6 @@
 --- a/include/__exception/exception_ptr.h
 +++ b/include/__exception/exception_ptr.h
-@@ -53,7 +53,7 @@
+@@ -59,7 +59,7 @@
  
  #endif
  
@@ -9,20 +9,21 @@
  
  #ifndef _LIBCPP_ABI_MICROSOFT
  
-@@ -199,6 +199,6 @@
+@@ -219,7 +219,7 @@
  }
  
  #endif // _LIBCPP_ABI_MICROSOFT
 -_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
 +_LIBCPP_END_NAMESPACE_STD
  
- #endif // _LIBCPP___EXCEPTION_EXCEPTION_PTR_H
+ _LIBCPP_POP_MACROS
+ 
 --- a/include/__exception/operations.h
 +++ b/include/__exception/operations.h
 @@ -27,6 +27,16 @@
  using terminate_handler = void (*)();
  _LIBCPP_EXPORTED_FROM_ABI terminate_handler set_terminate(terminate_handler) _NOEXCEPT;
- _LIBCPP_EXPORTED_FROM_ABI terminate_handler get_terminate() _NOEXCEPT;
+ [[__nodiscard__]] _LIBCPP_EXPORTED_FROM_ABI terminate_handler get_terminate() _NOEXCEPT;
 +_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
 +
 +// sprt overlay: sprt OWNS exception_ptr and the uncaught/current/rethrow operations
@@ -35,10 +36,10 @@
 +_LIBCPP_BEGIN_NAMESPACE_STD
  
  #if _LIBCPP_STD_VER <= 17 || defined(_LIBCPP_ENABLE_CXX20_REMOVED_UNCAUGHT_EXCEPTION)
- _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_DEPRECATED_IN_CXX17 bool uncaught_exception() _NOEXCEPT;
+ [[__nodiscard__]] _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_DEPRECATED_IN_CXX17 bool uncaught_exception() _NOEXCEPT;
 @@ -37,6 +47,6 @@
  
- _LIBCPP_EXPORTED_FROM_ABI exception_ptr current_exception() _NOEXCEPT;
+ [[__nodiscard__]] _LIBCPP_EXPORTED_FROM_ABI exception_ptr current_exception() _NOEXCEPT;
  [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void rethrow_exception(exception_ptr);
 -_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
 +_LIBCPP_END_NAMESPACE_STD

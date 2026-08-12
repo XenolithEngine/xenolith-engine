@@ -77,8 +77,13 @@ MODULE_RUNTIME_LIBCXX_PRIVATE_INCLUDES := \
 MODULE_RUNTIME_LIBCXX_PRIVATE_CFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS)
 
+# The vendored TUs are libc++'s OWN sources, and upstream builds them at C++23
+# (libcxx/CMakeLists.txt: CXX_STANDARD 23) -- 22.1's filesystem/format_string.h uses
+# std::string::resize_and_overwrite, which only exists there. The engine's default
+# (GLOBAL_STDXX, gnu++2a) applies to everything else; override it for this module only.
 MODULE_RUNTIME_LIBCXX_PRIVATE_CXXFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS) \
+	-std=gnu++23 \
 	-frtti -funwind-tables -Wno-unused-command-line-argument -nostdinc++\
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
 	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
