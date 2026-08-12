@@ -585,6 +585,26 @@ static InputModifier InputQueue_getInputModifiers(int32_t modsFlags) {
 	return mods;
 }
 
+// Whether a single pointer of a motion event was produced by a finger on a touchscreen.
+static bool InputQueue_isTouchPointer(AInputEvent *event, size_t pointer) {
+	if ((AInputEvent_getSource(event) & AINPUT_SOURCE_TOUCHSCREEN) != AINPUT_SOURCE_TOUCHSCREEN) {
+		return false;
+	}
+
+	auto tool = AMotionEvent_getToolType(event, pointer);
+	return tool == AMOTION_EVENT_TOOL_TYPE_FINGER || tool == AMOTION_EVENT_TOOL_TYPE_UNKNOWN;
+}
+
+// Per-pointer modifiers: the cached keyboard modifiers plus the touch source bit.
+//
+// The touch bit can not live in _activeModifiers - that is refreshed from key events only, while
+// this has to be recomputed for every motion event, and even per-pointer within one event
+// (a stylus and a finger can be down at the same time).
+static InputModifier InputQueue_getPointerModifiers(AInputEvent *event, size_t pointer,
+		InputModifier mods) {
+	return InputQueue_isTouchPointer(event, pointer) ? mods | InputModifier::Touch : mods;
+}
+
 static InputMouseButton InputQueue_getInputButton(int32_t button) {
 	switch (button) {
 	case AMOTION_EVENT_BUTTON_PRIMARY: return InputMouseButton::MouseLeft; break;
@@ -743,7 +763,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::Begin,
 				{{
 					InputMouseButton::Touch,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -760,7 +780,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::End,
 				{{
 					InputMouseButton::Touch,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -784,7 +804,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 					InputEventName::Move,
 					{{
 						InputMouseButton::Touch,
-						_activeModifiers,
+						InputQueue_getPointerModifiers(event, i, _activeModifiers),
 						AMotionEvent_getX(event, i),
 						AMotionEvent_getY(event, i),
 					}},
@@ -800,7 +820,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::Cancel,
 				{{
 					InputMouseButton::Touch,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -821,7 +841,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 			InputEventName::Begin,
 			{{
 				InputMouseButton::Touch,
-				_activeModifiers,
+				InputQueue_getPointerModifiers(event, pointer, _activeModifiers),
 				AMotionEvent_getX(event, pointer),
 				AMotionEvent_getY(event, pointer),
 			}},
@@ -838,7 +858,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 			InputEventName::End,
 			{{
 				InputMouseButton::Touch,
-				_activeModifiers,
+				InputQueue_getPointerModifiers(event, pointer, _activeModifiers),
 				AMotionEvent_getX(event, pointer),
 				AMotionEvent_getY(event, pointer),
 			}},
@@ -853,7 +873,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::MouseMove,
 				{{
 					InputMouseButton::Touch,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -869,7 +889,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::Scroll,
 				{{
 					InputMouseButton::None,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -900,7 +920,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::Begin,
 				{{
 					btn,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},
@@ -921,7 +941,7 @@ int InputQueue::handleMotionEvent(AInputEvent *event) {
 				InputEventName::End,
 				{{
 					btn,
-					_activeModifiers,
+					InputQueue_getPointerModifiers(event, i, _activeModifiers),
 					AMotionEvent_getX(event, i),
 					AMotionEvent_getY(event, i),
 				}},

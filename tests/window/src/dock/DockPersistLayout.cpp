@@ -97,7 +97,12 @@ void DockPersistLayout::runPhase1() {
 
 	expect(_saved.getInteger("version") == ui::DockTree::SaveVersion, "phase1",
 			"the save carries no version");
-	expect(_saved.getValue("root").getString("type") == "split", "phase1",
+
+	// Bound as a const reference before it is read: the non-const getString() asserts on a missing
+	// key, so a save that lost its root would abort the process instead of failing the check it is
+	// standing in - which is the one thing a test must never do.
+	const Value &root = _saved.getValue("root");
+	expect(root.getString("type") == "split", "phase1",
 			"the root of the save is not the split that was built");
 
 	// nothing derived may be written: those come back from the registry and from the layout pass

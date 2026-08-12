@@ -90,9 +90,25 @@ public:
 	// Zero major version means MIT-SHM is not usable at all.
 	void getShmVersion(uint32_t &major, uint32_t &minor) const;
 
+	// Whether a touchscreen is currently attached, as reported by XInput2. Always false when the
+	// extension is missing or too old, which is indistinguishable from "no touchscreen" for callers.
+	bool hasTouchscreen() const { return _xinput.hasTouchscreen; }
+
+	// Handle an XI2 generic event; returns true if it was ours. Called from XcbConnection::poll
+	// for XCB_GE_GENERIC, since XGE events carry no first_event to demultiplex on.
+	bool handleGenericEvent(xcb_ge_generic_event_t *);
+
+	// Re-run XIQueryDevice and update hasTouchscreen. Returns true if the value changed.
+	bool updateTouchscreenState();
+
 protected:
+	// `enabled` means "the extension is there and a version request was sent", and the only thing
+	// that reads it is the guard around reading that request's cookie back. It therefore has to
+	// start false: defaulting it to true made a missing libxcb-<ext>.so - where the whole probe
+	// block is skipped - fall through to a reply call on an unassigned cookie and an unloaded
+	// function pointer.
 	struct RandrInfo {
-		bool enabled = true;
+		bool enabled = false;
 		bool initialized = false;
 		uint8_t firstEvent = 0;
 
@@ -101,7 +117,7 @@ protected:
 	};
 
 	struct XfixesInfo {
-		bool enabled = true;
+		bool enabled = false;
 		bool initialized = false;
 		uint8_t firstEvent = 0;
 		uint8_t firstError = 0;
@@ -111,13 +127,33 @@ protected:
 	};
 
 	struct ShapeInfo {
-		bool enabled = true;
+		bool enabled = false;
 		bool initialized = false;
 		uint8_t firstEvent = 0;
 		uint8_t firstError = 0;
 
 		uint32_t majorVersion = 0;
 		uint32_t minorVersion = 0;
+	};
+
+	// XInput2. Unlike every other extension here it delivers generic events (XGE), which all share
+	// response_type XCB_GE_GENERIC and are told apart by the major opcode inside the event body -
+	// so majorOpcode is what has to be kept, and firstEvent would be meaningless.
+	struct XinputInfo {
+		bool enabled = false;
+		bool initialized = false;
+		uint8_t majorOpcode = 0;
+
+		uint32_t majorVersion = 0;
+		uint32_t minorVersion = 0;
+
+		// Whether a direct-touch device (a touchscreen, as opposed to a touchpad) is attached.
+		bool hasTouchscreen = false;
+
+		// XI 2.2 is where the touch device classes appeared; below it a touchscreen is invisible.
+		bool hasTouchClasses() const {
+			return majorVersion > 2 || (majorVersion == 2 && minorVersion >= 2);
+		}
 	};
 
 	// MIT-SHM. Only firstEvent really matters at runtime: SHM completion is an extension event,
@@ -194,6 +230,7 @@ protected:
 	RandrInfo _randr;
 	XfixesInfo _xfixes;
 	ShapeInfo _shape;
+	XinputInfo _xinput;
 	ShmInfo _shm;
 	XSettingsInfo _xsettings;
 	KeyInfo _keys;

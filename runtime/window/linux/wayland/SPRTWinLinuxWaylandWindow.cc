@@ -160,6 +160,10 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 
 	_currentExtent = Extent2(_info->rect.width, _info->rect.height);
 
+	if (_display->seat && _display->seat->touch) {
+		_info->state |= WindowState::InputTouch;
+	}
+
 	if (hasFlag(_info->capabilities, WindowCapabilities::ServerSideCursors)
 			&& hasFlag(_info->flags, WindowCreationFlags::PreferServerSideCursors)) {
 		_serverSideCursors = true;
@@ -1492,6 +1496,12 @@ void WaylandWindow::updateKeyRepeatTimer() {
 }
 
 void WaylandWindow::notifyScreenChange() { XL_WAYLAND_LOG("notifyScreenChange"); }
+
+void WaylandWindow::notifyTouchAvailable(bool value) {
+	updateState(_configureSerial,
+			value ? _info->state | WindowState::InputTouch
+				  : _info->state & ~WindowState::InputTouch);
+}
 
 void WaylandWindow::motifyThemeChanged(const ThemeInfo &theme) {
 	if (theme.colorScheme == "dark" || theme.colorScheme == "prefer-dark") {

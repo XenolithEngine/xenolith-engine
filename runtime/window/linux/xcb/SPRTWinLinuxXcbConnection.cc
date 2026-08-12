@@ -376,6 +376,14 @@ uint32_t XcbConnection::poll() {
 		case XCB_MAPPING_NOTIFY:
 			_support->handleMappingNotify(reinterpret_cast<xcb_mapping_notify_event_t *>(e));
 			break;
+		case XCB_GE_GENERIC:
+			// Generic events must be matched before the extension fallback below: they are all
+			// response_type 35 and are demultiplexed by the major opcode inside the event, while
+			// handleExtensionEvent compares against per-extension first_event values that 35 could
+			// collide with.
+			_support->handleGenericEvent(reinterpret_cast<xcb_ge_generic_event_t *>(e));
+			break;
+
 		default: _support->handleExtensionEvent(et, e); break;
 		}
 
@@ -899,6 +907,12 @@ void XcbConnection::handleClipboardChanged() {
 	if (_onSystemNotification) {
 		_onSystemNotification(SystemNotification::ClipboardChanged);
 	}
+}
+
+bool XcbConnection::hasTouchscreen() const { return _support && _support->hasTouchscreen(); }
+
+void XcbConnection::handleTouchscreenStateChanged(bool value) {
+	for (auto &it : _windows) { it.second->handleTouchscreenStateChanged(value); }
 }
 
 bool XcbConnection::checkCookie(xcb_void_cookie_t cookie, StringView errMessage) {

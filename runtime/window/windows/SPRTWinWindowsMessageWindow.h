@@ -54,6 +54,9 @@ public:
 
 	Status handleSettingsChanged();
 
+	// A device was attached or removed - re-probe the input hardware we track.
+	Status handleInputDevicesChanged();
+
 	Status readFromClipboard(Rc<ClipboardRequest> &&);
 	Status writeToClipboard(Rc<ClipboardData> &&);
 

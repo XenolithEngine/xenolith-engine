@@ -38,6 +38,10 @@ namespace sprt::window {
 class WindowsContextController;
 class WindowClass;
 
+// Whether a touchscreen is attached right now. Defined in SPRTWinWindowsWindow.cc, declared here
+// because the controller re-probes it on WM_DEVICECHANGE and comes earlier in the SCU.
+bool WindowsWindow_hasTouchDigitizer();
+
 class WindowsWindow : public NativeWindow {
 public:
 	virtual ~WindowsWindow();
@@ -115,6 +119,9 @@ public:
 	Status handleMouseEvent(IVec2, InputMouseButton, InputEventName);
 	Status handleMouseWheel(Vec2);
 	Status handleMouseCaptureChanged();
+
+	// A digitizer was plugged or unplugged; re-probed value pushed down from the message window.
+	Status handleTouchAvailable(bool);
 
 	Status handlePositionChanging(WINDOWPOS *);
 	Status handlePositionChanged(const WINDOWPOS *);

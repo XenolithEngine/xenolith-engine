@@ -185,6 +185,10 @@ public:
 	void notifyScreenChange();
 	void motifyThemeChanged(const ThemeInfo &);
 
+	// The seat gained or lost WL_SEAT_CAPABILITY_TOUCH. Compositors re-send seat capabilities on
+	// hotplug, so this can arrive at any point in the window's life.
+	void notifyTouchAvailable(bool);
+
 	void handleDecorationPress(WaylandDecoration *, uint32_t serial, uint32_t btn,
 			bool released = false);
 

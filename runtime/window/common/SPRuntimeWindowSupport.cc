@@ -1019,6 +1019,7 @@ void getWindowStateDescription(const callback<void(StringView)> &out, WindowStat
 		case WindowState::DecorationNavigationLight: out << " DecorationNavigationLight"; break;
 		case WindowState::DecorationShowBySwipe: out << " DecorationShowBySwipe"; break;
 		case WindowState::DecorationState: break;
+		case WindowState::InputTouch: out << " InputTouch"; break;
 		case WindowState::AllowedWindowMenu: out << " AllowedWindowMenu"; break;
 		case WindowState::AllowedMove: out << " MoveAllowed"; break;
 		case WindowState::AllowedResize: out << " ResizeAllowed"; break;

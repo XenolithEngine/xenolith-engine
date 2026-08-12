@@ -783,6 +783,11 @@ Label::LineLayout Label::getLine(uint32_t num) const {
 }
 
 uint16_t Label::getFontHeight() const {
+	// No controller before handleEnter - a label measured before it joined a scene has no height
+	// to answer with, and answering 0 beats dereferencing null.
+	if (!_source) {
+		return 0;
+	}
 	// reads the stored explicit style: an empty label's height does not track
 	// inherited font components
 	auto l = _source->getLayout(_style.font);
@@ -868,6 +873,12 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 				return Vec2((leftEdge ? c.pos : c.pos + c.advance) / _labelDensity,
 						_contentSize.height - line->pos / _labelDensity);
 			}
+		} else if (charIndex >= d->chars.size() && charIndex != 0 && d->chars.empty()) {
+			// A layout can be non-empty as a STRING yet empty as a LAYOUT: every char undefined
+			// in the font (a CJK composition on a system with no CJK face) lays out to nothing.
+			// The cursor still sits past the end of the string, so answer the origin instead of
+			// calling back() on empty vectors.
+			return getCursorOrigin();
 		} else if (charIndex >= d->chars.size() && charIndex != 0) {
 			auto &c = d->chars.back();
 			auto &l = d->lines.back();
@@ -930,6 +941,11 @@ Pair<uint32_t, bool> Label::getCharIndex(const Vec2 &pos, font::CharSelectMode m
 }
 
 core::TextCursor Label::selectWord(uint32_t chIdx) const {
+	// An empty label has no layout, and the usual caller-side guard does not hold: getCharIndex()
+	// answers {0, false} for it, not maxOf, so a double-tap on an empty field lands here anyway.
+	if (!_format) {
+		return core::TextCursor::InvalidCursor;
+	}
 	auto ret = _format->selectWord(chIdx);
 	return core::TextCursor(ret.first, ret.second);
 }
@@ -968,7 +984,7 @@ Color4F Label::getSelectionColor() const { return _selection->getColor(); }
 void Label::setMarkedCursor(core::TextCursor c) {
 	_marked->clear();
 	_marked->setVisible(c != core::TextCursor::InvalidCursor && c.length > 0);
-	if (c != core::TextCursor::InvalidCursor && c.length > 0) {
+	if (_format && c != core::TextCursor::InvalidCursor && c.length > 0) {
 		auto rects = _format->getLabelRects(c.start, c.start + c.length, _labelDensity);
 		for (auto &rect : rects) { _marked->emplaceRect(rect); }
 		_marked->updateColor();

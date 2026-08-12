@@ -450,6 +450,10 @@ void WaylandSeat::update() {
 		touch = NULL;
 	}
 
+	for (auto &it : root->windows) {
+		it->notifyTouchAvailable(touch != nullptr); //
+	}
+
 	// wayland->wl_display_roundtrip(root->display);
 }
 
