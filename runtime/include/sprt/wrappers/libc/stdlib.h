@@ -174,6 +174,8 @@ SPRT_API int qsort_s(void *a, size_t b, size_t c, int (*cmp)(void *, const void 
 SPRT_API int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
 		char const *name) __SPRT_NOEXCEPT;
 
+SPRT_API int _dupenv_s(char **buf, size_t *bufSize, const char *name) __SPRT_NOEXCEPT;
+
 SPRT_API size_t _msize(void *) __SPRT_NOEXCEPT;
 
 SPRT_API __SPRT_ID(wchar_t) * _wgetenv(const __SPRT_ID(wchar_t) * varname) __SPRT_NOEXCEPT;

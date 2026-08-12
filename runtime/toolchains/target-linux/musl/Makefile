@@ -32,7 +32,8 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 SP_NJOBS ?= -j$(shell nproc 2>/dev/null || echo 8)
 SP_ARCH_TARGET ?= x86_64
 SP_ARCH_TARGET_CLANG := $(SP_ARCH_TARGET)-unknown-linux-musl
-SP_LLVM_VER := 21
+
+include ../../common/utils/llvm-version.mk
 
 ifeq ($(SP_ARCH_TARGET),x86_64)
 SP_ARCH_KERNEL := x86

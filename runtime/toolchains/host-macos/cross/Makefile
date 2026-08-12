@@ -43,7 +43,7 @@ unexport ROOT_DIR := $(abspath ../..)
 # xlmake is built against the SDK-free "+open" target export (SDK-less end to end).
 unexport OUT_TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+open
 
-SP_LLVM_VER := 21
+include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 
 # lldb builds against the +open sysroot too: libedit/ncurses headers + tbd stubs
 # come from apple-oss (open-sysroot.mk), the Foundation/CF surface its .mm host
@@ -310,7 +310,7 @@ target: $(TARGET_CLANG_CC) \
 OUT_SYSROOT ?= ../../hosts/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
-	clang-21 \
+	clang-$(SP_LLVM_VER) \
 	clang-format \
 	clang-installapi \
 	diagtool \
@@ -354,7 +354,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	spirv-val)
 
 OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
-	liblldb.21.1.8.dylib \
+	liblldb.$(SP_LLVM_V).dylib \
 	libLLVM.dylib \
 	libLTO.dylib \
 	libRemarks.dylib \
@@ -429,10 +429,10 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 
 $(OUT_SYSROOT)/release: $(TARGET_CLANG_CC) \
 		$(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.21.1.8.dylib liblldb.dylib
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-21.dylib
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.$(SP_LLVM_V).dylib liblldb.dylib
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-$(SP_LLVM_VER).dylib
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cl
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cpp
@@ -453,8 +453,8 @@ $(OUT_SYSROOT)/release: $(TARGET_CLANG_CC) \
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-rc llvm-windres
 	cd $(OUT_SYSROOT)/bin; ln -fs lld wasm-ld
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 cc
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) cc
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
 	echo "$(GIT_TAG)" > $@

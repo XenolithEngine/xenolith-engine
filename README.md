@@ -173,7 +173,7 @@ around a custom LLVM, they ship every tool and library a build needs, so the bui
 nothing beyond the toolchain itself — no system compiler, no system libraries and no platform SDK. A
 toolchain is delivered as two kinds of package that together cover the whole build:
 
-* **Host** — the compiler that *runs* on the build machine: clang 21 / LLVM with the full tool suite
+* **Host** — the compiler that *runs* on the build machine: clang 22 / LLVM with the full tool suite
   (`clang`, `clang++`, `clang-cl`, the `lld` linkers, `lldb`, `llvm-ar` / `llvm-objcopy` /
   `llvm-nm`, …), the shader tools (`glslang`, `spirv-link`), GNU Make, and the **`xlmake`** build
   driver.
@@ -243,7 +243,7 @@ xlmake -j8         # same makefiles as `make`, built by the bundled driver
 ### Build
 
 * GNU Make 4.1+ (or the bundled `xlmake` build driver)
-* LLVM/Clang 21.1.8 (shipped by the SDK toolchains)
+* LLVM/Clang 22.1.8 (shipped by the SDK toolchains)
 * For Vulkan: Vulkan SDK headers and tools (glslang, spirv-tools)
 * For WebAssembly: WASI SDK and wit-bindgen
 
