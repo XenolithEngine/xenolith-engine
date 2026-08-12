@@ -38,6 +38,7 @@
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_cursor.h>
 #include <xcb/xfixes.h>
+#include <xcb/xinput.h>
 #include <xcb/shape.h>
 #include <xcb/shm.h>
 #include <xcb/xcb_errors.h>
@@ -78,6 +79,11 @@ public:
 	static constexpr int SHAPE_MAJOR_VERSION = XCB_SHAPE_MAJOR_VERSION;
 	static constexpr int SHAPE_MINOR_VERSION = XCB_SHAPE_MINOR_VERSION;
 
+	// XI 2.2 is the version that introduced the touch classes and touch events. Asking for exactly
+	// it rather than for the header's version keeps the request honest about what is actually used.
+	static constexpr int XINPUT_MAJOR_VERSION = 2;
+	static constexpr int XINPUT_MINOR_VERSION = 2;
+
 	static XcbLibrary *getInstance();
 
 	XcbLibrary() { }
@@ -94,6 +100,7 @@ public:
 	bool hasXkb() const;
 	bool hasSync() const;
 	bool hasXfixes() const;
+	bool hasXinput() const;
 	bool hasShape() const;
 	bool hasShm() const;
 	bool hasErrors() const;
@@ -346,6 +353,21 @@ public:
 	SPRT_DEFINE_PROTO(xcb_xfixes_select_selection_input)
 	decltype(&_null_fn) _xcb_xfixes_last_fn = &_null_fn;
 
+	// XInput2. Only used to find out whether a direct-touch device is attached; input itself still
+	// goes through core X11 events, which carry no source device at all.
+	decltype(&_null_fn) _xcb_xinput_first_fn = &_null_fn;
+	SPRT_DEFINE_PROTO(xcb_input_id)
+	SPRT_DEFINE_PROTO(xcb_input_xi_query_version)
+	SPRT_DEFINE_PROTO(xcb_input_xi_query_version_reply)
+	SPRT_DEFINE_PROTO(xcb_input_xi_query_device)
+	SPRT_DEFINE_PROTO(xcb_input_xi_query_device_reply)
+	SPRT_DEFINE_PROTO(xcb_input_xi_query_device_infos_iterator)
+	SPRT_DEFINE_PROTO(xcb_input_xi_device_info_next)
+	SPRT_DEFINE_PROTO(xcb_input_xi_device_info_classes_iterator)
+	SPRT_DEFINE_PROTO(xcb_input_device_class_next)
+	SPRT_DEFINE_PROTO(xcb_input_xi_select_events)
+	decltype(&_null_fn) _xcb_xinput_last_fn = &_null_fn;
+
 	decltype(&_null_fn) _xcb_shape_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_shape_id)
 	SPRT_DEFINE_PROTO(xcb_shape_op_next)
@@ -419,6 +441,7 @@ protected:
 	Dso _sync;
 	Dso _cursor;
 	Dso _xfixes;
+	Dso _xinput;
 	Dso _shape;
 	Dso _shm;
 	Dso _errors;

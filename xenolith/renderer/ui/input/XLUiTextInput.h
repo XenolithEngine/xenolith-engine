@@ -281,6 +281,15 @@ public:
 			const document::StyleValue &);
 
 protected:
+	// The viewport node, built once by init(). A subclass returns its own container here to replace
+	// the geometry the stock one implements: caret placement, the label slide and the point->cursor
+	// mapping all assume a single line, and a multi-line view has to answer all three differently.
+	//
+	// A factory rather than a swap after the fact, because init() wires the result into _container
+	// and everything below reaches the text through it - a container replaced later would leave the
+	// first frame, and any style pass before it, addressing the old one.
+	virtual Rc<TextInputContainer> makeContainer();
+
 	// (re)build the VectorImage: a (optionally rounded) rect filled with the resolved background,
 	// plus an outline stroke when its width is > 0
 	virtual void updateBackgroundImage();

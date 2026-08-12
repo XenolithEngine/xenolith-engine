@@ -54,6 +54,9 @@ public:
 
 	Status handleDisplayChanged(Extent2);
 
+	// Re-probe attached input hardware and push the result to every live window.
+	Status handleInputDevicesChanged();
+
 	virtual void handleNetworkStateChanged(NetworkFlags) override;
 
 	virtual void handleContextWillDestroy() override;

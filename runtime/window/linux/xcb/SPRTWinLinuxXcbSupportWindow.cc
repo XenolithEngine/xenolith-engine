@@ -47,9 +47,12 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 	_maxRequestSize = _xcb->xcb_get_maximum_request_length(_connection->getConnection());
 	_safeReqeustSize = sprt::min(_maxRequestSize, _safeReqeustSize);
 
-	xcb_randr_query_version_cookie_t randrVersionCookie;
-	xcb_xfixes_query_version_cookie_t xfixesVersionCookie;
-	xcb_shape_query_version_cookie_t shapeVersionCookie;
+	// Value-initialized: each of these is only assigned inside its extension's probe block, and
+	// only the matching `enabled` flag says whether that happened. Zero is a sequence no reply
+	// will ever match, so a stray read degrades to a null reply instead of reading garbage.
+	xcb_randr_query_version_cookie_t randrVersionCookie{};
+	xcb_xfixes_query_version_cookie_t xfixesVersionCookie{};
+	xcb_shape_query_version_cookie_t shapeVersionCookie{};
 
 	if (_xcb->hasRandr()) {
 		auto ext = _xcb->xcb_get_extension_data(_connection->getConnection(), _xcb->xcb_randr_id);
@@ -84,7 +87,20 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 		}
 	}
 
-	xcb_shm_query_version_cookie_t shmVersionCookie;
+	xcb_input_xi_query_version_cookie_t xinputVersionCookie{};
+	if (_xcb->hasXinput()) {
+		auto ext = _xcb->xcb_get_extension_data(_connection->getConnection(), _xcb->xcb_input_id);
+		if (ext && ext->present) {
+			_xinput.enabled = true;
+			// XGE events are identified by the extension's major opcode, not by first_event.
+			_xinput.majorOpcode = ext->major_opcode;
+
+			xinputVersionCookie = _xcb->xcb_input_xi_query_version(_connection->getConnection(),
+					XcbLibrary::XINPUT_MAJOR_VERSION, XcbLibrary::XINPUT_MINOR_VERSION);
+		}
+	}
+
+	xcb_shm_query_version_cookie_t shmVersionCookie{};
 	if (_xcb->hasShm()) {
 		auto ext = _xcb->xcb_get_extension_data(_connection->getConnection(), _xcb->xcb_shm_id);
 		if (ext && ext->present) {
@@ -148,6 +164,33 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 			_shape.majorVersion = versionReply->major_version;
 			_shape.minorVersion = versionReply->minor_version;
 			_shape.initialized = true;
+		}
+	}
+
+	if (_xinput.enabled) {
+		if (auto versionReply = _connection->perform(_xcb->xcb_input_xi_query_version_reply,
+					xinputVersionCookie)) {
+			_xinput.majorVersion = versionReply->major_version;
+			_xinput.minorVersion = versionReply->minor_version;
+			_xinput.initialized = true;
+
+			if (_xinput.hasTouchClasses()) {
+				// Ask the root window for hierarchy events so a touchscreen plugged in later is
+				// noticed. Only the hierarchy mask is selected: input itself still comes from core
+				// events, and selecting XI device events here would silently take those over.
+				struct {
+					xcb_input_event_mask_t head;
+					uint32_t mask;
+				} eventMask{
+					{XCB_INPUT_DEVICE_ALL, 1},
+					XCB_INPUT_XI_EVENT_MASK_HIERARCHY,
+				};
+
+				_xcb->xcb_input_xi_select_events(_connection->getConnection(),
+						_connection->getDefaultScreen()->root, 1, &eventMask.head);
+
+				updateTouchscreenState();
+			}
 		}
 	}
 
@@ -583,6 +626,65 @@ void XcbSupportWindow::handleExtensionEvent(int et, xcb_generic_event_t *e) {
 	} else {
 		//XL_X11_LOG("Unknown event: %d", et);
 	}
+}
+
+bool XcbSupportWindow::updateTouchscreenState() {
+	if (!_xinput.initialized || !_xinput.hasTouchClasses()) {
+		return false;
+	}
+
+	auto cookie = _xcb->xcb_input_xi_query_device(_connection->getConnection(),
+			XCB_INPUT_DEVICE_ALL);
+	auto reply = _connection->perform(_xcb->xcb_input_xi_query_device_reply, cookie);
+	if (!reply) {
+		return false;
+	}
+
+	bool found = false;
+	auto devices = _xcb->xcb_input_xi_query_device_infos_iterator(reply);
+	for (; devices.rem && !found; _xcb->xcb_input_xi_device_info_next(&devices)) {
+		if (!devices.data->enabled) {
+			continue;
+		}
+
+		auto classes = _xcb->xcb_input_xi_device_info_classes_iterator(devices.data);
+		for (; classes.rem; _xcb->xcb_input_device_class_next(&classes)) {
+			if (classes.data->type != XCB_INPUT_DEVICE_CLASS_TYPE_TOUCH) {
+				continue;
+			}
+
+			// DIRECT means the user touches the surface being pointed at - a touchscreen.
+			// DEPENDENT is a touchpad, which is a pointing device and not what this flag is about.
+			auto touch = reinterpret_cast<xcb_input_touch_class_t *>(classes.data);
+			if (touch->mode == XCB_INPUT_TOUCH_MODE_DIRECT) {
+				found = true;
+				break;
+			}
+		}
+	}
+
+	if (found == _xinput.hasTouchscreen) {
+		return false;
+	}
+
+	_xinput.hasTouchscreen = found;
+	return true;
+}
+
+bool XcbSupportWindow::handleGenericEvent(xcb_ge_generic_event_t *ev) {
+	if (!_xinput.initialized || ev->extension != _xinput.majorOpcode) {
+		return false;
+	}
+
+	if (ev->event_type == XCB_INPUT_HIERARCHY) {
+		// A device was added, removed, enabled or disabled. The event says which device changed,
+		// but not whether anything with a touch class is left, so just re-ask.
+		if (updateTouchscreenState()) {
+			_connection->handleTouchscreenStateChanged(_xinput.hasTouchscreen);
+		}
+	}
+
+	return true;
 }
 
 xcb_atom_t XcbSupportWindow::writeClipboardSelection(xcb_window_t requestor, xcb_atom_t target,

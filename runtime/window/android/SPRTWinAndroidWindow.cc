@@ -127,6 +127,8 @@ bool AndroidWindow::init(NotNull<AndroidActivity> activity, Rc<WindowInfo> &&inf
 	_info->density = acquireWindowDensity();
 	_info->state |= _activity->getDecorationState();
 
+	_info->state |= WindowState::InputTouch;
+
 	return true;
 }
 

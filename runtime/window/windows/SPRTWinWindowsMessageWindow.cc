@@ -864,6 +864,12 @@ Status MessageWindow::handleSettingsChanged() {
 	return Status::Propagate;
 }
 
+Status MessageWindow::handleInputDevicesChanged() {
+	_controller->getLooper()->performOnThread(
+			[this] { _controller->handleInputDevicesChanged(); }, this);
+	return Status::Propagate;
+}
+
 Status MessageWindow::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	if (_adapter) {
 		return _adapter->readFromClipboard(sprt::move(req));
@@ -904,6 +910,9 @@ LRESULT MessageWindow::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	switch (uMsg) {
 	case WM_DEVICECHANGE:
 		XL_WIN32_LOG("Event: WM_DEVICECHANGE");
+		// A digitizer can appear or disappear here, so re-probe the touch hardware alongside the
+		// display config.
+		win->handleInputDevicesChanged();
 		return getResultForStatus("WM_DEVICECHANGE ",
 				win->handleDisplayChanged(Extent2(LOWORD(lParam), HIWORD(lParam))));
 		break;

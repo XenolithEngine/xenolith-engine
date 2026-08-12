@@ -236,7 +236,11 @@ void ExampleScene::registerCommands() {
 			"Show a test layout: { name, settle } - name is \"nth\" or \"css/nth\"; "
 			"answers once it has settled",
 			[this](Value &&args, Function<void(Value &&)> &&done) {
-		auto name = args.getString("name");
+		// Через const-ссылку, как и в `dialog` ниже: неконстантный getString() на отсутствующем
+		// ключе — это assert, а не пустая строка. Запрос приходит из сокета, то есть ключа может
+		// не быть вовсе, и тогда команда обязана ответить ошибкой, а не уронить приложение.
+		const Value &req = args;
+		auto name = req.getString("name");
 		auto info = findTest(name);
 		if (!info) {
 			Value result;
@@ -246,7 +250,7 @@ void ExampleScene::registerCommands() {
 			return;
 		}
 
-		auto settle = args.hasValue("settle") ? float(args.getDouble("settle")) : s_layoutSettle;
+		auto settle = req.hasValue("settle") ? float(req.getDouble("settle")) : s_layoutSettle;
 		switchLayout(*info, settle, sp::move(done));
 	});
 

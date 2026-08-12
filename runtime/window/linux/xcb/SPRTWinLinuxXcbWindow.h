@@ -85,6 +85,9 @@ public:
 	void handleMotionNotify(xcb_motion_notify_event_t *);
 	void handleEnterNotify(xcb_enter_notify_event_t *);
 	void handleLeaveNotify(xcb_leave_notify_event_t *);
+
+	// A touchscreen was attached or detached, as seen by XInput2 on the shared connection.
+	void handleTouchscreenStateChanged(bool);
 	// Rebuilds _sideModifiers from the server's own view of which keys are physically down
 	void resyncSideModifiers();
 

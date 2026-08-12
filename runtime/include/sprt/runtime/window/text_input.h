@@ -147,6 +147,11 @@ struct SPRT_API TextInputState {
 	TextCursor cursor;
 	TextCursor marked;
 
+	// Application-defined tag of the request this state descends from. Every edit the processor
+	// makes starts as a copy of the state it is based on, so the tag survives into every echo:
+	// the application can always tell WHICH of its requests an echo is editing.
+	uint64_t serial = 0;
+
 	bool enabled = false;
 	TextInputType type = TextInputType::Empty;
 	InputKeyComposeState compose = InputKeyComposeState::Nothing;
@@ -161,6 +166,7 @@ struct SPRT_API TextInputRequest {
 	Rc<TextInputString> string;
 	TextCursor cursor;
 	TextCursor marked;
+	uint64_t serial = 0; // see TextInputState::serial
 	TextInputType type = TextInputType::Empty;
 
 	TextInputState getState() const;

@@ -96,6 +96,11 @@ enum class InputModifier : uint32_t {
 
 	ScrollLock = 1 << 24,
 
+	// Event originates directly from a touchscreen, as opposed to any other input device
+	// (mouse, trackpad, stylus, keyboard). Set per-event by the platform backend.
+	// See WindowState::InputTouch for touchscreen *presence*.
+	Touch = 1 << 25,
+
 	Command = Mod3, // MacOS Command
 	Meta = Mod3, // Android Meta
 	Function = Mod4, // Android Function

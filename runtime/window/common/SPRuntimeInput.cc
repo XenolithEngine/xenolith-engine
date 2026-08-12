@@ -30,6 +30,7 @@ TextInputRequest TextInputState::getRequest() const {
 	req.cursor = cursor;
 	req.marked = marked;
 	req.string = string;
+	req.serial = serial;
 	return req;
 }
 
@@ -39,6 +40,7 @@ TextInputState TextInputRequest::getState() const {
 	newData.cursor = cursor;
 	newData.marked = marked;
 	newData.string = string;
+	newData.serial = serial;
 	return newData;
 }
 
@@ -820,8 +822,8 @@ void getInputModifiersNames(const callback<void(StringView)> &out, InputModifier
 	if ((mod & InputModifier::Mod3L) != InputModifier::None) {
 		out << " Mod3L";
 	}
-	if ((mod & InputModifier::Mod3L) != InputModifier::None) {
-		out << " Mod3L";
+	if ((mod & InputModifier::Mod3R) != InputModifier::None) {
+		out << " Mod3R";
 	}
 	if ((mod & InputModifier::Mod4L) != InputModifier::None) {
 		out << " Mod4L";
@@ -831,6 +833,9 @@ void getInputModifiersNames(const callback<void(StringView)> &out, InputModifier
 	}
 	if ((mod & InputModifier::ScrollLock) != InputModifier::None) {
 		out << " ScrollLock";
+	}
+	if ((mod & InputModifier::Touch) != InputModifier::None) {
+		out << " Touch";
 	}
 }
 

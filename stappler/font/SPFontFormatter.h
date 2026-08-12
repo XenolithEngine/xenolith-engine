@@ -151,6 +151,10 @@ protected:
 
 	void updateLineHeight(uint16_t first, uint16_t last);
 
+	// The uint16_t layout domain is full (charNum, lineX or lineY cannot grow further): raise the
+	// output overflow flag, log once per layout, and answer false so the caller stops reading.
+	bool reportOverflow(const char *reason);
+
 	struct Output {
 		uint16_t *width = nullptr;
 		uint16_t *height = nullptr;
@@ -205,6 +209,7 @@ protected:
 	uint16_t wordWrapPos = 0;
 
 	bool bufferedSpace = false;
+	bool _overflowReported = false; // one error line per layout, not one per character
 
 	uint16_t maxWidth = 0;
 	size_t maxLines = 0;

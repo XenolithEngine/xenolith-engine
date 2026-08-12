@@ -28,6 +28,7 @@
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
+#include <sprt/runtime/utils/dso.h>
 
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/user_api.h>
@@ -35,6 +36,52 @@
 #include <sprt/wrappers/windows/message_api.h>
 
 namespace sprt::window {
+
+// Whether a touchscreen is attached right now.
+//
+// SM_DIGITIZER reports every kind of digitizer the machine has; pen-only tablets are deliberately
+// excluded here, since WindowState::InputTouch is about a touchscreen and not about a stylus.
+// NID_READY is not required: it only says the input stack has finished coming up, and a
+// touchscreen that is present but not yet ready still is a touchscreen.
+bool WindowsWindow_hasTouchDigitizer() {
+	static constexpr int NID_INTEGRATED_TOUCH = 0x01;
+	static constexpr int NID_EXTERNAL_TOUCH = 0x02;
+
+	return (GetSystemMetrics(SM_DIGITIZER) & (NID_INTEGRATED_TOUCH | NID_EXTERNAL_TOUCH)) != 0;
+}
+
+// Whether the message being dispatched right now was synthesized from a touchscreen.
+//
+// Windows feeds touch to plain WM_MOUSE* messages, and the only trace of where they came from is
+// the current message's extra info: the pointer stack stamps MI_WP_SIGNATURE into the high bits
+// and sets bit 7 for touch, leaving it clear for a pen. This reads the message the thread is
+// dispatching, so it is only meaningful from inside a window procedure - which is where every
+// caller below runs.
+//
+// GetMessageExtraInfo is resolved through the DSO loader rather than declared as an import: the
+// import library is a prebuilt toolchain artifact generated from wrappers/windows/def, so adding
+// a symbol there would not link until the Windows target toolchain is rebuilt. Resolution is done
+// once; if it fails, touch simply never gets reported.
+static InputModifier WindowsWindow_getTouchModifier() {
+	static constexpr uintptr_t SIGNATURE_MASK = 0xFFFF'FF00u;
+	static constexpr uintptr_t MI_WP_SIGNATURE = 0xFF51'5700u;
+	static constexpr uintptr_t TOUCH_FLAG = 0x80u;
+
+	static Dso s_user32 = Dso(StringView("user32.dll"));
+	static auto s_getMessageExtraInfo =
+			s_user32 ? s_user32.sym<LPARAM(WINAPI *)(VOID)>("GetMessageExtraInfo") : nullptr;
+
+	if (!s_getMessageExtraInfo) {
+		return InputModifier::None;
+	}
+
+	auto extra = static_cast<uintptr_t>(s_getMessageExtraInfo());
+	if ((extra & SIGNATURE_MASK) != MI_WP_SIGNATURE) {
+		return InputModifier::None;
+	}
+
+	return (extra & TOUCH_FLAG) != 0 ? InputModifier::Touch : InputModifier::None;
+}
 
 WindowsWindow::~WindowsWindow() {
 	if (_window) {
@@ -154,6 +201,10 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 	}
 
 	_info->state |= WindowState::Enabled;
+
+	if (WindowsWindow_hasTouchDigitizer()) {
+		_info->state |= WindowState::InputTouch;
+	}
 
 	if (!auxiliary) {
 		AdjustWindowRect(&rect, _currentState.style, FALSE);
@@ -830,7 +881,7 @@ Status WindowsWindow::handleMouseMove(IVec2 pos, bool nonclient) {
 		InputEventName::MouseMove,
 		{{
 			InputMouseButton::None,
-			_enabledModifiers,
+			_enabledModifiers | WindowsWindow_getTouchModifier(),
 			float(_pointerLocation.x),
 			float(_pointerLocation.y),
 		}},
@@ -876,7 +927,7 @@ Status WindowsWindow::handleMouseEvent(IVec2 pos, InputMouseButton btn, InputEve
 		ev,
 		{{
 			btn,
-			_enabledModifiers,
+			_enabledModifiers | WindowsWindow_getTouchModifier(),
 			float(_pointerLocation.x),
 			float(_pointerLocation.y),
 		}},
@@ -905,7 +956,7 @@ Status WindowsWindow::handleMouseWheel(Vec2 value) {
 		InputEventName::Scroll,
 		{{
 			btn,
-			_enabledModifiers,
+			_enabledModifiers | WindowsWindow_getTouchModifier(),
 			_pointerLocation.x,
 			_pointerLocation.y,
 		}},
@@ -915,6 +966,13 @@ Status WindowsWindow::handleMouseWheel(Vec2 value) {
 	event.point.valueY = value.y * 10.0f;
 
 	_pendingEvents.emplace_back(sprt::move(event));
+	return Status::Ok;
+}
+
+Status WindowsWindow::handleTouchAvailable(bool value) {
+	updateState(0,
+			value ? _info->state | WindowState::InputTouch
+				  : _info->state & ~WindowState::InputTouch);
 	return Status::Ok;
 }
 

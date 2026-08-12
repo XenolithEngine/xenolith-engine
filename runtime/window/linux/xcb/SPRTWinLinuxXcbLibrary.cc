@@ -160,6 +160,8 @@ bool XcbLibrary::hasSync() const { return _sync ? true : false; }
 
 bool XcbLibrary::hasXfixes() const { return _xfixes ? true : false; }
 
+bool XcbLibrary::hasXinput() const { return _xinput ? true : false; }
+
 bool XcbLibrary::hasShape() const { return _shape ? true : false; }
 
 bool XcbLibrary::hasShm() const { return _shm ? true : false; }
@@ -357,6 +359,25 @@ void XcbLibrary::openAux() {
 			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xfixes function");
 		} else {
 			_xfixes = move(xfixes);
+		}
+	}
+
+	if (auto xinput = Dso("libxcb-xinput.so")) {
+		SPRT_LOAD_PROTO(xinput, xcb_input_id)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_version)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_version_reply)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_device)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_device_reply)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_device_infos_iterator)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_device_info_next)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_device_info_classes_iterator)
+		SPRT_LOAD_PROTO(xinput, xcb_input_device_class_next)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_select_events)
+
+		if (!validateFunctionList(&_xcb_xinput_first_fn, &_xcb_xinput_last_fn)) {
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xinput function");
+		} else {
+			_xinput = move(xinput);
 		}
 	}
 

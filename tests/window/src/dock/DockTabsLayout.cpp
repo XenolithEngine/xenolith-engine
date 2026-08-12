@@ -313,8 +313,12 @@ void DockTabsLayout::registerCommands() {
 	TestLayout::registerCommands();
 
 	addCommand("hit-test", "Resolve a drop point: {x, y, panel}", [this](Value &&args) {
-		auto t = _dock->hitTest(Vec2(float(args.getDouble("x")), float(args.getDouble("y"))),
-				args.getString("panel"));
+		// Read through a const reference: the non-const getString() asserts on a missing key
+		// rather than answering an empty string, and `panel` is optional here - a hit test with
+		// no panel in flight is exactly the "is this point over anything" question.
+		const Value &req = args;
+		auto t = _dock->hitTest(Vec2(float(req.getDouble("x")), float(req.getDouble("y"))),
+				req.getString("panel"));
 		Value ret;
 		ret.setInteger(toInt(t.kind), "kind");
 		ret.setInteger(t.frame.index, "frame");
@@ -337,7 +341,9 @@ void DockTabsLayout::registerCommands() {
 	addCommand("probe", "World-space centre of a panel's tab, and of a point in its frame: {panel}",
 			[this](Value &&args) {
 		Value ret;
-		auto panel = args.getString("panel");
+		// const reference for the same reason as hit-test above: a missing key must answer an
+		// empty string, not assert.
+		auto panel = static_cast<const Value &>(args).getString("panel");
 		auto h = _dock->findFrameForPanel(panel);
 		auto frame = _dock->getFrameNode(h);
 		if (!frame || !frame->getTabBar()) {

@@ -74,9 +74,20 @@ void Formatter::reset() {
 	wordWrapPos = 0;
 
 	bufferedSpace = false;
+	_overflowReported = false;
 
 	_paragraphDirection = TextDirection::Neutral;
 	_pendingContinuations.clear();
+}
+
+bool Formatter::reportOverflow(const char *reason) {
+	*_output.overflow = true;
+	if (!_overflowReported) {
+		_overflowReported = true;
+		log::format(sprt::oslog::Error, "RichTextFormatter", SP_LOCATION,
+				"Layout overflow: %s; the layout is truncated at the overflow point", reason);
+	}
+	return false;
 }
 
 void Formatter::finalize() {
@@ -216,6 +227,10 @@ FontFaceObject *Formatter::faceById(uint16_t id) const {
 // it renders nothing and takes no space. HarfBuzz drops it (default-ignorable) on the shaping path.
 void Formatter::pushBidiControl(char32_t control) {
 	if (control == 0) {
+		return;
+	}
+	if (charNum == maxOf<uint16_t>()) {
+		reportOverflow("more than 65535 characters in one layout");
 		return;
 	}
 	charNum++;
@@ -648,7 +663,7 @@ void Formatter::pushLineFiller(bool replaceLastChar) {
 		bc.charID = _fillerChar;
 		bc.advance = charDef.xAdvance;
 		bc.gid = charDef.glyphIndex;
-	} else {
+	} else if (charNum < maxOf<uint16_t>()) { // the filler is not worth wrapping the index for
 		_output.chars.emplace_back(
 				CharLayoutData{_fillerChar, lineX, charDef.xAdvance, faceId, charDef.glyphIndex});
 		charNum++;
@@ -656,6 +671,10 @@ void Formatter::pushLineFiller(bool replaceLastChar) {
 }
 
 bool Formatter::pushChar(char32_t ch) {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+
 	if (_textStyle.textTransform == TextTransform::Uppercase) {
 		ch = sprt::unicode::toupper(ch);
 	} else if (_textStyle.textTransform == TextTransform::Lowercase) {
@@ -696,22 +715,28 @@ bool Formatter::pushChar(char32_t ch) {
 			wordWrapPos = charNum + 1;
 		}
 		auto newlineX = lineX + charDef.xAdvance;
+		if (newlineX > maxOf<int16_t>()) {
+			return reportOverflow("line x position exceeds 32767 layout units");
+		}
 		if (maxWidth && lineX > maxWidth) {
 			pushLineFiller();
 			return false;
 		}
-		lineX = newlineX;
+		lineX = int16_t(newlineX);
 	} else if (charDef) {
 		if (charNum == firstInLine && isSpecial(ch)) {
 			spec.pos -= charDef.xAdvance / 2;
 			lineX += charDef.xAdvance / 2;
 		} else {
 			auto newlineX = lineX + charDef.xAdvance;
+			if (newlineX > maxOf<int16_t>()) {
+				return reportOverflow("line x position exceeds 32767 layout units");
+			}
 			if (maxWidth && lineX > maxWidth) {
 				pushLineFiller(true);
 				return false;
 			}
-			lineX = newlineX;
+			lineX = int16_t(newlineX);
 		}
 	}
 	charNum++;
@@ -731,12 +756,22 @@ bool Formatter::pushSpace(bool wrap) {
 }
 
 bool Formatter::pushTab() {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+
 	CharShape charDef = _primaryFontSet->getChar(' ', faceId);
 
 	auto posX = lineX;
 	if (charDef.xAdvance > 0) {
 		auto tabPos = (lineX + charDef.xAdvance) / (charDef.xAdvance * 4) + 1;
-		lineX = tabPos * charDef.xAdvance * 4;
+		// A tab advances up to 4 space widths at once, so it hits the int16_t x ceiling
+		// four times sooner than a regular char would
+		const int32_t newX = tabPos * charDef.xAdvance * 4;
+		if (newX > maxOf<int16_t>()) {
+			return reportOverflow("line x position exceeds 32767 layout units");
+		}
+		lineX = int16_t(newX);
 	}
 
 	charNum++;
@@ -776,6 +811,28 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 	if (maxLines && _output.lines.size() + 1 == maxLines && forceAlign) {
 		pushLineFiller(true);
 		return false;
+	}
+
+	if (uint32_t(lineY) + currentLineHeight > maxOf<uint16_t>()) {
+		// The line that would not fit is dropped whole, chars included: a line entry cannot
+		// carry a wrapped baseline, and chars without a line would be re-attributed to the
+		// previous baseline by finalize()'s count fixup - a subtler lie than a clean cut.
+		if (charNum > first) {
+			_output.chars.resize(first);
+			charNum = first;
+			if (!_pendingContinuations.empty()) {
+				size_t w = 0;
+				for (size_t i = 0; i < _pendingContinuations.size(); ++i) {
+					if (_pendingContinuations[i].insertAfter < first) {
+						_pendingContinuations[w++] = _pendingContinuations[i];
+					}
+				}
+				_pendingContinuations.resize(w);
+			}
+		}
+		firstInLine = charNum;
+		wordWrapPos = charNum;
+		return reportOverflow("total layout height exceeds 65535 layout units");
 	}
 
 	uint16_t linePos = lineY + currentLineHeight;
@@ -971,6 +1028,9 @@ bool Formatter::pushLineBreak() {
 }
 
 bool Formatter::pushLineBreakChar() {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
 	charNum++;
 	_output.chars.emplace_back(CharLayoutData{char32_t(0x0A), lineX, 0, 0});
 
@@ -1035,6 +1095,9 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 
 		if (c < char32_t(0x20)) {
 			if (emplaceAllChars) {
+				if (charNum == maxOf<uint16_t>()) {
+					return reportOverflow("more than 65535 characters in one layout");
+				}
 				charNum++;
 				_output.chars.emplace_back(
 						CharLayoutData{CharLayoutData::InvalidChar, lineX, 0, 0});
@@ -1446,6 +1509,13 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 
 	if (charNum == firstInLine && lineOffset > 0) {
 		lineX += lineOffset;
+	}
+
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+	if (int32_t(lineX) + blockWidth > maxOf<int16_t>()) {
+		return reportOverflow("line x position exceeds 32767 layout units");
 	}
 
 	CharLayoutData spec{CharLayoutData::InvalidChar, lineX, blockWidth, 0};

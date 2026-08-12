@@ -383,7 +383,7 @@ bool TextInput::init() {
 	addStyleClass("xl-ui-text-input");
 	setRenderingLevel(RenderingLevel::Surface);
 
-	_container = addChild(Rc<TextInputContainer>::create(), ZOrder(1));
+	_container = addChild(makeContainer(), ZOrder(1));
 	_container->setAnchorPoint(Anchor::BottomLeft);
 
 	_listener = addSystem(Rc<InputListener>::create());
@@ -1035,6 +1035,8 @@ void TextInput::setCaretBlink(bool value) { _container->setCaretBlink(value); }
 bool TextInput::isCaretBlink() const { return _container->isCaretBlink(); }
 
 basic2d::Label *TextInput::getLabel() const { return _container->getLabel(); }
+
+Rc<TextInputContainer> TextInput::makeContainer() { return Rc<TextInputContainer>::create(); }
 
 void TextInput::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {

@@ -199,6 +199,11 @@ enum class WindowState : uint64_t {
 	DecorationState = DecorationStatusBarVisible | DecorationNavigationVisible
 			| DecorationStatusBarLight | DecorationNavigationLight | DecorationShowBySwipe,
 
+	// A touchscreen is available as an input device for this window.
+	// This is about the device being *available*, not about where an event came from:
+	// for per-event source detection use InputModifier::Touch.
+	InputTouch = 1LLU << 23,
+
 	// Extra space here
 
 	// Values for allowed window actions
@@ -236,7 +241,7 @@ enum class WindowState : uint64_t {
 
 	All = Modal | Sticky | Maximized | Shaded | SkipTaskbar | Minimized | Fullscreen | Above | Below
 			| DemandsAttention | Focused | Resizing | Pointer | CloseGuard | CloseRequest | Enabled
-			| DecorationState | AllowedActionsMask | TilingMask,
+			| DecorationState | InputTouch | AllowedActionsMask | TilingMask,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowState)

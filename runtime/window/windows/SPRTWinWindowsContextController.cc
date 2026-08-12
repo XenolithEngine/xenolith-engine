@@ -217,6 +217,14 @@ Status WindowsContextController::handleDisplayChanged(Extent2) {
 	return Status::Ok;
 }
 
+Status WindowsContextController::handleInputDevicesChanged() {
+	auto hasTouch = WindowsWindow_hasTouchDigitizer();
+	for (auto &it : _activeWindows) {
+		it.get_cast<WindowsWindow>()->handleTouchAvailable(hasTouch);
+	}
+	return Status::Ok;
+}
+
 void WindowsContextController::handleNetworkStateChanged(NetworkFlags flags) {
 	if (_looper->isOnThisThread()) {
 		ContextController::handleNetworkStateChanged(flags);
