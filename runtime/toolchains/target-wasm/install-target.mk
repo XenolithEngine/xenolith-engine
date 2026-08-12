@@ -58,7 +58,7 @@ $(T_TARGET)/lib/clang/lib/wasi: $(T_INTERMEDIATE)/lib/clang/lib/wasi | $(T_TARGE
 	@mkdir -p $@
 	cp -af $(T_INTERMEDIATE)/lib/clang/lib/wasi/*.a $@/ 2>/dev/null || true
 	rm -f $(T_TARGET)/lib/clang/include
-	cd $(T_TARGET)/lib/clang; ln -fs ../../../../hosts/$(HOST_ID)/lib/clang/21/include include 2>/dev/null || true
+	cd $(T_TARGET)/lib/clang; ln -fs ../../../../hosts/$(HOST_ID)/lib/clang/$(SP_LLVM_VER)/include include 2>/dev/null || true
 
 $(T_TARGET)/target.mk: $(T_INTERMEDIATE)/target.mk | $(T_TARGET)
 	cp -af $< $@
@@ -72,6 +72,7 @@ $(T_TARGET)/release: | $(T_TARGET)
 	echo "$(GIT_TAG)" > $@
 
 include ../common/utils/detect-platform.mk
+include ../common/utils/llvm-version.mk
 
 all: $(T_TARGET)/usr/lib $(T_TARGET)/usr/include \
 	$(T_TARGET)/lib/clang/lib/wasi \

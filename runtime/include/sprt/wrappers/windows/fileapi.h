@@ -20,29 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// ABI-materialized __SPRT_* values for the device-IO control surface the ported libc++
-// filesystem backend uses (reparse-point / symlink resolution). Values are validated
-// against the Windows SDK in tests/libc/windows-abi/check-winioctl.cpp.
+// <fileapi.h> — the SDK's name for the Win32 file API. sprt groups those declarations
+// in <sprt/wrappers/windows/file_api.h>; this is the compatibility shim for consumers
+// that include the header under its Microsoft name (LLVM's unittests/Support/Path.cpp
+// is one).
 
-#ifndef SPRT_WRAPPERS_WINDOWS_ABI_WINIOCTL_H_
-#define SPRT_WRAPPERS_WINDOWS_ABI_WINIOCTL_H_
+#ifndef SPRT_WRAPPERS_WINDOWS_FILEAPI_H_
+#define SPRT_WRAPPERS_WINDOWS_FILEAPI_H_
 
-// clang-format off
+#include <sprt/wrappers/windows/file_api.h>
 
-// CTL_CODE(FILE_DEVICE_FILE_SYSTEM=0x9, 42, METHOD_BUFFERED=0, FILE_ANY_ACCESS=0)
-#define __SPRT_FSCTL_GET_REPARSE_POINT          0x000900A8
-
-// CTL_CODE(FILE_DEVICE_FILE_SYSTEM=0x9, 49, METHOD_BUFFERED=0, FILE_SPECIAL_ACCESS=0)
-#define __SPRT_FSCTL_SET_SPARSE                 0x000900C4
-
-// 16 * 1024
-#define __SPRT_MAXIMUM_REPARSE_DATA_BUFFER_SIZE 16384
-
-// Relative-target flag in a symlink reparse buffer. Defined only in the driver header
-// ntifs.h, NOT in the user-mode Windows SDK, so it has no SPRT_CONST parity check; the
-// value is a stable part of the reparse-point ABI.
-#define __SPRT_SYMLINK_FLAG_RELATIVE            0x00000001
-
-// clang-format on
-
-#endif // SPRT_WRAPPERS_WINDOWS_ABI_WINIOCTL_H_
+#endif // SPRT_WRAPPERS_WINDOWS_FILEAPI_H_

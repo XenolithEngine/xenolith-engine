@@ -22,6 +22,8 @@ ifeq ($(findstring Windows,$(OS)),Windows)
 SHELL = powershell.exe
 endif
 
+include $(LIBS_MAKE_ROOT)common/utils/llvm-version.mk
+
 LIBS = \
 	bzip2 \
 	xz \
@@ -308,22 +310,24 @@ $(SRC_ROOT)/simde: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/simd-everywhere/simde.git $(SRC_ROOT)/simde
 	cd $(SRC_ROOT)/simde; git checkout f3e8262173b7089db9a9d57a9ecef8dd07ad9c97
 
-# Next version will be 22.1.X when 23.1.0 will be released
-# https://github.com/llvm/llvm-project/releases # revised: 2 jun 2026
+# The version itself lives in common/utils/llvm-version.mk (SP_LLVM_TAG / SP_LLVM_V);
+# the patch directories under replacements/llvm are named after SP_LLVM_V.
+# Next version will be 23.1.X when 24.1.0 will be released
 $(SRC_ROOT)/llvm-project: | prepare
-	cd $(SRC_ROOT); git clone https://github.com/llvm/llvm-project.git --branch llvmorg-21.1.8  --depth 1  --recurse-submodules
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0001-Fix-incorrect-L1-inferior-memory-cache-flushing.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0002-lldb-Add-DYLD-plugin-for-debugging-Wine.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0003-lldb-Fix-Wine-preloader-name-in-POSIX-Wine-DYLD.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-no-delayload/0001-Support-disable-shell32-ole32-delay-load-no-delayimp.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0001-lldb-Defer-to-sprt-libc-in-PosixApi.h.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0002-lldb-Use-real-terminal-interface-on-sprt-libc.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0003-compiler-rt-Build-ORC-runtime-as-C-20.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch
+	cd $(SRC_ROOT); git clone https://github.com/llvm/llvm-project.git --branch $(SP_LLVM_TAG)  --depth 1  --recurse-submodules
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-lldb-wine/0001-Fix-incorrect-L1-inferior-memory-cache-flushing.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-lldb-wine/0002-lldb-Add-DYLD-plugin-for-debugging-Wine.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-lldb-wine/0003-lldb-Fix-Wine-preloader-name-in-POSIX-Wine-DYLD.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-lldb-wine/0004-lldb-Adapt-POSIX-Wine-DYLD-to-the-22.1-CreateBreakpoint-API.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-no-delayload/0001-Support-disable-shell32-ole32-delay-load-no-delayimp.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0001-lldb-Defer-to-sprt-libc-in-PosixApi.h.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0002-lldb-Use-real-terminal-interface-on-sprt-libc.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0003-compiler-rt-Build-ORC-runtime-as-C-20.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare

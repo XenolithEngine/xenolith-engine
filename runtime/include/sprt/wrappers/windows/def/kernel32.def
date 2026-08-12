@@ -50,6 +50,8 @@ EXPORTS
 	GetDiskFreeSpaceA
 	GetDiskFreeSpaceW
 	GetFullPathNameW
+	GetShortPathNameW
+	GetShortPathNameA
 	GetFullPathNameA
 	LockFile
 	LockFileEx
@@ -104,6 +106,8 @@ EXPORTS
 	CreateMutexW
 	CreateSemaphoreW
 	CreateSemaphoreA
+	OpenSemaphoreW
+	OpenSemaphoreA
 	CreateEventW
 	SetEvent
 	ResetEvent
@@ -195,6 +199,7 @@ EXPORTS
 	UnregisterWaitEx
 	UnregisterWait
 	CreateNamedPipeW
+	SetNamedPipeHandleState
 	CompareStringOrdinal
 	FreeEnvironmentStringsW
 	GetModuleFileNameA

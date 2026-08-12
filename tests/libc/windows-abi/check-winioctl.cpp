@@ -10,6 +10,7 @@
 
 // === reparse-point device-IO controls ======================================
 SPRT_CONST(FSCTL_GET_REPARSE_POINT);
+SPRT_CONST(FSCTL_SET_SPARSE);
 SPRT_CONST(MAXIMUM_REPARSE_DATA_BUFFER_SIZE);
 
 // SYMLINK_FLAG_RELATIVE is declared only in the driver header ntifs.h, which is not

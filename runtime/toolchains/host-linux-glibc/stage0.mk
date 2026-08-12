@@ -32,7 +32,7 @@ STAGE0_LIBCXX := $(STAGE0_SYSROOT)/lib/libc++.a
 STAGE0_LIBCRT := $(STAGE0_SYSROOT)/lib/linux/liborc_rt-$(SP_ARCH).a
 STAGE0_CLANG_CC := $(STAGE0_SYSROOT)/bin/clang
 STAGE0_CLANG_CXX := $(STAGE0_SYSROOT)/bin/clang++
-STAGE0_CLANG_RTLIB := $(STAGE0_SYSROOT)/lib/clang/21/lib/$(SP_ARCH_CLANG)/libclang_rt.builtins.a
+STAGE0_CLANG_RTLIB := $(STAGE0_SYSROOT)/lib/clang/$(SP_LLVM_VER)/lib/$(SP_ARCH_CLANG)/libclang_rt.builtins.a
 
 STAGE0_CMAKE_GCC_TOOLCHAIN := $(STAGE0_SYSROOT)/gcc.cmake
 STAGE0_CMAKE_CLANG_TOOLCHAIN := $(STAGE0_SYSROOT)/clang.cmake

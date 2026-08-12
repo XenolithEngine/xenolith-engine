@@ -57,12 +57,12 @@ index e29fd76bd..4eaeb28cf 100644
  for var in [
      "ASAN_SYMBOLIZER_PATH",
 diff --git a/llvm/utils/lit/lit/TestRunner.py b/llvm/utils/lit/lit/TestRunner.py
-index 73db67aed..976339aa1 100644
+index 93f03624f..890be3a05 100644
 --- a/llvm/utils/lit/lit/TestRunner.py
 +++ b/llvm/utils/lit/lit/TestRunner.py
-@@ -2265,6 +2265,21 @@ def _runShTest(test, litConfig, useExternalSh, script, tmpBase) -> lit.Test.Resu
+@@ -2401,6 +2401,21 @@ def _runShTest(test, litConfig, useExternalSh, script, tmpBase) -> lit.Test.Resu
      # Create the output directory if it does not already exist.
-     lit.util.mkdir_p(os.path.dirname(tmpBase))
+     pathlib.Path(tmpBase).parent.mkdir(parents=True, exist_ok=True)
  
 +    # The tools a RUN line drives may be Windows binaries even though lit is not
 +    # running on Windows - a cross-built toolchain tested through an emulator.
@@ -83,7 +83,7 @@ index 73db67aed..976339aa1 100644
      execdir = os.path.dirname(test.getExecPath())
      attempts = test.allowed_retries + 1
 diff --git a/llvm/utils/lit/lit/formats/googletest.py b/llvm/utils/lit/lit/formats/googletest.py
-index 172cd0bee..11d4e7732 100644
+index 01820da38..602aae139 100644
 --- a/llvm/utils/lit/lit/formats/googletest.py
 +++ b/llvm/utils/lit/lit/formats/googletest.py
 @@ -19,13 +19,15 @@ class GoogleTest(TestFormat):
@@ -105,12 +105,12 @@ index 172cd0bee..11d4e7732 100644
          self.run_under = run_under
  
 diff --git a/llvm/utils/lit/lit/llvm/config.py b/llvm/utils/lit/lit/llvm/config.py
-index 649636d4b..3b6ef0c6b 100644
+index 8b794c697..85e6be50c 100644
 --- a/llvm/utils/lit/lit/llvm/config.py
 +++ b/llvm/utils/lit/lit/llvm/config.py
-@@ -71,6 +71,16 @@ class LLVMConfig(object):
-         if lit_shell_env:
-             self.use_lit_shell = lit.util.pythonize_bool(lit_shell_env)
+@@ -79,6 +79,16 @@ class LLVMConfig(object):
+             if not self.use_lit_shell and lit_config.update_tests:
+                 print("note: --update-tests is not supported when using external shell")
  
 +        # Cross-testing a Windows build from a POSIX host: lit and the shell that
 +        # runs the RUN lines are native, but every tool they launch is a Windows
@@ -122,10 +122,10 @@ index 649636d4b..3b6ef0c6b 100644
 +        if "windows" in getattr(config, "host_triple", ""):
 +            config.avoid_dev_null = True
 +
-         if not self.use_lit_shell:
-             features.add("shell")
- 
-@@ -86,6 +96,18 @@ class LLVMConfig(object):
+         self.with_system_environment(
+             [
+                 "ASAN_SYMBOLIZER_PATH",
+@@ -92,6 +102,18 @@ class LLVMConfig(object):
                  "RTSAN_OPTIONS",
                  "TSAN_OPTIONS",
                  "UBSAN_OPTIONS",
@@ -144,7 +144,7 @@ index 649636d4b..3b6ef0c6b 100644
              ]
          )
  
-@@ -314,9 +336,13 @@ class LLVMConfig(object):
+@@ -336,9 +358,13 @@ class LLVMConfig(object):
              )
  
          clang_dir = clang_dir.strip()
@@ -161,3 +161,4 @@ index 649636d4b..3b6ef0c6b 100644
          # Ensure the result is an ascii string, across Python2.5+ - Python3.
          return clang_dir
  
+

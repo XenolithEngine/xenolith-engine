@@ -27,7 +27,9 @@ unexport SP_ARCH ?= x86_64
 unexport SP_ARCH_LD ?= x86-64
 unexport SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
 unexport SP_ARCH_LLVM ?= X86
-unexport SP_LLVM_VER := 21
+
+include ../common/utils/llvm-version.mk
+unexport SP_LLVM_VER
 
 include glibc.mk
 
@@ -55,7 +57,7 @@ unexport ROOT_DIR := $(abspath ..)
 unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
-	clang-21 \
+	clang-$(SP_LLVM_VER) \
 	clang-format \
 	clang-installapi \
 	diagtool \
@@ -102,11 +104,11 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libc++.so.1.0 \
 	libc++abi.so.1.0 \
 	libunwind.so.1.0 \
-	libLTO.so.21.1 \
-	liblldb.so.21.1.8 \
-	liblldbIntelFeatures.so.21.1 \
-	libLLVM.so.21.1 \
-	libRemarks.so.21.1)
+	libLTO.so.$(SP_LLVM_SOVER) \
+	liblldb.so.$(SP_LLVM_V) \
+	liblldbIntelFeatures.so.$(SP_LLVM_SOVER) \
+	libLLVM.so.$(SP_LLVM_SOVER) \
+	libRemarks.so.$(SP_LLVM_SOVER))
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \
@@ -183,15 +185,15 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so.1
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldbIntelFeatures.so.21.1 liblldbIntelFeatures.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1 liblldb.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1.8 liblldb.so.21.1
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.21.1 libLLVM-21.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.21.1 libLLVM.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.21.1 libLTO.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.21.1 libRemarks.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldbIntelFeatures.so.$(SP_LLVM_SOVER) liblldbIntelFeatures.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_SOVER) liblldb.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so.$(SP_LLVM_SOVER)
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM-$(SP_LLVM_VER).so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_SOVER) libLTO.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_SOVER) libRemarks.so
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cl
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cpp
@@ -212,8 +214,8 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-rc llvm-windres
 	cd $(OUT_SYSROOT)/bin; ln -fs lld wasm-ld
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 cc
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) cc
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
 	echo "$(GIT_TAG)" > $@

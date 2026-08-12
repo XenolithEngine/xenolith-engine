@@ -21,7 +21,7 @@ flock macro with it. The shim is only reached from the branch fcntl supersedes -
 the two are the arms of one #ifdef/#elif - so nothing else in the file loses it.
 
 diff --git a/compiler-rt/lib/profile/InstrProfilingUtil.c b/compiler-rt/lib/profile/InstrProfilingUtil.c
-index 0fae91cfb..274ac68b5 100644
+index a9d9df813..f1423fa13 100644
 --- a/compiler-rt/lib/profile/InstrProfilingUtil.c
 +++ b/compiler-rt/lib/profile/InstrProfilingUtil.c
 @@ -11,6 +11,18 @@
@@ -41,5 +41,6 @@ index 0fae91cfb..274ac68b5 100644
 +#include <unistd.h>
 +#endif
  #else
- #include <errno.h>
- #include <fcntl.h>
+ #if defined(__linux__)
+ // For fdopen(), fileno(), getpagesize(), madvise()
+

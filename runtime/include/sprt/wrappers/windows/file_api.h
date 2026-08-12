@@ -184,6 +184,7 @@ THE SOFTWARE.
 #define PIPE_TYPE_BYTE __SPRT_PIPE_TYPE_BYTE
 #define PIPE_READMODE_BYTE __SPRT_PIPE_READMODE_BYTE
 #define PIPE_WAIT __SPRT_PIPE_WAIT
+#define PIPE_NOWAIT __SPRT_PIPE_NOWAIT
 
 // ---- ReadDirectoryChangesW ([winbase] directory change notifications) --------
 #define FILE_ACTION_ADDED __SPRT_FILE_ACTION_ADDED
@@ -358,6 +359,9 @@ __SPRT_WIN_IMPORT WINAPI HANDLE CreateNamedPipeA(LPCSTR lpName, DWORD dwOpenMode
 		DWORD nMaxInstances, DWORD nOutBufferSize, DWORD nInBufferSize, DWORD nDefaultTimeOut,
 		LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 
+__SPRT_WIN_IMPORT WINAPI BOOL SetNamedPipeHandleState(HANDLE hNamedPipe, LPDWORD lpMode,
+		LPDWORD lpMaxCollectionCount, LPDWORD lpCollectDataTimeout);
+
 __SPRT_WIN_IMPORT WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer);
@@ -390,6 +394,12 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBuffe
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength,
 		LPSTR lpBuffer, LPSTR *lpFilePart);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetShortPathNameW(LPCWSTR lpszLongPath, LPWSTR lpszShortPath,
+		DWORD cchBuffer);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetShortPathNameA(LPCSTR lpszLongPath, LPSTR lpszShortPath,
+		DWORD cchBuffer);
 
 __SPRT_WIN_IMPORT WINAPI BOOL LockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
 		DWORD nNumberOfBytesToLockLow, DWORD nNumberOfBytesToLockHigh);

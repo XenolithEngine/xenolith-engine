@@ -51,6 +51,7 @@ endif
 
 SP_SRC_DIR := $(abspath $(dir $(LOCAL_MAKEFILE))../../src)
 
+include ../../common/utils/llvm-version.mk
 include ../../host-linux-glibc/glibc.mk
 
 BINUTILS_SRC_VER := 2.46.0
@@ -265,7 +266,7 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib
 ifdef OUT_HOST
 	rm -f $(OUT_SYSROOT)/host
 	cd $(OUT_SYSROOT); ln -fs $(OUT_HOST) host
-	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
 endif
 	touch $@
 

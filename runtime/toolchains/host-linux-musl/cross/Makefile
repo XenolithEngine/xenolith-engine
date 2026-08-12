@@ -39,7 +39,8 @@ LOCAL_ROOT := $(dir $(realpath $(THIS_FILE)))
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 
 SP_NJOBS ?= -j$(shell nproc 2>/dev/null || echo 8)
-SP_LLVM_VER := 21
+
+include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 
 # Целевая арка musl-хоста (которую собираем). x86_64 | aarch64 | riscv64.
 SP_ARCH_HOST ?= x86_64
@@ -440,10 +441,10 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libc++.so.1.0 \
 	libc++abi.so.1.0 \
 	libunwind.so.1.0 \
-	libLTO.so.$(SP_LLVM_VER).1 \
-	libLLVM.so.$(SP_LLVM_VER).1 \
-	libRemarks.so.$(SP_LLVM_VER).1 \
-	liblldb.so.$(SP_LLVM_VER).1.8)
+	libLTO.so.$(SP_LLVM_SOVER) \
+	libLLVM.so.$(SP_LLVM_SOVER) \
+	libRemarks.so.$(SP_LLVM_SOVER) \
+	liblldb.so.$(SP_LLVM_V))
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \
@@ -509,12 +510,12 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so.1
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_VER).1 libLLVM-$(SP_LLVM_VER).so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_VER).1 libLLVM.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_VER).1 libLTO.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_VER).1 libRemarks.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_VER).1.8 liblldb.so.$(SP_LLVM_VER).1
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_VER).1.8 liblldb.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM-$(SP_LLVM_VER).so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_SOVER) libLTO.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_SOVER) libRemarks.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so.$(SP_LLVM_SOVER)
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so
 
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++

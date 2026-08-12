@@ -62,8 +62,8 @@ $(MAKE_SRC_DIR): $(MAKE_SRC_TARBALL)
 $(MAKE_SRC_EXE): $(MAKE_SRC_DIR)
 	cd $(MAKE_SRC_DIR); cmd.exe /c 'start cmd.exe /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86_amd64 && build_w32.bat --verbose --without-guile'
 
-SP_LLVM_VER := 21
-LLVM_V := $(SP_LLVM_VER).1.8
+include ../common/utils/llvm-version.mk
+LLVM_V := $(SP_LLVM_V)
 LLVM_VER := ../src/llvm-project
 LLVM_DIR := $(LLVM_VER)
 

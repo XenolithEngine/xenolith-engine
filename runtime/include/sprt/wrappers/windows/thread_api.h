@@ -172,6 +172,12 @@ __SPRT_WIN_IMPORT WINAPI HANDLE CreateSemaphoreW(LPSECURITY_ATTRIBUTES lpSemapho
 __SPRT_WIN_IMPORT WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,
 		LONG lInitialCount, LONG lMaximumCount, LPCSTR lpName);
 
+__SPRT_WIN_IMPORT WINAPI HANDLE OpenSemaphoreW(DWORD dwDesiredAccess, BOOL bInheritHandle,
+		LPCWSTR lpName);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE OpenSemaphoreA(DWORD dwDesiredAccess, BOOL bInheritHandle,
+		LPCSTR lpName);
+
 __SPRT_WIN_IMPORT WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes,
 		BOOL bManualReset, BOOL bInitialState, LPCWSTR lpName);
 
@@ -237,6 +243,7 @@ __SPRT_WIN_IMPORT WINAPI BOOL UnregisterWait(HANDLE WaitHandle);
 
 #ifdef UNICODE
 #define CreateSemaphore  CreateSemaphoreW
+#define OpenSemaphore  OpenSemaphoreW
 #define CreateEvent  CreateEventW
 #endif
 
