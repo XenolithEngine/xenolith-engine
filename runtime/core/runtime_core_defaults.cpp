@@ -233,6 +233,13 @@ extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void);
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
+#if SPRT_NUTTX
+	// NSH tasks are not sprt pthreads. pthread_self_noattach_np() reads tl_self,
+	// which must not be the gettid() path: a process-global tl_self made Main
+	// inherit AppThread's id, Looper::isOnThisThread went false, and compileQueue
+	// posted into a mutex it already held. Kernel gettid() is the identity.
+	return ::gettid();
+#else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
 		__SPRT_ID(pid_t) tid = 0;
@@ -249,6 +256,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	return __sprt_wasm_gettid();
 #else
 	return ::gettid();
+#endif
 #endif
 }
 

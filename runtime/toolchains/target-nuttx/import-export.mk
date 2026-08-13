@@ -22,8 +22,8 @@
 #   nuttx-config.mk          feature CONFIG_* values turned into make variables
 #
 # This step does NOT compile anything — it is a layout/extraction pass. The
-# compiled LLVM runtimes arrive in M2; the NuttX kernel+apps image is produced
-# by the Xenolith OS layer (xenolith-os), not here.
+# compiled LLVM runtimes arrive in M2; the NuttX kernel+apps image is a
+# separate board-image build (`make` in the NuttX tree), not this target.
 
 .DEFAULT_GOAL := all
 THIS_FILE := $(lastword $(MAKEFILE_LIST))

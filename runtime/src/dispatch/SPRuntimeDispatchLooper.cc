@@ -288,11 +288,19 @@ Status Looper::performOnThread(dispatch::Function<void()> &&func, Ref *target, b
 }
 
 Status Looper::performAsync(Rc<Task> &&task, bool first) {
+	if (_data->threadPoolInfo.threadCount == 0) {
+		// No workers (NuttX, wasm with a collapsed pool): drop-or-queue
+		// would lose font loads and glyph rasterization. Run on this looper.
+		return performOnThread(sprt::move(task), true);
+	}
 	return _data->getThreadPool()->perform(sprt::move(task), first);
 }
 
 Status Looper::performAsync(dispatch::Function<void()> &&func, Ref *target, bool first,
 		StringView tag) {
+	if (_data->threadPoolInfo.threadCount == 0) {
+		return performOnThread(sprt::move(func), target, true, tag);
+	}
 	return _data->getThreadPool()->perform(sprt::move(func), target, first, tag);
 }
 

@@ -429,6 +429,15 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			}
 		}
 
+#if DEBUG
+		static bool s_loggedFirstClear = false;
+		if (!s_loggedFirstClear) {
+			s_loggedFirstClear = true;
+			log::source().info("soft::QueuePassHandle", "first fillRect done, ", target.width, "x",
+					target.height);
+		}
+#endif
+
 		recordSubpass(q, *subpass, *buf);
 
 		// The command list is built once; only the rasterization repeats, per tile of per region,
@@ -441,6 +450,14 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
 				&tiling);
 		QueuePassHandle_profileFrame(Time::now() - started, redrawAreas, tiling);
+
+#if DEBUG
+		static bool s_loggedFirstDraw = false;
+		if (!s_loggedFirstDraw) {
+			s_loggedFirstDraw = true;
+			log::source().info("soft::QueuePassHandle", "first drawTiled done");
+		}
+#endif
 	}
 
 	return true;

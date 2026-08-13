@@ -55,14 +55,30 @@ struct UuidState {
 	uint8_t node[sha256::Length];
 };
 
+#if SPRT_NUTTX
+// Single-thread NuttX: emutls has already returned a non-mapped pointer for
+// this object (__tls_init ldrb after __emutls_get_address). A process-lifetime
+// static is enough; function-local so the ctor does not run in .init_array.
+static UuidState &uuidState() {
+	static UuidState s_state;
+	return s_state;
+}
+#else
 static thread_local UuidState tl_uuidState;
+static UuidState &uuidState() { return tl_uuidState; }
+#endif
 
 static uint64_t getCurrentTime() {
 	// time magic to convert from epoch to UUID UTC
 	uint64_t time_now = (sprt::platform::clock() * 10) + 0x01B2'1DD2'1381'4000ULL;
 
+#if SPRT_NUTTX
+	static uint64_t time_last = 0;
+	static uint64_t fudge = 0;
+#else
 	thread_local uint64_t time_last = 0;
 	thread_local uint64_t fudge = 0;
+#endif
 
 	if (time_last != time_now) {
 		if (time_last + fudge > time_now) {
@@ -93,11 +109,11 @@ void genuuid(uint8_t d[UuidSize]) {
 	d[7] = (unsigned char)(timestamp >> 48);
 	d[6] = (unsigned char)(((timestamp >> 56) & 0x0F) | 0x50);
 	/* clock_seq_hi_and_reserved, uint8 */
-	d[8] = (unsigned char)(((tl_uuidState.seqnum >> 8) & 0x3F) | 0x80);
+	d[8] = (unsigned char)(((uuidState().seqnum >> 8) & 0x3F) | 0x80);
 	/* clock_seq_low, uint8 */
-	d[9] = (unsigned char)tl_uuidState.seqnum;
+	d[9] = (unsigned char)uuidState().seqnum;
 	/* node, byte[6] */
-	::__sprt_memcpy(&d[10], tl_uuidState.node, 6);
+	::__sprt_memcpy(&d[10], uuidState().node, 6);
 }
 
 void formatuuid(char buf[UuidFormattedSize], const uint8_t d[UuidSize]) {

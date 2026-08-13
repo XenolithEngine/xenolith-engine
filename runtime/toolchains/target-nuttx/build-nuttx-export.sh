@@ -39,7 +39,7 @@
 #       ./build-nuttx-export.sh
 #
 # Then feed the resulting tarball to the target-nuttx driver:
-#   make -C runtime/toolchains target-aarch64-nuttx-none-elf \
+#   make -C runtime/toolchains/target-nuttx target-aarch64 \
 #       NUTTX_EXPORT=/path/to/nuttx-export-<ver>.tar.gz
 
 set -euo pipefail

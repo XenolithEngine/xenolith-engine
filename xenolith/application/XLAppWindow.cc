@@ -24,6 +24,7 @@
 #include "XLAppWindow.h"
 #include "SPCore.h"
 #include "XLAppThread.h"
+
 #include "XLContextInfo.h"
 #include "XLCoreEnum.h"
 #include "XLCorePresentationEngine.h"

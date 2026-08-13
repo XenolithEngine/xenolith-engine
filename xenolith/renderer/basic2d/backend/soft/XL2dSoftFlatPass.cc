@@ -850,11 +850,17 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 #if DEBUG
 	// Sampling a glyph means the 1:1 integer placement the engine guarantees did not hold. It is
 	// handled correctly, but it is worth knowing about: the usual cause is a caller that turned
-	// normalization off, and the visible result is slightly soft text.
+	// normalization off, and the visible result is slightly soft text. Once: the FPS overlay hits
+	// this every frame, and logging it on a UART (NuttX) blocks the rasterizer until the console
+	// drains — the scene then freezes.
 	if (glyphStats.sampled > 0) {
-		log::source().debug("basic2d::soft", "Sampled ", glyphStats.sampled, " of ",
-				glyphStats.sampled + glyphStats.blits,
-				" glyph run(s): not an integral 1:1 placement");
+		static bool s_loggedNonIntegralGlyph = false;
+		if (!s_loggedNonIntegralGlyph) {
+			s_loggedNonIntegralGlyph = true;
+			log::source().debug("basic2d::soft", "Sampled ", glyphStats.sampled, " of ",
+					glyphStats.sampled + glyphStats.blits,
+					" glyph run(s): not an integral 1:1 placement (further frames omitted)");
+		}
 	}
 #endif
 }

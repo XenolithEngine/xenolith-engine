@@ -74,10 +74,8 @@
 #include "platform/wasm/SPEvent-wasm.cc"
 #endif
 
-// NuttX: a poll-based reactor. NuttX has poll() but no epoll/uring, so this is
-// a darwin-style kqueue-free reactor built on poll()+timer heap. The real
-// poll-based platform arrives in M5; for M3 the stub below makes Queue::Data a
-// complete type so libsprt.a links.
+// NuttX: timer heap + atomic wakeup + CLOCK_MONOTONIC spin (no self-pipe —
+// NuttX pipes fill and block). Drives xenolith hello (Looper + Director).
 #if SPRT_NUTTX
 #include "platform/nuttx/SPEvent-nuttx.cc"
 #endif

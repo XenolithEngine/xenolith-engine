@@ -62,6 +62,9 @@ public:
 	// make this Thread points to calling thread
 	virtual void wrap();
 
+	// Like wrap(), but only bind + threadInit(); do not enter worker().
+	void adoptCurrent();
+
 	virtual void stop();
 
 	virtual void waitRunning();

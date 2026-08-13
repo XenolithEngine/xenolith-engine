@@ -24,6 +24,52 @@
 #include "XLRemoteProtocol.h"
 #include "SPPlatform.h"
 
+#if SPRT_NUTTX
+
+// See XLRemoteListener.cc: NuttX OpenSSL has no QUIC/BIO sockets.
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+Rc<ClientConnection> ClientConnection::connect(const Address &) { return nullptr; }
+
+ClientConnection::~ClientConnection() = default;
+
+bool ClientConnection::init(void *, void *, int) { return false; }
+
+GlobalError ClientConnection::handshake(BytesView, BytesView) { return GlobalError::NotImplemented; }
+
+GlobalError ClientConnection::ping() { return GlobalError::NotImplemented; }
+
+GlobalError ClientConnection::pong(uint32_t) { return GlobalError::NotImplemented; }
+
+GlobalError ClientConnection::sendCborMessage(Domain, uint8_t, const Value &, uint32_t *) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ClientConnection::sendMessage(Domain, uint8_t, BytesView, uint32_t *) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ClientConnection::sendCborReply(uint32_t, Domain, uint8_t, const Value &) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ClientConnection::sendReply(uint32_t, Domain, uint8_t, BytesView) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ClientConnection::sendError(Domain, GlobalError, uint32_t) {
+	return GlobalError::NotImplemented;
+}
+
+void ClientConnection::poll(const Callback<bool(const MessageHeader &, BytesView)> &) { }
+
+void ClientConnection::close() { }
+
+} // namespace stappler::xenolith::remote
+
+#else
+
 #include <openssl/ssl.h>
 #include <openssl/quic.h>
 #include <openssl/err.h>
@@ -352,3 +398,5 @@ void ClientConnection::close() {
 }
 
 } // namespace stappler::xenolith::remote
+
+#endif // !SPRT_NUTTX

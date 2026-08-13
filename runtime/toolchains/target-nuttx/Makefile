@@ -44,7 +44,7 @@ include $(dir $(THIS_FILE))../common/utils/init-shell.mk
 IMPORT_FILE := $(MAKE_ROOT)import-export.mk
 TARGET_FILE := $(MAKE_ROOT)init-target.mk
 COMPILER_RT_FILE := $(MAKE_ROOT)compiler_rt.mk
-LIBCXX_FILE := $(MAKE_ROOT)libc++.mk
+LIBCXX_FILE := $(MAKE_ROOT)libcxx.mk
 INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
 TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
@@ -114,9 +114,11 @@ clean:
 #                           and libraries into the sysroot, extract arch flags
 #   2. init-target.mk    — generate toolchain.cmake + the app-facing target.mk,
 #                           link the shared host toolchain into this sysroot
-#   3. (M2) inner pass   — build compiler-rt / libunwind / libc++abi / libc++
-#                           against the imported NuttX libc
-#   4. install-target.mk — copy intermediate/ into targets/<triple>/
+#   3. compiler_rt.mk    — build libclang_rt.builtins + sme_stub against NuttX libc
+#   4. inner pass        — cross-build the third-party dependency libs (gif/png/
+#                           jpeg/zlib/freetype/harfbuzz/...) against the NuttX libc,
+#                           same set target-linux/target-wasm carry
+#   5. install-target.mk — copy intermediate/ into targets/<triple>/
 target-aarch64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf
 	$(MAKE) -f $(IMPORT_FILE) \
@@ -128,9 +130,212 @@ target-aarch64:
 	# M2: build libclang_rt.builtins-aarch64.a + sme_stub against the NuttX libc.
 	$(MAKE) -f $(COMPILER_RT_FILE) \
 		$(SP_ARCH_aarch64_INFO_BASE) \
-		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf \
+		LIB_SRC_DIR="$(LIB_SRC_DIR)"
+	# M6.0: libc++abi/libunwind — теперь собирается (LIBUNWIND_IS_BAREMETAL убирает
+	# зависимость от dl_iterate_phdr/<link.h>; libcxx в LLVM_ENABLE_RUNTIMES только
+	# ради генерации __config_site/__assertion_header/C-header wrappers, которые
+	# нужны libcxxabi; -DLIBCXX_ABI_NAMESPACE=__sprt выравнивает typeinfo symbols
+	# с engine build). См. libcxx.mk для деталей porting.
+	$(MAKE) -f $(LIBCXX_FILE) \
+		$(SP_ARCH_aarch64_INFO_BASE) \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf \
+		LIB_SRC_DIR="$(LIB_SRC_DIR)"
+	# Cross-build the third-party dependency libs against the NuttX libc (the
+	# sysroot laid out by import-export + init-target). Mirrors the inner pass
+	# target-linux/target-wasm carry; see the SP_ARCH branch below for the rules.
+	# Run from a writable scratch dir (libbuild/) under TOOLCHAIN_OUTPUT_DIR so
+	# the per-lib build subdirs (zlib/, giflib/, ...) land there, not in this
+	# (possibly read-only) source tree. The parent scratch dir carries a `common`
+	# symlink so both `../common/gif.mk` (in the rule prerequisites below) and
+	# `include ../common/configure.mk` (inside the common recipes) resolve the
+	# same way they do for target-linux/target-wasm running in-tree.
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild
+	@ln -sfn $(abspath $(MAKE_ROOT)../common) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/common
+	@ln -sfn $(abspath $(MAKE_ROOT)nuttx-deps-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/nuttx-deps-project-include.cmake
+	@ln -sfn $(abspath $(MAKE_ROOT)nuttx-libzip-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/nuttx-libzip-project-include.cmake
+	@ln -sfn $(abspath $(MAKE_ROOT)openssl.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/openssl.mk
+	# MAKE_ROOT points at the writable scratch (libbuild) so configure.mk's
+	# CMAKE_INSTALL_BINDIR = $(MAKE_ROOT)$(LIBNAME)/bin and similar per-lib
+	# staging paths land there, not under this (possibly read-only) source tree.
+	$(MAKE) -f $(MAKE_FILE) --directory=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild \
+		$(SP_ARCH_aarch64_INFO_BASE) \
+		SP_TARGET=aarch64-nuttx-none-elf \
+		MAKE_ROOT=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/ \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf \
+		LIB_SRC_DIR="$(LIB_SRC_DIR)"
 	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_ARCH_aarch64_INSTALL)
 
 .PHONY: all clean target-aarch64
 
-endif # outer pass
+else # SP_ARCH
+# --- inner pass: cross-build the third-party dependency libs against NuttX libc ---
+# The sysroot (NuttX libc + headers + compiler-rt builtins) is already laid out
+# under $(TOOLCHAIN_OUTPUT_DIR) by the outer pass. Deps build hosted against the
+# NuttX libc via common/configure.mk's NUTTX branch (no -nostdinc, no sprt headers
+# on the path — same as LINUX/ANDROID deps build against their platform libc).
+SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
+SP_CC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/cc)
+SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
+SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
+# toolchain-libs.cmake (not toolchain.cmake): the deps must pick up their
+# CMAKE_C_FLAGS_INIT from the per-dep SP_C_FLAGS (filled by configure.mk's
+# NUTTX branch, with -Wno-error/-Wno-shadow), not the NuttX -Werror-baked
+# toolchain.cmake used by compiler_rt.mk. Mirrors target-wasm.
+SP_TOOLCHAIN_FILE ?= $(abspath $(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake)
+LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
+
+# libsprt.a — in-tree sprt runtime archive, same shape as target-wasm.
+# Deps that drive cmake feature-probes (libzip Annex K, curl recv/send, ...)
+# link those probes against it so missing symbols are hard errors rather than
+# CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY false-positives. Hosted-POSIX:
+# wrapper + core + runtime only — no libc_impl / malloc / musl (NuttX libc).
+SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
+
+# Third-party dependency libs. NuttX ships its own libc/pthread/mm in the export,
+# so the set mirrors target-linux/target-wasm (media/text/data + crypto + net).
+# Vulkan / WAMR / libbacktrace are excluded: no GPU driver in the flat NuttX image
+# (the soft rasterizer is the renderer), no wasm runtime, and NuttX provides its
+# own backtrace path. libicuuc is deferred: ICU's autoconf cross-build needs the
+# ability to link a probe executable, which the NuttX flat build does not provide
+# (crt0/special linker script). The sprt runtime's unicode backend is stubbed in
+# runtime/libc_wrapper/platform/nuttx/unicode.cc for the M6 milestone; the full
+# ICU port is tracked as a separate task.
+# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl/libzip) is staged to
+# land alongside a NuttX openssl.mk (perl Configure target) — added incrementally
+# as the engine surface that needs it comes online.
+# liblzma/libzstd/libbrotli/libtiff are staged behind NuttX-specific configure
+# tweaks (xz's tuklib_cpucores/physmem needs a NuttX case; the rest chain in
+# once xz lands because libtiff pulls them) — re-enable as each is unblocked.
+LIBS := \
+	libz.a \
+	libbz2.a \
+	libbrotlienc.a \
+	libjpeg.a \
+	libpng16.a \
+	libgif.a \
+	libwebp.a \
+	libfreetype.a \
+	libharfbuzz.a \
+	libSheenBidi.a \
+	libsqlite3.a \
+	libssl.a \
+	libgost_engine.a \
+	libnghttp3.a \
+	libzip-openssl.a \
+	libcurl-openssl.a
+
+FORWARD_VARS := \
+	NUTTX=1 \
+	SP_SYSNAME=NuttX \
+	SP_ARCH=$(SP_ARCH) \
+	SP_RES_ARCH=$(SP_RES_ARCH) \
+	SP_ARCH_TARGET_CLANG=$(SP_ARCH_TARGET_CLANG) \
+	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
+	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
+	SP_TARGET=$(SP_ARCH_TARGET_CLANG) \
+	SP_RUNTIME_ROOT=$(SP_RUNTIME_ROOT) \
+	SP_CC=$(SP_CC) \
+	SP_CXX=$(SP_CXX) \
+	SP_AR=$(SP_AR) \
+	SP_OPT="$(SP_OPT)" \
+	LIB_SRC_DIR=$(LIB_SRC_DIR) \
+	MAKE_ROOT=$(MAKE_ROOT)
+
+ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
+
+all: $(SPRT_LIB) $(ARCH_LIBS)
+
+# Cross-build libsprt.a from the in-tree runtime against the generated
+# host.mk/target.mk (mirrors target-wasm). Static-archive builds only archive
+# the modules they are handed — spell the hosted libc closure, no window/GUI.
+$(SPRT_LIB): $(SP_INSTALL_PREFIX)/sysroot/usr/lib/libclang_rt.builtins-$(SP_ARCH).a
+	$(call rule_rm,$(abspath build/xlsprt))
+	$(MAKE) -C $(SP_RUNTIME_ROOT) \
+		STAPPLER_HOST_FILE=$(SP_INSTALL_PREFIX)/host/host.mk \
+		STAPPLER_TARGET_FILE=$(SP_INSTALL_PREFIX)/target.mk \
+		STAPPLER_TARGET=$(SP_TARGET) \
+		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime" \
+		LOCAL_OUTDIR=$(abspath build/xlsprt) \
+		RELEASE=1
+	@mkdir -p $(dir $@)
+	cp -f $(abspath build/xlsprt)/$(SP_TARGET)/release/cc/libsprt.a $@
+	$(call rule_rm,$(abspath build/xlsprt))
+
+$(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a: ../common/bzip2.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# liblzma/libzstd are staged behind xz's tuklib_cpucores/physmem NuttX case
+# (see LIBS comment); the rules + entries return once unblocked.
+$(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a: ../common/brotli.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a: ../common/libjpeg-turbo.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a: ../common/libpng.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libgif.a: ../common/gif.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libwebp.a: ../common/libwebp.mk $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a $(SP_INSTALL_PREFIX)/usr/lib/libgif.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# libtiff returns alongside liblzma/libzstd/libbrotli (its compression backends).
+
+# freetype/harfbuzz build order mirrors target-apple/target-linux: freetype
+# builds first (no system harfbuzz on NuttX — nuttx-deps-project-include.cmake
+# forces FT_REQUIRE_HARFBUZZ OFF so freetype.mk's hard-coded TRUE does not fail
+# find_package(HARFBUZZ)), then harfbuzz builds against that freetype. harfbuzz
+# hard-codes `set(CMAKE_CXX_STANDARD 11)` in its CMakeLists.txt:10; the sprt STL
+# surface requires C++20 concepts, so the override is driven through
+# CMAKE_PROJECT_INCLUDE (NUTTX branch in common/configure.mk ->
+# nuttx-deps-project-include.cmake).
+$(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libbz2.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a: ../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# OpenSSL drives its own perl Configure (no cmake/autoconf), so it uses the
+# target-local openssl.mk (NuttX aarch64 = linux-aarch64 Configure target).
+# The single rule builds both libcrypto.a and libssl.a.
+$(SP_INSTALL_PREFIX)/usr/lib/libssl.a: openssl.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
+# compression backends (zlib/bzip2) and libcrypto.a.
+$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
+		$(SPRT_LIB) \
+		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
+
+# curl with the OpenSSL crypto backend. Built against the sprt libc shims
+# (-ffreestanding, same as the rest of the deps); the engine uses memory-based
+# HTTP, and on NuttX the socket layer is driven by the app/sprt umbrella.
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
+		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
+
+.PHONY: all
+
+endif # SP_ARCH

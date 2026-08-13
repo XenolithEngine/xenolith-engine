@@ -29,6 +29,12 @@
 
 #include <sprt/runtime/dispatch/handle.h>
 
+#if SPRT_NUTTX
+namespace sprt::window {
+void nuttxDebugFill(uint32_t);
+}
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppThread, onNetworkState)
@@ -39,25 +45,28 @@ AppThread::~AppThread() { }
 void AppThread::run() { Thread::run(); }
 
 void AppThread::threadInit() {
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xff2222aau); // navy: entered threadInit
+#endif
 	_requests.reserve(16);
 
-	// Bidirectional block-transfer manager (Domain::Data); both subclasses share it.
 	_blockTransfer = Rc<BlockTransferManager>::create(this);
-
 	_thisThreadId = getCurrentThreadId();
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xff996633u); // brown: BlockTransfer + tid
+#endif
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.name = StringView("App"),
 		.workersCount = getContextInfo()->appThreadsCount,
 
 		// Disable ALooper for internal queue, it can not be stopped gracefully
-		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper});
+		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper,
+	});
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xffcccc99u); // beige: looper acquired
+#endif
 
-	// Steady app-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, an app-event
-	// cadence -- NOT the screen/frame interval). It drives performAppUpdate regardless of frame
-	// production, which in the remote subclasses pumps the connection and runs the ~1s keepalive
-	// (ping/pong) even while the window is idle. See ServerAppThread::pumpListener /
-	// ClientAppThread::pumpConnection.
 	_timer = _appLooper->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::TimerInfo::Completion::create<AppThread>(this,
 				[](AppThread *data, sprt::dispatch::TimerHandle *self, uint32_t value,
@@ -67,12 +76,22 @@ void AppThread::threadInit() {
 		.interval = getContextInfo()->appUpdateInterval,
 		.count = sprt::dispatch::TimerInfo::Infinite,
 	});
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xffbdb76bu); // khaki: timer armed
+#endif
 
 	loadExtensions();
-
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xff4466aau); // steel: loadExtensions returned
+#endif
 	handleThreadInitialized();
-
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xff66aa88u); // sea: handleThreadInitialized
+#endif
 	initializeExtensions();
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xffff77aau); // pink: extensions up
+#endif
 
 	_time.delta = 0;
 	_time.global = sp::platform::clock(ClockType::Monotonic);
@@ -82,6 +101,9 @@ void AppThread::threadInit() {
 	performUpdate(true);
 
 	Thread::threadInit();
+#if SPRT_NUTTX
+	sprt::window::nuttxDebugFill(0xff22aa22u); // dark green: threadInit done
+#endif
 }
 
 void AppThread::threadDispose() {

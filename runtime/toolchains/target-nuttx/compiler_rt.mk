@@ -2,7 +2,7 @@
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
+# in the Software without restriction, including the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
@@ -21,53 +21,49 @@
 # Build libclang_rt.builtins-<arch>.a for the NuttX target.
 #
 # NuttX's flat build links no compiler-rt of its own, and clang emits calls to
-# the outline-atomics helpers (__aarch64_cas4_acq_rel, __aarch64_ldadd4_*, ...),
-# the float helpers, and so on. The runtime has to bring them. compiler-rt's
-# aarch64 sme-abi.S also leaves __aarch64_sme_accessible undefined — SME is
-# irrelevant on NuttX/baremetal, so we ship a stub that returns 0 next to the
-# builtins archive.
+# the outline-atomics helpers (__aarch64_cas4_acq_rel, __aarch64_ldadd4_*, ...).
+# compiler-rt's aarch64 sme-abi.S also leaves __aarch64_sme_accessible undefined
+# — SME is irrelevant on NuttX/baremetal, so we ship a stub that returns 0.
 #
-# This is the M2 minimum: compiler-rt builtins + sme_stub. libunwind /
-# libc++abi / libc++ come in a later M2 step against the sprt STL (M3), once
-# __sprt_def.h has the __NuttX__ branch.
+# Baremetal builtins omit emutls.c. NuttX/aarch64 has no PT_TLS / tpidr_el0
+# save-restore, so the engine compiles with -femulated-tls and this archive
+# MUST contain __emutls_get_address (compiled against NuttX pthread/malloc).
+# Do not drop a /tmp/libemutls.a on the side — it has to live in this archive.
 #
-# The build is cached per-clang-version under /tmp so a repeated target build
-# does not redo it. Override NUTTX_BUILTINS_CACHE_DIR to relocate.
+# CMAKE_SYSTEM_NAME=Generic is required on Darwin: the compiler-rt Darwin path
+# produces empty multi-arch archives. Generic + COMPILER_RT_BAREMETAL_BUILD
+# writes lib/baremetal/libclang_rt.builtins-<arch>.a (Linux hosts may still
+# land it under lib/linux/ — we find the archive rather than hard-coding).
 
 .DEFAULT_GOAL := all
 
 include ../common/utils/detect-platform.mk
 include ../common/utils/init-shell.mk
 
-# sysroot host symlink is laid down by init-target.mk: <out>/host -> hosts/$(HOST_ID).
 HOST_CLANG := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/clang)
 HOST_AR    := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-ar)
-LLVM_SRC  ?= /build/toolchain-src/llvm-project
+LLVM_SRC  ?= $(if $(wildcard $(LIB_SRC_DIR)/llvm-project/compiler-rt),$(LIB_SRC_DIR)/llvm-project,/build/toolchain-src/llvm-project)
 
-# Where the builtins + sme_stub archives end up in the target sysroot.
-# install-target.mk copies them via T_INTERMEDIATE/usr/lib/*.a; placing them
-# under usr/lib puts them in the link path the app target.mk exposes through
-# TARGET_LIB_DIR.
 TARGET_LIB_DIR := $(TOOLCHAIN_OUTPUT_DIR)/sysroot/usr/lib
+NUTTX_INCLUDE := $(TOOLCHAIN_OUTPUT_DIR)/sysroot/usr/include
 
-# Cache keyed by the clang version string so an SDK bump rebuilds, but a
-# repeat build does not.
-BUILTINS_CACHE_KEY := $(shell $(HOST_CLANG) --version 2>/dev/null | head -1 | md5sum 2>/dev/null | cut -d' ' -f1 || echo uncached)
-NUTTX_BUILTINS_CACHE_DIR ?= /tmp/nuttx-compiler-rt-builtins-$(SP_ARCH)-$(BUILTINS_CACHE_KEY)
+BUILTINS_CACHE_KEY := $(shell $(HOST_CLANG) --version 2>/dev/null | head -1 | python3 -c 'import hashlib,sys; print(hashlib.md5(sys.stdin.buffer.read()).hexdigest()[:16])')
+NUTTX_BUILTINS_CACHE_DIR ?= $(TOOLCHAIN_OUTPUT_DIR)/_compiler-rt-cache-$(SP_ARCH)-$(BUILTINS_CACHE_KEY)
 BUILTINS_LIB := $(NUTTX_BUILTINS_CACHE_DIR)/libclang_rt.builtins-$(SP_ARCH).a
 SME_STUB_LIB := $(NUTTX_BUILTINS_CACHE_DIR)/libsme_stub.a
 
-# aarch64 builds for armv8-a; riscv64 / arm future profiles override SP_RES_MARCH.
 NUTTX_COMPILER_RT_MARCH ?= armv8-a
 
 all:
 	@mkdir -p $(TARGET_LIB_DIR)
-	@# Build + cache if not already present for this clang version.
 	if [ ! -f "$(BUILTINS_LIB)" ] || [ ! -f "$(SME_STUB_LIB)" ]; then \
 		echo "Building compiler-rt builtins for $(SP_ARCH_TARGET_CLANG) (cached at $(NUTTX_BUILTINS_CACHE_DIR))"; \
 		[ -d "$(LLVM_SRC)/compiler-rt" ] || { echo "error: LLVM_SRC/compiler-rt not found ($(LLVM_SRC))." >&2; exit 1; }; \
+		[ -f "$(NUTTX_INCLUDE)/pthread.h" ] || { echo "error: NuttX sysroot pthread.h missing ($(NUTTX_INCLUDE))." >&2; exit 1; }; \
 		mkdir -p "$(NUTTX_BUILTINS_CACHE_DIR)/build"; \
 		cmake -G "Ninja" -S "$(LLVM_SRC)/compiler-rt" -B "$(NUTTX_BUILTINS_CACHE_DIR)/build" \
+			-DCMAKE_SYSTEM_NAME=Generic \
+			-DCMAKE_SYSTEM_PROCESSOR=$(SP_ARCH) \
 			-DCMAKE_C_COMPILER="$(HOST_CLANG)" \
 			-DCMAKE_CXX_COMPILER="$(patsubst %clang,%clang++,$(HOST_CLANG))" \
 			-DCMAKE_AR="$(HOST_AR)" \
@@ -86,12 +82,18 @@ all:
 			-DCOMPILER_RT_BUILD_ORC=OFF \
 			-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
 			-DCOMPILER_RT_BUILD_CRT=OFF \
-			-DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON \
-			>/dev/null; \
-		ninja -C "$(NUTTX_BUILTINS_CACHE_DIR)/build" builtins >/dev/null; \
-		cp "$(NUTTX_BUILTINS_CACHE_DIR)/build/lib/linux/libclang_rt.builtins-$(SP_ARCH).a" "$(BUILTINS_LIB)"; \
-		rm -rf "$(NUTTX_BUILTINS_CACHE_DIR)/build"; \
-		\
+			-DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON; \
+		ninja -C "$(NUTTX_BUILTINS_CACHE_DIR)/build" builtins; \
+		ARCH_A=$$(find "$(NUTTX_BUILTINS_CACHE_DIR)/build" -name 'libclang_rt.builtins*.a' | head -1); \
+		[ -n "$$ARCH_A" ] || { echo "error: compiler-rt builtins archive not produced." >&2; exit 1; }; \
+		cp "$$ARCH_A" "$(BUILTINS_LIB)"; \
+		"$(HOST_CLANG)" --target=$(SP_ARCH_TARGET_CLANG) -march=$(NUTTX_COMPILER_RT_MARCH) \
+			-isystem "$(NUTTX_INCLUDE)" -D__NuttX__ -fPIC -c \
+			"$(LLVM_SRC)/compiler-rt/lib/builtins/emutls.c" \
+			-o "$(NUTTX_BUILTINS_CACHE_DIR)/emutls.o"; \
+		"$(HOST_AR)" rcs "$(BUILTINS_LIB)" "$(NUTTX_BUILTINS_CACHE_DIR)/emutls.o"; \
+		"$(HOST_AR)" t "$(BUILTINS_LIB)" | grep -q emutls || { \
+			echo "error: emutls.o did not land in $(BUILTINS_LIB)" >&2; exit 1; }; \
 		printf '%s\n' \
 			'/* SME is not supported on NuttX/baremetal. compiler-rt sme-abi.S' \
 			'   references this helper; return 0 so the sme-abi paths bail out. */' \
@@ -101,9 +103,8 @@ all:
 			-c "$(NUTTX_BUILTINS_CACHE_DIR)/sme_stub.c" \
 			-o "$(NUTTX_BUILTINS_CACHE_DIR)/sme_stub.o"; \
 		"$(HOST_AR)" rcs "$(SME_STUB_LIB)" "$(NUTTX_BUILTINS_CACHE_DIR)/sme_stub.o"; \
-		echo "ok: builtins cached at $(BUILTINS_LIB)"; \
+		echo "ok: builtins+emutls cached at $(BUILTINS_LIB)"; \
 	fi
-	@# Drop both archives into the target sysroot so the link picks them up.
 	cp -af "$(BUILTINS_LIB)" "$(TARGET_LIB_DIR)/"
 	cp -af "$(SME_STUB_LIB)" "$(TARGET_LIB_DIR)/"
 

@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/mutex>
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/bits/__sprt_def.h>
 
 #include "../pthread/pthread_struct.h"
 
@@ -53,11 +54,19 @@ pool_t *get_zero_pool() {
 }
 
 pool_t *get_thread_support_pool() {
+#if SPRT_NUTTX
+	// NuttX process init is a kernel task, not a sprt pthread. Interpreting
+	// the native pthread_t / TCB as thread_base_t yields a garbage
+	// threadMemPool and the next palloc data-aborts. The zero pool is
+	// process-lifetime and enough for a single-thread app.
+	return get_zero_pool();
+#else
 	auto thread = __sprt_pthread_self();
 	if (thread) {
 		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
 	}
 	return nullptr;
+#endif
 }
 
 } // namespace sprt::memory

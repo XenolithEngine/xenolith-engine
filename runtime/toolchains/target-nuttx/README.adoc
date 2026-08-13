@@ -6,6 +6,8 @@ through the existing `libc_wrapper` "hosted" path (the same model as
 Linux/glibc and Android/Bionic), with musl adapters filling the gaps the way
 they do for Android.
 
+How to assemble the sysroot: `docs/platforms/nuttx.adoc`.
+
 == Why hosted, not freestanding
 
 NuttX's kernel exposes services to userspace only through its own libc and
@@ -39,24 +41,30 @@ standard `target.mk` + `toolchain.cmake` contract from those.
 
 == Usage
 
-Two ways to feed the export package:
+Once `$NUTTX_EXPORT` exists and `runtime/toolchains/src/{zlib,freetype,llvm-project,…}`
+are populated (see `docs/platforms/nuttx.adoc`):
 
 [source,sh]
 ----
-# 1. Prebuilt tarball (recommended — reproducible, no NuttX build host needed):
-make -C runtime/toolchains target-aarch64-nuttx-none-elf \
-    NUTTX_EXPORT=/path/to/nuttx-export-rpi4.tar.gz
-
-# 2. Build the export from a NuttX source tree on the spot:
-make -C runtime/toolchains target-aarch64-nuttx-none-elf \
-    NUTTX_DIR=/path/to/nuttx NUTTX_CONFIG=raspberrypi-4b:fb
+# PATH: Xenolith GNU make 4.x + clang 21 first. Do NOT use Apple /usr/bin/make.
+make -C runtime/toolchains/target-nuttx target-aarch64 \
+    NUTTX_EXPORT=/path/to/nuttx-export-0.0.0.tar.gz
 ----
 
-The from-source path requires a working NuttX build environment on this host
-(kconfiglib, the baremetal GCC/LLVM toolchain matching the board's arch, qemu
-for some configs). It is mainly a development convenience; CI and releases
-should drive `target-nuttx` from prebuilt export packages produced by the
-NuttX-side pipeline.
+Then symlink into the CLI store — NuttX is not in the SDK catalogue:
+
+----
+ln -sfn <engine>/runtime/toolchains/target-nuttx/targets/aarch64-nuttx-none-elf \
+    <engine>/runtime/toolchains/targets/aarch64-nuttx-none-elf
+ln -sfn <engine>/runtime/toolchains/targets/aarch64-nuttx-none-elf \
+    ~/.local/share/xenolith/data/toolchains/targets/aarch64-nuttx-none-elf
+
+xenolith-cli build tests/runtime --engine <engine> --target aarch64-nuttx-none-elf
+----
+
+Do **not** `make -C runtime/toolchains download` and do **not**
+`make -C runtime/toolchains target-aarch64-nuttx-none-elf` (parent `host` goal
+rebuilds clang).
 
 == Triple naming
 
@@ -68,16 +76,16 @@ stays `none` (baremetal ELF) for real boards and `linux` for the sim target
 [cols="1,1,2", options="header"]
 |===
 | STAPPLER_TARGET                | clang --target            | Use
-| `aarch64-nuttx-none-elf`       | `aarch64-none-elf`        | ARMv8-A boards (RPi4, ...)
-| `riscv64-nuttx-none-elf`       | `riscv64-none-elf`        | RISC-V boards (VisionFive 2, rv-virt, ...)
+| `aarch64-nuttx-none-elf`       | `aarch64-none-elf`        | ARMv8-A boards
+| `riscv64-nuttx-none-elf`       | `riscv64-none-elf`        | RISC-V boards
 | `arm-nuttx-none-eabi`          | `arm-none-eabi`           | Cortex-M/-R/32-bit -A boards
 | `x86_64-nuttx-sim-linux-gnu`   | `x86_64-unknown-linux-gnu` | NuttX sim target
 |===
 
 Per-board profiles arrive as a `+<board>` suffix mirroring the existing
 `+dll`/`+sprt` scheme — the suffix selects a specific export package and the
-arch flags it carries. The base triple (no suffix) is built against the
-canonical QEMU config and is what CI uses for compile-only checks.
+arch flags it carries. The base triple (no suffix) is what CI uses for
+compile-only checks.
 
 == License / distribution
 

@@ -128,8 +128,9 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 			String str;
 			switch (_mode) {
 			case Fps:
-				str = toString(configData, " ", "FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime,
-						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex,
+				str = toString(configData, " ", "FPS: ", int(fps + 0.5f), " SPF: ", int(spf + 0.5f),
+						"\nGPU: ", int(fenceTime + 0.5f), " (", int(timestampTime + 0.5f), ")",
+						"\nDir: ", int(tm + 0.5f), " Ver: ", int(vertex + 0.5f),
 						"\nF12 to switch");
 				break;
 			case Vertexes:
@@ -142,8 +143,9 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 						stat.cachedImageViews, "\nF12 to switch");
 				break;
 			case Full:
-				str = toString(configData, " FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime, " (",
-						timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex, "\n",
+				str = toString(configData, " FPS: ", int(fps + 0.5f), " SPF: ", int(spf + 0.5f),
+						"\nGPU: ", int(fenceTime + 0.5f), " (", int(timestampTime + 0.5f), ")",
+						"\nDir: ", int(tm + 0.5f), " Ver: ", int(vertex + 0.5f), "\n",
 						"V:", stat.vertexes, " T:", stat.triangles, "\nZ:", stat.zPaths,
 						" C:", stat.drawCalls, " M: ", stat.materials, "\n", stat.solidCmds, "/",
 						stat.surfaceCmds, "/", stat.transparentCmds, "\n",

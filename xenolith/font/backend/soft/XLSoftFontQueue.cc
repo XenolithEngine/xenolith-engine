@@ -178,6 +178,9 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 		return;
 	}
 
+	log::source().info("soft::FontQueue", "rasterizing ", pending, " glyph(s), workers=",
+			_input->queue->getWorkersCount());
+
 	font::DeferredRequest::runFontRendererDirect(_input->queue, _input->ext, _input->requests,
 			[this](uint32_t reqIdx, const font::CharTexture &texData) -> font::GlyphTarget {
 		auto glyphId = font::CharId::getCharId(texData.fontID, texData.charID,

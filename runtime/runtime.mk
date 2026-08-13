@@ -116,6 +116,23 @@ MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 
+# NuttX is hosted-POSIX on its own libc (see make/os/nuttx.mk) — same include
+# order as Linux/Android: include_libc/cxx wrappers, then the vendored
+# libcxx/include, then include_libc. NuttX libc itself stays at the lowest
+# priority via -idirafter in nuttx.mk. libc++abi/libunwind come from the
+# target-nuttx sysroot (libcxx.mk), not from NuttX libxx.a.
+ifeq ($(TARGET_SYSTEM),NuttX)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a -lm
+endif
+
+
 # Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)

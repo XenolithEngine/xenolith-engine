@@ -53,6 +53,10 @@
 #include "../wasm/SPRTWinWasmController.h"
 #endif
 
+#if SPRT_NUTTX
+#include "../nuttx/SPRTWinNuttxController.h"
+#endif
+
 #include "../headless/SPRTWinHeadlessController.h"
 
 namespace sprt::window {
@@ -97,6 +101,9 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #if SPRT_WASM
 	return WasmContextController::create(ctx, move(info), a);
 #endif
+#if SPRT_NUTTX
+	return NuttxContextController::create(ctx, move(info), a);
+#endif
 	oslog::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
 	return nullptr;
 }
@@ -122,6 +129,9 @@ void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContex
 #endif
 #if SPRT_ANDROID
 	AndroidContextController::acquireDefaultConfig(config);
+#endif
+#if SPRT_NUTTX
+	NuttxContextController::acquireDefaultConfig(config, handle);
 #endif
 }
 

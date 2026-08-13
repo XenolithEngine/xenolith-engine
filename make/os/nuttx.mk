@@ -62,8 +62,8 @@ OSTYPE_EXEC_CXXFLAGS :=
 # intercept <stddef.h>, <ctype.h>, ... and re-export the libc symbols under
 # std::) resolve first. -isystem here breaks libc++ by putting the raw libc
 # ahead of the wrappers.
-OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
-OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
+OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_INCLUDE_DIR_LIBC)
+OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_INCLUDE_DIR_LIBC)
 
 ifeq ($(RELEASE),1)
 OSTYPE_GENERAL_CFLAGS += -O2
@@ -75,10 +75,16 @@ OSTYPE_GENERAL_CXXFLAGS += -g -O0
 OSTYPE_LDFLAGS := -g
 endif
 
-# Static archives feed the NuttX image link; --gc-sections trims the unused
-# object set so the flat image stays small. lld is the host's linker.
-OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -L$(TARGET_SYSROOT)/usr/lib
-OSTYPE_EXEC_LDFLAGS := -Wl,--gc-sections
+# Static archives feed the NuttX image link. lld is the host's linker.
+# Clang's aarch64-none-elf driver injects crt0.o (a relative name, not found
+# via -L), -lunwind, and compiler-rt from -resource-dir. NuttX owns startup
+# and the kernel ELF (two-stage: this build emits objects; NuttX make links
+# the image), so drop those defaults. -Wl,-r makes a relocatable object so
+# kernel symbols can stay undefined. --gc-sections is incompatible with -r.
+# --no-dependent-libraries drops the .deplibs (pthread) note that lld would
+# otherwise try to resolve as -lpthread on the NuttX image link.
+OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -L$(TARGET_LIB_DIR) -L$(TARGET_LIB_DIR_LIBC)
+OSTYPE_EXEC_LDFLAGS := -nostdlib -Wl,-r -Wl,--no-dependent-libraries
 OSTYPE_LIB_LDFLAGS :=
 
 NUTTX := 1

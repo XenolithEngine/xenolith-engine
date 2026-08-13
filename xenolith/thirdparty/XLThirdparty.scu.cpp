@@ -25,8 +25,8 @@
 ///@ SP_EXCLUDE
  */
 
-#if !SPRT_WASM
-// SPIRV-Reflect pulls the Khronos SPIRV-Headers (spirv/unified1/spirv.h), absent on wasm;
-// the wasm/WGSL path does no SPIR-V reflection.
+#if !SPRT_WASM && !SPRT_NUTTX
+// SPIRV-Reflect pulls the Khronos SPIRV-Headers (spirv/unified1/spirv.h), absent on wasm
+// (WGSL path) and NuttX (soft rasterizer, no GPU/Vulkan).
 #include "SPIRV-Reflect/spirv_reflect.cc"
 #endif

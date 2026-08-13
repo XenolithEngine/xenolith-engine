@@ -74,7 +74,15 @@ SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, v
 
 #else
 
+#if SPRT_NUTTX
+// NuttX flat build: NuttX Application.mk renames main() in MAINSRC to
+// xxx_main, so the NuttX app wrapper (xltest_main.cxx) needs a C-linkage
+// entry point it can call. Expose the engine run as xenolith_main; the
+// NuttX app's main() (renamed to xltest_main) calls this.
+extern "C" int xenolith_main(int argc, const char **argv) {
+#else
 int main(int argc, const char *argv[]) {
+#endif
 	// Main symbol should depend only on stappler_core for successful linkage
 	// So, use SharedModule to load `Context::run`
 #if MODULE_XENOLITH_APPLICATION
@@ -94,5 +102,11 @@ int main(int argc, const char *argv[]) {
 	return -1;
 #endif
 }
+
+#if SPRT_NUTTX
+// Also provide main() for non-NuttX builds — on NuttX it is unused (the NuttX
+// app wrapper provides xltest_main), but the symbol must exist for the static
+// archive to be self-contained on other platforms.
+#endif
 
 #endif

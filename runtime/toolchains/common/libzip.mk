@@ -104,6 +104,17 @@ ifdef WASM
 CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)wasm-libzip-project-include.cmake
 endif
 
+ifdef NUTTX
+# Same as WASM: libzip's check_function_exists probes stay STATIC_LIBRARY under
+# the toolchain's default, so absent symbols (memcpy_s/strncpy_s/arc4random/...)
+# are misreported as present and libzip emits calls to them. Drive the probes to
+# EXECUTABLE through a project-include (the toolchain file's set() shadows a
+# plain -D); configure.mk (NUTTX branch) then links each probe against the
+# libsprt.a archive with NO --allow-undefined, so the Annex K *_s functions the
+# sprt libc does not implement are detected absent and compat.h uses its wrappers.
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)nuttx-libzip-project-include.cmake
+endif
+
 endif # WINDOWS
 
 all:

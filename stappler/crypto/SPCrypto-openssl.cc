@@ -566,6 +566,12 @@ static BackendCtx s_openSSLCtx = {
 	.flags = BackendFlags::SupportsPKCS1 | BackendFlags::SupportsPKCS8 | BackendFlags::SupportsAes | BackendFlags::SecureLibrary
 			| BackendFlags::SupportsGost3410_2012 | BackendFlags::SupportsGost3412_2015,
 	.initialize = [] (BackendCtx &ctx) {
+#if SPRT_NUTTX
+		// OpenSSL RAND_poll() blocks on /dev/random when NuttX has no entropy
+		// source. Hello-world does not need TLS; skip engine + OPENSSL_init_ssl.
+		ctx.flags &= ~(BackendFlags::SupportsGost3410_2012 | BackendFlags::SupportsGost3412_2015);
+		return;
+#endif
 		auto gostLoaded = OpenSSL_initSPGost();
 		OPENSSL_init_ssl(OPENSSL_INIT_SSL_DEFAULT, NULL);
 		if (gostLoaded) {

@@ -10,14 +10,14 @@
 #define __SPRT_EOPNOTSUPP 95
 #endif
 
-#ifndef __SPRT_ENOTSUP
-#define __SPRT_ENOTSUP 138
+// linux_sprt collapses ENOTSUP to EOPNOTSUPP; NuttX keeps them distinct.
+// Undef before the include so the linux header does not warn on redefinition.
+#ifdef __SPRT_ENOTSUP
+#undef __SPRT_ENOTSUP
 #endif
 
 // The rest of the asm-generic errno values match Linux/glibc verbatim.
 #include <sprt/c/cross/linux_sprt/errno.h>
 
-// Re-assert NuttX's split value after the linux include (linux_sprt re-defines
-// __SPRT_ENOTSUP to __SPRT_EOPNOTSUPP for the glibc collapse).
 #undef __SPRT_ENOTSUP
 #define __SPRT_ENOTSUP 138

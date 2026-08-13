@@ -127,6 +127,18 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	}
 
 	pthread_t pthread;
+#if SPRT_NUTTX
+	// Do not hold the sprt pool mutex across pthread_create. The init task is
+	// not a pthread; if the child runs immediately it takes that mutex in
+	// registerThread() and the parent never deschedules → InternalInit wait
+	// never completes (HDMI stuck on the blue breadcrumb).
+	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
+	if (ret == 0) {
+		unique_lock globalLock(pool->mutex);
+		__attachNativeThread(thread, reinterpret_cast<void *>(pthread), pthread_to_id(pthread),
+				globalLock);
+	}
+#else
 	unique_lock globalLock(pool->mutex);
 
 	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
@@ -135,6 +147,7 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 				globalLock);
 		globalLock.unlock();
 	}
+#endif
 
 	pthread_attr_destroy(&pattr);
 	return ret;
@@ -183,7 +196,7 @@ static bool __initNativeHandle(thread_t *thread) {
 
 	if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Unmanaged)) {
 		// if it's SPRT's thread, we need to setup async cancel to use it
-#ifndef SPRT_ANDROID
+#if !SPRT_ANDROID && !SPRT_NUTTX
 		int oldv = 0;
 		if (pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldv) == 0
 				&& pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldv) == 0) {

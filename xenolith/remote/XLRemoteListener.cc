@@ -24,6 +24,64 @@
 #include "XLRemoteProtocol.h"
 #include "SPPlatform.h"
 
+#if SPRT_NUTTX
+
+// NuttX's OpenSSL is built CMAKE_SYSTEM_NAME=Generic: no BIO sockets, no QUIC
+// client/server methods. Hello (and any local GUI) never opens a remote
+// listener; these entry points exist so xenolith_application still links.
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+ServerConnection::~ServerConnection() = default;
+
+bool ServerConnection::init(void *) { return false; }
+
+bool ServerConnection::isClosed() { return true; }
+
+GlobalError ServerConnection::handshake(BytesView, BytesView) { return GlobalError::NotImplemented; }
+
+GlobalError ServerConnection::ping() { return GlobalError::NotImplemented; }
+
+GlobalError ServerConnection::pong(uint32_t) { return GlobalError::NotImplemented; }
+
+GlobalError ServerConnection::sendCborMessage(Domain, uint8_t, const Value &, uint32_t *) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ServerConnection::sendMessage(Domain, uint8_t, BytesView, uint32_t *) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ServerConnection::sendCborReply(uint32_t, Domain, uint8_t, const Value &) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ServerConnection::sendReply(uint32_t, Domain, uint8_t, BytesView) {
+	return GlobalError::NotImplemented;
+}
+
+GlobalError ServerConnection::sendError(Domain, uint8_t, uint32_t) {
+	return GlobalError::NotImplemented;
+}
+
+void ServerConnection::poll(const Callback<bool(const MessageHeader &, BytesView)> &) { }
+
+void ServerConnection::close() { }
+
+Listener::~Listener() = default;
+
+bool Listener::open(const Address &) { return false; }
+
+void Listener::close() { }
+
+void Listener::handleEvents(const AcceptCallback &) { }
+
+uint64_t Listener::getEventTimeout() const { return maxOf<uint64_t>(); }
+
+} // namespace stappler::xenolith::remote
+
+#else
+
 #include <openssl/ssl.h>
 #include <openssl/quic.h>
 #include <openssl/err.h>
@@ -440,3 +498,5 @@ uint64_t Listener::getEventTimeout() const {
 }
 
 } // namespace stappler::xenolith::remote
+
+#endif // !SPRT_NUTTX

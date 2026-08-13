@@ -55,7 +55,7 @@ NUTTX_LDFLAGS := --target=$(NUTTX_TARGET) \
 # NuttX's libc is a hosted libc, but it is reached via -isystem + -lc, not via
 # CMAKE_SYSTEM_NAME=Linux (which would assume glibc + dynamic linker machinery
 # NuttX does not have).
-$(OUT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
+$(OUT)/toolchain.cmake: $(THIS_FILE) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	@echo 'Build $@'
 	@echo '# NuttX hosted-POSIX target. Generic (baremetal) drives LLVM_ON_UNIX=0,' > $@
 	@echo '# which pairs with COMPILER_RT_BAREMETAL_BUILD / *_BAREMETAL in the runtimes.' >> $@
@@ -83,7 +83,12 @@ $(OUT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(ARCH_FLAGS_FILE) $(CONFIG
 	@echo 'set(CMAKE_ASM_FLAGS_INIT "$(NUTTX_CFLAGS)")' >> $@
 	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$(NUTTX_LDFLAGS)")' >> $@
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$(NUTTX_LDFLAGS)")' >> $@
-	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR}/sysroot;$${CMAKE_CURRENT_LIST_DIR}/sysroot/usr")' >> $@
+	@echo '# CMAKE_FIND_ROOT_PATH covers BOTH the NuttX libc sysroot (sysroot/usr) AND' >> $@
+	@echo '# the install prefix (usr) where the cross-built third-party deps (libz,' >> $@
+	@echo '# libpng, libgif, ...) land. Without the install prefix on the path,' >> $@
+	@echo '# find_package(ZLIB) / find_library(zlib) in dep cmakes (libpng, freetype,' >> $@
+	@echo '# harfbuzz, ...) only see sysroot/usr and miss the just-built deps.' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr;$${CMAKE_CURRENT_LIST_DIR}/sysroot;$${CMAKE_CURRENT_LIST_DIR}/sysroot/usr")' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
@@ -104,12 +109,68 @@ $(OUT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(ARCH_FLAGS_FILE) $(CONFIG
 	mkdir -p $(OUT)/lib
 	ln -fs ../../host/lib/clang/21 $(OUT)/lib/clang
 
+# --- toolchain-libs.cmake -------------------------------------------------
+# Separate toolchain file for cross-building the third-party dependency libs
+# (target-nuttx/Makefile inner pass -> common/{zlib,gif,brotli,...}.mk). Mirrors
+# target-wasm/init-target.mk's split: toolchain.cmake (used by compiler_rt.mk)
+# bakes the NuttX ARCHCFLAGS into CMAKE_C_FLAGS_INIT, including the -Werror/
+# -Wshadow/-Wundef that are NuttX's own code-review policy. The third-party deps
+# must NOT inherit those (NuttX libc headers leak identifiers like `OK`/
+# `ERROR`/`CODE` that clash with dep code), so this file rebuilds the same
+# Generic-baremetal shape but sources CMAKE_C_FLAGS_INIT from the per-dep
+# SP_C_FLAGS that common/configure.mk's NUTTX branch fills (and which appends
+# -Wno-error/-Wno-shadow). Also keeps the wider CMAKE_FIND_ROOT_PATH that
+# covers both the NuttX libc sysroot and the cross-built deps under usr/.
+$(OUT)/toolchain-libs.cmake: $(THIS_FILE)
+	@echo 'Build $@'
+	@echo '# NuttX third-party-deps toolchain. Same baremetal Generic shape as' > $@
+	@echo '# toolchain.cmake, but CMAKE_C_FLAGS_INIT sources from the per-dep' >> $@
+	@echo '# SP_C_FLAGS (filled by common/configure.mk NUTTX branch) instead of' >> $@
+	@echo '# the NuttX ARCHCFLAGS, so the deps do not inherit NuttX -Werror policy.' >> $@
+	@echo 'set(CMAKE_SYSTEM_NAME Generic)' >> $@
+	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))' >> $@
+	@echo 'set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")' >> $@
+	@echo 'set(CMAKE_SHARED_LIBRARY_PREFIX "lib")' >> $@
+	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang++")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_AR "$${CMAKE_CURRENT_LIST_DIR}/host/bin/llvm-ar")' >> $@
+	@echo 'set(CMAKE_RANLIB "$${CMAKE_CURRENT_LIST_DIR}/host/bin/llvm-ranlib")' >> $@
+	@echo 'set(CMAKE_C_COMPILER_TARGET "$(NUTTX_TARGET)")' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER_TARGET "$(NUTTX_TARGET)")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER_TARGET "$(NUTTX_TARGET)")' >> $@
+	@echo 'set(CMAKE_C_COMPILER_WORKS ON)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER_WORKS ON)' >> $@
+	@echo 'set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)' >> $@
+	@echo '# --target must sit in CMAKE_C_FLAGS, not only CMAKE_C_COMPILER_TARGET:' >> $@
+	@echo '# libpng genout.cmake (and similar execute_process preprocessors) invoke' >> $@
+	@echo '# clang -E with CMAKE_C_FLAGS alone. Without --target the Xenolith clang' >> $@
+	@echo '# defaults to x86_64-unknown-linux-gnu and sprt looks up' >> $@
+	@echo '# nuttx_sprt/x86_64_sprt/config.h (does not exist). Mirrors target-wasm.' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "$${SP_C_FLAGS} -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(NUTTX_TARGET)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS} -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(NUTTX_TARGET)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_ASM_FLAGS_INIT "$${SP_C_FLAGS} -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(NUTTX_TARGET)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS} --target=$(NUTTX_TARGET)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS} --target=$(NUTTX_TARGET)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH Off)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr;$${CMAKE_CURRENT_LIST_DIR}/sysroot;$${CMAKE_CURRENT_LIST_DIR}/sysroot/usr")' >> $@
+	@echo 'set(PKG_CONFIG_PATH "$${CMAKE_CURRENT_LIST_DIR}/usr/lib/pkgconfig")' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
+	@echo 'set(CMAKE_PREFIX_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
+	@echo 'set(CMAKE_INSTALL_PREFIX "$${CMAKE_CURRENT_LIST_DIR}")' >> $@
+	@echo 'set(CMAKE_INSTALL_LIBDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/lib")' >> $@
+	@echo 'set(CMAKE_INSTALL_INCLUDEDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/include")' >> $@
+	@echo 'set(CMAKE_POSITION_INDEPENDENT_CODE OFF)' >> $@
+
 # --- app-facing target.mk -------------------------------------------------
 # The descriptor the rest of the make-system consumes (TARGET_SYSROOT /
 # TARGET_SYSTEM=NuttX triggers make/os/nuttx.mk via apply-toolchain.mk).
 # -resource-dir resolves the compiler-rt builtins once M2 ships them; before
 # that it points at the host's (only builtins are looked up there).
-$(OUT)/target.mk: $(lastword $(MAKEFILE_LIST)) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
+$(OUT)/target.mk: $(THIS_FILE) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	@echo 'Build $@'
 	@echo 'TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
 	@echo 'TARGET_SYSTEM := NuttX' >> $@
@@ -125,19 +186,33 @@ $(OUT)/target.mk: $(lastword $(MAKEFILE_LIST)) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	@echo '# -fno-exceptions/-fno-rtti on the C++ side, then re-enable what the' >> $@
 	@echo '# runtime needs.' >> $@
 	@echo 'TARGET_GENERAL_CFLAGS := --target=$(NUTTX_TARGET) -resource-dir $$(TARGET_SYSROOT)/lib/clang $$(TARGET_NUTTX_ARCHCPUFLAGS) $(filter-out -Werror -Wundef -Weverything,$(NUTTX_ARCHCFLAGS)) -D__NuttX__' >> $@
-	@echo 'TARGET_GENERAL_CXXFLAGS := --target=$(NUTTX_TARGET) -resource-dir $$(TARGET_SYSROOT)/lib/clang $$(TARGET_NUTTX_ARCHCPUFLAGS) $(filter-out -Werror -Wundef -Weverything -fno-exceptions -fno-rtti,$(NUTTX_ARCHCXXFLAGS)) -frtti -fexceptions -D__NuttX__' >> $@
-	@echo 'TARGET_GENERAL_LDFLAGS := --target=$(NUTTX_TARGET) -resource-dir $$(TARGET_SYSROOT)/lib/clang -L$$(TARGET_SYSROOT)/usr/lib' >> $@
+	@echo '# App C++ flags: -nostdinc++ drops clang'\''s bundled libc++ so the engine' >> $@
+	@echo '# consumes sprt'\''s STL surface (include_libc/cxx + libcxx/include, added' >> $@
+	@echo '# per-module in runtime.mk — same order as Linux). Do NOT force' >> $@
+	@echo '# -D__SPRT_USE_STL=0: hosted app TUs default to USE_STL=1 like Linux;' >> $@
+	@echo '# runtime TUs keep USE_STL=0 via __SPRT_BUILD / SPRT_BUILD_RUNTIME.' >> $@
+	@echo '# NuttX libc stays at the lowest search priority via nuttx.mk -idirafter.' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS := --target=$(NUTTX_TARGET) -resource-dir $$(TARGET_SYSROOT)/lib/clang $$(TARGET_NUTTX_ARCHCPUFLAGS) -nostdinc++ $(filter-out -Werror -Wundef -Weverything -fno-exceptions -fno-rtti,$(NUTTX_ARCHCXXFLAGS)) -frtti -fexceptions -D__NuttX__' >> $@
+	@echo '# NuttX libc lives under sysroot/usr during assemble and usr/ after' >> $@
+	@echo '# install-target.mk merges the two. Pick whichever exists.' >> $@
+	@echo 'ifeq ($$(wildcard $$(TARGET_SYSROOT)/sysroot/usr/include),)' >> $@
+	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/usr/include' >> $@
+	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/usr/lib' >> $@
+	@echo 'else' >> $@
+	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/sysroot/usr/include' >> $@
+	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/sysroot/usr/lib' >> $@
+	@echo 'endif' >> $@
+	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_INCLUDE_DIR_LIBC)' >> $@
+	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := --target=$(NUTTX_TARGET) -resource-dir $$(TARGET_SYSROOT)/lib/clang -L$$(TARGET_SYSROOT)/usr/lib -L$$(TARGET_LIB_DIR_LIBC)' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@
 	@echo 'TARGET_LIB_CFLAGS :=' >> $@
 	@echo 'TARGET_LIB_CXXFLAGS :=' >> $@
 	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
-	@echo '# NuttX libc lives under sysroot/usr/include; expose it via TARGET_INCLUDE_DIR_LIBC' >> $@
-	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
-	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/usr/include' >> $@
-	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
-	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/usr/lib' >> $@
+	@echo 'TARGET_GENERAL_CFLAGS += -idirafter $$(TARGET_INCLUDE_DIR_LIBC)' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS += -idirafter $$(TARGET_INCLUDE_DIR_LIBC)' >> $@
 
 # simde (SIMD-everywhere) is a header-only dependency the geom SIMD headers
 # pull (<simde/x86/sse.h>, <simde/arm/neon.h>). Build+install it through its
@@ -161,7 +236,7 @@ $(OUT)/sysroot/usr/include/simde/simde-arch.h: ../common/simde.mk
 	rm -rf $(OUT)/_simde-build
 	$(call rule_touch,$(OUT)/sysroot/usr/include/simde/simde-arch.h)
 
-all: $(OUT)/toolchain.cmake $(OUT)/target.mk \
+all: $(OUT)/toolchain.cmake $(OUT)/toolchain-libs.cmake $(OUT)/target.mk \
 	$(OUT)/sysroot/usr/include/simde/simde-arch.h \
 	$(OUT)/sysroot/usr/include/setjmp.h \
 	$(OUT)/sysroot/usr/include/fenv.h \

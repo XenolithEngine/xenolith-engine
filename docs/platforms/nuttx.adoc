@@ -1,148 +1,187 @@
-# NuttX platform architecture
+# NuttX target
 
-Status: **M0 (draft)** — target skeleton landed in `runtime/toolchains/target-nuttx/`
-(commit on branch `nuttx-target`); POSIX-divergence registry below is verified
-against NuttX master `87260499` (2026-08-09).
+Status: **M0 (draft)** — `runtime/toolchains/target-nuttx/`.
 
-NuttX is a host for the Xenolith runtime running on its own libc, reached
-through the existing `libc_wrapper` "hosted" path (same model as Linux/glibc
-and Android/Bionic). The runtime does NOT build a second libc.
+NuttX is a **hosted** Xenolith target: the runtime uses NuttX's own libc
+through `libc_wrapper` (same model as Linux/glibc and Android/Bionic). It does
+not ship a second libc. This document is **how to assemble the sysroot**. The
+NuttX kernel image, QEMU, and board bring-up are outside this tree.
 
 == Triple naming
 
-LLVM has no `OSType nuttx`, so the OS field cannot carry it. NuttX rides in
-the *vendor* field; the clang `--target` uses the baremetal triple:
+LLVM has no `OSType nuttx`, so NuttX rides in the *vendor* field; clang
+`--target` stays baremetal:
 
 [cols="1,1,2", options="header"]
 |===
 | STAPPLER_TARGET               | clang --target            | Use
-| `aarch64-nuttx-none-elf`      | `aarch64-none-elf`        | ARMv8-A boards (RPi4, ...)
-| `riscv64-nuttx-none-elf`      | `riscv64-none-elf`        | RISC-V boards (VisionFive 2, rv-virt, ...)
-| `arm-nuttx-none-eabi`         | `arm-none-eabi`           | Cortex-M/-R/32-bit -A boards
-| `x86_64-nuttx-sim-linux-gnu`  | `x86_64-unknown-linux-gnu` | NuttX sim target (Linux process)
+| `aarch64-nuttx-none-elf`      | `aarch64-none-elf`        | ARMv8-A boards
+| `riscv64-nuttx-none-elf`      | `riscv64-none-elf`        | RISC-V boards
+| `arm-nuttx-none-eabi`         | `arm-none-eabi`           | Cortex-M/-R/32-bit -A
+| `x86_64-nuttx-sim-linux-gnu`  | `x86_64-unknown-linux-gnu` | NuttX sim (Linux process)
 |===
 
-Per-board profiles arrive as `+<board>` suffixes that select a specific
-`nuttx-export` package and the arch flags it carries.
+Per-board profiles are `+<board>` suffixes that select a `nuttx-export`
+package. The base triple is what CI uses for compile-only checks.
 
-== POSIX-divergence registry (verified against NuttX master `8726060`)
+== Input: a NuttX `make export`
 
-Every entry is grounded in source. Citations are NuttX paths under the source
-tree.
+The sysroot is **imported**, not built from scratch. Produce
+`nuttx-export-<ver>.tar.gz` from a configured NuttX tree (`make export`), then
+pass it as `NUTTX_EXPORT=`. The export must include:
 
-[cols="3,2,5", options="header"]
-|===
-| Capability | Status | Action / catch (file:line)
+* `CONFIG_TLS_NELEM=8` (or higher) — `pthread_key_*` slots. Default is 0.
+* `CONFIG_SCHED_THREAD_LOCAL` **unset** — ELF TLS is broken on NuttX/aarch64
+  (no `arm64_tls.c` / `tpidr_el0` save-restore). The target uses
+  `-femulated-tls`; `__emutls_get_address` is compiled into
+  `libclang_rt.builtins-aarch64.a`. Do not enable `CONFIG_SCHED_THREAD_LOCAL`.
+* `CONFIG_PIPES=y` — poll reactor self-pipe.
+* `CONFIG_DISABLE_ENVIRON` unset — `getenv`/`setenv`.
+* `CONFIG_HAVE_CXX=y` + `CONFIG_HAVE_CXXINITIALIZE=y`. The runtime ships its
+  own libc++abi (`target-nuttx/libcxx.mk`); NuttX `libxx.a` stays the mini-ABI.
 
-| `futex`
-| **ABSENT**
-| No `futex(2)`, no `sys/futex.h`. `pthread_mutex_t` embeds NuttX `mutex_t`/`rmutex_t` (`include/pthread.h:306-326`) which are themselves built on `sem_t` (`include/nuttx/mutex.h:56,64`, `include/nuttx/semaphore.h:166`). `pthread_cond_t` likewise embeds `sem_t` (`include/pthread.h:392`). → *runtime `core/nuttx/sprt_lock.cc` must implement `qlock`/`rlock` over `sem_t`+`pthread_cond`, NOT futex addresses; the glibc `pthread_mutex_t` layout is incompatible so no FFI to it.*
+Layout of the package and `import-export.mk` is in
+`runtime/toolchains/target-nuttx/README.adoc`.
 
-| `fork`
-| PRESENT (arch-gated)
-| Declared `include/unistd.h:350-351`. Backend `sched/task/task_fork.c:42` under `CONFIG_ARCH_HAVE_FORK` + `CONFIG_SCHED_HAVE_PARENT` (`sched/task/CMakeLists.txt:50`). Arch copies a TCB, NOT a Linux MM (no COW VM). Default idiom is `task_spawn`/`posix_spawn` (`include/spawn.h:135-148`, `posix_spawnp`≡`posix_spawn` unless `CONFIG_LIBC_ENVPATH`). → *prefer posix_spawn; do not assume COW.*
+== Assemble `aarch64-nuttx-none-elf`
 
-| `dlfcn`
-| PRESENT (gated `CONFIG_LIBC_DLFCN`)
-| Full header `include/dlfcn.h`; impl `libs/libc/dlfcn/`. Kconfig `libs/libc/dlfcn/Kconfig` defines `LIBC_DLFCN` (NOT `DLFCMPT`): `select LIBC_ELF if !BUILD_FLAT` else `select MODULE`. → *flat build routes dlopen through kernel-module table, not a userspace dynamic linker; symbol resolution via NuttX symbol table. Not safe to rely on glibc-style DSO semantics.*
+PATH: Xenolith GNU make 4.x + clang 21 first. Do **not** use Apple
+`/usr/bin/make` (3.81). Do **not**
+`make -C runtime/toolchains target-aarch64-nuttx-none-elf` — that Makefile's
+`host` goal rebuilds clang. Invoke `target-nuttx/Makefile` directly.
 
-| `mmap`/`MAP_*`
-| PRESENT
-| `include/sys/mman.h`: `MAP_SHARED`(53), `MAP_PRIVATE`(54), `MAP_FIXED`(56), `MAP_FILE`(57), `MAP_ANONYMOUS`/`MAP_ANON`(58-59). Anon mappings via `mm/map/mm_map.c`, file mappings via `fs/mmap/fs_mmap.c` (per-FS `.mmap` ops). Most hint flags (`MAP_GROWSDOWN` etc.) are accepted-but-ignored. No `CONFIG_FS_MAP`. → *eager allocation (no demand paging); MAP_SHARED works for fs-backed only (shmfs/xipfs).*
+=== 1. Third-party sources
 
-| TLS `__thread`
-| **PARTIAL — arm64 gap**
-| `include/nuttx/tls.h`: stack-block-based `tls_info_s` + `CONFIG_TLS_NELEM` slots. `up_tls_initialize`/`up_tls_size` provided for **riscv/arm/xtensa/x86_64** (`arch/{risc-v,arm,xtensa,x86_64}/src/common/*_tls.c`) but **NOT arm64** (no `arm64_tls.c`); arm64 falls into the `tls.h:335` default `#elif defined(CONFIG_TLS_ALIGNED) && !defined(__KERNEL__)` path. **No ELF `PT_TLS` parsing in `binfmt/elf.c`/`binfmt/libelf/*`.** → *verify `__thread` on aarch64; if it does not work, either add `arm64_tls.c` or fall back to `pthread_key_*`. Risk item.*
+Do **not** `make -C runtime/toolchains download` (Vulkan/Wayland and a full
+llvm-project). Fetch only this set. Empty directories from a failed wget still
+satisfy make's directory target — if `CMakeLists.txt` / `Configure` is missing,
+`rmdir` and retry.
 
-| `malloc`/heap
-| FULL
-| `include/stdlib.h:243-252`: `malloc`, `free`, `realloc`, `reallocarray`, `memalign`, `zalloc`, `calloc`, `aligned_alloc`, `posix_memalign`, `valloc`. Multiple allocators (`mm/mm_heap/`, `mm/tlsf/`, `mm/kmm_heap/`, `mm/umm_heap/`). → *runtime must NOT ship mimalloc or any other allocator (would clash with `mm_heap`); build without `runtime_malloc`/`libc_impl`.*
+----
+ENGINE=<engine-root>
+TC=$ENGINE/runtime/toolchains
+make -C $TC \
+  $TC/src/simde $TC/src/zlib $TC/src/bzip2 $TC/src/brotli \
+  $TC/src/libjpeg-turbo $TC/src/libpng $TC/src/giflib $TC/src/libwebp \
+  $TC/src/freetype $TC/src/harfbuzz $TC/src/sheenbidi $TC/src/sqlite \
+  $TC/src/openssl $TC/src/openssl-gost-engine $TC/src/nghttp3 \
+  $TC/src/libzip $TC/src/curl
+test -f $TC/src/freetype/CMakeLists.txt
+test -f $TC/src/openssl/Configure
+----
 
-| `pthread`
-| FULL POSIX
-| `include/pthread.h:153-154,557,571,644-667`. Includes `PTHREAD_PRIO_PROTECT` (`= SEM_PRIO_PROTECT`), robust mutexes, rwlock, cancel, affinity, `pthread_setaffinity`. Impl under `sched/pthread/` + `libs/libc/pthread/`. → *complete; built on sem_t not futex, ABI ≠ glibc.*
+llvm-project: sparse cone, tag `llvmorg-21.1.8` (matches the host clang):
 
-| locale/wchar/multibyte
-| PRESENT (gated `CONFIG_LIBC_LOCALE`)
-| `include/locale.h`, `include/wchar.h`, `include/wctype.h`. Impl `libs/libc/locale/` (setlocale/newlocale/duplocale/freelocale/uselocale/localeconv/langinfo/gettext/iconv/catalog). Codepage tables present (big5/gb18030/hkscs/jis0208/ksc/legacychars). → *use "C" locale default; depth gated by `CONFIG_LIBC_LOCALE`. Unicode layer in `libc_wrapper` may still need adapter for missing entries.*
+----
+if [ ! -d $TC/src/llvm-project/compiler-rt ]; then
+  git clone --depth 1 --filter=blob:none --sparse --branch llvmorg-21.1.8 \
+    https://github.com/llvm/llvm-project.git $TC/src/llvm-project
+  git -C $TC/src/llvm-project sparse-checkout set \
+    compiler-rt cmake llvm/cmake third-party libcxx libcxxabi libunwind runtimes
+fi
+test -f $TC/src/llvm-project/compiler-rt/lib/builtins/emutls.c
+test -d $TC/src/llvm-project/libcxx
+----
 
-| regex/glob/fnmatch
-| PRESENT
-| `include/regex.h:92,94` (regcomp/regexec), `include/glob.h:94,106` (glob/globfree), `include/fnmatch.h:60+` (fnmatch). Impl in `libs/libc/regex/`, `libs/libc/misc/lib_glob.c`, `libs/libc/misc/lib_fnmatch.c`. → *first-class libc citizens; no musl fallback needed (unlike Android/Bionic).*
+savannah.gnu.org (freetype) is slow. If the dir is empty, unpack
+`freetype-2.14.3.tar.xz` with `--strip-components=1` into `$TC/src/freetype`.
 
-| sockets/poll/epoll
-| PRESENT
-| `include/sys/socket.h`, `include/sys/epoll.h` (epoll_create/ctl/wait/pwait), `include/poll.h`, `include/sys/select.h`. epoll impl `fs/vfs/fs_epoll.c` (VFS-level, level-triggered), poll `fs/vfs/fs_poll.c`. → *networking gated by `CONFIG_NET`; epoll is implemented over poll semantics, not a kernel epoll instance. Dispatch `epoll` backend should treat it as feature-detected.*
+=== 2. Run the assemble
 
-| signals
-| PRESENT (incl. RT signals)
-| `include/signal.h:460-491`. RT signals `SIGRTMIN=SIGSTDMAX+1`(52), `SIGRTMAX=MAX_SIGNO`(53). `SA_SIGINFO`, `SA_RESTART` defined. Impl under `sched/signal/`. → *task-directed (TCB `sigpendq`), not process-directed; `kill(pid<0)` PG broadcast limited.*
+----
+make -C $ENGINE/runtime/toolchains/target-nuttx target-aarch64 \
+  NUTTX_EXPORT=<path-to>/nuttx-export-0.0.0.tar.gz
+----
 
-| backtrace
-| PRESENT (arch FP/unwind)
-| `include/execinfo.h`: `backtrace`→`sched_backtrace`, `dump_stack`→`sched_dumpstack`. Impl `libs/libc/sched/sched_backtrace.c` + per-arch walkers (`arch/{arm64,risc-v,arm,x86_64,xtensa,sim}/src/common/*_backtrace.c`). **No libunwind/DWARF; no `_Unwind_Backtrace`** (zero hits in `libs/`). → *requires `-fno-omit-frame-pointer` or arch unwind tables; stripped -O2 binaries may walk garbage.*
+Order: import-export → init-target (`target.mk`, `toolchain-libs.cmake`) →
+compiler-rt + `emutls.c` + SME stub → libcxxabi + libunwind → in-tree
+`libsprt.a` → zlib/bzip2/brotli/jpeg/png/gif/webp/freetype/harfbuzz/sheenbidi/
+sqlite/openssl/gost/nghttp3/libzip/curl → `install-target.mk`.
 
-| C++ / libcxx
-| PRESENT
-| Trees `libs/libxx/{libcxx,libcxxabi,uClibc++}`. Patches: `0001-libcxx-fix-ld-errors.patch`, `mbstate_t.patch`, `0001-libcxx-remove-mach-time-h.patch`. EH runtime via libcxxabi (`__gxx_personality`/`__cxa_throw`/`_Unwind_RaiseException`). `CONFIG_LIBCXX` + `CONFIG_CXX_EXCEPTION` are the knobs. → *runtime will be built against our own LLVM libc++ (M2) rather than NuttX's to keep the engine ABI unified; NuttX libcxx is the safety net.*
+Success is
+`$ENGINE/runtime/toolchains/target-nuttx/targets/aarch64-nuttx-none-elf/`
+with at least:
 
-| getenv/setenv
-| PRESENT
-| `include/stdlib.h:175-180`: getenv/secure_getenv/putenv/clearenv/setenv/unsetenv. `environ` is `#define get_environ_ptr()` (line 70) — a function call, not an lvalue. Opt-out is `CONFIG_DISABLE_ENVIRON` (inverted convention). Per-task-group env (`struct task_group_s`). → *ensure `CONFIG_DISABLE_ENVIRON` is NOT set; do not take the address of `environ`.*
+* `target.mk`
+* `usr/lib/libsprt.a`
+* `usr/lib/libclang_rt.builtins-aarch64.a` (`nm` shows `__emutls_get_address`)
+* `usr/lib/libsme_stub.a`
+* `usr/lib/libc++abi.a` `usr/lib/libunwind.a`
+* `usr/include/pthread.h` (from the export)
 
-| clock_gettime / getrandom
-| PARTIAL
-| `clock_gettime` is a real syscall (`include/time.h:193`, `CLOCK_REALTIME`/`CLOCK_MONOTONIC`). `getrandom(void*, size_t, unsigned)` declared `include/sys/random.h:77` but implemented in `libs/libc/misc/lib_getrandom.c` as a *read from `/dev/urandom` (or `/dev/random` with `GRND_RANDOM`)* — **not a kernel syscall**. Backed by `drivers/crypto/dev_urandom.c`. → *runtime `core/nuttx/getrandom.cc` must open `/dev/urandom` (or rely on the libc wrapper); requires the dev_urandom driver registered.*
+Resume is incremental. Do not `clean` unless the sysroot is corrupt.
+`libcxx.mk` skips cmake if `libc++abi.a` + `libunwind.a` are already staged.
+compiler-rt is cached under `intermediate/…/_compiler-rt-cache-*`.
 
-| `/proc` + `sysconf`
-| PRESENT
-| `sysconf` declared `include/unistd.h:477`; ~129 `_SC_*` constants (`lib_sysconf.c`). `/proc` is a mountable procfs `fs/procfs/` (cpuinfo/meminfo/uptime/<pid>/pressure/profile). → *procfs contents are NuttX-specific, not Linux layout; must be explicitly mounted.*
-|===
+=== 3. CLI store symlink
 
-== Top porting risks
+NuttX is **not** in the SDK catalogue. Point both lookup paths at the assemble
+(`target.mk` + `usr/lib/libsprt.a`):
 
-1. **arm64 TLS gap** — `__thread`/`thread_local` is **broken on NuttX/aarch64**. There is no `arch/arm64/src/common/arm64_tls.c`; `tpidr_el0` is never written or saved/restored across context switches (`arch/arm64/src/common/arm64_vector_table.S` only handles `sp_el0` + `tpidrro_el0`). Worse: `arch/Kconfig:26` declares `ARCH_ARM64 ... select ARCH_HAVE_THREAD_LOCAL`, so `CONFIG_SCHED_THREAD_LOCAL=y` *compiles* but fails at link with `undefined reference to up_tls_size / up_tls_initialize` (the `up_tls_*` symbols declared at `include/nuttx/arch.h:2227,2244` have no arm64 implementation). +
-   **M3 decision: use `pthread_key_*`** (`include/nuttx/tls.h:355-357`, requires `CONFIG_TLS_NELEM>0`). This is the only path that works on stock NuttX/arm64 today. Real ELF TLS would require adding `arm64_tls.c` mirroring `riscv_tls.c` *plus* `tpidr_el0` save/restore in `arm64_vector_table.S` *plus* per-task TLS-base setup in `arm64_createstack.c` *plus* `PT_TLS` parsing in `binfmt/elf.c` — a multi-file arch change best tracked as its own upstream-gap issue and milestone.
-2. **futex absence** — `core/nuttx/sprt_lock.cc` over `sem_t`+`pthread_cond`. Template exists: `core/wasm/sprt_lock.cc` (semaphore-style) + `core/linux/sprt_lock.cc` (interface).
-3. **getrandom via `/dev/urandom`** — needs `dev_urandom.c` driver registered; FD-exhaustion-sensitive. `core/nuttx/getrandom.cc` opens the device, falls back to arch RNG if available.
-4. **fork non-COW + arch-gated** — prefer `posix_spawn`/`task_spawn`. `runtime/src/dispatch` must not assume `fork` semantics.
-5. **dlfcn in flat build** — routes through NuttX kernel modules, not userspace dynamic linker. The runtime's DSO module loader (`runtime_core_dso.cpp`) needs a NuttX branch that either uses `CONFIG_LIBC_DLFCN` or stubs out module loading for flat builds.
-6. **`LDFLAGS` carries an absolute `-Map=<nuttx-tree>/nuttx.map` path** — the export's `Make.defs` records the build-time path verbatim. `import-export.mk` does not strip it; downstream consumers that feed `NUTTX_LDFLAGS` into a link must filter `Map=` out (it is a NuttX-image-link concern, not a runtime-library concern).
+----
+ASSEMBLE=$ENGINE/runtime/toolchains/target-nuttx/targets/aarch64-nuttx-none-elf
+ln -sfn $ASSEMBLE $ENGINE/runtime/toolchains/targets/aarch64-nuttx-none-elf
+mkdir -p $HOME/.local/share/xenolith/data/toolchains/targets
+ln -sfn $ENGINE/runtime/toolchains/targets/aarch64-nuttx-none-elf \
+  $HOME/.local/share/xenolith/data/toolchains/targets/aarch64-nuttx-none-elf
+----
 
-== M0 status: validated setup
+`xenolith-cli` looks at `$ENGINE/toolchains/targets/X` **first**. A leftover
+**real directory** there is not replaced by the store symlink (missing
+`libc++abi.a` / `libunwind.a`). Move it aside and `ln -sfn`.
 
-Live `make export` is **working** on the aarch64 build host (Lima VM `xenolith-builder`, Ubuntu 24.04/aarch64). Validated path:
+=== 4. Compile-check
 
-1. NuttX source: master `87260499` (2026-08-09). Clone with `apps/` as a sibling (NuttX refuses `./apps/` inside the nuttx tree — `ERROR: Could not find the path to the appdir`).
-2. **Toolchain wiring**: NuttX's `HOSTCC ?= cc` (`tools/Config.mk:96`) means whatever `cc` resolves to in PATH *will* be used to build NuttX's own host tools (`incdir`, `mkdeps`, ...). The Xenolith LLVM clang is a *cross*-compiler without system headers — if it shadows `cc`, host-tool compilation dies at `fatal error: 'sys/utsname.h' file not found`. **Put the Xenolith toolchain at the END of PATH**, so `/usr/bin/cc` / `/usr/bin/gcc` stay first (system cc) while `clang` / `clang++` / `ld.lld` / `llvm-ar` resolve to the Xenolith bin (there is no `/usr/bin/clang` on this Ubuntu image).
-3. **Defconfig**: `qemu-armv8a:nsh_gicv2` (or `nsh_fiq`) already sets `CONFIG_ARM64_TOOLCHAIN_CLANG=y`. With that flag, `arch/arm64/src/Toolchain.defs:230-241` selects `CC=clang`, `LD=ld.lld -m aarch64elf`, `AR=llvm-ar`, and `ARCHCPUFLAGS += --target=aarch64-none-elf` (line 64) — exactly the Xenolith clang invocation.
-4. **kconfig/BINDIR**: a fresh `./tools/configure.sh -l qemu-armv8a:nsh_gicv2` fails inside `genconfig` on `arch/Kconfig:321: '$BINDIR/arch/dummy/Kconfig' not found`. The file `arch/dummy/Kconfig` is a make-target (`tools/Unix.mk:374-392`) generated on the first `make`. Workaround: run `make olddefconfig` once after configure — it generates the dummy/Kconfig and settles `.config`.
-5. Result: `make export` produces `nuttx-export-0.0.0.tar.gz` (~4.8 MB). Contents verified: `include/`, `libs/` (11 archives — `libc/libm/libmm/libsched/libdrivers/libboards/libarch/libfs/libbinfmt/libapps/libxx`), `startup/crt0.o`, `scripts/{Make.defs,toolchain.cmake,target.cmake,gnu-elf.ld,dramboot.ld}`, `arch/{board,chip,common,os}`, `.config`.
+----
+xenolith-cli build $ENGINE/tests/runtime \
+  --engine $ENGINE \
+  --target aarch64-nuttx-none-elf
+----
 
-`target-nuttx/import-export.mk` has been run end-to-end against this package; all 17 extracted fields are populated correctly (`NUTTX_ARCH=arm64`, `NUTTX_CROSSDEV=aarch64-none-elf-`, `NUTTX_CC=clang`, `NUTTX_ARCHCPUFLAGS=-march=armv8-a`, `NUTTX_LDLIBS=-lsched -ldrivers -lboards -lc -lmm -larch -lm -lxx -lapps -lfs -lbinfmt`, ...).
+Pass: exit 0 and `built <path> for aarch64-nuttx-none-elf (…)`. Artifact is a
+**relocatable** ELF under
+`$ENGINE/tests/runtime/stappler-build/aarch64-nuttx-none-elf/debug/cc/runtimetest`.
 
-Known issue on non-x86_64 hosts: the `sim:nsh` config sets `-mcmodel=medium`, which aarch64/x86_64 host gcc rejects (`valid arguments to -mcmodel= are: large small tiny` on arm64). Use a real cross board (`qemu-armv8a`, `rv-virt`, `raspberrypi-4b`) on non-x86_64 hosts; `sim` is only suitable on x86_64.
+`make/os/nuttx.mk` sets `OSTYPE_EXEC_LDFLAGS := -nostdlib -Wl,-r`. Without
+that, clang's `aarch64-none-elf` driver injects `crt0.o` and `-lunwind`.
+`-Wl,-r` keeps kernel symbols undefined; `--gc-sections` is incompatible with
+`-r`. `--run` cannot launch this target on the host. Linking the relocatable
+into a NuttX image (`EXTRA_OBJS=` / `EXTRA_LIBS=`) is a board-image step, not
+part of this assemble.
 
-== Required CONFIG_*.setconfig overrides for Xenolith runtime
+== Assemble gotchas
 
-The default NuttX defconfigs ship without several flags the Xenolith runtime
-needs. When generating an export package for a Xenolith target, apply these
-via `kconfig-tweak --file .config --enable <SYM>` (or `--set-val <SYM> <N>`)
-between `configure.sh` and `make export`:
-
-* `CONFIG_TLS_NELEM=8` (or higher) — `pthread_key_*` slots the runtime uses for
-  per-thread state on aarch64 (see risk #1). Default is 0.
-* `CONFIG_LIBCXX=y` + `CONFIG_LIBCXXABI=y` + `CONFIG_CXX_EXCEPTION=y` — the
-  default arm64 defconfigs set `LIBCXXNONE=y` with no EH runtime; the runtime
-  ships its own libc++abi (M2), but NuttX's own C++ objects (`libxx.a`) need
-  the EH runtime available.
-* `CONFIG_DISABLE_ENVIRON` unset (inverted convention) — required for `getenv`/`setenv`.
-
-The `target-nuttx` driver will codify these as a `kconfig-tweak` pass in a
-later milestone; for M0 they are applied manually.
+* During assemble, NuttX libc lives under `intermediate/…/sysroot/usr`;
+  third-party deps under `usr/`. `target.mk` must pick libc via a
+  `wildcard …/sysroot/usr/include` test and put
+  `-idirafter $(TARGET_INCLUDE_DIR_LIBC)` on C/CXX flags, or `arch/setjmp.h`
+  is missing while compiling `libsprt.a`. Depend `target.mk` on
+  `init-target.mk` itself (`THIS_FILE`). If `arch/setjmp.h` is missing:
+  `rm -f …/intermediate/aarch64-nuttx-none-elf/target.mk` and rerun.
+* `toolchain-libs.cmake` must put `--target=aarch64-none-elf` **inside**
+  `CMAKE_C_FLAGS_INIT`, not only `CMAKE_C_COMPILER_TARGET`. libpng
+  `genout.cmake` runs `clang -E` with `CMAKE_C_FLAGS` alone; without
+  `--target` Xenolith clang defaults to `x86_64-unknown-linux-gnu` and sprt
+  looks up `nuttx_sprt/x86_64_sprt/config.h`. Same pattern as `target-wasm`.
+  If that happens, `rm` the cmake file so `init-target.mk` regenerates it.
+* Sparse `llvm-project` for libcxx needs `LLVM_INCLUDE_TESTS=Off` (no
+  `llvm/utils/llvm-lit`).
+* `CMAKE_SYSTEM_NAME=Generic` for compiler-rt on Darwin (the Darwin cmake
+  path produces empty archives). Compile `emutls.c` **into**
+  `libclang_rt.builtins-aarch64.a` (baremetal builtins omit it). Never a
+  side `libemutls.a`.
+* Generic cmake installs libpng as `liblibpng16_static.a` / `libpng.a`. The
+  inner Makefile stamps on `libpng16.a` — `common/libpng.mk` renames it
+  (same as WASM).
+* Empty `runtime/toolchains/src/<lib>` directories satisfy make's directory
+  target and skip the unpack. `src/freetype` with no `CMakeLists.txt` is
+  this. `rmdir` and re-fetch.
+* The export's `Make.defs` may carry an absolute `-Map=<nuttx-tree>/nuttx.map`.
+  `import-export.mk` does not strip it; consumers that feed `NUTTX_LDFLAGS`
+  into a link must filter `Map=` out.
 
 == See also
 
-* `runtime/toolchains/target-nuttx/README.adoc` — build/run instructions, sysroot layout
-* `NUTTX_TARGET_PLAN.md` (engine root) — original design draft this implements
+* `runtime/toolchains/target-nuttx/README.adoc` — sysroot layout, hosted vs
+  freestanding, license
 * `runtime/libc_wrapper/README.adoc` — hosted vs freestanding umbrella modes

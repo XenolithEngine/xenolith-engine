@@ -95,6 +95,49 @@ CONFIGURE += \
 	-DENABLE_THREADED_RESOLVER=OFF
 endif
 
+ifdef NUTTX
+# NuttX has no FindThreads-friendly try_compile (toolchain-libs.cmake sets
+# CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY so the link-test executable never
+# builds), so find_package(Threads) fails -> ENABLE_THREADED_RESOLVER (curl's
+# default-on option) hits its "Threaded resolver requires POSIX Threads" guard.
+# Disable it explicitly; NuttX's libc has pthreads at the final image link, not
+# at dep-build feature-probe time. Also pin the OpenSSL find module to the
+# just-built archives (FindOpenSSL does not see them via CMAKE_FIND_ROOT_PATH
+# alone) and skip the optional deps the sysroot does not carry yet (libidn2/psl
+# are deferred behind the libuidna/NuttX-network port). HTTP/3 via ngtcp2 is
+# disabled (the engine does TLS over the OpenSSL backend, not QUIC, on NuttX).
+CONFIGURE += \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF \
+	-DCMAKE_USE_PTHREADS_INIT=ON \
+	-DHAVE_THREADS_POSIX=ON \
+	-DUSE_NGTCP2=OFF \
+	-DCURL_CA_BUNDLE=none \
+	-DCURL_CA_PATH=none
+# recv/send detection: curl's check_function_exists probes for recv/send fail
+# under the toolchain's STATIC_LIBRARY default (the probe never links). Pre-fill
+# the POSIX recv/send signature results as cmake cache variables so curl's
+# configure writes HAVE_RECV/HAVE_SEND into curl_config.h; the recv/send symbols
+# resolve against the NuttX libc at the final image link.
+CONFIGURE += \
+	-DHAVE_RECV=1 \
+	-DRECV_TYPE_ARG1=int -DRECV_TYPE_ARG2="void *" -DRECV_TYPE_ARG3=size_t -DRECV_TYPE_ARG4=int -DRECV_TYPE_RETV=ssize_t \
+	-DHAVE_SEND=1 \
+	-DSEND_TYPE_ARG1=int -DSEND_TYPE_ARG2="const void *" -DSEND_TYPE_ARG3=size_t -DSEND_TYPE_ARG4=int -DSEND_TYPE_RETV=ssize_t \
+	-DHAVE_SELECT=1 -DHAVE_POLL=1 -DHAVE_POLL_FINE=1 \
+	-DHAVE_SYS_SELECT_H=1 -DHAVE_POLL_H=1 \
+	-DHAVE_SOCKET=1 \
+	-DHAVE_FCNTL_H=1 -DHAVE_FCNTL=1 \
+	-DHAVE_FCNTL_O_NONBLOCK=1 \
+	-DHAVE_NONBLOCKINGSOCKET=1
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))

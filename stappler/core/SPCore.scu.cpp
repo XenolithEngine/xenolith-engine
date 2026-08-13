@@ -99,7 +99,9 @@ bool initialize(int argc, const char *argv[], int &resultCode) {
 	m.initialized = true;
 	m.pool = pool;
 
-	for (auto &it : m.list) { it.init(it.userdata); }
+	for (auto &it : m.list) {
+		it.init(it.userdata);
+	}
 	return true;
 }
 

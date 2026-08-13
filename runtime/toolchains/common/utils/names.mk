@@ -51,3 +51,9 @@ CONFIGURE_HOST_Darwin_arm64 := aarch64-apple-macosx
 CONFIGURE_HOST_iOS_x86_64 := x86_64-apple-ios
 CONFIGURE_HOST_iOS_aarch64 := aarch64-apple-ios
 CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios
+
+# NuttX: the baremetal aarch64-none-elf triple (LLVM has no "nuttx" OSType).
+# autoconf's config.sub may not know "nuttx" either; most NuttX deps are cmake
+# (which uses --target directly) or have no configure step, so this only needs
+# to satisfy the few autoconf libs that pass --host through config.sub.
+CONFIGURE_HOST_NuttX_aarch64 := aarch64-elf

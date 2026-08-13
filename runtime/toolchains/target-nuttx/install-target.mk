@@ -17,17 +17,29 @@ T_TARGET ?= $(abspath $(MAKE_ROOT))/targets/aarch64-nuttx-none-elf
 $(T_TARGET):
 	mkdir -p $(T_TARGET)/usr/lib $(T_TARGET)/share
 
-# NuttX libs + startup objects (libc.a, libmm.a, ..., head.o / crt0).
-$(T_TARGET)/usr/lib: $(T_INTERMEDIATE)/sysroot/usr/lib | $(T_TARGET)
+# NuttX libs + startup objects (libc.a, libmm.a, ..., head.o / crt0) from the
+# imported sysroot, THEN the cross-built third-party dep archives (libgif,
+# libpng, libjpeg, libz, libfreetype, libharfbuzz, ...) from intermediate/usr/lib
+# (laid out by the Makefile SP_ARCH inner pass). The third-party set is not in
+# sysroot/usr/lib because the sysroot is the raw NuttX export (libc/pthread/mm
+# only); the deps are cross-built separately against that libc.
+$(T_TARGET)/usr/lib: $(T_INTERMEDIATE)/sysroot/usr/lib $(T_INTERMEDIATE)/usr/lib | $(T_TARGET)
 	@mkdir -p $@
-	cp -af $</*.a $@/ 2>/dev/null || true
-	cp -af $</*.o $@/ 2>/dev/null || true
+	cp -af $(T_INTERMEDIATE)/sysroot/usr/lib/*.a $@/ 2>/dev/null || true
+	cp -af $(T_INTERMEDIATE)/sysroot/usr/lib/*.o $@/ 2>/dev/null || true
+	cp -af $(T_INTERMEDIATE)/usr/lib/*.a $@/ 2>/dev/null || true
 
-# NuttX headers (libc, pthread, sched, net, video, ...).
-$(T_TARGET)/usr/include: $(T_INTERMEDIATE)/sysroot/usr/include | $(T_TARGET)
+# NuttX headers (libc, pthread, sched, net, video, ...) from the imported
+# sysroot, THEN the cross-built third-party dep headers (gif_lib.h, png.h,
+# jpeglib.h, freetype2/, harfbuzz/, ...) from intermediate/usr/include.
+$(T_TARGET)/usr/include: $(T_INTERMEDIATE)/sysroot/usr/include $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
-	cp -rf $< $@
+	cp -rf $(T_INTERMEDIATE)/sysroot/usr/include $@
+	# Overlay third-party dep headers (some install into subdirs like freetype2/,
+	# harfbuzz/, webp/, ...). rsync-style merge: copy each entry, recursing into
+	# subdirs but not wiping what the sysroot copy already laid down.
+	cp -rf $(T_INTERMEDIATE)/usr/include/. $@/ 2>/dev/null || true
 
 # resource dir for compiler-rt builtins. Before M2 (no builtins built yet) this
 # is a symlink to the host clang resource dir (so <stdarg.h>, <stddef.h>,
