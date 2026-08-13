@@ -133,6 +133,13 @@ public:
 	virtual bool canHandleEvent(const InputEvent &event) const;
 	virtual InputEventState handleInputEvent(const InputEvent &, float density);
 
+	/* The owner's geometry has just been recomputed, while the pointer stayed where it was.*/
+	virtual InputEventState handleGeometryUpdate(const InputEvent &) {
+		return InputEventState::Declined;
+	}
+
+	virtual bool requiresGeometryUpdate() const { return false; }
+
 	virtual void onEnter(InputListener *);
 	virtual void onExit();
 
@@ -389,12 +396,17 @@ public:
 	virtual bool init(InputCallback &&, InputMouseOverInfo &&);
 
 	virtual InputEventState handleInputEvent(const InputEvent &, float density) override;
+	virtual InputEventState handleGeometryUpdate(const InputEvent &) override;
+	virtual bool requiresGeometryUpdate() const override { return true; }
 
 	virtual void onEnter(InputListener *) override;
 	virtual void onExit() override;
 
 protected:
 	using GestureRecognizer::init;
+
+	// The owner-under-the-pointer test, shared by the event and the geometry paths
+	InputEventState updateMouseOver(const InputEvent &, bool &stateChanged);
 
 	void updateState(const InputEvent &);
 

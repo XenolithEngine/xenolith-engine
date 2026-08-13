@@ -40,7 +40,10 @@ bool HeadlessWindow::init(NotNull<HeadlessContextController> c, Rc<WindowInfo> &
 	return NativeWindow::init(c, move(info), WindowCapabilities::None);
 }
 
-void HeadlessWindow::mapWindow() { }
+void HeadlessWindow::mapWindow() {
+	updateState(0,
+			_info->state | WindowState::Focused | WindowState::Pointer | WindowState::Enabled);
+}
 
 void HeadlessWindow::unmapWindow() { }
 

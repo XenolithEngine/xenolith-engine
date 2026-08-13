@@ -167,9 +167,17 @@ protected:
 
 	void updateWindowState(const State &);
 
+	// Build the HICONs for _info->icon and hand them to the window with WM_SETICON.
+	void setupWindowIcon();
+
 	Rc<WindowClass> _class;
 	HWND _window = nullptr;
 	WideString _wTitle;
+
+	// WM_SETICON does not take ownership, so these are ours to destroy. Kept for the window's
+	// lifetime rather than released after the message: the window keeps using them.
+	HICON _iconBig = nullptr;
+	HICON _iconSmall = nullptr;
 	State _currentState;
 	State _savedState;
 	Extent2 _commitedExtent;

@@ -200,6 +200,30 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	__sprt_memcpy(_wmClass.data(), _info->title.data(), _info->title.size());
 	__sprt_memcpy(_wmClass.data() + _info->title.size() + 1, bundleName.data(), bundleName.size());
 
+	if (_info->icon) {
+		// _NET_WM_ICON is CARDINAL[][2+n]/32: every image contributes its width, its height and
+		// then width*height ARGB words, and they are all concatenated into the one property.
+		size_t words = 0;
+		for (auto &img : _info->icon->images) {
+			if (img.isValid()) {
+				words += 2 + size_t(img.extent.width) * size_t(img.extent.height);
+			}
+		}
+		if (words) {
+			_iconData.resize(words);
+			auto out = _iconData.data();
+			for (auto &img : _info->icon->images) {
+				if (!img.isValid()) {
+					continue;
+				}
+				*out++ = img.extent.width;
+				*out++ = img.extent.height;
+				packIconArgbPremultiplied(img, out);
+				out += size_t(img.extent.width) * size_t(img.extent.height);
+			}
+		}
+	}
+
 	_defaultScreen = _connection->getDefaultScreen();
 
 	_xinfo.parent = _defaultScreen->root;
@@ -288,6 +312,7 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_xinfo.title = _info->title;
 	_xinfo.icon = _info->title;
 	_xinfo.wmClass = _wmClass;
+	_xinfo.iconData = _iconData;
 
 	if (!_connection->createWindow(_info, _xinfo)) {
 		oslog::vperror(__SPRT_LOCATION, "XCB", "Fail to create window");

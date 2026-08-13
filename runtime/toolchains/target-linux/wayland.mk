@@ -47,6 +47,8 @@ WLP_LIST := $(addprefix $(WLP_INSTALL_DIR)/,\
 	xdg-decoration.c \
 	cursor-shape.h \
 	cursor-shape.c \
+	xdg-toplevel-icon-v1.h \
+	xdg-toplevel-icon-v1.c \
 	kde-output-device-v2.h \
 	kde-output-device-v2.c \
 	kde-output-management-v2.h \
@@ -94,6 +96,14 @@ $(WLP_INSTALL_DIR)/cursor-shape.h: $(WLP_SRC_DIR)/staging/cursor-shape/cursor-sh
 	wayland-scanner client-header $< $@
 
 $(WLP_INSTALL_DIR)/cursor-shape.c: $(WLP_SRC_DIR)/staging/cursor-shape/cursor-shape-v1.xml $(WAYLAND_LIB)
+	@$(call rule_mkdir,$(WLP_INSTALL_DIR))
+	wayland-scanner private-code $< $@
+
+$(WLP_INSTALL_DIR)/xdg-toplevel-icon-v1.h: $(WLP_SRC_DIR)/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml $(WAYLAND_LIB)
+	@$(call rule_mkdir,$(WLP_INSTALL_DIR))
+	wayland-scanner client-header $< $@
+
+$(WLP_INSTALL_DIR)/xdg-toplevel-icon-v1.c: $(WLP_SRC_DIR)/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml $(WAYLAND_LIB)
 	@$(call rule_mkdir,$(WLP_INSTALL_DIR))
 	wayland-scanner private-code $< $@
 

@@ -149,6 +149,12 @@ public:
 	// resolver can re-resolve a node whose interactive :hover/:focus/:active state just flipped
 	virtual void handleChildComponentsDirty(Node *child, const ComponentMask &);
 
+	// Settle whatever this system derives from the pointer's position against the owner's current
+	// geometry. A pull, like Node::settleForMeasure: it is called on a node whose visit has not
+	// reached its transform phase yet - or will not this frame, because the node was attached
+	// after the visit passed - by the phase that READS the result. See InputListener
+	virtual void settlePointerState();
+
 	// Lay out the owner's children (requires SystemFlags::HandleLayoutChildren).
 	// Runs after child reorder with the owner's own size and child order fixed;
 	// this is where a layout engine positions and sizes children

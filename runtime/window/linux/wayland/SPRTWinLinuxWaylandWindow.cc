@@ -30,6 +30,8 @@
 #include "SPRTWinLinuxWaylandSoftwareSurface.h"
 #include "../SPRTWinLinuxController.h"
 #include "../SPRTWinLinuxXkbLibrary.h"
+
+#include <sys/mman.h>
 #include "SPRTWinLinuxWaylandKeys.h"
 
 #include <sprt/runtime/window/display_config.h>
@@ -125,6 +127,25 @@ WaylandWindow::~WaylandWindow() {
 
 	_iconMaximized = nullptr;
 	_decors.clear();
+
+	// Order matters: the icon must go before its buffers, or the compositor sees an icon whose
+	// wl_buffer was destroyed first and raises `no_buffer`.
+	if (_icon) {
+		xdg_toplevel_icon_v1_destroy(_icon);
+		_icon = nullptr;
+	}
+	for (auto &it : _iconBuffers) { wl_buffer_destroy(it); }
+	_iconBuffers.clear();
+	if (_iconPool) {
+		wl_shm_pool_destroy(_iconPool);
+		_iconPool = nullptr;
+	}
+	if (_iconMapping) {
+		::munmap(_iconMapping, _iconMappingSize);
+		_iconMapping = nullptr;
+		_iconMappingSize = 0;
+	}
+
 	if (_toplevel) {
 		xdg_toplevel_destroy(_toplevel);
 		_toplevel = nullptr;
@@ -2029,6 +2050,95 @@ void WaylandWindow::applyTransientParent() {
 	}
 }
 
+void WaylandWindow::applyWindowIcon() {
+	if (!_info->icon || !_toplevel || !_display->iconManager || !_display->shm) {
+		return;
+	}
+
+	// add_buffer rejects a non-square buffer with `invalid_buffer`, which is fatal for the whole
+	// client - so filter here rather than trust the source.
+	size_t total = 0;
+	for (auto &img : _info->icon->images) {
+		if (img.isValid()) {
+			total += img.getDataSize();
+		}
+	}
+	if (!total) {
+		return;
+	}
+
+	auto fd = createAnonymousFile(total);
+	if (fd < 0) {
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Fail to allocate icon shared memory of ",
+				total, " bytes");
+		return;
+	}
+
+	auto mapping = ::mmap(nullptr, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (mapping == MAP_FAILED) {
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Fail to map icon shared memory");
+		::close(fd);
+		return;
+	}
+
+	_iconMapping = reinterpret_cast<uint8_t *>(mapping);
+	_iconMappingSize = total;
+
+	// The pool holds its own reference to the file, so the descriptor goes right away. The
+	// mapping itself has to stay: the protocol forbids modifying the backing storage after
+	// add_buffer, which also means it must not be unmapped while the icon lives.
+	_iconPool = wl_shm_create_pool(_display->shm->shm, fd, int32_t(total));
+	::close(fd);
+
+	if (!_iconPool) {
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Fail to create icon wl_shm_pool");
+		return;
+	}
+
+	_icon = xdg_toplevel_icon_manager_v1_create_icon(_display->iconManager);
+	if (!_icon) {
+		return;
+	}
+
+	if (!_info->icon->name.empty()) {
+		// A themed name, where the compositor can resolve one, generally beats our rasters: it
+		// picks up the user's icon theme. The buffers below stay as the fallback.
+		xdg_toplevel_icon_v1_set_name(_icon, _info->icon->name.data());
+	}
+
+	size_t offset = 0;
+	for (auto &img : _info->icon->images) {
+		if (!img.isValid()) {
+			continue;
+		}
+		auto stride = uint32_t(img.extent.width * 4);
+		packIconArgbPremultiplied(img,
+				reinterpret_cast<uint32_t *>(_iconMapping + offset));
+
+		// ARGB, not xRGB: an icon is exactly the case where the alpha channel matters.
+		auto buffer = wl_shm_pool_create_buffer(_iconPool, int32_t(offset),
+				int32_t(img.extent.width), int32_t(img.extent.height), int32_t(stride),
+				WL_SHM_FORMAT_ARGB8888);
+		if (!buffer) {
+			oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Fail to create icon buffer ",
+					img.extent.width);
+			offset += img.getDataSize();
+			continue;
+		}
+
+		// No wl_buffer listener: the protocol says the release event is unused for icon buffers,
+		// and the compositor keeps the buffer for as long as the icon exists.
+		// Scale 1: these are raster sizes, not per-output scaled variants of one logical size.
+		xdg_toplevel_icon_v1_add_buffer(_icon, buffer, 1);
+		_iconBuffers.emplace_back(buffer);
+
+		offset += img.getDataSize();
+	}
+
+	// After this the icon is immutable - no further add_buffer or set_name is legal on it.
+	xdg_toplevel_icon_manager_v1_set_icon(_display->iconManager, _toplevel, _icon);
+}
+
 bool WaylandWindow::initWithServerDecor() {
 	// make server-size decorations
 	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
@@ -2041,6 +2151,7 @@ bool WaylandWindow::initWithServerDecor() {
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
 	applyTransientParent();
+	applyWindowIcon();
 	updateSizeConstraints();
 
 	_serverDecor = zxdg_decoration_manager_v1_get_toplevel_decoration(_display->decorationManager,
@@ -2066,6 +2177,7 @@ bool WaylandWindow::initWithAppDecor() {
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
 	applyTransientParent();
+	applyWindowIcon();
 	updateSizeConstraints();
 
 	if (!_display->viewporter) {

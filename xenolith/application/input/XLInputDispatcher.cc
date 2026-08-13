@@ -228,9 +228,13 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		break;
 	}
 	case InputEventName::MouseMove: {
-		_pointerLocation = event.getLocation();
-
 		EventHandlersInfo handlers{getEventInfo(event)};
+
+		// Where the pointer is, kept for whoever has to re-run a hit test against it later with no
+		// event of their own to do it with - see getPointerEvent()
+		_pointerEvent = handlers.event;
+		_hasPointerEvent = true;
+
 		handlers.addListenersFromStorage(_events);
 		handlers.handle(false);
 

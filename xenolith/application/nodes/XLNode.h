@@ -329,6 +329,14 @@ public:
 	virtual void setEventFlags(NodeEventFlags);
 	virtual NodeEventFlags getEventFlags() const { return _eventFlags; }
 
+	/* Bring the node up to date before it is asked how big it is. */
+	void settleForMeasure();
+
+	void settlePointerState();
+
+	// Raised by a system whose pointer-derived state has to be settled before it is read
+	void markPointerStateDirty() { _pointerStateDirty = true; }
+
 	// Node was added to scene
 	virtual void handleEnter(Scene *);
 
@@ -520,6 +528,20 @@ protected:
 	void handleContentSizeDirty(FrameInfo &);
 	void handleLayoutChildren(FrameInfo &);
 
+	bool runComponentsPhase(FrameInfo &, bool ancestorDirty); // phase 1
+	void runMeasurePhase(FrameInfo &); // phase 2
+	bool runContentSizePhase(FrameInfo &, bool parentResized); // phase 4
+	bool runChildrenPhases(FrameInfo &, bool parentReordered); // phases 5-6
+
+	// Brings FrameInfo::systemStack to the state this node would have seen and takes it back off
+	// again; defined in the .cc, where the rationale is
+	struct VisitCatchUp;
+
+	// Has the frame's pass already run this node's phases? See the .cc.
+	bool isVisitPassed(const FrameInfo &) const;
+
+	void runPendingPhases(FrameInfo &);
+
 	virtual void updateCascadeOpacity();
 	virtual void disableCascadeOpacity();
 	virtual void updateCascadeColor();
@@ -550,10 +572,12 @@ protected:
 	// bumped on every add/remove/reorder of a child - see getChildrenVersion()
 	uint32_t _childrenVersion = 0;
 
+	bool _inPendingPhases = false;
 	bool _contentSizeDirty = true;
 	bool _reorderChildDirty = true;
 	bool _transformDirty = true;
 	bool _measureDirty = false; // opt-in measure phase (see markMeasureDirty)
+	bool _pointerStateDirty = false; // opt-in pull, see settlePointerState
 	bool _layoutChildrenDirty = true; // run handleLayoutChildren on next visit
 	mutable bool _transformCacheDirty = true; // dynamic value
 	mutable bool _transformInverseDirty = true; // dynamic value

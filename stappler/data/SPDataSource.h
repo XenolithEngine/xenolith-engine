@@ -42,12 +42,33 @@ public:
 	using Id = Subscription::Id;
 
 	using BatchCallback = Function<void(Map<Id, Value> &)>;
+
+	// Answers a range of this category's own items. The answer must carry EXACTLY the keys
+	// first..first+size-1: a slice spanning several categories rebases each answer on the smallest
+	// key it returned, so a sparse one silently shifts every value onto the wrong index. An empty
+	// map is a valid answer and completes the request.
 	using BatchSourceCallback = Function<void(const BatchCallback &, Id::Type first, size_t size)>;
 
 	using DataCallback = Function<void(Value &&)>;
 	using DataSourceCallback = Function<void(const DataCallback &, Id)>;
 
 	using RemoveSourceCallback = Function<bool(Id, const Value &)>;
+
+	// Produces this category's children on its first request. Fill `self` in (setChildsCount /
+	// setSubCategories / addSubcategry) and then invoke `complete` EXACTLY ONCE - inline for a
+	// source that can answer immediately, such as a directory walk, later for one that has to
+	// fetch.
+	//
+	// `self` is a parameter rather than something the callback captures on purpose: the callback is
+	// stored IN the Source, so capturing it would build a cycle the Source could never break.
+	using ChildsSourceCallback = Function<void(Source *self, const Function<void()> &complete)>;
+
+	enum class ChildsState {
+		Empty, // no lazy callback: the children are whatever was set explicitly
+		Pending, // there is a callback and it has not run
+		Loading, // the callback ran and its completion has not fired yet
+		Loaded, // the completion fired
+	};
 
 	virtual ~Source();
 
@@ -90,6 +111,22 @@ public:
 	void setChildsCount(size_t count);
 	size_t getChildsCount() const;
 
+	ChildsState getChildsState() const;
+	bool hasChildsSource() const;
+
+	// Runs the lazy-children callback unless it has already run. `onComplete` fires when the
+	// children are available: inline when they already are, at the end of the callback otherwise,
+	// and after the pending load when one is already in flight. The completion also calls
+	// setDirty(), so a subscriber that never called this still learns about the new children.
+	//
+	// Returns true when children were loaded or a load is in flight.
+	bool requestChilds(Function<void()> &&onComplete = nullptr);
+
+	// Drop the loaded children and go back to Pending, so the next requestChilds() reloads. Pending
+	// completions are dropped WITHOUT being called - that is how an owner that is going away
+	// releases a Loading category's hold on it.
+	void resetChilds();
+
 	void setData(const Value &);
 	void setData(Value &&);
 	const Value &getData() const;
@@ -107,6 +144,11 @@ protected:
 	void onSlice(sprt::__malloc_vector<Slice> &, size_t &first, size_t &count, uint32_t l,
 			bool subcats);
 
+	// Recompute the cached global count from the subcategories and the own items. The incremental
+	// paths (addSubcategry, setChildsCount) maintain it themselves; a wholesale replacement of the
+	// subcategories cannot.
+	void updateCount();
+
 	virtual bool initValue();
 	virtual bool initValue(const DataSourceCallback &);
 	virtual bool initValue(const BatchSourceCallback &);
@@ -114,6 +156,8 @@ protected:
 	virtual bool initValue(const ChildsCount &);
 	virtual bool initValue(const Value &);
 	virtual bool initValue(Value &&);
+	virtual bool initValue(const ChildsSourceCallback &);
+	virtual bool initValue(const RemoveSourceCallback &);
 
 	virtual void onSliceRequest(const BatchCallback &, Id::Type first, size_t size);
 
@@ -127,6 +171,10 @@ protected:
 	DataSourceCallback _sourceCallback = nullptr;
 	BatchSourceCallback _batchCallback = nullptr;
 	RemoveSourceCallback _removeCallback = nullptr;
+
+	ChildsSourceCallback _childsCallback = nullptr;
+	Vector<Function<void()>> _childsComplete;
+	ChildsState _childsState = ChildsState::Empty;
 };
 
 } // namespace stappler::data

@@ -48,6 +48,7 @@ public:
 	static constexpr uint32_t kde_output_order_v1_version_supported = 1;
 	static constexpr uint32_t kde_output_management_v2_version_supported = 19;
 	static constexpr uint32_t wp_cursor_shape_manager_v1_version_supported = 1;
+	static constexpr uint32_t xdg_toplevel_icon_manager_v1_version_supported = 1;
 	static constexpr uint32_t wl_data_device_manager_version_supported = 3;
 
 	virtual ~WaylandLibrary();

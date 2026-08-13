@@ -1009,24 +1009,11 @@ InputEventState GestureMouseOverRecognizer::handleInputEvent(const InputEvent &e
 		}
 		break;
 	case InputEventName::MouseMove:
-		if (auto tar = _listener->getOwner()) {
-			auto v = tar->isTouched(event.currentLocation, _info.padding);
-			if (_hasMouseOver != v) {
-				_hasMouseOver = v;
-				stateChanged = true;
-				if (v) {
-					ret = InputEventState::Retain;
-				} else {
-					ret = InputEventState::Release;
-				}
-			} else if (_hasMouseOver) {
-				stateChanged = true;
-			}
-		} else {
-			if (_hasMouseOver) {
-				stateChanged = true;
-				_hasMouseOver = false;
-			}
+		ret = updateMouseOver(event, stateChanged);
+
+		// The pointer moved inside the owner: no transition, but the gesture reports the motion
+		if (ret == InputEventState::Processed && _hasMouseOver) {
+			stateChanged = true;
 		}
 		break;
 	default: break;
@@ -1035,6 +1022,39 @@ InputEventState GestureMouseOverRecognizer::handleInputEvent(const InputEvent &e
 		updateState(event);
 	}
 	return ret;
+}
+
+InputEventState GestureMouseOverRecognizer::updateMouseOver(const InputEvent &event,
+		bool &stateChanged) {
+	auto tar = _listener ? _listener->getOwner() : nullptr;
+
+	// No owner is the same answer as an owner the pointer is nowhere near
+	auto v = tar ? tar->isTouched(event.currentLocation, _info.padding) : false;
+	if (_hasMouseOver == v) {
+		return InputEventState::Processed;
+	}
+
+	_hasMouseOver = v;
+	stateChanged = true;
+
+	/* Retain/Release, not just Processed: a listener the pointer has entered must keep receiving
+	   MouseMove after it stops being touched, or it would never see the one that takes the pointer
+	   off it - InputListener::_shouldProcessEvent hit-tests before delivering. That holds however
+	   the hover began, so the geometry path below reports it exactly the same way. */
+	return v ? InputEventState::Retain : InputEventState::Release;
+}
+
+InputEventState GestureMouseOverRecognizer::handleGeometryUpdate(const InputEvent &event) {
+	bool stateChanged = false;
+	auto ret = updateMouseOver(event, stateChanged);
+	if (stateChanged) {
+		updateState(event);
+	}
+
+	// Nothing to report when the answer did not change: the pointer did not move, so there is no
+	// Moved to send, and returning Processed for every visited node would retain MouseMove
+	// deliveries nobody asked for
+	return stateChanged ? ret : InputEventState::Declined;
 }
 
 void GestureMouseOverRecognizer::onEnter(InputListener *l) {

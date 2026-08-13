@@ -668,6 +668,14 @@ bool XcbConnection::createWindow(const WindowInfo *winfo, XcbWindowInfo &xinfo) 
 		_xcb->xcb_change_property(_connection, XCB_PROP_MODE_REPLACE, xinfo.window,
 				XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8, xinfo.wmClass.size(), xinfo.wmClass.data());
 	}
+	if (!xinfo.iconData.empty()) {
+		// CARDINAL[]/32, so the length is a count of words, not of bytes. The WM picks whichever
+		// of the concatenated images suits the slot it is filling.
+		if (auto a = getAtom(XcbAtomIndex::_NET_WM_ICON)) {
+			_xcb->xcb_change_property(_connection, XCB_PROP_MODE_REPLACE, xinfo.window, a,
+					XCB_ATOM_CARDINAL, 32, uint32_t(xinfo.iconData.size()), xinfo.iconData.data());
+		}
+	}
 
 	char buf[512] = {0};
 	if (::__sprt_gethostname(buf, 512) == 0) {
@@ -815,6 +823,12 @@ WindowCapabilities XcbConnection::getCapabilities() const {
 
 	if (hasCapability(XcbAtomIndex::_NET_WM_BYPASS_COMPOSITOR)) {
 		caps |= WindowCapabilities::FullscreenExclusive;
+	}
+
+	// hasCapability, not getAtom: _NET_WM_ICON is only honored by a WM that advertises it in
+	// _NET_SUPPORTED, and the property is inert (not an error) on one that does not.
+	if (hasCapability(XcbAtomIndex::_NET_WM_ICON)) {
+		caps |= WindowCapabilities::WindowIcon;
 	}
 
 	return caps;

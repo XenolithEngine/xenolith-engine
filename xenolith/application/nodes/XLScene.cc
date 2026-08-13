@@ -110,7 +110,13 @@ void Scene::render(FrameInfo &info) {
 
 	info.input = eventDispatcher->acquireNewStorage();
 
+	// Published for the duration of the visit only: a node attached while a frame is in flight
+	// reaches it through getFrameInfo() and catches up on the phases the visit has already passed.
+	_frameInfo = &info;
+
 	visitDraw(info, NodeVisitFlags::None);
+
+	_frameInfo = nullptr;
 
 	eventDispatcher->commitStorage(_director->getRenderServer(), move(info.input));
 }

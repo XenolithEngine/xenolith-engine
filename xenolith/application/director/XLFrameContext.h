@@ -39,6 +39,7 @@ struct FrameInfo;
 struct FrameContextHandle;
 class InputListenerStorage;
 
+class Node;
 class Scene;
 class Director;
 class FrameStateOwnerInterface;
@@ -194,6 +195,11 @@ struct SP_PUBLIC FrameInfo {
 	mem_pool::Set<const core::AttachmentData *> resolvedInputs;
 
 	FrameContextHandle *currentContext = nullptr;
+
+	// The deepest node the pass has fully entered - the one systemStack describes. Set by
+	// Node::wrapVisit when it pushes that node's systems, and by the mid-frame catch-up when it
+	// reproduces the same state (see Node::isVisitPassed / Node::VisitCatchUp). Non-owning.
+	Node *currentNode = nullptr;
 
 	mem_pool::Vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
 		auto it = systemStack.find(comp->getFrameTag());

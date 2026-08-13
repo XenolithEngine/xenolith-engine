@@ -22,6 +22,7 @@
 
 #include "window/SecondaryWindow.h"
 
+#include "app/AppIcon.h"
 #include "XL2dSceneContent.h"
 #include "XLAppWindow.h"
 #include "XLContext.h"
@@ -66,6 +67,9 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 	info->type = sprt::window::WindowType::Root;
 	info->rect = IRect(0, 0, int32_t(size.width), int32_t(size.height));
 	info->flags = sprt::window::WindowCreationFlags::None;
+	// Same icon as the root window: the `multi-window` layout is where you can see that every
+	// window carries its own, not just the first one.
+	info->icon = getAppIcon();
 	info->appData = sceneInfo;
 
 	ctx->createWindow(sp::move(info));

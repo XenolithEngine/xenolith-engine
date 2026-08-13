@@ -108,6 +108,12 @@ THE SOFTWARE.
 #define __SPRT_WM_DISPLAYCHANGE                0x007E
 #define __SPRT_WM_GETICON                      0x007F
 #define __SPRT_WM_SETICON                      0x0080
+
+/* wParam for WM_GETICON / WM_SETICON */
+#define __SPRT_ICON_SMALL                      0
+#define __SPRT_ICON_BIG                        1
+#define __SPRT_ICON_SMALL2                     2
+
 #define __SPRT_WM_NCCREATE                     0x0081
 #define __SPRT_WM_NCDESTROY                    0x0082
 #define __SPRT_WM_NCCALCSIZE                   0x0083

@@ -20,37 +20,18 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#ifndef TESTS_WINDOW_SRC_APP_APPICON_H_
+#define TESTS_WINDOW_SRC_APP_APPICON_H_
 
-#include "style/XLUiStyleSheet.cc"
-#include "style/XLUiStyleSystem.cc"
-#include "style/XLUiStyleResolver.cc"
+#include "XLWindowInfo.h"
 
-#include "layout/XLUiLayoutSystem.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-#include "atoms/XLUiPanel.cc"
-#include "atoms/XLUiBadge.cc"
+// The application's embedded window icon, decoded on first use and shared by every window this
+// test opens - the root one through the config function, secondary ones through SecondaryWindow.
+// Null if the embedded file did not decode.
+const Rc<WindowIcon> &getAppIcon();
 
-#include "input/XLUiInteractiveComponent.cc"
-#include "input/XLUiButton.cc"
-#include "atoms/XLUiCloseGuardWidget.cc"
-#include "input/XLUiCheckbox.cc"
-#include "input/XLUiTextInput.cc"
+} // namespace stappler::xenolith::app
 
-#include "view/XLUiTreeView.cc"
-
-#include "forms/XLUiFormInputListener.cc"
-#include "forms/XLUiFormSystem.cc"
-#include "forms/XLUiFormAdapters.cc"
-
-#include "dock/XLUiDockTree.cc"
-#include "dock/XLUiDockTab.cc"
-#include "dock/XLUiDockTabBar.cc"
-#include "dock/XLUiDockSplitter.cc"
-#include "dock/XLUiDockFrame.cc"
-#include "dock/XLUiDockDragVisuals.cc"
-#include "dock/XLUiDockSystem.cc"
-
-#include "XLUiSubWindow.cc"
-#include "XLUiSubWindowScene.cc"
-#include "XLUiSubWindowSession.cc"
+#endif // TESTS_WINDOW_SRC_APP_APPICON_H_

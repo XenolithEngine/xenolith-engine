@@ -348,7 +348,9 @@ WindowCapabilities MacosContextController::getCapabilities() const {
 			| WindowCapabilities::FullscreenSeamlessModeSwitch | WindowCapabilities::Fullscreen
 			| WindowCapabilities::ServerSideDecorations | WindowCapabilities::UserSpaceDecorations
 			| WindowCapabilities::CloseGuard | WindowCapabilities::AllowMoveFromMaximized
-			| WindowCapabilities::Subwindows;
+			| WindowCapabilities::Subwindows
+			// The Dock icon, not a per-window icon: macOS has none of the latter.
+			| WindowCapabilities::WindowIcon;
 
 	return caps | getMacosDialogCapabilities();
 }

@@ -26,6 +26,7 @@
 #include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/mode.h>
+#include <sprt/runtime/window/window_icon.h>
 #include <sprt/runtime/stream.h>
 
 namespace sprt::window {
@@ -509,6 +510,12 @@ enum class WindowCapabilities : uint32_t {
 	// bit Modal still blocks input — the OS just does not help, and the application should show
 	// that the window is blocked itself.
 	NativeDialogParenting = 1 << 26,
+
+	// WindowInfo::icon is honored: the platform can take pixel data for the window's OS icon
+	// (taskbar, Alt-Tab, title bar, Dock). Absent where the icon comes from outside the process
+	// instead - the Android manifest, a .desktop file, a Wayland compositor without
+	// xdg_toplevel_icon_v1 - and on the windowless backends.
+	WindowIcon = 1 << 27,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowCapabilities)
@@ -555,6 +562,16 @@ struct SPRT_API WindowInfo final : public Ref {
 	// Insets for decorations, that appears above user-drawing space
 	// Canvas inside this inset always be visible for user
 	Padding decorationInsets;
+
+	// Optional OS icon for this window (taskbar, Alt-Tab, title bar, Dock).
+	//
+	// Consumed exactly once, when the window is created, the same way `title` is - there is no
+	// runtime setter. Shared by Rc, so one decoded icon can serve every window an application
+	// opens. Build one with xenolith::makeWindowIcon; the runtime has no image decoder.
+	//
+	// Dropped by Context::configureWindow where WindowCapabilities::WindowIcon is absent, so a
+	// backend only ever sees an icon it will actually use.
+	Rc<WindowIcon> icon;
 
 	// Opaque application payload, carried unchanged from createWindow() through to the thread that
 	// owns the window's content, and never interpreted by the runtime. It is how an application

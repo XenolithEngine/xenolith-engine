@@ -234,6 +234,13 @@ differs between any two runs.
 
 ## Known pitfalls (Xenolith-specific)
 
+- **`:hover` needs a window that claims focus and a pointer**, not just a
+  `MouseMove`. `GestureMouseOverRecognizer` gates on `WindowState::Focused` +
+  `Pointer`, which a WM normally reports. A headless window says so itself from
+  `mapWindow()` — so an injected `MouseMove` really does raise `:hover`, and the
+  demo text in `tests/window` reads "Focused Pointer Enabled". If hover ever goes
+  quiet in headless again, check that state first: a window at
+  `WindowState::None` silently disables every hover in the scene.
 - **A transparent node hides its children — by design.** Setting a colour with alpha
   (CSS `background-color: transparent`, or `setColor(c, /*withOpacity*/true)`) writes
   that alpha into the node's opacity, and opacity multiplies down the whole subtree,

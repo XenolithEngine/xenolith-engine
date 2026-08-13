@@ -285,6 +285,16 @@ static const wl_registry_listener s_WaylandRegistryListener{
 
 			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
 
+		} else if (iname == StringView(xdg_toplevel_icon_manager_v1_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(xdg_toplevel_icon_manager_v1_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::xdg_toplevel_icon_manager_v1_version_supported, availableVersion);
+
+			display->iconManager = static_cast<struct xdg_toplevel_icon_manager_v1 *>(
+				wl_registry_bind(registry, name, &xdg_toplevel_icon_manager_v1_interface,
+					targetVersion));
+
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
 		} else if (iname == StringView(wl_data_device_manager_interface.name)) {
 			auto availableVersion = sprt::min(version, uint32_t(wl_data_device_manager_interface.version));
 			auto targetVersion = sprt::min(WaylandLibrary::wl_data_device_manager_version_supported, availableVersion);
@@ -314,6 +324,10 @@ WaylandDisplay::~WaylandDisplay() {
 	}
 	if (cursorManager) {
 		wp_cursor_shape_manager_v1_destroy(cursorManager);
+	}
+	if (iconManager) {
+		xdg_toplevel_icon_manager_v1_destroy(iconManager);
+		iconManager = nullptr;
 	}
 	if (xdgWmBase) {
 		xdg_wm_base_destroy(xdgWmBase);
@@ -497,6 +511,10 @@ WindowCapabilities WaylandDisplay::getCapabilities() const {
 
 	if (seat->cursorShape) {
 		caps |= WindowCapabilities::ServerSideCursors;
+	}
+
+	if (iconManager) {
+		caps |= WindowCapabilities::WindowIcon;
 	}
 
 	return caps;

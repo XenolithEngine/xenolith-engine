@@ -91,6 +91,10 @@ public:
 	WindowState getWindowState() const { return _windowState; }
 	bool hasActiveInput() const;
 
+	const InputEvent *getPointerEvent() const {
+		return _hasPointerEvent ? &_pointerEvent : nullptr;
+	}
+
 	// When Director connected to other window, we should update cached WindowState
 	void resetWindowState(WindowState, bool propagate);
 
@@ -143,7 +147,10 @@ protected:
 	Rc<InputListenerStorage> _tmpEvents;
 	Rc<sprt::PoolRef> _pool;
 
-	Vec2 _pointerLocation = Vec2::ZERO;
+	// The last MouseMove, as the dispatcher itself saw it - see getPointerEvent()
+	InputEvent _pointerEvent = InputEvent{};
+	bool _hasPointerEvent = false;
+
 	WindowState _windowState = WindowState::None;
 };
 

@@ -804,6 +804,22 @@ __SPRT_WIN_IMPORT WINAPI UINT MapVirtualKeyW(UINT uCode, UINT uMapType);
 
 __SPRT_WIN_IMPORT WINAPI int MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
 
+// Icon construction (window icons). CreateBitmap/DeleteObject are gdi32, the rest user32.
+//
+// CreateBitmap with nPlanes 1 and nBitCount 32 takes a BGRA pixel array directly - no HDC, no
+// BITMAPINFO, no CreateDIBSection - and the alpha survives into CreateIconIndirect. Note the rows
+// are bottom-up, as for any DDB.
+__SPRT_WIN_IMPORT WINAPI HBITMAP CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount,
+		const VOID *lpBits);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DeleteObject(HANDLE ho);
+
+// The returned HICON is owned by the caller: WM_SETICON does not adopt it, so it must be
+// DestroyIcon'd once the window that uses it is gone.
+__SPRT_WIN_IMPORT WINAPI HICON CreateIconIndirect(PICONINFO piconinfo);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DestroyIcon(HICON hIcon);
+
 #ifdef UNICODE
 #define MessageBox  MessageBoxW
 #endif
