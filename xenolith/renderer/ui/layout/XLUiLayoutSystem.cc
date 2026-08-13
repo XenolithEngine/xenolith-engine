@@ -566,11 +566,16 @@ void LayoutSystem::setGridItem(NotNull<Node> node, const GridItemInfo &info) {
 	node->setComponent<GridItemInfo>(info);
 }
 
+static void LayoutSystem_settleChildren(Node *owner) {
+	for (auto &child : owner->getChildren()) { child->settleForMeasure(); }
+}
+
 void LayoutSystem::apply() {
 	if (!_owner || _inApply) {
 		return;
 	}
 	_inApply = true;
+	LayoutSystem_settleChildren(_owner);
 	if (_mode == LayoutMode::Grid) {
 		layoutGrid();
 	} else {
@@ -654,6 +659,11 @@ void LayoutSystem::handleChildComponentsDirty(Node *child, const ComponentMask &
 }
 
 Size2 LayoutSystem::measureNode(Node *node, const MeasureConstraints &c) {
+	// the node answers with what its style asks for, not with what it was carrying: the systems
+	// iterated below are themselves installed by the style (a nested flex container's LayoutSystem
+	// among them), so this has to happen before the list is read
+	node->settleForMeasure();
+
 	// copy the list - a handler may mutate the node's systems while we iterate
 	auto span = node->getSystems();
 	Vector<Rc<System>> tmpSystems(span.begin(), span.end());
@@ -1002,6 +1012,8 @@ Size2 LayoutSystem::measure(const MeasureConstraints &c) {
 	if (_mode == LayoutMode::Grid) {
 		return _owner->getContentSize();
 	}
+
+	LayoutSystem_settleChildren(_owner);
 
 	auto infoPtr = _owner->getComponent<FlexLayoutInfo>();
 	const FlexLayoutInfo info = infoPtr ? *infoPtr : FlexLayoutInfo();

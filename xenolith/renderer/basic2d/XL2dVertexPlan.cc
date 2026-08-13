@@ -130,21 +130,19 @@ void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input,
 				if (packedCommands > 0) {
 					// write packed blocks
 					auto vertexData = new (pool) VertexDataPlanInfo;
-					vertexData->next = statePlan->packed;
 					vertexData->vertexes = makeSpanView(packedStart, packedCommands);
 					vertexData->zOrder = cmd->zPath;
 					vertexData->depthValue = cmd->depthValue;
 					vertexData->order = orderCounter++;
-					statePlan->packed = vertexData;
+					statePlan->appendPacked(vertexData);
 				}
 
 				auto vertexData = new (pool) VertexDataPlanInfo;
-				vertexData->next = statePlan->instanced;
 				vertexData->vertexes = makeSpanView(&vIt, 1);
 				vertexData->zOrder = cmd->zPath;
 				vertexData->depthValue = cmd->depthValue;
 				vertexData->order = orderCounter++;
-				statePlan->instanced = vertexData;
+				statePlan->appendInstanced(vertexData);
 
 				packedCommands = 0;
 				packedStart = const_cast<InstanceVertexData *>(&vIt + 1);
@@ -157,12 +155,11 @@ void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input,
 		if (packedCommands > 0) {
 			// write packed blocks
 			auto vertexData = new (pool) VertexDataPlanInfo;
-			vertexData->next = statePlan->packed;
 			vertexData->vertexes = makeSpanView(packedStart, packedCommands);
 			vertexData->zOrder = cmd->zPath;
 			vertexData->depthValue = cmd->depthValue;
 			vertexData->order = orderCounter++;
-			statePlan->packed = vertexData;
+			statePlan->appendPacked(vertexData);
 		}
 	}
 }

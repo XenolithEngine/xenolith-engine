@@ -74,6 +74,12 @@ endif
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=
 
+# BundleFS: the window icon ships inside the binary, so it is available before any on-disk
+# resource lookup can work and on every platform without a bundle layout of its own.
+# Its own directory, not `resources` below: that one is rsync'd to disk as well, and there is no
+# reason to carry a second copy of the 480px texture in .rodata.
+LOCAL_EMBED_DIRS := icons
+
 LOCAL_INCLUDES_DIRS :=
 LOCAL_INCLUDES_OBJS := src
 

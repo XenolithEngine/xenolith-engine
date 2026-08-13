@@ -223,6 +223,11 @@ protected:
 	// xdg_toplevel.set_parent for any non-Root window; a no-op for Root and for popups (those get
 	// their parent through xdg_surface.get_popup instead).
 	void applyTransientParent();
+
+	// Build the xdg_toplevel_icon_v1 for _info->icon and attach it to _toplevel. Must run after
+	// the toplevel exists and before anything else could set an icon on it: the protocol makes an
+	// icon immutable the moment set_icon is called.
+	void applyWindowIcon();
 	bool initPopup();
 
 	// Forward the immutable min/max size constraints (WindowInfo::minExtent/maxExtent) to the
@@ -240,6 +245,15 @@ protected:
 	wl_callback *_frameCallback = nullptr;
 	xdg_surface *_xdgSurface = nullptr;
 	xdg_toplevel *_toplevel = nullptr;
+
+	// xdg_toplevel_icon_v1 state. The protocol requires every wl_buffer - and therefore the pool
+	// and its mapping - to stay alive and unmodified for as long as the icon object exists, so all
+	// of it is owned here for the window's lifetime rather than released after set_icon.
+	xdg_toplevel_icon_v1 *_icon = nullptr;
+	wl_shm_pool *_iconPool = nullptr;
+	uint8_t *_iconMapping = nullptr;
+	size_t _iconMappingSize = 0;
+	Vector<wl_buffer *> _iconBuffers;
 	xdg_popup *_popup = nullptr;
 	Extent2 _currentExtent;
 	Extent2 _commitedExtent;

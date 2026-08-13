@@ -58,6 +58,9 @@ public:
 	virtual void renderRequest(const Rc<core::FrameRequestProxy> &, sprt::PoolRef *pool);
 	virtual void render(FrameInfo &info);
 
+	// The frame currently being visited, or null outside render().
+	FrameInfo *getFrameInfo() const { return _frameInfo; }
+
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 
@@ -95,6 +98,9 @@ protected:
 
 	Director *_director = nullptr;
 	SceneContent *_content = nullptr;
+
+	// non-owning; valid only for the duration of visitDraw inside render()
+	FrameInfo *_frameInfo = nullptr;
 
 	Rc<Queue> _queue;
 

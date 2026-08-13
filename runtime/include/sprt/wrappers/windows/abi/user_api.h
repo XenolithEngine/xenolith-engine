@@ -767,6 +767,17 @@ typedef struct tagWNDCLASSW {
 	LPCWSTR lpszClassName;
 } WNDCLASSW, *PWNDCLASSW;
 
+// For an icon (fIcon TRUE) the hot spot is ignored. A 32bpp hbmColor carries its own alpha, so
+// hbmMask only has to exist - an all-zero mask leaves every pixel opaque and lets the alpha
+// channel do the shaping.
+typedef struct _ICONINFO {
+	BOOL fIcon;
+	DWORD xHotspot;
+	DWORD yHotspot;
+	HBITMAP hbmMask;
+	HBITMAP hbmColor;
+} ICONINFO, *PICONINFO;
+
 typedef struct tagSTYLESTRUCT {
 	DWORD styleOld;
 	DWORD styleNew;

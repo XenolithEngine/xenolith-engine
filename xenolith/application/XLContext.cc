@@ -652,6 +652,13 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 		}
 	}
 
+	// Drop an icon the platform will not use, so a backend never has to check the capability
+	// itself and encodeWindowInfo reports what the window actually got. Not a warning: an app is
+	// expected to set an icon unconditionally, and most platforms take it from elsewhere.
+	if (w->icon && !hasFlag(caps, WindowCapabilities::WindowIcon)) {
+		w->icon = nullptr;
+	}
+
 	return true;
 }
 

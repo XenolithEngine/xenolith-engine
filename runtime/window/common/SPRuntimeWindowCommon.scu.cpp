@@ -29,5 +29,6 @@
 #include "SPRuntimeNativeWindow.cc"
 #include "SPRuntimeSoftwareSurface.cc"
 #include "SPRuntimeWindowGApi.cc"
+#include "SPRuntimeWindowIcon.cc"
 #include "SPRuntimeWindowPnpId.cc"
 #include "SPRuntimeWindowSupport.cc"

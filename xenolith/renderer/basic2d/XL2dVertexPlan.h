@@ -100,21 +100,38 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 		uint32_t transformOffset = 0;
 		uint32_t transformCount = 0;
 
-		// traversal order; `packed`/`instanced` are head-insertion lists, so the chain itself is
-		// in reverse command order. Used as the tie-breaker for equal zPaths in flat mode.
+		// traversal order, i.e. the order the scene graph pushed the commands in. The chains below
+		// keep it, so this is only needed as the tie-breaker for equal zPaths in flat mode.
 		uint32_t order = 0;
 	};
 
 	struct StatePlanInfo {
 		const StateData *stateData = nullptr;
 
+		/* Command order IS painter's order, and the chains keep it (append at the tail). */
 		VertexDataPlanInfo *instanced = nullptr;
+		VertexDataPlanInfo *instancedTail = nullptr;
 		VertexDataPlanInfo *packed = nullptr;
+		VertexDataPlanInfo *packedTail = nullptr;
+
+		void appendInstanced(VertexDataPlanInfo *info) { append(instanced, instancedTail, info); }
+		void appendPacked(VertexDataPlanInfo *info) { append(packed, packedTail, info); }
 
 		Vector<const CmdParticleEmitter *> particles;
 
 		uint32_t gradientStart = 0;
 		uint32_t gradientCount = 0;
+
+	private:
+		static void append(VertexDataPlanInfo *&head, VertexDataPlanInfo *&tail,
+				VertexDataPlanInfo *info) {
+			if (tail) {
+				tail->next = info;
+			} else {
+				head = info;
+			}
+			tail = info;
+		}
 	};
 
 	struct MaterialWritePlan {
@@ -191,9 +208,7 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	void pushAll(Context &, WriteTarget &writeTarget);
 
 	// Nothing was submitted this frame: only the prologue quad has to be written.
-	bool isEmpty() const {
-		return globalWritePlan.vertexes == 0 || globalWritePlan.indexes == 0;
-	}
+	bool isEmpty() const { return globalWritePlan.vertexes == 0 || globalWritePlan.indexes == 0; }
 };
 
 } // namespace stappler::xenolith::basic2d

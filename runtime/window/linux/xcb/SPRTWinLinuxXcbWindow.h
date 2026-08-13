@@ -190,6 +190,11 @@ protected:
 
 	String _wmClass;
 
+	// _NET_WM_ICON payload, kept for the window's lifetime like _wmClass: xcb_change_property
+	// copies into the request buffer, but the property is also re-sent whenever the window is
+	// recreated, so the source has to outlive the call.
+	Vector<uint32_t> _iconData;
+
 	Map<MonitorId, ModeInfo> _capturedModes;
 	sprt::bitset<64> _buttons;
 

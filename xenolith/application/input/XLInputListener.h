@@ -56,6 +56,8 @@ public:
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags flags) override;
+	virtual void handleTransformDirty(const Mat4 &) override;
+	virtual void settlePointerState() override;
 
 	virtual void update(const UpdateTime &) override;
 
@@ -113,6 +115,8 @@ public:
 	bool shouldSwallowEvent(const InputEvent &) const;
 	bool canHandleEvent(const InputEvent &event) const;
 	InputEventState handleEvent(const InputEvent &event);
+
+	void updatePointerState();
 
 	// try to set focus on this listener
 	bool setFocused();
@@ -209,6 +213,10 @@ protected:
 	float _touchPadding = 0.0f;
 	float _opacityFilter = 0.0f;
 	bool _hasFocus = false;
+
+	// Whether any recognizer here keeps state derived from a hit test against the owner
+	// (GestureRecognizer::requiresGeometryUpdate) - if none does, there is nothing to settle
+	bool _geometryRecognizers = false;
 
 	Scene *_scene = nullptr;
 

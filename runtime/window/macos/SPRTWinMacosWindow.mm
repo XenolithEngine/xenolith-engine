@@ -301,6 +301,8 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	_window.contentView = _window.contentViewController.view;
 	_window.title = [NSString stringWithCString:_info->title.data() encoding:NSUTF8StringEncoding];
 
+	applyWindowIcon();
+
 	_initialized = true;
 
 	// Hold a self-ref until notifyWindowCreated retains us: otherwise loadWindow's temporary Rc
@@ -311,6 +313,48 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		handleWindowLoaded();
 	}
 	return true;
+}
+
+void MacosWindow::applyWindowIcon() {
+	// App-wide, so only a Root window may claim it: an auxiliary window setting the Dock icon
+	// would be surprising, and the first Root window wins by construction.
+	if (!_info->icon || _info->type != WindowType::Root) {
+		return;
+	}
+
+	// The largest raster: the Dock renders big, and AppKit downscales far better than we could
+	// pick a size here.
+	auto img = _info->icon->getBestImage(Max<uint32_t>);
+	if (!img) {
+		return;
+	}
+
+	auto width = NSInteger(img->extent.width);
+	auto height = NSInteger(img->extent.height);
+
+	// Straight (unpremultiplied) RGBA is exactly WindowIconImage's contract, so AppKit takes the
+	// bytes as they are - this is the one backend that needs no conversion.
+	auto *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr
+														pixelsWide:width
+														pixelsHigh:height
+													 bitsPerSample:8
+												   samplesPerPixel:4
+														  hasAlpha:YES
+														  isPlanar:NO
+													colorSpaceName:NSDeviceRGBColorSpace
+													  bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
+													   bytesPerRow:width * 4
+													  bitsPerPixel:32];
+	if (!rep) {
+		return;
+	}
+
+	memcpy([rep bitmapData], img->data.data(), img->getDataSize());
+
+	auto *image = [[NSImage alloc] initWithSize:NSMakeSize(CGFloat(width), CGFloat(height))];
+	[image addRepresentation:rep];
+
+	[NSApp setApplicationIconImage:image];
 }
 
 void MacosWindow::attachToParentWindow() {

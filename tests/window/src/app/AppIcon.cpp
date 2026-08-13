@@ -21,36 +21,33 @@
  **/
 
 #include "XLCommon.h" // IWYU pragma: keep
+#include "XLContextInfo.h"
+#include "XLEntryPoint.h"
+#include "XLWindowInfo.h"
 
-#include "style/XLUiStyleSheet.cc"
-#include "style/XLUiStyleSystem.cc"
-#include "style/XLUiStyleResolver.cc"
+#include "app/AppIcon.h"
 
-#include "layout/XLUiLayoutSystem.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-#include "atoms/XLUiPanel.cc"
-#include "atoms/XLUiBadge.cc"
+// The icon lives in .rodata via BundleFS (LOCAL_EMBED_DIRS := icons), so it resolves with no
+// on-disk bundle, no working directory and no platform-specific resource layout - which is what
+// makes it usable from the config function, before anything else has started.
+static constexpr StringView s_appIconPath("icons/app-icon.png");
 
-#include "input/XLUiInteractiveComponent.cc"
-#include "input/XLUiButton.cc"
-#include "atoms/XLUiCloseGuardWidget.cc"
-#include "input/XLUiCheckbox.cc"
-#include "input/XLUiTextInput.cc"
+const Rc<WindowIcon> &getAppIcon() {
+	// Decoded once and shared by every window: makeWindowIcon resamples the source to the whole
+	// size ladder, which is not work to repeat per window.
+	static Rc<WindowIcon> s_icon =
+			makeWindowIcon(FileInfo{s_appIconPath, FileCategory::Embedded});
+	return s_icon;
+}
 
-#include "view/XLUiTreeView.cc"
+DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
+	if (!cfg.window) {
+		cfg.window = Rc<sprt::window::WindowInfo>::alloc();
+	}
 
-#include "forms/XLUiFormInputListener.cc"
-#include "forms/XLUiFormSystem.cc"
-#include "forms/XLUiFormAdapters.cc"
+	cfg.window->icon = getAppIcon();
+});
 
-#include "dock/XLUiDockTree.cc"
-#include "dock/XLUiDockTab.cc"
-#include "dock/XLUiDockTabBar.cc"
-#include "dock/XLUiDockSplitter.cc"
-#include "dock/XLUiDockFrame.cc"
-#include "dock/XLUiDockDragVisuals.cc"
-#include "dock/XLUiDockSystem.cc"
-
-#include "XLUiSubWindow.cc"
-#include "XLUiSubWindowScene.cc"
-#include "XLUiSubWindowSession.cc"
+} // namespace stappler::xenolith::app

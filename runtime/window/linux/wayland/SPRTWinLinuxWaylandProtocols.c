@@ -34,5 +34,6 @@
 #include <wayland-protocols/kde-output-order-v1.c>
 #include <wayland-protocols/kde-output-management-v2.c>
 #include <wayland-protocols/cursor-shape.c>
+#include <wayland-protocols/xdg-toplevel-icon-v1.c>
 
 #endif

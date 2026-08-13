@@ -93,6 +93,7 @@ void System::handleChildMeasure(Node *child) { }
 void System::handleChildLayoutChildren(Node *child) { }
 void System::handleChildComponentsDirty(Node *child, const ComponentMask &) { }
 void System::handleLayoutChildren() { }
+void System::settlePointerState() { }
 
 bool System::isRunning() const { return _running; }
 

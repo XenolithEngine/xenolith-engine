@@ -75,6 +75,10 @@ struct XcbWindowInfo {
 	StringView icon;
 	StringView wmClass;
 
+	// _NET_WM_ICON payload: per image, [width, height, width*height premultiplied ARGB words],
+	// all images concatenated. Non-owning - the window keeps the storage alive.
+	SpanView<uint32_t> iconData;
+
 	bool overrideClose = true;
 	bool enableSync = false;
 	bool closed = false;

@@ -245,6 +245,85 @@ re-entrancy guard no longer suppresses it. A real size change therefore costs on
 extra settle frame before it converges (guaranteed to terminate by
 `setContentSize`'s equal-size early-out). Steady state is unchanged.
 
+## Joining the tree after the pass went by
+
+The pipeline above assumes a node is in place when the visit starts. A node
+attached later joins *behind* the pass: the phases that would have styled, sized
+and laid it out have already gone past its place in the tree, and its ancestors
+have already measured and laid out without it. Left alone it is a frame behind —
+drawn once with no style, at whatever size it happened to carry — and everything
+above it settles on the next frame.
+
+There is no separate notification for this, and no second implementation of the
+pipeline. Each phase has exactly one body — `Node::runComponentsPhase`,
+`runMeasurePhase`, `runContentSizePhase`, `runChildrenPhases` — and both passes
+call it: the ordinary visit (`processParentFlags` + `wrapVisit`) and the catch-up
+(`runPendingPhases`). They differ only in what they inherit from the parent's
+pass, which is what the arguments carry; a catch-up has no parent pass and passes
+`false`. So a descendant's components / content-size events reach the ancestor
+systems on `info.systemStack` exactly as they would have during the visit:
+
+* **`Scene::getFrameInfo()`** is non-null for the duration of `visitDraw` inside
+  `render()`, and **`FrameInfo::currentNode`** says where the pass has got to: it
+  is the deepest node the pass has fully entered, the one `systemStack` describes,
+  set by `wrapVisit` at the moment it pushes that node's systems.
+* **`Node::isVisitPassed()`** is the gate. It holds when `currentNode` is the node
+  or one of its ancestors — which means two things at once: the pass has already
+  run that node's phases, *and* what is on `systemStack` is a prefix of the node's
+  own chain. Anywhere else there is nothing to catch up (the pass has not arrived,
+  and will run the phases in the ordinary order) and nothing safe to catch up
+  against, so the whole mechanism is skipped — an ordinary scene build pays for
+  none of it.
+* **`Node::VisitCatchUp`** brings `systemStack` to what the node would have seen,
+  by *pushing* the ancestors between `currentNode` and the node — the prefix
+  property is what makes pushing alone enough, with nothing foreign to remove —
+  and pops them again afterwards. Delivering a catch-up's child events against a
+  stack belonging to some other branch would hand them to a system that is not the
+  node's ancestor at all.
+* **`Node::handleEnter`** does the catch-up when the gate opens, and splits it in
+  the two directions the ordinary pass uses. On the way *down*, before the child cascade,
+  the components phase alone — style cascades downward, and a container has to
+  have been resolved (become a flex container, publish its custom properties)
+  before the children below map their own item properties onto it. On the way
+  *out*, at the tail, `runPendingPhases()` — measure, content size, reorder,
+  layout children — because size and layout resolve upward, so a container lays
+  out against children that already carry their style and their size. Between the
+  two it pushes its own systems and makes itself `currentNode`, exactly as
+  `wrapVisit` does before visiting children, so the subtree entering below sees
+  the chain it would have seen; both come back off before its own phases run.
+* **`Node::addChildNode`** re-runs the *parent's* measure and layout when a child
+  arrives mid-visit: both answers describe a child list the node no longer has.
+  `markMeasureDirty()` is self-selecting — a node with no measuring system and no
+  `MeasureComponent` commits no size.
+* **`Node::settleForMeasure()`** covers the node that joined *between* frames,
+  which the above cannot see. A container measures its children from its own
+  phases, before any of them is visited, so it would ask an unstyled child how big
+  it is; a child asked for a size settles its own components phase first. The ui
+  `LayoutSystem` calls it in `apply()`, in `measure()` and in `measureNode()`. For
+  a node that is up to date — every node, in the steady state — it is one flag
+  read.
+* **`Node::settlePointerState()`** is the same shape, for what a system derives
+  from a hit test against its owner — `:hover` above all. That is settled in the
+  transform phase, which a catch-up does not have, and the components phase right
+  after *reads* it when it resolves the style. So the components phase pulls it
+  first: `runComponentsPhase` calls it as its own first statement, in the visit and
+  in the catch-up alike, and a flip re-dirties the components the loop below is
+  already written to absorb. Without it a node attached under a motionless cursor
+  is drawn one whole frame as if the cursor were somewhere else. Opt-in the same
+  way: only a system with such state to keep raises the flag
+  (`InputListener::handleEnter`, when it carries a recognizer whose
+  `requiresGeometryUpdate()` holds), so every other node pays one flag read.
+
+The transform phase and the model-matrix rebuild are the visit's alone and stay
+inline in `processParentFlags`: both need the parent's final world matrix, which
+only a top-down pass has. What the catch-up settles is
+what a node *is* — its style, its size, the order and layout of its own children —
+not where it sits. The pointer-state pull above is not an exception to that: it
+needs no parent matrix, because `isTouched` walks the parent chain itself.
+
+`_inPendingPhases` guards a node against re-entering *itself*; nested attaches
+made from a handler run their own catch-up normally.
+
 ## System dispatch order (priority)
 
 Within a node, systems are dispatched in ascending **priority** — a lower

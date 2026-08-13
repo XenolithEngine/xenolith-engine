@@ -198,7 +198,7 @@ WindowCapabilities WindowsContextController::getCapabilities() const {
 			| WindowCapabilities::EnabledState | WindowCapabilities::UserSpaceDecorations
 			| WindowCapabilities::GripGuardsRequired | WindowCapabilities::AllowMoveFromMaximized
 			| WindowCapabilities::DemandsAttentionState | WindowCapabilities::Subwindows
-			| getWindowsDialogCapabilities();
+			| WindowCapabilities::WindowIcon | getWindowsDialogCapabilities();
 }
 
 WindowClass *WindowsContextController::acquuireWindowClass(WideStringView str) {

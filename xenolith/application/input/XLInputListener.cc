@@ -109,6 +109,10 @@ void InputListener::handleEnter(Scene *scene) {
 		}
 		it->onEnter(this);
 	}
+
+	if (_geometryRecognizers && _owner) {
+		_owner->markPointerStateDirty();
+	}
 }
 
 void InputListener::handleExit() {
@@ -138,6 +142,52 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 			info.input->addListener(this, g, sp::move(layer));
 		} else {
 			info.input->addListener(this, g, WindowLayer(_windowLayer));
+		}
+	}
+}
+
+void InputListener::handleTransformDirty(const Mat4 &parentTransform) {
+	System::handleTransformDirty(parentTransform);
+
+	/* The transform phase, not the visit: this runs BEFORE the owner's components phase, so a
+	   hover that starts here is a hover the frame's styling, measurement and layout are all
+	   decided with. Learning about it any later means a frame drawn as if the pointer were
+	   somewhere else.
+
+	   Content size needs no hook of its own - setContentSize() dirties the transform as well,
+	   because the anchor offset is a function of the size. */
+	updatePointerState();
+}
+
+void InputListener::settlePointerState() { updatePointerState(); }
+
+void InputListener::updatePointerState() {
+	// _enabled among them: a listener the visit does not even register receives no MouseMove, so
+	// it has no business acquiring a hover from its geometry either
+	if (!_geometryRecognizers || !_running || !_enabled || !_owner) {
+		return;
+	}
+
+	auto director = _owner->getDirector();
+	if (!director) {
+		return;
+	}
+
+	auto dispatcher = director->getInputDispatcher();
+	auto pointer = dispatcher->getPointerEvent();
+	if (!pointer || !hasFlag(dispatcher->getWindowState(), WindowState::Pointer)) {
+		return;
+	}
+
+	for (auto &it : _recognizers) {
+		if (!_running || !_owner) {
+			break;
+		}
+
+		switch (it->handleGeometryUpdate(*pointer)) {
+		case InputEventState::Retain: retainEvent(InputEventName::MouseMove); break;
+		case InputEventState::Release: releaseEvent(InputEventName::MouseMove); break;
+		default: break;
 		}
 	}
 }
@@ -497,10 +547,18 @@ void InputListener::addEventMask(const EventMask &mask) {
 GestureRecognizer *InputListener::addRecognizer(GestureRecognizer *rec) {
 	addEventMask(rec->getEventMask());
 	auto ret = _recognizers.emplace_back(rec).get();
+	if (ret->requiresGeometryUpdate()) {
+		_geometryRecognizers = true;
+	}
 	if (_running) {
 		ret->onEnter(this);
 		if (ret->requiresUpdate()) {
 			scheduleUpdate();
+		}
+		if (ret->requiresGeometryUpdate() && _owner) {
+			// Added to a listener already on screen: its owner HAS geometry, but this recognizer
+			// has never been told the pointer's position
+			_owner->markPointerStateDirty();
 		}
 	}
 	return ret;

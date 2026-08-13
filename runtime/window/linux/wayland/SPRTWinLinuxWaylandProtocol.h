@@ -108,6 +108,7 @@ extern struct wl_interface wl_data_device_manager_interface;
 #include <wayland-protocols/kde-output-order-v1.h>
 #include <wayland-protocols/kde-output-management-v2.h>
 #include <wayland-protocols/cursor-shape.h>
+#include <wayland-protocols/xdg-toplevel-icon-v1.h>
 
 #if defined(XL_WAYLAND_DEBUG) && defined(DEBUG)
 #define XL_WAYLAND_DEBUG 1

@@ -93,6 +93,79 @@ WindowsWindow::~WindowsWindow() {
 		DestroyWindow(_window);
 		_window = nullptr;
 	}
+	// After DestroyWindow: the window is what was using them.
+	if (_iconBig) {
+		DestroyIcon(_iconBig);
+		_iconBig = nullptr;
+	}
+	if (_iconSmall) {
+		DestroyIcon(_iconSmall);
+		_iconSmall = nullptr;
+	}
+}
+
+// One HICON from one raster. Returns null if the image is unusable, which the caller treats as
+// "no icon at this size" rather than as a failure.
+static HICON WindowsWindow_makeIcon(const WindowIconImage &img) {
+	if (!img.isValid()) {
+		return nullptr;
+	}
+
+	Vector<uint8_t> color;
+	color.resize(img.getDataSize());
+	packIconBgraPremultipliedBottomUp(img, color.data());
+
+	auto hbmColor = CreateBitmap(int(img.extent.width), int(img.extent.height), 1, 32, color.data());
+	if (!hbmColor) {
+		return nullptr;
+	}
+
+	// A 1bpp all-zero mask: with a 32bpp color bitmap the alpha channel does the shaping, and the
+	// mask only has to be present. Rows are DWORD-aligned, hence the rounding.
+	Vector<uint8_t> mask;
+	mask.resize(size_t((img.extent.width + 31) / 32 * 4) * img.extent.height, uint8_t(0));
+
+	auto hbmMask = CreateBitmap(int(img.extent.width), int(img.extent.height), 1, 1, mask.data());
+	if (!hbmMask) {
+		DeleteObject(hbmColor);
+		return nullptr;
+	}
+
+	ICONINFO info = {};
+	info.fIcon = TRUE;
+	info.hbmColor = hbmColor;
+	info.hbmMask = hbmMask;
+
+	auto icon = CreateIconIndirect(&info);
+
+	// CreateIconIndirect copies the bitmaps, so they are ours to free either way.
+	DeleteObject(hbmColor);
+	DeleteObject(hbmMask);
+	return icon;
+}
+
+void WindowsWindow::setupWindowIcon() {
+	if (!_info->icon || !_window) {
+		return;
+	}
+
+	// Windows wants two: the large one for Alt-Tab and the taskbar, the small one for the title
+	// bar and the task list. The system metrics are DPI-scaled, so this follows the display.
+	auto bigSize = uint32_t(GetSystemMetrics(SM_CXICON));
+	auto smallSize = uint32_t(GetSystemMetrics(SM_CXSMICON));
+
+	if (auto img = _info->icon->getBestImage(bigSize)) {
+		_iconBig = WindowsWindow_makeIcon(*img);
+		if (_iconBig) {
+			SendMessageW(_window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(_iconBig));
+		}
+	}
+	if (auto img = _info->icon->getBestImage(smallSize)) {
+		_iconSmall = WindowsWindow_makeIcon(*img);
+		if (_iconSmall) {
+			SendMessageW(_window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(_iconSmall));
+		}
+	}
 }
 
 bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&info) {
@@ -228,6 +301,8 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 
 	if (_window) {
 		SetWindowLongPtrW(_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+
+		setupWindowIcon();
 
 		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 			// To force-enable rounded corners and shadows - uncomment this

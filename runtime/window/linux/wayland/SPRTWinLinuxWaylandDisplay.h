@@ -107,6 +107,9 @@ struct SPRT_API WaylandDisplay : public Ref {
 	wp_viewporter *viewporter = nullptr;
 	xdg_wm_base *xdgWmBase = nullptr;
 	wp_cursor_shape_manager_v1 *cursorManager = nullptr;
+	// Optional: a compositor without xdg_toplevel_icon_v1 (GNOME as of today) simply never
+	// advertises the global, and WindowCapabilities::WindowIcon stays off.
+	xdg_toplevel_icon_manager_v1 *iconManager = nullptr;
 	zxdg_decoration_manager_v1 *decorationManager = nullptr;
 	Set<wl_surface *> surfaces;
 	Set<wl_surface *> decorations;

@@ -61,3 +61,5 @@ EXPORTS
 	TrackMouseEvent
 	MapVirtualKeyW
 	MessageBoxW
+	CreateIconIndirect
+	DestroyIcon

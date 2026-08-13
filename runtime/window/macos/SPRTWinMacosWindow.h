@@ -115,6 +115,12 @@ protected:
 	virtual void setCursor(WindowCursor) override;
 
 	void applyAuxiliaryPlacement();
+
+	// Apply _info->icon as the application's Dock icon. macOS has no per-window icon - NSWindow's
+	// is the proxy icon of a represented file - so this is app-wide and only a Root window does
+	// it. The static icon still belongs in the bundle's .icns (LOCAL_MACOS_ICON).
+	void applyWindowIcon();
+
 	void attachToParentWindow();
 	void detachFromParentWindow();
 	void installPopupDismissMonitor();
