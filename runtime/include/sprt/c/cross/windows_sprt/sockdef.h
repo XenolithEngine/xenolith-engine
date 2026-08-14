@@ -1,7 +1,8 @@
 // clang-format off
 // Portable core socket constants, namespaced (__SPRT_*) so they are safe to include on
 // every build; <sys/socket.h> expands the public names from these, and each is
-// static_asserted against the native header in SPRuntimeCSysSocket.cpp.
+// static_asserted against the native header in SPRuntimeCSysSocket.cpp (hosted targets)
+// or against the Windows SDK in tests/libc/windows-abi (this one).
 #define __SPRT_SHUT_RD        0
 #define __SPRT_SHUT_WR        1
 #define __SPRT_SHUT_RDWR      2
@@ -95,7 +96,7 @@
 #define __SPRT_SO_KEEPALIVE   0x0008
 #define __SPRT_SO_OOBINLINE   0x0100
 #define __SPRT_SO_LINGER      0x0080
-#define __SPRT_SO_REUSEPORT   0x0200
+
 #define __SPRT_SO_DEBUG            0x0001
 #define __SPRT_SO_ACCEPTCONN       0x0002
 #define __SPRT_SO_USELOOPBACK      0x0040
@@ -125,18 +126,16 @@
 #define __SPRT_MSG_DONTROUTE  0x4
 #define __SPRT_MSG_CTRUNC     0x0200        // native Winsock value (ws2def.h)
 #define __SPRT_MSG_TRUNC      0x0100        // native Winsock value (ws2def.h)
-#define __SPRT_MSG_DONTWAIT   0x0040        // POSIX-only; emulated, no Winsock bit
-#define __SPRT_MSG_EOR        0x0080        // POSIX-only; emulated, no Winsock bit
 #define __SPRT_MSG_WAITALL    0x8           // native Winsock value (winsock2.h)
-#define __SPRT_MSG_NOSIGNAL   0x4000
+#define __SPRT_MSG_NOSIGNAL   0
 #define __SPRT_MSG_MAXIOVLEN   16
 #define __SPRT_MSG_PARTIAL     0x8000
 
 #define __SPRT_SOMAXCONN      0x7fffffff
 
 #define __SPRT_SOL_SOCKET 0xffff
-#define __SPRT_SOL_IP          (__SPRT_SOL_SOCKET - 4)
-#define __SPRT_SOL_IPV6        (__SPRT_SOL_SOCKET - 5)
+#define __SPRT_SOL_IP          0
+#define __SPRT_SOL_IPV6        41
 
 #define __SPRT_IP6T_SO_ORIGINAL_DST __SPRT_SO_ORIGINAL_DST
 

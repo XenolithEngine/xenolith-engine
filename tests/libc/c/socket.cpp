@@ -201,6 +201,41 @@ void performSocketStreamTest() {
 	printf("server->client=%lld recv=%lld data=[%.*s]\n", ll(s2c), ll(s2cr),
 			(int)(s2cr > 0 ? s2cr : 0), buf);
 
+	// The two constants portable code reaches for that Winsock has no spelling of. Both are
+	// supposed to work here unchanged, and both fail only at run time when they do not:
+	//   - SOL_IP has to BE the IP protocol number (0), the setsockopt() level winsock,
+	//     Linux and BSD all expect. Deriving it from SOL_SOCKET, as this table once did,
+	//     compiles everywhere and then fails every call with WSAEINVAL;
+	//   - MSG_NOSIGNAL asks send() to suppress a signal Windows does not have, so the flag
+	//     word that carries it must be one winsock accepts - zero. Winsock fails send()
+	//     with WSAEOPNOTSUPP for any bit it does not recognize, and curl passes this flag
+	//     on every send it makes.
+	// Darwin spells neither name; fall back the way portable code does so the output of
+	// this test stays identical on every target.
+#ifdef SOL_IP
+	const int ipLevel = SOL_IP;
+#else
+	const int ipLevel = IPPROTO_IP;
+#endif
+#ifdef MSG_NOSIGNAL
+	const int noSignal = MSG_NOSIGNAL;
+#else
+	const int noSignal = 0;
+#endif
+	int ttl = 64;
+	int sttl = setsockopt(cli, ipLevel, IP_TTL, (sockdata_t *)&ttl, sizeof(ttl));
+	int ttlBack = 0;
+	socklen_t ttlLen = sizeof(ttlBack);
+	int gttl = getsockopt(cli, ipLevel, IP_TTL, (sockdata_t *)&ttlBack, &ttlLen);
+	printf("setsockopt(SOL_IP,IP_TTL)=%d getsockopt=%d readback==64=%d\n", sttl, gttl,
+			ttlBack == 64);
+
+	long long ns = send(cli, "nosig", 5, noSignal);
+	::memset(buf, 0, sizeof(buf));
+	long long nsr = recv(acc, buf, sizeof(buf), 0);
+	printf("send(MSG_NOSIGNAL)=%lld recv=%lld data=[%.*s]\n", ll(ns), ll(nsr),
+			(int)(nsr > 0 ? nsr : 0), buf);
+
 	printf("shutdown=%d\n", shutdown(cli, SHUT_WR));
 	printf("close acc=%d cli=%d srv=%d\n", closesocket(acc), closesocket(cli), closesocket(srv));
 }

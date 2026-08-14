@@ -70,13 +70,6 @@ SPRT_LOCAL void terminate();
 } // namespace sprt::filesystem
 
 
-namespace sprt::unicode {
-
-SPRT_LOCAL bool idnToAscii(const callback<void(StringView)> &, StringView source);
-SPRT_LOCAL bool idnToUnicode(const callback<void(StringView)> &, StringView source);
-
-} // namespace sprt::unicode
-
 #if SPRT_WINDOWS
 #include <sprt/runtime/stringview.h>
 

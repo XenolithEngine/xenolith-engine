@@ -216,58 +216,6 @@ bool caseCompare(WideStringView l, WideStringView r, int *result) {
 	return false;
 }
 
-bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
-	bool ret = false;
-	unicode::toUtf16([&](WideStringView usource) {
-		auto bufSize = IdnToAscii(0, (wchar_t *)usource.data(), usource.size(), nullptr, 0);
-		if (bufSize == 0) {
-			return;
-		}
-
-		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-
-		bufSize = IdnToAscii(0, (wchar_t *)usource.data(), usource.size(), (wchar_t *)buf,
-				bufSize + 1);
-		if (bufSize == 0) {
-			__sprt_freea(buf);
-			return;
-		}
-
-		buf[bufSize] = 0;
-		unicode::toUtf8(cb, WideStringView(buf, bufSize));
-
-		__sprt_freea(buf);
-		ret = true;
-	}, source);
-	return ret;
-}
-
-bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
-	bool ret = false;
-	unicode::toUtf16([&](WideStringView usource) {
-		auto bufSize = IdnToUnicode(0, (wchar_t *)usource.data(), usource.size(), nullptr, 0);
-		if (bufSize == 0) {
-			return;
-		}
-
-		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-
-		bufSize = IdnToUnicode(0, (wchar_t *)usource.data(), usource.size(), (wchar_t *)buf,
-				bufSize + 1);
-		if (bufSize == 0) {
-			__sprt_freea(buf);
-			return;
-		}
-
-		buf[bufSize] = 0;
-		unicode::toUtf8(cb, WideStringView(buf, bufSize));
-
-		__sprt_freea(buf);
-		ret = true;
-	}, source);
-	return ret;
-}
-
 } // namespace sprt::unicode
 
 namespace sprt::platform {

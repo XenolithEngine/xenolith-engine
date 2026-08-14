@@ -1,0 +1,130 @@
+= Unicode tables for the UTS-46 (IDNA) engine
+
+The four `SPRuntimeIdnData*.cc` files in this directory are **generated**. Do not
+edit them by hand — run `gen-tables.py` and commit its output.
+
+They are `.cc` subunits, so the build never compiles them on their own; they are
+`#include`d by `runtime/src/idn/SPRuntimeIdnUts46.cpp`. That is deliberate: the
+tries are parsed into `constexpr` objects at compile time, which only works if the
+arrays are visible in the same translation unit.
+
+== What is in them
+
+[cols="1,1,4"]
+|===
+| File | Size | Contents
+
+| `SPRuntimeIdnDataNorm.cc`
+| 58 KiB
+| The UTS-46 mapping and NFC composition data: a `UCPTrie` over the `norm16`
+  values, the mapping/composition extra data, the small-FCD table and the
+  `norm16` thresholds.
+
+| `SPRuntimeIdnDataProps.cc`
+| 44 KiB
+| `UTrie2` over the General_Category property. UTS-46 asks it one question — does
+  a label start with a combining mark.
+
+| `SPRuntimeIdnDataBidi.cc`
+| 25 KiB
+| `UTrie2` over Bidi_Class and Joining_Type, for the Bidi Rule (RFC 5893) and
+  CheckContextJ.
+
+| `SPRuntimeIdnDataScript.cc`
+| 91 KiB
+| `UTrie2` over the property vectors plus the Script_Extensions table, for the
+  CheckContextO rules. This is 42% of the total for five script identities
+  (Greek, Hebrew, Hiragana, Katakana, Han) — see "Shrinking" below.
+|===
+
+Total: **218 KiB** of read-only data, in every binary that links the runtime (the
+build links objects directly and does not `--gc-sections`, so nothing is dropped
+for an application that never calls `sprt::idn`).
+
+== Current version
+
+**Unicode 14.0.0**, from ICU4C 70.
+
+The version is also compiled in as `sprt::idn::detail::s_unicodeVersion`, read out
+of the data itself rather than written down by hand, so it cannot drift from the
+tables.
+
+== Regenerating
+
+The pipeline is ICU → libuidna → this directory. libuidna
+(https://github.com/SBKarr/libuidna) is an ICU extract that carries the tables as
+plain C arrays; `runtime/toolchains/src.mk` already clones it into
+`runtime/toolchains/src/libuidna` as the reference source.
+
+[source,sh]
+----
+# refresh the reference checkout, then:
+python3 runtime/src/idn/data/gen-tables.py
+# or, against a checkout elsewhere:
+python3 runtime/src/idn/data/gen-tables.py /path/to/libuidna --out runtime/src/idn/data
+----
+
+The script prints the Unicode version it found. **Update the version above, and
+re-run the conformance suite** (`runtimetest runtime_idn_conformance`) against the
+matching `IdnaTestV2.txt` — a table refresh without a conformance re-run is how a
+silently-wrong mapping gets in.
+
+To move to a newer Unicode, libuidna itself has to be re-extracted from a newer
+ICU first; that is upstream work, not something this script does.
+
+=== What the script does, and why
+
+Three of the four outputs are a straight rename of an ICU array. The fourth is not.
+
+Upstream ships the serialized ICU `uts46.nrm` container as a single `uint8_t`
+blob and takes it apart at run time with `reinterpret_cast` — which cannot happen
+in a constant expression. `gen-tables.py` therefore takes it apart *here* and
+emits the pieces the normalizer actually reads as typed `constexpr` objects. The
+engine consequently has:
+
+* no run-time initialization and no lazy-static guard for the tables,
+* no error path for malformed data (it is validated once, at generation),
+* no little-endian assumption baked into a `reinterpret_cast`,
+* and no container header or padding in the binary.
+
+The generator validates the udata magic, the `Nrm2` data format, the format
+version and the `UCPTrie` signature/type/value-width as it goes, and refuses to
+emit anything it does not fully understand.
+
+=== Verifying a regeneration
+
+The copied arrays must be byte-identical to their sources, and the normalization
+data must round-trip back to the original blob. Both are cheap to check:
+
+[source,python]
+----
+# compare each emitted array against the libuidna array it came from, and
+# re-serialize s_normTrie*/s_normExtraData/s_normSmallFcd and diff against the
+# corresponding slices of uts46_data
+----
+
+Beyond that, the real check is behavioural: dump `charType`, `bidiClass`,
+`joiningType` and `script` for all 0x110000 code points from a libuidna build and
+from this one and diff them. A wrong trie returns a *valid* value for the wrong
+code point — no crash, no assert, just a handful of characters mapped wrongly.
+
+== Shrinking (not done yet)
+
+Two of the tables are far larger than what UTS-46 asks of them, and can be
+replaced once the conformance suite is green — one table at a time, behind the
+unchanged accessor signatures in `uts46/props.cc`, with the suite passing before
+and after:
+
+* `s_scriptTrie*` + `s_scriptVectors` + `s_scriptExtensions` (91 KiB) → a
+  membership table for the five scripts CheckContextO names. Saves ~90 KiB.
+* `s_charTypeTrieIndex` (44 KiB) → a range table for `isMark(c)`, the only query
+  made against it. Saves ~40 KiB.
+
+That would take the total from 218 KiB to about 63 KiB.
+
+== Licence
+
+The tables are derived from the Unicode Character Database via ICU and are covered
+by the Unicode licence (http://www.unicode.org/copyright.html), reproduced in the
+header of every generated file alongside the engine's own notice. Redistribution
+requires keeping those notices intact.

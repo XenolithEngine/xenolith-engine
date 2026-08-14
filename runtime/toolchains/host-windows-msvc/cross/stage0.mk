@@ -246,7 +246,7 @@ $(STAGE0_LIBXML2): $(ZLIB_DIR) $(STAGE0_HOST_TOOLCHAIN_CMAKE)
 # clang,lldb,lld
 #
 
-STAGE0_BUILD_CC_LTO := -DLLVM_ENABLE_LTO=Full -DLLVM_PARALLEL_LINK_JOBS=6
+STAGE0_BUILD_CC_LTO := -DLLVM_ENABLE_LTO=Full -DLLVM_PARALLEL_LINK_JOBS=4
 
 # LLVM's own test suites - the lit trees and the googletest unit tests. Off by default:
 # a released toolchain does not need them, and they cost build time and disk space. Set

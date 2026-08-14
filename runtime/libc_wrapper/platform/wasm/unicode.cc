@@ -32,11 +32,14 @@ THE SOFTWARE.
 
 #include "../src/private/SPRTPrivate.h"
 
-// There is no ICU / libunistring / libidn2 to dlopen in the browser sandbox, and no
-// Unicode tables are baked into the runtime. Instead each case/normalization/IDNA/
-// collation operation is delegated to the JS host, which has full Unicode support
-// through the standard String and Intl APIs (toLowerCase/toUpperCase/normalize/
-// localeCompare) plus a small punycode helper for IDNA. See sprt-imports.mjs.
+// There is no ICU or libunistring to dlopen in the browser sandbox, and no case or
+// collation tables are baked into the runtime, so those operations are delegated to
+// the JS host, which has full Unicode support through the standard String and Intl
+// APIs (toLowerCase/toUpperCase/localeCompare). See sprt-imports.mjs.
+//
+// IDNA is NOT delegated: the runtime has its own UTS-46 engine (runtime/src/idn),
+// which is why an embedder that provides no IDNA is no longer a runtime without
+// IDNA, and why every target now answers identically.
 
 extern "C" {
 
@@ -46,7 +49,8 @@ extern "C" {
 __attribute__((import_module("sprt"), import_name("unicode_char"))) int __sprt_host_unicode_char(
 		int op, int cp);
 
-// op: 0 = lower, 1 = upper, 2 = title, 3 = IDNA ToASCII, 4 = IDNA ToUnicode.
+// op: 0 = lower, 1 = upper, 2 = title. (3 and 4 were IDNA; the host no longer
+// implements them, and the surviving numbering is unchanged.)
 // Reads srcLen UTF-8 bytes at src, writes the UTF-8 result into [dst, dst+cap) and
 // returns its byte length. If the result does not fit, returns the required length
 // (> cap) and writes nothing, so the caller retries with a larger buffer (ICU-style
@@ -71,7 +75,7 @@ static bool hostTransform(int op, StringView src, const callback<void(StringView
 		return true;
 	}
 
-	// Case folding can grow (ß -> SS), NFC/IDNA stay close to the input; 4x + a small
+	// Case folding can grow (ß -> SS); 4x + a small
 	// pad covers the common case in one shot, and the preflight handles the rest.
 	size_t cap = src.size() * 4 + 32;
 	for (int attempt = 0; attempt < 2; ++attempt) {
@@ -158,14 +162,6 @@ bool caseCompare(WideStringView l, WideStringView r, int *result) {
 		unicode::toUtf8([&](StringView ru8) { ret = hostCompare(1, lu8, ru8, result); }, r);
 	}, l);
 	return ret;
-}
-
-bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
-	return hostTransform(3, source, cb);
-}
-
-bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
-	return hostTransform(4, source, cb);
 }
 
 } // namespace sprt::unicode

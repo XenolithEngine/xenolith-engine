@@ -40,7 +40,6 @@ CONFIGURE := \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DBUILD_STATIC_LIBS=ON \
 	-DUSE_NGHTTP2=OFF \
-	-DUSE_WIN32_IDN=ON \
 	-DCURL_USE_LIBSSH2=OFF \
 	-DCURL_USE_LIBPSL=OFF \
 	-DBUILD_LIBCURL_DOCS=OFF \
@@ -51,17 +50,26 @@ CONFIGURE := \
 	-DCURL_STATIC_CRT=On \
 	-DCURL_CA_BUNDLE="$(realpath ../replacements/curl/cacert.pem)"
 
+# IDN comes from the runtime's own UTS-46 engine, which exports the libidn2 C ABI
+# (runtime/src/idn/SPRuntimeIdn2Api.cpp) on every target. That replaces what used to
+# be three different answers: USE_WIN32_IDN on Windows (IDNA2003), USE_APPLE_IDN on
+# Darwin, and no IDN at all on wasm.
+#
+# There is no libidn2.a to point cmake at - the symbols resolve at the final link of
+# the application - so LIBIDN2_LIBRARY names an archive that is present but
+# irrelevant, purely to satisfy find_package. The header is the real dependency, and
+# each target Makefile installs it into the sysroot.
+CONFIGURE += \
+	-DUSE_LIBIDN2=ON \
+	-DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
+	-DLIBIDN2_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include
+
 ifdef DARWIN
 CONFIGURE += \
 	-DSYSTEMCONFIGURATION_FRAMEWORK="SystemConfiguration" \
 	-DCOREFOUNDATION_FRAMEWORK="CoreFoundation" \
 	-DCORESERVICES_FRAMEWORK="CoreServices" \
-	-DUSE_APPLE_IDN=On \
-	-DUSE_LIBIDN2=Off
-endif
-
-ifdef ANDROID
-CONFIGURE += -DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a
+	-DUSE_APPLE_IDN=Off
 endif
 
 ifeq ($(VARIANT),mbedtls)
@@ -90,7 +98,6 @@ CONFIGURE += \
 	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
 	-DCURL_DISABLE_NETRC=ON \
-	-DUSE_LIBIDN2=OFF \
 	-DCURL_USE_LIBPSL=OFF \
 	-DENABLE_THREADED_RESOLVER=OFF
 endif

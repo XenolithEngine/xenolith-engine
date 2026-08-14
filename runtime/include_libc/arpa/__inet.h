@@ -38,375 +38,615 @@ THE SOFTWARE.
 #define INADDR_MAX_LOCAL_GROUP __SPRT_INADDR_MAX_LOCAL_GROUP
 
 // --- Address string lengths --------------------------------------------------
+#ifdef __SPRT_INET_ADDRSTRLEN
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN __SPRT_INET_ADDRSTRLEN
 #endif
+#endif
+#ifdef __SPRT_INET6_ADDRSTRLEN
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN __SPRT_INET6_ADDRSTRLEN
 #endif
+#endif
 
 // --- IP protocol numbers (IPPROTO_*) -----------------------------------------
+#ifdef __SPRT_IPPROTO_IP
 #ifndef IPPROTO_IP
 #define IPPROTO_IP __SPRT_IPPROTO_IP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_HOPOPTS
 #ifndef IPPROTO_HOPOPTS
 #define IPPROTO_HOPOPTS __SPRT_IPPROTO_HOPOPTS
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ICMP
 #ifndef IPPROTO_ICMP
 #define IPPROTO_ICMP __SPRT_IPPROTO_ICMP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_IGMP
 #ifndef IPPROTO_IGMP
 #define IPPROTO_IGMP __SPRT_IPPROTO_IGMP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_IPIP
 #ifndef IPPROTO_IPIP
 #define IPPROTO_IPIP __SPRT_IPPROTO_IPIP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_TCP
 #ifndef IPPROTO_TCP
 #define IPPROTO_TCP __SPRT_IPPROTO_TCP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_EGP
 #ifndef IPPROTO_EGP
 #define IPPROTO_EGP __SPRT_IPPROTO_EGP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_PUP
 #ifndef IPPROTO_PUP
 #define IPPROTO_PUP __SPRT_IPPROTO_PUP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_UDP
 #ifndef IPPROTO_UDP
 #define IPPROTO_UDP __SPRT_IPPROTO_UDP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_IDP
 #ifndef IPPROTO_IDP
 #define IPPROTO_IDP __SPRT_IPPROTO_IDP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_TP
 #ifndef IPPROTO_TP
 #define IPPROTO_TP __SPRT_IPPROTO_TP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_DCCP
 #ifndef IPPROTO_DCCP
 #define IPPROTO_DCCP __SPRT_IPPROTO_DCCP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_IPV6
 #ifndef IPPROTO_IPV6
 #define IPPROTO_IPV6 __SPRT_IPPROTO_IPV6
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ROUTING
 #ifndef IPPROTO_ROUTING
 #define IPPROTO_ROUTING __SPRT_IPPROTO_ROUTING
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_FRAGMENT
 #ifndef IPPROTO_FRAGMENT
 #define IPPROTO_FRAGMENT __SPRT_IPPROTO_FRAGMENT
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_RSVP
 #ifndef IPPROTO_RSVP
 #define IPPROTO_RSVP __SPRT_IPPROTO_RSVP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_GRE
 #ifndef IPPROTO_GRE
 #define IPPROTO_GRE __SPRT_IPPROTO_GRE
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ESP
 #ifndef IPPROTO_ESP
 #define IPPROTO_ESP __SPRT_IPPROTO_ESP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_AH
 #ifndef IPPROTO_AH
 #define IPPROTO_AH __SPRT_IPPROTO_AH
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ICMPV6
 #ifndef IPPROTO_ICMPV6
 #define IPPROTO_ICMPV6 __SPRT_IPPROTO_ICMPV6
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_NONE
 #ifndef IPPROTO_NONE
 #define IPPROTO_NONE __SPRT_IPPROTO_NONE
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_DSTOPTS
 #ifndef IPPROTO_DSTOPTS
 #define IPPROTO_DSTOPTS __SPRT_IPPROTO_DSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_MTP
 #ifndef IPPROTO_MTP
 #define IPPROTO_MTP __SPRT_IPPROTO_MTP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_BEETPH
 #ifndef IPPROTO_BEETPH
 #define IPPROTO_BEETPH __SPRT_IPPROTO_BEETPH
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ENCAP
 #ifndef IPPROTO_ENCAP
 #define IPPROTO_ENCAP __SPRT_IPPROTO_ENCAP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_PIM
 #ifndef IPPROTO_PIM
 #define IPPROTO_PIM __SPRT_IPPROTO_PIM
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_COMP
 #ifndef IPPROTO_COMP
 #define IPPROTO_COMP __SPRT_IPPROTO_COMP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_SCTP
 #ifndef IPPROTO_SCTP
 #define IPPROTO_SCTP __SPRT_IPPROTO_SCTP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_MH
 #ifndef IPPROTO_MH
 #define IPPROTO_MH __SPRT_IPPROTO_MH
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_UDPLITE
 #ifndef IPPROTO_UDPLITE
 #define IPPROTO_UDPLITE __SPRT_IPPROTO_UDPLITE
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_MPLS
 #ifndef IPPROTO_MPLS
 #define IPPROTO_MPLS __SPRT_IPPROTO_MPLS
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_ETHERNET
 #ifndef IPPROTO_ETHERNET
 #define IPPROTO_ETHERNET __SPRT_IPPROTO_ETHERNET
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_RAW
 #ifndef IPPROTO_RAW
 #define IPPROTO_RAW __SPRT_IPPROTO_RAW
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_MPTCP
 #ifndef IPPROTO_MPTCP
 #define IPPROTO_MPTCP __SPRT_IPPROTO_MPTCP
 #endif
+#endif
+#ifdef __SPRT_IPPROTO_MAX
 #ifndef IPPROTO_MAX
 #define IPPROTO_MAX __SPRT_IPPROTO_MAX
 #endif
+#endif
 
 // --- Reserved port range -----------------------------------------------------
+#ifdef __SPRT_IPPORT_RESERVED
 #ifndef IPPORT_RESERVED
 #define IPPORT_RESERVED __SPRT_IPPORT_RESERVED
 #endif
+#endif
 
 // --- IPv4 address classes ----------------------------------------------------
+#ifdef __SPRT_IN_CLASSA
 #ifndef IN_CLASSA
 #define IN_CLASSA(a) __SPRT_IN_CLASSA(a)
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSA_NET
 #ifndef IN_CLASSA_NET
 #define IN_CLASSA_NET __SPRT_IN_CLASSA_NET
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSA_NSHIFT
 #ifndef IN_CLASSA_NSHIFT
 #define IN_CLASSA_NSHIFT __SPRT_IN_CLASSA_NSHIFT
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSA_HOST
 #ifndef IN_CLASSA_HOST
 #define IN_CLASSA_HOST __SPRT_IN_CLASSA_HOST
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSA_MAX
 #ifndef IN_CLASSA_MAX
 #define IN_CLASSA_MAX __SPRT_IN_CLASSA_MAX
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSB
 #ifndef IN_CLASSB
 #define IN_CLASSB(a) __SPRT_IN_CLASSB(a)
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSB_NET
 #ifndef IN_CLASSB_NET
 #define IN_CLASSB_NET __SPRT_IN_CLASSB_NET
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSB_NSHIFT
 #ifndef IN_CLASSB_NSHIFT
 #define IN_CLASSB_NSHIFT __SPRT_IN_CLASSB_NSHIFT
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSB_HOST
 #ifndef IN_CLASSB_HOST
 #define IN_CLASSB_HOST __SPRT_IN_CLASSB_HOST
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSB_MAX
 #ifndef IN_CLASSB_MAX
 #define IN_CLASSB_MAX __SPRT_IN_CLASSB_MAX
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSC
 #ifndef IN_CLASSC
 #define IN_CLASSC(a) __SPRT_IN_CLASSC(a)
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSC_NET
 #ifndef IN_CLASSC_NET
 #define IN_CLASSC_NET __SPRT_IN_CLASSC_NET
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSC_NSHIFT
 #ifndef IN_CLASSC_NSHIFT
 #define IN_CLASSC_NSHIFT __SPRT_IN_CLASSC_NSHIFT
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSC_HOST
 #ifndef IN_CLASSC_HOST
 #define IN_CLASSC_HOST __SPRT_IN_CLASSC_HOST
 #endif
+#endif
+#ifdef __SPRT_IN_CLASSD
 #ifndef IN_CLASSD
 #define IN_CLASSD(a) __SPRT_IN_CLASSD(a)
 #endif
+#endif
+#ifdef __SPRT_IN_MULTICAST
 #ifndef IN_MULTICAST
 #define IN_MULTICAST(a) __SPRT_IN_MULTICAST(a)
 #endif
+#endif
+#ifdef __SPRT_IN_EXPERIMENTAL
 #ifndef IN_EXPERIMENTAL
 #define IN_EXPERIMENTAL(a) __SPRT_IN_EXPERIMENTAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN_BADCLASS
 #ifndef IN_BADCLASS
 #define IN_BADCLASS(a) __SPRT_IN_BADCLASS(a)
 #endif
+#endif
+#ifdef __SPRT_IN_LOOPBACKNET
 #ifndef IN_LOOPBACKNET
 #define IN_LOOPBACKNET __SPRT_IN_LOOPBACKNET
 #endif
+#endif
 
 // --- IPv6 address test macros ------------------------------------------------
+#ifdef __SPRT_IN6_IS_ADDR_UNSPECIFIED
 #ifndef IN6_IS_ADDR_UNSPECIFIED
 #define IN6_IS_ADDR_UNSPECIFIED(a) __SPRT_IN6_IS_ADDR_UNSPECIFIED(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_LOOPBACK
 #ifndef IN6_IS_ADDR_LOOPBACK
 #define IN6_IS_ADDR_LOOPBACK(a) __SPRT_IN6_IS_ADDR_LOOPBACK(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MULTICAST
 #ifndef IN6_IS_ADDR_MULTICAST
 #define IN6_IS_ADDR_MULTICAST(a) __SPRT_IN6_IS_ADDR_MULTICAST(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_LINKLOCAL
 #ifndef IN6_IS_ADDR_LINKLOCAL
 #define IN6_IS_ADDR_LINKLOCAL(a) __SPRT_IN6_IS_ADDR_LINKLOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_SITELOCAL
 #ifndef IN6_IS_ADDR_SITELOCAL
 #define IN6_IS_ADDR_SITELOCAL(a) __SPRT_IN6_IS_ADDR_SITELOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_V4MAPPED
 #ifndef IN6_IS_ADDR_V4MAPPED
 #define IN6_IS_ADDR_V4MAPPED(a) __SPRT_IN6_IS_ADDR_V4MAPPED(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_V4COMPAT
 #ifndef IN6_IS_ADDR_V4COMPAT
 #define IN6_IS_ADDR_V4COMPAT(a) __SPRT_IN6_IS_ADDR_V4COMPAT(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MC_NODELOCAL
 #ifndef IN6_IS_ADDR_MC_NODELOCAL
 #define IN6_IS_ADDR_MC_NODELOCAL(a) __SPRT_IN6_IS_ADDR_MC_NODELOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MC_LINKLOCAL
 #ifndef IN6_IS_ADDR_MC_LINKLOCAL
 #define IN6_IS_ADDR_MC_LINKLOCAL(a) __SPRT_IN6_IS_ADDR_MC_LINKLOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MC_SITELOCAL
 #ifndef IN6_IS_ADDR_MC_SITELOCAL
 #define IN6_IS_ADDR_MC_SITELOCAL(a) __SPRT_IN6_IS_ADDR_MC_SITELOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MC_ORGLOCAL
 #ifndef IN6_IS_ADDR_MC_ORGLOCAL
 #define IN6_IS_ADDR_MC_ORGLOCAL(a) __SPRT_IN6_IS_ADDR_MC_ORGLOCAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_IS_ADDR_MC_GLOBAL
 #ifndef IN6_IS_ADDR_MC_GLOBAL
 #define IN6_IS_ADDR_MC_GLOBAL(a) __SPRT_IN6_IS_ADDR_MC_GLOBAL(a)
 #endif
+#endif
+#ifdef __SPRT_IN6_ARE_ADDR_EQUAL
 #ifndef IN6_ARE_ADDR_EQUAL
 #define IN6_ARE_ADDR_EQUAL(a, b) __SPRT_IN6_ARE_ADDR_EQUAL(a, b)
 #endif
+#endif
 
 // --- IPv4 socket options (IPPROTO_IP level) ----------------------------------
+#ifdef __SPRT_IP_TOS
 #ifndef IP_TOS
 #define IP_TOS __SPRT_IP_TOS
 #endif
+#endif
+#ifdef __SPRT_IP_TTL
 #ifndef IP_TTL
 #define IP_TTL __SPRT_IP_TTL
 #endif
+#endif
+#ifdef __SPRT_IP_HDRINCL
 #ifndef IP_HDRINCL
 #define IP_HDRINCL __SPRT_IP_HDRINCL
 #endif
+#endif
+#ifdef __SPRT_IP_OPTIONS
 #ifndef IP_OPTIONS
 #define IP_OPTIONS __SPRT_IP_OPTIONS
 #endif
+#endif
+#ifdef __SPRT_IP_ROUTER_ALERT
 #ifndef IP_ROUTER_ALERT
 #define IP_ROUTER_ALERT __SPRT_IP_ROUTER_ALERT
 #endif
+#endif
+#ifdef __SPRT_IP_RECVOPTS
 #ifndef IP_RECVOPTS
 #define IP_RECVOPTS __SPRT_IP_RECVOPTS
 #endif
+#endif
+#ifdef __SPRT_IP_RETOPTS
 #ifndef IP_RETOPTS
 #define IP_RETOPTS __SPRT_IP_RETOPTS
 #endif
+#endif
+#ifdef __SPRT_IP_PKTINFO
 #ifndef IP_PKTINFO
 #define IP_PKTINFO __SPRT_IP_PKTINFO
 #endif
+#endif
+#ifdef __SPRT_IP_PKTOPTIONS
 #ifndef IP_PKTOPTIONS
 #define IP_PKTOPTIONS __SPRT_IP_PKTOPTIONS
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC
 #ifndef IP_PMTUDISC
 #define IP_PMTUDISC __SPRT_IP_PMTUDISC
 #endif
+#endif
+#ifdef __SPRT_IP_MTU_DISCOVER
 #ifndef IP_MTU_DISCOVER
 #define IP_MTU_DISCOVER __SPRT_IP_MTU_DISCOVER
 #endif
+#endif
+#ifdef __SPRT_IP_RECVERR
 #ifndef IP_RECVERR
 #define IP_RECVERR __SPRT_IP_RECVERR
 #endif
+#endif
+#ifdef __SPRT_IP_RECVTTL
 #ifndef IP_RECVTTL
 #define IP_RECVTTL __SPRT_IP_RECVTTL
 #endif
+#endif
+#ifdef __SPRT_IP_RECVTOS
 #ifndef IP_RECVTOS
 #define IP_RECVTOS __SPRT_IP_RECVTOS
 #endif
+#endif
+#ifdef __SPRT_IP_MTU
 #ifndef IP_MTU
 #define IP_MTU __SPRT_IP_MTU
 #endif
+#endif
+#ifdef __SPRT_IP_FREEBIND
 #ifndef IP_FREEBIND
 #define IP_FREEBIND __SPRT_IP_FREEBIND
 #endif
+#endif
+#ifdef __SPRT_IP_IPSEC_POLICY
 #ifndef IP_IPSEC_POLICY
 #define IP_IPSEC_POLICY __SPRT_IP_IPSEC_POLICY
 #endif
+#endif
+#ifdef __SPRT_IP_XFRM_POLICY
 #ifndef IP_XFRM_POLICY
 #define IP_XFRM_POLICY __SPRT_IP_XFRM_POLICY
 #endif
+#endif
+#ifdef __SPRT_IP_PASSSEC
 #ifndef IP_PASSSEC
 #define IP_PASSSEC __SPRT_IP_PASSSEC
 #endif
+#endif
+#ifdef __SPRT_IP_TRANSPARENT
 #ifndef IP_TRANSPARENT
 #define IP_TRANSPARENT __SPRT_IP_TRANSPARENT
 #endif
+#endif
+#ifdef __SPRT_IP_ORIGDSTADDR
 #ifndef IP_ORIGDSTADDR
 #define IP_ORIGDSTADDR __SPRT_IP_ORIGDSTADDR
 #endif
+#endif
+#ifdef __SPRT_IP_RECVORIGDSTADDR
 #ifndef IP_RECVORIGDSTADDR
 #define IP_RECVORIGDSTADDR __SPRT_IP_RECVORIGDSTADDR
 #endif
+#endif
+#ifdef __SPRT_IP_MINTTL
 #ifndef IP_MINTTL
 #define IP_MINTTL __SPRT_IP_MINTTL
 #endif
+#endif
+#ifdef __SPRT_IP_NODEFRAG
 #ifndef IP_NODEFRAG
 #define IP_NODEFRAG __SPRT_IP_NODEFRAG
 #endif
+#endif
+#ifdef __SPRT_IP_CHECKSUM
 #ifndef IP_CHECKSUM
 #define IP_CHECKSUM __SPRT_IP_CHECKSUM
 #endif
+#endif
+#ifdef __SPRT_IP_BIND_ADDRESS_NO_PORT
 #ifndef IP_BIND_ADDRESS_NO_PORT
 #define IP_BIND_ADDRESS_NO_PORT __SPRT_IP_BIND_ADDRESS_NO_PORT
 #endif
+#endif
+#ifdef __SPRT_IP_RECVFRAGSIZE
 #ifndef IP_RECVFRAGSIZE
 #define IP_RECVFRAGSIZE __SPRT_IP_RECVFRAGSIZE
 #endif
+#endif
+#ifdef __SPRT_IP_RECVERR_RFC4884
 #ifndef IP_RECVERR_RFC4884
 #define IP_RECVERR_RFC4884 __SPRT_IP_RECVERR_RFC4884
 #endif
+#endif
+#ifdef __SPRT_IP_MULTICAST_IF
 #ifndef IP_MULTICAST_IF
 #define IP_MULTICAST_IF __SPRT_IP_MULTICAST_IF
 #endif
+#endif
+#ifdef __SPRT_IP_MULTICAST_TTL
 #ifndef IP_MULTICAST_TTL
 #define IP_MULTICAST_TTL __SPRT_IP_MULTICAST_TTL
 #endif
+#endif
+#ifdef __SPRT_IP_MULTICAST_LOOP
 #ifndef IP_MULTICAST_LOOP
 #define IP_MULTICAST_LOOP __SPRT_IP_MULTICAST_LOOP
 #endif
+#endif
+#ifdef __SPRT_IP_ADD_MEMBERSHIP
 #ifndef IP_ADD_MEMBERSHIP
 #define IP_ADD_MEMBERSHIP __SPRT_IP_ADD_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IP_DROP_MEMBERSHIP
 #ifndef IP_DROP_MEMBERSHIP
 #define IP_DROP_MEMBERSHIP __SPRT_IP_DROP_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IP_UNBLOCK_SOURCE
 #ifndef IP_UNBLOCK_SOURCE
 #define IP_UNBLOCK_SOURCE __SPRT_IP_UNBLOCK_SOURCE
 #endif
+#endif
+#ifdef __SPRT_IP_BLOCK_SOURCE
 #ifndef IP_BLOCK_SOURCE
 #define IP_BLOCK_SOURCE __SPRT_IP_BLOCK_SOURCE
 #endif
+#endif
+#ifdef __SPRT_IP_ADD_SOURCE_MEMBERSHIP
 #ifndef IP_ADD_SOURCE_MEMBERSHIP
 #define IP_ADD_SOURCE_MEMBERSHIP __SPRT_IP_ADD_SOURCE_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IP_DROP_SOURCE_MEMBERSHIP
 #ifndef IP_DROP_SOURCE_MEMBERSHIP
 #define IP_DROP_SOURCE_MEMBERSHIP __SPRT_IP_DROP_SOURCE_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IP_MSFILTER
 #ifndef IP_MSFILTER
 #define IP_MSFILTER __SPRT_IP_MSFILTER
 #endif
+#endif
+#ifdef __SPRT_IP_MULTICAST_ALL
 #ifndef IP_MULTICAST_ALL
 #define IP_MULTICAST_ALL __SPRT_IP_MULTICAST_ALL
 #endif
+#endif
+#ifdef __SPRT_IP_UNICAST_IF
 #ifndef IP_UNICAST_IF
 #define IP_UNICAST_IF __SPRT_IP_UNICAST_IF
 #endif
+#endif
+#ifdef __SPRT_IP_RECVRETOPTS
 #ifndef IP_RECVRETOPTS
 #define IP_RECVRETOPTS __SPRT_IP_RECVRETOPTS
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_DONT
 #ifndef IP_PMTUDISC_DONT
 #define IP_PMTUDISC_DONT __SPRT_IP_PMTUDISC_DONT
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_WANT
 #ifndef IP_PMTUDISC_WANT
 #define IP_PMTUDISC_WANT __SPRT_IP_PMTUDISC_WANT
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_DO
 #ifndef IP_PMTUDISC_DO
 #define IP_PMTUDISC_DO __SPRT_IP_PMTUDISC_DO
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_PROBE
 #ifndef IP_PMTUDISC_PROBE
 #define IP_PMTUDISC_PROBE __SPRT_IP_PMTUDISC_PROBE
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_INTERFACE
 #ifndef IP_PMTUDISC_INTERFACE
 #define IP_PMTUDISC_INTERFACE __SPRT_IP_PMTUDISC_INTERFACE
 #endif
+#endif
+#ifdef __SPRT_IP_PMTUDISC_OMIT
 #ifndef IP_PMTUDISC_OMIT
 #define IP_PMTUDISC_OMIT __SPRT_IP_PMTUDISC_OMIT
 #endif
+#endif
+#ifdef __SPRT_IP_DEFAULT_MULTICAST_TTL
 #ifndef IP_DEFAULT_MULTICAST_TTL
 #define IP_DEFAULT_MULTICAST_TTL __SPRT_IP_DEFAULT_MULTICAST_TTL
 #endif
+#endif
+#ifdef __SPRT_IP_DEFAULT_MULTICAST_LOOP
 #ifndef IP_DEFAULT_MULTICAST_LOOP
 #define IP_DEFAULT_MULTICAST_LOOP __SPRT_IP_DEFAULT_MULTICAST_LOOP
 #endif
+#endif
+#ifdef __SPRT_IP_MAX_MEMBERSHIPS
 #ifndef IP_MAX_MEMBERSHIPS
 #define IP_MAX_MEMBERSHIPS __SPRT_IP_MAX_MEMBERSHIPS
+#endif
 #endif
 
 // --- IPv4 socket options (Windows-only; guarded on __SPRT_ presence) ---------
@@ -517,193 +757,317 @@ THE SOFTWARE.
 #endif
 
 // --- MCAST_* group membership ------------------------------------------------
+#ifdef __SPRT_MCAST_JOIN_GROUP
 #ifndef MCAST_JOIN_GROUP
 #define MCAST_JOIN_GROUP __SPRT_MCAST_JOIN_GROUP
 #endif
+#endif
+#ifdef __SPRT_MCAST_BLOCK_SOURCE
 #ifndef MCAST_BLOCK_SOURCE
 #define MCAST_BLOCK_SOURCE __SPRT_MCAST_BLOCK_SOURCE
 #endif
+#endif
+#ifdef __SPRT_MCAST_UNBLOCK_SOURCE
 #ifndef MCAST_UNBLOCK_SOURCE
 #define MCAST_UNBLOCK_SOURCE __SPRT_MCAST_UNBLOCK_SOURCE
 #endif
+#endif
+#ifdef __SPRT_MCAST_LEAVE_GROUP
 #ifndef MCAST_LEAVE_GROUP
 #define MCAST_LEAVE_GROUP __SPRT_MCAST_LEAVE_GROUP
 #endif
+#endif
+#ifdef __SPRT_MCAST_JOIN_SOURCE_GROUP
 #ifndef MCAST_JOIN_SOURCE_GROUP
 #define MCAST_JOIN_SOURCE_GROUP __SPRT_MCAST_JOIN_SOURCE_GROUP
 #endif
+#endif
+#ifdef __SPRT_MCAST_LEAVE_SOURCE_GROUP
 #ifndef MCAST_LEAVE_SOURCE_GROUP
 #define MCAST_LEAVE_SOURCE_GROUP __SPRT_MCAST_LEAVE_SOURCE_GROUP
 #endif
+#endif
+#ifdef __SPRT_MCAST_MSFILTER
 #ifndef MCAST_MSFILTER
 #define MCAST_MSFILTER __SPRT_MCAST_MSFILTER
 #endif
+#endif
+#ifdef __SPRT_MCAST_EXCLUDE
 #ifndef MCAST_EXCLUDE
 #define MCAST_EXCLUDE __SPRT_MCAST_EXCLUDE
 #endif
+#endif
+#ifdef __SPRT_MCAST_INCLUDE
 #ifndef MCAST_INCLUDE
 #define MCAST_INCLUDE __SPRT_MCAST_INCLUDE
 #endif
+#endif
 
 // --- IPv6 socket options (IPPROTO_IPV6 level) --------------------------------
+#ifdef __SPRT_IPV6_ADDRFORM
 #ifndef IPV6_ADDRFORM
 #define IPV6_ADDRFORM __SPRT_IPV6_ADDRFORM
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292PKTINFO
 #ifndef IPV6_2292PKTINFO
 #define IPV6_2292PKTINFO __SPRT_IPV6_2292PKTINFO
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292HOPOPTS
 #ifndef IPV6_2292HOPOPTS
 #define IPV6_2292HOPOPTS __SPRT_IPV6_2292HOPOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292DSTOPTS
 #ifndef IPV6_2292DSTOPTS
 #define IPV6_2292DSTOPTS __SPRT_IPV6_2292DSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292RTHDR
 #ifndef IPV6_2292RTHDR
 #define IPV6_2292RTHDR __SPRT_IPV6_2292RTHDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292PKTOPTIONS
 #ifndef IPV6_2292PKTOPTIONS
 #define IPV6_2292PKTOPTIONS __SPRT_IPV6_2292PKTOPTIONS
 #endif
+#endif
+#ifdef __SPRT_IPV6_CHECKSUM
 #ifndef IPV6_CHECKSUM
 #define IPV6_CHECKSUM __SPRT_IPV6_CHECKSUM
 #endif
+#endif
+#ifdef __SPRT_IPV6_2292HOPLIMIT
 #ifndef IPV6_2292HOPLIMIT
 #define IPV6_2292HOPLIMIT __SPRT_IPV6_2292HOPLIMIT
 #endif
+#endif
+#ifdef __SPRT_IPV6_NEXTHOP
 #ifndef IPV6_NEXTHOP
 #define IPV6_NEXTHOP __SPRT_IPV6_NEXTHOP
 #endif
+#endif
+#ifdef __SPRT_IPV6_AUTHHDR
 #ifndef IPV6_AUTHHDR
 #define IPV6_AUTHHDR __SPRT_IPV6_AUTHHDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_UNICAST_HOPS
 #ifndef IPV6_UNICAST_HOPS
 #define IPV6_UNICAST_HOPS __SPRT_IPV6_UNICAST_HOPS
 #endif
+#endif
+#ifdef __SPRT_IPV6_MULTICAST_IF
 #ifndef IPV6_MULTICAST_IF
 #define IPV6_MULTICAST_IF __SPRT_IPV6_MULTICAST_IF
 #endif
+#endif
+#ifdef __SPRT_IPV6_MULTICAST_HOPS
 #ifndef IPV6_MULTICAST_HOPS
 #define IPV6_MULTICAST_HOPS __SPRT_IPV6_MULTICAST_HOPS
 #endif
+#endif
+#ifdef __SPRT_IPV6_MULTICAST_LOOP
 #ifndef IPV6_MULTICAST_LOOP
 #define IPV6_MULTICAST_LOOP __SPRT_IPV6_MULTICAST_LOOP
 #endif
+#endif
+#ifdef __SPRT_IPV6_JOIN_GROUP
 #ifndef IPV6_JOIN_GROUP
 #define IPV6_JOIN_GROUP __SPRT_IPV6_JOIN_GROUP
 #endif
+#endif
+#ifdef __SPRT_IPV6_LEAVE_GROUP
 #ifndef IPV6_LEAVE_GROUP
 #define IPV6_LEAVE_GROUP __SPRT_IPV6_LEAVE_GROUP
 #endif
+#endif
+#ifdef __SPRT_IPV6_ROUTER_ALERT
 #ifndef IPV6_ROUTER_ALERT
 #define IPV6_ROUTER_ALERT __SPRT_IPV6_ROUTER_ALERT
 #endif
+#endif
+#ifdef __SPRT_IPV6_MTU_DISCOVER
 #ifndef IPV6_MTU_DISCOVER
 #define IPV6_MTU_DISCOVER __SPRT_IPV6_MTU_DISCOVER
 #endif
+#endif
+#ifdef __SPRT_IPV6_MTU
 #ifndef IPV6_MTU
 #define IPV6_MTU __SPRT_IPV6_MTU
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVERR
 #ifndef IPV6_RECVERR
 #define IPV6_RECVERR __SPRT_IPV6_RECVERR
 #endif
+#endif
+#ifdef __SPRT_IPV6_V6ONLY
 #ifndef IPV6_V6ONLY
 #define IPV6_V6ONLY __SPRT_IPV6_V6ONLY
 #endif
+#endif
+#ifdef __SPRT_IPV6_JOIN_ANYCAST
 #ifndef IPV6_JOIN_ANYCAST
 #define IPV6_JOIN_ANYCAST __SPRT_IPV6_JOIN_ANYCAST
 #endif
+#endif
+#ifdef __SPRT_IPV6_LEAVE_ANYCAST
 #ifndef IPV6_LEAVE_ANYCAST
 #define IPV6_LEAVE_ANYCAST __SPRT_IPV6_LEAVE_ANYCAST
 #endif
+#endif
+#ifdef __SPRT_IPV6_MULTICAST_ALL
 #ifndef IPV6_MULTICAST_ALL
 #define IPV6_MULTICAST_ALL __SPRT_IPV6_MULTICAST_ALL
 #endif
+#endif
+#ifdef __SPRT_IPV6_ROUTER_ALERT_ISOLATE
 #ifndef IPV6_ROUTER_ALERT_ISOLATE
 #define IPV6_ROUTER_ALERT_ISOLATE __SPRT_IPV6_ROUTER_ALERT_ISOLATE
 #endif
+#endif
+#ifdef __SPRT_IPV6_IPSEC_POLICY
 #ifndef IPV6_IPSEC_POLICY
 #define IPV6_IPSEC_POLICY __SPRT_IPV6_IPSEC_POLICY
 #endif
+#endif
+#ifdef __SPRT_IPV6_XFRM_POLICY
 #ifndef IPV6_XFRM_POLICY
 #define IPV6_XFRM_POLICY __SPRT_IPV6_XFRM_POLICY
 #endif
+#endif
+#ifdef __SPRT_IPV6_HDRINCL
 #ifndef IPV6_HDRINCL
 #define IPV6_HDRINCL __SPRT_IPV6_HDRINCL
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVPKTINFO
 #ifndef IPV6_RECVPKTINFO
 #define IPV6_RECVPKTINFO __SPRT_IPV6_RECVPKTINFO
 #endif
+#endif
+#ifdef __SPRT_IPV6_PKTINFO
 #ifndef IPV6_PKTINFO
 #define IPV6_PKTINFO __SPRT_IPV6_PKTINFO
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVHOPLIMIT
 #ifndef IPV6_RECVHOPLIMIT
 #define IPV6_RECVHOPLIMIT __SPRT_IPV6_RECVHOPLIMIT
 #endif
+#endif
+#ifdef __SPRT_IPV6_HOPLIMIT
 #ifndef IPV6_HOPLIMIT
 #define IPV6_HOPLIMIT __SPRT_IPV6_HOPLIMIT
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVHOPOPTS
 #ifndef IPV6_RECVHOPOPTS
 #define IPV6_RECVHOPOPTS __SPRT_IPV6_RECVHOPOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_HOPOPTS
 #ifndef IPV6_HOPOPTS
 #define IPV6_HOPOPTS __SPRT_IPV6_HOPOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_RTHDRDSTOPTS
 #ifndef IPV6_RTHDRDSTOPTS
 #define IPV6_RTHDRDSTOPTS __SPRT_IPV6_RTHDRDSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVRTHDR
 #ifndef IPV6_RECVRTHDR
 #define IPV6_RECVRTHDR __SPRT_IPV6_RECVRTHDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_RTHDR
 #ifndef IPV6_RTHDR
 #define IPV6_RTHDR __SPRT_IPV6_RTHDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVDSTOPTS
 #ifndef IPV6_RECVDSTOPTS
 #define IPV6_RECVDSTOPTS __SPRT_IPV6_RECVDSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_DSTOPTS
 #ifndef IPV6_DSTOPTS
 #define IPV6_DSTOPTS __SPRT_IPV6_DSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVPATHMTU
 #ifndef IPV6_RECVPATHMTU
 #define IPV6_RECVPATHMTU __SPRT_IPV6_RECVPATHMTU
 #endif
+#endif
+#ifdef __SPRT_IPV6_PATHMTU
 #ifndef IPV6_PATHMTU
 #define IPV6_PATHMTU __SPRT_IPV6_PATHMTU
 #endif
+#endif
+#ifdef __SPRT_IPV6_DONTFRAG
 #ifndef IPV6_DONTFRAG
 #define IPV6_DONTFRAG __SPRT_IPV6_DONTFRAG
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVTCLASS
 #ifndef IPV6_RECVTCLASS
 #define IPV6_RECVTCLASS __SPRT_IPV6_RECVTCLASS
 #endif
+#endif
+#ifdef __SPRT_IPV6_TCLASS
 #ifndef IPV6_TCLASS
 #define IPV6_TCLASS __SPRT_IPV6_TCLASS
 #endif
+#endif
+#ifdef __SPRT_IPV6_AUTOFLOWLABEL
 #ifndef IPV6_AUTOFLOWLABEL
 #define IPV6_AUTOFLOWLABEL __SPRT_IPV6_AUTOFLOWLABEL
 #endif
+#endif
+#ifdef __SPRT_IPV6_ADDR_PREFERENCES
 #ifndef IPV6_ADDR_PREFERENCES
 #define IPV6_ADDR_PREFERENCES __SPRT_IPV6_ADDR_PREFERENCES
 #endif
+#endif
+#ifdef __SPRT_IPV6_MINHOPCOUNT
 #ifndef IPV6_MINHOPCOUNT
 #define IPV6_MINHOPCOUNT __SPRT_IPV6_MINHOPCOUNT
 #endif
+#endif
+#ifdef __SPRT_IPV6_ORIGDSTADDR
 #ifndef IPV6_ORIGDSTADDR
 #define IPV6_ORIGDSTADDR __SPRT_IPV6_ORIGDSTADDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVORIGDSTADDR
 #ifndef IPV6_RECVORIGDSTADDR
 #define IPV6_RECVORIGDSTADDR __SPRT_IPV6_RECVORIGDSTADDR
 #endif
+#endif
+#ifdef __SPRT_IPV6_TRANSPARENT
 #ifndef IPV6_TRANSPARENT
 #define IPV6_TRANSPARENT __SPRT_IPV6_TRANSPARENT
 #endif
+#endif
+#ifdef __SPRT_IPV6_UNICAST_IF
 #ifndef IPV6_UNICAST_IF
 #define IPV6_UNICAST_IF __SPRT_IPV6_UNICAST_IF
 #endif
+#endif
+#ifdef __SPRT_IPV6_RECVFRAGSIZE
 #ifndef IPV6_RECVFRAGSIZE
 #define IPV6_RECVFRAGSIZE __SPRT_IPV6_RECVFRAGSIZE
 #endif
+#endif
+#ifdef __SPRT_IPV6_FREEBIND
 #ifndef IPV6_FREEBIND
 #define IPV6_FREEBIND __SPRT_IPV6_FREEBIND
+#endif
 #endif
 
 // --- IPv6 socket options (Windows-only; guarded on __SPRT_ presence) ---------
@@ -777,65 +1141,105 @@ THE SOFTWARE.
 #define IPV6_USER_MTU __SPRT_IPV6_USER_MTU
 #endif
 #endif
+#ifdef __SPRT_IPV6_ADD_MEMBERSHIP
 #ifndef IPV6_ADD_MEMBERSHIP
 #define IPV6_ADD_MEMBERSHIP __SPRT_IPV6_ADD_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IPV6_DROP_MEMBERSHIP
 #ifndef IPV6_DROP_MEMBERSHIP
 #define IPV6_DROP_MEMBERSHIP __SPRT_IPV6_DROP_MEMBERSHIP
 #endif
+#endif
+#ifdef __SPRT_IPV6_RXHOPOPTS
 #ifndef IPV6_RXHOPOPTS
 #define IPV6_RXHOPOPTS __SPRT_IPV6_RXHOPOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_RXDSTOPTS
 #ifndef IPV6_RXDSTOPTS
 #define IPV6_RXDSTOPTS __SPRT_IPV6_RXDSTOPTS
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_DONT
 #ifndef IPV6_PMTUDISC_DONT
 #define IPV6_PMTUDISC_DONT __SPRT_IPV6_PMTUDISC_DONT
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_WANT
 #ifndef IPV6_PMTUDISC_WANT
 #define IPV6_PMTUDISC_WANT __SPRT_IPV6_PMTUDISC_WANT
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_DO
 #ifndef IPV6_PMTUDISC_DO
 #define IPV6_PMTUDISC_DO __SPRT_IPV6_PMTUDISC_DO
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_PROBE
 #ifndef IPV6_PMTUDISC_PROBE
 #define IPV6_PMTUDISC_PROBE __SPRT_IPV6_PMTUDISC_PROBE
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_INTERFACE
 #ifndef IPV6_PMTUDISC_INTERFACE
 #define IPV6_PMTUDISC_INTERFACE __SPRT_IPV6_PMTUDISC_INTERFACE
 #endif
+#endif
+#ifdef __SPRT_IPV6_PMTUDISC_OMIT
 #ifndef IPV6_PMTUDISC_OMIT
 #define IPV6_PMTUDISC_OMIT __SPRT_IPV6_PMTUDISC_OMIT
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_TMP
 #ifndef IPV6_PREFER_SRC_TMP
 #define IPV6_PREFER_SRC_TMP __SPRT_IPV6_PREFER_SRC_TMP
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_PUBLIC
 #ifndef IPV6_PREFER_SRC_PUBLIC
 #define IPV6_PREFER_SRC_PUBLIC __SPRT_IPV6_PREFER_SRC_PUBLIC
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT
 #ifndef IPV6_PREFER_SRC_PUBTMP_DEFAULT
 #define IPV6_PREFER_SRC_PUBTMP_DEFAULT __SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_COA
 #ifndef IPV6_PREFER_SRC_COA
 #define IPV6_PREFER_SRC_COA __SPRT_IPV6_PREFER_SRC_COA
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_HOME
 #ifndef IPV6_PREFER_SRC_HOME
 #define IPV6_PREFER_SRC_HOME __SPRT_IPV6_PREFER_SRC_HOME
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_CGA
 #ifndef IPV6_PREFER_SRC_CGA
 #define IPV6_PREFER_SRC_CGA __SPRT_IPV6_PREFER_SRC_CGA
 #endif
+#endif
+#ifdef __SPRT_IPV6_PREFER_SRC_NONCGA
 #ifndef IPV6_PREFER_SRC_NONCGA
 #define IPV6_PREFER_SRC_NONCGA __SPRT_IPV6_PREFER_SRC_NONCGA
 #endif
+#endif
+#ifdef __SPRT_IPV6_RTHDR_LOOSE
 #ifndef IPV6_RTHDR_LOOSE
 #define IPV6_RTHDR_LOOSE __SPRT_IPV6_RTHDR_LOOSE
 #endif
+#endif
+#ifdef __SPRT_IPV6_RTHDR_STRICT
 #ifndef IPV6_RTHDR_STRICT
 #define IPV6_RTHDR_STRICT __SPRT_IPV6_RTHDR_STRICT
 #endif
+#endif
+#ifdef __SPRT_IPV6_RTHDR_TYPE_0
 #ifndef IPV6_RTHDR_TYPE_0
 #define IPV6_RTHDR_TYPE_0 __SPRT_IPV6_RTHDR_TYPE_0
+#endif
 #endif
 // clang-format on
 

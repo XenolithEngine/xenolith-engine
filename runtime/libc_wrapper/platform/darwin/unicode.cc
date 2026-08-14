@@ -34,7 +34,6 @@ THE SOFTWARE.
 #include <sprt/runtime/utils/dso.h>
 #include <sprt/cxx/mutex>
 
-#include <unicode/uidna.h>
 
 #include "../src/private/SPRTPrivate.h"
 
@@ -284,40 +283,6 @@ bool caseCompare(WideStringView l, WideStringView r, int *res) {
 	CFRelease(lstr);
 	CFRelease(locale);
 	return true;
-}
-
-bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
-	UErrorCode err = U_ZERO_ERROR;
-	auto idna = uidna_openUTS46(UIDNA_CHECK_BIDI | UIDNA_NONTRANSITIONAL_TO_ASCII, &err);
-	if (err == U_ZERO_ERROR) {
-		UIDNAInfo info = {0, 0};
-		char buffer[1_KiB] = {0};
-		auto retLen = uidna_nameToASCII_UTF8(idna, source.data(), (int)source.size(), buffer,
-				1_KiB - 1, &info, &err);
-		uidna_close(idna);
-		if (retLen > 0 && err == 0 && !info.errors) {
-			cb(StringView(buffer, retLen));
-			return true;
-		}
-	}
-	return false;
-}
-
-bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
-	UErrorCode err = U_ZERO_ERROR;
-	auto idna = uidna_openUTS46(UIDNA_CHECK_BIDI | UIDNA_NONTRANSITIONAL_TO_UNICODE, &err);
-	if (err == U_ZERO_ERROR) {
-		char buffer[1_KiB] = {0};
-		UIDNAInfo info = {0, 0};
-		auto retLen = uidna_nameToUnicodeUTF8(idna, source.data(), (int)source.size(), buffer,
-				1_KiB - 1, &info, &err);
-		uidna_close(idna);
-		if (retLen > 0 && err == 0 && !info.errors) {
-			cb(StringView(buffer, retLen));
-			return true;
-		}
-	}
-	return false;
 }
 
 } // namespace sprt::unicode

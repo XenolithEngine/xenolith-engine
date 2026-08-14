@@ -149,16 +149,6 @@ struct CollatorProxy : jni::ClassProxy {
 	using jni::ClassProxy::ClassProxy;
 };
 
-struct IdnProxy : ClassProxy {
-	StaticField<"ALLOW_UNASSIGNED", jint> ALLOW_UNASSIGNED = this;
-	StaticField<"USE_STD3_ASCII_RULES", jint> USE_STD3_ASCII_RULES = this;
-
-	StaticMethod<"toASCII", jstring(jstring, jint)> toASCII = this;
-	StaticMethod<"toUnicode", jstring(jstring, jint)> toUnicode = this;
-
-	using ClassProxy::ClassProxy;
-};
-
 struct FileProxy : ClassProxy {
 	Method<"getAbsolutePath", jstring()> getAbsolutePath = this;
 
@@ -675,7 +665,6 @@ struct SPRT_API App : public sprt::Ref {
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";
 	EnvironmentProxy Environment = "android/os/Environment";
-	IdnProxy IDN = "java/net/IDN";
 	UCharacterProxy UCharacter = "android/icu/lang/UCharacter";
 	CollatorProxy Collator = "android/icu/text/Collator";
 	PackageInfoProxy PackageInfo = "android/content/pm/PackageInfo";

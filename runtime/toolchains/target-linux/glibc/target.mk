@@ -21,13 +21,12 @@
 TARGET_SYSROOT := sysroot-target-$(SP_ARCH_TARGET_CLANG)
 TARGET_AS := $(TARGET_SYSROOT)/bin/$(SP_ARCH_TARGET_CLANG)-as
 TARGET_CC := $(TARGET_SYSROOT)/bin/$(SP_ARCH_TARGET_CLANG)-gcc
-TARGET_CXX := $(TARGET_SYSROOT)/bin/$(SP_ARCH_TARGET_CLANG)-g++
 TARGET_GLIBC := $(TARGET_SYSROOT)/lib/libc.so.6
 
 TARGET_LIBCXX := $(TARGET_SYSROOT)/lib/libc++.a
 TARGET_LIBCRT := $(TARGET_SYSROOT)/lib/linux/libclang_rt.profile-$(SP_ARCH_TARGET).a
 
-TARGET_CMAKE_GCC_TOOLCHAIN := $(TARGET_SYSROOT)/gcc.cmake
+TARGET_CMAKE_CLANG_TOOLCHAIN := $(TARGET_SYSROOT)/clang.cmake
 
 $(TARGET_SYSROOT)/sysroot: $(LINUX_TARGET_HEADERS_DIR)
 	mkdir -p $(TARGET_SYSROOT)/etc
@@ -102,47 +101,47 @@ $(TARGET_GLIBC): $(TARGET_AS) $(HOST_GCC_CC) $(TARGET_SYSROOT)/sysroot
 	$(HOST_GCC_MAKE) -C build/target-glibc install
 	sed  -i 's#$(abspath $(TARGET_SYSROOT))/lib/##g' $(TARGET_SYSROOT)/lib/libc.so
 
-$(TARGET_CXX): $(TARGET_GLIBC)
-	@echo "Build TARGET_CXX $(TARGET_CXX)"
-	rm -rf build/target-g++
-	mkdir -p build/target-g++
-	cd build/target-g++; PATH=$(abspath $(TARGET_SYSROOT)/bin):$$PATH $(abspath $(GCC_SRC_DIR))/configure \
-		--prefix $(abspath $(TARGET_SYSROOT)) \
-		--libdir $(abspath $(TARGET_SYSROOT))/lib \
-		--disable-nls \
-		--disable-multilib \
-		--disable-libsanitizer \
-		--enable-languages=c,c++ \
-		--with-sysroot=$(abspath $(TARGET_SYSROOT)) \
-		--with-build-sysroot=$(abspath $(TARGET_SYSROOT)) \
-		--target=$(SP_ARCH_TARGET_CLANG) \
-		CFLAGS="-O3 -fPIC" \
-		CPPLAGS="-O3 -fPIC" \
-		CXXFLAGS="-O3 -fPIC" \
-		CC=$(abspath $(HOST_GCC_CC)) \
-		CXX=$(abspath $(HOST_GCC_CXX))
-	make -C build/target-g++ all $(SP_NJOBS)
-	make -C build/target-g++ install
-
-$(TARGET_CMAKE_GCC_TOOLCHAIN): $(TARGET_SYSROOT)/sysroot
+# The bootstrap libc++/compiler-rt are built by the host clang, NOT by the cross
+# GCC. GCC only has to produce glibc and the libgcc that clang links against
+# until compiler-rt exists; it is not a supported compiler for the LLVM
+# runtimes, and on riscv64 it cannot compile them at all. There, glibc 2.35
+# defines __STDC_IEC_60559_COMPLEX__ in stdc-predef.h (2.33, used by the other
+# arches, does not), and llvm-libc's cfloat128-macros.h reads that library
+# conformance macro as "the compiler spells binary128 __float128" - true only
+# for x86_64 GCC. The clang branch of the same header probes the type properly.
+#
+# The clang used here is the intermediate one from host-linux-glibc, not
+# hosts/$(HOST_ID): installing the latter needs a finished target sysroot, so
+# depending on it here would close a bootstrap cycle.
+$(TARGET_CMAKE_CLANG_TOOLCHAIN): $(TARGET_SYSROOT)/sysroot $(TARGET_GLIBC)
 	@echo "set(CMAKE_SYSTEM_NAME Linux)" > $@
+	@echo "set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_TARGET))" >> $@
 	@echo "set(CMAKE_SYSROOT $(realpath $(TARGET_SYSROOT)))" >> $@
+	@echo "set(CMAKE_C_COMPILER $(abspath $(HOST_CLANG_SYSROOT)/bin/clang))" >> $@
+	@echo "set(CMAKE_CXX_COMPILER $(abspath $(HOST_CLANG_SYSROOT)/bin/clang++))" >> $@
+	@echo "set(CMAKE_ASM_COMPILER $(abspath $(HOST_CLANG_SYSROOT)/bin/clang))" >> $@
+	@echo "set(CMAKE_AR $(abspath $(HOST_CLANG_SYSROOT)/bin/llvm-ar))" >> $@
+	@echo "set(CMAKE_RANLIB $(abspath $(HOST_CLANG_SYSROOT)/bin/llvm-ranlib))" >> $@
+	@echo "set(CMAKE_NM $(abspath $(HOST_CLANG_SYSROOT)/bin/llvm-nm))" >> $@
+	@echo "set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_TARGET_CLANG))" >> $@
+	@echo "set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_TARGET_CLANG))" >> $@
+	@echo "set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_TARGET_CLANG))" >> $@
 	@echo "set(CMAKE_C_FLAGS_INIT \"\")" >> $@
 	@echo "set(CMAKE_CXX_FLAGS_INIT \"\")" >> $@
-	@echo "set(CMAKE_C_COMPILER $(abspath $(TARGET_CC)))" >> $@
-	@echo "set(CMAKE_CXX_COMPILER $(abspath $(TARGET_CXX)))" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT \"$(TARGET_BOOTSTRAP_LDFLAGS)\")" >> $@
+	@echo "set(CMAKE_SHARED_LINKER_FLAGS_INIT \"$(TARGET_BOOTSTRAP_LDFLAGS)\")" >> $@
+	@echo "set(CMAKE_MODULE_LINKER_FLAGS_INIT \"$(TARGET_BOOTSTRAP_LDFLAGS)\")" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)" >> $@
 
-$(TARGET_LIBCXX): $(TARGET_SYSROOT)/sysroot $(TARGET_CXX) $(TARGET_CMAKE_GCC_TOOLCHAIN)
+$(TARGET_LIBCXX): $(TARGET_SYSROOT)/sysroot $(TARGET_GLIBC) $(TARGET_CMAKE_CLANG_TOOLCHAIN)
 	@echo "Build TARGET_LIBCXX $(TARGET_LIBCXX)"
-	rm -rf build/libcxx_gcc_libcxx
+	rm -rf build/target-libcxx
 	cmake \
-		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(TARGET_CMAKE_GCC_TOOLCHAIN)) \
-		-G Ninja -S $(LLVM_DIR)/runtimes -B build/libcxx_gcc_libcxx \
-		-DCXX_SUPPORTS_NOSTDLIBXX_FLAG=Off \
+		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(TARGET_CMAKE_CLANG_TOOLCHAIN)) \
+		-G Ninja -S $(LLVM_DIR)/runtimes -B build/target-libcxx \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;" \
 		-DLLVM_HOST_TRIPLE=$(SP_ARCH_TARGET_CLANG) \
@@ -158,15 +157,15 @@ $(TARGET_LIBCXX): $(TARGET_SYSROOT)/sysroot $(TARGET_CXX) $(TARGET_CMAKE_GCC_TOO
 		-DLIBUNWIND_ENABLE_SHARED=Off \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(realpath $(TARGET_SYSROOT))
-	cmake --build build/libcxx_gcc_libcxx
-	cmake --install build/libcxx_gcc_libcxx
+	cmake --build build/target-libcxx
+	cmake --install build/target-libcxx
 
 $(TARGET_LIBCRT): $(TARGET_LIBCXX)
 	@echo "Build TARGET_LIBCRT $(TARGET_LIBCRT)"
-	rm -rf build/libcxx_gcc_crt
+	rm -rf build/target-compiler-rt
 	cmake \
-		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(TARGET_CMAKE_GCC_TOOLCHAIN)) \
-		-G Ninja -S $(LLVM_DIR)/runtimes -B build/libcxx_gcc_crt \
+		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(TARGET_CMAKE_CLANG_TOOLCHAIN)) \
+		-G Ninja -S $(LLVM_DIR)/runtimes -B build/target-compiler-rt \
 		-DLLVM_ENABLE_RUNTIMES="compiler-rt;" \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_HOST_TRIPLE=$(SP_ARCH_TARGET_CLANG) \
@@ -180,7 +179,7 @@ $(TARGET_LIBCRT): $(TARGET_LIBCXX)
 		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
 		-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_TARGET_CLANG) \
 		-DCMAKE_INSTALL_PREFIX=$(realpath $(TARGET_SYSROOT))
-	cmake --build build/libcxx_gcc_crt
-	cmake --install build/libcxx_gcc_crt
+	cmake --build build/target-compiler-rt
+	cmake --install build/target-compiler-rt
 
-target: $(TARGET_AS) $(TARGET_GLIBC) $(TARGET_CXX) $(TARGET_LIBCXX) $(TARGET_LIBCRT)
+target: $(TARGET_AS) $(TARGET_GLIBC) $(TARGET_LIBCXX) $(TARGET_LIBCRT)
