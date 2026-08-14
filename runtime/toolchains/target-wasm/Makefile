@@ -245,6 +245,10 @@ $(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a: ../common/ngtcp2.mk $(SP_INSTALL_PREFI
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 # curl with the OpenSSL TLS backend + HTTP/3 (USE_NGTCP2 -> ngtcp2 + nghttp3). No IDN2
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
+	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
+	cp -f $< $@
+
 # on wasm (disabled in curl.mk's WASM branch). Sockets/resolver come from the sprt
 # libc no-op stubs. Output renamed to libcurl-openssl.a (non-WINDOWS branch of curl.mk).
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
@@ -252,7 +256,8 @@ $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
 		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libz.a
+		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
+		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 .PHONY: all

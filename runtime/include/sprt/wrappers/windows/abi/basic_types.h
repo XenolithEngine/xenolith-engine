@@ -185,6 +185,9 @@ typedef struct _PROC_THREAD_ATTRIBUTE_LIST *PPROC_THREAD_ATTRIBUTE_LIST,
 #define __SPRT_FIELD_OFFSET(type, field)    ((LONG)__SPRT_OFFSETOF(type, field))
 #define __SPRT_UFIELD_OFFSET(type, field)    ((ULONG)__SPRT_OFFSETOF(type, field))
 
+#define __SPRT_RTL_NUMBER_OF_V1(A)    (sizeof(A) / sizeof((A)[0]))
+#define __SPRT_RTL_NUMBER_OF_V2(A)    __SPRT_RTL_NUMBER_OF_V1(A)
+
 
 #ifdef UNICODE
 typedef WCHAR TCHAR, *PTCHAR, *LPTCHAR;

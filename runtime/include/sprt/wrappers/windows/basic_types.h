@@ -34,6 +34,11 @@
 #define HIWORD(l) __SPRT_HIWORD(l)
 #define LOBYTE(w) __SPRT_LOBYTE(w)
 #define HIBYTE(w) __SPRT_HIBYTE(w)
+#define RTL_NUMBER_OF_V1(A) __SPRT_RTL_NUMBER_OF_V1(A)
+#define RTL_NUMBER_OF_V2(A) __SPRT_RTL_NUMBER_OF_V2(A)
+#define RTL_NUMBER_OF(A) __SPRT_RTL_NUMBER_OF_V1(A)
+#define ARRAYSIZE(A) __SPRT_RTL_NUMBER_OF_V2(A)
+#define _ARRAYSIZE(A) __SPRT_RTL_NUMBER_OF_V1(A)
 
 // Some developers expect that wchar.h functions will be defined when windows headers are
 // included; kept at the api level so abi/ stays free of include_libc dependencies.

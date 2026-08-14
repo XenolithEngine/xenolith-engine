@@ -40,7 +40,11 @@ constexpr int STATUS_GAPI_OFFSET = 0x2'FFFF;
 
 // WinAPI error space
 constexpr int STATUS_WINAPI_OFFSET = 0x100'FFFF;
-constexpr int STATUS_END_OFFSET = 0x200'FFFF;
+
+// IDN/UTS-46 error space. Appended after WinAPI so the existing section bounds keep
+// their values; only isWinApi()'s upper bound moves from END to IDN.
+constexpr int STATUS_IDN_OFFSET = 0x200'FFFF;
+constexpr int STATUS_END_OFFSET = 0x201'FFFF;
 
 constexpr inline int ERRNO_ERROR_NUMBER(int __errno) { return -STATUS_ERRNO_OFFSET - __errno; }
 
@@ -49,6 +53,8 @@ constexpr inline int GENERIC_ERROR_NUMBER(int __errno) { return -STATUS_GENERIC_
 constexpr inline int GAPI_ERROR_NUMBER(int __errno) { return -STATUS_GAPI_OFFSET - __errno; }
 
 constexpr inline int WINAPI_ERROR_NUMBER(int __errno) { return -STATUS_WINAPI_OFFSET - __errno; }
+
+constexpr inline int IDN_ERROR_NUMBER(int __idn) { return -STATUS_IDN_OFFSET - __idn; }
 
 /* Canonical errno numbers used by the Status enumerators below.
  *
@@ -175,7 +181,29 @@ enum class Status : int32_t {
 	ErrorInvalidShader =			status::GAPI_ERROR_NUMBER(14),
 	ErrorInvalidDrmFormat =			status::GAPI_ERROR_NUMBER(15),
 	ErrorFullscreenLost =			status::GAPI_ERROR_NUMBER(16),
- 
+
+	// IDN (UTS-46) errors: one enumerator per rule the standard can reject a name by.
+	//
+	// UTS-46 naturally produces a SET of violated rules, while a Status is a single value,
+	// so sprt::idn collapses the set with a fixed priority order (idn::statusFromErrors()
+	// in utils/idn.h documents and implements it). The order below IS that priority, most
+	// specific first - keep the two in sync, a silent reorder changes what callers see.
+	ErrorIdnPunycode =				status::IDN_ERROR_NUMBER(1),
+	ErrorIdnInvalidAceLabel =		status::IDN_ERROR_NUMBER(2),
+	ErrorIdnLabelHasDot =			status::IDN_ERROR_NUMBER(3),
+	ErrorIdnEmptyLabel =			status::IDN_ERROR_NUMBER(4),
+	ErrorIdnDisallowed =			status::IDN_ERROR_NUMBER(5),
+	ErrorIdnBidi =					status::IDN_ERROR_NUMBER(6),
+	ErrorIdnContextJ =				status::IDN_ERROR_NUMBER(7),
+	ErrorIdnContextOPunctuation =	status::IDN_ERROR_NUMBER(8),
+	ErrorIdnContextODigits =		status::IDN_ERROR_NUMBER(9),
+	ErrorIdnLeadingCombiningMark =	status::IDN_ERROR_NUMBER(10),
+	ErrorIdnLeadingHyphen =			status::IDN_ERROR_NUMBER(11),
+	ErrorIdnTrailingHyphen =		status::IDN_ERROR_NUMBER(12),
+	ErrorIdnHyphen34 =				status::IDN_ERROR_NUMBER(13),
+	ErrorIdnLabelTooLong =			status::IDN_ERROR_NUMBER(14),
+	ErrorIdnDomainNameTooLong =		status::IDN_ERROR_NUMBER(15),
+
 	ErrorUnknown = ErrorNumber,
 };
 // clang-format on
@@ -209,7 +237,11 @@ constexpr inline int isGApi(Status st) {
 }
 
 constexpr inline int isWinApi(Status st) {
-	return toInt(st) <= -STATUS_WINAPI_OFFSET && toInt(st) > -STATUS_END_OFFSET;
+	return toInt(st) <= -STATUS_WINAPI_OFFSET && toInt(st) > -STATUS_IDN_OFFSET;
+}
+
+constexpr inline int isIdn(Status st) {
+	return toInt(st) <= -STATUS_IDN_OFFSET && toInt(st) > -STATUS_END_OFFSET;
 }
 
 // The errno carried by a Status is the canonical (portable) number - see
@@ -234,6 +266,8 @@ constexpr inline int toGApi(Status st) { return isGApi(st) ? -toInt(st) - STATUS
 constexpr inline int toWinApi(Status st) {
 	return isWinApi(st) ? -toInt(st) - STATUS_WINAPI_OFFSET : 0;
 }
+
+constexpr inline int toIdn(Status st) { return isIdn(st) ? -toInt(st) - STATUS_IDN_OFFSET : 0; }
 
 // Takes a NATIVE errno of the platform being compiled for and canonicalizes it, so the same
 // error yields the same Status everywhere (see detail/errno_canonical.h).

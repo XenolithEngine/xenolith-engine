@@ -29,16 +29,8 @@ static constexpr sprt::uint32_t U_COMPARE_CODE_POINT_ORDER = 0x8000;
 static constexpr int U_ZERO_ERROR = 0;
 static constexpr int U_BUFFER_OVERFLOW_ERROR = 15;
 
-static constexpr int UIDNA_ERROR_EMPTY_LABEL = 1;
-
 using UErrorCode = int;
 using UBreakIterator = void;
-using UIDNA = void;
-
-struct UIDNAInfo {
-	sprt::int8_t isTransitionalDifferent;
-	sprt::uint32_t errors;
-};
 
 namespace sprt::unicode {
 
@@ -121,50 +113,7 @@ struct unistring_iface {
 	}
 };
 
-struct idn2_iface {
-	enum flags {
-		IDN2_NFC_INPUT = 1,
-		IDN2_ALABEL_ROUNDTRIP = 2,
-		IDN2_TRANSITIONAL = 4,
-		IDN2_NONTRANSITIONAL = 8,
-		IDN2_ALLOW_UNASSIGNED = 16,
-		IDN2_USE_STD3_ASCII_RULES = 32,
-		IDN2_NO_TR46 = 64,
-		IDN2_NO_ALABEL_ROUNDTRIP = 128
-	};
-
-	int (*lookup_u8)(const uint8_t *src, uint8_t **lookupname, int flags) = nullptr;
-	int (*lookup_ul)(const char *src, char **lookupname, int flags) = nullptr;
-	int (*to_unicode_8z8z)(const char *src, char **lookupname, int flags) = nullptr;
-	const char *(*strerror)(int) = nullptr;
-
-	void load(Dso &handle) {
-		lookup_u8 = handle.sym<decltype(lookup_u8)>("idn2_lookup_u8");
-		lookup_ul = handle.sym<decltype(lookup_ul)>("idn2_lookup_ul");
-		to_unicode_8z8z = handle.sym<decltype(to_unicode_8z8z)>("idn2_to_unicode_8z8z");
-		strerror = handle.sym<decltype(strerror)>("idn2_strerror");
-	}
-
-	explicit operator bool() const { return lookup_u8 && lookup_ul && to_unicode_8z8z && strerror; }
-
-	void clear() {
-		lookup_u8 = nullptr;
-		lookup_ul = nullptr;
-		to_unicode_8z8z = nullptr;
-	}
-};
-
 struct icu_iface {
-	enum {
-		UIDNA_DEFAULT = 0x30,
-		UIDNA_USE_STD3_RULES = 2,
-		UIDNA_CHECK_BIDI = 4,
-		UIDNA_CHECK_CONTEXTJ = 8,
-		UIDNA_NONTRANSITIONAL_TO_ASCII = 0x10,
-		UIDNA_NONTRANSITIONAL_TO_UNICODE = 0x20,
-		UIDNA_CHECK_CONTEXTO = 0x40
-	};
-
 	using case_fn = int32_t (*)(char16_t *dest, int32_t destCapacity, const char16_t *src,
 			int32_t srcLength, const char *locale, UErrorCode *pErrorCode);
 	using case_iter_fn = int32_t (*)(char16_t *dest, int32_t destCapacity, const char16_t *src,
@@ -187,21 +136,6 @@ struct icu_iface {
 	case_cmp_fn u_strCaseCompare_fn = nullptr;
 
 	const char *(*u_errorName_fn)(UErrorCode code) = nullptr;
-
-	UIDNA *(*uidna_openUTS46_fn)(uint32_t options, UErrorCode *pErrorCode) = nullptr;
-	void (*uidna_close_fn)(UIDNA *idna) = nullptr;
-
-	int32_t (*uidna_labelToASCII_UTF8_fn)(const UIDNA *idna, const char *label, int32_t length,
-			char *dest, int32_t capacity, UIDNAInfo *pInfo, UErrorCode *pErrorCode) = nullptr;
-
-	int32_t (*uidna_labelToUnicodeUTF8_fn)(const UIDNA *idna, const char *label, int32_t length,
-			char *dest, int32_t capacity, UIDNAInfo *pInfo, UErrorCode *pErrorCode) = nullptr;
-
-	int32_t (*uidna_nameToASCII_UTF8_fn)(const UIDNA *idna, const char *name, int32_t length,
-			char *dest, int32_t capacity, UIDNAInfo *pInfo, UErrorCode *pErrorCode) = nullptr;
-
-	int32_t (*uidna_nameToUnicodeUTF8_fn)(const UIDNA *idna, const char *name, int32_t length,
-			char *dest, int32_t capacity, UIDNAInfo *pInfo, UErrorCode *pErrorCode) = nullptr;
 
 	static void *loadIcu(Dso &h, const char *name, StringView ver) {
 		char buf[256] = {0};
@@ -236,27 +170,11 @@ struct icu_iface {
 
 		u_errorName_fn = reinterpret_cast<decltype(u_errorName_fn)>(
 				loadIcu(handle, "u_errorName", verSuffix));
-		uidna_openUTS46_fn = reinterpret_cast<decltype(uidna_openUTS46_fn)>(
-				loadIcu(handle, "uidna_openUTS46", verSuffix));
-		uidna_close_fn = reinterpret_cast<decltype(uidna_close_fn)>(
-				loadIcu(handle, "uidna_close", verSuffix));
-
-		uidna_labelToASCII_UTF8_fn = reinterpret_cast<decltype(uidna_labelToASCII_UTF8_fn)>(
-				loadIcu(handle, "uidna_labelToASCII_UTF8", verSuffix));
-		uidna_labelToUnicodeUTF8_fn = reinterpret_cast<decltype(uidna_labelToUnicodeUTF8_fn)>(
-				loadIcu(handle, "uidna_labelToUnicodeUTF8", verSuffix));
-		uidna_nameToASCII_UTF8_fn = reinterpret_cast<decltype(uidna_nameToASCII_UTF8_fn)>(
-				loadIcu(handle, "uidna_nameToASCII_UTF8", verSuffix));
-		uidna_nameToUnicodeUTF8_fn = reinterpret_cast<decltype(uidna_nameToUnicodeUTF8_fn)>(
-				loadIcu(handle, "uidna_nameToUnicodeUTF8", verSuffix));
 	}
 
 	explicit operator bool() const {
 		return tolower_fn && toupper_fn && totitle_fn && u_strToLower_fn && u_strToUpper_fn
-				&& u_strToTitle_fn && u_strCompare_fn && u_strCaseCompare_fn && u_errorName_fn
-				&& uidna_openUTS46_fn && uidna_close_fn && uidna_labelToASCII_UTF8_fn
-				&& uidna_labelToUnicodeUTF8_fn && uidna_nameToASCII_UTF8_fn
-				&& uidna_nameToUnicodeUTF8_fn;
+				&& u_strToTitle_fn && u_strCompare_fn && u_strCaseCompare_fn && u_errorName_fn;
 	}
 
 	void clear() {
@@ -269,12 +187,6 @@ struct icu_iface {
 		u_strCompare_fn = nullptr;
 		u_strCaseCompare_fn = nullptr;
 		u_errorName_fn = nullptr;
-		uidna_openUTS46_fn = nullptr;
-		uidna_close_fn = nullptr;
-		uidna_labelToASCII_UTF8_fn = nullptr;
-		uidna_labelToUnicodeUTF8_fn = nullptr;
-		uidna_nameToASCII_UTF8_fn = nullptr;
-		uidna_nameToUnicodeUTF8_fn = nullptr;
 	}
 };
 
@@ -297,15 +209,6 @@ struct i18n {
 		if (_handle) {
 			unistring.load(_handle);
 			if (unistring) {
-				_idnHandle = Dso("libidn2.so");
-				if (_idnHandle) {
-					idn2.load(_idnHandle);
-					if (!idn2) {
-						idn2.clear();
-						_idnHandle.close();
-					}
-				}
-
 				// We have to set locale for unistring to work
 				auto loc = sprt::platform::getOsLocale();
 				__sprt_setlocale(__SPRT_LC_ALL, loc.data());
@@ -351,17 +254,6 @@ struct i18n {
 			if (!icu) {
 				icu.clear();
 				_handle.close();
-			}
-		}
-
-		if (!icu) {
-			_idnHandle = Dso("libidn2.so");
-			if (_idnHandle) {
-				idn2.load(_idnHandle);
-				if (!idn2) {
-					idn2.clear();
-					_idnHandle.close();
-				}
 			}
 		}
 	}
@@ -638,10 +530,8 @@ struct i18n {
 
 	icu_iface icu;
 	unistring_iface unistring;
-	idn2_iface idn2;
 
 	Dso _handle;
-	Dso _idnHandle;
 };
 
 static i18n *s_instance = i18n::getInstance();
@@ -686,324 +576,4 @@ bool caseCompare(WideStringView l, WideStringView r, int *result) {
 	return s_instance->caseCompare(l, r, result);
 }
 
-bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
-	uint8_t *out = nullptr;
-	if (s_instance->idn2) {
-		int flags = idn2_iface::IDN2_NFC_INPUT | idn2_iface::IDN2_NONTRANSITIONAL;
-		int rc = s_instance->idn2.lookup_u8((const uint8_t *)source.data(), &out, flags);
-		if (rc != 0) {
-			rc = s_instance->idn2.lookup_u8((const uint8_t *)source.data(), &out,
-					idn2_iface::IDN2_TRANSITIONAL);
-		}
-
-		if (rc == 0) {
-			cb(StringView((const char *)out, ::__sprt_strlen((const char *)out)));
-			::__sprt_free(out);
-			return true;
-		}
-	} else if (s_instance->icu) {
-		UErrorCode err = U_ZERO_ERROR;
-		auto idna = s_instance->icu.uidna_openUTS46_fn(
-				icu_iface::UIDNA_CHECK_BIDI | icu_iface::UIDNA_NONTRANSITIONAL_TO_ASCII, &err);
-		if (err == U_ZERO_ERROR) {
-			UIDNAInfo info = {0, 0};
-			char buffer[1_KiB] = {0};
-			auto retLen = s_instance->icu.uidna_nameToASCII_UTF8_fn(idna, source.data(),
-					(int)source.size(), buffer, 1_KiB - 1, &info, &err);
-			s_instance->icu.uidna_close_fn(idna);
-			if (retLen > 0 && err == 0 && !info.errors) {
-				cb(StringView(buffer, retLen));
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
-	if (s_instance->idn2) {
-		char *out = nullptr;
-		auto err = s_instance->idn2.to_unicode_8z8z(source.data(), &out, 0);
-		if (err == 0) {
-			cb(StringView((const char *)out, ::__sprt_strlen((const char *)out)));
-			__sprt_free(out);
-			return true;
-		}
-	} else if (s_instance->icu) {
-		UErrorCode err = U_ZERO_ERROR;
-		auto idna = s_instance->icu.uidna_openUTS46_fn(
-				icu_iface::UIDNA_CHECK_BIDI | icu_iface::UIDNA_NONTRANSITIONAL_TO_UNICODE, &err);
-		if (err == U_ZERO_ERROR) {
-			char buffer[1_KiB] = {0};
-			UIDNAInfo info = {0, 0};
-			auto retLen = s_instance->icu.uidna_nameToUnicodeUTF8_fn(idna, source.data(),
-					(int)source.size(), buffer, 1_KiB - 1, &info, &err);
-			s_instance->icu.uidna_close_fn(idna);
-			if (retLen > 0 && err == 0 && !info.errors) {
-				cb(StringView(buffer, retLen));
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
 } // namespace sprt::unicode
-
-
-// Mimic IDN2 API for CURL
-namespace sprt::idn {
-
-static constexpr size_t DefaultBufferSize = 2'048;
-
-static constexpr auto IDN2_VERSION = "2.3.2-libstappler";
-
-static constexpr auto IDN2_OK = 0;
-
-static constexpr auto IDN2_NFC_INPUT = 1;
-static constexpr auto IDN2_ALABEL_ROUNDTRIP = 2;
-static constexpr auto IDN2_TRANSITIONAL = 4;
-static constexpr auto IDN2_NONTRANSITIONAL = 8;
-static constexpr auto IDN2_ALLOW_UNASSIGNED = 16;
-static constexpr auto IDN2_USE_STD3_ASCII_RULES = 32;
-static constexpr auto IDN2_NO_TR46 = 64;
-static constexpr auto IDN2_NO_ALABEL_ROUNDTRIP = 128;
-
-static int map_icu_to_idn2_error(UErrorCode u_error) {
-	switch (u_error) {
-	case U_ZERO_ERROR: return IDN2_OK;
-	default: return -1'000 - u_error;
-	}
-}
-
-extern "C" SPRT_GLOBAL int idn2_lookup_u8(const uint8_t *src, uint8_t **lookupname, int flags) {
-	if (!src) {
-		if (lookupname) {
-			*lookupname = nullptr;
-		}
-		return IDN2_OK;
-	}
-
-	if (unicode::s_instance->idn2) {
-		return unicode::s_instance->idn2.lookup_u8(src, lookupname, flags);
-	} else {
-		uint32_t options = unicode::icu_iface::UIDNA_CHECK_BIDI
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTJ
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTO; // IDN2008
-
-		if (flags & IDN2_NO_TR46) {
-			options = 0;
-		}
-
-		if (flags & IDN2_USE_STD3_ASCII_RULES) {
-			options |= unicode::icu_iface::UIDNA_USE_STD3_RULES;
-		}
-
-		if (flags & IDN2_NONTRANSITIONAL) {
-			options |= unicode::icu_iface::UIDNA_NONTRANSITIONAL_TO_ASCII;
-		}
-
-		UErrorCode err = U_ZERO_ERROR;
-		auto idna = unicode::s_instance->icu.uidna_openUTS46_fn(options, &err);
-		if (err == U_ZERO_ERROR) {
-			char *buffer = (char *)__sprt_malloc(DefaultBufferSize);
-
-			UIDNAInfo info = {0, 0};
-			unicode::s_instance->icu.uidna_nameToASCII_UTF8_fn(idna, (const char *)src,
-					sprt::strlen((const char *)src), buffer, DefaultBufferSize - 1, &info, &err);
-
-			unicode::s_instance->icu.uidna_close_fn(idna);
-
-			if (err == U_ZERO_ERROR && info.errors == 0) {
-				if (lookupname) {
-					*lookupname = (uint8_t *)buffer;
-				} else {
-					__sprt_free(buffer);
-				}
-				return IDN2_OK;
-			} else {
-				if (err != U_ZERO_ERROR) {
-					__sprt_free(buffer);
-					return map_icu_to_idn2_error(err);
-				} else {
-					if (info.errors == UIDNA_ERROR_EMPTY_LABEL) {
-						if (lookupname) {
-							*lookupname = (uint8_t *)buffer;
-						} else {
-							__sprt_free(buffer);
-						}
-						return IDN2_OK;
-					}
-					return -info.errors;
-				}
-			}
-		}
-		return -1;
-	}
-}
-
-extern "C" SPRT_GLOBAL int idn2_lookup_ul(const char *src, char **lookupname, int flags) {
-	if (!src) {
-		if (lookupname) {
-			*lookupname = nullptr;
-		}
-		return IDN2_OK;
-	}
-
-	if (unicode::s_instance->idn2) {
-		return unicode::s_instance->idn2.lookup_ul(src, lookupname, flags);
-	} else {
-		uint32_t options = unicode::icu_iface::UIDNA_CHECK_BIDI
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTJ
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTO; // IDN2008
-
-		if (flags & IDN2_NO_TR46) {
-			options = 0;
-		}
-
-		if (flags & IDN2_USE_STD3_ASCII_RULES) {
-			options |= unicode::icu_iface::UIDNA_USE_STD3_RULES;
-		}
-
-		if (flags & IDN2_NONTRANSITIONAL) {
-			options |= unicode::icu_iface::UIDNA_NONTRANSITIONAL_TO_ASCII;
-		}
-
-		UErrorCode err = U_ZERO_ERROR;
-		auto idna = unicode::s_instance->icu.uidna_openUTS46_fn(options, &err);
-		if (err == U_ZERO_ERROR) {
-			char *buffer = (char *)__sprt_malloc(DefaultBufferSize);
-
-			UIDNAInfo info = {0, 0};
-			unicode::s_instance->icu.uidna_nameToASCII_UTF8_fn(idna, (const char *)src,
-					sprt::strlen((const char *)src), buffer, DefaultBufferSize - 1, &info, &err);
-
-			unicode::s_instance->icu.uidna_close_fn(idna);
-
-			if (err == U_ZERO_ERROR && info.errors == 0) {
-				if (lookupname) {
-					*lookupname = buffer;
-				} else {
-					__sprt_free(buffer);
-				}
-				return IDN2_OK;
-			} else {
-				if (err != U_ZERO_ERROR) {
-					__sprt_free(buffer);
-					return map_icu_to_idn2_error(err);
-				} else {
-					if (info.errors == UIDNA_ERROR_EMPTY_LABEL) {
-						if (lookupname) {
-							*lookupname = buffer;
-						} else {
-							__sprt_free(buffer);
-						}
-						return IDN2_OK;
-					}
-					return -info.errors;
-				}
-			}
-		}
-		return -1;
-	}
-}
-
-extern "C" SPRT_GLOBAL int idn2_to_unicode_8z8z(const char *src, char **lookupname, int flags) {
-	if (!src) {
-		if (lookupname) {
-			*lookupname = nullptr;
-		}
-		return IDN2_OK;
-	}
-
-	if (unicode::s_instance->idn2) {
-		return unicode::s_instance->idn2.lookup_ul(src, lookupname, flags);
-	} else {
-		uint32_t options = unicode::icu_iface::UIDNA_CHECK_BIDI
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTJ
-				| unicode::icu_iface::UIDNA_CHECK_CONTEXTO; // IDN2008
-
-		if (flags & IDN2_NO_TR46) {
-			options = 0;
-		}
-
-		if (flags & IDN2_USE_STD3_ASCII_RULES) {
-			options |= unicode::icu_iface::UIDNA_USE_STD3_RULES;
-		}
-
-		if (flags & IDN2_NONTRANSITIONAL) {
-			options |= unicode::icu_iface::UIDNA_NONTRANSITIONAL_TO_UNICODE;
-		}
-
-		UErrorCode err = U_ZERO_ERROR;
-		auto idna = unicode::s_instance->icu.uidna_openUTS46_fn(options, &err);
-		if (err == U_ZERO_ERROR) {
-			char *buffer = (char *)__sprt_malloc(DefaultBufferSize);
-
-			UIDNAInfo info = {0, 0};
-			unicode::s_instance->icu.uidna_nameToUnicodeUTF8_fn(idna, (const char *)src,
-					sprt::strlen((const char *)src), buffer, DefaultBufferSize - 1, &info, &err);
-
-			unicode::s_instance->icu.uidna_close_fn(idna);
-
-			if (err == U_ZERO_ERROR && info.errors == 0) {
-				if (lookupname) {
-					*lookupname = buffer;
-				} else {
-					__sprt_free(buffer);
-				}
-				return IDN2_OK;
-			} else {
-				if (err != U_ZERO_ERROR) {
-					__sprt_free(buffer);
-					return map_icu_to_idn2_error(err);
-				} else {
-					if (info.errors == UIDNA_ERROR_EMPTY_LABEL) {
-						if (lookupname) {
-							*lookupname = buffer;
-						} else {
-							__sprt_free(buffer);
-						}
-						return IDN2_OK;
-					}
-					return -info.errors;
-				}
-			}
-		}
-		return -1;
-	}
-}
-
-extern "C" SPRT_GLOBAL const char *idn2_strerror(int rc) {
-	if (unicode::s_instance->idn2) {
-		return unicode::s_instance->idn2.strerror(rc);
-	} else if (unicode::s_instance->icu) {
-		switch (rc) {
-		case IDN2_OK: return "success"; break;
-		default:
-			if (rc < -1'000) {
-				return unicode::s_instance->icu.u_errorName_fn(UErrorCode(-rc - 1'000));
-			} else {
-				return "processing error";
-			}
-			break;
-		}
-	}
-	return "No IDN interface available";
-}
-
-extern "C" SPRT_GLOBAL void idn2_free(void *ptr) {
-	if (ptr) {
-		__sprt_free(ptr);
-	}
-}
-
-extern "C" SPRT_GLOBAL const char *idn2_check_version(const char *req_version) {
-	if (!req_version || __sprt_strverscmp(req_version, IDN2_VERSION) <= 0) {
-		return IDN2_VERSION;
-	}
-
-	return nullptr;
-}
-
-} // namespace sprt::idn

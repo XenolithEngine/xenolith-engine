@@ -56,16 +56,61 @@ and exits 0.
 
 ## Scope / intentional gaps
 
-A handful of `__SPRT_MSG_*` / `__SPRT_SOCK_*` / `__SPRT_SO_*` names are POSIX/Linux
-flags that SPRT emulates and that Winsock has no bit for
-(`SOCK_CLOEXEC`, `SOCK_NONBLOCK`, `SO_REUSEPORT`, `MSG_DONTWAIT`, `MSG_EOR`,
-`MSG_NOSIGNAL`). They have no native counterpart to pin against and are left
-unchecked (documented inline in `check.cpp`). `PF_LINK` / `PF_HYPERV` have no
-Winsock `PF_` spelling, so they are pinned against the `AF_` spelling they alias.
+Three POSIX names in `windows_sprt/sockdef.h` have no Winsock constant to be pinned
+against, and each is handled on its own terms instead:
 
-The netinet asserts are `#ifdef`-guarded on the Winsock name, so Linux-only
-options that Winsock lacks (e.g. `IP_FREEBIND`, `IP_TRANSPARENT`, the
-`IP_PMTUDISC_*` / `IPV6_PMTUDISC_*` families, `IPV6_AUTOFLOWLABEL`,
-`MCAST_MSFILTER`) are skipped automatically. `IPPROTO_*` are a Winsock *enum*
-(not macros), so the standard ones are asserted directly while Linux-only
-protocol numbers (`IPPROTO_MPTCP`, `IPPROTO_BEETPH`, …) are omitted.
+- `SOCK_CLOEXEC` / `SOCK_NONBLOCK` — Linux `socket()` / `accept4()` type bits that the
+  shims mask out of the type and apply through `FIONBIO`. What is asserted is the
+  property the masking relies on: that neither collides with a Winsock `SOCK_` type.
+- `MSG_NOSIGNAL` — a request to suppress a signal Windows does not have, so it is 0,
+  and `check.cpp` asserts that it stays 0. The flag word goes to Winsock untouched,
+  and a private bit in it would be one Winsock never defined.
+
+`SO_REUSEPORT`, `MSG_DONTWAIT` and `MSG_EOR` used to sit in the same list as "emulated"
+without an emulation behind them. Winsock has no shared listening port, no per-call
+non-blocking flag and no record boundaries, so they are simply absent from the Windows
+table now, and `<sys/socket.h>` guards them like every other optional name.
+
+`SOL_IP` / `SOL_IPV6` are Linux spellings of the per-protocol `setsockopt()` level, which
+Winsock only spells `IPPROTO_IP` / `IPPROTO_IPV6`; they are pinned against those.
+
+`PF_LINK` / `PF_HYPERV` have no Winsock `PF_` spelling, so they are pinned against the
+`AF_` spelling they alias.
+
+`IPPROTO_*` are a Winsock *enum* (not macros), so the standard ones are asserted
+directly while Linux-only protocol numbers (`IPPROTO_MPTCP`, `IPPROTO_BEETPH`, …)
+are omitted.
+
+## The netinet table is checked in both directions
+
+The netinet asserts are guarded on `defined(__SPRT_X) || defined(X)` — the same
+guard the runtime uses for its hosted platforms — so **either** side defining a
+name forces the assert to compile:
+
+| `__SPRT_X` | Winsock `X` | result |
+|---|---|---|
+| yes | yes | values compared |
+| yes | no  | `error: use of undeclared identifier 'X'` — the table carries a name Winsock does not have |
+| no  | yes | `error: use of undeclared identifier '__SPRT_X'` — the table is missing an option Winsock has |
+| no  | no  | skipped |
+
+so `windows_sprt/netinetdef.h` must carry Winsock's option surface **exactly**.
+That is not pedantry: a defined name is a promise, and portable code takes it at
+face value. curl's `cf-socket.c` does
+
+```c
+#ifdef IP_BIND_ADDRESS_NO_PORT
+  (void)setsockopt(sockfd, SOL_IP, IP_BIND_ADDRESS_NO_PORT, &on, sizeof(on));
+#endif
+```
+
+— no `__linux__` guard, the macro *is* the feature test. While the table still
+carried the Linux number for it, that line broke the Windows curl build outright
+(`int *` vs winsock's `const char *optval`), and had it compiled it would have
+set `IP_RECVIF`, which is what option 24 means on Windows.
+
+Linux-only options (`IP_FREEBIND`, `IP_TRANSPARENT`, the `IP_PMTUDISC_*` /
+`IPV6_PMTUDISC_*` families, `IPV6_AUTOFLOWLABEL`, `MCAST_MSFILTER`, …) are
+therefore absent from the Windows table, and that absence is what makes them skip
+here. The Linux/Android/macOS tables keep them; those targets validate the same
+way against their own `<netinet/in.h>` in `SPRuntimeCSysSocket.cpp`.

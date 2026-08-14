@@ -163,15 +163,20 @@ MODULE_RUNTIME_LIBS += -l:libbacktrace.a
 # sysroot itself, so the -F/-L above resolve against the generated .tbd link
 # stubs (target-apple/open-sysroot.mk + gen-oss-stubs.sh). The stubs place every
 # symbol in the SAME library as the real SDK, so the link line matches the stock
-# one: libicucore (uidna_*) and libiconv resolve via their own stubs, CoreText is
-# added (font deps pull it in via functions_<arch>.txt); only Metal (provided
-# through MoltenVK) is dropped. The baked stubs are complete, so the link uses
-# the default two-level namespace with NO -undefined dynamic_lookup escape hatch
-# — any symbol not carried by a stub is a hard link error (re-bake to add it).
+# one: libiconv resolves via its own stub, CoreText is added (font deps pull it in
+# via functions_<arch>.txt); only Metal (provided through MoltenVK) is dropped.
+# The baked stubs are complete, so the link uses the default two-level namespace
+# with NO -undefined dynamic_lookup escape hatch — any symbol not carried by a
+# stub is a hard link error (re-bake to add it).
+#
+# libicucore is deliberately NOT linked. Its only use was uidna_* for IDN, which
+# the runtime now implements itself (runtime/src/idn); those are Apple-private,
+# version-unstable symbols, and dropping them removes that exposure entirely.
+# Case mapping and collation go through CoreFoundation, not ICU.
 ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -licucore -liconv
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -liconv
 else
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -licucore -liconv
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -liconv
 endif
 endif
 

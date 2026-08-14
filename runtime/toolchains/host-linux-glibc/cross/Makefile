@@ -91,10 +91,26 @@ endif
 SP_LLVM_LTO ?= Full
 ifeq ($(SP_LLVM_LTO),)
 LTO_FLAGS :=
+LTO_LDFLAGS :=
 else
 LTO_FLAGS := -DLLVM_ENABLE_LTO=$(SP_LLVM_LTO) \
-	-DLLVM_PARALLEL_LINK_JOBS=6 \
+	-DLLVM_PARALLEL_LINK_JOBS=4 \
 	-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_ENABLE_LTO=OFF
+
+# riscv64 + LTO: кодогенерацию делает lld, и его TargetMachine создаётся с
+# пустым набором ISA-фич (фичи лежат только в per-function target-features).
+# MC-слой видит "голый" rv64i, а ABI берёт из module flag target-abi (lp64d) —
+# и на каждой линковке печатает
+#   Hard-float 'd' ABI can't be used for a target that doesn't support the D
+#   instruction set extension (ignoring target-abi)
+# На результат это не влияет (RISCVAsmPrinter переустанавливает и ABI, и
+# e_flags по module flag riscv-isa; вывод побайтово тот же), но лог засоряет.
+# Отдаём набор фич rv64gc LTO-бэкенду явно.
+ifeq ($(SP_ARCH_HOST),riscv64)
+LTO_LDFLAGS := -Xlinker -mllvm -Xlinker -mattr=+m,+a,+f,+d,+c
+else
+LTO_LDFLAGS :=
+endif
 endif
 
 # GNU make для поставки в составе тулчейна.
@@ -314,8 +330,8 @@ $(CLANG): $(LIBXML2) $(BUILD_CMAKE)
 		-DDEFAULT_SYSROOT=.. \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DCMAKE_EXE_LINKER_FLAGS="-resource-dir $(RESOURCE_DIR) -lc++ -lc++abi -lpthread -ldl -Wl,--gc-sections" \
-		-DCMAKE_SHARED_LINKER_FLAGS="-resource-dir $(RESOURCE_DIR) -lc++ -lc++abi -lpthread -ldl -Wl,--gc-sections" \
+		-DCMAKE_EXE_LINKER_FLAGS="-resource-dir $(RESOURCE_DIR) -lc++ -lc++abi -lpthread -ldl -Wl,--gc-sections $(LTO_LDFLAGS)" \
+		-DCMAKE_SHARED_LINKER_FLAGS="-resource-dir $(RESOURCE_DIR) -lc++ -lc++abi -lpthread -ldl -Wl,--gc-sections $(LTO_LDFLAGS)" \
 		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/llvm
 	cmake --install build/llvm

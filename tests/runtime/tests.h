@@ -60,5 +60,7 @@ void performFileTests();
 void performSocketTests();
 void performUnicodeTests();
 void performDtoaTests();
+void performIdnTests();
+void performIdnConformanceTests();
 
 } // namespace sprt

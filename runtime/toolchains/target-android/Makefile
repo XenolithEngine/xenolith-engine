@@ -370,9 +370,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/lib
 $(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/include/idn2.h: replacements/idn2.h
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
 	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
-	cp -f replacements/idn2.h $@
+	cp -f $< $@
 
 $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)

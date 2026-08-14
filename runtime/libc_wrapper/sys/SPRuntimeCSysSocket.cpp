@@ -289,6 +289,18 @@ static_assert(__SPRT_MSG_OOB == MSG_OOB && __SPRT_MSG_PEEK == MSG_PEEK
 
 static_assert(__SPRT_MSG_NOSIGNAL == MSG_NOSIGNAL, "MSG_NOSIGNAL differs from native");
 
+// listen()'s advisory cap. Every table has to carry it - the freestanding <sys/socket.h>
+// expands SOMAXCONN from it unconditionally, and SPEventSocket clamps the caller's backlog
+// with it - so this assert doubles as the check that the platform did not omit it (a
+// missing entry fails as an undeclared __SPRT_SOMAXCONN). glibc is the one native header
+// that disagrees: it raised the hint to 4096 for the modern kernel default while musl,
+// bionic and Darwin still say 128. It is not an ABI value - listen() only takes it as
+// advice, and the kernel clamps to net.core.somaxconn - so the table keeps the value that
+// is valid on all of them and the comparison is skipped for glibc alone.
+#ifndef __GLIBC__
+static_assert(__SPRT_SOMAXCONN == SOMAXCONN, "SOMAXCONN differs from native");
+#endif
+
 static_assert(__SPRT_SOCK_RDM == SOCK_RDM, "SOCK_RDM/DCCP/PACKET differ from native");
 
 // PF_* family constants

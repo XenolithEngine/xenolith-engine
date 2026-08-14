@@ -1289,12 +1289,10 @@ Rc<ListenState> prepareListenState(QueueData *q, ListenInfo &&info, Ref *ref) {
 		::__sprt_unlink(info.address.path.data());
 	}
 
-	// not every platform sockdef carries __SPRT_SOMAXCONN; 128 is the historic cap
-#ifdef __SPRT_SOMAXCONN
+	// Every platform sockdef carries __SPRT_SOMAXCONN: 128 on Linux/Darwin/Android, and
+	// winsock's 0x7fffffff, which is not a length but its "give me the backlog maximum"
+	// sentinel - clamping to it is what a Windows listen() wants.
 	constexpr int maxBacklog = __SPRT_SOMAXCONN;
-#else
-	constexpr int maxBacklog = 128;
-#endif
 	int backlog = int(info.backlog);
 	if (backlog <= 0 || backlog > maxBacklog) {
 		backlog = maxBacklog;

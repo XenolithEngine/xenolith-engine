@@ -30,14 +30,11 @@
 #define SO_KEEPALIVE   __SPRT_SO_KEEPALIVE
 #define SO_OOBINLINE   __SPRT_SO_OOBINLINE
 #define SO_LINGER      __SPRT_SO_LINGER
-#define SO_REUSEPORT   __SPRT_SO_REUSEPORT
 #define MSG_OOB        __SPRT_MSG_OOB
 #define MSG_PEEK       __SPRT_MSG_PEEK
 #define MSG_DONTROUTE  __SPRT_MSG_DONTROUTE
 #define MSG_CTRUNC     __SPRT_MSG_CTRUNC
 #define MSG_TRUNC      __SPRT_MSG_TRUNC
-#define MSG_DONTWAIT   __SPRT_MSG_DONTWAIT
-#define MSG_EOR        __SPRT_MSG_EOR
 #define MSG_WAITALL    __SPRT_MSG_WAITALL
 #define MSG_NOSIGNAL   __SPRT_MSG_NOSIGNAL
 #define SOMAXCONN      __SPRT_SOMAXCONN
@@ -687,6 +684,13 @@
 #endif
 
 // --- SO_* platform-specific -----------------------------------------------
+// SO_REUSEPORT is BSD/Linux only; Winsock has nothing that shares a listening port, so
+// this is guarded like the rest and portable code falls back to SO_REUSEADDR there.
+#ifdef __SPRT_SO_REUSEPORT
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT   __SPRT_SO_REUSEPORT
+#endif
+#endif
 #ifdef __SPRT_SO_DEBUG
 #ifndef SO_DEBUG
 #define SO_DEBUG       __SPRT_SO_DEBUG
@@ -971,6 +975,19 @@
 #endif
 
 // --- MSG_* platform-specific ----------------------------------------------
+// MSG_DONTWAIT (per-call non-blocking) and MSG_EOR (record boundary) are POSIX flags with
+// no Winsock bit and no faithful emulation there, so they are guarded rather than core:
+// code that tests for them gets the FIONBIO / stream path on Windows instead.
+#ifdef __SPRT_MSG_DONTWAIT
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT   __SPRT_MSG_DONTWAIT
+#endif
+#endif
+#ifdef __SPRT_MSG_EOR
+#ifndef MSG_EOR
+#define MSG_EOR        __SPRT_MSG_EOR
+#endif
+#endif
 #ifdef __SPRT_MSG_EOF
 #ifndef MSG_EOF
 #define MSG_EOF        __SPRT_MSG_EOF
