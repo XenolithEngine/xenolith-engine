@@ -42,6 +42,7 @@
 #include "input/XLUiCheckbox.cc"
 #include "input/XLUiTextInput.cc"
 
+#include "view/XLUiFilesystemModel.cc"
 #include "view/XLUiTreeView.cc"
 #include "view/XLUiTableView.cc"
 

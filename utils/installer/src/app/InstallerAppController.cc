@@ -92,65 +92,66 @@ bool AppController::attach(NotNull<AppThread> app) {
 	// one has every payload in place before it builds its first row and never draws a `loading`
 	// placeholder. `this` is captured raw on purpose - the controller owns these Sources, so an Rc
 	// back would be a cycle, and detach() releases them.
-	auto makeSource = [](Function<Vector<Value>()> &&rows) {
-		return Rc<data::Source>::create(data::Source::BatchSourceCallback(
-				[rows = sp::move(rows)](const data::Source::BatchCallback &cb,
-						data::Source::Id::Type first, size_t size) {
+	// Each table is a model holding ONE span: the rows are answered from the caches on demand and
+	// never stored here, so there is still exactly one place row data can go stale.
+	auto makeModel = [](Function<Vector<Value>()> &&rows) {
+		auto model = Rc<data::Model>::create();
+		model->emplaceSpan(nullptr, maxOf<size_t>(), 0,
+				[rows = sp::move(rows)](const data::Model::BatchCallback &cb, uint64_t first,
+						size_t size) {
 			auto all = rows();
-			Map<data::Source::Id, Value> out;
+			data::Model::Map<uint64_t, Value> out;
 			for (size_t i = 0; i < size; ++i) {
 				const auto index = static_cast<size_t>(first) + i;
 				if (index < all.size()) {
-					out.emplace(data::Source::Id(first + i), sp::move(all[index]));
+					out.emplace(first + i, sp::move(all[index]));
 				}
 			}
 			cb(out);
-		}));
+		});
+		return model;
 	};
 
-	_hostsSource = makeSource([this] { return makeToolRows(Kind::Host); });
-	_targetsSource = makeSource([this] { return makeToolRows(Kind::Target); });
-	_enginesSource = makeSource([this] { return makeEngineRows(); });
+	_hostsSource = makeModel([this] { return makeToolRows(Kind::Host); });
+	_targetsSource = makeModel([this] { return makeToolRows(Kind::Target); });
+	_enginesSource = makeModel([this] { return makeEngineRows(); });
 
-	// The navigation tree. A category's own record is what TreeView shows as its label, so each
-	// branch carries a Value of its own; the leaves come from the branch's batch callback.
+	// The navigation tree. A category node carries its own Value, which is what TreeView shows as
+	// its label, and its rows are ordinary child nodes refilled by fillNavBranch().
+	_navModel = Rc<data::Model>::create();
+	{
+		Value data;
+		data.setString("Xenolith", "name");
+		data.setString("root", "node");
+		_navModel->setNodeData(_navModel->getRoot(), sp::move(data));
+	}
+
 	auto makeBranch = [&](StringView node, StringView label) {
-		auto source = makeSource([this, node = toString(node)] { return makeNavRows(node); });
 		Value data;
 		data.setString(label, "name");
 		data.setString("group", "node");
 		data.setString(node, "branch");
-		source->setData(sp::move(data));
-		return source;
+		return _navModel->emplaceCategory(nullptr, maxOf<size_t>(), sp::move(data));
 	};
 
 	_navEngines = makeBranch("engine", "Engines");
 	_navHosts = makeBranch("host", "Hosts");
 	_navTargets = makeBranch("target", "Targets");
 
-	// The root's own items come AFTER its subcategories, which is exactly where the Projects leaf
-	// belongs in design.md's tree.
-	_navSource = makeSource([] {
-		Vector<Value> rows;
+	// Projects goes last because design.md puts it last — a CHOICE now. Under a data::Source it was
+	// the only position available: a Source emits every subcategory before any of its own items, so
+	// a leaf could not be placed among the branches even if the design had asked for it.
+	{
 		Value projects;
 		projects.setString("Projects", "name");
 		projects.setString("projects", "node");
 		projects.setBool(false, "enabled");
-		rows.emplace_back(sp::move(projects));
-		return rows;
-	});
-	{
-		Value data;
-		data.setString("Xenolith", "name");
-		data.setString("root", "node");
-		_navSource->setData(sp::move(data));
+		_navModel->emplaceItem(nullptr, maxOf<size_t>(), sp::move(projects));
 	}
-	// The root's one own item is the Projects leaf; without a count the batch callback is never
-	// asked and the leaf would silently not exist.
-	_navSource->setChildsCount(1);
-	_navSource->addSubcategry(_navEngines);
-	_navSource->addSubcategry(_navHosts);
-	_navSource->addSubcategry(_navTargets);
+
+	// The branches start with whatever the caches hold — nothing yet, so each gets only its trailing
+	// "add new" row, and they refill when checkComponents lands.
+	rebuildNavSources();
 
 	log::info(kLogTag, "attach: config=", _layout.config, " data=", _layout.data,
 			" native=", _nativeId);
@@ -186,10 +187,12 @@ void AppController::detach() {
 	_hostsSource = nullptr;
 	_targetsSource = nullptr;
 	_enginesSource = nullptr;
-	_navSource = nullptr;
+	// The branch pointers are owned by the model, so they die with it; nulled here so nothing can
+	// reach a freed node between detach() and the next attach().
 	_navEngines = nullptr;
 	_navHosts = nullptr;
 	_navTargets = nullptr;
+	_navModel = nullptr;
 	_jobs.clear();
 	_engineProbeRunning = false;
 	_releaseProbeRunning = false;
@@ -394,7 +397,7 @@ void AppController::setReachability(SourceKind kind, Reachability state, StringV
 
 // --- data sources -----------------------------------------------------------
 
-data::Source *AppController::getToolsSource(Kind kind) const {
+data::Model *AppController::getToolsSource(Kind kind) const {
 	return kind == Kind::Host ? _hostsSource.get() : _targetsSource.get();
 }
 
@@ -509,41 +512,58 @@ Vector<Value> AppController::makeNavRows(StringView node) const {
 	return rows;
 }
 
+// The single span of a table model, which is all any of these three hold.
+static data::Model::Node *tableSpan(data::Model *model) {
+	if (!model) {
+		return nullptr;
+	}
+	auto children = model->getRoot()->getChildren();
+	return children.empty() ? nullptr : children.at(0).get();
+}
+
 void AppController::rebuildSources() {
-	// Only the COUNT is pushed: each Source answers its payload from the caches through the batch
-	// callback installed in attach(), so there is nothing to copy in here and no second place where
-	// row data could go stale. setDirty() is what makes every bound view re-read.
-	if (_hostsSource) {
-		_hostsSource->setChildsCount(makeToolRows(Kind::Host).size());
-		_hostsSource->setDirty();
-	}
-	if (_targetsSource) {
-		_targetsSource->setChildsCount(makeToolRows(Kind::Target).size());
-		_targetsSource->setDirty();
-	}
-	if (_enginesSource) {
-		_enginesSource->setChildsCount(_engineRefs.size());
-		_enginesSource->setDirty();
-	}
+	/* Only the COUNT is pushed: each span answers its payload from the caches through the callback
+	installed in attach(), so there is nothing to copy in here and no second place where row data
+	could go stale.
+
+	setDirty() afterwards is not redundant. setSpanCount() is silent when the length did not change,
+	and the contents can change while the count does not - a component that moved from "available"
+	to "installed" is the same row saying something else. Posting Structure is what tells a bound
+	table that the span's answers are stale and have to be re-read. */
+	auto rebuildTable = [](data::Model *model, size_t count) {
+		if (!model) {
+			return;
+		}
+		model->setSpanCount(tableSpan(model), count);
+		model->setDirty();
+	};
+
+	rebuildTable(_hostsSource, makeToolRows(Kind::Host).size());
+	rebuildTable(_targetsSource, makeToolRows(Kind::Target).size());
+	rebuildTable(_enginesSource, _engineRefs.size());
 
 	rebuildNavSources();
 }
 
+void AppController::fillNavBranch(data::Model::Node *branch, StringView node) {
+	if (!_navModel || !branch) {
+		return;
+	}
+
+	_navModel->clearChildren(branch);
+	for (auto &it : makeNavRows(node)) {
+		_navModel->emplaceItem(branch, maxOf<size_t>(), sp::move(it));
+	}
+}
+
 void AppController::rebuildNavSources() {
-	// A TreeView watches only the ROOT source, so each branch is re-counted here and the root is
-	// dirtied last - dirtying a branch on its own would not reach the view.
-	if (_navEngines) {
-		_navEngines->setChildsCount(makeNavRows("engine").size());
-	}
-	if (_navHosts) {
-		_navHosts->setChildsCount(makeNavRows("host").size());
-	}
-	if (_navTargets) {
-		_navTargets->setChildsCount(makeNavRows("target").size());
-	}
-	if (_navSource) {
-		_navSource->setDirty();
-	}
+	// No re-publishing of counts and no dirtying of the root: a Model is ONE Subscription for the
+	// whole tree, so refilling a branch reaches every bound TreeView on its own. Under a
+	// data::Source each branch was a Subscription nobody watched, which is why this used to have to
+	// push a count into each one and then dirty the root by hand.
+	fillNavBranch(_navEngines, "engine");
+	fillNavBranch(_navHosts, "host");
+	fillNavBranch(_navTargets, "target");
 }
 
 bool AppController::isComponentMissing(StringView key) const {

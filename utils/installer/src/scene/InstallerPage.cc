@@ -278,7 +278,7 @@ void InstallerToolsPage::buildCell(ui::TableView::CellBuilder &builder) {
 	if (!row) {
 		return;
 	}
-	const auto &data = row->data;
+	const auto &data = row->getData();
 	const auto key = builder.getColumn().key;
 
 	if (key == "name") {

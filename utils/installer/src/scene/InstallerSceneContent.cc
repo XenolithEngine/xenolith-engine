@@ -126,8 +126,8 @@ void InstallerSceneContent::handleContentSizeDirty() {
 
 void InstallerSceneContent::handleEnter(Scene *scene) {
 	// Attach BEFORE the base class propagates handleEnter into the subtree: the nav pane and the
-	// pages bind to the controller's data::Sources in their own handleEnter, and those Sources only
-	// exist once attach() has run. Doing it after would hand every child a null source and leave the
+	// pages bind to the controller's data::Models in their own handleEnter, and those models only
+	// exist once attach() has run. Doing it after would hand every child a null model and leave the
 	// tree empty until something else happened to dirty it.
 	if (!_controller) {
 		// A never-destroyed singleton, so this is a lookup rather than a construction; what belongs

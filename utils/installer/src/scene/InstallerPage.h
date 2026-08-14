@@ -54,7 +54,7 @@ public:
 	/* The page is about to become the visible one.
 
 	Needed because the pages are built up front and kept hidden: a hidden node is not visited, so
-	the row materialization its data::Source listener asks for never happens, and a table whose
+	the row materialization its data::Model listener asks for never happens, and a table whose
 	model changed while it was off screen would come back still showing the old one - or, at
 	startup, still showing nothing. Re-reading here costs nothing when nothing changed. */
 	virtual void handleShown();

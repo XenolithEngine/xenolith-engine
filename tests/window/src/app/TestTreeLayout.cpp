@@ -120,15 +120,21 @@ tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label {
 .menu-button > label { color: #ffffff; font-size: 15px; }
 )css");
 
-// The test payloads of one group, in the order the menu shows them. The registry itself is static,
-// but a Source addresses its items by index and the entries WITHOUT a selecting variable are not
-// menu entries at all - so the filtered list has an index space of its own, and this is it.
-struct TestEntries : Ref {
-	Vector<data::Source::Value> values;
-};
+// Add one group's subgroups and tests under `parent`. There is no separate index space to keep and
+// no container to share between two callbacks: an entry the menu does not show is simply a node
+// that is never created.
+static void fillGroup(data::Model *model, data::Model::Node *parent, const TestGroup &group) {
+	// Subgroups first, then the group's own tests — the order this menu wants, chosen here rather
+	// than imposed by the model.
+	for (auto &it : group.groups) {
+		data::Model::Value own;
+		own.setString(toString(it.title, "  (", getTestCount(it), ")"), "title");
+		own.setString(it.name, "name");
+		own.setString(it.description, "description");
 
-static Rc<data::Source> makeGroupSource(const TestGroup &group) {
-	auto entries = Rc<TestEntries>::alloc();
+		auto node = model->emplaceCategory(parent, maxOf<size_t>(), sp::move(own));
+		fillGroup(model, node, it);
+	}
 
 	// A record without an environment variable is not a test but the front page of the app itself,
 	// and it has no business in a menu of tests.
@@ -137,37 +143,27 @@ static Rc<data::Source> makeGroupSource(const TestGroup &group) {
 			continue;
 		}
 
-		data::Source::Value value;
+		data::Model::Value value;
 		value.setString(it.title, "title");
 		value.setString(it.name, "name");
 		value.setString(it.env, "env");
-		entries->values.emplace_back(sp::move(value));
+		model->emplaceItem(parent, maxOf<size_t>(), sp::move(value));
 	}
+}
 
-	data::Source::Value own;
+static Rc<data::Model> makeGroupModel(const TestGroup &group) {
+	data::Model::Value own;
 	own.setString(toString(group.title, "  (", getTestCount(group), ")"), "title");
 	own.setString(group.name, "name");
 	own.setString(group.description, "description");
 
-	auto source = Rc<data::Source>::create(
-			data::Source::BatchSourceCallback([entries](const data::Source::BatchCallback &cb,
-													  data::Source::Id::Type first, size_t size) {
-		// Exactly the keys first..first+size-1, which is what a slice request rebases on.
-		Map<data::Source::Id, data::Source::Value> map;
-		for (auto i = first; i < first + size && i < entries->values.size(); ++i) {
-			map.emplace(data::Source::Id(i), entries->values[i]);
-		}
-		cb(map);
-	}),
-			sp::move(own));
+	auto model = Rc<data::Model>::create(sp::move(own));
+	if (!model) {
+		return nullptr;
+	}
 
-	Vector<Rc<data::Source>> subcats;
-	for (auto &it : group.groups) { subcats.emplace_back(makeGroupSource(it)); }
-
-	source->setSubCategories(sp::move(subcats));
-	source->setChildsCount(entries->values.size());
-
-	return source;
+	fillGroup(model, model->getRoot(), group);
+	return model;
 }
 
 } // namespace
@@ -194,7 +190,7 @@ bool TestTreeLayout::init() {
 
 	// The root's own record is the app's front page, not a group anyone opens, so the tree starts
 	// with the root's CHILDREN - the directories under src/.
-	_tree = addChild(Rc<TreeView>::create(makeGroupSource(getTestRegistry())), ZOrder(1));
+	_tree = addChild(Rc<TreeView>::create(makeGroupModel(getTestRegistry())), ZOrder(1));
 	_tree->setName("test-tree");
 	_tree->setLabelKey("title");
 	_tree->setRowHeight(MenuTestHeight);
@@ -230,7 +226,7 @@ void TestTreeLayout::handleRowSelected(size_t index, const ui::TreeView::Row &ro
 
 	// The row carries the test's id rather than a pointer into the registry: the id is what the
 	// `layout` inspector command takes too, so both ways in resolve the same way.
-	if (auto test = findTest(row.data.getString("name"))) {
+	if (auto test = findTest(row.getData().getString("name"))) {
 		getSceneContent()->pushLayout(makeTestLayout(*test));
 	}
 }
@@ -300,8 +296,8 @@ void TestTreeLayout::addInspectorCommands(Scene *scene) {
 			entry.setBool(row.isCategory(), "group");
 			entry.setBool(row.expanded, "expanded");
 			entry.setDouble(double(row.height), "height");
-			entry.setString(row.data.getString("title"), "title");
-			entry.setString(row.data.getString("name"), "name");
+			entry.setString(row.getData().getString("title"), "title");
+			entry.setString(row.getData().getString("name"), "name");
 			list.addValue(sp::move(entry));
 		}
 
@@ -324,7 +320,7 @@ void TestTreeLayout::addInspectorCommands(Scene *scene) {
 
 		if (auto row = _tree->getRow(index)) {
 			result.setBool(row->expanded, "expanded");
-			result.setString(row->data.getString("title"), "title");
+			result.setString(row->getData().getString("title"), "title");
 		}
 		result.setInteger(int64_t(_tree->getRowCount()), "count");
 		done(sp::move(result));

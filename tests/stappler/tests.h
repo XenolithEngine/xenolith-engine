@@ -73,6 +73,7 @@ void performTableCssTests();
 void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();
+void performDataModelTests();
 
 } // namespace stappler
 

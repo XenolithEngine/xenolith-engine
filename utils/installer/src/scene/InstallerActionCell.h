@@ -69,7 +69,7 @@ Three things live here, per design.md: the action that applies to the row's curr
 running, and a per-tool auto-update switch.
 
 The swap is why this is a node with its own EventListener rather than something the cell callback
-re-renders. A progress tick must never reach the row's data::Source: dirtying it would rebuild the
+re-renders. A progress tick must never reach the row's data::Model: dirtying it would rebuild the
 row node many times a second for the duration of a download. So the cell listens for the job events
 itself, filters them by its own row key, and mutates what is already on screen.
 

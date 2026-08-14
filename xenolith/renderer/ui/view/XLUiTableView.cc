@@ -34,7 +34,7 @@ TableView::~TableView() { }
 
 bool TableView::init() { return init(nullptr); }
 
-bool TableView::init(Source *source) {
+bool TableView::init(Model *source) {
 	if (!Panel::init()) {
 		return false;
 	}
@@ -59,8 +59,8 @@ bool TableView::init(Source *source) {
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
 
-	_sourceListener = addSystem(Rc<DataListener<Source>>::create(
-			[this](SubscriptionFlags) { handleSourceDirty(); }, source));
+	_sourceListener = addSystem(Rc<DataListener<Model>>::create(
+			[this](SubscriptionFlags flags) { handleSourceDirty(flags); }, source));
 
 	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
 			[this](CallbackSystem *, const ComponentMask &) {
@@ -112,15 +112,16 @@ void TableView::handleContentSizeDirty() {
 	resolveColumns();
 }
 
-void TableView::setSource(Source *source) {
+void TableView::setSource(Model *source) {
 	if (_sourceListener->getSubscription() == source) {
 		return;
 	}
 	_sourceListener->setSubscription(source);
+	_selectedRow = maxOf<size_t>();
 	refresh();
 }
 
-auto TableView::getSource() const -> Source * { return _sourceListener->getSubscription(); }
+auto TableView::getSource() const -> Model * { return _sourceListener->getSubscription(); }
 
 void TableView::setColumns(Vector<Column> &&columns) {
 	if (_columns == columns) {
@@ -296,15 +297,19 @@ void TableView::setSelectedRow(size_t index) {
 		updateRowNode(node, index);
 	}
 
-	if (_selectCallback && index < _rows.size()) {
-		_selectCallback(index, _rows[index]);
-	}
+	/* The select callback deliberately does NOT fire here; handleRowTap sends it, exactly as
+	TreeView does. It used to fire from here, which meant a programmatic setSelectedRow() notified
+	on a TableView and stayed silent on a TreeView — the same call with two different meanings
+	depending on which widget the caller happened to hold. "Moving the selection" and "the user
+	picked a row" are different events, and only the widget that received the tap knows which one
+	happened. */
 }
 
-// Forced, for the reason spelled out on TreeView::invalidateSource: a RowKey cannot see that a
-// row's payload was replaced under the same id, so reusing its node would keep showing the old one.
-// refresh() stays unforced - a resize goes through it and must not rebuild anything.
+// A model change no longer needs the whole table rebuilt: the node's revision is in the RowKey, so
+// a replaced payload fails to match on its own row and only that row is remade. What is dropped
+// here is what the key cannot see — a span's answers, which come from outside the model entirely.
 void TableView::invalidateSource() {
+	dropSpanData();
 	refresh();
 	requestRebuildNodes(true);
 }
@@ -319,9 +324,24 @@ void TableView::requestRebuildNodes(bool force) {
 	markComponentsDirty();
 }
 
-void TableView::handleSourceDirty() {
+void TableView::dropSpanData() {
+	for (auto &it : _rows) {
+		if (it.node && it.node->isSpan()) {
+			it.dataLoaded = false;
+		}
+	}
+}
+
+void TableView::handleSourceDirty(SubscriptionFlags flags) {
+	// Unforced: a payload edit bumps the node's revision and the revision is in the RowKey, so
+	// exactly the rows that changed get new nodes and every other visible row keeps the one it has.
+	// Only a span's answers have to be dropped, because nothing about the model says when they went
+	// stale.
+	if (flags.hasFlag(Model::Update::Structure)) {
+		dropSpanData();
+	}
+
 	refresh();
-	requestRebuildNodes(true);
 }
 
 void TableView::refresh() {
@@ -421,6 +441,16 @@ void TableView::restampColumns() {
 }
 
 void TableView::rebuildModel() {
+	// Harvested BEFORE _rows is cleared. This used to clear first and then walk the empty vector, so
+	// the carry-over map was always empty and every payload was re-requested on every single
+	// rebuild — a window resize re-fetched the whole visible table.
+	Map<Model::Position, Value> loaded;
+	for (auto &row : _rows) {
+		if (row.dataLoaded && row.node && row.node->isSpan()) {
+			loaded.emplace(Model::Position{row.node->getId(), row.offset}, sp::move(row.spanData));
+		}
+	}
+
 	_rows.clear();
 
 	auto source = getSource();
@@ -428,26 +458,36 @@ void TableView::rebuildModel() {
 		return;
 	}
 
-	// Keep what has already been loaded, keyed by identity, so a rebuild does not re-request every
-	// payload it already has.
-	Map<SourceId, Value> loaded;
-	for (auto &row : _rows) {
-		if (row.dataLoaded) {
-			loaded.emplace(row.itemId, sp::move(row.data));
+	/* The root's children, in order. A table is a tree read one level deep: an explicit child is one
+	row that already holds its payload, and a span child is N rows that do not exist until they are
+	asked for. Both kinds can sit in the same table. */
+	for (auto &child : source->getRoot()->getChildren()) {
+		if (!child->isSpan()) {
+			Row row;
+			row.node = child;
+			row.revision = child->getRevision();
+			row.dataLoaded = true; // the model holds it
+			_rows.emplace_back(sp::move(row));
+			continue;
 		}
-	}
 
-	const auto count = source->getChildsCount();
-	_rows.reserve(count);
-	for (size_t i = 0; i < count; ++i) {
-		Row row;
-		row.itemId = SourceId(i);
-		auto it = loaded.find(row.itemId);
-		if (it != loaded.end()) {
-			row.data = sp::move(it->second);
-			row.dataLoaded = true;
+		const auto count = child->getSpanCount();
+		_rows.reserve(_rows.size() + count);
+		for (uint64_t i = 0; i < count; ++i) {
+			Row row;
+			row.node = child;
+			row.offset = i;
+			row.revision = child->getRevision();
+
+			auto it = loaded.find(Model::Position{child->getId(), i});
+			if (it != loaded.end()) {
+				row.spanData = sp::move(it->second);
+				row.dataLoaded = true;
+				loaded.erase(it);
+			}
+
+			_rows.emplace_back(sp::move(row));
 		}
-		_rows.emplace_back(sp::move(row));
 	}
 }
 
@@ -463,28 +503,29 @@ void TableView::requestRowData() {
 
 	size_t i = 0;
 	while (i < _rows.size()) {
-		if (_rows[i].dataLoaded) {
+		// Everything that is not an unfetched span row already has its payload, in the model.
+		if (_rows[i].dataLoaded || !_rows[i].node || !_rows[i].node->isSpan()) {
 			++i;
 			continue;
 		}
 
-		// One request per run of consecutive unloaded rows - the cursor read that makes a table of
-		// fifty thousand rows a handful of calls rather than fifty thousand.
-		const auto first = _rows[i].itemId;
+		Rc<ModelNode> span = _rows[i].node;
+
+		// One request per run of consecutive unloaded offsets of the same span - the cursor read
+		// that makes a table of fifty thousand rows a handful of calls rather than fifty thousand.
+		const auto first = _rows[i].offset;
 		size_t count = 1;
 		while (i + count < _rows.size() && !_rows[i + count].dataLoaded
-				&& _rows[i + count].itemId == first + SourceId(count)) {
+				&& _rows[i + count].node == span && _rows[i + count].offset == first + count) {
 			++count;
 		}
 
 		Rc<TableView> self(this);
-		if (source->getSliceData(
-					[self, first, count](Map<SourceId, Value> &data) {
-			self->handleSliceData(first, count, data);
-		}, first, count, 0, false)
-				== 0) {
-			// The source planned no request, so no callback is coming. Mark the range resolved
-			// rather than re-ask for it on every rebuild from now on.
+		if (span->getSpanData([self, span, first, count](Map<uint64_t, Value> &data) {
+			self->handleSliceData(span, first, count, data);
+		}, first, count) == 0) {
+			// The span planned no request, so no callback is coming. Mark the range resolved rather
+			// than re-ask for it on every rebuild from now on.
 			for (size_t j = 0; j < count; ++j) { _rows[i + j].dataLoaded = true; }
 		}
 
@@ -494,18 +535,19 @@ void TableView::requestRowData() {
 	_inDataRequest = false;
 }
 
-void TableView::handleSliceData(SourceId first, size_t count, Map<SourceId, Value> &data) {
+void TableView::handleSliceData(ModelNode *span, uint64_t first, size_t count,
+		Map<uint64_t, Value> &data) {
 	bool updated = false;
 	for (auto &row : _rows) {
-		if (row.itemId < first || row.itemId >= first + SourceId(count)) {
+		if (row.node != span || row.offset < first || row.offset >= first + count) {
 			continue;
 		}
-		auto it = data.find(row.itemId);
+		auto it = data.find(row.offset);
 		if (it != data.end()) {
-			row.data = sp::move(it->second);
+			row.spanData = sp::move(it->second);
 		}
-		// Marked loaded even for an index the source did not answer for: "loaded but empty" has to
-		// be terminal, or an under-delivering source would be asked again on every rebuild forever.
+		// Marked loaded even for an offset the span did not answer for: "loaded but empty" has to be
+		// terminal, or an under-delivering source would be asked again on every rebuild forever.
 		row.dataLoaded = true;
 		updated = true;
 	}
@@ -582,7 +624,9 @@ void TableView::rebuildRows() {
 
 auto TableView::makeRowKey(const Row &row) const -> RowKey {
 	RowKey key;
-	key.itemId = row.itemId;
+	key.node = row.node;
+	key.offset = row.offset;
+	key.revision = row.revision;
 	key.columnsRevision = _columnsRevision;
 	key.height = row.height;
 	key.dataLoaded = row.dataLoaded;
@@ -785,6 +829,12 @@ void TableView::handleRowTap(size_t index, uint32_t count) {
 		return;
 	}
 	setSelectedRow(index);
+
+	// Sent here rather than from setSelectedRow(), so that it means "the user picked this row" and
+	// not merely "the selection moved" — the same split TreeView makes.
+	if (_selectCallback) {
+		_selectCallback(index, _rows[index]);
+	}
 }
 
 // --- RowBuilder ------------------------------------------------------------
@@ -805,7 +855,7 @@ const Value &TableView::CellBuilder::getValue() const {
 	if (!_row || _column->key.empty()) {
 		return s_nullValue;
 	}
-	return _row->data.getValue(_column->key);
+	return _row->getData().getValue(_column->key);
 }
 
 void TableView::CellBuilder::setNode(Rc<Node> &&node) { _node = sp::move(node); }
