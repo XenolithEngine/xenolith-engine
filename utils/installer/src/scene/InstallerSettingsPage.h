@@ -20,11 +20,10 @@
  THE SOFTWARE.
  **/
 
-#ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_
-#define UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_
+#ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERSETTINGSPAGE_H_
+#define UTILS_INSTALLER_SRC_SCENE_INSTALLERSETTINGSPAGE_H_
 
-#include "XLCommon.h"
-#include "InstallerController.h"
+#include "XLCommon.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppWindow;
@@ -32,9 +31,23 @@ class AppWindow;
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-// Gear popup: open data dir / storage / settings / doctor / projects (in-scene overlays).
-void showGearMenu(NotNull<AppWindow> parent, InstallerController *controller);
+/* Open the settings form for `parent`.
+
+Presented through ui::SubWindow::openUtility, so it is a real OS window wherever
+WindowCapabilities::Subwindows exists and an in-scene overlay where it does not - and, unlike
+openDialog, it does not compete for InstallerSceneContent's single modal slot, which stays for
+confirmations.
+
+The form applies each field AS IT LOSES FOCUS rather than on a submit (design.md), so it has no
+submit button at all - only Close. */
+void showSettingsPage(NotNull<AppWindow> parent);
+
+// Take the form down from outside, the way its own Close button does. Exists so the dismiss path -
+// the one that has to release the surface AND fire the close callback exactly once - can be driven
+// without a pointer, on the native window as well as on the in-scene fallback.
+// Returns false when no form is open.
+bool closeSettingsPage();
 
 } // namespace stappler::xenolith::installer
 
-#endif // UTILS_INSTALLER_SRC_SCENE_INSTALLERGEARMENU_H_
+#endif // UTILS_INSTALLER_SRC_SCENE_INSTALLERSETTINGSPAGE_H_

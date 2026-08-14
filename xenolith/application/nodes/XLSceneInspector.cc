@@ -95,6 +95,16 @@ LogCapture &logCapture() {
 // handleEnter/handleExit, i.e. on the app thread, so it needs no synchronization of its own.
 SceneInspector *s_listenerOwner = nullptr;
 
+// Every inspector attached to a running scene, in attach order. SceneContent attaches one per
+// scene, so this is one entry per window - which is what lets the single session that owns the
+// socket reach a popup's or a dialog's scene, not only the one it happens to live on. Same thread
+// discipline as s_listenerOwner; function-local so it is built on first use rather than at static
+// init, like logCapture() above.
+Vector<SceneInspector *> &inspectors() {
+	static Vector<SceneInspector *> s;
+	return s;
+}
+
 // CustomLog sink: format every entry as "[T][tag] message" and append it to the ring buffer.
 // Returns true so the default sink (stderr/os_log) still runs - we only mirror, never replace.
 bool logHookFn(log::LogType type, StringView tag, const sprt::source_location &,
@@ -395,10 +405,72 @@ core::RenderServerChannel *SceneInspector::getRenderServer() const {
 	return director ? director->getRenderServer() : nullptr;
 }
 
+StringView SceneInspector::getWindowId() const {
+	auto server = getRenderServer();
+	auto info = server ? server->getInfo() : nullptr;
+
+	// `id` is fixed before the window exists (the runtime re-uniques a collision then) and is one
+	// of the few WindowInfo fields the app thread may read - see AppWindow::getInfo.
+	return info ? StringView(info->id) : StringView();
+}
+
+Value SceneInspector::getWindowList() const {
+	Value windows(Value::Type::ARRAY);
+	for (auto *it : inspectors()) {
+		auto server = it->getRenderServer();
+		auto info = server ? server->getInfo() : nullptr;
+		if (!info) {
+			continue; // the scene is attached but the window is not there yet
+		}
+
+		Value entry;
+		entry.setString(info->id, "id");
+		entry.setString(sprt::window::getWindowTypeName(info->type), "type");
+		if (!info->parent.empty()) {
+			entry.setString(info->parent, "parent");
+		}
+		entry.setString(info->title, "title");
+
+		auto &c = server->getConstraints();
+		entry.setInteger(int64_t(c.extent.width), "width");
+		entry.setInteger(int64_t(c.extent.height), "height");
+		entry.setDouble(double(c.density), "density");
+		entry.setBool(it == this, "default");
+		windows.addValue(sp::move(entry));
+	}
+
+	Value ret;
+	ret.setValue(sp::move(windows), "windows");
+	return ret;
+}
+
+SceneInspector *SceneInspector::resolveTarget(NotNull<Session> session, int64_t serial,
+		const Value &req) {
+	// Absent `window` means "the scene this session lives on", which is what every client that
+	// predates auxiliary windows expects.
+	if (!req.isString("window")) {
+		return this;
+	}
+
+	auto id = req.getString("window");
+	for (auto *it : inspectors()) {
+		if (it->getWindowId() == id) {
+			return it;
+		}
+	}
+
+	sendError(session, serial, toString("unknown window: ", id, "; see the `windows` command"));
+	return nullptr;
+}
+
 void SceneInspector::handleEnter(Scene *scene) {
 	System::handleEnter(scene);
 
 	startLogCapture();
+
+	// Before any of the early returns below: a window whose inspector never takes the listener is
+	// exactly the one that has to stay reachable through the `window` argument.
+	inspectors().emplace_back(this);
 
 	if (s_listenerOwner) {
 		return; // another inspector already holds the process-wide listener
@@ -438,6 +510,14 @@ void SceneInspector::handleEnter(Scene *scene) {
 }
 
 void SceneInspector::handleExit() {
+	auto &list = inspectors();
+	for (auto it = list.begin(); it != list.end(); ++it) {
+		if (*it == this) {
+			list.erase(it);
+			break;
+		}
+	}
+
 	if (_listener) {
 		_listener->cancel();
 		_listener = nullptr;
@@ -629,32 +709,44 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 	auto serial = req.getInteger("serial", 0);
 	auto cmd = req.getString("cmd");
 
+	// Everything below "logs" (which is a process-wide ring buffer, not a window's) acts on ONE
+	// window's scene. `window: "<id>"` picks which; without it, the one this inspector lives on.
+	// That is what makes an auxiliary window - a menu, a dialog - reachable at all: it has an
+	// inspector of its own, but only the first one to attach owns the socket.
+	auto target = resolveTarget(session, serial, req);
+	if (!target) {
+		return; // resolveTarget answered the request
+	}
+
 	if (cmd == "scene") {
 		StringStream dump;
-		writeSceneDump([&](StringView str) { dump << str; });
+		target->writeSceneDump([&](StringView str) { dump << str; });
 
 		Value result;
 		result.setString(dump.str(), "text");
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "logs") {
 		sendResponse(session, serial, getLogDump(uint64_t(req.getInteger("since", 0))));
+	} else if (cmd == "windows") {
+		sendResponse(session, serial, getWindowList());
 	} else if (cmd == "commands") {
-		sendResponse(session, serial, getCommandList());
+		sendResponse(session, serial, target->getCommandList());
 	} else if (cmd == "invoke") {
-		handleInvoke(session, serial, sp::move(request));
+		target->handleInvoke(session, serial, sp::move(request));
 	} else if (cmd == "screenshot") {
-		handleScreenshot(session, serial, sp::move(request));
+		target->handleScreenshot(session, serial, sp::move(request));
 	} else if (cmd == "input") {
-		handleInput(session, serial, sp::move(request));
+		target->handleInput(session, serial, sp::move(request));
 	} else if (cmd == "text") {
-		handleText(session, serial, sp::move(request));
+		target->handleText(session, serial, sp::move(request));
 	} else if (cmd == "frame") {
-		auto server = getRenderServer();
+		auto server = target->getRenderServer();
 		if (!server) {
 			sendError(session, serial, "no render session");
 			return;
 		}
-		// The headless window renders on demand, so this is what actually produces frames.
+		// The headless window renders on demand, so this is what actually produces frames. Each
+		// window has its own presentation engine, so each one has to be stepped on its own.
 		auto count = sprt::max(req.getInteger("count", 1), int64_t(1));
 		for (int64_t i = 0; i < count; ++i) { server->setReadyForNextFrame(); }
 
@@ -662,8 +754,10 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		result.setInteger(count, "count");
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "window") {
-		handleWindow(session, serial, sp::move(request));
+		target->handleWindow(session, serial, sp::move(request));
 	} else if (cmd == "quit") {
+		// Not routed: this shuts the process down, so it always means the root window - closing a
+		// popup here would just dismiss the menu.
 		auto server = getRenderServer();
 		if (!server) {
 			sendError(session, serial, "no render session");

@@ -29,11 +29,14 @@
 #include "XL2dIconSprite.h"
 #include "XLUiStyleSystem.h"
 
-#include "InstallerController.h"
+#include "InstallerAppController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-class InstallerLayout;
+class InstallerShell;
+
+// The page the right-hand pane shows; mirrored from InstallerNavPane's PageId.
+enum class PageId;
 
 // Owns the window-wide pieces: the stylesheet every node below resolves against, the background
 // behind the layout, and the loading overlay shown until the catalogue arrives.
@@ -44,6 +47,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleEnter(Scene *) override;
+	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
 
 	// Single modal slot shared by the confirm dialog and the gear popup: presenting one dismisses
@@ -69,9 +73,14 @@ protected:
 	basic2d::IconSprite *_spinner = nullptr;
 	basic2d::Label *_loadingLabel = nullptr;
 	bool _spinnerScheduled = false;
+	// handleEnter can run more than once (a re-entered scene); the operations and the inspector
+	// commands below must only be kicked off the first time.
+	bool _commandsRegistered = false;
 
-	Rc<InstallerController> _controller;
-	Rc<InstallerLayout> _layout;
+	// Not owned: AppController is a never-destroyed singleton. This is only the scene's handle onto
+	// it, cleared in handleExit after detach() has released everything with a scene's lifetime.
+	AppController *_controller = nullptr;
+	Rc<InstallerShell> _shell;
 	Rc<basic2d::SceneLayout2d> _modalOverlay;
 };
 

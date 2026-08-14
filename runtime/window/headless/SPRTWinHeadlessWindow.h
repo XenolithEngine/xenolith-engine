@@ -41,8 +41,13 @@ class HeadlessContextController;
 // extent, density, frame interval - comes from WindowInfo instead, and the extent can be changed
 // at runtime through setExtent() by whoever drives the process (the inspector socket).
 //
+// Auxiliary windows are real windows here, not overlays: a Popup, Tooltip, Dialog or Utility is
+// another HeadlessWindow with its own pseudo-swapchain, placed on the controller's virtual screen
+// (see HeadlessContextController). Every window in the process therefore renders and can be
+// captured independently, which is the point - a menu or a dialog is inspectable with no display.
+//
 // No input, no cursor, no text input: events are injected by the external controller straight into
-// AppWindow::handleInputEvents.
+// AppWindow::handleInputEvents. Focus and pointer ownership are the controller's to hand out.
 class HeadlessWindow final : public NativeWindow {
 public:
 	virtual ~HeadlessWindow();
@@ -55,7 +60,13 @@ public:
 	virtual void unmapWindow() override;
 	virtual bool close() override;
 
+	virtual bool isMapped() const override { return _mapped; }
+
 	virtual Extent2 getExtent() const override;
+
+	// Where this window sits on the virtual screen. What a popup is positioned against, and the
+	// only place window geometry is expressed in anything other than the window's own space.
+	IRect getContentScreenRect() const;
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
@@ -63,16 +74,30 @@ public:
 
 	virtual PresentationOptions getPreferredOptions() const override;
 
+	virtual bool setContentExtent(Extent2) override;
+
 	// Resize the pseudo-screen. Deprecates the swapchain, so the next frame is rendered at the new
 	// extent. Must be called on the context thread.
 	virtual Status setExtent(Extent2) override;
+
+	// Focus / pointer ownership, driven by the controller - which is the window manager here.
+	// Context thread.
+	void updateFocusState(bool);
+	void updatePointerState(bool);
 
 protected:
 	virtual bool updateTextInput(const TextInputRequest &,
 			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
 	virtual void cancelTextInput() override;
 
+	// Shared by setExtent and setContentExtent; true if the extent actually moved.
+	bool applyExtent(Extent2);
+
+	// The controller is always the one this window was created by - init() takes nothing else.
+	HeadlessContextController *getHeadlessController() const;
+
 	Extent2 _extent;
+	bool _mapped = false;
 	bool _closed = false;
 };
 

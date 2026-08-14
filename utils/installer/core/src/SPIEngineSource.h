@@ -25,6 +25,7 @@
 
 #include "SPICommon.h"
 #include "SPIDirs.h"
+#include "SPISettings.h" // SourceConfig
 #include "SPGitRemote.h" // git::Remote, CloneOptions, CloneProgress
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
@@ -34,7 +35,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 // `master` snapshot; the `stage` branch and tags are selectable. Each ref is cloned into its own
 // dir under engines/ so several versions coexist and are trivial to switch.
 
-inline StringView getEngineRepoUrl() {
+// The built-in repository, used when the user has configured no other. Prefer
+// SourceConfig::getEngineRepoUrl() (SPISettings.h), which falls back to this — reaching for the
+// default directly bypasses whatever the user chose.
+inline StringView getDefaultEngineRepoUrl() {
 	return "https://github.com/XenolithEngine/xenolith-engine.git";
 }
 
@@ -48,8 +52,15 @@ struct SP_PUBLIC EngineRef {
 };
 
 // Discover the engine repo's refs via git ls-refs (synchronous: no looper). Returns branches and
-// tags; `result` (if set) receives the failure reason.
-SP_PUBLIC Vector<EngineRef> listEngineRefs(OperationResult *result = nullptr);
+// tags; `result` (if set) receives the failure reason. Doubles as a reachability probe for a
+// configured repository URL: a `git ls-refs` that answers is a repository that exists and is
+// readable, which is exactly what the settings form needs to know.
+SP_PUBLIC Vector<EngineRef> listEngineRefs(const SourceConfig &sources,
+		OperationResult *result = nullptr);
+
+inline Vector<EngineRef> listEngineRefs(OperationResult *result = nullptr) {
+	return listEngineRefs(SourceConfig(), result);
+}
 
 using EngineProgressCallback = Function<void(const git::CloneProgress &)>;
 
@@ -64,8 +75,13 @@ struct SP_PUBLIC EngineCloneResult : OperationResult {
 // Clone the engine `ref` (branch/tag — defaults to master when empty) into
 // `layout.getEngineDir(ref)` as a shallow (depth 1) working tree, WITH submodules (the engine needs
 // the musl submodule). That is <data>/engines/<ref>, so multiple refs coexist and are switchable.
-SP_PUBLIC EngineCloneResult cloneEngine(StringView ref, const Layout &layout,
-		EngineProgressCallback progress);
+SP_PUBLIC EngineCloneResult cloneEngine(const SourceConfig &sources, StringView ref,
+		const Layout &layout, EngineProgressCallback progress);
+
+inline EngineCloneResult cloneEngine(StringView ref, const Layout &layout,
+		EngineProgressCallback progress) {
+	return cloneEngine(SourceConfig(), ref, layout, sp::move(progress));
+}
 
 // Resolve the engine root (STAPPLER_ROOT) for building: explicit `engineOverride` (--engine) >
 // $XENOLITH_ENGINE > the cloned default ref dir. `*ok` is false when nothing resolves.

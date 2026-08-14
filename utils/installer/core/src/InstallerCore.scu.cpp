@@ -29,6 +29,7 @@
 #include "SPITriple.cc"
 #include "SPITransport.cc"
 #include "SPICatalogue.cc"
+#include "SPISettings.cc" // after Catalogue/EngineSource headers: resolves against their defaults
 #include "SPIState.cc"
 #include "SPIEngineSource.cc"
 #include "SPIJob.cc"

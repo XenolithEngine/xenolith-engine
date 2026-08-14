@@ -44,6 +44,7 @@ DO NOT use these (they parse but do nothing, or don't exist):
 | `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `overflow` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
 | `background` shorthand | **absent** — write `background-color` etc. individually |
 | `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`) can draw them |
+| `border-*` (the line, not the radius) | parsed everywhere, **consumed only by table cells** — elsewhere use `outline-*` |
 | bare number for size (`width: 100`) | **rejected** — must have a unit (`100px`/`100%`/`1em`); only `line-height: 1.5` takes a bare number |
 | elliptical `border-radius: H / V` | only H read; `/ V` dropped |
 
@@ -238,7 +239,46 @@ padding-left: calc(8px + var(--depth, 0) * var(--indent));
 ## display
 
 `flex`/`inline-flex` → flex layout. `grid`/`inline-grid` → grid layout (tracks, `repeat(N,…)`, `gap`, area placement; NO `minmax`/`fit-content()`/named lines/`auto-fit`).
+`table`/`table-row`/`table-cell` → table layout (see below). `table-column`/`table-caption` parse but do nothing; the row-group family (`table-row-group`, `thead`, `tfoot`) is NOT parsed.
 `none` → VisibilityComponent skips the subtree (collapses layout). `block`/`inline`/etc → no block flow (no effect beyond "not a layout container").
+
+## Tables
+
+The third layout model. Its point over grid: **columns are resolved once and imposed on rows that
+are SEPARATE NODES**, which is what makes a virtualized `ui::TableView` possible.
+
+```css
+table      { display: table;
+             grid-template-columns: 120px 2fr 1fr;  /* the columns ARE a track list */
+             table-layout: auto;                    /* `fixed` = never measure a cell */
+             border-collapse: collapse;
+             border: 2px solid #000; }
+.row       { display: table-row; height: 32px; }    /* auto height measures the cells */
+.cell      { display: table-cell; vertical-align: middle;
+             border-bottom: 1px solid #333; }
+.cell.wide { -xl-column-span: 2; }                  /* colspan */
+.cell.tall { -xl-row-span: 2; }                     /* rowspan */
+```
+
+- **Column tracks are `grid-template-columns`** — same parser, same units (`fr`/`%`/`px`/`auto`);
+  `grid-auto-columns` sizes columns past the end of the list.
+- **colspan/rowspan are `-xl-column-span` / `-xl-row-span`** — they are HTML attributes on the web,
+  and `[attr]` selectors never match here, so a property is the only channel.
+- **A cell's column is its POSITION in the row** (after any rowspan from above), like HTML — there
+  is no line placement; that is grid's job.
+- **`vertical-align`** on a cell = cross-axis alignment (`top`/`middle`/`bottom`); baseline/sub/super
+  are ignored.
+- **`border-*` is consumed ONLY by table cells.** Every other widget uses `outline-*` +
+  `border-radius`.
+- **Collapsed borders are GEOMETRY, not paint**: the layout resolves the conflicts (none loses →
+  wider wins → solid > dashed > dotted → top-left wins) into a `TableBordersComponent`. Nothing
+  draws it until you add `Rc<ui::TableBorderPainter>::create()` as a child of the table.
+
+**`ui::TableView` (virtualized)** has no table container node — it stamps the same
+`TableColumnsComponent` on the header and every row, which is why the sticky header cannot drift.
+Two rules for its sheet: an `auto` column resolves to **zero** (it cannot measure rows it has not
+built — use `fr`/px), and declare horizontal rules with `border-bottom` ONLY (a row collapses only
+what it can see, so a line on both sides of a boundary is drawn twice).
 
 ## Hide vs collapse
 
@@ -316,7 +356,10 @@ prevents: css-subset.adoc §"Writing a type applier: the reset command". [`XL_PA
 - Unit parse: `runtime/src/geom/SPRuntimeGeometry.cc:31` (`Metric::readStyleValue`)
 - Color parse: `runtime/src/geom/SPRuntimeColor.cc:1489`
 - Flex model: `xenolith/renderer/ui/layout/XLUiLayoutFlex.h:58`
-- Flex algorithm: `xenolith/renderer/ui/layout/XLUiLayoutSystem.cc:639`
+- Flex algorithm: `xenolith/renderer/ui/layout/XLUiLayoutFlex.cc`
+- Grid algorithm + track sizing: `xenolith/renderer/ui/layout/XLUiLayoutGrid.cc`
+- Table layout + border collapsing: `xenolith/renderer/ui/layout/XLUiLayoutTable.cc`
+- Table components: `xenolith/renderer/ui/layout/XLUiLayoutTable.h`
 - CSS→layout bridge: `xenolith/renderer/ui/style/XLUiStyleResolver.cc:1307` (`applyLayout`), `:982` (`applyDefault`)
 
 ## Related

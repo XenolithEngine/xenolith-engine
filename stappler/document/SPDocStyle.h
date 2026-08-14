@@ -109,6 +109,7 @@ enum class Display : EnumSize {
 	InlineFlex,
 	Grid,
 	InlineGrid,
+	TableRow,
 };
 
 enum class Visibility : EnumSize {
@@ -290,6 +291,11 @@ enum class CaptionSide : EnumSize {
 	Bottom,
 };
 
+enum class TableLayout : EnumSize {
+	Auto,
+	Fixed,
+};
+
 enum class InteractiveFlags : uint32_t {
 	None = 0,
 	Enabled = 1 << 0, // :enabled
@@ -414,6 +420,12 @@ enum class ParameterName : NameSize {
 	CssGridColumnEnd, // string id (raw line)
 	CssGridRowStart, // string id (raw line)
 	CssGridRowEnd, // string id (raw line)
+
+	CssTableLayout, // enum (TableLayout)
+	CssBorderSpacingHorizontal, // size (the `border-spacing` shorthand fills both)
+	CssBorderSpacingVertical, // size
+	CssXlColumnSpan, // uint (-xl-column-span)
+	CssXlRowSpan, // uint (-xl-row-span)
 
 	CssBorderRadius, // size (uniform corner radius; transitional shorthand = first value)
 	// per-corner radii (the `border-radius` shorthand expands 1-4 values into these; elliptical
@@ -630,6 +642,7 @@ union SP_PUBLIC StyleValue {
 	Align align;
 	BorderCollapse borderCollapse;
 	CaptionSide captionSide;
+	TableLayout tableLayout;
 	Color3B color;
 	FontSize fontSize;
 	uint8_t opacity;

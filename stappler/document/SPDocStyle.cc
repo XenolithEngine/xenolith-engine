@@ -322,6 +322,26 @@ void StyleParameter::set<ParameterName::CssCaptionSide, CaptionSide>(const Capti
 	value.captionSide = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssTableLayout, TableLayout>(const TableLayout &v) {
+	value.tableLayout = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderSpacingHorizontal, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderSpacingVertical, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlColumnSpan, uint32_t>(const uint32_t &v) {
+	value.uintValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlRowSpan, uint32_t>(const uint32_t &v) {
+	value.uintValue = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssOrphans, uint32_t>(const uint32_t &v) {
 	value.uintValue = v;
 }
@@ -1350,6 +1370,7 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Display::Block: stream << "block"; break;
 			case Display::ListItem: stream << "list-item"; break;
 			case Display::Table: stream << "table"; break;
+			case Display::TableRow: stream << "table-row"; break;
 			case Display::TableCell: stream << "table-cell"; break;
 			case Display::TableColumn: stream << "table-column"; break;
 			case Display::TableCaption: stream << "table-caption"; break;
@@ -1614,6 +1635,27 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case CaptionSide::Bottom: stream << "bottom"; break;
 			};
 			break; // enum
+		case ParameterName::CssTableLayout:
+			stream << "table-layout: ";
+			switch (it.value.tableLayout) {
+			case TableLayout::Auto: stream << "auto"; break;
+			case TableLayout::Fixed: stream << "fixed"; break;
+			};
+			break; // enum
+		case ParameterName::CssBorderSpacingHorizontal:
+			stream << "border-spacing-horizontal: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderSpacingVertical:
+			stream << "border-spacing-vertical: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlColumnSpan:
+			stream << "-xl-column-span: " << it.value.uintValue;
+			break; // uint
+		case ParameterName::CssXlRowSpan:
+			stream << "-xl-row-span: " << it.value.uintValue;
+			break; // uint
 		case ParameterName::CssOutlineStyle:
 			stream << "outline-style: ";
 			switch (it.value.borderStyle) {
@@ -2238,7 +2280,15 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssGridTemplateAreas
 			|| name == ParameterName::CssGridAutoColumns || name == ParameterName::CssGridAutoRows
 			|| name == ParameterName::CssGridColumnStart || name == ParameterName::CssGridColumnEnd
-			|| name == ParameterName::CssGridRowStart || name == ParameterName::CssGridRowEnd) {
+			|| name == ParameterName::CssGridRowStart || name == ParameterName::CssGridRowEnd
+			// Table. `border-collapse` is deliberately NOT here: it IS inherited in CSS, and the
+			// table container reads it off whichever element declared it. `border-spacing` is
+			// inherited on the web too, but here only the container ever reads it, so inheriting it
+			// into every cell would be noise.
+			|| name == ParameterName::CssTableLayout
+			|| name == ParameterName::CssBorderSpacingHorizontal
+			|| name == ParameterName::CssBorderSpacingVertical
+			|| name == ParameterName::CssXlColumnSpan || name == ParameterName::CssXlRowSpan) {
 		return false;
 	}
 	return true;

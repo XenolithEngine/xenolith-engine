@@ -31,7 +31,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-void showDoctorDialog(NotNull<AppWindow> parent, InstallerController *controller) {
+void showDoctorDialog(NotNull<AppWindow> parent, AppController *controller) {
 	String body = toString(strings::doctorTitle(), "\n\n");
 	if (!controller) {
 		body += "Controller unavailable.";
@@ -40,7 +40,7 @@ void showDoctorDialog(NotNull<AppWindow> parent, InstallerController *controller
 		return;
 	}
 
-	const auto &layout = controller->layout();
+	const auto &layout = controller->getLayout();
 	body += toString("config: ", layout.config, "\n");
 	body += toString("data: ", layout.data, "\n");
 	body += toString("installed.json: ",
@@ -50,7 +50,7 @@ void showDoctorDialog(NotNull<AppWindow> parent, InstallerController *controller
 	auto root = resolveEngineRoot(layout, StringView(), &engineOk);
 	body += toString("engine: ", engineOk ? root : String("not resolved"), "\n");
 
-	if (auto *cat = controller->catalog()) {
+	if (auto *cat = controller->getCatalogue()) {
 		size_t installed = 0;
 		size_t updates = 0;
 		for (const auto &row : cat->rows) {

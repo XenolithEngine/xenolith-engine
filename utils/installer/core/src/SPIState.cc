@@ -26,13 +26,16 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 InstalledState InstalledState::load(StringView path) {
 	InstalledState st;
-	auto v = data::readFile<mem_std::Interface>(FileInfo(path));
+	// const on purpose: the NON-const getValue() asserts when the key is missing (it would have to
+	// return the shared null sentinel, which is read-only), and "components" is optional — a
+	// manifest with a schema and no components is a legitimate empty registry.
+	const auto v = data::readFile<mem_std::Interface>(FileInfo(path));
 	if (!v.hasValue("schema")) {
 		return st; // missing or non-object → empty/default
 	}
 	st.schema = static_cast<uint32_t>(v.getInteger("schema", kStateSchemaVersion));
 
-	auto comps = v.getValue("components");
+	const auto &comps = v.getValue("components");
 	if (comps.isArray()) {
 		for (const auto &item : comps.getArray()) {
 			InstalledComponent c;

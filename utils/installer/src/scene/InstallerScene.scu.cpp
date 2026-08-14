@@ -20,14 +20,25 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#include "XLCommon.h" // IWYU pragma: keep
 
+#include "InstallerStrings.cc"
 #include "InstallerMainScene.cc"
 #include "InstallerSceneContent.cc"
-#include "InstallerLayout.cc"
-#include "InstallerTitleBar.cc"
 #include "InstallerDialogs.cc"
-#include "InstallerStrings.cc"
-#include "InstallerGearMenu.cc"
-#include "InstallerProjects.cc"
+
+#include "InstallerNavPane.cc"
+#include "InstallerActionCell.cc" // before Page: the tools page builds these into its cells
+#include "InstallerPage.cc"
+#include "InstallerStatusBar.cc"
+#include "InstallerSettingsPage.cc"
+#include "InstallerShell.cc"
+
 #include "InstallerDoctor.cc"
+
+// Project management is out of scope for the current design pass, so the projects view is not
+// reachable from the UI - the navigation tree shows `Projects` as a disabled leaf. The code stays
+// compiled because it is the only working implementation of the createProject / buildProject /
+// AppThread::perform shapes the future projects page will re-use, and it costs nothing to keep
+// while the controller API it depends on is stable.
+#include "InstallerProjects.cc"

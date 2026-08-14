@@ -24,7 +24,7 @@
 #define UTILS_INSTALLER_SRC_SCENE_INSTALLERDOCTOR_H_
 
 #include "XLCommon.h"
-#include "InstallerController.h"
+#include "InstallerAppController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppWindow;
@@ -33,7 +33,7 @@ class AppWindow;
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 // Read-only environment report: layout dirs, manifests, engine root, catalogue counts.
-void showDoctorDialog(NotNull<AppWindow> parent, InstallerController *controller);
+void showDoctorDialog(NotNull<AppWindow> parent, AppController *controller);
 
 } // namespace stappler::xenolith::installer
 

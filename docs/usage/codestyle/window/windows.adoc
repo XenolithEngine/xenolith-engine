@@ -92,7 +92,8 @@ Points that are easy to get wrong:
 * **A second `Root` window works headless.** It needs no parent and no
   `WindowCapabilities::Subwindows`, and the headless controller builds one window
   per call — which is what makes multi-window behaviour testable with no display
-  at all (`tests/window`, layout `multi-window`).
+  at all (`tests/window`, layout `multi-window`). Auxiliary windows work there
+  too; see below.
 
 ### The handle and its thread
 
@@ -126,9 +127,20 @@ popup->dismiss();                    // idempotent; onClose still fires once
 Why this and not `createWindow`: the same call materializes as a **native
 subwindow** where the platform advertises `WindowCapabilities::Subwindows`, and
 as an **in-scene overlay** on the parent's `SceneContent2d` where it does not
-(Android, wasm, headless, direct output). Both honour the same placement, the
-same dismiss rules and the same close callback, so the caller never branches on
-the platform. `isNative()` tells you which one you got, if you care.
+(Android, wasm, direct output). Both honour the same placement, the same dismiss
+rules and the same close callback, so the caller never branches on the platform.
+`isNative()` tells you which one you got, if you care.
+
+**Headless is on the native side of that line.** The pseudo-controller stands in
+for the window manager — a virtual screen the size of the root window, placement
+through the same `computeWindowPlacement`, focus and pointer ownership, the
+dismiss cascade — and every auxiliary window gets a **pseudo-swapchain of its
+own**. So a menu, a dialog or a palette is a real, separately renderable window
+with no display in play, and `--headless` exercises the same code path a desktop
+run does instead of the overlay fallback. Drive them over the inspector socket
+with the `windows` command and the per-command `window` argument (see
+[SceneInspector](../../../../xenolith/application/nodes/XLSceneInspector.h)) —
+each window renders on demand, so `frame` is per window too.
 
 * `openPopup` / `openDialog` / `openUtility` / `showTooltip` are the shorthands;
   `open(parent, Config &&)` is the full form.

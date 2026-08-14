@@ -23,7 +23,6 @@
 #include "InstallerProjects.h"
 #include "InstallerDialogs.h"
 #include "InstallerStrings.h"
-#include "InstallerLayout.h"
 
 #include "XLUiStyleResolver.h"
 #include "XL2dScrollController.h"
@@ -190,7 +189,7 @@ AppWindow *InstallerProjectsView::appWindow() const {
 	return static_cast<AppWindow *>(server);
 }
 
-void InstallerProjectsView::setController(InstallerController *controller) {
+void InstallerProjectsView::setController(AppController *controller) {
 	_controller = controller;
 	if (controller) {
 		auto host = resolveHost(getNativeArch(), getNativeOs());
@@ -405,7 +404,7 @@ void InstallerProjectsView::onCreate() {
 	auto engines = _controller->engines();
 	String engine = engines.empty() ? String() : engines.front();
 	bool engOk = false;
-	resolveEngineRoot(_controller->layout(), StringView(), &engOk);
+	resolveEngineRoot(_controller->getLayout(), StringView(), &engOk);
 	if (!engOk && engine.empty()) {
 		if (_statusLabel) {
 			_statusLabel->setString(strings::projectNeedSdk());
@@ -471,10 +470,10 @@ void InstallerProjectsView::onRemove(const ProjectEntry &p) {
 	});
 }
 
-void showStorageDialog(NotNull<AppWindow> parent, InstallerController *controller) {
+void showStorageDialog(NotNull<AppWindow> parent, AppController *controller) {
 	String body = toString(strings::storageTitle(), "\n\n");
 	if (controller) {
-		const auto &layout = controller->layout();
+		const auto &layout = controller->getLayout();
 		body += toString("engines: ", layout.getEnginesDir(), "\n");
 		body += toString("hosts: ", layout.getHostsDir(), "\n");
 		body += toString("targets: ", layout.getTargetsDir(), "\n");

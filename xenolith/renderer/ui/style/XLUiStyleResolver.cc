@@ -826,6 +826,38 @@ String ResolvedStyle::gridRowEnd() const {
 	return getString(document::ParameterName::CssGridRowEnd);
 }
 
+document::TableLayout ResolvedStyle::tableLayout() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssTableLayout, v) ? v.tableLayout
+																: document::TableLayout::Auto;
+}
+document::BorderCollapse ResolvedStyle::borderCollapse() const {
+	document::StyleValue v;
+	// CSS initial value is `separate`, even though the document engine's compiled block model
+	// defaults the other way
+	return getValue(document::ParameterName::CssBorderCollapse, v)
+			? v.borderCollapse
+			: document::BorderCollapse::Separate;
+}
+document::Metric ResolvedStyle::borderSpacingHorizontal() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssBorderSpacingHorizontal, v) ? v.sizeValue
+																			: document::Metric();
+}
+document::Metric ResolvedStyle::borderSpacingVertical() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssBorderSpacingVertical, v) ? v.sizeValue
+																		 : document::Metric();
+}
+uint32_t ResolvedStyle::columnSpan() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssXlColumnSpan, v) ? v.uintValue : 1;
+}
+uint32_t ResolvedStyle::rowSpan() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssXlRowSpan, v) ? v.uintValue : 1;
+}
+
 bool StyleResolver::init(bool recursive) {
 	if (!System::init()) {
 		return false;
@@ -1098,6 +1130,20 @@ static GridAlign toGridAlignSelf(Align a) {
 		return GridAlign::Auto;
 	}
 	return toGridAlign(a);
+}
+
+// One compiled border side -> the edge the table's collapse pass resolves. `border-*-width` is a
+// Metric, so it has to be computed like any other length; `border-style: none` (the CSS initial
+// value) yields an edge that loses every conflict.
+static TableBorderEdge toTableBorder(const document::OutlineParameters::Params &p,
+		const document::MediaParameters &media, float fontSize, float base) {
+	TableBorderEdge edge;
+	edge.style = p.style;
+	edge.color = p.color;
+	if (p.style != document::BorderStyle::None) {
+		edge.width = sprt::max(media.computeValueAuto(p.width, base, fontSize), 0.0f);
+	}
+	return edge;
 }
 
 } // namespace
@@ -1512,7 +1558,7 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		// An absolutely positioned box is not a flex/grid item: it must not take space in its
 		// container nor be moved by it, or the offsets computed below are overwritten by the
 		// container's own placement on the very next layout pass. Tell the layout to skip it.
-		node->setComponent<OutOfFlowComponent>();
+		node->setComponent<OutOfFlowComponent>(OutOfFlowComponent{true});
 
 		auto nodeSize = node->getContentSize();
 
@@ -1572,8 +1618,12 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setAnchorPoint(Vec2(0.0f, 1.0f));
 		node->setPosition(Vec2(x, y));
 	} else {
-		// back in flow if the rule that took it out is gone
-		node->removeComponent<OutOfFlowComponent>();
+		// Back in flow if the rule that took it out is gone - but only if it was OUR rule. An
+		// overlay an application put out of the flow in code carries styleManaged == false and must
+		// survive a style pass that matched nothing (see OutOfFlowComponent).
+		if (auto c = node->getComponent<OutOfFlowComponent>(); c && c->styleManaged) {
+			node->removeComponent<OutOfFlowComponent>();
+		}
 
 		if (s.has(ParameterName::CssXlAnchorPointX) || s.has(ParameterName::CssXlAnchorPointY)) {
 			node->setAnchorPoint(s.anchorPoint());
@@ -1627,6 +1677,29 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			pad.left = computeMetric(m, ownSize.width);
 		}
 	};
+	// Map the four CSS border sides onto the edges the table's collapse pass resolves, touching only
+	// the sides the sheet actually declares. Every other item mapping is guarded the same way, and
+	// for the same reason: applyLayout runs for EVERY node on every style pass, so an unguarded
+	// write would erase whatever an application set in code.
+	auto fillTableBorders = [&](const ResolvedStyle &st, TableCellInfo &cfg, float base) {
+		const auto outline = st.outline();
+		auto side = [&](ParameterName styleName, ParameterName widthName, ParameterName colorName,
+							const document::OutlineParameters::Params &p, TableBorderEdge &out) {
+			if (!st.has(styleName) && !st.has(widthName) && !st.has(colorName)) {
+				return;
+			}
+			out = toTableBorder(p, st.media(), float(st.fontSize().get()), base);
+		};
+		side(ParameterName::CssBorderTopStyle, ParameterName::CssBorderTopWidth,
+				ParameterName::CssBorderTopColor, outline.top, cfg.borderTop);
+		side(ParameterName::CssBorderRightStyle, ParameterName::CssBorderRightWidth,
+				ParameterName::CssBorderRightColor, outline.right, cfg.borderRight);
+		side(ParameterName::CssBorderBottomStyle, ParameterName::CssBorderBottomWidth,
+				ParameterName::CssBorderBottomColor, outline.bottom, cfg.borderBottom);
+		side(ParameterName::CssBorderLeftStyle, ParameterName::CssBorderLeftWidth,
+				ParameterName::CssBorderLeftColor, outline.left, cfg.borderLeft);
+	};
+
 	// Map the CSS margin-* onto an item Margin (percent against parent width). `auto` is not a
 	// length: it is recorded in the mask instead and resolved from the free space by the flex
 	// engine (see FlexAutoMargin). `autoMask` is null for containers that cannot honour it.
@@ -1665,19 +1738,93 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			!systemManaged && (display == Display::Flex || display == Display::InlineFlex);
 	const bool wantGrid =
 			!systemManaged && (display == Display::Grid || display == Display::InlineGrid);
+	const bool wantRow = !systemManaged && display == Display::TableRow;
+
+	// `display: table` is the one container mapping that survives SystemManagedLayout. The reason is
+	// ui::TableView: it owns its children's geometry (header + scroll), so it must carry that
+	// marker, yet the column track list it lays its rows out with is CSS. Writing the parameter
+	// component under the marker is safe - a component is not a second writer of anything; only a
+	// SYSTEM would be, and none is added below. applyDefault already writes MeasureComponent under
+	// the same marker on the same reasoning.
+	const bool wantTable = display == Display::Table;
 
 	auto layout = systemManaged ? nullptr : node->getSystemByType<LayoutSystem>();
 
-	if (!wantFlex && !wantGrid) {
+	if (wantTable) {
+		node->setOrUpdateComponent<TableLayoutInfo>([&](NotNull<TableLayoutInfo> info) {
+			TableLayoutInfo next = *info;
+			if (s.has(ParameterName::CssGridTemplateColumns)) {
+				next.columnTracks = parseGridTemplate(s.gridTemplateColumns());
+			}
+			if (s.has(ParameterName::CssGridAutoColumns)) {
+				auto t = parseGridTemplate(s.gridAutoColumns());
+				if (!t.empty()) {
+					next.autoColumn = t.front();
+				}
+			}
+			if (s.has(ParameterName::CssTableLayout)) {
+				next.algorithm = s.tableLayout();
+			}
+			if (s.has(ParameterName::CssBorderCollapse)) {
+				next.borderCollapse = s.borderCollapse();
+			}
+			if (auto m = s.borderSpacingHorizontal();
+					s.has(ParameterName::CssBorderSpacingHorizontal) && !m.isAuto()) {
+				next.borderSpacingH = computeMetric(m, ownSize.width);
+			}
+			if (auto m = s.borderSpacingVertical();
+					s.has(ParameterName::CssBorderSpacingVertical) && !m.isAuto()) {
+				next.borderSpacingV = computeMetric(m, ownSize.width);
+			}
+			if (s.has(ParameterName::CssJustifyItems)) {
+				next.justifyItems = toGridAlign(s.justifyItems());
+			}
+			if (s.has(ParameterName::CssAlignItems)) {
+				next.alignItems = toGridAlign(s.alignItems());
+			}
+			fillPadding(next.padding);
+			// the table's own border is the outside participant of the collapse pass. Reuse the
+			// cell mapping through a scratch TableCellInfo: the four edges are the same shape and
+			// need the same "only what the sheet declares" guard.
+			{
+				TableCellInfo scratch;
+				scratch.borderTop = next.borderTop;
+				scratch.borderRight = next.borderRight;
+				scratch.borderBottom = next.borderBottom;
+				scratch.borderLeft = next.borderLeft;
+				fillTableBorders(s, scratch, ownSize.width);
+				next.borderTop = scratch.borderTop;
+				next.borderRight = scratch.borderRight;
+				next.borderBottom = scratch.borderBottom;
+				next.borderLeft = scratch.borderLeft;
+			}
+			if (next != *info) {
+				*info = next;
+				return true;
+			}
+			return false;
+		});
+	}
+
+	if (!wantFlex && !wantGrid && !wantTable && !wantRow) {
 		// only tear down layouts that WE added (marker present)
 		if (layout && node->getComponent<StyleManagedLayout>()) {
 			node->removeSystem(layout);
 			node->removeComponent<FlexLayoutInfo>();
 			node->removeComponent<GridLayoutInfo>();
+			node->removeComponent<TableLayoutInfo>();
+			// NOT TableColumnsComponent / TableBordersComponent: those are OUTPUTS, owned by the
+			// table pass or by the widget that owns the rows. The style never wrote them and must
+			// not delete them, or a virtualized row would lose the geometry it lays out with.
 			node->removeComponent<StyleManagedLayout>();
 		}
+	} else if (systemManaged) {
+		// a system owns this node's children; the parameter component above is all the style does
 	} else {
-		const LayoutMode mode = wantGrid ? LayoutMode::Grid : LayoutMode::Flex;
+		const LayoutMode mode = wantTable ? LayoutMode::Table
+				: wantRow                 ? LayoutMode::TableRow
+				: wantGrid                ? LayoutMode::Grid
+										  : LayoutMode::Flex;
 		if (!layout) {
 			layout = node->addSystem(Rc<LayoutSystem>::create());
 			node->setComponent<StyleManagedLayout>();
@@ -1781,7 +1928,68 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 	if (!parent) {
 		return;
 	}
-	if (parent->getComponent<GridLayoutInfo>()) {
+	// Table first, and keyed on the parent's TableColumnsComponent rather than on TableRowInfo: that
+	// component is what a row carries in BOTH the static case (the table pass stamped it) and the
+	// virtualized one (ui::TableView stamped it), so one branch covers a table that exists as a node
+	// and one that does not.
+	if (parent->getComponent<TableColumnsComponent>()) { // this node is a CELL
+		node->setOrUpdateComponent<TableCellInfo>([&](NotNull<TableCellInfo> info) {
+			TableCellInfo next = *info;
+			if (s.has(ParameterName::CssXlColumnSpan)) {
+				next.columnSpan = sprt::max(s.columnSpan(), 1u);
+			}
+			if (s.has(ParameterName::CssXlRowSpan)) {
+				next.rowSpan = sprt::max(s.rowSpan(), 1u);
+			}
+			if (s.has(ParameterName::CssJustifySelf)) {
+				next.justifySelf = toGridAlignSelf(s.justifySelf());
+			}
+			if (s.has(ParameterName::CssAlignSelf)) {
+				next.alignSelf = toGridAlignSelf(s.alignSelf());
+			}
+			// `vertical-align` is the table-cell spelling of the cross-axis alignment; it is also an
+			// inherited text property, so only map it when this node declares one.
+			if (s.has(ParameterName::CssVerticalAlign)) {
+				switch (s.verticalAlign()) {
+				case document::VerticalAlign::Top: next.alignSelf = GridAlign::Start; break;
+				case document::VerticalAlign::Bottom: next.alignSelf = GridAlign::End; break;
+				case document::VerticalAlign::Middle: next.alignSelf = GridAlign::Center; break;
+				default: break; // baseline / sub / super have no table meaning here
+				}
+			}
+			// Only touch a side the sheet actually declares. Writing all four unconditionally would
+			// erase borders an application set in code on every style pass - and a style pass runs
+			// for every node, including ones no rule matches.
+			fillTableBorders(s, next, parentSize.width);
+			// a cell has no auto-margin behaviour: an `auto` side resolves to zero
+			fillMargin(next.margin, nullptr);
+			if (next != *info) {
+				*info = next;
+				return true;
+			}
+			return false;
+		});
+	} else if (parent->getComponent<TableLayoutInfo>()) { // this node is a ROW
+		node->setOrUpdateComponent<TableRowInfo>([&](NotNull<TableRowInfo> info) {
+			TableRowInfo next = *info;
+			// Guarded, like every other item mapping: a row whose sheet says nothing about height
+			// keeps whatever it has, rather than being reset to Auto on every style pass.
+			if (s.has(ParameterName::CssHeight)) {
+				next.height = (!height.isAuto()
+									  && height.metric != document::Metric::Units::FitContent)
+						? computeMetric(height, parentSize.height)
+						: TableRowInfo::Auto;
+			}
+			if (s.has(ParameterName::CssOrder)) {
+				next.order = s.order();
+			}
+			if (next != *info) {
+				*info = next;
+				return true;
+			}
+			return false;
+		});
+	} else if (parent->getComponent<GridLayoutInfo>()) {
 		node->setOrUpdateComponent<GridItemInfo>([&](NotNull<GridItemInfo> info) {
 			GridItemInfo next = *info;
 			uint32_t a = 0, b = 0, c = 1;

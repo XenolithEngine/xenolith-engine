@@ -45,6 +45,63 @@ StringView appTitle() {
 StringView colName() { return tr("Name", "Имя", "名称"); }
 StringView colSize() { return tr("Size", "Размер", "大小"); }
 StringView colStatus() { return tr("Status", "Статус", "状态"); }
+StringView colActions() { return tr("Actions", "Действия", "操作"); }
+StringView actionUpdate() { return tr("Update", "Обновить", "更新"); }
+
+StringView pageWelcomeTitle() { return tr("Xenolith", "Xenolith", "Xenolith"); }
+StringView pageWelcomeNote() {
+	return tr("Install the engine and the toolchains this machine needs to build with.",
+			"Установите движок и инструменты сборки для этой машины.",
+			"安装本机构建所需的引擎和工具链。");
+}
+StringView pageEnginesTitle() { return tr("Engines", "Движки", "引擎"); }
+StringView pageEnginesNote() {
+	return tr("Branches and tags of the engine repository. Each one is cloned into its own "
+			  "directory, so several can coexist.",
+			"Ветви и теги репозитория движка. Каждая клонируется в свой каталог, поэтому "
+			"несколько версий сосуществуют.",
+			"引擎仓库的分支和标签。每个都克隆到自己的目录中，因此可以共存。");
+}
+StringView pageHostsTitle() { return tr("Hosts", "Hosts", "Hosts"); }
+StringView pageHostsNote() {
+	return tr("Toolchains that RUN the build. The row for this machine comes first; unsigned "
+			  "archives are never listed.",
+			"Инструменты, которые ВЫПОЛНЯЮТ сборку. Строка этой машины идёт первой; неподписанные "
+			"архивы не показываются.",
+			"运行构建的工具链。本机所在行排在最前；未签名的归档不会列出。");
+}
+StringView pageTargetsTitle() { return tr("Targets", "Targets", "Targets"); }
+StringView pageTargetsNote() {
+	return tr("Platforms the build produces binaries FOR. The row for this machine comes first.",
+			"Платформы, ДЛЯ которых собираются бинарники. Строка этой машины идёт первой.",
+			"构建产物所面向的平台。本机所在行排在最前。");
+}
+
+StringView welcomeArch() { return tr("Architecture", "Архитектура", "架构"); }
+StringView welcomeEngine() { return tr("Engine", "Движок", "引擎"); }
+StringView welcomeEngineMissing() { return tr("not installed", "не установлен", "未安装"); }
+StringView welcomeRelease() { return tr("Release", "Релиз", "版本"); }
+
+StringView settingsTitle() { return tr("Settings", "Настройки", "设置"); }
+StringView settingsEngineUrl() {
+	return tr("Engine repository", "Источник движка", "引擎仓库");
+}
+StringView settingsReleaseUrl() {
+	return tr("Binary release source", "Источник бинарных релизов", "二进制版本源");
+}
+StringView settingsAutoUpdateInstaller() {
+	return tr("Auto-update the installer", "Автообновление установщика", "自动更新安装程序");
+}
+StringView settingsAutoUpdateEngine() {
+	return tr("Auto-update the engine", "Автообновление движка", "自动更新引擎");
+}
+StringView settingsAutoUpdateReleases() {
+	return tr("Auto-update binary releases", "Автообновление бинарных релизов", "自动更新二进制版本");
+}
+StringView settingsClose() { return tr("Close", "Закрыть", "关闭"); }
+StringView reachChecking() { return tr("checking…", "проверка…", "检查中…"); }
+StringView reachOk() { return tr("reachable", "доступен", "可访问"); }
+StringView reachFailed() { return tr("unreachable", "недоступен", "不可访问"); }
 StringView groupEngine() { return tr("Engine", "Движок", "引擎"); }
 StringView groupHosts() {
 	return tr("Development Tools (hosts)", "Инструменты (hosts)", "开发工具 (hosts)");
@@ -106,7 +163,7 @@ StringView gearStorage() { return tr("Storage", "Хранилище", "存储");
 StringView gearSettings() { return tr("Settings", "Настройки", "设置"); }
 StringView gearDoctor() { return tr("Doctor", "Диагностика", "诊断"); }
 StringView storageTitle() { return tr("Storage usage", "Использование диска", "存储占用"); }
-StringView settingsTitle() { return tr("Settings", "Настройки", "设置"); }
+
 StringView doctorTitle() { return tr("Doctor", "Диагностика", "诊断"); }
 StringView projectsTitle() { return tr("Projects", "Проекты", "项目"); }
 StringView onboardingTitle() {

@@ -145,10 +145,11 @@ String getComponentDir(const Layout &layout, Kind kind, StringView id) {
 	return layout.getToolchainDir(kind, id);
 }
 
-InstallResult installComponent(StringView id, const Layout &layout, bool wantHost, bool wantTarget,
+InstallResult installComponent(const SourceConfig &sources, StringView release, StringView id,
+		const Layout &layout, bool wantHost, bool wantTarget,
 		const Function<void(int64_t, int64_t)> &progress) {
 	InstallResult result;
-	const auto base = getFtpReleaseBase();
+	const auto base = sources.getReleaseBase(release);
 
 	// 1. Fetch the catalogue. These are URLs, not paths: the trailing slash is what makes the FTP
 	// server list a directory, so they are built by concatenation and never through filepath.

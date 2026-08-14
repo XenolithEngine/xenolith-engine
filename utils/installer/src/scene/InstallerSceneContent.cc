@@ -21,11 +21,13 @@
  **/
 
 #include "InstallerSceneContent.h"
-#include "InstallerLayout.h"
+#include "InstallerShell.h"
 #include "InstallerDialogs.h"
+#include "InstallerSettingsPage.h"
 #include "InstallerStrings.h"
 
 #include "XLAppWindow.h"
+#include "XLEventListener.h"
 #include "XLSceneInspector.h"
 #include "XLUiStyleResolver.h"
 #include "XLWindowDecorations.h"
@@ -59,8 +61,8 @@ bool InstallerSceneContent::init() {
 	_globalBackground->setName("global-background");
 	_globalBackground->addSystem(Rc<ui::StyleResolver>::create());
 
-	_layout = Rc<InstallerLayout>::create();
-	pushLayout(_layout);
+	_shell = Rc<InstallerShell>::create();
+	pushLayout(_shell);
 
 	// Loading overlay. Three SIBLING nodes (not parent/child) so the render order is unambiguous:
 	// the overlay is a semi-opaque dimming Layer over the CONTENT area only (it stops below the
@@ -123,6 +125,19 @@ void InstallerSceneContent::handleContentSizeDirty() {
 }
 
 void InstallerSceneContent::handleEnter(Scene *scene) {
+	// Attach BEFORE the base class propagates handleEnter into the subtree: the nav pane and the
+	// pages bind to the controller's data::Sources in their own handleEnter, and those Sources only
+	// exist once attach() has run. Doing it after would hand every child a null source and leave the
+	// tree empty until something else happened to dirty it.
+	if (!_controller) {
+		// A never-destroyed singleton, so this is a lookup rather than a construction; what belongs
+		// to the scene is the attachment, which handleExit gives back.
+		_controller = AppController::getInstance();
+		if (_controller && !_controller->attach(scene->getDirector()->getApplication())) {
+			_controller = nullptr;
+		}
+	}
+
 	basic2d::SceneContent2d::handleEnter(scene);
 
 	// Spin the loading icon while it is visible. Two parts:
@@ -140,36 +155,28 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 		}, _spinner, 0, false);
 	}
 
-	if (_controller) {
+	if (!_controller || _commandsRegistered) {
 		return;
 	}
+	_commandsRegistered = true;
 
-	_controller = Rc<InstallerController>::create(getDirector()->getApplication());
-	if (!_controller) {
-		return;
-	}
+	/* The catalogue, the engine refs and the engine status are all in flight already: attach()
+	starts them, so they are fetched while this scene is still being built rather than when a page
+	that wants them is first opened. What is left here is only the loading chrome.
 
-	_controller->loadCatalog([this](bool ok, String) {
-		if (!_layout || !_controller) {
-			return;
-		}
-		_layout->onCatalogReady(_controller);
-
+	Hide it on the EVENT rather than through a completion callback, because by now the load may have
+	already landed - hence the immediate check first, or the spinner would stay up forever over a
+	catalogue that arrived before this listener existed. */
+	auto listener = addSystem(Rc<EventListener>::create());
+	listener->listenForEvent(AppController::onCatalogueChanged, [this](const Event &) {
 		// Hide loading BEFORE any confirm/onboarding. Dialogs used to snapshot+restore the
 		// loading chrome on dismiss, which left "Loading catalogue…" stuck forever after the
 		// first onboard dismiss — and without RenderContinuously the restored spinner froze.
 		hideLoadingState();
-
-		// Onboarding confirm is opt-in via inspector for now — opening it immediately after
-		// catalogue rebuild has been crashing the headless process (and used to re-show the
-		// stuck loader). Packages UI must be usable first.
-		(void)ok;
 	});
-	_controller->queryEngine([this](const EngineStatusInfo &info) {
-		if (_layout) {
-			_layout->setEngineStatus(info);
-		}
-	});
+	if (_controller->getCatalogue()) {
+		hideLoadingState();
+	}
 
 	// Inspector: open a confirm dialog without a pointer click. Both tones are exposed — the
 	// primary one is what looked empty on first open when StyleResolver painted labels black.
@@ -221,19 +228,153 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 			[this](Value &&, Function<void(Value &&)> &&done) {
 		auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
 		if (window && _controller) {
-			_controller->openFolder(window, _controller->layout().data);
+			_controller->openFolder(window, _controller->getLayout().data);
 		}
 		Value r;
 		r.setBool(window != nullptr, "opened");
 		done(sp::move(r));
 	});
+
+	// Both new views are virtualized, so inspect_scene only ever shows the rows that happen to be
+	// on screen. The MODEL therefore has to be inspectable on its own — this is the whole of it:
+	// settings, caches, reachability and the job registry.
+	inspector::addCommand(this, "dump-state", "Dump the controller state (settings, jobs, caches)",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		if (!_controller) {
+			Value r;
+			r.setString("not attached", "error");
+			done(sp::move(r));
+			return;
+		}
+		done(_controller->encodeDebugState());
+	});
+
+	// Both new views are virtualized and the pages swap by visibility, so driving the UI from
+	// outside needs a way in that does not depend on hit-testing a row.
+	inspector::addCommand(this, "select-page",
+			"Show a content page: welcome | engines | hosts | targets",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const auto name = args.isString() ? args.getString() : args.getString("page");
+		PageId page = PageId::Welcome;
+		if (name == "engines") {
+			page = PageId::Engines;
+		} else if (name == "hosts") {
+			page = PageId::Hosts;
+		} else if (name == "targets") {
+			page = PageId::Targets;
+		}
+		if (_shell) {
+			_shell->showPage(page);
+		}
+		Value r;
+		r.setString(name, "page");
+		r.setBool(_shell != nullptr, "ok");
+		done(sp::move(r));
+	});
+
+	inspector::addCommand(this, "probe-urls", "Re-check both configured sources for reachability",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		if (!_controller) {
+			Value r;
+			r.setString("not attached", "error");
+			done(sp::move(r));
+			return;
+		}
+		const auto &settings = _controller->getSettings();
+		_controller->probeSource(SourceKind::EngineRepo, settings.sources.getEngineRepoUrl());
+		_controller->probeSource(SourceKind::Releases, settings.sources.getReleasesRoot());
+		// Answers immediately: a probe is asynchronous, and its result shows up in dump-state.
+		Value r;
+		r.setBool(true, "started");
+		done(sp::move(r));
+	});
+
+	// Install without a click, so that "the button does nothing" can be told apart from "the core
+	// install does nothing". Answers when the operation is over, not when it starts.
+	inspector::addCommand(this, "install",
+			"Install a component: {kind: host|target, id: <triple>}",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		if (!_controller) {
+			Value r;
+			r.setString("not attached", "error");
+			done(sp::move(r));
+			return;
+		}
+		const auto kind = args.getString("kind") == "host" ? Kind::Host : Kind::Target;
+		const auto id = args.getString("id");
+		_controller->installComponent(kind, id,
+				nullptr, [done = sp::move(done)](bool ok, String err) mutable {
+			Value r;
+			r.setBool(ok, "ok");
+			if (!err.empty()) {
+				r.setString(err, "error");
+			}
+			done(sp::move(r));
+		});
+	});
+
+	// The settings form lives in a SubWindow, which is a separate scene where there is no
+	// Subwindows capability - so it is reachable neither by hit-testing the frame button nor by
+	// select-page. This is the only way in from outside.
+	inspector::addCommand(this, "open-settings", "Open the settings form",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		auto *window = static_cast<AppWindow *>(getDirector()->getRenderServer());
+		if (window) {
+			showSettingsPage(window);
+		}
+		Value r;
+		r.setBool(window != nullptr, "opened");
+		done(sp::move(r));
+	});
+
+	/* Hold the render loop open, for watching something that changes on its own.
+
+	A window is redrawn only when something dirties it, and a change made from a callback - a probe
+	landing, a download's progress, a scheduled step - does not count. Nobody is moving the mouse
+	during an automated check, so those changes are computed and never drawn, which reads as "my fix
+	did nothing". This makes the scene render regardless.
+
+	{seconds: N} bounds it; no argument runs until the app exits. Re-invoking replaces the previous
+	one - the action is tagged. */
+	inspector::addCommand(this, "render-continuously",
+			"Keep rendering frames: {seconds: N}, or endlessly with no argument",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const auto seconds = args.isDictionary() ? args.getDouble("seconds") : args.getDouble();
+		stopActionByTag("InspectorRender"_tag);
+		if (seconds > 0.0) {
+			runAction(Rc<RenderContinuously>::create(float(seconds)), "InspectorRender"_tag);
+		} else {
+			runAction(Rc<RenderContinuously>::create(), "InspectorRender"_tag);
+		}
+		Value r;
+		r.setDouble(seconds, "seconds");
+		r.setBool(true, "running");
+		done(sp::move(r));
+	});
+
+	// The other half: closing is the path that has to release the surface and fire the close
+	// callback exactly once, and it is the one that can leave the window system waiting.
+	inspector::addCommand(this, "close-settings", "Dismiss the settings form",
+			[](Value &&, Function<void(Value &&)> &&done) {
+		Value r;
+		r.setBool(closeSettingsPage(), "closed");
+		done(sp::move(r));
+	});
+}
+
+void InstallerSceneContent::handleExit() {
+	// The controller outlives the scene, so it is detach() - not a destructor - that releases the
+	// dialog request, the spawned prompt and the data Sources. Skipping this would leave Rc's on
+	// scene-lifetime objects alive until static destruction, long after the renderer is gone.
+	if (_controller) {
+		_controller->detach();
+		_controller = nullptr;
+	}
+	basic2d::SceneContent2d::handleExit();
 }
 
 void InstallerSceneContent::hideLoadingState() {
 	stopActionByTag("LoadingRender"_tag);
-	if (_layout) {
-		_layout->dropScrollWarmup();
-	}
 	if (_spinner) {
 		_spinner->stopActionByTag("RenderContinuously"_tag);
 		_spinner->setVisible(false);

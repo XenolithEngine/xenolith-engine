@@ -40,10 +40,10 @@ StringView getShortRefName(StringView name, bool branch) {
 
 } // namespace
 
-Vector<EngineRef> listEngineRefs(OperationResult *result) {
+Vector<EngineRef> listEngineRefs(const SourceConfig &sources, OperationResult *result) {
 	Vector<EngineRef> out;
 
-	auto remote = Rc<git::Remote>::create(getEngineRepoUrl());
+	auto remote = Rc<git::Remote>::create(sources.getEngineRepoUrl());
 	if (!remote) {
 		if (result) {
 			result->setError(Status::ErrorNotPermitted, "failed to allocate git remote");
@@ -75,14 +75,16 @@ Vector<EngineRef> listEngineRefs(OperationResult *result) {
 	return out;
 }
 
-EngineCloneResult cloneEngine(StringView ref, const Layout &layout,
+EngineCloneResult cloneEngine(const SourceConfig &sources, StringView ref, const Layout &layout,
 		EngineProgressCallback progress) {
 	EngineCloneResult result;
 	auto refStr = ref.empty() ? toString(getEngineDefaultRef()) : toString(ref);
 	result.ref = refStr;
 
+	const auto repoUrl = sources.getEngineRepoUrl();
+
 	// 1. resolve the ref's oid via ls-refs (a Remote does one operation — use a fresh one for clone)
-	auto refsRemote = Rc<git::Remote>::create(getEngineRepoUrl());
+	auto refsRemote = Rc<git::Remote>::create(repoUrl);
 	if (!refsRemote) {
 		result.setError(Status::ErrorNotPermitted, "failed to allocate git remote");
 		return result;
@@ -116,7 +118,7 @@ EngineCloneResult cloneEngine(StringView ref, const Layout &layout,
 		filesystem::remove(FileInfo(StringView(targetDir)), true);
 	}
 
-	auto cloneRemote = Rc<git::Remote>::create(getEngineRepoUrl());
+	auto cloneRemote = Rc<git::Remote>::create(repoUrl);
 	if (!cloneRemote) {
 		result.setError(Status::ErrorNotPermitted, "failed to allocate git remote");
 		return result;

@@ -98,7 +98,13 @@ bool HeadlessContextController::init(NotNull<Context> ctx, ContextConfig &&confi
 }
 
 WindowCapabilities HeadlessContextController::getCapabilities() const {
-	return WindowCapabilities::None;
+	// The one thing this controller really provides. Everything else on the list needs a window
+	// system: decorations, cursors, fullscreen and mode switching, an OS icon, native dialogs.
+	//
+	// Subwindows is not a courtesy bit: createWindow really does build an auxiliary window with its
+	// own pseudo-swapchain, so ui::SubWindow takes the native path here and a headless run
+	// exercises the same code a desktop one does.
+	return WindowCapabilities::Subwindows;
 }
 
 void HeadlessContextController::openUrl(StringView url) {
@@ -145,6 +151,204 @@ Status HeadlessContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 	// as this data is the clipboard's, which is the contract every backend follows
 	_clipboard = sprt::move(data);
 	return Status::Ok;
+}
+
+void HeadlessContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
+		Vector<InputEventData> &&ev) {
+	bool pointer = false;
+	bool pressed = false;
+	for (auto &it : ev) {
+		switch (it.event) {
+		case InputEventName::MouseMove:
+		case InputEventName::Scroll:
+		case InputEventName::Move: pointer = true; break;
+		case InputEventName::Begin:
+			pointer = true;
+			pressed = true;
+			break;
+		default: break;
+		}
+	}
+
+	// An event was injected into this window, which is what "the pointer is over it" means when
+	// there is no pointer to move.
+	if (pointer) {
+		setPointerWindow(w);
+	}
+	if (pressed) {
+		// Click-to-focus, before the press is delivered - the order a window manager uses, and the
+		// order the base class's popup dismissal below expects. Clicking a menu row is not a focus
+		// change: setFocusedWindow refuses Popup and Tooltip outright.
+		setFocusedWindow(w);
+	}
+
+	ContextController::notifyWindowInputEvents(w, sprt::move(ev));
+}
+
+void HeadlessContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
+	// unmapWindow normally clears these, but a window that was never mapped never went through it.
+	if (_focusedWindow == w) {
+		_focusedWindow = nullptr;
+	}
+	if (_pointerWindow == w) {
+		_pointerWindow = nullptr;
+	}
+	for (auto it = _stack.begin(); it != _stack.end(); ++it) {
+		if (*it == w) {
+			_stack.erase(it);
+			break;
+		}
+	}
+
+	ContextController::notifyWindowDeallocated(w);
+}
+
+IRect HeadlessContextController::getVirtualScreenRect() const {
+	IRect ret;
+	bool hasRoot = false;
+	for (auto *w : _allWindows) {
+		auto wi = w->getInfo();
+		if (!wi || wi->type != WindowType::Root) {
+			continue;
+		}
+		if (!hasRoot) {
+			ret = wi->rect;
+			hasRoot = true;
+			continue;
+		}
+
+		const auto x0 = sprt::min(ret.x, wi->rect.x);
+		const auto y0 = sprt::min(ret.y, wi->rect.y);
+		const auto x1 = sprt::max(ret.x + int32_t(ret.width), wi->rect.x + int32_t(wi->rect.width));
+		const auto y1 =
+				sprt::max(ret.y + int32_t(ret.height), wi->rect.y + int32_t(wi->rect.height));
+		ret = IRect(x0, y0, uint32_t(x1 - x0), uint32_t(y1 - y0));
+	}
+
+	if (!hasRoot) {
+		// Asked before the root window exists - the configured geometry is the best answer there
+		// is.
+		ret = _windowInfo ? _windowInfo->rect : IRect(0, 0, 1'024, 768);
+	}
+	return ret;
+}
+
+void HeadlessContextController::raiseWindow(NativeWindow *w) {
+	for (auto it = _stack.begin(); it != _stack.end(); ++it) {
+		if (*it == w) {
+			_stack.erase(it);
+			break;
+		}
+	}
+	_stack.emplace_back(w);
+}
+
+NativeWindow *HeadlessContextController::getTopmostFocusable(NativeWindow *except) const {
+	for (auto it = _stack.rbegin(); it != _stack.rend(); ++it) {
+		auto *wi = (*it)->getInfo();
+		if (*it != except && wi && wi->type != WindowType::Popup
+				&& wi->type != WindowType::Tooltip) {
+			return *it;
+		}
+	}
+	return nullptr;
+}
+
+void HeadlessContextController::setFocusedWindow(NativeWindow *w) {
+	if (w) {
+		auto *wi = w->getInfo();
+		if (!wi || wi->type == WindowType::Popup || wi->type == WindowType::Tooltip) {
+			// Neither is ever the key window: a menu is an override-redirect surface on X11 and a
+			// WS_EX_NOACTIVATE popup on Win32, and a tip takes no input at all. The window a menu
+			// hangs off keeps focus for as long as the menu is up - which is also what stops the
+			// menu from dismissing itself through notifyWindowFocusLost the moment it opens.
+			return;
+		}
+	}
+
+	if (_focusedWindow == w) {
+		return;
+	}
+
+	auto *prev = _focusedWindow;
+
+	// Assigned before either notification: updateState dispatches the WindowState event straight
+	// back into this controller, and re-entry must see the outcome, not the transition.
+	_focusedWindow = w;
+
+	if (prev) {
+		static_cast<HeadlessWindow *>(prev)->updateFocusState(false);
+	}
+	if (w) {
+		raiseWindow(w);
+		static_cast<HeadlessWindow *>(w)->updateFocusState(true);
+	}
+}
+
+void HeadlessContextController::setPointerWindow(NativeWindow *w) {
+	if (_pointerWindow == w) {
+		return;
+	}
+
+	auto *prev = _pointerWindow;
+	_pointerWindow = w;
+
+	if (prev) {
+		static_cast<HeadlessWindow *>(prev)->updatePointerState(false);
+	}
+	if (w) {
+		static_cast<HeadlessWindow *>(w)->updatePointerState(true);
+	}
+}
+
+void HeadlessContextController::handleWindowMapped(NotNull<HeadlessWindow> w) {
+	raiseWindow(w);
+
+	auto *info = w->getInfo();
+
+	// A newly mapped window comes up focused, the way a window manager maps one - except a palette,
+	// which must not take activation away from the window it belongs to. Popups and tips are
+	// refused by setFocusedWindow outright.
+	if (info && info->type != WindowType::Utility) {
+		setFocusedWindow(w);
+	}
+
+	// Nothing is tracking a pointer position here, so the first window on screen simply gets it;
+	// after that it moves only where input is actually injected.
+	if (!_pointerWindow) {
+		setPointerWindow(w);
+	}
+}
+
+void HeadlessContextController::handleWindowUnmapped(NotNull<HeadlessWindow> w) {
+	for (auto it = _stack.begin(); it != _stack.end(); ++it) {
+		if (*it == w) {
+			_stack.erase(it);
+			break;
+		}
+	}
+
+	// Focus and pointer go back where the window system would put them: to the window that owns
+	// this one, if it is still on screen, and to whatever is topmost otherwise.
+	NativeWindow *next = nullptr;
+	if (_focusedWindow == w || _pointerWindow == w) {
+		auto *info = w->getInfo();
+		next = info && !info->parent.empty() ? findWindow(info->parent) : nullptr;
+		if (!next || !next->isMapped()) {
+			next = getTopmostFocusable(w);
+		}
+	}
+
+	if (_focusedWindow == w) {
+		_focusedWindow = nullptr;
+		w->updateFocusState(false);
+		setFocusedWindow(next);
+	}
+	if (_pointerWindow == w) {
+		_pointerWindow = nullptr;
+		w->updatePointerState(false);
+		setPointerWindow(next);
+	}
 }
 
 bool HeadlessContextController::loadWindow(Rc<WindowInfo> &&wInfo) {

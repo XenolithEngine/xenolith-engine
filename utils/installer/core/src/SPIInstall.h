@@ -26,6 +26,7 @@
 #include "SPICommon.h"
 #include "SPIDirs.h"
 #include "SPIManifest.h"
+#include "SPISettings.h" // SourceConfig
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -53,8 +54,20 @@ SP_PUBLIC String getComponentDir(const Layout &layout, Kind kind, StringView id)
 // `<id>`/`<triple>` wrapper if present, atomically swap into `getComponentDir`, record sha256, and
 // upsert into installed.json. Signature verification is deferred (no public key distributed yet);
 // the catalogue's signature rule (drop unsigned) remains the security gate.
-SP_PUBLIC InstallResult installComponent(StringView id, const Layout &layout, bool wantHost,
-		bool wantTarget, const Function<void(int64_t, int64_t)> &progress = {});
+//
+// `sources` says which mirror to install from and `release` which release directory under it; an
+// empty `release` means getDefaultRelease(), NOT the newest one — resolving the active release is
+// a separate network round trip (resolveActiveRelease) and this function does not make it, so a
+// caller that has already resolved one must pass it.
+SP_PUBLIC InstallResult installComponent(const SourceConfig &sources, StringView release,
+		StringView id, const Layout &layout, bool wantHost, bool wantTarget,
+		const Function<void(int64_t, int64_t)> &progress = {});
+
+inline InstallResult installComponent(StringView id, const Layout &layout, bool wantHost,
+		bool wantTarget, const Function<void(int64_t, int64_t)> &progress = {}) {
+	return installComponent(SourceConfig(), StringView(), id, layout, wantHost, wantTarget,
+			progress);
+}
 
 // Symlink every toolchain from the shared store into an engine root's `toolchains/` dir, so that
 // engine's build (STAPPLER_ROOT = engine root) can find them. Targets are RELATIVE so they survive

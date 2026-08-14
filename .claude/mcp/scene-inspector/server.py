@@ -59,6 +59,16 @@ TIMEOUT_PROP = {
     "description": "Per-connect timeout in seconds (default 3).",
 }
 
+WINDOW_PROP = {
+    "type": "string",
+    "description": (
+        "Which window to act on, by the id from list_windows. Omit for the app's main window. "
+        "Auxiliary windows (menus, dialogs, palettes) and second top-level windows are real "
+        "windows with scenes and swapchains of their own — including headless — so they are "
+        "inspected, screenshotted, stepped and driven through this id."
+    ),
+}
+
 TOOLS = [
     {
         "name": "inspect_scene",
@@ -66,6 +76,20 @@ TOOLS = [
             "Snapshot the live scene-graph of the running Xenolith app and return it as an "
             "indented text tree: one node per line with type, #name, .classes, V/is-visible, "
             "content size, position, z-order. Use this to debug a GUI without seeing the window."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"window": WINDOW_PROP, "timeout": TIMEOUT_PROP},
+        },
+    },
+    {
+        "name": "list_windows",
+        "description": (
+            "List every window the app currently has a scene for: id, type (Root/Dialog/Utility/"
+            "Popup/Tooltip), parent, title, size and density. The ids are what every other tool's "
+            "`window` argument takes. Call this after anything that may have opened a menu, a "
+            "dialog or a second window — window creation is asynchronous, so a new one may take a "
+            "moment to appear."
         ),
         "inputSchema": {"type": "object", "properties": {"timeout": TIMEOUT_PROP}},
     },
@@ -95,6 +119,7 @@ TOOLS = [
                     "type": "string",
                     "description": "Where to write the PNG (default /tmp/xenolith-screenshot.png).",
                 },
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
         },
@@ -106,7 +131,10 @@ TOOLS = [
             "(SceneInspector::addCommand), with their descriptions. These are the actions this "
             "particular app exposes for external control; run one with invoke_command."
         ),
-        "inputSchema": {"type": "object", "properties": {"timeout": TIMEOUT_PROP}},
+        "inputSchema": {
+            "type": "object",
+            "properties": {"window": WINDOW_PROP, "timeout": TIMEOUT_PROP},
+        },
     },
     {
         "name": "invoke_command",
@@ -119,6 +147,7 @@ TOOLS = [
             "properties": {
                 "name": {"type": "string", "description": "Command name."},
                 "args": {"type": "object", "description": "Command arguments."},
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
             "required": ["name"],
@@ -154,6 +183,7 @@ TOOLS = [
                         "scene and bypasses text input entirely."
                     ),
                 },
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
             "required": ["events"],
@@ -185,6 +215,7 @@ TOOLS = [
                 "markedStart": {"type": "number"},
                 "markedLength": {"type": "number"},
                 "compose": {"type": "number", "description": "InputKeyComposeState, default 0."},
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
             "required": ["op"],
@@ -202,6 +233,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "count": {"type": "number", "description": "Frames to render (default 1)."},
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
         },
@@ -219,6 +251,7 @@ TOOLS = [
                 "op": {"type": "string", "enum": ["constraints", "resize", "close"]},
                 "width": {"type": "number"},
                 "height": {"type": "number"},
+                "window": WINDOW_PROP,
                 "timeout": TIMEOUT_PROP,
             },
             "required": ["op"],
@@ -339,13 +372,40 @@ def decode_bytes(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
+def window_arg(args: dict) -> dict:
+    """`window` is optional on every routed command; absent means the main window."""
+    target = args.get("window")
+    return {"window": target} if target else {}
+
+
 def run_framed(name: str, args: dict, timeout: float) -> str:
     """Execute one framed-protocol tool and render its result as text."""
     session = Session(timeout)
+    where = window_arg(args)
     try:
+        if name == "inspect_scene":
+            response = session.call("scene", **where)
+            check(response)
+            return response["result"].get("text") or "(empty scene)"
+
+        if name == "list_windows":
+            response = session.call("windows")
+            check(response)
+            windows = response["result"].get("windows") or []
+            if not windows:
+                return "(no windows)"
+            lines = []
+            for w in windows:
+                parent = f" parent={w['parent']}" if w.get("parent") else ""
+                mark = " (default)" if w.get("default") else ""
+                lines.append(f"{w['id']}: {w['type']}{parent} "
+                             f"{w['width']}x{w['height']} @{w['density']} "
+                             f"\"{w.get('title', '')}\"{mark}")
+            return "\n".join(lines)
+
         if name == "screenshot":
             path = args.get("path") or "/tmp/xenolith-screenshot.png"
-            response = session.call("screenshot")
+            response = session.call("screenshot", **where)
             check(response)
             info = response["result"]
             data = decode_bytes(info["data"])
@@ -355,7 +415,7 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
                     f"({info['width']}x{info['height']} {info['format']})")
 
         if name == "list_commands":
-            response = session.call("commands")
+            response = session.call("commands", **where)
             check(response)
             commands = response["result"].get("commands") or []
             if not commands:
@@ -363,13 +423,14 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
             return "\n".join(f"{c['name']}: {c['description']}" for c in commands)
 
         if name == "invoke_command":
-            response = session.call("invoke", name=args["name"], args=args.get("args") or {})
+            response = session.call("invoke", name=args["name"], args=args.get("args") or {},
+                                    **where)
             check(response)
             return json.dumps(response["result"], indent=2)
 
         if name == "send_input":
             response = session.call("input", events=args["events"],
-                                    native=bool(args.get("native", False)))
+                                    native=bool(args.get("native", False)), **where)
             check(response)
             result = response["result"]
             how = "natively" if result.get("native") else "into the scene"
@@ -383,7 +444,7 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
 
         if name == "step_frame":
             count = int(args.get("count", 1))
-            response = session.call("frame", count=count)
+            response = session.call("frame", count=count, **where)
             check(response)
             return f"requested {response['result']['count']} frame(s)"
 
@@ -391,7 +452,7 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
             op = args["op"]
             response = session.call("window", op=op,
                                     width=int(args.get("width", 0)),
-                                    height=int(args.get("height", 0)))
+                                    height=int(args.get("height", 0)), **where)
             check(response)
             return json.dumps(response["result"], indent=2)
 
@@ -463,6 +524,15 @@ def main() -> None:
             name = params.get("name")
             arguments = params.get("arguments") or {}
             timeout = float(arguments.get("timeout", 3.0))
+
+            # inspect_scene targeting another window needs an argument, which the one-shot
+            # text protocol has no room for - that one goes through the framed session.
+            if name == "inspect_scene" and arguments.get("window"):
+                try:
+                    result(req_id, run_framed(name, arguments, timeout))
+                except (OSError, KeyError, ValueError, json.JSONDecodeError) as e:
+                    error(req_id, -32603, f"{name} failed against {ADDRESS}: {e}")
+                continue
 
             if name in ("inspect_scene", "get_logs"):
                 command = "scene" if name == "inspect_scene" else "logs"

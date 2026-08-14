@@ -507,6 +507,16 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::Grid));
 	} else if (value.equals("inline-grid")) {
 		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::InlineGrid));
+	} else if (value.equals("table")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::Table));
+	} else if (value.equals("table-row")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::TableRow));
+	} else if (value.equals("table-cell")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::TableCell));
+	} else if (value.equals("table-column")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::TableColumn));
+	} else if (value.equals("table-caption")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::TableCaption));
 	}
 	return false;
 }),
@@ -1838,6 +1848,57 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssCaptionSide>(CaptionSide::Bottom));
 	}
 	return false;
+}),
+	pair("table-layout",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("auto")) {
+		return cb(StyleParameter::create<ParameterName::CssTableLayout>(TableLayout::Auto));
+	} else if (value.equals("fixed")) {
+		return cb(StyleParameter::create<ParameterName::CssTableLayout>(TableLayout::Fixed));
+	}
+	return false;
+}),
+	// `border-spacing: <h> [<v>]` - one value sets both axes, as in CSS
+	pair("border-spacing",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric vals[2];
+	int count = 0;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 2) {
+			if (!parser::readStyleMetric(r, vals[count])) {
+				err = true;
+				return;
+			}
+			++count;
+		}
+	});
+	if (err || count == 0) {
+		return false;
+	}
+	if (count == 1) {
+		vals[1] = vals[0];
+	}
+	return cb(StyleParameter::create<ParameterName::CssBorderSpacingHorizontal>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssBorderSpacingVertical>(vals[1]));
+}),
+	pair("-xl-column-span",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView tmp(value);
+	auto val = tmp.readInteger(10);
+	if (!val.valid() || val.get() < 1) {
+		return false;
+	}
+	return cb(StyleParameter::create<ParameterName::CssXlColumnSpan>(uint32_t(val.get())));
+}),
+	pair("-xl-row-span",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView tmp(value);
+	auto val = tmp.readInteger(10);
+	if (!val.valid() || val.get() < 1) {
+		return false;
+	}
+	return cb(StyleParameter::create<ParameterName::CssXlRowSpan>(uint32_t(val.get())));
 }),
 	pair("page-break-after",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {

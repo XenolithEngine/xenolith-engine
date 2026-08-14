@@ -29,7 +29,7 @@
 #include "XL2dLayer.h"
 #include "XLUiButton.h"
 
-#include "InstallerController.h"
+#include "InstallerAppController.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppWindow;
@@ -44,7 +44,7 @@ public:
 
 	virtual bool init() override;
 
-	void setController(InstallerController *controller);
+	void setController(AppController *controller);
 	void reload();
 	void showNewForm();
 	void showList();
@@ -60,7 +60,7 @@ protected:
 	void onBuild(const ProjectEntry &p, bool run);
 	void onRemove(const ProjectEntry &p);
 
-	InstallerController *_controller = nullptr;
+	AppController *_controller = nullptr;
 
 	Node *_listPane = nullptr;
 	Node *_formPane = nullptr;
@@ -87,7 +87,7 @@ protected:
 
 // Gear-menu sheets. Both are read-only reports rendered into a confirm overlay; Settings has no
 // real surface yet, so its confirm button cycles the UI language.
-void showStorageDialog(NotNull<AppWindow> parent, InstallerController *controller);
+void showStorageDialog(NotNull<AppWindow> parent, AppController *controller);
 void showSettingsDialog(NotNull<AppWindow> parent);
 
 } // namespace stappler::xenolith::installer
