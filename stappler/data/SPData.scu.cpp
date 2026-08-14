@@ -26,3 +26,4 @@
 #include "SPDataUrlencoded.cc"
 #include "SPDataShared.cc"
 #include "SPDataSource.cc"
+#include "SPDataModel.cc"

@@ -23,7 +23,7 @@
 #ifndef XENOLITH_RENDERER_UI_VIEW_XLUITABLEVIEW_H_
 #define XENOLITH_RENDERER_UI_VIEW_XLUITABLEVIEW_H_
 
-#include "SPDataSource.h"
+#include "SPDataModel.h"
 #include "XLUiPanel.h"
 #include "XLUiLayoutSystem.h"
 #include "XLSubscriptionListener.h"
@@ -35,13 +35,16 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class TableView;
 
-/* A scrolled, virtualized table over a data::Source.
+/* A scrolled, virtualized table over a data::Model.
 
-The model is a FLAT list of rows - the items of the root Source, read the way a database cursor is
-read: `getSliceData(first, count)` in batches, with a row that has no payload yet drawn as `loading`
-and refreshed when the answer lands. Only the rows that fit the viewport are ever materialized, so a
-source with fifty thousand rows costs fifty thousand small structs and as many nodes as fit on
-screen.
+The model is a FLAT list of rows: the children of the model's root, in order. A child is one row —
+except a `Kind::Span` child, which stands for N rows nobody stores and is read the way a database
+cursor is read, in slices, with a row that has no payload yet drawn as `loading` and refreshed when
+the answer lands. So a table of fifty thousand database rows is one span, and costs fifty thousand
+small structs and as many nodes as fit on screen; a table of a hundred editable records is a hundred
+explicit nodes that can be reordered, removed and pointed at their originals.
+
+The two mix freely in one table, because they are just children of the same category.
 
 Columns are the part a stylesheet cannot fully express, so they are split in two:
 - WHAT a column is - which key of the row's Value it shows, what its header says - lives in
@@ -102,8 +105,9 @@ collapses only the borders it can see - the vertical lines between its own cells
 and bottom - so a line declared on both sides of a row boundary is drawn twice. */
 class SP_PUBLIC TableView : public Panel {
 public:
-	using Source = data::Source;
-	using SourceId = data::Source::Id;
+	using Model = data::Model;
+	using ModelNode = data::Model::Node;
+	using ItemId = data::Model::ItemId;
 
 	class RowBuilder;
 	class CellBuilder;
@@ -120,13 +124,26 @@ public:
 		bool operator==(const Column &) const = default;
 	};
 
-	// One row of the model. `itemId` is its identity and survives a rebuild, which is what lets a
-	// payload that arrives late find its row again without carrying an index.
+	/* One row of the model. `node` + `offset` is its identity and survives a rebuild, which is what
+	lets a payload that arrives late find its row again without carrying an index — and, because an
+	ItemId is never reused, what makes that identity survive an insertion or a removal too.
+
+	`offset` is meaningful only when `node` is a Span; an explicit node leaves it at zero and keeps
+	its payload in the model, so there is nothing to fetch for it. */
 	struct SP_PUBLIC Row {
-		SourceId itemId = SourceId(0);
+		Rc<ModelNode> node;
+		uint64_t offset = 0;
+		uint32_t revision = 0; // the node's revision when this row was derived
 		float height = nan(); // resolved in rebuildRows(), before any node exists
 		bool dataLoaded = false; // true once an answer arrived, even an empty one
-		Value data;
+		Value spanData; // payload of a span row; unused by every other kind
+
+		bool isSpanItem() const { return node && node->isSpan(); }
+		ItemId getId() const { return node ? node->getId() : ItemId(0); }
+
+		const Value &getData() const {
+			return (node && !node->isSpan()) ? node->getData() : spanData;
+		}
 	};
 
 	/* What a standard row node was built from. Two rows with the same key show the same thing, so
@@ -137,12 +154,19 @@ public:
 	the row re-lays-out from the re-stamped component and keeps every node. Folding the two into one
 	counter would rebuild the whole visible table on every window resize. */
 	struct SP_PUBLIC RowKey {
-		SourceId itemId = SourceId(0);
+		Rc<ModelNode> node;
+		uint64_t offset = 0;
+		// The node's own revision, so editing one row's payload rebuilds one row's node.
+		uint32_t revision = 0;
 		uint64_t columnsRevision = 0;
 		float height = 0.0f;
 		bool dataLoaded = false;
 
-		bool operator==(const RowKey &) const = default;
+		bool operator==(const RowKey &other) const {
+			return node == other.node && offset == other.offset && revision == other.revision
+					&& columnsRevision == other.columnsRevision && height == other.height
+					&& dataLoaded == other.dataLoaded;
+		}
 	};
 
 	using RowFunction = Function<void(RowBuilder &)>;
@@ -153,12 +177,12 @@ public:
 	virtual ~TableView();
 
 	virtual bool init() override;
-	virtual bool init(Source *);
+	virtual bool init(Model *);
 
 	virtual void handleContentSizeDirty() override;
 
-	virtual void setSource(Source *);
-	Source *getSource() const;
+	virtual void setSource(Model *);
+	Model *getSource() const;
 
 	// Replacing the column set bumps the revision, so every row node is rebuilt.
 	virtual void setColumns(Vector<Column> &&);
@@ -251,8 +275,12 @@ public:
 protected:
 	using Panel::init;
 
-	virtual void handleSourceDirty();
+	virtual void handleSourceDirty(SubscriptionFlags);
 	virtual void refresh();
+
+	// Mark every SPAN row's payload stale. Explicit nodes are not touched: their payload lives in
+	// the model and is read through, so it cannot be out of date with it.
+	void dropSpanData();
 
 	// Resolve the column geometry for the current width and stamp it on the header and every live
 	// row. One computation, one component, every consumer - that is what keeps the sticky header
@@ -262,7 +290,8 @@ protected:
 
 	virtual void rebuildModel();
 	virtual void requestRowData();
-	virtual void handleSliceData(SourceId first, size_t count, Map<SourceId, Value> &);
+	virtual void handleSliceData(ModelNode *span, uint64_t first, size_t count,
+			Map<uint64_t, Value> &);
 
 	virtual void rebuildRows();
 	virtual void rebuildHeader();
@@ -288,7 +317,7 @@ protected:
 	HeaderNode *_header = nullptr; // OUTSIDE the ScrollView - that is the whole of "sticky"
 	basic2d::ScrollView *_scroll = nullptr;
 	Rc<basic2d::ScrollController> _controller;
-	DataListener<Source> *_sourceListener = nullptr;
+	DataListener<Model> *_sourceListener = nullptr;
 
 	Vector<Column> _columns;
 	TableColumnsComponent _geometry; // the one copy every row and the header is stamped from
@@ -330,9 +359,15 @@ public:
 	const Row &getRow() const { return *_row; }
 	size_t getIndex() const { return _index; }
 
-	const Value &getData() const { return _row->data; }
+	const Value &getData() const { return _row->getData(); }
 	bool isLoaded() const { return _row->dataLoaded; } // false: the payload has not arrived yet
 	bool isSelected() const;
+
+	// The element behind the row, and the external object it stands for. Null for a table with no
+	// model; a span row answers with the span node, which is the honest answer — the row is an
+	// offset into a length, and there is no element there to point at.
+	ModelNode *getNode() const { return _row->node; }
+	Ref *getObject() const { return _row->node ? _row->node->getObject() : nullptr; }
 
 	// Take the row over completely. Nothing below has any effect afterwards, and TableView builds
 	// no cells for it - a full row is responsible for its own content.

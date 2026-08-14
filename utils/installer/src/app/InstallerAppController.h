@@ -37,7 +37,7 @@
 #include "SPIBuild.h"
 #include "SPIProjects.h"
 
-#include "SPDataSource.h"
+#include "SPDataModel.h"
 #include "XLEvent.h"
 
 #include <sprt/runtime/window/dialog.h>
@@ -61,25 +61,25 @@ others exist.
 LIFETIME. The instance is created once and DELIBERATELY NEVER DESTROYED, the same way
 xenolith::HotkeyRegistry is: it outlives every scene and every window, and a static destructor
 would race whatever is still tearing down. That is exactly why detach() is not optional - it is
-what drops the scene-lifetime Rc's (a dialog request, a spawned prompt, the data Sources) that must
+what drops the scene-lifetime Rc's (a dialog request, a spawned prompt, the data models) that must
 not survive into static destruction, long after the renderer is gone.
 
 It derives from Ref for one concrete reason: AppThread::perform() takes a `Ref *` to pin a task's
 captures, and every asynchronous operation here needs one.
 
-THREADING. Every public getter, every event emission and every data::Source mutation happens on the
+THREADING. Every public getter, every event emission and every data::Model mutation happens on the
 APP THREAD only. Blocking core calls run inside perform()'s execute lambda on the worker pool and
 may touch only (a) values copied into the task and (b) `const Layout &`, which is immutable after
 attach(). Settings are COPIED into a task when a worker needs a URL - never read from a worker
 through getSettings(), which can be rewritten from the settings form at any moment.
 
 EVENTS vs SOURCES. Two channels, on purpose:
-  - Row DATA goes through the data::Sources below. TreeView and TableView already watch their root
-    Source through a DataListener, so a view bound to one subscribes to nothing and rebuilds by
+  - Row DATA goes through the data::Models below. TreeView and TableView already watch their whole
+    model through a DataListener, so a view bound to one subscribes to nothing and rebuilds by
     itself when the controller calls setDirty().
-  - Everything a Source cannot express goes through the EventHeaders below, consumed with an
+  - Everything a model cannot express goes through the EventHeaders below, consumed with an
     EventListener on the node that cares.
-And the rule that follows from having both: onJobProgress must NEVER dirty a Source. Dirtying
+And the rule that follows from having both: onJobProgress must NEVER dirty a model. Dirtying
 rebuilds row nodes, and a download would do that many times a second. Progress mutates the live
 node it belongs to and nothing else. */
 class AppController : public Ref {
@@ -101,7 +101,7 @@ public:
 	Separate from onInstalledStateChanged because the two ask for different things: that one says
 	the row SET may have changed, which only a rebuilt view can show, while this one says a row
 	still exists and now reads differently - which is a label and a style class on a node that is
-	already on screen. Dirtying a Source for it would rebuild every row node in the table, and a
+	already on screen. Dirtying a model for it would rebuild every row node in the table, and a
 	table that flashes on every status change is what that cost looks like. */
 	static EventHeader onRowStatusChanged;
 	static EventHeader onJobStarted; // uint64_t: JobId
@@ -160,9 +160,9 @@ public:
 	// The left navigation tree: Xenolith -> Engines / Hosts / Targets, plus a Projects leaf that is
 	// present but disabled (project management is a separate piece of work; leaving the branch out
 	// entirely would make its later return a structural change).
-	data::Source *getNavSource() const { return _navSource; }
-	data::Source *getToolsSource(Kind) const;
-	data::Source *getEnginesSource() const { return _enginesSource; }
+	data::Model *getNavModel() const { return _navModel; }
+	data::Model *getToolsSource(Kind) const;
+	data::Model *getEnginesSource() const { return _enginesSource; }
 
 	// --- job registry (app thread) -----------------------------------------
 
@@ -209,7 +209,7 @@ public:
 	/* The status of one row, live.
 
 	This is what a row's own nodes read, INSTEAD of the "status" in the Value they were built from:
-	a status change no longer dirties the Source, so that Value is a snapshot of whenever the row
+	a status change no longer dirties the model, so that Value is a snapshot of whenever the row
 	was last materialized, while these two are the truth. Both answer Checking for a row nothing is
 	known about yet, which is the state that hides the row's controls. */
 	RowStatus getToolStatus(Kind, StringView id) const;
@@ -289,20 +289,23 @@ protected:
 	void finishJob(JobId, Status, StringView error = StringView());
 	Job *getMutableJob(JobId);
 
-	// The row payloads the Sources answer with, derived from the caches on demand. Kept here rather
-	// than materialized into the Source so there is only one place row data can go stale.
+	// The row payloads the spans answer with, derived from the caches on demand. Kept here rather
+	// than materialized into the model so there is only one place row data can go stale.
 	Vector<Value> makeToolRows(Kind) const;
 	Vector<Value> makeEngineRows() const;
 	// The INSTALLED entries of one branch of the navigation tree, plus its trailing "add new" row.
 	Vector<Value> makeNavRows(StringView node) const;
 
-	// Push the current row COUNTS onto the Sources and dirty them, so every bound view re-reads.
+	// Push the current row COUNTS onto the spans and dirty them, so every bound view re-reads.
 	// This is the WHOLESALE path: it rebuilds every row node of every bound view, so it belongs to a
 	// changed row SET (a catalogue that landed, engine refs that landed) and never to a status.
 	void rebuildSources();
 	// Only the navigation branches. What installing or removing a component really changes: the tree
 	// lists what is on the machine, while the tables list what the mirror offers and keep their rows.
 	void rebuildNavSources();
+	// Replace one branch's rows with what the caches now say. Refilling is a structural change to
+	// the model, and a Model dirties as a whole, so the bound TreeView follows with no help.
+	void fillNavBranch(data::Model::Node *branch, StringView node);
 	void setReachability(SourceKind, Reachability, StringView message);
 
 	// Decide every catalogue row's status from the checked local state. Pure and app-thread-only:
@@ -350,17 +353,21 @@ protected:
 	Vector<Job> _jobs;
 	JobId _nextJobId = 1;
 
-	Rc<data::Source> _hostsSource;
-	Rc<data::Source> _targetsSource;
-	Rc<data::Source> _enginesSource;
+	// One span each: the rows are answered from the caches, never stored here.
+	Rc<data::Model> _hostsSource;
+	Rc<data::Model> _targetsSource;
+	Rc<data::Model> _enginesSource;
 
-	// The navigation tree. Only the root is watched by a TreeView's DataListener (a Source has no
-	// parent links), so a branch mutated on its own needs TreeView::invalidateSource() from the
-	// pane; rebuildSources() dirties the root, which covers the ordinary case.
-	Rc<data::Source> _navSource;
-	Rc<data::Source> _navEngines;
-	Rc<data::Source> _navHosts;
-	Rc<data::Source> _navTargets;
+	/* The navigation tree, as one data::Model.
+
+	A Model is a single Subscription for the whole tree, so refilling a branch reaches the bound
+	TreeView by itself — the pane needs no invalidateSource() and this class needs no re-publishing
+	of counts. The three branch nodes are raw pointers because the MODEL owns them; they stay valid
+	until _navModel is released. */
+	Rc<data::Model> _navModel;
+	data::Model::Node *_navEngines = nullptr;
+	data::Model::Node *_navHosts = nullptr;
+	data::Model::Node *_navTargets = nullptr;
 
 	// The text prompt is still a spawned helper, and an Rc<ProcessHandle> IS the child - dropping
 	// the last one kills it - so this slot is what keeps the prompt on screen.

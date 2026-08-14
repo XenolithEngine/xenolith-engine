@@ -27,30 +27,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// Move a payload that a previous model already had onto the row that carries the same identity.
-// This is what keeps a rebuild from re-requesting everything that is already on screen.
-static void takeLoadedData(TreeView::Row &row,
-		Map<data::Source *, Map<data::Source::Id, Value>> &loaded) {
-	auto catIt = loaded.find(row.source.get());
-	if (catIt == loaded.end()) {
-		return;
-	}
-
-	auto it = catIt->second.find(row.itemId);
-	if (it == catIt->second.end()) {
-		return;
-	}
-
-	row.data = sp::move(it->second);
-	row.dataLoaded = true;
-	catIt->second.erase(it);
-}
-
 TreeView::~TreeView() { }
 
 bool TreeView::init() { return init(nullptr); }
 
-bool TreeView::init(Source *source) {
+bool TreeView::init(Model *source) {
 	if (!Panel::init()) {
 		return false;
 	}
@@ -75,11 +56,11 @@ bool TreeView::init(Source *source) {
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
 
-	// The ROOT only: Source has no parent links, so a subcategory's setDirty() never reaches this
-	// listener. The lazy-children path carries its own completion for that reason, and everything
-	// else goes through invalidateSource().
-	_sourceListener = addSystem(Rc<DataListener<Source>>::create([this](SubscriptionFlags) {
-		handleSourceDirty(); //
+	// One listener for the WHOLE model. A Model node knows its parent, so the model is the single
+	// Subscription and a change anywhere in the tree arrives here — which is why nothing in this
+	// widget, or in its owner, has to re-publish a branch by hand.
+	_sourceListener = addSystem(Rc<DataListener<Model>>::create([this](SubscriptionFlags flags) {
+		handleSourceDirty(flags); //
 	}, source));
 
 	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
@@ -105,7 +86,7 @@ void TreeView::handleContentSizeDirty() {
 	}
 }
 
-void TreeView::setSource(Source *source) {
+void TreeView::setSource(Model *source) {
 	if (getSource() == source) {
 		return;
 	}
@@ -116,8 +97,12 @@ void TreeView::setSource(Source *source) {
 	refresh();
 }
 
-auto TreeView::getSource() const -> Source * {
+auto TreeView::getSource() const -> Model * {
 	return _sourceListener ? _sourceListener->getSubscription() : nullptr;
+}
+
+bool TreeView::isExpanded(const ModelNode *node) const {
+	return node && _expanded.find(node->getId()) != _expanded.end();
 }
 
 void TreeView::setRootVisible(bool value) {
@@ -143,11 +128,11 @@ bool TreeView::expandRow(size_t index) {
 	}
 
 	// The model is about to be re-derived, so hold the category rather than a reference to the row.
-	Rc<Source> cat = _rows[index].source;
-	_expanded.emplace(cat);
+	Rc<ModelNode> cat = _rows[index].node;
+	_expanded.emplace(cat->getId());
 
 	// Lazily loaded children: inline for a directory walk, later for a fetch. The completion holds
-	// an Rc because it may outlive this widget; it is not a cycle, because the Source drops its
+	// an Rc because it may outlive this widget; it is not a cycle, because the node drops its
 	// completion list as soon as it fires.
 	Rc<TreeView> self(this);
 
@@ -164,8 +149,8 @@ bool TreeView::collapseRow(size_t index) {
 		return false;
 	}
 
-	Rc<Source> cat = _rows[index].source;
-	_expanded.erase(cat);
+	Rc<ModelNode> cat = _rows[index].node;
+	_expanded.erase(cat->getId());
 
 	// By default the descendants keep their entries in _expanded, so re-opening this category shows
 	// the subtree exactly as it was left. Forgetting is opt-in, and it also releases the children
@@ -186,10 +171,13 @@ bool TreeView::toggleRow(size_t index) {
 	return _rows[index].expanded ? collapseRow(index) : expandRow(index);
 }
 
-void TreeView::forgetSubtree(Source *cat) {
-	for (auto &it : cat->getSubCategories()) {
+void TreeView::forgetSubtree(ModelNode *cat) {
+	for (auto &it : cat->getChildren()) {
+		if (!it->isCategory()) {
+			continue;
+		}
 		forgetSubtree(it);
-		_expanded.erase(it);
+		_expanded.erase(it->getId());
 	}
 
 	cat->resetChilds();
@@ -272,40 +260,43 @@ void TreeView::setSelectedRow(size_t index) {
 	}
 }
 
-/* Both of these mean "the DATA changed", and that is exactly what a RowKey cannot see: it is
-(source, itemId, depth, height, expanded, dataLoaded), so a row whose payload was replaced in place
-keeps its id and its key and would be answered with the node built from the old payload. Hence the
-forced rebuild - it is the whole point of Source::setDirty().
+/* Forget what the SPANS answered, so the next model pass asks again.
 
-refresh() itself stays unforced: expandRow/collapseRow reach it too, and there the reuse is correct
-and is what keeps an expand from redrawing the rows it did not touch. */
-void TreeView::dropLoadedData() {
-	/* Forget every payload in hand, so the next model pass asks the Source for all of them again.
+Only the spans: an explicit node keeps its payload in the model, so a view cannot hold a copy that
+disagrees with it — it reads through. A span answers from somewhere else entirely, and nothing about
+the model says when those answers went stale, which is why saying so is a call rather than a flag.
 
-	rebuildModel() carries a loaded row's data across the rebuild keyed by (source, itemId) - that is
-	what makes expanding a category re-fetch nothing but the category. The identity it keys on,
-	though, is an INDEX inside its category, and an index means a different thing the moment the
-	category's contents change: with one item removed, every payload from the removal onwards is
-	carried onto the row of its neighbour, so the list keeps showing the item that is gone and drops
-	the one at the end. That is not a stale frame, it is permanent - the rows are marked loaded, so
-	nothing ever asks again.
-
-	Hence: a Source that says its contents changed invalidates the payloads too, not just the shape.
-	Cheap by construction - a Source that answers inline refills them within requestRowData(), before
-	a single node is built. */
-	for (auto &it : _rows) { it.dataLoaded = false; }
+This is all that survives of the wholesale drop a Source-backed tree needed. That one existed
+because identity WAS the index: removing one item shifted every payload after it onto its
+neighbour's row, permanently, since the rows were marked loaded and nothing ever asked again. An
+ItemId is allocated once and never reused, so the failure it defended against cannot happen. */
+void TreeView::dropSpanData() {
+	for (auto &it : _rows) {
+		if (it.node && it.node->isSpan()) {
+			it.dataLoaded = false;
+		}
+	}
 }
 
 void TreeView::invalidateSource() {
-	dropLoadedData();
+	dropSpanData();
 	refresh();
 	requestRebuildNodes(true);
 }
 
-void TreeView::handleSourceDirty() {
-	dropLoadedData();
+void TreeView::handleSourceDirty(SubscriptionFlags flags) {
+	/* Deliberately NOT forced. A payload edit bumps the node's revision, the revision is in the
+	RowKey, so exactly the rows that changed fail to match and exactly those get new nodes; every
+	other visible row keeps the one it has. Forcing here — which is what a Source-backed tree had to
+	do, because an index cannot tell that its contents changed — threw away and rebuilt every visible
+	row on any change at all.
+
+	A span's answers are the exception, for the reason in dropSpanData(). */
+	if (flags.hasFlag(Model::Update::Structure)) {
+		dropSpanData();
+	}
+
 	refresh();
-	requestRebuildNodes(true);
 }
 
 void TreeView::refresh() {
@@ -322,19 +313,18 @@ void TreeView::refresh() {
 }
 
 void TreeView::rebuildModel() {
-	// Carry the payloads that are already in hand across the rebuild, keyed by identity rather than
-	// by index — an index does not survive an expand above it, an identity does.
-	Map<Source *, Map<SourceId, Value>> loaded;
-	for (auto &it : _rows) {
-		if (!it.dataLoaded) {
-			continue;
-		}
+	/* Carry the span payloads across the rebuild, keyed by (span, offset).
 
-		auto catIt = loaded.find(it.source.get());
-		if (catIt == loaded.end()) {
-			catIt = loaded.emplace(it.source.get(), Map<SourceId, Value>()).first;
+	Only spans appear here: an explicit node's Value is read out of the model when the row is drawn,
+	so there is nothing to carry and nothing that could go stale. And the key is an ItemId, so it
+	means the same element on the other side of the rebuild whatever happened to the tree in
+	between — which is why this cannot mis-deliver a payload the way an index-keyed carry-over
+	could. */
+	Map<Model::Position, Value> loaded;
+	for (auto &it : _rows) {
+		if (it.dataLoaded && it.node && it.node->isSpan()) {
+			loaded.emplace(Model::Position{it.node->getId(), it.offset}, sp::move(it.spanData));
 		}
-		catIt->second.emplace(it.itemId, sp::move(it.data));
 	}
 
 	_rows.clear();
@@ -344,54 +334,87 @@ void TreeView::rebuildModel() {
 		return;
 	}
 
+	auto root = source->getRoot();
 	if (_rootVisible) {
-		const auto expanded = _expanded.find(Rc<Source>(source)) != _expanded.end();
+		const auto expanded = isExpanded(root);
 
 		Row row;
-		row.source = source;
-		row.itemId = Source::Self;
+		row.node = root;
 		row.depth = 0;
 		row.expanded = expanded;
-		takeLoadedData(row, loaded);
+		row.revision = root->getRevision();
+		row.dataLoaded = true; // the model holds it
 		_rows.emplace_back(sp::move(row));
 
 		if (expanded) {
-			appendChildRows(source, 1, loaded);
+			appendChildRows(root, 1, loaded);
 		}
 	} else {
-		appendChildRows(source, 0, loaded);
+		appendChildRows(root, 0, loaded);
 	}
 }
 
-void TreeView::appendChildRows(Source *cat, uint32_t depth,
-		Map<Source *, Map<SourceId, Value>> &loaded) {
-	// Subcategories first, then the category's own items — the same order Source's own flattening
-	// uses, so a tree and a flat list over one Source never disagree about what comes first. For a
-	// filesystem source it is also, for free, "directories first, then files".
-	for (auto &sub : cat->getSubCategories()) {
-		const auto expanded = _expanded.find(sub) != _expanded.end();
+void TreeView::appendChildRows(ModelNode *cat, uint32_t depth, Map<Model::Position, Value> &loaded) {
+	/* ONE pass over the children, in the order the model holds them.
+
+	A category, an item and a span are all just children here, and that is the whole point: the owner
+	decides the order, so a leaf between two branches is expressible. A Source-backed tree could not
+	say that — it emitted every subcategory first and then every item, because that is the only order
+	a Source can represent. */
+	for (auto &child : cat->getChildren()) {
+		if (child->isSpan()) {
+			// A span contributes its length in rows and no node of its own: it is a count, not an
+			// element, and nothing in it can be expanded, selected as a branch, or moved.
+			const auto count = child->getSpanCount();
+			for (uint64_t i = 0; i < count; ++i) {
+				Row row;
+				row.node = child;
+				row.offset = i;
+				row.depth = depth;
+				row.revision = child->getRevision();
+
+				auto it = loaded.find(Model::Position{child->getId(), i});
+				if (it != loaded.end()) {
+					row.spanData = sp::move(it->second);
+					row.dataLoaded = true;
+					loaded.erase(it);
+				}
+
+				_rows.emplace_back(sp::move(row));
+			}
+			continue;
+		}
+
+		const auto expanded = child->isCategory() && isExpanded(child);
 
 		Row row;
-		row.source = sub;
-		row.itemId = Source::Self;
+		row.node = child;
 		row.depth = depth;
 		row.expanded = expanded;
-		takeLoadedData(row, loaded);
+		row.revision = child->getRevision();
+		row.dataLoaded = true;
 		_rows.emplace_back(sp::move(row));
 
 		if (expanded) {
-			appendChildRows(sub, depth + 1, loaded);
-		}
-	}
+			/* An OPEN category that has gone back to Pending has to ask again.
 
-	const auto count = cat->getChildsCount();
-	for (size_t i = 0; i < count; ++i) {
-		Row row;
-		row.source = cat;
-		row.itemId = SourceId(i);
-		row.depth = depth;
-		takeLoadedData(row, loaded);
-		_rows.emplace_back(sp::move(row));
+			Only expandRow() used to request children, so a category whose children were dropped
+			while it was open - resetChilds() after the thing behind it changed, which is the honest
+			response to "your listing is stale" - stayed visibly empty until the user collapsed and
+			reopened it.
+
+			_deferRefresh is held because a model that answers inline completes before this returns
+			and would re-enter refresh() in the middle of the pass that is building _rows; the
+			children it just produced are picked up by the recursion below, in this same pass. One
+			that answers later dirties the model when it lands, and the listener brings us back. */
+			if (child->getChildsState() == Model::ChildsState::Pending) {
+				++_deferRefresh;
+				child->requestChilds(nullptr);
+				--_deferRefresh;
+			}
+
+			appendChildRows(child, depth + 1, loaded);
+		}
 	}
 }
 
@@ -402,46 +425,32 @@ void TreeView::requestRowData() {
 
 	size_t i = 0;
 	while (i < _rows.size()) {
-		if (_rows[i].dataLoaded) {
+		// Everything that is not an unfetched span row already has its payload, in the model.
+		if (_rows[i].dataLoaded || !_rows[i].node || !_rows[i].node->isSpan()) {
 			++i;
 			continue;
 		}
 
 		Rc<TreeView> self(this);
-		Rc<Source> cat = _rows[i].source;
+		Rc<ModelNode> span = _rows[i].node;
 
-		if (_rows[i].isCategory()) {
-			// A category's own record. `false` means there is nothing behind it to load, which is a
-			// terminal answer, not a reason to ask again on the next rebuild.
-			if (!cat->getItemData([self, cat](Value &&val) {
-				self->handleItemData(cat, Source::Self, sp::move(val));
-			}, Source::Self)) {
-				_rows[i].dataLoaded = true;
-			}
-			++i;
-			continue;
-		}
-
-		// A run of consecutive items of the same category, asked for in one call — that is what
-		// turns a ten-thousand-file directory into a single request.
-		const auto first = _rows[i].itemId;
+		// A run of consecutive offsets of the same span, asked for in one call — that is what turns
+		// a fifty-thousand-row table into a handful of requests.
+		const auto first = _rows[i].offset;
 		size_t count = 1;
 		while (i + count < _rows.size()) {
 			auto &next = _rows[i + count];
-			if (next.isCategory() || next.source != cat || next.dataLoaded
-					|| next.itemId != first + SourceId(count)) {
+			if (next.node != span || next.dataLoaded || next.offset != first + count) {
 				break;
 			}
 			++count;
 		}
 
-		if (cat->getSliceData(
-					[self, cat, first, count](Map<SourceId, Value> &data) {
-			self->handleSliceData(cat, first, count, data);
-		}, first, count, 0, false)
-				== 0) {
-			// The source planned no request at all, so no callback is coming. Mark the range
-			// resolved rather than re-ask for it on every rebuild from now on.
+		if (span->getSpanData([self, span, first, count](Map<uint64_t, Value> &data) {
+			self->handleSliceData(span, first, count, data);
+		}, first, count) == 0) {
+			// The span planned no request at all, so no callback is coming. Mark the range resolved
+			// rather than re-ask for it on every rebuild from now on.
 			for (size_t j = 0; j < count; ++j) { _rows[i + j].dataLoaded = true; }
 		}
 
@@ -451,37 +460,22 @@ void TreeView::requestRowData() {
 	_inDataRequest = false;
 }
 
-void TreeView::handleItemData(Source *cat, SourceId id, Value &&val) {
-	for (auto &it : _rows) {
-		if (it.source == cat && it.itemId == id) {
-			it.data = sp::move(val);
-			it.dataLoaded = true;
-
-			if (!_inDataRequest) {
-				requestRebuildNodes();
-			}
-			return;
-		}
-	}
-}
-
-void TreeView::handleSliceData(Source *cat, SourceId first, size_t count,
-		Map<SourceId, Value> &data) {
+void TreeView::handleSliceData(ModelNode *span, uint64_t first, size_t count,
+		Map<uint64_t, Value> &data) {
 	bool updated = false;
 
 	for (auto &it : _rows) {
-		if (it.isCategory() || it.source != cat || it.itemId < first
-				|| it.itemId >= first + SourceId(count)) {
+		if (it.node != span || it.offset < first || it.offset >= first + count) {
 			continue;
 		}
 
-		auto iit = data.find(it.itemId);
+		auto iit = data.find(it.offset);
 		if (iit != data.end()) {
-			it.data = sp::move(iit->second);
+			it.spanData = sp::move(iit->second);
 		}
 
-		// Marked loaded even for an index the source did not answer for: "loaded but empty" has to
-		// be terminal, or an under-delivering source would be asked again on every rebuild forever.
+		// Marked loaded even for an offset the span did not answer for: "loaded but empty" has to be
+		// terminal, or an under-delivering source would be asked again on every rebuild forever.
 		it.dataLoaded = true;
 		updated = true;
 	}
@@ -489,6 +483,23 @@ void TreeView::handleSliceData(Source *cat, SourceId first, size_t count,
 	if (updated && !_inDataRequest) {
 		requestRebuildNodes();
 	}
+}
+
+bool TreeView::moveRow(size_t index, ModelNode *dstParent, size_t childIndex) {
+	auto source = getSource();
+	if (!source || index >= _rows.size()) {
+		return false;
+	}
+
+	// A span row is an offset into a length, not an element, so there is nothing to move.
+	auto &row = _rows[index];
+	if (!row.node || row.node->isSpan()) {
+		return false;
+	}
+
+	// The model decides. It is the one that knows whether the element may move at all and what the
+	// move means to whatever the element stands for outside this process.
+	return source->moveNode(row.node, dstParent, childIndex);
 }
 
 void TreeView::requestRebuildNodes(bool force) {
@@ -559,9 +570,10 @@ void TreeView::rebuildRows() {
 
 auto TreeView::makeRowKey(const Row &row) -> RowKey {
 	RowKey key;
-	key.source = row.source;
-	key.itemId = row.itemId;
+	key.node = row.node;
+	key.offset = row.offset;
 	key.depth = row.depth;
+	key.revision = row.revision;
 	key.height = row.height;
 	key.expanded = row.expanded;
 	key.dataLoaded = row.dataLoaded;
@@ -695,8 +707,8 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 			auto label = rowNode->addChild(Rc<basic2d::Label>::create(), ZOrder(3));
 			label->setType("label");
 			label->addStyleClass("tree-label");
-			label->setString(
-					builder._hasLabel ? StringView(builder._label) : row.data.getString(_labelKey));
+			label->setString(builder._hasLabel ? StringView(builder._label)
+											   : StringView(row.getData().getString(_labelKey)));
 		}
 
 		ZOrder z(4);

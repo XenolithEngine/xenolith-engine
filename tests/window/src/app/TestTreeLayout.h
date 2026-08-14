@@ -35,11 +35,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // tap on a leaf opens it. The depth a reader has to hold in their head is what is on screen, not
 // how many times they pressed "Go back".
 //
-// The model is a data::Source built straight from the registry: a group becomes a Source whose
-// subcategories are its subgroups and whose items are its own tests. TreeView shows subcategories
-// before items, which is the order the menu wants anyway. The registry is a static table of a few
-// dozen entries, so the whole Source tree is built up front - the lazy-children hook exists for a
-// source that has to go and look, and this one does not.
+// The model is a data::Model built straight from the registry: a group becomes a Category node, a
+// test becomes an Item node, and the subgroups are added before the tests because that is the order
+// the menu wants - not, as with a data::Source, because it was the only order available. The
+// registry is a static table of a few dozen entries, so the whole tree is built up front; the
+// lazy-children hook exists for a model that has to go and look, and this one does not.
 //
 // It is a TestLayout for the caption and the stylesheet: ui::TreeView takes its row geometry from
 // CSS, and this app has no global sheet, so the layout carries its own.

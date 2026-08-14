@@ -123,23 +123,19 @@ void InstallerNavPane::handleEnter(Scene *scene) {
 		return;
 	}
 
-	_tree->setSource(controller->getNavSource());
+	_tree->setSource(controller->getNavModel());
 	expandAll();
 
 	auto listener = addSystem(Rc<EventListener>::create());
-	// Row DATA arrives through the Source; these are the two things a Source cannot express.
-	listener->listenForEvent(AppController::onInstalledStateChanged, [this](const Event &) {
-		_tree->invalidateSource();
-		expandAll();
-	});
-	listener->listenForEvent(AppController::onEngineRefsChanged, [this](const Event &) {
-		_tree->invalidateSource();
-		expandAll();
-	});
-	listener->listenForEvent(AppController::onCatalogueChanged, [this](const Event &) {
-		_tree->invalidateSource();
-		expandAll();
-	});
+	/* No listener for onInstalledStateChanged / onEngineRefsChanged / onCatalogueChanged any more.
+
+	Each of those is preceded by the controller refilling the nav model, and a data::Model is a
+	single Subscription for the whole tree, so the TreeView's own DataListener already hears it. The
+	three invalidateSource() calls that used to live here existed only because a data::Source
+	subcategory's setDirty() reached nobody.
+
+	expandAll() is not needed on those either: the branch nodes do not change, and expansion is kept
+	by ItemId, so refilling a branch leaves it open. */
 	listener->listenForEvent(AppController::onJobProgress, [this](const Event &event) {
 		applyJobProgress(static_cast<JobId>(event.getDataValue().getInteger()));
 	});
@@ -251,7 +247,7 @@ void InstallerNavPane::buildRow(ui::TreeView::RowBuilder &builder) {
 }
 
 void InstallerNavPane::handleRowActivated(size_t index, const ui::TreeView::Row &row) {
-	const auto node = row.data.getString("node");
+	const auto node = row.getData().getString("node");
 	if (node == "projects") {
 		return; // inert
 	}
@@ -264,14 +260,14 @@ void InstallerNavPane::handleRowActivated(size_t index, const ui::TreeView::Row 
 	set is in `branch`. Reading `node` alone sent Engines, Hosts and Targets to the welcome page. */
 	StringView which = node;
 	if (node == "group") {
-		which = row.data.getString("branch");
+		which = row.getData().getString("branch");
 	} else if (node.empty() && row.isCategory()) {
 		which = StringView("root");
 	}
 	const auto page = pageForNode(which);
 	_current = page;
 	if (_selectCallback) {
-		_selectCallback(page, row.data.getString("id"));
+		_selectCallback(page, row.getData().getString("id"));
 	}
 	(void)index;
 }
@@ -330,7 +326,7 @@ void InstallerNavPane::selectPage(PageId page) {
 	}
 	const auto rows = _tree->getRows();
 	for (size_t i = 0; i < rows.size(); ++i) {
-		const auto node = rows[i].data.getString("node");
+		const auto node = rows[i].getData().getString("node");
 		if (rows[i].isCategory() && pageForNode(node) == page) {
 			_tree->setSelectedRow(i);
 			return;
