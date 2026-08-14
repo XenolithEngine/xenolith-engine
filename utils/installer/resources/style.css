@@ -35,12 +35,18 @@
 
 	/* kept in sync with InstallerSceneContent::kTitleBarH — the loading overlay is positioned in
 	   code (it lives outside the flex tree) and must stop below the bar */
-	--title-bar-h: 32px;
-	/* kept in sync with InstallerLayout::kRowHeight — the scroll virtualizer needs the row height
-	   up front, before a row node exists to measure */
+	--frame-h: 32px;
+	/* the virtualizers need a row height up front, before a row node exists to measure */
 	--row-h: 44px;
-	--row-head-h: 36px;
-	--group-h: 40px;
+
+	/* new shell metrics */
+	--status-bar-h: 24px;
+	--nav-w: 280px;
+	--tree-row-h: 28px;
+	--tree-indent: 16px;
+	--table-row-h: 40px;
+	--table-header-h: 32px;
+	--danger-dim: rgba(255, 107, 107, 0.2);
 }
 
 /* ===========================================================================
@@ -219,30 +225,17 @@ badge.not-installed {
 	-xl-position: 50%;
 }
 
-#installer-layout {
+#installer-shell {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
 }
 
-/* Shell children of #installer-layout: placement via `order`, stacking via `-xl-z-order`.
+/* Shell children of #installer-shell: placement via `order`, stacking via `-xl-z-order`.
    Equal `order` falls back to z-order for placement — that is what shoved the header to the
    bottom when it got -xl-z-order:12 with order:0 (same as the tab bodies). */
-#installer-layout > #title-bar {
+#installer-shell > window-frame {
 	order: 0;
-	-xl-z-order: 0;
-}
-
-#installer-layout > .pkg-header {
-	order: 1;
-	-xl-z-order: 12;
-	flex-shrink: 0;
-}
-
-#installer-layout > #packages-area,
-#installer-layout > #projects-area,
-#installer-layout > .projects-area {
-	order: 2;
 	-xl-z-order: 0;
 }
 
@@ -284,8 +277,8 @@ label.nav-tab-on {
 	font-weight: 600;
 }
 
-#title-bar {
-	height: var(--title-bar-h);
+window-frame {
+	height: var(--frame-h);
 	flex-shrink: 0;
 	display: flex;
 	flex-direction: row;
@@ -294,22 +287,50 @@ label.nav-tab-on {
 	background-color: var(--surface);
 }
 
-#title-bar > .os-button {
+window-frame > .os-button {
 	border-radius: 16px;
 	width: 32px;
 	height: 32px;
 }
 
-#title-bar > .os-button:hover {
+window-frame > .os-button:hover {
 	background-color: var(--hover);
 }
 
-#title-bar > .title-button {
+/* Anything the application puts in a frame slot carries `.frame-item`; sizing it here means the
+   frame does not have to know what the application added. */
+window-frame > #frame-icon,
+window-frame .frame-item {
 	width: 32px;
 	height: 32px;
 }
 
-#title-bar > .title-line {
+/* The two application slots. They are flex rows so several items line up inside one slot. */
+window-frame > #frame-leading,
+window-frame > #frame-trailing {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+window-frame > #frame-leading {
+	order: 1;
+}
+
+window-frame > #frame-trailing {
+	order: 51;
+}
+
+window-frame .frame-item:hover {
+	background-color: var(--hover);
+}
+
+#frame-settings {
+	border-radius: 16px;
+}
+
+window-frame > .frame-title-line {
 	flex: 1;
 	height: 24px;
 	background-color: #2f2f25;
@@ -324,18 +345,12 @@ label.nav-tab-on {
 	font-weight: 700;
 }
 
-#title-icon {
+#frame-icon {
 	order: 0;
 }
 
-#title-profile {
-	visibility: hidden;
-}
-
-#os-menu {
-	order: 1;
-	visibility: hidden;
-}
+/* No menu button: the frame icon already opens the window menu on either click, so a second
+   affordance for it would only take space (ui::WindowFrame::Config::menuButton stays false). */
 
 #os-minimize {
 	order: 98;
@@ -354,39 +369,37 @@ label.nav-tab-on {
      flex space (visibility:hidden left gaps and interleaved with visible buttons);
    - smaller buttons; the title panel absolutely centered across the whole bar. */
 @media (platform: macos) {
-	#title-bar {
+	window-frame {
 		padding-left: 8px;
 		column-gap: 6px;
 		align-items: center;
 	}
 
-	#title-bar > #os-close {
+	window-frame > #os-close {
 		order: 0;
 	}
-	#title-bar > #os-minimize {
+	window-frame > #os-minimize {
 		order: 1;
 	}
-	#title-bar > #os-maximize {
+	window-frame > #os-maximize {
 		order: 2;
 	}
 
-	#title-bar > #os-menu,
-	#title-bar > #title-profile,
-	#title-bar > #title-icon {
+	window-frame > #frame-icon {
 		display: none;
 	}
 
-	#title-bar > .os-button {
+	window-frame > .os-button {
 		width: 14px;
 		height: 14px;
 		border-radius: 7px;
 		background-color: transparent;
 	}
-	#title-bar > .os-button:hover {
+	window-frame > .os-button:hover {
 		background-color: transparent;
 	}
 
-	#title-bar > .os-button > icon {
+	window-frame > .os-button > icon {
 		width: 14px;
 		height: 14px;
 	}
@@ -396,7 +409,7 @@ label.nav-tab-on {
 	   the parent's own Layer quad, so a negative z title would be covered by TitleBar's
 	   fill and the text would vanish. Buttons still win via their render pass. Height is
 	   a literal: var() inside @media has failed to apply here before. */
-	#title-bar > .title-line {
+	window-frame > .frame-title-line {
 		position: absolute;
 		left: 0;
 		right: 0;
@@ -408,284 +421,10 @@ label.nav-tab-on {
 	}
 
 	/* native macOS title weight (titleBarFontOfSize = bold) */
-	#title-bar .title-line label {
+	window-frame .frame-title-line label {
 		font-size: 13px;
 		font-weight: 700;
 	}
-}
-
-/* ===========================================================================
-   Packages screen
-   =========================================================================== */
-
-#packages-area {
-	display: flex;
-	flex-direction: column;
-	flex: 1;
-	width: 100%;
-	background-color: var(--window);
-}
-
-.pkg-header {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	column-gap: 12px;
-	height: 56px;
-	flex-shrink: 0;
-	padding: 0 24px;
-	background-color: var(--surface);
-	/* order / -xl-z-order for this node as a layout child are set on
-	   #installer-layout > .pkg-header — do not set them here (ties send it to the bottom). */
-}
-
-.pkg-header .pkg-title {
-	color: var(--text);
-	font-size: 18px;
-	font-weight: 700;
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-/* Push release/native/gear to the right; tabs sit between title and this spacer (Tauri). */
-.pkg-header .pkg-spacer {
-	flex-grow: 1;
-}
-
-.pkg-header .pkg-release {
-	color: var(--text-dim);
-	font-size: 12px;
-}
-
-.pkg-header .pkg-native {
-	color: var(--accent);
-	font-size: 12px;
-	font-weight: 600;
-}
-
-.pkg-footer {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: flex-end;
-	column-gap: 12px;
-	height: 64px;
-	padding: 0 24px;
-	background-color: var(--surface-alt);
-	order: 2;
-	-xl-z-order: 10;
-}
-
-.pkg-footer > button.ghost {
-	width: 140px;
-	height: var(--row-h);
-	outline-color: #424242;
-	outline-width: 1px;
-	background-color: var(--surface-alt);
-}
-
-/* Must beat `.pkg-footer > button.ghost` (same specificity, later source) or hover is a no-op. */
-.pkg-footer > button.ghost:hover {
-	background-color: var(--hover);
-}
-
-.pkg-footer > button.ghost > label {
-	color: var(--text-dim);
-	font-size: 14px;
-}
-
-.pkg-footer > button.ghost > icon {
-	width: 16px;
-	height: 16px;
-	color: #ffffff;
-}
-
-.pkg-footer > button.footer-refresh {
-	width: 160px;
-}
-
-.pkg-footer > button.install-selected {
-	width: 200px;
-}
-
-/* Disabled only — when selected count > 0 this must match Refresh ghost exactly. */
-.pkg-footer > button.install-selected.disabled {
-	outline-color: #333333;
-}
-
-.pkg-footer > button.install-selected.disabled > label {
-	color: #666666;
-}
-
-.pkg-footer > button.footer-install-all {
-	width: 220px;
-}
-
-.pkg-footer > button.primary.footer-install-all {
-	background-color: var(--accent);
-}
-
-.pkg-footer > button.primary.footer-install-all:hover {
-	background-color: var(--accent-hover);
-}
-
-.pkg-footer > button.primary.footer-install-all > label,
-.pkg-footer > button.primary.footer-install-all > icon {
-	color: var(--on-accent);
-}
-
-/* Gear dropdown rows — solid hit target, readable label. */
-button.gear-item {
-	width: 220px;
-	height: 36px;
-	background-color: #2a2a2a;
-	border-radius: 6px;
-	outline-color: #424242;
-	outline-width: 1px;
-}
-
-button.gear-item > label {
-	color: #ffffff;
-	font-size: 13px;
-	white-space: nowrap;
-}
-
-button.gear-item:hover {
-	background-color: var(--hover);
-}
-
-/* Icon-only controls: match the parent surface; colour must be on `icon` itself
-   (IconSprite reads InheritedColorStyle on its own node only). */
-.pkg-header > button.gear {
-	width: 32px;
-	height: 32px;
-	border-radius: 8px;
-	background-color: var(--surface);
-}
-
-.pkg-header > button.gear:hover {
-	background-color: var(--hover);
-}
-
-.pkg-header > button.gear > icon {
-	width: 18px;
-	height: 18px;
-	color: #ffffff;
-}
-
-button.group-toggle {
-	width: 28px;
-	height: 28px;
-	border-radius: 6px;
-	background-color: var(--window);
-}
-
-button.group-toggle > icon {
-	width: 18px;
-	height: 18px;
-	color: #ffffff;
-}
-
-button.c-trash {
-	width: 28px;
-	height: 28px;
-	border-radius: 6px;
-	background-color: var(--window);
-}
-
-button.c-trash:hover {
-	background-color: var(--control);
-}
-
-button.c-trash > icon {
-	width: 16px;
-	height: 16px;
-	color: #ffffff;
-}
-
-.pkg-scroll {
-	flex: 1;
-	width: 100%;
-	/* Sits between the header (order 0) and footer (order 2) in placement, and BELOW both in draw
-	   order so they cover the rows that escape its unclipped bottom edge. */
-	order: 1;
-	-xl-z-order: 0;
-}
-
-/* A row: check slot | name | size | status. There are no row separators — `border-bottom` does
-   not exist in this CSS subset (docs/usage/ui/css-subset.adoc), and a separator child would take
-   flex space away from the columns. */
-.pkg-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: var(--row-h);
-	padding: 0 16px;
-	column-gap: 12px;
-}
-
-.pkg-row.head {
-	height: var(--row-head-h);
-}
-
-.pkg-group {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	column-gap: 8px;
-	height: var(--group-h);
-	padding: 8px 16px;
-	color: var(--text);
-	font-size: 13px;
-	font-weight: 700;
-	text-transform: uppercase;
-}
-
-/* Column slots inside a row. Fixed widths keep columns aligned across rows/groups; the slots that
-   host a widget (check, status) are flex containers so the widget needs no manual placement. */
-.pkg-row .c-check {
-	flex: 0 0 40px;
-	align-self: stretch;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-}
-
-.pkg-row .c-name {
-	flex: 1;
-	color: var(--text);
-	font-size: 14px;
-}
-
-.pkg-row.native .c-name {
-	color: var(--accent);
-}
-
-.pkg-row .c-size {
-	width: 90px;
-	flex: 0 0 90px;
-	color: var(--text-dim);
-	font-size: 13px;
-	text-align: right;
-}
-
-.pkg-row .c-status {
-	flex: 0 0 220px;
-	align-self: stretch;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: flex-end;
-}
-
-.pkg-row.head .c-name,
-.pkg-row.head .c-size,
-.pkg-row.head .c-status {
-	color: var(--text-dim);
-	font-size: 12px;
-	font-weight: 600;
-	text-transform: uppercase;
 }
 
 /* ===========================================================================
@@ -1001,4 +740,452 @@ button.proj-create {
 	height: 36px;
 	margin: 0 24px;
 	background-color: var(--control);
+}
+
+
+/* ===========================================================================
+   Shell: frame / body (nav + content) / status bar
+   =========================================================================== */
+
+#shell-body {
+	order: 1;
+	-xl-z-order: 10;
+	flex-grow: 1;
+	display: flex;
+	flex-direction: row;
+}
+
+/* `flex: 0 0 <w>` and NOT min-width: min/max on a flex item's CROSS axis is parsed and ignored
+   by this CSS subset, so a min-width here would silently do nothing. */
+#nav-pane {
+	flex: 0 0 var(--nav-w);
+	background-color: var(--surface);
+}
+
+#content-pane {
+	flex-grow: 1;
+	display: flex;
+	flex-direction: column;
+	background-color: var(--window);
+}
+
+#status-bar {
+	order: 2;
+	-xl-z-order: 12;
+	flex-shrink: 0;
+	height: var(--status-bar-h);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding-left: 12px;
+	padding-right: 12px;
+	column-gap: 10px;
+	background-color: var(--surface);
+	color: var(--text-dim);
+	font-size: 12px;
+}
+
+/* The bar is one line tall, so nothing in it may wrap: a long operation title would otherwise
+   grow a second line and be clipped by the bar's own height. */
+#status-arch,
+#status-message,
+#status-jobs {
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.status-spacer {
+	flex-grow: 1;
+}
+
+#status-progress {
+	flex: 0 0 140px;
+	height: 4px;
+	border-radius: 2px;
+	background-color: var(--control);
+}
+
+/* ===========================================================================
+   Navigation tree
+   =========================================================================== */
+
+tree-view {
+	background-color: var(--surface);
+}
+
+tree-row {
+	background-color: transparent;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: var(--tree-row-h);
+	padding-left: calc(8px + var(--tree-depth, 0) * var(--tree-indent));
+	padding-right: 8px;
+	column-gap: 6px;
+	color: var(--text);
+}
+
+tree-row:hover {
+	background-color: var(--hover);
+}
+
+tree-row.selected {
+	background-color: var(--control);
+	color: var(--accent);
+}
+
+tree-row.group-row {
+	color: var(--text-title);
+	font-weight: 700;
+}
+
+tree-row.add-row {
+	color: var(--text-dim);
+}
+
+tree-row.disabled {
+	color: #4a4a4a;
+}
+
+.tree-toggle {
+	flex: 0 0 18px;
+	height: 18px;
+	border-radius: 9px;
+	background-color: transparent;
+}
+
+.tree-toggle:hover {
+	background-color: var(--control);
+}
+
+.tree-toggle > icon {
+	width: 16px;
+	height: 16px;
+}
+
+.tree-icon {
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+}
+
+#nav-row-content {
+	flex-grow: 1;
+	background-color: transparent;
+}
+
+.tree-label {
+	font-size: 13px;
+}
+
+/* The download fill behind a row's label. C++ writes only its WIDTH. */
+.tree-row-progress {
+	background-color: var(--accent-dim);
+}
+
+/* Revealed on hover. It stays clickable while transparent — the subset cannot flip `enabled` on
+   hover — which is why every removal goes through a confirmation dialog. */
+.tree-delete {
+	flex: 0 0 20px;
+	height: 20px;
+	border-radius: 10px;
+	background-color: transparent;
+	opacity: 0;
+}
+
+tree-row:hover .tree-delete {
+	opacity: 1;
+}
+
+.tree-delete:hover {
+	background-color: var(--danger-dim);
+}
+
+.tree-delete > icon {
+	width: 14px;
+	height: 14px;
+}
+
+/* ===========================================================================
+   Content page: heading, note, and the table embedded in the page scroll
+   =========================================================================== */
+
+#content-page {
+	flex-grow: 1;
+	background-color: var(--window);
+}
+
+/* NO `background-color: transparent` here. On a plain Node the colour's alpha is written into the
+   node's OPACITY, which multiplies down the whole subtree - a transparent scroll view hides
+   everything inside it. The page behind it already paints the background. */
+#page-scroll {
+	flex-grow: 1;
+}
+
+/* The page's column. Declaring it flex is what installs the LayoutSystem that stacks the blocks,
+   applies this padding and this gap, and — through LayoutSystem::measureNode — tells
+   InstallerPage::updateScrollArea how tall the whole column is at the current width. */
+#page-body {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding: 20px 24px 24px 24px;
+	row-gap: 12px;
+}
+
+.page-title {
+	font-size: 22px;
+	font-weight: 700;
+	color: var(--text-title);
+}
+
+.page-note {
+	font-size: 13px;
+	color: var(--text-dim);
+}
+
+/* The summary block on the welcome page: several short lines that belong together, so they get
+   their own line spacing rather than the column's much larger row-gap. */
+.page-summary {
+	font-size: 13px;
+	color: var(--text-dim);
+	line-height: 1.6;
+	margin-top: 8px;
+	margin-bottom: 8px;
+}
+
+/* `flex-basis: fit-content` is what engages ui::TableView's measure system, so the table reports
+   the height of its whole model and the page scrolls as one column. */
+#tools-table {
+	display: table;
+	grid-template-columns: 2fr 160px 260px;
+	border-collapse: collapse;
+	flex-basis: fit-content;
+	background-color: transparent;
+}
+
+table-header {
+	background-color: var(--surface);
+	height: var(--table-header-h);
+}
+
+table-row {
+	background-color: transparent;
+	height: var(--table-row-h);
+}
+
+table-row.odd {
+	background-color: #151515;
+}
+
+table-row:hover {
+	background-color: var(--hover);
+}
+
+table-row.native > table-cell > label {
+	color: var(--accent);
+}
+
+/* border-BOTTOM only: a virtualized row collapses just the edges it can see, so a line declared
+   on both sides of a row boundary is drawn twice. */
+table-cell {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding-left: 10px;
+	padding-right: 10px;
+	column-gap: 8px;
+	border-bottom-width: 1px;
+	border-bottom-color: #2a2a2a;
+	background-color: transparent;
+	color: var(--text);
+	font-size: 13px;
+}
+
+.header-cell > label {
+	font-weight: 700;
+	color: var(--text-dim);
+	font-size: 11px;
+}
+
+/* The name cell's leading mark: the running machine's toolchain, or the active engine ref. */
+.table-icon {
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+	color: var(--accent);
+}
+
+/* Actions are right-aligned, so the column's title is too — a heading that does not sit over what
+   it names reads as a different column. */
+.header-cell.col-actions {
+	justify-content: flex-end;
+	padding-right: 22px;
+}
+
+#action-cell {
+	justify-content: flex-end;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	column-gap: 8px;
+	padding-right: 12px;
+	background-color: transparent;
+}
+
+.row-action,
+button.row-action.primary,
+button.row-action.danger {
+	width: 96px;
+	height: 26px;
+	border-radius: 13px;
+	padding-left: 14px;
+	padding-right: 14px;
+	font-size: 12px;
+}
+
+.row-progress {
+	flex: 0 0 90px;
+	height: 4px;
+	border-radius: 2px;
+	background-color: var(--control);
+}
+
+.autoupdate {
+	flex: 0 0 18px;
+	width: 18px;
+	height: 18px;
+}
+
+/* ===========================================================================
+   Progress bar atom
+   =========================================================================== */
+
+progress-bar {
+	background-color: var(--control);
+	border-radius: 2px;
+}
+
+progress-fill {
+	background-color: var(--accent);
+	border-radius: 2px;
+}
+
+progress-bar.indeterminate {
+	background-color: #3a3a3a;
+}
+
+/* ===========================================================================
+   Settings form
+   =========================================================================== */
+
+/* NO `-xl-z-order` on #settings-layout. It reaches every descendant, so the whole form ends up at
+   one z — and sortAllChildren is unstable, which scrambled the grid's cells into the wrong columns.
+   The form covers what is under it because its surface is RenderingLevel::Solid (see
+   InstallerSettingsPage.cc), not because of a z fight. */
+/* The form's own window. Its decorations are the application's (see InstallerSettingsPage.cc), so
+   the frame is the first row of this column and the padding starts below it - hence padding-top 0
+   and the body's own inset instead. */
+#settings-page {
+	width: 100%;
+	height: 100%;
+	background-color: var(--window);
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding: 0 0 16px 0;
+	row-gap: 0px;
+}
+
+#settings-page > window-frame {
+	flex-shrink: 0;
+	order: 0;
+}
+
+#settings-frame-close {
+	border-radius: 16px;
+}
+
+/* Every row supplies three cells — label, control, marker — and the checkbox rows pad the third
+   with an empty node, because a grid fills in order and a short row shifts all the ones below it.
+   `align-items: center` is what lines a 17px checkbox up with its label; the default stretch would
+   make both as tall as the tallest cell in the row. */
+#settings-grid {
+	display: grid;
+	grid-template-columns: 260px 1fr 170px;
+	grid-auto-rows: 30px;
+	align-items: center;
+	row-gap: 10px;
+	column-gap: 12px;
+	flex-grow: 1;
+	margin: 20px 24px 0 24px;
+	order: 1;
+}
+
+.settings-label {
+	font-size: 13px;
+	color: var(--text);
+}
+
+/* A checkbox is 17px wide whatever its track is: without this it is stretched to the full column
+   and reads as a wide empty box. */
+#settings-grid > checkbox {
+	justify-self: start;
+}
+
+text-input {
+	height: 28px;
+	border-radius: 4px;
+	background-color: var(--control);
+	color: var(--text);
+	font-size: 13px;
+	padding-left: 8px;
+	padding-right: 8px;
+}
+
+text-input.invalid {
+	outline-width: 1px;
+	outline-color: #e05252;
+}
+
+/* A button is not a full-width block: `align-items: stretch` on the column would make it one, so
+   it opts out for itself. */
+#welcome-install {
+	align-self: flex-start;
+	width: 240px;
+	height: var(--row-h);
+}
+
+badge.checking {
+	background-color: var(--control);
+}
+
+badge.reachable {
+	background-color: rgba(76, 175, 80, 0.2);
+}
+
+badge.reachable > label {
+	color: #7ac97e;
+}
+
+badge.unreachable {
+	background-color: rgba(224, 82, 82, 0.2);
+}
+
+badge.unreachable > label {
+	color: #e05252;
+}
+
+/* The form has no submit: fields commit as they lose focus, so Close is the only button. */
+#settings-close {
+	align-self: flex-end;
+	width: 120px;
+	height: 32px;
+	border-radius: 6px;
+	margin-right: 24px;
+	order: 2;
+}
+
+#settings-close > label {
+	font-size: 13px;
 }

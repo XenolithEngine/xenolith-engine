@@ -277,9 +277,22 @@ void TreeView::setSelectedRow(size_t index) {
 	}
 }
 
-void TreeView::invalidateSource() { refresh(); }
+/* Both of these mean "the DATA changed", and that is exactly what a RowKey cannot see: it is
+(source, itemId, depth, height, expanded, dataLoaded), so a row whose payload was replaced in place
+keeps its id and its key and would be answered with the node built from the old payload. Hence the
+forced rebuild - it is the whole point of Source::setDirty().
 
-void TreeView::handleSourceDirty() { refresh(); }
+refresh() itself stays unforced: expandRow/collapseRow reach it too, and there the reuse is correct
+and is what keeps an expand from redrawing the rows it did not touch. */
+void TreeView::invalidateSource() {
+	refresh();
+	requestRebuildNodes(true);
+}
+
+void TreeView::handleSourceDirty() {
+	refresh();
+	requestRebuildNodes(true);
+}
 
 void TreeView::refresh() {
 	// An inline lazy-children completion lands here in the middle of expandRow(), before the

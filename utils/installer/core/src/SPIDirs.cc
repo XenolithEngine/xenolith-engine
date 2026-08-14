@@ -102,6 +102,8 @@ String Layout::getInstalledManifest() const { return mergePath(config, "installe
 
 String Layout::getProjectsManifest() const { return mergePath(config, "projects.json"); }
 
+String Layout::getSettingsManifest() const { return mergePath(config, "settings.json"); }
+
 String Layout::getToolchainsDir() const { return mergePath(data, "toolchains"); }
 
 String Layout::getHostsDir() const { return mergePath(getToolchainsDir(), "hosts"); }

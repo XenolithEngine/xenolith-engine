@@ -27,9 +27,14 @@
 #include "style/XLUiStyleResolver.cc"
 
 #include "layout/XLUiLayoutSystem.cc"
+#include "layout/XLUiLayoutFlex.cc"
+#include "layout/XLUiLayoutGrid.cc"
+#include "layout/XLUiLayoutTable.cc" // after Grid: shares its track sizing and parseGridTemplate
 
 #include "atoms/XLUiPanel.cc"
 #include "atoms/XLUiBadge.cc"
+#include "atoms/XLUiProgressBar.cc"
+#include "atoms/XLUiTableBorderPainter.cc"
 
 #include "input/XLUiInteractiveComponent.cc"
 #include "input/XLUiButton.cc"
@@ -38,6 +43,9 @@
 #include "input/XLUiTextInput.cc"
 
 #include "view/XLUiTreeView.cc"
+#include "view/XLUiTableView.cc"
+
+#include "frame/XLUiWindowFrame.cc" // after Button: the frame is built out of them
 
 #include "forms/XLUiFormInputListener.cc"
 #include "forms/XLUiFormSystem.cc"

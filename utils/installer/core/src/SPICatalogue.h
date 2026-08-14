@@ -57,14 +57,20 @@ inline StringView getDefaultServer() { return "stappler.dev"; }
 
 inline StringView getDefaultRelease() { return "sdk-v0beta1"; }
 
-inline String getFtpReleasesRoot() { return toString("ftp://", getDefaultServer(), "/releases/"); }
+// The built-in releases root, used when the user has configured no mirror. Prefer
+// SourceConfig::getReleasesRoot() (SPISettings.h), which falls back to this — reaching for the
+// default directly bypasses whatever the user chose.
+inline String getDefaultReleasesRoot() {
+	return toString("ftp://", getDefaultServer(), "/releases/");
+}
 
 // Pick the newest `sdk-v*` directory from an FTP LIST of /releases/. Falls back to getDefaultRelease().
 SP_PUBLIC String resolveActiveRelease(StringView releasesListing);
 
-inline String getFtpReleaseBase(StringView release = StringView()) {
+// As above: the default-source form. Prefer SourceConfig::getReleaseBase().
+inline String getDefaultReleaseBase(StringView release = StringView()) {
 	const auto rel = release.empty() ? getDefaultRelease() : release;
-	return toString("ftp://", getDefaultServer(), "/releases/", rel);
+	return toString(getDefaultReleasesRoot(), rel);
 }
 
 } // namespace stappler::xenolith::installer

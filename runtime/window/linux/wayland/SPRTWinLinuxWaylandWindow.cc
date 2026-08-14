@@ -1640,6 +1640,7 @@ void WaylandWindow::dispatchPendingEvents() {
 
 	if (surfacesDirty) {
 		wl_surface_commit(_surface);
+		_display->flush();
 	}
 }
 

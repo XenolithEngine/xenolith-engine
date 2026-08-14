@@ -489,22 +489,79 @@ Rc<core::DependencyEvent> FontController::addTextureChars(const Rc<FontFaceSet> 
 	// is not in the atlas index yet - they collapse to zero size, i.e. invisible text. Each window
 	// must wait for the glyphs it needs; only one of them did.
 	//
-	// So gate on the atlas being confirmed current instead. The already-sent event is never re-handed
-	// out (a frame must not wait on a batch it is not part of): a fresh batch is opened instead, and
-	// since a flush re-uploads the whole required set, its upload covers the in-flight glyphs too.
-	// Once the atlas has caught up, a known-glyph request opens nothing and returns null.
+	// So gate on the atlas being confirmed current instead. Once the atlas has caught up, a
+	// known-glyph request opens nothing and returns null.
 	//
 	// "Caught up" needs both halves. A batch still running means glyphs that are laid out but not
 	// rasterised, whatever the generation counter says - batches overlap, and a later one can land
 	// first. So: gate while anything is in flight, and gate while new glyphs have appeared since the
 	// last quiet moment.
 	if (l->addTextureChars(chars)) {
+		// Genuinely new characters: they are in _required but in no batch, so the caller must wait
+		// for the batch that will carry them.
 		++_glyphGeneration;
 		initDependency();
-	} else if (_uploadsInFlight.load() > 0 || _uploadedGeneration.load() < _glyphGeneration) {
-		initDependency();
+		return _dependency;
 	}
-	// return dependency if it set
+
+	if (_uploadsInFlight.load() > 0 || _uploadedGeneration.load() < _glyphGeneration) {
+		// Nothing new from this caller, but the atlas is behind. acquireGatingDependency decides
+		// whether that means "wait for the batch already running" or "wait for the next one".
+		return acquireGatingDependency();
+	}
+	return nullptr;
+}
+
+void FontController::resetSubmittedGlyphs() {
+	sprt::shared_lock lock(_layoutSharedMutex);
+	for (auto &it : _layouts) {
+		for (auto &iit : it.second->getFaces()) {
+			if (iit) {
+				iit->resetCharsSubmitted();
+			}
+		}
+	}
+}
+
+bool FontController::hasPendingGlyphs() const {
+	sprt::shared_lock lock(_layoutSharedMutex);
+	for (auto &it : _layouts) {
+		for (auto &iit : it.second->getFaces()) {
+			if (iit && iit->hasPendingChars()) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+Rc<core::DependencyEvent> FontController::acquireGatingDependency() {
+	if (!hasPendingGlyphs()) {
+		// Everything required has already been sent. Waiting for the batch that carries it is both
+		// correct - a flush submits the WHOLE required set, so that batch covers these glyphs - and
+		// the only way out of the feedback loop: opening another one here is what kept a successor
+		// permanently queued behind the upload in flight.
+		if (_submittedDependency) {
+			if (!_submittedDependency->isSignaled()) {
+				return _submittedDependency;
+			}
+			// It landed; from here on this controller has nothing outstanding to wait for.
+			_submittedDependency = nullptr;
+		}
+
+		// A batch is still being accumulated for the next flush (something raised _dirty without
+		// requiring a character - a font or an alias was added); it will be submitted, so it is a
+		// valid thing to wait on.
+		if (_dependency) {
+			return _dependency;
+		}
+
+		// Nothing pending, nothing in flight: the atlas holds everything and the caller's own
+		// generation check will agree on the next frame.
+		return nullptr;
+	}
+
+	initDependency();
 	return _dependency;
 }
 
@@ -532,13 +589,36 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 }
 
 void FontController::flushPendingGlyphs(AppThread *app) {
+	if (_uploadFailed.exchange(false)) {
+		// A batch never reached the atlas. Its characters are still required and nothing else would
+		// resend them - the flush below skips a set that has not grown - so drop the record of the
+		// submission and let the next one carry everything again.
+		resetSubmittedGlyphs();
+		_dirty = true;
+	}
+
 	if (_dirty && _loaded) {
 		Vector<FontUpdateRequest> objects;
+
+		// Is there anything to send that has not been sent already?
+		//
+		// The batch below carries the WHOLE required set, because the atlas image is rebuilt from
+		// scratch on every upload (FontRenderPassHandle::doPrepareCommands allocates a new image and
+		// fills it from the request). So a flush whose set has not grown produces the same atlas
+		// again - at the cost of a full rebuild plus a material recompile in every window that
+		// samples it. _dirty alone cannot tell the two apart: it is raised by every node that gates
+		// a frame while the atlas is behind, which is every node on screen, every frame.
+		bool hasPending = false;
+
 		sprt::shared_lock lock(_layoutSharedMutex);
 		for (auto &it : _layouts) {
 			for (auto &iit : it.second->getFaces()) {
 				if (!iit) {
 					continue;
+				}
+
+				if (iit->hasPendingChars()) {
+					hasPending = true;
 				}
 
 				auto lb = sprt::lower_bound(objects.begin(), objects.end(), iit,
@@ -560,7 +640,11 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 				}
 			}
 		}
-		if (!objects.empty()) {
+		// `_dependency` forces the batch through even with nothing new: it has already been handed
+		// to callers as the thing they are waiting for, and only a submission can signal it. It is
+		// never minted for a set that has not grown (see acquireGatingDependency), so this does not
+		// re-open the loop - it only keeps a promise that was made before the set stopped growing.
+		if (!objects.empty() && (hasPending || _dependency)) {
 			// EVERY flush replaces the atlas instance (FontRenderPassHandle::submitResult ->
 			// DynamicImage::updateInstance), and every replacement makes each window recompile the
 			// materials that sample it. So every flush needs a gating dependency - including the ones
@@ -602,7 +686,12 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 					// thread hop is needed. The Rc keeps the controller alive until the upload lands.
 					// Only the batch that empties the queue publishes a generation: while others are
 					// still running, some laid-out glyph is still missing from the atlas.
-					dep->setSignalCallback([self = Rc<FontController>(this)] {
+					// The event outlives its own callback, so holding it by raw pointer is safe here
+					// and does not build a cycle through the Function it stores.
+					dep->setSignalCallback([self = Rc<FontController>(this), e = dep.get()] {
+						if (!e->isSuccessful()) {
+							self->_uploadFailed.store(true);
+						}
 						if (self->_uploadsInFlight.fetch_sub(1) == 1) {
 							self->_uploadedGeneration.store(self->_submittedGeneration.load());
 						}
@@ -614,6 +703,20 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 			// generation behind is the safe answer - marking it current here is what let a second
 			// window through while the previous upload was still running. The next flush carries a
 			// real dependency, because addTextureChars() opens one for as long as the atlas is behind.
+
+			// Record what this batch carries, BEFORE handing it over: from here on those characters
+			// are on their way, and a flush that finds nothing beyond them has nothing to do. The
+			// count is the snapshot's, not the face's current one - the layout path keeps adding to
+			// _required while this runs, and those characters belong to the next batch.
+			for (auto &it : objects) {
+				if (it.object) {
+					it.object->setCharsSubmitted(it.chars.size());
+				}
+			}
+
+			// Keep the batch reachable for as long as it is in flight: a caller that lays out
+			// nothing new waits on this instead of opening another one.
+			_submittedDependency = dep;
 
 			submitGlyphs(app, sp::move(objects), sp::move(dep));
 		}

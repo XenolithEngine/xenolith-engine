@@ -115,6 +115,10 @@ public:
 	Interface::VectorType<char32_t> getRequiredChars() const;
 	size_t getRequiredCharsCount() const;
 
+	bool hasPendingChars() const;
+	void setCharsSubmitted(size_t count);
+	void resetCharsSubmitted();
+
 	CharShape getChar(char32_t c) const;
 	int16_t getKerningAmount(char32_t first, char32_t second) const;
 
@@ -132,6 +136,7 @@ protected:
 	FontSpecializationVector _spec;
 	Metrics _metrics;
 	Interface::VectorType<char32_t> _required;
+	size_t _submittedChars = 0;
 	FontCharStorage<CharShape16> _chars;
 	mem_std::HashMap<uint32_t, int16_t> _kerning;
 	sprt::mutex _faceMutex;

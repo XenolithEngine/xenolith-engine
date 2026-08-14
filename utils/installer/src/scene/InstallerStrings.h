@@ -40,6 +40,35 @@ StringView appTitle();
 StringView colName();
 StringView colSize();
 StringView colStatus();
+StringView colActions();
+StringView actionUpdate();
+
+// Page headings and the sentence under each one.
+StringView pageWelcomeTitle();
+StringView pageWelcomeNote();
+StringView pageEnginesTitle();
+StringView pageEnginesNote();
+StringView pageHostsTitle();
+StringView pageHostsNote();
+StringView pageTargetsTitle();
+StringView pageTargetsNote();
+
+StringView welcomeArch();
+StringView welcomeEngine();
+StringView welcomeEngineMissing();
+StringView welcomeRelease();
+
+// Settings form.
+StringView settingsTitle();
+StringView settingsEngineUrl();
+StringView settingsReleaseUrl();
+StringView settingsAutoUpdateInstaller();
+StringView settingsAutoUpdateEngine();
+StringView settingsAutoUpdateReleases();
+StringView settingsClose();
+StringView reachChecking();
+StringView reachOk();
+StringView reachFailed();
 StringView groupEngine();
 StringView groupHosts();
 StringView groupTargets();

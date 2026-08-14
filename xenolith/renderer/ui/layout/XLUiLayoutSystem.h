@@ -25,6 +25,7 @@
 
 #include "XLUiLayoutFlex.h"
 #include "XLUiLayoutGrid.h"
+#include "XLUiLayoutTable.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -63,6 +64,12 @@ grid row 0 is the top row, just like in CSS. */
 struct SP_PUBLIC OutOfFlowComponent {
 	static ComponentId Id;
 
+	// True when ui::StyleResolver added this from `position: absolute`, and therefore the only case
+	// in which the resolver may take it away again. Without the distinction a style pass - which
+	// runs over EVERY node, whether or not a rule matched it - would strip the marker off any
+	// overlay an application set in code, silently putting it back into its container's flow.
+	bool styleManaged = false;
+
 	bool operator==(const OutOfFlowComponent &) const = default;
 };
 
@@ -70,12 +77,14 @@ struct SP_PUBLIC OutOfFlowComponent {
 enum class LayoutMode : uint8_t {
 	Flex, // CSS Flexible Box, reads FlexLayoutInfo / FlexItemInfo
 	Grid, // CSS Grid, reads GridLayoutInfo / GridItemInfo
+	Table, // CSS table container, reads TableLayoutInfo / TableRowInfo; writes TableColumnsComponent
+	TableRow, // one table row, reads the TableColumnsComponent on its own node + TableCellInfo
 };
 
-// System that performs flexbox or grid placement for its owner node.
+// System that performs flexbox, grid or table placement for its owner node.
 //
 // Add it to the container node (the one that also holds the matching
-// FlexLayoutInfo / GridLayoutInfo component). The layout is recomputed whenever
+// FlexLayoutInfo / GridLayoutInfo / TableLayoutInfo component). The layout is recomputed whenever
 // the container is resized, its children are added / removed / reordered, or its
 // components change.
 class SP_PUBLIC LayoutSystem : public System {
@@ -96,6 +105,12 @@ public:
 
 	// initialize into grid mode and assign the container parameters in one step
 	virtual bool init(const GridLayoutInfo &);
+
+	// initialize into table mode and assign the container parameters in one step
+	virtual bool init(const TableLayoutInfo &);
+
+	// initialize into table-row mode; the columns arrive later, via setTableColumns()
+	virtual bool init(LayoutMode);
 
 	virtual void handleAdded(Node *owner) override;
 
@@ -160,17 +175,51 @@ public:
 	static const GridItemInfo *getGridItem(NotNull<Node>);
 	static void setGridItem(NotNull<Node>, const GridItemInfo &);
 
+	// --- table mode --------------------------------------------------------
+	// access / replace the table container parameters (owner component)
+	const TableLayoutInfo *getTableInfo() const;
+	void setTableInfo(const TableLayoutInfo &);
+
+	// helpers to read / assign per-row and per-cell parameters via the component system
+	static const TableRowInfo *getTableRow(NotNull<Node>);
+	static void setTableRow(NotNull<Node>, const TableRowInfo &);
+	static const TableCellInfo *getTableCell(NotNull<Node>);
+	static void setTableCell(NotNull<Node>, const TableCellInfo &);
+
+	// Impose a resolved column geometry on a row. This is the channel a virtualized view
+	// (ui::TableView) uses to make a row that has no table ancestor lay itself out, and the one a
+	// LayoutMode::Table pass uses on its own row children - the same call in both cases.
+	//
+	// `generation` is carried over and bumped only when the geometry actually differs, so an
+	// unchanged pass neither re-lays-out the row nor invalidates a view's node reuse.
+	static void setTableColumns(NotNull<Node>, const TableColumnsComponent &);
+
 protected:
 	// apply a mutation to the owner's FlexLayoutInfo component, creating it if needed
 	void updateInfo(const Callback<bool(FlexLayoutInfo &)> &);
 
-	// the two placement backends, dispatched by `apply()` from `_mode`
+	// give the owner the container component the current mode reads, if it has none yet
+	void ensureModeComponent(Node *owner);
+
+	// The placement backends, dispatched by `apply()` from `_mode`. One per subunit of the module's
+	// SCU: layoutFlex in XLUiLayoutFlex.cc, layoutGrid in XLUiLayoutGrid.cc, the two table modes in
+	// XLUiLayoutTable.cc.
 	void layoutFlex();
 	void layoutGrid();
+	void layoutTable();
+	void layoutTableRow();
+
+	// Per-mode measurement, dispatched by `measure()` from `_mode`, and defined beside the matching
+	// backend. The null-owner guard and the mode switch belong to the dispatcher, so each of these
+	// runs with an owner that exists and a mode that already matches.
+	Size2 measureFlex(const MeasureConstraints &);
+	Size2 measureTable(const MeasureConstraints &);
+	Size2 measureTableRow(const MeasureConstraints &);
 
 	LayoutMode _mode = LayoutMode::Flex;
 	FlexLayoutInfo _initialInfo;
 	GridLayoutInfo _initialGridInfo;
+	TableLayoutInfo _initialTableInfo;
 
 	// guards against self-triggering: while apply() commits child sizes, the
 	// resulting handleChildContentSizeDirty notifications are ignored

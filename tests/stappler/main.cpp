@@ -50,6 +50,7 @@ static const TestEntry s_testList[] = {
 	{"pug", &stappler::performPugTests},
 	{"css", &stappler::performCssTests},
 	{"css-flexgrid", &stappler::performFlexboxGridCssTests},
+	{"css-table", &stappler::performTableCssTests},
 	{"cmdline", &stappler::performCommandLineTests},
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},

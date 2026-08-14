@@ -49,9 +49,17 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 //        response { "serial": u32, "status": "ok"|"error", "error": "...", "result": ... }
 //    Replies may arrive out of order - screenshots and scene commands complete asynchronously.
 //
-// Commands: `scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `text`, `frame`,
-// `window`, `quit`. `commands`/`invoke` expose whatever the running scene registered through
-// addCommand.
+// Commands: `scene`, `logs`, `windows`, `commands`, `invoke`, `screenshot`, `input`, `text`,
+// `frame`, `window`, `quit`. `commands`/`invoke` expose whatever the running scene registered
+// through addCommand.
+//
+// Every command except `logs` (a process-wide ring buffer) and `quit` (which shuts the process
+// down) acts on ONE window's scene, chosen by an optional `"window": "<id>"` argument and
+// defaulting to the scene this system is attached to. `windows` lists the ids. That is what makes
+// an auxiliary window reachable: SceneContent attaches an inspector to every scene, but only the
+// first one to attach owns the socket - so a popup, a dialog or a second root window is inspected,
+// screenshotted, stepped and driven through the id, not through a second connection. Each window
+// also has its own presentation engine, so in headless mode `frame` has to be sent per window.
 //
 // `input` injects events; with "native": true they go through the OS window first, so the
 // platform's text-input processor claims printable keys, Backspace, Delete and Escape exactly as
@@ -93,6 +101,14 @@ public:
 	// { "commands": [ { "name", "description" } ] }
 	Value getCommandList() const;
 
+	// { "windows": [ { "id", "type", "parent", "title", "width", "height", "density",
+	// "default" } ] } - every window in the process that has a scene, not only this one. App
+	// thread.
+	Value getWindowList() const;
+
+	// WindowInfo::id of the window this inspector's scene runs on; empty before it exists.
+	StringView getWindowId() const;
+
 protected:
 	struct Command {
 		String description;
@@ -120,6 +136,12 @@ protected:
 	Status readHandshake(NotNull<Session>, BytesView);
 
 	void handleRequest(NotNull<Session>, Value &&request);
+
+	// The inspector a request is aimed at: the one whose window matches `request["window"]`, or
+	// this one when the key is absent. Null means the id named no live window - the request has
+	// already been answered with an error.
+	SceneInspector *resolveTarget(NotNull<Session>, int64_t serial, const Value &request);
+
 	void sendResponse(NotNull<Session>, int64_t serial, Value &&result);
 	void sendError(NotNull<Session>, int64_t serial, StringView error);
 	void sendFrame(NotNull<Session>, const Value &);

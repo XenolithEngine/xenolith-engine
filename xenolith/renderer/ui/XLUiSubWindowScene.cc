@@ -24,6 +24,7 @@
 
 #include "XLAction.h"
 #include "XLAppWindow.h"
+#include "XLScheduler.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -58,8 +59,18 @@ bool SubWindowScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 	return true;
 }
 
+void SubWindowScene::handleEnter(Scene *scene) {
+	Scene2d::handleEnter(scene);
+
+	_renderStartedAt = Time::now();
+}
+
 void SubWindowScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
+
+	_lastPresentedAt = Time::now();
+	log::source().debug("SubWindowScene", "first present after ",
+			(_lastPresentedAt - _renderStartedAt).toMillis(), "ms");
 
 	if (_contentPushed || !_content) {
 		return;
@@ -73,11 +84,6 @@ void SubWindowScene::handlePresented(Director *dir) {
 			_content->pushLayout(layout);
 		}
 	}
-
-	// Timed phases and hover transitions only advance while frames are produced, and an auxiliary
-	// window is otherwise on-demand: without this it freezes after its first frame and never
-	// finishes laying its own text out.
-	runAction(Rc<RenderContinuously>::create());
 }
 
 } // namespace stappler::xenolith::ui

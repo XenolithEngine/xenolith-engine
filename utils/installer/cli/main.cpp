@@ -153,6 +153,19 @@ static Function<void(int64_t, int64_t)> makeProgressReporter(uint64_t &lastStep)
 	};
 }
 
+// Where this run fetches the engine and the binary releases from.
+//
+// Read fresh from <config>/settings.json on every call rather than cached in a global: the CLI is a
+// short-lived process, the file is tiny, and a global would mean every network entry point silently
+// depends on "settings were loaded first". A missing file yields the built-in defaults, which is
+// what the CLI did before preferences existed.
+//
+// This is the whole reason the settings store lives in installer_core and not in the GUI: a user
+// who points the installer at a mirror must reach that same mirror from `xenolith-cli list`.
+static SourceConfig getSources(const Layout &layout) {
+	return Settings::load(layout.getSettingsManifest()).sources;
+}
+
 // --- commands ---------------------------------------------------------------
 
 static int cmdDetect() {
@@ -222,7 +235,8 @@ static int cmdFetch(int argc, const char *argv[]) {
 }
 
 static int cmdList() {
-	auto base = getFtpReleaseBase();
+	auto layout = Layout::resolveFromEnv();
+	auto base = getSources(layout).getReleaseBase(StringView());
 	sprt::cerr << "Fetching catalogue from " << base << " ...\n";
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
@@ -239,7 +253,6 @@ static int cmdList() {
 	}
 
 	auto comps = buildCatalogue(hostsText, targetsText);
-	auto layout = Layout::resolveFromEnv();
 	auto st = InstalledState::load(layout.getInstalledManifest());
 
 	auto printKind = [&](Kind kind) {
@@ -260,8 +273,9 @@ static int cmdList() {
 }
 
 static int cmdEngineRefs() {
+	auto layout = Layout::resolveFromEnv();
 	OperationResult status;
-	auto refs = listEngineRefs(&status);
+	auto refs = listEngineRefs(getSources(layout), &status);
 	if (!status) {
 		sprt::cerr << "error: " << status.error << "\n";
 		return 1;
@@ -318,7 +332,7 @@ static int cmdEngineInstall(int argc, const char *argv[]) {
 			   << " (shallow, with submodules)...\n";
 
 	auto lastStage = static_cast<git::CloneStage>(-1);
-	auto r = cloneEngine(ref, layout, makeCloneReporter(lastStage));
+	auto r = cloneEngine(getSources(layout), ref, layout, makeCloneReporter(lastStage));
 	if (!r) {
 		sprt::cerr << "\nfailed: " << r.error << "\n";
 		return 1;
@@ -338,7 +352,8 @@ static int installEngine(const CliArgs &args) {
 		sprt::cerr << "• Engine (cloning " << getEngineDefaultRef() << ")\n";
 
 		auto lastStage = static_cast<git::CloneStage>(-1);
-		auto cr = cloneEngine(getEngineDefaultRef(), layout, makeCloneReporter(lastStage));
+		auto cr = cloneEngine(getSources(layout), getEngineDefaultRef(), layout,
+				makeCloneReporter(lastStage));
 		if (!cr) {
 			sprt::cerr << "\nengine clone failed: " << cr.error << "\n";
 			return 1;
@@ -362,7 +377,8 @@ static int installOne(const Layout &layout, StringView id, bool wantHost, bool w
 	sprt::cerr << "• " << label << ": " << id << "\n";
 
 	uint64_t lastStep = maxOf<uint64_t>();
-	auto r = installComponent(id, layout, wantHost, wantTarget, makeProgressReporter(lastStep));
+	auto r = installComponent(getSources(layout), StringView(), id, layout, wantHost, wantTarget,
+			makeProgressReporter(lastStep));
 	if (!r || r.installed.empty()) {
 		sprt::cerr << "\nerror: " << r.error << "\n";
 		return 1;
@@ -406,7 +422,8 @@ static int cmdInstall(int argc, const char *argv[]) {
 		// The +sprt target is optional — install it only when the catalogue has one.
 		auto sprtTarget = toString(h.native, "+sprt");
 		uint64_t lastStep = maxOf<uint64_t>();
-		auto r = installComponent(sprtTarget, layout, false, true, makeProgressReporter(lastStep));
+		auto r = installComponent(getSources(layout), StringView(), sprtTarget, layout, false, true,
+				makeProgressReporter(lastStep));
 		if (r) {
 			sprt::cerr << "\r    ✓ " << sprtTarget << "                         \n";
 		}

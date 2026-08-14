@@ -153,13 +153,20 @@ public:
 	}
 
 	// A dependency to hold frames back until the atlas catches up, for a node whose generation
-	// isGlyphGenerationUploaded() rejects. Opens a batch if none is accumulating; the already-sent
-	// one is never re-handed out, so at most one extra batch per flush interval is created while the
-	// atlas is behind, and none once it has caught up.
-	Rc<core::DependencyEvent> acquireGatingDependency() {
-		initDependency();
-		return _dependency;
-	}
+	// isGlyphGenerationUploaded() rejects.
+	//
+	// Which event that is depends on whether anything is still waiting to be SENT. If some glyph has
+	// been laid out but not yet handed to the rasterizer, the caller has to wait for the batch that
+	// will carry it, so one is opened (or the accumulating one extended). If everything required is
+	// already on its way, the caller waits for THAT batch instead - a flush always submits the whole
+	// required set, so a batch in flight covers every glyph required when it left.
+	//
+	// The distinction is the whole point. Every label re-arms its gate on every frame for as long as
+	// the atlas is behind, so minting a batch here unconditionally meant the in-flight upload always
+	// had a successor queued before it landed: _uploadsInFlight never reached zero, the generation
+	// never caught up, and the atlas was rebuilt (and every window's materials recompiled) six times
+	// a second for as long as anything was on screen.
+	Rc<core::DependencyEvent> acquireGatingDependency();
 
 	uint32_t getFamilyIndex(StringView) const;
 	StringView getFamilyName(uint32_t idx) const;
@@ -202,6 +209,15 @@ protected:
 
 	void initDependency();
 
+	// Is any face carrying a character that has not been handed to the rasterizer yet? App thread
+	// (it walks _layouts under the shared lock). See FontFaceObject::hasPendingChars.
+	bool hasPendingGlyphs() const;
+
+	// Forget every submission, so the next flush sends the full set again. For a batch that failed:
+	// its characters are required but no longer on their way, and nothing else would ever re-send
+	// them - the flush skips a set that has not grown. App thread.
+	void resetSubmittedGlyphs();
+
 	// Leaf hooks. submitGlyphs hands a batch of glyph-raster requests (+ the gating dependency) to the
 	// leaf's gAPI endpoint (local: FontComponent -> gl Loop / VkFontQueue; remote: proxy -> server).
 	// makeDependency builds the DependencyEvent that gates the atlas update covering those glyphs
@@ -230,6 +246,12 @@ protected:
 	// it reaches the frames built before that flush and never a later one.
 	Rc<core::DependencyEvent> _dependency;
 
+	// The last batch that WAS handed to the rasterizer, kept until it signals. This is what a caller
+	// with nothing new to send waits on (acquireGatingDependency): its glyphs are already inside it,
+	// so re-using it costs nothing, while opening another batch costs a full atlas rebuild in every
+	// window. Dropped as soon as it fires, so a caller never waits on a batch that has landed.
+	Rc<core::DependencyEvent> _submittedDependency;
+
 	// "Is every required glyph actually in the atlas the shader samples?" - the question
 	// addTextureChars() has to answer, and the one FontFaceObject::_required cannot: that set is
 	// permanent and process-wide, so it says "already required" to a window that has never had its
@@ -246,6 +268,10 @@ protected:
 	sprt::atomic<uint64_t> _submittedGeneration = 0;
 	sprt::atomic<uint64_t> _uploadedGeneration = 0;
 	sprt::atomic<uint32_t> _uploadsInFlight = 0;
+
+	// Raised on the signalling thread when a batch reports failure, consumed by the next flush on
+	// the app thread. Not a hop, just a note: the reset itself walks the layouts and belongs there.
+	sprt::atomic<bool> _uploadFailed = false;
 
 	bool _dirty = false;
 	mutable sprt::shared_mutex _layoutSharedMutex;

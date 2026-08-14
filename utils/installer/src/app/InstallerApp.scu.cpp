@@ -20,34 +20,7 @@
  THE SOFTWARE.
  **/
 
-#ifndef UTILS_INSTALLER_SRC_SCENE_INSTALLERTITLEBAR_H_
-#define UTILS_INSTALLER_SRC_SCENE_INSTALLERTITLEBAR_H_
+#include "XLCommon.h" // IWYU pragma: keep
 
-#include "XL2dLayer.h"
-
-namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
-
-// Client-side window decorations: the OS buttons, the app icon, and the draggable title strip.
-// Order and per-platform arrangement (the macOS traffic-light cluster) live in
-// resources/style.css — this class only creates the parts and names them.
-// Derives from Layer so `#title-bar { background-color }` actually paints (a plain Node
-// ignores fill — any inset around the title strip would show the window backdrop).
-class TitleBar : public basic2d::Layer {
-public:
-	virtual ~TitleBar();
-
-	virtual bool init() override;
-
-protected:
-	Node *_osMaximize = nullptr;
-	Node *_osMinimize = nullptr;
-	Node *_osClose = nullptr;
-	Node *_osMenu = nullptr;
-	Node *_osIcon = nullptr;
-	Node *_profile = nullptr;
-	Node *_titleLine = nullptr;
-};
-
-} // namespace stappler::xenolith::installer
-
-#endif // UTILS_INSTALLER_SRC_SCENE_INSTALLERTITLEBAR_H_
+#include "../controller/InstallerNativeDialogs.cc"
+#include "InstallerAppController.cc" // after NativeDialogs: promptText spawns through it

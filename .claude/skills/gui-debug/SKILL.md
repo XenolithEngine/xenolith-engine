@@ -6,7 +6,9 @@ description: >-
   driven with no display, no compositor and no mouse. MCP tools: `inspect_scene`
   (the node tree), `get_logs` (the log ring buffer), `screenshot`,
   `list_commands`/`invoke_command` (scene-registered actions), `send_input`,
-  `send_text`, `step_frame`, `window_control`, `quit_app`. Use when a Xenolith GUI app
+  `send_text`, `step_frame`, `window_control`, `list_windows`, `quit_app` — every one
+  of them addressable per window, so menus, dialogs and second windows are driven
+  the same way. Use when a Xenolith GUI app
   (installer, scaffolded app, tests/window) is misbehaving visually — missing
   elements, wrong layout, invisible nodes, overlap, wrong stacking, an element you
   can't find, "why is this hidden", "where did this node go"; when verifying
@@ -63,6 +65,7 @@ set, and always in headless mode — so a release build works too.
 |---|---|
 | `inspect_scene` | live scene graph as an indented text tree (one node per line) |
 | `get_logs` | application log ring buffer (last ~4096 entries, `[LEVEL][tag] message`) |
+| `list_windows` | every window that has a scene: id, type, parent, size |
 | `step_frame` | render N frames — headless draws nothing until you ask |
 | `screenshot` | write the current frame to a PNG |
 | `list_commands` | the actions this scene registered for external control |
@@ -71,6 +74,10 @@ set, and always in headless mode — so a release build works too.
 | `send_text` | drive the text-input processor: insert, composition, delete, read state |
 | `window_control` | read constraints, resize, close |
 | `quit_app` | shut the process down |
+
+Every tool except `get_logs` (a process-wide buffer) and `quit_app` (the whole
+process) takes an optional **`window`** argument — an id from `list_windows`.
+Omit it for the main window.
 
 ### When to use which
 
@@ -85,6 +92,9 @@ set, and always in headless mode — so a release build works too.
   but the render does not. **Always `step_frame` first** (see below).
 - **`list_commands` / `invoke_command`** — drive app-specific actions the scene
   chose to expose, without synthesizing input.
+- **`list_windows`** — after anything that may have opened a menu, a dialog, a
+  palette or a second top-level window. Window creation is asynchronous, so give
+  it a moment before you look. See "Menus, dialogs and second windows" below.
 - **`send_input`** — exercise the real input path (hit-testing, gestures, focus)
   rather than calling code directly.
 - **Typing into a text field** — a plain `send_input` key event never becomes
@@ -113,6 +123,43 @@ step_frame (count: 1-3)  →  short pause  →  screenshot
 Same after anything that changes the scene: `invoke_command` / `send_input` /
 `window_control resize` → `step_frame` → `screenshot`. If a screenshot looks
 stale, you skipped the step.
+
+**Each window steps on its own.** Every window has its own presentation engine,
+so `step_frame` with no `window` argument advances only the main one — a menu or
+a dialog stays on whatever frame it last drew until you step *it*.
+
+## Menus, dialogs and second windows
+
+A popup, a dialog, a palette or a second top-level window is a **real window**
+here, not an in-scene overlay: headless emulates the window manager and gives
+each one a pseudo-swapchain of its own. So they do not show up in the main
+window's `inspect_scene` or `screenshot` — you address them by id:
+
+```
+list_windows
+  org.stappler.app.myapp: Root 1024x768 @1.0 "myapp" (default)
+  menu-1: Popup parent=org.stappler.app.myapp 220x220 @1.0 "Menu"
+
+step_frame   {window: "menu-1", count: 3}
+screenshot   {window: "menu-1", path: "/tmp/menu.png"}
+inspect_scene{window: "menu-1"}
+send_input   {window: "menu-1", native: true, events: [...]}   # click a menu row
+```
+
+- **Coordinates are per window**, in that window's own scene space (Y-up from the
+  bottom-left) — a menu row at y=97 means 97 from the bottom of the *menu*.
+- **`native: true` matters for menus.** Only native input reaches the window
+  system emulation, which is what dismisses a menu when you press outside it,
+  cascades the close down a submenu chain and enforces a modal dialog's block on
+  its parent. Plain `send_input` goes straight to the scene and bypasses all of
+  it.
+- **Creation is asynchronous.** A window opened by a click or an `invoke_command`
+  needs a moment before `list_windows` sees it.
+- **`window_control` is per window too** — `resize` really resizes a popup's
+  pseudo-swapchain, and `close` dismisses that one window (use `quit_app` for the
+  process).
+- Tooltips stay in-scene overlays by default (`preferNative = false`), so look
+  for a tip in the parent window's tree, not in `list_windows`.
 
 ## Debug loop
 

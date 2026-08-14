@@ -43,6 +43,7 @@ public:
 	virtual bool init(NotNull<AppThread>, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &, NotNull<SubWindow>, SubWindow::ContentBuilder &&);
 
+	virtual void handleEnter(Scene *) override;
 	virtual void handlePresented(Director *) override;
 
 	SubWindow *getSubWindow() const { return _subWindow; }
@@ -56,6 +57,10 @@ protected:
 	SubWindow::ContentBuilder _builder;
 	Rc<basic2d::SceneContent2d> _content;
 	bool _contentPushed = false;
+
+	Time _renderStartedAt;
+	Time _lastPresentedAt;
+	Time _lastFrameAt;
 };
 
 } // namespace stappler::xenolith::ui

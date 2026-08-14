@@ -174,6 +174,16 @@ public:
 	String gridRowStart() const;
 	String gridRowEnd() const;
 
+	// table. The column track list is `grid-template-columns` above - a table's columns ARE a track
+	// list. The per-side borders a cell contributes to border collapsing come from outline() (the
+	// compiled OutlineParameters block), which already carries style/width/colour per side.
+	document::TableLayout tableLayout() const;
+	document::BorderCollapse borderCollapse() const;
+	document::Metric borderSpacingHorizontal() const;
+	document::Metric borderSpacingVertical() const;
+	uint32_t columnSpan() const; // -xl-column-span
+	uint32_t rowSpan() const; // -xl-row-span
+
 private:
 	friend class StyleResolver;
 

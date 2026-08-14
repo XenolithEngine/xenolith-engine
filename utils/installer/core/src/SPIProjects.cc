@@ -29,8 +29,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 ProjectRegistry ProjectRegistry::load(StringView path) {
 	ProjectRegistry st;
-	auto v = data::readFile<mem_std::Interface>(FileInfo(path));
-	auto arr = v.getValue("projects");
+	// const on purpose: the NON-const getValue() asserts when the key is missing (it would have to
+	// return the shared null sentinel, which is read-only), and a registry that has never been
+	// written is exactly that case.
+	const auto v = data::readFile<mem_std::Interface>(FileInfo(path));
+	const auto &arr = v.getValue("projects");
 	if (!arr.isArray()) {
 		return st;
 	}

@@ -33,6 +33,7 @@
 #include "render/DamageLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
+#include "layout/TableLayout.h"
 #include "app/GeneralLayout.h"
 #include "css/HoverLayout.h"
 #include "layout/CssFlowLayout.h"
@@ -143,6 +144,13 @@ static const TestInfo s_layoutTests[] = {
 		StringView("The same boxes placed by both LayoutSystem backends; the control bar cycles "
 				   "the container parameters, Mode switches flex and grid."),
 		TestRegistry_make<FlexboxLayout>},
+
+	TestInfo{StringView("table"), StringView("XL_TABLE_TEST"),
+		StringView("Table placement: shared columns, spans, collapsed borders"),
+		StringView("Four rows over one column template, each row a node of its own. D spans two "
+				   "columns, F spans two rows and row 3 skips the column it still owns. The "
+				   "control bar cycles the template, table-layout and border-collapse."),
+		TestRegistry_make<TableLayout>},
 
 	TestInfo{StringView("css-flow"), StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
 		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "

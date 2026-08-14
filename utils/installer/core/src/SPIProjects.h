@@ -58,10 +58,6 @@ SP_PUBLIC Vector<String> listInstalledTargets(const Layout &layout);
 // Default parent for new projects: $HOME/Projects (created on demand).
 SP_PUBLIC String defaultProjectsLocation();
 
-// Native OS dialogs and the file manager deliberately do NOT live here: a picker blocks for as
-// long as the user looks at it, which this synchronous core has no way to express. They are in
-// src/controller/InstallerNativeDialogs.h, spawned on the app looper.
-
 } // namespace stappler::xenolith::installer
 
 #endif // UTILS_INSTALLER_CORE_SRC_SPIPROJECTS_H_

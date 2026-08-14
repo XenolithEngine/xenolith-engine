@@ -33,6 +33,11 @@ DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
 	cfg.window->flags = sprt::window::WindowCreationFlags::Regular
 			| sprt::window::WindowCreationFlags::UserSpaceDecorations
 			| sprt::window::WindowCreationFlags::PreferServerSideCursors;
+
+	// design.md: the main window may not go below 1024x768. `rect` already defaults to that size;
+	// this is the floor the backend clamps to and forwards to the window manager, so the layout
+	// below never has to cope with a width the tree pane and a table cannot share.
+	cfg.window->minExtent = Extent2(1'024, 768);
 });
 
 } // namespace stappler::xenolith::installer

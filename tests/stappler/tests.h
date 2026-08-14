@@ -69,6 +69,7 @@ void performGlyphTests();
 void performPugTests();
 void performCssTests();
 void performFlexboxGridCssTests();
+void performTableCssTests();
 void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();

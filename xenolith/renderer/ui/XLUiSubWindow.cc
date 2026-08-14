@@ -188,8 +188,8 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 	// covers the parent's content and swallows pointer and key events before they reach it.
 	//
 	// This is a different mechanism from the native path with the same observable behaviour, and
-	// it is the only one available on Android, wasm and headless. Note WindowState::Enabled is NOT
-	// cleared here — there is no OS window to clear it on.
+	// it is the only one available on Android and wasm. Note WindowState::Enabled is NOT cleared
+	// here — there is no OS window to clear it on.
 	if (config.type == WindowType::Dialog
 			&& hasFlag(config.flags, WindowCreationFlags::Modal)) {
 		auto backdrop = Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.32f));

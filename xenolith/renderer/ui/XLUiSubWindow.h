@@ -44,8 +44,12 @@ namespace ui {
 //
 // It materializes as a native subwindow where the platform advertises
 // WindowCapabilities::Subwindows, and as an in-scene overlay on the parent's SceneContent2d where
-// it does not (Android, wasm, headless, direct output). Both paths honour the same placement, the
-// same dismiss rules and the same close callback, so the caller never branches on the platform.
+// it does not (Android, wasm, direct output). Both paths honour the same placement, the same
+// dismiss rules and the same close callback, so the caller never branches on the platform.
+//
+// Headless is on the native side of that line: the pseudo-controller emulates the window manager
+// and gives each auxiliary window a pseudo-swapchain of its own, so a menu or a dialog is a real,
+// separately renderable window with no display in play.
 //
 // The returned object IS the handle — keep the Rc. There is no lookup by id anywhere: what the
 // surface should contain travels with the window request itself, as WindowSceneInfo.

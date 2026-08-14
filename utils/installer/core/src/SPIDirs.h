@@ -49,6 +49,7 @@ struct SP_PUBLIC Layout {
 
 	String getInstalledManifest() const; // <config>/installed.json
 	String getProjectsManifest() const; // <config>/projects.json
+	String getSettingsManifest() const; // <config>/settings.json
 	String getToolchainsDir() const; // <data>/toolchains
 	String getHostsDir() const; // <data>/toolchains/hosts
 	String getTargetsDir() const; // <data>/toolchains/targets

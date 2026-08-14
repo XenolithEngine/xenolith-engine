@@ -591,6 +591,25 @@ size_t FontFaceObject::getRequiredCharsCount() const {
 	return _required.size();
 }
 
+bool FontFaceObject::hasPendingChars() const {
+	sprt::unique_lock lock(_requiredMutex);
+	return _required.size() > _submittedChars;
+}
+
+void FontFaceObject::setCharsSubmitted(size_t count) {
+	sprt::unique_lock lock(_requiredMutex);
+	// Never move it backwards: two batches can be assembled from overlapping snapshots, and the
+	// later one to be recorded is not necessarily the larger.
+	if (count > _submittedChars) {
+		_submittedChars = count;
+	}
+}
+
+void FontFaceObject::resetCharsSubmitted() {
+	sprt::unique_lock lock(_requiredMutex);
+	_submittedChars = 0;
+}
+
 uint16_t FontFaceObject::getGlyphIndex(char32_t theChar) {
 	if (!_face) {
 		return 0;
