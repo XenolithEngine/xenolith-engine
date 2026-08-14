@@ -38,7 +38,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 //
 // Two protocols share the socket, chosen by the first line a client sends:
 //
-//  * legacy text: "scene\n" or "logs\n" -> text dump followed by EOF. One command per connection.
+//  * legacy text: "scene\n", "logs\n" or "fonts\n" -> text dump followed by EOF. One command per
+//    connection.
 //
 //  * framed session: "xenolith/1\n" (optionally "xenolith/1 json") -> the server answers
 //    "# xenolith/1 ok <enc>\n" and both sides switch to length-prefixed frames:
@@ -49,12 +50,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 //        response { "serial": u32, "status": "ok"|"error", "error": "...", "result": ... }
 //    Replies may arrive out of order - screenshots and scene commands complete asynchronously.
 //
-// Commands: `scene`, `logs`, `windows`, `commands`, `invoke`, `screenshot`, `input`, `text`,
-// `frame`, `window`, `quit`. `commands`/`invoke` expose whatever the running scene registered
-// through addCommand.
+// Commands: `scene`, `logs`, `fonts`, `windows`, `commands`, `invoke`, `screenshot`, `input`,
+// `text`, `frame`, `window`, `quit`. `commands`/`invoke` expose whatever the running scene
+// registered through addCommand.
 //
-// Every command except `logs` (a process-wide ring buffer) and `quit` (which shuts the process
-// down) acts on ONE window's scene, chosen by an optional `"window": "<id>"` argument and
+// Every command except `logs` (a process-wide ring buffer), `fonts` (the application's font
+// controller, shared by every window) and `quit` (which shuts the process down) acts on ONE
+// window's scene, chosen by an optional `"window": "<id>"` argument and
 // defaulting to the scene this system is attached to. `windows` lists the ids. That is what makes
 // an auxiliary window reachable: SceneContent attaches an inspector to every scene, but only the
 // first one to attach owns the socket - so a popup, a dialog or a second root window is inspected,
@@ -92,6 +94,14 @@ public:
 
 	// Walks the owner's subtree and writes the text dump; app thread only
 	void writeSceneDump(const Callback<void(StringView)> &) const;
+
+	// Every font set the application's FontController currently holds, with what each one costs:
+	// glyphs required from the atlas, cached shaping entries, kerning pairs, and how many nodes
+	// still hold the set (`users`: zero means the next update drops it). App thread only.
+	//
+	// { "controller": {...totals...}, "layouts": [ { ..., "faces": [...] } ] }
+	Value getFontInfo() const;
+	void writeFontDump(const Callback<void(StringView)> &) const;
 
 	// Register a command reachable through the `invoke` protocol command. Replaces an existing
 	// command with the same name. App thread only.

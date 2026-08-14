@@ -62,7 +62,8 @@ bool TableView::init(Source *source) {
 	_sourceListener = addSystem(Rc<DataListener<Source>>::create(
 			[this](SubscriptionFlags) { handleSourceDirty(); }, source));
 
-	makeDefaultCallbackSystem()->setVisitBeginCallback([this](CallbackSystem *, FrameInfo &) {
+	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
+			[this](CallbackSystem *, const ComponentMask &) {
 		if (_rebuildPending) {
 			_rebuildPending = false;
 			rebuildRows();
@@ -313,6 +314,9 @@ void TableView::requestRebuildNodes(bool force) {
 	// unforced one must still force, or the reuse pass would quietly ignore it.
 	_forceRebuild = _forceRebuild || force;
 	_rebuildPending = true;
+	// The components phase is opt-in per visit, so asking for the rebuild is also asking for the
+	// phase that performs it.
+	markComponentsDirty();
 }
 
 void TableView::handleSourceDirty() {
@@ -350,8 +354,8 @@ void TableView::resolveColumns() {
 	Vector<GridTrack> tracks;
 	tracks.resize(count);
 	for (uint32_t i = 0; i < count; ++i) {
-		tracks[i] = (info && i < info->columnTracks.size()) ? info->columnTracks[i]
-														   : _columns[i].track;
+		tracks[i] =
+				(info && i < info->columnTracks.size()) ? info->columnTracks[i] : _columns[i].track;
 	}
 
 	const bool collapse = info && info->borderCollapse == BorderCollapse::Collapse;
@@ -474,9 +478,11 @@ void TableView::requestRowData() {
 		}
 
 		Rc<TableView> self(this);
-		if (source->getSliceData([self, first, count](Map<SourceId, Value> &data) {
+		if (source->getSliceData(
+					[self, first, count](Map<SourceId, Value> &data) {
 			self->handleSliceData(first, count, data);
-		}, first, count, 0, false) == 0) {
+		}, first, count, 0, false)
+				== 0) {
 			// The source planned no request, so no callback is coming. Mark the range resolved
 			// rather than re-ask for it on every rebuild from now on.
 			for (size_t j = 0; j < count; ++j) { _rows[i + j].dataLoaded = true; }

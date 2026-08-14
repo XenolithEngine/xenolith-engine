@@ -5,8 +5,8 @@ Xenolith scene-graph inspector — MCP server.
 Talks to the running Xenolith app's inspector listener (served by XLSceneInspector
 through the dispatch::Looper socket API) over two protocols that share one socket:
 
-  * legacy one-shot text — send "scene\n" or "logs\n", read the text reply until
-    EOF. Used by `inspect_scene` and `get_logs`.
+  * legacy one-shot text — send "scene\n", "logs\n" or "fonts\n", read the text
+    reply until EOF. Used by `inspect_scene` and `get_logs`.
 
   * framed session — send "xenolith/1 json\n", read the "# xenolith/1 ok json"
     greeting, then exchange length-prefixed frames:
@@ -102,6 +102,33 @@ TOOLS = [
             "call returns the whole current buffer (capped at the last ~4096 lines)."
         ),
         "inputSchema": {"type": "object", "properties": {"timeout": TIMEOUT_PROP}},
+    },
+    {
+        "name": "list_fonts",
+        "description": (
+            "List the font sets the app currently holds and what each one costs: the layout key "
+            "(family.size.style.weight.stretch.grade.density), the faces opened for it, glyphs "
+            "required from the atlas, cached shaping entries and their memory, kerning pairs, and "
+            "`users` — how many nodes still hold the set. A set with users=0 is dropped by the next "
+            "update, so a font that appears here with no users was built and thrown away: that is "
+            "how a wrong density or a stray font-size in CSS shows up. Also reports the atlas size "
+            "and the glyph-upload generations, plus the eviction policy: `pressure` (atlas size "
+            "against its budget, and live sets against their cap) is compared with `threshold` to "
+            "decide whether unused sets are dropped at all, and `occupancy` is how much of the "
+            "atlas image the glyphs cover — a packer diagnostic, not the gate. "
+            "json=true returns the same data as structured JSON."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "json": {
+                    "type": "boolean",
+                    "description": "Return structured JSON instead of the text report.",
+                },
+                "window": WINDOW_PROP,
+                "timeout": TIMEOUT_PROP,
+            },
+        },
     },
     {
         "name": "screenshot",
@@ -402,6 +429,16 @@ def run_framed(name: str, args: dict, timeout: float) -> str:
                              f"{w['width']}x{w['height']} @{w['density']} "
                              f"\"{w.get('title', '')}\"{mark}")
             return "\n".join(lines)
+
+        if name == "list_fonts":
+            as_json = bool(args.get("json", False))
+            response = session.call("fonts", text=not as_json, **where)
+            check(response)
+            info = response["result"]
+            if as_json:
+                info.pop("text", None)
+                return json.dumps(info, indent=2)
+            return info.get("text") or "(no fonts loaded)"
 
         if name == "screenshot":
             path = args.get("path") or "/tmp/xenolith-screenshot.png"

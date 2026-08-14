@@ -217,6 +217,12 @@ protected:
 
 	virtual void handleSourceDirty();
 
+	// Mark every row's payload stale, so the next model pass re-asks the Source for it. What a
+	// changed Source invalidates is the DATA as much as the row count: the payloads are carried
+	// across a rebuild by (source, index), and an index no longer means the same item once the
+	// category's contents have changed.
+	void dropLoadedData();
+
 	// Re-derive the model, ask for what it still needs, and schedule the nodes. The data request
 	// runs BEFORE any node exists, so a source that answers inline has every payload in place by
 	// the time the first row is built and no placeholder frame is ever drawn.

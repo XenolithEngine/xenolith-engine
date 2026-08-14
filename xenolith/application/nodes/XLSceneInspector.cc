@@ -29,6 +29,12 @@
 #include "XLCoreRenderSession.h"
 #include "XLTextInputManager.h"
 
+#if MODULE_XENOLITH_FONT
+// Downstream module: reached only through the font::FontController application extension, for the
+// `fonts` command.
+#include "XLFontController.h"
+#endif
+
 #include "SPLog.h"
 #include "SPData.h"
 #include "SPBitmap.h"
@@ -369,6 +375,160 @@ void SceneInspector::writeSceneDump(const Callback<void(StringView)> &out) const
 	writeNode(out, _owner, 0);
 }
 
+#if MODULE_XENOLITH_FONT
+// The controller is an extension of the APPLICATION, not of the window, so every window's inspector
+// reports the same one - a font set is shared by every scene the app thread drives.
+static font::FontController *getFontController(const Node *owner) {
+	auto director = owner ? owner->getDirector() : nullptr;
+	auto app = director ? director->getApplication() : nullptr;
+	return app ? app->getExtension<font::FontController>() : nullptr;
+}
+#endif
+
+Value SceneInspector::getFontInfo() const {
+#if MODULE_XENOLITH_FONT
+	auto controller = getFontController(_owner);
+	if (!controller) {
+		return Value();
+	}
+
+	auto info = controller->getControllerInfo();
+
+	Value totals;
+	totals.setString(info.name, "name");
+	totals.setBool(info.loaded, "loaded");
+	totals.setBool(info.dirty, "dirty");
+	totals.setInteger(int64_t(info.layouts), "layouts");
+	totals.setInteger(int64_t(info.faces), "faces");
+	totals.setInteger(int64_t(info.families), "families");
+	totals.setInteger(int64_t(info.aliases), "aliases");
+	totals.setInteger(int64_t(info.chars), "chars");
+	totals.setInteger(int64_t(info.charsMemory), "charsMemory");
+	totals.setInteger(int64_t(info.kerningPairs), "kerningPairs");
+	totals.setInteger(int64_t(info.requiredChars), "requiredChars");
+	totals.setInteger(int64_t(info.glyphGeneration), "glyphGeneration");
+	totals.setInteger(int64_t(info.submittedGeneration), "submittedGeneration");
+	totals.setInteger(int64_t(info.uploadedGeneration), "uploadedGeneration");
+	totals.setInteger(int64_t(info.uploadsInFlight), "uploadsInFlight");
+	totals.setInteger(int64_t(info.atlasWidth), "atlasWidth");
+	totals.setInteger(int64_t(info.atlasHeight), "atlasHeight");
+	totals.setInteger(int64_t(info.atlasBytes), "atlasBytes");
+	totals.setInteger(int64_t(info.atlasBudget), "atlasBudget");
+	totals.setDouble(double(info.cachePressure), "cachePressure");
+	totals.setDouble(double(info.atlasOccupancy), "atlasOccupancy");
+	totals.setDouble(double(info.evictionThreshold), "evictionThreshold");
+	totals.setBool(info.evictAlways, "evictAlways");
+
+	Value layouts(Value::Type::ARRAY);
+	controller->enumerateLayouts([&](const font::FontController::LayoutInfo &layout) {
+		Value entry;
+		entry.setString(layout.name, "name");
+		entry.setString(layout.family, "family");
+		// The size is already multiplied by the density - that is what the layout key holds and
+		// what the faces were opened at.
+		entry.setDouble(double(layout.spec.fontSize.val()), "size");
+		entry.setDouble(double(layout.spec.density), "density");
+		entry.setInteger(int64_t(layout.spec.fontStyle.get()), "style");
+		entry.setInteger(int64_t(layout.spec.fontWeight.get()), "weight");
+		entry.setInteger(int64_t(layout.spec.fontStretch.get()), "stretch");
+		entry.setInteger(int64_t(layout.spec.fontGrade.get()), "grade");
+		entry.setInteger(int64_t(layout.metrics.height), "height");
+		entry.setInteger(int64_t(layout.metrics.ascender), "ascender");
+		entry.setInteger(int64_t(layout.metrics.descender), "descender");
+		entry.setInteger(int64_t(layout.users), "users");
+		entry.setBool(layout.persistent, "persistent");
+		entry.setInteger(int64_t(layout.idleTime), "idleTime");
+
+		size_t chars = 0, charsMemory = 0, kerningPairs = 0, requiredChars = 0;
+		Value faces(Value::Type::ARRAY);
+		for (auto &face : layout.faces) {
+			chars += face.usage.chars;
+			charsMemory += face.usage.charsMemory;
+			kerningPairs += face.usage.kerningPairs;
+			requiredChars += face.usage.requiredChars;
+
+			Value f;
+			f.setString(face.name, "name");
+			f.setString(face.source, "source");
+			f.setInteger(int64_t(face.id), "id");
+			f.setInteger(int64_t(face.plane), "plane");
+			f.setInteger(int64_t(face.usage.chars), "chars");
+			f.setInteger(int64_t(face.usage.charsMemory), "charsMemory");
+			f.setInteger(int64_t(face.usage.kerningPairs), "kerningPairs");
+			f.setInteger(int64_t(face.usage.requiredChars), "requiredChars");
+			f.setInteger(int64_t(face.usage.submittedChars), "submittedChars");
+			f.setBool(face.usage.pendingChars, "pending");
+			faces.addValue(sp::move(f));
+		}
+
+		entry.setInteger(int64_t(chars), "chars");
+		entry.setInteger(int64_t(charsMemory), "charsMemory");
+		entry.setInteger(int64_t(kerningPairs), "kerningPairs");
+		entry.setInteger(int64_t(requiredChars), "requiredChars");
+		entry.setValue(sp::move(faces), "faces");
+		layouts.addValue(sp::move(entry));
+	});
+
+	Value ret;
+	ret.setValue(sp::move(totals), "controller");
+	ret.setValue(sp::move(layouts), "layouts");
+	return ret;
+#else
+	return Value();
+#endif
+}
+
+void SceneInspector::writeFontDump(const Callback<void(StringView)> &out) const {
+#if MODULE_XENOLITH_FONT
+	auto controller = getFontController(_owner);
+	if (!controller) {
+		out << "# no font controller\n";
+		return;
+	}
+
+	auto info = controller->getControllerInfo();
+	out << "controller '" << info.name << "' " << (info.loaded ? "loaded" : "NOT LOADED")
+		<< (info.dirty ? " dirty" : "") << "\n";
+	out << "  layouts=" << info.layouts << " faces=" << info.faces << " families=" << info.families
+		<< " aliases=" << info.aliases << "\n";
+	out << "  glyphs=" << info.requiredChars << " shaped=" << info.chars
+		<< " kerning=" << info.kerningPairs << " memory=" << info.charsMemory << "b\n";
+	out << "  atlas=" << info.atlasWidth << "x" << info.atlasHeight
+		<< " generation=" << info.glyphGeneration << " submitted=" << info.submittedGeneration
+		<< " uploaded=" << info.uploadedGeneration << " inFlight=" << info.uploadsInFlight << "\n";
+	out << "  cache: pressure=" << info.cachePressure << " threshold=" << info.evictionThreshold
+		<< (info.evictAlways ? " EVICT-ALWAYS" : "") << " atlas=" << info.atlasBytes << "b/"
+		<< info.atlasBudget << "b occupancy=" << info.atlasOccupancy << "\n";
+
+	controller->enumerateLayouts([&](const font::FontController::LayoutInfo &layout) {
+		size_t chars = 0, kerningPairs = 0, requiredChars = 0, charsMemory = 0;
+		for (auto &face : layout.faces) {
+			chars += face.usage.chars;
+			kerningPairs += face.usage.kerningPairs;
+			requiredChars += face.usage.requiredChars;
+			charsMemory += face.usage.charsMemory;
+		}
+
+		out << "\n"
+			<< layout.name << "  family=" << layout.family << " size=" << layout.spec.fontSize.val()
+			<< " density=" << layout.spec.density << " weight=" << layout.spec.fontWeight.get()
+			<< " users=" << layout.users << (layout.persistent ? " persistent" : "")
+			<< " idle=" << layout.idleTime << "us\n";
+		out << "  glyphs=" << requiredChars << " shaped=" << chars << " kerning=" << kerningPairs
+			<< " memory=" << charsMemory << "b height=" << layout.metrics.height << "\n";
+
+		for (auto &face : layout.faces) {
+			out << "    face " << face.name << " id=" << face.id << " plane=" << face.plane
+				<< " source=" << face.source << " glyphs=" << face.usage.requiredChars
+				<< " shaped=" << face.usage.chars << " kerning=" << face.usage.kerningPairs
+				<< (face.usage.pendingChars ? " PENDING" : "") << "\n";
+		}
+	});
+#else
+	out << "# built without the font module\n";
+#endif
+}
+
 void SceneInspector::addCommand(StringView name, StringView description,
 		CommandCallback &&callback) {
 	if (name.empty() || !callback) {
@@ -609,9 +769,12 @@ Status SceneInspector::readHandshake(NotNull<Session> session, BytesView data) {
 				writeSceneDump([&](StringView str) { reply << str; });
 			} else if (line == "logs") {
 				writeLogDump([&](StringView str) { reply << str; });
+			} else if (line == "fonts") {
+				reply << "# xenolith fonts\n";
+				writeFontDump([&](StringView str) { reply << str; });
 			} else {
-				reply << "# unknown command; expected 'scene', 'logs' or '" << PROTOCOL_HANDSHAKE
-					  << "'\n";
+				reply << "# unknown command; expected 'scene', 'logs', 'fonts' or '"
+					  << PROTOCOL_HANDSHAKE << "'\n";
 			}
 
 			auto text = reply.weak();
@@ -727,6 +890,18 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "logs") {
 		sendResponse(session, serial, getLogDump(uint64_t(req.getInteger("since", 0))));
+	} else if (cmd == "fonts") {
+		auto fonts = target->getFontInfo();
+		if (!fonts) {
+			sendError(session, serial, "no font controller");
+			return;
+		}
+		if (req.getBool("text")) {
+			StringStream dump;
+			target->writeFontDump([&](StringView str) { dump << str; });
+			fonts.setString(dump.str(), "text");
+		}
+		sendResponse(session, serial, sp::move(fonts));
 	} else if (cmd == "windows") {
 		sendResponse(session, serial, getWindowList());
 	} else if (cmd == "commands") {

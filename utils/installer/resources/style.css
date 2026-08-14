@@ -69,9 +69,13 @@ button:hover {
 	background-color: var(--control);
 }
 
+/* The base size every variant below re-states, and it has to be one they agree with: a button gets
+   its variant class from code, AFTER the node is built, so between the two style passes the label
+   is laid out at whatever this rule says. At 28px that meant shaping every button label twice and
+   building a whole font set for the first size that nothing ever drew. */
 button > label {
 	color: var(--text);
-	font-size: 28px;
+	font-size: 14px;
 }
 
 button > icon {

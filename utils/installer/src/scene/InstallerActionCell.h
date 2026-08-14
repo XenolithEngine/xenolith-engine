@@ -24,6 +24,7 @@
 #define UTILS_INSTALLER_SRC_SCENE_INSTALLERACTIONCELL_H_
 
 #include "XLUiPanel.h"
+#include "XLUiBadge.h"
 #include "XLUiButton.h"
 #include "XLUiCheckbox.h"
 #include "XLUiProgressBar.h"
@@ -32,6 +33,34 @@
 #include "InstallerNavPane.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
+
+/* One row's status column: a badge that keeps up with its row.
+
+The badge is INSIDE a cell rather than being one: a cell is stretched to its column, and a badge
+stretched to 160px stops reading as a pill and starts reading as a filled band.
+
+It re-reads the status from the controller instead of showing the one in the Value it was built
+from, for the same reason the action cell does: a status change no longer dirties the row's Source,
+so the row keeps the node it has and repaints it. The Value is the row's IDENTITY here, not its
+state. */
+class InstallerStatusCell : public ui::Panel {
+public:
+	virtual ~InstallerStatusCell();
+
+	virtual bool init(PageId, const Value &row);
+	virtual void handleEnter(Scene *) override;
+
+protected:
+	using ui::Panel::init;
+
+	void refresh();
+
+	PageId _page = PageId::Hosts;
+	Kind _kind = Kind::Target;
+	String _id;
+
+	ui::Badge *_badge = nullptr;
+};
 
 /* The contents of a table row's "actions" column.
 
@@ -64,7 +93,9 @@ protected:
 	Kind _kind = Kind::Target;
 	String _id;
 	String _key;
-	RowStatus _status = RowStatus::NotInstalled;
+	// The last status this cell drew. Re-read from the controller on every refresh, and kept only so
+	// that a repaint can tell whether anything actually moved.
+	RowStatus _status = RowStatus::Checking;
 
 	ui::Button *_action = nullptr;
 	ui::ProgressBar *_progress = nullptr;

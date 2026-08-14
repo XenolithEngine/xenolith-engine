@@ -73,8 +73,9 @@ void InstallerNavRow::handleContentSizeDirty() {
 	if (_fill) {
 		_fill->setAnchorPoint(Anchor::BottomLeft);
 		_fill->setPosition(Vec2::ZERO);
-		_fill->setContentSize(Size2(_contentSize.width * (sprt::isnan(_progress) ? 0.0f : _progress),
-				_contentSize.height));
+		_fill->setContentSize(
+				Size2(_contentSize.width * (sprt::isnan(_progress) ? 0.0f : _progress),
+						_contentSize.height));
 	}
 }
 
@@ -101,11 +102,15 @@ bool InstallerNavPane::init() {
 	_tree->setName("nav-tree");
 	// The root IS a row: "Xenolith" opens the welcome page (design.md).
 	_tree->setRootVisible(true);
-	_tree->setRowCallback([this](ui::TreeView::RowBuilder &builder) { buildRow(builder); });
-	_tree->setActivateCallback(
-			[this](size_t index, const ui::TreeView::Row &row) { handleRowActivated(index, row); });
-	_tree->setSelectCallback(
-			[this](size_t index, const ui::TreeView::Row &row) { handleRowActivated(index, row); });
+	_tree->setRowCallback([this](ui::TreeView::RowBuilder &builder) {
+		buildRow(builder); //
+	});
+	_tree->setActivateCallback([this](size_t index, const ui::TreeView::Row &row) {
+		handleRowActivated(index, row); //
+	});
+	_tree->setSelectCallback([this](size_t index, const ui::TreeView::Row &row) {
+		handleRowActivated(index, row); //
+	});
 
 	return true;
 }
@@ -314,9 +319,8 @@ void InstallerNavPane::applyJobProgress(JobId id) {
 		it->second->setProgress(nan());
 		return;
 	}
-	it->second->setProgress(job->total > 0
-					? static_cast<float>(double(job->bytes) / double(job->total))
-					: nan());
+	it->second->setProgress(
+			job->total > 0 ? static_cast<float>(double(job->bytes) / double(job->total)) : nan());
 }
 
 void InstallerNavPane::selectPage(PageId page) {

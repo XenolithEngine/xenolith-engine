@@ -53,15 +53,18 @@ void showDoctorDialog(NotNull<AppWindow> parent, AppController *controller) {
 	if (auto *cat = controller->getCatalogue()) {
 		size_t installed = 0;
 		size_t updates = 0;
+		size_t checking = 0;
 		for (const auto &row : cat->rows) {
 			if (row.status == RowStatus::Installed) {
 				++installed;
 			} else if (row.status == RowStatus::UpdateAvailable) {
 				++updates;
+			} else if (row.status == RowStatus::Checking) {
+				++checking;
 			}
 		}
 		body += toString("catalogue: ", cat->release, " rows=", cat->rows.size(),
-				" installed=", installed, " updates=", updates, "\n");
+				" installed=", installed, " updates=", updates, " unchecked=", checking, "\n");
 	} else {
 		body += "catalogue: not loaded\n";
 	}

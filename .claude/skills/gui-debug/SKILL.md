@@ -5,7 +5,8 @@ description: >-
   (`--headless`, no window system), so a GUI can be inspected, screenshotted and
   driven with no display, no compositor and no mouse. MCP tools: `inspect_scene`
   (the node tree), `get_logs` (the log ring buffer), `screenshot`,
-  `list_commands`/`invoke_command` (scene-registered actions), `send_input`,
+  `list_commands`/`invoke_command` (scene-registered actions), `list_fonts` (loaded
+  font sets and what they cost), `send_input`,
   `send_text`, `step_frame`, `window_control`, `list_windows`, `quit_app` — every one
   of them addressable per window, so menus, dialogs and second windows are driven
   the same way. Use when a Xenolith GUI app
@@ -65,6 +66,7 @@ set, and always in headless mode — so a release build works too.
 |---|---|
 | `inspect_scene` | live scene graph as an indented text tree (one node per line) |
 | `get_logs` | application log ring buffer (last ~4096 entries, `[LEVEL][tag] message`) |
+| `list_fonts` | font sets loaded right now: glyphs, cached shaping data, memory, who holds them |
 | `list_windows` | every window that has a scene: id, type, parent, size |
 | `step_frame` | render N frames — headless draws nothing until you ask |
 | `screenshot` | write the current frame to a PNG |
@@ -75,7 +77,8 @@ set, and always in headless mode — so a release build works too.
 | `window_control` | read constraints, resize, close |
 | `quit_app` | shut the process down |
 
-Every tool except `get_logs` (a process-wide buffer) and `quit_app` (the whole
+Every tool except `get_logs` (a process-wide buffer), `list_fonts` (the
+application's font controller, shared by every window) and `quit_app` (the whole
 process) takes an optional **`window`** argument — an id from `list_windows`.
 Omit it for the main window.
 
@@ -90,6 +93,23 @@ Omit it for the main window.
   hook, then `get_logs`), and to diagnose crashes/misbehavior without a debugger.
 - **`screenshot`** — "what does it actually look like", when the tree reads fine
   but the render does not. **Always `step_frame` first** (see below).
+- **`list_fonts`** — text that is the wrong size, a layout that stalls on the atlas,
+  or a suspicion that font sets are being built and thrown away. Each entry is one
+  `family.size.style.weight.stretch.grade.density` set, and `users` is what to read
+  first: a set with **users=0** is dropped by the next update, so it was built for
+  nothing — a wrong density, or a CSS rule the variant class immediately overrides.
+  The size shown is already multiplied by the density, so a set at density 1 in a
+  HiDPI app is a bug by itself. `glyphs` is what the atlas holds, `shaped` the
+  metrics cached by measuring (always the larger), and `inFlight`/`generation`
+  say whether frames are still gated on an upload.
+  The `cache:` line is the eviction policy: an unused set is kept until `pressure`
+  (atlas size against its budget, and live sets against their cap) reaches
+  `threshold`, because dropping one costs a full atlas rebuild. `occupancy` is how
+  much of the atlas image the glyphs cover — read it to judge the packer, never as
+  the pressure: the packer re-sizes the atlas to a tight fit on every rebuild, so
+  occupancy jumps back to ~0.5 after each doubling and says nothing about how much
+  is cached. `XL_FONT_EVICT_ALWAYS=1` restores the old drop-everything-every-tick
+  behaviour, `XL_FONT_EVICT_THRESHOLD=<float>` moves the gate.
 - **`list_commands` / `invoke_command`** — drive app-specific actions the scene
   chose to expose, without synthesizing input.
 - **`list_windows`** — after anything that may have opened a menu, a dialog, a
@@ -309,7 +329,8 @@ differs between any two runs.
 ## Transport (only if you are writing a client)
 
 One listener address, two protocols sharing it. `inspect_scene` and `get_logs` use
-the original one-shot text form (send `scene\n` / `logs\n`, read until EOF).
+the original one-shot text form (send `scene\n` / `logs\n` / `fonts\n`, read until
+EOF).
 Everything else opens a framed session (`xenolith/1 json\n`, then
 `[u32 LE size][JSON payload]` request/response frames correlated by `serial`),
 which is what makes binary screenshots and long-lived sessions work. **The
@@ -317,8 +338,9 @@ handshake is answered with a greeting LINE — `# xenolith/1 ok json\n` — befo
 any frame; read it to the newline first.** A client that starts framing straight
 away consumes those bytes as a length and then blocks forever, which looks
 exactly like "the app executes commands but never answers". The request key is
-`cmd` (`scene`, `logs`, `commands`, `invoke`, `screenshot`, `input`, `frame`,
-`window`, `quit`), not `command`. Binary
+`cmd` (`scene`, `logs`, `fonts`, `commands`, `invoke`, `screenshot`, `input`,
+`frame`, `window`, `quit`), not `command`. `fonts` answers with the structured
+report, plus the text one when `"text": true`. Binary
 payloads arrive as `"BASE64:<base64url, unpadded>"`. Address format:
 `unix:/path`, `unix:@abstract`, `host:port` or `:port`. Per-platform defaults:
 

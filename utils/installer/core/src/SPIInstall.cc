@@ -210,6 +210,13 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 
 	auto state = InstalledState::load(layout.getInstalledManifest());
 
+	// The release the files ACTUALLY came from - `base` was built from it a few lines up - and not
+	// the compiled-in default. Recording the default is what made every freshly installed component
+	// compare unequal to the active release for the rest of its life: an install from the newest
+	// release was written down as an install from getDefaultRelease(), so the actuality check read
+	// it back as stale and every installed tool reported "update available" forever.
+	const auto installedRelease = release.empty() ? toString(getDefaultRelease()) : toString(release);
+
 	for (auto kind : kinds) {
 		const CatalogueComponent *comp = nullptr;
 		for (const auto &c : comps) {
@@ -303,7 +310,7 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 		ic.triple = comp->triple;
 		ic.variant = comp->variant;
 		ic.kind = kind;
-		ic.release = toString(getDefaultRelease());
+		ic.release = installedRelease;
 		ic.sha256 = out.sha256;
 		ic.installedAt = Time::now().toIso8601<String>(0);
 		ic.path = finalDir;
@@ -392,10 +399,21 @@ bool relinkAllEngines(const Layout &layout) {
 
 bool removeComponent(const Layout &layout, Kind kind, StringView id) {
 	auto dir = getComponentDir(layout, kind, id);
+	bool ok = true;
 	if (isDirectory(dir)) {
-		return filesystem::remove(FileInfo(StringView(dir)), true);
+		ok = filesystem::remove(FileInfo(StringView(dir)), true);
 	}
-	return true;
+
+	/* The registry, not the directory, is what "installed" MEANS to everything else: the navigation
+	tree lists it, a catalogue row takes its status from it, `xenolith-cli list` prints it. Removing
+	the files and leaving the entry is what kept a deleted toolchain listed as installed - and, once
+	the actuality check started stat()ing the store, turned it into a permanent "installed, files
+	missing" that nothing could clear. */
+	auto state = InstalledState::load(layout.getInstalledManifest());
+	if (state.remove(id, kind) && !state.save(layout.getInstalledManifest())) {
+		return false;
+	}
+	return ok;
 }
 
 } // namespace stappler::xenolith::installer
