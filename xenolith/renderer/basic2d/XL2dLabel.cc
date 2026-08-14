@@ -788,9 +788,17 @@ uint16_t Label::getFontHeight() const {
 	if (!_source) {
 		return 0;
 	}
-	// reads the stored explicit style: an empty label's height does not track
-	// inherited font components
-	auto l = _source->getLayout(_style.font);
+
+	EffectiveStyle eff;
+	makeEffectiveStyle(eff);
+	if (!eff.fontFamilyStorage.empty()) {
+		// fontFamily is a non-owning view: re-point it at the owning storage only after the
+		// EffectiveStyle reached its final address (as updateFormatSpec does)
+		eff.style.font.fontFamily = eff.fontFamilyStorage;
+	}
+	eff.style.font.density = _labelDensity;
+
+	auto l = _source->getLayout(eff.style.font);
 	if (l.get()) {
 		return l->getFontHeight();
 	}

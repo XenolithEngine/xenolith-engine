@@ -57,7 +57,7 @@ public:
 	the row materialization its data::Source listener asks for never happens, and a table whose
 	model changed while it was off screen would come back still showing the old one - or, at
 	startup, still showing nothing. Re-reading here costs nothing when nothing changed. */
-	virtual void handleShown() { }
+	virtual void handleShown();
 
 protected:
 	using ui::Panel::init;
@@ -100,6 +100,8 @@ protected:
 
 	void buildCell(ui::TableView::CellBuilder &);
 	void reload();
+	// Ask the controller to re-verify what is installed. Asynchronous: the page never waits for it.
+	void checkTools();
 
 	PageId _page = PageId::Hosts;
 	ui::TableView *_table = nullptr;
@@ -113,7 +115,10 @@ public:
 
 	virtual bool init() override;
 	virtual void handleEnter(Scene *) override;
-	virtual void handleShown() override { refresh(); }
+	virtual void handleShown() override {
+		refresh();
+		InstallerPage::handleShown();
+	}
 
 protected:
 	using InstallerPage::init;

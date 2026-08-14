@@ -313,6 +313,30 @@ void InstallerSceneContent::handleEnter(Scene *scene) {
 		});
 	});
 
+	// The other half of `install`, and needed for the same reason plus one of its own: removal is
+	// the path that changes which rows the navigation tree HAS, and reaching it through the UI means
+	// hitting a row button and then a confirmation dialog.
+	inspector::addCommand(this, "uninstall", "Remove a component: {kind: host|target, id: <triple>}",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		if (!_controller) {
+			Value r;
+			r.setString("not attached", "error");
+			done(sp::move(r));
+			return;
+		}
+		const auto kind = args.getString("kind") == "host" ? Kind::Host : Kind::Target;
+		const auto id = args.getString("id");
+		_controller->uninstallComponent(kind, id,
+				[done = sp::move(done)](bool ok, String err) mutable {
+			Value r;
+			r.setBool(ok, "ok");
+			if (!err.empty()) {
+				r.setString(err, "error");
+			}
+			done(sp::move(r));
+		});
+	});
+
 	// The settings form lives in a SubWindow, which is a separate scene where there is no
 	// Subwindows capability - so it is reachable neither by hit-testing the frame button nor by
 	// select-page. This is the only way in from outside.

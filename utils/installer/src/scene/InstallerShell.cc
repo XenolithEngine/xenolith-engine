@@ -82,10 +82,16 @@ bool InstallerShell::init() {
 void InstallerShell::handleEnter(Scene *scene) {
 	basic2d::SceneLayout2d::handleEnter(scene);
 
-	// Pages stay LAZY. Building one is a few hundred microseconds (getPage logs it), so
-	// pre-building them buys nothing the eye can see - what the delay on opening a page actually
-	// was is the data, and that is now fetched from AppController::attach.
 	showPage(PageId::Welcome);
+
+	/* Pages stay LAZY, and pre-building them would not help.
+
+	Building one is a few hundred microseconds (getPage logs it); what costs is the first LAYOUT of a
+	page full of text - the column and the table measured, every label shaped, the glyphs they need
+	rasterized and uploaded. That cannot be moved off the click by constructing the page earlier: a
+	hidden node is not visited, so it is never laid out and never sized (its content size stays 0x0,
+	which the inspector will show). Building the pages up front measurably changes nothing, so they
+	are built where they are needed. */
 }
 
 AppWindow *InstallerShell::appWindow() const {

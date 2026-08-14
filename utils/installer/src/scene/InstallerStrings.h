@@ -73,6 +73,7 @@ StringView groupEngine();
 StringView groupHosts();
 StringView groupTargets();
 StringView engineNotReady();
+StringView statusChecking();
 StringView statusInstalled();
 StringView statusNotInstalled();
 StringView statusUpdateAvailable();

@@ -610,6 +610,32 @@ void FontFaceObject::resetCharsSubmitted() {
 	_submittedChars = 0;
 }
 
+auto FontFaceObject::getUsage() const -> Usage {
+	Usage ret;
+
+	{
+		sprt::shared_lock lock(_charsMutex);
+		// A cell is zeroed when it is allocated and charID 0 is never shaped, so a non-zero charID
+		// is exactly an occupied slot.
+		_chars.foreach ([&](const CharShape16 &c) {
+			if (c.charID) {
+				++ret.chars;
+			}
+		});
+		ret.charsMemory = _chars.getMemoryUsage();
+		ret.kerningPairs = _kerning.size();
+	}
+
+	{
+		sprt::unique_lock lock(_requiredMutex);
+		ret.requiredChars = _required.size();
+		ret.submittedChars = _submittedChars;
+		ret.pendingChars = _required.size() > _submittedChars;
+	}
+
+	return ret;
+}
+
 uint16_t FontFaceObject::getGlyphIndex(char32_t theChar) {
 	if (!_face) {
 		return 0;

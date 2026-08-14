@@ -112,6 +112,7 @@ StringView groupTargets() {
 StringView engineNotReady() {
 	return tr("Engine not prepared — tap + to clone", "Движок не готов — нажмите +", "引擎未准备");
 }
+StringView statusChecking() { return tr("Checking…", "Проверка…", "检查中…"); }
 StringView statusInstalled() { return tr("Installed", "Установлен", "已安装"); }
 StringView statusNotInstalled() { return tr("Not Installed", "Не установлен", "未安装"); }
 StringView statusUpdateAvailable() { return tr("Update available", "Есть обновление", "有更新"); }

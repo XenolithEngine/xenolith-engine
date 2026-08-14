@@ -31,7 +31,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 // --- catalogue view models --------------------------------------------------
 
+/* What a row says about itself.
+
+`Checking` is the state every row STARTS in, and it is not cosmetic: whether a component is
+installed, and whether what is installed is still the current release, is answered by reading
+installed.json and stat()ing the store — file I/O that may not run on the app thread while a page is
+being built. Until AppController::checkComponents() has answered for a row, the row does not claim
+anything and offers no action; see InstallerActionCell::refresh(). */
 enum class RowStatus {
+	Checking,
 	NotInstalled,
 	Installed,
 	UpdateAvailable,
@@ -50,7 +58,9 @@ struct CatalogRow {
 	String triple; // triple without the +variant suffix
 	String variant; // variant after "+", empty if none
 	uint64_t size = 0;
-	RowStatus status = RowStatus::NotInstalled;
+	// Unchecked until checkComponents() says otherwise: a freshly listed catalogue knows what the
+	// mirror offers and nothing about this machine.
+	RowStatus status = RowStatus::Checking;
 	bool isNative = false;
 };
 

@@ -66,6 +66,66 @@ public:
 		Vector<Rc<FontFaceData>> data;
 	};
 
+	// One face of a loaded layout, as reported by enumerateLayouts.
+	struct FaceInfo {
+		StringView name;
+		StringView source; // FontFaceData the face was opened from
+		uint16_t id = 0;
+		uint16_t plane = 0;
+		FontFaceObject::Usage usage;
+	};
+
+	// One entry of _layouts: a FontFaceSet, which is what "a loaded font" means here - one family at
+	// one specialization (size, style, weight, stretch, grade AND density), holding the faces opened
+	// for it and everything they have cached.
+	struct LayoutInfo {
+		StringView name; // the layout key: family.size.style.weight.stretch.grade.density
+		StringView family;
+		FontSpecializationVector spec;
+		Metrics metrics;
+
+		// Holders besides _layouts itself. Zero means the next removeUnusedLayouts() drops this
+		// layout - which is exactly what a font set that is created and immediately abandoned (a
+		// stray density, a size no node keeps) looks like from the outside.
+		uint32_t users = 0;
+		bool persistent = false;
+		uint64_t idleTime = 0; // microseconds since the last getLayout() touch
+
+		SpanView<FaceInfo> faces;
+	};
+
+	// Controller-wide totals that go with the per-layout report.
+	struct ControllerInfo {
+		StringView name;
+		bool loaded = false;
+		bool dirty = false;
+		size_t layouts = 0;
+		size_t faces = 0;
+		size_t families = 0;
+		size_t aliases = 0;
+		size_t chars = 0; // cached shaping entries across every face
+		size_t charsMemory = 0;
+		size_t kerningPairs = 0;
+		size_t requiredChars = 0; // glyphs the atlas is asked to hold
+		uint64_t glyphGeneration = 0;
+		uint64_t submittedGeneration = 0;
+		uint64_t uploadedGeneration = 0;
+		uint32_t uploadsInFlight = 0;
+		uint32_t atlasWidth = 0;
+		uint32_t atlasHeight = 0;
+
+		// What the eviction policy sees. `cachePressure` is what is compared against
+		// `evictionThreshold`. `atlasOccupancy` is a diagnostic and NOT the gate - see
+		// config::FontCacheAtlasBudget for why a fill ratio cannot be one. Negative when there is no
+		// atlas image to measure.
+		uint64_t atlasBytes = 0;
+		uint64_t atlasBudget = 0;
+		float cachePressure = -1.0f;
+		float atlasOccupancy = -1.0f;
+		float evictionThreshold = 0.0f;
+		bool evictAlways = false;
+	};
+
 	class Builder {
 	public:
 		struct Data;
@@ -119,6 +179,10 @@ public:
 		Data *_data;
 	};
 
+	// Reads the eviction debug knobs out of the environment; everything else is set up by the leaf's
+	// initialize().
+	FontController();
+
 	virtual ~FontController() = default;
 
 	// Re-apply an extend() Builder against this controller. The base assembles the Builder; the leaf
@@ -170,6 +234,40 @@ public:
 
 	uint32_t getFamilyIndex(StringView) const;
 	StringView getFamilyName(uint32_t idx) const;
+
+	// What is loaded right now - the inspector's `fonts` command, and the way to see a font set that
+	// is built and dropped again every frame (users == 0 on a layout nothing keeps).
+	//
+	// Handed out through a callback rather than returned, because everything in LayoutInfo points
+	// into the live layout: it is valid for the duration of the call, under the shared lock, and no
+	// report can keep a layout alive - one extra reference would change what removeUnusedLayouts()
+	// drops, so a diagnostic would alter what it measures.
+	void enumerateLayouts(const Callback<void(const LayoutInfo &)> &) const;
+
+	// The totals for the same walk. Counts every cached entry, so it is a report, not a per-frame
+	// call.
+	ControllerInfo getControllerInfo() const;
+
+	// How full the glyph cache is, 0..1 (and past 1 when a budget is exceeded). This is what gates
+	// eviction: a font set nobody holds is kept until this crosses the threshold.
+	//
+	// Two contributors, whichever is higher. The atlas IMAGE, for a backend that has one - it grows
+	// with what is cached, so its size against config::FontCacheAtlasBudget is the real pressure
+	// (its fill RATIO is not; see that constant). And the number of live sets against
+	// config::FontCacheMaxLayouts, which is the only bound available to a controller with no atlas
+	// of its own - the software rasterizer, which gives every glyph its own texture, and a remote
+	// client, whose atlas lives on the server and is managed by the server's own controller.
+	virtual float getCachePressure() const;
+
+	// Debug: go back to dropping every unused font set on every update, the behaviour that predates
+	// the threshold. Seeded from XL_FONT_EVICT_ALWAYS.
+	void setEvictAlways(bool value) { _evictAlways.store(value); }
+	bool isEvictAlways() const { return _evictAlways.load(); }
+
+	// The threshold getCachePressure() is compared against. Defaults to
+	// config::FontCacheEvictionThreshold, overridable at runtime and from XL_FONT_EVICT_THRESHOLD.
+	void setEvictionThreshold(float value) { _evictionThreshold = value; }
+	float getEvictionThreshold() const { return _evictionThreshold; }
 
 	virtual void update(AppThread *, const UpdateTime &clock, bool) override;
 
@@ -231,8 +329,12 @@ protected:
 	bool _loaded = false;
 	String _name;
 	sprt::atomic<uint64_t> _clock;
-	TimeInterval _unusedInterval = 100_msec;
 	String _defaultFontFamily = "default";
+
+	// Eviction policy, seeded from the environment by the constructor. Atomic because a setter may
+	// be driven from a socket hop, while removeUnusedLayouts() reads it on the app thread.
+	sprt::atomic<bool> _evictAlways;
+	float _evictionThreshold;
 
 	// FreeType library used to open faces for metrics/layout. Provided by the leaf (local: the
 	// FontComponent's shared library; remote: the controller's own headless library).

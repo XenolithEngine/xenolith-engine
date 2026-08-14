@@ -78,17 +78,12 @@ bool TreeView::init(Source *source) {
 	// The ROOT only: Source has no parent links, so a subcategory's setDirty() never reaches this
 	// listener. The lazy-children path carries its own completion for that reason, and everything
 	// else goes through invalidateSource().
-	_sourceListener = addSystem(Rc<DataListener<Source>>::create(
-			[this](SubscriptionFlags) { handleSourceDirty(); }, source));
+	_sourceListener = addSystem(Rc<DataListener<Source>>::create([this](SubscriptionFlags) {
+		handleSourceDirty(); //
+	}, source));
 
-	// The rows are (re)built HERE, at the start of the visit that will draw them, rather than from a
-	// queued task. Two things fall out of that. A rebuild can destroy the row node it was asked for
-	// from — an expander's tap is still on the stack when toggleRow() runs — and the visit is far
-	// enough away from that. And a node attached while a frame is in flight catches up on the
-	// visit's phases immediately (Node::runPendingPhases), so a row and its children are styled,
-	// measured and laid out on the frame they appear rather than the one after it. A widget that is
-	// not visited is not drawn either, so leaving its nodes for its next visit costs nothing.
-	makeDefaultCallbackSystem()->setVisitBeginCallback([this](CallbackSystem *, FrameInfo &) {
+	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
+			[this](CallbackSystem *, const ComponentMask &) {
 		if (_rebuildPending) {
 			_rebuildPending = false;
 			rebuildRows();
@@ -284,12 +279,31 @@ forced rebuild - it is the whole point of Source::setDirty().
 
 refresh() itself stays unforced: expandRow/collapseRow reach it too, and there the reuse is correct
 and is what keeps an expand from redrawing the rows it did not touch. */
+void TreeView::dropLoadedData() {
+	/* Forget every payload in hand, so the next model pass asks the Source for all of them again.
+
+	rebuildModel() carries a loaded row's data across the rebuild keyed by (source, itemId) - that is
+	what makes expanding a category re-fetch nothing but the category. The identity it keys on,
+	though, is an INDEX inside its category, and an index means a different thing the moment the
+	category's contents change: with one item removed, every payload from the removal onwards is
+	carried onto the row of its neighbour, so the list keeps showing the item that is gone and drops
+	the one at the end. That is not a stale frame, it is permanent - the rows are marked loaded, so
+	nothing ever asks again.
+
+	Hence: a Source that says its contents changed invalidates the payloads too, not just the shape.
+	Cheap by construction - a Source that answers inline refills them within requestRowData(), before
+	a single node is built. */
+	for (auto &it : _rows) { it.dataLoaded = false; }
+}
+
 void TreeView::invalidateSource() {
+	dropLoadedData();
 	refresh();
 	requestRebuildNodes(true);
 }
 
 void TreeView::handleSourceDirty() {
+	dropLoadedData();
 	refresh();
 	requestRebuildNodes(true);
 }
@@ -482,6 +496,9 @@ void TreeView::requestRebuildNodes(bool force) {
 	// unforced one must still force, or the reuse pass would quietly ignore it.
 	_forceRebuild = _forceRebuild || force;
 	_rebuildPending = true;
+	// The components phase is opt-in per visit, so asking for the rebuild is also asking for the
+	// phase that performs it.
+	markComponentsDirty();
 }
 
 void TreeView::rebuildRows() {

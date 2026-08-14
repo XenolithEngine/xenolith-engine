@@ -48,6 +48,7 @@ XL_DECLARE_EVENT_CLASS(AppController, onCatalogueChanged)
 XL_DECLARE_EVENT_CLASS(AppController, onEngineRefsChanged)
 XL_DECLARE_EVENT_CLASS(AppController, onEngineStatusChanged)
 XL_DECLARE_EVENT_CLASS(AppController, onInstalledStateChanged)
+XL_DECLARE_EVENT_CLASS(AppController, onRowStatusChanged)
 XL_DECLARE_EVENT_CLASS(AppController, onJobStarted)
 XL_DECLARE_EVENT_CLASS(AppController, onJobProgress)
 XL_DECLARE_EVENT_CLASS(AppController, onJobFinished)
@@ -164,7 +165,12 @@ bool AppController::attach(NotNull<AppThread> app) {
 	so a view that was already on screen picks the data up without being told.
 
 	This is what the pages used to wait for: a table built on first show had to sit empty until the
-	catalogue arrived, which is the delay that showed as a lag on opening a page. */
+	catalogue arrived, which is the delay that showed as a lag on opening a page.
+
+	checkComponents() joins them for the same reason and answers first: it is local I/O, so the
+	navigation tree and the engine rows have their answer long before either network round trip
+	lands, and no page has to touch the disk to build itself. */
+	checkComponents(nullptr);
 	loadCatalogue(nullptr);
 	loadEngineRefs(nullptr);
 	queryEngine(nullptr);
@@ -187,6 +193,12 @@ void AppController::detach() {
 	_jobs.clear();
 	_engineProbeRunning = false;
 	_releaseProbeRunning = false;
+	// The next attach() re-checks: the caches describe a disk that may have been changed by whoever
+	// ran in between, and a stale "checked" flag would show the previous machine state as verified.
+	_checkRunning = false;
+	_checkPending = false;
+	_hasInstalledState = false;
+	_hasInstalledEngines = false;
 	_app = nullptr;
 }
 
@@ -425,12 +437,25 @@ Vector<Value> AppController::makeEngineRows() const {
 		v.setString(ref.oidHex, "commit");
 		v.setBool(ref.isBranch, "branch");
 		v.setBool(ref.isTag, "tag");
-		// "Installed" for an engine is simply that its clone directory exists. Per-ref staleness
-		// would need a commit recorded at clone time; until then a cloned ref reports Installed and
-		// never UpdateAvailable.
-		const bool installed = isDirectory(_layout.getEngineDir(ref.name));
-		v.setInteger(static_cast<int64_t>(installed ? RowStatus::Installed
-													: RowStatus::NotInstalled), "status");
+		/* "Installed" for an engine is simply that its clone directory exists. Per-ref staleness
+		would need a commit recorded at clone time; until then a cloned ref reports Installed and
+		never UpdateAvailable.
+
+		Read from the CHECKED list, not from a stat() of its own: this runs inside a Source's batch
+		callback, i.e. on the app thread while the table is being built, and it used to hit the
+		filesystem once per row there. Before the first check has answered the row admits it does
+		not know yet. */
+		auto status = RowStatus::Checking;
+		if (_hasInstalledEngines) {
+			status = RowStatus::NotInstalled;
+			for (const auto &name : _installedEngines) {
+				if (StringView(name) == StringView(ref.name)) {
+					status = RowStatus::Installed;
+					break;
+				}
+			}
+		}
+		v.setInteger(static_cast<int64_t>(status), "status");
 		v.setBool(StringView(ref.name) == StringView(_engineStatus.reference), "active");
 		rows.emplace_back(sp::move(v));
 	}
@@ -454,15 +479,19 @@ Vector<Value> AppController::makeNavRows(StringView node) const {
 		rows.emplace_back(sp::move(v));
 	};
 
+	/* What is on disk, not what the remote offers: these branches list what you HAVE, and the page
+	behind each is where the full set is chosen from.
+
+	Both halves come from the checked caches. This is a Source batch callback - the app thread, while
+	the tree is being built - and it used to walk the engines directory and parse installed.json
+	right here, on every read. An unchecked branch simply has no entries yet; the check dirties the
+	Sources when it lands and the tree fills in. */
 	if (node == "engine") {
-		// What is on disk, not what the remote offers: this branch lists what you HAVE, and the
-		// page behind it is where the full set of refs is chosen from.
-		for (const auto &name : listInstalledEngines(_layout)) { add(name, true); }
+		for (const auto &name : _installedEngines) { add(name, true); }
 	} else {
 		const auto kind = (node == "host") ? Kind::Host : Kind::Target;
-		const auto state = InstalledState::load(_layout.getInstalledManifest());
-		for (const auto &c : state.components) {
-			if (c.kind == kind) {
+		for (const auto &c : _installedState.components) {
+			if (c.kind == kind && !isComponentMissing(rowKey(c.kind, c.id))) {
 				add(c.id, true);
 			}
 		}
@@ -497,6 +526,10 @@ void AppController::rebuildSources() {
 		_enginesSource->setDirty();
 	}
 
+	rebuildNavSources();
+}
+
+void AppController::rebuildNavSources() {
 	// A TreeView watches only the ROOT source, so each branch is re-counted here and the root is
 	// dirtied last - dirtying a branch on its own would not reach the view.
 	if (_navEngines) {
@@ -513,6 +546,75 @@ void AppController::rebuildSources() {
 	}
 }
 
+bool AppController::isComponentMissing(StringView key) const {
+	for (const auto &it : _missingComponents) {
+		if (StringView(it) == key) {
+			return true;
+		}
+	}
+	return false;
+}
+
+RowStatus AppController::getToolStatus(Kind kind, StringView id) const {
+	for (const auto &row : _catalogue.rows) {
+		if (row.kind == kind && StringView(row.id) == id) {
+			return row.status;
+		}
+	}
+	return RowStatus::Checking;
+}
+
+RowStatus AppController::getEngineRowStatus(StringView ref) const {
+	if (!_hasInstalledEngines) {
+		return RowStatus::Checking;
+	}
+	for (const auto &name : _installedEngines) {
+		if (StringView(name) == ref) {
+			return RowStatus::Installed;
+		}
+	}
+	return RowStatus::NotInstalled;
+}
+
+void AppController::applyInstalledState() {
+	// Two independent answers are needed and either may land first: the catalogue says what exists
+	// and under which release, the check says what this machine has. Until both are in, every row
+	// keeps the Checking it was created with - which is exactly the state whose action controls are
+	// hidden, so nothing offers to install what it has not looked for.
+	if (!_hasCatalogue || !_hasInstalledState) {
+		return;
+	}
+
+	// Which rows MOVED, not which rows exist: a check that confirms what was already on screen must
+	// announce nothing at all, and the usual check confirms every row.
+	String moved;
+	size_t movedCount = 0;
+
+	for (auto &row : _catalogue.rows) {
+		const auto *ic = _installedState.get(row.id, row.kind);
+		auto status = RowStatus::Installed;
+		if (!ic || isComponentMissing(rowKey(row.kind, row.id))) {
+			// Either never installed, or the manifest claims it and the store no longer has it -
+			// which is the same offer to the user, and a truer one than the "Installed" a
+			// manifest-only check used to report for a directory somebody deleted by hand.
+			status = RowStatus::NotInstalled;
+		} else if (StringView(ic->release) != StringView(_catalogue.release)) {
+			status = RowStatus::UpdateAvailable;
+		}
+
+		if (row.status != status) {
+			row.status = status;
+			moved = rowKey(row.kind, row.id);
+			++movedCount;
+		}
+	}
+
+	if (movedCount > 0) {
+		// The rows keep their nodes; each one re-reads its own status and repaints its own controls.
+		onRowStatusChanged(this, movedCount == 1 ? moved : String());
+	}
+}
+
 // --- operations -------------------------------------------------------------
 
 void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) {
@@ -521,16 +623,16 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 	auto built = std::make_shared<CatalogueData>();
 
 	// Copied into the task: settings can be rewritten from the form while this runs, and a worker
-	// must never read them back through getSettings().
+	// must never read them back through getSettings(). The layout is not needed here at all any
+	// more - this task no longer reads anything local.
 	const auto sources = _settings.sources;
-	const auto layout = _layout;
 
 	log::info(kLogTag, "loadCatalogue: discovering release under ", sources.getReleasesRoot());
 
 	const auto job = beginJob(JobKind::CatalogueLoad, StringView("catalogue"),
 			StringView("Loading catalogue"));
 
-	_app->perform([sources, layout, errStr, built](const AppThread::Task &) -> bool {
+	_app->perform([sources, errStr, built](const AppThread::Task &) -> bool {
 		String release = toString(getDefaultRelease());
 		String releasesText;
 		if (fetchText(sources.getReleasesRoot(), releasesText)) {
@@ -551,7 +653,6 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 		}
 
 		auto comps = buildCatalogue(hostsText, targetsText);
-		auto state = InstalledState::load(layout.getInstalledManifest());
 
 		auto host = resolveHost(getNativeArch(), getNativeOs());
 		built->nativeId = host.native;
@@ -563,12 +664,9 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 			row.triple = c.triple;
 			row.variant = c.variant;
 			row.size = c.size;
-			if (auto *ic = state.get(c.id, c.kind)) {
-				row.status = (ic->release != release) ? RowStatus::UpdateAvailable
-													  : RowStatus::Installed;
-			} else {
-				row.status = RowStatus::NotInstalled;
-			}
+			// Status is deliberately NOT decided here. This task answers what the mirror offers;
+			// what this machine has is checkComponents()'s answer, and mixing the two meant a row
+			// could only ever be re-judged by fetching the whole catalogue again.
 			row.isNative = (c.triple == built->nativeId);
 			built->rows.push_back(sp::move(row));
 		}
@@ -581,9 +679,15 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 			_catalogue = sp::move(*built);
 			_hasCatalogue = true;
 
+			// The rows arrive unchecked; this re-decides them from a check that has already landed
+			// (the usual case at startup, where both run in parallel) and leaves them Checking when
+			// none has. Either way the rows themselves are on screen now.
+			applyInstalledState();
+
 			size_t installed = 0;
 			for (const auto &row : _catalogue.rows) {
-				if (row.status != RowStatus::NotInstalled) {
+				if (row.status == RowStatus::Installed
+						|| row.status == RowStatus::UpdateAvailable) {
 					++installed;
 				}
 			}
@@ -593,6 +697,9 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 
 			rebuildSources();
 			onCatalogueChanged(this);
+			// A new catalogue means a new release to judge against, so what was checked against the
+			// previous one has to be re-judged.
+			checkComponents(nullptr);
 			// A catalogue that answered is a mirror that answered.
 			setReachability(SourceKind::Releases, Reachability::Ok, _catalogue.release);
 		} else {
@@ -701,6 +808,107 @@ void AppController::queryEngine(Function<void(const EngineStatusInfo &)> &&onDon
 	}, this);
 }
 
+void AppController::checkComponents(Function<void()> &&onDone) {
+	if (!_app) {
+		if (onDone) {
+			onDone();
+		}
+		return;
+	}
+
+	/* Coalesced, not queued. Every tools page asks for a check when it is shown and every install
+	asks for one when it finishes, so requests arrive in bursts; what they all want is one fresh
+	answer, and a queue would run the same directory walk three times to produce it. The in-flight
+	one may have read the disk before the change that prompted the new request, so the request is not
+	simply dropped either - it is remembered and re-run once. */
+	if (_checkRunning) {
+		_checkPending = true;
+		if (onDone) {
+			onDone();
+		}
+		return;
+	}
+	_checkRunning = true;
+
+	auto doneCb = std::make_shared<Function<void()>>(sp::move(onDone));
+	auto state = std::make_shared<InstalledState>();
+	auto engines = std::make_shared<Vector<String>>();
+	auto missing = std::make_shared<Vector<String>>();
+
+	// Copied into the task: the layout is immutable after attach(), but the task must not reach back
+	// into the controller for anything else.
+	const auto layout = _layout;
+
+	_app->perform([layout, state, engines, missing](const AppThread::Task &) -> bool {
+		*state = InstalledState::load(layout.getInstalledManifest());
+		// A manifest entry whose files are gone is not an installed component. getInvalid() takes
+		// the existence predicate rather than assuming one, so the check is the only place that
+		// touches the filesystem.
+		for (const auto *c : state->getInvalid([](StringView path) { return isDirectory(path); })) {
+			missing->emplace_back(rowKey(c->kind, c->id));
+		}
+		*engines = listInstalledEngines(layout);
+		return true;
+	}, [this, state, engines, missing, doneCb](const AppThread::Task &, bool) {
+		_checkRunning = false;
+		if (!_app) {
+			return; // detached while the work was in flight
+		}
+
+		// What the tree lists and what the engine rows say both come from these, so "did anything
+		// move" is asked before they are replaced: a check that confirms the previous answer - which
+		// is what a check on every page open normally does - must not touch a single node.
+		auto sameComponents = [](const InstalledState &l, const InstalledState &r) {
+			if (l.components.size() != r.components.size()) {
+				return false;
+			}
+			for (size_t i = 0; i < l.components.size(); ++i) {
+				// Identity only: what the tree shows is the name, and everything else about an entry
+				// is a status, which is announced separately.
+				if (l.components[i].kind != r.components[i].kind
+						|| l.components[i].id != r.components[i].id) {
+					return false;
+				}
+			}
+			return true;
+		};
+		const bool treeChanged = !_hasInstalledState || !sameComponents(_installedState, *state)
+				|| _missingComponents != *missing;
+		const bool enginesChanged = !_hasInstalledEngines || (_installedEngines != *engines);
+
+		_installedState = sp::move(*state);
+		_installedEngines = sp::move(*engines);
+		_missingComponents = sp::move(*missing);
+		_hasInstalledState = true;
+		_hasInstalledEngines = true;
+
+		log::info(kLogTag, "checkComponents: components=", _installedState.components.size(),
+				" missing=", _missingComponents.size(), " engines=", _installedEngines.size());
+
+		// Announces per-row status moves by itself, and only for the rows that moved.
+		applyInstalledState();
+
+		if (enginesChanged) {
+			// The engines table reads its status from the list that has just been replaced, and its
+			// rows are the refs, which did not change - so this is a repaint too, not a rebuild.
+			onRowStatusChanged(this, String());
+		}
+		if (treeChanged || enginesChanged) {
+			rebuildNavSources();
+			// The wholesale form: the tree's row set changed and a listener has nothing to filter on.
+			onInstalledStateChanged(this, String());
+		}
+
+		if (_checkPending) {
+			_checkPending = false;
+			checkComponents(nullptr);
+		}
+		if (*doneCb) {
+			(*doneCb)();
+		}
+	}, this);
+}
+
 void AppController::installComponent(Kind kind, StringView id,
 		Function<void(const InstallProgress &)> &&onProgress,
 		Function<void(bool ok, String err)> &&onDone) {
@@ -748,8 +956,12 @@ void AppController::installComponent(Kind kind, StringView id,
 		}
 		if (ok) {
 			log::info(kLogTag, "installComponent: done id=", idStr);
+			// Optimistic first, verified second: the row must react on this frame, and the check
+			// then re-reads the manifest the install has just rewritten - which is also what
+			// refreshes the navigation branches and would otherwise leave them a component behind.
 			setRowStatus(kind, idStr, RowStatus::Installed);
 			onInstalledStateChanged(this, rowKey(kind, idStr));
+			checkComponents(nullptr);
 		} else {
 			log::error(kLogTag, "installComponent: FAILED id=", idStr, " err=", *errStr);
 		}
@@ -788,6 +1000,7 @@ void AppController::uninstallComponent(Kind kind, StringView id,
 			log::info(kLogTag, "uninstallComponent: done id=", idStr);
 			setRowStatus(kind, idStr, RowStatus::NotInstalled);
 			onInstalledStateChanged(this, rowKey(kind, idStr));
+			checkComponents(nullptr);
 		} else {
 			log::error(kLogTag, "uninstallComponent: FAILED id=", idStr);
 		}
@@ -897,6 +1110,9 @@ void AppController::installForSystem(
 		if (ok) {
 			log::info(kLogTag, "installForSystem: done");
 			onInstalledStateChanged(this, String());
+			// Engine, host and target all landed at once: re-read the manifest and the engine list
+			// rather than guessing which rows that touched.
+			checkComponents(nullptr);
 		} else {
 			log::error(kLogTag, "installForSystem: FAILED: ", *errStr);
 		}
@@ -952,10 +1168,15 @@ void AppController::prepareEngine(StringView ref,
 		}
 		if (ok) {
 			log::info(kLogTag, "prepareEngine: done");
-			// The engine set changed, so both the status and the engines table are stale.
+			/* The engine set changed, so both the status and the engines table are stale - and the
+			list of cloned engines the table reads from is only refreshed by a check.
+
+			The check is the whole notification: the REFS did not change, so the engines table keeps
+			its rows and hears about the one that moved, and the tree is rebuilt from the new list.
+			Announcing onEngineRefsChanged here would say the row set changed when it did not, and
+			pay for a full rebuild of the table to show one changed button. */
 			queryEngine();
-			rebuildSources();
-			onEngineRefsChanged(this);
+			checkComponents(nullptr);
 		} else {
 			log::error(kLogTag, "prepareEngine: FAILED: ", *errStr);
 		}
@@ -1032,16 +1253,20 @@ void AppController::setRowStatus(Kind kind, StringView id, RowStatus s) {
 		}
 	}
 
-	/* Patching the cached row is only half of it: nothing is bound to that row directly, the views
-	read through the data::Sources - so without this the install finished, the files landed and the
-	table went on saying "Not Installed".
+	/* Patching the cached row is only half of it: nothing is bound to that row directly.
 
-	Unconditional, and outside the loop: the row may not be in the catalogue at all (a component
-	installed under an older release still shows in the tree), and the navigation branches are
-	re-derived from the manifest on disk rather than from `_catalogue`, so they have to be
-	re-counted either way. rebuildSources() pushes the new counts and dirties every Source, which is
-	what makes the tables and the tree re-read. */
-	rebuildSources();
+	But the two halves are told apart. The TABLE keeps its rows - the same components are still on
+	offer, one of them just reads differently now - so it is not dirtied at all: the row's own nodes
+	hear this and repaint themselves, which is a label and a style class rather than a rebuild of
+	every row on the page. The TREE is a different question: it lists what is on this machine, so a
+	component appearing or disappearing changes which rows exist there, and only a rebuild can show
+	that.
+
+	Both are unconditional and outside the loop: the row may not be in the catalogue at all (a
+	component installed under an older release still shows in the tree), and the navigation branches
+	are re-derived from the manifest rather than from `_catalogue`. */
+	onRowStatusChanged(this, rowKey(kind, id));
+	rebuildNavSources();
 }
 
 void AppController::installSelected(Vector<Pair<Kind, String>> items,
@@ -1353,17 +1578,33 @@ Value AppController::encodeDebugState() const {
 	Value catalogue;
 	catalogue.setBool(_hasCatalogue, "loaded");
 	catalogue.setString(_catalogue.release, "release");
-	size_t hosts = 0, targets = 0, installed = 0;
+	size_t hosts = 0, targets = 0, installed = 0, updates = 0, checking = 0;
 	for (const auto &row : _catalogue.rows) {
 		(row.kind == Kind::Host ? hosts : targets)++;
-		if (row.status != RowStatus::NotInstalled) {
-			++installed;
+		switch (row.status) {
+		case RowStatus::Installed: ++installed; break;
+		case RowStatus::UpdateAvailable: ++updates; break;
+		case RowStatus::Checking: ++checking; break;
+		case RowStatus::NotInstalled: break;
 		}
 	}
 	catalogue.setInteger(static_cast<int64_t>(hosts), "hosts");
 	catalogue.setInteger(static_cast<int64_t>(targets), "targets");
 	catalogue.setInteger(static_cast<int64_t>(installed), "installed");
+	catalogue.setInteger(static_cast<int64_t>(updates), "updates");
+	// Unanswered rows are what an "empty" table and a row with no buttons mean, so they have to be
+	// visible from the inspector - neither is distinguishable from a broken view otherwise.
+	catalogue.setInteger(static_cast<int64_t>(checking), "checking");
 	ret.setValue(sp::move(catalogue), "catalogue");
+
+	Value check;
+	check.setBool(_hasInstalledState, "done");
+	check.setBool(_checkRunning, "running");
+	check.setBool(_checkPending, "pending");
+	check.setInteger(static_cast<int64_t>(_installedState.components.size()), "components");
+	check.setInteger(static_cast<int64_t>(_missingComponents.size()), "missing");
+	check.setInteger(static_cast<int64_t>(_installedEngines.size()), "engines");
+	ret.setValue(sp::move(check), "check");
 
 	Value engine;
 	engine.setBool(_engineStatus.ready, "ready");

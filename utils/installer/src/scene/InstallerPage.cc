@@ -100,6 +100,23 @@ void InstallerPage::handleContentSizeDirty() {
 	updateScrollArea();
 }
 
+void InstallerPage::handleShown() {
+	/* Re-establish the scroll geometry, unconditionally.
+
+	A page is laid out while it is HIDDEN: they are all built at startup, and the data that fills
+	them lands whenever the network answers. A hidden node is not visited, and a ScrollView settles
+	its own bounds from a visit - the scroll root's POSITION is the scroll offset, and it is clamped
+	against the scrollable extent there. So a page whose table grew while it was away comes back with
+	an offset that was clamped against the extent it had before, which is what put the Engines page's
+	heading at the bottom of the viewport with its table entirely out of view.
+
+	Clearing the remembered extent is what forces it back onto the controller: updateScrollArea()
+	skips the call when the number has not changed, and the number has not - what changed is that
+	nobody applied it while the page was hidden. */
+	_scrollHeight = nan();
+	updateScrollArea();
+}
+
 void InstallerPage::updateScrollArea() {
 	if (!_body || !_scroll || _contentSize.width <= 0.0f) {
 		return;
@@ -189,15 +206,19 @@ void InstallerToolsPage::handleEnter(Scene *scene) {
 	InstallerPage::handleEnter(scene);
 
 	reload();
+	checkTools();
 
 	auto listener = addSystem(Rc<EventListener>::create());
-	// The table's rows come from the Source and refresh themselves; these are the events that
-	// change WHICH Source rows exist or what they say.
+	/* Exactly the two events that change WHICH rows exist: what the mirror offers, and which engine
+	refs there are. Nothing else rebuilds this table.
+
+	Notably NOT onInstalledStateChanged. Installing or removing a component does not change the row
+	set here - the same components are still on offer, one of them just reads differently - and
+	reloading for it is what made the whole table flash on every status change. The rows carry that
+	themselves now, through onRowStatusChanged; see InstallerActionCell and InstallerStatusCell. */
 	listener->listenForEvent(AppController::onCatalogueChanged,
 			[this](const Event &) { reload(); });
 	listener->listenForEvent(AppController::onEngineRefsChanged,
-			[this](const Event &) { reload(); });
-	listener->listenForEvent(AppController::onInstalledStateChanged,
 			[this](const Event &) { reload(); });
 }
 
@@ -207,7 +228,23 @@ void InstallerToolsPage::handleShown() {
 	// visits it to act on that.
 	if (_table) {
 		_table->invalidateSource();
-		updateScrollArea();
+	}
+	// After the model, not before: the base re-applies the extent, and the extent is the table's.
+	InstallerPage::handleShown();
+	checkTools();
+}
+
+void InstallerToolsPage::checkTools() {
+	/* Opening a page is what re-checks the tools it lists: the store can be changed by anything -
+	another window, the CLI, a directory removed by hand - and what a page shows must be what is
+	there now, not what was there when it was last built.
+
+	The call returns immediately. The check itself runs on the worker pool and dirties the Source
+	when it lands, so the page is on screen either way; the rows whose answer has not arrived say
+	"Checking…" and offer no action until it does. Repeated calls collapse into one run - see
+	AppController::checkComponents. */
+	if (auto controller = AppController::getInstance()) {
+		controller->checkComponents();
 	}
 }
 
@@ -262,30 +299,9 @@ void InstallerToolsPage::buildCell(ui::TableView::CellBuilder &builder) {
 	}
 
 	if (key == "status") {
-		const auto status = static_cast<RowStatus>(data.getInteger("status"));
-		auto statusBadge = Rc<ui::Badge>::create();
-		switch (status) {
-		case RowStatus::Installed:
-			statusBadge->setText(strings::statusInstalled());
-			statusBadge->setVariant("installed");
-			break;
-		case RowStatus::UpdateAvailable:
-			statusBadge->setText(strings::statusUpdateAvailable());
-			statusBadge->setVariant("update");
-			break;
-		case RowStatus::NotInstalled:
-			statusBadge->setText(strings::statusNotInstalled());
-			statusBadge->setVariant("not-installed");
-			break;
-		}
-		// The badge goes INSIDE a cell rather than being one: a cell is stretched to its column, and
-		// a badge stretched to 160px stops reading as a pill and starts reading as a filled band.
-		auto cell = Rc<ui::Panel>::create();
-		cell->setType("table-cell");
-		cell->removeStyleClass("xl-ui-panel");
-		cell->addStyleClass("xl-ui-table-cell");
-		cell->addChild(statusBadge);
-		builder.setNode(cell.get());
+		// A node of its own rather than a badge built here: it keeps up with its row's status
+		// without the table being rebuilt around it (InstallerStatusCell).
+		builder.setNode(Rc<InstallerStatusCell>::create(_page, data).get());
 		return;
 	}
 

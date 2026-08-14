@@ -95,6 +95,15 @@ public:
 	static EventHeader onEngineRefsChanged; // listEngineRefs landed
 	static EventHeader onEngineStatusChanged; // queryEngine landed
 	static EventHeader onInstalledStateChanged; // String: rowKey, or "" for a wholesale change
+	/* One or more rows changed STATUS, and nothing else did. String: the rowKey when exactly one
+	row moved, "" when a check re-judged several.
+
+	Separate from onInstalledStateChanged because the two ask for different things: that one says
+	the row SET may have changed, which only a rebuilt view can show, while this one says a row
+	still exists and now reads differently - which is a label and a style class on a node that is
+	already on screen. Dirtying a Source for it would rebuild every row node in the table, and a
+	table that flashes on every status change is what that cost looks like. */
+	static EventHeader onRowStatusChanged;
 	static EventHeader onJobStarted; // uint64_t: JobId
 	static EventHeader onJobProgress; // uint64_t: JobId
 	static EventHeader onJobFinished; // uint64_t: JobId
@@ -176,6 +185,35 @@ public:
 	void loadCatalogue(Function<void(bool ok, String err)> &&onDone = nullptr);
 	void loadEngineRefs(Function<void(bool ok, String err)> &&onDone = nullptr);
 	void queryEngine(Function<void(const EngineStatusInfo &)> &&onDone = nullptr);
+
+	/* Re-read what is actually on this machine and re-decide every row's status.
+
+	This is the "actuality check": it loads installed.json, stat()s every component the manifest
+	claims, lists the cloned engines, and then answers, per row, NotInstalled / Installed /
+	UpdateAvailable (installed under a release other than the catalogue's). All of the I/O happens on
+	the worker pool - a manifest parse and a directory walk are not things a page may do while it is
+	opening, which is why nothing on the app thread ever touches the disk for this any more and reads
+	the caches below instead.
+
+	Cheap to call and safe to call often: a page calls it every time it is shown. A second request
+	while one is in flight is COALESCED into one re-run afterwards rather than queued, because the
+	answer is always "what is on disk now" and the in-flight one is about to be stale either way.
+
+	Rows that have never been answered for stay RowStatus::Checking, and a Checking row shows no
+	action controls. */
+	void checkComponents(Function<void()> &&onDone = nullptr);
+
+	// A check has been performed at least once, so the row statuses mean something.
+	bool hasCheckedComponents() const { return _hasInstalledState; }
+
+	/* The status of one row, live.
+
+	This is what a row's own nodes read, INSTEAD of the "status" in the Value they were built from:
+	a status change no longer dirties the Source, so that Value is a snapshot of whenever the row
+	was last materialized, while these two are the truth. Both answer Checking for a row nothing is
+	known about yet, which is the state that hides the row's controls. */
+	RowStatus getToolStatus(Kind, StringView id) const;
+	RowStatus getEngineRowStatus(StringView ref) const;
 
 	void installComponent(Kind, StringView id,
 			Function<void(const InstallProgress &)> &&onProgress = nullptr,
@@ -259,8 +297,20 @@ protected:
 	Vector<Value> makeNavRows(StringView node) const;
 
 	// Push the current row COUNTS onto the Sources and dirty them, so every bound view re-reads.
+	// This is the WHOLESALE path: it rebuilds every row node of every bound view, so it belongs to a
+	// changed row SET (a catalogue that landed, engine refs that landed) and never to a status.
 	void rebuildSources();
+	// Only the navigation branches. What installing or removing a component really changes: the tree
+	// lists what is on the machine, while the tables list what the mirror offers and keep their rows.
+	void rebuildNavSources();
 	void setReachability(SourceKind, Reachability, StringView message);
+
+	// Decide every catalogue row's status from the checked local state. Pure and app-thread-only:
+	// the I/O it decides from was done by checkComponents()'s worker. A no-op while either half of
+	// the answer is missing, which is what leaves rows Checking until both have landed.
+	void applyInstalledState();
+	// The manifest claims this component but its files are gone.
+	bool isComponentMissing(StringView key) const;
 
 	AppThread *_app = nullptr;
 	Layout _layout;
@@ -275,6 +325,24 @@ protected:
 	EngineStatusInfo _engineStatus;
 	Vector<EngineRef> _engineRefs;
 	bool _hasEngineRefs = false;
+
+	/* The CHECKED view of this machine, refreshed only by checkComponents().
+
+	Everything that runs on the app thread - the row payloads, the navigation branches - answers from
+	these and never from the filesystem. They used to read the disk inline instead: makeNavRows()
+	parsed installed.json and makeEngineRows() stat()ed a directory PER ROW, inside a data::Source's
+	batch callback, which is the app thread, in the middle of building a page. That is the work that
+	made opening a page take time. */
+	InstalledState _installedState;
+	Vector<String> _installedEngines; // engine refs whose clone directory exists
+	Vector<String> _missingComponents; // rowKey()s the manifest claims but the store does not have
+	bool _hasInstalledState = false;
+	bool _hasInstalledEngines = false;
+
+	// One check at a time; a request arriving while one runs re-runs it once at the end (see
+	// checkComponents).
+	bool _checkRunning = false;
+	bool _checkPending = false;
 
 	ReachabilityInfo _engineReachability;
 	ReachabilityInfo _releaseReachability;

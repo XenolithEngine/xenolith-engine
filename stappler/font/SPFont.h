@@ -204,6 +204,28 @@ struct SP_PUBLIC FontCharStorage {
 		}
 	}
 
+	template <typename Callback>
+	void foreach (const Callback &cb) const {
+		static_assert(sprt::is_invocable_v<Callback, const Value &>, "Invalid callback type");
+		for (auto &it : cells) {
+			if (it) {
+				for (auto &iit : *it) { cb(iit); }
+			}
+		}
+	}
+
+	// What the table costs. It is sparse - one 256-entry cell is allocated for each 256 code points
+	// that has at least one entry - so the number of stored values says nothing about its size.
+	size_t getMemoryUsage() const {
+		size_t ret = 0;
+		for (auto &it : cells) {
+			if (it) {
+				ret += sizeof(CellType);
+			}
+		}
+		return ret;
+	}
+
 	sprt::array<CellType *, 256> cells;
 };
 

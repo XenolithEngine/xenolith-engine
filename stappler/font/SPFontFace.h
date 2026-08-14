@@ -70,6 +70,21 @@ protected:
 
 class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
+	// What one face is holding, for a usage report (the inspector's `fonts` command).
+	//
+	// The two halves grow independently. `chars`/`kerningPairs` are the LAYOUT side: an entry
+	// appears as soon as a code point is measured, whether or not it is ever drawn. `requiredChars`
+	// is the ATLAS side: a glyph is added there only when something asks for its texture, and
+	// `pendingChars` says some of them have not reached the rasterizer yet.
+	struct Usage {
+		size_t chars = 0; // cached shaping entries (metrics + glyph index per code point)
+		size_t charsMemory = 0; // what the sparse table holding them costs
+		size_t kerningPairs = 0;
+		size_t requiredChars = 0;
+		size_t submittedChars = 0;
+		bool pendingChars = false;
+	};
+
 	virtual ~FontFaceObject();
 
 	bool init(StringView, const Rc<FontFaceData> &, FT_Library, FT_Face,
@@ -123,6 +138,10 @@ public:
 	int16_t getKerningAmount(char32_t first, char32_t second) const;
 
 	Metrics getMetrics() const { return _metrics; }
+
+	// Counts every cached entry, so it walks the whole table - a report, not something to call per
+	// frame.
+	Usage getUsage() const;
 
 protected:
 	bool addChar(char16_t, bool &updated);

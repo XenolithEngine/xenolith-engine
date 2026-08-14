@@ -32,7 +32,28 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::config {
 // max chars count, used by locale::hasLocaleTagsFast
 static constexpr size_t MaxFastLocaleChars = size_t(127);
 
-}
+// How full the glyph cache has to be before FontController::update() starts dropping the font sets
+// nobody holds any more. Below it a spare set is kept: it costs nothing while there is room, and
+// re-creating one costs a full atlas rebuild - a new image, every non-persistent glyph rasterized
+// again, and a material recompile in every window.
+static constexpr float FontCacheEvictionThreshold = 0.75f;
+
+// What "full" means for the atlas image. It cannot be a fill RATIO of the current image: the packer
+// re-picks the extent from scratch on every rebuild as the smallest 128*2^k box that fits the
+// glyphs (font::emplaceChars), so the image is always a tight fit and its fill ratio measures how
+// well the packer did, not how much is cached. What does grow with the cache is the image itself,
+// so that is what is measured - the atlas is R8_UNORM, one byte per texel, so this is both its area
+// and its size on the GPU.
+static constexpr uint64_t FontCacheAtlasBudget = uint64_t(1'024) * uint64_t(1'024);
+
+// The same question for a controller that has no atlas image to measure: the software rasterizer
+// keeps every glyph as its own texture, and a remote client leaves the atlas to the server. Bounding
+// the number of live sets is what keeps those from growing without end - and it is also the guard
+// against exhausting the 14-bit face-id space that CharIds are baked from (FontLibrary::getNextId
+// aborts when it runs out, and an id is only released when its face is reaped).
+static constexpr size_t FontCacheMaxLayouts = size_t(256);
+
+} // namespace stappler::xenolith::config
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
