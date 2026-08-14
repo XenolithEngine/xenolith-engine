@@ -42,56 +42,6 @@ namespace sprt::window {
 
 static constexpr const char *s_fbPath = "/dev/fb0";
 
-static int s_debugFd = -1;
-static uint8_t *s_debugMap = nullptr;
-static size_t s_debugLen = 0;
-static uint32_t s_debugStride = 0;
-static uint32_t s_debugWidth = 0;
-static uint32_t s_debugHeight = 0;
-
-void nuttxDebugFill(uint32_t pixel) {
-	if (s_debugFd < 0) {
-		s_debugFd = ::open(s_fbPath, O_RDWR);
-		if (s_debugFd < 0) {
-			return;
-		}
-
-		struct fb_videoinfo_s vinfo = {};
-		struct fb_planeinfo_s pinfo = {};
-		if (::ioctl(s_debugFd, FBIOGET_VIDEOINFO, (unsigned long)(uintptr_t)&vinfo) < 0
-				|| ::ioctl(s_debugFd, FBIOGET_PLANEINFO, (unsigned long)(uintptr_t)&pinfo) < 0
-				|| pinfo.bpp != 32 || pinfo.stride == 0 || vinfo.yres == 0) {
-			return;
-		}
-
-		auto mapping = ::mmap(nullptr, pinfo.fblen, PROT_READ | PROT_WRITE,
-				MAP_SHARED | MAP_FILE, s_debugFd, 0);
-		if (mapping == MAP_FAILED) {
-			return;
-		}
-
-		s_debugMap = reinterpret_cast<uint8_t *>(mapping);
-		s_debugLen = pinfo.fblen;
-		s_debugStride = pinfo.stride;
-		s_debugWidth = vinfo.xres;
-		s_debugHeight = vinfo.yres;
-	}
-
-	if (!s_debugMap) {
-		return;
-	}
-
-	for (uint32_t row = 0; row < s_debugHeight; ++row) {
-		auto *line = reinterpret_cast<uint32_t *>(s_debugMap + size_t(row) * s_debugStride);
-		for (uint32_t col = 0; col < s_debugWidth; ++col) {
-			line[col] = pixel;
-		}
-	}
-#ifdef CONFIG_ARCH_DCACHE
-	up_flush_dcache(uintptr_t(s_debugMap), uintptr_t(s_debugMap) + s_debugLen);
-#endif
-}
-
 NuttxSoftwareSurface::~NuttxSoftwareSurface() { invalidate(); }
 
 bool NuttxSoftwareSurface::init(NotNull<NuttxWindow> window) {
@@ -303,9 +253,6 @@ bool NuttxWindow::init(NotNull<NuttxContextController> c, Rc<WindowInfo> &&info)
 
 	oslog::vpinfo(__SPRT_LOCATION, "NuttxWindow", s_fbPath, " ", _extent.width, "x", _extent.height,
 			" stride=", _stride);
-
-	// Green: mmap succeeded. Overwritten by the first present.
-	nuttxDebugFill(0xff00ff00u);
 
 	return NativeWindow::init(c, sprt::move(info), WindowCapabilities::None);
 }

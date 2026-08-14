@@ -82,7 +82,7 @@ static int __wasm_setjmp_noop(__SPRT_ID(native_jmp_buf)) { return 0; }
 static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; }
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // NuttX flat build has no unwinder (no libgcc_s.so / libunwind), so sprt's
 // forced-unwind longjmp — the path that walks frames calling C++ destructors —
 // has nothing to drive it. libc setjmp/longjmp work for the plain non-local
@@ -102,7 +102,7 @@ __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 #elif SPRT_WASM
 	// No-op setjmp (returns 0); see __wasm_setjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&__wasm_setjmp_noop);
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 	// No-op setjmp; see __nuttx_setjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&__nuttx_setjmp_noop);
 #else
@@ -126,7 +126,7 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 #elif SPRT_WASM
 	// No-op sigsetjmp (returns 0); see __wasm_sigsetjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__wasm_sigsetjmp_noop);
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 	// No-op sigsetjmp; see __nuttx_sigsetjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__nuttx_sigsetjmp_noop);
 #else
@@ -257,7 +257,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 		(void)buf;
 		(void)ret;
 		__builtin_trap();
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 		// No unwinder in a flat build: longjmp into a dead frame cannot be
 		// honored. Trap; the no-op setjmp above means no live setjmp exists
 		// anyway. See __nuttx_setjmp_noop for the rationale.
@@ -324,7 +324,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 		(void)buf;
 		(void)ret;
 		__builtin_trap();
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 		// See __sprt_longjmp above: no unwinder in a flat build.
 		(void)buf;
 		(void)ret;

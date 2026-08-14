@@ -115,6 +115,10 @@ ifdef NUTTX
 CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)nuttx-libzip-project-include.cmake
 endif
 
+ifdef EMBOX
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)embox-libzip-project-include.cmake
+endif
+
 endif # WINDOWS
 
 all:

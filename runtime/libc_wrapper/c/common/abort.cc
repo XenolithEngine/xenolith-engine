@@ -123,6 +123,9 @@ __SPRT_C_FUNC void __SPRT_ID(_Exit_impl)(int ret) { ::_Exit(ret); }
 __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
 #if SPRT_APPLE
 	return sprt::libc::at_quick_exit(cb);
+#elif SPRT_EMBOX
+	(void)cb;
+	return 0;
 #else
 	return ::at_quick_exit(cb);
 #endif
@@ -131,6 +134,8 @@ __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int ret) {
 #if SPRT_APPLE
 	sprt::libc::quick_exit(ret);
+#elif SPRT_EMBOX
+	::_Exit(ret);
 #else
 	::quick_exit(ret);
 #endif

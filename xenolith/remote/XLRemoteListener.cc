@@ -24,7 +24,7 @@
 #include "XLRemoteProtocol.h"
 #include "SPPlatform.h"
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 
 // NuttX's OpenSSL is built CMAKE_SYSTEM_NAME=Generic: no BIO sockets, no QUIC
 // client/server methods. Hello (and any local GUI) never opens a remote
@@ -499,4 +499,4 @@ uint64_t Listener::getEventTimeout() const {
 
 } // namespace stappler::xenolith::remote
 
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS

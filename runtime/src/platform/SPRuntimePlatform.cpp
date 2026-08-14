@@ -25,7 +25,7 @@
 
 #include "private/SPRTPrivate.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_NUTTX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_NUTTX || SPRT_EMBOX
 #include "SPRuntimePlatform-posix.cc"
 #endif
 
@@ -43,6 +43,10 @@
 
 #if SPRT_NUTTX
 #include "SPRuntimePlatform-nuttx.cc"
+#endif
+
+#if SPRT_EMBOX
+#include "SPRuntimePlatform-embox.cc"
 #endif
 
 #include <locale.h>

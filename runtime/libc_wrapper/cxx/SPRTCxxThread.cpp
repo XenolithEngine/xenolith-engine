@@ -105,7 +105,7 @@ uint32_t thread::hardware_concurrency() noexcept {
 		return static_cast<unsigned>(result);
 	}
 
-#if SPRT_WASM || SPRT_NUTTX
+#if SPRT_WASM
 	return 4;
 #else
 	return 1;
@@ -140,7 +140,7 @@ inline namespace __cxx_thread {
 namespace this_thread {
 
 thread::id get_id() noexcept {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// NSH task, not a sprt pthread. self() attaches a fake thread_t and
 	// touches emutls (tl_self); gettid is the id Looper actually needs.
 	return {__sprt_gettid()};

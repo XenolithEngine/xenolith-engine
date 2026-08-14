@@ -25,7 +25,7 @@
 #include <sprt/runtime/log.h>
 #include "SPRuntimeDispatch.h"
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 #include <unistd.h>
 #endif
 
@@ -141,7 +141,7 @@ void Thread::waitRunning() {
 		return;
 	}
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	lock.unlock();
 	while (!_running.load()) {
 		::usleep(1000);

@@ -42,7 +42,7 @@ THE SOFTWARE.
 #include <fcntl.h>
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // NuttX scandirat fallback (the musl path below) reaches AT_FDCWD/getcwd/
 // readlink through <fcntl.h> and <unistd.h>.
 #include <unistd.h>
@@ -68,7 +68,7 @@ THE SOFTWARE.
 // (no d_off/d_reclen padding). Skip the size-equality pin on NuttX; the cast
 // through the sprt type is still safe because readdir_r writes into a
 // user-supplied buffer of the libc type, not the sprt type.
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
 #endif
 
@@ -79,11 +79,17 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *path) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) {
+#if SPRT_EMBOX
+	(void)__dir_fd;
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
 	return (__SPRT_ID(DIR) *)fdopendir(__dir_fd);
+#endif
 }
 
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	// NuttX has no LFS readdir64 — the plain readdir is the only spelling.
 	return (struct __SPRT_DIRENT_NAME *)readdir((DIR *)__dir);
 #else
@@ -103,7 +109,12 @@ __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
-#if __STDC_HOSTED__ == 1
+#if SPRT_EMBOX
+	(void)__dir;
+	(void)__location;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#elif __STDC_HOSTED__ == 1
 	::seekdir((DIR *)__dir, __location);
 	return 0;
 #else
@@ -111,13 +122,29 @@ __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
 #endif
 }
 
-__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir((DIR *)__dir); }
+__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_EMBOX
+	(void)__dir;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
+	return telldir((DIR *)__dir);
+#endif
+}
 
-__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd((DIR *)__dir); }
+__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_EMBOX
+	(void)__dir;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
+	return dirfd((DIR *)__dir);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::alphasort((const struct dirent **)__lhs, (const struct dirent **)__rhs);
 #else
 	return ::alphasort64((const struct dirent64 **)__lhs, (const struct dirent64 **)__rhs);
@@ -133,7 +160,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::scandir(path, (struct dirent ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
@@ -194,7 +221,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
 					__comparator));
-#elif __SPRT_DIRENT_MUSL || SPRT_NUTTX
+#elif __SPRT_DIRENT_MUSL || SPRT_HOSTED_RTOS
 	// musl provides neither scandirat() nor scandirat64(); resolve the directory
 	// descriptor to a path through /proc and reuse our (already 64-bit) scandir().
 	if (path[0] == '/') {

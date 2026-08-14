@@ -32,11 +32,127 @@ THE SOFTWARE.
 
 #include <math.h>
 
+#if SPRT_EMBOX
+// Embox's math.h is a stub: a handful of libm symbols plus builtins for the
+// rest of trig/exp. C99 leftovers (acosh, erf, fma, …) are not declared; route
+// them through clang builtins so the wrapper compiles without a second libm.
+#ifndef acosh
+#define acosh(x) __builtin_acosh(x)
+#define acoshf(x) __builtin_acoshf(x)
+#define acoshl(x) __builtin_acoshl(x)
+#endif
+#ifndef asinh
+#define asinh(x) __builtin_asinh(x)
+#define asinhf(x) __builtin_asinhf(x)
+#define asinhl(x) __builtin_asinhl(x)
+#endif
+#ifndef erf
+#define erf(x) __builtin_erf(x)
+#define erff(x) __builtin_erff(x)
+#define erfl(x) __builtin_erfl(x)
+#define erfc(x) __builtin_erfc(x)
+#define erfcf(x) __builtin_erfcf(x)
+#define erfcl(x) __builtin_erfcl(x)
+#endif
+#ifndef expm1
+#define expm1(x) __builtin_expm1(x)
+#define expm1f(x) __builtin_expm1f(x)
+#define expm1l(x) __builtin_expm1l(x)
+#endif
+#ifndef fdim
+#define fdim(x, y) __builtin_fdim(x, y)
+#define fdimf(x, y) __builtin_fdimf(x, y)
+#define fdiml(x, y) __builtin_fdiml(x, y)
+#endif
+#ifndef fma
+#define fma(x, y, z) __builtin_fma(x, y, z)
+#define fmaf(x, y, z) __builtin_fmaf(x, y, z)
+#define fmal(x, y, z) __builtin_fmal(x, y, z)
+#endif
+#ifndef fmodf
+#define fmodf(x, y) __builtin_fmodf(x, y)
+#define fmodl(x, y) __builtin_fmodl(x, y)
+#endif
+#ifndef ilogb
+#define ilogb(x) __builtin_ilogb(x)
+#define ilogbf(x) __builtin_ilogbf(x)
+#define ilogbl(x) __builtin_ilogbl(x)
+#endif
+#ifndef lgamma
+#define lgamma(x) __builtin_lgamma(x)
+#define lgammaf(x) __builtin_lgammaf(x)
+#define lgammal(x) __builtin_lgammal(x)
+#endif
+#ifndef log10f
+#define log10f(x) __builtin_log10f(x)
+#define log10l(x) __builtin_log10l(x)
+#endif
+#ifndef log1p
+#define log1p(x) __builtin_log1p(x)
+#define log1pf(x) __builtin_log1pf(x)
+#define log1pl(x) __builtin_log1pl(x)
+#endif
+#ifndef logb
+#define logb(x) __builtin_logb(x)
+#define logbf(x) __builtin_logbf(x)
+#define logbl(x) __builtin_logbl(x)
+#endif
+#ifndef modff
+#define modff(x, ip) __builtin_modff(x, ip)
+#define modfl(x, ip) __builtin_modfl(x, ip)
+#endif
+#ifndef nan
+#define nan(s) __builtin_nan(s)
+#define nanf(s) __builtin_nanf(s)
+#define nanl(s) __builtin_nanl(s)
+#endif
+#ifndef nearbyint
+#define nearbyint(x) __builtin_nearbyint(x)
+#define nearbyintf(x) __builtin_nearbyintf(x)
+#define nearbyintl(x) __builtin_nearbyintl(x)
+#endif
+#ifndef nextafter
+#define nextafter(x, y) __builtin_nextafter(x, y)
+#define nextafterf(x, y) __builtin_nextafterf(x, y)
+#define nextafterl(x, y) __builtin_nextafterl(x, y)
+#endif
+#ifndef nexttoward
+#define nexttoward(x, y) __builtin_nexttoward(x, y)
+#define nexttowardf(x, y) __builtin_nexttowardf(x, y)
+#define nexttowardl(x, y) __builtin_nexttowardl(x, y)
+#endif
+#ifndef remainder
+#define remainder(x, y) __builtin_remainder(x, y)
+#define remainderf(x, y) __builtin_remainderf(x, y)
+#define remainderl(x, y) __builtin_remainderl(x, y)
+#endif
+#ifndef remquo
+#define remquo(x, y, q) __builtin_remquo(x, y, q)
+#define remquof(x, y, q) __builtin_remquof(x, y, q)
+#define remquol(x, y, q) __builtin_remquol(x, y, q)
+#endif
+#ifndef scalbln
+#define scalbln(x, n) __builtin_scalbln(x, n)
+#define scalblnf(x, n) __builtin_scalblnf(x, n)
+#define scalblnl(x, n) __builtin_scalblnl(x, n)
+#endif
+#ifndef scalbn
+#define scalbn(x, n) __builtin_scalbn(x, n)
+#define scalbnf(x, n) __builtin_scalbnf(x, n)
+#define scalbnl(x, n) __builtin_scalbnl(x, n)
+#endif
+#ifndef tgamma
+#define tgamma(x) __builtin_tgamma(x)
+#define tgammaf(x) __builtin_tgammaf(x)
+#define tgammal(x) __builtin_tgammal(x)
+#endif
+#endif // SPRT_EMBOX
+
 // NuttX <math.h> does not define MATH_ERRNO/MATH_ERREXCEPT/math_errhandling and
 // uses different FP_/M_ numeric values than the glibc layout sprt pins against.
 // Skip the canonical-equality pin block on NuttX; the wrapper re-exports the
 // symbols under __sprt_-prefixed names regardless.
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
 static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
 
@@ -70,7 +186,7 @@ static_assert(HUGE_VAL == __SPRT_HUGE_VAL);
 static_assert(HUGE_VALF == __SPRT_HUGE_VALF);
 static_assert(HUGE_VALL == __SPRT_HUGE_VALL);
 
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS
 
 #endif
 

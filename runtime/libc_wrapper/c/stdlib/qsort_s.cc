@@ -36,7 +36,7 @@ struct __qsort_r_wrapper {
 	int (*comp)(const void *, const void *, void *);
 };
 
-#if SPRT_ANDROID || SPRT_NUTTX
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
 thread_local __qsort_s_wrapper tl_qsort_s_wrapper;
 thread_local __qsort_r_wrapper tl_qsort_r_wrapper;
 #endif
@@ -67,7 +67,7 @@ __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t
 		return EINVAL;
 	}
 
-#if SPRT_ANDROID || SPRT_NUTTX
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
 	// save/restore so a comparator that recursively sorts composes correctly.
 	// NuttX has qsort_r but its signature differs from both glibc and BSD; the
 	// thread-local wrapper through plain qsort is portable.
@@ -98,7 +98,7 @@ SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(siz
 		auto w = (__qsort_r_wrapper *)ptr;
 		return w->cmp(l, r, w->ctx);
 	});
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 // NuttX has no qsort_r at all; route through plain qsort with the same
 // thread-local wrapper the Android path uses for qsort_s.
 SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,

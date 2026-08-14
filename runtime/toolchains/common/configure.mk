@@ -185,6 +185,73 @@ SP_CFLAGS += -femulated-tls
 SP_CXXFLAGS += -femulated-tls
 endif # NUTTX
 
+ifdef EMBOX
+# Embox hosted-POSIX on its own libc. Third-party deps cross-build against the
+# imported Embox sysroot the same way they do against glibc on LINUX: the Embox
+# libc/pthread/mm live under $(SP_INSTALL_PREFIX)/sysroot/usr/include (the
+# imported export), while the third-party deps themselves install under
+# $(SP_INSTALL_PREFIX)/usr/include. SP_CFLAGS above already adds
+# -isystem $(SP_INSTALL_PREFIX)/usr/include (the deps); add the Embox libc
+# include too so giflib/zlib/freetype/... find <stdlib.h>, <string.h>,
+# <sys/types.h>, ... from Embox. No -nostdinc / -ffreestanding: deps are
+# compiled hosted (the Embox libc is the real libc, not sprt). The clang
+# --target is the baremetal triple (LLVM has no "embox" OSType); -D__EMBOX__ is
+# driven from the FORWARD_VARS the target Makefile passes in, so it is not
+# re-added here. The sprt runtime headers are NOT on the path: deps must not see
+# sprt's umbrella, only Embox libc (consistent with how LINUX/ANDROID deps build
+# against the platform libc, not sprt).
+SP_EMBOX_ARCH_FLAGS := -march=armv8-a
+# C/C++ deps use the sprt libc C shims (include_libc) as their C Standard
+# Library base, NOT the Embox libc (sysroot/usr/include). The Embox libc
+# headers leak broad identifiers into the global scope that clash with
+# third-party code: <sys/types.h> has an unnamed `enum { ERROR = -1, OK = 0 }`
+# whose `OK` collides with libwebp's `WebPWorkerStatus::OK` enumerator (a hard
+# C redefinition error, not a warning); <math.h> defines isinf/isnan as macros
+# that break libc++'s std::isinf; and so on. The sprt include_libc C shims are
+# a clean POSIX C surface the deps compile against; the Embox libc itself is
+# reached only at link time (libs in sysroot/usr/lib) and through -idirafter
+# for the Embox-internal <arch/...> and <embox/...> headers sprt's cross layer
+# pulls (embox_sprt/setjmp.h -> <arch/setjmp.h>). Mirrors the WASM deps shape.
+#
+# -ffreestanding is critical here, same as WASM: it makes __STDC_HOSTED__=0 so
+# sprt's SPRT_UMBRELLA_REQUIRED default evaluates to 0 and the sprt libc shims
+# expose EXTERN prototypes (resolved against the platform libc / sprt runtime
+# at link time) rather than static-inline bodies. Without it the static-inline
+# umbrella declarations (e.g. strcasecmp in <string.h>) clash with the
+# third-party deps' own non-static forward declarations (curl's stdcheaders.h).
+SP_EMBOX_LIBC_INC := -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+SP_EMBOX_SYSROOT_FALLBACK := -idirafter $(SP_INSTALL_PREFIX)/sysroot/usr/include
+# clang does not auto-add its builtin/resource include dir for the baremetal
+# aarch64-none-elf target, so the Embox <stdarg.h> shim's #include_next never
+# reaches the clang-provided <stdarg.h>/<stdatomic.h>/intrinsics. Add the host
+# clang resource include at LOWEST priority (-idirafter) so it fills only the
+# clang-builtin gaps without shadowing the sprt libc headers. The path is the
+# real host clang resource dir (lib/clang -> host/lib/clang/21 is a relative
+# symlink that does not resolve to <prefix>/lib/clang/include directly).
+SP_EMBOX_RESOURCE_INC := -idirafter $(SP_INSTALL_PREFIX)/host/lib/clang/21/include
+SP_CFLAGS += -ffreestanding $(SP_EMBOX_ARCH_FLAGS) $(SP_EMBOX_LIBC_INC) $(SP_EMBOX_SYSROOT_FALLBACK) $(SP_EMBOX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__EMBOX__ -D__SPRT_USE_STL=0
+SP_CXXFLAGS += -ffreestanding $(SP_EMBOX_ARCH_FLAGS) $(SP_EMBOX_LIBC_INC) $(SP_EMBOX_SYSROOT_FALLBACK) $(SP_EMBOX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__EMBOX__ -D__SPRT_USE_STL=0 -std=gnu++17
+SP_CPPFLAGS += -ffreestanding $(SP_EMBOX_ARCH_FLAGS) $(SP_EMBOX_LIBC_INC) $(SP_EMBOX_SYSROOT_FALLBACK) $(SP_EMBOX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__EMBOX__ -D__SPRT_USE_STL=0
+SP_LDFLAGS += -L$(SP_INSTALL_PREFIX)/sysroot/usr/lib
+# Embox flat-build arm64 linker scripts have no .tbss/.tdata sections (see
+# make/os/embox.mk); -femulated-tls keeps thread_local working in deps too.
+SP_CFLAGS += -femulated-tls
+SP_CXXFLAGS += -femulated-tls
+# Embox's libc/compiler headers leak broad identifiers into the global scope
+# (the `OK = 0` / `ERROR = -1` enumerators in <sys/types.h>, the `CODE` / `FAR`
+# / `near` / `distant` placement macros in <embox/compiler.h>, ...). These clash
+# with third-party code (libwebp's `OK`, brotli's `CODE`), and the Embox -Werror
+# /-Wundef/-Wshadow policy in TARGET_EMBOX_ARCHCFLAGS is for Embox's own code
+# review, not for the deps built here. Downgrade the resulting diagnostics so
+# the deps compile against the libc as-is, matching how LINUX/ANDROID deps build.
+SP_CFLAGS += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+SP_CXXFLAGS += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+# Embox flat-build arm64 linker scripts have no .tbss/.tdata sections (see
+# make/os/embox.mk); -femulated-tls keeps thread_local working in deps too.
+SP_CFLAGS += -femulated-tls
+SP_CXXFLAGS += -femulated-tls
+endif # EMBOX
+
 
 ifdef DARWIN
 
@@ -355,6 +422,86 @@ CONFIGURE_CMAKE_C_FLAGS_INIT += -femulated-tls
 CONFIGURE_CMAKE_CXX_FLAGS_INIT += -femulated-tls
 endif # NUTTX
 
+ifdef EMBOX
+# The toolchain-libs.cmake (generated by target-embox/init-target.mk) sources
+# CMAKE_C_FLAGS_INIT from SP_C_FLAGS (filled here), so cmake-driven deps see the
+# same Embox libc + clang-resource include paths and the same -Wno-* downgrades
+# as the direct-compile (non-cmake) deps. Add the include paths and the warning
+# relaxations here so CONFIGURE_CMAKE_C_FLAGS_INIT (which configure.mk passes
+# through as -DSP_C_FLAGS) carries them into toolchain-libs.cmake.
+CONFIGURE_CMAKE_C_FLAGS_INIT += -ffreestanding $(SP_EMBOX_LIBC_INC) $(SP_EMBOX_SYSROOT_FALLBACK) $(SP_EMBOX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__EMBOX__ -D__SPRT_USE_STL=0
+# C++ deps (harfbuzz, freetype) need a C++ standard library surface for <cassert>/
+# <vector>/... — the Embox sysroot has no libc++. Use the vendored upstream libc++
+# headers (libcxx/include, header-only — no libc++abi/libc++ build needed) plus
+# the sprt libc++-shim wrappers (include_libc/cxx) and the sprt libc C shims
+# (include_libc) as the C standard library surface libc++ #include_next's into.
+# This mirrors the WASM C++ deps layout (configure.mk SP_WASM_CXX_INCLUDES): the
+# order matters — libcxx/include BEFORE include_libc so libc++'s <cstdio> finds
+# the C <stdio.h> in include_libc via the regular search. sprt/cxx is NOT on the
+# path (it pulls sprt/wrappers/libc which conflicts with the platform libc).
+# -D__EMBOX__ so sprt platform detection (__sprt_def.h, reached transitively via
+# libcxx/include -> __config_site) resolves to the Embox branch. -D__SPRT_USE_STL=0
+# keeps the sprt STL surface self-contained (no projection onto a real libc++).
+SP_EMBOX_CXX_INCLUDES := \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
+	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include
+# C++ deps use ONLY the vendored libc++ + sprt libc shims as their C/C++ header
+# base — NOT the Embox libc standard headers (sysroot/usr/include). libc++
+# expects its own C Standard Library headers ahead of any platform libc (Embox
+# <math.h> defines isinf/isnan as macros that break std::isinf; Embox <float.h>
+# is not libc++'s own). So the Embox sysroot is NOT on the CXX path via -isystem
+# (which would shadow sprt's C shims); the sprt include_libc C shims (which
+# libc++ #include_next's into) stand in for the C library instead. Mirrors the
+# WASM C++ deps shape (sprt IS the libc there).
+# The sprt embox_sprt/ cross headers (reached transitively via libc++'s
+# <csetjmp> -> sprt include_libc/setjmp.h -> embox_sprt/setjmp.h -> <arch/setjmp.h>
+# / <embox/lib/setjmp.h>) DO need the Embox arch/embox trees. Expose the Embox
+# sysroot at LOWEST priority (-idirafter, after sprt + libc++) so the Embox-
+# internal <arch/...> and <embox/...> paths resolve, but the Embox standard C
+# headers (<math.h>, <stdio.h>, ...) never shadow the sprt/libc++ shims. If a
+# header is reached only via -idirafter it is by construction not found earlier
+# in the sprt/libc++ path, so Embox only fills the arch/embox gaps.
+SP_EMBOX_CXX_LIBC_INCLUDES := -idirafter $(SP_INSTALL_PREFIX)/sysroot/usr/include
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -ffreestanding $(SP_EMBOX_RESOURCE_INC) $(SP_EMBOX_CXX_INCLUDES) $(SP_EMBOX_CXX_LIBC_INCLUDES) -D_LDBL_EQ_DBL -D__EMBOX__ -D__SPRT_USE_STL=0 -std=gnu++20
+# cmake feature-probes (libzip's check_function_exists for the Annex K *_s
+# functions, curl's recv/send, ...) need to LINK against the sprt libc to tell
+# present-from-absent symbols apart when the project-include flips them to
+# EXECUTABLE (see target-embox/embox-libzip-project-include.cmake). Mirror the
+# WASM shape (but with ELF lld flags — wasm-ld's --no-entry/--export-if-defined
+# are wasm-only): -nostdlib to keep Embox libc/crt0 out of the probe link,
+# -lsprt for the umbrella surface, the compiler-rt builtins for out-of-line
+# arithmetic, --gc-sections to drop unreferenced probe helpers, and
+# --unresolved-symbols=ignore-in-object-files so an absent function is silently
+# left undefined instead of being a hard link error (which is what we WANT for
+# detection: check_function_exists compiles+links a call to the symbol, so a
+# present symbol resolves via libsprt.a and an absent one stays undefined ->
+# the probe's try_compile fails -> detected ABSENT). check_type_size's main is
+# kept live by the static-archive fallback path (no --export-if-defined needed
+# on ELF: it is referenced by _start which lld keeps).
+SP_EMBOX_PROBE_LDFLAGS := -nodefaultlibs -nostartfiles \
+	-L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_INSTALL_PREFIX)/sysroot/usr/lib \
+	-lsprt -lc -lm \
+	$(SP_INSTALL_PREFIX)/sysroot/usr/lib/libclang_rt.builtins-aarch64.a \
+	-Wl,--no-undefined -Wl,-u,main -Wl,-e,main
+CONFIGURE_EXE_LINKER_FLAGS_INIT += $(SP_EMBOX_PROBE_LDFLAGS)
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += $(SP_EMBOX_PROBE_LDFLAGS)
+# Embox's libc/compiler headers leak broad identifiers into the global scope
+# (the `OK = 0` / `ERROR = -1` enumerators in <sys/types.h>, the `CODE` / `FAR`
+# / `near` / `distant` placement macros in <embox/compiler.h>, ...). These clash
+# with third-party code (libwebp's `OK`, brotli's `CODE`), and the Embox -Werror
+# /-Wundef/-Wshadow policy in TARGET_EMBOX_ARCHCFLAGS is for Embox's own code
+# review, not for the deps built here. Downgrade the resulting diagnostics so
+# the deps compile against the libc as-is, matching how LINUX/ANDROID deps build.
+CONFIGURE_CMAKE_C_FLAGS_INIT += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+# cmake-driven deps (SheenBidi's _Thread_local ScratchBuffer, …) must match
+# the engine's -femulated-tls; Embox arm64 linker scripts have no PT_TLS.
+CONFIGURE_CMAKE_C_FLAGS_INIT += -femulated-tls
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -femulated-tls
+endif # EMBOX
+
 CONFIGURE_CMAKE :=
 
 ifdef SP_TOOLCHAIN_FILE
@@ -510,6 +657,10 @@ ifdef NUTTX
 # freetype/harfbuzz build order (freetype first, no system harfbuzz) — see
 # target-nuttx/nuttx-deps-project-include.cmake for the details.
 CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)nuttx-deps-project-include.cmake
+endif
+
+ifdef EMBOX
+CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)embox-deps-project-include.cmake
 endif
 
 ifeq ($(DEBUG),1)

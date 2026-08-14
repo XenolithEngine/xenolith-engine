@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // NuttX <time.h> declares tzset(), CLOCK_*, and struct tm; pull it directly
 // because the sprt __sprt_time.h umbrella does not re-export tzset.
 #include <time.h>
@@ -59,7 +59,7 @@ THE SOFTWARE.
 // NuttX <time.h> carries fewer CLOCK_* constants than Linux and uses different
 // numeric values for the ones it has; skip the canonical-equality pin block on
 // NuttX (CLOCK_MONOTONIC_RAW/COARSE are not defined there at all).
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(CLOCK_REALTIME == __SPRT_CLOCK_REALTIME);
 static_assert(CLOCK_MONOTONIC == __SPRT_CLOCK_MONOTONIC);
 static_assert(CLOCK_PROCESS_CPUTIME_ID == __SPRT_CLOCK_PROCESS_CPUTIME_ID);
@@ -71,7 +71,7 @@ static_assert(CLOCK_BOOTTIME == __SPRT_CLOCK_BOOTTIME);
 #ifdef CLOCK_REALTIME_COARSE
 static_assert(CLOCK_REALTIME_COARSE == __SPRT_CLOCK_REALTIME_COARSE);
 #endif
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS
 
 #ifdef CLOCK_REALTIME_ALARM
 static_assert(CLOCK_REALTIME_ALARM == __SPRT_CLOCK_REALTIME_ALARM);
@@ -247,8 +247,13 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strftime_l)(char *__SPRT_RESTRICT buf,
 #if __STDC_HOSTED__ == 0
 	return ::strftime_l(buf, size, fmt, ts, loc);
 #else
+	(void)loc;
 	auto native = internal::getNativeTm(ts);
+#if SPRT_EMBOX
+	return ::strftime(buf, size, fmt, &native);
+#else
 	return ::strftime_l(buf, size, fmt, &native, loc);
+#endif
 #endif
 }
 
@@ -260,6 +265,18 @@ __SPRT_C_FUNC char *__SPRT_ID(
 	auto native = internal::getNativeTm(ts);
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::asctime64_r(&native, buf);
+#elif SPRT_EMBOX
+	char *s = ::asctime(&native);
+	if (!s || !buf) {
+		return nullptr;
+	}
+	for (int i = 0; i < 26; ++i) {
+		buf[i] = s[i];
+		if (s[i] == '\0') {
+			break;
+		}
+	}
+	return buf;
 #else
 	return ::asctime_r(&native, buf);
 #endif
@@ -331,7 +348,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		clock_getcpuclockid)(__SPRT_ID(pid_t) pid, __SPRT_ID(clockid_t) * clock) {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	if (pid != __sprt_getpid()) {
 		return ENOSYS;
 	}

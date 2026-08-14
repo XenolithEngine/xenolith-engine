@@ -47,6 +47,10 @@
 #include "SPRuntimeFilesystem-nuttx.cc"
 #endif
 
+#if SPRT_EMBOX
+#include "SPRuntimeFilesystem-embox.cc"
+#endif
+
 #include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::filesystem {

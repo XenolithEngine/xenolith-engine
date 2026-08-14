@@ -512,7 +512,9 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void)
 	return ::__errno();
 #elif SPRT_APPLE
 	return __error();
-#elif SPRT_NUTTX
+#elif SPRT_EMBOX
+	return ::task_self_resource_errno();
+#elif SPRT_HOSTED_RTOS
 	// NuttX libc exposes errno via `int *__errno(void)` (errno.h does
 	// `#define errno *__errno()`), the same surface Android/Bionic uses.
 	return ::__errno();

@@ -25,7 +25,7 @@
 ///@ SP_EXCLUDE
  */
 
-#if !SPRT_WASM && !SPRT_NUTTX
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS
 // SPIRV-Reflect pulls the Khronos SPIRV-Headers (spirv/unified1/spirv.h), absent on wasm
 // (WGSL path) and NuttX (soft rasterizer, no GPU/Vulkan).
 #include "SPIRV-Reflect/spirv_reflect.cc"

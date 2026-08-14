@@ -27,6 +27,13 @@ LIBNAME = curl
 SP_USER_CFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
 SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
 
+ifdef EMBOX
+# curl.h #include <sys/select.h> only for __NuttX__ (and a handful of other
+# OSes), not __EMBOX__. Without it FD_SETSIZE/FD_SET are undeclared in
+# cshutdn.c via lib/select.h's FDSET_SOCK.
+SP_USER_CFLAGS += -include sys/select.h
+endif
+
 ifdef WINDOWS
 SP_USER_CFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
 SP_USER_CXXFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
@@ -95,7 +102,7 @@ CONFIGURE += \
 	-DENABLE_THREADED_RESOLVER=OFF
 endif
 
-ifdef NUTTX
+ifneq ($(or $(NUTTX),$(EMBOX)),)
 # NuttX has no FindThreads-friendly try_compile (toolchain-libs.cmake sets
 # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY so the link-test executable never
 # builds), so find_package(Threads) fails -> ENABLE_THREADED_RESOLVER (curl's

@@ -109,12 +109,7 @@ int NuttxContextController::run(NotNull<ContextContainer> container) {
 	_context->handleConfigurationChanged(sprt::move(_contextInfo));
 	_contextInfo = nullptr;
 
-	// Cyan: entered the controller. Magenta was hello_main's hold fill.
-	nuttxDebugFill(0xff00ffffu);
-
 	_looper->performOnThread([this] {
-		nuttxDebugFill(0xff0000ffu); // blue: lambda running
-
 		auto instance = _context->makeInstance(_instanceInfo);
 		if (!instance) {
 			oslog::vperror(__SPRT_LOCATION, "NuttxContextController",
@@ -123,7 +118,6 @@ int NuttxContextController::run(NotNull<ContextContainer> container) {
 			destroy();
 			return;
 		}
-		nuttxDebugFill(0xffffffffu); // white: instance up
 
 		auto loop = _context->makeLoop(instance, _loopInfo);
 		if (!loop) {
@@ -134,17 +128,14 @@ int NuttxContextController::run(NotNull<ContextContainer> container) {
 		}
 
 		_context->handleGraphicsLoaded(loop);
-		nuttxDebugFill(0xffff7f00u); // orange: loop up, about to resume()
 
 		if (!resume()) {
 			oslog::vperror(__SPRT_LOCATION, "NuttxContextController", "Fail to resume Context");
-			nuttxDebugFill(0xffff0000u); // red: AppThread failed
 			_resultCode = -1;
 			destroy();
 			return;
 		}
 
-		nuttxDebugFill(0xffffff00u); // yellow: AppThread up, creating window
 		createWindow(sprt::move(_windowInfo));
 	}, nullptr, true);
 

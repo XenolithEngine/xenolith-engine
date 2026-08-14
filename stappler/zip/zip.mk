@@ -58,6 +58,10 @@ ifdef NUTTX
 MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -l:libz.a
 endif
 
+ifdef EMBOX
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -l:libz.a
+endif
+
 #spec
 
 MODULE_STAPPLER_ZIP_SHARED_SPEC_SUMMARY := libstappler ZIP archive interface

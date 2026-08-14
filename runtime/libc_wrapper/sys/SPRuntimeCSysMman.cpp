@@ -46,7 +46,7 @@ namespace sprt {
 // constants must equal the host's. Assert the portable set the wrappers rely on
 // (same pattern as the kevent/darwin wrappers); a future drift fails the build.
 // The POSIX core below is identical on Linux/macOS/Android.
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(PROT_NONE == __SPRT_PROT_NONE);
 static_assert(PROT_READ == __SPRT_PROT_READ);
 static_assert(PROT_WRITE == __SPRT_PROT_WRITE);
@@ -73,11 +73,11 @@ static_assert(MAP_ANONYMOUS == __SPRT_MAP_ANONYMOUS);
 static_assert(MAP_NORESERVE == __SPRT_MAP_NORESERVE);
 static_assert(MS_SYNC == __SPRT_MS_SYNC);
 static_assert(MADV_FREE == __SPRT_MADV_FREE);
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS
 
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
 		int __fd, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return mmap(__addr, __size, __prot, __flags, __fd, __offset);
 #else
 	return mmap64(__addr, __size, __prot, __flags, __fd, __offset);
@@ -93,18 +93,47 @@ __SPRT_C_FUNC int __SPRT_ID(mprotect)(void *__addr, __SPRT_ID(size_t) __size, in
 }
 
 __SPRT_C_FUNC int __SPRT_ID(msync)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
+#if SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	(void)__flags;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return msync(__addr, __size, __flags);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(posix_madvise)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
+#if SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	(void)__flags;
+	return 0;
+#else
 	return posix_madvise(__addr, __size, __flags);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mlock)(const void *__addr, __SPRT_ID(size_t) __size) {
+#if SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return mlock(__addr, __size);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(munlock)(const void *__addr, __SPRT_ID(size_t) __size) {
+#if SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return munlock(__addr, __size);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mlockall)(int __flags) {
@@ -158,6 +187,12 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
+#elif SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	(void)__flags;
+	__sprt_errno = ENOSYS;
+	return -1;
 #elif SPRT_APPLE || SPRT_NUTTX
 	if (__flags == 0) {
 		return mlock(__addr, __size);
@@ -170,11 +205,18 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 }
 
 __SPRT_C_FUNC int __SPRT_ID(madvise)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
+#if SPRT_EMBOX
+	(void)__addr;
+	(void)__size;
+	(void)__flags;
+	return 0;
+#else
 	return madvise(__addr, __size, __flags);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mincore)(void *__addr, __SPRT_ID(size_t) __size, unsigned char *__vec) {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// NuttX has no mincore.
 	(void)__addr; (void)__size; (void)__vec;
 	*__sprt___errno_location() = ENOSYS;

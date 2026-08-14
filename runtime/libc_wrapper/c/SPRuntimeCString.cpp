@@ -183,21 +183,41 @@ __SPRT_C_FUNC int __SPRT_ID(strncasecmp)(const char *l, const char *r, __SPRT_ID
 }
 
 __SPRT_C_FUNC int __SPRT_ID(strcasecmp_l)(const char *l, const char *r, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::strcasecmp(l, r);
+#else
 	return ::strcasecmp_l(l, r, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(strncasecmp_l)(const char *l, const char *r, __SPRT_ID(rsize_t) n,
 		__SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::strncasecmp(l, r, n);
+#else
 	return ::strncasecmp_l(l, r, n, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(strcoll_l)(const char *l, const char *r, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::strcoll(l, r);
+#else
 	return ::strcoll_l(l, r, loc);
+#endif
 }
 
 __SPRT_C_FUNC size_t __SPRT_ID(strxfrm_l)(char *__SPRT_RESTRICT dest,
 		const char *__SPRT_RESTRICT src, size_t size, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::strxfrm(dest, src, size);
+#else
 	return ::strxfrm_l(dest, src, size, loc);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(

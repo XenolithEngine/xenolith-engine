@@ -24,7 +24,7 @@
 #include "XLRemoteProtocol.h"
 #include "SPPlatform.h"
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 
 // See XLRemoteListener.cc: NuttX OpenSSL has no QUIC/BIO sockets.
 
@@ -399,4 +399,4 @@ void ClientConnection::close() {
 
 } // namespace stappler::xenolith::remote
 
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS

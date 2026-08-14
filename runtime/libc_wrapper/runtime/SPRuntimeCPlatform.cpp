@@ -52,3 +52,8 @@ THE SOFTWARE.
 #include "../platform/nuttx/unicode.cc"
 #include "../platform/nuttx/stubs.cc"
 #endif
+
+#if SPRT_EMBOX
+#include "../platform/embox/unicode.cc"
+#include "../platform/embox/stubs.cc"
+#endif

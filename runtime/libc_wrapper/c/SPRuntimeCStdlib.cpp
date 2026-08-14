@@ -50,7 +50,7 @@ THE SOFTWARE.
 // conversion is locale-independent, so fall back to the plain functions there
 // (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, and keeps the _l calls).
 // NuttX libc has neither the integer nor the float _l variants.
-#if (SPRT_LINUX && !defined(__GLIBC__)) || SPRT_NUTTX
+#if (SPRT_LINUX && !defined(__GLIBC__)) || SPRT_HOSTED_RTOS
 #define __SPRT_NO_STRTO_INT_L 1
 #else
 #define __SPRT_NO_STRTO_INT_L 0
@@ -185,7 +185,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// NuttX libc has no mkostemp; fall back to mkstemp (the flags argument is
 	// silently dropped — NuttX does not honour O_CLOEXEC on tempfile creation
 	// anyway, callers must fcntl FD_CLOEXEC afterwards).
@@ -195,7 +195,15 @@ __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
 	return mkostemp(tpl, n);
 #endif
 }
-__SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) { return mkdtemp(tpl); }
+__SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) {
+#if SPRT_EMBOX
+	(void)tpl;
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
+	return mkdtemp(tpl);
+#endif
+}
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		realpath)(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
@@ -273,7 +281,13 @@ __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_I
 	return ::mbtowc(__wc_ptr, __s, __n);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) { return ::wctomb(__dst, __wc); }
+__SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) {
+#if SPRT_EMBOX
+	return ::wctomb(__dst, &__wc);
+#else
+	return ::wctomb(__dst, __wc);
+#endif
+}
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n) {
@@ -283,7 +297,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
 #if SPRT_APPLE
 	return ___mb_cur_max();
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 	// NuttX has no __ctype_get_mb_cur_max; MB_CUR_MAX is a compile-time macro.
 	return MB_CUR_MAX;
 #else

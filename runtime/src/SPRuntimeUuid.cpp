@@ -55,7 +55,7 @@ struct UuidState {
 	uint8_t node[sha256::Length];
 };
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // Single-thread NuttX: emutls has already returned a non-mapped pointer for
 // this object (__tls_init ldrb after __emutls_get_address). A process-lifetime
 // static is enough; function-local so the ctor does not run in .init_array.
@@ -72,7 +72,7 @@ static uint64_t getCurrentTime() {
 	// time magic to convert from epoch to UUID UTC
 	uint64_t time_now = (sprt::platform::clock() * 10) + 0x01B2'1DD2'1381'4000ULL;
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	static uint64_t time_last = 0;
 	static uint64_t fudge = 0;
 #else

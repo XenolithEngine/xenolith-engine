@@ -69,7 +69,11 @@ static_assert(SIGINFO == __SPRT_SIGINFO);
 static_assert(SIGUSR1 == __SPRT_SIGUSR1);
 static_assert(SIGUSR2 == __SPRT_SIGUSR2);
 
+#if !SPRT_EMBOX
+// Embox's SIG_DFL is ((sighandler_t)0x1), which is not a null-pointer constant
+// and therefore not a valid static_assert operand.
 static_assert(SIG_DFL == __SPRT_SIG_DFL);
+#endif
 //static_assert(SIG_IGN == __SPRT_SIG_IGN);
 //static_assert(SIG_HOLD == __SPRT_SIG_HOLD);
 //static_assert(SIG_ERR == __SPRT_SIG_ERR);
@@ -78,7 +82,7 @@ static_assert(SIG_DFL == __SPRT_SIG_DFL);
 // __sprt_sig_atomic_t is plain `int`. The volatile-qualification is harmless
 // to the runtime's use (it only stores/restores the value), so skip the
 // type-identity check there.
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(sprt::is_same_v<sig_atomic_t, __sprt_sig_atomic_t>);
 #endif
 

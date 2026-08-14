@@ -57,3 +57,4 @@ CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios
 # (which uses --target directly) or have no configure step, so this only needs
 # to satisfy the few autoconf libs that pass --host through config.sub.
 CONFIGURE_HOST_NuttX_aarch64 := aarch64-elf
+CONFIGURE_HOST_Embox_aarch64 := aarch64-elf

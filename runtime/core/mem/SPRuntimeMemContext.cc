@@ -33,7 +33,7 @@ namespace sprt::memory::pool {
 // Desktop keeps a deep pool stack (nested perform/context). NuttX is typically
 // a single-thread app: 4097 * sizeof(Info) is ~128 KiB of thread_local. A
 // 64-deep stack is enough for the looper and scene init.
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 static constexpr size_t SP_ALLOC_STACK_SIZE = 64;
 #else
 static constexpr size_t SP_ALLOC_STACK_SIZE = 4'097;

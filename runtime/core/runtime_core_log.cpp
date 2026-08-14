@@ -47,7 +47,7 @@
 __SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // NuttX libc declares strerror_r in <string.h>; pull it the same way the Linux
 // path does (NuttX has strerror_r, no __STDC_LIB_EXT1__ bounds-checked variant).
 #undef _GNU_SOURCE
@@ -442,7 +442,7 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 
 // NuttX NSH console: assume ANSI-compatible (the QEMU virtio-serial console and
 // most HDMI-attached terminals handle ANSI escapes). Probe TERM/TERMINFO like

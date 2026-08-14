@@ -400,7 +400,7 @@ struct BacktraceState {
 static BacktraceState s_backtraceState;
 
 void initialize() {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// libunwind's backtrace_create_state (weak, pulled in via EXTRA_LIBS) tries
 	// to parse the flat kernel ELF. That either hangs or OOMs on qemu-armv8a;
 	// hello-world does not need symbolic backtraces.

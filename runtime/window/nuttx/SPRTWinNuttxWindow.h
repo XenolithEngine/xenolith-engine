@@ -33,11 +33,6 @@ namespace sprt::window {
 class NuttxContextController;
 class NuttxWindow;
 
-// HDMI breadcrumb: paint /dev/fb0 a solid colour without closing it (last
-// close on bcm2711 blanks the scanout). Used to locate a hang before the
-// software swapchain presents a real frame.
-void nuttxDebugFill(uint32_t pixel);
-
 // CPU presentation into the mmap'd framebuffer. virtio-gpu on qemu-armv8a is
 // B8G8R8X8, which is the layout the software rasterizer already produces.
 // The swapchain slot is a CPU shadow: rasterizing into live HDMI scanout

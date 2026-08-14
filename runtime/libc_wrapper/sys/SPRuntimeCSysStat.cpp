@@ -52,7 +52,7 @@ namespace sprt {
 #define fstatat64 fstatat
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 // NuttX has no LFS stat64/fstat64/lstat64 — they are plain `stat`. Redefine
 // so the convertStatFromNative + the wrappers below keep compiling.
 #define stat64 stat
@@ -180,7 +180,12 @@ __SPRT_C_FUNC int __SPRT_ID(mkdir)(const char *path, __SPRT_ID(mode_t) mode) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkdirat)(int fd, const char *path, __SPRT_ID(mode_t) mode) {
+#if SPRT_EMBOX
+	(void)fd;
+	return mkdir(path, convertModeToNative(mode));
+#else
 	return mkdirat(fd, path, convertModeToNative(mode));
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkfifo)(const char *path, __SPRT_ID(mode_t) mode) {

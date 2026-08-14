@@ -39,12 +39,6 @@
 #include <sprt/runtime/window/controller.h>
 #include <sprt/runtime/window/clipboard.h>
 
-#if SPRT_NUTTX
-namespace sprt::window {
-void nuttxDebugFill(uint32_t);
-}
-#endif
-
 #if MODULE_XENOLITH_FONT
 #include "XLFontLocale.h"
 #include "XLFontComponent.h"
@@ -240,12 +234,16 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 	engineMask = sprt::dispatch::QueueEngine::EPoll;
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	engineMask = sprt::dispatch::QueueEngine::None;
 #endif
 
 	_looper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
+#if SPRT_HOSTED_RTOS
+		.workersCount = 0,
+#else
 		.workersCount = info.context->mainThreadsCount,
+#endif
 		.engineMask = engineMask,
 	});
 
@@ -597,19 +595,10 @@ void Context::handleWillStart() {
 void Context::handleDidStart() {
 	log::source().info("Context", "handleDidStart");
 	if (!_running) {
-#if SPRT_NUTTX
-		sprt::window::nuttxDebugFill(0xff888888u); // grey: components (font compile)
-#endif
 		for (auto &it : _components) { it.second->handleStart(this); }
 
-#if SPRT_NUTTX
-		sprt::window::nuttxDebugFill(0xffaa00ffu); // purple: AppThread::run
-#endif
 		_application->run();
 
-#if SPRT_NUTTX
-		sprt::window::nuttxDebugFill(0xff00aaaau); // teal: AppThread::run returned
-#endif
 		_running = true;
 	}
 }

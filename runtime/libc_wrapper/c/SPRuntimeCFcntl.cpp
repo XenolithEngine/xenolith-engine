@@ -43,6 +43,9 @@ THE SOFTWARE.
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#if SPRT_EMBOX
+#include <unistd.h>
+#endif
 
 // musl diverges from the glibc/bionic ABI for a couple of O_* constants checked
 // below (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, so it keeps the
@@ -68,7 +71,7 @@ static_assert(O_ACCMODE == __SPRT_O_ACCMODE);
 // the asm-generic layout glibc/musl do) and lacks the OFD/SEAL Linux
 // extensions. Skip the canonical-equality pin block on NuttX; the wrapper
 // re-exports the symbols under __sprt_-prefixed names regardless.
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 static_assert(O_RDONLY == __SPRT_O_RDONLY);
 static_assert(O_WRONLY == __SPRT_O_WRONLY);
 static_assert(O_RDWR == __SPRT_O_RDWR);
@@ -177,7 +180,7 @@ static_assert(F_SEAL_WRITE == __SPRT_F_SEAL_WRITE);
 static_assert(F_SEAL_FUTURE_WRITE == __SPRT_F_SEAL_FUTURE_WRITE);
 #endif
 
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS
 
 static_assert(F_RDLCK == __SPRT_F_RDLCK);
 static_assert(F_WRLCK == __SPRT_F_WRLCK);
@@ -230,7 +233,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	// NuttX has no LFS open64 — plain open is the only spelling.
 	return open(path, __flags, __mode);
 #else
@@ -268,7 +271,7 @@ __SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return creat(path, __mode);
 #else
 	return creat64(path, __mode);
@@ -292,7 +295,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return openat(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);

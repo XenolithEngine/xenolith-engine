@@ -62,7 +62,7 @@ THE SOFTWARE.
 #include <pthread.h>
 #endif
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 #include <pthread.h>
 #include <sys/types.h>
 #endif
@@ -85,7 +85,7 @@ THE SOFTWARE.
 #include "../src/private/SPRTSpecific.h"
 #endif
 
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 // NuttX <unistd.h> uses different numeric values for SEEK_*/R_OK/_SC_*/_PC_*
 // than the glibc layout sprt pins against; skip the canonical-equality pin block there.
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
@@ -814,7 +814,7 @@ static_assert(_PC_2_SYMLINKS == __SPRT_PC_2_SYMLINKS);
 #endif
 #endif
 
-#endif // !SPRT_NUTTX
+#endif // !SPRT_HOSTED_RTOS
 
 namespace sprt {
 
@@ -823,7 +823,9 @@ __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEP
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
+#if SPRT_EMBOX
+	return ::access(path, __type);
+#elif SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::faccessat(-1, path, __type, __SPRT_AT_EACCESS);
 #else
 	return eaccess(path, __type);
@@ -832,7 +834,7 @@ __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCE
 
 __SPRT_C_FUNC __SPRT_ID(off_t)
 		__SPRT_ID(lseek)(int __fd, __SPRT_ID(off_t) __offset, int __whence) __SPRT_NOEXCEPT {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::lseek(__fd, __offset, __whence);
 #else
 	return ::lseek64(__fd, __offset, __whence);
@@ -853,7 +855,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return pread(__fd, __buf, __count, __offset);
 #else
 	return pread64(__fd, __buf, __count, __offset);
@@ -862,7 +864,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pwrite)(int __fd, const void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return pwrite(__fd, __buf, __count, __offset);
 #else
 	return pwrite64(__fd, __buf, __count, __offset);
@@ -973,7 +975,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::execve(__file, _argv, __envp);
 #else
 	return ::execvpe(__file, _argv, __envp);
@@ -1069,11 +1071,25 @@ __SPRT_C_FUNC int __SPRT_ID(nice)(int __inc) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(pathconf)(const char *__path, int __name) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__path;
+	(void)__name;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return (long int)pathconf(__path, __name);
+#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(fpathconf)(int __fd, int __name) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__fd;
+	(void)__name;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return fpathconf(__fd, __name);
+#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(sysconf)(int __name) __SPRT_NOEXCEPT { return sysconf(__name); }
@@ -1100,7 +1116,16 @@ __SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getgid)(void) __SPRT_NOEXCEPT { return 
 __SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getegid)(void) __SPRT_NOEXCEPT { return getegid(); }
 
 __SPRT_C_FUNC int __SPRT_ID(getgroups)(int __size, __SPRT_ID(gid_t) __list[]) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__list;
+	if (__size == 0) {
+		return 0;
+	}
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return getgroups(__size, __list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
@@ -1168,7 +1193,7 @@ __SPRT_C_FUNC int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_t) * __euid,
 		__SPRT_ID(uid_t) * __suid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	auto id = getuid();
 	if (__ruid) {
 		*__ruid = id;
@@ -1186,7 +1211,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_
 }
 __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
 		__SPRT_ID(gid_t) * __sgid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	auto id = getgid();
 	if (__rgid) {
 		*__rgid = id;
@@ -1205,7 +1230,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
 		__SPRT_ID(uid_t) __suid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setreuid(__ruid, __euid);
 #else
 	return ::setresuid(__ruid, __euid, __suid);
@@ -1220,7 +1245,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid,
 		__SPRT_ID(gid_t) __sgid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setregid(__rgid, __egid);
 #else
 	return ::setresgid(__rgid, __egid, __sgid);
@@ -1268,6 +1293,23 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if SPRT_WINDOWS
 	__sprt_errno = ENOSYS;
 	return -1;
+#elif SPRT_EMBOX
+	char *name = ::ttyname(__fd);
+	if (!name) {
+		return -1;
+	}
+	size_t n = 0;
+	while (name[n] != '\0') {
+		++n;
+	}
+	if (n + 1 > __buflen) {
+		__sprt_errno = ERANGE;
+		return -1;
+	}
+	for (size_t i = 0; i <= n; ++i) {
+		__buf[i] = name[i];
+	}
+	return 0;
 #else
 	return ::ttyname_r(__fd, __buf, __buflen);
 #endif
@@ -1291,7 +1333,7 @@ __SPRT_C_FUNC int __SPRT_ID(unlink)(const char *__name) __SPRT_NOEXCEPT { return
 __SPRT_C_FUNC int __SPRT_ID(rmdir)(const char *__path) __SPRT_NOEXCEPT { return rmdir(__path); }
 
 __SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// NuttX has no getlogin in flat builds; return ENOSYS via nullptr.
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -1301,7 +1343,7 @@ __SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_len) {
-#if SPRT_ANDROID || SPRT_NUTTX
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
 	// Neither Android nor NuttX expose a usable getlogin_r in flat builds.
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform");
@@ -1383,7 +1425,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return truncate(__file, length);
 #else
 	return truncate64(__file, length);
@@ -1391,7 +1433,7 @@ __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) lengt
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ftruncate(__fd, length);
 #else
 	return ftruncate64(__fd, length);
@@ -1402,7 +1444,7 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_BRK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	::brk(__addr);
 	return 0;
 #else
@@ -1432,7 +1474,13 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 }
 
 __SPRT_C_FUNC int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_EMBOX
+	(void)__fd;
+	(void)__cmd;
+	(void)len;
+	__sprt_errno = ENOSYS;
+	return -1;
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return lockf(__fd, __cmd, len);
 #else
 	return lockf64(__fd, __cmd, len);
@@ -1463,7 +1511,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fdatasync)(int __fildes) {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	return fsync(__fildes);
 #else
 	return ::fdatasync(__fildes);
@@ -1498,7 +1546,13 @@ __SPRT_C_FUNC int __SPRT_ID(fchownat)(int __dir_fd, const char *__path, __SPRT_I
 }
 
 __SPRT_C_FUNC int __SPRT_ID(faccessat)(int __dirfd, const char *__path, int __mode, int __flags) {
+#if SPRT_EMBOX
+	(void)__dirfd;
+	(void)__flags;
+	return ::access(__path, __mode);
+#else
 	return faccessat(__dirfd, __path, __mode, __flags);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
@@ -1507,13 +1561,19 @@ __SPRT_C_FUNC int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, in
 }
 
 __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __flags) {
+#if SPRT_EMBOX
+	(void)__dirfd;
+	(void)__flags;
+	return ::unlink(__path);
+#else
 	return unlinkat(__dirfd, __path, __flags);
+#endif
 }
 
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 #if SPRT_APPLE
 	return gethostid();
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 	// NuttX has no gethostid; synthesize one from a kernel timer so callers
 	// that only need "some per-host value" do not break.
 	return static_cast<long>(::time(nullptr));
@@ -1531,7 +1591,7 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 __SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return pipe(fds); }
 
 __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
-#if SPRT_APPLE || SPRT_NUTTX
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	static auto setnonblock = [](int fd) {
 		int flags = fcntl(fd, F_GETFL, 0);
 		if (flags == -1) {

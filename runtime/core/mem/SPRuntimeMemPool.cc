@@ -54,7 +54,7 @@ pool_t *get_zero_pool() {
 }
 
 pool_t *get_thread_support_pool() {
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 	// NuttX process init is a kernel task, not a sprt pthread. Interpreting
 	// the native pthread_t / TCB as thread_base_t yields a garbage
 	// threadMemPool and the next palloc data-aborts. The zero pool is
