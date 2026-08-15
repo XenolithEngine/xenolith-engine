@@ -105,7 +105,7 @@ uint32_t thread::hardware_concurrency() noexcept {
 		return static_cast<unsigned>(result);
 	}
 
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_NUTTX
 	return 4;
 #else
 	return 1;
@@ -139,7 +139,13 @@ namespace sprt {
 inline namespace __cxx_thread {
 namespace this_thread {
 
-thread::id get_id() noexcept { return {_thread::thread_t::self()->threadId}; }
+thread::id get_id() noexcept {
+#if SPRT_NUTTX
+	return {__sprt_gettid()};
+#else
+	return {_thread::thread_t::self()->threadId};
+#endif
+}
 
 void yield() noexcept { __sprt_sched_yield(); }
 

@@ -33,6 +33,12 @@ THE SOFTWARE.
 #include <wctype.h>
 #include <time.h>
 
+#if SPRT_NUTTX
+// NuttX <wchar.h> ships only the C99 minimum; sprt's umbrella re-exports the
+// POSIX/BSD extensions, so pull the side-header declaring them.
+#include <wchar_extras.h>
+#endif
+
 #ifndef SPRT_APPLE
 #include <uchar.h>
 #endif
@@ -65,8 +71,10 @@ extern wint_t (*_towctrans_l)(wint_t __wc, wctrans_t __transform, locale_t __l);
 #endif
 
 static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
+static_assert(alignof(mbstate_t) == alignof(__SPRT_MBSTATE_NAME));
 static_assert(sizeof(wctype_t) == sizeof(__sprt_wctype_t));
 static_assert(sizeof(wint_t) == sizeof(__sprt_wint_t));
+static_assert(sizeof(wctrans_t) == sizeof(__sprt_wctrans_t));
 static_assert(WEOF == __SPRT_WEOF);
 
 namespace sprt {
@@ -887,6 +895,10 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans)(const char *name) {
 		return (__SPRT_ID(wctrans_t))platform::_wctrans(name);
 	}
 	return __wctrans_fallback(name);
+#elif SPRT_NUTTX
+	// NuttX wctrans_t is `int`, sprt's ABI is `const int *`. Round-trip through
+	// the integer value so the call type-checks.
+	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
 #else
 	return ::wctrans(name);
 #endif
@@ -897,6 +909,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towctrans)(__SPRT_ID(wint_t) wc, __SPR
 		return platform::_towctrans(wc, (wctrans_t)t);
 	}
 	return __towctrans_fallback(wc, t);
+#elif SPRT_NUTTX
+	return ::towctrans(wc, (wctrans_t)(intptr_t)t);
 #else
 	return ::towctrans(wc, t);
 #endif
@@ -907,6 +921,9 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *name, __SPRT
 		return (__SPRT_ID(wctrans_t))platform::_wctrans_l(name, loc);
 	}
 	return __wctrans_fallback(name);
+#elif SPRT_NUTTX
+	(void)loc;
+	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
 #else
 	return ::wctrans_l(name, loc);
 #endif
@@ -918,6 +935,9 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(
 		return platform::_towctrans_l(wc, (wctrans_t)t, loc);
 	}
 	return __towctrans_fallback(wc, t);
+#elif SPRT_NUTTX
+	(void)loc;
+	return ::towctrans(wc, (wctrans_t)(intptr_t)t);
 #else
 	return ::towctrans_l(wc, t, loc);
 #endif

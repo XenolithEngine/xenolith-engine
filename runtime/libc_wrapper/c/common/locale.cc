@@ -105,7 +105,9 @@ __SPRT_C_FUNC struct __SPRT_ID(lconv) * __SPRT_ID(localeconv)(void) {
 __SPRT_C_FUNC __SPRT_ID(locale_t) __SPRT_ID(duplocale)(__SPRT_ID(locale_t) loc) {
 	return ::duplocale(loc);
 }
-__SPRT_C_FUNC void __SPRT_ID(freelocale)(__SPRT_ID(locale_t) loc) { ::freelocale(loc); }
+__SPRT_C_FUNC void __SPRT_ID(freelocale)(__SPRT_ID(locale_t) loc) {
+	::freelocale(loc); //
+}
 __SPRT_C_FUNC __SPRT_ID(locale_t)
 		__SPRT_ID(newlocale)(int v, const char *name, __SPRT_ID(locale_t) loc) {
 	return ::newlocale(v, name, loc);

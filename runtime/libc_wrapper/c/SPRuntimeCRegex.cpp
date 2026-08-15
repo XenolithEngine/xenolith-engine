@@ -72,7 +72,8 @@ extern "C" void __sprt_musl_globfree(__SPRT_ID(glob_t) * __pglob);
 // regex_t is an opaque cell; the native one must fit.
 static_assert(sizeof(::regex_t) <= sizeof(__SPRT_ID(regex_t)),
 		"native regex_t does not fit in the SPRT regex_t cell");
-static_assert(sizeof(::regoff_t) <= sizeof(__SPRT_ID(regoff_t)), "native regoff_t is wider than SPRT's");
+static_assert(sizeof(regoff_t) <= sizeof(__SPRT_ID(regoff_t)),
+		"native regoff_t is wider than SPRT's");
 
 static_assert(__SPRT_REG_EXTENDED == REG_EXTENDED && __SPRT_REG_ICASE == REG_ICASE
 				&& __SPRT_REG_NEWLINE == REG_NEWLINE && __SPRT_REG_NOSUB == REG_NOSUB,
@@ -96,13 +97,16 @@ static_assert(__SPRT_FNM_CASEFOLD == FNM_CASEFOLD, "FNM_CASEFOLD differs from na
 // glob_t + GLOB_* are validated against the native <glob.h> everywhere it is
 // reachable (Android borrows musl's glob, so its layout is checked in
 // SPRuntimeCGlobMusl.c instead).
-#if !SPRT_ANDROID
+#if !SPRT_ANDROID && !SPRT_NUTTX
 static_assert(sizeof(__SPRT_ID(glob_t)) == sizeof(::glob_t), "glob_t size differs from native");
-static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathc) == __builtin_offsetof(::glob_t, gl_pathc),
+static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathc)
+				== __builtin_offsetof(::glob_t, gl_pathc),
 		"gl_pathc offset differs from native");
-static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathv) == __builtin_offsetof(::glob_t, gl_pathv),
+static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathv)
+				== __builtin_offsetof(::glob_t, gl_pathv),
 		"gl_pathv offset differs from native");
-static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_offs) == __builtin_offsetof(::glob_t, gl_offs),
+static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_offs)
+				== __builtin_offsetof(::glob_t, gl_offs),
 		"gl_offs offset differs from native");
 static_assert(__SPRT_GLOB_ERR == GLOB_ERR && __SPRT_GLOB_MARK == GLOB_MARK
 				&& __SPRT_GLOB_NOSORT == GLOB_NOSORT && __SPRT_GLOB_DOOFFS == GLOB_DOOFFS
@@ -122,30 +126,30 @@ static_assert(__SPRT_GLOB_TILDE_CHECK == GLOB_TILDE_CHECK, "GLOB_TILDE_CHECK dif
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(regcomp)(__SPRT_ID(regex_t) * __preg, const char *__pattern,
-		int __cflags) {
-	return ::regcomp((::regex_t *) __preg, __pattern, __cflags);
+__SPRT_C_FUNC int __SPRT_ID(
+		regcomp)(__SPRT_ID(regex_t) * __preg, const char *__pattern, int __cflags) {
+	return ::regcomp((::regex_t *)__preg, __pattern, __cflags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(regexec)(const __SPRT_ID(regex_t) * __preg, const char *__string,
 		__SPRT_ID(size_t) __nmatch, __SPRT_ID(regmatch_t) * __pmatch, int __eflags) {
 	if (__nmatch == 0 || __pmatch == nullptr) {
-		return ::regexec((const ::regex_t *) __preg, __string, 0, nullptr, __eflags);
+		return ::regexec((const ::regex_t *)__preg, __string, 0, nullptr, __eflags);
 	}
 	if constexpr (sizeof(::regmatch_t) == sizeof(__SPRT_ID(regmatch_t))) {
 		// Native regoff_t is pointer-sized: regmatch_t layout matches, cast directly.
-		return ::regexec((const ::regex_t *) __preg, __string, __nmatch,
-				(::regmatch_t *) __pmatch, __eflags);
+		return ::regexec((const ::regex_t *)__preg, __string, __nmatch, (::regmatch_t *)__pmatch,
+				__eflags);
 	} else {
 		// Native regoff_t is narrower (glibc 32-bit, no 64-bit regexec): translate.
 		::regmatch_t __stack[16];
 		::regmatch_t *__nat = __nmatch <= 16
 				? __stack
-				: (::regmatch_t *) ::malloc(__nmatch * sizeof(::regmatch_t));
+				: (::regmatch_t *)::malloc(__nmatch * sizeof(::regmatch_t));
 		if (__nat == nullptr) {
 			return __SPRT_REG_ESPACE;
 		}
-		int __r = ::regexec((const ::regex_t *) __preg, __string, __nmatch, __nat, __eflags);
+		int __r = ::regexec((const ::regex_t *)__preg, __string, __nmatch, __nat, __eflags);
 		for (__SPRT_ID(size_t) __i = 0; __i < __nmatch; ++__i) {
 			__pmatch[__i].rm_so = __nat[__i].rm_so;
 			__pmatch[__i].rm_eo = __nat[__i].rm_eo;
@@ -159,11 +163,11 @@ __SPRT_C_FUNC int __SPRT_ID(regexec)(const __SPRT_ID(regex_t) * __preg, const ch
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(regerror)(int __errcode,
 		const __SPRT_ID(regex_t) * __preg, char *__errbuf, __SPRT_ID(size_t) __errbuf_size) {
-	return ::regerror(__errcode, (const ::regex_t *) __preg, __errbuf, __errbuf_size);
+	return ::regerror(__errcode, (const ::regex_t *)__preg, __errbuf, __errbuf_size);
 }
 
 __SPRT_C_FUNC void __SPRT_ID(regfree)(__SPRT_ID(regex_t) * __preg) {
-	::regfree((::regex_t *) __preg);
+	::regfree((::regex_t *)__preg);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fnmatch)(const char *__pattern, const char *__string, int __flags) {
@@ -175,7 +179,7 @@ __SPRT_C_FUNC int __SPRT_ID(glob)(const char *__pattern, int __flags,
 #if SPRT_ANDROID
 	return __SPRT_NATIVE_GLOB(__pattern, __flags, __errfunc, __pglob);
 #else
-	return __SPRT_NATIVE_GLOB(__pattern, __flags, __errfunc, (::glob_t *) __pglob);
+	return __SPRT_NATIVE_GLOB(__pattern, __flags, __errfunc, (::glob_t *)__pglob);
 #endif
 }
 
@@ -183,7 +187,7 @@ __SPRT_C_FUNC void __SPRT_ID(globfree)(__SPRT_ID(glob_t) * __pglob) {
 #if SPRT_ANDROID
 	__SPRT_NATIVE_GLOBFREE(__pglob);
 #else
-	__SPRT_NATIVE_GLOBFREE((::glob_t *) __pglob);
+	__SPRT_NATIVE_GLOBFREE((::glob_t *)__pglob);
 #endif
 }
 

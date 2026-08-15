@@ -54,6 +54,9 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_WASM wasm_sprt
 #define __SPRT_PLATFORM_ID_WASM 7
 
+#define __SPRT_PLATFORM_NAME_NUTTX nuttx_sprt
+#define __SPRT_PLATFORM_ID_NUTTX 8
+
 
 /*
 	Defines one of:
@@ -65,6 +68,7 @@ THE SOFTWARE.
 	SPRT_ANDROID
 	SPRT_LINUX
 	SPRT_WASM
+	SPRT_NUTTX
 
 	for platform detection.
 
@@ -102,6 +106,15 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
 #define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
+#elif defined(__NuttX__)
+// NuttX RTOS. LLVM has no "nuttx" OSType, so the toolchain drives -D__NuttX__
+// explicitly from target-nuttx (TARGET_GENERAL_CFLAGS in the generated
+// target.mk). NuttX does NOT predefine __linux__; the order here keeps the
+// detection explicit regardless. The platform layer lives in runtime/core/nuttx/
+// and libc_wrapper forwards to the NuttX libc the way Linux does to glibc.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_NUTTX
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_NUTTX
+#define SPRT_NUTTX __SPRT_PLATFORM_ID_NUTTX
 #elif defined(__linux__)
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_LINUX
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_LINUX

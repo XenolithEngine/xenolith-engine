@@ -71,11 +71,17 @@ static_assert(MAP_ANON == __SPRT_MAP_ANON);
 static_assert(MAP_ANONYMOUS == __SPRT_MAP_ANONYMOUS);
 static_assert(MAP_NORESERVE == __SPRT_MAP_NORESERVE);
 static_assert(MS_SYNC == __SPRT_MS_SYNC);
+
+// MADV_FREE is a BSD/Linux extension; NuttX has none, and sprt leaves
+// __SPRT_MADV_FREE undefined there. Two-sided: if only one of the two grows the
+// name, that is a build error rather than a silently skipped check.
+#if defined(__SPRT_MADV_FREE) || defined(MADV_FREE)
 static_assert(MADV_FREE == __SPRT_MADV_FREE);
+#endif
 
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
 		int __fd, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_NUTTX
 	return mmap(__addr, __size, __prot, __flags, __fd, __offset);
 #else
 	return mmap64(__addr, __size, __prot, __flags, __fd, __offset);
@@ -156,7 +162,7 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_NUTTX
 	if (__flags == 0) {
 		return mlock(__addr, __size);
 	}
@@ -172,7 +178,12 @@ __SPRT_C_FUNC int __SPRT_ID(madvise)(void *__addr, __SPRT_ID(size_t) __size, int
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mincore)(void *__addr, __SPRT_ID(size_t) __size, unsigned char *__vec) {
-#if SPRT_APPLE
+#if SPRT_NUTTX
+	// NuttX has no mincore.
+	(void)__addr; (void)__size; (void)__vec;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#elif SPRT_APPLE
 	return mincore(__addr, __size, (char *)__vec);
 #else
 	return mincore(__addr, __size, __vec);

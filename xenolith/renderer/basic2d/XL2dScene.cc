@@ -272,9 +272,10 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 		// The CPU rasterizer implements the flat contract only - there is no shadow/SDF/particle
 		// path to fall back to, so a Default request is served with the flat queue anyway.
 		if (queueInfo.type != QueueType::Flat) {
-			log::source().info("Scene2d",
-					"Software backend supports the flat queue only, building it instead of the "
-					"default one");
+			log::source()
+					.info("Scene2d",
+							"Software backend supports the flat queue only, building it instead of "
+							"the " "default one");
 		}
 
 		basic2d::soft::FlatPass::RenderQueueInfo info{

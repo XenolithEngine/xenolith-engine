@@ -47,3 +47,8 @@ THE SOFTWARE.
 #if SPRT_WASM
 #include "../platform/wasm/unicode.cc"
 #endif
+
+#if SPRT_NUTTX
+#include "../platform/nuttx/unicode.cc"
+#include "../platform/nuttx/stubs.cc"
+#endif

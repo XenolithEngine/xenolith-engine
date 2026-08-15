@@ -132,9 +132,16 @@ static_assert(F_SETOWN == __SPRT_F_SETOWN);
 static_assert(F_GETOWN == __SPRT_F_GETOWN);
 
 static_assert(F_DUPFD_CLOEXEC == __SPRT_F_DUPFD_CLOEXEC);
+
+// Open-file-description locks are a Linux extension; NuttX has none, and sprt
+// leaves __SPRT_F_OFD_* undefined there (include_libc/fcntl.h keys the family off
+// the same guard). Two-sided on purpose: a libc that grows F_OFD_GETLK while sprt
+// still lacks it - or the reverse - must fail the build, not skip the check.
+#if defined(__SPRT_F_OFD_GETLK) || defined(F_OFD_GETLK)
 static_assert(F_OFD_GETLK == __SPRT_F_OFD_GETLK);
 static_assert(F_OFD_SETLK == __SPRT_F_OFD_SETLK);
 static_assert(F_OFD_SETLKW == __SPRT_F_OFD_SETLKW);
+#endif
 
 #ifdef F_SETPIPE_SZ
 static_assert(F_SETPIPE_SZ == __SPRT_F_SETPIPE_SZ);
@@ -171,7 +178,6 @@ static_assert(F_SEAL_WRITE == __SPRT_F_SEAL_WRITE);
 #ifdef F_SEAL_FUTURE_WRITE
 static_assert(F_SEAL_FUTURE_WRITE == __SPRT_F_SEAL_FUTURE_WRITE);
 #endif
-
 
 static_assert(F_RDLCK == __SPRT_F_RDLCK);
 static_assert(F_WRLCK == __SPRT_F_WRLCK);
@@ -224,7 +230,8 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_NUTTX
+	// NuttX has no LFS open64 — plain open is the only spelling.
 	return open(path, __flags, __mode);
 #else
 	return open64(path, __flags, __mode);
@@ -261,7 +268,7 @@ __SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_NUTTX
 	return creat(path, __mode);
 #else
 	return creat64(path, __mode);
@@ -285,7 +292,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_NUTTX
 	return openat(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);

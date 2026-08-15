@@ -27,16 +27,24 @@ THE SOFTWARE.
 
 // Per-platform, ABI-compatible <fnmatch.h> flags (SPRuntimeCRegex.cpp static_asserts
 // them against the native header). BSD (macOS, Bionic) swaps FNM_PATHNAME=2 /
-// FNM_NOESCAPE=1; the GNU spelling (glibc, musl) has PATHNAME=1 / NOESCAPE=2.
+// FNM_NOESCAPE=1; the GNU spelling (glibc, musl) has PATHNAME=1 / NOESCAPE=2;
+// NuttX keeps PATHNAME=1 but puts PERIOD before NOESCAPE.
 #if SPRT_APPLE || SPRT_ANDROID
 #define __SPRT_FNM_NOESCAPE    0x01
 #define __SPRT_FNM_PATHNAME    0x02
+#define __SPRT_FNM_PERIOD      0x04
+#elif SPRT_NUTTX
+#define __SPRT_FNM_PATHNAME    0x01
+#define __SPRT_FNM_PERIOD      0x02
+#define __SPRT_FNM_NOESCAPE    0x04
 #else
 #define __SPRT_FNM_PATHNAME    0x01
 #define __SPRT_FNM_NOESCAPE    0x02
+#define __SPRT_FNM_PERIOD      0x04
 #endif
 
-#define __SPRT_FNM_PERIOD      0x04
+// NuttX implements neither of these; the values are unused there but must stay
+// defined because the <fnmatch.h> umbrella re-exports them unconditionally.
 #define __SPRT_FNM_LEADING_DIR 0x08
 #define __SPRT_FNM_CASEFOLD    0x10
 

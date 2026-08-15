@@ -116,6 +116,18 @@ MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 
+ifeq ($(TARGET_SYSTEM),NuttX)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a -lm
+endif
+
+
 # Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)

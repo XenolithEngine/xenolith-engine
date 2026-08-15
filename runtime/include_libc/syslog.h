@@ -42,7 +42,12 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <stdarg.h>
 
-#ifdef SPRT_WASM
+// On NuttX the sprt libc shim stands in for the platform libc at compile time
+// (deps build against sprt include_libc, not the NuttX sysroot — see the NUTTX
+// branch of common/configure.mk), so the priorities/facilities/options surface
+// must be visible there too. The Linux/musl ABI values match NuttX's own
+// <syslog.h>, so the same definitions work for both freestanding targets.
+#if defined(SPRT_WASM) || defined(SPRT_NUTTX)
 
 // clang-format off
 // priorities (highest to lowest)
@@ -107,7 +112,7 @@ void vsyslog(int __priority, const char *__format, va_list __ap);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM
+#endif // SPRT_WASM || SPRT_NUTTX
 
 #endif
 

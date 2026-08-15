@@ -52,6 +52,13 @@ namespace sprt {
 #define fstatat64 fstatat
 #endif
 
+#if SPRT_NUTTX
+#define stat64 stat
+#define fstat64 fstat
+#define lstat64 lstat
+#define fstatat64 fstatat
+#endif
+
 static ::dev_t convertDevToNative(__SPRT_ID(dev_t) dev) { return dev; }
 
 static ::mode_t convertModeToRuntime(__SPRT_ID(mode_t) mode) { return mode; }

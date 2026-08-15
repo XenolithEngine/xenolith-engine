@@ -25,6 +25,7 @@ CONFIGURE_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 include $(dir $(CONFIGURE_MAKEFILE))utils/init-shell.mk
 include $(dir $(CONFIGURE_MAKEFILE))utils/names.mk
+include $(dir $(CONFIGURE_MAKEFILE))utils/llvm-version.mk
 
 ifdef DARWIN
 UNAME := $(shell uname)
@@ -118,6 +119,24 @@ SP_LDFLAGS += -nostdlib $(SP_WASM_FEATURES)
 endif # WASM
 
 
+ifdef NUTTX
+SP_NUTTX_ARCH_FLAGS := -march=armv8-a
+SP_NUTTX_LIBC_INC := -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+SP_NUTTX_SYSROOT_FALLBACK := -idirafter $(SP_INSTALL_PREFIX)/sysroot/usr/include
+SP_NUTTX_RESOURCE_INC := -idirafter $(SP_INSTALL_PREFIX)/host/lib/clang/$(SP_LLVM_VER)/include
+SP_CFLAGS += $(SP_NUTTX_ARCH_FLAGS) $(SP_NUTTX_LIBC_INC) $(SP_NUTTX_SYSROOT_FALLBACK) $(SP_NUTTX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__NuttX__ -D__SPRT_USE_STL=0
+SP_CXXFLAGS += $(SP_NUTTX_ARCH_FLAGS) $(SP_NUTTX_LIBC_INC) $(SP_NUTTX_SYSROOT_FALLBACK) $(SP_NUTTX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__NuttX__ -D__SPRT_USE_STL=0 -std=gnu++17
+SP_CPPFLAGS += $(SP_NUTTX_ARCH_FLAGS) $(SP_NUTTX_LIBC_INC) $(SP_NUTTX_SYSROOT_FALLBACK) $(SP_NUTTX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__NuttX__ -D__SPRT_USE_STL=0
+SP_LDFLAGS += -L$(SP_INSTALL_PREFIX)/sysroot/usr/lib
+SP_CFLAGS += -femulated-tls
+SP_CXXFLAGS += -femulated-tls
+SP_CFLAGS += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+SP_CXXFLAGS += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+SP_CFLAGS += -femulated-tls
+SP_CXXFLAGS += -femulated-tls
+endif # NUTTX
+
+
 ifdef DARWIN
 
 # Apple's modern libc ABI in <sys/cdefs.h> (no legacy $UNIX2003 / $INODE64
@@ -206,6 +225,31 @@ endif
 ifdef ANDROID
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
 endif
+
+ifdef NUTTX
+CONFIGURE_CMAKE_C_FLAGS_INIT += $(SP_NUTTX_LIBC_INC) $(SP_NUTTX_SYSROOT_FALLBACK) $(SP_NUTTX_RESOURCE_INC) -D_LDBL_EQ_DBL -D__NuttX__ -D__SPRT_USE_STL=0
+SP_NUTTX_CXX_INCLUDES := \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
+	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include
+SP_NUTTX_CXX_LIBC_INCLUDES := -idirafter $(SP_INSTALL_PREFIX)/sysroot/usr/include
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += $(SP_NUTTX_RESOURCE_INC) $(SP_NUTTX_CXX_INCLUDES) $(SP_NUTTX_CXX_LIBC_INCLUDES) -D_LDBL_EQ_DBL -D__NuttX__ -D__SPRT_USE_STL=0 -std=gnu++20
+SP_NUTTX_PROBE_LDFLAGS := -nodefaultlibs -nostartfiles \
+	-L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_INSTALL_PREFIX)/sysroot/usr/lib \
+	-Wl,--start-group \
+	-lsprt -lc -lm -lmm -lnet -lfs -lsched -larch -ldrivers -lboards -lboard \
+	-lbinfmt -lopenamp -lxx -lsme_stub -lc++abi -lunwind -lprobe-stubs \
+	-Wl,--end-group \
+	$(SP_INSTALL_PREFIX)/sysroot/usr/lib/libclang_rt.builtins-aarch64.a \
+	-Wl,--no-dependent-libraries -Wl,--no-undefined -Wl,-u,main -Wl,-e,main
+CONFIGURE_EXE_LINKER_FLAGS_INIT += $(SP_NUTTX_PROBE_LDFLAGS)
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += $(SP_NUTTX_PROBE_LDFLAGS)
+CONFIGURE_CMAKE_C_FLAGS_INIT += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -Wno-error -Wno-shadow -Wno-macro-redefined -Wno-undef
+CONFIGURE_CMAKE_C_FLAGS_INIT += -femulated-tls
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -femulated-tls
+endif # NUTTX
 
 CONFIGURE_CMAKE :=
 
@@ -354,6 +398,10 @@ ifdef WASM
 # Force every C++ dependency to the C++20 the sprt STL requires — see
 # target-wasm/wasm-deps-project-include.cmake for why the toolchain file cannot do it.
 CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)wasm-deps-project-include.cmake
+endif
+
+ifdef NUTTX
+CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)nuttx-deps-project-include.cmake
 endif
 
 ifeq ($(DEBUG),1)

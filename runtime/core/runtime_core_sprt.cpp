@@ -56,6 +56,9 @@ THE SOFTWARE.
 #include "windows/sprt_lock.cc"
 #elif SPRT_WASM
 #include "wasm/sprt_lock.cc"
+#elif SPRT_NUTTX
+#include "nuttx/sprt_lock.cc"
+#include "nuttx/emutls.cc"
 #else
 #error Not implemented
 #endif

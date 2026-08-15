@@ -29,7 +29,7 @@
 #include <openssl/err.h>
 #include <openssl/bio.h>
 
-#include <arpa/inet.h> // AF_INET, SOCK_DGRAM (via the sprt socket layer)
+#include <sys/socket.h> // AF_INET, SOCK_DGRAM (via the sprt socket layer)
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 

@@ -43,7 +43,12 @@ THE SOFTWARE.
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#if SPRT_WASM
+// On NuttX the sprt libc shim stands in for the platform libc at compile time
+// (deps build against sprt include_libc, not the NuttX sysroot — see the NUTTX
+// branch of common/configure.mk), so the network database type/prototype
+// surface must be visible there too. The Linux/musl ABI values match NuttX's
+// own <netdb.h>, so the same definitions work for both freestanding targets.
+#if defined(SPRT_WASM) || defined(SPRT_NUTTX)
 
 struct hostent {
 	char *h_name; // official name of host
@@ -157,7 +162,7 @@ void endprotoent(void);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM
+#endif // SPRT_WASM || SPRT_NUTTX
 
 #endif
 

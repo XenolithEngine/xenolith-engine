@@ -43,6 +43,10 @@
 #include "SPRuntimeFilesystem-wasm.cc"
 #endif
 
+#if SPRT_NUTTX
+#include "SPRuntimeFilesystem-nuttx.cc"
+#endif
+
 #include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::filesystem {

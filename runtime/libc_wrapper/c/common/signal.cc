@@ -76,6 +76,11 @@ static_assert(SIG_DFL == __SPRT_SIG_DFL);
 
 static_assert(sprt::is_same_v<sig_atomic_t, __sprt_sig_atomic_t>);
 
+static_assert(sizeof(sigset_t) <= sizeof(__SPRT_ID(sigset_t)),
+		"native sigset_t does not fit in the SPRT sigset_t");
+static_assert(alignof(sigset_t) <= alignof(__SPRT_ID(sigset_t)),
+		"native sigset_t is more strictly aligned than SPRT's");
+
 #endif // __STDC_HOSTED__
 
 namespace sprt {
