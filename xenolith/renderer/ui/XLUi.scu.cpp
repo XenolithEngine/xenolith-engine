@@ -41,6 +41,10 @@
 #include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiCheckbox.cc"
 #include "input/XLUiTextInput.cc"
+#include "input/XLUiTextDocument.cc"
+#include "input/XLUiTextView.cc" // after TextInput: the view replaces its container and cursor layer
+#include "input/XLUiCodeEditor.cc" // after TextView: both are it, configured
+#include "input/XLUiConsole.cc"
 
 #include "view/XLUiFilesystemModel.cc"
 #include "view/XLUiTreeView.cc"

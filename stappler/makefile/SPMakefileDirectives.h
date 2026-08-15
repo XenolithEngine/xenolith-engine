@@ -30,7 +30,7 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 // The engine's own version string. Exposed as the make variable XLMAKE_VERSION by every Makefile
 // (Makefile::setupBuiltinVariables), which the Stappler build system keys on to select its
 // engine-native `init-xlmake.mk` path. xlmake reuses this for its own version display.
-static constexpr StringView XlmakeVersion("1.1");
+static constexpr StringView XlmakeVersion("1.2");
 
 // Internal markers that the predefined $(WRITE) / $(APPEND) / $(MKDIR) / $(REMOVE) / $(CP) / $(ECHO)
 // variables expand to. A leading \x01 (SOH) can never begin a real shell command, so a recipe line
