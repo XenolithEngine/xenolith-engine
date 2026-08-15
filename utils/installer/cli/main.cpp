@@ -21,7 +21,7 @@
  **/
 
 // Headless CLI front-end over the installer core (utils/installer/core), sharing every operation
-// with the GUI. Commands: detect, paths, state, verify, list, fetch, install, new, build,
+// with the GUI. Commands: detect, paths, config, state, verify, list, fetch, install, new, build,
 // engine-refs, engine-install.
 
 #include "SPICommon.h"
@@ -35,6 +35,7 @@
 #include "SPIInstall.h"
 #include "SPIScaffold.h"
 #include "SPIBuild.h"
+#include "SPISettings.h"
 
 #include "SPCommandLineParser.h"
 
@@ -153,17 +154,33 @@ static Function<void(int64_t, int64_t)> makeProgressReporter(uint64_t &lastStep)
 	};
 }
 
-// Where this run fetches the engine and the binary releases from.
-//
-// Read fresh from <config>/settings.json on every call rather than cached in a global: the CLI is a
-// short-lived process, the file is tiny, and a global would mean every network entry point silently
-// depends on "settings were loaded first". A missing file yields the built-in defaults, which is
-// what the CLI did before preferences existed.
-//
-// This is the whole reason the settings store lives in installer_core and not in the GUI: a user
-// who points the installer at a mirror must reach that same mirror from `xenolith-cli list`.
-static SourceConfig getSources(const Layout &layout) {
-	return Settings::load(layout.getSettingsManifest()).sources;
+/* Everything a command needs to know about this machine: where the store is, and what the user
+configured about it.
+
+The two are resolved TOGETHER because they are not independent - the settings file is found through
+the layout's config dir, and two of its fields (enginePath, toolchainsPath) then reshape that same
+layout. Splitting them is how a command ends up honouring the mirror the user chose and ignoring the
+engine path they chose, in the same run.
+
+Read fresh from <config>/settings.json per command rather than cached in a global: the CLI is a
+short-lived process, the file is tiny, and a global would mean every entry point silently depends on
+"settings were loaded first". A missing file yields the built-in defaults, which is what the CLI did
+before preferences existed.
+
+This is the whole reason the settings store lives in installer_core and not in the GUI: a user who
+points the installer at a mirror, or at their own engine checkout, must reach the same one from
+`xenolith-cli list` and `xenolith-cli build`. */
+struct CliEnv {
+	Layout layout;
+	Settings settings;
+};
+
+static CliEnv getEnv() {
+	CliEnv env;
+	env.layout = Layout::resolveFromEnv();
+	env.settings = Settings::load(env.layout.getSettingsManifest());
+	env.settings.applyTo(env.layout);
+	return env;
 }
 
 // --- commands ---------------------------------------------------------------
@@ -183,17 +200,161 @@ static int cmdDetect() {
 }
 
 static int cmdPaths() {
-	auto l = Layout::resolveFromEnv();
+	auto env = getEnv();
+	const auto &l = env.layout;
+
+	// `toolchains` and `engine` are the two a configured path can move, so each says where it came
+	// from — "the store is not where I expected" is otherwise a silent wrong answer.
+	bool engineOk = false;
+	auto engineRoot = resolveEngineRoot(l, StringView(), &engineOk);
+
 	sprt::cout << "config:     " << l.config << "\n"
 			   << "data:       " << l.data << "\n"
 			   << "cache:      " << l.cache << "\n"
-			   << "toolchains: " << l.getToolchainsDir() << "\n"
-			   << "engines:    " << l.getEnginesDir() << "\n";
+			   << "toolchains: " << l.getToolchainsDir()
+			   << (l.toolchains.empty() ? "" : "  (configured)") << "\n"
+			   << "engines:    " << l.getEnginesDir() << "\n"
+			   << "engine:     " << engineRoot << (engineOk ? "" : "  (not a valid engine root)")
+			   << "\n";
 	return 0;
 }
 
+// --- config -----------------------------------------------------------------
+
+/* What the tools would actually USE for `key` right now, which is not always what is stored: an
+empty field means "the built-in default", $XENOLITH_ENGINE outranks the stored engine path, and a
+release root is normalized. Printed next to the stored value so "(default)" is never a dead end -
+the point of `config` is to answer "which mirror/engine/store am I on", and a blank line does not. */
+static String getEffectiveSetting(const CliEnv &env, StringView key) {
+	if (key == "engineRepoUrl") {
+		return env.settings.sources.getEngineRepoUrl();
+	} else if (key == "releaseSourceUrl") {
+		return env.settings.sources.getReleasesRoot();
+	} else if (key == "enginePath") {
+		bool ok = false;
+		auto root = resolveEngineRoot(env.layout, StringView(), &ok);
+		return ok ? root : toString(root, " (not a valid engine root)");
+	} else if (key == "toolchainsPath") {
+		return env.layout.getToolchainsDir();
+	} else if (key == "lang") {
+		return toString("en");
+	}
+	return String();
+}
+
+static void printSetting(const CliEnv &env, const SettingsField &field, bool verbose) {
+	constexpr size_t kKeyColumn = 20;
+
+	const Value stored = env.settings.getFieldValue(field.key);
+	sprt::cout << "  " << field.key;
+	for (size_t i = field.key.size(); i < kKeyColumn; ++i) { sprt::cout << " "; }
+
+	if (field.boolean) {
+		sprt::cout << (stored.getBool() ? "true" : "false") << "\n";
+	} else if (stored.getString().empty()) {
+		// The resolved value in parentheses: it is a fact about this machine, not something the user
+		// chose, and writing it back would turn a default that tracks the tool into a pinned one.
+		auto effective = getEffectiveSetting(env, field.key);
+		sprt::cout << "(default";
+		if (!effective.empty()) {
+			sprt::cout << ": " << effective;
+		}
+		sprt::cout << ")\n";
+	} else {
+		sprt::cout << stored.getString();
+		// The stored value is not always the one that wins - $XENOLITH_ENGINE beats enginePath, and
+		// a release root gets a trailing slash - so say so when the two differ.
+		auto effective = getEffectiveSetting(env, field.key);
+		if (!effective.empty() && effective != stored.getString()) {
+			sprt::cout << "  (in effect: " << effective << ")";
+		}
+		sprt::cout << "\n";
+	}
+
+	if (verbose) {
+		sprt::cout << "      " << field.description << "\n";
+	}
+}
+
+// Booleans are typed, not clicked, so accept every spelling a user reasonably reaches for.
+static bool parseSettingsBool(StringView value, bool &out) {
+	if (value == "true" || value == "1" || value == "yes" || value == "on") {
+		out = true;
+		return true;
+	}
+	if (value == "false" || value == "0" || value == "no" || value == "off") {
+		out = false;
+		return true;
+	}
+	return false;
+}
+
+/* `config` — read and write <config>/settings.json, the file the GUI's settings form writes.
+
+Both front ends go through Settings::setFieldValue, so there is exactly one key→field mapping and a
+key cannot become settable from one tool and invisible from the other. */
+static int cmdConfig(int argc, const char *argv[]) {
+	auto env = getEnv();
+
+	if (argc <= 2) {
+		sprt::cout << "settings: " << env.layout.getSettingsManifest() << "\n\n";
+		for (const auto &field : Settings::getFields()) { printSetting(env, field, false); }
+		sprt::cout
+				<< "\nSet one with `config <key> <value>`, reset it with `config <key> --unset`.\n";
+		return 0;
+	}
+
+	auto key = StringView(argv[2]);
+	const auto *field = Settings::getField(key);
+	if (!field) {
+		sprt::cerr << "unknown setting '" << key << "'. Known settings:\n";
+		for (const auto &f : Settings::getFields()) {
+			sprt::cerr << "  " << f.key << " — " << f.description << "\n";
+		}
+		return 2;
+	}
+
+	if (argc == 3) {
+		printSetting(env, *field, true);
+		return 0;
+	}
+
+	auto raw = StringView(argv[3]);
+	Value value;
+	if (field->boolean) {
+		bool parsed = false;
+		if (!parseSettingsBool(raw, parsed)) {
+			sprt::cerr << "'" << key << "' is a switch: expected true/false, got '" << raw << "'\n";
+			return 2;
+		}
+		value = Value(parsed);
+	} else if (raw == "--unset" || raw == "-") {
+		value = Value(String()); // empty string == "back to the built-in default"
+	} else {
+		value = Value(toString(raw));
+	}
+
+	// setFieldValue cannot fail here - the key came out of getField above - but the write can, and
+	// silently reporting success for a settings file that never landed is the one outcome that would
+	// make this command untrustworthy.
+	env.settings.setFieldValue(key, value);
+	if (!env.settings.save(env.layout.getSettingsManifest())) {
+		sprt::cerr << "failed to write " << env.layout.getSettingsManifest() << "\n";
+		return 1;
+	}
+
+	// Re-resolve before printing: the value just written may itself have moved the store or the
+	// engine root, and echoing the pre-write resolution would be a lie about what the next command
+	// will do.
+	env = getEnv();
+	printSetting(env, *field, false);
+	return 0;
+}
+
+// --- commands (continued) ---------------------------------------------------
+
 static int cmdState() {
-	auto layout = Layout::resolveFromEnv();
+	auto layout = getEnv().layout;
 	auto st = InstalledState::load(layout.getInstalledManifest());
 	sprt::cout << "schema: " << st.schema << ", components: " << st.components.size() << "\n";
 	for (const auto &c : st.components) {
@@ -204,7 +365,7 @@ static int cmdState() {
 }
 
 static int cmdVerify() {
-	auto layout = Layout::resolveFromEnv();
+	auto layout = getEnv().layout;
 	auto st = InstalledState::load(layout.getInstalledManifest());
 	auto bad = st.getInvalid([](StringView p) { return filesystem::exists(FileInfo(p)); });
 	if (bad.empty()) {
@@ -235,8 +396,9 @@ static int cmdFetch(int argc, const char *argv[]) {
 }
 
 static int cmdList() {
-	auto layout = Layout::resolveFromEnv();
-	auto base = getSources(layout).getReleaseBase(StringView());
+	auto env = getEnv();
+	const auto &layout = env.layout;
+	auto base = env.settings.sources.getReleaseBase(StringView());
 	sprt::cerr << "Fetching catalogue from " << base << " ...\n";
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
@@ -273,9 +435,8 @@ static int cmdList() {
 }
 
 static int cmdEngineRefs() {
-	auto layout = Layout::resolveFromEnv();
 	OperationResult status;
-	auto refs = listEngineRefs(getSources(layout), &status);
+	auto refs = listEngineRefs(getEnv().settings.sources, &status);
 	if (!status) {
 		sprt::cerr << "error: " << status.error << "\n";
 		return 1;
@@ -326,13 +487,14 @@ static EngineProgressCallback makeCloneReporter(git::CloneStage &lastStage) {
 
 static int cmdEngineInstall(int argc, const char *argv[]) {
 	String ref = (argc > 2 && argv[2][0]) ? toString(argv[2]) : toString(getEngineDefaultRef());
-	auto layout = Layout::resolveFromEnv();
+	auto env = getEnv();
+	const auto &layout = env.layout;
 
 	sprt::cerr << "Cloning engine '" << ref << "' -> " << layout.getEngineDir(ref)
 			   << " (shallow, with submodules)...\n";
 
 	auto lastStage = static_cast<git::CloneStage>(-1);
-	auto r = cloneEngine(getSources(layout), ref, layout, makeCloneReporter(lastStage));
+	auto r = cloneEngine(env.settings.sources, ref, layout, makeCloneReporter(lastStage));
 	if (!r) {
 		sprt::cerr << "\nfailed: " << r.error << "\n";
 		return 1;
@@ -344,15 +506,15 @@ static int cmdEngineInstall(int argc, const char *argv[]) {
 
 // `install engine`: ensure the engine is present (clone the default ref if none is resolvable),
 // then link the toolchain store into it.
-static int installEngine(const CliArgs &args) {
-	auto layout = Layout::resolveFromEnv();
+static int installEngine(const CliEnv &env, const CliArgs &args) {
+	const auto &layout = env.layout;
 	bool ok = false;
 	auto root = resolveEngineRoot(layout, args.engine, &ok);
 	if (!ok) {
 		sprt::cerr << "• Engine (cloning " << getEngineDefaultRef() << ")\n";
 
 		auto lastStage = static_cast<git::CloneStage>(-1);
-		auto cr = cloneEngine(getSources(layout), getEngineDefaultRef(), layout,
+		auto cr = cloneEngine(env.settings.sources, getEngineDefaultRef(), layout,
 				makeCloneReporter(lastStage));
 		if (!cr) {
 			sprt::cerr << "\nengine clone failed: " << cr.error << "\n";
@@ -372,13 +534,13 @@ static int installEngine(const CliArgs &args) {
 }
 
 // Run one installComponent and report progress/completion.
-static int installOne(const Layout &layout, StringView id, bool wantHost, bool wantTarget,
+static int installOne(const CliEnv &env, StringView id, bool wantHost, bool wantTarget,
 		StringView label) {
 	sprt::cerr << "• " << label << ": " << id << "\n";
 
 	uint64_t lastStep = maxOf<uint64_t>();
-	auto r = installComponent(getSources(layout), StringView(), id, layout, wantHost, wantTarget,
-			makeProgressReporter(lastStep));
+	auto r = installComponent(env.settings.sources, StringView(), id, env.layout, wantHost,
+			wantTarget, makeProgressReporter(lastStep));
 	if (!r || r.installed.empty()) {
 		sprt::cerr << "\nerror: " << r.error << "\n";
 		return 1;
@@ -395,12 +557,12 @@ static int cmdInstall(int argc, const char *argv[]) {
 		return 2;
 	}
 
+	auto env = getEnv();
+
 	if (!args.positional.empty() && args.positional[0] == "engine" && !args.wantHost
 			&& !args.wantTarget) {
-		return installEngine(args);
+		return installEngine(env, args);
 	}
-
-	auto layout = Layout::resolveFromEnv();
 
 	if (args.positional.empty()) {
 		// `install` with no id → provision the whole SDK: engine + native host + native target
@@ -409,21 +571,21 @@ static int cmdInstall(int argc, const char *argv[]) {
 			sprt::cerr << "no SDK host for " << getNativeArch() << "-" << getNativeOs() << "\n";
 			return 1;
 		}
-		if (int e = installEngine(args); e != 0) {
+		if (int e = installEngine(env, args); e != 0) {
 			return e;
 		}
-		if (int e = installOne(layout, h.native, true, false, "host toolchain"); e != 0) {
+		if (int e = installOne(env, h.native, true, false, "host toolchain"); e != 0) {
 			return e;
 		}
-		if (int e = installOne(layout, h.native, false, true, "target"); e != 0) {
+		if (int e = installOne(env, h.native, false, true, "target"); e != 0) {
 			return e;
 		}
 
 		// The +sprt target is optional — install it only when the catalogue has one.
 		auto sprtTarget = toString(h.native, "+sprt");
 		uint64_t lastStep = maxOf<uint64_t>();
-		auto r = installComponent(getSources(layout), StringView(), sprtTarget, layout, false, true,
-				makeProgressReporter(lastStep));
+		auto r = installComponent(env.settings.sources, StringView(), sprtTarget, env.layout, false,
+				true, makeProgressReporter(lastStep));
 		if (r) {
 			sprt::cerr << "\r    ✓ " << sprtTarget << "                         \n";
 		}
@@ -434,7 +596,7 @@ static int cmdInstall(int argc, const char *argv[]) {
 	}
 
 	const auto &id = args.positional[0];
-	if (int e = installOne(layout, id, args.wantHost, args.wantTarget, "component"); e != 0) {
+	if (int e = installOne(env, id, args.wantHost, args.wantTarget, "component"); e != 0) {
 		return e;
 	}
 	sprt::cout << "Installed " << id << "\n";
@@ -451,7 +613,7 @@ static int cmdNew(int argc, const char *argv[]) {
 		return 2;
 	}
 
-	auto layout = Layout::resolveFromEnv();
+	auto layout = getEnv().layout;
 	auto location = (args.positional.size() > 1) ? StringView(args.positional[1]) : StringView(".");
 
 	auto r = scaffoldProject(args.positional[0], location, layout, args.engine);
@@ -470,7 +632,7 @@ static int cmdBuild(int argc, const char *argv[]) {
 		return 2;
 	}
 
-	auto layout = Layout::resolveFromEnv();
+	auto layout = getEnv().layout;
 	BuildOptions opts;
 	opts.target = args.target;
 	opts.run = args.run;
@@ -497,6 +659,7 @@ static void printUsage(StringView prog) {
 	sprt::cerr << "Commands:\n";
 	sprt::cerr << "  detect        Print the detected native host triple\n";
 	sprt::cerr << "  paths         Print the resolved install directories\n";
+	sprt::cerr << "  config [key [value]]    Show or change the stored settings\n";
 	sprt::cerr << "  state         Show the installed-state registry (installed.json)\n";
 	sprt::cerr << "  verify        Validate installed components against the filesystem\n";
 	sprt::cerr << "  list          List the toolchain catalogue with install status\n";
@@ -523,6 +686,8 @@ static int run(int argc, const char *argv[]) {
 		return cmdDetect();
 	} else if (cmd == "paths") {
 		return cmdPaths();
+	} else if (cmd == "config") {
+		return cmdConfig(argc, argv);
 	} else if (cmd == "state") {
 		return cmdState();
 	} else if (cmd == "verify") {

@@ -355,6 +355,15 @@ bool linkToolchainsIntoEnginePath(const Layout &layout, StringView engineRoot) {
 	}
 
 	auto engineTc = mergePath(engineRoot, "toolchains");
+
+	// The store IS the destination — `toolchainsPath` was pointed at this engine's own toolchains
+	// dir. Nothing to link, and linking anyway would clearLink() each entry and then link it to the
+	// path just removed. hasOwnToolchains above already turns away a tree with REAL toolchain
+	// directories; this catches the same tree once its entries are themselves links.
+	if (engineTc == layout.getToolchainsDir()) {
+		return true;
+	}
+
 	bool ok = true;
 	for (auto kind : {Kind::Host, Kind::Target}) {
 		auto storeKind = mergePath(layout.getToolchainsDir(), getKindDirName(kind));

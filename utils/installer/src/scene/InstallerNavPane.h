@@ -66,7 +66,7 @@ class InstallerNavRow : public ui::Panel {
 public:
 	virtual ~InstallerNavRow();
 
-	virtual bool init(StringView label);
+	virtual bool init(StringView label) override;
 	virtual void handleContentSizeDirty() override;
 
 	// nan() clears the fill entirely (nothing is running for this row).

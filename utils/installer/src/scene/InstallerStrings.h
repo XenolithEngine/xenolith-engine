@@ -62,6 +62,8 @@ StringView welcomeRelease();
 StringView settingsTitle();
 StringView settingsEngineUrl();
 StringView settingsReleaseUrl();
+StringView settingsEnginePath();
+StringView settingsToolchainsPath();
 StringView settingsAutoUpdateInstaller();
 StringView settingsAutoUpdateEngine();
 StringView settingsAutoUpdateReleases();

@@ -89,6 +89,10 @@ StringView settingsEngineUrl() {
 StringView settingsReleaseUrl() {
 	return tr("Binary release source", "Источник бинарных релизов", "二进制版本源");
 }
+StringView settingsEnginePath() { return tr("Engine path", "Путь к движку", "引擎路径"); }
+StringView settingsToolchainsPath() {
+	return tr("Toolchains path", "Путь к набору целей", "工具链路径");
+}
 StringView settingsAutoUpdateInstaller() {
 	return tr("Auto-update the installer", "Автообновление установщика", "自动更新安装程序");
 }
