@@ -32,11 +32,16 @@ THE SOFTWARE.
 
 #include <math.h>
 
+// NuttX <math.h> declares none of the MATH_* error-reporting bits, so there is
+// nothing to pin against there. Named rather than a bare #ifdef so the check stays
+// unconditional everywhere else, and comes back on NuttX the moment it grows them.
+#if !SPRT_NUTTX || defined(MATH_ERRNO)
 static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
 static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
 
 #if !defined(SPRT_APPLE)
 static_assert(math_errhandling == __SPRT_math_errhandling);
+#endif
 #endif
 
 static_assert(FP_NAN == __SPRT_FP_NAN);

@@ -88,12 +88,21 @@ __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo)(__SPRT_ID(nl_item) item) {
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo_l)(__SPRT_ID(nl_item) item, __SPRT_ID(locale_t) loc) {
+#if SPRT_NUTTX
+	// NuttX has no per-locale entry point at all: <langinfo.h> defines
+	// nl_langinfo_l(i, l) as a MACRO dropping the locale and calling nl_langinfo(i).
+	// There is no symbol to take the address of, so the weak-reference shape below
+	// does not compile here - call through the macro, which is the platform's own
+	// answer for a libc that only carries the "C" locale.
+	return nl_langinfo_l(item, loc);
+#else
 	auto *fn = nl_langinfo_l;
 	if (fn) {
 		return fn(item, loc);
 	}
 	// No per-locale data in the fallback: the C/POSIX answer ignores the locale.
 	return __nl_langinfo_default(item);
+#endif
 }
 
 } // namespace sprt

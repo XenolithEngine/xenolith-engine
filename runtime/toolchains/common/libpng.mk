@@ -43,17 +43,11 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/png16.lib))
 	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.lib))
-	@# On the Generic (baremetal) cmake system used for wasm, libpng uses the
-	@# Windows-ish static naming (liblibpng16_static.a) and installs headers under
-	@# libpng16/. Normalise to the Unix layout the app links against: libpng16.a +
-	@# png.h/pngconf.h/pnglibconf.h directly in usr/include (mirrors the linux target).
-	@# Drop the stale name-referencing cmake package so find_package(PNG) resolves via
-	@# FindPNG -> find_library(png16).
-	$(if $(WASM),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/liblibpng16_static.a,$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a))
-	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.a))
-	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng))
-	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/png.h,$(SP_INSTALL_PREFIX)/usr/include/png.h))
-	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pngconf.h,$(SP_INSTALL_PREFIX)/usr/include/pngconf.h))
-	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pnglibconf.h,$(SP_INSTALL_PREFIX)/usr/include/pnglibconf.h))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/liblibpng16_static.a,$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.a))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/png.h,$(SP_INSTALL_PREFIX)/usr/include/png.h))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pngconf.h,$(SP_INSTALL_PREFIX)/usr/include/pngconf.h))
+	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pnglibconf.h,$(SP_INSTALL_PREFIX)/usr/include/pnglibconf.h))
 
 .PHONY: all

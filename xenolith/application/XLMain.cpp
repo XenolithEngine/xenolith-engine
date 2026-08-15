@@ -74,7 +74,11 @@ SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, v
 
 #else
 
+#if SPRT_NUTTX
+extern "C" int xenolith_main(int argc, const char **argv) {
+#else
 int main(int argc, const char *argv[]) {
+#endif
 	// Main symbol should depend only on stappler_core for successful linkage
 	// So, use SharedModule to load `Context::run`
 #if MODULE_XENOLITH_APPLICATION

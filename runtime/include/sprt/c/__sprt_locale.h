@@ -84,21 +84,34 @@ struct __SPRT_ID(lconv) {
 	char n_sep_by_space;
 	char p_sign_posn;
 	char n_sign_posn;
+	// glibc, BSD/macOS and NuttX each order the international p/n currency flags
+	// differently; localeconv() casts the platform's lconv* to this type, so the
+	// field order must match the platform's (the platform sets
+	// __SPRT_LCONV_BSD_INTL_ORDER / __SPRT_LCONV_NUTTX_INTL_ORDER in its
+	// cross/<platform>/locale.h; the bridge static-asserts the offsets).
+#if defined(__SPRT_LCONV_NUTTX_INTL_ORDER)
+	// NuttX groups the negative triple first instead of interleaving p/n.
+	char int_n_cs_precedes;
+	char int_n_sep_by_space;
+	char int_n_sign_posn;
 	char int_p_cs_precedes;
-	// glibc and BSD/macOS order the international p/n currency flags differently;
-	// localeconv() casts the platform's lconv* to this type, so the field order
-	// must match the platform's (a BSD libc sets __SPRT_LCONV_BSD_INTL_ORDER in
-	// its cross/<platform>/locale.h; the bridge static-asserts the offsets).
-#ifdef __SPRT_LCONV_BSD_INTL_ORDER
+	char int_p_sep_by_space;
+	char int_p_sign_posn;
+#elif defined(__SPRT_LCONV_BSD_INTL_ORDER)
+	char int_p_cs_precedes;
 	char int_n_cs_precedes;
 	char int_p_sep_by_space;
-#else
-	char int_p_sep_by_space;
-	char int_n_cs_precedes;
-#endif
 	char int_n_sep_by_space;
 	char int_p_sign_posn;
 	char int_n_sign_posn;
+#else
+	char int_p_cs_precedes;
+	char int_p_sep_by_space;
+	char int_n_cs_precedes;
+	char int_n_sep_by_space;
+	char int_p_sign_posn;
+	char int_n_sign_posn;
+#endif
 };
 
 SPRT_API char *__SPRT_ID(setlocale)(int, const char *);

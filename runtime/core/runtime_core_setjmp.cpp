@@ -83,7 +83,7 @@ static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; 
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -111,6 +111,8 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 #elif SPRT_WASM
 	// No-op sigsetjmp (returns 0); see __wasm_sigsetjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__wasm_sigsetjmp_noop);
+#elif SPRT_NUTTX
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
 #else
 #error Not implemented
 #endif
@@ -131,7 +133,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -161,7 +163,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -181,13 +183,21 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		lookup.result = Max<uintptr_t>;
 	}
 #endif
+
+#if SPRT_NUTTX
+	buf->__native->savemask = savemask;
+	if (savemask) {
+		::sigprocmask(0, nullptr, &buf->__native->sigmask);
+	}
+#endif
+
 	buf->__cfa = lookup.result;
 
 	return 0;
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
@@ -245,7 +255,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 

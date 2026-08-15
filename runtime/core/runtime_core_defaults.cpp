@@ -63,6 +63,18 @@ THE SOFTWARE.
 #include "wasm/clock_gettime.cc"
 #include "wasm/sched.cc"
 #include "wasm/libc.h"
+#elif SPRT_NUTTX
+#include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "linux/clock_gettime.cc"
+#include "linux/libc.cc"
 #else
 #error Not implemented
 #endif
@@ -217,6 +229,9 @@ extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void);
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
+#if SPRT_NUTTX
+	return ::gettid();
+#else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
 		__SPRT_ID(pid_t) tid = 0;
@@ -233,6 +248,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	return __sprt_wasm_gettid();
 #else
 	return ::gettid();
+#endif
 #endif
 }
 
@@ -547,7 +563,9 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 			sprt::memcpy(buf->machine, _native.machine,
 					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
 		}
-#ifndef SPRT_APPLE
+		// domainname is a Linux extension to POSIX utsname; Apple and NuttX both
+		// ship the plain struct without it.
+#if !SPRT_APPLE && !SPRT_NUTTX
 		if (_native.domainname[0]) {
 			sprt::memcpy(buf->domainname, _native.domainname,
 					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));

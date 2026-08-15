@@ -26,10 +26,15 @@ THE SOFTWARE.
 #include <sprt/runtime/log.h>
 #include <sprt/cxx/function>
 #include <sprt/cxx/new>
+#include <sprt/c/bits/__sprt_def.h>
 
 namespace sprt::memory::pool {
 
-static constexpr size_t SP_ALLOC_STACK_SIZE = 4'097;
+#if SPRT_NUTTX
+static constexpr size_t SP_ALLOC_STACK_SIZE = 64;
+#else
+static constexpr size_t SP_ALLOC_STACK_SIZE = 1'023;
+#endif
 
 class AllocStack {
 public:
@@ -141,7 +146,10 @@ void AllocStack::pop(pool_t *p, const char *source) {
 		_stack.pop();
 	} else {
 		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "memory",
-				"Unbalansed pool::push found");
+				"Unbalansed pool::push found top=", _stack.get().pool, " pop=", p,
+				" size=", _stack.size,
+				" topSrc=", _stack.get().info.source ? _stack.get().info.source : "-",
+				" popSrc=", source ? source : "-");
 		::__sprt_abort();
 	}
 #else

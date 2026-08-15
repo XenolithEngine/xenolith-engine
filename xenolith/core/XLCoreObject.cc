@@ -25,10 +25,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
-#if !SPRT_WASM
-// SPIR-V shader reflection is not used on wasm (WGSL path; shader extensions resolve
-// through the window-provider interface). SPIRV-Reflect pulls the Khronos SPIRV-Headers,
-// which are not part of the wasm sysroot.
+#if !SPRT_WASM && !SPRT_NUTTX
 #include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
@@ -297,9 +294,9 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_NUTTX
 	(void)data;
-	return String(); // no SPIR-V reflection on wasm
+	return String(); // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
 #else
 	SpvReflectShaderModule shader;
 

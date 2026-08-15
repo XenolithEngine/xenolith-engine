@@ -23,8 +23,8 @@
 
 #include "XLCoreQueueData.h"
 #include "XLCoreQueuePass.h"
-#if !SPRT_WASM
-#include "SPIRV-Reflect/spirv_reflect.h" // SPIR-V reflection unused on wasm (WGSL path)
+#if !SPRT_WASM && !SPRT_NUTTX
+#include "SPIRV-Reflect/spirv_reflect.h" // SPIR-V reflection unused on wasm (WGSL path) and NuttX (soft rasterizer)
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
@@ -72,8 +72,8 @@ void ProgramData::inspect(SpanView<uint32_t> data) {
 		return;
 	}
 
-#if SPRT_WASM
-	return; // no SPIR-V reflection on wasm
+#if SPRT_WASM || SPRT_NUTTX
+	return; // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
 #else
 	SpvReflectShaderModule shader;
 

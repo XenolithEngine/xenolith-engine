@@ -28,6 +28,10 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
+#if SPRT_NUTTX
+#include <time.h>
+#endif
+
 #if SPRT_ANDROID && !defined(__LP64__)
 #include <time64.h>
 #endif
@@ -54,9 +58,15 @@ static_assert(CLOCK_REALTIME == __SPRT_CLOCK_REALTIME);
 static_assert(CLOCK_MONOTONIC == __SPRT_CLOCK_MONOTONIC);
 static_assert(CLOCK_PROCESS_CPUTIME_ID == __SPRT_CLOCK_PROCESS_CPUTIME_ID);
 static_assert(CLOCK_THREAD_CPUTIME_ID == __SPRT_CLOCK_THREAD_CPUTIME_ID);
-static_assert(CLOCK_MONOTONIC_RAW == __SPRT_CLOCK_MONOTONIC_RAW);
-static_assert(CLOCK_MONOTONIC_COARSE == __SPRT_CLOCK_MONOTONIC_COARSE);
 static_assert(CLOCK_BOOTTIME == __SPRT_CLOCK_BOOTTIME);
+
+#if !SPRT_NUTTX || defined(CLOCK_MONOTONIC_RAW)
+static_assert(CLOCK_MONOTONIC_RAW == __SPRT_CLOCK_MONOTONIC_RAW);
+#endif
+
+#if !SPRT_NUTTX || defined(CLOCK_MONOTONIC_COARSE)
+static_assert(CLOCK_MONOTONIC_COARSE == __SPRT_CLOCK_MONOTONIC_COARSE);
+#endif
 
 #ifdef CLOCK_REALTIME_COARSE
 static_assert(CLOCK_REALTIME_COARSE == __SPRT_CLOCK_REALTIME_COARSE);

@@ -70,6 +70,26 @@ MODULE_RUNTIME_LIBC_WRAPPER_INCLUDES_OBJS += \
 endif # ($(TARGET_SYSTEM),Android/Android-NDK)
 
 
+ifeq ($(TARGET_SYSTEM),NuttX)
+# c/SPRuntimeCMathMusl.c borrows the musl math (and the aarch64 fenv it needs)
+# for the C99 entries NuttX declares in <math.h> but never implements. Those
+# sources reach musl's internal headers ("libm.h", "fp_arch.h", "atomic.h") the
+# same way musl's own build does — except through -iquote rather than -I, so
+# they apply to `"quoted"` includes only and can never shadow a NuttX or sprt
+# <angled> header. C flags only: no C++ unit in this module borrows musl.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
+	-iquote $(RUNTIME_MODULE_DIR)/musl-libc/src/internal \
+	-iquote $(RUNTIME_MODULE_DIR)/musl-libc/arch/$(TARGET_ARCH) \
+	-iquote $(RUNTIME_MODULE_DIR)/musl-libc/arch/generic
+
+# Upstream musl warnings, silenced exactly as musl-adapters/musl_libc.mk does
+# for the same sources rather than patched out of the vendored tree.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
+	-Wno-shift-op-parentheses \
+	-Wno-unused-but-set-variable
+endif # ($(TARGET_SYSTEM),NuttX)
+
+
 ifeq ($(TARGET_SYSTEM),Windows)
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
 	-ffreestanding \

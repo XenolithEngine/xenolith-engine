@@ -24,6 +24,12 @@ THE SOFTWARE.
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/thread/qmutex.h>
+
+// NuttX <stdlib.h> defines srandom() as a macro expanding to srand(); the
+// static helper below is also named srandom, which the macro would corrupt.
+#if SPRT_NUTTX
+#undef srandom
+#endif
 #include <sprt/thirdparty/pcg_random.hpp>
 
 namespace sprt::libc {
