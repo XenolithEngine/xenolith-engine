@@ -130,9 +130,13 @@ public:
 	const Settings &getSettings() const { return _settings; }
 
 	// Writes one field, persists the whole file, fires onSettingsChanged, and kicks a reachability
-	// probe when the field was a source URL. `key` is one of the settings.json keys:
-	// "engineRepoUrl", "releaseSourceUrl", "autoUpdateInstaller", "autoUpdateEngine",
-	// "autoUpdateReleases", "lang". An unknown key is refused with ErrorInvalidArguemnt.
+	// probe when the field was a source URL. `key` is one of the settings.json keys — the set is
+	// Settings::getFields() (SPISettings.h), which is also what `xenolith-cli config` lists. An
+	// unknown key is refused with ErrorInvalidArguemnt.
+	//
+	// "enginePath" / "toolchainsPath" also re-derive getLayout(), but ONLY while !isBusy(): a worker
+	// holds a `const Layout &`. Changed during an install or a build, they are saved and take effect
+	// on the next start.
 	Status setSettingsField(StringView key, const Value &);
 
 	bool getToolAutoUpdate(Kind kind, StringView id) const {

@@ -167,6 +167,14 @@ String resolveEngineRoot(const Layout &layout, StringView engineOverride, bool *
 		*ok = validateEngineRoot(p).empty();
 		return p;
 	}
+	// The configured engine root (settings.json "enginePath", carried in by Settings::applyTo).
+	// BELOW the environment on purpose: a build script that exports XENOLITH_ENGINE is stating which
+	// checkout this run is about, and a preference stored months earlier must not overrule it.
+	if (!layout.engine.empty()) {
+		auto p = layout.engine;
+		*ok = validateEngineRoot(p).empty();
+		return p;
+	}
 	// fall back to the cloned default ref
 	auto dir = layout.getEngineDir(getEngineDefaultRef());
 	*ok = validateEngineRoot(dir).empty();

@@ -84,7 +84,8 @@ inline EngineCloneResult cloneEngine(StringView ref, const Layout &layout,
 }
 
 // Resolve the engine root (STAPPLER_ROOT) for building: explicit `engineOverride` (--engine) >
-// $XENOLITH_ENGINE > the cloned default ref dir. `*ok` is false when nothing resolves.
+// $XENOLITH_ENGINE > `layout.engine` (the configured enginePath) > the cloned default ref dir.
+// `*ok` is false when nothing resolves.
 SP_PUBLIC String resolveEngineRoot(const Layout &layout, StringView engineOverride, bool *ok);
 
 // Validate a usable engine tree: `make/universal.mk` present AND no whitespace in the path (the

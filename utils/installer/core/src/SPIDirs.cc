@@ -104,7 +104,11 @@ String Layout::getProjectsManifest() const { return mergePath(config, "projects.
 
 String Layout::getSettingsManifest() const { return mergePath(config, "settings.json"); }
 
-String Layout::getToolchainsDir() const { return mergePath(data, "toolchains"); }
+// Overriding THIS one is enough to move the whole store: hosts, targets, getToolchainDir and
+// therefore getComponentDir, the install destination and the link source all derive from it.
+String Layout::getToolchainsDir() const {
+	return toolchains.empty() ? mergePath(data, "toolchains") : toolchains;
+}
 
 String Layout::getHostsDir() const { return mergePath(getToolchainsDir(), "hosts"); }
 

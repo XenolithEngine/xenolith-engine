@@ -40,6 +40,22 @@ struct SP_PUBLIC Layout {
 	String data; // where the SDK is unpacked (toolchains, engines)
 	String cache; // partial downloads / extraction scratch
 
+	/* User overrides from settings.json, written here by Settings::applyTo (SPISettings.h). Empty
+	means "derive it from the fields above", which is what every installation that never configured
+	one gets.
+
+	They live on the LAYOUT rather than as extra parameters because the layout is the one thing
+	every core entry point already takes: `engine` is picked up by resolveEngineRoot and
+	`toolchains` by getToolchainsDir, and install, link, list and build all go through those two
+	already. A parameter per call site would have to be threaded through buildProject and
+	scaffoldProject by hand, and any site that was forgotten would silently ignore what the user
+	configured — the failure mode being "the GUI honours my engine path and the CLI does not".
+
+	What fills them is the front end, right after Layout::resolve*: the settings file is found
+	through `config`, so the layout has to exist before it can be read. */
+	String engine; // engine root (STAPPLER_ROOT); below --engine and $XENOLITH_ENGINE, above the clone
+	String toolchains; // the host/target store; empty → <data>/toolchains
+
 	static Layout fromHome(StringView home);
 	static Layout system();
 

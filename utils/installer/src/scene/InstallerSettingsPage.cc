@@ -128,8 +128,10 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 	// dismisses it.
 	ui::SubWindow::Config config;
 	config.type = sprt::window::WindowType::Utility;
-	config.size = Extent2(620, 380);
-	config.minExtent = Extent2(480, 320);
+	// Seven rows at 30px plus the 10px gaps, the frame and the Close button. The two path fields hold
+	// absolute paths, so the form is wider than the label+control+marker grid strictly needs.
+	config.size = Extent2(760, 470);
+	config.minExtent = Extent2(560, 400);
 	config.title = strings::settingsTitle();
 
 	/* The same user-space decorations the main window asks for (InstallerInit.cpp), and for the
@@ -230,7 +232,13 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 			label->setString(text);
 		};
 
-		auto addTextField = [&](StringView name, StringView value, SourceKind kind) {
+		/* `kind` selects the reachability marker for the third cell, or nothing when the field is a
+		LOCAL PATH: "reachable" is a question about a URL, and a marker that stayed permanently
+		Unknown next to a directory would read as a failed check rather than as no check. The cell is
+		still filled, with an empty node — a grid fills in order, so a row that supplies two cells
+		instead of three shifts every following row by one. */
+		auto addTextField = [&](StringView name, StringView value,
+									const SourceKind *kind = nullptr) {
 			auto input = grid->addChild(Rc<ui::TextInput>::create(), ZOrder(z++));
 			input->setName(name);
 			input->setText(value);
@@ -274,9 +282,14 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 						[listener](bool backwards) { return listener->requestNavigate(backwards); });
 			}
 
-			auto badge = grid->addChild(Rc<ReachabilityBadge>::create(kind), ZOrder(z++));
-			badge->setName(kind == SourceKind::EngineRepo ? "engine-url-state"
-														  : "release-url-state");
+			if (kind) {
+				auto badge = grid->addChild(Rc<ReachabilityBadge>::create(*kind), ZOrder(z++));
+				badge->setName(
+						*kind == SourceKind::EngineRepo ? "engine-url-state" : "release-url-state");
+			} else {
+				grid->addChild(Rc<Node>::create(), ZOrder(z++));
+			}
+			return raw;
 		};
 
 		auto addCheckbox = [&](StringView name, bool value) {
@@ -296,11 +309,33 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 			grid->addChild(Rc<Node>::create(), ZOrder(z++));
 		};
 
+		static constexpr SourceKind kEngineRepo = SourceKind::EngineRepo;
+		static constexpr SourceKind kReleases = SourceKind::Releases;
+
 		addLabel(strings::settingsEngineUrl());
-		addTextField("engineRepoUrl", settings.sources.getEngineRepoUrl(), SourceKind::EngineRepo);
+		addTextField("engineRepoUrl", settings.sources.getEngineRepoUrl(), &kEngineRepo);
 
 		addLabel(strings::settingsReleaseUrl());
-		addTextField("releaseSourceUrl", settings.sources.getReleasesRoot(), SourceKind::Releases);
+		addTextField("releaseSourceUrl", settings.sources.getReleasesRoot(), &kReleases);
+
+		/* The RESOLVED paths, not the stored ones: an empty field would say nothing about where the
+		tools are actually looking, and this form is where a user goes to find that out. What is
+		saved back is whatever the field holds when it loses focus — so a user who never touches
+		these two pins today's default, which is the honest reading of "leave it alone" for a path
+		that only ever moves when someone moves it. */
+		addLabel(strings::settingsEnginePath());
+		bool engineOk = false;
+		auto enginePathInput = addTextField("enginePath",
+				resolveEngineRoot(controller->getLayout(), StringView(), &engineOk));
+		if (!engineOk) {
+			// The same marker a rejected form field gets (`text-input.invalid` in style.css). There
+			// is no validator on this field - the path is checked by resolving it, which has already
+			// happened - so the class is set directly rather than through the form.
+			enginePathInput->addStyleClass("invalid");
+		}
+
+		addLabel(strings::settingsToolchainsPath());
+		addTextField("toolchainsPath", controller->getLayout().getToolchainsDir());
 
 		addLabel(strings::settingsAutoUpdateInstaller());
 		addCheckbox("autoUpdateInstaller", settings.autoUpdateInstaller);

@@ -83,6 +83,9 @@ bool AppController::attach(NotNull<AppThread> app) {
 	_app = app;
 	_layout = Layout::resolveFromEnv();
 	_settings = Settings::load(_layout.getSettingsManifest());
+	// The configured engine path and toolchain store reshape the layout the whole app then works
+	// through - so they are applied HERE, once, before anything reads a directory out of it.
+	_settings.applyTo(_layout);
 
 	auto host = resolveHost(getNativeArch(), getNativeOs());
 	_nativeId = host.native;
@@ -337,21 +340,29 @@ float AppController::getAggregateProgress() const {
 // --- settings ---------------------------------------------------------------
 
 Status AppController::setSettingsField(StringView key, const Value &value) {
-	if (key == "engineRepoUrl") {
-		_settings.sources.engineRepoUrl = value.getString();
-	} else if (key == "releaseSourceUrl") {
-		_settings.sources.releasesRoot = value.getString();
-	} else if (key == "autoUpdateInstaller") {
-		_settings.autoUpdateInstaller = value.getBool();
-	} else if (key == "autoUpdateEngine") {
-		_settings.autoUpdateEngine = value.getBool();
-	} else if (key == "autoUpdateReleases") {
-		_settings.autoUpdateReleases = value.getBool();
-	} else if (key == "lang") {
-		_settings.lang = value.getString();
-	} else {
+	// The key→field mapping lives in the core, so this form and `xenolith-cli config` write through
+	// ONE implementation: two mappings is how a key ends up settable from one front end and
+	// invisible from the other.
+	if (!_settings.setFieldValue(key, value)) {
 		log::error(kLogTag, "setSettingsField: unknown key '", key, "'");
 		return Status::ErrorInvalidArguemnt;
+	}
+
+	/* Re-derive the layout from the settings that just changed.
+
+	Only safe while nothing is in flight: a worker holds `const Layout &` (see the class
+	documentation), so rewriting its strings under a running install or build is a data race. When
+	the app IS busy the file is still written and the change takes effect on the next start - which
+	is the honest outcome, because moving the toolchain store out from under a download that is
+	extracting into it would be worse than deferring. */
+	if (key == "enginePath" || key == "toolchainsPath") {
+		if (isBusy()) {
+			log::info(kLogTag, "setSettingsField: '", key,
+					"' is saved and takes effect after a restart (work in progress)");
+		} else {
+			_layout = Layout::resolveFromEnv();
+			_settings.applyTo(_layout);
+		}
 	}
 
 	if (!_settings.save(_layout.getSettingsManifest())) {
