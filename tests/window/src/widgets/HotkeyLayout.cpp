@@ -218,7 +218,7 @@ void HotkeyLayout::registerCommands() {
 	addCommand("list", "Enumerate the whole hotkey registry",
 			[this](Value &&) { return encodeRegistry(); });
 
-	addCommand("rebind", "Rebind a hotkey by name: {name, combo}", [this](Value &&args) {
+	addCommand("rebind", "Rebind a hotkey by name: {name, combo}", [](Value &&args) {
 		const Value &req = args;
 		auto reg = HotkeyRegistry::getInstance();
 		auto id = reg->getId(req.getString("name"));

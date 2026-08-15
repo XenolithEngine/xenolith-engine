@@ -75,8 +75,13 @@ A workable default, with the leading slot after the icon and the trailing slot b
   }
 
 Note that this is a Panel, so a fill it does not declare is an opaque WHITE surface: the sheet MUST
-give `window-frame` a background-color. (The strip and the slots are Panels for the same reason -
-they are transparent only because the default sheet above leaves them so.) */
+give `window-frame` a background-color. The title strip is a Panel for the same reason, and is
+transparent only because the default sheet above leaves it so.
+
+The two SLOTS, on the other hand, are plain Nodes: they draw nothing at all, and a sheet must NOT
+give them `background-color: transparent` to say so. A colour with alpha is written into the node's
+OPACITY, which multiplies down the whole subtree - so that declaration hides whatever the
+application put in the slot. */
 class SP_PUBLIC WindowFrame : public Panel {
 public:
 	struct Config {
