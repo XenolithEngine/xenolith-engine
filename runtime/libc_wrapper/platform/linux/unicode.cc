@@ -433,8 +433,9 @@ struct i18n {
 		}
 
 		if (unistring.u8_cmp2) {
-			return unistring.u8_cmp2((const uint8_t *)l.data(), l.size(), (const uint8_t *)r.data(),
-					r.size());
+			*result = unistring.u8_cmp2((const uint8_t *)l.data(), l.size(),
+					(const uint8_t *)r.data(), r.size());
+			return true;
 		} else if (icu.u_strCompare_fn) {
 			bool ret = false;
 			unicode::toUtf16([&](WideStringView lStr) {
@@ -472,8 +473,11 @@ struct i18n {
 		if (unistring.u8_casecoll) {
 			int ret = 0;
 			auto lang = unistring.uc_locale_language();
-			auto err = unistring.u8_casecoll((const uint8_t *)l.data(), l.size() + 1,
-					(const uint8_t *)r.data(), r.size() + 1, lang, nullptr, &ret);
+			// Lengths are unit counts, not NUL-terminated buffer sizes: a StringView
+			// is not NUL-terminated, so size() + 1 would both read past the end and
+			// feed the stray byte into the comparison.
+			auto err = unistring.u8_casecoll((const uint8_t *)l.data(), l.size(),
+					(const uint8_t *)r.data(), r.size(), lang, nullptr, &ret);
 			if (err == 0) {
 				*result = ret;
 				return true;

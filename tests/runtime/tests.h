@@ -61,6 +61,7 @@ void performProcessTests();
 void performFileTests();
 void performSocketTests();
 void performUnicodeTests();
+void performUnicodeCaseConformanceTests();
 void performDtoaTests();
 void performIdnTests();
 void performIdnConformanceTests();

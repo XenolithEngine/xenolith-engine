@@ -60,7 +60,8 @@ struct ConformanceResult {
 };
 
 static void runOne(ConformanceResult &res, StringView source, StringView opName, bool toAscii,
-		idn::Options options, StringView expectedResult, bool expectedToFail) {
+		idn::Options options, StringView expectedResult, bool expectedToFail,
+		bool rootLabelOnly = false) {
 	char buf[1'024] = {0};
 	StringView result;
 	auto sink = [&](StringView str) {
@@ -75,6 +76,17 @@ static void runOne(ConformanceResult &res, StringView source, StringView opName,
 
 	// An empty source is "no input" to this API, but an empty label to the standard.
 	bool failed = status != Status::Ok;
+
+	// Since the 2025 revision the file marks a trailing dot as an A4_2 VerifyDnsLength
+	// error. This engine follows ICU in not reporting the empty ROOT label (an empty
+	// label anywhere else is still an error), so when A4_2 is the only expected error
+	// and the result really is just root-terminated, the expectation is cleared - the
+	// same workaround ICU applies in its own driver for this file (uts46test.cpp
+	// checkIdnaTestResult, ICU-22882).
+	if (toAscii && rootLabelOnly && !failed && result.ends_with('.')
+			&& result.find("..") == Max<size_t>) {
+		expectedToFail = false;
+	}
 
 	++res.checks;
 	if (failed != expectedToFail) {
@@ -117,8 +129,9 @@ void performIdnConformanceTests() {
 		runOne(res, test.source, "toUnicode", false, nontransitional, test.toUnicode,
 				test.unicodeFails);
 		runOne(res, test.source, "toAsciiN", true, nontransitional, test.toAsciiN,
-				test.asciiNFails);
-		runOne(res, test.source, "toAsciiT", true, transitional, test.toAsciiT, test.asciiTFails);
+				test.asciiNFails, test.asciiNRootLabelOnly);
+		runOne(res, test.source, "toAsciiT", true, transitional, test.toAsciiT, test.asciiTFails,
+				test.asciiTRootLabelOnly);
 	}
 
 	if (res.reported > ConformanceResult::MaxReported) {
