@@ -171,7 +171,13 @@ WaylandWindow::WaylandWindow() {
 
 bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 		NotNull<LinuxContextController> c) {
-	if (!NativeWindow::init(c, move(info), display->getCapabilities())) {
+	// The CONTROLLER's capabilities, not the display's — as on every other platform. The display
+	// answers for the display server alone, while dialogs are a property of the desktop SESSION and
+	// are ORed on top by LinuxContextController::getCapabilities(). Taking the display's set here
+	// published a window that reports no FileDialogs / SystemFileActions even with a portal running,
+	// so an application doing what the documentation asks — gate the control on the capability —
+	// silently offered nothing.
+	if (!NativeWindow::init(c, move(info), c->getCapabilities())) {
 		return false;
 	}
 
@@ -224,6 +230,14 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 
 void WaylandWindow::mapWindow() {
 	_mapped = true;
+
+	// A mapped window is enabled: nothing is blocking it yet, and a modal Dialog is the only thing
+	// that ever clears the bit again (ContextController::retainModalBlock). Raised HERE rather than
+	// in init() so the state transition is emitted, exactly as HeadlessWindow::mapWindow does it —
+	// without this the flag was never set on Wayland at all, so it could not be restored either,
+	// and every reader of it saw a window that was permanently "not enabled".
+	updateState(0, _info->state | WindowState::Enabled);
+
 	_display->flush();
 }
 
@@ -796,6 +810,12 @@ void WaylandWindow::handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_
 	if (_buttonGripFlags != WindowLayerFlags::None) {
 		if (_buttons.test(toInt(InputMouseButton::MouseLeft)) && _buttons.count() == 1) {
 			auto grip = _buttonGripFlags;
+			/* Hand the pointer to the compositor ONLY when the grip named something it can do.
+
+			Cancelling and swallowing the motion used to be unconditional, so a grip value that fell
+			through the switch - GripGuard, or anything added to the ladder later - took the pointer
+			away and gave the compositor nothing in return: the press stayed down, every motion
+			after it was dropped, and the drag simply never reached the scene. */
 			switch (grip) {
 			case WindowLayerFlags::MoveGrip:
 				xdg_toplevel_move(_toplevel, _display->seat->seat, _buttonGripSerial);
@@ -811,10 +831,16 @@ void WaylandWindow::handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_
 				xdg_toplevel_resize(_toplevel, _display->seat->seat, _buttonGripSerial,
 						getWaylandGripEdge(grip));
 				break;
-			default: break;
+			default:
+				// Not a grip this backend acts on: leave the press alone and deliver the motion.
+				_buttonGripFlags = WindowLayerFlags::None;
+				grip = WindowLayerFlags::None;
+				break;
 			}
-			cancelPointerEvents();
-			return;
+			if (grip != WindowLayerFlags::None) {
+				cancelPointerEvents();
+				return;
+			}
 		}
 	}
 
@@ -863,6 +889,17 @@ static InputMouseButton getWaylandButton(uint32_t button) {
 	default: return InputMouseButton(toInt(InputMouseButton::Mouse8) + (button - 0x113)); break;
 	}
 	return InputMouseButton::None;
+}
+
+// The inverse of getWaylandButton. An input event's id is the raw wayland code, so anything that
+// has to name a press the engine already knows about - a cancel, above all - has to map back.
+static uint32_t getWaylandButtonCode(InputMouseButton button) {
+	switch (button) {
+	case InputMouseButton::MouseLeft: return BTN_LEFT; break;
+	case InputMouseButton::MouseRight: return BTN_RIGHT; break;
+	case InputMouseButton::MouseMiddle: return BTN_MIDDLE; break;
+	default: return 0x113 + (toInt(button) - toInt(InputMouseButton::Mouse8)); break;
+	}
 }
 
 void WaylandWindow::handlePointerButton(uint32_t serial, uint32_t time, uint32_t button,
@@ -1154,7 +1191,12 @@ void WaylandWindow::handlePointerFrame() {
 				axisBtn,
 				_activeModifiers,
 				float(_surfaceX),
-				float(height - _surfaceY),
+				// _surfaceY is ALREADY bottom-up (it is stored as `height - surface_y`, see the
+				// Enter/Motion handlers), so flipping it again here mirrored every wheel event
+				// about the middle of the window: a notch over the title bar was delivered to
+				// whatever sat at the bottom of the window instead. Every other pointer event on
+				// this path passes _surfaceY through untouched, and so must this one.
+				float(_surfaceY),
 			}},
 		}));
 
@@ -2299,7 +2341,15 @@ void WaylandWindow::cancelPointerEvents() {
 	for (uint32_t i = 0; i < 64; ++i) {
 		if (_buttons.test(i)) {
 			InputEventData event({
-				i,
+				// The id has to be the one Begin was sent with, and Begin sends the RAW WAYLAND
+				// code (BTN_LEFT and friends) while _buttons is indexed by InputMouseButton. Sending
+				// the index here meant InputDispatcher looked up an id nothing was ever opened
+				// under, so the cancel did nothing: the press stayed active for the rest of the
+				// session, and every later MouseMove was replayed into it as a Move. That is the
+				// "element stays grabbed and follows the mouse until the next click" - it happens
+				// whenever the compositor takes the pointer away from us, which is exactly what a
+				// MoveGrip drag on a title strip does.
+				getWaylandButtonCode(InputMouseButton(i)),
 				InputEventName::Cancel,
 				{{
 					InputMouseButton(i),

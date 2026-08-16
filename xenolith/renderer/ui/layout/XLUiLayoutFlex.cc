@@ -103,6 +103,13 @@ struct FlexPassOutput {
 	float usedCross = 0.0f; // sum of line cross extents plus cross gaps
 };
 
+// The container's overflow axes projected onto the flow. Main/cross rather than x/y because
+// everything past step 1 works in flow space.
+struct FlexOverflow {
+	bool main = false;
+	bool cross = false;
+};
+
 } // namespace
 
 // Steps 1-4 of the flex algorithm, shared by the placement pass (layoutFlex)
@@ -112,8 +119,9 @@ struct FlexPassOutput {
 // compute the line cross extents. With `forMeasure` grow/shrink are skipped
 // (CSS content sizing ignores them) and nothing is committed to the nodes.
 // contentMain / contentCross may be maxOf<float>() (unconstrained axis).
+// `ovf` marks the axes the container is allowed to overflow (see LayoutSystem::setOverflowAxes).
 static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float contentMain,
-		float contentCross, bool forMeasure, FlexPassOutput &out) {
+		float contentCross, bool forMeasure, FlexOverflow ovf, FlexPassOutput &out) {
 	const bool isRow =
 			info.direction == FlexDirection::Row || info.direction == FlexDirection::RowReverse;
 	const float mainGap = isRow ? info.columnGap : info.rowGap;
@@ -214,7 +222,10 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			}
 			const Size2 m = LayoutSystem::measureNode(child, mc);
 			float base = isRow ? m.width : m.height;
-			if (boundedMain) {
+			// On an overflow main axis the item keeps its measured content size: clamping it to
+			// the available space is exactly what would make the content unreachable instead of
+			// scrollable.
+			if (boundedMain && !ovf.main) {
 				base = sprt::min(base,
 						sprt::max(contentMain - item.mainMarginStart - item.mainMarginEnd, 0.0f));
 			}
@@ -265,7 +276,10 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			while (i < items.size()) {
 				const float outer = items[i].outerBaseMain();
 				const float add = outer + (count > 0 ? mainGap : 0.0f);
-				if (info.wrap != FlexWrap::NoWrap && boundedMain && count > 0
+				// An overflow main axis never wraps: wrapping and scrolling the same axis are
+				// contradictory requests, and the scroll wins (nowrap is what makes the line long
+				// enough to have something to scroll).
+				if (info.wrap != FlexWrap::NoWrap && boundedMain && !ovf.main && count > 0
 						&& used + add > contentMain + FlexEpsilon) {
 					break;
 				}
@@ -283,7 +297,18 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 		const size_t n = line.count();
 		const float gapTotal = (n > 1) ? mainGap * static_cast<float>(n - 1) : 0.0f;
 
-		if (forMeasure) {
+		float sumOuterBase = 0.0f;
+		for (size_t k = line.begin; k < line.end; ++k) { sumOuterBase += items[k].outerBaseMain(); }
+
+		// An overflow main axis is freed ONLY when the content genuinely does not fit. While it
+		// still fits, the container behaves like any other: grow distributes the slack and
+		// justify-content places what is left. Freeing it unconditionally would break every
+		// `overflow: auto` container that also holds a `flex-grow: 1` filler - a much bigger
+		// regression than the squashing it set out to fix.
+		const bool overflowing =
+				ovf.main && boundedMain && (sumOuterBase + gapTotal) > contentMain + FlexEpsilon;
+
+		if (forMeasure || overflowing) {
 			// content sizing ignores grow/shrink: keep the clamped base sizes
 			for (size_t k = line.begin; k < line.end; ++k) {
 				auto &item = items[k];
@@ -300,10 +325,6 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			// drop the space a clamped item gave up: three items growing into 600px, one with
 			// min-width 260 and one with max-width 120, must end at 260/120/220 - a single pass
 			// leaves the third at its 200px share and the row 20px short.
-			float sumOuterBase = 0.0f;
-			for (size_t k = line.begin; k < line.end; ++k) {
-				sumOuterBase += items[k].outerBaseMain();
-			}
 			const bool growing = (contentMain - sumOuterBase - gapTotal) > 0.0f;
 
 			// an item that cannot flex in the needed direction is frozen from the start; its
@@ -417,7 +438,9 @@ Size2 LayoutSystem::measureFlex(const MeasureConstraints &c) {
 	}
 
 	FlexPassOutput pass;
-	computeFlexLines(_owner, info, contentMain, contentCross, true, pass);
+	// The measurement pass reports the natural size, which is what an overflow axis would be laid
+	// out at anyway - so the overflow flags make no difference here and are left off.
+	computeFlexLines(_owner, info, contentMain, contentCross, true, FlexOverflow(), pass);
 
 	const float main = pass.usedMain + padMain;
 	const float cross = pass.usedCross + padCross;
@@ -435,28 +458,45 @@ void LayoutSystem::layoutFlex() {
 
 	const Size2 containerSize = _owner->getContentSize();
 
-	// content box: container size minus padding, projected onto main/cross axes
-	float contentMain = (isRow ? containerSize.width - info.padding.horizontal()
-							   : containerSize.height - info.padding.vertical());
-	float contentCross = (isRow ? containerSize.height - info.padding.vertical()
-								: containerSize.width - info.padding.horizontal());
-	contentMain = sprt::max(contentMain, 0.0f);
-	contentCross = sprt::max(contentCross, 0.0f);
+	// The BOX: the container's own content box, minus padding, projected onto main/cross. Every
+	// "available space" question - percentages, align-items: stretch, the wrap threshold - resolves
+	// against this and never against the extent below. That is CSS, where percentages resolve
+	// against the scrollport rather than against the scrollable area.
+	float boxMain = (isRow ? containerSize.width - info.padding.horizontal()
+						   : containerSize.height - info.padding.vertical());
+	float boxCross = (isRow ? containerSize.height - info.padding.vertical()
+							: containerSize.width - info.padding.horizontal());
+	boxMain = sprt::max(boxMain, 0.0f);
+	boxCross = sprt::max(boxCross, 0.0f);
 
 	const float mainGap = isRow ? info.columnGap : info.rowGap;
 	const float crossGap = isRow ? info.rowGap : info.columnGap;
+
+	const FlexOverflow ovf{isRow ? _overflowX : _overflowY, isRow ? _overflowY : _overflowX};
 
 	// 1-4. Collect and measure the items, break them into lines, resolve the
 	// flexed main sizes and the hypothetical cross sizes (shared with the
 	// measurement pass).
 	FlexPassOutput pass;
-	computeFlexLines(_owner, info, contentMain, contentCross, false, pass);
+	computeFlexLines(_owner, info, boxMain, boxCross, false, ovf, pass);
 	auto &items = pass.items;
 	auto &lines = pass.lines;
 
 	if (items.empty()) {
+		_placement.clear();
+		// No content is no content: the padding is all there is. Reporting the container's own size
+		// here would tell a caller the box was full when it is empty.
+		_contentExtent = Size2(info.padding.horizontal(), info.padding.vertical());
 		return;
 	}
+
+	// The extent the REST of the pass distributes space in. On an overflow axis it is the larger of
+	// the box and what the content actually needed; everywhere else it is the box, unchanged - so
+	// nothing about a non-overflowing container moves. With contentMain >= usedMain the free space
+	// is zero when overflowing, which degrades justify-content, auto margins and align-content to
+	// flex-start on their own, with no special-casing below.
+	const float contentMain = ovf.main ? sprt::max(boxMain, pass.usedMain) : boxMain;
+	const float contentCross = ovf.cross ? sprt::max(boxCross, pass.usedCross) : boxCross;
 
 	// 5. Size and position the lines along the cross axis (align-content). A
 	// single line always fills the whole content cross size.
@@ -597,7 +637,15 @@ void LayoutSystem::layoutFlex() {
 
 	// 7. Project the flow coordinates onto the node's bottom-left coordinate
 	// space and commit position + size to each child.
+	_placement.clear();
+	_placement.reserve(items.size());
+	float extentMain = 0.0f;
+	float extentCross = 0.0f;
+
 	for (auto &item : items) {
+		extentMain = sprt::max(extentMain, item.mainStart + item.outerMain());
+		extentCross = sprt::max(extentCross, item.crossStart + item.outerCross());
+
 		float mainBox = item.mainStart;
 		if (mainReverse) {
 			mainBox = contentMain - (item.mainStart + item.outerMain());
@@ -630,6 +678,13 @@ void LayoutSystem::layoutFlex() {
 		const Size2 newSize(width, height);
 		item.node->setContentSize(newSize);
 
+		// cached UNSCROLLED, so setScrollOffset can re-place the children without re-flexing
+		_placement.emplace_back(item.node, bottomLeft);
+
+		// CSS scroll orientation is y-down and the engine's is y-up, so a positive vertical scroll
+		// moves the content up. Zero unless an ancestor ScrollSystem set an offset.
+		bottomLeft -= Vec2(_scrollOffset.x, -_scrollOffset.y);
+
 		// honor the child's own anchor point: position is where the anchor sits
 		const Vec2 anchor = item.node->getAnchorPoint();
 		item.node->setPosition(bottomLeft + Vec2(anchor.x * width, anchor.y * height));
@@ -641,6 +696,16 @@ void LayoutSystem::layoutFlex() {
 			dispatchLayoutApplied(item.node, newSize);
 		}
 	}
+
+	// What the content actually occupies, padding included on both sides. NOT floored at the box:
+	// the scroll range floors at zero on its own, and a container that reported "at least my own
+	// size" could never answer how much room its content left over - which is a question with real
+	// callers (a strip that hands the leftover back to the window drag, for one).
+	const float fullMain =
+			extentMain + (isRow ? info.padding.horizontal() : info.padding.vertical());
+	const float fullCross =
+			extentCross + (isRow ? info.padding.vertical() : info.padding.horizontal());
+	_contentExtent = isRow ? Size2(fullMain, fullCross) : Size2(fullCross, fullMain);
 }
 
 } // namespace stappler::xenolith::ui

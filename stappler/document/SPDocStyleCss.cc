@@ -26,6 +26,23 @@
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
+static bool css_readOverflow(const StringView &value, Overflow &out) {
+	if (value.equals("visible")) {
+		out = Overflow::Visible;
+	} else if (value.equals("hidden")) {
+		out = Overflow::Hidden;
+	} else if (value.equals("clip")) {
+		out = Overflow::Clip;
+	} else if (value.equals("scroll")) {
+		out = Overflow::Scroll;
+	} else if (value.equals("auto")) {
+		out = Overflow::Auto;
+	} else {
+		return false;
+	}
+	return true;
+}
+
 static bool css_readListStyleType(const StringView &value, const StyleCallback &cb) {
 	if (value.equals("none")) {
 		return cb(StyleParameter::create<ParameterName::CssListStyleType>(ListStyleType::None));
@@ -530,6 +547,42 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssVisibility>(Visibility::Collapse));
 	}
 	return false;
+}),
+	pair("overflow-x",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Overflow v;
+	return css_readOverflow(value, v)
+			&& cb(StyleParameter::create<ParameterName::CssOverflowX>(v));
+}),
+	pair("overflow-y",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Overflow v;
+	return css_readOverflow(value, v)
+			&& cb(StyleParameter::create<ParameterName::CssOverflowY>(v));
+}),
+	// `overflow: <x> [<y>]` - one value fills both axes, two are read in CSS order (x then y)
+	pair("overflow",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Overflow vals[2];
+	int count = 0;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 2) {
+			if (!css_readOverflow(r, vals[count])) {
+				err = true;
+				return;
+			}
+			++count;
+		}
+	});
+	if (err || count == 0) {
+		return false;
+	}
+	if (count == 1) {
+		vals[1] = vals[0];
+	}
+	return cb(StyleParameter::create<ParameterName::CssOverflowX>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssOverflowY>(vals[1]));
 }),
 	pair("list-style-type",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {

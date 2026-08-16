@@ -69,6 +69,11 @@ public:
 	SPRT_DEFINE_PROTO(wl_display_prepare_read)
 	SPRT_DEFINE_PROTO(wl_display_flush)
 	SPRT_DEFINE_PROTO(wl_display_read_events)
+	// The two that turn a dead connection from a silent hang into a diagnosis. A protocol error
+	// kills the wl_display for good: every later call is a no-op and no event ever arrives again,
+	// so without asking for the error the client simply stops responding with nothing in the log.
+	SPRT_DEFINE_PROTO(wl_display_get_error)
+	SPRT_DEFINE_PROTO(wl_display_get_protocol_error)
 	SPRT_DEFINE_PROTO(wl_display_disconnect)
 	SPRT_DEFINE_PROTO(wl_proxy_marshal_array_flags)
 	SPRT_DEFINE_PROTO(wl_proxy_marshal_flags)

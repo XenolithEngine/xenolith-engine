@@ -78,6 +78,18 @@ struct SPRT_API WaylandDisplay : public Ref {
 	bool flush();
 	bool poll();
 
+	/* Has the connection died?
+
+	A wl_display that hit an error is dead for good — libwayland turns every later call into a
+	no-op and no event ever arrives again — so a client that does not ask simply stops responding
+	with nothing in the log to say why. This reports it once, with the interface, the error code
+	and the object id when the compositor raised a protocol error (that is the only place those
+	three are available: the error is latched inside libwayland, not delivered as an event).
+
+	Mirrors XcbConnection::hasErrors(). Latched, so it names the failure once and then keeps
+	answering true. */
+	bool hasErrors() const;
+
 	int getFd() const;
 
 	void updateThemeInfo(const ThemeInfo &);
@@ -116,6 +128,10 @@ struct SPRT_API WaylandDisplay : public Ref {
 	Set<WaylandWindow *> windows;
 
 	bool seatDirty = false;
+
+	// Set by hasErrors() when it first sees a dead connection, so the diagnosis is printed once
+	// instead of on every wakeup. Mutable because asking is a const question.
+	mutable bool displayError = false;
 
 	Function<void(SystemNotification)> systemNotification;
 };

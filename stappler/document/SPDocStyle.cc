@@ -83,6 +83,14 @@ void StyleParameter::set<ParameterName::CssVisibility, Visibility>(const Visibil
 	value.visibility = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssOverflowX, Overflow>(const Overflow &v) {
+	value.overflow = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssOverflowY, Overflow>(const Overflow &v) {
+	value.overflow = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssListStyleType, ListStyleType>(const ListStyleType &v) {
 	value.listStyleType = v;
 }
@@ -1388,6 +1396,17 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Visibility::Collapse: stream << "collapse"; break;
 			};
 			break; // enum
+		case ParameterName::CssOverflowX:
+		case ParameterName::CssOverflowY:
+			stream << (it.name == ParameterName::CssOverflowX ? "overflow-x: " : "overflow-y: ");
+			switch (it.value.overflow) {
+			case Overflow::Visible: stream << "visible"; break;
+			case Overflow::Hidden: stream << "hidden"; break;
+			case Overflow::Clip: stream << "clip"; break;
+			case Overflow::Scroll: stream << "scroll"; break;
+			case Overflow::Auto: stream << "auto"; break;
+			};
+			break; // enum
 		case ParameterName::CssFloat:
 			stream << "float: ";
 			switch (it.value.floating) {
@@ -2288,7 +2307,11 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssTableLayout
 			|| name == ParameterName::CssBorderSpacingHorizontal
 			|| name == ParameterName::CssBorderSpacingVertical
-			|| name == ParameterName::CssXlColumnSpan || name == ParameterName::CssXlRowSpan) {
+			|| name == ParameterName::CssXlColumnSpan || name == ParameterName::CssXlRowSpan
+			// `overflow` is not inherited in CSS, and it especially must not be here: a scroll
+			// container that leaked its overflow into every descendant would make each of them a
+			// scroll container of its own.
+			|| name == ParameterName::CssOverflowX || name == ParameterName::CssOverflowY) {
 		return false;
 	}
 	return true;

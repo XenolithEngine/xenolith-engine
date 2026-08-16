@@ -80,6 +80,15 @@ void DockSystem::handleAdded(Node *owner) {
 
 void DockSystem::handleRemoved() {
 	if (_owner) {
+		// Panel nodes we keep alive in _content are parented inside the frames below; clean them
+		// WITHOUT cleanup first, or Node::cleanup() would destroy their systems while _content - and
+		// anything that re-parents such a node later - still holds it. Same invariant as syncNodes().
+		for (auto &[key, node] : _content) {
+			if (node && node->getParent() != nullptr) {
+				node->removeFromParent(false);
+			}
+		}
+
 		_tree.each([&](DockTreeNode &n) {
 			if (n.node) {
 				n.node->removeFromParent(true);
@@ -911,16 +920,20 @@ void DockSystem::updateFrameContent(DockTreeNode &leaf) {
 	auto content = activeId.empty() ? nullptr : acquireContent(activeId);
 
 	// take out whatever else is in there; the node itself stays alive in _content, so a panel that
-	// is only being switched away from - or moved to another frame - keeps its state
+	// is only being switched away from - or moved to another frame - keeps its state. Detach
+	// WITHOUT cleanup: these are live nodes we own and re-parent below, and Node::cleanup() would
+	// destroy their systems (a Label's EventListener among them), which handleEnter then reads as
+	// freed memory on the next present. A plain detach fires handleExit, which is exactly how a
+	// system pauses while its node leaves the scene; re-entry replays it through handleEnter.
 	auto children = body->getChildren();
 	for (auto &it : Vector<Rc<Node>>(children.begin(), children.end())) {
 		if (it.get() != content) {
-			it->removeFromParent(true);
+			it->removeFromParent(false);
 		}
 	}
 
 	if (content && content->getParent() != body) {
-		content->removeFromParent(true);
+		content->removeFromParent(false);
 		body->addChild(content);
 		// fill the body; a panel that wants less says so with CSS on its own node
 		LayoutSystem::setItem(content,
@@ -960,6 +973,30 @@ void DockSystem::syncNodes() {
 			orphans.emplace_back(child);
 		}
 	}
+	// A panel node we keep alive in _content may still be parented INSIDE an orphan frame that is
+	// about to be cleaned: Node::cleanup() recurses into children and would destroy its systems (a
+	// Label's EventListener among them), leaving a dangling system pointer on the very node we are
+	// about to re-parent elsewhere. It attaches to the frame's BODY, one level below the orphan
+	// itself - so walk the whole ancestor chain, not just the direct parent; handleExit is all it
+	// needs while out of the scene, and re-entry replays handleEnter. Only then may the orphan be
+	// cleaned safely.
+	Set<Node *> dead;
+	for (auto &it : orphans) {
+		dead.emplace(it.get());
+	}
+	for (auto &[key, node] : _content) {
+		if (!node || node->getParent() == nullptr) {
+			continue;
+		}
+		bool inDeadSubtree = false;
+		for (Node *p = node->getParent(); p != nullptr && !inDeadSubtree; p = p->getParent()) {
+			inDeadSubtree = dead.find(p) != dead.end();
+		}
+		if (inDeadSubtree) {
+			node->removeFromParent(false);
+		}
+	}
+
 	for (auto &it : orphans) { it->removeFromParent(true); }
 
 	_tree.each([&](DockTreeNode &n) {

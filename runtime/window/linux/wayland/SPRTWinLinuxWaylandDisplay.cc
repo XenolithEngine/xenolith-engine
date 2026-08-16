@@ -425,7 +425,45 @@ bool WaylandDisplay::isDecoration(wl_surface *surface) const {
 	return decorations.find(surface) != decorations.end();
 }
 
-bool WaylandDisplay::flush() { return wl_display_flush(display) != -1; }
+bool WaylandDisplay::hasErrors() const {
+	auto err = wl_display_get_error(display);
+	if (err == 0) {
+		return false;
+	}
+
+	if (displayError) {
+		return true; // already named
+	}
+	displayError = true;
+
+	/* EPROTO is the compositor rejecting something WE sent, and it is the only case with anything
+	more to say. The three details are latched inside libwayland rather than delivered as an event,
+	so this call is the one and only chance to learn which object failed and how — without it the
+	whole failure is a connection that has simply gone quiet. */
+	if (err == EPROTO) {
+		const struct wl_interface *interface = nullptr;
+		uint32_t id = 0;
+		auto code = wl_display_get_protocol_error(display, &interface, &id);
+		oslog::vperror(__SPRT_LOCATION, "WaylandDisplay", "protocol error on ",
+				interface && interface->name ? interface->name : "<unknown interface>", "@", id,
+				": code ", code, " — the connection is dead and no event will arrive again");
+	} else {
+		oslog::vperror(__SPRT_LOCATION, "WaylandDisplay",
+				"connection error: ", sprt::status::getStatusName(status::errnoToStatus(err)),
+				" — the connection is dead and no event will arrive again");
+	}
+	return true;
+}
+
+bool WaylandDisplay::flush() {
+	// A dead display makes every call a no-op, so the -1 below would be reported as an ordinary
+	// flush failure and the real cause would never be named.
+	if (wl_display_flush(display) != -1) {
+		return true;
+	}
+	hasErrors();
+	return false;
+}
 
 bool WaylandDisplay::poll() {
 	if (seatDirty) {
@@ -440,6 +478,16 @@ bool WaylandDisplay::poll() {
 
 	wl_display_read_events(display);
 	wl_display_dispatch_pending(display);
+
+	/* Checked HERE, between dispatch and the windows.
+
+	Both calls above answer -1 on a dead connection, and neither says why: the error is latched in
+	the wl_display and has to be asked for. Before this check the loop went on polling a socket
+	that would never deliver anything again — the application stayed alive, its windows stopped
+	updating and stopped taking input, and nothing was logged. That is what "the app froze" was. */
+	if (hasErrors()) {
+		return false;
+	}
 
 	for (auto &it : windows) { it->dispatchPendingEvents(); }
 

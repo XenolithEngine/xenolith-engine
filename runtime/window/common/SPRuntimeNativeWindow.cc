@@ -88,27 +88,53 @@ void NativeWindow::handleLayerExit(const WindowLayer &layer) {
 	// Notification only - the aggregate state is recomputed in updateLayerState()
 }
 
+/* Everything a layer says about the POINTER, as opposed to about the application.
+
+The grip and the two window-menu flags are all answers to "what does pressing here do", and so is
+the cursor: they belong to one layer and are taken from one layer. What is left - BackButtonHandler
+- is not positional at all; it asks whether anything in the application handles the system back
+action, and is accumulated over every layer instead. */
+static constexpr auto s_pointerLayerFlags = WindowLayerFlags::GripMask
+		| WindowLayerFlags::WindowMenuLeft | WindowLayerFlags::WindowMenuRight;
+
 void NativeWindow::updateLayerState() {
 	auto cursor = WindowCursor::Undefined;
-	auto gripFlags = WindowLayerFlags::None;
+	auto pointerFlags = WindowLayerFlags::None;
+	bool hasTopLayer = false;
 
 	_currentLayerFlags = WindowLayerFlags::None;
-	for (auto &it : _currentLayers) {
-		if (it.cursor != WindowCursor::Undefined) {
-			cursor = it.cursor;
-		}
-		if (hasFlag(it.flags, WindowLayerFlags::GripMask)) {
-			// update grip value only if it's greater then current
-			// so, resize grip has priority over move grip
-			auto newGrip = it.flags & WindowLayerFlags::GripMask;
-			if (toInt(newGrip) > toInt(gripFlags)) {
-				gripFlags = newGrip;
+
+	for (auto &it : _layers) {
+		bool entered = false;
+		for (auto &cit : _currentLayers) {
+			if (cit == it) {
+				entered = true;
+				break;
 			}
 		}
-		_currentLayerFlags |= it.flags & ~WindowLayerFlags::GripMask;
+		if (!entered) {
+			continue;
+		}
+
+		if (!hasTopLayer
+				&& (it.cursor != WindowCursor::Undefined
+						|| (it.flags & s_pointerLayerFlags) != WindowLayerFlags::None)) {
+			hasTopLayer = true;
+			cursor = it.cursor;
+			pointerFlags = it.flags & s_pointerLayerFlags;
+		}
+
+		_currentLayerFlags |= it.flags & ~s_pointerLayerFlags;
 	}
 
-	_gripFlags = gripFlags;
+	_currentLayerFlags |= pointerFlags & ~WindowLayerFlags::GripMask;
+
+	/* GripGuard wins the contest above, then publishes NOTHING.*/
+	_gripFlags = pointerFlags & WindowLayerFlags::GripMask;
+	if (_gripFlags == WindowLayerFlags::GripGuard) {
+		_gripFlags = WindowLayerFlags::None;
+	}
+
 
 	// No layer under the pointer asks for a shape - that means the default arrow, not "keep
 	// whatever was set last". Undefined is not a shape a backend can apply: the Wayland
@@ -492,12 +518,19 @@ void NativeWindow::handleMotionEvent(const InputEventData &event) {
 		}
 	}
 
+	/* Aggregate once, so a batch of exits does not walk the cursor through intermediate shapes -
+	and unconditionally, ahead of the early-out below.
+
+	The resolution is top-first, so it depends on the ORDER of `_layers` and not only on which of
+	them are entered: a commit that reorders the array - a widget that came to the front over a
+	grip it already overlapped - changes the answer while entering and exiting nothing. Both calls
+	it can arrive by are equality-guarded further down (setCursor), so a pointer moving inside one
+	layer still costs nothing. */
+	updateLayerState();
+
 	if (layersToExit.empty() && layersToEnter.empty()) {
 		return;
 	}
-
-	// Aggregate once, so a batch of exits does not walk the cursor through intermediate shapes
-	updateLayerState();
 
 	for (auto &it : layersToExit) { handleLayerExit(it); }
 	for (auto &it : layersToEnter) { handleLayerEnter(it); }

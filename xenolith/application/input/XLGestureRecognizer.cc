@@ -850,11 +850,13 @@ InputEventState GestureScrollRecognizer::handleInputEvent(const InputEvent &even
 	_gesture.input = &event;
 	_gesture.pos = event.currentLocation;
 	_gesture.amount = Vec2(event.data.point.valueX, event.data.point.valueY);
+
+	bool consumed = false;
 	if (_callback) {
-		_callback(_gesture);
+		consumed = _callback(_gesture);
 	}
 	_gesture.event = GestureEvent::Cancelled;
-	return InputEventState::Captured;
+	return consumed ? InputEventState::Captured : InputEventState::Declined;
 }
 
 

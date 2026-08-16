@@ -23,6 +23,7 @@
 #include "XLUiStyleResolver.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
+#include "XLUiScrollSystem.h"
 #include "XLUiInteractiveComponent.h"
 #include "XLInheritedStyle.h"
 
@@ -30,6 +31,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 ComponentId StyleManagedLayout::Id;
 ComponentId SystemManagedLayout::Id;
+ComponentId StyleManagedScroll::Id;
 
 struct ApplierRegistryNode {
 	StyleResolver::AttrApplier applier;
@@ -594,6 +596,18 @@ document::Visibility ResolvedStyle::visibility() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssVisibility, v) ? v.visibility
 															   : document::Visibility::Visible;
+}
+
+document::Overflow ResolvedStyle::overflowX() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssOverflowX, v) ? v.overflow
+															 : document::Overflow::Visible;
+}
+
+document::Overflow ResolvedStyle::overflowY() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssOverflowY, v) ? v.overflow
+															 : document::Overflow::Visible;
 }
 
 document::Metric ResolvedStyle::width() const {
@@ -1747,6 +1761,63 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 	// SYSTEM would be, and none is added below. applyDefault already writes MeasureComponent under
 	// the same marker on the same reasoning.
 	const bool wantTable = display == Display::Table;
+
+	// `overflow-x` / `overflow-y`: record the resolved pair and add or drop the ScrollSystem that
+	// acts on it. Deliberately NOT gated on systemManaged - a dock or a TableView that asks for
+	// clipping should get it. ScrollSystem writes no ContentSize of its own; without a LayoutSystem
+	// to read an extent from it simply clips, which is the right answer for a widget that scrolls
+	// itself.
+	{
+		using document::Overflow;
+		const bool declared =
+				s.has(ParameterName::CssOverflowX) || s.has(ParameterName::CssOverflowY);
+		if (declared) {
+			OverflowComponent next;
+			next.styleManaged = true;
+			if (auto c = node->getComponent<OverflowComponent>()) {
+				next = *c;
+				next.styleManaged = true;
+			}
+			if (s.has(ParameterName::CssOverflowX)) {
+				next.x = s.overflowX();
+			}
+			if (s.has(ParameterName::CssOverflowY)) {
+				next.y = s.overflowY();
+			}
+			// CSS computes a `visible` axis to `auto` when the other one is not `visible`. Here it
+			// is not merely spec compliance but a hard constraint: the only clip the engine has is
+			// an axis-aligned scissor RECT, which cannot clip one axis and leave the other alone.
+			if (next.x == Overflow::Visible && next.y != Overflow::Visible) {
+				next.x = Overflow::Auto;
+			}
+			if (next.y == Overflow::Visible && next.x != Overflow::Visible) {
+				next.y = Overflow::Auto;
+			}
+			node->setOrUpdateComponent<OverflowComponent>([&](NotNull<OverflowComponent> c) {
+				if (*c != next) {
+					*c = next;
+					return true;
+				}
+				return false;
+			});
+		} else if (auto c = node->getComponent<OverflowComponent>(); c && c->styleManaged) {
+			node->removeComponent<OverflowComponent>();
+		}
+
+		auto ovf = node->getComponent<OverflowComponent>();
+		auto scroll = node->getSystemByType<ScrollSystem>();
+		if (ovf && (ovf->clipsX() || ovf->clipsY())) {
+			if (!scroll) {
+				scroll = node->addSystem(Rc<ScrollSystem>::create(ovf->x, ovf->y));
+				node->setComponent<StyleManagedScroll>();
+			} else {
+				scroll->setOverflow(ovf->x, ovf->y);
+			}
+		} else if (scroll && node->getComponent<StyleManagedScroll>()) {
+			node->removeSystem(scroll);
+			node->removeComponent<StyleManagedScroll>();
+		}
+	}
 
 	auto layout = systemManaged ? nullptr : node->getSystemByType<LayoutSystem>();
 

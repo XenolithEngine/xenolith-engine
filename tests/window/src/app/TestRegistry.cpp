@@ -37,6 +37,7 @@
 #include "app/GeneralLayout.h"
 #include "css/HoverLayout.h"
 #include "layout/CssFlowLayout.h"
+#include "layout/OverflowLayout.h"
 #include "css/InheritedStyleLayout.h"
 #include "layout/LabelUpdateLayout.h"
 #include "layout/MeasureProtocolLayout.h"
@@ -157,6 +158,14 @@ static const TestInfo s_layoutTests[] = {
 				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
 				   "`order`, drawn red-blue-green by `-xl-z-order`."),
 		TestRegistry_make<CssFlowLayout>},
+
+	TestInfo{StringView("overflow"), StringView("XL_OVERFLOW_TEST"),
+		StringView("CSS overflow: clipping and scrolling"),
+		StringView("Five boxes over the same content. `overflow-y: auto` keeps the items at their "
+				   "declared height and scrolls; `visible` still crushes them; `hidden` clips an "
+				   "oversized child; a box whose content fits keeps flex-grow working and reports "
+				   "no range; and a single non-visible axis coerces the other one."),
+		TestRegistry_make<OverflowLayout>},
 
 	TestInfo{StringView("auto-margin"), StringView("XL_AUTO_MARGIN_TEST"), StringView("margin: auto on a flex item"),
 		StringView("Row 1 pushes its last box to the right edge, row 2 centres its only box, rows 3 "

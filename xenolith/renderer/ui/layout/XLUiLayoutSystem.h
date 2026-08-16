@@ -73,6 +73,39 @@ struct SP_PUBLIC OutOfFlowComponent {
 	bool operator==(const OutOfFlowComponent &) const = default;
 };
 
+// Resolved CSS `overflow-x` / `overflow-y` for a node.
+//
+// Written by ui::StyleResolver, read by LayoutSystem (which axes may exceed the box) and by
+// ui::ScrollSystem (what to clip and what to slide).
+//
+// The two axes are already reconciled by the time they land here: CSS computes a `visible` axis to
+// `auto` when the other one is not `visible`, and this engine has no say in the matter - the only
+// clip it has is an axis-aligned scissor RECT, which cannot clip one axis and leave the other
+// alone.
+struct SP_PUBLIC OverflowComponent {
+	static ComponentId Id;
+
+	document::Overflow x = document::Overflow::Visible;
+	document::Overflow y = document::Overflow::Visible;
+
+	// Same contract as OutOfFlowComponent::styleManaged: only a component the resolver created may
+	// the resolver take away, so overflow set in code survives a pass that matched nothing.
+	bool styleManaged = false;
+
+	bool clipsX() const { return x != document::Overflow::Visible; }
+	bool clipsY() const { return y != document::Overflow::Visible; }
+
+	// `hidden`/`clip` are clipped but not scrollable; only `scroll`/`auto` slide.
+	bool scrollsX() const {
+		return x == document::Overflow::Scroll || x == document::Overflow::Auto;
+	}
+	bool scrollsY() const {
+		return y == document::Overflow::Scroll || y == document::Overflow::Auto;
+	}
+
+	bool operator==(const OverflowComponent &) const = default;
+};
+
 // Which layout model the LayoutSystem runs for its owner.
 enum class LayoutMode : uint8_t {
 	Flex, // CSS Flexible Box, reads FlexLayoutInfo / FlexItemInfo
@@ -133,6 +166,34 @@ public:
 
 	// recompute the placement of all children for the current geometry
 	void apply();
+
+	// --- overflow / scrolling ----------------------------------------------
+	// The union of the in-flow children's margin boxes plus the container padding, as the last pass
+	// placed them, WITHOUT the scroll offset. Size2::ZERO before the first pass.
+	//
+	// It is the size the content OCCUPIES, so it can be either larger than the owner's ContentSize
+	// (that surplus is what ui::ScrollSystem turns into a scroll range) or smaller (that shortfall
+	// is the room left over, which a caller may want to give to something else).
+	Size2 getContentExtent() const { return _contentExtent; }
+
+	// Which axes the pass may exceed the box on. On such an axis the content is laid out at its
+	// natural size instead of being squeezed into the box: a measured base size is not truncated to
+	// the available space, the axis does not wrap, and flex-shrink does not crush the items. That
+	// last one stands in for CSS's automatic minimum size (`min-height: auto` == min-content on a
+	// flex item), which this engine has never implemented - without it the default shrink of 1
+	// would simply squash the content and there would be nothing left to scroll.
+	//
+	// Written by ui::ScrollSystem from the OverflowComponent.
+	void setOverflowAxes(bool horizontal, bool vertical);
+	bool isOverflowX() const { return _overflowX; }
+	bool isOverflowY() const { return _overflowY; }
+
+	// Translation applied to every in-flow child on top of its placement, in CSS scroll orientation
+	// (x grows right, y grows DOWN - the engine's own Y grows up). Cheap: it replays the placement
+	// the last pass cached instead of re-running the algorithm, so a wheel tick costs one
+	// setPosition per child and no measurement.
+	void setScrollOffset(Vec2);
+	Vec2 getScrollOffset() const { return _scrollOffset; }
 
 	// measure the container's natural content size under the given constraints
 	// without committing anything (dry-run of the flex pass; grow/shrink are
@@ -201,6 +262,10 @@ protected:
 	// give the owner the container component the current mode reads, if it has none yet
 	void ensureModeComponent(Node *owner);
 
+	// Fallback content extent for the modes whose backend does not publish one: the union of the
+	// in-flow children's boxes, with the scroll offset added back.
+	Size2 measureChildrenExtent() const;
+
 	// The placement backends, dispatched by `apply()` from `_mode`. One per subunit of the module's
 	// SCU: layoutFlex in XLUiLayoutFlex.cc, layoutGrid in XLUiLayoutGrid.cc, the two table modes in
 	// XLUiLayoutTable.cc.
@@ -224,6 +289,17 @@ protected:
 	// guards against self-triggering: while apply() commits child sizes, the
 	// resulting handleChildContentSizeDirty notifications are ignored
 	bool _inApply = false;
+
+	// Unscrolled bottom-left of every in-flow child from the last pass, in owner space, so
+	// setScrollOffset can re-place them without re-running the algorithm. Rc rather than a raw
+	// pointer: a child removed between a pass and a scroll would otherwise dangle; setScrollOffset
+	// still re-checks getParent(), because a re-parented node must not be moved either.
+	Vector<Pair<Rc<Node>, Vec2>> _placement;
+
+	Size2 _contentExtent;
+	Vec2 _scrollOffset;
+	bool _overflowX = false;
+	bool _overflowY = false;
 };
 
 } // namespace stappler::xenolith::ui

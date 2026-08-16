@@ -32,6 +32,7 @@
 #include "layout/XLUiLayoutTable.cc" // after Grid: shares its track sizing and parseGridTemplate
 
 #include "atoms/XLUiPanel.cc"
+#include "layout/XLUiScrollSystem.cc" // after Panel: the scroll indicator is one
 #include "atoms/XLUiBadge.cc"
 #include "atoms/XLUiProgressBar.cc"
 #include "atoms/XLUiTableBorderPainter.cc"

@@ -172,6 +172,17 @@ int wl_display_read_events(struct wl_display *display) {
 	return sprt::window::s_library->wl_display_read_events(display);
 }
 
+int wl_display_get_error(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_get_error(display);
+}
+
+uint32_t wl_display_get_protocol_error(struct wl_display *display,
+		const struct wl_interface **interface, uint32_t *id) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_get_protocol_error(display, interface, id);
+}
+
 void wl_display_disconnect(struct wl_display *display) {
 	sprt_passert(sprt::window::s_library, "Wayland not loaded");
 	sprt::window::s_library->wl_display_disconnect(display);
@@ -316,6 +327,8 @@ bool WaylandLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, wl_display_prepare_read)
 	SPRT_LOAD_PROTO(handle, wl_display_flush)
 	SPRT_LOAD_PROTO(handle, wl_display_read_events)
+	SPRT_LOAD_PROTO(handle, wl_display_get_error)
+	SPRT_LOAD_PROTO(handle, wl_display_get_protocol_error)
 	SPRT_LOAD_PROTO(handle, wl_display_disconnect)
 	SPRT_LOAD_PROTO(handle, wl_proxy_marshal_array_flags)
 	SPRT_LOAD_PROTO(handle, wl_proxy_marshal_flags)

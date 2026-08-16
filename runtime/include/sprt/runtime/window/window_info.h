@@ -296,8 +296,25 @@ enum class WindowCursor : uint8_t {
 
 enum class WindowLayerFlags : uint32_t {
 	None,
-	MoveGrip,
-	ResizeTopLeftGrip,
+
+	/* The low nibble is a GRIP: what a press at this point does to the window itself.
+
+	One layer carries at most one of them, and the value is a LADDER, listed here weakest first.
+	Which grip applies at a point is decided by stacking - the topmost layer under the pointer that
+	has an opinion answers alone, see NativeWindow::updateLayerState - so the ladder is not what
+	resolves an overlap. It is what ranks the grips where one value has to stand for a position:
+	MoveGrip therefore sits ABOVE every resize grip, because a title bar drawn over a window edge
+	is asking to move the window and not to resize it, and GripGuard above all of them because it
+	is a restriction rather than an action - it is how a widget says "no grip here" without having
+	to know which grip it is standing on.
+
+	GripGuard therefore takes part in the contest and then RESOLVES TO NOTHING: updateLayerState
+	drops it, so a backend sees an empty grip and treats the press as ordinary input. It must never
+	be handed down as a grip value - a backend has no reason to enumerate this ladder before acting,
+	so a non-empty grip reads as "a grip is engaged" and the press is given to the window system,
+	which swallows the drag that followed. The one place it survives as itself is the Windows
+	hit-test, which walks the layers directly so it can keep the system frame border resizable. */
+	ResizeTopLeftGrip = 1,
 	ResizeTopGrip,
 	ResizeTopRightGrip,
 	ResizeRightGrip,
@@ -305,7 +322,8 @@ enum class WindowLayerFlags : uint32_t {
 	ResizeBottomGrip,
 	ResizeBottomLeftGrip,
 	ResizeLeftGrip,
-	GripGuard, // to restrict grip for some layers
+	MoveGrip,
+	GripGuard,
 
 	GripMask = 0xF,
 

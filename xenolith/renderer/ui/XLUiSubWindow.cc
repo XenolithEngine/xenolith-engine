@@ -131,7 +131,8 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 			return sceneBuilder(self, app, window, c);
 		}
 		return Rc<SubWindowScene>::create(app, window, c, self, sp::move(builder));
-	}, [self](NotNull<WindowSceneInfo>) { self->handleClosed(); });
+	},
+			[self](NotNull<WindowSceneInfo>) { self->handleClosed(); });
 
 	if (config.queue) {
 		_sceneInfo->setQueue(sp::move(config.queue));
@@ -149,6 +150,11 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 	info->maxExtent = config.maxExtent;
 	info->placement = config.placement;
 	info->flags = config.flags;
+
+	if (hasFlag(parentInfo->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		info->flags |= WindowCreationFlags::UserSpaceDecorations;
+	}
+
 	info->appData = _sceneInfo;
 
 	ctx->createWindow(sp::move(info), [self](Status st, StringView id) mutable {
@@ -190,8 +196,7 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 	// This is a different mechanism from the native path with the same observable behaviour, and
 	// it is the only one available on Android and wasm. Note WindowState::Enabled is NOT cleared
 	// here — there is no OS window to clear it on.
-	if (config.type == WindowType::Dialog
-			&& hasFlag(config.flags, WindowCreationFlags::Modal)) {
+	if (config.type == WindowType::Dialog && hasFlag(config.flags, WindowCreationFlags::Modal)) {
 		auto backdrop = Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.32f));
 		backdrop->setName("modal-backdrop");
 		backdrop->setAnchorPoint(Anchor::BottomLeft);

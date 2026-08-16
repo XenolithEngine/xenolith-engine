@@ -41,7 +41,8 @@ DO NOT use these (they parse but do nothing, or don't exist):
 | `::before`/`::after`/`::marker` pseudo-elements | **unsupported** — rule is skipped |
 | `[attr]`/`[attr=val]` attribute selectors | parsed, **never match** |
 | `prefers-color-scheme` | **absent** — use `@media (light-level: dim)` or `x-option` |
-| `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `overflow` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
+| `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
+| `overscroll-behavior` `scroll-behavior` `scroll-snap-*` `scrollbar-gutter` | **not registered** (`overflow` itself IS supported — see below) |
 | `background` shorthand | **absent** — write `background-color` etc. individually |
 | `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`) can draw them |
 | `border-*` (the line, not the radius) | parsed everywhere, **consumed only by table cells** — elsewhere use `outline-*` |
@@ -165,6 +166,11 @@ comma lists. Specificity is standard (a=id, b=class+pseudo, c=tag).
 name are both matched by `#name`.
 Interactive pseudo-classes that DO work: **`:hover :focus :active :checked :enabled :disabled`**.
 
+**A recursive `StyleResolver` re-resolves its DESCENDANTS when their classes change, but not its
+own owner.** So `addStyleClass`/`removeStyleClass` on the very node that carries the resolver does
+nothing until something else re-resolves it. Put one recursive resolver at the layout root and
+style the subtree from there, rather than one resolver per stylable node.
+
 Structural pseudo-classes that DO work: **`:nth-child(An+B|odd|even) :nth-last-child()
 :first-child :last-child :only-child`**, the four **`*-of-type`** forms, **`:empty`**, **`:root`**.
 Each counts as a class for specificity. Two engine-specific rules:
@@ -280,6 +286,48 @@ Two rules for its sheet: an `auto` column resolves to **zero** (it cannot measur
 built — use `fr`/px), and declare horizontal rules with `border-bottom` ONLY (a row collapses only
 what it can see, so a line on both sides of a boundary is drawn twice).
 
+## Overflow / scrolling (supported)
+
+`overflow` / `overflow-x` / `overflow-y`: `visible | hidden | clip | scroll | auto`.
+Shorthand is `overflow: <x> [<y>]`. `clip` == `hidden`. Anything but `visible` adds a
+`ui::ScrollSystem` that clips the box with a scissor; `scroll`/`auto` also slide the
+content and show an overlay indicator.
+
+```css
+.list { display: flex; flex-direction: column; height: 240px; overflow-y: auto; }
+```
+
+Rules you must know:
+- **A `visible` axis beside a non-`visible` one computes to `auto`.** The clip is one
+  axis-aligned RECT; it cannot clip a single axis.
+- **A scroll container needs a definite size on its scroll axis** — it does not grow to
+  its content, so `height: fit-content` + `overflow-y: auto` never scrolls. Likewise
+  `height: 100%` on a CHILD resolves against the scrollport and can never overflow it.
+- **On an overflow axis `flex-shrink` stops crushing the items** (this stands in for CSS
+  automatic minimum size). The axis is freed only when the content genuinely does not
+  fit, so `flex-grow`/`justify-content` still work while it does.
+- **`flex-wrap` is ignored on a scrolling main axis** (nowrap wins).
+- **`align-items: stretch` grows the whole line**, not just the tall item — use
+  `flex-start` if only one item should overflow.
+- **`position: absolute` children do NOT scroll** — viewport-pinned overlays.
+- **`overflow: hidden` + `border-radius` clips to the bounding RECTANGLE** (no stencil
+  in the renderer); a rotated box clips to its AABB.
+- **No virtualization** — every child is a real node. Long lists → `ui::TreeView` /
+  `ui::TableView`.
+
+Scrollbars are real child nodes (`type = "scrollbar"`, classes `xl-ui-scrollbar` +
+`xl-ui-scrollbar-vertical`/`-horizontal`), so ordinary CSS styles them and
+`scrollbar { display: none }` removes them. Beware: `.container > *` matches them too.
+
+A vertical wheel over a **horizontal-only** scroller is redirected to the horizontal axis
+(browser behaviour — a mouse has no horizontal wheel); Shift+wheel does the same explicitly.
+Dragging scrolls. Inertia after release is TOUCH-only, keyed on `InputModifier::Touch` (the
+button is `MouseLeft` either way — `InputMouseButton::Touch` is an alias); a mouse stops dead.
+Wheel chaining is automatic: a container consumes the wheel only on an axis where it
+has range, otherwise the ancestor scroller gets it. From code:
+`ui::ScrollSystem::{getScrollRange,getScrollPosition,setScrollPosition,scrollBy,
+scrollNodeIntoView}` (offsets are y-DOWN) and the free `ui::scrollIntoView(node)`.
+
 ## Hide vs collapse
 
 - `display: none` → subtree skipped (collapses flex/grid layout).
@@ -322,7 +370,12 @@ passes whatever level it has.
 
 ## Anti-pattern checklist
 
-- `transform`/`box-shadow`/`overflow`/`transition`/`cursor` → don't exist.
+- `transform`/`box-shadow`/`transition`/`cursor` → don't exist (`overflow` DOES).
+- `overflow-y: auto` on a `height: fit-content` box → it sizes to its content, so there is
+  never anything to scroll. Give the scroll axis a definite size.
+- `height: 100%` on a child of a scroll container expecting it to overflow → it resolves
+  against the scrollport.
+- `overflow: hidden` + `border-radius` expecting rounded corners → the clip is a rect.
 - `::before`/`:not()`/`[attr]` selectors → rule never matches.
 - `:nth-child` assuming insertion order → it counts in z-order.
 - `:root` assuming the scene root → it is the stylesheet owner.
@@ -361,6 +414,10 @@ prevents: css-subset.adoc §"Writing a type applier: the reset command". [`XL_PA
 - Table layout + border collapsing: `xenolith/renderer/ui/layout/XLUiLayoutTable.cc`
 - Table components: `xenolith/renderer/ui/layout/XLUiLayoutTable.h`
 - CSS→layout bridge: `xenolith/renderer/ui/style/XLUiStyleResolver.cc:1307` (`applyLayout`), `:982` (`applyDefault`)
+- Overflow / scrolling: `xenolith/renderer/ui/layout/XLUiScrollSystem.{h,cc}`; the layout side
+  (`OverflowComponent`, `getContentExtent`, `setOverflowAxes`, `setScrollOffset`) in
+  `XLUiLayoutSystem.h` + `XLUiLayoutFlex.cc`; clipping in
+  `xenolith/application/nodes/XLDynamicStateSystem.cc`
 
 ## Related
 

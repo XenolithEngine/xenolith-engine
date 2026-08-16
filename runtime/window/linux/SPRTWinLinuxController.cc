@@ -259,8 +259,16 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 				}
 				if (hasFlag(flags, filesystem::PollFlags::In)) {
 					retainPollDepth();
-					_waylandDisplay->poll();
+					auto alive = _waylandDisplay->poll();
 					releasePollDepth();
+
+					if (!alive) {
+						// The display named the failure and is dead for good. Stop listening
+						// rather than spin on a socket that will never deliver again — the same
+						// answer the PollFlags::Err branch above gives.
+						notifyPendingWindows();
+						return Status::ErrorCancelled;
+					}
 				}
 
 				notifyPendingWindows();
