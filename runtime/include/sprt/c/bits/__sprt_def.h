@@ -57,6 +57,9 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_NUTTX nuttx_sprt
 #define __SPRT_PLATFORM_ID_NUTTX 8
 
+#define __SPRT_PLATFORM_NAME_EMBOX embox_sprt
+#define __SPRT_PLATFORM_ID_EMBOX 9
+
 
 /*
 	Defines one of:
@@ -69,8 +72,10 @@ THE SOFTWARE.
 	SPRT_LINUX
 	SPRT_WASM
 	SPRT_NUTTX
+	SPRT_EMBOX
 
-	for platform detection.
+	for platform detection. SPRT_HOSTED_RTOS is 1 on NuttX and Embox
+	(flat hosted POSIX, no epoll/futex/fork).
 
 	Additionally defines SPRT_APPLE on any Apple/Darwin platform (macOS, iOS,
 	darwin-unknown) - use it for libSystem/XNU behavior that is shared across the
@@ -106,6 +111,13 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
 #define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
+#elif defined(__EMBOX__)
+// Embox RTOS. LLVM has no "embox" OSType, so the toolchain drives -D__EMBOX__
+// explicitly from target-embox. Tested before __linux__ because Embox may leak
+// linux-ish macros. Platform layer: runtime/core/embox/.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_EMBOX
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_EMBOX
+#define SPRT_EMBOX __SPRT_PLATFORM_ID_EMBOX
 #elif defined(__NuttX__)
 // NuttX RTOS. LLVM has no "nuttx" OSType, so the toolchain drives -D__NuttX__
 // explicitly from target-nuttx (TARGET_GENERAL_CFLAGS in the generated
@@ -130,6 +142,10 @@ THE SOFTWARE.
 #define SPRT_WASM __SPRT_PLATFORM_ID_WASM
 #else
 #error "Unknown platform"
+#endif
+
+#if SPRT_NUTTX || SPRT_EMBOX
+#define SPRT_HOSTED_RTOS 1
 #endif
 
 

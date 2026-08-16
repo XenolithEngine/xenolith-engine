@@ -43,9 +43,15 @@ struct GlobalConfig {
 
 	filesystem::LocationInfo current;
 
-	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
+	memory::pool_t *_pool = nullptr;
 
-	~GlobalConfig() { memory::pool::destroy(_pool); }
+	void init();
+	void term();
+
+	memory::pool_t *pool() {
+		init();
+		return _pool;
+	}
 };
 
 SPRT_LOCAL bool initialize(AppConfig &&cfg, int &);

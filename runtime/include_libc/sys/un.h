@@ -37,18 +37,19 @@ THE SOFTWARE.
 
 #include <sys/socket.h>
 
-// On NuttX the sprt libc shim stands in for the platform libc at compile time
-// (deps build against sprt include_libc, not the NuttX sysroot — see the NUTTX
-// branch of common/configure.mk), so the AF_UNIX address type must be visible
-// there too. The Linux/musl layout matches NuttX's own <sys/un.h>.
-#if defined(SPRT_WASM) || defined(SPRT_NUTTX)
+// On the RTOS targets the sprt libc shim stands in for the platform libc at
+// compile time (deps build against sprt include_libc, not the RTOS sysroot —
+// see the NUTTX/EMBOX branches of common/configure.mk), so the AF_UNIX address
+// type must be visible there too. The Linux/musl layout matches their own
+// <sys/un.h>.
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS)
 
 struct sockaddr_un {
 	__SPRT_ID(sa_family_t) sun_family; // AF_UNIX
 	char sun_path[108]; // pathname
 };
 
-#endif // SPRT_WASM || SPRT_NUTTX
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS
 
 #endif
 

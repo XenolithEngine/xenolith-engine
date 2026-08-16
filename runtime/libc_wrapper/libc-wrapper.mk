@@ -70,13 +70,16 @@ MODULE_RUNTIME_LIBC_WRAPPER_INCLUDES_OBJS += \
 endif # ($(TARGET_SYSTEM),Android/Android-NDK)
 
 
-ifeq ($(TARGET_SYSTEM),NuttX)
-# c/SPRuntimeCMathMusl.c borrows the musl math (and the aarch64 fenv it needs)
-# for the C99 entries NuttX declares in <math.h> but never implements. Those
-# sources reach musl's internal headers ("libm.h", "fp_arch.h", "atomic.h") the
-# same way musl's own build does — except through -iquote rather than -I, so
-# they apply to `"quoted"` includes only and can never shadow a NuttX or sprt
-# <angled> header. C flags only: no C++ unit in this module borrows musl.
+ifneq ($(filter NuttX Embox,$(TARGET_SYSTEM)),)
+# Both RTOS targets borrow the musl math (and the aarch64 fenv it needs) for the
+# C99 entries their libc declares but does not implement: c/SPRuntimeCMathMusl.c
+# fills NuttX's short gap list, c/math/embox_math_{flt,dbl,ldbl}.c carry the whole
+# libm for Embox, whose <math.h> is macros onto clang builtins with nothing
+# behind them. Those sources reach musl's internal headers ("libm.h",
+# "fp_arch.h", "atomic.h") the same way musl's own build does — except through
+# -iquote rather than -I, so they apply to `"quoted"` includes only and can never
+# shadow a platform or sprt <angled> header. C flags only: no C++ unit in this
+# module borrows musl.
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
 	-iquote $(RUNTIME_MODULE_DIR)/musl-libc/src/internal \
 	-iquote $(RUNTIME_MODULE_DIR)/musl-libc/arch/$(TARGET_ARCH) \
@@ -87,7 +90,7 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
 	-Wno-shift-op-parentheses \
 	-Wno-unused-but-set-variable
-endif # ($(TARGET_SYSTEM),NuttX)
+endif # NuttX / Embox
 
 
 ifeq ($(TARGET_SYSTEM),Windows)

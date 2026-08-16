@@ -53,3 +53,4 @@ CONFIGURE_HOST_iOS_aarch64 := aarch64-apple-ios
 CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios
 
 CONFIGURE_HOST_NuttX_aarch64 := aarch64-elf
+CONFIGURE_HOST_Embox_aarch64 := aarch64-elf

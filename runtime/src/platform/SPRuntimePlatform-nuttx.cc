@@ -57,15 +57,18 @@ StringView getHomePath() {
 	if (s_globalConfig.homePathBuf.empty()) {
 		auto path = StringView(::getenv("HOME"));
 		unique_lock lock(s_globalConfig.infoMutex);
-		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
+		s_globalConfig.homePathBuf = path.pdup(s_globalConfig.pool());
 	}
 	return s_globalConfig.homePathBuf;
 }
 
 bool initialize(AppConfig &&cfg, int &resultCode) {
 	(void)resultCode;
-	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig._pool);
-	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig._pool);
+	// The config pool is per initialize()/terminate() cycle, not per process;
+	// see GlobalConfig::_pool in private/SPRTPrivate.h.
+	s_globalConfig.init();
+	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig.pool());
+	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig.pool());
 	s_globalConfig.config.pathScheme = cfg.pathScheme;
 
 	s_globalConfig.current.lookupType = filesystem::LookupFlags::Public
@@ -74,15 +77,15 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	s_globalConfig.current.interface = filesystem::getDefaultInterface();
 
 	filesystem::getCurrentDir([&](StringView path) {
-		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+		s_globalConfig.current.path = path.pdup(s_globalConfig.pool());
 	});
 
 	return true;
 }
 
-void terminate() { }
+void terminate() { s_globalConfig.term(); }
 
-memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+memory::pool_t *getConfigPool() { return s_globalConfig.pool(); }
 
 } // namespace sprt::platform
 

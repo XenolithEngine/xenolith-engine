@@ -19,6 +19,16 @@
 #define CONFIG_ARCH_SETJMP_H 1
 #endif
 
+// nuttx/lib/setjmp.h carries an inline siglongjmp() that spells NULL, but the
+// only thing it includes is <signal.h>. A runtime TU has always pulled <stddef.h>
+// in through something else by the time it gets here; a consumer TU whose first
+// include is <setjmp.h> has not, and the header then fails to parse. Define the
+// one name it is missing instead of dragging all of <stddef.h> in here.
+#include <sprt/c/bits/__sprt_null.h>
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
+
 #include <arch/setjmp.h>
 #include <nuttx/lib/setjmp.h>
 

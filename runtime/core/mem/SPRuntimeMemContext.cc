@@ -30,7 +30,10 @@ THE SOFTWARE.
 
 namespace sprt::memory::pool {
 
-#if SPRT_NUTTX
+// Desktop keeps a deep pool stack (nested perform/context). An RTOS target is
+// typically a single-thread app: 4097 * sizeof(Info) is ~128 KiB of
+// thread_local. A 64-deep stack is enough for the looper and scene init.
+#if SPRT_HOSTED_RTOS
 static constexpr size_t SP_ALLOC_STACK_SIZE = 64;
 #else
 static constexpr size_t SP_ALLOC_STACK_SIZE = 1'023;

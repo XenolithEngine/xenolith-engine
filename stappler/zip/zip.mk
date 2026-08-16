@@ -57,6 +57,10 @@ ifdef NUTTX
 MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:libzstd.a
 endif
 
+ifdef EMBOX
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:libzstd.a
+endif
+
 #spec
 
 MODULE_STAPPLER_ZIP_SHARED_SPEC_SUMMARY := libstappler ZIP archive interface

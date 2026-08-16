@@ -32,7 +32,9 @@ THE SOFTWARE.
 	nl_langinfo_l(item, l) - same, against an explicit locale
 */
 
-#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+#include <sprt/c/bits/__sprt_def.h>
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1 && !SPRT_EMBOX
 
 #include_next <langinfo.h>
 

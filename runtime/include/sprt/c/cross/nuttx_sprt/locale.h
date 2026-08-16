@@ -11,4 +11,4 @@ typedef void *__SPRT_ID(locale_t);
 // interleaving them. localeconv() casts the platform's `struct lconv *` to the
 // SPRT type, so getting this wrong silently returns a different currency flag
 // than the caller asked for. See struct __sprt_lconv in <sprt/c/__sprt_locale.h>.
-#define __SPRT_LCONV_NUTTX_INTL_ORDER 1
+#define __SPRT_LCONV_INTL_NEGATIVE_FIRST 1

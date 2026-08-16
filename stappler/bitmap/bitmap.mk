@@ -54,6 +54,10 @@ ifdef NUTTX
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
 endif
 
+ifdef EMBOX
+MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
+endif
+
 ifdef WIN32
 MODULE_STAPPLER_BITMAP_LIBS += -lz
 endif

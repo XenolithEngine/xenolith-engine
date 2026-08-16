@@ -23,7 +23,7 @@
 
 #include "XLCoreQueueData.h"
 #include "XLCoreQueuePass.h"
-#if !SPRT_WASM && !SPRT_NUTTX
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS
 #include "SPIRV-Reflect/spirv_reflect.h" // SPIR-V reflection unused on wasm (WGSL path) and NuttX (soft rasterizer)
 #endif
 
@@ -72,7 +72,7 @@ void ProgramData::inspect(SpanView<uint32_t> data) {
 		return;
 	}
 
-#if SPRT_WASM || SPRT_NUTTX
+#if SPRT_WASM || SPRT_HOSTED_RTOS
 	return; // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
 #else
 	SpvReflectShaderModule shader;

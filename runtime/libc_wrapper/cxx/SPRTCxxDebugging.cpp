@@ -92,7 +92,7 @@ bool is_debugger_present() noexcept {
 #elif SPRT_WASM
 	// No debugger-detection facility in a wasm sandbox.
 	return false;
-#elif SPRT_NUTTX
+#elif SPRT_HOSTED_RTOS
 	// No debugger-detection facility in a NuttX flat build.
 	return false;
 #else

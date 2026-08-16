@@ -91,10 +91,11 @@ constexpr int32_t CANON_ECANCELED = 125;
 constexpr int32_t CANON_EOWNERDEAD = 130;
 constexpr int32_t CANON_ENOTRECOVERABLE = 131;
 
-#if !SPRT_APPLE && !SPRT_WINDOWS && !SPRT_NUTTX
-// Linux, Android and wasm carry the canonical numbering natively. NuttX is
-// excluded: it carries most asm-generic values but splits ENOTSUP/EOPNOTSUPP
-// and lacks ETIME, so the canonical-equality pin does not hold there.
+#if !SPRT_APPLE && !SPRT_WINDOWS && !SPRT_HOSTED_RTOS
+// Linux, Android and wasm carry the canonical numbering natively. The RTOS
+// targets are excluded: NuttX carries most asm-generic values but splits
+// ENOTSUP/EOPNOTSUPP and lacks ETIME, and Embox numbers errno its own way
+// (cross/embox_sprt/errno.h), so the canonical-equality pin holds on neither.
 static_assert(CANON_EPERM == EPERM && CANON_ENOENT == ENOENT && CANON_ESRCH == ESRCH
 				&& CANON_EINTR == EINTR && CANON_E2BIG == E2BIG && CANON_EAGAIN == EAGAIN
 				&& CANON_ENOMEM == ENOMEM && CANON_EBUSY == EBUSY && CANON_EEXIST == EEXIST

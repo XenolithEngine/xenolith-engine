@@ -120,9 +120,9 @@ __SPRT_C_FUNC int __SPRT_ID(pselect)(int nfds, __SPRT_ID(fd_set) * __SPRT_RESTRI
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT writeFds, __SPRT_ID(fd_set) * __SPRT_RESTRICT errorFds,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT __timeout,
 		const __SPRT_ID(sigset_t) * __SPRT_RESTRICT sigmask) {
-#if SPRT_WINDOWS
-	// winsock has no pselect(); emulate with select(). The signal mask is not applied
-	// (Windows has no POSIX signals).
+#if SPRT_WINDOWS || SPRT_EMBOX
+	// winsock / Embox have no pselect(); emulate with select(). The signal mask
+	// is not applied.
 	struct timeval nativeTimeout;
 	if (__timeout) {
 		nativeTimeout.tv_sec = (long)__timeout->tv_sec;
@@ -164,7 +164,7 @@ __SPRT_C_FUNC int __SPRT_ID(ppoll)(struct __SPRT_ID(pollfd) * __fds, __SPRT_ID(n
 			" not available for this platform (__SPRT_CONFIG_HAVE_POLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_WINDOWS || SPRT_APPLE
+#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	// No native ppoll (winsock; older macOS ship none): emulate with poll() and a
 	// millisecond timeout. The signal mask is not applied - Windows has no POSIX
 	// signals, and the atomic mask swap is unavailable here; use pselect if required.

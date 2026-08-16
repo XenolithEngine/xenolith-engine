@@ -47,9 +47,9 @@ typedef struct __sprt_regex_t {
 	void *__opaque[8];
 } __SPRT_ID(regex_t);
 
-// regcomp cflags / regexec eflags: BSD (macOS, Bionic) number REG_NOSUB=4 /
+// regcomp cflags / regexec eflags: BSD (macOS, Bionic, Embox) number REG_NOSUB=4 /
 // REG_NEWLINE=8, the GNU order (glibc, musl) is the reverse.
-#if SPRT_APPLE || SPRT_ANDROID
+#if SPRT_APPLE || SPRT_ANDROID || SPRT_EMBOX
 #define __SPRT_REG_EXTENDED 0001
 #define __SPRT_REG_ICASE    0002
 #define __SPRT_REG_NOSUB    0004

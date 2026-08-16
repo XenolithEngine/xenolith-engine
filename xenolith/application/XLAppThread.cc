@@ -48,10 +48,19 @@ void AppThread::threadInit() {
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.name = StringView("App"),
+#if SPRT_HOSTED_RTOS
+		.workersCount = 0,
+#else
 		.workersCount = getContextInfo()->appThreadsCount,
+#endif
 
+#if SPRT_HOSTED_RTOS
+		.engineMask = sprt::dispatch::QueueEngine::None,
+#else
 		// Disable ALooper for internal queue, it can not be stopped gracefully
-		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper});
+		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper,
+#endif
+	});
 
 	// Steady app-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, an app-event
 	// cadence -- NOT the screen/frame interval). It drives performAppUpdate regardless of frame

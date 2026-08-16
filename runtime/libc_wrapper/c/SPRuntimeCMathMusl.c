@@ -53,43 +53,9 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 
-// musl's libm.h wants the __BYTE_ORDER/__LITTLE_ENDIAN spelling; NuttX's
-// <endian.h> only defines the BYTE_ORDER/LITTLE_ENDIAN (BSD) spelling, so bridge
-// them from the compiler's own predefines before anything includes it.
-#ifndef __BYTE_ORDER
-#define __LITTLE_ENDIAN __ORDER_LITTLE_ENDIAN__
-#define __BIG_ENDIAN __ORDER_BIG_ENDIAN__
-#define __BYTE_ORDER __BYTE_ORDER__
-#endif
-
-// musl tags internal helpers `hidden`, which its build supplies through
-// features.h. Must come before libm.h — it declares __rem_pio2/__sin/__cos/...
-// with it. `weak`/`weak_alias` are NOT defined here: nuttx/compiler.h already
-// provides weak_alias, and its expansion uses the bare token `weak`, so adding
-// our own would rewrite it into garbage.
-#ifndef hidden
-#define hidden __attribute__((__visibility__("hidden")))
-#endif
-
-#include <math.h>
-
-// ilogb's out-of-range answers. musl puts them in its own <math.h>; NuttX
-// declares ilogb but never defines the two results it may return.
-#ifndef FP_ILOGBNAN
-#define FP_ILOGBNAN (-1 - 0x7fffffff)
-#endif
-#ifndef FP_ILOGB0
-#define FP_ILOGB0 FP_ILOGBNAN
-#endif
-
-// nuttx/compiler.h defines these with a !! that musl's spelling omits; let the
-// borrowed sources see musl's own, so they behave exactly as upstream.
-#undef predict_true
-#undef predict_false
-
-#include "libm.h"
+#include "math/rtos_math_prologue.h"
 
 // -------------------------------------------- floating-point environment
 //
@@ -208,6 +174,8 @@ int fesetenv(const fenv_t *envp) {
 #undef C1
 #undef C2
 #undef C3
+
+#if SPRT_NUTTX
 
 // musl's long double lgammal (binary128 branch) delegates to the double
 // reentrant kernel. musl's own lgamma_r.c is NOT borrowed for it: NuttX libm
@@ -392,3 +360,5 @@ double __lgamma_r(double x, int *sg) {
 // apply to anything else built on log1pl/logl/expl.
 
 #endif // SPRT_NUTTX
+
+#endif // SPRT_HOSTED_RTOS

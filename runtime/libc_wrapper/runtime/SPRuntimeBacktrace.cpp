@@ -399,7 +399,16 @@ struct BacktraceState {
 
 static BacktraceState s_backtraceState;
 
-void initialize() { s_backtraceState.init(); }
+void initialize() {
+#if SPRT_EMBOX
+	// libunwind's backtrace_create_state (weak, pulled in via EXTRA_LIBS) tries
+	// to parse the flat kernel ELF. That either hangs or OOMs on qemu-armv8a;
+	// the Embox target does not need symbolic backtraces yet.
+	return;
+#else
+	s_backtraceState.init();
+#endif
+}
 
 void terminate() { s_backtraceState.term(); }
 

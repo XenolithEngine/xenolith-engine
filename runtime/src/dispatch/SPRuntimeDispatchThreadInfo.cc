@@ -139,7 +139,7 @@ void thread_info::set(StringView n, uint32_t w, bool m) {
 	}
 	n = StringView(str).pdup(pool);
 
-#if !SPRT_NUTTX
+#if !SPRT_HOSTED_RTOS
 	n.performWithTerminated([](const char *n, size_t) {
 		pthread_setname_np(pthread_self(), n); //
 	});
