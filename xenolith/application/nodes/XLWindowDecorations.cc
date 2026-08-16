@@ -41,6 +41,7 @@ bool WindowDecorations::init() {
 		auto l = node->addSystem(Rc<InputListener>::create());
 		l->setLayerFlags(flag);
 		l->setCursor(cursor);
+		l->setPriority(DecorationsInputPriority);
 		return node;
 	};
 

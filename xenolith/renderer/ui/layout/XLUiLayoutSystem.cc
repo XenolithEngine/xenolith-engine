@@ -39,6 +39,7 @@ ComponentId TableRowInfo::Id;
 ComponentId TableCellInfo::Id;
 ComponentId TableBordersComponent::Id;
 ComponentId OutOfFlowComponent::Id;
+ComponentId OverflowComponent::Id;
 
 // All LayoutSystems share one frame-stack tag, so a descendant's stack lookup resolves to the
 // nearest ancestor container (back() of the tag's stack)
@@ -325,6 +326,24 @@ void LayoutSystem::setTableColumns(NotNull<Node> node, const TableColumnsCompone
 	});
 }
 
+// Union of the in-flow children's boxes, for the modes whose backend does not publish an extent of
+// its own. The scroll offset is added back, because the extent is defined unscrolled.
+Size2 LayoutSystem::measureChildrenExtent() const {
+	Size2 ret;
+	for (auto &child : _owner->getChildren()) {
+		if (child->getComponent<OutOfFlowComponent>()) {
+			continue;
+		}
+		const auto box = child->getBoundingBox();
+		ret.width = sprt::max(ret.width, box.getMaxX() + _scrollOffset.x);
+		// engine Y grows up, CSS scroll Y grows down: the content hangs BELOW the box, so its
+		// extent is measured from the box's top edge down to the lowest child edge
+		ret.height = sprt::max(ret.height,
+				_owner->getContentSize().height - box.getMinY() - _scrollOffset.y);
+	}
+	return ret;
+}
+
 void LayoutSystem::apply() {
 	if (!_owner || _inApply) {
 		return;
@@ -332,12 +351,52 @@ void LayoutSystem::apply() {
 	_inApply = true;
 	LayoutSystem_settleChildren(_owner);
 	switch (_mode) {
+	// layoutFlex publishes _contentExtent itself, from the flow coordinates it already has;
+	// the other backends do not track one, so it is recovered from the placed boxes
 	case LayoutMode::Flex: layoutFlex(); break;
-	case LayoutMode::Grid: layoutGrid(); break;
-	case LayoutMode::Table: layoutTable(); break;
-	case LayoutMode::TableRow: layoutTableRow(); break;
+	case LayoutMode::Grid:
+		layoutGrid();
+		_contentExtent = measureChildrenExtent();
+		break;
+	case LayoutMode::Table:
+		layoutTable();
+		_contentExtent = measureChildrenExtent();
+		break;
+	case LayoutMode::TableRow:
+		layoutTableRow();
+		_contentExtent = measureChildrenExtent();
+		break;
 	}
 	_inApply = false;
+}
+
+void LayoutSystem::setOverflowAxes(bool horizontal, bool vertical) {
+	if (_overflowX == horizontal && _overflowY == vertical) {
+		return;
+	}
+	_overflowX = horizontal;
+	_overflowY = vertical;
+	if (_owner) {
+		_owner->markLayoutChildrenDirty();
+	}
+}
+
+void LayoutSystem::setScrollOffset(Vec2 value) {
+	if (_scrollOffset == value) {
+		return;
+	}
+	_scrollOffset = value;
+	for (auto &it : _placement) {
+		auto node = it.first.get();
+		if (node->getParent() != _owner) {
+			continue; // removed or re-parented since the pass that cached this placement
+		}
+		const auto size = node->getContentSize();
+		const auto anchor = node->getAnchorPoint();
+		// CSS scroll orientation is y-down, the engine's is y-up: scrolling down moves content up
+		const Vec2 bottomLeft = it.second - Vec2(_scrollOffset.x, -_scrollOffset.y);
+		node->setPosition(bottomLeft + Vec2(anchor.x * size.width, anchor.y * size.height));
+	}
 }
 
 bool LayoutSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
@@ -346,6 +405,20 @@ bool LayoutSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
 		return false;
 	}
 	result = measure(c);
+
+	// A scroll container does not grow to its content - that is what makes it a scroll container.
+	// Its intrinsic size on an overflow axis is the box it was already given, so neither a parent
+	// sizing it by fit-content nor the SELF-measure the engine runs whenever a child is added
+	// (Node::addChildNode -> markMeasureDirty -> Node::handleMeasure, which commits the answer) can
+	// swallow the scrollable area and leave nothing to scroll. The corollary is worth knowing:
+	// `height: fit-content` together with `overflow-y: auto` can never scroll.
+	const auto own = _owner->getContentSize();
+	if (_overflowX && own.width > 0.0f) {
+		result.width = own.width;
+	}
+	if (_overflowY && own.height > 0.0f) {
+		result.height = own.height;
+	}
 	return true;
 }
 

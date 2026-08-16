@@ -118,6 +118,16 @@ enum class Visibility : EnumSize {
 	Collapse,
 };
 
+// CSS `overflow-x` / `overflow-y`. `Clip` differs from `Hidden` only in that it is not a scroll
+// container - nothing can scroll it, not even programmatically.
+enum class Overflow : EnumSize {
+	Visible,
+	Hidden,
+	Clip,
+	Scroll,
+	Auto,
+};
+
 enum class FlexDirection : EnumSize {
 	Row,
 	RowReverse,
@@ -436,6 +446,9 @@ enum class ParameterName : NameSize {
 	CssBorderBottomLeftRadius, // size
 
 	CssVisibility, // enum (Visibility; inheritable, unlike display)
+
+	CssOverflowX, // enum (Overflow; the `overflow` shorthand fills both)
+	CssOverflowY, // enum (Overflow)
 	__EndCssParameters,
 
 	/* media - specific */
@@ -619,6 +632,7 @@ union SP_PUBLIC StyleValue {
 	Hyphens hyphens;
 	Display display;
 	Visibility visibility;
+	Overflow overflow;
 	Float floating;
 	Clear clear;
 	MediaType mediaType;

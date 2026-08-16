@@ -121,6 +121,8 @@ public:
 	document::Metric lineHeight() const;
 	document::Display display() const; // display
 	document::Visibility visibility() const; // visibility
+	document::Overflow overflowX() const;
+	document::Overflow overflowY() const;
 	document::Metric width() const;
 	document::Metric height() const;
 	// min-/max-width/height. Only the flex MAIN axis is enforced (FlexItemInfo::minMain/maxMain);

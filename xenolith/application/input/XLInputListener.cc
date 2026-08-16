@@ -129,6 +129,19 @@ void InputListener::handleExit() {
 void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags flags) {
 	System::handleVisitSelf(info, node, flags);
 
+	// Remember the clip the owner is drawn under, so _shouldProcessEvent can reject pointer events
+	// over the clipped-away part of it (see the member docs). This is the only hook where the
+	// inherited state is available - it lives on the frame context stack, not on the node.
+	_visitScissorEnabled = false;
+	if (auto ctx = info.currentContext) {
+		if (auto state = ctx->getState(ctx->getCurrentState())) {
+			if (state->isScissorEnabled()) {
+				_visitScissorEnabled = true;
+				_visitScissor = state->scissor;
+			}
+		}
+	}
+
 	if (_enabled) {
 		auto g = info.getSystem<FocusGroup>(FocusGroup::Id);
 
@@ -525,6 +538,18 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 		while (visible && p) {
 			visible = p->isVisible();
 			p = p->getParent();
+		}
+		if (visible && event.data.hasLocation() && _visitScissorEnabled) {
+			// Compared in float rather than through URect::containsPoint(UVec2): the location can
+			// be negative (a pointer dragged off the window), and the cast to unsigned would wrap
+			// it into the rect instead of out of it.
+			const auto &loc = event.currentLocation;
+			if (loc.x < float(_visitScissor.x) || loc.y < float(_visitScissor.y)
+					|| loc.x >= float(_visitScissor.x + _visitScissor.width)
+					|| loc.y >= float(_visitScissor.y + _visitScissor.height)) {
+				// clipped away on screen, so not clickable either
+				return false;
+			}
 		}
 		if (visible
 				&& (!event.data.hasLocation()

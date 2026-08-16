@@ -108,9 +108,12 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			bottomLeft.y = b;
 		}
 
-		return URect{uint32_t(roundf(bottomLeft.x)), uint32_t(roundf(bottomLeft.y)),
-			uint32_t(roundf(topRight.x - bottomLeft.x)),
-			uint32_t(roundf(topRight.y - bottomLeft.y))};
+		const float x0 = sprt::max(roundf(bottomLeft.x), 0.0f);
+		const float y0 = sprt::max(roundf(bottomLeft.y), 0.0f);
+		const float x1 = sprt::max(roundf(topRight.x), x0);
+		const float y1 = sprt::max(roundf(topRight.y), y0);
+
+		return URect{uint32_t(x0), uint32_t(y0), uint32_t(x1 - x0), uint32_t(y1 - y0)};
 	};
 
 
@@ -120,12 +123,24 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 		if ((ret.enabled & core::DynamicState::Scissor) == core::DynamicState::None) {
 			ret.enabled |= core::DynamicState::Scissor;
 			ret.scissor = viewRect;
-		} else if (ret.scissor.intersectsRect(viewRect)) {
+		} else {
+			// A nested scissor is the INTERSECTION of the two boxes, so the extents have to come
+			// from the clamped EDGES. Taking min(width) let a child that starts inside the parent
+			// run past the parent's far edge; and a child that did not overlap at all used to skip
+			// the branch entirely, leaving the parent's rect in force - so content scrolled fully
+			// out of a nested container drew unclipped instead of disappearing.
+			const uint32_t minX = sprt::max(ret.scissor.x, viewRect.x);
+			const uint32_t minY = sprt::max(ret.scissor.y, viewRect.y);
+			const uint32_t maxX =
+					sprt::min(ret.scissor.x + ret.scissor.width, viewRect.x + viewRect.width);
+			const uint32_t maxY =
+					sprt::min(ret.scissor.y + ret.scissor.height, viewRect.y + viewRect.height);
+
 			ret.scissor = URect{
-				sprt::max(ret.scissor.x, viewRect.x),
-				sprt::max(ret.scissor.y, viewRect.y),
-				sprt::min(ret.scissor.width, viewRect.width),
-				sprt::min(ret.scissor.height, viewRect.height),
+				minX,
+				minY,
+				(maxX > minX) ? maxX - minX : 0U,
+				(maxY > minY) ? maxY - minY : 0U,
 			};
 		}
 	}

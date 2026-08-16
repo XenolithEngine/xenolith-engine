@@ -82,6 +82,13 @@ struct StyleManagedLayout {
 	static ComponentId Id;
 };
 
+// Marker recording that THIS StyleResolver created the node's ScrollSystem, from a non-`visible`
+// `overflow`. Same contract as StyleManagedLayout: only a system the resolver added may the
+// resolver take away, so a scroll container built in code survives a pass that matched nothing.
+struct StyleManagedScroll {
+	static ComponentId Id;
+};
+
 // Marker recording that a SYSTEM on this node owns the layout of its children - it writes their
 // ContentSize and positions them itself. The exact counterpart of StyleManagedLayout: that one says
 // "the resolver created this layout", this one says "the resolver keeps out of it".

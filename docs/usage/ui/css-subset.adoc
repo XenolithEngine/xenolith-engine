@@ -122,6 +122,7 @@ selectors (`[attr]`, `[attr=val]` — these parse but never match).
 | paint (typed widgets only, see below) | `border-radius` (+ per corner) `outline-color` `outline-width` |
 | text (inherited) | `font-size` `font-weight` `font-style` `font-stretch` `font-family` `font-variant` `text-align` `text-transform` `text-decoration` `white-space` `hyphens` `vertical-align` `line-height` |
 | box model | `display` `visibility` `position` `top` `right` `bottom` `left` |
+| overflow | `overflow` `overflow-x` `overflow-y` (`visible \| hidden \| clip \| scroll \| auto`) |
 | engine | `-xl-z-order` `-xl-anchor-point` `-xl-position` |
 
 ### Parsed and ignored — do not use these
@@ -134,7 +135,8 @@ selectors (`[attr]`, `[attr=val]` — these parse but never match).
 | `position: fixed` / `sticky` | **no effect** |
 | `background` shorthand | **absent** — write `background-color` |
 | `border` / `border-bottom` (line, not radius) | parsed everywhere, but **only table cells consume it** (border collapsing). Every other widget draws its edge with `outline-*` and rounds it with `border-radius`. |
-| `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `overflow` `box-sizing` `object-fit` `letter-spacing` | **not registered** (logged as an unknown parameter) |
+| `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `box-sizing` `object-fit` `letter-spacing` | **not registered** (logged as an unknown parameter) |
+| `overscroll-behavior` `scroll-behavior` `scroll-snap-*` `scrollbar-gutter` | **not registered** — see "Overflow and scrolling" |
 | elliptical `border-radius: H / V` | only `H` is read |
 | bare number as a size (`width: 100`) | **rejected** — units are mandatory; `line-height: 1.5` is the only exception |
 | `calc()` mixing units (`calc(100% - 20px)`) | **rejected** — a Metric holds one unit; see below |
@@ -555,6 +557,102 @@ Consequences worth knowing:
 The visit is cut **after** the node's own data phases, so a hidden node keeps
 processing components and can be un-hidden by a class change or a stylesheet
 reload. [`XL_VISIBILITY_TEST`]
+
+## Overflow and scrolling
+
+`overflow`, `overflow-x` and `overflow-y` take `visible | hidden | clip | scroll |
+auto`. The shorthand fills both axes (`overflow: <x> <y>`, one value = both).
+`clip` behaves exactly like `hidden`: the distinction CSS draws (a `hidden` box is
+still programmatically scrollable, a `clip` box is not) has no counterpart here.
+
+Anything other than `visible` makes the node a scroll container: `ui::StyleResolver`
+records a `ui::OverflowComponent` and adds a `ui::ScrollSystem`, which clips the box
+with a scissor rect. `scroll` and `auto` additionally slide the content and show an
+overlay indicator; `hidden` and `clip` only clip. [`XL_OVERFLOW_TEST`]
+
+```css
+.list { display: flex; flex-direction: column; height: 240px; overflow-y: auto; }
+.ellipsis { overflow: hidden; }
+```
+
+What you must know, because none of it matches the web exactly:
+
+* **The two axes are reconciled.** A `visible` axis beside a non-`visible` one
+  computes to `auto`, as in CSS — but here it is also unavoidable: the only clip the
+  engine has is an axis-aligned scissor **rect**, which cannot clip one axis and
+  leave the other alone.
+* **A scroll container needs a definite size on its scroll axis.** It deliberately
+  does not grow to its content (`LayoutSystem::handleMeasure` reports the box on an
+  overflow axis), so `height: fit-content` together with `overflow-y: auto` can never
+  scroll. For the same reason `height: 100%` on a *child* resolves against the
+  scrollport and can never overflow it — give the child a length, or let the content
+  be intrinsically taller.
+* **Content is laid out at its natural size on an overflow axis.** `flex-shrink`
+  stops crushing the items, which stands in for CSS's automatic minimum size
+  (`min-height: auto` = min-content), a rule this engine has never implemented.
+  The axis is freed **only when the content actually does not fit** — while it fits,
+  `flex-grow` and `justify-content` behave exactly as in any other container.
+* **`flex-wrap` is ignored on a scrolling main axis.** Wrapping and scrolling the
+  same axis are contradictory; `nowrap` wins, because that is what makes the line
+  long enough to have something to scroll.
+* **`align-items: stretch` grows the line, not just the tall item.** A single line
+  whose natural cross size exceeds the box stretches every sibling to match. Use
+  `align-items: flex-start` if you want only the tall one to overflow.
+* **`position: absolute` children do not scroll.** They are viewport-pinned overlays,
+  which is what a sticky header, a footer or the scrollbar itself wants. (CSS agrees
+  for a `position: static` scroll container, which is every one of them here.)
+* **`overflow: hidden` clips to the bounding RECTANGLE.** The scissor is an
+  axis-aligned integer rect in window pixels: `border-radius` corners are not
+  followed, a rotated container clips to its axis-aligned bounding box, and a
+  fractional device scale can bleed or shave a pixel. There is no stencil or mask
+  path in the renderer to do better.
+* **Nothing is virtualized.** Every child of a scroll container is a real node,
+  always. A long list belongs in `ui::TreeView` / `ui::TableView`, which build only
+  the rows in the window.
+
+### Scrollbars
+
+The indicator is a real child node, not a pseudo-element (there are none), so
+ordinary rules style it — no new properties:
+
+```css
+scrollbar                            { background-color: rgba(0,0,0,0.35); border-radius: 3px; }
+scrollbar.xl-ui-scrollbar-vertical   { width: 6px; }
+scrollbar.xl-ui-scrollbar-horizontal { height: 6px; }
+.no-bars scrollbar                   { display: none; }
+```
+
+It is a `ui::Panel` with `type = "scrollbar"` and the classes `xl-ui-scrollbar` plus
+`xl-ui-scrollbar-vertical` / `-horizontal`, carrying `OutOfFlowComponent` so no
+layout ever touches it. Two consequences: a `.container > *` selector of your own
+will also match it (name the type instead), and the bar is an overlay — it reserves
+no space, so turning it on never re-lays anything out.
+
+### Scroll chaining and code access
+
+A **vertical** wheel over a container that can only scroll **horizontally** is
+redirected to the horizontal axis, as in a browser — otherwise a horizontal-only
+strip (a tab bar, a toolbar) would be unusable with an ordinary mouse, which has no
+horizontal wheel. Shift+wheel asks for the same thing explicitly. Both are fallbacks:
+a backend that already reports the tilted or shifted wheel as an x amount is left
+alone.
+
+A wheel event is consumed only by a container that has a range on the requested
+axis; otherwise it declines and the dispatcher offers it to the ancestor scroller.
+That is CSS's default `overscroll-behavior: auto` for free. The decision is keyed on
+"has any range", not "is not already at the edge" — a nested list stays sticky at its
+end instead of handing the gesture to its parent mid-swipe.
+
+**Dragging scrolls, and inertia after the release is for touch only.** The button
+cannot tell you which it was — `InputMouseButton::Touch` *is* `MouseLeft` — so the
+source is the per-event flag `InputModifier::Touch`, which the platform backend sets
+for a real touchscreen. A finger coasts and decays; a mouse stops the instant the
+button comes up, which is the only thing that reads right under a pointer.
+
+From code, `ui::ScrollSystem` exposes `getScrollRange()`, `getScrollPosition()`,
+`setScrollPosition()`, `scrollBy()` (offsets are in CSS orientation: y grows **down**)
+and `scrollNodeIntoView()`. The free function `ui::scrollIntoView(node)` walks the
+whole ancestor chain, so a widget nested two scrollers deep really becomes visible.
 
 ## Tables
 

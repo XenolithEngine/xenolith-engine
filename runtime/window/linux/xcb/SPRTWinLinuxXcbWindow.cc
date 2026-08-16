@@ -172,7 +172,11 @@ XcbWindow::XcbWindow() { }
 
 bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 		NotNull<LinuxContextController> c) {
-	if (!NativeWindow::init(c, move(info), conn->getCapabilities())) {
+	// The CONTROLLER's capabilities, not the connection's — see the same call in
+	// SPRTWinLinuxWaylandWindow.cc. The connection answers for X11 alone; the dialog bits (and,
+	// here, NativeDialogParenting) belong to the desktop session and are ORed on by
+	// LinuxContextController::getCapabilities().
+	if (!NativeWindow::init(c, move(info), c->getCapabilities())) {
 		return false;
 	}
 
@@ -922,10 +926,18 @@ void XcbWindow::handleMotionNotify(xcb_motion_notify_event_t *ev) {
 
 	if (_buttonGripFlags != WindowLayerFlags::None) {
 		if (_buttons.test(toInt(InputMouseButton::MouseLeft)) && _buttons.count() == 1) {
-			auto grip = _buttonGripFlags;
-			startGrip(getMoveResizeForGrip(grip), ev->root_x, ev->root_y,
-					toInt(InputMouseButton::MouseLeft));
-			return;
+			/* Only when the grip named a move or a resize the WM can perform.
+
+			getMoveResizeForGrip answers Cancel for everything else - GripGuard included - and this
+			used to send that Cancel to the WM and `return` anyway, so a guarded area consumed every
+			motion of a pressed drag and the scene never saw one. Cancel is the absence of an
+			action, not an action: drop the grip and let the motion through. */
+			auto value = getMoveResizeForGrip(_buttonGripFlags);
+			if (value != XcbMoveResize::Cancel) {
+				startGrip(value, ev->root_x, ev->root_y, toInt(InputMouseButton::MouseLeft));
+				return;
+			}
+			_buttonGripFlags = WindowLayerFlags::None;
 		}
 	}
 
@@ -1168,6 +1180,10 @@ void XcbWindow::mapWindow() {
 	_mapped = true;
 
 	_xcb->xcb_flush(_connection->getConnection());
+
+	// A mapped window is enabled; see the same line in WaylandWindow::mapWindow for why it belongs
+	// here and not in init(). A modal Dialog is the only thing that clears the bit again.
+	updateState(0, _info->state | WindowState::Enabled);
 
 	configureOutputWindow();
 

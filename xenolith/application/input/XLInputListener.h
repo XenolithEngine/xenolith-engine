@@ -214,6 +214,9 @@ protected:
 	float _opacityFilter = 0.0f;
 	bool _hasFocus = false;
 
+	bool _visitScissorEnabled = false;
+	URect _visitScissor;
+
 	// Whether any recognizer here keeps state derived from a hit test against the owner
 	// (GestureRecognizer::requiresGeometryUpdate) - if none does, there is nothing to settle
 	bool _geometryRecognizers = false;

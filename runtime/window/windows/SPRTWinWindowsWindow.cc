@@ -1234,67 +1234,65 @@ LRESULT WindowsWindow::handleHitTest(WPARAM wParam, LPARAM lParam) {
 		return DefWindowProcW(_window, WM_NCHITTEST, wParam, lParam);
 	}
 
+	/* The system's answer is the FLOOR, not a competitor.
+
+	WM_NCCALCSIZE eats the whole non-client area for a user-space-decorated window, so what
+	DefWindowProc reports here is the frame border band at the very edge of the window - the
+	system's own resize grip. It stands wherever no layer of the application's has an opinion. */
 	LRESULT res = DefWindowProcW(_window, WM_NCHITTEST, wParam, lParam);
+
 	auto pos = Vec2(GET_X_LPARAM(lParam) - _currentState.position.x,
 			(_currentState.extent.height - (GET_Y_LPARAM(lParam) - _currentState.position.y)) - 1);
-	bool hasGripGuard = false;
+
+	/* TOP-FIRST: the first grip under the pointer wins, and the search stops there.
+
+	`_layers` arrives in the order the application's input dispatcher walked the scene - front to
+	back, so index 0 is the topmost layer in the window. This loop used to run to the end and keep
+	the LAST match, which is the BOTTOM-most layer: a resize grip lying under a title bar took the
+	drag away from the move grip on top of it, and there was no way for a layer to say "not here".
+
+	It has to be this rule and not another, because NativeWindow::updateLayerState resolves the
+	CURSOR with exactly it. Two orders would mean a pointer showing one thing and a press doing
+	another. */
 	for (auto &it : _layers) {
-		if (hasFlag(it.flags, WindowLayerFlags::GripMask) && containsPoint(it.rect, pos)) {
-			switch (it.flags & WindowLayerFlags::GripMask) {
-			case WindowLayerFlags::GripGuard: hasGripGuard = true; break;
-			case WindowLayerFlags::MoveGrip:
-				//XL_WIN32_LOG("HTCAPTION ", pos, " ", it.rect);
-				res = HTCAPTION;
-				break;
-			case WindowLayerFlags::ResizeTopLeftGrip:
-				//XL_WIN32_LOG("HTTOPLEFT ", pos, " ", it.rect);
-				res = HTTOPLEFT;
-				break;
-			case WindowLayerFlags::ResizeTopGrip:
-				//XL_WIN32_LOG("HTTOP ", pos, " ", it.rect);
-				res = HTTOP;
-				break;
-			case WindowLayerFlags::ResizeTopRightGrip:
-				//XL_WIN32_LOG("HTTOPRIGHT ", pos, " ", it.rect);
-				res = HTTOPRIGHT;
-				break;
-			case WindowLayerFlags::ResizeRightGrip:
-				//XL_WIN32_LOG("HTRIGHT ", pos, " ", it.rect);
-				res = HTRIGHT;
-				break;
-			case WindowLayerFlags::ResizeBottomRightGrip:
-				//XL_WIN32_LOG("HTBOTTOMRIGHT ", pos, " ", it.rect);
-				res = HTBOTTOMRIGHT;
-				break;
-			case WindowLayerFlags::ResizeBottomGrip:
-				//XL_WIN32_LOG("HTBOTTOM ", pos, " ", it.rect);
-				res = HTBOTTOM;
-				break;
-			case WindowLayerFlags::ResizeBottomLeftGrip:
-				//XL_WIN32_LOG("HTBOTTOMLEFT ", pos, " ", it.rect);
-				res = HTBOTTOMLEFT;
-				break;
-			case WindowLayerFlags::ResizeLeftGrip:
-				//XL_WIN32_LOG("HTLEFT ", pos, " ", it.rect);
-				res = HTLEFT;
-				break;
-			default: break;
+		if (!hasFlag(it.flags, WindowLayerFlags::GripMask) || !containsPoint(it.rect, pos)) {
+			continue;
+		}
+
+		switch (it.flags & WindowLayerFlags::GripMask) {
+		case WindowLayerFlags::GripGuard:
+			/* "No grip of MINE here" - which on Windows is not quite "no grip at all".
+
+			The band DefWindowProc reported is the system frame border, and a window that keeps
+			WS_THICKFRAME is expected to stay resizable by its own edge whatever it draws over the
+			rest of itself. So the guard drops everything else to HTCLIENT and leaves that band
+			alone; a widget that also wants the edge has to sit on it and say so. */
+			switch (res) {
+			case HTTOPLEFT:
+			case HTTOP:
+			case HTTOPRIGHT:
+			case HTRIGHT:
+			case HTBOTTOMRIGHT:
+			case HTBOTTOM:
+			case HTBOTTOMLEFT:
+			case HTLEFT: return res; break;
+			default: return HTCLIENT; break;
 			}
+			break;
+		case WindowLayerFlags::MoveGrip: return HTCAPTION; break;
+		case WindowLayerFlags::ResizeTopLeftGrip: return HTTOPLEFT; break;
+		case WindowLayerFlags::ResizeTopGrip: return HTTOP; break;
+		case WindowLayerFlags::ResizeTopRightGrip: return HTTOPRIGHT; break;
+		case WindowLayerFlags::ResizeRightGrip: return HTRIGHT; break;
+		case WindowLayerFlags::ResizeBottomRightGrip: return HTBOTTOMRIGHT; break;
+		case WindowLayerFlags::ResizeBottomGrip: return HTBOTTOM; break;
+		case WindowLayerFlags::ResizeBottomLeftGrip: return HTBOTTOMLEFT; break;
+		case WindowLayerFlags::ResizeLeftGrip: return HTLEFT; break;
+		// an unknown grip value is not an opinion: keep looking under it
+		default: break;
 		}
 	}
-	if (hasGripGuard) {
-		switch (res) {
-		case HTTOPLEFT:
-		case HTTOP:
-		case HTTOPRIGHT:
-		case HTRIGHT:
-		case HTBOTTOMRIGHT:
-		case HTBOTTOM:
-		case HTBOTTOMLEFT:
-		case HTLEFT: return res; break;
-		default: return HTCLIENT;
-		}
-	}
+
 	return res;
 }
 
