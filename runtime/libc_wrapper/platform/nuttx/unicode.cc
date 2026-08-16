@@ -16,9 +16,10 @@ SPDX-License-Identifier: MIT
 // executable against the NuttX flat build (no crt0/special linker script at
 // configure time), and a static ICU port is a separate milestone. For the M6
 // soft-renderer track this stub backend is sufficient:
-//   * toupper/tolower/totitle fold ASCII via NuttX libc towupper/towlower
-//     (which handles the C/POSIX locale); non-ASCII passes through unchanged
-//     (the renderer does not rely on Unicode case folding).
+//   * toupper/tolower/totitle(char32_t) are NOT here any more: the simple
+//     mappings come from the compiled-in Unicode tables (runtime/src/unicode),
+//     so this target now gets full Unicode for them rather than an ASCII fold.
+//     The string overloads below are still the ASCII-only stub.
 //   * compare/caseCompare use NuttX wcscmp/strcmp + towupper fold for the
 //     case-insensitive path (matches the POSIX C-locale collation).
 //   * idnToAscii/idnToUnicode return false (IDN resolution is irrelevant to
@@ -46,22 +47,8 @@ SPDX-License-Identifier: MIT
 
 namespace sprt::unicode {
 
-// --- single-codepoint case fold --------------------------------------------
-// NuttX libc towupper/towlower operate on the C/POSIX locale, which folds
-// ASCII A-Z/a-z only. Non-ASCII codepoints pass through unchanged — correct
-// for ASCII text the renderer handles, and the same posture as the wasm host
-// stub's identity fallback.
-
-char32_t tolower(char32_t c) { return char32_t(::towlower(wint_t(c))); }
-
-char32_t toupper(char32_t c) { return char32_t(::towupper(wint_t(c))); }
-
-char32_t totitle(char32_t c) {
-	// NuttX libc has no towtitle; titlecase folds to upper for the ASCII range,
-	// which is the same result ICU returns for ASCII letters. Non-ASCII passes
-	// through (no table).
-	return char32_t(::towupper(wint_t(c)));
-}
+// The single-codepoint mappings live in runtime/src/unicode now. <wctype.h> is
+// still needed here: caseCompare(WideStringView) folds with towupper.
 
 // --- callback variants (StringView, UTF-8) ----------------------------------
 // ASCII-only fold: walk bytes, fold ASCII letters in place, leave the

@@ -43,11 +43,10 @@ THE SOFTWARE.
 
 extern "C" {
 
-// op: 0 = lower, 1 = upper, 2 = title. Returns the mapped codepoint (or `cp`
-// unchanged if the host cannot map it, e.g. a 1:N mapping the single-char API
-// cannot express).
-__attribute__((import_module("sprt"), import_name("unicode_char"))) int __sprt_host_unicode_char(
-		int op, int cp);
+// There used to be a `unicode_char` import here for the single-code-point
+// mappings. It is gone: those come from the compiled-in Unicode tables
+// (runtime/src/unicode), so the host is no longer asked about them and no longer
+// has to implement them.
 
 // op: 0 = lower, 1 = upper, 2 = title. (3 and 4 were IDNA; the host no longer
 // implements them, and the surviving numbering is unchanged.)
@@ -104,10 +103,6 @@ static bool hostTransformWide(int op, WideStringView src, const callback<void(Wi
 	}, src);
 	return ret;
 }
-
-char32_t tolower(char32_t c) { return char32_t(__sprt_host_unicode_char(0, int(c))); }
-char32_t toupper(char32_t c) { return char32_t(__sprt_host_unicode_char(1, int(c))); }
-char32_t totitle(char32_t c) { return char32_t(__sprt_host_unicode_char(2, int(c))); }
 
 bool tolower(const callback<void(StringView)> &cb, StringView data) {
 	return hostTransform(0, data, cb);

@@ -180,6 +180,42 @@ static void testAsciiCodepoints() {
 	check(idempotent, "ASCII case folds are idempotent");
 }
 
+// Every code point the UCD gives no case mapping must come back unchanged. The
+// conformance test below checks the 2989 code points that DO map; this is the
+// complementary half, and it is the one that catches a mis-read table: a wrong
+// trie index returns a perfectly valid mapping for a code point that should have
+// none, which nothing else here would notice.
+//
+// s_caseSimple is in code point order (UnicodeData.txt order), so this walks the
+// two sequences together instead of searching.
+static void testUnmappedCodepoints() {
+	constexpr size_t entries = sizeof(s_caseSimple) / sizeof(s_caseSimple[0]);
+	size_t next = 0;
+	char32_t firstBad = 0;
+	int bad = 0;
+
+	for (char32_t c = 0; c <= 0x10'FFFF; ++c) {
+		while (next < entries && s_caseSimple[next].cp < c) { ++next; }
+		if (next < entries && s_caseSimple[next].cp == c) {
+			continue; // has a mapping; the conformance test owns this one
+		}
+		if (unicode::tolower(c) != c || unicode::toupper(c) != c || unicode::totitle(c) != c) {
+			if (bad == 0) {
+				firstBad = c;
+			}
+			++bad;
+		}
+	}
+
+	++s_checks;
+	if (bad != 0) {
+		++s_failures;
+		sprt::cerr << "  FAIL: " << bad
+				   << " unmapped code points were changed, first at decimal "
+				   << uint32_t(firstBad) << "\n";
+	}
+}
+
 static void testAsciiStrings() {
 	StringView mixed = "Hello, World! 123";
 	checkMapped(CaseOp::Lower, mixed, "hello, world! 123", "tolower(StringView) over ASCII");
@@ -235,6 +271,7 @@ void performUnicodeTests() {
 	s_failures = 0;
 
 	testAsciiCodepoints();
+	testUnmappedCodepoints();
 	testAsciiStrings();
 	testWideStrings();
 	testComparators();

@@ -1,0 +1,110 @@
+= Unicode tables for the case mapper
+
+`SPRuntimeUnicodeCaseData.cc` is **generated**. Do not edit it by hand — run
+`gen-case-tables.py` and commit its output.
+
+It is a `.cc` subunit, so the build never compiles it on its own; it is
+`#include`d by `runtime/src/unicode/SPRuntimeUnicodeCase.cpp`. That is
+deliberate: the trie is parsed into a `constexpr` object at compile time, which
+only works if the array and the reader are in the same translation unit.
+
+== What is in it
+
+[cols="2,1,4"]
+|===
+| Array | Size | Contents
+
+| `s_caseTrieIndex`
+| 26 KiB
+| `UTrie2` over the 16-bit case properties word: the case type (none / lower /
+  upper / title), the case-ignorable, sensitive and soft-dotted bits, and either
+  a 9-bit signed mapping delta or an index into the exceptions.
+
+| `s_caseExceptions`
+| 3 KiB
+| Everything a delta cannot express — mappings to a distant code point, the 1:N
+  mappings, the conditional ones — addressed by the props word.
+|===
+
+Total: **30432 bytes (29.7 KiB)** of read-only data, in every binary that links
+the runtime (the build links objects directly and does not `--gc-sections`, so
+nothing is dropped for an application that never changes case).
+
+Two ICU arrays are deliberately not carried:
+
+`ucase_props_unfold` (740 B):: the reverse full case folding, read only by
+  `ucase_addCaseClosure` for `UnicodeSet`. Case closure is not ported.
+`ucase_props_indexes`:: the array lengths, which are checked at generation and
+  then have nothing left to say at run time.
+
+== Current version
+
+**Unicode 17.0.0**, from ICU4C 78.3, `ucase` format version 4.
+
+The version is compiled in as `s_caseUnicodeVersion`, read out of the data itself
+rather than written down by hand, so it cannot drift from the tables. The
+generator also refuses to run if it disagrees with the Unicode version of the
+UTS-46 tables in `runtime/src/idn/data` — the two are in the same binary and must
+implement the same Unicode.
+
+== Regenerating
+
+The pipeline is icu4c -> this directory, with no intermediate extract.
+`runtime/toolchains/src.mk` already clones icu4c into
+`runtime/toolchains/src/icu4c`, and everything is read out of
+`source/common/ucase_props_data.h`.
+
+[source,sh]
+----
+python3 runtime/src/unicode/data/gen-case-tables.py
+# or, against a checkout elsewhere:
+python3 runtime/src/unicode/data/gen-case-tables.py /path/to/icu4c --out runtime/src/unicode/data
+----
+
+Then re-run the tests — a table refresh without them is how a silently-wrong
+mapping gets in:
+
+[source,sh]
+----
+runtimetest runtime_unicode                   # must be 0 failures
+runtimetest runtime_unicode_case_conformance  # simple columns must read 100%
+----
+
+Since ICU 64 the case properties ship as a generated C header with plain arrays
+and no `udata` container, so unlike the normalization data in
+`runtime/src/idn/data` nothing has to be taken apart here: the generator renames
+the arrays and reads the `UTrie2` descriptor out of `ucase_props_singleton`.
+
+=== What the generator checks
+
+* the `ucase` format version, against the one `case_props.cc` implements;
+* `UCASE_IX_TOP == 16`, and the exceptions / unfold lengths in
+  `ucase_props_indexes` against the actual arrays;
+* the `UTrie2` invariants the runtime reader depends on —
+  `indexLength + dataLength == length`, data16 at `+indexLength`. The descriptor
+  is read from the ICU initializer rather than written down here: all three
+  UTrie2 descriptors in the UTS-46 tables changed between ICU 70 and 78, and a
+  hardcoded `indexLength` survives a version bump silently;
+* the Unicode version against the UTS-46 tables.
+
+=== What it does NOT check
+
+**The bit layouts.** `case_props.cc` transcribes the props word and the exception
+slot layout from `ucase.h`, and the data does not describe them, so a change
+there passes generation and then returns a valid mapping for the wrong code
+point. When the ICU version moves, re-read `ucase.h` by hand. This is not
+hypothetical: the same thing happened to `UPROPS_SCRIPT_X_MASK` in the UTS-46
+port at ICU 70 -> 78, and the conformance suite did not catch it.
+
+The behavioural check that does catch a mis-read table is in
+`tests/runtime/runtime/unicode.cpp`: `runtime_unicode` sweeps all 0x110000 code
+points and asserts that every one the UCD gives no mapping comes back unchanged,
+while `runtime_unicode_case_conformance` checks the 2989 that do map against
+`UnicodeData.txt`. Together they cover the whole code space.
+
+== Licence
+
+The tables are derived from the Unicode Character Database via ICU and are
+covered by the Unicode licence (http://www.unicode.org/copyright.html),
+reproduced in the header of the generated file alongside the engine's own notice.
+Redistribution requires keeping those notices intact.

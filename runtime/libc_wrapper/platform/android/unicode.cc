@@ -51,17 +51,9 @@ static qmutex s_collatorMutex;
 
 namespace icujava {
 
-char32_t tolower(jni::App *app, char32_t c) {
-	return app->UCharacter.toLowerChar(app->UCharacter.getClass().ref(), jint(c));
-}
-
-char32_t toupper(jni::App *app, char32_t c) {
-	return app->UCharacter.toUpperChar(app->UCharacter.getClass().ref(), jint(c));
-}
-
-char32_t totitle(jni::App *app, char32_t c) {
-	return app->UCharacter.toTitleChar(app->UCharacter.getClass().ref(), jint(c));
-}
+// The single-code-point mappings had a JNI fallback here (UCharacter.toLowerChar
+// and friends) for devices without libicu.so. They are gone: those mappings come
+// from the compiled-in Unicode tables now, on every device and with no JNI call.
 
 bool toupper(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
 	auto env = jni::Env::getEnv();
@@ -162,9 +154,6 @@ using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char1
 
 static Dso s_icuNative;
 
-static int32_t (*tolower_fn)(int32_t) = nullptr;
-static int32_t (*toupper_fn)(int32_t) = nullptr;
-static int32_t (*totitle_fn)(int32_t) = nullptr;
 
 static int32_t (*strToLower_fn)(char16_t *dest, int32_t destCapacity, const char16_t *src,
 		int32_t srcLength, const char *locale, int *pErrorCode) = nullptr;
@@ -178,35 +167,9 @@ static int32_t (*strToTitle_fn)(char16_t *dest, int32_t destCapacity, const char
 static cmp_fn u_strCompare = nullptr;
 static case_cmp_fn u_strCaseCompare = nullptr;
 
-char32_t tolower(char32_t c) {
-	if (s_icuNative) {
-		return char32_t(tolower_fn(int32_t(c)));
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::tolower(app, c);
-	}
-	return c;
-}
-
-char32_t toupper(char32_t c) {
-	if (s_icuNative) {
-		return char32_t(toupper_fn(int32_t(c)));
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::toupper(app, c);
-	}
-	return c;
-}
-
-char32_t totitle(char32_t c) {
-	if (s_icuNative) {
-		return char32_t(totitle_fn(int32_t(c)));
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::totitle(app, c);
-	}
-	return c;
-}
+// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// from the compiled-in Unicode tables (runtime/src/unicode), so they no longer
+// depend on libicu.so being present or on a JNI round trip.
 
 bool toupper(const callback<void(StringView)> &cb, StringView data) {
 	if (s_icuNative) {
@@ -540,9 +503,6 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 
 	unicode::s_icuNative = Dso("libicu.so");
 	if (unicode::s_icuNative) {
-		unicode::tolower_fn = unicode::s_icuNative.sym<decltype(unicode::tolower_fn)>("u_tolower");
-		unicode::toupper_fn = unicode::s_icuNative.sym<decltype(unicode::toupper_fn)>("u_toupper");
-		unicode::totitle_fn = unicode::s_icuNative.sym<decltype(unicode::totitle_fn)>("u_totitle");
 		unicode::strToLower_fn =
 				unicode::s_icuNative.sym<decltype(unicode::strToLower_fn)>("u_strToLower");
 		unicode::strToUpper_fn =

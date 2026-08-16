@@ -116,17 +116,10 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 				u8().set(b.subarray(0, n), dst);
 				return n;
 			},
-			// Single-codepoint case mapping (op 0/1/2 = lower/upper/title).
-			unicode_char(op, cp) {
-				try {
-					const s = String.fromCodePoint(cp >>> 0);
-					const r = op === 0 ? s.toLowerCase() : op === 1 ? s.toUpperCase() : titleCase(s);
-					const out = r.codePointAt(0);
-					return out === undefined ? cp : out;
-				} catch {
-					return cp;
-				}
-			},
+			// `unicode_char` (single-codepoint case mapping) used to be here. The
+			// runtime carries the Unicode case tables itself now, so it no longer
+			// imports it and an embedder no longer has to provide it. The string
+			// transforms below are still delegated.
 			// String case/normalize/IDNA (see unicodeTransform). ICU-style preflight: if the
 			// UTF-8 result exceeds cap, write nothing and return the required length; else write
 			// and return its length. -1 on error.
