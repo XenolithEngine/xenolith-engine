@@ -24,9 +24,21 @@ only works if the array and the reader are in the same translation unit.
 | 3 KiB
 | Everything a delta cannot express — mappings to a distant code point, the 1:N
   mappings, the conditional ones — addressed by the props word.
+
+| `s_caseLatinTo*`
+| 1.5 KiB
+| Four linear tables of signed byte deltas covering U+0000..U+017F, the range the
+  string mappers walk without touching the trie. Two per direction, because
+  tr/az/lt differ from every other locale down here.
+
+| `s_caseGreekData*`
+| 800 B
+| The uppercase form of each Greek letter plus flags saying whether it is a vowel
+  and what it carries. Greek uppercasing drops the tonos and moves the dialytika,
+  which no per-character mapping expresses, so this feeds a state machine.
 |===
 
-Total: **30432 bytes (29.7 KiB)** of read-only data, in every binary that links
+Total: **32768 bytes (32.0 KiB)** of read-only data, in every binary that links
 the runtime (the build links objects directly and does not `--gc-sections`, so
 nothing is dropped for an application that never changes case).
 
@@ -51,8 +63,22 @@ implement the same Unicode.
 
 The pipeline is icu4c -> this directory, with no intermediate extract.
 `runtime/toolchains/src.mk` already clones icu4c into
-`runtime/toolchains/src/icu4c`, and everything is read out of
-`source/common/ucase_props_data.h`.
+`runtime/toolchains/src/icu4c`, and everything is read out of four files there:
+
+[cols="2,3"]
+|===
+| `source/common/ucase_props_data.h` | the properties trie and the exceptions
+| `source/common/ucase.cpp` | `LatinCase`, the ASCII/Latin-1 fast path
+| `source/common/ustrcase.cpp` | `GreekUpper`, the Greek uppercasing data
+| `source/common/ucase.h`, `ucasemap_imp.h` | the constants the two above are written in
+|===
+
+The last three are ICU *source*, not generated data, and their entries are
+expressions (`EXC`, `0x0391 | HAS_VOWEL`) rather than literals — so the generator
+carries a small expression evaluator whose names come from the two headers. They
+are read rather than copied for the same reason the trie descriptor is: they move
+with the Unicode version, and a transcription slip in a delta table does not fail,
+it cases a handful of characters wrong.
 
 [source,sh]
 ----
@@ -85,22 +111,34 @@ the arrays and reads the `UTrie2` descriptor out of `ucase_props_singleton`.
   is read from the ICU initializer rather than written down here: all three
   UTrie2 descriptors in the UTS-46 tables changed between ICU 70 and 78, and a
   hardcoded `indexLength` survives a version bump silently;
+* `LatinCase::EXC == -0x80` (the port tells it apart from a real delta by that
+  value), `LONG_S` inside `[0, LIMIT)`, and all four tables exactly `LIMIT` long;
+* the two `GreekUpper` arrays against the code point ranges they cover, and every
+  entry in range for its type;
 * the Unicode version against the UTS-46 tables.
+
+The `GreekUpper` flag values are emitted next to the data they encode rather than
+written into `case_string.cc`, so a bit that moves in a future ICU moves in both
+places at once and cannot be read with the wrong layout.
 
 === What it does NOT check
 
-**The bit layouts.** `case_props.cc` transcribes the props word and the exception
-slot layout from `ucase.h`, and the data does not describe them, so a change
-there passes generation and then returns a valid mapping for the wrong code
-point. When the ICU version moves, re-read `ucase.h` by hand. This is not
-hypothetical: the same thing happened to `UPROPS_SCRIPT_X_MASK` in the UTS-46
-port at ICU 70 -> 78, and the conformance suite did not catch it.
+**The bit layouts it does not emit.** `case_props.cc` transcribes the props word
+and the exception slot layout from `ucase.h`, and the data does not describe
+them, so a change there passes generation and then returns a valid mapping for
+the wrong code point. When the ICU version moves, re-read `ucase.h` by hand. This
+is not hypothetical: the same thing happened to `UPROPS_SCRIPT_X_MASK` in the
+UTS-46 port at ICU 70 -> 78, and the conformance suite did not catch it.
 
-The behavioural check that does catch a mis-read table is in
-`tests/runtime/runtime/unicode.cpp`: `runtime_unicode` sweeps all 0x110000 code
-points and asserts that every one the UCD gives no mapping comes back unchanged,
-while `runtime_unicode_case_conformance` checks the 2989 that do map against
-`UnicodeData.txt`. Together they cover the whole code space.
+The behavioural checks that do catch a mis-read table are in
+`tests/runtime/runtime/unicode.cpp`. `runtime_unicode` sweeps all 0x110000 code
+points and asserts that every one the UCD gives no mapping comes back unchanged;
+`runtime_unicode_case_conformance` checks the 2989 that do map against
+`UnicodeData.txt` and the 103 unconditional `SpecialCasing.txt` rows through both
+string encodings. Together they cover the whole code space. The 16 conditional
+`SpecialCasing.txt` rows cannot be checked that way — they need a purpose-built
+input — so `runtime_unicode` carries hand-written vectors for them and asserts
+that every condition in the file is claimed by one.
 
 == Licence
 

@@ -27,22 +27,24 @@ Input is the UCD copy in the icu4c checkout that runtime/toolchains/src.mk clone
 the same tree runtime/src/idn/data/gen-tables.py builds the engine's tables from, so
 the suite and the tables cannot drift to different Unicode versions.
 
-Two tables come out:
+Three tables come out:
 
-  s_caseSimple  - UnicodeData.txt columns 12/13/14, the simple 1:1 mappings. This is
-                  what sprt::unicode::{tolower,toupper,totitle}(char32_t) implements.
-  s_caseFull    - SpecialCasing.txt, the 1:N mappings (ß -> SS, ﬁ -> FI, ...) as UTF-8.
-                  This is what the StringView/WideStringView overloads implement.
+  s_caseSimple       - UnicodeData.txt columns 12/13/14, the simple 1:1 mappings. This
+                       is what sprt::unicode::{tolower,toupper,totitle}(char32_t) does.
+  s_caseFull         - SpecialCasing.txt unconditional rows, the 1:N mappings
+                       (ß -> SS, ﬁ -> FI, ...) as UTF-8. This is what the
+                       StringView/WideStringView overloads do.
+  s_caseConditional  - SpecialCasing.txt CONDITIONAL rows, with their condition text.
 
-The CONDITIONAL SpecialCasing entries (Final_Sigma, and the tr/az/lt rules) are
-dropped: they need a locale and surrounding context, and the current
-sprt::unicode:: API takes neither. Their count is recorded in the generated file so
-that it is visible how much of the file is not being asserted; wiring them up is
-stage 6 of docs/design/unicode-case-port-plan.adoc.
+A conditional row cannot be checked from the table alone: the rule only fires for a
+particular language, or when the surrounding characters are right, so the input has
+to be a purpose-built string rather than the single character in the file. Those
+strings are hand-written in unicode.cpp. What the table is for is making sure none
+is forgotten - the test asserts that every condition here is claimed by a vector
+there, so a rule added to a future UCD fails rather than passing unnoticed.
 
 CaseFolding.txt is deliberately NOT generated: nothing in the current API exposes
-case folding, so there would be nothing to compare against. It arrives with stage 3
-of the same plan.
+case folding, so there would be nothing to compare against.
 
 Generated C++ rather than a data file read at run time, for the same reason as
 gen_idna_test.py: there is no fixture plumbing, and no story for getting a data file
@@ -96,9 +98,13 @@ def parse_unicode_data(path):
 
 
 def parse_special_casing(path):
-	"""(src, lower, title, upper) for the unconditional rows, plus the skipped count."""
+	"""(src, lower, title, upper) rows, split into unconditional and conditional.
+
+	The conditional ones carry their 5th column verbatim: it is the condition list,
+	a language id and/or a context rule ("lt More_Above", "Final_Sigma").
+	"""
 	rows = []
-	conditional = 0
+	conditional = []
 	for line in open(path, encoding='utf-8'):
 		line = line.split('#')[0].strip()
 		if not line:
@@ -106,15 +112,15 @@ def parse_special_casing(path):
 		cols = [c.strip() for c in line.rstrip(';').split(';')]
 		if len(cols) < 4:
 			continue
-		# A 5th column is the condition list: locale ids and/or context rules.
-		if len(cols) > 4 and cols[4]:
-			conditional += 1
-			continue
 
 		def chars(field):
 			return ''.join(chr(int(c, 16)) for c in field.split())
 
-		rows.append((chars(cols[0]), chars(cols[1]), chars(cols[2]), chars(cols[3])))
+		row = (chars(cols[0]), chars(cols[1]), chars(cols[2]), chars(cols[3]))
+		if len(cols) > 4 and cols[4]:
+			conditional.append(row + (cols[4],))
+		else:
+			rows.append(row)
 	return rows, conditional
 
 
@@ -166,11 +172,12 @@ def main():
 	full, conditional = parse_special_casing(os.path.join(unidata, 'SpecialCasing.txt'))
 
 	out = [LICENSE]
-	out.append('// Unicode %d.%d.%d: %d simple mappings, %d unconditional full mappings.'
+	out.append('// Unicode %d.%d.%d: %d simple mappings, %d unconditional full mappings,'
 			% (version + (len(simple), len(full))))
-	out.append('// %d conditional SpecialCasing rows dropped - they need a locale and'
-			% conditional)
-	out.append('// surrounding context, which the current sprt::unicode:: API does not take.')
+	out.append('// %d conditional ones. The conditional rows are listed rather than checked'
+			% len(conditional))
+	out.append('// directly: each needs a purpose-built input string, written by hand in')
+	out.append('// unicode.cpp, and this table is what makes sure none of them is forgotten.')
 	out.append('')
 	out.append('///@ SP_EXCLUDE')
 	out.append('')
@@ -179,7 +186,6 @@ def main():
 	out.append('namespace sprt {')
 	out.append('')
 	out.append('static constexpr uint8_t s_caseUcdVersion[3] = {%d, %d, %d};' % version)
-	out.append('static constexpr int s_caseConditionalSkipped = %d;' % conditional)
 	out.append('')
 	out.append('// UnicodeData.txt columns 12/13/14. Only code points that map somewhere.')
 	out.append('struct CaseSimpleEntry {')
@@ -217,13 +223,31 @@ def main():
 				% (cpp_string(src), cpp_string(lo), cpp_string(ti), cpp_string(up)))
 	out.append('};')
 	out.append('')
+	out.append('// SpecialCasing.txt, conditional rows. `condition` is the file\'s own 5th')
+	out.append('// column: a language id, a context rule, or both. The mappings are here for')
+	out.append('// reference; what the test uses is the condition, to check it is covered.')
+	out.append('struct CaseConditionalEntry {')
+	out.append('\tCaseFullString source;')
+	out.append('\tCaseFullString lower;')
+	out.append('\tCaseFullString title;')
+	out.append('\tCaseFullString upper;')
+	out.append('\tCaseFullString condition;')
+	out.append('};')
+	out.append('')
+	out.append('static constexpr CaseConditionalEntry s_caseConditional[] = {')
+	for src, lo, ti, up, cond in conditional:
+		out.append('\t{{%s}, {%s}, {%s}, {%s}, {%s}},'
+				% (cpp_string(src), cpp_string(lo), cpp_string(ti), cpp_string(up),
+						cpp_string(cond)))
+	out.append('};')
+	out.append('')
 	out.append('} // namespace sprt')
 
 	os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
 	with open(args.output, 'w', encoding='utf-8') as f:
 		f.write('\n'.join(out) + '\n')
-	print('wrote %s: Unicode %d.%d.%d, %d simple, %d full, %d conditional dropped'
-			% ((args.output,) + version + (len(simple), len(full), conditional)))
+	print('wrote %s: Unicode %d.%d.%d, %d simple, %d full, %d conditional'
+			% ((args.output,) + version + (len(simple), len(full), len(conditional))))
 	return 0
 
 

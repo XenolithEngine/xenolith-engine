@@ -1045,6 +1045,24 @@ SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView);
 
+// Case mapping for a specific language. `locale` is a language identifier such
+// as "tr", "tr-TR" or "TUR": only the language subtag is read, in either case
+// and in either the 2- or 3-letter form, and everything from the first '-' or
+// '_' on is ignored. Six languages case differently from the root locale -
+// tr/az (dotted and dotless I), lt (a lowercase i keeps its dot under an
+// accent), el (uppercasing drops the tonos), nl (the IJ digraph, titlecase
+// only) and hy (the ech-yiwn ligature); every other identifier, including an
+// empty one, means root.
+//
+// The overloads above are the root locale, which is the deterministic choice:
+// the result does not depend on the machine the code runs on. Pass a locale
+// explicitly when the text is known to be in one of those six languages.
+SPRT_API bool toupper(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool tolower(const callback<void(StringView)> &, StringView, StringView locale);
+
+SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+
 SPRT_API bool compare(StringView l, StringView r, int *result);
 SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
 

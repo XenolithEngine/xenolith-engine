@@ -23,14 +23,14 @@
 // The case-mapping compile unit: the Unicode case properties and the public
 // sprt::unicode case functions built on them.
 //
-// Until this unit existed there were seven implementations of these three
-// functions - libunistring or ICU via dlopen on linux, NDK ICU plus a JNI
-// fallback on android, CoreFoundation on darwin, LCMapStringEx on windows, calls
-// into the JS host on wasm, and ASCII-only stubs on nuttx and embox - which
-// disagreed with each other and with Unicode, and which made the result depend on
-// what happened to be installed on the machine. This one is a pure function of a
-// table compiled into the binary, so every target answers identically and no
-// target needs a library at all.
+// Until this unit existed there were seven implementations of these functions -
+// libunistring or ICU via dlopen on linux, NDK ICU plus a JNI fallback on
+// android, CoreFoundation on darwin, LCMapStringEx on windows, calls into the JS
+// host on wasm, and ASCII-only stubs on nuttx and embox - which disagreed with
+// each other and with Unicode, and which made the result depend on what happened
+// to be installed on the machine. This one is a pure function of a table compiled
+// into the binary, so every target answers identically and no target needs a
+// library at all.
 //
 // Everything is in one translation unit on purpose, for the same reason as the
 // IDN unit next door: the generated table (data/) is parsed into a `constexpr`
@@ -38,19 +38,26 @@
 // same TU. The engine therefore has no run-time initialization - no lazy statics,
 // no allocation, no error path for the data.
 //
-// Scope: the simple 1:1 mappings only. The 1:N mappings (ss for sharp s, the
-// Turkish and Lithuanian rules, final sigma) need the surrounding text and a
-// locale, and arrive with the string overloads - which are still platform code.
+// Scope: lowercasing and uppercasing, for single code points and for strings,
+// with or without a locale. `totitle` for strings is NOT here - real titlecasing
+// needs word boundaries (UAX #29), which is its own body of data and code, so it
+// is still platform code. Neither is collation: `compare` and `caseCompare` are
+// language-dependent ordering, which these tables cannot express.
 // See docs/design/unicode-case-port-plan.adoc.
 
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/stringview.h>
+#include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_string.h>
 
 #include "private/SPRTUnicodeTrie.h"
 
 #include "data/SPRuntimeUnicodeCaseData.cc"
 
 #include "case_props.cc"
+#include "case_full.cc"
+#include "case_string.cc"
+#include "case_utf8.cc"
 
 namespace sprt::unicode {
 
@@ -59,5 +66,133 @@ char32_t tolower(char32_t c) { return detail::toLowerSimple(c); }
 char32_t toupper(char32_t c) { return detail::toUpperSimple(c); }
 
 char32_t totitle(char32_t c) { return detail::toTitleSimple(c); }
+
+namespace detail {
+
+// caseLocaleOf() parses a NUL-terminated id, as ICU's does; a StringView is not
+// one. Language subtags are at most 3 characters and everything after the first
+// separator is ignored, so a small fixed buffer loses nothing.
+static CaseLocale caseLocaleFor(StringView locale) {
+	char buf[16];
+	size_t n = locale.size() < sizeof(buf) - 1 ? locale.size() : sizeof(buf) - 1;
+	for (size_t i = 0; i < n; ++i) { buf[i] = locale[i]; }
+	buf[n] = 0;
+	return caseLocaleOf(buf);
+}
+
+// The runtime idiom around the mappers' preflight contract: measure with a zero
+// capacity, allocate, map, hand the result to the callback, free. `fn` is called
+// twice and must be deterministic, which it is - it reads only the tables and
+// the input.
+//
+// The callback fires exactly once on success, including for empty input, and not
+// at all on failure.
+template <typename Fn>
+static bool mapUtf16(const callback<void(WideStringView)> &cb, WideStringView data, Fn &&fn) {
+	if (data.size() > size_t(Max<int32_t>)) {
+		return false;
+	}
+	auto srcLength = int32_t(data.size());
+	auto length = fn(static_cast<char16_t *>(nullptr), 0, data.data(), srcLength);
+	if (length < 0) {
+		return false;
+	}
+
+	auto buf = __sprt_typed_malloca(char16_t, size_t(length) + 1);
+	if (!buf) {
+		return false;
+	}
+	auto written = fn(buf, length, data.data(), srcLength);
+	if (written != length) {
+		// The two passes disagreed, which can only mean a bug in the mapper; do
+		// not hand the caller a half-written buffer.
+		__sprt_freea(buf);
+		return false;
+	}
+	buf[length] = 0;
+
+	cb(WideStringView(buf, size_t(length)));
+	__sprt_freea(buf);
+	return true;
+}
+
+// The same, for UTF-8. Text is UTF-8 nearly everywhere it enters this codebase,
+// so this path does not go through UTF-16 - see case_utf8.cc.
+template <typename Fn>
+static bool mapUtf8(const callback<void(StringView)> &cb, StringView data, Fn &&fn) {
+	if (data.size() > size_t(Max<int32_t>)) {
+		return false;
+	}
+	auto srcLength = int32_t(data.size());
+	auto length = fn(static_cast<char *>(nullptr), 0, data.data(), srcLength);
+	if (length < 0) {
+		return false;
+	}
+
+	auto buf = __sprt_typed_malloca(char, size_t(length) + 1);
+	if (!buf) {
+		return false;
+	}
+	auto written = fn(buf, length, data.data(), srcLength);
+	if (written != length) {
+		__sprt_freea(buf);
+		return false;
+	}
+	buf[length] = 0;
+
+	cb(StringView(buf, size_t(length)));
+	__sprt_freea(buf);
+	return true;
+}
+
+} // namespace detail
+
+bool tolower(const callback<void(WideStringView)> &cb, WideStringView data, StringView locale) {
+	auto loc = detail::caseLocaleFor(locale);
+	return detail::mapUtf16(cb, data,
+			[loc](char16_t *dest, int32_t capacity, const char16_t *src, int32_t length) {
+		return detail::mapToLowerUtf16(loc, dest, capacity, src, length);
+	});
+}
+
+bool toupper(const callback<void(WideStringView)> &cb, WideStringView data, StringView locale) {
+	auto loc = detail::caseLocaleFor(locale);
+	return detail::mapUtf16(cb, data,
+			[loc](char16_t *dest, int32_t capacity, const char16_t *src, int32_t length) {
+		return detail::mapToUpperUtf16(loc, dest, capacity, src, length);
+	});
+}
+
+bool tolower(const callback<void(StringView)> &cb, StringView data, StringView locale) {
+	auto loc = detail::caseLocaleFor(locale);
+	return detail::mapUtf8(cb, data,
+			[loc](char *dest, int32_t capacity, const char *src, int32_t length) {
+		return detail::mapToLowerUtf8(loc, dest, capacity, src, length);
+	});
+}
+
+bool toupper(const callback<void(StringView)> &cb, StringView data, StringView locale) {
+	auto loc = detail::caseLocaleFor(locale);
+	return detail::mapUtf8(cb, data,
+			[loc](char *dest, int32_t capacity, const char *src, int32_t length) {
+		return detail::mapToUpperUtf8(loc, dest, capacity, src, length);
+	});
+}
+
+bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
+	return tolower(cb, data, StringView());
+}
+
+bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
+	return toupper(cb, data, StringView());
+}
+
+bool tolower(const callback<void(StringView)> &cb, StringView data) {
+	return tolower(cb, data, StringView());
+}
+
+bool toupper(const callback<void(StringView)> &cb, StringView data) {
+	return toupper(cb, data, StringView());
+}
 
 } // namespace sprt::unicode

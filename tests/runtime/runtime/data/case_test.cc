@@ -25,9 +25,10 @@
 //
 // GENERATED FILE - do not edit. Produced by tests/runtime/tools/gen_case_test.py
 // from the Unicode Character Database (UnicodeData.txt, SpecialCasing.txt).
-// Unicode 17.0.0: 2989 simple mappings, 103 unconditional full mappings.
-// 16 conditional SpecialCasing rows dropped - they need a locale and
-// surrounding context, which the current sprt::unicode:: API does not take.
+// Unicode 17.0.0: 2989 simple mappings, 103 unconditional full mappings,
+// 16 conditional ones. The conditional rows are listed rather than checked
+// directly: each needs a purpose-built input string, written by hand in
+// unicode.cpp, and this table is what makes sure none of them is forgotten.
 
 ///@ SP_EXCLUDE
 
@@ -36,7 +37,6 @@
 namespace sprt {
 
 static constexpr uint8_t s_caseUcdVersion[3] = {17, 0, 0};
-static constexpr int s_caseConditionalSkipped = 16;
 
 // UnicodeData.txt columns 12/13/14. Only code points that map somewhere.
 struct CaseSimpleEntry {
@@ -3159,6 +3159,36 @@ static constexpr CaseFullEntry s_caseFull[] = {
 	{{"\xe1""\xbe""\xb7""", 3}, {"\xe1""\xbe""\xb7""", 3}, {"\xce""\x91""\xcd""\x82""\xcd""\x85""", 6}, {"\xce""\x91""\xcd""\x82""\xce""\x99""", 6}},
 	{{"\xe1""\xbf""\x87""", 3}, {"\xe1""\xbf""\x87""", 3}, {"\xce""\x97""\xcd""\x82""\xcd""\x85""", 6}, {"\xce""\x97""\xcd""\x82""\xce""\x99""", 6}},
 	{{"\xe1""\xbf""\xb7""", 3}, {"\xe1""\xbf""\xb7""", 3}, {"\xce""\xa9""\xcd""\x82""\xcd""\x85""", 6}, {"\xce""\xa9""\xcd""\x82""\xce""\x99""", 6}},
+};
+
+// SpecialCasing.txt, conditional rows. `condition` is the file's own 5th
+// column: a language id, a context rule, or both. The mappings are here for
+// reference; what the test uses is the condition, to check it is covered.
+struct CaseConditionalEntry {
+	CaseFullString source;
+	CaseFullString lower;
+	CaseFullString title;
+	CaseFullString upper;
+	CaseFullString condition;
+};
+
+static constexpr CaseConditionalEntry s_caseConditional[] = {
+	{{"\xce""\xa3""", 2}, {"\xcf""\x82""", 2}, {"\xce""\xa3""", 2}, {"\xce""\xa3""", 2}, {"Final_Sigma", 11}},
+	{{"\xcc""\x87""", 2}, {"\xcc""\x87""", 2}, {"", 0}, {"", 0}, {"lt After_Soft_Dotted", 20}},
+	{{"I", 1}, {"i\xcc""\x87""", 3}, {"I", 1}, {"I", 1}, {"lt More_Above", 13}},
+	{{"J", 1}, {"j\xcc""\x87""", 3}, {"J", 1}, {"J", 1}, {"lt More_Above", 13}},
+	{{"\xc4""\xae""", 2}, {"\xc4""\xaf""\xcc""\x87""", 4}, {"\xc4""\xae""", 2}, {"\xc4""\xae""", 2}, {"lt More_Above", 13}},
+	{{"\xc3""\x8c""", 2}, {"i\xcc""\x87""\xcc""\x80""", 5}, {"\xc3""\x8c""", 2}, {"\xc3""\x8c""", 2}, {"lt", 2}},
+	{{"\xc3""\x8d""", 2}, {"i\xcc""\x87""\xcc""\x81""", 5}, {"\xc3""\x8d""", 2}, {"\xc3""\x8d""", 2}, {"lt", 2}},
+	{{"\xc4""\xa8""", 2}, {"i\xcc""\x87""\xcc""\x83""", 5}, {"\xc4""\xa8""", 2}, {"\xc4""\xa8""", 2}, {"lt", 2}},
+	{{"\xc4""\xb0""", 2}, {"i", 1}, {"\xc4""\xb0""", 2}, {"\xc4""\xb0""", 2}, {"tr", 2}},
+	{{"\xc4""\xb0""", 2}, {"i", 1}, {"\xc4""\xb0""", 2}, {"\xc4""\xb0""", 2}, {"az", 2}},
+	{{"\xcc""\x87""", 2}, {"", 0}, {"\xcc""\x87""", 2}, {"\xcc""\x87""", 2}, {"tr After_I", 10}},
+	{{"\xcc""\x87""", 2}, {"", 0}, {"\xcc""\x87""", 2}, {"\xcc""\x87""", 2}, {"az After_I", 10}},
+	{{"I", 1}, {"\xc4""\xb1""", 2}, {"I", 1}, {"I", 1}, {"tr Not_Before_Dot", 17}},
+	{{"I", 1}, {"\xc4""\xb1""", 2}, {"I", 1}, {"I", 1}, {"az Not_Before_Dot", 17}},
+	{{"i", 1}, {"i", 1}, {"\xc4""\xb0""", 2}, {"\xc4""\xb0""", 2}, {"tr", 2}},
+	{{"i", 1}, {"i", 1}, {"\xc4""\xb0""", 2}, {"\xc4""\xb0""", 2}, {"az", 2}},
 };
 
 } // namespace sprt

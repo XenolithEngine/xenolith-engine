@@ -3,13 +3,15 @@
 // memory. Callers supply the sinks that differ per context (console, thread spawn, bundle).
 
 // ---- Unicode helpers backing the sprt::unicode wasm backend -----------------------------
-// The wasm runtime ships no case-mapping or collation tables, so those are delegated here,
-// where the standard String/Intl APIs provide full Unicode support.
+// What is still delegated here is what the runtime does not implement itself: titlecasing,
+// which needs word boundaries, and collation, which is language-dependent ordering. The
+// standard String/Intl APIs provide both.
 //
-// IDNA is NOT among them: the runtime carries its own UTS-46 engine (runtime/src/idn), so
-// every target gives the same answer and a host that provides no IDNA is no longer a
-// runtime without IDNA. Operations 3 and 4 of unicode_transform are therefore retired -
-// the numbering of the surviving ones is part of the ABI and does not shift.
+// Everything else has moved into the runtime, so that every target gives the same answer
+// and a host that provides none of this is no longer a runtime without it: IDNA via the
+// UTS-46 engine (runtime/src/idn), and lowercasing/uppercasing via the compiled-in case
+// tables (runtime/src/unicode). Operations 0, 1, 3 and 4 of unicode_transform are therefore
+// retired - the numbering of the surviving one is part of the ABI and does not shift.
 
 function titleCase(s) {
 	let out = "", prevLetter = false;
@@ -20,13 +22,11 @@ function titleCase(s) {
 	}
 	return out;
 }
-// op: 0 lower, 1 upper, 2 title. (3 and 4 were IDNA, now done in the runtime.)
+// op: 2 title. (0 lower and 1 upper are now done in the runtime, as are 3 and 4, IDNA.)
 // Returns null on error.
 function unicodeTransform(op, s) {
 	try {
 		switch (op) {
-		case 0: return s.toLowerCase();
-		case 1: return s.toUpperCase();
 		case 2: return titleCase(s);
 		default: return null;
 		}
