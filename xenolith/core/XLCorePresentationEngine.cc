@@ -872,6 +872,14 @@ Status PresentationEngine::acquireScheduledImage() {
 		return Status::Declined;
 	}
 
+	// EndOfLife/resetFrames can null _swapchain while this acquire is entering - the same race
+	// runScheduledPresent() and presentSwapchainImage() guard against. vkAcquireNextImageKHR on
+	// a swapchain whose Metal drawables are being released crashes inside CAMetalDrawable (seen
+	// in .ips reports: didPresentAtTime -> objc_msgSend, SIGSEGV on macOS/MoltenVK).
+	if (!_running || !_swapchain || !_loop->isRunning()) {
+		XL_COREPRESENT_LOG("acquireScheduledImage - declined: engine is winding down");
+		return Status::Declined;
+	}
 
 	XL_COREPRESENT_LOG("acquireScheduledImage");
 	auto loop = (Loop *)_loop.get();
