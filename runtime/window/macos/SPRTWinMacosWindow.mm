@@ -174,14 +174,31 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		style = NSWindowStyleMaskBorderless
 				| (panel ? NSWindowStyleMaskNonactivatingPanel : NSWindowStyleMask(0));
 	} else if (utility) {
-		// The narrow palette title bar. The rest of what makes a palette - floats above its
-		// parent, never becomes main, moves with the parent - comes from the window level,
-		// configureRole: and addChildWindow: below.
-		style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
-				| (panel ? NSWindowStyleMaskUtilityWindow : NSWindowStyleMask(0))
-				| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
-								? NSWindowStyleMaskResizable
-								: 0);
+		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+			// A palette that draws its own frame is borderless like any other user-space-
+			// decorations window: the custom frame replaces the narrow native title bar the
+			// same way it replaces the full one on a regular window (the branch below).
+			// Forcing NSWindowStyleMaskTitled here is what drew two headers on the settings
+			// form - the native palette bar on top of the application's own frame.
+			style = NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskClosable
+					| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
+									? NSWindowStyleMaskResizable
+									: 0);
+
+			updateState(0,
+					WindowState::AllowedClose | WindowState::AllowedMinimize
+							| WindowState::AllowedMaximizeHorz | WindowState::AllowedMaximizeVert
+							| WindowState::AllowedMove | WindowState::AllowedFullscreen);
+		} else {
+			// The narrow palette title bar. The rest of what makes a palette - floats above its
+			// parent, never becomes main, moves with the parent - comes from the window level,
+			// configureRole: and addChildWindow: below.
+			style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+					| (panel ? NSWindowStyleMaskUtilityWindow : 0)
+					| (hasFlag(_info->flags, WindowCreationFlags::AllowResize)
+									? NSWindowStyleMaskResizable
+									: 0);
+		}
 	} else if (dialog) {
 		// A full-width title bar, unlike the palette above: a dialog is something the user is
 		// working in, not a tool shelf. Being a panel is what keeps it out of the window menu.
