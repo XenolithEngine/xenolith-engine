@@ -23,8 +23,10 @@
 
     ./gen_idna_test.py [IdnaTestV2.txt] [-o <out.cc>]
 
-The default input is the copy in the libuidna reference checkout that
-runtime/toolchains/src.mk clones; the default output is
+The default input is the copy in the icu4c checkout that
+runtime/toolchains/src.mk clones - the same tree runtime/src/idn/data/gen-tables.py
+builds the engine's tables from, so the suite and the tables cannot drift to
+different Unicode versions; the default output is
 tests/runtime/runtime/data/idna_test_v2.cc.
 
 Why generated C++ rather than a data file read at run time: tests/runtime has no
@@ -86,7 +88,20 @@ def cpp_string(s):
 def expects_error(field):
 	"""True when the status column marks the operation as expected to fail."""
 	field = field.strip()
-	return bool(field) and field != '[]' 
+	return bool(field) and field != '[]'
+
+
+def is_root_label_only(field):
+	"""True when the status column is exactly [A4_2] - the empty root label rule.
+
+	Since the 2025 revision the file marks a trailing dot (the empty root label) as an
+	A4_2 VerifyDnsLength error; there are 712 such rows where the 2021 file had 10.
+	ICU does not report it, and neither does this engine, so ICU's own driver clears
+	the expectation for exactly this case (uts46test.cpp checkIdnaTestResult, "ICU
+	workaround", ICU-22882). The condition also needs the actual result, which only
+	the C++ side has, so the flag is carried per row and applied there.
+	"""
+	return field.strip() == '[A4_2]'
 
 
 def main():
@@ -94,7 +109,8 @@ def main():
 	root = os.path.abspath(os.path.join(here, '..', '..', '..'))
 	ap = argparse.ArgumentParser(description=__doc__)
 	ap.add_argument('input', nargs='?',
-			default=os.path.join(root, 'runtime/toolchains/src/libuidna/data/IdnaTestV2.txt'))
+			default=os.path.join(root,
+					'runtime/toolchains/src/icu4c/source/test/testdata/IdnaTestV2.txt'))
 	ap.add_argument('-o', '--output',
 			default=os.path.join(here, '..', 'runtime', 'data', 'idna_test_v2.cc'))
 	args = ap.parse_args()
@@ -127,7 +143,12 @@ def main():
 		st_u = expects_error(cols[2])
 		st_n = expects_error(cols[4]) if cols[4].strip() else st_u
 		st_t = expects_error(cols[6]) if cols[6].strip() else st_n
-		rows.append((source, to_unicode, st_u, to_ascii_n, st_n, to_ascii_t, st_t))
+		# A blank toAsciiT status means "same as toAsciiN", which for the empty-root
+		# rule means the same status string, not just the same boolean.
+		root_n = is_root_label_only(cols[4])
+		root_t = is_root_label_only(cols[6]) if cols[6].strip() else root_n
+		rows.append((source, to_unicode, st_u, to_ascii_n, st_n, root_n,
+				to_ascii_t, st_t, root_t))
 
 	out = []
 	out.append('''/**
@@ -167,12 +188,14 @@ def main():
 	out.append('namespace sprt {')
 	out.append('')
 
+	def flag(v):
+		return 'true' if v else 'false'
+
 	entries = []
-	for source, tu, su, tan, sn, tat, st in rows:
-		entries.append('\t{{%s}, {%s}, {%s}, {%s}, %s, %s, %s},'
+	for source, tu, su, tan, sn, rn, tat, st, rt in rows:
+		entries.append('\t{{%s}, {%s}, {%s}, {%s}, %s, %s, %s, %s, %s},'
 				% (cpp_string(source), cpp_string(tu), cpp_string(tan), cpp_string(tat),
-						'true' if su else 'false', 'true' if sn else 'false',
-						'true' if st else 'false'))
+						flag(su), flag(sn), flag(st), flag(rn), flag(rt)))
 
 	out.append('struct IdnaTestString {')
 	out.append('\tconst char *data;')
@@ -191,6 +214,10 @@ def main():
 	out.append('\tbool unicodeFails;')
 	out.append('\tbool asciiNFails;')
 	out.append('\tbool asciiTFails;')
+	out.append('\t// Status was exactly [A4_2]: the only expected error is the empty root')
+	out.append('\t// label, which neither ICU nor this engine reports. See the generator.')
+	out.append('\tbool asciiNRootLabelOnly;')
+	out.append('\tbool asciiTRootLabelOnly;')
 	out.append('};')
 	out.append('')
 	out.append('static constexpr IdnaTestCase s_idnaTestCases[] = {')

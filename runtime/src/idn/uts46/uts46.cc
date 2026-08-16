@@ -201,12 +201,6 @@ static bool isAsciiString(const Utf16Buffer &dest) {
 	return true;
 }
 
-// Some non-ASCII characters are equivalent to sequences containing non-LDH ASCII.
-// To find them: grep disallowed_STD3_valid IdnaMappingTable.txt
-static bool isNonAsciiDisallowedStd3Valid(char32_t c) {
-	return c == 0x2260 || c == 0x226E || c == 0x226F;
-}
-
 // --- the Bidi Rule (RFC 5893) ------------------------------------------------
 
 static constexpr uint32_t L_MASK = bidiMask(BidiClass::LeftToRight);
@@ -676,10 +670,11 @@ static bool processLabel(Utf16Buffer &dest, int32_t labelStart, int32_t labelLen
 			}
 		} else {
 			oredChars = char16_t(oredChars | c);
-			if (disallowNonLDHDot && isNonAsciiDisallowedStd3Valid(c)) {
-				info.labelErrors |= ErrDisallowed;
-				*s = 0xFFFD;
-			} else if (c == 0xFFFD) {
+			// U+2260, U+226E and U+226F used to be special-cased here as
+			// disallowed_STD3_valid (they are equivalent to sequences containing
+			// non-LDH ASCII). They no longer are, and ICU dropped the check with
+			// them: uts46.cpp has no isNonASCIIDisallowedSTD3Valid since ICU 78.
+			if (c == 0xFFFD) {
 				info.labelErrors |= ErrDisallowed;
 			}
 		}

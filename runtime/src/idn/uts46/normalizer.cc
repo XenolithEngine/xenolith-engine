@@ -109,7 +109,7 @@ public:
 	uint16_t getRawNorm16(char32_t c) const { return s_normTrie.get(c); }
 
 	bool isAlgorithmicNoNo(uint16_t norm16) const {
-		return s_normLimitNoNo <= norm16 && norm16 < s_normMinMaybeYes;
+		return s_normLimitNoNo <= norm16 && norm16 < s_normMinMaybeNo;
 	}
 	bool isDecompYes(uint16_t norm16) const {
 		return norm16 < s_normMinYesNo || s_normMinMaybeYes <= norm16;
@@ -128,14 +128,14 @@ public:
 	static uint8_t getCCFromNormalYesOrMaybe(uint16_t norm16) {
 		return uint8_t(norm16 >> OffsetShift);
 	}
-	static uint8_t getCCFromYesOrMaybe(uint16_t norm16) {
+	static uint8_t getCCFromYesOrMaybeYes(uint16_t norm16) {
 		return norm16 >= MinNormalMaybeYes ? getCCFromNormalYesOrMaybe(norm16) : 0;
 	}
-	uint8_t getCCFromYesOrMaybeCP(char32_t c) const {
+	uint8_t getCCFromYesOrMaybeYesCP(char32_t c) const {
 		if (c < s_normMinCompNoMaybeCp) {
 			return 0;
 		}
-		return getCCFromYesOrMaybe(getNorm16(c));
+		return getCCFromYesOrMaybeYes(getNorm16(c));
 	}
 
 	// lccc(c) in bits 15..8, tccc(c) in bits 7..0.
@@ -178,18 +178,22 @@ public:
 private:
 	friend class ReorderingBuffer;
 
-	bool isMaybe(uint16_t norm16) const { return s_normMinMaybeYes <= norm16 && norm16 <= JamoVt; }
-	bool isMaybeOrNonZeroCC(uint16_t norm16) const { return norm16 >= s_normMinMaybeYes; }
+	bool isMaybe(uint16_t norm16) const { return s_normMinMaybeNo <= norm16 && norm16 <= JamoVt; }
+	bool isMaybeYesOrNonZeroCC(uint16_t norm16) const { return norm16 >= s_normMinMaybeYes; }
 	static bool isInert(uint16_t norm16) { return norm16 == Inert; }
 	static bool isJamoVT(uint16_t norm16) { return norm16 == JamoVt; }
 	uint16_t hangulLVT() const { return s_normMinYesNoMappingsOnly | HasCompBoundaryAfter; }
 	bool isHangulLV(uint16_t norm16) const { return norm16 == s_normMinYesNo; }
 	bool isHangulLVT(uint16_t norm16) const { return norm16 == hangulLVT(); }
 	bool isCompYesAndZeroCC(uint16_t norm16) const { return norm16 < s_normMinNoNo; }
-	bool isDecompNoAlgorithmic(uint16_t norm16) const { return norm16 >= s_normLimitNoNo; }
+	// Since formatVersion 5: same as isAlgorithmicNoNo(). The maybeNo range sits
+	// above limitNoNo, so the upper bound is no longer implicit.
+	bool isDecompNoAlgorithmic(uint16_t norm16) const {
+		return s_normLimitNoNo <= norm16 && norm16 < s_normMinMaybeNo;
+	}
 
 	uint8_t getCCFromNoNo(uint16_t norm16) const {
-		const uint16_t *mapping = getMapping(norm16);
+		const uint16_t *mapping = getDataForYesOrNo(norm16);
 		if (*mapping & MappingHasCccLcccWord) {
 			return uint8_t(*(mapping - 1));
 		} else {
@@ -203,36 +207,46 @@ private:
 	}
 
 	// The ICU init() computed this once into a member; with constant data it is a
-	// constant expression. (minMaybeYes >> DELTA_SHIFT) - MAX_DELTA - 1.
+	// constant expression. (minMaybeNo >> DELTA_SHIFT) - MAX_DELTA - 1.
 	static constexpr uint16_t centerNoNoDelta() {
-		return uint16_t((s_normMinMaybeYes >> DeltaShift) - MaxDelta - 1);
+		return uint16_t((s_normMinMaybeNo >> DeltaShift) - MaxDelta - 1);
 	}
+
+	// Since formatVersion 5 the maybeNo/maybeYes entries live in the same extra
+	// data as the yesNo/noNo ones, but their norm16 values are above the yes/no
+	// range: they are folded back down by (norm16 - minMaybeNo + limitNoNo) before
+	// being used as an offset. Which of the three accessors applies is a property
+	// of the call site, so they stay separate rather than always dispatching.
 
 	// Requires minYesNo < norm16 < limitNoNo.
-	const uint16_t *getMapping(uint16_t norm16) const {
-		return extraData() + (norm16 >> OffsetShift);
+	static constexpr const uint16_t *getDataForYesOrNo(uint16_t norm16) {
+		return s_normExtraData + (norm16 >> OffsetShift);
 	}
 
-	// ICU's init(): extraData = maybeYesCompositions
-	//                         + ((MIN_NORMAL_MAYBE_YES - minMaybeYes) >> OFFSET_SHIFT)
-	static constexpr const uint16_t *maybeYesCompositions() { return s_normExtraData; }
-	static constexpr const uint16_t *extraData() {
-		return s_normExtraData + ((MinNormalMaybeYes - s_normMinMaybeYes) >> OffsetShift);
+	// Requires minMaybeNo <= norm16 < minMaybeYes.
+	static constexpr const uint16_t *getDataForMaybe(uint16_t norm16) {
+		return s_normExtraData + ((norm16 - s_normMinMaybeNo + s_normLimitNoNo) >> OffsetShift);
+	}
+
+	static constexpr const uint16_t *getData(uint16_t norm16) {
+		if (norm16 >= s_normMinMaybeNo) {
+			norm16 = uint16_t(norm16 - s_normMinMaybeNo + s_normLimitNoNo);
+		}
+		return s_normExtraData + (norm16 >> OffsetShift);
 	}
 
 	const uint16_t *getCompositionsListForDecompYes(uint16_t norm16) const {
 		if (norm16 < JamoL || MinNormalMaybeYes <= norm16) {
 			return nullptr;
-		} else if (norm16 < s_normMinMaybeYes) {
-			return getMapping(norm16); // for yesYes; a Jamo L gets a harmless empty list
 		} else {
-			return maybeYesCompositions() + norm16 - s_normMinMaybeYes;
+			// for yesYes; a Jamo L gets a harmless empty list
+			return getData(norm16);
 		}
 	}
 
 	const uint16_t *getCompositionsListForComposite(uint16_t norm16) const {
 		// A composite has both a mapping and a compositions list.
-		const uint16_t *list = getMapping(norm16);
+		const uint16_t *list = getData(norm16);
 		return list + 1 // skip the first unit, which holds the mapping length
 				+ (*list & MappingLengthMask);
 	}
@@ -266,7 +280,7 @@ private:
 		return isInert(norm16)
 				? true
 				: (isDecompNoAlgorithmic(norm16) ? (norm16 & DeltaTcccMask) <= DeltaTccc1
-												 : *getMapping(norm16) <= 0x1FF);
+												 : *getDataForYesOrNo(norm16) <= 0x1FF);
 	}
 
 	const char16_t *findPreviousCompBoundary(const char16_t *start, const char16_t *p,
@@ -365,7 +379,7 @@ uint8_t ReorderingBuffer::previousCC() {
 		--codePointStart;
 		c = unicode::utf16CombineSurrogates(*codePointStart, char16_t(c));
 	}
-	return impl.getCCFromYesOrMaybeCP(c);
+	return impl.getCCFromYesOrMaybeYesCP(c);
 }
 
 bool ReorderingBuffer::appendSupplementary(char32_t c, uint8_t cc) {
@@ -416,7 +430,7 @@ bool ReorderingBuffer::append(const char16_t *s, int32_t length, bool isNfd, uin
 			i += offset;
 			if (i < length) {
 				if (isNfd) {
-					leadCC = Normalizer2Impl::getCCFromYesOrMaybe(impl.getRawNorm16(c));
+					leadCC = Normalizer2Impl::getCCFromYesOrMaybeYes(impl.getRawNorm16(c));
 				} else {
 					leadCC = impl.getCC(impl.getNorm16(c));
 				}
@@ -535,7 +549,7 @@ uint16_t Normalizer2Impl::getFCD16FromNormData(char32_t c) const {
 			return uint16_t(norm16 | (norm16 << 8));
 		} else if (norm16 >= s_normMinMaybeYes) {
 			return 0;
-		} else { // isDecompNoAlgorithmic(norm16)
+		} else if (norm16 < s_normMinMaybeNo) { // isDecompNoAlgorithmic(norm16)
 			uint16_t deltaTrailCC = norm16 & DeltaTcccMask;
 			if (deltaTrailCC <= DeltaTccc1) {
 				return uint16_t(deltaTrailCC >> OffsetShift);
@@ -550,7 +564,7 @@ uint16_t Normalizer2Impl::getFCD16FromNormData(char32_t c) const {
 		return 0;
 	}
 	// c decomposes, get everything from the variable-length extra data
-	const uint16_t *mapping = getMapping(norm16);
+	const uint16_t *mapping = getData(norm16);
 	uint16_t firstUnit = *mapping;
 	norm16 = uint16_t(firstUnit >> 8); // tccc
 	if (firstUnit & MappingHasCccLcccWord) {
@@ -620,12 +634,13 @@ const char16_t *Normalizer2Impl::decomposeShort(const char16_t *src, const char1
 bool Normalizer2Impl::decompose(char32_t c, uint16_t norm16, ReorderingBuffer &buffer) const {
 	// get the decomposition and the lead and trail cc's
 	if (norm16 >= s_normLimitNoNo) {
-		if (isMaybeOrNonZeroCC(norm16)) {
-			return buffer.append(c, getCCFromYesOrMaybe(norm16));
+		if (isMaybeYesOrNonZeroCC(norm16)) {
+			return buffer.append(c, getCCFromYesOrMaybeYes(norm16));
+		} else if (norm16 < s_normMinMaybeNo) {
+			// Maps to an isCompYesAndZeroCC.
+			c = mapAlgorithmic(c, norm16);
+			norm16 = getRawNorm16(c);
 		}
-		// Maps to an isCompYesAndZeroCC.
-		c = mapAlgorithmic(c, norm16);
-		norm16 = getRawNorm16(c);
 	}
 	if (norm16 < s_normMinYesNo) {
 		// c does not decompose
@@ -636,7 +651,7 @@ bool Normalizer2Impl::decompose(char32_t c, uint16_t norm16, ReorderingBuffer &b
 		return buffer.appendZeroCC(jamos, jamos + Hangul::decompose(c, jamos));
 	}
 	// c decomposes, get everything from the variable-length extra data
-	const uint16_t *mapping = getMapping(norm16);
+	const uint16_t *mapping = getData(norm16);
 	uint16_t firstUnit = *mapping;
 	int32_t length = firstUnit & MappingLengthMask;
 	uint8_t trailCC = uint8_t(firstUnit >> 8);
@@ -715,7 +730,7 @@ void Normalizer2Impl::recompose(ReorderingBuffer &buffer, int32_t recomposeStart
 			norm16 = ucpTrieNext(s_normTrie, cp, limit, c);
 			p = const_cast<char16_t *>(cp);
 		}
-		cc = getCCFromYesOrMaybe(norm16);
+		cc = getCCFromYesOrMaybeYes(norm16);
 		if ( // this character combines backward and
 				isMaybe(norm16) &&
 				// we have seen a starter that combines forward and
@@ -895,7 +910,7 @@ bool Normalizer2Impl::compose(const char16_t *src, const char16_t *limit, bool o
 		// Jamo L, because those have "yes" properties.
 
 		// Medium-fast path: cases that need no full decomposition/recomposition.
-		if (!isMaybeOrNonZeroCC(norm16)) { // minNoNo <= norm16 < minMaybeYes
+		if (norm16 < s_normMinMaybeNo) { // minNoNo <= norm16 < minMaybeNo
 			if (!doCompose) {
 				return false;
 			}
@@ -922,7 +937,7 @@ bool Normalizer2Impl::compose(const char16_t *src, const char16_t *limit, bool o
 					if (prevBoundary != prevSrc && !buffer.appendZeroCC(prevBoundary, prevSrc)) {
 						return false;
 					}
-					auto mapping = reinterpret_cast<const char16_t *>(getMapping(norm16));
+					auto mapping = reinterpret_cast<const char16_t *>(getDataForYesOrNo(norm16));
 					int32_t length = *mapping++ & MappingLengthMask;
 					if (!buffer.appendZeroCC(mapping, mapping + length)) {
 						return false;

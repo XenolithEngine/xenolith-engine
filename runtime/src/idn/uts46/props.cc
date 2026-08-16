@@ -150,18 +150,18 @@ enum class ScriptCode : uint16_t {
 	Other = 0xFFFF,
 };
 
-// uprops.h. The script code is split across two bit fields of property vector
-// column 0 (since Unicode 13 / ICU 66), and the high bits have to be shifted down
-// and merged with the low ones before the value means anything.
-static constexpr uint32_t ScriptXMask = 0x00F0'00FF; // UPROPS_SCRIPT_X_MASK
-static constexpr uint32_t ScriptHighMask = 0x0030'0000; // UPROPS_SCRIPT_HIGH_MASK
-static constexpr int ScriptHighShift = 12; // UPROPS_SCRIPT_HIGH_SHIFT
-static constexpr uint32_t ScriptLowMask = 0x0000'00FF; // UPROPS_SCRIPT_LOW_MASK
+// uprops.h. Bits 11..0 of property vector column 0: bits 9..0 are the UScriptCode
+// or an index into Script_Extensions, and bits 11..10 say which. ICU 66..77 split
+// this across two non-adjacent fields that had to be shifted together; ICU 78
+// re-laid the column out so it is one contiguous field again. Reading the old
+// layout out of the new data returns a valid script for the wrong code point.
+static constexpr uint32_t ScriptXMask = 0x0000'0FFF; // UPROPS_SCRIPT_X_MASK
+static constexpr uint32_t MaxScript = 0x3FF; // UPROPS_MAX_SCRIPT
 
 // Values at or above these involve Script_Extensions rather than a plain code.
-static constexpr uint32_t ScriptXWithCommon = 0x40'0000; // UPROPS_SCRIPT_X_WITH_COMMON
-static constexpr uint32_t ScriptXWithInherited = 0x80'0000; // UPROPS_SCRIPT_X_WITH_INHERITED
-static constexpr uint32_t ScriptXWithOther = 0xC0'0000; // UPROPS_SCRIPT_X_WITH_OTHER
+static constexpr uint32_t ScriptXWithCommon = 0x400; // UPROPS_SCRIPT_X_WITH_COMMON
+static constexpr uint32_t ScriptXWithInherited = 0x800; // UPROPS_SCRIPT_X_WITH_INHERITED
+static constexpr uint32_t ScriptXWithOther = 0xC00; // UPROPS_SCRIPT_X_WITH_OTHER
 
 static inline ScriptCode narrowScript(uint32_t code) {
 	switch (code) {
@@ -188,8 +188,7 @@ static inline ScriptCode script(char32_t c) {
 	// `vecIndex * columns + N`.
 	static_assert(s_scriptVectorColumns > 0, "column 0 must exist");
 	uint32_t scriptX = s_scriptVectors[s_scriptTrie.get(c) + 0] & ScriptXMask;
-	uint32_t codeOrIndex =
-			((scriptX & ScriptHighMask) >> ScriptHighShift) | (scriptX & ScriptLowMask);
+	uint32_t codeOrIndex = scriptX & MaxScript;
 	if (scriptX < ScriptXWithCommon) {
 		return narrowScript(codeOrIndex);
 	} else if (scriptX < ScriptXWithInherited) {
