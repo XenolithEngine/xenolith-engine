@@ -42,12 +42,13 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <stdarg.h>
 
-// On NuttX the sprt libc shim stands in for the platform libc at compile time
-// (deps build against sprt include_libc, not the NuttX sysroot — see the NUTTX
-// branch of common/configure.mk), so the priorities/facilities/options surface
-// must be visible there too. The Linux/musl ABI values match NuttX's own
-// <syslog.h>, so the same definitions work for both freestanding targets.
-#if defined(SPRT_WASM) || defined(SPRT_NUTTX)
+// On the RTOS targets the sprt libc shim stands in for the platform libc at
+// compile time (deps build against sprt include_libc, not the RTOS sysroot —
+// see the NUTTX/EMBOX branches of common/configure.mk), so the
+// priorities/facilities/options surface must be visible there too. The
+// Linux/musl ABI values match their own <syslog.h>, so the same definitions
+// work for every freestanding target.
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS)
 
 // clang-format off
 // priorities (highest to lowest)
@@ -112,7 +113,7 @@ void vsyslog(int __priority, const char *__format, va_list __ap);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_NUTTX
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS
 
 #endif
 

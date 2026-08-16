@@ -84,7 +84,7 @@ inline namespace _cstdlib {
 // NuttX <stdlib.h> defines several *_l and srandom as macros that would
 // re-write the sprt umbrella prototypes below after preprocessing (causing
 // redefinition errors). Drop them before pulling stdlib_impl.h.
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 #undef srandom
 #undef strtold_l
 #undef strtoll_l

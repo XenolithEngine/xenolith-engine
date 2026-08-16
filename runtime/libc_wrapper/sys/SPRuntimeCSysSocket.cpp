@@ -200,6 +200,7 @@ static_assert(__builtin_offsetof(struct __SPRT_ID(sockaddr), sa_data)
 static_assert(sizeof(__SPRT_ID(socklen_t)) == sizeof(::socklen_t),
 		"socklen_t size differs from native");
 
+#if !SPRT_EMBOX
 static_assert(sizeof(struct __SPRT_ID(msghdr)) == sizeof(struct ::msghdr),
 		"msghdr size differs from native");
 static_assert(__builtin_offsetof(struct __SPRT_ID(msghdr), msg_name)
@@ -227,6 +228,7 @@ static_assert(__builtin_offsetof(struct __SPRT_ID(cmsghdr), cmsg_len)
 				&& __builtin_offsetof(struct __SPRT_ID(cmsghdr), cmsg_type)
 						== __builtin_offsetof(struct ::cmsghdr, cmsg_type),
 		"cmsghdr layout differs from native");
+#endif // !SPRT_EMBOX
 
 // Address structures (cross/<platform>/socket.h) vs native <netinet/in.h>: size + the
 // field offsets the wrapper / callers actually poke through a `struct sockaddr *` cast.
@@ -265,8 +267,10 @@ static_assert(__SPRT_SOCK_STREAM == SOCK_STREAM && __SPRT_SOCK_DGRAM == SOCK_DGR
 				&& __SPRT_SOCK_RAW == SOCK_RAW && __SPRT_SOCK_SEQPACKET == SOCK_SEQPACKET,
 		"SOCK_* type constants differ from native");
 
+#if !SPRT_EMBOX || defined(SOCK_CLOEXEC) // Embox has no SOCK_CLOEXEC, SOCK_NONBLOCK
 static_assert(__SPRT_SOCK_CLOEXEC == SOCK_CLOEXEC && __SPRT_SOCK_NONBLOCK == SOCK_NONBLOCK,
 		"SOCK_CLOEXEC/NONBLOCK differ from native");
+#endif
 
 static_assert(__SPRT_AF_UNSPEC == AF_UNSPEC && __SPRT_AF_UNIX == AF_UNIX
 				&& __SPRT_AF_INET == AF_INET && __SPRT_AF_INET6 == AF_INET6,
@@ -279,7 +283,7 @@ static_assert(__SPRT_SO_REUSEADDR == SO_REUSEADDR && __SPRT_SO_TYPE == SO_TYPE
 				&& __SPRT_SO_OOBINLINE == SO_OOBINLINE && __SPRT_SO_LINGER == SO_LINGER,
 		"SO_* differ from native");
 
-#if !SPRT_NUTTX || defined(SO_REUSEPORT) // NuttX has no SO_REUSEPORT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_REUSEPORT) // NuttX/Embox have no SO_REUSEPORT
 static_assert(__SPRT_SO_REUSEPORT == SO_REUSEPORT, "SO_REUSEPORT differs from native");
 #endif
 
@@ -300,7 +304,9 @@ static_assert(__SPRT_MSG_NOSIGNAL == MSG_NOSIGNAL, "MSG_NOSIGNAL differs from na
 // advice, and the kernel clamps to net.core.somaxconn - so the table keeps the value that
 // is valid on all of them and the comparison is skipped for glibc alone.
 #ifndef __GLIBC__
+#if !SPRT_EMBOX || defined(SOMAXCONN) // Embox has no SOMAXCONN
 static_assert(__SPRT_SOMAXCONN == SOMAXCONN, "SOMAXCONN differs from native");
+#endif
 #endif
 
 static_assert(__SPRT_SOCK_RDM == SOCK_RDM, "SOCK_RDM/DCCP/PACKET differ from native");
@@ -311,27 +317,31 @@ static_assert(__SPRT_PF_UNSPEC == PF_UNSPEC && __SPRT_PF_LOCAL == PF_LOCAL
 				&& __SPRT_PF_INET6 == PF_INET6,
 		"PF_* core differ from native");
 
-#if !SPRT_NUTTX || defined(PF_IPX) // NuttX has no PF_IPX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_IPX) // NuttX/Embox have no PF_IPX
 static_assert(__SPRT_PF_IPX == PF_IPX, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_APPLETALK) // NuttX has no PF_APPLETALK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_APPLETALK) // NuttX/Embox have no PF_APPLETALK
 static_assert(__SPRT_PF_APPLETALK == PF_APPLETALK, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_DECnet) // NuttX has no PF_DECnet
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_DECnet) // NuttX/Embox have no PF_DECnet
 static_assert(__SPRT_PF_DECnet == PF_DECnet, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_KEY) // NuttX has no PF_KEY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_KEY) // NuttX/Embox have no PF_KEY
 static_assert(__SPRT_PF_KEY == PF_KEY, "PF_* extended (A-R) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(PF_ROUTE) // Embox has no PF_ROUTE
 static_assert(__SPRT_PF_ROUTE == PF_ROUTE, "PF_* extended (A-R) differ from native");
+#endif
 
-#if !SPRT_NUTTX || defined(PF_SNA) // NuttX has no PF_SNA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_SNA) // NuttX/Embox have no PF_SNA
 static_assert(__SPRT_PF_SNA == PF_SNA, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ISDN) // NuttX has no PF_ISDN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ISDN) // NuttX/Embox have no PF_ISDN
 static_assert(__SPRT_PF_ISDN == PF_ISDN, "PF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(PF_VSOCK) // Embox has no PF_VSOCK
 static_assert(__SPRT_PF_VSOCK == PF_VSOCK, "PF_* extended (S-MAX) differ from native");
+#endif
 
 #if SPRT_APPLE
 
@@ -357,38 +367,44 @@ static_assert(__SPRT_AF_ISO == AF_ISO && __SPRT_AF_OSI == AF_OSI, "AF_ISO/OSI di
 static_assert(__SPRT_AF_ECMA == AF_ECMA, "AF_ECMA differs from native");
 static_assert(__SPRT_AF_DATAKIT == AF_DATAKIT, "AF_DATAKIT differs from native");
 static_assert(__SPRT_AF_CCITT == AF_CCITT, "AF_CCITT differs from native");
-#if !SPRT_NUTTX || defined(AF_SNA) // NuttX has no AF_SNA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_SNA) // NuttX/Embox have no AF_SNA
 static_assert(__SPRT_AF_SNA == AF_SNA, "AF_SNA/DECnet differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_DECnet) // NuttX has no AF_DECnet
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_DECnet) // NuttX/Embox have no AF_DECnet
 static_assert(__SPRT_AF_DECnet == AF_DECnet, "AF_SNA/DECnet differ from native");
 #endif
 static_assert(__SPRT_AF_DLI == AF_DLI, "AF_DLI differs from native");
 static_assert(__SPRT_AF_LAT == AF_LAT, "AF_LAT differs from native");
 static_assert(__SPRT_AF_HYLINK == AF_HYLINK, "AF_HYLINK differs from native");
-#if !SPRT_NUTTX || defined(AF_APPLETALK) // NuttX has no AF_APPLETALK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_APPLETALK) // NuttX/Embox have no AF_APPLETALK
 static_assert(__SPRT_AF_APPLETALK == AF_APPLETALK, "AF_APPLETALK/ROUTE differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_APPLETALK) // Embox has no AF_APPLETALK, AF_ROUTE
 static_assert(__SPRT_AF_ROUTE == AF_ROUTE, "AF_APPLETALK/ROUTE differ from native");
+#endif
 static_assert(__SPRT_AF_LINK == AF_LINK, "AF_LINK differs from native");
 static_assert(__SPRT_AF_COIP == AF_COIP && __SPRT_AF_CNT == AF_CNT,
 		"AF_COIP/CNT differ from native");
-#if !SPRT_NUTTX || defined(AF_IPX) // NuttX has no AF_IPX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_IPX) // NuttX/Embox have no AF_IPX
 static_assert(__SPRT_AF_IPX == AF_IPX, "AF_IPX differs from native");
 #endif
 static_assert(__SPRT_AF_SIP == AF_SIP, "AF_SIP differs from native");
 static_assert(__SPRT_AF_NDRV == AF_NDRV, "AF_NDRV differs from native");
-#if !SPRT_NUTTX || defined(AF_ISDN) // NuttX has no AF_ISDN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ISDN) // NuttX/Embox have no AF_ISDN
 static_assert(__SPRT_AF_ISDN == AF_ISDN, "AF_ISDN/E164 differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_ISDN) // Embox has no AF_ISDN
 static_assert(__SPRT_AF_E164 == AF_E164, "AF_ISDN/E164 differ from native");
+#endif
 static_assert(__SPRT_AF_NATM == AF_NATM, "AF_NATM differs from native");
 static_assert(__SPRT_AF_SYSTEM == AF_SYSTEM && __SPRT_AF_NETBIOS == AF_NETBIOS,
 		"AF_SYSTEM/NETBIOS differ from native");
 static_assert(__SPRT_AF_PPP == AF_PPP, "AF_PPP differs from native");
 static_assert(__SPRT_AF_IEEE80211 == AF_IEEE80211 && __SPRT_AF_UTUN == AF_UTUN,
 		"AF_IEEE80211/UTUN differ from native");
+#if !SPRT_EMBOX || defined(AF_VSOCK) // Embox has no AF_VSOCK
 static_assert(__SPRT_AF_VSOCK == AF_VSOCK, "AF_VSOCK differs from native");
+#endif
 
 static_assert(__SPRT_PF_LOCAL == PF_LOCAL && __SPRT_PF_UNIX == PF_UNIX,
 		"PF_LOCAL/UNIX differ from native");
@@ -400,25 +416,27 @@ static_assert(__SPRT_PF_ISO == PF_ISO && __SPRT_PF_OSI == PF_OSI, "PF_ISO/OSI di
 static_assert(__SPRT_PF_ECMA == PF_ECMA, "PF_ECMA differs from native");
 static_assert(__SPRT_PF_DATAKIT == PF_DATAKIT, "PF_DATAKIT differs from native");
 static_assert(__SPRT_PF_CCITT == PF_CCITT, "PF_CCITT differs from native");
-#if !SPRT_NUTTX || defined(PF_SNA) // NuttX has no PF_SNA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_SNA) // NuttX/Embox have no PF_SNA
 static_assert(__SPRT_PF_SNA == PF_SNA, "PF_SNA/DECnet differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_DECnet) // NuttX has no PF_DECnet
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_DECnet) // NuttX/Embox have no PF_DECnet
 static_assert(__SPRT_PF_DECnet == PF_DECnet, "PF_SNA/DECnet differ from native");
 #endif
 static_assert(__SPRT_PF_DLI == PF_DLI, "PF_DLI differs from native");
 static_assert(__SPRT_PF_LAT == PF_LAT, "PF_LAT differs from native");
 static_assert(__SPRT_PF_HYLINK == PF_HYLINK, "PF_HYLINK differs from native");
-#if !SPRT_NUTTX || defined(PF_APPLETALK) // NuttX has no PF_APPLETALK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_APPLETALK) // NuttX/Embox have no PF_APPLETALK
 static_assert(__SPRT_PF_APPLETALK == PF_APPLETALK, "PF_APPLETALK/ROUTE differ from native");
 #endif
+#if !SPRT_EMBOX || defined(PF_APPLETALK) // Embox has no PF_APPLETALK, PF_ROUTE
 static_assert(__SPRT_PF_ROUTE == PF_ROUTE, "PF_APPLETALK/ROUTE differ from native");
+#endif
 static_assert(__SPRT_PF_LINK == PF_LINK, "PF_LINK differs from native");
-#if !SPRT_NUTTX || defined(PF_IPX) // NuttX has no PF_IPX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_IPX) // NuttX/Embox have no PF_IPX
 static_assert(__SPRT_PF_IPX == PF_IPX, "PF_IPX differs from native");
 #endif
 static_assert(__SPRT_PF_NDRV == PF_NDRV, "PF_NDRV differs from native");
-#if !SPRT_NUTTX || defined(PF_ISDN) // NuttX has no PF_ISDN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ISDN) // NuttX/Embox have no PF_ISDN
 static_assert(__SPRT_PF_ISDN == PF_ISDN, "PF_ISDN differs from native");
 #endif
 static_assert(__SPRT_PF_NATM == PF_NATM, "PF_NATM differs from native");
@@ -426,7 +444,9 @@ static_assert(__SPRT_PF_SYSTEM == PF_SYSTEM && __SPRT_PF_NETBIOS == PF_NETBIOS,
 		"PF_SYSTEM/NETBIOS differ from native");
 static_assert(__SPRT_PF_PPP == PF_PPP, "PF_PPP differs from native");
 static_assert(__SPRT_PF_UTUN == PF_UTUN, "PF_UTUN differs from native");
+#if !SPRT_EMBOX || defined(PF_VSOCK) // Embox has no PF_VSOCK
 static_assert(__SPRT_PF_VSOCK == PF_VSOCK, "PF_VSOCK differs from native");
+#endif
 
 // macOS MSG_* extras
 static_assert(__SPRT_MSG_EOF == MSG_EOF && __SPRT_MSG_HOLD == MSG_HOLD,
@@ -437,7 +457,9 @@ static_assert(__SPRT_MSG_HAVEMORE == MSG_HAVEMORE && __SPRT_MSG_RCVMORE == MSG_R
 		"MSG_HAVEMORE/RCVMORE differ from native");
 
 static_assert(__SPRT_SCM_RIGHTS == SCM_RIGHTS, "SCM_RIGHTS differs from native");
+#if !SPRT_EMBOX || defined(SCM_TIMESTAMP) // Embox has no SCM_TIMESTAMP
 static_assert(__SPRT_SCM_TIMESTAMP == SCM_TIMESTAMP, "SCM_TIMESTAMP differs from native");
+#endif
 static_assert(__SPRT_SCM_CREDS == SCM_CREDS, "SCM_CREDS differs from native");
 static_assert(__SPRT_NET_MAXID == NET_MAXID, "NET_MAXID differs from native");
 static_assert(__SPRT_NET_RT_DUMP == NET_RT_DUMP && __SPRT_NET_RT_FLAGS == NET_RT_FLAGS
@@ -446,181 +468,189 @@ static_assert(__SPRT_NET_RT_DUMP == NET_RT_DUMP && __SPRT_NET_RT_FLAGS == NET_RT
 
 #else
 
-#if !SPRT_NUTTX || defined(PF_ASH) // NuttX has no PF_ASH
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ASH) // NuttX/Embox have no PF_ASH
 static_assert(__SPRT_PF_ASH == PF_ASH, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ECONET) // NuttX has no PF_ECONET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ECONET) // NuttX/Embox have no PF_ECONET
 static_assert(__SPRT_PF_ECONET == PF_ECONET, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ATMSVC) // NuttX has no PF_ATMSVC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ATMSVC) // NuttX/Embox have no PF_ATMSVC
 static_assert(__SPRT_PF_ATMSVC == PF_ATMSVC, "PF_* extended (S-MAX) differ from native");
 #endif
 #if !SPRT_NUTTX || defined(PF_RDS) // NuttX has no PF_RDS
 static_assert(__SPRT_PF_RDS == PF_RDS, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_IRDA) // NuttX has no PF_IRDA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_IRDA) // NuttX/Embox have no PF_IRDA
 static_assert(__SPRT_PF_IRDA == PF_IRDA, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_PPPOX) // NuttX has no PF_PPPOX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_PPPOX) // NuttX/Embox have no PF_PPPOX
 static_assert(__SPRT_PF_PPPOX == PF_PPPOX, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_WANPIPE) // NuttX has no PF_WANPIPE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_WANPIPE) // NuttX/Embox have no PF_WANPIPE
 static_assert(__SPRT_PF_WANPIPE == PF_WANPIPE, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_LLC) // NuttX has no PF_LLC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_LLC) // NuttX/Embox have no PF_LLC
 static_assert(__SPRT_PF_LLC == PF_LLC, "PF_* extended (S-MAX) differ from native");
 #endif
 static_assert(__SPRT_PF_CAN == PF_CAN, "PF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(PF_TIPC) // NuttX has no PF_TIPC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_TIPC) // NuttX/Embox have no PF_TIPC
 static_assert(__SPRT_PF_TIPC == PF_TIPC, "PF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(PF_BLUETOOTH) // Embox has no PF_BLUETOOTH
 static_assert(__SPRT_PF_BLUETOOTH == PF_BLUETOOTH, "PF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(PF_IUCV) // NuttX has no PF_IUCV
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_IUCV) // NuttX/Embox have no PF_IUCV
 static_assert(__SPRT_PF_IUCV == PF_IUCV, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_RXRPC) // NuttX has no PF_RXRPC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_RXRPC) // NuttX/Embox have no PF_RXRPC
 static_assert(__SPRT_PF_RXRPC == PF_RXRPC, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_PHONET) // NuttX has no PF_PHONET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_PHONET) // NuttX/Embox have no PF_PHONET
 static_assert(__SPRT_PF_PHONET == PF_PHONET, "PF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(PF_IEEE802154) // Embox has no PF_IEEE802154
 static_assert(__SPRT_PF_IEEE802154 == PF_IEEE802154, "PF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(PF_CAIF) // NuttX has no PF_CAIF
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_CAIF) // NuttX/Embox have no PF_CAIF
 static_assert(__SPRT_PF_CAIF == PF_CAIF, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ALG) // NuttX has no PF_ALG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ALG) // NuttX/Embox have no PF_ALG
 static_assert(__SPRT_PF_ALG == PF_ALG, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_NFC) // NuttX has no PF_NFC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_NFC) // NuttX/Embox have no PF_NFC
 static_assert(__SPRT_PF_NFC == PF_NFC, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_KCM) // NuttX has no PF_KCM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_KCM) // NuttX/Embox have no PF_KCM
 static_assert(__SPRT_PF_KCM == PF_KCM, "PF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_QIPCRTR) // NuttX has no PF_QIPCRTR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_QIPCRTR) // NuttX/Embox have no PF_QIPCRTR
 static_assert(__SPRT_PF_QIPCRTR == PF_QIPCRTR, "PF_* extended (S-MAX) differ from native");
 #endif
 
-#if !SPRT_NUTTX || defined(PF_AX25) // NuttX has no PF_AX25
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_AX25) // NuttX/Embox have no PF_AX25
 static_assert(__SPRT_PF_AX25 == PF_AX25, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_NETROM) // NuttX has no PF_NETROM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_NETROM) // NuttX/Embox have no PF_NETROM
 static_assert(__SPRT_PF_NETROM == PF_NETROM, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_BRIDGE) // NuttX has no PF_BRIDGE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_BRIDGE) // NuttX/Embox have no PF_BRIDGE
 static_assert(__SPRT_PF_BRIDGE == PF_BRIDGE, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ATMPVC) // NuttX has no PF_ATMPVC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ATMPVC) // NuttX/Embox have no PF_ATMPVC
 static_assert(__SPRT_PF_ATMPVC == PF_ATMPVC, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_X25) // NuttX has no PF_X25
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_X25) // NuttX/Embox have no PF_X25
 static_assert(__SPRT_PF_X25 == PF_X25, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_ROSE) // NuttX has no PF_ROSE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_ROSE) // NuttX/Embox have no PF_ROSE
 static_assert(__SPRT_PF_ROSE == PF_ROSE, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_NETBEUI) // NuttX has no PF_NETBEUI
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_NETBEUI) // NuttX/Embox have no PF_NETBEUI
 static_assert(__SPRT_PF_NETBEUI == PF_NETBEUI, "PF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(PF_SECURITY) // NuttX has no PF_SECURITY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_SECURITY) // NuttX/Embox have no PF_SECURITY
 static_assert(__SPRT_PF_SECURITY == PF_SECURITY, "PF_* extended (A-R) differ from native");
 #endif
 static_assert(__SPRT_PF_NETLINK == PF_NETLINK, "PF_* extended (A-R) differ from native");
 static_assert(__SPRT_PF_PACKET == PF_PACKET, "PF_* extended (A-R) differ from native");
 
-#if !SPRT_NUTTX || defined(SOCK_DCCP) // NuttX has no SOCK_DCCP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOCK_DCCP) // NuttX/Embox have no SOCK_DCCP
 static_assert(__SPRT_SOCK_DCCP == SOCK_DCCP, "SOCK_RDM/DCCP/PACKET differ from native");
 #endif
 static_assert(__SPRT_SOCK_PACKET == SOCK_PACKET, "SOCK_RDM/DCCP/PACKET differ from native");
 
-#if !SPRT_NUTTX || defined(AF_AX25) // NuttX has no AF_AX25
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_AX25) // NuttX/Embox have no AF_AX25
 static_assert(__SPRT_AF_AX25 == AF_AX25, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_NETROM) // NuttX has no AF_NETROM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_NETROM) // NuttX/Embox have no AF_NETROM
 static_assert(__SPRT_AF_NETROM == AF_NETROM, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_BRIDGE) // NuttX has no AF_BRIDGE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_BRIDGE) // NuttX/Embox have no AF_BRIDGE
 static_assert(__SPRT_AF_BRIDGE == AF_BRIDGE, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ATMPVC) // NuttX has no AF_ATMPVC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ATMPVC) // NuttX/Embox have no AF_ATMPVC
 static_assert(__SPRT_AF_ATMPVC == AF_ATMPVC, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_X25) // NuttX has no AF_X25
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_X25) // NuttX/Embox have no AF_X25
 static_assert(__SPRT_AF_X25 == AF_X25, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ROSE) // NuttX has no AF_ROSE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ROSE) // NuttX/Embox have no AF_ROSE
 static_assert(__SPRT_AF_ROSE == AF_ROSE, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_NETBEUI) // NuttX has no AF_NETBEUI
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_NETBEUI) // NuttX/Embox have no AF_NETBEUI
 static_assert(__SPRT_AF_NETBEUI == AF_NETBEUI, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_SECURITY) // NuttX has no AF_SECURITY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_SECURITY) // NuttX/Embox have no AF_SECURITY
 static_assert(__SPRT_AF_SECURITY == AF_SECURITY, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_KEY) // NuttX has no AF_KEY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_KEY) // NuttX/Embox have no AF_KEY
 static_assert(__SPRT_AF_KEY == AF_KEY, "AF_* extended (A-R) differ from native");
 #endif
 static_assert(__SPRT_AF_NETLINK == AF_NETLINK, "AF_* extended (A-R) differ from native");
 static_assert(__SPRT_AF_PACKET == AF_PACKET, "AF_* extended (A-R) differ from native");
 
-#if !SPRT_NUTTX || defined(AF_ASH) // NuttX has no AF_ASH
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ASH) // NuttX/Embox have no AF_ASH
 static_assert(__SPRT_AF_ASH == AF_ASH, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ECONET) // NuttX has no AF_ECONET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ECONET) // NuttX/Embox have no AF_ECONET
 static_assert(__SPRT_AF_ECONET == AF_ECONET, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ATMSVC) // NuttX has no AF_ATMSVC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ATMSVC) // NuttX/Embox have no AF_ATMSVC
 static_assert(__SPRT_AF_ATMSVC == AF_ATMSVC, "AF_* extended (S-MAX) differ from native");
 #endif
 #if !SPRT_NUTTX || defined(AF_RDS) // NuttX has no AF_RDS
 static_assert(__SPRT_AF_RDS == AF_RDS, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_IRDA) // NuttX has no AF_IRDA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_IRDA) // NuttX/Embox have no AF_IRDA
 static_assert(__SPRT_AF_IRDA == AF_IRDA, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_PPPOX) // NuttX has no AF_PPPOX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_PPPOX) // NuttX/Embox have no AF_PPPOX
 static_assert(__SPRT_AF_PPPOX == AF_PPPOX, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_WANPIPE) // NuttX has no AF_WANPIPE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_WANPIPE) // NuttX/Embox have no AF_WANPIPE
 static_assert(__SPRT_AF_WANPIPE == AF_WANPIPE, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_LLC) // NuttX has no AF_LLC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_LLC) // NuttX/Embox have no AF_LLC
 static_assert(__SPRT_AF_LLC == AF_LLC, "AF_* extended (S-MAX) differ from native");
 #endif
 static_assert(__SPRT_AF_CAN == AF_CAN, "AF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(AF_TIPC) // NuttX has no AF_TIPC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_TIPC) // NuttX/Embox have no AF_TIPC
 static_assert(__SPRT_AF_TIPC == AF_TIPC, "AF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_BLUETOOTH) // Embox has no AF_BLUETOOTH
 static_assert(__SPRT_AF_BLUETOOTH == AF_BLUETOOTH, "AF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(AF_IUCV) // NuttX has no AF_IUCV
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_IUCV) // NuttX/Embox have no AF_IUCV
 static_assert(__SPRT_AF_IUCV == AF_IUCV, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_RXRPC) // NuttX has no AF_RXRPC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_RXRPC) // NuttX/Embox have no AF_RXRPC
 static_assert(__SPRT_AF_RXRPC == AF_RXRPC, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_PHONET) // NuttX has no AF_PHONET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_PHONET) // NuttX/Embox have no AF_PHONET
 static_assert(__SPRT_AF_PHONET == AF_PHONET, "AF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_IEEE802154) // Embox has no AF_IEEE802154
 static_assert(__SPRT_AF_IEEE802154 == AF_IEEE802154, "AF_* extended (S-MAX) differ from native");
-#if !SPRT_NUTTX || defined(AF_CAIF) // NuttX has no AF_CAIF
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_CAIF) // NuttX/Embox have no AF_CAIF
 static_assert(__SPRT_AF_CAIF == AF_CAIF, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ALG) // NuttX has no AF_ALG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ALG) // NuttX/Embox have no AF_ALG
 static_assert(__SPRT_AF_ALG == AF_ALG, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_NFC) // NuttX has no AF_NFC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_NFC) // NuttX/Embox have no AF_NFC
 static_assert(__SPRT_AF_NFC == AF_NFC, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_KCM) // NuttX has no AF_KCM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_KCM) // NuttX/Embox have no AF_KCM
 static_assert(__SPRT_AF_KCM == AF_KCM, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_QIPCRTR) // NuttX has no AF_QIPCRTR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_QIPCRTR) // NuttX/Embox have no AF_QIPCRTR
 static_assert(__SPRT_AF_QIPCRTR == AF_QIPCRTR, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PEERSEC) // NuttX has no SO_PEERSEC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PEERSEC) // NuttX/Embox have no SO_PEERSEC
 static_assert(__SPRT_SO_PEERSEC == SO_PEERSEC, "SO_ACCEPTCONN/PEERSEC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PEERSEC) // NuttX has no SO_PEERSEC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PEERSEC) // NuttX/Embox have no SO_PEERSEC
 static_assert(__SPRT_SO_PEERSEC == SO_PEERSEC, "SO_ACCEPTCONN/PEERSEC differ from native");
 #endif
 static_assert(__SPRT_SO_SNDBUFFORCE == SO_SNDBUFFORCE, "SO_*BUFFORCE differ from native");
@@ -631,195 +661,225 @@ static_assert(__SPRT_SO_PROTOCOL == SO_PROTOCOL, "SO_PROTOCOL/DOMAIN differ from
 #if !SPRT_NUTTX || defined(SO_DOMAIN) // NuttX has no SO_DOMAIN
 static_assert(__SPRT_SO_DOMAIN == SO_DOMAIN, "SO_PROTOCOL/DOMAIN differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_NO_CHECK) // NuttX has no SO_NO_CHECK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_NO_CHECK) // NuttX/Embox have no SO_NO_CHECK
 static_assert(__SPRT_SO_NO_CHECK == SO_NO_CHECK, "SO_DEBUG/NO_CHECK/PRIORITY/BSDCOMPAT differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PRIORITY) // NuttX has no SO_PRIORITY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PRIORITY) // NuttX/Embox have no SO_PRIORITY
 static_assert(__SPRT_SO_PRIORITY == SO_PRIORITY, "SO_DEBUG/NO_CHECK/PRIORITY/BSDCOMPAT differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_BSDCOMPAT) // NuttX has no SO_BSDCOMPAT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_BSDCOMPAT) // NuttX/Embox have no SO_BSDCOMPAT
 static_assert(__SPRT_SO_BSDCOMPAT == SO_BSDCOMPAT, "SO_DEBUG/NO_CHECK/PRIORITY/BSDCOMPAT differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PASSCRED) // NuttX has no SO_PASSCRED
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PASSCRED) // NuttX/Embox have no SO_PASSCRED
 static_assert(__SPRT_SO_PASSCRED == SO_PASSCRED, "SO_PASSCRED/PEERCRED/RCVLOWAT/SNDLOWAT differ from native");
 #endif
+#if !SPRT_EMBOX || defined(SO_PASSCRED) // Embox has no SO_PASSCRED, SO_PEERCRED
 static_assert(__SPRT_SO_PEERCRED == SO_PEERCRED, "SO_PASSCRED/PEERCRED/RCVLOWAT/SNDLOWAT differ from native");
+#endif
+#if !SPRT_EMBOX || defined(SO_TIMESTAMPNS) // Embox has no SO_TIMESTAMPNS
 static_assert(__SPRT_SO_TIMESTAMPNS == SO_TIMESTAMPNS, "SO_TIMESTAMP* differ from native");
-#if !SPRT_NUTTX || defined(SO_TIMESTAMPING) // NuttX has no SO_TIMESTAMPING
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_TIMESTAMPING) // NuttX/Embox have no SO_TIMESTAMPING
 static_assert(__SPRT_SO_TIMESTAMPING == SO_TIMESTAMPING, "SO_TIMESTAMP* differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_SECURITY_AUTHENTICATION) // NuttX has no SO_SECURITY_AUTHENTICATION
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_SECURITY_AUTHENTICATION) // NuttX/Embox have no SO_SECURITY_AUTHENTICATION
 static_assert(__SPRT_SO_SECURITY_AUTHENTICATION == SO_SECURITY_AUTHENTICATION, "SO_SECURITY_* differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_SECURITY_ENCRYPTION_TRANSPORT) // NuttX has no SO_SECURITY_ENCRYPTION_TRANSPORT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_SECURITY_ENCRYPTION_TRANSPORT) // NuttX/Embox have no SO_SECURITY_ENCRYPTION_TRANSPORT
 static_assert(__SPRT_SO_SECURITY_ENCRYPTION_TRANSPORT == SO_SECURITY_ENCRYPTION_TRANSPORT, "SO_SECURITY_* differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_SECURITY_ENCRYPTION_NETWORK) // NuttX has no SO_SECURITY_ENCRYPTION_NETWORK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_SECURITY_ENCRYPTION_NETWORK) // NuttX/Embox have no SO_SECURITY_ENCRYPTION_NETWORK
 static_assert(__SPRT_SO_SECURITY_ENCRYPTION_NETWORK == SO_SECURITY_ENCRYPTION_NETWORK, "SO_SECURITY_* differ from native");
 #endif
 static_assert(__SPRT_SO_BINDTODEVICE == SO_BINDTODEVICE, "SO_BINDTODEVICE differs from native");
-#if !SPRT_NUTTX || defined(SO_ATTACH_FILTER) // NuttX has no SO_ATTACH_FILTER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_ATTACH_FILTER) // NuttX/Embox have no SO_ATTACH_FILTER
 static_assert(__SPRT_SO_ATTACH_FILTER == SO_ATTACH_FILTER, "SO_*_FILTER differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_DETACH_FILTER) // NuttX has no SO_DETACH_FILTER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_DETACH_FILTER) // NuttX/Embox have no SO_DETACH_FILTER
 static_assert(__SPRT_SO_DETACH_FILTER == SO_DETACH_FILTER, "SO_*_FILTER differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_GET_FILTER) // NuttX has no SO_GET_FILTER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_GET_FILTER) // NuttX/Embox have no SO_GET_FILTER
 static_assert(__SPRT_SO_GET_FILTER == SO_GET_FILTER, "SO_*_FILTER differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PEERNAME) // NuttX has no SO_PEERNAME
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PEERNAME) // NuttX/Embox have no SO_PEERNAME
 static_assert(__SPRT_SO_PEERNAME == SO_PEERNAME, "SO_PEERNAME differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PASSSEC) // NuttX has no SO_PASSSEC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PASSSEC) // NuttX/Embox have no SO_PASSSEC
 static_assert(__SPRT_SO_PASSSEC == SO_PASSSEC, "SO_PASSSEC differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SCM_TIMESTAMPNS) // NuttX has no SCM_TIMESTAMPNS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SCM_TIMESTAMPNS) // NuttX/Embox have no SCM_TIMESTAMPNS
 static_assert(__SPRT_SCM_TIMESTAMPNS == SCM_TIMESTAMPNS, "SCM_TIMESTAMPNS differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_MARK) // NuttX has no SO_MARK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_MARK) // NuttX/Embox have no SO_MARK
 static_assert(__SPRT_SO_MARK == SO_MARK, "SO_MARK differs from native");
 #endif
 static_assert(__SPRT_SO_RXQ_OVFL == SO_RXQ_OVFL, "SO_RXQ_OVFL differs from native");
-#if !SPRT_NUTTX || defined(SO_WIFI_STATUS) // NuttX has no SO_WIFI_STATUS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_WIFI_STATUS) // NuttX/Embox have no SO_WIFI_STATUS
+#if !SPRT_EMBOX || defined(SCM_WIFI_STATUS) // Embox has no SCM_WIFI_STATUS, SO_WIFI_STATUS
 static_assert(__SPRT_SO_WIFI_STATUS == SO_WIFI_STATUS, "SO/SCM_WIFI_STATUS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SCM_WIFI_STATUS) // NuttX has no SCM_WIFI_STATUS
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SCM_WIFI_STATUS) // NuttX/Embox have no SCM_WIFI_STATUS
 static_assert(__SPRT_SCM_WIFI_STATUS == SCM_WIFI_STATUS, "SO/SCM_WIFI_STATUS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PEEK_OFF) // NuttX has no SO_PEEK_OFF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PEEK_OFF) // NuttX/Embox have no SO_PEEK_OFF
 static_assert(__SPRT_SO_PEEK_OFF == SO_PEEK_OFF, "SO_PEEK_OFF differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_NOFCS) // NuttX has no SO_NOFCS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_NOFCS) // NuttX/Embox have no SO_NOFCS
 static_assert(__SPRT_SO_NOFCS == SO_NOFCS, "SO_NOFCS differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_LOCK_FILTER) // NuttX has no SO_LOCK_FILTER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_LOCK_FILTER) // NuttX/Embox have no SO_LOCK_FILTER
 static_assert(__SPRT_SO_LOCK_FILTER == SO_LOCK_FILTER, "SO_LOCK_FILTER differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_SELECT_ERR_QUEUE) // NuttX has no SO_SELECT_ERR_QUEUE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_SELECT_ERR_QUEUE) // NuttX/Embox have no SO_SELECT_ERR_QUEUE
 static_assert(__SPRT_SO_SELECT_ERR_QUEUE == SO_SELECT_ERR_QUEUE, "SO_SELECT_ERR_QUEUE differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_BUSY_POLL) // NuttX has no SO_BUSY_POLL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_BUSY_POLL) // NuttX/Embox have no SO_BUSY_POLL
 static_assert(__SPRT_SO_BUSY_POLL == SO_BUSY_POLL, "SO_BUSY_POLL/MAX_PACING_RATE/BPF_EXTENSIONS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_MAX_PACING_RATE) // NuttX has no SO_MAX_PACING_RATE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_MAX_PACING_RATE) // NuttX/Embox have no SO_MAX_PACING_RATE
+#if !SPRT_EMBOX || defined(SO_BUSY_POLL) // Embox has no SO_BUSY_POLL, SO_MAX_PACING_RATE
 static_assert(__SPRT_SO_MAX_PACING_RATE == SO_MAX_PACING_RATE, "SO_BUSY_POLL/MAX_PACING_RATE/BPF_EXTENSIONS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_BPF_EXTENSIONS) // NuttX has no SO_BPF_EXTENSIONS
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_BPF_EXTENSIONS) // NuttX/Embox have no SO_BPF_EXTENSIONS
 static_assert(__SPRT_SO_BPF_EXTENSIONS == SO_BPF_EXTENSIONS, "SO_BUSY_POLL/MAX_PACING_RATE/BPF_EXTENSIONS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_INCOMING_CPU) // NuttX has no SO_INCOMING_CPU
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_INCOMING_CPU) // NuttX/Embox have no SO_INCOMING_CPU
 static_assert(__SPRT_SO_INCOMING_CPU == SO_INCOMING_CPU, "SO_INCOMING_CPU differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_ATTACH_BPF) // NuttX has no SO_ATTACH_BPF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_ATTACH_BPF) // NuttX/Embox have no SO_ATTACH_BPF
 static_assert(__SPRT_SO_ATTACH_BPF == SO_ATTACH_BPF, "SO_*_BPF differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_DETACH_BPF) // NuttX has no SO_DETACH_BPF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_DETACH_BPF) // NuttX/Embox have no SO_DETACH_BPF
 static_assert(__SPRT_SO_DETACH_BPF == SO_DETACH_BPF, "SO_*_BPF differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_CNX_ADVICE) // NuttX has no SO_CNX_ADVICE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_CNX_ADVICE) // NuttX/Embox have no SO_CNX_ADVICE
 static_assert(__SPRT_SO_CNX_ADVICE == SO_CNX_ADVICE, "SO_CNX_ADVICE differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SCM_TIMESTAMPING_OPT_STATS) // NuttX has no SCM_TIMESTAMPING_OPT_STATS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SCM_TIMESTAMPING_OPT_STATS) // NuttX/Embox have no SCM_TIMESTAMPING_OPT_STATS
 static_assert(__SPRT_SCM_TIMESTAMPING_OPT_STATS == SCM_TIMESTAMPING_OPT_STATS, "SCM_TIMESTAMPING_OPT_STATS differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_MEMINFO) // NuttX has no SO_MEMINFO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_MEMINFO) // NuttX/Embox have no SO_MEMINFO
 static_assert(__SPRT_SO_MEMINFO == SO_MEMINFO, "SO_MEMINFO differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_INCOMING_NAPI_ID) // NuttX has no SO_INCOMING_NAPI_ID
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_INCOMING_NAPI_ID) // NuttX/Embox have no SO_INCOMING_NAPI_ID
 static_assert(__SPRT_SO_INCOMING_NAPI_ID == SO_INCOMING_NAPI_ID, "SO_INCOMING_NAPI_ID differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_COOKIE) // NuttX has no SO_COOKIE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_COOKIE) // NuttX/Embox have no SO_COOKIE
 static_assert(__SPRT_SO_COOKIE == SO_COOKIE, "SO_COOKIE differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SCM_TIMESTAMPING_PKTINFO) // NuttX has no SCM_TIMESTAMPING_PKTINFO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SCM_TIMESTAMPING_PKTINFO) // NuttX/Embox have no SCM_TIMESTAMPING_PKTINFO
 static_assert(__SPRT_SCM_TIMESTAMPING_PKTINFO == SCM_TIMESTAMPING_PKTINFO, "SCM_TIMESTAMPING_PKTINFO differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_PEERGROUPS) // NuttX has no SO_PEERGROUPS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_PEERGROUPS) // NuttX/Embox have no SO_PEERGROUPS
 static_assert(__SPRT_SO_PEERGROUPS == SO_PEERGROUPS, "SO_PEERGROUPS differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_ZEROCOPY) // NuttX has no SO_ZEROCOPY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_ZEROCOPY) // NuttX/Embox have no SO_ZEROCOPY
 static_assert(__SPRT_SO_ZEROCOPY == SO_ZEROCOPY, "SO_ZEROCOPY differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_TXTIME) // NuttX has no SO_TXTIME
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_TXTIME) // NuttX/Embox have no SO_TXTIME
+#if !SPRT_EMBOX || defined(SCM_TXTIME) // Embox has no SCM_TXTIME, SO_TXTIME
 static_assert(__SPRT_SO_TXTIME == SO_TXTIME, "SO/SCM_TXTIME differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SCM_TXTIME) // NuttX has no SCM_TXTIME
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SCM_TXTIME) // NuttX/Embox have no SCM_TXTIME
 static_assert(__SPRT_SCM_TXTIME == SCM_TXTIME, "SO/SCM_TXTIME differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_BINDTOIFINDEX) // NuttX has no SO_BINDTOIFINDEX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_BINDTOIFINDEX) // NuttX/Embox have no SO_BINDTOIFINDEX
 static_assert(__SPRT_SO_BINDTOIFINDEX == SO_BINDTOIFINDEX, "SO_BINDTOIFINDEX differs from native");
 #endif
-#if !SPRT_NUTTX || defined(SO_DETACH_REUSEPORT_BPF) // NuttX has no SO_DETACH_REUSEPORT_BPF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SO_DETACH_REUSEPORT_BPF) // NuttX/Embox have no SO_DETACH_REUSEPORT_BPF
 static_assert(__SPRT_SO_DETACH_REUSEPORT_BPF == SO_DETACH_REUSEPORT_BPF, "SO_DETACH_REUSEPORT_BPF differs from native");
 #endif
 
+#if !SPRT_EMBOX || defined(SOL_ICMPV6) // Embox has no SOL_ICMPV6
 static_assert(__SPRT_SOL_IP == SOL_IP && __SPRT_SOL_IPV6 == SOL_IPV6
 				&& __SPRT_SOL_ICMPV6 == SOL_ICMPV6,
 		"SOL_IP/IPV6/ICMPV6 differ from native");
+#endif
 static_assert(__SPRT_SOL_RAW == SOL_RAW, "SOL_RAW differs from native");
-#if !SPRT_NUTTX || defined(SOL_DECNET) // NuttX has no SOL_DECNET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_DECNET) // NuttX/Embox have no SOL_DECNET
 static_assert(__SPRT_SOL_DECNET == SOL_DECNET, "SOL_DECNET/X25/PACKET/ATM/AAL differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_X25) // NuttX has no SOL_X25
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_X25) // NuttX/Embox have no SOL_X25
+#if !SPRT_EMBOX || defined(SOL_DECNET) // Embox has no SOL_DECNET, SOL_X25
 static_assert(__SPRT_SOL_X25 == SOL_X25, "SOL_DECNET/X25/PACKET/ATM/AAL differ from native");
 #endif
+#endif
+#if !SPRT_EMBOX || defined(SOL_DECNET) // Embox has no SOL_DECNET, SOL_PACKET
 static_assert(__SPRT_SOL_PACKET == SOL_PACKET, "SOL_DECNET/X25/PACKET/ATM/AAL differ from native");
-#if !SPRT_NUTTX || defined(SOL_ATM) // NuttX has no SOL_ATM
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_ATM) // NuttX/Embox have no SOL_ATM
 static_assert(__SPRT_SOL_ATM == SOL_ATM, "SOL_DECNET/X25/PACKET/ATM/AAL differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_AAL) // NuttX has no SOL_AAL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_AAL) // NuttX/Embox have no SOL_AAL
 static_assert(__SPRT_SOL_AAL == SOL_AAL, "SOL_DECNET/X25/PACKET/ATM/AAL differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_IRDA) // NuttX has no SOL_IRDA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_IRDA) // NuttX/Embox have no SOL_IRDA
 static_assert(__SPRT_SOL_IRDA == SOL_IRDA, "SOL_IRDA/NETBEUI/LLC/DCCP differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_NETBEUI) // NuttX has no SOL_NETBEUI
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_NETBEUI) // NuttX/Embox have no SOL_NETBEUI
+#if !SPRT_EMBOX || defined(SOL_IRDA) // Embox has no SOL_IRDA, SOL_NETBEUI
 static_assert(__SPRT_SOL_NETBEUI == SOL_NETBEUI, "SOL_IRDA/NETBEUI/LLC/DCCP differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_LLC) // NuttX has no SOL_LLC
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_LLC) // NuttX/Embox have no SOL_LLC
+#if !SPRT_EMBOX || defined(SOL_IRDA) // Embox has no SOL_IRDA, SOL_LLC
 static_assert(__SPRT_SOL_LLC == SOL_LLC, "SOL_IRDA/NETBEUI/LLC/DCCP differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_DCCP) // NuttX has no SOL_DCCP
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_DCCP) // NuttX/Embox have no SOL_DCCP
 static_assert(__SPRT_SOL_DCCP == SOL_DCCP, "SOL_IRDA/NETBEUI/LLC/DCCP differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_NETLINK) // NuttX has no SOL_NETLINK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_NETLINK) // NuttX/Embox have no SOL_NETLINK
 static_assert(__SPRT_SOL_NETLINK == SOL_NETLINK, "SOL_NETLINK/TIPC/RXRPC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_TIPC) // NuttX has no SOL_TIPC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_TIPC) // NuttX/Embox have no SOL_TIPC
+#if !SPRT_EMBOX || defined(SOL_NETLINK) // Embox has no SOL_NETLINK, SOL_TIPC
 static_assert(__SPRT_SOL_TIPC == SOL_TIPC, "SOL_NETLINK/TIPC/RXRPC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_RXRPC) // NuttX has no SOL_RXRPC
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_RXRPC) // NuttX/Embox have no SOL_RXRPC
+#if !SPRT_EMBOX || defined(SOL_NETLINK) // Embox has no SOL_NETLINK, SOL_RXRPC
 static_assert(__SPRT_SOL_RXRPC == SOL_RXRPC, "SOL_NETLINK/TIPC/RXRPC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_PPPOL2TP) // NuttX has no SOL_PPPOL2TP
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_PPPOL2TP) // NuttX/Embox have no SOL_PPPOL2TP
 static_assert(__SPRT_SOL_PPPOL2TP == SOL_PPPOL2TP, "SOL_PPPOL2TP/BLUETOOTH/PNPIPE/RDS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_BLUETOOTH) // NuttX has no SOL_BLUETOOTH
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_BLUETOOTH) // NuttX/Embox have no SOL_BLUETOOTH
 static_assert(__SPRT_SOL_BLUETOOTH == SOL_BLUETOOTH, "SOL_PPPOL2TP/BLUETOOTH/PNPIPE/RDS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_PNPIPE) // NuttX has no SOL_PNPIPE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_PNPIPE) // NuttX/Embox have no SOL_PNPIPE
 static_assert(__SPRT_SOL_PNPIPE == SOL_PNPIPE, "SOL_PPPOL2TP/BLUETOOTH/PNPIPE/RDS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_RDS) // NuttX has no SOL_RDS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_RDS) // NuttX/Embox have no SOL_RDS
+#if !SPRT_EMBOX || defined(SOL_PPPOL2TP) // Embox has no SOL_PPPOL2TP, SOL_RDS
 static_assert(__SPRT_SOL_RDS == SOL_RDS, "SOL_PPPOL2TP/BLUETOOTH/PNPIPE/RDS differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_IUCV) // NuttX has no SOL_IUCV
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_IUCV) // NuttX/Embox have no SOL_IUCV
 static_assert(__SPRT_SOL_IUCV == SOL_IUCV, "SOL_IUCV/CAIF/ALG/NFC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_CAIF) // NuttX has no SOL_CAIF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_CAIF) // NuttX/Embox have no SOL_CAIF
 static_assert(__SPRT_SOL_CAIF == SOL_CAIF, "SOL_IUCV/CAIF/ALG/NFC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_ALG) // NuttX has no SOL_ALG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_ALG) // NuttX/Embox have no SOL_ALG
 static_assert(__SPRT_SOL_ALG == SOL_ALG, "SOL_IUCV/CAIF/ALG/NFC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_NFC) // NuttX has no SOL_NFC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_NFC) // NuttX/Embox have no SOL_NFC
+#if !SPRT_EMBOX || defined(SOL_IUCV) // Embox has no SOL_IUCV, SOL_NFC
 static_assert(__SPRT_SOL_NFC == SOL_NFC, "SOL_IUCV/CAIF/ALG/NFC differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_KCM) // NuttX has no SOL_KCM
+#endif
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_KCM) // NuttX/Embox have no SOL_KCM
 static_assert(__SPRT_SOL_KCM == SOL_KCM, "SOL_KCM/TLS/XDP differ from native");
 #endif
-#if !SPRT_NUTTX || defined(SOL_TLS) // NuttX has no SOL_TLS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_TLS) // NuttX/Embox have no SOL_TLS
+#if !SPRT_EMBOX || defined(SOL_KCM) // Embox has no SOL_KCM, SOL_TLS
 static_assert(__SPRT_SOL_TLS == SOL_TLS, "SOL_KCM/TLS/XDP differ from native");
+#endif
 #endif
 
 static_assert(__SPRT_MSG_FIN == MSG_FIN && __SPRT_MSG_SYN == MSG_SYN
@@ -828,51 +888,63 @@ static_assert(__SPRT_MSG_FIN == MSG_FIN && __SPRT_MSG_SYN == MSG_SYN
 static_assert(__SPRT_MSG_RST == MSG_RST, "MSG_RST differs from native");
 static_assert(__SPRT_MSG_ERRQUEUE == MSG_ERRQUEUE && __SPRT_MSG_MORE == MSG_MORE,
 		"MSG_ERRQUEUE/MORE differ from native");
-#if !SPRT_NUTTX || defined(MSG_WAITFORONE) // NuttX has no MSG_WAITFORONE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MSG_WAITFORONE) // NuttX/Embox have no MSG_WAITFORONE
 static_assert(__SPRT_MSG_WAITFORONE == MSG_WAITFORONE, "MSG_WAITFORONE differs from native");
 #endif
-#if !SPRT_NUTTX || defined(MSG_BATCH) // NuttX has no MSG_BATCH
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MSG_BATCH) // NuttX/Embox have no MSG_BATCH
 static_assert(__SPRT_MSG_BATCH == MSG_BATCH, "MSG_BATCH differs from native");
 #endif
 
-#if !SPRT_NUTTX || defined(MSG_FASTOPEN) // NuttX has no MSG_FASTOPEN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MSG_FASTOPEN) // NuttX/Embox have no MSG_FASTOPEN
 static_assert(__SPRT_MSG_FASTOPEN == MSG_FASTOPEN, "MSG_FASTOPEN differs from native");
 #endif
+#if !SPRT_EMBOX || defined(MSG_CMSG_CLOEXEC) // Embox has no MSG_CMSG_CLOEXEC
 static_assert(__SPRT_MSG_CMSG_CLOEXEC == MSG_CMSG_CLOEXEC, "MSG_CMSG_CLOEXEC differs from native");
+#endif
 
 #endif
 
 // AF_* aliases (those that are not the core four already asserted above)
 
-#if !SPRT_NUTTX || defined(AF_IPX) // NuttX has no AF_IPX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_IPX) // NuttX/Embox have no AF_IPX
 static_assert(__SPRT_AF_IPX == AF_IPX, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_APPLETALK) // NuttX has no AF_APPLETALK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_APPLETALK) // NuttX/Embox have no AF_APPLETALK
 static_assert(__SPRT_AF_APPLETALK == AF_APPLETALK, "AF_* extended (A-R) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_DECnet) // NuttX has no AF_DECnet
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_DECnet) // NuttX/Embox have no AF_DECnet
 static_assert(__SPRT_AF_DECnet == AF_DECnet, "AF_* extended (A-R) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_ROUTE) // Embox has no AF_ROUTE
 static_assert(__SPRT_AF_ROUTE == AF_ROUTE, "AF_* extended (A-R) differ from native");
+#endif
 
-#if !SPRT_NUTTX || defined(AF_SNA) // NuttX has no AF_SNA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_SNA) // NuttX/Embox have no AF_SNA
 static_assert(__SPRT_AF_SNA == AF_SNA, "AF_* extended (S-MAX) differ from native");
 #endif
-#if !SPRT_NUTTX || defined(AF_ISDN) // NuttX has no AF_ISDN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_ISDN) // NuttX/Embox have no AF_ISDN
 static_assert(__SPRT_AF_ISDN == AF_ISDN, "AF_* extended (S-MAX) differ from native");
 #endif
+#if !SPRT_EMBOX || defined(AF_VSOCK) // Embox has no AF_VSOCK
 static_assert(__SPRT_AF_VSOCK == AF_VSOCK, "AF_* extended (S-MAX) differ from native");
+#endif
 
 static_assert(__SPRT_SO_DEBUG == SO_DEBUG,
 		"SO_DEBUG/NO_CHECK/PRIORITY/BSDCOMPAT differ from native");
+#if !SPRT_EMBOX || defined(SO_PASSCRED) // Embox has no SO_PASSCRED
 static_assert(__SPRT_SO_RCVLOWAT == SO_RCVLOWAT, "SO_PASSCRED/PEERCRED/RCVLOWAT/SNDLOWAT differ from native");
+#endif
+#if !SPRT_EMBOX || defined(SO_PASSCRED) // Embox has no SO_PASSCRED
 static_assert(__SPRT_SO_SNDLOWAT == SO_SNDLOWAT, "SO_PASSCRED/PEERCRED/RCVLOWAT/SNDLOWAT differ from native");
+#endif
 static_assert(__SPRT_SO_ACCEPTCONN == SO_ACCEPTCONN, "SO_ACCEPTCONN/PEERSEC differ from native");
 static_assert(__SPRT_SO_RCVTIMEO == SO_RCVTIMEO && __SPRT_SO_SNDTIMEO == SO_SNDTIMEO,
 		"SO_*TIMEO differ from native");
 static_assert(__SPRT_SO_TIMESTAMP == SO_TIMESTAMP, "SO_TIMESTAMP* differ from native");
 
+#if !SPRT_EMBOX || defined(SCM_TIMESTAMP) // Embox has no SCM_TIMESTAMP
 static_assert(__SPRT_SCM_TIMESTAMP == SCM_TIMESTAMP, "SCM_TIMESTAMP differs from native");
+#endif
 
 #if defined(__SPRT_AF_LOCAL) || defined(AF_LOCAL)
 static_assert(__SPRT_AF_LOCAL == AF_LOCAL, "AF_LOCAL differs from native");
@@ -891,79 +963,95 @@ static_assert(__SPRT_AF_FILE == AF_FILE, "AF_FILE differs from native");
 #endif
 
 #if defined(__SPRT_SOL_XDP) || defined(SOL_XDP)
-#if !SPRT_NUTTX || defined(SOL_XDP) // NuttX has no SOL_XDP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(SOL_XDP) // NuttX/Embox have no SOL_XDP
 static_assert(__SPRT_SOL_XDP == SOL_XDP, "SOL_XDP  differs from native");
 #endif
 #endif
 
 #if defined(__SPRT_MSG_PROXY) || defined(MSG_PROXY)
+#if !SPRT_EMBOX || defined(MSG_PROXY) // Embox has no MSG_PROXY
 static_assert(__SPRT_MSG_PROXY == MSG_PROXY, "MSG_PROXY differs from native");
+#endif
 #endif
 
 #if defined(__SPRT_MSG_ZEROCOPY) || defined(MSG_ZEROCOPY)
-#if !SPRT_NUTTX || defined(MSG_ZEROCOPY) // NuttX has no MSG_ZEROCOPY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MSG_ZEROCOPY) // NuttX/Embox have no MSG_ZEROCOPY
 static_assert(__SPRT_MSG_ZEROCOPY == MSG_ZEROCOPY, "MSG_ZEROCOPY differs from native");
 #endif
 #endif
 
 #if defined(__SPRT_AF_IB) || defined(AF_IB)
-#if !SPRT_NUTTX || defined(AF_IB) // NuttX has no AF_IB
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_IB) // NuttX/Embox have no AF_IB
 static_assert(__SPRT_AF_IB == AF_IB, "AF_IB/MPLS differ from native");
 #endif
 #endif
 
 #if defined(__SPRT_AF_MPLS) || defined(AF_MPLS)
-#if !SPRT_NUTTX || defined(AF_MPLS) // NuttX has no AF_MPLS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_MPLS) // NuttX/Embox have no AF_MPLS
+#if !SPRT_EMBOX || defined(AF_IB) // Embox has no AF_IB, AF_MPLS
 static_assert(__SPRT_AF_MPLS == AF_MPLS, "AF_IB/MPLS differ from native");
+#endif
 #endif
 #endif
 
 #if defined(__SPRT_AF_SMC) || defined(AF_SMC)
-#if !SPRT_NUTTX || defined(AF_SMC) // NuttX has no AF_SMC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_SMC) // NuttX/Embox have no AF_SMC
 static_assert(__SPRT_AF_SMC == AF_SMC, "AF_SMC/XDP differ from native");
 #endif
 #endif
 
 #if defined(__SPRT_AF_IB) || defined(AF_XDP)
-#if !SPRT_NUTTX || defined(AF_XDP) // NuttX has no AF_XDP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(AF_XDP) // NuttX/Embox have no AF_XDP
+#if !SPRT_EMBOX || defined(AF_SMC) // Embox has no AF_SMC, AF_XDP
 static_assert(__SPRT_AF_XDP == AF_XDP, "AF_SMC/XDP differ from native");
+#endif
 #endif
 #endif
 
 #if defined(__SPRT_PF_IB) || defined(PF_IB)
-#if !SPRT_NUTTX || defined(PF_IB) // NuttX has no PF_IB
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_IB) // NuttX/Embox have no PF_IB
 static_assert(__SPRT_PF_IB == PF_IB, "PF_IB/MPLS differ from native");
 #endif
 #endif
 
 #if defined(__SPRT_PF_MPLS) || defined(PF_MPLS)
-#if !SPRT_NUTTX || defined(PF_MPLS) // NuttX has no PF_MPLS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_MPLS) // NuttX/Embox have no PF_MPLS
+#if !SPRT_EMBOX || defined(PF_IB) // Embox has no PF_IB, PF_MPLS
 static_assert(__SPRT_PF_MPLS == PF_MPLS, "PF_IB/MPLS differ from native");
+#endif
 #endif
 #endif
 
 #if defined(__SPRT_PF_SMC) || defined(PF_SMC)
-#if !SPRT_NUTTX || defined(PF_SMC) // NuttX has no PF_SMC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_SMC) // NuttX/Embox have no PF_SMC
 static_assert(__SPRT_PF_SMC == PF_SMC, "PF_SMC/XDP differ from native");
 #endif
 #endif
 
 #if defined(__SPRT_PF_XDP) || defined(PF_XDP)
-#if !SPRT_NUTTX || defined(PF_XDP) // NuttX has no PF_XDP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(PF_XDP) // NuttX/Embox have no PF_XDP
+#if !SPRT_EMBOX || defined(PF_SMC) // Embox has no PF_SMC, PF_XDP
 static_assert(__SPRT_PF_XDP == PF_XDP, "PF_SMC/XDP differ from native");
+#endif
 #endif
 #endif
 
 #if defined(__SPRT_SCM_RIGHTS) || defined(SCM_RIGHTS)
+#if !SPRT_EMBOX || defined(PF_SMC) // Embox has no PF_SMC
 static_assert(__SPRT_SCM_RIGHTS == SCM_RIGHTS, "PF_SMC/XDP differ from native");
+#endif
 #endif
 
 #if defined(__SPRT_SCM_CREDENTIALS) || defined(SCM_CREDENTIALS)
+#if !SPRT_EMBOX || defined(PF_SMC) // Embox has no PF_SMC, SCM_CREDENTIALS
 static_assert(__SPRT_SCM_CREDENTIALS == SCM_CREDENTIALS, "PF_SMC/XDP differ from native");
+#endif
 #endif
 
 #if defined(SCM_SECURITY)
+#if !SPRT_EMBOX || defined(PF_SMC) // Embox has no PF_SMC
 static_assert(__SPRT_SCM_SECURITY == SCM_SECURITY, "PF_SMC/XDP differ from native");
+#endif
 #endif
 
 #define __SPRT_SCM_RIGHTS 0x01
@@ -992,99 +1080,147 @@ static_assert(__SPRT_INET6_ADDRSTRLEN == INET6_ADDRSTRLEN, "INET6_ADDRSTRLEN dif
 static_assert(__SPRT_IPPROTO_IP == IPPROTO_IP, "IPPROTO_IP differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_HOPOPTS) || defined(IPPROTO_HOPOPTS)
+#if !SPRT_EMBOX || defined(IPPROTO_HOPOPTS) // Embox has no IPPROTO_HOPOPTS
 static_assert(__SPRT_IPPROTO_HOPOPTS == IPPROTO_HOPOPTS, "IPPROTO_HOPOPTS differs from native");
+#endif
 #endif
 #if defined(__SPRT_IPPROTO_ICMP) || defined(IPPROTO_ICMP)
 static_assert(__SPRT_IPPROTO_ICMP == IPPROTO_ICMP, "IPPROTO_ICMP differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_IGMP) || defined(IPPROTO_IGMP)
+#if !SPRT_EMBOX || defined(IPPROTO_IGMP) // Embox has no IPPROTO_IGMP
 static_assert(__SPRT_IPPROTO_IGMP == IPPROTO_IGMP, "IPPROTO_IGMP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_IPIP) || defined(IPPROTO_IPIP)
+#if !SPRT_EMBOX || defined(IPPROTO_IPIP) // Embox has no IPPROTO_IPIP
 static_assert(__SPRT_IPPROTO_IPIP == IPPROTO_IPIP, "IPPROTO_IPIP differs from native");
+#endif
 #endif
 #if defined(__SPRT_IPPROTO_TCP) || defined(IPPROTO_TCP)
 static_assert(__SPRT_IPPROTO_TCP == IPPROTO_TCP, "IPPROTO_TCP differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_EGP) || defined(IPPROTO_EGP)
+#if !SPRT_EMBOX || defined(IPPROTO_EGP) // Embox has no IPPROTO_EGP
 static_assert(__SPRT_IPPROTO_EGP == IPPROTO_EGP, "IPPROTO_EGP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_PUP) || defined(IPPROTO_PUP)
+#if !SPRT_EMBOX || defined(IPPROTO_PUP) // Embox has no IPPROTO_PUP
 static_assert(__SPRT_IPPROTO_PUP == IPPROTO_PUP, "IPPROTO_PUP differs from native");
+#endif
 #endif
 #if defined(__SPRT_IPPROTO_UDP) || defined(IPPROTO_UDP)
 static_assert(__SPRT_IPPROTO_UDP == IPPROTO_UDP, "IPPROTO_UDP differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_IDP) || defined(IPPROTO_IDP)
+#if !SPRT_EMBOX || defined(IPPROTO_IDP) // Embox has no IPPROTO_IDP
 static_assert(__SPRT_IPPROTO_IDP == IPPROTO_IDP, "IPPROTO_IDP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_TP) || defined(IPPROTO_TP)
+#if !SPRT_EMBOX || defined(IPPROTO_TP) // Embox has no IPPROTO_TP
 static_assert(__SPRT_IPPROTO_TP == IPPROTO_TP, "IPPROTO_TP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_DCCP) || defined(IPPROTO_DCCP)
+#if !SPRT_EMBOX || defined(IPPROTO_DCCP) // Embox has no IPPROTO_DCCP
 static_assert(__SPRT_IPPROTO_DCCP == IPPROTO_DCCP, "IPPROTO_DCCP differs from native");
+#endif
 #endif
 #if defined(__SPRT_IPPROTO_IPV6) || defined(IPPROTO_IPV6)
 static_assert(__SPRT_IPPROTO_IPV6 == IPPROTO_IPV6, "IPPROTO_IPV6 differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_ROUTING) || defined(IPPROTO_ROUTING)
+#if !SPRT_EMBOX || defined(IPPROTO_ROUTING) // Embox has no IPPROTO_ROUTING
 static_assert(__SPRT_IPPROTO_ROUTING == IPPROTO_ROUTING, "IPPROTO_ROUTING differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_FRAGMENT) || defined(IPPROTO_FRAGMENT)
+#if !SPRT_EMBOX || defined(IPPROTO_FRAGMENT) // Embox has no IPPROTO_FRAGMENT
 static_assert(__SPRT_IPPROTO_FRAGMENT == IPPROTO_FRAGMENT, "IPPROTO_FRAGMENT differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_RSVP) || defined(IPPROTO_RSVP)
+#if !SPRT_EMBOX || defined(IPPROTO_RSVP) // Embox has no IPPROTO_RSVP
 static_assert(__SPRT_IPPROTO_RSVP == IPPROTO_RSVP, "IPPROTO_RSVP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_GRE) || defined(IPPROTO_GRE)
+#if !SPRT_EMBOX || defined(IPPROTO_GRE) // Embox has no IPPROTO_GRE
 static_assert(__SPRT_IPPROTO_GRE == IPPROTO_GRE, "IPPROTO_GRE differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_ESP) || defined(IPPROTO_ESP)
+#if !SPRT_EMBOX || defined(IPPROTO_ESP) // Embox has no IPPROTO_ESP
 static_assert(__SPRT_IPPROTO_ESP == IPPROTO_ESP, "IPPROTO_ESP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_AH) || defined(IPPROTO_AH)
+#if !SPRT_EMBOX || defined(IPPROTO_AH) // Embox has no IPPROTO_AH
 static_assert(__SPRT_IPPROTO_AH == IPPROTO_AH, "IPPROTO_AH differs from native");
+#endif
 #endif
 #if defined(__SPRT_IPPROTO_ICMPV6) || defined(IPPROTO_ICMPV6)
 static_assert(__SPRT_IPPROTO_ICMPV6 == IPPROTO_ICMPV6, "IPPROTO_ICMPV6 differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_NONE) || defined(IPPROTO_NONE)
+#if !SPRT_EMBOX || defined(IPPROTO_NONE) // Embox has no IPPROTO_NONE
 static_assert(__SPRT_IPPROTO_NONE == IPPROTO_NONE, "IPPROTO_NONE differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_DSTOPTS) || defined(IPPROTO_DSTOPTS)
+#if !SPRT_EMBOX || defined(IPPROTO_DSTOPTS) // Embox has no IPPROTO_DSTOPTS
 static_assert(__SPRT_IPPROTO_DSTOPTS == IPPROTO_DSTOPTS, "IPPROTO_DSTOPTS differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_MTP) || defined(IPPROTO_MTP)
+#if !SPRT_EMBOX || defined(IPPROTO_MTP) // Embox has no IPPROTO_MTP
 static_assert(__SPRT_IPPROTO_MTP == IPPROTO_MTP, "IPPROTO_MTP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_BEETPH) || defined(IPPROTO_BEETPH)
+#if !SPRT_EMBOX || defined(IPPROTO_BEETPH) // Embox has no IPPROTO_BEETPH
 static_assert(__SPRT_IPPROTO_BEETPH == IPPROTO_BEETPH, "IPPROTO_BEETPH differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_ENCAP) || defined(IPPROTO_ENCAP)
+#if !SPRT_EMBOX || defined(IPPROTO_ENCAP) // Embox has no IPPROTO_ENCAP
 static_assert(__SPRT_IPPROTO_ENCAP == IPPROTO_ENCAP, "IPPROTO_ENCAP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_PIM) || defined(IPPROTO_PIM)
+#if !SPRT_EMBOX || defined(IPPROTO_PIM) // Embox has no IPPROTO_PIM
 static_assert(__SPRT_IPPROTO_PIM == IPPROTO_PIM, "IPPROTO_PIM differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_COMP) || defined(IPPROTO_COMP)
+#if !SPRT_EMBOX || defined(IPPROTO_COMP) // Embox has no IPPROTO_COMP
 static_assert(__SPRT_IPPROTO_COMP == IPPROTO_COMP, "IPPROTO_COMP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_SCTP) || defined(IPPROTO_SCTP)
+#if !SPRT_EMBOX || defined(IPPROTO_SCTP) // Embox has no IPPROTO_SCTP
 static_assert(__SPRT_IPPROTO_SCTP == IPPROTO_SCTP, "IPPROTO_SCTP differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_MH) || defined(IPPROTO_MH)
-#if !SPRT_NUTTX || defined(IPPROTO_MH) // NuttX has no IPPROTO_MH
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPPROTO_MH) // NuttX/Embox have no IPPROTO_MH
 static_assert(__SPRT_IPPROTO_MH == IPPROTO_MH, "IPPROTO_MH differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPPROTO_UDPLITE) || defined(IPPROTO_UDPLITE)
+#if !SPRT_EMBOX || defined(IPPROTO_UDPLITE) // Embox has no IPPROTO_UDPLITE
 static_assert(__SPRT_IPPROTO_UDPLITE == IPPROTO_UDPLITE, "IPPROTO_UDPLITE differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_MPLS) || defined(IPPROTO_MPLS)
+#if !SPRT_EMBOX || defined(IPPROTO_MPLS) // Embox has no IPPROTO_MPLS
 static_assert(__SPRT_IPPROTO_MPLS == IPPROTO_MPLS, "IPPROTO_MPLS differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPPROTO_ETHERNET) || defined(IPPROTO_ETHERNET)
-#if !SPRT_NUTTX || defined(IPPROTO_ETHERNET) // NuttX has no IPPROTO_ETHERNET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPPROTO_ETHERNET) // NuttX/Embox have no IPPROTO_ETHERNET
 static_assert(__SPRT_IPPROTO_ETHERNET == IPPROTO_ETHERNET, "IPPROTO_ETHERNET differs from native");
 #endif
 #endif
@@ -1092,7 +1228,7 @@ static_assert(__SPRT_IPPROTO_ETHERNET == IPPROTO_ETHERNET, "IPPROTO_ETHERNET dif
 static_assert(__SPRT_IPPROTO_RAW == IPPROTO_RAW, "IPPROTO_RAW differs from native");
 #endif
 #if defined(__SPRT_IPPROTO_MPTCP) || defined(IPPROTO_MPTCP)
-#if !SPRT_NUTTX || defined(IPPROTO_MPTCP) // NuttX has no IPPROTO_MPTCP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPPROTO_MPTCP) // NuttX/Embox have no IPPROTO_MPTCP
 static_assert(__SPRT_IPPROTO_MPTCP == IPPROTO_MPTCP, "IPPROTO_MPTCP differs from native");
 #endif
 #endif
@@ -1141,7 +1277,7 @@ static_assert(__SPRT_IN_CLASSC_NSHIFT == IN_CLASSC_NSHIFT, "IN_CLASSC_NSHIFT dif
 static_assert(__SPRT_IN_CLASSC_HOST == IN_CLASSC_HOST, "IN_CLASSC_HOST differs from native");
 #endif
 #if defined(__SPRT_IN_LOOPBACKNET) || defined(IN_LOOPBACKNET)
-#if !SPRT_NUTTX || defined(IN_LOOPBACKNET) // NuttX has no IN_LOOPBACKNET
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IN_LOOPBACKNET) // NuttX/Embox have no IN_LOOPBACKNET
 static_assert(__SPRT_IN_LOOPBACKNET == IN_LOOPBACKNET, "IN_LOOPBACKNET differs from native");
 #endif
 #endif
@@ -1158,22 +1294,22 @@ static_assert(__SPRT_IP_HDRINCL == IP_HDRINCL, "IP_HDRINCL differs from native")
 #endif
 #endif
 #if defined(__SPRT_IP_OPTIONS) || defined(IP_OPTIONS)
-#if !SPRT_NUTTX || defined(IP_OPTIONS) // NuttX has no IP_OPTIONS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_OPTIONS) // NuttX/Embox have no IP_OPTIONS
 static_assert(__SPRT_IP_OPTIONS == IP_OPTIONS, "IP_OPTIONS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_ROUTER_ALERT) || defined(IP_ROUTER_ALERT)
-#if !SPRT_NUTTX || defined(IP_ROUTER_ALERT) // NuttX has no IP_ROUTER_ALERT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_ROUTER_ALERT) // NuttX/Embox have no IP_ROUTER_ALERT
 static_assert(__SPRT_IP_ROUTER_ALERT == IP_ROUTER_ALERT, "IP_ROUTER_ALERT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVOPTS) || defined(IP_RECVOPTS)
-#if !SPRT_NUTTX || defined(IP_RECVOPTS) // NuttX has no IP_RECVOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVOPTS) // NuttX/Embox have no IP_RECVOPTS
 static_assert(__SPRT_IP_RECVOPTS == IP_RECVOPTS, "IP_RECVOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RETOPTS) || defined(IP_RETOPTS)
-#if !SPRT_NUTTX || defined(IP_RETOPTS) // NuttX has no IP_RETOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RETOPTS) // NuttX/Embox have no IP_RETOPTS
 static_assert(__SPRT_IP_RETOPTS == IP_RETOPTS, "IP_RETOPTS differs from native");
 #endif
 #endif
@@ -1181,102 +1317,102 @@ static_assert(__SPRT_IP_RETOPTS == IP_RETOPTS, "IP_RETOPTS differs from native")
 static_assert(__SPRT_IP_PKTINFO == IP_PKTINFO, "IP_PKTINFO differs from native");
 #endif
 #if defined(__SPRT_IP_PKTOPTIONS) || defined(IP_PKTOPTIONS)
-#if !SPRT_NUTTX || defined(IP_PKTOPTIONS) // NuttX has no IP_PKTOPTIONS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PKTOPTIONS) // NuttX/Embox have no IP_PKTOPTIONS
 static_assert(__SPRT_IP_PKTOPTIONS == IP_PKTOPTIONS, "IP_PKTOPTIONS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC) || defined(IP_PMTUDISC)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC) // NuttX has no IP_PMTUDISC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC) // NuttX/Embox have no IP_PMTUDISC
 static_assert(__SPRT_IP_PMTUDISC == IP_PMTUDISC, "IP_PMTUDISC differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_MTU_DISCOVER) || defined(IP_MTU_DISCOVER)
-#if !SPRT_NUTTX || defined(IP_MTU_DISCOVER) // NuttX has no IP_MTU_DISCOVER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_MTU_DISCOVER) // NuttX/Embox have no IP_MTU_DISCOVER
 static_assert(__SPRT_IP_MTU_DISCOVER == IP_MTU_DISCOVER, "IP_MTU_DISCOVER differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVERR) || defined(IP_RECVERR)
-#if !SPRT_NUTTX || defined(IP_RECVERR) // NuttX has no IP_RECVERR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVERR) // NuttX/Embox have no IP_RECVERR
 static_assert(__SPRT_IP_RECVERR == IP_RECVERR, "IP_RECVERR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVTTL) || defined(IP_RECVTTL)
-#if !SPRT_NUTTX || defined(IP_RECVTTL) // NuttX has no IP_RECVTTL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVTTL) // NuttX/Embox have no IP_RECVTTL
 static_assert(__SPRT_IP_RECVTTL == IP_RECVTTL, "IP_RECVTTL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVTOS) || defined(IP_RECVTOS)
-#if !SPRT_NUTTX || defined(IP_RECVTOS) // NuttX has no IP_RECVTOS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVTOS) // NuttX/Embox have no IP_RECVTOS
 static_assert(__SPRT_IP_RECVTOS == IP_RECVTOS, "IP_RECVTOS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_MTU) || defined(IP_MTU)
-#if !SPRT_NUTTX || defined(IP_MTU) // NuttX has no IP_MTU
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_MTU) // NuttX/Embox have no IP_MTU
 static_assert(__SPRT_IP_MTU == IP_MTU, "IP_MTU differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_FREEBIND) || defined(IP_FREEBIND)
-#if !SPRT_NUTTX || defined(IP_FREEBIND) // NuttX has no IP_FREEBIND
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_FREEBIND) // NuttX/Embox have no IP_FREEBIND
 static_assert(__SPRT_IP_FREEBIND == IP_FREEBIND, "IP_FREEBIND differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_IPSEC_POLICY) || defined(IP_IPSEC_POLICY)
-#if !SPRT_NUTTX || defined(IP_IPSEC_POLICY) // NuttX has no IP_IPSEC_POLICY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_IPSEC_POLICY) // NuttX/Embox have no IP_IPSEC_POLICY
 static_assert(__SPRT_IP_IPSEC_POLICY == IP_IPSEC_POLICY, "IP_IPSEC_POLICY differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_XFRM_POLICY) || defined(IP_XFRM_POLICY)
-#if !SPRT_NUTTX || defined(IP_XFRM_POLICY) // NuttX has no IP_XFRM_POLICY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_XFRM_POLICY) // NuttX/Embox have no IP_XFRM_POLICY
 static_assert(__SPRT_IP_XFRM_POLICY == IP_XFRM_POLICY, "IP_XFRM_POLICY differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PASSSEC) || defined(IP_PASSSEC)
-#if !SPRT_NUTTX || defined(IP_PASSSEC) // NuttX has no IP_PASSSEC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PASSSEC) // NuttX/Embox have no IP_PASSSEC
 static_assert(__SPRT_IP_PASSSEC == IP_PASSSEC, "IP_PASSSEC differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_TRANSPARENT) || defined(IP_TRANSPARENT)
-#if !SPRT_NUTTX || defined(IP_TRANSPARENT) // NuttX has no IP_TRANSPARENT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_TRANSPARENT) // NuttX/Embox have no IP_TRANSPARENT
 static_assert(__SPRT_IP_TRANSPARENT == IP_TRANSPARENT, "IP_TRANSPARENT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_ORIGDSTADDR) || defined(IP_ORIGDSTADDR)
-#if !SPRT_NUTTX || defined(IP_ORIGDSTADDR) // NuttX has no IP_ORIGDSTADDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_ORIGDSTADDR) // NuttX/Embox have no IP_ORIGDSTADDR
 static_assert(__SPRT_IP_ORIGDSTADDR == IP_ORIGDSTADDR, "IP_ORIGDSTADDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVORIGDSTADDR) || defined(IP_RECVORIGDSTADDR)
-#if !SPRT_NUTTX || defined(IP_RECVORIGDSTADDR) // NuttX has no IP_RECVORIGDSTADDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVORIGDSTADDR) // NuttX/Embox have no IP_RECVORIGDSTADDR
 static_assert(__SPRT_IP_RECVORIGDSTADDR == IP_RECVORIGDSTADDR, "IP_RECVORIGDSTADDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_MINTTL) || defined(IP_MINTTL)
-#if !SPRT_NUTTX || defined(IP_MINTTL) // NuttX has no IP_MINTTL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_MINTTL) // NuttX/Embox have no IP_MINTTL
 static_assert(__SPRT_IP_MINTTL == IP_MINTTL, "IP_MINTTL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_NODEFRAG) || defined(IP_NODEFRAG)
-#if !SPRT_NUTTX || defined(IP_NODEFRAG) // NuttX has no IP_NODEFRAG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_NODEFRAG) // NuttX/Embox have no IP_NODEFRAG
 static_assert(__SPRT_IP_NODEFRAG == IP_NODEFRAG, "IP_NODEFRAG differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_CHECKSUM) || defined(IP_CHECKSUM)
-#if !SPRT_NUTTX || defined(IP_CHECKSUM) // NuttX has no IP_CHECKSUM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_CHECKSUM) // NuttX/Embox have no IP_CHECKSUM
 static_assert(__SPRT_IP_CHECKSUM == IP_CHECKSUM, "IP_CHECKSUM differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_BIND_ADDRESS_NO_PORT) || defined(IP_BIND_ADDRESS_NO_PORT)
-#if !SPRT_NUTTX || defined(IP_BIND_ADDRESS_NO_PORT) // NuttX has no IP_BIND_ADDRESS_NO_PORT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_BIND_ADDRESS_NO_PORT) // NuttX/Embox have no IP_BIND_ADDRESS_NO_PORT
 static_assert(__SPRT_IP_BIND_ADDRESS_NO_PORT == IP_BIND_ADDRESS_NO_PORT, "IP_BIND_ADDRESS_NO_PORT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVFRAGSIZE) || defined(IP_RECVFRAGSIZE)
-#if !SPRT_NUTTX || defined(IP_RECVFRAGSIZE) // NuttX has no IP_RECVFRAGSIZE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVFRAGSIZE) // NuttX/Embox have no IP_RECVFRAGSIZE
 static_assert(__SPRT_IP_RECVFRAGSIZE == IP_RECVFRAGSIZE, "IP_RECVFRAGSIZE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVERR_RFC4884) || defined(IP_RECVERR_RFC4884)
-#if !SPRT_NUTTX || defined(IP_RECVERR_RFC4884) // NuttX has no IP_RECVERR_RFC4884
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVERR_RFC4884) // NuttX/Embox have no IP_RECVERR_RFC4884
 static_assert(__SPRT_IP_RECVERR_RFC4884 == IP_RECVERR_RFC4884, "IP_RECVERR_RFC4884 differs from native");
 #endif
 #endif
@@ -1320,12 +1456,12 @@ static_assert(__SPRT_IP_MSFILTER == IP_MSFILTER, "IP_MSFILTER differs from nativ
 static_assert(__SPRT_IP_MULTICAST_ALL == IP_MULTICAST_ALL, "IP_MULTICAST_ALL differs from native");
 #endif
 #if defined(__SPRT_IP_UNICAST_IF) || defined(IP_UNICAST_IF)
-#if !SPRT_NUTTX || defined(IP_UNICAST_IF) // NuttX has no IP_UNICAST_IF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_UNICAST_IF) // NuttX/Embox have no IP_UNICAST_IF
 static_assert(__SPRT_IP_UNICAST_IF == IP_UNICAST_IF, "IP_UNICAST_IF differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_RECVRETOPTS) || defined(IP_RECVRETOPTS)
-#if !SPRT_NUTTX || defined(IP_RECVRETOPTS) // NuttX has no IP_RECVRETOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_RECVRETOPTS) // NuttX/Embox have no IP_RECVRETOPTS
 static_assert(__SPRT_IP_RECVRETOPTS == IP_RECVRETOPTS, "IP_RECVRETOPTS differs from native");
 #endif
 #endif
@@ -1397,98 +1533,98 @@ static_assert(__SPRT_IP_NRT_INTERFACE == IP_NRT_INTERFACE, "IP_NRT_INTERFACE dif
 static_assert(__SPRT_IP_USER_MTU == IP_USER_MTU, "IP_USER_MTU differs from native");
 #endif
 #if defined(__SPRT_IP_PMTUDISC_DONT) || defined(IP_PMTUDISC_DONT)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_DONT) // NuttX has no IP_PMTUDISC_DONT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_DONT) // NuttX/Embox have no IP_PMTUDISC_DONT
 static_assert(__SPRT_IP_PMTUDISC_DONT == IP_PMTUDISC_DONT, "IP_PMTUDISC_DONT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC_WANT) || defined(IP_PMTUDISC_WANT)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_WANT) // NuttX has no IP_PMTUDISC_WANT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_WANT) // NuttX/Embox have no IP_PMTUDISC_WANT
 static_assert(__SPRT_IP_PMTUDISC_WANT == IP_PMTUDISC_WANT, "IP_PMTUDISC_WANT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC_DO) || defined(IP_PMTUDISC_DO)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_DO) // NuttX has no IP_PMTUDISC_DO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_DO) // NuttX/Embox have no IP_PMTUDISC_DO
 static_assert(__SPRT_IP_PMTUDISC_DO == IP_PMTUDISC_DO, "IP_PMTUDISC_DO differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC_PROBE) || defined(IP_PMTUDISC_PROBE)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_PROBE) // NuttX has no IP_PMTUDISC_PROBE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_PROBE) // NuttX/Embox have no IP_PMTUDISC_PROBE
 static_assert(__SPRT_IP_PMTUDISC_PROBE == IP_PMTUDISC_PROBE, "IP_PMTUDISC_PROBE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC_INTERFACE) || defined(IP_PMTUDISC_INTERFACE)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_INTERFACE) // NuttX has no IP_PMTUDISC_INTERFACE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_INTERFACE) // NuttX/Embox have no IP_PMTUDISC_INTERFACE
 static_assert(__SPRT_IP_PMTUDISC_INTERFACE == IP_PMTUDISC_INTERFACE, "IP_PMTUDISC_INTERFACE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_PMTUDISC_OMIT) || defined(IP_PMTUDISC_OMIT)
-#if !SPRT_NUTTX || defined(IP_PMTUDISC_OMIT) // NuttX has no IP_PMTUDISC_OMIT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_PMTUDISC_OMIT) // NuttX/Embox have no IP_PMTUDISC_OMIT
 static_assert(__SPRT_IP_PMTUDISC_OMIT == IP_PMTUDISC_OMIT, "IP_PMTUDISC_OMIT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_DEFAULT_MULTICAST_TTL) || defined(IP_DEFAULT_MULTICAST_TTL)
-#if !SPRT_NUTTX || defined(IP_DEFAULT_MULTICAST_TTL) // NuttX has no IP_DEFAULT_MULTICAST_TTL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_DEFAULT_MULTICAST_TTL) // NuttX/Embox have no IP_DEFAULT_MULTICAST_TTL
 static_assert(__SPRT_IP_DEFAULT_MULTICAST_TTL == IP_DEFAULT_MULTICAST_TTL, "IP_DEFAULT_MULTICAST_TTL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_DEFAULT_MULTICAST_LOOP) || defined(IP_DEFAULT_MULTICAST_LOOP)
-#if !SPRT_NUTTX || defined(IP_DEFAULT_MULTICAST_LOOP) // NuttX has no IP_DEFAULT_MULTICAST_LOOP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_DEFAULT_MULTICAST_LOOP) // NuttX/Embox have no IP_DEFAULT_MULTICAST_LOOP
 static_assert(__SPRT_IP_DEFAULT_MULTICAST_LOOP == IP_DEFAULT_MULTICAST_LOOP, "IP_DEFAULT_MULTICAST_LOOP differs from native");
 #endif
 #endif
 #if defined(__SPRT_IP_MAX_MEMBERSHIPS) || defined(IP_MAX_MEMBERSHIPS)
-#if !SPRT_NUTTX || defined(IP_MAX_MEMBERSHIPS) // NuttX has no IP_MAX_MEMBERSHIPS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IP_MAX_MEMBERSHIPS) // NuttX/Embox have no IP_MAX_MEMBERSHIPS
 static_assert(__SPRT_IP_MAX_MEMBERSHIPS == IP_MAX_MEMBERSHIPS, "IP_MAX_MEMBERSHIPS differs from native");
 #endif
 #endif
 // --- IPv6 options ---
 #if defined(__SPRT_IPV6_ADDRFORM) || defined(IPV6_ADDRFORM)
-#if !SPRT_NUTTX || defined(IPV6_ADDRFORM) // NuttX has no IPV6_ADDRFORM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_ADDRFORM) // NuttX/Embox have no IPV6_ADDRFORM
 static_assert(__SPRT_IPV6_ADDRFORM == IPV6_ADDRFORM, "IPV6_ADDRFORM differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292PKTINFO) || defined(IPV6_2292PKTINFO)
-#if !SPRT_NUTTX || defined(IPV6_2292PKTINFO) // NuttX has no IPV6_2292PKTINFO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292PKTINFO) // NuttX/Embox have no IPV6_2292PKTINFO
 static_assert(__SPRT_IPV6_2292PKTINFO == IPV6_2292PKTINFO, "IPV6_2292PKTINFO differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292HOPOPTS) || defined(IPV6_2292HOPOPTS)
-#if !SPRT_NUTTX || defined(IPV6_2292HOPOPTS) // NuttX has no IPV6_2292HOPOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292HOPOPTS) // NuttX/Embox have no IPV6_2292HOPOPTS
 static_assert(__SPRT_IPV6_2292HOPOPTS == IPV6_2292HOPOPTS, "IPV6_2292HOPOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292DSTOPTS) || defined(IPV6_2292DSTOPTS)
-#if !SPRT_NUTTX || defined(IPV6_2292DSTOPTS) // NuttX has no IPV6_2292DSTOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292DSTOPTS) // NuttX/Embox have no IPV6_2292DSTOPTS
 static_assert(__SPRT_IPV6_2292DSTOPTS == IPV6_2292DSTOPTS, "IPV6_2292DSTOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292RTHDR) || defined(IPV6_2292RTHDR)
-#if !SPRT_NUTTX || defined(IPV6_2292RTHDR) // NuttX has no IPV6_2292RTHDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292RTHDR) // NuttX/Embox have no IPV6_2292RTHDR
 static_assert(__SPRT_IPV6_2292RTHDR == IPV6_2292RTHDR, "IPV6_2292RTHDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292PKTOPTIONS) || defined(IPV6_2292PKTOPTIONS)
-#if !SPRT_NUTTX || defined(IPV6_2292PKTOPTIONS) // NuttX has no IPV6_2292PKTOPTIONS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292PKTOPTIONS) // NuttX/Embox have no IPV6_2292PKTOPTIONS
 static_assert(__SPRT_IPV6_2292PKTOPTIONS == IPV6_2292PKTOPTIONS, "IPV6_2292PKTOPTIONS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_CHECKSUM) || defined(IPV6_CHECKSUM)
-#if !SPRT_NUTTX || defined(IPV6_CHECKSUM) // NuttX has no IPV6_CHECKSUM
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_CHECKSUM) // NuttX/Embox have no IPV6_CHECKSUM
 static_assert(__SPRT_IPV6_CHECKSUM == IPV6_CHECKSUM, "IPV6_CHECKSUM differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_2292HOPLIMIT) || defined(IPV6_2292HOPLIMIT)
-#if !SPRT_NUTTX || defined(IPV6_2292HOPLIMIT) // NuttX has no IPV6_2292HOPLIMIT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_2292HOPLIMIT) // NuttX/Embox have no IPV6_2292HOPLIMIT
 static_assert(__SPRT_IPV6_2292HOPLIMIT == IPV6_2292HOPLIMIT, "IPV6_2292HOPLIMIT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_NEXTHOP) || defined(IPV6_NEXTHOP)
-#if !SPRT_NUTTX || defined(IPV6_NEXTHOP) // NuttX has no IPV6_NEXTHOP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_NEXTHOP) // NuttX/Embox have no IPV6_NEXTHOP
 static_assert(__SPRT_IPV6_NEXTHOP == IPV6_NEXTHOP, "IPV6_NEXTHOP differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_AUTHHDR) || defined(IPV6_AUTHHDR)
-#if !SPRT_NUTTX || defined(IPV6_AUTHHDR) // NuttX has no IPV6_AUTHHDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_AUTHHDR) // NuttX/Embox have no IPV6_AUTHHDR
 static_assert(__SPRT_IPV6_AUTHHDR == IPV6_AUTHHDR, "IPV6_AUTHHDR differs from native");
 #endif
 #endif
@@ -1515,22 +1651,22 @@ static_assert(__SPRT_IPV6_JOIN_GROUP == IPV6_JOIN_GROUP, "IPV6_JOIN_GROUP differ
 static_assert(__SPRT_IPV6_LEAVE_GROUP == IPV6_LEAVE_GROUP, "IPV6_LEAVE_GROUP differs from native");
 #endif
 #if defined(__SPRT_IPV6_ROUTER_ALERT) || defined(IPV6_ROUTER_ALERT)
-#if !SPRT_NUTTX || defined(IPV6_ROUTER_ALERT) // NuttX has no IPV6_ROUTER_ALERT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_ROUTER_ALERT) // NuttX/Embox have no IPV6_ROUTER_ALERT
 static_assert(__SPRT_IPV6_ROUTER_ALERT == IPV6_ROUTER_ALERT, "IPV6_ROUTER_ALERT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_MTU_DISCOVER) || defined(IPV6_MTU_DISCOVER)
-#if !SPRT_NUTTX || defined(IPV6_MTU_DISCOVER) // NuttX has no IPV6_MTU_DISCOVER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_MTU_DISCOVER) // NuttX/Embox have no IPV6_MTU_DISCOVER
 static_assert(__SPRT_IPV6_MTU_DISCOVER == IPV6_MTU_DISCOVER, "IPV6_MTU_DISCOVER differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_MTU) || defined(IPV6_MTU)
-#if !SPRT_NUTTX || defined(IPV6_MTU) // NuttX has no IPV6_MTU
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_MTU) // NuttX/Embox have no IPV6_MTU
 static_assert(__SPRT_IPV6_MTU == IPV6_MTU, "IPV6_MTU differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVERR) || defined(IPV6_RECVERR)
-#if !SPRT_NUTTX || defined(IPV6_RECVERR) // NuttX has no IPV6_RECVERR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVERR) // NuttX/Embox have no IPV6_RECVERR
 static_assert(__SPRT_IPV6_RECVERR == IPV6_RECVERR, "IPV6_RECVERR differs from native");
 #endif
 #endif
@@ -1538,153 +1674,163 @@ static_assert(__SPRT_IPV6_RECVERR == IPV6_RECVERR, "IPV6_RECVERR differs from na
 static_assert(__SPRT_IPV6_V6ONLY == IPV6_V6ONLY, "IPV6_V6ONLY differs from native");
 #endif
 #if defined(__SPRT_IPV6_JOIN_ANYCAST) || defined(IPV6_JOIN_ANYCAST)
-#if !SPRT_NUTTX || defined(IPV6_JOIN_ANYCAST) // NuttX has no IPV6_JOIN_ANYCAST
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_JOIN_ANYCAST) // NuttX/Embox have no IPV6_JOIN_ANYCAST
 static_assert(__SPRT_IPV6_JOIN_ANYCAST == IPV6_JOIN_ANYCAST, "IPV6_JOIN_ANYCAST differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_LEAVE_ANYCAST) || defined(IPV6_LEAVE_ANYCAST)
-#if !SPRT_NUTTX || defined(IPV6_LEAVE_ANYCAST) // NuttX has no IPV6_LEAVE_ANYCAST
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_LEAVE_ANYCAST) // NuttX/Embox have no IPV6_LEAVE_ANYCAST
 static_assert(__SPRT_IPV6_LEAVE_ANYCAST == IPV6_LEAVE_ANYCAST, "IPV6_LEAVE_ANYCAST differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_MULTICAST_ALL) || defined(IPV6_MULTICAST_ALL)
-#if !SPRT_NUTTX || defined(IPV6_MULTICAST_ALL) // NuttX has no IPV6_MULTICAST_ALL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_MULTICAST_ALL) // NuttX/Embox have no IPV6_MULTICAST_ALL
 static_assert(__SPRT_IPV6_MULTICAST_ALL == IPV6_MULTICAST_ALL, "IPV6_MULTICAST_ALL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_ROUTER_ALERT_ISOLATE) || defined(IPV6_ROUTER_ALERT_ISOLATE)
-#if !SPRT_NUTTX || defined(IPV6_ROUTER_ALERT_ISOLATE) // NuttX has no IPV6_ROUTER_ALERT_ISOLATE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_ROUTER_ALERT_ISOLATE) // NuttX/Embox have no IPV6_ROUTER_ALERT_ISOLATE
 static_assert(__SPRT_IPV6_ROUTER_ALERT_ISOLATE == IPV6_ROUTER_ALERT_ISOLATE, "IPV6_ROUTER_ALERT_ISOLATE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_IPSEC_POLICY) || defined(IPV6_IPSEC_POLICY)
-#if !SPRT_NUTTX || defined(IPV6_IPSEC_POLICY) // NuttX has no IPV6_IPSEC_POLICY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_IPSEC_POLICY) // NuttX/Embox have no IPV6_IPSEC_POLICY
 static_assert(__SPRT_IPV6_IPSEC_POLICY == IPV6_IPSEC_POLICY, "IPV6_IPSEC_POLICY differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_XFRM_POLICY) || defined(IPV6_XFRM_POLICY)
-#if !SPRT_NUTTX || defined(IPV6_XFRM_POLICY) // NuttX has no IPV6_XFRM_POLICY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_XFRM_POLICY) // NuttX/Embox have no IPV6_XFRM_POLICY
 static_assert(__SPRT_IPV6_XFRM_POLICY == IPV6_XFRM_POLICY, "IPV6_XFRM_POLICY differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_HDRINCL) || defined(IPV6_HDRINCL)
-#if !SPRT_NUTTX || defined(IPV6_HDRINCL) // NuttX has no IPV6_HDRINCL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_HDRINCL) // NuttX/Embox have no IPV6_HDRINCL
 static_assert(__SPRT_IPV6_HDRINCL == IPV6_HDRINCL, "IPV6_HDRINCL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVPKTINFO) || defined(IPV6_RECVPKTINFO)
+#if !SPRT_EMBOX || defined(IPV6_RECVPKTINFO) // Embox has no IPV6_RECVPKTINFO
 static_assert(__SPRT_IPV6_RECVPKTINFO == IPV6_RECVPKTINFO, "IPV6_RECVPKTINFO differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPV6_PKTINFO) || defined(IPV6_PKTINFO)
+#if !SPRT_EMBOX || defined(IPV6_PKTINFO) // Embox has no IPV6_PKTINFO
 static_assert(__SPRT_IPV6_PKTINFO == IPV6_PKTINFO, "IPV6_PKTINFO differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPV6_RECVHOPLIMIT) || defined(IPV6_RECVHOPLIMIT)
+#if !SPRT_EMBOX || defined(IPV6_RECVHOPLIMIT) // Embox has no IPV6_RECVHOPLIMIT
 static_assert(__SPRT_IPV6_RECVHOPLIMIT == IPV6_RECVHOPLIMIT,
 		"IPV6_RECVHOPLIMIT differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPV6_HOPLIMIT) || defined(IPV6_HOPLIMIT)
+#if !SPRT_EMBOX || defined(IPV6_HOPLIMIT) // Embox has no IPV6_HOPLIMIT
 static_assert(__SPRT_IPV6_HOPLIMIT == IPV6_HOPLIMIT, "IPV6_HOPLIMIT differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPV6_RECVHOPOPTS) || defined(IPV6_RECVHOPOPTS)
-#if !SPRT_NUTTX || defined(IPV6_RECVHOPOPTS) // NuttX has no IPV6_RECVHOPOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVHOPOPTS) // NuttX/Embox have no IPV6_RECVHOPOPTS
 static_assert(__SPRT_IPV6_RECVHOPOPTS == IPV6_RECVHOPOPTS, "IPV6_RECVHOPOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_HOPOPTS) || defined(IPV6_HOPOPTS)
-#if !SPRT_NUTTX || defined(IPV6_HOPOPTS) // NuttX has no IPV6_HOPOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_HOPOPTS) // NuttX/Embox have no IPV6_HOPOPTS
 static_assert(__SPRT_IPV6_HOPOPTS == IPV6_HOPOPTS, "IPV6_HOPOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RTHDRDSTOPTS) || defined(IPV6_RTHDRDSTOPTS)
-#if !SPRT_NUTTX || defined(IPV6_RTHDRDSTOPTS) // NuttX has no IPV6_RTHDRDSTOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RTHDRDSTOPTS) // NuttX/Embox have no IPV6_RTHDRDSTOPTS
 static_assert(__SPRT_IPV6_RTHDRDSTOPTS == IPV6_RTHDRDSTOPTS, "IPV6_RTHDRDSTOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVRTHDR) || defined(IPV6_RECVRTHDR)
-#if !SPRT_NUTTX || defined(IPV6_RECVRTHDR) // NuttX has no IPV6_RECVRTHDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVRTHDR) // NuttX/Embox have no IPV6_RECVRTHDR
 static_assert(__SPRT_IPV6_RECVRTHDR == IPV6_RECVRTHDR, "IPV6_RECVRTHDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RTHDR) || defined(IPV6_RTHDR)
-#if !SPRT_NUTTX || defined(IPV6_RTHDR) // NuttX has no IPV6_RTHDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RTHDR) // NuttX/Embox have no IPV6_RTHDR
 static_assert(__SPRT_IPV6_RTHDR == IPV6_RTHDR, "IPV6_RTHDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVDSTOPTS) || defined(IPV6_RECVDSTOPTS)
-#if !SPRT_NUTTX || defined(IPV6_RECVDSTOPTS) // NuttX has no IPV6_RECVDSTOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVDSTOPTS) // NuttX/Embox have no IPV6_RECVDSTOPTS
 static_assert(__SPRT_IPV6_RECVDSTOPTS == IPV6_RECVDSTOPTS, "IPV6_RECVDSTOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_DSTOPTS) || defined(IPV6_DSTOPTS)
-#if !SPRT_NUTTX || defined(IPV6_DSTOPTS) // NuttX has no IPV6_DSTOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_DSTOPTS) // NuttX/Embox have no IPV6_DSTOPTS
 static_assert(__SPRT_IPV6_DSTOPTS == IPV6_DSTOPTS, "IPV6_DSTOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVPATHMTU) || defined(IPV6_RECVPATHMTU)
-#if !SPRT_NUTTX || defined(IPV6_RECVPATHMTU) // NuttX has no IPV6_RECVPATHMTU
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVPATHMTU) // NuttX/Embox have no IPV6_RECVPATHMTU
 static_assert(__SPRT_IPV6_RECVPATHMTU == IPV6_RECVPATHMTU, "IPV6_RECVPATHMTU differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PATHMTU) || defined(IPV6_PATHMTU)
-#if !SPRT_NUTTX || defined(IPV6_PATHMTU) // NuttX has no IPV6_PATHMTU
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PATHMTU) // NuttX/Embox have no IPV6_PATHMTU
 static_assert(__SPRT_IPV6_PATHMTU == IPV6_PATHMTU, "IPV6_PATHMTU differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_DONTFRAG) || defined(IPV6_DONTFRAG)
-#if !SPRT_NUTTX || defined(IPV6_DONTFRAG) // NuttX has no IPV6_DONTFRAG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_DONTFRAG) // NuttX/Embox have no IPV6_DONTFRAG
 static_assert(__SPRT_IPV6_DONTFRAG == IPV6_DONTFRAG, "IPV6_DONTFRAG differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVTCLASS) || defined(IPV6_RECVTCLASS)
-#if !SPRT_NUTTX || defined(IPV6_RECVTCLASS) // NuttX has no IPV6_RECVTCLASS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVTCLASS) // NuttX/Embox have no IPV6_RECVTCLASS
 static_assert(__SPRT_IPV6_RECVTCLASS == IPV6_RECVTCLASS, "IPV6_RECVTCLASS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_TCLASS) || defined(IPV6_TCLASS)
+#if !SPRT_EMBOX || defined(IPV6_TCLASS) // Embox has no IPV6_TCLASS
 static_assert(__SPRT_IPV6_TCLASS == IPV6_TCLASS, "IPV6_TCLASS differs from native");
 #endif
+#endif
 #if defined(__SPRT_IPV6_AUTOFLOWLABEL) || defined(IPV6_AUTOFLOWLABEL)
-#if !SPRT_NUTTX || defined(IPV6_AUTOFLOWLABEL) // NuttX has no IPV6_AUTOFLOWLABEL
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_AUTOFLOWLABEL) // NuttX/Embox have no IPV6_AUTOFLOWLABEL
 static_assert(__SPRT_IPV6_AUTOFLOWLABEL == IPV6_AUTOFLOWLABEL, "IPV6_AUTOFLOWLABEL differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_ADDR_PREFERENCES) || defined(IPV6_ADDR_PREFERENCES)
-#if !SPRT_NUTTX || defined(IPV6_ADDR_PREFERENCES) // NuttX has no IPV6_ADDR_PREFERENCES
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_ADDR_PREFERENCES) // NuttX/Embox have no IPV6_ADDR_PREFERENCES
 static_assert(__SPRT_IPV6_ADDR_PREFERENCES == IPV6_ADDR_PREFERENCES, "IPV6_ADDR_PREFERENCES differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_MINHOPCOUNT) || defined(IPV6_MINHOPCOUNT)
-#if !SPRT_NUTTX || defined(IPV6_MINHOPCOUNT) // NuttX has no IPV6_MINHOPCOUNT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_MINHOPCOUNT) // NuttX/Embox have no IPV6_MINHOPCOUNT
 static_assert(__SPRT_IPV6_MINHOPCOUNT == IPV6_MINHOPCOUNT, "IPV6_MINHOPCOUNT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_ORIGDSTADDR) || defined(IPV6_ORIGDSTADDR)
-#if !SPRT_NUTTX || defined(IPV6_ORIGDSTADDR) // NuttX has no IPV6_ORIGDSTADDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_ORIGDSTADDR) // NuttX/Embox have no IPV6_ORIGDSTADDR
 static_assert(__SPRT_IPV6_ORIGDSTADDR == IPV6_ORIGDSTADDR, "IPV6_ORIGDSTADDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVORIGDSTADDR) || defined(IPV6_RECVORIGDSTADDR)
-#if !SPRT_NUTTX || defined(IPV6_RECVORIGDSTADDR) // NuttX has no IPV6_RECVORIGDSTADDR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVORIGDSTADDR) // NuttX/Embox have no IPV6_RECVORIGDSTADDR
 static_assert(__SPRT_IPV6_RECVORIGDSTADDR == IPV6_RECVORIGDSTADDR, "IPV6_RECVORIGDSTADDR differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_TRANSPARENT) || defined(IPV6_TRANSPARENT)
-#if !SPRT_NUTTX || defined(IPV6_TRANSPARENT) // NuttX has no IPV6_TRANSPARENT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_TRANSPARENT) // NuttX/Embox have no IPV6_TRANSPARENT
 static_assert(__SPRT_IPV6_TRANSPARENT == IPV6_TRANSPARENT, "IPV6_TRANSPARENT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_UNICAST_IF) || defined(IPV6_UNICAST_IF)
-#if !SPRT_NUTTX || defined(IPV6_UNICAST_IF) // NuttX has no IPV6_UNICAST_IF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_UNICAST_IF) // NuttX/Embox have no IPV6_UNICAST_IF
 static_assert(__SPRT_IPV6_UNICAST_IF == IPV6_UNICAST_IF, "IPV6_UNICAST_IF differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RECVFRAGSIZE) || defined(IPV6_RECVFRAGSIZE)
-#if !SPRT_NUTTX || defined(IPV6_RECVFRAGSIZE) // NuttX has no IPV6_RECVFRAGSIZE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RECVFRAGSIZE) // NuttX/Embox have no IPV6_RECVFRAGSIZE
 static_assert(__SPRT_IPV6_RECVFRAGSIZE == IPV6_RECVFRAGSIZE, "IPV6_RECVFRAGSIZE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_FREEBIND) || defined(IPV6_FREEBIND)
-#if !SPRT_NUTTX || defined(IPV6_FREEBIND) // NuttX has no IPV6_FREEBIND
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_FREEBIND) // NuttX/Embox have no IPV6_FREEBIND
 static_assert(__SPRT_IPV6_FREEBIND == IPV6_FREEBIND, "IPV6_FREEBIND differs from native");
 #endif
 #endif
@@ -1745,136 +1891,140 @@ static_assert(__SPRT_IPV6_DROP_MEMBERSHIP == IPV6_DROP_MEMBERSHIP, "IPV6_DROP_ME
 #endif
 #endif
 #if defined(__SPRT_IPV6_RXHOPOPTS) || defined(IPV6_RXHOPOPTS)
-#if !SPRT_NUTTX || defined(IPV6_RXHOPOPTS) // NuttX has no IPV6_RXHOPOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RXHOPOPTS) // NuttX/Embox have no IPV6_RXHOPOPTS
 static_assert(__SPRT_IPV6_RXHOPOPTS == IPV6_RXHOPOPTS, "IPV6_RXHOPOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RXDSTOPTS) || defined(IPV6_RXDSTOPTS)
-#if !SPRT_NUTTX || defined(IPV6_RXDSTOPTS) // NuttX has no IPV6_RXDSTOPTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RXDSTOPTS) // NuttX/Embox have no IPV6_RXDSTOPTS
 static_assert(__SPRT_IPV6_RXDSTOPTS == IPV6_RXDSTOPTS, "IPV6_RXDSTOPTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_DONT) || defined(IPV6_PMTUDISC_DONT)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_DONT) // NuttX has no IPV6_PMTUDISC_DONT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_DONT) // NuttX/Embox have no IPV6_PMTUDISC_DONT
 static_assert(__SPRT_IPV6_PMTUDISC_DONT == IPV6_PMTUDISC_DONT, "IPV6_PMTUDISC_DONT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_WANT) || defined(IPV6_PMTUDISC_WANT)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_WANT) // NuttX has no IPV6_PMTUDISC_WANT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_WANT) // NuttX/Embox have no IPV6_PMTUDISC_WANT
 static_assert(__SPRT_IPV6_PMTUDISC_WANT == IPV6_PMTUDISC_WANT, "IPV6_PMTUDISC_WANT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_DO) || defined(IPV6_PMTUDISC_DO)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_DO) // NuttX has no IPV6_PMTUDISC_DO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_DO) // NuttX/Embox have no IPV6_PMTUDISC_DO
 static_assert(__SPRT_IPV6_PMTUDISC_DO == IPV6_PMTUDISC_DO, "IPV6_PMTUDISC_DO differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_PROBE) || defined(IPV6_PMTUDISC_PROBE)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_PROBE) // NuttX has no IPV6_PMTUDISC_PROBE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_PROBE) // NuttX/Embox have no IPV6_PMTUDISC_PROBE
 static_assert(__SPRT_IPV6_PMTUDISC_PROBE == IPV6_PMTUDISC_PROBE, "IPV6_PMTUDISC_PROBE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_INTERFACE) || defined(IPV6_PMTUDISC_INTERFACE)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_INTERFACE) // NuttX has no IPV6_PMTUDISC_INTERFACE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_INTERFACE) // NuttX/Embox have no IPV6_PMTUDISC_INTERFACE
 static_assert(__SPRT_IPV6_PMTUDISC_INTERFACE == IPV6_PMTUDISC_INTERFACE, "IPV6_PMTUDISC_INTERFACE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_OMIT) || defined(IPV6_PMTUDISC_OMIT)
-#if !SPRT_NUTTX || defined(IPV6_PMTUDISC_OMIT) // NuttX has no IPV6_PMTUDISC_OMIT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PMTUDISC_OMIT) // NuttX/Embox have no IPV6_PMTUDISC_OMIT
 static_assert(__SPRT_IPV6_PMTUDISC_OMIT == IPV6_PMTUDISC_OMIT, "IPV6_PMTUDISC_OMIT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_TMP) || defined(IPV6_PREFER_SRC_TMP)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_TMP) // NuttX has no IPV6_PREFER_SRC_TMP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_TMP) // NuttX/Embox have no IPV6_PREFER_SRC_TMP
 static_assert(__SPRT_IPV6_PREFER_SRC_TMP == IPV6_PREFER_SRC_TMP, "IPV6_PREFER_SRC_TMP differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_PUBLIC) || defined(IPV6_PREFER_SRC_PUBLIC)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_PUBLIC) // NuttX has no IPV6_PREFER_SRC_PUBLIC
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_PUBLIC) // NuttX/Embox have no IPV6_PREFER_SRC_PUBLIC
 static_assert(__SPRT_IPV6_PREFER_SRC_PUBLIC == IPV6_PREFER_SRC_PUBLIC, "IPV6_PREFER_SRC_PUBLIC differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT) || defined(IPV6_PREFER_SRC_PUBTMP_DEFAULT)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_PUBTMP_DEFAULT) // NuttX has no IPV6_PREFER_SRC_PUBTMP_DEFAULT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_PUBTMP_DEFAULT) // NuttX/Embox have no IPV6_PREFER_SRC_PUBTMP_DEFAULT
 static_assert(__SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT == IPV6_PREFER_SRC_PUBTMP_DEFAULT, "IPV6_PREFER_SRC_PUBTMP_DEFAULT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_COA) || defined(IPV6_PREFER_SRC_COA)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_COA) // NuttX has no IPV6_PREFER_SRC_COA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_COA) // NuttX/Embox have no IPV6_PREFER_SRC_COA
 static_assert(__SPRT_IPV6_PREFER_SRC_COA == IPV6_PREFER_SRC_COA, "IPV6_PREFER_SRC_COA differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_HOME) || defined(IPV6_PREFER_SRC_HOME)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_HOME) // NuttX has no IPV6_PREFER_SRC_HOME
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_HOME) // NuttX/Embox have no IPV6_PREFER_SRC_HOME
 static_assert(__SPRT_IPV6_PREFER_SRC_HOME == IPV6_PREFER_SRC_HOME, "IPV6_PREFER_SRC_HOME differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_CGA) || defined(IPV6_PREFER_SRC_CGA)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_CGA) // NuttX has no IPV6_PREFER_SRC_CGA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_CGA) // NuttX/Embox have no IPV6_PREFER_SRC_CGA
 static_assert(__SPRT_IPV6_PREFER_SRC_CGA == IPV6_PREFER_SRC_CGA, "IPV6_PREFER_SRC_CGA differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_NONCGA) || defined(IPV6_PREFER_SRC_NONCGA)
-#if !SPRT_NUTTX || defined(IPV6_PREFER_SRC_NONCGA) // NuttX has no IPV6_PREFER_SRC_NONCGA
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_PREFER_SRC_NONCGA) // NuttX/Embox have no IPV6_PREFER_SRC_NONCGA
 static_assert(__SPRT_IPV6_PREFER_SRC_NONCGA == IPV6_PREFER_SRC_NONCGA, "IPV6_PREFER_SRC_NONCGA differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RTHDR_LOOSE) || defined(IPV6_RTHDR_LOOSE)
-#if !SPRT_NUTTX || defined(IPV6_RTHDR_LOOSE) // NuttX has no IPV6_RTHDR_LOOSE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RTHDR_LOOSE) // NuttX/Embox have no IPV6_RTHDR_LOOSE
 static_assert(__SPRT_IPV6_RTHDR_LOOSE == IPV6_RTHDR_LOOSE, "IPV6_RTHDR_LOOSE differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RTHDR_STRICT) || defined(IPV6_RTHDR_STRICT)
-#if !SPRT_NUTTX || defined(IPV6_RTHDR_STRICT) // NuttX has no IPV6_RTHDR_STRICT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RTHDR_STRICT) // NuttX/Embox have no IPV6_RTHDR_STRICT
 static_assert(__SPRT_IPV6_RTHDR_STRICT == IPV6_RTHDR_STRICT, "IPV6_RTHDR_STRICT differs from native");
 #endif
 #endif
 #if defined(__SPRT_IPV6_RTHDR_TYPE_0) || defined(IPV6_RTHDR_TYPE_0)
-#if !SPRT_NUTTX || defined(IPV6_RTHDR_TYPE_0) // NuttX has no IPV6_RTHDR_TYPE_0
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(IPV6_RTHDR_TYPE_0) // NuttX/Embox have no IPV6_RTHDR_TYPE_0
 static_assert(__SPRT_IPV6_RTHDR_TYPE_0 == IPV6_RTHDR_TYPE_0, "IPV6_RTHDR_TYPE_0 differs from native");
 #endif
 #endif
 // --- multicast source-filter ---
 #if defined(__SPRT_MCAST_JOIN_GROUP) || defined(MCAST_JOIN_GROUP)
-#if !SPRT_NUTTX || defined(MCAST_JOIN_GROUP) // NuttX has no MCAST_JOIN_GROUP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_JOIN_GROUP) // NuttX/Embox have no MCAST_JOIN_GROUP
 static_assert(__SPRT_MCAST_JOIN_GROUP == MCAST_JOIN_GROUP, "MCAST_JOIN_GROUP differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_LEAVE_GROUP) || defined(MCAST_LEAVE_GROUP)
-#if !SPRT_NUTTX || defined(MCAST_LEAVE_GROUP) // NuttX has no MCAST_LEAVE_GROUP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_LEAVE_GROUP) // NuttX/Embox have no MCAST_LEAVE_GROUP
 static_assert(__SPRT_MCAST_LEAVE_GROUP == MCAST_LEAVE_GROUP, "MCAST_LEAVE_GROUP differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_JOIN_SOURCE_GROUP) || defined(MCAST_JOIN_SOURCE_GROUP)
-#if !SPRT_NUTTX || defined(MCAST_JOIN_SOURCE_GROUP) // NuttX has no MCAST_JOIN_SOURCE_GROUP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_JOIN_SOURCE_GROUP) // NuttX/Embox have no MCAST_JOIN_SOURCE_GROUP
 static_assert(__SPRT_MCAST_JOIN_SOURCE_GROUP == MCAST_JOIN_SOURCE_GROUP, "MCAST_JOIN_SOURCE_GROUP differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_LEAVE_SOURCE_GROUP) || defined(MCAST_LEAVE_SOURCE_GROUP)
-#if !SPRT_NUTTX || defined(MCAST_LEAVE_SOURCE_GROUP) // NuttX has no MCAST_LEAVE_SOURCE_GROUP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_LEAVE_SOURCE_GROUP) // NuttX/Embox have no MCAST_LEAVE_SOURCE_GROUP
 static_assert(__SPRT_MCAST_LEAVE_SOURCE_GROUP == MCAST_LEAVE_SOURCE_GROUP, "MCAST_LEAVE_SOURCE_GROUP differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_BLOCK_SOURCE) || defined(MCAST_BLOCK_SOURCE)
-#if !SPRT_NUTTX || defined(MCAST_BLOCK_SOURCE) // NuttX has no MCAST_BLOCK_SOURCE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_BLOCK_SOURCE) // NuttX/Embox have no MCAST_BLOCK_SOURCE
 static_assert(__SPRT_MCAST_BLOCK_SOURCE == MCAST_BLOCK_SOURCE, "MCAST_BLOCK_SOURCE differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_UNBLOCK_SOURCE) || defined(MCAST_UNBLOCK_SOURCE)
-#if !SPRT_NUTTX || defined(MCAST_UNBLOCK_SOURCE) // NuttX has no MCAST_UNBLOCK_SOURCE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_UNBLOCK_SOURCE) // NuttX/Embox have no MCAST_UNBLOCK_SOURCE
 static_assert(__SPRT_MCAST_UNBLOCK_SOURCE == MCAST_UNBLOCK_SOURCE, "MCAST_UNBLOCK_SOURCE differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_MSFILTER) || defined(MCAST_MSFILTER)
-#if !SPRT_NUTTX || defined(MCAST_MSFILTER) // NuttX has no MCAST_MSFILTER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MCAST_MSFILTER) // NuttX/Embox have no MCAST_MSFILTER
 static_assert(__SPRT_MCAST_MSFILTER == MCAST_MSFILTER, "MCAST_MSFILTER differs from native");
 #endif
 #endif
 #if defined(__SPRT_MCAST_EXCLUDE) || defined(MCAST_EXCLUDE)
+#if !SPRT_EMBOX || defined(MCAST_EXCLUDE) // Embox has no MCAST_EXCLUDE
 static_assert(__SPRT_MCAST_EXCLUDE == MCAST_EXCLUDE, "MCAST_EXCLUDE differs from native");
 #endif
+#endif
 #if defined(__SPRT_MCAST_INCLUDE) || defined(MCAST_INCLUDE)
+#if !SPRT_EMBOX || defined(MCAST_INCLUDE) // Embox has no MCAST_INCLUDE
 static_assert(__SPRT_MCAST_INCLUDE == MCAST_INCLUDE, "MCAST_INCLUDE differs from native");
+#endif
 #endif
 
 // TCP options (<netinet/tcp.h>) vs native. Same 1-1 ||-guard as the netinet block.
@@ -1921,7 +2071,7 @@ static_assert(__SPRT_TCP_CA_O == TCP_CA_O, "TCP_CA_O differs from native");
 static_assert(__SPRT_TCP_CA_R == TCP_CA_R, "TCP_CA_R differs from native");
 #endif
 #if defined(__SPRT_TCP_CC_INFO) || defined(TCP_CC_INFO)
-#if !SPRT_NUTTX || defined(TCP_CC_INFO) // NuttX has no TCP_CC_INFO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_CC_INFO) // NuttX/Embox have no TCP_CC_INFO
 static_assert(__SPRT_TCP_CC_INFO == TCP_CC_INFO, "TCP_CC_INFO differs from native");
 #endif
 #endif
@@ -1930,12 +2080,12 @@ static_assert(__SPRT_TCP_CLIENT_SND_WND == TCP_CLIENT_SND_WND,
 		"TCP_CLIENT_SND_WND differs from native");
 #endif
 #if defined(__SPRT_TCP_CM_INQ) || defined(TCP_CM_INQ)
-#if !SPRT_NUTTX || defined(TCP_CM_INQ) // NuttX has no TCP_CM_INQ
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_CM_INQ) // NuttX/Embox have no TCP_CM_INQ
 static_assert(__SPRT_TCP_CM_INQ == TCP_CM_INQ, "TCP_CM_INQ differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_CONGESTION) || defined(TCP_CONGESTION)
-#if !SPRT_NUTTX || defined(TCP_CONGESTION) // NuttX has no TCP_CONGESTION
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_CONGESTION) // NuttX/Embox have no TCP_CONGESTION
 static_assert(__SPRT_TCP_CONGESTION == TCP_CONGESTION, "TCP_CONGESTION differs from native");
 #endif
 #endif
@@ -1952,37 +2102,39 @@ static_assert(__SPRT_TCP_CONNECTIONTIMEOUT == TCP_CONNECTIONTIMEOUT,
 		"TCP_CONNECTIONTIMEOUT differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_IN_ALWAYS) || defined(TCP_COOKIE_IN_ALWAYS)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_IN_ALWAYS) // NuttX has no TCP_COOKIE_IN_ALWAYS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_IN_ALWAYS) // NuttX/Embox have no TCP_COOKIE_IN_ALWAYS
 static_assert(__SPRT_TCP_COOKIE_IN_ALWAYS == TCP_COOKIE_IN_ALWAYS, "TCP_COOKIE_IN_ALWAYS differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_COOKIE_MAX) || defined(TCP_COOKIE_MAX)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_MAX) // NuttX has no TCP_COOKIE_MAX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_MAX) // NuttX/Embox have no TCP_COOKIE_MAX
 static_assert(__SPRT_TCP_COOKIE_MAX == TCP_COOKIE_MAX, "TCP_COOKIE_MAX differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_COOKIE_MIN) || defined(TCP_COOKIE_MIN)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_MIN) // NuttX has no TCP_COOKIE_MIN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_MIN) // NuttX/Embox have no TCP_COOKIE_MIN
 static_assert(__SPRT_TCP_COOKIE_MIN == TCP_COOKIE_MIN, "TCP_COOKIE_MIN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_COOKIE_OUT_NEVER) || defined(TCP_COOKIE_OUT_NEVER)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_OUT_NEVER) // NuttX has no TCP_COOKIE_OUT_NEVER
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_OUT_NEVER) // NuttX/Embox have no TCP_COOKIE_OUT_NEVER
 static_assert(__SPRT_TCP_COOKIE_OUT_NEVER == TCP_COOKIE_OUT_NEVER, "TCP_COOKIE_OUT_NEVER differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_COOKIE_PAIR_SIZE) || defined(TCP_COOKIE_PAIR_SIZE)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_PAIR_SIZE) // NuttX has no TCP_COOKIE_PAIR_SIZE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_PAIR_SIZE) // NuttX/Embox have no TCP_COOKIE_PAIR_SIZE
 static_assert(__SPRT_TCP_COOKIE_PAIR_SIZE == TCP_COOKIE_PAIR_SIZE, "TCP_COOKIE_PAIR_SIZE differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_COOKIE_TRANSACTIONS) || defined(TCP_COOKIE_TRANSACTIONS)
-#if !SPRT_NUTTX || defined(TCP_COOKIE_TRANSACTIONS) // NuttX has no TCP_COOKIE_TRANSACTIONS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_COOKIE_TRANSACTIONS) // NuttX/Embox have no TCP_COOKIE_TRANSACTIONS
 static_assert(__SPRT_TCP_COOKIE_TRANSACTIONS == TCP_COOKIE_TRANSACTIONS, "TCP_COOKIE_TRANSACTIONS differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_CORK) || defined(TCP_CORK)
+#if !SPRT_EMBOX || defined(TCP_CORK) // Embox has no TCP_CORK
 static_assert(__SPRT_TCP_CORK == TCP_CORK, "TCP_CORK differs from native");
+#endif
 #endif
 #if defined(__SPRT_TCP_DEFER_ACCEPT) || defined(TCP_DEFER_ACCEPT)
 #if !SPRT_NUTTX || defined(TCP_DEFER_ACCEPT) // NuttX has no TCP_DEFER_ACCEPT
@@ -2005,22 +2157,22 @@ static_assert(__SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR == TCP_FAIL_CONNECT_ON_ICMP_
 		"TCP_FAIL_CONNECT_ON_ICMP_ERROR differs from native");
 #endif
 #if defined(__SPRT_TCP_FASTOPEN) || defined(TCP_FASTOPEN)
-#if !SPRT_NUTTX || defined(TCP_FASTOPEN) // NuttX has no TCP_FASTOPEN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_FASTOPEN) // NuttX/Embox have no TCP_FASTOPEN
 static_assert(__SPRT_TCP_FASTOPEN == TCP_FASTOPEN, "TCP_FASTOPEN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_CONNECT) || defined(TCP_FASTOPEN_CONNECT)
-#if !SPRT_NUTTX || defined(TCP_FASTOPEN_CONNECT) // NuttX has no TCP_FASTOPEN_CONNECT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_FASTOPEN_CONNECT) // NuttX/Embox have no TCP_FASTOPEN_CONNECT
 static_assert(__SPRT_TCP_FASTOPEN_CONNECT == TCP_FASTOPEN_CONNECT, "TCP_FASTOPEN_CONNECT differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_KEY) || defined(TCP_FASTOPEN_KEY)
-#if !SPRT_NUTTX || defined(TCP_FASTOPEN_KEY) // NuttX has no TCP_FASTOPEN_KEY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_FASTOPEN_KEY) // NuttX/Embox have no TCP_FASTOPEN_KEY
 static_assert(__SPRT_TCP_FASTOPEN_KEY == TCP_FASTOPEN_KEY, "TCP_FASTOPEN_KEY differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_NO_COOKIE) || defined(TCP_FASTOPEN_NO_COOKIE)
-#if !SPRT_NUTTX || defined(TCP_FASTOPEN_NO_COOKIE) // NuttX has no TCP_FASTOPEN_NO_COOKIE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_FASTOPEN_NO_COOKIE) // NuttX/Embox have no TCP_FASTOPEN_NO_COOKIE
 static_assert(__SPRT_TCP_FASTOPEN_NO_COOKIE == TCP_FASTOPEN_NO_COOKIE, "TCP_FASTOPEN_NO_COOKIE differs from native");
 #endif
 #endif
@@ -2035,7 +2187,7 @@ static_assert(__SPRT_TCP_ICMP_ERROR_INFO == TCP_ICMP_ERROR_INFO,
 		"TCP_ICMP_ERROR_INFO differs from native");
 #endif
 #if defined(__SPRT_TCP_INFO) || defined(TCP_INFO)
-#if !SPRT_NUTTX || defined(TCP_INFO) // NuttX has no TCP_INFO
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_INFO) // NuttX/Embox have no TCP_INFO
 static_assert(__SPRT_TCP_INFO == TCP_INFO, "TCP_INFO differs from native");
 #endif
 #endif
@@ -2069,7 +2221,7 @@ static_assert(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT == TCP_INITIAL_RTO_UNSPECIF
 		"TCP_INITIAL_RTO_UNSPECIFIED_RTT differs from native");
 #endif
 #if defined(__SPRT_TCP_INQ) || defined(TCP_INQ)
-#if !SPRT_NUTTX || defined(TCP_INQ) // NuttX has no TCP_INQ
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_INQ) // NuttX/Embox have no TCP_INQ
 static_assert(__SPRT_TCP_INQ == TCP_INQ, "TCP_INQ differs from native");
 #endif
 #endif
@@ -2086,16 +2238,22 @@ static_assert(__SPRT_TCP_IS_MPTCP == TCP_IS_MPTCP, "TCP_IS_MPTCP differs from na
 static_assert(__SPRT_TCP_KEEPALIVE == TCP_KEEPALIVE, "TCP_KEEPALIVE differs from native");
 #endif
 #if defined(__SPRT_TCP_KEEPCNT) || defined(TCP_KEEPCNT)
+#if !SPRT_EMBOX || defined(TCP_KEEPCNT) // Embox has no TCP_KEEPCNT
 static_assert(__SPRT_TCP_KEEPCNT == TCP_KEEPCNT, "TCP_KEEPCNT differs from native");
 #endif
+#endif
 #if defined(__SPRT_TCP_KEEPIDLE) || defined(TCP_KEEPIDLE)
+#if !SPRT_EMBOX || defined(TCP_KEEPIDLE) // Embox has no TCP_KEEPIDLE
 static_assert(__SPRT_TCP_KEEPIDLE == TCP_KEEPIDLE, "TCP_KEEPIDLE differs from native");
 #endif
+#endif
 #if defined(__SPRT_TCP_KEEPINTVL) || defined(TCP_KEEPINTVL)
+#if !SPRT_EMBOX || defined(TCP_KEEPINTVL) // Embox has no TCP_KEEPINTVL
 static_assert(__SPRT_TCP_KEEPINTVL == TCP_KEEPINTVL, "TCP_KEEPINTVL differs from native");
 #endif
+#endif
 #if defined(__SPRT_TCP_LINGER2) || defined(TCP_LINGER2)
-#if !SPRT_NUTTX || defined(TCP_LINGER2) // NuttX has no TCP_LINGER2
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_LINGER2) // NuttX/Embox have no TCP_LINGER2
 static_assert(__SPRT_TCP_LINGER2 == TCP_LINGER2, "TCP_LINGER2 differs from native");
 #endif
 #endif
@@ -2118,22 +2276,22 @@ static_assert(__SPRT_TCP_MAX_SACK == TCP_MAX_SACK, "TCP_MAX_SACK differs from na
 static_assert(__SPRT_TCP_MAXSEG == TCP_MAXSEG, "TCP_MAXSEG differs from native");
 #endif
 #if defined(__SPRT_TCP_MAXWIN) || defined(TCP_MAXWIN)
-#if !SPRT_NUTTX || defined(TCP_MAXWIN) // NuttX has no TCP_MAXWIN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MAXWIN) // NuttX/Embox have no TCP_MAXWIN
 static_assert(__SPRT_TCP_MAXWIN == TCP_MAXWIN, "TCP_MAXWIN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MAX_WINSHIFT) || defined(TCP_MAX_WINSHIFT)
-#if !SPRT_NUTTX || defined(TCP_MAX_WINSHIFT) // NuttX has no TCP_MAX_WINSHIFT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MAX_WINSHIFT) // NuttX/Embox have no TCP_MAX_WINSHIFT
 static_assert(__SPRT_TCP_MAX_WINSHIFT == TCP_MAX_WINSHIFT, "TCP_MAX_WINSHIFT differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MD5SIG) || defined(TCP_MD5SIG)
-#if !SPRT_NUTTX || defined(TCP_MD5SIG) // NuttX has no TCP_MD5SIG
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MD5SIG) // NuttX/Embox have no TCP_MD5SIG
 static_assert(__SPRT_TCP_MD5SIG == TCP_MD5SIG, "TCP_MD5SIG differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MD5SIG_EXT) || defined(TCP_MD5SIG_EXT)
-#if !SPRT_NUTTX || defined(TCP_MD5SIG_EXT) // NuttX has no TCP_MD5SIG_EXT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MD5SIG_EXT) // NuttX/Embox have no TCP_MD5SIG_EXT
 static_assert(__SPRT_TCP_MD5SIG_EXT == TCP_MD5SIG_EXT, "TCP_MD5SIG_EXT differs from native");
 #endif
 #endif
@@ -2142,12 +2300,12 @@ static_assert(__SPRT_TCP_MD5SIG_FLAG_IFINDEX == TCP_MD5SIG_FLAG_IFINDEX,
 		"TCP_MD5SIG_FLAG_IFINDEX differs from native");
 #endif
 #if defined(__SPRT_TCP_MD5SIG_FLAG_PREFIX) || defined(TCP_MD5SIG_FLAG_PREFIX)
-#if !SPRT_NUTTX || defined(TCP_MD5SIG_FLAG_PREFIX) // NuttX has no TCP_MD5SIG_FLAG_PREFIX
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MD5SIG_FLAG_PREFIX) // NuttX/Embox have no TCP_MD5SIG_FLAG_PREFIX
 static_assert(__SPRT_TCP_MD5SIG_FLAG_PREFIX == TCP_MD5SIG_FLAG_PREFIX, "TCP_MD5SIG_FLAG_PREFIX differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MD5SIG_MAXKEYLEN) || defined(TCP_MD5SIG_MAXKEYLEN)
-#if !SPRT_NUTTX || defined(TCP_MD5SIG_MAXKEYLEN) // NuttX has no TCP_MD5SIG_MAXKEYLEN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MD5SIG_MAXKEYLEN) // NuttX/Embox have no TCP_MD5SIG_MAXKEYLEN
 static_assert(__SPRT_TCP_MD5SIG_MAXKEYLEN == TCP_MD5SIG_MAXKEYLEN, "TCP_MD5SIG_MAXKEYLEN differs from native");
 #endif
 #endif
@@ -2155,17 +2313,17 @@ static_assert(__SPRT_TCP_MD5SIG_MAXKEYLEN == TCP_MD5SIG_MAXKEYLEN, "TCP_MD5SIG_M
 static_assert(__SPRT_TCP_MINMSS == TCP_MINMSS, "TCP_MINMSS differs from native");
 #endif
 #if defined(__SPRT_TCP_MSS) || defined(TCP_MSS)
-#if !SPRT_NUTTX || defined(TCP_MSS) // NuttX has no TCP_MSS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MSS) // NuttX/Embox have no TCP_MSS
 static_assert(__SPRT_TCP_MSS == TCP_MSS, "TCP_MSS differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MSS_DEFAULT) || defined(TCP_MSS_DEFAULT)
-#if !SPRT_NUTTX || defined(TCP_MSS_DEFAULT) // NuttX has no TCP_MSS_DEFAULT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MSS_DEFAULT) // NuttX/Embox have no TCP_MSS_DEFAULT
 static_assert(__SPRT_TCP_MSS_DEFAULT == TCP_MSS_DEFAULT, "TCP_MSS_DEFAULT differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_MSS_DESIRED) || defined(TCP_MSS_DESIRED)
-#if !SPRT_NUTTX || defined(TCP_MSS_DESIRED) // NuttX has no TCP_MSS_DESIRED
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_MSS_DESIRED) // NuttX/Embox have no TCP_MSS_DESIRED
 static_assert(__SPRT_TCP_MSS_DESIRED == TCP_MSS_DESIRED, "TCP_MSS_DESIRED differs from native");
 #endif
 #endif
@@ -2182,7 +2340,7 @@ static_assert(__SPRT_TCP_NOPUSH == TCP_NOPUSH, "TCP_NOPUSH differs from native")
 static_assert(__SPRT_TCP_NOSYNRETRIES == TCP_NOSYNRETRIES, "TCP_NOSYNRETRIES differs from native");
 #endif
 #if defined(__SPRT_TCP_NOTSENT_LOWAT) || defined(TCP_NOTSENT_LOWAT)
-#if !SPRT_NUTTX || defined(TCP_NOTSENT_LOWAT) // NuttX has no TCP_NOTSENT_LOWAT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_NOTSENT_LOWAT) // NuttX/Embox have no TCP_NOTSENT_LOWAT
 static_assert(__SPRT_TCP_NOTSENT_LOWAT == TCP_NOTSENT_LOWAT, "TCP_NOTSENT_LOWAT differs from native");
 #endif
 #endif
@@ -2206,12 +2364,12 @@ static_assert(__SPRT_TCP_OFFLOAD_PREFERRED == TCP_OFFLOAD_PREFERRED,
 		"TCP_OFFLOAD_PREFERRED differs from native");
 #endif
 #if defined(__SPRT_TCP_QUEUE_SEQ) || defined(TCP_QUEUE_SEQ)
-#if !SPRT_NUTTX || defined(TCP_QUEUE_SEQ) // NuttX has no TCP_QUEUE_SEQ
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_QUEUE_SEQ) // NuttX/Embox have no TCP_QUEUE_SEQ
 static_assert(__SPRT_TCP_QUEUE_SEQ == TCP_QUEUE_SEQ, "TCP_QUEUE_SEQ differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_QUICKACK) || defined(TCP_QUICKACK)
-#if !SPRT_NUTTX || defined(TCP_QUICKACK) // NuttX has no TCP_QUICKACK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_QUICKACK) // NuttX/Embox have no TCP_QUICKACK
 static_assert(__SPRT_TCP_QUICKACK == TCP_QUICKACK, "TCP_QUICKACK differs from native");
 #endif
 #endif
@@ -2222,37 +2380,37 @@ static_assert(__SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
 		"TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR) || defined(TCP_REPAIR)
-#if !SPRT_NUTTX || defined(TCP_REPAIR) // NuttX has no TCP_REPAIR
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR) // NuttX/Embox have no TCP_REPAIR
 static_assert(__SPRT_TCP_REPAIR == TCP_REPAIR, "TCP_REPAIR differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_OFF) || defined(TCP_REPAIR_OFF)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_OFF) // NuttX has no TCP_REPAIR_OFF
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_OFF) // NuttX/Embox have no TCP_REPAIR_OFF
 static_assert(__SPRT_TCP_REPAIR_OFF == TCP_REPAIR_OFF, "TCP_REPAIR_OFF differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_OFF_NO_WP) || defined(TCP_REPAIR_OFF_NO_WP)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_OFF_NO_WP) // NuttX has no TCP_REPAIR_OFF_NO_WP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_OFF_NO_WP) // NuttX/Embox have no TCP_REPAIR_OFF_NO_WP
 static_assert(__SPRT_TCP_REPAIR_OFF_NO_WP == TCP_REPAIR_OFF_NO_WP, "TCP_REPAIR_OFF_NO_WP differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_ON) || defined(TCP_REPAIR_ON)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_ON) // NuttX has no TCP_REPAIR_ON
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_ON) // NuttX/Embox have no TCP_REPAIR_ON
 static_assert(__SPRT_TCP_REPAIR_ON == TCP_REPAIR_ON, "TCP_REPAIR_ON differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_OPTIONS) || defined(TCP_REPAIR_OPTIONS)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_OPTIONS) // NuttX has no TCP_REPAIR_OPTIONS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_OPTIONS) // NuttX/Embox have no TCP_REPAIR_OPTIONS
 static_assert(__SPRT_TCP_REPAIR_OPTIONS == TCP_REPAIR_OPTIONS, "TCP_REPAIR_OPTIONS differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_QUEUE) || defined(TCP_REPAIR_QUEUE)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_QUEUE) // NuttX has no TCP_REPAIR_QUEUE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_QUEUE) // NuttX/Embox have no TCP_REPAIR_QUEUE
 static_assert(__SPRT_TCP_REPAIR_QUEUE == TCP_REPAIR_QUEUE, "TCP_REPAIR_QUEUE differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_REPAIR_WINDOW) || defined(TCP_REPAIR_WINDOW)
-#if !SPRT_NUTTX || defined(TCP_REPAIR_WINDOW) // NuttX has no TCP_REPAIR_WINDOW
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_REPAIR_WINDOW) // NuttX/Embox have no TCP_REPAIR_WINDOW
 static_assert(__SPRT_TCP_REPAIR_WINDOW == TCP_REPAIR_WINDOW, "TCP_REPAIR_WINDOW differs from native");
 #endif
 #endif
@@ -2264,22 +2422,22 @@ static_assert(__SPRT_TCP_RXT_CONNDROPTIME == TCP_RXT_CONNDROPTIME,
 static_assert(__SPRT_TCP_RXT_FINDROP == TCP_RXT_FINDROP, "TCP_RXT_FINDROP differs from native");
 #endif
 #if defined(__SPRT_TCP_SAVED_SYN) || defined(TCP_SAVED_SYN)
-#if !SPRT_NUTTX || defined(TCP_SAVED_SYN) // NuttX has no TCP_SAVED_SYN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_SAVED_SYN) // NuttX/Embox have no TCP_SAVED_SYN
 static_assert(__SPRT_TCP_SAVED_SYN == TCP_SAVED_SYN, "TCP_SAVED_SYN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_SAVE_SYN) || defined(TCP_SAVE_SYN)
-#if !SPRT_NUTTX || defined(TCP_SAVE_SYN) // NuttX has no TCP_SAVE_SYN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_SAVE_SYN) // NuttX/Embox have no TCP_SAVE_SYN
 static_assert(__SPRT_TCP_SAVE_SYN == TCP_SAVE_SYN, "TCP_SAVE_SYN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_S_DATA_IN) || defined(TCP_S_DATA_IN)
-#if !SPRT_NUTTX || defined(TCP_S_DATA_IN) // NuttX has no TCP_S_DATA_IN
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_S_DATA_IN) // NuttX/Embox have no TCP_S_DATA_IN
 static_assert(__SPRT_TCP_S_DATA_IN == TCP_S_DATA_IN, "TCP_S_DATA_IN differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_S_DATA_OUT) || defined(TCP_S_DATA_OUT)
-#if !SPRT_NUTTX || defined(TCP_S_DATA_OUT) // NuttX has no TCP_S_DATA_OUT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_S_DATA_OUT) // NuttX/Embox have no TCP_S_DATA_OUT
 static_assert(__SPRT_TCP_S_DATA_OUT == TCP_S_DATA_OUT, "TCP_S_DATA_OUT differs from native");
 #endif
 #endif
@@ -2297,22 +2455,22 @@ static_assert(__SPRT_TCP_SET_ICW == TCP_SET_ICW, "TCP_SET_ICW differs from nativ
 static_assert(__SPRT_TCP_STDURG == TCP_STDURG, "TCP_STDURG differs from native");
 #endif
 #if defined(__SPRT_TCP_SYNCNT) || defined(TCP_SYNCNT)
-#if !SPRT_NUTTX || defined(TCP_SYNCNT) // NuttX has no TCP_SYNCNT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_SYNCNT) // NuttX/Embox have no TCP_SYNCNT
 static_assert(__SPRT_TCP_SYNCNT == TCP_SYNCNT, "TCP_SYNCNT differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_THIN_DUPACK) || defined(TCP_THIN_DUPACK)
-#if !SPRT_NUTTX || defined(TCP_THIN_DUPACK) // NuttX has no TCP_THIN_DUPACK
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_THIN_DUPACK) // NuttX/Embox have no TCP_THIN_DUPACK
 static_assert(__SPRT_TCP_THIN_DUPACK == TCP_THIN_DUPACK, "TCP_THIN_DUPACK differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_THIN_LINEAR_TIMEOUTS) || defined(TCP_THIN_LINEAR_TIMEOUTS)
-#if !SPRT_NUTTX || defined(TCP_THIN_LINEAR_TIMEOUTS) // NuttX has no TCP_THIN_LINEAR_TIMEOUTS
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_THIN_LINEAR_TIMEOUTS) // NuttX/Embox have no TCP_THIN_LINEAR_TIMEOUTS
 static_assert(__SPRT_TCP_THIN_LINEAR_TIMEOUTS == TCP_THIN_LINEAR_TIMEOUTS, "TCP_THIN_LINEAR_TIMEOUTS differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_TIMESTAMP) || defined(TCP_TIMESTAMP)
-#if !SPRT_NUTTX || defined(TCP_TIMESTAMP) // NuttX has no TCP_TIMESTAMP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_TIMESTAMP) // NuttX/Embox have no TCP_TIMESTAMP
 static_assert(__SPRT_TCP_TIMESTAMP == TCP_TIMESTAMP, "TCP_TIMESTAMP differs from native");
 #endif
 #endif
@@ -2320,33 +2478,32 @@ static_assert(__SPRT_TCP_TIMESTAMP == TCP_TIMESTAMP, "TCP_TIMESTAMP differs from
 static_assert(__SPRT_TCP_TIMESTAMPS == TCP_TIMESTAMPS, "TCP_TIMESTAMPS differs from native");
 #endif
 #if defined(__SPRT_TCP_TX_DELAY) || defined(TCP_TX_DELAY)
-#if !SPRT_NUTTX || defined(TCP_TX_DELAY) // NuttX has no TCP_TX_DELAY
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_TX_DELAY) // NuttX/Embox have no TCP_TX_DELAY
 static_assert(__SPRT_TCP_TX_DELAY == TCP_TX_DELAY, "TCP_TX_DELAY differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_ULP) || defined(TCP_ULP)
-#if !SPRT_NUTTX || defined(TCP_ULP) // NuttX has no TCP_ULP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_ULP) // NuttX/Embox have no TCP_ULP
 static_assert(__SPRT_TCP_ULP == TCP_ULP, "TCP_ULP differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_USER_TIMEOUT) || defined(TCP_USER_TIMEOUT)
-#if !SPRT_NUTTX || defined(TCP_USER_TIMEOUT) // NuttX has no TCP_USER_TIMEOUT
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_USER_TIMEOUT) // NuttX/Embox have no TCP_USER_TIMEOUT
 static_assert(__SPRT_TCP_USER_TIMEOUT == TCP_USER_TIMEOUT, "TCP_USER_TIMEOUT differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_WINDOW_CLAMP) || defined(TCP_WINDOW_CLAMP)
-#if !SPRT_NUTTX || defined(TCP_WINDOW_CLAMP) // NuttX has no TCP_WINDOW_CLAMP
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_WINDOW_CLAMP) // NuttX/Embox have no TCP_WINDOW_CLAMP
 static_assert(__SPRT_TCP_WINDOW_CLAMP == TCP_WINDOW_CLAMP, "TCP_WINDOW_CLAMP differs from native");
 #endif
 #endif
 #if defined(__SPRT_TCP_ZEROCOPY_RECEIVE) || defined(TCP_ZEROCOPY_RECEIVE)
-#if !SPRT_NUTTX || defined(TCP_ZEROCOPY_RECEIVE) // NuttX has no TCP_ZEROCOPY_RECEIVE
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(TCP_ZEROCOPY_RECEIVE) // NuttX/Embox have no TCP_ZEROCOPY_RECEIVE
 static_assert(__SPRT_TCP_ZEROCOPY_RECEIVE == TCP_ZEROCOPY_RECEIVE, "TCP_ZEROCOPY_RECEIVE differs from native");
 #endif
 #endif
 
 #endif // hosted
-
 
 namespace sprt {
 
@@ -2467,16 +2624,16 @@ __SPRT_C_FUNC SOCKET __SPRT_ID(accept4)(SOCKET __fd,
 		::ioctlsocket(__s, (long)FIONBIO, &__nb);
 	}
 	return __s;
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_EMBOX
 	// macOS ships no accept4(): emulate with accept() + fcntl() for CLOEXEC/NONBLOCK.
 	int __s = ::accept(__fd, (::sockaddr *)__addr, (::socklen_t *)__len);
 	if (__s < 0) {
 		return -1;
 	}
-	if (__flags & SOCK_CLOEXEC) {
+	if (__flags & __SPRT_SOCK_CLOEXEC) {
 		::fcntl(__s, F_SETFD, ::fcntl(__s, F_GETFD, 0) | FD_CLOEXEC);
 	}
-	if (__flags & SOCK_NONBLOCK) {
+	if (__flags & __SPRT_SOCK_NONBLOCK) {
 		::fcntl(__s, F_SETFL, ::fcntl(__s, F_GETFL, 0) | O_NONBLOCK);
 	}
 	return __s;
@@ -2705,7 +2862,7 @@ __SPRT_C_FUNC int __SPRT_ID(sendmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 		unsigned int __vlen, unsigned int __flags) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();
-#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_HOSTED_RTOS
 	// No native sendmmsg(): loop sendmsg() over the batch (Linux semantics - return the
 	// count sent, or -1 if the first one fails).
 	unsigned int __i = 0;
@@ -2729,7 +2886,7 @@ __SPRT_C_FUNC int __SPRT_ID(recvmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 		unsigned int __vlen, unsigned int __flags, struct __SPRT_TIMESPEC_NAME *__timeout) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();
-#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_WINDOWS || SPRT_APPLE || SPRT_HOSTED_RTOS
 	// No native recvmmsg(): loop recvmsg(). The timeout is best-effort (not applied
 	// between messages), matching how the batch degrades without kernel support.
 	(void)__timeout;

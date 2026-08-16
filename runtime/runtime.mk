@@ -127,6 +127,19 @@ MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
 	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a -lm
 endif
 
+ifeq ($(TARGET_SYSTEM),Embox)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+# Do not pass -lm: -Wl,-r would bake libm into the relocatable and shadow
+# the kernel's sqrtf. Embox's default math_simple sqrtf is incorrect.
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a
+endif
+
 
 # Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.

@@ -40,11 +40,10 @@ THE SOFTWARE.
 #define __SPRT_NATIVE_GLOB     ::glob
 #define __SPRT_NATIVE_GLOBFREE ::globfree
 
-#elif SPRT_ANDROID
+#elif SPRT_ANDROID || SPRT_EMBOX
 
-// Bionic ships glob() only from API 28 (we target 24); SPRuntimeCGlobMusl.c
-// provides it over the SPRT glob_t directly (the cross Android glob_t is the musl
-// working layout), so no <glob.h> is pulled here.
+// Bionic ships glob() only from API 28 (we target 24); Embox has no <glob.h>
+// at all. SPRuntimeCGlobMusl.c provides glob over the SPRT glob_t directly.
 extern "C" int __sprt_musl_glob(const char *__pattern, int __flags,
 		int (*__errfunc)(const char *__epath, int __eerrno), __SPRT_ID(glob_t) * __pglob);
 extern "C" void __sprt_musl_globfree(__SPRT_ID(glob_t) * __pglob);
@@ -80,13 +79,20 @@ static_assert(__SPRT_REG_EXTENDED == REG_EXTENDED && __SPRT_REG_ICASE == REG_ICA
 		"REG_* compile flags differ from native");
 static_assert(__SPRT_REG_NOTBOL == REG_NOTBOL && __SPRT_REG_NOTEOL == REG_NOTEOL,
 		"REG_* exec flags differ from native");
-static_assert(__SPRT_REG_NOMATCH == REG_NOMATCH && __SPRT_REG_BADPAT == REG_BADPAT
-				&& __SPRT_REG_ERANGE == REG_ERANGE,
+static_assert(__SPRT_REG_NOMATCH == REG_NOMATCH, "REG_NOMATCH differs from native");
+// Embox's <regex.h> declares REG_NOMATCH as its only error code - the rest of the
+// POSIX set is absent, not renumbered.
+#if !SPRT_EMBOX || defined(REG_BADPAT)
+static_assert(__SPRT_REG_BADPAT == REG_BADPAT && __SPRT_REG_ERANGE == REG_ERANGE,
 		"REG_* error codes differ from native");
+#endif
 
-static_assert(__SPRT_FNM_PATHNAME == FNM_PATHNAME && __SPRT_FNM_NOESCAPE == FNM_NOESCAPE
-				&& __SPRT_FNM_PERIOD == FNM_PERIOD,
+static_assert(__SPRT_FNM_PATHNAME == FNM_PATHNAME, "FNM_PATHNAME differs from native");
+// Embox's fnmatch() takes FNM_PATHNAME only; it declares neither of these.
+#if !SPRT_EMBOX || defined(FNM_NOESCAPE)
+static_assert(__SPRT_FNM_NOESCAPE == FNM_NOESCAPE && __SPRT_FNM_PERIOD == FNM_PERIOD,
 		"FNM_* flags differ from native");
+#endif
 #ifdef FNM_LEADING_DIR
 static_assert(__SPRT_FNM_LEADING_DIR == FNM_LEADING_DIR, "FNM_LEADING_DIR differs from native");
 #endif
@@ -97,7 +103,7 @@ static_assert(__SPRT_FNM_CASEFOLD == FNM_CASEFOLD, "FNM_CASEFOLD differs from na
 // glob_t + GLOB_* are validated against the native <glob.h> everywhere it is
 // reachable (Android borrows musl's glob, so its layout is checked in
 // SPRuntimeCGlobMusl.c instead).
-#if !SPRT_ANDROID && !SPRT_NUTTX
+#if !SPRT_ANDROID && !SPRT_HOSTED_RTOS
 static_assert(sizeof(__SPRT_ID(glob_t)) == sizeof(::glob_t), "glob_t size differs from native");
 static_assert(__builtin_offsetof(__SPRT_ID(glob_t), gl_pathc)
 				== __builtin_offsetof(::glob_t, gl_pathc),
@@ -176,7 +182,7 @@ __SPRT_C_FUNC int __SPRT_ID(fnmatch)(const char *__pattern, const char *__string
 
 __SPRT_C_FUNC int __SPRT_ID(glob)(const char *__pattern, int __flags,
 		int (*__errfunc)(const char *__epath, int __eerrno), __SPRT_ID(glob_t) * __pglob) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_EMBOX
 	return __SPRT_NATIVE_GLOB(__pattern, __flags, __errfunc, __pglob);
 #else
 	return __SPRT_NATIVE_GLOB(__pattern, __flags, __errfunc, (::glob_t *)__pglob);
@@ -184,7 +190,7 @@ __SPRT_C_FUNC int __SPRT_ID(glob)(const char *__pattern, int __flags,
 }
 
 __SPRT_C_FUNC void __SPRT_ID(globfree)(__SPRT_ID(glob_t) * __pglob) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_EMBOX
 	__SPRT_NATIVE_GLOBFREE(__pglob);
 #else
 	__SPRT_NATIVE_GLOBFREE((::glob_t *)__pglob);

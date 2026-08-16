@@ -43,6 +43,12 @@ THE SOFTWARE.
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#if SPRT_EMBOX
+#include <unistd.h>
+#include <limits.h>
+
+#include "../platform/embox/dirfd.h"
+#endif
 
 // musl diverges from the glibc/bionic ABI for a couple of O_* constants checked
 // below (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, so it keeps the
@@ -74,7 +80,9 @@ static_assert(O_NOCTTY == __SPRT_O_NOCTTY);
 static_assert(O_TRUNC == __SPRT_O_TRUNC);
 static_assert(O_APPEND == __SPRT_O_APPEND);
 static_assert(O_NONBLOCK == __SPRT_O_NONBLOCK);
+#if !SPRT_EMBOX || defined(O_DSYNC) // Embox has no O_DSYNC (sprt answers with O_SYNC)
 static_assert(O_DSYNC == __SPRT_O_DSYNC);
+#endif
 static_assert(O_SYNC == __SPRT_O_SYNC);
 static_assert(O_DIRECTORY == __SPRT_O_DIRECTORY);
 static_assert(O_NOFOLLOW == __SPRT_O_NOFOLLOW);
@@ -88,7 +96,9 @@ static_assert(O_EXEC == __SPRT_O_EXEC);
 static_assert(O_SEARCH == __SPRT_O_SEARCH);
 #endif
 
+#if !SPRT_EMBOX || defined(O_ASYNC) // Embox has no O_ASYNC
 static_assert(O_ASYNC == __SPRT_O_ASYNC);
+#endif
 static_assert(O_NDELAY == __SPRT_O_NDELAY);
 
 #ifdef __SPRT_O_RSYNC
@@ -128,8 +138,10 @@ static_assert(F_SETFD == __SPRT_F_SETFD);
 static_assert(F_GETFL == __SPRT_F_GETFL);
 static_assert(F_SETFL == __SPRT_F_SETFL);
 
+#if !SPRT_EMBOX || defined(F_SETOWN) // Embox has no socket-owner commands
 static_assert(F_SETOWN == __SPRT_F_SETOWN);
 static_assert(F_GETOWN == __SPRT_F_GETOWN);
+#endif
 
 static_assert(F_DUPFD_CLOEXEC == __SPRT_F_DUPFD_CLOEXEC);
 
@@ -179,6 +191,7 @@ static_assert(F_SEAL_WRITE == __SPRT_F_SEAL_WRITE);
 static_assert(F_SEAL_FUTURE_WRITE == __SPRT_F_SEAL_FUTURE_WRITE);
 #endif
 
+
 static_assert(F_RDLCK == __SPRT_F_RDLCK);
 static_assert(F_WRLCK == __SPRT_F_WRLCK);
 static_assert(F_UNLCK == __SPRT_F_UNLCK);
@@ -218,7 +231,10 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_APPLE)
+// Keyed off the constant rather than a platform name: __SPRT_O_TMPFILE is left
+// undefined on every platform whose libc has no O_TMPFILE (Apple, Embox), and
+// include_libc/fcntl.h keys its own inline open() the same way.
+#ifdef __SPRT_O_TMPFILE
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
@@ -230,7 +246,15 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_EMBOX
+	// O_DIRECTORY must never reach Embox's open(): it opens with
+	// `assert(~__oflag & O_DIRECTORY)` (compat/posix/fs/oldfs/open_oldfs.c) and
+	// panics the kernel. Directories are handled by the shim instead.
+	if (__flags & O_DIRECTORY) {
+		return platform::openDirFd(path);
+	}
+	return open(path, __flags, __mode);
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	// NuttX has no LFS open64 — plain open is the only spelling.
 	return open(path, __flags, __mode);
 #else
@@ -268,7 +292,7 @@ __SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return creat(path, __mode);
 #else
 	return creat64(path, __mode);
@@ -279,7 +303,10 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_APPLE)
+// Keyed off the constant rather than a platform name: __SPRT_O_TMPFILE is left
+// undefined on every platform whose libc has no O_TMPFILE (Apple, Embox), and
+// include_libc/fcntl.h keys its own inline open() the same way.
+#ifdef __SPRT_O_TMPFILE
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
@@ -292,7 +319,19 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
-#elif SPRT_APPLE || SPRT_NUTTX
+#elif SPRT_EMBOX
+	// Embox's own openat() drops the descriptor and calls open(path), so a
+	// relative path silently resolved against the cwd. Resolve it here instead.
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__dir_fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	if (__flags & O_DIRECTORY) {
+		return platform::openDirFd(target);
+	}
+	return open(target, __flags, __mode);
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return openat(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);

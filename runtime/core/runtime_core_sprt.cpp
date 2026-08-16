@@ -59,6 +59,9 @@ THE SOFTWARE.
 #elif SPRT_NUTTX
 #include "nuttx/sprt_lock.cc"
 #include "nuttx/emutls.cc"
+#elif SPRT_EMBOX
+#include "embox/sprt_lock.cc"
+#include "embox/emutls.cc"
 #else
 #error Not implemented
 #endif

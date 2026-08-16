@@ -124,7 +124,8 @@ void thrd_yield(void) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-__SPRT_NORETURN void thrd_exit(int res) SPRT_UMBRELLA_END
+// Forwards to pthread_exit, so it unwinds this thread - see include_libc/pthread.h.
+__SPRT_NORETURN void thrd_exit(int res) SPRT_UMBRELLA_END_EXCEPT
 #if SPRT_UMBRELLA_REQUIRED
 {
 	__sprt_thrd_exit(res);

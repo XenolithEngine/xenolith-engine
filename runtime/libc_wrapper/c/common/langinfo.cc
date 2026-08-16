@@ -22,7 +22,9 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_langinfo.h>
 
+#if !SPRT_EMBOX
 #include <langinfo.h>
+#endif
 #if SPRT_APPLE
 #include <xlocale.h>
 #endif
@@ -33,6 +35,7 @@ THE SOFTWARE.
 // freestanding build, where the umbrella defines the public ids from __SPRT_*).
 // Bases plus category endpoints are asserted, which also validates the
 // "contiguous within a category" assumption the indexed members rely on.
+#if !SPRT_EMBOX
 static_assert(CODESET == __SPRT_CODESET);
 static_assert(D_T_FMT == __SPRT_D_T_FMT);
 static_assert(D_FMT == __SPRT_D_FMT);
@@ -53,6 +56,7 @@ static_assert(THOUSEP == __SPRT_THOUSEP);
 static_assert(YESEXPR == __SPRT_YESEXPR);
 static_assert(NOEXPR == __SPRT_NOEXPR);
 static_assert(CRNCYSTR == __SPRT_CRNCYSTR);
+#endif // !SPRT_EMBOX
 
 // Weak REFERENCES to the plain libc nl_langinfo/nl_langinfo_l. On glibc/macOS and
 // libc_impl (Windows) these resolve to the real strong symbol; on Android they
@@ -74,21 +78,30 @@ extern "C" __attribute__((weak)) char *nl_langinfo_l(nl_item __item, locale_t __
 namespace sprt {
 
 // runtime_core's C/POSIX langinfo fallback (one shared table).
-char *__nl_langinfo_default(nl_item item);
+char *__nl_langinfo_default(__SPRT_ID(nl_item) item);
 
 // __sprt_nl_langinfo: the SPRT-API symbol apps reach through the umbrella and that
 // runtime_core's strftime calls directly. Deterministic with no dlsym: use the
 // real platform symbol when present, else runtime_core's C/POSIX fallback.
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo)(__SPRT_ID(nl_item) item) {
+#if SPRT_EMBOX
+	return __nl_langinfo_default(item);
+#else
 	auto *fn = nl_langinfo;
 	if (fn) {
 		return fn(item);
 	}
 	return __nl_langinfo_default(item);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo_l)(__SPRT_ID(nl_item) item, __SPRT_ID(locale_t) loc) {
-#if SPRT_NUTTX
+#if SPRT_EMBOX
+	// Embox has neither nl_langinfo_l nor per-locale data; the C/POSIX answer
+	// ignores the locale.
+	(void)loc;
+	return __nl_langinfo_default(item);
+#elif SPRT_NUTTX
 	// NuttX has no per-locale entry point at all: <langinfo.h> defines
 	// nl_langinfo_l(i, l) as a MACRO dropping the locale and calling nl_langinfo(i).
 	// There is no symbol to take the address of, so the weak-reference shape below

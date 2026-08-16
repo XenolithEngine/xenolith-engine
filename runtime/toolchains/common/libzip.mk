@@ -98,6 +98,10 @@ ifdef NUTTX
 CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)nuttx-libzip-project-include.cmake
 endif
 
+ifdef EMBOX
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)embox-libzip-project-include.cmake
+endif
+
 endif # WINDOWS
 
 all:
@@ -115,5 +119,7 @@ all:
 	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 	$(if $(NUTTX),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
 	$(if $(NUTTX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
+	$(if $(EMBOX),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
+	$(if $(EMBOX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 
 .PHONY: all

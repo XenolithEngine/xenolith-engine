@@ -28,14 +28,21 @@ THE SOFTWARE.
 
 #include <stdlib.h>
 
-#if SPRT_APPLE
+// The self-contained quick_exit registry below serves two platforms whose libc
+// cannot be relied on for it: macOS (symbol may be absent at runtime, probed
+// through dlsym) and Embox (no such symbol at all, so no probe is compiled).
+#define __SPRT_QUICK_EXIT_FALLBACK (SPRT_APPLE || SPRT_EMBOX)
+
+#if __SPRT_QUICK_EXIT_FALLBACK
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/runtime/thread/qmutex.h>
-
-#include <dlfcn.h>
 #endif
 
 #if SPRT_APPLE
+#include <dlfcn.h>
+#endif
+
+#if __SPRT_QUICK_EXIT_FALLBACK
 
 namespace sprt::libc {
 
@@ -45,9 +52,10 @@ namespace sprt::libc {
 // back to a self-contained implementation when they are unavailable. Resolving
 // by name (instead of calling the symbols directly) also avoids emitting a weak
 // reference that would crash on launch on systems where the symbol is absent.
-
-using quick_exit_fn = void (*)(int);
-using at_quick_exit_fn = int (*)(void (*)(void));
+//
+// Embox reuses that same fallback, but unconditionally: its <stdlib.h> declares
+// atexit() and _Exit() and nothing of the quick_exit family, so there is no
+// native entry point to probe for and the registry below IS the implementation.
 
 // C requires support for registering at least 32 handlers; that is plenty for
 // the rare path where the host libc lacks native support.
@@ -61,6 +69,11 @@ struct QuickExitState {
 
 static QuickExitState s_quickExit;
 
+#if SPRT_APPLE
+
+using quick_exit_fn = void (*)(int);
+using at_quick_exit_fn = int (*)(void (*)(void));
+
 static at_quick_exit_fn nativeAtQuickExit() {
 	static auto fn =
 			reinterpret_cast<at_quick_exit_fn>(::dlsym(RTLD_DEFAULT, "at_quick_exit"));
@@ -72,10 +85,14 @@ static quick_exit_fn nativeQuickExit() {
 	return fn;
 }
 
+#endif // SPRT_APPLE
+
 static int at_quick_exit(void (*cb)(void)) {
+#if SPRT_APPLE
 	if (auto fn = nativeAtQuickExit()) {
 		return fn(cb);
 	}
+#endif
 
 	unique_lock lock(s_quickExit.lock);
 	if (s_quickExit.count >= QUICK_EXIT_MAX) {
@@ -86,10 +103,12 @@ static int at_quick_exit(void (*cb)(void)) {
 }
 
 static __SPRT_NORETURN void quick_exit(int ret) {
+#if SPRT_APPLE
 	if (auto fn = nativeQuickExit()) {
 		fn(ret);
 		__builtin_unreachable(); // native quick_exit never returns
 	}
+#endif
 
 	// Invoke the registered handlers in reverse order of registration, dropping
 	// the lock around each call so a handler may safely re-enter.
@@ -110,7 +129,7 @@ static __SPRT_NORETURN void quick_exit(int ret) {
 
 } // namespace sprt::libc
 
-#endif // SPRT_APPLE
+#endif // __SPRT_QUICK_EXIT_FALLBACK
 
 namespace sprt {
 
@@ -121,7 +140,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(exit_impl)(int ret) { ::exit(ret); 
 __SPRT_C_FUNC void __SPRT_ID(_Exit_impl)(int ret) { ::_Exit(ret); }
 
 __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
-#if SPRT_APPLE
+#if __SPRT_QUICK_EXIT_FALLBACK
 	return sprt::libc::at_quick_exit(cb);
 #else
 	return ::at_quick_exit(cb);
@@ -129,7 +148,7 @@ __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int ret) {
-#if SPRT_APPLE
+#if __SPRT_QUICK_EXIT_FALLBACK
 	sprt::libc::quick_exit(ret);
 #else
 	::quick_exit(ret);

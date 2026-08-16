@@ -224,8 +224,11 @@ char GlobalConfig::localeBuf[6] = "en-us";
 static GlobalConfig s_globalConfig;
 
 bool initialize(AppConfig &&cfg, int &resultCode) {
-	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig._pool);
-	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig._pool);
+	// The config pool is per initialize()/terminate() cycle, not per process;
+	// see GlobalConfig::_pool in private/SPRTPrivate.h.
+	s_globalConfig.init();
+	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig.pool());
+	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig.pool());
 	s_globalConfig.config.pathScheme = cfg.pathScheme;
 
 	s_globalConfig.current.lookupType = filesystem::LookupFlags::Public
@@ -234,7 +237,7 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	s_globalConfig.current.interface = filesystem::getDefaultInterface();
 
 	filesystem::getCurrentDir([&](StringView path) {
-		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+		s_globalConfig.current.path = path.pdup(s_globalConfig.pool());
 	});
 
 	if (platform::isAppContainer()
@@ -255,9 +258,9 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	return platform::runSelfInContainer(resultCode);
 }
 
-void terminate() { }
+void terminate() { s_globalConfig.term(); }
 
-memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+memory::pool_t *getConfigPool() { return s_globalConfig.pool(); }
 
 StringView getOsLocale() {
 	static char locale[32] = {0};
@@ -287,7 +290,7 @@ StringView getUniqueDeviceId() {
 		// optimistic multithreaded lazy-init
 		platform::getMachineId([](StringView str) {
 			unique_lock lock(s_globalConfig.infoMutex);
-			s_globalConfig.uniqueIdBuf = str.pdup(s_globalConfig._pool);
+			s_globalConfig.uniqueIdBuf = str.pdup(s_globalConfig.pool());
 		});
 	}
 
@@ -299,7 +302,7 @@ StringView getExecPath() {
 		// optimistic multithreaded lazy-init
 		platform::getAppPath([](StringView str) {
 			unique_lock lock(s_globalConfig.infoMutex);
-			s_globalConfig.execPathBuf = str.pdup(s_globalConfig._pool);
+			s_globalConfig.execPathBuf = str.pdup(s_globalConfig.pool());
 		});
 	}
 
@@ -311,7 +314,7 @@ StringView getHomePath() {
 		// optimistic multithreaded lazy-init
 		platform::getHomePath([](StringView str) {
 			unique_lock lock(s_globalConfig.infoMutex);
-			s_globalConfig.homePathBuf = str.pdup(s_globalConfig._pool);
+			s_globalConfig.homePathBuf = str.pdup(s_globalConfig.pool());
 		});
 	}
 	return s_globalConfig.homePathBuf;

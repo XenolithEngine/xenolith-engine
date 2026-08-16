@@ -84,13 +84,13 @@ struct __SPRT_ID(lconv) {
 	char n_sep_by_space;
 	char p_sign_posn;
 	char n_sign_posn;
-	// glibc, BSD/macOS and NuttX each order the international p/n currency flags
-	// differently; localeconv() casts the platform's lconv* to this type, so the
-	// field order must match the platform's (the platform sets
-	// __SPRT_LCONV_BSD_INTL_ORDER / __SPRT_LCONV_NUTTX_INTL_ORDER in its
+	// glibc, BSD/macOS and the RTOS libcs each order the international p/n currency
+	// flags differently; localeconv() casts the platform's lconv* to this type, so
+	// the field order must match the platform's (the platform sets
+	// __SPRT_LCONV_BSD_INTL_ORDER / __SPRT_LCONV_INTL_NEGATIVE_FIRST in its
 	// cross/<platform>/locale.h; the bridge static-asserts the offsets).
-#if defined(__SPRT_LCONV_NUTTX_INTL_ORDER)
-	// NuttX groups the negative triple first instead of interleaving p/n.
+#if defined(__SPRT_LCONV_INTL_NEGATIVE_FIRST)
+	// NuttX and Embox group the negative triple first instead of interleaving p/n.
 	char int_n_cs_precedes;
 	char int_n_sep_by_space;
 	char int_n_sign_posn;

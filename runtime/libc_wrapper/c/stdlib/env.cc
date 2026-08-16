@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/constexpr.h>
 
 #include <stdlib.h>
+// strlen() below: glibc/musl/Bionic pull it in through <stdlib.h>, Embox does not.
+#include <string.h>
 
 #if SPRT_WINDOWS
 

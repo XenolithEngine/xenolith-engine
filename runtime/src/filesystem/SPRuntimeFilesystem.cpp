@@ -47,6 +47,10 @@
 #include "SPRuntimeFilesystem-nuttx.cc"
 #endif
 
+#if SPRT_EMBOX
+#include "SPRuntimeFilesystem-embox.cc"
+#endif
+
 #include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::filesystem {
@@ -283,11 +287,17 @@ void initialize() {
 }
 
 void terminate() {
+	if (!s_resourceData) {
+		return;
+	}
+
 	for (auto it : each<LocationCategory>()) {
 		s_resourceData->_resourceLocations[toInt(it)].paths.clear();
 	}
 
 	detail::_termSystemPaths(*s_resourceData);
+
+	s_resourceData = nullptr;
 }
 
 LocationCategory getResourceCategoryByPrefix(StringView prefix) {

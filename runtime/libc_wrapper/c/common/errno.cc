@@ -53,7 +53,7 @@ SPRT_ASSERT_ERRNO(EADDRINUSE);
 #ifdef __SPRT_EADDRNOTAVAIL
 SPRT_ASSERT_ERRNO(EADDRNOTAVAIL);
 #endif
-#ifdef __SPRT_EADV
+#if defined(__SPRT_EADV) && (!SPRT_EMBOX || defined(EADV)) // Embox has no EADV
 SPRT_ASSERT_ERRNO(EADV);
 #endif
 #ifdef __SPRT_EAFNOSUPPORT
@@ -71,7 +71,7 @@ SPRT_ASSERT_ERRNO(EAUTH);
 #ifdef __SPRT_EBADARCH
 SPRT_ASSERT_ERRNO(EBADARCH);
 #endif
-#ifdef __SPRT_EBADE
+#if defined(__SPRT_EBADE) && (!SPRT_EMBOX || defined(EBADE)) // Embox has no EBADE
 SPRT_ASSERT_ERRNO(EBADE);
 #endif
 #ifdef __SPRT_EBADEXEC
@@ -80,7 +80,7 @@ SPRT_ASSERT_ERRNO(EBADEXEC);
 #ifdef __SPRT_EBADF
 SPRT_ASSERT_ERRNO(EBADF);
 #endif
-#ifdef __SPRT_EBADFD
+#if defined(__SPRT_EBADFD) && (!SPRT_EMBOX || defined(EBADFD)) // Embox has no EBADFD
 SPRT_ASSERT_ERRNO(EBADFD);
 #endif
 #ifdef __SPRT_EBADMACHO
@@ -89,19 +89,19 @@ SPRT_ASSERT_ERRNO(EBADMACHO);
 #ifdef __SPRT_EBADMSG
 SPRT_ASSERT_ERRNO(EBADMSG);
 #endif
-#ifdef __SPRT_EBADR
+#if defined(__SPRT_EBADR) && (!SPRT_EMBOX || defined(EBADR)) // Embox has no EBADR
 SPRT_ASSERT_ERRNO(EBADR);
 #endif
 #ifdef __SPRT_EBADRPC
 SPRT_ASSERT_ERRNO(EBADRPC);
 #endif
-#ifdef __SPRT_EBADRQC
+#if defined(__SPRT_EBADRQC) && (!SPRT_EMBOX || defined(EBADRQC)) // Embox has no EBADRQC
 SPRT_ASSERT_ERRNO(EBADRQC);
 #endif
-#ifdef __SPRT_EBADSLT
+#if defined(__SPRT_EBADSLT) && (!SPRT_EMBOX || defined(EBADSLT)) // Embox has no EBADSLT
 SPRT_ASSERT_ERRNO(EBADSLT);
 #endif
-#ifdef __SPRT_EBFONT
+#if defined(__SPRT_EBFONT) && (!SPRT_EMBOX || defined(EBFONT)) // Embox has no EBFONT
 SPRT_ASSERT_ERRNO(EBFONT);
 #endif
 #ifdef __SPRT_EBUSY
@@ -113,10 +113,10 @@ SPRT_ASSERT_ERRNO(ECANCELED);
 #ifdef __SPRT_ECHILD
 SPRT_ASSERT_ERRNO(ECHILD);
 #endif
-#ifdef __SPRT_ECHRNG
+#if defined(__SPRT_ECHRNG) && (!SPRT_EMBOX || defined(ECHRNG)) // Embox has no ECHRNG
 SPRT_ASSERT_ERRNO(ECHRNG);
 #endif
-#ifdef __SPRT_ECOMM
+#if defined(__SPRT_ECOMM) && (!SPRT_EMBOX || defined(ECOMM)) // Embox has no ECOMM
 SPRT_ASSERT_ERRNO(ECOMM);
 #endif
 #ifdef __SPRT_ECONNABORTED
@@ -143,7 +143,7 @@ SPRT_ASSERT_ERRNO(EDEVERR);
 #ifdef __SPRT_EDOM
 SPRT_ASSERT_ERRNO(EDOM);
 #endif
-#ifdef __SPRT_EDOTDOT
+#if defined(__SPRT_EDOTDOT) && (!SPRT_EMBOX || defined(EDOTDOT)) // Embox has no EDOTDOT
 SPRT_ASSERT_ERRNO(EDOTDOT);
 #endif
 #ifdef __SPRT_EDQUOT
@@ -167,7 +167,7 @@ SPRT_ASSERT_ERRNO(EHOSTDOWN);
 #ifdef __SPRT_EHOSTUNREACH
 SPRT_ASSERT_ERRNO(EHOSTUNREACH);
 #endif
-#ifdef __SPRT_EHWPOISON
+#if defined(__SPRT_EHWPOISON) && (!SPRT_EMBOX || defined(EHWPOISON)) // Embox has no EHWPOISON
 SPRT_ASSERT_ERRNO(EHWPOISON);
 #endif
 #ifdef __SPRT_EIDRM
@@ -194,52 +194,52 @@ SPRT_ASSERT_ERRNO(EISCONN);
 #ifdef __SPRT_EISDIR
 SPRT_ASSERT_ERRNO(EISDIR);
 #endif
-#ifdef __SPRT_EISNAM
+#if defined(__SPRT_EISNAM) && (!SPRT_EMBOX || defined(EISNAM)) // Embox has no EISNAM
 SPRT_ASSERT_ERRNO(EISNAM);
 #endif
-#ifdef __SPRT_EKEYEXPIRED
+#if defined(__SPRT_EKEYEXPIRED) && (!SPRT_EMBOX || defined(EKEYEXPIRED)) // Embox has no EKEYEXPIRED
 SPRT_ASSERT_ERRNO(EKEYEXPIRED);
 #endif
-#ifdef __SPRT_EKEYREJECTED
+#if defined(__SPRT_EKEYREJECTED) && (!SPRT_EMBOX || defined(EKEYREJECTED)) // Embox has no EKEYREJECTED
 SPRT_ASSERT_ERRNO(EKEYREJECTED);
 #endif
-#ifdef __SPRT_EKEYREVOKED
+#if defined(__SPRT_EKEYREVOKED) && (!SPRT_EMBOX || defined(EKEYREVOKED)) // Embox has no EKEYREVOKED
 SPRT_ASSERT_ERRNO(EKEYREVOKED);
 #endif
-#ifdef __SPRT_EL2HLT
+#if defined(__SPRT_EL2HLT) && (!SPRT_EMBOX || defined(EL2HLT)) // Embox has no EL2HLT
 SPRT_ASSERT_ERRNO(EL2HLT);
 #endif
-#ifdef __SPRT_EL2NSYNC
+#if defined(__SPRT_EL2NSYNC) && (!SPRT_EMBOX || defined(EL2NSYNC)) // Embox has no EL2NSYNC
 SPRT_ASSERT_ERRNO(EL2NSYNC);
 #endif
-#ifdef __SPRT_EL3HLT
+#if defined(__SPRT_EL3HLT) && (!SPRT_EMBOX || defined(EL3HLT)) // Embox has no EL3HLT
 SPRT_ASSERT_ERRNO(EL3HLT);
 #endif
-#ifdef __SPRT_EL3RST
+#if defined(__SPRT_EL3RST) && (!SPRT_EMBOX || defined(EL3RST)) // Embox has no EL3RST
 SPRT_ASSERT_ERRNO(EL3RST);
 #endif
-#ifdef __SPRT_ELIBACC
+#if defined(__SPRT_ELIBACC) && (!SPRT_EMBOX || defined(ELIBACC)) // Embox has no ELIBACC
 SPRT_ASSERT_ERRNO(ELIBACC);
 #endif
-#ifdef __SPRT_ELIBBAD
+#if defined(__SPRT_ELIBBAD) && (!SPRT_EMBOX || defined(ELIBBAD)) // Embox has no ELIBBAD
 SPRT_ASSERT_ERRNO(ELIBBAD);
 #endif
-#ifdef __SPRT_ELIBEXEC
+#if defined(__SPRT_ELIBEXEC) && (!SPRT_EMBOX || defined(ELIBEXEC)) // Embox has no ELIBEXEC
 SPRT_ASSERT_ERRNO(ELIBEXEC);
 #endif
-#ifdef __SPRT_ELIBMAX
+#if defined(__SPRT_ELIBMAX) && (!SPRT_EMBOX || defined(ELIBMAX)) // Embox has no ELIBMAX
 SPRT_ASSERT_ERRNO(ELIBMAX);
 #endif
-#ifdef __SPRT_ELIBSCN
+#if defined(__SPRT_ELIBSCN) && (!SPRT_EMBOX || defined(ELIBSCN)) // Embox has no ELIBSCN
 SPRT_ASSERT_ERRNO(ELIBSCN);
 #endif
-#ifdef __SPRT_ELNRNG
+#if defined(__SPRT_ELNRNG) && (!SPRT_EMBOX || defined(ELNRNG)) // Embox has no ELNRNG
 SPRT_ASSERT_ERRNO(ELNRNG);
 #endif
 #ifdef __SPRT_ELOOP
 SPRT_ASSERT_ERRNO(ELOOP);
 #endif
-#ifdef __SPRT_EMEDIUMTYPE
+#if defined(__SPRT_EMEDIUMTYPE) && (!SPRT_EMBOX || defined(EMEDIUMTYPE)) // Embox has no EMEDIUMTYPE
 SPRT_ASSERT_ERRNO(EMEDIUMTYPE);
 #endif
 #ifdef __SPRT_EMFILE
@@ -251,13 +251,13 @@ SPRT_ASSERT_ERRNO(EMLINK);
 #ifdef __SPRT_EMSGSIZE
 SPRT_ASSERT_ERRNO(EMSGSIZE);
 #endif
-#ifdef __SPRT_EMULTIHOP
+#if defined(__SPRT_EMULTIHOP) && (!SPRT_EMBOX || defined(EMULTIHOP)) // Embox has no EMULTIHOP
 SPRT_ASSERT_ERRNO(EMULTIHOP);
 #endif
 #ifdef __SPRT_ENAMETOOLONG
 SPRT_ASSERT_ERRNO(ENAMETOOLONG);
 #endif
-#ifdef __SPRT_ENAVAIL
+#if defined(__SPRT_ENAVAIL) && (!SPRT_EMBOX || defined(ENAVAIL)) // Embox has no ENAVAIL
 SPRT_ASSERT_ERRNO(ENAVAIL);
 #endif
 #ifdef __SPRT_ENEEDAUTH
@@ -275,7 +275,7 @@ SPRT_ASSERT_ERRNO(ENETUNREACH);
 #ifdef __SPRT_ENFILE
 SPRT_ASSERT_ERRNO(ENFILE);
 #endif
-#ifdef __SPRT_ENOANO
+#if defined(__SPRT_ENOANO) && (!SPRT_EMBOX || defined(ENOANO)) // Embox has no ENOANO
 SPRT_ASSERT_ERRNO(ENOANO);
 #endif
 #ifdef __SPRT_ENOATTR
@@ -284,7 +284,7 @@ SPRT_ASSERT_ERRNO(ENOATTR);
 #ifdef __SPRT_ENOBUFS
 SPRT_ASSERT_ERRNO(ENOBUFS);
 #endif
-#ifdef __SPRT_ENOCSI
+#if defined(__SPRT_ENOCSI) && (!SPRT_EMBOX || defined(ENOCSI)) // Embox has no ENOCSI
 SPRT_ASSERT_ERRNO(ENOCSI);
 #endif
 #ifdef __SPRT_ENODATA
@@ -299,7 +299,7 @@ SPRT_ASSERT_ERRNO(ENOENT);
 #ifdef __SPRT_ENOEXEC
 SPRT_ASSERT_ERRNO(ENOEXEC);
 #endif
-#ifdef __SPRT_ENOKEY
+#if defined(__SPRT_ENOKEY) && (!SPRT_EMBOX || defined(ENOKEY)) // Embox has no ENOKEY
 SPRT_ASSERT_ERRNO(ENOKEY);
 #endif
 #ifdef __SPRT_ENOLCK
@@ -308,7 +308,7 @@ SPRT_ASSERT_ERRNO(ENOLCK);
 #ifdef __SPRT_ENOLINK
 SPRT_ASSERT_ERRNO(ENOLINK);
 #endif
-#ifdef __SPRT_ENOMEDIUM
+#if defined(__SPRT_ENOMEDIUM) && (!SPRT_EMBOX || defined(ENOMEDIUM)) // Embox has no ENOMEDIUM
 SPRT_ASSERT_ERRNO(ENOMEDIUM);
 #endif
 #ifdef __SPRT_ENOMEM
@@ -317,10 +317,10 @@ SPRT_ASSERT_ERRNO(ENOMEM);
 #ifdef __SPRT_ENOMSG
 SPRT_ASSERT_ERRNO(ENOMSG);
 #endif
-#ifdef __SPRT_ENONET
+#if defined(__SPRT_ENONET) && (!SPRT_EMBOX || defined(ENONET)) // Embox has no ENONET
 SPRT_ASSERT_ERRNO(ENONET);
 #endif
-#ifdef __SPRT_ENOPKG
+#if defined(__SPRT_ENOPKG) && (!SPRT_EMBOX || defined(ENOPKG)) // Embox has no ENOPKG
 SPRT_ASSERT_ERRNO(ENOPKG);
 #endif
 #ifdef __SPRT_ENOPOLICY
@@ -356,7 +356,7 @@ SPRT_ASSERT_ERRNO(ENOTDIR);
 #ifdef __SPRT_ENOTEMPTY
 SPRT_ASSERT_ERRNO(ENOTEMPTY);
 #endif
-#ifdef __SPRT_ENOTNAM
+#if defined(__SPRT_ENOTNAM) && (!SPRT_EMBOX || defined(ENOTNAM)) // Embox has no ENOTNAM
 SPRT_ASSERT_ERRNO(ENOTNAM);
 #endif
 #ifdef __SPRT_ENOTRECOVERABLE
@@ -371,7 +371,7 @@ SPRT_ASSERT_ERRNO(ENOTSUP);
 #ifdef __SPRT_ENOTTY
 SPRT_ASSERT_ERRNO(ENOTTY);
 #endif
-#ifdef __SPRT_ENOTUNIQ
+#if defined(__SPRT_ENOTUNIQ) && (!SPRT_EMBOX || defined(ENOTUNIQ)) // Embox has no ENOTUNIQ
 SPRT_ASSERT_ERRNO(ENOTUNIQ);
 #endif
 #ifdef __SPRT_ENXIO
@@ -425,19 +425,19 @@ SPRT_ASSERT_ERRNO(EQFULL);
 #ifdef __SPRT_ERANGE
 SPRT_ASSERT_ERRNO(ERANGE);
 #endif
-#ifdef __SPRT_EREMCHG
+#if defined(__SPRT_EREMCHG) && (!SPRT_EMBOX || defined(EREMCHG)) // Embox has no EREMCHG
 SPRT_ASSERT_ERRNO(EREMCHG);
 #endif
-#ifdef __SPRT_EREMOTE
+#if defined(__SPRT_EREMOTE) && (!SPRT_EMBOX || defined(EREMOTE)) // Embox has no EREMOTE
 SPRT_ASSERT_ERRNO(EREMOTE);
 #endif
-#ifdef __SPRT_EREMOTEIO
+#if defined(__SPRT_EREMOTEIO) && (!SPRT_EMBOX || defined(EREMOTEIO)) // Embox has no EREMOTEIO
 SPRT_ASSERT_ERRNO(EREMOTEIO);
 #endif
-#ifdef __SPRT_ERESTART
+#if defined(__SPRT_ERESTART) && (!SPRT_EMBOX || defined(ERESTART)) // Embox has no ERESTART
 SPRT_ASSERT_ERRNO(ERESTART);
 #endif
-#ifdef __SPRT_ERFKILL
+#if defined(__SPRT_ERFKILL) && (!SPRT_EMBOX || defined(ERFKILL)) // Embox has no ERFKILL
 SPRT_ASSERT_ERRNO(ERFKILL);
 #endif
 #ifdef __SPRT_EROFS
@@ -461,13 +461,13 @@ SPRT_ASSERT_ERRNO(ESPIPE);
 #ifdef __SPRT_ESRCH
 SPRT_ASSERT_ERRNO(ESRCH);
 #endif
-#ifdef __SPRT_ESRMNT
+#if defined(__SPRT_ESRMNT) && (!SPRT_EMBOX || defined(ESRMNT)) // Embox has no ESRMNT
 SPRT_ASSERT_ERRNO(ESRMNT);
 #endif
-#ifdef __SPRT_ESTALE
+#if defined(__SPRT_ESTALE) && (!SPRT_EMBOX || defined(ESTALE)) // Embox has no ESTALE
 SPRT_ASSERT_ERRNO(ESTALE);
 #endif
-#ifdef __SPRT_ESTRPIPE
+#if defined(__SPRT_ESTRPIPE) && (!SPRT_EMBOX || defined(ESTRPIPE)) // Embox has no ESTRPIPE
 SPRT_ASSERT_ERRNO(ESTRPIPE);
 #endif
 #ifdef __SPRT_ETIME
@@ -482,13 +482,13 @@ SPRT_ASSERT_ERRNO(ETOOMANYREFS);
 #ifdef __SPRT_ETXTBSY
 SPRT_ASSERT_ERRNO(ETXTBSY);
 #endif
-#ifdef __SPRT_EUCLEAN
+#if defined(__SPRT_EUCLEAN) && (!SPRT_EMBOX || defined(EUCLEAN)) // Embox has no EUCLEAN
 SPRT_ASSERT_ERRNO(EUCLEAN);
 #endif
-#ifdef __SPRT_EUNATCH
+#if defined(__SPRT_EUNATCH) && (!SPRT_EMBOX || defined(EUNATCH)) // Embox has no EUNATCH
 SPRT_ASSERT_ERRNO(EUNATCH);
 #endif
-#ifdef __SPRT_EUSERS
+#if defined(__SPRT_EUSERS) && (!SPRT_EMBOX || defined(EUSERS)) // Embox has no EUSERS
 SPRT_ASSERT_ERRNO(EUSERS);
 #endif
 #ifdef __SPRT_EWOULDBLOCK
@@ -497,7 +497,7 @@ SPRT_ASSERT_ERRNO(EWOULDBLOCK);
 #ifdef __SPRT_EXDEV
 SPRT_ASSERT_ERRNO(EXDEV);
 #endif
-#ifdef __SPRT_EXFULL
+#if defined(__SPRT_EXFULL) && (!SPRT_EMBOX || defined(EXFULL)) // Embox has no EXFULL
 SPRT_ASSERT_ERRNO(EXFULL);
 #endif
 
@@ -512,6 +512,9 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void)
 	return ::__errno();
 #elif SPRT_APPLE
 	return __error();
+#elif SPRT_EMBOX
+	// Embox keeps errno in the task resource block; there is no __errno().
+	return ::task_self_resource_errno();
 #elif SPRT_NUTTX
 	return ::__errno();
 #else

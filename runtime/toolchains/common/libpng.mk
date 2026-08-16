@@ -43,11 +43,11 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/png16.lib))
 	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.lib))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/liblibpng16_static.a,$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.a))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/png.h,$(SP_INSTALL_PREFIX)/usr/include/png.h))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pngconf.h,$(SP_INSTALL_PREFIX)/usr/include/pngconf.h))
-	$(if $(or $(WASM),$(NUTTX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pnglibconf.h,$(SP_INSTALL_PREFIX)/usr/include/pnglibconf.h))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/liblibpng16_static.a,$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.a))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/png.h,$(SP_INSTALL_PREFIX)/usr/include/png.h))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pngconf.h,$(SP_INSTALL_PREFIX)/usr/include/pngconf.h))
+	$(if $(or $(WASM),$(NUTTX),$(EMBOX)),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pnglibconf.h,$(SP_INSTALL_PREFIX)/usr/include/pnglibconf.h))
 
 .PHONY: all

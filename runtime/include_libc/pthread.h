@@ -114,7 +114,7 @@ int pthread_detach(pthread_t thread) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-__SPRT_NORETURN void pthread_exit(void *ret) SPRT_UMBRELLA_END
+__SPRT_NORETURN void pthread_exit(void *ret) SPRT_UMBRELLA_END_EXCEPT
 #if SPRT_UMBRELLA_REQUIRED
 {
 	__sprt_pthread_exit(ret);
@@ -160,16 +160,18 @@ int pthread_setcanceltype(int v, int *p) SPRT_UMBRELLA_END
 }
 #endif
 
+// Unwinds this thread when a cancel is pending; see the note on pthread_exit.
 SPRT_UMBRELLA_FUNC
-void pthread_testcancel(void) SPRT_UMBRELLA_END
+void pthread_testcancel(void) SPRT_UMBRELLA_END_EXCEPT
 #if SPRT_UMBRELLA_REQUIRED
 {
 	__sprt_pthread_testcancel();
 }
 #endif
 
+// Cancelling THIS thread in async mode unwinds it in place; see pthread_exit.
 SPRT_UMBRELLA_FUNC
-int pthread_cancel(pthread_t thread) SPRT_UMBRELLA_END
+int pthread_cancel(pthread_t thread) SPRT_UMBRELLA_END_EXCEPT
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_pthread_cancel(thread);

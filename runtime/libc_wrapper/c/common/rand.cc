@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 // NuttX <stdlib.h> defines srandom() as a macro expanding to srand(); the
 // static helper below is also named srandom, which the macro would corrupt.
-#if SPRT_NUTTX
+#if SPRT_HOSTED_RTOS
 #undef srandom
 #endif
 #include <sprt/thirdparty/pcg_random.hpp>

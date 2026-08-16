@@ -45,12 +45,14 @@ typedef __SPRT_ID(ssize_t) ssize_t;
 #include <sprt/wrappers/windows/basic_types.h>
 #endif
 
-#if SPRT_WASM
 // fd_set + FD_*/FD_SETSIZE. POSIX keeps these in <sys/select.h>, but a lot of BSD-
 // derived socket code (e.g. curl's cshutdn.c) uses FD_SET/FD_SETSIZE having included
 // only <sys/socket.h>, mirroring the glibc header layout - so surface them here too.
+// Not a per-platform quirk: it is the header layout that code is written against,
+// so it holds for every target on this branch. It used to be gated to wasm, which
+// meant the next target to build curl (Embox) rediscovered the same missing
+// FD_SET/FD_SETSIZE and papered over it with a -include on the command line.
 #include <sys/select.h>
-#endif
 
 // struct linger / msghdr / cmsghdr / mmsghdr / ucred come from the per-platform cross
 // <sys/socket.h> surface pulled in above (sprt/c/sys/__sprt_socket.h). Map the public
