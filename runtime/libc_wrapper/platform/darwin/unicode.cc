@@ -46,31 +46,6 @@ extern "C" int _NSGetExecutablePath(char *buf, uint32_t *bufsize);
 
 namespace sprt::unicode {
 
-static char32_t convertChar(char32_t c, const callback<void(CFMutableStringRef, CFLocaleRef)> &cb) {
-	auto locale = CFLocaleCopyCurrent();
-	UniChar buf[4] = {0};
-	char32_t buf2[2];
-	auto num = unicode::utf16EncodeBuf((char16_t *)buf, 4, c);
-	auto str = CFStringCreateMutable(nullptr, 2);
-	CFStringAppendCharacters(str, buf, num);
-	cb(str, locale);
-	CFStringLowercase(str, locale);
-
-	auto bytes = CFStringGetCStringPtr(str, kCFStringEncodingUTF32);
-
-	if (bytes == nullptr) {
-		if (CFStringGetCString(str, (char *)buf2, 2 * sizeof(char32_t), kCFStringEncodingUTF32)) {
-			c = buf2[0];
-		}
-	} else {
-		c = ((char32_t *)bytes)[0];
-	}
-
-	CFRelease(str);
-	CFRelease(locale);
-	return c;
-}
-
 static CFMutableStringRef makeString(WideStringView str) {
 	auto ret = CFStringCreateMutable(nullptr, str.size());
 	CFStringAppendCharacters(ret, (UniChar *)str.data(), str.size());
@@ -121,23 +96,9 @@ static bool toWideString(CFMutableStringRef str, const callback<void(WideStringV
 	return false;
 }
 
-char32_t tolower(char32_t c) {
-	return convertChar(c, [](CFMutableStringRef str, CFLocaleRef locale) {
-		CFStringLowercase(str, locale); //
-	});
-}
-
-char32_t toupper(char32_t c) {
-	return convertChar(c, [](CFMutableStringRef str, CFLocaleRef locale) {
-		CFStringUppercase(str, locale); //
-	});
-}
-
-char32_t totitle(char32_t c) {
-	return convertChar(c, [](CFMutableStringRef str, CFLocaleRef locale) {
-		CFStringCapitalize(str, locale); //
-	});
-}
+// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// from the compiled-in Unicode tables (runtime/src/unicode), so CoreFoundation is
+// only asked about whole strings now.
 
 bool toupper(const callback<void(StringView)> &cb, StringView data) {
 	auto locale = CFLocaleCopyCurrent();

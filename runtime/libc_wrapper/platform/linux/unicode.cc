@@ -40,10 +40,6 @@ struct unistring_iface {
 	using u16_case_fn = uint16_t *(*)(const uint16_t *s, size_t n, const char *iso639_language,
 			void *nf, uint16_t *resultbuf, size_t *lengthp);
 
-	int32_t (*tolower_fn)(int32_t) = nullptr;
-	int32_t (*toupper_fn)(int32_t) = nullptr;
-	int32_t (*totitle_fn)(int32_t) = nullptr;
-
 	const char *(*uc_locale_language)() = nullptr;
 
 	u8_case_fn u8_toupper = nullptr;
@@ -63,10 +59,6 @@ struct unistring_iface {
 			const char *iso639_language, void *nf, int *resultp) = nullptr;
 
 	void load(Dso &handle) {
-		tolower_fn = handle.sym<decltype(tolower_fn)>("uc_tolower");
-		toupper_fn = handle.sym<decltype(toupper_fn)>("uc_toupper");
-		totitle_fn = handle.sym<decltype(totitle_fn)>("uc_totitle");
-
 		uc_locale_language = handle.sym<decltype(uc_locale_language)>("uc_locale_language");
 
 		u8_toupper = handle.sym<decltype(u8_toupper)>("u8_toupper");
@@ -84,17 +76,17 @@ struct unistring_iface {
 		u16_casecoll = handle.sym<decltype(u16_casecoll)>("u16_casecoll");
 	}
 
+	// The single-code-point uc_tolower/uc_toupper/uc_totitle are no longer required
+	// (nor loaded): the simple mappings come from the compiled-in tables. A
+	// libunistring that exports only the string functions is now good enough,
+	// which is a deliberate loosening of what counts as a usable library.
 	explicit operator bool() const {
-		return uc_locale_language && tolower_fn && toupper_fn && totitle_fn && u8_toupper
-				&& u8_tolower && u8_totitle && u8_cmp2 && u8_casecoll && u16_toupper && u16_tolower
-				&& u16_totitle && u16_cmp2 && u16_casecoll;
+		return uc_locale_language && u8_toupper && u8_tolower && u8_totitle && u8_cmp2
+				&& u8_casecoll && u16_toupper && u16_tolower && u16_totitle && u16_cmp2
+				&& u16_casecoll;
 	}
 
 	void clear() {
-		tolower_fn = nullptr;
-		toupper_fn = nullptr;
-		totitle_fn = nullptr;
-
 		uc_locale_language = nullptr;
 
 		u8_toupper = nullptr;
@@ -124,10 +116,6 @@ struct icu_iface {
 	using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char16_t *s2,
 			int32_t length2, uint32_t options, UErrorCode *pErrorCode);
 
-	int32_t (*tolower_fn)(int32_t) = nullptr;
-	int32_t (*toupper_fn)(int32_t) = nullptr;
-	int32_t (*totitle_fn)(int32_t) = nullptr;
-
 	case_fn u_strToLower_fn = nullptr;
 	case_fn u_strToUpper_fn = nullptr;
 	case_iter_fn u_strToTitle_fn = nullptr;
@@ -151,12 +139,6 @@ struct icu_iface {
 	}
 
 	void load(Dso &handle, StringView verSuffix) {
-		tolower_fn =
-				reinterpret_cast<decltype(tolower_fn)>(loadIcu(handle, "u_tolower", verSuffix));
-		toupper_fn =
-				reinterpret_cast<decltype(toupper_fn)>(loadIcu(handle, "u_toupper", verSuffix));
-		totitle_fn =
-				reinterpret_cast<decltype(totitle_fn)>(loadIcu(handle, "u_totitle", verSuffix));
 		u_strToLower_fn = reinterpret_cast<decltype(u_strToLower_fn)>(
 				loadIcu(handle, "u_strToLower", verSuffix));
 		u_strToUpper_fn = reinterpret_cast<decltype(u_strToUpper_fn)>(
@@ -172,15 +154,14 @@ struct icu_iface {
 				loadIcu(handle, "u_errorName", verSuffix));
 	}
 
+	// u_tolower/u_toupper/u_totitle are no longer required (nor loaded); see the
+	// same note on unistring_iface above.
 	explicit operator bool() const {
-		return tolower_fn && toupper_fn && totitle_fn && u_strToLower_fn && u_strToUpper_fn
-				&& u_strToTitle_fn && u_strCompare_fn && u_strCaseCompare_fn && u_errorName_fn;
+		return u_strToLower_fn && u_strToUpper_fn && u_strToTitle_fn && u_strCompare_fn
+				&& u_strCaseCompare_fn && u_errorName_fn;
 	}
 
 	void clear() {
-		tolower_fn = nullptr;
-		toupper_fn = nullptr;
-		totitle_fn = nullptr;
 		u_strToLower_fn = nullptr;
 		u_strToUpper_fn = nullptr;
 		u_strToTitle_fn = nullptr;
@@ -259,24 +240,6 @@ struct i18n {
 	}
 
 	~i18n() { }
-
-	char32_t tolower(char32_t c) {
-		return _handle
-				? char32_t(icu ? icu.tolower_fn(int32_t(c)) : unistring.tolower_fn(int32_t(c)))
-				: 0;
-	}
-
-	char32_t toupper(char32_t c) {
-		return _handle
-				? char32_t(icu ? icu.toupper_fn(int32_t(c)) : unistring.toupper_fn(int32_t(c)))
-				: 0;
-	}
-
-	char32_t totitle(char32_t c) {
-		return _handle
-				? char32_t(icu ? icu.totitle_fn(int32_t(c)) : unistring.totitle_fn(int32_t(c)))
-				: 0;
-	}
 
 	bool applyIcuFunction(const callback<void(WideStringView)> &cb, WideStringView data,
 			icu_iface::case_fn icuFn) {
@@ -540,11 +503,9 @@ struct i18n {
 
 static i18n *s_instance = i18n::getInstance();
 
-char32_t tolower(char32_t c) { return s_instance->tolower(c); }
-
-char32_t toupper(char32_t c) { return s_instance->toupper(c); }
-
-char32_t totitle(char32_t c) { return s_instance->totitle(c); }
+// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// from the compiled-in Unicode tables (runtime/src/unicode), which do not need a
+// library to be installed and answer the same on every target.
 
 bool toupper(const callback<void(StringView)> &cb, StringView data) {
 	return s_instance->toupper(cb, data);

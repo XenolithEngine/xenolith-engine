@@ -39,6 +39,8 @@
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_string.h>
 
+#include "private/SPRTUnicodeTrie.h"
+
 // Generated Unicode data. See data/README.adoc.
 #include "data/SPRuntimeIdnDataNorm.cc"
 #include "data/SPRuntimeIdnDataProps.cc"

@@ -28,6 +28,11 @@
 // (UNewTrie2), serialization, and the UTF-8 stepping macros - is gone: the tables
 // are built offline (data/gen-tables.py) and this engine walks UTF-16 only.
 //
+// The UTrie2 reader that the char-type, bidi and script tables need is shared with
+// the case mapper (runtime/src/unicode reads the same format) and therefore lives
+// in private/SPRTUnicodeTrie.h. What is left here is the UCPTrie the normalization
+// table uses, which is specific to UTS-46.
+//
 // The index arithmetic below is transcribed from the ICU macros LITERALLY, down to
 // the branch order. Do not "simplify" it: every branch computes a different offset,
 // and a wrong one returns a perfectly valid value for the wrong code point - no
@@ -35,73 +40,8 @@
 
 namespace sprt::idn::detail {
 
-// --- UTrie2 (used by the char-type, bidi and script tables) ------------------
-
-// ICU utrie2.h shift/mask constants. Names shortened; the ICU spelling is in the
-// trailing comment so the transcription can be checked against the original.
-enum : int32_t {
-	Utrie2Shift1 = 6 + 5, // UTRIE2_SHIFT_1
-	Utrie2Shift2 = 5, // UTRIE2_SHIFT_2
-	Utrie2OmittedBmpIndex1Length = 0x1'0000 >> Utrie2Shift1, // UTRIE2_OMITTED_BMP_INDEX_1_LENGTH
-	Utrie2Index2BlockLength = 1 << (Utrie2Shift1 - Utrie2Shift2), // UTRIE2_INDEX_2_BLOCK_LENGTH
-	Utrie2Index2Mask = Utrie2Index2BlockLength - 1, // UTRIE2_INDEX_2_MASK
-	Utrie2DataBlockLength = 1 << Utrie2Shift2, // UTRIE2_DATA_BLOCK_LENGTH
-	Utrie2DataMask = Utrie2DataBlockLength - 1, // UTRIE2_DATA_MASK
-	Utrie2IndexShift = 2, // UTRIE2_INDEX_SHIFT
-	Utrie2LscpIndex2Offset = 0x1'0000 >> Utrie2Shift2, // UTRIE2_LSCP_INDEX_2_OFFSET
-	Utrie2LscpIndex2Length = 0x400 >> Utrie2Shift2, // UTRIE2_LSCP_INDEX_2_LENGTH
-	Utrie2Index2BmpLength = Utrie2LscpIndex2Offset + Utrie2LscpIndex2Length,
-	Utrie2Utf8_2bIndex2Offset = Utrie2Index2BmpLength, // UTRIE2_UTF8_2B_INDEX_2_OFFSET
-	Utrie2Utf8_2bIndex2Length = 0x800 >> 6, // UTRIE2_UTF8_2B_INDEX_2_LENGTH
-	Utrie2Index1Offset = Utrie2Utf8_2bIndex2Offset + Utrie2Utf8_2bIndex2Length,
-	Utrie2BadUtf8DataOffset = 0x80, // UTRIE2_BAD_UTF8_DATA_OFFSET
-};
-
-// A frozen 16-bit-value UTrie2. ICU keeps index and data in one array and reaches
-// the data through `index + indexLength`; the tables in data/ are serialized that
-// way, so the layout is kept.
-struct Utrie2 {
-	const uint16_t *index;
-	int32_t indexLength;
-	int32_t dataLength;
-	char32_t highStart;
-	int32_t highValueIndex;
-
-	constexpr const uint16_t *data16() const { return index + indexLength; }
-
-	// _UTRIE2_INDEX_RAW
-	constexpr int32_t rawIndex(int32_t offset, char32_t c) const {
-		return (int32_t(index[offset + (c >> Utrie2Shift2)]) << Utrie2IndexShift)
-				+ (c & Utrie2DataMask);
-	}
-
-	// _UTRIE2_INDEX_FROM_SUPP
-	constexpr int32_t suppIndex(char32_t c) const {
-		return (int32_t(index[index[(Utrie2Index1Offset - Utrie2OmittedBmpIndex1Length)
-									  + (c >> Utrie2Shift1)]
-						+ ((c >> Utrie2Shift2) & Utrie2Index2Mask)])
-					   << Utrie2IndexShift)
-				+ (c & Utrie2DataMask);
-	}
-
-	// _UTRIE2_INDEX_FROM_CP, with asciiOffset == indexLength (what UTRIE2_GET16 passes)
-	constexpr int32_t indexFromCodepoint(char32_t c) const {
-		if (c < 0xD800) {
-			return rawIndex(0, c);
-		} else if (c <= 0xFFFF) {
-			return rawIndex(c <= 0xDBFF ? Utrie2LscpIndex2Offset - (0xD800 >> Utrie2Shift2) : 0, c);
-		} else if (c > 0x10'FFFF) {
-			return indexLength + Utrie2BadUtf8DataOffset;
-		} else if (c >= highStart) {
-			return highValueIndex;
-		} else {
-			return suppIndex(c);
-		}
-	}
-
-	// UTRIE2_GET16
-	constexpr uint16_t get(char32_t c) const { return index[indexFromCodepoint(c)]; }
-};
+// Used unqualified throughout props.cc, as when it was defined here.
+using unicode::detail::Utrie2;
 
 // --- UCPTrie (used by the normalization table) -------------------------------
 

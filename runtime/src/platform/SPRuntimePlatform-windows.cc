@@ -53,44 +53,9 @@ auto mapString(WideStringView data, int flags) {
 	return ret;
 }
 
-char32_t tolower(char32_t c) {
-	char16_t bufA[4];
-	char16_t bufB[8];
-
-	auto size = unicode::utf16EncodeBuf(bufA, 3, c);
-	auto bufSize = mapBuffer(WideStringView(bufA, size), bufB, 8, LCMAP_LOWERCASE);
-	if (bufSize > 0) {
-		uint8_t off;
-		return unicode::utf16Decode32(bufB, 8, off);
-	}
-	return c;
-}
-
-char32_t toupper(char32_t c) {
-	char16_t bufA[4];
-	char16_t bufB[8];
-
-	auto size = unicode::utf16EncodeBuf(bufA, 3, c);
-	auto bufSize = mapBuffer(WideStringView(bufA, size), bufB, 8, LCMAP_UPPERCASE);
-	if (bufSize > 0) {
-		uint8_t off;
-		return unicode::utf16Decode32(bufB, 8, off);
-	}
-	return c;
-}
-
-char32_t totitle(char32_t c) {
-	char16_t bufA[4];
-	char16_t bufB[8];
-
-	auto size = unicode::utf16EncodeBuf(bufA, 3, c);
-	auto bufSize = mapBuffer(WideStringView(bufA, size), bufB, 8, LCMAP_TITLECASE);
-	if (bufSize > 0) {
-		uint8_t off;
-		return unicode::utf16Decode32(bufB, 8, off);
-	}
-	return c;
-}
+// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// from the compiled-in Unicode tables (runtime/src/unicode). That also fixes
+// titlecasing, which LCMAP_TITLECASE did not deliver under wine at all.
 
 bool toupper(const callback<void(StringView)> &cb, StringView data) {
 	bool ret = false;

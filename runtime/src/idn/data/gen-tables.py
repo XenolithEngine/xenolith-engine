@@ -133,8 +133,13 @@ NOT_IDENT = r"(?<![A-Za-z0-9_])"
 
 
 def read_array(text, name):
-	"""Pull one `... name[N]={ ... };` initializer out of a C source file."""
-	m = re.search(NOT_IDENT + re.escape(name) + r"\s*\[\s*(\d*)\s*\]\s*=\s*\{", text)
+	"""Pull one `... name[N]={ ... };` initializer out of a C source file.
+
+	The extent may be a macro rather than a literal (ICU writes
+	`ucase_props_indexes[UCASE_IX_TOP]`); it is only cross-checked when it is a
+	plain number, and the caller asserts the length otherwise.
+	"""
+	m = re.search(NOT_IDENT + re.escape(name) + r"\s*\[\s*([^\]]*?)\s*\]\s*=\s*\{", text)
 	if not m:
 		raise SystemExit("array not found: " + name)
 	start = m.end()
@@ -146,7 +151,7 @@ def read_array(text, name):
 		if tok:
 			values.append(int(tok, 0))
 	declared = m.group(1)
-	if declared and int(declared) != len(values):
+	if declared.isdigit() and int(declared) != len(values):
 		raise SystemExit(
 			"%s: declared %s entries, parsed %d" % (name, declared, len(values)))
 	return values
