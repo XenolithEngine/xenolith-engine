@@ -40,30 +40,12 @@ static auto mapBuffer(WideStringView data, char16_t *buf, size_t count, int flag
 			(wchar_t *)buf, int(count), nullptr, nullptr, 0);
 }
 
-template <typename Interface>
-auto mapString(WideStringView data, int flags) {
-	auto bufSize = LCMapStringEx(LOCALE_NAME_SYSTEM_DEFAULT, flags, (wchar_t *)data.data(),
-			data.size(), (wchar_t *)nullptr, 0, nullptr, nullptr, 0);
-
-	typename Interface::WideStringType ret;
-	ret.resize(bufSize);
-
-	mapBuffer(data, ret.data(), ret.size(), flags);
-
-	return ret;
-}
-
-// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
-// from the compiled-in Unicode tables (runtime/src/unicode). That also fixes
-// titlecasing, which LCMAP_TITLECASE did not deliver under wine at all.
-
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	bool ret = false;
-	toUtf16([&](WideStringView uData) {
-		ret = toupper([&](WideStringView result) { toUtf8(cb, result); }, uData);
-	}, data);
-	return ret;
-}
+// tolower/toupper are no longer here, for code points or for strings: they come
+// from the compiled-in Unicode tables (runtime/src/unicode). That also fixes the
+// 1:N mappings, which LCMapStringEx does not perform at all, and titlecasing per
+// code point, which LCMAP_TITLECASE did not deliver under wine. The string
+// totitle below is still LCMAP_TITLECASE, because word boundaries are what it
+// really needs.
 
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	bool ret = false;
@@ -71,33 +53,6 @@ bool totitle(const callback<void(StringView)> &cb, StringView data) {
 		ret = totitle([&](WideStringView result) { toUtf8(cb, result); }, uData);
 	}, data);
 	return ret;
-}
-
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	bool ret = false;
-	toUtf16([&](WideStringView uData) {
-		ret = tolower([&](WideStringView result) { toUtf8(cb, result); }, uData);
-	}, data);
-	return ret;
-}
-
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto bufSize = mapBuffer(data, nullptr, 0, LCMAP_UPPERCASE);
-	if (bufSize <= 0) {
-		return false;
-	}
-
-	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_UPPERCASE);
-	if (bufSize <= 0) {
-		__sprt_freea(buf);
-		return false;
-	}
-	buf[bufSize] = 0;
-
-	cb(WideStringView(buf, bufSize));
-	__sprt_freea(buf);
-	return true;
 }
 
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
@@ -124,25 +79,6 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 		return false;
 	}
 	return ret;
-}
-
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto bufSize = mapBuffer(data, nullptr, 0, LCMAP_LOWERCASE);
-	if (bufSize <= 0) {
-		return false;
-	}
-
-	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_LOWERCASE);
-	if (bufSize <= 0) {
-		__sprt_freea(buf);
-		return false;
-	}
-	buf[bufSize] = 0;
-
-	cb(WideStringView(buf, bufSize));
-	__sprt_freea(buf);
-	return true;
 }
 
 bool compare(StringView l, StringView r, int *result) {

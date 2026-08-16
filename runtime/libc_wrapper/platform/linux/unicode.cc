@@ -42,16 +42,12 @@ struct unistring_iface {
 
 	const char *(*uc_locale_language)() = nullptr;
 
-	u8_case_fn u8_toupper = nullptr;
-	u8_case_fn u8_tolower = nullptr;
 	u8_case_fn u8_totitle = nullptr;
 
 	int (*u8_cmp2)(const uint8_t *s1, size_t n1, const uint8_t *s2, size_t n2) = nullptr;
 	int (*u8_casecoll)(const uint8_t *s1, size_t n1, const uint8_t *s2, size_t n2,
 			const char *iso639_language, void *nf, int *resultp) = nullptr;
 
-	u16_case_fn u16_toupper = nullptr;
-	u16_case_fn u16_tolower = nullptr;
 	u16_case_fn u16_totitle = nullptr;
 
 	int (*u16_cmp2)(const uint16_t *s1, size_t n1, const uint16_t *s2, size_t n2) = nullptr;
@@ -61,43 +57,36 @@ struct unistring_iface {
 	void load(Dso &handle) {
 		uc_locale_language = handle.sym<decltype(uc_locale_language)>("uc_locale_language");
 
-		u8_toupper = handle.sym<decltype(u8_toupper)>("u8_toupper");
-		u8_tolower = handle.sym<decltype(u8_tolower)>("u8_tolower");
 		u8_totitle = handle.sym<decltype(u8_totitle)>("u8_totitle");
 
 		u8_cmp2 = handle.sym<decltype(u8_cmp2)>("u8_cmp2");
 		u8_casecoll = handle.sym<decltype(u8_casecoll)>("u8_casecoll");
 
-		u16_toupper = handle.sym<decltype(u16_toupper)>("u16_toupper");
-		u16_tolower = handle.sym<decltype(u16_tolower)>("u16_tolower");
 		u16_totitle = handle.sym<decltype(u16_totitle)>("u16_totitle");
 
 		u16_cmp2 = handle.sym<decltype(u16_cmp2)>("u16_cmp2");
 		u16_casecoll = handle.sym<decltype(u16_casecoll)>("u16_casecoll");
 	}
 
-	// The single-code-point uc_tolower/uc_toupper/uc_totitle are no longer required
-	// (nor loaded): the simple mappings come from the compiled-in tables. A
-	// libunistring that exports only the string functions is now good enough,
-	// which is a deliberate loosening of what counts as a usable library.
+	// What is left here is what the port does not implement: titlecasing, which
+	// needs word boundaries, and collation. Lowercasing and uppercasing - for
+	// single code points and for strings, in either encoding - come from the
+	// compiled-in tables now, so u8_/u16_tolower/toupper and uc_tolower/uc_toupper/
+	// uc_totitle are neither loaded nor required. That is a deliberate loosening
+	// of what counts as a usable library, twice over.
 	explicit operator bool() const {
-		return uc_locale_language && u8_toupper && u8_tolower && u8_totitle && u8_cmp2
-				&& u8_casecoll && u16_toupper && u16_tolower && u16_totitle && u16_cmp2
-				&& u16_casecoll;
+		return uc_locale_language && u8_totitle && u8_cmp2 && u8_casecoll && u16_totitle
+				&& u16_cmp2 && u16_casecoll;
 	}
 
 	void clear() {
 		uc_locale_language = nullptr;
 
-		u8_toupper = nullptr;
-		u8_tolower = nullptr;
 		u8_totitle = nullptr;
 
 		u8_cmp2 = nullptr;
 		u8_casecoll = nullptr;
 
-		u16_toupper = nullptr;
-		u16_tolower = nullptr;
 		u16_totitle = nullptr;
 
 		u16_cmp2 = nullptr;
@@ -106,8 +95,6 @@ struct unistring_iface {
 };
 
 struct icu_iface {
-	using case_fn = int32_t (*)(char16_t *dest, int32_t destCapacity, const char16_t *src,
-			int32_t srcLength, const char *locale, UErrorCode *pErrorCode);
 	using case_iter_fn = int32_t (*)(char16_t *dest, int32_t destCapacity, const char16_t *src,
 			int32_t srcLength, UBreakIterator *iter, const char *locale, UErrorCode *pErrorCode);
 
@@ -116,8 +103,6 @@ struct icu_iface {
 	using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char16_t *s2,
 			int32_t length2, uint32_t options, UErrorCode *pErrorCode);
 
-	case_fn u_strToLower_fn = nullptr;
-	case_fn u_strToUpper_fn = nullptr;
 	case_iter_fn u_strToTitle_fn = nullptr;
 
 	cmp_fn u_strCompare_fn = nullptr;
@@ -139,10 +124,6 @@ struct icu_iface {
 	}
 
 	void load(Dso &handle, StringView verSuffix) {
-		u_strToLower_fn = reinterpret_cast<decltype(u_strToLower_fn)>(
-				loadIcu(handle, "u_strToLower", verSuffix));
-		u_strToUpper_fn = reinterpret_cast<decltype(u_strToUpper_fn)>(
-				loadIcu(handle, "u_strToUpper", verSuffix));
 		u_strToTitle_fn = reinterpret_cast<decltype(u_strToTitle_fn)>(
 				loadIcu(handle, "u_strToTitle", verSuffix));
 		u_strCompare_fn = reinterpret_cast<decltype(u_strCompare_fn)>(
@@ -154,16 +135,13 @@ struct icu_iface {
 				loadIcu(handle, "u_errorName", verSuffix));
 	}
 
-	// u_tolower/u_toupper/u_totitle are no longer required (nor loaded); see the
-	// same note on unistring_iface above.
+	// u_tolower/u_toupper/u_totitle and u_strToLower/u_strToUpper are no longer
+	// required (nor loaded); see the same note on unistring_iface above.
 	explicit operator bool() const {
-		return u_strToLower_fn && u_strToUpper_fn && u_strToTitle_fn && u_strCompare_fn
-				&& u_strCaseCompare_fn && u_errorName_fn;
+		return u_strToTitle_fn && u_strCompare_fn && u_strCaseCompare_fn && u_errorName_fn;
 	}
 
 	void clear() {
-		u_strToLower_fn = nullptr;
-		u_strToUpper_fn = nullptr;
 		u_strToTitle_fn = nullptr;
 		u_strCompare_fn = nullptr;
 		u_strCaseCompare_fn = nullptr;
@@ -241,30 +219,6 @@ struct i18n {
 
 	~i18n() { }
 
-	bool applyIcuFunction(const callback<void(WideStringView)> &cb, WideStringView data,
-			icu_iface::case_fn icuFn) {
-		bool ret = false;
-
-		UErrorCode status = U_ZERO_ERROR;
-		auto len = icuFn(nullptr, 0, data.data(), data.size(), nullptr, &status);
-		if (status != U_ZERO_ERROR && status != U_BUFFER_OVERFLOW_ERROR) {
-			__sprt_perror(icu.u_errorName_fn(status));
-			return false;
-		}
-
-		status = U_ZERO_ERROR;
-
-		auto capacity = len + 1;
-		auto targetBuf = __sprt_typed_malloca(char16_t, capacity);
-		len = icuFn(targetBuf, capacity, data.data(), data.size(), nullptr, &status);
-		if (status == U_ZERO_ERROR && len >= 0 && len <= capacity) {
-			cb(WideStringView(targetBuf, len));
-			ret = true;
-		}
-		__sprt_freea(targetBuf);
-		return ret;
-	}
-
 	bool applyUnistringFunction(const callback<void(StringView)> &cb, StringView data,
 			unistring_iface::u8_case_fn ustrFn) {
 		bool ret = false;
@@ -297,50 +251,6 @@ struct i18n {
 		}
 		__sprt_freea(targetBuf);
 		return ret;
-	}
-
-	auto applyFunction(const callback<void(StringView)> &cb, StringView data,
-			icu_iface::case_fn icuFn, unistring_iface::u8_case_fn ustrFn) {
-		bool ret = false;
-		if (icuFn) {
-			unicode::toUtf16([&](WideStringView str) {
-				applyIcuFunction([&](WideStringView result) {
-					unicode::toUtf8([&](StringView out) {
-						cb(out);
-						ret = true;
-					}, result);
-				}, str, icuFn);
-			}, data);
-		} else if (ustrFn) {
-			return applyUnistringFunction(cb, data, ustrFn);
-		}
-		return ret;
-	}
-
-	auto applyFunction(const callback<void(WideStringView)> &cb, WideStringView data,
-			icu_iface::case_fn icuFn, unistring_iface::u16_case_fn ustrFn) {
-		if (icuFn) {
-			return applyIcuFunction(cb, data, icuFn);
-		} else if (ustrFn) {
-			return applyUnistringFunction(cb, data, ustrFn);
-		}
-		return false;
-	}
-
-	bool tolower(const callback<void(StringView)> &cb, StringView data) {
-		return applyFunction(cb, data, icu.u_strToLower_fn, unistring.u8_tolower);
-	}
-
-	bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-		return applyFunction(cb, data, icu.u_strToLower_fn, unistring.u16_tolower);
-	}
-
-	bool toupper(const callback<void(StringView)> &cb, StringView data) {
-		return applyFunction(cb, data, icu.u_strToUpper_fn, unistring.u8_toupper);
-	}
-
-	bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-		return applyFunction(cb, data, icu.u_strToUpper_fn, unistring.u16_toupper);
 	}
 
 	auto totitle(const callback<void(StringView)> &cb, StringView data) {
@@ -503,28 +413,17 @@ struct i18n {
 
 static i18n *s_instance = i18n::getInstance();
 
-// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// tolower/toupper are no longer here, for code points or for strings: they come
 // from the compiled-in Unicode tables (runtime/src/unicode), which do not need a
-// library to be installed and answer the same on every target.
+// library to be installed and answer the same on every target. What is left is
+// titlecasing, which needs word boundaries, and collation.
 
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	return s_instance->toupper(cb, data);
-}
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	return s_instance->totitle(cb, data);
 }
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	return s_instance->tolower(cb, data);
-}
 
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return s_instance->toupper(cb, data);
-}
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	return s_instance->totitle(cb, data);
-}
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return s_instance->tolower(cb, data);
 }
 
 bool compare(StringView l, StringView r, int *result) { return s_instance->compare(l, r, result); }

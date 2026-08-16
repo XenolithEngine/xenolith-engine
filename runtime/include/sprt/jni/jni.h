@@ -123,13 +123,10 @@ struct EnvironmentProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
+// Only titlecasing is bound: lowercasing and uppercasing, for code points and
+// for strings alike, come from the compiled-in Unicode tables in
+// runtime/src/unicode and no longer make a JNI call on any device.
 struct UCharacterProxy : jni::ClassProxy {
-	jni::StaticMethod<"toLowerCase", jint(jint)> toLowerChar = this;
-	jni::StaticMethod<"toUpperCase", jint(jint)> toUpperChar = this;
-	jni::StaticMethod<"toTitleCase", jint(jint)> toTitleChar = this;
-
-	jni::StaticMethod<"toLowerCase", jstring(jstring)> toLowerString = this;
-	jni::StaticMethod<"toUpperCase", jstring(jstring)> toUpperString = this;
 	jni::StaticMethod<"toTitleCase", jstring(jstring, L<"android/icu/text/BreakIterator">)>
 			toTitleString = this;
 

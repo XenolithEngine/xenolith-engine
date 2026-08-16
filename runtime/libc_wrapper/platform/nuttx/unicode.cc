@@ -16,10 +16,11 @@ SPDX-License-Identifier: MIT
 // executable against the NuttX flat build (no crt0/special linker script at
 // configure time), and a static ICU port is a separate milestone. For the M6
 // soft-renderer track this stub backend is sufficient:
-//   * toupper/tolower/totitle(char32_t) are NOT here any more: the simple
-//     mappings come from the compiled-in Unicode tables (runtime/src/unicode),
-//     so this target now gets full Unicode for them rather than an ASCII fold.
-//     The string overloads below are still the ASCII-only stub.
+//   * toupper/tolower are NOT here any more, for code points or for strings:
+//     they come from the compiled-in Unicode tables (runtime/src/unicode), so
+//     this target now gets full Unicode for them rather than an ASCII fold.
+//     totitle is still the ASCII-only stub - real titlecasing needs word
+//     boundaries (UAX #29), which is a separate milestone.
 //   * compare/caseCompare use NuttX wcscmp/strcmp + towupper fold for the
 //     case-insensitive path (matches the POSIX C-locale collation).
 //   * idnToAscii/idnToUnicode return false (IDN resolution is irrelevant to
@@ -47,51 +48,13 @@ SPDX-License-Identifier: MIT
 
 namespace sprt::unicode {
 
-// The single-codepoint mappings live in runtime/src/unicode now. <wctype.h> is
-// still needed here: caseCompare(WideStringView) folds with towupper.
+// The lowercase and uppercase mappings live in runtime/src/unicode now, for code
+// points and for strings alike, so this target gets full Unicode for them rather
+// than an ASCII fold. What is left here is titlecasing, which needs word
+// boundaries, and collation. <wctype.h> is still needed:
+// caseCompare(WideStringView) folds with towupper.
 
 // --- callback variants (StringView, UTF-8) ----------------------------------
-// ASCII-only fold: walk bytes, fold ASCII letters in place, leave the
-// continuation bytes of any multi-byte sequence untouched. The renderer's
-// string surface (UI labels, log lines) is ASCII; non-ASCII UTF-8 round-trips
-// unchanged, which is acceptable for M6.
-
-static bool foldAsciiString(const callback<void(StringView)> &cb, StringView data, bool toUpper) {
-	if (data.empty()) {
-		cb(StringView());
-		return true;
-	}
-	// Stack buffer covers typical label lengths; heap-fallback not needed for
-	// the renderer's short strings. If a longer string shows up we cap at the
-	// buffer and the callback still receives a (possibly truncated) result —
-	// the case fold for the M6 paths never exceeds this.
-	constexpr size_t kBuf = 4'096;
-	char buf[kBuf];
-	size_t n = data.size() < kBuf ? data.size() : kBuf;
-	for (size_t i = 0; i < n; ++i) {
-		char c = data[i];
-		if (c >= 0x80) {
-			// Start/middle of a multi-byte UTF-8 sequence: do not fold. Fold
-			// only the leading-byte position by leaving all bytes of the
-			// sequence alone (case fold of non-ASCII is undefined for us).
-			buf[i] = c;
-		} else if (toUpper) {
-			buf[i] = (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c;
-		} else {
-			buf[i] = (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c;
-		}
-	}
-	cb(StringView(buf, n));
-	return true;
-}
-
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	return foldAsciiString(cb, data, /*toUpper=*/true);
-}
-
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	return foldAsciiString(cb, data, /*toUpper=*/false);
-}
 
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	// No ICU word-break iterator on NuttX; title-case folds the first ASCII
@@ -123,11 +86,10 @@ bool totitle(const callback<void(StringView)> &cb, StringView data) {
 }
 
 // --- callback variants (WideStringView, UTF-16) ----------------------------
-// Same fold, char16_t input. ASCII range only; surrogates pass through
-// untouched (their code units are outside the ASCII fold range anyway).
 
-static bool foldAsciiWide(const callback<void(WideStringView)> &cb, WideStringView data,
-		bool toUpper) {
+bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
+	// Approximate: upper the lot. ASCII range only; surrogates pass through
+	// untouched (their code units are outside the ASCII fold range anyway).
 	if (data.empty()) {
 		cb(WideStringView());
 		return true;
@@ -137,28 +99,10 @@ static bool foldAsciiWide(const callback<void(WideStringView)> &cb, WideStringVi
 	size_t n = data.size() < kBuf ? data.size() : kBuf;
 	for (size_t i = 0; i < n; ++i) {
 		char16_t c = data[i];
-		if (c >= 0x80) {
-			buf[i] = c;
-		} else if (toUpper) {
-			buf[i] = (c >= 'a' && c <= 'z') ? char16_t(c - 'a' + 'A') : c;
-		} else {
-			buf[i] = (c >= 'A' && c <= 'Z') ? char16_t(c - 'A' + 'a') : c;
-		}
+		buf[i] = (c >= 'a' && c <= 'z') ? char16_t(c - 'a' + 'A') : c;
 	}
 	cb(WideStringView(buf, n));
 	return true;
-}
-
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return foldAsciiWide(cb, data, /*toUpper=*/true);
-}
-
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return foldAsciiWide(cb, data, /*toUpper=*/false);
-}
-
-bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return foldAsciiWide(cb, data, /*toUpper=*/true); // approximate: upper the lot
 }
 
 // --- compare / caseCompare --------------------------------------------------

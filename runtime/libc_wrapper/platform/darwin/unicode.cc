@@ -96,22 +96,10 @@ static bool toWideString(CFMutableStringRef str, const callback<void(WideStringV
 	return false;
 }
 
-// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// tolower/toupper are no longer here, for code points or for strings: they come
 // from the compiled-in Unicode tables (runtime/src/unicode), so CoreFoundation is
-// only asked about whole strings now.
+// only asked about titlecasing - which needs word boundaries - and collation.
 
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringUppercase(str, locale);
-
-	auto ret = toString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	auto locale = CFLocaleCopyCurrent();
 	auto str = makeString(data);
@@ -124,48 +112,11 @@ bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	CFRelease(locale);
 	return ret;
 }
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringLowercase(str, locale);
-
-	auto ret = toString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
-
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringUppercase(str, locale);
-
-	auto ret = toWideString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	auto locale = CFLocaleCopyCurrent();
 	auto str = makeString(data);
 
 	CFStringCapitalize(str, locale);
-
-	auto ret = toWideString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringLowercase(str, locale);
 
 	auto ret = toWideString(str, cb);
 

@@ -44,12 +44,14 @@ THE SOFTWARE.
 extern "C" {
 
 // There used to be a `unicode_char` import here for the single-code-point
-// mappings. It is gone: those come from the compiled-in Unicode tables
-// (runtime/src/unicode), so the host is no longer asked about them and no longer
-// has to implement them.
+// mappings, and `unicode_transform` used to carry lowercasing and uppercasing as
+// well. Both come from the compiled-in Unicode tables (runtime/src/unicode) now,
+// so the host is no longer asked about them and no longer has to implement them.
+// What is left in `unicode_transform` is titlecasing, which needs word
+// boundaries.
 
-// op: 0 = lower, 1 = upper, 2 = title. (3 and 4 were IDNA; the host no longer
-// implements them, and the surviving numbering is unchanged.)
+// op: 2 = title. (0 and 1 were lower and upper, 3 and 4 IDNA; the host no longer
+// implements any of them, and the surviving numbering is unchanged.)
 // Reads srcLen UTF-8 bytes at src, writes the UTF-8 result into [dst, dst+cap) and
 // returns its byte length. If the result does not fit, returns the required length
 // (> cap) and writes nothing, so the caller retries with a larger buffer (ICU-style
@@ -104,22 +106,10 @@ static bool hostTransformWide(int op, WideStringView src, const callback<void(Wi
 	return ret;
 }
 
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	return hostTransform(0, data, cb);
-}
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	return hostTransform(1, data, cb);
-}
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	return hostTransform(2, data, cb);
 }
 
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return hostTransformWide(0, data, cb);
-}
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	return hostTransformWide(1, data, cb);
-}
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	return hostTransformWide(2, data, cb);
 }

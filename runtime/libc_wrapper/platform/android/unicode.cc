@@ -51,18 +51,11 @@ static qmutex s_collatorMutex;
 
 namespace icujava {
 
-// The single-code-point mappings had a JNI fallback here (UCharacter.toLowerChar
-// and friends) for devices without libicu.so. They are gone: those mappings come
-// from the compiled-in Unicode tables now, on every device and with no JNI call.
-
-bool toupper(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toUpperString(app->UCharacter.getClass().ref(env), env.newString(data))
-					.getString();
-	cb(ret);
-	return true;
-}
+// Lowercasing and uppercasing had a JNI fallback here (UCharacter.toLowerCase
+// and friends) for devices without libicu.so, both per code point and per
+// string. They are gone: those mappings come from the compiled-in Unicode tables
+// now, on every device and with no JNI call. Titlecasing stays, because it needs
+// a BreakIterator.
 
 bool totitle(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
 	auto env = jni::Env::getEnv();
@@ -74,39 +67,12 @@ bool totitle(jni::App *app, const callback<void(StringView)> &cb, StringView dat
 	return true;
 }
 
-bool tolower(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toLowerString(app->UCharacter.getClass().ref(env), env.newString(data))
-					.getString();
-	cb(ret);
-	return true;
-}
-
-bool toupper(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toUpperString(app->UCharacter.getClass().ref(env), env.newString(data))
-					.getWideString();
-	cb(ret);
-	return true;
-}
-
 bool totitle(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
 	auto env = jni::Env::getEnv();
 	auto ret = app->UCharacter
 					   .toTitleString(app->UCharacter.getClass().ref(env), env.newString(data),
 							   nullptr)
 					   .getWideString();
-	cb(ret);
-	return true;
-}
-
-bool tolower(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toLowerString(app->UCharacter.getClass().ref(env), env.newString(data))
-					.getWideString();
 	cb(ret);
 	return true;
 }
@@ -155,37 +121,15 @@ using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char1
 static Dso s_icuNative;
 
 
-static int32_t (*strToLower_fn)(char16_t *dest, int32_t destCapacity, const char16_t *src,
-		int32_t srcLength, const char *locale, int *pErrorCode) = nullptr;
-
-static int32_t (*strToUpper_fn)(char16_t *dest, int32_t destCapacity, const char16_t *src,
-		int32_t srcLength, const char *locale, int *pErrorCode) = nullptr;
-
 static int32_t (*strToTitle_fn)(char16_t *dest, int32_t destCapacity, const char16_t *src,
 		int32_t srcLength, void *iter, const char *locale, int *pErrorCode) = nullptr;
 
 static cmp_fn u_strCompare = nullptr;
 static case_cmp_fn u_strCaseCompare = nullptr;
 
-// tolower/toupper/totitle(char32_t) are no longer here: the simple mappings come
+// tolower/toupper are no longer here, for code points or for strings: they come
 // from the compiled-in Unicode tables (runtime/src/unicode), so they no longer
 // depend on libicu.so being present or on a JNI round trip.
-
-bool toupper(const callback<void(StringView)> &cb, StringView data) {
-	if (s_icuNative) {
-		bool ret = false;
-		toUtf16([&](WideStringView uData) {
-			ret = toupper([&](WideStringView result) { toUtf8(cb, result); }, uData);
-		}, data);
-		if (ret) {
-			return ret;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::toupper(app, cb, data);
-	}
-	return false;
-}
 
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	if (s_icuNative) {
@@ -199,51 +143,6 @@ bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	}
 	if (auto app = jni::Env::getApp()) {
 		return icujava::totitle(app, cb, data);
-	}
-	return false;
-}
-
-bool tolower(const callback<void(StringView)> &cb, StringView data) {
-	if (s_icuNative) {
-		bool ret = false;
-		toUtf16([&](WideStringView uData) {
-			ret = tolower([&](WideStringView result) { toUtf8(cb, result); }, uData);
-		}, data);
-		if (ret) {
-			return ret;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::tolower(app, cb, data);
-	}
-	return false;
-}
-
-bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
-	if (s_icuNative) {
-		__malloc_u16string str;
-		str.resize(data.size());
-
-		int status = 0;
-		size_t capacity = str.size();
-		auto ptr = str.data();
-
-		auto len = strToUpper_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(str.size())) {
-			str.resize(len);
-		} else {
-			capacity = len;
-			str.resize(capacity);
-			ptr = str.data();
-			strToUpper_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		}
-		if (status == 0) {
-			cb(ptr);
-			return true;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::toupper(app, cb, data);
 	}
 	return false;
 }
@@ -274,35 +173,6 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	}
 	if (auto app = jni::Env::getApp()) {
 		return icujava::totitle(app, cb, data);
-	}
-	return false;
-}
-
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	if (s_icuNative) {
-		__malloc_u16string str;
-		str.resize(data.size());
-
-		int status = 0;
-		size_t capacity = str.size();
-		auto ptr = str.data();
-
-		auto len = strToLower_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(str.size())) {
-			str.resize(len);
-		} else {
-			capacity = len;
-			str.resize(capacity);
-			ptr = str.data();
-			strToLower_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		}
-		if (status == 0) {
-			cb(ptr);
-			return true;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::tolower(app, cb, data);
 	}
 	return false;
 }
@@ -503,10 +373,6 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 
 	unicode::s_icuNative = Dso("libicu.so");
 	if (unicode::s_icuNative) {
-		unicode::strToLower_fn =
-				unicode::s_icuNative.sym<decltype(unicode::strToLower_fn)>("u_strToLower");
-		unicode::strToUpper_fn =
-				unicode::s_icuNative.sym<decltype(unicode::strToUpper_fn)>("u_strToUpper");
 		unicode::strToTitle_fn =
 				unicode::s_icuNative.sym<decltype(unicode::strToTitle_fn)>("u_strToTitle");
 

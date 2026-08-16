@@ -22,19 +22,19 @@
 
 // Two tests over sprt::unicode::, with deliberately different contracts.
 //
-// performUnicodeTests() asserts only what every platform must get right, which
-// today means ASCII and structural properties: the case functions have seven
-// separate backends (libunistring/ICU via dlopen, NDK ICU, CoreFoundation,
-// LCMapStringEx, a JS host, and two ASCII-only stubs), and they do NOT agree
-// beyond ASCII. A failure here is a real bug on that platform - notably, the
-// linux backend returns 0, not the input, when neither library can be dlopen'd.
+// performUnicodeTests() asserts. Lowercasing and uppercasing are now one
+// implementation on every platform (runtime/src/unicode, ported from ICU), so
+// everything about them can be required rather than measured - including the
+// mappings that produce several characters from one, the ones that depend on the
+// text around them, and the ones that depend on the language. What is still
+// platform code, and therefore still only asserted over ASCII, is titlecasing
+// (it needs word boundaries) and the two comparators (they are collation).
 //
-// performUnicodeCaseConformanceTests() measures the rest against the Unicode
-// Character Database and REPORTS A SCORE rather than failing. That is the point:
-// it is the baseline for docs/design/unicode-case-port-plan.adoc, whose stages 2
-// and 4 replace all seven backends with one ported from ICU. Before that port the
-// score differs per platform by design; after it, every platform should read
-// 100%, and any drop is the regression signal.
+// performUnicodeCaseConformanceTests() walks the whole Unicode Character
+// Database and REPORTS A SCORE rather than failing. It was the baseline for
+// docs/design/unicode-case-port-plan.adoc while the port replaced seven
+// disagreeing backends one stage at a time; every column reads 100% now, and a
+// drop is the regression signal.
 
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/stringview.h>
@@ -90,6 +90,25 @@ static MapResult mapString(CaseOp op, StringView src) {
 	return r;
 }
 
+// Same, for a specific language. Titlecasing has no locale overload: it is still
+// platform code until word breaking lands.
+static MapResult mapString(CaseOp op, StringView src, StringView locale) {
+	MapResult r;
+	auto sink = [&](StringView str) {
+		++r.invocations;
+		if (str.size() < sizeof(r.buf)) {
+			for (size_t i = 0; i < str.size(); ++i) { r.buf[i] = str[i]; }
+			r.result = StringView(r.buf, str.size());
+		}
+	};
+	switch (op) {
+	case CaseOp::Lower: r.ok = unicode::tolower(sink, src, locale); break;
+	case CaseOp::Upper: r.ok = unicode::toupper(sink, src, locale); break;
+	case CaseOp::Title: break; // no such overload
+	}
+	return r;
+}
+
 struct WideMapResult {
 	bool ok = false;
 	int invocations = 0;
@@ -114,10 +133,43 @@ static WideMapResult mapWide(CaseOp op, WideStringView src) {
 	return r;
 }
 
+static WideMapResult mapWide(CaseOp op, WideStringView src, StringView locale) {
+	WideMapResult r;
+	auto sink = [&](WideStringView str) {
+		++r.invocations;
+		if (str.size() < sizeof(r.buf) / sizeof(char16_t)) {
+			for (size_t i = 0; i < str.size(); ++i) { r.buf[i] = str[i]; }
+			r.result = WideStringView(r.buf, str.size());
+		}
+	};
+	switch (op) {
+	case CaseOp::Lower: r.ok = unicode::tolower(sink, src, locale); break;
+	case CaseOp::Upper: r.ok = unicode::toupper(sink, src, locale); break;
+	case CaseOp::Title: break; // no such overload
+	}
+	return r;
+}
+
 // Asserts a string overload: it succeeded, fired the callback exactly once, and
 // produced exactly this output.
 static void checkMapped(CaseOp op, StringView src, StringView expected, StringView what) {
 	auto r = mapString(op, src);
+	check(r.ok, what);
+	if (!r.ok) {
+		return;
+	}
+	check(r.invocations == 1, what);
+	++s_checks;
+	if (r.result != expected) {
+		++s_failures;
+		sprt::cerr << "  FAIL: " << what << ": got '" << r.result << "', expected '" << expected
+				   << "'\n";
+	}
+}
+
+static void checkMapped(CaseOp op, StringView src, StringView locale, StringView expected,
+		StringView what) {
+	auto r = mapString(op, src, locale);
 	check(r.ok, what);
 	if (!r.ok) {
 		return;
@@ -239,6 +291,274 @@ static void testWideStrings() {
 			"toupper(WideStringView) over ASCII");
 }
 
+// The mappings that produce more than one character, and the one context rule
+// that applies in every language. These are what a per-code-point API cannot
+// express at all, so before the port no backend implemented all of them and
+// several implemented none.
+static void testFullMappings() {
+	// One character in, several out. The uppercase of these has no single code
+	// point, so a mapper that works code point by code point returns the input.
+	checkMapped(CaseOp::Upper, "ß", "SS", "toupper: sharp s -> SS");
+	checkMapped(CaseOp::Upper, "ﬁ", "FI", "toupper: fi ligature -> FI");
+	checkMapped(CaseOp::Upper, "ŉ", "ʼN", "toupper: n preceded by apostrophe");
+	checkMapped(CaseOp::Upper, "straße", "STRASSE", "toupper: sharp s inside a word");
+
+	// Final_Sigma, the only SpecialCasing condition with no language attached:
+	// a capital sigma lowercases to the final form only at the end of a word.
+	// (The vector table below is what claims this condition as covered.)
+	checkMapped(CaseOp::Lower, "ΣΑ", "σα", "tolower: sigma at start of word");
+	checkMapped(CaseOp::Lower, "ΑΣΑ", "ασα", "tolower: sigma inside a word");
+	// A cased letter after a case-ignorable one still counts as following, so
+	// this sigma is NOT final.
+	checkMapped(CaseOp::Lower, "ΑΣ'Α", "ασ'α",
+			"tolower: sigma before an apostrophe and a letter");
+
+	// A supplementary-plane pair must survive as a pair.
+	checkMapped(CaseOp::Upper, "\U00010428", "\U00010400", "toupper: Deseret, outside the BMP");
+	checkMapped(CaseOp::Lower, "\U00010400", "\U00010428", "tolower: Deseret, outside the BMP");
+
+	// Unpaired surrogates and lone code units are not text, but they must not be
+	// destroyed either: a mapper that decodes them as U+0000 would silently
+	// truncate. (UTF-16 only - the UTF-8 side cannot represent them.)
+	checkMappedWide(CaseOp::Lower, WideStringView(u"A\xd800Z", 3), WideStringView(u"a\xd800z", 3),
+			"tolower(WideStringView) keeps an unpaired surrogate");
+}
+
+// Hand-written inputs for the SpecialCasing rows that only fire for a particular
+// language. Each names the condition it stands for; testLocaleCoverage() checks
+// that between them they name every condition the UCD has.
+struct LocaleVector {
+	CaseOp op;
+	const char *src;
+	const char *locale;
+	const char *expected;
+	const char *covers; // the SpecialCasing condition, verbatim, or "" if none
+	const char *what;
+};
+
+static constexpr LocaleVector s_localeVectors[] = {
+	// Final_Sigma is the one SpecialCasing condition with no language attached,
+	// so it belongs here for coverage even though the locale is root.
+	{CaseOp::Lower, "ΑΣ", "", "ας", "Final_Sigma", "tolower: sigma at end of word"},
+
+	// Turkish and Azerbaijani: I and i-dotless, I-dot and i are the case pairs.
+	{CaseOp::Upper, "i", "tr", "İ", "tr", "toupper tr: i -> I with dot"},
+	{CaseOp::Upper, "i", "az", "İ", "az", "toupper az: i -> I with dot"},
+	{CaseOp::Lower, "İ", "tr", "i", "tr", "tolower tr: I with dot -> i"},
+	{CaseOp::Lower, "İ", "az", "i", "az", "tolower az: I with dot -> i"},
+	{CaseOp::Lower, "I", "tr", "ı", "tr Not_Before_Dot", "tolower tr: I -> dotless i"},
+	{CaseOp::Lower, "I", "az", "ı", "az Not_Before_Dot", "tolower az: I -> dotless i"},
+	// I followed by a combining dot above is the decomposed I-with-dot, so the
+	// dot is absorbed rather than left behind.
+	{CaseOp::Lower, "İ", "tr", "i", "tr After_I", "tolower tr: I + dot above -> i"},
+	{CaseOp::Lower, "İ", "az", "i", "az After_I", "tolower az: I + dot above -> i"},
+	// Turkish rules must not leak into the root locale.
+	{CaseOp::Lower, "I", "", "i", "", "tolower root: I -> i, not dotless"},
+	{CaseOp::Upper, "i", "", "I", "", "toupper root: i -> I, not dotted"},
+	{CaseOp::Lower, "İ", "", "i̇", "", "tolower root: I with dot -> i + dot above"},
+	// The language subtag is what matters, in either case and either length.
+	{CaseOp::Lower, "I", "TR-TR", "ı", "", "tolower TR-TR: region and case ignored"},
+	{CaseOp::Lower, "I", "tur", "ı", "", "tolower tur: 3-letter code"},
+	{CaseOp::Lower, "I", "trx", "i", "", "tolower trx: not Turkish, so root"},
+
+	// Lithuanian keeps the dot on a lowercase i under an accent...
+	{CaseOp::Lower, "Ì", "lt", "i̇̀", "lt More_Above",
+			"tolower lt: I with an accent above keeps the dot"},
+	{CaseOp::Lower, "J̀", "lt", "j̇̀", "lt More_Above",
+			"tolower lt: J with an accent above keeps the dot"},
+	{CaseOp::Lower, "Ì", "lt", "i̇̀", "lt",
+			"tolower lt: precomposed I-grave decomposes with a dot"},
+	// ... and drops it again when the letter goes back to upper or title case.
+	{CaseOp::Upper, "i̇", "lt", "I", "lt After_Soft_Dotted",
+			"toupper lt: dot above a soft-dotted i is removed"},
+	// Without the language, none of that happens.
+	{CaseOp::Lower, "Ì", "", "ì", "", "tolower root: no Lithuanian dot"},
+
+	// Armenian: the ech-yiwn ligature uppercases differently in the east.
+	{CaseOp::Upper, "և", "hy", "ԵՎ", "", "toupper hy: ech-yiwn -> ech + vew"},
+	{CaseOp::Upper, "և", "", "ԵՒ", "", "toupper root: ech-yiwn -> ech + yiwn"},
+
+	// Greek uppercasing drops the tonos, which is a property of the string rather
+	// than of any character in it. ICU gates the whole Greek path on the locale,
+	// so root leaves the accents alone - that is not a gap, it is the contract.
+	{CaseOp::Upper, "οδός", "el", "ΟΔΟΣ", "", "toupper el: drops the tonos"},
+	{CaseOp::Upper, "οδός", "", "ΟΔΌΣ", "", "toupper root: keeps the tonos"},
+	// A tonos removed from one vowel becomes a dialytika on the next, so that
+	// the pair still does not read as a diphthong.
+	{CaseOp::Upper, "άι", "el", "ΑΪ", "", "toupper el: adds a dialytika"},
+	{CaseOp::Upper, "μάιος", "el", "ΜΑΪΟΣ", "", "toupper el: dialytika inside a word"},
+	// Eta with a tonos standing alone is the disjunctive "or" and keeps it.
+	{CaseOp::Upper, "ή", "el", "Ή", "", "toupper el: lone eta keeps its tonos"},
+	{CaseOp::Upper, "ήταν", "el", "ΗΤΑΝ", "", "toupper el: eta in a word loses it"},
+};
+
+static void testLocaleMappings() {
+	for (auto &v : s_localeVectors) {
+		checkMapped(v.op, StringView(v.src), StringView(v.locale), StringView(v.expected),
+				StringView(v.what));
+	}
+}
+
+// The same vectors through the UTF-16 overloads. This is not redundant: the
+// contextual rules are the one place where the two encodings run genuinely
+// different code - each has its own context iterator, walking its own units
+// backwards to answer "is this I preceded by a dot above?". The conformance run
+// cannot cover it, because the rows it walks have no context.
+static void testLocaleMappingsWide() {
+	int disagreed = 0;
+	const char *firstBad = nullptr;
+
+	for (auto &v : s_localeVectors) {
+		bool matched = false;
+		unicode::toUtf16([&](WideStringView src) {
+			auto r = mapWide(v.op, src, StringView(v.locale));
+			if (!r.ok) {
+				return;
+			}
+			unicode::toUtf16([&](WideStringView expected) { matched = r.result == expected; },
+					StringView(v.expected));
+		}, StringView(v.src));
+		if (!matched) {
+			if (disagreed == 0) {
+				firstBad = v.what;
+			}
+			++disagreed;
+		}
+	}
+
+	++s_checks;
+	if (disagreed != 0) {
+		++s_failures;
+		sprt::cerr << "  FAIL: " << disagreed
+				   << " locale vectors differ through UTF-16, first is '" << firstBad << "'\n";
+	}
+}
+
+// Every conditional row in SpecialCasing.txt must be claimed by a vector above.
+// Without this a rule added in a future UCD would simply go untested: the
+// conformance run below skips the conditional rows by construction, because
+// their inputs are single characters with no context.
+static void testLocaleCoverage() {
+	int uncovered = 0;
+	StringView firstMissing;
+	for (auto &e : s_caseConditional) {
+		StringView condition = e.condition;
+		bool covered = false;
+		for (auto &v : s_localeVectors) {
+			if (condition == StringView(v.covers)) {
+				covered = true;
+				break;
+			}
+		}
+		if (!covered) {
+			if (uncovered == 0) {
+				firstMissing = condition;
+			}
+			++uncovered;
+		}
+	}
+
+	++s_checks;
+	if (uncovered != 0) {
+		++s_failures;
+		sprt::cerr << "  FAIL: " << uncovered
+				   << " SpecialCasing conditions have no test vector, first is '" << firstMissing
+				   << "'\n";
+	}
+}
+
+// UTF-8 and UTF-16 are two implementations of the same mapping, and they are
+// allowed to differ only in encoding. Running the whole UCD through both and
+// comparing is what keeps them from drifting apart.
+static void testEncodingsAgree() {
+	int disagreed = 0;
+	StringView firstBad;
+
+	auto compareBoth = [&](CaseOp op, StringView src) {
+		auto viaUtf8 = mapString(op, src);
+		bool sameText = false;
+		unicode::toUtf16([&](WideStringView wide) {
+			auto viaUtf16 = mapWide(op, wide);
+			if (!viaUtf8.ok || !viaUtf16.ok) {
+				return;
+			}
+			unicode::toUtf8([&](StringView back) { sameText = back == viaUtf8.result; },
+					viaUtf16.result);
+		}, src);
+		if (!sameText) {
+			if (disagreed == 0) {
+				firstBad = src;
+			}
+			++disagreed;
+		}
+	};
+
+	for (auto &e : s_caseFull) {
+		compareBoth(CaseOp::Lower, e.source);
+		compareBoth(CaseOp::Upper, e.source);
+	}
+	// Plus a code point per plane's worth of the simple mappings; the full sweep
+	// is what the conformance run does, and doing it twice here would double a
+	// test that already takes a moment.
+	for (size_t i = 0; i < sizeof(s_caseSimple) / sizeof(s_caseSimple[0]); i += 37) {
+		char buf[8] = {0};
+		auto len = unicode::utf8EncodeBuf(buf, sizeof(buf), s_caseSimple[i].cp);
+		compareBoth(CaseOp::Lower, StringView(buf, len));
+		compareBoth(CaseOp::Upper, StringView(buf, len));
+	}
+
+	++s_checks;
+	if (disagreed != 0) {
+		++s_failures;
+		sprt::cerr << "  FAIL: UTF-8 and UTF-16 disagreed on " << disagreed
+				   << " mappings, first for '" << firstBad << "'\n";
+	}
+}
+
+// Ill-formed UTF-8 must come back byte-identical. The mapper decodes to decide
+// what to change, and a permissive decoder would turn an overlong encoding of
+// 'A' into a real 'a' - malformed input quietly becoming well-formed text. Each
+// case below is a sequence that decodes to a cased letter under a decoder that
+// does not check, and to nothing under one that does.
+static void testIllFormedUtf8() {
+	static constexpr struct {
+		const char *bytes;
+		size_t size;
+		const char *what;
+	} cases[] = {
+		{"\xc1\x81", 2, "overlong two-byte 'A'"},
+		{"\xe0\x81\x81", 3, "overlong three-byte 'A'"},
+		{"\xf0\x80\x81\x81", 4, "overlong four-byte 'A'"},
+		{"\xed\xa0\x80", 3, "a surrogate encoded as UTF-8"},
+		{"\xf5\x80\x80\x80", 4, "a code point above U+10FFFF"},
+		{"\xc3", 1, "a truncated two-byte sequence"},
+		{"\x80\x80", 2, "stray continuation bytes"},
+	};
+
+	for (auto &c : cases) {
+		StringView src(c.bytes, c.size);
+		for (auto op : {CaseOp::Lower, CaseOp::Upper}) {
+			auto r = mapString(op, src);
+			++s_checks;
+			if (!r.ok || r.result != src) {
+				++s_failures;
+				sprt::cerr << "  FAIL: " << (op == CaseOp::Lower ? "tolower" : "toupper")
+						   << " did not pass through " << c.what << "\n";
+			}
+		}
+	}
+
+	// The valid text around a bad sequence still has to be mapped, and the mapper
+	// has to resync exactly at the offending byte to find it: one byte too far and
+	// a letter is swallowed, one too few and a stray byte is decoded as one.
+	checkMapped(CaseOp::Upper, StringView("a\xc1\x81z", 4), StringView("A\xc1\x81Z", 4),
+			"toupper maps around an ill-formed sequence");
+	checkMapped(CaseOp::Lower, StringView("A\xc3", 2), StringView("a\xc3", 2),
+			"tolower maps a letter before a truncated sequence");
+	checkMapped(CaseOp::Lower, StringView("\xc3\x41", 2), StringView("\xc3\x61", 2),
+			"tolower maps a letter that follows a lone lead byte");
+}
+
 static void testComparators() {
 	int result = 0;
 
@@ -274,6 +594,12 @@ void performUnicodeTests() {
 	testUnmappedCodepoints();
 	testAsciiStrings();
 	testWideStrings();
+	testFullMappings();
+	testLocaleMappings();
+	testLocaleMappingsWide();
+	testLocaleCoverage();
+	testEncodingsAgree();
+	testIllFormedUtf8();
 	testComparators();
 
 	sprt::cout << "unicode tests: " << s_checks << " checks, " << s_failures << " failures\n";
@@ -310,13 +636,28 @@ void performUnicodeCaseConformanceTests() {
 		simpleTitle.add(unicode::totitle(e.cp) == e.title);
 	}
 
-	Score fullLower, fullUpper;
+	// The same rows through both string overloads. Keeping the two apart matters:
+	// they were separate backends before the port, and they are separate code
+	// paths after it.
+	Score fullLower, fullUpper, wideLower, wideUpper;
 	for (auto &e : s_caseFull) {
 		auto lower = mapString(CaseOp::Lower, e.source);
 		fullLower.add(lower.ok && lower.result == StringView(e.lower));
 
 		auto upper = mapString(CaseOp::Upper, e.source);
 		fullUpper.add(upper.ok && upper.result == StringView(e.upper));
+
+		unicode::toUtf16([&](WideStringView src) {
+			auto wl = mapWide(CaseOp::Lower, src);
+			unicode::toUtf16([&](WideStringView expected) {
+				wideLower.add(wl.ok && wl.result == expected);
+			}, StringView(e.lower));
+
+			auto wu = mapWide(CaseOp::Upper, src);
+			unicode::toUtf16([&](WideStringView expected) {
+				wideUpper.add(wu.ok && wu.result == expected);
+			}, StringView(e.upper));
+		}, StringView(e.source));
 	}
 
 	sprt::cout << "unicode case conformance (UCD " << int(s_caseUcdVersion[0]) << "."
@@ -324,10 +665,13 @@ void performUnicodeCaseConformanceTests() {
 	reportScore("simple tolower", simpleLower);
 	reportScore("simple toupper", simpleUpper);
 	reportScore("simple totitle", simpleTitle);
-	reportScore("full tolower", fullLower);
-	reportScore("full toupper", fullUpper);
-	sprt::cout << "  (" << s_caseConditionalSkipped
-			   << " conditional SpecialCasing rows not asserted: they need a locale)\n";
+	reportScore("full tolower (utf-8)", fullLower);
+	reportScore("full toupper (utf-8)", fullUpper);
+	reportScore("full tolower (utf-16)", wideLower);
+	reportScore("full toupper (utf-16)", wideUpper);
+	sprt::cout << "  (" << int(sizeof(s_caseConditional) / sizeof(s_caseConditional[0]))
+			   << " conditional SpecialCasing rows are not here: they need context, and are"
+				  " asserted by hand in runtime_unicode)\n";
 	sprt::cout << "unicode case conformance: reported, not asserted - see "
 				  "docs/design/unicode-case-port-plan.adoc\n";
 }
