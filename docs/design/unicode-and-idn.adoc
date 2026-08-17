@@ -1,0 +1,701 @@
+# Unicode and IDN
+
+How the runtime answers questions about human text: what a character's case is,
+where a word ends, which of two strings comes first, and whether a domain name is
+valid. All of it is computed from tables compiled into the binary — there is no
+system library on any path, and no target answers differently from another.
+
+Sources:
+
+* [runtime/src/unicode/](../../runtime/src/unicode/) — case mapping, word breaking, the two deterministic orderings, collation
+* [runtime/src/idn/](../../runtime/src/idn/) — UTS-46 (IDNA), Punycode, the libidn2 ABI shim, the IANA TLD list
+* [runtime/src/private/SPRTUnicodeTrie.h](../../runtime/src/private/SPRTUnicodeTrie.h) — the `UTrie2` reader both of the above share
+* [runtime/core/runtime_core_unicode.cpp](../../runtime/core/runtime_core_unicode.cpp) / [unicode.h](../../runtime/include/sprt/runtime/unicode.h) — encoding and transcoding
+* [stringview.h](../../runtime/include/sprt/runtime/stringview.h) — the public `sprt::unicode` declarations
+
+Companion documents: [usage/unicode-and-idn.adoc](../usage/unicode-and-idn.adoc)
+is the guide for calling this;
+[codestyle/core/unicode-and-text.adoc](../usage/codestyle/core/unicode-and-text.adoc)
+is the rule set for writing code that touches it;
+[api/runtime/unicode.adoc](../api/runtime/unicode.adoc) is the encoding/transcoding
+API reference. [unicode-case-port-plan.adoc](unicode-case-port-plan.adoc) is the
+historical record of the port that produced all of this.
+
+---
+
+## The decision everything follows from
+
+Every one of these operations used to be a call into whatever the platform had.
+`sprt::unicode::tolower` alone had **seven** implementations: libunistring or ICU
+via `dlopen` on Linux, NDK ICU plus a JNI fallback on Android, CoreFoundation on
+Darwin, `LCMapStringEx` on Windows, a call into the JS host on wasm, and
+ASCII-only stubs on NuttX and Embox. IDN was two near-identical copies delegating
+to whatever library was installed, and absent entirely on Windows, Darwin and
+wasm. Collation was a platform hook that most targets did not implement.
+
+They disagreed — with each other, and with Unicode. Worse, they made the result
+depend on **what happened to be installed on the machine the code ran on**, which
+is not a property a sort order or a domain-name validator may have.
+
+The replacement is one rule:
+
+> **Every Unicode answer is a pure function of a table compiled into the binary.**
+
+Consequences, all of which the rest of this document is about:
+
+* No `dlopen`, no JNI, no `CoreFoundation`, no `LCMapStringEx`, no JS host call.
+  A freestanding target gets the same answers as a Linux desktop.
+* No run-time initialization: no lazy statics, no allocation to build a table,
+  no error state for the data itself, no thread-safety problem on first use.
+* The Unicode version is a property of the *binary*, not of the host — it is
+  compiled in and readable (`s_caseUnicodeVersion`, `s_unicodeVersion`).
+* The tables cost binary size, and that size is the design constraint the whole
+  data pipeline is organized around.
+
+Current version everywhere: **Unicode 17.0.0**, from **ICU4C 78.3**.
+
+---
+
+## Module map
+
+Three compile units, deliberately separate, plus one shared header.
+
+| Unit | Lines | Data | What it answers |
+|---|---|---|---|
+| [SPRuntimeUnicodeCase.cpp](../../runtime/src/unicode/SPRuntimeUnicodeCase.cpp) | 3 347 | 42.5 KiB | case mapping, word boundaries, code-point and case-folded ordering |
+| [SPRuntimeIdn.cpp](../../runtime/src/idn/SPRuntimeIdn.cpp) | 3 829 + 1 513 (TLD list) | 245 KiB | UTS-46/IDNA, Punycode, `is_known_tld`, the libidn2 ABI |
+| [SPRuntimeCollation.cpp](../../runtime/src/unicode/SPRuntimeCollation.cpp) | 6 404 | 657 KiB … 1.99 MiB | linguistic ordering, sort keys |
+| [SPRTUnicodeTrie.h](../../runtime/src/private/SPRTUnicodeTrie.h) | 179 | — | the `UTrie2` reader, shared by all three |
+
+They are separate units so that an application pays for what it uses at *compile*
+time: the collation tables alone are an order of magnitude larger than everything
+else here, and a program that never sorts a list for a person to read should not
+spend the compile time on them. The only thing the case unit and the collation
+unit share is the trie reader.
+
+`SPRTUnicodeTrie.h` is a header rather than a subunit of one of them precisely
+because two unrelated ports read the same frozen ICU format. Its index arithmetic
+is transcribed from the ICU macros literally, down to the branch order, and it
+carries a warning against "simplifying" it — a wrong branch returns a perfectly
+valid value for the *wrong* code point, with no crash and no assert. Two
+transcriptions of code carrying that warning would drift apart.
+
+### Why every unit is one translation unit
+
+Each unit is a single `.cpp` that `#include`s a dependency-ordered list of `.cc`
+subunits, generated tables first. That is not an aesthetic choice:
+
+> The tables are parsed into `constexpr` objects **at compile time**, which only
+> works if the array and the reader are in the same translation unit.
+
+Take that away and every trie needs a run-time parse, which means an
+initialization order, a lazy-static guard, an allocation and an error path — on a
+code path that is otherwise a pure lookup. Upstream ICU does exactly that: it
+ships a serialized container and takes it apart with `reinterpret_cast`, which
+cannot happen in a constant expression.
+
+The include order inside each SCU is a dependency order and is load-bearing. For
+IDN it is `data → trie → props → buffer → convert → normalizer → punycode →
+uts46`; for collation, `data → norm → core → data-agg → settings → ucharstrie →
+iterator → utf16/utf8 → fastlatin → compare → keys → locale → collator`.
+
+---
+
+## The data pipeline
+
+Nothing in `data/` is written by hand, and nothing is downloaded at build time.
+
+    runtime/toolchains/src/icu4c        (cloned by runtime/toolchains/src.mk)
+              │
+              ▼
+      gen-*.py  (2 530 lines, run by a human, output committed)
+              │
+              ▼
+      runtime/src/*/data/SPRuntime*.cc     (committed: 6.5 MB of source,
+              │                             ~2.3 MiB in the binary)
+              │
+              ▼  #include
+      the SCU, at compile time, as constexpr
+              │
+      tests/runtime/tools/gen_*_test.py → the conformance vectors,
+      generated from the SAME checkout so the two cannot drift
+
+Three generators:
+
+| Generator | Reads | Writes |
+|---|---|---|
+| [idn/data/gen-tables.py](../../runtime/src/idn/data/gen-tables.py) (514) | `uts46.nrm`, `uchar_props_data.h`, `ubidi_props_data.h` | the four `SPRuntimeIdnData*.cc` |
+| [unicode/data/gen-case-tables.py](../../runtime/src/unicode/data/gen-case-tables.py) (636) | `ucase_props_data.h`, `ucase.cpp`, `ustrcase.cpp`, `ucase.h`, `ppucd.txt` | case + word-break tables |
+| [unicode/data/gen-collation-tables.py](../../runtime/src/unicode/data/gen-collation-tables.py) (1 380) | `ucadata-unihan.icu`, `icudt78l.dat`, `UnicodeData.txt` | root, 12 tailoring groups, NFD, aggregates |
+
+Two things about them are worth stating as design, not as trivia.
+
+**They read ICU source, not just ICU data.** The Latin fast-path deltas live in
+`ucase.cpp` as expressions (`EXC`, `0x0391 | HAS_VOWEL`), not literals, so the
+case generator carries a small expression evaluator whose names come from
+`ucase.h`. Trie descriptors are read out of the ICU initializers rather than
+written down in the generator. The reason is the same in both cases: those values
+move with the Unicode version, and a hardcoded `indexLength` or a transcribed
+delta table **survives a version bump silently** and then maps a handful of
+characters wrong.
+
+**They refuse to run on anything they do not fully understand.** Format versions,
+trie invariants (`indexLength + dataLength == length`, data16 at `+indexLength`),
+array-length cross-checks, sentinel values, and — across generators — the Unicode
+version of each input against the others. The case generator will not run if it
+disagrees with the version of the IDN tables, because both end up in the same
+binary and must implement the same Unicode. Full lists are in
+[unicode/data/README.adoc](../../runtime/src/unicode/data/README.adoc) and
+[idn/data/README.adoc](../../runtime/src/idn/data/README.adoc).
+
+### What the generators cannot check
+
+**Bit layouts that the data does not describe.** `case_props.cc` transcribes the
+props word and the exception-slot layout from `ucase.h`; `collation_core.cc` and
+`collation_fastlatin.cc` transcribe CE32 and mini-CE layouts from ICU headers;
+`uts46/props.cc` transcribes property masks. None of that is in the data, so a
+change passes generation cleanly and then returns a *valid* answer for the wrong
+character.
+
+This is not hypothetical. `UPROPS_SCRIPT_X_MASK` changed from a split high/low
+field to one contiguous 12-bit field between ICU 70 and 78, and the conformance
+suite did not catch it. When the ICU version moves, those headers get re-read by
+hand — see [the version-bump checklist](#bumping-the-unicode-version) below.
+
+What *does* catch a mis-read table is behavioural: the conformance suites.
+
+---
+
+## Part 1 — encoding
+
+The bottom layer, and the only part older than the port.
+[unicode.h](../../runtime/include/sprt/runtime/unicode.h) holds `constexpr`
+codepoint primitives (decode, encoded length, encode to a callback or a buffer);
+[runtime_core_unicode.cpp](../../runtime/core/runtime_core_unicode.cpp) holds
+whole-string transcoding, length measurement, validation and the HTML-entity
+variants. Full reference: [api/runtime/unicode.adoc](../api/runtime/unicode.adoc).
+
+Two properties of this layer matter to everything above it:
+
+* **UTF-8 here is the original 1..6-byte transformation (RFC 2279)**, so the
+  runtime can carry private code points in U+110000..U+7FFFFFFF. Those cannot
+  pass through UTF-16, and strict external decoders reject them; the extension is
+  for host-internal data only.
+* **Malformed input never overflows and always makes progress.** A truncated or
+  invalid sequence decodes to `0` and consumes one element, and every
+  `getUtf*Length` is an upper bound on what the matching `toUtf*` writes.
+
+---
+
+## Part 2 — case mapping and word breaking
+
+Unit: [SPRuntimeUnicodeCase.cpp](../../runtime/src/unicode/SPRuntimeUnicodeCase.cpp).
+42.5 KiB of tables. Subunits in dependency order:
+
+| Subunit | Role |
+|---|---|
+| [case_props.cc](../../runtime/src/unicode/case_props.cc) | the properties trie: case type, ignorable/sensitive/soft-dotted bits, a 9-bit delta or an exception index |
+| [case_full.cc](../../runtime/src/unicode/case_full.cc) | everything a delta cannot express: 1:N mappings, context-dependent, language-dependent |
+| [case_string.cc](../../runtime/src/unicode/case_string.cc) | per-character mappings become a string operation (UTF-16) |
+| [case_utf8.cc](../../runtime/src/unicode/case_utf8.cc) | the same, natively over UTF-8 |
+| [word_break.cc](../../runtime/src/unicode/word_break.cc) | UAX #29 word boundaries |
+| [case_title.cc](../../runtime/src/unicode/case_title.cc) | titlecasing, on top of the word breaker |
+| [case_compare.cc](../../runtime/src/unicode/case_compare.cc) | the two deterministic orderings |
+
+### The tables
+
+`s_caseTrieIndex` (26 KiB) is a `UTrie2` over a 16-bit properties word. Most
+mappings are a **signed 9-bit delta** stored in that word — for the majority of
+cased characters, upper and lower differ by a small constant. Everything else
+(mappings to a distant code point, 1:N, conditional) goes through
+`s_caseExceptions` (3 KiB), addressed by an index in the same word.
+
+Two accelerators sit in front of the trie:
+
+* `s_caseLatinTo*` (1.5 KiB) — four linear tables of signed byte deltas covering
+  U+0000..U+017F, which the string mappers walk without touching the trie at all.
+  Four rather than two because `tr`/`az`/`lt` differ from every other locale down
+  there.
+* `s_caseGreekData*` (800 B) — the uppercase form of each Greek letter plus flags
+  for what it carries. Greek uppercasing drops the tonos and moves the dialytika,
+  which no per-character mapping expresses, so this feeds a state machine.
+
+### Three kinds of mapping
+
+`toupper(char32_t)` is the **simple** mapping and always returns one code point.
+The string forms are the **full** mapping, and are string-shaped for three
+independent reasons:
+
+* the result can be longer — `ß → SS`, `ﬁ → FI`, `ŉ → ʼN`;
+* the result can depend on surrounding text — final sigma, `Σ → ς`;
+* the result can depend on the language — Turkish dotted/dotless I, Lithuanian
+  retained dots, Eastern vs Western Armenian `և`.
+
+`case_full.cc` transcribes two ICU conventions verbatim, because both the UTF-16
+and the UTF-8 mapper are built on them. The return value carries three cases at
+once: negative means "maps to itself" and holds `~c` (not `-c`, so U+0000
+survives the round trip); a value in `0..MaxStringLength` is a *string length*
+with the string written through an out-parameter; anything larger is a single
+replacement code point. And the context iterator never returns the character
+being mapped — it walks away from it and returns negative at the end of the text.
+
+### Locale sensitivity
+
+Six languages case differently from the root: `tr`/`az`, `lt`, `el`, `nl` (the IJ
+digraph, titlecase only) and `hy`. The locale-taking overloads read **only the
+language subtag**, in either case and in either the 2- or 3-letter form, and
+ignore everything from the first `-`/`_` on; every other identifier, including an
+empty one, means root.
+
+The no-locale overloads are root, and that is the deterministic default: the
+answer does not depend on the machine. A locale is passed when the text is
+*known* to be in one of those six languages.
+
+### Native UTF-8
+
+[case_utf8.cc](../../runtime/src/unicode/case_utf8.cc) produces exactly what
+[case_string.cc](../../runtime/src/unicode/case_string.cc) produces — the test
+asserts that over the whole UCD — and exists only to skip the round trip. Text
+arrives as UTF-8 nearly everywhere in this codebase, and going through UTF-16
+costs two transcodes and two buffers per call on a path the font formatter runs
+per string. The UTF-8 loops are the UTF-16 loops with a different fast path:
+ASCII is one byte looked up directly, U+0080..U+017F is two bytes decoded inline
+into the same Latin table, most of CJK is recognized by its lead byte and skipped
+*without decoding*, and only the rest reaches the trie.
+
+ICU writes through a `ByteSink` — a virtual interface with a borrowable scratch
+buffer, about 500 lines with its utilities. This writes into the same
+`dest`/`destIndex`/`destCapacity` triple the UTF-16 side uses, so the four
+`ByteSinkUtil` operations become four small functions and the preflight contract
+is identical on both sides.
+
+`Edits` — ICU's per-append record of what changed, used to project offsets
+through a mapping — is not ported anywhere. Nothing here wants it, and a no-op
+stub would leave roughly 65 branches that cannot fire.
+
+### Word breaking (UAX #29)
+
+Titlecasing is the one case operation that cannot be done character by character:
+it needs to know where words start. `word_break.cc` implements UAX #29 **from the
+specification**, not from ICU — ICU finds boundaries with a rule-based break
+iterator driven by compiled `brkitr` data, which is hundreds of kilobytes plus a
+rule compiler, and titlecasing needs one property out of it.
+
+The table (`s_wordBreakRanges` + `s_wordBreakAscii`, 10.5 KiB) is a **sorted range
+table rather than a trie**, because `Word_Break` is flat over most of the code
+space: 2 620 ranges cover all of it. It comes from `ppucd.txt`, ICU's preparsed
+UCD, which is the one place in the checkout carrying `Word_Break` in a readable
+form.
+
+This is what makes titlecasing work on words rather than on the first letter:
+`O'Brien` is one word because an apostrophe between letters does not break
+(WB6/WB7); `well-known` is two because a hyphen does; `x1_2` is one because an
+underscore joins (WB13a/13b).
+
+**Dictionary-based breaking is deliberately not implemented.** Thai, Lao, Khmer
+and Burmese write without spaces and need a dictionary to segment — a different
+body of work and a different order of data. Under plain UAX #29 a run of such
+text is one word, which is harmless for casing because those scripts are uncased.
+
+Titlecasing then splits each word into three parts — characters skipped before
+the first cased character, that character, and the rest — and treats each
+differently. The first part gets the **titlecase** mapping, which is not always
+the uppercase one: `ǆ` uppercases to `Ǆ` but titlecases to `ǅ`.
+
+### The two deterministic orderings
+
+[case_compare.cc](../../runtime/src/unicode/case_compare.cc), 180 lines, and
+**not** a transcription of ICU.
+
+* `compareCodepoints` — the order of the Unicode code points.
+* `compareFolded` — full case folding, then code points. `ß` and `ss` compare
+  equal, as do the three forms of sigma.
+
+Both are pure functions of the tables, take no locale, are total orders over
+arbitrary input including ill-formed input, and return the sign like `strcmp`.
+
+ICU's `uprv_strCompare` and `_cmpFold` compare UTF-16 code *units* and then
+repair the order at the point of difference, subtracting 0x2800 from a BMP code
+point so that a BMP character above the surrogates does not sort after a
+supplementary one. Comparing decoded code points gives that order **by
+construction**, with no repair step — and drops the NUL-terminated and `strncmp`
+modes, the prefix-match output and the two-level buffer stack with it. About 500
+lines of ICU become about 90.
+
+The implementation is a small stream abstraction: `Utf8Stream`, `Utf16Stream`,
+`Utf32Stream` each yield an `int64_t` per position, wrapped by
+`FoldedStream<Stream>` for the folded variant, compared by one `compareStreams`.
+Two constants define the edges of the order:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `StreamEnd` | `-1` | past the end — **below** every real code point, so a prefix sorts before its extension |
+| `IllFormedBase` | `0x110000` | an ill-formed byte, offset into a region above every scalar value, so it sorts after all real text and stays a total order |
+
+`StreamEnd` being `-1` rather than a large sentinel is the reason the streams are
+`int64_t`. An earlier version used a value above all code points and made `"abc"`
+sort *after* `"abcd"`.
+
+---
+
+## Part 3 — IDN
+
+Unit: [SPRuntimeIdn.cpp](../../runtime/src/idn/SPRuntimeIdn.cpp). 245 KiB of
+tables, four layers, one public API in `sprt::idn`.
+
+### Punycode
+
+[punycode.cc](../../runtime/src/idn/punycode.cc), the RFC 3492 bootstring codec.
+Exposed publicly as `puny_encode`/`puny_decode`, which are the **raw** codec: no
+mapping, no normalization, no validation. Domain names go through `to_ascii`.
+
+### The normalizer
+
+[uts46/normalizer.cc](../../runtime/src/idn/uts46/normalizer.cc), 1 219 lines,
+ported from ICU's `normalizer2impl.cpp`. UTS-46 asks it for exactly four things —
+`normalize`, append-and-normalize, `isNormalized` and `getCombiningClass` — so
+**only the composing half is here**. Dropped: every UTF-8 overload (UTS-46 works
+in UTF-16 throughout), `makeFCD`, the canonical-iterator data,
+`getRawDecomposition`, `quickCheck`, and the `Normalizer2Impl` /
+`Normalizer2WithImpl` split.
+
+The `norm16` arithmetic is transcribed literally and is dense: every threshold
+comparison encodes a fact about the data layout, and a "cleanup" there does not
+fail loudly — it returns a slightly wrong normalization for a few thousand code
+points.
+
+This is the layer that made a version bump expensive once already. The `Nrm2`
+data format version went 4 → 5 between ICU 70 and 78, which changed how `norm16`
+encodes maybe-mappings (`minMaybeNo` / `minMaybeNoCombinesFwd` added, maybeYes
+compositions moved into ordinary extra data, `centerNoNoDelta` derived from
+`minMaybeNo`). The generator refuses any format version other than the one it was
+written for, so that fails loudly rather than mis-reading.
+
+Because `gen-tables.py` takes the serialized `uts46.nrm` container apart at
+generation time and emits typed `constexpr` objects, the normalizer here has no
+header parsing, no allocation, no lazy initialization, no error state, and no
+little-endian assumption baked into a `reinterpret_cast`. It is a constant.
+
+### UTS-46 proper
+
+[uts46/uts46.cc](../../runtime/src/idn/uts46/uts46.cc), 984 lines, follows ICU's
+`uts46.cpp` closely because the algorithm is a specification and its step order is
+normative. Per label: map, normalize, then validate — hyphen placement, leading
+combining mark, disallowed characters, the ACE prefix and its round trip, and
+optionally the Bidi Rule (RFC 5893), CONTEXTJ (RFC 5892 A.1–A.2) and CONTEXTO
+(A.3–A.9).
+
+Two structural departures from the original:
+
+* **The UTF-8 entry point is gone.** ICU carries a second, byte-wise copy of the
+  ASCII fast path and then converts to UTF-16 anyway. Here the input is converted
+  once, up front, and there is one implementation of everything.
+* `UnicodeString` → `Utf16Buffer`, `IDNAInfo` → an internal `ProcessState`,
+  `UErrorCode` → a `bool` (the only failure left is out of memory).
+
+**Errors accumulate as a bitmask**, exactly as in ICU, because `severeErrors` and
+the U+FFFD interplay in `processLabel()` depend on seeing the whole set at once.
+A name can break several rules. The mask is collapsed to a single `Status` at the
+public boundary only, in `SPRuntimeIdn.cpp`, through one most-specific-first
+table — the one piece of this port with no ICU counterpart to check against,
+which is why it lives in exactly one place rather than spread across return
+statements.
+
+The four public entry points (`to_ascii`, `to_unicode`, `label_to_ascii`,
+`label_to_unicode`) share one `runUts46` template: decode to UTF-16, run the
+operation, measure the UTF-8 result, allocate with `__sprt_typed_malloca`, fill,
+invoke the callback, free.
+
+### The tables, and where they are oversized
+
+| Array | Size | Answers |
+|---|---|---|
+| `s_norm*` | 59 KiB | the UTS-46 mapping and NFC composition |
+| `s_charTypeTrie*` | 47 KiB | General_Category — asked **one** question: does a label start with a combining mark |
+| `s_bidi*` | 26 KiB | Bidi_Class and Joining_Type, for the Bidi Rule and CONTEXTJ |
+| `s_scriptTrie*` + vectors + extensions | 112 KiB | the property vectors and Script_Extensions, for CONTEXTO |
+
+The last two are far larger than what UTS-46 asks of them: 112 KiB is carried for
+**five script identities** (Greek, Hebrew, Hiragana, Katakana, Han), and 47 KiB
+for a single `isMark(c)` predicate. Replacing them with a membership table and a
+range table respectively would take the IDN total from 245 KiB to about 90 KiB,
+behind unchanged accessor signatures in `uts46/props.cc`. Not done; it is the
+largest single size win available in this subsystem.
+
+### The compatibility surface
+
+* [idn2.cc](../../runtime/src/idn/idn2.cc) — the libidn2 C ABI, for cURL and
+  anything else expecting it. **One** implementation for every platform, replacing
+  two near-identical copies that each delegated to whatever library the platform
+  had. Three behavioural fixes came with it: `idn2_to_unicode_8z8z` now actually
+  performs ToUnicode (both old copies called the ToASCII entry point, so a caller
+  asking for the Unicode form got Punycode back); the error code is a real
+  `idn2_rc` rather than `-1000 - UErrorCode` or a raw ICU bitmask; and the result
+  is allocated exactly instead of in a fixed 2 KiB buffer per call.
+* [tld.cc](../../runtime/src/idn/tld.cc) — the IANA TLD list, baked in, accepting
+  both Punycode and native UTF-8 spellings.
+
+---
+
+## Part 4 — collation
+
+Unit: [SPRuntimeCollation.cpp](../../runtime/src/unicode/SPRuntimeCollation.cpp),
+6 404 lines. This is the one thing the runtime does **not** claim to do without
+data: the order two strings appear in for a person reading them depends on their
+language, and no algorithm derives it. `ö` follows `z` in Swedish and sits inside
+`o` in German; `ch` is one letter in Czech.
+
+### Where the data comes from
+
+Unlike everything else in this subsystem, the collation tables are not built from
+a Unicode data file. They are **ICU's own build output, in ICU's own
+serialization**:
+
+| ICU input | Becomes |
+|---|---|
+| `source/data/in/coll/ucadata-unihan.icu` | the CLDR root collation |
+| `source/data/in/icudt78l.dat` → `coll/<locale>.res` → `%%CollationBin` | 102 locale tailorings |
+| `source/data/unidata/UnicodeData.txt` | canonical decompositions and combining classes |
+
+Taking ICU's built tables rather than the CLDR rules they were built from is what
+keeps this port to 6 404 lines. **The rule compiler is another 11 936**, and it
+would have to be right about weight allocation as well as about parsing. The
+generator therefore parses ICU's `.dat` package TOC and walks `.res` resource
+bundles to reach the binaries.
+
+The Han ordering is `unihan` (radical-stroke) because that is what ICU itself
+ships and therefore what every tailoring in the `.dat` was built against. The
+`implicithan` variant is 400 KB smaller and orders Han by code point — using it
+would need the tailorings rebuilt, which needs the rule compiler.
+
+### Two representations
+
+| | Width | Where |
+|---|---|---|
+| **CE32** | 32 bits | what the trie stores |
+| **CE** | 64 bits | what comparison and sort keys read |
+
+A CE32 is either a "simple" CE (primary in the high 16 bits, secondary and
+tertiary bytes below) or, when its low byte is ≥ 0xC0, a **special** CE32 whose
+low nibble is one of fifteen tags saying what the other 24 bits mean: an index
+into an expansion table, a contraction, a prefix, a Hangul syllable, a digit, a
+code-point-ordered range, and so on. A CE is primary in the high 32 bits,
+secondary in 31..16, case and tertiary in 15..0.
+
+These layouts are transcribed from ICU literally, including field widths. They
+are not derivable from anything — the data was serialized against them — and a
+field read one bit wide yields a valid weight for the wrong character, which
+shows up as two words swapping places in the middle of a sorted list.
+
+### The pipeline
+
+    text ──► CollationIterator ──► CEs ──► compareUpToQuaternary ──► sign
+                    │                 └──► writeSortKey*          ──► bytes
+                    │
+              FCD check ──► (only if not FCD) NFD normalize the segment
+
+**[collation_iterator.cc](../../runtime/src/unicode/collation_iterator.cc)**
+(1 163 lines) is the core, and almost all of its size is one function:
+`appendCEsFromCE32` turns a special CE32 into CEs, and there are fifteen kinds of
+special. The subtle part is **discontiguous contractions** (UCA S2.1.1–S2.1.3): a
+contraction may match across combining marks that sort between its parts, so if
+`ch` contracts and the text is `c` + mark + `h`, the mark is skipped, the
+contraction matches, and the mark's own CEs are emitted afterwards. That is what
+`SkippedState` is for, and why the iterator can read ahead, back up and replay.
+It is a value member, not a heap allocation — `new`/`delete` are deprecated in
+this runtime.
+
+`previousCE` and the `rootElements` table are **not** ported: they serve ICU's
+builder and `CollationElementIterator`, neither of which exists here.
+
+**[collation_norm.cc](../../runtime/src/unicode/collation_norm.cc)** — collation
+compares text in **FCD** order (Fast C or D: a sequence is FCD when no canonical
+reordering could change it, which is weaker than NFD and true of nearly all real
+text). The iterator checks each segment and normalizes to NFD only the ones that
+fail, so this file is a cold path written to be obviously right rather than fast;
+the one hot part is the per-character bit table at the bottom (`getFCD16`,
+`lccc<<8 | tccc`).
+
+This is **not** ICU's normalizer, and not the one in `runtime/src/idn` either.
+That one implements the *composing* half; collation needs the *decomposing* half,
+and the two share no code. NFD is three paragraphs of UAX #15 — replace each
+character by its canonical decomposition, then stably sort each run of
+non-starters by combining class — and implementing that against tables generated
+from `UnicodeData.txt` (30 KiB) is shorter than parameterizing 1 200 lines of
+`norm16` arithmetic to serve two disjoint halves. It is verified against all
+20 034 rows of `NormalizationTest.txt` at generation time.
+
+**[collation_compare.cc](../../runtime/src/unicode/collation_compare.cc)** — the
+UCA compares on up to five levels: primary (base letters), secondary (accents),
+an optional case level, tertiary (letter variants), quaternary (punctuation that
+`shifted` moved off the primary level), and finally the code points. The first
+level that differs decides. Only the primary pass reads from the iterators; it
+leaves CEs buffered and every later level re-reads the buffer *by index*, which
+is why the loops index rather than iterate — and why a level can walk the buffer
+backwards, which is what French secondary ordering needs.
+
+**[collation_keys.cc](../../runtime/src/unicode/collation_keys.cc)** — the same
+ordering as a byte string, so `memcmp` on two keys gives the sign `collate` would.
+Shape:
+
+    primary bytes  01  secondary  01  case  01  tertiary  01  quaternary
+
+The primary level is written straight out as it goes; every other level is
+collected in its own buffer first, because they are only appended once the
+primary run is complete. That is the whole structure — the rest of the file is
+**level compression** (common-weight run encoding), which is most of the code.
+The identical level is written as NFD in **UTF-8**, not BOCU-1 as in ICU, with
+U+FFFE escaped to byte `0x02`.
+
+**[collation_fastlatin.cc](../../runtime/src/unicode/collation_fastlatin.cc)** —
+for the 384 characters of Latin-1, Latin Extended-A and general punctuation,
+building collation elements collapses into one 16-bit "mini CE" per character in
+a 960-byte table shipped with each collation table. A mini CE packs a primary, a
+secondary, case bits and a tertiary into 16 bits, which only works because Latin
+uses so few distinct weights. When something does not fit — unsupported
+character, contraction too long, numeric ordering, French secondaries — the
+answer is `BailOut` and the caller runs the general path.
+
+**This file can therefore only ever be slower, never wrong**: a bug that made it
+bail out always would cost speed and nothing else. It is worth having: measured,
+**77 ns** per Latin comparison with it against **374 ns** without.
+
+ICU carries two copies of this comparison, one per encoding. Here it is one
+`compare<Text>` template over `Utf16Text` and `Utf8Text` policies.
+
+**[collation_utf8.cc](../../runtime/src/unicode/collation_utf8.cc)** — UTF-8 is
+collated **without being converted first**, because text is UTF-8 nearly
+everywhere it enters this codebase and converting would double the work of the
+common case (two short ASCII strings) for no gain. The trie lookups go through
+`UTrie2`'s UTF-8 side doors: a single byte indexes `data32` directly, and a
+two-byte sequence has a dedicated index block, so neither needs the code point
+assembled. Ill-formed input yields U+FFFD and U+FFFD's own CE32, so an invalid
+sequence sorts as a replacement character rather than dropping out of the
+comparison.
+
+### Locale resolution
+
+[collation_locale.cc](../../runtime/src/unicode/collation_locale.cc), 94 lines. A
+binary search over a sorted table of 102 tags, then CLDR subtag-dropping
+fallback: a tag is tried as written, then with its last subtag removed, and so on
+until something matches or nothing is left — at which point the **root** order
+applies. `sr_Latn_RS` finds `sr_Latn`; `zh_Hans_CN` finds `zh`; `de_DE` finds
+nothing and gets the root, which is German's order anyway. `-` is accepted for
+`_`, and the comparison ignores ASCII case.
+
+### The build knob
+
+`SPRT_COLLATION` selects which of twelve script groups are compiled in
+([runtime.mk](../../runtime/runtime.mk)), expanding to
+`-DSPRT_COLLATION_<GROUP>=0/1`. Everything is on by default: an application that
+sorts a list for a person should get the right order for their language without
+asking, and a target that cannot afford 1.2 MB should have to say so.
+
+| `SPRT_COLLATION` | Object size |
+|---|---|
+| `root` (no tailorings) | 657 KiB |
+| `european` | 1.11 MiB |
+| `no-cjk` | 1.54 MiB |
+| `full` (default) | 1.99 MiB |
+
+The root table is **not** optional — it is the order every tailoring is expressed
+as a difference from, and it is indivisible (one trie over the whole code space).
+This is the first place in the runtime where two builds legitimately answer
+differently, which is exactly why `hasCollation()` exists: an application can ask
+what this binary knows rather than assume.
+
+The cost structure is worth knowing when adding a group. Measured from the ICU
+data: a real tailoring has a **~6.5 KiB floor**; settings-only locales (`ru`,
+`bg`, `el`, `he`, `ka`, `lo`, `ne`) cost about **320 bytes**, because CLDR root
+already sorts them correctly and only the options differ; and German, French,
+Italian, Portuguese, Catalan, Indonesian, Swahili and Zulu cost **nothing at
+all** — the root order *is* their order.
+
+---
+
+## Verification
+
+Six suites in `tests/runtime`, all self-checking, all with vectors generated from
+the same ICU checkout as the tables so the two cannot drift.
+
+| Suite | Scale | Proves |
+|---|---|---|
+| `runtime_unicode` | 295 checks + a sweep of all 0x110000 code points | every code point the UCD gives no mapping comes back unchanged; the 16 conditional `SpecialCasing` rows, by hand |
+| `runtime_unicode_case_conformance` | 2 989 simple × 3, 103 full × 3 × 2 encodings | the mappings against `UnicodeData.txt` and `SpecialCasing.txt` |
+| `runtime_wordbreak_conformance` | 1 944 cases | all of `WordBreakTest.txt` |
+| `runtime_idn` | 110 checks | hand-written IDN behaviour |
+| `runtime_idn_conformance` | 6 389 cases / 21 223 checks | all of `IdnaTestV2.txt` |
+| `runtime_collation` | 120 checks | hand-written tailoring behaviour, guarded by `hasCollation` |
+| `runtime_collation_conformance` | 434 107 sequences / **868 210 checks** | both official UCA conformance sets, both encodings, identical strength, sort keys cross-checked against comparisons on every pair |
+
+All report **0 failures** on Linux, on Windows under Wine, and on wasm under
+Node. `runtime_unicode_case_conformance` reports a score rather than asserting —
+it was the baseline instrument while the port replaced seven disagreeing backends
+one at a time; every column reads 100% now, and a drop is the regression signal.
+
+Two facts about coverage are worth stating plainly:
+
+* **The standard is the file, not ICU.** ICU's own break iterator adds dictionary
+  breaking and locale tailorings on top of UAX #29 and does not itself pass all
+  of `WordBreakTest.txt`.
+* **Case folding has no conformance file**, so it is checked by being read two
+  ways: `compareFolded` folds one code point at a time as it compares, and
+  `runtime_unicode` runs all 0x110000 code points through it against the batch
+  folder the string mapper uses. Same table, different code walking it.
+
+The collation conformance suite is the reason to trust any of the CE32 bit
+layouts. It found the two real bugs in that port: a UTF-8 identical-prefix back-up
+that tested a character without moving past it (364 failures), and the fact that
+lone surrogates have no UTF-8 form at all (14 more, now checked through UTF-16
+only — 62 such pairs).
+
+---
+
+## Bumping the Unicode version
+
+Regenerating is not enough, and none of the following announces itself.
+
+1. Refresh `runtime/toolchains/src/icu4c`.
+2. Run all three generators. They will refuse on a format-version change or a
+   trie-invariant violation — that is the loud half.
+3. **Re-read by hand** the headers whose bit layouts are transcribed and not
+   checked: `ucase.h` (props word, exception slots), `uprops.h` and
+   `ubidi_props.h` (property masks in `uts46/props.cc`), the CE32 and mini-CE
+   layouts in ICU's `collation.h` and `collationfastlatin.h`.
+4. Check for rules that moved *out of ICU's code*. U+2260, U+226E and U+226F used
+   to be special-cased as `disallowed_STD3_valid`; ICU 78 dropped that function
+   and so did this port.
+5. Regenerate the conformance vectors from the **same** checkout
+   (`gen_case_test.py`, `gen_wordbreak_test.py`, `gen_idna_test.py`,
+   `gen_collation_test.py`).
+6. Run every suite in the table above. A table refresh that leaves any of them
+   non-zero is not finished — a wrong trie returns a *valid* value for the wrong
+   code point: no crash, no assert, just a handful of characters mapped wrongly.
+7. Update the version lines in the two `data/README.adoc` files.
+
+---
+
+## What is deliberately not implemented
+
+| Not here | Why |
+|---|---|
+| The CLDR collation rule compiler | 11 936 lines, and it would have to be right about weight allocation; ICU's built tables are taken instead |
+| `previousCE`, `rootElements` | ICU builder / `CollationElementIterator` only |
+| Dictionary word breaking (Thai, Lao, Khmer, Burmese) | a dictionary is a different order of data; harmless for casing, since those scripts are uncased |
+| Case closure (`ucase_addCaseClosure`, `FullCaseFoldingIterator`) | serves `UnicodeSet`, which is not ported |
+| ICU `Edits` and `U_OMIT_UNCHANGED_TEXT` | nothing here projects offsets through a mapping |
+| The decomposing half of the IDN normalizer | UTS-46 needs composition; collation carries its own NFD |
+| `ucase_props_unfold`, `ucase_props_indexes` | reverse folding for `UnicodeSet`; array lengths checked at generation |
+| A UTF-8 entry point in UTS-46 | one conversion up front instead of a second byte-wise copy of the fast path |
+
+## Known gaps
+
+* **IDN tables are ~155 KiB larger than necessary** — see "where they are
+  oversized" above. Both replacements sit behind unchanged accessor signatures.
+* **`runtime_unicode_case_conformance` reports rather than asserts.** Every
+  column is 100%; turning it into an assertion is a one-line change whenever the
+  score is no longer wanted as a dashboard.
+* **Collation keys are not portable across builds.** Different `SPRT_COLLATION`
+  sets, different Unicode versions and different option sets produce different
+  keys. They are a sorting accelerator, not an identifier — the API documents
+  this, and nothing enforces it.

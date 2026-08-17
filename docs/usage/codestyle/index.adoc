@@ -61,6 +61,7 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [Memory and ownership](core/memory-and-ownership.adoc) | allocating, ref-counting, or using a memory pool |
 | [Strings](core/strings.adoc) | passing, building, parsing or storing text |
+| [Unicode text: comparisons, case, generated tables](core/unicode-and-text.adoc) | comparing or sorting text, changing case, handling domain names, or touching a generated Unicode table |
 | [Errors: `Status`, `Result`, logging, assertions](core/errors-and-status.adoc) | a function can fail, or you need to log/assert |
 | [Threads and `sprt::dispatch`](core/threads-and-dispatch.adoc) | posting work to a thread, timers, async I/O, anything concurrent |
 | [Weakly-typed data: `data::Value`](core/data-value.adoc) | reading/writing a `Value`, JSON/CBOR, config, IPC or any payload at a boundary |
@@ -95,6 +96,7 @@ Long-form tutorials for one subsystem, referenced from the articles above.
 | Guide | Read it when |
 |---|---|
 | [data/value.adoc](../data/value.adoc) | working with `data::Value` in depth — accessors, serialization, custom encoders, the `Value::Null` trap |
+| [unicode-and-idn.adoc](../unicode-and-idn.adoc) | `sprt::unicode` and `sprt::idn` in depth — the three comparisons, collation strength and sort keys, locale coverage, UTS-46 options and errors |
 | [ui/content-measurement.adoc](../ui/content-measurement.adoc) | making a node or system answer `fit-content` measurement |
 | [ui/css-subset.adoc](../ui/css-subset.adoc) | writing CSS for the engine's CSS subset |
 

@@ -941,7 +941,7 @@ void performUnicodeCaseConformanceTests() {
 			   << " conditional SpecialCasing rows are not here: they need context, and are"
 				  " asserted by hand in runtime_unicode)\n";
 	sprt::cout << "unicode case conformance: reported, not asserted - see "
-				  "docs/design/unicode-case-port-plan.adoc\n";
+				  "docs/design/unicode-and-idn.adoc\n";
 }
 
 } // namespace sprt

@@ -46,7 +46,7 @@
 //
 // Not here: collation, the language-dependent ordering shown to a user. It needs
 // CLDR tailoring data these tables do not carry, and it is the one thing this
-// module deliberately does not answer. See docs/design/unicode-case-port-plan.adoc.
+// module deliberately does not answer. See docs/design/unicode-and-idn.adoc.
 
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/stringview.h>

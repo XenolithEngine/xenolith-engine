@@ -112,6 +112,68 @@ struct Utrie2 {
 	constexpr uint16_t get(char32_t c) const { return index[indexFromCodepoint(c)]; }
 };
 
+// A frozen 32-bit-value UTrie2. Same index arithmetic, two differences that both
+// come from UTRIE2_GET32 passing `data32` and an asciiOffset of 0 where the
+// 16-bit macro passes the index array and `indexLength`:
+//
+//   the values live in their own array rather than after the index, and
+//   an out-of-range code point lands at data32[BadUtf8DataOffset], not at
+//   index[indexLength + BadUtf8DataOffset].
+//
+// utrie2_openFromSerialized computes highValueIndex the same way for both, but
+// only adds indexLength to it for 16-bit tries - so the value stored alongside a
+// 32-bit trie is already the right index into data32.
+struct Utrie2_32 {
+	const uint16_t *index;
+	const uint32_t *data;
+	int32_t indexLength;
+	int32_t dataLength;
+	char32_t highStart;
+	int32_t highValueIndex;
+
+	constexpr int32_t rawIndex(int32_t offset, char32_t c) const {
+		return (int32_t(index[offset + (c >> Utrie2Shift2)]) << Utrie2IndexShift)
+				+ (c & Utrie2DataMask);
+	}
+
+	constexpr int32_t suppIndex(char32_t c) const {
+		return (int32_t(index[index[(Utrie2Index1Offset - Utrie2OmittedBmpIndex1Length)
+									  + (c >> Utrie2Shift1)]
+						+ ((c >> Utrie2Shift2) & Utrie2Index2Mask)])
+					   << Utrie2IndexShift)
+				+ (c & Utrie2DataMask);
+	}
+
+	// _UTRIE2_INDEX_FROM_CP with asciiOffset == 0
+	constexpr int32_t indexFromCodepoint(char32_t c) const {
+		if (c < 0xD800) {
+			return rawIndex(0, c);
+		} else if (c <= 0xFFFF) {
+			return rawIndex(c <= 0xDBFF ? Utrie2LscpIndex2Offset - (0xD800 >> Utrie2Shift2) : 0, c);
+		} else if (c > 0x10'FFFF) {
+			return Utrie2BadUtf8DataOffset;
+		} else if (c >= highStart) {
+			return highValueIndex;
+		} else {
+			return suppIndex(c);
+		}
+	}
+
+	// UTRIE2_GET32
+	constexpr uint32_t get(char32_t c) const { return data[indexFromCodepoint(c)]; }
+
+	// UTRIE2_GET32_FROM_SUPP: the caller has already established c > 0xFFFF.
+	constexpr uint32_t getFromSupplementary(char32_t c) const {
+		return data[c >= highStart ? highValueIndex : suppIndex(c)];
+	}
+
+	// _UTRIE2_GET_FROM_U16_SINGLE_LEAD: c is a single code unit that is not part
+	// of a surrogate pair.
+	constexpr uint32_t getFromU16SingleLead(char16_t c) const {
+		return data[rawIndex(0, c)];
+	}
+};
+
 } // namespace sprt::unicode::detail
 
 #endif // CORE_RUNTIME_PRIVATE_SPRTUNICODETRIE_H_

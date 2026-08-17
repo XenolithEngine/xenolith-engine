@@ -1,13 +1,22 @@
-= Unicode tables for the case mapper
+= Unicode tables for the case mapper and the collator
 
-`SPRuntimeUnicodeCaseData.cc` and `SPRuntimeUnicodeWordBreakData.cc` are
-**generated**. Do not edit them by hand — run `gen-case-tables.py`, which writes
-both, and commit its output.
+Everything in this directory except the two `.py` files and this one is
+**generated**. Two generators write them:
+
+`gen-case-tables.py`:: `SPRuntimeUnicodeCaseData.cc` and
+  `SPRuntimeUnicodeWordBreakData.cc` — case mapping and word breaking.
+`gen-collation-tables.py`:: `SPRuntimeCollation*.cc` — collation, and the
+  canonical decomposition it needs.
+
+Do not edit the output by hand; run the generator and commit what it writes.
 
 They are `.cc` subunits, so the build never compiles them on their own; they are
-`#include`d by `runtime/src/unicode/SPRuntimeUnicodeCase.cpp`. That is
-deliberate: the trie is parsed into a `constexpr` object at compile time, which
+`#include`d by `SPRuntimeUnicodeCase.cpp` and `SPRuntimeCollation.cpp`. That is
+deliberate: each trie is parsed into a `constexpr` object at compile time, which
 only works if the array and the reader are in the same translation unit.
+
+The first half of this file is the case tables; the collation ones are further
+down.
 
 == What is in it
 
@@ -175,6 +184,112 @@ checked instead by being read two ways: `compareFolded` folds one code point at 
 time as it compares, and `runtime_unicode` runs every one of the 0x110000 code
 points through it against the batch folder that the string mapper uses. The two
 share the table but not the code that walks it.
+
+== The collation tables
+
+A second, much larger set, written by `gen-collation-tables.py`. They are `.cc`
+subunits of `runtime/src/unicode/SPRuntimeCollation.cpp` — a separate compile
+unit from the case mapper, because an application that never sorts a list for a
+person to read should not pay compile time for two megabytes of tables.
+
+[cols="2,1,4"]
+|===
+| File | Size | Contents
+
+| `SPRuntimeCollationRootData.cc`
+| 557 KiB
+| The CLDR root collation: a `UTrie2` over the 32-bit CE32 values, the expansion
+  and contraction data, the script boundaries and the Latin fast-path table. This
+  is the order every locale is expressed as a difference from, and it is not
+  divisible - one trie covers the whole code space.
+
+| `SPRuntimeCollationData*.cc`
+| 1.20 MiB
+| Per-locale tailorings, in twelve groups by script. Each is a table that answers
+  "fall back to the root" for every character its language does not move, so a
+  7 KB Polish table sits on top of the 557 KB root. Which groups are compiled in
+  is a build option, `SPRT_COLLATION`.
+
+| `SPRuntimeCollationNormData.cc`
+| 30 KiB
+| Canonical decomposition (NFD) and the FCD quick test. Collation compares text in
+  FCD order and normalizes the segments that are not, so it needs the decomposing
+  half of normalization - which is the half the UTS-46 engine next door does not
+  carry.
+
+| `SPRuntimeCollationTables.cc`
+| 12 KiB
+| The aggregates over those arrays and the tag -> tailoring table.
+|===
+
+The whole of it is 1.99 MiB with every group compiled in, and 657 KiB with none
+(`SPRT_COLLATION=root`), measured on the compile unit's object.
+
+=== Where it comes from
+
+Unlike everything else here, this is not built from a Unicode data file: it is
+ICU's own *build output*, in ICU's own serialization.
+
+[cols="2,3"]
+|===
+| `source/data/in/coll/ucadata-unihan.icu` | the root collation, as ICU builds it from FractionalUCA.txt
+| `source/data/in/icudt78l.dat` | the tailorings, as `%%CollationBin` inside `coll/<locale>.res`
+| `source/data/unidata/UnicodeData.txt` | the canonical decompositions and combining classes
+|===
+
+Taking ICU's built tables rather than the CLDR rules they were built from is what
+keeps this port to 6 178 lines: the rule compiler is another 11 936, and it would
+have to be right about weight allocation as well as about parsing.
+
+The Han ordering is `unihan` - radical-stroke - because that is what ICU itself
+ships (`coll_han_type` defaults to it in ICU's build), and therefore what every
+tailoring in the `.dat` was built against. The `implicithan` variant is 400 KB
+smaller and orders Han by code point; using it would need the tailorings rebuilt,
+which needs the rule compiler.
+
+=== What the collation generator checks
+
+* the `UCol` format version, which is 5, and the UCA version of every tailoring
+  against the root's - a tailoring built against a different root must not load;
+* the fast Latin table version, in two places: the byte in `indexes[IX_OPTIONS]`
+  and the first word of the table itself;
+* the `UTrie2` invariants, and that the trie is a 32-bit-value one;
+* the `scriptStarts` sentinels `CollationDataReader` asserts on;
+* that every tailoring carrying reorder codes also carries a reorder table -
+  ICU has a path that regenerates the ranges when it does not, and that path is
+  not ported, so the generator stops rather than sort wrongly;
+* that every locale with a tailoring is assigned to a build group. A locale
+  silently dropped here is a language that quietly sorts wrong, so a new CLDR
+  release adding one has to be a decision;
+* NFD, against all 20 034 rows of `NormalizationTest.txt`.
+
+=== What it does NOT check
+
+The bit layouts of a CE32 and of a mini CE, which `collation_core.cc` and
+`collation_fastlatin.cc` transcribe from ICU headers and the data does not
+describe. The same warning as for the case tables applies, and more sharply: a
+field read one bit wide yields a valid weight for the wrong character, and two
+words swap places in the middle of a sorted list.
+
+What does catch that is `runtime_collation_conformance`: both official UCA
+conformance sets, 434 107 sequences, in both encodings, with the sort keys
+cross-checked against the comparisons on every pair. It is the reason to trust
+any of this.
+
+=== Regenerating
+
+[source,sh]
+----
+python3 runtime/src/unicode/data/gen-collation-tables.py
+python3 runtime/src/unicode/data/gen-collation-tables.py --report   # sizes only
+python3 tests/runtime/tools/gen_collation_test.py                   # the conformance data
+----
+
+[source,sh]
+----
+runtimetest runtime_collation              # must be 0 failures
+runtimetest runtime_collation_conformance  # 868 210 checks, must be 0 failures
+----
 
 == Licence
 
