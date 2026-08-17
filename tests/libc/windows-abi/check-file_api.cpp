@@ -195,6 +195,7 @@ SPRT_CONST(PIPE_ACCESS_DUPLEX);
 SPRT_CONST(PIPE_TYPE_BYTE);
 SPRT_CONST(PIPE_READMODE_BYTE);
 SPRT_CONST(PIPE_WAIT);
+SPRT_CONST(PIPE_NOWAIT);
 
 #define SPRT_FILE_ENUM(Name) static_assert((long long)::Name == (long long)::sprt_abi::Name, #Name);
 

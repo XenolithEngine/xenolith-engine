@@ -14,7 +14,8 @@ TARGET="wasm32-unknown-unknown"
 TC="$ROOT/runtime/toolchains"
 HOSTBIN="$TC/hosts/x86_64-unknown-linux-gnu/bin"   # linux host clang drives wasm
 SYSROOT="$TC/targets/$TARGET"; RESDIR="$SYSROOT/lib/clang"
-CLANGINC="$HOSTBIN/../lib/clang/21/include"; WASM_USRINC="$SYSROOT/usr/include"
+# the clang resource dir is version-named (lib/clang/<major>); discover it
+CLANGINC="$(echo "$HOSTBIN"/../lib/clang/*/include)"; WASM_USRINC="$SYSROOT/usr/include"
 LLVM="$ROOT/runtime/toolchains/src/llvm-project"
 SUPPORT="$LLVM/libcxx/test/support"; STDROOT="$LLVM/libcxx/test/std"
 RUNNER="$ROOT/runtime/wasm-js/run-node.mjs"

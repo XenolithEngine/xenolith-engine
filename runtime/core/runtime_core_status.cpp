@@ -98,6 +98,22 @@ StringView getStatusName(Status status) {
 	case Status::ErrorInvalidShader: return "Status::ErrorInvalidShader"; break;
 	case Status::ErrorInvalidDrmFormat: return "Status::ErrorInvalidDrmFormat"; break;
 	case Status::ErrorFullscreenLost: return "Status::ErrorFullscreenLost"; break;
+
+	case Status::ErrorIdnPunycode: return "Status::ErrorIdnPunycode"; break;
+	case Status::ErrorIdnInvalidAceLabel: return "Status::ErrorIdnInvalidAceLabel"; break;
+	case Status::ErrorIdnLabelHasDot: return "Status::ErrorIdnLabelHasDot"; break;
+	case Status::ErrorIdnEmptyLabel: return "Status::ErrorIdnEmptyLabel"; break;
+	case Status::ErrorIdnDisallowed: return "Status::ErrorIdnDisallowed"; break;
+	case Status::ErrorIdnBidi: return "Status::ErrorIdnBidi"; break;
+	case Status::ErrorIdnContextJ: return "Status::ErrorIdnContextJ"; break;
+	case Status::ErrorIdnContextOPunctuation: return "Status::ErrorIdnContextOPunctuation"; break;
+	case Status::ErrorIdnContextODigits: return "Status::ErrorIdnContextODigits"; break;
+	case Status::ErrorIdnLeadingCombiningMark: return "Status::ErrorIdnLeadingCombiningMark"; break;
+	case Status::ErrorIdnLeadingHyphen: return "Status::ErrorIdnLeadingHyphen"; break;
+	case Status::ErrorIdnTrailingHyphen: return "Status::ErrorIdnTrailingHyphen"; break;
+	case Status::ErrorIdnHyphen34: return "Status::ErrorIdnHyphen34"; break;
+	case Status::ErrorIdnLabelTooLong: return "Status::ErrorIdnLabelTooLong"; break;
+	case Status::ErrorIdnDomainNameTooLong: return "Status::ErrorIdnDomainNameTooLong"; break;
 	}
 	return StringView();
 }
@@ -166,6 +182,38 @@ static StringView getInternalDescription(Status st) {
 		return "Swapchain did not have exclusive full-screen access any more";
 		break;
 
+	// IDN (UTS-46). The wording names the rule that rejected the name, since a caller
+	// showing this to a user has no other way to tell the cases apart.
+	case Status::ErrorIdnPunycode: return "A Punycode label is not decodable"; break;
+	case Status::ErrorIdnInvalidAceLabel:
+		return "An ACE (xn--) label does not round-trip or is otherwise invalid";
+		break;
+	case Status::ErrorIdnLabelHasDot: return "A label contains a dot after processing"; break;
+	case Status::ErrorIdnEmptyLabel: return "A domain name label is empty"; break;
+	case Status::ErrorIdnDisallowed: return "A character is disallowed for domain names"; break;
+	case Status::ErrorIdnBidi: return "The name violates the IDNA Bidi Rule (RFC 5893)"; break;
+	case Status::ErrorIdnContextJ:
+		return "A joiner (ZWJ/ZWNJ) is used outside its permitted context";
+		break;
+	case Status::ErrorIdnContextOPunctuation:
+		return "A contextual punctuation character is used outside its permitted context";
+		break;
+	case Status::ErrorIdnContextODigits:
+		return "Arabic-Indic and extended Arabic-Indic digits are mixed in one label";
+		break;
+	case Status::ErrorIdnLeadingCombiningMark:
+		return "A label starts with a combining mark";
+		break;
+	case Status::ErrorIdnLeadingHyphen: return "A label starts with a hyphen"; break;
+	case Status::ErrorIdnTrailingHyphen: return "A label ends with a hyphen"; break;
+	case Status::ErrorIdnHyphen34:
+		return "A label has hyphens in both the third and the fourth position";
+		break;
+	case Status::ErrorIdnLabelTooLong: return "A label is longer than 63 bytes"; break;
+	case Status::ErrorIdnDomainNameTooLong:
+		return "The domain name is longer than 255 bytes";
+		break;
+
 	default: break;
 	}
 
@@ -202,8 +250,11 @@ void getStatusDescription(Status st, const callback<void(StringView)> &cb) {
 				&& toInt(st) > -status::STATUS_WINAPI_OFFSET) {
 			outCb << "Status::GApi(" << status::toGApi(st) << ")";
 		} else if (toInt(st) <= -status::STATUS_WINAPI_OFFSET
-				&& toInt(st) > -status::STATUS_END_OFFSET) {
+				&& toInt(st) > -status::STATUS_IDN_OFFSET) {
 			outCb << "Status::WinAPI(" << status::toWinApi(st) << ")";
+		} else if (toInt(st) <= -status::STATUS_IDN_OFFSET
+				&& toInt(st) > -status::STATUS_END_OFFSET) {
+			outCb << "Status::Idn(" << status::toIdn(st) << ")";
 		} else {
 			outCb << "Status::Unknown(" << -toInt(st) << ")";
 		}

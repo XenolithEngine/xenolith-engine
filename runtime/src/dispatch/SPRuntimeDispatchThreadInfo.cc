@@ -133,11 +133,17 @@ void thread_info::set(StringView n, uint32_t w, bool m) {
 
 	sprt::StreamTraits<char>::toStringBuf(str, bufSize, tl_threadInfo.tid, ":", n);
 
-	n = StringView(str).pdup(tl_threadInfo.threadPool);
+	auto pool = tl_threadInfo.threadPool;
+	if (!pool) {
+		pool = memory::pool::acquire();
+	}
+	n = StringView(str).pdup(pool);
 
+#if !SPRT_HOSTED_RTOS
 	n.performWithTerminated([](const char *n, size_t) {
 		pthread_setname_np(pthread_self(), n); //
 	});
+#endif
 
 	__sprt_freea(str);
 

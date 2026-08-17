@@ -42,6 +42,10 @@ THE SOFTWARE.
 	* Windows: *-pc-windows-msvc with -fexceptions (no unwinding possible when exceptions disabled)
 	* Linux/Android - uses _Unwind_ForcedUnwind
 	* MacOS - uses _Unwind_ForcedUnwind
+	* NuttX/Embox - uses _Unwind_ForcedUnwind (libunwind is linked into the flat image;
+	  it needs the image linker script to publish the .eh_frame bounds)
+	* wasm - not yet: needs the -fwasm-exceptions lowering, so setjmp is a no-op
+	  that returns 0 and longjmp traps
 */
 
 // We should not spawn extra stack frame, so we acquire native setjmp pointer,

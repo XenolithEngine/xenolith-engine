@@ -84,7 +84,7 @@ StringView getOsLocale() {
 		if (len <= 0) {
 			return StringView();
 		}
-		return StringView(buf, size_t(len)).pdup(s_globalConfig._pool);
+		return StringView(buf, size_t(len)).pdup(s_globalConfig.pool());
 	}();
 	return s_locale;
 }
@@ -103,7 +103,7 @@ StringView getExecPath() {
 
 		unique_lock lock(s_globalConfig.infoMutex);
 		filepath::merge([&](StringView path) {
-			s_globalConfig.execPathBuf = path.pdup(s_globalConfig._pool);
+			s_globalConfig.execPathBuf = path.pdup(s_globalConfig.pool());
 		}, dir, name);
 	}
 	return s_globalConfig.execPathBuf;
@@ -113,15 +113,18 @@ StringView getHomePath() {
 	if (s_globalConfig.homePathBuf.empty()) {
 		// No environment/home concept in the sandbox; the VFS root is the home root.
 		unique_lock lock(s_globalConfig.infoMutex);
-		s_globalConfig.homePathBuf = StringView("/").pdup(s_globalConfig._pool);
+		s_globalConfig.homePathBuf = StringView("/").pdup(s_globalConfig.pool());
 	}
 	return s_globalConfig.homePathBuf;
 }
 
 bool initialize(AppConfig &&cfg, int &resultCode) {
-	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig._pool);
-	s_globalConfig.config.appName = cfg.appName.pdup(s_globalConfig._pool);
-	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig._pool);
+	// The config pool is per initialize()/terminate() cycle, not per process;
+	// see GlobalConfig::_pool in private/SPRTPrivate.h.
+	s_globalConfig.init();
+	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig.pool());
+	s_globalConfig.config.appName = cfg.appName.pdup(s_globalConfig.pool());
+	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig.pool());
 	s_globalConfig.config.versionCode = cfg.versionCode;
 	s_globalConfig.config.pathScheme = cfg.pathScheme;
 
@@ -131,15 +134,15 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	s_globalConfig.current.interface = filesystem::getDefaultInterface();
 
 	filesystem::getCurrentDir([&](StringView path) {
-		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+		s_globalConfig.current.path = path.pdup(s_globalConfig.pool());
 	});
 
 	return true;
 }
 
-void terminate() { }
+void terminate() { s_globalConfig.term(); }
 
-memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+memory::pool_t *getConfigPool() { return s_globalConfig.pool(); }
 
 } // namespace sprt::platform
 

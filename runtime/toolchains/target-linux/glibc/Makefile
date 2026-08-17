@@ -51,6 +51,19 @@ endif
 
 SP_SRC_DIR := $(abspath $(dir $(LOCAL_MAKEFILE))../../src)
 
+# Clang that compiles the LLVM runtimes for the target. It has to be the
+# intermediate host sysroot rather than hosts/$(HOST_ID): the latter is only
+# installed once a target sysroot exists, so it is not available yet when the
+# first target is bootstrapped.
+HOST_CLANG_SYSROOT ?= $(abspath $(dir $(LOCAL_MAKEFILE))../../host-linux-glibc/sysroot-clang-out)
+
+# Link flags for the runtimes bootstrap. Neither compiler-rt nor libc++ exists
+# in the target sysroot while they are being built, so clang's configure-time
+# probes fall back to the libgcc the cross GCC installed there, and -nostdlib++
+# keeps the driver from auto-adding the -lc++ it defaults to.
+TARGET_BOOTSTRAP_LDFLAGS := -rtlib=libgcc --unwindlib=libgcc -nostdlib++
+
+include ../../common/utils/llvm-version.mk
 include ../../host-linux-glibc/glibc.mk
 
 BINUTILS_SRC_VER := 2.46.0
@@ -265,7 +278,7 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib
 ifdef OUT_HOST
 	rm -f $(OUT_SYSROOT)/host
 	cd $(OUT_SYSROOT); ln -fs $(OUT_HOST) host
-	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
 endif
 	touch $@
 

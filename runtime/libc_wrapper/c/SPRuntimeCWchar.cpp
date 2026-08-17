@@ -33,6 +33,12 @@ THE SOFTWARE.
 #include <wctype.h>
 #include <time.h>
 
+#if SPRT_HOSTED_RTOS
+// NuttX <wchar.h> ships only the C99 minimum; sprt's umbrella re-exports the
+// POSIX/BSD extensions, so pull the side-header declaring them.
+#include <wchar_extras.h>
+#endif
+
 #ifndef SPRT_APPLE
 #include <uchar.h>
 #endif
@@ -65,8 +71,10 @@ extern wint_t (*_towctrans_l)(wint_t __wc, wctrans_t __transform, locale_t __l);
 #endif
 
 static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
+static_assert(alignof(mbstate_t) == alignof(__SPRT_MBSTATE_NAME));
 static_assert(sizeof(wctype_t) == sizeof(__sprt_wctype_t));
 static_assert(sizeof(wint_t) == sizeof(__sprt_wint_t));
+static_assert(sizeof(wctrans_t) == sizeof(__sprt_wctrans_t));
 static_assert(WEOF == __SPRT_WEOF);
 
 namespace sprt {
@@ -499,6 +507,11 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(wcstoull)(const __SPRT_ID(wchar_t) * 
 __SPRT_C_FUNC int __SPRT_ID(fwide)(__SPRT_ID(FILE) * f, int c) { return ::fwide(f, c); }
 
 __SPRT_C_FUNC int __SPRT_ID(wprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
+#if SPRT_EMBOX
+	(void)fmt;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -506,10 +519,17 @@ __SPRT_C_FUNC int __SPRT_ID(wprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT 
 
 	__sprt_va_end(list);
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
+#if SPRT_EMBOX
+	(void)f;
+	(void)fmt;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -517,6 +537,7 @@ __SPRT_C_FUNC int __SPRT_ID(fwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 
 	__sprt_va_end(list);
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(swprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
@@ -532,12 +553,27 @@ __SPRT_C_FUNC int __SPRT_ID(swprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
+#if SPRT_EMBOX
+	(void)fmt;
+	(void)list;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return ::vwprintf(fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
+#if SPRT_EMBOX
+	(void)f;
+	(void)fmt;
+	(void)list;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return ::vfwprintf(f, fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
@@ -547,6 +583,11 @@ __SPRT_C_FUNC int __SPRT_ID(vswprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
+#if SPRT_EMBOX
+	(void)fmt;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -554,10 +595,17 @@ __SPRT_C_FUNC int __SPRT_ID(wscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT f
 
 	__sprt_va_end(list);
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
+#if SPRT_EMBOX
+	(void)f;
+	(void)fmt;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -565,10 +613,17 @@ __SPRT_C_FUNC int __SPRT_ID(fwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 
 	__sprt_va_end(list);
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(swscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
+#if SPRT_EMBOX
+	(void)buf;
+	(void)fmt;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -576,21 +631,45 @@ __SPRT_C_FUNC int __SPRT_ID(swscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT 
 
 	__sprt_va_end(list);
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
+#if SPRT_EMBOX
+	(void)fmt;
+	(void)list;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return ::vwscanf(fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
+#if SPRT_EMBOX
+	(void)f;
+	(void)fmt;
+	(void)list;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return ::vfwscanf(f, fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
+#if SPRT_EMBOX
+	(void)buf;
+	(void)fmt;
+	(void)list;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return ::vswscanf(buf, fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc)(__SPRT_ID(FILE) * f) { return ::fgetwc(f); }
@@ -632,7 +711,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime)(__SPRT_ID(wchar_t) * __SPRT_
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::fgetwc(f);
 #else
 	return ::fgetwc_unlocked(f);
@@ -640,7 +719,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) 
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::getwc(f);
 #else
 	return ::getwc_unlocked(f);
@@ -648,7 +727,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::getwchar();
 #else
 	return ::getwchar_unlocked();
@@ -657,7 +736,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
 
 __SPRT_C_FUNC __SPRT_ID(wint_t)
 		__SPRT_ID(fputwc_unlocked)(__SPRT_ID(wchar_t) c, __SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::fputwc(c, f);
 #else
 	return ::fputwc_unlocked(c, f);
@@ -666,7 +745,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t)
 
 __SPRT_C_FUNC __SPRT_ID(wint_t)
 		__SPRT_ID(putwc_unlocked)(__SPRT_ID(wchar_t) c, __SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::putwc(c, f);
 #else
 	return ::putwc_unlocked(c, f);
@@ -674,7 +753,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t)
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_ID(wchar_t) c) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return putwchar(c);
 #else
 	return putwchar_unlocked(c);
@@ -684,7 +763,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_ID(wchar_t) 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(fgetws_unlocked)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT ptr, int c,
 				__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::fgetws(ptr, c, f);
 #else
 	return fgetws_unlocked(ptr, c, f);
@@ -693,7 +772,7 @@ __SPRT_C_FUNC __SPRT_ID(wchar_t)
 
 __SPRT_C_FUNC int __SPRT_ID(fputws_unlocked)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT ptr,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_EMBOX
 	return ::fputws(ptr, f);
 #else
 	return fputws_unlocked(ptr, f);
@@ -715,6 +794,9 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_ID(wchar_t) * __SPR
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return 0;
+#elif SPRT_EMBOX
+	(void)loc;
+	return ::wcsftime(ptr, size, fmt, &native);
 #else
 	return ::wcsftime_l(ptr, size, fmt, &native, loc);
 #endif
@@ -734,13 +816,33 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT dest,
 		const char **__SPRT_RESTRICT src, __SPRT_ID(size_t) count, __SPRT_ID(size_t) destSize,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
+#if SPRT_EMBOX
+	(void)dest;
+	(void)src;
+	(void)count;
+	(void)destSize;
+	(void)state;
+	__sprt_errno = ENOSYS;
+	return static_cast<__SPRT_ID(size_t)>(-1);
+#else
 	return ::mbsnrtowcs(dest, src, count, destSize, (mbstate_t *)state);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT dest,
-		const __SPRT_ID(wchar_t) * *__SPRT_RESTRICT src, __SPRT_ID(size_t) count,
+		const __SPRT_ID(wchar_t) **__SPRT_RESTRICT src, __SPRT_ID(size_t) count,
 		__SPRT_ID(size_t) destSize, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
+#if SPRT_EMBOX
+	(void)dest;
+	(void)src;
+	(void)count;
+	(void)destSize;
+	(void)state;
+	__sprt_errno = ENOSYS;
+	return static_cast<__SPRT_ID(size_t)>(-1);
+#else
 	return ::wcsnrtombs(dest, src, count, destSize, (mbstate_t *)state);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t) * __SPRT_ID(wcsdup)(const __SPRT_ID(wchar_t) * ptr) {
@@ -766,12 +868,21 @@ __SPRT_C_FUNC __SPRT_ID(wchar_t)
 
 __SPRT_C_FUNC int __SPRT_ID(
 		wcscasecmp)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
+#if SPRT_EMBOX
+	return ::wcsncasecmp(a, b, static_cast<size_t>(-1));
+#else
 	return ::wcscasecmp(a, b);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcscasecmp_l)(const __SPRT_ID(wchar_t) * a,
 		const __SPRT_ID(wchar_t) * b, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::wcsncasecmp(a, b, static_cast<size_t>(-1));
+#else
 	return ::wcscasecmp_l(a, b, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcsncasecmp)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b,
@@ -781,24 +892,60 @@ __SPRT_C_FUNC int __SPRT_ID(wcsncasecmp)(const __SPRT_ID(wchar_t) * a, const __S
 
 __SPRT_C_FUNC int __SPRT_ID(wcsncasecmp_l)(const __SPRT_ID(wchar_t) * a,
 		const __SPRT_ID(wchar_t) * b, __SPRT_ID(size_t) s, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::wcsncasecmp(a, b, s);
+#else
 	return ::wcsncasecmp_l(a, b, s, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcscoll_l)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b,
 		__SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::wcscoll(a, b);
+#else
 	return ::wcscoll_l(a, b, loc);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsxfrm_l)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) s,
 		__SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::wcsxfrm(a, b, s);
+#else
 	return ::wcsxfrm_l(a, b, s, loc);
+#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_ID(wchar_t) c) { return wcwidth(c); }
+__SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_ID(wchar_t) c) {
+#if SPRT_EMBOX
+	if (c == 0) {
+		return 0;
+	}
+	return ::iswprint(static_cast<wint_t>(c)) ? 1 : -1;
+#else
+	return wcwidth(c);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(wcswidth)(const __SPRT_ID(wchar_t) * ptr, __SPRT_ID(size_t) s) {
+#if SPRT_EMBOX
+	int total = 0;
+	for (__SPRT_ID(size_t) i = 0; i < s && ptr && ptr[i]; ++i) {
+		int w = __SPRT_ID(wcwidth)(ptr[i]);
+		if (w < 0) {
+			return -1;
+		}
+		total += w;
+	}
+	return total;
+#else
 	return wcswidth(ptr, s);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return ::towlower(wc); }
@@ -823,55 +970,135 @@ __SPRT_C_FUNC int __SPRT_ID(iswctype)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctype_t) 
 __SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype)(const char *name) { return ::wctype(name); }
 
 __SPRT_C_FUNC int __SPRT_ID(iswalnum_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswalnum(wc);
+#else
 	return ::iswalnum_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswalpha_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswalpha(wc);
+#else
 	return ::iswalpha_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswblank_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswblank(wc);
+#else
 	return ::iswblank_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswcntrl_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswcntrl(wc);
+#else
 	return ::iswcntrl_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswdigit(wc);
+#else
 	return ::iswdigit_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswgraph_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswgraph(wc);
+#else
 	return ::iswgraph_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswlower(wc);
+#else
 	return ::iswlower_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswprint_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswprint(wc);
+#else
 	return ::iswprint_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswpunct_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswpunct(wc);
+#else
 	return ::iswpunct_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswspace_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswspace(wc);
+#else
 	return ::iswspace_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswupper(wc);
+#else
 	return ::iswupper_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswxdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswxdigit(wc);
+#else
 	return ::iswxdigit_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		iswctype_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctype_t) t, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::iswctype(wc, t);
+#else
 	return ::iswctype_l(wc, t, loc);
+#endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t)
 		__SPRT_ID(towlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::towlower(wc);
+#else
 	return ::towlower_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t)
 		__SPRT_ID(towupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::towupper(wc);
+#else
 	return ::towupper_l(wc, loc);
+#endif
 }
 __SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype_l)(const char *name, __SPRT_ID(locale_t) loc) {
+#if SPRT_EMBOX
+	(void)loc;
+	return ::wctype(name);
+#else
 	return ::wctype_l(name, loc);
+#endif
 }
 
 // wctrans/towctrans (and their _l variants) share the pointer-based wctrans_t
@@ -887,6 +1114,10 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans)(const char *name) {
 		return (__SPRT_ID(wctrans_t))platform::_wctrans(name);
 	}
 	return __wctrans_fallback(name);
+#elif SPRT_HOSTED_RTOS
+	// NuttX wctrans_t is `int`, sprt's ABI is `const int *`. Round-trip through
+	// the integer value so the call type-checks.
+	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
 #else
 	return ::wctrans(name);
 #endif
@@ -897,6 +1128,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towctrans)(__SPRT_ID(wint_t) wc, __SPR
 		return platform::_towctrans(wc, (wctrans_t)t);
 	}
 	return __towctrans_fallback(wc, t);
+#elif SPRT_HOSTED_RTOS
+	return ::towctrans(wc, (wctrans_t)(intptr_t)t);
 #else
 	return ::towctrans(wc, t);
 #endif
@@ -907,6 +1140,9 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *name, __SPRT
 		return (__SPRT_ID(wctrans_t))platform::_wctrans_l(name, loc);
 	}
 	return __wctrans_fallback(name);
+#elif SPRT_HOSTED_RTOS
+	(void)loc;
+	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
 #else
 	return ::wctrans_l(name, loc);
 #endif
@@ -918,6 +1154,9 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(
 		return platform::_towctrans_l(wc, (wctrans_t)t, loc);
 	}
 	return __towctrans_fallback(wc, t);
+#elif SPRT_HOSTED_RTOS
+	(void)loc;
+	return ::towctrans(wc, (wctrans_t)(intptr_t)t);
 #else
 	return ::towctrans_l(wc, t, loc);
 #endif

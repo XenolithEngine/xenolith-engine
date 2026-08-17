@@ -42,6 +42,19 @@ THE SOFTWARE.
 #include <fcntl.h>
 #endif
 
+#if SPRT_HOSTED_RTOS
+// NuttX scandirat fallback (the musl path below) reaches AT_FDCWD/getcwd/
+// readlink through <fcntl.h> and <unistd.h>.
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
+#if SPRT_EMBOX
+#include <limits.h>
+
+#include "../platform/embox/dirfd.h"
+#endif
+
 #include <dirent.h>
 
 // musl provides neither scandirat() nor scandirat64(), so it needs a dedicated
@@ -57,7 +70,28 @@ THE SOFTWARE.
 #define __SPRT_DIRENT_MUSL 0
 #endif
 
+// readdir() returns a pointer into the libc's own DIR, which every wrapper below
+// re-types as `struct __SPRT_DIRENT_NAME *`, so the two must agree on more than
+// the total size - the member offsets have to line up as well.
+// __builtin_offsetof rather than offsetof(): this TU is compiled without the
+// include_libc umbrella on the search path, so <stddef.h> is not guaranteed here.
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
+static_assert(__builtin_offsetof(struct dirent, d_type)
+		== __builtin_offsetof(struct __SPRT_DIRENT_NAME, d_type));
+static_assert(__builtin_offsetof(struct dirent, d_name)
+		== __builtin_offsetof(struct __SPRT_DIRENT_NAME, d_name));
+static_assert(sizeof(((struct dirent *)nullptr)->d_name)
+		== sizeof(((struct __SPRT_DIRENT_NAME *)nullptr)->d_name));
+
+// d_type codes travel from the libc through the wrapper untranslated, and outside
+// __SPRT_BUILD __SPRT_DT_* ARE the application's DT_*, so they have to be the
+// platform's own numbering (Embox renumbers them; see cross/embox_sprt/dir_ptr.h).
+static_assert(DT_UNKNOWN == __SPRT_DT_UNKNOWN && DT_FIFO == __SPRT_DT_FIFO
+		&& DT_CHR == __SPRT_DT_CHR && DT_DIR == __SPRT_DT_DIR && DT_BLK == __SPRT_DT_BLK
+		&& DT_REG == __SPRT_DT_REG && DT_LNK == __SPRT_DT_LNK && DT_SOCK == __SPRT_DT_SOCK);
+#ifdef DT_WHT
+static_assert(DT_WHT == __SPRT_DT_WHT);
+#endif
 
 namespace sprt {
 
@@ -66,18 +100,49 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *path) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) {
+#if SPRT_EMBOX
+	// Embox's DIR carries no descriptor, so there is no native fdopendir(). Open
+	// the directory the descriptor stands for and bind the two, so that dirfd()
+	// reports it back and closedir() reclaims both - the contract the recursive
+	// walk in src/filesystem/SPRuntimeFilesystemPosix.cpp relies on.
+	char dir[PATH_MAX];
+	if (!platform::getDirFdPath(__dir_fd, dir, sizeof(dir))) {
+		*__sprt___errno_location() = ENOTDIR;
+		return nullptr;
+	}
+	auto dp = opendir(dir);
+	if (!dp) {
+		return nullptr;
+	}
+	platform::attachDirStream(__dir_fd, dp);
+	return (__SPRT_ID(DIR) *)dp;
+#else
 	return (__SPRT_ID(DIR) *)fdopendir(__dir_fd);
+#endif
 }
 
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
+	// NuttX has no LFS readdir64 — the plain readdir is the only spelling.
 	return (struct __SPRT_DIRENT_NAME *)readdir((DIR *)__dir);
 #else
 	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) { return closedir((DIR *)__dir); }
+__SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_EMBOX
+	// POSIX: closedir() also closes the descriptor fdopendir() was given.
+	auto fd = platform::detachDirStream(__dir);
+	auto ret = closedir((DIR *)__dir);
+	if (fd >= 0) {
+		::close(fd);
+	}
+	return ret;
+#else
+	return closedir((DIR *)__dir);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 #if __STDC_HOSTED__ == 1
@@ -89,7 +154,12 @@ __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
-#if __STDC_HOSTED__ == 1
+#if SPRT_EMBOX
+	(void)__dir;
+	(void)__location;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#elif __STDC_HOSTED__ == 1
 	::seekdir((DIR *)__dir, __location);
 	return 0;
 #else
@@ -97,13 +167,34 @@ __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
 #endif
 }
 
-__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir((DIR *)__dir); }
+__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_EMBOX
+	(void)__dir;
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
+	return telldir((DIR *)__dir);
+#endif
+}
 
-__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd((DIR *)__dir); }
+__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_EMBOX
+	// Only a stream that came from fdopendir() has a descriptor to report; one
+	// from opendir() has none, and Embox cannot mint one after the fact.
+	auto fd = platform::getDirStreamFd(__dir);
+	if (fd < 0) {
+		*__sprt___errno_location() = ENOTSUP;
+		return -1;
+	}
+	return fd;
+#else
+	return dirfd((DIR *)__dir);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::alphasort((const struct dirent **)__lhs, (const struct dirent **)__rhs);
 #else
 	return ::alphasort64((const struct dirent64 **)__lhs, (const struct dirent64 **)__rhs);
@@ -119,7 +210,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::scandir(path, (struct dirent ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
@@ -180,7 +271,15 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
 					__comparator));
-#elif __SPRT_DIRENT_MUSL
+#elif SPRT_EMBOX
+	// Embox has neither scandirat() nor /proc; resolve through the dirfd shim.
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__dir_fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	return __SPRT_ID(scandir)(target, __name_list, __filter, __comparator);
+#elif __SPRT_DIRENT_MUSL || SPRT_NUTTX
 	// musl provides neither scandirat() nor scandirat64(); resolve the directory
 	// descriptor to a path through /proc and reuse our (already 64-bit) scandir().
 	if (path[0] == '/') {

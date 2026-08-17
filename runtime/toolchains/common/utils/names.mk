@@ -51,3 +51,6 @@ CONFIGURE_HOST_Darwin_arm64 := aarch64-apple-macosx
 CONFIGURE_HOST_iOS_x86_64 := x86_64-apple-ios
 CONFIGURE_HOST_iOS_aarch64 := aarch64-apple-ios
 CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios
+
+CONFIGURE_HOST_NuttX_aarch64 := aarch64-elf
+CONFIGURE_HOST_Embox_aarch64 := aarch64-elf

@@ -25,7 +25,7 @@ int pthread_create(pthread_t *__SPRT_RESTRICT thread, const pthread_attr_t *__SP
 	return __sprt_pthread_create(thread, attr, cb, arg);
 }
 int pthread_detach(pthread_t thread) __SPRT_NOEXCEPT { return __sprt_pthread_detach(thread); }
-__SPRT_NORETURN void pthread_exit(void *ret) __SPRT_NOEXCEPT { __sprt_pthread_exit(ret); }
+__SPRT_NORETURN void pthread_exit(void *ret) { __sprt_pthread_exit(ret); }
 int pthread_join(pthread_t thread, void **ret) __SPRT_NOEXCEPT {
 	return __sprt_pthread_join(thread, ret);
 }
@@ -39,8 +39,8 @@ int pthread_setcancelstate(int v, int *p) __SPRT_NOEXCEPT {
 int pthread_setcanceltype(int v, int *p) __SPRT_NOEXCEPT {
 	return __sprt_pthread_setcanceltype(v, p);
 }
-void pthread_testcancel(void) __SPRT_NOEXCEPT { __sprt_pthread_testcancel(); }
-int pthread_cancel(pthread_t thread) __SPRT_NOEXCEPT { return __sprt_pthread_cancel(thread); }
+void pthread_testcancel(void) { __sprt_pthread_testcancel(); }
+int pthread_cancel(pthread_t thread) { return __sprt_pthread_cancel(thread); }
 int pthread_getschedparam(pthread_t thread, int *__SPRT_RESTRICT n,
 		struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT p) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getschedparam(thread, n, p);

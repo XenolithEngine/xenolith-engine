@@ -24,7 +24,7 @@
  
 --- a/include/optional
 +++ b/include/optional
-@@ -245,8 +245,8 @@
+@@ -331,8 +331,8 @@
  _LIBCPP_PUSH_MACROS
  #  include <__undef_macros>
  
@@ -35,8 +35,8 @@
  
  class _LIBCPP_EXPORTED_FROM_ABI bad_optional_access : public exception {
  public:
-@@ -258,7 +258,7 @@
-   const char* what() const _NOEXCEPT override;
+@@ -344,7 +344,7 @@
+   [[__nodiscard__]] const char* what() const _NOEXCEPT override;
  };
  
 -} // namespace std
@@ -46,7 +46,7 @@
  
 --- a/include/variant
 +++ b/include/variant
-@@ -285,14 +285,15 @@
+@@ -284,14 +284,15 @@
  _LIBCPP_PUSH_MACROS
  #  include <__undef_macros>
  
@@ -56,7 +56,7 @@
  
  class _LIBCPP_EXPORTED_FROM_ABI bad_variant_access : public exception {
  public:
-   const char* what() const _NOEXCEPT override;
+   [[__nodiscard__]] const char* what() const _NOEXCEPT override;
  };
  
 -_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
@@ -84,7 +84,7 @@
  
 --- a/include/__new/exceptions.h
 +++ b/include/__new/exceptions.h
-@@ -59,7 +59,14 @@
+@@ -65,7 +65,14 @@
  
  #endif // defined(_LIBCPP_ABI_VCRUNTIME) && defined(_HAS_EXCEPTIONS) && _HAS_EXCEPTIONS == 0
  
@@ -102,7 +102,7 @@
 --- a/include/__new/nothrow_t.h
 +++ b/include/__new/nothrow_t.h
 @@ -22,8 +22,14 @@
- struct _LIBCPP_EXPORTED_FROM_ABI nothrow_t {
+ struct nothrow_t {
    explicit nothrow_t() = default;
  };
 -extern _LIBCPP_EXPORTED_FROM_ABI const nothrow_t nothrow;

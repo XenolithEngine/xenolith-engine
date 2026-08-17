@@ -32,6 +32,19 @@ PREBUILTS_PATH := $(abspath $(HOST_ROOT)/bin)
 STAGE0_NATIVE_CC ?= $(shell command -v clang)
 STAGE0_NATIVE_CXX ?= $(shell command -v clang++)
 
+# A cross build needs tblgen & co. running on the build machine. LLVM would configure a
+# whole second "NATIVE" LLVM for that, compiled by whatever clang is on PATH — which means
+# the system libstdc++, and LLVM 22.1 does not build against libstdc++ 16 (SuccIterator is
+# not default-constructible, so its reverse_iterator concept checks reject it). We already
+# have those tools at the exact same revision in the native host's install prefix, so point
+# LLVM at them and let it skip the NATIVE build entirely. LLVM_NATIVE_TOOL_DIR alone is not
+# enough: get_host_tool_path() only uses it to pick a DEFAULT for a CACHE variable, so each
+# tool has to be named too (a stale empty cache entry otherwise wins and falls back to the
+# NATIVE build). LLVM_TABLEGEN additionally has to be an explicit path because TableGen.cmake
+# keys llvm-min-tblgen off it (see its "Quick fix" branch) — that one is not installed under
+# its own name.
+STAGE0_NATIVE_TOOL_DIR := $(abspath $(LOCAL_ROOT)../../host-linux-glibc/sysroot-clang-out/bin)
+
 STAGE0_HOST_TOOLCHAIN_CMAKE := $(STAGE0_SYSROOT)/host.cmake
 STAGE0_HOSTCXX_TOOLCHAIN_CMAKE := $(STAGE0_SYSROOT)/hostcxx.cmake
 
@@ -233,7 +246,7 @@ $(STAGE0_LIBXML2): $(ZLIB_DIR) $(STAGE0_HOST_TOOLCHAIN_CMAKE)
 # clang,lldb,lld
 #
 
-STAGE0_BUILD_CC_LTO := -DLLVM_ENABLE_LTO=Full -DLLVM_PARALLEL_LINK_JOBS=6
+STAGE0_BUILD_CC_LTO := -DLLVM_ENABLE_LTO=Full -DLLVM_PARALLEL_LINK_JOBS=4
 
 # LLVM's own test suites - the lit trees and the googletest unit tests. Off by default:
 # a released toolchain does not need them, and they cost build time and disk space. Set
@@ -286,6 +299,12 @@ STAGE0_BUILD_CC := cmake \
 	$(STAGE0_BUILD_CC_LTO) \
 	-DLLVM_BUILD_BENCHMARKS=Off \
 	-DLLVM_INCLUDE_BENCHMARKS=Off \
+	-DLLVM_NATIVE_TOOL_DIR=$(STAGE0_NATIVE_TOOL_DIR) \
+	-DLLVM_TABLEGEN=$(STAGE0_NATIVE_TOOL_DIR)/llvm-tblgen \
+	-DCLANG_TABLEGEN=$(STAGE0_NATIVE_TOOL_DIR)/clang-tblgen \
+	-DLLDB_TABLEGEN_EXE=$(STAGE0_NATIVE_TOOL_DIR)/lldb-tblgen \
+	-DLLVM_NM=$(STAGE0_NATIVE_TOOL_DIR)/llvm-nm \
+	-DLLVM_CONFIG_PATH=$(STAGE0_NATIVE_TOOL_DIR)/llvm-config \
 	-DCROSS_TOOLCHAIN_FLAGS_NATIVE="-DCMAKE_C_COMPILER=$(STAGE0_NATIVE_CC);-DCMAKE_CXX_COMPILER=$(STAGE0_NATIVE_CXX);-DCMAKE_CXX_STANDARD=20" \
 	-DCLANG_DEFAULT_RTLIB=compiler-rt \
 	-DCLANG_DEFAULT_LINKER=lld \

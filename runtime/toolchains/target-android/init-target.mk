@@ -29,6 +29,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
 include $(dir $(THIS_FILE))../common/utils/names.mk
+include $(dir $(THIS_FILE))../common/utils/llvm-version.mk
 
 NDK_INCLUDES = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/include
 NDK_LIBDIR = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/lib/$(ANDROID_TARGET)/$(ANDROID_PLATFORM_LEVEL)
@@ -159,7 +160,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(TOOLCHAI
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'
@@ -183,13 +184,18 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 
 LIBNAME = llvm-project
 
+# The resource dir INSIDE the installed NDK. Its clang major belongs to the NDK, not
+# to our toolchain (SP_LLVM_VER), and moves whenever the NDK is upgraded - discover it
+# instead of pinning it.
+ANDROID_CLANG_RESOURCE := $(firstword $(wildcard $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/lib/clang/*))
+
 ifeq ($(SP_RES_ARCH),i686)
-ANDROID_UNWIND_LIB := $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/lib/clang/21/lib/linux/i386/libunwind.a
+ANDROID_UNWIND_LIB := $(ANDROID_CLANG_RESOURCE)/lib/linux/i386/libunwind.a
 else
-ANDROID_UNWIND_LIB := $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/lib/clang/21/lib/linux/$(SP_RES_ARCH)/libunwind.a
+ANDROID_UNWIND_LIB := $(ANDROID_CLANG_RESOURCE)/lib/linux/$(SP_RES_ARCH)/libunwind.a
 endif
 
-ANDROID_RT_BUILTINS_LIB := $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/lib/clang/21/lib/linux/libclang_rt.builtins-$(SP_RES_ARCH)-android.a
+ANDROID_RT_BUILTINS_LIB := $(ANDROID_CLANG_RESOURCE)/lib/linux/libclang_rt.builtins-$(SP_RES_ARCH)-android.a
 
 TMP_UNWIND_LIB := $(TOOLCHAIN_OUTPUT_DIR)/lib/libunwind.a
 TMP_RT_BUILTINS_LIB := $(TOOLCHAIN_OUTPUT_DIR)/lib/clang/lib/linux/libclang_rt.builtins-$(SP_RES_ARCH)-android.a

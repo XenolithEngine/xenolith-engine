@@ -26,24 +26,30 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#if SPRT_LINUX
-#include "../platform/linux/unicode.cc"
-#endif
+// There is no linux/wasm/nuttx/embox subunit any more: those files held nothing
+// but sprt::unicode, and every Unicode operation the runtime offers - case
+// mapping, word breaking, and the two orderings that do not depend on a language
+// - now comes from the compiled-in tables in runtime/src/unicode.
 
 #if SPRT_ANDROID
 #include "../platform/android/filesystem.cc"
-#include "../platform/android/unicode.cc"
+#include "../platform/android/platform.cc"
 #include "../platform/android/jni.cc"
 #endif
 
 #if SPRT_APPLE
-#include "../platform/darwin/unicode.cc"
+#include "../platform/darwin/platform.cc"
 #endif
 
 #if SPRT_WINDOWS
 #include "../platform/windows/platform.cc"
 #endif
 
-#if SPRT_WASM
-#include "../platform/wasm/unicode.cc"
+#if SPRT_NUTTX
+#include "../platform/nuttx/stubs.cc"
+#endif
+
+#if SPRT_EMBOX
+#include "../platform/embox/stubs.cc"
+#include "../platform/embox/dirfd.cc"
 #endif

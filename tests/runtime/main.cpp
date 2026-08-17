@@ -47,6 +47,8 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_dir", &sprt::performDirTest},
 	{"libc_link", &sprt::performLinkTest},
 	{"libc_fcntl", &sprt::performFcntlTest},
+	{"libc_at", &sprt::performAtFunctionsTest},
+	{"libc_setjmp", &sprt::performSetjmpTest},
 	{"libc_locale", &sprt::performLocaleTest},
 	{"libc_time", &sprt::performLibcTimeTest},
 	{"libc_pthread", &sprt::performPthreadCreateTest},
@@ -76,7 +78,14 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"runtime_file", &sprt::performFileTests},
 	{"runtime_socket", &sprt::performSocketTests},
 	{"runtime_unicode", &sprt::performUnicodeTests},
+	{"runtime_unicode_case_conformance", &sprt::performUnicodeCaseConformanceTests},
+	{"runtime_wordbreak_conformance", &sprt::performWordBreakConformanceTests},
+	{"runtime_collation", &sprt::performCollationTests},
+	{"runtime_collation_conformance", &sprt::performCollationConformanceTests},
+	{"runtime_collation_bench", &sprt::performCollationBench},
 	{"runtime_dtoa", &sprt::performDtoaTests},
+	{"runtime_idn", &sprt::performIdnTests},
+	{"runtime_idn_conformance", &sprt::performIdnConformanceTests},
 };
 
 int main(int argc, const char *argv[]) {

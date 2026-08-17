@@ -27,9 +27,14 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/bits/__sprt_int.h>
 
+// sigprocmask()/pthread_sigmask() forward `how` untranslated, so a libc that
+// numbers these differently overrides them in its cross/<platform>/signal.h,
+// included above - hence the #ifndef.
+#ifndef __SPRT_SIG_BLOCK
 #define __SPRT_SIG_BLOCK 0
 #define __SPRT_SIG_UNBLOCK 1
 #define __SPRT_SIG_SETMASK 2
+#endif
 
 typedef void (*__SPRT_ID(sighandler))(int);
 

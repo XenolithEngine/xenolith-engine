@@ -82,8 +82,69 @@ static int __wasm_setjmp_noop(__SPRT_ID(native_jmp_buf)) { return 0; }
 static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; }
 #endif
 
+#if SPRT_EMBOX
+// Embox's longjmp does not restore x29 (the frame pointer).
+//
+// src/arch/aarch64/lib/setjmp.S saves lr, sp and x19-x28 — twelve slots, which
+// is the whole of its jmp_buf — and stops there. x29 is callee-saved under
+// AAPCS64 too, and clang addresses the locals of the frame that called setjmp
+// through it (`stur w8, [x29, #-0xc]`), so returning into that frame with a
+// stale x29 makes every local read garbage AND makes every store land in dead
+// stack below sp. The symptom is quiet rather than loud: a value written and
+// read back through the same stale pointer still matches, and only something
+// stored BEFORE the setjmp shows the corruption.
+//
+// The buffer cannot simply be widened to hold x29 (and d8-d15, which Embox
+// drops as well). sizeof(__sprt_jmp_buf) is ABI: every third-party library on
+// this target that embeds a jmp_buf — FreeType's FT_ValidatorRec, libpng's
+// png_jmpbuf — has the old size compiled into its own structs, and a wider
+// buffer overruns them. Verified the hard way: it lands squarely on
+// tt_face_build_cmaps' locals.
+//
+// So the value is not saved, it is RECOVERED. Every longjmp here goes through
+// _Unwind_ForcedUnwind, and by the time the stop function recognises the target
+// frame the unwinder has already restored that frame's register set inside the
+// _Unwind_Context — including x29, which _Unwind_GetGR(context, 29) hands over.
+// The restorer below takes it as a third argument; everything else comes out of
+// Embox's own buffer layout, unchanged:
+//     [0] x30  [8] sp  [16] x19 x20  [32] x21 x22 ... [80] x27 x28
+//
+// d8-d15 stay unrestored, exactly as under Embox's own longjmp — the public
+// _Unwind_ API exposes no FP registers, and matching the platform's existing
+// behaviour is not a regression.
+#if !defined(__aarch64__)
+#error sprt longjmp for Embox is implemented for aarch64 only
+#endif
+
+extern "C" __SPRT_NORETURN void __sprt_embox_longjmp_fp(__SPRT_ID(native_jmp_buf), int,
+		__SPRT_ID(uintptr_t));
+
+// clang-format off
+__asm__(
+	".text\n"
+	".globl __sprt_embox_longjmp_fp\n"
+	".hidden __sprt_embox_longjmp_fp\n"
+	".type __sprt_embox_longjmp_fp, %function\n"
+"__sprt_embox_longjmp_fp:\n"
+	"ldp x30, x3, [x0]\n"
+	"mov sp, x3\n"
+	"ldp x19, x20, [x0, #16]\n"
+	"ldp x21, x22, [x0, #32]\n"
+	"ldp x23, x24, [x0, #48]\n"
+	"ldp x25, x26, [x0, #64]\n"
+	"ldp x27, x28, [x0, #80]\n"
+	"mov x29, x2\n"
+	// The 0 -> 1 conversion ISO C requires already happened in __sprt_longjmp,
+	// the only caller; pass the value through unchanged.
+	"mov w0, w1\n"
+	"ret\n"
+	".size __sprt_embox_longjmp_fp, .-__sprt_embox_longjmp_fp\n"
+);
+// clang-format on
+#endif
+
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -111,6 +172,16 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 #elif SPRT_WASM
 	// No-op sigsetjmp (returns 0); see __wasm_sigsetjmp_noop above.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__wasm_sigsetjmp_noop);
+#elif SPRT_EMBOX
+	// Embox DECLARES sigsetjmp/siglongjmp in <setjmp.h> (marked "stubs" there)
+	// and defines neither; it has no sigprocmask either, so there is no signal
+	// mask to save in the first place. sigjmp_buf and jmp_buf are the same type
+	// here, so the plain saver fills the same buffer and the savemask argument is
+	// simply ignored (aarch64 drops the extra register). Same shape as the NuttX
+	// branch below.
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
+#elif SPRT_NUTTX
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
 #else
 #error Not implemented
 #endif
@@ -131,7 +202,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -161,7 +232,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -181,19 +252,35 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		lookup.result = Max<uintptr_t>;
 	}
 #endif
+
+#if SPRT_NUTTX
+	buf->__native->savemask = savemask;
+	if (savemask) {
+		::sigprocmask(0, nullptr, &buf->__native->sigmask);
+	}
+#endif
+
 	buf->__cfa = lookup.result;
 
 	return 0;
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
 	// Preserve result on jmp_buf.
 	// It's safe to know that we will not use anything from stack before jmp_buf
+#if SPRT_EMBOX
+	// ISO C 7.13.2.1: longjmp(buf, 0) must make setjmp return 1. Every other
+	// platform's libc does that conversion inside longjmp; Embox's aarch64 asm
+	// (src/arch/aarch64/lib/setjmp.S) returns its second argument verbatim, so
+	// it has to happen here — this is the only place that value passes through.
+	buf->__result = ret ? ret : 1;
+#else
 	buf->__result = ret;
+#endif
 
 	// The jump must happen even without an unwinder: longjmp is what C requires,
 	// running destructors on the way is our addition on top of it. We lose the
@@ -221,6 +308,9 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 		} else if (buf->__cfa == _Unwind_GetCFA(context)) {
 #if SPRT_LINUX
 			longjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
+#elif SPRT_EMBOX
+			// x29 comes out of the unwind context; see __sprt_embox_longjmp_fp.
+			__sprt_embox_longjmp_fp(buf->__native, buf->__result, _Unwind_GetGR(context, 29));
 #else
 			longjmp(buf->__native, buf->__result);
 #endif
@@ -230,6 +320,9 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 			buf);
 	sprt_passert(code, "__sprt_longjmp: _Unwind_ForcedUnwind failed");
 	abort();
+	// Embox declares abort() without _Noreturn, so without this the compiler
+	// thinks this __SPRT_NORETURN function can fall off its end.
+	__builtin_unreachable();
 #elif SPRT_WINDOWS
 	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
@@ -245,18 +338,30 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
 	// Preserve result on jmp_buf.
 	// It's safe to know that we will not use anything from stack before jmp_buf
+#if SPRT_EMBOX
+	// ISO C 7.13.2.1: longjmp(buf, 0) must make setjmp return 1. Every other
+	// platform's libc does that conversion inside longjmp; Embox's aarch64 asm
+	// (src/arch/aarch64/lib/setjmp.S) returns its second argument verbatim, so
+	// it has to happen here — this is the only place that value passes through.
+	buf->__result = ret ? ret : 1;
+#else
 	buf->__result = ret;
+#endif
 
 	// See __sprt_longjmp: with no unwinder we jump without running destructors.
 	if (!__unwinder_available()) {
 #if SPRT_LINUX
 		siglongjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
+#elif SPRT_EMBOX
+		// Embox defines no siglongjmp (see get_sigsetjmp_fn) and has no signal
+		// mask to restore, so the plain jump IS the whole of the contract here.
+		longjmp(buf->__native, buf->__result);
 #else
 		siglongjmp(buf->__native, buf->__result);
 #endif
@@ -276,6 +381,10 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 		} else if (buf->__cfa == _Unwind_GetCFA(context)) {
 #if SPRT_LINUX
 			siglongjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
+#elif SPRT_EMBOX
+			// See the no-unwinder branch above; x29 comes out of the unwind
+			// context, as in __sprt_longjmp.
+			__sprt_embox_longjmp_fp(buf->__native, buf->__result, _Unwind_GetGR(context, 29));
 #else
 			siglongjmp(buf->__native, buf->__result);
 #endif
@@ -285,6 +394,9 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 			buf);
 	sprt_passert(code, "__sprt_siglongjmp: _Unwind_ForcedUnwind failed");
 	abort();
+	// Embox declares abort() without _Noreturn, so without this the compiler
+	// thinks this __SPRT_NORETURN function can fall off its end.
+	__builtin_unreachable();
 #elif SPRT_WINDOWS
 	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
 	if (buf->__cfa != Max<uintptr_t>) {

@@ -44,6 +44,45 @@ ifeq ($(SPRT_SHARED),1)
 MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 
+# Which collation tailorings this build carries, as SPRT_COLLATION=<set>. Every
+# group is on unless this says otherwise: an application that sorts a list for a
+# person to read should get the right order for their language by default, and a
+# target that cannot afford 1.2 MB of tables should have to say so.
+#
+#   full      every group, and Chinese/Japanese/Korean with them (the default)
+#   no-cjk    everything except zh/ja/ko - saves 0.7 MB
+#   european  Latin, Cyrillic, Greek, Armenian and Georgian
+#   root      no tailorings at all: the CLDR root order, which is already correct
+#             for German, French, Italian, Russian, Greek, Hebrew and many more
+#
+# Or list the groups: SPRT_COLLATION="LatinNordic Cyrillic". The names are the
+# ones in runtime/src/unicode/data/gen-collation-tables.py.
+#
+# The root table itself is not optional - it is the order everything else is
+# expressed as a difference from. hasCollation() tells an application at run time
+# which languages this binary actually knows.
+SPRT_COLLATION_ALL_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC LATINOTHER \
+	CYRILLIC GREEK SEMITIC INDIC SOUTHEASTASIA OTHER CJK
+
+ifeq ($(SPRT_COLLATION),)
+SPRT_COLLATION := full
+endif
+
+ifeq ($(SPRT_COLLATION),full)
+SPRT_COLLATION_GROUPS := $(SPRT_COLLATION_ALL_GROUPS)
+else ifeq ($(SPRT_COLLATION),no-cjk)
+SPRT_COLLATION_GROUPS := $(filter-out CJK,$(SPRT_COLLATION_ALL_GROUPS))
+else ifeq ($(SPRT_COLLATION),european)
+SPRT_COLLATION_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC CYRILLIC GREEK
+else ifeq ($(SPRT_COLLATION),root)
+SPRT_COLLATION_GROUPS :=
+else
+SPRT_COLLATION_GROUPS := $(shell echo $(SPRT_COLLATION) | tr 'a-z-' 'A-Z_')
+endif
+
+MODULE_RUNTIME_COMMON_CFLAGS += $(foreach g,$(SPRT_COLLATION_ALL_GROUPS),\
+	-DSPRT_COLLATION_$(g)=$(if $(filter $(g),$(SPRT_COLLATION_GROUPS)),1,0))
+
 include $(RUNTIME_MODULE_DIR)/core/core.mk
 include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk
@@ -116,6 +155,31 @@ MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 
+ifeq ($(TARGET_SYSTEM),NuttX)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a -lm
+endif
+
+ifeq ($(TARGET_SYSTEM),Embox)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+# Do not pass -lm: -Wl,-r would bake libm into the relocatable and shadow
+# the kernel's sqrtf. Embox's default math_simple sqrtf is incorrect.
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a
+endif
+
+
 # Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
@@ -163,15 +227,20 @@ MODULE_RUNTIME_LIBS += -l:libbacktrace.a
 # sysroot itself, so the -F/-L above resolve against the generated .tbd link
 # stubs (target-apple/open-sysroot.mk + gen-oss-stubs.sh). The stubs place every
 # symbol in the SAME library as the real SDK, so the link line matches the stock
-# one: libicucore (uidna_*) and libiconv resolve via their own stubs, CoreText is
-# added (font deps pull it in via functions_<arch>.txt); only Metal (provided
-# through MoltenVK) is dropped. The baked stubs are complete, so the link uses
-# the default two-level namespace with NO -undefined dynamic_lookup escape hatch
-# — any symbol not carried by a stub is a hard link error (re-bake to add it).
+# one: libiconv resolves via its own stub, CoreText is added (font deps pull it in
+# via functions_<arch>.txt); only Metal (provided through MoltenVK) is dropped.
+# The baked stubs are complete, so the link uses the default two-level namespace
+# with NO -undefined dynamic_lookup escape hatch — any symbol not carried by a
+# stub is a hard link error (re-bake to add it).
+#
+# libicucore is deliberately NOT linked. Its only use was uidna_* for IDN, which
+# the runtime now implements itself (runtime/src/idn); those are Apple-private,
+# version-unstable symbols, and dropping them removes that exposure entirely.
+# Case mapping and collation go through CoreFoundation, not ICU.
 ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -licucore -liconv
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -liconv
 else
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -licucore -liconv
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -liconv
 endif
 endif
 

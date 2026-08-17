@@ -133,6 +133,19 @@ itself, with `LIB` pointing at the `+dll` intermediate sysroot; running `ninja` 
 build directory without them fails in ways that read as libc++ bugs rather than as missing
 paths.
 
+A cross build also needs a few tools running on the *build* machine — the tablegens,
+`llvm-nm`, `llvm-config`. LLVM's default answer is to configure a second, native LLVM under
+`build/llvm_stage0/NATIVE` and compile it with whatever `clang` is on `PATH`, which drags in
+the build machine's libstdc++ (and LLVM 22.1 does not compile against libstdc++ 16). Instead
+`stage0.mk` points `LLVM_NATIVE_TOOL_DIR` at the native host's install prefix
+(`host-linux-glibc/sysroot-clang-out/bin`), where those tools already exist at the same
+revision, and the `NATIVE` sub-build never happens. Each tool is named individually
+(`LLVM_TABLEGEN`, `CLANG_TABLEGEN`, `LLDB_TABLEGEN_EXE`, `LLVM_NM`, `LLVM_CONFIG_PATH`):
+`LLVM_NATIVE_TOOL_DIR` alone only supplies a *default* for those cache entries, so an
+already-cached empty one wins and falls back to `NATIVE`. `LLVM_TABLEGEN` has to be a full
+path for a second reason — `TableGen.cmake` reuses it for `llvm-min-tblgen`, which is not
+installed under its own name.
+
 Both toolchain-file rules depend on `stage0.mk`, so editing flags here regenerates them.
 Sub-projects must ask for LTO with `CMAKE_INTERPROCEDURAL_OPTIMIZATION=On` and never with a
 `-DCMAKE_CXX_FLAGS` cache entry: that *replaces* what CMake derives from the toolchain file's
@@ -175,7 +188,7 @@ make stage0 STAGE0_TESTS=1
 It also makes the build take noticeably longer and the tree noticeably larger — that, and
 the fact that a released toolchain never needs them, is why the default is off.
 
-Two patches in `replacements/llvm/21.1.8-sprt-windows/` are part of this and are applied
+Two patches in `replacements/llvm/22.1.8-sprt-windows/` are part of this and are applied
 regardless of the switch:
 
 * `0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch` — see
@@ -261,12 +274,44 @@ check-lld`).
   the inferior's stderr, and tests that assert on stderr exactly (a trailing `CHECK-NOT`, or
   `2>&1 | count 0`) fail on that noise. It is passed through by patch `0004`, but it still
   has to be in the environment.
-* `--timeout=300` is likewise not optional (psutil is installed): lit defaults to no
-  per-test limit, and `AllClangUnitTests.exe` shard 11/48 hangs forever on
-  `DirectoryWatcherTest.DeleteWatchedDir`, spinning at 99% CPU and stalling the whole run.
-* Conversely: a timeout seen only under `-j16` and not on a lone re-run is CPU starvation
-  under wine, not a hang. The two ThinLTO lld tests (`COFF/thinlto-archives.ll`,
-  `MachO/thinlto-emit-imports.ll`) time out in a full batch and finish in ~11 s alone.
+* `--timeout=300` is likewise not optional: lit defaults to no per-test limit, and the
+  `AllClangUnitTests.exe` shard holding `DirectoryWatcherTest.DeleteWatchedDir` hangs
+  forever on it, spinning at 99% CPU and stalling the whole run. (Which shard that is
+  depends on the shard count, which follows `-j`: 11/48 in the 2026-07-31 sweep, 36/49 in
+  the next one.) The test itself reports its own timeout first — it is the watcher thread
+  that then never winds down, so the stall always follows a visible failure.
+* **Run lit through a python that has `psutil`.** Per-test timeouts need it, and without it
+  `--timeout` is not merely ignored — lit exits `fatal` before running anything. The catch
+  is that the generated `bin/llvm-lit` carries a shebang for whichever interpreter CMake
+  found (here `~/.local/bin/python3.11`), which is not necessarily the system python the
+  distro package installs into. So invoke it explicitly:
+
+  ```sh
+  WINEDEBUG=-all python3 ./bin/llvm-lit -sv --timeout=300 test
+  ```
+* A timeout seen only under `-j16` and not on a lone re-run *can* be CPU starvation under
+  wine rather than a hang — but do not assume it. **The parallel ThinLTO backend deadlocks
+  intermittently**, and a lone re-run that happens to succeed proves nothing. Measured on
+  2026-08-12 with `COFF/start-lib.ll`'s four-module ThinLTO link (line 121), run in
+  isolation with nothing else on the machine:
+
+  | build | hangs |
+  |---|---|
+  | 22.1.8, default job count (= 16 cores) | 2 of 4 |
+  | 21.1.8, `hosts/x86_64-pc-windows-msvc.tar.xz` from sdk-v0beta2 | 1 of 5 |
+  | 22.1.8, `-opt:lldltojobs=1` or `=2` | 0 of 2, instant |
+
+  So it predates the 22.1.8 bump and is not a regression from it. The hang is a lost wakeup
+  somewhere under `llvm::ThreadPool` — the process sits at **0 % CPU** with its worker
+  threads parked, which is what distinguishes it from starvation (busy) and from the
+  `DirectoryWatcher` spin (99 %). Job counts do not order cleanly (`6` hung while `8` and
+  `12` passed in the same sweep), so treat it as a race, not a threshold. Reproducer:
+
+  ```sh
+  cd build/llvm_stage0/tools/lld/test/COFF/Output
+  WINEDEBUG=-all timeout 60 ../../../../../bin/lld-link -out:/tmp/o.exe -entry:main \
+      start-lib.ll.tmp-{main2,foo,bar,baz}.bc
+  ```
 
 ### Reading the results
 
@@ -280,6 +325,11 @@ MSVC-built clang tested the same way would show them too. As of the 2026-07-31 s
 | 239 | a PE process cannot exec a host ELF | no |
 | 110 | host-OS lit features (`system-linux` is added instead of `system-windows`) | no |
 | 234 | unattributed — FileCheck/verify mismatches, 36 of them `llvm-cov` | unknown |
+
+The 2026-08-12 sweep on 22.1.8 came in slightly better across the board — 806 failures
+(clang 526, llvm 229, lld 51), against 51 462 / 47 196 / 2 781 passing. The classes above
+were not re-derived for it; the totals moving together with no new cluster is the signal
+that they still hold.
 
 * **PE cannot exec ELF.** `not grep`, `not ls`, `not cmp` and anything spawning
   `/usr/bin/python3` fail with `unable to find X in PATH` or `Failed getting status for

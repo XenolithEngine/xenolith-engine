@@ -26,6 +26,7 @@
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/init-shell.mk
+include $(dir $(THIS_FILE))../common/utils/llvm-version.mk
 
 WASM_FEATURES := -matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint
 
@@ -91,7 +92,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 # Second cmake toolchain file, used to cross-build the third-party dependency libs
 # (zlib/png/freetype/harfbuzz/...) — NOT the LLVM runtimes (those use toolchain.cmake

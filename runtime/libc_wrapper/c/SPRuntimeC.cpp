@@ -35,7 +35,10 @@ THE SOFTWARE.
 // The <nl_types.h> dispatch header gives the plain catopen/catgets/catclose and
 // nl_catd on every target (the platform's on hosted, the umbrella's -- backed by
 // libc_impl -- on freestanding), which the message-catalog bridge below needs.
+// Embox libc has no message catalogs (no <nl_types.h>); use the empty fallback.
+#if !SPRT_EMBOX
 #include <nl_types.h>
+#endif
 
 #if __STDC_HOSTED__ == 1
 
@@ -82,28 +85,40 @@ int __catclose_empty(__SPRT_ID(nl_catd));
 // umbrella. Deterministic: use the real platform catalog functions when present,
 // else the empty-catalog fallback.
 __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catopen_empty(path, v);
+#else
 	auto *fn = catopen;
 	if (fn) {
 		return (__SPRT_ID(nl_catd))fn(path, v);
 	}
 	return __catopen_empty(path, v);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		catgets)(__SPRT_ID(nl_catd) cat, int a, int b, const char *str) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catgets_empty(cat, a, b, str);
+#else
 	auto *fn = catgets;
 	if (fn) {
 		return fn((nl_catd)cat, a, b, str);
 	}
 	return __catgets_empty(cat, a, b, str);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catclose_empty(cat);
+#else
 	auto *fn = catclose;
 	if (fn) {
 		return fn((nl_catd)cat);
 	}
 	return __catclose_empty(cat);
+#endif
 }
 
 } // namespace sprt

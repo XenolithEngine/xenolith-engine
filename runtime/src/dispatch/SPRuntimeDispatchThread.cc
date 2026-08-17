@@ -23,6 +23,11 @@
 #include <sprt/runtime/dispatch/thread.h>
 #include <sprt/runtime/dispatch/entry.h>
 #include <sprt/runtime/log.h>
+#include "SPRuntimeDispatch.h"
+
+#if SPRT_HOSTED_RTOS
+#include <unistd.h>
+#endif
 
 namespace sprt::dispatch {
 
@@ -94,10 +99,34 @@ void Thread::wrap() {
 	Thread::workerThread(this);
 }
 
+void Thread::adoptCurrent() {
+	_flags = ThreadFlags::None;
+	_type = &(typeid(*this));
+	_continueExecution.test_and_set();
+	_parentThread = getCurrentThread();
+	tl_owner = this;
+
+	callbacks cb;
+	cb.init = [](NotNull<Ref> obj) {
+		static_cast<Thread *>(obj.get())->threadInit(); //
+	};
+	cb.dispose = [](NotNull<Ref> obj) {
+		static_cast<Thread *>(obj.get())->threadDispose(); //
+	};
+	cb.worker = [](NotNull<Ref> obj) -> bool {
+		return static_cast<Thread *>(obj.get())->worker(); //
+	};
+	_init(cb, this);
+}
+
 void Thread::stop() { _continueExecution.clear(); }
 
 void Thread::waitRunning() {
 	if (_running.load()) {
+		return;
+	}
+
+	if (getCurrentThread() == this || isOnThisThread()) {
 		return;
 	}
 
@@ -106,7 +135,12 @@ void Thread::waitRunning() {
 		return;
 	}
 
+#if SPRT_HOSTED_RTOS
+	lock.unlock();
+	while (!_running.load()) { ::usleep(1'000); }
+#else
 	_runningVar.wait(lock, [&] { return _running.load(); });
+#endif
 }
 
 bool Thread::waitStopped() {

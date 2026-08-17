@@ -47,6 +47,12 @@ THE SOFTWARE.
 #include <xlocale.h>
 #endif
 
+#if SPRT_EMBOX
+#include <limits.h>
+
+#include "../platform/embox/dirfd.h"
+#endif
+
 // For legacy functions implementation
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
@@ -55,7 +61,7 @@ namespace sprt {
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(
 				fopen_impl)(const char *__SPRT_RESTRICT path, const char *__SPRT_RESTRICT mode) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::fopen(path, mode);
 #else
 	return ::fopen64(path, mode);
@@ -65,7 +71,7 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(freopen_impl)(const char *__SPRT_RESTRICT path,
 				const char *__SPRT_RESTRICT mode, __SPRT_ID(FILE) * __SPRT_RESTRICT file) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::freopen(path, mode, file);
 #else
 	return ::freopen64(path, mode, file);
@@ -278,11 +284,26 @@ __SPRT_C_FUNC int __SPRT_ID(vasprintf)(char **out, const char *fmt, __SPRT_ID(va
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(fmemopen)(void *__SPRT_RESTRICT ptr, __SPRT_ID(size_t) size,
 				const char *__SPRT_RESTRICT mode) {
+#if SPRT_EMBOX
+	(void)ptr;
+	(void)size;
+	(void)mode;
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
 	return ::fmemopen(ptr, size, mode);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(open_memstream)(char **ptr, __SPRT_ID(size_t) * sz) {
+#if SPRT_EMBOX
+	(void)ptr;
+	(void)sz;
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
 	return ::open_memstream(ptr, sz);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(fdopen)(int fd, const char *mode) {
@@ -318,20 +339,61 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return ::vdprintf(n, fmt, list);
 }
 
-__SPRT_C_FUNC void __SPRT_ID(flockfile)(__SPRT_ID(FILE) * f) { ::flockfile(f); }
-
-__SPRT_C_FUNC int __SPRT_ID(ftrylockfile)(__SPRT_ID(FILE) * f) { return ::ftrylockfile(f); }
-
-__SPRT_C_FUNC void __SPRT_ID(funlockfile)(__SPRT_ID(FILE) * f) { ::funlockfile(f); }
-__SPRT_C_FUNC int __SPRT_ID(getc_unlocked)(__SPRT_ID(FILE) * f) { return getc_unlocked(f); }
-
-__SPRT_C_FUNC int __SPRT_ID(getchar_unlocked)(void) { return getchar_unlocked(); }
-
-__SPRT_C_FUNC int __SPRT_ID(putc_unlocked)(int c, __SPRT_ID(FILE) * f) {
-	return ::putc_unlocked(c, f);
+__SPRT_C_FUNC void __SPRT_ID(flockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_EMBOX
+	(void)f;
+#else
+	::flockfile(f);
+#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(putchar_unlocked)(int c) { return ::putchar_unlocked(c); }
+__SPRT_C_FUNC int __SPRT_ID(ftrylockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_EMBOX
+	(void)f;
+	return 0;
+#else
+	return ::ftrylockfile(f);
+#endif
+}
+
+__SPRT_C_FUNC void __SPRT_ID(funlockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_EMBOX
+	(void)f;
+#else
+	::funlockfile(f);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(getc_unlocked)(__SPRT_ID(FILE) * f) {
+#if SPRT_EMBOX
+	return ::getc(f);
+#else
+	return getc_unlocked(f);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(getchar_unlocked)(void) {
+#if SPRT_EMBOX
+	return ::getchar();
+#else
+	return getchar_unlocked();
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(putc_unlocked)(int c, __SPRT_ID(FILE) * f) {
+#if SPRT_EMBOX
+	return ::putc(c, f);
+#else
+	return ::putc_unlocked(c, f);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(putchar_unlocked)(int c) {
+#if SPRT_EMBOX
+	return ::putchar(c);
+#else
+	return ::putchar_unlocked(c);
+#endif
+}
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getdelim)(char **__SPRT_RESTRICT ret,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT sz, int c, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
@@ -343,7 +405,22 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT ret,
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		renameat)(int oldfd, const char *oldPath, int newfd, const char *newPath) {
+#if SPRT_EMBOX
+	// Embox's renameat() is an ENOSYS stub; resolve both ends and use rename().
+	char oldBuffer[PATH_MAX];
+	char newBuffer[PATH_MAX];
+	auto oldTarget = platform::resolveAtPath(oldfd, oldPath, oldBuffer, sizeof(oldBuffer));
+	if (!oldTarget) {
+		return -1;
+	}
+	auto newTarget = platform::resolveAtPath(newfd, newPath, newBuffer, sizeof(newBuffer));
+	if (!newTarget) {
+		return -1;
+	}
+	return ::rename(oldTarget, newTarget);
+#else
 	return ::renameat(oldfd, oldPath, newfd, newPath);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
@@ -355,7 +432,8 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_HOSTED_RTOS
+	// NuttX libc has no ctermid; return an empty string like the windows path.
 	if (!s) {
 		static char buf[1] = {'\0'};
 		s = buf;
@@ -372,7 +450,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vscanf(fmt, list);
 	::uselocale(cur);
@@ -389,7 +467,7 @@ __SPRT_C_FUNC int __SPRT_ID(fscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vfscanf(stream, fmt, list);
 	::uselocale(cur);
@@ -406,7 +484,7 @@ __SPRT_C_FUNC int __SPRT_ID(sscanf_l)(const char *__SPRT_RESTRICT buf, __SPRT_ID
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vsscanf(buf, fmt, list);
 	::uselocale(cur);
@@ -420,7 +498,7 @@ __SPRT_C_FUNC int __SPRT_ID(sscanf_l)(const char *__SPRT_RESTRICT buf, __SPRT_ID
 
 __SPRT_C_FUNC int __SPRT_ID(vscanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format,
 		__SPRT_ID(va_list) ap) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vscanf(format, ap);
 	::uselocale(cur);
@@ -432,7 +510,7 @@ __SPRT_C_FUNC int __SPRT_ID(vscanf_l)(__SPRT_ID(locale_t) loc, const char *__SPR
 
 __SPRT_C_FUNC int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
 		__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vfscanf(stream, format, ap);
 	::uselocale(cur);
@@ -444,7 +522,7 @@ __SPRT_C_FUNC int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
 
 __SPRT_C_FUNC int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
 		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vsscanf(str, format, ap);
 	::uselocale(cur);
@@ -459,7 +537,7 @@ __SPRT_C_FUNC int __SPRT_ID(snprintf_l)(char *__SPRT_RESTRICT buf, __SPRT_ID(siz
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vsnprintf(buf, len, fmt, list);
 	::uselocale(cur);
@@ -474,7 +552,7 @@ __SPRT_C_FUNC int __SPRT_ID(snprintf_l)(char *__SPRT_RESTRICT buf, __SPRT_ID(siz
 __SPRT_C_FUNC int __SPRT_ID(vsnprintf_l)(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len,
 		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
 		__SPRT_ID(va_list) list) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vsnprintf(buf, len, fmt, list);
 	::uselocale(cur);
@@ -489,7 +567,7 @@ __SPRT_C_FUNC int __SPRT_ID(asprintf_l)(char **__SPRT_RESTRICT target,
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vasprintf(target, fmt, list);
 	::uselocale(cur);
@@ -504,7 +582,7 @@ __SPRT_C_FUNC int __SPRT_ID(asprintf_l)(char **__SPRT_RESTRICT target,
 __SPRT_C_FUNC int __SPRT_ID(vasprintf_l)(char **__SPRT_RESTRICT target,
 		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
 		__SPRT_ID(va_list) list) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_WINDOWS || SPRT_HOSTED_RTOS
 	auto cur = ::uselocale(loc);
 	auto ret = ::vasprintf(target, fmt, list);
 	::uselocale(cur);

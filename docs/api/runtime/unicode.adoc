@@ -13,6 +13,13 @@ The API is split across two headers:
 
 NOTE: All identifiers below are in namespace `sprt::unicode`.
 
+This document covers **encoding**: transcoding, measurement, validation. The rest
+of `sprt::unicode` — case mapping, word boundaries, the three orderings,
+collation — plus `sprt::idn` is in
+[usage/unicode-and-idn.adoc](../../usage/unicode-and-idn.adoc), and how all of it
+works inside is in
+[design/unicode-and-idn.adoc](../../design/unicode-and-idn.adoc).
+
 ---
 
 ## Encoding model
@@ -283,14 +290,29 @@ bool totitle(const callback<void(WideStringView)> &, WideStringView);
 bool tolower(const callback<void(WideStringView)> &, WideStringView);
 ```
 
-Comparison (Unicode-aware; `*result` receives a negative/zero/positive ordering):
+Locale-sensitive overloads take a language tag as a third argument; six languages
+case differently from the root (`tr`, `az`, `lt`, `el`, `nl`, `hy`).
+
+Comparison returns the sign, like `strcmp`:
 
 ```c
-bool compare(StringView l, StringView r, int *result);          // codepoint order
-bool compare(WideStringView l, WideStringView r, int *result);
-bool caseCompare(StringView l, StringView r, int *result);      // case-insensitive
-bool caseCompare(WideStringView l, WideStringView r, int *result);
+int compareCodepoints(StringView l, StringView r);              // codepoint order
+int compareCodepoints(WideStringView l, WideStringView r);
+int compareCodepoints(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
+
+int compareFolded(StringView l, StringView r);                  // full case folding, then codepoints
+int compareFolded(WideStringView l, WideStringView r);
+int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
 ```
+
+Both are pure functions of the compiled-in tables — no locale, no system library
+— and are total orders over arbitrary input, including ill-formed input.
+
+NOTE: Neither is collation. The language-dependent ordering shown to a user is
+`unicode::collate` / `unicode::sortKey`, documented in
+[usage/unicode-and-idn.adoc](../../usage/unicode-and-idn.adoc). Do not use the
+two above to sort a list a person will read, and do not use `collate` for a key
+or an index.
 
 ---
 

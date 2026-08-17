@@ -28,25 +28,48 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
+// Values shared by every platform whose mman(2) follows the asm-generic layout.
+// A few are #ifndef-guarded: the per-platform <cross/.../mman.h> above is included
+// first, so a libc that renumbers them (NuttX packs MAP_* into consecutive bits and
+// swaps MADV_RANDOM/MADV_SEQUENTIAL) can define its own value and have the rest of
+// the table still apply. The wrappers pass these straight to the native call.
 // clang-format off
 #define __SPRT_MAP_FAILED ((void *) -1)
 
 #define __SPRT_MAP_SHARED     0x01
 #define __SPRT_MAP_PRIVATE    0x02
 #define __SPRT_MAP_SHARED_VALIDATE 0x03
+#ifndef __SPRT_MAP_TYPE
 #define __SPRT_MAP_TYPE       0x0f
+#endif
+#ifndef __SPRT_MAP_FIXED
 #define __SPRT_MAP_FIXED      0x10
+#endif
+#ifndef __SPRT_MAP_GROWSDOWN
 #define __SPRT_MAP_GROWSDOWN  0x0100
+#endif
+#ifndef __SPRT_MAP_DENYWRITE
 #define __SPRT_MAP_DENYWRITE  0x0800
+#endif
+#ifndef __SPRT_MAP_EXECUTABLE
 #define __SPRT_MAP_EXECUTABLE 0x1000
+#endif
+#ifndef __SPRT_MAP_LOCKED
 #define __SPRT_MAP_LOCKED     0x2000
+#endif
+#ifndef __SPRT_MAP_POPULATE
 #define __SPRT_MAP_POPULATE   0x8000
+#endif
+#ifndef __SPRT_MAP_NONBLOCK
 #define __SPRT_MAP_NONBLOCK   0x10000
+#endif
 #define __SPRT_MAP_STACK      0x20000
 #define __SPRT_MAP_HUGETLB    0x40000
 #define __SPRT_MAP_SYNC       0x80000
 #define __SPRT_MAP_FIXED_NOREPLACE 0x100000
+#ifndef __SPRT_MAP_FILE
 #define __SPRT_MAP_FILE       0
+#endif
 
 #define __SPRT_MAP_HUGE_SHIFT 26
 #define __SPRT_MAP_HUGE_MASK  0x3f
@@ -71,21 +94,31 @@ THE SOFTWARE.
 #define __SPRT_PROT_GROWSDOWN 0x01000000
 #define __SPRT_PROT_GROWSUP   0x02000000
 
+#ifndef __SPRT_MS_INVALIDATE
 #define __SPRT_MS_INVALIDATE  2
+#endif
 
 #define __SPRT_MCL_CURRENT    1
 #define __SPRT_MCL_FUTURE     2
 #define __SPRT_MCL_ONFAULT    4
 
 #define __SPRT_POSIX_MADV_NORMAL     0
+#ifndef __SPRT_POSIX_MADV_RANDOM
 #define __SPRT_POSIX_MADV_RANDOM     1
+#endif
+#ifndef __SPRT_POSIX_MADV_SEQUENTIAL
 #define __SPRT_POSIX_MADV_SEQUENTIAL 2
+#endif
 #define __SPRT_POSIX_MADV_WILLNEED   3
 #define __SPRT_POSIX_MADV_DONTNEED   4
 
 #define __SPRT_MADV_NORMAL      0
+#ifndef __SPRT_MADV_RANDOM
 #define __SPRT_MADV_RANDOM      1
+#endif
+#ifndef __SPRT_MADV_SEQUENTIAL
 #define __SPRT_MADV_SEQUENTIAL  2
+#endif
 #define __SPRT_MADV_WILLNEED    3
 #define __SPRT_MADV_DONTNEED    4
 #define __SPRT_MADV_REMOVE      9

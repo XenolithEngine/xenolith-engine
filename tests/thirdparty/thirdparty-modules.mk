@@ -74,9 +74,9 @@ MODULE_THIRDPARTY_CURL_DEPENDS_ON := thirdparty_openssl
 # -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB, see runtime/toolchains/common/curl.mk).
 MODULE_THIRDPARTY_CURL_FLAGS := -DCURL_STATICLIB -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
 
-# IDN: Linux/Android/Apple builds use libidn2, Windows uses the OS (USE_WIN32_IDN)
-ifndef WIN32
-MODULE_THIRDPARTY_CURL_LIBS += -l:libidn2.a
-endif
+# IDN: the runtime implements the libidn2 C ABI itself (runtime/src/idn), on every
+# target, so nothing is linked here. Linking the sysroot libidn2.a as well would be
+# a duplicate definition of idn2_lookup_u8 and friends - it only ever worked because
+# archive members are pulled in lazily.
 
 $(call define_module, thirdparty_curl, MODULE_THIRDPARTY_CURL)

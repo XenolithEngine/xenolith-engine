@@ -12,7 +12,8 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 TARGET="${STAPPLER_TARGET:-x86_64-unknown-linux-gnu}"
 TC="$ROOT/runtime/toolchains"; HOSTBIN="$TC/hosts/$TARGET/bin"
 SYSROOT="$TC/targets/$TARGET"; RESDIR="$SYSROOT/lib/clang"
-CLANGINC="$HOSTBIN/../lib/clang/21/include"
+# the clang resource dir is version-named (lib/clang/<major>); discover it
+CLANGINC="$(echo "$HOSTBIN"/../lib/clang/*/include)"
 LLVM="$ROOT/runtime/toolchains/src/llvm-project"
 SUPPORT="$LLVM/libcxx/test/support"; STDROOT="$LLVM/libcxx/test/std"
 
@@ -38,7 +39,7 @@ ND_OBJ="$BUILD/SPRTCxxNewDelete.nostrong.o"
 grep -v 'SPRTCxxNewDelete\.cpp\.o$' "$RTLIST" > "$RTLIST.tmp" && echo "$ND_OBJ" >> "$RTLIST.tmp" && mv "$RTLIST.tmp" "$RTLIST"
 
 export SPRT_CXX="$HOSTBIN/c++" SPRT_CC="$HOSTBIN/cc" SPRT_STD_VER="20"
-export SPRT_COMPILE_FLAGS="-std=gnu++2a -fno-exceptions -frtti -funwind-tables -DDEBUG -DSTAPPLER_LOG_LEVEL=2 -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-deprecated-declarations -idirafter $CLANGINC --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR -idirafter $ROOT/runtime/include_libc -I$ROOT/runtime/include -I$SUPPORT"
+export SPRT_COMPILE_FLAGS="-std=gnu++2a -fno-exceptions -frtti -funwind-tables -DDEBUG -DSTAPPLER_LOG_LEVEL=2 -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-deprecated-declarations -idirafter $CLANGINC --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR -isystem $ROOT/runtime/include_libc/cxx -isystem $ROOT/runtime/libcxx/include -isystem $ROOT/runtime/include_libc -I$ROOT/runtime/include -I$SUPPORT"
 export SPRT_LINK_FLAGS="-L$SYSROOT/usr/lib -l:libbacktrace.a -l:libc++abi.a -lm -Wl,--build-id=none -ldl --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR -lc++abi"
 export SPRT_EXEC="" SPRT_RT_OBJS_FILE="$RTLIST"
 

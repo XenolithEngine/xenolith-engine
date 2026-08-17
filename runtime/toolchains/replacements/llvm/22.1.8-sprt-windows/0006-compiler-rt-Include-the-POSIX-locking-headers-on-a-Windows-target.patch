@@ -1,0 +1,46 @@
+Subject: [PATCH 6/6] [compiler-rt] Include the POSIX locking headers on a Windows target
+
+lib/profile picks its file-locking implementation from a configure check that
+compiles a small program against <fcntl.h>. On a Windows target whose libc is
+sprt that check succeeds - sprt implements POSIX advisory record locking on top
+of LockFileEx - so COMPILER_RT_HAS_FCNTL_LCK is defined and lprofLockFd takes
+the fcntl path.
+
+That path does not build there. InstrProfilingUtil.c reaches for <fcntl.h> only
+in its non-Windows include branch, so fcntl, F_WRLCK and F_SETLKW are undeclared,
+and WindowsMMap.h has already renamed flock to its own LockFileEx shim with
+
+  #define flock __llvm_profile_flock
+
+which turns the `struct flock` the fcntl path declares into an incomplete type.
+Upstream never sees this because on MSVC the configure check fails and the shim
+is what gets used.
+
+Pull the three headers in when the check has selected that path, and drop the
+flock macro with it. The shim is only reached from the branch fcntl supersedes -
+the two are the arms of one #ifdef/#elif - so nothing else in the file loses it.
+
+diff --git a/compiler-rt/lib/profile/InstrProfilingUtil.c b/compiler-rt/lib/profile/InstrProfilingUtil.c
+index a9d9df813..f1423fa13 100644
+--- a/compiler-rt/lib/profile/InstrProfilingUtil.c
++++ b/compiler-rt/lib/profile/InstrProfilingUtil.c
+@@ -11,6 +11,18 @@
+ #include <process.h>
+ #include <windows.h>
+ #include "WindowsMMap.h"
++#ifdef COMPILER_RT_HAS_FCNTL_LCK
++/* A Windows target whose libc still offers POSIX advisory record locking, so
++   the configure check selected the fcntl path below. Its declarations are in
++   headers this branch does not otherwise pull in, and WindowsMMap.h renames
++   flock to its own LockFileEx shim, which would turn struct flock into an
++   incomplete type. The shim is only called from the branch that fcntl
++   supersedes, so dropping the macro here costs nothing. */
++#undef flock
++#include <errno.h>
++#include <fcntl.h>
++#include <unistd.h>
++#endif
+ #else
+ #if defined(__linux__)
+ // For fdopen(), fileno(), getpagesize(), madvise()
+

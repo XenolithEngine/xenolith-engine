@@ -1045,11 +1045,123 @@ SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView);
 
-SPRT_API bool compare(StringView l, StringView r, int *result);
-SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
+// Case mapping for a specific language. `locale` is a language identifier such
+// as "tr", "tr-TR" or "TUR": only the language subtag is read, in either case
+// and in either the 2- or 3-letter form, and everything from the first '-' or
+// '_' on is ignored. Six languages case differently from the root locale -
+// tr/az (dotted and dotless I), lt (a lowercase i keeps its dot under an
+// accent), el (uppercasing drops the tonos), nl (the IJ digraph, titlecase
+// only) and hy (the ech-yiwn ligature); every other identifier, including an
+// empty one, means root.
+//
+// The overloads above are the root locale, which is the deterministic choice:
+// the result does not depend on the machine the code runs on. Pass a locale
+// explicitly when the text is known to be in one of those six languages.
+SPRT_API bool toupper(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool tolower(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool totitle(const callback<void(StringView)> &, StringView, StringView locale);
 
-SPRT_API bool caseCompare(StringView l, StringView r, int *result);
-SPRT_API bool caseCompare(WideStringView l, WideStringView r, int *result);
+SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+
+// Ordering. Both of these are pure functions of the compiled-in Unicode tables:
+// no locale is read, no system library is consulted, and the answer is the same
+// on every target and every machine. Both are total orders over arbitrary input,
+// including input that is not well-formed. They return the sign, like strcmp.
+//
+// Neither is collation. Collation is the language-dependent ordering shown to a
+// user - where ё goes relative to the rest of the Russian alphabet, whether å
+// sits next to a or after z, whether uppercase sorts before lowercase - and it
+// needs CLDR tailoring data the runtime does not carry. Do not use these to sort
+// a list a person will read.
+//
+// compareCodepoints is the order of the Unicode code points. Use it for keys,
+// indexes, protocols and reproducible tests. Note that for UTF-16 this is not
+// the order of the code units: a supplementary character sorts after every BMP
+// one, where its leading surrogate would sort before U+E000.
+SPRT_API int compareCodepoints(StringView l, StringView r);
+SPRT_API int compareCodepoints(WideStringView l, WideStringView r);
+SPRT_API int compareCodepoints(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
+
+// compareFolded applies the full case folding of the UCD and then compares code
+// points, so it is case-insensitive in the way Unicode defines it: mappings of
+// one character to several are included, and "ß" and "ss" compare equal, as do
+// the three forms of sigma. Compare against 0 for case-insensitive equality.
+// Folding is language-independent by design and takes no locale.
+SPRT_API int compareFolded(StringView l, StringView r);
+SPRT_API int compareFolded(WideStringView l, WideStringView r);
+SPRT_API int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
+
+// Collation: the order two strings appear in for a person reading them, which
+// depends on their language. This is the one Unicode operation the runtime cannot
+// derive - it needs the CLDR tables - and the one whose answer is a matter of
+// convention rather than of fact. `ö` follows `z` in Swedish and sits inside `o`
+// in German; `ch` is one letter in Czech; `ё` has two accepted places in Russian.
+//
+// Use it to order a list someone will read. Do NOT use it for keys, indexes or
+// anything that has to compare the same everywhere and forever - that is what
+// compareCodepoints is for. Which locales are compiled in is a build option, so
+// two builds of the runtime can order the same list differently; hasCollation
+// answers whether this one knows the language asked for.
+//
+// Everything above the primary level is optional, and what each level means:
+//
+//   Primary     base letters:      resume < rhyme, resume == résumé == RESUME
+//   Secondary   accents:           resume < résumé, résumé == RÉSUMÉ
+//   Tertiary    case and variants: résumé < RÉSUMÉ  (the default)
+//   Quaternary  punctuation that `shifted` moved off the primary level
+//   Identical   the code points themselves, as a last resort
+enum class Strength {
+	Primary,
+	Secondary,
+	Tertiary,
+	Quaternary,
+	Identical,
+};
+
+// Whether upper- or lowercase sorts first, for the languages that care (Danish
+// and Maltese put uppercase first). Off means the tertiary level decides.
+enum class CaseFirst {
+	Off,
+	Upper,
+	Lower,
+};
+
+struct CollateOptions {
+	Strength strength = Strength::Tertiary;
+	// Digit runs sort as numbers: "item2" before "item10".
+	bool numeric = false;
+	// Punctuation and spaces are ignored until the quaternary level, so that
+	// "de luge" and "de-luge" sort together.
+	bool shifted = false;
+	CaseFirst caseFirst = CaseFirst::Off;
+};
+
+// The sign, like strcmp. `locale` is a language tag; an unknown or empty one
+// means the CLDR root order, which is already correct for most languages -
+// including German, French, Italian, Russian, Greek and Hebrew.
+SPRT_API int collate(StringView l, StringView r, StringView locale, CollateOptions = CollateOptions());
+SPRT_API int collate(WideStringView l, WideStringView r, StringView locale,
+		CollateOptions = CollateOptions());
+
+// The same ordering as a byte string: memcmp on two keys gives the sign collate()
+// would. Sorting a list costs one key per string instead of one comparison per
+// pair, and a key can go into an index or a database column where a comparison
+// function cannot.
+//
+// The key is only meaningful against keys made with the same locale, the same
+// options and the same build of the runtime - it is not a stable identifier and
+// must not be persisted across a Unicode version. The callback is invoked exactly
+// once on success and not at all on failure.
+SPRT_API bool sortKey(const callback<void(BytesView)> &, StringView, StringView locale,
+		CollateOptions = CollateOptions());
+SPRT_API bool sortKey(const callback<void(BytesView)> &, WideStringView, StringView locale,
+		CollateOptions = CollateOptions());
+
+// Whether this build has a tailoring for `locale`. False means collate() will
+// answer with the root order rather than that language's own.
+SPRT_API bool hasCollation(StringView locale);
 
 } // namespace sprt::unicode
 
@@ -1255,13 +1367,13 @@ inline int compare_c(const L &l, const R &r) {
 	return compare_c(l.data(), l.size(), r.data(), r.size());
 }
 
+// Unicode-aware counterparts of compare_c / caseCompare_c below. They used to
+// carry a fallback to the byte-wise versions, because the implementation was the
+// platform's and could be missing; it comes from the compiled-in tables now and
+// always answers.
 template <typename L, typename R, typename CharType>
 inline int compare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::compare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return compare_c(l, r);
+	return unicode::compareCodepoints(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 template <typename L, typename R, typename CharType>
@@ -1288,11 +1400,7 @@ inline int caseCompare_c(const L &l, const R &r) {
 
 template <typename L, typename R, typename CharType>
 inline int caseCompare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::caseCompare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return caseCompare_c(l, r);
+	return unicode::compareFolded(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 } // namespace sprt::detail

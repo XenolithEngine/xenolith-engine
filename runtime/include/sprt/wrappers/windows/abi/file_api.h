@@ -216,6 +216,7 @@ THE SOFTWARE.
 #define __SPRT_PIPE_TYPE_BYTE        0x00000000
 #define __SPRT_PIPE_READMODE_BYTE    0x00000000
 #define __SPRT_PIPE_WAIT             0x00000000
+#define __SPRT_PIPE_NOWAIT           0x00000001
 
 // ---- ReadDirectoryChangesW ([winbase] directory change notifications) --------
 #define __SPRT_FILE_ACTION_ADDED 0x00000001

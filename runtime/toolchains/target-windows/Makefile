@@ -289,10 +289,14 @@ $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib: $(MAKE_ROOT)openssl.mk
 $(SP_INSTALL_PREFIX)/usr/lib/gost_engine.lib: ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib $(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
+	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
+	cp -f $< $@
+
+$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib $(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/usr/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/usr/lib/mbedtls.lib
+$(SP_INSTALL_PREFIX)/usr/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/usr/lib/mbedtls.lib $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $(MAKE_ROOT)curl.mk $(FORWARD_VARS) VARIANT=mbedtls
 
 $(SP_INSTALL_PREFIX)/usr/lib/zip.lib: ../common/libzip.mk

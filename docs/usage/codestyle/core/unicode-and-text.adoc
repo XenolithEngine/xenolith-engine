@@ -1,0 +1,282 @@
+# Unicode text: which comparison, which case mapping, and the generated tables
+
+**TL;DR**
+
+* **Never call a platform text API.** No ICU, no `dlopen`, no CoreFoundation, no
+  `LCMapStringEx`, no JNI, no host call. `sprt::unicode` and `sprt::idn` *are*
+  the implementation, on every target.
+* **Pick the comparison on purpose.** `compareCodepoints` for keys, indexes,
+  protocols and tests; `compareFolded` for case-insensitive equality; `collate`
+  **only** for a list a person will read. A collation order is not stable across
+  builds — never key, index or persist on it.
+* **Case-map strings, not characters.** `toupper(char32_t)` cannot produce `SS`
+  from `ß`, cannot see a final sigma, and cannot know about Turkish `i`. Use the
+  callback overloads.
+* **Default to the root locale.** The no-locale overloads are deterministic. Pass
+  a language only when the text is *known* to be `tr`/`az`/`lt`/`el`/`nl`/`hy`.
+* **Text is produced through a `callback`, never returned.** The view a callback
+  is handed dies when it returns; copy what you keep.
+* **Everything under a `data/` directory is generated.** Do not edit it. Run the
+  generator, commit its output, re-run the conformance suite.
+* **Ported Unicode code is transcribed literally.** Bit arithmetic copied from
+  ICU is not to be "simplified" — a wrong branch returns a *valid* value for the
+  wrong code point, with no crash and no assert.
+* **A new Unicode table needs a conformance suite before it is finished**, with
+  its vectors generated from the same checkout as the table.
+
+Reference for the API: [usage/unicode-and-idn.adoc](../../unicode-and-idn.adoc).
+How it works inside: [design/unicode-and-idn.adoc](../../../design/unicode-and-idn.adoc).
+
+## The runtime is the implementation
+
+There used to be seven implementations of `sprt::unicode::tolower` — one per
+platform, each delegating to whatever library that platform happened to have.
+They disagreed with each other and with Unicode, and they made the answer depend
+on what was installed on the machine. They are gone, and nothing may reintroduce
+them.
+
+**Do not** add a `#if SPRT_<PLATFORM>` branch that calls a system text function.
+If something in `sprt::unicode` or `sprt::idn` is missing, it is added there,
+once, for every target — that is why those modules exist. The same rule covers
+`std::locale`, `towupper`, `wcscoll`, `strcoll` and `setlocale`: none of them is
+a source of truth here, and several are not available on freestanding targets at
+all.
+
+In `stappler/`, reach the same functionality through
+[SPString.h](../../../../stappler/core/string/SPString.h) —
+`platform::tolower/toupper/totitle`, `platform::compare_u`,
+`platform::caseCompare_u`. Those names are historical; they forward straight into
+`sprt::unicode` and no longer touch a platform. For ASCII-only fast paths there
+are `string::apply_tolower_c` / `apply_toupper_c` and `sprt::tolower_c`.
+
+## Choose the comparison deliberately
+
+The most common real bug in this area is sorting with the wrong function, and it
+does not show up until someone changes the build or the Unicode version.
+
+| Situation | Function |
+|---|---|
+| map key, set member, cache key, dedup | `unicode::compareCodepoints` |
+| wire protocol, file format, on-disk index | `unicode::compareCodepoints` |
+| a test that must produce the same output forever | `unicode::compareCodepoints` |
+| header name, scheme, extension, identifier — case-insensitively | `unicode::compareFolded` |
+| a `<select>`, a file list, a contact list, anything a human reads | `unicode::collate` |
+| ASCII-only hot path where you have proven the input is ASCII | `sprt::tolower_c` + `memcmp` |
+
+`collate` is the only one of these whose answer is a matter of convention. It
+depends on a locale, it depends on which tailorings the build carries, and it
+changes with CLDR. Sorting a `Map` with it, or storing its output, is a latent
+bug — the code works until a build ships with a different `SPRT_COLLATION` set.
+
+[source,cpp]
+----
+// WRONG: a container ordered by a linguistic collation.
+Map<String, T, decltype([](StringView l, StringView r) {
+    return unicode::collate(l, r, uiLocale) < 0;   // order depends on the build
+})> byName;
+
+// RIGHT: store in a deterministic order, sort a copy for display.
+Map<String, T> byName;                              // compareCodepoints order
+Vector<StringView> shown = keysOf(byName);
+sort(shown, [&](StringView l, StringView r) { return unicode::collate(l, r, uiLocale) < 0; });
+----
+
+When a build's coverage matters, ask instead of assuming:
+
+[source,cpp]
+----
+if (!unicode::hasCollation(tag)) { /* this build sorts `tag` with the root order */ }
+----
+
+Note that `hasCollation` answers "is there a tailoring table for this tag", not
+"can this build sort this language". It is `false` for German, because the root
+order already *is* German's order. `collate` always works.
+
+## Case-map strings, not characters
+
+`toupper(char32_t)` is the *simple* mapping: one code point in, one out. It
+cannot express the three things that actually happen in text — a result longer
+than the input (`ß → SS`), a result that depends on surrounding text (final
+sigma), and a result that depends on the language (Turkish `i`).
+
+[source,cpp]
+----
+// WRONG: loses ß, final sigma, and every locale rule.
+for (auto &c : codepoints) { c = unicode::toupper(c); }
+
+// RIGHT.
+unicode::toupper([](StringView s) { use(s); }, source);
+----
+
+Reach for the single-code-point form only when the *unit* really is a character —
+a key press, a glyph lookup, a character-class test.
+
+Same rule for titlecasing: `totitle` finds word boundaries with UAX #29, so
+`O'Brien` and `well-known` come out right. Uppercasing `source[0]` does not.
+
+## Produce text through a callback
+
+This is the general runtime idiom (see
+[core/strings.adoc](strings.adoc)), and every text-producing function here
+follows it: measure, allocate a temporary with `__sprt_malloca`, fill, invoke the
+callback, free.
+
+Consequences you must respect at every call site:
+
+* The view is **valid only inside the callback**. Storing it is a dangling read.
+* The callback fires **exactly once on success and not at all on failure**. Check
+  the `Status`/`bool` before reading anything the callback was supposed to fill;
+  a caller that reads its buffer after an error finds stale memory.
+* Write new text-producing APIs the same way. Do not return an owned string
+  because it is convenient — the caller that wanted a view then pays for an
+  allocation it did not need.
+
+## Default to the root locale
+
+Every locale-taking overload has a no-locale sibling, and the sibling is the
+right default: its answer does not depend on the machine, so it is reproducible
+in a test and identical across targets.
+
+Pass a language tag only when the text is **known** to be in one of the six
+languages that case differently (`tr`, `az`, `lt`, `el`, `nl`, `hy`), or when
+collating something a user of that language is reading. "The system locale" is
+not a reason — the runtime never reads one, and neither should code above it.
+
+## Generated tables are generated
+
+Everything in `runtime/src/unicode/data/` and `runtime/src/idn/data/` except the
+`.py` and `.adoc` files is machine-written from an ICU checkout.
+
+* **Never hand-edit a `SPRuntime*Data*.cc`.** Change the generator, re-run it,
+  commit its output.
+* **Never fix a wrong character by special-casing it in the code.** If a mapping
+  is wrong, either the table is stale or a bit layout was transcribed wrongly;
+  both have a real fix.
+* **A table refresh is not finished until the conformance suite is green.** A
+  wrong trie does not crash — it returns a valid value for the wrong code point.
+
+The generators live next to their output and are run by a human, never by the
+build. Their READMEs
+([unicode](../../../../runtime/src/unicode/data/README.adoc),
+[idn](../../../../runtime/src/idn/data/README.adoc)) list what each one checks
+and, more importantly, what it cannot.
+
+## Ported code is transcribed, not adapted
+
+Large parts of these modules are ports of ICU. Where a port carries a comment
+saying the arithmetic is transcribed literally — `SPRTUnicodeTrie.h`,
+`case_props.cc`, `uts46/normalizer.cc`, `collation_core.cc`,
+`collation_fastlatin.cc` — that comment is a rule:
+
+> Do not "simplify" it. Every branch computes a different offset and every
+> threshold encodes a fact about the data layout. A wrong one returns a perfectly
+> valid value for the wrong code point: no crash, no assert, just a handful of
+> characters silently mapped wrong.
+
+Deviations from an original are allowed, and there are many — but they are
+**subtractions with a stated reason**, recorded in the file header: an ICU
+feature nothing here uses (`Edits`, case closure, `previousCE`), a second copy of
+a code path made unnecessary by converting once up front, an error mechanism
+replaced by the runtime's. A rewrite of the arithmetic itself is not in that
+category.
+
+Where a port is *not* a transcription, say so and say why. `case_compare.cc`
+opens by explaining that comparing decoded code points gives ICU's order by
+construction with no repair step, which is how 500 lines became 90.
+
+## A table-driven subsystem is one compile unit
+
+The layout every module here follows, and the one a new one should:
+
+    SPRuntimeThing.cpp          the SCU: includes, in dependency order,
+      data/SPRuntimeThingData.cc      the generated tables first,
+      layer_a.cc                      then the code that gives them meaning,
+      layer_b.cc                      each layer a .cc subunit
+      …
+    data/gen-tables.py          the generator, run by a human
+    data/README.adoc            what is in the tables, what the generator checks
+
+Why one TU: the tables are parsed into `constexpr` objects **at compile time**,
+which only works if the array and the reader are in the same translation unit.
+That is what buys no run-time initialization, no lazy static, no allocation and
+no error path for the data. Breaking the unit up costs all four.
+
+Why a separate TU per subsystem: an application pays compile time for the tables
+it includes. Collation is an order of magnitude larger than case mapping, so it
+is its own unit even though both read the same trie format.
+
+Remember the SCU rule ([units-and-files.adoc](../sources/units-and-files.adoc)):
+a `.cc` is not built until a `.cpp` includes it, and include order in an SCU is a
+dependency order — append, do not reorganize.
+
+## Every table needs a conformance suite
+
+A hand-written test proves the cases you thought of. For Unicode data that is not
+enough, because the failure mode is a *valid answer for the wrong character*.
+
+* Take the vectors from the **official Unicode file** where one exists —
+  `UnicodeData.txt`, `SpecialCasing.txt`, `WordBreakTest.txt`, `IdnaTestV2.txt`,
+  `CollationTest_*.txt`, `NormalizationTest.txt`. The standard is the file, not
+  ICU: ICU's own break iterator does not pass all of `WordBreakTest.txt`.
+* Generate them from the **same checkout** the tables came from
+  (`tests/runtime/tools/gen_*_test.py`), so data and expectations cannot drift.
+* Where no conformance file exists, get coverage by **reading the table two
+  ways** — case folding has no file, so `compareFolded` (one code point at a
+  time) is checked against the batch folder over all 0x110000 code points.
+* Cross-check derived forms against each other: every sort key is verified
+  against the comparison of the same pair, and every UTF-8 result against the
+  UTF-16 one.
+
+Register the suite in `tests/runtime/tests.h` and `main.cpp` and name it in the
+data README's regeneration steps, so the next person to refresh a table is told
+what to run.
+
+## Build knobs must be askable at run time
+
+`SPRT_COLLATION` is the first place in the runtime where two builds legitimately
+answer differently. That is only acceptable because `hasCollation()` exists: an
+application can ask what this binary knows instead of assuming.
+
+Any future knob that trades data for size follows the same rule — **ship the
+predicate with the knob**. And keep the default generous: an application that
+sorts a list for a person should get the right order without configuring
+anything, and a target that cannot afford the tables should have to say so
+explicitly.
+
+## Checklist: adding a Unicode-derived table
+
+1. Generator in `data/`, reading from `runtime/toolchains/src/icu4c` or a UCD file.
+2. It **validates** what it reads — format versions, trie invariants, array
+   lengths, sentinels — and refuses to emit anything it does not fully
+   understand. A hardcoded length survives a version bump silently.
+3. It cross-checks the Unicode version against the other tables in the binary.
+4. Output is `constexpr` arrays in a `.cc`, `#include`d by the SCU, committed.
+5. `data/README.adoc`: what is in it, its size, where it came from, what the
+   generator checks, **what it does not check**, and how to regenerate.
+6. A conformance suite from an official file, with its vectors generated from the
+   same checkout.
+7. The Unicode licence notice stays in the header of every generated file.
+
+## Checklist: bumping the Unicode version
+
+Full procedure in
+[design/unicode-and-idn.adoc](../../../design/unicode-and-idn.adoc#bumping-the-unicode-version).
+The half that is easy to forget:
+
+* The generators catch format and layout changes and **stop**. That is the loud
+  half.
+* The **bit layouts transcribed from ICU headers are not checked by anything** —
+  `ucase.h`, `uprops.h`, `ubidi_props.h`, `collation.h`,
+  `collationfastlatin.h`. Re-read them by hand. `UPROPS_SCRIPT_X_MASK` changed
+  shape between ICU 70 and 78 and the conformance suite did not catch it.
+* Regenerate the conformance vectors from the same checkout, then run every
+  suite. A refresh that leaves one non-zero is not finished.
+
+## Related
+
+* [usage/unicode-and-idn.adoc](../../unicode-and-idn.adoc) — the API guide
+* [design/unicode-and-idn.adoc](../../../design/unicode-and-idn.adoc) — how it works
+* [api/runtime/unicode.adoc](../../../api/runtime/unicode.adoc) — encoding and transcoding reference
+* [core/strings.adoc](strings.adoc) — `StringView`, owned strings, `CallbackStream`
+* [sources/units-and-files.adoc](../sources/units-and-files.adoc) — `.cpp` vs `.cc`
+* [platform/runtime-libc.adoc](../platform/runtime-libc.adoc) — why there is no system library to call

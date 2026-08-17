@@ -28,6 +28,12 @@ THE SOFTWARE.
 
 #include <pthread.h>
 
+#if SPRT_HOSTED_RTOS
+// NuttX declares SCHED_RR/SCHED_FIFO/SCHED_OTHER and struct sched_param in
+// <sched.h>, same as Linux; pthread.h alone does not pull it.
+#include <sched.h>
+#endif
+
 #if SPRT_APPLE
 #include <mach/port.h>
 #endif
@@ -111,7 +117,9 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	}
 
 	if (hasFlag(attr->attr, ThreadAttrFlags::GuardSizeCustomized)) {
+#if !SPRT_EMBOX
 		pthread_attr_setguardsize(&pattr, attr->guardSize);
+#endif
 	}
 
 	if (hasFlag(attr->attr, ThreadAttrFlags::StackPointerCustomized)) {
@@ -121,6 +129,18 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	}
 
 	pthread_t pthread;
+#if SPRT_HOSTED_RTOS
+	// Do not hold the sprt pool mutex across pthread_create. The init task is
+	// not a pthread; if the child runs immediately it takes that mutex in
+	// registerThread() and the parent never deschedules → InternalInit wait
+	// never completes.
+	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
+	if (ret == 0) {
+		unique_lock globalLock(pool->mutex);
+		__attachNativeThread(thread, reinterpret_cast<void *>(pthread), pthread_to_id(pthread),
+				globalLock);
+	}
+#else
 	unique_lock globalLock(pool->mutex);
 
 	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
@@ -129,6 +149,7 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 				globalLock);
 		globalLock.unlock();
 	}
+#endif
 
 	pthread_attr_destroy(&pattr);
 	return ret;
@@ -138,9 +159,9 @@ static bool __initNativeHandle(thread_t *thread) {
 	size_t stackSize = 0;
 	void *stackptr = nullptr;
 
-	thread->handle = reinterpret_cast<void *>(pthread_self());
+	thread->handle = reinterpret_cast<void *>((uintptr_t)pthread_self());
 
-#if !SPRT_APPLE
+#if !SPRT_APPLE && !SPRT_HOSTED_RTOS
 	pthread_attr_t attr;
 	pthread_getattr_np(reinterpret_cast<pthread_t>(thread->handle),
 			&attr); // Get current thread's actual attributes
@@ -153,7 +174,7 @@ static bool __initNativeHandle(thread_t *thread) {
 	int sched = 0;
 	struct sched_param param;
 
-	pthread_getschedparam(reinterpret_cast<pthread_t>(thread->handle), &sched, &param);
+	pthread_getschedparam((pthread_t)(uintptr_t)thread->handle, &sched, &param);
 
 	switch (sched) {
 	case SCHED_OTHER: thread->attr.attr &= ~ThreadAttrFlags::PrioMask; break;
@@ -177,7 +198,7 @@ static bool __initNativeHandle(thread_t *thread) {
 
 	if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Unmanaged)) {
 		// if it's SPRT's thread, we need to setup async cancel to use it
-#ifndef SPRT_ANDROID
+#if !SPRT_ANDROID && !SPRT_HOSTED_RTOS
 		int oldv = 0;
 		if (pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldv) == 0
 				&& pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldv) == 0) {
@@ -207,14 +228,14 @@ static int __applyThreadPrio(thread_t *thread, int32_t dprio) {
 	default: ipolicy = SCHED_OTHER; break;
 	}
 
-	return pthread_setschedparam(reinterpret_cast<pthread_t>(thread->handle), ipolicy, &param);
+	return pthread_setschedparam((pthread_t)(uintptr_t)thread->handle, ipolicy, &param);
 }
 
 static int __cancelThreadAsync(thread_t *thread) {
 #if SPRT_ANDROID
 	return ENOSYS;
 #else
-	return pthread_cancel(reinterpret_cast<pthread_t>(thread->handle));
+	return pthread_cancel((pthread_t)(uintptr_t)thread->handle);
 #endif
 }
 
@@ -293,9 +314,14 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 
 	*clock = (static_cast<__sprt_clockid_t>(portId) & 0x7FFF'FFFF) | 0x8000'0000;
 	return 0;
+#elif SPRT_HOSTED_RTOS
+	// NuttX has no pthread_getcpuclockid; return ENOSYS so the caller falls
+	// back to a monotonic clock for CPU-time measurement.
+	(void)handle;
+	return ENOSYS;
 #else
 	clockid_t id = 0;
-	auto ret = pthread_getcpuclockid(reinterpret_cast<pthread_t>(handle), &id);
+	auto ret = pthread_getcpuclockid((pthread_t)(uintptr_t)handle, &id);
 	if (ret == 0) {
 		*clock = static_cast<__sprt_clockid_t>(id);
 		return 0;
@@ -305,19 +331,19 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 }
 
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ENOSYS;
 #else
-	return pthread_getaffinity_np(reinterpret_cast<pthread_t>(handle), n,
+	return pthread_getaffinity_np((pthread_t)(uintptr_t)handle, n,
 			reinterpret_cast<cpu_set_t *>(set));
 #endif
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ENOSYS;
 #else
-	return pthread_setaffinity_np(reinterpret_cast<pthread_t>(handle), n,
+	return pthread_setaffinity_np((pthread_t)(uintptr_t)handle, n,
 			reinterpret_cast<const cpu_set_t *>(set));
 #endif
 }
@@ -325,8 +351,13 @@ int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set)
 int thread_t::setname_native(const char *name) {
 #if SPRT_APPLE
 	return pthread_setname_np(name);
+#elif SPRT_HOSTED_RTOS
+	// NuttX has no pthread_setname_np; the task name is set via task_setname()
+	// in <nuttx/sched.h>, but that needs the pid, not pthread_t. Skip for now.
+	(void)name;
+	return ENOSYS;
 #else
-	return pthread_setname_np(reinterpret_cast<pthread_t>(handle), name);
+	return pthread_setname_np((pthread_t)(uintptr_t)handle, name);
 #endif
 }
 
