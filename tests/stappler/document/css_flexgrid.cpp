@@ -149,14 +149,16 @@ void performFlexboxGridCssTests() {
 			auto &s = parse("gap: 10px 20px");
 			auto row = val(s, ParameterName::CssRowGap).sizeValue;
 			auto col = val(s, ParameterName::CssColumnGap).sizeValue;
-			check(row.metric == Metric::Units::Px && row.value == 10.0f
-							&& col.metric == Metric::Units::Px && col.value == 20.0f,
+			check(row.metric == Metric::Units::Px && test::nearlyEqual(row.value, 10.0f)
+							&& col.metric == Metric::Units::Px
+							&& test::nearlyEqual(col.value, 20.0f),
 					"flexgrid: gap: 10px 20px -> row + column");
 		}
 		{
 			auto &s = parse("gap: 5px");
-			check(val(s, ParameterName::CssRowGap).sizeValue.value == 5.0f
-							&& val(s, ParameterName::CssColumnGap).sizeValue.value == 5.0f,
+			check(test::nearlyEqual(val(s, ParameterName::CssRowGap).sizeValue.value, 5.0f)
+							&& test::nearlyEqual(
+									val(s, ParameterName::CssColumnGap).sizeValue.value, 5.0f),
 					"flexgrid: gap single value applies to both axes");
 		}
 		check(val(parse("row-gap: normal"), ParameterName::CssRowGap).sizeValue.metric
@@ -169,13 +171,16 @@ void performFlexboxGridCssTests() {
 		// ---- flex item longhands ----
 		check(val(parse("order: -2"), ParameterName::CssOrder).intValue == -2,
 				"flexgrid: order: -2 (signed)");
-		check(val(parse("flex-grow: 2.5"), ParameterName::CssFlexGrow).floatValue == 2.5f,
+		check(test::nearlyEqual(val(parse("flex-grow: 2.5"), ParameterName::CssFlexGrow).floatValue,
+					  2.5f),
 				"flexgrid: flex-grow: 2.5");
-		check(val(parse("flex-shrink: 0"), ParameterName::CssFlexShrink).floatValue == 0.0f,
+		check(test::nearlyEqual(val(parse("flex-shrink: 0"), ParameterName::CssFlexShrink).floatValue,
+					  0.0f),
 				"flexgrid: flex-shrink: 0");
 		{
+			// 30% is stored as 30 * (1.0f/100.0f), which is one ULP below 0.3f - hence the tolerance
 			auto basis = val(parse("flex-basis: 30%"), ParameterName::CssFlexBasis).sizeValue;
-			check(basis.metric == Metric::Units::Percent && basis.value == 0.3f,
+			check(basis.metric == Metric::Units::Percent && test::nearlyEqual(basis.value, 0.3f),
 					"flexgrid: flex-basis: 30%");
 		}
 		check(val(parse("flex-basis: content"), ParameterName::CssFlexBasis).sizeValue.metric
