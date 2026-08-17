@@ -1,9 +1,10 @@
 = Unicode tables for the case mapper
 
-`SPRuntimeUnicodeCaseData.cc` is **generated**. Do not edit it by hand — run
-`gen-case-tables.py` and commit its output.
+`SPRuntimeUnicodeCaseData.cc` and `SPRuntimeUnicodeWordBreakData.cc` are
+**generated**. Do not edit them by hand — run `gen-case-tables.py`, which writes
+both, and commit its output.
 
-It is a `.cc` subunit, so the build never compiles it on its own; it is
+They are `.cc` subunits, so the build never compiles them on their own; they are
 `#include`d by `runtime/src/unicode/SPRuntimeUnicodeCase.cpp`. That is
 deliberate: the trie is parsed into a `constexpr` object at compile time, which
 only works if the array and the reader are in the same translation unit.
@@ -36,9 +37,17 @@ only works if the array and the reader are in the same translation unit.
 | The uppercase form of each Greek letter plus flags saying whether it is a vowel
   and what it carries. Greek uppercasing drops the tonos and moves the dialytika,
   which no per-character mapping expresses, so this feeds a state machine.
+
+| `s_wordBreakRanges`,
+  `s_wordBreakAscii`
+| 10.5 KiB
+| The `Word_Break` property of UAX #29, plus four flags derived from
+  `Extended_Pictographic` and `General_Category`. Titlecasing works on words, and
+  these say where words end. A sorted range table rather than a trie: the
+  property is flat over most of the code space, so 2620 ranges cover all of it.
 |===
 
-Total: **32768 bytes (32.0 KiB)** of read-only data, in every binary that links
+Total: **43504 bytes (42.5 KiB)** of read-only data, in every binary that links
 the runtime (the build links objects directly and does not `--gc-sections`, so
 nothing is dropped for an application that never changes case).
 
@@ -63,7 +72,7 @@ implement the same Unicode.
 
 The pipeline is icu4c -> this directory, with no intermediate extract.
 `runtime/toolchains/src.mk` already clones icu4c into
-`runtime/toolchains/src/icu4c`, and everything is read out of four files there:
+`runtime/toolchains/src/icu4c`, and everything is read out of five files there:
 
 [cols="2,3"]
 |===
@@ -71,14 +80,24 @@ The pipeline is icu4c -> this directory, with no intermediate extract.
 | `source/common/ucase.cpp` | `LatinCase`, the ASCII/Latin-1 fast path
 | `source/common/ustrcase.cpp` | `GreekUpper`, the Greek uppercasing data
 | `source/common/ucase.h`, `ucasemap_imp.h` | the constants the two above are written in
+| `source/data/unidata/ppucd.txt` | `Word_Break`, `Extended_Pictographic`, `General_Category`
 |===
 
-The last three are ICU *source*, not generated data, and their entries are
-expressions (`EXC`, `0x0391 | HAS_VOWEL`) rather than literals — so the generator
-carries a small expression evaluator whose names come from the two headers. They
-are read rather than copied for the same reason the trie descriptor is: they move
-with the Unicode version, and a transcription slip in a delta table does not fail,
-it cases a handful of characters wrong.
+`ppucd.txt` is ICU's preparsed UCD, and the one place in the checkout that
+carries `Word_Break` in a readable form — ICU's own build puts it in the general
+property vectors (`propsVectorsTrie` plus `propsVectors`, 113 KiB for the whole
+property database) and reaches it through a rule-based break iterator, neither of
+which is worth carrying for one property. Its format inherits: `defaults`, then
+`block`, then `cp`; `unassigned` goes back to the defaults rather than to the
+block it sits inside, which is why the reader is written out rather than treated
+as "paint the ranges in order".
+
+`ucase.cpp` and `ustrcase.cpp` are ICU *source*, not generated data, and their
+entries are expressions (`EXC`, `0x0391 | HAS_VOWEL`) rather than literals — so
+the generator carries a small expression evaluator whose names come from the two
+headers. They are read rather than copied for the same reason the trie descriptor
+is: they move with the Unicode version, and a transcription slip in a delta table
+does not fail, it cases a handful of characters wrong.
 
 [source,sh]
 ----
@@ -93,7 +112,8 @@ mapping gets in:
 [source,sh]
 ----
 runtimetest runtime_unicode                   # must be 0 failures
-runtimetest runtime_unicode_case_conformance  # simple columns must read 100%
+runtimetest runtime_unicode_case_conformance  # every column must read 100%
+runtimetest runtime_wordbreak_conformance     # must be 0 failures
 ----
 
 Since ICU 64 the case properties ship as a generated C header with plain arrays
@@ -115,6 +135,11 @@ the arrays and reads the `UTrie2` descriptor out of `ucase_props_singleton`.
   value), `LONG_S` inside `[0, LIMIT)`, and all four tables exactly `LIMIT` long;
 * the two `GreekUpper` arrays against the code point ranges they cover, and every
   entry in range for its type;
+* for the word-break table: that `ppucd.txt`'s `defaults` line covers every code
+  point, that every `Word_Break` value the file declares is either implemented or
+  listed as retired, that no retired value has come back, that no implemented
+  value has gone unused, and that a start plus a value still fit in the 21 + 9
+  bits they are packed into;
 * the Unicode version against the UTS-46 tables.
 
 The `GreekUpper` flag values are emitted next to the data they encode rather than
@@ -139,6 +164,11 @@ string encodings. Together they cover the whole code space. The 16 conditional
 `SpecialCasing.txt` rows cannot be checked that way — they need a purpose-built
 input — so `runtime_unicode` carries hand-written vectors for them and asserts
 that every condition in the file is claimed by one.
+
+The word-break half has its own suite, `runtime_wordbreak_conformance`, which
+asserts all 1944 cases of `WordBreakTest.txt`. Note that the standard is the
+file, not ICU: ICU's break iterator adds dictionary breaking and locale
+tailorings on top of UAX #29 and does not itself pass all of it.
 
 == Licence
 

@@ -166,6 +166,40 @@ GREEK_CONSTANTS = ["UPPER_MASK", "HAS_VOWEL", "HAS_YPOGEGRAMMENI", "HAS_ACCENT",
 GREEK_RANGES = [("data0370", "s_caseGreekData0370", 0x370, 0x400),
 		("data1F00", "s_caseGreekData1F00", 0x1F00, 0x2000)]
 
+# --- Word_Break, for titlecasing -------------------------------------------
+#
+# The Word_Break values, as (ppucd short name, name the UAX #29 rules use). Every
+# value ppucd declares must appear here or in WB_RETIRED, so a value added by a
+# future Unicode cannot slip in as a silent zero. The long names are what the
+# emitted constants are called: `MN` is MidNum and `NL` is Newline, which read as
+# the General_Category values Mn and Nl if left short.
+WB_VALUES = [("XX", "Other"), ("CR", "CR"), ("LF", "LF"), ("NL", "Newline"),
+		("Extend", "Extend"), ("ZWJ", "ZWJ"), ("RI", "RegionalIndicator"), ("FO", "Format"),
+		("KA", "Katakana"), ("HL", "HebrewLetter"), ("LE", "ALetter"), ("NU", "Numeric"),
+		("MB", "MidNumLet"), ("ML", "MidLetter"), ("MN", "MidNum"), ("EX", "ExtendNumLet"),
+		("DQ", "DoubleQuote"), ("SQ", "SingleQuote"), ("WSegSpace", "WSegSpace")]
+
+# Declared by ppucd but not carried by any code point in Unicode 17: the emoji
+# rules that used them (WB14, the E_Base/Glue_After_Zwj parts of WB3c) were
+# retired in Unicode 11. The generator fails if one of them ever comes back,
+# because the runtime implements no rule for it.
+WB_RETIRED = ["EB", "EBG", "EM", "GAZ"]
+
+# Bit layout of one table entry. Five bits of Word_Break plus four derived flags,
+# which is everything the titlecaser asks the UCD about outside the case tables.
+WB_VALUE_BITS = 9
+WB_EXT_PICT = 0x20 # Extended_Pictographic: rule WB3c
+WB_LNS = 0x40 # gc in L|N|S|Co but not Lm: where a titlecased letter may start
+WB_LM = 0x80 # gc == Lm: a letter only when it is also cased
+WB_MARK = 0x100 # gc in M*: the "no further combining mark" test in the Dutch IJ
+
+WB_GC_L = frozenset(["Lu", "Ll", "Lt", "Lm", "Lo"])
+WB_GC_N = frozenset(["Nd", "Nl", "No"])
+WB_GC_S = frozenset(["Sm", "Sc", "Sk", "So"])
+WB_GC_M = frozenset(["Mn", "Mc", "Me"])
+
+CODE_POINT_LIMIT = 0x11_0000
+
 LICENSE = """/**
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
@@ -295,6 +329,187 @@ def _camel(name):
 	return "".join(part.capitalize() for part in name.split("_"))
 
 
+def read_ppucd(path):
+	"""Word_Break, Extended_Pictographic and General_Category per code point.
+
+	ppucd.txt is ICU's preparsed UCD: one line per range, with inheritance.
+	`defaults` gives the value for every code point that nothing else mentions;
+	`block` starts from the defaults and overrides; `cp` starts from its enclosing
+	block and overrides; `unassigned` goes back to the defaults, NOT to the block
+	it sits inside. That last one is the whole reason this reader is written out
+	rather than treated as "paint the ranges in order": U+0378 sits inside the
+	Greek block, and a reader that let it inherit would give it gc=Ll and
+	Word_Break=ALetter instead of Cn and Other.
+	"""
+	wb = [None] * CODE_POINT_LIMIT
+	gc = [None] * CODE_POINT_LIMIT
+	ep = [None] * CODE_POINT_LIMIT
+
+	def parse(fields):
+		out = {}
+		for p in fields:
+			if p.startswith("WB="):
+				out["wb"] = p[3:]
+			elif p.startswith("gc="):
+				out["gc"] = p[3:]
+			elif p == "ExtPict":
+				out["ep"] = True
+			elif p == "-ExtPict":
+				out["ep"] = False
+		return out
+
+	def paint(first, past, props):
+		for c in range(first, past):
+			wb[c] = props["wb"]
+			gc[c] = props["gc"]
+			ep[c] = props["ep"]
+
+	defaults = {"wb": "XX", "gc": "Cn", "ep": False}
+	block = dict(defaults)
+	seen_defaults = False
+	for line in open(path, encoding="utf-8"):
+		fields = line.strip().split(";")
+		kind = fields[0]
+		if kind not in ("defaults", "block", "cp", "unassigned"):
+			continue
+		extent = fields[1]
+		if not extent:
+			continue
+		if ".." in extent:
+			first, last = (int(x, 16) for x in extent.split(".."))
+		else:
+			first = last = int(extent, 16)
+		own = parse(fields[2:])
+
+		if kind == "defaults":
+			defaults.update(own)
+			block = dict(defaults)
+			seen_defaults = True
+		elif kind == "block":
+			block = dict(defaults)
+			block.update(own)
+		props = dict(block if kind in ("block", "cp") else defaults)
+		if kind != "block":
+			props.update(own)
+		paint(first, last + 1, props)
+
+	if not seen_defaults:
+		raise SystemExit(path + ": no `defaults` line")
+	missing = wb.count(None)
+	if missing:
+		raise SystemExit("%s: %d code points have no properties - the `defaults` line does not "
+				"cover the whole range" % (path, missing))
+	return wb, gc, ep
+
+
+def gen_wordbreak(icu4c, out_dir, version):
+	"""The Word_Break table the titlecaser breaks words with, from ppucd.txt.
+
+	ICU keeps Word_Break in its general property vectors (propsVectorsTrie plus
+	propsVectors, 113 KiB for the whole property database) and reaches it through
+	a rule-based break iterator. Neither is worth carrying for one property, so
+	this builds a table for exactly what the titlecaser asks.
+	"""
+	path = os.path.join(icu4c, "source", "data", "unidata", "ppucd.txt")
+	if not os.path.isfile(path):
+		raise SystemExit("no preparsed UCD at " + path)
+	wb, gc, ep = read_ppucd(path)
+
+	known = {short: i for i, (short, _) in enumerate(WB_VALUES)}
+	if len(known) > (1 << 5):
+		raise SystemExit("%d Word_Break values no longer fit in 5 bits" % len(known))
+	declared = set()
+	for line in open(path, encoding="utf-8"):
+		if line.startswith("value;WB;"):
+			declared.add(line.strip().split(";")[2])
+	unhandled = declared - set(known) - set(WB_RETIRED)
+	if unhandled:
+		raise SystemExit("ppucd declares Word_Break values this generator does not know: %s - "
+				"add them here and implement their rules in word_break.cc"
+				% ", ".join(sorted(unhandled)))
+	used = set(wb)
+	revived = used & set(WB_RETIRED)
+	if revived:
+		raise SystemExit("Word_Break values %s were retired in Unicode 11 and word_break.cc "
+				"implements no rule for them, but code points carry them again"
+				% ", ".join(sorted(revived)))
+	unused = set(known) - used
+	if unused:
+		raise SystemExit("Word_Break values %s are carried by no code point; drop them from "
+				"WB_VALUES (and from the runtime enum) or move them to WB_RETIRED"
+				% ", ".join(sorted(unused)))
+
+	def value_of(c):
+		name = wb[c]
+		category = gc[c]
+		v = known[name]
+		if ep[c]:
+			v |= WB_EXT_PICT
+		if category != "Lm" and (category in WB_GC_L or category in WB_GC_N
+				or category in WB_GC_S or category == "Co"):
+			v |= WB_LNS
+		if category == "Lm":
+			v |= WB_LM
+		if category in WB_GC_M:
+			v |= WB_MARK
+		return v
+
+	values = [value_of(c) for c in range(CODE_POINT_LIMIT)]
+	if any(v >> WB_VALUE_BITS for v in values):
+		raise SystemExit("a table entry does not fit in %d bits" % WB_VALUE_BITS)
+
+	ranges = [(0, values[0])]
+	for c in range(1, CODE_POINT_LIMIT):
+		if values[c] != ranges[-1][1]:
+			ranges.append((c, values[c]))
+	# The packing the runtime reader undoes: a start needs 21 bits, a value 9.
+	packed = [(first << WB_VALUE_BITS) | v for first, v in ranges]
+	if any(p >> 32 for p in packed):
+		raise SystemExit("a packed range does not fit in uint32_t")
+
+	out = [LICENSE]
+	out.append("//")
+	out.append("// Source: ICU `source/data/unidata/ppucd.txt` (Unicode %d.%d.%d), the properties"
+			% version)
+	out.append("// UAX #29 word breaking and titlecasing need: Word_Break itself, plus four")
+	out.append("// flags derived from Extended_Pictographic and General_Category.")
+	out.append("//")
+	out.append("// One sorted range table rather than a trie: the property is flat over most of")
+	out.append("// the code space, so %d ranges cover all of it, and a binary search over them"
+			% len(ranges))
+	out.append("// is smaller than any trie of the same data. ASCII skips the search entirely.")
+	out.append("")
+	out.append("///@ SP_EXCLUDE")
+	out.append("")
+	out.append("#pragma once")
+	out.append("")
+	out.append("namespace sprt::unicode::detail {")
+	out.append("")
+	out.append("// Unicode version the table was built from, as major.minor.patch.")
+	out.append("static constexpr uint8_t s_wordBreakUnicodeVersion[3] = {%d, %d, %d};" % version)
+	out.append("")
+	out.append("// Bits 8..0 of each entry, low 5 of them the Word_Break value itself.")
+	for i, (short, name) in enumerate(WB_VALUES):
+		out.append("static constexpr uint16_t s_wb%s = %d; // ppucd %s" % (name, i, short))
+	out.append("")
+	out.append("static constexpr uint16_t s_wbValueMask = 0x1f;")
+	out.append("static constexpr uint16_t s_wbExtPict = 0x%x;" % WB_EXT_PICT)
+	out.append("static constexpr uint16_t s_wbLNS = 0x%x;" % WB_LNS)
+	out.append("static constexpr uint16_t s_wbLm = 0x%x;" % WB_LM)
+	out.append("static constexpr uint16_t s_wbMark = 0x%x;" % WB_MARK)
+	out.append("static constexpr int s_wbValueBits = %d;" % WB_VALUE_BITS)
+	out.append("")
+	out.append("// Direct lookup for ASCII, which is most of what gets titlecased here.")
+	emit_array(out, "uint16_t", "s_wordBreakAscii", values[:0x80])
+	out.append("// (start << 9) | value, sorted by start and covering U+0000..U+10FFFF.")
+	emit_array(out, "uint32_t", "s_wordBreakRanges", packed, per_line=8)
+	out.append("} // namespace sprt::unicode::detail")
+
+	path_out = os.path.join(out_dir, "SPRuntimeUnicodeWordBreakData.cc")
+	_idn.write(path_out, out)
+	return 4 * len(packed) + 2 * 0x80, len(ranges)
+
+
 def read_idn_unicode_version(root):
 	"""The Unicode version the UTS-46 tables were generated from, or None."""
 	path = os.path.join(root, "runtime", "src", "idn", "data", "SPRuntimeIdnDataNorm.cc")
@@ -396,9 +611,14 @@ def main():
 
 	path = os.path.join(args.out, "SPRuntimeUnicodeCaseData.cc")
 	_idn.write(path, out)
+
+	wb_bytes, wb_ranges = gen_wordbreak(args.icu4c, args.out, version)
+
 	props_bytes = 2 * (len(trie_index) + len(exceptions))
-	print("Unicode %d.%d.%d; %d B of data (trie %d + exceptions %d + latin/greek %d)"
-			% (version + (props_bytes + extra, 2 * len(trie_index), 2 * len(exceptions), extra)))
+	print("Unicode %d.%d.%d; %d B of data (trie %d + exceptions %d + latin/greek %d"
+			" + word break %d in %d ranges)"
+			% (version + (props_bytes + extra + wb_bytes, 2 * len(trie_index),
+					2 * len(exceptions), extra, wb_bytes, wb_ranges)))
 	return 0
 
 

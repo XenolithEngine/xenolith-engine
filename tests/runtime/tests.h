@@ -62,6 +62,7 @@ void performFileTests();
 void performSocketTests();
 void performUnicodeTests();
 void performUnicodeCaseConformanceTests();
+void performWordBreakConformanceTests();
 void performDtoaTests();
 void performIdnTests();
 void performIdnConformanceTests();
