@@ -27,6 +27,8 @@ void performUnistdTest();
 void performDirTest();
 void performLinkTest();
 void performFcntlTest();
+void performAtFunctionsTest();
+void performSetjmpTest();
 void performLocaleTest();
 
 void performPthreadCreateTest();
@@ -59,6 +61,16 @@ void performProcessTests();
 void performFileTests();
 void performSocketTests();
 void performUnicodeTests();
+void performUnicodeCaseConformanceTests();
+void performWordBreakConformanceTests();
+
+void performCollationTests();
+
+void performCollationConformanceTests();
+
+void performCollationBench();
 void performDtoaTests();
+void performIdnTests();
+void performIdnConformanceTests();
 
 } // namespace sprt

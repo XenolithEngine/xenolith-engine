@@ -251,6 +251,10 @@ THE SOFTWARE.
 
 #define __SPRT_TIMER_ALL_ACCESS (__SPRT_STANDARD_RIGHTS_REQUIRED | __SPRT_SYNCHRONIZE | __SPRT_TIMER_QUERY_STATE | __SPRT_TIMER_MODIFY_STATE)
 
+#define __SPRT_SEMAPHORE_MODIFY_STATE  0x0002
+
+#define __SPRT_SEMAPHORE_ALL_ACCESS (__SPRT_STANDARD_RIGHTS_REQUIRED | __SPRT_SYNCHRONIZE | 0x3)
+
 #define __SPRT_MB_PRECOMPOSED            0x00000001  // DEPRECATED: use single precomposed characters when possible.
 #define __SPRT_MB_COMPOSITE              0x00000002  // DEPRECATED: use multiple discrete characters when possible.
 #define __SPRT_MB_USEGLYPHCHARS          0x00000004  // DEPRECATED: use glyph chars, not ctrl chars

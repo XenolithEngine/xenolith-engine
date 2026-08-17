@@ -33,7 +33,8 @@ SP_NJOBS ?= -j$(shell nproc 2>/dev/null || echo 8)
 # Архитектура хоста
 SP_ARCH ?= $(shell uname -m)
 SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-musl
-SP_LLVM_VER := 21
+
+include ../common/utils/llvm-version.mk
 
 # LLVM-имя backend-а для текущей архитектуры
 ifeq ($(SP_ARCH),x86_64)

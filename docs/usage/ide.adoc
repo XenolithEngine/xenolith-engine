@@ -75,7 +75,7 @@ configured to read it from there and to use the toolchain's `clang`:
 "clangd.arguments": [
     "--header-insertion=never",
     "--compile-commands-dir=${workspaceFolder}",
-    "--query-driver=.../runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin/clang-21"
+    "--query-driver=.../runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin/clang-22"
 ]
 ```
 

@@ -35,7 +35,8 @@ unexport SP_ARCH_WINDOWS := $(SP_ARCH_HOST)
 unexport SP_NJOBS := -j16
 override SP_ARCH_CLANG := $(SP_ARCH_HOST)-pc-windows-msvc
 
-unexport SP_LLVM_VER := 21
+include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
+unexport SP_LLVM_VER
 
 unexport LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
 unexport SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/sdk)

@@ -22,8 +22,6 @@
 
 #include "XLFontDeferredRequest.h"
 
-#include <sprt/runtime/platform.h>
-
 #include <stdlib.h> // getenv
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
@@ -48,7 +46,11 @@ void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<Fo
 	data->onTexture = sp::move(onTex);
 	data->onComplete = sp::move(onComp);
 
-	for (uint32_t i = 0; i < queue->getThreadPool()->getInfo().threadCount; ++i) {
+	uint32_t n = queue->getWorkersCount();
+	if (n == 0) {
+		n = 1;
+	}
+	for (uint32_t i = 0; i < n; ++i) {
 		queue->performAsync([data]() { data->runThread(); });
 	}
 }
@@ -61,7 +63,11 @@ void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
 	data->onRender = sp::move(onRender);
 	data->onComplete = sp::move(onComp);
 
-	for (uint32_t i = 0; i < queue->getThreadPool()->getInfo().threadCount; ++i) {
+	uint32_t n = queue->getWorkersCount();
+	if (n == 0) {
+		n = 1;
+	}
+	for (uint32_t i = 0; i < n; ++i) {
 		queue->performAsync([data]() { data->runThread(); });
 	}
 }

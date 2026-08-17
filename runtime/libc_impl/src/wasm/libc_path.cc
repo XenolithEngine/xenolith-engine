@@ -229,13 +229,6 @@ __SPRT_C_FUNC int access(const char *path, int) __SPRT_NOEXCEPT {
 	return 0; // permission model: everything accessible
 }
 
-// memfs has no per-fd directories and a single permission model, so the dir fd,
-// the requested mode bits and AT_EACCESS are all irrelevant: only existence is
-// checked (AT_FDCWD / absolute paths resolve against "/").
-__SPRT_C_FUNC int faccessat(int, const char *path, int, int) __SPRT_NOEXCEPT {
-	return access(path, 0);
-}
-
 // Remove an /opfs node (file if isDir==false, else directory) and drop any cache inode.
 static int __opfs_unlink_path(const char *abs, bool isDir) {
 	int r = sprt::__opfs_unlink(abs, isDir);
@@ -708,6 +701,52 @@ __SPRT_C_FUNC int mkdirat(int dirfd, const char *path, __SPRT_ID(mode_t) mode) _
 		return -1;
 	}
 	return mkdir(resolved, mode);
+}
+
+// memfs has a single permission model, so the requested mode bits and AT_EACCESS
+// are irrelevant: only existence is checked, at the dir-fd-resolved path.
+__SPRT_C_FUNC int faccessat(int dirfd, const char *path, int, int) __SPRT_NOEXCEPT {
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return access(resolved, 0);
+}
+
+__SPRT_C_FUNC int unlinkat(int dirfd, const char *path, int flags) __SPRT_NOEXCEPT {
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return (flags & __SPRT_AT_REMOVEDIR) ? rmdir(resolved) : unlink(resolved);
+}
+
+__SPRT_C_FUNC int renameat(int oldfd, const char *oldPath, int newfd,
+		const char *newPath) __SPRT_NOEXCEPT {
+	char oldBuf[512], newBuf[512];
+	auto from = sprt::__resolve_at(oldfd, oldPath, oldBuf, sizeof(oldBuf));
+	if (!from) {
+		return -1;
+	}
+	auto to = sprt::__resolve_at(newfd, newPath, newBuf, sizeof(newBuf));
+	if (!to) {
+		return -1;
+	}
+	return rename(from, to);
+}
+
+// AT_SYMLINK_NOFOLLOW is accepted but has no effect: memfs has no symlinks, so
+// stat() and lstat() are the same call.
+__SPRT_C_FUNC int fstatat(int dirfd, const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT st, int) __SPRT_NOEXCEPT {
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return stat(resolved, st);
 }
 
 // Set a file's timestamps (the primitive builtin utime()/utimes() forward to). The

@@ -47,6 +47,14 @@
 __SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
 #endif
 
+#if SPRT_HOSTED_RTOS
+// Both RTOS libcs declare strerror_r in <string.h>; pull it the same way the
+// Linux path does (they have strerror_r, no __STDC_LIB_EXT1__ bounds-checked
+// variant).
+#undef _GNU_SOURCE
+#include <string.h>
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(errno_t)
@@ -427,10 +435,8 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 #endif
 
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_HOSTED_RTOS
 
-// The browser/DevTools console does not interpret ANSI escape sequences, so no
-// terminal features are advertised (plain text only), matching the Android path.
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 #endif

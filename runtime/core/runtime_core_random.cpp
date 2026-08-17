@@ -31,9 +31,10 @@ THE SOFTWARE.
 #else
 #include <stdlib.h>
 #include <unistd.h>
-#if !SPRT_IOS
+#if !SPRT_IOS && !SPRT_EMBOX
 // iOS ships no <sys/random.h> and does not declare getentropy(); it uses
 // SecRandomCopyBytes from Security.framework instead (see below).
+// Embox has neither the header nor getrandom(2).
 #include <sys/random.h>
 #endif
 #endif
@@ -46,6 +47,20 @@ THE SOFTWARE.
 #include "android/getrandom.cc"
 #endif
 
+#if SPRT_EMBOX
+#include <time.h>
+#include <stdint.h>
+
+static void emboxFillRandom(void *buffer, size_t length) {
+	auto *p = static_cast<unsigned char *>(buffer);
+	uint32_t seed = static_cast<uint32_t>(clock()) ^ 0xA5A5A5A5u;
+	for (size_t i = 0; i < length; ++i) {
+		seed = seed * 1'664'525u + 1'013'904'223u;
+		p[i] = static_cast<unsigned char>(seed >> 16);
+	}
+}
+#endif
+
 namespace sprt {
 
 // Thin pass-through to the platform getentropy(). getentropy() is all-or-nothing
@@ -56,6 +71,9 @@ __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __leng
 	// iOS does not expose getentropy(); SecRandomCopyBytes is all-or-nothing too,
 	// matching getentropy()'s 0-on-success / -1-on-failure contract.
 	return (SecRandomCopyBytes(kSecRandomDefault, __length, __buffer) == 0) ? 0 : -1;
+#elif SPRT_EMBOX
+	emboxFillRandom(__buffer, __length);
+	return 0;
 #else
 	return getentropy(__buffer, __length);
 #endif
@@ -82,6 +100,10 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		return __length;
 	}
 	return -1;
+#elif SPRT_EMBOX
+	(void)__flags;
+	emboxFillRandom(__buffer, __length);
+	return static_cast<__SPRT_ID(ssize_t)>(__length);
 #else
 	return getrandom(__buffer, __length, __flags);
 #endif

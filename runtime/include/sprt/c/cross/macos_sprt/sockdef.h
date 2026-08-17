@@ -36,6 +36,7 @@
 #define __SPRT_MSG_WAITALL    0x40
 #define __SPRT_MSG_DONTWAIT   0x80
 #define __SPRT_MSG_NOSIGNAL   0x80000
+#define __SPRT_SOMAXCONN      128       /* xnu bsd/sys/socket.h */
 
 // Platform-specific extras (namespaced with __SPRT_*) so they never collide with the
 // native <sys/socket.h>. These are always visible; the wrapper static_asserts them

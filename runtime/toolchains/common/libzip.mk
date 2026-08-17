@@ -91,17 +91,15 @@ CONFIGURE += \
 endif
 
 ifdef WASM
-# Unlike curl, libzip does not force its check_function_exists probes to EXECUTABLE, so
-# under the toolchain's STATIC_LIBRARY default they never link and report EVERY symbol as
-# present - which used to force the hand-maintained -DHAVE_*=OFF list below (the ISO C
-# Annex K *_s functions, arc4random, clonefile, getprogname, stricmp the sprt libc lacks).
-# Opt libzip into EXECUTABLE probes via a project-include (a plain -D cannot: the toolchain
-# file's set() shadows it). configure.mk then links each probe against the sprt libc with
-# NO --allow-undefined, so absent functions are detected as such and compat.h uses its
-# wrappers automatically; genuinely-present ones (explicit_bzero, strerror_s, ...) are
-# detected present. check_type_size still works (the probe's main, and thus its size
-# marker, is kept live by --export-if-defined=main).
 CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)wasm-libzip-project-include.cmake
+endif
+
+ifdef NUTTX
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)nuttx-libzip-project-include.cmake
+endif
+
+ifdef EMBOX
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)embox-libzip-project-include.cmake
 endif
 
 endif # WINDOWS
@@ -119,5 +117,9 @@ all:
 	$(if $(ANDROID),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
 	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
+	$(if $(NUTTX),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
+	$(if $(NUTTX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
+	$(if $(EMBOX),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
+	$(if $(EMBOX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 
 .PHONY: all

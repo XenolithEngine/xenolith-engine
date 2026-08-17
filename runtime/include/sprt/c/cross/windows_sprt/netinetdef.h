@@ -71,30 +71,12 @@ THE SOFTWARE.
 #define __SPRT_IP_TTL 4
 #define __SPRT_IP_HDRINCL 2
 #define __SPRT_IP_OPTIONS 1
-#define __SPRT_IP_ROUTER_ALERT    5
-#define __SPRT_IP_RECVOPTS        6
-#define __SPRT_IP_RETOPTS         7
 #define __SPRT_IP_PKTINFO 19
-#define __SPRT_IP_PKTOPTIONS      9
-#define __SPRT_IP_PMTUDISC        10
 #define __SPRT_IP_MTU_DISCOVER 71
 #define __SPRT_IP_RECVERR 75
 #define __SPRT_IP_RECVTTL 21
 #define __SPRT_IP_RECVTOS 40
 #define __SPRT_IP_MTU 73
-#define __SPRT_IP_FREEBIND        15
-#define __SPRT_IP_IPSEC_POLICY    16
-#define __SPRT_IP_XFRM_POLICY     17
-#define __SPRT_IP_PASSSEC         18
-#define __SPRT_IP_TRANSPARENT     19
-#define __SPRT_IP_ORIGDSTADDR     20
-#define __SPRT_IP_RECVORIGDSTADDR __SPRT_IP_ORIGDSTADDR
-#define __SPRT_IP_MINTTL          21
-#define __SPRT_IP_NODEFRAG        22
-#define __SPRT_IP_CHECKSUM        23
-#define __SPRT_IP_BIND_ADDRESS_NO_PORT 24
-#define __SPRT_IP_RECVFRAGSIZE    25
-#define __SPRT_IP_RECVERR_RFC4884 26
 #define __SPRT_IP_MULTICAST_IF 9
 #define __SPRT_IP_MULTICAST_TTL 10
 #define __SPRT_IP_MULTICAST_LOOP 11
@@ -104,11 +86,7 @@ THE SOFTWARE.
 #define __SPRT_IP_BLOCK_SOURCE 17
 #define __SPRT_IP_ADD_SOURCE_MEMBERSHIP 15
 #define __SPRT_IP_DROP_SOURCE_MEMBERSHIP 16
-#define __SPRT_IP_MSFILTER        41
-#define __SPRT_IP_MULTICAST_ALL   49
 #define __SPRT_IP_UNICAST_IF 31
-
-#define __SPRT_IP_RECVRETOPTS __SPRT_IP_RETOPTS
 
 // Windows-only IPv4 options (winsock.h / ws2ipdef.h); absent from POSIX/Linux.
 #define __SPRT_IP_DONTFRAGMENT 14
@@ -133,85 +111,48 @@ THE SOFTWARE.
 #define __SPRT_IP_NRT_INTERFACE 74
 #define __SPRT_IP_USER_MTU 76
 
-#define __SPRT_IP_PMTUDISC_DONT   0
-#define __SPRT_IP_PMTUDISC_WANT   1
-#define __SPRT_IP_PMTUDISC_DO     2
-#define __SPRT_IP_PMTUDISC_PROBE  3
-#define __SPRT_IP_PMTUDISC_INTERFACE 4
-#define __SPRT_IP_PMTUDISC_OMIT   5
+#define __SPRT_IP_PMTUDISC_NOT_SET 0
+#define __SPRT_IP_PMTUDISC_DO      1
+#define __SPRT_IP_PMTUDISC_DONT    2
+#define __SPRT_IP_PMTUDISC_PROBE   3
+#define __SPRT_IP_PMTUDISC_MAX     4
 
 #define __SPRT_IP_DEFAULT_MULTICAST_TTL        1
 #define __SPRT_IP_DEFAULT_MULTICAST_LOOP       1
 #define __SPRT_IP_MAX_MEMBERSHIPS              20
 
-// MCAST_* group-membership options: the *_GROUP / *_SOURCE_GROUP numbers differ
-// on Windows (winsock ws2ipdef.h); BLOCK/UNBLOCK/MSFILTER and EXCLUDE/INCLUDE match.
 #define __SPRT_MCAST_JOIN_GROUP         41
 #define __SPRT_MCAST_LEAVE_GROUP        42
 #define __SPRT_MCAST_JOIN_SOURCE_GROUP  45
 #define __SPRT_MCAST_LEAVE_SOURCE_GROUP 46
 #define __SPRT_MCAST_BLOCK_SOURCE       43
 #define __SPRT_MCAST_UNBLOCK_SOURCE     44
-#define __SPRT_MCAST_MSFILTER           48
 
-#define __SPRT_MCAST_EXCLUDE 0
-#define __SPRT_MCAST_INCLUDE 1
+#define __SPRT_MCAST_INCLUDE 0
+#define __SPRT_MCAST_EXCLUDE 1
 
-
-#define __SPRT_IPV6_ADDRFORM           1
-#define __SPRT_IPV6_2292PKTINFO        2
-#define __SPRT_IPV6_2292HOPOPTS        3
-#define __SPRT_IPV6_2292DSTOPTS        4
-#define __SPRT_IPV6_2292RTHDR          5
-#define __SPRT_IPV6_2292PKTOPTIONS     6
 #define __SPRT_IPV6_CHECKSUM 26
-#define __SPRT_IPV6_2292HOPLIMIT       8
-#define __SPRT_IPV6_NEXTHOP            9
-#define __SPRT_IPV6_AUTHHDR            10
 #define __SPRT_IPV6_UNICAST_HOPS 4
 #define __SPRT_IPV6_MULTICAST_IF 9
 #define __SPRT_IPV6_MULTICAST_HOPS 10
 #define __SPRT_IPV6_MULTICAST_LOOP 11
 #define __SPRT_IPV6_JOIN_GROUP 12
 #define __SPRT_IPV6_LEAVE_GROUP 13
-#define __SPRT_IPV6_ROUTER_ALERT       22
 #define __SPRT_IPV6_MTU_DISCOVER 71
 #define __SPRT_IPV6_MTU 72
 #define __SPRT_IPV6_RECVERR 75
 #define __SPRT_IPV6_V6ONLY 27
-#define __SPRT_IPV6_JOIN_ANYCAST       27
-#define __SPRT_IPV6_LEAVE_ANYCAST      28
-#define __SPRT_IPV6_MULTICAST_ALL      29
-#define __SPRT_IPV6_ROUTER_ALERT_ISOLATE 30
-#define __SPRT_IPV6_IPSEC_POLICY       34
-#define __SPRT_IPV6_XFRM_POLICY        35
 #define __SPRT_IPV6_HDRINCL 2
 
-#define __SPRT_IPV6_RECVPKTINFO        49
 #define __SPRT_IPV6_PKTINFO 19
-#define __SPRT_IPV6_RECVHOPLIMIT       51
 #define __SPRT_IPV6_HOPLIMIT 21
-#define __SPRT_IPV6_RECVHOPOPTS        53
 #define __SPRT_IPV6_HOPOPTS 1
-#define __SPRT_IPV6_RTHDRDSTOPTS       55
 #define __SPRT_IPV6_RECVRTHDR 38
 #define __SPRT_IPV6_RTHDR 32
-#define __SPRT_IPV6_RECVDSTOPTS        58
-#define __SPRT_IPV6_DSTOPTS            59
-#define __SPRT_IPV6_RECVPATHMTU        60
-#define __SPRT_IPV6_PATHMTU            61
 #define __SPRT_IPV6_DONTFRAG 14
 #define __SPRT_IPV6_RECVTCLASS 40
 #define __SPRT_IPV6_TCLASS 39
-#define __SPRT_IPV6_AUTOFLOWLABEL      70
-#define __SPRT_IPV6_ADDR_PREFERENCES   72
-#define __SPRT_IPV6_MINHOPCOUNT        73
-#define __SPRT_IPV6_ORIGDSTADDR        74
-#define __SPRT_IPV6_RECVORIGDSTADDR    __SPRT_IPV6_ORIGDSTADDR
-#define __SPRT_IPV6_TRANSPARENT        75
 #define __SPRT_IPV6_UNICAST_IF 31
-#define __SPRT_IPV6_RECVFRAGSIZE       77
-#define __SPRT_IPV6_FREEBIND           78
 
 // Windows-only IPv6 options (winsock.h); absent from the POSIX/Linux set.
 #define __SPRT_IPV6_PROTECTION_LEVEL 23
@@ -231,29 +172,6 @@ THE SOFTWARE.
 
 #define __SPRT_IPV6_ADD_MEMBERSHIP     __SPRT_IPV6_JOIN_GROUP
 #define __SPRT_IPV6_DROP_MEMBERSHIP    __SPRT_IPV6_LEAVE_GROUP
-#define __SPRT_IPV6_RXHOPOPTS          __SPRT_IPV6_HOPOPTS
-#define __SPRT_IPV6_RXDSTOPTS          __SPRT_IPV6_DSTOPTS
-
-#define __SPRT_IPV6_PMTUDISC_DONT      0
-#define __SPRT_IPV6_PMTUDISC_WANT      1
-#define __SPRT_IPV6_PMTUDISC_DO        2
-#define __SPRT_IPV6_PMTUDISC_PROBE     3
-#define __SPRT_IPV6_PMTUDISC_INTERFACE 4
-#define __SPRT_IPV6_PMTUDISC_OMIT      5
-
-#define __SPRT_IPV6_PREFER_SRC_TMP            0x0001
-#define __SPRT_IPV6_PREFER_SRC_PUBLIC         0x0002
-#define __SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT 0x0100
-#define __SPRT_IPV6_PREFER_SRC_COA            0x0004
-#define __SPRT_IPV6_PREFER_SRC_HOME           0x0400
-#define __SPRT_IPV6_PREFER_SRC_CGA            0x0008
-#define __SPRT_IPV6_PREFER_SRC_NONCGA         0x0800
-
-#define __SPRT_IPV6_RTHDR_LOOSE        0
-#define __SPRT_IPV6_RTHDR_STRICT       1
-
-#define __SPRT_IPV6_RTHDR_TYPE_0       0
-
 
 // --- TCP options (IPPROTO_TCP level) -----------------------------------------
 #define __SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS 0

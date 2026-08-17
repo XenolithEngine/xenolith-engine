@@ -22,6 +22,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
+include $(dir $(THIS_FILE))../common/utils/llvm-version.mk
 
 ifeq ($(UNAME),Darwin)
 SP_MACOS_SDK ?= $(shell xcrun --show-sdk-path)
@@ -121,7 +122,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'

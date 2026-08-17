@@ -1,0 +1,165 @@
+= Unicode tables for the UTS-46 (IDNA) engine
+
+The four `SPRuntimeIdnData*.cc` files in this directory are **generated**. Do not
+edit them by hand — run `gen-tables.py` and commit its output.
+
+They are `.cc` subunits, so the build never compiles them on their own; they are
+`#include`d by `runtime/src/idn/SPRuntimeIdnUts46.cpp`. That is deliberate: the
+tries are parsed into `constexpr` objects at compile time, which only works if the
+arrays are visible in the same translation unit.
+
+== What is in them
+
+[cols="1,1,4"]
+|===
+| File | Size | Contents
+
+| `SPRuntimeIdnDataNorm.cc`
+| 59 KiB
+| The UTS-46 mapping and NFC composition data: a `UCPTrie` over the `norm16`
+  values, the mapping/composition extra data, the small-FCD table and the
+  `norm16` thresholds.
+
+| `SPRuntimeIdnDataProps.cc`
+| 47 KiB
+| `UTrie2` over the General_Category property. UTS-46 asks it one question — does
+  a label start with a combining mark.
+
+| `SPRuntimeIdnDataBidi.cc`
+| 26 KiB
+| `UTrie2` over Bidi_Class and Joining_Type, for the Bidi Rule (RFC 5893) and
+  CheckContextJ.
+
+| `SPRuntimeIdnDataScript.cc`
+| 112 KiB
+| `UTrie2` over the property vectors plus the Script_Extensions table, for the
+  CheckContextO rules. This is 46% of the total for five script identities
+  (Greek, Hebrew, Hiragana, Katakana, Han) — see "Shrinking" below.
+|===
+
+Total: **245 KiB** of read-only data, in every binary that links the runtime (the
+build links objects directly and does not `--gc-sections`, so nothing is dropped
+for an application that never calls `sprt::idn`).
+
+== Current version
+
+**Unicode 17.0.0**, from ICU4C 78.3, `Nrm2` data format version 5.
+
+The version is also compiled in as `sprt::idn::detail::s_unicodeVersion`, read out
+of the data itself rather than written down by hand, so it cannot drift from the
+tables.
+
+== Regenerating
+
+The pipeline is icu4c → this directory, with no intermediate extract.
+`runtime/toolchains/src.mk` already clones icu4c into
+`runtime/toolchains/src/icu4c`, and everything is read straight out of it:
+
+[cols="2,3"]
+|===
+| Source in the ICU tree | Output
+
+| `source/data/in/uts46.nrm` | `SPRuntimeIdnDataNorm.cc`
+| `source/common/uchar_props_data.h` | `SPRuntimeIdnDataProps.cc`, `SPRuntimeIdnDataScript.cc`
+| `source/common/ubidi_props_data.h` | `SPRuntimeIdnDataBidi.cc`
+|===
+
+[source,sh]
+----
+# refresh the checkout, then:
+python3 runtime/src/idn/data/gen-tables.py
+# or, against a checkout elsewhere:
+python3 runtime/src/idn/data/gen-tables.py /path/to/icu4c --out runtime/src/idn/data
+
+# the conformance data is generated from the SAME tree, so the two cannot drift:
+python3 tests/runtime/tools/gen_idna_test.py
+----
+
+The script prints the Unicode version it found. **Update the version above, and
+re-run the conformance suite** (`runtimetest runtime_idn_conformance`) — a table
+refresh without a conformance re-run is how a silently-wrong mapping gets in.
+
+=== What a version bump can break beyond the tables
+
+Regenerating is not always enough; the ICU 70 → 78 bump needed all three of these,
+and none of them announces itself:
+
+* **The `Nrm2` data format version.** It went 4 → 5, which changed how norm16
+  encodes maybe-mappings: `minMaybeNo` / `minMaybeNoCombinesFwd` were added, the
+  maybeYes compositions moved into the ordinary extra data, and `centerNoNoDelta`
+  is now derived from `minMaybeNo`. `uts46/normalizer.cc` had to be ported to
+  match. The generator refuses any format version other than the one it was
+  written for, so this fails loudly rather than mis-reading the data.
+* **Property bit layouts.** `UPROPS_SCRIPT_X_MASK` changed from a split high/low
+  field to one contiguous 12-bit field, so `script()` in `uts46/props.cc` had to
+  change with it. The General_Category mask and the Bidi_Class / Joining_Type
+  masks were unaffected. These are *not* validated by the generator — compare
+  `uprops.h` and `ubidi_props.h` against the constants in `props.cc` by hand.
+* **Rules that moved out of the code.** U+2260, U+226E and U+226F used to be
+  special-cased as `disallowed_STD3_valid` in `uts46.cc`; ICU 78 dropped that
+  function entirely, and so did this port.
+
+=== What the script does, and why
+
+Three of the four outputs are a straight rename of an ICU array. The fourth is not.
+
+Upstream ships the serialized ICU `uts46.nrm` container as a single `uint8_t`
+blob and takes it apart at run time with `reinterpret_cast` — which cannot happen
+in a constant expression. `gen-tables.py` therefore takes it apart *here* and
+emits the pieces the normalizer actually reads as typed `constexpr` objects. The
+engine consequently has:
+
+* no run-time initialization and no lazy-static guard for the tables,
+* no error path for malformed data (it is validated once, at generation),
+* no little-endian assumption baked into a `reinterpret_cast`,
+* and no container header or padding in the binary.
+
+The generator validates the udata magic, the `Nrm2` data format and format
+version, the `UCPTrie` signature/type/value-width, the 8-alignment of
+`minMaybeNo`, and — for each `UTrie2` — that the descriptor ICU wrote next to the
+array agrees with the array (`indexLength + dataLength == length`, data16 at
+`+indexLength`). It refuses to emit anything it does not fully understand. The
+trie descriptors are read from the ICU initializers rather than written down
+here: every one of them changed between ICU 70 and 78, and a hardcoded
+`indexLength` survives a version bump silently.
+
+It also cross-checks the Unicode version of all three ICU inputs against each
+other, which is what catches a half-updated checkout.
+
+=== Verifying a regeneration
+
+The copied arrays must be byte-identical to their sources, and the normalization
+data must round-trip back to the original blob. Both are cheap to check:
+
+[source,python]
+----
+# compare each emitted array against the ICU array it came from, and
+# re-serialize s_normTrie*/s_normExtraData/s_normSmallFcd and diff against the
+# corresponding slices of uts46.nrm
+----
+
+Beyond that, the real check is behavioural: `runtimetest runtime_idn_conformance`
+must report **0 failures**, and a table refresh that leaves it non-zero has not
+been finished. A wrong trie returns a *valid* value for the wrong code point — no
+crash, no assert, just a handful of characters mapped wrongly.
+
+== Shrinking (not done yet)
+
+Two of the tables are far larger than what UTS-46 asks of them, and can be
+replaced once the conformance suite is green — one table at a time, behind the
+unchanged accessor signatures in `uts46/props.cc`, with the suite passing before
+and after:
+
+* `s_scriptTrie*` + `s_scriptVectors` + `s_scriptExtensions` (112 KiB) → a
+  membership table for the five scripts CheckContextO names. Saves ~111 KiB.
+* `s_charTypeTrieIndex` (47 KiB) → a range table for `isMark(c)`, the only query
+  made against it. Saves ~43 KiB.
+
+That would take the total from 245 KiB to about 90 KiB.
+
+== Licence
+
+The tables are derived from the Unicode Character Database via ICU and are covered
+by the Unicode licence (http://www.unicode.org/copyright.html), reproduced in the
+header of every generated file alongside the engine's own notice. Redistribution
+requires keeping those notices intact.

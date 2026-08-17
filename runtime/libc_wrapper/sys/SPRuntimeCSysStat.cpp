@@ -37,6 +37,13 @@ THE SOFTWARE.
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 
+#if SPRT_EMBOX
+#include <limits.h>
+#include <sys/time.h>
+
+#include "../platform/embox/dirfd.h"
+#endif
+
 #if SPRT_LINUX && SPRT_ANDROID
 #include <sys/sendfile.h>
 #endif
@@ -46,6 +53,15 @@ namespace sprt {
 #if __STDC_HOSTED__ == 1
 
 #if __DARWIN_64_BIT_INO_T
+#define stat64 stat
+#define fstat64 fstat
+#define lstat64 lstat
+#define fstatat64 fstatat
+#endif
+
+#if SPRT_HOSTED_RTOS
+// Neither RTOS has LFS stat64/fstat64/lstat64 — they are plain `stat`. Redefine
+// so the convertStatFromNative + the wrappers below keep compiling.
 #define stat64 stat
 #define fstat64 fstat
 #define lstat64 lstat
@@ -110,6 +126,17 @@ __SPRT_C_FUNC int __SPRT_ID(fstat)(int __fd, struct __SPRT_STAT_NAME *__stat) {
 	return fstat(__fd, __stat);
 #else
 	struct stat64 native;
+#if SPRT_EMBOX
+	// A directory descriptor is a placeholder that fstat() would describe as
+	// whatever it was duplicated from; answer from the directory itself.
+	if (char dir[PATH_MAX]; platform::getDirFdPath(__fd, dir, sizeof(dir))) {
+		auto st = ::stat64(dir, &native);
+		if (st == 0) {
+			convertStatFromNative(&native, __stat);
+		}
+		return st;
+	}
+#endif
 	auto ret = ::fstat64(__fd, &native);
 	if (ret == 0) {
 		convertStatFromNative(&native, __stat);
@@ -136,6 +163,20 @@ __SPRT_C_FUNC int __SPRT_ID(fstatat)(int __fd, const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) {
 #if __STDC_HOSTED__ == 0
 	return fstatat(__fd, path, __stat, flags);
+#elif SPRT_EMBOX
+	// Embox's fstatat() is an ENOSYS stub; resolve and use stat()/lstat().
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	struct stat64 native;
+	auto ret = (flags & __SPRT_AT_SYMLINK_NOFOLLOW) ? ::lstat64(target, &native)
+													: ::stat64(target, &native);
+	if (ret == 0) {
+		convertStatFromNative(&native, __stat);
+	}
+	return ret;
 #else
 	struct stat64 native;
 	auto ret = ::fstatat64(__fd, path, &native, flags);
@@ -155,7 +196,18 @@ __SPRT_C_FUNC int __SPRT_ID(fchmod)(int fd, __SPRT_ID(mode_t) mode) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fchmodat)(int fd, const char *path, __SPRT_ID(mode_t) mode, int flags) {
+#if SPRT_EMBOX
+	// Embox's fchmodat() is an ENOSYS stub; resolve and use chmod().
+	(void)flags;
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	return chmod(target, convertModeToNative(mode));
+#else
 	return fchmodat(fd, path, convertModeToNative(mode), flags);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(mode_t) __SPRT_ID(umask)(__SPRT_ID(mode_t) mode) {
@@ -171,7 +223,17 @@ __SPRT_C_FUNC int __SPRT_ID(mkdir)(const char *path, __SPRT_ID(mode_t) mode) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkdirat)(int fd, const char *path, __SPRT_ID(mode_t) mode) {
+#if SPRT_EMBOX
+	// Embox declares no mkdirat() at all; resolve and use mkdir().
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	return mkdir(target, convertModeToNative(mode));
+#else
 	return mkdirat(fd, path, convertModeToNative(mode));
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkfifo)(const char *path, __SPRT_ID(mode_t) mode) {
@@ -239,6 +301,24 @@ __SPRT_C_FUNC int __SPRT_ID(
 		utimensat)(int fd, const char *path, const __SPRT_TIMESPEC_NAME ts[2], int flags) {
 #if __STDC_HOSTED__ == 0
 	return utimensat(fd, path, ts, flags);
+#elif SPRT_EMBOX
+	// Embox's utimensat() is an ENOSYS stub; resolve and use utimes(), which it
+	// does implement (at microsecond resolution). A null `ts` means "now".
+	(void)flags;
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	if (!ts) {
+		return ::utimes(target, nullptr);
+	}
+	struct timeval tv[2];
+	tv[0].tv_sec = ts[0].tv_sec;
+	tv[0].tv_usec = ts[0].tv_nsec / 1000;
+	tv[1].tv_sec = ts[1].tv_sec;
+	tv[1].tv_usec = ts[1].tv_nsec / 1000;
+	return ::utimes(target, tv);
 #else
 	struct timespec nativeTs[2];
 	if (ts) {

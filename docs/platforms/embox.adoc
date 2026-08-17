@@ -1,0 +1,192 @@
+# Embox target
+
+Status: **M0 (draft)** — `runtime/toolchains/target-embox/`.
+
+Embox is a **hosted** Xenolith target: the runtime uses Embox's own libc
+through `libc_wrapper` (same model as Linux/glibc and NuttX). It does
+not ship a second libc. This document is **how to assemble the sysroot**.
+The Embox kernel image, QEMU, and board bring-up are outside this tree.
+
+== Triple naming
+
+LLVM has no `OSType embox`, so Embox rides in the *vendor* field; clang
+`--target` stays baremetal:
+
+[cols="1,1,2", options="header"]
+|===
+| STAPPLER_TARGET               | clang --target            | Use
+| `aarch64-embox-none-elf`      | `aarch64-none-elf`        | ARMv8-A boards
+|===
+
+== Input: an Embox export tarball
+
+Embox has **no** `make export`. Pack `make distgen` output
+(`build/dist/{include,lib}`) plus the board `build.conf` into
+`embox-export-<ver>.tar.gz`, then pass it as `EMBOX_EXPORT=`. The export
+must include:
+
+* `pthread.h` and the kernel headers it pulls (`kernel/thread/…`)
+* Embox libc (`embox.a` / `libc.a` symlink)
+* No in-tree GCC/libstdc++ — we ship libc++abi from this target
+
+Gotchas vs NuttX (do not copy blindly):
+
+* `pthread_key_create` **ignores the destructor**. Keys are **task-scoped**.
+  `__emutls_get_address` is tid-keyed (`runtime/core/embox/emutls.cc`),
+  compiled **into** `libclang_rt.builtins-aarch64.a`. Do not use
+  compiler-rt's default pthread-key emutls.
+* No ELF `PT_TLS` on aarch64 linker scripts — `-femulated-tls`.
+* `std::thread` in Embox means building GCC+libstdc++ inside Embox. We
+  do not. Xenolith threads are our dispatch.
+* Embox may leak linux-ish macros; `__sprt_def.h` tests `__EMBOX__`
+  **before** `__linux__`.
+* Embox `<stdatomic.h>` is a 2-typedef stub. `init-target.mk` replaces it
+  with `#include_next` to clang's C11 header; otherwise sheenbidi
+  (`atomic_flag`) fails.
+* Mybuild module headers `#include <../../src/…>`. `install-target.mk`
+  copies `sysroot/src/` next to `usr/` so `-idirafter <target>/usr/include`
+  resolves those paths.
+
+Layout of the package and `import-sysroot.mk` is in
+`runtime/toolchains/target-embox/README.adoc`.
+
+== Assemble `aarch64-embox-none-elf`
+
+PATH: Xenolith GNU make 4.x + clang 21 first. Do **not** use Apple
+`/usr/bin/make` (3.81). Do **not**
+`make -C runtime/toolchains target-aarch64-embox-none-elf` — that Makefile's
+`host` goal rebuilds clang. Invoke `target-embox/Makefile` directly.
+
+=== 1. Third-party sources
+
+Do **not** `make -C runtime/toolchains download` (Vulkan/Wayland and a full
+llvm-project). Fetch only this set. Empty directories from a failed wget still
+satisfy make's directory target — if `CMakeLists.txt` / `Configure` is missing,
+`rmdir` and retry.
+
+----
+ENGINE=<engine-root>
+TC=$ENGINE/runtime/toolchains
+make -C $TC \
+  $TC/src/simde $TC/src/zlib $TC/src/bzip2 $TC/src/brotli \
+  $TC/src/libjpeg-turbo $TC/src/libpng $TC/src/giflib $TC/src/libwebp \
+  $TC/src/freetype $TC/src/harfbuzz $TC/src/sheenbidi $TC/src/sqlite \
+  $TC/src/openssl $TC/src/openssl-gost-engine $TC/src/nghttp3 \
+  $TC/src/libzip $TC/src/curl
+test -f $TC/src/freetype/CMakeLists.txt
+test -f $TC/src/openssl/Configure
+----
+
+llvm-project: sparse cone, tag `llvmorg-21.1.8` (matches the host clang):
+
+----
+if [ ! -d $TC/src/llvm-project/compiler-rt ]; then
+  git clone --depth 1 --filter=blob:none --sparse --branch llvmorg-21.1.8 \
+    https://github.com/llvm/llvm-project.git $TC/src/llvm-project
+  git -C $TC/src/llvm-project sparse-checkout set \
+    compiler-rt cmake llvm/cmake third-party libcxx libcxxabi libunwind runtimes
+fi
+test -f $TC/src/llvm-project/compiler-rt/lib/builtins/emutls.c
+test -d $TC/src/llvm-project/libcxx
+----
+
+savannah.gnu.org (freetype) is slow. If the dir is empty, unpack
+`freetype-2.14.3.tar.xz` with `--strip-components=1` into `$TC/src/freetype`.
+
+=== 2. Run the assemble
+
+----
+make -C $ENGINE/runtime/toolchains/target-embox target-aarch64 \
+  EMBOX_EXPORT=<path-to>/embox-export-0.0.0.tar.gz
+----
+
+Order: import-sysroot → init-target (`target.mk`, `toolchain-libs.cmake`) →
+compiler-rt + `emutls.c` + SME stub → libcxxabi + libunwind → in-tree
+`libsprt.a` → zlib/bzip2/brotli/jpeg/png/gif/webp/freetype/harfbuzz/sheenbidi/
+sqlite/openssl/gost/nghttp3/libzip/curl → `install-target.mk`.
+
+Success is
+`$ENGINE/runtime/toolchains/target-embox/targets/aarch64-embox-none-elf/`
+with at least:
+
+* `target.mk`
+* `usr/lib/libsprt.a`
+* `usr/lib/libclang_rt.builtins-aarch64.a` (`nm` shows `__emutls_get_address`)
+* `usr/lib/libsme_stub.a`
+* `usr/lib/libc++abi.a` `usr/lib/libunwind.a`
+* `usr/include/pthread.h` (from the export)
+
+Resume is incremental. Do not `clean` unless the sysroot is corrupt.
+`libcxx.mk` skips cmake if `libc++abi.a` + `libunwind.a` are already staged.
+compiler-rt is cached under `intermediate/…/_compiler-rt-cache-*`.
+
+=== 3. CLI store symlink
+
+Embox is **not** in the SDK catalogue. Point both lookup paths at the assemble
+(`target.mk` + `usr/lib/libsprt.a`):
+
+----
+ASSEMBLE=$ENGINE/runtime/toolchains/target-embox/targets/aarch64-embox-none-elf
+ln -sfn $ASSEMBLE $ENGINE/runtime/toolchains/targets/aarch64-embox-none-elf
+mkdir -p $HOME/.local/share/xenolith/data/toolchains/targets
+ln -sfn $ENGINE/runtime/toolchains/targets/aarch64-embox-none-elf \
+  $HOME/.local/share/xenolith/data/toolchains/targets/aarch64-embox-none-elf
+----
+
+`xenolith-cli` looks at `$ENGINE/toolchains/targets/X` **first**. A leftover
+**real directory** there is not replaced by the store symlink (missing
+`libc++abi.a` / `libunwind.a`). Move it aside and `ln -sfn`.
+
+=== 4. Compile-check
+
+----
+xenolith-cli build $ENGINE/tests/runtime \
+  --engine $ENGINE \
+  --target aarch64-embox-none-elf
+----
+
+Pass: exit 0 and `built <path> for aarch64-embox-none-elf (…)`. Artifact is a
+**relocatable** ELF under
+`$ENGINE/tests/runtime/stappler-build/aarch64-embox-none-elf/debug/cc/runtimetest`.
+
+`make/os/embox.mk` sets `OSTYPE_EXEC_LDFLAGS := -nostdlib -Wl,-r`. Without
+that, clang's `aarch64-none-elf` driver injects `crt0.o` and `-lunwind`.
+`-Wl,-r` keeps kernel symbols undefined; `--gc-sections` is incompatible with
+`-r`. `--run` cannot launch this target on the host. Linking the relocatable
+into an Embox image is a board-image step, not part of this assemble.
+
+== Assemble gotchas
+
+* During assemble, Embox libc lives under `intermediate/…/sysroot/usr`;
+  third-party deps under `usr/`. `target.mk` must pick libc via a
+  `wildcard …/sysroot/usr/include` test and put
+  `-idirafter $(TARGET_INCLUDE_DIR_LIBC)` on C/CXX flags, or `asm/setjmp.h`
+  is missing while compiling `libsprt.a`. Depend `target.mk` on
+  `init-target.mk` itself (`THIS_FILE`). If `asm/setjmp.h` is missing:
+  `rm -f …/intermediate/aarch64-embox-none-elf/target.mk` and rerun.
+* `toolchain-libs.cmake` must put `--target=aarch64-none-elf` **inside**
+  `CMAKE_C_FLAGS_INIT`, not only `CMAKE_C_COMPILER_TARGET`. libpng
+  `genout.cmake` runs `clang -E` with `CMAKE_C_FLAGS` alone; without
+  `--target` Xenolith clang defaults to `x86_64-unknown-linux-gnu` and sprt
+  looks up `embox_sprt/x86_64_sprt/config.h`. Same pattern as `target-wasm`.
+  If that happens, `rm` the cmake file so `init-target.mk` regenerates it.
+* Sparse `llvm-project` for libcxx needs `LLVM_INCLUDE_TESTS=Off` (no
+  `llvm/utils/llvm-lit`).
+* `CMAKE_SYSTEM_NAME=Generic` for compiler-rt on Darwin (the Darwin cmake
+  path produces empty archives). Compile `emutls.c` **into**
+  `libclang_rt.builtins-aarch64.a` (baremetal builtins omit it). Never a
+  side `libemutls.a`.
+* Generic cmake installs libpng as `liblibpng16_static.a` / `libpng.a`. The
+  inner Makefile stamps on `libpng16.a` — `common/libpng.mk` renames it
+  (same as WASM).
+* Empty `runtime/toolchains/src/<lib>` directories satisfy make's directory
+  target and skip the unpack. `src/freetype` with no `CMakeLists.txt` is
+  this. `rmdir` and re-fetch.
+* Clang aarch64 has no GCC `-mabi=lp64` and no ARM32 `-meabi gnu`. Those
+  flags belong in the OS image build wrappers, not here.
+
+== See also
+
+* `runtime/toolchains/target-embox/README.adoc` — sysroot layout, hosted vs
+  freestanding, license
+* `runtime/libc_wrapper/README.adoc` — hosted vs freestanding umbrella modes

@@ -39,7 +39,8 @@ LOCAL_ROOT := $(dir $(realpath $(THIS_FILE)))
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 
 SP_NJOBS ?= -j$(shell nproc 2>/dev/null || echo 8)
-SP_LLVM_VER := 21
+
+include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 
 # Целевая арка musl-хоста (которую собираем). x86_64 | aarch64 | riscv64.
 SP_ARCH_HOST ?= x86_64
@@ -88,10 +89,26 @@ endif
 SP_LLVM_LTO ?= Full
 ifeq ($(SP_LLVM_LTO),)
 LTO_FLAGS :=
+LTO_LDFLAGS :=
 else
 LTO_FLAGS := -DLLVM_ENABLE_LTO=$(SP_LLVM_LTO) \
-	-DLLVM_PARALLEL_LINK_JOBS=6 \
+	-DLLVM_PARALLEL_LINK_JOBS=4 \
 	-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_ENABLE_LTO=OFF
+
+# riscv64 + LTO: кодогенерацию делает lld, и его TargetMachine создаётся с
+# пустым набором ISA-фич (фичи лежат только в per-function target-features).
+# MC-слой видит "голый" rv64i, а ABI берёт из module flag target-abi (lp64d) —
+# и на каждой линковке печатает
+#   Hard-float 'd' ABI can't be used for a target that doesn't support the D
+#   instruction set extension (ignoring target-abi)
+# На результат это не влияет (RISCVAsmPrinter переустанавливает и ABI, и
+# e_flags по module flag riscv-isa; вывод побайтово тот же), но лог засоряет.
+# Отдаём набор фич rv64gc LTO-бэкенду явно.
+ifeq ($(SP_ARCH_HOST),riscv64)
+LTO_LDFLAGS := -Xlinker -mllvm -Xlinker -mattr=+m,+a,+f,+d,+c
+else
+LTO_LDFLAGS :=
+endif
 endif
 
 # GNU make для поставки в составе тулчейна.
@@ -317,8 +334,8 @@ $(CLANG): $(LIBXML2)
 		-DDEFAULT_SYSROOT=.. \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
-		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
+		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections $(LTO_LDFLAGS)" \
+		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections $(LTO_LDFLAGS)" \
 		-DCMAKE_C_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -ffunction-sections -fdata-sections" \
 		-DCMAKE_CXX_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -ffunction-sections -fdata-sections" \
 		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
@@ -440,10 +457,10 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libc++.so.1.0 \
 	libc++abi.so.1.0 \
 	libunwind.so.1.0 \
-	libLTO.so.$(SP_LLVM_VER).1 \
-	libLLVM.so.$(SP_LLVM_VER).1 \
-	libRemarks.so.$(SP_LLVM_VER).1 \
-	liblldb.so.$(SP_LLVM_VER).1.8)
+	libLTO.so.$(SP_LLVM_SOVER) \
+	libLLVM.so.$(SP_LLVM_SOVER) \
+	libRemarks.so.$(SP_LLVM_SOVER) \
+	liblldb.so.$(SP_LLVM_V))
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \
@@ -509,12 +526,12 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so.1
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_VER).1 libLLVM-$(SP_LLVM_VER).so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_VER).1 libLLVM.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_VER).1 libLTO.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_VER).1 libRemarks.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_VER).1.8 liblldb.so.$(SP_LLVM_VER).1
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_VER).1.8 liblldb.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM-$(SP_LLVM_VER).so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_SOVER) libLTO.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_SOVER) libRemarks.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so.$(SP_LLVM_SOVER)
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so
 
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++

@@ -81,6 +81,20 @@ using namespace sprt::_cstdlib_types;
 namespace sprt {
 inline namespace _cstdlib {
 
+// NuttX <stdlib.h> defines several *_l and srandom as macros that would
+// re-write the sprt umbrella prototypes below after preprocessing (causing
+// redefinition errors). Drop them before pulling stdlib_impl.h.
+#if SPRT_HOSTED_RTOS
+#undef srandom
+#undef strtold_l
+#undef strtoll_l
+#undef strtoull_l
+#undef strtof_l
+#undef strtod_l
+#undef strtol_l
+#undef strtoul_l
+#endif
+
 #define SPRT_FUNC_BEGIN SPRT_FORCEINLINE
 #define SPRT_FUNC_END SPRT_NOEXCEPT
 #define SPRT_FUNC_END_EXCEPT
@@ -173,6 +187,8 @@ SPRT_API int qsort_s(void *a, size_t b, size_t c, int (*cmp)(void *, const void 
 
 SPRT_API int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
 		char const *name) __SPRT_NOEXCEPT;
+
+SPRT_API int _dupenv_s(char **buf, size_t *bufSize, const char *name) __SPRT_NOEXCEPT;
 
 SPRT_API size_t _msize(void *) __SPRT_NOEXCEPT;
 

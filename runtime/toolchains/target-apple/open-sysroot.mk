@@ -187,12 +187,14 @@ $(OSS_STAMP):
 # them into the already-populated $(T_TARGET)/include_libc. Layouts were verified
 # against the pinned tags above.
 
-$(OSS_STAMP)/libplatform: | $(APPLE_OSS_SRC)/libplatform $(OSS_STAMP)/xnu $(OSS_STAMP)
+$(OSS_STAMP)/libplatform: $(OPEN_DIR)/patches/os-lock-flags.h | $(APPLE_OSS_SRC)/libplatform $(OSS_STAMP)/xnu $(OSS_STAMP)
 	@mkdir -p $(DST_INC)/os $(DST_INC)/libkern
 	cp -Rf $(APPLE_OSS_SRC)/libplatform/include/os/.      $(DST_INC)/os/
 	cp -Rf $(APPLE_OSS_SRC)/libplatform/include/libkern/. $(DST_INC)/libkern/
 	cp -f $(APPLE_OSS_SRC)/libplatform/include/setjmp.h   $(DST_INC)/
 	cp -f $(APPLE_OSS_SRC)/libplatform/include/ucontext.h $(DST_INC)/
+	grep -q os_unfair_lock_flags_t $(DST_INC)/os/lock.h || \
+		sed -i '/^void os_unfair_lock_assert_not_owner/r $(OPEN_DIR)/patches/os-lock-flags.h' $(DST_INC)/os/lock.h
 	@touch $@
 
 # libclosure: the Blocks runtime header (CFRunLoopPerformBlock uses ^{} blocks)

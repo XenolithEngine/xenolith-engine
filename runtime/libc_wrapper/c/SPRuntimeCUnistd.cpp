@@ -43,6 +43,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdarg.h>
 #include <sprt/c/__sprt_utime.h>
+#include <sprt/c/__sprt_stdlib.h>
 
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/platform.h>
@@ -60,6 +61,15 @@ THE SOFTWARE.
 #include <sys/random.h>
 #endif
 #include <pthread.h>
+#endif
+
+#if SPRT_HOSTED_RTOS
+#include <pthread.h>
+#include <sys/types.h>
+#endif
+
+#if SPRT_EMBOX
+#include "../platform/embox/dirfd.h"
 #endif
 
 #if __STDC_HOSTED__ == 0
@@ -90,8 +100,11 @@ static_assert(X_OK == __SPRT_X_OK);
 static_assert(F_OK == __SPRT_F_OK);
 
 static_assert(AT_FDCWD == __SPRT_AT_FDCWD);
+// Embox declares AT_FDCWD and nothing else of the *at() flag family.
+#if !SPRT_EMBOX || defined(AT_SYMLINK_NOFOLLOW)
 static_assert(AT_SYMLINK_NOFOLLOW == __SPRT_AT_SYMLINK_NOFOLLOW);
 static_assert(AT_SYMLINK_FOLLOW == __SPRT_AT_SYMLINK_FOLLOW);
+#endif
 
 #ifdef AT_NO_AUTOMOUNT
 static_assert(AT_NO_AUTOMOUNT == __SPRT_AT_NO_AUTOMOUNT);
@@ -809,11 +822,20 @@ static_assert(_PC_2_SYMLINKS == __SPRT_PC_2_SYMLINKS);
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	// Embox's access() is a static inline that ignores its arguments and returns
+	// 0, so a nonexistent path reports as accessible. Answer from stat().
+	return platform::accessPath(path, __type);
+#else
 	return access(path, __type);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID || SPRT_APPLE
+#if SPRT_EMBOX
+	// No separate effective-uid check to make: see accessPath().
+	return platform::accessPath(path, __type);
+#elif SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::faccessat(-1, path, __type, __SPRT_AT_EACCESS);
 #else
 	return eaccess(path, __type);
@@ -822,14 +844,21 @@ __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCE
 
 __SPRT_C_FUNC __SPRT_ID(off_t)
 		__SPRT_ID(lseek)(int __fd, __SPRT_ID(off_t) __offset, int __whence) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::lseek(__fd, __offset, __whence);
 #else
 	return ::lseek64(__fd, __offset, __whence);
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(close)(int __fd) { return ::close(__fd); }
+__SPRT_C_FUNC int __SPRT_ID(close)(int __fd) {
+#if SPRT_EMBOX
+	// A directory descriptor is a placeholder plus a table entry; drop the entry
+	// before the descriptor number can be reissued to something else.
+	platform::releaseDirFd(__fd);
+#endif
+	return ::close(__fd);
+}
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(read)(int __fd, void *__buf, __SPRT_ID(size_t) __nbytes) {
@@ -843,7 +872,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return pread(__fd, __buf, __count, __offset);
 #else
 	return pread64(__fd, __buf, __count, __offset);
@@ -852,7 +881,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pwrite)(int __fd, const void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return pwrite(__fd, __buf, __count, __offset);
 #else
 	return pwrite64(__fd, __buf, __count, __offset);
@@ -887,16 +916,72 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(chdir)(const char *path) __SPRT_NOEXCEPT { return ::chdir(path); }
 
-__SPRT_C_FUNC int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT { return fchdir(__fd); }
+__SPRT_C_FUNC int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	// Embox's fchdir() is an ENOSYS stub; now that a directory descriptor knows
+	// its own path, it is just chdir().
+	char dir[PATH_MAX];
+	if (!platform::getDirFdPath(__fd, dir, sizeof(dir))) {
+		*__sprt___errno_location() = ENOTDIR;
+		return -1;
+	}
+	return ::chdir(dir);
+#else
+	return fchdir(__fd);
+#endif
+}
 
 __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	// The runtime's getcwd() carries the GNU extension - a null buffer means
+	// "allocate one" (libc_impl/src/windows/unistd.cc does the same). Embox's
+	// getcwd() rejects it with EINVAL, so callers that use it (including
+	// tests/runtime's own libc_dir) got a null back and dereferenced it.
+	if (!__buf) {
+		auto cap = __size ? __size : __SPRT_ID(size_t)(PATH_MAX);
+		auto allocated = static_cast<char *>(__sprt_malloc(cap));
+		if (!allocated) {
+			*__sprt___errno_location() = ENOMEM;
+			return nullptr;
+		}
+		if (!getcwd(allocated, cap)) {
+			__sprt_free(allocated);
+			return nullptr;
+		}
+		return allocated;
+	}
+	if (__size == 0) {
+		*__sprt___errno_location() = EINVAL;
+		return nullptr;
+	}
+#endif
 	return getcwd(__buf, __size);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT { return ::dup(__fd); }
+__SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	auto ret = ::dup(__fd);
+	if (ret >= 0) {
+		// A directory descriptor is a table entry, not something dup() can copy.
+		platform::cloneDirFd(__fd, ret);
+	}
+	return ret;
+#else
+	return ::dup(__fd);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(dup2)(int __fd, int __fd2) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	platform::releaseDirFd(__fd2); // dup2 closes the destination first
+	auto ret = ::dup2(__fd, __fd2);
+	if (ret >= 0) {
+		platform::cloneDirFd(__fd, ret);
+	}
+	return ret;
+#else
 	return ::dup2(__fd, __fd2);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dup3)(int __fd, int __fd2, int __flags) __SPRT_NOEXCEPT {
@@ -963,7 +1048,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::execve(__file, _argv, __envp);
 #else
 	return ::execvpe(__file, _argv, __envp);
@@ -1059,11 +1144,25 @@ __SPRT_C_FUNC int __SPRT_ID(nice)(int __inc) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(pathconf)(const char *__path, int __name) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__path;
+	(void)__name;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return (long int)pathconf(__path, __name);
+#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(fpathconf)(int __fd, int __name) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__fd;
+	(void)__name;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return fpathconf(__fd, __name);
+#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(sysconf)(int __name) __SPRT_NOEXCEPT { return sysconf(__name); }
@@ -1090,7 +1189,16 @@ __SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getgid)(void) __SPRT_NOEXCEPT { return 
 __SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getegid)(void) __SPRT_NOEXCEPT { return getegid(); }
 
 __SPRT_C_FUNC int __SPRT_ID(getgroups)(int __size, __SPRT_ID(gid_t) __list[]) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	(void)__list;
+	if (__size == 0) {
+		return 0;
+	}
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
 	return getgroups(__size, __list);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
@@ -1158,7 +1266,7 @@ __SPRT_C_FUNC int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_t) * __euid,
 		__SPRT_ID(uid_t) * __suid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	auto id = getuid();
 	if (__ruid) {
 		*__ruid = id;
@@ -1176,7 +1284,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_
 }
 __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
 		__SPRT_ID(gid_t) * __sgid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	auto id = getgid();
 	if (__rgid) {
 		*__rgid = id;
@@ -1195,7 +1303,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
 		__SPRT_ID(uid_t) __suid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setreuid(__ruid, __euid);
 #else
 	return ::setresuid(__ruid, __euid, __suid);
@@ -1210,7 +1318,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid,
 		__SPRT_ID(gid_t) __sgid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setregid(__rgid, __egid);
 #else
 	return ::setresgid(__rgid, __egid, __sgid);
@@ -1258,6 +1366,23 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if SPRT_WINDOWS
 	__sprt_errno = ENOSYS;
 	return -1;
+#elif SPRT_EMBOX
+	char *name = ::ttyname(__fd);
+	if (!name) {
+		return -1;
+	}
+	size_t n = 0;
+	while (name[n] != '\0') {
+		++n;
+	}
+	if (n + 1 > __buflen) {
+		__sprt_errno = ERANGE;
+		return -1;
+	}
+	for (size_t i = 0; i <= n; ++i) {
+		__buf[i] = name[i];
+	}
+	return 0;
 #else
 	return ::ttyname_r(__fd, __buf, __buflen);
 #endif
@@ -1280,15 +1405,21 @@ __SPRT_C_FUNC int __SPRT_ID(unlink)(const char *__name) __SPRT_NOEXCEPT { return
 
 __SPRT_C_FUNC int __SPRT_ID(rmdir)(const char *__path) __SPRT_NOEXCEPT { return rmdir(__path); }
 
-__SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) { return getlogin(); }
+__SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
+#if SPRT_HOSTED_RTOS
+	// NuttX has no getlogin in flat builds; return ENOSYS via nullptr.
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
+	return getlogin();
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_len) {
-#if SPRT_ANDROID
-	if (platform::_getlogin_r) {
-		return platform::_getlogin_r(__name, __name_len);
-	}
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
+	// Neither Android nor NuttX expose a usable getlogin_r in flat builds.
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
+			" not available for this platform");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
@@ -1367,7 +1498,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return truncate(__file, length);
 #else
 	return truncate64(__file, length);
@@ -1375,7 +1506,7 @@ __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) lengt
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ftruncate(__fd, length);
 #else
 	return ftruncate64(__fd, length);
@@ -1386,7 +1517,7 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_BRK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	::brk(__addr);
 	return 0;
 #else
@@ -1416,7 +1547,13 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 }
 
 __SPRT_C_FUNC int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len) {
-#if SPRT_APPLE
+#if SPRT_EMBOX
+	(void)__fd;
+	(void)__cmd;
+	(void)len;
+	__sprt_errno = ENOSYS;
+	return -1;
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return lockf(__fd, __cmd, len);
 #else
 	return lockf64(__fd, __cmd, len);
@@ -1447,7 +1584,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fdatasync)(int __fildes) {
-#if SPRT_WINDOWS || SPRT_APPLE
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	return fsync(__fildes);
 #else
 	return ::fdatasync(__fildes);
@@ -1482,7 +1619,20 @@ __SPRT_C_FUNC int __SPRT_ID(fchownat)(int __dir_fd, const char *__path, __SPRT_I
 }
 
 __SPRT_C_FUNC int __SPRT_ID(faccessat)(int __dirfd, const char *__path, int __mode, int __flags) {
+#if SPRT_EMBOX
+	// AT_EACCESS is a no-op here (accessPath makes no real/effective
+	// distinction), and AT_SYMLINK_NOFOLLOW cannot matter: Embox's symlink()
+	// family is an ENOSYS stub, so no symlink is ever created.
+	(void)__flags;
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__dirfd, __path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	return platform::accessPath(target, __mode);
+#else
 	return faccessat(__dirfd, __path, __mode, __flags);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
@@ -1491,12 +1641,25 @@ __SPRT_C_FUNC int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, in
 }
 
 __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __flags) {
+#if SPRT_EMBOX
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__dirfd, __path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	return (__flags & __SPRT_AT_REMOVEDIR) ? ::rmdir(target) : ::unlink(target);
+#else
 	return unlinkat(__dirfd, __path, __flags);
+#endif
 }
 
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 #if SPRT_APPLE
 	return gethostid();
+#elif SPRT_HOSTED_RTOS
+	// NuttX has no gethostid; synthesize one from a kernel timer so callers
+	// that only need "some per-host value" do not break.
+	return static_cast<long>(::time(nullptr));
 #else
 	auto dev = platform::getUniqueDeviceId();
 
@@ -1511,7 +1674,7 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 __SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return pipe(fds); }
 
 __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
-#if SPRT_APPLE
+#if SPRT_APPLE || SPRT_HOSTED_RTOS
 	static auto setnonblock = [](int fd) {
 		int flags = fcntl(fd, F_GETFL, 0);
 		if (flags == -1) {

@@ -25,7 +25,7 @@
 
 #include "private/SPRTPrivate.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_NUTTX || SPRT_EMBOX
 #include "SPRuntimePlatform-posix.cc"
 #endif
 
@@ -41,7 +41,45 @@
 #include "SPRuntimePlatform-wasm.cc"
 #endif
 
+#if SPRT_NUTTX
+#include "SPRuntimePlatform-nuttx.cc"
+#endif
+
+#if SPRT_EMBOX
+#include "SPRuntimePlatform-embox.cc"
+#endif
+
 #include <locale.h>
+
+namespace sprt::platform {
+
+// Shared by every platform's initialize()/terminate(); see the comment on _pool
+// in private/SPRTPrivate.h for why the pool is not a static-lifetime object.
+void GlobalConfig::init() {
+	if (!_pool) {
+		_pool = memory::pool::create(memory::self_contained_allocator);
+	}
+}
+
+void GlobalConfig::term() {
+	// Every view below points into _pool and dies with it. Clearing them is the
+	// load-bearing half: a StringView left pointing at freed pool memory still
+	// looks valid, so the next initialize() would read it instead of failing.
+	// infoMutex is deliberately not touched — it is live state, not pool data.
+	uniqueIdBuf = StringView();
+	execPathBuf = StringView();
+	homePathBuf = StringView();
+	locale = StringView(localeBuf);
+	config = AppConfig();
+	current = filesystem::LocationInfo();
+
+	if (_pool) {
+		memory::pool::destroy(_pool);
+		_pool = nullptr;
+	}
+}
+
+} // namespace sprt::platform
 
 namespace sprt {
 
@@ -57,16 +95,23 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 		s_isInitialized = 1;
 		return true;
 	}
+	// platform::initialize() may already have taken the config pool before it
+	// failed, so it gets torn down here too.
+	platform::terminate();
 	memory::pool::terminate();
 	return false;
 }
 
 void terminate() {
 	s_isInitialized = 0;
+	// Exact reverse of initialize(). platform::terminate() destroys the config
+	// pool, which everything above allocates out of, so it has to run before
+	// memory::pool::terminate() takes the pool subsystem down — the old order
+	// had it last, which only ever worked because it did nothing.
 	filesystem::terminate();
 	backtrace::terminate();
-	memory::pool::terminate();
 	platform::terminate();
+	memory::pool::terminate();
 }
 
 } // namespace sprt

@@ -139,7 +139,13 @@ namespace sprt {
 inline namespace __cxx_thread {
 namespace this_thread {
 
-thread::id get_id() noexcept { return {_thread::thread_t::self()->threadId}; }
+thread::id get_id() noexcept {
+#if SPRT_HOSTED_RTOS
+	return {__sprt_gettid()};
+#else
+	return {_thread::thread_t::self()->threadId};
+#endif
+}
 
 void yield() noexcept { __sprt_sched_yield(); }
 

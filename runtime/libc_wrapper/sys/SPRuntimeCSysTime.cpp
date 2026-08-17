@@ -180,7 +180,18 @@ __SPRT_C_FUNC int __SPRT_ID(futimes)(int fd, const __SPRT_TIMEVAL_NAME ts[2]) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
-#if __STDC_HOSTED__ == 0
+#if SPRT_EMBOX
+	// Embox's futimesat() is an ENOSYS stub; route through our utimensat(),
+	// which resolves the descriptor and lands on utimes(). Same shape as the
+	// freestanding branch below.
+	if (ts) {
+		struct __SPRT_TIMESPEC_NAME nts[2];
+		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);
+		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[1], &nts[1]);
+		return __sprt_utimensat(fd, path, nts, 0);
+	}
+	return __sprt_utimensat(fd, path, nullptr, 0);
+#elif __STDC_HOSTED__ == 0
 	if (ts) {
 		struct __SPRT_TIMESPEC_NAME nts[2];
 		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);

@@ -11,7 +11,9 @@ description: >-
   (PoolRef, SharedRef<T>, PoolObject), threads and dispatch (Looper, Task,
   Handle), the scene graph (Node geometry, and using System/Component instead of
   subclassing Node), strings (StringView lifetime, mem_std vs
-  mem_pool, CallbackStream, reader API), error handling with no exceptions
+  mem_pool, CallbackStream, reader API), Unicode text (compareCodepoints vs
+  compareFolded vs collate, case mapping strings not characters, IDN, and the
+  rules for generated Unicode tables), error handling with no exceptions
   (Status, Result<T>, slog(), asserts), weakly-typed data (data::Value: the
   mem_std/mem_pool interfaces, setValue(value, key) order, the read-only
   Value::Null sentinel, JSON/CBOR round-tripping), windows and OS integration
@@ -235,6 +237,21 @@ lifetime, or for error detection. Details and examples:
     thread-agnostic. Actions are a negotiation: the source offers a mask, the
     modifier states a *preference*, the target has the last word.
 
+27. **Never call a platform text API, and pick the comparison on purpose.**
+    `sprt::unicode` / `sprt::idn` are the implementation on every target — no
+    ICU, no `dlopen`, no `LCMapStringEx`, no `setlocale`, no `strcoll`.
+    `compareCodepoints` for keys/indexes/protocols/tests, `compareFolded` for
+    case-insensitive equality, `collate(l, r, locale)` **only** for a list a
+    person reads — a collation order depends on the build (`SPRT_COLLATION`) and
+    on CLDR, so never key, index or persist on it (`hasCollation` asks what this
+    build carries; it is `false` for German because the root order already *is*
+    German's). Case-map **strings**, not characters — `toupper(char32_t)` cannot
+    turn `ß` into `SS`, see a final sigma or know about Turkish `i` — and default
+    to the no-locale overloads. Everything under a `data/` directory is
+    **generated**: edit the generator, re-run it, and re-run the conformance
+    suite; ported bit arithmetic carrying a "transcribed literally" comment is
+    not to be simplified.
+
 ## Where to read more
 
 | Task | Article |
@@ -247,6 +264,7 @@ lifetime, or for error detection. Details and examples:
 | `Rc`/`Ref`, pools vs malloc, `AllocPool`, `__delete`, pool traps; independent pools (`PoolRef`, `SharedRef<T>`) that travel between threads | [memory-and-ownership.adoc](../../../docs/usage/codestyle/core/memory-and-ownership.adoc) |
 | What the formatter enforces and what it deliberately leaves alone | [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc) |
 | Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [strings.adoc](../../../docs/usage/codestyle/core/strings.adoc) |
+| Comparing or sorting text, case mapping, domain names, touching a generated Unicode table | [unicode-and-text.adoc](../../../docs/usage/codestyle/core/unicode-and-text.adoc) |
 | A function that can fail; `Status`/`Result<T>`, logging, assertions | [errors-and-status.adoc](../../../docs/usage/codestyle/core/errors-and-status.adoc) |
 | Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [threads-and-dispatch.adoc](../../../docs/usage/codestyle/core/threads-and-dispatch.adoc) |
 | Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |
@@ -262,6 +280,7 @@ lifetime, or for error detection. Details and examples:
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
+| **`sprt::unicode` / `sprt::idn` in depth** — the three comparisons, collation strength/options/sort keys, locale coverage and `SPRT_COLLATION`, UTS-46 options and errors | [unicode-and-idn.adoc](../../../docs/usage/unicode-and-idn.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |
 
 Adjacent skills: `xenolith-build` (how to build/verify), `css-engine` (CSS

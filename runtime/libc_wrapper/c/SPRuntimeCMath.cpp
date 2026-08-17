@@ -32,11 +32,24 @@ THE SOFTWARE.
 
 #include <math.h>
 
+#if SPRT_EMBOX
+// Embox declares almost none of the C99 math surface - see the shim. The
+// definitions the forwarders below reach are the musl port in
+// c/math/embox_math_{flt,dbl,ldbl}.c.
+#include "math/embox_math_shim.h"
+#endif
+
+// Neither NuttX nor Embox declares any of the MATH_* error-reporting bits, so
+// there is nothing to pin against there. Named rather than a bare #ifdef so the
+// check stays unconditional everywhere else, and comes back on either platform
+// the moment it grows them.
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MATH_ERRNO)
 static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
 static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
 
 #if !defined(SPRT_APPLE)
 static_assert(math_errhandling == __SPRT_math_errhandling);
+#endif
 #endif
 
 static_assert(FP_NAN == __SPRT_FP_NAN);

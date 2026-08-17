@@ -74,6 +74,14 @@
 #include "platform/wasm/SPEvent-wasm.cc"
 #endif
 
+#if SPRT_NUTTX
+#include "platform/nuttx/SPEvent-nuttx.cc"
+#endif
+
+#if SPRT_EMBOX
+#include "platform/embox/SPEvent-embox.cc"
+#endif
+
 // Platform-neutral async file I/O (shared op-state machine + inline handle +
 // QueueData::readFile/writeFile). The io_uring-native handle lives in
 // SPEventFileFd.cc (Linux/Android only); the inline handle here serves every

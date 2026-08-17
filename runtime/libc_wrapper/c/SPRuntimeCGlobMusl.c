@@ -20,18 +20,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Android-only C unit providing glob()/globfree() from musl for SPRuntimeCGlob.cpp
-// (see it for the rationale). Bionic declares glob()/globfree() only from API 28
-// but the runtime targets API 24, so the symbols are unavailable at link time.
-// musl's glob.c is C — it uses `restrict`, names a variable `new`, and relies on
-// implicit void* conversions — so it must be borrowed into a C translation unit
-// rather than the C++ wrapper. Empty on every other target.
+// C unit providing glob()/globfree() from musl when the platform libc does not
+// (Android API < 28; Embox has no <glob.h>). musl's glob.c is C — it uses
+// `restrict`, names a variable `new`, and relies on implicit void* conversions —
+// so it must be borrowed into a C translation unit rather than the C++ wrapper.
+// Empty on every other target.
 
 #define __SPRT_BUILD 1
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_EMBOX
 
 // The SPRT cross glob_t for Android is the minimal musl working layout, and its
 // __SPRT_GLOB_* are the musl values; use them directly so the produced glob_t IS
@@ -70,8 +69,15 @@ static char *__strchrnul(const char *__s, int __c) {
 	return (char *)__s;
 }
 
+#ifndef FNM_NOESCAPE
+#define FNM_NOESCAPE 0x2
+#endif
+#ifndef FNM_PERIOD
+#define FNM_PERIOD 0x4
+#endif
+
 #pragma clang diagnostic ignored "-Wlogical-op-parentheses"
 
 #include "../../musl-libc/src/regex/glob.c"
 
-#endif // SPRT_ANDROID
+#endif // SPRT_ANDROID || SPRT_EMBOX

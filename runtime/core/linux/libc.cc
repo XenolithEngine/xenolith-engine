@@ -23,13 +23,22 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <pthread.h>
+#include <stdint.h>
 
 #include <sprt/c/bits/__sprt_uint64_t.h>
 
 #include "../include/__plock.h"
 
+// pthread_t is an integer on Linux/NuttX and a pointer on Embox; reinterpret_cast
+// is required for the latter and ill-formed for the former, so the two spellings
+// cannot be folded into one.
+#if SPRT_EMBOX
+__SPRT_C_FUNC __SPRT_ID(uint64_t) __libc_main_thread = static_cast<__SPRT_ID(uint64_t)>(
+		reinterpret_cast<uintptr_t>(pthread_self()));
+#else
 __SPRT_C_FUNC __SPRT_ID(uint64_t) __libc_main_thread = static_cast<__SPRT_ID(uint64_t)>(
 		pthread_self());
+#endif
 
 
 namespace sprt {

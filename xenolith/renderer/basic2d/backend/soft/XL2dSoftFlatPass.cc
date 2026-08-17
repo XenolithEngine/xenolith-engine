@@ -225,8 +225,8 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 
 	auto texLayout = queueBuilder.addTextureSetLayout("General", samplers);
 
-	_output = queueBuilder.addAttachemnt("Output",
-			[&](AttachmentBuilder &builder) -> Rc<Attachment> {
+	_output =
+			queueBuilder.addAttachemnt("Output", [&](AttachmentBuilder &builder) -> Rc<Attachment> {
 		builder.defineAsOutput();
 
 		return Rc<sf::ImageAttachment>::create(builder,
@@ -307,10 +307,10 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 	// PipelineMaterialInfo must stay byte-identical to basic2d::vk::FlatPass: materials are
 	// matched to pipelines by this struct's value, and Sprite bakes DepthInfo into the request.
 	// The depth state is inert here (there is no depth attachment), exactly as it is there.
-	auto materialPipeline = subpassBuilder.addGraphicPipeline("Solid", layout2d->defaultFamily,
-			shaderSpecInfo,
-			PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
-				ImageViewType::ImageView2D}));
+	auto materialPipeline =
+			subpassBuilder.addGraphicPipeline("Solid", layout2d->defaultFamily, shaderSpecInfo,
+					PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
+						ImageViewType::ImageView2D}));
 
 	auto transparentPipeline = subpassBuilder.addGraphicPipeline("Transparent",
 			layout2d->defaultFamily, shaderSpecInfo,
@@ -436,7 +436,9 @@ ResolvedTexture FlatPass_resolveTexture(const core::Material *material,
 	out.texture.swizzle[3] = viewInfo.a;
 
 	switch (viewInfo.type) {
-	case core::ImageViewType::ImageView2DArray: out.kind = sf::raster::TextureKind::Texture2DArray; break;
+	case core::ImageViewType::ImageView2DArray:
+		out.kind = sf::raster::TextureKind::Texture2DArray;
+		break;
 	case core::ImageViewType::ImageView3D: out.kind = sf::raster::TextureKind::Texture3D; break;
 	default: out.kind = sf::raster::TextureKind::Texture2D; break;
 	}
@@ -848,13 +850,14 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 	}
 
 #if DEBUG
-	// Sampling a glyph means the 1:1 integer placement the engine guarantees did not hold. It is
-	// handled correctly, but it is worth knowing about: the usual cause is a caller that turned
-	// normalization off, and the visible result is slightly soft text.
 	if (glyphStats.sampled > 0) {
-		log::source().debug("basic2d::soft", "Sampled ", glyphStats.sampled, " of ",
-				glyphStats.sampled + glyphStats.blits,
-				" glyph run(s): not an integral 1:1 placement");
+		static bool s_loggedNonIntegralGlyph = false;
+		if (!s_loggedNonIntegralGlyph) {
+			s_loggedNonIntegralGlyph = true;
+			log::source().debug("basic2d::soft", "Sampled ", glyphStats.sampled, " of ",
+					glyphStats.sampled + glyphStats.blits,
+					" glyph run(s): not an integral 1:1 placement (further frames omitted)");
+		}
 	}
 #endif
 }

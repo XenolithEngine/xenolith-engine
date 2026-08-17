@@ -36,6 +36,7 @@ THE SOFTWARE.
 
 /* Clean public names (materialized __SPRT_ values live in abi/winioctl.h) */
 #define FSCTL_GET_REPARSE_POINT          __SPRT_FSCTL_GET_REPARSE_POINT
+#define FSCTL_SET_SPARSE                 __SPRT_FSCTL_SET_SPARSE
 #define MAXIMUM_REPARSE_DATA_BUFFER_SIZE __SPRT_MAXIMUM_REPARSE_DATA_BUFFER_SIZE
 #define SYMLINK_FLAG_RELATIVE            __SPRT_SYMLINK_FLAG_RELATIVE
 

@@ -63,6 +63,24 @@ THE SOFTWARE.
 #include "wasm/clock_gettime.cc"
 #include "wasm/sched.cc"
 #include "wasm/libc.h"
+#elif SPRT_HOSTED_RTOS
+// Both RTOS targets are hosted POSIX on their own libc, so the Linux
+// libc/sched/clock_gettime adapters apply verbatim — their <sched.h>, <time.h>,
+// <stdio.h>, <pthread.h> expose the same POSIX surface the Linux adapter uses.
+// dlfcn is a no-op in a flat build (no DSOs) but the prototypes are present in
+// <dlfcn.h>.
+#include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "linux/clock_gettime.cc"
+#include "linux/libc.cc"
 #else
 #error Not implemented
 #endif
@@ -217,6 +235,18 @@ extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void);
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
+#if SPRT_EMBOX
+	// Embox has no gettid(2). pthread_t is struct thread *; fold the pointer
+	// into pid_t so tish tasks and pthreads stay distinct without TLS.
+	const uintptr_t p = reinterpret_cast<uintptr_t>(pthread_self());
+	return static_cast<__SPRT_ID(pid_t)>((p >> 4) ^ (p >> 32));
+#elif SPRT_HOSTED_RTOS
+	// NSH tasks are not sprt pthreads. pthread_self_noattach_np() reads tl_self,
+	// which must not be the gettid() path: a process-global tl_self made Main
+	// inherit AppThread's id, Looper::isOnThisThread went false, and compileQueue
+	// posted into a mutex it already held. Kernel gettid() is the identity.
+	return ::gettid();
+#else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
 		__SPRT_ID(pid_t) tid = 0;
@@ -233,6 +263,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	return __sprt_wasm_gettid();
 #else
 	return ::gettid();
+#endif
 #endif
 }
 
@@ -268,7 +299,15 @@ __SPRT_C_FUNC void *__SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dladdr)(const void *__handle, __SPRT_ID(Dl_info) * __info) {
+#if SPRT_EMBOX
+	(void)__handle;
+	if (__info) {
+		*__info = {};
+	}
+	return 0;
+#else
 	return dladdr(__handle, (Dl_info *)__info);
+#endif
 }
 
 __SPRT_C_FUNC double __SPRT_ID(log2_impl)(double value) { return ::log2(value); }
@@ -547,7 +586,9 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 			sprt::memcpy(buf->machine, _native.machine,
 					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
 		}
-#ifndef SPRT_APPLE
+		// domainname is a Linux extension to POSIX utsname; Apple and NuttX both
+		// ship the plain struct without it.
+#if !SPRT_APPLE && !SPRT_HOSTED_RTOS
 		if (_native.domainname[0]) {
 			sprt::memcpy(buf->domainname, _native.domainname,
 					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));

@@ -74,7 +74,15 @@ SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, v
 
 #else
 
+#if SPRT_HOSTED_RTOS
+// RTOS flat build: the RTOS build system renames main() in the app source to
+// xxx_main, so the app wrapper needs a C-linkage entry point it can call.
+// Expose the engine run as xenolith_main; the app's own (renamed) main()
+// calls this.
+extern "C" int xenolith_main(int argc, const char **argv) {
+#else
 int main(int argc, const char *argv[]) {
+#endif
 	// Main symbol should depend only on stappler_core for successful linkage
 	// So, use SharedModule to load `Context::run`
 #if MODULE_XENOLITH_APPLICATION

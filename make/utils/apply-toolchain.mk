@@ -40,6 +40,10 @@ else ifeq ($(TARGET_SYSTEM),Android-NDK)
 	include $(BUILD_ROOT)/os/android-ndk.mk
 else ifeq ($(TARGET_SYSTEM),WASM)
 	include $(BUILD_ROOT)/os/wasm.mk
+else ifeq ($(TARGET_SYSTEM),NuttX)
+	include $(BUILD_ROOT)/os/nuttx.mk
+else ifeq ($(TARGET_SYSTEM),Embox)
+	include $(BUILD_ROOT)/os/embox.mk
 else
 $(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif

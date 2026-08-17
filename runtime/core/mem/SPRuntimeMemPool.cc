@@ -52,12 +52,54 @@ pool_t *get_zero_pool() {
 	return (pool_t *)s_struct._pool;
 }
 
+#if SPRT_HOSTED_RTOS
+// Thread pool for a thread sprt does not manage - on an RTOS that is the process
+// entry point, a kernel task rather than a pthread. Deliberately NOT the zero
+// pool: dispatch::_dispose() calls pool::clear() on whatever this function
+// returned, and the zero pool also carries process-lifetime data (the Ref map in
+// SPRuntimeRef.cpp, the MIME tables in runtime_core_filepath.cpp) that such a
+// clear would drop from under live pointers.
+static pool_t *get_unmanaged_thread_pool() {
+	struct UnmanagedPoolStruct {
+		impl::Allocator _alloc;
+		impl::Pool *_pool = nullptr;
+
+		UnmanagedPoolStruct() { _pool = impl::Pool::create(&_alloc); }
+		~UnmanagedPoolStruct() {
+			impl::Pool::destroy(_pool);
+			_pool = nullptr;
+		}
+	};
+
+	static UnmanagedPoolStruct s_struct;
+	return (pool_t *)s_struct._pool;
+}
+#endif
+
 pool_t *get_thread_support_pool() {
+#if SPRT_HOSTED_RTOS
+	// An sprt thread has its own allocator and pool (pthread.cc gives every
+	// thread a threadAlloc/threadMemPool before it starts), so hand back that
+	// one - a pool is bump-allocated without a lock, so two threads sharing one
+	// corrupt it, and _dispose() clears the pool it was given, which must
+	// therefore belong to the thread doing the clearing.
+	//
+	// Only the RTOS entry point has no thread of its own. That is what this
+	// branch originally existed for: __sprt_pthread_self() attaches a thread_t
+	// on demand, and on a kernel task it produced a handle whose threadMemPool
+	// was garbage, so the next palloc data-aborted. _noattach_np() is the same
+	// query WITHOUT the attach, so it simply reports null there.
+	if (auto thread = __sprt_pthread_self_noattach_np()) {
+		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
+	}
+	return get_unmanaged_thread_pool();
+#else
 	auto thread = __sprt_pthread_self();
 	if (thread) {
 		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
 	}
 	return nullptr;
+#endif
 }
 
 } // namespace sprt::memory

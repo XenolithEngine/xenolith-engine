@@ -224,7 +224,7 @@ static bool _validateEmailData(StringView r, typename Interface::StringType *tar
 			if (target) {
 				target->append(host.data(), host.size());
 			}
-		}, r, false);
+		}, r);
 
 		if (!hasHost) {
 			return false;
@@ -300,9 +300,13 @@ static bool _validateUrl(typename Interface::StringType &str) {
 	}
 
 	if (!oldHost.empty()) {
-		if (!sprt::idn::to_ascii([&](StringView host) {
+		// UseStd3Rules is what the old `validate` flag amounted to: reject anything
+		// outside letters, digits and hyphen. UTS-46 now applies the real rule
+		// rather than the byte-range approximation this used to do.
+		if (sprt::idn::to_ascii([&](StringView host) {
 			newHost = host.str<decltype(newHost)>(); //
-		}, oldHost, true)) {
+		}, oldHost, sprt::idn::Options::Default | sprt::idn::Options::UseStd3Rules)
+				!= Status::Ok) {
 			return false;
 		}
 

@@ -36,7 +36,7 @@ struct __qsort_r_wrapper {
 	int (*comp)(const void *, const void *, void *);
 };
 
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
 thread_local __qsort_s_wrapper tl_qsort_s_wrapper;
 thread_local __qsort_r_wrapper tl_qsort_r_wrapper;
 #endif
@@ -67,8 +67,8 @@ __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t
 		return EINVAL;
 	}
 
-#if SPRT_ANDROID
-	// save/restore so a comparator that recursively sorts composes correctly
+#if SPRT_ANDROID || SPRT_HOSTED_RTOS
+	// save/restore so a comparator that recursively sorts composes correctly.
 	auto saved = tl_qsort_s_wrapper;
 	tl_qsort_s_wrapper = {context, comp};
 	qsort(ptr, count, size, [](const void *l, const void *r) {
@@ -87,18 +87,25 @@ __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t
 	return 0;
 }
 
-#if SPRT_APPLE
 SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
 		int (*cmp)(const void *, const void *, void *), void *ctx) {
+#if SPRT_APPLE
 	__qsort_r_wrapper w = {ctx, cmp};
 
 	qsort_r(array, n, size, &w, [](void *ptr, const void *l, const void *r) {
 		auto w = (__qsort_r_wrapper *)ptr;
 		return w->comp(l, r, w->ctx);
 	});
+#elif SPRT_HOSTED_RTOS
+	// Neither RTOS libc has qsort_r; route through plain qsort with the same
+	// thread-local wrapper the Android path uses for qsort_s.
+	auto saved = tl_qsort_r_wrapper;
+	tl_qsort_r_wrapper = {ctx, cmp};
+	qsort(array, n, size, [](const void *l, const void *r) {
+		return tl_qsort_r_wrapper.comp(l, r, tl_qsort_r_wrapper.ctx);
+	});
+	tl_qsort_r_wrapper = saved;
 #else
-SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
-		int (*cmp)(const void *, const void *, void *), void *ctx) {
 	::qsort_r(array, n, size, cmp, ctx);
 #endif
 }
