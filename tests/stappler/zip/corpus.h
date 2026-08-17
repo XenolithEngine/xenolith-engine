@@ -45,6 +45,45 @@ struct EntryExpect {
 	bool readable = true;
 };
 
+// What the builder ACTUALLY wrote for one entry, field by field.
+//
+// This is the oracle the from-scratch catalog parser (stage 2) is measured against, and it is a
+// better one than libzip for the numbers: libzip's public API does not expose an entry's local
+// header offset at all, while the corpus knows it exactly, having chosen it. Names here are the raw
+// bytes as stored - decoding them is stage 3's job and is checked separately.
+struct EntryMeta {
+	Bytes rawName;
+
+	// What the engine's own reader must call this entry after decoding. Defaults to the raw bytes,
+	// which is right for every name that is already ASCII or UTF-8; a case whose name is transcoded
+	// (CP437) or replaced (the 0x7075 extra field) sets it, and that assignment is where the
+	// expected behaviour is written down.
+	Bytes decodedName;
+
+	// What ZipEntryFlags must come out as. Spelled as booleans rather than the engine's enum so that
+	// the corpus stays independent of the module's headers.
+	bool expectDirectory = false;
+	bool expectNameRejected = false;
+	bool expectEncrypted = false;
+	bool expectUnsupportedMethod = false;
+
+	uint16_t method = 0;
+	uint16_t flags = 0;
+	uint32_t crc32 = 0;
+
+	uint64_t compressedSize = 0;
+	uint64_t uncompressedSize = 0;
+
+	// offset of the local header, relative to the start of the ARCHIVE (not of the source - see
+	// Case::expectedPrefix)
+	uint64_t localOffset = 0;
+};
+
+// Every corpus archive is stamped 2024-01-01 00:00:00, so that the bytes are reproducible. Read as
+// UTC - which is what the engine's own reader does - that is this many seconds since the epoch.
+// Spelled out rather than computed, so the test does not check the conversion against itself.
+static constexpr uint64_t CORPUS_MTIME_UTC = 1'704'067'200;
+
 // A single archive plus what reading it must produce.
 //
 // `entries` empty means "not yet characterized": the test prints the observed listing and asserts
@@ -57,11 +96,23 @@ struct Case {
 	Bytes archive;
 	Vector<EntryExpect> entries;
 
+	// what the builder wrote, entry for entry, in central-directory order
+	Vector<EntryMeta> meta;
+
 	// the ZipArchive constructor must produce a usable handle
 	bool openable = true;
 
 	// entries are known and must match exactly; false = characterization-only (see above)
 	bool characterized = true;
+
+	// the engine's own ZipCatalog must accept the archive. Kept separate from `openable`, which is
+	// about libzip: the two are allowed to disagree, and where they do, the divergence is deliberate
+	// and spelled out in a comment on the case.
+	bool parsable = true;
+
+	// bytes preceding the archive inside the source - non-zero only for the self-extracting-style
+	// case. Offsets stored in the archive are short by exactly this much.
+	uint64_t expectedPrefix = 0;
 };
 
 // Builds every archive in the corpus from literals, byte by byte. Nothing is read from disk: a
