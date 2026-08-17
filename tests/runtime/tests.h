@@ -63,6 +63,12 @@ void performSocketTests();
 void performUnicodeTests();
 void performUnicodeCaseConformanceTests();
 void performWordBreakConformanceTests();
+
+void performCollationTests();
+
+void performCollationConformanceTests();
+
+void performCollationBench();
 void performDtoaTests();
 void performIdnTests();
 void performIdnConformanceTests();

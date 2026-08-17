@@ -44,6 +44,45 @@ ifeq ($(SPRT_SHARED),1)
 MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 
+# Which collation tailorings this build carries, as SPRT_COLLATION=<set>. Every
+# group is on unless this says otherwise: an application that sorts a list for a
+# person to read should get the right order for their language by default, and a
+# target that cannot afford 1.2 MB of tables should have to say so.
+#
+#   full      every group, and Chinese/Japanese/Korean with them (the default)
+#   no-cjk    everything except zh/ja/ko - saves 0.7 MB
+#   european  Latin, Cyrillic, Greek, Armenian and Georgian
+#   root      no tailorings at all: the CLDR root order, which is already correct
+#             for German, French, Italian, Russian, Greek, Hebrew and many more
+#
+# Or list the groups: SPRT_COLLATION="LatinNordic Cyrillic". The names are the
+# ones in runtime/src/unicode/data/gen-collation-tables.py.
+#
+# The root table itself is not optional - it is the order everything else is
+# expressed as a difference from. hasCollation() tells an application at run time
+# which languages this binary actually knows.
+SPRT_COLLATION_ALL_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC LATINOTHER \
+	CYRILLIC GREEK SEMITIC INDIC SOUTHEASTASIA OTHER CJK
+
+ifeq ($(SPRT_COLLATION),)
+SPRT_COLLATION := full
+endif
+
+ifeq ($(SPRT_COLLATION),full)
+SPRT_COLLATION_GROUPS := $(SPRT_COLLATION_ALL_GROUPS)
+else ifeq ($(SPRT_COLLATION),no-cjk)
+SPRT_COLLATION_GROUPS := $(filter-out CJK,$(SPRT_COLLATION_ALL_GROUPS))
+else ifeq ($(SPRT_COLLATION),european)
+SPRT_COLLATION_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC CYRILLIC GREEK
+else ifeq ($(SPRT_COLLATION),root)
+SPRT_COLLATION_GROUPS :=
+else
+SPRT_COLLATION_GROUPS := $(shell echo $(SPRT_COLLATION) | tr 'a-z-' 'A-Z_')
+endif
+
+MODULE_RUNTIME_COMMON_CFLAGS += $(foreach g,$(SPRT_COLLATION_ALL_GROUPS),\
+	-DSPRT_COLLATION_$(g)=$(if $(filter $(g),$(SPRT_COLLATION_GROUPS)),1,0))
+
 include $(RUNTIME_MODULE_DIR)/core/core.mk
 include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk

@@ -287,8 +287,16 @@ view's invariants and handle the empty-input cases.
 * Case folding and comparison that must be Unicode-aware live in
   `platform::` / `string::` ([SPString.h](../../../../stappler/core/string/SPString.h)):
   `platform::tolower/toupper/totitle`, `platform::compare_u`,
-  `platform::caseCompare_u`. For ASCII-only fast paths there are
-  `string::apply_tolower_c` / `apply_toupper_c` and `sprt::tolower_c`.
+  `platform::caseCompare_u`. Those names are historical — they forward straight
+  into `sprt::unicode` and no longer touch a platform library. For ASCII-only
+  fast paths there are `string::apply_tolower_c` / `apply_toupper_c` and
+  `sprt::tolower_c`.
+* **Which comparison to use is a decision, not a detail**:
+  `unicode::compareCodepoints` for keys and indexes, `unicode::compareFolded` for
+  case-insensitive equality, `unicode::collate` only for a list a person reads.
+  Case-map strings rather than characters. Full rules:
+  [core/unicode-and-text.adoc](unicode-and-text.adoc); API guide:
+  [usage/unicode-and-idn.adoc](../../unicode-and-idn.adoc).
 
 ## Related
 

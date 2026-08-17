@@ -1093,6 +1093,76 @@ SPRT_API int compareFolded(StringView l, StringView r);
 SPRT_API int compareFolded(WideStringView l, WideStringView r);
 SPRT_API int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
 
+// Collation: the order two strings appear in for a person reading them, which
+// depends on their language. This is the one Unicode operation the runtime cannot
+// derive - it needs the CLDR tables - and the one whose answer is a matter of
+// convention rather than of fact. `ö` follows `z` in Swedish and sits inside `o`
+// in German; `ch` is one letter in Czech; `ё` has two accepted places in Russian.
+//
+// Use it to order a list someone will read. Do NOT use it for keys, indexes or
+// anything that has to compare the same everywhere and forever - that is what
+// compareCodepoints is for. Which locales are compiled in is a build option, so
+// two builds of the runtime can order the same list differently; hasCollation
+// answers whether this one knows the language asked for.
+//
+// Everything above the primary level is optional, and what each level means:
+//
+//   Primary     base letters:      resume < rhyme, resume == résumé == RESUME
+//   Secondary   accents:           resume < résumé, résumé == RÉSUMÉ
+//   Tertiary    case and variants: résumé < RÉSUMÉ  (the default)
+//   Quaternary  punctuation that `shifted` moved off the primary level
+//   Identical   the code points themselves, as a last resort
+enum class Strength {
+	Primary,
+	Secondary,
+	Tertiary,
+	Quaternary,
+	Identical,
+};
+
+// Whether upper- or lowercase sorts first, for the languages that care (Danish
+// and Maltese put uppercase first). Off means the tertiary level decides.
+enum class CaseFirst {
+	Off,
+	Upper,
+	Lower,
+};
+
+struct CollateOptions {
+	Strength strength = Strength::Tertiary;
+	// Digit runs sort as numbers: "item2" before "item10".
+	bool numeric = false;
+	// Punctuation and spaces are ignored until the quaternary level, so that
+	// "de luge" and "de-luge" sort together.
+	bool shifted = false;
+	CaseFirst caseFirst = CaseFirst::Off;
+};
+
+// The sign, like strcmp. `locale` is a language tag; an unknown or empty one
+// means the CLDR root order, which is already correct for most languages -
+// including German, French, Italian, Russian, Greek and Hebrew.
+SPRT_API int collate(StringView l, StringView r, StringView locale, CollateOptions = CollateOptions());
+SPRT_API int collate(WideStringView l, WideStringView r, StringView locale,
+		CollateOptions = CollateOptions());
+
+// The same ordering as a byte string: memcmp on two keys gives the sign collate()
+// would. Sorting a list costs one key per string instead of one comparison per
+// pair, and a key can go into an index or a database column where a comparison
+// function cannot.
+//
+// The key is only meaningful against keys made with the same locale, the same
+// options and the same build of the runtime - it is not a stable identifier and
+// must not be persisted across a Unicode version. The callback is invoked exactly
+// once on success and not at all on failure.
+SPRT_API bool sortKey(const callback<void(BytesView)> &, StringView, StringView locale,
+		CollateOptions = CollateOptions());
+SPRT_API bool sortKey(const callback<void(BytesView)> &, WideStringView, StringView locale,
+		CollateOptions = CollateOptions());
+
+// Whether this build has a tailoring for `locale`. False means collate() will
+// answer with the root order rather than that language's own.
+SPRT_API bool hasCollation(StringView locale);
+
 } // namespace sprt::unicode
 
 namespace sprt {
