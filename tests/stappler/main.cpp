@@ -55,6 +55,7 @@ static const TestEntry s_testList[] = {
 	{"datavalue", &stappler::performDataValueTests},
 	{"zip", &stappler::performZipTests},
 	{"zipformat", &stappler::performZipFormatTests},
+	{"zipfuzz", &stappler::performZipFuzzTests},
 	{"iosource", &stappler::performIoSourceTests},
 };
 

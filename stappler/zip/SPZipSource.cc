@@ -82,6 +82,13 @@ size_t ZipSource::read(uint8_t *buf, size_t nbytes) {
 	return ret;
 }
 
+bool ZipSource::readAt(uint64_t offset, uint8_t *buf, size_t nbytes) {
+	if (seek(int64_t(offset), io::Seek::Set) != offset) {
+		return false;
+	}
+	return read(buf, nbytes) == nbytes;
+}
+
 uint64_t ZipSource::seek(int64_t offset, io::Seek s) {
 #ifdef MODULE_STAPPLER_FILESYSTEM
 	if (_file) {

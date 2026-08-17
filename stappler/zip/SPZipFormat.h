@@ -111,6 +111,20 @@ struct ZipRawEntry {
 	uint16_t dosDate = 0;
 };
 
+/* The local file header, of which only the variable-part lengths are actually load-bearing.
+ *
+ * Its name and extra field are allowed to differ from the central directory's - archivers routinely
+ * put things in one and not the other - so the offset at which an entry's DATA begins can only be
+ * computed from this record. Everything else about the entry (sizes, CRC, method) is taken from the
+ * central directory instead: with general purpose bit 3 set, the sizes here are zero by design.
+ */
+struct ZipLocalHeader {
+	uint16_t nameLength = 0;
+	uint16_t extraLength = 0;
+	uint16_t method = 0;
+	uint16_t flags = 0;
+};
+
 /* Checked arithmetic. Offsets in a ZIP come straight off the wire, so `offset + length` is an
  * attacker-controlled expression and wrapping it is how a parser ends up reading somebody else's
  * memory. These are the only way this module adds an offset to a length.
@@ -151,6 +165,10 @@ SP_PUBLIC bool zipPrefixOffset(const ZipEocd &, uint64_t &out);
  * comment). ZIP64 sentinels are resolved from the entry's own 0x0001 extra field.
  */
 SP_PUBLIC Status zipReadCentralEntry(ZipView &cursor, ZipRawEntry &out);
+
+/* Decodes a local file header from a buffer holding at least ZIP_LOCAL_SIZE bytes.
+ */
+SP_PUBLIC Status zipReadLocalHeader(BytesView, ZipLocalHeader &out);
 
 /* Finds one extra field by id inside an extra-field block. Returns an empty view when absent; a
  * malformed block simply stops the walk, since a truncated tail cannot be trusted anyway.
