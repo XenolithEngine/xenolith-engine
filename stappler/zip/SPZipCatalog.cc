@@ -31,14 +31,6 @@ namespace STAPPLER_VERSIONIZED stappler {
 static constexpr uint64_t ZIP_TAIL_WINDOW =
 		ZIP_MAX_COMMENT + ZIP_EOCD_SIZE + ZIP_EOCD64_SIZE + ZIP_LOCATOR64_SIZE;
 
-// Reads exactly `length` bytes at `offset`; a short read is a failure, not a partial result.
-static bool readExact(ZipSource &source, uint64_t offset, uint8_t *buf, size_t length) {
-	if (source.seek(int64_t(offset), io::Seek::Set) != offset) {
-		return false;
-	}
-	return source.read(buf, length) == length;
-}
-
 /* Name handling. The decision about what an entry is CALLED lives entirely in SPZipNames.cc; this
  * is only about where the result is put.
  *
@@ -125,7 +117,7 @@ Status ZipCatalog<Interface>::read(ZipSource &source) {
 
 	Bytes tail;
 	tail.resize(tailSize);
-	if (!readExact(source, tailOffset, tail.data(), tailSize)) {
+	if (!source.readAt(tailOffset, tail.data(), tailSize)) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
@@ -190,7 +182,7 @@ Status ZipCatalog<Interface>::read(ZipSource &source) {
 		}
 
 		uint8_t sig[4] = {0};
-		if (!readExact(source, start, sig, sizeof(sig))) {
+		if (!source.readAt(start, sig, sizeof(sig))) {
 			continue;
 		}
 
@@ -210,7 +202,7 @@ Status ZipCatalog<Interface>::read(ZipSource &source) {
 
 	Bytes directory;
 	directory.resize(size_t(eocd.cdSize));
-	if (eocd.cdSize > 0 && !readExact(source, cdStart, directory.data(), size_t(eocd.cdSize))) {
+	if (eocd.cdSize > 0 && !source.readAt(cdStart, directory.data(), size_t(eocd.cdSize))) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
@@ -227,15 +219,25 @@ Status ZipCatalog<Interface>::read(ZipSource &source) {
 		raw.emplace_back(entry);
 	}
 
-	// -- build the name arena, then the entries --
-	//
-	// Two passes: sizing first, so that not one view is taken before the arena has stopped growing.
+	/* -- build the name arena, then the entries --
+	 *
+	 * Two passes: sizing first, so that not one view is taken before the arena has stopped growing.
+	 *
+	 * Every name is followed by a NUL that is NOT part of it. StringView::terminated() reads the
+	 * byte at data()[size()] and is documented to require it to exist (stringview.h), and it is
+	 * called by anything that wants a C string out of a view - which is most of what a name gets
+	 * handed to. An exactly-sized arena would make every ZipEntry::name a one-byte overread waiting
+	 * for such a caller; found by running the suite under ASan, invisible without it.
+	 */
 
 	size_t nameTotal = 0;
-	for (auto &it : raw) { nameTotal += decodedNameLength(it); }
+	for (auto &it : raw) { nameTotal += decodedNameLength(it) + 1; }
 
 	_names.reserve(nameTotal);
-	for (auto &it : raw) { decodeName(it, _names); }
+	for (auto &it : raw) {
+		decodeName(it, _names);
+		_names.emplace_back(0);
+	}
 
 	_entries.reserve(raw.size());
 
@@ -261,7 +263,7 @@ Status ZipCatalog<Interface>::read(ZipSource &source) {
 		entry.state = classifyEntry(it, nameBytes);
 
 		_entries.emplace_back(entry);
-		nameOffset += length;
+		nameOffset += length + 1; // step over the terminator
 	}
 
 	// -- the lookup index --

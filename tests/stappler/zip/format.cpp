@@ -29,7 +29,8 @@ THE SOFTWARE.
 // expose an entry's local header offset.
 
 #include "SPCommon.h"
-#include "SPZipCatalog.h"
+#include "SPZip.h"
+#include "SPZipReader.h"
 #include "SPFilesystem.h"
 #include "SPMemory.h"
 
@@ -229,6 +230,65 @@ static void verifyCatalog(ZipSource &source, const test::zip::Case &c, StringVie
 
 	check(catalog.locate("no/such/entry.txt") == maxOf<uint64_t>(),
 			named("locate() reports a missing entry"));
+
+	// Regression, found by ASan: StringView::terminated() reads the byte at data()[size()] and
+	// requires it to exist, and everything that turns a view into a C string calls it. An
+	// exactly-sized name arena made every name a one-byte overread for such a caller - which a
+	// non-sanitized run passes without a murmur.
+	bool terminatedOk = true;
+	for (size_t i = 0; i < c.meta.size(); ++i) {
+		if (!catalog.entry(i)->name.terminated()) {
+			terminatedOk = false;
+			break;
+		}
+	}
+	check(terminatedOk, named("every entry name is NUL-terminated"));
+
+	// -- stage 4: the entries' content --
+	//
+	// Every entry is read, whether or not it is supposed to succeed: a refusal has to arrive with
+	// the RIGHT status, since several separate rules can refuse one and "it failed" would pass for
+	// any of them.
+	bool statusOk = true;
+	bool contentOk = true;
+
+	for (size_t i = 0; i < c.meta.size(); ++i) {
+		auto entry = catalog.entry(i);
+		typename Interface::BytesType content;
+
+		auto st = zipReadEntry<Interface>(source, *entry, catalog.prefix(), content);
+
+		if (st != c.meta[i].expectRead) {
+			statusOk = false;
+			sprt::cout << "         entry #" << i << " \"" << escapeName(entry->name)
+					   << "\" read status: got " << int32_t(st) << ", expected "
+					   << int32_t(c.meta[i].expectRead) << "\n";
+			continue;
+		}
+
+		if (st != Status::Ok) {
+			// A refused read must not leave anything behind for a caller to mistake for content.
+			if (!content.empty()) {
+				contentOk = false;
+				sprt::cout << "         entry #" << i << " produced " << content.size()
+						   << " bytes despite being refused\n";
+			}
+			continue;
+		}
+
+		auto &expect = c.meta[i].content;
+		if (content.size() != expect.size()
+				|| (!expect.empty()
+						&& sprt::memcmp(content.data(), expect.data(), expect.size()) != 0)) {
+			contentOk = false;
+			sprt::cout << "         entry #" << i << " \"" << escapeName(entry->name)
+					   << "\" content: got " << content.size() << " bytes, expected "
+					   << expect.size() << "\n";
+		}
+	}
+
+	check(statusOk, named("every entry reads with the expected status"));
+	check(contentOk, named("every readable entry yields the bytes the builder wrote"));
 }
 
 template <typename Interface>
@@ -362,6 +422,72 @@ static void runDuplicateNames() {
 	check(catalog.size() == 2, "zipfmt[duplicate-names] both entries are listed");
 	check(catalog.locate("same.txt") == 0,
 			"zipfmt[duplicate-names] locate() resolves to the first occurrence");
+}
+
+/* The differential check proper: for every entry that BOTH readers agree to read, the bytes must be
+ * identical.
+ *
+ * Deliberately one-sided. Where the two disagree about whether an entry is readable at all, this
+ * says nothing - those disagreements are the recorded divergences (the sanitizer refuses names
+ * libzip hands over; the engine reads empty entries libzip refuses), and each is pinned by its own
+ * case in the corpus. What is asserted here is the part that must never differ: the content.
+ */
+static void runDifferential(const test::zip::Case &c) {
+	if (!c.openable) {
+		return;
+	}
+
+	ZipArchive<mem_std::Interface> archive(BytesView(c.archive.data(), c.archive.size()), true);
+	if (!archive) {
+		return;
+	}
+
+	ZipSource source;
+	source.setMemory(BytesView(c.archive.data(), c.archive.size()));
+
+	ZipCatalog<mem_std::Interface> catalog;
+	if (!sprt::status::isSuccessful(catalog.read(source))) {
+		return;
+	}
+
+	Namer named(c, "diff");
+
+	bool agree = true;
+	size_t compared = 0;
+
+	for (size_t i = 0; i < catalog.size(); ++i) {
+		auto entry = catalog.entry(i);
+
+		mem_std::Interface::BytesType ours;
+		if (!sprt::status::isSuccessful(zipReadEntry<mem_std::Interface>(source, *entry,
+					catalog.prefix(), ours))) {
+			continue;
+		}
+
+		// libzip is asked by NAME, which is also a check that both readers arrived at the same
+		// spelling for it.
+		test::zip::Bytes theirs;
+		bool ok = archive.readFile(entry->name, [&](BytesView data) {
+			theirs.assign(data.data(), data.data() + data.size());
+		});
+		if (!ok) {
+			continue;
+		}
+
+		++compared;
+		if (ours.size() != theirs.size()
+				|| (!theirs.empty()
+						&& sprt::memcmp(ours.data(), theirs.data(), theirs.size()) != 0)) {
+			agree = false;
+			sprt::cout << "         entry \"" << escapeName(entry->name) << "\": ours "
+					   << ours.size() << " bytes, libzip " << theirs.size() << "\n";
+		}
+	}
+
+	if (compared == 0) {
+		return;
+	}
+	check(agree, named("content agrees with libzip on every entry both will read"));
 }
 
 // -- stage 3: names, checked directly rather than only through archives --
@@ -543,6 +669,7 @@ void performZipFormatTests() {
 
 		runFromMemory<mem_std::Interface>(c, "mem_std");
 		runFromFile(c);
+		runDifferential(c);
 	}
 
 	runDuplicateNames();

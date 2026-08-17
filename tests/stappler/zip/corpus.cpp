@@ -108,6 +108,14 @@ struct EntryOptions {
 	// declare an uncompressed size unrelated to the payload (the zip-bomb case)
 	bool declaredSizeUsed = false;
 	uint64_t declaredSize = 0;
+
+	// write a CRC that does not belong to the payload
+	bool crcOverrideUsed = false;
+	uint32_t crcOverride = 0;
+
+	// declare a compressed size unrelated to the payload (the truncated-data case)
+	bool compSizeOverrideUsed = false;
+	uint64_t compSizeOverride = 0;
 };
 
 struct Builder {
@@ -116,6 +124,7 @@ struct Builder {
 	struct Central {
 		String name;
 		Bytes extra;
+		Bytes content; // what add() was handed, so the reader tests have something to compare to
 		uint16_t method = 0;
 		uint16_t flags = 0;
 		uint32_t crc = 0;
@@ -159,9 +168,10 @@ struct Builder {
 		c.localOffset = out.size();
 		c.name.assign((const char *)name.data(), name.size());
 		c.extra = opts.centralExtra;
+		c.content.assign(content.data(), content.data() + content.size());
 		c.method = opts.method;
 		c.flags = opts.flags;
-		c.crc = crcOf(content);
+		c.crc = opts.crcOverrideUsed ? opts.crcOverride : crcOf(content);
 		c.rawSize = opts.declaredSizeUsed ? opts.declaredSize : content.size();
 		c.zip64Sizes = opts.zip64Sizes;
 
@@ -171,7 +181,7 @@ struct Builder {
 		} else {
 			payload.assign(content.data(), content.data() + content.size());
 		}
-		c.compSize = payload.size();
+		c.compSize = opts.compSizeOverrideUsed ? opts.compSizeOverride : payload.size();
 
 		u32(SIG_LOCAL);
 		u16(opts.zip64Sizes ? 45 : 20); // version needed to extract
@@ -231,6 +241,21 @@ struct Builder {
 			m.expectDirectory = !c.name.empty() && c.name.back() == '/';
 			m.expectEncrypted = (c.flags & FLAG_ENCRYPTED) != 0;
 			m.expectUnsupportedMethod = (c.method != 0 && c.method != 8);
+
+			m.content = c.content;
+
+			// The default read outcome, in the same precedence the reader applies. NameRejected is
+			// not visible here - it depends on the decoded name - so a case that expects one uses
+			// markNameRejected() below, which sets the flag and this status together.
+			if (m.expectEncrypted) {
+				m.expectRead = Status::ErrorNotImplemented;
+			} else if (m.expectUnsupportedMethod) {
+				m.expectRead = Status::ErrorNotSupported;
+			} else if (m.expectDirectory) {
+				m.expectRead = Status::Declined;
+			} else {
+				m.expectRead = Status::Ok;
+			}
 
 			m.method = c.method;
 			m.flags = c.flags;
@@ -317,6 +342,13 @@ struct Builder {
 		return sprt::move(out);
 	}
 };
+
+// Marks an entry as one the sanitizer refuses. Sets the flag and the read outcome together, so the
+// two cannot drift apart.
+static void markNameRejected(EntryMeta &m) {
+	m.expectNameRejected = true;
+	m.expectRead = Status::ErrorNotPermitted;
+}
 
 static Bytes bytesOf(StringView s) {
 	Bytes b;
@@ -611,6 +643,7 @@ static Case makeBomb() {
 
 	// listed, but reading it must be refused
 	c.entries.emplace_back(EntryExpect{"bomb.txt", Bytes(), false});
+	c.meta[0].expectRead = Status::ErrorBufferOverflow;
 	return c;
 }
 
@@ -636,8 +669,8 @@ static Case makeTraversal() {
 	// ...and here is the replacement breaking it, as promised. Both hostile names are still LISTED -
 	// an archive that carries one is something a caller should be able to see - but they are marked
 	// and reading them is refused.
-	c.meta[0].expectNameRejected = true;
-	c.meta[1].expectNameRejected = true;
+	markNameRejected(c.meta[0]);
+	markNameRejected(c.meta[1]);
 	return c;
 }
 
@@ -1015,7 +1048,175 @@ static Case makeTraversalExtended() {
 	c.archive = b.finish();
 	c.meta = b.metadata();
 
-	for (size_t i = 0; i + 1 < c.meta.size(); ++i) { c.meta[i].expectNameRejected = true; }
+	for (size_t i = 0; i + 1 < c.meta.size(); ++i) { markNameRejected(c.meta[i]); }
+	return c;
+}
+
+// -- stage 4: content --
+
+static Case makeEmptyFile() {
+	Case c;
+	c.name = "empty-file";
+
+	// A legitimately empty file. The engine's reader returns success with nothing in it; libzip's
+	// wrapper refuses it on the `stat.size == 0` early-out in _readFile (SPZip.cc), which makes an
+	// empty file inside an archive unreadable. That is a defect, not a behaviour to carry over.
+	Builder b;
+	b.add("empty.txt", BytesView());
+	b.add("nonempty.txt", viewOf("so the archive is not entirely empty"));
+	c.archive = b.finish();
+	c.meta = b.metadata();
+
+	// MEASURED against libzip: the empty entry is listed, but reading it fails.
+	c.entries.emplace_back(EntryExpect{"empty.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"nonempty.txt",
+		bytesOf("so the archive is not entirely empty"), true});
+	return c;
+}
+
+static Case makeCrcMismatch() {
+	Case c;
+	c.name = "crc-mismatch";
+
+	// The stored CRC belongs to nothing in particular. The data decompresses fine, so nothing but
+	// the checksum can catch it - which is exactly the case the check exists for.
+	EntryOptions opts;
+	opts.method = 8;
+	opts.crcOverrideUsed = true;
+	opts.crcOverride = 0xDEAD'BEEF;
+
+	Builder b;
+	b.add("wrong-crc.txt", viewOf("the checksum does not describe these bytes"), opts);
+	c.archive = b.finish();
+	c.meta = b.metadata();
+	c.meta[0].expectRead = Status::ErrorNotRecoverable;
+
+	// MEASURED against libzip: it hands the 42 bytes back regardless - it does not verify the CRC on
+	// read at all. The engine's reader refuses, which is the whole point of checking: whatever gets
+	// this content parses it, and a parser fed corrupt input fails somewhere far less informative.
+	c.entries.emplace_back(EntryExpect{"wrong-crc.txt",
+		bytesOf("the checksum does not describe these bytes"), true});
+	return c;
+}
+
+static Case makeDeflateCorrupt() {
+	Case c;
+	c.name = "deflate-corrupt";
+
+	StringView name("corrupt.txt");
+	String payload;
+	for (int i = 0; i < 32; ++i) { payload.append("compressible compressible compressible\n"); }
+
+	EntryOptions opts;
+	opts.method = 8;
+
+	Builder b;
+	b.add(name, viewOf(StringView(payload.data(), payload.size())), opts);
+	auto data = b.finish();
+	c.meta = b.metadata();
+
+	// The payload starts right after the local header and the name; there is no extra field here,
+	// so the offset is exact. Damage it a little way in, past the deflate block header.
+	auto payloadStart = 30 + name.size();
+	data[payloadStart + 12] ^= 0xFF;
+	data[payloadStart + 13] ^= 0xFF;
+
+	c.archive = sprt::move(data);
+	c.meta[0].expectRead = Status::ErrorNotRecoverable;
+
+	// MEASURED against libzip: it returns 1248 bytes - the full declared length - from the damaged
+	// stream, and reports success. Flipped bits in a Huffman stream still decode, just to the wrong
+	// symbols, and nothing downstream of libzip notices. Left uncharacterized because those bytes
+	// are garbage and pinning them would assert nothing worth asserting; what matters is recorded
+	// here and in the engine's own expectation above.
+	c.characterized = false;
+	return c;
+}
+
+static Case makeTruncatedData() {
+	Case c;
+	c.name = "truncated-data";
+
+	// The header claims far more compressed data than the file contains. Caught before any of it is
+	// read - the range is checked against the source size first.
+	EntryOptions opts;
+	opts.compSizeOverrideUsed = true;
+	opts.compSizeOverride = 0x10'0000;
+
+	Builder b;
+	b.add("short.txt", viewOf("the header claims much more than this"), opts);
+	c.archive = b.finish();
+	c.meta = b.metadata();
+	c.meta[0].expectRead = Status::ErrorInvalidArguemnt;
+
+	// libzip's own answer is its business here; what matters is that ours refuses rather than
+	// reading past the end.
+	c.characterized = false;
+	return c;
+}
+
+static Case makeLocalExtraDiffers() {
+	Case c;
+	c.name = "local-extra-differs";
+
+	// The local extra field is present and the central one is empty - which is legal and common.
+	// An entry's data offset can therefore only be computed from the LOCAL header; using the
+	// central lengths would start the read 12 bytes early and hand back the extra field as content.
+	Builder v;
+	v.u16(0x9999); // an id nothing interprets
+	v.u16(8);
+	v.u64(0);
+	auto extra = sprt::move(v.out);
+
+	EntryOptions opts;
+	opts.localExtra = extra;
+	// centralExtra deliberately left empty
+
+	Builder b;
+	b.add("offset.txt", viewOf("found only if the local header is consulted"), opts);
+	c.archive = b.finish();
+	c.meta = b.metadata();
+
+	c.entries.emplace_back(EntryExpect{"offset.txt",
+		bytesOf("found only if the local header is consulted"), true});
+	return c;
+}
+
+static Case makeMethodUnsupported() {
+	Case c;
+	c.name = "method-unsupported";
+
+	// Method 12 is bzip2. OCF forbids everything but Store and Deflate, and this reader implements
+	// exactly those two, so the entry is refused by name rather than misread.
+	EntryOptions opts;
+	opts.method = 12;
+
+	Builder b;
+	b.add("bzipped.txt", viewOf("stored bytes wearing a bzip2 label"), opts);
+	c.archive = b.finish();
+	c.meta = b.metadata();
+
+	c.entries.emplace_back(EntryExpect{"bzipped.txt", Bytes(), false});
+	return c;
+}
+
+static Case makeStoreSizeMismatch() {
+	Case c;
+	c.name = "store-size-mismatch";
+
+	// Store means the two sizes are the same number. A header that says otherwise describes an
+	// entry that cannot exist, and believing either size would be a guess.
+	EntryOptions opts;
+	opts.declaredSizeUsed = true;
+	opts.declaredSize = 64;
+
+	Builder b;
+	b.add("mismatched.txt", viewOf("twelve bytes?"), opts);
+	c.archive = b.finish();
+	c.meta = b.metadata();
+	c.meta[0].expectRead = Status::ErrorNotRecoverable;
+
+	c.characterized = false;
 	return c;
 }
 
@@ -1056,6 +1257,15 @@ Vector<Case> buildCorpus() {
 	ret.emplace_back(makeUnicodePathBadVersion());
 	ret.emplace_back(makeCp437Control());
 	ret.emplace_back(makeTraversalExtended());
+
+	// Added for stage 4 (reading an entry's content).
+	ret.emplace_back(makeEmptyFile());
+	ret.emplace_back(makeCrcMismatch());
+	ret.emplace_back(makeDeflateCorrupt());
+	ret.emplace_back(makeTruncatedData());
+	ret.emplace_back(makeLocalExtraDiffers());
+	ret.emplace_back(makeMethodUnsupported());
+	ret.emplace_back(makeStoreSizeMismatch());
 	return ret;
 }
 

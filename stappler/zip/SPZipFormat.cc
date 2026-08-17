@@ -333,6 +333,49 @@ Status zipReadCentralEntry(ZipView &cursor, ZipRawEntry &out) {
 	return Status::Ok;
 }
 
+Status zipReadLocalHeader(BytesView buf, ZipLocalHeader &out) {
+	if (buf.size() < ZIP_LOCAL_SIZE) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	ZipView v(buf.data(), ZIP_LOCAL_SIZE);
+
+	uint32_t sig = 0;
+	uint16_t versionNeeded = 0;
+	uint16_t flags = 0;
+	uint16_t method = 0;
+	uint16_t dosTime = 0;
+	uint16_t dosDate = 0;
+	uint32_t crc = 0;
+	uint32_t compSize = 0;
+	uint32_t rawSize = 0;
+	uint16_t nameLength = 0;
+	uint16_t extraLength = 0;
+
+	takeU32(v, sig);
+	takeU16(v, versionNeeded);
+	takeU16(v, flags);
+	takeU16(v, method);
+	takeU16(v, dosTime);
+	takeU16(v, dosDate);
+	takeU32(v, crc);
+	takeU32(v, compSize);
+	takeU32(v, rawSize);
+	takeU16(v, nameLength);
+	takeU16(v, extraLength);
+
+	if (sig != ZIP_SIG_LOCAL) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	// The sizes and CRC read here are deliberately DISCARDED - see the comment on ZipLocalHeader.
+	out.nameLength = nameLength;
+	out.extraLength = extraLength;
+	out.method = method;
+	out.flags = flags;
+	return Status::Ok;
+}
+
 Time zipDosToUtc(uint16_t date, uint16_t time) {
 	uint32_t year = ((date >> 9) & 0x7F) + 1'980;
 	uint32_t month = (date >> 5) & 0x0F;

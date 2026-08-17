@@ -67,6 +67,17 @@ struct EntryMeta {
 	bool expectEncrypted = false;
 	bool expectUnsupportedMethod = false;
 
+	// The bytes the builder was handed. What reading the entry has to produce.
+	Bytes content;
+
+	/* Exactly what zipReadEntry() must return for this entry.
+	 *
+	 * A status rather than a bool: several distinct rules refuse a read, and "it failed" is an
+	 * assertion that passes even when the WRONG rule fires. Defaults are derived from the flags
+	 * above; a case whose data is deliberately broken (bad CRC, truncated, size mismatch) sets it.
+	 */
+	Status expectRead = Status::Ok;
+
 	uint16_t method = 0;
 	uint16_t flags = 0;
 	uint32_t crc32 = 0;

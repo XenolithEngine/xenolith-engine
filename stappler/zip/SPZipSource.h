@@ -63,6 +63,11 @@ public:
 
 	size_t read(uint8_t *buf, size_t nbytes);
 
+	// Reads exactly `nbytes` at `offset`, or reports failure. A short read is never a partial
+	// success here: everything that reads an archive is reading a record of a known size, and half
+	// of one is not something a caller can do anything with.
+	bool readAt(uint64_t offset, uint8_t *buf, size_t nbytes);
+
 	// io::Seek::End counts back from the end, POSIX-style, on both backings
 	uint64_t seek(int64_t offset, io::Seek);
 
