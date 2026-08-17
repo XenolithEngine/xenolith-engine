@@ -33,53 +33,6 @@
 
 #include <sprt/wrappers/windows/windows.h>
 
-namespace sprt::unicode {
-
-// No case mapping here any more, for code points or for strings: it all comes
-// from the compiled-in Unicode tables (runtime/src/unicode). LCMapStringEx is
-// gone with it, and so are three things it got wrong - the 1:N mappings, which
-// it does not perform at all; titlecasing, which LCMAP_TITLECASE did not deliver
-// under wine and which needs word boundaries in any case; and the dependency of
-// the result on the machine's locale. What is left is collation.
-
-bool compare(StringView l, StringView r, int *result) {
-	bool ret = false;
-	unicode::toUtf16([&](WideStringView lStr) {
-		unicode::toUtf16([&](WideStringView rStr) { ret = compare(lStr, rStr, result); }, r);
-	}, l);
-	return ret;
-}
-
-bool compare(WideStringView l, WideStringView r, int *result) {
-	auto ret = CompareStringEx(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING,
-			(wchar_t *)l.data(), l.size(), (wchar_t *)r.data(), r.size(), nullptr, nullptr, 0);
-	if (ret > 0) {
-		*result = ret - CSTR_EQUAL;
-		return true;
-	}
-	return false;
-}
-
-bool caseCompare(StringView l, StringView r, int *result) {
-	bool ret = false;
-	unicode::toUtf16([&](WideStringView lStr) {
-		unicode::toUtf16([&](WideStringView rStr) { ret = caseCompare(lStr, rStr, result); }, r);
-	}, l);
-	return ret;
-}
-
-bool caseCompare(WideStringView l, WideStringView r, int *result) {
-	auto ret = CompareStringEx(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING | NORM_IGNORECASE,
-			(wchar_t *)l.data(), l.size(), (wchar_t *)r.data(), r.size(), nullptr, nullptr, 0);
-	if (ret > 0) {
-		*result = ret - CSTR_EQUAL;
-		return true;
-	}
-	return false;
-}
-
-} // namespace sprt::unicode
-
 namespace sprt::platform {
 
 char GlobalConfig::localeBuf[6] = "en-us";

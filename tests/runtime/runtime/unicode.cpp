@@ -26,9 +26,11 @@
 // implementation on every platform (runtime/src/unicode, ported from ICU), so
 // everything about them can be required rather than measured - including the
 // mappings that produce several characters from one, the ones that depend on the
-// text around them, and the ones that depend on the language. What is still
-// platform code, and therefore still only asserted over ASCII, is titlecasing
-// (it needs word boundaries) and the two comparators (they are collation).
+// text around them, and the ones that depend on the language. Nothing here is
+// platform code any more: titlecasing brought its own UAX #29 word breaker, and
+// the two orderings - code point order, and code point order after full case
+// folding - came off the platform with it. Collation did not come with them, and
+// is not what these compare.
 //
 // performUnicodeCaseConformanceTests() walks the whole Unicode Character
 // Database and REPORTS A SCORE rather than failing. It was the baseline for
@@ -41,6 +43,14 @@
 #include <sprt/runtime/unicode.h>
 
 #include "data/case_test.cc"
+
+namespace sprt::unicode::detail {
+
+// The batch case folder, declared here rather than published: see foldWide().
+int32_t mapFoldUtf16(uint32_t options, char16_t *dest, int32_t destCapacity, const char16_t *src,
+		int32_t srcLength);
+
+} // namespace sprt::unicode::detail
 
 namespace sprt {
 
@@ -618,31 +628,217 @@ static void testIllFormedUtf8() {
 			"tolower maps a letter that follows a lone lead byte");
 }
 
+// --- comparison --------------------------------------------------------------
+//
+// Both orderings come from the tables now, so these can assert values. Before
+// the port this test could only assert that the backend was self-consistent -
+// the actual order depended on the installed library and on LC_COLLATE, so there
+// was no right answer to compare against.
+
+static int sign(int v) { return v < 0 ? -1 : (v > 0 ? 1 : 0); }
+
+// The batch case folder. Same reasoning as the word breaker in
+// wordbreak_conformance.cpp: this is not public API, but it is the independent
+// implementation of what case_compare.cc does one code point at a time, and the
+// runtime's objects link into this executable directly, so it resolves.
+static WideStringView foldWide(WideStringView src, char16_t *buf, int32_t capacity) {
+	auto n = unicode::detail::mapFoldUtf16(0, buf, capacity, src.data(), int32_t(src.size()));
+	if (n < 0 || n > capacity) {
+		return WideStringView();
+	}
+	return WideStringView(buf, size_t(n));
+}
+
+static void testCodepointOrder() {
+	check(unicode::compareCodepoints(StringView("example"), StringView("example")) == 0,
+			"compareCodepoints(x, x) == 0");
+	check(unicode::compareCodepoints(StringView("abc"), StringView("abcd")) < 0,
+			"compareCodepoints: a prefix sorts first");
+	check(sign(unicode::compareCodepoints(StringView("alpha"), StringView("beta")))
+					== -sign(unicode::compareCodepoints(StringView("beta"), StringView("alpha"))),
+			"compareCodepoints is antisymmetric");
+
+	// Code point order is not code unit order, and this is the only place they
+	// differ: U+10000 is written as the surrogate pair D800 DC00, whose first
+	// unit is below U+FFFD. An implementation that compares char16_t
+	// element-wise - which is what memcmp and the old byte-wise comparator do -
+	// gets this backwards. It is the entire reason the UTF-16 overload decodes.
+	const char16_t bmp[] = {0xfffd};
+	const char16_t supplementary[] = {0xd800, 0xdc00}; // U+10000
+	check(unicode::compareCodepoints(WideStringView(bmp, 1), WideStringView(supplementary, 2)) < 0,
+			"compareCodepoints: U+FFFD < U+10000 in UTF-16");
+	check(unicode::compareCodepoints(WideStringView(supplementary, 2), WideStringView(bmp, 1)) > 0,
+			"compareCodepoints: U+10000 > U+FFFD in UTF-16");
+
+	// The same two, through the encodings where the order is the natural one, so
+	// the UTF-16 answer is pinned to something independent of it.
+	check(unicode::compareCodepoints(StringView("\xef\xbf\xbd"), StringView("\xf0\x90\x80\x80")) < 0,
+			"compareCodepoints: U+FFFD < U+10000 in UTF-8");
+	const char32_t bmp32[] = {0xfffd};
+	const char32_t supplementary32[] = {0x1'0000};
+	check(unicode::compareCodepoints(StringViewBase<char32_t>(bmp32, 1),
+				  StringViewBase<char32_t>(supplementary32, 1))
+					< 0,
+			"compareCodepoints: U+FFFD < U+10000 in UTF-32");
+}
+
+static void testFoldedOrder() {
+	// Full case folding maps one character to several, which no towupper-style
+	// fold can do - and which is why "ß" and "ss" are the same string here.
+	struct FoldVector {
+		StringView l;
+		StringView r;
+		bool equal;
+		StringView what;
+	};
+
+	// clang-format off
+	static constexpr FoldVector vectors[] = {
+		{"Example", "example", true, "compareFolded ignores ASCII case"},
+		{"Example", "examples", false, "compareFolded still separates different strings"},
+		{"\xc3\x9f", "ss", true, "compareFolded: LATIN SMALL LETTER SHARP S folds to ss"},
+		{"\xc3\x9f", "SS", true, "compareFolded: sharp s equals SS"},
+		{"stra\xc3\x9f""e", "STRASSE", true, "compareFolded: straße equals STRASSE"},
+		{"\xef\xac\x81", "fi", true, "compareFolded: ligature fi folds to two letters"},
+		{"\xef\xac\x84", "ffl", true, "compareFolded: ligature ffl folds to three letters"},
+		// The three forms of sigma are one letter for folding purposes, which is
+		// the whole point of Final_Sigma existing in the case mappings.
+		{"\xcf\x82", "\xcf\x83", true, "compareFolded: final sigma equals sigma"},
+		{"\xce\xa3", "\xcf\x82", true, "compareFolded: capital sigma equals final sigma"},
+		// Folding is language-independent by design: the dotted capital I of
+		// Turkish folds to i + combining dot above, not to a plain i, and this
+		// overload takes no locale to change that with.
+		{"\xc4\xb0", "i", false, "compareFolded: dotted capital I does not fold to i"},
+		{"\xc4\xb0", "i\xcc\x87", true, "compareFolded: dotted capital I folds to i + dot above"},
+	};
+	// clang-format on
+
+	for (auto &v : vectors) {
+		auto direct = unicode::compareFolded(v.l, v.r);
+		check((direct == 0) == v.equal, v.what);
+		check(sign(direct) == -sign(unicode::compareFolded(v.r, v.l)),
+				"compareFolded is antisymmetric");
+
+		// Every vector through all three encodings: the three take different code
+		// paths through the same folding engine, and they must not disagree.
+		unicode::toUtf16([&](WideStringView l16) {
+			unicode::toUtf16([&](WideStringView r16) {
+				check(sign(unicode::compareFolded(l16, r16)) == sign(direct),
+						"compareFolded agrees between utf-8 and utf-16");
+			}, v.r);
+		}, v.l);
+		unicode::toUtf32([&](StringViewBase<char32_t> l32) {
+			unicode::toUtf32([&](StringViewBase<char32_t> r32) {
+				check(sign(unicode::compareFolded(l32, r32)) == sign(direct),
+						"compareFolded agrees between utf-8 and utf-32");
+			}, v.r);
+		}, v.l);
+	}
+
+	check(unicode::compareFolded(StringView("abc"), StringView("abcd")) < 0,
+			"compareFolded: a prefix sorts first");
+}
+
+// A byte that starts no well-formed sequence is not a character and cannot be
+// folded, but the result still has to be a total order - these functions sit
+// under container comparators, where a comparison that is not one silently
+// corrupts the container rather than failing.
+static void testIllFormedOrder() {
+	auto truncated = StringView("a\xc3", 2);
+	auto overlong = StringView("a\xc0\xaf", 3);
+	auto plain = StringView("a");
+
+	check(sign(unicode::compareFolded(truncated, plain))
+					== -sign(unicode::compareFolded(plain, truncated)),
+			"compareFolded is antisymmetric on ill-formed input");
+	check(unicode::compareFolded(truncated, plain) > 0,
+			"compareFolded: an ill-formed byte sorts after the end of the string");
+	check(unicode::compareFolded(truncated, overlong) != 0,
+			"compareFolded: different ill-formed bytes stay different");
+	check(unicode::compareFolded(truncated, truncated) == 0,
+			"compareFolded: an ill-formed string equals itself");
+	check(unicode::compareFolded(StringView("\xc3\xa9"), StringView("\xc3")) < 0,
+			"compareFolded: a real character sorts before an ill-formed byte");
+}
+
+// Every code point in the space, folded by the batch mapper and compared against
+// itself by the incremental one. Full case folding is idempotent, so the two
+// must agree on all 0x110000 - and this is what catches a pending run that is
+// read one unit short or dropped at the end of the input, which is where a
+// hand-written incremental folder goes wrong.
+static void testFoldSweep() {
+	int mismatches = 0;
+	char32_t firstMismatch = 0;
+	for (char32_t c = 0; c < 0x11'0000; ++c) {
+		if (c >= 0xd800 && c <= 0xdfff) {
+			continue; // a lone surrogate is not a character
+		}
+		char16_t src[2];
+		auto srcLength = unicode::utf16EncodeBuf(src, 2, c);
+
+		char16_t buf[8];
+		auto folded = foldWide(WideStringView(src, srcLength), buf, 8);
+		if (unicode::compareFolded(WideStringView(src, srcLength), folded) != 0) {
+			if (mismatches == 0) {
+				firstMismatch = c;
+			}
+			++mismatches;
+		}
+	}
+	if (mismatches != 0) {
+		sprt::cerr << "  (" << mismatches << " code points, first U+" << firstMismatch << ")\n";
+	}
+	check(mismatches == 0, "compareFolded matches the batch folder over the whole code space");
+}
+
+// The same check with two different strings, over the rows the conformance suite
+// already reads: sign(compareFolded(a, b)) must equal
+// sign(compareCodepoints(fold(a), fold(b))), which is the definition the
+// incremental engine is supposed to implement.
+static void testFoldMatchesBatch() {
+	constexpr int32_t Capacity = 64;
+	int mismatches = 0;
+	auto count = int(sizeof(s_caseFull) / sizeof(s_caseFull[0]));
+	for (int i = 0; i < count; ++i) {
+		// Each row against its own mappings and against the next row, so the
+		// pairs cover both "equal after folding" and "different".
+		StringView pairs[][2] = {
+			{s_caseFull[i].source, s_caseFull[i].lower},
+			{s_caseFull[i].source, s_caseFull[i].upper},
+			{s_caseFull[i].source, s_caseFull[(i + 1) % count].source},
+		};
+		for (auto &p : pairs) {
+			auto incremental = sign(unicode::compareFolded(p[0], p[1]));
+			unicode::toUtf16([&](WideStringView l16) {
+				unicode::toUtf16([&](WideStringView r16) {
+					char16_t lbuf[Capacity], rbuf[Capacity];
+					auto batch = sign(unicode::compareCodepoints(foldWide(l16, lbuf, Capacity),
+							foldWide(r16, rbuf, Capacity)));
+					if (batch != incremental) {
+						++mismatches;
+					}
+				}, p[1]);
+			}, p[0]);
+		}
+	}
+	check(mismatches == 0,
+			"compareFolded matches fold-then-compare over the SpecialCasing corpus");
+}
+
 static void testComparators() {
-	int result = 0;
-
-	// A string compares equal to itself under both orderings, whatever collation
-	// the backend happens to implement.
-	if (unicode::compare(StringView("example"), StringView("example"), &result)) {
-		check(result == 0, "compare(x, x) == 0");
-	}
-	if (unicode::caseCompare(StringView("Example"), StringView("example"), &result)) {
-		check(result == 0, "caseCompare of strings differing only by case -> 0");
-	}
-
-	// Antisymmetry: whatever order the backend picks, it must pick it consistently.
-	int forward = 0, backward = 0;
-	if (unicode::compare(StringView("alpha"), StringView("beta"), &forward)
-			&& unicode::compare(StringView("beta"), StringView("alpha"), &backward)) {
-		check((forward < 0) == (backward > 0) && (forward == 0) == (backward == 0),
-				"compare is antisymmetric");
-	}
+	testCodepointOrder();
+	testFoldedOrder();
+	testIllFormedOrder();
+	testFoldSweep();
+	testFoldMatchesBatch();
 
 	// The comparator templates built on top of them.
 	check(StringView("Example").equals<StringCaseComparator>(StringView("example")),
 			"StringCaseComparator ignores ASCII case");
 	check(!StringView("Example").equals<StringCaseComparator>(StringView("examples")),
 			"StringCaseComparator still separates different strings");
+	check(StringView("\xc3\x9f").equals<StringUnicodeCaseComparator>(StringView("ss")),
+			"StringUnicodeCaseComparator folds one character into two");
 }
 
 void performUnicodeTests() {

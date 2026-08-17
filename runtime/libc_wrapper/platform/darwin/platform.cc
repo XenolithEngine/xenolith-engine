@@ -20,6 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+// Platform integration for macOS and iOS: the locale, the device id, the paths,
+// and the process-wide config every target has to answer for.
+//
+// This file was `unicode.cc` until CoreFoundation stopped being asked anything
+// about Unicode. Case mapping went to the compiled-in tables
+// (runtime/src/unicode) with the rest of the port, and comparison followed:
+// `CFStringCompareWithOptionsAndLocale` was collation, and the runtime no longer
+// claims to collate. CFLocale is still here, for `getOsLocale`.
+
 #define __SPRT_BUILD 1
 
 #include <sprt/runtime/platform.h>
@@ -29,7 +38,6 @@ THE SOFTWARE.
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/unicode.h>
 #include <sprt/runtime/utils/uuid.h>
 #include <sprt/runtime/utils/dso.h>
 #include <sprt/cxx/mutex>
@@ -43,104 +51,6 @@ THE SOFTWARE.
 #include <unistd.h>
 
 extern "C" int _NSGetExecutablePath(char *buf, uint32_t *bufsize);
-
-namespace sprt::unicode {
-
-static CFMutableStringRef makeString(WideStringView str) {
-	auto ret = CFStringCreateMutable(nullptr, str.size());
-	CFStringAppendCharacters(ret, (UniChar *)str.data(), str.size());
-	return ret;
-}
-
-static CFMutableStringRef makeString(StringViewUtf8 str) {
-	auto ret = CFStringCreateMutable(nullptr, str.code_size());
-	UniChar buf[4] = {0};
-	str.foreach ([&](char32_t c) {
-		auto num = unicode::utf16EncodeBuf((char16_t *)buf, 4, c);
-		CFStringAppendCharacters(ret, buf, num);
-	});
-	return ret;
-}
-
-// No case mapping here any more, for code points or for strings: it all comes
-// from the compiled-in Unicode tables (runtime/src/unicode). CoreFoundation is
-// only asked about collation now, which is why the CFString -> callback readers
-// that used to be here are gone with it: comparing needs the strings going in,
-// not the text coming out.
-
-bool compare(StringView l, StringView r, int *res) {
-	if (!res) {
-		return false;
-	}
-
-	auto locale = CFLocaleCopyCurrent();
-	auto lstr = makeString(l);
-	auto rstr = makeString(r);
-
-	*res = CFStringCompareWithOptionsAndLocale(lstr, rstr, CFRangeMake(0, CFStringGetLength(lstr)),
-			kCFCompareLocalized, locale);
-
-	CFRelease(rstr);
-	CFRelease(lstr);
-	CFRelease(locale);
-	return true;
-}
-
-bool compare(WideStringView l, WideStringView r, int *res) {
-	if (!res) {
-		return false;
-	}
-
-	auto locale = CFLocaleCopyCurrent();
-	auto lstr = makeString(l);
-	auto rstr = makeString(r);
-
-	*res = CFStringCompareWithOptionsAndLocale(lstr, rstr, CFRangeMake(0, CFStringGetLength(lstr)),
-			kCFCompareLocalized, locale);
-
-	CFRelease(rstr);
-	CFRelease(lstr);
-	CFRelease(locale);
-	return true;
-}
-
-bool caseCompare(StringView l, StringView r, int *res) {
-	if (!res) {
-		return false;
-	}
-
-	auto locale = CFLocaleCopyCurrent();
-	auto lstr = makeString(l);
-	auto rstr = makeString(r);
-
-	*res = CFStringCompareWithOptionsAndLocale(lstr, rstr, CFRangeMake(0, CFStringGetLength(lstr)),
-			kCFCompareLocalized | kCFCompareCaseInsensitive, locale);
-
-	CFRelease(rstr);
-	CFRelease(lstr);
-	CFRelease(locale);
-	return true;
-}
-
-bool caseCompare(WideStringView l, WideStringView r, int *res) {
-	if (!res) {
-		return false;
-	}
-
-	auto locale = CFLocaleCopyCurrent();
-	auto lstr = makeString(l);
-	auto rstr = makeString(r);
-
-	*res = CFStringCompareWithOptionsAndLocale(lstr, rstr, CFRangeMake(0, CFStringGetLength(lstr)),
-			kCFCompareLocalized | kCFCompareCaseInsensitive, locale);
-
-	CFRelease(rstr);
-	CFRelease(lstr);
-	CFRelease(locale);
-	return true;
-}
-
-} // namespace sprt::unicode
 
 namespace sprt::platform {
 

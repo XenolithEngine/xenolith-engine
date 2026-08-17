@@ -1065,11 +1065,33 @@ SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView, St
 SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView, StringView locale);
 SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView, StringView locale);
 
-SPRT_API bool compare(StringView l, StringView r, int *result);
-SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
+// Ordering. Both of these are pure functions of the compiled-in Unicode tables:
+// no locale is read, no system library is consulted, and the answer is the same
+// on every target and every machine. Both are total orders over arbitrary input,
+// including input that is not well-formed. They return the sign, like strcmp.
+//
+// Neither is collation. Collation is the language-dependent ordering shown to a
+// user - where ё goes relative to the rest of the Russian alphabet, whether å
+// sits next to a or after z, whether uppercase sorts before lowercase - and it
+// needs CLDR tailoring data the runtime does not carry. Do not use these to sort
+// a list a person will read.
+//
+// compareCodepoints is the order of the Unicode code points. Use it for keys,
+// indexes, protocols and reproducible tests. Note that for UTF-16 this is not
+// the order of the code units: a supplementary character sorts after every BMP
+// one, where its leading surrogate would sort before U+E000.
+SPRT_API int compareCodepoints(StringView l, StringView r);
+SPRT_API int compareCodepoints(WideStringView l, WideStringView r);
+SPRT_API int compareCodepoints(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
 
-SPRT_API bool caseCompare(StringView l, StringView r, int *result);
-SPRT_API bool caseCompare(WideStringView l, WideStringView r, int *result);
+// compareFolded applies the full case folding of the UCD and then compares code
+// points, so it is case-insensitive in the way Unicode defines it: mappings of
+// one character to several are included, and "ß" and "ss" compare equal, as do
+// the three forms of sigma. Compare against 0 for case-insensitive equality.
+// Folding is language-independent by design and takes no locale.
+SPRT_API int compareFolded(StringView l, StringView r);
+SPRT_API int compareFolded(WideStringView l, WideStringView r);
+SPRT_API int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
 
 } // namespace sprt::unicode
 
@@ -1275,13 +1297,13 @@ inline int compare_c(const L &l, const R &r) {
 	return compare_c(l.data(), l.size(), r.data(), r.size());
 }
 
+// Unicode-aware counterparts of compare_c / caseCompare_c below. They used to
+// carry a fallback to the byte-wise versions, because the implementation was the
+// platform's and could be missing; it comes from the compiled-in tables now and
+// always answers.
 template <typename L, typename R, typename CharType>
 inline int compare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::compare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return compare_c(l, r);
+	return unicode::compareCodepoints(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 template <typename L, typename R, typename CharType>
@@ -1308,11 +1330,7 @@ inline int caseCompare_c(const L &l, const R &r) {
 
 template <typename L, typename R, typename CharType>
 inline int caseCompare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::caseCompare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return caseCompare_c(l, r);
+	return unicode::compareFolded(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 } // namespace sprt::detail
