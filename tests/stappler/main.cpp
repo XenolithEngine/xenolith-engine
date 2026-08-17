@@ -53,6 +53,8 @@ static const TestEntry s_testList[] = {
 	{"cmdline", &stappler::performCommandLineTests},
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},
+	{"zip", &stappler::performZipTests},
+	{"iosource", &stappler::performIoSourceTests},
 };
 
 int main(int argc, const char *argv[]) {

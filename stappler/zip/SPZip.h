@@ -25,6 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_ZIP_SPZIP_H_
 
 #include "SPBuffer.h"
+#include "SPZipSource.h"
 
 #include <stdio.h>
 
@@ -41,10 +42,15 @@ struct ZipBuffer {
 	using Buffer = BufferTemplate<Interface>;
 
 	bool readonly = false;
-	void *handle = nullptr;
-	void (*finalize)(void *) = nullptr;
 
+	// Where read commands take their bytes from - a memory range or an open file. Re-pointed at
+	// `data` whenever a write commits, since committing replaces that buffer wholesale.
+	ZipSource source;
+
+	// the archive bytes for an in-memory archive, and the target a write commits into
 	Buffer data;
+
+	// staging area a write accumulates into before it is committed
 	Buffer buffer;
 };
 

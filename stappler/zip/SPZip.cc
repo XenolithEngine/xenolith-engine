@@ -38,34 +38,28 @@ namespace STAPPLER_VERSIONIZED stappler {
 
 template <typename Interface>
 static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
-	size_t size = sizeof(filesystem::File) + alignof(filesystem::File) * 2;
-
-	d->data = BufferTemplate<Interface>(size);
-
-	auto ptr = d->data.prepare(size);
-	auto target = (void *)math::align(uintptr_t(ptr), uintptr_t(alignof(filesystem::File)));
-	auto f = new (target) filesystem::File(filesystem::openForReading(info));
+	auto f = filesystem::openForReading(info);
+	if (!f) {
+		return nullptr;
+	}
 
 	uint8_t magicBuf[4] = {0};
-	f->read(magicBuf, 4);
+	f.read(magicBuf, 4);
 
 	if (sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG1, 4) != 0
 			&& sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG2, 4) != 0
 			&& sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG3, 4) != 0) {
-		f->close();
-		f->~File();
+		f.close();
 		return nullptr;
 	}
 
-	f->seek(0, io::Seek::Set);
-
 	d->readonly = true;
-	d->handle = f;
+	d->source.setFile(sprt::move(f));
+	d->source.seek(0, io::Seek::Set);
 
 	auto source = zip_source_function_create(
 			[](void *ud, void *data, zip_uint64_t size, zip_source_cmd_t cmd) -> zip_int64_t {
 		auto d = (ZipBuffer<Interface> *)ud;
-		auto f = (filesystem::File *)d->handle;
 
 		switch (cmd) {
 		case ZIP_SOURCE_REMOVE:
@@ -76,14 +70,14 @@ static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
 			return 0;
 			break;
 		case ZIP_SOURCE_READ: {
-			return f->read((uint8_t *)data, size);
+			return d->source.read((uint8_t *)data, size);
 			break;
 		}
 		case ZIP_SOURCE_STAT: {
 			zip_stat_t *stat = (zip_stat_t *)data;
 			zip_stat_init(stat);
 			stat->valid = ZIP_STAT_SIZE;
-			stat->size = f->size();
+			stat->size = d->source.size();
 			return sizeof(struct zip_stat);
 			break; /* get meta information */
 		}
@@ -95,22 +89,32 @@ static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
 		}
 		case ZIP_SOURCE_SEEK_WRITE: return 0; break;
 		case ZIP_SOURCE_SEEK: {
+			// ZIP_SOURCE_GET_ARGS returns null when libzip hands over fewer bytes than the argument
+			// struct needs; dereferencing that would fault
 			zip_source_args_seek *st =
 					ZIP_SOURCE_GET_ARGS(zip_source_args_seek, data, size, nullptr);
+			if (!st) {
+				return -1;
+			}
 			switch (st->whence) {
-			case 0: f->seek(st->offset, io::Seek::Set); break;
-			case 1: f->seek(st->offset, io::Seek::Current); break;
-			case 2: f->seek(st->offset, io::Seek::End); break;
+			case 0: d->source.seek(st->offset, io::Seek::Set); break;
+			case 1: d->source.seek(st->offset, io::Seek::Current); break;
+			case 2: d->source.seek(st->offset, io::Seek::End); break;
+			default: return -1;
 			}
 			return 0;
 			break; /* set position for reading */
 		}
-		case ZIP_SOURCE_TELL_WRITE: return f->tell(); break; /* get write position */
-		case ZIP_SOURCE_TELL: return f->tell(); break; /* get read position */
+		case ZIP_SOURCE_TELL_WRITE: return d->source.tell(); break; /* get write position */
+		case ZIP_SOURCE_TELL: return d->source.tell(); break; /* get read position */
 		case ZIP_SOURCE_SUPPORTS: {
+			// zip_source_make_command_bitmap is variadic and stops at the first NEGATIVE argument -
+			// the trailing -1 is required. Without it the loop walks off the end of the argument
+			// list and folds whatever the stack held into the bitmap, so the set of commands this
+			// source claims to support varies from run to run.
 			auto supports = zip_source_make_command_bitmap(ZIP_SOURCE_OPEN, ZIP_SOURCE_READ,
 					ZIP_SOURCE_CLOSE, ZIP_SOURCE_STAT, ZIP_SOURCE_ERROR, ZIP_SOURCE_FREE,
-					ZIP_SOURCE_SEEK, ZIP_SOURCE_TELL, ZIP_SOURCE_SUPPORTS);
+					ZIP_SOURCE_SEEK, ZIP_SOURCE_TELL, ZIP_SOURCE_SUPPORTS, -1);
 			return supports;
 			break; /* check whether source supports command */
 		}
@@ -123,18 +127,18 @@ static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
 		return -1;
 	}, d, nullptr);
 
+	// zip_error_t must be initialized before libzip touches it: setting an error frees the previous
+	// `str`, so handing over an uninitialized struct means free() on whatever the stack held. And
+	// `str` is only populated by zip_error_strerror() - reading the field directly yields garbage.
 	zip_error_t err;
+	zip_error_init(&err);
+
 	auto handle = zip_open_from_source(source, ZIP_RDONLY, &err);
 	if (!handle) {
-		f->~File();
-		log::source().warn("ZipArchive",
-				"Fail to create archive: ", err.str ? err.str : "unknown error");
-	} else {
-		d->finalize = [](void *ptr) {
-			auto f = (filesystem::File *)ptr;
-			f->~File();
-		};
+		log::source().warn("ZipArchive", "Fail to create archive: ", zip_error_strerror(&err));
 	}
+
+	zip_error_fini(&err);
 	return handle;
 }
 
@@ -167,6 +171,8 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 	}
 
 	d->readonly = readonly;
+	d->source.setMemory(BytesView(d->data.data(), d->data.input()));
+	d->source.seek(0, io::Seek::Set);
 
 	auto source = zip_source_function_create(
 			[](void *ud, void *data, zip_uint64_t size, zip_source_cmd_t cmd) -> zip_int64_t {
@@ -180,16 +186,14 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 			return 0;
 			break;
 		case ZIP_SOURCE_READ: {
-			auto v = d->data.template read<BytesView>(size);
-			sprt::memcpy(data, v.data(), v.size());
-			return v.size();
+			return d->source.read((uint8_t *)data, size);
 			break;
 		}
 		case ZIP_SOURCE_STAT: {
 			zip_stat_t *stat = (zip_stat_t *)data;
 			zip_stat_init(stat);
 			stat->valid = ZIP_STAT_SIZE;
-			stat->size = d->data.input();
+			stat->size = d->source.size();
 			return sizeof(struct zip_stat);
 			break; /* get meta information */
 		}
@@ -200,27 +204,37 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 			break; /* get error information */
 		}
 		case ZIP_SOURCE_SEEK_WRITE: {
-			auto off = zip_source_seek_compute_offset(d->data.size(), d->data.input(), data, size,
-					nullptr);
+			// the position being moved belongs to the WRITE stream, so it is computed from that
+			// buffer - computing it from the read buffer yielded a wild offset, and seeking a
+			// BufferTemplate there tries to grow it to match
+			auto off = zip_source_seek_compute_offset(d->buffer.size(), d->buffer.input(), data,
+					size, nullptr);
+			if (off < 0) {
+				return -1;
+			}
 			d->buffer.seek(off);
 			return 0;
 			break; /* get write position */
 		}
 		case ZIP_SOURCE_SEEK: {
-			auto off = zip_source_seek_compute_offset(d->data.size(), d->data.input(), data, size,
+			auto off = zip_source_seek_compute_offset(d->source.tell(), d->source.size(), data, size,
 					nullptr);
-			d->data.seek(off);
+			if (off < 0) {
+				return -1;
+			}
+			d->source.seek(off, io::Seek::Set);
 			return 0;
 			break; /* set position for reading */
 		}
 		case ZIP_SOURCE_TELL_WRITE: return d->buffer.size(); break; /* get write position */
-		case ZIP_SOURCE_TELL: return d->data.size(); break; /* get read position */
+		case ZIP_SOURCE_TELL: return d->source.tell(); break; /* get read position */
 		case ZIP_SOURCE_SUPPORTS: {
+			// the trailing -1 terminates the variadic list; see the note in the FileInfo variant
 			auto supports = zip_source_make_command_bitmap(ZIP_SOURCE_OPEN, ZIP_SOURCE_READ,
 					ZIP_SOURCE_CLOSE, ZIP_SOURCE_STAT, ZIP_SOURCE_ERROR, ZIP_SOURCE_FREE,
 					ZIP_SOURCE_SEEK, ZIP_SOURCE_TELL, ZIP_SOURCE_SUPPORTS, ZIP_SOURCE_BEGIN_WRITE,
 					ZIP_SOURCE_COMMIT_WRITE, ZIP_SOURCE_ROLLBACK_WRITE, ZIP_SOURCE_SEEK_WRITE,
-					ZIP_SOURCE_TELL_WRITE, ZIP_SOURCE_REMOVE, ZIP_SOURCE_WRITE);
+					ZIP_SOURCE_TELL_WRITE, ZIP_SOURCE_REMOVE, ZIP_SOURCE_WRITE, -1);
 			return supports;
 			break; /* check whether source supports command */
 		}
@@ -232,6 +246,9 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 		case ZIP_SOURCE_COMMIT_WRITE:
 			d->data = move(d->buffer);
 			d->buffer.clear();
+			// the buffer the source was reading from has just been replaced - re-point it, or every
+			// later read would go through a view of the old, freed storage
+			d->source.setMemory(BytesView(d->data.data(), d->data.input()));
 			return 0;
 			break; /* writing is done */
 		case ZIP_SOURCE_ROLLBACK_WRITE:
@@ -253,12 +270,16 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 		flags |= ZIP_TRUNCATE;
 	}
 
+	// see the note on zip_error_init in the FileInfo variant above
 	zip_error_t err;
+	zip_error_init(&err);
+
 	auto handle = zip_open_from_source(source, flags, &err);
 	if (!handle) {
-		log::source().warn("ZipArchive",
-				"Fail to create archive: ", err.str ? err.str : "unknown error");
+		log::source().warn("ZipArchive", "Fail to create archive: ", zip_error_strerror(&err));
 	}
+
+	zip_error_fini(&err);
 	return handle;
 }
 
@@ -267,47 +288,52 @@ static zip_t *_createZipArchive(FILE *file, bool readonly) {
 	return zip_open_from_source(source, readonly ? ZIP_RDONLY : 0, nullptr);
 }
 
+// Ownership here is subtle enough that getting it wrong aborts the process, which is exactly what
+// used to happen (twice) once anything actually exercised this path:
+//
+//   * the payload buffer. For a pool the pool owns it, so the source is created with freep = 0. For
+//     malloc the source is created with freep = 1, which hands the buffer to libzip - freeing it
+//     here as well was a double free.
+//   * the source itself. zip_file_add CONSUMES it on success ("zip_source_free should not be called
+//     on a source after it was used successfully in a zip_file_add call" - libzip's own manual), and
+//     leaves it to the caller only on failure. Freeing it unconditionally was the second double
+//     free.
 template <typename Interface>
 static bool addFileToArchive(zip_t *_handle, StringView name, BytesView data, bool uncompressed) {
 	zip_source_t *source = nullptr;
-	uint8_t *buf = nullptr;
 
 	if constexpr (sprt::is_same<Interface, memory::PoolInterface>::value) {
-		buf = (uint8_t *)memory::pool::palloc(memory::pool::acquire(), data.size());
+		auto buf = (uint8_t *)memory::pool::palloc(memory::pool::acquire(), data.size());
 		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 0);
 	} else {
-		buf = sprt::__new_n<uint8_t>(data.size());
+		auto buf = sprt::__new_n<uint8_t>(data.size());
 		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 1);
-	}
-
-	bool ret = false;
-	if (source) {
-		auto idx = zip_file_add(_handle,
-				name.terminated() ? name.data() : name.str<Interface>().data(), source,
-				ZIP_FL_ENC_UTF_8);
-		if (idx < 0) {
-			auto err = zip_get_error(_handle);
-			if (err) {
-				log::source().error("ZIP", zip_error_strerror(err));
-			}
-
-			ret = false;
-		} else {
-			if (uncompressed) {
-				zip_set_file_compression(_handle, idx, ZIP_CM_STORE, 0);
-			}
-
-			ret = true;
+		if (!source) {
+			// ownership never transferred, so the buffer is still ours
+			sprt::__delete_n(buf);
 		}
 	}
-	zip_source_free(source);
 
-	if constexpr (!sprt::is_same_v<Interface, memory::PoolInterface>) {
-		sprt::__delete_n(buf);
+	if (!source) {
+		return false;
 	}
-	return ret;
+
+	auto idx = zip_file_add(_handle, name.terminated() ? name.data() : name.str<Interface>().data(),
+			source, ZIP_FL_ENC_UTF_8);
+	if (idx < 0) {
+		if (auto err = zip_get_error(_handle)) {
+			log::source().error("ZIP", zip_error_strerror(err));
+		}
+		zip_source_free(source);
+		return false;
+	}
+
+	if (uncompressed) {
+		zip_set_file_compression(_handle, idx, ZIP_CM_STORE, 0);
+	}
+	return true;
 }
 
 template <>
@@ -332,14 +358,14 @@ ZipArchive<memory::PoolInterface>::ZipArchive(FILE *file, bool readonly) {
 	_data.readonly = readonly;
 }
 
+// ZipSource owns its backing (an open file destructs with it), so there is nothing left to finalize
+// by hand here - the manual placement-new/destructor dance the file source used to need is gone.
+
 template <>
 ZipArchive<mem_std::Interface>::~ZipArchive() {
 	if (_handle) {
 		zip_discard(_handle);
 		_handle = nullptr;
-	}
-	if (_data.handle && _data.finalize) {
-		_data.finalize(_data.handle);
 	}
 }
 
@@ -348,9 +374,6 @@ ZipArchive<memory::PoolInterface>::~ZipArchive() {
 	if (_handle) {
 		zip_discard(_handle);
 		_handle = nullptr;
-	}
-	if (_data.handle && _data.finalize) {
-		_data.finalize(_data.handle);
 	}
 }
 
