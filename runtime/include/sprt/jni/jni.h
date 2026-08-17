@@ -123,15 +123,10 @@ struct EnvironmentProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
-// Only titlecasing is bound: lowercasing and uppercasing, for code points and
-// for strings alike, come from the compiled-in Unicode tables in
-// runtime/src/unicode and no longer make a JNI call on any device.
-struct UCharacterProxy : jni::ClassProxy {
-	jni::StaticMethod<"toTitleCase", jstring(jstring, L<"android/icu/text/BreakIterator">)>
-			toTitleString = this;
-
-	using jni::ClassProxy::ClassProxy;
-};
+// android.icu.lang.UCharacter is no longer bound at all: case mapping, for code
+// points and for strings and in all three directions, comes from the compiled-in
+// Unicode tables in runtime/src/unicode and makes no JNI call on any device.
+// java.text.Collator below stays, because collation does not.
 
 struct CollatorProxy : jni::ClassProxy {
 	jni::StaticField<"PRIMARY", jint> PRIMARY = this;
@@ -662,7 +657,6 @@ struct SPRT_API App : public sprt::Ref {
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";
 	EnvironmentProxy Environment = "android/os/Environment";
-	UCharacterProxy UCharacter = "android/icu/lang/UCharacter";
 	CollatorProxy Collator = "android/icu/text/Collator";
 	PackageInfoProxy PackageInfo = "android/content/pm/PackageInfo";
 	ResourcesProxy Resources = "android/content/res/Resources";

@@ -1059,9 +1059,11 @@ SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView);
 // explicitly when the text is known to be in one of those six languages.
 SPRT_API bool toupper(const callback<void(StringView)> &, StringView, StringView locale);
 SPRT_API bool tolower(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool totitle(const callback<void(StringView)> &, StringView, StringView locale);
 
 SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView, StringView locale);
 SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView, StringView locale);
 
 SPRT_API bool compare(StringView l, StringView r, int *result);
 SPRT_API bool compare(WideStringView l, WideStringView r, int *result);

@@ -51,31 +51,11 @@ static qmutex s_collatorMutex;
 
 namespace icujava {
 
-// Lowercasing and uppercasing had a JNI fallback here (UCharacter.toLowerCase
-// and friends) for devices without libicu.so, both per code point and per
-// string. They are gone: those mappings come from the compiled-in Unicode tables
-// now, on every device and with no JNI call. Titlecasing stays, because it needs
-// a BreakIterator.
-
-bool totitle(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret = app->UCharacter
-					   .toTitleString(app->UCharacter.getClass().ref(env), env.newString(data),
-							   nullptr)
-					   .getString();
-	cb(ret);
-	return true;
-}
-
-bool totitle(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto env = jni::Env::getEnv();
-	auto ret = app->UCharacter
-					   .toTitleString(app->UCharacter.getClass().ref(env), env.newString(data),
-							   nullptr)
-					   .getWideString();
-	cb(ret);
-	return true;
-}
+// Case mapping had a JNI fallback here (android.icu.lang.UCharacter) for devices
+// without libicu.so, per code point and per string. It is gone in full: the
+// mappings come from the compiled-in Unicode tables now, on every device and with
+// no JNI call, and titlecasing brought its own word breaker with it. What is left
+// is java.text.Collator, which is collation.
 
 bool compare(jni::App *app, StringView l, StringView r, bool caseInsensetive, int *result) {
 	auto env = jni::Env::getEnv();
@@ -120,62 +100,13 @@ using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char1
 
 static Dso s_icuNative;
 
-
-static int32_t (*strToTitle_fn)(char16_t *dest, int32_t destCapacity, const char16_t *src,
-		int32_t srcLength, void *iter, const char *locale, int *pErrorCode) = nullptr;
-
 static cmp_fn u_strCompare = nullptr;
 static case_cmp_fn u_strCaseCompare = nullptr;
 
-// tolower/toupper are no longer here, for code points or for strings: they come
-// from the compiled-in Unicode tables (runtime/src/unicode), so they no longer
-// depend on libicu.so being present or on a JNI round trip.
-
-bool totitle(const callback<void(StringView)> &cb, StringView data) {
-	if (s_icuNative) {
-		bool ret = false;
-		toUtf16([&](WideStringView uData) {
-			ret = totitle([&](WideStringView result) { toUtf8(cb, result); }, uData);
-		}, data);
-		if (ret) {
-			return ret;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::totitle(app, cb, data);
-	}
-	return false;
-}
-
-bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
-	if (s_icuNative) {
-		__malloc_u16string str;
-		str.resize(data.size());
-
-		int status = 0;
-		size_t capacity = str.size();
-		auto ptr = str.data();
-
-		auto len =
-				strToTitle_fn(ptr, capacity, data.data(), data.size(), nullptr, nullptr, &status);
-		if (len <= int32_t(str.size())) {
-			str.resize(len);
-		} else {
-			capacity = len;
-			str.resize(capacity);
-			ptr = str.data();
-			strToTitle_fn(ptr, capacity, data.data(), data.size(), nullptr, nullptr, &status);
-		}
-		if (status == 0) {
-			cb(ptr);
-			return true;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::totitle(app, cb, data);
-	}
-	return false;
-}
+// No case mapping here any more, for code points or for strings: it all comes
+// from the compiled-in Unicode tables (runtime/src/unicode), so it no longer
+// depends on libicu.so being present or on a JNI round trip. libicu.so is still
+// opened, for collation.
 
 bool compare(StringView l, StringView r, int *result) {
 	if (u_strCompare) {
@@ -373,9 +304,6 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 
 	unicode::s_icuNative = Dso("libicu.so");
 	if (unicode::s_icuNative) {
-		unicode::strToTitle_fn =
-				unicode::s_icuNative.sym<decltype(unicode::strToTitle_fn)>("u_strToTitle");
-
 		unicode::u_strCompare =
 				unicode::s_icuNative.sym<decltype(unicode::u_strCompare)>("u_strCompare");
 		unicode::u_strCaseCompare =

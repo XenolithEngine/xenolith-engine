@@ -3,37 +3,15 @@
 // memory. Callers supply the sinks that differ per context (console, thread spawn, bundle).
 
 // ---- Unicode helpers backing the sprt::unicode wasm backend -----------------------------
-// What is still delegated here is what the runtime does not implement itself: titlecasing,
-// which needs word boundaries, and collation, which is language-dependent ordering. The
-// standard String/Intl APIs provide both.
+// All that is still delegated here is collation, which is language-dependent ordering and
+// which Intl provides.
 //
-// Everything else has moved into the runtime, so that every target gives the same answer
-// and a host that provides none of this is no longer a runtime without it: IDNA via the
-// UTS-46 engine (runtime/src/idn), and lowercasing/uppercasing via the compiled-in case
-// tables (runtime/src/unicode). Operations 0, 1, 3 and 4 of unicode_transform are therefore
-// retired - the numbering of the surviving one is part of the ABI and does not shift.
-
-function titleCase(s) {
-	let out = "", prevLetter = false;
-	for (const ch of s) {
-		const isLetter = /\p{L}/u.test(ch);
-		out += isLetter && !prevLetter ? ch.toUpperCase() : ch;
-		prevLetter = isLetter;
-	}
-	return out;
-}
-// op: 2 title. (0 lower and 1 upper are now done in the runtime, as are 3 and 4, IDNA.)
-// Returns null on error.
-function unicodeTransform(op, s) {
-	try {
-		switch (op) {
-		case 2: return titleCase(s);
-		default: return null;
-		}
-	} catch {
-		return null;
-	}
-}
+// Everything else has moved into the runtime, so that every target gives the same answer and
+// a host that provides none of this is no longer a runtime without it: IDNA via the UTS-46
+// engine (runtime/src/idn), and case mapping - lower, upper and title, the last with UAX #29
+// word breaking - via the compiled-in tables (runtime/src/unicode). The `unicode_char` and
+// `unicode_transform` imports are gone entirely; a host that still supplies them is not
+// wrong, it is just ignored.
 
 // OPFS control-block indices + ops (must match opfs-worker.mjs and wasm/libc_opfs.cc).
 const OPFS_LOCK = 0, OPFS_REQSEQ = 1, OPFS_RESPSEQ = 2, OPFS_OP = 3, OPFS_RESULT = 4,
@@ -116,23 +94,10 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 				u8().set(b.subarray(0, n), dst);
 				return n;
 			},
-			// `unicode_char` (single-codepoint case mapping) used to be here. The
-			// runtime carries the Unicode case tables itself now, so it no longer
-			// imports it and an embedder no longer has to provide it. The string
-			// transforms below are still delegated.
-			// String case/normalize/IDNA (see unicodeTransform). ICU-style preflight: if the
-			// UTF-8 result exceeds cap, write nothing and return the required length; else write
-			// and return its length. -1 on error.
-			unicode_transform(op, src, srcLen, dst, cap) {
-				let s;
-				try { s = readStr(src, srcLen); } catch { return -1; }
-				const r = unicodeTransform(op, s);
-				if (r == null) return -1;
-				const b = enc.encode(r);
-				if (b.length > cap) return b.length;
-				u8().set(b, dst);
-				return b.length;
-			},
+			// `unicode_char` and `unicode_transform` used to be here, for case mapping
+			// per code point and per string. The runtime carries the Unicode case
+			// tables itself now, including UAX #29 word breaking for titlecasing, so
+			// it imports neither and an embedder has to provide neither.
 			// Locale-aware collation of two UTF-8 strings; sign like strcmp.
 			unicode_compare(caseInsensitive, a, aLen, b, bLen) {
 				const sa = readStr(a, aLen), sb = readStr(b, bLen);

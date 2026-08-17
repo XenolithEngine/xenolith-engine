@@ -62,68 +62,11 @@ static CFMutableStringRef makeString(StringViewUtf8 str) {
 	return ret;
 }
 
-static bool toString(CFMutableStringRef str, const callback<void(StringView)> &cb) {
-	// Fast path: the CFString already stores UTF-8 internally.
-	if (auto bytes = CFStringGetCStringPtr(str, kCFStringEncodingUTF8)) {
-		cb(StringView(bytes));
-		return true;
-	}
-
-	auto len = CFStringGetLength(str);
-	auto maxLen = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
-	char buf[maxLen];
-	if (CFStringGetCString(str, buf, maxLen, kCFStringEncodingUTF8)) {
-		cb(StringView(buf));
-		return true;
-	}
-	return false;
-}
-
-static bool toWideString(CFMutableStringRef str, const callback<void(WideStringView)> &cb) {
-	auto len = CFStringGetLength(str);
-	auto bytes = (const char16_t *)CFStringGetCStringPtr(str, kCFStringEncodingUTF16);
-
-	if (bytes == nullptr) {
-		char32_t buf[len + 1];
-		if (CFStringGetCString(str, (char *)buf, len * sizeof(char32_t), kCFStringEncodingUTF16)) {
-			cb(WideStringView((char16_t *)buf, len));
-			return true;
-		}
-	} else {
-		cb(WideStringView(bytes, len));
-		return true;
-	}
-	return false;
-}
-
-// tolower/toupper are no longer here, for code points or for strings: they come
-// from the compiled-in Unicode tables (runtime/src/unicode), so CoreFoundation is
-// only asked about titlecasing - which needs word boundaries - and collation.
-
-bool totitle(const callback<void(StringView)> &cb, StringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringCapitalize(str, locale);
-
-	auto ret = toString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
-bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto locale = CFLocaleCopyCurrent();
-	auto str = makeString(data);
-
-	CFStringCapitalize(str, locale);
-
-	auto ret = toWideString(str, cb);
-
-	CFRelease(str);
-	CFRelease(locale);
-	return ret;
-}
+// No case mapping here any more, for code points or for strings: it all comes
+// from the compiled-in Unicode tables (runtime/src/unicode). CoreFoundation is
+// only asked about collation now, which is why the CFString -> callback readers
+// that used to be here are gone with it: comparing needs the strings going in,
+// not the text coming out.
 
 bool compare(StringView l, StringView r, int *res) {
 	if (!res) {

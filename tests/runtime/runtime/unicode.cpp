@@ -90,8 +90,7 @@ static MapResult mapString(CaseOp op, StringView src) {
 	return r;
 }
 
-// Same, for a specific language. Titlecasing has no locale overload: it is still
-// platform code until word breaking lands.
+// Same, for a specific language.
 static MapResult mapString(CaseOp op, StringView src, StringView locale) {
 	MapResult r;
 	auto sink = [&](StringView str) {
@@ -104,7 +103,7 @@ static MapResult mapString(CaseOp op, StringView src, StringView locale) {
 	switch (op) {
 	case CaseOp::Lower: r.ok = unicode::tolower(sink, src, locale); break;
 	case CaseOp::Upper: r.ok = unicode::toupper(sink, src, locale); break;
-	case CaseOp::Title: break; // no such overload
+	case CaseOp::Title: r.ok = unicode::totitle(sink, src, locale); break;
 	}
 	return r;
 }
@@ -145,7 +144,7 @@ static WideMapResult mapWide(CaseOp op, WideStringView src, StringView locale) {
 	switch (op) {
 	case CaseOp::Lower: r.ok = unicode::tolower(sink, src, locale); break;
 	case CaseOp::Upper: r.ok = unicode::toupper(sink, src, locale); break;
-	case CaseOp::Title: break; // no such overload
+	case CaseOp::Title: r.ok = unicode::totitle(sink, src, locale); break;
 	}
 	return r;
 }
@@ -324,6 +323,50 @@ static void testFullMappings() {
 			"tolower(WideStringView) keeps an unpaired surrogate");
 }
 
+// Titlecasing is the one case operation that works on words rather than
+// characters, so what it gets right or wrong is where the word boundaries fall.
+// The boundaries themselves are checked exhaustively by
+// runtime_wordbreak_conformance; these are the cases that show what they mean
+// for the result.
+static void testTitleMappings() {
+	// Every word gets a capital, and the rest of each word is lowercased - the
+	// second half is what "titlecase" means beyond "capitalize".
+	checkMapped(CaseOp::Title, "hello WORLD", "Hello World", "totitle: one capital per word");
+	checkMapped(CaseOp::Title, "привет МИР", "Привет Мир", "totitle: Cyrillic");
+	checkMapped(CaseOp::Title, "Hello", "Hello", "totitle fixes 'Hello'");
+
+	// The reason for UAX #29 rather than "capitalize after every non-letter":
+	// these disagree with that rule, in both directions. An apostrophe holds a
+	// word together (WB6/WB7), so O'brien gets one capital and not two; a hyphen
+	// does not, so well-known gets two; an underscore joins (WB13a/WB13b) while a
+	// space of course does not.
+	checkMapped(CaseOp::Title, "o'brien", "O'brien", "totitle: an apostrophe does not start a word");
+	checkMapped(CaseOp::Title, "well-known", "Well-Known", "totitle: a hyphen does");
+	checkMapped(CaseOp::Title, "x1_2 y", "X1_2 Y", "totitle: underscore joins, space does not");
+
+	// A word need not begin with the letter that gets titlecased: the search
+	// moves on to the first letter, number or symbol. When that turns out to be a
+	// number, nothing in the word is capitalized at all.
+	checkMapped(CaseOp::Title, "\"hello\"", "\"Hello\"",
+			"totitle: the quote is skipped, not titlecased");
+	checkMapped(CaseOp::Title, "42nd", "42nd", "totitle: a digit is where the word starts");
+
+	// The first cased letter of a word may be a 1:N mapping, and the rest of the
+	// word is lowercased with full context - here the final sigma.
+	checkMapped(CaseOp::Title, "ﬂoor", "Floor", "totitle: ligature expands");
+	checkMapped(CaseOp::Title, "ΟΔΟΣ", "Οδος", "totitle: final sigma in the lowercased tail");
+
+	// Without a dictionary these scripts have no internal word boundaries. Both
+	// come back unchanged because neither is cased - which is the point: the
+	// limitation costs nothing here.
+	checkMapped(CaseOp::Title, "กรุงเทพมหานคร", "กรุงเทพมหานคร",
+			"totitle: Thai has no dictionary and no case");
+	checkMapped(CaseOp::Title, "東京都", "東京都", "totitle: CJK breaks per ideograph and is uncased");
+
+	// Empty input still fires the callback exactly once.
+	checkMapped(CaseOp::Title, "", "", "totitle: empty input");
+}
+
 // Hand-written inputs for the SpecialCasing rows that only fire for a particular
 // language. Each names the condition it stands for; testLocaleCoverage() checks
 // that between them they name every condition the UCD has.
@@ -373,6 +416,22 @@ static constexpr LocaleVector s_localeVectors[] = {
 			"toupper lt: dot above a soft-dotted i is removed"},
 	// Without the language, none of that happens.
 	{CaseOp::Lower, "Ì", "", "ì", "", "tolower root: no Lithuanian dot"},
+
+	// Dutch writes IJ with both letters capital, which is the one case where a
+	// word start produces two capitals. It only applies to a real digraph: the
+	// negatives below are the conditions maybeTitleDutchIJ tests.
+	{CaseOp::Title, "ijsland", "nl", "IJsland", "", "totitle nl: IJ takes two capitals"},
+	{CaseOp::Title, "ijsland", "", "Ijsland", "", "totitle root: IJ is just an i"},
+	{CaseOp::Title, "ixsland", "nl", "Ixsland", "", "totitle nl: no j, no digraph"},
+	{CaseOp::Title, "íj", "nl", "Íj", "", "totitle nl: acute on the i only"},
+	{CaseOp::Title, "íj́", "nl", "ÍJ́", "", "totitle nl: acute on both"},
+	{CaseOp::Title, "íj́́", "nl", "Íj́́", "",
+			"totitle nl: a further combining mark cancels it"},
+	{CaseOp::Title, "iJsland", "nl", "IJsland", "", "totitle nl: the J is already capital"},
+
+	// Turkish titlecase follows the same dotted-I rule as uppercase.
+	{CaseOp::Title, "istanbul", "tr", "İstanbul", "", "totitle tr: i takes a dot"},
+	{CaseOp::Title, "istanbul", "", "Istanbul", "", "totitle root: i does not"},
 
 	// Armenian: the ech-yiwn ligature uppercases differently in the east.
 	{CaseOp::Upper, "և", "hy", "ԵՎ", "", "toupper hy: ech-yiwn -> ech + vew"},
@@ -595,6 +654,7 @@ void performUnicodeTests() {
 	testAsciiStrings();
 	testWideStrings();
 	testFullMappings();
+	testTitleMappings();
 	testLocaleMappings();
 	testLocaleMappingsWide();
 	testLocaleCoverage();
@@ -639,13 +699,18 @@ void performUnicodeCaseConformanceTests() {
 	// The same rows through both string overloads. Keeping the two apart matters:
 	// they were separate backends before the port, and they are separate code
 	// paths after it.
-	Score fullLower, fullUpper, wideLower, wideUpper;
+	Score fullLower, fullUpper, fullTitle, wideLower, wideUpper, wideTitle;
 	for (auto &e : s_caseFull) {
 		auto lower = mapString(CaseOp::Lower, e.source);
 		fullLower.add(lower.ok && lower.result == StringView(e.lower));
 
 		auto upper = mapString(CaseOp::Upper, e.source);
 		fullUpper.add(upper.ok && upper.result == StringView(e.upper));
+
+		// Each source is a single code point, so it is a whole word and its
+		// titlecasing is the file's title column - no word breaking involved.
+		auto title = mapString(CaseOp::Title, e.source);
+		fullTitle.add(title.ok && title.result == StringView(e.title));
 
 		unicode::toUtf16([&](WideStringView src) {
 			auto wl = mapWide(CaseOp::Lower, src);
@@ -657,6 +722,11 @@ void performUnicodeCaseConformanceTests() {
 			unicode::toUtf16([&](WideStringView expected) {
 				wideUpper.add(wu.ok && wu.result == expected);
 			}, StringView(e.upper));
+
+			auto wt = mapWide(CaseOp::Title, src);
+			unicode::toUtf16([&](WideStringView expected) {
+				wideTitle.add(wt.ok && wt.result == expected);
+			}, StringView(e.title));
 		}, StringView(e.source));
 	}
 
@@ -667,8 +737,10 @@ void performUnicodeCaseConformanceTests() {
 	reportScore("simple totitle", simpleTitle);
 	reportScore("full tolower (utf-8)", fullLower);
 	reportScore("full toupper (utf-8)", fullUpper);
+	reportScore("full totitle (utf-8)", fullTitle);
 	reportScore("full tolower (utf-16)", wideLower);
 	reportScore("full toupper (utf-16)", wideUpper);
+	reportScore("full totitle (utf-16)", wideTitle);
 	sprt::cout << "  (" << int(sizeof(s_caseConditional) / sizeof(s_caseConditional[0]))
 			   << " conditional SpecialCasing rows are not here: they need context, and are"
 				  " asserted by hand in runtime_unicode)\n";

@@ -53,11 +53,14 @@
 #include "private/SPRTUnicodeTrie.h"
 
 #include "data/SPRuntimeUnicodeCaseData.cc"
+#include "data/SPRuntimeUnicodeWordBreakData.cc"
 
 #include "case_props.cc"
 #include "case_full.cc"
 #include "case_string.cc"
 #include "case_utf8.cc"
+#include "word_break.cc"
+#include "case_title.cc"
 
 namespace sprt::unicode {
 
@@ -187,12 +190,38 @@ bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 	return toupper(cb, data, StringView());
 }
 
+bool totitle(const callback<void(WideStringView)> &cb, WideStringView data, StringView locale) {
+	auto loc = detail::caseLocaleFor(locale);
+	return detail::mapUtf16(cb, data,
+			[loc](char16_t *dest, int32_t capacity, const char16_t *src, int32_t length) {
+		return detail::mapToTitleUtf16(loc, dest, capacity, src, length);
+	});
+}
+
+// Titlecasing has no direct UTF-8 path: it needs word boundaries, and the word
+// breaker works on UTF-16. See case_title.cc.
+bool totitle(const callback<void(StringView)> &cb, StringView data, StringView locale) {
+	bool ret = false;
+	toUtf16([&](WideStringView wide) {
+		ret = totitle([&](WideStringView result) { toUtf8(cb, result); }, wide, locale);
+	}, data);
+	return ret;
+}
+
 bool tolower(const callback<void(StringView)> &cb, StringView data) {
 	return tolower(cb, data, StringView());
 }
 
 bool toupper(const callback<void(StringView)> &cb, StringView data) {
 	return toupper(cb, data, StringView());
+}
+
+bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
+	return totitle(cb, data, StringView());
+}
+
+bool totitle(const callback<void(StringView)> &cb, StringView data) {
+	return totitle(cb, data, StringView());
 }
 
 } // namespace sprt::unicode

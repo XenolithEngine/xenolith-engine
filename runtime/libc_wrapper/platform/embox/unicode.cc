@@ -16,11 +16,10 @@ SPDX-License-Identifier: MIT
 // executable against the Embox flat build (no crt0/special linker script at
 // configure time), and a static ICU port is a separate milestone. For the M6
 // soft-renderer track this stub backend is sufficient:
-//   * toupper/tolower are NOT here any more, for code points or for strings:
-//     they come from the compiled-in Unicode tables (runtime/src/unicode), so
-//     this target now gets full Unicode for them rather than an ASCII fold.
-//     totitle is still the ASCII-only stub - real titlecasing needs word
-//     boundaries (UAX #29), which is a separate milestone.
+//   * toupper/tolower/totitle are NOT here any more, for code points or for
+//     strings: they come from the compiled-in Unicode tables
+//     (runtime/src/unicode), so this target now gets full Unicode for them,
+//     including word-aware titlecasing, rather than an ASCII fold.
 //   * compare/caseCompare use Embox wcscmp/strcmp + towupper fold for the
 //     case-insensitive path (matches the POSIX C-locale collation).
 //   * idnToAscii/idnToUnicode return false (IDN resolution is irrelevant to
@@ -48,62 +47,9 @@ SPDX-License-Identifier: MIT
 
 namespace sprt::unicode {
 
-// The lowercase and uppercase mappings live in runtime/src/unicode now, for code
-// points and for strings alike, so this target gets full Unicode for them rather
-// than an ASCII fold. What is left here is titlecasing, which needs word
-// boundaries, and collation. <wctype.h> is still needed:
-// caseCompare(WideStringView) folds with towupper.
-
-// --- callback variants (StringView, UTF-8) ----------------------------------
-
-bool totitle(const callback<void(StringView)> &cb, StringView data) {
-	// No ICU word-break iterator on Embox; title-case folds the first ASCII
-	// letter to upper and the rest to lower — matches ICU for the ASCII words
-	// the renderer surfaces.
-	if (data.empty()) {
-		cb(StringView());
-		return true;
-	}
-	constexpr size_t kBuf = 4'096;
-	char buf[kBuf];
-	size_t n = data.size() < kBuf ? data.size() : kBuf;
-	for (size_t i = 0; i < n; ++i) {
-		char c = data[i];
-		if (c >= 0x80) {
-			buf[i] = c;
-			continue;
-		}
-		if (i == 0 && c >= 'a' && c <= 'z') {
-			buf[i] = char(c - 'a' + 'A');
-		} else if (i > 0 && c >= 'A' && c <= 'Z') {
-			buf[i] = char(c - 'A' + 'a');
-		} else {
-			buf[i] = c;
-		}
-	}
-	cb(StringView(buf, n));
-	return true;
-}
-
-// --- callback variants (WideStringView, UTF-16) ----------------------------
-
-bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
-	// Approximate: upper the lot. ASCII range only; surrogates pass through
-	// untouched (their code units are outside the ASCII fold range anyway).
-	if (data.empty()) {
-		cb(WideStringView());
-		return true;
-	}
-	constexpr size_t kBuf = 2'048;
-	char16_t buf[kBuf];
-	size_t n = data.size() < kBuf ? data.size() : kBuf;
-	for (size_t i = 0; i < n; ++i) {
-		char16_t c = data[i];
-		buf[i] = (c >= 'a' && c <= 'z') ? char16_t(c - 'a' + 'A') : c;
-	}
-	cb(WideStringView(buf, n));
-	return true;
-}
+// Every case mapping lives in runtime/src/unicode now - code points and strings,
+// lower, upper and title - so this file is down to collation. <wctype.h> is
+// still needed: caseCompare(WideStringView) folds with towupper.
 
 // --- compare / caseCompare --------------------------------------------------
 // ASCII C-locale collation: byte-wise comparison (strcmp semantics). The

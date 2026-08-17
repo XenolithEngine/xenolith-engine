@@ -35,51 +35,12 @@
 
 namespace sprt::unicode {
 
-static auto mapBuffer(WideStringView data, char16_t *buf, size_t count, int flags) {
-	return LCMapStringEx(LOCALE_NAME_USER_DEFAULT, flags, (wchar_t *)data.data(), data.size(),
-			(wchar_t *)buf, int(count), nullptr, nullptr, 0);
-}
-
-// tolower/toupper are no longer here, for code points or for strings: they come
-// from the compiled-in Unicode tables (runtime/src/unicode). That also fixes the
-// 1:N mappings, which LCMapStringEx does not perform at all, and titlecasing per
-// code point, which LCMAP_TITLECASE did not deliver under wine. The string
-// totitle below is still LCMAP_TITLECASE, because word boundaries are what it
-// really needs.
-
-bool totitle(const callback<void(StringView)> &cb, StringView data) {
-	bool ret = false;
-	toUtf16([&](WideStringView uData) {
-		ret = totitle([&](WideStringView result) { toUtf8(cb, result); }, uData);
-	}, data);
-	return ret;
-}
-
-bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
-	bool ret = false;
-	// lowercase first, WinAPI cannt do titlecase on uppercased strings
-	if (!tolower([&](WideStringView lstr) {
-		auto bufSize = mapBuffer(lstr, nullptr, 0, LCMAP_TITLECASE);
-		if (bufSize <= 0) {
-			return;
-		}
-
-		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-		bufSize = mapBuffer(lstr, buf, bufSize + 1, LCMAP_TITLECASE);
-		if (bufSize <= 0) {
-			__sprt_freea(buf);
-			return;
-		}
-		buf[bufSize] = 0;
-
-		cb(WideStringView(buf, bufSize));
-		__sprt_freea(buf);
-		ret = true;
-	}, data)) {
-		return false;
-	}
-	return ret;
-}
+// No case mapping here any more, for code points or for strings: it all comes
+// from the compiled-in Unicode tables (runtime/src/unicode). LCMapStringEx is
+// gone with it, and so are three things it got wrong - the 1:N mappings, which
+// it does not perform at all; titlecasing, which LCMAP_TITLECASE did not deliver
+// under wine and which needs word boundaries in any case; and the dependency of
+// the result on the machine's locale. What is left is collation.
 
 bool compare(StringView l, StringView r, int *result) {
 	bool ret = false;
