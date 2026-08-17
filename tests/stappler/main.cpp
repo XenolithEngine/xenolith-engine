@@ -54,6 +54,7 @@ static const TestEntry s_testList[] = {
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},
 	{"zip", &stappler::performZipTests},
+	{"zipformat", &stappler::performZipFormatTests},
 	{"iosource", &stappler::performIoSourceTests},
 };
 

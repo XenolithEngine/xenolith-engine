@@ -104,6 +104,7 @@ void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();
 void performZipTests();
+void performZipFormatTests();
 void performIoSourceTests();
 
 } // namespace stappler

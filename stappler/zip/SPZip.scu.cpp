@@ -23,4 +23,7 @@
 #include "SPCommon.h" // IWYU pragma: keep
 
 #include "SPZipSource.cc"
+#include "SPZipFormat.cc"
+#include "SPZipNames.cc"
+#include "SPZipCatalog.cc"
 #include "SPZip.cc"
