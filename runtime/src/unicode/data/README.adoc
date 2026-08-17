@@ -170,6 +170,12 @@ asserts all 1944 cases of `WordBreakTest.txt`. Note that the standard is the
 file, not ICU: ICU's break iterator adds dictionary breaking and locale
 tailorings on top of UAX #29 and does not itself pass all of it.
 
+The case *folding* in the trie has no conformance file of its own here, and is
+checked instead by being read two ways: `compareFolded` folds one code point at a
+time as it compares, and `runtime_unicode` runs every one of the 0x110000 code
+points through it against the batch folder that the string mapper uses. The two
+share the table but not the code that walks it.
+
 == Licence
 
 The tables are derived from the Unicode Character Database via ICU and are

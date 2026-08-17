@@ -38,12 +38,15 @@
 // same TU. The engine therefore has no run-time initialization - no lazy statics,
 // no allocation, no error path for the data.
 //
-// Scope: lowercasing and uppercasing, for single code points and for strings,
-// with or without a locale. `totitle` for strings is NOT here - real titlecasing
-// needs word boundaries (UAX #29), which is its own body of data and code, so it
-// is still platform code. Neither is collation: `compare` and `caseCompare` are
-// language-dependent ordering, which these tables cannot express.
-// See docs/design/unicode-case-port-plan.adoc.
+// Scope: everything sprt::unicode says about case. Lowercasing, uppercasing and
+// titlecasing, for single code points and for strings, with or without a locale;
+// word boundaries by UAX #29, which titlecasing needs; and the two orderings that
+// do not depend on a language - code point order and code point order after full
+// case folding.
+//
+// Not here: collation, the language-dependent ordering shown to a user. It needs
+// CLDR tailoring data these tables do not carry, and it is the one thing this
+// module deliberately does not answer. See docs/design/unicode-case-port-plan.adoc.
 
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/stringview.h>
@@ -61,6 +64,7 @@
 #include "case_utf8.cc"
 #include "word_break.cc"
 #include "case_title.cc"
+#include "case_compare.cc"
 
 namespace sprt::unicode {
 
@@ -222,6 +226,48 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 bool totitle(const callback<void(StringView)> &cb, StringView data) {
 	return totitle(cb, data, StringView());
+}
+
+// --- comparison --------------------------------------------------------------
+//
+// See case_compare.cc for what these orders are and are not. All six are total
+// orders over arbitrary input, including input that is not well-formed.
+
+int compareCodepoints(StringView l, StringView r) {
+	// For well-formed UTF-8 the order of the bytes is the order of the code
+	// points - that is what the encoding was designed for - so there is nothing
+	// to decode. Comparison is unsigned, which is the part that matters.
+	return sprt::detail::compare_c(l.data(), l.size(), r.data(), r.size());
+}
+
+int compareCodepoints(WideStringView l, WideStringView r) {
+	return detail::compareStreams(detail::Utf16Stream{l.data(), 0, l.size()},
+			detail::Utf16Stream{r.data(), 0, r.size()});
+}
+
+int compareCodepoints(StringViewBase<char32_t> l, StringViewBase<char32_t> r) {
+	// Already code points, in order.
+	return sprt::detail::compare_c(l.data(), l.size(), r.data(), r.size());
+}
+
+int compareFolded(StringView l, StringView r) {
+	return detail::compareStreams(
+			detail::FoldedStream<detail::Utf8Stream>{
+				{reinterpret_cast<const uint8_t *>(l.data()), 0, l.size()}},
+			detail::FoldedStream<detail::Utf8Stream>{
+				{reinterpret_cast<const uint8_t *>(r.data()), 0, r.size()}});
+}
+
+int compareFolded(WideStringView l, WideStringView r) {
+	return detail::compareStreams(
+			detail::FoldedStream<detail::Utf16Stream>{{l.data(), 0, l.size()}},
+			detail::FoldedStream<detail::Utf16Stream>{{r.data(), 0, r.size()}});
+}
+
+int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r) {
+	return detail::compareStreams(
+			detail::FoldedStream<detail::Utf32Stream>{{l.data(), 0, l.size()}},
+			detail::FoldedStream<detail::Utf32Stream>{{r.data(), 0, r.size()}});
 }
 
 } // namespace sprt::unicode

@@ -123,23 +123,10 @@ struct EnvironmentProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
-// android.icu.lang.UCharacter is no longer bound at all: case mapping, for code
-// points and for strings and in all three directions, comes from the compiled-in
-// Unicode tables in runtime/src/unicode and makes no JNI call on any device.
-// java.text.Collator below stays, because collation does not.
-
-struct CollatorProxy : jni::ClassProxy {
-	jni::StaticField<"PRIMARY", jint> PRIMARY = this;
-	jni::StaticField<"SECONDARY", jint> SECONDARY = this;
-	jni::StaticField<"TERTIARY", jint> TERTIARY = this;
-	jni::StaticField<"QUATERNARY", jint> QUATERNARY = this;
-
-	jni::StaticMethod<"getInstance", jni::L<"android/icu/text/Collator">()> getInstance = this;
-	jni::Method<"setStrength", void(jint)> setStrength = this;
-	jni::Method<"compare", jint(jstring, jstring)> _compare = this;
-
-	using jni::ClassProxy::ClassProxy;
-};
+// Nothing here binds android.icu or java.text any more. Case mapping, word
+// breaking and both string orderings come from the compiled-in Unicode tables in
+// runtime/src/unicode and make no JNI call on any device; the UCharacter proxy
+// went with the case mapping, and the Collator proxy with the comparison.
 
 struct FileProxy : ClassProxy {
 	Method<"getAbsolutePath", jstring()> getAbsolutePath = this;
@@ -657,7 +644,6 @@ struct SPRT_API App : public sprt::Ref {
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";
 	EnvironmentProxy Environment = "android/os/Environment";
-	CollatorProxy Collator = "android/icu/text/Collator";
 	PackageInfoProxy PackageInfo = "android/content/pm/PackageInfo";
 	ResourcesProxy Resources = "android/content/res/Resources";
 	DisplayMetricsProxy DisplayMetrics = "android/util/DisplayMetrics";

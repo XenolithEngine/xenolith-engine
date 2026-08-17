@@ -20,6 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+// Platform integration for android: the locale, the device id, the paths, and
+// the APK-aware startup every target has to answer for.
+//
+// This file was `unicode.cc` until android stopped being asked anything about
+// Unicode. Case mapping went to the compiled-in tables (runtime/src/unicode)
+// with the rest of the port, and comparison followed: `u_strCompare` out of
+// libicu.so and `java.text.Collator` over JNI were collation, and the runtime no
+// longer claims to collate. Nothing here dlopens libicu.so any more, and
+// jni::App has no Collator proxy.
+
 #include <sprt/runtime/platform.h>
 
 #if SPRT_ANDROID
@@ -35,144 +45,9 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_dirent.h>
 #include <sprt/c/__sprt_limits.h>
 
-#include <sprt/runtime/utils/dso.h>
-
-#include <unicode/uchar.h>
-#include <unicode/urename.h>
-#include <unicode/ustring.h>
-
 #include <android/configuration.h>
 
 #include "../src/private/SPRTPrivate.h"
-
-namespace sprt::unicode {
-
-static qmutex s_collatorMutex;
-
-namespace icujava {
-
-// Case mapping had a JNI fallback here (android.icu.lang.UCharacter) for devices
-// without libicu.so, per code point and per string. It is gone in full: the
-// mappings come from the compiled-in Unicode tables now, on every device and with
-// no JNI call, and titlecasing brought its own word breaker with it. What is left
-// is java.text.Collator, which is collation.
-
-bool compare(jni::App *app, StringView l, StringView r, bool caseInsensetive, int *result) {
-	auto env = jni::Env::getEnv();
-
-	auto strL = env.newString(l);
-	auto strR = env.newString(r);
-
-	auto coll = app->Collator.getInstance(app->Collator.getClass().ref(env));
-	if (coll) {
-		unique_lock lock(s_collatorMutex);
-		app->Collator.setStrength(coll,
-				jint(caseInsensetive ? app->Collator.SECONDARY() : app->Collator.TERTIARY()));
-		*result = app->Collator._compare(coll, strL, strR);
-		return true;
-	}
-	return false;
-}
-
-bool compare(jni::App *app, WideStringView l, WideStringView r, bool caseInsensetive, int *result) {
-	auto env = jni::Env::getEnv();
-
-	auto strL = env.newString(l);
-	auto strR = env.newString(r);
-
-	auto coll = app->Collator.getInstance(app->Collator.getClass().ref(env));
-	if (coll) {
-		unique_lock lock(s_collatorMutex);
-		app->Collator.setStrength(coll,
-				jint(caseInsensetive ? app->Collator.SECONDARY() : app->Collator.TERTIARY()));
-		*result = app->Collator._compare(coll, strL, strR);
-		return true;
-	}
-	return false;
-}
-
-} // namespace icujava
-
-using cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char16_t *s2, int32_t length2,
-		int8_t codePointOrder);
-using case_cmp_fn = int32_t (*)(const char16_t *s1, int32_t length1, const char16_t *s2,
-		int32_t length2, uint32_t options, int *pErrorCode);
-
-static Dso s_icuNative;
-
-static cmp_fn u_strCompare = nullptr;
-static case_cmp_fn u_strCaseCompare = nullptr;
-
-// No case mapping here any more, for code points or for strings: it all comes
-// from the compiled-in Unicode tables (runtime/src/unicode), so it no longer
-// depends on libicu.so being present or on a JNI round trip. libicu.so is still
-// opened, for collation.
-
-bool compare(StringView l, StringView r, int *result) {
-	if (u_strCompare) {
-		bool ret = false;
-		unicode::toUtf16([&](WideStringView lStr) {
-			unicode::toUtf16([&](WideStringView rStr) {
-				*result = u_strCompare(lStr.data(), lStr.size(), rStr.data(), rStr.size(), 1);
-				ret = true;
-			}, r);
-		}, l);
-		if (ret) {
-			return true;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::compare(app, l, r, false, result);
-	}
-	return false;
-}
-
-bool compare(WideStringView l, WideStringView r, int *result) {
-	if (u_strCompare) {
-		*result = u_strCompare(l.data(), l.size(), r.data(), r.size(), 1);
-		return true;
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::compare(app, l, r, false, result);
-	}
-	return false;
-}
-
-bool caseCompare(StringView l, StringView r, int *result) {
-	if (u_strCaseCompare) {
-		bool ret = false;
-		unicode::toUtf16([&](WideStringView lStr) {
-			unicode::toUtf16([&](WideStringView rStr) {
-				int status = U_ZERO_ERROR;
-				*result = u_strCaseCompare(lStr.data(), lStr.size(), rStr.data(), rStr.size(),
-						U_COMPARE_CODE_POINT_ORDER, &status);
-				ret = status == U_ZERO_ERROR;
-			}, r);
-		}, l);
-		if (ret) {
-			return true;
-		}
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::compare(app, l, r, true, result);
-	}
-	return false;
-}
-
-bool caseCompare(WideStringView l, WideStringView r, int *result) {
-	if (u_strCaseCompare) {
-		int status = 0;
-		*result = u_strCaseCompare(l.data(), l.size(), r.data(), r.size(),
-				U_COMPARE_CODE_POINT_ORDER, &status);
-		return true;
-	}
-	if (auto app = jni::Env::getApp()) {
-		return icujava::compare(app, l, r, true, result);
-	}
-	return false;
-}
-
-} // namespace sprt::unicode
 
 namespace sprt::platform {
 
@@ -302,18 +177,10 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 		AConfiguration_getCountry(cfg, &s_globalConfig.localeBuf[3]);
 	}
 
-	unicode::s_icuNative = Dso("libicu.so");
-	if (unicode::s_icuNative) {
-		unicode::u_strCompare =
-				unicode::s_icuNative.sym<decltype(unicode::u_strCompare)>("u_strCompare");
-		unicode::u_strCaseCompare =
-				unicode::s_icuNative.sym<decltype(unicode::u_strCaseCompare)>("u_strCaseCompare");
-	}
-
 	return true;
 }
 
-void terminate() { unicode::s_icuNative.close(); }
+void terminate() { }
 
 memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
 

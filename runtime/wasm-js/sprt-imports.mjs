@@ -2,16 +2,17 @@
 // spawned thread worker so every module instance sees the same ABI over the one shared
 // memory. Callers supply the sinks that differ per context (console, thread spawn, bundle).
 
-// ---- Unicode helpers backing the sprt::unicode wasm backend -----------------------------
-// All that is still delegated here is collation, which is language-dependent ordering and
-// which Intl provides.
+// ---- No Unicode is imported any more -----------------------------------------------------
+// `unicode_char`, `unicode_transform` and `unicode_compare` all used to be here. Everything
+// they answered now lives in the runtime, so that every target gives the same result and a
+// host that knows nothing about Unicode is not a diminished one: IDNA via the UTS-46 engine
+// (runtime/src/idn), case mapping - lower, upper and title, the last with UAX #29 word
+// breaking - and both string orderings via the compiled-in tables (runtime/src/unicode).
 //
-// Everything else has moved into the runtime, so that every target gives the same answer and
-// a host that provides none of this is no longer a runtime without it: IDNA via the UTS-46
-// engine (runtime/src/idn), and case mapping - lower, upper and title, the last with UAX #29
-// word breaking - via the compiled-in tables (runtime/src/unicode). The `unicode_char` and
-// `unicode_transform` imports are gone entirely; a host that still supplies them is not
-// wrong, it is just ignored.
+// The one thing the runtime deliberately does not do is collate, which is why the last of the
+// three went: `localeCompare` is language-dependent ordering, and pretending the runtime has
+// it on one target out of seven was worse than not having it. A host that still supplies
+// these imports is not wrong, it is just ignored.
 
 // OPFS control-block indices + ops (must match opfs-worker.mjs and wasm/libc_opfs.cc).
 const OPFS_LOCK = 0, OPFS_REQSEQ = 1, OPFS_RESPSEQ = 2, OPFS_OP = 3, OPFS_RESULT = 4,
@@ -93,16 +94,6 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 				const n = Math.min(cap, b.length);
 				u8().set(b.subarray(0, n), dst);
 				return n;
-			},
-			// `unicode_char` and `unicode_transform` used to be here, for case mapping
-			// per code point and per string. The runtime carries the Unicode case
-			// tables itself now, including UAX #29 word breaking for titlecasing, so
-			// it imports neither and an embedder has to provide neither.
-			// Locale-aware collation of two UTF-8 strings; sign like strcmp.
-			unicode_compare(caseInsensitive, a, aLen, b, bLen) {
-				const sa = readStr(a, aLen), sb = readStr(b, bLen);
-				const r = sa.localeCompare(sb, undefined, caseInsensitive ? { sensitivity: "accent" } : {});
-				return r < 0 ? -1 : r > 0 ? 1 : 0;
 			},
 			// Persistent (/opfs) filesystem op — brokered to the OPFS worker over the shared
 			// control block. Args are pointers/lengths into this same shared memory. This
