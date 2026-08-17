@@ -106,7 +106,9 @@ public:
 	using base::extract;
 
 protected:
-	constexpr void perform_move(linear_memory_soo &&other) { this->replace_content(_allocator, other); }
+	constexpr void perform_move(linear_memory_soo &&other) {
+		this->replace_content(_allocator, other);
+	}
 
 	using base::clear_dealloc;
 	using base::modify_size;
@@ -162,6 +164,8 @@ public:
 			large->clear_dealloc(_allocator);
 			large->~large_mem();
 			_storage[getStorageSize() - 1] &= ~getSmallMask();
+		} else {
+			small_mem::clear(_storage, _allocator);
 		}
 	}
 
