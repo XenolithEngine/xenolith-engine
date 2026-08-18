@@ -181,7 +181,7 @@ trash, `ErrorUnknown` for a partial answer.
 | Platform | `RestoreFromTrash` |
 |---|---|
 | Linux | yes — the freedesktop trash spec, read directly (the **home** trash only; `<topdir>/.Trash-$uid` is not searched). The portal has no restore verb, so it is the shell backend's own work and needs no helper on PATH |
-| Windows | **no** — the Recycle Bin is a virtual folder and the restore is `IShellFolder` + the `undelete` verb, none of which is declared in `sprt/wrappers/windows` yet |
+| Windows | yes — the Recycle Bin enumerated as a shell folder (`shell:RecycleBinFolder` → `BHID_EnumItems`), each item matched on `PKEY_Displaced_From` plus its own name and ordered by `PKEY_Displaced_Date`, then put back with the shell's own `undelete` verb through `IContextMenu` |
 | macOS | **no** — `NSFileManager` has no inverse of `trashItemAtURL:`; "Put Back" is Finder's own, backed by metadata it does not publish |
 
 ## Exercising them

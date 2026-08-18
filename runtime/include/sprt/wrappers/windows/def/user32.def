@@ -55,6 +55,8 @@ EXPORTS
 	SetMenuItemInfoW
 	SetMenuDefaultItem
 	TrackPopupMenu
+	CreatePopupMenu
+	DestroyMenu
 	GetCapture
 	SetCapture
 	ReleaseCapture

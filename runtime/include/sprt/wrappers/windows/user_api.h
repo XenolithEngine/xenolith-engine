@@ -790,6 +790,16 @@ __SPRT_WIN_IMPORT WINAPI BOOL SetMenuDefaultItem(HMENU hMenu, UINT uItem, UINT f
 __SPRT_WIN_IMPORT WINAPI BOOL TrackPopupMenu(HMENU hMenu, UINT uFlags, int x, int y, int nReserved,
 		HWND hWnd, const RECT *prcRect);
 
+/* An empty popup menu, and the call that frees it.
+
+Not only for menus that are shown: IContextMenu::QueryContextMenu wants somewhere to put the verbs
+it finds, and it is what puts a shell verb handler into a state where InvokeCommand works - so a
+caller that only ever invokes a verb by name still needs a menu to hand it. DestroyMenu releases
+the handle and everything QueryContextMenu put in it. */
+__SPRT_WIN_IMPORT WINAPI HMENU CreatePopupMenu(VOID);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DestroyMenu(HMENU hMenu);
+
 __SPRT_WIN_IMPORT WINAPI HRESULT DwmExtendFrameIntoClientArea(HWND hWnd, const MARGINS *pMarInset);
 
 __SPRT_WIN_IMPORT WINAPI HWND GetCapture(VOID);
