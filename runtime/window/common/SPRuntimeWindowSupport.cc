@@ -1095,6 +1095,34 @@ static IVec2 pointOnRect(IRect rect, WindowAnchor a) {
 	return IVec2{midX, midY};
 }
 
+// Mirror an anchor across the vertical axis; the y half is left alone. Used by the flip
+// adjustment, which inverts the anchor and the gravity on the constrained axis only.
+static WindowAnchor invertAnchorX(WindowAnchor a) {
+	switch (a) {
+	case WindowAnchor::Left: return WindowAnchor::Right;
+	case WindowAnchor::Right: return WindowAnchor::Left;
+	case WindowAnchor::TopLeft: return WindowAnchor::TopRight;
+	case WindowAnchor::TopRight: return WindowAnchor::TopLeft;
+	case WindowAnchor::BottomLeft: return WindowAnchor::BottomRight;
+	case WindowAnchor::BottomRight: return WindowAnchor::BottomLeft;
+	// None/Top/Bottom have no x component to invert
+	default: return a;
+	}
+}
+
+static WindowAnchor invertAnchorY(WindowAnchor a) {
+	switch (a) {
+	case WindowAnchor::Top: return WindowAnchor::Bottom;
+	case WindowAnchor::Bottom: return WindowAnchor::Top;
+	case WindowAnchor::TopLeft: return WindowAnchor::BottomLeft;
+	case WindowAnchor::BottomLeft: return WindowAnchor::TopLeft;
+	case WindowAnchor::TopRight: return WindowAnchor::BottomRight;
+	case WindowAnchor::BottomRight: return WindowAnchor::TopRight;
+	// None/Left/Right have no y component to invert
+	default: return a;
+	}
+}
+
 static IVec2 originForGravity(IVec2 gravityPoint, WindowAnchor gravity, Extent2 size) {
 	const int32_t w = int32_t(size.width);
 	const int32_t h = int32_t(size.height);
@@ -1120,12 +1148,16 @@ IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSiz
 	anchor.x += parentContentRect.x;
 	anchor.y += parentContentRect.y;
 
-	IVec2 anchorPt = pointOnRect(anchor, placement.anchor);
-	anchorPt.x += placement.offset.x;
-	anchorPt.y += placement.offset.y;
+	auto resolve = [&](WindowAnchor a, WindowAnchor g, IVec2 off) {
+		IVec2 pt = pointOnRect(anchor, a);
+		pt.x += off.x;
+		pt.y += off.y;
 
-	IVec2 origin = originForGravity(anchorPt, placement.gravity, windowSize);
-	IRect result(origin.x, origin.y, int32_t(windowSize.width), int32_t(windowSize.height));
+		IVec2 o = originForGravity(pt, g, windowSize);
+		return IRect(o.x, o.y, int32_t(windowSize.width), int32_t(windowSize.height));
+	};
+
+	IRect result = resolve(placement.anchor, placement.gravity, placement.offset);
 
 	const auto adj = placement.adjustment;
 	if (adj == WindowPlacementAdjustment::None || workArea.width <= 0 || workArea.height <= 0) {
@@ -1143,16 +1175,17 @@ IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSiz
 	};
 
 	if (hasFlag(adj, WindowPlacementAdjustment::FlipX) && overflowsX(result)) {
-		// Mirror horizontally around the anchor point.
-		const int32_t mirroredX = 2 * anchorPt.x - (result.x + result.width);
-		IRect flipped(mirroredX, result.y, result.width, result.height);
+		auto flipped = resolve(invertAnchorX(placement.anchor), invertAnchorX(placement.gravity),
+				IVec2{-placement.offset.x, placement.offset.y});
+		// A flip that is still constrained is discarded, per xdg_positioner - unless sliding is also
+		// allowed, in which case the flipped side is the better one to slide within.
 		if (!overflowsX(flipped) || hasFlag(adj, WindowPlacementAdjustment::SlideX)) {
 			result.x = flipped.x;
 		}
 	}
 	if (hasFlag(adj, WindowPlacementAdjustment::FlipY) && overflowsY(result)) {
-		const int32_t mirroredY = 2 * anchorPt.y - (result.y + result.height);
-		IRect flipped(result.x, mirroredY, result.width, result.height);
+		auto flipped = resolve(invertAnchorY(placement.anchor), invertAnchorY(placement.gravity),
+				IVec2{placement.offset.x, -placement.offset.y});
 		if (!overflowsY(flipped) || hasFlag(adj, WindowPlacementAdjustment::SlideY)) {
 			result.y = flipped.y;
 		}

@@ -29,6 +29,7 @@
 #include "XLScene.h"
 #include "XL2dSceneLayout.h"
 #include "XLUiSubWindowSession.h"
+#include "XLUiTooltipSystem.h"
 #include "AuxPopupScene.h"
 
 #include <cstdio>
@@ -128,6 +129,87 @@ void AuxSelfTest::evaluateReplacePhase() {
 	check(_submitFails == 0, "no MaterialSwapchainPass fail");
 }
 
+// computeWindowPlacement is a pure function shared by every backend, so it is checked here rather
+// than through a window: this harness already links runtime_window, and tests/runtime does not.
+void AuxSelfTest::evaluatePlacement() {
+	using sprt::window::WindowAnchor;
+	using sprt::window::WindowPlacement;
+	using sprt::window::WindowPlacementAdjustment;
+
+	// A 1000x1000 work area, and a 200x20 anchor rect sitting 40px off the bottom of it: the
+	// classic "a hint under a widget near the screen edge" geometry.
+	const IRect work(0, 0, 1'000, 1'000);
+	const IRect anchorRect(100, 940, 200, 20);
+	const Extent2 size(120, 30);
+
+	auto place = [&](WindowAnchor a, WindowAnchor g, IVec2 offset, WindowPlacementAdjustment adj) {
+		WindowPlacement p;
+		p.anchorRect = anchorRect;
+		p.anchor = a;
+		p.gravity = g;
+		p.offset = offset;
+		p.adjustment = adj;
+		return sprt::window::computeWindowPlacement(p, size, work, work);
+	};
+
+	// Unconstrained: below the rect's bottom edge, 8px clear of it. (gravity names the edge of the
+	// window that lands on the anchor point, so Top means the window hangs below.)
+	auto below = place(WindowAnchor::Bottom, WindowAnchor::Top, IVec2{0, 8},
+			WindowPlacementAdjustment::None);
+	check(below.y == 968, "placement: unflipped sits below the anchor rect");
+	check(below.x == 140, "placement: unflipped is centred on the anchor rect");
+
+	// Same thing with FlipY: 968+30 = 998 still fits, so nothing flips.
+	auto noFlip = place(WindowAnchor::Bottom, WindowAnchor::Top, IVec2{0, 8},
+			WindowPlacementAdjustment::FlipY);
+	check(noFlip.y == 968, "placement: no flip while it fits");
+
+	// Now a window too tall to fit below (940+20+8+80 = 1048 > 1000). The flip must invert the
+	// anchor to the rect's TOP edge, the gravity to Bottom, and the offset to -8 - putting the
+	// window's bottom 8px ABOVE the rect: 940 - 8 - 80 = 852.
+	//
+	// The old rect-mirroring shortcut answered 892 here, i.e. 40px lower, straight over the anchor
+	// rect it was supposed to avoid - off by the rect's height plus twice the offset.
+	WindowPlacement tall;
+	tall.anchorRect = anchorRect;
+	tall.anchor = WindowAnchor::Bottom;
+	tall.gravity = WindowAnchor::Top;
+	tall.offset = IVec2{0, 8};
+	tall.adjustment = WindowPlacementAdjustment::FlipY;
+	auto flipped = sprt::window::computeWindowPlacement(tall, Extent2(120, 80), work, work);
+	check(flipped.y == 852, "placement: flip inverts anchor, gravity and offset");
+
+	// A zero-sized anchor rect with no offset is the degenerate case every existing caller uses,
+	// and there the flip is a plain mirror around the point. Pinned so the fix above cannot have
+	// moved any of them.
+	WindowPlacement pt;
+	pt.anchorRect = IRect(500, 990, 0, 0);
+	pt.anchor = WindowAnchor::TopLeft;
+	pt.gravity = WindowAnchor::Top;
+	pt.adjustment = WindowPlacementAdjustment::FlipY;
+	auto point = sprt::window::computeWindowPlacement(pt, size, work, work);
+	check(point.y == 960, "placement: point anchor still mirrors around itself");
+
+	// Sliding still clamps into the work area.
+	auto slid = place(WindowAnchor::BottomRight, WindowAnchor::Top, IVec2{900, 0},
+			WindowPlacementAdjustment::SlideX);
+	check(slid.x == 880, "placement: slide clamps to the work area");
+}
+
+void AuxSelfTest::evaluateDwellPhase(NotNull<Scene> scene, bool afterDelay) {
+	auto *tips = ui::TooltipSystem::findForNode(scene->getContent());
+	if (!afterDelay) {
+		check(tips != nullptr, "a hovered target installed a TooltipSystem");
+		// The dwell has been running for less than hoverDelay, and the pointer has been moving,
+		// which restarts it. Nothing may be up yet.
+		check(tips && !tips->isVisible(), "no hint before the dwell elapses");
+		check(tips && tips->getPendingTarget() != nullptr, "the dwell is armed");
+		return;
+	}
+	check(tips && tips->isVisible(), "hint is up after the dwell");
+	check(tips && tips->getCurrentTarget() != nullptr, "the hint names its target");
+}
+
 void AuxSelfTest::noteMenuClosed() { _menuCloseFired = true; }
 
 void AuxSelfTest::finish() {
@@ -157,6 +239,9 @@ void AuxSelfTest::startScenario(NotNull<AppWindow> root, NotNull<Scene> scene) {
 	install();
 	_root = root.get();
 
+	// Pure-function checks first; they depend on nothing the scenario sets up.
+	evaluatePlacement();
+
 	const float parentH = 768.0f;
 	auto *rootPtr = root.get();
 
@@ -181,6 +266,45 @@ void AuxSelfTest::startScenario(NotNull<AppWindow> root, NotNull<Scene> scene) {
 	scene->runAction(Rc<Sequence>::create(1.4f, [rootPtr] {
 		if (auto session = ui::SubWindowSession::get(rootPtr)) {
 			session->dismissTip();
+		}
+	}));
+
+	// --- hover dwell, driven through the real input path ---------------------------------------
+	//
+	// The heading sits at the top-left; resting on it must NOT produce a hint until hoverDelay has
+	// passed, and moving within it must keep pushing that out.
+	auto sceneRef = Rc<Scene>(scene.get());
+	auto hoverAt = [rootPtr](float x, float y) {
+		core::InputEventData ev;
+		ev.event = sprt::window::InputEventName::MouseMove;
+		ev.id = 0;
+		ev.input.x = x;
+		ev.input.y = y;
+		ev.point.density = 1.0f;
+
+		Vector<core::InputEventData> data;
+		data.emplace_back(ev);
+		// Native, like the inspector's own injection: hover is gated on the window reporting
+		// WindowState::Pointer, which only the window-system path sets.
+		rootPtr->handleNativeInputEvents(sp::move(data));
+	};
+
+	// Jiggle across the heading for the whole window before the check: every move restarts the
+	// dwell, so a hint appearing here means the reset is broken.
+	for (uint32_t i = 0; i < 8; ++i) {
+		scene->runAction(Rc<Sequence>::create(3.6f + float(i) * 0.05f,
+				[hoverAt, i] { hoverAt(60.0f + float(i), 736.0f); }));
+	}
+	scene->runAction(Rc<Sequence>::create(4.02f, [life = _life, sceneRef] {
+		if (life && life->test) {
+			life->test->evaluateDwellPhase(sceneRef, false);
+		}
+	}));
+
+	// Now stop moving and let the dwell run out. AuxRootScene sets it to 500ms.
+	scene->runAction(Rc<Sequence>::create(4.9f, [life = _life, sceneRef] {
+		if (life && life->test) {
+			life->test->evaluateDwellPhase(sceneRef, true);
 		}
 	}));
 	scene->runAction(Rc<Sequence>::create(1.7f, [life = _life, rootPtr, parentH] {
@@ -229,7 +353,8 @@ void AuxSelfTest::startScenario(NotNull<AppWindow> root, NotNull<Scene> scene) {
 		}
 	}));
 
-	scene->runAction(Rc<Sequence>::create(3.5f, [life = _life] {
+	// After the hover-dwell phase, which is the last thing this scenario checks.
+	scene->runAction(Rc<Sequence>::create(5.4f, [life = _life] {
 		if (life && life->test) {
 			life->test->finish();
 		}

@@ -57,10 +57,32 @@ public:
 	void showTip(StringView text, Vec2 anchorSceneYUp, float sceneHeight,
 			TimeInterval hideDelay = DefaultHideDelay);
 
+	// Replace this window's hint with a surface of the caller's own making — this is what a hint
+	// richer than a line of text goes through, and what ui::TooltipSystem uses.
+	//
+	// `key` identifies what is being shown, so that re-showing the same thing refreshes the hide
+	// timer instead of a dismiss/recreate flap. It is compared, never parsed: the text overload
+	// passes the text, TooltipSystem passes its target's identity. An empty key never matches, so
+	// an unkeyed tip is always rebuilt.
+	//
+	// `config.type` is forced to Tooltip and `config.onClose` is chained, so the session's own slot
+	// bookkeeping cannot be lost by a caller that wants a close callback of its own.
+	//
+	// A zero `hideDelay` means "no hide timer": the tip stays until something takes it down.
+	Rc<SubWindow> showTip(SubWindow::Config &&, StringView key,
+			TimeInterval hideDelay = DefaultHideDelay);
+
+	// Restart the live tip's hide timer. For an owner that knows the user is still engaged with a
+	// hint it did not just rebuild. A no-op when nothing is up.
+	void refreshTip(TimeInterval hideDelay = DefaultHideDelay);
+
 	void dismissTip();
 
 	bool hasTip() const { return _tip && _tip->isOpen(); }
-	StringView getTipText() const { return _tipText; }
+
+	// What the live tip is keyed on. For a text tip that IS the text.
+	StringView getTipKey() const { return _tipKey; }
+	StringView getTipText() const { return _tipKey; }
 
 	// Open a popup for this window, dropping any live tip first (the tip is an overlay on the same
 	// scene, and a menu taking over from a hint is what a user expects).
@@ -80,7 +102,7 @@ protected:
 	void cancelHideTimer();
 
 	Rc<SubWindow> _tip;
-	String _tipText;
+	String _tipKey;
 	TimeInterval _hideDelay = DefaultHideDelay;
 
 	Rc<Lifetime> _life;

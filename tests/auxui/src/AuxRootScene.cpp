@@ -36,6 +36,7 @@
 #include "XLUiButton.h"
 #include "XLUiSubWindow.h"
 #include "XLUiSubWindowSession.h"
+#include "XLUiTooltipSystem.h"
 #include "AuxPopupScene.h"
 #include "XLSceneInspector.h"
 #include "XLAction.h"
@@ -106,35 +107,40 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	_btnTooltip->setContentSize(Size2(240.0f, 40.0f));
 	_btnTooltip->setColor(Color::Indigo_500);
 	_btnTooltip->setCallback([this] {
-		_hoverArmed = false;
-		stopAllActionsByTag(kHeadingHoverTipTag);
 		auto p = _btnTooltip->getPosition();
 		auto sz = _btnTooltip->getContentSize();
 		openTooltipAt(Vec2(p.x + sz.width * 0.5f, p.y), "Tip: shown from the button");
 	});
 
-	// Hover-delay tooltip on the heading: pointer enter starts a 0.5s timer.
-	// Do not dismiss on Ended — the tip window steals mouse-over from the heading and would
-	// flash-close mid-present (same flap as the popup "Hover for tip" row). Hide timer closes it.
-	auto hover = _heading->addSystem(Rc<InputListener>::create());
-	hover->addMouseOverRecognizer([this](const GestureData &data) {
-		if (data.event == GestureEvent::Began) {
-			_hoverArmed = true;
-			stopAllActionsByTag(kHeadingHoverTipTag);
-			auto seq = Rc<Sequence>::create(0.5f, [this] {
-				if (_hoverArmed && _heading) {
-					auto p = _heading->getPosition();
-					openTooltipAt(Vec2(p.x, p.y - 8.0f), "Tip: hovering the heading");
-				}
-			});
-			seq->setTag(kHeadingHoverTipTag);
-			runAction(seq);
-		} else if (data.event == GestureEvent::Ended || data.event == GestureEvent::Cancelled) {
-			_hoverArmed = false;
-			stopAllActionsByTag(kHeadingHoverTipTag);
-		}
-		return true;
-	});
+	// A target hard against the bottom edge: its hint has no room below, so FlipY has to put it
+	// above instead. This is the case that distinguishes a placement actually being resolved from
+	// one being dropped at the raw anchor point.
+	_edgeLabel = layout->addChild(Rc<basic2d::Label>::create());
+	_edgeLabel->setString("bottom edge — tip must flip above");
+	_edgeLabel->setFontSize(14);
+	_edgeLabel->setColor(Color::White);
+	_edgeLabel->setAnchorPoint(Anchor::BottomLeft);
+	_edgeLabel->addSystem(Rc<ui::TooltipTarget>::create("Tip: flipped above the edge"));
+
+	// Hover tooltip on the heading — the whole thing, dwell included, is the TooltipTarget. What
+	// used to be here by hand (a tagged Sequence, an _hoverArmed flag, a leave that had to NOT
+	// dismiss) is now TooltipSystem's problem.
+	_heading->addSystem(Rc<ui::TooltipTarget>::create("Tip: hovering the heading"));
+
+	// A second target with a factory of its own and a pointer anchor, so the harness exercises both
+	// halves of what a target may override.
+	_btnPopup->addSystem(Rc<ui::TooltipTarget>::create(ui::TooltipInfo{
+		.text = "Tip: opens the menu",
+		.factory = [](NotNull<ui::SubWindow> surface,
+						   const ui::TooltipRequest &req) -> Rc<basic2d::SceneLayout2d> {
+		auto layout = ui::TooltipSystem::buildDefaultTooltip(surface, req);
+		// Named so an inspector dump can tell a custom hint from the stock one.
+		layout->setName("aux-tip-custom");
+		return layout;
+	},
+		.placement = ui::TooltipPlacement{.anchorMode = ui::TooltipAnchorMode::Pointer},
+	}));
+
 
 	content->pushLayout(layout);
 	return true;
@@ -143,6 +149,14 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 void AuxRootScene::handlePresented(Director *dir) {
 	basic2d::Scene2d::handlePresented(dir);
 	layoutRootPanel();
+
+	// Not in init(): acquireForNode walks to the scene's content node, and in init() this scene is
+	// not attached yet, so it would find nothing and warn.
+	if (auto *tips = ui::TooltipSystem::acquireForNode(getContent())) {
+		auto config = tips->getConfig();
+		config.hoverDelay = TimeInterval::milliseconds(500);
+		tips->setConfig(config);
+	}
 
 	registerCommands();
 
@@ -214,6 +228,9 @@ void AuxRootScene::layoutRootPanel() {
 	}
 	if (_btnTooltip) {
 		_btnTooltip->setPosition(Vec2(24.0f, cs.height - 132.0f));
+	}
+	if (_edgeLabel) {
+		_edgeLabel->setPosition(Vec2(24.0f, 4.0f));
 	}
 }
 

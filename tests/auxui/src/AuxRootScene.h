@@ -61,6 +61,9 @@ protected:
 	ui::Button *_btnPopup = nullptr;
 	ui::Button *_btnTooltip = nullptr;
 
+	// Sits at the bottom edge so its hint has to flip above; see init().
+	basic2d::Label *_edgeLabel = nullptr;
+
 	AppWindow *_appWindow = nullptr;
 
 	// The menu this panel opened. Holding it is what keeps the surface addressable without a
@@ -70,8 +73,6 @@ protected:
 	Rc<ui::SubWindow> _utility;
 
 	String _myWindowId;
-	bool _hoverArmed = false;
-	static constexpr uint32_t kHeadingHoverTipTag = 0x41555831; // 'AUX1'
 };
 
 } // namespace app

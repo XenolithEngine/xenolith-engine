@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include "SPFilesystem.h"
 #include "SPFilepath.h"
 #include "SPMemInterface.h"
+#include "SPString.h"
 
 #include "../tests.h"
 
@@ -97,6 +98,74 @@ void performFilesystemTests() {
 			(const uint8_t *)"b", 1);
 	check(filesystem::remove(dir, true), "fs: remove (recursive directory tree)");
 	check(!filesystem::exists(dir), "fs: removed directory tree is gone");
+}
+
+// Every App<X> category is documented as read-write ("Runtime assumes, that this dirs are
+// read-write" in sprt/runtime/filesystem/lookup.h), so on every platform the runtime must publish
+// at least one location for it that carries both writability markers:
+//
+//  - LookupFlags::Writable on the location — enumeratePaths() skips a location without it as soon
+//    as the lookup asks for a writable path, so a category missing it has no writable path at all;
+//  - LocationFlags::Writable on the location — initResource() pre-creates the directory and drops
+//    LookupFlags::Writable again when the location turns out not to be writable after all.
+//
+// The MakeDir lookup flag must then build the whole directory chain below that location, so that a
+// write into a subdirectory that does not exist yet succeeds without a manual mkdir.
+static void checkWritableCategory(LocationCategory cat, StringView name) {
+	auto lookup = sprt::filesystem::getLookupInfo(cat);
+
+	bool lookupWritable = false;
+	bool locationWritable = false;
+	if (lookup) {
+		for (auto &it : lookup->paths) {
+			if (hasFlag(it.lookupType, FileFlags::Writable)) {
+				lookupWritable = true;
+			}
+			if (hasFlag(it.locationFlags, LocationFlags::Writable)) {
+				locationWritable = true;
+			}
+		}
+	}
+
+	check(lookupWritable, mem_std::toString("fs: ", name, ": has a location writable for lookup"));
+	check(locationWritable, mem_std::toString("fs: ", name, ": has a location marked writable"));
+
+	check(!filesystem::findWritablePath<mem_std::Interface>(cat).empty(),
+			mem_std::toString("fs: ", name, ": findWritablePath() resolves"));
+
+	FileInfo root("xlfs_probe_dir", cat);
+	filesystem::remove(root, true); // drop any leftover from a previous run
+
+	// the two intermediate directories do not exist: MakeDir has to create them
+	FileInfo probe("xlfs_probe_dir/nested/probe.txt", cat, FileFlags::MakeDir);
+	check(filesystem::write(probe, (const uint8_t *)"probe", 5),
+			mem_std::toString("fs: ", name, ": write() into a missing subdirectory with MakeDir"));
+	check(filesystem::exists(FileInfo("xlfs_probe_dir/nested/probe.txt", cat)),
+			mem_std::toString("fs: ", name, ": file written through MakeDir exists"));
+
+	filesystem::remove(root, true);
+}
+
+void performFilesystemLocationTests() {
+	sprt::cout << "\n== stappler filesystem tests (writable locations) ==\n";
+
+	checkWritableCategory(LocationCategory::AppData, "AppData");
+	checkWritableCategory(LocationCategory::AppConfig, "AppConfig");
+	checkWritableCategory(LocationCategory::AppState, "AppState");
+	checkWritableCategory(LocationCategory::AppCache, "AppCache");
+	checkWritableCategory(LocationCategory::AppRuntime, "AppRuntime");
+
+	// The cwd-relative Custom category is writable too, and MakeDir has to work there as well
+	FileInfo root("xlfs_probe_dir", LocationCategory::Custom);
+	filesystem::remove(root, true);
+
+	FileInfo probe("xlfs_probe_dir/nested/probe.txt", LocationCategory::Custom, FileFlags::MakeDir);
+	check(filesystem::write(probe, (const uint8_t *)"probe", 5),
+			"fs: Custom: write() into a missing subdirectory with MakeDir");
+	check(filesystem::exists(FileInfo("xlfs_probe_dir/nested/probe.txt", LocationCategory::Custom)),
+			"fs: Custom: file written through MakeDir exists");
+
+	filesystem::remove(root, true);
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler
