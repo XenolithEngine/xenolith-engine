@@ -70,7 +70,8 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 			flags |= FileFlags::Writable;
 		}
 
-		if (hasFlag(flags, FileFlags::PathMask)) {
+		// the category's own defaults only apply when the caller did not pick a path class itself
+		if (!hasFlag(flags, FileFlags::PathMask)) {
 			flags |= res->defaultLookupFlags;
 		}
 
@@ -81,6 +82,9 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 		sprt::filesystem::getCurrentDir([&](StringView path) {
 			auto &info = sprt::filesystem::getCurrentLocation();
 			if (a == Access::None || info.interface->_access(info, filename, a) == Status::Ok) {
+				if (hasFlag(flags, FileFlags::MakeDir)) {
+					mkdir_recursive(FileInfo(filepath::root(path), FileCategory::Custom));
+				}
 				cb(info, path);
 			}
 		}, filename);

@@ -68,3 +68,4 @@
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"
 #include "XLUiSubWindowSession.cc"
+#include "XLUiTooltipSystem.cc" // after SubWindowSession: the hint goes through its tip slot

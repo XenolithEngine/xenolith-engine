@@ -501,7 +501,7 @@ void PathInfo::initSystemPaths(LookupData &data) {
 	}
 
 	if (!_filesDir.empty()) {
-		auto locationFlags = LocationFlags::Locateable;
+		auto locationFlags = LocationFlags::Locateable | LocationFlags::Writable;
 		auto lookupFlags = LookupFlags::Writable | LookupFlags::Private;
 
 		filepath::merge([&](StringView mergadPath) {
@@ -540,7 +540,7 @@ void PathInfo::initSystemPaths(LookupData &data) {
 	}
 
 	if (!_cacheDir.empty()) {
-		auto locationFlags = LocationFlags::Locateable;
+		auto locationFlags = LocationFlags::Locateable | LocationFlags::Writable;
 		auto lookupFlags = LookupFlags::Writable | LookupFlags::Private;
 
 		filepath::merge([&](StringView mergadPath) {

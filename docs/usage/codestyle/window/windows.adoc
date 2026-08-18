@@ -153,7 +153,49 @@ each window renders on demand, so `frame` is per window too.
 * Per-window hint and menu bookkeeping — one tip at a time, a menu superseding a
   tip, the hide timer — is `ui::SubWindowSession::get(window)`
   ([XLUiSubWindowSession.h](../../../../xenolith/renderer/ui/XLUiSubWindowSession.h)),
-  not something to re-implement per screen.
+  not something to re-implement per screen. `showTip(text, …)` is the one-line
+  hint; `showTip(Config &&, key, …)` takes a surface of your own and keys the slot
+  so re-showing the same thing refreshes the timer instead of flapping.
+
+### Hints on hover: `ui::TooltipSystem`
+
+Do **not** hand-roll "pointer entered → start a timer → show a tip". Declare the
+hint on the node and let
+[XLUiTooltipSystem.h](../../../../xenolith/renderer/ui/XLUiTooltipSystem.h) run it:
+
+[source,cpp]
+----
+node->addSystem(Rc<ui::TooltipTarget>::create("Save the document"));
+
+node->addSystem(Rc<ui::TooltipTarget>::create(ui::TooltipInfo{
+	.text = "Save the document",
+	.factory = [](NotNull<ui::SubWindow> w, const ui::TooltipRequest &req) { … },
+	.placement = ui::TooltipPlacement{ .anchorMode = ui::TooltipAnchorMode::Pointer },
+}));
+
+// the coordinator installs itself on SceneContent on first use
+auto *tips = ui::TooltipSystem::acquireForNode(node);
+tips->setHoverDelay(TimeInterval::milliseconds(400));
+----
+
+* **`TooltipSystem` is the coordinator, `TooltipTarget` the declaration.** The
+  dwell delay, the subwindow config and `TooltipMode` (`Overlay` vs `Native`) are
+  the system's, so hints behave alike everywhere; the factory and the placement
+  are the target's, with the system's as defaults. There is deliberately no
+  per-target delay.
+* **The delay is a dwell, not a timeout since entry** — every pointer move within
+  the node restarts it. It is an `Action` on purpose: a running action keeps
+  `Director::hasActiveInteractions()` true, so the delay actually elapses in an
+  app that renders on demand, which a looper timer would not.
+* `TooltipTarget` **is** an `InputListener` (like `ScrollSystem`), because a
+  `System` may not add a sibling system from its own `handleAdded`/`handleRemoved`.
+  Its `init` takes arguments for a reason: a zero-argument `init()` would be
+  hidden by `InputListener::init(int32_t priority = 0)` and silently never run.
+* **Leave `mode` at `Overlay`.** Under `Native` the tip takes the pointer off the
+  parent window, so the target reports a leave it never had — `hideOnLeave` is
+  ignored there and only the hide timer closes the hint.
+* A content builder that names its own root keeps that name; only an unnamed one
+  is called `aux-tip`.
 
 ### Placement
 
@@ -166,6 +208,17 @@ work-area edge. `Dialog` and `Utility` are placed by the window manager.
 **There are no global coordinates in this API.** On Wayland the compositor
 computes the position; elsewhere the engine computes the same thing
 (`computeWindowPlacement`). Do not try to convert to screen coordinates yourself.
+
+Two things about `gravity` and `offset` are worth knowing before you tune a
+placement:
+
+* **`gravity` names the edge of the SURFACE that lands on the anchor point**, not
+  the direction the surface opens in — so `gravity = Top` puts the surface
+  *below* the anchor. The Wayland backend inverts it when handing it to
+  `xdg_positioner`, whose gravity means the opposite.
+* **`offset` pushes the surface away from the anchor**, and a flip inverts it
+  along with the anchor and the gravity. So an `offset` of `{0, 8}` is an 8px gap
+  under the anchor rect, and stays an 8px gap above it once `FlipY` fires.
 
 ## Capabilities, state and fullscreen
 
@@ -236,6 +289,8 @@ prewarmed graph.
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
 | reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` |
 | a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
+| hand-rolling a hover delay | `ui::TooltipTarget` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
+| reading `WindowPlacement::gravity` as "the direction it opens" | it names which **edge of the surface** lands on the anchor point, so `gravity = Top` puts the surface *below* |
 
 ## Related
 

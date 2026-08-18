@@ -185,7 +185,9 @@ lifetime, or for error detection. Details and examples:
     opened". A popup/dialog/tooltip belonging to a window is **`ui::SubWindow`**,
     which becomes a native subwindow or an in-scene overlay depending on
     `WindowCapabilities::Subwindows` — check capabilities before offering
-    fullscreen, decorations or mode switching too. OS dialogs are an
+    fullscreen, decorations or mode switching too. A hint that appears **on hover**
+    is `ui::TooltipTarget` on the node plus `ui::TooltipSystem` on the scene, never
+    a hand-rolled timer. OS dialogs are an
     `Rc<sprt::window::DialogRequest>` handed to `AppWindow::openDialog` (parented,
     cancelled with the window) or `Context::openDialog` (windowless); **keep the
     `Rc` — it is the cancellation token**, `callback` is required and runs exactly

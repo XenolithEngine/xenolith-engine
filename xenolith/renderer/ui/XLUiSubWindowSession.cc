@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiSubWindowSession.h"
+#include "XLUiTooltipSystem.h"
 
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
@@ -34,38 +35,6 @@
 #include <cmath>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
-
-static constexpr float kTipHeight = 34.0f;
-static constexpr float kTipFontSize = 13.0f;
-static constexpr float kTipPadding = 12.0f;
-
-// Rough advance-width estimate: the tip is built before it is measured, and the exact metrics
-// would need a font query for a box that is clamped anyway.
-static Size2 measureTipSize(StringView text) {
-	const float textWidth = float(text.size()) * kTipFontSize * 0.58f;
-	return Size2(sprt::max(120.0f, sprt::min(360.0f, textWidth + kTipPadding * 2.0f)), kTipHeight);
-}
-
-static Rc<basic2d::SceneLayout2d> buildTipLayout(StringView text, Size2 size) {
-	auto layout = Rc<basic2d::SceneLayout2d>::create();
-	layout->setContentSize(size);
-	layout->setName("aux-tip");
-
-	auto bg = layout->addChild(Rc<basic2d::Layer>::create());
-	bg->setAnchorPoint(Anchor::BottomLeft);
-	bg->setPosition(Vec2::ZERO);
-	bg->setContentSize(size);
-	bg->setColor(Color(0x101014));
-
-	auto label = layout->addChild(Rc<basic2d::Label>::create());
-	label->setString(text);
-	label->setFontSize(uint16_t(kTipFontSize));
-	label->setColor(Color::White);
-	label->setAnchorPoint(Anchor::Middle);
-	label->setPosition(Vec2(size.width / 2.0f, size.height / 2.0f));
-
-	return layout;
-}
 
 static sprt::window::WindowPlacement makeTipPlacement(Vec2 anchorSceneYUp, float sceneHeight) {
 	sprt::window::WindowPlacement placement;
@@ -126,35 +95,83 @@ AppWindow *SubWindowSession::getWindow() const {
 
 void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float sceneHeight,
 		TimeInterval hideDelay) {
+	// The stock hint lives in TooltipSystem, which is where its look and metrics are configurable.
+	// This overload is that hint with the placement worked out by the caller.
+	const TooltipConfig tipConfig;
+	const auto size = TooltipSystem::measureDefaultTooltip(text, tipConfig);
+
+	SubWindow::Config config;
+	config.placement = makeTipPlacement(anchorSceneYUp, sceneHeight);
+	config.size = size;
+	config.title = StringView("Tip");
+	// A native tip costs a swapchain for a few hundred milliseconds of hint and takes hover away
+	// from the node it describes.
+	config.preferNative = false;
+	config.content = [str = text.str<Interface>(), size](NotNull<SubWindow> surface) {
+		TooltipRequest request;
+		request.text = str;
+		request.size = size;
+		return TooltipSystem::buildDefaultTooltip(surface, request);
+	};
+
+	showTip(sp::move(config), text, hideDelay);
+}
+
+Rc<SubWindow> SubWindowSession::showTip(SubWindow::Config &&config, StringView key,
+		TimeInterval hideDelay) {
 	auto window = getWindow();
 	if (!window || window->isInCloseRequest()) {
-		return;
+		return nullptr;
 	}
 
-	// Same tip already up: refresh the hide timer instead of a dismiss/recreate flap.
-	if (hasTip() && _tipText == text) {
+	// Same tip already up: refresh the hide timer instead of a dismiss/recreate flap. An empty key
+	// opts out - it identifies nothing, so it can never be "the same".
+	if (hasTip() && !key.empty() && _tipKey == key) {
 		armHideTimer(hideDelay);
-		return;
+		return _tip;
 	}
 
 	clearTip();
 
-	_tipText = text.str<Interface>();
+	_tipKey = key.str<Interface>();
 	_hideDelay = hideDelay;
 
-	const auto size = measureTipSize(_tipText);
+	config.type = SubWindow::WindowType::Tooltip;
 
-	_tip = SubWindow::showTooltip(window, makeTipPlacement(anchorSceneYUp, sceneHeight),
-			Extent2(uint32_t(size.width), uint32_t(size.height)),
-			[str = _tipText, size](NotNull<SubWindow>) { return buildTipLayout(str, size); },
-			"Tip");
+	// Chain rather than replace: the slot must be cleared however the surface went away, and a
+	// caller with a close callback of its own is the normal case, not an exotic one.
+	config.onClose = [life = _life, onClose = sp::move(config.onClose)](
+							 NotNull<SubWindow> surface) mutable {
+		if (auto *session = life ? life->session : nullptr) {
+			// Only if this IS the live tip: a stale surface closing must not clear its successor.
+			if (session->_tip.get() == surface.get()) {
+				session->_tip = nullptr;
+				session->_tipKey.clear();
+				session->cancelHideTimer();
+			}
+		}
+		if (onClose) {
+			onClose(surface);
+		}
+	};
+
+	_tip = SubWindow::open(window, sp::move(config));
 
 	if (!hasTip()) {
 		clearTip();
-		return;
+		return nullptr;
 	}
 
 	armHideTimer(_hideDelay);
+	return _tip;
+}
+
+void SubWindowSession::refreshTip(TimeInterval hideDelay) {
+	if (!hasTip()) {
+		return;
+	}
+	_hideDelay = hideDelay;
+	armHideTimer(hideDelay);
 }
 
 void SubWindowSession::dismissTip() { clearTip(); }
@@ -166,10 +183,17 @@ void SubWindowSession::clearTip() {
 		_tip = nullptr;
 		tip->dismiss();
 	}
-	_tipText.clear();
+	_tipKey.clear();
 }
 
 void SubWindowSession::armHideTimer(TimeInterval hideDelay) {
+	cancelHideTimer();
+
+	// Zero means "no hide timer": the tip stays until a leave, a popup or the scene takes it down.
+	if (!hideDelay) {
+		return;
+	}
+
 	auto window = getWindow();
 	auto director = window ? window->getDirector() : nullptr;
 	auto app = director ? director->getApplication() : nullptr;
@@ -178,7 +202,6 @@ void SubWindowSession::armHideTimer(TimeInterval hideDelay) {
 		return;
 	}
 
-	cancelHideTimer();
 	_hideTimer = looper->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::TimerInfo::Completion::create<Lifetime>(_life,
 				[](Lifetime *life, sprt::dispatch::TimerHandle *, uint32_t, Status status) {

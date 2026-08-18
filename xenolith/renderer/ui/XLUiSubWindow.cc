@@ -33,6 +33,8 @@
 #include "XLDirector.h"
 #include "XLScene.h"
 
+#include <cmath>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // Overlay-backed tips are parented directly rather than pushed, so they need a z of their own,
@@ -182,10 +184,21 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 		return false;
 	}
 
-	// WindowPlacement is Y-down from the parent's content top-left; scene nodes are Y-up.
-	const float yUp = content->getContentSize().height - float(config.placement.anchorRect.y);
+	// Resolve the placement the same way the window backends do, rather than dropping the surface
+	// at the raw anchor point: `anchor`, `gravity`, `offset` and the flip/slide adjustments are the
+	// whole reason WindowPlacement exists, and a caller that gets them honoured natively but
+	// ignored here has to branch on the platform after all. The scene IS the work area for an
+	// overlay — there is nothing outside it to slide against.
+	const auto contentSize = content->getContentSize();
+	const auto workArea = IRect(0, 0, int32_t(std::lround(contentSize.width)),
+			int32_t(std::lround(contentSize.height)));
+	const auto placed =
+			sprt::window::computeWindowPlacement(config.placement, config.size, workArea, workArea);
+
+	// computeWindowPlacement answers in the same Y-down space it was asked in; scene nodes are Y-up.
+	const float yUp = contentSize.height - float(placed.y);
 	layout->setAnchorPoint(Anchor::TopLeft);
-	layout->setPosition(Vec2(float(config.placement.anchorRect.x), yUp));
+	layout->setPosition(Vec2(float(placed.x), yUp));
 
 	_overlayIsTip = config.type == WindowType::Tooltip;
 
@@ -222,7 +235,13 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 	if (_overlayIsTip) {
 		// pushOverlay's updateLayoutNode would force full-parent size and a BottomLeft origin,
 		// which is exactly wrong for a hint anchored at a point.
-		layout->setName("aux-tip");
+		//
+		// Only name it if the builder did not: a tip's name is its CSS id and the hook tools look
+		// it up by, so a content builder that named its own root has said something deliberate and
+		// overwriting it would make every custom hint indistinguishable from the stock one.
+		if (layout->getName().empty()) {
+			layout->setName("aux-tip");
+		}
 		layout->setContentSize(Size2(float(config.size.width), float(config.size.height)));
 		content->addChild(layout, kTipZOrder);
 	} else if (!content->pushOverlay(layout)) {

@@ -66,6 +66,15 @@ protected:
 	void fail(StringView reason);
 	void check(bool ok, StringView name);
 	void evaluateReplacePhase();
+
+	// `afterDelay` false: mid-jiggle, nothing may be up. True: the pointer has rested, so it must be.
+public:
+	void evaluateDwellPhase(NotNull<Scene>, bool afterDelay);
+
+	// Pure-function checks on sprt::window::computeWindowPlacement; no window involved.
+	void evaluatePlacement();
+
+protected:
 	void finish();
 	void writeStatus(int code);
 

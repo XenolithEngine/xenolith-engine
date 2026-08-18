@@ -1017,7 +1017,7 @@ static void defineAppPathFromCommon(LookupData &data, StringView bundleName) {
 			res.paths.emplace_back(LocationInfo{
 				.path = path.pdup(data._pool),
 				.lookupType = LookupFlags::Private | LookupFlags::Writable,
-				.locationFlags = LocationFlags::Locateable,
+				.locationFlags = LocationFlags::Locateable | LocationFlags::Writable,
 				.interface = getDefaultInterface(),
 			});
 		}, root, bundleName, subname);
