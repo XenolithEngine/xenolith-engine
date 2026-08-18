@@ -20,16 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Stage-0 test bench for the libzip removal (docs/design/libzip-removal-plan.adoc).
+// The public ZipArchive API, end to end (docs/design/libzip-removal-plan.adoc).
 //
-// These are CHARACTERIZATION tests: they pin down what the current, libzip-backed ZipArchive
-// actually does, so that the from-scratch reader written in stages 2-4 can be measured against a
-// recorded truth rather than against an assumption. They must be green BEFORE any of that reader
-// exists, and green again after it replaces libzip in stage 6.
+// This began as a CHARACTERIZATION bench: it pinned down what the libzip-backed ZipArchive actually
+// did, so that the from-scratch reader of stages 2-4 could be measured against a recorded truth
+// instead of an assumption. Stage 6 removed libzip from underneath it, so the oracle is gone and
+// the expectations are now golden data - recorded behaviour, frozen deliberately.
 //
-// A case whose `characterized` flag is false has no asserted expectations yet: the run prints what
-// libzip returned and that observation is what gets written into corpus.cpp. Guessing the
-// expectation and then building a reader to match the guess would defeat the whole exercise.
+// It stays valuable for a reason zipformat cannot cover: this is the only test that goes through
+// the PUBLIC surface, while zipformat exercises the catalog and reader directly.
+//
+// Where the answers changed at the switch, the case in corpus.cpp says what libzip used to do and
+// why the new answer differs. A case whose `characterized` flag is false asserts nothing about its
+// entries and merely prints them.
 
 #include "SPCommon.h"
 #include "SPZip.h"

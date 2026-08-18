@@ -27,4 +27,5 @@
 #include "SPZipNames.cc"
 #include "SPZipCatalog.cc"
 #include "SPZipReader.cc"
+#include "SPZipWriter.cc"
 #include "SPZip.cc"

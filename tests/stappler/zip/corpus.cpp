@@ -658,17 +658,14 @@ static Case makeTraversal() {
 	c.archive = b.finish();
 	c.meta = b.metadata();
 
-	// MEASURED against libzip: it does NOT sanitize - both hostile names come back verbatim and are
-	// readable. This is the one expectation the replacement is meant to BREAK: stage 3 adds a path
-	// sanitizer, and when it lands the first two entries must stop being reachable. Until then this
-	// records the hole rather than pretending it is not there.
-	c.entries.emplace_back(EntryExpect{"../escape.txt", bytesOf("one level up"), true});
-	c.entries.emplace_back(EntryExpect{"/absolute.txt", bytesOf("rooted"), true});
+	// libzip did NOT sanitize: both hostile names came back verbatim and readable, and that hole is
+	// what stage 3 was written to close. Since stage 6 the public API answers as promised - the
+	// entries are still LISTED, because an archive carrying such a name is something a caller
+	// should be able to see, but reading them is refused.
+	c.entries.emplace_back(EntryExpect{"../escape.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"/absolute.txt", Bytes(), false});
 	c.entries.emplace_back(EntryExpect{"ok.txt", bytesOf("harmless"), true});
 
-	// ...and here is the replacement breaking it, as promised. Both hostile names are still LISTED -
-	// an archive that carries one is something a caller should be able to see - but they are marked
-	// and reading them is refused.
 	markNameRejected(c.meta[0]);
 	markNameRejected(c.meta[1]);
 	return c;
@@ -770,12 +767,10 @@ static Case makePrefix() {
 	StringView junk("MZ this is not really an executable, but it is in the way\n");
 	c.expectedPrefix = junk.size();
 
-	// MEASURED: the current ZipArchive refuses this archive, and it is not libzip that refuses it -
-	// both constructors sniff the FIRST FOUR BYTES for a local/central/descriptor signature
-	// (SPZip.cc:49 and :164) and give up before libzip is ever handed the bytes. The engine's own
-	// catalog locates the directory from the end and handles the prefix, hence the divergence.
-	// Stage 6 has to decide the offset-0 sniff's fate: keeping it would throw that capability away.
-	c.openable = false;
+	// Up to stage 6 this archive was REFUSED, and not by libzip: both constructors sniffed the first
+	// four bytes for a signature and gave up before libzip was handed anything. Stage 6 removed the
+	// probe - the catalog locates the directory from the end of the file and validates it properly,
+	// so the four-byte guess was only ever throwing away a capability the reader already had.
 
 	c.archive.assign((const uint8_t *)junk.data(), (const uint8_t *)junk.data() + junk.size());
 	c.archive.insert(c.archive.end(), archive.begin(), archive.end());
@@ -1010,16 +1005,16 @@ static Case makeCp437Control() {
 	// A name with bytes below 0x20. CP437 gives those printable glyphs, so the answer depends
 	// entirely on whether a reader calls the name ASCII or CP437.
 	//
-	// MEASURED against libzip: it calls it CP437 - "ctrl\x01\x02.txt" comes back as "ctrl☺☻.txt",
-	// with 0x01/0x02 turned into U+263A/U+263B. The engine's reader leaves ASCII alone, so the two
-	// disagree here on purpose; see the encoding-guess table in tests/stappler/zip/format.cpp.
-	// Left uncharacterized so that libzip's spelling is recorded rather than asserted.
-	c.characterized = false;
-
+	// libzip called it CP437: "ctrl\x01\x02.txt" came back as "ctrl☺☻.txt", with 0x01/0x02 turned
+	// into U+263A/U+263B. The engine leaves ASCII alone, so since stage 6 the name survives as
+	// written; see the encoding-guess table in tests/stappler/zip/format.cpp.
 	Builder b;
 	b.add(StringView("ctrl\x01\x02.txt", 11), viewOf("control bytes in the name"));
 	c.archive = b.finish();
 	c.meta = b.metadata();
+
+	c.entries.emplace_back(EntryExpect{String("ctrl\x01\x02.txt", 11),
+		bytesOf("control bytes in the name"), true});
 	return c;
 }
 
@@ -1030,11 +1025,12 @@ static Case makeTraversalExtended() {
 	// Every shape the sanitizer has to refuse, in one archive. `ok.txt` is last so that a reader
 	// which gives up on the first hostile name is visibly wrong rather than merely stricter.
 	//
-	// Not characterized against libzip: it does not sanitize at all, and how it spells a name with
-	// an embedded NUL is its own business. What matters here is what OUR catalog does, which
-	// Case::meta pins down.
-	c.characterized = false;
-
+	// libzip did not sanitize at all, so this went uncharacterized. Since stage 6 every hostile name
+	// is listed and unreadable, which can be written down.
+	//
+	// The NUL-bearing name is exposed TRUNCATED - StringView stops at the first NUL, so the eight
+	// bytes on the wire surface as three. That is safe only because the entry is refused a read,
+	// and it is recorded here rather than hidden.
 	static const uint8_t withNul[] = {'n', 'u', 'l', 0x00, '.', 't', 'x', 't'};
 
 	Builder b;
@@ -1049,6 +1045,14 @@ static Case makeTraversalExtended() {
 	c.meta = b.metadata();
 
 	for (size_t i = 0; i + 1 < c.meta.size(); ++i) { markNameRejected(c.meta[i]); }
+
+	c.entries.emplace_back(EntryExpect{"a\\..\\b.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"..", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"C:/absolute.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"a//b.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"./here.txt", Bytes(), false});
+	c.entries.emplace_back(EntryExpect{"nul", Bytes(), false}); // truncated at the NUL, see above
+	c.entries.emplace_back(EntryExpect{"ok.txt", bytesOf("harmless"), true});
 	return c;
 }
 
@@ -1067,8 +1071,8 @@ static Case makeEmptyFile() {
 	c.archive = b.finish();
 	c.meta = b.metadata();
 
-	// MEASURED against libzip: the empty entry is listed, but reading it fails.
-	c.entries.emplace_back(EntryExpect{"empty.txt", Bytes(), false});
+	// libzip listed the empty entry but refused to read it. Since stage 6 it reads as what it is.
+	c.entries.emplace_back(EntryExpect{"empty.txt", Bytes(), true});
 	c.entries.emplace_back(EntryExpect{"nonempty.txt",
 		bytesOf("so the archive is not entirely empty"), true});
 	return c;
@@ -1091,11 +1095,10 @@ static Case makeCrcMismatch() {
 	c.meta = b.metadata();
 	c.meta[0].expectRead = Status::ErrorNotRecoverable;
 
-	// MEASURED against libzip: it hands the 42 bytes back regardless - it does not verify the CRC on
-	// read at all. The engine's reader refuses, which is the whole point of checking: whatever gets
-	// this content parses it, and a parser fed corrupt input fails somewhere far less informative.
-	c.entries.emplace_back(EntryExpect{"wrong-crc.txt",
-		bytesOf("the checksum does not describe these bytes"), true});
+	// libzip handed the 42 bytes back regardless - it did not verify the CRC on read at all. Since
+	// stage 6 the read is refused, which is the whole point of checking: whatever receives this
+	// content parses it, and a parser fed corrupt input fails somewhere far less informative.
+	c.entries.emplace_back(EntryExpect{"wrong-crc.txt", Bytes(), false});
 	return c;
 }
 
@@ -1124,12 +1127,11 @@ static Case makeDeflateCorrupt() {
 	c.archive = sprt::move(data);
 	c.meta[0].expectRead = Status::ErrorNotRecoverable;
 
-	// MEASURED against libzip: it returns 1248 bytes - the full declared length - from the damaged
-	// stream, and reports success. Flipped bits in a Huffman stream still decode, just to the wrong
-	// symbols, and nothing downstream of libzip notices. Left uncharacterized because those bytes
-	// are garbage and pinning them would assert nothing worth asserting; what matters is recorded
-	// here and in the engine's own expectation above.
-	c.characterized = false;
+	// libzip returned 1248 bytes - the full declared length - from the damaged stream and reported
+	// success, because flipped bits in a Huffman stream still decode, just to the wrong symbols.
+	// Those bytes could not be written down, so the case went uncharacterized. Since stage 6 the
+	// answer is a refusal, which can be.
+	c.entries.emplace_back(EntryExpect{"corrupt.txt", Bytes(), false});
 	return c;
 }
 
@@ -1149,9 +1151,7 @@ static Case makeTruncatedData() {
 	c.meta = b.metadata();
 	c.meta[0].expectRead = Status::ErrorInvalidArguemnt;
 
-	// libzip's own answer is its business here; what matters is that ours refuses rather than
-	// reading past the end.
-	c.characterized = false;
+	c.entries.emplace_back(EntryExpect{"short.txt", Bytes(), false});
 	return c;
 }
 
@@ -1216,7 +1216,7 @@ static Case makeStoreSizeMismatch() {
 	c.meta = b.metadata();
 	c.meta[0].expectRead = Status::ErrorNotRecoverable;
 
-	c.characterized = false;
+	c.entries.emplace_back(EntryExpect{"mismatched.txt", Bytes(), false});
 	return c;
 }
 
