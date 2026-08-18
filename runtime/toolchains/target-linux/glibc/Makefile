@@ -61,7 +61,7 @@ HOST_CLANG_SYSROOT ?= $(abspath $(dir $(LOCAL_MAKEFILE))../../host-linux-glibc/s
 # in the target sysroot while they are being built, so clang's configure-time
 # probes fall back to the libgcc the cross GCC installed there, and -nostdlib++
 # keeps the driver from auto-adding the -lc++ it defaults to.
-TARGET_BOOTSTRAP_LDFLAGS := -rtlib=libgcc --unwindlib=libgcc -nostdlib++
+TARGET_BOOTSTRAP_LDFLAGS := -rtlib=libgcc --unwindlib=none -static-libgcc -nostdlib++
 
 include ../../common/utils/llvm-version.mk
 include ../../host-linux-glibc/glibc.mk
