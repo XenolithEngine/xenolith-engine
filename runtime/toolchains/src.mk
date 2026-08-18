@@ -70,7 +70,7 @@ LIBS = \
 
 TAR_XF = tar -xf
 
-VULKAN_SDK_VER := 1.4.350.0
+VULKAN_SDK_VER := 1.4.357.0
 
 ifeq ($(findstring Windows,$(OS)),Windows)
 
@@ -99,47 +99,53 @@ unpack_tar = $(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR); \
 endif
 
 
-# https://www.zlib.net/ # revised: 2 jun 2026
+# https://www.zlib.net/ # revised: 18 aug 2026
 $(SRC_ROOT)/zlib: | prepare
 	$(call unpack_tar, https://www.zlib.net/zlib-1.3.2.tar.gz, zlib)
 
-# https://sourceware.org/bzip2/downloads.html # revised: 2 jun 2026
+# https://sourceware.org/bzip2/downloads.html # revised: 18 aug 2026
 $(SRC_ROOT)/bzip2: | prepare
 	$(call unpack_tar, https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz, bzip2)
 
-# https://tukaani.org/xz/#_source_packages # revised: 2 jun 2026
+# https://tukaani.org/xz/#_source_packages # revised: 18 aug 2026
 $(SRC_ROOT)/xz: | prepare
 	$(call unpack_tar, https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.xz, xz)
 
-# https://github.com/facebook/zstd/releases # revised: 2 jun 2026
+# https://github.com/facebook/zstd/releases # revised: 18 aug 2026
 $(SRC_ROOT)/zstd: | prepare
 	$(call unpack_tar, https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz, zstd)
 
-# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 14 jul 2026
+# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 18 aug 2026
 $(SRC_ROOT)/libjpeg-turbo: | prepare
 	$(call unpack_tar, https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz, libjpeg-turbo)
 
 # Move to github source releases; sourceforge distribution can block downloads from Russia
-# https://github.com/pnggroup/libpng # revised: 2 jun 2026
+# https://github.com/pnggroup/libpng # revised: 18 aug 2026
 $(SRC_ROOT)/libpng: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/libpng)
 	cd $(SRC_ROOT); git clone  --recurse-submodules  --branch v1.6.58 https://github.com/pnggroup/libpng.git --depth 1 libpng
 
 #  Move to Void Linux source archives; sourceforge distribution can block downloads from Russia
-# https://sources.voidlinux.org # revised: 23 jun 2026
-# Security: 5.2.2 is the latest release; backport CVE-2026-26740 + CVE-2026-23868
-#  (no upstream release carries the fixes yet)
+# https://sources.voidlinux.org # revised: 18 aug 2026
+# Security: staying on the 5.2.x line. Upstream is at 6.1.3, but the 6.x bump is a
+#  deliberate API/ABI break (EGifSpew() changed signature, the E_GIF_ERR values were
+#  renumbered) and it buys nothing here: 6.1.2 picked up CVE-2026-23868 (patch 0002
+#  below), while CVE-2026-26740 is STILL unfixed upstream as of 6.1.3 - checked
+#  EGifGCBToSavedExtension(), it has no ByteCount guard - so patch 0001 has to be
+#  carried across a 6.x move anyway. Re-evaluate when the 6.x API settles.
+# Both CVE-2024-45993 and CVE-2025-31344 are gif2rgb-only; common/gif.mk builds just
+#  the library sources, so neither is reachable here.
 $(SRC_ROOT)/giflib: | prepare
 	$(call unpack_tar, https://sources.voidlinux.org/giflib-5.2.2/giflib-5.2.2.tar.gz, giflib)
 	cd $(SRC_ROOT)/giflib; git apply -p1 ../../replacements/giflib/0001-CVE-2026-26740-egif_lib-GCE-bounds-check.patch
 	cd $(SRC_ROOT)/giflib; git apply -p1 ../../replacements/giflib/0002-CVE-2026-23868-gifalloc-avoid-double-free.patch
 
-# https://storage.googleapis.com/downloads.webmproject.org/releases/webp/index.html # revised: 2 jun 2026
+# https://storage.googleapis.com/downloads.webmproject.org/releases/webp/index.html # revised: 18 aug 2026
 $(SRC_ROOT)/libwebp: | prepare
 	$(call unpack_tar, https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz, libwebp)
 
-# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 14 jul 2026
+# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 18 aug 2026
 # Security: 4.7.2 fixes CVE-2026-12912 (heap overflow in PixarLogDecode) and carries the
 #  CVE-2026-4775 (tif_getimage signed-int overflow) fix upstream - the local backport patch
 #  is no longer needed (would conflict against 4.7.2).
@@ -147,39 +153,49 @@ $(SRC_ROOT)/libwebp: | prepare
 $(SRC_ROOT)/tiff: | prepare
 	$(call unpack_tar, https://download.osgeo.org/libtiff/tiff-4.7.2.tar.xz, tiff)
 
-# https://github.com/google/brotli/releases # revised: 2 jun 2026
+# https://github.com/google/brotli/releases # revised: 18 aug 2026
 # TODO: Move to git release
 $(SRC_ROOT)/brotli: | prepare
 	$(call unpack_tar, https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz, brotli)
 
 # Use Mbed TLS 3.6 until at least 2027
 # TODO: Move to git release or exclude - unable to properly verify supply chain
-# https://github.com/Mbed-TLS/mbedtls/releases # revised: 14 jul 2026
+# https://github.com/Mbed-TLS/mbedtls/releases # revised: 18 aug 2026
+# Security: 3.6.7 is the last 3.6 LTS patch. CVE-2025-66442 (timing side channel in
+#  RSA and CBC/ECB decryption, introduced by LLVM's select-optimize pass) is open
+#  against every version through 4.0.0 - there is no upstream fix to pick up. We build
+#  with clang at -O3/-O2, where that pass runs. Upstream SECURITY.md declines to work
+#  around individual optimizations and only scrutinizes -O2/-Os, so mitigating here
+#  would mean -mllvm -disable-select-optimize (or -O2) for this library specifically.
+#  Deliberately NOT done yet: it is a build-policy call, not a version bump.
 $(SRC_ROOT)/mbedtls: | prepare
 	$(call unpack_tar, https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2, mbedtls)
 
-# https://github.com/ngtcp2/nghttp3/releases # revised: 14 jul 2026
+# https://github.com/ngtcp2/nghttp3/releases # revised: 18 aug 2026
 $(SRC_ROOT)/nghttp3: | prepare
-	$(call unpack_tar, https://github.com/ngtcp2/nghttp3/releases/download/v1.17.0/nghttp3-1.17.0.tar.xz, nghttp3)
+	$(call unpack_tar, https://github.com/ngtcp2/nghttp3/releases/download/v1.18.0/nghttp3-1.18.0.tar.xz, nghttp3)
 
-# https://github.com/ngtcp2/ngtcp2/releases # revised: 12 jul 2026
+# https://github.com/ngtcp2/ngtcp2/releases # revised: 18 aug 2026
 $(SRC_ROOT)/ngtcp2: | prepare
-	$(call unpack_tar, https://github.com/ngtcp2/ngtcp2/releases/download/v1.24.0/ngtcp2-1.24.0.tar.xz, ngtcp2)
+	$(call unpack_tar, https://github.com/ngtcp2/ngtcp2/releases/download/v1.25.0/ngtcp2-1.25.0.tar.xz, ngtcp2)
 
-# https://curl.se/download.html # revised: 14 jul 2026
+# https://curl.se/download.html # revised: 18 aug 2026
 $(SRC_ROOT)/curl: | prepare
 	$(call unpack_tar, https://curl.se/download/curl-8.21.0.tar.xz, curl)
 
-# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 5 aug 2026
+# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 18 aug 2026
+# Security: 2.14.3 is the latest release; backport CVE-2026-50811 (the fix is only
+#  on master, no upstream release carries it yet)
 $(SRC_ROOT)/freetype: | prepare
 	$(call unpack_tar, https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz, freetype)
+	cd $(SRC_ROOT)/freetype; git apply -p1 ../../replacements/freetype/0001-CVE-2026-50811-ttgxvar-bound-TT_Get_Var_Design.patch
 
-# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 23 jun 2026
+# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 18 aug 2026
 # TODO: Move to git release
 $(SRC_ROOT)/harfbuzz: | prepare
-	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz, harfbuzz)
+	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/14.3.1/harfbuzz-14.3.1.tar.xz, harfbuzz)
 
-# https://github.com/Tehreer/SheenBidi # revised: 25 jun 2026
+# https://github.com/Tehreer/SheenBidi # revised: 18 aug 2026
 # Pinned to release tag v3.0.0 (Unicode 17.0); Apache-2.0, used bundled as the
 # Unicode Bidirectional Algorithm resolver.
 $(SRC_ROOT)/sheenbidi: | prepare
@@ -188,27 +204,29 @@ $(SRC_ROOT)/sheenbidi: | prepare
 	cd $(SRC_ROOT); git clone --branch v3.0.0 --depth 1 https://github.com/Tehreer/SheenBidi.git sheenbidi
 
 
-# https://www.sqlite.org/download.html # revised: 14 jul 2026
+# https://www.sqlite.org/download.html # revised: 18 aug 2026
 # Weak supply chain validation: only sha3 provided
-SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
+# Security: CVE-2026-50812 / CVE-2026-50813 are both in the Session Extension; common/sqlite.mk
+#  compiles the amalgamation with no -D at all, so SQLITE_ENABLE_SESSION is off - N/A.
+SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip
 ifeq ($(findstring Windows,$(OS)),Windows)
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); Invoke-WebRequest -Uri "$(SQLITE_URL)" -OutFile "sqlite-amalgamation.zip";
 	cd $(TMP_DIR); Expand-Archive -Path sqlite-amalgamation.zip -DestinationPath .
 	$(RM) $(TMP_DIR)/sqlite-amalgamation.zip
-	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530300  -Destination $(SRC_ROOT)/sqlite
+	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530400  -Destination $(SRC_ROOT)/sqlite
 else
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); $(WGET) $(SQLITE_URL) -O sqlite-amalgamation.zip
 	cd $(TMP_DIR); unzip sqlite-amalgamation.zip -d .
 	rm $(TMP_DIR)/sqlite-amalgamation.zip
-	mv -f $(TMP_DIR)/sqlite-amalgamation-3530300 $(SRC_ROOT)/sqlite
+	mv -f $(TMP_DIR)/sqlite-amalgamation-3530400 $(SRC_ROOT)/sqlite
 endif
 
 
-# https://github.com/SBKarr/libuidna # revised: 2 jun 2026
+# https://github.com/SBKarr/libuidna # revised: 18 aug 2026
 # Not used in actual source code - no supply chain validation required
 $(SRC_ROOT)/libuidna: | prepare
 	@$(MKDIR) $(SRC_ROOT)
@@ -216,79 +234,88 @@ $(SRC_ROOT)/libuidna: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/SBKarr/libuidna.git $(SRC_ROOT)/libuidna
 
 # Use 3.5 LTS until new LTS
-# https://openssl-library.org/source/index.html # revised: 23 jun 2026
+# https://openssl-library.org/source/index.html # revised: 18 aug 2026
+# Security: 3.5.7 is the last 3.5 LTS patch. CVE-2026-14456 (unbounded memory growth
+#  in the QUIC server listener's incoming-channel queue) is still open - the fix is
+#  slated for 3.5.8 / 3.6.4 / 4.0.2 and none of those are released yet. It needs an
+#  OpenSSL QUIC *server* (Listener SSL object); we only ever act as a client, so it is
+#  not reachable here. Bump to 3.5.8 as soon as it ships.
 $(SRC_ROOT)/openssl: | prepare
 	$(call unpack_tar, https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz, openssl)
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
 	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 	$(call rule_cp,replacements/openssl/50-wasm-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
-# https://github.com/gost-engine/engine # revised: 2 jun 2026
+# https://github.com/gost-engine/engine # revised: 18 aug 2026
 $(SRC_ROOT)/openssl-gost-engine: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/openssl-gost-engine)
 	cd $(SRC_ROOT); git clone  --recurse-submodules https://github.com/gost-engine/engine.git --depth 1 --branch v3.0.3 openssl-gost-engine
 
-# # https://github.com/bytecodealliance/wasm-micro-runtime # revised: 14 jul 2026
+# # https://github.com/bytecodealliance/wasm-micro-runtime # revised: 18 aug 2026
 $(SRC_ROOT)/wasm-micro-runtime: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/wasm-micro-runtime)
 	cd $(SRC_ROOT); git clone  --recurse-submodules  --branch WAMR-2.4.5 https://github.com/bytecodealliance/wasm-micro-runtime.git --depth 1 wasm-micro-runtime
 
-# https://github.com/KhronosGroup/Vulkan-Headers # revised: 2 jun 2026
+# https://github.com/KhronosGroup/Vulkan-Headers # revised: 18 aug 2026
 $(SRC_ROOT)/vulkan-headers: | prepare
 	cd $(SRC_ROOT); git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git vulkan-headers
 
-# https://github.com/KhronosGroup/SPIRV-Headers # revised: 2 jun 2026
+# https://github.com/KhronosGroup/SPIRV-Headers # revised: 18 aug 2026
 $(SRC_ROOT)/spirv-headers: | prepare
 	cd $(SRC_ROOT); git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git spirv-headers
 
-# https://github.com/KhronosGroup/glslang # revised: 2 jun 2026
+# https://github.com/KhronosGroup/glslang # revised: 18 aug 2026
 $(SRC_ROOT)/glslang: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/glslang.git glslang
 
-# https://github.com/KhronosGroup/SPIRV-Tools # revised: 2 jun 2026
+# https://github.com/KhronosGroup/SPIRV-Tools # revised: 18 aug 2026
 $(SRC_ROOT)/spirv-tools: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/SPIRV-Tools.git spirv-tools
 
-# https://github.com/KhronosGroup/Vulkan-Loader # revised: 2 jun 2026
+# https://github.com/KhronosGroup/Vulkan-Loader # revised: 18 aug 2026
 $(SRC_ROOT)/vulkan-loader: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Loader.git vulkan-loader
 
-# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 2 jun 2026
+# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 18 aug 2026
 $(SRC_ROOT)/vulkan-validationlayers: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers vulkan-validationlayers
 
-# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 2 jun 2026
+# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 18 aug 2026
 $(SRC_ROOT)/vulkan-utility: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Utility-Libraries vulkan-utility
 
-# https://github.com/KhronosGroup/Vulkan-Tools # revised: 31 jul 2026
+# https://github.com/KhronosGroup/Vulkan-Tools # revised: 18 aug 2026
 # Используется только target-xenolithos и только ради vulkaninfo — девайсового
 # пробника «нашёл ли лоадер ICD и перечисляет ли драйвер физическое устройство».
 $(SRC_ROOT)/vulkan-tools: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Tools.git vulkan-tools
 
-# https://github.com/KhronosGroup/MoltenVK/releases # revised: 2 jun 2026
+# https://github.com/KhronosGroup/MoltenVK/releases # revised: 18 aug 2026
 $(SRC_ROOT)/moltenvk: | prepare
-	$(call unpack_tar, https://github.com/KhronosGroup/MoltenVK/archive/refs/tags/v1.4.1.tar.gz, moltenvk)
+	$(call unpack_tar, https://github.com/KhronosGroup/MoltenVK/archive/refs/tags/v1.4.2.tar.gz, moltenvk)
 
-# https://github.com/unicode-org/icu/releases # revised: 2 jun 2026
+# https://github.com/unicode-org/icu/releases # revised: 18 aug 2026
 $(SRC_ROOT)/icu4c: | prepare
 	$(call unpack_tar, https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz, icu4c)
 
-# https://github.com/libffi/libffi/releases # revised: 14 jul 2026
+# https://github.com/libffi/libffi/releases # revised: 18 aug 2026
 # TODO: move to git releases
 $(SRC_ROOT)/ffi: | prepare
-	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.7.1/libffi-3.7.1.tar.gz, ffi)
+	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.8.0/libffi-3.8.0.tar.gz, ffi)
 
-# https://github.com/libexpat/libexpat/releases # revised: 14 jul 2026
+# https://github.com/libexpat/libexpat/releases # revised: 18 aug 2026
+# Security: 2.8.3 fixes CVE-2026-72522 (OOB read + infinite loop in *_toUtf16). That one
+#  only bites builds with 16-bit character support; ours is the default char/UTF-8 build
+#  (no XML_UNICODE), so we were not exposed - but 2.8.3 also fixes a 2.8.2 regression on
+#  2+ GiB documents. Note upstream still flags unfixed issues, see libexpat issue #1160.
 $(SRC_ROOT)/expat: | prepare
-	$(call unpack_tar, https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz, expat)
+	$(call unpack_tar, https://github.com/libexpat/libexpat/releases/download/R_2_8_3/expat-2.8.3.tar.xz, expat)
 
 # Use upstream - releases bound with GCC
 #  Pin: 549b81b43b46c0f361680561a626bf0e7b79dcbd
-# https://github.com/ianlancetaylor/libbacktrace.git # revised: 23 jun 2026
+# https://github.com/ianlancetaylor/libbacktrace.git # revised: 18 aug 2026
 $(SRC_ROOT)/libbacktrace: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/libbacktrace)
@@ -297,7 +324,7 @@ $(SRC_ROOT)/libbacktrace: | prepare
 
 # Use upstream - releases are too old
 #  Pin: f3e8262173b7089db9a9d57a9ecef8dd07ad9c97
-# https://github.com/simd-everywhere/simde.git # revised: 2 jun 2026
+# https://github.com/simd-everywhere/simde.git # revised: 18 aug 2026
 $(SRC_ROOT)/simde: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/simde)
@@ -323,34 +350,41 @@ $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/$(SP_LLVM_V)-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch
 
-# https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
+# https://download.gnome.org/sources/libxml2  # revised: 18 aug 2026
 $(SRC_ROOT)/libxml2: | prepare
 	$(call unpack_tar, https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.3.tar.xz, libxml2)
 
-# https://wayland.freedesktop.org/releases.html # revised: 2 jun 2026
+# https://wayland.freedesktop.org/releases.html # revised: 18 aug 2026
+# Pinned to whatever wayland-scanner the BUILD HOST ships, not to the newest release.
+#  target-linux/wayland.mk cross-builds with -Dscanner=false and drives protocol
+#  generation through the system wayland-scanner, and src/meson.build demands an exact
+#  version match. 1.26.0 was tried and fails at meson setup on a host with 1.25.0:
+#  "Invalid version, need 'wayland-scanner' ['1.26.0'] found '1.25.0'".
+#  Moving past 1.25.0 means building wayland-scanner for the build machine first.
+#  No security reason to hurry: 1.25.0 has no known CVE.
 $(SRC_ROOT)/wayland: | prepare
 	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.25.0/downloads/wayland-1.25.0.tar.xz, wayland)
 
-# https://wayland.freedesktop.org/releases.html # revised: 23 jun 2026
+# https://wayland.freedesktop.org/releases.html # revised: 18 aug 2026
 $(SRC_ROOT)/wayland-protocols: | prepare
 	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.49/downloads/wayland-protocols-1.49.tar.xz, wayland-protocols)
 
-# https://github.com/KDE/plasma-wayland-protocols # revised: 2 jun 2026
+# https://github.com/KDE/plasma-wayland-protocols # revised: 18 aug 2026
 $(SRC_ROOT)/plasma-wayland-protocols: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/KDE/plasma-wayland-protocols.git --branch v1.21.0  --depth 1
  
 # Keep the version within 2.4.x: patch_ver feeds the SONAME version
 # (libdrm.so.2.<minor>.0), so moving to 2.5 would roll it backwards — see the
 # note at the top of libdrm's own meson.build.
-# https://dri.freedesktop.org/libdrm/ # revised: 1 aug 2026
+# https://dri.freedesktop.org/libdrm/ # revised: 18 aug 2026
 $(SRC_ROOT)/libdrm: | prepare
 	$(call unpack_tar, https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz, libdrm)
 
 # Inject Russia Ministry of Digital Development certificates
-# https://curl.se/ca # revised: 2 jun 2026
-# https://www.gosuslugi.ru/crt # revised: 2 jun 2026
+# https://curl.se/ca # revised: 18 aug 2026
+# https://www.gosuslugi.ru/crt # revised: 18 aug 2026
 
-CERT_NAME := cacert-2026-05-14.pem
+CERT_NAME := cacert-2026-08-13.pem
 CERT_URL := https://curl.se/ca/$(CERT_NAME)
 
 ifeq ($(findstring Windows,$(OS)),Windows)
@@ -377,7 +411,7 @@ else
 replacements/curl/cacert.pem: $(LIBS_MAKE_FILE) | prepare
 	@$(MKDIR) $(TMP_DIR)
 	@$(MKDIR) replacements/curl
-	cd $(TMP_DIR); wget $(CERT_URL) # revised: 11 feb 2026
+	cd $(TMP_DIR); wget $(CERT_URL) # revised: 18 aug 2026
 	printf "\nhttps://www.gosuslugi.ru/crt - Root\n====================\n" > $(TMP_DIR)/russian_trusted_root_ca_pem.crt.txt
 	cd $(TMP_DIR); wget https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
 	printf "\nhttps://www.gosuslugi.ru/crt - Sub\n====================\n" > $(TMP_DIR)/russian_trusted_sub_ca_pem.crt.txt
@@ -404,7 +438,7 @@ endif
 
 # https://github.com/Jake-Shadle/xwin/releases
 $(SRC_ROOT)/xwin: | prepare
-	$(call unpack_tar, https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz, xwin)
+	$(call unpack_tar, https://github.com/Jake-Shadle/xwin/releases/download/0.10.0/xwin-0.10.0-x86_64-unknown-linux-musl.tar.gz, xwin)
 	touch $(SRC_ROOT)/xwin
 
 $(SRC_ROOT)/xwin/splat: $(SRC_ROOT)/xwin
