@@ -82,13 +82,14 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [Forms: `FormSystem`, fields and focus](ui/forms.adoc) | building a form, adding a field to one, driving Tab/submit/validation, or joining a widget of your own to a form |
 | [Docking: `DockSystem`, frames, panels and the split tree](ui/docking.adoc) | building an IDE-style layout of parked panels: declaring frames and their constraints, tabs, dividers, drag and drop between frames, saving and restoring the arrangement |
+| [Menus: `MenuSource`, `MenuSystem` and the popup chain](ui/menus.adoc) | building a menu: the item model, the shared columns that line the icons and accelerators up, wrapped multi-line titles, custom nodes, hotkeys, and opening one as a popup with submenus |
 
 ### `window/` — windows and OS integration
 
 | Article | Read it when |
 |---|---|
 | [Windows: opening, owning, closing](window/windows.adoc) | opening a second window, a popup, a tooltip or a menu; fullscreen, monitors, window state |
-| [System dialogs and shell actions](window/dialogs.adoc) | asking the OS for a file, a folder, a colour or a font; reveal-in-file-manager; move-to-trash |
+| [System dialogs and shell actions](window/dialogs.adoc) | asking the OS for a file, a folder, a colour or a font; reveal-in-file-manager; move-to-trash and restore-from-trash; asking whether one dialog type is served at all |
 
 ## Guides
 

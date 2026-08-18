@@ -969,6 +969,10 @@ void AppWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref
 	}, this);
 }
 
+bool AppWindow::isDialogSupported(sprt::window::DialogType type) const {
+	return _context->isDialogSupported(type);
+}
+
 Status AppWindow::openDialog(NotNull<sprt::window::DialogRequest> req) {
 	if (!req->callback) {
 		return Status::ErrorInvalidArguemnt;

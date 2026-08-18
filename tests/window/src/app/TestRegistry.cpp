@@ -47,6 +47,7 @@
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
 #include "widgets/HotkeyLayout.h"
+#include "widgets/MenuLayout.h"
 #include "layout/ParentResizeLayout.h"
 #include "css/PlatformLayout.h"
 #include "template/PugCascadeLayout.h"
@@ -233,6 +234,16 @@ static const TestInfo s_widgetsTests[] = {
 				   "handled must still reach an ordinary key recognizer. Drive it over the "
 				   "inspector: hotkey.log, hotkey.list, hotkey.rebind, send_input native=true."),
 		TestRegistry_make<HotkeyLayout>, true},
+
+	TestInfo{StringView("menu"), StringView("XL_MENU_TEST"), StringView("ui::MenuSource / ui::MenuSystem"),
+		StringView("One model shown twice: an inline menu and a popup. The leading icons and the "
+				   "accelerators must line up in one column across every row, the long title must "
+				   "wrap and make its row taller, the reported row height must equal the height "
+				   "the row is drawn at, a hidden item must not occupy a row, the custom node must "
+				   "be built exactly once, a KeepOpen toggle must not close the menu and a submenu "
+				   "must open as a second surface that the root takes down with it. Drive it over "
+				   "the inspector: menu.metrics, menu.state, menu.open, menu.activate."),
+		TestRegistry_make<MenuLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

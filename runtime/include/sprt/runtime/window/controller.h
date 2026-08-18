@@ -169,6 +169,21 @@ public:
 	virtual Status probeClipboard(Rc<ClipboardProbe> &&);
 	virtual Status writeToClipboard(Rc<ClipboardData> &&);
 
+	/* Whether openDialog can actually serve `type` on this platform, in this build, right now.
+
+	The question a capability bit cannot answer. WindowCapabilities::SystemFileActions says the
+	backend has shell actions at all, and covers three of them - one of which, RestoreFromTrash, has
+	no primitive on macOS. A caller that offers a feature built on a dialog type asks this first;
+	the alternative is opening a request in order to be told ErrorNotSupported, which on a
+	destructive action means finding out too late.
+
+	Safe to call from any thread: the answer is a property of the backend, settled at startup, and
+	never changes for the life of the controller.
+
+	The base implementation answers from the capability bits, which is the whole truth for every
+	type whose support IS one bit. A backend with a per-type answer overrides it. */
+	virtual bool isDialogSupported(DialogType) const;
+
 	// Open an OS dialog described by `req`; its completion runs on `target`. Call on this
 	// controller's looper. `req->parentWindowId`, when set, must name a live window: the dialog is
 	// parented to it, DialogFlags::Modal blocks it, and the dialog is cancelled if it closes.

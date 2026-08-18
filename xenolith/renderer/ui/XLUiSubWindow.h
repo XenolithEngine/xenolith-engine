@@ -125,6 +125,15 @@ public:
 	// True while the surface is on screen.
 	bool isOpen() const;
 
+	/* Overlay path only: where the placement put the surface, in the parent SceneContent's own
+	Y-DOWN coordinates (x, y = the surface's top-left; w, h = the size it was opened with).
+
+	Meaningful inside the content builder, which is what needs it: everything but a Tooltip is pushed
+	as a full-parent overlay, so the builder - not the push - is what decides where the visible box of
+	a menu or a palette actually sits. Empty on the native path, where the window system owns the
+	position. */
+	IRect getOverlayRect() const { return _overlayRect; }
+
 	// The surface's own window (native path) or the layout it was pushed as (overlay path).
 	AppWindow *getWindow() const;
 	basic2d::SceneLayout2d *getLayout() const { return _layout; }
@@ -165,6 +174,9 @@ protected:
 	// Overlay path, modal Dialog only: the node that covers the parent's content and eats its
 	// input. There is no second window to block, so this is what "modal" means there.
 	Rc<basic2d::Layer> _backdrop;
+
+	// Overlay path only: the placement the surface resolved to, published for the content builder.
+	IRect _overlayRect;
 
 	// Overlay path only: a tip is parented directly (it keeps its measured size), everything else
 	// goes through pushOverlay.

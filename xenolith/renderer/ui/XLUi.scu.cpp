@@ -53,6 +53,10 @@
 
 #include "frame/XLUiWindowFrame.cc" // after Button: the frame is built out of them
 
+#include "menu/XLUiMenuSource.cc"
+#include "menu/XLUiMenuItem.cc" // after Button: a menu row is one
+#include "menu/XLUiMenuSystem.cc" // after MenuItem: it builds them
+
 #include "forms/XLUiFormInputListener.cc"
 #include "forms/XLUiFormSystem.cc"
 #include "forms/XLUiFormAdapters.cc"
@@ -68,4 +72,5 @@
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"
 #include "XLUiSubWindowSession.cc"
+#include "menu/XLUiMenuPopup.cc" // after SubWindowSession: a menu opens through its popup slot
 #include "XLUiTooltipSystem.cc" // after SubWindowSession: the hint goes through its tip slot

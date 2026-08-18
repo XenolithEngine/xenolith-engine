@@ -207,6 +207,11 @@ public:
 	//
 	// Keep the Rc<DialogRequest>: it is the cancellation token. The backend's DialogHandle never
 	// crosses to this thread.
+	// Whether an OS dialog of this type can be served at all - see Context::isDialogSupported. It
+	// is the same question with the same answer; it is here so that a widget holding a window does
+	// not have to reach past it for the context.
+	bool isDialogSupported(sprt::window::DialogType) const;
+
 	virtual Status openDialog(NotNull<sprt::window::DialogRequest>) override;
 	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>) override;
 

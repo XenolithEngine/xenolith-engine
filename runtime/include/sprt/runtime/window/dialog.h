@@ -31,9 +31,15 @@ namespace sprt::window {
 class NativeWindow;
 class ContextController;
 
-// What the user is asked for. The last two are not dialogs at all — they are OS shell actions
+// What the user is asked for. The last three are not dialogs at all — they are OS shell actions
 // with no UI of ours — but they ride the same seam so that lifetime, cancellation and
 // window-teardown bookkeeping have exactly one implementation instead of two.
+//
+// NOT EVERY TYPE IS SERVED EVERYWHERE, and the capability bits are too coarse to say which:
+// SystemFileActions covers three actions of which one has no primitive at all on macOS. Ask
+// ContextController::isDialogSupported (Context::isDialogSupported / AppWindow::isDialogSupported
+// from the application) BEFORE offering a feature built on one of these, rather than opening a
+// request to find out.
 enum class DialogType : uint32_t {
 	OpenFile, // pick existing file(s); DialogFlags::Multiple selects one-vs-many
 	OpenDirectory, // pick an existing folder
@@ -44,6 +50,23 @@ enum class DialogType : uint32_t {
 	// DialogRequest::paths is the INPUT; only DialogResult::status is meaningful.
 	RevealInFileManager, // select the path in Finder / Explorer / the desktop file manager
 	MoveToTrash, // move to Trash / Recycle Bin — recoverable, never a hard delete
+
+	/* Put back what MoveToTrash took away.
+
+	`paths` are the paths the files had BEFORE they were trashed - which is the only thing the
+	caller can be expected to know, since no platform hands back an identity for a trashed item.
+	Each is looked up in the trash by its recorded origin, and the most recently deleted match is
+	the one that comes back.
+
+	DialogResult::paths lists what was actually restored, in no particular order. The status says
+	how far it got: Ok when every requested path came back, ErrorNotFound when none of them was in
+	the trash at all, and ErrorUnknown when some subset failed - `paths` is filled in all three
+	cases, so a caller that can act on a partial answer has one.
+
+	NOT AVAILABLE EVERYWHERE. Linux (the freedesktop trash spec) and Windows (the Recycle Bin) have
+	it; macOS has no restore primitive outside Finder itself and answers ErrorNotSupported. This is
+	exactly the type isDialogSupported exists for. */
+	RestoreFromTrash,
 };
 
 enum class DialogFlags : uint32_t {
@@ -106,7 +129,8 @@ struct DialogResult {
 	Status status = Status::ErrorNotImplemented;
 	DialogType type = DialogType::OpenFile;
 
-	// OpenFile / OpenDirectory / SaveFile. Absolute native paths, never URIs.
+	// OpenFile / OpenDirectory / SaveFile, and what RestoreFromTrash put back. Absolute native
+	// paths, never URIs.
 	Vector<String> paths;
 
 	// Index into DialogRequest::filters of the type the user settled on, or
@@ -141,7 +165,8 @@ struct SPRT_API DialogRequest : public Ref {
 	String path;
 	String filename;
 
-	// Input paths for RevealInFileManager / MoveToTrash.
+	// Input paths for RevealInFileManager / MoveToTrash / RestoreFromTrash. For the last one they
+	// are the paths the files had before they were trashed.
 	Vector<String> paths;
 
 	Vector<FileFilter> filters;

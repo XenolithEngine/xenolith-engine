@@ -157,6 +157,19 @@ void WindowsDialogHandle::runWorker() {
 	case DialogType::Font: result = runFontDialog(); break;
 	case DialogType::MoveToTrash: result = runTrash(); break;
 	case DialogType::RevealInFileManager: result = runReveal(); break;
+	case DialogType::RestoreFromTrash:
+		/* Not implemented, and therefore not offered: ContextController::isDialogSupported answers
+		false for this type here, so a caller asks before it acts and never reaches this line.
+
+		What it would take, if it is ever wanted: the Recycle Bin is a virtual folder, so there is
+		no path to hand IFileOperation. It is IShellFolder on FOLDERID_RecycleBinFolder, enumerated
+		with IEnumIDList, each item read through IShellFolder2::GetDetailsEx for PKEY_Displaced_From
+		and PKEY_Displaced_Date, and the match put back with the shell's own `undelete` verb through
+		IContextMenu. NONE of those interfaces is declared in sprt/wrappers/windows yet - this
+		runtime hand-writes the ABI it uses - so the work starts with that COM surface rather than
+		with the dialog. */
+		result.status = Status::ErrorNotSupported;
+		break;
 	}
 
 	if (owned) {

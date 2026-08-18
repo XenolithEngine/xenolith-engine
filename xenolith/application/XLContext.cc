@@ -285,6 +285,10 @@ bool Context::isCursorSupported(WindowCursor cursor, bool serverSide) const {
 
 WindowCapabilities Context::getWindowCapabilities() const { return _controller->getCapabilities(); }
 
+bool Context::isDialogSupported(sprt::window::DialogType type) const {
+	return _controller->isDialogSupported(type);
+}
+
 Status Context::readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&cb,
 		sprt::window::Function<StringView(SpanView<StringView>)> &&tcb, Ref *target) {
 	auto request = Rc<sprt::window::ClipboardRequest>::create();

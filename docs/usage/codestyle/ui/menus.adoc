@@ -1,0 +1,303 @@
+# Menus: `MenuSource`, `MenuSystem` and the popup chain
+
+**TL;DR**
+
+* A menu is **data plus a consumer**: `ui::MenuSource` is the model, and
+  `ui::MenuSystem` is one system on the node the menu is built into.
+  `node->addSystem(Rc<ui::MenuSystem>::create(source))` and the rows appear.
+* A **popup** is that same pair inside a `ui::SubWindow` — `ui::openMenuForNode`.
+  There is nothing popup-specific in the model or in the system.
+* **One measurement decides everything**: `MenuSystem::measure` resolves the
+  column widths and every row height, and the same call answers "how large a
+  surface do I ask the window system for" (before any node exists), "how big is
+  this menu" for a `fit-content` ancestor, and "how tall is this row once its
+  text has wrapped".
+* **The columns are shared by every row.** That is what lines the icons up and
+  puts the accelerators in one right-hand column, and it is why the text column
+  — and therefore where the text wraps — is only known once every item has been
+  measured.
+* An item carries **two texts** (title, subtitle), **two icons** (leading,
+  trailing), an **accelerator** bound to a named `HotkeyId`, a callback, and
+  optionally a **submenu**. A `MenuSourceCustom` carries a node factory instead.
+* `MenuSystem` **owns its children's geometry**, like `DockSystem`: the menu node
+  must not also carry a `LayoutSystem`, and it is marked `SystemManagedLayout`.
+* **`bindMenuHotkeys(listener, source)`** subscribes the listener to every hotkey
+  the menu declares, so the menu is the single place a command is written down.
+
+## Building a menu
+
+[source,cpp]
+----
+auto source = Rc<ui::MenuSource>::create();
+
+source->addButton("open", "Open…", IconName::File_folder_open_solid,
+        [this](NotNull<ui::MenuSourceButton>) { openDocument(); });
+
+auto save = source->addButton("save", "Save", IconName::Content_save_solid,
+        [this](NotNull<ui::MenuSourceButton>) { saveDocument(); });
+save->setHotkey("org.example.editor.save", "Ctrl+S", "Save the document");
+
+auto recent = source->addButton("recent", "Recent files");
+recent->setSubtitle("The last five documents you opened");
+
+source->addSeparator();
+
+auto wrap = source->addButton("wrap", "Wrap long lines",
+        [](NotNull<ui::MenuSourceButton> item) { item->setChecked(!item->isChecked()); });
+wrap->setKeepOpen(true);
+
+source->addSubmenu("export", "Export as", IconName::None,
+        [this](NotNull<ui::MenuSourceButton>) { return buildExportMenu(); });
+----
+
+`addButton`, `addSubmenu`, `addCustom` and `addSeparator` append; `insertItem`
+and `removeItem` are there for a menu that changes shape. **The first argument
+is the name**, and the name is the identity: it becomes the row node's name
+(hence its CSS `#id`), it is what the activate callback reports, and it is what
+a test drives the item by. The title is presentation.
+
+Every mutation marks the source dirty and every `MenuSystem` showing it rebuilds
+on the next visit — **directly**, not through a scheduled check, because an
+application that renders on demand owes the frame loop a reason to run and "the
+menu changed" is one.
+
+### The item vocabulary
+
+[cols="1,3"]
+|===
+| `MenuSourceButton` | a command: title, subtitle, leading icon, trailing icon, accelerator, callback, and/or a submenu
+| `MenuSourceCustom` | an arbitrary node from a **factory**, sized by its own **measure function**
+| `MenuSourceItem` | a separator (the base class's own type)
+|===
+
+`MenuItemFlags` says what the model thinks of an item:
+
+[cols="1,3"]
+|===
+| `Disabled` | drawn, reachable, does nothing — CSS `:disabled` and the `disabled` class. A hotkey bound to it **declines**, so the combination carries on down the dispatcher's walk
+| `Hidden` | not built at all: no row, and not in the metrics
+| `Checked` | occupies the leading column, so a menu with one checkable item indents every row alike instead of shifting when the mark appears
+| `KeepOpen` | activating it does **not** take the menu down — for the toggles a user flips several of in a row
+|===
+
+`Disabled` is an explicit flag on purpose. The removed material2d model derived
+it from "has no callback", which made a submenu-only row indistinguishable from
+a greyed-out command and left no way to grey out one that does have a callback.
+
+### A custom node
+
+The measurement is **separate from the factory and must work without it**,
+because the menu's size is settled before any node exists:
+
+[source,cpp]
+----
+source->addCustom(
+    [](NotNull<ui::MenuSystem>, NotNull<ui::MenuSourceCustom>) -> Rc<Node> {
+        return Rc<ColorPickerStrip>::create();
+    },
+    [](NotNull<ui::MenuSourceCustom>, const MeasureConstraints &c) {
+        return Size2(240.0f, c.mode == MeasureMode::MaxContent ? 32.0f : 32.0f);
+    },
+    "colors");
+
+// or, for a node of a fixed size
+source->addCustom(factory, Size2(200.0f, 28.0f), "colors");
+----
+
+The factory runs **at most once per menu**: rows are reused across every rebuild,
+keyed on item identity, so flipping a check or renaming a title does not drop the
+node — which is what keeps an open menu from flickering, and what the test counts.
+
+## Measuring: the columns and the wrap
+
+`MenuSystem::measure(controller, source, style, constraints, density)` is the
+single place a width or a height is decided. In order:
+
+. The **leading** column exists if any visible item has a leading icon or is
+  checked; the **trailing** column if any has a trailing icon or a submenu; the
+  **accelerator** column is the widest rendered combination. A column that is not
+  there takes its gap with it — a menu with no icons is not indented by an empty
+  one.
+. The natural width is the widest caption between those columns, or the widest
+  custom node across the whole row.
+. That is clamped into `[MenuStyle::minWidth, min(maxWidth, constraints.maxWidth)]`.
+  **`maxWidth` is what turns a long command into a wrapped one** instead of a
+  menu running off the screen.
+. The **text column is what is left**, and every title and subtitle is measured
+  wrapped to it. A row is `max(itemMinHeight, padding + titleHeight + subtitleHeight)`.
+
+`measureAtWidth` is the same thing for a width that is already decided — an
+inline menu sized by its parent, or a surface being rebuilt at the extent the
+window system actually gave it.
+
+**`density` must be the density the labels will be shaped at.** `getLabelSize`
+divides the shaped extent by it, so a mismatch is a menu measured for one display
+and drawn on another. `measureForNode` reads it off the node.
+
+`MenuStyle` is numbers, not CSS, and deliberately so: the surface's `Extent2` has
+to be known before a single node exists, so it cannot come from a stylesheet that
+is only consulted once the nodes are there. Colours, fonts and corners are CSS's.
+Same split as `DockSystem::setSplitterThickness`.
+
+### Why the rows are not flex containers
+
+A row is placed arithmetically from the metrics. That is a **correctness**
+requirement, not an optimization: a flex column measures its items' *main* axis
+with `MeasureMode::MaxContent`, and for a `Label` max-content means "do not wrap
+at all". A title stacked over a subtitle inside a column flex would be measured
+as one line each and the row would come out too short for the text it is about to
+draw. `LayoutMode::Table` has the same problem from the other side — it measures
+cells only at max-content and never re-measures them at the resolved column
+width.
+
+## Opening it as a popup
+
+[source,cpp]
+----
+ui::MenuConfig config;
+config.stylesheet = String("resources/style.css");
+config.onActivate = [this](NotNull<ui::MenuSourceItem> item) { run(item->getName()); };
+
+_menu = ui::openMenuForNode(window, _hamburger, source, sp::move(config));
+----
+
+The returned `Rc<SubWindow>` **is** the handle — keep it. It becomes a native
+subwindow where the platform has them and an in-scene overlay where it does not,
+and **headless is on the native side**, so a menu is a separately renderable
+window with no display in play.
+
+`placementForNode` is the arithmetic every hand-written menu in this tree has got
+wrong at least once: the anchor rect comes from the node's four **corners** in
+world space (the node may be rotated or scaled), converted into the scene
+*content's* space (which undoes the density scale — scene space is physical
+pixels, `WindowPlacement` is logical points), and flipped into Y-down at the end.
+
+**Pass a stylesheet.** A native popup is a scene of its own; the `ui::StyleSystem`
+carrying the application's sheet lives on the *parent* window's content and does
+not reach it. `MenuConfig::stylesheet` names a file, `stylesheetSource` carries
+CSS as a literal, and the two compose. With neither, the menu paints itself with
+its own neutral colours rather than coming up black on black.
+
+### Submenus
+
+A submenu is another popup, parented to the menu it opened from — a `Popup` under
+a `Popup`, which is what the window type is for. `MenuPopupChain` links them, and
+the ownership is strictly downward: a parent holds its child's *surface*, a child
+points back with a raw pointer. So there is no cycle to break, and a parent going
+away takes its descendants with it through `handleExit`.
+
+* Opening a submenu is **navigation, not a choice**: the item's own callback does
+  not run and nothing is reported.
+* Activating a leaf takes the **whole chain** down and reports through the
+  **root's** `onActivate`, once.
+* A lazy `SubmenuFactory` runs on first open and the result is cached, so a
+  submenu keeps its state when it is reopened.
+
+### Activation order
+
+`willActivate` → the item's own callback → `activate`. The popup dismisses in the
+first, which is why an action is free to put another surface up in its place
+without leaving the menu standing behind it.
+
+## Hotkeys
+
+An item stores a `HotkeyId`; the accelerator column renders it through
+`HotkeyCombo::encode`. `MenuSourceButton::setHotkey(name, combo, description)`
+registers and remembers the id in one step, so the menu is where the command is
+declared.
+
+[source,cpp]
+----
+ui::bindMenuHotkeys(_listener, source);
+----
+
+subscribes the listener to every hotkey in the menu. A disabled item's
+subscription **declines**, so the combination is not eaten by a greyed-out
+command. `recursive` descends into submenus that have **already been built** — a
+keystroke must never have the side effect of materializing a menu nobody opened,
+so a command behind a lazy factory has to be bound where it is declared.
+
+The rendered text is the **engine's** spelling (`Mod3+S`, `LEFT`), not the
+platform's. For `⌘`/`⇧` set `setShortcutText()`, which overrides the label without
+touching the binding.
+
+## Styling
+
+[source,css]
+----
+menu                  { background-color: #202026; border-radius: 6px; }
+menu-item             { background-color: #00000000; }
+menu-item:hover       { background-color: #2f2f38; }
+menu-item:disabled    { }                       /* Button gives :disabled and .disabled */
+menu-item.checked     { background-color: #2a2a44; }
+menu-item.submenu     { }
+menu-item > label     { color: #e8e8e8; font-size: 14px; }
+menu-item-subtitle    { color: #9a9aa4; }
+menu-item-shortcut    { color: #9a9aa4; }
+menu-separator        { background-color: #3d3d3d; }
+----
+
+The row's own type is `menu-item` (a `Button` underneath, so `:hover`, `:active`
+and `:disabled` come for free); the separator row is `menu-separator-row` and
+paints nothing, while the line inside it is `menu-separator`.
+
+## Traps
+
+[cols="1,2"]
+|===
+| Trap | What actually happens
+
+| A `LayoutSystem` on the menu node
+| Two systems write every row's `ContentSize` and neither wins. `handleAdded`
+  asserts; never write `display: flex` for a menu node
+
+| Expecting `LayoutMode::Table` to align the columns
+| It measures cells only at max-content, so a row with wrapped text comes out one
+  line tall
+
+| A native popup with no stylesheet
+| It is a scene of its own and the parent's sheet does not reach it — pass
+  `MenuConfig::stylesheet` or `stylesheetSource`
+
+| A recognizer with `onlyFocused = true` inside a menu
+| `WindowType::Popup` never carries `WindowState::Focused`, so it never fires
+
+| Reading a row's box right after changing the model
+| The model updates immediately, the rows follow on the next layout pass
+
+| Measuring at the wrong density
+| The menu is measured for one display and drawn on another; use
+  `measureForNode`, or pass the node's `getInputDensity()`
+
+| A `ui::Panel` in a menu with no fill declared
+| It is opaque **white**, not transparent
+
+| Expecting `bindMenuHotkeys` to reach a lazy submenu
+| It binds only submenus that have been built; declare the command where it lives
+|===
+
+## Exercising it
+
+`tests/window` carries the stand behind `XL_MENU_TEST=1`
+(`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup.
+Inspector commands: `menu.metrics`, `menu.state`, `menu.open`, `menu.close`,
+`menu.activate`, `menu.set-checked`, `menu.set-enabled`, `menu.set-visible`,
+`menu.set-title`, `menu.set-width`, `menu.reset-counters`.
+
+[source,sh]
+----
+tests/window/menu-check.py          # 44 checks, headless, no display
+----
+
+The load-bearing assertion is that the metrics *are* the layout: `menu.metrics`
+reports what the measurement produced and `menu.state` reports the boxes the rows
+were drawn at, and the two must agree. A menu whose reported and drawn row heights
+differ is a menu whose popup surface is the wrong size.
+
+## Related
+
+* [node-system-component.adoc](../scene/node-system-component.adoc) — why a menu is a `System` and not a `Node` subclass
+* [../../ui/content-measurement.adoc](../../ui/content-measurement.adoc) — the measurement protocol a custom item and an inline menu answer
+* [../window/windows.adoc](../window/windows.adoc) — `ui::SubWindow`, placement, and why `gravity` is not the direction it opens
+* [../scene/hotkeys.adoc](../scene/hotkeys.adoc) — the registry the accelerators come from
+* [docking.adoc](docking.adoc) — the same "system owns its children's geometry" shape

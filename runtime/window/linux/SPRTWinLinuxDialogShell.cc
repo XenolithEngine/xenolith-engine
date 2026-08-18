@@ -26,7 +26,10 @@
 
 #include <sprt/runtime/window/native_window.h>
 
+#include <dirent.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace sprt::window {
@@ -173,6 +176,201 @@ void parseFont(StringView str, DialogFontInfo &out) {
 	out.family = rest.str<String>();
 }
 
+/* ---- the freedesktop trash, for RestoreFromTrash --------------------------------------------
+
+Read directly rather than through a helper. `gio trash --restore` takes a trash:// URI, i.e. it
+wants the identity of the trashed item - and the identity is exactly what the caller does not have,
+since neither the portal (which answers a bare `u`) nor gio hands one back when the file goes in.
+What the caller has is the path the file USED to have, and finding an entry by that means reading
+the info directory, which is a documented file format three lines long.
+
+Only the HOME trash ($XDG_DATA_HOME/Trash) is searched. A file trashed from another mount goes to
+`<topdir>/.Trash-$uid` instead, and finding those means enumerating mount points and following the
+spec's rules about sticky bits and symlinks - real work, for a case a project directory rarely is.
+A path that was trashed to one of those is simply not found, which is the same answer as a path
+that was never trashed. */
+
+// $XDG_DATA_HOME/Trash, or $HOME/.local/share/Trash. Empty when neither variable is set.
+String getHomeTrashDir() {
+	if (auto dataHome = ::getenv("XDG_DATA_HOME")) {
+		if (*dataHome == '/') {
+			return toString(StringView(dataHome), "/Trash");
+		}
+	}
+	if (auto home = ::getenv("HOME")) {
+		if (*home == '/') {
+			return toString(StringView(home), "/.local/share/Trash");
+		}
+	}
+	return String();
+}
+
+// The Path field is escaped as a URL path component (RFC 2396), so a directory with a space or a
+// '#' in its name comes back through this and not out of the file as it stands.
+String urlDecode(StringView str) {
+	auto hex = [](char c) -> int {
+		if (c >= '0' && c <= '9') {
+			return c - '0';
+		}
+		if (c >= 'a' && c <= 'f') {
+			return c - 'a' + 10;
+		}
+		if (c >= 'A' && c <= 'F') {
+			return c - 'A' + 10;
+		}
+		return -1;
+	};
+
+	String out;
+	out.reserve(str.size());
+	for (size_t i = 0; i < str.size(); ++i) {
+		if (str[i] == '%' && i + 2 < str.size()) {
+			auto hi = hex(str[i + 1]);
+			auto lo = hex(str[i + 2]);
+			if (hi >= 0 && lo >= 0) {
+				out.push_back(char(hi * 16 + lo));
+				i += 2;
+				continue;
+			}
+		}
+		out.push_back(str[i]);
+	}
+	return out;
+}
+
+// One `info/<name>.trashinfo` and the file in `files/` it stands for.
+struct TrashEntry {
+	String infoPath;
+	String filePath;
+	String origin; // Path=, decoded
+	String deleted; // DeletionDate=, ISO-8601 and therefore ordered by plain comparison
+};
+
+// Whole file, capped: a .trashinfo is three lines, and anything claiming to be larger is not one.
+String readSmallFile(const String &path, size_t limit) {
+	auto f = ::fopen(path.data(), "rb");
+	if (!f) {
+		return String();
+	}
+	String out;
+	char buf[512];
+	while (out.size() < limit) {
+		auto read = ::fread(buf, 1, sizeof(buf), f);
+		if (read == 0) {
+			break;
+		}
+		out.append(buf, read);
+	}
+	::fclose(f);
+	return out;
+}
+
+void readTrashEntries(StringView trashDir, Vector<TrashEntry> &out) {
+	auto infoDir = toString(trashDir, "/info");
+	auto dir = ::opendir(infoDir.data());
+	if (!dir) {
+		return;
+	}
+
+	while (auto ent = ::readdir(dir)) {
+		StringView name(ent->d_name);
+		if (!name.ends_with(".trashinfo")) {
+			continue;
+		}
+
+		TrashEntry entry;
+		entry.infoPath = toString(infoDir, "/", name);
+		entry.filePath = toString(trashDir, "/files/",
+				StringView(name.data(), name.size() - StringView(".trashinfo").size()));
+
+		auto content = readSmallFile(entry.infoPath, 8_KiB);
+		StringView reader(content);
+		while (!reader.empty()) {
+			auto line = reader.readUntil<StringView::Chars<'\n'>>();
+			reader.skipChars<StringView::Chars<'\n', '\r'>>();
+			line.trimChars<StringView::WhiteSpace>();
+			if (line.starts_with("Path=")) {
+				entry.origin = urlDecode(StringView(line.data() + 5, line.size() - 5));
+			} else if (line.starts_with("DeletionDate=")) {
+				entry.deleted = StringView(line.data() + 13, line.size() - 13).str<String>();
+			}
+		}
+
+		// A relative Path belongs to a volume trash this backend does not search, and an entry
+		// whose file is gone is a leftover the desktop will clean up itself.
+		if (entry.origin.empty() || entry.origin.front() != '/') {
+			continue;
+		}
+		if (::access(entry.filePath.data(), F_OK) != 0) {
+			continue;
+		}
+		out.emplace_back(sprt::move(entry));
+	}
+
+	::closedir(dir);
+}
+
+// Put back everything in `paths` that the home trash holds. `restored` collects the ORIGINAL paths
+// that came back, which is what the caller asked about.
+Status restoreFromHomeTrash(SpanView<String> paths, Vector<String> &restored) {
+	if (paths.empty()) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	auto trashDir = getHomeTrashDir();
+	if (trashDir.empty()) {
+		return Status::ErrorNotFound;
+	}
+
+	Vector<TrashEntry> entries;
+	readTrashEntries(trashDir, entries);
+	if (entries.empty()) {
+		return Status::ErrorNotFound;
+	}
+
+	size_t failed = 0;
+	for (auto &path : paths) {
+		// The most recent deletion of this path wins: trashing a file, recreating it and trashing
+		// it again leaves two entries, and the one the user means is the last one they made.
+		const TrashEntry *best = nullptr;
+		for (auto &entry : entries) {
+			if (entry.origin != path) {
+				continue;
+			}
+			if (!best || entry.deleted > best->deleted) {
+				best = &entry;
+			}
+		}
+
+		if (!best) {
+			continue;
+		}
+
+		// A restore never clobbers: something is at the path the file came from, and that something
+		// is newer than the deletion.
+		if (::access(best->origin.data(), F_OK) == 0) {
+			++failed;
+			continue;
+		}
+
+		// rename(2) rather than a copy: the home trash is on the same filesystem as $HOME by
+		// construction, and a cross-device EXDEV here means the trash is not the one this file
+		// went into - which is a failure to report, not a copy to attempt.
+		if (::rename(best->filePath.data(), best->origin.data()) != 0) {
+			++failed;
+			continue;
+		}
+
+		::unlink(best->infoPath.data());
+		restored.emplace_back(best->origin);
+	}
+
+	if (restored.empty()) {
+		return failed > 0 ? Status::ErrorUnknown : Status::ErrorNotFound;
+	}
+	return failed > 0 ? Status::ErrorUnknown : Status::Ok;
+}
+
 } // namespace
 
 ShellDialogTool detectShellDialogTool() {
@@ -215,6 +413,21 @@ bool ShellDialogHandle::init(NotNull<ContextController> controller,
 		return false;
 	}
 	_tool = tool;
+
+	/* The one type served here rather than by a child process.
+
+	The work is a directory listing and a rename, and it is done on this looper right now - but the
+	COMPLETION is posted rather than delivered, because finalize() unregisters the handle and the
+	caller has not registered it yet. Answering inside init() would leave a dead handle in the
+	registry holding a modal block nothing will release. */
+	if (_request->type == DialogType::RestoreFromTrash) {
+		DialogResult result;
+		result.status = restoreFromHomeTrash(_request->paths, result.paths);
+		controller->getLooper()->performOnThread([this, result = sprt::move(result)]() mutable {
+			finalize(sprt::move(result));
+		}, this, false, "ShellDialogHandle::restore");
+		return true;
+	}
 
 	auto command = buildCommand();
 	if (command.empty()) {
@@ -269,7 +482,8 @@ void ShellDialogHandle::handleOutput(int exitCode, Status st) {
 		// ACTIONS have no cancel at all, so for them a non-zero exit is a genuine failure (gio
 		// trash refusing a cross-filesystem path, xdg-open with no handler, and so on).
 		const bool isAction = _request->type == DialogType::RevealInFileManager
-				|| _request->type == DialogType::MoveToTrash;
+				|| _request->type == DialogType::MoveToTrash
+				|| _request->type == DialogType::RestoreFromTrash;
 		finalize(isAction ? Status::ErrorUnknown : Status::Declined);
 		return;
 	}
@@ -309,6 +523,9 @@ void ShellDialogHandle::handleOutput(int exitCode, Status st) {
 	case DialogType::RevealInFileManager:
 	case DialogType::MoveToTrash:
 		// Nothing to read back; a zero exit is the whole answer.
+		break;
+	case DialogType::RestoreFromTrash:
+		// Never spawns a child at all - see init(). Listed so this switch stays exhaustive.
 		break;
 	}
 

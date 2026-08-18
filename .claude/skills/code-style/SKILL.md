@@ -279,8 +279,9 @@ lifetime, or for error detection. Details and examples:
 | Shipping a directory of resources inside the binary; `FileCategory::Embedded`, `LOCAL_EMBED_DIRS`, the BundleFS format | [embedded-files.adoc](../../../docs/usage/codestyle/core/embedded-files.adoc) |
 | Building a form; adding a field, a validator or a widget of your own to one; Tab order, focus, submit/reset | [ui/forms.adoc](../../../docs/usage/codestyle/ui/forms.adoc) |
 | An IDE-style layout of parked panels: frames, tabs, dividers, drag & drop between frames, saving the arrangement | [ui/docking.adoc](../../../docs/usage/codestyle/ui/docking.adoc) |
+| A menu: the item model, the columns that line its rows up, wrapped titles, accelerators, a popup and its submenu chain | [ui/menus.adoc](../../../docs/usage/codestyle/ui/menus.adoc) |
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
-| Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
+| Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash, restore-from-trash, and asking whether one type is served at all | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
 | **`sprt::unicode` / `sprt::idn` in depth** — the three comparisons, collation strength/options/sort keys, locale coverage and `SPRT_COLLATION`, UTS-46 options and errors | [unicode-and-idn.adoc](../../../docs/usage/unicode-and-idn.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |

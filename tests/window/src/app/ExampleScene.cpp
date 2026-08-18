@@ -258,9 +258,11 @@ void ExampleScene::registerCommands() {
 	// с ним; ответ приходит на app-треде, поэтому его можно отдать прямо в `done`.
 	//
 	//   dialog {type, path, title, modal, multiple}
-	//     type: open-file | open-directory | save-file | color | font | reveal | trash
+	//     type: open-file | open-directory | save-file | color | font | reveal | trash | restore
 	//
-	// `trash` и `reveal` не открывают UI, поэтому проверяются без дисплея.
+	// `trash`, `restore` и `reveal` не открывают UI, поэтому проверяются без дисплея. Результат
+	// содержит `supported` — ответ AppWindow::isDialogSupported для этого типа: `restore` есть не
+	// на всех платформах, и это надо спросить до того, как действие предложено пользователю.
 	inspector::addCommand(content, "dialog",
 			"Open a system dialog: { type, path, title, modal, multiple }",
 			[this](Value &&args, Function<void(Value &&)> &&done) {
@@ -272,6 +274,7 @@ void ExampleScene::registerCommands() {
 			{"font", sprt::window::DialogType::Font},
 			{"reveal", sprt::window::DialogType::RevealInFileManager},
 			{"trash", sprt::window::DialogType::MoveToTrash},
+			{"restore", sprt::window::DialogType::RestoreFromTrash},
 		};
 
 		const Value &req = args;
@@ -309,9 +312,13 @@ void ExampleScene::registerCommands() {
 			request->paths.emplace_back(it.getString());
 		}
 
-		request->callback = [done = sp::move(done)](const sprt::window::DialogResult &res) mutable {
+		const bool supported = window->isDialogSupported(typeIt->second);
+
+		request->callback = [supported, done = sp::move(done)](
+									const sprt::window::DialogResult &res) mutable {
 			Value result;
 			result.setBool(sprt::status::isSuccessful(res.status), "ok");
+			result.setBool(supported, "supported");
 			result.setString(sprt::status::getStatusName(res.status), "status");
 			Value paths(Value::Type::ARRAY);
 			for (auto &it : res.paths) { paths.addString(it); }

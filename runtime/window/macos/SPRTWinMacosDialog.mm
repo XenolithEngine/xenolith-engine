@@ -176,6 +176,18 @@ bool MacosDialogHandle::init(NotNull<ContextController> controller,
 		}
 		finalize(runTrash());
 		return true;
+	case DialogType::RestoreFromTrash:
+		/* macOS has no restore primitive at all: -trashItemAtURL: has no inverse, and "Put Back" is
+		Finder's own, backed by per-item metadata Finder writes and does not publish. So this is
+		refused rather than approximated - moving the file out of ~/.Trash by hand would leave the
+		Put Back entry behind and is not what the user asked for.
+
+		ContextController::isDialogSupported answers false for this type here, so a caller that asks
+		first never opens this request. Refusing rather than returning false keeps the answer
+		specific: false would come back as ErrorNotSupported from the controller anyway, but through
+		a path that also means "a reveal naming nothing". */
+		finalize(Status::ErrorNotSupported);
+		return true;
 	}
 	return false;
 }
