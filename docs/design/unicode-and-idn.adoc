@@ -105,7 +105,8 @@ iterator → utf16/utf8 → fastlatin → compare → keys → locale → collat
 
 Nothing in `data/` is written by hand, and nothing is downloaded at build time.
 
-    runtime/toolchains/src/icu4c        (cloned by runtime/toolchains/src.mk)
+    runtime/toolchains/src/icu4c        (downloaded by runtime/toolchains/src.mk;
+                                         reference data only — no target links ICU)
               │
               ▼
       gen-*.py  (2 530 lines, run by a human, output committed)

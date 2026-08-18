@@ -48,8 +48,19 @@ Note: Apple hardware is required due licensing limitations to build apple hosts 
 * [nghttp3](https://github.com/ngtcp2/nghttp3/releases)
 * [libcurl](https://curl.se/download.html) in MbedTLS and OpenSSL variants. Only OpenSSL variant supports HTTP/3
 * [sqlite3](https://www.sqlite.org/download.html)
-* [libuidna](https://github.com/SBKarr/libuidna) as IDN2 replacement
 * [iwasm](https://github.com/bytecodealliance/wasm-micro-runtime) WebAssembly runtime library
+
+IDN is implemented by the runtime itself (`runtime/src/idn`), so no IDN2 library is
+bundled. Unicode case mapping and collation are the runtime's own too.
+
+### Downloaded but not built
+
+* [ICU4C](https://github.com/unicode-org/icu/releases) — the Unicode reference. No
+  target links it; the sources are the UCD and the UCA/UTS-46 conformance data that
+  the table generators and test suites read, and the version pinned in `src.mk` is
+  the Unicode version the runtime claims to support. A real `libicuuc` can still be
+  built on demand with `make -C target-linux icu` when the runtime's behaviour needs
+  to be compared against the reference.
 
 ### Linux essential headers (libraries not included)
 
@@ -75,6 +86,26 @@ Download dependencies to build
 # From runtime/toolchains
 make download
 ----
+
+Every download is checked before it is allowed into `src/`: the transfer has to
+succeed, the archive has to match the SHA-256 pinned in `src.mk`, and the
+fourteen dependencies whose upstreams publish a detached OpenPGP signature are
+verified against the keys committed in `keys/`. Anything that fails stops the
+build instead of leaving a partial tree behind. Sources fetched with git are
+pinned by commit, so a moved tag is refused too.
+
+Install `gpg` to get the signature checks; without it they are skipped with a
+warning and the SHA-256 pins still apply. For release and CI builds, make that
+skip an error:
+
+[source,sh]
+----
+# From runtime/toolchains
+make download SP_REQUIRE_SIGNATURES=1
+----
+
+See `keys/README.adoc` for the key fingerprints, where each was confirmed, and
+what to do when one stops verifying.
 
 ### Build host toolchain
 
@@ -168,6 +199,20 @@ See the `cross/` subdirectory and `README.adoc` of each `host-*` directory.
 The list of sources for source codes must be updated regularly. After the build of a new version is confirmed, the date of its update is placed next to the corresponding source in the format `revised: 22 feb 2026`.
 
 Official sources are used, however, for sources whose access is restricted based on download region, an alternative method should be used (for example, direct download from the repository).
+
+Each entry in `src.mk` carries what it is verified by. Bumping a version means
+updating that too, on a host with `gpg` installed:
+
+* an archive gets a `_SHA256`, computed from a download whose signature you have
+  just verified - not copied from a checksum the same server published;
+* a git source gets a `_COMMIT` next to its `_TAG`. `make src-pins` re-resolves
+  every tag to the commit it points at today. A line that comes back changed for
+  a tag nobody touched means upstream re-tagged, which is worth understanding
+  before the pin is updated;
+* a source with no signature says so in its block, and why that is acceptable.
+
+Verification failures are not build breakage to route around. A SHA-256 mismatch
+or a bad signature is the check doing its job; find out why before changing a pin.
 
 ## Code style
 
