@@ -577,3 +577,11 @@ header, a platform branch, or an allocation. The essentials:
   focus change is committed only on the next frame (`getPendingField()` is what
   was asked for), and the tab ring is document order — so give siblings distinct
   `ZOrder` ([forms](docs/usage/codestyle/ui/forms.adoc)).
+- A menu is `ui::MenuSource` (the model) plus one `ui::MenuSystem` on the node it
+  is built into; a popup is that same pair inside a `ui::SubWindow`
+  (`ui::openMenuForNode`). **One measurement decides everything** —
+  `MenuSystem::measure` resolves the shared columns and every wrapped row height,
+  and the same call sizes the popup surface before any node exists. The system
+  owns its children's geometry, so the menu node must not carry a `LayoutSystem`;
+  an item's accelerator is a named `HotkeyId` and `bindMenuHotkeys` subscribes a
+  listener to all of them ([menus](docs/usage/codestyle/ui/menus.adoc)).

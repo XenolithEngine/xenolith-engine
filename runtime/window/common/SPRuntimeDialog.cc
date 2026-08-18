@@ -118,6 +118,23 @@ Status ContextController::declineDialog(NotNull<dispatch::Looper> target, Rc<Dia
 	return st;
 }
 
+bool ContextController::isDialogSupported(DialogType type) const {
+	auto caps = getCapabilities();
+	switch (type) {
+	case DialogType::OpenFile:
+	case DialogType::OpenDirectory:
+	case DialogType::SaveFile: return hasFlag(caps, WindowCapabilities::FileDialogs);
+	case DialogType::Color: return hasFlag(caps, WindowCapabilities::ColorDialog);
+	case DialogType::Font: return hasFlag(caps, WindowCapabilities::FontDialog);
+	case DialogType::RevealInFileManager:
+	case DialogType::MoveToTrash: return hasFlag(caps, WindowCapabilities::SystemFileActions);
+	// No bit implies it, deliberately: a restore is a whole implementation of its own on each
+	// platform that has one, so a backend that has it says so itself.
+	case DialogType::RestoreFromTrash: return false;
+	}
+	return false;
+}
+
 Status ContextController::openDialog(NotNull<dispatch::Looper> target, Rc<DialogRequest> &&req) {
 	// No backend on this platform at all.
 	return declineDialog(target, sprt::move(req), Status::ErrorNotImplemented);

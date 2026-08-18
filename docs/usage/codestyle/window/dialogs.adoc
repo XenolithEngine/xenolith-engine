@@ -15,11 +15,13 @@
   There is no "it silently did not happen" case to code around.
 * Test the answer with `status::isSuccessful(res.status)`, and treat
   `Status::Declined` (the user cancelled) as an ordinary outcome, not an error.
-* `RevealInFileManager` and `MoveToTrash` are **not dialogs**: no UI of ours,
-  `paths` is the *input*, only `status` in the result means anything. They ride
-  the same seam so lifetime and cancellation have one implementation.
+* `RevealInFileManager`, `MoveToTrash` and `RestoreFromTrash` are **not dialogs**:
+  no UI of ours, `paths` is the *input*. They ride the same seam so lifetime and
+  cancellation have one implementation.
 * Ask `WindowCapabilities` first: `FileDialogs`, `ColorDialog`, `FontDialog`,
-  `SystemFileActions`, `NativeDialogParenting`.
+  `SystemFileActions`, `NativeDialogParenting` — and, for a single type,
+  **`isDialogSupported(type)`**, which is the only thing that can answer for
+  `RestoreFromTrash` (Linux and Windows have it, macOS does not).
 
 ## The request
 
@@ -60,7 +62,7 @@ Fields worth knowing:
 | `type` | which dialog, or which shell action |
 | `flags` | `Modal`, `Multiple`, `ShowHidden`, `ConfirmOverwrite`, `AlphaChannel` |
 | `path` / `filename` | initial directory; `SaveFile` also uses `filename` as the suggested name |
-| `paths` | **input** for `RevealInFileManager` / `MoveToTrash` |
+| `paths` | **input** for `RevealInFileManager` / `MoveToTrash` / `RestoreFromTrash` (there, the paths the files had *before* they were trashed) |
 | `filters` / `filter` | the file-type dropdown, and which entry starts selected |
 | `title`, `acceptLabel` | empty `acceptLabel` takes the platform default |
 | `color`, `font` | initial value for the colour / font pickers |
@@ -141,7 +143,7 @@ rather than leaving a window that ignores clicks with no explanation.
 | `FileDialogs` | `OpenFile`, `OpenDirectory`, `SaveFile` |
 | `ColorDialog` | `Color` |
 | `FontDialog` | `Font` |
-| `SystemFileActions` | `RevealInFileManager`, `MoveToTrash` |
+| `SystemFileActions` | `RevealInFileManager`, `MoveToTrash` (and, where it exists, `RestoreFromTrash`) |
 | `NativeDialogParenting` | OS-level parenting of a modal dialog |
 
 Without the matching bit the request is answered with `ErrorNotSupported`
@@ -152,6 +154,36 @@ avoiding a crash.
 `MoveToTrash` is Trash / Recycle Bin: recoverable, never a hard delete. If you
 need a real delete, that is `filesystem`, not a dialog.
 
+### Asking about ONE type
+
+A capability bit is per *group*, and `SystemFileActions` covers three actions of
+which one is not universal. That is what `isDialogSupported` is for:
+
+[source,cpp]
+----
+if (window->isDialogSupported(sprt::window::DialogType::RestoreFromTrash)) {
+	…                                  // offer "move to Trash" with an undo behind it
+}
+----
+
+It is answerable from any thread (the answer is settled when the controller
+starts), and it exists so that a *destructive* action is never offered when the
+platform cannot take it back — finding out from an `ErrorNotSupported` after the
+file is already in the Trash is too late.
+
+`RestoreFromTrash` takes the paths the files had **before** they were trashed —
+no platform hands back an identity for a trashed item, so that is the only thing
+a caller can be expected to know. The most recent deletion of each path is the
+one that comes back, and `DialogResult::paths` lists what was actually restored:
+`Ok` when every path came back, `ErrorNotFound` when none of them was in the
+trash, `ErrorUnknown` for a partial answer.
+
+| Platform | `RestoreFromTrash` |
+|---|---|
+| Linux | yes — the freedesktop trash spec, read directly (the **home** trash only; `<topdir>/.Trash-$uid` is not searched). The portal has no restore verb, so it is the shell backend's own work and needs no helper on PATH |
+| Windows | **no** — the Recycle Bin is a virtual folder and the restore is `IShellFolder` + the `undelete` verb, none of which is declared in `sprt/wrappers/windows` yet |
+| macOS | **no** — `NSFileManager` has no inverse of `trashItemAtURL:`; "Put Back" is Finder's own, backed by metadata it does not publish |
+
 ## Exercising them
 
 `tests/window` exposes the whole surface over the inspector socket as the
@@ -159,11 +191,12 @@ need a real delete, that is `filesystem`, not a dialog.
 
 ```
 dialog {type, path, filename, paths, title, modal, multiple}
-   type: open-file | open-directory | save-file | color | font | reveal | trash
+   type: open-file | open-directory | save-file | color | font | reveal | trash | restore
 ```
 
-`reveal` and `trash` show no UI of ours, so those two can be driven with no
-display at all; the rest need a session with a dialog backend.
+`reveal`, `trash` and `restore` show no UI of ours, so those three can be driven
+with no display at all; the rest need a session with a dialog backend. The answer
+carries `supported`, which is `isDialogSupported` for the type asked about.
 
 ## Traps
 

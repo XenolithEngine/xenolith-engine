@@ -180,6 +180,10 @@ bool isPortalDialogType(DialogType type) {
 	case DialogType::Font:
 		// No portal interface exists for either.
 		break;
+	case DialogType::RestoreFromTrash:
+		// org.freedesktop.portal.Trash has TrashFile and nothing else - there is no restore verb to
+		// call. The shell backend serves it against the trash spec instead.
+		break;
 	}
 	return false;
 }
@@ -361,6 +365,7 @@ bool PortalDialogHandle::sendRequest(StringView parentHandle) {
 	}
 	case DialogType::Color:
 	case DialogType::Font:
+	case DialogType::RestoreFromTrash:
 		// Filtered out by isPortalDialogType before we get here.
 		break;
 	}

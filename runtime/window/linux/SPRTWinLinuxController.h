@@ -72,6 +72,8 @@ public:
 	virtual Status probeClipboard(Rc<ClipboardProbe> &&) override;
 	virtual Status writeToClipboard(Rc<ClipboardData> &&) override;
 
+	virtual bool isDialogSupported(DialogType) const override;
+
 	virtual Status openDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&) override;
 
 	// The session bus went away under us. Called from dbus::Controller.

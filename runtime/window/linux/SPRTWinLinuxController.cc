@@ -398,9 +398,20 @@ String LinuxContextController::getDialogParentHandle(NativeWindow *parent) const
 	return String();
 }
 
+bool LinuxContextController::isDialogSupported(DialogType type) const {
+	if (type == DialogType::RestoreFromTrash) {
+		// Served by the shell backend itself, against the freedesktop trash spec, so it needs
+		// neither a helper on PATH nor the portal - which has no restore verb at all.
+		return true;
+	}
+	return ContextController::isDialogSupported(type);
+}
+
 Status LinuxContextController::openShellDialog(NotNull<dispatch::Looper> target,
 		Rc<DialogRequest> &&req, NativeWindow *parent) {
-	if (_shellDialogTool != ShellDialogTool::None) {
+	// RestoreFromTrash is the backend's own work rather than a helper's, so it is offered even on a
+	// machine with no picker installed at all.
+	if (_shellDialogTool != ShellDialogTool::None || req->type == DialogType::RestoreFromTrash) {
 		auto handle = Rc<ShellDialogHandle>::create(this, target, Rc<DialogRequest>(req), parent,
 				_shellDialogTool);
 		if (handle) {

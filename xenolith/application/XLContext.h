@@ -170,6 +170,17 @@ public:
 	bool isCursorSupported(WindowCursor, bool serverSide) const;
 	WindowCapabilities getWindowCapabilities() const;
 
+	/* Whether an OS dialog of this type can actually be served here.
+
+	The capability bits are per GROUP of dialog types and cannot answer for a single one:
+	WindowCapabilities::SystemFileActions covers reveal, trash and restore, and the last of those
+	has no primitive on macOS. Ask this before OFFERING a feature that rests on a dialog type -
+	greying the action out is a better answer than a destructive step that cannot be taken back.
+
+	Safe to call from any thread: the answer is settled when the controller starts and never moves.
+	*/
+	bool isDialogSupported(sprt::window::DialogType) const;
+
 	// Request creation of an additional native window; safe to call from any thread. `info` (and
 	// its appData) must not be touched afterwards.
 	// On success, the window arrives through the usual pipeline:

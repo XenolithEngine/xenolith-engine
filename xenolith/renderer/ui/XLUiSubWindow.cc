@@ -179,21 +179,28 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 		return false;
 	}
 
-	auto layout = config.content ? config.content(this) : nullptr;
-	if (!layout) {
-		return false;
-	}
-
 	// Resolve the placement the same way the window backends do, rather than dropping the surface
 	// at the raw anchor point: `anchor`, `gravity`, `offset` and the flip/slide adjustments are the
 	// whole reason WindowPlacement exists, and a caller that gets them honoured natively but
 	// ignored here has to branch on the platform after all. The scene IS the work area for an
 	// overlay — there is nothing outside it to slide against.
+	//
+	// It is resolved BEFORE the content builder for the same reason it is published: a caller that
+	// re-derives this arithmetic is a caller that will get the Y flip or the density wrong.
 	const auto contentSize = content->getContentSize();
 	const auto workArea = IRect(0, 0, int32_t(std::lround(contentSize.width)),
 			int32_t(std::lround(contentSize.height)));
 	const auto placed =
 			sprt::window::computeWindowPlacement(config.placement, config.size, workArea, workArea);
+	_overlayRect = placed;
+
+	// The builder runs AFTER the placement is resolved, so it can read getOverlayRect(): everything
+	// but a tip is pushed as a full-parent overlay, and then the builder - not the push - is what
+	// decides where the visible box of a menu or a palette actually sits.
+	auto layout = config.content ? config.content(this) : nullptr;
+	if (!layout) {
+		return false;
+	}
 
 	// computeWindowPlacement answers in the same Y-down space it was asked in; scene nodes are Y-up.
 	const float yUp = contentSize.height - float(placed.y);
