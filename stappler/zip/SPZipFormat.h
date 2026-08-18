@@ -187,6 +187,14 @@ SP_PUBLIC BytesView zipFindExtraField(BytesView extra, uint16_t id);
  */
 SP_PUBLIC Time zipDosToUtc(uint16_t date, uint16_t time);
 
+/* The inverse, for writing. Same convention: the stamp is UTC, not local.
+ *
+ * A DOS timestamp cannot express anything before 1980 or after 2107, and has two-second
+ * granularity, so this is lossy by the format's own design - out-of-range times are clamped to the
+ * ends rather than wrapping into a plausible-looking wrong date.
+ */
+SP_PUBLIC void zipUtcToDos(Time, uint16_t &date, uint16_t &time);
+
 } // namespace STAPPLER_VERSIONIZED stappler
 
 #endif /* STAPPLER_ZIP_SPZIPFORMAT_H_ */

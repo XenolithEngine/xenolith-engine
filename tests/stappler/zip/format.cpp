@@ -20,19 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Tests for the engine's OWN ZIP reader (stages 2-3 of docs/design/libzip-removal-plan.adoc),
-// as opposed to zip.cpp, which characterizes libzip.
+// Tests for the engine's own ZIP reader and writer, directly rather than through ZipArchive
+// (docs/design/libzip-removal-plan.adoc, stages 2-7). zip.cpp covers the public surface.
 //
 // The oracle here is the corpus itself: every archive was assembled byte by byte from known values,
 // so `Case::meta` records exactly what was written and the parser has to read exactly that back.
-// For the numeric fields this is a stronger oracle than libzip - libzip's public API does not even
-// expose an entry's local header offset.
+// For the numeric fields this was always a stronger oracle than libzip, whose public API does not
+// even expose an entry's local header offset.
 
 #include "SPCommon.h"
 #include "SPZip.h"
 #include "SPZipReader.h"
 #include "SPFilesystem.h"
 #include "SPMemory.h"
+#include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/handle.h>
 
 #include "corpus.h"
 
@@ -63,6 +65,9 @@ static test::zip::String escapeBytes(BytesView data) {
 static test::zip::String escapeName(StringView name) {
 	return escapeBytes(BytesView((const uint8_t *)name.data(), name.size()));
 }
+
+// Text as bytes, without the NUL-clamping StringView's (pointer, length) constructor applies.
+static BytesView viewOf(StringView s) { return BytesView((const uint8_t *)s.data(), s.size()); }
 
 struct Namer {
 	test::zip::String prefix;
@@ -424,70 +429,278 @@ static void runDuplicateNames() {
 			"zipfmt[duplicate-names] locate() resolves to the first occurrence");
 }
 
-/* The differential check proper: for every entry that BOTH readers agree to read, the bytes must be
- * identical.
+/* The differential check against libzip lived here until stage 6.
  *
- * Deliberately one-sided. Where the two disagree about whether an entry is readable at all, this
- * says nothing - those disagreements are the recorded divergences (the sanitizer refuses names
- * libzip hands over; the engine reads empty entries libzip refuses), and each is pinned by its own
- * case in the corpus. What is asserted here is the part that must never differ: the content.
+ * It compared, for every entry both readers would read, that the bytes matched. Stage 6 removed
+ * libzip from underneath ZipArchive, so both sides of that comparison became the same code and the
+ * check stopped meaning anything. Deleted rather than left passing: a test whose oracle is gone
+ * still reports success, which is worse than no test at all. What it used to guard now lives in
+ * the golden expectations of tests/stappler/zip/zip.cpp.
  */
-static void runDifferential(const test::zip::Case &c) {
-	if (!c.openable) {
-		return;
-	}
 
-	ZipArchive<mem_std::Interface> archive(BytesView(c.archive.data(), c.archive.size()), true);
-	if (!archive) {
-		return;
-	}
+/* -- stage 7: the writer --
+ *
+ * Written archives are read back with the engine's OWN catalog, which is not circular reasoning as
+ * long as the reader is independently anchored - and it is, by the 37 hand-built corpus archives
+ * above. What this adds is the other direction: that what the writer emits is what the format says
+ * it should be, field by field.
+ *
+ * The genuinely external check is `unzip -t`, run at the end of this file.
+ */
+static void runWriter() {
+	sprt::cout << "\n  -- writer --\n";
+
+	StringView compressible;
+	test::zip::String payload;
+	for (int i = 0; i < 64; ++i) { payload.append("compressible compressible compressible\n"); }
+	compressible = StringView(payload.data(), payload.size());
+
+	// Random-looking bytes: deflate cannot help, so the writer has to fall back to Store rather
+	// than emit an entry larger than its input.
+	static const uint8_t incompressible[] = {0x8F, 0x2C, 0xE1, 0x77, 0x03, 0xBA, 0x51, 0xD9, 0x64,
+		0x1E, 0xAC, 0x38, 0xF5, 0x90, 0x2B, 0xC7};
+
+	ZipWriter<mem_std::Interface> writer;
+
+	check(writer.addDir("dir"), "zipfmt[writer] addDir()");
+	check(writer.addFile("dir/text.txt", viewOf(compressible), false),
+			"zipfmt[writer] addFile() deflated");
+	check(writer.addFile("stored.bin", BytesView(incompressible, sizeof(incompressible)), false),
+			"zipfmt[writer] addFile() incompressible");
+	check(writer.addFile("forced.txt", viewOf(compressible), true),
+			"zipfmt[writer] addFile() forced to store");
+	check(writer.addFile("empty.txt", BytesView(), false), "zipfmt[writer] addFile() empty");
+	// Compressible on purpose: this entry has to exercise the UTF-8 flag AND deflate at once. With a
+	// short payload the writer would rightly fall back to Store and the method assertion below would
+	// be testing the fallback twice instead of both branches.
+	check(writer.addFile("имя.txt", viewOf(compressible), false),
+			"zipfmt[writer] addFile() non-ascii name");
+
+	// Refusing to write what our own reader refuses to read. Without this the module could produce
+	// archives it classifies as hostile.
+	check(!writer.addFile("../escape.txt", viewOf("nope"), false),
+			"zipfmt[writer] a traversal name is refused");
+	check(!writer.addFile("/absolute.txt", viewOf("nope"), false),
+			"zipfmt[writer] an absolute name is refused");
+	check(!writer.addFile("a\\b.txt", viewOf("nope"), false),
+			"zipfmt[writer] a backslash name is refused");
+
+	auto buffer = writer.save();
+	check(buffer.input() > 0, "zipfmt[writer] save() produced bytes");
+
+	// -- read it back --
 
 	ZipSource source;
-	source.setMemory(BytesView(c.archive.data(), c.archive.size()));
+	source.setMemory(BytesView(buffer.data(), buffer.input()));
 
 	ZipCatalog<mem_std::Interface> catalog;
-	if (!sprt::status::isSuccessful(catalog.read(source))) {
+	check(sprt::status::isSuccessful(catalog.read(source)),
+			"zipfmt[writer] the result parses as an archive");
+	if (!catalog.valid()) {
 		return;
 	}
 
-	Namer named(c, "diff");
+	check(catalog.size() == 6, "zipfmt[writer] every accepted entry is present");
+	check(catalog.prefix() == 0, "zipfmt[writer] no prefix");
 
-	bool agree = true;
-	size_t compared = 0;
+	struct Expect {
+		const char *name;
+		bool directory;
+		uint16_t method;
+		bool utf8Flag;
+	};
 
-	for (size_t i = 0; i < catalog.size(); ++i) {
+	static const Expect expects[] = {
+		{"dir/", true, ZIP_METHOD_STORE, false},
+		{"dir/text.txt", false, ZIP_METHOD_DEFLATE, false},
+		// deflate would have grown these 16 bytes, so Store is the honest choice
+		{"stored.bin", false, ZIP_METHOD_STORE, false},
+		{"forced.txt", false, ZIP_METHOD_STORE, false},
+		{"empty.txt", false, ZIP_METHOD_STORE, false},
+		{"имя.txt", false, ZIP_METHOD_DEFLATE, true},
+	};
+
+	bool shapeOk = true;
+	for (size_t i = 0; i < catalog.size() && i < sizeof(expects) / sizeof(expects[0]); ++i) {
 		auto entry = catalog.entry(i);
+		auto &e = expects[i];
 
-		mem_std::Interface::BytesType ours;
-		if (!sprt::status::isSuccessful(zipReadEntry<mem_std::Interface>(source, *entry,
-					catalog.prefix(), ours))) {
-			continue;
-		}
+		bool isDir = (entry->state & ZipEntryFlags::Directory) != ZipEntryFlags::None;
+		bool hasUtf8 = (entry->flags & ZIP_FLAG_UTF8) != 0;
 
-		// libzip is asked by NAME, which is also a check that both readers arrived at the same
-		// spelling for it.
-		test::zip::Bytes theirs;
-		bool ok = archive.readFile(entry->name, [&](BytesView data) {
-			theirs.assign(data.data(), data.data() + data.size());
-		});
-		if (!ok) {
-			continue;
-		}
-
-		++compared;
-		if (ours.size() != theirs.size()
-				|| (!theirs.empty()
-						&& sprt::memcmp(ours.data(), theirs.data(), theirs.size()) != 0)) {
-			agree = false;
-			sprt::cout << "         entry \"" << escapeName(entry->name) << "\": ours "
-					   << ours.size() << " bytes, libzip " << theirs.size() << "\n";
+		if (entry->name != StringView(e.name) || isDir != e.directory || hasUtf8 != e.utf8Flag) {
+			shapeOk = false;
+			sprt::cout << "         entry #" << i << " \"" << escapeName(entry->name)
+					   << "\": dir=" << isDir << " utf8=" << hasUtf8 << " method=" << entry->method
+					   << "\n";
 		}
 	}
+	check(shapeOk, "zipfmt[writer] names, directory flags and UTF-8 flags are as written");
 
-	if (compared == 0) {
+	// Method choice is asserted separately: falling back to Store on incompressible data is a
+	// decision, and a silent change of it would otherwise pass unnoticed.
+	bool methodOk = true;
+	for (size_t i = 0; i < catalog.size() && i < sizeof(expects) / sizeof(expects[0]); ++i) {
+		if (catalog.entry(i)->method != expects[i].method) {
+			methodOk = false;
+			sprt::cout << "         entry #" << i << " method " << catalog.entry(i)->method
+					   << ", expected " << expects[i].method << "\n";
+		}
+	}
+	check(methodOk, "zipfmt[writer] Store is chosen when deflate would not help");
+
+	// -- content --
+
+	struct Content {
+		const char *name;
+		BytesView data;
+	};
+
+	const Content contents[] = {
+		{"dir/text.txt", viewOf(compressible)},
+		{"stored.bin", BytesView(incompressible, sizeof(incompressible))},
+		{"forced.txt", viewOf(compressible)},
+		{"empty.txt", BytesView()},
+		{"имя.txt", viewOf(compressible)},
+	};
+
+	bool contentOk = true;
+	for (auto &it : contents) {
+		auto idx = catalog.locate(it.name);
+		if (idx == maxOf<uint64_t>()) {
+			contentOk = false;
+			continue;
+		}
+
+		mem_std::Interface::BytesType got;
+		auto st = zipReadEntry<mem_std::Interface>(source, *catalog.entry(idx), 0, got);
+		if (!sprt::status::isSuccessful(st) || got.size() != it.data.size()
+				|| (!it.data.empty()
+						&& sprt::memcmp(got.data(), it.data.data(), it.data.size()) != 0)) {
+			contentOk = false;
+			sprt::cout << "         \"" << it.name << "\" round-trip failed: status "
+					   << int32_t(st) << ", " << got.size() << " bytes, expected "
+					   << it.data.size() << "\n";
+		}
+	}
+	check(contentOk, "zipfmt[writer] every entry round-trips byte for byte");
+
+	// A directory entry has no content of its own; the reader says so with Declined rather than an
+	// error, and that distinction should survive the round trip.
+	{
+		mem_std::Interface::BytesType got;
+		auto st = zipReadEntry<mem_std::Interface>(source, *catalog.entry(0), 0, got);
+		check(st == Status::Declined, "zipfmt[writer] the directory entry declines to be read");
+	}
+
+	// -- an archive large enough to need a second block of entries --
+	{
+		ZipWriter<mem_std::Interface> many;
+		for (int i = 0; i < 500; ++i) {
+			test::zip::String name;
+			name.append("f");
+			name.append(1, char('0' + (i / 100) % 10));
+			name.append(1, char('0' + (i / 10) % 10));
+			name.append(1, char('0' + i % 10));
+			name.append(".txt");
+			many.addFile(StringView(name.data(), name.size()),
+					viewOf(StringView(name.data(), name.size())), true);
+		}
+
+		auto buf = many.save();
+
+		ZipSource s2;
+		s2.setMemory(BytesView(buf.data(), buf.input()));
+
+		ZipCatalog<mem_std::Interface> c2;
+		check(sprt::status::isSuccessful(c2.read(s2)) && c2.size() == 500,
+				"zipfmt[writer] 500 entries survive the round trip");
+	}
+}
+
+/* The one check nothing inside this codebase can provide: hand the archive to an unrelated
+ * implementation.
+ *
+ * Reading back what we wrote with what we wrote it with proves internal consistency and nothing
+ * else - a shared misreading of the specification would pass. Info-ZIP's `unzip -t` verifies the
+ * structure and every CRC independently.
+ *
+ * When unzip is absent the check is reported as NOT RUN rather than quietly passing: an
+ * unavailable oracle is not evidence.
+ */
+static void runExternalValidation() {
+	sprt::cout << "\n  -- writer: external validation --\n";
+
+	ZipWriter<mem_std::Interface> writer;
+
+	test::zip::String payload;
+	for (int i = 0; i < 32; ++i) { payload.append("external validation payload\n"); }
+
+	writer.addDir("dir");
+	writer.addFile("dir/text.txt", viewOf(StringView(payload.data(), payload.size())), false);
+	writer.addFile("stored.txt", viewOf("stored verbatim"), true);
+	writer.addFile("empty.txt", BytesView(), false);
+	writer.addFile("имя.txt", viewOf("non-ascii name"), false);
+
+	auto buffer = writer.save();
+
+	FileInfo info("xlzip_external.zip", LocationCategory::Custom);
+	filesystem::remove(info);
+	if (!filesystem::write(info, buffer.data(), buffer.input())) {
+		check(false, "zipfmt[external] the archive was written to disk");
 		return;
 	}
-	check(agree, named("content agrees with libzip on every entry both will read"));
+
+	auto path = filesystem::findPath<mem_std::Interface>(info);
+
+	// Through the runtime's process API rather than system(): there is no system() in the sprt libc,
+	// and spawning is one of the things the runtime deliberately owns (see the platform notes in
+	// docs/usage/codestyle).
+	test::zip::String command("unzip -t -qq '");
+	command.append(path.data(), path.size());
+	command.append("'");
+
+	auto looper = sprt::dispatch::Looper::acquire();
+
+	int exitCode = -1;
+	bool finished = false;
+	test::zip::String output;
+
+	auto handle = looper->spawnProcess(StringView(command.data(), command.size()),
+			[&](StringView chunk) { output.append(chunk.data(), chunk.size()); },
+			[&](int code, Status) {
+		exitCode = code;
+		finished = true;
+		looper->wakeup();
+	});
+
+	if (!handle) {
+		sprt::cout << "         NOT RUN: the process could not be spawned\n";
+		filesystem::remove(info);
+		return;
+	}
+
+	// Bounded, so that a hung external tool cannot hang the suite.
+	while (!finished) {
+		if (looper->run(TimeInterval::seconds(30)) == Status::ErrorCancelled) {
+			break;
+		}
+	}
+
+	if (!finished) {
+		sprt::cout << "         NOT RUN: unzip did not finish within the timeout\n";
+	} else if (exitCode == 127) {
+		// An unavailable oracle is not evidence, so this is reported rather than counted as a pass.
+		sprt::cout << "         NOT RUN: unzip is not installed on this machine\n";
+	} else {
+		if (exitCode != 0) {
+			sprt::cout << "         unzip said: " << StringView(output.data(), output.size())
+					   << "\n";
+		}
+		check(exitCode == 0, "zipfmt[external] Info-ZIP unzip -t accepts the archive");
+	}
+
+	filesystem::remove(info);
 }
 
 // -- stage 3: names, checked directly rather than only through archives --
@@ -669,10 +882,12 @@ void performZipFormatTests() {
 
 		runFromMemory<mem_std::Interface>(c, "mem_std");
 		runFromFile(c);
-		runDifferential(c);
 	}
 
 	runDuplicateNames();
+
+	runWriter();
+	runExternalValidation();
 
 	runUtf8Validation();
 	runSanitizer();

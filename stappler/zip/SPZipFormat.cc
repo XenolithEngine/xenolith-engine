@@ -423,4 +423,53 @@ Time zipDosToUtc(uint16_t date, uint16_t time) {
 	return Time::seconds(sprt::time_t(seconds));
 }
 
+void zipUtcToDos(Time value, uint16_t &date, uint16_t &time) {
+	// civil_from_days, the inverse of the shift used above: the year is treated as starting in
+	// March so that the leap day falls at the end of the cycle and no case analysis is needed.
+	int64_t seconds = int64_t(value.toSeconds());
+
+	int64_t days = seconds / 86'400;
+	int64_t rem = seconds % 86'400;
+	if (rem < 0) {
+		rem += 86'400;
+		--days;
+	}
+
+	int64_t z = days + 719'468;
+	int64_t era = (z >= 0 ? z : z - 146'096) / 146'097;
+	int64_t doe = z - era * 146'097; // [0, 146096]
+	int64_t yoe = (doe - doe / 1'460 + doe / 36'524 - doe / 146'096) / 365; // [0, 399]
+	int64_t y = yoe + era * 400;
+	int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+	int64_t mp = (5 * doy + 2) / 153; // [0, 11], counted from March
+	int64_t d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+	int64_t m = mp + (mp < 10 ? 3 : -9); // [1, 12]
+	y += (m <= 2 ? 1 : 0);
+
+	// The DOS field counts years from 1980 in 7 bits, so it cannot express anything outside
+	// [1980, 2107]. Clamped rather than wrapped: a wrapped year is a plausible-looking wrong date,
+	// which is worse than an obviously pinned one.
+	if (y < 1'980) {
+		y = 1'980;
+		m = 1;
+		d = 1;
+		rem = 0;
+	} else if (y > 2'107) {
+		y = 2'107;
+		m = 12;
+		d = 31;
+		rem = 23 * 3'600 + 59 * 60 + 58;
+	}
+
+	int64_t hour = rem / 3'600;
+	int64_t minute = (rem / 60) % 60;
+	int64_t second = rem % 60;
+
+	date = uint16_t(((y - 1'980) << 9) | (m << 5) | d);
+
+	// The seconds field holds two-second units, hence the halving - a DOS timestamp simply cannot
+	// name an odd second.
+	time = uint16_t((hour << 11) | (minute << 5) | (second / 2));
+}
+
 } // namespace STAPPLER_VERSIONIZED stappler
