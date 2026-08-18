@@ -260,6 +260,17 @@ void WindowsContextController::openUrl(StringView str) {
 	});
 }
 
+bool WindowsContextController::isDialogSupported(DialogType type) const {
+	if (type == DialogType::RestoreFromTrash) {
+		// Answered here rather than by a capability bit, because a restore is a whole
+		// implementation of its own: the Recycle Bin is enumerated and the shell's `undelete` verb
+		// invoked on the match (WindowsDialogHandle::runRestoreFromTrash). SystemFileActions says
+		// nothing about it - macOS has that bit and no restore primitive at all.
+		return true;
+	}
+	return ContextController::isDialogSupported(type);
+}
+
 Status WindowsContextController::openDialog(NotNull<dispatch::Looper> target,
 		Rc<DialogRequest> &&req) {
 	if (!req || !req->callback) {

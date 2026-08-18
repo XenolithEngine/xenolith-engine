@@ -698,6 +698,89 @@ inline constexpr GUID CLSID_FileOpenDialog = {0xdc1c'5a9c, 0xe88a, 0x4dde,
 inline constexpr GUID CLSID_FileSaveDialog = {0xc0b4'e2f3, 0xba21, 0x4773,
 	{0x8d, 0xba, 0x33, 0x5e, 0xc9, 0x46, 0xeb, 0x8b}};
 
+/* ---- the Recycle Bin: enumerating it and putting an item back ------------------------------
+
+Windows has no "restore from trash" call. What it has is the Recycle Bin as a shell FOLDER whose
+items carry the properties Explorer shows - where each came from and when it went in - and whose
+context menu carries the shell's own `undelete` verb. So a restore is: enumerate, match on the
+original path, invoke the verb.
+
+Everything below is what that needs and nothing more. IShellItem2 is what makes it affordable:
+GetString and GetFileTime hand back a plain LPWSTR and a plain FILETIME, so the whole property
+system arrives without PROPVARIANT - a 24-byte tagged union with forty members, every one of which
+would have to be pinned against the SDK for the three fields this uses. */
+
+MIDL_INTERFACE("7e9fb0d3-919f-4307-ab2e-9b1860310c93")
+IShellItem2 : public IShellItem {
+public:
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStore(int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStoreWithCreateObject(int flags,
+			IUnknown *punkCreateObject, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStoreForKeys(const PROPERTYKEY *rgKeys, UINT cKeys,
+			int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyDescriptionList(REFPROPERTYKEY keyType,
+			REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Update(void *pbc) = 0;
+	// PROPVARIANT is deliberately not declared: this runtime hand-writes the ABI it uses, and the
+	// typed accessors below cover everything it asks the property system for.
+	virtual HRESULT STDMETHODCALLTYPE GetProperty(REFPROPERTYKEY key, void *ppropvar) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCLSID(REFPROPERTYKEY key, GUID * pclsid) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileTime(REFPROPERTYKEY key, FILETIME * pft) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetInt32(REFPROPERTYKEY key, int *pi) = 0;
+	// The string is allocated by the shell: release it with CoTaskMemFree.
+	virtual HRESULT STDMETHODCALLTYPE GetString(REFPROPERTYKEY key, LPWSTR * ppsz) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetUInt32(REFPROPERTYKEY key, ULONG * pui) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetUInt64(REFPROPERTYKEY key, ULONGLONG * pull) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetBool(REFPROPERTYKEY key, BOOL * pf) = 0;
+};
+
+MIDL_INTERFACE("70629033-e363-4a28-a567-0db78006e6d7")
+IEnumShellItems : public IUnknown {
+public:
+	// S_OK means `celt` items were fetched, S_FALSE fewer than that - including none, which is how
+	// the walk ends.
+	virtual HRESULT STDMETHODCALLTYPE Next(ULONG celt, IShellItem * *rgelt,
+			ULONG * pceltFetched) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Skip(ULONG celt) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Reset(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Clone(IEnumShellItems * *ppenum) = 0;
+};
+
+MIDL_INTERFACE("000214e4-0000-0000-c000-000000000046")
+IContextMenu : public IUnknown {
+public:
+	/* Populates `hmenu` and, as a side effect, is what puts the handler into a state where
+	InvokeCommand works. It is not optional even for a caller that never shows the menu: a shell
+	verb handler is entitled to do its discovery here, and several do. */
+	virtual HRESULT STDMETHODCALLTYPE QueryContextMenu(HANDLE hmenu, UINT indexMenu,
+			UINT idCmdFirst, UINT idCmdLast, UINT uFlags) = 0;
+	virtual HRESULT STDMETHODCALLTYPE InvokeCommand(CMINVOKECOMMANDINFO * pici) = 0;
+	// `pszName` is CHAR* even for the W types, which write UTF-16 into the same buffer - the
+	// signature is from a time before the two were told apart.
+	virtual HRESULT STDMETHODCALLTYPE GetCommandString(UINT_PTR idCmd, UINT uType, UINT * pReserved,
+			CHAR * pszName, UINT cchMax) = 0;
+};
+
+// IShellItem::BindToHandler selectors. {94f60519-2850-4924-aa5a-d15e84868039} enumerates a folder
+// item's children as IShellItems; {3981e225-f559-11d3-8e3a-00c04f6837d5} is its UI object, which
+// for IID_IContextMenu is the menu the user would get by right-clicking it.
+inline constexpr GUID BHID_EnumItems = {0x94f6'0519, 0x2850, 0x4924,
+	{0xaa, 0x5a, 0xd1, 0x5e, 0x84, 0x86, 0x80, 0x39}};
+inline constexpr GUID BHID_SFUIObject = {0x3981'e225, 0xf559, 0x11d3,
+	{0x8e, 0x3a, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0xd5}};
+
+/* The two properties a trashed item carries, from the shell's `Displaced` format
+{9b174b33-40ff-11d2-a27e-00c04fc30871} - FMTID_Displaced in the SDK's <shlguid.h>, with the pids
+the SDK's <propkey.h> spells as PKEY_Displaced_From (2) and PKEY_Displaced_Date (3).
+
+`From` is the FOLDER the item was deleted from, not its full path: the file name is the item's own
+display name, and the original path is the two joined. */
+inline constexpr GUID FMTID_Displaced = {0x9b17'4b33, 0x40ff, 0x11d2,
+	{0xa2, 0x7e, 0x00, 0xc0, 0x4f, 0xc3, 0x08, 0x71}};
+
+inline constexpr PROPERTYKEY PKEY_Displaced_From = {FMTID_Displaced, 2};
+inline constexpr PROPERTYKEY PKEY_Displaced_Date = {FMTID_Displaced, 3};
+
 #endif
 
 #endif // SPRT_WRAPPERS_WINDOWS_COM_CXX_H_

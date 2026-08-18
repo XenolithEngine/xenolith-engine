@@ -73,6 +73,9 @@ protected:
 	// SHFileOperationW: what IFileOperation replaced, kept because a host with only a
 	// partial shell implementation (wine) answers DeleteItem with E_NOTIMPL.
 	DialogResult runTrashLegacy();
+	// Enumerates the Recycle Bin, matches each requested path against what the items say they were,
+	// and invokes the shell's `undelete` verb on the newest match of each.
+	DialogResult runRestoreFromTrash();
 	DialogResult runReveal();
 
 	// Hand `result` back to the context looper, which is the only thread allowed to finalize.

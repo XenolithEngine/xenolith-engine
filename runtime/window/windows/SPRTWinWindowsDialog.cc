@@ -126,6 +126,7 @@ bool WindowsDialogHandle::init(NotNull<ContextController> controller,
 	switch (_request->type) {
 	case DialogType::RevealInFileManager:
 	case DialogType::MoveToTrash:
+	case DialogType::RestoreFromTrash:
 		if (_request->paths.empty()) {
 			return false;
 		}
@@ -157,19 +158,7 @@ void WindowsDialogHandle::runWorker() {
 	case DialogType::Font: result = runFontDialog(); break;
 	case DialogType::MoveToTrash: result = runTrash(); break;
 	case DialogType::RevealInFileManager: result = runReveal(); break;
-	case DialogType::RestoreFromTrash:
-		/* Not implemented, and therefore not offered: ContextController::isDialogSupported answers
-		false for this type here, so a caller asks before it acts and never reaches this line.
-
-		What it would take, if it is ever wanted: the Recycle Bin is a virtual folder, so there is
-		no path to hand IFileOperation. It is IShellFolder on FOLDERID_RecycleBinFolder, enumerated
-		with IEnumIDList, each item read through IShellFolder2::GetDetailsEx for PKEY_Displaced_From
-		and PKEY_Displaced_Date, and the match put back with the shell's own `undelete` verb through
-		IContextMenu. NONE of those interfaces is declared in sprt/wrappers/windows yet - this
-		runtime hand-writes the ABI it uses - so the work starts with that COM surface rather than
-		with the dialog. */
-		result.status = Status::ErrorNotSupported;
-		break;
+	case DialogType::RestoreFromTrash: result = runRestoreFromTrash(); break;
 	}
 
 	if (owned) {
@@ -494,6 +483,237 @@ DialogResult WindowsDialogHandle::runTrashLegacy() {
 
 	auto ret = SHFileOperationW(&op);
 	result.status = (ret == 0 && !op.fAnyOperationsAborted) ? Status::Ok : Status::ErrorUnknown;
+	return result;
+}
+
+/* ---- the Recycle Bin, for RestoreFromTrash --------------------------------------------------
+
+Windows has no restore call. What it has is the Recycle Bin as a shell FOLDER whose items carry the
+properties Explorer shows in its columns, and whose context menu carries the shell's own `undelete`
+verb. So a restore is: enumerate the folder, match an item on the path it used to have, invoke the
+verb on it.
+
+The caller only knows the path the file HAD, which is what the two Displaced properties reconstruct:
+PKEY_Displaced_From is the folder it was deleted from and the item's own name is the file. There is
+no identity for a trashed item that a caller could have kept instead - nothing hands one back when
+the file goes in - so matching on the old path is not a shortcut, it is the whole interface.
+
+WHAT IS NOT PINNED DOWN HERE, and is the first thing to check on a real system: which SIGDN spelling
+of a Recycle Bin item's name is the ORIGINAL file name. The parsing name is the bin's internal
+`$R…` name, and the normal display name follows the user's hide-extensions setting, so the editing
+name - the one a rename box would show - is what this asks for, with the display name as a second
+chance. Both are compared, so a host that answers differently than expected still matches.
+*/
+
+// Path comparison the way Windows means it: case-insensitive, and '/' is a separator too, since a
+// caller that came through the runtime's POSIX paths may well hand one over.
+static bool WindowsDialog_pathEquals(StringView lhs, StringView rhs) {
+	auto norm = [](char c) -> char {
+		if (c == '/') {
+			return '\\';
+		}
+		if (c >= 'A' && c <= 'Z') {
+			return char(c - 'A' + 'a');
+		}
+		return c;
+	};
+
+	auto trim = [](StringView str) {
+		// A trailing separator is not part of the identity of a path, and the shell never reports
+		// one.
+		while (str.size() > 1 && (str.back() == '\\' || str.back() == '/')) {
+			str = StringView(str.data(), str.size() - 1);
+		}
+		return str;
+	};
+
+	lhs = trim(lhs);
+	rhs = trim(rhs);
+	if (lhs.size() != rhs.size()) {
+		return false;
+	}
+	for (size_t i = 0; i < lhs.size(); ++i) {
+		if (norm(lhs[i]) != norm(rhs[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// A shell-allocated string, read out and released in one step. Every LPWSTR the property system
+// and GetDisplayName hand back is CoTaskMemAlloc'd and belongs to the caller.
+static String WindowsDialog_takeShellString(LPWSTR str) {
+	if (!str) {
+		return String();
+	}
+	auto ret = fromWide(reinterpret_cast<const wchar_t *>(str));
+	CoTaskMemFree(str);
+	return ret;
+}
+
+// FILETIME is a 64-bit count in two halves; compare it as the one number it is.
+static uint64_t WindowsDialog_fileTimeValue(const FILETIME &ft) {
+	return (uint64_t(ft.dwHighDateTime) << 32) | uint64_t(ft.dwLowDateTime);
+}
+
+// The shell's own restore. `item` is one entry of the Recycle Bin.
+static bool WindowsDialog_undelete(IShellItem *item, HWND parentWindow) {
+	IContextMenu *menu = nullptr;
+	if (FAILED(item->BindToHandler(nullptr, BHID_SFUIObject, __uuidof(IContextMenu),
+				reinterpret_cast<void **>(&menu)))
+			|| !menu) {
+		return false;
+	}
+
+	/* The menu is never shown, and it is still not optional: QueryContextMenu is where a shell verb
+	handler does its discovery, and InvokeCommand on a handler that never saw one is entitled to
+	fail. So build one, let the shell fill it, and throw it away. */
+	auto hmenu = CreatePopupMenu();
+	if (!hmenu) {
+		menu->Release();
+		return false;
+	}
+	menu->QueryContextMenu(hmenu, 0, 1, 0x7FFF, CMF_NORMAL);
+
+	CMINVOKECOMMANDINFO info;
+	__builtin_memset(&info, 0, sizeof(info));
+	info.cbSize = sizeof(info);
+	// NO_UI because this runs on a worker thread that owns no window: without it the shell is free
+	// to put its own error box up there. NOASYNC because the answer has to be the operation's, not
+	// "it has been started".
+	info.fMask = CMIC_MASK_FLAG_NO_UI | CMIC_MASK_NOASYNC;
+	info.hwnd = parentWindow;
+	// The canonical verb, which is language-independent - the menu TEXT is localized, this is not.
+	info.lpVerb = "undelete";
+	info.nShow = SW_SHOWNORMAL;
+
+	auto hr = menu->InvokeCommand(&info);
+
+	DestroyMenu(hmenu);
+	menu->Release();
+	return SUCCEEDED(hr);
+}
+
+DialogResult WindowsDialogHandle::runRestoreFromTrash() {
+	DialogResult result;
+
+	IShellItem *bin = nullptr;
+	// "shell:RecycleBinFolder" rather than a path: the bin is a virtual folder, and the per-volume
+	// `$Recycle.Bin` directories it is assembled from are not what the shell will enumerate.
+	if (FAILED(SHCreateItemFromParsingName(L"shell:RecycleBinFolder", nullptr, __uuidof(IShellItem),
+				reinterpret_cast<void **>(&bin)))
+			|| !bin) {
+		result.status = Status::ErrorNotSupported;
+		return result;
+	}
+
+	IEnumShellItems *items = nullptr;
+	auto hr = bin->BindToHandler(nullptr, BHID_EnumItems, __uuidof(IEnumShellItems),
+			reinterpret_cast<void **>(&items));
+	bin->Release();
+	if (FAILED(hr) || !items) {
+		result.status = Status::ErrorNotSupported;
+		return result;
+	}
+
+	// One entry per requested path: the item to put back, and when it went in. Held by reference
+	// across the whole walk, because the enumerator's own reference goes as soon as we step past it.
+	struct Candidate {
+		IShellItem *item = nullptr;
+		uint64_t deleted = 0;
+	};
+
+	Vector<Candidate> best;
+	best.resize(_request->paths.size());
+
+	IShellItem *entry = nullptr;
+	ULONG fetched = 0;
+	while (items->Next(1, &entry, &fetched) == S_OK && fetched == 1 && entry) {
+		IShellItem2 *entry2 = nullptr;
+		if (FAILED(entry->QueryInterface(__uuidof(IShellItem2), reinterpret_cast<void **>(&entry2)))
+				|| !entry2) {
+			entry->Release();
+			entry = nullptr;
+			continue;
+		}
+
+		LPWSTR raw = nullptr;
+		String folder;
+		if (SUCCEEDED(entry2->GetString(PKEY_Displaced_From, &raw))) {
+			folder = WindowsDialog_takeShellString(raw);
+		}
+
+		raw = nullptr;
+		String editing;
+		if (SUCCEEDED(entry->GetDisplayName(SIGDN_PARENTRELATIVEEDITING, &raw))) {
+			editing = WindowsDialog_takeShellString(raw);
+		}
+
+		raw = nullptr;
+		String display;
+		if (SUCCEEDED(entry->GetDisplayName(SIGDN_NORMALDISPLAY, &raw))) {
+			display = WindowsDialog_takeShellString(raw);
+		}
+
+		FILETIME deleted;
+		__builtin_memset(&deleted, 0, sizeof(deleted));
+		entry2->GetFileTime(PKEY_Displaced_Date, &deleted);
+		entry2->Release();
+
+		if (!folder.empty()) {
+			for (size_t i = 0; i < _request->paths.size(); ++i) {
+				auto &wanted = _request->paths[i];
+				const bool match = (!editing.empty()
+										   && WindowsDialog_pathEquals(wanted,
+												   toString(folder, "\\", editing)))
+						|| (!display.empty()
+								&& WindowsDialog_pathEquals(wanted,
+										toString(folder, "\\", display)));
+				if (!match) {
+					continue;
+				}
+
+				// The most recent deletion of a path wins: trashing a file, recreating it and
+				// trashing it again leaves two entries, and the one the user means is the last one
+				// they made.
+				const auto stamp = WindowsDialog_fileTimeValue(deleted);
+				if (best[i].item && best[i].deleted >= stamp) {
+					continue;
+				}
+				if (best[i].item) {
+					best[i].item->Release();
+				}
+				entry->AddRef();
+				best[i].item = entry;
+				best[i].deleted = stamp;
+			}
+		}
+
+		entry->Release();
+		entry = nullptr;
+	}
+	items->Release();
+
+	size_t failed = 0;
+	for (size_t i = 0; i < best.size(); ++i) {
+		if (!best[i].item) {
+			continue; // never trashed, or trashed to a bin this account cannot see
+		}
+		if (WindowsDialog_undelete(best[i].item, _parentWindow)) {
+			result.paths.emplace_back(_request->paths[i]);
+		} else {
+			++failed;
+		}
+		best[i].item->Release();
+	}
+
+	// Same three-way answer every backend gives: everything came back, nothing was there at all, or
+	// some subset failed - and `paths` says which in all three cases.
+	if (result.paths.empty()) {
+		result.status = failed > 0 ? Status::ErrorUnknown : Status::ErrorNotFound;
+	} else {
+		result.status = failed > 0 ? Status::ErrorUnknown : Status::Ok;
+	}
 	return result;
 }
 

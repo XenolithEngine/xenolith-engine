@@ -66,6 +66,8 @@ public:
 
 	virtual void openUrl(StringView) override;
 
+	virtual bool isDialogSupported(DialogType) const override;
+
 	virtual Status openDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&) override;
 
 	virtual SurfaceSupportInfo getSupportInfo() const override;
