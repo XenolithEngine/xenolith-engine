@@ -33,7 +33,6 @@ XWIN_ROOT := $(LIBS_MAKE_ROOT)xwin
 ifeq ($(findstring Windows,$(OS)),Windows)
 $(info Using powershell)
 
-WGET = curl.exe
 SHELL := powershell.exe
 MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
 RM := powershell Remove-Item -Recurse -Force -ErrorAction Ignore -Path 
@@ -44,7 +43,6 @@ rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 else
 $(info Using sh)
 
-WGET = wget
 MKDIR ?= mkdir -p
 RM := rm -rf
 

@@ -49,7 +49,7 @@ import sys
 # What a status column means.
 #
 # The letter codes ([B5 B6], [P1 V6], ...) are informational: ICU's own conformance
-# driver (libuidna tests/icu/uts46test.cpp, checkIdnaTestResult) does NOT map them to
+# driver (icu4c source/test/intltest/uts46test.cpp, checkIdnaTestResult) does NOT map them to
 # error codes. It asserts exactly two things - whether the operation was expected to
 # fail, and, when it was not, that the output string matches. Anything more would be
 # asserting a rule attribution the file does not actually specify, which is how a

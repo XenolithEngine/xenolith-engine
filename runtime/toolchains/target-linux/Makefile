@@ -46,7 +46,6 @@ LIBS := \
 	liblzma.a \
 	libzstd.a \
 	libbrotlienc.a \
-	libicuuc.a \
 	libjpeg.a \
 	libpng16.a \
 	libgif.a \
@@ -242,6 +241,19 @@ $(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/i
 	@$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
 	cp -f $< $@
 
+# ICU is deliberately NOT in LIBS: nothing links it any more (the runtime does its
+# own case mapping, collation and IDN), and it is by far the most expensive library
+# here - the cross build needs a full native ICU built first just to generate its
+# data. The rule stays so a real libicuuc can still be produced on demand, for
+# comparing the runtime's Unicode behaviour against the reference implementation:
+#
+#     make -C target-linux x86_64-unknown-linux-gnu   # sysroot, no ICU
+#     make -C target-linux icu SP_ARCH=... SP_TARGET=...
+#
+# The icu4c *sources* are still downloaded by src.mk - they are the UCD and
+# conformance data the generators read. See the icu4c block there.
+icu: $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
+
 $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -292,6 +304,6 @@ $(SP_INSTALL_PREFIX)/share/licenses:
 	cp -rf runtime/include/* $(SP_INSTALL_PREFIX)/include
 	cp -rf ../licenses $(SP_INSTALL_PREFIX)/share/licenses
 
-.PHONY: all
+.PHONY: all icu
 
 endif

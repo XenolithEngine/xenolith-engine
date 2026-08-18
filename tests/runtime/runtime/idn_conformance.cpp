@@ -31,7 +31,7 @@
 //
 // It does NOT assert which rule a rejection is blamed on. Neither does the standard:
 // the [B5 B6] style codes are informational, and ICU's own driver for this file
-// (libuidna tests/icu/uts46test.cpp, checkIdnaTestResult) compares hasErrors() as a
+// (icu4c source/test/intltest/uts46test.cpp, checkIdnaTestResult) compares hasErrors() as a
 // boolean and nothing more. The specific Status a given input produces is pinned
 // case by case in idn.cpp instead, where each expectation was verified against the
 // reference implementation.
