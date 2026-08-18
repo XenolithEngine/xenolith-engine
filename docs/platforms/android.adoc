@@ -104,10 +104,12 @@ exposes the standard storage locations — APK assets (read-only), `filesDir`,
 backed by `AAssetManager_open` / `AAssetManager_openDir` and
 `AAsset_getLength64`.
 
-Because an APK is a ZIP archive, `stappler_filesystem` gains a dependency on
-`stappler_zip` specifically on Android
-([../../make/MODULES.md](../../make/MODULES.md)): bundled assets are read on the
-fly out of the compressed APK rather than being extracted to disk first.
+An APK is a ZIP archive, but `stappler_filesystem` does not read it as one and
+has no dependency on `stappler_zip`: bundled assets go through the NDK's
+`AAssetManager`, which decompresses them on the fly. (An earlier version of this
+page claimed such a dependency, citing an illustrative `ifdef ANDROID` block in
+[../../make/MODULES.md](../../make/MODULES.md) that was never in
+`filesystem.mk`.)
 
 ## Runtime / libc and the event loop
 

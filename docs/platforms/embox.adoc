@@ -72,7 +72,7 @@ make -C $TC \
   $TC/src/libjpeg-turbo $TC/src/libpng $TC/src/giflib $TC/src/libwebp \
   $TC/src/freetype $TC/src/harfbuzz $TC/src/sheenbidi $TC/src/sqlite \
   $TC/src/openssl $TC/src/openssl-gost-engine $TC/src/nghttp3 \
-  $TC/src/libzip $TC/src/curl
+  $TC/src/curl
 test -f $TC/src/freetype/CMakeLists.txt
 test -f $TC/src/openssl/Configure
 ----
@@ -103,7 +103,7 @@ make -C $ENGINE/runtime/toolchains/target-embox target-aarch64 \
 Order: import-sysroot → init-target (`target.mk`, `toolchain-libs.cmake`) →
 compiler-rt + `emutls.c` + SME stub → libcxxabi + libunwind → in-tree
 `libsprt.a` → zlib/bzip2/brotli/jpeg/png/gif/webp/freetype/harfbuzz/sheenbidi/
-sqlite/openssl/gost/nghttp3/libzip/curl → `install-target.mk`.
+sqlite/openssl/gost/nghttp3/curl → `install-target.mk`.
 
 Success is
 `$ENGINE/runtime/toolchains/target-embox/targets/aarch64-embox-none-elf/`

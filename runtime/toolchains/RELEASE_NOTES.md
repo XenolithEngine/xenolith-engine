@@ -64,6 +64,12 @@ the SDK tag (`sdk-v0beta2`).
 * Dependency bumps across the board — see the manifest below. Notably
   libtiff 4.7.2 carries the CVE-2026-12912 and CVE-2026-4775 fixes upstream, so
   the local backport patch is gone.
+* **libzip is gone** — dropped, not bumped. `stappler_zip` now reads and writes
+  ZIP archives with its own code (zlib is the only dependency left), so the
+  library, its nine per-target builds and the cmake feature-probe shims that
+  carried it onto wasm/NuttX/Embox are no longer part of any sysroot. Anything
+  that linked `-lzip` from these toolchains must vendor its own copy.
+  bzip2, xz/liblzma and zstd stay: FreeType, libtiff and curl still want them.
 
 ---
 
@@ -218,7 +224,6 @@ the complete manifest shipped in this release.
 | xz / liblzma | 5.8.3 |
 | zstd | 1.5.7 |
 | brotli | 1.2.0 |
-| libzip | 1.11.4 |
 
 ### Image
 | Component | Version |

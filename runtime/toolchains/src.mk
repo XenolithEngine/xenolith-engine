@@ -43,7 +43,6 @@ LIBS = \
 	mbedtls \
 	nghttp3 \
 	ngtcp2 \
-	libzip \
 	zlib \
 	openssl \
 	openssl-gost-engine \
@@ -215,11 +214,6 @@ $(SRC_ROOT)/libuidna: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/libuidna)
 	cd $(SRC_ROOT); git clone https://github.com/SBKarr/libuidna.git $(SRC_ROOT)/libuidna
-
-# https://libzip.org/download/ # revised: 2 jun 2026
-# TODO: move to git releases
-$(SRC_ROOT)/libzip: | prepare
-	$(call unpack_tar, https://libzip.org/download/libzip-1.11.4.tar.xz, libzip)
 
 # Use 3.5 LTS until new LTS
 # https://openssl-library.org/source/index.html # revised: 23 jun 2026

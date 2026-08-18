@@ -49,7 +49,6 @@ Note: Apple hardware is required due licensing limitations to build apple hosts 
 * [libcurl](https://curl.se/download.html) in MbedTLS and OpenSSL variants. Only OpenSSL variant supports HTTP/3
 * [sqlite3](https://www.sqlite.org/download.html)
 * [libuidna](https://github.com/SBKarr/libuidna) as IDN2 replacement
-* [libzip](https://libzip.org)
 * [iwasm](https://github.com/bytecodealliance/wasm-micro-runtime) WebAssembly runtime library
 
 ### Linux essential headers (libraries not included)

@@ -62,9 +62,7 @@ LIBS := \
 	libssl.a \
 	libgost_engine.a \
 	libcurl-openssl.a \
-	libzip-openssl.a \
 	libcurl-mbedtls.a \
-	libzip-mbedtls.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a \
@@ -251,12 +249,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_P
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/include/idn2.h
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
