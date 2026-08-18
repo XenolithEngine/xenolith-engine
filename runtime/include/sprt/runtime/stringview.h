@@ -1141,7 +1141,8 @@ struct CollateOptions {
 // The sign, like strcmp. `locale` is a language tag; an unknown or empty one
 // means the CLDR root order, which is already correct for most languages -
 // including German, French, Italian, Russian, Greek and Hebrew.
-SPRT_API int collate(StringView l, StringView r, StringView locale, CollateOptions = CollateOptions());
+SPRT_API int collate(StringView l, StringView r, StringView locale,
+		CollateOptions = CollateOptions());
 SPRT_API int collate(WideStringView l, WideStringView r, StringView locale,
 		CollateOptions = CollateOptions());
 
@@ -2161,10 +2162,10 @@ inline char32_t StringViewUtf8::readChar() {
 		auto ret = sprt::unicode::utf8Decode32(this->ptr, this->len, off);
 		if (off > len) {
 			// invalid codepoint in view
-			offset(len);
+			BytesReader<char>::offset(len);
 			return 0;
 		}
-		offset(off);
+		BytesReader<char>::offset(off);
 		return ret;
 	} else {
 		return 0;
