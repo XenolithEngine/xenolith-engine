@@ -281,9 +281,28 @@ endif
 
 $(call print_verbose,(c/apply.mk) include dependencies)
 
+# Защита от исходников, перемещённых или удалённых после предыдущей сборки.
+$(foreach pat,$(subst *.,%.,$(SP_SOURCE_FILES_PATTERN) *.mm),$(eval $(pat): ;))
+
+# Побочный эффект правила выше: встроенные правила make вида "%: %.cpp" (собрать исполняемый
+# файл X прямо из X.cpp) теперь считают, что недостающий исходник можно получить, и запускают
+# бессмысленную компиляцию.
+%: %.c
+%: %.C
+%: %.cc
+%: %.cpp
+%: %.m
+%: %.s
+%: %.S
+%: %.o
+
 # include dependencies
--include $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS))
--include $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH))
+#
+# $(wildcard ...) убирает попытки построить отсутствующие .d (на чистой сборке отсутствуют все):
+# перестраивать их нечем, а поиск неявного правила для каждого - лишняя работа make на каждой
+# сборке.
+-include $(wildcard $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS)))
+-include $(wildcard $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH)))
 
 $(call print_verbose,(c/apply.mk) prepare compilation database)
 
