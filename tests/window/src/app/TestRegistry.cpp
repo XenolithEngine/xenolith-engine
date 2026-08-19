@@ -44,7 +44,9 @@
 #include "window/MultiWindowLayout.h"
 #include "window/GeometryLayout.h"
 #include "window/QueueCacheLayout.h"
+#include "widgets/NumberFieldLayout.h"
 #include "widgets/PanelLayout.h"
+#include "widgets/SelectLayout.h"
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
 #include "widgets/HotkeyLayout.h"
@@ -245,6 +247,29 @@ static const TestInfo s_widgetsTests[] = {
 				   "must open as a second surface that the root takes down with it. Drive it over "
 				   "the inspector: menu.metrics, menu.state, menu.open, menu.activate."),
 		TestRegistry_make<MenuLayout>, true},
+
+	TestInfo{StringView("number"), StringView("XL_NUMBER_TEST"), StringView("ui::NumberField"),
+		StringView("Four numeric fields: whole, real, one ranged 0..999 and one in a form. Typing a "
+				   "fractional part into the whole field must be refused, and so must a number past "
+				   "the declared range - the value stays put, no callback fires and the node takes "
+				   "the `.invalid` outline - while DRAGGING an unfocused field past the end must "
+				   "stop at it. Up and Down step by exactly one step, blur restores the text of a "
+				   "refused edit, and parse(format(v)) must come back the same number. Drive it "
+				   "over the inspector: number.state, number.set-text, number.roundtrip, "
+				   "send_input native=true."),
+		TestRegistry_make<NumberFieldLayout>, true},
+
+	TestInfo{StringView("select"), StringView("XL_SELECT_TEST"), StringView("ui::Select"),
+		StringView("Two drop-downs and a text field. The closed control must show the chosen "
+				   "option's title and icon; opening it must produce a menu SURFACE whose rows are "
+				   "the options, with the current one checked and highlighted. In the open list the "
+				   "arrows must walk the rows and skip the disabled one, Enter must choose and "
+				   "close, Escape must close and change nothing - and while it is open the field "
+				   "beside it must not see a single arrow. Closed, Up/Down step the value in place. "
+				   "The second control is a form field: what is collected is the option's id. Drive "
+				   "it over the inspector: select.state, select.open, select.step, send_input "
+				   "native=true."),
+		TestRegistry_make<SelectLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

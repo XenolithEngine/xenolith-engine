@@ -49,37 +49,40 @@ static constexpr TimeInterval TextInputLongPressInterval = TimeInterval::millise
 // nothing - so the press recognizer, which counts its intervals in update(), would never tick.
 static constexpr uint32_t TextInputPressTag = "XLUiTextInputPress"_tag;
 
-// Register the per-attribute style appliers for nodes of type "text-input" once, the first time a
-// TextInput is constructed - the same "resolve by type" hook ui::Button uses.
-static void ensureTextInputStyleAppliers() {
+void TextInput::registerStyleAppliers(StringView type) {
 	using document::ParameterName;
-	static bool once = [] {
-		StyleResolver::registerTypeApplier("text-input",
-				[](StyleResolver &res, Node *node, const ResolvedStyle &s,
-						document::ParameterName name, const document::StyleValue &val) {
-			if (auto input = dynamic_cast<TextInput *>(node)) {
-				return input->setStyleValue(s, name, val);
-			}
-			return false;
-		},
-				StyleResolver::makeParameterMask({
-					ParameterName::CssBackgroundColor,
-					ParameterName::CssOutlineColor,
-					ParameterName::CssOutlineWidth,
-					ParameterName::CssOutlineStyle,
-					ParameterName::CssBorderTopLeftRadius,
-					ParameterName::CssBorderTopRightRadius,
-					ParameterName::CssBorderBottomRightRadius,
-					ParameterName::CssBorderBottomLeftRadius,
-					ParameterName::CssPaddingTop,
-					ParameterName::CssPaddingRight,
-					ParameterName::CssPaddingBottom,
-					ParameterName::CssPaddingLeft,
-					ParameterName::CmdReset,
-				}));
-		return true;
-	}();
-	(void)once;
+
+	// One registration per type: the appliers are identical for every field built on this widget,
+	// and a second one for the same type would only rebuild the same callback. Registry and node
+	// graph are both app-thread, so a plain set is enough. Same shape as Panel's.
+	static Set<String> s_registered;
+	if (!s_registered.emplace(type.str<mem_std::Interface>()).second) {
+		return;
+	}
+
+	StyleResolver::registerTypeApplier(type,
+			[](StyleResolver &res, Node *node, const ResolvedStyle &s, document::ParameterName name,
+					const document::StyleValue &val) {
+		if (auto input = dynamic_cast<TextInput *>(node)) {
+			return input->setStyleValue(s, name, val);
+		}
+		return false;
+	},
+			StyleResolver::makeParameterMask({
+				ParameterName::CssBackgroundColor,
+				ParameterName::CssOutlineColor,
+				ParameterName::CssOutlineWidth,
+				ParameterName::CssOutlineStyle,
+				ParameterName::CssBorderTopLeftRadius,
+				ParameterName::CssBorderTopRightRadius,
+				ParameterName::CssBorderBottomRightRadius,
+				ParameterName::CssBorderBottomLeftRadius,
+				ParameterName::CssPaddingTop,
+				ParameterName::CssPaddingRight,
+				ParameterName::CssPaddingBottom,
+				ParameterName::CssPaddingLeft,
+				ParameterName::CmdReset,
+			}));
 }
 
 ComponentId TextInputStyleComponent::Id;
@@ -378,7 +381,7 @@ bool TextInput::init() {
 		return false;
 	}
 
-	ensureTextInputStyleAppliers();
+	registerStyleAppliers("text-input");
 
 	setType("text-input");
 	addStyleClass("xl-ui-text-input");

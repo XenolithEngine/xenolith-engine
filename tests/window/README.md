@@ -35,6 +35,9 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     text-input-check.py       headless assertions for the ui::TextInput demo (see below)
     form-check.py             headless assertions for the ui::FormSystem demo
     hotkey-check.py           headless assertions for the global hotkey controller
+    menu-check.py             headless assertions for ui::MenuSource / ui::MenuSystem
+    select-check.py           headless assertions for the ui::Select demo
+    number-check.py           headless assertions for the ui::NumberField demo
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
@@ -70,8 +73,14 @@ because it drives a real window with XTEST. That is the only way to check that t
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
-`form-check.py` and `hotkey-check.py` work the same way, for the same reason: the order in which
-listeners are offered a key, and who declined it, leaves no trace on the screen at all. The hotkey
+`form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py` and `number-check.py` work
+the same way, for the same reason: the order in which listeners are offered a key, and who declined
+it, leaves no trace on the screen at all. The same goes for the two newest stands. A `ui::Select`'s
+open list is a WINDOW, so the keys that walk it are addressed to that window and the check has to
+say so; and while it is open the field beside the control must see nothing, which is the only way
+to observe that the menu's exclusive focus group is doing its job. A `ui::NumberField` refusing a
+number and accepting one that happens to look the same are identical on screen, so the value, the
+validity and the callback count are all read back as numbers. The hotkey
 stand carries four subscribers on one combination - one that declines, one global, one FocusedOnly
 inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the

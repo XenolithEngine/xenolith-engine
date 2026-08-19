@@ -249,6 +249,14 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 			return chain->openSubmenu(item, row);
 		});
 
+		if (chain->getConfig().keyboard) {
+			menu->setKeyboardEnabled(true);
+			auto &highlight = chain->getConfig().highlight;
+			if (!highlight.empty()) {
+				menu->setHighlighted(source->getItem(highlight));
+			}
+		}
+
 		// Before the command runs: an action is free to put another surface up in this one's place,
 		// and a menu still on screen behind it is something the user then has to dismiss by hand.
 		menu->setWillActivateCallback([chain](NotNull<MenuSourceItem> item) {
@@ -370,6 +378,8 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 	config.idPrefix = _config.idPrefix.empty() ? String("submenu") : _config.idPrefix;
 	config.flags = _config.flags;
 	config.preferNative = _config.preferNative;
+	// Inherited, unlike `highlight`: that one names a row of THIS menu and means nothing here.
+	config.keyboard = _config.keyboard;
 
 	_child = MenuPopup_open(parentWindow, placementForNode(row, MenuSide::Right), source,
 			sp::move(config), this);

@@ -27,6 +27,8 @@
 #include "XLUiTextInput.h"
 #include "XLUiCheckbox.h"
 #include "XLUiButton.h"
+#include "XLUiSelect.h"
+#include "XLUiNumberField.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -37,11 +39,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // Each one creates the listener, fills in what the widget can do and adds it to the node. The
 // field name defaults to the node's own name, which is also its CSS id.
 
+// Also takes a ui::NumberField, which IS a TextInput: it collects the NUMBER rather than the text
+// of one. There is no second overload for it, because NotNull<> converts from either and the two
+// would be ambiguous at every call site - the adapter branches instead.
 SP_PUBLIC FormInputListener *addFormField(NotNull<TextInput>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 SP_PUBLIC FormInputListener *addFormField(NotNull<Checkbox>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
+
+SP_PUBLIC FormInputListener *addFormField(NotNull<Select>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
 
 // A button takes part in the tab order and fires the form on Enter, but is never collected
 SP_PUBLIC FormInputListener *addFormButton(NotNull<Button>, FormFieldRole);

@@ -44,6 +44,7 @@
 #include "input/XLUiTextInput.cc"
 #include "input/XLUiTextDocument.cc"
 #include "input/XLUiTextView.cc" // after TextInput: the view replaces its container and cursor layer
+#include "input/XLUiNumberField.cc" // after TextInput: it is one, filtered
 #include "input/XLUiCodeEditor.cc" // after TextView: both are it, configured
 #include "input/XLUiConsole.cc"
 
@@ -74,3 +75,5 @@
 #include "XLUiSubWindowSession.cc"
 #include "menu/XLUiMenuPopup.cc" // after SubWindowSession: a menu opens through its popup slot
 #include "XLUiTooltipSystem.cc" // after SubWindowSession: the hint goes through its tip slot
+
+#include "input/XLUiSelect.cc" // after MenuPopup: the list it opens is one
