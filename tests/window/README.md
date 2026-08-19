@@ -40,6 +40,7 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     number-check.py           headless assertions for the ui::NumberField demo
     vector-check.py           headless assertions for the ui::VectorField demo
     color-check.py            headless assertions for the ui::ColorField demo
+    chip-check.py             headless assertions for the ui::Chip / ui::ChipRow demo
     picker-check.py           headless assertions for the ui::SearchPicker demo
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
@@ -78,7 +79,8 @@ which *side* of a modifier was pressed - the inspector injects a modifier bitmas
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
 `form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py`, `number-check.py`,
-`vector-check.py`, `color-check.py`, `picker-check.py` and `inline-edit-check.py` work the same way,
+`vector-check.py`, `color-check.py`, `chip-check.py`, `picker-check.py` and `inline-edit-check.py`
+work the same way,
 for the same reason: the order in which listeners are offered
 a key, and who declined it, leaves no trace on the screen at all. A `ui::Select`'s
 open list is a WINDOW, so the keys that walk it are addressed to that window and the check has to
@@ -93,6 +95,12 @@ argument of `FormFieldSlots::setFocused` exists for. A `ui::ColorField` has TWO 
 one a tap opens is the claim: headless advertises no colour dialog at all, so `auto` has to resolve
 to the widget's own surface - a real popup window whose swatches the check clicks - while `system`,
 asked for explicitly, has to fail with a reason rather than open nothing and go quiet. A
+`ui::ChipRow` is the other kind of composite: the arrows walk its chips and Tab LEAVES it, its
+limit and its uniqueness are claims about what the interface offers rather than about what it
+refuses afterwards (at the maximum the "+" is dead, and an id already in the row comes up disabled
+inside the menu's own window), and Backspace with nothing selected has to SELECT rather than
+delete. Its height is the other invisible thing: a row that wraps onto four lines has to report the
+height it actually draws at, which the check reads back beside the chips' own rectangles. A
 `ui::SearchPicker` highlights the characters a matcher named, and the row led by two emoji is the
 only place where a highlight counted in code points and one counted in UTF-16 units disagree - a
 difference no screenshot distinguishes from a font. A `ui::InlineEditor` is the strongest case of

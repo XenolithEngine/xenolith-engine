@@ -32,6 +32,7 @@
 #include "XLUiNumberField.h"
 #include "XLUiVectorField.h"
 #include "XLUiColorField.h"
+#include "XLUiChipRow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -71,6 +72,13 @@ SP_PUBLIC FormInputListener *addFormField(NotNull<VectorField>, StringView name 
 // alpha channel): JSON has no colour type, and hex is what a stylesheet, a schema default and a
 // config file all already hold
 SP_PUBLIC FormInputListener *addFormField(NotNull<ColorField>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+/* An ARRAY of the chips' ids, left to right. The second composite field in this kit, and the one
+that shows the pattern is not about text: the row keeps its own selection and its own keys, the form
+sees one value under one name, and a Required row that is empty is refused ONCE. Order is part of
+the value - an element chain read back in a different order describes a different type. */
+SP_PUBLIC FormInputListener *addFormField(NotNull<ChipRow>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 // A button takes part in the tab order and fires the form on Enter, but is never collected

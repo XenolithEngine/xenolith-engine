@@ -312,6 +312,84 @@ FormInputListener *addFormField(NotNull<ColorField> field, StringView name, Form
 	return listener;
 }
 
+FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// The ids, in the order they stand in. The titles are presentation and may be localized out
+	// from under the value; the ORDER is not - an element chain read back reordered is a different
+	// type - so this is an array and never a set.
+	slots.collect = [row = row.get()] {
+		Value ret;
+		for (auto &it : row->getItems()) { ret.addString(it.id); }
+		return ret;
+	};
+
+	/* Assigning an id nothing declares still produces a chip, titled by the id itself.
+
+	That is deliberate, and it is the same decision the ui::SearchPicker adapter makes: a file
+	written before anyone declared a name for that member has no title to show, and inventing one
+	would be a lie about the file. Dropping it would be worse still - the form would silently
+	collect back less than it was given. */
+	slots.assign = [row = row.get()](const Value &v) {
+		Vector<ChipItem> items;
+		items.reserve(v.size());
+		for (auto &it : v.asArray()) {
+			auto id = it.getString();
+			if (id.empty()) {
+				continue;
+			}
+			if (auto option = row->getOption(id)) {
+				items.emplace_back(ChipItem{option->id, option->title, option->icon, true});
+			} else {
+				items.emplace_back(ChipItem{String(id), String(), IconName::None, true});
+			}
+		}
+		// silent: the form assigning its value is not somebody building the set
+		row->setItems(items, true);
+	};
+
+	slots.clear = [row = row.get()] { row->clearItems(true); };
+
+	// Enter or Space on the focused row shows the list - the same thing the widget does with those
+	// keys on its own, routed here so the form does not have to know that
+	slots.activate = [row = row.get()] { return row->open(); };
+
+	// The widget writes the focus counter itself: its focus is also what decides whether it answers
+	// the arrows at all, so the two must be the same flag rather than two that agree
+	slots.ownsFocusStyle = true;
+	slots.focusable = row->isEnabled();
+
+	// The row decides WHICH chip the focus lands on, and it needs the direction to do it: a
+	// Shift+Tab entering a row of chips means its last one
+	slots.setFocused = [row = row.get()](bool value, bool backwards) {
+		if (value) {
+			row->focusFromNavigation(backwards);
+		} else {
+			row->blur();
+		}
+	};
+
+	auto listener = FormAdapters_attach(row, sp::move(slots), name, FormFieldRole::Field, flags);
+	if (!listener) {
+		return nullptr;
+	}
+
+	// Tab is not navigation INSIDE this widget - the row is one stop of the ring - so it is handed
+	// straight over rather than falling back to the standalone blur()
+	row->setNavigateCallback(
+			[listener](bool backwards) { return listener->requestNavigate(backwards); });
+
+	// A tap that selects a chip has to move the form's focus to this field, or the form goes on
+	// filtering keys to the field it focused last and the arrows die in the row the user clicked
+	row->setFocusCallback([listener](bool focused) {
+		if (focused) {
+			listener->setFocused();
+		}
+	});
+
+	return listener;
+}
+
 FormInputListener *addFormButton(NotNull<Button> button, FormFieldRole role) {
 	FormFieldSlots slots;
 

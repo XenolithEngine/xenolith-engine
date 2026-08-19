@@ -47,6 +47,7 @@
 #include "widgets/NumberFieldLayout.h"
 #include "widgets/VectorFieldLayout.h"
 #include "widgets/ColorFieldLayout.h"
+#include "widgets/ChipRowLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/SelectLayout.h"
 #include "widgets/SearchPickerLayout.h"
@@ -320,6 +321,18 @@ static const TestInfo s_widgetsTests[] = {
 				   "back, and the form must collect one hex string. Drive it over the inspector: "
 				   "color.state, color.set-mode, color.open, send_input native=true."),
 		TestRegistry_make<ColorFieldLayout>, true},
+
+	TestInfo{StringView("chip"), StringView("XL_CHIP_TEST"), StringView("ui::Chip / ui::ChipRow"),
+		StringView("Four rows of chips and a text field. A row is ONE form field: the form must "
+				   "collect one ARRAY of ids in left-to-right order, and a Required row that is "
+				   "empty must be refused once. Removing the middle chip must leave the order of "
+				   "the rest alone; at the declared maximum the \"+\" must be dead and open "
+				   "nothing, and with unique ids the options already in the row must come up "
+				   "disabled IN THE MENU. Backspace with nothing selected must SELECT the last "
+				   "chip rather than delete it. The narrow row must wrap, and the height it "
+				   "reports must be the height it draws at. Drive it over the inspector: "
+				   "chip.state, chip.set-width, chip.open, send_input native=true."),
+		TestRegistry_make<ChipRowLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

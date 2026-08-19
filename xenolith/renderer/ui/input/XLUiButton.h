@@ -89,6 +89,10 @@ public:
 	virtual void setLabelFontWeight(font::FontWeight);
 	virtual basic2d::Label *getLabel() const;
 
+	// The icon NODE, for the size and the colour a stylesheet would otherwise have set. Named apart
+	// from getIcon(), which answers with the IconName rather than with what draws it.
+	virtual basic2d::IconSprite *getIconSprite() const;
+
 protected:
 	virtual void updateState();
 

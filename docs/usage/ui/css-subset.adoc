@@ -271,7 +271,8 @@ and the atoms under
 is simply dropped.
 
 So `border-radius` on a `Layer` does nothing; on a `ui::Panel` (or a `Badge`,
-`Checkbox`, `Button`, `Select`, `VectorField`, `ColorField`, `TextInput`, `NumberField`) it works. Use `ui::Panel` for a rounded surface, or
+`Checkbox`, `Button`, `Select`, `VectorField`, `ColorField`, `Chip`, `ChipRow`,
+`TextInput`, `NumberField`) it works. Use `ui::Panel` for a rounded surface, or
 register an applier for your own node type. [`XL_PANEL_TEST`, `XL_BUTTON_TEST`]
 
 Note also that those widget headers must be included directly by the application

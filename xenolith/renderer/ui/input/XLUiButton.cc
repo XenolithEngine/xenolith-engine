@@ -259,6 +259,8 @@ void Button::setLabelFontWeight(font::FontWeight weight) {
 	}
 }
 
+basic2d::IconSprite *Button::getIconSprite() const { return _icon; }
+
 basic2d::Label *Button::getLabel() const { return _label; }
 
 void Button::setIcon(IconName name) {
