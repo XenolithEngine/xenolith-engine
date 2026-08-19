@@ -37,6 +37,7 @@ enum class InstanceApi {
 	WebGPU = 2,
 	Metal = 3,
 	Software = 4, // CPU rasterizer, no GPU driver involved
+	GLES = 5, // OpenGL ES 3.1 over EGL, for GPUs with no working Vulkan driver
 };
 
 enum class InstanceFlags : uint32_t {
