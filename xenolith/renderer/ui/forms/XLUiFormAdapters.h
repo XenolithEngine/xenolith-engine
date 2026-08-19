@@ -28,7 +28,10 @@
 #include "XLUiCheckbox.h"
 #include "XLUiButton.h"
 #include "XLUiSelect.h"
+#include "XLUiSearchPicker.h"
 #include "XLUiNumberField.h"
+#include "XLUiVectorField.h"
+#include "XLUiColorField.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -51,6 +54,24 @@ SP_PUBLIC FormInputListener *addFormField(NotNull<Checkbox>, StringView name = S
 SP_PUBLIC FormInputListener *addFormField(NotNull<Select>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
+// Collects the chosen id, exactly as the Select adapter does: the same field may be either widget
+// depending on how many values there are, and what a form sees must not depend on that choice.
+SP_PUBLIC FormInputListener *addFormField(NotNull<SearchPicker>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+// A COMPOSITE field: several ui::NumberFields collected as ONE array under one name. It is the
+// worked example of what FormFieldSlots is for - the form drives a widget it knows nothing about,
+// and the widget's own parts keep their keys because FormSystem admits a listener that sits below
+// the focused field's node
+SP_PUBLIC FormInputListener *addFormField(NotNull<VectorField>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+
+// Collects the CANONICAL HEX of the colour ("#rrggbb", or "#rrggbbaa" where the field carries an
+// alpha channel): JSON has no colour type, and hex is what a stylesheet, a schema default and a
+// config file all already hold
+SP_PUBLIC FormInputListener *addFormField(NotNull<ColorField>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
 
 // A button takes part in the tab order and fires the form on Enter, but is never collected
 SP_PUBLIC FormInputListener *addFormButton(NotNull<Button>, FormFieldRole);

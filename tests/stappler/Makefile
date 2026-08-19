@@ -50,7 +50,7 @@ LOCAL_MODULES ?= \
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
-LOCAL_SRCS_DIRS := mk filesystem font pug document core vg
+LOCAL_SRCS_DIRS := mk filesystem font pug document core vg search
 LOCAL_SRCS_OBJS :=
 
 # BundleFS: `resources` is embedded into the binary twice — raw, and compressed — so that the

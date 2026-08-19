@@ -42,8 +42,8 @@ bool FormSystem::init() {
 	setEventMask(EventMask(EventMaskKeyboard));
 
 	// OR, not assign: FocusGroup::init already put AddToFrameStack in there
-	setSystemFlags(getSystemFlags() | SystemFlags::HandleOwnerEvents
-			| SystemFlags::HandleSceneEvents);
+	setSystemFlags(
+			getSystemFlags() | SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents);
 
 	return true;
 }
@@ -304,10 +304,21 @@ bool FormSystem::focusNext(bool backwards, FormInputListener *from) {
 		return true;
 	}
 
-	return focusField(_tabRing[target].get());
+	if (!focusField(_tabRing[target].get())) {
+		return false;
+	}
+
+	// After the call, not before: focusField() clears the direction, because a request that is not
+	// navigation must not inherit the last Tab's
+	_navigateBackwards = backwards;
+	return true;
 }
 
 bool FormSystem::focusField(NotNull<FormInputListener> field) {
+	// A direct request is not navigation, and the field it lands on must not be told it was: a
+	// composite widget would enter at its last part for a tap
+	_navigateBackwards = false;
+
 	// The swap is deferred: setFocus only records the request, and the group applies it on the
 	// next commit, once it knows which listeners are actually live this frame
 	return setFocus(field);
@@ -364,6 +375,7 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 		_focusedField = nullptr;
 		_focusedListener = 0;
 		_nextListener = 0;
+		_navigateBackwards = false;
 		return;
 	}
 
@@ -422,10 +434,16 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 	//
 	// Taking the new field first makes the old one's handler inactive before it is told anything,
 	// so its blur() is a no-op and no release is ever posted.
-	target->applyFocus(true, this);
+	const bool backwards = _navigateBackwards;
+
+	// Consumed here: the next commit describes whatever causes it, and a direction left standing
+	// would make a tap look like a Shift+Tab
+	_navigateBackwards = false;
+
+	target->applyFocus(true, this, backwards);
 
 	if (previousFocused) {
-		previousFocused->applyFocus(false, this);
+		previousFocused->applyFocus(false, this, backwards);
 	}
 }
 

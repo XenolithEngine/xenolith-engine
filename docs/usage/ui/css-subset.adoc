@@ -52,7 +52,9 @@ CSS text ──parse──> document::StyleContainer      (stappler_document)
                           │
               ui::StyleResolver::apply()
                     ├─ per-type appliers          (button, panel, checkbox, badge,
-                    │                             select, text-input, number-field)
+                    │                             select, vector-field, color-field,
+                    │                             text-input, number-field,
+                    │                             inline-editor)
                     ├─ applyDefault()             (opacity, colors, visibility, size)
                     └─ applyLayout()              (Flex/GridLayoutInfo + per-item info)
                           ▼
@@ -258,8 +260,10 @@ the element `width: 100%` and put the fixed part in `padding`/`margin` instead.
 `background-color` and `opacity` are applied to **any** node by the default
 mapping. `border-radius` and `outline-*` are not: they are handled by the
 **per-type appliers** the `ui::` widgets register for their own node type
-(`button`, `panel`, `checkbox`, `badge`, `select`, and — through the text-input
-applier set — `text-input` and `number-field`; see
+(`button`, `panel`, `checkbox`, `badge`, `select`, `vector-field`, `color-field`,
+`color-picker`, and — through
+the text-input applier set — `text-input`, `number-field` and `inline-editor`
+(the field `ui::InlineEditor` opens over a rectangle); see
 `StyleResolver::registerTypeApplier`
 and the atoms under
 [xenolith/renderer/ui/atoms](../../../xenolith/renderer/ui/atoms)). A plain
@@ -267,7 +271,7 @@ and the atoms under
 is simply dropped.
 
 So `border-radius` on a `Layer` does nothing; on a `ui::Panel` (or a `Badge`,
-`Checkbox`, `Button`, `Select`, `TextInput`, `NumberField`) it works. Use `ui::Panel` for a rounded surface, or
+`Checkbox`, `Button`, `Select`, `VectorField`, `ColorField`, `TextInput`, `NumberField`) it works. Use `ui::Panel` for a rounded surface, or
 register an applier for your own node type. [`XL_PANEL_TEST`, `XL_BUTTON_TEST`]
 
 Note also that those widget headers must be included directly by the application

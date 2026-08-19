@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiMenuPopup.h"
+#include "XLUiPopupSurface.h"
 #include "XLUiSubWindowSession.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiStyleResolver.h"
@@ -127,6 +128,10 @@ sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor, MenuSide si
 }
 
 // The one place a menu surface is built, for the root and for every submenu alike.
+//
+// What is a MENU here is the measurement, the chain and the keyboard; everything a popup surface
+// has to do to be one - the sheet its own scene needs, the panel's level and placement, the tap
+// that closes it - is ui::openPopupSurface's, and this used to be a copy of it.
 static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
 		MenuConfig &&config, MenuPopupChain *parent) {
@@ -163,83 +168,38 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 	const Extent2 size(uint32_t(std::lround(metrics.size.width)),
 			uint32_t(std::lround(metrics.size.height)));
 
-	const float parentHeight = content->getContentSize().height;
-
-	SubWindow::Config surfaceConfig;
-	surfaceConfig.type = sprt::window::WindowType::Popup;
-	surfaceConfig.flags = config.flags;
-	surfaceConfig.placement = placement;
+	PopupSurfaceConfig surfaceConfig;
+	surfaceConfig.stylesheet = config.stylesheet;
+	surfaceConfig.stylesheetCategory = config.stylesheetCategory;
+	surfaceConfig.stylesheetSource = config.stylesheetSource;
+	surfaceConfig.title = config.title.empty() ? String("Menu") : config.title;
+	surfaceConfig.idPrefix = config.idPrefix.empty() ? String("menu") : config.idPrefix;
 	surfaceConfig.size = size;
-	surfaceConfig.title = config.title.empty() ? StringView("Menu") : StringView(config.title);
-	surfaceConfig.idPrefix =
-			config.idPrefix.empty() ? StringView("menu") : StringView(config.idPrefix);
+	surfaceConfig.layoutName = String("menu-layout");
+	surfaceConfig.panelName = String("menu");
+	surfaceConfig.panelType = String("menu");
+	surfaceConfig.panelClass = String("xl-ui-menu");
+	surfaceConfig.fallbackColor = s_menuSurfaceColor;
+	surfaceConfig.flags = config.flags;
 	surfaceConfig.preferNative = config.preferNative;
+	// COPIED, not moved: the chain keeps the config and hands a copy of it to every submenu, so a
+	// callback taken out here would be missing from every level below this one.
+	surfaceConfig.onClose = config.onClose;
 
-	if (config.onClose) {
-		surfaceConfig.onClose = [cb = config.onClose](NotNull<SubWindow>) { cb(); };
-	}
+	// Clicking away takes the WHOLE CHAIN down, not this link: a submenu left standing over a menu
+	// that is gone is something the user has to dismiss by hand.
+	surfaceConfig.onOutsideTap = [](NotNull<SubWindow> surface, NotNull<Panel> panel) {
+		if (auto chain = MenuPopupChain::findForNode(panel)) {
+			chain->dismissChain();
+		} else {
+			surface->dismiss();
+		}
+	};
 
 	// Everything the builder reads is captured BY VALUE: on the native path it does not run until
 	// the popup's scene is created, by which time whatever opened the menu may be long gone.
-	surfaceConfig.content =
-			[source = Rc<MenuSource>(source), config = config, size, parentHeight, parent](
-					NotNull<SubWindow> surface) mutable -> Rc<basic2d::SceneLayout2d> {
-		auto layout = Rc<basic2d::SceneLayout2d>::create();
-		layout->setName("menu-layout");
-
-		const bool native = surface->isNative();
-
-		if (native && (!config.stylesheet.empty() || !config.stylesheetSource.empty())) {
-			// A native popup is a scene of its own and the parent window's sheet does not reach it.
-			StyleSystem *style = nullptr;
-			if (!config.stylesheet.empty()) {
-				style = layout->addSystem(Rc<StyleSystem>::create(
-						FileInfo{config.stylesheet, config.stylesheetCategory}));
-			}
-			if (!config.stylesheetSource.empty()) {
-				if (style) {
-					style->addStyle(config.stylesheetSource);
-				} else {
-					layout->addSystem(Rc<StyleSystem>::create(StringView(config.stylesheetSource)));
-				}
-			}
-			layout->addSystem(Rc<StyleResolver>::create(true));
-		}
-
-		/* A SceneLayout2d paints nothing, so the menu's surface is this Panel - and it has to be
-		RenderingLevel::Solid: opaque geometry is drawn first and writes depth, while the surface
-		pass only TESTS against it, so a Panel left at the default Surface level cannot cover the
-		labels of whatever is underneath it on the overlay path. */
-		auto panel = layout->addChild(Rc<Panel>::create());
-		panel->setName("menu");
-		panel->setType("menu");
-		panel->addStyleClass("xl-ui-menu");
-		panel->setRenderingLevel(RenderingLevel::Solid);
-		panel->setPathColor(s_menuSurfaceColor, false);
-		panel->setAnchorPoint(Anchor::TopLeft);
-		panel->setContentSize(Size2(float(size.width), float(size.height)));
-
-		if (native) {
-			// The surface IS the menu: the panel fills whatever extent the window system settled
-			// on, which is not necessarily the one that was asked for.
-			panel->setPosition(Vec2(0.0f, float(size.height)));
-			layout->setContentSizeDirtyCallback([layout = layout.get(), panel] {
-				const auto s = layout->getContentSize();
-				if (s.width > 0.0f && s.height > 0.0f) {
-					panel->setPosition(Vec2(0.0f, s.height));
-					panel->setContentSize(s);
-				}
-			});
-		} else {
-			/* The overlay path. SceneContent2d::pushOverlay stretches the layout it is given over
-			the whole parent content and puts its origin at the bottom left - right for an overlay
-			and wrong for a menu - so the panel is placed inside it, at the placement the surface
-			already resolved. That rect is Y-down from the content's top; the scene is Y-up. */
-			panel->addStyleClass("overlay");
-			const auto rect = surface->getOverlayRect();
-			panel->setPosition(Vec2(float(rect.x), parentHeight - float(rect.y)));
-		}
-
+	surfaceConfig.content = [source = Rc<MenuSource>(source), config = config, parent](
+									NotNull<SubWindow> surface, NotNull<Panel> panel) mutable {
 		auto chain =
 				panel->addSystem(Rc<MenuPopupChain>::create(surface, parent, sp::move(config)));
 
@@ -271,30 +231,9 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 				cb(item);
 			}
 		});
-
-		if (!native) {
-			/* A native Popup is dismissed by the window system when the user clicks away from it.
-			An overlay has no such contract, so the layout - which covers the whole parent content -
-			listens for a press outside the panel and takes the chain down itself. */
-			auto listener = layout->addSystem(Rc<InputListener>::create());
-			listener->addTouchRecognizer([chain, panel](const GestureData &data) {
-				if (data.event == GestureEvent::Began && !panel->isTouched(data.location())) {
-					chain->dismissChain();
-				}
-				return true;
-			});
-			listener->setSwallowEvents(EventMaskTouch);
-		}
-
-		return layout;
 	};
 
-	// Through the session rather than SubWindow::open directly: it is what drops a live tooltip
-	// before the menu takes over.
-	if (auto session = SubWindowSession::get(window)) {
-		return session->openPopup(sp::move(surfaceConfig));
-	}
-	return SubWindow::open(window, sp::move(surfaceConfig));
+	return openPopupSurface(window, placement, sp::move(surfaceConfig));
 }
 
 Rc<SubWindow> openMenu(NotNull<AppWindow> window, const sprt::window::WindowPlacement &placement,

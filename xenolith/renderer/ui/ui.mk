@@ -25,7 +25,7 @@ MODULE_XENOLITH_RENDERER_UI_SRCS_DIRS := $(XENOLITH_MODULE_DIR)/renderer/ui
 MODULE_XENOLITH_RENDERER_UI_SRCS_OBJS :=
 MODULE_XENOLITH_RENDERER_UI_INCLUDES_DIRS := $(XENOLITH_MODULE_DIR)/renderer/ui
 MODULE_XENOLITH_RENDERER_UI_INCLUDES_OBJS :=
-MODULE_XENOLITH_RENDERER_UI_DEPENDS_ON := xenolith_renderer_basic2d stappler_document stappler_pug
+MODULE_XENOLITH_RENDERER_UI_DEPENDS_ON := xenolith_renderer_basic2d stappler_document stappler_pug stappler_search
 
 #spec
 

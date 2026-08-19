@@ -58,7 +58,9 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 		slots.assign = [input = input.get()](const Value &v) { input->setText(v.getString()); };
 		slots.clear = [input = input.get()] { input->setText(StringView()); };
 	}
-	slots.setFocused = [input = input.get()](bool value) {
+	// The direction is of no interest to a field with one caret: it enters at whichever end the
+	// caret was left at, whichever way the Tab went
+	slots.setFocused = [input = input.get()](bool value, bool) {
 		if (value) {
 			input->focus();
 		} else {
@@ -143,7 +145,7 @@ FormInputListener *addFormField(NotNull<Select> select, StringView name, FormFie
 	slots.ownsFocusStyle = true;
 	slots.focusable = select->isEnabled();
 
-	slots.setFocused = [select = select.get()](bool value) {
+	slots.setFocused = [select = select.get()](bool value, bool) {
 		if (value) {
 			select->focus();
 		} else {
@@ -152,6 +154,162 @@ FormInputListener *addFormField(NotNull<Select> select, StringView name, FormFie
 	};
 
 	return FormAdapters_attach(select, sp::move(slots), name, FormFieldRole::Field, flags);
+}
+
+FormInputListener *addFormField(NotNull<SearchPicker> picker, StringView name,
+		FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// The id, not the title - the same split as the Select adapter's, and for the same reason: the
+	// title is what a person reads and may be localized, the id is what the value MEANS.
+	slots.collect = [picker = picker.get()] { return Value(picker->getValue()); };
+
+	/* Assigning a value the picker cannot resolve to a title shows the id itself.
+
+	That is deliberate: a subtype stored as a hash by a file written before anyone declared a name
+	for it has no title to show, and inventing one would be a lie about the file. */
+	slots.assign = [picker = picker.get()](const Value &v) {
+		auto id = v.getString();
+		picker->setValue(id, id, true);
+	};
+	slots.clear = [picker = picker.get()] { picker->setValue(StringView(), StringView(), true); };
+
+	slots.activate = [picker = picker.get()] { return picker->open(); };
+
+	slots.ownsFocusStyle = true;
+	slots.focusable = picker->isEnabled();
+
+	slots.setFocused = [picker = picker.get()](bool value, bool) {
+		if (value) {
+			picker->focus();
+		} else {
+			picker->blur();
+		}
+	};
+
+	return FormAdapters_attach(picker, sp::move(slots), name, FormFieldRole::Field, flags);
+}
+
+FormInputListener *addFormField(NotNull<VectorField> field, StringView name, FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// One array, not one key per component - the whole reason this widget exists. Integers in an
+	// integer row, for the same reason the ui::NumberField branch above collects one: a form that
+	// submits 7.0 where the schema says 7 has changed the value on its way out.
+	slots.collect = [field = field.get()] {
+		Value ret;
+		const bool integer = field->isInteger();
+		for (auto &it : field->getValue()) {
+			if (integer) {
+				ret.addInteger(int64_t(it));
+			} else {
+				ret.addDouble(it);
+			}
+		}
+		return ret;
+	};
+
+	// silent: the form assigning its value is not somebody editing the row. A length that does not
+	// match the arity is refused by the widget and nothing moves - assigning half a vector would
+	// describe something other than what was asked for
+	slots.assign = [field = field.get()](const Value &v) {
+		Vector<double> values;
+		values.reserve(v.size());
+		for (auto &it : v.asArray()) { values.emplace_back(it.getDouble()); }
+		field->setValue(values, true);
+	};
+
+	slots.clear = [field = field.get()] {
+		Vector<double> values;
+		values.resize(field->getArity(), 0.0);
+		field->setValue(values, true);
+	};
+
+	// The row decides WHICH component the focus lands on, and it needs the direction to do it:
+	// Shift+Tab entering a row of numbers means its last field
+	slots.setFocused = [field = field.get()](bool value, bool backwards) {
+		if (value) {
+			field->focusFromNavigation(backwards);
+		} else {
+			field->blur();
+		}
+	};
+
+	// The components are ui::TextInputs: their own editing keys are theirs, and the row has no
+	// caret of its own to copy from
+	slots.ownsFocusStyle = true;
+	slots.focusable = field->isEnabled();
+
+	auto listener = FormAdapters_attach(field, sp::move(slots), name, FormFieldRole::Field, flags);
+	if (!listener) {
+		return nullptr;
+	}
+
+	// Tab off either end of the row is navigation between FIELDS, and the widget hands it here
+	// rather than falling back to its standalone blur()
+	field->setNavigateCallback(
+			[listener](bool backwards) { return listener->requestNavigate(backwards); });
+
+	// A tap that puts the caret in a component has to move the form's focus to this field, or the
+	// form goes on filtering keys to the field it focused last and the arrows die in the component
+	// the user just clicked. The widget cannot ask for this itself: forms/ knows about input/, and
+	// never the other way round
+	field->setFocusCallback([listener](int32_t component) {
+		if (component >= 0) {
+			listener->setFocused();
+		}
+	});
+
+	return listener;
+}
+
+FormInputListener *addFormField(NotNull<ColorField> field, StringView name, FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// Hex text, not four numbers: it is what the value is written as everywhere it is stored, and
+	// it survives a round trip through JSON unchanged.
+	slots.collect = [field = field.get()] { return Value(field->formatValue()); };
+
+	// silent: the form assigning its value is not somebody picking a colour. A string the colour
+	// reader refuses leaves the field exactly as it was.
+	slots.assign = [field = field.get()](
+						   const Value &v) { field->setValueFromString(v.getString(), true); };
+	slots.clear = [field = field.get()] { field->setValue(Color4B(0, 0, 0, 255), true); };
+
+	// Enter or Space on the focused field shows the picker - the same thing a tap on its swatch
+	// does, routed here so the form does not have to know that
+	slots.activate = [field = field.get()] { return field->open(); };
+
+	slots.setFocused = [field = field.get()](bool value, bool) {
+		if (value) {
+			field->focus();
+		} else {
+			field->blur();
+		}
+	};
+
+	// The hex line is a ui::TextInput and writes the focus counter from the IME echo
+	slots.ownsFocusStyle = true;
+	slots.focusable = field->isEnabled();
+
+	auto listener = FormAdapters_attach(field, sp::move(slots), name, FormFieldRole::Field, flags);
+	if (!listener) {
+		return nullptr;
+	}
+
+	field->setNavigateCallback(
+			[listener](bool backwards) { return listener->requestNavigate(backwards); });
+
+	// A tap in the hex line has to move the form's focus to this field, or the form goes on
+	// filtering keys to the field it focused last - the same seam ui::VectorField needs, and for
+	// the same reason it cannot ask for it itself
+	field->setFocusCallback([listener](bool focused) {
+		if (focused) {
+			listener->setFocused();
+		}
+	});
+
+	return listener;
 }
 
 FormInputListener *addFormButton(NotNull<Button> button, FormFieldRole role) {

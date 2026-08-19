@@ -181,6 +181,13 @@ protected:
 	// removed), and the focus-out that follows has to reach a live object
 	Rc<FormInputListener> _focusedField;
 
+	// The direction of the navigation that asked for the pending focus change, waiting for the
+	// commit that will deliver it. It has to be remembered rather than passed along, because
+	// focusNext() only RECORDS a request and the swap happens on the next commit - and by then the
+	// key that carried the Shift is long gone. Cleared by a focusField() that is not navigation,
+	// and by the commit that consumes it
+	bool _navigateBackwards = false;
+
 	bool _resetOnEscape = false;
 };
 

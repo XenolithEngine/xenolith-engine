@@ -586,9 +586,24 @@ header, a platform branch, or an allocation. The essentials:
   **declared**, and typing past it is refused while dragging past it is clamped),
   `ui::Select` (a drop-down: a closed `Panel` plus a real menu surface, so the
   list's keyboard is `MenuSystem`'s and the closed control's arrows are its own),
-  `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
+  `ui::VectorField` (a row of `NumberField`s that is ONE form field — Tab walks
+  its components and leaves only at the ends), `ui::ColorField` (a swatch and a
+  hex line; the system colour dialog behind `isDialogSupported`, and a picker of
+  its own where there is none), `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
   a per-type applier, and a refusal is the style class `invalid` — there is no
   `:invalid` pseudo-class in the subset.
+- Two widgets are surfaces rather than atoms, and both exist because a list is
+  the wrong shape for what they do. `ui::SearchPicker` is a query line over a
+  virtualized result list (`ui::SearchSystem` + a `SearchSource`): a list of
+  hundreds is not a menu, so the query line keeps focus and the arrows move a
+  selection somewhere else. `ui::InlineEditor` edits over a **rectangle** rather
+  than inside a node (`beginInlineEdit` / `beginInlineTextEdit`, or a
+  `ui::InlineEditTarget` on the node itself): a virtualized row is destroyed by
+  scrolling and by `invalidateSource()`, and a `ui::TextInput` holds the IME, so
+  an editor parented into the cell would lose the typed text to a rebuild nobody
+  asked for. It ends on Enter, on a press outside, on a scroll and on the anchor
+  leaving the scene - all of them COMMITTING, and only Escape cancelling - and
+  the commit is delivered at most once however many of those arrive together.
 - A menu is `ui::MenuSource` (the model) plus one `ui::MenuSystem` on the node it
   is built into; a popup is that same pair inside a `ui::SubWindow`
   (`ui::openMenuForNode`). **One measurement decides everything** —

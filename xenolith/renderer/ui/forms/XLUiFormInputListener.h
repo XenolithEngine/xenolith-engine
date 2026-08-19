@@ -103,8 +103,12 @@ public:
 	// Entry point for FormSystem, which is this field's focus group. InputListener declares
 	// FocusGroup a friend so it can reach handleFocusIn/handleFocusOut, and friendship does not
 	// extend to a subclass - but a derived listener may always call its own protected hooks, so
-	// the group asks the field to do it
-	void applyFocus(bool value, FocusGroup *group);
+	// the group asks the field to do it.
+	//
+	// `backwards` is what the slot receives: the direction of the navigation behind this change,
+	// false for any other cause. It is carried in a member rather than in the hooks' signatures,
+	// because handleFocusIn/handleFocusOut override InputListener's and cannot take an argument
+	void applyFocus(bool value, FocusGroup *group, bool backwards = false);
 
 protected:
 	using InputListener::init;
@@ -125,6 +129,9 @@ protected:
 	FormSystem *_form = nullptr;
 	bool _invalid = false;
 	bool _focusStyleApplied = false;
+
+	// Set by applyFocus for the hooks below it; see the comment there
+	bool _focusBackwards = false;
 };
 
 } // namespace stappler::xenolith::ui
