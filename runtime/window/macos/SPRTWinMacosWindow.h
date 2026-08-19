@@ -61,6 +61,12 @@ public:
 
 	virtual Extent2 getExtent() const override;
 
+	virtual IRect getContentScreenRect() const override;
+
+	// Publish the window's geometry after the WM moved it. Called from the NSWindow delegate, which
+	// cannot reach the controller itself.
+	void notifyGeometryChanged();
+
 	virtual PresentationOptions getPreferredOptions() const override;
 
 	SpanView<WindowLayer> getLayers() const { return _layers; }

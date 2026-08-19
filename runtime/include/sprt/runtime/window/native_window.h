@@ -82,6 +82,24 @@ public:
 
 	virtual Extent2 getExtent() const = 0;
 
+	/* The window's content rect in screen coordinates, in LOGICAL units - the same space as
+	WindowInfo::rect, so the result can be handed back to createWindow to reopen the window where
+	it was.
+
+	The CONTENT rect, not the frame: restoring a frame origin would walk the window down and right
+	by the thickness of the decoration on every save/restore cycle.
+
+	The base answers `IRect(0, 0, extent)` - the honest answer for a window system that does not
+	tell a client where its window is (Wayland) or has no notion of one (direct output). A backend
+	that CAN answer overrides this and sets WindowCapabilities::WindowPosition, which is what tells
+	the two zeroes apart from a window really at the origin. Context thread. */
+	virtual IRect getContentScreenRect() const;
+
+	// The snapshot an application reads. Assembled from getContentScreenRect(), getExtent() and
+	// the window's density; `hasPosition` follows WindowCapabilities::WindowPosition, so a backend
+	// that overrides getContentScreenRect() gets this for free. Context thread.
+	virtual WindowGeometry getWindowGeometry() const;
+
 	// Pointer enter layer. Notification: the aggregate pointer state (cursor, layer flags, grips)
 	// is already recomputed by the time this is called.
 	virtual void handleLayerEnter(const WindowLayer &);

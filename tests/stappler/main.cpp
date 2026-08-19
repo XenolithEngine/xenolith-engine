@@ -56,6 +56,7 @@ static const TestEntry s_testList[] = {
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},
 	{"datamodel", &stappler::performDataModelTests},
+	{"vg-stroke", &stappler::performVgStrokeTests},
 };
 
 int main(int argc, const char *argv[]) {

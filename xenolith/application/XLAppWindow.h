@@ -111,6 +111,12 @@ public:
 	// Run constraints update process
 	void updateConstraints(core::UpdateConstraintsFlags); // from any thread
 
+	// Re-read the window's geometry from the native window and, if it changed, publish it to the
+	// app thread: the read-only mirror behind getWindowGeometry(), then
+	// RenderClientChannel::handleWindowGeometryChanged. Called by Context whenever the window
+	// system reports a move or a resize. Context thread.
+	void notifyWindowGeometry() const;
+
 	void setReadyForNextFrame() override; // from any thread
 
 	// Force-invalidate all in-flight frames served by a remote render client (PresentationFrame::Remote).

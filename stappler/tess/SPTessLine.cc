@@ -31,7 +31,6 @@ namespace STAPPLER_VERSIONIZED stappler::geom {
 using sprt::geom::Vec4;
 
 constexpr size_t getMaxRecursionDepth() { return 16; }
-constexpr float getCloseControlDistance() { return sprt::Epsilon<float> * 32; }
 
 // based on:
 // http://www.antigrain.com/research/adaptive_bezier/index.html
@@ -357,13 +356,8 @@ static void drawArcBegin(LineDrawer &drawer, float x0, float y0, float rx, float
 }
 
 LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tessStroke,
-		Rc<Tesselator> &&tessSdf, float w, LineJoin lj, LineCup lc)
-: lineJoin(lj)
-, lineCup(lc)
-, strokeWidth(w / 2.0f)
-, fill(move(tessFill))
-, stroke(move(tessStroke))
-, sdf(move(tessSdf)) {
+		Rc<Tesselator> &&tessSdf, const StrokeConfig &cfg)
+: fill(move(tessFill)), stroke(move(tessStroke)), sdf(move(tessSdf)) {
 	if (fill) {
 		style |= DrawStyle::Fill;
 	}
@@ -375,8 +369,8 @@ LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tess
 	}
 
 	if ((style & DrawStyle::Stroke) != DrawStyle::None) {
-		if (w > 1.0f) {
-			distanceError = draw_approx_err_sq(e * log2f(w));
+		if (cfg.lineWidth > 1.0f) {
+			distanceError = draw_approx_err_sq(e * log2f(cfg.lineWidth));
 		} else {
 			distanceError = draw_approx_err_sq(e);
 		}
@@ -384,6 +378,11 @@ LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tess
 	} else {
 		distanceError = draw_approx_err_sq(e);
 		angularError = 0.0f;
+	}
+
+	if (stroke) {
+		strokeWriter.init(stroke, cfg, distanceError);
+		dashWriter.init(&strokeWriter, cfg.dashArray, cfg.dashOffset);
 	}
 
 	buffer[0].next = &buffer[1];
@@ -405,7 +404,7 @@ void LineDrawer::drawBegin(float x, float y) {
 	}
 
 	if (stroke) {
-		strokeCursor = stroke->beginContour();
+		dashWriter.begin();
 	}
 
 	if (sdf) {
@@ -443,28 +442,16 @@ void LineDrawer::drawClose(bool closed) {
 		if (!target->point.fuzzyEquals(origin[0], getCloseControlDistance())) {
 			fill->pushVertex(fillCursor, target->point);
 		}
+
+		// A fill always closes its contour - an area needs a boundary, so an open subpath is
+		// filled as if it ended where it started. That is a property of the FILL only: it must
+		// not be pushed onto the stroke, which would then draw a segment the path does not
+		// contain (SVG strokes an open subpath open, however it is filled).
 		fill->closeContour(fillCursor);
-		closed = true;
 	}
 
 	if (stroke) {
-		if (closed && count > 2) {
-			if (target->point.fuzzyEquals(origin[0], getCloseControlDistance())) {
-				pushStroke(target->prev->point, origin[0], origin[1]);
-			} else {
-				pushStroke(target->prev->point, target->point, origin[0]);
-				pushStroke(target->point, origin[0], origin[1]);
-			}
-
-			stroke->closeStrokeContour(strokeCursor);
-		} else {
-			auto norm = target->point - target->prev->point;
-			norm.normalize();
-			auto perp = norm.getRPerp();
-			perp.negate();
-
-			stroke->pushStrokeVertex(strokeCursor, target->point, perp * strokeWidth);
-		}
+		dashWriter.end(closed);
 	}
 
 	count = 0;
@@ -490,84 +477,12 @@ void LineDrawer::push(float x, float y) {
 	}
 
 	if (stroke) {
-		if (count > 1) {
-			pushStroke(target->prev->point, target->point, Vec2(x, y));
-		}
+		dashWriter.lineTo(Vec2(x, y));
 	}
 
 	target = target->next;
 	target->point = Vec2(x, y);
 	++count;
-}
-
-void LineDrawer::pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2) {
-	Vec4 result;
-	getVertexNormal(&v0.x, &v1.x, &v2.x, &result.x);
-
-	float mod = copysign(result.y * strokeWidth, result.x);
-	if (!strokeCursor.edge) {
-		auto norm = v1 - v0;
-		norm.normalize();
-		auto perp = norm.getRPerp();
-		perp.negate();
-
-		stroke->pushStrokeVertex(strokeCursor, v0, perp * strokeWidth);
-	}
-
-	if (sprt::abs(result.y) < _miterLimit) {
-		stroke->pushStrokeVertex(strokeCursor, v1, Vec2(result.z * mod, result.w * mod));
-	} else {
-		auto l0 = v1.distanceSquared(v0);
-		auto l2 = v1.distanceSquared(v2);
-
-		float qSquared;
-		if (l0 > l2) {
-			qSquared = l2 / (result.y * result.y - 1);
-		} else {
-			qSquared = l0 / (result.y * result.y - 1);
-		}
-
-		float inverseMiterLimitSq = result.y * result.y * qSquared;
-		float offsetLengthSq = mod * mod;
-
-		if (offsetLengthSq > inverseMiterLimitSq) {
-			mod = copysign(sqrt(inverseMiterLimitSq), result.x);
-		}
-
-		if (mod > 0.0f) {
-			do {
-				auto norm = v1 - v0;
-				norm.normalize();
-				auto perp = norm.getRPerp();
-				stroke->pushStrokeBottom(strokeCursor, v1 + perp * strokeWidth);
-			} while (0);
-
-			do {
-				auto norm = v2 - v1;
-				norm.normalize();
-				auto perp = norm.getRPerp();
-				stroke->pushStrokeBottom(strokeCursor, v1 + perp * strokeWidth);
-			} while (0);
-
-			stroke->pushStrokeTop(strokeCursor, v1 + Vec2(result.z * mod, result.w * mod));
-		} else {
-			stroke->pushStrokeBottom(strokeCursor, v1 - Vec2(result.z * mod, result.w * mod));
-
-			do {
-				auto norm = v1 - v0;
-				norm.normalize();
-				auto perp = norm.getRPerp();
-				stroke->pushStrokeTop(strokeCursor, v1 - perp * strokeWidth);
-			} while (0);
-
-			do {
-				auto norm = v2 - v1;
-				norm.normalize();
-				auto perp = norm.getRPerp();
-				stroke->pushStrokeTop(strokeCursor, v1 - perp * strokeWidth);
-			} while (0);
-		}
-	}
 }
 
 } // namespace stappler::geom

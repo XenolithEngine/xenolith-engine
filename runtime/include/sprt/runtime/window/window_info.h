@@ -404,6 +404,14 @@ enum class WindowCreationFlags : uint32_t {
 	// input blocking is enforced by the engine itself.
 	Modal = 1 << 8,
 
+	// Place the window at WindowInfo::rect's x/y instead of letting the window system choose.
+	//
+	// Opt-in rather than "a non-zero x/y means place me": `rect` defaults to IRect(0, 0, 1024, 768)
+	// and (0, 0) is a legitimate position, so without a flag there is no way to tell a requested
+	// origin from an unset one. Ignored where WindowCapabilities::WindowPosition is absent, and it
+	// is a HINT everywhere else - a window manager is free to place the window elsewhere.
+	UsePosition = 1 << 9,
+
 	// Use direct output to display, bypassing whole WM stack
 	// Check if it actually supported with WindowCapabilities::DirectOutput
 	DirectOutput = 1 << 27,
@@ -534,9 +542,54 @@ enum class WindowCapabilities : uint32_t {
 	// instead - the Android manifest, a .desktop file, a Wayland compositor without
 	// xdg_toplevel_icon_v1 - and on the windowless backends.
 	WindowIcon = 1 << 27,
+
+	// The platform tells a client where its window is, and honours a requested position at
+	// creation (WindowCreationFlags::UsePosition). Read it before offering "restore my window
+	// where it was": without this bit WindowGeometry::hasPosition is always false and a saved
+	// position is not merely inaccurate, it is unknowable.
+	//
+	// Absent on Wayland (xdg-shell never reports a toplevel's position, by design) and on the
+	// windowless backends.
+	WindowPosition = 1 << 28,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowCapabilities)
+
+/* Where a window is and how big it is, as the application may read it.
+
+WHY THIS EXISTS SEPARATELY FROM WindowInfo. WindowInfo is the context thread's own record and is
+mutated there as the window system reports changes; an application thread may read only its
+constant fields (see xenolith::AppWindow::getInfo). This is the snapshot that crosses the thread
+boundary instead - taken on the context thread, mirrored for the app thread, and never a pointer
+into live state.
+
+AND SEPARATELY FROM FrameConstraints. Those describe what to RENDER: an extent in device pixels, a
+density, a transform. This describes where the window IS, in logical units. They change for
+different reasons and a consumer of one is rarely a consumer of the other - putting a screen
+position into FrameConstraints would make every drag of a title bar look like a resize to everything
+that compares them.
+
+Deliberately NOT carrying the pixel extent or the density: those are FrameConstraints' answer and
+only its answer. Reporting them twice invites the two copies to disagree, and on a backend whose
+getExtent() is in logical units they promptly did.
+
+`rect` is in LOGICAL units, the same space as WindowInfo::rect, so what is read here can be handed
+straight back to createWindow to reopen a window where it was. */
+struct WindowGeometry {
+	// Content rect (excluding server-side decorations) in logical units. When `hasPosition` is
+	// false, x/y are zero - which is not a position, it is the absence of one.
+	IRect rect;
+
+	/* False where the platform never tells a client where its window is: Wayland (xdg-shell has no
+	such event, deliberately - the compositor owns placement) and the windowless backends.
+
+	Check it before saving a position. A caller that ignores it saves (0, 0) and restores a window
+	to the corner of the screen on the next run. */
+	bool hasPosition = false;
+
+	bool operator==(const WindowGeometry &) const = default;
+	bool operator!=(const WindowGeometry &) const = default;
+};
 
 struct SPRT_API WindowInfo final : public Ref {
 	String id;

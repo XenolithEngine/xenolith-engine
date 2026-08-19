@@ -119,7 +119,7 @@ selectors (`[attr]`, `[attr=val]` — these parse but never match).
 | grid | `grid-template-columns/rows` `grid-auto-columns/rows/flow` `grid-column/row-start/end` `justify-items` `align-items` `justify-self` `align-self` `order` |
 | table | `display: table \| table-row \| table-cell` `grid-template-columns` (the column tracks) `table-layout` `border-collapse` `border-spacing` `border-*` (on cells) `vertical-align` `-xl-column-span` `-xl-row-span` |
 | paint (any node) | `background-color` `opacity` |
-| paint (typed widgets only, see below) | `border-radius` (+ per corner) `outline-color` `outline-width` |
+| paint (typed widgets only, see below) | `border-radius` (+ per corner) `outline-color` `outline-width` `outline-style` (`solid \| dashed \| dotted \| none`) |
 | text (inherited) | `font-size` `font-weight` `font-style` `font-stretch` `font-family` `font-variant` `text-align` `text-transform` `text-decoration` `white-space` `hyphens` `vertical-align` `line-height` |
 | box model | `display` `visibility` `position` `top` `right` `bottom` `left` |
 | overflow | `overflow` `overflow-x` `overflow-y` (`visible \| hidden \| clip \| scroll \| auto`) |

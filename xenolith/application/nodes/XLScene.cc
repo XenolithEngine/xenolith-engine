@@ -206,6 +206,12 @@ void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 	}
 }
 
+void Scene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &) {
+	// Nothing for a scene graph to do by default - the size half of this already arrived as
+	// FrameConstraints, and the position half means nothing to the layout. Present so a subclass
+	// has somewhere to put what it does care about.
+}
+
 Size2 Scene::getContentSize() const { return _content ? _content->getContentSize() : _contentSize; }
 
 void Scene::setClipContent(bool value) {

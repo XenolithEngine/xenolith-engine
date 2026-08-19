@@ -117,6 +117,8 @@ CASES=(
 	'sprite-linear|tolerant|show={"layer":false,"sprite":true,"vector":false,"label":false} filter={"name":"linear"}'
 	'sprite-rotated|tolerant|show={"layer":false,"sprite":true,"vector":false,"label":false} filter={"name":"linear"} rotate={"angle":22.5}'
 	'vector|tolerant|show={"layer":false,"sprite":false,"vector":true,"label":false}'
+	'vector-dashed|tolerant|show={"layer":false,"sprite":false,"vector":true,"label":false} stroke={"width":6,"cap":"butt","dash":[18,12]}'
+	'vector-dotted|tolerant|show={"layer":false,"sprite":false,"vector":true,"label":false} stroke={"width":6,"cap":"round","dash":[0,14]}'
 	'alpha|tolerant|show={"layer":true,"sprite":true,"vector":true,"label":false} filter={"name":"linear"} alpha={"value":0.55}'
 	'clip|exact|show={"layer":false,"sprite":true,"vector":false,"label":false} filter={"name":"nearest"} clip={"enabled":true}'
 	'label|tolerant|show={"layer":false,"sprite":false,"vector":false,"label":true}'

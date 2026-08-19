@@ -100,6 +100,12 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 // Геометрия сцены изменилась, обнвляем содержимое соотвественно
 void ExampleScene::handleContentSizeDirty() { Scene2d::handleContentSizeDirty(); }
 
+void ExampleScene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+	Scene2d::handleWindowGeometryChanged(g);
+	++_geometryChangeCount;
+	_lastGeometry = g;
+}
+
 void ExampleScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 
 // Сцена была собрана и запущена режиссёром

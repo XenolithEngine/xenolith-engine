@@ -220,6 +220,72 @@ placement:
   along with the anchor and the gravity. So an `offset` of `{0, 8}` is an 8px gap
   under the anchor rect, and stays an 8px gap above it once `FlipY` fires.
 
+## Where the window is: reading its geometry
+
+A scene can ask where its window is and how big it is, in the same logical units
+`WindowInfo::rect` uses — so the answer can be handed straight back to
+`createWindow` to reopen the window where the user left it:
+
+[source,cpp]
+----
+auto server = _director->getRenderServer();
+auto &geometry = server->getWindowGeometry();
+
+if (geometry.hasPosition) {
+    saveWindowRect(geometry.rect);   // logical units, content rect
+}
+----
+
+and be told when it changes:
+
+[source,cpp]
+----
+void MyScene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) override {
+    Scene2d::handleWindowGeometryChanged(g);
+    // fires on a move as well as a resize; the snapshot above is readable at any time
+}
+----
+
+* **`hasPosition` is not optional to check.** Where it is false the origin is
+  zero because nothing knows it, not because the window is in the corner. Saving
+  that and restoring it puts the window at the top-left on the next run.
+* **This is not `FrameConstraints`.** Those say what to *render* — an extent in
+  device pixels, a density, a transform — and a scene is resized from them.
+  Geometry says where the window *is*, in logical units. `WindowGeometry`
+  deliberately carries neither the pixel extent nor the density: those are the
+  constraints' answer, and reporting them twice invites the two copies to
+  disagree.
+* The rect is the **content** rect, without server-side decorations. Restoring a
+  frame origin would walk the window down and right by the decoration thickness
+  on every save/restore cycle.
+
+### Restoring it
+
+`WindowInfo::rect`'s x/y is a request, and only when the flag says so:
+
+[source,cpp]
+----
+info->rect = IRect(saved.x, saved.y, int32_t(saved.width), int32_t(saved.height));
+info->flags |= WindowCreationFlags::UsePosition;
+----
+
+The flag exists because `rect` defaults to `IRect(0, 0, 1024, 768)` and `(0, 0)`
+is a legitimate position — without it a backend cannot tell "put it here" from
+"you choose". It is a **hint**: a window manager may place the window elsewhere,
+and a tiling one certainly will.
+
+| Platform | reports a position | honours one at creation |
+|---|---|---|
+| X11 (xcb) | yes — translated to the root, so a reparenting WM does not skew it | yes, as a hint to the WM |
+| Windows | yes — the client rect in screen coordinates | yes |
+| macOS | yes — flipped out of Cocoa's Y-up space | yes |
+| headless | yes — it owns its own geometry, so a request is exact | yes |
+| Wayland | **no** — xdg-shell never tells a toplevel where it is | no |
+| direct output (DRM/KMS) | **no** — the mode is the geometry | no |
+
+`WindowCapabilities::WindowPosition` is the one bit that answers both columns;
+`hasPosition` on the snapshot follows it.
+
 ## Capabilities, state and fullscreen
 
 Every interesting window operation is behind a `WindowCapabilities` bit, and each
@@ -287,7 +353,9 @@ prewarmed graph.
 | a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
 | hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
-| reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` |
+| reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` / `getWindowGeometry()` |
+| saving `WindowGeometry::rect` without checking `hasPosition` | on Wayland the origin is zero because it is unknown, and the window reopens in the corner |
+| setting `WindowInfo::rect`'s x/y without `WindowCreationFlags::UsePosition` | the position is ignored: `(0, 0)` is the default and cannot be told from a request |
 | a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
 | hand-rolling a hover delay | `ui::TooltipTarget` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
 | reading `WindowPlacement::gravity` as "the direction it opens" | it names which **edge of the surface** lands on the anchor point, so `gravity = Top` puts the surface *below* |

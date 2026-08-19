@@ -100,6 +100,17 @@ public:
 	VectorPath &setMiterLimit(float);
 	float getMiterLimit() const;
 
+	// Dash pattern for the stroke, in path units (SVG `stroke-dasharray`). An empty span, or any
+	// negative length, leaves the stroke solid. Patterns longer than DashPattern::MaxCount are
+	// truncated. Note that a dash pattern is a stroke parameter, so it is not carried by
+	// encode()/toString() - see PathParams.
+	VectorPath &setDashArray(SpanView<float>);
+	SpanView<float> getDashArray() const;
+
+	// SVG `stroke-dashoffset`: how far into the pattern the first subpath starts.
+	VectorPath &setDashOffset(float);
+	float getDashOffset() const;
+
 	VectorPath &setStyle(DrawStyle s);
 	DrawStyle getStyle() const;
 

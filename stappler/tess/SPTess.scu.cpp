@@ -47,5 +47,6 @@ SP_TESS_OPTIMIZE
 #include "SPTess.h"
 
 #include "SPTessLine.cc"
+#include "SPTessStroke.cc"
 #include "SPTessTypes.cc"
 #include "SPTess.cc"

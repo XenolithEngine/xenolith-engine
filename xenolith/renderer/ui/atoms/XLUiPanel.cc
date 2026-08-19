@@ -64,6 +64,7 @@ void Panel::registerStyleAppliers(StringView type) {
 				ParameterName::CssBackgroundColor,
 				ParameterName::CssOutlineColor,
 				ParameterName::CssOutlineWidth,
+				ParameterName::CssOutlineStyle,
 				ParameterName::CssBorderTopLeftRadius,
 				ParameterName::CssBorderTopRightRadius,
 				ParameterName::CssBorderBottomRightRadius,
@@ -123,10 +124,27 @@ void Panel::updateBackgroundImage() {
 			// a hard-edged rect needs none of it; rounded corners and strokes do
 			.setAntialiased(rounded || style->outlineWidth > 0.0f);
 
-	if (style->outlineWidth > 0.0f) {
+	if (style->outlineWidth > 0.0f && style->outlineStyle != document::BorderStyle::None) {
 		path->setStyle(vg::DrawFlags::FillAndStroke)
 				.setStrokeColor(style->outlineColor)
 				.setStrokeWidth(style->outlineWidth);
+
+		// CSS fixes neither the dash lengths nor the cap; these are the proportions browsers
+		// settled on. A dot is a zero-length dash, which is only visible through a round cap.
+		const float w = style->outlineWidth;
+		switch (style->outlineStyle) {
+		case document::BorderStyle::Dashed: {
+			const float dashes[] = {w * 3.0f, w * 2.0f};
+			path->setDashArray(SpanView<float>(dashes, 2));
+			break;
+		}
+		case document::BorderStyle::Dotted: {
+			const float dots[] = {0.0f, w * 2.0f};
+			path->setLineCup(vg::LineCup::Round).setDashArray(SpanView<float>(dots, 2));
+			break;
+		}
+		default: break;
+		}
 	}
 
 	setImage(sp::move(image));
@@ -225,6 +243,10 @@ bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 		case ParameterName::CssOutlineWidth:
 			changed = c->outlineWidth != px;
 			c->outlineWidth = px;
+			break;
+		case ParameterName::CssOutlineStyle:
+			changed = c->outlineStyle != value.borderStyle;
+			c->outlineStyle = value.borderStyle;
 			break;
 		case ParameterName::CssBorderTopLeftRadius:
 			changed = c->borderRadiusTopLeft != px;

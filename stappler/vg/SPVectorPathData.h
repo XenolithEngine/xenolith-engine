@@ -66,6 +66,40 @@ enum class Command : uint8_t { // use hint to decode data from `_points` vector
 	ClosePath, // nothing
 };
 
+// SVG `stroke-dasharray` + `stroke-dashoffset`, in path units.
+//
+// A fixed inline array rather than a Vector: PathParams is not parametrized on Interface (the
+// same struct serves both PathData<mem_std::Interface> and PathData<PoolInterface>), and
+// VectorPath::getParams() returns it by value on a hot path - a Vector would mean an allocation
+// per call and a malloc-backed container living inside a pool object.
+//
+// Note that PathParams as a whole is not serialized: encode() and toString() carry geometry
+// only, so a dash pattern does not survive a round-trip through either.
+struct SP_PUBLIC DashPattern {
+	// Enough for every pattern seen in practice ("4 2", "10 5 2 5"); longer ones are truncated.
+	static constexpr uint32_t MaxCount = 8;
+
+	float lengths[MaxCount] = {};
+	float offset = 0.0f;
+	uint8_t count = 0;
+
+	// A pattern that draws nothing but a solid line: unset, or all-zero.
+	bool isSolid() const;
+
+	// Sum of the pattern. An odd-length pattern is repeated twice per SVG, so its true period is
+	// twice the sum - this returns the period of one logical cycle.
+	float getPeriod() const;
+
+	SpanView<float> getLengths() const { return SpanView<float>(lengths, count); }
+
+	// Rejects the whole pattern if any length is negative, as SVG requires. Returns false and
+	// leaves the pattern solid in that case.
+	bool set(SpanView<float>);
+
+	bool operator==(const DashPattern &) const = default;
+	bool operator!=(const DashPattern &) const = default;
+};
+
 struct SP_PUBLIC PathParams {
 	Mat4 transform;
 	Color4B fillColor = Color4B(255, 255, 255, 255);
@@ -78,6 +112,8 @@ struct SP_PUBLIC PathParams {
 	LineJoin lineJoin = LineJoin::Miter;
 	float miterLimit = 4.0f;
 	bool isAntialiased = true;
+
+	DashPattern dash;
 };
 
 struct PathWriter;

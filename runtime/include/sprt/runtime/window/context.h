@@ -48,6 +48,10 @@ public:
 	virtual void handleNativeWindowDestroyed(NotNull<NativeWindow>) = 0;
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
 			UpdateConstraintsFlags) = 0;
+	// Native window was moved or resized by the WM. Non-pure: a context that does not track where
+	// its windows are should not have to say so.
+	virtual void handleNativeWindowGeometryChanged(NotNull<NativeWindow>) { }
+
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
 			Vector<InputEventData> &&) = 0;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>, const TextInputState &) = 0;

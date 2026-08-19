@@ -42,6 +42,7 @@
 #include "layout/LabelUpdateLayout.h"
 #include "layout/MeasureProtocolLayout.h"
 #include "window/MultiWindowLayout.h"
+#include "window/GeometryLayout.h"
 #include "window/QueueCacheLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/TextInputLayout.h"
@@ -287,6 +288,14 @@ static const TestInfo s_renderTests[] = {
 
 // src/window - windows and the render graphs behind them
 static const TestInfo s_windowTests[] = {
+	TestInfo{StringView("geometry"), StringView("XL_GEOMETRY_TEST"), StringView("Window geometry protocol"),
+		StringView("What the scene can learn about its own window: position and logical size read "
+				   "through getWindowGeometry(), and Scene::handleWindowGeometryChanged firing when "
+				   "the window changes. A second Root window is opened at a REQUESTED position and "
+				   "read back, which is the save/restore round trip through WindowInfo::rect. Drive "
+				   "it over the inspector: geometry.state, geometry.open-second, window geometry."),
+		TestRegistry_make<GeometryLayout>, true},
+
 	TestInfo{StringView("multi-window"), StringView("XL_MULTIWINDOW_TEST"), StringView("Two Root windows, one font atlas"),
 		StringView("A second top-level window opens with the same string as the first; both must "
 				   "render it identically, because the atlas they sample is the same object."),

@@ -350,7 +350,10 @@ WindowCapabilities MacosContextController::getCapabilities() const {
 			| WindowCapabilities::CloseGuard | WindowCapabilities::AllowMoveFromMaximized
 			| WindowCapabilities::Subwindows
 			// The Dock icon, not a per-window icon: macOS has none of the latter.
-			| WindowCapabilities::WindowIcon;
+			| WindowCapabilities::WindowIcon
+			// NSWindow reports its frame and takes one at creation; the only work is the flip
+			// between Cocoa's Y-up screen space and the engine's Y-down one.
+			| WindowCapabilities::WindowPosition;
 
 	return caps | getMacosDialogCapabilities();
 }

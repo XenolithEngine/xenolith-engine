@@ -527,6 +527,13 @@ void Context::handleNativeWindowConstraintsChanged(NotNull<NativeWindow> w,
 	}
 }
 
+void Context::handleNativeWindowGeometryChanged(NotNull<NativeWindow> w) {
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
+	if (appWindow) {
+		appWindow->notifyWindowGeometry();
+	}
+}
+
 void Context::handleNativeWindowInputEvents(NotNull<NativeWindow> w,
 		Vector<core::InputEventData> &&events) {
 	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());

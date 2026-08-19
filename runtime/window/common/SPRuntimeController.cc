@@ -385,6 +385,13 @@ void ContextController::notifyWindowConstraintsChanged(NotNull<NativeWindow> w,
 		_context->handleNativeWindowConstraintsChanged(w, flags);
 	}
 }
+void ContextController::notifyWindowGeometryChanged(NotNull<NativeWindow> w) {
+	// Straight through, unlike the constraints path: there is nothing to coalesce for the poll loop
+	// (the context compares the snapshot against the app-thread mirror and drops a no-op) and
+	// nothing here that must not run inside a poll.
+	_context->handleNativeWindowGeometryChanged(w);
+}
+
 void ContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
 		Vector<InputEventData> &&ev) {
 	// An xdg_popup grab is owner-relative: the compositor dismisses the menu only for input that

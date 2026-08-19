@@ -342,6 +342,19 @@ bool readInputEvent(const Value &src, core::InputEventData &out) {
 	return true;
 }
 
+Value encodeGeometry(const sprt::window::WindowGeometry &g) {
+	Value ret;
+	// Logical units, the same space WindowInfo::rect takes - so what is read here can be handed
+	// straight back to createWindow with WindowCreationFlags::UsePosition.
+	ret.setInteger(int64_t(g.rect.x), "x");
+	ret.setInteger(int64_t(g.rect.y), "y");
+	ret.setInteger(int64_t(g.rect.width), "width");
+	ret.setInteger(int64_t(g.rect.height), "height");
+	// Without this the two zeroes above are indistinguishable from a window at the top-left corner.
+	ret.setBool(g.hasPosition, "hasPosition");
+	return ret;
+}
+
 Value encodeConstraints(const core::FrameConstraints &c) {
 	Value ret;
 	ret.setInteger(int64_t(c.extent.width), "width");
@@ -595,6 +608,16 @@ Value SceneInspector::getWindowList() const {
 		entry.setInteger(int64_t(c.extent.width), "width");
 		entry.setInteger(int64_t(c.extent.height), "height");
 		entry.setDouble(double(c.density), "density");
+
+		// Where the window is, when the platform knows. Reported alongside the surface extent
+		// rather than instead of it: the two are in different units, and a caller that wants to
+		// reopen a window where it was needs the logical rect, not the pixel one.
+		auto &g = server->getWindowGeometry();
+		if (g.hasPosition) {
+			entry.setInteger(int64_t(g.rect.x), "x");
+			entry.setInteger(int64_t(g.rect.y), "y");
+		}
+		entry.setBool(g.hasPosition, "hasPosition");
 		entry.setBool(it == this, "default");
 		windows.addValue(sp::move(entry));
 	}
@@ -1121,8 +1144,7 @@ void SceneInspector::handleText(NotNull<Session> session, int64_t serial, Value 
 	} else {
 		sendError(session, serial,
 				toString("unknown text op: ", op,
-						"; expected insert, marked, unmark, delete-backward, delete-forward, "
-						"cancel or state"));
+						"; expected insert, marked, unmark, delete-backward, delete-forward, " "can" "cel" " or" " st" "at" "e"));
 		return;
 	}
 
@@ -1165,6 +1187,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	auto op = req.getString("op");
 	if (op == "constraints") {
 		sendResponse(session, serial, encodeConstraints(server->getConstraints()));
+	} else if (op == "geometry") {
+		sendResponse(session, serial, encodeGeometry(server->getWindowGeometry()));
 	} else if (op == "resize") {
 		auto width = uint32_t(req.getInteger("width", 0));
 		auto height = uint32_t(req.getInteger("height", 0));
@@ -1191,7 +1215,7 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	} else {
 		sendError(session, serial,
 				toString("unknown window op: ", op,
-						"; expected 'resize', 'constraints' or " "'close'"));
+						"; expected 'resize', 'constraints', 'geometry' or 'close'"));
 	}
 }
 

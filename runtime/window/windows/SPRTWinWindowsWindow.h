@@ -63,6 +63,8 @@ public:
 
 	virtual Extent2 getExtent() const override;
 
+	virtual IRect getContentScreenRect() const override;
+
 	virtual PresentationOptions getPreferredOptions() const override;
 
 	virtual bool enableState(WindowState) override;

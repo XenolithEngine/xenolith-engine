@@ -209,6 +209,10 @@ bool HeadlessWindow::applyExtent(Extent2 extent) {
 	// A menu can not survive its owner being resized under it - the anchor it was placed against
 	// has moved. Every backend does this; here the resize is the only way geometry ever changes.
 	_controller->dismissChildPopups(this, "owner-resized");
+
+	// ...which is also why this is the only place the application's view of the geometry can go
+	// stale here: there is no move to report.
+	_controller->notifyWindowGeometryChanged(this);
 	return true;
 }
 

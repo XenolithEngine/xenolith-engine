@@ -175,8 +175,8 @@ void AppWindow::end() {
 		_capabilities = _window->getInfo()->capabilities;
 	}
 
-	_application->performOnAppThread([this, engine = move(engine),
-											 sceneInfo = move(_sceneInfo)]() mutable {
+	_application->performOnAppThread(
+			[this, engine = move(engine), sceneInfo = move(_sceneInfo)]() mutable {
 		_client = nullptr; // the Director (client endpoint) is being destroyed below
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
 		if (sceneInfo) {
@@ -676,7 +676,34 @@ core::FrameConstraints AppWindow::exportConstraints(uint64_t &serial) const {
 	_application->performOnAppThread([this, c] {
 		const_cast<sprt::window::FrameConstraints &>(_appFrameConstraints) = c;
 	}, const_cast<AppWindow *>(this));
+
+	// A resize changes the geometry too, and this is the one place both are already being read off
+	// the native window on the context thread - so the mirror rides along instead of racing a
+	// second, separately-timed read.
+	notifyWindowGeometry();
 	return c;
+}
+
+void AppWindow::notifyWindowGeometry() const {
+	if (!_window) {
+		return;
+	}
+
+	auto geometry = _window->getWindowGeometry();
+	_application->performOnAppThread([this, geometry] {
+		if (_appWindowGeometry == geometry) {
+			// Nothing moved and nothing resized. The context thread cannot tell - it has no copy of
+			// the mirror - so the comparison belongs here, and it is what keeps a window that is
+			// merely redrawing from waking the scene up.
+			return;
+		}
+		// The mirror is `const` to everything that reads it; this is the one writer, on the one
+		// thread allowed to write it - the same arrangement _appFrameConstraints has above.
+		const_cast<sprt::window::WindowGeometry &>(_appWindowGeometry) = geometry;
+		if (_client) {
+			_client->handleWindowGeometryChanged(geometry);
+		}
+	}, const_cast<AppWindow *>(this));
 }
 
 void AppWindow::setFrameOrder(uint64_t frameOrder) {

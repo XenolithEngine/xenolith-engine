@@ -371,6 +371,46 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 				tag.getPath().setMiterLimit(op);
 			}
 		});
+	} else if (name.equals("stroke-dasharray")) {
+		if (value.equals("none") || value.equals("inherit")) {
+			tag.getPath().setDashArray(SpanView<float>());
+		} else {
+			// Entries are separated by whitespace, commas, or both.
+			float lengths[DashPattern::MaxCount];
+			uint32_t count = 0;
+			bool valid = true;
+			while (!value.empty() && valid) {
+				value.skipChars<StringReader::WhiteSpace, StringReader::Chars<','>>();
+				if (value.empty()) {
+					break;
+				}
+
+				// Split first, parse second: svg_readCoordValue reads a dimension token and
+				// would happily consume the rest of the list along with the unit suffix.
+				auto token = value.readUntil<StringReader::WhiteSpace, StringReader::Chars<','>>();
+				auto val = svg_readCoordValue(token, _squareLength);
+				if (sprt::isnan(val)) {
+					valid = false;
+					break;
+				}
+
+				if (count < DashPattern::MaxCount) {
+					lengths[count] = val;
+				}
+				++count;
+			}
+
+			// A malformed or negative entry invalidates the whole list, per SVG error handling;
+			// DashPattern::set does the negative check itself.
+			tag.getPath().setDashArray(valid
+							? SpanView<float>(lengths, sprt::min(count, DashPattern::MaxCount))
+							: SpanView<float>());
+		}
+	} else if (name.equals("stroke-dashoffset")) {
+		auto val = svg_readCoordValue(value, _squareLength);
+		if (!sprt::isnan(val)) {
+			tag.getPath().setDashOffset(val);
+		}
 	} else if (name.equals("width") && tag.name.equals("svg")) {
 		auto val = svg_readCoordValue(value, 0.0f);
 		if (!sprt::isnan(val)) {
@@ -428,7 +468,8 @@ void SvgReader::onTagAttribute(Parser &p, Tag &tag, StringReader &name, StringRe
 	if (name.equals("fill") || name.equals("fill-rule") || name.equals("fill-opacity")
 			|| name.equals("stroke") || name.equals("stroke-opacity") || name.equals("stroke-width")
 			|| name.equals("stroke-linecap") || name.equals("stroke-linejoin")
-			|| name.equals("stroke-miterlimit") || name.equals("opacity")) {
+			|| name.equals("stroke-miterlimit") || name.equals("stroke-dasharray")
+			|| name.equals("stroke-dashoffset") || name.equals("opacity")) {
 		onStyleParameter(tag, name, value);
 	} else if (name.equals("transform") && tag.shape != SvgTag::Use && tag.shape != SvgTag::None) {
 		tag.getPath().applyTransform(svg_parseTransform(value));

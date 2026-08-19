@@ -198,7 +198,10 @@ WindowCapabilities WindowsContextController::getCapabilities() const {
 			| WindowCapabilities::EnabledState | WindowCapabilities::UserSpaceDecorations
 			| WindowCapabilities::GripGuardsRequired | WindowCapabilities::AllowMoveFromMaximized
 			| WindowCapabilities::DemandsAttentionState | WindowCapabilities::Subwindows
-			| WindowCapabilities::WindowIcon | getWindowsDialogCapabilities();
+			| WindowCapabilities::WindowIcon
+			// Win32 reports a window's position (WM_MOVE / WM_WINDOWPOSCHANGED, and GetClientRect
+			// + ClientToScreen for the content origin) and takes one in CreateWindowExW.
+			| WindowCapabilities::WindowPosition | getWindowsDialogCapabilities();
 }
 
 WindowClass *WindowsContextController::acquuireWindowClass(WideStringView str) {

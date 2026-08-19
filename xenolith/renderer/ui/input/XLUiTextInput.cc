@@ -66,6 +66,7 @@ static void ensureTextInputStyleAppliers() {
 					ParameterName::CssBackgroundColor,
 					ParameterName::CssOutlineColor,
 					ParameterName::CssOutlineWidth,
+					ParameterName::CssOutlineStyle,
 					ParameterName::CssBorderTopLeftRadius,
 					ParameterName::CssBorderTopRightRadius,
 					ParameterName::CssBorderBottomRightRadius,
@@ -603,11 +604,27 @@ void TextInput::updateBackgroundImage() {
 			.setFillColor(style->backgroundColor)
 			.setStyle(vg::DrawFlags::Fill);
 
-	if (style->outlineWidth > 0.0f) {
+	if (style->outlineWidth > 0.0f && style->outlineStyle != document::BorderStyle::None) {
 		path->setStyle(vg::DrawFlags::FillAndStroke)
 				.setStrokeColor(style->outlineColor)
 				.setStrokeWidth(style->outlineWidth)
 				.setAntialiased(true);
+
+		// Same dash proportions as Panel - see the note there.
+		const float w = style->outlineWidth;
+		switch (style->outlineStyle) {
+		case document::BorderStyle::Dashed: {
+			const float dashes[] = {w * 3.0f, w * 2.0f};
+			path->setDashArray(SpanView<float>(dashes, 2));
+			break;
+		}
+		case document::BorderStyle::Dotted: {
+			const float dots[] = {0.0f, w * 2.0f};
+			path->setLineCup(vg::LineCup::Round).setDashArray(SpanView<float>(dots, 2));
+			break;
+		}
+		default: break;
+		}
 	}
 
 	setImage(sp::move(image));
@@ -694,6 +711,10 @@ bool TextInput::setStyleValue(const ResolvedStyle &style, document::ParameterNam
 		case ParameterName::CssOutlineWidth:
 			changed = c->outlineWidth != px;
 			c->outlineWidth = px;
+			break;
+		case ParameterName::CssOutlineStyle:
+			changed = c->outlineStyle != value.borderStyle;
+			c->outlineStyle = value.borderStyle;
 			break;
 		case ParameterName::CssBorderTopLeftRadius:
 			changed = c->borderRadiusTopLeft != px;

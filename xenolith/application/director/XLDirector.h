@@ -65,6 +65,7 @@ public:
 			Function<void(bool)> &&) override;
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;

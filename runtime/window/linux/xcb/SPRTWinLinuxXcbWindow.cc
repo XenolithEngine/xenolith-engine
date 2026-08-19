@@ -608,12 +608,20 @@ void XcbWindow::handleConfigureNotify(xcb_configure_notify_event_t *ev) {
 		}
 	}
 
+	// NOTE: device pixels, and frame-relative x/y under a reparenting WM - this is bookkeeping for
+	// the backend, NOT a screen position. What the application reads is getContentScreenRect(),
+	// which translates to the root and divides by the density.
 	_info->rect = IRect{
 		_xinfo.boundingRect.x + _xinfo.contentRect.x,
 		_xinfo.boundingRect.y + _xinfo.contentRect.y,
 		_xinfo.contentRect.width,
 		_xinfo.contentRect.height,
 	};
+
+	// Every ConfigureNotify: a pure move gets here too, and it is the only signal there is for one.
+	// The snapshot is compared against the app-thread mirror further up, so a configure that
+	// changed nothing an application can see costs one round trip and stops there.
+	_controller->notifyWindowGeometryChanged(this);
 }
 
 void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {

@@ -122,8 +122,8 @@ public:
 
 		// Vector figure: reaches the backend as CommandType::Deferred, and its tessellated fringe is
 		// where a wrong fill rule shows up as seams first.
-		_vector = content->addChild(Rc<VectorSprite>::create(Size2(160.0f, 160.0f), makeVectorPath()),
-				ZOrder(2));
+		_vector = content->addChild(Rc<VectorSprite>::create(Size2(160.0f, 160.0f)), ZOrder(2));
+		_vector->addPath(makeVectorPath(), "figure");
 		_vector->setAnchorPoint(Anchor::Middle);
 		_vector->setContentSize(Size2(160.0f, 160.0f));
 
@@ -193,6 +193,44 @@ protected:
 	}
 
 	void registerCommands(SceneContent2d *content) {
+		// Stroke and dash controls: the vector figure is the only drawable whose geometry is
+		// tessellated per frame, so this is where a dash pattern can actually be looked at.
+		inspector::addCommand(content, "stroke",
+				"Stroke the vector figure: args { width, cap: butt|round|square, "
+				"dash: [on, off, ...], offset }",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+			auto path = _vector ? _vector->getPath("figure") : nullptr;
+			if (!path) {
+				done(makeError("no vector path"));
+				return;
+			}
+
+			const auto width = float(args.getDouble("width", 0.0));
+			path->setStrokeWidth(width);
+			path->setStrokeColor(Color4B(230, 80, 40, 255));
+			path->setStyle(width > 0.0f ? vg::DrawFlags::FillAndStroke : vg::DrawFlags::Fill);
+
+			auto cap = args.getString("cap");
+			if (cap == "round") {
+				path->setLineCup(vg::LineCup::Round);
+			} else if (cap == "square") {
+				path->setLineCup(vg::LineCup::Square);
+			} else if (cap == "butt") {
+				path->setLineCup(vg::LineCup::Butt);
+			}
+
+			mem_std::Vector<float> dash;
+			for (auto &it : args.getArray("dash")) { dash.emplace_back(float(it.getDouble())); }
+			path->setDashArray(dash);
+			path->setDashOffset(float(args.getDouble("offset", 0.0)));
+
+			Value result;
+			result.setDouble(path->getStrokeWidth(), "width");
+			result.setInteger(int64_t(path->getDashArray().size()), "dash");
+			result.setDouble(path->getDashOffset(), "offset");
+			done(sp::move(result));
+		});
+
 		// SceneContent gets an inspector attached in its init(), so it is already there.
 		inspector::addCommand(content, "set-color",
 				"Set the box colour: args { r, g, b } in 0..1",

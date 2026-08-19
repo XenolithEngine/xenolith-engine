@@ -148,6 +148,15 @@ public:
 	// Native window's size, pixel density or transform was changed by WM
 	virtual void notifyWindowConstraintsChanged(NotNull<NativeWindow>, UpdateConstraintsFlags);
 
+	/* Native window was moved or resized by the WM.
+
+	Separate from notifyWindowConstraintsChanged, and cheaper: it touches no presentation state and
+	never deprecates a swapchain, because moving a window changes nothing about what is drawn into
+	it. A backend that reports both a move and a resize calls both - the resize path is what the
+	swapchain cares about, this one is what the application cares about.
+	*/
+	virtual void notifyWindowGeometryChanged(NotNull<NativeWindow>);
+
 	// Some input should be transferred to application
 	virtual void notifyWindowInputEvents(NotNull<NativeWindow>, Vector<InputEventData> &&);
 

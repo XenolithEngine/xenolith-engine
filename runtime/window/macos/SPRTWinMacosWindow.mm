@@ -139,6 +139,9 @@
 
 namespace sprt::window {
 
+// Defined below, next to the geometry accessor that is its main user.
+static CGFloat MacosWindow_screenTop();
+
 MacosWindow::~MacosWindow() {
 	removePopupDismissMonitor();
 	detachFromParentWindow();
@@ -206,6 +209,17 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		{static_cast<CGFloat>(_info->rect.x), static_cast<CGFloat>(_info->rect.y)},
 		{static_cast<CGFloat>(_info->rect.width), static_cast<CGFloat>(_info->rect.height)},
 	};
+
+	if (hasFlag(_info->flags, WindowCreationFlags::UsePosition)) {
+		// WindowInfo::rect is Y-DOWN from the primary screen's top-left, like every other
+		// coordinate the engine hands around; NSWindow wants Y-UP from the primary screen's
+		// bottom-left. Passing one for the other does not fail, it silently puts the window as far
+		// from where it was asked for as it is from the top of the screen - which is exactly the
+		// kind of bug a save/restore cycle makes permanent.
+		rect.origin.x = static_cast<CGFloat>(_info->rect.x);
+		rect.origin.y = MacosWindow_screenTop() - static_cast<CGFloat>(_info->rect.y)
+				- static_cast<CGFloat>(_info->rect.height);
+	}
 
 	// `defer:NO` for any transient window, not only the borderless ones: a MoltenVK present into a
 	// never-shown deferred window returns DEVICE_LOST on the shared VkDevice, and that applies to
@@ -334,17 +348,18 @@ void MacosWindow::applyWindowIcon() {
 
 	// Straight (unpremultiplied) RGBA is exactly WindowIconImage's contract, so AppKit takes the
 	// bytes as they are - this is the one backend that needs no conversion.
-	auto *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr
-														pixelsWide:width
-														pixelsHigh:height
-													 bitsPerSample:8
-												   samplesPerPixel:4
-														  hasAlpha:YES
-														  isPlanar:NO
-													colorSpaceName:NSDeviceRGBColorSpace
-													  bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
-													   bytesPerRow:width * 4
-													  bitsPerPixel:32];
+	auto *rep =
+			[[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr
+													pixelsWide:width
+													pixelsHigh:height
+												 bitsPerSample:8
+											   samplesPerPixel:4
+													  hasAlpha:YES
+													  isPlanar:NO
+												colorSpaceName:NSDeviceRGBColorSpace
+												  bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
+												   bytesPerRow:width * 4
+												  bitsPerPixel:32];
 	if (!rep) {
 		return;
 	}
@@ -384,6 +399,35 @@ void MacosWindow::detachFromParentWindow() {
 	}
 }
 
+// Top edge of the PRIMARY screen in Cocoa's global (Y-up) space, which is the origin the engine's
+// Y-down screen coordinates are measured from. [NSScreen screens] is ordered with the primary one
+// first; mainScreen is the one with the key window and is NOT the same thing.
+static CGFloat MacosWindow_screenTop() {
+	NSArray<NSScreen *> *screens = [NSScreen screens];
+	NSScreen *primary = [screens count] > 0 ? [screens objectAtIndex:0] : [NSScreen mainScreen];
+	if (!primary) {
+		return 0.0;
+	}
+	NSRect frame = primary.frame;
+	return frame.origin.y + frame.size.height;
+}
+
+IRect MacosWindow::getContentScreenRect() const {
+	if (!_window) {
+		return NativeWindow::getContentScreenRect();
+	}
+
+	// Points, not pixels: an NSWindow's frame is already in logical units, so unlike xcb and Win32
+	// there is nothing to divide by the density here.
+	NSRect content = [_window contentRectForFrameRect:_window.frame];
+
+	return IRect(int32_t(content.origin.x),
+			int32_t(MacosWindow_screenTop() - (content.origin.y + content.size.height)),
+			uint32_t(content.size.width), uint32_t(content.size.height));
+}
+
+void MacosWindow::notifyGeometryChanged() { _controller->notifyWindowGeometryChanged(this); }
+
 void MacosWindow::applyAuxiliaryPlacement() {
 	if (!isAuxiliary() || !_window) {
 		return;
@@ -413,8 +457,7 @@ void MacosWindow::applyAuxiliaryPlacement() {
 
 	// Convert Y-down parent-content coords back to Cocoa screen (Y-up).
 	const CGFloat cocoaX = parentContent.origin.x + CGFloat(placed.x);
-	const CGFloat cocoaY =
-			parentTop - CGFloat(placed.y) - CGFloat(placed.height);
+	const CGFloat cocoaY = parentTop - CGFloat(placed.y) - CGFloat(placed.height);
 	NSRect frame = NSMakeRect(cocoaX, cocoaY, CGFloat(placed.width), CGFloat(placed.height));
 	[_window setFrame:[_window frameRectForContentRect:frame] display:NO];
 
@@ -439,10 +482,10 @@ void MacosWindow::mapWindow() {
 			MacosWindow *self = this;
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
 					dispatch_get_main_queue(), ^{
-				if (self && self->_mapped && self->_window && !self->_dismissScheduled) {
-					self->installPopupDismissMonitor();
-				}
-			});
+					  if (self && self->_mapped && self->_window && !self->_dismissScheduled) {
+						  self->installPopupDismissMonitor();
+					  }
+					});
 		}
 		_mapped = true;
 		if (_rootViewController) {
@@ -512,74 +555,77 @@ void MacosWindow::installPopupDismissMonitor() {
 	const bool isTooltip = _info->type == WindowType::Tooltip;
 	MacosWindow *self = this;
 	auto scheduleDismiss = ^(const char * /*reason*/) {
-		if (!self || self->_dismissScheduled) {
-			return;
-		}
-		// Tooltip and Popup share hide()/EndOfLife dismiss.
-		self->_dismissScheduled = true;
-		self->removePopupDismissMonitor();
-		Rc<ContextController> ctrl = self->_controller;
-		ctrl->getLooper()->performOnThread([self] {
-			if (!self) {
-				return;
-			}
-			if (auto *aw = self->getAppWindow()) {
-				aw->hide();
-			} else {
-				self->close();
-			}
-		}, ctrl);
+	  if (!self || self->_dismissScheduled) {
+		  return;
+	  }
+	  // Tooltip and Popup share hide()/EndOfLife dismiss.
+	  self->_dismissScheduled = true;
+	  self->removePopupDismissMonitor();
+	  Rc<ContextController> ctrl = self->_controller;
+	  ctrl->getLooper()->performOnThread([self] {
+		  if (!self) {
+			  return;
+		  }
+		  if (auto *aw = self->getAppWindow()) {
+			  aw->hide();
+		  } else {
+			  self->close();
+		  }
+	  }, ctrl);
 	};
 	_popupDismissMonitor = [NSEvent
-			addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown
+			addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown
+														 | NSEventMaskRightMouseDown
 														 | NSEventMaskKeyDown)
 										 handler:^NSEvent *(NSEvent *event) {
-		if (!self || !self->_window || self->_dismissScheduled) {
-			return event;
-		}
-		if (event.type == NSEventTypeKeyDown) {
-			if (event.keyCode == 53 /* kVK_Escape */) {
-				scheduleDismiss("escape");
-				return nil;
-			}
-			return event;
-		}
-		if (isTooltip) {
-			scheduleDismiss("click-any");
-			return event;
-		}
-		const NSPoint screenPt = [NSEvent mouseLocation];
-		auto pointInsideTree = [&](NSWindow *root) { return pointInsideWindowTree(root, screenPt); };
-		if (pointInsideTree(self->_window)) {
-			return event;
-		}
-		// Climb to the root-level Popup (parent is Root). Nested + root monitors must not
-		// both hide on an outside click — that double-parks Metal and races DeviceLost.
-		MacosWindow *treeRoot = self;
-		while (treeRoot && treeRoot->_info) {
-			auto parentId = treeRoot->_info->parent;
-			if (parentId.empty() || !self->_controller) {
-				break;
-			}
-			auto *pw = self->_controller->findWindow(parentId);
-			auto *pi = pw ? pw->getInfo() : nullptr;
-			if (!pi || pi->type != WindowType::Popup) {
-				break;
-			}
-			treeRoot = static_cast<MacosWindow *>(pw);
-		}
-		if (treeRoot != self) {
-			// Outside submenu: dismiss only when the click is still inside the parent menu tree.
-			// Clicks outside the whole tree are handled solely by the root popup's monitor.
-			if (treeRoot && pointInsideTree(treeRoot->_window)) {
-				scheduleDismiss("click-in-parent-menu");
-			}
-			return event;
-		}
-		scheduleDismiss("click-outside-tree");
-		// Swallow so parent widgets (Open Popup) do not fire on the dismiss click.
-		return nil;
-	}];
+										   if (!self || !self->_window || self->_dismissScheduled) {
+											   return event;
+										   }
+										   if (event.type == NSEventTypeKeyDown) {
+											   if (event.keyCode == 53 /* kVK_Escape */) {
+												   scheduleDismiss("escape");
+												   return nil;
+											   }
+											   return event;
+										   }
+										   if (isTooltip) {
+											   scheduleDismiss("click-any");
+											   return event;
+										   }
+										   const NSPoint screenPt = [NSEvent mouseLocation];
+										   auto pointInsideTree = [&](NSWindow *root) {
+											   return pointInsideWindowTree(root, screenPt);
+										   };
+										   if (pointInsideTree(self->_window)) {
+											   return event;
+										   }
+										   // Climb to the root-level Popup (parent is Root). Nested + root monitors must not
+										   // both hide on an outside click — that double-parks Metal and races DeviceLost.
+										   MacosWindow *treeRoot = self;
+										   while (treeRoot && treeRoot->_info) {
+											   auto parentId = treeRoot->_info->parent;
+											   if (parentId.empty() || !self->_controller) {
+												   break;
+											   }
+											   auto *pw = self->_controller->findWindow(parentId);
+											   auto *pi = pw ? pw->getInfo() : nullptr;
+											   if (!pi || pi->type != WindowType::Popup) {
+												   break;
+											   }
+											   treeRoot = static_cast<MacosWindow *>(pw);
+										   }
+										   if (treeRoot != self) {
+											   // Outside submenu: dismiss only when the click is still inside the parent menu tree.
+											   // Clicks outside the whole tree are handled solely by the root popup's monitor.
+											   if (treeRoot && pointInsideTree(treeRoot->_window)) {
+												   scheduleDismiss("click-in-parent-menu");
+											   }
+											   return event;
+										   }
+										   scheduleDismiss("click-outside-tree");
+										   // Swallow so parent widgets (Open Popup) do not fire on the dismiss click.
+										   return nil;
+										 }];
 }
 
 void MacosWindow::removePopupDismissMonitor() {
@@ -607,8 +653,8 @@ bool MacosWindow::setContentExtent(Extent2 extent) {
 
 	NSRect content = [_window contentRectForFrameRect:_window.frame];
 	const CGFloat top = content.origin.y + content.size.height;
-	NSRect next = NSMakeRect(content.origin.x, top - CGFloat(extent.height),
-			CGFloat(extent.width), CGFloat(extent.height));
+	NSRect next = NSMakeRect(content.origin.x, top - CGFloat(extent.height), CGFloat(extent.width),
+			CGFloat(extent.height));
 	[_window setFrame:[_window frameRectForContentRect:next] display:YES];
 	_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::None);
 	return true;
@@ -1091,9 +1137,8 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		metalLayer.masksToBounds = YES;
 		// Opaque fill under the drawable: with a clear window the rounded-rect AA fringe
 		// composites against the desktop and reads as a dark hairline along the top edge.
-		metalLayer.backgroundColor = [NSColor colorWithCalibratedRed:0.059 green:0.067 blue:0.055
-																alpha:1.0]
-											 .CGColor;
+		metalLayer.backgroundColor =
+				[NSColor colorWithCalibratedRed:0.059 green:0.067 blue:0.055 alpha:1.0].CGColor;
 		// thin light hairline hugging the rounded edge, like native macOS windows
 		metalLayer.borderWidth = 0.5;
 		metalLayer.borderColor = [NSColor colorWithWhite:0.85 alpha:0.7].CGColor;
@@ -1162,7 +1207,13 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 }
 
 - (void)windowDidMove:(NSNotification *)notification {
-	//_engineWindow->emitAppFrame();
+	if (!_engineWindow) {
+		return;
+	}
+	// The only report of a pure move. A resize arrives as windowDidResize: instead, which goes down
+	// the constraints path; that one publishes the geometry too, since constraints do not carry an
+	// origin.
+	_engineWindow->notifyGeometryChanged();
 }
 
 - (void)windowWillStartLiveResize:(NSNotification *)notification {

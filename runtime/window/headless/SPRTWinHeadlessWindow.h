@@ -66,7 +66,7 @@ public:
 
 	// Where this window sits on the virtual screen. What a popup is positioned against, and the
 	// only place window geometry is expressed in anything other than the window's own space.
-	IRect getContentScreenRect() const;
+	virtual IRect getContentScreenRect() const override;
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
