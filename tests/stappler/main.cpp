@@ -57,6 +57,7 @@ static const TestEntry s_testList[] = {
 	{"datavalue", &stappler::performDataValueTests},
 	{"datamodel", &stappler::performDataModelTests},
 	{"vg-stroke", &stappler::performVgStrokeTests},
+	{"search-fuzzy", &stappler::performSearchFuzzyTests},
 };
 
 int main(int argc, const char *argv[]) {

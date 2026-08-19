@@ -25,10 +25,12 @@ THE SOFTWARE.
 #include "SPSearchConfiguration.cc"
 #include "SPSearchDistance.cc"
 #include "SPSearchDistanceEdLib.cc"
+#include "SPSearchFuzzy.cc" // after Distance: shares nothing with it, but both are the matching layer
 #include "SPSearchIndex.cc"
 #include "SPSearchParser.cc"
 #include "SPSearchQuery.cc"
 #include "SPSearchUrl.cc"
+#include "SPSearchVocabulary.cc" // after Configuration and Query: expansion rewrites one using the other
 
 #include <stdio.h>
 

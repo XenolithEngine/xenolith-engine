@@ -45,8 +45,12 @@
 #include "window/GeometryLayout.h"
 #include "window/QueueCacheLayout.h"
 #include "widgets/NumberFieldLayout.h"
+#include "widgets/VectorFieldLayout.h"
+#include "widgets/ColorFieldLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/SelectLayout.h"
+#include "widgets/SearchPickerLayout.h"
+#include "widgets/InlineEditorLayout.h"
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
 #include "widgets/HotkeyLayout.h"
@@ -270,6 +274,52 @@ static const TestInfo s_widgetsTests[] = {
 				   "it over the inspector: select.state, select.open, select.step, send_input "
 				   "native=true."),
 		TestRegistry_make<SelectLayout>, true},
+
+	TestInfo{StringView("search-picker"), StringView("XL_SEARCH_PICKER_TEST"),
+		StringView("ui::SearchPicker"),
+		StringView("A query line over a virtualized result list, and the same surface behind a control "
+				   "that opens a popup. Typing must narrow the list and order it by score; the "
+				   "highlighted characters must be the ones the matcher named, in UTF-16 units - the row "
+				   "led by two emoji is what tells the two index spaces apart. Up/Down must walk the "
+				   "rows while the caret stays in the query line, Enter must choose and Escape must close "
+				   "without choosing; the field beside the control must not see an arrow while the popup "
+				   "is up. Drive it over the inspector: search-picker.state, search-picker.query, "
+				   "search-picker.select, search-picker.mode, send_input native=true."),
+		TestRegistry_make<SearchPickerLayout>, true},
+
+	TestInfo{StringView("inline-edit"), StringView("XL_INLINE_EDIT_TEST"),
+		StringView("ui::InlineEditor"),
+		StringView("An editor placed OVER a rectangle instead of inside what it edits. Double-clicking "
+				   "the label opens one; the table opens one over a cell. Rebuilding every row of the "
+				   "table underneath an open editor must leave the typed text alone - that is the whole "
+				   "point of the widget - while scrolling must END the edit and KEEP what was typed. "
+				   "Escape must put the original back, a refused commit must leave the editor open, and "
+				   "the field beside them must not see a key while an editor is up. Drive it over the "
+				   "inspector: inline-edit.state, inline-edit.begin, inline-edit.rebuild, "
+				   "inline-edit.scroll, send_input native=true."),
+		TestRegistry_make<InlineEditorLayout>, true},
+
+	TestInfo{StringView("vector"), StringView("XL_VECTOR_TEST"), StringView("ui::VectorField"),
+		StringView("Three rows of number fields that are one value each, and a text field after "
+				   "them. What the form collects must be ONE array under one name; Tab must walk "
+				   "the components and leave the row only at its ends, and Shift+Tab entering the "
+				   "row must land on its LAST component. A number typed past the declared range "
+				   "must mark the ROW, name the component in the message and leave the other "
+				   "components alone, while dragging past the end must stop at it. Changing the "
+				   "arity must keep the values that still have an index. Drive it over the "
+				   "inspector: vector.state, vector.set-text, vector.set-arity, send_input "
+				   "native=true."),
+		TestRegistry_make<VectorFieldLayout>, true},
+
+	TestInfo{StringView("color"), StringView("XL_COLOR_TEST"), StringView("ui::ColorField"),
+		StringView("Three colour fields and a text field. Headless has no system colour dialog, so "
+				   "`auto` must open the widget's OWN picker - a real surface with the palette in "
+				   "it - while `system`, asked for explicitly, must fail with a reason instead of "
+				   "opening nothing. The hex line must read whatever sprt::geom::readColor reads, "
+				   "Enter must keep a refusal on screen and blur must put the value's own text "
+				   "back, and the form must collect one hex string. Drive it over the inspector: "
+				   "color.state, color.set-mode, color.open, send_input native=true."),
+		TestRegistry_make<ColorFieldLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

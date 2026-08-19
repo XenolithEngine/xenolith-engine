@@ -172,6 +172,16 @@ world space (the node may be rotated or scaled), converted into the scene
 *content's* space (which undoes the density scale — scene space is physical
 pixels, `WindowPlacement` is logical points), and flipped into Y-down at the end.
 
+**The surface itself is not the menu's.** `openMenu` builds it through
+`ui::openPopupSurface`
+([XLUiPopupSurface.h](../../../../xenolith/renderer/ui/XLUiPopupSurface.h)), which
+is what every popup in the kit opens through — the sheet on the native path, the
+panel's rendering level, the overlay placement, the tap that closes it. What stays
+here is what is actually a menu: the measurement that settles the extent before
+any node exists, `MenuPopupChain`, and the keyboard. Clicking away from a submenu
+therefore takes the whole chain down rather than that one link, which is what
+`PopupSurfaceConfig::onOutsideTap` is for.
+
 **Pass a stylesheet.** A native popup is a scene of its own; the `ui::StyleSystem`
 carrying the application's sheet lives on the *parent* window's content and does
 not reach it. `MenuConfig::stylesheet` names a file, `stylesheetSource` carries

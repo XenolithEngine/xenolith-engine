@@ -116,6 +116,12 @@ it, so it never has to handle "empty" itself.
 | `ui::Select` | the option's **id**, never the title — the title is what a person
   reads and may be localized out from under you. `activate` (Enter or Space on
   the focused control) opens the list
+| `ui::VectorField` | one **array** for the whole row — integers in a whole-number
+  row, doubles otherwise. See "A composite field" below: it is several widgets and
+  one field
+| `ui::ColorField` | the colour's **canonical hex** — `#rrggbb`, or `#rrggbbaa`
+  where the field carries an alpha channel. JSON has no colour type, and hex is
+  what a stylesheet, a schema default and a config file already hold
 | `ui::Button` | nothing; it takes part in the tab ring and fires the form by role
 |===
 
@@ -142,6 +148,42 @@ adapter sets `ownsFocusStyle = true`, and so do `ui::NumberField` (it is one) an
 two must be one flag rather than two that agree); a `Checkbox` has no focus of its
 own, so the listener paints `:focus` for it. **Never both** — the counter is cumulative and a
 double write leaves it stuck.
+
+### A composite field: several widgets, one field
+
+A row of number fields (`ui::VectorField`), a row of chips, a date built from
+three inputs: what the author means by "a field" is the row, and making each part
+a field of its own gets three things wrong at once — the value arrives as N keys,
+a `Required` row is refused N times, and Tab walks components where it should walk
+properties.
+
+Nothing special is needed to do it right, because of the focus rule above: **a
+listener passes the filter when its owner is the focused field's node or sits
+below it**. So the container is the field, its parts keep their own listeners,
+their own keys and their own gestures, and the form never learns what is inside.
+
+Two things the container owes in return:
+
+* **Navigation inside it is its own.** The parts hand their Tab to the container
+  (`ui::TextInput::setNavigateCallback`), which steps to the next part and, at
+  either end, passes it on with `FormInputListener::requestNavigate` — so the row
+  behaves like one stop of the ring from outside, and like a small ring inside.
+* **It has to know which way the Tab came from.** `FormFieldSlots::setFocused`
+  takes `(bool focused, bool backwards)`: `backwards` is the direction of the
+  navigation that caused the change, and false for anything else (a tap, a
+  programmatic `focusField()`). A Shift+Tab entering the row must land on its
+  LAST part; a composite that always enters at its first one makes backwards
+  navigation walk forwards.
+
+The direction has to be remembered rather than passed along, because the swap is
+deferred (below): `focusNext()` records it, and the commit that applies the focus
+hands it to the slot.
+
+One more thing a composite cannot do for itself: a tap that puts the caret in one
+of its parts has to make the FORM focus the field, or the form goes on filtering
+keys to whatever it focused last. The widget must not reach into `forms/` to do
+that — `ui::VectorField` reports the focused part through a callback, and its
+adapter (which is allowed to know both sides) calls `InputListener::setFocused()`.
 
 ## Values
 
@@ -191,7 +233,9 @@ this frame before it can honour it. That yields two accessors and one rule:
 
 A pending request is also what a second `focusNext()` steps from — two Tabs in one
 frame would otherwise read the same committed focus, compute the same target and
-silently lose one.
+silently lose one. The **direction** of that request rides along the same way: it
+is recorded by `focusNext()` and delivered to the field's `setFocused` slot when
+the commit happens, which is the only moment a composite field can act on it.
 
 An untouched form does **not** take focus: merely showing a form must not raise
 the on-screen keyboard.

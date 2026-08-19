@@ -195,7 +195,8 @@ bool FormInputListener::requestReset() {
 	return true;
 }
 
-void FormInputListener::applyFocus(bool value, FocusGroup *group) {
+void FormInputListener::applyFocus(bool value, FocusGroup *group, bool backwards) {
+	_focusBackwards = backwards;
 	if (value) {
 		handleFocusIn(group);
 	} else {
@@ -224,7 +225,7 @@ void FormInputListener::handleFocusIn(FocusGroup *group) {
 	}
 
 	if (_slots.setFocused) {
-		_slots.setFocused(true);
+		_slots.setFocused(true, _focusBackwards);
 	}
 }
 
@@ -236,7 +237,7 @@ void FormInputListener::handleFocusOut(FocusGroup *group) {
 	}
 
 	if (_slots.setFocused) {
-		_slots.setFocused(false);
+		_slots.setFocused(false, _focusBackwards);
 	}
 }
 

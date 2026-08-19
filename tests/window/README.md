@@ -38,6 +38,10 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     menu-check.py             headless assertions for ui::MenuSource / ui::MenuSystem
     select-check.py           headless assertions for the ui::Select demo
     number-check.py           headless assertions for the ui::NumberField demo
+    vector-check.py           headless assertions for the ui::VectorField demo
+    color-check.py            headless assertions for the ui::ColorField demo
+    picker-check.py           headless assertions for the ui::SearchPicker demo
+    inline-edit-check.py      headless assertions for the ui::InlineEditor demo
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
@@ -73,16 +77,31 @@ because it drives a real window with XTEST. That is the only way to check that t
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
-`form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py` and `number-check.py` work
-the same way, for the same reason: the order in which listeners are offered a key, and who declined
-it, leaves no trace on the screen at all. The same goes for the two newest stands. A `ui::Select`'s
+`form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py`, `number-check.py`,
+`vector-check.py`, `color-check.py`, `picker-check.py` and `inline-edit-check.py` work the same way,
+for the same reason: the order in which listeners are offered
+a key, and who declined it, leaves no trace on the screen at all. A `ui::Select`'s
 open list is a WINDOW, so the keys that walk it are addressed to that window and the check has to
 say so; and while it is open the field beside the control must see nothing, which is the only way
 to observe that the menu's exclusive focus group is doing its job. A `ui::NumberField` refusing a
 number and accepting one that happens to look the same are identical on screen, so the value, the
-validity and the callback count are all read back as numbers. The hotkey
-stand carries four subscribers on one combination - one that declines, one global, one FocusedOnly
-inside a focus group and one inside an exclusive group - and every check reads back the delivery
+validity and the callback count are all read back as numbers. A `ui::VectorField` is a row of
+those, and everything worth checking about it is a relation rather than a picture: what the form
+collects is ONE array under one name, Tab has to walk the components and leave only at the ends,
+and a Shift+Tab entering the row has to land on its LAST component - which is what the `backwards`
+argument of `FormFieldSlots::setFocused` exists for. A `ui::ColorField` has TWO pickers, and which
+one a tap opens is the claim: headless advertises no colour dialog at all, so `auto` has to resolve
+to the widget's own surface - a real popup window whose swatches the check clicks - while `system`,
+asked for explicitly, has to fail with a reason rather than open nothing and go quiet. A
+`ui::SearchPicker` highlights the characters a matcher named, and the row led by two emoji is the
+only place where a highlight counted in code points and one counted in UTF-16 units disagree - a
+difference no screenshot distinguishes from a font. A `ui::InlineEditor` is the strongest case of
+all: its whole reason to exist is that rebuilding every row of a virtualized table underneath an
+open editor leaves the typed text alone, and that a scroll ENDS the edit by keeping what was typed
+rather than dropping it. Nothing about either is visible in a frame - the editor looks the same
+whether the text survived or was silently replaced by a rebuild. The hotkey
+stand carries four subscribers on
+one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
 text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
 

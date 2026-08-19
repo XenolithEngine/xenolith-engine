@@ -28,25 +28,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-bool OverlayLayout::init(Vec2 globalOrigin, Binding b, Size2 targetSize) {
+bool OverlaySurface::init(InputEventMask &&mask, FocusGroup::Flags flags) {
 	if (!SceneLayout2d::init()) {
 		return false;
 	}
 
-	_globalOrigin = globalOrigin;
-	_binding = b;
-	_fullSize = targetSize;
-	_collapsedSize = Size2(_fullSize.width, 1);
+	// The group BEFORE the listener: a listener records the nearest group it finds on the frame
+	// stack as it registers, so one added first would come up unaffiliated.
+	_focusGroup = addSystem(Rc<FocusGroup>::create());
+	_focusGroup->setEventMask(FocusGroup::EventMask(sp::move(mask)));
+	_focusGroup->setFlags(flags);
 
-	auto g = addSystem(Rc<FocusGroup>::create());
-	g->setEventMask(FocusGroup::EventMask(EventMaskTouch));
-	g->setFlags(FocusGroup::Flags::Exclusive);
-
-	auto l = addSystem(Rc<InputListener>::create());
-	l->addTapRecognizer([this](const GestureTap &tap) { return handleTap(tap.location()); },
+	_listener = addSystem(Rc<InputListener>::create());
+	_listener->addTapRecognizer([this](const GestureTap &tap) { return handleTap(tap.location()); },
 			InputTapInfo(1, true));
 
-	l->addTouchRecognizer([this](const GestureData &g) {
+	_listener->addTouchRecognizer([this](const GestureData &g) {
 		if (g.event == GestureEvent::Began) {
 			if (_content && !_content->isTouched(g.location())) {
 				return true;
@@ -62,31 +59,65 @@ bool OverlayLayout::init(Vec2 globalOrigin, Binding b, Size2 targetSize) {
 	return true;
 }
 
-void OverlayLayout::handleContentSizeDirty() {
+void OverlaySurface::handleContentSizeDirty() {
 	SceneLayout2d::handleContentSizeDirty();
 
 	if (_displaySize != Size2::ZERO) {
 		// pop overlay if display size changed
-		if (_sceneContent) {
-			_sceneContent->popOverlay(this);
-		}
+		close();
 	} else {
 		_displaySize = _contentSize;
 	}
 }
 
-void OverlayLayout::handlePushTransitionEnded(SceneContent2d *l, bool replace) {
+void OverlaySurface::handlePushTransitionEnded(SceneContent2d *l, bool replace) {
 	SceneLayout2d::handlePushTransitionEnded(l, replace);
 
-	emplaceNode(convertToNodeSpace(_globalOrigin), _binding);
+	layoutContent();
 }
 
-void OverlayLayout::handlePopTransitionBegan(SceneContent2d *l, bool replace) {
+void OverlaySurface::handlePopTransitionBegan(SceneContent2d *l, bool replace) {
 	SceneLayout2d::handlePopTransitionBegan(l, replace);
 	if (_readyCallback) {
 		_readyCallback(false);
 	}
 }
+
+void OverlaySurface::setReadyCallback(Function<void(bool)> &&cb) { _readyCallback = sp::move(cb); }
+
+void OverlaySurface::setCloseCallback(Function<void()> &&cb) { _closeCallback = sp::move(cb); }
+
+void OverlaySurface::close() {
+	if (_sceneContent) {
+		_sceneContent->popOverlay(this);
+	}
+}
+
+void OverlaySurface::layoutContent() { }
+
+Rc<Node> OverlaySurface::makeContent() { return Rc<Layer>::create(Color::Grey_500); }
+
+bool OverlaySurface::handleTap(Vec2 pt) {
+	if (_content && !_content->isTouched(pt)) {
+		close();
+	}
+	return true;
+}
+
+bool OverlayLayout::init(Vec2 globalOrigin, Binding b, Size2 targetSize) {
+	if (!OverlaySurface::init(InputEventMask(EventMaskTouch), FocusGroup::Flags::Exclusive)) {
+		return false;
+	}
+
+	_globalOrigin = globalOrigin;
+	_binding = b;
+	_fullSize = targetSize;
+	_collapsedSize = Size2(_fullSize.width, 1);
+
+	return true;
+}
+
+void OverlayLayout::layoutContent() { emplaceNode(convertToNodeSpace(_globalOrigin), _binding); }
 
 Rc<OverlayLayout::Transition> OverlayLayout::makeExitTransition(SceneContent2d *) const {
 	auto collapsedSize = trimSize(_collapsedSize);
@@ -101,10 +132,6 @@ Rc<OverlayLayout::Transition> OverlayLayout::makeExitTransition(SceneContent2d *
 		}
 	});
 }
-
-void OverlayLayout::setReadyCallback(Function<void(bool)> &&cb) { _readyCallback = sp::move(cb); }
-
-void OverlayLayout::setCloseCallback(Function<void()> &&cb) { _closeCallback = sp::move(cb); }
 
 void OverlayLayout::setTargetSize(Size2 size) {
 	if (!_content) {
@@ -239,8 +266,6 @@ Size2 OverlayLayout::emplaceContent(Node *node, Vec2 origin, Binding b, Size2 si
 	return targetSize;
 }
 
-Rc<Node> OverlayLayout::makeContent() { return Rc<Layer>::create(Color::Grey_500); }
-
 Rc<Action> OverlayLayout::makeEasing(Action *a) { return a; }
 
 Size2 OverlayLayout::trimSize(Size2 size) const {
@@ -251,15 +276,6 @@ Size2 OverlayLayout::trimSize(Size2 size) const {
 		size.height = _contentSize.height - Incr;
 	}
 	return size;
-}
-
-bool OverlayLayout::handleTap(Vec2 pt) {
-	if (_content && !_content->isTouched(pt)) {
-		if (_sceneContent) {
-			_sceneContent->popOverlay(this);
-		}
-	}
-	return true;
 }
 
 } // namespace stappler::xenolith::basic2d
