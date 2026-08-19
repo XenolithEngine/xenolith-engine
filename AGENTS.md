@@ -589,7 +589,12 @@ header, a platform branch, or an allocation. The essentials:
   `ui::VectorField` (a row of `NumberField`s that is ONE form field — Tab walks
   its components and leaves only at the ends), `ui::ColorField` (a swatch and a
   hex line; the system colour dialog behind `isDialogSupported`, and a picker of
-  its own where there is none), `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
+  its own where there is none), `ui::Chip` / `ui::ChipRow` (a row of chips that is
+  ONE form field collecting an ARRAY of ids — the limit and the uniqueness are
+  **declared**, so at the maximum the "+" is dead rather than refusing after the
+  press, duplicates are allowed by default because an element chain repeats, and
+  the wrapped height is reported through the measurement protocol),
+  `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
   a per-type applier, and a refusal is the style class `invalid` — there is no
   `:invalid` pseudo-class in the subset.
 - Two widgets are surfaces rather than atoms, and both exist because a list is

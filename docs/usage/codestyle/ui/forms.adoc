@@ -122,6 +122,11 @@ it, so it never has to handle "empty" itself.
 | `ui::ColorField` | the colour's **canonical hex** — `#rrggbb`, or `#rrggbbaa`
   where the field carries an alpha channel. JSON has no colour type, and hex is
   what a stylesheet, a schema default and a config file already hold
+| `ui::ChipRow` | one **array of the chips' ids**, left to right. The order is
+  part of the value: an element chain read back reordered describes a different
+  type. An id nothing declares still becomes a chip, titled by the id itself —
+  the same decision the picker adapter makes, and for the same reason. A
+  `Required` row that is empty is refused once, not once per chip
 | `ui::Button` | nothing; it takes part in the tab ring and fires the form by role
 |===
 
@@ -151,9 +156,9 @@ double write leaves it stuck.
 
 ### A composite field: several widgets, one field
 
-A row of number fields (`ui::VectorField`), a row of chips, a date built from
-three inputs: what the author means by "a field" is the row, and making each part
-a field of its own gets three things wrong at once — the value arrives as N keys,
+A row of number fields (`ui::VectorField`), a row of chips (`ui::ChipRow`), a
+date built from three inputs: what the author means by "a field" is the row, and
+making each part a field of its own gets three things wrong at once — the value arrives as N keys,
 a `Required` row is refused N times, and Tab walks components where it should walk
 properties.
 
@@ -178,6 +183,13 @@ Two things the container owes in return:
 The direction has to be remembered rather than passed along, because the swap is
 deferred (below): `focusNext()` records it, and the commit that applies the focus
 hands it to the slot.
+
+An internal ring is not compulsory, though — only *deciding where focus lands*
+is. `ui::ChipRow` is a composite whose parts are not text: the arrows walk its
+chips and **Tab leaves at once**, because a row of chips is one stop and there is
+no caret inside it to step through. It still reads `backwards`, to enter at its
+last chip rather than its first. Which key stays inside is the widget's to
+declare; what it owes the form is the same either way.
 
 One more thing a composite cannot do for itself: a tap that puts the caret in one
 of its parts has to make the FORM focus the field, or the form goes on filtering
