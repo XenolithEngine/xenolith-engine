@@ -75,6 +75,7 @@ void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();
 void performDataModelTests();
+void performVgStrokeTests();
 
 } // namespace stappler
 

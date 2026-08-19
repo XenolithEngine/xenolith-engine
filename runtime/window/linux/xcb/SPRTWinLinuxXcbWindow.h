@@ -105,7 +105,7 @@ public:
 
 	xcb_window_t getWindow() const { return _xinfo.window; }
 	xcb_connection_t *getConnection() const;
-	IRect getContentScreenRect() const;
+	virtual IRect getContentScreenRect() const override;
 
 	XcbConnection *getXcbConnection() const { return _connection; }
 

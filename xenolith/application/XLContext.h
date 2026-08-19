@@ -192,7 +192,8 @@ public:
 	// WindowInfo::id (empty on failure) — the id the caller asked for may have been renamed to
 	// avoid a collision. It reports that the window system accepted the window, NOT the first
 	// frame; the scene arrives separately, through WindowSceneInfo::makeScene.
-	virtual void createWindow(Rc<WindowInfo> &&, Function<void(Status, StringView id)> && = nullptr);
+	virtual void createWindow(Rc<WindowInfo> &&,
+			Function<void(Status, StringView id)> && = nullptr);
 
 	virtual Status readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&,
 			sprt::window::Function<StringView(SpanView<StringView>)> &&, Ref * = nullptr);
@@ -229,6 +230,7 @@ public:
 	virtual void handleNativeWindowDestroyed(NotNull<NativeWindow>) override;
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
 			core::UpdateConstraintsFlags) override;
+	virtual void handleNativeWindowGeometryChanged(NotNull<NativeWindow>) override;
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
 			Vector<core::InputEventData> &&) override;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>,

@@ -44,6 +44,18 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 
+	/* The window geometry protocol, observed at the one place it is delivered.
+
+	Scene::handleWindowGeometryChanged is a scene-level hook, so a layout cannot take it directly -
+	the counter lives here and GeometryLayout reads it back through the scene. It is also the whole
+	assertion for "the notification fires": the snapshot itself is readable at any time without one.
+	*/
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
+
+	uint32_t getGeometryChangeCount() const { return _geometryChangeCount; }
+	const sprt::window::WindowGeometry &getLastGeometry() const { return _lastGeometry; }
+	void resetGeometryCounter() { _geometryChangeCount = 0; }
+
 protected:
 	using Scene::init;
 
@@ -62,6 +74,9 @@ protected:
 	void switchLayout(const TestInfo &, float settle, Function<void(Value &&)> &&done);
 
 	Rc<Queue> _remoteQueue;
+
+	uint32_t _geometryChangeCount = 0;
+	sprt::window::WindowGeometry _lastGeometry;
 };
 
 } // namespace stappler::xenolith::app

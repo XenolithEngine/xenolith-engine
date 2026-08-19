@@ -810,7 +810,11 @@ WindowCapabilities XcbConnection::getCapabilities() const {
 	WindowCapabilities caps = WindowCapabilities::ServerSideDecorations
 			| WindowCapabilities::AboveBelowState | WindowCapabilities::DemandsAttentionState
 			| WindowCapabilities::SkipTaskbarState | WindowCapabilities::CloseGuard
-			| WindowCapabilities::UserShadowsRequired | WindowCapabilities::Subwindows;
+			| WindowCapabilities::UserShadowsRequired
+			| WindowCapabilities::Subwindows
+			// X11 tells a client where its window is (ConfigureNotify, and TranslateCoordinates for
+			// the truth under a reparenting WM) and takes an origin in xcb_create_window.
+			| WindowCapabilities::WindowPosition;
 
 	if (getVisualByDepth(32) != 0 && getAtom(XcbAtomIndex::_MOTIF_WM_HINTS) != 0
 			&& hasCapability(XcbAtomIndex::_GTK_EDGE_CONSTRAINTS)) {

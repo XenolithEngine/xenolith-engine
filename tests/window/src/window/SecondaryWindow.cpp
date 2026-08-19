@@ -33,8 +33,8 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
-		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose,
-		Rc<core::Queue> &&queue) {
+		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue,
+		sprt::optional<IVec2> origin) {
 	if (!builder || id.empty()) {
 		log::source().error("SecondaryWindow", "open: id and builder are required");
 		return nullptr;
@@ -53,7 +53,8 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 					NotNull<core::RenderServerChannel> window,
 					const core::FrameConstraints &c) mutable -> Rc<Scene> {
 		return Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
-	}, sp::move(onClose));
+	},
+			sp::move(onClose));
 
 	if (queue) {
 		sceneInfo->setQueue(sp::move(queue));
@@ -65,8 +66,14 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 	// Root: no parent, and no WindowCapabilities::Subwindows required - which is what makes this
 	// work on the headless controller, where subwindows are not supported at all.
 	info->type = sprt::window::WindowType::Root;
-	info->rect = IRect(0, 0, int32_t(size.width), int32_t(size.height));
+	info->rect = IRect(origin ? origin->x : 0, origin ? origin->y : 0, int32_t(size.width),
+			int32_t(size.height));
 	info->flags = sprt::window::WindowCreationFlags::None;
+	if (origin) {
+		// Without the flag the x/y above is indistinguishable from the default (0, 0), so a backend
+		// has no way to tell "put it here" from "you choose".
+		info->flags |= sprt::window::WindowCreationFlags::UsePosition;
+	}
 	// Same icon as the root window: the `multi-window` layout is where you can see that every
 	// window carries its own, not just the first one.
 	info->icon = getAppIcon();

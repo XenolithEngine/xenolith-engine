@@ -45,6 +45,7 @@ struct TextInputStyleComponent {
 	Color4B backgroundColor = Color4B::WHITE;
 	Color4B outlineColor = Color4B::BLACK;
 	float outlineWidth = 0.0f;
+	document::BorderStyle outlineStyle = document::BorderStyle::Solid;
 	float borderRadiusTopLeft = 0.0f;
 	float borderRadiusTopRight = 0.0f;
 	float borderRadiusBottomRight = 0.0f;

@@ -723,6 +723,52 @@ auto pathToString(const Source &source, bool newline) -> typename Interface::Str
 	return buffer.str();
 }
 
+bool DashPattern::isSolid() const {
+	if (count == 0) {
+		return true;
+	}
+
+	// An all-zero pattern has no period to advance along, so treating it as anything but solid
+	// would leave the dash state machine spinning forever.
+	for (uint32_t i = 0; i < count; ++i) {
+		if (lengths[i] > 0.0f) {
+			return false;
+		}
+	}
+	return true;
+}
+
+float DashPattern::getPeriod() const {
+	float ret = 0.0f;
+	for (uint32_t i = 0; i < count; ++i) { ret += lengths[i]; }
+	return ret;
+}
+
+bool DashPattern::set(SpanView<float> value) {
+	*this = DashPattern{{}, offset, 0};
+
+	if (value.empty()) {
+		return true;
+	}
+
+	// SVG: a negative value is an error for the whole list, not just for that entry.
+	for (auto &it : value) {
+		if (it < 0.0f || sprt::isnan(it)) {
+			return false;
+		}
+	}
+
+	auto n = sprt::min(uint32_t(value.size()), MaxCount);
+	if (value.size() > MaxCount) {
+		log::source().warn("VectorPath", "dash pattern of ", value.size(),
+				" entries truncated to ", MaxCount);
+	}
+
+	for (uint32_t i = 0; i < n; ++i) { lengths[i] = value[i]; }
+	count = uint8_t(n);
+	return true;
+}
+
 template <>
 void PathData<memory::PoolInterface>::clear() {
 	points.clear();

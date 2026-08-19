@@ -424,6 +424,7 @@ struct SP_PUBLIC ImageData : ImageInfo {
 using sprt::window::FrameConstraints;
 using sprt::window::SwapchainConfig;
 using sprt::window::SurfaceInfo;
+using sprt::window::WindowGeometry;
 
 struct SP_PUBLIC TextureSetLayoutInfo {
 	uint32_t imageCount = config::MaxTextureSetImages;

@@ -209,6 +209,15 @@ void Director::handleRenderQueueAttached(const Rc<core::Queue> &queue) {
 
 void Director::handleConstraintsChanged(const core::FrameConstraints &c) { setFrameConstraints(c); }
 
+void Director::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+	// Straight through: unlike constraints, geometry changes nothing the director owns - no scene
+	// size, no transform - so there is nothing to recompute and nothing to guard against. The
+	// scene is the only consumer.
+	if (_scene) {
+		_scene->handleWindowGeometryChanged(g);
+	}
+}
+
 void Director::handleInputEvents(Vector<core::InputEventData> &&events) {
 	for (auto &event : events) {
 		if (event.isPointEvent()) {

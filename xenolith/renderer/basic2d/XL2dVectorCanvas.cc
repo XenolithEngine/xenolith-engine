@@ -57,9 +57,16 @@ struct VectorCanvasCacheData {
 	geom::Tesselator::RelocateRule relocateRule = geom::Tesselator::RelocateRule::Auto;
 	vg::DrawFlags style = vg::DrawFlags::Fill;
 
+	// Digest of every path parameter that changes the geometry but is not a field of its own
+	// here. Without it two paths sharing a cacheId but differing in stroke width - or dash
+	// pattern, or cap - would collide and the second would be served the first one's vertexes.
+	uint64_t paramsHash = 0;
+
 	bool operator<(const VectorCanvasCacheData &other) const {
 		if (style != other.style) {
 			return toInt(style) < toInt(other.style);
+		} else if (paramsHash != other.paramsHash) {
+			return paramsHash < other.paramsHash;
 		} else if (name != other.name) {
 			return name < other.name;
 		} else if (quality != other.quality) {
@@ -71,6 +78,34 @@ struct VectorCanvasCacheData {
 		}
 	}
 };
+
+// Colours are deliberately left out: writeCacheData multiplies them into the cached vertexes
+// afterwards, so two paths that differ only in colour can share an entry.
+static uint64_t VectorCanvasCacheData_hashParams(const vg::PathParams &params) {
+	struct alignas(8) Key {
+		float strokeWidth;
+		float miterLimit;
+		float dashOffset;
+		uint32_t lineCup;
+		uint32_t lineJoin;
+		uint32_t winding;
+		uint32_t dashCount;
+		uint32_t isAntialiased;
+		float dash[vg::DashPattern::MaxCount];
+	} key{};
+
+	key.strokeWidth = params.strokeWidth;
+	key.miterLimit = params.miterLimit;
+	key.dashOffset = params.dash.offset;
+	key.lineCup = toInt(params.lineCup);
+	key.lineJoin = toInt(params.lineJoin);
+	key.winding = toInt(params.winding);
+	key.dashCount = params.dash.count;
+	key.isAntialiased = params.isAntialiased ? 1 : 0;
+	for (uint32_t i = 0; i < params.dash.count; ++i) { key.dash[i] = params.dash.lengths[i]; }
+
+	return sprt::hash64(reinterpret_cast<const char *>(&key), sizeof(key));
+}
 
 struct VectorCanvasCache {
 	static sprt::mutex s_cacheMutex;
@@ -354,8 +389,13 @@ void VectorCanvas::Data::doDraw(const VectorPath &path, StringView id, StringVie
 			transform.getScale(&scaleVec);
 			float scale = sprt::max(scaleVec.x, scaleVec.y);
 
-			VectorCanvasCacheData data{nullptr, 0, 0, 0, cache.str<Interface>(), quality, scale,
-				pathDrawer.relocateRule, style};
+			VectorCanvasCacheData data;
+			data.name = cache.str<Interface>();
+			data.quality = quality;
+			data.scale = scale;
+			data.relocateRule = pathDrawer.relocateRule;
+			data.style = style;
+			data.paramsHash = VectorCanvasCacheData_hashParams(path.getParams());
 
 			if (auto it = VectorCanvasCache::getCacheData(data)) {
 				if (!it->data->indexes.empty()) {
@@ -459,9 +499,15 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	transform.getScale(&scale);
 	approxScale = sprt::max(scale.x, scale.y);
 
+	// `params` has to outlive `line`: StrokeConfig::dashArray is a view into params.dash,
+	// and getParams() returns by value - binding the view to the temporary would dangle.
+	const auto params = path->getParams();
+
+	geom::StrokeConfig strokeConfig{params.strokeWidth, params.lineJoin, params.lineCup,
+		params.miterLimit, params.dash.getLengths(), params.dash.offset};
+
 	geom::LineDrawer line(approxScale * quality, Rc<geom::Tesselator>(fillTess),
-			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess),
-			path->getStrokeWidth());
+			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess), strokeConfig);
 
 	auto d = path->getPoints().data();
 
@@ -657,7 +703,7 @@ VectorCanvasCache::VectorCanvasCache() {
 		// container instead of asserting, so a bad cache is skipped rather than fatal.
 		const auto val = data::readFile<Interface>(path);
 		for (auto &it : val.asArray()) {
-			if (it.getInteger("version") != 2) {
+			if (it.getInteger("version") != 3) {
 				continue;
 			}
 
@@ -667,6 +713,7 @@ VectorCanvasCache::VectorCanvasCache() {
 			data.scale = it.getDouble("scale");
 			data.relocateRule = geom::Tesselator::RelocateRule(it.getInteger("rule"));
 			data.style = geom::DrawFlags(it.getInteger("style"));
+			data.paramsHash = uint64_t(it.getInteger("params"));
 			data.fillIndexes = uint32_t(it.getInteger("fill"));
 			data.strokeIndexes = uint32_t(it.getInteger("stroke"));
 			data.sdfIndexes = uint32_t(it.getInteger("sdf"));
@@ -708,7 +755,8 @@ VectorCanvasCache::~VectorCanvasCache() {
 		data.setInteger(it.fillIndexes, "fill");
 		data.setInteger(it.strokeIndexes, "stroke");
 		data.setInteger(it.sdfIndexes, "sdf");
-		data.setInteger(2, "version");
+		data.setInteger(int64_t(it.paramsHash), "params");
+		data.setInteger(3, "version");
 
 		data.setBytes(BytesView(reinterpret_cast<uint8_t *>(it.data->data.data()),
 							  it.data->data.size() * sizeof(Vertex)),

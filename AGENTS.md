@@ -564,7 +564,12 @@ header, a platform branch, or an allocation. The essentials:
   travels with the request as `WindowInfo::appData` — never look one up by `id`,
   which the runtime may re-unique. Popups/dialogs/tooltips are `ui::SubWindow`
   (native subwindow or in-scene overlay); check `WindowCapabilities` before
-  offering fullscreen or decoration controls
+  offering fullscreen or decoration controls. A scene reads where its window is
+  with `getRenderServer()->getWindowGeometry()` (a content rect in the **logical**
+  units `WindowInfo::rect` takes, so it can be handed straight back) and is told
+  about changes by `Scene::handleWindowGeometryChanged`; always check
+  `hasPosition` before saving an origin, and set
+  `WindowCreationFlags::UsePosition` to ask for one back
   ([windows](docs/usage/codestyle/window/windows.adoc)).
 - OS dialogs are an `Rc<sprt::window::DialogRequest>` you **keep** — it is the
   cancellation token; the callback is required, runs exactly once, and

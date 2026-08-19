@@ -80,6 +80,29 @@ FrameConstraints NativeWindow::exportConstraints(uint64_t &serial) const {
 	return move(c);
 }
 
+IRect NativeWindow::getContentScreenRect() const {
+	// No position to report. Deliberately not a guess from _info->rect: on the backends that reach
+	// this default, that field either was never a screen position (Wayland popups store a
+	// parent-relative one) or is whatever the caller asked for and the window system ignored.
+	auto e = getExtent();
+	return IRect(0, 0, int32_t(e.width), int32_t(e.height));
+}
+
+WindowGeometry NativeWindow::getWindowGeometry() const {
+	WindowGeometry ret;
+
+	ret.hasPosition = hasFlag(_info->capabilities, WindowCapabilities::WindowPosition);
+	ret.rect = getContentScreenRect();
+	if (!ret.hasPosition) {
+		// The size is still worth reporting; the origin is not, and zeroing it here means a backend
+		// cannot leak a stale or parent-relative x/y through a capability it never claimed.
+		ret.rect.x = 0;
+		ret.rect.y = 0;
+	}
+
+	return ret;
+}
+
 void NativeWindow::handleLayerEnter(const WindowLayer &layer) {
 	// Notification only - the aggregate state is recomputed in updateLayerState()
 }

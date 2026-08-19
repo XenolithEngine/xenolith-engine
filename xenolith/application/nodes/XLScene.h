@@ -76,6 +76,18 @@ public:
 	virtual void handleFinished(Director *);
 
 	virtual void setFrameConstraints(const core::FrameConstraints &);
+
+	/* The window this scene lives in moved or changed size.
+
+	Notification only: the scene's own geometry follows FrameConstraints, which arrives separately
+	and is what a resize really means to a scene graph. This is for a scene that cares WHERE its
+	window is - one that saves the position to reopen there next time, or places something against
+	a screen coordinate.
+
+	The same snapshot is readable at any moment through
+	Director::getRenderServer()->getWindowGeometry(); this hook exists so that a scene does not
+	have to poll for a change that has no other signal. App thread. */
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 
 	virtual Size2 getContentSize() const override;

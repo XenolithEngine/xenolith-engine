@@ -115,7 +115,8 @@ static HICON WindowsWindow_makeIcon(const WindowIconImage &img) {
 	color.resize(img.getDataSize());
 	packIconBgraPremultipliedBottomUp(img, color.data());
 
-	auto hbmColor = CreateBitmap(int(img.extent.width), int(img.extent.height), 1, 32, color.data());
+	auto hbmColor =
+			CreateBitmap(int(img.extent.width), int(img.extent.height), 1, 32, color.data());
 	if (!hbmColor) {
 		return nullptr;
 	}
@@ -247,8 +248,8 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 
 		// A dialog frame for Dialog; a narrow palette title bar for Utility, which additionally
 		// must not take activation away from its owner.
-		_currentState.exstyle = _info->type == WindowType::Dialog ? WS_EX_DLGMODALFRAME
-																 : WS_EX_TOOLWINDOW;
+		_currentState.exstyle =
+				_info->type == WindowType::Dialog ? WS_EX_DLGMODALFRAME : WS_EX_TOOLWINDOW;
 
 		_info->state |= WindowState::AllowedMove | WindowState::AllowedClose
 				| WindowState::AllowedWindowMenu;
@@ -280,7 +281,20 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 	}
 
 	if (!auxiliary) {
-		AdjustWindowRect(&rect, _currentState.style, FALSE);
+		// ...Ex, with the extended style: a plain AdjustWindowRect does not know about
+		// WS_EX_OVERLAPPEDWINDOW's 3D border, so the frame it measures is a few pixels too small
+		// and the client area comes out smaller than the caller asked for - visible as a window
+		// that shrinks slightly every time a saved size is restored.
+		AdjustWindowRectEx(&rect, _currentState.style, FALSE, _currentState.exstyle);
+
+		if (hasFlag(_info->flags, WindowCreationFlags::UsePosition)) {
+			// CreateWindowExW places the FRAME, while WindowInfo::rect describes the CONTENT - so
+			// the frame origin is the requested content origin pushed out by the border AdjustWindowRect
+			// just measured (rect.left/top are negative for a decorated window). Without this the
+			// window walks down and right by the decoration thickness on every save/restore cycle.
+			windowX = _info->rect.x + rect.left;
+			windowY = _info->rect.y + rect.top;
+		}
 	}
 
 	_currentState.position = IVec2(rect.left, rect.top);
@@ -549,9 +563,41 @@ Status WindowsWindow::handleDestroy() {
 	return Status::Ok;
 }
 
+IRect WindowsWindow::getContentScreenRect() const {
+	// GetClientRect + ClientToScreen, not GetWindowRect: the frame rect includes the border and the
+	// title bar, and handing that back to CreateWindowExW would move the window by the decoration
+	// thickness every time a saved position is restored.
+	if (!_window) {
+		return NativeWindow::getContentScreenRect();
+	}
+
+	RECT client = {0, 0, 0, 0};
+	if (!GetClientRect(_window, &client)) {
+		return NativeWindow::getContentScreenRect();
+	}
+
+	POINT origin = {client.left, client.top};
+	if (!ClientToScreen(_window, &origin)) {
+		return NativeWindow::getContentScreenRect();
+	}
+
+	auto density = _info->density;
+	if (density == 0.0f) {
+		density = 1.0f;
+	}
+
+	return IRect(int32_t(float(origin.x) / density), int32_t(float(origin.y) / density),
+			uint32_t(float(client.right - client.left) / density),
+			uint32_t(float(client.bottom - client.top) / density));
+}
+
 Status WindowsWindow::handleMove(IVec2 pos) {
 	XL_WIN32_LOG(sprt::source_location::current().function_name());
 	_currentState.position = pos;
+	// WM_MOVE is the only report of a pure move; a resize comes through handleResize instead, which
+	// notifies through the constraints path. The snapshot is compared against the app-thread mirror
+	// further up, so reporting both for a move-and-resize costs nothing.
+	_controller->notifyWindowGeometryChanged(this);
 	return Status::Propagate;
 }
 
@@ -561,6 +607,7 @@ Status WindowsWindow::handleResize(Extent2 e, WindowState state, WindowState mas
 		_currentState.extent = e;
 		_controller->notifyWindowConstraintsChanged(this,
 				UpdateConstraintsFlags::DeprecateSwapchain);
+		_controller->notifyWindowGeometryChanged(this);
 	}
 	auto newState = (_info->state & ~mask) | state;
 	if (newState != _info->state) {

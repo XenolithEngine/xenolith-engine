@@ -107,6 +107,18 @@ public:
 	// frame interval). Maps onto handleSwapchainUpdated.
 	virtual void handleConstraintsChanged(const FrameConstraints &) = 0;
 
+	/* The window moved or changed size: where it now is, in the logical space WindowInfo::rect
+	uses, plus the surface extent and density that go with it.
+
+	A SIBLING of handleConstraintsChanged rather than part of it, and deliberately so. Constraints
+	describe what to render and are compared as a whole before a scene is resized; a window's
+	position is not part of that and changes for entirely different reasons. Folding the two
+	together would turn every drag of a title bar into a full scene relayout.
+
+	Non-pure: a client that does not care where its window is - and most do not - should not have
+	to say so. */
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) { }
+
 	// Input + window-state events from the platform. WindowState changes arrive as
 	// InputEventName::WindowState entries within the batch, as today.
 	virtual void handleInputEvents(Vector<InputEventData> &&) = 0;
@@ -236,11 +248,23 @@ public:
 
 	const core::FrameConstraints &getConstraints() const { return _appFrameConstraints; }
 
+	/* Where this window is and how big it is, as of the last update the server pushed.
+
+	This is the app-thread-safe answer to a question WindowInfo cannot be asked from here (see
+	AppWindow::getInfo). `rect` is in logical units - the same space WindowInfo::rect takes - so it
+	can be saved and handed straight back to Context::createWindow with
+	WindowCreationFlags::UsePosition to reopen the window where it was.
+
+	Check `hasPosition` before trusting the origin: on Wayland and the windowless backends the
+	platform never reports one, and the zeroes there mean "unknown", not "top-left corner". */
+	const sprt::window::WindowGeometry &getWindowGeometry() const { return _appWindowGeometry; }
+
 protected:
 	Rc<Ref> _clientRef = nullptr;
 	RenderClientChannel *_client = nullptr;
 	core::WindowState _state = core::WindowState::None;
 	core::FrameConstraints _appFrameConstraints; // read-only mirrior
+	sprt::window::WindowGeometry _appWindowGeometry; // read-only mirrior
 	core::SwapchainConfig _appSwapchainConfig; // read-only mirrior
 	sprt::window::WindowCapabilities _capabilities = sprt::window::WindowCapabilities::None;
 	String _windowId; // should be constant

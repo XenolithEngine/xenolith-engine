@@ -27,6 +27,8 @@
 #include "XL2dSceneLayout.h"
 #include "XLWindowSceneInfo.h"
 
+#include <sprt/cxx/optional>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class AppWindow;
 }
@@ -57,9 +59,13 @@ using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
 // `onClose` fires on the app thread when the window goes away, however it went away.
 // `queue`, when set, is adopted by the new window's scene instead of it building its own - that
 // is what a prewarmed QueueCache entry is for.
+// `origin`, when set, asks for the window at that point instead of letting the window system
+// choose - it becomes WindowInfo::rect's x/y plus WindowCreationFlags::UsePosition. Only honoured
+// where WindowCapabilities::WindowPosition is present, and even there it is a hint a window manager
+// may override.
 Rc<WindowSceneInfo> open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose = nullptr,
-		Rc<core::Queue> &&queue = nullptr);
+		Rc<core::Queue> &&queue = nullptr, sprt::optional<IVec2> origin = sprt::nullopt);
 
 // The scene of the window behind `handle`, or null while it has none. Lets a test reach into the
 // other window's graph.

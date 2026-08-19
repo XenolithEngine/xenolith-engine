@@ -177,6 +177,112 @@ VectorPathRef &VectorPathRef::setStrokeWidth(float width) {
 
 float VectorPathRef::getStrokeWidth() const { return _path ? _path->getStrokeWidth() : 0.0f; }
 
+VectorPathRef &VectorPathRef::setLineCup(vg::LineCup value) {
+	if (_path && _path->getLineCup() == value) {
+		return *this;
+	}
+
+	if (_copyOnWrite) {
+		copy();
+	}
+
+	if (_path) {
+		_path->setLineCup(value);
+		if (_image) {
+			_image->setDirty();
+		}
+	}
+	return *this;
+}
+
+vg::LineCup VectorPathRef::getLineCup() const {
+	return _path ? _path->getLineCup() : vg::LineCup::Butt;
+}
+
+VectorPathRef &VectorPathRef::setLineJoin(vg::LineJoin value) {
+	if (_path && _path->getLineJoin() == value) {
+		return *this;
+	}
+
+	if (_copyOnWrite) {
+		copy();
+	}
+
+	if (_path) {
+		_path->setLineJoin(value);
+		if (_image) {
+			_image->setDirty();
+		}
+	}
+	return *this;
+}
+
+vg::LineJoin VectorPathRef::getLineJoin() const {
+	return _path ? _path->getLineJoin() : vg::LineJoin::Miter;
+}
+
+VectorPathRef &VectorPathRef::setMiterLimit(float value) {
+	if (_path && _path->getMiterLimit() == value) {
+		return *this;
+	}
+
+	if (_copyOnWrite) {
+		copy();
+	}
+
+	if (_path) {
+		_path->setMiterLimit(value);
+		if (_image) {
+			_image->setDirty();
+		}
+	}
+	return *this;
+}
+
+float VectorPathRef::getMiterLimit() const { return _path ? _path->getMiterLimit() : 4.0f; }
+
+VectorPathRef &VectorPathRef::setDashArray(SpanView<float> value) {
+	if (_path && _path->getDashArray() == value) {
+		return *this;
+	}
+
+	if (_copyOnWrite) {
+		copy();
+	}
+
+	if (_path) {
+		_path->setDashArray(value);
+		if (_image) {
+			_image->setDirty();
+		}
+	}
+	return *this;
+}
+
+SpanView<float> VectorPathRef::getDashArray() const {
+	return _path ? _path->getDashArray() : SpanView<float>();
+}
+
+VectorPathRef &VectorPathRef::setDashOffset(float value) {
+	if (_path && _path->getDashOffset() == value) {
+		return *this;
+	}
+
+	if (_copyOnWrite) {
+		copy();
+	}
+
+	if (_path) {
+		_path->setDashOffset(value);
+		if (_image) {
+			_image->setDirty();
+		}
+	}
+	return *this;
+}
+
+float VectorPathRef::getDashOffset() const { return _path ? _path->getDashOffset() : 0.0f; }
+
 VectorPathRef &VectorPathRef::setWindingRule(vg::Winding value) {
 	if (_path && _path->getWindingRule() == value) {
 		return *this;

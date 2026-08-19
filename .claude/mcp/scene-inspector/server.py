@@ -269,13 +269,15 @@ TOOLS = [
         "name": "window_control",
         "description": (
             "Inspect or control the app window: op='constraints' reports the current extent, "
-            "density and frame interval; op='resize' resizes it (only a headless pseudo-window "
+            "density and frame interval; op='geometry' reports where the window IS - its content "
+            "rect in logical units plus hasPosition, which is false where the platform never "
+            "reports a position (Wayland); op='resize' resizes it (only a headless pseudo-window "
             "can honour this — a window manager owns the size otherwise); op='close' closes it."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "op": {"type": "string", "enum": ["constraints", "resize", "close"]},
+                "op": {"type": "string", "enum": ["constraints", "geometry", "resize", "close"]},
                 "width": {"type": "number"},
                 "height": {"type": "number"},
                 "window": WINDOW_PROP,

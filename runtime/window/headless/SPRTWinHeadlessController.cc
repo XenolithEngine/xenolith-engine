@@ -104,7 +104,10 @@ WindowCapabilities HeadlessContextController::getCapabilities() const {
 	// Subwindows is not a courtesy bit: createWindow really does build an auxiliary window with its
 	// own pseudo-swapchain, so ui::SubWindow takes the native path here and a headless run
 	// exercises the same code a desktop one does.
-	return WindowCapabilities::Subwindows;
+	// WindowPosition: the pseudo-window owns its own geometry outright, so the position a caller
+	// asks for is the position it gets - which is what makes a save/restore round trip testable
+	// with no window system in play.
+	return WindowCapabilities::Subwindows | WindowCapabilities::WindowPosition;
 }
 
 void HeadlessContextController::openUrl(StringView url) {
@@ -377,7 +380,8 @@ int HeadlessContextController::run(NotNull<ContextContainer> container) {
 
 		auto loop = _context->makeLoop(instance, _loopInfo);
 		if (!loop) {
-			oslog::vperror(__SPRT_LOCATION, "HeadlessContextController", "Fail to load device loop");
+			oslog::vperror(__SPRT_LOCATION, "HeadlessContextController",
+					"Fail to load device loop");
 			_resultCode = -1;
 			destroy();
 			return;
