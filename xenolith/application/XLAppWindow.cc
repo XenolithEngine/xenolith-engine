@@ -55,6 +55,11 @@
 #include "XLSoftHeadlessPresentation.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesInstance.h"
+#include "XLGlesHeadlessPresentation.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
@@ -542,6 +547,23 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 		}
 
 		return Rc<soft::Surface>::create(instance, sp::move(software), this);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (cinstance->getApi() == core::InstanceApi::GLES) {
+		auto instance = static_cast<gles::Instance *>(cinstance.get());
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Headless) {
+			// No window system: the surface is synthesized from the window extent and backs a
+			// pseudo-swapchain of GL textures.
+			return Rc<gles::HeadlessSurface>::create(instance, _window->getExtent(), this);
+		}
+
+		log::source().error("AppWindow", "Windowed presentation is not implemented for the GLES "
+				"backend yet (M2): surface backend ", toInt(ifaceInfo.backend));
+		return nullptr;
 	}
 #endif
 

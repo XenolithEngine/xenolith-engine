@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 // code - there is not a single bundled resource and not a single Label, so the scene renders
 // identically on any backend that can rasterize the flat queue, including one with no font support.
 //
-//   ./headlesstest --headless -W 640 -H 480
+//   ./headlesstest --headless --width 640 --height 480
 //   XENOLITH_INSPECTOR_ADDRESS=unix:/tmp/xl-headless.sock ./headlesstest --headless
 //   XL_FLAT_QUEUE=1 ./headlesstest --headless --gapi soft
 //

@@ -34,6 +34,10 @@
 #include "XLVkInstance.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesInstance.h"
+#endif
+
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
@@ -850,6 +854,20 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 	}
 #endif
 
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!instanceInfo && info->api == core::InstanceApi::GLES) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+
+		// EGL picks both its display and its window surface from the window system handles, so
+		// the instance needs the same support snapshot the Vulkan branch consumes.
+		auto instanceBackendInfo = Rc<gles::InstanceBackendInfo>::create();
+		instanceBackendInfo->supportInfo = _controller->getSupportInfo();
+		instanceInfo->backend = move(instanceBackendInfo);
+	}
+#endif
+
 	if (instanceInfo) {
 		return core::Instance::create(move(instanceInfo));
 	}
@@ -927,6 +945,14 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 
 #if MODULE_XENOLITH_BACKEND_SOFT
 	if (!loopInfo && instance->getApi() == core::InstanceApi::Software) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!loopInfo && instance->getApi() == core::InstanceApi::GLES) {
 		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
 		loopInfo->deviceIdx = info->deviceIdx;
 		loopInfo->defaultFormat = info->defaultFormat;
