@@ -183,6 +183,29 @@ void MenuItem::handleContentSizeDirty() {
 	layoutContent();
 }
 
+void MenuItem::handleComponentsDirty(const ComponentMask &mask) {
+	Button::handleComponentsDirty(mask);
+
+	if (!mask.contains(InteractiveComponent::Id.value)) {
+		return;
+	}
+
+	bool hovered = false;
+	if (auto ic = getComponent<InteractiveComponent>()) {
+		hovered = ic->hoverCounter > 0;
+	}
+	if (hovered == _hoverApplied) {
+		return;
+	}
+	_hoverApplied = hovered;
+
+	// Only the entering edge: leaving a row does not clear the highlight, because a menu with
+	// nothing highlighted after the pointer wandered off is a menu the keyboard has to start over.
+	if (hovered && _system && _item) {
+		_system->handleItemHovered(_item);
+	}
+}
+
 void MenuItem::layoutContent() {
 	const float height = _contentSize.height;
 	if (height <= 0.0f || _contentSize.width <= 0.0f) {

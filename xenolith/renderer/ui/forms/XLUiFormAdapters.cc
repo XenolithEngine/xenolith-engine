@@ -39,9 +39,25 @@ static FormInputListener *FormAdapters_attach(Node *node, FormFieldSlots &&slots
 FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	slots.collect = [input = input.get()] { return Value(input->getText()); };
-	slots.assign = [input = input.get()](const Value &v) { input->setText(v.getString()); };
-	slots.clear = [input = input.get()] { input->setText(StringView()); };
+	/* What a field HOLDS, which for a ui::NumberField is a number and not the text of one. The
+	branch is here rather than in a second overload because NotNull<> converts from either type and
+	the two would be ambiguous at every call site - and this file is already the one place where
+	the form machinery knows what a widget is. */
+	if (auto number = dynamic_cast<NumberField *>(input.get())) {
+		// An integer field collects an integer and a real one a double: a form that submits 7.0
+		// where the schema says 7 has changed the value on its way out.
+		slots.collect = [number] {
+			return number->isInteger() ? Value(int64_t(number->getValue()))
+									   : Value(number->getValue());
+		};
+		// silent: the form assigning its value is not somebody editing the field
+		slots.assign = [number](const Value &v) { number->setValue(v.getDouble(), true); };
+		slots.clear = [number] { number->setValue(0.0, true); };
+	} else {
+		slots.collect = [input = input.get()] { return Value(input->getText()); };
+		slots.assign = [input = input.get()](const Value &v) { input->setText(v.getString()); };
+		slots.clear = [input = input.get()] { input->setText(StringView()); };
+	}
 	slots.setFocused = [input = input.get()](bool value) {
 		if (value) {
 			input->focus();
@@ -78,17 +94,15 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 	return listener;
 }
 
-FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name,
-		FormFieldFlags flags) {
+FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
 	slots.collect = [checkbox = checkbox.get()] { return Value(checkbox->isChecked()); };
 
 	// silent: assigning a form's value is not the user toggling the box, and a change callback
 	// fired here would look like one
-	slots.assign = [checkbox = checkbox.get()](const Value &v) {
-		checkbox->setChecked(v.getBool(), true);
-	};
+	slots.assign = [checkbox = checkbox.get()](
+						   const Value &v) { checkbox->setChecked(v.getBool(), true); };
 	slots.clear = [checkbox = checkbox.get()] { checkbox->setChecked(false, true); };
 
 	slots.activate = [checkbox = checkbox.get()] {
@@ -105,6 +119,39 @@ FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name,
 	slots.focusable = checkbox->isEnabled();
 
 	return FormAdapters_attach(checkbox, sp::move(slots), name, FormFieldRole::Field, flags);
+}
+
+FormInputListener *addFormField(NotNull<Select> select, StringView name, FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// The id, not the title: the title is what a person reads and may be localized, the id is what
+	// the value MEANS.
+	slots.collect = [select = select.get()] { return Value(select->getValue()); };
+
+	// silent: the form assigning its value is not the user picking an option, and a change callback
+	// fired here would look like one
+	slots.assign = [select = select.get()](
+						   const Value &v) { select->setValue(v.getString(), true); };
+	slots.clear = [select = select.get()] { select->setValue(StringView(), true); };
+
+	// Enter or Space on the focused control shows the list - the same thing the widget does with
+	// those keys on its own, routed here so the form does not have to know that
+	slots.activate = [select = select.get()] { return select->open(); };
+
+	// The widget writes the focus counter itself: its focus is also what decides whether it answers
+	// the arrows at all, so the two must be the same flag rather than two that agree
+	slots.ownsFocusStyle = true;
+	slots.focusable = select->isEnabled();
+
+	slots.setFocused = [select = select.get()](bool value) {
+		if (value) {
+			select->focus();
+		} else {
+			select->blur();
+		}
+	};
+
+	return FormAdapters_attach(select, sp::move(slots), name, FormFieldRole::Field, flags);
 }
 
 FormInputListener *addFormButton(NotNull<Button> button, FormFieldRole role) {

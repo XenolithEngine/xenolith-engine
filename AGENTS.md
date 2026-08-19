@@ -582,6 +582,13 @@ header, a platform branch, or an allocation. The essentials:
   focus change is committed only on the next frame (`getPendingField()` is what
   was asked for), and the tab ring is document order — so give siblings distinct
   `ZOrder` ([forms](docs/usage/codestyle/ui/forms.adoc)).
+- Input atoms: `ui::TextInput` (text), `ui::NumberField` (a number — the range is
+  **declared**, and typing past it is refused while dragging past it is clamped),
+  `ui::Select` (a drop-down: a closed `Panel` plus a real menu surface, so the
+  list's keyboard is `MenuSystem`'s and the closed control's arrows are its own),
+  `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
+  a per-type applier, and a refusal is the style class `invalid` — there is no
+  `:invalid` pseudo-class in the subset.
 - A menu is `ui::MenuSource` (the model) plus one `ui::MenuSystem` on the node it
   is built into; a popup is that same pair inside a `ui::SubWindow`
   (`ui::openMenuForNode`). **One measurement decides everything** —
@@ -589,4 +596,8 @@ header, a platform branch, or an allocation. The essentials:
   and the same call sizes the popup surface before any node exists. The system
   owns its children's geometry, so the menu node must not carry a `LayoutSystem`;
   an item's accelerator is a named `HotkeyId` and `bindMenuHotkeys` subscribes a
-  listener to all of them ([menus](docs/usage/codestyle/ui/menus.adoc)).
+  listener to all of them. The keyboard is a **mode**
+  (`setKeyboardEnabled`), off by default and turned on by `openMenu` for the menu
+  it builds: it installs an **`Exclusive` `FocusGroup`**, because key events are
+  not hit-tested and without one the arrows of an open menu also reach everything
+  else in the window ([menus](docs/usage/codestyle/ui/menus.adoc)).

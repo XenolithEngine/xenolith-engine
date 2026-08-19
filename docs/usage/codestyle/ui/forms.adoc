@@ -8,7 +8,7 @@
   joins the **nearest** form above it.
 * A field is attached to the widget, not declared in the form:
   `ui::addFormField(input)` / `ui::addFormField(checkbox)` /
-  `ui::addFormButton(button, role)` from
+  `ui::addFormField(select)` / `ui::addFormButton(button, role)` from
   [XLUiFormAdapters.h](../../../../xenolith/renderer/ui/forms/XLUiFormAdapters.h).
   Any other node joins with `addFormField(node, FormFieldSlots{...})`.
 * **`FormSystem` *is* a `FocusGroup`** — it owns the tab ring and arbitrates the
@@ -102,6 +102,23 @@ Roles and flags:
 A validator runs **after** the `Required` check and only on a value that passed
 it, so it never has to handle "empty" itself.
 
+### What the shipped adapters collect
+
+|===
+| Widget | Collected
+
+| `ui::TextInput` | the text
+| `ui::NumberField` | the **number** — an integer field an integer, a real one a
+  double. There is no separate overload for it (a `NumberField` *is* a
+  `TextInput`, and `NotNull<>` converts from either, so two would be ambiguous at
+  every call site): the TextInput adapter branches instead
+| `ui::Checkbox` | the boolean
+| `ui::Select` | the option's **id**, never the title — the title is what a person
+  reads and may be localized out from under you. `activate` (Enter or Space on
+  the focused control) opens the list
+| `ui::Button` | nothing; it takes part in the tab ring and fires the form by role
+|===
+
 ### A widget the kit does not ship
 
 Describe what it can do; the form learns nothing about its type:
@@ -120,8 +137,10 @@ ui::addFormField(_slider, sp::move(slots), "volume");
 `ownsFocusStyle` is the one field that must be got right: exactly one side writes
 `InteractiveComponent`'s focus counter. `ui::TextInput` writes it itself (its
 focus is really the IME's, and only the echo knows when it changed), so its
-adapter sets `ownsFocusStyle = true`; a `Checkbox` has no focus of its own, so the
-listener paints `:focus` for it. **Never both** — the counter is cumulative and a
+adapter sets `ownsFocusStyle = true`, and so do `ui::NumberField` (it is one) and
+`ui::Select` (its focus is also what decides whether it answers the arrows, so the
+two must be one flag rather than two that agree); a `Checkbox` has no focus of its
+own, so the listener paints `:focus` for it. **Never both** — the counter is cumulative and a
 double write leaves it stuck.
 
 ## Values

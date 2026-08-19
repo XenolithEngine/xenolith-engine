@@ -55,6 +55,16 @@ struct SP_PUBLIC MenuConfig {
 	String title;
 	String idPrefix;
 
+	/* The keyboard. A menu that is a surface of its own owns it - there is nothing else in that
+	scene to take it from - so this defaults to true and MenuSystem::setKeyboardEnabled is called
+	for the menu the popup builds. Turn it off for a surface that is only ever pointed at.
+
+	`highlight` names the row the keyboard starts on. A ui::Select passes its current value here:
+	a list opened from the keyboard that begins anywhere but at the current value is a list the
+	user has to find their place in. */
+	String highlight;
+	bool keyboard = true;
+
 	// Fired after an item's own callback has run and after the menu chain has been taken down.
 	Function<void(NotNull<MenuSourceItem>)> onActivate;
 

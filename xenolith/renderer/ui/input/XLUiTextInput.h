@@ -282,6 +282,12 @@ public:
 			const document::StyleValue &);
 
 protected:
+	/* Registers the per-attribute appliers (background, outline, radius, padding, CmdReset) for CSS
+	type `type`, routing them into TextInput::setStyleValue. Every field built on this widget calls
+	it from init() with its own type; repeated calls for the same type are ignored. Same seam, and
+	the same reason, as Panel::registerStyleAppliers. */
+	static void registerStyleAppliers(StringView type);
+
 	// The viewport node, built once by init(). A subclass returns its own container here to replace
 	// the geometry the stock one implements: caret placement, the label slide and the point->cursor
 	// mapping all assume a single line, and a multi-line view has to answer all three differently.
