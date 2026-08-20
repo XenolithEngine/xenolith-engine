@@ -52,6 +52,7 @@
 #include "input/XLUiConsole.cc"
 
 #include "view/XLUiFilesystemModel.cc"
+#include "view/XLUiRowGeometry.cc" // before both views: each answers its geometry through it
 #include "view/XLUiTreeView.cc"
 #include "view/XLUiTableView.cc"
 

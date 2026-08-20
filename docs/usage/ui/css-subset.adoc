@@ -54,7 +54,8 @@ CSS text ──parse──> document::StyleContainer      (stappler_document)
                     ├─ per-type appliers          (button, panel, checkbox, badge,
                     │                             select, vector-field, color-field,
                     │                             text-input, number-field,
-                    │                             inline-editor)
+                    │                             inline-editor,
+                    │                             table-insertion-line)
                     ├─ applyDefault()             (opacity, colors, visibility, size)
                     └─ applyLayout()              (Flex/GridLayoutInfo + per-item info)
                           ▼
@@ -263,7 +264,10 @@ mapping. `border-radius` and `outline-*` are not: they are handled by the
 (`button`, `panel`, `checkbox`, `badge`, `select`, `vector-field`, `color-field`,
 `color-picker`, and — through
 the text-input applier set — `text-input`, `number-field` and `inline-editor`
-(the field `ui::InlineEditor` opens over a rectangle); see
+(the field `ui::InlineEditor` opens over a rectangle). `ui::TableView` adds two
+more of its own: `table-insertion-line`, the 2px bar that shows where a dragged
+row would land, and the class `xl-ui-table-drag-handle` on the cell of the
+column a caller declared under `TableView::ReorderColumnKey`; see
 `StyleResolver::registerTypeApplier`
 and the atoms under
 [xenolith/renderer/ui/atoms](../../../xenolith/renderer/ui/atoms)). A plain

@@ -732,6 +732,20 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 	return node;
 }
 
+// ---- geometry -----------------------------------------------------------------------------------
+
+RowGeometrySource TreeView::makeGeometrySource() const {
+	return RowGeometrySource{this, _scroll, _controller};
+}
+
+bool TreeView::getRowRect(size_t index, Rect &out) const {
+	return ui::getRowRect(makeGeometrySource(), index, out);
+}
+
+size_t TreeView::getRowIndexAt(const Vec2 &nodeLocation) const {
+	return ui::getRowIndexAt(makeGeometrySource(), nodeLocation);
+}
+
 void TreeView::handleRowTap(size_t index, uint32_t count) {
 	if (index >= _rows.size()) {
 		return;

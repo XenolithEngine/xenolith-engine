@@ -43,6 +43,7 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     chip-check.py             headless assertions for the ui::Chip / ui::ChipRow demo
     picker-check.py           headless assertions for the ui::SearchPicker demo
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
+    table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
@@ -79,7 +80,8 @@ which *side* of a modifier was pressed - the inspector injects a modifier bitmas
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
 `form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py`, `number-check.py`,
-`vector-check.py`, `color-check.py`, `chip-check.py`, `picker-check.py` and `inline-edit-check.py`
+`vector-check.py`, `color-check.py`, `chip-check.py`, `picker-check.py`,
+`inline-edit-check.py` and `table-reorder-check.py`
 work the same way,
 for the same reason: the order in which listeners are offered
 a key, and who declined it, leaves no trace on the screen at all. A `ui::Select`'s
@@ -107,7 +109,10 @@ difference no screenshot distinguishes from a font. A `ui::InlineEditor` is the 
 all: its whole reason to exist is that rebuilding every row of a virtualized table underneath an
 open editor leaves the typed text alone, and that a scroll ENDS the edit by keeping what was typed
 rather than dropping it. Nothing about either is visible in a frame - the editor looks the same
-whether the text survived or was silently replaced by a rebuild. The hotkey
+whether the text survived or was silently replaced by a rebuild. `ui::TableView`'s reorder is two such claims at once: a row scrolled out of view still has to
+answer with a rectangle - which is what the drop index and the insertion line are computed from -
+and after a move the selection has to follow the ROW rather than the index it used to sit at, two
+states that look identical for one frame and diverge forever after. The hotkey
 stand carries four subscribers on
 one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the

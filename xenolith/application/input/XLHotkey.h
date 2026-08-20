@@ -239,6 +239,14 @@ struct SP_PUBLIC EngineHotkeys {
 	HotkeyId textAccept; // Enter
 	HotkeyId textAcceptKeypad; // KP_Enter
 
+	/* Move the selected element of a list one place, without a pointer.
+
+	Reordering by drag is unreachable from the keyboard in a virtualized list - the row you want to
+	drop on may not exist as a node - and for an editor whose order IS the data, that makes the
+	keyboard path the primary one rather than an accommodation. */
+	HotkeyId moveItemUp; // Alt+Up
+	HotkeyId moveItemDown; // Alt+Down
+
 	HotkeyId textSelectAll; // Ctrl+A
 	HotkeyId textCopy; // Ctrl+C
 	HotkeyId textCut; // Ctrl+X
