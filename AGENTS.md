@@ -609,6 +609,21 @@ header, a platform branch, or an allocation. The essentials:
   asked for. It ends on Enter, on a press outside, on a scroll and on the anchor
   leaving the scene - all of them COMMITTING, and only Escape cancelling - and
   the commit is delivered at most once however many of those arrive together.
+- `ui::TableView` publishes its ROW GEOMETRY - `getRowRect`, `getCellRect`,
+  `getRowIndexAt`, `getRowBoundaryAt`, shared with `ui::TreeView` through
+  `ui::RowGeometrySource` - and it answers for a row that has no node, because
+  only the nodes are virtualized: `rebuildRows()` commits one controller item per
+  row with the height it resolved beforehand. Reordering builds on that:
+  `setReorderCallback` asks `bool(from, to)` where `to` is the row's FINAL index,
+  a false REFUSES and moves neither the order nor the selection, and on
+  acceptance the selection follows the ROW rather than the index. The grip is a
+  column the CALLER declares under `TableView::ReorderColumnKey` - the view fills
+  that cell with an icon and a `DragSource` but never inserts the column itself,
+  which would renumber every other column behind the caller's back. Keyboard
+  equivalent is `EngineHotkeys::moveItemUp` / `moveItemDown` (Alt+Up / Alt+Down,
+  registered `ReserveFromTextInput` because an Alt chord carries a keychar), gated
+  on there being a selected row so that a table nobody picked in declines rather
+  than swallows.
 - A menu is `ui::MenuSource` (the model) plus one `ui::MenuSystem` on the node it
   is built into; a popup is that same pair inside a `ui::SubWindow`
   (`ui::openMenuForNode`). **One measurement decides everything** —

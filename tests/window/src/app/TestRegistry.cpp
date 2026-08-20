@@ -52,6 +52,7 @@
 #include "widgets/SelectLayout.h"
 #include "widgets/SearchPickerLayout.h"
 #include "widgets/InlineEditorLayout.h"
+#include "widgets/TableViewLayout.h"
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
 #include "widgets/HotkeyLayout.h"
@@ -299,6 +300,18 @@ static const TestInfo s_widgetsTests[] = {
 				   "inspector: inline-edit.state, inline-edit.begin, inline-edit.rebuild, "
 				   "inline-edit.scroll, send_input native=true."),
 		TestRegistry_make<InlineEditorLayout>, true},
+
+	TestInfo{StringView("table-reorder"), StringView("XL_TABLE_REORDER_TEST"),
+		StringView("ui::TableView row geometry and reorder"),
+		StringView("A table whose rows are dragged by a grip column and moved by Alt+Up / Alt+Down. "
+				   "The grip is a column the CALLER declared, so the other columns keep their numbers. "
+				   "Dragging and table.reorder must produce the same order; the insertion line must sit "
+				   "on a row boundary and never inside a row; a refused move must change neither the "
+				   "order nor the selection; and after a move the selection must follow the ROW, not the "
+				   "index. Row geometry answers for rows scrolled out of view, which is what the drop "
+				   "index is derived from. Drive it over the inspector: table.state, table.reorder, "
+				   "table.row-rect, table.boundary-at, send_input native=true."),
+		TestRegistry_make<TableViewLayout>, true},
 
 	TestInfo{StringView("vector"), StringView("XL_VECTOR_TEST"), StringView("ui::VectorField"),
 		StringView("Three rows of number fields that are one value each, and a text field after "
