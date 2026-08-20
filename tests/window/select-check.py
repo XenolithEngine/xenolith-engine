@@ -330,6 +330,32 @@ try:
             st["formSelect"]["value"] == "color" and st["formSelect"]["label"] == "Color",
             st["formSelect"])
 
+    # --- a plain list of names -----------------------------------------------------------------------
+    # Last, and on the form control rather than #select: the disabled check above splits the scene
+    # dump on the FIRST "select #select", so nothing here may disturb what precedes it.
+    NAMES = ["alpha", "beta", "gamma"]
+    s.invoke("select.set-string-options", target="form-select", values=NAMES)
+    s.ok("frame", count=2)
+    st = s.invoke("select.state")
+    check("a list of names becomes that many options",
+            st["formSelect"]["optionCount"] == len(NAMES), st["formSelect"])
+    check("choosing a name by id works, and the face shows the same word",
+            s.invoke("select.set", target="form-select", value="beta")["ok"] is True)
+    st = s.invoke("select.state")
+    check("id and title are the same word",
+            st["formSelect"]["value"] == "beta" and st["formSelect"]["label"] == "beta",
+            st["formSelect"])
+    check("and the form collects that id", st["collected"]["form-select"] == "beta",
+            st["collected"])
+
+    # The invariant the helper must not have bypassed: setOptions drops a value the new list can no
+    # longer resolve. "beta" is not in this one.
+    s.invoke("select.set-string-options", target="form-select", values=["one", "two"])
+    s.ok("frame", count=2)
+    st = s.invoke("select.state")
+    check("a value the new list cannot resolve is dropped", st["formSelect"]["value"] == "",
+            st["formSelect"])
+
 finally:
     try:
         s.call("quit")

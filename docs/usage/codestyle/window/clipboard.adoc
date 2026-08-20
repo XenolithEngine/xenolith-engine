@@ -1,0 +1,111 @@
+# The system clipboard
+
+**TL;DR**
+
+* One door: `Rc<ClipboardSession>` over the app thread
+  ([XLClipboard.h](../../../../xenolith/application/XLClipboard.h)). Do not call
+  `AppThread::readFromClipboard` / `writeToClipboard` / `probeClipboard` directly
+  unless you are the session.
+* A payload is a **`ClipboardOffer`**: a label, MIME types **in order of
+  preference**, and bytes — eager (`addRepresentation`, `addText`) or lazy
+  (`setEncoder`). It is the same object an OS drag carries, which is why
+  `DragOffer` produces one.
+* A read states a **preference list**, not a type. Matching is by **prefix**, so
+  `text/plain` also accepts `text/plain;charset=utf-8`. The answer says which
+  representation actually arrived.
+* The read callback runs **exactly once**, on the app thread — or not at all, if
+  you `cancel()`. Nothing else about the platforms below is guaranteed.
+* **`cancel()` when the reason for the read goes away.** A widget losing focus, a
+  document closing. The answer is dropped rather than applied to whatever is
+  there now.
+* An **empty offer is refused**, not sent: on Android an empty type list means
+  *clear the clipboard*.
+* `write()` is **not a receipt.** No platform gives one. `isAvailable()` says
+  whether the transport exists at all; it is false on a remote client.
+* Policy is **yours**, not the seam's: a masked field refusing to copy is
+  `ui::TextInput`'s rule.
+
+## Why a session and not three calls
+
+Because the three calls underneath are not answered consistently, and the ways
+they fail are opposite ones:
+
+[cols="1,4"]
+|===
+| headless | read/probe/write in process; **both callbacks fire inside the call**
+| linux xcb | asynchronous read (a `TARGETS` round trip, then a conversion, `INCR` for large payloads); `UTF8_STRING`/`STRING` aliased to `text/plain`
+| wayland | the selector runs synchronously and its answer must be an **exact member** of what was offered — otherwise the request is dropped **without calling `dataCallback` at all**
+| windows | no read, no probe; write returns `Ok` having discarded the payload
+| macos | lazy multi-representation write; exact match required, but the refusal is reported
+| android | multi-representation through a `ContentProvider`, may deliver on a worker thread; **empty types = clear the clipboard**
+| base | read calls back **and** returns a failure; probe returns a failure and never calls back
+|===
+
+So the transport is at-most-once on one platform and at-least-twice on another.
+`ServerAppThread` reports a read that never started, which makes it
+**at-least-once**; `ClipboardSession` claims the first answer and drops the rest,
+which makes it **at-most-once**. Neither half is sufficient alone, and that is why
+the fix lives in two places.
+
+The prefix rule has the same shape of reason. `preferMimeType` returns a view
+**into the list the platform offered**, so a selector hands back one of the
+platform's own strings rather than one it spelled itself — which is what makes
+wayland's silent drop unreachable instead of merely handled.
+
+## Writing
+
+```cpp
+ClipboardOffer offer;
+offer.setLabel("component fragment")
+     .addText(json, "application/x-xenolith-studio+json")  // the specific type FIRST
+     .addText(json);                                       // text/plain fallback
+
+_clipboard->write(sp::move(offer));
+```
+
+Order is preference: a foreign application asking only for text still gets
+something readable, and a peer asking for the specific type never has to parse the
+fallback.
+
+For bytes worth producing only if someone asks, use `setEncoder`. **That callback
+runs on an unknown thread**, possibly minutes later, inside another process's
+paste — capture copies, never a scene node, never touch the scene graph. The rule
+is the drag payload's, and for the same reason: it is the same object.
+
+## Reading
+
+```cpp
+static const StringView prefer[] = {"application/x-xenolith-studio+json", "text/plain"};
+
+_clipboard->read(makeSpanView(prefer, 2), [this](const ClipboardSession::Result &res) {
+    if (!res) {
+        // res.available names what WAS there, so the refusal can say why
+        return;
+    }
+    applyFragment(res.type, res.text());
+});
+```
+
+`res.data` and `res.available` are **borrowed for the call** — copy what must
+outlive it.
+
+A second `read()` on the same session supersedes the first: the earlier answer is
+dropped rather than applied. That is the staleness rule, and it is the session's
+so that no caller has to carry a serial of its own.
+
+## Cancelling, and why it is not optional
+
+An answer that arrives after the reason for asking has gone is worse than no
+answer: it lands on top of a newer edit. `ui::TextInput` cancels in **two** places
+and both are needed — `blur()`, and the branch where the platform *revokes* input
+(`handleTextInput`), which is how focus is normally lost. A widget that only
+handled the first would leave the common case unguarded.
+
+## What is not here
+
+* **An OS-level drag.** `DragExternalPolicy::Always` is still refused; the payload
+  type is shared so that when it lands, nothing about describing a payload changes.
+* **A change notification.** `SystemNotification::ClipboardChanged` is emitted by
+  xcb, wayland and Android and consumed by nobody. Until something wants it,
+  re-`probe()` when a menu opens.
+* **Windows.** See the table: writes are discarded and reads are not implemented.

@@ -25,6 +25,7 @@
 
 #include "XLUiPanel.h"
 #include "XLInputListener.h"
+#include "XLUiEditLock.h"
 #include "XL2dIconSprite.h" // the check mark held below
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -36,7 +37,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 //              background-color:#292929; border:1px solid rgba(255,255,255,0.3); }
 //   checkbox.checked { background-color:#FCB400; border:1px solid #FCB400; }
 //   checkbox > icon { width:14px; height:14px; color:#1A1A1A; }
-class SP_PUBLIC Checkbox : public Panel {
+class SP_PUBLIC Checkbox : public Panel, public EditLockTarget {
 public:
 	using Callback = Function<void(bool)>;
 

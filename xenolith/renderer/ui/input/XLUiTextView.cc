@@ -783,6 +783,11 @@ bool TextView::init() {
 
 	addStyleClass("text-view");
 
+	// ON here, unlike a plain field: a multi-line editor is the thing a person expects Ctrl+Z from,
+	// and this one owns its document outright, so there is no other history it could be stealing
+	// the chord from. CodeEditor inherits the decision.
+	setUndoEnabled(true);
+
 	// The bit that makes this multi-line at the platform level: TextInputProcessor stops declining
 	// ENTER and inserts it as text ('\r' remapped to '\n'). Without it Enter is "submit" and no
 	// amount of local editing would produce a newline the IME agrees exists.
@@ -1056,6 +1061,18 @@ WideString TextView::normalizeInput(WideStringView str, bool &changed) {
 }
 
 void TextView::applyDocEdit(uint32_t pos, uint32_t removed, WideStringView inserted) {
+	/* The one point every change to this document passes through - insertGlobal and everything
+	under it, setText, and the IME echo, which is where typing actually arrives. Recording here
+	rather than at a widget command is not tidiness: a typed character never reaches insertText at
+	all, because the platform owns the input and the widget only ever sees the echo.
+
+	Before _doc.apply, because after it the removed text is gone. _gCursor is still the caret as it
+	was: every caller assigns it AFTER this returns. */
+	if (_history.isEnabled() && !_history.isApplying()) {
+		_history.recordEdit(pos, _doc.slice(pos, removed), inserted, _gCursor, _historyEditName,
+				_historyClock);
+	}
+
 	_doc.apply(pos, removed, inserted);
 
 	// apply() reset the affected blocks' rows to 1; with wrapping on, restore honest estimates
@@ -1309,7 +1326,16 @@ void TextView::setText(WideStringView str) {
 	bool filtered = false;
 	auto norm = normalizeInput(str, filtered);
 
+	/* Replacing the whole document is not an edit of it - it is a different document. A history
+	kept across this would undo into a file nobody has open, which is why a load drops it - and why
+	the replacement itself is not recorded either, which would put the old document back in the new
+	one's history one Ctrl+Z away. */
+	_history.clear();
+	_history.setRecording(false);
+
 	applyDocEdit(0, uint32_t(_doc.size()), norm);
+
+	_history.setRecording(true);
 
 	_gSelAnchor = maxOf<uint32_t>();
 	_gMarked = TextCursor::InvalidCursor;
@@ -1347,75 +1373,8 @@ void TextView::selectAll() {
 	setGlobalCursorInternal(TextCursor(0u, count));
 }
 
-bool TextView::copy() {
-	if (_gCursor.length == 0 || !_director) {
-		return false;
-	}
-
-	auto str = string::toUtf8<Interface>(_doc.slice(_gCursor.start, _gCursor.length));
-
-	// writeToClipboard copies the bytes and retains the Ref, so the local String may die here
-	_director->getApplication()->writeToClipboard(
-			BytesView(reinterpret_cast<const uint8_t *>(str.data()), str.size()),
-			StringView("text/plain"), this);
-	return true;
-}
-
-bool TextView::cut() {
-	if (_readOnly || !copy()) {
-		return false;
-	}
-	insertGlobal(WideStringView(), _gCursor);
-	return true;
-}
-
-bool TextView::paste() {
-	if (_readOnly || !_director) {
-		return false;
-	}
-
-	const auto serial = ++_pasteSerial;
-	_director->getApplication()->readFromClipboard(
-			[this, serial](Status st, BytesView data, StringView) {
-		// A superseded answer: the field was pasted into again, or blurred while the read was
-		// in flight. Applying it would drop text on top of a newer edit.
-		if (!sprt::status::isSuccessful(st) || serial != _pasteSerial) {
-			return;
-		}
-
-		auto text = string::toUtf16<Interface>(
-				StringView(reinterpret_cast<const char *>(data.data()), data.size()));
-
-		// The caret as it is NOW, not as it was when the read started. The paste goes straight
-		// into the document; only the fresh window around its end travels to the IME.
-		insertGlobal(WideStringView(text), _gCursor);
-	}, [](SpanView<StringView> types) -> StringView {
-		auto want = StringView("text/plain");
-		return preferMimeType(types, makeSpanView(&want, 1));
-	}, this);
-	return true;
-}
-
-bool TextView::handleTextDrop(const DragEvent &event) {
-	if (_readOnly || !event.data) {
-		return false;
-	}
-
-	auto want = StringView("text/plain");
-	auto type = event.data->preferType(makeSpanView(&want, 1));
-	if (type.empty()) {
-		return false;
-	}
-
-	auto bytes = event.data->encode(type);
-	if (bytes.empty()) {
-		return false;
-	}
-
-	auto text = string::toUtf16<Interface>(
-			StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
-	insertGlobal(WideStringView(text), _gCursor);
-	return true;
+WideStringView TextView::getTextForCursor(TextCursor cursor) const {
+	return _doc.slice(cursor.start, cursor.length);
 }
 
 void TextView::setCursor(TextCursor cursor) { setGlobalCursorInternal(cursor); }
@@ -1965,6 +1924,17 @@ Value TextView::encodeState() const {
 	ret.setString(string::toUtf8<Interface>(_gutterLabel->getString()), "gutterText");
 	ret.setInteger(int64_t(_gutterColumns), "gutterColumns");
 
+	// The history. `undoName` rather than only `canUndo`, because what a menu has to show is WHAT
+	// would be taken back; `historyDepth` counts COMMITTED entries, so a word still being typed is
+	// not in it yet - which is exactly why canUndo is asked separately and answers true anyway.
+	ret.setBool(_history.isEnabled(), "undoEnabled");
+	ret.setBool(canUndo(), "canUndo");
+	ret.setBool(canRedo(), "canRedo");
+	ret.setString(getUndoName(), "undoName");
+	ret.setString(getRedoName(), "redoName");
+	ret.setInteger(int64_t(_history.getDepth()), "historyDepth");
+	ret.setInteger(int64_t(_history.getPosition()), "historyPosition");
+
 	return ret;
 }
 
@@ -2006,6 +1976,25 @@ bool TextView::handleInspectorCommand(StringView action, const Value &args, Valu
 		return true;
 	} else if (action.ends_with("select-all")) {
 		selectAll();
+		return true;
+	} else if (action.ends_with("undo")) {
+		return undo();
+	} else if (action.ends_with("redo")) {
+		return redo();
+	} else if (action.ends_with("undo-enabled")) {
+		setUndoEnabled(args.getBool("value"));
+		return true;
+	} else if (action.ends_with("history-break")) {
+		// End the run in progress without waiting for its idle window: what a caller does when it
+		// knows the thought is over, and what lets a check script assert coalescing without
+		// sleeping through a real one.
+		_history.breakRun();
+		return true;
+	} else if (action.ends_with("history-idle")) {
+		_history.setCoalesceIdle(uint64_t(sprt::max(args.getInteger("value"), int64_t(0))));
+		return true;
+	} else if (action.ends_with("history-clear")) {
+		_history.clear();
 		return true;
 	} else if (action.ends_with("copy")) {
 		return copy();
@@ -2087,6 +2076,19 @@ bool TextView::handleInspectorCommand(StringView action, const Value &args, Valu
 	}
 
 	return false;
+}
+
+WideStringView TextView::sliceForHistory(uint32_t pos, uint32_t len) const {
+	return _doc.slice(pos, len);
+}
+
+void TextView::applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted) {
+	insertGlobal(inserted, TextCursor(pos, removed));
+}
+
+void TextView::setHistoryCursor(TextCursor cursor) {
+	setGlobalCursorInternal(cursor);
+	pushCursorUpdate();
 }
 
 } // namespace stappler::xenolith::ui

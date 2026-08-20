@@ -252,6 +252,24 @@ struct SP_PUBLIC EngineHotkeys {
 	HotkeyId textCut; // Ctrl+X
 	HotkeyId textPaste; // Ctrl+V
 
+	/* Undo and redo, and they are named for the ACTION rather than for the widget.
+
+	Deliberately not `textUndo`: whoever owns the focused thing answers these - a text view answers
+	with its own history, a document editor with the document's, a file browser with the project's -
+	and a shell that binds a file-rename history to an id spelled `text-input.*` would be lying to
+	the registry. A handler that has nothing to undo must answer false rather than swallow the
+	chord, so the one below it gets its turn.
+
+	Redo has two spellings and the registry holds one combination per id, so it has two ids. Both
+	are live at once on every platform; Ctrl+Y is what Windows tools train, Ctrl+Shift+Z is what
+	Linux and macOS ones do, and a person who has learned one should not have to discover the other.
+
+	No ReserveFromTextInput here, unlike the Alt chords above: the runtime's text-input processor
+	already declines every Ctrl chord that has no Alt, so these reach the scene on their own. */
+	HotkeyId undo; // Ctrl+Z
+	HotkeyId redo; // Ctrl+Y
+	HotkeyId redoAlt; // Ctrl+Shift+Z — the same action, the other habit
+
 	static const EngineHotkeys &get();
 };
 

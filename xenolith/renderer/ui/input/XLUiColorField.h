@@ -28,6 +28,7 @@
 #include "XLUiPopupSurface.h"
 #include "XL2dLayerRounded.h"
 #include "XL2dIconSprite.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -68,7 +69,7 @@ CSS: type `color-field`, class `xl-ui-color-field`, states `.open`, `.invalid`, 
 Children are `color-field > swatch`, `color-field > text-input` and `color-field > icon`. The
 swatch's colour is the VALUE, so it is written in code rather than by a sheet - it is data, not
 decoration. The built-in picker's surface is type `color-picker`. */
-class SP_PUBLIC ColorField : public Panel {
+class SP_PUBLIC ColorField : public Panel, public EditLockTarget {
 public:
 	// The accepted colour. Not fired for a refusal, and not for a value a program assigned
 	// silently.
@@ -147,6 +148,19 @@ public:
 	bool isValid() const { return _valid; }
 	StringView getValidationMessage() const { return _message; }
 
+	/* WHY THE PICKER DID NOT OPEN - which is a different question from whether the value is any
+	good, and used to be answered through the same channel.
+
+	Two things reach here: a platform with no colour dialog at all, and a dialog that ran and came
+	back failed. Neither is a validation failure. The value is untouched, the hex line still takes
+	the colour typed by hand, and only one ROUTE into the field is missing - so painting `invalid`
+	sent the author hunting for a typo in a value that had none.
+
+	Cleared by the next open() that gets somewhere, because "the picker is unavailable" is a
+	statement about the attempt, not a property the field keeps for ever. */
+	bool isUnavailable() const { return _unavailable; }
+	StringView getUnavailableMessage() const { return _unavailableMessage; }
+
 	virtual void focus();
 	virtual void blur();
 	bool isFocused() const;
@@ -165,6 +179,9 @@ protected:
 	virtual void updateContent();
 	virtual void updateInteractiveState();
 	virtual void setInvalid(bool, StringView message);
+
+	// The other channel: an ACTION this control offers could not be performed, and why.
+	virtual void setUnavailable(bool, StringView message);
 
 	virtual bool openSystemPicker();
 	virtual bool openFallbackPicker();
@@ -198,6 +215,9 @@ protected:
 	bool _enabled = true;
 	bool _valid = true;
 	bool _invalidApplied = false;
+
+	String _unavailableMessage;
+	bool _unavailable = false;
 
 	// Guards updateContent() against being read back as an edit by the text it writes.
 	bool _inUpdate = false;

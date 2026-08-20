@@ -26,6 +26,7 @@
 #include "XLUiChip.h"
 #include "XLUiSelect.h" // SelectOption: what "one option, as data" already means in this kit
 #include "XLUiMenuPopup.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -41,6 +42,9 @@ struct SP_PUBLIC ChipItem {
 
 // What the "+" offers. One option, as data, is already ui::SelectOption; a second identical type
 // would only give the two somewhere to drift apart.
+//
+// Because it is the same type, ui::makeSelectOptions builds a list for this widget too - the
+// id==title case, which is what a set of tag names or element names already is.
 using ChipOption = SelectOption;
 
 /** Several values that are one value: the row of chips.
@@ -87,7 +91,7 @@ CSS: type `chip-row`, class `xl-ui-chip-row`, states `.open`, `.full`, `.disable
 `chip-row > chip` and `chip-row > button` (the "+", named `add`). A styled row lays its chips out
 with `display:flex; flex-wrap:wrap`, and then the flex pass owns both the placement and the
 measurement - this widget's own arithmetic steps aside, as every other widget's does. */
-class SP_PUBLIC ChipRow : public Panel {
+class SP_PUBLIC ChipRow : public Panel, public EditLockTarget {
 public:
 	// The whole row, on every accepted change. A consumer holds a set, so that is what it hears.
 	using ChangeCallback = Function<void(SpanView<ChipItem>)>;

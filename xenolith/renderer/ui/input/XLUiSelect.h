@@ -27,6 +27,7 @@
 #include "XLUiMenuPopup.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -41,6 +42,22 @@ struct SP_PUBLIC SelectOption {
 	IconName icon = IconName::None;
 	bool enabled = true;
 };
+
+/* The id==title case, which is most of them: a list of names where the name IS the value. An enum
+family's members, a set of role names, the twelve things a slot is allowed to be.
+
+FREE rather than a second setOptions overload, for three reasons. setOptions is VIRTUAL, so an
+overload doubles the override surface of every subclass. ui::ChipRow takes the same element
+(ChipOption IS SelectOption), so one pair of functions serves both widgets instead of two identical
+pairs of overloads. And the result is a Vector the caller may still EDIT - disable one entry, hang
+an icon on another - before handing it over, which an overload cannot offer.
+
+BOTH SPELLINGS EXIST because SpanView<StringView> is not constructible from a Vector<String>: the
+generic SpanView(const T &) needs `T::data()` to give a `const StringView *`, and a Vector<String>
+gives a `const String *`. A Vector<String> is what an enum family's members actually are, so the
+overload that only took views would serve a literal array and nothing else. */
+SP_PUBLIC Vector<SelectOption> makeSelectOptions(SpanView<StringView>);
+SP_PUBLIC Vector<SelectOption> makeSelectOptions(SpanView<String>);
 
 /** A closed control that opens a list: the drop-down.
 
@@ -75,7 +92,7 @@ InteractiveComponent, as they do for ui::Button.
     select.open { outline-color:#FCB400; }
     select > label { color:#E8E8E8; font-size:14px; }
     select > select-arrow { width:18px; height:18px; color:#9A9AA4; } */
-class SP_PUBLIC Select : public Panel {
+class SP_PUBLIC Select : public Panel, public EditLockTarget {
 public:
 	// The id of the option now chosen, or empty when the value was cleared.
 	using ChangeCallback = Function<void(StringView)>;

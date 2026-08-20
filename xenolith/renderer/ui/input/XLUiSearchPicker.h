@@ -32,6 +32,7 @@
 #include "XLUiSearchSystem.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -181,7 +182,7 @@ protected:
 
 Deliberately shaped like ui::Select from the outside, so that changing one's mind about which of the
 two a field wants is a change of type and not of the code around it. */
-class SP_PUBLIC SearchPicker : public Panel {
+class SP_PUBLIC SearchPicker : public Panel, public EditLockTarget {
 public:
 	virtual ~SearchPicker();
 

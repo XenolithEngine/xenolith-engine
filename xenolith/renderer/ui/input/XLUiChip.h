@@ -26,6 +26,7 @@
 #include "XLUiBadge.h"
 #include "XLUiButton.h"
 #include "XL2dIconSprite.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -58,7 +59,7 @@ CSS: type `chip`, class `xl-ui-chip`, states `.selected` and `.disabled`. Childr
     chip.selected { outline-width:1px; outline-color:#FCB400; }
     chip > label { color:#E8E8E8; font-size:13px; }
     chip > button { width:18px; height:18px; } */
-class SP_PUBLIC Chip : public Badge {
+class SP_PUBLIC Chip : public Badge, public EditLockTarget {
 public:
 	using Callback = Function<void(NotNull<Chip>)>;
 

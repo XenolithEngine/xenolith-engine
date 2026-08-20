@@ -295,6 +295,41 @@ try:
             all("." not in t["text"] and "e" not in t["text"] for t in ints),
             [t["text"] for t in ints])
 
+    # --- a unit is a label beside the number, never part of it -----------------------------------
+    before = state("real")
+    check("a field with no unit shows none", before["unitText"] == "", before["unitText"])
+    text_before, value_before = before["text"], before["value"]
+
+    s.invoke("number.set-unit", target="real", value="px")
+    s.ok("frame", count=2)
+    st = state("real")
+    check("the unit is what it was told", st["unit"] == "px", st["unit"])
+    check("and it is what the node shows", st["unitText"] == "px", st["unitText"])
+    check("the text did not change", st["text"] == text_before, st["text"])
+    check("nor the value", near(st["value"], value_before), st["value"])
+    check("and the field is still valid", st["valid"] is True, st["message"])
+
+    # The unit has to cost WIDTH, or it is being drawn on top of the number rather than beside it.
+    check("the viewport gave up room for it",
+            st["viewportWidth"] < before["viewportWidth"],
+            (before["viewportWidth"], st["viewportWidth"]))
+
+    # The contract the unit must not have touched: what commit() reads is the whole text, and the
+    # round trip is checked inside the widget rather than against a second formatter written here.
+    trips = s.invoke("number.roundtrip", target="real", values=[0.0, 1.5, -2.25, 0.1])
+    check("parse(format(v)) still comes back the same number with a unit shown",
+            all(near(t["in"], t["out"]) for t in trips), trips)
+    check("and the unit is in none of the printed text",
+            all("px" not in t["text"] for t in trips), [t["text"] for t in trips])
+
+    s.invoke("number.set-unit", target="real", value="")
+    s.ok("frame", count=2)
+    st = state("real")
+    check("clearing the unit takes the label away", st["unitText"] == "", st["unitText"])
+    check("and gives the width back",
+            near(st["viewportWidth"], before["viewportWidth"]),
+            (before["viewportWidth"], st["viewportWidth"]))
+
 finally:
     try:
         s.call("quit")

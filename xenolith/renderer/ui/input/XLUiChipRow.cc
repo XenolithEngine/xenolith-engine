@@ -343,6 +343,9 @@ void ChipRow::setWrapEnabled(bool value) {
 }
 
 void ChipRow::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
@@ -350,10 +353,8 @@ void ChipRow::setEnabled(bool value) {
 	if (!_enabled) {
 		close();
 		blur();
-		addStyleClass("disabled");
-	} else {
-		removeStyleClass("disabled");
 	}
+	applyControlEnabled(this, _enabled);
 
 	for (auto &it : _chips) { it->setEnabled(_enabled); }
 	updateAddButton();
@@ -566,8 +567,8 @@ void ChipRow::updateAddButton() {
 
 void ChipRow::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		bool dirty = state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-												 : (state->state & ~InteractiveState::Enabled));
+		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
 		const bool hover = _hoverApplied && _enabled;
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {

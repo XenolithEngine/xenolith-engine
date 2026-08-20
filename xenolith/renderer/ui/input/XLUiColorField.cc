@@ -515,10 +515,14 @@ void ColorField::setAlphaEnabled(bool value) {
 }
 
 void ColorField::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
 	_enabled = value;
+	applyControlEnabled(this, _enabled);
 	if (_input) {
 		_input->setEnabled(value);
 	}
@@ -551,6 +555,9 @@ bool ColorField::open() {
 	if (!_enabled || isOpen() || _dialog) {
 		return false;
 	}
+
+	// Each attempt answers for itself: whatever the last one could not do is not this one's verdict.
+	setUnavailable(false, StringView());
 
 	switch (_mode) {
 	case PickerMode::System: return openSystemPicker();
@@ -662,8 +669,8 @@ void ColorField::updateContent() {
 
 void ColorField::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		bool dirty = state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-												 : (state->state & ~InteractiveState::Enabled));
+		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		bool dirty = false;
 		// The counter is cumulative, so it moves on an edge and never twice. The hex line paints
 		// its own `:focus`; this one is the FIELD's.
 		const bool focus = isFocused() && _enabled;
@@ -689,6 +696,23 @@ void ColorField::setInvalid(bool value, StringView message) {
 	}
 }
 
+void ColorField::setUnavailable(bool value, StringView message) {
+	_unavailableMessage = message.str<Interface>();
+	if (value == _unavailable) {
+		return;
+	}
+	_unavailable = value;
+	/* Its OWN class, deliberately not `invalid`. The two mean opposite remedies - `invalid` says
+	"fix what you wrote", this says "there is nothing wrong with what you wrote, the way in is
+	missing" - and a control that says the first when it means the second is worse than one that
+	says nothing. */
+	if (value) {
+		addStyleClass("unavailable");
+	} else {
+		removeStyleClass("unavailable");
+	}
+}
+
 bool ColorField::openSystemPicker() {
 	auto window = getAppWindow();
 	if (!window) {
@@ -698,8 +722,11 @@ bool ColorField::openSystemPicker() {
 	if (!window->isDialogSupported(sprt::window::DialogType::Color)) {
 		/* Named rather than swallowed. This is the whole reason isDialogSupported exists, and an
 		application that offers a control which does nothing on this platform has to be able to find
-		out why. */
-		setInvalid(true, StringView("no system colour picker on this platform"));
+		out why.
+
+		Through setUnavailable, not setInvalid: nothing is wrong with the colour this field holds,
+		and marking it `invalid` would say there was. */
+		setUnavailable(true, StringView("no system colour picker on this platform"));
 		return false;
 	}
 
@@ -726,7 +753,8 @@ bool ColorField::openSystemPicker() {
 		}
 
 		if (!sprt::status::isSuccessful(res.status)) {
-			setInvalid(true, sprt::status::getStatusName(res.status));
+			// The dialog failed, which says nothing about the value the field is holding.
+			setUnavailable(true, sprt::status::getStatusName(res.status));
 			return;
 		}
 

@@ -215,7 +215,17 @@ try:
     check("nothing opens", popups() == [], popups())
     check("the field is not left thinking it is open", st["open"] is False)
     check("the value did not move", st["value"] == PLAIN, st["value"])
-    check("and the refusal says why", "system" in st["message"], st["message"])
+    # The refusal is reported through its OWN channel, not through validation. This assertion
+    # moved here from `message` when the two were split: a platform without a colour dialog says
+    # nothing whatever about the colour the field is holding, and marking the field `invalid`
+    # sent the author looking for a typo in a value that had none.
+    check("and the refusal says why", "system" in st["unavailableMessage"],
+            st["unavailableMessage"])
+    check("through the unavailable channel", st["unavailable"] is True)
+    check("and CSS can see it", "unavailable" in st["classes"], st["classes"])
+    check("the field is NOT marked invalid - the value is fine, the way in is missing",
+            st["valid"] is True and "invalid" not in st["classes"], st["classes"])
+    check("and validation has nothing to say", st["message"] == "", st["message"])
     s.invoke("color.set-mode", target="plain", value="auto")
     s.invoke("color.set", target="plain", value=PLAIN)
 

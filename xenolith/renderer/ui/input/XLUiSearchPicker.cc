@@ -630,6 +630,9 @@ void SearchPicker::setChangeCallback(Function<void(const SearchHit &)> &&cb) {
 }
 
 void SearchPicker::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
@@ -638,6 +641,7 @@ void SearchPicker::setEnabled(bool value) {
 		close();
 		blur();
 	}
+	applyControlEnabled(this, _enabled);
 	updateInteractiveState();
 }
 
@@ -679,8 +683,8 @@ void SearchPicker::updateContent() {
 
 void SearchPicker::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		bool dirty = state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-												 : (state->state & ~InteractiveState::Enabled));
+		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
 		const bool hover = _hoverApplied && _enabled;
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {

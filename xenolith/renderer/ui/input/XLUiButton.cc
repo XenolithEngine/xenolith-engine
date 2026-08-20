@@ -152,6 +152,12 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 	_theme = ButtonIconTheme::Default;
 #endif
 
+	/* From the FIRST frame, not from the first thing that touches the button. A node with no
+	InteractiveComponent reads as state 0 to the style resolver, and `:disabled` is "not :enabled" -
+	so an untouched button matched `button:disabled` while it was perfectly usable, and
+	`button:enabled` matched nothing. The component is cheap; being invisible to CSS is not. */
+	applyControlEnabled(this, _enabled);
+
 	return true;
 }
 
@@ -222,22 +228,16 @@ void Button::setString(StringView str) {
 void Button::setCallback(Function<void()> &&cb) { _leftCallback = sp::move(cb); }
 
 void Button::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
 
 	_enabled = value;
 
-	if (value) {
-		removeStyleClass("disabled");
-	} else {
-		addStyleClass("disabled");
-	}
-
-	setOrUpdateComponent<InteractiveComponent>([&](NotNull<InteractiveComponent> state) {
-		return state->updateState(value ? (state->state | InteractiveState::Enabled)
-										: (state->state & ~InteractiveState::Enabled));
-	});
+	applyControlEnabled(this, _enabled);
 }
 
 StringView Button::getString() const {

@@ -38,10 +38,17 @@
 #include "atoms/XLUiTableBorderPainter.cc"
 
 #include "input/XLUiInteractiveComponent.cc"
+#include "input/XLUiEditLock.cc" // after InteractiveComponent: the lock is its Enabled bit
+                                 // with a reason attached, and every widget below calls in
+                                 // here. It also builds a ui::TooltipTarget, whose
+                                 // definition arrives much later in this unit - that is
+                                 // fine (the header defines the class) and this include
+                                 // cannot move down past its callers.
 #include "input/XLUiButton.cc"
 #include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiChip.cc" // after Badge and Button: a chip is one, with the other on it
 #include "input/XLUiCheckbox.cc"
+#include "input/XLUiTextHistory.cc" // before TextInput and TextView: both hold one
 #include "input/XLUiTextInput.cc"
 #include "input/XLUiTextDocument.cc"
 #include "input/XLUiTextView.cc" // after TextInput: the view replaces its container and cursor layer

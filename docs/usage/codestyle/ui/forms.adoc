@@ -323,3 +323,18 @@ bare ack, so state is always read back separately.
 * [design/node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — the phases the ring rebuild and the deferred focus swap ride on
 * [ui/css-subset.adoc](../../ui/css-subset.adoc) — what `:focus`, class selectors and the missing `:invalid` really do
 * [data-value.adoc](../core/data-value.adoc) — the `Value` `collect()`/`assign()` speak
+
+## A locked field is not a stop in the tab ring
+
+`ui::setEditLock(node, reason)` marks a control that cannot be edited *for a
+reason that is not the value's fault* — a wire supplies it, the field is
+undeclared, the view is read-only. It paints the `locked` class, clears the
+control's `Enabled` bit and, through `FormInputListener::isFocusable`, drops the
+field out of the ring: a control that only *looked* unreachable would still take
+Tab and then refuse every key, which is the worse half of both behaviours.
+
+It is a different axis from `FormFieldSlots::focusable`, which the adapters
+snapshot from `isEnabled()`/`isReadOnly()` when the field is registered. That
+snapshot is **not** refreshed, so disabling a widget after `addFormField` does not
+currently remove it from the ring; only the lock does. If you need the general
+case, make the slot computed rather than working around it here.

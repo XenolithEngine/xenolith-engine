@@ -94,6 +94,22 @@ public:
 
 	virtual void setValueCallback(ValueCallback &&);
 
+	/* A word shown BESIDE the number - px, s, hp, deg. IT IS A LABEL AND NOTHING ELSE: nothing
+	here converts, scales, or validates against a unit. A unit that meant conversion would be a
+	TYPE, and arithmetic hidden inside presentation is the worst place to keep it - the same line
+	the studio's control hints draw, carried here so both ends agree.
+
+	It is a SIBLING of the text viewport, never part of the text. commit() requires the WHOLE text
+	to be the number and parse(format(v)) == v is this widget's contract, so a suffix living in the
+	string would break both, and getText() would start returning something no one typed.
+
+	What it costs is width: the viewport is inset by what the unit measures, so the caret, the
+	selection and the horizontal slide all go on working inside a narrower box. An empty unit takes
+	the label away and gives the width back. */
+	virtual void setUnit(StringView);
+	StringView getUnit() const { return _unit; }
+	basic2d::Label *getUnitLabel() const { return _unitLabel; }
+
 	virtual void setDragEnabled(bool);
 	bool isDragEnabled() const { return _dragEnabled; }
 
@@ -136,6 +152,12 @@ protected:
 
 	virtual void setInvalid(bool, StringView message);
 
+	virtual void handleContentSizeDirty() override;
+
+	// The unit's width plus its gap, on the right. Measured in handleContentSizeDirty BEFORE the
+	// base sizes the viewport, which is the only moment it can be trusted.
+	virtual Padding getViewportInset() const override;
+
 	virtual void handleTextInput(const TextInputState &) override;
 
 	virtual bool handleInputChar(char16_t) override;
@@ -160,6 +182,12 @@ protected:
 	float _dragSensitivity = DefaultDragSensitivity;
 
 	String _message;
+
+	// Built on the first non-empty unit and kept afterwards: a field that never names a unit costs
+	// no node at all.
+	basic2d::Label *_unitLabel = nullptr;
+	String _unit;
+	float _unitInset = 0.0f;
 
 	bool _integer = false;
 	bool _hasRange = false;

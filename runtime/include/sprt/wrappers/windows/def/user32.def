@@ -65,3 +65,17 @@ EXPORTS
 	MessageBoxW
 	CreateIconIndirect
 	DestroyIcon
+	OpenClipboard
+	CloseClipboard
+	EmptyClipboard
+	SetClipboardData
+	GetClipboardData
+	EnumClipboardFormats
+	CountClipboardFormats
+	IsClipboardFormatAvailable
+	RegisterClipboardFormatW
+	GetClipboardFormatNameW
+	GetClipboardOwner
+	AddClipboardFormatListener
+	RemoveClipboardFormatListener
+	GetClipboardSequenceNumber

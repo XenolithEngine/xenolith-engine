@@ -218,6 +218,11 @@ Value ColorFieldLayout::encodeField(ui::ColorField *field) const {
 	ret.setString(field->getInput()->getText(), "text");
 	ret.setBool(field->isValid(), "valid");
 	ret.setString(field->getValidationMessage(), "message");
+
+	// The OTHER channel: why the picker did not open. Reported separately from `message` on
+	// purpose - the whole point of the split is that a capability refusal is not a bad value.
+	ret.setBool(field->isUnavailable(), "unavailable");
+	ret.setString(field->getUnavailableMessage(), "unavailableMessage");
 	ret.setBool(field->isAlphaEnabled(), "alpha");
 	ret.setBool(field->isEnabled(), "enabled");
 	ret.setBool(field->isFocused(), "focused");

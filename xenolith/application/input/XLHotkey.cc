@@ -437,6 +437,13 @@ const EngineHotkeys &EngineHotkeys::get() {
 		s_hotkeys.textCopy = add("org.stappler.xenolith.text-input.copy", "Ctrl+C", "Copy");
 		s_hotkeys.textCut = add("org.stappler.xenolith.text-input.cut", "Ctrl+X", "Cut");
 		s_hotkeys.textPaste = add("org.stappler.xenolith.text-input.paste", "Ctrl+V", "Paste");
+
+		/* `edit`, not `text-input`: the same ids carry a document's history and a project's, and
+		the focused handler decides which one answers. See the comment in the header. */
+		s_hotkeys.undo = add("org.stappler.xenolith.edit.undo", "Ctrl+Z", "Undo");
+		s_hotkeys.redo = add("org.stappler.xenolith.edit.redo", "Ctrl+Y", "Redo");
+		s_hotkeys.redoAlt =
+				add("org.stappler.xenolith.edit.redo-alt", "Ctrl+Shift+Z", "Redo (alternate)");
 	});
 	return s_hotkeys;
 }

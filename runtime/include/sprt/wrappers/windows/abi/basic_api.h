@@ -202,6 +202,17 @@ typedef enum _WINAPI_PROVIDER {
 	WinApiProviderReactOS,
 } WINAPI_PROVIDER;
 
+// The global heap, which the clipboard still speaks: SetClipboardData takes ownership of a
+// GMEM_MOVEABLE block and the caller must not free it afterwards.
+#define __SPRT_GMEM_FIXED    0x0000
+#define __SPRT_GMEM_MOVEABLE 0x0002
+#define __SPRT_GMEM_ZEROINIT 0x0040
+
+// Predefined clipboard formats. Only the two text ones are named here - everything else this tree
+// puts on a clipboard is a MIME type registered by name through RegisterClipboardFormatW.
+#define __SPRT_CF_TEXT        1
+#define __SPRT_CF_UNICODETEXT 13
+
 #define __SPRT_LHND  (__SPRT_LMEM_MOVEABLE | __SPRT_LMEM_ZEROINIT)
 #define __SPRT_LPTR  (__SPRT_LMEM_FIXED | __SPRT_LMEM_ZEROINIT)
 

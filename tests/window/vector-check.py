@@ -362,6 +362,39 @@ try:
     check("the component beside it did not move", near(st["values"][0], 10.0), st["values"])
     check("and the drag reported continuously", st["callbacks"] > 1, st["callbacks"])
 
+    print("== the unit belongs to the ROW, once ==")
+    before = state("real")
+    check("a row with no unit shows none", before["unitText"] == "", before["unitText"])
+    labels_before = before["labels"]
+    right_before = before["rects"][-1]["x"] + before["rects"][-1]["width"]
+
+    s.invoke("vector.set-unit", target="real", values=[], value="m")
+    s.ok("frame", count=2)
+    st = state("real")
+    check("the row shows the unit it was told", st["unitText"] == "m", st["unitText"])
+    check("exactly once - it is not a label per component",
+            st["labels"] == labels_before, (labels_before, st["labels"]))
+    check("and it did not join the component labels",
+            len(st["labels"]) == st["arity"], (st["arity"], st["labels"]))
+
+    # It has to take room from the components, not sit on top of the last one.
+    right_after = st["rects"][-1]["x"] + st["rects"][-1]["width"]
+    check("the last component gave up room for it", right_after < right_before,
+            (right_before, right_after))
+    widths = [r["width"] for r in st["rects"]]
+    check("and the components stayed equal width", max(widths) - min(widths) < 1.0, widths)
+
+    # setArity tears down the components and their labels; the row's unit is not one of them.
+    s.invoke("vector.set-arity", target="real", value=4)
+    s.ok("frame", count=2)
+    st = state("real")
+    check("widening the row does not lose the unit", st["unitText"] == "m", st["unitText"])
+    check("and the labels grew with the arity", len(st["labels"]) == 4, st["labels"])
+
+    s.invoke("vector.set-unit", target="real", value="")
+    s.ok("frame", count=2)
+    check("clearing takes it away", state("real")["unitText"] == "")
+
 finally:
     print(f"{checks} checks, {failures} failures")
     s.close()
