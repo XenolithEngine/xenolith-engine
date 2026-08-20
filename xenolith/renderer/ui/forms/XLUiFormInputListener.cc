@@ -24,6 +24,7 @@
 #include "XLUiFormSystem.h"
 #include "XLUiInteractiveComponent.h"
 #include "XLNode.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -103,7 +104,11 @@ void FormInputListener::setValidator(Validator &&v) { _validator = sp::move(v); 
 
 void FormInputListener::setSlots(FormFieldSlots &&slots) { _slots = sp::move(slots); }
 
-bool FormInputListener::isFocusable() const { return _slots.focusable; }
+bool FormInputListener::isFocusable() const {
+	// A locked control is not a stop in the tab ring: if it only PAINTED as unreachable, Tab would
+	// still land on something that refuses every key, which is the worse half of both behaviours.
+	return _slots.focusable && !isEditLocked(getOwner());
+}
 
 Value FormInputListener::collect() const {
 	if (!_slots.collect) {

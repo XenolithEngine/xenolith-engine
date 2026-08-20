@@ -41,9 +41,12 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     vector-check.py           headless assertions for the ui::VectorField demo
     color-check.py            headless assertions for the ui::ColorField demo
     chip-check.py             headless assertions for the ui::Chip / ui::ChipRow demo
+    clipboard-check.py        headless assertions for xenolith::ClipboardSession
     picker-check.py           headless assertions for the ui::SearchPicker demo
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    geometry-check.py         headless assertions for window geometry and monitors
+    text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
@@ -79,10 +82,24 @@ because it drives a real window with XTEST. That is the only way to check that t
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
+Three things a screenshot is especially bad at, and all three are asserted rather
+than looked at. A **unit** beside a number (`number.set-unit`, `vector.set-unit`)
+has to be a separate node, so the checks read the label off the node AND watch the
+text viewport get narrower - a unit painted on top of the number would look
+identical and break `parse(format(v)) == v`. A **locked** control
+(`form.set-locked`) has to leave the tab ring, not merely grey out, so the check
+reads `tabRing`; and because the lock and the widget's own `setEnabled` are two
+independent sources of one effect, there is a check that unlocking gives back what
+the application last asked for rather than "on". And an untouched widget's
+`InteractiveComponent` is captured in section 1, while the form is provably
+untouched, because a component created lazily on first focus looks identical by
+the end of the script - which is exactly the bug that made `:disabled` match an
+ENABLED checkbox.
+
 `form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py`, `number-check.py`,
 `vector-check.py`, `color-check.py`, `chip-check.py`, `picker-check.py`,
-`inline-edit-check.py` and `table-reorder-check.py`
-work the same way,
+`inline-edit-check.py`, `table-reorder-check.py`, `geometry-check.py`,
+`clipboard-check.py` and `text-undo-check.py` work the same way,
 for the same reason: the order in which listeners are offered
 a key, and who declined it, leaves no trace on the screen at all. A `ui::Select`'s
 open list is a WINDOW, so the keys that walk it are addressed to that window and the check has to
@@ -117,6 +134,15 @@ stand carries four subscribers on
 one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
 text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
+
+`clipboard-check.py` is there for a seam rather than a widget, and for one property in particular:
+the clipboard transport is answered EXACTLY ONCE. That is not what the platforms do — wayland drops
+a request whose selected type it did not offer, without calling anything back, while the base
+controller both calls back and returns a failure — so the count of deliveries is asserted as a
+number after every read, including a read whose preference list matches nothing. The same script
+covers the halves that used to be duplicated between `ui::TextInput` and `ui::TextView`: what one
+copies the other must paste, a masked field must still refuse, and a paste whose field lost focus
+must not land.
 
 ## Building
 

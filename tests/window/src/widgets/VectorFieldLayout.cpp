@@ -255,6 +255,21 @@ Value VectorFieldLayout::encodeField(ui::VectorField *field) const {
 		}
 	}
 	ret.setValue(sp::move(labels), "labels");
+
+	ret.setString(field->getUnit(), "unit");
+	// Off the node, like the labels above, and found by its OWN type: if the unit were typed
+	// `component-label` the scan above would have swallowed it and `labels` would report one more
+	// entry than the row has components.
+	String unitText;
+	for (auto &child : field->getChildren()) {
+		if (child->getType() == "field-unit") {
+			auto label = static_cast<basic2d::Label *>(child.get());
+			if (label->isVisible()) {
+				unitText = string::toUtf8<Interface>(label->getString());
+			}
+		}
+	}
+	ret.setString(unitText, "unitText");
 	ret.setValue(sp::move(values), "values");
 	ret.setValue(sp::move(texts), "texts");
 	ret.setValue(sp::move(componentValid), "componentValid");
@@ -406,6 +421,15 @@ void VectorFieldLayout::registerCommands() {
 			return ackValue(false);
 		}
 		_form->assign(static_cast<const Value &>(args).getValue("value"));
+		return ackValue(true);
+	});
+
+	addCommand("set-unit", "Set or clear the row's unit: {target, value}", [this](Value &&args) {
+		auto field = getTarget(args);
+		if (!field) {
+			return ackValue(false);
+		}
+		field->setUnit(static_cast<const Value &>(args).getString("value"));
 		return ackValue(true);
 	});
 

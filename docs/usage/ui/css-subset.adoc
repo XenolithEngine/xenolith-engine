@@ -84,6 +84,32 @@ Interactive pseudo-classes that really work: `:hover`, `:focus`, `:active`,
 `:checked`, `:enabled`, `:disabled` — driven by `ui::InteractiveComponent`, so
 they need an input listener on the node. [`XL_HOVER_TEST`]
 
+A node carrying **no** `InteractiveComponent` reads as state zero, and
+`:disabled` is implemented as "not `:enabled`" — so a widget that never wrote the
+component used to match `:disabled` while it was perfectly usable. Every `ui::`
+control now writes it from its `init()`, through the one function that owns the
+bit (`ui::applyControlEnabled`), so both halves mean what they say from the first
+frame.
+
+### The state classes, and why they are classes
+
+The subset has no `:invalid`, no `:read-only` and no attribute selectors, so the
+states a control can be in that CSS cannot name are plain classes. They are
+independent and a control may wear several at once:
+
+[cols="1,4"]
+|===
+| `invalid`   | *what is written here is wrong.* The remedy is to fix the value. Written by `ui::FormSystem` on a rejected field and by the widgets that judge their own text.
+| `disabled`  | *this control is off.* The mechanical fact, and it tracks `:disabled` exactly — one is the class, the other the pseudo-class.
+| `locked`    | *you may not write here at all,* and there is a reason: a wire supplies the value, the field is undeclared. A locked control is also `disabled`; `locked` is the narrower second word saying WHY, and `ui::getEditLockReason` carries the sentence.
+| `read-only` | *readable, selectable, copyable — but not editable.* A third axis: a read-only field still takes taps and selections, which a disabled one does not.
+| `unavailable` | *an action this control offers cannot be performed here, and here is why.* Written by `ui::ColorField` when the platform has no colour dialog, or when one ran and failed. It says nothing about the value: the field is still editable by hand, only one route into it is missing — which is exactly why it is not `invalid`. Read the sentence with `getUnavailableMessage()`.
+|===
+
+`locked` and `invalid` together are meaningful — a wire supplied a value that
+does not validate — so write `number-field.locked`, `number-field.invalid` and
+`number-field.locked.invalid` and let specificity order them.
+
 Structural pseudo-classes also work: `:nth-child(An+B | odd | even)`,
 `:nth-last-child()`, `:first-child`, `:last-child`, `:only-child`, the four
 `*-of-type` forms, `:empty` and `:root`. Each counts as a class for specificity,
@@ -273,6 +299,18 @@ and the atoms under
 [xenolith/renderer/ui/atoms](../../../xenolith/renderer/ui/atoms)). A plain
 `basic2d::Layer` draws a rectangle and has nowhere to put a radius, so the rule
 is simply dropped.
+
+A widget's inner parts are addressed by a **type** of their own, hyphenated from
+the owner: `select > select-arrow`, `vector-field > component-label`,
+`color-field > swatch`. One of them is shared on purpose — `field-unit`, the unit
+of measure beside a number (`px`, `s`, `hp`), is the same type on
+`ui::NumberField` and on `ui::VectorField`, so a single rule styles the unit
+wherever it appears and a sheet that needs to tell them apart says
+`number-field > field-unit`. Note that "unit" here is a *word shown beside a
+number* and has nothing to do with the CSS length units below: nothing converts,
+scales or validates against it.
+
+    number-field > field-unit { color: #8a8a8a; font-size: 12px; }
 
 So `border-radius` on a `Layer` does nothing; on a `ui::Panel` (or a `Badge`,
 `Checkbox`, `Button`, `Select`, `VectorField`, `ColorField`, `Chip`, `ChipRow`,

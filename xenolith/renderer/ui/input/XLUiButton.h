@@ -27,6 +27,7 @@
 #include "XLUiInteractiveComponent.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -49,7 +50,7 @@ enum class ButtonIconTheme {
 //   button { background-color:#1e88e5; outline-color:#0d47a1; outline-width:2px;
 //            border-radius:20px; display:flex; align-items:center; ... }
 //   button > label { color:#ffffff; font-size:16px; }
-class SP_PUBLIC Button : public Panel {
+class SP_PUBLIC Button : public Panel, public EditLockTarget {
 public:
 	virtual ~Button();
 

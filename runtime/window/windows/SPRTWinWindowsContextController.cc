@@ -250,6 +250,13 @@ Status WindowsContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	return Status::ErrorIncompatibleDevice;
 }
 
+Status WindowsContextController::probeClipboard(Rc<ClipboardProbe> &&probe) {
+	if (_messageWindow) {
+		return _messageWindow->probeClipboard(sprt::move(probe));
+	}
+	return Status::ErrorIncompatibleDevice;
+}
+
 Status WindowsContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 	if (_messageWindow) {
 		return _messageWindow->writeToClipboard(sprt::move(data));

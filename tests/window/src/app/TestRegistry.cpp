@@ -48,6 +48,8 @@
 #include "widgets/VectorFieldLayout.h"
 #include "widgets/ColorFieldLayout.h"
 #include "widgets/ChipRowLayout.h"
+#include "widgets/ClipboardLayout.h"
+#include "widgets/TextViewLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/SelectLayout.h"
 #include "widgets/SearchPickerLayout.h"
@@ -346,6 +348,32 @@ static const TestInfo s_widgetsTests[] = {
 				   "reports must be the height it draws at. Drive it over the inspector: "
 				   "chip.state, chip.set-width, chip.open, send_input native=true."),
 		TestRegistry_make<ChipRowLayout>, true},
+
+	TestInfo{StringView("clipboard"), StringView("XL_CLIPBOARD_TEST"),
+		StringView("xenolith::ClipboardSession"),
+		StringView("One payload with two representations, and a preference list that decides which "
+				   "comes back. A list matching nothing must still be answered EXACTLY ONCE - "
+				   "wayland answers an unoffered type with silence and the base controller answers "
+				   "twice, which is what the seam exists to hide. A cancelled read must not be "
+				   "answered at all, and neither must one whose field lost focus. What a "
+				   "ui::TextInput copies a ui::TextView must paste, because copy/cut/paste live in "
+				   "the base now; but a masked field must still refuse, and a text view must still "
+				   "not mask. Drive it over the inspector: clipboard.write, clipboard.read, "
+				   "clipboard.state."),
+		TestRegistry_make<ClipboardLayout>, true},
+
+	TestInfo{StringView("text-view"), StringView("XL_TEXT_VIEW_TEST"),
+		StringView("ui::TextView undo history"),
+		StringView("A multi-line view that answers Ctrl+Z and a plain field beside it that does "
+				   "NOT - a field commits into somebody's document, and one that swallowed the "
+				   "chord would undo the typing instead of the edit. A run of keystrokes must be "
+				   "ONE entry until its idle window passes; a paste must be one of its own; undo "
+				   "must put back the caret as well as the characters, and must not record itself. "
+				   "Typing goes through the platform (native=true), because the processor owns "
+				   "printable keys and a typed character reaches the widget only as an echo. Drive "
+				   "it over the inspector: text-view.state, text-view.undo, text-view.redo, "
+				   "text-view.history-break, send_input native=true."),
+		TestRegistry_make<TextViewLayout>, true},
 
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "

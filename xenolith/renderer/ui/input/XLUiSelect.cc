@@ -35,6 +35,27 @@ static constexpr IconName s_selectArrowIcon = IconName::Navigation_arrow_drop_do
 static constexpr float s_selectPadding = 10.0f;
 static constexpr float s_selectGap = 8.0f;
 
+// The two spellings differ only in what they read from; see the note in the header on why one
+// cannot serve both.
+template <typename Source>
+static Vector<SelectOption> Select_makeOptions(Source names) {
+	Vector<SelectOption> ret;
+	ret.reserve(names.size());
+	for (auto &it : names) {
+		auto id = StringView(it).str<Interface>();
+		// The title is a COPY of the id, not a view of it: the two are separate fields and an
+		// option whose title aliased its id would change both when either was rewritten.
+		ret.emplace_back(SelectOption{id, id});
+	}
+	return ret;
+}
+
+Vector<SelectOption> makeSelectOptions(SpanView<StringView> names) {
+	return Select_makeOptions(names);
+}
+
+Vector<SelectOption> makeSelectOptions(SpanView<String> names) { return Select_makeOptions(names); }
+
 Select::~Select() { }
 
 bool Select::init() {
@@ -246,6 +267,9 @@ void Select::setPlaceholder(StringView text) {
 void Select::setChangeCallback(ChangeCallback &&cb) { _changeCallback = sp::move(cb); }
 
 void Select::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
@@ -253,10 +277,8 @@ void Select::setEnabled(bool value) {
 	if (!_enabled) {
 		close();
 		blur();
-		addStyleClass("disabled");
-	} else {
-		removeStyleClass("disabled");
 	}
+	applyControlEnabled(this, _enabled);
 	updateInteractiveState();
 }
 
@@ -461,8 +483,8 @@ void Select::updateContent() {
 
 void Select::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		bool dirty = state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-												 : (state->state & ~InteractiveState::Enabled));
+		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
 		const bool hover = _hoverApplied && _enabled;
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {

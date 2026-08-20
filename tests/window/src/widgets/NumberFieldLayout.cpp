@@ -165,6 +165,26 @@ Value NumberFieldLayout::encodeField(ui::NumberField *field) const {
 	ret.setBool(field->isFocused(), "focused");
 	ret.setBool(field->isDragging(), "dragging");
 
+	ret.setString(field->getUnit(), "unit");
+
+	// What the field was TOLD and what it SHOWS are the two halves of setUnit, and only the second
+	// is worth checking - so this is read off the label node, not out of the widget's string.
+	String unitText;
+	for (auto &child : field->getChildren()) {
+		if (child->getType() == "field-unit") {
+			auto label = static_cast<basic2d::Label *>(child.get());
+			if (label->isVisible()) {
+				unitText = string::toUtf8<Interface>(label->getString());
+			}
+		}
+	}
+	ret.setString(unitText, "unitText");
+
+	// The proof that the unit took room out of the TEXT rather than being drawn on top of it.
+	if (auto container = field->getContainer()) {
+		ret.setDouble(container->getContentSize().width, "viewportWidth");
+	}
+
 	if (field->hasRange()) {
 		ret.setDouble(field->getMin(), "min");
 		ret.setDouble(field->getMax(), "max");
@@ -285,6 +305,16 @@ void NumberFieldLayout::registerCommands() {
 			ret.addValue(sp::move(entry));
 		}
 		return ret;
+	});
+
+	addCommand("set-unit", "Set or clear a field's unit label: {target, value}",
+			[this](Value &&args) {
+		auto field = getTarget(args);
+		if (!field) {
+			return ackValue(false);
+		}
+		field->setUnit(static_cast<const Value &>(args).getString("value"));
+		return ackValue(true);
 	});
 
 	addCommand("reset-counters", "Zero every field's callback count", [this](Value &&) {

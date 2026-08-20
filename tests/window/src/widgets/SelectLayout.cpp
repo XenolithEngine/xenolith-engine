@@ -360,6 +360,23 @@ void SelectLayout::registerCommands() {
 		return ackValue(true);
 	});
 
+	addCommand("set-string-options",
+			"Repopulate a control from a plain list of names, id == title: {target, values}",
+			[this](Value &&args) {
+		auto select = getTarget(args);
+		if (!select) {
+			return ackValue(false);
+		}
+		Vector<String> names;
+		for (auto &it : static_cast<const Value &>(args).getArray("values")) {
+			names.emplace_back(it.getString());
+		}
+		// Through the Vector<String> overload on purpose: that is the spelling a schema's enum
+		// family actually hands over, and the one a SpanView<StringView> could not have taken.
+		select->setOptions(ui::makeSelectOptions(names));
+		return ackValue(true);
+	});
+
 	addCommand("reset-counters", "Zero the change log", [this](Value &&) {
 		_changes = 0;
 		_lastChange.clear();

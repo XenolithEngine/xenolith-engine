@@ -90,6 +90,7 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [Windows: opening, owning, closing](window/windows.adoc) | opening a second window, a popup, a tooltip or a menu; fullscreen, monitors, window state |
 | [System dialogs and shell actions](window/dialogs.adoc) | asking the OS for a file, a folder, a colour or a font; reveal-in-file-manager; move-to-trash and restore-from-trash; asking whether one dialog type is served at all |
+| [The system clipboard](window/clipboard.adoc) | copying or pasting anything: typed payloads, preference lists, and why a read has to be cancellable |
 
 ## Guides
 

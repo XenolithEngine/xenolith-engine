@@ -164,6 +164,12 @@ st = state()
 expect(st["tabRing"] == ALL_FIELDS, "ring lists every field in document order", st["tabRing"])
 expect(st["focused"] == "", "an untouched form takes no focus on its own", repr(st["focused"]))
 
+# Captured HERE, where the assertion above has just established that nothing has been focused,
+# hovered or clicked yet: this is what each widget looks like to the style resolver before anything
+# touches it. Asserted at the end - a component created lazily on first focus would look identical
+# by then, which is exactly the bug that has to stay caught.
+UNTOUCHED_FIELDS = st["fields"]
+
 print("== 2. a collapsed subtree drops out of the ring ==")
 s.invoke("form.set-visible", visible=False, settle=0.0)
 step(2)
@@ -463,6 +469,73 @@ step(8)
 pasted = field_state("email")["text"]
 expect(pasted == "Cut me", "the paste ran and the clipboard was untouched by the password",
        repr(pasted))
+
+print("== a locked control says why, and leaves the ring ==")
+REASON = "a wire supplies this value"
+s.invoke("form.set-locked", field="notes", locked=True, reason=REASON, settle=0.0)
+step(2)
+st = state()
+f = st["fields"]["notes"]
+expect(f["locked"] is True, "the field reports itself locked")
+expect(f["lockReason"] == REASON, "and carries the reason it was given", repr(f["lockReason"]))
+expect(f["lockedClass"] is True, "the `locked` class is on the node for a stylesheet")
+expect(f["disabledClass"] is True, "and `disabled` with it - a locked control IS disabled")
+expect(f["interactive"]["enabled"] is False, "so :disabled matches it")
+expect(f["tooltip"] == REASON, "the reason is readable as a hint", repr(f["tooltip"]))
+expect("notes" not in st["tabRing"], "the locked field left the tab ring", st["tabRing"])
+
+s.invoke("form.set-locked", field="notes", locked=False, settle=0.0)
+step(2)
+st = state()
+f = st["fields"]["notes"]
+expect(f["locked"] is False, "unlocking clears the lock")
+expect(f["lockedClass"] is False, "and the class with it")
+expect(f["interactive"]["enabled"] is True, "the control is live again")
+expect(f["tooltip"] == "", "and the hint the lock installed is taken away", repr(f["tooltip"]))
+expect(state()["tabRing"] == ALL_FIELDS, "the field is back in the ring", state()["tabRing"])
+
+print("== the lock and the widget's own enablement are two sources, not one ==")
+# Disabled by the application, THEN locked: clearing the lock must not switch on something the
+# application had switched off for its own reasons.
+s.invoke("form.set-widget-enabled", field="notes", enabled=False, settle=0.0)
+step(2)
+expect(state()["fields"]["notes"]["interactive"]["enabled"] is False, "the widget is off")
+s.invoke("form.set-locked", field="notes", locked=True, reason=REASON, settle=0.0)
+step(2)
+s.invoke("form.set-locked", field="notes", locked=False, settle=0.0)
+step(2)
+f = state()["fields"]["notes"]
+expect(f["interactive"]["enabled"] is False,
+       "unlocking gives back what the APPLICATION asked for, not `on`")
+s.invoke("form.set-widget-enabled", field="notes", enabled=True, settle=0.0)
+step(2)
+expect(state()["fields"]["notes"]["interactive"]["enabled"] is True, "and enabling it works")
+
+print("== a checkbox is finally visible to CSS ==")
+# The bug this closes: with no InteractiveComponent a node reads as state 0, and `:disabled` is
+# "not :enabled" - so an untouched checkbox matched `checkbox:disabled` while being enabled.
+c = UNTOUCHED_FIELDS["subscribe"]["interactive"]
+expect(c["hasComponent"] is True,
+       "a checkbox carries the component from the FIRST frame, before anything touches it")
+expect(c["enabled"] is True,
+       "so :enabled matches it and :disabled does not - which was backwards before")
+
+# The same for every other control in the form: the invariant is "a control is visible to the
+# style resolver from frame zero", not "a checkbox is".
+for _f in ("name", "email", "notes", "submit", "reset"):
+    expect(UNTOUCHED_FIELDS[_f]["interactive"]["hasComponent"] is True,
+           f"{_f} carries the component from the first frame too",
+           UNTOUCHED_FIELDS[_f]["interactive"])
+s.invoke("form.set-checked", field="subscribe", checked=True, settle=0.0)
+step(2)
+expect(state()["fields"]["subscribe"]["interactive"]["checked"] is True,
+       ":checked follows the checkbox")
+s.invoke("form.set-checked", field="subscribe", checked=False, settle=0.0)
+step(2)
+expect(state()["fields"]["subscribe"]["interactive"]["checked"] is False, "and back again")
+expect(state()["fields"]["subscribe"]["interactive"]["focusCounter"] in (0, 1),
+       "and the checkbox did not become a second writer of the focus counter",
+       state()["fields"]["subscribe"]["interactive"]["focusCounter"])
 
 print()
 print(f"SUMMARY: {CHECKS} checks, {len(FAIL)} failures")

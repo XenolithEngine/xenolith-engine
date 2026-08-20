@@ -32,6 +32,9 @@ static constexpr float s_vectorPadding = 4.0f;
 static constexpr float s_vectorGap = 8.0f;
 static constexpr float s_vectorLabelGap = 4.0f;
 
+// Between the last component and the row's unit.
+static constexpr float s_vectorUnitGap = 6.0f;
+
 // x, y, z, w, and then the bare index. Four names because four is where the convention ends: a
 // six-component row has no letters everyone agrees on, so its parts are numbered instead of being
 // given invented ones.
@@ -142,8 +145,19 @@ void VectorField::handleContentSizeDirty() {
 		return;
 	}
 
+	// The row's unit is placed FIRST and the components share what is left: it is measured now for
+	// the same reason the component labels are - a label shapes itself on its own update, which
+	// runs after this pass.
+	float right = width - s_vectorPadding;
+	if (_unitLabel && _unitLabel->isVisible()) {
+		_unitLabel->tryUpdateLabel();
+		_unitLabel->setAnchorPoint(Anchor::MiddleRight);
+		_unitLabel->setPosition(Vec2(right, height / 2.0f));
+		right -= _unitLabel->getContentSize().width + s_vectorUnitGap;
+	}
+
 	const auto count = uint32_t(_components.size());
-	const float inner = width - s_vectorPadding * 2.0f - s_vectorGap * float(count - 1);
+	const float inner = (right - s_vectorPadding) - s_vectorGap * float(count - 1);
 	const float slot = sprt::max(inner / float(count), 0.0f);
 
 	float left = s_vectorPadding;
@@ -189,6 +203,28 @@ void VectorField::setLabels(SpanView<StringView> labels) {
 	updateLabels();
 }
 
+void VectorField::setUnit(StringView value) {
+	if (StringView(_unit) == value) {
+		return;
+	}
+	_unit = value.str<Interface>();
+
+	if (!_unitLabel) {
+		if (_unit.empty()) {
+			return;
+		}
+		_unitLabel = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+		// The type ui::NumberField's unit uses, so one rule styles both.
+		_unitLabel->setType("field-unit");
+		_unitLabel->addStyleClass("xl-ui-field-unit");
+		_unitLabel->setAlignment(font::TextAlign::Left);
+	}
+
+	_unitLabel->setString(_unit);
+	_unitLabel->setVisible(!_unit.empty());
+	_contentSizeDirty = true;
+}
+
 void VectorField::setInteger(bool value) {
 	_integer = value;
 	for (auto &it : _components) { it->setInteger(value); }
@@ -228,10 +264,14 @@ void VectorField::setDragSensitivity(float value) {
 }
 
 void VectorField::setEnabled(bool value) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
 	if (_enabled == value) {
 		return;
 	}
 	_enabled = value;
+	applyControlEnabled(this, _enabled);
 	for (auto &it : _components) { it->setEnabled(value); }
 	updateInteractiveState();
 }
@@ -382,8 +422,8 @@ void VectorField::updateArityClass() {
 
 void VectorField::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		bool dirty = state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-												 : (state->state & ~InteractiveState::Enabled));
+		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		bool dirty = false;
 		// The counter is cumulative, so it is pushed on an edge and never twice. The components
 		// paint their own `:focus`; this one is the ROW's, and it is on whenever any part of it
 		// holds the keyboard.

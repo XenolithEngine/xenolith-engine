@@ -26,6 +26,7 @@
 #include "XLUiPanel.h"
 #include "XLUiNumberField.h"
 #include "XL2dLabel.h"
+#include "XLUiEditLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -69,7 +70,7 @@ CSS: type `vector-field`, class `xl-ui-vector-field`, plus `arity-N` for the cur
 sheet can lay a pair out differently from a quadruple. Children are `vector-field > number-field`
 and `vector-field > component-label`. Hover lives on the components, which are what a pointer is
 actually over; the row itself paints `:focus` (any component focused) and `:disabled`. */
-class SP_PUBLIC VectorField : public Panel {
+class SP_PUBLIC VectorField : public Panel, public EditLockTarget {
 public:
 	// The whole vector, on every accepted change to any component. A consumer of this widget holds
 	// a vector, so that is what it hears; per-component notification is on the component itself.
@@ -105,6 +106,20 @@ public:
 	// x, y, z, w and then the index, unless told otherwise. An EMPTY list removes the labels
 	// entirely, for a row that is captioned from outside.
 	virtual void setLabels(SpanView<StringView>);
+
+	/* The unit of the WHOLE ROW, drawn once after the last component - metres, degrees, px.
+
+	One, not one per component, and that is a statement about what a vector is: a Vec3 in metres is
+	metres in all three, and three "px" in a row read as noise rather than as information. It is
+	also the shape the value has - a control hint carries one unit per FIELD, and this widget is one
+	field.
+
+	Unlike setRange/setStep/setInteger this does NOT fan out into the components: those are
+	conveniences over each component's own setter, while this one belongs to the row itself. A
+	component that must name its own unit is reached through getComponentAt(). */
+	virtual void setUnit(StringView);
+	StringView getUnit() const { return _unit; }
+	basic2d::Label *getUnitLabel() const { return _unitLabel; }
 
 	// ---- shared component settings; see the class comment on what "shared" means ---------------
 
@@ -200,6 +215,13 @@ protected:
 
 	Vector<NumberField *> _components;
 	Vector<basic2d::Label *> _labels;
+
+	// Deliberately NOT in _labels: rebuildComponents() tears that vector down on every setArity,
+	// and the row's unit has to survive a widening. Typed `field-unit` rather than
+	// `component-label` for the same reason - anything walking the children by that type is asking
+	// for the per-component labels and must not be handed this one.
+	basic2d::Label *_unitLabel = nullptr;
+	String _unit;
 
 	// What setLabels was given, empty until it is called. `_labelsExplicit` is the difference
 	// between "not told" (x/y/z/w) and "told none" (no labels at all).

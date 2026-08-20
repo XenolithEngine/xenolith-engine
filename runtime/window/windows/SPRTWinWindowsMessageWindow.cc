@@ -640,153 +640,21 @@ struct MessageWindow::WinRtAdapter {
 	}
 #endif
 
-	/*static void readClipboardValue(ClipboardRequest *req, StringView type,
-			const Foundation::IInspectable &s) {
-
-		if (auto stream = s.try_as<Storage::Streams::IInputStream>()) {
-			//readClipboardValue(req, type, stream);
-			auto readReq = Rc<ClipboardReadRequest>::create();
-			readReq->request = req;
-			readReq->type = type.str<String>();
-			readReq->stream = sprt::move(stream);
-			readReq->step();
-		} else {
-			req->dataCallback(Status::ErrorCancelled, BytesView(), type);
-		}
-	}
-
-	template <typename T>
-	static void readFromClipboard(Foundation::IAsyncOperation<T> &&async,
-			Rc<ClipboardRequest> &&req, StringView type) {
-		async.Completed([req = sprt::move(req), type = type.str<String>()](auto &&sender,
-								Foundation::AsyncStatus const status) {
-			if (status == Foundation::AsyncStatus::Completed) {
-				readClipboardValue(req, type, sender.GetResults());
-			} else {
-				req->dataCallback(Status::ErrorCancelled, BytesView(), type);
-			}
-		});
-	}*/
-
-	Status readFromClipboard(Rc<ClipboardRequest> &&req) {
-		/*auto content = Clipboard::GetContent();
-		if (!content) {
-			return Status::ErrorNotImplemented;
-		}
-
-		memory::map<StringView, winrt::hstring> formatsMap;
-		memory::vector<StringView> formatsVec;
-		auto formats = content.AvailableFormats();
-		for (size_t i = 0; i < formats.Size(); ++i) {
-			auto v = formats.GetAt(i);
-			auto str = getFormatType(content, v);
-
-			formatsVec.emplace_back(str);
-			formatsMap.emplace(str, v);
-
-			XL_WIN32_LOG("Clipboard type: ", str);
-		}
-
-		auto type = req->typeCallback(formatsVec);
-
-		auto it = formatsMap.find(type);
-		if (it == formatsMap.end()) {
-			return Status::ErrorInvalidArguemnt;
-		}
-
-		if (it->second == StandardDataFormats::ApplicationLink()) {
-			readFromClipboard(content.GetApplicationLinkAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::Bitmap()) {
-			readFromClipboard(content.GetBitmapAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::Html()) {
-			readFromClipboard(content.GetHtmlFormatAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::Rtf()) {
-			readFromClipboard(content.GetRtfAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::StorageItems()) {
-			readFromClipboard(content.GetStorageItemsAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::Text()) {
-			readFromClipboard(content.GetTextAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::Uri()) {
-			readFromClipboard(content.GetUriAsync(), sprt::move(req), it->first);
-		} else if (it->second == StandardDataFormats::WebLink()) {
-			readFromClipboard(content.GetWebLinkAsync(), sprt::move(req), it->first);
-		} else {
-			readFromClipboard(content.GetDataAsync(it->second), sprt::move(req), it->first);
-		}*/
-
-		return Status::ErrorNotImplemented;
-	}
-
-	struct ClipboardDataProvider : Ref {
-		Rc<ClipboardData> data;
-
-		/*void setProvider(DataPackage &dataPackage, const winrt::hstring &key, StringView type,
-				bool transcode = false) {
-			dataPackage.SetDataProvider(key,
-					DataProviderHandler([type, dataProvider = Rc<ClipboardDataProvider>(this),
-												transcode](auto &&request) {
-				auto inMemoryStream = Storage::Streams::InMemoryRandomAccessStream();
-				auto bytes = dataProvider->data->encodeCallback(type);
-				if (transcode && type.starts_with("text/")) {
-					StringView utf8_str((const char *)bytes.data(), bytes.size());
-					const auto size = unicode::getUtf16Length(utf8_str);
-					Storage::Streams::Buffer buffer((size + 1) * sizeof(wchar_t));
-
-					char16_t *d = (char16_t *)buffer.data();
-
-					uint8_t offset = 0;
-					auto ptr = utf8_str.data();
-					auto len = utf8_str.size();
-					auto end = ptr + utf8_str.size();
-					while (ptr < end) {
-						auto c = unicode::utf8Decode32(ptr, len, offset);
-						d += unicode::utf16EncodeBuf(d, len, c);
-						ptr += offset;
-						len -= offset;
-					}
-					d += unicode::utf16EncodeBuf(d, 1, char32_t(0));
-
-					buffer.Length((size + 1) * sizeof(wchar_t));
-					inMemoryStream.WriteAsync(buffer);
-				} else {
-					Storage::Streams::Buffer buffer(bytes.size());
-					memcpy(buffer.data(), bytes.data(), bytes.size());
-					buffer.Length(bytes.size());
-					inMemoryStream.WriteAsync(buffer);
-				}
-				request.SetData(inMemoryStream);
-			}));
-		}*/
-	};
-
-	Status writeToClipboard(Rc<ClipboardData> &&data) {
-		/*DataPackage dataPackage;
-		auto dataProvider = Rc<ClipboardDataProvider>::create();
-		dataProvider->data = sprt::move(data);
-
-		for (auto &type : dataProvider->data->types) {
-			unicode::toUtf16([&](WideStringView wType) {
-				if (type == "text/plain") {
-					dataProvider->setProvider(dataPackage, StandardDataFormats::Text(), type, true);
-				} else if (type == "text/html") {
-					dataProvider->setProvider(dataPackage, StandardDataFormats::Html(), type, true);
-				} else if (type == "image/png") {
-					dataProvider->setProvider(dataPackage, L"PNG", type);
-				}
-				dataProvider->setProvider(dataPackage,
-						winrt::hstring((wchar_t *)wType.data(), wType.size()), type);
-			}, type);
-		};
-
-		Clipboard::SetContent(dataPackage);*/
-		return Status::Ok;
-	}
 };
 
 MessageWindow::~MessageWindow() {
 	_networkConnectivity = nullptr;
 
 	if (_window) {
+		// Before the window goes: anything still promised to the clipboard has to be materialized,
+		// or a paste after this process exits finds an empty offer. DestroyWindow sends
+		// WM_RENDERALLFORMATS itself, but only while the owner can still answer it
+		if (_clipboardData) {
+			handleRenderAllFormats();
+			_clipboardData = nullptr;
+		}
+		RemoveClipboardFormatListener(_window);
+
 		SetWindowLongPtrW(_window, GWL_USERDATA, 0);
 		DestroyWindow(_window);
 		_window = nullptr;
@@ -834,6 +702,10 @@ bool MessageWindow::init(NotNull<WindowsContextController> c) {
 
 	if (_window) {
 		SetWindowLongPtrW(_window, GWL_USERDATA, reinterpret_cast<LONG_PTR>(this));
+
+		// WM_CLIPBOARDUPDATE from here on, which is what makes Windows report
+		// SystemNotification::ClipboardChanged like xcb, wayland and Android already do
+		AddClipboardFormatListener(_window);
 	}
 
 	handleSettingsChanged();
@@ -870,17 +742,290 @@ Status MessageWindow::handleInputDevicesChanged() {
 	return Status::Propagate;
 }
 
-Status MessageWindow::readFromClipboard(Rc<ClipboardRequest> &&req) {
-	if (_adapter) {
-		return _adapter->readFromClipboard(sprt::move(req));
+/* THE CLIPBOARD, THROUGH WIN32 RATHER THAN WINRT.
+
+The WinRT implementation this replaced is gone from the file: it needed C++/WinRT headers this
+cross-build does not have, and it had never been compiled. Win32 fits the data model better anyway,
+because DELAYED RENDERING is exactly what a lazy encoder is - a format is put up with a null handle
+and the owner is asked for the bytes only when someone actually pastes.
+
+WHY THE MESSAGE WINDOW SERVES IT: the clipboard is owned by a WINDOW. OpenClipboard takes one, and
+WM_RENDERFORMAT is delivered to whichever window took the selection - so the process-wide,
+message-only window is the right owner, and no application window has to exist for a copy to work.
+
+MIME TYPES REACH WINDOWS BY NAME. RegisterClipboardFormatW turns "application/x-xenolith-studio+json"
+into a format id that is stable for the session and identical in every process that asks for the same
+name, which is what makes a fragment survive a trip between two instances. Only text is special:
+`text/plain` maps to CF_UNICODETEXT, converted UTF-8 <-> UTF-16 on the way in and out, so that
+Notepad and every other Windows application can read what we copied. */
+
+namespace {
+
+// CF_UNICODETEXT for text/plain, a registered format for anything else. 0 only if the registration
+// failed, which is out of format ids for the session - a real, if unlikely, refusal.
+static UINT clipboardFormatForType(StringView type) {
+	if (type.starts_with("text/plain")) {
+		return CF_UNICODETEXT;
 	}
-	return Status::ErrorNotImplemented;
+
+	UINT ret = 0;
+	unicode::toUtf16([&](WideStringView str) {
+		auto owned = str.str<WideString>();
+		ret = RegisterClipboardFormatW((LPCWSTR)owned.data());
+	}, type);
+	return ret;
 }
-Status MessageWindow::writeToClipboard(Rc<ClipboardData> &&data) {
-	if (_adapter) {
-		return _adapter->writeToClipboard(sprt::move(data));
+
+// The inverse. Both text formats answer `text/plain`, which is the same aliasing xcb does with
+// UTF8_STRING and STRING and macOS with NSPasteboardTypeString.
+static String typeForClipboardFormat(UINT format) {
+	if (format == CF_UNICODETEXT || format == CF_TEXT) {
+		return String("text/plain");
 	}
-	return Status::ErrorNotImplemented;
+
+	wchar_t buf[256] = {0};
+	auto len = GetClipboardFormatNameW(format, (LPWSTR)buf, 255);
+	if (len <= 0) {
+		return String();
+	}
+
+	String ret;
+	unicode::toUtf8([&](StringView str) { ret = str.str<String>(); },
+			WideStringView((const char16_t *)buf, size_t(len)));
+	return ret;
+}
+
+// SetClipboardData TAKES OWNERSHIP of the block on success, so this is deliberately not paired with
+// a free anywhere on the success path.
+static HGLOBAL globalFromBytes(BytesView data) {
+	auto mem = GlobalAlloc(GMEM_MOVEABLE, data.size() + sizeof(wchar_t));
+	if (!mem) {
+		return nullptr;
+	}
+	auto ptr = GlobalLock(mem);
+	if (!ptr) {
+		GlobalFree(mem);
+		return nullptr;
+	}
+	memcpy(ptr, data.data(), data.size());
+	// Terminated for CF_UNICODETEXT's sake, and harmlessly over-allocated for everything else
+	memset(reinterpret_cast<uint8_t *>(ptr) + data.size(), 0, sizeof(wchar_t));
+	GlobalUnlock(mem);
+	return mem;
+}
+
+// What the owner hands over for one format: the encoder's bytes, converted where the format is text.
+static HGLOBAL renderFormat(ClipboardData *data, UINT format) {
+	auto type = typeForClipboardFormat(format);
+	if (type.empty() || !data->encodeCallback) {
+		return nullptr;
+	}
+
+	auto bytes = data->encodeCallback(type);
+	if (bytes.empty()) {
+		return nullptr;
+	}
+
+	if (format == CF_UNICODETEXT) {
+		HGLOBAL ret = nullptr;
+		unicode::toUtf16([&](WideStringView str) {
+			ret = globalFromBytes(BytesView(reinterpret_cast<const uint8_t *>(str.data()),
+					str.size() * sizeof(char16_t)));
+		}, StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+		return ret;
+	}
+
+	return globalFromBytes(bytes);
+}
+
+} // namespace
+
+Status MessageWindow::readFromClipboard(Rc<ClipboardRequest> &&req) {
+	if (!_window) {
+		req->dataCallback(Status::ErrorNotImplemented, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	// Another process may hold the clipboard open. That is an ordinary outcome rather than a
+	// failure of ours, and the caller is told so instead of being left without an answer
+	if (!OpenClipboard(_window)) {
+		req->dataCallback(Status::ErrorBusy, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	Vector<String> types;
+	UINT format = 0;
+	while ((format = EnumClipboardFormats(format)) != 0) {
+		auto type = typeForClipboardFormat(format);
+		if (!type.empty()) {
+			types.emplace_back(sprt::move(type));
+		}
+	}
+
+	if (types.empty()) {
+		CloseClipboard();
+		req->dataCallback(Status::ErrorNotFound, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	Vector<StringView> views;
+	views.reserve(types.size());
+	for (auto &it : types) { views.emplace_back(StringView(it)); }
+
+	auto selected = req->typeCallback(views);
+	if (selected.empty()) {
+		CloseClipboard();
+		req->dataCallback(Status::Declined, BytesView(), StringView());
+		return Status::Ok;
+	}
+
+	auto selectedFormat = clipboardFormatForType(selected);
+	auto handle = selectedFormat ? GetClipboardData(selectedFormat) : nullptr;
+	if (!handle) {
+		CloseClipboard();
+		req->dataCallback(Status::ErrorNotFound, BytesView(), selected);
+		return Status::Ok;
+	}
+
+	// The handle belongs to the clipboard: the bytes are copied out before CloseClipboard and
+	// nothing here frees it
+	Bytes payload;
+	if (auto ptr = GlobalLock(handle)) {
+		auto size = GlobalSize(handle);
+		if (selectedFormat == CF_UNICODETEXT) {
+			auto chars = reinterpret_cast<const char16_t *>(ptr);
+			size_t len = 0;
+			while (len < size / sizeof(char16_t) && chars[len] != 0) { ++len; }
+			unicode::toUtf8([&](StringView str) {
+				payload = Bytes(reinterpret_cast<const uint8_t *>(str.data()),
+						reinterpret_cast<const uint8_t *>(str.data()) + str.size());
+			}, WideStringView(chars, len));
+		} else {
+			auto bytes = reinterpret_cast<const uint8_t *>(ptr);
+			payload = Bytes(bytes, bytes + size);
+		}
+		GlobalUnlock(handle);
+	}
+
+	CloseClipboard();
+
+	req->dataCallback(Status::Ok, payload, selected);
+	return Status::Ok;
+}
+
+Status MessageWindow::probeClipboard(Rc<ClipboardProbe> &&probe) {
+	if (!_window) {
+		probe->typeCallback(Status::ErrorNotImplemented, SpanView<StringView>());
+		return Status::Ok;
+	}
+
+	if (!OpenClipboard(_window)) {
+		probe->typeCallback(Status::ErrorBusy, SpanView<StringView>());
+		return Status::Ok;
+	}
+
+	Vector<String> types;
+	UINT format = 0;
+	while ((format = EnumClipboardFormats(format)) != 0) {
+		auto type = typeForClipboardFormat(format);
+		if (!type.empty()) {
+			types.emplace_back(sprt::move(type));
+		}
+	}
+	CloseClipboard();
+
+	if (types.empty()) {
+		probe->typeCallback(Status::ErrorNotFound, SpanView<StringView>());
+		return Status::Ok;
+	}
+
+	Vector<StringView> views;
+	views.reserve(types.size());
+	for (auto &it : types) { views.emplace_back(StringView(it)); }
+	probe->typeCallback(Status::Ok, views);
+	return Status::Ok;
+}
+
+Status MessageWindow::writeToClipboard(Rc<ClipboardData> &&data) {
+	if (!_window || !data) {
+		return Status::ErrorNotImplemented;
+	}
+
+	if (data->types.empty()) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	if (!OpenClipboard(_window)) {
+		return Status::ErrorBusy;
+	}
+
+	EmptyClipboard();
+
+	// Every format goes up with a NULL handle: that is delayed rendering, and it is what keeps the
+	// encoder lazy. The bytes are produced in WM_RENDERFORMAT, if anyone ever asks
+	size_t offered = 0;
+	for (auto &it : data->types) {
+		if (auto format = clipboardFormatForType(StringView(it))) {
+			SetClipboardData(format, nullptr);
+			++offered;
+		}
+	}
+
+	CloseClipboard();
+
+	if (offered == 0) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	// Held until the selection is lost (WM_DESTROYCLIPBOARD): it owns the encoder, and the encoder
+	// is the only thing that can answer a render request
+	_clipboardData = sprt::move(data);
+	return Status::Ok;
+}
+
+Status MessageWindow::handleRenderFormat(UINT format) {
+	if (!_clipboardData) {
+		return Status::Declined;
+	}
+
+	// NO OpenClipboard here: the owner is already inside the clipboard's own call, and opening it
+	// again is what the documentation explicitly forbids
+	if (auto mem = renderFormat(_clipboardData, format)) {
+		SetClipboardData(format, mem);
+		return Status::Ok;
+	}
+	return Status::Declined;
+}
+
+Status MessageWindow::handleRenderAllFormats() {
+	if (!_clipboardData) {
+		return Status::Declined;
+	}
+
+	// This one DOES open the clipboard, and must verify it is still the owner: the message arrives
+	// as the window goes away, and by then the selection may already belong to someone else
+	if (!OpenClipboard(_window)) {
+		return Status::ErrorBusy;
+	}
+
+	if (GetClipboardOwner() == _window) {
+		for (auto &it : _clipboardData->types) {
+			if (auto format = clipboardFormatForType(StringView(it))) {
+				if (auto mem = renderFormat(_clipboardData, format)) {
+					SetClipboardData(format, mem);
+				}
+			}
+		}
+	}
+
+	CloseClipboard();
+	return Status::Ok;
+}
+
+Status MessageWindow::handleDestroyClipboard() {
+	// The selection went to someone else; the encoder has nothing left to answer for
+	_clipboardData = nullptr;
+	return Status::Ok;
 }
 
 LRESULT MessageWindow::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -915,6 +1060,34 @@ LRESULT MessageWindow::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		win->handleInputDevicesChanged();
 		return getResultForStatus("WM_DEVICECHANGE ",
 				win->handleDisplayChanged(Extent2(LOWORD(lParam), HIWORD(lParam))));
+		break;
+
+	case WM_RENDERFORMAT:
+		// Someone is pasting what this process copied. The bytes are produced now, from the encoder
+		// the offer carried - which is what "the encoder stays lazy" means on Windows
+		XL_WIN32_LOG("Event: WM_RENDERFORMAT");
+		win->handleRenderFormat(UINT(wParam));
+		return 0;
+		break;
+
+	case WM_RENDERALLFORMATS:
+		// The window is going away while it still owns the selection: everything it offered has to
+		// be materialized now, or the clipboard is left holding empty promises
+		XL_WIN32_LOG("Event: WM_RENDERALLFORMATS");
+		win->handleRenderAllFormats();
+		return 0;
+		break;
+
+	case WM_DESTROYCLIPBOARD:
+		XL_WIN32_LOG("Event: WM_DESTROYCLIPBOARD");
+		win->handleDestroyClipboard();
+		return 0;
+		break;
+
+	case WM_CLIPBOARDUPDATE:
+		XL_WIN32_LOG("Event: WM_CLIPBOARDUPDATE");
+		win->handleSystemNotification(SystemNotification::ClipboardChanged);
+		return 0;
 		break;
 
 	case WM_DISPLAYCHANGE:

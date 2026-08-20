@@ -29,6 +29,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // ui::FormSystem marks a rejected field with.
 static constexpr auto s_numberInvalidClass = StringView("invalid");
 
+// Between the number and its unit. The same gap ui::VectorField leaves between a component and its
+// label, because the two read as one row when they sit side by side.
+static constexpr float s_numberUnitGap = 4.0f;
+
 NumberField::~NumberField() { }
 
 bool NumberField::init() {
@@ -120,6 +124,63 @@ void NumberField::setValue(double value, bool silent) {
 }
 
 void NumberField::setValueCallback(ValueCallback &&cb) { _valueCallback = sp::move(cb); }
+
+void NumberField::setUnit(StringView value) {
+	if (StringView(_unit) == value) {
+		return;
+	}
+	_unit = value.str<Interface>();
+
+	if (!_unitLabel) {
+		if (_unit.empty()) {
+			// Never named a unit, so there is nothing to build and nothing to hide.
+			return;
+		}
+		// ZOrder above the viewport: the two never overlap, but the order has to be said rather
+		// than inherited from the order of construction.
+		_unitLabel = addChild(Rc<basic2d::Label>::create(), ZOrder(2));
+		// Its own type, shared with ui::VectorField's, so one rule styles the unit wherever it
+		// appears; a sheet that needs to tell them apart writes `number-field > field-unit`.
+		_unitLabel->setType("field-unit");
+		_unitLabel->addStyleClass("xl-ui-field-unit");
+		_unitLabel->setAlignment(font::TextAlign::Left);
+	}
+
+	_unitLabel->setString(_unit);
+	_unitLabel->setVisible(!_unit.empty());
+	_contentSizeDirty = true;
+}
+
+Padding NumberField::getViewportInset() const { return Padding().setRight(_unitInset); }
+
+void NumberField::handleContentSizeDirty() {
+	// Measured NOW, before the base sizes the viewport against it: a label shapes itself on its own
+	// update, which runs AFTER this pass, so without asking for it here its width would read zero
+	// and the number would run underneath it. Same reason, same call, as ui::VectorField's
+	// component labels.
+	if (_unitLabel && _unitLabel->isVisible()) {
+		_unitLabel->tryUpdateLabel();
+		_unitInset = _unitLabel->getContentSize().width + s_numberUnitGap;
+	} else {
+		_unitInset = 0.0f;
+	}
+
+	TextInput::handleContentSizeDirty();
+
+	if (_unitLabel && _unitLabel->isVisible()) {
+		TextInputStyleComponent defaultStyle;
+		const TextInputStyleComponent *style = &defaultStyle;
+		if (auto c = getComponent<TextInputStyleComponent>()) {
+			style = c;
+		}
+
+		// Against the inner edge of the padding, on the viewport's centre line. Not a child of the
+		// container, so the container's scissor never clips it.
+		_unitLabel->setAnchorPoint(Anchor::MiddleRight);
+		_unitLabel->setPosition(Vec2(sprt::max(_contentSize.width - style->padding.right, 0.0f),
+				_contentSize.height / 2.0f));
+	}
+}
 
 void NumberField::setDragEnabled(bool value) {
 	if (_dragEnabled == value) {

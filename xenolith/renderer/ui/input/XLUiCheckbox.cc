@@ -54,6 +54,13 @@ bool Checkbox::init() {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
 
+	/* The InteractiveComponent has to EXIST from the first frame, not from the first call that
+	changes something. A node without one reads as state 0 to the style resolver, and `:disabled` is
+	"not :enabled" - so a checkbox that had never been touched matched `checkbox:disabled` while it
+	was perfectly enabled, and `checkbox:enabled` matched nothing at all. */
+	applyControlEnabled(this, _enabled);
+	applyControlChecked(this, _checked);
+
 	return true;
 }
 
@@ -63,26 +70,30 @@ void Checkbox::setChecked(bool c, bool silent) {
 	}
 	_checked = c;
 	_check->setVisible(c);
+	// The class stays - `checkbox.checked` is what this widget has always advertised - and the
+	// state bit joins it, so `:checked` finally means something here too.
 	if (c) {
 		addStyleClass("checked");
 	} else {
 		removeStyleClass("checked");
 	}
+	applyControlChecked(this, _checked);
 	if (!silent && _callback) {
 		_callback(c);
 	}
 }
 
 void Checkbox::setEnabled(bool e) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it back.
+	e = resolveEditLock(this, e);
 	if (_enabled == e) {
 		return;
 	}
 	_enabled = e;
-	if (e) {
-		removeStyleClass("disabled");
-	} else {
-		addStyleClass("disabled");
-	}
+	applyControlEnabled(this, _enabled);
+	// KEPT deliberately, even though the class is now uniform: an application whose stylesheet has
+	// no `.disabled` rule would otherwise lose the only sign that a checkbox is dead. Taking it
+	// away is a separate decision from making the state readable.
 	setOpacity(e ? 1.0f : 0.4f);
 }
 

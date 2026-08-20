@@ -575,6 +575,27 @@ header, a platform branch, or an allocation. The essentials:
   cancellation token; the callback is required, runs exactly once, and
   `Status::Declined` is the user cancelling, not a failure
   ([dialogs](docs/usage/codestyle/window/dialogs.adoc)).
+- The clipboard is `Rc<ClipboardSession>` over the app thread, never the three
+  `AppThread` calls directly. A payload is a `ClipboardOffer` — MIME types **in
+  order of preference** plus eager or lazy bytes, the same object a drag carries;
+  a read states a **preference list** matched by PREFIX and is answered **exactly
+  once**, which the platforms do not do on their own (wayland drops an unoffered
+  type in silence, the base controller answers twice). **`cancel()` when the
+  reason for the read goes away** — a widget losing focus does it in two places,
+  because the platform usually revokes input rather than going through `blur()`.
+  An empty offer is refused (on Android that means *clear the clipboard*), a
+  write is never a receipt, and policy — a masked field refusing to copy — stays
+  with the widget ([clipboard](docs/usage/codestyle/window/clipboard.adoc)).
+- Undo for text is `ui::TextHistory`, over `hist::CommandBus` from
+  `SPCommandHistory.h`. It records at the ONE point where text changes — the IME
+  **echo**, not a widget command, because the runtime's processor owns printable
+  keys and a typed character never reaches `insertText`. It is **on** for
+  `ui::TextView`/`ui::CodeEditor` and **off** for a plain `ui::TextInput`: a field
+  commits into somebody's document, and `Ctrl+Z` there must take back the document
+  edit, not the typing. A run of keystrokes is one entry until its idle window
+  passes (`breakRun()` ends one on demand); a paste, a cut and a newline are each
+  their own. A handler with nothing to undo answers **false**, so the chord reaches
+  whoever is below — that is how an application arbitrates two histories.
 - A form is one `ui::FormSystem` on the node it is rooted at, and that system
   **is** the focus group; fields are attached to the widgets (`ui::addFormField`,
   `addFormButton`, or `FormFieldSlots` for a widget of your own) and join the
@@ -597,6 +618,28 @@ header, a platform branch, or an allocation. The essentials:
   `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
   a per-type applier, and a refusal is the style class `invalid` — there is no
   `:invalid` pseudo-class in the subset.
+- **A control's states are independent classes, and two of them carry a reason.** `invalid` is "what is written here is wrong"; `disabled` is the
+  mechanical off, and tracks `:disabled`; `read-only` is readable and copyable but
+  not editable; `locked` is "you may not write here at all, and here is why" —
+  `ui::setEditLock(node, reason)` paints it, clears the `Enabled` bit, hangs the
+  reason off a `ui::TooltipTarget` (only if the node has no hint of its own) and
+  takes the field out of the form's tab ring. A locked control is also disabled,
+  and the two compose: unlocking restores what the application last asked for, not
+  "on". `ui::applyControlEnabled` is the **single** writer of the `Enabled` bit and
+  of the `disabled` class — do not flip either by hand. `unavailable` is the fifth
+  and narrowest: an ACTION the control offers cannot be performed (no system colour
+  dialog on this platform, a dialog that failed). It is not `invalid` — the value is
+  fine, the way in is missing — and a capability refusal must never borrow the
+  validation channel.
+- **A number can name its unit**, and a unit is a LABEL: `ui::NumberField::setUnit`
+  and `ui::VectorField::setUnit` (one per row, not one per component) draw a word
+  beside the number and inset the text viewport to make room. Nothing converts or
+  validates against it, and it never enters `getText()` — `parse(format(v)) == v`
+  has to keep holding.
+- **A list of names is not a `MenuSource`.** `ui::Select` and `ui::ChipRow` take
+  data (`SelectOption`); `ui::makeSelectOptions` builds that list from plain
+  strings for the id==title case, in both the `StringView` and the `String`
+  spelling because a `SpanView<StringView>` cannot be made from a `Vector<String>`.
 - Two widgets are surfaces rather than atoms, and both exist because a list is
   the wrong shape for what they do. `ui::SearchPicker` is a query line over a
   virtualized result list (`ui::SearchSystem` + a `SearchSource`): a list of
