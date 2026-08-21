@@ -47,6 +47,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 //
 // The NEIGHBOUR is a text field outside the overlay: while an editor is open its exclusive focus
 // group owns the keyboard, and this field must not see a single key.
+//
+// The CUSTOM target is the factory path, and it was added because that path was WRONG. An editor
+// built by InlineEditorFactory is a node this widget knows nothing about, so it cannot read the
+// value out of it - and until setCollectCallback existed, it did not try: every factory-built editor
+// committed Nil, silently, because `collect` is optional and its absence looks exactly like an empty
+// value. Nothing in the tree noticed, because nothing in the tree used a factory. The editor here is
+// a ui::Checkbox on purpose: a widget with no text at all, so a value arriving through the stock
+// text path could not be mistaken for a value arriving through the factory's.
 class InlineEditorLayout : public TestLayout {
 public:
 	virtual bool init() override;
@@ -66,9 +74,12 @@ protected:
 
 	bool beginLabelEdit();
 	bool beginCellEdit(size_t row);
+	bool beginCustomEdit();
 
 	ui::InlineEditTarget *_labelTarget = nullptr;
 	basic2d::Label *_label = nullptr;
+	ui::InlineEditTarget *_customTarget = nullptr;
+	basic2d::Label *_custom = nullptr;
 	ui::TableView *_table = nullptr;
 	ui::TextInput *_neighbour = nullptr;
 
@@ -78,6 +89,11 @@ protected:
 
 	Vector<String> _values;
 	String _labelText;
+
+	// What the factory's checkbox holds, and what it committed. The VALUE rather than its text:
+	// "the commit carried a bool and not Nil" is the whole claim, and a string would hide it.
+	bool _customValue = true;
+	Value _lastCommitValue;
 
 	// Every ending is counted separately: "commit arrives exactly once" is a claim about numbers.
 	uint32_t _commits = 0;
