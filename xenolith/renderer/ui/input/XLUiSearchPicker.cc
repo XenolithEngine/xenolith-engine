@@ -73,37 +73,85 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 	is assembling a character, so this does not fire once per keystroke of a syllable. */
 	_query->setCallback([this](StringView value) { handleQueryChanged(value); });
 
-	_results = addChild(Rc<TableView>::create(), ZOrder(1));
-	_results->setName("search-picker-results");
-	_results->addStyleClass("xl-ui-search-picker-results");
-	_results->setHeaderVisible(false);
-	_results->setRowHeight(_config.style.rowHeight);
-	_results->setSelectionEnabled(true);
-	_results->setColumns(Vector<TableView::Column>{
-		{String("title"), String(), String("search-picker-cell"), GridTrack()},
-	});
-	_results->setCellCallback([this](TableView::CellBuilder &builder) {
-		if (builder.isHeader()) {
-			return;
-		}
-		auto row = builder.getRow();
-		if (!row) {
-			return;
-		}
-		auto index = size_t(row->getData().getInteger("index"));
-		if (index < _hits.size()) {
-			builder.setNode(buildTitleNode(_hits[index]));
-		}
-	});
-	_results->setSelectCallback([this](size_t index, const TableView::Row &) {
-		// The table is the other writer of the selection; keeping our own copy in step is what lets
-		// the arrow keys and the mouse agree about what "selected" means.
-		_selected = index;
-	});
-	_results->setActivateCallback([this](size_t index, const TableView::Row &) {
-		_selected = index;
-		activateSelected();
-	});
+	if (_config.grouped) {
+		/* The grouped list is a TREE, because only a tree has a depth and an expansion state to
+		keep. Everything else about it is the flat list's: the same hits, the same title node, the
+		same highlight, and the same two callbacks - which is the point of doing it here rather than
+		in a second widget. */
+		_tree = addChild(Rc<TreeView>::create(), ZOrder(1));
+		_tree->setName("search-picker-results");
+		_tree->addStyleClass("xl-ui-search-picker-results");
+		_tree->setRowHeight(_config.style.rowHeight);
+		_tree->setSelectionEnabled(true);
+
+		_tree->setRowCallback([this](TreeView::RowBuilder &builder) {
+			// A row is addressed by what its own Value SAYS, never by its index into a list built
+			// beside the model: expanding a category shifts every row after it, and a parallel
+			// vector would then describe the wrong rows.
+			const auto &data = builder.getData();
+			if (!data.hasValue("index")) {
+				// A category. The standard decorated row draws it, so it gets the expander and the
+				// indent for nothing.
+				builder.setLabel(data.getString("name"));
+				builder.setName(toString("search-picker-category-", builder.getIndex()));
+				return;
+			}
+
+			auto index = size_t(data.getInteger("index"));
+			if (index < _hits.size()) {
+				builder.setContent(buildTitleNode(_hits[index]));
+			}
+			builder.setName(toString("search-picker-row-", builder.getIndex()));
+		});
+
+		_tree->setSelectCallback([this](size_t index, const TreeView::Row &) {
+			// The tree is the other writer of the selection; keeping our own copy in step is what
+			// lets the arrow keys and the mouse agree about what "selected" means. A category row
+			// stands for no hit, so selecting one selects nothing.
+			_selected = getHitForRow(index);
+		});
+		_tree->setActivateCallback([this](size_t index, const TreeView::Row &row) {
+			// Activating a category OPENS it. It is not a result and there is nothing to report.
+			if (row.isCategory()) {
+				_tree->toggleRow(index);
+				return;
+			}
+			_selected = getHitForRow(index);
+			activateSelected();
+		});
+	} else {
+		_results = addChild(Rc<TableView>::create(), ZOrder(1));
+		_results->setName("search-picker-results");
+		_results->addStyleClass("xl-ui-search-picker-results");
+		_results->setHeaderVisible(false);
+		_results->setRowHeight(_config.style.rowHeight);
+		_results->setSelectionEnabled(true);
+		_results->setColumns(Vector<TableView::Column>{
+			{String("title"), String(), String("search-picker-cell"), GridTrack()},
+		});
+		_results->setCellCallback([this](TableView::CellBuilder &builder) {
+			if (builder.isHeader()) {
+				return;
+			}
+			auto row = builder.getRow();
+			if (!row) {
+				return;
+			}
+			auto index = size_t(row->getData().getInteger("index"));
+			if (index < _hits.size()) {
+				builder.setNode(buildTitleNode(_hits[index]));
+			}
+		});
+		_results->setSelectCallback([this](size_t index, const TableView::Row &) {
+			// The table is the other writer of the selection; keeping our own copy in step is what
+			// lets the arrow keys and the mouse agree about what "selected" means.
+			_selected = index;
+		});
+		_results->setActivateCallback([this](size_t index, const TableView::Row &) {
+			_selected = index;
+			activateSelected();
+		});
+	}
 
 	_status = addChild(Rc<basic2d::Label>::create(), ZOrder(2));
 	_status->setName("search-picker-status");
@@ -211,10 +259,10 @@ void SearchPickerContent::handleContentSizeDirty() {
 	const float listTop = height - padding - _config.style.queryHeight;
 	const float listHeight = sprt::max(listTop - padding, 0.0f);
 
-	if (_results) {
-		_results->setAnchorPoint(Anchor::TopLeft);
-		_results->setPosition(Vec2(padding, listTop));
-		_results->setContentSize(Size2(inner, listHeight));
+	if (auto list = _results ? static_cast<Node *>(_results) : static_cast<Node *>(_tree)) {
+		list->setAnchorPoint(Anchor::TopLeft);
+		list->setPosition(Vec2(padding, listTop));
+		list->setContentSize(Size2(inner, listHeight));
 	}
 
 	if (_status) {
@@ -228,7 +276,19 @@ StringView SearchPickerContent::getQuery() const {
 	return _query ? _query->getText() : StringView();
 }
 
+void SearchPickerContent::setItems(Vector<SearchItem> &&items) { _config.items = sp::move(items); }
+
 void SearchPickerContent::handleQueryChanged(StringView value) {
+	// What the hits about to be built answer. Everything downstream that needs to know the query -
+	// the display mode above all - reads this rather than the field, which may not have echoed yet.
+	_resultQuery = value.str<Interface>();
+
+	// Before anything is matched: a caller whose own index does the ranking scores the list here,
+	// and `match` below is then only asked to report what that ranking said.
+	if (_config.onQuery) {
+		_config.onQuery(value);
+	}
+
 	if (_config.system && !_config.sourceName.empty()) {
 		if (_request) {
 			_config.system->cancel(_request);
@@ -317,25 +377,124 @@ void SearchPickerContent::handleResult(SearchResult &&result) {
 	updateStatus();
 }
 
+StringView SearchPickerContent::groupOf(const SearchHit &hit) const {
+	auto name = _config.group ? _config.group(hit) : hit.data.getString("category");
+	return name.empty() ? StringView(_config.uncategorized) : name;
+}
+
+bool SearchPickerContent::isGrouping() const { return _config.grouped && _resultQuery.empty(); }
+
 void SearchPickerContent::rebuildModel() {
-	// A fresh model rather than a cleared one: TableView::setSource early-outs on the same pointer,
-	// and for a list this size building a new one is cheaper than reasoning about what a partial
-	// update leaves behind.
+	// A fresh model rather than a cleared one: setSource early-outs on the same pointer, and for a
+	// list this size building a new one is cheaper than reasoning about what a partial update
+	// leaves behind.
 	_model = Rc<data::Model>::create();
 
 	auto root = _model->getRoot();
-	for (uint32_t i = 0; i < _hits.size(); ++i) {
+
+	auto addHit = [&](data::Model::Node *parent, uint32_t i) {
 		Value value;
 		// The index, not the payload: the row has to find its way back to the hit, and the hit's
 		// own id is the caller's and need not be unique.
 		value.setInteger(int64_t(i), "index");
 		value.setString(_hits[i].title, "title");
-		_model->emplaceItem(root, maxOf<size_t>(), sp::move(value));
+		value.setString(_hits[i].title, "name"); // the tree's standard label key
+		_model->emplaceItem(parent, maxOf<size_t>(), sp::move(value));
+	};
+
+	if (isGrouping()) {
+		/* Categories in FIRST-APPEARANCE order, walked once per category over the hits.
+
+		That keeps the order INSIDE a category the one the source produced - which for a palette is
+		a deterministic order somebody's golden dump asserts - and it means the categories
+		themselves come out in the order the source first mentions them rather than in a collation
+		order, which is a matter of convention and is not promised stable across Unicode versions. */
+		Vector<StringView> categories;
+		for (auto &hit : _hits) {
+			auto name = groupOf(hit);
+			bool seen = false;
+			for (auto &c : categories) {
+				if (c == name) {
+					seen = true;
+					break;
+				}
+			}
+			if (!seen) {
+				categories.emplace_back(name);
+			}
+		}
+
+		for (auto &category : categories) {
+			Value value;
+			value.setString(category, "name");
+			auto node = _model->emplaceCategory(root, maxOf<size_t>(), sp::move(value));
+			for (uint32_t i = 0; i < _hits.size(); ++i) {
+				if (groupOf(_hits[i]) == category) {
+					addHit(node, i);
+				}
+			}
+		}
+	} else {
+		for (uint32_t i = 0; i < _hits.size(); ++i) { addHit(root, i); }
 	}
 
 	if (_results) {
 		_results->setSource(_model);
 	}
+	if (_tree) {
+		_tree->setSource(_model);
+	}
+}
+
+// ---- the rows, whichever view is carrying them ---------------------------------------------------
+
+size_t SearchPickerContent::getRowCount() const {
+	if (_tree) {
+		return _tree->getRowCount();
+	}
+	return _hits.size();
+}
+
+size_t SearchPickerContent::getHitForRow(size_t row) const {
+	if (!_tree) {
+		return row < _hits.size() ? row : maxOf<size_t>();
+	}
+	auto r = _tree->getRow(row);
+	if (!r || r->isCategory()) {
+		return maxOf<size_t>();
+	}
+	const auto &data = r->getData();
+	if (!data.hasValue("index")) {
+		return maxOf<size_t>();
+	}
+	auto index = size_t(data.getInteger("index"));
+	return index < _hits.size() ? index : maxOf<size_t>();
+}
+
+size_t SearchPickerContent::getRowForHit(size_t hit) const {
+	if (!_tree) {
+		return hit < _hits.size() ? hit : maxOf<size_t>();
+	}
+	for (size_t i = 0; i < _tree->getRowCount(); ++i) {
+		if (getHitForRow(i) == hit) {
+			return i;
+		}
+	}
+	// Its category is collapsed, so it is not showing at all - which is an answer, and a different
+	// one from "there is no such hit".
+	return maxOf<size_t>();
+}
+
+bool SearchPickerContent::toggleRow(size_t row) {
+	if (!_tree) {
+		return false;
+	}
+	auto r = _tree->getRow(row);
+	return (r && r->isCategory()) ? _tree->toggleRow(row) : false;
+}
+
+bool SearchPickerContent::isRowExpanded(size_t row) const {
+	return _tree ? _tree->isRowExpanded(row) : false;
 }
 
 void SearchPickerContent::updateStatus() {
@@ -361,6 +520,11 @@ bool SearchPickerContent::setSelected(size_t index) {
 	if (_results) {
 		_results->setSelectedRow(index);
 	}
+	if (_tree) {
+		// A hit whose category is collapsed is showing nowhere, and the tree is told to select
+		// nothing rather than a row that stands for something else.
+		_tree->setSelectedRow(getRowForHit(index));
+	}
 	scrollToSelected();
 	return true;
 }
@@ -370,22 +534,55 @@ bool SearchPickerContent::moveSelection(int32_t delta) {
 		return false;
 	}
 
-	int64_t next = (_selected == maxOf<size_t>()) ? 0 : int64_t(_selected) + delta;
-	if (next < 0) {
-		next = 0;
+	if (!_tree) {
+		int64_t next = (_selected == maxOf<size_t>()) ? 0 : int64_t(_selected) + delta;
+		if (next < 0) {
+			next = 0;
+		}
+		if (next >= int64_t(_hits.size())) {
+			next = int64_t(_hits.size()) - 1;
+		}
+		return setSelected(size_t(next));
 	}
-	if (next >= int64_t(_hits.size())) {
-		next = int64_t(_hits.size()) - 1;
+
+	/* One step through what is VISIBLE, skipping the category rows.
+
+	That is what an arrow key means to a person, and in this mode it is not one step through the
+	hits: a category sits between two of them, and hits under a collapsed category are not there to
+	step onto at all. Walking the DISPLAY and mapping back is the only way to get both right. */
+	const size_t rows = _tree->getRowCount();
+	if (rows == 0) {
+		return false;
 	}
-	return setSelected(size_t(next));
+
+	const int32_t step = delta < 0 ? -1 : 1;
+	int64_t at = int64_t(getRowForHit(_selected));
+	if (_selected == maxOf<size_t>() || at < 0) {
+		// Nothing selected: start just outside, so the first step lands on the first (or last) hit.
+		at = step > 0 ? -1 : int64_t(rows);
+	}
+
+	for (int32_t taken = 0; taken < (delta < 0 ? -delta : delta); ++taken) {
+		int64_t next = at + step;
+		while (next >= 0 && next < int64_t(rows) && getHitForRow(size_t(next)) == maxOf<size_t>()) {
+			next += step;
+		}
+		if (next < 0 || next >= int64_t(rows)) {
+			break; // the ends hold, exactly as they do in the flat list
+		}
+		at = next;
+	}
+
+	const auto hit = (at >= 0 && at < int64_t(rows)) ? getHitForRow(size_t(at)) : maxOf<size_t>();
+	return hit != maxOf<size_t>() ? setSelected(hit) : false;
 }
 
 void SearchPickerContent::scrollToSelected() {
-	if (!_results || _selected == maxOf<size_t>()) {
+	if (_selected == maxOf<size_t>() || (!_results && !_tree)) {
 		return;
 	}
 
-	auto scroll = _results->getScroll();
+	auto scroll = _results ? _results->getScroll() : _tree->getScroll();
 	if (!scroll) {
 		return;
 	}
@@ -395,7 +592,13 @@ void SearchPickerContent::scrollToSelected() {
 	needs to be told anyway. Correct because the picker sets one fixed row height; a table with a
 	per-row height callback would have to ask the controller instead. */
 	const float rowHeight = _config.style.rowHeight;
-	const float top = float(_selected) * rowHeight;
+	// The DISPLAY row, which in the grouped mode is not the hit index: the categories above it are
+	// rows too.
+	const auto row = getRowForHit(_selected);
+	if (row == maxOf<size_t>()) {
+		return;
+	}
+	const float top = float(row) * rowHeight;
 	const float bottom = top + rowHeight;
 
 	const float position = scroll->getScrollPosition();
@@ -423,6 +626,8 @@ bool SearchPickerContent::activateSelected() {
 }
 
 void SearchPickerContent::refresh() { handleQueryChanged(getQuery()); }
+
+void SearchPickerContent::refresh(StringView query) { handleQueryChanged(query); }
 
 bool SearchPickerContent::handleKey(const GestureData &data) {
 	if (!data.input) {

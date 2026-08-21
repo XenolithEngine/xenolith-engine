@@ -346,6 +346,121 @@ try:
         check("Escape closes the surface", popups(s) == [] and st["picker"]["open"] is False)
         check("and chooses nothing", st["picker"]["value"] == "", st["picker"]["value"])
 
+    # --- the grouped mode -----------------------------------------------------------------------------
+    #
+    # The palette case, and the reason the mode exists: with an empty query there is nothing to rank
+    # and a hundred names in some deterministic order is a list nobody reads, so the CATEGORIES are
+    # the answer. Type something and the ranking is the answer again, so the same widget collapses
+    # to a flat list at depth 0. One widget, because it is one interaction - the query line never
+    # loses focus and the arrows keep moving one selection through whatever is showing.
+
+    s.invoke("search-picker.query", value="")
+    s.invoke("search-picker.grouped-query", value="")
+    st = s.invoke("search-picker.state")
+    g = st["grouped"]
+    rows = g["display"]
+
+    check("with nothing typed the grouped surface shows categories",
+            bool(rows) and all(r["category"] for r in rows), rows[:2])
+    check("... all of them collapsed", all(r["expanded"] is False for r in rows), rows[:2])
+    check("... over the same hits the flat surface has, one row each",
+            len(g["rows"]) == len(st["content"]["rows"]) and len(rows) < len(g["rows"]),
+            (len(g["rows"]), len(st["content"]["rows"]), len(rows)))
+
+    collapsed = len(rows)
+    first_category = rows[0]["title"]
+
+    # A category with more than one item under it, because what is being checked below is a STEP
+    # from one visible hit to the next. Which category that is depends on the ranking, so it is
+    # found rather than assumed.
+    target = None
+    for i in range(len(rows)):
+        s.invoke("search-picker.grouped-toggle", row=i)
+        after = s.invoke("search-picker.state")["grouped"]["display"]
+        if len(after) - collapsed >= 2:
+            target = i
+            rows = after
+            break
+        s.invoke("search-picker.grouped-toggle", row=i)
+    check("some category holds more than one item", target is not None, collapsed)
+
+    check("opening a category shows its items", len(rows) > collapsed, len(rows))
+    check("... and marks it open", rows[target]["expanded"] is True, rows[target])
+    check("... one level in", rows[target + 1]["depth"] == 1 and not rows[target + 1]["category"],
+            rows[target + 1])
+    check("... and the category itself stands for no hit",
+            "hit" not in rows[target] and "hit" in rows[target + 1],
+            (rows[target], rows[target + 1]))
+
+    # An arrow key steps through what is VISIBLE, skipping the category rows - which in this mode is
+    # not one step through the hits, because a category sits between two of them and the hits under
+    # a closed category are not there to step onto at all.
+    visible = [r for r in rows if not r["category"]]
+    s.invoke("search-picker.grouped-select", index=visible[0]["hit"])
+    s.invoke("search-picker.grouped-select", delta=1)
+    st = s.invoke("search-picker.state")["grouped"]
+    check("a step lands on the next VISIBLE hit, never on a category",
+            st["selected"] == visible[1]["hit"], (st["selected"], visible[1]["hit"]))
+
+    s.invoke("search-picker.grouped-select", delta=-1)
+    st = s.invoke("search-picker.state")["grouped"]
+    check("... and a step back lands on the previous one",
+            st["selected"] == visible[0]["hit"], (st["selected"], visible[0]["hit"]))
+
+    # Stepping off the end of the visible hits holds where it is: every row after the last one is a
+    # closed category, and a category stands for no hit.
+    s.invoke("search-picker.grouped-select", index=visible[-1]["hit"])
+    s.invoke("search-picker.grouped-select", delta=1)
+    st = s.invoke("search-picker.state")["grouped"]
+    check("stepping past the last visible hit holds, exactly as the flat list's end does",
+            st["selected"] == visible[-1]["hit"], (st["selected"], visible[-1]["hit"]))
+
+    # Activating reports the hit, not the row - the two are different numbers here, which is the
+    # whole point of keeping the selection a HIT index.
+    before = s.invoke("search-picker.state")["activations"]
+    s.invoke("search-picker.grouped-activate")
+    st = s.invoke("search-picker.state")
+    check("activating a grouped row reports the hit behind it",
+            st["activations"] == before + 1 and st["lastActivation"] == visible[-1]["title"],
+            (st["activations"], st["lastActivation"], visible[-1]["title"]))
+
+    s.invoke("search-picker.grouped-toggle", row=target)
+    rows = s.invoke("search-picker.state")["grouped"]["display"]
+    check("closing it puts the list back", len(rows) == collapsed, len(rows))
+
+    # A query collapses the whole thing to the ranking, which is what a ranking IS: it crosses
+    # categories, so grouping it would be showing an order nobody asked for.
+    s.invoke("search-picker.query", value="bl")
+    s.invoke("search-picker.grouped-query", value="bl")
+    st = s.invoke("search-picker.state")
+    g = st["grouped"]
+    check("a query collapses the tree to a flat ranked list",
+            bool(g["display"]) and all(not r["category"] and r["depth"] == 0
+                    for r in g["display"]), g["display"][:2])
+    check("... showing exactly what the flat surface ranks, in the same order",
+            [r["title"] for r in g["rows"]] == [r["title"] for r in st["content"]["rows"]],
+            ([r["title"] for r in g["rows"]][:3], [r["title"] for r in st["content"]["rows"]][:3]))
+    check("... and one row per hit, since there are no categories to add",
+            len(g["display"]) == len(g["rows"]), (len(g["display"]), len(g["rows"])))
+
+    # The highlight is the flat path's, unchanged: the emoji row's ranges are UTF-16 units in both,
+    # which is the one piece of arithmetic in this widget that a second list view could have got
+    # wrong on its own.
+    s.invoke("search-picker.query", value="bs")
+    s.invoke("search-picker.grouped-query", value="bs")
+    st = s.invoke("search-picker.state")
+    flat_emoji = next((r for r in st["content"]["rows"] if r["title"] == EMOJI_ROW), None)
+    grouped_emoji = next((r for r in st["grouped"]["rows"] if r["title"] == EMOJI_ROW), None)
+    check("grouping changes nothing about the matched characters",
+            flat_emoji is not None and grouped_emoji is not None
+                    and flat_emoji["ranges"] == grouped_emoji["ranges"],
+            (flat_emoji, grouped_emoji))
+
+    s.invoke("search-picker.grouped-query", value="")
+    rows = s.invoke("search-picker.state")["grouped"]["display"]
+    check("and clearing the query brings the categories back",
+            all(r["category"] for r in rows) and rows[0]["title"] == first_category, rows[:2])
+
     # --- Enter in the popup chooses -------------------------------------------------------------------
     s.invoke("search-picker.open")
     time.sleep(1.0)

@@ -51,12 +51,21 @@ protected:
 	virtual void registerCommands() override;
 
 	Value encodeContent(ui::SearchPickerContent *) const;
+
+	// The DISPLAY of the grouped surface: rows as they are shown, which is not the hit list -
+	// a category is a row standing for no hit, and expanding one shifts every row after it.
+	Value encodeRows(ui::SearchPickerContent *) const;
+
 	Value encodeState() const;
 
 	void rebuildSource();
 
 	ui::SearchSystem *_search = nullptr;
 	ui::SearchPickerContent *_content = nullptr;
+
+	// The same widget with `grouped` on: a tree of categories while the query is empty, a flat
+	// ranked list as soon as it is not. Beside the flat one so the two cannot drift apart.
+	ui::SearchPickerContent *_grouped = nullptr;
 	ui::SearchPicker *_picker = nullptr;
 	ui::TextInput *_neighbour = nullptr;
 
