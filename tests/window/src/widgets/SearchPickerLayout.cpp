@@ -131,6 +131,24 @@ bool SearchPickerLayout::init() {
 	_content->setName("picker-content");
 	_content->setContentSize(Size2(320.0f, 300.0f));
 
+	/* THE SAME WIDGET, GROUPED. The palette case: with nothing typed there is nothing to rank and a
+	list of a hundred names in some deterministic order is a list nobody reads, so the categories
+	ARE the answer; as soon as something is typed the ranking is the answer again and the same
+	widget collapses to a flat list at depth 0.
+	
+	Beside the flat one rather than instead of it, so that the two paths cannot drift apart
+	unnoticed - which is the same reason the popup surface is here beside the embedded one. */
+	auto groupedConfig = config;
+	groupedConfig.grouped = true;
+	groupedConfig.onActivate = [this](const ui::SearchHit &hit) {
+		++_activations;
+		_lastActivation = hit.title;
+	};
+
+	_grouped = addChild(Rc<ui::SearchPickerContent>::create(sp::move(groupedConfig)), ZOrder(1));
+	_grouped->setName("picker-grouped");
+	_grouped->setContentSize(Size2(320.0f, 300.0f));
+
 	_picker = addChild(Rc<ui::SearchPicker>::create(), ZOrder(2));
 	_picker->setName("picker");
 	_picker->setPlaceholder("Pick a type…");
@@ -171,6 +189,10 @@ void SearchPickerLayout::rebuildSource() {
 		item.subtitle = String("special");
 		item.text = toString(special, " a deliberately awkward name for the highlight arithmetic");
 		item.data.setString(special, "id");
+		// The grouped surface reads this key and nothing else does, so it is additive: `category`
+		// is what SearchPickerConfig::group falls back to, and SearchItem::data already carried it
+		// through untouched.
+		item.data.setString(StringView("Awkward"), "category");
 		items.emplace_back(sp::move(item));
 	}
 
@@ -183,6 +205,7 @@ void SearchPickerLayout::rebuildSource() {
 			item.subtitle = toString(prefix, " ", suffix);
 			item.text = toString("A ", suffix, " that works on ", prefix, " data.");
 			item.data.setString(item.title, "id");
+			item.data.setString(suffix, "category");
 			items.emplace_back(sp::move(item));
 		}
 	}
@@ -205,6 +228,10 @@ void SearchPickerLayout::handleContentSizeDirty() {
 		_neighbour->setAnchorPoint(Vec2(0.0f, 1.0f));
 		_neighbour->setPosition(Vec2(48.0f, top - 48.0f));
 		_neighbour->setContentSize(Size2(260.0f, 34.0f));
+	}
+	if (_grouped) {
+		_grouped->setAnchorPoint(Vec2(0.0f, 1.0f));
+		_grouped->setPosition(Vec2(700.0f, top));
 	}
 	if (_content) {
 		_content->setAnchorPoint(Vec2(0.0f, 1.0f));
@@ -249,9 +276,48 @@ Value SearchPickerLayout::encodeContent(ui::SearchPickerContent *content) const 
 	return ret;
 }
 
+/* What the grouped surface is SHOWING, read from its own rows.
+
+Not the hit list: a category is a row that stands for no hit, and expanding one shifts every row
+after it - which is exactly the arithmetic a caller keeping a vector beside the model gets wrong. So
+the display is reported as the display, and the mapping back to a hit is reported with it. */
+Value SearchPickerLayout::encodeRows(ui::SearchPickerContent *content) const {
+	Value rows;
+	if (!content) {
+		return rows;
+	}
+
+	auto tree = content->getTree();
+	for (size_t i = 0; i < content->getRowCount(); ++i) {
+		Value row;
+		auto hit = content->getHitForRow(i);
+		row.setBool(hit == maxOf<size_t>(), "category");
+		if (hit == maxOf<size_t>()) {
+			row.setBool(content->isRowExpanded(i), "expanded");
+		} else {
+			row.setInteger(int64_t(hit), "hit");
+			row.setString(content->getHits()[hit].title, "title");
+		}
+		if (tree) {
+			if (auto r = tree->getRow(i)) {
+				row.setInteger(int64_t(r->depth), "depth");
+				if (hit == maxOf<size_t>()) {
+					row.setString(r->getData().getString("name"), "title");
+				}
+			}
+		}
+		rows.addValue(sp::move(row));
+	}
+	return rows;
+}
+
 Value SearchPickerLayout::encodeState() const {
 	Value ret;
 	ret.setValue(encodeContent(_content), "content");
+
+	Value grouped = encodeContent(_grouped);
+	grouped.setValue(encodeRows(_grouped), "display");
+	ret.setValue(sp::move(grouped), "grouped");
 
 	if (_picker) {
 		Value picker;
@@ -314,6 +380,41 @@ void SearchPickerLayout::registerCommands() {
 
 	addCommand("activate", "Report the selected row through the activate callback",
 			[this](Value &&) { return ackValue(_content && _content->activateSelected()); });
+
+	// ---- the grouped surface ----------------------------------------------------------------
+
+	addCommand("grouped-query", "Type into the grouped surface's query line: {value}",
+			[this](Value &&args) {
+		if (!_grouped || !_grouped->getQueryInput()) {
+			return ackValue(false);
+		}
+		_grouped->getQueryInput()->setText(static_cast<const Value &>(args).getString("value"));
+		// setText does not fire the change callback, so the query is run explicitly - the same
+		// thing the flat surface's `query` does.
+		_grouped->refresh();
+		return ackValue(true);
+	});
+
+	addCommand("grouped-select", "Move the grouped selection by {delta}, or set it to {index}",
+			[this](Value &&args) {
+		if (!_grouped) {
+			return ackValue(false);
+		}
+		const Value &a = args;
+		if (a.hasValue("index")) {
+			return ackValue(_grouped->setSelected(size_t(a.getInteger("index"))));
+		}
+		return ackValue(_grouped->moveSelection(int32_t(a.getInteger("delta"))));
+	});
+
+	addCommand("grouped-toggle", "Open or close the grouped surface's category row {row}",
+			[this](Value &&args) {
+		return ackValue(_grouped
+				&& _grouped->toggleRow(size_t(static_cast<const Value &>(args).getInteger("row"))));
+	});
+
+	addCommand("grouped-activate", "Report the grouped selection through the activate callback",
+			[this](Value &&) { return ackValue(_grouped && _grouped->activateSelected()); });
 
 	addCommand("focus-query", "Put the caret in the embedded surface's query line",
 			[this](Value &&) {

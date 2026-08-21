@@ -27,6 +27,7 @@
 #include "XLUiPanel.h"
 #include "XLUiTextInput.h"
 #include "XLUiTableView.h"
+#include "XLUiTreeView.h"
 #include "XLUiSubWindow.h"
 #include "XLUiMenuPopup.h" // MenuSide and placementForNode: a picker drops out of a node like a menu
 #include "XLUiSearchSystem.h"
@@ -91,6 +92,34 @@ struct SP_PUBLIC SearchPickerConfig {
 	SearchRequestParams params;
 	SearchPickerStyle style;
 
+	/* GROUP THE RESULTS UNDER CATEGORIES while nothing is typed.
+
+	Off by default, and the flat path is untouched by it: a picker for a field's value wants the
+	best match at the top and has nothing to group by.
+
+	It is on for the case a ranked list cannot serve - a PALETTE. With an empty query there is
+	nothing to rank, and a library of a hundred operations shown as a hundred rows in some
+	deterministic order is a list nobody reads; the categories ARE the answer then. As soon as
+	something is typed the ranking is the answer again, so the same widget collapses to a flat list
+	at depth 0. One widget, because they are one interaction: the query line never loses focus and
+	the arrows keep moving one selection through whatever is showing.
+
+	The results are rendered by a ui::TreeView in this mode rather than a ui::TableView, since only
+	that one has rows at a depth and an expansion state to keep. Nothing else about the widget
+	changes: the same hits, the same highlight, the same keys, the same callbacks. */
+	bool grouped = false;
+
+	// Which category a hit belongs to. Empty (or an empty answer) puts the hit under a catch-all,
+	// because a source is under no obligation to categorize everything and dropping a hit that
+	// answered no group would be losing a result to a display decision.
+	//
+	// Unset with `grouped` on, this reads `SearchHit::data["category"]` - the key SearchItem::data
+	// already carries through untouched, so a static list needs no callback at all.
+	Function<StringView(const SearchHit &)> group;
+
+	// What an uncategorized hit is filed under. Shown as a category like any other.
+	String uncategorized = String("(no category)");
+
 	String placeholder;
 
 	// The id of the current value, so the list opens with it selected rather than at the top.
@@ -105,6 +134,17 @@ struct SP_PUBLIC SearchPickerConfig {
 	String idPrefix;
 	bool preferNative = true;
 	sprt::window::WindowCreationFlags flags = sprt::window::WindowCreationFlags::None;
+
+	/* The query changed, BEFORE a single item is matched against it.
+
+	For the caller whose own index does the ranking: a palette hands this widget a list it has
+	already scored, and the scoring has to happen before `match` is asked about anything. Without
+	the hook that caller would have to trigger its own search from inside `match` on a first call it
+	could only recognize by remembering the last query - which works and is a trick, and a trick in
+	a widget's contract is a thing the next caller gets wrong.
+
+	Runs on both paths, so a source-backed picker can use it to show something of its own. */
+	Function<void(StringView query)> onQuery;
 
 	Function<void(const SearchHit &)> onActivate;
 	Function<void()> onClose;
@@ -126,14 +166,57 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 	TextInput *getQueryInput() const { return _query; }
+
+	// Null in the grouped mode, where the results are a tree. A caller that only wants to reach the
+	// list asks through the row facade below rather than through either of these.
 	TableView *getResults() const { return _results; }
+	TreeView *getTree() const { return _tree; }
 
 	SpanView<SearchHit> getHits() const { return _hits; }
+
+	// What the FIELD shows. Lags by an echo after a programmatic setText, because editing a
+	// TextInput is a request to the platform - so this is what a person sees, not what the list in
+	// front of them answers.
 	StringView getQuery() const;
 
-	// Index into getHits(), or maxOf<size_t>() when the list is empty.
+	// What the hits in hand ANSWER. Deterministic the moment the list is rebuilt, which is what
+	// anything asserting about the surface wants: "the list is showing results for X" is a fact,
+	// while "the field has caught up" is a frame away.
+	StringView getResultQuery() const { return _resultQuery; }
+
+	/* Replace the local list. For the caller whose OWN index answers the query: set this from
+	`onQuery` - which runs before a single item is walked - and the walk then goes over the answer
+	to that query rather than over a fixed library filtered a second time.
+
+	Has no effect on the source-backed path, where the list is the source's. */
+	virtual void setItems(Vector<SearchItem> &&);
+	SpanView<SearchItem> getItems() const { return _config.items; }
+
+	/* ---- the rows, whichever view is carrying them ----
+
+	A DISPLAY row is not a hit: in the grouped mode a category is a row and stands for no hit at
+	all, and expanding one shifts every row after it. So the two are counted separately and the
+	mapping is asked for rather than assumed - which is the mistake a caller keeping a vector beside
+	the model would make, and the one the graph editor's palette documented before this. */
+	size_t getRowCount() const;
+
+	// The hit a display row stands for, or maxOf<size_t>() for a category row.
+	size_t getHitForRow(size_t row) const;
+
+	// Where a hit is showing, or maxOf<size_t>() when its category is collapsed.
+	size_t getRowForHit(size_t hit) const;
+
+	// Open or close a category row. False in the flat mode, and for a row that is not a category.
+	virtual bool toggleRow(size_t row);
+	bool isRowExpanded(size_t row) const;
+
+	// Index into getHits(), or maxOf<size_t>() when the list is empty. A HIT index in both modes,
+	// so a caller that knows what it wants selected does not have to know how it is displayed.
 	size_t getSelected() const { return _selected; }
 	virtual bool setSelected(size_t);
+
+	// One step through what is VISIBLE, skipping category rows: that is what an arrow key means to
+	// a person, and in the grouped mode it is not the same as one step through the hits.
 	virtual bool moveSelection(int32_t delta);
 
 	// Reports the selected hit through the activate callback. False when there is nothing selected.
@@ -144,6 +227,15 @@ public:
 
 	// Runs the query now, ignoring the system's debounce. What a test drives the widget with.
 	virtual void refresh();
+
+	/* The same, for a query the FIELD does not show yet.
+
+	Editing a TextInput is a REQUEST to the platform: the text arrives back by echo, so immediately
+	after setText the field still reports the old string. A caller whose model was driven from
+	somewhere other than the keyboard - a command, a re-open, a restored session - therefore cannot
+	use the field as the source of truth in the same turn, and refresh() would run the list for the
+	string the field has not caught up with. This runs it for the string the caller means. */
+	virtual void refresh(StringView query);
 
 	// The height this surface wants for `count` rows, before any node exists - which is what a
 	// window request needs and what SubWindow::Config::size demands up front.
@@ -162,16 +254,38 @@ protected:
 
 	Rc<Node> buildTitleNode(const SearchHit &) const;
 
+	// Which category a hit is filed under, by the config's rule or by the default one.
+	StringView groupOf(const SearchHit &) const;
+
+	/* True while the tree is showing categories: grouped, and nothing typed. With a query the tree
+	is a flat list at depth 0, because a ranking crosses categories.
+
+	Asked of the query THE CURRENT HITS WERE BUILT FOR, never of the field. Editing a TextInput is a
+	request to the platform whose text arrives back by echo, so a widget refreshed with an explicit
+	query has hits for one string and a field still showing another - and reading the field there
+	renders the right results in the wrong MODE, which is a ranked list drawn as a tree of two
+	categories. That is not hypothetical; it is what this was written after. */
+	bool isGrouping() const;
+
 	SearchPickerConfig _config;
 
 	TextInput *_query = nullptr;
+
+	// Exactly one of these two is built, decided by `grouped` at init and never changed after: a
+	// widget that swapped its list widget on every keystroke would throw away the scroll, the
+	// styling and the expansion each time.
 	TableView *_results = nullptr;
+	TreeView *_tree = nullptr;
+
 	basic2d::Label *_status = nullptr;
 
 	InputListener *_keyListener = nullptr;
 
 	Rc<data::Model> _model;
 	Vector<SearchHit> _hits;
+
+	// The query the hits in hand answer. Not the field's text - see isGrouping().
+	String _resultQuery;
 
 	size_t _selected = maxOf<size_t>();
 	uint64_t _request = 0;
