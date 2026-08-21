@@ -48,6 +48,7 @@
 #include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiChip.cc" // after Badge and Button: a chip is one, with the other on it
 #include "input/XLUiCheckbox.cc"
+#include "input/XLUiSlider.cc" // a Panel and two more, like the progress bar it is not
 #include "input/XLUiTextHistory.cc" // before TextInput and TextView: both hold one
 #include "input/XLUiTextInput.cc"
 #include "input/XLUiTextDocument.cc"

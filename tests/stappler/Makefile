@@ -32,6 +32,7 @@ LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
 
 LOCAL_MODULES ?= \
 	runtime \
+	runtime_window \
 	stappler_core \
 	stappler_filesystem \
 	stappler_data \

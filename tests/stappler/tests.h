@@ -78,6 +78,7 @@ void performDataModelTests();
 void performVgStrokeTests();
 void performSearchFuzzyTests();
 void performCommandHistoryTests();
+void performImageFormatTests();
 
 } // namespace stappler
 

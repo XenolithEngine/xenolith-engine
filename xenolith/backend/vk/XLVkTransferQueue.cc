@@ -691,8 +691,8 @@ size_t TransferResource::writeData(uint8_t *mem, BufferAllocInfo &info) {
 }
 
 size_t TransferResource::writeData(uint8_t *mem, ImageAllocInfo &info) {
-	uint64_t expectedSize = getFormatBlockSize(info.data->format) * info.data->extent.width
-			* info.data->extent.height * info.data->extent.depth * info.data->arrayLayers.get();
+	auto expectedSize = core::getFormatImageSize(info.data->format, info.data->extent,
+			info.data->arrayLayers.get());
 	return info.data->writeData(mem, expectedSize);
 }
 
@@ -740,9 +740,11 @@ size_t TransferResource::preTransferData() {
 			it.useStaging = true;
 			stagingSize = math::align<VkDeviceSize>(stagingSize, alignment);
 			it.stagingOffset = stagingSize;
-			stagingSize += core::getFormatBlockSize(core::ImageFormat(it.info.format))
-					* it.info.extent.width * it.info.extent.height * it.info.extent.depth
-					* it.info.arrayLayers;
+			// it.info is the VkImageCreateInfo, so its extent is a VkExtent3D and has to be spelled
+			// out rather than converted.
+			stagingSize += core::getFormatImageSize(core::ImageFormat(it.info.format),
+					Extent3(it.info.extent.width, it.info.extent.height, it.info.extent.depth),
+					it.info.arrayLayers);
 		} else {
 			writeData(generalMem + it.offset, it);
 		}

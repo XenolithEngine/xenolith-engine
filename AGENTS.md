@@ -615,9 +615,23 @@ header, a platform branch, or an allocation. The essentials:
   **declared**, so at the maximum the "+" is dead rather than refusing after the
   press, duplicates are allowed by default because an element chain repeats, and
   the wrapped height is reported through the measurement protocol),
-  `ui::Checkbox`, `ui::Button`. All of them take their whole look from CSS through
-  a per-type applier, and a refusal is the style class `invalid` — there is no
-  `:invalid` pseudo-class in the subset.
+  `ui::Slider` (a track, a fill and a handle — it carries a step INDEX and never a
+  fraction, so a drag and an arrow key that land on the same notch produce the
+  SAME number rather than two that agree to six places, and a declared maximum
+  that is not a whole number of steps away is reported rather than trimmed; keys
+  answer along the widget's own axis only), `ui::Checkbox`, `ui::Button`. All of
+  them take their whole look from CSS through a per-type applier, and a refusal is
+  the style class `invalid` — there is no `:invalid` pseudo-class in the subset.
+- **An image is measured in BLOCKS, never in pixels.** `getFormatBlockSize` returns
+  BYTES PER BLOCK — 8 for BC1, 16 for BC7 and every ASTC — so
+  `getFormatBlockSize(fmt) * width * height` is right only where the block happens
+  to be one pixel and over-counts every compressed format by the size of its tile.
+  Use `core::getFormatImageSize(fmt, extent, layers)`; for a graphics API's
+  `bytesPerRow` / `rowsPerImage` use `getFormatRowSize(fmt, width)` and
+  `getFormatRowCount(fmt, height)`, both of which count blocks and round up.
+  `getFormatBlockExtent` is what says how many pixels a block covers, and
+  multi-planar formats are explicitly out of its scope. The uncompressed path is
+  byte for byte what it always was.
 - **A control's states are independent classes, and two of them carry a reason.** `invalid` is "what is written here is wrong"; `disabled` is the
   mechanical off, and tracks `:disabled`; `read-only` is readable and copyable but
   not editable; `locked` is "you may not write here at all, and here is why" —

@@ -33,6 +33,7 @@
 #include "XLUiVectorField.h"
 #include "XLUiColorField.h"
 #include "XLUiChipRow.h"
+#include "XLUiSlider.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -79,6 +80,16 @@ that shows the pattern is not about text: the row keeps its own selection and it
 sees one value under one name, and a Required row that is empty is refused ONCE. Order is part of
 the value - an element chain read back in a different order describes a different type. */
 SP_PUBLIC FormInputListener *addFormField(NotNull<ChipRow>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+/* The VALUE, not the index. The widget carries a step index because that is the only thing a
+coordinate can be turned into exactly; a form talks about values, and `min + step * index` is what
+the field MEANS. Integer or real is the widget's DECLARED flag, for the same reason ui::NumberField
+declares one: a form that submits 7.0 where the schema says 7 has changed the value on its way out.
+
+No `activate`: a track has nothing to do with Enter, and declining is what lets the form submit
+instead - the same answer a single-line ui::TextInput gives. */
+SP_PUBLIC FormInputListener *addFormField(NotNull<Slider>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 // A button takes part in the tab order and fires the form on Enter, but is never collected

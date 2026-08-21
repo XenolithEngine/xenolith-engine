@@ -52,6 +52,7 @@
 #include "widgets/TextViewLayout.h"
 #include "widgets/PanelLayout.h"
 #include "widgets/SelectLayout.h"
+#include "widgets/SliderLayout.h"
 #include "widgets/SearchPickerLayout.h"
 #include "widgets/InlineEditorLayout.h"
 #include "widgets/TableViewLayout.h"
@@ -266,6 +267,18 @@ static const TestInfo s_widgetsTests[] = {
 				   "over the inspector: number.state, number.set-text, number.roundtrip, "
 				   "send_input native=true."),
 		TestRegistry_make<NumberFieldLayout>, true},
+
+	TestInfo{StringView("slider"), StringView("XL_SLIDER_TEST"), StringView("ui::Slider"),
+		StringView("Five sliders: a whole-number scale, one with an exactly representable "
+				   "fractional step, one whose declared maximum is NOT a whole number of steps "
+				   "away, a vertical one and one inside a form. The widget carries a step INDEX "
+				   "and not a fraction, so a drag and an arrow press that land on the same notch "
+				   "must produce the same number rather than two close ones; the unreachable "
+				   "maximum must be reported and not trimmed; a horizontal slider must ignore "
+				   "Up/Down and a vertical one Left/Right; and the form must collect the VALUE. "
+				   "Drive it over the inspector: slider.state, slider.metrics, slider.set-value, "
+				   "slider.lock, send_input native=true."),
+		TestRegistry_make<SliderLayout>, true},
 
 	TestInfo{StringView("select"), StringView("XL_SELECT_TEST"), StringView("ui::Select"),
 		StringView("Two drop-downs and a text field. The closed control must show the chosen "
