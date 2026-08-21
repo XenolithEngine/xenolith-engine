@@ -862,20 +862,20 @@ size_t getFormatBlockSize(ImageFormat format) {
 	case ImageFormat::PVRTC1_4BPP_SRGB_BLOCK_IMG: return 8; break;
 	case ImageFormat::PVRTC2_2BPP_SRGB_BLOCK_IMG: return 8; break;
 	case ImageFormat::PVRTC2_4BPP_SRGB_BLOCK_IMG: return 8; break;
-	case ImageFormat::ASTC_4x4_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_5x4_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_5x5_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_6x5_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_6x6_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_8x5_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_8x6_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_8x8_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_10x5_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_10x6_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_10x8_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_10x10_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_12x10_SFLOAT_BLOCK_EXT: return 8; break;
-	case ImageFormat::ASTC_12x12_SFLOAT_BLOCK_EXT: return 8; break;
+	case ImageFormat::ASTC_4x4_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_5x4_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_5x5_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_6x5_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_6x6_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_8x5_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_8x6_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_8x8_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_10x5_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_10x6_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_10x8_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_10x10_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_12x10_SFLOAT_BLOCK_EXT: return 16; break;
+	case ImageFormat::ASTC_12x12_SFLOAT_BLOCK_EXT: return 16; break;
 	case ImageFormat::G8_B8R8_2PLANE_444_UNORM_EXT: return 3; break;
 	case ImageFormat::G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16_EXT: return 6; break;
 	case ImageFormat::G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16_EXT: return 6; break;
@@ -884,6 +884,141 @@ size_t getFormatBlockSize(ImageFormat format) {
 	case ImageFormat::A4B4G4R4_UNORM_PACK16_EXT: return 2; break;
 	}
 	return 0;
+}
+
+/* The pixel footprint of one block. See the header for why multi-planar formats are NOT described
+here and answer 1x1 along with everything uncompressed.
+
+A `default` rather than a case per format, and the reason is that the default is the RIGHT answer
+for the two hundred uncompressed entries. What it costs is that a compressed format added to the
+enum and forgotten here would silently claim one pixel per block - so the check that guards this
+walks the WHOLE enumeration and asserts that blockSize / (blockW * blockH) is a plausible number of
+bytes per pixel. A missing entry makes BC-sized bytes look like a 16-byte pixel, and that fails. */
+Extent2 getFormatBlockExtent(ImageFormat format) {
+	switch (format) {
+	// BC1 through BC7, and ETC2 / EAC: every one of them is a 4x4 tile
+	case ImageFormat::BC1_RGB_UNORM_BLOCK:
+	case ImageFormat::BC1_RGB_SRGB_BLOCK:
+	case ImageFormat::BC1_RGBA_UNORM_BLOCK:
+	case ImageFormat::BC1_RGBA_SRGB_BLOCK:
+	case ImageFormat::BC2_UNORM_BLOCK:
+	case ImageFormat::BC2_SRGB_BLOCK:
+	case ImageFormat::BC3_UNORM_BLOCK:
+	case ImageFormat::BC3_SRGB_BLOCK:
+	case ImageFormat::BC4_UNORM_BLOCK:
+	case ImageFormat::BC4_SNORM_BLOCK:
+	case ImageFormat::BC5_UNORM_BLOCK:
+	case ImageFormat::BC5_SNORM_BLOCK:
+	case ImageFormat::BC6H_UFLOAT_BLOCK:
+	case ImageFormat::BC6H_SFLOAT_BLOCK:
+	case ImageFormat::BC7_UNORM_BLOCK:
+	case ImageFormat::BC7_SRGB_BLOCK:
+	case ImageFormat::ETC2_R8G8B8_UNORM_BLOCK:
+	case ImageFormat::ETC2_R8G8B8_SRGB_BLOCK:
+	case ImageFormat::ETC2_R8G8B8A1_UNORM_BLOCK:
+	case ImageFormat::ETC2_R8G8B8A1_SRGB_BLOCK:
+	case ImageFormat::ETC2_R8G8B8A8_UNORM_BLOCK:
+	case ImageFormat::ETC2_R8G8B8A8_SRGB_BLOCK:
+	case ImageFormat::EAC_R11_UNORM_BLOCK:
+	case ImageFormat::EAC_R11_SNORM_BLOCK:
+	case ImageFormat::EAC_R11G11_UNORM_BLOCK:
+	case ImageFormat::EAC_R11G11_SNORM_BLOCK:
+	// PVRTC at 4 bits per pixel: an 8-byte block over 4x4. The 2bpp variants are below - same block
+	// in bytes, twice the pixels, which is exactly the distinction this function exists to make
+	case ImageFormat::PVRTC1_4BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC2_4BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC1_4BPP_SRGB_BLOCK_IMG:
+	case ImageFormat::PVRTC2_4BPP_SRGB_BLOCK_IMG: return Extent2(4, 4);
+
+	case ImageFormat::PVRTC1_2BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC2_2BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC1_2BPP_SRGB_BLOCK_IMG:
+	case ImageFormat::PVRTC2_2BPP_SRGB_BLOCK_IMG: return Extent2(8, 4);
+
+	/* The 422 formats: two horizontally adjacent pixels share one chroma sample and are stored as
+	one block. Not "compressed" in the BC sense, but the arithmetic is the block arithmetic, and a
+	row of them is half as many blocks as it is pixels. */
+	case ImageFormat::G8B8G8R8_422_UNORM:
+	case ImageFormat::B8G8R8G8_422_UNORM:
+	case ImageFormat::G10X6B10X6G10X6R10X6_422_UNORM_4PACK16:
+	case ImageFormat::B10X6G10X6R10X6G10X6_422_UNORM_4PACK16:
+	case ImageFormat::G12X4B12X4G12X4R12X4_422_UNORM_4PACK16:
+	case ImageFormat::B12X4G12X4R12X4G12X4_422_UNORM_4PACK16:
+	case ImageFormat::G16B16G16R16_422_UNORM:
+	case ImageFormat::B16G16R16G16_422_UNORM: return Extent2(2, 1);
+
+	case ImageFormat::ASTC_4x4_UNORM_BLOCK:
+	case ImageFormat::ASTC_4x4_SRGB_BLOCK:
+	case ImageFormat::ASTC_4x4_SFLOAT_BLOCK_EXT: return Extent2(4, 4);
+	case ImageFormat::ASTC_5x4_UNORM_BLOCK:
+	case ImageFormat::ASTC_5x4_SRGB_BLOCK:
+	case ImageFormat::ASTC_5x4_SFLOAT_BLOCK_EXT: return Extent2(5, 4);
+	case ImageFormat::ASTC_5x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_5x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_5x5_SFLOAT_BLOCK_EXT: return Extent2(5, 5);
+	case ImageFormat::ASTC_6x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_6x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_6x5_SFLOAT_BLOCK_EXT: return Extent2(6, 5);
+	case ImageFormat::ASTC_6x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_6x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_6x6_SFLOAT_BLOCK_EXT: return Extent2(6, 6);
+	case ImageFormat::ASTC_8x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x5_SFLOAT_BLOCK_EXT: return Extent2(8, 5);
+	case ImageFormat::ASTC_8x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x6_SFLOAT_BLOCK_EXT: return Extent2(8, 6);
+	case ImageFormat::ASTC_8x8_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x8_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x8_SFLOAT_BLOCK_EXT: return Extent2(8, 8);
+	case ImageFormat::ASTC_10x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x5_SFLOAT_BLOCK_EXT: return Extent2(10, 5);
+	case ImageFormat::ASTC_10x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x6_SFLOAT_BLOCK_EXT: return Extent2(10, 6);
+	case ImageFormat::ASTC_10x8_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x8_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x8_SFLOAT_BLOCK_EXT: return Extent2(10, 8);
+	case ImageFormat::ASTC_10x10_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x10_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x10_SFLOAT_BLOCK_EXT: return Extent2(10, 10);
+	case ImageFormat::ASTC_12x10_UNORM_BLOCK:
+	case ImageFormat::ASTC_12x10_SRGB_BLOCK:
+	case ImageFormat::ASTC_12x10_SFLOAT_BLOCK_EXT: return Extent2(12, 10);
+	case ImageFormat::ASTC_12x12_UNORM_BLOCK:
+	case ImageFormat::ASTC_12x12_SRGB_BLOCK:
+	case ImageFormat::ASTC_12x12_SFLOAT_BLOCK_EXT: return Extent2(12, 12);
+
+	default: break;
+	}
+	// Uncompressed, planar, or a depth/stencil format: one pixel per block, which is what every
+	// caller assumed before this function existed.
+	return Extent2(1, 1);
+}
+
+uint64_t getFormatRowSize(ImageFormat format, uint32_t width) {
+	auto block = getFormatBlockExtent(format);
+	if (block.width == 0) {
+		return 0;
+	}
+	// Rounded UP: a 5-pixel-wide BC7 image is two blocks across and the sixth through eighth pixel
+	// columns of the second block are stored whether anyone looks at them or not.
+	const uint64_t blocks = (uint64_t(width) + block.width - 1) / block.width;
+	return blocks * getFormatBlockSize(format);
+}
+
+uint32_t getFormatRowCount(ImageFormat format, uint32_t height) {
+	auto block = getFormatBlockExtent(format);
+	if (block.height == 0) {
+		return 0;
+	}
+	return (height + block.height - 1) / block.height;
+}
+
+uint64_t getFormatImageSize(ImageFormat format, Extent3 extent, uint32_t arrayLayers) {
+	return getFormatRowSize(format, extent.width) * getFormatRowCount(format, extent.height)
+			* extent.depth * arrayLayers;
 }
 
 void SwapchainConfig::description(const callback<void(StringView)> &stream) const {

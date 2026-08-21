@@ -390,6 +390,63 @@ FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormField
 	return listener;
 }
 
+FormInputListener *addFormField(NotNull<Slider> slider, StringView name, FormFieldFlags flags) {
+	FormFieldSlots slots;
+
+	// The VALUE the notch stands for, not the notch. An integer field collects an integer and a
+	// real one a double - the same branch, and the same reason, as the ui::NumberField adapter's.
+	slots.collect = [slider = slider.get()] {
+		return slider->isInteger() ? Value(int64_t(slider->getValue())) : Value(slider->getValue());
+	};
+
+	// silent: the form assigning its value is not somebody dragging the handle, and a change
+	// callback fired here would look like one. A value between two notches lands on the nearer -
+	// the widget cannot hold anything else, and refusing would leave the field showing the value
+	// it had rather than the one it was given.
+	slots.assign = [slider = slider.get()](
+						   const Value &v) { slider->setValue(v.getDouble(), true); };
+
+	// The minimum, not 0.0: "empty" for a slider is the bottom of its scale, and a scale that does
+	// not contain zero would otherwise be cleared to a value it cannot express.
+	slots.clear = [slider = slider.get()] { slider->setIndex(0, true); };
+
+	// No `activate`: see the header. Enter on a focused slider submits the form.
+
+	// The widget writes the focus counter itself: its focus is also what decides whether it answers
+	// the arrows at all, so the two must be the same flag rather than two that agree
+	slots.ownsFocusStyle = true;
+	slots.focusable = slider->isEnabled();
+
+	// The direction is of no interest: a slider has one point of entry, whichever way the Tab went
+	slots.setFocused = [slider = slider.get()](bool value, bool) {
+		if (value) {
+			slider->focus();
+		} else {
+			slider->blur();
+		}
+	};
+
+	auto listener = FormAdapters_attach(slider, sp::move(slots), name, FormFieldRole::Field, flags);
+	if (!listener) {
+		return nullptr;
+	}
+
+	// A tap on the track has to move the form's focus to this field, or the form goes on filtering
+	// keys to the field it focused last and the arrows die in the widget the user just clicked.
+	// The same seam ui::ColorField and ui::ChipRow need, and for the same reason the widget cannot
+	// ask for it itself: forms/ knows about input/, and never the other way round.
+	slider->setFocusCallback([listener](bool focused) {
+		if (focused) {
+			listener->setFocused();
+		}
+	});
+
+	// No setNavigateCallback: a slider does not consume Tab. It is ONE stop of the ring, like a
+	// checkbox, so Tab reaches the form's own handling untouched.
+
+	return listener;
+}
+
 FormInputListener *addFormButton(NotNull<Button> button, FormFieldRole role) {
 	FormFieldSlots slots;
 

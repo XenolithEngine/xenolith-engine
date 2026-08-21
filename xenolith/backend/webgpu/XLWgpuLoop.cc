@@ -445,15 +445,15 @@ void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)
 				return;
 			}
 
-			auto blockSize = core::getFormatBlockSize(info.format);
-
 			WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
 			dst.texture = img->getTexture();
 
+			// Both of these are counted in BLOCKS, which is what WebGPU means by them and what a
+			// pixel count is only by accident of the block being 1x1.
 			WGPUTexelCopyBufferLayout layout;
 			layout.offset = 0;
-			layout.bytesPerRow = info.extent.width * blockSize;
-			layout.rowsPerImage = info.extent.height;
+			layout.bytesPerRow = uint32_t(core::getFormatRowSize(info.format, info.extent.width));
+			layout.rowsPerImage = core::getFormatRowCount(info.format, info.extent.height);
 
 			WGPUExtent3D writeExtent{info.extent.width, info.extent.height, info.extent.depth};
 
@@ -678,12 +678,12 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 		const Rc<core::ImageObject> &image, core::AttachmentLayout l) {
 	performOnThread([this, cb = sp::move(cb), image]() mutable {
 		auto info = image->getInfo();
-		auto blockSize = core::getFormatBlockSize(info.format);
-
-		// bytesPerRow must be 256-aligned for texture-to-buffer copies
-		const uint64_t bytesPerRow = math::align(uint64_t(info.extent.width) * blockSize,
-				uint64_t(256));
-		const uint64_t bufferSize = bytesPerRow * info.extent.height;
+		// bytesPerRow must be 256-aligned for texture-to-buffer copies. The unaligned row is a row
+		// of BLOCKS - the same thing for a swapchain image and not for a compressed one.
+		const uint64_t rowBytes = core::getFormatRowSize(info.format, info.extent.width);
+		const uint32_t rowCount = core::getFormatRowCount(info.format, info.extent.height);
+		const uint64_t bytesPerRow = math::align(rowBytes, uint64_t(256));
+		const uint64_t bufferSize = bytesPerRow * rowCount;
 
 		WGPUBufferDescriptor bufDesc = WGPU_BUFFER_DESCRIPTOR_INIT;
 		bufDesc.label = WGPUStringView{"captureImage", WGPU_STRLEN};
@@ -724,11 +724,12 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 			core::ImageInfoData info;
 			uint64_t bytesPerRow;
 			uint64_t bufferSize;
-			uint32_t blockSize;
+			uint64_t rowBytes;
+			uint32_t rowCount;
 		};
 
 		auto ctx = new CaptureContext{this, sp::move(cb), buffer, info, bytesPerRow, bufferSize,
-			uint32_t(blockSize)};
+			rowBytes, rowCount};
 
 		WGPUBufferMapCallbackInfo mapCallback = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
 		mapCallback.mode = WGPUCallbackMode_AllowProcessEvents;
@@ -741,10 +742,10 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 							wgpuBufferGetConstMappedRange(ctx->buffer, 0, ctx->bufferSize));
 
 					// repack tightly (drop row alignment padding)
-					const auto rowBytes = size_t(ctx->info.extent.width) * ctx->blockSize;
+					const auto rowBytes = size_t(ctx->rowBytes);
 					Bytes data;
-					data.resize(rowBytes * ctx->info.extent.height);
-					for (uint32_t row = 0; row < ctx->info.extent.height; ++row) {
+					data.resize(rowBytes * ctx->rowCount);
+					for (uint32_t row = 0; row < ctx->rowCount; ++row) {
 						sprt::memcpy(data.data() + size_t(row) * rowBytes,
 								mapped + row * ctx->bytesPerRow, rowBytes);
 					}

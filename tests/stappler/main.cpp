@@ -59,6 +59,7 @@ static const TestEntry s_testList[] = {
 	{"vg-stroke", &stappler::performVgStrokeTests},
 	{"search-fuzzy", &stappler::performSearchFuzzyTests},
 	{"command-history", &stappler::performCommandHistoryTests},
+	{"image-format", &stappler::performImageFormatTests},
 };
 
 int main(int argc, const char *argv[]) {
