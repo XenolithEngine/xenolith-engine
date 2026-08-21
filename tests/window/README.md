@@ -44,6 +44,7 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     clipboard-check.py        headless assertions for xenolith::ClipboardSession
     picker-check.py           headless assertions for the ui::SearchPicker demo
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
+                              (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
     geometry-check.py         headless assertions for window geometry and monitors
     text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)

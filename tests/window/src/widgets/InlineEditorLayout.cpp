@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include "XLCommon.h"
 
 #include "widgets/InlineEditorLayout.h"
+#include "XLUiCheckbox.h"
 #include "XLUiStyleResolver.h"
 #include "XL2dSceneContent.h"
 #include "XLScene.h"
@@ -119,6 +120,47 @@ bool InlineEditorLayout::init() {
 	_labelTarget->setCancelCallback([this] { ++_cancels; });
 	_labelTarget->setCloseCallback([this] { ++_closes; });
 
+	/* THE FACTORY PATH, which had never been exercised and did not work.
+
+	The editor is a ui::Checkbox: a widget with no text, so a value arriving here could not have come
+	from the stock one-line editor by accident. What makes it work is setCollectCallback - without
+	it InlineEditTarget builds the editor, opens the session, and hands `onCommit` a Nil, because
+	`collect` is optional and nobody was filling it in on the factory's behalf. */
+	_custom = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+	_custom->setName("edited-custom");
+	_custom->setType("label");
+	_custom->setString(_customValue ? "custom: true" : "custom: false");
+	_custom->setAlignment(font::TextAlign::Left);
+
+	_customTarget = _custom->addSystem(Rc<ui::InlineEditTarget>::create(
+			ui::InlineEditTrigger::DoubleTap, StringView("custom")));
+	_customTarget->setFactory([this](const ui::InlineEditRequest &) -> Rc<Node> {
+		auto box = Rc<ui::Checkbox>::create();
+		box->setChecked(_customValue, true);
+		return box;
+	});
+	_customTarget->setCollectCallback([this]() -> Value {
+		if (auto session = _customTarget->getSession()) {
+			if (auto box = dynamic_cast<ui::Checkbox *>(session->getEditor())) {
+				return Value(box->isChecked());
+			}
+		}
+		return Value();
+	});
+	_customTarget->setCommitCallback([this](const Value &value) {
+		if (_refuse) {
+			++_refusals;
+			return false;
+		}
+		++_commits;
+		_lastCommitValue = value;
+		_customValue = value.asBool();
+		_custom->setString(_customValue ? "custom: true" : "custom: false");
+		return true;
+	});
+	_customTarget->setCancelCallback([this] { ++_cancels; });
+	_customTarget->setCloseCallback([this] { ++_closes; });
+
 	_table = addChild(Rc<ui::TableView>::create(), ZOrder(1));
 	_table->setName("fields");
 	_table->setHeaderVisible(false);
@@ -166,9 +208,14 @@ void InlineEditorLayout::handleContentSizeDirty() {
 		_label->setPosition(Vec2(48.0f, top));
 		_label->setWidth(220.0f);
 	}
+	if (_custom) {
+		_custom->setAnchorPoint(Vec2(0.0f, 1.0f));
+		_custom->setPosition(Vec2(48.0f, top - 30.0f));
+		_custom->setWidth(220.0f);
+	}
 	if (_neighbour) {
 		_neighbour->setAnchorPoint(Vec2(0.0f, 1.0f));
-		_neighbour->setPosition(Vec2(48.0f, top - 50.0f));
+		_neighbour->setPosition(Vec2(48.0f, top - 70.0f));
 		_neighbour->setContentSize(Size2(220.0f, 30.0f));
 	}
 	if (_table) {
@@ -225,6 +272,8 @@ bool InlineEditorLayout::getCellRect(size_t row, Rect &out) const {
 
 bool InlineEditorLayout::beginLabelEdit() { return _labelTarget && _labelTarget->begin(); }
 
+bool InlineEditorLayout::beginCustomEdit() { return _customTarget && _customTarget->begin(); }
+
 bool InlineEditorLayout::beginCellEdit(size_t row) {
 	if (!_table || row >= _values.size() || (_cellSession && _cellSession->isOpen())) {
 		return false;
@@ -279,6 +328,19 @@ Value InlineEditorLayout::encodeState() const {
 	ret.setString(_labelText, "labelText");
 	ret.setBool(_labelTarget && _labelTarget->isEditing(), "labelEditing");
 
+	// The factory path. `lastCommitNull` is the one that mattered: before setCollectCallback every
+	// commit through a factory-built editor arrived as Nil, and a check that only looked at the
+	// boolean would have read that as `false` and passed.
+	ret.setBool(_customValue, "customValue");
+	ret.setBool(_customTarget && _customTarget->isEditing(), "customEditing");
+	ret.setBool(_lastCommitValue.isNull(), "lastCommitNull");
+	ret.setBool(_lastCommitValue.asBool(), "lastCommitBool");
+	if (_customTarget && _customTarget->isEditing()) {
+		if (auto box = dynamic_cast<ui::Checkbox *>(_customTarget->getSession()->getEditor())) {
+			ret.setBool(box->isChecked(), "editorChecked");
+		}
+	}
+
 	const bool cellEditing = _cellSession && _cellSession->isOpen();
 	ret.setBool(cellEditing, "cellEditing");
 	ret.setInteger(_editedRow == maxOf<size_t>() ? -1 : int64_t(_editedRow), "editedRow");
@@ -329,12 +391,29 @@ void InlineEditorLayout::registerCommands() {
 	addCommand("state", "Report both editors, the values and the ending counters",
 			[this](Value &&) { return encodeState(); });
 
-	addCommand("begin", "Open an editor: {target=label|cell, row}", [this](Value &&args) {
+	addCommand("begin", "Open an editor: {target=label|cell|custom, row}", [this](Value &&args) {
 		const Value &a = args;
-		if (a.getString("target") == "cell") {
+		const auto target = a.getString("target");
+		if (target == "cell") {
 			return ackValue(beginCellEdit(size_t(a.getInteger("row"))));
 		}
+		if (target == "custom") {
+			return ackValue(beginCustomEdit());
+		}
 		return ackValue(beginLabelEdit());
+	});
+
+	// The factory's editor has no text to type into, which is the point of choosing it.
+	addCommand("check", "Set the custom editor's checkbox: {value}", [this](Value &&args) {
+		if (!_customTarget || !_customTarget->isEditing()) {
+			return ackValue(false);
+		}
+		auto box = dynamic_cast<ui::Checkbox *>(_customTarget->getSession()->getEditor());
+		if (!box) {
+			return ackValue(false);
+		}
+		box->setChecked(static_cast<const Value &>(args).getBool("value"), true);
+		return ackValue(true);
 	});
 
 	addCommand("type", "Put text into the open editor: {value}", [this](Value &&args) {
@@ -362,12 +441,19 @@ void InlineEditorLayout::registerCommands() {
 		if (_labelTarget && _labelTarget->isEditing()) {
 			return ackValue(_labelTarget->getSession()->commit());
 		}
+		if (_customTarget && _customTarget->isEditing()) {
+			return ackValue(_customTarget->getSession()->commit());
+		}
 		return ackValue(false);
 	});
 
 	addCommand("cancel", "Cancel the open editor", [this](Value &&) {
 		if (_cellSession && _cellSession->isOpen()) {
 			_cellSession->cancel();
+			return ackValue(true);
+		}
+		if (_customTarget && _customTarget->isEditing()) {
+			_customTarget->getSession()->cancel();
 			return ackValue(true);
 		}
 		if (_labelTarget && _labelTarget->isEditing()) {

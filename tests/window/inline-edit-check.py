@@ -327,6 +327,62 @@ try:
     check("keeping what was typed", st["commits"] == 1 and st["lastCommit"] == "detached",
             (st["commits"], st["lastCommit"]))
     check("and leaves no overlay behind", s.invoke("inline-edit.overlays")["count"] == 0)
+
+    # --- the FACTORY path, which existed and did not work --------------------------------------------
+    #
+    # An editor built by InlineEditorFactory is a node the widget knows nothing about, so it cannot
+    # read a value out of it - and until setCollectCallback it did not try: `collect` stayed unset and
+    # every commit through a factory arrived as Nil. Silently, because an unset collect is legal and
+    # its result is indistinguishable from an empty value. Nothing in the tree caught it because
+    # nothing in the tree used a factory; this stand's third target is the first.
+    #
+    # The editor is a ui::Checkbox on purpose - a widget with NO TEXT - so a value reaching the commit
+    # cannot have come from the stock one-line path by accident.
+    s.invoke("inline-edit.reset-counters")
+    st = state()
+    check("the custom target starts holding true", st["customValue"] is True, st)
+
+    s.invoke("inline-edit.begin", target="custom")
+    s.ok("frame", count=3)
+    st = state()
+    check("a factory-built editor opens", st["customEditing"] is True, st)
+    check("... seeded with what the target holds", st.get("editorChecked") is True, st)
+
+    s.invoke("inline-edit.check", value=False)
+    s.ok("frame", count=2)
+    check("the checkbox takes the change", state().get("editorChecked") is False, state())
+
+    s.invoke("inline-edit.commit")
+    s.ok("frame", count=3)
+    st = state()
+    check("the commit is delivered", st["commits"] == 1, st)
+    # THE point. Before setCollectCallback this arrived as Nil - and a check reading only the bool
+    # would have seen `false`, which is what was typed, and passed while nothing worked.
+    check("... carrying a VALUE and not Nil", st["lastCommitNull"] is False, st)
+    check("... which is the one the editor held", st["lastCommitBool"] is False, st)
+    check("... and the target took it", st["customValue"] is False, st)
+    check("... and the session closed", st["customEditing"] is False, st)
+
+    # A refused commit keeps a factory-built session open exactly as it keeps a text one.
+    s.invoke("inline-edit.reset-counters")
+    s.invoke("inline-edit.refuse", value=True)
+    s.invoke("inline-edit.begin", target="custom")
+    s.ok("frame", count=3)
+    s.invoke("inline-edit.check", value=True)
+    s.invoke("inline-edit.commit")
+    s.ok("frame", count=2)
+    st = state()
+    check("a refused factory commit leaves the session open", st["customEditing"] is True, st)
+    check("... with what was set still in it", st.get("editorChecked") is True, st)
+    check("... and the target unchanged", st["customValue"] is False, st)
+
+    s.invoke("inline-edit.refuse", value=False)
+    s.invoke("inline-edit.cancel")
+    s.ok("frame", count=3)
+    st = state()
+    check("cancelling ends it", st["customEditing"] is False, st)
+    check("... without committing", st["commits"] == 0 and st["cancels"] == 1, st)
+    check("... and the target is what it was", st["customValue"] is False, st)
 finally:
     s.close()
     proc.kill()

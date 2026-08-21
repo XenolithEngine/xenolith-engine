@@ -263,6 +263,16 @@ public:
 	// Unset, an edit opens a text field over getText().
 	virtual void setFactory(InlineEditorFactory &&);
 
+	/* How to read the value out of an editor the FACTORY built.
+
+	The stock one-line editor reads itself - beginInlineTextEdit fills `collect` in on the caller's
+	behalf - but a factory hands back a node this side knows nothing about, and until this existed
+	that meant a factory-built editor committed Nil. Silently: `collect` is optional, so its absence
+	looked like "the value is empty" rather than "there is nobody to ask".
+
+	Required whenever setFactory is used and the commit is supposed to carry anything. */
+	virtual void setCollectCallback(Function<Value()> &&);
+
 	// What the stock text editor opens with. A commit does NOT write it back - the owner does, in
 	// its commit callback, because only it knows whether the value was accepted.
 	virtual void setText(StringView);
@@ -310,6 +320,7 @@ protected:
 	Node *_anchor = nullptr;
 
 	InlineEditorFactory _factory;
+	Function<Value()> _collectCallback;
 	Function<bool(const Value &)> _commitCallback;
 	Function<void()> _cancelCallback;
 	Function<void()> _closeCallback;

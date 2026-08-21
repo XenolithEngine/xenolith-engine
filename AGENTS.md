@@ -652,6 +652,12 @@ header, a platform branch, or an allocation. The essentials:
   asked for. It ends on Enter, on a press outside, on a scroll and on the anchor
   leaving the scene - all of them COMMITTING, and only Escape cancelling - and
   the commit is delivered at most once however many of those arrive together.
+  A caller that supplies its OWN editor through `setFactory` must also supply
+  `setCollectCallback`: this side is handed a node it cannot interpret, so
+  without it the commit carries a Nil - and it did, silently, until the studio's
+  control binder became the first caller to take that path. `collect` stays
+  optional because a display has nothing to report, which is exactly what made
+  the hole invisible.
 - `ui::TableView` publishes its ROW GEOMETRY - `getRowRect`, `getCellRect`,
   `getRowIndexAt`, `getRowBoundaryAt`, shared with `ui::TreeView` through
   `ui::RowGeometrySource` - and it answers for a row that has no node, because

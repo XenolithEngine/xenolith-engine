@@ -501,6 +501,10 @@ void InlineEditTarget::handleExit() {
 
 void InlineEditTarget::setFactory(InlineEditorFactory &&cb) { _factory = sp::move(cb); }
 
+void InlineEditTarget::setCollectCallback(Function<Value()> &&cb) {
+	_collectCallback = sp::move(cb);
+}
+
 void InlineEditTarget::setText(StringView value) { _text = value.str<Interface>(); }
 
 void InlineEditTarget::setCommitCallback(Function<bool(const Value &)> &&cb) {
@@ -598,6 +602,15 @@ bool InlineEditTarget::begin() {
 
 	if (auto editor = makeEditor(request)) {
 		InlineEditConfig config;
+
+		/* The factory's editor reads itself through this, and without it the commit carried Nil -
+		which read as "the value is empty" rather than as "there is nobody to ask". The stock path
+		below never needed it, because beginInlineTextEdit sets `collect` over the field it built,
+		and that is why the hole stayed invisible: every caller in the tree took the stock path. */
+		if (_collectCallback) {
+			config.collect = [this] { return _collectCallback(); };
+		}
+
 		config.closeOnScroll = _closeOnScroll;
 		config.commitOnFocusLoss = _commitOnFocusLoss;
 		config.padding = _padding;
