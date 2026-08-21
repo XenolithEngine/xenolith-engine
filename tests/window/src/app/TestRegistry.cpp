@@ -65,6 +65,7 @@
 #include "template/PugCascadeLayout.h"
 #include "template/PugLayout.h"
 #include "render/RenderLevelLayout.h"
+#include "render/Scale9Layout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SpecificityLayout.h"
@@ -421,6 +422,18 @@ static const TestInfo s_renderTests[] = {
 		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
 				   "must show none - behind opaque geometry every level is hidden."),
 		TestRegistry_make<RenderLevelLayout>},
+
+	TestInfo{StringView("scale9"), StringView("XL_SCALE9_TEST"), StringView("Scale9Sprite geometry"),
+		StringView("Three nine-slice sprites over one bundled picture: the whole image, a sub-rect "
+				   "of it, and one with a side left at zero. The corners must keep the four "
+				   "declared sizes at ANY content size while the edges stretch along one axis "
+				   "only; the slice is measured in pixels of the FRAGMENT, so the sub-rect sprite "
+				   "must come out with the same view geometry and different texture coordinates; a "
+				   "zero side emits six quads rather than nine; and a slice that leaves no middle "
+				   "is refused with the numbers and drawn as a plain sprite. Drive it over the "
+				   "inspector: scale9.state, scale9.set-slice, scale9.set-size, "
+				   "scale9.set-fill-center, scale9.set-texture-rect, scale9.set-autofit."),
+		TestRegistry_make<Scale9Layout>, true},
 
 	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "

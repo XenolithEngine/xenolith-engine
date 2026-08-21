@@ -46,6 +46,7 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
                               (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry
     geometry-check.py         headless assertions for window geometry and monitors
     text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
@@ -135,6 +136,17 @@ stand carries four subscribers on
 one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
 text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
+
+`scale9-check.py` is the one case here where the thing on screen IS the subject and a screenshot
+is still the wrong instrument. A nine-slice sprite claims that its corners did not stretch and that
+its nine texture rects tile the picture exactly - claims that are numbers, and numbers a PNG
+comparison would test the rasterizer for rather than the slicing. The stand exposes a Scale9Sprite
+subclass that reports the quads the sprite actually wrote, and the script asserts on those: corner
+sizes that stay put across three content sizes, a sub-rect of the same texture that must come out
+with the SAME view geometry and different texture coordinates (the slice is measured in pixels of
+the fragment), a zero side that emits no quad at all, a box smaller than its own corners that
+shrinks them in proportion instead of refusing, and a slice leaving no middle that IS refused - with
+the numbers, and drawn as a plain sprite rather than not drawn.
 
 `clipboard-check.py` is there for a seam rather than a widget, and for one property in particular:
 the clipboard transport is answered EXACTLY ONCE. That is not what the platforms do — wayland drops
