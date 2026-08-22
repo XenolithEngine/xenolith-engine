@@ -336,9 +336,129 @@ targets-export:\
 	$(addsuffix .tar.xz,$(patsubst %/,%,$(TARGETS_AVAILABLE))) \
 	$(addsuffix .tar.xz.sig,$(patsubst %/,%,$(TARGETS_AVAILABLE)))
 
+#
+# GitHub release export
+#
+# Assets of a GitHub release live in one flat namespace, while a host package and
+# a target package for the same triplet are both called <triplet>.tar.xz - upload
+# both and the second one overwrites the first. The sets below stage prefixed
+# copies under release/, so the asset name says which half of the SDK it is:
+#
+#   release/host_x86_64-unknown-linux-gnu.tar.xz[.sig]
+#   release/target_x86_64-unknown-linux-gnu.tar.xz[.sig]
+#
+# The sets are explicit lists rather than $(wildcard): a release has to fail
+# loudly when a package was not built, and targets/ also holds artifacts that are
+# deliberately not published - the +dll Windows sysroots, which exist only to
+# build the Windows host toolchain from.
+#
+# Run `make release-check` first: it reports missing packages and packages whose
+# release tag does not match the current one, without building anything.
+
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
+RELEASE_DIR := release
+
+RELEASE_HOSTS := \
+	x86_64-unknown-linux-gnu \
+	aarch64-unknown-linux-gnu \
+	riscv64-unknown-linux-gnu \
+	x86_64-unknown-linux-musl \
+	aarch64-unknown-linux-musl \
+	riscv64-unknown-linux-musl \
+	x86_64-pc-windows-msvc \
+	aarch64-pc-windows-msvc \
+	x86_64-apple-macosx \
+	aarch64-apple-macosx
+
+RELEASE_TARGETS := \
+	x86_64-unknown-linux-gnu \
+	aarch64-unknown-linux-gnu \
+	riscv64-unknown-linux-gnu \
+	x86_64-unknown-linux-musl \
+	aarch64-unknown-linux-musl \
+	riscv64-unknown-linux-musl \
+	x86_64-xenolithos-linux-gnu \
+	aarch64-xenolithos-linux-gnu \
+	riscv64-xenolithos-linux-gnu \
+	aarch64-unknown-linux-android \
+	armv7a-unknown-linux-androideabi \
+	i686-unknown-linux-android \
+	x86_64-unknown-linux-android \
+	unknown-ndk-linux-android \
+	x86_64-apple-macosx \
+	aarch64-apple-macosx \
+	x86_64-apple-macosx+open \
+	aarch64-apple-macosx+open \
+	aarch64-apple-ios \
+	aarch64-apple-ios-simulator \
+	x86_64-apple-ios-simulator \
+	x86_64-pc-windows-msvc \
+	aarch64-pc-windows-msvc \
+	wasm32-unknown-unknown
+
+RELEASE_HOST_FILES := \
+	$(addprefix $(RELEASE_DIR)/host_,$(addsuffix .tar.xz,$(RELEASE_HOSTS))) \
+	$(addprefix $(RELEASE_DIR)/host_,$(addsuffix .tar.xz.sig,$(RELEASE_HOSTS)))
+
+RELEASE_TARGET_FILES := \
+	$(addprefix $(RELEASE_DIR)/target_,$(addsuffix .tar.xz,$(RELEASE_TARGETS))) \
+	$(addprefix $(RELEASE_DIR)/target_,$(addsuffix .tar.xz.sig,$(RELEASE_TARGETS)))
+
+$(RELEASE_DIR):
+	$(MKDIR) $(RELEASE_DIR)
+
+# The prerequisite is the package's `release` stamp, not the directory: a
+# directory's mtime only moves when an entry is added or removed, so a rebuilt
+# package whose files merely changed in place would not re-trigger the tar.
+$(RELEASE_DIR)/host_%.tar.xz: hosts/%/release | $(RELEASE_DIR)
+	tar cJf $@ -C hosts $*
+
+$(RELEASE_DIR)/target_%.tar.xz: targets/%/release | $(RELEASE_DIR)
+	tar cJf $@ -C targets $*
+
+# gpg refuses to overwrite an existing signature in a non-interactive run, so a
+# re-export has to drop the old one first.
+$(RELEASE_DIR)/%.tar.xz.sig: $(RELEASE_DIR)/%.tar.xz
+	rm -f $@
+	gpg --detach-sign --output $@ $<
+
+release-hosts: $(RELEASE_HOST_FILES)
+
+release-targets: $(RELEASE_TARGET_FILES)
+
+release-export: release-hosts release-targets
+
+# Read-only pre-flight: what the release set expects vs what is actually on disk.
+release-check:
+	@missing=''; stale=''; \
+	for h in $(RELEASE_HOSTS); do \
+		if [ ! -f hosts/$$h/release ]; then missing="$$missing hosts/$$h"; \
+		elif [ "`cat hosts/$$h/release`" != '$(GIT_TAG)' ]; then \
+			stale="$$stale hosts/$$h(`cat hosts/$$h/release`)"; fi; \
+	done; \
+	for t in $(RELEASE_TARGETS); do \
+		if [ ! -f targets/$$t/release ]; then missing="$$missing targets/$$t"; \
+		elif [ "`cat targets/$$t/release`" != '$(GIT_TAG)' ]; then \
+			stale="$$stale targets/$$t(`cat targets/$$t/release`)"; fi; \
+	done; \
+	echo "release tag: $(GIT_TAG)"; \
+	echo "expected: $(words $(RELEASE_HOSTS)) hosts, $(words $(RELEASE_TARGETS)) targets"; \
+	if [ -n "$$missing" ]; then echo "NOT BUILT:$$missing"; fi; \
+	if [ -n "$$stale" ]; then echo "WRONG TAG:$$stale"; fi; \
+	if [ -z "$$missing$$stale" ]; then echo "all packages present"; else exit 1; fi
+
+clean-release:
+	$(call rule_rm,$(RELEASE_DIR))
+
 .PHONY: all clean prepare compress host download \
 	hosts-export \
 	targets-export \
+	release-hosts \
+	release-targets \
+	release-export \
+	release-check \
+	clean-release \
 	clean-targets \
 	target-all \
 	target-linux \
