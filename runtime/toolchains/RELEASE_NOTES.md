@@ -1,4 +1,4 @@
-# Xenolith Toolchains — `sdk-v0beta2`
+# Xenolith Toolchains — `sdk-v0beta3`
 
 Universal, self-contained C/C++ toolchains for building **Xenolith Runtime** and
 projects based on it, on **Linux, Windows and macOS**, cross-compiling to every
@@ -19,57 +19,89 @@ This release publishes two sets of binary packages:
 You pick one host (matching the machine you compile on) and one or more targets
 (the platforms you ship to). All packages are `.tar.xz` with a detached GnuPG
 signature (`.tar.xz.sig`), and every package carries a `release` file holding
-the SDK tag (`sdk-v0beta2`).
+the SDK tag (`sdk-v0beta3`).
+
+Release assets are named `host_<id>.tar.xz` and `target_<id>.tar.xz`. The prefix
+is not cosmetic: a GitHub release has one flat asset namespace, and the host and
+the target for the same triplet are otherwise both called `<triplet>.tar.xz`.
+Inside the archive the top-level directory is still the bare `<id>`.
 
 ---
 
-## What changed since `sdk-v0beta1`
+## What changed since `sdk-v0beta2`
 
-### No vendor machine, and (almost) no vendor SDK
+### LLVM 22
 
-* **The Windows host toolchains are cross-built on Linux against sprt** instead
-  of the MSVC CRT and the Windows SDK. clang, lld, lldb, glslang and the SPIR-V
-  tools link against the Xenolith Runtime as their libc/libm/C++ runtime; the
-  Win32 API surface comes from the runtime's own `.def` files turned into import
-  libraries. The packages ship `sprt.dll` in `bin/` next to the tools. The build
-  was validated by running LLVM's own `check-llvm` / `check-clang` / `check-lld`
-  suites against the cross-built `.exe` files under wine.
-* **The macOS host toolchains are cross-built on Linux too**, against the new
-  Xcode-SDK-free `+open` sysroot — SDK-less end to end, Mach-O signing done with
-  `rcodesign`. Apple hardware is no longer required to produce the macOS hosts or
-  the `+open` targets. It is still required for the plain `*-apple-macosx` /
-  `*-apple-ios` targets, which cross-compile against a real Apple SDK.
+The whole toolchain moved from **21.1.8 to 22.1.8** — clang, lld, lldb,
+compiler-rt, libc++/libc++abi/libunwind and the resource dir (`lib/clang/22`).
+The local patch set was rebased and grew from 11 to **13 patches**: four
+wine-LLDB patches (one new), six `sprt-windows` patches, plus non-`__ulock`,
+wasm libunwind and no-delayload.
 
-### New targets
+### Third-party sources are pinned and verified
 
-| Target | What it is |
-|---|---|
-| `wasm32-unknown-unknown` | freestanding WebAssembly sysroot (LLVM runtimes + the dependency suite built for wasm32 with threads/bulk-memory/sign-ext) |
-| `x86_64-xenolithos-linux-gnu`<br>`aarch64-xenolithos-linux-gnu`<br>`riscv64-xenolithos-linux-gnu` | Xenolith OS device targets: glibc **2.39** sysroot **plus the device runtime** (`runtime/rootfs`, a stripped base rootfs with busybox/dropbear/vulkaninfo) from which `xenolith-os` assembles a hardware image |
-| `x86_64-apple-macosx+open`<br>`aarch64-apple-macosx+open` | macOS sysroots assembled entirely from Apple's open-source releases plus a small hand-written overlay — no Xcode SDK is compiled against or shipped. These replace the `+sprt` packages published in beta1 (the `+sprt` recipes remain in the tree but are not published this time). |
+`src.mk` was rewritten from ad-hoc download recipes into declarative per-library
+blocks, and every dependency now has to clear three checks before it is allowed
+into `src/` — a failure stops the build instead of leaving a half-broken tree:
+
+* the transfer actually succeeded, so a 404 page or a truncated file no longer
+  reaches `tar` and fails several steps later with an unrelated message;
+* `_SHA256` matches — the expected value lives in our git history, not on the
+  server the file came from;
+* `_SIG` verifies against `keys/<_KEY>.asc`, for the fourteen upstreams that
+  publish a detached OpenPGP signature. That is what makes writing a `_SHA256`
+  pin trustworthy at the one moment it matters — when somebody bumps a version.
+
+Sources fetched with git are pinned by `_COMMIT` as well as by `_TAG`, because a
+tag is a mutable pointer: if upstream re-tags, the clone is refused rather than
+silently building something else. `make src-pins` re-resolves every tag to the
+commit it points at today, which is how a version bump is prepared. Where an
+upstream publishes nothing to verify against, the block says so and why that is
+acceptable.
+
+### libzip is gone
+
+Dropped, not bumped. `stappler_zip` now reads and writes ZIP archives with its
+own code (zlib is the only dependency left), so the library, its nine per-target
+builds and the cmake feature-probe shims that carried it onto wasm/NuttX/Embox
+are no longer part of any sysroot. Anything that linked `-lzip` from these
+toolchains must vendor its own copy. bzip2, xz/liblzma and zstd stay: FreeType,
+libtiff and curl still want them.
+
+### ICU4C and libuidna are no longer built into the sysroots
+
+The runtime's own Unicode 17.0 tables — case mapping, folding, collation and IDN
+— replace them, so no target ships `libicuuc.a` or `libidn2.a` any more. The
+icu4c *sources* are still downloaded: they are the UCD and conformance data the
+table generators read. A real `libicuuc` can still be produced on demand for a
+project that wants one:
+
+```sh
+make -C target-linux icu SP_ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu
+```
+
+Together with the libzip removal this takes `share/licenses` from 49 entries to
+**48** — the icu4c and libuidna licenses stay, because their sources are still
+inputs to the build.
+
+### NuttX and Embox
+
+`target-nuttx` (`aarch64-nuttx-none-elf`, wired into the top-level Makefile as
+`target-nuttx`) and `target-embox` land in the tree as build targets, alongside
+the matching runtime platform support. Neither is **published** as a package in
+this release — build them from the tree.
 
 ### Everything else
 
-* `xlmake` **1.1** (was 1.0).
-* New bundled libraries: **SheenBidi** 3.0.0 (Unicode BiDi), **ngtcp2** 1.24.0
-  (QUIC for the HTTP/3 curl variant), **libffi** 3.7.1, **expat** 2.8.2,
-  **libdrm** 2.4.134.
-* Linux targets now ship **built** `libwayland-client/cursor/egl` static
-  libraries (wayland 1.25.0), not just protocol headers. DBus/XCB/XKB/X11 remain
-  headers-only.
-* Vulkan SDK bumped to **1.4.350.0** everywhere; MoltenVK 1.4.1.
-* The LLVM patch set grew from 4 to **11 patches** (wine-lldb, non-`__ulock`,
-  wasm libunwind, no-delayload, and six `sprt-windows` patches covering lldb,
-  compiler-rt and the lit suites under cross-testing).
-* Dependency bumps across the board — see the manifest below. Notably
-  libtiff 4.7.2 carries the CVE-2026-12912 and CVE-2026-4775 fixes upstream, so
-  the local backport patch is gone.
-* **libzip is gone** — dropped, not bumped. `stappler_zip` now reads and writes
-  ZIP archives with its own code (zlib is the only dependency left), so the
-  library, its nine per-target builds and the cmake feature-probe shims that
-  carried it onto wasm/NuttX/Embox are no longer part of any sysroot. Anything
-  that linked `-lzip` from these toolchains must vendor its own copy.
-  bzip2, xz/liblzma and zstd stay: FreeType, libtiff and curl still want them.
+* Dependency refresh across the board — see the manifest below. Notably
+  **FreeType 2.14.3 carries a CVE-2026-50811 backport** (`TT_Get_Var_Design`
+  bounds), and the giflib CVE-2026-26740 / CVE-2026-23868 backports are still
+  applied.
+* Vulkan SDK **1.4.357.0** (was 1.4.350.0), glslang 16.4.0; MoltenVK **1.4.2**.
+* A glibc target linking fix.
+* `make release-check` / `make release-export` in `runtime/toolchains/Makefile`
+  stage the prefixed release assets described above and verify up front that
+  every package of the release set was built and carries the right tag.
 
 ---
 
@@ -77,7 +109,7 @@ the SDK tag (`sdk-v0beta2`).
 
 ### Hosts (10)
 
-Each host package ships clang 21 with the LLVM tool suite (`clang`, `clang++`,
+Each host package ships clang 22 with the LLVM tool suite (`clang`, `clang++`,
 `clang-cl`, `lld`/`ld.lld`/`ld64.lld`/`lld-link`/`wasm-ld`, `lldb`, `llvm-ar`,
 `llvm-objcopy`, `llvm-nm`, `clang-format`, …), the bundled shader tools
 `glslang` and the `spirv-*` suite, and the **`xlmake`** build driver
@@ -100,7 +132,9 @@ Wine-hosted binaries.
 Notes:
 
 * Linux and macOS hosts also ship **GNU Make 4.3** as `bin/make`. The Windows
-  hosts do not (use `xlmake.exe`), and carry a reduced tool set overall.
+  hosts do not (use `xlmake.exe`), and carry a reduced tool set overall — the
+  compiler, the linkers, `lldb`, `glslang`, `spirv-link`, `xlmake` and the
+  `llvm-*` tools the build needs, with no `share/licenses` tree.
 * The Windows hosts require **`sprt.dll` to sit next to the executables** —
   Windows resolves imports from the directory of the running image and has no
   rpath equivalent. It is inside `bin/`; keep it there.
@@ -153,7 +187,7 @@ Notes:
 * The Windows `+dll` sysroot variants (`*-pc-windows-msvc+dll`, built around
   `sprt.dll` instead of the static runtime archive) exist as build targets and
   are what the Windows host toolchain is produced from, but they are **not
-  published** as packages.
+  published** as packages. The same holds for the NuttX and Embox targets.
 
 ### What a target sysroot actually contains
 
@@ -161,14 +195,22 @@ Notes:
 |---|---|---|---|
 | `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**) + Linux 5.10 LTS UAPI headers | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
 | `*-unknown-linux-musl` | musl **1.2.6** (pinned upstream) | same | headers only — system loader |
-| `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.350** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
+| `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.357** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
 | `*-linux-android(eabi)` | bionic stubs + headers, API 24 | same | headers only — system loader |
 | `*-apple-macosx`, `*-apple-ios*` | the Apple SDK's (not redistributed) | provided by the platform | **`libvulkan.dylib` + MoltenVK + validation layer** bundled |
 | `*-apple-macosx+open` | apple-oss headers in `include_libc` + generated `.tbd` link stubs, `System/Library/Frameworks/` | `libc++.tbd`/`libc++abi.tbd` stubs, apple-oss headers | same as above |
 | `*-pc-windows-msvc` | **none** — sprt is built from the engine sources; the sysroot supplies the Win32 import libraries (`usr/lib/import.lib`) | none — sprt provides libc++ | headers only — system loader |
 | `wasm32-unknown-unknown` | **none** — sprt is built from the engine sources | `libc++abi.a`, `libunwind.a`, `c++` headers | n/a |
 
-Every target ships `share/licenses` (49 entries), and every target except the
+Not every target carries every bundled library. The full dependency suite —
+libxml2, expat, libffi, WAMR, libbacktrace, wayland, libdrm, both `libcurl`
+variants — is a Linux-target thing. Apple targets ship libxml2, WAMR,
+libbacktrace and both curl variants but no expat/libffi/wayland/libdrm. Android
+targets ship WAMR, libbacktrace and both curl variants. **Windows and wasm32
+carry the smallest set**: no libxml2, expat, libffi, WAMR or libbacktrace, and
+only the OpenSSL `libcurl` variant.
+
+Every target ships `share/licenses` (48 entries), and every target except the
 `unknown-ndk-linux-android` bridge ships `lib/clang` — the compiler-rt resource
 dir, with sanitizers where the platform supports them.
 
@@ -179,18 +221,19 @@ the runtime from source and would otherwise link a stale copy by accident.
 
 ## Bundled component versions
 
-The compiler and every library are built from pinned upstream sources. This is
-the complete manifest shipped in this release.
+The compiler and every library are built from pinned upstream sources, each with
+a `_SHA256` (and, where upstream publishes one, an OpenPGP signature) checked at
+download time. This is the complete manifest shipped in this release.
 
 ### Compiler & toolchain
 | Component | Version |
 |---|---|
-| LLVM / Clang / LLD / LLDB | 21.1.8 (`llvmorg-21.1.8`, + 11 patches: wine-LLDB ×3, non-`__ulock`, wasm libunwind, no-delayload, sprt-windows ×6) |
-| libc++ / libc++abi / libunwind / compiler-rt | 21.1.8 (from LLVM) |
+| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 13 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, no-delayload, sprt-windows ×6) |
+| libc++ / libc++abi / libunwind / compiler-rt | 22.1.8 (from LLVM) |
 | GNU Make | 4.3 (not present on Windows hosts) |
 | xlmake (build driver) | 1.1 |
 | SIMDe | pinned `f3e8262` |
-| libbacktrace | pinned `549b81b` |
+| libbacktrace | pinned `6f8310e` |
 | binutils / GCC (glibc bootstrap only, not shipped) | 2.46.0 / 15.2.0 |
 
 ### System libc sources
@@ -203,18 +246,18 @@ the complete manifest shipped in this release.
 | Android API level | 24 |
 | macOS / iOS deployment target | 14.5 / 17.4 |
 
-### Vulkan / shaders (Vulkan SDK 1.4.350.0)
+### Vulkan / shaders (Vulkan SDK 1.4.357.0)
 | Component | Version |
 |---|---|
-| Vulkan-Headers | `vulkan-sdk-1.4.350.0` |
-| Vulkan-Loader | `vulkan-sdk-1.4.350.0` |
-| Vulkan-ValidationLayers | `vulkan-sdk-1.4.350.0` |
-| Vulkan-Utility-Libraries | `vulkan-sdk-1.4.350.0` |
-| Vulkan-Tools (`vulkaninfo`, Xenolith OS rootfs only) | `vulkan-sdk-1.4.350.0` |
-| SPIRV-Headers | `vulkan-sdk-1.4.350.0` |
-| SPIRV-Tools | `vulkan-sdk-1.4.350.0` |
-| glslang | `vulkan-sdk-1.4.350.0` (16.3.0) |
-| MoltenVK (Apple) | 1.4.1 |
+| Vulkan-Headers | `vulkan-sdk-1.4.357.0` |
+| Vulkan-Loader | `vulkan-sdk-1.4.357.0` |
+| Vulkan-ValidationLayers | `vulkan-sdk-1.4.357.0` |
+| Vulkan-Utility-Libraries | `vulkan-sdk-1.4.357.0` |
+| Vulkan-Tools (`vulkaninfo`, Xenolith OS rootfs only) | `vulkan-sdk-1.4.357.0` |
+| SPIRV-Headers | `vulkan-sdk-1.4.357.0` |
+| SPIRV-Tools | `vulkan-sdk-1.4.357.0` |
+| glslang | `vulkan-sdk-1.4.357.0` (16.4.0) |
+| MoltenVK (Apple) | 1.4.2 |
 
 ### Compression & archive
 | Component | Version |
@@ -237,13 +280,12 @@ the complete manifest shipped in this release.
 ### Text, fonts & i18n
 | Component | Version |
 |---|---|
-| FreeType | 2.14.3 |
-| HarfBuzz | 14.2.1 |
+| FreeType | 2.14.3 (+ backport: CVE-2026-50811) |
+| HarfBuzz | 14.3.1 |
 | SheenBidi | 3.0.0 (Unicode 17.0) |
-| ICU4C | 78.3 |
 | libxml2 | 2.15.3 |
-| expat | 2.8.2 |
-| libuidna (IDN2 replacement) | upstream `SBKarr/libuidna` |
+| expat | 2.8.3 |
+| ICU4C (build-time only — UCD & conformance data, not shipped) | 78.3 |
 
 ### Crypto & network
 | Component | Version |
@@ -251,17 +293,17 @@ the complete manifest shipped in this release.
 | OpenSSL (LTS) | 3.5.7 |
 | openssl-gost-engine | 3.0.3 |
 | MbedTLS (LTS) | 3.6.7 |
-| nghttp3 | 1.17.0 |
-| ngtcp2 | 1.24.0 |
+| nghttp3 | 1.18.0 |
+| ngtcp2 | 1.25.0 |
 | libcurl | 8.21.0 (MbedTLS **and** OpenSSL variants; HTTP/3 in the OpenSSL variant) |
-| CA bundle | `cacert-2026-05-14.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
+| CA bundle | `cacert-2026-08-13.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
 
 ### Database & runtime
 | Component | Version |
 |---|---|
-| SQLite | 3.53.3 (amalgamation 3530300) |
+| SQLite | 3.53.4 (amalgamation 3530400) |
 | WAMR (wasm-micro-runtime) | 2.4.5 |
-| libffi | 3.7.1 |
+| libffi | 3.8.0 |
 
 ### Linux windowing / system
 | Component | Version |
@@ -275,7 +317,7 @@ the complete manifest shipped in this release.
 ### Windows
 | Component | Version |
 |---|---|
-| xwin (legacy Windows-native bootstrap only) | 0.9.0 |
+| xwin (legacy Windows-native bootstrap only) | 0.10.0 |
 
 > The published Windows host and target packages contain **no MSVC CRT and no
 > Windows SDK**: the toolchain runs on sprt and the Win32 surface is described by
@@ -290,13 +332,17 @@ the complete manifest shipped in this release.
 
 ```sh
 # Pick a host matching your machine and the target(s) you ship to:
-#   hosts/<host-id>.tar.xz       + .sig
-#   targets/<target-id>.tar.xz   + .sig
+#   host_<host-id>.tar.xz       + .sig
+#   target_<target-id>.tar.xz   + .sig
 
 # Verify the detached GnuPG signature, then extract
-gpg --verify x86_64-unknown-linux-gnu.tar.xz.sig x86_64-unknown-linux-gnu.tar.xz
-tar xJf x86_64-unknown-linux-gnu.tar.xz
+gpg --verify host_x86_64-unknown-linux-gnu.tar.xz.sig host_x86_64-unknown-linux-gnu.tar.xz
+tar xJf host_x86_64-unknown-linux-gnu.tar.xz     # unpacks into x86_64-unknown-linux-gnu/
 ```
+
+The `host_` / `target_` prefix is part of the asset name only — the directory
+inside the archive is the bare toolchain id, which is what the build system
+looks for.
 
 Each host package extracts to `bin/ lib/ share/ host.mk release`; each target to
 `usr/ lib/ share/ target.mk release` plus `include_libc/` where the target
@@ -344,7 +390,7 @@ $HOST/bin/clang \
     --target=x86_64-unknown-linux-musl \
     --sysroot=$SYSROOT \
     -resource-dir $SYSROOT/lib/clang \
-    -idirafter $HOST/lib/clang/21/include \
+    -idirafter $HOST/lib/clang/22/include \
     main.c -o main
 ```
 
@@ -400,8 +446,8 @@ Sub-2024). GOST ciphers can be loaded statically through the
   (v3dv, panvk, venus, lavapipe) and is applied as an overlay by `xenolith-os`;
   lavapipe additionally needs a native LLVM for the target architecture, which
   cross-compilation does not provide.
-* **`+sprt` Apple packages are not published** in this release; the `+open`
-  sysroots supersede them. The recipes are still in `target-apple/Makefile`.
+* **`+sprt` Apple packages are not published**; the `+open` sysroots supersede
+  them. The recipes are still in `target-apple/Makefile`.
 * **The `+open` framework headers are not complete framework headers.** They
   declare only what real code in this repository and the host projects use, with
   every constant and symbol validated against the real SDK.
@@ -413,7 +459,12 @@ Sub-2024). GOST ciphers can be loaded statically through the
   sprt. Builds driven by the engine's `target.mk` or a CMake toolchain file are
   unaffected.
 * **`libcurl`'s MbedTLS variant is not built for Windows and wasm32**, and those
-  two targets also omit ICU, libxml2, expat, libffi and the WAMR runtime.
+  two targets also omit libxml2, expat, libffi, WAMR and libbacktrace. Android
+  targets omit libxml2, expat and libffi.
+* **No target ships ICU or libidn2 any more.** Code that linked `-licuuc` or
+  `-lidn2` from these toolchains must either build ICU itself
+  (`make -C target-linux icu`) or move to the runtime's own Unicode API.
+* **NuttX and Embox targets are not published** — build them from the tree.
 
 ## License
 
