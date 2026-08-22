@@ -27,6 +27,32 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
+/** THE ARITHMETIC OF A SCRUB, apart from the widget that runs one.
+
+A drag that changes a number is not only a field's gesture: a canvas may scrub a literal it draws
+itself, with no field anywhere, and it must land on the same number this widget would. Two
+spellings of that answer agree on the day the second is written and on no day after - the same
+argument that keeps a connection rule in one place - so the widget calls these too.
+
+Travel is ACCUMULATED BY THE CALLER and passed whole. A movement shorter than one step has to be
+remembered, or a slow drag rounds to nothing every frame and the value never moves.
+
+The range CLAMPS here, unlike a typed value, which is refused: a gesture is continuous and has no
+wrong state to be in, so it stops at the end of the range the way a slider does. */
+struct SP_PUBLIC ScrubRange {
+	bool has = false;
+	double min = 0.0;
+	double max = 0.0;
+};
+
+// How many steps a run of horizontal travel is worth. Sensitivity is points per step and must
+// be > 0; the result is truncated toward zero, so travel below one step is worth none.
+SP_PUBLIC double scrubSteps(float travel, float sensitivity);
+
+// base + step * steps, truncated when the value is whole-numbers-only and clamped into the range.
+SP_PUBLIC double scrubValue(double base, double steps, double step, bool integer,
+		const ScrubRange & = ScrubRange());
+
 /** A text field that holds a NUMBER.
 
 IT HAS TO BE A WIDGET, not a flag. TextInputType::Number_* is a hint to the platform's IME and
