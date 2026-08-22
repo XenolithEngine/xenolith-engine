@@ -32,6 +32,24 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // label, because the two read as one row when they sit side by side.
 static constexpr float s_numberUnitGap = 4.0f;
 
+double scrubSteps(float travel, float sensitivity) {
+	if (sensitivity <= 0.0f) {
+		return 0.0;
+	}
+	return double(sprt::trunc(travel / sensitivity));
+}
+
+double scrubValue(double base, double steps, double step, bool integer, const ScrubRange &range) {
+	double value = base + step * steps;
+	if (integer) {
+		value = sprt::trunc(value);
+	}
+	if (range.has) {
+		value = sprt::clamp(value, range.min, range.max);
+	}
+	return value;
+}
+
 NumberField::~NumberField() { }
 
 bool NumberField::init() {
@@ -218,16 +236,9 @@ void NumberField::updateText() {
 }
 
 double NumberField::stepped(double base, double steps) const {
-	double value = base + _step * steps;
-	if (_integer) {
-		value = sprt::trunc(value);
-	}
 	// The drag and the arrows CLAMP, unlike typing. A gesture has no wrong state to be in, and
 	// stopping at the end of the range is what the range is for.
-	if (_hasRange) {
-		value = sprt::clamp(value, _min, _max);
-	}
-	return value;
+	return scrubValue(base, steps, _step, _integer, ScrubRange{_hasRange, _min, _max});
 }
 
 void NumberField::setInvalid(bool value, StringView message) {
@@ -392,7 +403,7 @@ bool NumberField::handleSwipe(const Vec2 &location, const Vec2 &delta) {
 	// or a slow drag rounds to nothing on every frame and the value never moves.
 	_dragTravel += delta.x;
 
-	const double steps = double(sprt::trunc(_dragTravel / _dragSensitivity));
+	const double steps = scrubSteps(_dragTravel, _dragSensitivity);
 	auto value = stepped(_dragOrigin, steps);
 	if (value != _value) {
 		// Not silent: a drag with no live feedback is a drag nobody can aim. Grouping the whole

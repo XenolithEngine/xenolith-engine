@@ -49,6 +49,45 @@ static basic2d::SceneContent2d *MenuPopup_contentForWindow(AppWindow *w) {
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
 
+/* `gravity` names which edge OF THE MENU lands on the anchor point, not the direction the menu
+opens - so "hang below" is gravity Top, and the Wayland backend inverts it again for
+xdg_positioner.
+
+Lifted out of placementForNode so that a placement built from a POINT answers with the same four
+sides; a second spelling of this table would put a context menu on the other edge of the cursor. */
+static void MenuPopup_applySide(sprt::window::WindowPlacement &ret, MenuSide side) {
+	using namespace sprt::window;
+
+	switch (side) {
+	case MenuSide::Below:
+		ret.anchor = WindowAnchor::BottomLeft;
+		ret.gravity = WindowAnchor::TopLeft;
+		ret.adjustment = WindowPlacementAdjustment::FlipY | WindowPlacementAdjustment::SlideX
+				| WindowPlacementAdjustment::SlideY;
+		break;
+	case MenuSide::Above:
+		ret.anchor = WindowAnchor::TopLeft;
+		ret.gravity = WindowAnchor::BottomLeft;
+		ret.adjustment = WindowPlacementAdjustment::FlipY | WindowPlacementAdjustment::SlideX
+				| WindowPlacementAdjustment::SlideY;
+		break;
+	case MenuSide::Right:
+		// A submenu: it opens off the row's top-right corner and flips to its left at the screen
+		// edge, which is the one adjustment a vertical menu cannot do without.
+		ret.anchor = WindowAnchor::TopRight;
+		ret.gravity = WindowAnchor::TopLeft;
+		ret.adjustment = WindowPlacementAdjustment::FlipX | WindowPlacementAdjustment::FlipY
+				| WindowPlacementAdjustment::SlideX | WindowPlacementAdjustment::SlideY;
+		break;
+	case MenuSide::Left:
+		ret.anchor = WindowAnchor::TopLeft;
+		ret.gravity = WindowAnchor::TopRight;
+		ret.adjustment = WindowPlacementAdjustment::FlipX | WindowPlacementAdjustment::FlipY
+				| WindowPlacementAdjustment::SlideX | WindowPlacementAdjustment::SlideY;
+		break;
+	}
+}
+
 sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor, MenuSide side, IVec2 offset) {
 	using namespace sprt::window;
 
@@ -92,37 +131,33 @@ sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor, MenuSide si
 	ret.anchorRect = IRect(int32_t(std::lround(low.x)), int32_t(std::lround(topYDown)),
 			uint32_t(std::lround(high.x - low.x)), uint32_t(std::lround(high.y - low.y)));
 
-	/* `gravity` names which edge OF THE MENU lands on the anchor point, not the direction the menu
-	opens - so "hang below" is gravity Top, and the Wayland backend inverts it again for
-	xdg_positioner. */
-	switch (side) {
-	case MenuSide::Below:
-		ret.anchor = WindowAnchor::BottomLeft;
-		ret.gravity = WindowAnchor::TopLeft;
-		ret.adjustment = WindowPlacementAdjustment::FlipY | WindowPlacementAdjustment::SlideX
-				| WindowPlacementAdjustment::SlideY;
-		break;
-	case MenuSide::Above:
-		ret.anchor = WindowAnchor::TopLeft;
-		ret.gravity = WindowAnchor::BottomLeft;
-		ret.adjustment = WindowPlacementAdjustment::FlipY | WindowPlacementAdjustment::SlideX
-				| WindowPlacementAdjustment::SlideY;
-		break;
-	case MenuSide::Right:
-		// A submenu: it opens off the row's top-right corner and flips to its left at the screen
-		// edge, which is the one adjustment a vertical menu cannot do without.
-		ret.anchor = WindowAnchor::TopRight;
-		ret.gravity = WindowAnchor::TopLeft;
-		ret.adjustment = WindowPlacementAdjustment::FlipX | WindowPlacementAdjustment::FlipY
-				| WindowPlacementAdjustment::SlideX | WindowPlacementAdjustment::SlideY;
-		break;
-	case MenuSide::Left:
-		ret.anchor = WindowAnchor::TopLeft;
-		ret.gravity = WindowAnchor::TopRight;
-		ret.adjustment = WindowPlacementAdjustment::FlipX | WindowPlacementAdjustment::FlipY
-				| WindowPlacementAdjustment::SlideX | WindowPlacementAdjustment::SlideY;
-		break;
+	MenuPopup_applySide(ret, side);
+
+	return ret;
+}
+
+sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 &location,
+		MenuSide side, IVec2 offset) {
+	sprt::window::WindowPlacement ret;
+	ret.offset = offset;
+
+	auto scene = space->getScene();
+	auto content = scene ? scene->getContent() : nullptr;
+	if (!content) {
+		return ret;
 	}
+
+	// A point has no corners, so what placementForNode measures is skipped and what it CONVERTS is
+	// not: the two-step through the content is what undoes the scene's density scale, and a menu
+	// placed without it lands off the window on a HiDPI display.
+	const auto at = content->convertToNodeSpace(space->convertToWorldSpace(location));
+
+	// An empty rect. Every backend reads a zero-sized anchor as "this point", which is what a
+	// context menu means, and it keeps the four sides answering as they do for a node.
+	ret.anchorRect = IRect(int32_t(std::lround(at.x)),
+			int32_t(std::lround(content->getContentSize().height - at.y)), 0, 0);
+
+	MenuPopup_applySide(ret, side);
 
 	return ret;
 }

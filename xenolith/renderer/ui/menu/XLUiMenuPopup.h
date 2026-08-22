@@ -93,6 +93,17 @@ the menu opens - see the note in windows.adoc. */
 SP_PUBLIC sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor,
 		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
 
+/** The same, resolved from a POINT rather than from a node - what a CONTEXT menu opens off.
+
+`location` is in `space`'s own coordinates; `space` is only there to say which node's transform and
+which scene the point belongs to, so a canvas passes itself and the location the press arrived at.
+
+The anchor rect comes out EMPTY, which every backend reads as "this exact point". Everything else -
+the conversion through the scene content that undoes the density scale, the Y flip, and which edge
+of the menu lands on the anchor - is shared with placementForNode rather than spelled again. */
+SP_PUBLIC sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 &location,
+		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
+
 /** Open `source` as a popup surface at `placement`.
 
 Native subwindow where the platform has them, in-scene overlay where it does not - the caller never
