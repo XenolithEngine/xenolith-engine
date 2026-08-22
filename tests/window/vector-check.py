@@ -215,7 +215,7 @@ try:
     check("a number past the declared range is refused", near(st["values"][1], 20.0), st["values"])
     check("the callback does not fire for a refusal", st["callbacks"] == 0, st["callbacks"])
     check("the ROW says it is invalid", st["valid"] is False)
-    check("and takes the class a stylesheet paints that with", "invalid" in st["classes"],
+    check("and publishes the state a stylesheet paints that with", st["invalidState"],
             st["classes"])
     check("the message names the component that refused", st["message"].startswith("y:"),
             st["message"])
@@ -227,7 +227,7 @@ try:
     s.ok("frame", count=2)
     st = state("ranged")
     check("fixing the component clears the row's mark", st["valid"] is True and
-            "invalid" not in st["classes"], st["classes"])
+            not st["invalidState"], st)
     check("and the value is taken", near(st["values"][1], 500.0), st["values"])
 
     print("== the keyboard walks the row before it leaves it ==")

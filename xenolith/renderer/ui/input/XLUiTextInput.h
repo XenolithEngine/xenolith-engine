@@ -23,7 +23,7 @@
 #ifndef XENOLITH_RENDERER_UI_ATOMS_XLUITEXTINPUT_H_
 #define XENOLITH_RENDERER_UI_ATOMS_XLUITEXTINPUT_H_
 
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLUiStyleResolver.h"
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
@@ -32,7 +32,7 @@
 #include "XLTextInputManager.h"
 #include "XLDragTypes.h"
 #include "XLUiTextHistory.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -95,9 +95,10 @@ public:
 	basic2d::Label *getPlaceholder() const { return _placeholder; }
 	basic2d::Layer *getCaret() const { return _caret; }
 
-	// caret visible and blinking; mirrors "the platform granted us input"
+	// caret visible and blinking; mirrors "the platform granted us input" - which is NOT the
+	// control state `:enabled` reads, and so is kept here rather than in InteractiveComponent
 	virtual void setEnabled(bool);
-	virtual bool isEnabled() const { return _enabled; }
+	bool isEnabled() const { return _enabled; }
 
 	// `activePosition` is the end of the selection the user is moving (the one opposite the
 	// selection anchor); scrolling and the caret follow it, so extending a selection rightwards
@@ -231,7 +232,7 @@ public:
 	// a read-only field still takes taps and selections (so its text can be read and selected) but
 	// never acquires text input, so no OS keyboard is raised and no caret is shown
 	virtual void setReadOnly(bool);
-	virtual bool isReadOnly() const { return _readOnly; }
+	virtual bool isReadOnly() const { return isControlReadOnly(this); }
 
 	// fired when the committed text changes. Not fired while a composition is in progress, nor for
 	// a cursor-only change - a marked range is not committed text yet.
@@ -260,7 +261,7 @@ public:
 	virtual bool handleTextDrop(const DragEvent &);
 
 	virtual void setEnabled(bool);
-	virtual bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setInputType(TextInputType);
 	virtual TextInputType getInputType() const { return _inputType; }
@@ -522,8 +523,6 @@ protected:
 	// see pendingCursor()
 	TextCursor _pendingCursor = TextCursor::InvalidCursor;
 
-	bool _enabled = true;
-	bool _readOnly = false;
 	bool _focused = false;
 	bool _dragSelecting = false;
 	bool _panning = false;

@@ -22,7 +22,7 @@
 
 #include "XLUiChip.h"
 #include "XLUiLayoutSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLInputListener.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -54,6 +54,11 @@ bool Chip::init() {
 	if (!Badge::init()) {
 		return false;
 	}
+
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
 
 	/* A chip IS a badge, and a stylesheet must not be able to tell. A rule for `badge` would
 	otherwise paint every chip, and a rule for `chip` would have to know how the widget happens to
@@ -95,7 +100,7 @@ bool Chip::init() {
 
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event == GestureEvent::Activated) {
-			if (!_enabled) {
+			if (!isEnabled()) {
 				return false;
 			}
 			// The button is a child and answered first; without this guard a tap on the cross would
@@ -134,6 +139,8 @@ bool Chip::init() {
 	});
 
 	updateInteractiveState();
+
+
 	return true;
 }
 
@@ -219,11 +226,10 @@ void Chip::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
-	_enabled = value;
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, value);
 	if (_remove) {
 		_remove->setEnabled(value);
 	}
@@ -260,7 +266,7 @@ void Chip::updateInteractiveState() {
 		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
 		bool dirty = false;
 		// The counter is cumulative, so the flag is pushed on an edge and never twice.
-		const bool hover = _hoverApplied && _enabled;
+		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {
 			dirty = state->handleHover(hover ? 1 : -1) || dirty;
 		}

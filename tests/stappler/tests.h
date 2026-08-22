@@ -79,6 +79,7 @@ void performVgStrokeTests();
 void performSearchFuzzyTests();
 void performCommandHistoryTests();
 void performImageFormatTests();
+void performDiagnosticRegistryTests();
 
 } // namespace stappler
 

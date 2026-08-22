@@ -28,7 +28,7 @@
 #include "XLUiPopupSurface.h"
 #include "XL2dLayerRounded.h"
 #include "XL2dIconSprite.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -112,7 +112,7 @@ public:
 	bool isAlphaEnabled() const { return _alpha; }
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setPickerMode(PickerMode);
 	PickerMode getPickerMode() const { return _mode; }
@@ -212,9 +212,7 @@ protected:
 
 	PickerMode _mode = PickerMode::Auto;
 	bool _alpha = false;
-	bool _enabled = true;
 	bool _valid = true;
-	bool _invalidApplied = false;
 
 	String _unavailableMessage;
 	bool _unavailable = false;

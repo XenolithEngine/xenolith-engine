@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiFormSystem.h"
+#include "XLFocusWithin.h"
 #include "XLNode.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -68,8 +69,6 @@ FormSystem *FormSystem::findForNode(Node *node) {
 }
 
 void FormSystem::setValueMode(FormValueMode mode) { _valueMode = mode; }
-
-void FormSystem::setInvalidStyleClass(StringView cl) { _invalidClass = cl.str<Interface>(); }
 
 void FormSystem::setSubmitCallback(SubmitCallback &&cb) { _submitCallback = sp::move(cb); }
 
@@ -223,6 +222,9 @@ bool FormSystem::submit() {
 		for (auto &it : _fields) {
 			if (it->getFieldName() == errors.front().name) {
 				focusField(it);
+				// Nobody tapped this field - it was chosen for the author, and the outline is part
+				// of saying so.
+				_focusVisible = true;
 				break;
 			}
 		}
@@ -267,6 +269,7 @@ FormInputListener *FormSystem::getPendingField() const {
 size_t FormSystem::getPendingIndex() const { return indexOfField(getPendingField()); }
 
 bool FormSystem::focusNext(bool backwards, FormInputListener *from) {
+
 	if (_tabRing.empty()) {
 		return false;
 	}
@@ -308,16 +311,61 @@ bool FormSystem::focusNext(bool backwards, FormInputListener *from) {
 		return false;
 	}
 
-	// After the call, not before: focusField() clears the direction, because a request that is not
-	// navigation must not inherit the last Tab's
+	// After the call, not before: focusField() clears the direction AND the visibility, because a
+	// request that is not navigation must not inherit the last Tab's
 	_navigateBackwards = backwards;
+	_focusVisible = true;
 	return true;
+}
+
+void FormSystem::updateDefaultButton() {
+	FormInputListener *found = nullptr;
+	for (auto &it : _tabRing) {
+		if (it->getRole() == FormFieldRole::Submit) {
+			found = it.get();
+			break;
+		}
+	}
+
+	if (found == _defaultButton.get()) {
+		return;
+	}
+
+	// The bit follows the slot, so a form whose submit button was hidden or locked stops painting
+	// one - rather than leaving a highlight on a button Enter can no longer reach.
+	if (_defaultButton) {
+		if (auto node = _defaultButton->getOwner()) {
+			applyControlDefault(node, false);
+		}
+	}
+
+	_defaultButton = found;
+
+	if (_defaultButton) {
+		if (auto node = _defaultButton->getOwner()) {
+			applyControlDefault(node, true);
+		}
+	}
+}
+
+bool FormSystem::activateDefault() {
+	if (_defaultButton) {
+		// The button's own action, so that what happens is what the highlighted control says it
+		// does. A button with no activate slot is not a reason to do nothing.
+		if (_defaultButton->activate()) {
+			return true;
+		}
+	}
+	return submit();
 }
 
 bool FormSystem::focusField(NotNull<FormInputListener> field) {
 	// A direct request is not navigation, and the field it lands on must not be told it was: a
 	// composite widget would enter at its last part for a tap
 	_navigateBackwards = false;
+
+	// ...and it is not a keyboard walk either. focusNext() sets this back to true after the call.
+	_focusVisible = false;
 
 	// The swap is deferred: setFocus only records the request, and the group applies it on the
 	// next commit, once it knows which listeners are actually live this frame
@@ -366,11 +414,16 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 		}
 	}
 
+	// The default button is defined in terms of the ring, so it is recomputed with it - including
+	// the case below, where the ring came out empty and the form has no default any more
+	updateDefaultButton();
+
 	if (_tabRing.empty()) {
 		// The whole form went away, or every field became unreachable. The base class would leave
 		// the departed listener believing it still has focus.
 		if (previousFocused) {
 			previousFocused->applyFocus(false, this);
+			updateFocusWithinChain(previousFocused->getOwner(), nullptr);
 		}
 		_focusedField = nullptr;
 		_focusedListener = 0;
@@ -409,11 +462,21 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 		target = next ? next : _tabRing.front().get();
 	}
 
+	const bool requestedCurrent = next && next == current;
+
 	_nextListener = 0;
 
 	if (!target) {
 		_focusedField = current;
 		_focusedListener = current ? current->getId() : 0;
+
+		// A request that lands on the field which already HAS focus moves nothing - but it can
+		// still change how that focus looks: tapping the field you just tabbed to is how a person
+		// puts the outline away. Without this the outline would survive the tap, which is the
+		// visual noise :focus-visible exists to remove.
+		if (requestedCurrent && current) {
+			current->updateFocusVisibleStyle(true);
+		}
 		return;
 	}
 
@@ -439,6 +502,11 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 	// Consumed here: the next commit describes whatever causes it, and a direction left standing
 	// would make a tap look like a Shift+Tab
 	_navigateBackwards = false;
+
+	// Before the events, and in the same order they are: the new chain is retained first, so an
+	// ancestor shared by both keeps the marker and is not restyled for a move that never left it
+	updateFocusWithinChain(previousFocused ? previousFocused->getOwner() : nullptr,
+			target->getOwner());
 
 	target->applyFocus(true, this, backwards);
 

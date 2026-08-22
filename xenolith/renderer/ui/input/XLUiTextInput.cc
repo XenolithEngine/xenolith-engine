@@ -334,7 +334,7 @@ void TextInputContainer::updateCaretPosition() {
 void TextInputContainer::updateCaretBlink() {
 	_caret->stopAllActionsByTag(TextInputBlinkTag);
 
-	const bool visible = _enabled && !_readOnly && _cursor.length == 0;
+	const bool visible = isEnabled() && !_readOnly && _cursor.length == 0;
 	_caret->setVisible(visible);
 
 	if (!visible || !_caretBlink) {
@@ -382,6 +382,11 @@ bool TextInput::init() {
 		return false;
 	}
 
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
+
 	registerStyleAppliers("text-input");
 
 	setType("text-input");
@@ -397,7 +402,7 @@ bool TextInput::init() {
 	// insertion point, same validation. A drop target and a paste target really are one handler
 	addSystem(Rc<DropTarget>::create(DropTargetSlots{
 		.accept = [this](const DragEvent &event) -> DragResponse {
-		if (_readOnly || !event.data) {
+		if (isReadOnly() || !event.data) {
 			return DragResponse();
 		}
 		auto want = StringView("text/plain");
@@ -528,6 +533,7 @@ bool TextInput::init() {
 	// pointer, and a subclass that wants one (TextView does) only has to say so.
 	_history.init(this);
 
+
 	return true;
 }
 
@@ -562,10 +568,10 @@ void TextInput::handleContentSizeDirty() {
 	// expressed against the container's size, so this stays the single writer of its geometry.
 	const auto inset = getViewportInset();
 
-	const auto width = sprt::max(
-			_contentSize.width - style->padding.horizontal() - inset.horizontal(), 0.0f);
-	const auto height = sprt::max(
-			_contentSize.height - style->padding.vertical() - inset.vertical(), 0.0f);
+	const auto width =
+			sprt::max(_contentSize.width - style->padding.horizontal() - inset.horizontal(), 0.0f);
+	const auto height =
+			sprt::max(_contentSize.height - style->padding.vertical() - inset.vertical(), 0.0f);
 
 	_container->setContentSize(Size2(width, height));
 	_container->setPosition(
@@ -837,22 +843,20 @@ void TextInput::setPlaceholder(StringView str) {
 StringView TextInput::getPlaceholder() const { return _placeholderText; }
 
 void TextInput::setReadOnly(bool value) {
-	if (value == _readOnly) {
+	/* Under a lock the visible bit is the LOCK's answer, not the widget's, so it cannot be used to
+	decide "nothing changed": what the widget asks for still has to be recorded, or unlocking would
+	give back "writable" to a field that had been read-only all along. */
+	if (!isEditLocked(this) && value == isReadOnly()) {
 		return;
 	}
-	_readOnly = value;
+	applyControlReadOnly(this, value);
 	_container->setReadOnly(value);
 
 	/* A THIRD axis, and it stays one. A read-only field still takes taps and selections so its text
 	can be read and copied, where a disabled one takes nothing - collapsing the two would silently
-	break copy-out-of-a-read-only-field. What it lacked was any way to SAY so: there is no
-	`:read-only` in the CSS subset, so it is a plain class, like `invalid` and `locked`. */
-	if (_readOnly) {
-		addStyleClass("read-only");
-	} else {
-		removeStyleClass("read-only");
-	}
-	if (_readOnly && _handler.isActive()) {
+	break copy-out-of-a-read-only-field. It is said twice: `:read-only` is what a stylesheet should
+	ask for, and the plain class is kept for sheets written before that pseudo-class existed. */
+	if (isReadOnly() && _handler.isActive()) {
 		_handler.cancel();
 	}
 }
@@ -936,7 +940,7 @@ bool TextInput::copy() {
 }
 
 bool TextInput::cut() {
-	if (_readOnly || !copy()) {
+	if (isReadOnly() || !copy()) {
 		return false;
 	}
 	// What was SELECTED, not where the caret is heading: see selectionCursor()
@@ -946,7 +950,7 @@ bool TextInput::cut() {
 }
 
 bool TextInput::paste() {
-	if (_readOnly || !_director) {
+	if (isReadOnly() || !_director) {
 		return false;
 	}
 
@@ -972,7 +976,7 @@ bool TextInput::paste() {
 }
 
 bool TextInput::handleTextDrop(const DragEvent &event) {
-	if (_readOnly || !event.data) {
+	if (isReadOnly() || !event.data) {
 		return false;
 	}
 
@@ -999,7 +1003,7 @@ bool TextInput::handleTextDrop(const DragEvent &event) {
 }
 
 void TextInput::focus() {
-	if (!_enabled || _readOnly || _handler.isActive()) {
+	if (!isEnabled() || isReadOnly() || _handler.isActive()) {
 		return;
 	}
 	acquireInput(TextCursor(uint32_t(_inputState.size())));
@@ -1029,16 +1033,14 @@ void TextInput::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (value == _enabled) {
+	if (value == isEnabled()) {
 		return;
 	}
 
-	_enabled = value;
-	if (!_enabled) {
+	applyControlEnabled(this, value);
+	if (!value) {
 		blur();
 	}
-
-	applyControlEnabled(this, _enabled);
 }
 
 void TextInput::setInputType(TextInputType type) {
@@ -1474,7 +1476,7 @@ TextCursor TextInput::getWordForPosition(const Vec2 &loc) const {
 }
 
 void TextInput::applyGestureCursor(TextCursor cursor) {
-	if (!_focused && !_readOnly) {
+	if (!_focused && !isReadOnly()) {
 		acquireInput(cursor);
 	} else {
 		setCursor(cursor);
@@ -1482,7 +1484,7 @@ void TextInput::applyGestureCursor(TextCursor cursor) {
 }
 
 bool TextInput::handleTap(const GestureTap &tap) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -1512,7 +1514,7 @@ bool TextInput::handleTap(const GestureTap &tap) {
 }
 
 bool TextInput::handlePress(const GesturePress &press, bool begin) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -1536,7 +1538,7 @@ bool TextInput::handlePress(const GesturePress &press, bool begin) {
 bool TextInput::handleLongPress(const GesturePress &press) {
 	// A drag took the gesture over: it is selecting by itself, and widening under it would fight
 	// the pointer.
-	if (!_enabled || _dragSelecting || _panning || _inputState.empty()) {
+	if (!isEnabled() || _dragSelecting || _panning || _inputState.empty()) {
 		return true;
 	}
 
@@ -1566,11 +1568,11 @@ bool TextInput::handleLongPress(const GesturePress &press) {
 }
 
 bool TextInput::handleSwipeBegin(const Vec2 &pt) {
-	if (!_enabled || !isTouched(pt, 8.0f)) {
+	if (!isEnabled() || !isTouched(pt, 8.0f)) {
 		return false;
 	}
 
-	if (_focused && !_readOnly) {
+	if (_focused && !isReadOnly()) {
 		auto cursor = _container->getCursorForPosition(pt);
 		_selectionAnchor = cursor.start;
 		_dragSelecting = true;

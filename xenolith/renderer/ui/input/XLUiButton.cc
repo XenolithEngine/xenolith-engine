@@ -156,7 +156,7 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 	InteractiveComponent reads as state 0 to the style resolver, and `:disabled` is "not :enabled" -
 	so an untouched button matched `button:disabled` while it was perfectly usable, and
 	`button:enabled` matched nothing. The component is cheap; being invisible to CSS is not. */
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, true);
 
 	return true;
 }
@@ -231,13 +231,12 @@ void Button::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
 
-	_enabled = value;
 
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, value);
 }
 
 StringView Button::getString() const {
@@ -405,7 +404,7 @@ void Button::updateState() {
 }
 
 bool Button::handleLeftTap() {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 	if (_leftCallback) {
@@ -453,7 +452,7 @@ bool Button::handleLeftTap() {
 }
 
 bool Button::handleRightTap() {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 	if (_rightCallback) {

@@ -72,6 +72,12 @@ public:
 	virtual void setFieldFlags(FormFieldFlags);
 	virtual FormFieldFlags getFieldFlags() const { return _fieldFlags; }
 
+	// Publish `:required` on the owner; called when the flags change and when the owner appears
+	void updateRequiredState();
+
+	// Publish `:focus-visible` on the owner; see the .cc for why a text field always takes it
+	void updateFocusVisibleStyle(bool);
+
 	// Runs after the Required check, and only on a value that passed it
 	virtual void setValidator(Validator &&);
 
@@ -93,7 +99,7 @@ public:
 	// Marks the owner node with the form's invalid style class, since the engine's CSS subset has
 	// neither `:invalid` nor attribute selectors
 	virtual void setInvalid(bool);
-	virtual bool isInvalid() const { return _invalid; }
+	bool isInvalid() const { return _owner && isControlInvalid(_owner); }
 
 	// Requests to the form. False when there is no form, or nowhere to go
 	virtual bool requestNavigate(bool backwards);
@@ -127,7 +133,6 @@ protected:
 	Validator _validator;
 	FormFieldSlots _slots;
 	FormSystem *_form = nullptr;
-	bool _invalid = false;
 	bool _focusStyleApplied = false;
 
 	// Set by applyFocus for the hooks below it; see the comment there

@@ -23,7 +23,7 @@
 #include "XLUiColorField.h"
 #include "XLUiMenuPopup.h" // placementForNode: the arithmetic every popup needs and only this has
 #include "XLUiLayoutSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLInputListener.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
@@ -261,11 +261,11 @@ bool ColorPickerContent::commitText() {
 	if (!sprt::geom::readColor(_hex->getText(), color)) {
 		// The refusal is marked HERE and the surface stays: the text is what the user is still
 		// working on, and taking it away would be answering a mistake by hiding it.
-		_hex->addStyleClass("invalid");
+		applyControlInvalid(_hex, true);
 		return false;
 	}
 
-	_hex->removeStyleClass("invalid");
+	applyControlInvalid(_hex, false);
 	if (_params.onPick) {
 		_params.onPick(color);
 	}
@@ -357,6 +357,11 @@ bool ColorField::init() {
 		return false;
 	}
 
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
+
 	setType("color-field");
 	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-color-field");
@@ -400,6 +405,8 @@ bool ColorField::init() {
 
 	updateContent();
 	updateInteractiveState();
+
+
 	return true;
 }
 
@@ -518,15 +525,14 @@ void ColorField::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
-	_enabled = value;
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, value);
 	if (_input) {
 		_input->setEnabled(value);
 	}
-	if (!_enabled) {
+	if (!value) {
 		close();
 	}
 	updateInteractiveState();
@@ -552,7 +558,7 @@ void ColorField::setPalette(SpanView<Color4B> palette) {
 }
 
 bool ColorField::open() {
-	if (!_enabled || isOpen() || _dialog) {
+	if (!isEnabled() || isOpen() || _dialog) {
 		return false;
 	}
 
@@ -673,7 +679,7 @@ void ColorField::updateInteractiveState() {
 		bool dirty = false;
 		// The counter is cumulative, so it moves on an edge and never twice. The hex line paints
 		// its own `:focus`; this one is the FIELD's.
-		const bool focus = isFocused() && _enabled;
+		const bool focus = isFocused() && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
 		}
@@ -685,14 +691,9 @@ void ColorField::setInvalid(bool value, StringView message) {
 	_valid = !value;
 	_message = message.str<Interface>();
 
-	if (value != _invalidApplied) {
-		_invalidApplied = value;
-		if (value) {
-			// The same class ui::FormSystem marks a rejected field with: one look for one meaning.
-			addStyleClass("invalid");
-		} else {
-			removeStyleClass("invalid");
-		}
+	{
+		// The same state ui::FormSystem marks a rejected field with: one word for one meaning
+		applyControlInvalid(this, value);
 	}
 }
 
@@ -826,7 +827,7 @@ bool ColorField::openFallbackPicker() {
 }
 
 bool ColorField::handleTap() {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 	if (isOpen() || _dialog) {

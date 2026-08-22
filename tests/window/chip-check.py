@@ -147,6 +147,11 @@ def full():
     return s.invoke("chip.state")
 
 
+# document::InteractiveFlags, duplicated on purpose
+F_ENABLED = 1 << 0
+F_INVALID = 1 << 5
+
+
 def row(name="free"):
     return full()[name]
 
@@ -373,8 +378,8 @@ try:
         check("the list carries one row per option", present == OPTIONS, present)
         # int and float are in the row; with unique ids they are not on offer
         check("what is already in the row comes up DISABLED, not refused after the press",
-                sorted(rows_with(tree, ".disabled")) == sorted(LIMITED),
-                rows_with(tree, ".disabled"))
+                sorted(rows_with(tree, ":disabled")) == sorted(LIMITED),
+                rows_with(tree, ":disabled"))
     s.invoke("chip.close", target="limited")
     settle()
     r = row("limited")
@@ -442,8 +447,8 @@ try:
     settle()
     st = full()
     check("once, not once per chip", st["invalids"] == 1, st["invalids"])
-    check("and the row is the thing marked", "invalid" in st["formRow"]["classes"],
-            st["formRow"]["classes"])
+    check("and the row is the thing marked", (st["formRow"]["stateBits"] & F_INVALID) != 0,
+            hex(st["formRow"]["stateBits"]))
     check("nothing was submitted", st["submits"] == 0, st["submits"])
 
     s.invoke("chip.set-items", target="form-chips", ids=["int", "map"], silent=True)
@@ -506,7 +511,7 @@ try:
     s.invoke("chip.set-enabled", target="narrow", value=False)
     settle()
     r = row("narrow")
-    check("a disabled row says so", "disabled" in r["classes"], r["classes"])
+    check("a disabled row says so", (r["stateBits"] & F_ENABLED) == 0, hex(r["stateBits"]))
     check("its \"+\" is dead with it", r["addEnabled"] is False)
     check("it refuses to open", s.invoke("chip.open", target="narrow")["ok"] is False)
     s.invoke("chip.focus", target="narrow", value=True)

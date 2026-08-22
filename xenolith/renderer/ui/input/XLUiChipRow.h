@@ -26,7 +26,7 @@
 #include "XLUiChip.h"
 #include "XLUiSelect.h" // SelectOption: what "one option, as data" already means in this kit
 #include "XLUiMenuPopup.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -166,7 +166,7 @@ public:
 	bool isWrapEnabled() const { return _wrap; }
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	// ---- the height the wrap asks for -----------------------------------------------------------
 
@@ -280,7 +280,6 @@ protected:
 
 	bool _unique = false;
 	bool _wrap = true;
-	bool _enabled = true;
 	bool _autoHeight = true;
 	bool _focused = false;
 

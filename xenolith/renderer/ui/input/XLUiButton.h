@@ -24,10 +24,10 @@
 #define XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
 
 #include "XLUiPanel.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -77,7 +77,7 @@ public:
 	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match), adds
 	// the `disabled` style class and stops the tap callbacks from firing
 	virtual void setEnabled(bool);
-	virtual bool isEnabled() const { return _enabled; }
+	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
@@ -103,7 +103,6 @@ protected:
 	ButtonType _type = ButtonType::General;
 	ButtonIconTheme _theme = ButtonIconTheme::Default;
 	WindowState _windowState = WindowState::None;
-	bool _enabled = true;
 
 	Function<void()> _leftCallback;
 	Function<void()> _rightCallback;

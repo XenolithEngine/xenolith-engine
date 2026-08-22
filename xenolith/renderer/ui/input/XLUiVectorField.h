@@ -26,7 +26,7 @@
 #include "XLUiPanel.h"
 #include "XLUiNumberField.h"
 #include "XL2dLabel.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -134,7 +134,7 @@ public:
 	virtual void setDragSensitivity(float);
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	/* The component itself, for what only it can be told. Null for an index past the arity.
 
@@ -244,8 +244,6 @@ protected:
 	bool _dragEnabled = true;
 	float _dragSensitivity = NumberField::DefaultDragSensitivity;
 
-	bool _enabled = true;
-	bool _invalidApplied = false;
 
 	int32_t _focused = -1;
 

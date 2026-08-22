@@ -224,7 +224,7 @@ try:
     check("through the unavailable channel", st["unavailable"] is True)
     check("and CSS can see it", "unavailable" in st["classes"], st["classes"])
     check("the field is NOT marked invalid - the value is fine, the way in is missing",
-            st["valid"] is True and "invalid" not in st["classes"], st["classes"])
+            st["valid"] is True and not st["invalidState"], st)
     check("and validation has nothing to say", st["message"] == "", st["message"])
     s.invoke("color.set-mode", target="plain", value="auto")
     s.invoke("color.set", target="plain", value=PLAIN)
@@ -272,7 +272,7 @@ try:
     st = state("plain")
     check("Enter on rubbish refuses it", st["value"] == PLAIN, st["value"])
     check("the callback does not fire", st["callbacks"] == 0, st["callbacks"])
-    check("the field is marked", st["valid"] is False and "invalid" in st["classes"],
+    check("the field is marked", st["valid"] is False and st["invalidState"],
             st["classes"])
     check("with a reason", st["message"] != "", st["message"])
     check("and the text the user typed is still there", st["text"] == "not a colour", st["text"])

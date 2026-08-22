@@ -28,6 +28,11 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 namespace {
+// The lock's reason is a CODE now, registered once as a constant of this stand - the registry takes
+// literals only, and a message assembled per call would hand a reader a new number for the same
+// sentence. The script names the text it expects; the command only chooses whether to lock.
+static const uint32_t s_lockReason = diagnostic::registerMessage("a wire owns this value");
+
 
 /* The three parts, and nothing else. The sizes here are the ones slider-check.py duplicates: the
 handle's is what makes the travel `220 - 16`, and the check computes the same number rather than
@@ -336,7 +341,7 @@ void SliderLayout::registerCommands() {
 		if (reason.empty()) {
 			ui::clearEditLock(slider);
 		} else {
-			ui::setEditLock(slider, reason);
+			ui::setEditLock(slider, s_lockReason);
 		}
 		return ackValue(true);
 	});

@@ -24,7 +24,7 @@
 #define XENOLITH_RENDERER_UI_INPUT_XLUISLIDER_H_
 
 #include "XLUiPanel.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 #include "XLInputListener.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -144,7 +144,7 @@ public:
 	uint32_t getPageSteps() const { return _pageSteps; }
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setCallback(Callback &&cb) { _callback = sp::move(cb); }
 
@@ -206,7 +206,6 @@ protected:
 
 	bool _integer = false;
 	bool _vertical = false;
-	bool _enabled = true;
 	bool _focused = false;
 	bool _dragging = false;
 

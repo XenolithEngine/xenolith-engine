@@ -22,7 +22,7 @@
 
 #include "XLUiVectorField.h"
 #include "XLUiLayoutSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -103,6 +103,11 @@ bool VectorField::init(uint32_t arity) {
 		return false;
 	}
 
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
+
 	setType("vector-field");
 	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-vector-field");
@@ -126,6 +131,8 @@ bool VectorField::init(uint32_t arity) {
 	bind(hk.focusPrev, true);
 
 	updateInteractiveState();
+
+
 	return true;
 }
 
@@ -267,11 +274,10 @@ void VectorField::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
-	_enabled = value;
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, value);
 	for (auto &it : _components) { it->setEnabled(value); }
 	updateInteractiveState();
 }
@@ -323,7 +329,7 @@ void VectorField::setFocusCallback(FocusCallback &&cb) { _focusCallback = sp::mo
 void VectorField::setNavigateCallback(NavigateCallback &&cb) { _navigateCallback = sp::move(cb); }
 
 void VectorField::focus(uint32_t component) {
-	if (component >= _components.size() || !_enabled) {
+	if (component >= _components.size() || !isEnabled()) {
 		return;
 	}
 	_components[component]->focus();
@@ -380,7 +386,7 @@ void VectorField::rebuildComponents(uint32_t arity) {
 		field->setStep(_step);
 		field->setDragEnabled(_dragEnabled);
 		field->setDragSensitivity(_dragSensitivity);
-		field->setEnabled(_enabled);
+		field->setEnabled(isEnabled());
 		field->setValue(_values[i], true);
 
 		field->setValueCallback([this, i](double value) { handleComponentValue(i, value); });
@@ -427,7 +433,7 @@ void VectorField::updateInteractiveState() {
 		// The counter is cumulative, so it is pushed on an edge and never twice. The components
 		// paint their own `:focus`; this one is the ROW's, and it is on whenever any part of it
 		// holds the keyboard.
-		const bool focus = _focused >= 0 && _enabled;
+		const bool focus = _focused >= 0 && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
 		}
@@ -450,16 +456,11 @@ void VectorField::updateValidity() {
 	_message = sp::move(message);
 
 	const bool invalid = !_message.empty();
-	if (invalid != _invalidApplied) {
-		_invalidApplied = invalid;
-		if (invalid) {
-			// Deliberately the same class ui::FormSystem marks a rejected field with: one look for
-			// one meaning. A row that stops refusing therefore also clears a stale mark left by a
-			// failed submit, which is what an author fixing the field expects to see.
-			addStyleClass("invalid");
-		} else {
-			removeStyleClass("invalid");
-		}
+	{
+		// Deliberately the same state ui::FormSystem marks a rejected field with: one word for one
+		// meaning. A row that stops refusing therefore also clears a stale mark left by a failed
+		// submit, which is what an author fixing the field expects to see.
+		applyControlInvalid(this, invalid);
 	}
 }
 

@@ -68,7 +68,9 @@
 #include "render/Scale9Layout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
+#include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
+#include "css/StateLayout.h"
 #include "css/VisibilityLayout.h"
 #include "css/WatchCssLayout.h"
 #include "css/WatchCssRecursiveLayout.h"
@@ -113,6 +115,30 @@ static const TestInfo s_cssTests[] = {
 		StringView("Fixed states first (grey, red, blue, green, purple), then one swatch that must "
 				   "follow the pointer through :hover at runtime."),
 		TestRegistry_make<HoverLayout>},
+
+	TestInfo{StringView("selector"), StringView("XL_SELECTOR_TEST"),
+		StringView("Functional pseudo-classes"),
+		StringView("`:not()`, `:is()` and `:where()`, and what each one counts for. Matching is "
+				   "half the claim and specificity is the other: `:where()` matches exactly like "
+				   "`:is()` while counting for NOTHING, which is what a layered stylesheet needs "
+				   "and what no screenshot can show - so the stand is mostly pairs of rules "
+				   "written to conflict. The argument is one compound: a combinator, a nested "
+				   "functional pseudo-class or a structural one is refused, and the rules around "
+				   "the refusal must survive it. Drive it over the inspector: selector.state, "
+				   "selector.set-class."),
+		TestRegistry_make<SelectorLayout>, true},
+
+	TestInfo{StringView("state"), StringView("XL_STATE_TEST"), StringView("Control states as CSS"),
+		StringView("The states a control publishes to a stylesheet: :invalid/:valid, "
+				   ":read-only/:read-write, :indeterminate, :required/:optional, :default, and the "
+				   "two focus states :focus-visible/:focus-within. Every one of them is put there "
+				   "by its REAL producer - the form rejecting an empty required field, an edit "
+				   "lock, a read-only text input, a progress bar with no total, the submit button "
+				   "becoming the form's default, the tab ring being walked - so what is checked is "
+				   "that a widget's own state reaches a selector, not that the parser knows the "
+				   "word. Drive it over the inspector: state.state, state.submit, state.set-lock, "
+				   "state.set-readonly, state.set-progress, state.focus."),
+		TestRegistry_make<StateLayout>, true},
 
 	TestInfo{StringView("css-var"), StringView("XL_CSSVAR_TEST"), StringView("CSS custom properties and var()"),
 		StringView("Boxes coloured and sized through variables, including a fallback, a nested "

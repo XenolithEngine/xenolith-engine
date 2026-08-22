@@ -24,7 +24,7 @@
 
 #include "widgets/VectorFieldLayout.h"
 #include "XLUiStyleResolver.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -44,7 +44,7 @@ vector-field {
 vector-field:focus {
 	outline-color: #fcb400;
 }
-vector-field.invalid {
+vector-field:invalid {
 	outline-color: #e53935;
 }
 vector-field > number-field {
@@ -227,8 +227,8 @@ Value VectorFieldLayout::encodeField(ui::VectorField *field) const {
 
 	// The ROW's :focus, which is a pseudo-class and therefore not in the class list: the widget
 	// writes InteractiveComponent's counter for it, and that is the fact a sheet paints from.
-	if (auto state = field->getComponent<ui::InteractiveComponent>()) {
-		ret.setBool(sprt::hasFlag(state->state, ui::InteractiveState::Focus), "focusState");
+	if (auto state = field->getComponent<InteractiveComponent>()) {
+		ret.setBool(sprt::hasFlag(state->state, InteractiveState::Focus), "focusState");
 	}
 	ret.setBool(field->isEnabled(), "enabled");
 
@@ -275,13 +275,20 @@ Value VectorFieldLayout::encodeField(ui::VectorField *field) const {
 	ret.setValue(sp::move(componentValid), "componentValid");
 	ret.setValue(sp::move(rects), "rects");
 
-	// The class the sheet paints a refusal from - checked as a class rather than as a colour,
-	// because a colour is a screenshot and a class is a fact.
+	// The widget's own vocabulary of classes (`arity-N`); the STATES are reported below.
 	Value classes;
 	if (auto set = field->getStyleClasses()) {
 		for (auto &it : *set) { classes.addString(it); }
 	}
 	ret.setValue(sp::move(classes), "classes");
+
+	// The state a stylesheet selects on. The class it used to be published as is gone: `:invalid`
+	// is what a sheet asks for now.
+	if (auto ic = field->getComponent<InteractiveComponent>()) {
+		ret.setBool(sprt::hasFlag(ic->state, InteractiveState::Invalid), "invalidState");
+	} else {
+		ret.setBool(false, "invalidState");
+	}
 
 	auto name = field->getName().str<Interface>();
 	auto cb = _callbacks.find(name);
