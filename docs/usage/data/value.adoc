@@ -416,7 +416,7 @@ Four formats, one API:
 
 | Format | `EncodeFormat::` | Round-trips bytes | Notes |
 |---|---|---|---|
-| JSON | `Json`, `Pretty`, `PrettyTime` | **no** | text; bytes become `"BASE64:…"` |
+| JSON | `Json`, `Pretty`, `PrettyTime`, `JsonGit` | **no** | text; bytes become `"BASE64:…"` |
 | CBOR | `Cbor` (and `DefaultFormat`) | yes | binary, self-describing tag `d9 d9 f7` |
 | Serenity | `Serenity`, `SerenityPretty` | yes | urlencoded-ish text form |
 | urlencoded | — (`data::readUrlencoded`) | n/a | HTML form bodies, decode only |
@@ -456,12 +456,69 @@ String  sr = data::serenity::write(value, false);
   `EncodeFormat` (LZ4, LZ4HC, Brotli when `stappler_brotli_lib` is in the
   build). Compressed output carries its own `LZ4…` / `SBr…` mark, so
   `data::read` handles it transparently.
+* `EncodeFormat::JsonGit` is the layout for a file that lives in version
+  control — see below. `Pretty` is a *dump*: its rules are deliberately pinned
+  by no test, so do not save documents with it.
 * `EncodeFormat::PrettyTime` annotates integers whose key contains
   `time`/`date` and whose magnitude looks like microseconds with a comment
   holding the HTTP date — a debugging aid, not a data type.
+* A non-finite `double` is written `NaN` / `Infinity` / `-Infinity` and reads
+  back as itself. None of the three is standard JSON — a document holding one
+  is outside the standard whatever it spells it — but this is the dialect
+  Python's `json` module reads, which is what matters here: the headless checks
+  read engine output with it. The decoder also still accepts the older `nan`,
+  `inf` and `-inf` spellings, so files already written keep opening.
 * Bytes are the one real asymmetry: JSON writes them as `"BASE64:<base64url>"`
   and the JSON *decoder* has no matching rule, so they come back as a string
   (verified). If a payload carries binary, use CBOR.
+
+### `JsonGit`: JSON that survives a `git diff`
+
+`Json` puts a document on one line, so every edit reads as "the file changed",
+and `Pretty` is a readable dump whose rules are pinned by nothing. `JsonGit` is
+the third layout, and unlike the other two its rules are **written down and
+asserted** (`stapplertest json-git`), because two things depend on them: a diff
+that names what changed, and the byte-identical `save → load → save` circle.
+
+[source]
+----
+{
+	"__meta": {"kind": "graph", "version": 1}
+	, "nodes": [
+		{"id": 1, "op": "add"}
+		, {"id": 2, "op": "mul"}
+	]
+	, "padding": [4, 8]
+}
+----
+
+* A container is written **inline** when none of its immediate children is a
+  container, and as a **block** otherwise. One rule, the same for dictionaries
+  and arrays, with no width threshold — so a vector reads as one value and a
+  list of records gets one line-block each. Note it is *any* child, not *all*
+  of them: under "all" a single stray scalar would collapse an array of five
+  hundred records onto one line.
+* **The comma starts the line.** Appending to an array therefore does not
+  rewrite the previous line — which is the whole point. The price, stated
+  rather than discovered: inserting at the *front* costs two lines of diff
+  instead of one. Appending is the common case, and one end has to pay.
+* The indent is one tab per open block, the newline is always LF, nothing is
+  aligned with spaces, and no line ends in whitespace.
+* The document ends with **exactly one** newline, printed by `json::write`, so
+  the string, the bytes, the callback and the file all produce the same bytes.
+  A `JsonGit` write is a whole *document*, not a fragment.
+* Keys come out in the byte order of the container — a property of the ordered
+  map, not of the encoder, and pinned by a check because readers rely on it
+  (the studio's file envelope is found by reading the first key).
+* Numbers print through `sprt::dtoa` (shortest round-trip, a literal `.`), so
+  two builds spell the same `double` the same way.
+
+The one inherited limit: bytes go out as `"BASE64:…"` and come back as a
+string — the *text* converges, the type does not, so a document carrying binary
+belongs in CBOR.
+
+The cost, said plainly: a container of ten thousand scalars is one very long
+line. That is the same rule working as intended — a grid is one value.
 
 ### Streaming a value, and the format manipulator
 

@@ -45,6 +45,7 @@ struct SP_PUBLIC EncodeFormat {
 		DefaultFormat = 0b0011,
 		Serenity = 0b0100,
 		SerenityPretty = 0b0101,
+		JsonGit = 0b0110,
 		PrettyTime = 0b1001, // Pretty-printed JSON data (with time markers comment)
 	};
 
@@ -90,7 +91,11 @@ struct SP_PUBLIC EncodeFormat {
 
 	bool isRaw() const { return compression == NoCompression && encryption == Unencrypted; }
 
-	bool isTextual() const { return isRaw() && (format == Json || format == Pretty); }
+	// No caller in the tree today, which is exactly why the new format has to be added here by
+	// hand and asserted by a check: nothing else would notice it missing.
+	bool isTextual() const {
+		return isRaw() && (format == Json || format == Pretty || format == JsonGit);
+	}
 
 	int flag() const { return (int)format | (int)compression | (int)encryption; }
 
@@ -100,6 +105,18 @@ struct SP_PUBLIC EncodeFormat {
 };
 
 SP_PUBLIC extern EncodeFormat s_currentEncodeFormat;
+
+// The switches below have no `default`, and a forgotten branch there is not a build error but an
+// empty result - so the mapping from a format to a JSON layout is written once, here.
+inline json::Style jsonStyle(EncodeFormat::Format fmt) {
+	switch (fmt) {
+	case EncodeFormat::Pretty: return json::Style::Pretty; break;
+	case EncodeFormat::PrettyTime: return json::Style::PrettyTime; break;
+	case EncodeFormat::JsonGit: return json::Style::Git; break;
+	default: break;
+	}
+	return json::Style::Compact;
+}
 
 SP_PUBLIC uint8_t *getLZ4EncodeState();
 SP_PUBLIC size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize,
@@ -129,9 +146,9 @@ struct EncodeTraits {
 		switch (fmt.format) {
 		case EncodeFormat::Json:
 		case EncodeFormat::Pretty:
+		case EncodeFormat::JsonGit:
 		case EncodeFormat::PrettyTime: {
-			StringType s = json::write(data, (fmt.format == EncodeFormat::Pretty),
-					(fmt.format == EncodeFormat::PrettyTime));
+			StringType s = json::write(data, jsonStyle(fmt.format));
 			ret.reserve(s.length());
 			ret.assign(s.begin(), s.end());
 			break;
@@ -162,15 +179,10 @@ struct EncodeTraits {
 		if (fmt.isRaw()) {
 			switch (fmt.format) {
 			case EncodeFormat::Json:
-				json::write(stream, data, false);
-				return true;
-				break;
 			case EncodeFormat::Pretty:
-				json::write(stream, data, true);
-				return true;
-				break;
 			case EncodeFormat::PrettyTime:
-				json::write(stream, data, true, true);
+			case EncodeFormat::JsonGit:
+				json::write(stream, data, jsonStyle(fmt.format));
 				return true;
 				break;
 			case EncodeFormat::Cbor:
@@ -215,9 +227,10 @@ struct EncodeTraits {
 		}
 		if (fmt.isRaw()) {
 			switch (fmt.format) {
-			case EncodeFormat::Json: return json::save(data, info, false); break;
-			case EncodeFormat::Pretty: return json::save(data, info, true); break;
-			case EncodeFormat::PrettyTime: return json::save(data, info, true, true); break;
+			case EncodeFormat::Json:
+			case EncodeFormat::Pretty:
+			case EncodeFormat::PrettyTime:
+			case EncodeFormat::JsonGit: return json::save(data, info, jsonStyle(fmt.format)); break;
 			case EncodeFormat::Cbor:
 			case EncodeFormat::DefaultFormat: return cbor::save(data, info); break;
 			case EncodeFormat::Serenity: return serenity::save(data, info, false); break;
@@ -263,9 +276,10 @@ template <typename Interface>
 inline auto toString(const ValueTemplate<Interface> &data, EncodeFormat::Format fmt) ->
 		typename ValueTemplate<Interface>::StringType {
 	switch (fmt) {
-	case EncodeFormat::Json: return json::write<Interface>(data, false); break;
-	case EncodeFormat::Pretty: return json::write<Interface>(data, true); break;
-	case EncodeFormat::PrettyTime: return json::write<Interface>(data, true, true); break;
+	case EncodeFormat::Json:
+	case EncodeFormat::Pretty:
+	case EncodeFormat::PrettyTime:
+	case EncodeFormat::JsonGit: return json::write<Interface>(data, jsonStyle(fmt)); break;
 	case EncodeFormat::Cbor: return base64::encode<Interface>(cbor::write(data)); break;
 	case EncodeFormat::DefaultFormat: return json::write<Interface>(data, false); break;
 	case EncodeFormat::Serenity: return serenity::write<Interface>(data, false); break;
