@@ -61,6 +61,7 @@ static const TestEntry s_testList[] = {
 	{"command-history", &stappler::performCommandHistoryTests},
 	{"image-format", &stappler::performImageFormatTests},
 	{"diag-registry", &stappler::performDiagnosticRegistryTests},
+	{"json-git", &stappler::performJsonGitTests},
 };
 
 int main(int argc, const char *argv[]) {

@@ -80,6 +80,7 @@ void performSearchFuzzyTests();
 void performCommandHistoryTests();
 void performImageFormatTests();
 void performDiagnosticRegistryTests();
+void performJsonGitTests();
 
 } // namespace stappler
 
