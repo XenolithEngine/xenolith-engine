@@ -30,6 +30,7 @@
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/geom/padding.h>
+#include <sprt/runtime/window/input.h>
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
@@ -306,16 +307,10 @@ enum class TableLayout : EnumSize {
 	Fixed,
 };
 
-enum class InteractiveFlags : uint32_t {
-	None = 0,
-	Enabled = 1 << 0, // :enabled
-	Focus = 1 << 1, // :focus
-	Hover = 1 << 2, // :hover
-	Active = 1 << 3, // :active
-	Checked = 1 << 4, // :checked
-};
-
-SP_DEFINE_ENUM_AS_MASK(InteractiveFlags)
+// The live interactive state of a node, one bit per interactive pseudo-class. Defined in the
+// runtime beside the other input enums, because the state belongs to the INPUT model rather than to
+// the document one - the selector machine here is only its most demanding reader.
+using InteractiveFlags = sprt::window::InteractiveFlags;
 
 enum class ParameterName : NameSize {
 	/* css-selectors */

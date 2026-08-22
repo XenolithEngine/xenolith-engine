@@ -26,7 +26,7 @@
 #include "XLUiBadge.h"
 #include "XLUiButton.h"
 #include "XL2dIconSprite.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -88,7 +88,7 @@ public:
 	bool isSelected() const { return _selected; }
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	/* The natural size, which is what the measurement protocol answers with. Shapes the label
 	first: a Label reports zero width until it has been through an update, and a row that wrapped
@@ -115,7 +115,6 @@ protected:
 
 	bool _removable = true;
 	bool _selected = false;
-	bool _enabled = true;
 
 	// Edge trackers for InteractiveComponent's cumulative counters.
 	bool _hoverApplied = false;

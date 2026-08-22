@@ -21,6 +21,8 @@
  **/
 
 #include "XLSceneInspector.h"
+#include "XLInteractiveComponent.h"
+#include "XLFocusWithin.h"
 
 #include "XLNode.h"
 #include "XLInheritedStyle.h"
@@ -208,6 +210,36 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 				out << " ." << it;
 			}
 		}
+	}
+
+	/* ...and the STATE, written the way a stylesheet asks for it. A control used to publish
+	`:checked` and `:disabled` as style classes, so a dump showed them for free; now they are bits
+	in InteractiveComponent, and a dump that showed only classes would show a checked row exactly
+	like an unchecked one. */
+	if (auto ic = node->getComponent<InteractiveComponent>()) {
+		auto state = ic->state;
+		auto put = [&](InteractiveState flag, StringView name) {
+			if (sprt::hasFlag(state, flag)) {
+				out << " :" << name;
+			}
+		};
+		// `:disabled` is the ABSENCE of Enabled, which is why it is printed by hand
+		if (!sprt::hasFlag(state, InteractiveState::Enabled)) {
+			out << " :disabled";
+		}
+		put(InteractiveState::Focus, "focus");
+		put(InteractiveState::Hover, "hover");
+		put(InteractiveState::Active, "active");
+		put(InteractiveState::Checked, "checked");
+		put(InteractiveState::Invalid, "invalid");
+		put(InteractiveState::ReadOnly, "read-only");
+		put(InteractiveState::Indeterminate, "indeterminate");
+		put(InteractiveState::Required, "required");
+		put(InteractiveState::Default, "default");
+		put(InteractiveState::FocusVisible, "focus-visible");
+	}
+	if (hasFocusWithin(node)) {
+		out << " :focus-within";
 	}
 
 	auto size = node->getContentSize();

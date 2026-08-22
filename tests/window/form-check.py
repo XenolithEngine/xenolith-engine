@@ -355,8 +355,9 @@ expect(st["lastInvalid"] == ["email"], "the empty required field was reported", 
 expect(st["fields"]["email"]["invalid"], "and marked invalid")
 expect(st["focused"] == "email", "focus moved to the first offender", st["focused"])
 
-print("== 17. the invalid mark is a style class on the node ==")
-expect(state()["fields"]["email"]["invalidClass"], "the node carries the `invalid` class")
+print("== 17. the invalid mark is a STATE on the node ==")
+expect(state()["fields"]["email"]["interactive"]["invalid"],
+       "the node publishes `:invalid` for a stylesheet")
 outline = field_state("email")["outlineColor"]
 expect(outline == {"r": 229, "g": 57, "b": 53, "a": 255},
        "and CSS repainted the outline through it", outline)
@@ -375,7 +376,7 @@ step(3)
 st = state()
 expect(st["submitCount"] == 1, "a valid form submits", st["submitCount"])
 expect(not st["fields"]["email"]["invalid"], "the mark was cleared")
-expect(not st["fields"]["email"]["invalidClass"], "and so was the style class")
+expect(not st["fields"]["email"]["interactive"]["invalid"], "and so was the state")
 
 print("== 19. enter submits from a field ==")
 s.invoke("form.reset-counters", settle=0.0)
@@ -471,7 +472,8 @@ expect(pasted == "Cut me", "the paste ran and the clipboard was untouched by the
        repr(pasted))
 
 print("== a locked control says why, and leaves the ring ==")
-REASON = "a wire supplies this value"
+# The stand registers its reason as a diagnostic CODE; the registry gives back this text.
+REASON = "a wire owns this value"
 s.invoke("form.set-locked", field="notes", locked=True, reason=REASON, settle=0.0)
 step(2)
 st = state()
@@ -479,7 +481,8 @@ f = st["fields"]["notes"]
 expect(f["locked"] is True, "the field reports itself locked")
 expect(f["lockReason"] == REASON, "and carries the reason it was given", repr(f["lockReason"]))
 expect(f["lockedClass"] is True, "the `locked` class is on the node for a stylesheet")
-expect(f["disabledClass"] is True, "and `disabled` with it - a locked control IS disabled")
+expect(f["interactive"]["enabled"] is False,
+       "and `:disabled` with it - a locked control IS disabled")
 expect(f["interactive"]["enabled"] is False, "so :disabled matches it")
 expect(f["tooltip"] == REASON, "the reason is readable as a hint", repr(f["tooltip"]))
 expect("notes" not in st["tabRing"], "the locked field left the tab ring", st["tabRing"])

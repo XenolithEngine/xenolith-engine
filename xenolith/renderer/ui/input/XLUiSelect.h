@@ -27,7 +27,7 @@
 #include "XLUiMenuPopup.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -123,7 +123,7 @@ public:
 	virtual void setChangeCallback(ChangeCallback &&);
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	// Step to the next / previous ENABLED option. Does not wrap: a list is not a dial, and running
 	// off its end by holding an arrow down is not a choice anyone made.
@@ -196,7 +196,6 @@ protected:
 	InputListener *_listener = nullptr;
 	InputListener *_focusListener = nullptr;
 
-	bool _enabled = true;
 	bool _focused = false;
 
 	// Edge trackers for InteractiveComponent's cumulative counters.

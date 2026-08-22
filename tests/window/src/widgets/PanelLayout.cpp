@@ -45,7 +45,7 @@ checkbox {
 	background-color: #43a047;
 	border-radius: 8px;
 }
-checkbox.checked {
+checkbox:checked {
 	background-color: #e53935;
 }
 badge {

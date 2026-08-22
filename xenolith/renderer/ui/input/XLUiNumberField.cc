@@ -27,7 +27,6 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // The class a refused value is painted with. There is no `:invalid` pseudo-class in the engine's
 // CSS subset, so this is the only way to say it in a stylesheet - and it is the same word
 // ui::FormSystem marks a rejected field with.
-static constexpr auto s_numberInvalidClass = StringView("invalid");
 
 // Between the number and its unit. The same gap ui::VectorField leaves between a component and its
 // label, because the two read as one row when they sit side by side.
@@ -238,9 +237,9 @@ void NumberField::setInvalid(bool value, StringView message) {
 	}
 	_valid = !value;
 	if (value) {
-		addStyleClass(s_numberInvalidClass);
+		applyControlInvalid(this, true);
 	} else {
-		removeStyleClass(s_numberInvalidClass);
+		applyControlInvalid(this, false);
 	}
 }
 

@@ -24,13 +24,18 @@
 
 #include "widgets/FormLayout.h"
 #include "XLUiStyleResolver.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLUiTooltipSystem.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 namespace {
+// The lock's reason is a CODE now, registered once as a constant of this stand - the registry takes
+// literals only, and a message assembled per call would hand a reader a new number for the same
+// sentence. The script names the text it expects; the command only chooses whether to lock.
+static const uint32_t s_lockReason = diagnostic::registerMessage("a wire owns this value");
+
 
 // `.invalid` is the only way to paint a rejected field: the engine's CSS subset has no `:invalid`
 // pseudo-class and no attribute selectors, so FormSystem marks the node with a style class.
@@ -49,7 +54,7 @@ text-input {
 text-input:focus {
 	outline-color: #fcb400;
 }
-text-input.invalid {
+text-input:invalid {
 	outline-color: #e53935;
 }
 checkbox {
@@ -82,10 +87,10 @@ label {
 
 Value encodeInteractive(const Node *node) {
 	Value ret;
-	if (auto ic = node->getComponent<ui::InteractiveComponent>()) {
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Focus), "focus");
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Hover), "hover");
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Active), "active");
+	if (auto ic = node->getComponent<InteractiveComponent>()) {
+		ret.setBool(hasFlag(ic->state, InteractiveState::Focus), "focus");
+		ret.setBool(hasFlag(ic->state, InteractiveState::Hover), "hover");
+		ret.setBool(hasFlag(ic->state, InteractiveState::Active), "active");
 
 		// The raw counter, not just the flag: a listener that writes the counter twice for one
 		// focus-in leaves the flag looking right and the counter stuck at 2
@@ -95,8 +100,9 @@ Value encodeInteractive(const Node *node) {
 		// rather than off the widget, because the whole point is whether the STYLE side can see it:
 		// a node carrying no component reads as state 0, which is `:disabled` on something that is
 		// not disabled.
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Enabled), "enabled");
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Checked), "checked");
+		ret.setBool(hasFlag(ic->state, InteractiveState::Enabled), "enabled");
+		ret.setBool(hasFlag(ic->state, InteractiveState::Checked), "checked");
+		ret.setBool(hasFlag(ic->state, InteractiveState::Invalid), "invalid");
 		ret.setBool(true, "hasComponent");
 	} else {
 		ret.setBool(false, "hasComponent");
@@ -290,13 +296,11 @@ Value FormLayout::encodeState() const {
 		field.setBool(it->isFocusable(), "focusable");
 		field.setBool(it->isEnabled(), "enabled");
 		if (auto owner = it->getOwner()) {
-			field.setBool(owner->hasStyleClass(_form->getInvalidStyleClass()), "invalidClass");
 			field.setValue(encodeInteractive(owner), "interactive");
 
 			field.setBool(ui::isEditLocked(owner), "locked");
 			field.setString(ui::getEditLockReason(owner), "lockReason");
 			field.setBool(owner->hasStyleClass("locked"), "lockedClass");
-			field.setBool(owner->hasStyleClass("disabled"), "disabledClass");
 
 			// The hint the lock installed, read back through the target it installed it on.
 			if (auto tooltip = owner->getSystemByType<ui::TooltipTarget>()) {
@@ -418,7 +422,7 @@ void FormLayout::registerCommands() {
 			return ackValue(false);
 		}
 		if (in.getBool("locked")) {
-			ui::setEditLock(node, in.getString("reason"));
+			ui::setEditLock(node, s_lockReason);
 		} else {
 			ui::clearEditLock(node);
 		}

@@ -441,14 +441,15 @@ try:
     print("\n-- the lock --")
     s.invoke("slider.set-index", target="steps", value=10, silent=True)
     s.invoke("slider.focus", target="steps", value=True)
-    s.invoke("slider.lock", target="steps", reason="driven by a wire")
+    # The stand registers its reason as a diagnostic CODE; the registry gives back this text
+    s.invoke("slider.lock", target="steps", reason="lock")
     settle()
     st = state("steps")
     check("a locked slider says so", st["locked"] is True)
-    check("and says why", st["lockReason"] == "driven by a wire", st["lockReason"])
+    check("and says why", st["lockReason"] == "a wire owns this value", st["lockReason"])
     check("it carries the locked class", "locked" in st["classes"], st["classes"])
-    check("and the disabled one with it - a locked control IS disabled",
-            "disabled" in st["classes"], st["classes"])
+    check("and it is disabled with it - a locked control IS disabled",
+            st["enabled"] is False, st)
     check("a lock takes the focus away", st["focused"] is False)
 
     s.ok("input", native=True, events=key("RIGHT"))
@@ -463,8 +464,7 @@ try:
     settle()
     st = state("steps")
     check("unlocking gives it back", st["locked"] is False and st["enabled"] is True, st)
-    check("and the classes go with the lock",
-            "locked" not in st["classes"] and "disabled" not in st["classes"], st["classes"])
+    check("and the class goes with the lock", "locked" not in st["classes"], st["classes"])
 
     # A lock restores what the APPLICATION asked for, not "on".
     s.invoke("slider.set-enabled", target="steps", value=False)

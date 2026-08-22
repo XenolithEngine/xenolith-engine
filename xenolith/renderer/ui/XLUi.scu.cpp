@@ -37,8 +37,7 @@
 #include "atoms/XLUiProgressBar.cc"
 #include "atoms/XLUiTableBorderPainter.cc"
 
-#include "input/XLUiInteractiveComponent.cc"
-#include "input/XLUiEditLock.cc" // after InteractiveComponent: the lock is its Enabled bit
+#include "input/XLUiControlLock.cc" // the widget half of the lock; the state half is in application
                                  // with a reason attached, and every widget below calls in
                                  // here. It also builds a ui::TooltipTarget, whose
                                  // definition arrives much later in this unit - that is

@@ -24,7 +24,7 @@
 
 #include "widgets/ColorFieldLayout.h"
 #include "XLUiStyleResolver.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -44,7 +44,7 @@ color-field {
 color-field:focus {
 	outline-color: #fcb400;
 }
-color-field.invalid {
+color-field:invalid {
 	outline-color: #e53935;
 }
 color-field > text-input {
@@ -246,6 +246,14 @@ Value ColorFieldLayout::encodeField(ui::ColorField *field) const {
 		for (auto &it : *set) { classes.addString(it); }
 	}
 	ret.setValue(sp::move(classes), "classes");
+
+	// The state a stylesheet selects on; the classes above are the widget's own words (`open`,
+	// `unavailable`), which have no pseudo-class to become.
+	if (auto ic = field->getComponent<InteractiveComponent>()) {
+		ret.setBool(sprt::hasFlag(ic->state, InteractiveState::Invalid), "invalidState");
+	} else {
+		ret.setBool(false, "invalidState");
+	}
 
 	// The swatch paints the VALUE, and that is the one thing about this widget worth reading off
 	// the node rather than off the model.

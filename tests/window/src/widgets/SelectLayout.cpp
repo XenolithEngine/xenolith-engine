@@ -50,7 +50,7 @@ select:focus {
 select.open {
 	outline-color: #fcb400;
 }
-select.disabled {
+select:disabled {
 	background-color: #202020;
 }
 select > label {
@@ -100,7 +100,7 @@ menu-item:hover {
 menu-item.highlighted {
 	background-color: #3a3a5c;
 }
-menu-item.checked {
+menu-item:checked {
 	background-color: #2a2a44;
 }
 menu-item > label {
@@ -246,8 +246,8 @@ Value SelectLayout::encodeSelect(ui::Select *select) const {
 
 	// The interactive flags CSS paints from, and the raw counter: a listener that writes the focus
 	// counter twice leaves the flag looking right and the counter stuck at 2.
-	if (auto ic = select->getComponent<ui::InteractiveComponent>()) {
-		ret.setBool(hasFlag(ic->state, ui::InteractiveState::Focus), "focusFlag");
+	if (auto ic = select->getComponent<InteractiveComponent>()) {
+		ret.setBool(hasFlag(ic->state, InteractiveState::Focus), "focusFlag");
 		ret.setInteger(int64_t(ic->focusCounter), "focusCounter");
 	}
 	return ret;

@@ -76,7 +76,7 @@ bool Slider::init() {
 	// answered a drag of the handle would make every distant change a two-part gesture - and it has
 	// to be its own recognizer, because a swipe is only recognized once the pointer has MOVED.
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
-		if (!_enabled) {
+		if (!isEnabled()) {
 			return false;
 		}
 		if (tap.event == GestureEvent::Activated) {
@@ -155,7 +155,7 @@ bool Slider::init() {
 	that changes something: a node without one reads as state 0 to the style resolver, and
 	`:disabled` is "not :enabled" - so a slider nobody had touched matched `slider:disabled` while
 	it was perfectly enabled. Same line, and same reason, as ui::Checkbox's. */
-	applyControlEnabled(this, _enabled);
+	applyControlEnabled(this, true);
 
 	return true;
 }
@@ -240,22 +240,21 @@ void Slider::setPageSteps(uint32_t value) { _pageSteps = value > 0 ? value : 1; 
 void Slider::setEnabled(bool e) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it back.
 	e = resolveEditLock(this, e);
-	if (_enabled == e) {
+	if (isEnabled() == e) {
 		return;
 	}
-	_enabled = e;
-	if (!_enabled) {
+	applyControlEnabled(this, e);
+	if (!e) {
 		// A control that stops being usable mid-gesture must not keep the pointer, and must not
 		// keep the keyboard either.
 		handleDragEnd();
 		blur();
 	}
-	applyControlEnabled(this, _enabled);
 	updateInteractiveState();
 }
 
 void Slider::focus() {
-	if (_focused || !_enabled) {
+	if (_focused || !isEnabled()) {
 		return;
 	}
 	_focused = true;
@@ -319,7 +318,7 @@ bool Slider::step(int64_t delta) {
 }
 
 bool Slider::handleKey(const GestureData &data) {
-	if (!_focused || !_enabled || !data.input) {
+	if (!_focused || !isEnabled() || !data.input) {
 		return false;
 	}
 
@@ -352,7 +351,7 @@ bool Slider::handleKey(const GestureData &data) {
 }
 
 bool Slider::handleDragBegin(const Vec2 &location) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -374,7 +373,7 @@ bool Slider::handleDragBegin(const Vec2 &location) {
 }
 
 void Slider::handleDragMove(const Vec2 &location) {
-	if (!_dragging || !_enabled) {
+	if (!_dragging || !isEnabled()) {
 		return;
 	}
 	// The ABSOLUTE position, not the accumulated delta: a slider has a point the pointer is
@@ -463,15 +462,16 @@ void Slider::updateInteractiveState() {
 		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
 		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
-		const bool hover = _hoverApplied && _enabled;
+		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {
 			dirty = state->handleHover(hover ? 1 : -1) || dirty;
 		}
-		const bool focus = _focusApplied && _enabled;
+		const bool focus = _focusApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
 		}
-		const bool active = _activeApplied && _enabled;
+		const bool active =
+				_activeApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (active != sprt::hasFlag(state->state, InteractiveState::Active)) {
 			dirty = state->handleActive(active ? 1 : -1) || dirty;
 		}

@@ -22,7 +22,7 @@
 
 #include "XLUiChipRow.h"
 #include "XLUiLayoutSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLInputListener.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
@@ -48,6 +48,11 @@ bool ChipRow::init() {
 	if (!Panel::init()) {
 		return false;
 	}
+
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
 
 	setType("chip-row");
 	removeStyleClass("xl-ui-panel");
@@ -75,7 +80,7 @@ bool ChipRow::init() {
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		// Only the background gets here: a tap on a chip is consumed by the chip's own listener,
 		// which is deeper in the tree and therefore dispatched first.
-		if (tap.event == GestureEvent::Activated && _enabled) {
+		if (tap.event == GestureEvent::Activated && isEnabled()) {
 			focus();
 		}
 		return true;
@@ -155,6 +160,8 @@ bool ChipRow::init() {
 
 	updateAddButton();
 	updateInteractiveState();
+
+
 	return true;
 }
 
@@ -346,17 +353,16 @@ void ChipRow::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
-	_enabled = value;
-	if (!_enabled) {
+	applyControlEnabled(this, value);
+	if (!value) {
 		close();
 		blur();
 	}
-	applyControlEnabled(this, _enabled);
 
-	for (auto &it : _chips) { it->setEnabled(_enabled); }
+	for (auto &it : _chips) { it->setEnabled(isEnabled()); }
 	updateAddButton();
 	updateInteractiveState();
 }
@@ -396,7 +402,7 @@ void ChipRow::select(int32_t index) {
 }
 
 void ChipRow::focus() {
-	if (_focused || !_enabled) {
+	if (_focused || !isEnabled()) {
 		return;
 	}
 	_focused = true;
@@ -444,7 +450,7 @@ void ChipRow::focusFromNavigation(bool backwards) {
 }
 
 bool ChipRow::open() {
-	if (!_enabled || isOpen() || isFull()) {
+	if (!isEnabled() || isOpen() || isFull()) {
 		return false;
 	}
 
@@ -524,7 +530,7 @@ void ChipRow::rebuildChips() {
 		chip->setText(item.title.empty() ? StringView(item.id) : StringView(item.title));
 		chip->setIcon(item.icon);
 		chip->setRemovable(item.removable);
-		chip->setEnabled(_enabled);
+		chip->setEnabled(isEnabled());
 		chip->setTapCallback([this, i](NotNull<Chip>) { handleChipTap(i); });
 		chip->setRemoveCallback([this, i](NotNull<Chip>) { handleChipRemove(i); });
 
@@ -554,7 +560,7 @@ void ChipRow::updateAddButton() {
 	// anything and says nothing about why.
 	const bool offers = _addCallback || !_options.empty();
 	_addButton->setVisible(offers);
-	_addButton->setEnabled(_enabled && !isFull());
+	_addButton->setEnabled(isEnabled() && !isFull());
 
 	if (isFull()) {
 		addStyleClass("full");
@@ -570,11 +576,11 @@ void ChipRow::updateInteractiveState() {
 		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
 		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
-		const bool hover = _hoverApplied && _enabled;
+		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {
 			dirty = state->handleHover(hover ? 1 : -1) || dirty;
 		}
-		const bool focus = _focusApplied && _enabled;
+		const bool focus = _focusApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
 		}
@@ -676,7 +682,7 @@ Rc<MenuSource> ChipRow::makeSource() {
 }
 
 bool ChipRow::handleKey(const GestureData &data) {
-	if (!_focused || !_enabled || !data.input) {
+	if (!_focused || !isEnabled() || !data.input) {
 		return false;
 	}
 
@@ -761,7 +767,7 @@ bool ChipRow::handleKey(const GestureData &data) {
 }
 
 bool ChipRow::handleChipTap(uint32_t index) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 	// The tap does two things, and the second one is not the widget's to do alone: focus() reports
@@ -772,7 +778,7 @@ bool ChipRow::handleChipTap(uint32_t index) {
 }
 
 bool ChipRow::handleChipRemove(uint32_t index) {
-	if (!_enabled || index >= _items.size()) {
+	if (!isEnabled() || index >= _items.size()) {
 		return false;
 	}
 	if (!_items[index].removable) {

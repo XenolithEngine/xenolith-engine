@@ -43,7 +43,7 @@ chip-row {
 chip-row:focus {
 	outline-color: #fcb400;
 }
-chip-row.invalid {
+chip-row:invalid {
 	outline-color: #e53935;
 }
 chip {
@@ -270,6 +270,13 @@ Value ChipRowLayout::encodeChip(ui::Chip *chip, bool selected) const {
 		ret.setValue(encodeRect(button), "removeRect");
 	}
 	ret.setValue(encodeClasses(chip), "classes");
+	// The bits a stylesheet selects on. The classes beside them are the widget's own vocabulary
+	// (`open`, `full`, `selected`); the STATES live here.
+	if (auto ic = chip->getComponent<InteractiveComponent>()) {
+		ret.setInteger(int64_t(toInt(ic->state)), "stateBits");
+	} else {
+		ret.setInteger(0, "stateBits");
+	}
 	return ret;
 }
 
@@ -301,6 +308,11 @@ Value ChipRowLayout::encodeRow(ui::ChipRow *row) const {
 	ret.setDouble(double(row->getContentSize().width), "width");
 
 	ret.setValue(encodeClasses(row), "classes");
+	if (auto ic = row->getComponent<InteractiveComponent>()) {
+		ret.setInteger(int64_t(toInt(ic->state)), "stateBits");
+	} else {
+		ret.setInteger(0, "stateBits");
+	}
 	ret.setValue(encodeRect(row), "rect");
 
 	if (auto add = row->getAddButton()) {

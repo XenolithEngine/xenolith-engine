@@ -22,9 +22,9 @@
 
 #include "XLUiFormInputListener.h"
 #include "XLUiFormSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLNode.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -69,6 +69,8 @@ void FormInputListener::handleEnter(Scene *scene) {
 		_name = _owner->getName().str<Interface>();
 	}
 
+	updateRequiredState();
+
 	_form = FormSystem::findForNode(_owner);
 	if (_form) {
 		_form->addField(this);
@@ -98,7 +100,19 @@ StringView FormInputListener::getFieldName() const { return _name; }
 
 void FormInputListener::setRole(FormFieldRole role) { _role = role; }
 
-void FormInputListener::setFieldFlags(FormFieldFlags flags) { _fieldFlags = flags; }
+void FormInputListener::setFieldFlags(FormFieldFlags flags) {
+	_fieldFlags = flags;
+	updateRequiredState();
+}
+
+// `:required` / `:optional`. Called from both places the answer can change: the flags themselves,
+// and the moment the listener finds its owner (a field built by an adapter has its flags before it
+// has a node to publish them on).
+void FormInputListener::updateRequiredState() {
+	if (_owner) {
+		applyControlRequired(_owner, hasFlag(_fieldFlags, FormFieldFlags::Required));
+	}
+}
 
 void FormInputListener::setValidator(Validator &&v) { _validator = sp::move(v); }
 
@@ -155,25 +169,10 @@ bool FormInputListener::validate(String &message) const {
 }
 
 void FormInputListener::setInvalid(bool value) {
-	if (_invalid == value) {
+	if (!_owner) {
 		return;
 	}
-	_invalid = value;
-
-	if (!_owner || !_form) {
-		return;
-	}
-
-	auto cl = _form->getInvalidStyleClass();
-	if (cl.empty()) {
-		return;
-	}
-
-	if (_invalid) {
-		_owner->addStyleClass(cl);
-	} else {
-		_owner->removeStyleClass(cl);
-	}
+	applyControlInvalid(_owner, value);
 }
 
 bool FormInputListener::activate() {
@@ -222,12 +221,31 @@ void FormInputListener::updateFocusStyle(bool value) {
 	});
 }
 
+/* `:focus-visible`, written here rather than beside the `:focus` counter above - and for a widget
+that keeps that counter ITSELF (ownsFocusStyle) just the same, because this is a different bit and
+writing it twice is not the hazard a cumulative counter is.
+
+A TEXT FIELD IS ALWAYS FOCUS-VISIBLE. It shows a caret and takes characters the moment it has focus,
+however focus got there, so an outline that appears only after Tab would contradict the caret that
+appeared after the tap. Browsers landed on the same rule, and `ownsFocusStyle` happens to name
+exactly the widgets it applies to: the ones driven by the IME. */
+void FormInputListener::updateFocusVisibleStyle(bool value) {
+	if (!_owner) {
+		return;
+	}
+
+	const bool visible = value && (_slots.ownsFocusStyle || (_form && _form->isFocusVisible()));
+	applyControlFocusVisible(_owner, visible);
+}
+
 void FormInputListener::handleFocusIn(FocusGroup *group) {
 	InputListener::handleFocusIn(group);
 
 	if (!_slots.ownsFocusStyle) {
 		updateFocusStyle(true);
 	}
+
+	updateFocusVisibleStyle(true);
 
 	if (_slots.setFocused) {
 		_slots.setFocused(true, _focusBackwards);
@@ -236,6 +254,8 @@ void FormInputListener::handleFocusIn(FocusGroup *group) {
 
 void FormInputListener::handleFocusOut(FocusGroup *group) {
 	InputListener::handleFocusOut(group);
+
+	updateFocusVisibleStyle(false);
 
 	if (!_slots.ownsFocusStyle) {
 		updateFocusStyle(false);
@@ -264,11 +284,13 @@ bool FormInputListener::handleFormHotkey(HotkeyId id, const InputEvent &) {
 		case FormFieldRole::Submit: return requestSubmit();
 		case FormFieldRole::Reset: return requestReset();
 		case FormFieldRole::Field:
-			// A widget that can act on Enter does; everything else means "I am done, submit"
+			// A widget that can act on Enter does; everything else means "I am done" - which is
+			// the DEFAULT BUTTON's action when the form has one, and a bare submit() when it does
+			// not. Going through the button is what makes `:default` an honest highlight.
 			if (activate()) {
 				return true;
 			}
-			return requestSubmit();
+			return _form ? _form->activateDefault() : requestSubmit();
 		}
 	} else if (id == hk.formActivate) {
 		// Only for the widgets that have something to toggle - a text field never gets here,

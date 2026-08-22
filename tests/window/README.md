@@ -46,6 +46,8 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
                               (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    style-check.py            headless assertions for the CSS engine: control states, the
+                              functional pseudo-classes, and the arithmetic
     scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry
     geometry-check.py         headless assertions for window geometry and monitors
     text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)
@@ -136,6 +138,43 @@ stand carries four subscribers on
 one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
 text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
+
+`style-check.py` is the CSS engine's first headless check, and it exists for the seam rather than
+for the parser. css/hover already checks that `:hover` and friends are understood - it assigns the
+interactive bits by hand, which is the right way to test a parser and no way at all to test whether
+a widget's own state ever reaches a selector. So here every state is put there by its real producer:
+the form rejects an empty required field (`:invalid`, watched through two properties at once), an
+edit lock takes a control away
+(`:read-only` AND `:disabled`, two claims a lock makes at once), a text input is switched to
+read-only, a progress bar is given no total, the submit button becomes the form's default, and the
+tab ring is walked so that focus arrives by keyboard rather than by tap. The assertions read the
+RESOLVED style rather than the painted colour, because the claim is that a rule matched; a widget
+that does not paint its own background would otherwise fail a check about the cascade.
+
+It runs THREE stands in one process, switching with the inspector's `layout` command: `css/state`,
+then `css/selector`, then `css/calc`. The order is fixed rather than incidental - a stand's commands
+go away with it - and the arrangement is what lets one script cover the engine instead of three
+scripts each paying for an app launch.
+
+The selector half is mostly pairs of rules written to CONFLICT, because matching is only half of
+what `:is()` and `:where()` do. `:where()` matches exactly like `:is()` while counting for nothing,
+so the only way to tell them apart is to put a rule using one against a rule that would otherwise
+lose to it, and read which colour won - a number, not a picture. The refusals are asserted too: an
+argument with a combinator, a nested functional pseudo-class, a structural one, an empty list or an
+unbalanced paren must take down its OWN rule and leave the rules around it standing.
+
+The arithmetic half used to check itself and write the tally to the log, where nothing ran it. Its
+expectations now live in the script (duplicated on purpose, like everywhere else here) and the stand
+only reports what resolved - plus what the layout actually APPLIED, which is the half that proves a
+changed custom property invalidated anything at all: nothing moves and no rule starts matching when
+`--k` changes, so the applied width is the only witness.
+
+Two states there are worth naming. `:focus-visible` is asserted on the CHECKBOX, because a text
+input is always focus-visible by design - it shows a caret the moment it has focus, however focus
+got there - and so is the one widget that cannot tell keyboard focus from a tap. And `:focus-within`
+is the only state a node does not carry in its own InteractiveComponent: giving a panel interactive
+state just to hold it would switch `:enabled` on and `:disabled` off for that panel while focus
+happened to be inside, so it is published by a marker component instead (XLUiFocusWithin.h).
 
 `scale9-check.py` is the one case here where the thing on screen IS the subject and a screenshot
 is still the wrong instrument. A nine-slice sprite claims that its corners did not stretch and that

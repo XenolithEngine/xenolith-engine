@@ -60,6 +60,7 @@ static const TestEntry s_testList[] = {
 	{"search-fuzzy", &stappler::performSearchFuzzyTests},
 	{"command-history", &stappler::performCommandHistoryTests},
 	{"image-format", &stappler::performImageFormatTests},
+	{"diag-registry", &stappler::performDiagnosticRegistryTests},
 };
 
 int main(int argc, const char *argv[]) {

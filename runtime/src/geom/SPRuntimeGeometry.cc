@@ -102,8 +102,123 @@ constexpr uint32_t CalcMaxDepth = 16;
 
 bool calcExpr(StringView &r, bool resolutionMetric, uint32_t depth, CalcTerm &out);
 
+/* `min()`, `max()` and `clamp()`: a FACTOR, not a new machine.
+
+Each argument is a full calc expression, so `min(100px, calc(2 * 40px))` needs nothing extra, and
+the unit rule is the sum's rule - the arguments must be alike, because the answer is one of them and
+a Metric carries one unit. `clamp(a, b, c)` folds to `max(a, min(b, c))` right here rather than
+becoming a third code path.
+
+Unlike the operators, these are legal OUTSIDE calc() as well (`width: min(100px, 50px)`), so
+Metric::readStyleValue reaches them too - a function callable only from inside another function
+would be a strange thing to offer. */
+bool calcFunction(StringView &r, bool resolutionMetric, uint32_t depth, CalcTerm &out) {
+	enum class Kind {
+		Min,
+		Max,
+		Clamp
+	} kind;
+
+	if (r.starts_with("min(")) {
+		kind = Kind::Min;
+		r += 4;
+	} else if (r.starts_with("max(")) {
+		kind = Kind::Max;
+		r += 4;
+	} else if (r.starts_with("clamp(")) {
+		kind = Kind::Clamp;
+		r += 6;
+	} else {
+		return false;
+	}
+
+	if (depth >= CalcMaxDepth) {
+		return false;
+	}
+
+	CalcTerm args[3];
+	uint32_t count = 0;
+	for (;;) {
+		CalcTerm arg;
+		if (!calcExpr(r, resolutionMetric, depth + 1, arg)) {
+			return false;
+		}
+
+		// Like with like, for the same reason a sum demands it
+		if (count > 0
+				&& (args[0].unitless != arg.unitless
+						|| (!arg.unitless && args[0].unit != arg.unit))) {
+			return false;
+		}
+
+		if (count < 3) {
+			args[count] = arg;
+		}
+		++count;
+
+		r.skipChars<WhiteSpaceGroup>();
+		if (r.is(',')) {
+			++r;
+			if (count >= 3 && kind == Kind::Clamp) {
+				return false; // clamp() takes exactly three
+			}
+			if (count >= 3) {
+				return false; // min()/max() beyond three: nothing needs it, and the bound is honest
+			}
+			continue;
+		}
+		break;
+	}
+
+	if (!r.is(')')) {
+		return false;
+	}
+	++r;
+
+	if (kind == Kind::Clamp) {
+		if (count != 3) {
+			return false; // "clamp with a missing bound" has no defensible answer
+		}
+		out = args[1];
+		if (out.value < args[0].value) {
+			out.value = args[0].value;
+		}
+		if (out.value > args[2].value) {
+			out.value = args[2].value;
+		}
+		return true;
+	}
+
+	if (count < 2) {
+		return false; // min() of one value is a typo, not a value
+	}
+
+	out = args[0];
+	for (uint32_t i = 1; i < count; ++i) {
+		const bool take =
+				(kind == Kind::Min) ? (args[i].value < out.value) : (args[i].value > out.value);
+		if (take) {
+			out = args[i];
+		}
+	}
+	return true;
+}
+
 bool calcFactor(StringView &r, bool resolutionMetric, uint32_t depth, CalcTerm &out) {
 	r.skipChars<WhiteSpaceGroup>();
+
+	if (r.starts_with("min(") || r.starts_with("max(") || r.starts_with("clamp(")) {
+		return calcFunction(r, resolutionMetric, depth, out);
+	}
+
+	// `min(calc(2 * 30px), 45px)` is legal css, and a nested calc() is exactly a parenthesised
+	// sub-expression with a name in front of it
+	if (r.starts_with("calc(")) {
+		if (depth >= CalcMaxDepth) {
+			return false;
+		}
+		r += 4; // leave the '(' for the branch below to consume
+	}
 
 	if (r.is('(')) {
 		if (depth >= CalcMaxDepth) {
@@ -273,6 +388,24 @@ bool Metric::readStyleValue(StringView &r, bool resolutionMetric, bool allowEmpt
 	}
 	if (r.starts_with("calc(")) {
 		return readCalcValue(r, resolutionMetric, allowEmptyMetric, *this);
+	}
+
+	// min()/max()/clamp() stand on their own as a value, unlike the operators
+	if (r.starts_with("min(") || r.starts_with("max(") || r.starts_with("clamp(")) {
+		auto tail = r;
+		CalcTerm term;
+		if (!calcFunction(tail, resolutionMetric, 0, term)) {
+			return false;
+		}
+		if (term.unitless && !allowEmptyMetric) {
+			return false;
+		}
+		this->value = term.value;
+		if (!term.unitless) {
+			this->metric = term.unit;
+		}
+		r = tail;
+		return true;
 	}
 
 	auto fRes = r.readFloat();

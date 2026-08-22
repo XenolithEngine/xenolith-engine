@@ -168,7 +168,7 @@ try:
     check("a number past the range is refused", near(st["value"], 100.0), st["value"])
     check("the callback does not fire for a refusal", st["callbacks"] == 0, st["callbacks"])
     check("the field says it is invalid", st["valid"] is False)
-    check("and takes the class a stylesheet paints that with", "invalid" in st["classes"],
+    check("and publishes the state a stylesheet paints that with", st["invalidState"],
             st["classes"])
     check("the reason names the range", "between" in st["message"], st["message"])
 
@@ -177,7 +177,7 @@ try:
     s.ok("frame", count=2)
     st = state("ranged")
     check("losing focus restores the text of a refused edit", st["text"] == "100", st["text"])
-    check("and clears the mark", st["valid"] is True and "invalid" not in st["classes"])
+    check("and clears the mark", st["valid"] is True and not st["invalidState"])
 
     # --- typing that is accepted -------------------------------------------------------------------
     s.invoke("number.set-text", target="ranged", value="250")
@@ -259,7 +259,7 @@ try:
     st = state("ranged")
     check("dragging past the range CLAMPS instead of refusing", near(st["value"], RANGE_MAX),
             st["value"])
-    check("so the field stays valid", st["valid"] is True and "invalid" not in st["classes"])
+    check("so the field stays valid", st["valid"] is True and not st["invalidState"])
 
     s.ok("input", native=True, events=drag(x, y, 200, dx=-20.0))
     time.sleep(0.8)

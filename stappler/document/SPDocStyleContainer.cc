@@ -910,6 +910,26 @@ static bool applyPseudoClass(StringView name, StyleContainer::CompoundSelector &
 		out.pseudoRequire |= uint32_t(P::Enabled);
 	} else if (name == "disabled") {
 		out.pseudoForbid |= uint32_t(P::Enabled);
+	} else if (name == "invalid") {
+		out.pseudoRequire |= uint32_t(P::Invalid);
+	} else if (name == "valid") {
+		out.pseudoForbid |= uint32_t(P::Invalid);
+	} else if (name == "read-only") {
+		out.pseudoRequire |= uint32_t(P::ReadOnly);
+	} else if (name == "read-write") {
+		out.pseudoForbid |= uint32_t(P::ReadOnly);
+	} else if (name == "indeterminate") {
+		out.pseudoRequire |= uint32_t(P::Indeterminate);
+	} else if (name == "required") {
+		out.pseudoRequire |= uint32_t(P::Required);
+	} else if (name == "optional") {
+		out.pseudoForbid |= uint32_t(P::Required);
+	} else if (name == "default") {
+		out.pseudoRequire |= uint32_t(P::Default);
+	} else if (name == "focus-visible") {
+		out.pseudoRequire |= uint32_t(P::FocusVisible);
+	} else if (name == "focus-within") {
+		out.pseudoRequire |= uint32_t(P::FocusWithin);
 	} else if (name == "root") {
 		out.requireRoot = true;
 	} else if (name == "empty") {
@@ -1011,6 +1031,90 @@ static bool parseAnPlusB(StringView arg, int32_t &a, int32_t &b) {
 }
 
 // a functional pseudo-class `name(arg)`; false = unsupported or ill-formed argument
+/* Parse one argument of `:not()`/`:is()`/`:where()`: a compound and nothing else.
+
+Refuses what the restriction excludes - a combinator (`:is(.a .b)`), a nested functional pseudo-class
+(`:is(:not(.a))`), a structural one (`:is(:first-child)`) - and refusing is the whole answer: the
+caller drops the selector, exactly as it does for a pseudo-element or an attribute selector. Half-
+applying an argument nobody can express would be the one outcome worse than not supporting it. */
+static bool parseSelectorArg(StringView t, StyleContainer::SelectorArg &out) {
+	uint32_t idC = 0, clsC = 0, typeC = 0;
+	bool hasTag = false;
+	size_t j = 0;
+	while (j < t.size()) {
+		const char c = t[j];
+		if (isSelSpace(c) || c == '>' || c == '+' || c == '~' || c == ',') {
+			return false; // a combinator or a list: the argument is ONE compound
+		} else if (c == '*') {
+			out.universal = true;
+			++j;
+		} else if (c == '#' || c == '.') {
+			++j;
+			const size_t st = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (j == st) {
+				return false;
+			}
+			if (c == '#') {
+				out.id.assign(t.data() + st, j - st);
+				++idC;
+			} else {
+				out.classes.emplace_back(StyleContainer::String(t.data() + st, j - st));
+				++clsC;
+			}
+		} else if (c == ':') {
+			++j;
+			if (j < t.size() && t[j] == ':') {
+				return false; // pseudo-element
+			}
+			const size_t st = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (j == st || (j < t.size() && t[j] == '(')) {
+				return false; // nothing, or a functional pseudo-class: no nesting here
+			}
+
+			// Interactive states only. A structural one would have to reach the sibling pass, which
+			// an argument has no way of doing.
+			StyleContainer::CompoundSelector probe;
+			if (!applyPseudoClass(StringView(t.data() + st, j - st), probe)) {
+				return false;
+			}
+			if (probe.requireRoot || probe.requireEmpty || !probe.nth.empty()) {
+				return false;
+			}
+			out.pseudoRequire |= probe.pseudoRequire;
+			out.pseudoForbid |= probe.pseudoForbid;
+			clsC += uint32_t(__builtin_popcount(probe.pseudoRequire))
+					+ uint32_t(__builtin_popcount(probe.pseudoForbid));
+		} else if (isSelIdent(c)) {
+			const size_t st = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (hasTag) {
+				return false;
+			}
+			hasTag = true;
+			out.tag.assign(t.data() + st, j - st);
+			++typeC;
+		} else {
+			return false;
+		}
+	}
+
+	if (j == 0) {
+		return false; // empty argument: `:is()` matches nothing, and saying so is not the same as
+		// matching everything
+	}
+
+	out.specificity = StyleContainer::packSpecificity(idC, clsC, typeC);
+	return true;
+}
+
+// Does this argument test ONLY interactive bits? Such a `:not()` folds into pseudoForbid and needs
+// no negation entry at all - which is what keeps `:not(:hover)` as cheap as `:disabled`.
+static bool argIsPseudoOnly(const StyleContainer::SelectorArg &arg) {
+	return arg.tag.empty() && arg.id.empty() && arg.classes.empty() && !arg.universal;
+}
+
 static bool applyFunctionalPseudoClass(StringView name, StringView arg,
 		StyleContainer::CompoundSelector &out) {
 	bool fromEnd = false;
@@ -1022,6 +1126,68 @@ static bool applyFunctionalPseudoClass(StringView name, StringView arg,
 		ofType = true;
 	} else if (name == "nth-last-of-type") {
 		fromEnd = ofType = true;
+	} else if (name == "not" || name == "is" || name == "where") {
+		const bool isNot = (name == "not");
+		const bool zeroSpec = (name == "where");
+
+		StyleContainer::SelectorMatchAny anyOf;
+		uint32_t bestId = 0, bestClass = 0, bestType = 0, bestPacked = 0;
+		bool empty = true;
+
+		bool ok = true;
+		StyleContainer::splitSelectorList(arg, [&](StringView part) {
+			if (!ok) {
+				return;
+			}
+			part.trimChars<StyleContainer::Group<CharGroupId::WhiteSpace>>();
+
+			StyleContainer::SelectorArg parsed;
+			if (!parseSelectorArg(part, parsed)) {
+				ok = false;
+				return;
+			}
+			empty = false;
+
+			// `:not()` takes its argument's specificity; `:is()` the LARGEST of its own. Both are
+			// compared packed, so the triple that wins is the triple that is added.
+			if (parsed.specificity > bestPacked) {
+				bestPacked = parsed.specificity;
+				bestId = (parsed.specificity >> 16) & 0xFFu;
+				bestClass = (parsed.specificity >> 8) & 0xFFu;
+				bestType = parsed.specificity & 0xFFu;
+			}
+
+			if (isNot) {
+				if (argIsPseudoOnly(parsed)) {
+					// `:not(:hover)` is the forbid mask the matcher already has
+					out.pseudoForbid |= parsed.pseudoRequire;
+					out.pseudoRequire |= parsed.pseudoForbid;
+				} else {
+					out.negations.emplace_back(sp::move(parsed));
+				}
+			} else {
+				anyOf.options.emplace_back(sp::move(parsed));
+			}
+		});
+
+		if (!ok || empty) {
+			return false;
+		}
+
+		if (isNot) {
+			// A comma-separated `:not(a, b)` is "neither a nor b", so every part is added and the
+			// specificity is still the largest one.
+		} else {
+			anyOf.zeroSpecificity = zeroSpec;
+			out.anyOf.emplace_back(sp::move(anyOf));
+		}
+
+		if (!zeroSpec) {
+			out.extraId += bestId;
+			out.extraClass += bestClass;
+			out.extraType += bestType;
+		}
+		return true;
 	} else {
 		return false;
 	}
@@ -1327,6 +1493,13 @@ void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) 
 			if (!comp.universal && !comp.tag.empty()) {
 				++typeC;
 			}
+
+			// `:not()` and `:is()` contribute a full triple rather than "one more class", and
+			// `:where()` contributes nothing at all - which is what makes a base layer written with
+			// it lose to every application rule.
+			idC += comp.extraId;
+			clsC += comp.extraClass;
+			typeC += comp.extraType;
 			if (!comp.nth.empty() || comp.requireEmpty || comp.requireRoot) {
 				// consumers gate sibling-order invalidation on this
 				_hasStructuralSelectors = true;

@@ -38,6 +38,8 @@
 #include "input/XLHotkey.cc"
 #include "input/XLGestureRecognizer.cc"
 #include "input/XLInputDispatcher.cc"
+#include "input/XLInteractiveComponent.cc"
+#include "input/XLFocusWithin.cc" // after the component: the one state it does NOT keep
 #include "input/XLInputListener.cc"
 #include "input/XLFocusGroup.cc"
 #include "input/XLTextInputManager.cc"

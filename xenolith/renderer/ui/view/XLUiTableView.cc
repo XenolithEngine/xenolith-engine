@@ -22,7 +22,7 @@
 
 #include "XLUiTableView.h"
 #include "XLUiStyleSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XL2dLabel.h"
 #include "XL2dIconSprite.h"
 

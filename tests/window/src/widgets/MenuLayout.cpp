@@ -45,7 +45,7 @@ menu-item {
 menu-item:hover {
 	background-color: #2f2f38;
 }
-menu-item.checked {
+menu-item:checked {
 	background-color: #2a2a44;
 }
 menu-item.highlighted {

@@ -63,6 +63,11 @@ bool Select::init() {
 		return false;
 	}
 
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
+
 	setType("select");
 	removeStyleClass("xl-ui-panel");
 	addStyleClass("xl-ui-select");
@@ -148,6 +153,8 @@ bool Select::init() {
 	_focusListener->setEnabled(false);
 
 	updateContent();
+
+
 	return true;
 }
 
@@ -270,20 +277,19 @@ void Select::setEnabled(bool value) {
 	// The lock has the last word, and remembers what was asked for so unlocking can give it
 	// back. A no-op, and one pointer test, on a control nobody locked.
 	value = resolveEditLock(this, value);
-	if (_enabled == value) {
+	if (isEnabled() == value) {
 		return;
 	}
-	_enabled = value;
-	if (!_enabled) {
+	applyControlEnabled(this, value);
+	if (!value) {
 		close();
 		blur();
 	}
-	applyControlEnabled(this, _enabled);
 	updateInteractiveState();
 }
 
 bool Select::step(int32_t delta) {
-	if (!_enabled || _options.empty() || delta == 0) {
+	if (!isEnabled() || _options.empty() || delta == 0) {
 		return false;
 	}
 
@@ -319,7 +325,7 @@ Rc<MenuSource> Select::makeSource() {
 }
 
 bool Select::open() {
-	if (!_enabled || _options.empty() || isOpen()) {
+	if (!isEnabled() || _options.empty() || isOpen()) {
 		return false;
 	}
 
@@ -381,7 +387,7 @@ void Select::setMenuStyle(const MenuStyle &style) { _menuStyle = style; }
 void Select::setPopupConfig(MenuConfig &&config) { _popupConfig = sp::move(config); }
 
 void Select::focus() {
-	if (_focused || !_enabled) {
+	if (_focused || !isEnabled()) {
 		return;
 	}
 	_focused = true;
@@ -405,7 +411,7 @@ void Select::blur() {
 }
 
 bool Select::handleTap() {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 	focus();
@@ -418,7 +424,7 @@ bool Select::handleTap() {
 }
 
 bool Select::handleKey(const GestureData &data) {
-	if (!_focused || !_enabled || !data.input) {
+	if (!_focused || !isEnabled() || !data.input) {
 		return false;
 	}
 
@@ -486,11 +492,11 @@ void Select::updateInteractiveState() {
 		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
 		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
-		const bool hover = _hoverApplied && _enabled;
+		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (hover != sprt::hasFlag(state->state, InteractiveState::Hover)) {
 			dirty = state->handleHover(hover ? 1 : -1) || dirty;
 		}
-		const bool focus = _focusApplied && _enabled;
+		const bool focus = _focusApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
 		}

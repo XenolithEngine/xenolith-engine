@@ -91,11 +91,6 @@ public:
 	virtual void setValueMode(FormValueMode);
 	virtual FormValueMode getValueMode() const { return _valueMode; }
 
-	// Added to a rejected field's node by submit(). The engine's CSS subset has no `:invalid`, so
-	// a style class is the only way to paint one
-	virtual void setInvalidStyleClass(StringView);
-	virtual StringView getInvalidStyleClass() const { return _invalidClass; }
-
 	// Escape on a focused field resets the form. Off by default: losing what was typed to a
 	// stray Escape is worse than having to reach for the button
 	virtual void setResetOnEscape(bool value) { _resetOnEscape = value; }
@@ -151,6 +146,32 @@ public:
 
 	virtual bool focusField(NotNull<FormInputListener>);
 
+	// --- the default button ---------------------------------------------------------------------
+
+	/* What Enter does from a field that does not consume it - and, because it is a real widget
+	rather than a hidden rule, what `:default` paints.
+
+	The first FormFieldRole::Submit field in the tab ring. The ring is already in document order and
+	already excludes what is hidden, disabled or locked, so the button that lights up is the button
+	that will actually fire; a form whose only submit button is locked has no default button at all
+	and Enter falls back to submit(), which is what it always did. */
+	FormInputListener *getDefaultButton() const { return _defaultButton.get(); }
+
+	// Activate the default button, or submit when there is none. Called by a field that received
+	// Enter and had nothing of its own to do with it.
+	virtual bool activateDefault();
+
+	/* Did the pending focus change come from the KEYBOARD? What `:focus-visible` is written from.
+
+	The answer is the PATH, not the event: focusNext() is the tab ring being walked, focusField() is
+	a tap or a direct request, and the focus submit() puts on the first rejected field is neither -
+	but it is not a tap either, and its outline is half of what tells the author which field was
+	refused. So it counts as visible.
+
+	Scope, named rather than discovered: this is a rule of the FORM, so a widget focused outside one
+	never takes the bit. A stylesheet that wants an outline there asks for `:focus`. */
+	bool isFocusVisible() const { return _focusVisible; }
+
 protected:
 	virtual void updateWithListeners(SpanView<InputListener *>) override;
 
@@ -159,6 +180,9 @@ protected:
 
 	size_t indexOfField(const FormInputListener *) const;
 
+	// Pick the default button out of the freshly built ring and move the `:default` bit onto it
+	void updateDefaultButton();
+
 	// Writes `value` under `name`, splitting the name on '.' in Nested mode
 	static void writeValue(Value &target, StringView name, Value &&, FormValueMode);
 
@@ -166,7 +190,6 @@ protected:
 	static const Value &readValue(const Value &source, StringView name, FormValueMode);
 
 	FormValueMode _valueMode = FormValueMode::Flat;
-	String _invalidClass = String("invalid");
 	SubmitCallback _submitCallback;
 	ResetCallback _resetCallback;
 	InvalidCallback _invalidCallback;
@@ -181,12 +204,19 @@ protected:
 	// removed), and the focus-out that follows has to reach a live object
 	Rc<FormInputListener> _focusedField;
 
+	// Recomputed with the ring, and holder of the `:default` bit while it holds this slot
+	Rc<FormInputListener> _defaultButton;
+
 	// The direction of the navigation that asked for the pending focus change, waiting for the
 	// commit that will deliver it. It has to be remembered rather than passed along, because
 	// focusNext() only RECORDS a request and the swap happens on the next commit - and by then the
 	// key that carried the Shift is long gone. Cleared by a focusField() that is not navigation,
 	// and by the commit that consumes it
 	bool _navigateBackwards = false;
+
+	// How the PENDING focus change was asked for; read at the commit that delivers it, exactly as
+	// _navigateBackwards is, and for the same reason: by then the key is long gone
+	bool _focusVisible = false;
 
 	bool _resetOnEscape = false;
 };

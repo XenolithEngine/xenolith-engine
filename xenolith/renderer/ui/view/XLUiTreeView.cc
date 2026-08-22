@@ -22,7 +22,7 @@
 
 #include "XLUiTreeView.h"
 #include "XLUiButton.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {

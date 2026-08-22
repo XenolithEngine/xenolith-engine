@@ -260,7 +260,8 @@ try:
     s.ok("frame", count=3, window=root)
     tree = s.ok("scene", window=root)["text"]
     check("the popup carries the same rows", "#with-hotkey" in tree and "#submenu" in tree)
-    check("a disabled row is marked for CSS", "#disabled .xl-ui-menu-item .disabled" in tree)
+    check("a disabled row is marked for CSS",
+          "#disabled .xl-ui-menu-item :disabled" in tree, tree)
     check("a submenu row is marked for CSS", "#submenu .xl-ui-menu-item .submenu" in tree)
     check("a hidden item is not in the popup either", "#hidden" not in tree)
 

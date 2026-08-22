@@ -801,7 +801,7 @@ bool TextView::init() {
 	_listener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
-			return _focused || (_readOnly && cb(event));
+			return _focused || (isReadOnly() && cb(event));
 		}
 		return cb(event);
 	});
@@ -1252,7 +1252,7 @@ void TextView::setGlobalCursorInternal(TextCursor cursor) {
 }
 
 void TextView::applyGestureGlobal(TextCursor cursor) {
-	if (!_focused && !_readOnly) {
+	if (!_focused && !isReadOnly()) {
 		acquireGlobal(cursor);
 	} else {
 		setGlobalCursorInternal(cursor);
@@ -1358,7 +1358,7 @@ StringView TextView::getText() const {
 }
 
 void TextView::focus() {
-	if (!_enabled || _readOnly || _handler.isActive()) {
+	if (!isEnabled() || isReadOnly() || _handler.isActive()) {
 		return;
 	}
 	acquireGlobal(TextCursor(uint32_t(_doc.size())));
@@ -1604,7 +1604,7 @@ void TextView::moveCursorVertical(int32_t rows, bool select) {
 }
 
 bool TextView::handleKey(const GestureData &data) {
-	if ((!_focused && !_readOnly) || !data.input) {
+	if ((!_focused && !isReadOnly()) || !data.input) {
 		return false;
 	}
 
@@ -1618,7 +1618,7 @@ bool TextView::handleKey(const GestureData &data) {
 
 	// A read-only pane has no caret to move, so the same keys scroll it instead - which is the
 	// only way to read a long console log without a mouse.
-	if (_readOnly) {
+	if (isReadOnly()) {
 		const auto lh = view->getLineHeight();
 		switch (ev.key.keycode) {
 		case InputKeyCode::UP: view->scrollBy(Vec2(0.0f, -lh)); return true;
@@ -1669,7 +1669,7 @@ bool TextView::handleTextHotkey(HotkeyId id, const InputEvent &ev) {
 	// A read-only view is never `_focused` - it acquires no input handler at all - and the base
 	// declines every hotkey in that state, which would make the one thing a read-only view exists
 	// for, selecting and copying, impossible.
-	if (_readOnly) {
+	if (isReadOnly()) {
 		if (id == hk.textSelectAll) {
 			selectAll();
 			return true;
@@ -1706,7 +1706,7 @@ bool TextView::handleTextHotkey(HotkeyId id, const InputEvent &ev) {
 bool TextView::handleTap(const GestureTap &tap) {
 	// The base's shape, with one substitution: the word lookup goes to the container, because
 	// TextInput::getWordForPosition is not virtual and reads the base's empty label.
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -1735,7 +1735,7 @@ bool TextView::handleTap(const GestureTap &tap) {
 
 bool TextView::handleLongPress(const GesturePress &press) {
 	// Same substitution as handleTap, same reason.
-	if (!_enabled || _dragSelecting || _panning || _doc.empty()) {
+	if (!isEnabled() || _dragSelecting || _panning || _doc.empty()) {
 		return true;
 	}
 
@@ -1763,11 +1763,11 @@ bool TextView::handleLongPress(const GesturePress &press) {
 bool TextView::handleSwipeBegin(const Vec2 &pt) {
 	// The base's shape, on the global layer: the container answers in document indices, and
 	// the base's moveCursor would misread them as window ones.
-	if (!_enabled || !isTouched(pt, 8.0f)) {
+	if (!isEnabled() || !isTouched(pt, 8.0f)) {
 		return false;
 	}
 
-	if (_focused && !_readOnly) {
+	if (_focused && !isReadOnly()) {
 		const auto cursor = _container->getCursorForPosition(pt);
 		_gSelAnchor = cursor.start;
 		_dragSelecting = true;
@@ -1858,7 +1858,7 @@ Value TextView::encodeState() const {
 	}
 	ret.setInteger(int64_t(_doc.size()), "charCount");
 	ret.setInteger(int64_t(getLineCount()), "lineCount");
-	ret.setBool(_readOnly, "readOnly");
+	ret.setBool(isReadOnly(), "readOnly");
 	ret.setBool(_focused, "focused");
 	ret.setBool(_wordWrap, "wordWrap");
 	ret.setBool(_gutterVisible, "gutterVisible");

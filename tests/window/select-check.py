@@ -196,10 +196,10 @@ try:
     present = [o for o in OPTIONS if f"#{o} " in tree]
     check("the list carries one row per option", present == OPTIONS, present)
     check("the disabled option is rendered, and marked for CSS",
-            f"#{DISABLED} " in tree and ".disabled" in tree)
+            f"#{DISABLED} " in tree and ":disabled" in tree)
 
-    check("the chosen option is checked", rows_with(tree, ".checked") == [INITIAL],
-            rows_with(tree, ".checked"))
+    check("the chosen option is checked", rows_with(tree, ":checked") == [INITIAL],
+            rows_with(tree, ":checked"))
     check("and the keyboard starts on it", rows_with(tree, ".highlighted") == [INITIAL],
             rows_with(tree, ".highlighted"))
 

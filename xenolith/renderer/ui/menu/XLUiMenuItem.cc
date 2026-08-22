@@ -97,11 +97,7 @@ void MenuItem::updateFromSource() {
 	setString(_item->getTitle());
 	setEnabled(_item->isEnabled());
 
-	if (_item->isChecked()) {
-		addStyleClass("checked");
-	} else {
-		removeStyleClass("checked");
-	}
+	applyControlChecked(this, _item->isChecked());
 
 	const auto leading = _item->getLeadingIcon();
 	// A checked item with no icon of its own borrows the mark; one that HAS an icon keeps it, since

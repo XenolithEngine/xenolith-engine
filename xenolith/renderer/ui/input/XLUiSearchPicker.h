@@ -33,7 +33,7 @@
 #include "XLUiSearchSystem.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
-#include "XLUiEditLock.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -319,7 +319,7 @@ public:
 	virtual void setChangeCallback(Function<void(const SearchHit &)> &&);
 
 	virtual void setEnabled(bool);
-	bool isEnabled() const { return _enabled; }
+	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void focus();
 	virtual void blur();
@@ -360,7 +360,6 @@ protected:
 
 	Function<void(const SearchHit &)> _changeCallback;
 
-	bool _enabled = true;
 	bool _focused = false;
 	bool _hoverApplied = false;
 };
