@@ -260,7 +260,7 @@ public:
 	// so a subclass can reuse it, and so a test can exercise the insertion without a pointer
 	virtual bool handleTextDrop(const DragEvent &);
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setInputType(TextInputType);

@@ -87,7 +87,7 @@ public:
 	virtual void setSelected(bool);
 	bool isSelected() const { return _selected; }
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	/* The natural size, which is what the measurement protocol answers with. Shapes the label

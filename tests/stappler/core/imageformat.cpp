@@ -218,6 +218,31 @@ void performImageFormatTests() {
 	check(getFormatImageSize(ImageFormat::ASTC_12x12_UNORM_BLOCK, Extent3(12, 12, 1)) == 16,
 			"image-format: ASTC 12x12 over 12x12 pixels is one block");
 
+	/* THE ETC2 FAMILY, WHERE ALPHA DOUBLES THE BLOCK AND ONLY SOMETIMES.
+
+	The walk above compares the tables with EACH OTHER, so a block size that is wrong in the same
+	way in both of them passes it. These compare them with the specification, and they are here
+	because one of them did not: ETC2_R8G8B8A8 was recorded as eight bytes a block, which halved
+	the size of every ETC2 RGBA image - and a texture upload measured at half its length is a read
+	off the end of its own data.
+
+	The three ETC2 colour formats are three different answers and the difference is exactly where
+	the alpha goes. Punch-through (A1) spends one bit of the colour block and stays at 64 bits;
+	full alpha prepends a whole EAC alpha block and becomes 128. EAC itself is the same story one
+	channel at a time. */
+	check(getFormatImageSize(ImageFormat::ETC2_R8G8B8_UNORM_BLOCK, Extent3(4, 4, 1)) == 8,
+			"image-format: ETC2 RGB is 8 bytes a block");
+	check(getFormatImageSize(ImageFormat::ETC2_R8G8B8A1_UNORM_BLOCK, Extent3(4, 4, 1)) == 8,
+			"image-format: ETC2 RGB with punch-through alpha still fits in 8");
+	check(getFormatImageSize(ImageFormat::ETC2_R8G8B8A8_UNORM_BLOCK, Extent3(4, 4, 1)) == 16,
+			"image-format: ETC2 RGBA is 16 - an EAC alpha block AND a colour block");
+	check(getFormatImageSize(ImageFormat::ETC2_R8G8B8A8_SRGB_BLOCK, Extent3(8, 8, 1)) == 64,
+			"image-format: ... and its sRGB twin measures the same, over four blocks");
+	check(getFormatImageSize(ImageFormat::EAC_R11_UNORM_BLOCK, Extent3(4, 4, 1)) == 8,
+			"image-format: EAC R11 is one 8-byte block per 4x4");
+	check(getFormatImageSize(ImageFormat::EAC_R11G11_UNORM_BLOCK, Extent3(4, 4, 1)) == 16,
+			"image-format: EAC R11G11 is two of them");
+
 	// Rounding UP, which is the half of this that a pixel count cannot express at all.
 	check(getFormatImageSize(ImageFormat::BC7_UNORM_BLOCK, Extent3(5, 5, 1)) == 64,
 			"image-format: BC7 5x5 rounds up to 2x2 blocks");

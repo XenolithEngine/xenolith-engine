@@ -199,14 +199,49 @@ class SPRT_TEMPLATE_API __function;
 template <typename UnusedType>
 class SPRT_TEMPLATE_API callback;
 
-// Modern version. inspired by http://bannalia.blogspot.com/2016/07/passing-capturing-c-lambda-functions-as.html
+/* A NON-OWNING VIEW OF A FUNCTOR - what StringView is to bytes.
+ *
+ * It stores a `const void *` to the functor plus a thunk, and it owns NOTHING. So the functor has to
+ * outlive every callback that refers to it, and that is the whole contract:
+ *
+ *     PARAMETER ONLY. Take `const callback<...> &`. Do not make one a member, do not return one,
+ *     do not put one in a struct that outlives the statement it was built in.
+ *
+ * Inline at a call site this needs no thought - `f([](int x) { ... })` builds the lambda as a
+ * temporary that outlives the call, which is why the overwhelming majority of uses are correct
+ * without anyone thinking about lifetime at all. That is exactly what makes the other case a trap:
+ *
+ *     callback<bool(int)> cb([](int x) { return x > 0; });   // WRONG: dangles at the `;`
+ *
+ * The lambda is a temporary; the callback keeps a pointer to it; the temporary dies at the end of
+ * the full expression. Nothing warns. The next call reads freed stack, and what it looks like is
+ * anything at all - a wrong answer, a crash somewhere else entirely, a check that fails in another
+ * file. Written the correct way the lambda is a NAMED LOCAL that outlives the callback:
+ *
+ *     auto fn = [](int x) { return x > 0; };
+ *     callback<bool(int)> cb(fn);                            // fine: `fn` outlives `cb`
+ *
+ * The same applies to a member: if a type must hold one, it holds the FUNCTOR (a `function`, a
+ * `static_function`, or the concrete object) and hands out a callback over it on demand.
+ *
+ * Deliberately neither copyable nor movable, so that a callback cannot be smuggled out of the scope
+ * its functor lives in by accident. It can still be smuggled out on purpose, by binding a temporary
+ * - the language has no way to stop that - which is why this comment exists.
+ *
+ * See docs/usage/codestyle/core/memory-and-ownership.adoc ("Trap: a callback does not own its
+ * functor") and core/strings.adoc for the streaming idiom built on it.
+ *
+ * Modern version. inspired by
+ * http://bannalia.blogspot.com/2016/07/passing-capturing-c-lambda-functions-as.html */
 template <typename ReturnType, typename... ArgumentTypes>
 class SPRT_TEMPLATE_API callback<ReturnType(ArgumentTypes...)> {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 
 	~callback() {
-		// functor is not owned, so, no cleanup
+		// Nothing to clean up, and that is the whole design: the functor is not owned. See the
+		// comment on the class - a callback built from a TEMPORARY lambda is dangling from here on,
+		// and no diagnostic exists for it.
 	}
 
 	callback(nullptr_t) noexcept : mFunctor(nullptr), mcallback(nullptr) { }

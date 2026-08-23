@@ -223,6 +223,8 @@ public:
 	void setGap(float row, float column);
 	void setPadding(Padding);
 
+	static void markItemDirty(NotNull<Node>);
+
 	// helpers to read / assign per-item flex parameters via the component system
 	static const FlexItemInfo *getItem(NotNull<Node>);
 	static void setItem(NotNull<Node>, const FlexItemInfo &);

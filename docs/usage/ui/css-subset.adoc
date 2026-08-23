@@ -413,6 +413,31 @@ settle at 260 / 120 / **220**. On the cross axis the properties do nothing —
 `FlexItemInfo` has no field for them; size that axis with `align-self` and an
 explicit `height`. [`XL_CSS_FLOW_TEST`]
 
+### An item's terms live on the child and are read by the parent
+
+`FlexItemInfo`, `GridItemInfo`, `TableRowInfo` and `TableCellInfo` are written
+onto the node they describe, but the only code that acts on one is the
+`LayoutSystem` of that node's **parent**. So marking the child's components dirty
+reaches nobody who can do anything about it: the child has no `LayoutSystem` of
+its own to hear it, and the container is never told that the terms it lays this
+child out on have moved.
+
+Anything that writes one therefore calls
+`ui::LayoutSystem::markItemDirty(child)` afterwards — the four `setItem` /
+`setGridItem` / `setTableRow` / `setTableCell` helpers and the style resolver do
+it for you, guarded on an actual change. Only hand-written component writes need
+it, and the guard is not an optimization: a pass that writes the same values every
+frame and marks the container every frame is a container that re-lays-out forever.
+
+This matters most for a node **added to a container that has already been laid
+out** — a tab opened into a panel, a row appended to a list. Its style is resolved
+after that container's layout pass has come and gone for it, so without the mark a
+`flex-grow` from the sheet does nothing at all and the child sits at its own
+content size, which for a container whose children are sized *from* it is zero.
+A definite `width`/`height` hides the symptom, because writing a `ContentSize`
+dirties the parent through another path entirely — which makes this a good deal
+harder to recognize than it looks. [`XL_CSS_FLOW_TEST`, phase 3]
+
 ### margin: auto
 
 An auto margin is free space, not a distance, and it is the CSS way to align a

@@ -111,7 +111,7 @@ public:
 	virtual void setAlphaEnabled(bool);
 	bool isAlphaEnabled() const { return _alpha; }
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setPickerMode(PickerMode);
