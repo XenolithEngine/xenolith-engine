@@ -143,7 +143,7 @@ public:
 	virtual void setPageSteps(uint32_t);
 	uint32_t getPageSteps() const { return _pageSteps; }
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setCallback(Callback &&cb) { _callback = sp::move(cb); }

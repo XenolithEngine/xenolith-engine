@@ -19,6 +19,9 @@
   Transfer of ownership, never concurrent sharing.
 * Aggregate `Type{value}` on a type with a base class initializes the **base**,
   not the first field.
+* A `Callback` **owns nothing** — it is a view of a functor. Parameter only:
+  never a member, never returned, and never built from a temporary lambda that
+  is then stored. Passed straight to a call it is always safe.
 
 ## Reference counting
 
@@ -267,7 +270,54 @@ The failure is silent — the intended field keeps its default. Prefer designate
 initializers (`Item{.name = "value"}`) or plain assignment for aggregates that
 carry a base.
 
+## Trap: a `Callback` does not own its functor
+
+[callback.h](../../../../runtime/include/sprt/runtime/callback.h) is to a functor
+what `StringView` is to bytes — a **non-owning view**: a `const void *` to the
+functor plus a thunk. It is neither copyable nor movable, and it owns nothing, so
+the functor has to outlive it.
+
+Passed straight to a function there is nothing to think about — the temporary
+lambda outlives the call:
+
+[source,cpp]
+----
+encode([&](StringView str) { out.append(str.data(), str.size()); });   // fine
+----
+
+Which is exactly what makes the other case a trap. **Stored** in a variable, a
+member or a struct field, a callback built from a temporary lambda dangles at the
+end of the statement:
+
+[source,cpp]
+----
+CallbackStream cb([&](StringView s) { out.append(s.data(), s.size()); });  // WRONG
+cb << "text";                                                              // reads freed stack
+----
+
+Nothing warns; there is no diagnostic for it in any compiler. What it looks like
+is *anything at all* — a wrong answer, a crash in an unrelated file, a check that
+fails three functions away. It has cost real time in this tree.
+
+Two correct forms. If the callback must live in a variable, the functor is a
+**named local** that outlives it:
+
+[source,cpp]
+----
+auto sink = [&](StringView s) { out.append(s.data(), s.size()); };
+CallbackStream cb(sink);           // `sink` outlives `cb`
+----
+
+And if a *type* must hold one, it holds the **functor** — a `function`, a
+`static_function`, or the concrete object — and hands out a callback over it on
+demand. A `Callback` member is always the wrong shape.
+
+The same rule governs a struct of seams passed into a call: the field is a
+`const Callback<…> *`, and the lambda behind it is a named local in the caller's
+frame, not an argument to the callback's constructor.
+
 ## Related
 
+* [strings.adoc](strings.adoc) — the `Callback<void(StringView)>` streaming idiom built on the view above
 * [sources/naming.adoc](../sources/naming.adoc) — the `init()` + `Rc<T>::create()` pattern
 * [platform/platform-guards.adoc](../platform/platform-guards.adoc) — freestanding/platform constraints

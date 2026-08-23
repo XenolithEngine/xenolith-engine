@@ -122,7 +122,7 @@ public:
 
 	virtual void setChangeCallback(ChangeCallback &&);
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	// Step to the next / previous ENABLED option. Does not wrap: a list is not a dial, and running

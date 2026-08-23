@@ -786,8 +786,8 @@ size_t getFormatBlockSize(ImageFormat format) {
 	case ImageFormat::ETC2_R8G8B8_SRGB_BLOCK: return 8; break;
 	case ImageFormat::ETC2_R8G8B8A1_UNORM_BLOCK: return 8; break;
 	case ImageFormat::ETC2_R8G8B8A1_SRGB_BLOCK: return 8; break;
-	case ImageFormat::ETC2_R8G8B8A8_UNORM_BLOCK: return 8; break;
-	case ImageFormat::ETC2_R8G8B8A8_SRGB_BLOCK: return 8; break;
+	case ImageFormat::ETC2_R8G8B8A8_UNORM_BLOCK: return 16; break;
+	case ImageFormat::ETC2_R8G8B8A8_SRGB_BLOCK: return 16; break;
 	case ImageFormat::EAC_R11_UNORM_BLOCK: return 8; break;
 	case ImageFormat::EAC_R11_SNORM_BLOCK: return 8; break;
 	case ImageFormat::EAC_R11G11_UNORM_BLOCK: return 16; break;
@@ -1302,9 +1302,7 @@ IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSiz
 	const int32_t workRight = workArea.x + workArea.width;
 	const int32_t workBottom = workArea.y + workArea.height;
 
-	auto overflowsX = [&](const IRect &r) {
-		return r.x < workArea.x || r.x + r.width > workRight;
-	};
+	auto overflowsX = [&](const IRect &r) { return r.x < workArea.x || r.x + r.width > workRight; };
 	auto overflowsY = [&](const IRect &r) {
 		return r.y < workArea.y || r.y + r.height > workBottom;
 	};

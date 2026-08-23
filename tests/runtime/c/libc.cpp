@@ -151,6 +151,113 @@ struct test_flock {
 // file conflict within one process. POSIX locks are *per-process*, so the same
 // two descriptors never conflict here; the conflict-dependent checks below (and
 // the strict F_SETFD bit rejection) are therefore asserted on Windows only.
+/* posix_memalign takes the ALIGNMENT first and the SIZE second, and this section exists because
+for a while ours did not.
+
+Both parameters are size_t, so reversing them is not a compile error anywhere - a correct caller
+simply received a buffer of `alignment` bytes aligned to `size`, or EINVAL when the size it asked
+for happened not to be a power of two. It was found by a texture encoder asking for fourteen
+megabytes at sixteen-byte alignment and being told it was out of memory; libcxx's own over-aligned
+operator new (libcxx/src/libcxx/include/aligned_alloc.h) was calling it the same correct way.
+
+The two checks below pin the order from BOTH sides, and neither alone would: a size that is not a
+power of two must still be allocated, and an alignment that is not a power of two must be refused.
+Reverse the arguments and each of them turns into the other's answer.
+
+WHAT THIS SECTION DOES AND DOES NOT CATCH. There are two posix_memalign in the tree - the definition
+in libc_impl, which this binds to and which was always correct, and the inline umbrella in
+wrappers/libc/stdlib.h, which is what a FREESTANDING build and all third-party code see and which is
+the one that had the order backwards. This section states the contract for the definition; the thing
+that catches a reversed umbrella is a build that actually goes through it, and today that is the
+studio's asset-build section, where a texture encoder asks for its tables. */
+void performMemalignTest() {
+	int failures = 0;
+	auto check = [&](bool cond, const char *msg) {
+		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		if (!cond) {
+			++failures;
+		}
+	};
+
+	void *p = nullptr;
+	int err = posix_memalign(&p, 64, 1'000);
+	check(err == 0 && p != nullptr, "posix_memalign(64, 1000) succeeds");
+	check(p != nullptr && (reinterpret_cast<uintptr_t>(p) % 64) == 0,
+			"... and the pointer is aligned to the SECOND argument");
+	if (p) {
+		// The whole of the third argument is ours, which is the half that a reversed call loses
+		// silently rather than by returning an error.
+		memset(p, 0xa5, 1'000);
+		check(static_cast<unsigned char *>(p)[999] == 0xa5,
+				"... and the THIRD argument is how many bytes are ours");
+		free(p);
+	}
+
+	void *big = nullptr;
+	err = posix_memalign(&big, 16, 14'791'153);
+	check(err == 0 && big != nullptr,
+			"a size that is not a power of two is a size, not a bad alignment");
+	free(big);
+
+	void *bad = nullptr;
+	err = posix_memalign(&bad, 24, 64);
+	check(err == EINVAL, "an alignment that is not a power of two is EINVAL");
+
+	err = posix_memalign(&bad, 3, 64);
+	check(err == EINVAL, "an alignment below sizeof(void *) is EINVAL");
+
+	printf("%s\n", failures ? "FAILED" : "PASSED");
+}
+
+/* The MSVC compatibility macros must expand to RESERVED names.
+ *
+ * `_aligned_free(Ptr)` used to expand to `aligned_free(Ptr)`, and `aligned_free` is a name a caller
+ * may perfectly well have of its own - ARM's astc-encoder has an `aligned_free<T>` template whose
+ * body calls `_aligned_free` on Windows. Expanded that way it called ITSELF, once per level, until
+ * the stack ran out: not a compile error, not a diagnostic, just a process that stops.
+ *
+ * The probe below is a caller with such a function. It must not be reached. It counts rather than
+ * recurses, so a regression here FAILS instead of taking the harness down with it. */
+namespace memalign_probe {
+
+static int s_ownFreeCalls = 0;
+
+inline void aligned_free(void *) { ++s_ownFreeCalls; }
+
+} // namespace memalign_probe
+
+void performMemalignMacroTest() {
+	int failures = 0;
+	auto check = [&](bool cond, const char *msg) {
+		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		if (!cond) {
+			++failures;
+		}
+	};
+
+#if defined(_WIN32)
+	using namespace memalign_probe;
+
+	void *p = _aligned_malloc(1'000, 64);
+	check(p != nullptr, "_aligned_malloc returns a block");
+	check(p != nullptr && (reinterpret_cast<uintptr_t>(p) % 64) == 0,
+			"... aligned to its SECOND argument, the way MSVC orders them");
+	if (p) {
+		memset(p, 0x5a, 1'000);
+		check(static_cast<unsigned char *>(p)[999] == 0x5a,
+				"... and its FIRST argument is how many bytes are ours");
+		_aligned_free(p);
+	}
+	check(memalign_probe::s_ownFreeCalls == 0,
+			"_aligned_free does not expand to a caller's own aligned_free");
+#else
+	printf("  SKIP (non-Windows): the _aligned_* macros exist only on the Windows target\n");
+	check(memalign_probe::s_ownFreeCalls == 0, "nothing called the probe");
+#endif
+
+	printf("%s\n", failures ? "FAILED" : "PASSED");
+}
+
 void performFcntlTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {

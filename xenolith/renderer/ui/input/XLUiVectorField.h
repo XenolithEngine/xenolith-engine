@@ -133,7 +133,7 @@ public:
 	virtual void setDragEnabled(bool);
 	virtual void setDragSensitivity(float);
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	/* The component itself, for what only it can be told. Null for an index past the arity.

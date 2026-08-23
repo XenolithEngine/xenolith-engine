@@ -49,7 +49,7 @@ public:
 	virtual void setChecked(bool c, bool silent = false);
 	virtual bool isChecked() const { return isControlChecked(this); }
 
-	virtual void setEnabled(bool e);
+	virtual void setEnabled(bool e) override;
 	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setCallback(Callback &&cb) { _callback = sp::move(cb); }

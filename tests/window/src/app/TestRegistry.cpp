@@ -195,8 +195,9 @@ static const TestInfo s_layoutTests[] = {
 
 	TestInfo{StringView("css-flow"), StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
 		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "
-				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
-				   "`order`, drawn red-blue-green by `-xl-z-order`."),
+				   "black overlay must not shrink its siblings. Row 3: the pink box arrives a "
+				   "second late and must still take the rest of the row. Row 4: placed "
+				   "green-blue-red by `order`, drawn red-blue-green by `-xl-z-order`."),
 		TestRegistry_make<CssFlowLayout>},
 
 	TestInfo{StringView("overflow"), StringView("XL_OVERFLOW_TEST"),

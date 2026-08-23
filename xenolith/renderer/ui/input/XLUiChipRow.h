@@ -165,7 +165,7 @@ public:
 	virtual void setWrapEnabled(bool);
 	bool isWrapEnabled() const { return _wrap; }
 
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
 	// ---- the height the wrap asks for -----------------------------------------------------------

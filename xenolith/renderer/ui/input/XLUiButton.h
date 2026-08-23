@@ -76,7 +76,7 @@ public:
 
 	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match), adds
 	// the `disabled` style class and stops the tap callbacks from firing
-	virtual void setEnabled(bool);
+	virtual void setEnabled(bool) override;
 	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setIcon(IconName);
