@@ -121,6 +121,16 @@ public:
 	void setWindingRule(Winding);
 	Winding getWindingRule() const;
 
+	// Where the coordinates being pushed in are measured FROM.
+	//
+	// The tesselator works around its own origin (see SPTess.cc) and by default takes that origin
+	// from the first vertex it is given. A caller that has already done the subtraction itself -
+	// `LineDrawer` does, because a bezier has to be flattened before any vertex exists and the
+	// flattening needs the precision too - says so here, and gets its own frame back on output.
+	//
+	// Must be called before the first vertex; after that the frame is fixed.
+	void setOutputOrigin(const Vec2 &);
+
 	void preallocate(uint32_t n); // allocate n vertexes and n edges;
 
 	// In contrast with GLU tesselator, you can write multiple contours via different cursors.
