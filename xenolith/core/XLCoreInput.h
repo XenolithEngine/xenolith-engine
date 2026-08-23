@@ -39,6 +39,8 @@ using sprt::window::InputEventType;
 using sprt::window::InputEventDataType;
 using sprt::window::InputEventData;
 
+using sprt::window::InteractiveFlags;
+
 using sprt::window::getInputKeyCodeName;
 using sprt::window::getInputKeyCodeKeyName;
 using sprt::window::getInputEventName;
