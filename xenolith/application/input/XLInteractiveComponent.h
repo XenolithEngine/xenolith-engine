@@ -23,13 +23,13 @@
 #ifndef XENOLITH_APPLICATION_INPUT_XLINTERACTIVECOMPONENT_H_
 #define XENOLITH_APPLICATION_INPUT_XLINTERACTIVECOMPONENT_H_
 
-#include "SPDocStyle.h"
+#include "XLCoreInput.h"
 #include "XLNode.h"
 #include "SPDiagnosticRegistry.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-using InteractiveState = stappler::document::InteractiveFlags;
+using InteractiveState = sprt::window::InteractiveFlags;
 
 /* What a control knows about itself BESIDE the state a stylesheet can see.
 
