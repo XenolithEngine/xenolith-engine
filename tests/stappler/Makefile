@@ -51,7 +51,13 @@ LOCAL_MODULES ?= \
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
-LOCAL_SRCS_DIRS := mk filesystem font pug document core vg search
+# The embed tests assert that a BundleFS walk reports empty directories, and git cannot store an
+# empty directory — so the bundles get one created here. It has to happen at PARSE time, before
+# make/embed scans the trees ($(wildcard) in sp_embed_deps) and long before the bundle is baked into
+# the binary; creating it from the test at runtime would be far too late.
+SP_EMBED_EMPTY_DIRS := $(shell mkdir -p $(LOCAL_ROOT)resources/empty $(LOCAL_ROOT)resources-packed/empty)
+
+LOCAL_SRCS_DIRS := mk filesystem font pug document core vg search zip
 LOCAL_SRCS_OBJS :=
 
 # BundleFS: `resources` is embedded into the binary twice — raw, and compressed — so that the

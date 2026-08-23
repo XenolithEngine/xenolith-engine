@@ -76,7 +76,7 @@ THE SOFTWARE.
 
 // Legacy single-time member names. POSIX keeps the nanosecond-resolution timespec
 // members (st_atim/st_mtim/st_ctim) canonical and exposes the historical time_t
-// spellings as macros over their tv_sec, which much portable code (e.g. libzip) still
+// spellings as macros over their tv_sec, which much portable code still
 // uses. glibc/musl define these unconditionally in <sys/stat.h>; the hosted path gets
 // them from the system header via #include_next above.
 #ifndef st_atime
@@ -144,8 +144,8 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 // POSIX requires <sys/stat.h> to make these types visible (identical redefinitions
-// of the ones in <sys/types.h>, which C/C++ permit). Several consumers (e.g. libzip's
-// compat.h) rely on off_t appearing after <sys/stat.h>.
+// of the ones in <sys/types.h>, which C/C++ permit). Several consumers rely on
+// off_t appearing after <sys/stat.h>.
 typedef __SPRT_ID(mode_t) mode_t;
 typedef __SPRT_ID(dev_t) dev_t;
 typedef __SPRT_ID(off_t) off_t;

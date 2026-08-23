@@ -30,6 +30,7 @@
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/sys/__sprt_stat.h>
 
 extern "C" {
 
@@ -136,6 +137,17 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	filesystem::getCurrentDir([&](StringView path) {
 		s_globalConfig.current.path = path.pdup(s_globalConfig.pool());
 	});
+
+	// The exec path is synthetic here — no module has a real location on disk — so
+	// nothing has put its directory into the VFS. Materialize it now, since callers
+	// legitimately open it (an exec-relative resource lookup, an O_DIRECTORY fd for
+	// *at() resolution) before anything has been written under it. Likewise /tmp,
+	// the tmpfs mount root. Both are no-ops when they already exist.
+	auto mkdirOnce = [](StringView path) {
+		path.performWithTerminated([](const char *p, size_t) { ::__sprt_mkdir(p, 0755); });
+	};
+	mkdirOnce(filepath::root(getExecPath()));
+	mkdirOnce(StringView("/tmp"));
 
 	return true;
 }

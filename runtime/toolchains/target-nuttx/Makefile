@@ -148,7 +148,6 @@ target-aarch64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild
 	@ln -sfn $(abspath $(MAKE_ROOT)../common) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/common
 	@ln -sfn $(abspath $(MAKE_ROOT)nuttx-deps-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/nuttx-deps-project-include.cmake
-	@ln -sfn $(abspath $(MAKE_ROOT)nuttx-libzip-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/nuttx-libzip-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)nuttx-curl-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/nuttx-curl-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)openssl.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/openssl.mk
 	@ln -sfn $(abspath $(MAKE_ROOT)gen-probe-stubs.sh) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-nuttx-none-elf/libbuild/gen-probe-stubs.sh
@@ -183,7 +182,7 @@ SP_TOOLCHAIN_FILE ?= $(abspath $(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake)
 LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
 
 # libsprt.a — in-tree sprt runtime archive, same shape as target-wasm.
-# Deps that drive cmake feature-probes (libzip Annex K, curl recv/send, ...)
+# Deps that drive cmake feature-probes (curl recv/send, ...)
 # link those probes against it so missing symbols are hard errors rather than
 # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY false-positives. Hosted-POSIX:
 # wrapper + core + runtime only — no libc_impl / malloc / musl (NuttX libc).
@@ -192,14 +191,14 @@ SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
 # libprobe-stubs.a — weak placeholders for everything the staged archives
 # reference but none of them defines (board code, linker-script symbols, the
 # engine's libc_impl). Only the cmake feature probes of the deps that link them
-# (libzip, curl) ever pull it in; see gen-probe-stubs.sh for the derivation and
+# (curl) ever pull it in; see gen-probe-stubs.sh for the derivation and
 # common/configure.mk's SP_NUTTX_PROBE_LDFLAGS for the link line it completes.
 #
 # Its content is a function of every other staged archive, which is not
 # expressible as a prerequisite list, so it is a .PHONY step re-run before each
 # dep that needs it — an nm sweep, cheap next to the dep build behind it. Those
 # deps take it as an ORDER-ONLY prerequisite (`| probe-stubs`): a phony normal
-# prerequisite is always out of date, which would rebuild curl and libzip on
+# prerequisite is always out of date, which would rebuild curl on
 # every incremental toolchain make.
 PROBE_STUBS_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libprobe-stubs.a
 
@@ -222,11 +221,11 @@ probe-stubs: $(SPRT_LIB)
 # (crt0/special linker script). The sprt runtime's unicode backend is stubbed in
 # runtime/libc_wrapper/platform/nuttx/unicode.cc for the M6 milestone; the full
 # ICU port is tracked as a separate task.
-# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl/libzip) is staged to
+# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl) is staged to
 # land alongside a NuttX openssl.mk (perl Configure target) — added incrementally
 # as the engine surface that needs it comes online.
 # libzstd builds unchanged (plain cmake, no host probes) and is in: curl's zstd
-# content-encoding and libzip's ZIP_CM_ZSTD both want it. liblzma/libtiff are
+# content-encoding wants it. liblzma/libtiff are
 # still staged behind xz's tuklib_cpucores/physmem, which needs a NuttX case;
 # libtiff chains in once xz lands, because it pulls both.
 LIBS := \
@@ -246,7 +245,6 @@ LIBS := \
 	libgost_engine.a \
 	libnghttp3.a \
 	libngtcp2.a \
-	libzip-openssl.a \
 	libcurl-openssl.a
 
 FORWARD_VARS := \
@@ -351,17 +349,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 # sockets/QUIC (openssl.mk drops no-sock) and a NuttX export with CONFIG_NET.
 $(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a:  ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
-
-# libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
-# compression backends (zlib/bzip2) and libcrypto.a.
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
-		$(SPRT_LIB) \
-		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a \
-		| probe-stubs
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 # curl with the OpenSSL crypto backend. Built against the sprt libc shims
 # (-ffreestanding, same as the rest of the deps); the engine uses memory-based
