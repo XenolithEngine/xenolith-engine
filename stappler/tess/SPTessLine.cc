@@ -399,6 +399,26 @@ void LineDrawer::drawBegin(float x, float y) {
 		drawClose(false);
 	}
 
+	// Taken once, at the first point of the first subpath, and kept: every subpath writes into the
+	// same tesselators, so they must all be measured from the same place. Told to the tesselators
+	// before a single vertex reaches them, which is what `setOutputOrigin` requires.
+	if (!hasDrawOrigin) {
+		drawOrigin = Vec2(x, y);
+		hasDrawOrigin = true;
+		if (fill) {
+			fill->setOutputOrigin(drawOrigin);
+		}
+		if (stroke) {
+			stroke->setOutputOrigin(drawOrigin);
+		}
+		if (sdf) {
+			sdf->setOutputOrigin(drawOrigin);
+		}
+	}
+
+	x -= drawOrigin.x;
+	y -= drawOrigin.y;
+
 	if (fill) {
 		fillCursor = fill->beginContour();
 	}
@@ -413,18 +433,32 @@ void LineDrawer::drawBegin(float x, float y) {
 
 	push(x, y);
 }
-void LineDrawer::drawLine(float x, float y) { push(x, y); }
+// The four remaining entry points take the frame off before anything is subdivided. Only POSITIONS
+// are moved: an arc's radii and its rotation are a shape, not a place, and translating them would
+// deform the arc rather than move it.
+void LineDrawer::drawLine(float x, float y) { push(x - drawOrigin.x, y - drawOrigin.y); }
 void LineDrawer::drawQuadBezier(float x1, float y1, float x2, float y2) {
+	x1 -= drawOrigin.x;
+	y1 -= drawOrigin.y;
+	x2 -= drawOrigin.x;
+	y2 -= drawOrigin.y;
 	drawQuadBezierRecursive(*this, target->point.x, target->point.y, x1, y1, x2, y2, 0);
 	push(x2, y2);
 }
 void LineDrawer::drawCubicBezier(float x1, float y1, float x2, float y2, float x3, float y3) {
+	x1 -= drawOrigin.x;
+	y1 -= drawOrigin.y;
+	x2 -= drawOrigin.x;
+	y2 -= drawOrigin.y;
+	x3 -= drawOrigin.x;
+	y3 -= drawOrigin.y;
 	drawCubicBezierRecursive(*this, target->point.x, target->point.y, x1, y1, x2, y2, x3, y3, 0);
 	push(x3, y3);
 }
 void LineDrawer::drawArc(float rx, float ry, float phi, bool largeArc, bool sweep, float x1,
 		float y1) {
-	drawArcBegin(*this, target->point.x, target->point.y, rx, ry, phi, largeArc, sweep, x1, y1);
+	drawArcBegin(*this, target->point.x, target->point.y, rx, ry, phi, largeArc, sweep,
+			x1 - drawOrigin.x, y1 - drawOrigin.y);
 }
 void LineDrawer::drawClose(bool closed) {
 	if (count == 0) {

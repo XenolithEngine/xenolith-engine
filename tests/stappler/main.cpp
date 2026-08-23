@@ -61,6 +61,7 @@ static const TestEntry s_testList[] = {
 	{"iosource", &stappler::performIoSourceTests},
 	{"datamodel", &stappler::performDataModelTests},
 	{"vg-stroke", &stappler::performVgStrokeTests},
+	{"vg-tess-frame", &stappler::performVgTessFrameTests},
 	{"search-fuzzy", &stappler::performSearchFuzzyTests},
 	{"command-history", &stappler::performCommandHistoryTests},
 	{"image-format", &stappler::performImageFormatTests},

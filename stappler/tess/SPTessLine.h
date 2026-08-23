@@ -206,6 +206,21 @@ struct SP_PUBLIC LineDrawer {
 	float distanceError = 0.0f;
 	float angularError = 0.0f;
 	size_t count = 0;
+
+	/* Where this drawer's coordinates are measured from - the first point it is ever given.
+	Everything past the five entry points above is relative to it, and the tesselators are told
+	about it so their output is not.
+
+	The tesselator already normalizes on its own first vertex, so this is not about the sweep. It
+	is about everything that happens BEFORE the sweep: a bezier is subdivided, an arc is turned
+	into segments and a stroke is offset along its normals, all in whatever coordinates the caller
+	used. A half-width of two units offset from coordinates of 1e6, where a float's own step is
+	0.0625, is three percent wrong before the tesselator has seen anything - and there is no
+	epsilon downstream that can put those bits back. Subtracting here is what keeps the mantissa
+	spent on the shape. */
+	Vec2 drawOrigin;
+	bool hasDrawOrigin = false;
+
 	Vec2 origin[2];
 	BufferNode buffer[3];
 	BufferNode *target = nullptr;
