@@ -350,15 +350,17 @@ inline size_t CoderSource::seek(int64_t offset, io::Seek s) {
 		}
 		break;
 	}
-	case io::Seek::End:
-		if (offset > 0) {
-			_offset = _data.size();
-		} else if (size_t(-offset) > _data.size()) {
+	case io::Seek::End: {
+		int64_t np = int64_t(_data.size()) + offset;
+		if (np < 0) {
 			_offset = 0;
+		} else if (size_t(np) > _data.size()) {
+			_offset = _data.size();
 		} else {
-			_offset = size_t(-offset);
+			_offset = size_t(np);
 		}
 		break;
+	}
 	case io::Seek::Set:
 		if (offset < 0) {
 			_offset = 0;

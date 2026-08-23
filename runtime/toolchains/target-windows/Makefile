@@ -54,8 +54,7 @@ LIBS := \
 	ngtcp2.lib \
 	ssl.lib \
 	gost_engine.lib \
-	curl-openssl.lib \
-	zip.lib
+	curl-openssl.lib
 
 INCLUDES := \
 	spirv/unified1/spirv.h \
@@ -298,9 +297,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PR
 
 $(SP_INSTALL_PREFIX)/usr/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/usr/lib/mbedtls.lib $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $(MAKE_ROOT)curl.mk $(FORWARD_VARS) VARIANT=mbedtls
-
-$(SP_INSTALL_PREFIX)/usr/lib/zip.lib: ../common/libzip.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/usr/lib/iwasm-debug.lib: $(MAKE_ROOT)wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/z.lib
 	$(MAKE) -f $(MAKE_ROOT)wamr.mk $(FORWARD_VARS)

@@ -31,6 +31,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// The whole suite drives real child processes, which the wasm sandbox has no model
+// for; performProcessTests() reports a SKIP there instead, so none of the machinery
+// below is built.
+#if !SPRT_WASM
+
 namespace {
 
 namespace dispatch = sprt::dispatch;
@@ -94,9 +99,18 @@ static bool runProcessCase(dispatch::Looper *looper, const ProcessCase &c) {
 
 } // namespace
 
+#endif // !SPRT_WASM
+
 void performProcessTests() {
 	sprt::cout << "\n== runtime process tests ==\n";
 
+#if SPRT_WASM
+	// A wasm module is a single process inside its host's sandbox: there is no
+	// fork/exec, no shell to run these recipes, and no child to reap. The wasm
+	// queue leaves its spawnProcess hook null on purpose (SPEvent-wasm.cc), so
+	// every spawn here would return nullptr.
+	sprt::cout << "SKIP  process tests (no process model in the wasm sandbox)\n";
+#else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
 		sprt::cout << "FAIL  could not acquire looper\n";
@@ -141,16 +155,22 @@ void performProcessTests() {
 #endif
 	{
 		int n = 8;
+		int spawned = 0;
 		int done = 0;
 		auto before = platform::clock(platform::ClockType::Realtime);
 		for (int i = 0; i < n; ++i) {
-			looper->spawnProcess(concurrentCmd, dispatch::ProcessInfo::ReaderCallback(),
-					[&](int, Status) { ++done; });
+			if (looper->spawnProcess(concurrentCmd, dispatch::ProcessInfo::ReaderCallback(),
+						[&](int, Status) { ++done; })) {
+				++spawned;
+			}
 		}
-		while (done < n) { looper->wait(dispatch::TimeInterval::Infinite); }
+		// Wait only for the children that actually started: a spawn that returned
+		// nullptr never delivers a completion, so waiting for `n` of them would
+		// park the loop forever with nothing left to wake it.
+		while (done < spawned) { looper->wait(dispatch::TimeInterval::Infinite); }
 		// platform::clock() is in microseconds
 		auto elapsedMs = (platform::clock(platform::ClockType::Realtime) - before) / 1000;
-		bool ok = (done == n) && elapsedMs < boundMs;
+		bool ok = (spawned == n) && (done == n) && elapsedMs < boundMs;
 		if (!ok) {
 			++failed;
 		}
@@ -160,6 +180,7 @@ void performProcessTests() {
 
 	sprt::cout << "process tests: " << (failed == 0 ? "ALL PASS" : "FAILURES") << " (failures="
 			   << failed << ")\n";
+#endif
 }
 
 } // namespace sprt
