@@ -39,7 +39,52 @@ struct Tesselator::Data : ObjectAllocator {
 	EdgeDict *_edgeDict = nullptr;
 	VertexPriorityQueue *_vertexQueue = nullptr;
 
+	/* TWO tolerances, because the sweep asks "are these the same" about two different KINDS of
+	number and one epsilon cannot serve both.
+
+	`_mathTolerance` is dimensionless. `Edge::direction` lives in [-2, 2] and `EdgeAngle` in
+	[0, 8) - both are ratios, both are O(1) whatever the scene is, and an absolute epsilon is
+	exactly right for them.
+
+	`_vertexTolerance` is the same question asked of COORDINATES, and coordinates have a scale.
+	`Epsilon<float>` is one ulp AT 1.0; the distance between two adjacent representable floats
+	grows with the exponent, and past |x| = 4 it already exceeds four of them. So a fixed epsilon
+	stops meaning "the same point" and starts meaning "bit-identical" - and worse, a point the
+	sweep COMPUTED (an intersection, a relocated vertex) lands a few ulp from the vertex it is
+	supposed to coincide with, is declared distinct, and the code splits an edge that has no
+	length. That is not a hypothetical: at coordinates of 1e5 a graph editor's wires failed with
+	an intersection four ulp from its own event vertex.
+
+	So this one is scaled to the data - see `updateVertexTolerance`. */
 	float _mathTolerance = sprt::Epsilon<float> * 4.0f;
+	float _vertexTolerance = sprt::Epsilon<float> * 4.0f;
+
+	/* WHERE the input sits, taken from its first vertex and subtracted from every coordinate that
+	enters, added back to every coordinate that leaves.
+
+	A scaled tolerance (above) makes the sweep ASK the right question, but it cannot give back
+	precision the arithmetic has already spent. An intersection of two edges at coordinates of 1e5
+	is computed from differences of numbers whose own ulp is 0.008, so the answer can be wrong by
+	that much however it is then compared - and the sweep's ORDER (`VertLeq`, which is exact by
+	necessity) disagrees with the geometry. No epsilon repairs that; only better-conditioned
+	numbers do.
+
+	So the shape is tesselated around its own origin. A wire in an atlas a hundred thousand units
+	wide is three hundred units long, and only its low bits ever said what it looked like; here
+	its coordinates are its own size, and every bit of the mantissa is spent on the shape rather
+	than on where the shape happens to be.
+
+	The FIRST vertex rather than the centre of the box: the box is not known until the last vertex
+	has arrived, and vertexes are consumed as they come. The centre would be one bit better and
+	would cost a second pass over the whole mesh.
+
+	TWO fields, because a caller may have done the subtraction itself. `LineDrawer` does - it has
+	to flatten a bezier before any vertex exists, and the flattening wants the precision as much as
+	the sweep does - and then says so with `setOutputOrigin`. In that case nothing is subtracted on
+	the way in (it is already off) but the frame still has to go back on the way out. */
+	Vec2 _inputOrigin; // subtracted from every coordinate pushed in
+	Vec2 _outputOrigin; // added to every coordinate written out
+	bool _hasNormalizeOrigin = false;
 
 	Winding _winding = Winding::NonZero;
 	float _boundaryOffset = 0.0f;
@@ -64,6 +109,10 @@ struct Tesselator::Data : ObjectAllocator {
 
 	// Compute boundary face contour, also - split vertexes in subboundaries for antialiasing
 	uint32_t computeBoundary();
+
+	// Sets `_vertexTolerance` from the bounding box the input actually occupies. Called at the
+	// start of every sweep, because the relocation rule can run one and then move the vertexes.
+	void updateVertexTolerance();
 
 	bool tessellateInterior();
 	bool tessellateMonoRegion(HalfEdge *, uint8_t);
@@ -139,6 +188,14 @@ Tesselator::RelocateRule Tesselator::getRelocateRule() const { return _data->_re
 void Tesselator::setWindingRule(Winding winding) { _data->_winding = winding; }
 
 Winding Tesselator::getWindingRule() const { return _data->_winding; }
+
+void Tesselator::setOutputOrigin(const Vec2 &origin) {
+	// The caller's coordinates are already relative to `origin`, so there is nothing to take off
+	// on the way in - only to put back on the way out.
+	_data->_inputOrigin = Vec2::ZERO;
+	_data->_outputOrigin = origin;
+	_data->_hasNormalizeOrigin = true;
+}
 
 void Tesselator::preallocate(uint32_t n) {
 	_data->preallocateVertexes(n);
@@ -436,7 +493,8 @@ bool Tesselator::write(TessResult &res) {
 		auto exportExtraVertex = [&, this](FaceEdge *e) {
 			auto originVertex = nexports;
 			auto nextVertex = nexports;
-			res.pushVertex(res.target, nexports + _data->_vertexOffset, e->_displaced, e->_value,
+			res.pushVertex(res.target, nexports + _data->_vertexOffset,
+					e->_displaced + _data->_outputOrigin, e->_value,
 					(e->_vertex->_origin - e->_displaced).getNormalized());
 			++nexports;
 
@@ -447,7 +505,8 @@ bool Tesselator::write(TessResult &res) {
 					Vec2 point = e->_displaced;
 					point.rotate(e->_origin, angle);
 
-					res.pushVertex(res.target, nexports + _data->_vertexOffset, point, e->_value,
+					res.pushVertex(res.target, nexports + _data->_vertexOffset,
+							point + _data->_outputOrigin, e->_value,
 							(e->_vertex->_origin - point).getNormalized());
 					nextVertex = nexports;
 
@@ -514,8 +573,8 @@ bool Tesselator::write(TessResult &res) {
 
 	for (auto &it : _data->_exportVertexes) {
 		if (it) {
-			res.pushVertex(res.target, it->_exportIdx + _data->_vertexOffset, it->_origin, 1.0f,
-					it->_norm);
+			res.pushVertex(res.target, it->_exportIdx + _data->_vertexOffset,
+					it->_origin + _data->_outputOrigin, 1.0f, it->_norm);
 		}
 	}
 
@@ -525,7 +584,21 @@ bool Tesselator::write(TessResult &res) {
 			uint32_t vertex = 0;
 			bool valid = true;
 
-			it->foreachOnFace([&, this](HalfEdge &edge) {
+			/* Bounded, and the bound is the whole point.
+			
+			A face here is a TRIANGLE or it is nothing - the emit below fires only at exactly
+			three edges, so walking a fourth can change nothing except how long it takes. That
+			turned out to matter: `foreachOnFace` follows `_leftNext` until it returns to where
+			it started, and a face ring that does NOT close - what a mesh the sweep could not
+			repair leaves behind - spins there forever. Three hundred crossing wires hung on
+			exactly that, and a renderer that hangs is worse than one that drops a triangle.
+			
+			Four steps: one more than a triangle, which is enough to tell a triangle from
+			something that is not one, and no more. The drop path below is the one this code
+			already took for a stale vertex index. */
+			auto faceEdge = it;
+			do {
+				auto &edge = *faceEdge;
 				if (vertex < 3) {
 					// bounds- and null-check the vertex in every build; on a stale
 					// index drop this triangle (graceful degradation) instead of
@@ -553,9 +626,12 @@ bool Tesselator::write(TessResult &res) {
 				}
 				edge._mark = mark;
 				++vertex;
-			});
+				faceEdge = faceEdge->_leftNext;
+			} while (faceEdge && faceEdge != it && vertex <= 3);
 
-			if (vertex == 3 && valid) {
+			// `faceEdge == it` is the ring having closed. Without it a broken ring that ran out
+			// of steps would look exactly like a triangle whose third edge happened to be last.
+			if (vertex == 3 && faceEdge == it && valid) {
 				res.pushTriangle(res.target, triangle);
 			}
 		}
@@ -566,8 +642,22 @@ bool Tesselator::write(TessResult &res) {
 
 Tesselator::Data::Data(memory::pool_t *p) : ObjectAllocator(p) { }
 
+void Tesselator::Data::updateVertexTolerance() {
+	// The magnitude of the largest coordinate, not the size of the box: precision is decided by
+	// the exponent of the number being compared, so a small shape far from the origin is the
+	// dangerous case and a large shape around it is not.
+	const float scale = sprt::max(sprt::max(sprt::abs(_bmin.x), sprt::abs(_bmax.x)),
+			sprt::max(sprt::abs(_bmin.y), sprt::abs(_bmax.y)));
+
+	// Never finer than the unscaled value: at coordinates below 1 the old number is already
+	// coarser than an ulp, and loosening it there would merge things that are genuinely apart.
+	_vertexTolerance = _mathTolerance * sprt::max(1.0f, scale);
+}
+
 bool Tesselator::Data::computeInterior() {
 	bool result = true;
+
+	updateVertexTolerance();
 
 	_exportVertexes.clear();
 
@@ -581,7 +671,7 @@ bool Tesselator::Data::computeInterior() {
 	while ((v = pq.extractMin()) != nullptr) {
 		for (;;) {
 			vNext = pq.getMin();
-			if (vNext == NULL || !VertEq(vNext, v, _mathTolerance)) {
+			if (vNext == NULL || !VertEq(vNext, v, _vertexTolerance)) {
 				break;
 			}
 
@@ -593,7 +683,7 @@ bool Tesselator::Data::computeInterior() {
 			}
 		}
 
-		dict.update(v, _mathTolerance);
+		dict.update(v, _vertexTolerance);
 
 		if (!sweepVertex(pq, dict, v)) {
 			log::source().error("geom::Tesselator", "Tesselation failed on sweepVertex");
@@ -722,7 +812,55 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 
 	const Vec2 *v0, *v1, *v2;
 
-	while (up->getLeftLoopNext() != lo) {
+	/* A cut that `connectEdges` refuses ends the region, it does not merely skip a step.
+	
+	What it refuses is a cut whose two ends are the same vertex - a triangle with no area, so the
+	cut itself is worth nothing. But skipping it and carrying on is not safe: the walk below makes
+	progress by consuming the cut it just made, and without one there is nothing to guarantee the
+	next turn is any different. An earlier version broke out of the inner loop only, and six
+	hundred crossing wires spun in the outer one forever.
+	
+	So the region stops where it stopped, keeping every triangle it had already produced. That is
+	the trade this whole path is built on: an invisible sliver missing beats a hang, and beats
+	throwing away the region - which is what failing here used to do, and failing the region
+	failed the entire path. */
+	bool degenerate = false;
+
+	/* And a ceiling on the walks, which is not a magic number.
+	
+	Each turn of either loop below cuts one triangle off the region, and a polygon of V vertices
+	yields exactly V - 2 of them - so no region can need more turns than the mesh has vertices.
+	A walk that wants more is walking a ring that does not close, and on such a ring the closing
+	fan does not merely spin: it keeps CREATING edges, so six hundred crossing wires ran until
+	the pool gave out rather than until anything was drawn.
+	
+	`_nvertexes` is that ceiling, and reaching it means the same thing a refused cut means - the
+	region ends here, with whatever it has produced. */
+	uint32_t regionLimit = 0;
+	{
+		// The ring, measured once. A face of E edges yields E - 2 triangles, so neither walk
+		// below can want more turns than this - and a ring that does not come back within the
+		// mesh's own vertex count is not a ring at all, which is exactly the case being guarded.
+		auto e = edge;
+		const uint32_t hardLimit = _nvertexes + 2;
+		do {
+			++regionLimit;
+			e = e->_leftNext;
+		} while (e && e != edge && regionLimit < hardLimit);
+
+		if (!e || e != edge) {
+			return true; // the ring does not close: nothing here can be triangulated
+		}
+		regionLimit += 2;
+	}
+
+	// A counter EACH: the walk down the two chains and the fan that closes what is left are two
+	// passes over the same region, and either may take up to its length. Sharing one budget
+	// between them cut the second short and changed a hundred and eighty icons.
+	uint32_t turns = 0;
+	uint32_t fanTurns = 0;
+
+	while (!degenerate && ++turns < regionLimit && up->getLeftLoopNext() != lo) {
 		if (VertLeq(up->getDstVec(), lo->getOrgVec())) {
 			if constexpr (TessVerbose == VerboseFlag::Full) {
 				sprt::cout << "Lo: " << *lo << "\n";
@@ -742,7 +880,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 				if (tempHalfEdge == nullptr) {
-					return false;
+					degenerate = true;
+					break;
 				}
 
 				lo = tempHalfEdge->sym();
@@ -753,6 +892,9 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 				if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
+			}
+			if (degenerate) {
+				break;
 			}
 			lo = lo->getLeftLoopPrev();
 			lo->_mark = v;
@@ -772,7 +914,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| !Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(up, up->getLeftLoopPrev());
 				if (tempHalfEdge == nullptr) {
-					return false;
+					degenerate = true;
+					break;
 				}
 
 				up = tempHalfEdge->sym();
@@ -784,6 +927,9 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
 			}
+			if (degenerate) {
+				break;
+			}
 			up = up->getLeftLoopNext();
 			up->_mark = v;
 		}
@@ -792,10 +938,12 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	/* Now lo->Org == up->Dst == the leftmost vertex.  The remaining region
 	 * can be tessellated in a fan from this leftmost vertex.
 	 */
-	while (lo->getLeftLoopNext()->getLeftLoopNext() != up) {
+	// The closing fan, and the same rules: a refused cut ends it, and so does the ceiling.
+	while (!degenerate && ++fanTurns < regionLimit
+			&& lo->getLeftLoopNext()->getLeftLoopNext() != up) {
 		auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 		if (tempHalfEdge == nullptr) {
-			return false;
+			break;
 		}
 		if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 			_faceEdges.emplace_back(tempHalfEdge);
@@ -951,7 +1099,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 	// Intersection can split some edge in dictionary with event vertex,
 	// so, event vertex will no longer be valid for iteration
 	do {
-		if (auto node = dict.checkForIntersects(v, tmp, event, _mathTolerance)) {
+		if (auto node = dict.checkForIntersects(v, tmp, event, _vertexTolerance)) {
 			if (processIntersect(v, node, tmp, event) == nullptr) {
 				return false;
 			}
@@ -969,7 +1117,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 		fullEdge = e->getEdge();
 		if (e->goesRight()) {
 			// push outcoming edge
-			if (auto node = dict.checkForIntersects(e, tmp, event, _mathTolerance)) {
+			if (auto node = dict.checkForIntersects(e, tmp, event, _vertexTolerance)) {
 				// edges in dictionary should remains valid
 				// intersections preserves left subedge, and no
 				// intersection points can be at the left of sweep line
@@ -1203,7 +1351,7 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 	};
 
 	auto checkRecursive = [&, this](HalfEdge *e) {
-		if (auto node = _edgeDict->checkForIntersects(e, intersect, ev, _mathTolerance)) {
+		if (auto node = _edgeDict->checkForIntersects(e, intersect, ev, _vertexTolerance)) {
 			processIntersect(v, node, e, intersect, ev);
 		}
 	};
@@ -1337,8 +1485,19 @@ Vertex *Tesselator::Data::makeVertex(HalfEdge *eOrig) {
 	return vNew;
 }
 
-HalfEdge *Tesselator::Data::pushVertex(HalfEdge *e, const Vec2 &origin, bool clockwise,
+HalfEdge *Tesselator::Data::pushVertex(HalfEdge *e, const Vec2 &vertex, bool clockwise,
 		bool returnNew) {
+	// Every coordinate that reaches the mesh comes through here - `Tesselator::pushVertex`,
+	// `pushStrokeVertex`, `pushStrokeTop` and `pushStrokeBottom` all funnel into it - so this is
+	// the one place the frame has to be taken off. Points the sweep computes later (splits,
+	// intersections, displacements) are already in it, being arithmetic on numbers that are.
+	if (!_hasNormalizeOrigin) {
+		_inputOrigin = _outputOrigin = vertex;
+		_hasNormalizeOrigin = true;
+	}
+
+	const Vec2 origin = vertex - _inputOrigin;
+
 	if (!e) {
 		/* Make a self-loop (one vertex, one edge). */
 		auto edge = makeEdgeLoop(origin);
@@ -1385,7 +1544,8 @@ HalfEdge *Tesselator::Data::connectEdges(HalfEdge *eOrg, HalfEdge *eDst) {
 			sprt::cout << "ERROR: connectEdges on same vertex:\n\t" << *eOrg << "\n\t"
 					   << *eOrg->sym() << "\n\t" << *eDst << "\n";
 		}
-		log::source().error("geom::Tesselator", "Tesselation failed on connectEdges");
+		// Handled by the caller: see `tessellateMonoRegion`. Not an error any more - it is the
+		// one shape a cut cannot have, and the answer is to not make that cut.
 		return nullptr;
 	}
 
@@ -2017,7 +2177,7 @@ HalfEdge *Tesselator::Data::removeDegenerateEdges(HalfEdge *e, uint32_t *nedges,
 		edge->updateInfo();
 		edgeNext->updateInfo();
 
-		while (VertEq(e->getOrgVec(), e->getDstVec(), _mathTolerance)
+		while (VertEq(e->getOrgVec(), e->getDstVec(), _vertexTolerance)
 				&& e->_leftNext->_leftNext != e) {
 			if constexpr (TessVerbose != VerboseFlag::None) {
 				sprt::cout << "Remove degenerate: " << *e << "\n";
@@ -2129,7 +2289,7 @@ bool Tesselator::Data::processEdgeOverlap(Vertex *org, HalfEdge *e1, HalfEdge *e
 	}
 
 	Vertex *vMerge;
-	if (!VertEq(e1->getDstVec(), e2->getDstVec(), _mathTolerance)) {
+	if (!VertEq(e1->getDstVec(), e2->getDstVec(), _vertexTolerance)) {
 		vMerge = splitEdge(e2, e1->getDstVec());
 	} else {
 		vMerge = _vertexes[e2->sym()->vertex];
@@ -2205,7 +2365,7 @@ bool Tesselator::Data::removeDegenerateEdges(FaceEdge *e, size_t &removed) {
 	do {
 		auto eLnext = e->_next;
 
-		while (VertEq(e->_vertex, eLnext->_vertex, _mathTolerance) && e->_next->_next != e) {
+		while (VertEq(e->_vertex, eLnext->_vertex, _vertexTolerance) && e->_next->_next != e) {
 			eLnext = e->_next->_next;
 
 			if (eEnd == e->_next) {
