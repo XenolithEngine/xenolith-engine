@@ -191,9 +191,43 @@ public:
 	bool isReady() const { return _timeline.try_wait(SignalValue); }
 	bool isWaitOnReady() const { return _waitOnReady; }
 
+#if XL_FRAME_ACCOUNT
+	/* WHAT THE TASK ITSELF SPENT, stamped by the task before it raises the signal.
+
+	It has to be recorded here, by the producer, and it cannot be derived by the consumer: this
+	result is made on a worker thread the consumer never sees, and the interval between handing the
+	task out and taking the result back is queue latency plus work plus however long the result sat
+	ready before anybody asked. Only the task knows which part of that was work.
+
+	READ IT AS A SUM ACROSS THREADS, never as a share of the frame. Several of these run at once, so
+	the total may legitimately exceed the frame it belongs to - which is the opposite of the wait
+	below, and why the two are reported as separate categories rather than as parts of one whole.
+
+	Plain, not atomic: written once by the task before the timeline signal, read after that signal
+	has been observed. The signal is the barrier. */
+	void setWorkTime(uint64_t ns) { _workTime = ns; }
+
+	/* TAKEN, not read, and that is the whole correctness of the number.
+
+	A result outlives the frame that produced it - a sprite whose content did not change re-pushes
+	the SAME result every frame and the consumer takes it again each time. A plain getter would
+	therefore report the tesselation cost on every steady frame forever, which is precisely the
+	claim this account exists to refute. Taking it once attributes the work to the frame that
+	actually paid for it, and every later frame correctly reports zero. */
+	uint64_t takeWorkTime() {
+		auto ret = _workTime;
+		_workTime = 0;
+		return ret;
+	}
+#endif
+
 protected:
 	bool _waitOnReady = true;
 	mutable sprt::qtimeline _timeline;
+
+#if XL_FRAME_ACCOUNT
+	uint64_t _workTime = 0;
+#endif
 };
 
 SP_DEFINE_ENUM_AS_MASK(DeferredVertexResult::Flags)

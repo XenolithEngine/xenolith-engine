@@ -279,6 +279,7 @@ void StrokeWriter::init(Tesselator *tess, const StrokeConfig &cfg, float distanc
 	_miterLimit = cfg.miterLimit;
 	_lineJoin = cfg.lineJoin;
 	_lineCup = cfg.lineCup;
+	_distanceError = distanceError;
 
 	// Same chord-error criterion the arc flattener uses (see drawArcBegin): how far a segment of
 	// the polygon may sag from the true circle before it needs splitting. Computed once here
@@ -362,7 +363,10 @@ void StrokeWriter::begin() {
 		return;
 	}
 
-	_cursor = _tess->beginContour();
+	// No `beginContour` here any more - it is taken in `emitStreaming`, once the contour is whole.
+	// The call is pure (it returns a fresh Cursor and touches no mesh state), so moving it changes
+	// nothing but when it happens.
+	_points.clear();
 	_count = 0;
 	_open = true;
 }
@@ -375,41 +379,237 @@ void StrokeWriter::lineTo(const Vec2 &p) {
 	// A repeated point has no direction, so it would put a zero-length segment into the ribbon
 	// and a normalize() of (0,0) into the join math. Curve flattening emits these, and so does
 	// a zero-length dash - which is what a dotted pattern is made of.
+	//
+	// The filter stays HERE, on the way into the buffer, so that replaying the buffer cannot
+	// produce a point the streaming version would have dropped.
 	if (_count > 0 && p.fuzzyEquals(_cur, getCloseControlDistance())) {
 		return;
 	}
 
-	if (_count < 2) {
-		_origin[_count] = p;
-	}
-
-	// The join at a vertex needs the segment on either side of it, so a point can only be
-	// emitted once its successor is known - the ribbon runs two points behind the input.
-	if (_count > 1) {
-		pushStroke(_prev, _cur, p);
-	}
-
-	_prev = _cur;
+	_points.emplace_back(p);
 	_cur = p;
 	++_count;
 }
 
 void StrokeWriter::end(bool closed) {
-	if (!_tess || _count == 0) {
+	if (!_tess || _points.empty()) {
 		return;
 	}
 
-	if (closed && _count > 2) {
-		if (_cur.fuzzyEquals(_origin[0], getCloseControlDistance())) {
-			pushStroke(_prev, _origin[0], _origin[1]);
+	/* Eligible contours are handed to the tesselator to hold, not emitted. Everything else streams
+	immediately - and streaming calls `beginContour`, which releases whatever was being held, in
+	order, before this contour reaches the mesh. */
+	if (!isBypassEligible(closed)
+			|| !_tess->pushStrokeCandidate(StrokeCandidate{SpanView<Vec2>(_points),
+					   _halfWidth, _miterLimit, _distanceError, _lineCup, closed, 0.0f,
+					   &StrokeWriter::replayCandidate})) {
+		emitStreaming(closed);
+	}
+
+	_points.clear();
+	_count = 0;
+	_open = false;
+}
+
+void StrokeWriter::buildRibbon(const StrokeCandidate &cand, mem_std::Vector<Vec2> &out) {
+	const auto &pts = cand.points;
+	const size_t n = pts.size();
+	const float hw = cand.halfWidth;
+
+	// Written straight into ring order - see below - rather than into two chains that are then
+	// stitched into a second vector. Forty thousand wires is forty thousand allocations saved.
+	out.clear();
+	out.resize(n * 2);
+
+	// The cap chord: perpendicular to the first segment, pushed out by the cap offset. Mirrors the
+	// start pair in `pushStroke` and the trailing pair in `emitStreaming`.
+	const auto capChord = [&](const Vec2 &at, const Vec2 &dir, float sign, Vec2 &top, Vec2 &bottom) {
+		auto norm = dir;
+		norm.normalize();
+		auto perp = norm.getRPerp();
+		perp.negate();
+
+		Vec2 cap;
+		switch (cand.cup) {
+		case LineCup::Square: cap = norm * hw * sign; break;
+		default: break; // Butt and Round both leave the end where it is
+		}
+
+		const auto off = perp * hw;
+		top = at + cap + off;
+		bottom = at + cap - off;
+	};
+
+	/* The ring the mesh would have held: `top0, bottom0..bottomN-1, topN-1..top1`, so that
+	`top0 -> bottom0` is the start cap edge and `bottomN -> topN` the end cap edge (SPTessLine.h).
+
+	    top_0    -> index 0
+	    top_i    -> index 2n - i     (i >= 1)
+	    bottom_i -> index 1 + i
+	*/
+	const auto putTop = [&](size_t i, const Vec2 &v) { out[i == 0 ? 0 : (2 * n - i)] = v; };
+	const auto putBottom = [&](size_t i, const Vec2 &v) { out[1 + i] = v; };
+
+	Vec2 top, bottom;
+	capChord(pts[0], pts[1] - pts[0], -1.0f, top, bottom);
+	putTop(0, top);
+	putBottom(0, bottom);
+
+	for (size_t i = 1; i + 1 < n; ++i) {
+		Vec4 r;
+		getVertexNormal(&pts[i - 1].x, &pts[i].x, &pts[i + 1].x, &r.x);
+		const float mod = copysign(r.y * hw, r.x);
+		const Vec2 off(r.z * mod, r.w * mod);
+		putTop(i, pts[i] + off);
+		putBottom(i, pts[i] - off);
+	}
+
+	capChord(pts[n - 1], pts[n - 1] - pts[n - 2], 1.0f, top, bottom);
+	putTop(n - 1, top);
+	putBottom(n - 1, bottom);
+}
+
+// Rebuilds a writer from the held scalars and runs the ordinary emit. There is deliberately no
+// second implementation of the slow path: this is the same `emitStreaming` every other contour goes
+// through, driven by the same points in the same order.
+void StrokeWriter::replayCandidate(Tesselator *tess, const StrokeCandidate &cand) {
+	StrokeWriter writer;
+	StrokeConfig cfg;
+	cfg.lineWidth = cand.halfWidth * 2.0f;
+	cfg.miterLimit = cand.miterLimit;
+	cfg.lineCup = cand.cup;
+
+	writer.init(tess, cfg, cand.distanceError);
+	writer._points.assign(cand.points.begin(), cand.points.end());
+	writer.emitStreaming(cand.closed);
+}
+
+/* Would this contour's ribbon be a plain strip of trapezoids?
+
+At join `i` both offset points sit on one line through `v_i` - the bisector - so the ribbon's
+cross-section there is a single chord. Consecutive chords plus the two PARALLEL offset lines of the
+segment between them bound a convex trapezoid, and the whole ribbon tiles as `P-1` of them exactly
+when no two chords cross.
+
+A chord reaches back along its segment by `q = halfWidth * cot(psi/2)` where `psi` is the angle at
+the joint, so two chords cross iff `q_i + q_{i+1} >= L`. That is the same quantity the bevel branch
+of `pushStroke` already computes as `offsetLengthSq` vs the segment length; here it is in closed
+form, from `dot` alone:
+
+    y^2     = 2 / (1 + dt)        (y is getVertexNormal's miter ratio, 1/sin(psi/2))
+    y^2 - 1 = (1 - dt) / (1 + dt)
+    q       = halfWidth * sqrt((1 - dt) / (1 + dt))
+
+Everything here is computed from DIFFERENCES of points and never from a coordinate, so the answer
+cannot depend on where the path sits. That is a requirement, not a nicety: `checkWireMagnitude`
+strokes the same wire at six magnitudes and would catch a predicate that changed its mind. */
+bool StrokeWriter::isBypassEligible(bool closed) const {
+	if (!allowBypass || !_tess || _halfWidth <= sprt::Epsilon<float>) {
+		return false;
+	}
+
+	// v1 exclusions: a closed ribbon has its start pair relocated by `closeStrokeContour`, and a
+	// round cap or a dot is a separate contour that relies on the NonZero merge.
+	if (closed || _lineCup == LineCup::Round) {
+		return false;
+	}
+
+	const size_t n = _points.size();
+	if (n < 2) {
+		return false; // a dot
+	}
+
+	for (auto &p : _points) {
+		// The same inputs `pushVertex` rejects; the fast path must reject them too rather than
+		// quietly drawing what the sweep would have dropped.
+		if (!p.isValid() || !sprt::isfinite(p.x) || !sprt::isfinite(p.y)) {
+			return false;
+		}
+	}
+
+	/* Reach of the joint at `i`, in units of length along each of its two segments; `false` means
+	the joint disqualifies the contour outright. The ends of an open contour are cap chords,
+	perpendicular to their segment, so their reach is zero. */
+	const auto reachAt = [&](size_t i, float &out) -> bool {
+		out = 0.0f;
+		if (i == 0 || i + 1 >= n) {
+			return true;
+		}
+
+		auto d0 = _points[i] - _points[i - 1];
+		auto d1 = _points[i + 1] - _points[i];
+		d0.normalize();
+		d1.normalize();
+		const float dt = Vec2::dot(d0, d1);
+
+		// A reversal: the ribbon folds back on itself, and `getBisectVec` reports a ratio of 1 for
+		// it (its cross-product branch), so the miter-limit test below cannot see it.
+		if (dt <= -1.0f + sprt::Epsilon<float>) {
+			return false;
+		}
+
+		// Past the miter limit the streaming code takes the bevel branch, which is a different
+		// shape. Written as a negation so a NaN answers "not eligible".
+		const float ratioSq = 2.0f / (1.0f + dt);
+		if (!(ratioSq < _miterLimit * _miterLimit)) {
+			return false;
+		}
+
+		out = _halfWidth * sqrtf((1.0f - dt) / (1.0f + dt));
+		return true;
+	};
+
+	// Two joints eating the same segment from both ends is where the chords cross. The margin is
+	// deliberate: at exactly `L` the trapezoid is degenerate, which is not something to emit.
+	constexpr float kMargin = 0.98f;
+
+	for (size_t s = 0; s + 1 < n; ++s) {
+		const float len = _points[s].distance(_points[s + 1]);
+		if (!(len > 0.0f)) {
+			return false;
+		}
+
+		float a = 0.0f, b = 0.0f;
+		if (!reachAt(s, a) || !reachAt(s + 1, b)) {
+			return false;
+		}
+		if (!(a + b < len * kMargin)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void StrokeWriter::emitStreaming(bool closed) {
+	const size_t n = _points.size();
+	if (!_tess || n == 0) {
+		return;
+	}
+
+	_cursor = _tess->beginContour();
+
+	// The join at a vertex needs the segment on either side of it, so a point can only be emitted
+	// once its successor is known. Streaming ran two points behind the input; walking the buffer
+	// produces the same triples in the same order.
+	for (size_t i = 2; i < n; ++i) { pushStroke(_points[i - 2], _points[i - 1], _points[i]); }
+
+	const Vec2 org0 = _points[0];
+	const Vec2 org1 = _points[n > 1 ? 1 : 0];
+	const Vec2 cur = _points[n - 1];
+	const Vec2 prev = _points[n > 1 ? n - 2 : 0];
+
+	if (closed && n > 2) {
+		if (cur.fuzzyEquals(org0, getCloseControlDistance())) {
+			pushStroke(prev, org0, org1);
 		} else {
-			pushStroke(_prev, _cur, _origin[0]);
-			pushStroke(_cur, _origin[0], _origin[1]);
+			pushStroke(prev, cur, org0);
+			pushStroke(cur, org0, org1);
 		}
 
 		_tess->closeStrokeContour(_cursor);
-	} else if (_count > 1) {
-		auto norm = _cur - _prev;
+	} else if (n > 1) {
+		auto norm = cur - prev;
 		norm.normalize();
 		auto perp = norm.getRPerp();
 		perp.negate();
@@ -418,19 +618,16 @@ void StrokeWriter::end(bool closed) {
 		// either side - so the ribbon has not been opened yet and the start pair is still owed.
 		// Every dash is exactly such a contour, so this is the common case once dashes are on.
 		if (!_cursor.edge) {
-			_tess->pushStrokeVertex(_cursor, _prev - capOffset(_cur - _prev), perp * _halfWidth);
+			_tess->pushStrokeVertex(_cursor, prev - capOffset(cur - prev), perp * _halfWidth);
 		}
 
-		_tess->pushStrokeVertex(_cursor, _cur + capOffset(_cur - _prev), perp * _halfWidth);
+		_tess->pushStrokeVertex(_cursor, cur + capOffset(cur - prev), perp * _halfWidth);
 
-		emitRoundCap(_origin[0]);
-		emitRoundCap(_cur);
+		emitRoundCap(org0);
+		emitRoundCap(cur);
 	} else {
-		emitDot(_cur);
+		emitDot(cur);
 	}
-
-	_count = 0;
-	_open = false;
 }
 
 void StrokeWriter::pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2) {

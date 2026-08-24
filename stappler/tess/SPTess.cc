@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include "SPTess.h"
 #include "SPLog.h"
 #include "SPTessTypes.h"
+#include "SPTessLine.h"
 #include "SPTessSimd.hpp"
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
@@ -97,6 +98,49 @@ struct Tesselator::Data : ObjectAllocator {
 
 	bool _dryRun = false;
 	bool _valid = true;
+
+	// The fast path (SPTess.h). `_bypassEnabled` is a kill switch for tests and for bisecting; the
+	// counter is what a test asserts on so it cannot pass vacuously.
+	bool _bypassEnabled = true;
+	uint32_t _bypassCount = 0;
+
+	// Contours held back, in arrival order, and the latch that ends the holding.
+	bool _bypassLatched = false;
+	bool _replaying = false;
+	sprt::__pool_vector<StrokeCandidate> _candidates;
+
+	/* Rings of the candidates that were accepted, and how each one is cut up.
+
+	A stroke's ribbon is a strip of trapezoids, two triangles per segment; a filled contour is
+	convex and is a fan from its first vertex. The antialias skirt is the same code for both - it
+	only ever looks at consecutive ring vertices. */
+	struct AcceptedRing {
+		SpanView<Vec2> ring;
+		bool fan = false;
+	};
+
+	sprt::__pool_vector<AcceptedRing> _ribbons;
+
+	// Filled contours offered before the sweep, in arrival order.
+	sprt::__pool_vector<SpanView<Vec2>> _fills;
+	// One corner of the fringe, kept between the two passes that need it.
+	struct DisplacedCorner {
+		Vec2 point;
+		Vec2 norm;
+		float value = 0.0f;
+	};
+
+	mem_std::Vector<DisplacedCorner> _displaceScratch;
+
+	float _bypassFringe = 0.0f;
+	uint32_t _bypassBase = 0;
+	uint32_t _bypassVertexes = 0;
+	uint32_t _bypassFaces = 0;
+
+	// Stage B of the predicate, plus the ribbons of whatever survives it. Anything rejected is
+	// replayed through the ordinary streaming path, in order, before the sweep starts.
+	void resolveCandidates();
+	void resolveFills(Tesselator *);
 
 	Vertex *_eventVertex = nullptr;
 
@@ -185,6 +229,72 @@ void Tesselator::setRelocateRule(RelocateRule rule) { _data->_relocateRule = rul
 
 Tesselator::RelocateRule Tesselator::getRelocateRule() const { return _data->_relocateRule; }
 
+void Tesselator::setStrokeBypassEnabled(bool value) { _data->_bypassEnabled = value; }
+
+bool Tesselator::isStrokeBypassEnabled() const { return _data->_bypassEnabled; }
+
+uint32_t Tesselator::getStrokeBypassCount() const { return _data->_bypassCount; }
+
+bool Tesselator::pushFillCandidate(SpanView<Vec2> pts) {
+	if (!_data->_bypassEnabled || pts.size() < 3) {
+		return false;
+	}
+
+	auto copy = reinterpret_cast<Vec2 *>(
+			memory::pool::palloc(_data->_pool, sizeof(Vec2) * pts.size()));
+	for (size_t i = 0; i < pts.size(); ++i) {
+		copy[i] = pts[i];
+
+		// The bounding box is what sets the vertex tolerance, and it has to see every contour -
+		// including the ones that never reach the sweep - or the tolerance would depend on which
+		// contours happened to be accepted.
+		_data->_bmin = Vec2(sprt::min(_data->_bmin.x, pts[i].x), sprt::min(_data->_bmin.y, pts[i].y));
+		_data->_bmax = Vec2(sprt::max(_data->_bmax.x, pts[i].x), sprt::max(_data->_bmax.y, pts[i].y));
+	}
+
+	_data->_fills.emplace_back(SpanView<Vec2>(copy, pts.size()));
+	return true;
+}
+
+bool Tesselator::pushStrokeCandidate(const StrokeCandidate &cand) {
+	if (!_data->_bypassEnabled || _data->_bypassLatched || !cand.replay) {
+		return false;
+	}
+
+	auto copy = cand;
+
+	// The caller's buffer is reused for the next contour, so the points have to be taken now.
+	auto pts = reinterpret_cast<Vec2 *>(
+			memory::pool::palloc(_data->_pool, sizeof(Vec2) * cand.points.size()));
+	sprt::memcpy(pts, cand.points.data(), sizeof(Vec2) * cand.points.size());
+	copy.points = SpanView<Vec2>(pts, cand.points.size());
+
+	_data->_candidates.emplace_back(copy);
+	return true;
+}
+
+void Tesselator::flushStrokeCandidates() {
+	_data->_bypassLatched = true;
+
+	/* RE-ENTRANT, and it has to be handled rather than assumed away.
+
+	A replay goes through the ordinary streaming path, which calls `beginContour`, which comes
+	straight back here. Latching alone does not stop it - the pending list is still non-empty - so
+	the second entry would walk the same list again. Two hundred wires crashed the process with a
+	stack overflow before this guard existed. */
+	if (_data->_replaying || _data->_candidates.empty()) {
+		return;
+	}
+
+	_data->_replaying = true;
+	for (size_t i = 0; i < _data->_candidates.size(); ++i) {
+		auto cand = _data->_candidates[i];
+		cand.replay(this, cand);
+	}
+	_data->_candidates.clear();
+	_data->_replaying = false;
+}
+
 void Tesselator::setWindingRule(Winding winding) { _data->_winding = winding; }
 
 Winding Tesselator::getWindingRule() const { return _data->_winding; }
@@ -203,6 +313,8 @@ void Tesselator::preallocate(uint32_t n) {
 }
 
 Tesselator::Cursor Tesselator::beginContour(bool clockwise) {
+	// Anything that reaches the mesh directly ends the holding - see pushStrokeCandidate.
+	flushStrokeCandidates();
 	return Cursor{nullptr, nullptr, clockwise};
 }
 
@@ -368,13 +480,405 @@ bool Tesselator::closeStrokeContour(Cursor &cursor) {
 	return false;
 }
 
+/* Does this ribbon clear itself, and do the ribbons clear each other?
+
+Stage A settled the joins; what is left is whether two parts of the path that are far apart along
+the contour end up near each other in the plane. Two ribbons closer than the stroke width overlap,
+and an overlap is exactly what the NonZero sweep is for.
+
+Brute force over segment pairs. The production case is a flattened cubic - a couple of dozen
+segments - and the budget below turns a pathological contour into a fallback rather than into a
+quadratic scan. */
+static bool Tesselator_ribbonIsClear(const StrokeCandidate &cand, uint32_t &budget) {
+	const auto &pts = cand.points;
+	const size_t n = pts.size();
+	// Two ribbons closer than the stroke width overlap; the fringe is added because one part's
+	// alpha ramp lying over another part's is visible even where the interiors are not.
+	const float clearance = cand.halfWidth * 2.0f + cand.fringe * 2.0f;
+	const float clearSq = clearance * clearance;
+
+	const auto segDistSq = [](const Vec2 &a0, const Vec2 &a1, const Vec2 &b0, const Vec2 &b1) {
+		const auto pointSegSq = [](const Vec2 &p, const Vec2 &s0, const Vec2 &s1) {
+			const auto d = s1 - s0;
+			const float len2 = d.lengthSquared();
+			float t = 0.0f;
+			if (len2 > 0.0f) {
+				t = sprt::clamp(Vec2::dot(p - s0, d) / len2, 0.0f, 1.0f);
+			}
+			return (p - (s0 + d * t)).lengthSquared();
+		};
+		return sprt::min(sprt::min(pointSegSq(a0, b0, b1), pointSegSq(a1, b0, b1)),
+				sprt::min(pointSegSq(b0, a0, a1), pointSegSq(b1, a0, a1)));
+	};
+
+	/* A SWEEP OVER THE SEGMENTS' X-EXTENTS, not a scan over their pairs.
+
+	The pairwise scan is the obvious way and it does not pay: measured on four hundred wires, it
+	cost about nine microseconds a contour against a whole tesselation of twenty-one. A predicate
+	that costs half of what it avoids is not an optimisation.
+
+	Segments sorted by their left edge, with an active set holding only those whose right edge is
+	still within the clearance of the current left edge. A wire is monotone or nearly so, which
+	keeps the active set at two or three and the whole thing linear; a contour that folds back on
+	itself grows the set, and the budget below turns that into a fallback rather than into the
+	quadratic scan by another name. */
+	const size_t segs = n - 1;
+
+	mem_std::Vector<uint32_t> order;
+	order.reserve(segs);
+	for (uint32_t i = 0; i < segs; ++i) { order.emplace_back(i); }
+
+	const auto loX = [&](uint32_t i) { return sprt::min(pts[i].x, pts[i + 1].x); };
+	const auto hiX = [&](uint32_t i) { return sprt::max(pts[i].x, pts[i + 1].x); };
+
+	sprt::sort(order.begin(), order.end(),
+			[&](uint32_t a, uint32_t b) { return loX(a) < loX(b); });
+
+	mem_std::Vector<uint32_t> active;
+	for (auto i : order) {
+		const float left = loX(i) - clearance;
+
+		// Retire everything that ends before this segment can reach.
+		size_t w = 0;
+		for (size_t k = 0; k < active.size(); ++k) {
+			if (hiX(active[k]) >= left) {
+				active[w++] = active[k];
+			}
+		}
+		active.resize(w);
+
+		for (auto j : active) {
+			const uint32_t d = i > j ? i - j : j - i;
+			if (d <= 1) {
+				continue; // adjacent segments meet by construction; stage A judged their joint
+			}
+
+			if (budget == 0) {
+				return false; // a contour this tangled belongs in the sweep anyway
+			}
+			--budget;
+
+			if (segDistSq(pts[i], pts[i + 1], pts[j], pts[j + 1]) <= clearSq) {
+				return false;
+			}
+		}
+
+		active.emplace_back(i);
+	}
+	return true;
+}
+
+/* Convex, and simple by consequence: every turn the same way, and the total turning exactly one
+revolution. The second half is what separates a convex polygon from a star that turns the same way
+several times over. */
+static bool Tesselator_isConvexRing(SpanView<Vec2> pts) {
+	const size_t n = pts.size();
+	if (n < 3) {
+		return false;
+	}
+
+	int sign = 0;
+	for (size_t i = 0; i < n; ++i) {
+		const auto &a = pts[i];
+		const auto &b = pts[(i + 1) % n];
+		const auto &c = pts[(i + 2) % n];
+		const float cross = Vec2::cross(b - a, c - b);
+
+		if (cross > 0.0f) {
+			if (sign < 0) {
+				return false;
+			}
+			sign = 1;
+		} else if (cross < 0.0f) {
+			if (sign > 0) {
+				return false;
+			}
+			sign = -1;
+		} else {
+			return false; // a collinear or repeated triple: the sweep merges these, the fan cannot
+		}
+	}
+	return sign != 0;
+}
+
+void Tesselator::Data::resolveFills(Tesselator *self) {
+	if (_fills.empty()) {
+		return;
+	}
+
+	/* Every accepted contour must clear every other one, so one rejection does not spoil the rest -
+	unlike the stroke's all-or-nothing latch, where the ordering of a partial demotion would be the
+	problem. Here nothing is reordered: a rejected contour is streamed by the caller, and an
+	accepted one never enters the mesh at all.
+
+	TOUCHING COUNTS AS OVERLAP. Two rectangles that share a corner are one vertex to the sweep -
+	`checkGrid` pins that at seventeen by seventeen for a sixteen-by-sixteen grid - and emitting
+	them apart would silently double it. The clearance is therefore strict, and carries the fringe
+	on top when there is one. */
+	/* THE WINDING RULE DECIDES WHETHER A LONE CONTOUR IS FILLED AT ALL, and only two of the five
+	answer "yes, whichever way it is wound". `Positive` and `Negative` fill one orientation and not
+	the other; `AbsGeqTwo` fills neither. A fan emitted without asking would add area the path does
+	not have - measured: it changed six hundred and sixty-two icons. */
+	const bool relocateOk = _relocateRule == Tesselator::RelocateRule::Auto
+			|| _relocateRule == Tesselator::RelocateRule::Never;
+
+	if ((_winding != Winding::NonZero && _winding != Winding::EvenOdd) || !relocateOk) {
+		for (auto &c : _fills) {
+			auto cursor = self->beginContour();
+			for (auto &p : c) { self->pushVertex(cursor, p); }
+			self->closeContour(cursor);
+		}
+		_fills.clear();
+		return;
+	}
+
+	const float clearance = _boundaryOffset + _boundaryInset * 0.5f;
+
+	struct Box {
+		Vec2 min, max;
+	};
+
+	mem_std::Vector<Box> boxes;
+	boxes.reserve(_fills.size());
+	for (auto &c : _fills) {
+		Box b{c[0], c[0]};
+		for (auto &p : c) {
+			b.min.x = sprt::min(b.min.x, p.x);
+			b.min.y = sprt::min(b.min.y, p.y);
+			b.max.x = sprt::max(b.max.x, p.x);
+			b.max.y = sprt::max(b.max.y, p.y);
+		}
+		boxes.emplace_back(b);
+	}
+
+	mem_std::Vector<bool> keep(_fills.size(), true);
+	for (size_t i = 0; i < _fills.size(); ++i) {
+		if (!Tesselator_isConvexRing(_fills[i])) {
+			keep[i] = false;
+		}
+	}
+
+	/* Pairwise separation, over a UNIFORM GRID rather than over the pairs.
+
+	A sweep along one axis was the first attempt and it does nothing here: a column of rectangles
+	shares its x-extent exactly, so every box in the column stays active at once and the scan is
+	quadratic again. The case this exists for is forty thousand boxes on a lattice, which is
+	precisely that shape.
+
+	Cell size is the largest box plus the clearance, so a box touches at most four cells and two
+	boxes that could be within the clearance always share one. */
+	float cell = clearance;
+	for (auto &b : boxes) {
+		cell = sprt::max(cell, sprt::max(b.max.x - b.min.x, b.max.y - b.min.y));
+	}
+	cell = sprt::max(cell + clearance, sprt::Epsilon<float> * 1'024.0f);
+
+	struct Entry {
+		int64_t key;
+		uint32_t idx;
+	};
+
+	const auto keyOf = [&](float x, float y) {
+		const int64_t cx = int64_t(sprt::floor(x / cell));
+		const int64_t cy = int64_t(sprt::floor(y / cell));
+		return (cx << 32) ^ (cy & 0xFFFF'FFFF);
+	};
+
+	mem_std::Vector<Entry> cells;
+	cells.reserve(_fills.size() * 4);
+	for (uint32_t i = 0; i < boxes.size(); ++i) {
+		const int64_t x0 = int64_t(sprt::floor(boxes[i].min.x / cell));
+		const int64_t x1 = int64_t(sprt::floor(boxes[i].max.x / cell));
+		const int64_t y0 = int64_t(sprt::floor(boxes[i].min.y / cell));
+		const int64_t y1 = int64_t(sprt::floor(boxes[i].max.y / cell));
+		for (int64_t cx = x0; cx <= x1; ++cx) {
+			for (int64_t cy = y0; cy <= y1; ++cy) {
+				cells.emplace_back(Entry{(cx << 32) ^ (cy & 0xFFFF'FFFF), i});
+			}
+		}
+	}
+
+	sprt::sort(cells.begin(), cells.end(),
+			[](const Entry &a, const Entry &b) { return a.key < b.key; });
+
+	const auto testPair = [&](uint32_t i, uint32_t j) {
+		if (i == j) {
+			return;
+		}
+		const auto &a = boxes[i];
+		const auto &b = boxes[j];
+		const bool apart = a.max.x + clearance < b.min.x || b.max.x + clearance < a.min.x
+				|| a.max.y + clearance < b.min.y || b.max.y + clearance < a.min.y;
+		if (!apart) {
+			keep[i] = false;
+			keep[j] = false;
+		}
+	};
+
+	// Every box against those in its own cell and in the eight around it.
+	for (uint32_t i = 0; i < boxes.size(); ++i) {
+		const int64_t cx = int64_t(sprt::floor(boxes[i].min.x / cell));
+		const int64_t cy = int64_t(sprt::floor(boxes[i].min.y / cell));
+		for (int64_t dx = -1; dx <= 1 && keep[i]; ++dx) {
+			for (int64_t dy = -1; dy <= 1 && keep[i]; ++dy) {
+				const int64_t k = ((cx + dx) << 32) ^ ((cy + dy) & 0xFFFF'FFFF);
+				auto lo = sprt::lower_bound(cells.begin(), cells.end(), k,
+						[](const Entry &e, int64_t v) { return e.key < v; });
+				for (auto it = lo; it != cells.end() && it->key == k; ++it) {
+					testPair(i, it->idx);
+				}
+			}
+		}
+	}
+
+	uint32_t accepted = 0;
+	for (size_t i = 0; i < _fills.size(); ++i) {
+		auto &c = _fills[i];
+
+		if (!keep[i]) {
+			// Streamed here, in arrival order, exactly as the caller would have streamed it.
+			auto cursor = self->beginContour();
+			for (auto &p : c) { self->pushVertex(cursor, p); }
+			self->closeContour(cursor);
+			continue;
+		}
+
+		auto pts = reinterpret_cast<Vec2 *>(memory::pool::palloc(_pool, sizeof(Vec2) * c.size()));
+		for (size_t k = 0; k < c.size(); ++k) { pts[k] = c[k] - _inputOrigin; }
+		_ribbons.emplace_back(AcceptedRing{SpanView<Vec2>(pts, c.size()), true});
+
+		const uint32_t n = uint32_t(c.size());
+		_bypassVertexes += n;
+		_bypassFaces += n - 2;
+		if (_bypassFringe > 0.0f) {
+			_bypassVertexes += n;
+			_bypassFaces += n * 2;
+		}
+		++accepted;
+	}
+
+	_fills.clear();
+	_bypassCount += accepted;
+}
+
+void Tesselator::Data::resolveCandidates() {
+	if (_candidates.empty()) {
+		return;
+	}
+
+	/* Stage B. The winding and relocation rules are read here and not earlier because every caller
+	configures the tesselator AFTER running the LineDrawer.
+
+	The fringe is a v1 exclusion: it is produced by walking the boundary of the swept mesh, and
+	reproducing it for a ribbon is a separate piece of work. Until then an antialiased stroke falls
+	back, which is correct and merely not yet fast. */
+	bool ok = _winding == Winding::NonZero
+			&& (_relocateRule == Tesselator::RelocateRule::Auto
+					|| _relocateRule == Tesselator::RelocateRule::Never);
+
+	for (auto &it : _candidates) { it.fringe = _bypassFringe; }
+
+	uint32_t budget = 0;
+	if (ok) {
+		for (auto &it : _candidates) { budget += uint32_t(it.points.size()) * 16; }
+		for (auto &it : _candidates) {
+			if (!Tesselator_ribbonIsClear(it, budget)) {
+				ok = false;
+				break;
+			}
+		}
+	}
+
+	// More than one held contour would have to be checked against the others as well. One is the
+	// production case (a path per wire), so v1 stops there rather than guessing at the rest.
+	if (ok && _candidates.size() > 1) {
+		ok = false;
+	}
+
+	if (!ok) {
+		return; // the caller flushes: every candidate is replayed, in order
+	}
+
+	mem_std::Vector<Vec2> ring;
+	for (auto &it : _candidates) {
+		StrokeWriter::buildRibbon(it, ring);
+
+		auto pts = reinterpret_cast<Vec2 *>(
+				memory::pool::palloc(_pool, sizeof(Vec2) * ring.size()));
+		for (size_t i = 0; i < ring.size(); ++i) {
+			// Same frame as everything else in the mesh; see Data::pushVertex.
+			pts[i] = ring[i] - _inputOrigin;
+		}
+		_ribbons.emplace_back(AcceptedRing{SpanView<Vec2>(pts, ring.size()), false});
+
+		const uint32_t n = uint32_t(it.points.size());
+		_bypassVertexes += n * 2;
+		_bypassFaces += (n - 1) * 2;
+
+		// The fringe: a displaced twin of every ring vertex, and a quad on every ring edge.
+		if (_bypassFringe > 0.0f) {
+			_bypassVertexes += n * 2;
+			_bypassFaces += n * 4;
+		}
+	}
+
+	_candidates.clear();
+	_bypassCount = uint32_t(_ribbons.size());
+}
+
 bool Tesselator::prepare(TessResult &res) {
 	_data->_result = &res;
+
+	/* The fast path's block is reserved BEFORE the sweep's, and the sweep's base is pushed past it.
+
+	It cannot go after the antialias block: that one is reserved as `E + SumS + 1` but `write`
+	calls `exportExtraVertex` `S + 1` times PER boundary, so with more than one boundary the
+	running counter overruns its reservation. That survives today only because the canvas callback
+	grows its array on demand, and it is not something a second producer may build on.
+
+	With no accepted candidates `_bypassVertexes` is zero and the line below is the assignment it
+	has always been. */
+	/* The fringe's reach, computed once because BOTH halves need it - and it is the `Never`
+	arithmetic on purpose.
+
+	Under `Auto` a boundary vertex is relocated only where the sweep split it, which is where the
+	shape crossed itself, and a contour that reaches the fast path provably does not. So both
+	allowed rules take the same branch of `displaceBoundary`: no inset, and the offset carries half
+	of it.
+
+	Computing this inside the stroke resolver was the first attempt, and it left every antialiased
+	FILL without a skirt: that resolver returns early when there are no stroke candidates, which is
+	every plain path. Six hundred and sixty-two icons noticed. */
+	_data->_bypassFringe = 0.0f;
+	if ((_data->_relocateRule == RelocateRule::Auto
+				|| _data->_relocateRule == RelocateRule::Never)
+			&& (_data->_boundaryOffset > 0.0f || _data->_boundaryInset > 0.0f)) {
+		_data->_bypassFringe = _data->_boundaryOffset + _data->_boundaryInset * 0.5f;
+	}
+
+	_data->resolveCandidates();
+	flushStrokeCandidates(); // replays anything stage B rejected, in arrival order
+	_data->resolveFills(this);
+
+	_data->_bypassBase = res.nvertexes;
+	res.nvertexes += _data->_bypassVertexes;
+	res.nfaces += _data->_bypassFaces;
+
 	_data->_vertexOffset = res.nvertexes;
 
 	if ((_data->_relocateRule == RelocateRule::Monotonize)
 			&& (_data->_boundaryOffset > 0.0f || _data->_boundaryInset > 0.0f)) {
 		_data->_dryRun = true;
+	}
+
+	/* Nothing left for the sweep is a success, not a failure.
+
+	When every contour of a path took the fast path the mesh is empty, and `computeInterior` on an
+	empty mesh reports failure - which the callers read as "this path produced nothing" and skip
+	`write` for. Forty thousand disjoint rectangles came out as zero triangles before this was
+	here. */
+	if (_data->_nvertexes == 0 && _data->_bypassVertexes > 0) {
+		return true;
 	}
 
 	if (!_data->computeInterior()) {
@@ -465,6 +969,154 @@ bool Tesselator::prepare(TessResult &res) {
 }
 
 bool Tesselator::write(TessResult &res) {
+	/* The accepted ribbons go out FIRST, and above the validity guard on purpose: their block was
+	counted into `res.nvertexes` by `prepare`, so a sweep that failed afterwards must not leave it
+	unwritten and the indexes shifted.
+
+	Ring order is `top0, bottom0..bottomN-1, topN-1..top1` (SPTessLine.h), so the two chains index
+	back out of it as below. Each segment is one convex trapezoid and splits either way; this takes
+	the diagonal `top_s -> bottom_{s+1}` for both halves, which keeps the two triangles' winding
+	consistent with `exportQuad`'s. */
+	if (!_data->_ribbons.empty()) {
+		uint32_t base = _data->_bypassBase;
+		uint32_t triangle[3] = {0};
+
+		const float fringe = _data->_bypassFringe;
+
+		for (auto &accepted : _data->_ribbons) {
+			auto &ring = accepted.ring;
+			const uint32_t total = uint32_t(ring.size());
+			const uint32_t n = total / 2;
+
+			/* One corner of the fringe, transcribed from `displaceBoundary` on the branch a
+			split-free contour takes: no relocation of the interior vertex, the whole reach going
+			outward, and the same spike clamp - a corner sharper than a ratio of three keeps its
+			place and fades in instead, which is what `_value` is. */
+			const auto displace = [&](uint32_t k, bool flip, Vec2 &out, float &value, Vec2 &norm) {
+				// `flip` swaps the two NEIGHBOURS, which is what reversing the ring means. It does
+				// not move the vertex: displacing `total-1-k` and storing it at `k` was the first
+				// attempt and it scrambles the skirt, which showed as three times the area.
+				const Vec2 &a = ring[(k + total - 1) % total];
+				const Vec2 &cur = ring[k];
+				const Vec2 &c = ring[(k + 1) % total];
+				const Vec2 &prev = flip ? c : a;
+				const Vec2 &next = flip ? a : c;
+
+				Vec4 r;
+				getVertexNormal(&prev.x, &cur.x, &next.x, &r.x);
+
+				value = 0.0f;
+				if (sprt::isnan(r.y) || r.y > 3.0f) {
+					value = 1.0f - 3.0f / r.y;
+					r.y = 3.0f;
+				}
+
+				norm = -Vec2(r.z, r.w);
+
+				const float offsetMod = copysign(r.y * fringe, r.x);
+				out = Vec2(cur.x + r.z * offsetMod, cur.y + r.w * offsetMod);
+			};
+
+			/* WHICH WAY IS OUT is checked, not deduced.
+
+			`displaceBoundary`'s sign comes from the cross product of the two edge directions, so
+			it depends on how the ring is wound - and a fringe pointing inward is a dark halo
+			inside the stroke: invisible at a glance and miserable to attribute. Take a vertex that
+			is certainly on the hull (the lexicographic maximum), displace it, and see whether it
+			moved away from the middle. */
+			bool reversed = false;
+			if (fringe > 0.0f) {
+				Vec2 centroid;
+				uint32_t hull = 0;
+				for (uint32_t i = 0; i < total; ++i) {
+					centroid += ring[i];
+					if (ring[i].x > ring[hull].x
+							|| (ring[i].x == ring[hull].x && ring[i].y > ring[hull].y)) {
+						hull = i;
+					}
+				}
+				centroid /= float(total);
+
+				Vec2 out, norm;
+				float value = 0.0f;
+				displace(hull, false, out, value, norm);
+				reversed = Vec2::dot(out - ring[hull], ring[hull] - centroid) < 0.0f;
+			}
+
+			/* Each corner's displacement is computed ONCE and kept: the interior vertex wants its
+			normal and the fringe vertex wants the point, and both come out of the same
+			`getVertexNormal`. Computing it twice was doubling the only arithmetic on this path. */
+			auto &scratch = _data->_displaceScratch;
+			if (fringe > 0.0f) {
+				scratch.clear();
+				scratch.resize(total);
+				for (uint32_t i = 0; i < total; ++i) {
+					displace(i, reversed, scratch[i].point, scratch[i].value, scratch[i].norm);
+				}
+			}
+
+			for (uint32_t i = 0; i < total; ++i) {
+				res.pushVertex(res.target, base + i, ring[i] + _data->_outputOrigin, 1.0f,
+						fringe > 0.0f ? scratch[i].norm : Vec2::ZERO);
+			}
+
+			if (accepted.fan) {
+				// Convex, so a fan from the first vertex covers it and every triangle is inside.
+				for (uint32_t i = 1; i + 1 < total; ++i) {
+					triangle[0] = base;
+					triangle[1] = base + i;
+					triangle[2] = base + i + 1;
+					res.pushTriangle(res.target, triangle);
+				}
+			} else {
+				const auto topIdx = [&](uint32_t i) { return i == 0 ? 0u : total - i; };
+				const auto bottomIdx = [&](uint32_t i) { return 1u + i; };
+
+				for (uint32_t seg = 0; seg + 1 < n; ++seg) {
+					triangle[0] = base + topIdx(seg);
+					triangle[1] = base + bottomIdx(seg);
+					triangle[2] = base + topIdx(seg + 1);
+					res.pushTriangle(res.target, triangle);
+
+					triangle[0] = base + bottomIdx(seg);
+					triangle[1] = base + bottomIdx(seg + 1);
+					triangle[2] = base + topIdx(seg + 1);
+					res.pushTriangle(res.target, triangle);
+				}
+			}
+
+			base += total;
+
+			if (fringe > 0.0f) {
+				// The displaced twins, then a quad per ring edge between the twin and its original
+				// - the same pair of triangles `exportQuad` emits, in the same order.
+				for (uint32_t i = 0; i < total; ++i) {
+					res.pushVertex(res.target, base + i,
+							scratch[i].point + _data->_outputOrigin, scratch[i].value,
+							scratch[i].norm);
+				}
+
+				for (uint32_t i = 0; i < total; ++i) {
+					const uint32_t j = (i + 1) % total;
+					const uint32_t tl = base + i, tr = base + j;
+					const uint32_t bl = base - total + i, br = base - total + j;
+
+					triangle[0] = tl;
+					triangle[1] = bl;
+					triangle[2] = tr;
+					res.pushTriangle(res.target, triangle);
+
+					triangle[0] = bl;
+					triangle[1] = br;
+					triangle[2] = tr;
+					res.pushTriangle(res.target, triangle);
+				}
+
+				base += total;
+			}
+		}
+	}
+
 	if (!_data->_valid) {
 		return false;
 	}
@@ -812,47 +1464,37 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 
 	const Vec2 *v0, *v1, *v2;
 
-	/* A cut that `connectEdges` refuses ends the region, it does not merely skip a step.
-	
-	What it refuses is a cut whose two ends are the same vertex - a triangle with no area, so the
-	cut itself is worth nothing. But skipping it and carrying on is not safe: the walk below makes
-	progress by consuming the cut it just made, and without one there is nothing to guarantee the
-	next turn is any different. An earlier version broke out of the inner loop only, and six
-	hundred crossing wires spun in the outer one forever.
-	
-	So the region stops where it stopped, keeping every triangle it had already produced. That is
-	the trade this whole path is built on: an invisible sliver missing beats a hang, and beats
-	throwing away the region - which is what failing here used to do, and failing the region
-	failed the entire path. */
-	bool degenerate = false;
+	/* WHAT A REFUSED CUT MEANS, and what it cost to get this wrong twice.
 
-	/* And a ceiling on the walks, which is not a magic number.
-	
-	Each turn of either loop below cuts one triangle off the region, and a polygon of V vertices
-	yields exactly V - 2 of them - so no region can need more turns than the mesh has vertices.
-	A walk that wants more is walking a ring that does not close, and on such a ring the closing
-	fan does not merely spin: it keeps CREATING edges, so six hundred crossing wires ran until
-	the pool gave out rather than until anything was drawn.
-	
-	`_nvertexes` is that ceiling, and reaching it means the same thing a refused cut means - the
-	region ends here, with whatever it has produced. */
-	uint32_t regionLimit = 0;
-	{
-		// The ring, measured once. A face of E edges yields E - 2 triangles, so neither walk
-		// below can want more turns than this - and a ring that does not come back within the
-		// mesh's own vertex count is not a ring at all, which is exactly the case being guarded.
-		auto e = edge;
-		const uint32_t hardLimit = _nvertexes + 2;
-		do {
-			++regionLimit;
-			e = e->_leftNext;
-		} while (e && e != edge && regionLimit < hardLimit);
+	`connectEdges` refuses a cut whose two ends are the same vertex - a triangle with no area. The
+	original code answered that by failing, which fails the whole path and loses the shape; an
+	attempt to carry on instead broke out of the inner loop only, and six hundred crossing wires
+	spun in the outer one forever.
 
-		if (!e || e != edge) {
-			return true; // the ring does not close: nothing here can be triangulated
-		}
-		regionLimit += 2;
-	}
+	The middle answer - end the region, keep the triangles already produced, let the path live -
+	was tried and is WRONG, in two ways that only appeared at scale, and both are recorded here so
+	the idea is not had a third time:
+
+	  * The partial triangulation leaves a boundary segment of zero length, and the bisector of
+	    such a corner is NaN. It reached a vertex's own position. See displaceBoundary.
+	  * The closing fan does not merely spin on a broken ring, it CREATES an edge per turn - so
+	    what used to be a fast failure became a grind. Measured: at eight thousand boxes the window
+	    stopped producing frames at all, while the same scene on the old behaviour drew every frame
+	    with one shape missing and a line in the log.
+
+	So a refused cut fails the region again, as it always did. What is kept from the attempt is the
+	CEILING below: the loops are bounded, so the hang cannot come back either. A shape that cannot
+	be triangulated is dropped, quickly, and says so. */
+
+	/* The ceiling, and it is not a magic number.
+
+	Each turn of either loop cuts one triangle off the region, and a polygon of V vertices yields
+	exactly V - 2 of them - so no region can need more turns than the mesh has vertices. A walk that
+	wants more is walking a ring that does not close.
+
+	Stated directly rather than measured by walking the ring first: that pre-walk was one more pass
+	over every region for a number this already knows. */
+	const uint32_t regionLimit = _nvertexes + 2;
 
 	// A counter EACH: the walk down the two chains and the fan that closes what is left are two
 	// passes over the same region, and either may take up to its length. Sharing one budget
@@ -860,7 +1502,7 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	uint32_t turns = 0;
 	uint32_t fanTurns = 0;
 
-	while (!degenerate && ++turns < regionLimit && up->getLeftLoopNext() != lo) {
+	while (++turns < regionLimit && up->getLeftLoopNext() != lo) {
 		if (VertLeq(up->getDstVec(), lo->getOrgVec())) {
 			if constexpr (TessVerbose == VerboseFlag::Full) {
 				sprt::cout << "Lo: " << *lo << "\n";
@@ -880,8 +1522,7 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 				if (tempHalfEdge == nullptr) {
-					degenerate = true;
-					break;
+					return false;
 				}
 
 				lo = tempHalfEdge->sym();
@@ -892,9 +1533,6 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 				if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
-			}
-			if (degenerate) {
-				break;
 			}
 			lo = lo->getLeftLoopPrev();
 			lo->_mark = v;
@@ -914,8 +1552,7 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| !Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(up, up->getLeftLoopPrev());
 				if (tempHalfEdge == nullptr) {
-					degenerate = true;
-					break;
+					return false;
 				}
 
 				up = tempHalfEdge->sym();
@@ -927,9 +1564,6 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
 			}
-			if (degenerate) {
-				break;
-			}
 			up = up->getLeftLoopNext();
 			up->_mark = v;
 		}
@@ -938,12 +1572,11 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	/* Now lo->Org == up->Dst == the leftmost vertex.  The remaining region
 	 * can be tessellated in a fan from this leftmost vertex.
 	 */
-	// The closing fan, and the same rules: a refused cut ends it, and so does the ceiling.
-	while (!degenerate && ++fanTurns < regionLimit
-			&& lo->getLeftLoopNext()->getLeftLoopNext() != up) {
+	// The closing fan, and the same rules: a refused cut fails it, and the ceiling ends it.
+	while (++fanTurns < regionLimit && lo->getLeftLoopNext()->getLeftLoopNext() != up) {
 		auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 		if (tempHalfEdge == nullptr) {
-			break;
+			return false;
 		}
 		if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 			_faceEdges.emplace_back(tempHalfEdge);
@@ -1544,8 +2177,7 @@ HalfEdge *Tesselator::Data::connectEdges(HalfEdge *eOrg, HalfEdge *eDst) {
 			sprt::cout << "ERROR: connectEdges on same vertex:\n\t" << *eOrg << "\n\t"
 					   << *eOrg->sym() << "\n\t" << *eDst << "\n";
 		}
-		// Handled by the caller: see `tessellateMonoRegion`. Not an error any more - it is the
-		// one shape a cut cannot have, and the answer is to not make that cut.
+		log::source().error("geom::Tesselator", "Tesselation failed on connectEdges");
 		return nullptr;
 	}
 
