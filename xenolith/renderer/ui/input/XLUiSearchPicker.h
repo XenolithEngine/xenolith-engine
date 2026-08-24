@@ -203,12 +203,39 @@ public:
 	// The hit a display row stands for, or maxOf<size_t>() for a category row.
 	size_t getHitForRow(size_t row) const;
 
+	// What a display row SAYS: a hit's title, or a category's name - the one thing about a category
+	// row that is not derivable from the hits, since the row exists precisely where they do not.
+	// Empty for no such row.
+	StringView getRowTitle(size_t row) const;
+
 	// Where a hit is showing, or maxOf<size_t>() when its category is collapsed.
 	size_t getRowForHit(size_t hit) const;
 
 	// Open or close a category row. False in the flat mode, and for a row that is not a category.
 	virtual bool toggleRow(size_t row);
 	bool isRowExpanded(size_t row) const;
+
+	/* True while the tree is showing categories: grouped, and nothing typed. With a query the tree
+	is a flat list at depth 0, because a ranking crosses categories.
+
+	Asked of the query THE CURRENT HITS WERE BUILT FOR, never of the field. Editing a TextInput is a
+	request to the platform whose text arrives back by echo, so a widget refreshed with an explicit
+	query has hits for one string and a field still showing another - and reading the field there
+	renders the right results in the wrong MODE, which is a ranked list drawn as a tree of two
+	categories. That is not hypothetical; it is what this was written after.
+
+	Public because it is the one question that cannot be derived from outside: a caller comparing
+	getRowCount() against getHits().size() gets the mode wrong exactly when every category is
+	collapsed, which is the state the tree opens in. */
+	bool isGrouping() const;
+
+	/* Make a hit VISIBLE, expanding the category it sits under. True when it is showing afterwards.
+
+	Grouped, the tree opens with every category closed, so a hit is at no row at all - and a
+	selection at no row is one setSelectedRow cannot take, the arrows cannot move off (they walk
+	what is displayed) and Enter cannot activate. Opening the list ON a value therefore means
+	revealing it, not just naming it. */
+	bool revealHit(size_t hit);
 
 	// Index into getHits(), or maxOf<size_t>() when the list is empty. A HIT index in both modes,
 	// so a caller that knows what it wants selected does not have to know how it is displayed.
@@ -256,16 +283,6 @@ protected:
 
 	// Which category a hit is filed under, by the config's rule or by the default one.
 	StringView groupOf(const SearchHit &) const;
-
-	/* True while the tree is showing categories: grouped, and nothing typed. With a query the tree
-	is a flat list at depth 0, because a ranking crosses categories.
-
-	Asked of the query THE CURRENT HITS WERE BUILT FOR, never of the field. Editing a TextInput is a
-	request to the platform whose text arrives back by echo, so a widget refreshed with an explicit
-	query has hits for one string and a field still showing another - and reading the field there
-	renders the right results in the wrong MODE, which is a ranked list drawn as a tree of two
-	categories. That is not hypothetical; it is what this was written after. */
-	bool isGrouping() const;
 
 	SearchPickerConfig _config;
 
@@ -329,6 +346,11 @@ public:
 	virtual void close();
 	bool isOpen() const { return _popup != nullptr; }
 	SubWindow *getPopup() const { return _popup; }
+
+	// The open list itself - the hits it holds, the row it has selected, the query it answered.
+	// Null while the picker is closed. This is the surface's panel typed back to what this class
+	// asked it to build, and the only supported way to reach it.
+	SearchPickerContent *getContent() const;
 
 	basic2d::Label *getLabel() const { return _label; }
 	basic2d::IconSprite *getIcon() const { return _icon; }

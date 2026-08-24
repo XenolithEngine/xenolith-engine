@@ -658,7 +658,19 @@ header, a platform branch, or an allocation. The essentials:
   the wrong shape for what they do. `ui::SearchPicker` is a query line over a
   virtualized result list (`ui::SearchSystem` + a `SearchSource`): a list of
   hundreds is not a menu, so the query line keeps focus and the arrows move a
-  selection somewhere else. `ui::InlineEditor` edits over a **rectangle** rather
+  selection somewhere else. What it opened is reached with `getContent()` and
+  never by casting `getPopup()->getLayout()`: a popup surface's layout is a
+  WRAPPER and the panel `PopupSurfaceConfig::makePanel` built is a child of it,
+  so that cast answered null for every caller that ever tried - and null is also
+  what a closed picker looks like, which is why it read as a timing problem.
+  `SubWindow::getPanel()` is the general form of the same answer. Grouped
+  (`grouped`, category from `SearchItemsData["category"]` or `group`), the tree
+  opens with every category CLOSED, and `highlight` - the value the list opens ON
+  - reveals the one holding it and no others (`revealHit`); a list whose
+  categories were all shut showed no selection, gave the arrows no row to step
+  off and gave Enter nothing to activate. `isGrouping()` answers the mode, which
+  cannot be derived from outside: with everything collapsed there are FEWER rows
+  than hits, not more. `ui::InlineEditor` edits over a **rectangle** rather
   than inside a node (`beginInlineEdit` / `beginInlineTextEdit`, or a
   `ui::InlineEditTarget` on the node itself): a virtualized row is destroyed by
   scrolling and by `invalidateSource()`, and a `ui::TextInput` holds the IME, so

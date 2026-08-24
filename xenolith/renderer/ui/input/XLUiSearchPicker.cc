@@ -363,16 +363,36 @@ void SearchPickerContent::handleResult(SearchResult &&result) {
 	// The current value if it is still in the list, the first row otherwise. Not "keep the previous
 	// index": after a query narrows the list, index 3 is a different thing than it was.
 	size_t selected = _hits.empty() ? maxOf<size_t>() : 0;
+	bool highlighted = false;
 	if (!_config.highlight.empty()) {
 		for (uint32_t i = 0; i < _hits.size(); ++i) {
-			if (_hits[i].data.getString("id") == _config.highlight
-					|| StringView(_hits[i].title) == StringView(_config.highlight)) {
+			// THROUGH A CONST REFERENCE, because `data` is the caller's and `id` is optional in it:
+			// `_hits` is a non-const member, so the plain subscript picks the non-const `getString`,
+			// which on a missing key hands back the shared null container and trips an assert. Every
+			// caller whose items carry no `id` - which is every caller that identifies a hit by its
+			// title - crashed here the first time a picker with a VALUE was opened, since
+			// SearchPicker::open always fills `highlight` in from it.
+			const auto &hit = _hits[i];
+			if (hit.data.getString("id") == _config.highlight
+					|| StringView(hit.title) == StringView(_config.highlight)) {
 				selected = i;
+				highlighted = true;
 				break;
 			}
 		}
 	}
 
+	/* Revealed BEFORE it is selected, and ONLY where `highlight` actually named it.
+
+	Grouped, the tree opens with every category closed - which is the overview it is for - so the
+	hit that answers `highlight` is at no row, and setSelected would tell the tree to select
+	nothing: a list asked to open ON its current value with no way to show it, no row for the arrows
+	to step off (they walk the display) and nothing for Enter to activate. Opening one category is
+	what "open on this value" means. The fallback to hit 0 is not that claim and reveals nothing,
+	or every grouped list would open with its first category unfolded for no reason anybody gave. */
+	if (highlighted) {
+		revealHit(selected);
+	}
 	setSelected(selected);
 	updateStatus();
 }
@@ -471,9 +491,33 @@ size_t SearchPickerContent::getHitForRow(size_t row) const {
 	return index < _hits.size() ? index : maxOf<size_t>();
 }
 
-size_t SearchPickerContent::getRowForHit(size_t hit) const {
+StringView SearchPickerContent::getRowTitle(size_t row) const {
 	if (!_tree) {
-		return hit < _hits.size() ? hit : maxOf<size_t>();
+		return row < _hits.size() ? StringView(_hits[row].title) : StringView();
+	}
+	auto r = _tree->getRow(row);
+	if (!r) {
+		return StringView();
+	}
+	if (!r->isCategory()) {
+		const auto hit = getHitForRow(row);
+		return hit < _hits.size() ? StringView(_hits[hit].title) : StringView();
+	}
+	return r->getData().getString("name");
+}
+
+size_t SearchPickerContent::getRowForHit(size_t hit) const {
+	if (hit >= _hits.size()) {
+		/* NOTHING SELECTED is not a hit, and asking where it shows has one answer: nowhere.
+
+		Without this the walk below compares maxOf against what getHitForRow returns for a CATEGORY
+		row - which is maxOf, meaning "this row stands for no hit" - and matches on the first one.
+		setSelected(maxOf) then told the tree to select that category, so an empty selection drew
+		as a highlighted category header. */
+		return maxOf<size_t>();
+	}
+	if (!_tree) {
+		return hit;
 	}
 	for (size_t i = 0; i < _tree->getRowCount(); ++i) {
 		if (getHitForRow(i) == hit) {
@@ -495,6 +539,33 @@ bool SearchPickerContent::toggleRow(size_t row) {
 
 bool SearchPickerContent::isRowExpanded(size_t row) const {
 	return _tree ? _tree->isRowExpanded(row) : false;
+}
+
+bool SearchPickerContent::revealHit(size_t hit) {
+	if (hit >= _hits.size()) {
+		return false;
+	}
+	if (getRowForHit(hit) != maxOf<size_t>()) {
+		return true; // flat, or its category is already open
+	}
+	if (!_tree) {
+		return false;
+	}
+
+	// By NAME rather than by walking children: a collapsed category has no rows to walk, and the
+	// name is what filed the hit there in the first place.
+	const auto category = groupOf(_hits[hit]);
+	for (size_t i = 0; i < _tree->getRowCount(); ++i) {
+		auto r = _tree->getRow(i);
+		if (!r || !r->isCategory() || r->getData().getString("name") != category) {
+			continue;
+		}
+		if (!_tree->isRowExpanded(i)) {
+			_tree->toggleRow(i);
+		}
+		return getRowForHit(hit) != maxOf<size_t>();
+	}
+	return false;
 }
 
 void SearchPickerContent::updateStatus() {
@@ -1009,6 +1080,10 @@ void SearchPicker::close() {
 }
 
 // ---- the surface ------------------------------------------------------------------------------
+
+SearchPickerContent *SearchPicker::getContent() const {
+	return _popup ? dynamic_cast<SearchPickerContent *>(_popup->getPanel()) : nullptr;
+}
 
 Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
 		SearchPickerConfig &&config, MenuSide side) {

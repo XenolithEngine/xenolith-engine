@@ -138,16 +138,8 @@ bool SearchPickerLayout::init() {
 	
 	Beside the flat one rather than instead of it, so that the two paths cannot drift apart
 	unnoticed - which is the same reason the popup surface is here beside the embedded one. */
-	auto groupedConfig = config;
-	groupedConfig.grouped = true;
-	groupedConfig.onActivate = [this](const ui::SearchHit &hit) {
-		++_activations;
-		_lastActivation = hit.title;
-	};
-
-	_grouped = addChild(Rc<ui::SearchPickerContent>::create(sp::move(groupedConfig)), ZOrder(1));
-	_grouped->setName("picker-grouped");
-	_grouped->setContentSize(Size2(320.0f, 300.0f));
+	_baseConfig = config;
+	buildGrouped(StringView());
 
 	_picker = addChild(Rc<ui::SearchPicker>::create(), ZOrder(2));
 	_picker->setName("picker");
@@ -170,6 +162,31 @@ bool SearchPickerLayout::init() {
 	_neighbour->setCaretBlink(false);
 
 	return true;
+}
+
+/* A FRESH grouped surface, because `highlight` is settled when the content is built.
+
+Rebuilt rather than mutated: the highlight is what the list opens ON, and a value arriving after the
+list is already showing is a different question (that one is `setSelected`). A stand that mutated it
+would be asserting about a path no caller has. */
+void SearchPickerLayout::buildGrouped(StringView highlight) {
+	if (_grouped) {
+		_grouped->removeFromParent();
+		_grouped = nullptr;
+	}
+
+	auto groupedConfig = _baseConfig;
+	groupedConfig.grouped = true;
+	groupedConfig.highlight = highlight.str<Interface>();
+	groupedConfig.onActivate = [this](const ui::SearchHit &hit) {
+		++_activations;
+		_lastActivation = hit.title;
+	};
+
+	_grouped = addChild(Rc<ui::SearchPickerContent>::create(sp::move(groupedConfig)), ZOrder(1));
+	_grouped->setName("picker-grouped");
+	_grouped->setContentSize(Size2(320.0f, 300.0f));
+	_contentSizeDirty = true;
 }
 
 void SearchPickerLayout::rebuildSource() {
@@ -298,12 +315,15 @@ Value SearchPickerLayout::encodeRows(ui::SearchPickerContent *content) const {
 			row.setInteger(int64_t(hit), "hit");
 			row.setString(content->getHits()[hit].title, "title");
 		}
+		if (hit == maxOf<size_t>()) {
+			// From the widget, not from the tree node underneath it: what a category row SAYS is
+			// the one thing about it that is not derivable from the hits, and reaching past the
+			// widget for it was a guess about a structure the widget owns.
+			row.setString(content->getRowTitle(i), "title");
+		}
 		if (tree) {
 			if (auto r = tree->getRow(i)) {
 				row.setInteger(int64_t(r->depth), "depth");
-				if (hit == maxOf<size_t>()) {
-					row.setString(r->getData().getString("name"), "title");
-				}
 			}
 		}
 		rows.addValue(sp::move(row));
@@ -317,6 +337,17 @@ Value SearchPickerLayout::encodeState() const {
 
 	Value grouped = encodeContent(_grouped);
 	grouped.setValue(encodeRows(_grouped), "display");
+	if (_grouped) {
+		grouped.setBool(_grouped->isGrouping(), "grouping");
+		// WHERE the selection shows, which in a tree is not WHAT is selected: a hit under a closed
+		// category is selected and at no row, and "nothing is selected" is also at no row.
+		const auto row = _grouped->getRowForHit(_grouped->getSelected());
+		grouped.setInteger(row == maxOf<size_t>() ? -1 : int64_t(row), "selectedRow");
+		if (auto tree = _grouped->getTree()) {
+			const auto shown = tree->getSelectedRow();
+			grouped.setInteger(shown == maxOf<size_t>() ? -1 : int64_t(shown), "treeRow");
+		}
+	}
 	ret.setValue(sp::move(grouped), "grouped");
 
 	if (_picker) {
@@ -328,6 +359,20 @@ Value SearchPickerLayout::encodeState() const {
 		if (auto popup = _picker->getPopup()) {
 			picker.setString(popup->getId(), "popupId");
 			picker.setBool(popup->isNative(), "popupNative");
+			// The panel the surface was built AROUND. A popup's layout is a wrapper, so this is not
+			// reachable by casting getLayout() - and a caller that tried got null, which is also
+			// what a closed picker looks like.
+			picker.setBool(popup->getPanel() != nullptr, "popupHasPanel");
+		}
+		// Typed back to what the picker asked to have built. Null while it is closed.
+		if (auto content = _picker->getContent()) {
+			picker.setInteger(int64_t(content->getHits().size()), "popupHits");
+			picker.setString(content->getQuery(), "popupQuery");
+			const auto sel = content->getSelected();
+			picker.setInteger(sel == maxOf<size_t>() ? -1 : int64_t(sel), "popupSelected");
+			if (sel != maxOf<size_t>()) {
+				picker.setString(content->getHits()[sel].title, "popupSelectedTitle");
+			}
 		}
 		ret.setValue(sp::move(picker), "picker");
 	}
@@ -402,9 +447,18 @@ void SearchPickerLayout::registerCommands() {
 		}
 		const Value &a = args;
 		if (a.hasValue("index")) {
-			return ackValue(_grouped->setSelected(size_t(a.getInteger("index"))));
+			// -1 is `setSelected(maxOf)`: NOTHING SELECTED, which is public API and a state a
+			// grouped tree used to draw as a highlighted first category.
+			const auto index = a.getInteger("index");
+			return ackValue(_grouped->setSelected(index < 0 ? maxOf<size_t>() : size_t(index)));
 		}
 		return ackValue(_grouped->moveSelection(int32_t(a.getInteger("delta"))));
+	});
+
+	addCommand("grouped-highlight", "Rebuild the grouped surface opened ON a value: {value}",
+			[this](Value &&args) {
+		buildGrouped(static_cast<const Value &>(args).getString("value"));
+		return ackValue(_grouped != nullptr);
 	});
 
 	addCommand("grouped-toggle", "Open or close the grouped surface's category row {row}",
