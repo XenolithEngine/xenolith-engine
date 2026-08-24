@@ -70,8 +70,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 
 		const bool native = surface->isNative();
 
-		if (native && (!config.stylesheet.empty() || !config.stylesheetSource.empty())) {
-			// A native popup is a scene of its own and the parent window's sheet does not reach it.
+		if (!config.stylesheet.empty() || !config.stylesheetSource.empty()) {
 			StyleSystem *style = nullptr;
 			if (!config.stylesheet.empty()) {
 				style = layout->addSystem(Rc<StyleSystem>::create(
