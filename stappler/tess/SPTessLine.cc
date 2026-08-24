@@ -383,6 +383,10 @@ LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tess
 	if (stroke) {
 		strokeWriter.init(stroke, cfg, distanceError);
 		dashWriter.init(&strokeWriter, cfg.dashArray, cfg.dashOffset);
+
+		// A dashed contour is many ribbons plus a cap on each end of each of them - a v1 exclusion
+		// for the fast path, decided once here rather than re-derived per contour.
+		strokeWriter.allowBypass = !dashWriter.isActive();
 	}
 
 	buffer[0].next = &buffer[1];
@@ -420,7 +424,9 @@ void LineDrawer::drawBegin(float x, float y) {
 	y -= drawOrigin.y;
 
 	if (fill) {
-		fillCursor = fill->beginContour();
+		// The contour starts here; `beginContour` is taken when it is emitted, which is either at
+		// drawClose or during a replay. The call is pure, so moving it changes nothing else.
+		fillPoints.clear();
 	}
 
 	if (stroke) {
@@ -474,14 +480,19 @@ void LineDrawer::drawClose(bool closed) {
 
 	if (fill) {
 		if (!target->point.fuzzyEquals(origin[0], getCloseControlDistance())) {
-			fill->pushVertex(fillCursor, target->point);
+			fillPoints.emplace_back(target->point);
 		}
 
 		// A fill always closes its contour - an area needs a boundary, so an open subpath is
 		// filled as if it ended where it started. That is a property of the FILL only: it must
 		// not be pushed onto the stroke, which would then draw a segment the path does not
 		// contain (SVG strokes an open subpath open, however it is filled).
-		fill->closeContour(fillCursor);
+		if (!fillPoints.empty() && !fill->pushFillCandidate(SpanView<Vec2>(fillPoints))) {
+			fillCursor = fill->beginContour();
+			for (auto &p : fillPoints) { fill->pushVertex(fillCursor, p); }
+			fill->closeContour(fillCursor);
+		}
+		fillPoints.clear();
 	}
 
 	if (stroke) {
@@ -498,8 +509,9 @@ void LineDrawer::push(float x, float y) {
 
 	if (fill) {
 		if (count > 0) {
-			//std::cout << "Push: " << origin[0] << " " << target->point << "\n";
-			fill->pushVertex(fillCursor, target->point);
+			// Collected, not pushed: the contour is offered whole at drawClose, and replayed
+			// through this same call if it is refused. See Tesselator::pushFillCandidate.
+			fillPoints.emplace_back(target->point);
 		}
 	}
 

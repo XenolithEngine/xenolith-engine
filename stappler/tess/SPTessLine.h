@@ -86,6 +86,29 @@ struct SP_PUBLIC StrokeConfig {
 //
 // which makes the `top0 -> bottom0` edge the start cap and `bottomN -> topN` the end cap.
 //
+/* A contour held back from the sweep while it is decided whether it needs one.
+
+Owned by the Tesselator, in the Tesselator's pool: every caller builds its LineDrawer on the stack
+and destroys it before `prepare`, so nothing the writer owns can outlive the decision.
+
+`replay` reconstructs a StrokeWriter from these scalars and runs the ordinary streaming emit. It is
+a plain function pointer so that SPTess.cc needs to know nothing about strokes - the dependency runs
+SPTessLine.h -> SPTess.h and never the other way. */
+struct SP_PUBLIC StrokeCandidate {
+	SpanView<Vec2> points;
+	float halfWidth = 0.0f;
+	float miterLimit = 4.0f;
+	float distanceError = 0.0f;
+	LineCup cup = LineCup::Butt;
+	bool closed = false;
+
+	// Filled by the tesselator when it resolves the candidate: the outward reach of the antialias
+	// fringe, or zero when there is none. The clearance test needs it.
+	float fringe = 0.0f;
+
+	void (*replay)(Tesselator *, const StrokeCandidate &) = nullptr;
+};
+
 // This is split out of LineDrawer because a dashed stroke has to start and end a ribbon many
 // times over one contour, so the ribbon state has to be separately resettable.
 struct SP_PUBLIC StrokeWriter {
@@ -98,6 +121,40 @@ struct SP_PUBLIC StrokeWriter {
 	void end(bool closed);
 
 	bool isOpen() const { return _open; }
+
+	/* THE CONTOUR IS BUFFERED, then replayed - and the ribbon is still emitted by exactly the code
+	that used to emit it while streaming.
+
+	A contour cannot be judged until it is whole: whether its ribbon self-intersects depends on
+	joins two segments apart, and whether it clears the rest of the path depends on segments an
+	arbitrary distance away. `lineTo` therefore only collects, with the same dedup filter it always
+	applied, and `emitStreaming` walks the buffer producing the identical sequence of pushStroke
+	calls in the identical order. Replaying a filtered buffer through the filter is a no-op, so the
+	streamed output is unchanged to the bit. */
+	void emitStreaming(bool closed);
+
+	static void replayCandidate(Tesselator *, const StrokeCandidate &);
+
+	/* The ribbon of an eligible contour, as `2P` points in the order the mesh would have held
+	them: `top0, bottom0, bottom1, ..., bottomN, topN, ..., top1`.
+
+	Built expression for expression from the streaming code, so that the same contour produces the
+	same floats whichever path it takes. `out` is resized, not appended to. */
+	static void buildRibbon(const StrokeCandidate &, mem_std::Vector<Vec2> &out);
+
+	/* Stage A of the eligibility test: everything decidable from the contour alone.
+
+	Stage B - the winding rule, the relocation rule and whether this ribbon clears the rest of the
+	path - is decided later, in `Tesselator::prepare`, because every caller configures the
+	tesselator AFTER running the LineDrawer and those answers do not exist yet.
+
+	`allowBypass` is cleared while a dash pattern is active: a dashed contour is many ribbons plus
+	their caps, which is a v1 exclusion. */
+	bool isBypassEligible(bool closed) const;
+
+	bool allowBypass = true;
+
+	float _distanceError = 0.0f;
 
 	void pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2);
 
@@ -114,8 +171,12 @@ struct SP_PUBLIC StrokeWriter {
 	LineCup _lineCup = LineCup::Butt;
 	uint32_t _capSegments = 0;
 
-	Vec2 _origin[2];
-	Vec2 _prev;
+	// The contour being collected. Reused across contours, so a path of many dashes or many
+	// subpaths pays one allocation, not one per piece.
+	mem_std::Vector<Vec2> _points;
+
+	// The last point accepted, kept only so `lineTo` can reject a repeat of it. Everything else
+	// the emit needs now comes from `_points`.
 	Vec2 _cur;
 	size_t _count = 0;
 	bool _open = false;
@@ -220,6 +281,10 @@ struct SP_PUBLIC LineDrawer {
 	spent on the shape. */
 	Vec2 drawOrigin;
 	bool hasDrawOrigin = false;
+
+	// The fill contour being collected, offered to the tesselator whole at drawClose. Its points
+	// are exactly the ones the streaming push would have handed over, in order.
+	mem_std::Vector<Vec2> fillPoints;
 
 	Vec2 origin[2];
 	BufferNode buffer[3];

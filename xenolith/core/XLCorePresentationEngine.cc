@@ -686,6 +686,12 @@ void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	}
 	if (auto h = frame->getHandle()) {
 		_lastFrameTime = h->getTimeEnd() - h->getTimeStart();
+#if XL_FRAME_ACCOUNT
+		// Written INSIDE the existing block, after the DoNotPresent return above. Moving anything
+		// ahead of that return crashed the app once; a capture frame simply has no timing and is
+		// correctly absent from this account.
+		_lastFrameOrder = frame->getFrameOrder();
+#endif
 		_avgFrameTime.addValue(_lastFrameTime);
 		_avgFrameTimeValue = _avgFrameTime.getAverage();
 

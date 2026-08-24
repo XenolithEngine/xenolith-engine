@@ -54,6 +54,12 @@ struct StrokeResult {
 	mem_std::Vector<Vec2> vertexes;
 	mem_std::Vector<uint32_t> indexes;
 
+	// How many contours took the no-tesselation path. Asserted explicitly wherever it matters:
+	// a comparison of "with the fast path" against "without" passes vacuously the day the fast
+	// path stops firing, and that day would otherwise go unnoticed.
+	uint32_t usedBypass = 0;
+	bool prepared = false;
+
 	static void onVertex(void *target, uint32_t idx, const Vec2 &pt, float, const Vec2 &) {
 		auto self = static_cast<StrokeResult *>(target);
 		if (idx >= self->vertexes.size()) {
@@ -188,7 +194,52 @@ static StrokeResult strokePath(const StrokeConfig &cfg,
 		if (tess->prepare(result)) {
 			ret.vertexes.resize(result.nvertexes);
 			tess->write(result);
+			ret.prepared = true;
 		}
+		ret.usedBypass = tess->getStrokeBypassCount();
+	}, pool);
+	memory::pool::destroy(pool);
+
+	return ret;
+}
+
+/* The same path, run with the fast path forced on or off, and optionally with a fringe.
+
+Separate from `strokePath` on purpose: the forty-odd checks written against that one are a
+description of what a stroke IS, and they must go on running through whichever path the predicate
+picks. This one exists to run BOTH and compare them. */
+static StrokeResult strokePathEx(const StrokeConfig &cfg, const Callback<void(LineDrawer &)> &drawer,
+		bool bypass, float fringe) {
+	StrokeResult ret;
+
+	auto pool = memory::pool::create(memory::pool::acquire());
+	memory::perform([&] {
+		auto tess = Rc<Tesselator>::create(pool);
+		tess->setStrokeBypassEnabled(bypass);
+
+		do {
+			LineDrawer line(1.0f, nullptr, Rc<Tesselator>(tess), nullptr, cfg);
+			drawer(line);
+			line.drawClose(false);
+		} while (0);
+
+		tess->setWindingRule(Winding::NonZero);
+		if (fringe > 0.0f) {
+			tess->setBoundariesTransform(fringe, fringe);
+			tess->setRelocateRule(Tesselator::RelocateRule::Auto);
+		}
+
+		TessResult result;
+		result.target = &ret;
+		result.pushVertex = &StrokeResult::onVertex;
+		result.pushTriangle = &StrokeResult::onTriangle;
+
+		if (tess->prepare(result)) {
+			ret.vertexes.resize(result.nvertexes);
+			tess->write(result);
+			ret.prepared = true;
+		}
+		ret.usedBypass = tess->getStrokeBypassCount();
 	}, pool);
 	memory::pool::destroy(pool);
 
@@ -479,6 +530,273 @@ static void checkSvgParsing() {
 	check(solidCount == 2, "\"none\" and a negative length both leave the stroke solid");
 }
 
+// ---- the no-tesselation fast path ---------------------------------------------------------------
+
+/* WHERE ELIGIBILITY FLIPS, pinned from both sides.
+
+Without this the predicate is free to drift to never-firing, and every other check in this file
+would go on passing - they are written about what a stroke IS, not about which path drew it. Each
+row here asserts a COUNT, so "stopped firing" and "started firing where it must not" are both
+failures. */
+static void checkBypassPredicateBoundaries() {
+	StrokeConfig cfg;
+	cfg.lineWidth = 4.0f; // halfWidth 2
+
+	const auto vee = [](float dx, float dy) {
+		return [dx, dy](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(dx, 0.0f);
+			line.drawLine(dx + dx, dy);
+		};
+	};
+
+	// A right angle on segments of length L. The joint's chord reaches back by
+	// halfWidth * cot(45) = halfWidth, so eligibility flips at L = halfWidth / 0.98.
+	const auto corner = [](float len) {
+		return [len](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(len, 0.0f);
+			line.drawLine(len, len);
+		};
+	};
+
+	// A straight two-point line has no join at all.
+	auto straight = strokePathEx(cfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+	}, true, 0.0f);
+	check(straight.usedBypass == 1, "a straight line has no joins and is eligible");
+
+	// A gentle turn on long segments: the joint's reach is a small fraction of either.
+	auto gentle = strokePathEx(cfg, vee(100.0f, 20.0f), true, 0.0f);
+	check(gentle.usedBypass == 1, "a gentle turn on long segments is eligible");
+
+	/* THE BOUNDARY ITSELF, from both sides, with only the segment length changing.
+
+	At a right angle the chord reaches back by exactly `halfWidth` (cot 45 = 1), so with halfWidth
+	2 the flip is at a segment of 2 / 0.98 = 2.04. A pair either side of it is what says the
+	predicate is measuring the thing it claims to measure, rather than answering by accident. */
+	auto roomy = strokePathEx(cfg, corner(3.0f), true, 0.0f);
+	check(roomy.usedBypass == 1, "a right angle with room for its chord is eligible");
+
+	auto cramped = strokePathEx(cfg, corner(2.0f), true, 0.0f);
+	check(cramped.usedBypass == 0, "the same angle one segment shorter is not: the chords cross");
+
+	// Past the miter limit the streaming code takes the bevel branch, which is a different shape.
+	auto spike = strokePathEx(cfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+		line.drawLine(0.5f, 1.0f);
+	}, true, 0.0f);
+	check(spike.usedBypass == 0, "a spike past the miter limit is not eligible");
+
+	// A reversal reports a miter ratio of 1, so only the explicit test sees it.
+	auto reversal = strokePathEx(cfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+		line.drawLine(0.0f, 0.0f);
+	}, true, 0.0f);
+	check(reversal.usedBypass == 0, "a 180-degree reversal is not eligible");
+
+	// v1 exclusions, each for its own reason.
+	auto closed = strokePathEx(cfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+		line.drawLine(100.0f, 50.0f);
+		line.drawClose(true);
+	}, true, 0.0f);
+	check(closed.usedBypass == 0, "a closed contour is excluded in v1");
+
+	StrokeConfig roundCfg = cfg;
+	roundCfg.lineCup = LineCup::Round;
+	auto rounded = strokePathEx(roundCfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+	}, true, 0.0f);
+	check(rounded.usedBypass == 0, "a round cap is a contour of its own, excluded in v1");
+
+	const float dash[] = {10.0f, 10.0f};
+	StrokeConfig dashCfg = cfg;
+	dashCfg.dashArray = SpanView<float>(dash, 2);
+	auto dashed = strokePathEx(dashCfg, [](LineDrawer &line) {
+		line.drawBegin(0.0f, 0.0f);
+		line.drawLine(100.0f, 0.0f);
+	}, true, 0.0f);
+	check(dashed.usedBypass == 0, "a dashed contour is many ribbons, excluded in v1");
+
+	// The switch has to actually switch, or the comparison test below proves nothing.
+	auto off = strokePathEx(cfg, vee(100.0f, 20.0f), false, 0.0f);
+	check(off.usedBypass == 0, "the kill switch demotes an otherwise eligible contour");
+}
+
+/* THE SAME PATH, DRAWN BOTH WAYS.
+
+The fast path is only allowed to change how the region is cut into triangles, never what the region
+is. Area, component count and bounding box say that in the three ways this file already knows how to
+say it - and they are the right three, because vertex positions legitimately differ (a trapezoid
+strip and a swept mesh do not agree on where the interior points are).
+
+`usedBypass` is asserted on BOTH runs. Without it the day the predicate stops firing is the day this
+check quietly starts comparing the slow path against itself. */
+static void checkBypassMatchesTessellation() {
+	StrokeConfig cfg;
+	cfg.lineWidth = 4.0f;
+
+	struct Shape {
+		const char *name;
+		void (*draw)(LineDrawer &);
+	};
+
+	static const Shape shapes[] = {
+		{"a straight line",
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+		}},
+		{"an open V",
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(50.0f, 50.0f);
+			line.drawLine(100.0f, 0.0f);
+		}},
+		{"a zigzag of eight segments",
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			for (uint32_t i = 1; i <= 8; ++i) {
+				line.drawLine(float(i) * 20.0f, (i % 2) ? 15.0f : 0.0f);
+			}
+		}},
+		// The editor's own wire shape: control points horizontal, spread = max(50, |dx| * 0.5).
+		// A gentle S, which is what the fast path is for; a tighter curve folds its inner side and
+		// is correctly refused (see checkBypassPredicateBoundaries).
+		{"a wire-shaped cubic",
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawCubicBezier(150.0f, 0.0f, 150.0f, 100.0f, 300.0f, 100.0f);
+		}},
+	};
+
+	// Both without a fringe and with one. The fringe is the half that cannot be reasoned about
+	// from the interior: it is a skirt of its own, and whether the bypass builds the same skirt the
+	// boundary walk builds is exactly what an area comparison answers.
+	for (auto &shape : shapes) {
+	  for (float fringe : {0.0f, 0.5f}) {
+		auto on = strokePathEx(cfg, shape.draw, true, fringe);
+		auto off = strokePathEx(cfg, shape.draw, false, fringe);
+
+		check(on.usedBypass == 1 && off.usedBypass == 0,
+				mem_std::toString(shape.name, " (fringe ", fringe,
+						"): one run bypassed and one did not (", on.usedBypass, "/",
+						off.usedBypass, ")"));
+
+		check(off.area() > 0.0f
+						&& sprt::abs(on.area() - off.area()) <= off.area() * 0.005f,
+				mem_std::toString(shape.name, " (fringe ", fringe, "): the same area, ",
+						on.area(), " against ", off.area()));
+
+		check(on.components() == off.components(),
+				mem_std::toString(shape.name, " (fringe ", fringe, "): the same pieces, ",
+						on.components(), " against ", off.components()));
+
+		auto a = on.bbox();
+		auto b = off.bbox();
+		check(sprt::abs(a.origin.x - b.origin.x) < 0.01f
+						&& sprt::abs(a.origin.y - b.origin.y) < 0.01f
+						&& sprt::abs(a.size.width - b.size.width) < 0.01f
+						&& sprt::abs(a.size.height - b.size.height) < 0.01f,
+				mem_std::toString(shape.name, " (fringe ", fringe, "): the same bounds"));
+	  }
+	}
+}
+
+/* And what a contour that is NOT eligible produces, which must be what it produced before any of
+this existed - to the byte, not to a tolerance. */
+static void checkBypassFallbackIsIdentical() {
+	StrokeConfig round;
+	round.lineWidth = 4.0f;
+	round.lineCup = LineCup::Round;
+
+	const float dash[] = {10.0f, 10.0f};
+	StrokeConfig dashed;
+	dashed.lineWidth = 4.0f;
+	dashed.dashArray = SpanView<float>(dash, 2);
+
+	StrokeConfig plain;
+	plain.lineWidth = 4.0f;
+
+	struct Case {
+		const char *name;
+		const StrokeConfig *cfg;
+		void (*draw)(LineDrawer &);
+	};
+
+	const Case cases[] = {
+		{"a round cap", &round,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+		}},
+		{"a dashed line", &dashed,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+		}},
+		{"a closed rectangle", &plain,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+			line.drawLine(100.0f, 50.0f);
+			line.drawLine(0.0f, 50.0f);
+			line.drawClose(true);
+		}},
+		{"a spike past the miter limit", &plain,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+			line.drawLine(0.5f, 1.0f);
+		}},
+		{"a hairpin whose chords cross", &plain,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(2.0f, 0.0f);
+			line.drawLine(2.0f, 2.0f);
+		}},
+		{"a chain that comes back on itself", &plain,
+			[](LineDrawer &line) {
+			line.drawBegin(0.0f, 0.0f);
+			line.drawLine(100.0f, 0.0f);
+			line.drawLine(100.0f, 3.0f);
+			line.drawLine(0.0f, 3.0f);
+		}},
+	};
+
+	for (auto &c : cases) {
+		auto on = strokePathEx(*c.cfg, c.draw, true, 0.0f);
+		auto off = strokePathEx(*c.cfg, c.draw, false, 0.0f);
+
+		check(on.usedBypass == 0,
+				mem_std::toString(c.name, ": not eligible (", on.usedBypass, ")"));
+
+		bool same = on.vertexes.size() == off.vertexes.size()
+				&& on.indexes.size() == off.indexes.size();
+		if (same) {
+			for (size_t i = 0; i < on.vertexes.size(); ++i) {
+				if (on.vertexes[i].x != off.vertexes[i].x
+						|| on.vertexes[i].y != off.vertexes[i].y) {
+					same = false;
+					break;
+				}
+			}
+			for (size_t i = 0; same && i < on.indexes.size(); ++i) {
+				if (on.indexes[i] != off.indexes[i]) {
+					same = false;
+				}
+			}
+		}
+		check(same, mem_std::toString(c.name, ": falls back to the identical mesh"));
+	}
+}
+
 } // namespace
 
 void performVgStrokeTests() {
@@ -489,6 +807,9 @@ void performVgStrokeTests() {
 	checkOpenSubpathWithFill();
 	checkSolidFallback();
 	checkSvgParsing();
+	checkBypassPredicateBoundaries();
+	checkBypassMatchesTessellation();
+	checkBypassFallbackIsIdentical();
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler

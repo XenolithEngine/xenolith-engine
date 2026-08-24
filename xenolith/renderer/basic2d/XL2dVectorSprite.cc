@@ -35,8 +35,17 @@ static Rc<VectorCanvasDeferredResult> VectorSprite_runDeferredVectorCavas(
 		const VectorCanvasConfig &config, bool waitOnReady) {
 	Rc<VectorCanvasDeferredResult> ret = Rc<VectorCanvasDeferredResult>::create(waitOnReady);
 	queue->performAsync([image = move(image), config, ret]() mutable {
+#if XL_FRAME_ACCOUNT
+		// Inside the task, so it is the work and not the queue latency in front of it. Stamped
+		// before setResult, because setResult is what raises the signal the consumer waits on.
+		const auto workStart = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
 		auto canvas = VectorCanvas::getInstance();
-		ret->setResult(canvas->draw(config, move(image)));
+		auto result = canvas->draw(config, move(image));
+#if XL_FRAME_ACCOUNT
+		ret->setWorkTime(sp::platform::nanoclock(ClockType::Monotonic) - workStart);
+#endif
+		ret->setResult(sp::move(result));
 	}, ret);
 	return ret;
 }
@@ -466,6 +475,9 @@ void VectorSprite::updateVertexes(FrameInfo &frame) {
 		}
 
 		if (_deferred) {
+#if XL_FRAME_ACCOUNT
+			_director->countDeferredSpawned();
+#endif
 			_deferredResult =
 					VectorSprite_runDeferredVectorCavas(_director->getApplication()->getLooper(),
 							move(imageData), config, _waitDeferred);
