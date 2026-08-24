@@ -126,7 +126,12 @@ delete. Its height is the other invisible thing: a row that wraps onto four line
 height it actually draws at, which the check reads back beside the chips' own rectangles. A
 `ui::SearchPicker` highlights the characters a matcher named, and the row led by two emoji is the
 only place where a highlight counted in code points and one counted in UTF-16 units disagree - a
-difference no screenshot distinguishes from a font. A `ui::InlineEditor` is the strongest case of
+difference no screenshot distinguishes from a font. Three of its claims are invisible in a
+different way, being about a state that DRAWS nothing: that an open popup hands its panel back
+(`getContent()`, which the studio's palette was the first caller to need and got null from until
+`SubWindow::getPanel()` existed), that a grouped list opened on a value reveals the one category
+holding it, and that no selection selects no ROW - a grouped tree used to draw the first category
+header highlighted for it, because "stands for no hit" and "is not a hit" were the same number. A `ui::InlineEditor` is the strongest case of
 all: its whole reason to exist is that rebuilding every row of a virtualized table underneath an
 open editor leaves the typed text alone, and that a scroll ENDS the edit by keeping what was typed
 rather than dropping it. Nothing about either is visible in a frame - the editor looks the same

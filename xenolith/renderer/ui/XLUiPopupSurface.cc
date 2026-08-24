@@ -95,6 +95,10 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			return layout;
 		}
 
+		// The surface remembers what it was built around, so a caller that asked for a typed panel
+		// can have it back without guessing at this structure. See SubWindow::getPanel.
+		surface->_panel = panel;
+
 		if (!config.panelName.empty()) {
 			panel->setName(config.panelName);
 		}

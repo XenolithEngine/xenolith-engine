@@ -461,6 +461,50 @@ try:
     check("and clearing the query brings the categories back",
             all(r["category"] for r in rows) and rows[0]["title"] == first_category, rows[:2])
 
+    # --- opening a grouped list ON a value ------------------------------------------------------------
+    #
+    # `highlight` says which row the list opens on. Grouped, that row is under a category, and the
+    # tree opens with every category closed - so the hit was selected and displayed nowhere: the
+    # tree drew no selection, the arrows had no row to step off (they walk the display), and Enter
+    # had nothing to activate. A list asked to open ON a value showed no sign of it.
+    s.invoke("search-picker.grouped-highlight", value="")
+    g = s.invoke("search-picker.state")["grouped"]
+    rows = g["display"]
+    check("a grouped surface opens in the grouped mode", g["grouping"] is True, g["grouping"])
+    check("... with no highlight, every category stays closed",
+            all(r["category"] and r["expanded"] is False for r in rows), rows[:2])
+    check("... and hit 0 is selected while showing nowhere",
+            g["selected"] == 0 and g["selectedRow"] == -1 and g["treeRow"] == -1,
+            (g["selected"], g["selectedRow"], g["treeRow"]))
+
+    # A name from a category that is NOT the first, so that "the category holding it" is a claim
+    # with content: the first one opening would also be the answer to opening nothing in particular.
+    last = max(i for i, r in enumerate(rows) if r["category"])
+    s.invoke("search-picker.grouped-toggle", row=last)
+    opened = s.invoke("search-picker.state")["grouped"]["display"]
+    target = next(r["title"] for r in opened[last + 1:] if not r["category"])
+
+    s.invoke("search-picker.grouped-highlight", value=target)
+    g = s.invoke("search-picker.state")["grouped"]
+    rows = g["display"]
+    check("opened on a value, the category holding it is the one that is open",
+            [i for i, r in enumerate(rows) if r["category"] and r["expanded"]] == [last],
+            [(i, r["title"], r["expanded"]) for i, r in enumerate(rows) if r["category"]])
+    check("... the value is selected", rows[g["selectedRow"]]["title"] == target,
+            (g["selectedRow"], rows[g["selectedRow"]]["title"], target))
+    check("... and the tree is showing that selection, not none",
+            g["treeRow"] == g["selectedRow"] and g["treeRow"] >= 0,
+            (g["treeRow"], g["selectedRow"]))
+
+    # NOTHING SELECTED is not hit maxOf: asking where it shows used to walk the rows comparing that
+    # against what a CATEGORY row answers - which is the same "stands for no hit" - and match the
+    # first one, so an empty selection drew as a highlighted category header.
+    s.invoke("search-picker.grouped-select", index=-1)
+    g = s.invoke("search-picker.state")["grouped"]
+    check("clearing the selection selects no row, not the first category",
+            g["selected"] == -1 and g["selectedRow"] == -1 and g["treeRow"] == -1,
+            (g["selected"], g["selectedRow"], g["treeRow"]))
+
     # --- Enter in the popup chooses -------------------------------------------------------------------
     s.invoke("search-picker.open")
     time.sleep(1.0)
@@ -468,12 +512,26 @@ try:
     if open_popups:
         window = open_popups[0]
         s.ok("frame", count=4, window=window)
+
+        # THE PANEL THE SURFACE WAS BUILT AROUND, which a caller asked for and until now could not
+        # have: a popup's layout is a wrapper and the panel is a child of it, so the cast through
+        # getLayout() came back null - and null is also what a closed picker looks like, which is
+        # why it read as a timing problem for as long as it did.
+        st = s.invoke("search-picker.state")
+        check("an open popup carries the panel it was built around",
+                st["picker"]["popupHasPanel"] is True, st["picker"])
+        check("... and the control hands that panel back, typed",
+                st["picker"].get("popupHits", 0) > 0 and st["picker"]["popupQuery"] == "",
+                st["picker"])
+
         s.ok("input", window=window, native=True, events=key("DOWN"))
         time.sleep(0.4)
         s.ok("input", window=window, native=True, events=key("ENTER"))
         time.sleep(1.0)
         st = s.invoke("search-picker.state")
         check("Enter chooses and closes", popups(s) == [] and st["picker"]["open"] is False)
+        check("... and the closed control has no content to reach",
+                "popupHits" not in st["picker"], st["picker"])
         check("the control now carries a value", st["picker"]["value"] != "",
                 st["picker"]["value"])
         check("and shows it", st["picker"]["title"] == st["picker"]["value"],

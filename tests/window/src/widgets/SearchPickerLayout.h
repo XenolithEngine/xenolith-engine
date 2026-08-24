@@ -60,7 +60,13 @@ protected:
 
 	void rebuildSource();
 
+	// A fresh grouped surface, opened on `highlight` (empty for none). See the definition.
+	void buildGrouped(StringView highlight);
+
 	ui::SearchSystem *_search = nullptr;
+
+	// What every surface here is built from, kept so the grouped one can be rebuilt on a value.
+	ui::SearchPickerConfig _baseConfig;
 	ui::SearchPickerContent *_content = nullptr;
 
 	// The same widget with `grouped` on: a tree of categories while the query is empty, a flat
