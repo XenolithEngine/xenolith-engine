@@ -171,9 +171,21 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c,
 		return;
 	}
 
+#if XL_FRAME_ACCOUNT
+	auto mark = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 	if (ctx.collectDamage) {
 		for (auto &iv : cmd->vertexes) { ctx.damage->addInstances(c, cmd, iv); }
 	}
+
+#if XL_FRAME_ACCOUNT
+	{
+		auto now = sp::platform::nanoclock(ClockType::Monotonic);
+		damageTime += now - mark;
+		mark = now;
+	}
+#endif
 
 	if (material->getPipeline()->isSolid()) {
 		emplaceWritePlan(ctx.input, material, solidWritePlan, c, cmd, cmd->vertexes);
@@ -187,6 +199,10 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c,
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, cmd->vertexes);
 	}
+
+#if XL_FRAME_ACCOUNT
+	planTime += sp::platform::nanoclock(ClockType::Monotonic) - mark;
+#endif
 };
 
 void VertexPlan::applyNormalized(SpanView<InstanceVertexData> &vertexes,
@@ -258,7 +274,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c,
 	anything. Without it a frame that waited once for 10ms and a frame that waited ten times for
 	1ms report the same total. */
 	const bool wasReady = cmd->deferred->isReady();
-	const auto waitStart = sp::platform::clock(ClockType::Monotonic);
+	const auto waitStart = sp::platform::nanoclock(ClockType::Monotonic);
 #endif
 
 	cmd->deferred->acquireResult(
@@ -269,7 +285,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c,
 	});
 
 #if XL_FRAME_ACCOUNT
-	deferredWaitTime += sp::platform::clock(ClockType::Monotonic) - waitStart;
+	deferredWaitTime += sp::platform::nanoclock(ClockType::Monotonic) - waitStart;
 	deferredWorkTime += cmd->deferred->takeWorkTime();
 	++deferredCount;
 	if (!wasReady) {
@@ -915,16 +931,32 @@ void VertexPlan::drawWritePlanFlat(Context &ctx,
 }
 
 void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
+#if XL_FRAME_ACCOUNT
+	const auto writeStart = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 	pushInitial(writeTarget);
 	pushPlanVertexes(writeTarget, solidWritePlan);
 	pushPlanVertexes(writeTarget, surfaceWritePlan);
 	for (auto &it : transparentWritePlan) { pushPlanVertexes(writeTarget, it.second); }
+
+#if XL_FRAME_ACCOUNT
+	const auto spanStart = sp::platform::nanoclock(ClockType::Monotonic);
+	writeTime += spanStart - writeStart;
+	// Closed on every exit below, including the early one.
+	const auto closeSpans = [&] {
+		spanTime += sp::platform::nanoclock(ClockType::Monotonic) - spanStart;
+	};
+#endif
 
 	if (flatOrder) {
 		drawWritePlanFlat(ctx, writeTarget);
 
 		// everything is drawn in painter's order, so there is no solid/surface split to report
 		ctx.transparentCmds = uint32_t(ctx.materialSpans.size());
+#if XL_FRAME_ACCOUNT
+		closeSpans();
+#endif
 		return;
 	}
 
@@ -942,5 +974,8 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	for (auto &it : transparentWritePlan) { drawWritePlan(ctx, writeTarget, it.second); }
 
 	ctx.transparentCmds = uint32_t(ctx.materialSpans.size() - counter);
+#if XL_FRAME_ACCOUNT
+	closeSpans();
+#endif
 }
 } // namespace stappler::xenolith::basic2d

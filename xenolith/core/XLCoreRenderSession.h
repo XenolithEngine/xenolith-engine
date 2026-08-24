@@ -106,6 +106,43 @@ struct SP_PUBLIC DrawStat {
 	there cannot assume the stat in hand belongs to the frame that just ended - and a measurement
 	that attributes a number to the wrong frame is worse than one that reports nothing. */
 	uint64_t frameOrder;
+
+	/* ---- and WHERE inside the vertex stage the time went, in nanoseconds ------------------------
+
+	`vertexInputTime` is the whole of the stage and has been reported for years; these are the parts
+	it is made of, added because "the vertex stage is ten seconds" is not an answer to what to go
+	and change. One clock read per boundary, so they sum to the stage rather than overlapping.
+
+	  walk    - the command list, once, into per-material write plans
+	  buffer  - spawning the three device buffers, whose sizes the walk decided
+	  write   - copying vertexes, indexes and transforms into them
+	  span    - turning the plans into draw spans, painter order included
+	  upload  - flushing or setting the buffer data afterwards
+
+	`damage` and `plan` are the walk split in two and are NESTED inside it: read as "of the walk,
+	this much is that", never summed with it. */
+	uint64_t walkTime;
+	uint64_t bufferTime;
+	uint64_t writeTime;
+	uint64_t spanTime;
+	uint64_t uploadTime;
+
+	uint64_t damageTime; // inside walkTime
+	uint64_t planTime; // inside walkTime
+
+	/* THE TWO GAPS the five phases above do not cover, and one of them turned out to be the whole
+	frame.
+
+	`vertexInputTime` is stamped in the processor's CONSTRUCTOR, which runs when the attachment's
+	input is submitted, and closed in `finalize`. Between the two the work is handed to a queue -
+	so the stage's total includes however long it waited there before starting. Measured: the five
+	phases summed to 10 ms of a 10 011 ms stage, and the difference was not in any of them.
+
+	`fillTime` is the whole fill step, of which `writeTime + spanTime` is the part inside pushAll;
+	the rest is the buffer mapping and, when there is no persistent mapping, resizing three host
+	arrays the size of the frame. */
+	uint64_t queueWaitTime; // construction -> the body actually starting
+	uint64_t fillTime; // the whole fill step; writeTime + spanTime is its inner part
 #endif
 };
 

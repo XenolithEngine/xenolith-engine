@@ -48,6 +48,8 @@ enum class Winding {
 	AbsGeqTwo
 };
 
+struct StrokeCandidate;
+
 struct SP_PUBLIC TessResult {
 	uint32_t nvertexes = 0;
 	uint32_t nfaces = 0;
@@ -154,6 +156,50 @@ public:
 	// 2. allocate single vertex buffer and single index buffer
 	// 3. run `write ` for all tesselators to fill buffer
 	// To do this - pass single TessResult to all calls
+	/* ---- the no-tesselation fast path ----------------------------------------------------------
+
+	A contour whose ribbon provably does not self-intersect and does not come near the rest of the
+	path is a strip of convex trapezoids, and a strip of convex trapezoids is two triangles per
+	segment. Such a contour is emitted directly, and never enters the sweep at all.
+
+	It is decided per WHOLE CONTOUR, never per trapezoid, and the reason is the antialias fringe:
+	it is produced by walking the boundary of whatever the sweep was given (`computeBoundary` ->
+	`followBoundary` -> `displaceBoundary`), and `FaceEdge` has no way to say "this edge is a cut,
+	do not fringe it". Hand the sweep a piece of a ribbon and the cut edges get a full alpha ramp
+	lying INSIDE the stroke - a hairline seam across it.
+
+	`setStrokeBypassEnabled(false)` forces every candidate to be demoted and replayed, so a build
+	with it off must produce output identical to the bit. That is what makes the guarantee
+	testable rather than merely intended. */
+	void setStrokeBypassEnabled(bool);
+	bool isStrokeBypassEnabled() const;
+
+	// How many contours actually took the fast path. Zero is a legitimate answer and a test that
+	// does not assert on this number can pass vacuously the day the predicate stops firing.
+	uint32_t getStrokeBypassCount() const;
+
+	/* Hold a contour back from the sweep. The candidate's points are copied into this
+	tesselator's pool; the caller's buffer may die immediately after.
+
+	Returns false when the fast path is off or already latched off, in which case the caller must
+	stream the contour as usual.
+
+	THE LATCH IS WHAT BUYS BYTE-IDENTITY. Any call that puts geometry into the mesh directly -
+	`beginContour`, `pushVertex` - first replays everything pending, in the order it arrived, and
+	then latches the fast path off for the rest of this tesselator. So the first contour that
+	cannot be bypassed also demotes the ones before it, and the mesh sees every contour in its
+	original order no matter which way the decision went. */
+	bool pushStrokeCandidate(const StrokeCandidate &);
+	void flushStrokeCandidates();
+
+	/* The same offer for a plain filled contour.
+
+	A convex contour that touches nothing else in the path is a fan, and a fan needs no sweep. The
+	clearance test is what makes it safe, and it treats TOUCHING as disqualifying: two rectangles
+	sharing a corner are merged into one vertex by the sweep today, and emitting them apart would
+	quietly double that corner. */
+	bool pushFillCandidate(SpanView<Vec2>);
+
 	bool prepare(TessResult &);
 	bool write(TessResult &);
 
