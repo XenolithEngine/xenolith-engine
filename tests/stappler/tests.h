@@ -111,6 +111,7 @@ void performZipFuzzTests();
 void performIoSourceTests();
 void performDataModelTests();
 void performVgStrokeTests();
+void performVgTessFrameTests();
 void performSearchFuzzyTests();
 void performCommandHistoryTests();
 void performImageFormatTests();

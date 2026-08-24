@@ -420,11 +420,19 @@ what you need.
 | `tests/runtime` | `runtimetest` | `runtime_libc_wrapper` + `runtime` — the Xenolith Runtime (libc/STL/pthread) | CLI, self-checking |
 | `tests/libc` | `libctest` | the internal libc implementation — `runtime/libc_impl` **and** the `runtime_libc_wrapper` wrappers (including the substitute/replacement functions the wrappers supply when a function is missing on the platform). Built for the host **and** `x86_64-pc-windows-msvc`; `compare.sh` diffs the two for behavioural identity | CLI, host-vs-Windows diff |
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
+| `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
 - Changed a `stappler/` module → build `tests/window` (preferred — full stack) or
   `tests/stappler` (faster smoke). Drive either through the CLI (§0 / §2).
+- Changed `stappler/tess` or the vector canvas → `tests/tess`, and run BOTH
+  goldens: `tesstest golden` compares the tesselated mesh of every icon against
+  `golden/icons.txt`, `tesstest raster-golden` compares its rasterization
+  against `golden/raster.txt`. Geometry can change without the digest moving and
+  the other way round, so neither alone is the check. `--write` re-pins a golden,
+  and re-pinning is a decision to record in the commit message, not a way to make
+  a run green.
 - Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
   the libc wrappers themselves also run `tests/libc`.
 - Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its
@@ -481,6 +489,12 @@ scope, you are probably either (a) on a target that excludes that file, or
   macOS SDK when using a `+sprt` target). Override the whole search with
   `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=` (an explicit file wins over both
   locations).
+- **`headergen`** (`utils/headergen/`) regenerates the icon tables the 2d renderer
+  ships — `headergen material <material-design-icons>/src` writes `XL2dIcons.{h,cpp}`
+  into `gen/`. The path points at `src`, not at the checkout root: icon names are
+  built from the path, and from the root every name gains a `Src_` prefix. Run it
+  when the upstream icon set moves; for the current set its output is
+  byte-identical to `xenolith/renderer/basic2d/icons`.
 - **`xlmake`** (`utils/xlmake/`) is the project's GNU-make-compatible build driver
   (also a drop-in for the VSCode Makefile Tools extension); the `make` invocations
   in this document work with either.

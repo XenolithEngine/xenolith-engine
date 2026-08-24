@@ -70,7 +70,22 @@ struct EdgeDictNode {
 	int16_t windingAbove = 0;
 	bool horizontal = false;
 
+	/* A tombstone: this entry is out of the dictionary but still occupies its place.
+	
+	A FLAG rather than `edge = nullptr`, and the distinction is not cosmetic. The structure this
+	replaced erased the node from a set, which left the node object itself untouched in the pool -
+	so a pointer taken before the erase still read a live `edge` afterwards, and the algorithm
+	relies on that: `processIntersect` ends with `edge1->edge ? ... : nullptr`, and `edge1` is
+	routinely a node the merge just popped. Nulling `edge` turned that into a failure - two hundred
+	and twenty crossing wires stopped tesselating - while the old code read the stale pointer and
+	carried on. Marking dead without touching `edge` keeps that behaviour exactly. */
+	bool dead = false;
+
 	mutable Helper helper;
+
+	// Which event `value` was last computed for. See EdgeDict::refresh: the crossing of the
+	// sweepline is worked out when somebody looks at it, not for everybody on every event.
+	mutable uint32_t stamp = 0;
 
 	Vec2 current() const { return Vec2(value.x, value.y); }
 	Vec2 dst() const { return Vec2(value.z, value.w); }
@@ -306,16 +321,70 @@ enum class IntersectionEvent {
 	Merge, // both edges ends in same place
 };
 
+/* The sweepline's status: every edge the sweep is currently between the ends of, in vertical order.
+
+A FLAT ARRAY OF POINTERS, not a tree, and the shape is what the measurement asked for. `update`
+walks the whole structure on every event - a million events by a few hundred open edges - and at
+six nanoseconds a node that was a cache miss per node, not arithmetic: replacing the division in
+that loop with a multiply moved it four percent. A red-black tree pays three pointers and a
+rebalance per node; an array pays a prefetch.
+
+STABLE NODES. `Edge::node` holds a pointer into here and is dereferenced long after it was taken,
+so a node may never move. The nodes are allocated one at a time from the pool and only their
+ADDRESSES live in the array - so reordering the array costs a memmove of eight-byte words and
+invalidates nothing.
+
+TOMBSTONES. A retiring edge is marked `dead` and stays where it is: deletion moves nothing.
+Every search skips them, and `update` - which already walks everything - compacts them out as it
+goes, so the removal costs nothing on top of a pass that exists anyway.
+
+That leaves one question, and it is the reason tombstones are safe here: does a dead entry break
+the ordering the searches binary-search on? It does not. Values are recomputed for every node in
+one place, `update`, once per event - so every value in the array, live or dead, was computed at
+the same sweep position, and a tombstone sits exactly where it sat when it died. The array stays
+sorted; the dead are simply not answers.
+
+Slots freed by a compaction are reused by the NEXT event's pushes, never the same one: a node
+handed out during an event is dereferenced during that event, and handing the same address to a
+second edge before it is done would be an aliasing bug that no test could be relied on to find. */
 struct EdgeDict {
 	Vec2 event;
 
-	sprt::__pool_set<EdgeDictNode> nodes;
+	// Sweep order. Entries marked `dead` are tombstones - see above.
+	sprt::__pool_vector<EdgeDictNode *> nodes;
+
+	// Compacted out by `update`, handed back out by `push` from the next event onward.
+	sprt::__pool_vector<EdgeDictNode *> freeNodes;
+
 	memory::pool_t *pool = nullptr;
+
+	// Bumped once per event; a node whose stamp differs holds a value from an older sweep
+	// position. Starts at one so a freshly allocated node (stamp zero) is always stale.
+	uint32_t serial = 1;
+	uint32_t eventVertex = 0;
 
 	EdgeDict(memory::pool_t *, uint32_t size);
 
 	const EdgeDictNode *push(Edge *, int16_t windingAbove);
 	void pop(const EdgeDictNode *);
+
+	/* Brings one node's crossing of the sweepline up to the current event, if it is not already.
+	
+	`update` used to do this for EVERY open edge on every event - a few hundred nodes times a
+	million events - and the overwhelming majority of those values were never read: after the
+	neighbour window, one event looks at a couple of dozen entries. So the work moved to the read.
+	
+	What made that possible is that the RETIREMENT test, which is why `update` had to touch every
+	node in the first place, turns out not to need the value at all: `t = (event.x - org.x) /
+	norm.x` lies in [0, 1] exactly when `event.x` lies between `org.x` and `dst.x`, which is two
+	comparisons and no division. */
+	void refresh(const EdgeDictNode &) const;
+
+	// Index of the first entry whose value is not below `y`, tombstones included: they carry the
+	// value they died with, which is from the same update as everyone else's.
+	size_t lowerBound(float y) const;
+
+	EdgeDictNode *acquireNode();
 
 	void update(Vertex *, float tolerance);
 
