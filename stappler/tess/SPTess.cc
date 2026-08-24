@@ -584,7 +584,21 @@ bool Tesselator::write(TessResult &res) {
 			uint32_t vertex = 0;
 			bool valid = true;
 
-			it->foreachOnFace([&, this](HalfEdge &edge) {
+			/* Bounded, and the bound is the whole point.
+			
+			A face here is a TRIANGLE or it is nothing - the emit below fires only at exactly
+			three edges, so walking a fourth can change nothing except how long it takes. That
+			turned out to matter: `foreachOnFace` follows `_leftNext` until it returns to where
+			it started, and a face ring that does NOT close - what a mesh the sweep could not
+			repair leaves behind - spins there forever. Three hundred crossing wires hung on
+			exactly that, and a renderer that hangs is worse than one that drops a triangle.
+			
+			Four steps: one more than a triangle, which is enough to tell a triangle from
+			something that is not one, and no more. The drop path below is the one this code
+			already took for a stale vertex index. */
+			auto faceEdge = it;
+			do {
+				auto &edge = *faceEdge;
 				if (vertex < 3) {
 					// bounds- and null-check the vertex in every build; on a stale
 					// index drop this triangle (graceful degradation) instead of
@@ -612,9 +626,12 @@ bool Tesselator::write(TessResult &res) {
 				}
 				edge._mark = mark;
 				++vertex;
-			});
+				faceEdge = faceEdge->_leftNext;
+			} while (faceEdge && faceEdge != it && vertex <= 3);
 
-			if (vertex == 3 && valid) {
+			// `faceEdge == it` is the ring having closed. Without it a broken ring that ran out
+			// of steps would look exactly like a triangle whose third edge happened to be last.
+			if (vertex == 3 && faceEdge == it && valid) {
 				res.pushTriangle(res.target, triangle);
 			}
 		}
@@ -795,7 +812,55 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 
 	const Vec2 *v0, *v1, *v2;
 
-	while (up->getLeftLoopNext() != lo) {
+	/* A cut that `connectEdges` refuses ends the region, it does not merely skip a step.
+	
+	What it refuses is a cut whose two ends are the same vertex - a triangle with no area, so the
+	cut itself is worth nothing. But skipping it and carrying on is not safe: the walk below makes
+	progress by consuming the cut it just made, and without one there is nothing to guarantee the
+	next turn is any different. An earlier version broke out of the inner loop only, and six
+	hundred crossing wires spun in the outer one forever.
+	
+	So the region stops where it stopped, keeping every triangle it had already produced. That is
+	the trade this whole path is built on: an invisible sliver missing beats a hang, and beats
+	throwing away the region - which is what failing here used to do, and failing the region
+	failed the entire path. */
+	bool degenerate = false;
+
+	/* And a ceiling on the walks, which is not a magic number.
+	
+	Each turn of either loop below cuts one triangle off the region, and a polygon of V vertices
+	yields exactly V - 2 of them - so no region can need more turns than the mesh has vertices.
+	A walk that wants more is walking a ring that does not close, and on such a ring the closing
+	fan does not merely spin: it keeps CREATING edges, so six hundred crossing wires ran until
+	the pool gave out rather than until anything was drawn.
+	
+	`_nvertexes` is that ceiling, and reaching it means the same thing a refused cut means - the
+	region ends here, with whatever it has produced. */
+	uint32_t regionLimit = 0;
+	{
+		// The ring, measured once. A face of E edges yields E - 2 triangles, so neither walk
+		// below can want more turns than this - and a ring that does not come back within the
+		// mesh's own vertex count is not a ring at all, which is exactly the case being guarded.
+		auto e = edge;
+		const uint32_t hardLimit = _nvertexes + 2;
+		do {
+			++regionLimit;
+			e = e->_leftNext;
+		} while (e && e != edge && regionLimit < hardLimit);
+
+		if (!e || e != edge) {
+			return true; // the ring does not close: nothing here can be triangulated
+		}
+		regionLimit += 2;
+	}
+
+	// A counter EACH: the walk down the two chains and the fan that closes what is left are two
+	// passes over the same region, and either may take up to its length. Sharing one budget
+	// between them cut the second short and changed a hundred and eighty icons.
+	uint32_t turns = 0;
+	uint32_t fanTurns = 0;
+
+	while (!degenerate && ++turns < regionLimit && up->getLeftLoopNext() != lo) {
 		if (VertLeq(up->getDstVec(), lo->getOrgVec())) {
 			if constexpr (TessVerbose == VerboseFlag::Full) {
 				sprt::cout << "Lo: " << *lo << "\n";
@@ -815,7 +880,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 				if (tempHalfEdge == nullptr) {
-					return false;
+					degenerate = true;
+					break;
 				}
 
 				lo = tempHalfEdge->sym();
@@ -826,6 +892,9 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 				if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
+			}
+			if (degenerate) {
+				break;
 			}
 			lo = lo->getLeftLoopPrev();
 			lo->_mark = v;
@@ -845,7 +914,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 							|| !Vec2::isCounterClockwise(*v0, *v1, *v2))) {
 				auto tempHalfEdge = connectEdges(up, up->getLeftLoopPrev());
 				if (tempHalfEdge == nullptr) {
-					return false;
+					degenerate = true;
+					break;
 				}
 
 				up = tempHalfEdge->sym();
@@ -857,6 +927,9 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 					_faceEdges.emplace_back(tempHalfEdge);
 				}
 			}
+			if (degenerate) {
+				break;
+			}
 			up = up->getLeftLoopNext();
 			up->_mark = v;
 		}
@@ -865,10 +938,12 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	/* Now lo->Org == up->Dst == the leftmost vertex.  The remaining region
 	 * can be tessellated in a fan from this leftmost vertex.
 	 */
-	while (lo->getLeftLoopNext()->getLeftLoopNext() != up) {
+	// The closing fan, and the same rules: a refused cut ends it, and so does the ceiling.
+	while (!degenerate && ++fanTurns < regionLimit
+			&& lo->getLeftLoopNext()->getLeftLoopNext() != up) {
 		auto tempHalfEdge = connectEdges(lo->getLeftLoopNext(), lo);
 		if (tempHalfEdge == nullptr) {
-			return false;
+			break;
 		}
 		if (tempHalfEdge && !isDegenerateTriangle(tempHalfEdge)) {
 			_faceEdges.emplace_back(tempHalfEdge);
@@ -1469,7 +1544,8 @@ HalfEdge *Tesselator::Data::connectEdges(HalfEdge *eOrg, HalfEdge *eDst) {
 			sprt::cout << "ERROR: connectEdges on same vertex:\n\t" << *eOrg << "\n\t"
 					   << *eOrg->sym() << "\n\t" << *eDst << "\n";
 		}
-		log::source().error("geom::Tesselator", "Tesselation failed on connectEdges");
+		// Handled by the caller: see `tessellateMonoRegion`. Not an error any more - it is the
+		// one shape a cut cannot have, and the answer is to not make that cut.
 		return nullptr;
 	}
 
