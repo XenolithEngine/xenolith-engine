@@ -61,6 +61,11 @@ struct FrameTimingInfo {
 	uint64_t lastFrameTime = 0;
 	uint64_t lastFenceFrameTime = 0;
 	uint64_t lastTimestampFrameTime = 0;
+
+#if XL_FRAME_ACCOUNT
+	// Which frame `lastFrameTime` is about - see PresentationEngine::getLastFrameOrder.
+	uint64_t lastFrameOrder = 0;
+#endif
 };
 
 struct SP_PUBLIC DrawStat {
@@ -80,6 +85,28 @@ struct SP_PUBLIC DrawStat {
 	uint32_t shadowsCmds;
 
 	uint32_t vertexInputTime;
+
+#if XL_FRAME_ACCOUNT
+	/* ---- the frame's deferred account -----------------------------------------------------------
+
+	Carried on DrawStat because that is the one channel that already runs from the render half back
+	to the app thread (Director::pushDrawStat), and adding a second would mean a second ordering to
+	reason about.
+
+	`deferredWorkTime` and `deferredWaitTime` ARE NOT PARTS OF ONE WHOLE and must never be added.
+	The work is summed across worker threads and may exceed the frame; the wait is one thread
+	standing still and is always inside it. A frame where work is large and wait is near zero is
+	deferral doing its job; the two equal is deferral bought nothing. */
+	uint64_t deferredWorkTime; // ns, summed across workers
+	uint64_t deferredWaitTime; // ns, on the consuming thread
+	uint32_t deferredCount; // results consumed
+	uint32_t deferredWaited; // of those, how many were not finished when we got there
+
+	/* WHICH FRAME this describes. pushDrawStat hops to the app thread asynchronously, so a reader
+	there cannot assume the stat in hand belongs to the frame that just ended - and a measurement
+	that attributes a number to the wrong frame is worse than one that reports nothing. */
+	uint64_t frameOrder;
+#endif
 };
 
 // Implemented by the CLIENT (Director/scene). The SERVER calls into it.

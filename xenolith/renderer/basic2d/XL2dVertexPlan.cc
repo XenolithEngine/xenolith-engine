@@ -246,12 +246,36 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c,
 
 	SpanView<InstanceVertexData> storedVertexes;
 
+#if XL_FRAME_ACCOUNT
+	/* THE WAIT, which is a different quantity from the work and must never be added to it.
+
+	`acquireResult` blocks on the task's timeline when the task has not finished. This is measured
+	on the thread that STANDS STILL, so it is a part of this frame's own length - whereas the work
+	it is waiting for was done elsewhere and may have cost more than the whole frame.
+
+	`isReady` is asked FIRST and separately: a result that was already finished costs no wait at
+	all, and "how many did we actually stand on" is the number that says whether deferring bought
+	anything. Without it a frame that waited once for 10ms and a frame that waited ten times for
+	1ms report the same total. */
+	const bool wasReady = cmd->deferred->isReady();
+	const auto waitStart = sp::platform::clock(ClockType::Monotonic);
+#endif
+
 	cmd->deferred->acquireResult(
 			[&](SpanView<InstanceVertexData> vertexes, DeferredVertexResult::Flags flags) {
 		auto v = vertexes.pdup();
 		applyNormalized(v, cmd);
 		storedVertexes = v;
 	});
+
+#if XL_FRAME_ACCOUNT
+	deferredWaitTime += sp::platform::clock(ClockType::Monotonic) - waitStart;
+	deferredWorkTime += cmd->deferred->takeWorkTime();
+	++deferredCount;
+	if (!wasReady) {
+		++deferredWaited;
+	}
+#endif
 
 	// the result is resolved by now, so a deferred command is bounded exactly like an immediate one
 	if (ctx.collectDamage) {

@@ -157,6 +157,12 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 	auto t = sp::platform::clock(ClockType::Monotonic);
 
+#if XL_FRAME_ACCOUNT
+	// Reset HERE and not in the visit: a task started by the update - before the visit - belongs to
+	// this frame just as much as one started by a node.
+	_deferredSpawned = 0;
+#endif
+
 	setFrameConstraints(req->getFrameConstraints());
 
 	update(t);
@@ -176,6 +182,10 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 			return;
 		}
 
+#if XL_FRAME_ACCOUNT
+		const auto visitStart = sp::platform::clock(ClockType::Monotonic);
+#endif
+
 		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
 
 		pool->perform([&, this] {
@@ -192,10 +202,32 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 				}
 			}
 		});
+
+#if XL_FRAME_ACCOUNT
+		/* The app half is CLOSED here, not where acquireFrame returns.
+
+		The post above is deliberate - "break current stack frame" - so the visit happens on a later
+		turn of the loop and the clock taken at the bottom of acquireFrame covers the update and the
+		posting and nothing else. Measured before this was noticed: 800ns for a frame that walked
+		three hundred nodes, which is the shape of a measurement that ended too early.
+
+		The two pieces are added rather than reported apart because they are one thing - everything
+		this thread does for the frame - and because between them there is nothing but the hop. */
+		_lastAppFrameTime = _pendingAppTime
+				+ (sp::platform::clock(ClockType::Monotonic) - visitStart);
+		_lastDeferredSpawned = _deferredSpawned;
+#endif
 	}, this, true);
 
-	_avgFrameTime.addValue(sp::platform::clock(ClockType::Monotonic) - t);
+	auto appTime = sp::platform::clock(ClockType::Monotonic) - t;
+	_avgFrameTime.addValue(appTime);
 	_avgFrameTimeValue = _avgFrameTime.getAverage();
+
+#if XL_FRAME_ACCOUNT
+	// Half of the account; the lambda above adds the visit and publishes the total.
+	_pendingAppTime = appTime;
+#endif
+
 	cb(true);
 }
 
@@ -396,6 +428,12 @@ void Director::runScene(Rc<Scene> &&scene) {
 void Director::pushDrawStat(const DrawStat &stat) {
 	_application->performOnAppThread([this, stat] { _drawStat = stat; }, this, false);
 }
+
+#if XL_FRAME_ACCOUNT
+core::FrameTimingInfo Director::getFrameTiming() const {
+	return _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+}
+#endif
 
 float Director::getFps() const {
 	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();

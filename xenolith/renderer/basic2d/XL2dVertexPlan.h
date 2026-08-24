@@ -176,6 +176,16 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	bool flatOrder = false;
 	uint32_t orderCounter = 0;
 
+#if XL_FRAME_ACCOUNT
+	/* The frame's deferred account, gathered here because this is where the frame CONSUMES what
+	was deferred - see pushDeferred for what each one means and why the first two may not be added
+	together. Nanoseconds. */
+	uint64_t deferredWorkTime = 0; // summed across worker threads; may exceed the frame
+	uint64_t deferredWaitTime = 0; // this thread standing still; always part of the frame
+	uint32_t deferredCount = 0; // results consumed
+	uint32_t deferredWaited = 0; // of those, how many were not finished when we got there
+#endif
+
 	uint32_t excludeVertexes = 0;
 	uint32_t excludeIndexes = 0;
 	float maxShadowValue = 0.0f;
