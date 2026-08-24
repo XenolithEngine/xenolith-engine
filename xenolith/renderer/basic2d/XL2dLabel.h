@@ -172,6 +172,9 @@ public:
 protected:
 	using Sprite::init;
 
+	Rc<LabelDeferredResult> runDeferredCounted(sprt::dispatch::Looper *, TextLayout *format,
+			const Color4F &);
+
 	virtual Rc<LabelDeferredResult> runDeferred(sprt::dispatch::Looper *, TextLayout *format,
 			const Color4F &color);
 

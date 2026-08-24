@@ -500,12 +500,34 @@ void Label::setStyle(const DescriptionStyle &style) {
 
 const Label::DescriptionStyle &Label::getStyle() const { return _style; }
 
+// Same call, with the frame's spawn counter bumped first. A separate entry point rather than a
+// count inside runDeferred, because runDeferred is virtual and a subclass that overrode it would
+// silently stop counting.
+Rc<LabelDeferredResult> Label::runDeferredCounted(sprt::dispatch::Looper *queue, TextLayout *format,
+		const Color4F &color) {
+#if XL_FRAME_ACCOUNT
+	if (_director) {
+		_director->countDeferredSpawned();
+	}
+#endif
+	return runDeferred(queue, format, color);
+}
+
 Rc<LabelDeferredResult> Label::runDeferred(sprt::dispatch::Looper *queue, TextLayout *format,
 		const Color4F &color) {
 	Rc<LabelDeferredResult> ret = Rc<LabelDeferredResult>::create();
 	queue->performAsync(
 			[format = Rc<Label::TextLayout>(format), color, ret, layer = _textureLayer]() mutable {
-		ret->setResult(Label::writeResult(format, color, layer));
+#if XL_FRAME_ACCOUNT
+		// The other kind of deferred task, and it has to be counted too: a node view at full detail
+		// is a dozen Labels, so on a graph the text can outweigh the tesselation.
+		const auto workStart = sp::platform::clock(ClockType::Monotonic);
+#endif
+		auto result = Label::writeResult(format, color, layer);
+#if XL_FRAME_ACCOUNT
+		ret->setWorkTime(sp::platform::clock(ClockType::Monotonic) - workStart);
+#endif
+		ret->setResult(sp::move(result));
 	}, ret);
 	return ret;
 }
@@ -836,7 +858,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 
 	if (_deferred) {
 		_deferredResult =
-				runDeferred(_director->getApplication()->getLooper(), _format, _displayedColor);
+				runDeferredCounted(_director->getApplication()->getLooper(), _format,
+						_displayedColor);
 		_vertexes.clear();
 		_vertexColorDirty = false;
 	} else {

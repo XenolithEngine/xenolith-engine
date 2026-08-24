@@ -27,6 +27,7 @@
 #include "XLCoreEnum.h"
 #include "XLCoreFrameHandle.h"
 #include "XLCoreFrameQueue.h"
+#include "XLCorePresentationFrame.h"
 #include "XLDirector.h"
 #include "XLVkDeviceQueue.h"
 #include "XLVkRenderPass.h"
@@ -222,6 +223,21 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	_drawStat.transparentCmds = _plan.transparentCmds;
 	_drawStat.shadowsCmds = shadowsCmds;
 	_drawStat.vertexInputTime = uint32_t(t - _time);
+#if XL_FRAME_ACCOUNT
+	/* The PRESENTATION frame's order, not the FrameHandle's.
+
+	They are two different counters and they do not agree - measured, one apart - so a reader that
+	took one from here and the other from the completion bookkeeping would be comparing two
+	numbering schemes and calling the mismatch an error. The presentation frame is the one the
+	engine's own timing block names, so it is the one that goes here. */
+	if (auto pf = _request ? _request->getPresentationFrame() : nullptr) {
+		_drawStat.frameOrder = pf->getFrameOrder();
+	}
+	_drawStat.deferredWorkTime = plan->deferredWorkTime;
+	_drawStat.deferredWaitTime = plan->deferredWaitTime;
+	_drawStat.deferredCount = plan->deferredCount;
+	_drawStat.deferredWaited = plan->deferredWaited;
+#endif
 	if (_input->client) {
 		_input->client->pushDrawStat(_drawStat);
 	}
