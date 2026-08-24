@@ -161,6 +161,9 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	// Reset HERE and not in the visit: a task started by the update - before the visit - belongs to
 	// this frame just as much as one started by a node.
 	_deferredSpawned = 0;
+	// A clock of its own, in NANOSECONDS. `t` above is `clock()`, which is microseconds - fine for
+	// a frame-rate average and too coarse for a visit that can be a few tens of microseconds.
+	const auto appStart = sp::platform::nanoclock(ClockType::Monotonic);
 #endif
 
 	setFrameConstraints(req->getFrameConstraints());
@@ -183,7 +186,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		}
 
 #if XL_FRAME_ACCOUNT
-		const auto visitStart = sp::platform::clock(ClockType::Monotonic);
+		const auto visitStart = sp::platform::nanoclock(ClockType::Monotonic);
 #endif
 
 		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
@@ -214,7 +217,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		The two pieces are added rather than reported apart because they are one thing - everything
 		this thread does for the frame - and because between them there is nothing but the hop. */
 		_lastAppFrameTime = _pendingAppTime
-				+ (sp::platform::clock(ClockType::Monotonic) - visitStart);
+				+ (sp::platform::nanoclock(ClockType::Monotonic) - visitStart);
 		_lastDeferredSpawned = _deferredSpawned;
 #endif
 	}, this, true);
@@ -225,7 +228,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 #if XL_FRAME_ACCOUNT
 	// Half of the account; the lambda above adds the visit and publishes the total.
-	_pendingAppTime = appTime;
+	_pendingAppTime = sp::platform::nanoclock(ClockType::Monotonic) - appStart;
 #endif
 
 	cb(true);

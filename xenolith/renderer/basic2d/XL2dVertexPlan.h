@@ -184,6 +184,19 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	uint64_t deferredWaitTime = 0; // this thread standing still; always part of the frame
 	uint32_t deferredCount = 0; // results consumed
 	uint32_t deferredWaited = 0; // of those, how many were not finished when we got there
+
+	/* The stage's own two halves, filled by pushAll.
+
+	Kept here rather than timed from the backend, because pushAll is where the two are and a caller
+	outside it could only report their sum - which is the number that was already known and did not
+	say anything. */
+	uint64_t writeTime = 0; // copying vertexes, indexes and transforms into the buffers
+	uint64_t spanTime = 0; // turning the write plans into draw spans, painter order included
+
+	/* And the command walk splits in two as well: collecting a damage rectangle for every instance,
+	or building the write plan itself. Only a measurement says which half is the cost. */
+	uint64_t damageTime = 0;
+	uint64_t planTime = 0;
 #endif
 
 	uint32_t excludeVertexes = 0;

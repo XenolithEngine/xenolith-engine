@@ -84,6 +84,14 @@ struct VertexMaterialVertexProcessor : public Ref {
 	bool loadVertexes();
 
 	void finalize(VertexPlan *plan);
+
+#if XL_FRAME_ACCOUNT
+	uint64_t _walkTime = 0;
+	uint64_t _bufferTime = 0;
+	uint64_t _fillTime = 0;
+	uint64_t _uploadTime = 0;
+	uint64_t _queueWaitTime = 0;
+#endif
 };
 
 VertexMaterialVertexProcessor::VertexMaterialVertexProcessor(VertexAttachmentHandle *a,
@@ -108,6 +116,11 @@ void VertexMaterialVertexProcessor::run(core::FrameHandle &frame) {
 }
 
 bool VertexMaterialVertexProcessor::loadVertexes() {
+#if XL_FRAME_ACCOUNT
+	// Everything before this point is queue latency, not work: the constructor stamped `_time` when
+	// the input was submitted and this body runs when a worker picks the task up.
+	_queueWaitTime = (sp::platform::clock(ClockType::Monotonic) - _time) * 1'000;
+#endif
 	auto pool = memory::pool::create(memory::pool::acquire());
 	auto ret = mem_pool::perform([&] {
 		_drawStat.cachedFramebuffers = uint32_t(_cache->getFramebuffersCount());
@@ -136,11 +149,25 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 		plan->shadowSize = Vec2(shadowSize.width / float(shadowExtent.width),
 				shadowSize.height / float(shadowExtent.height));
 
+#if XL_FRAME_ACCOUNT
+		// One clock read at each boundary, so the four phases add up to the stage instead of being
+		// four independent measurements of overlapping things.
+		auto phaseMark = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 		auto cmd = _input->commands->getFirst();
 		while (cmd) {
 			plan->pushCommand(_plan, cmd);
 			cmd = cmd->next;
 		}
+
+#if XL_FRAME_ACCOUNT
+		{
+			auto now = sp::platform::nanoclock(ClockType::Monotonic);
+			_walkTime = now - phaseMark;
+			phaseMark = now;
+		}
+#endif
 
 		// create buffers
 		_indexes = _devMemPool->spawn(AllocationUsage::DeviceLocalHostVisible,
@@ -163,6 +190,14 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 			delete plan;
 			return false;
 		}
+
+#if XL_FRAME_ACCOUNT
+		{
+			auto now = sp::platform::nanoclock(ClockType::Monotonic);
+			_bufferTime = now - phaseMark;
+			phaseMark = now;
+		}
+#endif
 
 		Bytes vertexData, indexData, transformData, instanceData;
 
@@ -194,6 +229,12 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 			plan->pushAll(_plan, writeTarget);
 		}
 
+#if XL_FRAME_ACCOUNT
+		// The write plus the spans; the plan splits the two for itself.
+		_fillTime = sp::platform::nanoclock(ClockType::Monotonic) - phaseMark;
+		phaseMark = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 		if (_persistentMapping) {
 			_vertexes->flushMappedRegion();
 			_indexes->flushMappedRegion();
@@ -203,6 +244,10 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 			_indexes->setData(indexData);
 			_transforms->setData(transformData);
 		}
+
+#if XL_FRAME_ACCOUNT
+		_uploadTime = sp::platform::nanoclock(ClockType::Monotonic) - phaseMark;
+#endif
 
 		finalize(plan);
 		delete plan;
@@ -237,6 +282,16 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	_drawStat.deferredWaitTime = plan->deferredWaitTime;
 	_drawStat.deferredCount = plan->deferredCount;
 	_drawStat.deferredWaited = plan->deferredWaited;
+
+	_drawStat.walkTime = _walkTime;
+	_drawStat.bufferTime = _bufferTime;
+	_drawStat.uploadTime = _uploadTime;
+	_drawStat.writeTime = plan->writeTime;
+	_drawStat.spanTime = plan->spanTime;
+	_drawStat.damageTime = plan->damageTime;
+	_drawStat.planTime = plan->planTime;
+	_drawStat.queueWaitTime = _queueWaitTime;
+	_drawStat.fillTime = _fillTime;
 #endif
 	if (_input->client) {
 		_input->client->pushDrawStat(_drawStat);

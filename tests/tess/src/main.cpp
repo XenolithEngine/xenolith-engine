@@ -518,6 +518,92 @@ and it makes it the same way every time.
 
     tesstest wires [count]
 */
+/* The same wires, but shaped the way the EDITOR shapes them: one path, one tesselator, one contour
+each, with the antialias fringe the editor asks for.
+
+`doWires` below puts every wire into ONE tesselator, which is the sweep benchmark it was written to
+be - four hundred overlapping ribbons is exactly the case the dictionary walk is measured on. It is
+not the case the graph editor has: `EdEdgeLayer` creates a VectorPath per wire and the canvas gives
+each path its own tesselator with a single open contour. Those two shapes answer different
+questions, so this is a second mode rather than an edit to the first. */
+static int doWiresPerPath(uint32_t count, bool bypass) {
+	if (count == 0) {
+		count = 400;
+	}
+
+	constexpr float Width = 6'000.0f;
+	constexpr float Height = 2'000.0f;
+
+	uint32_t vertexes = 0, triangles = 0, bypassed = 0;
+
+	const auto start = sprt::platform::clock(sprt::platform::ClockType::Monotonic);
+
+	for (uint32_t i = 0; i < count; ++i) {
+		auto pool = memory::pool::create(memory::pool::acquire());
+		memory::perform([&] {
+			auto tess = Rc<geom::Tesselator>::create(pool);
+			tess->setStrokeBypassEnabled(bypass);
+
+			const float t0 = float((i * 7919u) % 1'000u) / 1'000.0f;
+			const float t1 = float((i * 104'729u) % 1'000u) / 1'000.0f;
+			const float ax = Width * 0.7f * t0;
+			const float bx = ax + Width * 0.25f;
+			const float ay = Height * t1;
+			const float by = Height * float((i * 15'485'863u) % 1'000u) / 1'000.0f;
+			const float spread = sprt::max(50.0f, sprt::abs(bx - ax) * 0.5f);
+
+			do {
+				geom::StrokeConfig cfg;
+				cfg.lineWidth = 2.0f;
+				geom::LineDrawer line(1.0f, nullptr, Rc<geom::Tesselator>(tess), nullptr, cfg);
+				line.drawBegin(ax, ay);
+				line.drawCubicBezier(ax + spread, ay, bx - spread, by, bx, by);
+				line.drawClose(false);
+			} while (0);
+
+			tess->setWindingRule(geom::Winding::NonZero);
+
+			// What the canvas does for an antialiased path: VGAntialiasFactor on both, and the
+			// default relocation rule. The editor's wires are all antialiased, so a benchmark
+			// without this would be measuring a case that does not occur.
+			tess->setBoundariesTransform(0.5f, 0.5f);
+			tess->setRelocateRule(geom::Tesselator::RelocateRule::Auto);
+
+			struct Sink {
+				uint32_t vertexes = 0;
+				uint32_t triangles = 0;
+				static void v(void *t, uint32_t, const Vec2 &, float, const Vec2 &) {
+					++reinterpret_cast<Sink *>(t)->vertexes;
+				}
+				static void t3(void *t, uint32_t[3]) { ++reinterpret_cast<Sink *>(t)->triangles; }
+			};
+
+			Sink sink;
+			geom::TessResult res;
+			res.target = &sink;
+			res.pushVertex = &Sink::v;
+			res.pushTriangle = &Sink::t3;
+
+			if (tess->prepare(res)) {
+				tess->write(res);
+			}
+
+			vertexes += sink.vertexes;
+			triangles += sink.triangles;
+			bypassed += tess->getStrokeBypassCount();
+		}, pool);
+		memory::pool::destroy(pool);
+	}
+
+	const auto total = sprt::platform::clock(sprt::platform::ClockType::Monotonic) - start;
+
+	sprt::cout << "проводов " << count << " (по тесселятору на путь, обход "
+			   << (bypass ? "вкл" : "выкл") << "), всего " << total << " мкс\n";
+	sprt::cout << "  вершин " << vertexes << ", треугольников " << triangles << ", обойдено "
+			   << bypassed << " из " << count << "\n";
+	return 0;
+}
+
 static int doWires(uint32_t count) {
 	if (count == 0) {
 		count = 400;
@@ -631,11 +717,17 @@ static int run(int argc, const char *argv[]) {
 
 	bool antialias = false;
 	bool write = false;
+	bool perPath = false;
+	bool noBypass = false;
 	StringView icon;
 	for (int i = 2; i < argc; ++i) {
 		StringView a(argv[i]);
 		if (a == "--aa") {
 			antialias = true;
+		} else if (a == "--per-path") {
+			perPath = true;
+		} else if (a == "--no-bypass") {
+			noBypass = true;
 		} else if (a == "--write") {
 			write = true;
 
@@ -666,7 +758,11 @@ static int run(int argc, const char *argv[]) {
 		rasterFinalize();
 		return 0;
 	} else if (cmd == "wires") {
-		return doWires(icon.empty() ? 0 : uint32_t(StringView(icon).readInteger(10).get(400)));
+		const auto count = icon.empty() ? 0 : uint32_t(StringView(icon).readInteger(10).get(400));
+		if (perPath) {
+			return doWiresPerPath(count, !noBypass);
+		}
+		return doWires(count);
 	} else if (cmd == "reference") {
 		return doReference(icon);
 	} else if (cmd == "raster-golden") {
