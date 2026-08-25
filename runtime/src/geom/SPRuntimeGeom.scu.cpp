@@ -29,3 +29,4 @@ THE SOFTWARE.
 #include "SPRuntimeVec2.cc"
 #include "SPRuntimeVec3.cc"
 #include "SPRuntimeVec4.cc"
+#include "SPRuntimeViewport.cc"

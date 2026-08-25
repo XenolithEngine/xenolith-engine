@@ -66,6 +66,7 @@
 #include "template/PugLayout.h"
 #include "render/RenderLevelLayout.h"
 #include "render/Scale9Layout.h"
+#include "widgets/CanvasViewLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SelectorLayout.h"
@@ -461,6 +462,16 @@ static const TestInfo s_renderTests[] = {
 				   "inspector: scale9.state, scale9.set-slice, scale9.set-size, "
 				   "scale9.set-fill-center, scale9.set-texture-rect, scale9.set-autofit."),
 		TestRegistry_make<Scale9Layout>, true},
+
+	TestInfo{StringView("canvas"), StringView("XL_CANVAS_TEST"), StringView("Canvas view"),
+		StringView("Three markers at known world positions inside one ui::CanvasView - the widget "
+				   "three editor canvases and an image viewer had each written by hand. The "
+				   "arithmetic is asserted with no window at all; what only a window answers is "
+				   "whether the widget's TRANSFORM agrees with it, so every marker is reported "
+				   "twice - where Viewport::toScreen says it lands, and where the live node "
+				   "actually is. Drive it over the inspector: canvas.state, canvas.set-view, "
+				   "canvas.zoom-at, canvas.wheel, canvas.fit, canvas.set-clipped, canvas.limits."),
+		TestRegistry_make<CanvasViewLayout>, true},
 
 	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "
