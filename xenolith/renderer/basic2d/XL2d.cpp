@@ -45,7 +45,6 @@
 #include "XL2dVectorSprite.cc"
 
 #include "XL2dActionAcceleratedMove.cc"
-#include "XL2dImageLayer.cc"
 #include "XL2dLayerRounded.cc"
 #include "XL2dLinearProgress.cc"
 #include "XL2dRoundedProgress.cc"
