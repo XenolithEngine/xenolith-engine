@@ -58,6 +58,7 @@
 #include "input/XLUiVectorField.cc" // after NumberField: a row of them is one value
 #include "input/XLUiConsole.cc"
 
+#include "view/XLUiCanvasView.cc"
 #include "view/XLUiFilesystemModel.cc"
 #include "view/XLUiRowGeometry.cc" // before both views: each answers its geometry through it
 #include "view/XLUiTreeView.cc"
