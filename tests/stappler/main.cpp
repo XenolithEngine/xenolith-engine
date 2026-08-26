@@ -67,6 +67,7 @@ static const TestEntry s_testList[] = {
 	{"image-format", &stappler::performImageFormatTests},
 	{"diag-registry", &stappler::performDiagnosticRegistryTests},
 	{"json-git", &stappler::performJsonGitTests},
+	{"bitmap-resample", &stappler::performBitmapResampleTests},
 };
 
 int main(int argc, const char *argv[]) {
