@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,18 +20,21 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#include "XLCoreFrameCapture.h"
 
-#include "director/XLDirector.cc"
-#include "director/XLFrameContext.cc"
-#include "director/XLScheduler.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-#include "resources/XLLinearGradient.cc"
-#include "resources/XLCurveBuffer.cc"
-#include "resources/XLMeshIndex.cc"
-#include "resources/XLResourceCache.cc"
-#include "resources/XLQueueCache.cc"
-#include "resources/XLResourceObject.cc"
-#include "resources/XLTemporaryResource.cc"
-#include "resources/XLTexture.cc"
-#include "resources/XLFrameCapture.cc"
+void FrameCaptureAttachmentHandle::finalize(FrameQueue &queue, bool successful) {
+	// Moved out before the call: finalize runs once per frame, but a completion that re-entered
+	// here - by tearing something down - must not find itself still installed.
+	if (auto input = dynamic_cast<FrameCaptureInput *>(_input.get())) {
+		if (auto cb = sp::move(input->completion)) {
+			input->completion = nullptr;
+			cb(successful);
+		}
+	}
+
+	AttachmentHandle::finalize(queue, successful);
+}
+
+} // namespace stappler::xenolith::core

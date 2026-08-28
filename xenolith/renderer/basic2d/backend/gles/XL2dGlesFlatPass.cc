@@ -213,18 +213,18 @@ void VertexAttachmentHandle::submitInput(core::FrameQueue &q, Rc<core::Attachmen
 	q.getFrame()->waitForDependencies(data->waitDependencies,
 			[this, d = sp::move(d), cb = sp::move(cb)](core::FrameHandle &handle,
 					bool success) mutable {
-				if (!success || !handle.isValidFlag()) {
-					cb(false);
-					return;
-				}
+		if (!success || !handle.isValidFlag()) {
+			cb(false);
+			return;
+		}
 
-				// The material set is owned by the loop, so the vertex stage's input has to be resolved
-				// on the loop thread, like every other backend does.
-				handle.performOnGlThread(
-						[this, d = sp::move(d), cb = sp::move(cb)](core::FrameHandle &handle) mutable {
-					cb(loadVertexes(handle, d));
-				}, this, true, "VertexAttachmentHandle::submitInput");
-			});
+		// The material set is owned by the loop, so the vertex stage's input has to be resolved
+		// on the loop thread, like every other backend does.
+		handle.performOnGlThread(
+				[this, d = sp::move(d), cb = sp::move(cb)](core::FrameHandle &handle) mutable {
+			cb(loadVertexes(handle, d));
+		}, this, true, "VertexAttachmentHandle::submitInput");
+	});
 }
 
 bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
@@ -302,6 +302,12 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 
 
 		_spans = sp::move(ctx.materialSpans);
+
+		// The Overlay level, appended rather than kept apart: this backend does no frame capture, so
+		// there is nothing to record between the two - and drawing them in sequence is all "on top"
+		// needs here.
+		for (auto &it : ctx.overlaySpans) { _spans.emplace_back(it); }
+
 		_drawStates = commands->states;
 
 
@@ -446,8 +452,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 
 	auto flatVert = queueBuilder.addProgram("Gles_FlatVert", glesFlatPackShader(kFlatVertexShader),
 			&vertInfo);
-	auto flatFrag = queueBuilder.addProgram("Gles_FlatFrag", glesFlatPackShader(kFlatFragmentShader),
-			&fragInfo);
+	auto flatFrag = queueBuilder.addProgram("Gles_FlatFrag",
+			glesFlatPackShader(kFlatFragmentShader), &fragInfo);
 
 	Vector<SpecializationInfo> shaderSpecInfo({
 		core::SpecializationInfo(flatVert),
@@ -595,8 +601,10 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 		}
 
 		auto material = materials->getMaterialById(span.material);
-		const core::GraphicPipelineData *pipelineData = material ? material->getPipeline() : nullptr;
-		if (!material || !pipelineData || !pipelineData->pipeline || material->getImages().empty()) {
+		const core::GraphicPipelineData *pipelineData =
+				material ? material->getPipeline() : nullptr;
+		if (!material || !pipelineData || !pipelineData->pipeline
+				|| material->getImages().empty()) {
 			++missingMaterials;
 			continue;
 		}
@@ -611,7 +619,8 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 
 		GLuint samplerName = 0; // 0 leaves the unit's sampler unbound (the texture's own state)
 		if (layout && image.sampler < layout->compiledSamplers.size()) {
-			if (auto glSampler = layout->compiledSamplers[image.sampler].get_cast<glesb::Sampler>()) {
+			if (auto glSampler =
+							layout->compiledSamplers[image.sampler].get_cast<glesb::Sampler>()) {
 				samplerName = glSampler->getGlName();
 			}
 		}
@@ -647,8 +656,8 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 		// undefined behaviour in GL, so check it here and report like the software backend.
 		uint32_t maxTransform = 0;
 		for (uint32_t idx = minIndex; idx <= maxIndex; ++idx) {
-			auto transformIndex = (srcVertexes[idx].material >> 16) + span.firstInstance
-					+ instanceCount - 1;
+			auto transformIndex =
+					(srcVertexes[idx].material >> 16) + span.firstInstance + instanceCount - 1;
 			maxTransform = sprt::max(maxTransform, transformIndex);
 		}
 		if (maxTransform >= transforms.size()) {

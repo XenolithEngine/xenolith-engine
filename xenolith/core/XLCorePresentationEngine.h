@@ -172,6 +172,13 @@ public:
 
 	virtual void captureScreenshot(Function<void(const ImageInfoData &info, BytesView view)> &&cb);
 
+	/* Render one frame into an offscreen image and present nothing.
+
+	The same frame captureScreenshot renders, minus the readback: what it is for is the work a pass
+	does INSIDE that frame - a frame capture copying rectangles out of the image, where the
+	presented image cannot be read. `cb` runs on the presentation thread when the frame ends. */
+	virtual void scheduleOffscreenFrame(Function<void(bool)> &&cb);
+
 	virtual void synchronizeClose();
 
 protected:

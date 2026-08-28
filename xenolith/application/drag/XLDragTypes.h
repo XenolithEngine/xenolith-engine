@@ -141,6 +141,18 @@ struct SP_PUBLIC DragOffer {
 	Function<Rc<Node>()> decorator;
 	Vec2 decoratorOffset;
 
+	/* Do not build the decorator at beginDrag; the source will supply it later, through
+	DragSession::setDecorator.
+
+	It exists for a decorator whose CONTENT is not available yet - the one case that matters being a
+	cutout of the frame, which needs a frame to be rendered before it holds anything. Building the
+	ghost first and filling it in afterwards would not do: the ghost is under the pointer, which at
+	that moment is over the very thing being captured, so it would photograph itself.
+
+	While there is no decorator there is simply nothing following the pointer. A frame or two of that
+	reads as the press taking effect, not as a missing ghost. */
+	bool decoratorDeferred = false;
+
 	// Where to park it. Null means the drag system's owner, which is the right answer whenever the
 	// decorator draws itself. It is NOT the right answer when the decorator takes its look from a
 	// stylesheet: a StyleResolver only sees its own subtree, so a ghost parked above that subtree
@@ -225,7 +237,8 @@ struct SP_PUBLIC DropTargetSlots {
 //
 // It is a free function because both sides of the boundary need it and only one of them has a
 // DragData: a paste's type selector is handed a bare list of strings, on an unknown thread
-SP_PUBLIC StringView preferMimeType(SpanView<StringView> available, SpanView<StringView> preference);
+SP_PUBLIC StringView preferMimeType(SpanView<StringView> available,
+		SpanView<StringView> preference);
 
 // Which single action the modifiers ask for, clamped to what the source allows.
 //
@@ -233,8 +246,7 @@ SP_PUBLIC StringView preferMimeType(SpanView<StringView> available, SpanView<Str
 // modifier the source's default wins. The result is always a subset of `allowed`, and falls back to
 // the first of Copy/Move/Link present in `allowed` when the requested one is not offered, so a
 // caller never has to handle an empty answer for a non-empty `allowed`
-SP_PUBLIC DragActions modifiersToActions(InputModifier mods, DragActions allowed,
-		DragActions dflt);
+SP_PUBLIC DragActions modifiersToActions(InputModifier mods, DragActions allowed, DragActions dflt);
 
 // Reduce a mask to the single action a drop would perform, preferring Copy over Move over Link.
 // None in, None out

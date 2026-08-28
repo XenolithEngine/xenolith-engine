@@ -117,7 +117,7 @@ public:
 
 	struct Data {
 		VkRenderPass renderPasses[toInt(Variant::Count)] = {VK_NULL_HANDLE, VK_NULL_HANDLE,
-			VK_NULL_HANDLE};
+			VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
 		Vector<Rc<PipelineLayout>> layouts;
 
 		bool cleanup(Device &dev);
@@ -140,6 +140,10 @@ public:
 	// if async is true - update descriptors with updateAfterBind flag
 	// 			   false - without updateAfterBindFlag
 	virtual bool writeDescriptors(const QueuePassHandle &, DescriptorPool *pool, bool async) const;
+
+	// Whether this frame renders into the alternative (non-swapchain) attachment set. Decides which
+	// of the paired render pass variants applies - Default/Offscreen, Overlay/OverlayOffscreen.
+	bool usesAlternativeAttachments(const QueuePassHandle &) const;
 
 	virtual void perform(const QueuePassHandle &, CommandBuffer &buf, const Callback<void()> &,
 			bool writeBarriers = false);
