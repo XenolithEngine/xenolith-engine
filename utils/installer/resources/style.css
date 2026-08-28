@@ -167,7 +167,7 @@ checkbox {
 	justify-content: center;
 }
 
-checkbox.checked {
+checkbox:checked {
 	background-color: var(--accent);
 }
 
@@ -847,7 +847,7 @@ tree-row.add-row {
 	color: var(--text-dim);
 }
 
-tree-row.disabled {
+tree-row:disabled {
 	color: #4a4a4a;
 }
 
@@ -1075,7 +1075,7 @@ progress-fill {
 	border-radius: 2px;
 }
 
-progress-bar.indeterminate {
+progress-bar:indeterminate {
 	background-color: #3a3a3a;
 }
 
@@ -1147,7 +1147,7 @@ text-input {
 	padding-right: 8px;
 }
 
-text-input.invalid {
+text-input:invalid {
 	outline-width: 1px;
 	outline-color: #e05252;
 }

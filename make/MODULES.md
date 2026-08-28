@@ -13,16 +13,20 @@ MODULE_STAPPLER_FILESYSTEM_DEPENDS_ON := stappler_core
 MODULE_STAPPLER_FILESYSTEM_GENERAL_LDFLAGS :=
 MODULE_STAPPLER_FILESYSTEM_LIBS :=
 
-ifdef ANDROID
-MODULE_STAPPLER_FILESYSTEM_DEPENDS_ON += stappler_zip
-endif
-
-ifdef MACOS
-MODULE_STAPPLER_FILESYSTEM_GENERAL_LDFLAGS += -framework UniformTypeIdentifiers
-endif
-
 # Связывает модуль stappler_filesystem с его переменными с префиксом MODULE_STAPPLER_FILESYSTEM
 $(call define_module, stappler_filesystem, MODULE_STAPPLER_FILESYSTEM)
+```
+
+Это `stappler/filesystem/filesystem.mk` целиком: у модуля может не быть ни
+одной платформенной ветки.
+
+Часть переменных можно доопределять условно — по платформе. Пример из
+`runtime/runtime.mk`, где на Windows подключается собственная реализация libc:
+
+```
+ifeq ($(TARGET_SYSTEM),Windows)
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+endif
 ```
 
 Большая часть переменных модуля действует глобально при сборке этого модуля. То есть, включаемые файлы модуля становятся доступными всем модулям и приложению, а флаги для сборки добавляются для всех собираемых файлов в проекте. Исключение - переменные _PRIVATE_

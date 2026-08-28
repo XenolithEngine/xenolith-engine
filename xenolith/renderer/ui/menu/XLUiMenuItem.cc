@@ -97,11 +97,7 @@ void MenuItem::updateFromSource() {
 	setString(_item->getTitle());
 	setEnabled(_item->isEnabled());
 
-	if (_item->isChecked()) {
-		addStyleClass("checked");
-	} else {
-		removeStyleClass("checked");
-	}
+	applyControlChecked(this, _item->isChecked());
 
 	const auto leading = _item->getLeadingIcon();
 	// A checked item with no icon of its own borrows the mark; one that HAS an icon keeps it, since
@@ -181,6 +177,29 @@ void MenuItem::handleContentSizeDirty() {
 	// positions this row owns.
 	Panel::handleContentSizeDirty();
 	layoutContent();
+}
+
+void MenuItem::handleComponentsDirty(const ComponentMask &mask) {
+	Button::handleComponentsDirty(mask);
+
+	if (!mask.contains(InteractiveComponent::Id.value)) {
+		return;
+	}
+
+	bool hovered = false;
+	if (auto ic = getComponent<InteractiveComponent>()) {
+		hovered = ic->hoverCounter > 0;
+	}
+	if (hovered == _hoverApplied) {
+		return;
+	}
+	_hoverApplied = hovered;
+
+	// Only the entering edge: leaving a row does not clear the highlight, because a menu with
+	// nothing highlighted after the pointer wandered off is a menu the keyboard has to start over.
+	if (hovered && _system && _item) {
+		_system->handleItemHovered(_item);
+	}
 }
 
 void MenuItem::layoutContent() {

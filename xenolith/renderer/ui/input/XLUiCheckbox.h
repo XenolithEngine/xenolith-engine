@@ -25,18 +25,20 @@
 
 #include "XLUiPanel.h"
 #include "XLInputListener.h"
+#include "XLUiControlLock.h"
 #include "XL2dIconSprite.h" // the check mark held below
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // A two-state toggle: a rounded box (Panel) hosting a check-mark icon. Tapping flips the state,
-// toggles the "checked" style class (so CSS can swap fill/icon colour), and fires the callback.
+// publishes `:checked` (so CSS can swap fill/icon colour) and fires the callback. The state lives in
+// the node's InteractiveComponent and nowhere else - the widget keeps no copy of its own.
 // CSS:
 //   checkbox { width:17px; height:17px; border-radius:4px;
 //              background-color:#292929; border:1px solid rgba(255,255,255,0.3); }
-//   checkbox.checked { background-color:#FCB400; border:1px solid #FCB400; }
+//   checkbox:checked { background-color:#FCB400; border:1px solid #FCB400; }
 //   checkbox > icon { width:14px; height:14px; color:#1A1A1A; }
-class SP_PUBLIC Checkbox : public Panel {
+class SP_PUBLIC Checkbox : public Panel, public EditLockTarget {
 public:
 	using Callback = Function<void(bool)>;
 
@@ -45,16 +47,14 @@ public:
 	virtual bool init() override;
 
 	virtual void setChecked(bool c, bool silent = false);
-	virtual bool isChecked() const { return _checked; }
+	virtual bool isChecked() const { return isControlChecked(this); }
 
-	virtual void setEnabled(bool e);
-	virtual bool isEnabled() const { return _enabled; }
+	virtual void setEnabled(bool e) override;
+	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setCallback(Callback &&cb) { _callback = sp::move(cb); }
 
 protected:
-	bool _checked = false;
-	bool _enabled = true;
 	Callback _callback;
 	InputListener *_listener = nullptr;
 	basic2d::IconSprite *_check = nullptr;

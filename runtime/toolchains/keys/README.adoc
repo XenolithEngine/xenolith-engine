@@ -1,0 +1,124 @@
+# Pinned OpenPGP release keys
+
+The public keys the source fetcher checks upstream release signatures against.
+One file per signer, ASCII-armored and exported minimally (no third-party
+certifications), so a change to any of them is legible in a diff.
+
+`src.mk` points a dependency at a key with `<name>_KEY`, and the fetcher
+(`common/utils/fetch.sh`, `fetch.ps1`) verifies the detached signature named by
+`<name>_SIG` against `keys/<name>_KEY.asc` in a throwaway keyring. Nothing here
+is imported into the user's own GnuPG keyring, and no keyserver is contacted at
+build time - if a signature does not verify against the file committed here, the
+download is refused.
+
+## What actually protects a build
+
+Two layers, and it is worth being clear about which does what:
+
+* **The pinned `_SHA256` in `src.mk` is the load-bearing check.** The expected
+  value lives in our git history, so an everyday `make download` is verified
+  against something the upstream server cannot change.
+* **The signature check protects the moment a pin is written.** A hash pin is
+  only as good as the download it was computed from; verifying the signature is
+  how you establish that download was genuinely upstream's before recording its
+  hash. So a version bump should be done on a host with `gpg` installed.
+
+Because of that split, a missing `gpg` is a warning rather than an error by
+default. Set `SP_REQUIRE_SIGNATURES=1` to make it - along with an unsigned
+source or a missing key file - a hard failure:
+
+[source,sh]
+----
+# From runtime/toolchains
+make download SP_REQUIRE_SIGNATURES=1
+----
+
+Fourteen of the archive dependencies are signed upstream. The rest pin a
+SHA-256 only; each such block in `src.mk` says so and why. Dependencies fetched
+with git are pinned by commit instead, which is the same idea by other means.
+
+## Keys
+
+`make src-keys` prints this mapping from the files as they exist on disk.
+
+[cols="1,1,3,2",options="header"]
+|===
+| Dependency | Key file | Primary fingerprint | Signer
+
+| zlib               | `zlib.asc`          | `5ED4 6A67 21D3 6558 5A3E D3E8 783F CD8E 58BC AFBA` | Mark Adler
+| bzip2              | `bzip2.asc`         | `EC3C FE88 F6CA 0788 774F 5C1D 1AA4 4BE6 49DE 760A` | Mark Wielaard
+| xz                 | `xz.asc`            | `3690 C240 CE51 B467 0D30 AD1C 38EE 757D 6918 4620` | Lasse Collin
+| zstd               | `zstd.asc`          | `4EF4 AC63 455F C9F4 545D 9B7D EF8F E995 28B5 2FFD` | Zstandard Release Signing Key
+| libjpeg-turbo      | `libjpeg-turbo.asc` | `0338 C8D8 D9FD A62C F9C4 21BD 7EC2 DBB6 F4DB F434` | The libjpeg-turbo Project
+| libwebp            | `libwebp.asc`       | `6B0E 6B70 976D E303 EDF2 F601 F9C3 D6BD B823 2B5D` | WebP release signing key
+| tiff               | `tiff.asc`          | `B1FA 7D81 EEB8 E663 9917 8B97 33EB BFC4 7B3D D87D` | Even Rouault
+| nghttp3, ngtcp2    | `tatsuhiro-t.asc`   | `F4F3 B914 74D1 EB29 889B D0EF 7E84 03D5 D673 C366` | Tatsuhiro Tsujikawa
+| curl               | `curl.asc`          | `27ED EAF2 2F3A BCEB 50DB 9A12 5CC9 08FD B71E 12C2` | Daniel Stenberg
+| freetype           | `freetype.asc`      | `E306 7470 7856 409F F194 8010 BE6C 3AAC 63AD 8E3F` | Werner Lemberg
+| openssl            | `openssl.asc`       | `BA54 73A2 B058 7B07 FB27 CF2D 2160 94DF D0CB 81EF` | OpenSSL
+| icu4c              | `icu4c.asc`         | `E52F 0787 7A58 05F9 AF4A B0AC D46C 5610 D06E 7001` | ICU Release Robot
+| expat              | `expat.asc`         | `3176 EF7D B236 7F1F CA4F 306B 1F9B 0E90 9AF3 7285` | Sebastian Pipping
+| libdrm             | `libdrm.asc`        | `34FF 9526 CFEF 0E97 A340 E2E4 0FDE 7BE0 E88F 5E48` | Simon Ser
+|===
+
+Several of these sign with a subkey (bzip2, expat, nghttp3/ngtcp2 among them);
+the fingerprint above is the primary key, which is what `gpg` reports and what
+upstream publishes.
+
+## Where each fingerprint was confirmed
+
+A key taken from a keyserver is trust-on-first-use: keyservers accept uploads
+from anyone. Eleven of the fourteen were therefore re-fetched from a location
+the project itself controls and compared fingerprint-for-fingerprint.
+
+[cols="1,3",options="header"]
+|===
+| Key | Confirmed against
+
+| bzip2         | `https://sourceware.org/pub/bzip2/gpgkey-5C1D1AA44BE649DE760A.gpg` - the project's own distribution directory, alongside the tarball
+| curl          | `https://daniel.haxx.se/mykey.asc`
+| expat         | `https://github.com/hartwork.gpg` - the maintainer's account, which publishes the releases
+| icu4c         | the `KEYS` file in `unicode-org/icu`
+| libdrm        | `https://github.com/emersion.gpg`
+| libjpeg-turbo | `https://libjpeg-turbo.org/key/LJT-GPG-KEY`
+| nghttp3/ngtcp2| `https://github.com/tatsuhiro-t.gpg`
+| openssl       | the release-key fingerprint listed on `https://openssl-library.org/source/`
+| tiff          | `https://github.com/rouault.gpg`
+| xz            | `https://tukaani.org/misc/lasse_collin_pubkey.txt`
+| zlib          | address-verified on keys.openpgp.org for `madler@alumni.caltech.edu`; zlib.net links the same key from `madler.net/madler/pgp.html`
+|===
+
+The remaining three - **zstd**, **libwebp** and **freetype** - publish no key
+anywhere we could reach that is separate from the signature itself, so they came
+from a keyserver. What is checkable about them is continuity: the same key has
+signed years of prior releases, which an attacker who had merely uploaded a
+lookalike key to a keyserver could not arrange.
+
+* `zstd.asc` also verifies zstd 1.5.6 and 1.5.0.
+* `libwebp.asc` also verifies libwebp 1.5.0, 1.2.0 and 1.0.0 - back to 2018.
+* `freetype.asc` also verifies FreeType 2.13.3 and 2.12.1. It does *not* verify
+  2.11.0, which predates a key rotation.
+
+If you can confirm any of these three against a project-controlled source,
+replace the row above with it.
+
+## Adding or rotating a key
+
+A signature that stops verifying is either an upstream key rotation or an
+attack, and the two look identical from here. Do not update a key because a
+build failed; update it because you checked.
+
+. Find the fingerprint on a page the project controls - its own domain, its
+  release documentation, or the account that publishes the releases. Not the
+  keyserver, and not a link found on the page serving the tarball.
+. Fetch the key and confirm the full fingerprint matches, character for
+  character. A 64-bit key id is not sufficient.
+. Export it minimally and commit it:
++
+[source,sh]
+----
+gpg --armor --export-options export-minimal --export <fingerprint> > keys/<name>.asc
+----
+. Record where you confirmed it in the table above.
+. Re-run the download for that dependency with `SP_REQUIRE_SIGNATURES=1` and
+  update its `_SHA256` in `src.mk` from that verified download.

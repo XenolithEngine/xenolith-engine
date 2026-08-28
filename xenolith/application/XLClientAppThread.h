@@ -66,6 +66,10 @@ public:
 	void flushPendingFontGlyphs();
 
 	// AppThread platform-services interface (TODO: route to the remote server).
+	// The remote transport carries no clipboard yet, and every call below is a stub. Said out loud
+	// so that a caller refuses visibly instead of writing into a void.
+	virtual bool hasClipboard() const override { return false; }
+
 	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
 			Function<StringView(SpanView<StringView>)> &&selectCallback,
 			Ref *ref = nullptr) override;

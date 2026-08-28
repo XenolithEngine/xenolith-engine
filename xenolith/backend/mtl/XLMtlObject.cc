@@ -226,9 +226,9 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 	}
 
 	if (!data.data.empty() || data.memCallback || data.stdCallback) {
-		auto blockSize = core::getFormatBlockSize(info.format);
-		uint64_t expected = uint64_t(info.extent.width) * info.extent.height * info.extent.depth
-				* blockSize;
+		// Blocks, not pixels: `bytesPerRow` is a row of BLOCKS, and for a compressed format that is
+		// neither the pixel width nor the same number of rows.
+		uint64_t expected = core::getFormatImageSize(info.format, info.extent);
 
 		Vector<uint8_t> tmp;
 		tmp.resize(expected, 0);
@@ -238,7 +238,7 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 		[texture replaceRegion:MTLRegionMake2D(0, 0, info.extent.width, info.extent.height)
 				   mipmapLevel:0
 					 withBytes:tmp.data()
-				   bytesPerRow:info.extent.width * blockSize];
+				   bytesPerRow:core::getFormatRowSize(info.format, info.extent.width)];
 	}
 
 	return true;
@@ -250,9 +250,8 @@ bool Image::setData(BytesView data) {
 		return false;
 	}
 
-	auto blockSize = core::getFormatBlockSize(_info.format);
-	const uint64_t bytesPerRow = uint64_t(_info.extent.width) * blockSize;
-	if (data.size() < bytesPerRow * _info.extent.height) {
+	const uint64_t bytesPerRow = core::getFormatRowSize(_info.format, _info.extent.width);
+	if (data.size() < bytesPerRow * core::getFormatRowCount(_info.format, _info.extent.height)) {
 		return false;
 	}
 

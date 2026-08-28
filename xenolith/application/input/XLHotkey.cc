@@ -418,6 +418,15 @@ const EngineHotkeys &EngineHotkeys::get() {
 				add("org.stappler.xenolith.form.activate", "SPACE", "Activate the focused field");
 		s_hotkeys.formReset = add("org.stappler.xenolith.form.reset", "ESCAPE", "Reset the form");
 
+		/* ReserveFromTextInput, and it is not optional: an Alt chord carries a keychar, so the
+		runtime's text-input processor would swallow it before the scene ever saw it. */
+		s_hotkeys.moveItemUp =
+				reg->add("org.stappler.xenolith.list.move-item-up", HotkeyCombo::parse("Alt+UP"),
+						"Move the selected item up", HotkeyOptions::ReserveFromTextInput);
+		s_hotkeys.moveItemDown = reg->add("org.stappler.xenolith.list.move-item-down",
+				HotkeyCombo::parse("Alt+DOWN"), "Move the selected item down",
+				HotkeyOptions::ReserveFromTextInput);
+
 		s_hotkeys.textAccept =
 				add("org.stappler.xenolith.text-input.accept", "ENTER", "Accept the field's text");
 		s_hotkeys.textAcceptKeypad = add("org.stappler.xenolith.text-input.accept-keypad",
@@ -428,6 +437,13 @@ const EngineHotkeys &EngineHotkeys::get() {
 		s_hotkeys.textCopy = add("org.stappler.xenolith.text-input.copy", "Ctrl+C", "Copy");
 		s_hotkeys.textCut = add("org.stappler.xenolith.text-input.cut", "Ctrl+X", "Cut");
 		s_hotkeys.textPaste = add("org.stappler.xenolith.text-input.paste", "Ctrl+V", "Paste");
+
+		/* `edit`, not `text-input`: the same ids carry a document's history and a project's, and
+		the focused handler decides which one answers. See the comment in the header. */
+		s_hotkeys.undo = add("org.stappler.xenolith.edit.undo", "Ctrl+Z", "Undo");
+		s_hotkeys.redo = add("org.stappler.xenolith.edit.redo", "Ctrl+Y", "Redo");
+		s_hotkeys.redoAlt =
+				add("org.stappler.xenolith.edit.redo-alt", "Ctrl+Shift+Z", "Redo (alternate)");
 	});
 	return s_hotkeys;
 }

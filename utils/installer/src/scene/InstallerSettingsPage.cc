@@ -186,7 +186,6 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 
 		auto form = page->addSystem(Rc<ui::FormSystem>::create());
 		form->setValueMode(ui::FormValueMode::Flat);
-		form->setInvalidStyleClass("invalid");
 
 		// The column's order is its z-order, and none of it may go NEGATIVE: a child at z < 0 is
 		// drawn BEFORE the parent's own geometry, so the heading would end up under the Panel's
@@ -263,7 +262,7 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 			};
 			slots.ownsFocusStyle = true;
 			slots.focusable = raw->isEnabled() && !raw->isReadOnly();
-			slots.setFocused = [raw, key = toString(name)](bool value) {
+			slots.setFocused = [raw, key = toString(name)](bool value, bool) {
 				if (value) {
 					raw->focus();
 					return;
@@ -328,10 +327,10 @@ void showSettingsPage(NotNull<AppWindow> parent) {
 		auto enginePathInput = addTextField("enginePath",
 				resolveEngineRoot(controller->getLayout(), StringView(), &engineOk));
 		if (!engineOk) {
-			// The same marker a rejected form field gets (`text-input.invalid` in style.css). There
-			// is no validator on this field - the path is checked by resolving it, which has already
-			// happened - so the class is set directly rather than through the form.
-			enginePathInput->addStyleClass("invalid");
+			// The same state a rejected form field publishes (`text-input:invalid` in style.css).
+			// There is no validator on this field - the path is checked by resolving it, which has
+			// already happened - so the state is written directly rather than through the form.
+			applyControlInvalid(enginePathInput, true);
 		}
 
 		addLabel(strings::settingsToolchainsPath());

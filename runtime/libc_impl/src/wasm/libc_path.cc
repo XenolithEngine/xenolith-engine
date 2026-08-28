@@ -54,7 +54,12 @@ static void __memfs_fill_stat(const __memfs_inode *ino, struct __SPRT_STAT_NAME 
 	st->st_nlink = 1;
 	st->st_blksize = 65536;
 	st->st_ino = ino->inum;
-	if (ino->isDir) {
+	if (ino->isLink) {
+		// A link's "content" is its target path, so st_size is that path's length
+		// (POSIX), and the mode is always 0777 as on Linux.
+		st->st_mode = __SPRT_S_IFLNK | 0777;
+		st->st_size = (__SPRT_ID(off_t))ino->size;
+	} else if (ino->isDir) {
 		st->st_mode = __SPRT_S_IFDIR | (ino->mode ? (ino->mode & 0777) : 0755);
 	} else {
 		st->st_mode = __SPRT_S_IFREG | (ino->mode ? (ino->mode & 0777) : 0644);
@@ -167,6 +172,10 @@ __SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
+	// stat() reports the target of a symlink; lstat() below reports the link.
+	if (!sprt::__memfs_resolve_link(abs, abs, sizeof(abs))) {
+		return -1;
+	}
 	auto ino = sprt::__memfs_find(abs);
 	if (!ino && sprt::__vfs_is_opfs(abs)) {
 		__SPRT_ID(size_t) size = 0;
@@ -201,13 +210,27 @@ __SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
 
 __SPRT_C_FUNC int lstat(const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT st) __SPRT_NOEXCEPT {
-	return stat(path, st); // no symlinks in memfs
+	char abs[512];
+	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	// Report the link itself when there is one; otherwise this is plain stat().
+	auto link = sprt::__memfs_find(abs);
+	if (link && link->isLink) {
+		sprt::__memfs_fill_stat(link, st);
+		return 0;
+	}
+	return stat(abs, st);
 }
 
 __SPRT_C_FUNC int access(const char *path, int) __SPRT_NOEXCEPT {
 	char abs[512];
 	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
 		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	if (!sprt::__memfs_resolve_link(abs, abs, sizeof(abs))) {
 		return -1;
 	}
 	auto ino = sprt::__memfs_find(abs);
@@ -343,6 +366,13 @@ __SPRT_C_FUNC int rename(const char *from, const char *to) __SPRT_NOEXCEPT {
 	__builtin_memcpy(np, b, blen + 1);
 	__sprt_free(ino->path);
 	ino->path = np;
+	// Renaming a directory moves its whole subtree. The registry is flat and keyed
+	// by full path, so every descendant has to be re-keyed by hand — otherwise the
+	// children would keep answering at the OLD name, under a directory that no
+	// longer exists.
+	if (ino->isDir) {
+		sprt::__memfs_reparent(a, b);
+	}
 	return 0;
 }
 
@@ -371,7 +401,24 @@ __SPRT_C_FUNC int ftruncate(int fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC char *getcwd(char *buf, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT {
-	if (buf && size >= 2) {
+	if (!buf) {
+		// GNU extension (glibc/musl, and what the runtime's callers use): a null
+		// buffer means "allocate one for me", with size 0 meaning "as large as
+		// needed". The caller frees it.
+		if (size != 0 && size < 2) {
+			__sprt_errno = ERANGE;
+			return nullptr;
+		}
+		auto p = (char *)__sprt_malloc(size ? size : 2);
+		if (!p) {
+			__sprt_errno = ENOMEM;
+			return nullptr;
+		}
+		p[0] = '/';
+		p[1] = '\0';
+		return p;
+	}
+	if (size >= 2) {
 		buf[0] = '/';
 		buf[1] = '\0';
 		return buf;
@@ -780,21 +827,65 @@ __SPRT_C_FUNC int linkat(int, const char *, int, const char *, int) __SPRT_NOEXC
 	return -1;
 }
 
-__SPRT_C_FUNC int symlink(const char *, const char *) __SPRT_NOEXCEPT {
-	__sprt_errno = ENOSYS; // memfs has no symbolic links
-	return -1;
+// Create a symbolic link at `linkpath` holding `target` verbatim (POSIX does not
+// resolve or validate the target at creation time — a dangling link is legal).
+__SPRT_C_FUNC int symlink(const char *target, const char *linkpath) __SPRT_NOEXCEPT {
+	if (!target || !linkpath || !*target) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	char abs[512];
+	if (!sprt::__memfs_normpath(linkpath, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		__sprt_errno = EPERM; // OPFS has no link concept
+		return -1;
+	}
+	if (sprt::__memfs_find(abs)) {
+		__sprt_errno = EEXIST;
+		return -1;
+	}
+	auto n = sprt::__memfs_create(abs, false, 0777);
+	if (!n) {
+		return -1;
+	}
+	__SPRT_ID(size_t) tlen = __builtin_strlen(target);
+	if (!sprt::__memfs_reserve(n, tlen)) {
+		sprt::__memfs_unlink_node(abs, false);
+		return -1;
+	}
+	__builtin_memcpy(n->data, target, tlen);
+	n->size = tlen;
+	n->isLink = true;
+	return 0;
 }
 
-__SPRT_C_FUNC __SPRT_ID(ssize_t) readlink(const char *path, char *, __SPRT_ID(size_t))
+__SPRT_C_FUNC __SPRT_ID(ssize_t) readlink(const char *path, char *buf, __SPRT_ID(size_t) bufsiz)
 		__SPRT_NOEXCEPT {
 	char abs[512];
 	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
-	// A path that exists but is not a symlink -> EINVAL; otherwise ENOENT.
-	__sprt_errno = sprt::__memfs_find(abs) ? EINVAL : ENOENT;
-	return -1;
+	auto n = sprt::__memfs_find(abs);
+	if (!n) {
+		__sprt_errno = ENOENT;
+		return -1;
+	}
+	if (!n->isLink) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	if (!buf || bufsiz == 0) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// POSIX: truncate silently to bufsiz and do NOT terminate.
+	__SPRT_ID(size_t) cnt = n->size < bufsiz ? n->size : bufsiz;
+	__builtin_memcpy(buf, n->data, cnt);
+	return (__SPRT_ID(ssize_t))cnt;
 }
 
 __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
@@ -803,7 +894,12 @@ __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
 		__sprt_errno = ENAMETOOLONG;
 		return nullptr;
 	}
-	if (!sprt::__memfs_find(abs) && !sprt::__memfs_load_bundle(abs)) {
+	// realpath() names the file a path finally reaches, so links are followed.
+	if (!sprt::__memfs_resolve_link(abs, abs, sizeof(abs))) {
+		return nullptr;
+	}
+	if (!sprt::__memfs_find(abs) && !sprt::__memfs_is_dir_path(abs)
+			&& !sprt::__memfs_load_bundle(abs)) {
 		__sprt_errno = ENOENT;
 		return nullptr;
 	}

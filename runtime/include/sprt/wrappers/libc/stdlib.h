@@ -152,7 +152,7 @@ __SPRT_BEGIN_DECL
 	It's MSVC requirement, but safe to follow this rule everywhere
 */
 SPRT_UMBRELLA_FUNC
-int posix_memalign(void **ptr, size_t size, size_t align) SPRT_UMBRELLA_END_EXCEPT
+int posix_memalign(void **ptr, size_t align, size_t size) SPRT_UMBRELLA_END_EXCEPT
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_posix_memalign(ptr, size, align);

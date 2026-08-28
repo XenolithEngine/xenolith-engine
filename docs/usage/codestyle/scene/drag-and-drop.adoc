@@ -115,11 +115,18 @@ never capture a scene node, never touch the scene graph. In v1 it happens to run
 the app thread; the contract it is stored under (`sprt::window::ClipboardData`) says
 it may run anywhere, and once the OS path exists it will.
 
-The same `DragOffer` describes a payload for the clipboard:
+The same `DragOffer` describes a payload for the clipboard — and the clipboard has
+a description of its own, `ClipboardOffer`, which is the same three fields without
+the drag around them (see
+[the system clipboard](../window/clipboard.adoc)):
 
 ```cpp
 app->writeToClipboard(offer.takeClipboardData(this));
 ```
+
+A copy is written through `ClipboardSession` rather than through `AppThread`
+directly; `preferMimeType` lives beside it now, because a paste needed the rule as
+much as a drop did.
 
 which is why `ui::TextInput` accepts a dropped payload through exactly the machinery
 it pastes with — same type rule (`preferMimeType`, prefix matching, so `text/plain`

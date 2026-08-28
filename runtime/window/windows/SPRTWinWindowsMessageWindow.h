@@ -58,7 +58,14 @@ public:
 	Status handleInputDevicesChanged();
 
 	Status readFromClipboard(Rc<ClipboardRequest> &&);
+	Status probeClipboard(Rc<ClipboardProbe> &&);
 	Status writeToClipboard(Rc<ClipboardData> &&);
+
+	// Delayed rendering: the clipboard asks the OWNER for the bytes, and only when someone pastes.
+	// handleRenderAllFormats arrives as the window goes away and must be served before it does.
+	Status handleRenderFormat(UINT format);
+	Status handleRenderAllFormats();
+	Status handleDestroyClipboard();
 
 protected:
 	struct WinRtAdapter;
@@ -73,6 +80,10 @@ protected:
 	HWND _window = nullptr;
 
 	Rc<Ref> _networkConnectivity;
+
+	// What this process put on the clipboard, held for as long as it owns the selection: it carries
+	// the encoder, which is the only thing that can answer a render request
+	Rc<ClipboardData> _clipboardData;
 
 	bool _winrtInit = false;
 	WinRtAdapter *_adapter = nullptr;

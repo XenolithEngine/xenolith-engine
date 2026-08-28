@@ -130,6 +130,9 @@ public:
 	void reserve(size_t);
 	void add(const StringView &, int64_t id, int64_t tag);
 
+	// `minMatch` is how many DISTINCT words of the request a node has to answer to stay in the
+	// result: 1 is "any of them", 2 is "at least two of them". Two hits on the same word count
+	// once. It is applied before the heuristic runs, so filtered nodes cost no scoring calls.
 	Result performSearch(const StringView &, size_t minMatch,
 			const HeuristicCallback & = Heuristic(), const FilterCallback &filter = nullptr);
 

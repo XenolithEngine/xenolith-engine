@@ -23,15 +23,13 @@
 #include "XLCommon.h"
 
 #include "css/HoverLayout.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLAction.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 using basic2d::Label;
 using basic2d::Layer;
-using ui::InteractiveComponent;
-using ui::InteractiveState;
 
 namespace {
 

@@ -25,6 +25,7 @@
 
 #include "XLInput.h" // IWYU pragma: keep
 #include "XLNodeInfo.h" // IWYU pragma: keep
+#include "XLClipboard.h" // IWYU pragma: keep - preferMimeType and ClipboardOffer live there now
 
 #include <sprt/runtime/window/clipboard.h>
 
@@ -231,14 +232,8 @@ struct SP_PUBLIC DropTargetSlots {
 	Function<bool(const DragEvent &, DragActions action)> drop;
 };
 
-// The single place the MIME preference rule lives: matching is by PREFIX, and the first entry of
-// `preference` that matches anything wins. That is what makes a caller asking for "text/plain" also
-// accept "text/plain;charset=utf-8", which is what half the world actually puts on a clipboard.
-//
-// It is a free function because both sides of the boundary need it and only one of them has a
-// DragData: a paste's type selector is handed a bare list of strings, on an unknown thread
-SP_PUBLIC StringView preferMimeType(SpanView<StringView> available,
-		SpanView<StringView> preference);
+// preferMimeType moved to XLClipboard.h, which is included above: the rule is the clipboard's, and
+// a paste needed it as much as a drop did.
 
 // Which single action the modifiers ask for, clamped to what the source allows.
 //
@@ -246,7 +241,8 @@ SP_PUBLIC StringView preferMimeType(SpanView<StringView> available,
 // modifier the source's default wins. The result is always a subset of `allowed`, and falls back to
 // the first of Copy/Move/Link present in `allowed` when the requested one is not offered, so a
 // caller never has to handle an empty answer for a non-empty `allowed`
-SP_PUBLIC DragActions modifiersToActions(InputModifier mods, DragActions allowed, DragActions dflt);
+SP_PUBLIC DragActions modifiersToActions(InputModifier mods, DragActions allowed,
+		DragActions dflt);
 
 // Reduce a mask to the single action a drop would perform, preferring Copy over Move over Link.
 // None in, None out

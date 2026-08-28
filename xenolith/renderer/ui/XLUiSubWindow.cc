@@ -285,6 +285,7 @@ void SubWindow::dismiss() {
 	if (_layout) {
 		auto layout = sp::move(_layout);
 		_layout = nullptr;
+		_panel = nullptr;
 		layout->removeFromParent();
 	}
 	handleClosed();
@@ -317,6 +318,7 @@ void SubWindow::handleClosed() {
 
 	_sceneInfo = nullptr;
 	_layout = nullptr;
+	_panel = nullptr;
 }
 
 Rc<SubWindow> SubWindow::openPopup(NotNull<AppWindow> parent, const WindowPlacement &placement,

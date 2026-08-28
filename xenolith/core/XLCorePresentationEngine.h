@@ -135,6 +135,10 @@ public:
 	uint64_t getLastFrameInterval() const;
 	uint64_t getAvgFrameInterval() const;
 	uint64_t getLastFrameTime() const;
+#if XL_FRAME_ACCOUNT
+	// Which frame getLastFrameTime() is about. A "last" value with no name cannot be attributed.
+	uint64_t getLastFrameOrder() const { return _lastFrameOrder; }
+#endif
 	uint64_t getLastFenceFrameTime() const;
 	uint64_t getLastTimestampFrameTime() const;
 
@@ -252,6 +256,9 @@ protected:
 	sprt::atomic<uint64_t> _avgPresentationIntervalValue = 0;
 
 	uint64_t _lastFrameTime = 0;
+#if XL_FRAME_ACCOUNT
+	uint64_t _lastFrameOrder = 0;
+#endif
 	MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
 	sprt::atomic<uint64_t> _avgFrameTimeValue = 0;
 

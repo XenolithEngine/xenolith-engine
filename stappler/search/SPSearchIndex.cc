@@ -116,6 +116,28 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 		r.split<DefaultSep>(tokenFn);
 	}
 
+	// `minMatch` is the number of DISTINCT query words a node has to answer, not the number of
+	// matched tokens: two hits on the same word are one word answered. Applied before the
+	// heuristic, so a node that was never a candidate never costs a scoring call.
+	if (minMatch > 1) {
+		auto it = res.nodes.begin();
+		while (it != res.nodes.end()) {
+			uint32_t distinct = 0;
+			uint32_t prev = maxOf<uint32_t>();
+			for (auto &m : it->matches) {
+				if (m.word != prev) {
+					++distinct;
+					prev = m.word;
+				}
+			}
+			if (distinct < minMatch) {
+				it = res.nodes.erase(it);
+			} else {
+				++it;
+			}
+		}
+	}
+
 	if (cb) {
 		Vector<ResultNode> outNodes;
 

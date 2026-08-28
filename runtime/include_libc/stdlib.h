@@ -127,10 +127,10 @@ THE SOFTWARE.
 // <malloc.h>; these are guarded so including both headers is not a redefinition.
 #if defined(_WIN32)
 #ifndef _aligned_malloc
-#define _aligned_malloc(Size, Align) aligned_alloc(Align, Size)
+#define _aligned_malloc(Size, Align) __sprt_aligned_alloc(Align, Size)
 #endif
 #ifndef _aligned_free
-#define _aligned_free(Ptr) aligned_free(Ptr)
+#define _aligned_free(Ptr) __sprt_aligned_free(Ptr)
 #endif
 #endif // _WIN32
 

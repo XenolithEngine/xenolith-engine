@@ -112,6 +112,41 @@ public:
 		}
 	};
 
+	/* One argument of `:not()` / `:is()` / `:where()`: a compound with NO combinators and no
+	functional pseudo-class of its own.
+
+	It is a flat type rather than a CompoundSelector, and that is what the restriction buys. A
+	compound holding compounds would be an incomplete type inside a pool vector; routing around it
+	(an argument pool plus indices) would mean handing the whole ComplexSelector to the client's
+	matchCompound, i.e. changing the seam between this header and every consumer - for a nesting
+	the parser refuses anyway.
+
+	Structural tests (`:is(:first-child)`) are refused for the same reason they are not here: they
+	live in NthTest and are checked by a separate pass over the sibling run. */
+	struct SelectorArg {
+		String tag;
+		String id;
+		Vector<String> classes;
+		bool universal = false;
+		uint32_t pseudoRequire = 0;
+		uint32_t pseudoForbid = 0;
+
+		// packed (id, class, type) triple of THIS argument, computed once while parsing: `:not()`
+		// takes its argument's specificity and `:is()` the largest of its own
+		uint32_t specificity = 0;
+
+		bool matchesPseudo(uint32_t state) const {
+			return (state & pseudoRequire) == pseudoRequire && (state & pseudoForbid) == 0;
+		}
+	};
+
+	// One `:is(...)` or `:where(...)`: at least one option must match. `:where()` is the same test
+	// with its specificity thrown away - which is the whole reason it exists.
+	struct SelectorMatchAny {
+		Vector<SelectorArg> options;
+		bool zeroSpecificity = false; // `:where()`
+	};
+
 	// a single compound (tag/id/classes/pseudo) with its leading combinator; strings are
 	// owned (pool-backed) so they stay valid for the container's lifetime
 	struct CompoundSelector {
@@ -129,6 +164,19 @@ public:
 		bool requireEmpty = false; // :empty - the node has no children
 		bool requireRoot = false; // :root - the node owns the nearest style scope
 
+		// `:not(...)` - NONE of these may match. An argument made only of interactive bits never
+		// lands here: it is folded into pseudoForbid while parsing, so `:not(:hover)` costs nothing
+		Vector<SelectorArg> negations;
+
+		// `:is(...)` / `:where(...)` - each list must have at least one matching option
+		Vector<SelectorMatchAny> anyOf;
+
+		// specificity contributed by the two above, as a packed triple. Kept ready-made because a
+		// functional pseudo-class contributes id/class/type counts, not just "one more class"
+		uint32_t extraId = 0;
+		uint32_t extraClass = 0;
+		uint32_t extraType = 0;
+
 		// does `state` (InteractiveFlags bits) satisfy this compound's pseudo-class requirements?
 		bool matchesPseudo(uint32_t state) const {
 			return (state & pseudoRequire) == pseudoRequire && (state & pseudoForbid) == 0;
@@ -138,7 +186,7 @@ public:
 		// rule store cannot express?
 		bool hasPredicates() const {
 			return pseudoRequire != 0 || pseudoForbid != 0 || !nth.empty() || requireEmpty
-					|| requireRoot;
+					|| requireRoot || !negations.empty() || !anyOf.empty();
 		}
 
 		// number of predicates counting as a class for CSS specificity

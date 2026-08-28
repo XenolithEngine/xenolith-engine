@@ -48,11 +48,7 @@ void AppThread::threadInit() {
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.name = StringView("App"),
-#if SPRT_HOSTED_RTOS
-		.workersCount = 0,
-#else
 		.workersCount = getContextInfo()->appThreadsCount,
-#endif
 
 #if SPRT_HOSTED_RTOS
 		.engineMask = sprt::dispatch::QueueEngine::None,

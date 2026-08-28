@@ -59,7 +59,7 @@ the `scene/` articles route to it rather than restating it.
 
 | Article | Read it when |
 |---|---|
-| [Memory and ownership](core/memory-and-ownership.adoc) | allocating, ref-counting, or using a memory pool |
+| [Memory and ownership](core/memory-and-ownership.adoc) | allocating, ref-counting, using a memory pool, or storing a `Callback` anywhere but a parameter |
 | [Strings](core/strings.adoc) | passing, building, parsing or storing text |
 | [Unicode text: comparisons, case, generated tables](core/unicode-and-text.adoc) | comparing or sorting text, changing case, handling domain names, or touching a generated Unicode table |
 | [Errors: `Status`, `Result`, logging, assertions](core/errors-and-status.adoc) | a function can fail, or you need to log/assert |
@@ -90,6 +90,7 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [Windows: opening, owning, closing](window/windows.adoc) | opening a second window, a popup, a tooltip or a menu; fullscreen, monitors, window state |
 | [System dialogs and shell actions](window/dialogs.adoc) | asking the OS for a file, a folder, a colour or a font; reveal-in-file-manager; move-to-trash and restore-from-trash; asking whether one dialog type is served at all |
+| [The system clipboard](window/clipboard.adoc) | copying or pasting anything: typed payloads, preference lists, and why a read has to be cancellable |
 
 ## Guides
 

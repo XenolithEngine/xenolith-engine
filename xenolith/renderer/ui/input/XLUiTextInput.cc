@@ -24,6 +24,7 @@
 #include "XLDropTarget.h"
 #include "XLAction.h"
 #include "XLDirector.h"
+#include "XLUiTextDocument.h" // TextDocument::diff - what the platform echo changed
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -49,37 +50,40 @@ static constexpr TimeInterval TextInputLongPressInterval = TimeInterval::millise
 // nothing - so the press recognizer, which counts its intervals in update(), would never tick.
 static constexpr uint32_t TextInputPressTag = "XLUiTextInputPress"_tag;
 
-// Register the per-attribute style appliers for nodes of type "text-input" once, the first time a
-// TextInput is constructed - the same "resolve by type" hook ui::Button uses.
-static void ensureTextInputStyleAppliers() {
+void TextInput::registerStyleAppliers(StringView type) {
 	using document::ParameterName;
-	static bool once = [] {
-		StyleResolver::registerTypeApplier("text-input",
-				[](StyleResolver &res, Node *node, const ResolvedStyle &s,
-						document::ParameterName name, const document::StyleValue &val) {
-			if (auto input = dynamic_cast<TextInput *>(node)) {
-				return input->setStyleValue(s, name, val);
-			}
-			return false;
-		},
-				StyleResolver::makeParameterMask({
-					ParameterName::CssBackgroundColor,
-					ParameterName::CssOutlineColor,
-					ParameterName::CssOutlineWidth,
-					ParameterName::CssOutlineStyle,
-					ParameterName::CssBorderTopLeftRadius,
-					ParameterName::CssBorderTopRightRadius,
-					ParameterName::CssBorderBottomRightRadius,
-					ParameterName::CssBorderBottomLeftRadius,
-					ParameterName::CssPaddingTop,
-					ParameterName::CssPaddingRight,
-					ParameterName::CssPaddingBottom,
-					ParameterName::CssPaddingLeft,
-					ParameterName::CmdReset,
-				}));
-		return true;
-	}();
-	(void)once;
+
+	// One registration per type: the appliers are identical for every field built on this widget,
+	// and a second one for the same type would only rebuild the same callback. Registry and node
+	// graph are both app-thread, so a plain set is enough. Same shape as Panel's.
+	static Set<String> s_registered;
+	if (!s_registered.emplace(type.str<mem_std::Interface>()).second) {
+		return;
+	}
+
+	StyleResolver::registerTypeApplier(type,
+			[](StyleResolver &res, Node *node, const ResolvedStyle &s, document::ParameterName name,
+					const document::StyleValue &val) {
+		if (auto input = dynamic_cast<TextInput *>(node)) {
+			return input->setStyleValue(s, name, val);
+		}
+		return false;
+	},
+			StyleResolver::makeParameterMask({
+				ParameterName::CssBackgroundColor,
+				ParameterName::CssOutlineColor,
+				ParameterName::CssOutlineWidth,
+				ParameterName::CssOutlineStyle,
+				ParameterName::CssBorderTopLeftRadius,
+				ParameterName::CssBorderTopRightRadius,
+				ParameterName::CssBorderBottomRightRadius,
+				ParameterName::CssBorderBottomLeftRadius,
+				ParameterName::CssPaddingTop,
+				ParameterName::CssPaddingRight,
+				ParameterName::CssPaddingBottom,
+				ParameterName::CssPaddingLeft,
+				ParameterName::CmdReset,
+			}));
 }
 
 ComponentId TextInputStyleComponent::Id;
@@ -330,7 +334,7 @@ void TextInputContainer::updateCaretPosition() {
 void TextInputContainer::updateCaretBlink() {
 	_caret->stopAllActionsByTag(TextInputBlinkTag);
 
-	const bool visible = _enabled && !_readOnly && _cursor.length == 0;
+	const bool visible = isEnabled() && !_readOnly && _cursor.length == 0;
 	_caret->setVisible(visible);
 
 	if (!visible || !_caretBlink) {
@@ -378,7 +382,12 @@ bool TextInput::init() {
 		return false;
 	}
 
-	ensureTextInputStyleAppliers();
+	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
+	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
+	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	applyControlEnabled(this, true);
+
+	registerStyleAppliers("text-input");
 
 	setType("text-input");
 	addStyleClass("xl-ui-text-input");
@@ -393,7 +402,7 @@ bool TextInput::init() {
 	// insertion point, same validation. A drop target and a paste target really are one handler
 	addSystem(Rc<DropTarget>::create(DropTargetSlots{
 		.accept = [this](const DragEvent &event) -> DragResponse {
-		if (_readOnly || !event.data) {
+		if (isReadOnly() || !event.data) {
 			return DragResponse();
 		}
 		auto want = StringView("text/plain");
@@ -498,6 +507,9 @@ bool TextInput::init() {
 	bind(hk.textCopy);
 	bind(hk.textCut);
 	bind(hk.textPaste);
+	bind(hk.undo);
+	bind(hk.redo);
+	bind(hk.redoAlt);
 
 	_listener->setCursor(WindowCursor::Text);
 
@@ -516,6 +528,11 @@ bool TextInput::init() {
 	_focusListener->setEnabled(false);
 
 	_handler.onData = sprt::bind(&TextInput::handleTextInput, this, sprt::placeholders::_1);
+
+	// Built either way, enabled by nobody: a field with no history costs one empty log and one
+	// pointer, and a subclass that wants one (TextView does) only has to say so.
+	_history.init(this);
+
 
 	return true;
 }
@@ -545,11 +562,20 @@ void TextInput::handleContentSizeDirty() {
 		style = c;
 	}
 
-	const auto width = sprt::max(_contentSize.width - style->padding.horizontal(), 0.0f);
-	const auto height = sprt::max(_contentSize.height - style->padding.vertical(), 0.0f);
+	// Room a subclass has taken out of the viewport for something it draws inside the field's own
+	// box - ui::NumberField's unit is the only one today. Folded in HERE rather than re-implemented
+	// there: the caret, the label slide, the overflow test and the point->cursor mapping are all
+	// expressed against the container's size, so this stays the single writer of its geometry.
+	const auto inset = getViewportInset();
+
+	const auto width =
+			sprt::max(_contentSize.width - style->padding.horizontal() - inset.horizontal(), 0.0f);
+	const auto height =
+			sprt::max(_contentSize.height - style->padding.vertical() - inset.vertical(), 0.0f);
 
 	_container->setContentSize(Size2(width, height));
-	_container->setPosition(Vec2(style->padding.left, style->padding.bottom));
+	_container->setPosition(
+			Vec2(style->padding.left + inset.left, style->padding.bottom + inset.bottom));
 }
 
 void TextInput::handleComponentsDirty(const ComponentMask &mask) {
@@ -817,12 +843,20 @@ void TextInput::setPlaceholder(StringView str) {
 StringView TextInput::getPlaceholder() const { return _placeholderText; }
 
 void TextInput::setReadOnly(bool value) {
-	if (value == _readOnly) {
+	/* Under a lock the visible bit is the LOCK's answer, not the widget's, so it cannot be used to
+	decide "nothing changed": what the widget asks for still has to be recorded, or unlocking would
+	give back "writable" to a field that had been read-only all along. */
+	if (!isEditLocked(this) && value == isReadOnly()) {
 		return;
 	}
-	_readOnly = value;
+	applyControlReadOnly(this, value);
 	_container->setReadOnly(value);
-	if (_readOnly && _handler.isActive()) {
+
+	/* A THIRD axis, and it stays one. A read-only field still takes taps and selections so its text
+	can be read and copied, where a disabled one takes nothing - collapsing the two would silently
+	break copy-out-of-a-read-only-field. It is said twice: `:read-only` is what a stylesheet should
+	ask for, and the plain class is kept for sheets written before that pseudo-class existed. */
+	if (isReadOnly() && _handler.isActive()) {
 		_handler.cancel();
 	}
 }
@@ -871,70 +905,83 @@ void TextInput::insertText(WideStringView text, TextCursor replace) {
 	}
 }
 
+WideStringView TextInput::getTextForCursor(TextCursor cursor) const {
+	return WideStringView(_inputState.getStringView(), cursor.start, cursor.length);
+}
+
+ClipboardSession *TextInput::acquireClipboard() {
+	if (!_clipboard && _director) {
+		_clipboard = Rc<ClipboardSession>::create(_director->getApplication());
+	}
+	return _clipboard;
+}
+
 bool TextInput::copy() {
-	const auto cursor = _inputState.cursor;
+	const auto cursor = selectionCursor();
 	if (cursor.length == 0 || !_director) {
 		return false;
 	}
 
 	// A masked field's contents are exactly what must not leave the widget
-	if (_passwordMode != TextInputPasswordMode::NotPassword) {
+	if (!canCopySelection()) {
 		return false;
 	}
 
-	auto str = string::toUtf8<Interface>(
-			WideStringView(_inputState.getStringView(), cursor.start, cursor.length));
+	auto clipboard = acquireClipboard();
+	if (!clipboard) {
+		return false;
+	}
 
-	// writeToClipboard copies the bytes and retains the Ref, so the local String may die here
-	_director->getApplication()->writeToClipboard(
-			BytesView(reinterpret_cast<const uint8_t *>(str.data()), str.size()),
-			StringView("text/plain"), this);
-	return true;
+	// The offer copies the bytes, so the local String may die here. A false answer means the
+	// transport cannot carry it - a remote client - which is why cut() consults this before
+	// deleting anything
+	auto str = string::toUtf8<Interface>(getTextForCursor(cursor));
+	return clipboard->writeText(str) == Status::Ok;
 }
 
 bool TextInput::cut() {
-	if (_readOnly || !copy()) {
+	if (isReadOnly() || !copy()) {
 		return false;
 	}
-	insertText(WideStringView(), _inputState.cursor);
+	// What was SELECTED, not where the caret is heading: see selectionCursor()
+	HistoryEditName name(this, TextHistory::NameCut);
+	insertText(WideStringView(), selectionCursor());
 	return true;
 }
 
 bool TextInput::paste() {
-	if (_readOnly || !_director) {
+	if (isReadOnly() || !_director) {
 		return false;
 	}
 
-	const auto serial = ++_pasteSerial;
-	_director->getApplication()->readFromClipboard(
-			[this, serial](Status st, BytesView data, StringView) {
-		// A superseded answer: the field was pasted into again, or blurred while the read was in
-		// flight. Applying it would drop text on top of a newer edit
-		if (!sprt::status::isSuccessful(st) || serial != _pasteSerial) {
+	auto clipboard = acquireClipboard();
+	if (!clipboard) {
+		return false;
+	}
+
+	// The staleness serial, the type negotiation and "answered exactly once" are the session's.
+	// What is left here is what this widget does with the bytes
+	return clipboard->readText([this](const ClipboardSession::Result &result) {
+		if (!result) {
 			return;
 		}
 
-		auto text = string::toUtf16<Interface>(
-				StringView(reinterpret_cast<const char *>(data.data()), data.size()));
+		auto text = string::toUtf16<Interface>(result.text());
 
 		// The caret as it is NOW, not as it was when the read started - the user may have moved it.
 		// Length and character filtering happen in validateInput() on the echo
-		insertText(WideStringView(text), pendingCursor());
-	}, [](SpanView<StringView> types) -> StringView {
-		// The same rule a dropped payload is matched with, so a field cannot end up accepting a
-		// type on drop that it refuses on paste. It runs on an unknown thread and only looks at
-		// strings, which is exactly what preferMimeType is
-		auto want = StringView("text/plain");
-		return preferMimeType(types, makeSpanView(&want, 1));
-	}, this);
-	return true;
+		HistoryEditName name(this, TextHistory::NamePaste);
+		insertText(WideStringView(text), insertionCursor());
+	}, this) != 0;
 }
 
 bool TextInput::handleTextDrop(const DragEvent &event) {
-	if (_readOnly || !event.data) {
+	if (isReadOnly() || !event.data) {
 		return false;
 	}
 
+	// The same rule a pasted payload is matched with, so a field cannot end up accepting a type on
+	// drop that it refuses on paste
 	auto want = StringView("text/plain");
 	auto type = event.data->preferType(makeSpanView(&want, 1));
 	if (type.empty()) {
@@ -950,12 +997,13 @@ bool TextInput::handleTextDrop(const DragEvent &event) {
 			StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
 
 	// the caret as it is NOW, exactly as a paste does; filtering happens in validateInput()
-	insertText(WideStringView(text), pendingCursor());
+	HistoryEditName name(this, TextHistory::NameDrop);
+	insertText(WideStringView(text), insertionCursor());
 	return true;
 }
 
 void TextInput::focus() {
-	if (!_enabled || _readOnly || _handler.isActive()) {
+	if (!isEnabled() || isReadOnly() || _handler.isActive()) {
 		return;
 	}
 	acquireInput(TextCursor(uint32_t(_inputState.size())));
@@ -964,6 +1012,11 @@ void TextInput::focus() {
 void TextInput::blur() {
 	if (_handler.isActive()) {
 		_handler.cancel();
+	}
+	// A paste in flight belongs to the focus that started it. An answer arriving afterwards would
+	// land on top of whatever the field holds now - or, worse, while another widget is being edited
+	if (_clipboard) {
+		_clipboard->cancel();
 	}
 	_focusListener->setEnabled(false);
 }
@@ -977,19 +1030,17 @@ void TextInput::selectAll() {
 }
 
 void TextInput::setEnabled(bool value) {
-	if (value == _enabled) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it
+	// back. A no-op, and one pointer test, on a control nobody locked.
+	value = resolveEditLock(this, value);
+	if (value == isEnabled()) {
 		return;
 	}
 
-	_enabled = value;
-	if (!_enabled) {
+	applyControlEnabled(this, value);
+	if (!value) {
 		blur();
 	}
-
-	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		return state->updateState(_enabled ? (state->state | InteractiveState::Enabled)
-										   : (state->state & ~InteractiveState::Enabled));
-	});
 }
 
 void TextInput::setInputType(TextInputType type) {
@@ -1121,6 +1172,7 @@ void TextInput::pushRequest(TextInputString *string, TextCursor cursor, TextCurs
 void TextInput::handleTextInput(const TextInputState &data) {
 	const bool wasFocused = _focused;
 	const auto previousString = _inputState.string;
+	const auto previousCursor = _inputState.cursor;
 	const bool wasComposing = _inputState.marked.length > 0;
 
 	// Focus follows what the platform actually granted, not what was asked for - which is what
@@ -1130,6 +1182,12 @@ void TextInput::handleTextInput(const TextInputState &data) {
 		if (!_focused) {
 			_focusListener->setEnabled(false);
 			_selectionAnchor = maxOf<uint32_t>();
+			// The SECOND place a pending paste dies, and the one that actually happens: focus is
+			// normally taken by the platform rather than surrendered through blur(), so cancelling
+			// only there would leave the common case unguarded
+			if (_clipboard) {
+				_clipboard->cancel();
+			}
 		}
 		updateInteractiveState();
 	}
@@ -1148,7 +1206,35 @@ void TextInput::handleTextInput(const TextInputState &data) {
 
 	const bool stringChanged = _inputState.string != previousString;
 	if (stringChanged) {
+		/* The field's text belongs to the platform, so this echo is the only place it is ever seen
+		to change - typing, composition, system autocorrect and a platform-side paste all arrive
+		here and nowhere else. What the edit WAS has to be recovered by diffing, which is exactly
+		what the processor's single-range guarantee makes exact. */
+		if (_historyEchoes > 0) {
+			// This is a history-driven edit coming back. Recording it would make undo undoable,
+			// which is how a history turns into a loop.
+			--_historyEchoes;
+		} else if (_history.isEnabled() && !_history.isApplying()) {
+			// The removed text has to come from the PREVIOUS string: _inputState already holds the
+			// new one by now, so sliceForHistory() would read what replaced it.
+			const auto before =
+					previousString ? WideStringView(previousString->string) : WideStringView();
+			const auto after = _inputState.getStringView();
+			const auto d = TextDocument::diff(before, after);
+			if (d.removed || d.inserted) {
+				_history.recordEdit(d.pos, WideStringView(before.data() + d.pos, d.removed),
+						WideStringView(after.data() + d.pos, d.inserted), previousCursor,
+						_historyEditName, _historyClock);
+			}
+		}
 		updateDisplayString();
+
+		// The caret an undo restored, applied now that the string it belongs to has arrived.
+		if (_historyPendingCursor != TextCursor::InvalidCursor) {
+			const auto cursor = _historyPendingCursor;
+			_historyPendingCursor = TextCursor::InvalidCursor;
+			setCursor(cursor);
+		}
 	}
 	_container->handleLabelChanged();
 	_container->setPlaceholderVisible(_inputState.empty() && !_focused);
@@ -1370,6 +1456,10 @@ bool TextInput::handleTextHotkey(HotkeyId id, const InputEvent &) {
 		return cut();
 	} else if (id == hk.textPaste) {
 		return paste();
+	} else if (id == hk.undo) {
+		return undo();
+	} else if (id == hk.redo || id == hk.redoAlt) {
+		return redo();
 	}
 	return false;
 }
@@ -1386,7 +1476,7 @@ TextCursor TextInput::getWordForPosition(const Vec2 &loc) const {
 }
 
 void TextInput::applyGestureCursor(TextCursor cursor) {
-	if (!_focused && !_readOnly) {
+	if (!_focused && !isReadOnly()) {
 		acquireInput(cursor);
 	} else {
 		setCursor(cursor);
@@ -1394,7 +1484,7 @@ void TextInput::applyGestureCursor(TextCursor cursor) {
 }
 
 bool TextInput::handleTap(const GestureTap &tap) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -1424,7 +1514,7 @@ bool TextInput::handleTap(const GestureTap &tap) {
 }
 
 bool TextInput::handlePress(const GesturePress &press, bool begin) {
-	if (!_enabled) {
+	if (!isEnabled()) {
 		return false;
 	}
 
@@ -1448,7 +1538,7 @@ bool TextInput::handlePress(const GesturePress &press, bool begin) {
 bool TextInput::handleLongPress(const GesturePress &press) {
 	// A drag took the gesture over: it is selecting by itself, and widening under it would fight
 	// the pointer.
-	if (!_enabled || _dragSelecting || _panning || _inputState.empty()) {
+	if (!isEnabled() || _dragSelecting || _panning || _inputState.empty()) {
 		return true;
 	}
 
@@ -1478,11 +1568,11 @@ bool TextInput::handleLongPress(const GesturePress &press) {
 }
 
 bool TextInput::handleSwipeBegin(const Vec2 &pt) {
-	if (!_enabled || !isTouched(pt, 8.0f)) {
+	if (!isEnabled() || !isTouched(pt, 8.0f)) {
 		return false;
 	}
 
-	if (_focused && !_readOnly) {
+	if (_focused && !isReadOnly()) {
 		auto cursor = _container->getCursorForPosition(pt);
 		_selectionAnchor = cursor.start;
 		_dragSelecting = true;
@@ -1526,6 +1616,102 @@ bool TextInput::handleSwipeEnd() {
 		return true;
 	}
 	return false;
+}
+
+void TextInput::setUndoEnabled(bool value) {
+	if (_history.isEnabled() == value) {
+		return;
+	}
+	_history.setEnabled(value);
+
+	/* The only reason this widget is ever scheduled per frame: the idle window that decides where
+	one undo entry ends and the next begins needs a clock, and nothing in this stack reads one. */
+	if (value) {
+		scheduleUpdate();
+	} else {
+		unscheduleUpdate();
+	}
+}
+
+bool TextInput::undo() {
+	// A run in progress is committed by the history itself, so Ctrl+Z in the middle of a word
+	// takes back the word. Answering false when there is nothing is what lets the chord fall
+	// through to whoever is below - a document editor, a shell, a project history.
+	return _history.undo();
+}
+
+bool TextInput::redo() { return _history.redo(); }
+
+WideStringView TextInput::sliceForHistory(uint32_t pos, uint32_t len) const {
+	auto str = _inputState.getStringView();
+	if (pos >= str.size()) {
+		return WideStringView();
+	}
+	len = sprt::min(len, uint32_t(str.size()) - pos);
+	return WideStringView(str.data() + pos, len);
+}
+
+void TextInput::beginHistoryBatch() {
+	auto str = _inputState.getStringView();
+	_historyShadow = WideString(str.data(), str.size());
+	_historyBatch = true;
+}
+
+void TextInput::applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted) {
+	if (_historyBatch) {
+		// Into the shadow, not out to the platform: the entry being undone may hold a whole typed
+		// word, and each request would be computed against a string the platform has not sent back
+		// yet - so all of them would describe the same starting point and only the last would
+		// survive. The batch is asked for once, at the end.
+		pos = sprt::min(pos, uint32_t(_historyShadow.size()));
+		removed = sprt::min(removed, uint32_t(_historyShadow.size()) - pos);
+		_historyShadow.replace(pos, removed, inserted.data(), inserted.size());
+		return;
+	}
+
+	// A REQUEST, like every other edit here: the platform owns this text, and an undo that wrote
+	// locally would be overwritten by the next echo. The echo it produces is this edit coming
+	// back, not a new one, so it is counted rather than recorded.
+	++_historyEchoes;
+	insertText(inserted, TextCursor(pos, removed));
+}
+
+void TextInput::endHistoryBatch() {
+	if (!_historyBatch) {
+		return;
+	}
+	_historyBatch = false;
+
+	auto current = _inputState.getStringView();
+	if (WideStringView(_historyShadow) == current) {
+		// An entry that changed nothing asks for nothing, and leaves no echo to account for.
+		_historyPendingCursor = TextCursor::InvalidCursor;
+		return;
+	}
+
+	++_historyEchoes;
+	setText(WideStringView(_historyShadow));
+}
+
+void TextInput::setHistoryCursor(TextCursor cursor) {
+	// NOT setCursor(): the edit just requested has not been echoed yet, so a cursor push now would
+	// send the string as it still is and cancel it. The echo carries this instead.
+	_historyPendingCursor = cursor;
+}
+
+void TextInput::recordHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted,
+		TextCursor cursorBefore) {
+	_history.recordEdit(pos, sliceForHistory(pos, removed), inserted, cursorBefore,
+			_historyEditName, _historyClock);
+}
+
+void TextInput::update(const UpdateTime &time) {
+	VectorSprite::update(time);
+
+	// `global` rather than `app`: AppThread computes app-time as (start - now) rather than
+	// (now - start), so it decreases and underflows - see XLAppThread::performUpdate.
+	_historyClock = time.global;
+	_history.tickIdle(_historyClock);
 }
 
 } // namespace stappler::xenolith::ui

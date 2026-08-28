@@ -22,7 +22,7 @@
 
 #include "XLUiTreeView.h"
 #include "XLUiButton.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -730,6 +730,20 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 	setStyleVariable(node, "--tree-row-h", mem_std::toString(row.height, "px"));
 
 	return node;
+}
+
+// ---- geometry -----------------------------------------------------------------------------------
+
+RowGeometrySource TreeView::makeGeometrySource() const {
+	return RowGeometrySource{this, _scroll, _controller};
+}
+
+bool TreeView::getRowRect(size_t index, Rect &out) const {
+	return ui::getRowRect(makeGeometrySource(), index, out);
+}
+
+size_t TreeView::getRowIndexAt(const Vec2 &nodeLocation) const {
+	return ui::getRowIndexAt(makeGeometrySource(), nodeLocation);
 }
 
 void TreeView::handleRowTap(size_t index, uint32_t count) {

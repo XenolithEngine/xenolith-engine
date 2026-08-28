@@ -75,7 +75,7 @@ struct linear_memory_small {
 
 	static void drop_unused(strage_type &storage) {
 		const auto unused = ((storage.back() & ~CommonSmallMask) >> 1);
-		if (unused < max_capacity()) {
+		if (unused <= max_capacity()) {
 			const auto s = max_capacity() - unused;
 			// data is already garbage, bypass -Wclass-memaccess
 			__builtin_memset((void *)(storage.data() + s * sizeof(Type)), 0, unused * sizeof(Type));

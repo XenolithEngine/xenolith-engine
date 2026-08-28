@@ -30,6 +30,10 @@
 #include "XL2dIconSprite.h"
 #include "XL2dScrollView.h"
 #include "XL2dScrollController.h"
+#include "XLUiRowGeometry.h"
+#include "XL2dLayer.h"
+#include "XLDragSource.h"
+#include "XLDropTarget.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -272,6 +276,52 @@ public:
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
+	/* Where a row and a cell LIE, in this node's coordinate space.
+
+	Answers for a row that has no node: only the nodes are virtualized, while rebuildRows() commits
+	one controller item per row with the height it resolved before any node existed. Reproducing
+	that outside the widget means copying arithmetic that lives in here and will change, which is
+	the whole reason these are public.
+
+	False before the first layout pass - there is nothing to report yet, and a zero rectangle is a
+	worse answer than an admitted absence. */
+	bool getRowRect(size_t index, Rect &out) const;
+	bool getCellRect(size_t row, size_t column, Rect &out) const;
+
+	/* Which row lies at a point, in CONTENT space rather than in the visible box: a point above or
+	below the viewport names the row that would be there, the same way getRowRect describes a row
+	that scrolled out of sight. maxOf<size_t>() only for a point outside the content entirely. */
+	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
+
+	// The boundary an insertion would snap to: 0..getRowCount(), never a row index.
+	size_t getRowBoundaryAt(const Vec2 &nodeLocation, Rect *boundaryRect = nullptr) const;
+
+	/* Reordering rows by dragging a grip, and by Alt+Up / Alt+Down.
+
+	THE GRIP IS A COLUMN THE CALLER DECLARES, under this key, wherever it wants it and with whatever
+	track CSS gives it. The view fills that cell in - an icon and a DragSource - but does not insert
+	the column itself: doing that would renumber every other column behind the caller's back, and
+	the `grid-template-columns` list they already wrote would line up against the wrong cells.
+
+	`to` IS THE ROW'S FINAL INDEX, counted after it has been taken out of its old place. That is the
+	only reading under which "move this one down" is expressible, and it is the same convention
+	data::Model::moveNode states.
+
+	The callback returns FALSE to refuse: the order does not change and neither does the selection.
+	Nothing is moved by the view itself - the model belongs to the caller, and only the caller knows
+	whether the move is legal. On acceptance the view re-points the selection so that it follows the
+	ROW, not the index it used to sit at. */
+	static constexpr StringView ReorderColumnKey = StringView("__reorder");
+
+	virtual void setReorderEnabled(bool);
+	bool isReorderEnabled() const { return _reorderEnabled; }
+
+	virtual void setReorderCallback(Function<bool(size_t from, size_t to)> &&);
+
+	// Ask for a move as if the user had done it. What the keyboard path calls, and what a test
+	// drives the widget with. False when it was refused or was a no-op.
+	virtual bool reorderRow(size_t from, size_t to);
+
 protected:
 	using Panel::init;
 
@@ -300,6 +350,19 @@ protected:
 	// build the cells of `node` for `row`; also used for the header, with `header` set
 	virtual void buildCells(Node *node, const Row *row, size_t index, bool header);
 
+	RowGeometrySource makeGeometrySource() const;
+
+	// Fills the caller's `__reorder` cell: the grip icon plus the DragSource that starts the move.
+	Rc<Node> makeReorderCell(size_t index);
+
+	void updateReorderSystems();
+	void showInsertionLine(size_t boundary);
+	void hideInsertionLine();
+
+	bool handleReorderDrop(size_t from, const Vec2 &nodeLocation);
+	bool handleReorderHotkey(bool down);
+
+
 	RowNode *getRowNode(size_t index) const;
 	virtual void updateRowNode(RowNode *, size_t index);
 	Rc<RowNode> takeReusableRow(size_t index);
@@ -320,6 +383,12 @@ protected:
 	DataListener<Model> *_sourceListener = nullptr;
 
 	Vector<Column> _columns;
+	bool _reorderEnabled = false;
+	Function<bool(size_t from, size_t to)> _reorderCallback;
+	InputListener *_reorderKeys = nullptr;
+	Rc<DropTarget> _dropTarget;
+	basic2d::Layer *_insertionLine = nullptr;
+
 	TableColumnsComponent _geometry; // the one copy every row and the header is stamped from
 	uint64_t _columnsRevision = 0;
 

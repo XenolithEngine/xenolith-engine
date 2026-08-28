@@ -24,9 +24,10 @@
 #define XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
 
 #include "XLUiPanel.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XL2dIconSprite.h"
 #include "XL2dLabel.h"
+#include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -49,7 +50,7 @@ enum class ButtonIconTheme {
 //   button { background-color:#1e88e5; outline-color:#0d47a1; outline-width:2px;
 //            border-radius:20px; display:flex; align-items:center; ... }
 //   button > label { color:#ffffff; font-size:16px; }
-class SP_PUBLIC Button : public Panel {
+class SP_PUBLIC Button : public Panel, public EditLockTarget {
 public:
 	virtual ~Button();
 
@@ -75,8 +76,8 @@ public:
 
 	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match), adds
 	// the `disabled` style class and stops the tap callbacks from firing
-	virtual void setEnabled(bool);
-	virtual bool isEnabled() const { return _enabled; }
+	virtual void setEnabled(bool) override;
+	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
@@ -89,6 +90,10 @@ public:
 	virtual void setLabelFontWeight(font::FontWeight);
 	virtual basic2d::Label *getLabel() const;
 
+	// The icon NODE, for the size and the colour a stylesheet would otherwise have set. Named apart
+	// from getIcon(), which answers with the IconName rather than with what draws it.
+	virtual basic2d::IconSprite *getIconSprite() const;
+
 protected:
 	virtual void updateState();
 
@@ -98,7 +103,6 @@ protected:
 	ButtonType _type = ButtonType::General;
 	ButtonIconTheme _theme = ButtonIconTheme::Default;
 	WindowState _windowState = WindowState::None;
-	bool _enabled = true;
 
 	Function<void()> _leftCallback;
 	Function<void()> _rightCallback;
