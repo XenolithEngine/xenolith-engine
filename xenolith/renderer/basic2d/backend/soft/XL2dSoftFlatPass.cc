@@ -71,6 +71,8 @@ void VertexAttachmentHandle::submitInput(core::FrameQueue &q, Rc<core::Attachmen
 		return;
 	}
 
+	_client = d->client;
+
 	q.getFrame()->waitForDependencies(data->waitDependencies,
 			[this, d = sp::move(d), cb = sp::move(cb)](core::FrameHandle &handle,
 					bool success) mutable {
@@ -375,6 +377,29 @@ bool FlatPassHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
 	}
 
 	return sf::QueuePassHandle::prepare(q, sp::move(cb));
+}
+
+void FlatPassHandle::handlePassRasterized(core::FrameQueue &) {
+	if (!_vertexHandle) {
+		return;
+	}
+
+	auto client = _vertexHandle->getClient();
+	if (!client) {
+		return;
+	}
+
+	// Only the two fields this backend can honestly fill. The rest of DrawStat describes a GPU
+	// submission - draw calls, cached framebuffers, the vertex stage's own timings - and reporting
+	// zeroes for them would be indistinguishable from a frame that really had none.
+	// Braces, not a bare declaration: DrawStat carries no initializer for most of its fields, so a
+	// default-initialized local would push whatever was on the stack under the labels this backend
+	// does not fill.
+	core::DrawStat stat{};
+	stat.pixelsTotal = uint64_t(_frameSurface.width) * uint64_t(_frameSurface.height);
+	stat.pixelsFilled = _frameFill.total();
+
+	client->pushDrawStat(stat);
 }
 
 namespace {
