@@ -3,22 +3,27 @@
 
 GLES_M1_PLAN.md §4.3: launch `headlesstest --headless -W 640 -H 480 --gapi gles` with an
 inspector socket, send `frame` + `screenshot`, decode the PNG (pure zlib/struct, no
-dependencies), verify the frame is uniform white — M1 renders nothing but the clear pass, so
-the last presented image must be exactly the scene's background colour. Then `quit` and check
-the exit code. Prints "N checks, M failures"; exit status is the result.
+dependencies), verify the frame is uniform white — with the scene's drawables hidden
+(`show={all:false}`, M2), the flat queue renders nothing but the background, so the last
+presented image must be exactly the scene's background colour. Then `quit` and check the
+exit code. Prints "N checks, M failures"; exit status is the result.
 
     tests/headless/gles-clear-check.py [path-to-headlesstest]
 
 The binary must have been built with GLES=1 (see the Makefile). With no argument it expects
 the debug x86_64-linux build in place; nothing is built here.
 
+Since M2 the binary runs the flat queue, so the script hides every scene drawable first:
+`show={"layer":false,"sprite":false,"vector":false,"label":false}` — otherwise the sprite,
+vector figure and box would be in frame and the "uniform white" assertion would fail by
+design.
+
 Expected one-off log noise, per GLES_M1_PLAN.md §4.3 — these are NOT failures:
-  * «Fail to create FontQueue for GAPI» (XLFontComponent.cc) - the font stack has no GLES
-    queue yet; labels do not render in M1 and nothing else needs a font queue.
   * «Fail to initialize with queue» (XL2dFrameContext.cc) - FrameContext2d wants the four
     standard basic2d attachments, which the clear-only queue does not declare; draw commands
     are dropped by design in M1, so the scene context is never needed and presentation still
-    runs through the pass handle.
+    runs through the pass handle. (GLES builds a real flat queue since M2, so this line no
+    longer appears there; it stays listed for the soft/clear-only reference run.)
 
 Dependency-free: standard library only (socket/json/struct/zlib/base64).
 """
@@ -234,6 +239,11 @@ def main():
 
         session = connect()
         expect(True, "inspector accepted the connection")
+
+        # Since M2 the binary runs the flat queue with a real scene; hide every drawable so the
+        # "uniform white" assertion below checks exactly what M1 checked - background only.
+        session.call("invoke", name="show",
+                     args={"layer": False, "sprite": False, "vector": False, "label": False})
 
         # Headless renders on demand and `screenshot` reads back the LAST presented image, which
         # trails the frames just submitted (xlclient.py measured a few-frame lag). Burn several

@@ -20,7 +20,40 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#ifndef XENOLITH_FONT_BACKEND_GLES_XLGLESFONTQUEUE_H_
+#define XENOLITH_FONT_BACKEND_GLES_XLGLESFONTQUEUE_H_
 
-#include "XL2dGlesClearPass.cc"
-#include "XL2dGlesFlatPass.cc"
+#include "XLFontComponent.h"
+
+#if MODULE_XENOLITH_BACKEND_GLES
+
+#include "XLGlesQueuePass.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
+
+/* Font glyph atlas queue for the OpenGL ES backend.
+ *
+ * Glyphs are rasterized on CPU (FreeType), packed into an R8 atlas with
+ * font::emplaceChars, composed into a tightly-packed byte buffer, and uploaded
+ * as a single glTexSubImage2D via gles::Image's initialData path. The 2d flat
+ * pass samples the resulting texture with per-glyph UVs resolved from the
+ * DataAtlas on CPU (hasGpuSideAtlases = false). */
+class SP_PUBLIC FontQueue : public core::Queue {
+public:
+	virtual ~FontQueue();
+
+	bool init(StringView name);
+
+	const core::AttachmentData *getAttachment() const { return _attachment; }
+
+protected:
+	using core::Queue::init;
+
+	const core::AttachmentData *_attachment = nullptr;
+};
+
+} // namespace stappler::xenolith::gles
+
+#endif /* MODULE_XENOLITH_BACKEND_GLES */
+
+#endif /* XENOLITH_FONT_BACKEND_GLES_XLGLESFONTQUEUE_H_ */

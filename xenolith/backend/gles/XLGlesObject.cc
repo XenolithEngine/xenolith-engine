@@ -95,7 +95,16 @@ bool Buffer::init(Device &dev, const core::BufferData &data) {
 	}
 	_glBuffer = name;
 
-	const auto target = GL_COPY_WRITE_BUFFER;
+	// The creation target must match the buffer's role: a storage buffer created as an array
+	// buffer reads back silently empty (no error), and COPY_WRITE buffers are reserved for copy
+	// operations. The core usage names the role; ARRAY_BUFFER stands in for everything else, which
+	// also covers plain vertex/index data on drivers where those targets interoperate.
+	auto target = GL_ARRAY_BUFFER;
+	if ((uint32_t(data.usage) & uint32_t(core::BufferUsage::StorageBuffer)) != 0) {
+		target = GL_SHADER_STORAGE_BUFFER;
+	} else if ((uint32_t(data.usage) & uint32_t(core::BufferUsage::IndexBuffer)) != 0) {
+		target = GL_ELEMENT_ARRAY_BUFFER;
+	}
 	auto usage = data.persistent ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW;
 
 	if (!data.data.empty() || data.memCallback || data.stdCallback) {
@@ -182,9 +191,12 @@ bool Image::setup(Device &dev, const core::ImageInfoData &info,
 
 	table.glBindTexture(GL_TEXTURE_2D, 0);
 
+	// A swapchain image passes its slot as requestedIndex - including slot 0, which must stay 0: the
+	// frame queue keys per-slot state (presented-image lookup) on it. maxOf is the "auto" sentinel, so
+	// every non-swapchain image gets a unique object index here.
 	return core::ImageObject::init(dev, GlesObject_clearImage, core::ObjectType::Image,
 			glObjectHandle(_glTexture), nullptr,
-			requestedIndex != 0 ? requestedIndex : dev.getNextObjectIndex());
+			requestedIndex != maxOf<uint64_t>() ? requestedIndex : dev.getNextObjectIndex());
 }
 
 bool Image::init(Device &dev, StringView name, const core::ImageInfoData &info) {

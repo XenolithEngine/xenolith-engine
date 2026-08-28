@@ -44,8 +44,12 @@ class Device;
 // core::ImageFormat -> the GLES triple (internal format, pixel format, pixel type) for the
 // subset the backend actually accepts (§2.11 of the plan). `internalFormat` is zero for
 // anything the backend can not allocate - that is how callers detect an unsupported image.
-// B8G8R8A8 is deliberately absent: GLES only has it behind an extension, and the loop reports
-// R8G8B8A8_UNORM as the common format instead.
+// B8G8R8A8_UNORM maps to RGBA8 storage: on Linux the loop reports it as the common format
+// (SPRTWinLinuxController), and a frame whose output attachment is tagged with it must be
+// allocatable, exactly like it is for soft/vk where B8G8R8A8 is native. Channel semantics are
+// preserved - shaders write r/g/b/a into channels and capture reads them back through
+// glReadPixels(GL_RGBA) - so the tag only distinguishes byte order in memory, which nothing in
+// this backend consumes raw.
 struct GlFormat {
 	GLenum internalFormat = 0;
 	GLenum format = 0;
@@ -57,6 +61,7 @@ inline GlFormat getGlFormat(core::ImageFormat format) {
 	case core::ImageFormat::R8_UNORM:
 		return GlFormat{GL_R8, GL_RED, GL_UNSIGNED_BYTE};
 	case core::ImageFormat::R8G8B8A8_UNORM:
+	case core::ImageFormat::B8G8R8A8_UNORM:
 		return GlFormat{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE};
 	case core::ImageFormat::R8G8B8A8_SRGB:
 		return GlFormat{GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE};
@@ -69,6 +74,7 @@ inline uint32_t getGlPixelSize(core::ImageFormat format) {
 	switch (format) {
 	case core::ImageFormat::R8_UNORM: return 1; break;
 	case core::ImageFormat::R8G8B8A8_UNORM:
+	case core::ImageFormat::B8G8R8A8_UNORM:
 	case core::ImageFormat::R8G8B8A8_SRGB: return 4; break;
 	default: return 0; break;
 	}

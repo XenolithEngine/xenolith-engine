@@ -20,7 +20,25 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#ifndef XENOLITH_BACKEND_GLES_XLGLESMATERIAL_H_
+#define XENOLITH_BACKEND_GLES_XLGLESMATERIAL_H_
 
-#include "XL2dGlesClearPass.cc"
-#include "XL2dGlesFlatPass.cc"
+#include "XLGlesDevice.h"
+#include "XLCoreAttachment.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
+
+// The flat draw path reads a material's image, sampler and pipeline straight out of the compiled
+// set at record time (there is no per-material GPU buffer to fill), so this adds nothing beyond
+// what core::MaterialAttachment already does - like the software one, it exists to give the
+// attachment the backend's own type. The typed wrapper is load-bearing: plain Attachment's
+// makeFrameHandle answers null and a frame with such an attachment dies in FrameQueue::setup.
+class SP_PUBLIC MaterialAttachment
+		: public core::AttachmentTyped<core::AttachmentHandle, core::MaterialAttachment> {
+public:
+	virtual ~MaterialAttachment() = default;
+};
+
+} // namespace stappler::xenolith::gles
+
+#endif /* XENOLITH_BACKEND_GLES_XLGLESMATERIAL_H_ */

@@ -58,6 +58,7 @@
 #if MODULE_XENOLITH_BACKEND_GLES
 #include "XLGlesInstance.h"
 #include "XLGlesHeadlessPresentation.h"
+#include "XLGlesWindowedPresentation.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -561,8 +562,22 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			return Rc<gles::HeadlessSurface>::create(instance, _window->getExtent(), this);
 		}
 
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Wayland) {
+			// The device's EGL display was opened on the session's wl_display, so the surface is
+			// the wl_surface itself and the swapchain builds an EGLWindowSurface from it.
+			return Rc<gles::WindowedSurface>::create(instance, ifaceInfo.backend,
+					ifaceInfo.wayland.display, ifaceInfo.wayland.surface, _window->getExtent(),
+					this);
+		}
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Xcb) {
+			return Rc<gles::WindowedSurface>::create(instance, ifaceInfo.backend,
+					ifaceInfo.xcb.connection, reinterpret_cast<void *>(ifaceInfo.xcb.window),
+					_window->getExtent(), this);
+		}
+
 		log::source().error("AppWindow", "Windowed presentation is not implemented for the GLES "
-				"backend yet (M2): surface backend ", toInt(ifaceInfo.backend));
+				"backend (M2): surface backend ", toInt(ifaceInfo.backend));
 		return nullptr;
 	}
 #endif
