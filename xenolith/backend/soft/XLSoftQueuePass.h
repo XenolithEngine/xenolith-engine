@@ -98,8 +98,18 @@ protected:
 	// Returns false when the image already holds this frame and it can be skipped outright.
 	bool computeRedrawArea(core::FrameQueue &, const raster::Target &, Vector<URect> &areas);
 
+	// Called at the end of a runPass that actually rasterized, so a subclass can report what the
+	// frame cost without having to reach into the rasterization itself. Not called for a frame the
+	// damage tracker skipped: there is nothing to report and overwriting the previous frame's
+	// numbers with zeroes would read as "the rasterizer did nothing", which is a different claim.
+	virtual void handlePassRasterized(core::FrameQueue &) { }
+
 	Device *_device = nullptr;
 	Loop *_softLoop = nullptr;
+
+	// Last rasterized frame, for handlePassRasterized. Summed across every region of the frame.
+	raster::FillStats _frameFill;
+	Extent2 _frameSurface;
 };
 
 class SP_PUBLIC ImageAttachment

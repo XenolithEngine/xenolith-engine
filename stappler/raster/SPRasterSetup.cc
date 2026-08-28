@@ -136,7 +136,7 @@ RowSpan rowSpanAnalytic(int64_t w0, int64_t w1, int64_t w2, int64_t step0, int64
 	return RowSpan{minX + int32_t(lo), minX + int32_t(hi)};
 }
 
-void fillRect(const Target &target, const URect &rect, const Color4F &color) {
+void fillRect(const Target &target, const URect &rect, const Color4F &color, FillStats *stats) {
 	if (target.empty()) {
 		return;
 	}
@@ -155,14 +155,18 @@ void fillRect(const Target &target, const URect &rect, const Color4F &color) {
 		return;
 	}
 
-	getKernels().fillRect(target, URect{left, top, right - left, bottom - top}, fmt, color);
+	auto clipped = URect{left, top, right - left, bottom - top};
+	if (stats) {
+		stats->fillPixels += uint64_t(clipped.width) * uint64_t(clipped.height);
+	}
+	getKernels().fillRect(target, clipped, fmt, color);
 }
 
 // Rasterize one triangle. Scanline walk with incremental edge functions: for each row the three
 // edge values are stepped by their dx, and coverage is the sign test of all three.
 static void Setup_drawTriangle(const KernelTable &kernels, const Target &target,
 		const ChannelLayout &fmt, const Vertex &v0, const Vertex &v1, const Vertex &v2,
-		const Command &cmd, const Texture *texture, const URect &clip) {
+		const Command &cmd, const Texture *texture, const URect &clip, uint64_t *spanPixels) {
 	// Rejection before anything else is computed. A triangle outside the clip used to pay for
 	// three fixed-point conversions, a signed area and a possible rewind before the bounding box
 	// finally told it so - fine when the clip was the damage region and the list was walked once,
@@ -318,6 +322,10 @@ static void Setup_drawTriangle(const KernelTable &kernels, const Target &target,
 				ctx.dlayer = float(d0 * a->layer + d1 * b->layer + d2 * c->layer);
 			}
 
+			if (spanPixels) {
+				*spanPixels += uint64_t(count);
+			}
+
 			kernels.writeSpan(ctx, fmt, cmd.blend);
 		}
 
@@ -339,7 +347,8 @@ URect intersectRects(const URect &a, const URect &b) {
 	return URect{x0, y0, x1 - x0, y1 - y0};
 }
 
-uint32_t draw(const Target &target, const DrawList &list, const URect &clip) {
+uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
+		FillStats *stats) {
 	if (target.empty() || list.empty() || clip.width == 0 || clip.height == 0) {
 		return 0;
 	}
@@ -370,6 +379,22 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip) {
 			glyph.scissor = intersectRects(glyph.scissor, clip);
 			if (glyph.scissor.width == 0 || glyph.scissor.height == 0) {
 				continue;
+			}
+
+			if (stats) {
+				// The glyph's own box clipped by the scissor - NOT the scissor, which is the whole
+				// damage region and would over-count by the glyph count. This has to mirror the
+				// kernel's own clip exactly (blitGlyphScalar), or the number measures nothing.
+				// Transparent texels inside the box do count: the loop walks them.
+				auto left = sprt::max(glyph.x, int32_t(glyph.scissor.x));
+				auto top = sprt::max(glyph.y, int32_t(glyph.scissor.y));
+				auto right = sprt::min(glyph.x + int32_t(glyph.width),
+						int32_t(glyph.scissor.x + glyph.scissor.width));
+				auto bottom = sprt::min(glyph.y + int32_t(glyph.height),
+						int32_t(glyph.scissor.y + glyph.scissor.height));
+				if (left < right && top < bottom) {
+					stats->glyphPixels += uint64_t(right - left) * uint64_t(bottom - top);
+				}
 			}
 
 			kernels.blitGlyph(target, glyph, fmt);
@@ -421,7 +446,7 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip) {
 			}
 
 			Setup_drawTriangle(kernels, target, fmt, list.vertexes[i0], list.vertexes[i1],
-					list.vertexes[i2], cmd, texture, scissor);
+					list.vertexes[i2], cmd, texture, scissor, stats ? &stats->spanPixels : nullptr);
 		}
 
 		++drawn;

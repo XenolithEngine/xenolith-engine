@@ -59,6 +59,14 @@ static float getEvictThresholdDefault() {
 	return s_value;
 }
 
+static bool getCacheLogDefault() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_FONT_CACHE_LOG");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
+}
+
 FontController::FontController()
 : _evictAlways(getEvictAlwaysDefault()), _evictionThreshold(getEvictThresholdDefault()) { }
 
@@ -886,6 +894,13 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 				if (it.object) {
 					it.object->setCharsSubmitted(it.chars.size());
 				}
+			}
+
+			if (getCacheLogDefault()) {
+				size_t chars = 0;
+				for (auto &it : objects) { chars += it.chars.size(); }
+				log::source().debug("FontController", "atlas batch: generation=", submitted,
+						" faces=", objects.size(), " chars=", chars, " gated=", dep ? "yes" : "no");
 			}
 
 			// Keep the batch reachable for as long as it is in flight: a caller that lays out
