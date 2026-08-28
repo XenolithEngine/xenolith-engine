@@ -282,7 +282,7 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 // are still touched by one thread and the number still covers all the work, not one worker's share
 // of it.
 static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> areas,
-		const raster::TilingStats &tiling) {
+		const raster::TilingStats &tiling, Extent2 surface) {
 	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. The
 	// interval is settable because the counters are cumulative - every line is the running
 	// average over the whole run, so a short run just needs a short interval to say anything.
@@ -309,12 +309,16 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 	static uint64_t regions = 0;
 	static uint64_t tileCount = 0;
 	static uint64_t workerCount = 0;
+	static uint64_t surfacePixels = 0;
+	static raster::FillStats fill;
 
 	++frames;
 	micros += elapsed.toMicros();
 	regions += areas.size();
 	tileCount += tiling.tiles;
 	workerCount += tiling.workers;
+	surfacePixels += uint64_t(surface.width) * uint64_t(surface.height);
+	fill.add(tiling.fill);
 	for (auto &it : areas) { pixels += uint64_t(it.width) * uint64_t(it.height); }
 
 	if (frames % reportEvery != 0) {
@@ -335,6 +339,25 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 			" regions/frame=", double(regions) / double(frames),
 			" tiles/frame=", double(tileCount) / double(frames), " px/frame=", pixels / frames,
 			" us/frame=", double(micros) / double(frames), " Mpx/s=", double(pixels) / double(usec));
+
+	// Three different quantities, and the whole point is that they are different:
+	//
+	//   surface  - the window. Fixed.
+	//   damage   - what the tracker handed the rasterizer. surface means the damage protocol did
+	//              not narrow anything, whatever the reason.
+	//   filled   - what the kernels actually wrote. Above damage is overdraw (a pixel covered by
+	//              several commands); at or below it, the commands are sparse inside the region.
+	//
+	// damage/surface is therefore the answer to "is this a full repaint", and filled/damage the
+	// answer to "and how much work is spent inside whatever it repaints".
+	auto denom = sprt::max(pixels, uint64_t(1));
+	log::source().debug("soft::profile", "fill: surface/frame=", surfacePixels / frames,
+			" damage/frame=", pixels / frames, " filled/frame=", fill.total() / frames,
+			" (span=", fill.spanPixels / frames, " glyph=", fill.glyphPixels / frames,
+			" rect=", fill.fillPixels / frames, ")",
+			" damage/surface=",
+			double(pixels) / double(sprt::max(surfacePixels, uint64_t(1))),
+			" filled/damage=", double(fill.total()) / double(denom));
 }
 
 bool QueuePassHandle::runPass(core::FrameQueue &q) {
@@ -396,6 +419,9 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			return false;
 		}
 
+		_frameFill = raster::FillStats();
+		_frameSurface = Extent2(target.width, target.height);
+
 		Vector<URect> redrawAreas;
 		if (!computeRedrawArea(q, target, redrawAreas)) {
 			// the image already holds this frame; leave every pixel untouched
@@ -421,11 +447,14 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
 		// outside them the image keeps the previous frame, which is exactly what makes the partial
 		// redraw correct rather than merely cheaper.
+		// The clear writes real pixels and belongs in the same budget as the draw - on a frame
+		// whose damage is the whole surface it is the single largest writer.
+		raster::FillStats clearFill;
 		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
 			auto imgAttachment =
 					static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
 			for (auto &it : redrawAreas) {
-				raster::fillRect(target, it, imgAttachment->getClearColor());
+				raster::fillRect(target, it, imgAttachment->getClearColor(), &clearFill);
 			}
 		}
 
@@ -440,7 +469,12 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		auto started = Time::now();
 		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
 				&tiling);
-		QueuePassHandle_profileFrame(Time::now() - started, redrawAreas, tiling);
+		tiling.fill.add(clearFill);
+		QueuePassHandle_profileFrame(Time::now() - started, redrawAreas, tiling,
+				Extent2(target.width, target.height));
+
+		_frameFill.add(tiling.fill);
+		handlePassRasterized(q);
 	}
 
 	return true;

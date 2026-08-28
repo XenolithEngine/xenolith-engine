@@ -124,12 +124,20 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 		case core::PresentMode::Mailbox: configData = toString("M", cfg.imageCount); break;
 		}
 
+		// Only a CPU rasterizer reports this; a GPU backend leaves pixelsTotal at 0, and printing
+		// "0/0" under a label would read as a measurement rather than as its absence.
+		String pixelData;
+		if (stat.pixelsTotal != 0) {
+			pixelData = toString("\nPx: ", stat.pixelsFilled, "/", stat.pixelsTotal, " ",
+					float(stat.pixelsFilled) / float(stat.pixelsTotal), "x");
+		}
+
 		if (_label) {
 			String str;
 			switch (_mode) {
 			case Fps:
 				str = toString(configData, " ", "FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime,
-						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex,
+						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex, pixelData,
 						"\nF12 to switch");
 				break;
 			case Vertexes:
@@ -148,7 +156,7 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 						" C:", stat.drawCalls, " M: ", stat.materials, "\n", stat.solidCmds, "/",
 						stat.surfaceCmds, "/", stat.transparentCmds, "\n",
 						"Cache:", stat.cachedFramebuffers, "/", stat.cachedImages, "/",
-						stat.cachedImageViews, "\nF12 to switch");
+						stat.cachedImageViews, pixelData, "\nF12 to switch");
 				break;
 			default: break;
 			}
