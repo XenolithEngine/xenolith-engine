@@ -86,6 +86,21 @@ struct SP_PUBLIC DrawStat {
 
 	uint32_t vertexInputTime;
 
+	/* ---- what the rasterizer wrote, for backends that rasterize on the CPU -----------------------
+
+	`pixelsTotal` is the target; `pixelsFilled` is what the kernels actually wrote this frame,
+	counted at their entry points, so a pixel covered by two commands counts twice. The ratio is
+	the overdraw, and it is the number that says whether a frame is cheap because it drew little or
+	expensive because it drew the same pixels repeatedly - the picture is identical either way.
+
+	Zero on a GPU backend, which has no equivalent to report: a fragment count would come from a
+	query pool and mean something else. Zero therefore means "not measured here", which is why the
+	FPS overlay prints the line only when `pixelsTotal` is non-zero rather than printing 0/0.
+	Default-initialized for the same reason - every producer that does not set them leaves them at
+	the value that reads as "absent". */
+	uint64_t pixelsTotal = 0;
+	uint64_t pixelsFilled = 0;
+
 #if XL_FRAME_ACCOUNT
 	/* ---- the frame's deferred account -----------------------------------------------------------
 
