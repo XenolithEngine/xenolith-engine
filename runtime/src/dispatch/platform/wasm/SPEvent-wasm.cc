@@ -147,12 +147,20 @@ void WasmTimerHandle::notify(WasmData *w, WasmTimerSource *s, const NotifyData &
 		// matching the epoll/uring timers (they deliver the terminal fire as a
 		// Done completion with value 0, not the cumulative count).
 		cancel(Status::Done);
-	} else {
-		sendCompletion(current, Status::Ok);
-		// Advance the deadline by the elapsed periods (no drift) and re-arm.
-		s->deadline += static_cast<int64_t>(fired) * s->interval;
-		w->pushTimer(s->deadline, this);
+		return;
 	}
+
+	// Advance the deadline by the elapsed periods (no drift) and re-arm BEFORE the
+	// completion runs. The callback is allowed to cancel() or reset() this handle,
+	// and both route through disarm/rearm, which keep the reactor list correct.
+	// Re-arming afterwards would instead push a handle the callback had just
+	// cancelled back into the list (dangling once fireExpired drops its pin, since
+	// the source is destroyed by cancelFn too), or duplicate an entry a reset() has
+	// already re-created.
+	s->deadline += static_cast<int64_t>(fired) * s->interval;
+	w->pushTimer(s->deadline, this);
+
+	sendCompletion(current, Status::Ok);
 }
 
 //

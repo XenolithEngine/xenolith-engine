@@ -45,44 +45,45 @@ bool Checkbox::init() {
 
 	_listener = addSystem(Rc<InputListener>::create());
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
-		if (!_enabled) {
+		if (!isEnabled()) {
 			return false;
 		}
 		if (tap.event == GestureEvent::Activated) {
-			setChecked(!_checked);
+			setChecked(!isChecked());
 		}
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
+
+	/* The InteractiveComponent has to EXIST from the first frame, not from the first call that
+	changes something. A node without one reads as state 0 to the style resolver, and `:disabled` is
+	"not :enabled" - so a checkbox that had never been touched matched `checkbox:disabled` while it
+	was perfectly enabled, and `checkbox:enabled` matched nothing at all. */
+	applyControlEnabled(this, true);
+	applyControlChecked(this, false);
 
 	return true;
 }
 
 void Checkbox::setChecked(bool c, bool silent) {
-	if (_checked == c) {
+	if (isChecked() == c) {
 		return;
 	}
-	_checked = c;
+	applyControlChecked(this, c);
 	_check->setVisible(c);
-	if (c) {
-		addStyleClass("checked");
-	} else {
-		removeStyleClass("checked");
-	}
 	if (!silent && _callback) {
 		_callback(c);
 	}
 }
 
 void Checkbox::setEnabled(bool e) {
-	if (_enabled == e) {
+	// The lock has the last word, and remembers what was asked for so unlocking can give it back.
+	e = resolveEditLock(this, e);
+	if (isEnabled() == e) {
 		return;
 	}
-	_enabled = e;
-	if (e) {
-		removeStyleClass("disabled");
-	} else {
-		addStyleClass("disabled");
-	}
+	applyControlEnabled(this, e);
+	// Kept beside the state: an application whose stylesheet says nothing about `:disabled` would
+	// otherwise lose the only sign that a checkbox is dead.
 	setOpacity(e ? 1.0f : 0.4f);
 }
 

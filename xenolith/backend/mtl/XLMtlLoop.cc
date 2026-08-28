@@ -442,12 +442,11 @@ void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)
 				return;
 			}
 
-			auto blockSize = core::getFormatBlockSize(info.format);
 			auto texture = img->getTexture();
 			[texture replaceRegion:MTLRegionMake2D(0, 0, info.extent.width, info.extent.height)
 					   mipmapLevel:0
 						 withBytes:data.data()
-					   bytesPerRow:info.extent.width * blockSize];
+					   bytesPerRow:core::getFormatRowSize(info.format, info.extent.width)];
 		});
 
 		image->setImage(img.get());
@@ -659,12 +658,13 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 
 	performOnThread([this, ctx, image]() mutable {
 		auto info = image->getInfo();
-		auto blockSize = core::getFormatBlockSize(info.format);
-
-		// keep rows 256-aligned in the readback buffer, repack on delivery
-		const uint64_t bytesPerRow = math::align(uint64_t(info.extent.width) * blockSize,
-				uint64_t(256));
-		const uint64_t bufferSize = bytesPerRow * info.extent.height;
+		// keep rows 256-aligned in the readback buffer, repack on delivery. Rows are rows of
+		// BLOCKS - the same for a swapchain image, where the block is one pixel, and not the same
+		// for anything compressed.
+		const uint64_t rowBytes = core::getFormatRowSize(info.format, info.extent.width);
+		const uint32_t rowCount = core::getFormatRowCount(info.format, info.extent.height);
+		const uint64_t bytesPerRow = math::align(rowBytes, uint64_t(256));
+		const uint64_t bufferSize = bytesPerRow * rowCount;
 
 		@autoreleasepool {
 			id<MTLBuffer> buffer = [_device->getDevice() newBufferWithLength:bufferSize
@@ -685,13 +685,12 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 
 			// deliver on the loop thread; the block retains buffer and ctx until then
 			[commands addCompletedHandler:^(id<MTLCommandBuffer>) {
-				ctx->loop->performOnThread([ctx, info, buffer, bytesPerRow, blockSize] {
-					const auto rowBytes = size_t(info.extent.width) * blockSize;
+				ctx->loop->performOnThread([ctx, info, buffer, bytesPerRow, rowBytes, rowCount] {
 					auto mapped = reinterpret_cast<const uint8_t *>(buffer.contents);
 
 					Bytes data;
-					data.resize(rowBytes * info.extent.height);
-					for (uint32_t row = 0; row < info.extent.height; ++row) {
+					data.resize(rowBytes * rowCount);
+					for (uint32_t row = 0; row < rowCount; ++row) {
 						sprt::memcpy(data.data() + size_t(row) * rowBytes,
 								mapped + row * bytesPerRow, rowBytes);
 					}

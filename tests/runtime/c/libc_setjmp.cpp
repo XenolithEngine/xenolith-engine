@@ -50,6 +50,10 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// Every check here performs a real longjmp, which traps on wasm (see the SKIP in
+// performSetjmpTest below), so none of the machinery is built for that target.
+#if !SPRT_WASM
+
 namespace {
 
 // Running destructors during an unwind needs cleanup landing pads, and the
@@ -291,7 +295,18 @@ void runThreadExitChecks() {
 
 } // namespace
 
+#endif // !SPRT_WASM
+
 void performSetjmpTest() {
+#if SPRT_WASM
+	// wasm has no stack the module can save and restore: a jump out of a live frame
+	// needs the clang SjLj lowering built on wasm exception handling, which the
+	// runtime is not yet compiled with. Until then setjmp is the no-op that returns
+	// 0 and longjmp traps (runtime_core_setjmp.cpp), so every check would kill the
+	// module rather than fail.
+	printf("performSetjmpTest: SKIP (wasm setjmp/longjmp needs the -fwasm-exceptions "
+		   "SjLj lowering)\n");
+#else
 	s_failures = 0;
 	s_skipped = 0;
 
@@ -303,6 +318,7 @@ void performSetjmpTest() {
 
 	printf("performSetjmpTest: %s (%d failures, %d skipped)\n",
 			s_failures == 0 ? "ALL PASS" : "FAILED", s_failures, s_skipped);
+#endif
 }
 
 } // namespace sprt

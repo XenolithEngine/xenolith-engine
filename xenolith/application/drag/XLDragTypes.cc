@@ -47,17 +47,6 @@ bool DragData::hasType(StringView type) const {
 	return false;
 }
 
-StringView preferMimeType(SpanView<StringView> available, SpanView<StringView> preference) {
-	for (auto &want : preference) {
-		for (auto &it : available) {
-			if (it.starts_with(want)) {
-				return it;
-			}
-		}
-	}
-	return StringView();
-}
-
 StringView DragData::preferType(SpanView<StringView> preference) const {
 	auto types = getTypes();
 

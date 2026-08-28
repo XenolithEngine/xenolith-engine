@@ -36,9 +36,21 @@ duplicate — the later configuration wins, and it is logged. A keymap loaded fr
 config uses `setCombo(id, combo)`, which leaves the id alone.
 
 The engine's own bindings live in one place, `EngineHotkeys::get()` — `back`,
-`toggleFps`, `focusNext`/`focusPrev`, the `form*` set and the `text*` set. They
-are registered on first access, so an application that rebinds them finds the
-registry already populated.
+`toggleFps`, `focusNext`/`focusPrev`, the `form*` set, the `text*` set,
+`moveItemUp`/`moveItemDown`, and `undo`/`redo`/`redoAlt`. They are registered on
+first access, so an application that rebinds them finds the registry already
+populated.
+
+The last three are named for the ACTION rather than for a widget, and that is the
+point: whoever owns the focused thing answers them — a text view with its own
+history, a document editor with the document's, a file browser with the project's
+— so an application arbitrates by focus rather than by binding three different
+chords. A handler that has nothing to undo must return `false` and let the chord
+through; swallowing it is how a person eventually undoes the wrong thing. Redo has
+two ids because the registry holds one combination per id and the habit is split:
+`Ctrl+Y` on Windows, `Ctrl+Shift+Z` elsewhere. Neither needs
+`ReserveFromTextInput` — the text-input processor already declines every `Ctrl`
+chord without `Alt`, which is exactly why the `Alt` chords above do need it.
 
 `HotkeyCombo::parse` accepts `"Ctrl+Shift+P"`, `"F12"`, `"Alt+LEFT"`,
 `"CtrlR+K"`. Modifier spellings follow `InputModifier` (`Shift`, `Ctrl`, `Alt`,

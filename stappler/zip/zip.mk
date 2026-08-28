@@ -21,44 +21,48 @@
 
 MODULE_STAPPLER_ZIP_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_STAPPLER_ZIP_PRIVATE_INCLUDE_PCH := SPCommon.h
+# zlib is the only external dependency left: inflate/deflate for method 8 and
+# crc32 for entry integrity. Everything else - the catalog, the name decoding,
+# the reader and the writer - is in this directory.
 MODULE_STAPPLER_ZIP_LIBS :=
-MODULE_STAPPLER_ZIP_LIBS_SHARED := -lz -lzip
+MODULE_STAPPLER_ZIP_LIBS_SHARED := -lz
 MODULE_STAPPLER_ZIP_FLAGS :=
 MODULE_STAPPLER_ZIP_SRCS_DIRS := $(STAPPLER_MODULE_DIR)/zip
 MODULE_STAPPLER_ZIP_SRCS_OBJS :=
 MODULE_STAPPLER_ZIP_INCLUDES_DIRS :=
 MODULE_STAPPLER_ZIP_INCLUDES_OBJS := $(STAPPLER_MODULE_DIR)/zip
-MODULE_STAPPLER_ZIP_DEPENDS_ON := stappler_crypto
-MODULE_STAPPLER_ZIP_SHARED_PKGCONFIG := libzip
+# No stappler_crypto: that dependency existed to pick the libzip build variant
+# (libzip-$(STAPPLER_CRYPTO_DEFAULT).a, for its AES support). CoderSource comes
+# from stappler_core's SPCoreCrypto.h, and crc32 comes from zlib.
+MODULE_STAPPLER_ZIP_DEPENDS_ON :=
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS :=
 
 ifdef LINUX
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
 ifeq ($(TARGET_SYSTEM),Darwin)
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -l:liblzma.a -l:libzstd.a
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS += -lz
 endif
 
 ifdef ANDROID
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
 ifdef WIN32
-MODULE_STAPPLER_ZIP_LIBS += -lzip -lz -llzma -lzstd
+MODULE_STAPPLER_ZIP_LIBS += -lz
 endif
 
 ifeq ($(TARGET_SYSTEM),WASM)
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
 ifdef NUTTX
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:libzstd.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
 ifdef EMBOX
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:libzstd.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
 #spec

@@ -22,7 +22,7 @@
 
 #include "XLUiTableView.h"
 #include "XLUiStyleSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XL2dLabel.h"
 #include "XL2dIconSprite.h"
 
@@ -744,6 +744,26 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			break;
 		}
 
+		// The grip column is the view's to fill, and the caller's callback is not asked about it:
+		// what goes there is a DragSource, and a cell node from outside would have replaced it.
+		if (_reorderEnabled && StringView(_columns[i].key) == ReorderColumnKey) {
+			Rc<Node> gripCell = header ? Rc<Node>(Rc<Panel>::create()) : makeReorderCell(index);
+			if (gripCell) {
+				gripCell->setType("table-cell");
+				gripCell->addStyleClass("xl-ui-table-cell");
+				if (!_columns[i].styleClass.empty()) {
+					gripCell->addStyleClass(_columns[i].styleClass);
+				}
+				TableCellInfo cfg;
+				cfg.columnSpan = 1;
+				LayoutSystem::setTableCell(gripCell, cfg);
+				setStyleVariable(gripCell, "--table-col-index", mem_std::toString(i));
+				node->addChild(gripCell, ZOrder(int16_t(i + 1)));
+			}
+			++column;
+			continue;
+		}
+
 		CellBuilder builder;
 		builder._view = this;
 		builder._column = &_columns[i];
@@ -816,6 +836,294 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 		node->addChild(cell, ZOrder(int16_t(i + 1)));
 		column += cfg.columnSpan;
 	}
+}
+
+// ---- reorder ------------------------------------------------------------------------------------
+
+namespace {
+
+// What a row drag carries. The table pointer is identity, not convenience: two tables on one scene
+// must not accept each other's rows just because both know how to reorder.
+struct TableRowPayload : public Ref {
+	static constexpr auto TypeName = StringView("xl/table-row");
+
+	TableView *view = nullptr;
+	size_t index = 0;
+};
+
+// Null unless the drag is one of ours AND came from this very table.
+static TableRowPayload *TableView_payloadOf(const DragEvent &event, const TableView *view) {
+	if (!event.data || !event.data->isLocal(TableRowPayload::TypeName)) {
+		return nullptr;
+	}
+	auto payload = static_cast<TableRowPayload *>(event.data->getLocal());
+	return (payload && payload->view == view) ? payload : nullptr;
+}
+
+} // namespace
+
+void TableView::setReorderCallback(Function<bool(size_t, size_t)> &&cb) {
+	_reorderCallback = sp::move(cb);
+	setReorderEnabled(true);
+}
+
+void TableView::setReorderEnabled(bool value) {
+	if (_reorderEnabled == value) {
+		return;
+	}
+	_reorderEnabled = value;
+	updateReorderSystems();
+
+	// The grip lives in a cell, so the rows have to be built again to gain or lose it.
+	requestRebuildNodes(true);
+}
+
+void TableView::updateReorderSystems() {
+	if (_reorderEnabled) {
+		if (!_dropTarget) {
+			_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
+				.accept = [this](const DragEvent &event) -> DragResponse {
+				if (!TableView_payloadOf(event, this)) {
+					return DragResponse();
+				}
+				return DragResponse{DragActions::Move};
+			},
+				.enter =
+						[this](const DragEvent &event) {
+				showInsertionLine(getRowBoundaryAt(event.location));
+			},
+				.over =
+						[this](const DragEvent &event) {
+				showInsertionLine(getRowBoundaryAt(event.location));
+			},
+				.leave = [this](const DragEvent &) { hideInsertionLine(); },
+				.drop =
+						[this](const DragEvent &event, DragActions) {
+				auto payload = TableView_payloadOf(event, this);
+				if (!payload) {
+					return false;
+				}
+				// Read the index out before anything moves: the drop is what invalidates it.
+				return handleReorderDrop(payload->index, event.location);
+			},
+			}));
+		}
+
+		if (!_reorderKeys) {
+			_reorderKeys = addSystem(Rc<InputListener>::create());
+
+			auto &hk = EngineHotkeys::get();
+			_reorderKeys->addHotkey(hk.moveItemUp, [this](HotkeyId, const InputEvent &) {
+				return handleReorderHotkey(false);
+			}, HotkeyFlags::Repeatable);
+			_reorderKeys->addHotkey(hk.moveItemDown, [this](HotkeyId, const InputEvent &) {
+				return handleReorderHotkey(true);
+			}, HotkeyFlags::Repeatable);
+
+			// A key event carries the last pointer position, so the default filter would answer
+			// Alt+Up only while the mouse happened to hover the table.
+			_reorderKeys->setTouchFilter(
+					[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
+				if (event.data.isKeyEvent()) {
+					return true;
+				}
+				return cb(event);
+			});
+		}
+	} else {
+		hideInsertionLine();
+		if (_dropTarget) {
+			removeSystem(_dropTarget);
+			_dropTarget = nullptr;
+		}
+		if (_reorderKeys) {
+			removeSystem(_reorderKeys);
+			_reorderKeys = nullptr;
+		}
+	}
+}
+
+Rc<Node> TableView::makeReorderCell(size_t index) {
+	auto panel = Rc<Panel>::create();
+	panel->setType("table-cell");
+	panel->removeStyleClass("xl-ui-panel");
+	panel->addStyleClass("xl-ui-table-cell");
+	panel->addStyleClass("xl-ui-table-drag-handle");
+	Panel::registerStyleAppliers("table-cell");
+
+	auto icon = panel->addChild(
+			Rc<basic2d::IconSprite>::create(IconName::Editor_drag_handle_outline), ZOrder(0));
+	icon->setType("icon");
+	icon->addStyleClass("table-icon");
+
+	/* The DragSource goes on the GRIP CELL, not on the row.
+
+	This table scrolls on the same axis a row drag moves along, which no other drag source in the
+	tree has had to contend with - the dock's tab strip is horizontal. A narrow grip is what keeps
+	the two apart: a swipe that starts here reaches this listener, which sits deeper than the
+	scroll view's, and DragSource takes the pointer exclusively on the first frame past the
+	threshold. A swipe starting anywhere else in the row still scrolls, which is what it should do. */
+	panel->addSystem(Rc<DragSource>::create([this, index](DragOffer &offer) -> bool {
+		if (!_reorderEnabled || index >= _rows.size()) {
+			return false;
+		}
+
+		auto payload = Rc<TableRowPayload>::alloc();
+		payload->view = this;
+		payload->index = index;
+
+		offer.local = payload.get();
+		offer.localType = TableRowPayload::TypeName.str<Interface>();
+		offer.allowedActions = DragActions::Move;
+		offer.defaultAction = DragActions::Move;
+
+		Rect rect;
+		const Size2 size = getRowRect(index, rect) ? rect.size : Size2(120.0f, _rowHeight);
+		offer.decorator = [size]() -> Rc<Node> {
+			// A plain Layer, painted here: a decorator is parked outside this widget's subtree, so
+			// no StyleResolver reaches it and anything expecting CSS would come up unstyled.
+			auto ghost = Rc<basic2d::Layer>::create(Color4B(0xFC, 0xB4, 0x00, 0x60));
+			ghost->setContentSize(size);
+			ghost->setAnchorPoint(Anchor::MiddleLeft);
+			return ghost;
+		};
+		return true;
+	}));
+
+	return panel;
+}
+
+void TableView::showInsertionLine(size_t boundary) {
+	Rect rect;
+	if (boundary == maxOf<size_t>()
+			|| !ui::getRowBoundaryRect(makeGeometrySource(), boundary, rect)) {
+		hideInsertionLine();
+		return;
+	}
+
+	if (!_insertionLine) {
+		_insertionLine = addChild(Rc<basic2d::Layer>::create(), ZOrder(64));
+		_insertionLine->setType("table-insertion-line");
+		_insertionLine->setAnchorPoint(Anchor::BottomLeft);
+	}
+
+	_insertionLine->setVisible(true);
+	_insertionLine->setPosition(rect.origin);
+	_insertionLine->setContentSize(rect.size);
+}
+
+void TableView::hideInsertionLine() {
+	if (_insertionLine) {
+		_insertionLine->removeFromParent(true);
+		_insertionLine = nullptr;
+	}
+}
+
+bool TableView::handleReorderDrop(size_t from, const Vec2 &nodeLocation) {
+	const size_t boundary = getRowBoundaryAt(nodeLocation);
+	hideInsertionLine();
+
+	if (boundary == maxOf<size_t>() || from >= _rows.size()) {
+		return false;
+	}
+
+	// A boundary is a gap between rows; the row's FINAL index is one less when it came from above,
+	// because taking it out closes the gap it used to occupy.
+	const size_t to = (boundary > from) ? boundary - 1 : boundary;
+	return reorderRow(from, to);
+}
+
+bool TableView::reorderRow(size_t from, size_t to) {
+	if (!_reorderEnabled || !_reorderCallback) {
+		return false;
+	}
+	if (from >= _rows.size() || to >= _rows.size() || from == to) {
+		// A move onto itself is not a refusal, it is not a move: reporting it would put an entry in
+		// somebody's undo history for a drag that changed nothing.
+		return false;
+	}
+
+	if (!_reorderCallback(from, to)) {
+		return false;
+	}
+
+	/* The selection follows the ROW, not the index.
+
+	Computed here rather than left to the caller, because the caller answers in model terms and the
+	selection is the view's. A selection left on its old number silently points at whatever slid
+	into that place. */
+	if (_selectedRow != maxOf<size_t>()) {
+		size_t selected = _selectedRow;
+		if (selected == from) {
+			selected = to;
+		} else if (from < selected && selected <= to) {
+			--selected;
+		} else if (to <= selected && selected < from) {
+			++selected;
+		}
+		setSelectedRow(selected);
+	}
+	return true;
+}
+
+bool TableView::handleReorderHotkey(bool down) {
+	if (!_reorderEnabled || !_reorderCallback) {
+		return false;
+	}
+
+	// The gate is the selection: a table nobody has picked a row in has no claim on Alt+arrows, and
+	// declining leaves the combination for whoever is below.
+	const size_t selected = _selectedRow;
+	if (selected == maxOf<size_t>() || selected >= _rows.size()) {
+		return false;
+	}
+
+	if (down) {
+		if (selected + 1 >= _rows.size()) {
+			return false;
+		}
+		return reorderRow(selected, selected + 1);
+	}
+	if (selected == 0) {
+		return false;
+	}
+	return reorderRow(selected, selected - 1);
+}
+
+// ---- geometry -----------------------------------------------------------------------------------
+
+RowGeometrySource TableView::makeGeometrySource() const {
+	return RowGeometrySource{this, _scroll, _controller};
+}
+
+bool TableView::getRowRect(size_t index, Rect &out) const {
+	return ui::getRowRect(makeGeometrySource(), index, out);
+}
+
+bool TableView::getCellRect(size_t row, size_t column, Rect &out) const {
+	Rect rowRect;
+	if (!getRowRect(row, rowRect)) {
+		return false;
+	}
+
+	// The column geometry is resolved by resolveColumns(), which needs a column set AND a non-zero
+	// width. Before that there is nothing to report - and reporting the whole row would be a lie
+	// that looks like an answer.
+	if (column >= _geometry.columns.size()) {
+		return false;
+	}
+
+	auto &col = _geometry.columns.at(column);
+	out = Rect(rowRect.origin.x + col.position, rowRect.origin.y, col.width, rowRect.size.height);
+	return out.size.width > 0.0f;
+}
+
+size_t TableView::getRowIndexAt(const Vec2 &nodeLocation) const {
+	return ui::getRowIndexAt(makeGeometrySource(), nodeLocation);
+}
+
+size_t TableView::getRowBoundaryAt(const Vec2 &nodeLocation, Rect *boundaryRect) const {
+	return ui::getRowBoundaryAt(makeGeometrySource(), nodeLocation, boundaryRect);
 }
 
 void TableView::handleRowTap(size_t index, uint32_t count) {

@@ -8,7 +8,7 @@
   joins the **nearest** form above it.
 * A field is attached to the widget, not declared in the form:
   `ui::addFormField(input)` / `ui::addFormField(checkbox)` /
-  `ui::addFormButton(button, role)` from
+  `ui::addFormField(select)` / `ui::addFormButton(button, role)` from
   [XLUiFormAdapters.h](../../../../xenolith/renderer/ui/forms/XLUiFormAdapters.h).
   Any other node joins with `addFormField(node, FormFieldSlots{...})`.
 * **`FormSystem` *is* a `FocusGroup`** — it owns the tab ring and arbitrates the
@@ -102,6 +102,34 @@ Roles and flags:
 A validator runs **after** the `Required` check and only on a value that passed
 it, so it never has to handle "empty" itself.
 
+### What the shipped adapters collect
+
+|===
+| Widget | Collected
+
+| `ui::TextInput` | the text
+| `ui::NumberField` | the **number** — an integer field an integer, a real one a
+  double. There is no separate overload for it (a `NumberField` *is* a
+  `TextInput`, and `NotNull<>` converts from either, so two would be ambiguous at
+  every call site): the TextInput adapter branches instead
+| `ui::Checkbox` | the boolean
+| `ui::Select` | the option's **id**, never the title — the title is what a person
+  reads and may be localized out from under you. `activate` (Enter or Space on
+  the focused control) opens the list
+| `ui::VectorField` | one **array** for the whole row — integers in a whole-number
+  row, doubles otherwise. See "A composite field" below: it is several widgets and
+  one field
+| `ui::ColorField` | the colour's **canonical hex** — `#rrggbb`, or `#rrggbbaa`
+  where the field carries an alpha channel. JSON has no colour type, and hex is
+  what a stylesheet, a schema default and a config file already hold
+| `ui::ChipRow` | one **array of the chips' ids**, left to right. The order is
+  part of the value: an element chain read back reordered describes a different
+  type. An id nothing declares still becomes a chip, titled by the id itself —
+  the same decision the picker adapter makes, and for the same reason. A
+  `Required` row that is empty is refused once, not once per chip
+| `ui::Button` | nothing; it takes part in the tab ring and fires the form by role
+|===
+
 ### A widget the kit does not ship
 
 Describe what it can do; the form learns nothing about its type:
@@ -120,9 +148,54 @@ ui::addFormField(_slider, sp::move(slots), "volume");
 `ownsFocusStyle` is the one field that must be got right: exactly one side writes
 `InteractiveComponent`'s focus counter. `ui::TextInput` writes it itself (its
 focus is really the IME's, and only the echo knows when it changed), so its
-adapter sets `ownsFocusStyle = true`; a `Checkbox` has no focus of its own, so the
-listener paints `:focus` for it. **Never both** — the counter is cumulative and a
+adapter sets `ownsFocusStyle = true`, and so do `ui::NumberField` (it is one) and
+`ui::Select` (its focus is also what decides whether it answers the arrows, so the
+two must be one flag rather than two that agree); a `Checkbox` has no focus of its
+own, so the listener paints `:focus` for it. **Never both** — the counter is cumulative and a
 double write leaves it stuck.
+
+### A composite field: several widgets, one field
+
+A row of number fields (`ui::VectorField`), a row of chips (`ui::ChipRow`), a
+date built from three inputs: what the author means by "a field" is the row, and
+making each part a field of its own gets three things wrong at once — the value arrives as N keys,
+a `Required` row is refused N times, and Tab walks components where it should walk
+properties.
+
+Nothing special is needed to do it right, because of the focus rule above: **a
+listener passes the filter when its owner is the focused field's node or sits
+below it**. So the container is the field, its parts keep their own listeners,
+their own keys and their own gestures, and the form never learns what is inside.
+
+Two things the container owes in return:
+
+* **Navigation inside it is its own.** The parts hand their Tab to the container
+  (`ui::TextInput::setNavigateCallback`), which steps to the next part and, at
+  either end, passes it on with `FormInputListener::requestNavigate` — so the row
+  behaves like one stop of the ring from outside, and like a small ring inside.
+* **It has to know which way the Tab came from.** `FormFieldSlots::setFocused`
+  takes `(bool focused, bool backwards)`: `backwards` is the direction of the
+  navigation that caused the change, and false for anything else (a tap, a
+  programmatic `focusField()`). A Shift+Tab entering the row must land on its
+  LAST part; a composite that always enters at its first one makes backwards
+  navigation walk forwards.
+
+The direction has to be remembered rather than passed along, because the swap is
+deferred (below): `focusNext()` records it, and the commit that applies the focus
+hands it to the slot.
+
+An internal ring is not compulsory, though — only *deciding where focus lands*
+is. `ui::ChipRow` is a composite whose parts are not text: the arrows walk its
+chips and **Tab leaves at once**, because a row of chips is one stop and there is
+no caret inside it to step through. It still reads `backwards`, to enter at its
+last chip rather than its first. Which key stays inside is the widget's to
+declare; what it owes the form is the same either way.
+
+One more thing a composite cannot do for itself: a tap that puts the caret in one
+of its parts has to make the FORM focus the field, or the form goes on filtering
+keys to whatever it focused last. The widget must not reach into `forms/` to do
+that — `ui::VectorField` reports the focused part through a callback, and its
+adapter (which is allowed to know both sides) calls `InputListener::setFocused()`.
 
 ## Values
 
@@ -172,7 +245,9 @@ this frame before it can honour it. That yields two accessors and one rule:
 
 A pending request is also what a second `focusNext()` steps from — two Tabs in one
 frame would otherwise read the same committed focus, compute the same target and
-silently lose one.
+silently lose one. The **direction** of that request rides along the same way: it
+is recorded by `focusNext()` and delivered to the field's `setFocused` slot when
+the commit happens, which is the only moment a composite field can act on it.
 
 An untouched form does **not** take focus: merely showing a form must not raise
 the on-screen keyboard.
@@ -248,3 +323,18 @@ bare ack, so state is always read back separately.
 * [design/node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — the phases the ring rebuild and the deferred focus swap ride on
 * [ui/css-subset.adoc](../../ui/css-subset.adoc) — what `:focus`, class selectors and the missing `:invalid` really do
 * [data-value.adoc](../core/data-value.adoc) — the `Value` `collect()`/`assign()` speak
+
+## A locked field is not a stop in the tab ring
+
+`ui::setEditLock(node, reason)` marks a control that cannot be edited *for a
+reason that is not the value's fault* — a wire supplies it, the field is
+undeclared, the view is read-only. It paints the `locked` class, clears the
+control's `Enabled` bit and, through `FormInputListener::isFocusable`, drops the
+field out of the ring: a control that only *looked* unreachable would still take
+Tab and then refuse every key, which is the worse half of both behaviours.
+
+It is a different axis from `FormFieldSlots::focusable`, which the adapters
+snapshot from `isEnabled()`/`isReadOnly()` when the field is registered. That
+snapshot is **not** refreshed, so disabling a widget after `addFormField` does not
+currently remove it from the ring; only the lock does. If you need the general
+case, make the slot computed rather than working around it here.

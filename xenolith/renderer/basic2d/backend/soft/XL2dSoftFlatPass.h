@@ -95,6 +95,12 @@ public:
 		return static_cast<VertexAttachment *>(_attachment.get())->isDamageTracked();
 	}
 
+	// Where a frame's stats go back to the app thread. The channel only, NOT the frame context it
+	// arrived on: that one is frame input data and holding it would close an ownership cycle the
+	// frame never gets out of (see getDrawStates above). The channel is owned by the render server
+	// and outlives the frame either way.
+	core::RenderClientChannel *getClient() const { return _client; }
+
 protected:
 	// Builds the backend-neutral VertexPlan and writes it into host arrays. Everything the flat
 	// queue can emit goes through it - vertex arrays, deferred results (vector images, labels)
@@ -108,6 +114,7 @@ protected:
 	Vector<uint32_t> _indexes;
 	Vector<TransformData> _transforms;
 	Vector<DrawStateValues> _drawStates;
+	Rc<core::RenderClientChannel> _client;
 };
 
 // Flat render queue for the software backend: one graphics pass, one subpass, drawing straight
@@ -156,6 +163,10 @@ protected:
 	// Runs the vertex stage and fills the rasterizer's draw list.
 	virtual void recordSubpass(core::FrameQueue &, const core::SubpassData &,
 			sf::CommandBuffer &) override;
+
+	// Report the frame's pixel budget back to the app thread. The software backend is the only one
+	// that can: on a GPU the equivalent would be a query pool and a different quantity.
+	virtual void handlePassRasterized(core::FrameQueue &) override;
 
 	const VertexAttachmentHandle *_vertexHandle = nullptr;
 };

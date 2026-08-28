@@ -958,6 +958,9 @@ core::FrameTimingInfo AppWindow::getFrameTiming() const {
 		info.lastFrameTime = _presentationEngine->getLastFrameTime();
 		info.lastFenceFrameTime = _presentationEngine->getLastFenceFrameTime();
 		info.lastTimestampFrameTime = _presentationEngine->getLastTimestampFrameTime();
+#if XL_FRAME_ACCOUNT
+		info.lastFrameOrder = _presentationEngine->getLastFrameOrder();
+#endif
 	}
 	return info;
 }

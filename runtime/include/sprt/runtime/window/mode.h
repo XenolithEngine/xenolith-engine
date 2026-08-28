@@ -387,7 +387,37 @@ struct ScreenInfo : public Ref {
 SPRT_API StringView getImageFormatName(ImageFormat fmt);
 SPRT_API StringView getPresentModeName(PresentMode mode);
 SPRT_API StringView getColorSpaceName(ColorSpace fmt);
+
+/* BYTES PER BLOCK - which for an uncompressed format is bytes per PIXEL, and for a compressed one
+is the size of a whole 4x4 (or 8x8, or 12x12) tile.
+
+The name says "block" and means bytes, which is why every measurement below takes its extent from
+getFormatBlockExtent instead of assuming one pixel per block. Multiplying this by a pixel COUNT is
+wrong for every compressed format - sixteenfold for BC7, thirty-twofold for BC1 - and that is what
+the four functions after it exist to stop. */
 SPRT_API size_t getFormatBlockSize(ImageFormat format);
+
+/* How many PIXELS one block covers: {1,1} for every uncompressed format, {4,4} for BC* and
+ETC2/EAC, the declared tile for ASTC, and {2,1} for the 422 formats, which pack a pair of pixels
+into one block.
+
+MULTI-PLANAR FORMATS ANSWER {1,1} AND THAT IS NOT A MEASUREMENT. A G8_B8_R8_3PLANE_420 image is not
+width x height x bytes-per-block in any arrangement of those numbers - its planes are subsampled and
+sized separately - and neither this function nor getFormatImageSize describes one correctly. They
+answer what they answered before rather than inventing something; a real answer for planar formats
+is separate work, and it needs a consumer to be written for. */
+SPRT_API Extent2 getFormatBlockExtent(ImageFormat format);
+
+// Bytes in one row OF BLOCKS: ceil(width / blockWidth) * getFormatBlockSize. This is what a
+// graphics API means by `bytesPerRow`, and it is a count of blocks and never of pixels.
+SPRT_API uint64_t getFormatRowSize(ImageFormat format, uint32_t width);
+
+// Rows OF BLOCKS: ceil(height / blockHeight). What `rowsPerImage` means.
+SPRT_API uint32_t getFormatRowCount(ImageFormat format, uint32_t height);
+
+// The whole image: getFormatRowSize * getFormatRowCount * depth * arrayLayers. For an uncompressed
+// format the block is 1x1 and this is byte for byte the pixel arithmetic it replaces.
+SPRT_API uint64_t getFormatImageSize(ImageFormat format, Extent3 extent, uint32_t arrayLayers = 1);
 
 } // namespace sprt::window
 

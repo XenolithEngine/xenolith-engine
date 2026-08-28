@@ -55,8 +55,19 @@ static const TestEntry s_testList[] = {
 	{"cmdline", &stappler::performCommandLineTests},
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},
+	{"zip", &stappler::performZipTests},
+	{"zipformat", &stappler::performZipFormatTests},
+	{"zipfuzz", &stappler::performZipFuzzTests},
+	{"iosource", &stappler::performIoSourceTests},
 	{"datamodel", &stappler::performDataModelTests},
 	{"vg-stroke", &stappler::performVgStrokeTests},
+	{"vg-tess-frame", &stappler::performVgTessFrameTests},
+	{"search-fuzzy", &stappler::performSearchFuzzyTests},
+	{"command-history", &stappler::performCommandHistoryTests},
+	{"image-format", &stappler::performImageFormatTests},
+	{"diag-registry", &stappler::performDiagnosticRegistryTests},
+	{"json-git", &stappler::performJsonGitTests},
+	{"bitmap-resample", &stappler::performBitmapResampleTests},
 };
 
 int main(int argc, const char *argv[]) {

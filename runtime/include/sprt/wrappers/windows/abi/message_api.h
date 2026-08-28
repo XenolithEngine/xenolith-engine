@@ -264,6 +264,13 @@ THE SOFTWARE.
 #define __SPRT_WM_DPICHANGED_AFTERPARENT       0x02E3
 #define __SPRT_WM_GETDPISCALEDSIZE             0x02E4
 
+// Clipboard. WM_RENDERFORMAT and WM_RENDERALLFORMATS are DELAYED RENDERING: an owner that put a
+// format up with a null handle is asked for the bytes here, which is the shape a lazy encoder wants.
+#define __SPRT_WM_RENDERFORMAT                 0x0305
+#define __SPRT_WM_RENDERALLFORMATS             0x0306
+#define __SPRT_WM_DESTROYCLIPBOARD             0x0307
+#define __SPRT_WM_CLIPBOARDUPDATE              0x031D
+
 #define __SPRT_WM_DWMCOMPOSITIONCHANGED        0x031E
 #define __SPRT_WM_DWMNCRENDERINGCHANGED        0x031F
 #define __SPRT_WM_DWMCOLORIZATIONCOLORCHANGED  0x0320

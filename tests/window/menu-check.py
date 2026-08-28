@@ -77,6 +77,20 @@ def tap(x, y):
             {"event": "End", "x": x, "y": y, "button": "MouseLeft"}]
 
 
+def key(code, mods=0):
+    ev = {"event": "KeyPressed", "keycode": code, "modifiers": mods}
+    up = dict(ev)
+    up["event"] = "KeyReleased"
+    return [ev, up]
+
+
+def highlighted(tree):
+    for line in tree.split("\n"):
+        if "menu-item" in line and ".highlighted" in line and "#" in line:
+            return line.split("#")[1].split(" ")[0]
+    return None
+
+
 def start_app(binary):
     env = dict(os.environ)
     env["XL_MENU_TEST"] = "1"
@@ -246,7 +260,8 @@ try:
     s.ok("frame", count=3, window=root)
     tree = s.ok("scene", window=root)["text"]
     check("the popup carries the same rows", "#with-hotkey" in tree and "#submenu" in tree)
-    check("a disabled row is marked for CSS", "#disabled .xl-ui-menu-item .disabled" in tree)
+    check("a disabled row is marked for CSS",
+          "#disabled .xl-ui-menu-item :disabled" in tree, tree)
     check("a submenu row is marked for CSS", "#submenu .xl-ui-menu-item .submenu" in tree)
     check("a hidden item is not in the popup either", "#hidden" not in tree)
 
@@ -315,6 +330,96 @@ try:
     time.sleep(0.6)
     check("an ordinary item closes the menu", popup_id(s) is None)
     check("and is reported", s.invoke("menu.state")["lastActivated"] == "plain")
+
+    # --- the keyboard, and who owns it ------------------------------------------------------------
+    #
+    # An inline menu is a list of commands in somebody else's panel, so it does NOT hold the
+    # keyboard by default - the field beside it does. Turning the mode on gives the menu an
+    # exclusive focus group, and that is what the two halves of this section are about: the arrows
+    # start reaching the menu, and they stop reaching the field.
+    s.invoke("menu.close")
+    time.sleep(0.5)
+
+    st = s.invoke("menu.state")
+    check("an inline menu does not take the keyboard by default", st["keyboard"] is False)
+
+    s.invoke("menu.focus-neighbour")
+    s.ok("frame", count=3)
+    s.ok("input", native=True, events=key("HOME"))
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("so the arrows go to the field beside it", st["neighbourCursor"] == 0,
+            st["neighbourCursor"])
+    check("and the menu has nothing highlighted", st["highlighted"] == "", st["highlighted"])
+
+    s.invoke("menu.keyboard", value=True)
+    s.ok("frame", count=3)
+    s.ok("input", native=True, events=key("DOWN"))
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("with the keyboard on, Down lands on the first enabled row",
+            st["highlighted"] == "plain", st["highlighted"])
+    check("and the field no longer sees the arrows at all", st["neighbourCursor"] == 0,
+            st["neighbourCursor"])
+
+    s.ok("input", native=True, events=key("END"))
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("End goes to the last row that can be highlighted", st["highlighted"] == "submenu",
+            st["highlighted"])
+    check("the field still has not moved", st["neighbourCursor"] == 0, st["neighbourCursor"])
+
+    s.invoke("menu.keyboard", value=False)
+    s.ok("frame", count=3)
+    s.ok("input", native=True, events=key("END"))
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("taking the keyboard away hands the arrows back",
+            st["neighbourCursor"] == len("abcdef"), st["neighbourCursor"])
+    check("and drops the highlight with it", st["highlighted"] == "", st["highlighted"])
+
+    # --- the same keyboard in the popup, where it is on by default ---------------------------------
+    s.invoke("menu.reset-counters")
+    s.invoke("menu.open")
+    time.sleep(0.6)
+    root = popup_id(s)
+    s.ok("frame", count=3, window=root)
+
+    s.ok("input", window=root, native=True, events=key("DOWN"))
+    time.sleep(0.3)
+    s.ok("frame", count=3, window=root)
+    check("a popup menu answers the keyboard without being asked",
+            highlighted(s.ok("scene", window=root)["text"]) == "plain")
+
+    s.ok("input", window=root, native=True, events=key("END"))
+    time.sleep(0.3)
+    s.ok("frame", count=3, window=root)
+    check("End reaches the submenu row",
+            highlighted(s.ok("scene", window=root)["text"]) == "submenu")
+
+    s.ok("input", window=root, native=True, events=key("RIGHT"))
+    time.sleep(0.8)
+    child = popup_id(s, 1)
+    check("Right opens the submenu as a second surface", child is not None)
+    check("and opening it is still not an activation",
+            s.invoke("menu.state")["activations"] == 0)
+
+    s.ok("input", window=child, native=True, events=key("LEFT"))
+    time.sleep(0.8)
+    check("Left takes that level down", popup_id(s, 1) is None)
+    check("and leaves the menu it came from standing", popup_id(s) is not None)
+
+    # NOT CHECKED HERE: that the pointer entering a row moves the highlight onto it, so that a
+    # menu never shows a keyboard cursor on one row and a hover on another. The behaviour is real -
+    # MenuItem reports the hover edge to its system - but it cannot be driven from this side: an
+    # injected MouseMove does not put the window's pointer state over the row, so the mouse-over
+    # recognizer never fires and neither would any :hover check written here. It needs a real
+    # pointer, like xcb-side-check.py does. 
+
+    s.ok("input", window=root, native=True, events=key("ESCAPE"))
+    time.sleep(0.8)
+    check("Escape takes the whole chain down", popup_id(s) is None)
+    check("and chooses nothing", s.invoke("menu.state")["activations"] == 0)
 
 finally:
     try:

@@ -84,7 +84,7 @@ LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 # Third-party dependency libs (media / text / data + crypto + networking). Vulkan
 # and WAMR are intentionally excluded from the wasm target, so the mbedtls/iwasm and
 # vulkan/spirv/glslang recipes the other targets carry are omitted here. OpenSSL
-# (libcrypto.a/libssl.a) + libzip + curl (HTTP/3 via OpenSSL QUIC + nghttp3) ARE
+# (libcrypto.a/libssl.a) + curl (HTTP/3 via OpenSSL QUIC + nghttp3) ARE
 # built for wasm; the socket layer is the no-op-stub sprt libc (see libc_impl).
 LIBS := \
 	libz.a \
@@ -103,7 +103,6 @@ LIBS := \
 	libsqlite3.a \
 	libssl.a \
 	libgost_engine.a \
-	libzip-openssl.a \
 	libnghttp3.a \
 	libngtcp2.a \
 	libcurl-openssl.a
@@ -219,19 +218,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: openssl.mk
 
 $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
-
-# libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
-# compression backends (zlib/bzip2/lzma/zstd, ENABLE_*=ON) and libcrypto.a. There
-# is no GOST engine on wasm, so unlike target-linux the openssl variant needs only
-# libssl.a. Output is renamed to libzip-openssl.a (WASM branch of common/libzip.mk).
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
-		$(SPRT_LIB) \
-		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/liblzma.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 # HTTP/3 framing library (cmake, lib-only). No crypto/compression deps of its own;
 # curl consumes it for HTTP/3 together with the ngtcp2 QUIC transport below.

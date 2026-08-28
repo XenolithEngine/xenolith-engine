@@ -60,6 +60,7 @@
         _pthread_mutex_init,
         _pthread_cond_signal,
         _pthread_join,
+        _pthread_getname_np,
         ___exp10,
         ___memset_chk,
         ___maskrune,

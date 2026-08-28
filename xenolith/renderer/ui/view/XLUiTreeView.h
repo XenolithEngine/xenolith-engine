@@ -29,6 +29,7 @@
 #include "XL2dIconSprite.h"
 #include "XL2dScrollView.h"
 #include "XL2dScrollController.h"
+#include "XLUiRowGeometry.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -243,6 +244,16 @@ public:
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
+	/* Where a row LIES, in this node's coordinate space - see ui::RowGeometrySource.
+
+	The same answer TableView gives, from the same shared arithmetic: a row that scrolled out of
+	sight still has a rectangle, because only its node was virtualized. What an inline editor
+	placed over a row of the explorer needs, and what it cannot compute from outside.
+
+	There is no getCellRect here: a tree row is not divided into columns. */
+	bool getRowRect(size_t index, Rect &out) const;
+	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
+
 protected:
 	using Panel::init;
 
@@ -280,6 +291,8 @@ protected:
 	// The live node of a materialized row; null when the row is outside the scroll window - and
 	// then there is nothing to update, because the row is built with the current state when it
 	// scrolls in.
+	RowGeometrySource makeGeometrySource() const;
+
 	RowNode *getRowNode(size_t index) const;
 
 	// Re-apply the presentation a row node can change WITHOUT becoming a different row, on the node

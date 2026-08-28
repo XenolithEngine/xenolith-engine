@@ -22,8 +22,8 @@ void free_aligned_sized(void *ptr, size_t alignment, size_t size) __SPRT_NOEXCEP
 
 void free(void *ptr) __SPRT_NOEXCEPT { mi_free(ptr); }
 
-int posix_memalign(void **ptr, size_t size, size_t align) {
-	return mi_posix_memalign(ptr, size, align);
+int posix_memalign(void **ptr, size_t align, size_t size) {
+	return mi_posix_memalign(ptr, align, size);
 }
 
 void *aligned_alloc(size_t align, size_t size) { return mi_aligned_alloc(align, size); }
@@ -36,10 +36,10 @@ size_t malloc_usable_size(void *p) { return mi_usable_size(p); }
 // O(areas), not O(individual blocks).
 static bool __sprt_malloc_usage_visit(const mi_heap_t *heap, const mi_heap_area_t *area,
 		void *block, size_t block_size, void *arg) {
-	(void) heap;
-	(void) block;
-	(void) block_size;
-	*(size_t *) arg += area->used * area->block_size;
+	(void)heap;
+	(void)block;
+	(void)block_size;
+	*(size_t *)arg += area->used * area->block_size;
 	return true; // keep visiting
 }
 

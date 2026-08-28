@@ -121,6 +121,11 @@ THE SOFTWARE.
 #define PAGE_WRITECOMBINE __SPRT_PAGE_WRITECOMBINE
 #define LHND __SPRT_LHND
 #define LPTR __SPRT_LPTR
+#define GMEM_FIXED __SPRT_GMEM_FIXED
+#define GMEM_MOVEABLE __SPRT_GMEM_MOVEABLE
+#define GMEM_ZEROINIT __SPRT_GMEM_ZEROINIT
+#define CF_TEXT __SPRT_CF_TEXT
+#define CF_UNICODETEXT __SPRT_CF_UNICODETEXT
 
 #define MINCHAR __SPRT_MINCHAR
 #define MAXCHAR __SPRT_MAXCHAR
@@ -137,6 +142,19 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI HLOCAL LocalAlloc(UINT uFlags, SIZE_T uBytes);
+
+// The global heap. Still here only because the clipboard's data model is built on it:
+// SetClipboardData takes ownership of a GMEM_MOVEABLE block, which is why one is allocated and
+// never freed on the success path.
+__SPRT_WIN_IMPORT WINAPI HGLOBAL GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
+
+__SPRT_WIN_IMPORT WINAPI HGLOBAL GlobalFree(HGLOBAL hMem);
+
+__SPRT_WIN_IMPORT WINAPI LPVOID GlobalLock(HGLOBAL hMem);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GlobalUnlock(HGLOBAL hMem);
+
+__SPRT_WIN_IMPORT WINAPI SIZE_T GlobalSize(HGLOBAL hMem);
 
 __SPRT_WIN_IMPORT WINAPI HLOCAL LocalFree(HLOCAL hMem);
 
