@@ -22,10 +22,12 @@
 
 #include "XLGlesLoop.h"
 #include "XLGlesObject.h"
+#include "XLGlesPipeline.h"
 #include "XLGlesTextureSet.h"
 #include "XLGlesQueuePass.h"
 #include "XLGlesPresentation.h"
 #include "XLGlesHeadlessPresentation.h"
+#include "XLGlesWindowedPresentation.h"
 
 #include "XLCoreFrameHandle.h"
 #include "XLCoreFrameRequest.h"
@@ -180,12 +182,15 @@ void Loop::compileQueue(const Rc<core::Queue> &req, Function<void(bool)> &&cb) c
 			return;
 		}
 
-		// M1 is a clear-only backend: shaders and pipelines have no GLES counterpart yet. A queue
-		// that declares them belongs to the draw path this backend cannot execute, so fail loudly
-		// instead of rendering half-correct frames.
-		if (!req->getPrograms().empty()) {
-			log::source().error("gles::Loop", "Shaders are not supported in M1: ", req->getName());
-			success = false;
+		for (auto &it : req->getPrograms()) {
+			if (!it->program) {
+				if (auto shader = Rc<Shader>::create(*_device, *it)) {
+					it->program = _device->addProgram(shader);
+				} else {
+					log::source().error("gles::Loop", "Fail to compile program: ", it->key);
+					success = false;
+				}
+			}
 		}
 
 		if (auto res = req->getInternalResource()) {
@@ -258,15 +263,25 @@ void Loop::compileQueue(const Rc<core::Queue> &req, Function<void(bool)> &&cb) c
 				}
 
 				for (auto &subpass : pass->subpasses) {
-					if (!subpass->graphicPipelines.empty()) {
-						log::source().error("gles::Loop",
-								"Graphic pipelines are not supported in M1: ", subpass->key);
-						success = false;
+					for (auto &it : subpass->graphicPipelines) {
+						if (!it->pipeline) {
+							if (auto pipeline = Rc<GraphicPipeline>::create(*_device, *it)) {
+								it->pipeline = move(pipeline);
+							} else {
+								log::source().error("gles::Loop", "Fail to compile pipeline: ",
+										it->key);
+								success = false;
+							}
+						}
 					}
 
+					// Compute is not part of the flat contract; a queue that asks for it is not one
+					// this backend can execute, and silently ignoring it would render a half-correct
+					// frame instead of saying so.
 					if (!subpass->computePipelines.empty()) {
 						log::source().error("gles::Loop",
-								"Compute pipelines are not supported in M1: ", subpass->key);
+								"Compute pipelines are not supported by the GLES backend: ",
+								subpass->key);
 						success = false;
 					}
 				}
@@ -274,12 +289,30 @@ void Loop::compileQueue(const Rc<core::Queue> &req, Function<void(bool)> &&cb) c
 		}
 
 		if (success) {
+			auto self = const_cast<Loop *>(this);
 			for (auto &it : req->getAttachments()) {
-				if (it->type == core::AttachmentType::Material) {
-					log::source().error("gles::Loop",
-							"Material attachments are not supported in M1: ", it->key);
-					success = false;
+				if (it->type != core::AttachmentType::Material) {
+					continue;
 				}
+
+				auto a = dynamic_cast<core::MaterialAttachment *>(it->attachment.get());
+				if (!a || !a->getTargetLayout() || !a->getTargetLayout()->layout) {
+					continue;
+				}
+
+				a->setCompiled(*_device);
+
+				auto initial = a->getPredefinedMaterials();
+				if (initial.empty()) {
+					continue;
+				}
+
+				auto set = a->allocateSet(*_device, a->getTargetLayout()->imageCountIndexed);
+
+				self->updateMaterialSet(set.get(), initial, SpanView<core::MaterialId>(),
+						SpanView<core::MaterialId>());
+
+				a->setMaterials(set);
 			}
 		}
 
@@ -293,13 +326,54 @@ void Loop::compileQueue(const Rc<core::Queue> &req, Function<void(bool)> &&cb) c
 	}, const_cast<Loop *>(this), true);
 }
 
+bool Loop::updateMaterialSet(NotNull<core::MaterialSet> data,
+		SpanView<Rc<core::Material>> materials, SpanView<core::MaterialId> dynamicMaterials,
+		SpanView<core::MaterialId> materialsToRemove) {
+	auto updated = data->updateMaterials(materials, dynamicMaterials, materialsToRemove,
+			[&, this](const core::MaterialImage &image) -> Rc<core::ImageView> {
+		for (auto &it : image.image->views) {
+			if (*it == image.info || it->view->getInfo() == image.info) {
+				return it->view;
+			}
+		}
+		return Rc<ImageView>::create(*_device, image.image->image, image.info);
+	});
+
+	if (updated.empty()) {
+		return false;
+	}
+
+	auto layout = data->getTargetLayout();
+
+	for (auto &it : data->getLayouts()) {
+		it.set = layout->layout->acquireSet(*_device);
+		it.set->write(it);
+	}
+
+	// The software backend fills a per-material buffer here for its CPU rasterizer; the GLES draw
+	// path reads a material's image and pipeline directly at record time, so it has no such data.
+
+	return true;
+}
+
 void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<DependencyEvent>> &deps) const {
 	auto loop = const_cast<Loop *>(this);
-	loop->performOnThread([loop, req = sp::move(req), deps]() mutable {
+	loop->performOnThread([loop, req = sp::move(req), deps = deps]() mutable {
 		bool success = false;
+		auto attachment = req->attachment;
+		if (!attachment->getMaterials()) {
+			log::source().error("gles::Loop",
+					"compileMaterials: attachment was not compiled with its queue");
+		} else {
+			auto newSet = attachment->cloneSet(attachment->getMaterials());
 
-		log::source().error("gles::Loop", "Materials are not supported in M1");
+			loop->updateMaterialSet(newSet.get(), req->materialsToAddOrUpdate,
+					req->dynamicMaterialsToUpdate, req->materialsToRemove);
+
+			attachment->setMaterials(newSet);
+			success = true;
+		}
 
 		if (req->callback) {
 			req->callback();
@@ -307,8 +381,8 @@ void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 
 		loop->signalDependencies(deps, nullptr, success);
 	}, loop, false);
-	// NOT immediate: the caller holds the attachment's dynamic-tracker mutex and signalling walks
-	// it through the dependency graph - same reason as the software backend.
+	// NOT immediate: the caller (updateDynamicImage) holds the attachment's dynamic-tracker mutex
+	// and signalling walks it through the dependency graph - same reason as the software backend.
 }
 
 void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)> &&cb) const {
@@ -624,7 +698,7 @@ Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::Presenta
 	if (opts.headless) {
 		return Rc<HeadlessPresentationEngine>::create(this, _device.get(), w, opts);
 	}
-	return Rc<PresentationEngine>::create(this, _device.get(), w, opts);
+	return Rc<WindowedPresentationEngine>::create(this, _device.get(), w, opts);
 }
 
 } // namespace stappler::xenolith::gles

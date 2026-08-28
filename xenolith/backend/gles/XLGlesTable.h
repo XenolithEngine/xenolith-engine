@@ -87,6 +87,12 @@ struct SP_PUBLIC EglTable {
 	// EGL 1.5 entrypoint; older libEGL exports only the EXT twin, resolved below.
 	decltype(&eglGetPlatformDisplay) eglGetPlatformDisplay = nullptr;
 
+	// --- Windowed WSI (M2): create an EGLWindowSurface on the session's platform display and
+	//     swap it to the screen. Resolved through the DSO like the rest; null when the driver
+	//     lacks them, in which case windowed presentation is unavailable (headless still works).
+	PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC eglCreatePlatformWindowSurfaceEXT = nullptr;
+	decltype(&eglSwapBuffers) eglSwapBuffers = nullptr;
+
 	// --- EGL extensions, resolved through eglGetProcAddress ---
 	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = nullptr;
 	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT = nullptr;
@@ -107,6 +113,10 @@ struct SP_PUBLIC EglTable {
 	decltype(&glBindBuffer) glBindBuffer = nullptr;
 	decltype(&glBufferData) glBufferData = nullptr;
 	decltype(&glBufferSubData) glBufferSubData = nullptr;
+	// Declared by hand: the GLES3 headers this build resolves do not expose the prototype, though
+	// every ES 3.0 implementation exports it (it is core, not an extension).
+	using GlGetBufferSubDataProc = void (*)(GLenum target, GLintptr offset, GLsizeiptr size, void *params);
+	GlGetBufferSubDataProc glGetBufferSubData = nullptr;
 	decltype(&glMapBufferRange) glMapBufferRange = nullptr;
 	decltype(&glUnmapBuffer) glUnmapBuffer = nullptr;
 
@@ -124,6 +134,14 @@ struct SP_PUBLIC EglTable {
 	decltype(&glBindFramebuffer) glBindFramebuffer = nullptr;
 	decltype(&glFramebufferTexture2D) glFramebufferTexture2D = nullptr;
 	decltype(&glCheckFramebufferStatus) glCheckFramebufferStatus = nullptr;
+	// Windowed WSI (M2): copy a rendered texture onto the default framebuffer (the window
+	// surface). Core GLES 3.0.
+	decltype(&glBlitFramebuffer) glBlitFramebuffer = nullptr;
+	// Desktop-GL entrypoint (not part of the ES API, absent from the GLES3 headers): desktop
+	// drivers behind EGL still export it. Used for diagnostics only - callers must null-check.
+	using GlGetFramebufferAttachmentProc = void (*)(GLenum target, GLenum attachment,
+			GLenum pname, GLint *params);
+	GlGetFramebufferAttachmentProc glGetFramebufferAttachment = nullptr;
 	decltype(&glInvalidateFramebuffer) glInvalidateFramebuffer = nullptr;
 
 	// sampler objects (separable filtering state, GLES 3.0+)
@@ -142,6 +160,74 @@ struct SP_PUBLIC EglTable {
 	decltype(&glClearBufferfv) glClearBufferfv = nullptr;
 	decltype(&glReadPixels) glReadPixels = nullptr;
 	decltype(&glPixelStorei) glPixelStorei = nullptr;
+
+	// --- M2: shaders, programs, VAOs, draws and per-draw state ---
+	decltype(&glCreateShader) glCreateShader = nullptr;
+	decltype(&glDeleteShader) glDeleteShader = nullptr;
+	decltype(&glShaderSource) glShaderSource = nullptr;
+	decltype(&glCompileShader) glCompileShader = nullptr;
+	decltype(&glGetShaderiv) glGetShaderiv = nullptr;
+	decltype(&glGetShaderInfoLog) glGetShaderInfoLog = nullptr;
+
+	decltype(&glCreateProgram) glCreateProgram = nullptr;
+	decltype(&glDeleteProgram) glDeleteProgram = nullptr;
+	decltype(&glAttachShader) glAttachShader = nullptr;
+	decltype(&glLinkProgram) glLinkProgram = nullptr;
+	decltype(&glUseProgram) glUseProgram = nullptr;
+	decltype(&glGetProgramiv) glGetProgramiv = nullptr;
+	decltype(&glGetProgramInfoLog) glGetProgramInfoLog = nullptr;
+
+	decltype(&glGenVertexArrays) glGenVertexArrays = nullptr;
+	decltype(&glBindVertexArray) glBindVertexArray = nullptr;
+	decltype(&glDeleteVertexArrays) glDeleteVertexArrays = nullptr;
+	decltype(&glVertexAttribPointer) glVertexAttribPointer = nullptr;
+	decltype(&glEnableVertexAttribArray) glEnableVertexAttribArray = nullptr;
+	decltype(&glDisableVertexAttribArray) glDisableVertexAttribArray = nullptr;
+	// Integer vertex attributes: the flat layout carries two uint words, and a driver that
+	// delivers an int-typed array through the float entrypoint is not guaranteed correct.
+	decltype(&glVertexAttribIPointer) glVertexAttribIPointer = nullptr;
+	// Constant (non-array) attribute value for a disabled array slot.
+	decltype(&glVertexAttrib4f) glVertexAttrib4f = nullptr;
+	decltype(&glGetVertexAttribiv) glGetVertexAttribiv = nullptr;
+	decltype(&glGetVertexAttribPointerv) glGetVertexAttribPointerv = nullptr;
+	decltype(&glIsEnabled) glIsEnabled = nullptr;
+
+	// Base-vertex draws (the desktop GL 4.3 family) are not part of the ES API, so a span's
+	// indexes are rewritten into a contiguous block at record time and drawn with these instead.
+	decltype(&glDrawArrays) glDrawArrays = nullptr;
+	decltype(&glDrawElements) glDrawElements = nullptr;
+	decltype(&glDrawElementsInstanced) glDrawElementsInstanced = nullptr;
+
+	// shader storage buffer binding: the flat vertex shader reads its transforms from one, and a
+	// uniform array cannot hold them (the 16 KiB uniform block ceiling is reached at ~3 entries)
+	decltype(&glBindBufferBase) glBindBufferBase = nullptr;
+
+	decltype(&glEnable) glEnable = nullptr;
+	decltype(&glDisable) glDisable = nullptr;
+	decltype(&glBlendFuncSeparate) glBlendFuncSeparate = nullptr;
+	// Separate equations: the core glBlendEquation applies one to both RGB and alpha, but a
+	// BlendInfo may ask for different ones (the flat contract does not, yet - still, map it all).
+	decltype(&glBlendEquationSeparate) glBlendEquationSeparate = nullptr;
+	decltype(&glColorMask) glColorMask = nullptr;
+	decltype(&glScissor) glScissor = nullptr;
+	decltype(&glActiveTexture) glActiveTexture = nullptr;
+
+	decltype(&glGetUniformLocation) glGetUniformLocation = nullptr;
+	decltype(&glUniform1i) glUniform1i = nullptr;
+	decltype(&glUniform4i) glUniform4i = nullptr;
+
+	// The M2 draw path on top of hasGlDevice: compiling programs and executing a recorded span
+	// list needs all of these, so the pass fails with a named diagnostic rather than a null call.
+	bool hasGlDraw() const {
+		return hasGlDevice() && glCreateShader && glDeleteShader && glShaderSource
+				&& glCompileShader && glGetShaderiv && glCreateProgram && glDeleteProgram
+				&& glAttachShader && glLinkProgram && glUseProgram && glGenVertexArrays
+				&& glBindVertexArray && glDeleteVertexArrays && glVertexAttribPointer
+				&& glEnableVertexAttribArray && glDrawArrays && glDrawElements
+				&& glDrawElementsInstanced
+				&& glBindBufferBase && glBlendFuncSeparate && glColorMask && glScissor
+				&& glActiveTexture && glUniform4i;
+	}
 
 	// The M1 minimum on top of operator bool: everything a device needs to create objects, run
 	// a clear pass and read the result back.

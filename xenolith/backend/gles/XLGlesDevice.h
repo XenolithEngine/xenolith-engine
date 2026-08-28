@@ -49,11 +49,28 @@ public:
 
 	// The instance owns the resolved function pointers and outlives every device it made, so a
 	// pointer hop is enough - keeping a copy (or a reference) here would only duplicate state.
-	const EglTable &getTable() const { return static_cast<const Instance *>(_glInstance)->getTable(); }
+	// Defined in XLGlesInstance.cc: the downcast needs Instance to be complete, which this header
+	// does not guarantee for every includer.
+	const EglTable &getTable() const;
 
 	// Monotonic id handed to every ImageView: the frame cache keys framebuffers by it, so it must
 	// be unique per view and never reused.
 	uint64_t getNextObjectIndex() { return _objectIndex.fetch_add(1) + 1; }
+
+	// --- Windowed WSI (M2): the loop thread's context/display/render surface are what a windowed
+	//     swapchain needs to blit its texture onto an EGLWindowSurface and eglSwapBuffers. The
+	//     render surface is the pbuffer/surfaceless one makeCurrent used at init; presenting
+	//     temporarily rebinds the context to the window surface, then restores this one.
+	EGLDisplay getDisplay() const { return _display; }
+	EGLContext getContext() const { return _context; }
+	EGLSurface getRenderSurface() const { return _surface; }
+
+	// Create an EGLWindowSurface on this device's display for the given native window handle. The
+	// backend picks the platform token and attrib list (wayland: the wl_surface itself; xcb: the
+	// window id). Fails when the driver lacks eglCreatePlatformWindowSurfaceEXT or the config does
+	// not carry EGL_WINDOW_BIT - both of which are the "windowed presentation unavailable" case.
+	bool createWindowSurface(sprt::window::SurfaceBackend backend, void *nativeWindow,
+			EGLSurface &out);
 
 	// Queue a GL delete for execution on the loop thread (drainPendingReleases). Safe from any
 	// thread: when end() has already run, the call is dropped - context teardown reclaims every

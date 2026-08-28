@@ -58,9 +58,9 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &,
 	info.supportedUsageFlags = core::ImageUsage::ColorAttachment | core::ImageUsage::TransferSrc
 			| core::ImageUsage::TransferDst | core::ImageUsage::Sampled;
 
-	// R8G8B8A8 first: it is the loop's common format, so a queue built against getCommonFormat()
-	// lands on it without any conversion. B8G8R8A8 has no GLES counterpart and would only be
-	// accepted to fail at image creation.
+	// R8G8B8A8 first: the loop's common format is B8G8R8A8 on Linux, but the backend maps it onto
+	// RGBA8 storage anyway - offering it here keeps the negotiated swapchain in the byte order
+	// the capture path reads back.
 	info.formats.emplace_back(core::ImageFormat::R8G8B8A8_UNORM,
 			core::ColorSpace::SRGB_NONLINEAR_KHR);
 	info.formats.emplace_back(core::ImageFormat::R8_UNORM, core::ColorSpace::SRGB_NONLINEAR_KHR);

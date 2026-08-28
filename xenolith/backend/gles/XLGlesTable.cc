@@ -45,12 +45,27 @@ void EglTable::loadEgl(sprt::Dso &dso) {
 	// twin, reachable through eglGetProcAddress like any other extension.
 	eglGetPlatformDisplay = dso.sym<decltype(eglGetPlatformDisplay)>("eglGetPlatformDisplay");
 
+	// Windowed WSI (M2): eglSwapBuffers is core EGL 1.0 and always in the library; the platform
+	// window surface creator is an EXT entrypoint that most loaders also export, but resolve it
+	// through eglGetProcAddress as a fallback for a thin libEGL.
+	eglSwapBuffers = dso.sym<decltype(eglSwapBuffers)>("eglSwapBuffers");
+	eglCreatePlatformWindowSurfaceEXT =
+			dso.sym<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(
+					"eglCreatePlatformWindowSurfaceEXT");
+
 	if (!eglGetProcAddress) {
 		return;
 	}
 
 	eglGetPlatformDisplayEXT = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
 			eglGetProcAddress("eglGetPlatformDisplayEXT"));
+	if (!eglCreatePlatformWindowSurfaceEXT) {
+		// A thin libEGL keeps the window-surface creator out of its own export table; it is an
+		// extension entrypoint, so eglGetProcAddress is the guaranteed route to it.
+		eglCreatePlatformWindowSurfaceEXT =
+				reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(
+						eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+	}
 	eglQueryDevicesEXT = reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(
 			eglGetProcAddress("eglQueryDevicesEXT"));
 	eglQueryDeviceStringEXT = reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(
@@ -91,6 +106,7 @@ void EglTable::loadGl() {
 	glBindBuffer = reinterpret_cast<decltype(glBindBuffer)>(resolve("glBindBuffer"));
 	glBufferData = reinterpret_cast<decltype(glBufferData)>(resolve("glBufferData"));
 	glBufferSubData = reinterpret_cast<decltype(glBufferSubData)>(resolve("glBufferSubData"));
+	glGetBufferSubData = reinterpret_cast<decltype(glGetBufferSubData)>(resolve("glGetBufferSubData"));
 	glMapBufferRange = reinterpret_cast<decltype(glMapBufferRange)>(resolve("glMapBufferRange"));
 	glUnmapBuffer = reinterpret_cast<decltype(glUnmapBuffer)>(resolve("glUnmapBuffer"));
 
@@ -109,8 +125,12 @@ void EglTable::loadGl() {
 			reinterpret_cast<decltype(glFramebufferTexture2D)>(resolve("glFramebufferTexture2D"));
 	glCheckFramebufferStatus = reinterpret_cast<decltype(glCheckFramebufferStatus)>(
 			resolve("glCheckFramebufferStatus"));
+	glGetFramebufferAttachment =
+			reinterpret_cast<decltype(glGetFramebufferAttachment)>(
+					resolve("glGetFramebufferAttachment"));
 	glInvalidateFramebuffer =
 			reinterpret_cast<decltype(glInvalidateFramebuffer)>(resolve("glInvalidateFramebuffer"));
+	glBlitFramebuffer = reinterpret_cast<decltype(glBlitFramebuffer)>(resolve("glBlitFramebuffer"));
 
 	glGenSamplers = reinterpret_cast<decltype(glGenSamplers)>(resolve("glGenSamplers"));
 	glDeleteSamplers = reinterpret_cast<decltype(glDeleteSamplers)>(resolve("glDeleteSamplers"));
@@ -126,6 +146,63 @@ void EglTable::loadGl() {
 	glClearBufferfv = reinterpret_cast<decltype(glClearBufferfv)>(resolve("glClearBufferfv"));
 	glReadPixels = reinterpret_cast<decltype(glReadPixels)>(resolve("glReadPixels"));
 	glPixelStorei = reinterpret_cast<decltype(glPixelStorei)>(resolve("glPixelStorei"));
+
+	// M2: shaders and programs. glShaderSource/glGetShaderInfoLog are core entrypoints in the
+	// GLES 3.x ABI, so they resolve exactly like everything above when a dispatcher keeps them
+	// out of eglGetProcAddress.
+	glCreateShader = reinterpret_cast<decltype(glCreateShader)>(resolve("glCreateShader"));
+	glDeleteShader = reinterpret_cast<decltype(glDeleteShader)>(resolve("glDeleteShader"));
+	glShaderSource = reinterpret_cast<decltype(glShaderSource)>(resolve("glShaderSource"));
+	glCompileShader = reinterpret_cast<decltype(glCompileShader)>(resolve("glCompileShader"));
+	glGetShaderiv = reinterpret_cast<decltype(glGetShaderiv)>(resolve("glGetShaderiv"));
+	glGetShaderInfoLog = reinterpret_cast<decltype(glGetShaderInfoLog)>(resolve("glGetShaderInfoLog"));
+
+	glCreateProgram = reinterpret_cast<decltype(glCreateProgram)>(resolve("glCreateProgram"));
+	glDeleteProgram = reinterpret_cast<decltype(glDeleteProgram)>(resolve("glDeleteProgram"));
+	glAttachShader = reinterpret_cast<decltype(glAttachShader)>(resolve("glAttachShader"));
+	glLinkProgram = reinterpret_cast<decltype(glLinkProgram)>(resolve("glLinkProgram"));
+	glUseProgram = reinterpret_cast<decltype(glUseProgram)>(resolve("glUseProgram"));
+	glGetProgramiv = reinterpret_cast<decltype(glGetProgramiv)>(resolve("glGetProgramiv"));
+	glGetProgramInfoLog = reinterpret_cast<decltype(glGetProgramInfoLog)>(resolve("glGetProgramInfoLog"));
+
+	glGenVertexArrays = reinterpret_cast<decltype(glGenVertexArrays)>(resolve("glGenVertexArrays"));
+	glBindVertexArray = reinterpret_cast<decltype(glBindVertexArray)>(resolve("glBindVertexArray"));
+	glDeleteVertexArrays =
+			reinterpret_cast<decltype(glDeleteVertexArrays)>(resolve("glDeleteVertexArrays"));
+	glVertexAttribPointer =
+			reinterpret_cast<decltype(glVertexAttribPointer)>(resolve("glVertexAttribPointer"));
+	glEnableVertexAttribArray =
+			reinterpret_cast<decltype(glEnableVertexAttribArray)>(resolve("glEnableVertexAttribArray"));
+	glDisableVertexAttribArray =
+			reinterpret_cast<decltype(glDisableVertexAttribArray)>(resolve("glDisableVertexAttribArray"));
+	glVertexAttribIPointer =
+			reinterpret_cast<decltype(glVertexAttribIPointer)>(resolve("glVertexAttribIPointer"));
+	glVertexAttrib4f = reinterpret_cast<decltype(glVertexAttrib4f)>(resolve("glVertexAttrib4f"));
+	glGetVertexAttribiv =
+			reinterpret_cast<decltype(glGetVertexAttribiv)>(resolve("glGetVertexAttribiv"));
+	glGetVertexAttribPointerv = reinterpret_cast<decltype(glGetVertexAttribPointerv)>(
+			resolve("glGetVertexAttribPointerv"));
+	glIsEnabled = reinterpret_cast<decltype(glIsEnabled)>(resolve("glIsEnabled"));
+
+	glDrawArrays = reinterpret_cast<decltype(glDrawArrays)>(resolve("glDrawArrays"));
+	glDrawElements = reinterpret_cast<decltype(glDrawElements)>(resolve("glDrawElements"));
+	glDrawElementsInstanced =
+			reinterpret_cast<decltype(glDrawElementsInstanced)>(resolve("glDrawElementsInstanced"));
+
+	glBindBufferBase = reinterpret_cast<decltype(glBindBufferBase)>(resolve("glBindBufferBase"));
+
+	glEnable = reinterpret_cast<decltype(glEnable)>(resolve("glEnable"));
+	glDisable = reinterpret_cast<decltype(glDisable)>(resolve("glDisable"));
+	glBlendFuncSeparate = reinterpret_cast<decltype(glBlendFuncSeparate)>(resolve("glBlendFuncSeparate"));
+	glBlendEquationSeparate =
+			reinterpret_cast<decltype(glBlendEquationSeparate)>(resolve("glBlendEquationSeparate"));
+	glColorMask = reinterpret_cast<decltype(glColorMask)>(resolve("glColorMask"));
+	glScissor = reinterpret_cast<decltype(glScissor)>(resolve("glScissor"));
+	glActiveTexture = reinterpret_cast<decltype(glActiveTexture)>(resolve("glActiveTexture"));
+
+	glGetUniformLocation = reinterpret_cast<decltype(glGetUniformLocation)>(resolve("glGetUniformLocation"));
+	glUniform1i = reinterpret_cast<decltype(glUniform1i)>(resolve("glUniform1i"));
+	glUniform4i = reinterpret_cast<decltype(glUniform4i)>(resolve("glUniform4i"));
 }
 
 bool hasExtension(const char *list, StringView name) {

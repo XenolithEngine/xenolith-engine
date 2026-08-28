@@ -55,7 +55,8 @@ public:
 
 	bool init(Device &, StringView, const core::ImageInfoData &);
 
-	// with an explicit object index: swapchain images are keyed by their slot
+	// with an explicit object index: swapchain images are keyed by their slot (0 included; pass
+	// maxOf<uint64_t>() to let the device assign one)
 	bool init(Device &, StringView, const core::ImageInfoData &, uint64_t index);
 
 	// with initial pixel bytes: the upload happens inside setup, so a dynamic image can be
@@ -69,7 +70,8 @@ public:
 
 protected:
 	bool setup(Device &, const core::ImageInfoData &,
-			const Callback<size_t(uint8_t *, uint64_t)> *fill, uint64_t requestedIndex = 0);
+			const Callback<size_t(uint8_t *, uint64_t)> *fill,
+			uint64_t requestedIndex = maxOf<uint64_t>());
 
 	GLuint _glTexture = 0;
 };

@@ -50,6 +50,7 @@
 
 #if MODULE_XENOLITH_RENDERER_BASIC2D_GLES
 #include "XL2dGlesClearPass.h"
+#include "XL2dGlesFlatPass.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
@@ -296,22 +297,22 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 
 #if MODULE_XENOLITH_RENDERER_BASIC2D_GLES
 	if (!queueBuilt && api == core::InstanceApi::GLES) {
-		// M1 has the clear pass only - there is no shadow/SDF/particle path to fall back to, so a
-		// Default request is served with it anyway.
+		// The flat queue is the only one this backend implements - there is no shadow/SDF/particle
+		// path to fall back to, so a Default request is served with the flat queue anyway.
 		if (queueInfo.type != QueueType::Flat) {
 			log::source()
-					.info("Scene2d", "GLES backend supports the clear queue only in M1, building "
-							"it instead of the default one");
+					.info("Scene2d", "GLES backend supports the flat queue only, building it "
+							"instead of the default one");
 		}
 
-		basic2d::gles::ClearPass::RenderQueueInfo info{
+		basic2d::gles::FlatPass::RenderQueueInfo info{
 			app->getGlLoop(),
 			queueInfo.extent,
 			queueInfo.backgroundColor,
 			queueInfo.damage,
 		};
 
-		basic2d::gles::ClearPass::makeRenderQueue(builder, info);
+		basic2d::gles::FlatPass::makeRenderQueue(builder, info);
 		queueBuilt = true;
 	}
 #endif

@@ -25,11 +25,13 @@
 
 #include "XLGlesTable.cc"
 #include "XLGlesObject.cc"
+#include "XLGlesPipeline.cc"
 #include "XLGlesDevice.cc"
 #include "XLGlesTextureSet.cc"
 #include "XLGlesQueuePass.cc"
 #include "XLGlesPresentation.cc"
 #include "XLGlesHeadlessPresentation.cc"
+#include "XLGlesWindowedPresentation.cc"
 #include "XLGlesLoop.cc"
 #include "XLGlesInstance.cc"
 

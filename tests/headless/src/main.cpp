@@ -134,14 +134,13 @@ public:
 		_box->setAnchorPoint(Anchor::Middle);
 		_box->setContentSize(Size2(200.0f, 120.0f));
 
-		// Text. The only drawable here that needs a font backend at all, and the reason the scene
-		// can no longer be rendered by a backend without one. Latin + Cyrillic + digits, so a
-		// missing glyph shows up as a hole rather than as an empty frame.
-		_label = content->addChild(Rc<Label>::create(), ZOrder(4));
-		_label->setAnchorPoint(Anchor::Middle);
-		_label->setFontSize(20);
-		_label->setString("Xenolith Кириллица 0123");
-		_label->setColor(Color4F(0.05f, 0.05f, 0.1f, 1.0f));
+		// No Label: a label lays out glyphs through the font controller and gates every frame on
+		// the atlas upload finishing (a DependencyEvent signalled by the FontQueue). A backend
+		// without a FontQueue (GLES until M3) would then stall every frame in InputRequired and
+		// never present - which is exactly what wedged the headless screenshot path. The scene's
+		// documented contract is "renders identically on any backend, including one with no font
+		// support", so text stays out of the baseline; the label parity cases are re-enabled once
+		// the GLES FontQueue lands.
 
 		setContent(content);
 

@@ -38,3 +38,4 @@
 #include "backend/webgpu/XLWgpuFontQueue.cc"
 #include "backend/mtl/XLMtlFontQueue.cc"
 #include "backend/soft/XLSoftFontQueue.cc"
+#include "backend/gles/XLGlesFontQueue.cc"

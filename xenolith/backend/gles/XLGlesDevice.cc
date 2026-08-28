@@ -44,16 +44,43 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 
 	_deviceInfo = info;
 
-	// Reopen the display the probe used: a platform device when one was enumerated, the
-	// surfaceless platform when the session has no window system, plain default otherwise.
+	// The render context and the window surface it presents must live on the SAME EGLDisplay. A
+	// headless device (no session window handle) reopens whatever display the probe used - a GPU
+	// platform device or the surfaceless platform - exactly as before. A windowed device instead
+	// opens the session's own wayland/xcb platform display, because only that display can both
+	// render into textures and create the EGLWindowSurface the compositor presents. The support
+	// snapshot travels with the instance; an empty backendMask is what a headless controller
+	// reports, so it is the clean discriminator.
+	auto &support = instance->getBackendInfo()->supportInfo;
 	EGLDisplay dpy = EGL_NO_DISPLAY;
-	if (info.eglDevice != nullptr) {
-		dpy = instance->getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, info.eglDevice);
-	} else if (info.surfaceless) {
-		dpy = instance->getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, nullptr);
+	if (support.backendMask.test(toInt(sprt::window::SurfaceBackend::Wayland))
+			&& support.wayland.display) {
+		dpy = instance->getPlatformDisplay(EGL_PLATFORM_WAYLAND_EXT, support.wayland.display);
+		log::source().info("gles::Device", "WSI: opening wayland platform display ",
+				support.wayland.display ? "ok" : "null-handle");
+	} else if (support.backendMask.test(toInt(sprt::window::SurfaceBackend::Xcb))
+			&& support.xcb.connection) {
+		dpy = instance->getPlatformDisplay(EGL_PLATFORM_XCB_EXT, support.xcb.connection);
+		log::source().info("gles::Device", "WSI: opening xcb platform display");
+	} else {
+		log::source().info("gles::Device", "WSI: no session window handle (headless path), "
+				"backendMask wayland=",
+				support.backendMask.test(toInt(sprt::window::SurfaceBackend::Wayland)),
+				" wl.display=", support.wayland.display ? "set" : "null");
 	}
-	if (dpy == EGL_NO_DISPLAY) {
-		dpy = table.eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+	// Windowed when a session platform display was opened; the config below must then also carry
+	// EGL_WINDOW_BIT so the same config can back an EGLWindowSurface.
+	bool windowed = dpy != EGL_NO_DISPLAY;
+	if (!windowed) {
+		if (info.eglDevice != nullptr) {
+			dpy = instance->getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, info.eglDevice);
+		} else if (info.surfaceless) {
+			dpy = instance->getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, nullptr);
+		}
+		if (dpy == EGL_NO_DISPLAY) {
+			dpy = table.eglGetDisplay(EGL_DEFAULT_DISPLAY);
+		}
 	}
 	if (dpy == EGL_NO_DISPLAY) {
 		log::source().error("gles::Device", "Fail to reopen the EGL display");
@@ -84,20 +111,17 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 		}
 	};
 
-	const EGLint configAttribs[] = {
-		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-		EGL_RED_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
-		EGL_NONE,
-	};
-
+	// Config selection. A windowed device needs a config that can back an EGLWindowSurface, so
+	// WINDOW_BIT is mandatory there; PBUFFER is a bonus (a render pbuffer) but not required - the
+	// surfaceless-context extension covers rendering without one. Headless devices only ever need
+	// pbuffer/surfaceless. The old "any" fallback that dropped the surface-type constraint is what
+	// handed back a non-window config on a windowed display and produced EGL_BAD_CONFIG at surface
+	// creation, so it is gone: a windowed device fails cleanly when no window-capable config exists.
 	EGLConfig config = nullptr;
 	EGLint numConfigs = 0;
-	if (!table.eglChooseConfig(dpy, configAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
-		const EGLint anyAttribs[] = {
+	if (windowed) {
+		const EGLint windowAttribs[] = {
+			EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
 			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
 			EGL_RED_SIZE, 8,
 			EGL_GREEN_SIZE, 8,
@@ -105,10 +129,47 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 			EGL_ALPHA_SIZE, 8,
 			EGL_NONE,
 		};
-		if (!table.eglChooseConfig(dpy, anyAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
-			log::source().error("gles::Device", "No RGBA8 GLES3-capable EGL config");
-			teardown();
-			return false;
+		if (!table.eglChooseConfig(dpy, windowAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
+			const EGLint windowOnlyAttribs[] = {
+				EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+				EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+				EGL_RED_SIZE, 8,
+				EGL_GREEN_SIZE, 8,
+				EGL_BLUE_SIZE, 8,
+				EGL_ALPHA_SIZE, 8,
+				EGL_NONE,
+			};
+			if (!table.eglChooseConfig(dpy, windowOnlyAttribs, &config, 1, &numConfigs)
+					|| numConfigs == 0) {
+				log::source().error("gles::Device", "No RGBA8 GLES3 EGL config with EGL_WINDOW_BIT");
+				teardown();
+				return false;
+			}
+		}
+	} else {
+		const EGLint configAttribs[] = {
+			EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+			EGL_RED_SIZE, 8,
+			EGL_GREEN_SIZE, 8,
+			EGL_BLUE_SIZE, 8,
+			EGL_ALPHA_SIZE, 8,
+			EGL_NONE,
+		};
+		if (!table.eglChooseConfig(dpy, configAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
+			const EGLint anyAttribs[] = {
+				EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+				EGL_RED_SIZE, 8,
+				EGL_GREEN_SIZE, 8,
+				EGL_BLUE_SIZE, 8,
+				EGL_ALPHA_SIZE, 8,
+				EGL_NONE,
+			};
+			if (!table.eglChooseConfig(dpy, anyAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
+				log::source().error("gles::Device", "No RGBA8 GLES3-capable EGL config");
+				teardown();
+				return false;
+			}
 		}
 	}
 	_config = config;
@@ -129,16 +190,33 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 
 	auto displayExtensions = table.eglQueryString(dpy, EGL_EXTENSIONS);
 	EGLSurface surface = EGL_NO_SURFACE;
-	if (!hasExtension(displayExtensions, "EGL_KHR_surfaceless_context")) {
-		const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
-		surface = table.eglCreatePbufferSurface(dpy, config, pbufferAttribs);
-		if (surface == EGL_NO_SURFACE) {
-			log::source().error("gles::Device",
-					"Neither a surfaceless context nor a pbuffer is available, error ",
-					EGLint(table.eglGetError()));
-			teardown();
-			return false;
+	bool surfacelessOk = hasExtension(displayExtensions, "EGL_KHR_surfaceless_context");
+
+	// A render pbuffer is only creatable when the config advertises PBUFFER_BIT (a window-only
+	// config does not). When neither that nor a surfaceless context is available there is nothing
+	// to make current - which is fine on a display that supports surfaceless contexts and fatal
+	// otherwise.
+	EGLint surfaceType = 0;
+	if (table.eglGetConfigAttrib && table.eglGetConfigAttrib(dpy, config, EGL_SURFACE_TYPE, &surfaceType)) {
+		bool hasPbuffer = (surfaceType & EGL_PBUFFER_BIT) != 0;
+		if (!surfacelessOk && hasPbuffer) {
+			const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+			surface = table.eglCreatePbufferSurface(dpy, config, pbufferAttribs);
+			if (surface == EGL_NO_SURFACE) {
+				log::source().error("gles::Device",
+						"Fail to create the render pbuffer surface, error ",
+						EGLint(table.eglGetError()));
+				teardown();
+				return false;
+			}
 		}
+	}
+
+	if (surface == EGL_NO_SURFACE && !surfacelessOk) {
+		log::source().error("gles::Device",
+				"Neither a surfaceless context nor a pbuffer is available");
+		teardown();
+		return false;
 	}
 	_surface = surface;
 
@@ -159,7 +237,8 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 
 	_display = dpy;
 	_alive.store(true);
-	log::source().info("gles::Device", "Context ready on ", info.deviceName, " (", info.version, ")");
+	log::source().info("gles::Device", "Context ready on ", info.deviceName, " (", info.version,
+			") windowed=", windowed ? "yes" : "no");
 
 	// The same two formats the probe's config guarantees: everything else the backend could accept
 	// (R8G8B8A8_SRGB) is a texture-level feature, not an allocation one.
@@ -240,6 +319,38 @@ void Device::drainPendingReleases() {
 		// A release callback can drop the last reference to yet another object and queue more work;
 		// go around again until the queue is quiet.
 	}
+}
+
+bool Device::createWindowSurface(sprt::window::SurfaceBackend backend, void *nativeWindow,
+		EGLSurface &out) {
+	auto &t = getTable();
+	if (!t.eglCreatePlatformWindowSurfaceEXT || _display == EGL_NO_DISPLAY) {
+		log::source().error("gles::Device", "No eglCreatePlatformWindowSurfaceEXT or no display");
+		return false;
+	}
+
+	// The device's display was opened on the matching platform (wayland or xcb), so the window
+	// handle is passed straight through: for wayland it is the wl_surface, for xcb the window id.
+	if (backend != sprt::window::SurfaceBackend::Wayland
+			&& backend != sprt::window::SurfaceBackend::Xcb) {
+		log::source().error("gles::Device", "Unsupported window backend for WSI: ", toInt(backend));
+		return false;
+	}
+
+	EGLint attribs[] = {EGL_NONE};
+	auto surface = t.eglCreatePlatformWindowSurfaceEXT(_display, _config, nativeWindow, attribs);
+	if (surface == EGL_NO_SURFACE) {
+		auto err = EGLint(t.eglGetError()); // capture before any other EGL call consumes it
+		EGLint visualId = 0;
+		t.eglGetConfigAttrib(_display, _config, EGL_NATIVE_VISUAL_ID, &visualId);
+		log::source().error("gles::Device", "Fail to create the EGL window surface, error ",
+				err, " backend=", toInt(backend), " nativeWindow=",
+				nativeWindow ? "set" : "null", " config visual=", int(visualId));
+		return false;
+	}
+
+	out = surface;
+	return true;
 }
 
 Rc<core::Sampler> Device::getSampler(const core::SamplerInfo &info) {

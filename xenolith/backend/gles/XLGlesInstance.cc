@@ -41,6 +41,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
+// Here (not in Device.h) because the downcast needs Instance to be complete.
+const EglTable &Device::getTable() const {
+	return static_cast<const Instance *>(_glInstance)->getTable();
+}
+
 Instance::Instance(
 		core::InstanceFlags flags, Rc<InstanceBackendInfo> &&backend, sprt::Dso &&dso)
 : core::Instance(core::InstanceApi::GLES, flags, sp::move(dso))

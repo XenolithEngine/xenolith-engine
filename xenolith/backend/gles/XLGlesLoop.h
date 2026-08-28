@@ -99,6 +99,14 @@ public:
 
 	void scheduleFence(Rc<core::Fence> &&);
 
+	// Assign texture slots, create image views and write the texture sets of a material set. The
+	// GLES draw path resolves a material's image at record time through the same view objects, so
+	// nothing else about a material needs GPU storage (the software backend keeps an extra per-
+	// material buffer for its rasterizer; this one does not). Must be called on the loop thread.
+	bool updateMaterialSet(NotNull<core::MaterialSet> data, SpanView<Rc<core::Material>> materials,
+			SpanView<core::MaterialId> dynamicMaterials,
+			SpanView<core::MaterialId> materialsToRemove);
+
 protected:
 	using core::Loop::init;
 
