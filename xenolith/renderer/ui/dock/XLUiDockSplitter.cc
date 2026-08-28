@@ -22,7 +22,7 @@
 
 #include "XLUiDockSplitter.h"
 #include "XLUiDockSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 

@@ -25,6 +25,12 @@
 
 #include "XLUiFormTypes.h"
 
+// isInvalid() below calls isControlInvalid(), which is declared here. It used to compile only
+// because every consumer happened to include this header after one that had already pulled that
+// declaration in - an accident of include order, and the first translation unit to reach this
+// header first does not build.
+#include "XLInteractiveComponent.h"
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class FormSystem;
@@ -72,6 +78,12 @@ public:
 	virtual void setFieldFlags(FormFieldFlags);
 	virtual FormFieldFlags getFieldFlags() const { return _fieldFlags; }
 
+	// Publish `:required` on the owner; called when the flags change and when the owner appears
+	void updateRequiredState();
+
+	// Publish `:focus-visible` on the owner; see the .cc for why a text field always takes it
+	void updateFocusVisibleStyle(bool);
+
 	// Runs after the Required check, and only on a value that passed it
 	virtual void setValidator(Validator &&);
 
@@ -93,7 +105,7 @@ public:
 	// Marks the owner node with the form's invalid style class, since the engine's CSS subset has
 	// neither `:invalid` nor attribute selectors
 	virtual void setInvalid(bool);
-	virtual bool isInvalid() const { return _invalid; }
+	bool isInvalid() const { return _owner && isControlInvalid(_owner); }
 
 	// Requests to the form. False when there is no form, or nowhere to go
 	virtual bool requestNavigate(bool backwards);
@@ -103,8 +115,12 @@ public:
 	// Entry point for FormSystem, which is this field's focus group. InputListener declares
 	// FocusGroup a friend so it can reach handleFocusIn/handleFocusOut, and friendship does not
 	// extend to a subclass - but a derived listener may always call its own protected hooks, so
-	// the group asks the field to do it
-	void applyFocus(bool value, FocusGroup *group);
+	// the group asks the field to do it.
+	//
+	// `backwards` is what the slot receives: the direction of the navigation behind this change,
+	// false for any other cause. It is carried in a member rather than in the hooks' signatures,
+	// because handleFocusIn/handleFocusOut override InputListener's and cannot take an argument
+	void applyFocus(bool value, FocusGroup *group, bool backwards = false);
 
 protected:
 	using InputListener::init;
@@ -123,8 +139,10 @@ protected:
 	Validator _validator;
 	FormFieldSlots _slots;
 	FormSystem *_form = nullptr;
-	bool _invalid = false;
 	bool _focusStyleApplied = false;
+
+	// Set by applyFocus for the hooks below it; see the comment there
+	bool _focusBackwards = false;
 };
 
 } // namespace stappler::xenolith::ui

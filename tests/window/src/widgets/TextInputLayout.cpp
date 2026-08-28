@@ -184,11 +184,11 @@ Value TextInputLayout::encodeState(ui::TextInput *input) const {
 			"labelSelectionColor");
 
 	Value interactive;
-	if (auto ic = input->getComponent<ui::InteractiveComponent>()) {
-		interactive.setBool(hasFlag(ic->state, ui::InteractiveState::Hover), "hover");
-		interactive.setBool(hasFlag(ic->state, ui::InteractiveState::Focus), "focus");
-		interactive.setBool(hasFlag(ic->state, ui::InteractiveState::Active), "active");
-		interactive.setBool(hasFlag(ic->state, ui::InteractiveState::Enabled), "enabled");
+	if (auto ic = input->getComponent<InteractiveComponent>()) {
+		interactive.setBool(hasFlag(ic->state, InteractiveState::Hover), "hover");
+		interactive.setBool(hasFlag(ic->state, InteractiveState::Focus), "focus");
+		interactive.setBool(hasFlag(ic->state, InteractiveState::Active), "active");
+		interactive.setBool(hasFlag(ic->state, InteractiveState::Enabled), "enabled");
 	}
 	ret.setValue(sp::move(interactive), "interactive");
 

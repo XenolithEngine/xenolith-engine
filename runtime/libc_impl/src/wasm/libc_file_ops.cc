@@ -80,6 +80,10 @@ struct __memfs_inode {
 	// observable as an inode change at the target name (dispatch watchFile).
 	__SPRT_ID(ino_t) inum;
 	bool isDir;
+	// Symbolic link: `data`/`size` hold the target path instead of file content, and
+	// the node is transparent to the path family unless the caller asked not to
+	// follow it (O_NOFOLLOW / lstat / readlink / unlink).
+	bool isLink;
 	bool opfs; // backed by the persistent /opfs (OPFS) mount
 	bool dirty; // in-memory content differs from OPFS — write back on close/fsync
 	bool readonly; // read-only overlay (JS bundle) — reject writes
@@ -109,18 +113,24 @@ static void __memfs_now(struct __SPRT_TIMESPEC_NAME *ts) {
 // An open file / stream description. For console nodes `ino` is null and I/O routes to
 // the host fd_read/fd_write; for memfs nodes `ino` points at the persistent inode and
 // `pos` is the per-open stream position.
+//
+// `refs` counts the descriptors bound to this one description: dup/dup2/dup3 and
+// F_DUPFD share it (POSIX: duplicated descriptors share the file offset and status
+// flags), so the description is freed only when the last of them is closed. Console
+// descriptions are static and never freed, so their count is unused.
 struct __wasm_fnode {
 	bool isConsole;
 	int consoleFd; // 0/1/2 when isConsole
 	__memfs_inode *ino; // memfs inode, null for console
 	__SPRT_ID(off_t) pos; // current stream position
+	int refs; // descriptors sharing this description
 };
 
 // The three console descriptions, wired by __init_default_fds() via the accessor.
 static __wasm_fnode s_console[3] = {
-	{true, 0, nullptr, 0},
-	{true, 1, nullptr, 0},
-	{true, 2, nullptr, 0},
+	{true, 0, nullptr, 0, 1},
+	{true, 1, nullptr, 0, 1},
+	{true, 2, nullptr, 0, 1},
 };
 
 void *__wasm_console_handle(int fd) {
@@ -299,9 +309,9 @@ static int __file_close(__fd_slot *fp) {
 		__sprt_errno = EBADF;
 		return -1;
 	}
-	if (!n->isConsole) {
-		// Persist any pending changes to OPFS on close (the durability point of the
-		// load-on-open / write-back-on-close model).
+	if (!n->isConsole && --n->refs <= 0) {
+		// Last descriptor on this description: persist any pending changes to OPFS
+		// (the durability point of the load-on-open / write-back-on-close model).
 		if (n->ino && n->ino->opfs && n->ino->dirty && !n->ino->isDir) {
 			if (__opfs_store(n->ino->path, n->ino->data, n->ino->size) == 0) {
 				n->ino->dirty = false;
@@ -314,16 +324,164 @@ static int __file_close(__fd_slot *fp) {
 	return 0;
 }
 
+// dup/dup2/dup3/F_DUPFD: bind a second descriptor to the SAME open description, so
+// the two share the file offset and status flags (POSIX). There is no OS handle to
+// duplicate here, so the sharing is a refcount bump on the __wasm_fnode.
+// `target` null => allocate the lowest free fd; otherwise install at *target
+// (closing whatever was there first, dup2 semantics).
 static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
-	// Sharing an open description across fds needs refcounting; not wired yet.
-	__sprt_errno = ENOSYS;
+	auto n = (__wasm_fnode *)fp->handle;
+	if (!n) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (target && (*target < 0 || *target >= MAX_FDS)) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	// wasm never execs, so FD_CLOEXEC is pure bookkeeping: keep it in the slot's
+	// O_CLOEXEC bit, which is where __file_ioctl's F_GETFD/F_SETFD read it from.
+	uint32_t newFlags = (flags & __SPRT_FD_CLOEXEC) ? (fp->flags | __SPRT_O_CLOEXEC)
+													: (fp->flags & ~(uint32_t)__SPRT_O_CLOEXEC);
+
+	auto libc = __libc::get();
+	if (!n->isConsole) {
+		++n->refs;
+	}
+
+	if (!target) {
+		int fd = libc->create_fd(n, &libc->fdFileOps, newFlags, fp->mode);
+		if (fd < 0) {
+			if (!n->isConsole) {
+				--n->refs;
+			}
+			return -1;
+		}
+		return fd;
+	}
+
+	unique_lock lock(libc->fdMutex);
+	libc->fdDispatch->bits.set(*target);
+	auto fdSlot = libc->get_fd_slot(*target);
+	if (fdSlot->handle && fdSlot->ops && fdSlot->ops->fo_close) {
+		fdSlot->ops->fo_close(fdSlot);
+	}
+	*fdSlot = __fd_slot{.handle = n, .ops = &libc->fdFileOps, .flags = newFlags, .mode = fp->mode};
+	return *target;
+}
+
+static int __file_lock(__fd_slot *fp, int cmd, struct flock *fl);
+
+static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode mode) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (mode == __fd_ctl_mode::fnctl) {
+		switch (cmd) {
+		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, 0);
+		case __SPRT_F_DUPFD_CLOEXEC: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC);
+
+		// There is no exec on wasm, so FD_CLOEXEC has no observable effect; it is
+		// still tracked (in the slot's O_CLOEXEC bit) so it round-trips as POSIX
+		// programs expect.
+		case __SPRT_F_GETFD: return (fp->flags & __SPRT_O_CLOEXEC) ? __SPRT_FD_CLOEXEC : 0;
+		case __SPRT_F_SETFD: {
+			if (arg & ~(intptr_t)__SPRT_FD_CLOEXEC) {
+				__sprt_errno = EINVAL;
+				return -1;
+			}
+			if (arg & __SPRT_FD_CLOEXEC) {
+				fp->flags |= __SPRT_O_CLOEXEC;
+			} else {
+				fp->flags &= ~(uint32_t)__SPRT_O_CLOEXEC;
+			}
+			return 0;
+		}
+
+		case __SPRT_F_GETFL: return int(fp->flags);
+		case __SPRT_F_SETFL: {
+			// Only the settable status bits; the access mode and creation flags are
+			// fixed at open (POSIX ignores them here).
+			constexpr uint32_t settable = __SPRT_O_APPEND | __SPRT_O_NONBLOCK;
+			fp->flags = (fp->flags & ~settable) | ((uint32_t)arg & settable);
+			return 0;
+		}
+
+		case __SPRT_F_GETLK:
+		case __SPRT_F_SETLK:
+		case __SPRT_F_SETLKW:
+			return __file_lock(fp, cmd, reinterpret_cast<struct flock *>(arg));
+
+		// Signal-driven I/O has no wasm equivalent (there are no signals to
+		// deliver): report "not implemented" rather than a bogus success.
+		case __SPRT_F_GETOWN:
+		case __SPRT_F_SETOWN:
+		case __SPRT_F_GETOWN_EX:
+		case __SPRT_F_SETOWN_EX:
+		case __SPRT_F_GETSIG:
+		case __SPRT_F_SETSIG:
+		case __SPRT_F_GETOWNER_UIDS: __sprt_errno = ENOSYS; return -1;
+		}
+	} else if (mode == __fd_ctl_mode::ioctl) {
+		// No terminal ioctls are modelled: a JS console is not a terminal, and the
+		// window-size query is answered by isatty/tty_info instead.
+		__sprt_errno = ENOTTY;
+		return -1;
+	}
+	__sprt_errno = EINVAL;
 	return -1;
 }
 
-static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode mode) {
-	// No terminal ioctls modelled yet (TIOCGWINSZ handled by isatty/tty_info).
-	__sprt_errno = ENOTTY;
-	return -1;
+// POSIX record locks (F_SETLK/F_SETLKW/F_GETLK).
+//
+// POSIX locks are owned by the *process*, and a wasm module is a single process
+// with no other process able to open the same memfs file — so a lock request can
+// never conflict with anyone but its own owner, which POSIX defines as always
+// succeeding (an existing lock is simply replaced). The bookkeeping is therefore
+// unobservable and the operations reduce to argument validation:
+//   F_SETLK/F_SETLKW -> succeed
+//   F_GETLK          -> report F_UNLCK ("no conflicting lock"), as on Linux here
+// This matches what the same test sees on Linux, where a's lock is invisible to b
+// because both descriptors belong to one process.
+static int __file_lock(__fd_slot *fp, int cmd, struct flock *fl) {
+	auto n = (__wasm_fnode *)fp->handle;
+	if (!fl || !n) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (n->isConsole) {
+		__sprt_errno = EBADF; // not a regular file
+		return -1;
+	}
+	switch (fl->l_whence) {
+	case __SPRT_SEEK_SET:
+	case __SPRT_SEEK_CUR:
+	case __SPRT_SEEK_END: break;
+	default: __sprt_errno = EINVAL; return -1;
+	}
+	switch (fl->l_type) {
+	case __SPRT_F_RDLCK:
+		if ((fp->flags & __SPRT_O_ACCMODE) == __SPRT_O_WRONLY) {
+			__sprt_errno = EBADF;
+			return -1;
+		}
+		break;
+	case __SPRT_F_WRLCK:
+		if ((fp->flags & __SPRT_O_ACCMODE) == __SPRT_O_RDONLY) {
+			__sprt_errno = EBADF;
+			return -1;
+		}
+		break;
+	case __SPRT_F_UNLCK: break;
+	default: __sprt_errno = EINVAL; return -1;
+	}
+	if (cmd == __SPRT_F_GETLK) {
+		fl->l_type = __SPRT_F_UNLCK;
+	}
+	return 0;
 }
 
 static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *st) {
@@ -338,6 +496,14 @@ static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *st) {
 	if (n->isConsole) {
 		st->st_mode = __SPRT_S_IFCHR | 0620;
 		st->st_size = 0;
+	} else if (n->ino->isDir) {
+		// A directory fd (open with O_DIRECTORY, the dirfd of the *at() family) must
+		// report S_IFDIR, or callers reject it as "not a directory".
+		st->st_mode = __SPRT_S_IFDIR | (n->ino->mode ? (n->ino->mode & 0777) : 0755);
+		st->st_ino = n->ino->inum;
+		st->st_atim = n->ino->atim;
+		st->st_mtim = n->ino->mtim;
+		st->st_ctim = n->ino->ctim;
 	} else {
 		st->st_mode = __SPRT_S_IFREG | (n->ino->mode ? (n->ino->mode & 0777) : 0644);
 		st->st_size = (__SPRT_ID(off_t))n->ino->size;
@@ -519,6 +685,105 @@ static __memfs_inode *__memfs_find(const char *abspath) {
 	return nullptr;
 }
 
+// Cap on symlink chains, as POSIX requires a bound (-> ELOOP).
+static constexpr int __MEMFS_LINK_MAX = 16;
+
+// Follow `abs` through any symlink nodes and write the final path into `out`.
+// Returns false (with errno set) only on a cycle/too-long chain or an overlong
+// path; a chain ending at a name that does not exist is NOT an error here — the
+// caller decides what a missing target means (open with O_CREAT creates it,
+// stat reports ENOENT).
+//
+// Only the LAST component is followed: memfs is a flat namespace, so a symlink
+// used as an intermediate directory component does not redirect its children.
+static bool __memfs_resolve_link(const char *abs, char *out, __SPRT_ID(size_t) cap) {
+	if (out != abs) {
+		__SPRT_ID(size_t) l = __builtin_strlen(abs);
+		if (l + 1 > cap) {
+			__sprt_errno = ENAMETOOLONG;
+			return false;
+		}
+		__builtin_memcpy(out, abs, l + 1);
+	}
+	for (int i = 0; i < __MEMFS_LINK_MAX; ++i) {
+		auto n = __memfs_find(out);
+		if (!n || !n->isLink) {
+			return true;
+		}
+		char next[512];
+		// A relative target resolves against the directory holding the link.
+		if (n->size && n->data[0] == '/') {
+			if (n->size + 1 > sizeof(next)) {
+				__sprt_errno = ENAMETOOLONG;
+				return false;
+			}
+			__builtin_memcpy(next, n->data, n->size);
+			next[n->size] = '\0';
+		} else {
+			__SPRT_ID(size_t) dl = __builtin_strlen(out);
+			while (dl > 1 && out[dl - 1] != '/') {
+				--dl;
+			}
+			if (dl + n->size + 1 > sizeof(next)) {
+				__sprt_errno = ENAMETOOLONG;
+				return false;
+			}
+			__builtin_memcpy(next, out, dl);
+			__builtin_memcpy(next + dl, n->data, n->size);
+			next[dl + n->size] = '\0';
+		}
+		if (!__memfs_normpath(next, out, cap)) {
+			__sprt_errno = ENAMETOOLONG;
+			return false;
+		}
+	}
+	__sprt_errno = ELOOP;
+	return false;
+}
+
+// Re-key every node living under `from` so it lives under `to` instead. Called
+// after a directory inode itself has been renamed (rename() below): the registry is
+// flat, so the subtree does not move with its parent on its own.
+static void __memfs_reparent(const char *from, const char *to) {
+	const __SPRT_ID(size_t) flen = __builtin_strlen(from);
+	const __SPRT_ID(size_t) tlen = __builtin_strlen(to);
+	for (auto n = s_memfs; n; n = n->next) {
+		if (__builtin_strncmp(n->path, from, flen) != 0 || n->path[flen] != '/') {
+			continue;
+		}
+		const __SPRT_ID(size_t) rest = __builtin_strlen(n->path + flen);
+		auto np = (char *)__sprt_malloc(tlen + rest + 1);
+		if (!np) {
+			continue; // out of memory: leave this child where it is
+		}
+		__builtin_memcpy(np, to, tlen);
+		__builtin_memcpy(np + tlen, n->path + flen, rest + 1);
+		__sprt_free(n->path);
+		n->path = np;
+	}
+}
+
+// True when `abs` names a directory the VFS should treat as existing. That is any
+// explicitly-created directory inode, the root, or — because memfs is flat and a
+// file may be created at any path without its parents — any prefix that some
+// existing node lives under.
+static bool __memfs_is_dir_path(const char *abs) {
+	if (abs[0] == '/' && abs[1] == '\0') {
+		return true; // the root always exists
+	}
+	auto n = __memfs_find(abs);
+	if (n) {
+		return n->isDir;
+	}
+	__SPRT_ID(size_t) len = __builtin_strlen(abs);
+	for (auto m = s_memfs; m; m = m->next) {
+		if (__builtin_strncmp(m->path, abs, len) == 0 && m->path[len] == '/') {
+			return true;
+		}
+	}
+	return false;
+}
+
 static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(mode_t) mode) {
 	auto n = (__memfs_inode *)__sprt_malloc(sizeof(__memfs_inode));
 	if (!n) {
@@ -538,6 +803,7 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 	n->cap = 0;
 	n->mode = mode;
 	n->isDir = isDir;
+	n->isLink = false;
 	n->opfs = false;
 	n->dirty = false;
 	n->readonly = false;
@@ -614,6 +880,29 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
+	{
+		// O_NOFOLLOW: fail on a symlink instead of following it (POSIX: ELOOP).
+		// Otherwise open acts on the link's target, as every other path call does.
+		auto link = __memfs_find(abs);
+		if (link && link->isLink) {
+			if (flags & __SPRT_O_NOFOLLOW) {
+				__sprt_errno = ELOOP;
+				return -1;
+			}
+			if (!__memfs_resolve_link(abs, abs, sizeof(abs))) {
+				return -1;
+			}
+		}
+	}
+	// A directory that exists only implicitly (memfs is flat, so "/app" may have no
+	// inode of its own while "/app/f" does) still has to open as one — that is what
+	// an O_PATH|O_DIRECTORY fd for *at() resolution is.
+	if ((flags & __SPRT_O_DIRECTORY) && !__memfs_find(abs) && !__vfs_is_opfs(abs)
+			&& __memfs_is_dir_path(abs)) {
+		if (!__memfs_create(abs, true, 0755)) {
+			return -1;
+		}
+	}
 	__memfs_inode *ino = __memfs_find(abs);
 	if (!ino && __vfs_is_opfs(abs)) {
 		// Persistent mount: hydrate from OPFS (or create there). Handles O_CREAT/
@@ -668,6 +957,7 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 	fn->consoleFd = -1;
 	fn->ino = ino;
 	fn->pos = (flags & __SPRT_O_APPEND) ? (__SPRT_ID(off_t))ino->size : 0;
+	fn->refs = 1;
 	int fd = libc->create_fd(fn, &libc->fdFileOps, (uint32_t)flags, (uint32_t)mode);
 	if (fd < 0) {
 		__sprt_free(fn);

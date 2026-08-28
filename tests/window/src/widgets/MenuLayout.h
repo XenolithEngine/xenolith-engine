@@ -27,6 +27,7 @@
 #include "XLUiMenuSource.h"
 #include "XLUiMenuSystem.h"
 #include "XLUiMenuPopup.h"
+#include "XLUiTextInput.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -68,6 +69,10 @@ protected:
 	ui::MenuSystem *_menu = nullptr;
 	ui::Button *_openButton = nullptr;
 	Rc<ui::SubWindow> _popup;
+
+	// The neighbour that proves the point of the focus group: while the inline menu owns the
+	// keyboard, the arrows must stop reaching this field.
+	ui::TextInput *_neighbour = nullptr;
 
 	// The width the inline menu is pinned to, so that wrapping is deterministic rather than a
 	// function of whatever font the host happens to have.

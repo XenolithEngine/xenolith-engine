@@ -27,6 +27,8 @@ void performUnistdTest();
 void performDirTest();
 void performLinkTest();
 void performFcntlTest();
+void performMemalignTest();
+void performMemalignMacroTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();

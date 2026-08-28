@@ -8,7 +8,9 @@ description: >-
   layout, SP_PUBLIC and SPRT_API, naming (_member, handleXxx, Rc<T>::create),
   #if SPRT_WINDOWS platform guards, pool vs malloc ownership rules (AllocPool,
   sprt::__delete, new (pool) T), independent pools that move between threads
-  (PoolRef, SharedRef<T>, PoolObject), threads and dispatch (Looper, Task,
+  (PoolRef, SharedRef<T>, PoolObject), Callback lifetime (a view of a functor:
+  parameter only, never a member, never built from a stored temporary lambda),
+  threads and dispatch (Looper, Task,
   Handle), the scene graph (Node geometry, and using System/Component instead of
   subclassing Node), strings (StringView lifetime, mem_std vs
   mem_pool, CallbackStream, reader API), Unicode text (compareCodepoints vs
@@ -108,19 +110,26 @@ lifetime, or for error detection. Details and examples:
     (`CallbackStream`) instead of returning `String`: it streams with `<<` via
     `sprt::io_traits<T>`, and a `StringStream` *is* such a callback. Specialize
     `sprt::io_traits<T>` for a new type — that teaches `<<`, `toString` and
-    `slog()` at once. A `Callback` does not own its functor: parameter only,
-    never stored.
-17. **Nothing throws** (`-fno-exceptions` on Linux/macOS/Android/wasm; Windows keeps
+    `slog()` at once.
+17. **A `Callback` owns nothing** — it is to a functor what `StringView` is to
+    bytes. Parameter only: `const Callback<…> &`, never a member, never returned.
+    Passed straight to a call it is always safe (the temporary lambda outlives the
+    call); **stored**, one built from a temporary lambda dangles at the end of the
+    statement, and no compiler diagnoses it. If it must live in a variable, the
+    functor is a named local that outlives it; if a *type* must hold one, it holds
+    the **functor** (`function`, `static_function`, or the object) and hands out a
+    callback over it.
+18. **Nothing throws** (`-fno-exceptions` on Linux/macOS/Android/wasm; Windows keeps
     `-fexceptions` — SEH unwinding and the destructor funclets `longjmp` needs
     depend on it, so never add `-fno-cxx-exceptions` there). Failures
     are values: `Status` for operations, `Result<T>` for value-or-nothing, `bool`
     for `init()`. Test with `status::isSuccessful(st)`, **never** `st ==
     Status::Ok` (`Done`/`Suspended` are also successes). Convert platform errors
     with `errnoToStatus()` / `lastErrorToStatus()`.
-18. **Log with `slog().error("Tag", …)`** (source location is captured; args are
+19. **Log with `slog().error("Tag", …)`** (source location is captured; args are
     concatenated, no format string). `assert`/`sprt_passert` are debug-only —
     never put required side effects inside one.
-19. **Scene graph: compose, don't subclass.** Default to a `System` (behaviour,
+20. **Scene graph: compose, don't subclass.** Default to a `System` (behaviour,
     opting into phases via `SystemFlags`) or a `Component` (data keyed by
     `static ComponentId Id`, one per id per node, read by systems); for a single
     callback use `node->set*Callback(...)`, which makes a `CallbackSystem` for
@@ -134,20 +143,20 @@ lifetime, or for error detection. Details and examples:
     (`NodeIdentity` component): `setType()` → tag selector, **`setName()` → `#id`
     selector** (a node's name *is* its CSS id, and names are not unique),
     `addStyleClass()` → `.class`; numeric `setTag()` is invisible to CSS.
-20. **The runtime is a POSIX libc on every platform** — write POSIX, and POSIX
+21. **The runtime is a POSIX libc on every platform** — write POSIX, and POSIX
     paths (`C:\Dir` is `/c/Dir`; the runtime converts, you don't). What a platform
     cannot do is gated by `__SPRT_CONFIG_HAVE_*` and fails with `ENOSYS` (no
     `fork` on Windows/wasm; no `exec`, epoll, futex, timerfd on wasm). The
     replacement is a higher-level runtime API, not an `#if`: `Looper::spawnProcess`
     for `exec`, `watchFile` for inotify, `connectSocket` for BSD sockets. Build
     paths with `filepath::merge` / `filesystem::findPath`, never by concatenation.
-21. **Use `sprt` primitives, not `std::`, in `runtime/`, `stappler/`, `xenolith/`**
+22. **Use `sprt` primitives, not `std::`, in `runtime/`, `stappler/`, `xenolith/`**
     (`utils/` and `tests/` are exempt): `sprt::mutex`/`unique_lock`, `sprt::thread`,
     `sprt::atomic`, `Rc<T>` instead of `shared_ptr`, `mem_std::`/`mem_pool::`
     containers, `StringView`, `Result<T>`, `<sprt/cxx/...>` headers. The runtime
     ships libc++, but its port to a given target can lag while sprt primitives are
     guaranteed everywhere the engine builds.
-22. **Threads: post, don't spawn.** One `Looper` per thread
+23. **Threads: post, don't spawn.** One `Looper` per thread
     (`Looper::acquire()`); `performOnThread(fn, ref)` targets a thread,
     `performAsync(fn, ref)` the worker pool — the `Ref *` keeps the callback's
     owner alive. Looper callbacks always run on that looper's thread; the scene
@@ -156,7 +165,7 @@ lifetime, or for error detection. Details and examples:
     backend doesn't support it). Never block a looper thread, and never pass data
     from a thread's own pool to another thread (rule 11 is the way to move a
     dataset).
-23. **`data::Value` is the boundary type** (config, files, IPC, command line,
+24. **`data::Value` is the boundary type** (config, files, IPC, command line,
     inspector) — a `struct` is what you use inside a subsystem. It is templated
     on the memory interface: `mem_std::Value` (malloc) vs `mem_pool::Value`
     (dies with the pool); in `xenolith::` an unqualified `Value` is the mem_std
@@ -175,7 +184,7 @@ lifetime, or for error detection. Details and examples:
     with `data::write` / `data::toString` / `data::save`, decode with
     `data::read<Interface>` (format auto-detected, failure = `EMPTY` value, so
     check the shape). Bytes survive CBOR/Serenity, **not** JSON.
-24. **A window carries its own identity; an OS dialog is a request you keep.**
+25. **A window carries its own identity; an OS dialog is a request you keep.**
     Ask for a window with `Context::createWindow(Rc<WindowInfo> &&)` and put what
     it *is* — scene builder, prebuilt queue, close callback — in
     `WindowInfo::appData` as an `Rc<WindowSceneInfo>`; **never look a window up by
@@ -194,7 +203,7 @@ lifetime, or for error detection. Details and examples:
     once on the target looper, and `Status::Declined` means the user cancelled,
     not that something failed. `RevealInFileManager`/`MoveToTrash` are shell
     actions on the same seam, with `paths` as input.
-25. **A form is one `ui::FormSystem` on the node it is rooted at, and that system
+26. **A form is one `ui::FormSystem` on the node it is rooted at, and that system
     *is* the focus group.** Fields are attached to the widgets, not declared in
     the form — `ui::addFormField(input)` / `addFormField(checkbox)` /
     `addFormButton(button, role)`, or `addFormField(node, FormFieldSlots{…})` for
@@ -211,7 +220,7 @@ lifetime, or for error detection. Details and examples:
     field is marked with a **style class** (`invalid`), because the CSS subset has
     no `:invalid`.
 
-26. **A dock is one `ui::DockSystem` on the node it is rooted at, and every frame
+27. **A dock is one `ui::DockSystem` on the node it is rooted at, and every frame
     and divider is a FLAT child of that node** — the split tree is pure data
     inside the system, nothing in the scene graph nests. So the dock root must
     not carry a `LayoutSystem` and must never be `display: flex` (a
@@ -226,7 +235,7 @@ lifetime, or for error detection. Details and examples:
     minimums, not the whole extent. A mutation writes the tree immediately but
     the **rects follow on the next layout pass**.
 
-26. **Drag and drop is one `DragSystem` per scene, and a drop target registers
+28. **Drag and drop is one `DragSystem` per scene, and a drop target registers
     itself by being DRAWN.** Add a `DropTarget` to a node and it publishes its
     world rect from inside its own visit, so the topmost target receives and an
     invisible one does not exist. `accept` is a **pure predicate** — it runs during
@@ -239,7 +248,7 @@ lifetime, or for error detection. Details and examples:
     thread-agnostic. Actions are a negotiation: the source offers a mask, the
     modifier states a *preference*, the target has the last word.
 
-27. **Never call a platform text API, and pick the comparison on purpose.**
+29. **Never call a platform text API, and pick the comparison on purpose.**
     `sprt::unicode` / `sprt::idn` are the implementation on every target — no
     ICU, no `dlopen`, no `LCMapStringEx`, no `setlocale`, no `strcoll`.
     `compareCodepoints` for keys/indexes/protocols/tests, `compareFolded` for
@@ -263,7 +272,7 @@ lifetime, or for error detection. Details and examples:
 | New header: license, guard, namespace, visibility macro, include order | [file-layout.adoc](../../../docs/usage/codestyle/sources/file-layout.adoc) |
 | Naming a file, type, member, handler; the `init()`/`create()` pattern | [naming.adoc](../../../docs/usage/codestyle/sources/naming.adoc) |
 | Platform/arch `#if`, per-platform values, how to verify guarded code | [platform-guards.adoc](../../../docs/usage/codestyle/platform/platform-guards.adoc) |
-| `Rc`/`Ref`, pools vs malloc, `AllocPool`, `__delete`, pool traps; independent pools (`PoolRef`, `SharedRef<T>`) that travel between threads | [memory-and-ownership.adoc](../../../docs/usage/codestyle/core/memory-and-ownership.adoc) |
+| `Rc`/`Ref`, pools vs malloc, `AllocPool`, `__delete`, pool traps; independent pools (`PoolRef`, `SharedRef<T>`) that travel between threads; **storing a `Callback` anywhere but a parameter** | [memory-and-ownership.adoc](../../../docs/usage/codestyle/core/memory-and-ownership.adoc) |
 | What the formatter enforces and what it deliberately leaves alone | [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc) |
 | Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [strings.adoc](../../../docs/usage/codestyle/core/strings.adoc) |
 | Comparing or sorting text, case mapping, domain names, touching a generated Unicode table | [unicode-and-text.adoc](../../../docs/usage/codestyle/core/unicode-and-text.adoc) |

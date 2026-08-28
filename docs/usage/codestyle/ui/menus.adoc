@@ -172,6 +172,16 @@ world space (the node may be rotated or scaled), converted into the scene
 *content's* space (which undoes the density scale — scene space is physical
 pixels, `WindowPlacement` is logical points), and flipped into Y-down at the end.
 
+**The surface itself is not the menu's.** `openMenu` builds it through
+`ui::openPopupSurface`
+([XLUiPopupSurface.h](../../../../xenolith/renderer/ui/XLUiPopupSurface.h)), which
+is what every popup in the kit opens through — the sheet on the native path, the
+panel's rendering level, the overlay placement, the tap that closes it. What stays
+here is what is actually a menu: the measurement that settles the extent before
+any node exists, `MenuPopupChain`, and the keyboard. Clicking away from a submenu
+therefore takes the whole chain down rather than that one link, which is what
+`PopupSurfaceConfig::onOutsideTap` is for.
+
 **Pass a stylesheet.** A native popup is a scene of its own; the `ui::StyleSystem`
 carrying the application's sheet lives on the *parent* window's content and does
 not reach it. `MenuConfig::stylesheet` names a file, `stylesheetSource` carries
@@ -276,23 +286,60 @@ paints nothing, while the line inside it is `menu-separator`.
 | It binds only submenus that have been built; declare the command where it lives
 |===
 
+## The keyboard is a mode, and it is a `FocusGroup`
+
+`MenuSystem::setKeyboardEnabled(true)` puts a `FocusGroup` and a key listener on
+the menu's node. `Up`/`Down` walk the rows (skipping separators, custom rows and
+disabled items, wrapping at the ends), `Home`/`End` go to the edges,
+`Enter`/`Space` activate, `Right` opens the highlighted row's submenu, `Left`
+takes that level back down and `Escape` takes the whole chain down. The row the
+keyboard is on carries the style class `highlighted`.
+
+**Why a group and not just a listener.** Key events are not hit-tested — they are
+offered to every listener in the window. Without a group the arrows of an open
+menu would also reach the scroll view, the text field and the canvas behind it.
+The group is `Exclusive`, so the dispatcher re-collects the receivers scoped to
+it and the menu owns the keyboard while it is up; it is also `Propagate`, so a
+`MenuSourceCustom` row carrying a focus group of its own (a search field inside a
+menu) still gets its keys. One consequence is deliberate: an open menu also
+**swallows** the keys it does not use — `Ctrl+S` with a menu up must not save.
+
+**Off by default.** An inline menu is a list of commands in somebody else's
+panel, and a permanently exclusive group there would hold the window's arrows
+forever. `openMenu` turns the mode on for the menu it builds — a popup is a scene
+of its own, with nothing to take the keyboard from — and an application turns it
+on for an inline menu the user is driving. `MenuConfig::keyboard` is the switch,
+and `MenuConfig::highlight` names the row the keyboard starts on (a `ui::Select`
+passes its current value, so a list opened from the keyboard begins at what is
+already chosen).
+
+There is one notion of "the current row", not two: the pointer entering a row
+moves the highlight onto it, so a menu never shows a keyboard cursor on one row
+and a hover on another.
+
 ## Exercising it
 
 `tests/window` carries the stand behind `XL_MENU_TEST=1`
-(`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup.
-Inspector commands: `menu.metrics`, `menu.state`, `menu.open`, `menu.close`,
-`menu.activate`, `menu.set-checked`, `menu.set-enabled`, `menu.set-visible`,
-`menu.set-title`, `menu.set-width`, `menu.reset-counters`.
+(`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup,
+with a `ui::TextInput` beside the inline one. Inspector commands: `menu.metrics`,
+`menu.state`, `menu.open`, `menu.close`, `menu.activate`, `menu.set-checked`,
+`menu.set-enabled`, `menu.set-visible`, `menu.set-title`, `menu.set-width`,
+`menu.keyboard`, `menu.highlight`, `menu.focus-neighbour`,
+`menu.reset-counters`.
 
 [source,sh]
 ----
-tests/window/menu-check.py          # 44 checks, headless, no display
+tests/window/menu-check.py          # 61 checks, headless, no display
 ----
 
 The load-bearing assertion is that the metrics *are* the layout: `menu.metrics`
 reports what the measurement produced and `menu.state` reports the boxes the rows
 were drawn at, and the two must agree. A menu whose reported and drawn row heights
 differ is a menu whose popup surface is the wrong size.
+
+The keyboard section asserts the group rather than the keys: with the inline
+menu's keyboard off the arrows move the caret in the field beside it, and with it
+on they move the highlight and the field does not see them at all.
 
 ## Related
 

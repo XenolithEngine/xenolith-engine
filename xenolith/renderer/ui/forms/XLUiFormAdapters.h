@@ -27,6 +27,13 @@
 #include "XLUiTextInput.h"
 #include "XLUiCheckbox.h"
 #include "XLUiButton.h"
+#include "XLUiSelect.h"
+#include "XLUiSearchPicker.h"
+#include "XLUiNumberField.h"
+#include "XLUiVectorField.h"
+#include "XLUiColorField.h"
+#include "XLUiChipRow.h"
+#include "XLUiSlider.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -37,10 +44,52 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // Each one creates the listener, fills in what the widget can do and adds it to the node. The
 // field name defaults to the node's own name, which is also its CSS id.
 
+// Also takes a ui::NumberField, which IS a TextInput: it collects the NUMBER rather than the text
+// of one. There is no second overload for it, because NotNull<> converts from either and the two
+// would be ambiguous at every call site - the adapter branches instead.
 SP_PUBLIC FormInputListener *addFormField(NotNull<TextInput>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 SP_PUBLIC FormInputListener *addFormField(NotNull<Checkbox>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+SP_PUBLIC FormInputListener *addFormField(NotNull<Select>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+// Collects the chosen id, exactly as the Select adapter does: the same field may be either widget
+// depending on how many values there are, and what a form sees must not depend on that choice.
+SP_PUBLIC FormInputListener *addFormField(NotNull<SearchPicker>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+// A COMPOSITE field: several ui::NumberFields collected as ONE array under one name. It is the
+// worked example of what FormFieldSlots is for - the form drives a widget it knows nothing about,
+// and the widget's own parts keep their keys because FormSystem admits a listener that sits below
+// the focused field's node
+SP_PUBLIC FormInputListener *addFormField(NotNull<VectorField>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+
+// Collects the CANONICAL HEX of the colour ("#rrggbb", or "#rrggbbaa" where the field carries an
+// alpha channel): JSON has no colour type, and hex is what a stylesheet, a schema default and a
+// config file all already hold
+SP_PUBLIC FormInputListener *addFormField(NotNull<ColorField>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+/* An ARRAY of the chips' ids, left to right. The second composite field in this kit, and the one
+that shows the pattern is not about text: the row keeps its own selection and its own keys, the form
+sees one value under one name, and a Required row that is empty is refused ONCE. Order is part of
+the value - an element chain read back in a different order describes a different type. */
+SP_PUBLIC FormInputListener *addFormField(NotNull<ChipRow>, StringView name = StringView(),
+		FormFieldFlags = FormFieldFlags::None);
+
+/* The VALUE, not the index. The widget carries a step index because that is the only thing a
+coordinate can be turned into exactly; a form talks about values, and `min + step * index` is what
+the field MEANS. Integer or real is the widget's DECLARED flag, for the same reason ui::NumberField
+declares one: a form that submits 7.0 where the schema says 7 has changed the value on its way out.
+
+No `activate`: a track has nothing to do with Enter, and declining is what lets the form submit
+instead - the same answer a single-line ui::TextInput gives. */
+SP_PUBLIC FormInputListener *addFormField(NotNull<Slider>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 // A button takes part in the tab order and fires the form on Enter, but is never collected

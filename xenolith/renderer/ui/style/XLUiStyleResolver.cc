@@ -21,10 +21,11 @@
  **/
 
 #include "XLUiStyleResolver.h"
+#include "XLFocusWithin.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiScrollSystem.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -601,13 +602,13 @@ document::Visibility ResolvedStyle::visibility() const {
 document::Overflow ResolvedStyle::overflowX() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssOverflowX, v) ? v.overflow
-															 : document::Overflow::Visible;
+															  : document::Overflow::Visible;
 }
 
 document::Overflow ResolvedStyle::overflowY() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssOverflowY, v) ? v.overflow
-															 : document::Overflow::Visible;
+															  : document::Overflow::Visible;
 }
 
 document::Metric ResolvedStyle::width() const {
@@ -861,7 +862,7 @@ document::Metric ResolvedStyle::borderSpacingHorizontal() const {
 document::Metric ResolvedStyle::borderSpacingVertical() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssBorderSpacingVertical, v) ? v.sizeValue
-																		 : document::Metric();
+																		  : document::Metric();
 }
 uint32_t ResolvedStyle::columnSpan() const {
 	document::StyleValue v;
@@ -962,6 +963,7 @@ void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask 
 		if (_nodesUpdated.find(child) == _nodesUpdated.end()
 				|| mask.count(NodeIdentity::Id.value) != 0
 				|| mask.count(InteractiveComponent::Id.value) != 0
+				|| mask.count(FocusWithinComponent::Id.value) != 0
 				|| mask.count(StyleSystemState::Id.value) != 0
 				// a node-local custom property changed: nothing moved and no rule started or
 				// stopped matching, so this is the only signal that its style is stale
@@ -1009,6 +1011,12 @@ void StyleResolver::apply() {
 
 	if (auto ic = _owner->getComponent<InteractiveComponent>()) {
 		currentInteractiveMask = toInt(ic->state);
+	}
+
+	// ...and the one state that is NOT in that component. Without this the early return below
+	// fires on a node whose only change was gaining or losing `:focus-within`.
+	if (hasFocusWithin(_owner)) {
+		currentInteractiveMask |= toInt(InteractiveState::FocusWithin);
 	}
 
 	if (currentInteractiveMask == _interactiveMask && currentSourceId == _sourceSystemId
@@ -1893,8 +1901,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		// a system owns this node's children; the parameter component above is all the style does
 	} else {
 		const LayoutMode mode = wantTable ? LayoutMode::Table
-				: wantRow                 ? LayoutMode::TableRow
-				: wantGrid                ? LayoutMode::Grid
+				: wantRow				  ? LayoutMode::TableRow
+				: wantGrid				  ? LayoutMode::Grid
 										  : LayoutMode::Flex;
 		if (!layout) {
 			layout = node->addSystem(Rc<LayoutSystem>::create());
@@ -1999,6 +2007,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 	if (!parent) {
 		return;
 	}
+
+	bool itemChanged = false;
 	// Table first, and keyed on the parent's TableColumnsComponent rather than on TableRowInfo: that
 	// component is what a row carries in BOTH the static case (the table pass stamped it) and the
 	// virtualized one (ui::TableView stamped it), so one branch covers a table that exists as a node
@@ -2036,6 +2046,7 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			fillMargin(next.margin, nullptr);
 			if (next != *info) {
 				*info = next;
+				itemChanged = true;
 				return true;
 			}
 			return false;
@@ -2046,8 +2057,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			// Guarded, like every other item mapping: a row whose sheet says nothing about height
 			// keeps whatever it has, rather than being reset to Auto on every style pass.
 			if (s.has(ParameterName::CssHeight)) {
-				next.height = (!height.isAuto()
-									  && height.metric != document::Metric::Units::FitContent)
+				next.height =
+						(!height.isAuto() && height.metric != document::Metric::Units::FitContent)
 						? computeMetric(height, parentSize.height)
 						: TableRowInfo::Auto;
 			}
@@ -2056,6 +2067,7 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			}
 			if (next != *info) {
 				*info = next;
+				itemChanged = true;
 				return true;
 			}
 			return false;
@@ -2108,6 +2120,7 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			fillMargin(next.margin, nullptr);
 			if (next != *info) {
 				*info = next;
+				itemChanged = true;
 				return true;
 			}
 			return false;
@@ -2180,10 +2193,15 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			fillMargin(next.margin, &next.autoMargin);
 			if (next != *info) {
 				*info = next;
+				itemChanged = true;
 				return true;
 			}
 			return false;
 		});
+	}
+
+	if (itemChanged) {
+		LayoutSystem::markItemDirty(node);
 	}
 }
 

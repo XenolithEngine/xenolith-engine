@@ -262,6 +262,20 @@ The same setters exist on `CallbackSystem` itself (`setMeasureCallback` /
 `setLayoutAppliedCallback`, with the system as the first callback argument) if
 you manage a callback system of your own.
 
+Two widgets of the kit answer this way, and they answer the two different
+questions:
+
+* `ui::Chip` answers `MaxContent` with its **natural width** — the padding, the
+  icon, the shaped label and the remove button. One answer serves two callers:
+  `ui::ChipRow` wraps by it, and `flex-basis: fit-content` resolves to it for a
+  chip a stylesheet put in a flex container. A chip that answered only one of
+  them would wrap differently from the way it is drawn.
+* `ui::ChipRow` answers "given this width, how tall?" with its **wrapped
+  height**, and declines (returns `false`) when a `LayoutSystem` is present —
+  `display: flex` placed the chips, so the flex pass is both the better answer
+  and the only one that agrees with what is on screen. `ui::TableView` declines
+  the same way when it is not in auto-height mode.
+
 ## Recipe 3: reacting to child changes in your own layout system
 
 If you write a container system (a custom layout), run the layout from the

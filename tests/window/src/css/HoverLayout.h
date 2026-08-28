@@ -27,7 +27,7 @@
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 #include "XLUiStyleResolver.h"
-#include "XLUiInteractiveComponent.h" // ui::InteractiveState (= document::InteractiveFlags)
+#include "XLInteractiveComponent.h" // InteractiveState (= document::InteractiveFlags)
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -47,7 +47,7 @@ protected:
 		basic2d::Layer *swatch = nullptr;
 	};
 
-	basic2d::Layer *makeSwatch(Node *parent, ui::InteractiveState state, ui::StyleResolver **outResolver = nullptr);
+	basic2d::Layer *makeSwatch(Node *parent, InteractiveState state, ui::StyleResolver **outResolver = nullptr);
 
 	Vector<Row> _rows;
 	basic2d::Layer *_transition = nullptr;

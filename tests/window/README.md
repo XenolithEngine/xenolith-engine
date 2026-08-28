@@ -35,6 +35,22 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     text-input-check.py       headless assertions for the ui::TextInput demo (see below)
     form-check.py             headless assertions for the ui::FormSystem demo
     hotkey-check.py           headless assertions for the global hotkey controller
+    menu-check.py             headless assertions for ui::MenuSource / ui::MenuSystem
+    select-check.py           headless assertions for the ui::Select demo
+    number-check.py           headless assertions for the ui::NumberField demo
+    vector-check.py           headless assertions for the ui::VectorField demo
+    color-check.py            headless assertions for the ui::ColorField demo
+    chip-check.py             headless assertions for the ui::Chip / ui::ChipRow demo
+    clipboard-check.py        headless assertions for xenolith::ClipboardSession
+    picker-check.py           headless assertions for the ui::SearchPicker demo
+    inline-edit-check.py      headless assertions for the ui::InlineEditor demo
+                              (label, table cell, and a FACTORY-built editor)
+    table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    style-check.py            headless assertions for the CSS engine: control states, the
+                              functional pseudo-classes, and the arithmetic
+    scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry
+    geometry-check.py         headless assertions for window geometry and monitors
+    text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
@@ -70,12 +86,120 @@ because it drives a real window with XTEST. That is the only way to check that t
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
 
-`form-check.py` and `hotkey-check.py` work the same way, for the same reason: the order in which
-listeners are offered a key, and who declined it, leaves no trace on the screen at all. The hotkey
-stand carries four subscribers on one combination - one that declines, one global, one FocusedOnly
-inside a focus group and one inside an exclusive group - and every check reads back the delivery
+Three things a screenshot is especially bad at, and all three are asserted rather
+than looked at. A **unit** beside a number (`number.set-unit`, `vector.set-unit`)
+has to be a separate node, so the checks read the label off the node AND watch the
+text viewport get narrower - a unit painted on top of the number would look
+identical and break `parse(format(v)) == v`. A **locked** control
+(`form.set-locked`) has to leave the tab ring, not merely grey out, so the check
+reads `tabRing`; and because the lock and the widget's own `setEnabled` are two
+independent sources of one effect, there is a check that unlocking gives back what
+the application last asked for rather than "on". And an untouched widget's
+`InteractiveComponent` is captured in section 1, while the form is provably
+untouched, because a component created lazily on first focus looks identical by
+the end of the script - which is exactly the bug that made `:disabled` match an
+ENABLED checkbox.
+
+`form-check.py`, `hotkey-check.py`, `menu-check.py`, `select-check.py`, `number-check.py`,
+`vector-check.py`, `color-check.py`, `chip-check.py`, `picker-check.py`,
+`inline-edit-check.py`, `table-reorder-check.py`, `geometry-check.py`,
+`clipboard-check.py` and `text-undo-check.py` work the same way,
+for the same reason: the order in which listeners are offered
+a key, and who declined it, leaves no trace on the screen at all. A `ui::Select`'s
+open list is a WINDOW, so the keys that walk it are addressed to that window and the check has to
+say so; and while it is open the field beside the control must see nothing, which is the only way
+to observe that the menu's exclusive focus group is doing its job. A `ui::NumberField` refusing a
+number and accepting one that happens to look the same are identical on screen, so the value, the
+validity and the callback count are all read back as numbers. A `ui::VectorField` is a row of
+those, and everything worth checking about it is a relation rather than a picture: what the form
+collects is ONE array under one name, Tab has to walk the components and leave only at the ends,
+and a Shift+Tab entering the row has to land on its LAST component - which is what the `backwards`
+argument of `FormFieldSlots::setFocused` exists for. A `ui::ColorField` has TWO pickers, and which
+one a tap opens is the claim: headless advertises no colour dialog at all, so `auto` has to resolve
+to the widget's own surface - a real popup window whose swatches the check clicks - while `system`,
+asked for explicitly, has to fail with a reason rather than open nothing and go quiet. A
+`ui::ChipRow` is the other kind of composite: the arrows walk its chips and Tab LEAVES it, its
+limit and its uniqueness are claims about what the interface offers rather than about what it
+refuses afterwards (at the maximum the "+" is dead, and an id already in the row comes up disabled
+inside the menu's own window), and Backspace with nothing selected has to SELECT rather than
+delete. Its height is the other invisible thing: a row that wraps onto four lines has to report the
+height it actually draws at, which the check reads back beside the chips' own rectangles. A
+`ui::SearchPicker` highlights the characters a matcher named, and the row led by two emoji is the
+only place where a highlight counted in code points and one counted in UTF-16 units disagree - a
+difference no screenshot distinguishes from a font. Three of its claims are invisible in a
+different way, being about a state that DRAWS nothing: that an open popup hands its panel back
+(`getContent()`, which the studio's palette was the first caller to need and got null from until
+`SubWindow::getPanel()` existed), that a grouped list opened on a value reveals the one category
+holding it, and that no selection selects no ROW - a grouped tree used to draw the first category
+header highlighted for it, because "stands for no hit" and "is not a hit" were the same number. A `ui::InlineEditor` is the strongest case of
+all: its whole reason to exist is that rebuilding every row of a virtualized table underneath an
+open editor leaves the typed text alone, and that a scroll ENDS the edit by keeping what was typed
+rather than dropping it. Nothing about either is visible in a frame - the editor looks the same
+whether the text survived or was silently replaced by a rebuild. `ui::TableView`'s reorder is two such claims at once: a row scrolled out of view still has to
+answer with a rectangle - which is what the drop index and the insertion line are computed from -
+and after a move the selection has to follow the ROW rather than the index it used to sit at, two
+states that look identical for one frame and diverge forever after. The hotkey
+stand carries four subscribers on
+one combination - one that declines, one global, one FocusedOnly inside a focus group and one inside an exclusive group - and every check reads back the delivery
 log. Both scripts send `keychar` with every synthetic key: a keychar-less event skips the
 text-input processor, which is exactly the false positive that once hid the Ctrl-chord bug.
+
+`style-check.py` is the CSS engine's first headless check, and it exists for the seam rather than
+for the parser. css/hover already checks that `:hover` and friends are understood - it assigns the
+interactive bits by hand, which is the right way to test a parser and no way at all to test whether
+a widget's own state ever reaches a selector. So here every state is put there by its real producer:
+the form rejects an empty required field (`:invalid`, watched through two properties at once), an
+edit lock takes a control away
+(`:read-only` AND `:disabled`, two claims a lock makes at once), a text input is switched to
+read-only, a progress bar is given no total, the submit button becomes the form's default, and the
+tab ring is walked so that focus arrives by keyboard rather than by tap. The assertions read the
+RESOLVED style rather than the painted colour, because the claim is that a rule matched; a widget
+that does not paint its own background would otherwise fail a check about the cascade.
+
+It runs THREE stands in one process, switching with the inspector's `layout` command: `css/state`,
+then `css/selector`, then `css/calc`. The order is fixed rather than incidental - a stand's commands
+go away with it - and the arrangement is what lets one script cover the engine instead of three
+scripts each paying for an app launch.
+
+The selector half is mostly pairs of rules written to CONFLICT, because matching is only half of
+what `:is()` and `:where()` do. `:where()` matches exactly like `:is()` while counting for nothing,
+so the only way to tell them apart is to put a rule using one against a rule that would otherwise
+lose to it, and read which colour won - a number, not a picture. The refusals are asserted too: an
+argument with a combinator, a nested functional pseudo-class, a structural one, an empty list or an
+unbalanced paren must take down its OWN rule and leave the rules around it standing.
+
+The arithmetic half used to check itself and write the tally to the log, where nothing ran it. Its
+expectations now live in the script (duplicated on purpose, like everywhere else here) and the stand
+only reports what resolved - plus what the layout actually APPLIED, which is the half that proves a
+changed custom property invalidated anything at all: nothing moves and no rule starts matching when
+`--k` changes, so the applied width is the only witness.
+
+Two states there are worth naming. `:focus-visible` is asserted on the CHECKBOX, because a text
+input is always focus-visible by design - it shows a caret the moment it has focus, however focus
+got there - and so is the one widget that cannot tell keyboard focus from a tap. And `:focus-within`
+is the only state a node does not carry in its own InteractiveComponent: giving a panel interactive
+state just to hold it would switch `:enabled` on and `:disabled` off for that panel while focus
+happened to be inside, so it is published by a marker component instead (XLUiFocusWithin.h).
+
+`scale9-check.py` is the one case here where the thing on screen IS the subject and a screenshot
+is still the wrong instrument. A nine-slice sprite claims that its corners did not stretch and that
+its nine texture rects tile the picture exactly - claims that are numbers, and numbers a PNG
+comparison would test the rasterizer for rather than the slicing. The stand exposes a Scale9Sprite
+subclass that reports the quads the sprite actually wrote, and the script asserts on those: corner
+sizes that stay put across three content sizes, a sub-rect of the same texture that must come out
+with the SAME view geometry and different texture coordinates (the slice is measured in pixels of
+the fragment), a zero side that emits no quad at all, a box smaller than its own corners that
+shrinks them in proportion instead of refusing, and a slice leaving no middle that IS refused - with
+the numbers, and drawn as a plain sprite rather than not drawn.
+
+`clipboard-check.py` is there for a seam rather than a widget, and for one property in particular:
+the clipboard transport is answered EXACTLY ONCE. That is not what the platforms do — wayland drops
+a request whose selected type it did not offer, without calling anything back, while the base
+controller both calls back and returns a failure — so the count of deliveries is asserted as a
+number after every read, including a read whose preference list matches nothing. The same script
+covers the halves that used to be duplicated between `ui::TextInput` and `ui::TextView`: what one
+copies the other must paste, a masked field must still refuse, and a paste whose field lost focus
+must not land.
 
 ## Building
 

@@ -55,6 +55,16 @@ struct SP_PUBLIC MenuConfig {
 	String title;
 	String idPrefix;
 
+	/* The keyboard. A menu that is a surface of its own owns it - there is nothing else in that
+	scene to take it from - so this defaults to true and MenuSystem::setKeyboardEnabled is called
+	for the menu the popup builds. Turn it off for a surface that is only ever pointed at.
+
+	`highlight` names the row the keyboard starts on. A ui::Select passes its current value here:
+	a list opened from the keyboard that begins anywhere but at the current value is a list the
+	user has to find their place in. */
+	String highlight;
+	bool keyboard = true;
+
 	// Fired after an item's own callback has run and after the menu chain has been taken down.
 	Function<void(NotNull<MenuSourceItem>)> onActivate;
 
@@ -81,6 +91,17 @@ place:
 `gravity` in the result names which edge OF THE MENU lands on the anchor point, not the direction
 the menu opens - see the note in windows.adoc. */
 SP_PUBLIC sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor,
+		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
+
+/** The same, resolved from a POINT rather than from a node - what a CONTEXT menu opens off.
+
+`location` is in `space`'s own coordinates; `space` is only there to say which node's transform and
+which scene the point belongs to, so a canvas passes itself and the location the press arrived at.
+
+The anchor rect comes out EMPTY, which every backend reads as "this exact point". Everything else -
+the conversion through the scene content that undoes the density scale, the Y flip, and which edge
+of the menu lands on the anchor - is shared with placementForNode rather than spelled again. */
+SP_PUBLIC sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 &location,
 		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
 
 /** Open `source` as a popup surface at `placement`.

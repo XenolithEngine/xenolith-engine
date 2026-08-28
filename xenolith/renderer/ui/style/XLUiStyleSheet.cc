@@ -21,8 +21,9 @@
  **/
 
 #include "XLUiStyleSheet.h"
+#include "XLFocusWithin.h"
 #include "XLNode.h"
-#include "XLUiInteractiveComponent.h"
+#include "XLInteractiveComponent.h"
 #include "SPDocument.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -95,6 +96,49 @@ struct SceneNodeAccess {
 		return index != 0;
 	}
 
+	// The live interactive state of a node, as the selector machine sees it
+	uint32_t interactiveState(Node *n) const {
+		uint32_t state = 0;
+		if (auto ic = n ? n->getComponent<InteractiveComponent>() : nullptr) {
+			state = uint32_t(ic->state);
+		}
+		// `:focus-within` is published by a marker component instead, because a container must not
+		// be given interactive state just to carry it - see XLUiFocusWithin.h
+		if (hasFocusWithin(n)) {
+			state |= uint32_t(InteractiveState::FocusWithin);
+		}
+		return state;
+	}
+
+	// One argument of `:not()`/`:is()`/`:where()`: the same four tests as a compound, minus
+	// everything an argument is not allowed to carry
+	bool matchArg(Node *n, const document::StyleContainer::SelectorArg &a) const {
+		auto identity = n ? n->getComponent<NodeIdentity>() : nullptr;
+		if (!a.universal && !a.tag.empty()) {
+			if (!identity || StringView(identity->type) != StringView(a.tag.data(), a.tag.size())) {
+				return false;
+			}
+		}
+		if (!a.id.empty()) {
+			if (!identity || StringView(identity->name) != StringView(a.id.data(), a.id.size())) {
+				return false;
+			}
+		}
+		for (auto &cl : a.classes) {
+			if (!identity
+					|| identity->classes.find(StringView(cl.data(), cl.size()))
+							== identity->classes.end()) {
+				return false;
+			}
+		}
+		if (a.pseudoRequire != 0 || a.pseudoForbid != 0) {
+			if (!a.matchesPseudo(interactiveState(n))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	bool matchCompound(Node *n, const document::StyleContainer::CompoundSelector &c) const {
 		auto identity = n ? n->getComponent<NodeIdentity>() : nullptr;
 		if (!c.universal && !c.tag.empty()) {
@@ -117,11 +161,28 @@ struct SceneNodeAccess {
 		// interactive pseudo-classes (:hover/:focus/:active/:enabled/:disabled/:checked) read
 		// the node's live InteractiveComponent state (its InteractiveFlags bits)
 		if (c.pseudoRequire != 0 || c.pseudoForbid != 0) {
-			uint32_t state = 0;
-			if (auto ic = n ? n->getComponent<InteractiveComponent>() : nullptr) {
-				state = uint32_t(ic->state);
+			if (!c.matchesPseudo(interactiveState(n))) {
+				return false;
 			}
-			if (!c.matchesPseudo(state)) {
+		}
+
+		// `:not(...)` - none of them may match
+		for (auto &neg : c.negations) {
+			if (matchArg(n, neg)) {
+				return false;
+			}
+		}
+
+		// `:is(...)` / `:where(...)` - each list needs one option that does
+		for (auto &any : c.anyOf) {
+			bool matched = false;
+			for (auto &opt : any.options) {
+				if (matchArg(n, opt)) {
+					matched = true;
+					break;
+				}
+			}
+			if (!matched) {
 				return false;
 			}
 		}

@@ -36,6 +36,7 @@ public:
 	static MemoryMappedRegion mapFile(const FileInfo &, MappingType, ProtFlags, size_t offset = 0,
 			size_t len = maxOf<size_t>());
 
+	MemoryMappedRegion();
 	~MemoryMappedRegion();
 
 	MemoryMappedRegion(MemoryMappedRegion &&);
@@ -57,7 +58,6 @@ public:
 	void sync();
 
 protected:
-	MemoryMappedRegion();
 	MemoryMappedRegion(const LocationInfo &, PlatformStorage &&, uint8_t *, MappingType, ProtFlags,
 			size_t);
 

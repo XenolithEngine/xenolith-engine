@@ -1,0 +1,166 @@
+# ZIP archives: `stappler_zip`
+
+Reading and writing ZIP containers — EPUB/OCF above all — with the engine's own
+code. zlib (inflate/deflate and `crc32`) is the only external dependency.
+
+    #include "SPZip.h"          // ZipArchive<Interface> - the public type
+
+**TL;DR**
+
+* `ZipArchive<Interface>` opens an archive from memory, a `FileInfo` or a
+  `FILE *`, and lists / reads entries. A separate instance built empty is a
+  **writer**: `addDir`, `addFile`, `save`.
+* Reads are **verified**. An entry whose CRC-32 does not match its bytes is
+  refused, and so is a deflate stream that stops making progress.
+* Names are **sanitized**. An absolute name, one that escapes its root, or one
+  carrying a NUL is listed but cannot be read.
+* Not supported, by decision: **encryption**, compression methods outside
+  Store and Deflate, multi-volume archives, and modifying an archive in place.
+* Timestamps are **UTC**. Nothing reads the machine's timezone.
+
+Related: [../design/libzip-removal-plan.adoc](../design/libzip-removal-plan.adoc)
+records why this exists and what was measured while building it.
+
+---
+
+## Reading
+
+```cpp
+ZipArchive<mem_std::Interface> archive(FileInfo{"book.epub"});
+if (!archive) {
+    // not a ZIP, or the central directory does not parse
+    return;
+}
+
+archive.ftw([&](uint64_t idx, StringView path, size_t size, Time mtime) {
+    // every entry, in central-directory order
+});
+
+archive.readFile("META-INF/container.xml", [&](BytesView data) {
+    // exactly one call, with the whole entry - possibly empty
+});
+```
+
+`readFile` returns `false` and does **not** invoke the callback when the entry
+cannot be produced. `locateFile` returns `maxOf<uint64_t>()` for an unknown
+name; duplicate names resolve to the first occurrence.
+
+An archive may be preceded by arbitrary bytes — a self-extracting stub, or a ZIP
+embedded at the end of another file. The catalog finds the directory from the
+end of the file and offsets everything by the difference, so such archives open
+normally.
+
+## Writing
+
+```cpp
+ZipArchive<mem_std::Interface> archive;   // default-constructed = a new archive
+archive.addDir("META-INF");
+archive.addFile("mimetype", StringView("application/epub+zip"), true /* store */);
+auto bytes = archive.save();
+```
+
+Each entry is compressed before its local header is written, which is what lets
+the writer decide per entry whether it needs ZIP64 and whether Deflate is worth
+it: **if deflate does not shrink the data, the entry is stored**. Bit 11 (UTF-8)
+is set when a name has bytes ≥ 0x80.
+
+`addFile` refuses a name the reader would refuse — the module will not produce an
+archive it considers hostile.
+
+Opening an existing archive for modification is **not** supported: constructing
+a writable archive from a non-empty buffer fails rather than silently discarding
+the bytes.
+
+## What a read can refuse, and why
+
+Every refusal has its own `Status`, so a test cannot pass on the wrong rule
+firing (`SPZipReader.h`):
+
+| Reason | `Status` |
+|---|---|
+| directory entry — no content of its own | `Declined` |
+| name rejected by the sanitizer | `ErrorNotPermitted` |
+| encrypted entry | `ErrorNotImplemented` |
+| compression method outside {Store, Deflate} | `ErrorNotSupported` |
+| declared size far beyond what the payload can hold (zip bomb) | `ErrorBufferOverflow` |
+| the record does not parse | `ErrorInvalidArguemnt` |
+| it parses, but the bytes are wrong (CRC, broken stream) | `ErrorNotRecoverable` |
+
+The public `readFile` collapses all of these to `false`; the distinction is
+available to callers of `zipReadEntry` directly.
+
+A rejected entry stays **visible** — it keeps its index and is still listed by
+`ftw`. An archive carrying a hostile name is something the caller should be able
+to see, not something that should silently not exist.
+
+## Entry names
+
+The format does not reliably say how a name is encoded. Bit 11 means UTF-8; with
+it clear the specification says CP437, but most modern archivers write UTF-8
+without setting it. So a name with the bit clear is **checked**: valid UTF-8 (no
+overlong forms, no surrogates) is taken as UTF-8, anything else is decoded
+through CP437. An Info-ZIP Unicode Path field (0x7075) overrides both, and its
+CRC over the original name is verified before it is trusted.
+
+A name is rejected when it is absolute, escapes its root via `..`, or contains a
+NUL. This is stricter than libzip, which did not sanitize at all.
+
+## Limits
+
+Deliberately absent, with no plan to add them:
+
+* **Encryption** — neither PKWARE nor AES, read or write. An encrypted entry is
+  refused rather than handed back as ciphertext that looks like content.
+* **Compression methods** other than Store (0) and Deflate (8). bzip2, LZMA,
+  XZ and Zstd inside ZIP are all refused with `ErrorNotSupported`. OCF forbids
+  them, and they do not appear in EPUB in practice.
+* **Multi-volume / split archives.**
+* **Modification in place.** Build a new archive instead.
+
+Present and handled: ZIP64 (read and write, written only when a value does not
+fit in 32 bits), the Info-ZIP Unicode Path field, prefixed archives, and entries
+of length zero. Entries written with a data descriptor (bit 3) read correctly
+because sizes and CRC are taken from the central directory; the local header is
+consulted only for the length of its own variable part.
+
+## Differences from libzip
+
+The module used to be a wrapper around libzip. If you are porting code that
+relied on the old behaviour, these are the changes, all of them measured against
+libzip before the switch:
+
+| Case | libzip | now |
+|---|---|---|
+| entry whose CRC does not match its data | returned the bytes | refused |
+| corrupted deflate stream | returned the full declared size | refused |
+| entry of length zero | unreadable (`stat.size == 0` early-out) | reads as empty |
+| absolute / `..` / NUL-bearing name | read normally | listed, read refused |
+| archive with a prefix | rejected by a signature probe | opens |
+| ASCII name with control bytes | mapped through CP437 | kept as ASCII |
+| entry timestamps | local time | UTC |
+
+The first two are worth restating: **libzip did not verify CRC on read**. It
+returned 42 bytes for an entry with a deliberately wrong CRC, and the full
+declared 1248 bytes from a deflate stream with two bytes flipped, reporting
+success both times.
+
+`ZIP_SIG1`/`ZIP_SIG2`/`ZIP_SIG3` remain declared on `ZipArchive` for source
+compatibility; nothing inside the module tests them any more. The `original`
+parameter on `size()` / `getFileName()` / `ftw()` mapped to libzip's
+`ZIP_FL_UNCHANGED` ("the archive before pending modifications"); with in-place
+modification gone there is no "before" to report, so it is accepted and ignored.
+
+## Testing
+
+Three suites in `tests/stappler/zip/`:
+
+* `zip` — the public API, against golden expectations.
+* `zipformat` — the record layer, catalog, names, reader and writer, over a
+  corpus of 37 archives built in-process. It also runs Info-ZIP `unzip -t` on a
+  generated archive when the tool is present, and reports NOT RUN when it is
+  not — an unavailable oracle is not evidence of success.
+* `zipfuzz` — mutation fuzzing with a fixed seed. It counts how far mutants get
+  and **fails if reach drops**, so "no crashes" cannot be earned by never
+  parsing anything.
+
+`XL_ZIP_FUZZ_ITERATIONS` overrides the iteration count (default 20 000).

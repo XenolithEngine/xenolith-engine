@@ -35,11 +35,13 @@ MODULE_STAPPLER_SEARCH_SHARED_SPEC_SUMMARY := libstappler full-text search primi
 
 define MODULE_STAPPLER_SEARCH_SHARED_SPEC_DESCRIPTION
 Module libstappler-search contains primitives to build full-text search engines:
-- Edit sitance
+- Edit distance
 - Normalizer
 - Stemmer
 - Query parser
 - Query matcher
+- Approximate (subsequence) matching, with highlight ranges in UTF-16 units
+- Vocabulary and query expansion, for typo-tolerant search over an existing index
 endef
 
 # module name resolution

@@ -278,7 +278,8 @@ static void Handle_setSendData(HandleData<Interface> &iface,
 	if (fmt.format == data::EncodeFormat::Cbor || fmt.format == data::EncodeFormat::DefaultFormat) {
 		iface.addHeader("Content-Type", "application/cbor");
 	} else if (fmt.format == data::EncodeFormat::Json || fmt.format == data::EncodeFormat::Pretty
-			|| fmt.format == data::EncodeFormat::PrettyTime) {
+			|| fmt.format == data::EncodeFormat::PrettyTime
+			|| fmt.format == data::EncodeFormat::JsonGit) {
 		iface.addHeader("Content-Type", "application/json");
 	}
 }
