@@ -25,6 +25,7 @@
 #define XENOLITH_RENDERER_BASIC2D_BACKEND_VK_XL2DVKVERTEXPASS_H_
 
 #include "XL2dVkMaterial.h"
+#include "XLCoreFrameCapture.h"
 #include "XL2dCommandList.h"
 #include "XL2dVkParticlePass.h"
 #include "XLCoreFrameDamage.h"
@@ -85,6 +86,11 @@ public:
 			Function<void(bool)> &&) override;
 
 	SpanView<VertexSpan> getVertexData() const { return _spans; }
+
+	// The Overlay level, kept apart from the content spans so the pass can record it after the frame
+	// has been copied out. Empty in the ordinary case, and then the second pass is never opened.
+	SpanView<VertexSpan> getOverlayData() const { return _overlaySpans; }
+
 	SpanView<VertexSpan> getShadowSolidData() const { return _shadowSolidSpans; }
 	SpanView<VertexSpan> getShadowSdfData() const { return _shadowSdfSpans; }
 	const Rc<Buffer> &getIndexes() const { return _indexes; }
@@ -100,7 +106,7 @@ public:
 	bool empty() const;
 
 	void loadData(Rc<FrameContextHandle2d> &&data, Rc<Buffer> &&indexes, Rc<Buffer> &&vertexes,
-			Rc<Buffer> &&transforms, Vector<VertexSpan> &&spans,
+			Rc<Buffer> &&transforms, Vector<VertexSpan> &&spans, Vector<VertexSpan> &&overlaySpans,
 			Vector<VertexSpan> &&shadowSolidSpans, Vector<VertexSpan> &&shadowSdfSpans,
 			float maxShadowValue, Rc<core::FrameDamageState> &&damage);
 
@@ -114,6 +120,7 @@ protected:
 	Rc<Buffer> _vertexes;
 	Rc<Buffer> _transforms;
 	Vector<VertexSpan> _spans;
+	Vector<VertexSpan> _overlaySpans;
 	Vector<VertexSpan> _shadowSolidSpans;
 	Vector<VertexSpan> _shadowSdfSpans;
 
@@ -135,6 +142,12 @@ public:
 	const AttachmentData *getMaterials() const { return _materials; }
 	const AttachmentData *getParticles() const { return _particles; }
 
+	// Null for a queue that cannot capture; the handle then records no copy at all.
+	const AttachmentData *getCapture() const { return _capture; }
+
+	// The image this pass draws into - the presented one, and therefore what a capture copies out of.
+	const AttachmentData *getOutput() const { return _output; }
+
 	virtual Rc<QueuePassHandle> makeFrameHandle(const FrameQueue &) override;
 
 protected:
@@ -148,6 +161,7 @@ protected:
 	const AttachmentData *_vertexes = nullptr;
 	const AttachmentData *_materials = nullptr;
 	const AttachmentData *_particles = nullptr;
+	const AttachmentData *_capture = nullptr;
 };
 
 class SP_PUBLIC VertexPassHandle : public QueuePassHandle {
@@ -164,8 +178,36 @@ protected:
 
 	virtual void doProcessQueries(FrameQueue &, SpanView<Rc<core::QueryPool>> queries) override;
 
+	// Copy out whatever this frame was asked for, after the render pass has ended and its output
+	// barriers have been written - so the source is already in its final layout here, and has to be
+	// put back into it.
+	void recordFrameCapture(CommandBuffer &);
+
+	// Resolved together in prepare(); all null/false when no capture was asked for, and then
+	// recordFrameCapture records nothing at all.
+	const core::FrameCaptureInput *_captureInput = nullptr;
+	Image *_captureSource = nullptr;
+
+	// Whether the source is the swapchain image. It decides the layout the pass left it in -
+	// PresentSrc for a presented image, TransferSrcOptimal for an offscreen one - which is both
+	// what the copy has to transition from and what it must restore.
+	bool _captureSourcePresented = false;
+
+	// Draw the Overlay level in a second render pass instance over the same framebuffer. Records
+	// nothing when there is nothing on it - which is the ordinary case, and what makes an idle
+	// overlay free.
+	void recordOverlayPass(CommandBuffer &);
+
+	// What goes INSIDE that instance. A queue with more than one subpass has to walk them all, so
+	// this is the part a multi-subpass pass overrides.
+	virtual void recordOverlaySubpasses(CommandBuffer &, SpanView<VertexSpan> spans);
+
 	virtual void prepareRenderPass(CommandBuffer &);
 	virtual void prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &);
+
+	// One run of the draw loop over a given set of spans; see the definition
+	void drawSpans(core::MaterialSet *materials, CommandBuffer &, SpanView<VertexSpan> spans);
+
 	virtual void finalizeRenderPass(CommandBuffer &);
 
 	void clearDynamicState(CommandBuffer &buf);

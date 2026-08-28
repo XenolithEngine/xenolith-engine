@@ -458,7 +458,8 @@ void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<Presentati
 		}
 	}
 
-	core::PresentInfo presentInfo{presentWindow, partial ? makeSpanView(damage) : SpanView<URect>()};
+	core::PresentInfo presentInfo{presentWindow,
+		partial ? makeSpanView(damage) : SpanView<URect>()};
 
 	auto clock = sp::platform::clock(ClockType::Monotonic);
 	auto res = _swapchain->present(queue, image, presentInfo);
@@ -798,6 +799,16 @@ void PresentationEngine::captureScreenshot(
 			[this, cb = sp::move(cb)](PresentationFrame *frame, bool success) mutable {
 		auto target = frame->getTarget();
 		_loop->captureImage(sp::move(cb), target->getImage(), target->getLayout());
+	}));
+}
+
+void PresentationEngine::scheduleOffscreenFrame(Function<void(bool)> &&cb) {
+	scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder, _serial,
+			PresentationFrame::OffscreenTarget | PresentationFrame::DoNotPresent,
+			[cb = sp::move(cb)](PresentationFrame *, bool success) mutable {
+		if (cb) {
+			cb(success);
+		}
 	}));
 }
 

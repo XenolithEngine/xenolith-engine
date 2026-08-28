@@ -24,7 +24,7 @@
 |---|---|---|
 | `position` | `Vec3` | in the parent's space; `setPosition(Vec2)` keeps Z |
 | `anchorPoint` | `Vec2` | normalized; values outside `[0,1]` are legal |
-| `contentSize` | `Size2` | untransformed; the layout box |
+| `contentSize` | `Size2` | untransformed; the layout box. **Logical units** — world space is surface pixels once the scene is density-scaled, so never pair it with a world origin; use `getWorldBoundingBox()` |
 | `scale` | `Vec3` | `setScale(float)` sets X and Y |
 | `rotation` | `float` (Z) / `Vec3` / `Quaternion` | **radians** |
 | `skew` | `Vec2` | `setSkewX` / `setSkewY` |
@@ -96,6 +96,41 @@ Two questions, two answers:
   collapses it; `visibility: hidden` keeps the box, matching CSS.
 
 A layout engine must consult `isDisplayed()`, not `isVisible()`.
+
+## The Overlay draw level
+
+`setOverlay(true)` moves a node **and its whole subtree** onto `RenderingLevel::Overlay`:
+the last thing a frame draws, and — on the Vulkan path — the thing it draws *after*
+the frame has been copied out (see `FrameCapture`).
+
+[source,cpp]
+----
+ghost->setOverlay(true);     // the node, and everything under it
+----
+
+Three properties, and the third is the reason the level exists at all:
+
+* **On top of everything.** Overlay geometry draws at the near plane in a pass of
+  its own, so no content can depth-reject it and nothing content-side can be
+  drawn over it, whatever the ZOrders are.
+* **Inherited, and not escapable.** A descendant draws on the overlay too, whatever
+  level it declares for itself. Marking the root of a ghost is enough; its panel,
+  its label and its icon come with it.
+* **Outside every cutout.** A `FrameCapture` region is copied between the content
+  pass and the overlay pass, so an overlay node can never appear in one. That is
+  what lets a drag ghost be made of captured pixels: it cannot photograph itself,
+  and it does not have to be timed so that it doesn't.
+
+ZOrder still decides what an overlay node is above and below **among the other
+things on the overlay** — `WindowDecorations` sits there too, at `ZOrder::max() - 1`,
+so a drag ghost at `DragSystem::DecoratorZOrder` still stays off the title bar.
+
+The level is a property of the *frame's composition*, not of styling, so it is set
+from code only — there is no CSS property for it. It costs one extra render pass
+instance per frame while anything is on it, and exactly nothing while nothing is.
+
+Ordering inside the overlay is painter's order, like the transparent level; a node
+that has to be *below* other overlay content wants a lower ZOrder, not a depth value.
 
 ## Colour and opacity
 

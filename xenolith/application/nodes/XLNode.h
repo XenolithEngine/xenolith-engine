@@ -406,7 +406,17 @@ public:
 
 	virtual void cleanup();
 
+	// This node's box in the PARENT's space
 	virtual Rect getBoundingBox() const;
+
+	/* This node's box in WORLD space.
+
+	Not `convertToWorldSpace(Vec2::ZERO)` plus `getContentSize()`: that mixes two spaces, and the
+	mixture is wrong on every HiDPI surface. The scene root is scaled by the surface density
+	(Scene::setScale), so world space is measured in SURFACE PIXELS while a content size is in
+	logical units - the origin comes out scaled and the size does not. Anything that hands a world
+	rect to the renderer (a capture region, a scissor) wants this. */
+	virtual Rect getWorldBoundingBox() const;
 
 	virtual void resume();
 	virtual void pause();
@@ -445,6 +455,22 @@ public:
 
 	virtual void setDepthIndex(float value) { _depthIndex = value; }
 	virtual float getDepthIndex() const { return _depthIndex; }
+
+	/* Draw this node, and everything under it, on the Overlay level.
+
+	The overlay is the last thing a frame draws, and it is drawn AFTER the frame has been captured
+	(see FrameCapture) - which is the whole reason the level exists. A drag ghost put here cannot end
+	up inside its own cutout, and that is now a property of how the frame is built rather than of when
+	the ghost happened to be created.
+
+	INHERITED, AND NOT ESCAPABLE. Every descendant draws on the overlay too, whatever it declares for
+	itself: a subtree is either lifted as a whole or not at all. That is what makes marking the root
+	enough - a ghost made of a panel, a label and an icon needs one call, not one per node.
+
+	It is a property of the NODE rather than of the sprite, precisely because of that: the root of an
+	overlay subtree is usually a container, and a container is not a Sprite. */
+	void setOverlay(bool);
+	bool isOverlay() const { return _overlay; }
 
 	virtual void draw(FrameInfo &, NodeVisitFlags flags);
 
@@ -581,6 +607,7 @@ protected:
 	bool _layoutChildrenDirty = true; // run handleLayoutChildren on next visit
 	mutable bool _transformCacheDirty = true; // dynamic value
 	mutable bool _transformInverseDirty = true; // dynamic value
+	bool _overlay = false; // this subtree draws on the Overlay level (see setOverlay)
 
 	NodeEventFlags _eventFlags = NodeEventFlags::None;
 

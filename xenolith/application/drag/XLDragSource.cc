@@ -32,7 +32,8 @@ bool DragSource::init(OfferBuilder &&builder, float threshold) {
 
 	_builder = sp::move(builder);
 
-	addSwipeRecognizer([this](const GestureSwipe &swipe) {
+	addSwipeRecognizer(
+			[this](const GestureSwipe &swipe) {
 		switch (swipe.event) {
 		case GestureEvent::Began: return handleDragBegin(swipe);
 		case GestureEvent::Activated: handleDragMove(swipe); return true;
@@ -61,6 +62,12 @@ void DragSource::handleExit() {
 }
 
 void DragSource::setOfferBuilder(OfferBuilder &&builder) { _builder = sp::move(builder); }
+
+DragSession *DragSource::getSession() const {
+	// Guarded on _dragging as well as on the system: the system outlives any one drag, and its
+	// session may by now belong to somebody else entirely.
+	return (_dragging && _drag) ? _drag->getSession() : nullptr;
+}
 
 bool DragSource::handleDragBegin(const GestureSwipe &swipe) {
 	if (_dragging || !_owner || !_builder) {

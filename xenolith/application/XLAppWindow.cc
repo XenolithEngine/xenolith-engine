@@ -32,6 +32,9 @@
 #include "director/XLDirector.h"
 #include "input/XLInputDispatcher.h"
 #include "XLServerAppThread.h"
+#include "resources/XLFrameCapture.h"
+
+#include <stdlib.h> // getenv
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
@@ -349,6 +352,11 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	if (cfg.transfer) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferDst;
 	}
+	// What makes a frame capture possible: the presented image can be copied out of, in place, by
+	// the pass that just drew it. selectConfig() only asks for this where the surface allows it.
+	if (cfg.transferSrc) {
+		swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
+	}
 	return swapchainImageInfo;
 }
 
@@ -382,6 +390,28 @@ core::ImageViewInfo AppWindow::getSwapchainImageViewInfo(const core::ImageInfo &
 
 core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool fastMode) {
 	auto c = _context->handleAppWindowSurfaceUpdate(this, cfg, fastMode);
+
+	// Ask for readable presented images where the surface offers it. Vulkan guarantees only
+	// ColorAttachment for a swapchain image, so a refusal here is a normal answer and not an error -
+	// what depends on it (FrameCapture) has a path for it. Logged because the answer varies by
+	// driver and compositor, and it is not otherwise visible from inside the app.
+	c.transferSrc = hasFlag(cfg.supportedUsageFlags, core::ImageUsage::TransferSrc);
+
+	// XL_NO_SWAPCHAIN_TRANSFER_SRC=1 - pretend the surface refused. The offscreen path is otherwise
+	// unreachable on hardware that grants TransferSrc, which is all of it here.
+	if (auto value = ::getenv("XL_NO_SWAPCHAIN_TRANSFER_SRC")) {
+		if (StringView(value) != "0") {
+			c.transferSrc = false;
+		}
+	}
+
+	if (!c.transferSrc) {
+		log::source()
+				.info("AppWindow",
+						"Surface does not support TransferSrc on presented images: frame capture "
+						"will need " "an offscreen frame");
+	}
+
 	// preserve selected config for app thread
 	_application->performOnAppThread([this, c, fastMode] {
 		_appSwapchainConfig = c;
@@ -838,6 +868,67 @@ void AppWindow::compileResource(Rc<core::Resource> &&res, Function<void(bool)> &
 void AppWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<core::DependencyEvent>> &deps) {
 	static_cast<core::Loop *>(_context->getGlLoop())->compileMaterials(sp::move(req), deps);
+}
+
+FrameCapture *AppWindow::getFrameCapture() {
+	if (!_frameCapture) {
+		_frameCapture = Rc<FrameCapture>::create(_application, this);
+	}
+
+	// Re-read rather than latch: the surface has the last word and only answers once a swapchain
+	// has been configured, which may be after the first caller asked.
+	_frameCapture->setSurfaceSupported(_appSwapchainConfig.transferSrc);
+	return _frameCapture;
+}
+
+bool AppWindow::scheduleOffscreenFrame(Function<void(bool)> &&cb) {
+	if (!_presentationEngine) {
+		return false;
+	}
+
+	_context->performOnThread([this, cb = sp::move(cb)]() mutable {
+		_presentationEngine->scheduleOffscreenFrame(sp::move(cb));
+	}, this);
+	return true;
+}
+
+Rc<core::FrameCaptureInput> AppWindow::takeFrameCaptureInput() {
+	// Deliberately not getFrameCapture(): this runs once per frame, and a window that has never
+	// been asked for a capture must not grow one just by rendering.
+	if (!_frameCapture || !_frameCapture->hasPending()) {
+		return nullptr;
+	}
+
+	auto targets = _frameCapture->takePending();
+
+	auto input = Rc<core::FrameCaptureInput>::alloc();
+	input->regions.reserve(targets.size());
+	for (auto &it : targets) {
+		if (auto image = it->getImage()) {
+			input->regions.emplace_back(
+					core::FrameCaptureInput::Region{Rc<core::ImageObject>(image), it->getRegion()});
+		}
+	}
+
+	if (input->regions.empty()) {
+		// Nothing survived: report the batch rather than leaving every target waiting for a copy
+		// that will never be recorded.
+		_frameCapture->handleCaptured(targets, false);
+		return nullptr;
+	}
+
+	// finalize() runs on the loop thread; everything the targets touch is app-thread state.
+	input->completion = [this, targets = sp::move(targets), guard = Rc<AppWindow>(this)](
+								bool success) mutable {
+		_application->performOnAppThread(
+				[this, targets = sp::move(targets), success, guard = sp::move(guard)] {
+			if (_frameCapture) {
+				_frameCapture->handleCaptured(targets, success);
+			}
+		}, this);
+	};
+
+	return input;
 }
 
 void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> &&cb) {

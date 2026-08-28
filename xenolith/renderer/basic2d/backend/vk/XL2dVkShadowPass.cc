@@ -192,6 +192,14 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 		return Rc<ShadowLightDataAttachment>::create(builder);
 	});
 
+	// Rectangles of the presented image to copy out after the render pass ends; see FlatPass, which
+	// declares the same attachment for the same reason.
+	_capture = queueBuilder.addAttachemnt(core::FrameCaptureAttachmentName,
+			[](AttachmentBuilder &builder) -> Rc<Attachment> {
+		builder.defineAsInput();
+		return Rc<core::FrameCaptureAttachment>::create(builder);
+	});
+
 	auto colorAttachment = passBuilder.addAttachment(_output);
 	auto shadowAttachment = passBuilder.addAttachment(_shadow);
 	auto sdfAttachment = passBuilder.addAttachment(_sdf);
@@ -203,6 +211,7 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 	passBuilder.addAttachment(_vertexes);
 	passBuilder.addAttachment(_lightsData);
 	passBuilder.addAttachment(_materials);
+	passBuilder.addAttachment(_capture);
 	passBuilder.addAttachment(info.particleAttachment,
 			AttachmentDependencyInfo::make(PipelineStage::VertexShader
 							| PipelineStage::DrawIndirect,
@@ -639,7 +648,8 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 	uint32_t subpassIdx = 0;
 
 	// Always advance through SDF + Shadow subpasses to match the render pass.
-	const bool haveLights = _shadowData && _shadowData->getBuffer() && _shadowData->getLightsCount();
+	const bool haveLights =
+			_shadowData && _shadowData->getBuffer() && _shadowData->getLightsCount();
 
 	if (haveLights) {
 		// sdf drawing pipeline
@@ -774,6 +784,18 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 			drawFullscreen(pipeline);
 		}
 	}
+}
+
+void ShadowPassHandle::recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
+	VertexPassHandle::recordOverlaySubpasses(buf, spans);
+
+	// This queue's render pass has three subpasses and an instance has to walk all of them, whatever
+	// it draws. The overlay only ever draws in the first: it is composited onto a frame whose
+	// lighting is already resolved, so the SDF and shadow subpasses have nothing left to contribute.
+	// Advancing through them empty is the same thing this pass already does for a frame with no
+	// lights.
+	buf.cmdNextSubpass();
+	buf.cmdNextSubpass();
 }
 
 } // namespace stappler::xenolith::basic2d::vk
