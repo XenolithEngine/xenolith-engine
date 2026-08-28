@@ -198,7 +198,11 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 			stats->workers = 1;
 		}
 		uint32_t drawn = 0;
-		for (auto &tile : tiles) { drawn += draw(target, list, tile); }
+		FillStats fill;
+		for (auto &tile : tiles) { drawn += draw(target, list, tile, stats ? &fill : nullptr); }
+		if (stats) {
+			stats->fill = fill;
+		}
 		return drawn;
 	}
 
@@ -216,20 +220,32 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	sprt::atomic<uint32_t> drawn{0};
 	sprt::qtimeline finished;
 
+	// One add per worker at the end of its run, not one per tile: the counters are a diagnostic
+	// and must not put a contended cache line in the middle of the pixel loops.
+	sprt::atomic<uint64_t> spanPixels{0};
+	sprt::atomic<uint64_t> glyphPixels{0};
+	sprt::atomic<uint64_t> fillPixels{0};
+
 	const uint32_t total = uint32_t(tiles.size());
 
 	// Captured by reference on purpose: the calling thread does not return until every worker has
 	// signalled, so everything here outlives them.
 	auto body = [&] {
 		uint32_t local = 0;
+		FillStats localFill;
 		for (;;) {
 			auto index = nextTile.fetch_add(1);
 			if (index >= total) {
 				break;
 			}
-			local += draw(target, list, tiles[index]);
+			local += draw(target, list, tiles[index], stats ? &localFill : nullptr);
 		}
 		drawn.fetch_add(local);
+		if (stats) {
+			spanPixels.fetch_add(localFill.spanPixels);
+			glyphPixels.fetch_add(localFill.glyphPixels);
+			fillPixels.fetch_add(localFill.fillPixels);
+		}
 	};
 
 	uint32_t posted = 0;
@@ -253,6 +269,9 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 
 	if (stats) {
 		stats->workers = posted + 1;
+		stats->fill.spanPixels = spanPixels.load();
+		stats->fill.glyphPixels = glyphPixels.load();
+		stats->fill.fillPixels = fillPixels.load();
 	}
 
 	return drawn.load();

@@ -236,9 +236,32 @@ struct SP_PUBLIC DrawList {
 	bool empty() const { return entries.empty(); }
 };
 
+// Pixels the kernels actually wrote, as opposed to the area they were handed.
+//
+// The damage area already reported by a caller answers "how much of the surface was in play"; this
+// answers "how much work was done inside it", and the two differ by the overdraw. A frame that
+// repaints everything and a frame that repaints a clock differ here by two orders of magnitude,
+// which is the only way to tell them apart from outside - the picture is identical either way.
+//
+// Counted at the three kernel entry points and nowhere else, so the number is writes issued, not
+// pixels visibly changed: a pixel covered by two commands counts twice, which is the point.
+struct SP_PUBLIC FillStats {
+	uint64_t spanPixels = 0; // writeSpan - one horizontal run of a triangle
+	uint64_t glyphPixels = 0; // blitGlyph - one glyph coverage box, post-scissor
+	uint64_t fillPixels = 0; // fillRect - attachment clears and solid axis-aligned quads
+
+	uint64_t total() const { return spanPixels + glyphPixels + fillPixels; }
+
+	void add(const FillStats &o) {
+		spanPixels += o.spanPixels;
+		glyphPixels += o.glyphPixels;
+		fillPixels += o.fillPixels;
+	}
+};
+
 // Fill a rectangle with a constant color, ignoring whatever was there. This is the clear op of a
 // render pass attachment, and it is also the fast path a solid axis-aligned quad will take later.
-SP_PUBLIC void fillRect(const Target &, const URect &, const Color4F &);
+SP_PUBLIC void fillRect(const Target &, const URect &, const Color4F &, FillStats * = nullptr);
 
 // The value a 1x1 texture samples to, swizzle applied. Used to build Command::constantColor.
 SP_PUBLIC Color4F sampleConstant(const Texture &);
@@ -253,7 +276,8 @@ SP_PUBLIC URect intersectRects(const URect &, const URect &);
 // Partial redraw calls this once per damage rectangle, so that several small changes do not force
 // the rasterizer over their bounding box. Those rectangles MUST be pairwise disjoint: a pixel
 // visited twice would have every transparent command blended into it twice.
-SP_PUBLIC uint32_t draw(const Target &, const DrawList &, const URect &clip);
+SP_PUBLIC uint32_t draw(const Target &, const DrawList &, const URect &clip,
+		FillStats * = nullptr);
 
 // How a region is cut up before it is rasterized, and by how many threads.
 //
@@ -292,6 +316,10 @@ SP_PUBLIC void makeTileGrid(const URect &region, const TilingInfo &, uint32_t pi
 struct SP_PUBLIC TilingStats {
 	uint32_t tiles = 0; // tiles the regions were cut into
 	uint32_t workers = 0; // threads that took part, the calling one included
+
+	// Summed across every tile and every worker. Tiles are disjoint, so this double-counts nothing
+	// that the untiled path would have counted once.
+	FillStats fill;
 };
 
 // Rasterize a whole set of damage regions, cut into tiles, optionally across a thread pool.
