@@ -238,13 +238,8 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 	engineMask = sprt::dispatch::QueueEngine::None;
 #endif
 
-
 	_looper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
-#if SPRT_HOSTED_RTOS
-		.workersCount = 0,
-#else
 		.workersCount = info.context->mainThreadsCount,
-#endif
 		.engineMask = engineMask,
 	});
 

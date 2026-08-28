@@ -33,10 +33,21 @@ namespace sprt::window::config {
 static inline time_t getDefaultAppUpdateInterval() { return 1'000'000; }
 
 static inline uint16_t getDefaultMainThreads() {
-	return static_cast<uint16_t>(thread::hardware_concurrency()) / 2;
+	auto n = static_cast<uint16_t>(thread::hardware_concurrency());
+	if (n <= 1) {
+		return 0;
+	} else if (n == 2) {
+		return 1;
+	}
+	return static_cast<uint16_t>(n / 2 + 1);
 }
 static inline uint16_t getDefaultAppThreads() {
-	return static_cast<uint16_t>(thread::hardware_concurrency()) / 2;
+	auto n = static_cast<uint16_t>(thread::hardware_concurrency());
+	if (n <= 1) {
+		return 0;
+	}
+	auto half = static_cast<uint16_t>(n / 2);
+	return half > 1 ? static_cast<uint16_t>(half - 1) : uint16_t(1);
 }
 
 } // namespace sprt::window::config

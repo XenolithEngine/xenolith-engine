@@ -13,6 +13,8 @@ the frame path is the last place an unconditional clock read belongs.
 |---|---|---|
 | `XL_FRAME_ACCOUNT=1` | what a whole frame cost, split into the visit, the render half, and deferred work vs waiting for it | a build flag, passed to the project makefile |
 | `XL_SOFT_PROFILE=N` | what the software rasterizer cost, per frame | an environment variable, software backend only |
+| `XL_FONT_CACHE_LOG=1` | every batch of glyphs that actually reaches the atlas | an environment variable |
+| `DrawStat::pixelsFilled` | the same fill number, live on screen | always on, shown by the FPS overlay when a backend fills it |
 
 ## The frame account (`XL_FRAME_ACCOUNT=1`)
 
@@ -111,6 +113,40 @@ rules:
   thing.
 - **Never print a number under a label that was not run.**
 
+### The fill line
+
+A second line follows each report and answers a different question — not how fast the rasterizer
+ran, but how much it was asked to do:
+
+```
+fill: surface/frame= damage/frame= filled/frame= (span= glyph= rect=) damage/surface= filled/damage=
+```
+
+Three quantities that must not be confused:
+
+| | what it is |
+|---|---|
+| `surface` | the window. Fixed. |
+| `damage` | what the tracker handed the rasterizer. Equal to `surface` means the damage protocol narrowed nothing, whatever the reason — that is what `damage/surface=1` reports. |
+| `filled` | pixels the kernels actually wrote, counted at `writeSpan`, `blitGlyph` and `fillRect` and nowhere else. Writes issued, so a pixel covered by two commands counts twice. |
+
+So `damage/surface` answers *"is this a full repaint"* and `filled/damage` answers *"and how much
+work goes on inside whatever it repaints"* — the overdraw. They move independently: a frame can
+repaint 10% of the screen and still burn ten times that region in overlapping commands.
+
+`span=`/`glyph=`/`rect=` split `filled` by kernel, which is what says where the work went. `rect=`
+equal to `damage=` is the attachment clear covering each damaged region exactly once, as it should.
+
+The counters are only touched when `XL_SOFT_PROFILE` is on: `draw` and `fillRect` take the stats
+block as an optional out-param and skip it when null, and `drawTiled` merges one add per worker at
+the end of its run rather than one per tile, so no contended cache line lands in the pixel loops.
+
+**Each counter must mirror its kernel's own clip exactly.** `blitGlyph` walks the glyph box
+intersected with the scissor, *not* the scissor — counting the scissor instead over-reports by
+roughly the glyph count per frame, which on a text-heavy scene reads as a 100x overdraw that is not
+there. A metric of the wrong thing is worse than no metric; whoever changes a kernel's clip changes
+its counter in the same edit.
+
 ## Rules for any timing run
 
 - **Release.** A debug build does not scale the numbers, it reorders them.
@@ -121,3 +157,79 @@ rules:
   account does not name.
 - **Report what was not measured.** A size that timed out is a finding about that size, not a row to
   leave out.
+
+## The fill number on screen (`DrawStat::pixelsFilled`)
+
+`XL_SOFT_PROFILE` is a running average printed to the log; the same quantity is also carried on
+`DrawStat` so it can be read live:
+
+- `DrawStat::pixelsTotal` — the target, in pixels.
+- `DrawStat::pixelsFilled` — what the kernels wrote for that frame, the sum of the same three
+  counters the `fill:` line breaks down.
+
+Filled by `basic2d::soft::FlatPassHandle` and nothing else. A GPU backend leaves both at zero: the
+nearest equivalent would be a fragment count out of a query pool, which is a different quantity, and
+reporting one under this label would be a real measurement of the wrong thing. **Zero therefore
+means "not measured here"**, which is why the FPS overlay prints the `Px:` line only when
+`pixelsTotal` is non-zero instead of printing `0/0`.
+
+The overlay shows it in the `Fps` and `Full` modes (F12 cycles them):
+
+```
+Px: 123780/307200 0.4029297x
+```
+
+Read the ratio as "this frame cost 0.40 of a full repaint". It is not bounded by 1: overlapping
+commands inside a small damage region can push it well above one while the damage stays tiny.
+
+## Glyph cache churn (`XL_FONT_CACHE_LOG=1`)
+
+Reports every batch the font controller submits to the atlas. A batch carries the whole required
+set and rebuilds the atlas image from scratch, plus a material recompile in every window that
+samples it — so on a scene whose text does not grow there must be a handful during warm-up and then
+none. A steady trickle means glyphs are being dropped and rendered again.
+
+Pairs with the pre-existing `FontController: Removed:` line from `removeUnusedLayouts()`: this one
+says a set was rendered, that one says a set was dropped. `XL_FONT_EVICT_ALWAYS=1` and
+`XL_FONT_EVICT_THRESHOLD` drive the eviction side for a side-by-side.
+
+A set is a candidate for dropping only when nothing holds it (`getReferenceCount() == 1`) and it is
+not persistent, so a font size used by a label that is still on screen is never a candidate — not
+even under `XL_FONT_EVICT_ALWAYS=1`. Reading a run therefore means checking both lines: no batches
+after warm-up AND no removals.
+
+## How the two thread pools are split
+
+`sprt::window::config` sizes them from `thread::hardware_concurrency()`:
+
+| CPUs | main (`mainThreadsCount`) | app (`appThreadsCount`) |
+|---|---|---|
+| 0 (unknown) or 1 | 0 | 0 |
+| 2 | 2 | 1 |
+| 4 | 3 | 1 |
+| 8 | 5 | 3 |
+| n | `n/2 + 1` | `n/2 - 1`, floor 1 |
+
+Not an even split above one CPU, and deliberately. The frame is produced on the main side: the
+software rasterizer fans its tiles out to the main pool and the submitting thread takes tiles too,
+so `main + 1` is what bounds the fan-out. An even split left it one worker short on every even core
+count — on four cores the rasterizer could only ever occupy three of them (`threads=3.0` in the
+profile line, against `4.0` now). App-side work is latency-bound rather than throughput-bound and
+does not scale the same way.
+
+**Zero on a single CPU is a real answer, not a degenerate one.** A Looper with no workers runs
+`performAsync` on its own thread queue, and `drawTiled` with one available thread walks the tiles
+itself; both are supported modes, and on one core they are the right ones — a worker there is a
+task with a stack that can only take the CPU away from the thread it is helping. Hosted RTOS
+targets used to get this from a hard-coded zero in `XLContext`/`XLAppThread`; it is now a property
+of the machine, so a single-core NuttX or Embox image keeps exactly the behaviour it had, and a
+multi-core one gets workers with no special case. Embox is single-core on arm/aarch64 either way:
+`embox.arch.smp` is implemented for x86 and riscv only, so those builds resolve to
+`embox.arch.generic.nosmp` and `NCPU` is 1.
+
+`hardware_concurrency()` returns 0 when it cannot tell, which lands in the same branch as one CPU.
+
+Read the result back from `threads=` in the `XL_SOFT_PROFILE` line — it reports what the rasterizer
+actually got, not what it asked for, and a pool that could not supply the workers looks identical
+from the outside otherwise. Verified on qemu-armv8a: `CONFIG_SMP_NCPUS=4` gives `threads=4.0`, the
+same image built without `CONFIG_SMP` gives `threads=1.0`.
