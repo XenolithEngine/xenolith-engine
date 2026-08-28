@@ -89,7 +89,8 @@ design), and check the type (`isArray("k")`) before taking a mutable reference.
 [source,cpp]
 ----
 Bytes  b = data::write(v, data::EncodeFormat::Cbor);   // Bytes
-String s = data::toString(v, /* pretty */ true);       // JSON text
+String s = data::toString(v, /* pretty */ true);       // JSON text, a DUMP
+String g = data::toString(v, data::EncodeFormat::JsonGit); // a file for version control
 data::save(v, FileInfo{"state.cbor"});                 // needs stappler_filesystem
 
 auto in = data::read<mem_std::Interface>(b);           // format auto-detected

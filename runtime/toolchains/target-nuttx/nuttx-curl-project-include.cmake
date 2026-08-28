@@ -19,7 +19,7 @@
 # THE SOFTWARE.
 
 # Injected via -DCMAKE_PROJECT_CURL_INCLUDE (common/curl.mk NUTTX branch, same
-# idiom as nuttx-libzip-project-include.cmake) so it runs at the END of curl's
+# idiom as nuttx-deps-project-include.cmake) so it runs at the END of curl's
 # project(CURL) call - AFTER toolchain-libs.cmake sets
 # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY, and BEFORE curl's own
 # check_function_exists / check_symbol_exists / curl_openssl_check_exists calls.

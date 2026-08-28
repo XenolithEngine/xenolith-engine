@@ -45,7 +45,18 @@
 #include "window/MultiWindowLayout.h"
 #include "window/GeometryLayout.h"
 #include "window/QueueCacheLayout.h"
+#include "widgets/NumberFieldLayout.h"
+#include "widgets/VectorFieldLayout.h"
+#include "widgets/ColorFieldLayout.h"
+#include "widgets/ChipRowLayout.h"
+#include "widgets/ClipboardLayout.h"
+#include "widgets/TextViewLayout.h"
 #include "widgets/PanelLayout.h"
+#include "widgets/SelectLayout.h"
+#include "widgets/SliderLayout.h"
+#include "widgets/SearchPickerLayout.h"
+#include "widgets/InlineEditorLayout.h"
+#include "widgets/TableViewLayout.h"
 #include "widgets/TextInputLayout.h"
 #include "widgets/FormLayout.h"
 #include "widgets/HotkeyLayout.h"
@@ -55,9 +66,13 @@
 #include "template/PugCascadeLayout.h"
 #include "template/PugLayout.h"
 #include "render/RenderLevelLayout.h"
+#include "render/Scale9Layout.h"
+#include "widgets/CanvasViewLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
+#include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
+#include "css/StateLayout.h"
 #include "css/VisibilityLayout.h"
 #include "css/WatchCssLayout.h"
 #include "css/WatchCssRecursiveLayout.h"
@@ -102,6 +117,30 @@ static const TestInfo s_cssTests[] = {
 		StringView("Fixed states first (grey, red, blue, green, purple), then one swatch that must "
 				   "follow the pointer through :hover at runtime."),
 		TestRegistry_make<HoverLayout>},
+
+	TestInfo{StringView("selector"), StringView("XL_SELECTOR_TEST"),
+		StringView("Functional pseudo-classes"),
+		StringView("`:not()`, `:is()` and `:where()`, and what each one counts for. Matching is "
+				   "half the claim and specificity is the other: `:where()` matches exactly like "
+				   "`:is()` while counting for NOTHING, which is what a layered stylesheet needs "
+				   "and what no screenshot can show - so the stand is mostly pairs of rules "
+				   "written to conflict. The argument is one compound: a combinator, a nested "
+				   "functional pseudo-class or a structural one is refused, and the rules around "
+				   "the refusal must survive it. Drive it over the inspector: selector.state, "
+				   "selector.set-class."),
+		TestRegistry_make<SelectorLayout>, true},
+
+	TestInfo{StringView("state"), StringView("XL_STATE_TEST"), StringView("Control states as CSS"),
+		StringView("The states a control publishes to a stylesheet: :invalid/:valid, "
+				   ":read-only/:read-write, :indeterminate, :required/:optional, :default, and the "
+				   "two focus states :focus-visible/:focus-within. Every one of them is put there "
+				   "by its REAL producer - the form rejecting an empty required field, an edit "
+				   "lock, a read-only text input, a progress bar with no total, the submit button "
+				   "becoming the form's default, the tab ring being walked - so what is checked is "
+				   "that a widget's own state reaches a selector, not that the parser knows the "
+				   "word. Drive it over the inspector: state.state, state.submit, state.set-lock, "
+				   "state.set-readonly, state.set-progress, state.focus."),
+		TestRegistry_make<StateLayout>, true},
 
 	TestInfo{StringView("css-var"), StringView("XL_CSSVAR_TEST"), StringView("CSS custom properties and var()"),
 		StringView("Boxes coloured and sized through variables, including a fallback, a nested "
@@ -158,8 +197,9 @@ static const TestInfo s_layoutTests[] = {
 
 	TestInfo{StringView("css-flow"), StringView("XL_CSS_FLOW_TEST"), StringView("Size, flow and draw order of a flex item"),
 		StringView("Row 1: min-width and max-width hold, the third box absorbs the rest. Row 2: the "
-				   "black overlay must not shrink its siblings. Row 3: placed green-blue-red by "
-				   "`order`, drawn red-blue-green by `-xl-z-order`."),
+				   "black overlay must not shrink its siblings. Row 3: the pink box arrives a "
+				   "second late and must still take the rest of the row. Row 4: placed "
+				   "green-blue-red by `order`, drawn red-blue-green by `-xl-z-order`."),
 		TestRegistry_make<CssFlowLayout>},
 
 	TestInfo{StringView("overflow"), StringView("XL_OVERFLOW_TEST"),
@@ -247,6 +287,137 @@ static const TestInfo s_widgetsTests[] = {
 				   "the inspector: menu.metrics, menu.state, menu.open, menu.activate."),
 		TestRegistry_make<MenuLayout>, true},
 
+	TestInfo{StringView("number"), StringView("XL_NUMBER_TEST"), StringView("ui::NumberField"),
+		StringView("Four numeric fields: whole, real, one ranged 0..999 and one in a form. Typing a "
+				   "fractional part into the whole field must be refused, and so must a number past "
+				   "the declared range - the value stays put, no callback fires and the node takes "
+				   "the `.invalid` outline - while DRAGGING an unfocused field past the end must "
+				   "stop at it. Up and Down step by exactly one step, blur restores the text of a "
+				   "refused edit, and parse(format(v)) must come back the same number. Drive it "
+				   "over the inspector: number.state, number.set-text, number.roundtrip, "
+				   "send_input native=true."),
+		TestRegistry_make<NumberFieldLayout>, true},
+
+	TestInfo{StringView("slider"), StringView("XL_SLIDER_TEST"), StringView("ui::Slider"),
+		StringView("Five sliders: a whole-number scale, one with an exactly representable "
+				   "fractional step, one whose declared maximum is NOT a whole number of steps "
+				   "away, a vertical one and one inside a form. The widget carries a step INDEX "
+				   "and not a fraction, so a drag and an arrow press that land on the same notch "
+				   "must produce the same number rather than two close ones; the unreachable "
+				   "maximum must be reported and not trimmed; a horizontal slider must ignore "
+				   "Up/Down and a vertical one Left/Right; and the form must collect the VALUE. "
+				   "Drive it over the inspector: slider.state, slider.metrics, slider.set-value, "
+				   "slider.lock, send_input native=true."),
+		TestRegistry_make<SliderLayout>, true},
+
+	TestInfo{StringView("select"), StringView("XL_SELECT_TEST"), StringView("ui::Select"),
+		StringView("Two drop-downs and a text field. The closed control must show the chosen "
+				   "option's title and icon; opening it must produce a menu SURFACE whose rows are "
+				   "the options, with the current one checked and highlighted. In the open list the "
+				   "arrows must walk the rows and skip the disabled one, Enter must choose and "
+				   "close, Escape must close and change nothing - and while it is open the field "
+				   "beside it must not see a single arrow. Closed, Up/Down step the value in place. "
+				   "The second control is a form field: what is collected is the option's id. Drive "
+				   "it over the inspector: select.state, select.open, select.step, send_input "
+				   "native=true."),
+		TestRegistry_make<SelectLayout>, true},
+
+	TestInfo{StringView("search-picker"), StringView("XL_SEARCH_PICKER_TEST"),
+		StringView("ui::SearchPicker"),
+		StringView("A query line over a virtualized result list, and the same surface behind a control "
+				   "that opens a popup. Typing must narrow the list and order it by score; the "
+				   "highlighted characters must be the ones the matcher named, in UTF-16 units - the row "
+				   "led by two emoji is what tells the two index spaces apart. Up/Down must walk the "
+				   "rows while the caret stays in the query line, Enter must choose and Escape must close "
+				   "without choosing; the field beside the control must not see an arrow while the popup "
+				   "is up. Drive it over the inspector: search-picker.state, search-picker.query, "
+				   "search-picker.select, search-picker.mode, send_input native=true."),
+		TestRegistry_make<SearchPickerLayout>, true},
+
+	TestInfo{StringView("inline-edit"), StringView("XL_INLINE_EDIT_TEST"),
+		StringView("ui::InlineEditor"),
+		StringView("An editor placed OVER a rectangle instead of inside what it edits. Double-clicking "
+				   "the label opens one; the table opens one over a cell. Rebuilding every row of the "
+				   "table underneath an open editor must leave the typed text alone - that is the whole "
+				   "point of the widget - while scrolling must END the edit and KEEP what was typed. "
+				   "Escape must put the original back, a refused commit must leave the editor open, and "
+				   "the field beside them must not see a key while an editor is up. Drive it over the "
+				   "inspector: inline-edit.state, inline-edit.begin, inline-edit.rebuild, "
+				   "inline-edit.scroll, send_input native=true."),
+		TestRegistry_make<InlineEditorLayout>, true},
+
+	TestInfo{StringView("table-reorder"), StringView("XL_TABLE_REORDER_TEST"),
+		StringView("ui::TableView row geometry and reorder"),
+		StringView("A table whose rows are dragged by a grip column and moved by Alt+Up / Alt+Down. "
+				   "The grip is a column the CALLER declared, so the other columns keep their numbers. "
+				   "Dragging and table.reorder must produce the same order; the insertion line must sit "
+				   "on a row boundary and never inside a row; a refused move must change neither the "
+				   "order nor the selection; and after a move the selection must follow the ROW, not the "
+				   "index. Row geometry answers for rows scrolled out of view, which is what the drop "
+				   "index is derived from. Drive it over the inspector: table.state, table.reorder, "
+				   "table.row-rect, table.boundary-at, send_input native=true."),
+		TestRegistry_make<TableViewLayout>, true},
+
+	TestInfo{StringView("vector"), StringView("XL_VECTOR_TEST"), StringView("ui::VectorField"),
+		StringView("Three rows of number fields that are one value each, and a text field after "
+				   "them. What the form collects must be ONE array under one name; Tab must walk "
+				   "the components and leave the row only at its ends, and Shift+Tab entering the "
+				   "row must land on its LAST component. A number typed past the declared range "
+				   "must mark the ROW, name the component in the message and leave the other "
+				   "components alone, while dragging past the end must stop at it. Changing the "
+				   "arity must keep the values that still have an index. Drive it over the "
+				   "inspector: vector.state, vector.set-text, vector.set-arity, send_input "
+				   "native=true."),
+		TestRegistry_make<VectorFieldLayout>, true},
+
+	TestInfo{StringView("color"), StringView("XL_COLOR_TEST"), StringView("ui::ColorField"),
+		StringView("Three colour fields and a text field. Headless has no system colour dialog, so "
+				   "`auto` must open the widget's OWN picker - a real surface with the palette in "
+				   "it - while `system`, asked for explicitly, must fail with a reason instead of "
+				   "opening nothing. The hex line must read whatever sprt::geom::readColor reads, "
+				   "Enter must keep a refusal on screen and blur must put the value's own text "
+				   "back, and the form must collect one hex string. Drive it over the inspector: "
+				   "color.state, color.set-mode, color.open, send_input native=true."),
+		TestRegistry_make<ColorFieldLayout>, true},
+
+	TestInfo{StringView("chip"), StringView("XL_CHIP_TEST"), StringView("ui::Chip / ui::ChipRow"),
+		StringView("Four rows of chips and a text field. A row is ONE form field: the form must "
+				   "collect one ARRAY of ids in left-to-right order, and a Required row that is "
+				   "empty must be refused once. Removing the middle chip must leave the order of "
+				   "the rest alone; at the declared maximum the \"+\" must be dead and open "
+				   "nothing, and with unique ids the options already in the row must come up "
+				   "disabled IN THE MENU. Backspace with nothing selected must SELECT the last "
+				   "chip rather than delete it. The narrow row must wrap, and the height it "
+				   "reports must be the height it draws at. Drive it over the inspector: "
+				   "chip.state, chip.set-width, chip.open, send_input native=true."),
+		TestRegistry_make<ChipRowLayout>, true},
+
+	TestInfo{StringView("clipboard"), StringView("XL_CLIPBOARD_TEST"),
+		StringView("xenolith::ClipboardSession"),
+		StringView("One payload with two representations, and a preference list that decides which "
+				   "comes back. A list matching nothing must still be answered EXACTLY ONCE - "
+				   "wayland answers an unoffered type with silence and the base controller answers "
+				   "twice, which is what the seam exists to hide. A cancelled read must not be "
+				   "answered at all, and neither must one whose field lost focus. What a "
+				   "ui::TextInput copies a ui::TextView must paste, because copy/cut/paste live in "
+				   "the base now; but a masked field must still refuse, and a text view must still "
+				   "not mask. Drive it over the inspector: clipboard.write, clipboard.read, "
+				   "clipboard.state."),
+		TestRegistry_make<ClipboardLayout>, true},
+
+	TestInfo{StringView("text-view"), StringView("XL_TEXT_VIEW_TEST"),
+		StringView("ui::TextView undo history"),
+		StringView("A multi-line view that answers Ctrl+Z and a plain field beside it that does "
+				   "NOT - a field commits into somebody's document, and one that swallowed the "
+				   "chord would undo the typing instead of the edit. A run of keystrokes must be "
+				   "ONE entry until its idle window passes; a paste must be one of its own; undo "
+				   "must put back the caret as well as the characters, and must not record itself. "
+				   "Typing goes through the platform (native=true), because the processor owns "
+				   "printable keys and a typed character reaches the widget only as an echo. Drive "
+				   "it over the inspector: text-view.state, text-view.undo, text-view.redo, "
+				   "text-view.history-break, send_input native=true."),
+		TestRegistry_make<TextViewLayout>, true},
+
 	TestInfo{StringView("scroll-thrash"), StringView("XL_SCROLL_THRASH_TEST"), StringView("Scroll virtualization runaway"),
 		StringView("Rows that never match the size their item declared. The list must still scroll "
 				   "and the run must end with 0 failures instead of stalling on a rebuild loop."),
@@ -280,6 +451,28 @@ static const TestInfo s_renderTests[] = {
 		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
 				   "must show none - behind opaque geometry every level is hidden."),
 		TestRegistry_make<RenderLevelLayout>},
+
+	TestInfo{StringView("scale9"), StringView("XL_SCALE9_TEST"), StringView("Scale9Sprite geometry"),
+		StringView("Three nine-slice sprites over one bundled picture: the whole image, a sub-rect "
+				   "of it, and one with a side left at zero. The corners must keep the four "
+				   "declared sizes at ANY content size while the edges stretch along one axis "
+				   "only; the slice is measured in pixels of the FRAGMENT, so the sub-rect sprite "
+				   "must come out with the same view geometry and different texture coordinates; a "
+				   "zero side emits six quads rather than nine; and a slice that leaves no middle "
+				   "is refused with the numbers and drawn as a plain sprite. Drive it over the "
+				   "inspector: scale9.state, scale9.set-slice, scale9.set-size, "
+				   "scale9.set-fill-center, scale9.set-texture-rect, scale9.set-autofit."),
+		TestRegistry_make<Scale9Layout>, true},
+
+	TestInfo{StringView("canvas"), StringView("XL_CANVAS_TEST"), StringView("Canvas view"),
+		StringView("Three markers at known world positions inside one ui::CanvasView - the widget "
+				   "three editor canvases and an image viewer had each written by hand. The "
+				   "arithmetic is asserted with no window at all; what only a window answers is "
+				   "whether the widget's TRANSFORM agrees with it, so every marker is reported "
+				   "twice - where Viewport::toScreen says it lands, and where the live node "
+				   "actually is. Drive it over the inspector: canvas.state, canvas.set-view, "
+				   "canvas.zoom-at, canvas.wheel, canvas.fit, canvas.set-clipped, canvas.limits."),
+		TestRegistry_make<CanvasViewLayout>, true},
 
 	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "

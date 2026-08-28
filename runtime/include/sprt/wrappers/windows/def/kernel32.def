@@ -241,3 +241,8 @@ EXPORTS
 	GetCurrentDirectoryA
 	SetCurrentDirectoryA
 	SetStdHandle
+	GlobalAlloc
+	GlobalFree
+	GlobalLock
+	GlobalUnlock
+	GlobalSize

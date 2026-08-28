@@ -54,6 +54,10 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
+	// The pointer entering a row is what moves the keyboard highlight onto it, so that a menu shows
+	// one current row rather than a hover on one and a keyboard cursor on another.
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+
 	MenuSourceButton *getItem() const { return _item; }
 
 	// Re-read everything from the model. Cheap enough to run on any change: every setter below it
@@ -88,6 +92,10 @@ protected:
 	basic2d::Label *_subtitle = nullptr;
 	basic2d::Label *_shortcut = nullptr;
 	basic2d::IconSprite *_trailing = nullptr;
+
+	// Edge tracker for the hover above: the component is cumulative and reported on every dirty
+	// pass, so without it a row would re-announce a hover it has been holding all along.
+	bool _hoverApplied = false;
 
 	MenuStyle _style;
 	float _leadingColumn = 0.0f;

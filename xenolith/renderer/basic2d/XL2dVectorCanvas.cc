@@ -35,6 +35,10 @@ struct VectorCanvasPathOutput {
 	uint32_t material = 0;
 	uint32_t objects = 0;
 	const VectorCanvasConfig *config = nullptr;
+
+	// Where this path's own frame sits in image space. The tesselator is handed the path centred
+	// on zero and every vertex it returns is put back here - see `draw`.
+	Vec2 origin;
 };
 
 struct VectorCanvasPathDrawer : VectorCanvasConfig {
@@ -171,9 +175,10 @@ static void VectorCanvasPathDrawer_pushVertex(void *ptr, uint32_t idx, const Vec
 		out->vertexes->data.resize(idx + 1);
 	}
 
-	out->vertexes->data[idx] = Vertex{Vec4(pt, 0.0f, 1.0f),
+	const Vec2 p = pt + out->origin;
+	out->vertexes->data[idx] = Vertex{Vec4(p, 0.0f, 1.0f),
 		Vec4(out->color.r, out->color.g, out->color.b, out->color.a * vertexValue),
-		out->transform.transformPoint(pt), out->material, 0};
+		out->transform.transformPoint(p), out->material, 0};
 }
 
 static void VectorCanvasPathDrawer_pushSdf(void *ptr, uint32_t idx, const Vec2 &pt,
@@ -183,7 +188,7 @@ static void VectorCanvasPathDrawer_pushSdf(void *ptr, uint32_t idx, const Vec2 &
 		out->vertexes->data.resize(idx + 1);
 	}
 
-	out->vertexes->data[idx] = Vertex{Vec4(pt, 0.0f, 1.0f),
+	out->vertexes->data[idx] = Vertex{Vec4(pt + out->origin, 0.0f, 1.0f),
 		Vec4(out->color.r, norm.x, norm.y, vertexValue),
 		Vec2(out->config->sdfBoundaryInset, out->config->sdfBoundaryOffset), out->material, 0};
 }
@@ -509,28 +514,88 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	geom::LineDrawer line(approxScale * quality, Rc<geom::Tesselator>(fillTess),
 			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess), strokeConfig);
 
+	/* ---- the path is handed over centred on itself ---------------------------------------------
+
+	The tesselator normalizes too (SPTess.cc), and so does `LineDrawer` - but both of them have to
+	do it STREAMING, on the first point they are given, because neither has seen the path yet when
+	the first coordinate arrives. This has: the commands are right here. So the frame it can offer
+	is the CENTRE of the path's box rather than a corner of it, and a translation can do no better
+	than that - the largest magnitude any coordinate reaches is halved, and the mantissa spent on
+	position rather than on shape is halved with it.
+
+	Only actual POSITIONS move. An arc keeps its radii in `d[0]` and its flags in `d[2]`, and
+	neither is a place - translating them would deform the arc rather than move it. */
+	Vec2 origin;
+	{
+		Vec2 bmin(maxOf<float>(), maxOf<float>());
+		Vec2 bmax(-maxOf<float>(), -maxOf<float>());
+		bool any = false;
+		auto add = [&](const vg::CommandData &pt) {
+			bmin.x = sprt::min(bmin.x, pt.p.x);
+			bmin.y = sprt::min(bmin.y, pt.p.y);
+			bmax.x = sprt::max(bmax.x, pt.p.x);
+			bmax.y = sprt::max(bmax.y, pt.p.y);
+			any = true;
+		};
+
+		auto d = path->getPoints().data();
+		for (auto &it : path->getCommands()) {
+			switch (it) {
+			case vg::Command::MoveTo:
+			case vg::Command::LineTo:
+				add(d[0]);
+				++d;
+				break;
+			case vg::Command::QuadTo:
+				add(d[0]);
+				add(d[1]);
+				d += 2;
+				break;
+			case vg::Command::CubicTo:
+				add(d[0]);
+				add(d[1]);
+				add(d[2]);
+				d += 3;
+				break;
+			case vg::Command::ArcTo:
+				add(d[1]); // d[0] is the radii and d[2] the flags - not positions
+				d += 3;
+				break;
+			default: break;
+			}
+		}
+
+		if (any) {
+			origin = Vec2((bmin.x + bmax.x) * 0.5f, (bmin.y + bmax.y) * 0.5f);
+		}
+	}
+
+	const float ox = origin.x, oy = origin.y;
+
 	auto d = path->getPoints().data();
 
 	for (auto &it : path->getCommands()) {
 		switch (it) {
 		case vg::Command::MoveTo:
-			line.drawBegin(d[0].p.x, d[0].p.y);
+			line.drawBegin(d[0].p.x - ox, d[0].p.y - oy);
 			++d;
 			break;
 		case vg::Command::LineTo:
-			line.drawLine(d[0].p.x, d[0].p.y);
+			line.drawLine(d[0].p.x - ox, d[0].p.y - oy);
 			++d;
 			break;
 		case vg::Command::QuadTo:
-			line.drawQuadBezier(d[0].p.x, d[0].p.y, d[1].p.x, d[1].p.y);
+			line.drawQuadBezier(d[0].p.x - ox, d[0].p.y - oy, d[1].p.x - ox, d[1].p.y - oy);
 			d += 2;
 			break;
 		case vg::Command::CubicTo:
-			line.drawCubicBezier(d[0].p.x, d[0].p.y, d[1].p.x, d[1].p.y, d[2].p.x, d[2].p.y);
+			line.drawCubicBezier(d[0].p.x - ox, d[0].p.y - oy, d[1].p.x - ox, d[1].p.y - oy,
+					d[2].p.x - ox, d[2].p.y - oy);
 			d += 3;
 			break;
 		case vg::Command::ArcTo:
-			line.drawArc(d[0].p.x, d[0].p.y, d[2].f.v, d[2].f.a, d[2].f.b, d[1].p.x, d[1].p.y);
+			line.drawArc(d[0].p.x, d[0].p.y, d[2].f.v, d[2].f.a, d[2].f.b, d[1].p.x - ox,
+					d[1].p.y - oy);
 			d += 3;
 			break;
 		case vg::Command::ClosePath: line.drawClose(true); break;
@@ -540,6 +605,7 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	line.drawClose(false);
 
 	VectorCanvasPathOutput target{transform, targetSize, Color4F::WHITE, out};
+	target.origin = origin;
 	target.transform.scale(1.0f / targetSize.width, 1.0f / targetSize.height, 1.0f);
 
 	target.transform =
@@ -639,6 +705,30 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 		if (verbose) {
 			log::source().error("VectorCanvasPathDrawer", "Failed path:\n", path->toString(true));
 		}
+		// A failed path draws NOTHING - refusing is the policy, but that makes a failure invisible
+		// except as a log line, and the log line does not say WHICH path. Point XL_TESS_DUMP at a
+		// directory and the first few come out as files, ready to be replayed headless through
+		// `vg-tess-frame`. That is how the wire in that section was caught.
+		/*if (auto dir = ::getenv("XL_TESS_DUMP")) {
+			static sprt::atomic<uint32_t> s_dumpIndex(0);
+			auto idx = s_dumpIndex.fetch_add(1);
+			if (idx < 8) {
+				auto name = mem_std::toString(dir, "/tess-fail-", idx, ".txt");
+				if (auto f = ::fopen(name.data(), "w")) {
+					auto header = mem_std::toString("# style=", uint32_t(toInt(style)),
+							" winding=", uint32_t(toInt(path->getWindingRule())), " approxScale=",
+							approxScale, " inset=", boundaryInset / approxScale, " offset=",
+							boundaryOffset / approxScale, " antialiased=",
+							path->isAntialiased() ? 1 : 0, " commands=",
+							path->getCommands().size(), " points=", path->getPoints().size(), "\n");
+					::fwrite(header.data(), 1, header.size(), f);
+					auto body = path->toString(true);
+					::fwrite(body.data(), 1, body.size(), f);
+					::fclose(f);
+					log::source().error("VectorCanvasPathDrawer", "Failed path dumped to ", name);
+				}
+			}
+		}*/
 	}
 
 	return target.objects;

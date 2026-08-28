@@ -335,10 +335,6 @@ public:
 
 	virtual void focus() override;
 	virtual void selectAll() override;
-	virtual bool copy() override;
-	virtual bool cut() override;
-	virtual bool paste() override;
-	virtual bool handleTextDrop(const DragEvent &) override;
 
 	// Global document indices, here and in every cursor-taking call of this class.
 	virtual void setCursor(TextCursor) override;
@@ -370,6 +366,16 @@ public:
 	TextViewContainer *getView() const;
 	const TextDocument &getDocument() const { return _doc; }
 
+	// -- TextHistoryTarget, over the document rather than over the IME's window --
+	//
+	// applyHistoryEdit routes through insertGlobal, which is this widget's ONE insertion path:
+	// an undo therefore pushes a fresh window, moves the caret and fires the change callback
+	// exactly as a typed character does, and nothing downstream can tell the two apart.
+
+	virtual WideStringView sliceForHistory(uint32_t pos, uint32_t len) const override;
+	virtual void applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView) override;
+	virtual void setHistoryCursor(TextCursor) override;
+
 	// Every field the inspector reports, in one place so the console can nest its output
 	// pane's state inside its own answer.
 	virtual Value encodeState() const;
@@ -393,6 +399,21 @@ protected:
 	virtual void handleTextInput(const TextInputState &) override;
 	virtual void acquireInput(TextCursor) override;
 	virtual void insertText(WideStringView text, TextCursor replaceGlobal) override;
+
+	/* The clipboard hooks. copy/cut/paste/handleTextDrop themselves live ONCE, in the base; what a
+	document changes about them is the cursor they read and where the text comes from - and
+	insertText above already routes an insert into insertGlobal, so nothing else differs.
+
+	Both cursor hooks answer with the GLOBAL cursor: this class deliberately leaves every
+	non-virtual window-based cursor helper of the base unused, pendingCursor() included. */
+	virtual TextCursor selectionCursor() const override { return _gCursor; }
+	virtual TextCursor insertionCursor() const override { return _gCursor; }
+	virtual WideStringView getTextForCursor(TextCursor) const override;
+
+	// This class never masks - its display path is the block model - so a selection may always
+	// leave it. Stated as an override rather than inherited by accident: the base refuses to copy
+	// out of a password field, and a reader has to be able to see that the difference is meant.
+	virtual bool canCopySelection() const override { return true; }
 
 	// The base pours the window into its (empty, service) label here; the document model
 	// renders instead, so this must do nothing.

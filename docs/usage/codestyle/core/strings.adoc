@@ -16,7 +16,9 @@
   `const Callback<void(StringView)> &` (a.k.a. `CallbackStream`) instead of
   returning `String`. It supports `<<` through `sprt::io_traits<T>`; specialize
   that for your own type and `<<`, `toString` and `slog()` all learn it at once.
-  A `Callback` does not own its functor — parameter only, never a member.
+  A `Callback` does not own its functor — parameter only, never a member, and
+  never built from a temporary lambda that is then stored
+  ([memory-and-ownership.adoc](memory-and-ownership.adoc#trap-a-callback-does-not-own-its-functor)).
 * Parse with the reader API (`readUntil<>`, `readChars<>`, `skipChars<>`,
   `Result<int64_t> readInteger()`), not by hand-indexing.
 
@@ -137,8 +139,14 @@ result really is a value the caller keeps.
 view: it stores a `const void *` to the functor plus a thunk
 ([callback.h](../../../../runtime/include/sprt/runtime/callback.h)), and it is
 neither copyable nor movable. So it is a *parameter* type, always taken as
-`const Callback<…> &`. Never store one in a member or return it: binding it to a
-temporary lambda and keeping it outlives the lambda.
+`const Callback<…> &`.
+
+**Never store one in a member or return it.** Built from a temporary lambda and
+kept, it outlives the lambda — silently, with no diagnostic in any compiler. The
+rule, both correct forms and what the failure looks like are in
+[memory-and-ownership.adoc](memory-and-ownership.adoc#trap-a-callback-does-not-own-its-functor),
+because it is a lifetime rule and it governs every `Callback`, not only the ones
+that carry text.
 
 ### `operator<<` and `io_traits`
 

@@ -173,12 +173,25 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 		return;
 	}
 
+#if XL_FRAME_ACCOUNT
+	auto mark = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 	if (ctx.collectDamage) {
 		for (auto &iv : cmd->vertexes) { ctx.damage->addInstances(c, cmd, iv); }
 	}
 
+#if XL_FRAME_ACCOUNT
+	{
+		auto now = sp::platform::nanoclock(ClockType::Monotonic);
+		damageTime += now - mark;
+		mark = now;
+	}
+#endif
+
 	// Before the isSolid() test on purpose: the overlay takes the command whatever its pipeline is.
-	// A solid pipeline is safe there because the overlay draws in a depth band of its own.
+	// A solid pipeline is safe there because the overlay draws at the near plane, ahead of every
+	// content path - see updatePathsDepth.
 	if (cmd->renderingLevel == RenderingLevel::Overlay) {
 		emplaceWritePlan(ctx.input, material, acquireOverlayPlan(cmd->zPath), c, cmd,
 				cmd->vertexes);
@@ -194,6 +207,10 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, cmd->vertexes);
 	}
+
+#if XL_FRAME_ACCOUNT
+	planTime += sp::platform::nanoclock(ClockType::Monotonic) - mark;
+#endif
 };
 
 void VertexPlan::applyNormalized(SpanView<InstanceVertexData> &vertexes, const CmdDeferred *cmd) {
@@ -251,12 +268,36 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 
 	SpanView<InstanceVertexData> storedVertexes;
 
+#if XL_FRAME_ACCOUNT
+	/* THE WAIT, which is a different quantity from the work and must never be added to it.
+
+	`acquireResult` blocks on the task's timeline when the task has not finished. This is measured
+	on the thread that STANDS STILL, so it is a part of this frame's own length - whereas the work
+	it is waiting for was done elsewhere and may have cost more than the whole frame.
+
+	`isReady` is asked FIRST and separately: a result that was already finished costs no wait at
+	all, and "how many did we actually stand on" is the number that says whether deferring bought
+	anything. Without it a frame that waited once for 10ms and a frame that waited ten times for
+	1ms report the same total. */
+	const bool wasReady = cmd->deferred->isReady();
+	const auto waitStart = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 	cmd->deferred->acquireResult(
 			[&](SpanView<InstanceVertexData> vertexes, DeferredVertexResult::Flags flags) {
 		auto v = vertexes.pdup();
 		applyNormalized(v, cmd);
 		storedVertexes = v;
 	});
+
+#if XL_FRAME_ACCOUNT
+	deferredWaitTime += sp::platform::nanoclock(ClockType::Monotonic) - waitStart;
+	deferredWorkTime += cmd->deferred->takeWorkTime();
+	++deferredCount;
+	if (!wasReady) {
+		++deferredWaited;
+	}
+#endif
 
 	// the result is resolved by now, so a deferred command is bounded exactly like an immediate one
 	if (ctx.collectDamage) {
@@ -938,11 +979,24 @@ void VertexPlan::drawWritePlanFlat(Context &ctx, WriteTarget &writeTarget, bool 
 }
 
 void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
+#if XL_FRAME_ACCOUNT
+	const auto writeStart = sp::platform::nanoclock(ClockType::Monotonic);
+#endif
+
 	pushInitial(writeTarget);
 	pushPlanVertexes(writeTarget, solidWritePlan);
 	pushPlanVertexes(writeTarget, surfaceWritePlan);
 	for (auto &it : transparentWritePlan) { pushPlanVertexes(writeTarget, it.second); }
 	for (auto &it : overlayWritePlan) { pushPlanVertexes(writeTarget, it.second); }
+
+#if XL_FRAME_ACCOUNT
+	const auto spanStart = sp::platform::nanoclock(ClockType::Monotonic);
+	writeTime += spanStart - writeStart;
+	// Closed on every exit below, including the early one.
+	const auto closeSpans = [&] {
+		spanTime += sp::platform::nanoclock(ClockType::Monotonic) - spanStart;
+	};
+#endif
 
 	if (flatOrder) {
 		drawWritePlanFlat(ctx, writeTarget, false);
@@ -952,6 +1006,9 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 
 		drawWritePlanFlat(ctx, writeTarget, true);
 		ctx.overlayCmds = uint32_t(ctx.overlaySpans.size());
+#if XL_FRAME_ACCOUNT
+		closeSpans();
+#endif
 		return;
 	}
 
@@ -977,5 +1034,8 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	}
 
 	ctx.overlayCmds = uint32_t(ctx.overlaySpans.size());
+#if XL_FRAME_ACCOUNT
+	closeSpans();
+#endif
 }
 } // namespace stappler::xenolith::basic2d

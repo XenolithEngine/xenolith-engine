@@ -233,9 +233,8 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 	}
 
 	if (!data.data.empty() || data.memCallback || data.stdCallback) {
-		auto blockSize = core::getFormatBlockSize(info.format);
-		uint64_t expected = uint64_t(info.extent.width) * info.extent.height * info.extent.depth
-				* blockSize;
+		// Blocks, not pixels - see core::getFormatImageSize.
+		uint64_t expected = core::getFormatImageSize(info.format, info.extent);
 
 		Vector<uint8_t> tmp;
 		tmp.resize(expected, 0);
@@ -247,10 +246,11 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 		dst.origin = WGPUOrigin3D{0, 0, 0};
 		dst.aspect = WGPUTextureAspect_All;
 
+		// Rows OF BLOCKS, both of them - see core::getFormatRowSize.
 		WGPUTexelCopyBufferLayout layout;
 		layout.offset = 0;
-		layout.bytesPerRow = info.extent.width * blockSize;
-		layout.rowsPerImage = info.extent.height;
+		layout.bytesPerRow = uint32_t(core::getFormatRowSize(info.format, info.extent.width));
+		layout.rowsPerImage = core::getFormatRowCount(info.format, info.extent.height);
 
 		WGPUExtent3D writeSize{info.extent.width, info.extent.height,
 			sprt::max(info.extent.depth, info.arrayLayers.get())};

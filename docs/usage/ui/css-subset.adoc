@@ -51,7 +51,11 @@ CSS text ──parse──> document::StyleContainer      (stappler_document)
                   ui::ResolvedStyle               (merged parameters, lazily read)
                           │
               ui::StyleResolver::apply()
-                    ├─ per-type appliers          (button, panel, checkbox, badge)
+                    ├─ per-type appliers          (button, panel, checkbox, badge,
+                    │                             select, vector-field, color-field,
+                    │                             text-input, number-field,
+                    │                             inline-editor,
+                    │                             table-insertion-line)
                     ├─ applyDefault()             (opacity, colors, visibility, size)
                     └─ applyLayout()              (Flex/GridLayoutInfo + per-item info)
                           ▼
@@ -79,6 +83,32 @@ order breaking ties. [`XL_COMBINATOR_TEST`, `XL_SPECIFICITY_TEST`]
 Interactive pseudo-classes that really work: `:hover`, `:focus`, `:active`,
 `:checked`, `:enabled`, `:disabled` — driven by `ui::InteractiveComponent`, so
 they need an input listener on the node. [`XL_HOVER_TEST`]
+
+A node carrying **no** `InteractiveComponent` reads as state zero, and
+`:disabled` is implemented as "not `:enabled`" — so a widget that never wrote the
+component used to match `:disabled` while it was perfectly usable. Every `ui::`
+control now writes it from its `init()`, through the one function that owns the
+bit (`ui::applyControlEnabled`), so both halves mean what they say from the first
+frame.
+
+### The state classes, and why they are classes
+
+The subset has no `:invalid`, no `:read-only` and no attribute selectors, so the
+states a control can be in that CSS cannot name are plain classes. They are
+independent and a control may wear several at once:
+
+[cols="1,4"]
+|===
+| `invalid`   | *what is written here is wrong.* The remedy is to fix the value. Written by `ui::FormSystem` on a rejected field and by the widgets that judge their own text.
+| `disabled`  | *this control is off.* The mechanical fact, and it tracks `:disabled` exactly — one is the class, the other the pseudo-class.
+| `locked`    | *you may not write here at all,* and there is a reason: a wire supplies the value, the field is undeclared. A locked control is also `disabled`; `locked` is the narrower second word saying WHY, and `ui::getEditLockReason` carries the sentence.
+| `read-only` | *readable, selectable, copyable — but not editable.* A third axis: a read-only field still takes taps and selections, which a disabled one does not.
+| `unavailable` | *an action this control offers cannot be performed here, and here is why.* Written by `ui::ColorField` when the platform has no colour dialog, or when one ran and failed. It says nothing about the value: the field is still editable by hand, only one route into it is missing — which is exactly why it is not `invalid`. Read the sentence with `getUnavailableMessage()`.
+|===
+
+`locked` and `invalid` together are meaningful — a wire supplied a value that
+does not validate — so write `number-field.locked`, `number-field.invalid` and
+`number-field.locked.invalid` and let specificity order them.
 
 Structural pseudo-classes also work: `:nth-child(An+B | odd | even)`,
 `:nth-last-child()`, `:first-child`, `:last-child`, `:only-child`, the four
@@ -257,14 +287,34 @@ the element `width: 100%` and put the fixed part in `padding`/`margin` instead.
 `background-color` and `opacity` are applied to **any** node by the default
 mapping. `border-radius` and `outline-*` are not: they are handled by the
 **per-type appliers** the `ui::` widgets register for their own node type
-(`button`, `panel`, `checkbox`, `badge` — see `StyleResolver::registerTypeApplier`
+(`button`, `panel`, `checkbox`, `badge`, `select`, `vector-field`, `color-field`,
+`color-picker`, and — through
+the text-input applier set — `text-input`, `number-field` and `inline-editor`
+(the field `ui::InlineEditor` opens over a rectangle). `ui::TableView` adds two
+more of its own: `table-insertion-line`, the 2px bar that shows where a dragged
+row would land, and the class `xl-ui-table-drag-handle` on the cell of the
+column a caller declared under `TableView::ReorderColumnKey`; see
+`StyleResolver::registerTypeApplier`
 and the atoms under
 [xenolith/renderer/ui/atoms](../../../xenolith/renderer/ui/atoms)). A plain
 `basic2d::Layer` draws a rectangle and has nowhere to put a radius, so the rule
 is simply dropped.
 
+A widget's inner parts are addressed by a **type** of their own, hyphenated from
+the owner: `select > select-arrow`, `vector-field > component-label`,
+`color-field > swatch`. One of them is shared on purpose — `field-unit`, the unit
+of measure beside a number (`px`, `s`, `hp`), is the same type on
+`ui::NumberField` and on `ui::VectorField`, so a single rule styles the unit
+wherever it appears and a sheet that needs to tell them apart says
+`number-field > field-unit`. Note that "unit" here is a *word shown beside a
+number* and has nothing to do with the CSS length units below: nothing converts,
+scales or validates against it.
+
+    number-field > field-unit { color: #8a8a8a; font-size: 12px; }
+
 So `border-radius` on a `Layer` does nothing; on a `ui::Panel` (or a `Badge`,
-`Checkbox`, `Button`) it works. Use `ui::Panel` for a rounded surface, or
+`Checkbox`, `Button`, `Select`, `VectorField`, `ColorField`, `Chip`, `ChipRow`,
+`TextInput`, `NumberField`) it works. Use `ui::Panel` for a rounded surface, or
 register an applier for your own node type. [`XL_PANEL_TEST`, `XL_BUTTON_TEST`]
 
 Note also that those widget headers must be included directly by the application
@@ -362,6 +412,31 @@ items in 600px, one with `min-width: 260px` and one with `max-width: 120px`,
 settle at 260 / 120 / **220**. On the cross axis the properties do nothing —
 `FlexItemInfo` has no field for them; size that axis with `align-self` and an
 explicit `height`. [`XL_CSS_FLOW_TEST`]
+
+### An item's terms live on the child and are read by the parent
+
+`FlexItemInfo`, `GridItemInfo`, `TableRowInfo` and `TableCellInfo` are written
+onto the node they describe, but the only code that acts on one is the
+`LayoutSystem` of that node's **parent**. So marking the child's components dirty
+reaches nobody who can do anything about it: the child has no `LayoutSystem` of
+its own to hear it, and the container is never told that the terms it lays this
+child out on have moved.
+
+Anything that writes one therefore calls
+`ui::LayoutSystem::markItemDirty(child)` afterwards — the four `setItem` /
+`setGridItem` / `setTableRow` / `setTableCell` helpers and the style resolver do
+it for you, guarded on an actual change. Only hand-written component writes need
+it, and the guard is not an optimization: a pass that writes the same values every
+frame and marks the container every frame is a container that re-lays-out forever.
+
+This matters most for a node **added to a container that has already been laid
+out** — a tab opened into a panel, a row appended to a list. Its style is resolved
+after that container's layout pass has come and gone for it, so without the mark a
+`flex-grow` from the sheet does nothing at all and the child sits at its own
+content size, which for a container whose children are sized *from* it is zero.
+A definite `width`/`height` hides the symptom, because writing a `ContentSize`
+dirties the parent through another path entirely — which makes this a good deal
+harder to recognize than it looks. [`XL_CSS_FLOW_TEST`, phase 3]
 
 ### margin: auto
 

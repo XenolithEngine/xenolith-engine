@@ -25,6 +25,7 @@
 
 #include "XLUiMenuSource.h"
 #include "XLSystem.h"
+#include "XLFocusGroup.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -134,6 +135,43 @@ public:
 
 	virtual void setSubmenuHandler(SubmenuHandler &&);
 
+	// --- the keyboard ---------------------------------------------------------------------------
+
+	/* Turn this menu into the keyboard's owner: a FocusGroup and a key listener on the owner node.
+
+	IT IS A MODE, NOT A CONSTANT, and it is OFF by default. The group is Exclusive - while it is
+	there, keys in this window go to this menu and to nothing else (see
+	InputDispatcher::EventHandlersInfo::addListenersFromStorage, which re-collects the listeners
+	scoped to the winning exclusive group). That is right for a menu that IS a surface and wrong for
+	an inline list of commands sitting in somebody else's panel, which would otherwise hold the
+	window's arrows for as long as it exists. So openMenu turns it on for the menu it builds, and an
+	inline menu is turned on by the application when the user starts driving it.
+
+	Being exclusive, an open menu also SWALLOWS the keys it does not use - Ctrl+S with a menu up must
+	not save the document. Flags::Propagate is set so a MenuSourceCustom row carrying a focus group
+	of its own (a search field in a menu) still gets its keys. */
+	virtual void setKeyboardEnabled(bool);
+	bool isKeyboardEnabled() const { return _keyboardEnabled; }
+
+	// The group, or null while the keyboard is off.
+	FocusGroup *getFocusGroup() const { return _focus; }
+
+	/* The row the keyboard is on, marked with the `highlighted` style class.
+
+	There is ONE notion of "the current row": the pointer entering a row moves the highlight to it,
+	so a menu never shows a keyboard cursor on one row and a hover on another. */
+	virtual void setHighlighted(MenuSourceItem *);
+	MenuSourceItem *getHighlighted() const { return _highlighted; }
+
+	// Step the highlight by `delta` rows, skipping separators, custom rows and disabled items, and
+	// wrapping at the ends. With nothing highlighted, a positive delta starts at the top.
+	virtual bool moveHighlight(int32_t delta);
+
+	// First / last row that can be highlighted at all.
+	virtual bool highlightEdge(bool last);
+
+	virtual bool activateHighlighted();
+
 	// The node built for an item, or null when the item is hidden or the menu has not been built.
 	Node *getNodeForItem(NotNull<MenuSourceItem>) const;
 
@@ -147,11 +185,31 @@ public:
 	// callback.
 	virtual void handleItemActivated(NotNull<MenuSourceItem>);
 
+	// Called by a row when the pointer entered it. See setHighlighted.
+	virtual void handleItemHovered(NotNull<MenuSourceItem>);
+
 protected:
 	struct Row {
 		Rc<MenuSourceItem> item;
 		Rc<Node> node;
 	};
+
+	// The group goes on BEFORE the listener: a listener takes the nearest group off the frame
+	// stack as it registers, and one added first would come up with none.
+	void enableKeyboard();
+	void disableKeyboard();
+
+	bool handleKey(const GestureData &);
+
+	// A row the keyboard may stand on: a visible, enabled command. A separator has nothing to
+	// activate and a custom row is somebody else's node.
+	bool isSelectable(const Row &) const;
+
+	// -1 when nothing is highlighted or the highlighted item is no longer a row.
+	int32_t indexOfHighlighted() const;
+
+	// The only writer of the `highlighted` style class.
+	void updateHighlightClasses();
 
 	// Bring _rows in line with the model, reusing the node of every item that is still there. Node
 	// reuse is keyed on item IDENTITY, not on the name: a name may be empty (separators) or shared,
@@ -178,6 +236,13 @@ protected:
 	// Guards against our own commits: setContentSize on a row would otherwise come back as a child
 	// content-size event and re-arm the pass we are inside.
 	bool _inApply = false;
+
+	// Both owned by the owner node, like every other system it carries; raw here for the same
+	// reason _system is raw in MenuItem.
+	FocusGroup *_focus = nullptr;
+	InputListener *_keyListener = nullptr;
+	Rc<MenuSourceItem> _highlighted;
+	bool _keyboardEnabled = false;
 };
 
 } // namespace stappler::xenolith::ui

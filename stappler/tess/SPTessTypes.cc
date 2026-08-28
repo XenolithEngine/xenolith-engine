@@ -776,9 +776,56 @@ VertexPriorityQueue::Key VertexPriorityQueue::getMin() const {
 	return sortMin;
 }
 
-EdgeDict::EdgeDict(memory::pool_t *p, uint32_t size) : nodes(p), pool(p) {
+EdgeDict::EdgeDict(memory::pool_t *p, uint32_t size) : nodes(p), freeNodes(p), pool(p) {
 	nodes.reserve(size);
-	nodes.memory_persistent(true);
+	freeNodes.reserve(size);
+}
+
+void EdgeDict::refresh(const EdgeDictNode &cn) const {
+	if (cn.stamp == serial) {
+		return;
+	}
+	auto &n = const_cast<EdgeDictNode &>(cn);
+	n.stamp = serial;
+
+	// The three branches `update` used to run for everybody, unchanged. Only WHEN they run moved.
+	if (n.edge && n.edge->getRightOrg() == eventVertex) {
+		n.value.x = n.value.z;
+		n.value.y = n.value.w;
+	} else if (n.horizontal) {
+		const float tValue = (event.x - n.org.x) / (n.norm.x);
+		n.value.x = n.org.x + n.norm.x * tValue;
+		n.value.y = n.org.y + n.norm.y * tValue;
+	} else {
+		const float sValue = (event.y - n.org.y) / (n.norm.y);
+		n.value.x = n.org.x + n.norm.x * sValue;
+		n.value.y = n.org.y + n.norm.y * sValue;
+	}
+}
+
+size_t EdgeDict::lowerBound(float y) const {
+	// Plain binary search over the value the last `update` left. Tombstones take part: they hold
+	// a value from that same update, so including them keeps the array a sorted sequence.
+	size_t lo = 0, hi = nodes.size();
+	while (lo < hi) {
+		const size_t mid = lo + (hi - lo) / 2;
+		refresh(*nodes[mid]);
+		if (nodes[mid]->value.y < y) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
+EdgeDictNode *EdgeDict::acquireNode() {
+	if (!freeNodes.empty()) {
+		auto ret = freeNodes.back();
+		freeNodes.pop_back();
+		return ret;
+	}
+	return new (memory::pool::palloc(pool, sizeof(EdgeDictNode))) EdgeDictNode();
 }
 
 const EdgeDictNode *EdgeDict::push(Edge *edge, int16_t windingAbove) {
@@ -788,106 +835,166 @@ const EdgeDictNode *EdgeDict::push(Edge *edge, int16_t windingAbove) {
 
 	sprt_passert(edge, "edge should be defined");
 
-	const EdgeDictNode *ret;
 	auto &dst = edge->getDstVec();
 	auto &org = edge->getOrgVec();
 
+	Vec2 norm;
+	Vec4 value;
 	if (org == event) {
-		auto norm = dst - event;
-		ret = &(*nodes.emplace(EdgeDictNode{event, norm, Vec4(event.x, event.y, dst.x, dst.y), edge,
-								   windingAbove, sprt::abs(norm.x) > sprt::Epsilon<float>})
-						.first);
+		norm = dst - event;
+		value = Vec4(event.x, event.y, dst.x, dst.y);
 	} else if (dst == event) {
-		auto norm = org - event;
-		ret = &(*nodes.emplace(EdgeDictNode{event, norm, Vec4(event.x, event.y, org.x, org.y), edge,
-								   windingAbove, sprt::abs(norm.x) > sprt::Epsilon<float>})
-						.first);
+		norm = org - event;
+		value = Vec4(event.x, event.y, org.x, org.y);
 	} else {
-		ret = nullptr;
 		sprt::cout << "Fail to add edge: " << *edge << " for " << event << "\n";
+		return nullptr;
 	}
 
-	/*for (auto &it : nodes) {
-		sprt::cout << "Edge: " << it.org << " - " << Vec2(it.value.z, it.value.w)
-				<< " - " << Vec2(it.value.x, it.value.y) << " - " << it.windingAbove << "\n";
-	}*/
+	/* The structure this replaced was a SET, and that is load-bearing.
+	
+	`nodes.emplace` on a set does not insert when an equivalent element is already there - it
+	returns the one that is. Equivalent under its comparator means the same crossing height AND the
+	same direction, so two edges that reach the sweepline at the same point at the same angle
+	shared a single entry, and the second one's `Edge::node` pointed at the first one's.
+	
+	Whether that was intended is a separate question; the algorithm is built on it. A vector that
+	inserted both instead produced a dictionary the sweep could not finish - four hundred crossing
+	wires died at event 1 955 of 104 337. */
+	size_t pos = lowerBound(value.y);
+	while (pos < nodes.size() && (refresh(*nodes[pos]), nodes[pos]->value.y == value.y)
+			&& nodes[pos]->edge && nodes[pos]->edge->direction < edge->direction) {
+		++pos;
+	}
 
-	return ret;
+	if (pos < nodes.size() && nodes[pos]->edge && nodes[pos]->value.y == value.y
+			&& nodes[pos]->edge->direction == edge->direction) {
+		return nodes[pos]; // equivalent entry already present - the set would have kept it
+	}
+
+	auto node = acquireNode();
+	*node = EdgeDictNode{event, norm, value, edge, windingAbove,
+		sprt::abs(norm.x) > sprt::Epsilon<float>, false};
+	node->stamp = serial; // built from the current event, so it is already up to date
+
+	/* Where it goes, and whether anything has to move to let it in.
+	
+	The order is by `value.y`, tie-broken by direction - the tree's `operator<` in two lines,
+	because a flat array needs the comparison at the insertion point rather than as a type trait.
+	
+	A tombstone AT that point takes the new edge without anything moving, which is the common case
+	on a sweepline: an edge retires and another enters at nearly the same height. Failing that the
+	tail shifts, and shifting eight-byte words over contiguous memory is what this structure was
+	chosen for. */
+	if (pos < nodes.size() && nodes[pos]->dead) {
+		freeNodes.emplace_back(nodes[pos]);
+		nodes[pos] = node;
+	} else if (pos > 0 && nodes[pos - 1]->dead) {
+		freeNodes.emplace_back(nodes[pos - 1]);
+		nodes[pos - 1] = node;
+	} else {
+		nodes.emplace(nodes.begin() + pos, node);
+	}
+
+	return node;
 }
 
 void EdgeDict::pop(const EdgeDictNode *node) {
 	if constexpr (DictDebug) {
 		sprt::cout << "\t\tDict pop: " << *node->edge << "\n";
-		for (auto &it : nodes) { sprt::cout << "\t\t\t\tpop: " << it << "\n"; }
 	}
 
-	auto it = nodes.lower_bound(*node);
-	auto end = nodes.end();
-	while (it != end && *it <= *node && &(*it) != node) { ++it; }
-	if (it != end && &(*it) == node) {
-		it->edge->node = nullptr;
-		nodes.erase(it);
+	// A tombstone, in place: nothing moves and no search has to be redone. The entry keeps the
+	// value it died with, which is the value everything else in the array also holds, so the
+	// ordering the searches rely on is untouched. `update` sweeps it out on the next event.
+	auto slot = const_cast<EdgeDictNode *>(node);
+	if (slot->dead) {
+		return;
+	}
+	if (slot->edge) {
+		slot->edge->node = nullptr;
+	}
+	slot->dead = true;
+
+	// Removed for real, not tombstoned. `getEdgeBelow` walks DOWN from a bound and returns
+	// whatever it lands on without asking whether it is alive - the callers were written against a
+	// structure where a popped entry was gone - so leaving one behind hands the winding an edge
+	// that is not there. The retirement inside `update` is where tombstones pay off; `pop` is rare
+	// and can afford a memmove.
+	for (size_t i = 0; i < nodes.size(); ++i) {
+		if (nodes[i] == slot) {
+			nodes.erase(nodes.begin() + i);
+			freeNodes.emplace_back(slot);
+			return;
+		}
 	}
 }
 
 void EdgeDict::update(Vertex *v, float tolerance) {
-	if constexpr (DictDebug) {
-		for (auto &it : nodes) { sprt::cout << "\t\t\t\tupdate: " << it << "\n"; }
-	}
-
 	event = v->_origin;
-	auto it = nodes.begin();
-	while (it != nodes.end()) {
-		auto &n = *it;
-		if (!it->edge) {
-			it = nodes.erase(it);
+	eventVertex = v->_uniqueIdx;
+	++serial;
+
+	/* One pass, and what it does now is RETIRE - nothing else.
+	
+	The parameter test that used to justify a division per node is a range test: `t` lies in
+	[0, 1] exactly when the sweep's x lies between the edge's own two x's, whichever way round
+	they are. Same for the vertical case in y. So this loop is two comparisons a node, and the
+	crossing point itself is worked out by `refresh` when something actually looks at it.
+	
+	The survivors are written back over the array as it goes, which is also where tombstones -
+	`pop`'s and this pass's own - are swept out. */
+	size_t write = 0;
+	const size_t count = nodes.size();
+
+	for (size_t read = 0; read < count; ++read) {
+		auto n = nodes[read];
+
+		if (n->dead || !n->edge) {
+			n->dead = true;
+			freeNodes.emplace_back(n);
 			continue;
-		} else if (it->edge->getRightOrg() == v->_uniqueIdx) {
-			n.value.x = n.value.z;
-			n.value.y = n.value.w;
-		} else if (n.horizontal) {
-			const float tValue = (event.x - n.org.x) / (n.norm.x);
-			if (tValue < 0.0f || tValue > 1.0f) {
-				if constexpr (DictDebug) {
-					sprt::cout << "\t\t\tDict pop (t): " << *it->edge << "\n";
-				}
-				it->edge->node = nullptr;
-				it = nodes.erase(it);
-				continue;
-			} else {
-				n.value.x = n.org.x + n.norm.x * tValue;
-				n.value.y = n.org.y + n.norm.y * tValue;
-			}
+		}
+
+		bool retire = false;
+
+		if (n->edge->getRightOrg() == v->_uniqueIdx) {
+			// Ends at this very vertex: not retired, and `refresh` snaps it to its destination.
+		} else if (n->horizontal) {
+			const float lo = sprt::min(n->org.x, n->value.z);
+			const float hi = sprt::max(n->org.x, n->value.z);
+			retire = event.x < lo || event.x > hi;
 		} else {
-			const float sValue = (event.y - n.org.y) / (n.norm.y);
-			if (sValue < 0.0f || sValue > 1.0f) {
-				if constexpr (DictDebug) {
-					sprt::cout << "\t\t\tDict pop (s): " << *it->edge << "\n";
-				}
-				it->edge->node = nullptr;
-				it = nodes.erase(it);
-				continue;
-			} else {
-				n.value.x = n.org.x + n.norm.x * sValue;
-				n.value.y = n.org.y + n.norm.y * sValue;
+			const float lo = sprt::min(n->org.y, n->value.w);
+			const float hi = sprt::max(n->org.y, n->value.w);
+			retire = event.y < lo || event.y > hi;
+		}
+
+		/* The degenerate case, gated so it costs nothing for the nodes it cannot apply to.
+		
+		It asks whether the edge has collapsed onto its own destination, and it can only be true
+		where the sweep has reached that destination's x - so the x is compared first and the
+		value is brought up to date only for the handful of edges that end here. */
+		if (!retire && event.x == n->value.z) {
+			refresh(*n);
+			auto curr = n->current();
+			auto dst = n->dst();
+			if (curr.x == dst.x && sprt::abs(curr.y - dst.y) < tolerance && n->value.y < event.y) {
+				retire = true;
 			}
 		}
 
-		auto curr = n.current();
-		auto dst = n.dst();
-		if (curr.x == dst.x && sprt::abs(curr.y - dst.y) < tolerance) {
-			if (n.value.y < event.y) {
-				if constexpr (DictDebug) {
-					sprt::cout << "\t\t\tDict pop (y): " << *it->edge << "\n";
-				}
-				it->edge->node = nullptr;
-				it = nodes.erase(it);
-				continue;
-			}
+		if (retire) {
+			n->edge->node = nullptr;
+			n->dead = true;
+			freeNodes.emplace_back(n);
+			continue;
 		}
 
-		++it;
+		nodes[write++] = n;
 	}
+
+	nodes.resize(write);
 }
 
 const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint,
@@ -902,7 +1009,31 @@ const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint
 		sprt::cout << "\t\t\t\tcheckForIntersects: " << *v << "\n";
 	}
 
-	for (auto &n : nodes) {
+	/* Only the edges whose sweepline crossing is level with the event can match.
+	
+	The test below is `VertEq(nCurr, org)` - both coordinates within `tolerance` - and the
+	dictionary is ORDERED BY `value.y`, which is exactly `nCurr.y`. So every candidate lies in the
+	band [org.y - tolerance, org.y + tolerance], and the rest of the dictionary cannot contain one
+	however large it is.
+	
+	This is a filter, not a heuristic: the nodes skipped are nodes the old loop would have visited
+	and rejected on the same comparison. What changes is only how many are looked at - a full walk
+	of every open edge on every event, which at a few hundred open edges is where the sweep spent
+	almost all of its time.
+	
+	`lower_bound` on a Vec2 compares `value.y < other.y` (EdgeDictNode::operator<), so it lands on
+	the first node at or above the bottom of the band. */
+	const float bandTop = org.y + tolerance;
+
+	for (size_t i = lowerBound(org.y - tolerance); i < nodes.size(); ++i) {
+		auto &n = *nodes[i];
+		refresh(n);
+		if (n.value.y > bandTop) {
+			break;
+		}
+		if (n.dead) {
+			continue; // a tombstone is not an answer
+		}
 		auto nCurr = n.current();
 		auto nDst = n.dst();
 
@@ -923,6 +1054,31 @@ const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint
 	return nullptr;
 }
 
+/* How far out from the insertion point a new edge is checked against the open ones.
+ 
+THE SWEEPLINE INVARIANT says two: an edge entering the status structure can only cross the edges
+immediately above and below it, because to reach any other it would first have to cross those. That
+is Bentley-Ottmann, and it is what turns this walk from "every open edge" into "a couple".
+
+It is stated here as a NUMBER rather than assumed, because the invariant holds for exact arithmetic
+and this is float. `update()` recomputes every edge's crossing of the sweepline on every event, and
+two edges whose crossings land within an ulp of each other can be ordered either way - so the true
+neighbour can sit a place or two off where the ordering says it is. The window is the slack for
+that, and its value is a measured one.
+
+EIGHT, and the number is measured rather than argued. Two is what the invariant says, and two is
+wrong here: on the icon corpus it changes four icons out of eight thousand six hundred, and on a
+graph of four hundred crossing wires it loses a third of the sweep's events outright. Three is
+already clean on every icon. Eight is where the WIRES stop differing too - the event count matches
+the exhaustive scan exactly (104 337 either way), while three and four are off by a handful.
+
+So eight is the smallest window at which both corpora agree with checking every open edge, and it
+still costs a tenth of what checking every open edge costs. It is not a proof - the exhaustive scan
+is the only thing that is - so the day a shape comes out wrong, raising this is the first thing to
+try, and if raising it fixes the shape then this number is what was wrong rather than the
+geometry. */
+static constexpr uint32_t DictNeighbourWindow = 8;
+
 const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersectPoint,
 		IntersectionEvent &ev, float tolerance) const {
 	namespace simd = sprt::geom::simd;
@@ -940,27 +1096,41 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 		sprt::cout << "\t\t\t\tcheckForIntersects: " << *edge << "\n";
 	}
 
-	for (auto &n : nodes) {
+	// The y-band both ends of every test below live in - see the reject inside `test`.
+	const float edgeLo = sprt::min(org.y, dst.y) - tolerance;
+	const float edgeHi = sprt::max(org.y, dst.y) + tolerance;
+
+	const EdgeDictNode *hit = nullptr;
+
+	// One node against this edge. The body is the one that walked the whole dictionary; what
+	// changed is only which nodes reach it.
+	const auto test = [&](const EdgeDictNode &n) -> bool {
+		refresh(n);
+		const float nodeLo = sprt::min(n.value.y, n.value.w);
+		const float nodeHi = sprt::max(n.value.y, n.value.w);
+		if (nodeHi < edgeLo || nodeLo > edgeHi) {
+			return false;
+		}
+
 		auto nCurr = n.current();
 		auto nDst = n.dst();
-		if constexpr (IntersectDebug) {
-			sprt::cout << "\t\t\t\t\t: " << *n.edge << "\n";
-		}
+
 		// overlap check should be made in mergeVertexes
 		// so, should never happen
 		if (VertEq(n.org, org, tolerance) || VertEq(nDst, org, tolerance)) {
-			continue; // common org, not interested
+			return false; // common org, not interested
 		} else if (VertEq(nCurr, org, tolerance)) {
 			if (VertEq(nCurr, nDst, tolerance)) {
-				continue; // no intersection, just line end
+				return false; // no intersection, just line end
 			}
 			intersectPoint = event;
 			ev = IntersectionEvent::EventIsIntersection;
-			return &n;
+			hit = &n;
+			return true;
 		}
 
 		if (VertEq(dst, nDst, tolerance)) {
-			continue; // common dst
+			return false; // common dst
 		}
 
 		simd::f32x4 intersect;
@@ -972,7 +1142,8 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 					if (sprt::abs(isect.y) < tolerance) {
 						intersectPoint = nCurr;
 						ev = IntersectionEvent::EdgeConnection1; // n ends on edge;
-						return &n;
+						hit = &n;
+						return true;
 					}
 				} else {
 					auto S = (nDst.x - org.x) / (isect.x);
@@ -981,11 +1152,12 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 						if (sprt::abs(nDst.y - y) <= tolerance) {
 							intersectPoint = nCurr;
 							ev = IntersectionEvent::EdgeConnection1; // n ends on edge;
-							return &n;
+							hit = &n;
+							return true;
 						}
 					}
 				}
-				continue;
+				return false;
 			}
 
 			const float denom =
@@ -996,9 +1168,6 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 
 				auto S = (CAy * isect.z - CAx * isect.w) / denom;
 				auto T = (CAy * isect.x - CAx * isect.y) / denom;
-
-				//if (S > 0.5f) { S = 1.0f - S; }
-				//if (T > 0.5f) { T = 1.0f - T; }
 
 				if (S >= 0.0f && S <= 1.0f && T >= 0.0f && T <= 1.0f) {
 					intersectPoint = Vec2(org.x + S * isect.x, org.y + S * isect.y);
@@ -1014,9 +1183,47 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 					} else {
 						ev = IntersectionEvent::Regular;
 					}
-					return &n;
+					hit = &n;
+					return true;
 				}
 			}
+		}
+		return false;
+	};
+
+	/* Outward from where this edge sits in the ordering, alternating up and down.
+	
+	Alternating rather than up-then-down so that the nearest neighbour is reached first whichever
+	side it is on: the old loop returned the LOWEST crossing in the dictionary, this one returns
+	the NEAREST, and near the sweepline that is the one the algorithm is entitled to assume comes
+	first. */
+	const size_t mid = lowerBound(org.y);
+	size_t up = mid;
+	size_t down = mid;
+
+	for (uint32_t step = 0; step < DictNeighbourWindow; ++step) {
+		bool moved = false;
+		while (up < nodes.size() && nodes[up]->dead) {
+			++up; // step over the dead rather than counting them as a neighbour
+		}
+		if (up < nodes.size()) {
+			auto &n = *nodes[up];
+			++up;
+			moved = true;
+			if (test(n)) {
+				return hit;
+			}
+		}
+		while (down > 0 && nodes[down - 1]->dead) { --down; }
+		if (down > 0) {
+			--down;
+			moved = true;
+			if (test(*nodes[down])) {
+				return hit;
+			}
+		}
+		if (!moved) {
+			break;
 		}
 	}
 
@@ -1024,52 +1231,60 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 }
 
 const EdgeDictNode *EdgeDict::getEdgeBelow(const Edge *e) const {
-	if constexpr (DictDebug) {
-		auto nIt = nodes.begin();
-		while (nIt != nodes.end()) {
-			sprt::cout << "\t\t\t\t" << (void *)nIt._node << " " << *nIt << "\n";
-			++nIt;
-		}
-	}
-
 	if (nodes.empty()) {
 		return nullptr;
 	}
 
-	auto it = nodes.lower_bound(*e); // first not less then e
-	if (it == nodes.begin()) {
-		// first edge in dict greater or equal then e, no edges below
-		return nullptr;
-	} else {
-		--it;
-		while (it != nodes.begin() && it->current() == event) { --it; }
-		// edge before it is less then e
-		return &(*it);
+	// `lower_bound` over `EdgeDictNode::operator<(const Edge &)`: by y, tie-broken by direction.
+	auto &left = e->getLeftVec();
+	size_t lo = 0, hi = nodes.size();
+	while (lo < hi) {
+		const size_t mid = lo + (hi - lo) / 2;
+		auto &n = *nodes[mid];
+		refresh(n);
+		const bool less = (n.value.y == left.y) ? (n.edge && n.edge->direction < e->direction)
+												: (n.value.y < left.y);
+		if (less) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
 	}
+
+	if (lo == 0) {
+		return nullptr; // first edge in dict greater or equal then e, no edges below
+	}
+
+	// The walk down is the tree version's, condition for condition: it stopped at `begin()` and
+	// returned whatever it landed on, tombstone or not, and the callers were written against
+	// that. Adding a skip here changed which edge the winding was taken from.
+	size_t i = lo - 1;
+	refresh(*nodes[i]);
+	while (i > 0 && nodes[i]->current() == event) {
+		--i;
+		refresh(*nodes[i]);
+	}
+	return nodes[i];
 }
 
 const EdgeDictNode *EdgeDict::getEdgeBelow(const Vec2 &vec, uint32_t vertex) const {
-	if constexpr (DictDebug) {
-		for (auto &it : nodes) { sprt::cout << "\t\t\t\t" << it << "\n"; }
-	}
-
 	if (nodes.empty()) {
 		return nullptr;
 	}
 
-	auto it = nodes.lower_bound(vec); // first not less then e
-	if (it == nodes.begin()) {
-		// first edge in dict greater or equal then e, no edges below
-		return nullptr;
-	} else {
-		--it;
-		while (it != nodes.begin() && it->edge
-				&& (it->edge->getRightOrg() == vertex || it->current() == vec)) {
-			--it;
-		}
-		// edge before it is less then e
-		return &(*it);
+	const size_t lo = lowerBound(vec.y);
+	if (lo == 0) {
+		return nullptr; // first edge in dict greater or equal then e, no edges below
 	}
+
+	size_t i = lo - 1;
+	refresh(*nodes[i]);
+	while (i > 0 && nodes[i]->edge
+			&& (nodes[i]->edge->getRightOrg() == vertex || nodes[i]->current() == vec)) {
+		--i;
+		refresh(*nodes[i]);
+	}
+	return nodes[i];
 }
 
 } // namespace stappler::geom

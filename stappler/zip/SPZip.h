@@ -25,14 +25,14 @@ THE SOFTWARE.
 #define STAPPLER_ZIP_SPZIP_H_
 
 #include "SPBuffer.h"
+#include "SPZipReader.h"
+#include "SPZipWriter.h"
 
 #include <stdio.h>
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
 #include "SPFilepath.h"
 #endif
-
-typedef struct zip zip_t;
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -41,11 +41,17 @@ struct ZipBuffer {
 	using Buffer = BufferTemplate<Interface>;
 
 	bool readonly = false;
-	void *handle = nullptr;
-	void (*finalize)(void *) = nullptr;
 
+	// Where reads take their bytes from - a memory range or an open file. For an archive being
+	// written it is re-pointed at the writer's output before each read, since that buffer grows.
+	ZipSource source;
+
+	// the archive bytes for an in-memory archive
 	Buffer data;
-	Buffer buffer;
+
+	// populated for a readonly archive; the writer is used instead when one is being built
+	ZipCatalog<Interface> catalog;
+	ZipWriter<Interface> writer;
 };
 
 template <typename Interface>
@@ -74,7 +80,7 @@ public:
 
 	Buffer save();
 
-	explicit operator bool() { return _handle != nullptr; }
+	explicit operator bool() { return _valid; }
 
 	size_t size(bool original = false) const;
 
@@ -91,11 +97,17 @@ public:
 
 protected:
 	ZipBuffer<Interface> _data;
-	zip_t *_handle = nullptr;
+	bool _valid = false;
 };
 
+// A default-constructed archive is an empty one being BUILT - the only reading it could offer is of
+// nothing at all.
+//
+// This used to read `ZipArchive(BytesView())`, which named no `readonly` argument and would not have
+// compiled. It went unnoticed because the constructor is a template member nobody instantiated;
+// explicitly instantiating the class for both interfaces (stage 6) is what surfaced it.
 template <typename Interface>
-ZipArchive<Interface>::ZipArchive() : ZipArchive(BytesView()) { }
+ZipArchive<Interface>::ZipArchive() : ZipArchive(BytesView(), false) { }
 
 template <typename Interface>
 bool ZipArchive<Interface>::addFile(StringView name, StringView data, bool uncompressed) {

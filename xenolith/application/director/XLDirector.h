@@ -118,6 +118,31 @@ public:
 
 	float getDirectorFrameTime() const { return _avgFrameTimeValue / 1000.0f; }
 
+#if XL_FRAME_ACCOUNT
+	/* THE APP HALF OF ONE FRAME, exactly, in nanoseconds - not the twenty-frame average above.
+
+	`getDirectorFrameTime` is a moving average, which is the right thing for a frame-rate readout
+	and the wrong thing for a measurement: an average cannot say what the FIRST frame after a
+	document load cost, and that frame is the one being asked about. Covers `acquireFrame` whole:
+	the update, the scene visit, and everything a node does inside it - including handing
+	tesselation to a worker, but NOT waiting for it, which happens later and elsewhere. */
+	uint64_t getLastAppFrameTime() const { return _lastAppFrameTime; }
+
+	// The render half of the last COMPLETED frame, exact, with the frame it belongs to. Covers the
+	// FrameHandle's whole life: the vertex plan, the wait on deferred work, the buffer writes and
+	// the device submission. It does NOT cover the visit - that is the app half above.
+	core::FrameTimingInfo getFrameTiming() const;
+
+	/* Deferred tasks STARTED during that frame's visit.
+
+	The direct answer to "did this frame tesselate", asked on the producing side. The consuming
+	side (VertexPlan) reports what a frame PAID for, which is a different question with a different
+	answer: a task started here may be waited for by this frame, or be ready by the time the next
+	one looks. Both are needed - a steady frame must report zero on both. */
+	uint32_t getLastDeferredSpawned() const { return _lastDeferredSpawned; }
+	void countDeferredSpawned() { ++_deferredSpawned; }
+#endif
+
 	void autorelease(Ref *);
 
 protected:
@@ -145,6 +170,13 @@ protected:
 	uint64_t _startTime = 0;
 	UpdateTime _time;
 	DrawStat _drawStat;
+
+#if XL_FRAME_ACCOUNT
+	uint64_t _pendingAppTime = 0; // the update half, until the visit closes the account
+	uint64_t _lastAppFrameTime = 0;
+	uint32_t _deferredSpawned = 0; // counted during the visit
+	uint32_t _lastDeferredSpawned = 0; // what the visit that just ended counted
+#endif
 
 	Rc<Scene> _scene;
 	Rc<Scene> _nextScene;

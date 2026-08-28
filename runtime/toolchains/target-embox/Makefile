@@ -163,7 +163,6 @@ target-aarch64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild
 	@ln -sfn $(abspath $(MAKE_ROOT)../common) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/common
 	@ln -sfn $(abspath $(MAKE_ROOT)embox-deps-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-deps-project-include.cmake
-	@ln -sfn $(abspath $(MAKE_ROOT)embox-libzip-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-libzip-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)embox-curl-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-curl-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)openssl.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/openssl.mk
 	@ln -sfn $(abspath $(MAKE_ROOT)gen-probe-stubs.sh) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/gen-probe-stubs.sh
@@ -198,7 +197,7 @@ SP_TOOLCHAIN_FILE ?= $(abspath $(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake)
 LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
 
 # libsprt.a — in-tree sprt runtime archive, same shape as target-wasm.
-# Deps that drive cmake feature-probes (libzip Annex K, curl recv/send, ...)
+# Deps that drive cmake feature-probes (curl recv/send, ...)
 # link those probes against it so missing symbols are hard errors rather than
 # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY false-positives. Hosted-POSIX:
 # wrapper + core + runtime only — no libc_impl / malloc / musl (Embox libc).
@@ -213,7 +212,7 @@ SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
 # (crt0/special linker script). The sprt runtime's unicode backend is stubbed in
 # runtime/libc_wrapper/platform/embox/unicode.cc for the M6 milestone; the full
 # ICU port is tracked as a separate task.
-# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl/libzip) is staged to
+# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl) is staged to
 # land alongside a Embox openssl.mk (perl Configure target) — added incrementally
 # as the engine surface that needs it comes online.
 # The set matches target-nuttx's. liblzma/libtiff are left out here for the same
@@ -236,7 +235,6 @@ LIBS := \
 	libgost_engine.a \
 	libnghttp3.a \
 	libngtcp2.a \
-	libzip-openssl.a \
 	libcurl-openssl.a
 
 FORWARD_VARS := \
@@ -345,16 +343,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_P
 
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
-
-# libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
-# compression backends (zlib/bzip2) and libcrypto.a.
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
-		$(SPRT_LIB) \
-		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
-		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
-		| probe-stubs
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 $(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a: ../common/ngtcp2.mk \
 		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a

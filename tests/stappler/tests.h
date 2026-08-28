@@ -52,6 +52,37 @@ inline void checkEq(StringView got, StringView expect, StringView name) {
 	}
 }
 
+// A value that came out of a parser has usually been scaled on the way, and scaling costs precision:
+// a CSS percentage is multiplied by a precomputed 1.0f/100.0f, and `30 * (1.0f/100.0f)` lands one
+// ULP below the `0.3f` a test would spell out (0x3E999999 against 0x3E99999A). Dividing by 100 would
+// hit it exactly, but no parser owes a test that guarantee - so read-back values are compared with a
+// tolerance instead. The bound is relative for magnitudes above 1 and absolute below it, which keeps
+// it meaningful for both `0.3` and `1e6`.
+inline bool nearlyEqual(float got, float expect, float eps = 1e-5f) {
+	auto diff = got > expect ? got - expect : expect - got;
+
+	auto gotMag = got < 0.0f ? -got : got;
+	auto expectMag = expect < 0.0f ? -expect : expect;
+	auto scale = gotMag > expectMag ? gotMag : expectMag;
+	if (scale < 1.0f) {
+		scale = 1.0f;
+	}
+
+	return diff <= eps * scale;
+}
+
+inline void checkNear(float got, float expect, StringView name, float eps = 1e-5f) {
+	bool ok = nearlyEqual(got, expect, eps);
+	sprt::cout << (ok ? "[ OK ] " : "[FAIL] ") << name;
+	if (!ok) {
+		sprt::cout << "  (got " << got << ", expected " << expect << ")";
+	}
+	sprt::cout << "\n";
+	if (!ok) {
+		++s_failures;
+	}
+}
+
 inline int failures() { return s_failures; }
 
 } // namespace stappler::test
@@ -74,8 +105,19 @@ void performTableCssTests();
 void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();
+void performZipTests();
+void performZipFormatTests();
+void performZipFuzzTests();
+void performIoSourceTests();
 void performDataModelTests();
 void performVgStrokeTests();
+void performVgTessFrameTests();
+void performSearchFuzzyTests();
+void performCommandHistoryTests();
+void performImageFormatTests();
+void performDiagnosticRegistryTests();
+void performJsonGitTests();
+void performBitmapResampleTests();
 
 } // namespace stappler
 

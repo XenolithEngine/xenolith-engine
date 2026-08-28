@@ -39,6 +39,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // stylesheet gave it survive the container's next layout pass. An overlay no longer has to be kept
 // outside the flex container to avoid displacing its siblings.
 //
+// A child added to a container that has ALREADY been laid out is the fourth thing here, and the
+// only one that is about timing rather than about geometry. Its item terms - `flex-grow` and the
+// rest - reach it from the stylesheet, which is resolved after the container's layout pass has come
+// and gone for it. The container has to be told; see LayoutSystem::markItemDirty.
+//
 // `-xl-z-order` and `order` are independent knobs over the same children. z-order sorts the
 // children themselves, so it drives DRAWING (and, as a side effect, the sequence the layout
 // receives them in); `order` is then applied inside the layout, on top of that sequence, and
@@ -51,6 +56,8 @@ public:
 
 protected:
 	void runPhase1();
+	void runPhase2();
+	void runPhase3();
 
 	void expectNear(StringView what, float actual, float expected);
 	void expect(bool, StringView what);
@@ -64,6 +71,11 @@ protected:
 	basic2d::Layer *_flowFirst = nullptr;
 	basic2d::Layer *_flowSecond = nullptr;
 	basic2d::Layer *_flowOverlay = nullptr; // position: absolute, inside the same container
+
+	// a row that gains a child after it has been laid out; the newcomer is sized by the sheet alone
+	basic2d::Layer *_lateRow = nullptr;
+	basic2d::Layer *_lateFixed = nullptr;
+	basic2d::Layer *_lateGrown = nullptr; // added in phase 1, measured in phase 2
 
 	// overlapping boxes whose placement order and draw order are deliberately reversed
 	basic2d::Layer *_stackRow = nullptr;

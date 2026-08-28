@@ -180,7 +180,13 @@ bool TemporaryResource::isDeprecated(const UpdateTime &time) const {
 
 	if (_timeout == TimeInterval()) {
 		return true;
-	} else if (_atime + _timeout.toMicroseconds() < time.global) {
+	}
+
+	if (_timeout == TimeInterval::Infinite) {
+		return false;
+	}
+
+	if (_atime + _timeout.toMicroseconds() < time.global) {
 		return true;
 	}
 

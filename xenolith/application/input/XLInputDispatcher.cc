@@ -61,50 +61,57 @@ void InputListenerStorage::reserve(const InputListenerStorage *st) {
 void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup *focus,
 		WindowLayer &&layer) {
 	perform([&, this] {
-		Rec *record = nullptr;
 		auto p = input->getPriority();
 		if (p == 0) {
-			record =
-					&_sceneEvents->emplace_back(Rec{input.get(), focus, sp::move(layer), ++_order});
+			_sceneEvents->emplace_back(Rec{input.get(), focus, sp::move(layer), ++_order});
 		} else if (p < 0) {
 			auto lb = sprt::lower_bound(_postSceneEvents->begin(), _postSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
 
-			if (lb == _postSceneEvents->end()) {
-				record = &_postSceneEvents->emplace_back(
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			} else {
-				record = &*_postSceneEvents->emplace(lb,
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			}
+			_postSceneEvents->emplace(lb, Rec{input.get(), focus, sp::move(layer), ++_order});
 		} else {
 			auto lb = sprt::lower_bound(_preSceneEvents->begin(), _preSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
 
-			if (lb == _preSceneEvents->end()) {
-				record = &_preSceneEvents->emplace_back(
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			} else {
-				record = &*_preSceneEvents->emplace(lb,
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			}
+			_preSceneEvents->emplace(lb, Rec{input.get(), focus, sp::move(layer), ++_order});
 		}
-		if (focus) {
-			auto it = _focus->find(focus);
-			if (it == _focus->end()) {
-				it = _focus->emplace(focus, mem_pool::Vector<Rec *>()).first;
-				it->second.reserve_block_optimal();
-			}
-			it->second.emplace_back(record);
-		}
+
+		/* The focus groups are NOT recorded here. A Rec lives inside one of the three vectors, and
+		both emplace_back and the ordered emplace() above move the elements already in it - so a
+		pointer taken now dangles the moment the next listener of the same band arrives, and the
+		group's own list would be read through it a few lines later. They are collected in sort(),
+		which is the first moment every Rec has its final address. */
 	});
 }
 
 void InputListenerStorage::sort() {
+	// Rebuilt from scratch: this is the first moment every Rec has its final address.
+	_focus->clear();
+
+	auto collect = [this](mem_pool::Vector<Rec> *vec) {
+		for (auto &rec : *vec) {
+			if (!rec.focus) {
+				continue;
+			}
+			auto it = _focus->find(rec.focus.get());
+			if (it == _focus->end()) {
+				it = _focus->emplace(rec.focus.get(), mem_pool::Vector<Rec *>()).first;
+				it->second.reserve_block_optimal();
+			}
+			it->second.emplace_back(&rec);
+		}
+	};
+
+	perform([&, this] {
+		collect(_preSceneEvents);
+		collect(_sceneEvents);
+		collect(_postSceneEvents);
+	});
+
 	for (auto &it : *_focus) {
 		sprt::sort(it.second.begin(), it.second.end(), [](const Rec *l, const Rec *r) {
 			auto lp = l->listener->getPriority();

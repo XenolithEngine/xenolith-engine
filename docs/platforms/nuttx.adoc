@@ -68,7 +68,7 @@ make -C $TC \
   $TC/src/libjpeg-turbo $TC/src/libpng $TC/src/giflib $TC/src/libwebp \
   $TC/src/freetype $TC/src/harfbuzz $TC/src/sheenbidi $TC/src/sqlite \
   $TC/src/openssl $TC/src/openssl-gost-engine $TC/src/nghttp3 \
-  $TC/src/ngtcp2 $TC/src/libzip $TC/src/curl
+  $TC/src/ngtcp2 $TC/src/curl
 test -f $TC/src/freetype/CMakeLists.txt
 test -f $TC/src/openssl/Configure
 ----
@@ -105,7 +105,7 @@ make -C $ENGINE/runtime/toolchains/target-nuttx target-aarch64 \
 Order: import-export → init-target (`target.mk`, `toolchain-libs.cmake`) →
 compiler-rt + `emutls.c` + SME stub → libcxxabi + libunwind → in-tree
 `libsprt.a` → zlib/bzip2/brotli/jpeg/png/gif/webp/freetype/harfbuzz/sheenbidi/
-sqlite/openssl/gost/nghttp3/ngtcp2/libzip/curl → `install-target.mk`.
+sqlite/openssl/gost/nghttp3/ngtcp2/curl → `install-target.mk`.
 
 OpenSSL is built with sockets on, so DTLS and QUIC (client and server) come
 along; ngtcp2 + nghttp3 then give curl HTTP/3. That needs an export with
@@ -287,12 +287,11 @@ A cmake feature probe (`check_function_exists`, `check_symbol_exists`) only
 answers the question it is asked if it **links**. Compile-only, its test source
 is just `char FUNC();` plus a call, so every function comes back present. The
 NuttX toolchain file sets `CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`
-globally, which is right for deps that only probe headers and wrong for the two
-that probe symbols — libzip and curl. Both raise it back to `EXECUTABLE` in
-their own `CMAKE_PROJECT_<name>_INCLUDE` file
-(`nuttx-{libzip,curl}-project-include.cmake`); it has to be done there rather
-than with a plain `-D` because the toolchain file's `set()` is a normal variable
-that shadows the cache entry.
+globally, which is right for deps that only probe headers and wrong for the one
+that probes symbols — curl. It raises it back to `EXECUTABLE` in its own
+`CMAKE_PROJECT_<name>_INCLUDE` file (`nuttx-curl-project-include.cmake`); it has
+to be done there rather than with a plain `-D` because the toolchain file's
+`set()` is a normal variable that shadows the cache entry.
 
 Making the probe link is the harder half. A NuttX probe executable cannot close
 on its own:
@@ -322,12 +321,14 @@ missing one, so curl needs no hand-written `-DHAVE_*` cache seeds: it discovers
 `libc.a`/`libnet.a`/`libfs.a` symbols) and correctly rejects `getifaddrs` and
 `if_nametoindex`.
 
-The remaining override needed is the opposite failure mode — symbol present,
-declaration absent. `arc4random`/`arc4random_buf` are in NuttX's `libc.a`, but
-the sprt umbrella `<stdlib.h>` does not re-declare that NuttX extension, so
-libzip would emit a call to an undeclared function; `HAVE_ARC4RANDOM` is forced
-to 0 in its project-include. `HAVE_STRERROR_S`/`HAVE_FSEEKO`/`HAVE_FTELLO` are
-forced the other way for the same reason in reverse.
+No dep needs a hand-forced `-DHAVE_*` any more. The one that did was libzip,
+against the opposite failure mode — symbol present, declaration absent:
+`arc4random`/`arc4random_buf` are in NuttX's `libc.a`, but the sprt umbrella
+`<stdlib.h>` does not re-declare that NuttX extension, so libzip emitted a call
+to an undeclared function and `HAVE_ARC4RANDOM` had to be forced to 0 (with
+`HAVE_STRERROR_S`/`HAVE_FSEEKO`/`HAVE_FTELLO` forced the other way for the
+mirror-image reason). libzip is gone, and the override went with it — worth
+remembering as the shape of the problem the next dep in that position will hit.
 
 == Assemble gotchas
 

@@ -121,6 +121,20 @@ SPRT_CONST(PAGE_GUARD);
 SPRT_CONST(PAGE_NOCACHE);
 SPRT_CONST(PAGE_WRITECOMBINE);
 
+// === global-heap allocation flags (GMEM_*) =================================
+// The clipboard's data model is the global heap: SetClipboardData takes ownership of
+// a GMEM_MOVEABLE block. A wrong flag here is not a failed allocation - it is a block
+// handed to Windows under terms neither side agreed on.
+SPRT_CONST(GMEM_FIXED);
+SPRT_CONST(GMEM_MOVEABLE);
+SPRT_CONST(GMEM_ZEROINIT);
+
+// === predefined clipboard formats (CF_*) ===================================
+// Format ids are the cross-process wire protocol: a peer pastes by asking for the
+// number, so a divergence hands it the wrong format rather than failing.
+SPRT_CONST(CF_TEXT);
+SPRT_CONST(CF_UNICODETEXT);
+
 // === local-memory flag combos =============================================
 SPRT_CONST(LHND);
 SPRT_CONST(LPTR);

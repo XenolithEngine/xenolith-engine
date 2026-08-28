@@ -1040,8 +1040,7 @@ static int runOffscreenQueue(sprt::dispatch::Looper *looper, mtl::Loop *mtlLoop,
 				return;
 			}
 
-			const uint64_t bytesPerRow =
-					uint64_t(info.extent.width) * core::getFormatBlockSize(info.format);
+			const uint64_t bytesPerRow = core::getFormatRowSize(info.format, info.extent.width);
 
 			renderResult = verify(view.data(), bytesPerRow) ? 0 : -6;
 

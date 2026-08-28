@@ -92,49 +92,98 @@ void ServerAppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) {
 	}
 }
 
+/* ONE ANSWER, WHOEVER GETS THERE FIRST.
+
+Neither clipboard entry point below is answered exactly once by the layer under it, and the two
+failures are opposite ones. `ContextController`'s base implementation calls the callback AND returns
+a failure, so a platform with no clipboard answers TWICE. Wayland does the reverse: a selector that
+returns a type the offer did not contain makes the request return an error with `dataCallback` never
+called at all, so the caller waits forever.
+
+So the callback is owned HERE, by a holder both paths reach, and the first of them to arrive takes
+it. `take()` is app-thread-only, which is why no atomic is needed: the backend's answer is hopped
+here, and the "it never started" answer is posted here too. */
+template <typename Callback>
+struct ClipboardAnswer : public Ref {
+	Callback callback;
+	Rc<Ref> target;
+	bool claimed = false;
+
+	// Null on every call after the first. Also drops the caller's Ref, which is what the old
+	// `ref = nullptr` at the end of each lambda was doing.
+	Callback take() {
+		if (claimed) {
+			return nullptr;
+		}
+		claimed = true;
+		target = nullptr;
+		return sp::move(callback);
+	}
+};
+
 void ServerAppThread::readFromClipboard(Function<void(Status, BytesView, StringView)> &&cb,
 		Function<StringView(SpanView<StringView>)> &&tcb, Ref *ref) {
-	_context->performOnThread(
-			[this, cb = sp::move(cb), tcb = sp::move(tcb), ref = Rc<Ref>(ref)]() mutable {
-		_context->readFromClipboard(
-				[this, cb = sp::move(cb), ref = sp::move(ref)](Status st, BytesView data,
-						StringView type) mutable {
+	auto answer = Rc<ClipboardAnswer<Function<void(Status, BytesView, StringView)>>>::alloc();
+	answer->callback = sp::move(cb);
+	answer->target = ref;
+
+	_context->performOnThread([this, answer, tcb = sp::move(tcb)]() mutable {
+		// Both ways of answering funnel through here, so the bytes are copied and the hop is
+		// written once
+		auto deliver = [this, answer](Status st, BytesView data, StringView type) {
 			performOnAppThread(
-					[st, data = data.bytes<Interface>(), type = type.str<Interface>(),
-							cb = sp::move(cb), ref = move(ref)]() mutable {
-				cb(st, data, type);
-				ref = nullptr;
+					[answer, st, data = data.bytes<Interface>(),
+							type = type.str<Interface>()]() mutable {
+				if (auto cb = answer->take()) {
+					cb(st, data, type);
+				}
 			},
 					this);
-		},
-				sp::move(tcb), this);
+		};
+
+		auto st = _context->readFromClipboard(
+				[deliver](Status st, BytesView data, StringView type) mutable {
+			deliver(st, data, type);
+		}, sp::move(tcb), this);
+
+		// The read never started, and on wayland that is the ONLY sign of it: reporting the status
+		// here is what turns a silent drop into a refusal the caller can see. A backend that
+		// answered anyway (the base controller does both) finds the answer already claimed.
+		if (st != Status::Ok) {
+			deliver(st, BytesView(), StringView());
+		}
 	}, this);
 }
 
 void ServerAppThread::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref) {
-	_context->performOnThread([this, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
+	// Same holder, and here it also fixes a use-after-move: the fallback below used to call a `cb`
+	// that had already been moved into the lambda above it, which is exactly the path a platform
+	// without a probe (Windows, macOS) takes every time.
+	auto answer = Rc<ClipboardAnswer<Function<void(Status, SpanView<StringView>)>>>::alloc();
+	answer->callback = sp::move(cb);
+	answer->target = ref;
+
+	_context->performOnThread([this, answer]() mutable {
 		auto st = _context->probeClipboard(
-				[this, cb = sp::move(cb), ref = sp::move(ref)](Status st,
-						SpanView<StringView> types) mutable {
+				[this, answer](Status st, SpanView<StringView> types) mutable {
 			Vector<String> typesData;
 			typesData.reserve(types.size());
 			for (auto it : types) { typesData.emplace_back(it.str<Interface>()); }
-			performOnAppThread(
-					[st, types = sp::move(typesData), cb = sp::move(cb),
-							ref = move(ref)]() mutable {
-				Vector<StringView> typesData;
-				typesData.reserve(types.size());
-				for (auto &it : types) { typesData.emplace_back(it); }
-				cb(st, typesData);
-				ref = nullptr;
-			},
-					this);
-		},
-				this);
+			performOnAppThread([answer, st, types = sp::move(typesData)]() mutable {
+				if (auto cb = answer->take()) {
+					Vector<StringView> typesView;
+					typesView.reserve(types.size());
+					for (auto &it : types) { typesView.emplace_back(it); }
+					cb(st, typesView);
+				}
+			}, this);
+		}, this);
+
 		if (st != Status::Ok) {
-			performOnAppThread([st, cb = sp::move(cb), ref = move(ref)]() mutable {
-				cb(st, SpanView<StringView>());
-				ref = nullptr;
+			performOnAppThread([answer, st]() mutable {
+				if (auto cb = answer->take()) {
+					cb(st, SpanView<StringView>());
+				}
 			}, this);
 		}
 	}, this);

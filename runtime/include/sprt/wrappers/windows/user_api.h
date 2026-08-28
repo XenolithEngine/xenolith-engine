@@ -778,6 +778,46 @@ __SPRT_WIN_IMPORT WINAPI HCURSOR SetCursor(HCURSOR hCursor);
 
 __SPRT_WIN_IMPORT WINAPI ATOM RegisterClassW(const WNDCLASSW *lpWndClass);
 
+/* The clipboard. Owned by a WINDOW, which is why the message-only window serves it: OpenClipboard
+takes one, and the delayed-rendering messages are delivered to whichever window took the selection.
+
+OpenClipboard can fail because another process holds the clipboard open - an ordinary outcome, not
+an error condition, and one a caller has to answer rather than retry forever. */
+__SPRT_WIN_IMPORT WINAPI BOOL OpenClipboard(HWND hWndNewOwner);
+
+__SPRT_WIN_IMPORT WINAPI BOOL CloseClipboard(void);
+
+__SPRT_WIN_IMPORT WINAPI BOOL EmptyClipboard(void);
+
+// A null hMem declares DELAYED RENDERING: the owner is asked for the bytes with WM_RENDERFORMAT
+// when someone actually pastes. With a handle, the clipboard TAKES OWNERSHIP of it.
+__SPRT_WIN_IMPORT WINAPI HANDLE SetClipboardData(UINT uFormat, HANDLE hMem);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE GetClipboardData(UINT uFormat);
+
+// Walk with 0 to start; returns 0 when there are no more. Requires an open clipboard.
+__SPRT_WIN_IMPORT WINAPI UINT EnumClipboardFormats(UINT format);
+
+__SPRT_WIN_IMPORT WINAPI int CountClipboardFormats(void);
+
+__SPRT_WIN_IMPORT WINAPI BOOL IsClipboardFormatAvailable(UINT format);
+
+// Registers a format by NAME, which is how a MIME type reaches the Windows clipboard at all. The id
+// is stable for the session and the same for every process that asks for the same name.
+__SPRT_WIN_IMPORT WINAPI UINT RegisterClipboardFormatW(LPCWSTR lpszFormat);
+
+__SPRT_WIN_IMPORT WINAPI int GetClipboardFormatNameW(UINT format, LPWSTR lpszFormatName,
+		int cchMaxCount);
+
+__SPRT_WIN_IMPORT WINAPI HWND GetClipboardOwner(void);
+
+// WM_CLIPBOARDUPDATE for as long as the window is listening.
+__SPRT_WIN_IMPORT WINAPI BOOL AddClipboardFormatListener(HWND hwnd);
+
+__SPRT_WIN_IMPORT WINAPI BOOL RemoveClipboardFormatListener(HWND hwnd);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetClipboardSequenceNumber(void);
+
 __SPRT_WIN_IMPORT WINAPI BOOL UnregisterClassW(LPCWSTR lpClassName, HINSTANCE hInstance);
 
 __SPRT_WIN_IMPORT WINAPI HMENU GetSystemMenu(HWND hWnd, BOOL bRevert);

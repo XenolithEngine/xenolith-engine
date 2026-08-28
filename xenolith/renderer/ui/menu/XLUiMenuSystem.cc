@@ -22,8 +22,10 @@
 
 #include "XLUiMenuSystem.h"
 #include "XLUiMenuItem.h"
+#include "XLUiMenuPopup.h" // Escape and Left ask the chain to take a level down
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
+#include "XLInputListener.h"
 #include "XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -303,6 +305,11 @@ void MenuSystem::handleAdded(Node *owner) {
 		_source->addObserver(this);
 	}
 
+	// The mode may have been set before the system had an owner to hang the group off.
+	if (_keyboardEnabled) {
+		enableKeyboard();
+	}
+
 	_itemsDirty = true;
 	owner->markLayoutChildrenDirty();
 }
@@ -311,6 +318,7 @@ void MenuSystem::handleRemoved() {
 	if (_source) {
 		_source->removeObserver(this);
 	}
+	disableKeyboard();
 	System::handleRemoved();
 }
 
@@ -357,6 +365,243 @@ void MenuSystem::setWillActivateCallback(ActivateCallback &&cb) {
 
 void MenuSystem::setSubmenuHandler(SubmenuHandler &&handler) {
 	_submenuHandler = sp::move(handler);
+}
+
+void MenuSystem::setKeyboardEnabled(bool value) {
+	if (_keyboardEnabled == value) {
+		return;
+	}
+	_keyboardEnabled = value;
+	if (!_owner) {
+		return; // handleAdded will build it
+	}
+	if (value) {
+		enableKeyboard();
+	} else {
+		disableKeyboard();
+	}
+}
+
+void MenuSystem::enableKeyboard() {
+	if (_focus || !_owner) {
+		return;
+	}
+
+	/* The group first, then the listener: a listener records the nearest group it finds on the
+	frame stack as it registers, so one added before the group would come up unaffiliated - and an
+	unaffiliated key listener is exactly the bug this whole arrangement exists to avoid.
+
+	Exclusive: the menu that is up owns the keyboard, and the dispatcher re-collects the receivers
+	scoped to this group. Propagate: a MenuSourceCustom row may carry a focus group of its own, and
+	a search field inside a menu must still be typeable. */
+	_focus = _owner->addSystem(Rc<FocusGroup>::create());
+	_focus->setEventMask(FocusGroup::EventMask(EventMaskKeyboard));
+	_focus->setFlags(FocusGroup::Flags::Exclusive | FocusGroup::Flags::Propagate);
+
+	InputKeyMask keys;
+	keys.set(toInt(InputKeyCode::UP));
+	keys.set(toInt(InputKeyCode::DOWN));
+	keys.set(toInt(InputKeyCode::LEFT));
+	keys.set(toInt(InputKeyCode::RIGHT));
+	keys.set(toInt(InputKeyCode::HOME));
+	keys.set(toInt(InputKeyCode::END));
+	keys.set(toInt(InputKeyCode::ENTER));
+	keys.set(toInt(InputKeyCode::KP_ENTER));
+	keys.set(toInt(InputKeyCode::SPACE));
+	keys.set(toInt(InputKeyCode::ESCAPE));
+
+	_keyListener = _owner->addSystem(Rc<InputListener>::create());
+	_keyListener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
+			InputKeyInfo{sp::move(keys)});
+
+	/* A key event carries the pointer location - the backends fill it in from the last mouse
+	position - so the default filter, "is this node under the pointer", would deliver the arrows
+	only while the mouse happens to hover the menu. A menu that owns the keyboard owns it wherever
+	the pointer is. Same reasoning, and the same seam, as ui::TextInput's. */
+	_keyListener->setTouchFilter(
+			[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
+		if (event.data.isKeyEvent()) {
+			return true;
+		}
+		return cb(event);
+	});
+}
+
+void MenuSystem::disableKeyboard() {
+	if (_owner) {
+		if (_keyListener) {
+			_owner->removeSystem(_keyListener);
+		}
+		if (_focus) {
+			_owner->removeSystem(_focus);
+		}
+	}
+	_keyListener = nullptr;
+	_focus = nullptr;
+
+	// The highlight is the keyboard's cursor; with no keyboard there is nothing for it to mean.
+	setHighlighted(nullptr);
+}
+
+bool MenuSystem::handleKey(const GestureData &data) {
+	if (!_keyboardEnabled || !data.input) {
+		return false;
+	}
+
+	const auto &ev = data.input->data;
+	if (ev.event != InputEventName::KeyPressed && ev.event != InputEventName::KeyRepeated) {
+		return false;
+	}
+
+	switch (ev.key.keycode) {
+	case InputKeyCode::UP: return moveHighlight(-1);
+	case InputKeyCode::DOWN: return moveHighlight(1);
+	case InputKeyCode::HOME: return highlightEdge(false);
+	case InputKeyCode::END: return highlightEdge(true);
+
+	case InputKeyCode::ENTER:
+	case InputKeyCode::KP_ENTER:
+	case InputKeyCode::SPACE: return activateHighlighted();
+
+	case InputKeyCode::RIGHT: {
+		// The same navigation a click on a submenu row performs, and through the same handler.
+		auto button = (_highlighted && _highlighted->getType() == MenuSourceItem::Type::Button)
+				? static_cast<MenuSourceButton *>(_highlighted.get())
+				: nullptr;
+		if (button && button->hasSubmenu() && _submenuHandler) {
+			if (auto node = getNodeForItem(button)) {
+				return _submenuHandler(button, node);
+			}
+		}
+		return false;
+	}
+
+	case InputKeyCode::LEFT:
+		// One level, not the chain: Left in a submenu goes back to the menu that opened it.
+		if (auto chain = MenuPopupChain::findForNode(_owner)) {
+			if (auto parent = chain->getParent()) {
+				parent->dismissChild();
+				return true;
+			}
+		}
+		return false;
+
+	case InputKeyCode::ESCAPE:
+		/* Only a menu that IS a surface can be closed by Escape. An inline menu has nothing to take
+		down, and must not eat the key from whoever put it there. */
+		if (auto chain = MenuPopupChain::findForNode(_owner)) {
+			chain->dismissChain();
+			return true;
+		}
+		return false;
+
+	default: break;
+	}
+	return false;
+}
+
+bool MenuSystem::isSelectable(const Row &row) const {
+	return row.item && row.item->getType() == MenuSourceItem::Type::Button && row.item->isVisible()
+			&& row.item->isEnabled();
+}
+
+int32_t MenuSystem::indexOfHighlighted() const {
+	if (!_highlighted) {
+		return -1;
+	}
+	for (uint32_t i = 0; i < uint32_t(_rows.size()); ++i) {
+		if (_rows[i].item == _highlighted) {
+			return int32_t(i);
+		}
+	}
+	return -1;
+}
+
+void MenuSystem::setHighlighted(MenuSourceItem *item) {
+	if (_highlighted == item) {
+		return;
+	}
+	_highlighted = item;
+	updateHighlightClasses();
+}
+
+void MenuSystem::updateHighlightClasses() {
+	for (auto &row : _rows) {
+		if (!row.node) {
+			continue;
+		}
+		if (row.item == _highlighted) {
+			row.node->addStyleClass("highlighted");
+		} else {
+			row.node->removeStyleClass("highlighted");
+		}
+	}
+}
+
+bool MenuSystem::moveHighlight(int32_t delta) {
+	const int32_t count = int32_t(_rows.size());
+	if (count == 0 || delta == 0) {
+		return false;
+	}
+
+	const int32_t step = delta > 0 ? 1 : -1;
+	int32_t index = indexOfHighlighted();
+	if (index < 0) {
+		// Nothing is on yet: Down starts above the first row, Up below the last one.
+		index = step > 0 ? -1 : count;
+	}
+
+	for (int32_t i = 0; i < count; ++i) {
+		index += step;
+		if (index < 0) {
+			index = count - 1;
+		} else if (index >= count) {
+			index = 0;
+		}
+		if (isSelectable(_rows[index])) {
+			setHighlighted(_rows[index].item);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool MenuSystem::highlightEdge(bool last) {
+	if (_rows.empty()) {
+		return false;
+	}
+	if (last) {
+		for (uint32_t i = uint32_t(_rows.size()); i > 0; --i) {
+			if (isSelectable(_rows[i - 1])) {
+				setHighlighted(_rows[i - 1].item);
+				return true;
+			}
+		}
+	} else {
+		for (auto &row : _rows) {
+			if (isSelectable(row)) {
+				setHighlighted(row.item);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool MenuSystem::activateHighlighted() {
+	if (!_highlighted) {
+		return false;
+	}
+	for (auto &row : _rows) {
+		if (row.item == _highlighted) {
+			if (!isSelectable(row)) {
+				return false;
+			}
+			handleItemActivated(_highlighted);
+			return true;
+		}
+	}
+	return false;
 }
 
 void MenuSystem::handleSourceDirty(MenuSource *source) {
@@ -445,6 +690,22 @@ void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
 	}
 }
 
+void MenuSystem::handleItemHovered(NotNull<MenuSourceItem> item) {
+	// Only while the keyboard is in play: without it there is no highlight to move, and `:hover`
+	// alone is what a mouse-driven menu has always shown.
+	if (!_keyboardEnabled) {
+		return;
+	}
+	for (auto &row : _rows) {
+		if (row.item == item) {
+			if (isSelectable(row)) {
+				setHighlighted(item);
+			}
+			return;
+		}
+	}
+}
+
 font::FontController *MenuSystem::getFontController() const {
 	auto director = _owner ? _owner->getDirector() : nullptr;
 	auto app = director ? director->getApplication() : nullptr;
@@ -507,6 +768,24 @@ void MenuSystem::rebuild() {
 	}
 
 	_rows = sp::move(rows);
+
+	// An item that left the model, or one that has just been disabled or hidden, cannot go on
+	// carrying the keyboard.
+	if (_highlighted) {
+		bool live = false;
+		for (auto &row : _rows) {
+			if (row.item == _highlighted && isSelectable(row)) {
+				live = true;
+				break;
+			}
+		}
+		if (!live) {
+			_highlighted = nullptr;
+		}
+	}
+	// The rows may be new nodes, so the class is stamped after every rebuild rather than only when
+	// the highlight moves.
+	updateHighlightClasses();
 
 	// Explicit, DISTINCT z-orders: sortAllChildren is an unstable sort, so equal orders would
 	// leave the order of the menu up to chance.

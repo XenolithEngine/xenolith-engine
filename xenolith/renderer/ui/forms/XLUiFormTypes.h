@@ -69,10 +69,16 @@ struct FormFieldSlots {
 	Function<void(const Value &)> assign;
 	Function<void()> clear;
 
-	// Take or release keyboard focus in the widget's own terms: raise the IME, show the caret.
-	// Called AFTER the focus group has already switched, never instead of it - the group's focus
-	// is what decides who gets keys, and this only tells the widget to catch up
-	Function<void(bool)> setFocused;
+	/* Take or release keyboard focus in the widget's own terms: raise the IME, show the caret.
+	Called AFTER the focus group has already switched, never instead of it - the group's focus is
+	what decides who gets keys, and this only tells the widget to catch up.
+
+	`backwards` is the direction of the NAVIGATION that caused this, and false whenever the cause
+	was anything else - a tap, a programmatic focusField(), the field leaving the ring. A simple
+	widget ignores it; a COMPOSITE one cannot, because it has to decide which of its parts the
+	focus landed on: Shift+Tab arriving at a row of number fields means the last one, and a field
+	that always enters at its first part makes backwards navigation walk forwards inside it. */
+	Function<void(bool focused, bool backwards)> setFocused;
 
 	// Enter or Space on a focused field. Return true when the widget consumed it: a Checkbox
 	// toggles, a Button fires. A single-line TextInput returns false, and the form submits instead

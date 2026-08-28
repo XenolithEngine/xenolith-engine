@@ -47,7 +47,7 @@ full-looking bar would claim one. Style the track itself for that state.
 
   progress-bar   { height:4px; border-radius:2px; background-color:#292929; }
   progress-fill  { border-radius:2px; background-color:#FCB400; }
-  progress-bar.indeterminate { background-color:#3a3a3a; } */
+  progress-bar:indeterminate { background-color:#3a3a3a; } */
 class SP_PUBLIC ProgressBar : public Panel {
 public:
 	virtual ~ProgressBar();

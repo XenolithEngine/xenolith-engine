@@ -35,6 +35,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// The whole suite drives real sockets, which the wasm sandbox does not provide;
+// performSocketTests() reports a SKIP there instead, so none of the machinery below
+// is built.
+#if !SPRT_WASM
+
 namespace {
 
 namespace dispatch = sprt::dispatch;
@@ -408,9 +413,19 @@ static int runSocketSuite(dispatch::Looper *looper) {
 
 } // namespace
 
+#endif // !SPRT_WASM
+
 void performSocketTests() {
 	sprt::cout << "\n== runtime socket tests ==\n";
 
+#if SPRT_WASM
+	// There are no sockets inside the wasm sandbox: the module has no fds and no
+	// syscall to bind or connect one, so the wasm queue leaves its listen/connect
+	// hooks null (SPEvent-wasm.cc) and every handle below would be nullptr. Reaching
+	// the network from wasm means a JS-side transport (WebSocket/WebTransport over
+	// memory BIOs), which is a different API than the one under test here.
+	sprt::cout << "SKIP  socket tests (no socket backend on wasm)\n";
+#else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
 		sprt::cout << "FAIL  could not acquire looper\n";
@@ -448,6 +463,7 @@ void performSocketTests() {
 
 	sprt::cout << "socket tests: " << (failed == 0 ? "ALL PASS" : "FAILURES") << " (" << failed
 			   << " failed)\n";
+#endif
 }
 
 } // namespace sprt

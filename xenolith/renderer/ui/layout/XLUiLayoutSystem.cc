@@ -247,12 +247,37 @@ void LayoutSystem::setPadding(Padding value) {
 	});
 }
 
+void LayoutSystem::markItemDirty(NotNull<Node> node) {
+	if (auto parent = node->getParent()) {
+		parent->markLayoutChildrenDirty();
+	}
+}
+
+// The four item setters follow one shape: write the component through an equality-guarded update,
+// and tell the PARENT when the write changed something. The guard is not an optimization here - see
+// markItemDirty for why an unguarded mark is a container that never stops re-laying-out.
+template <typename Info>
+static void LayoutSystem_setItemInfo(NotNull<Node> node, const Info &info) {
+	bool changed = false;
+	node->setOrUpdateComponent<Info>([&](NotNull<Info> c) {
+		if (*c == info) {
+			return false;
+		}
+		*c = info;
+		changed = true;
+		return true;
+	});
+	if (changed) {
+		LayoutSystem::markItemDirty(node);
+	}
+}
+
 const FlexItemInfo *LayoutSystem::getItem(NotNull<Node> node) {
 	return node->getComponent<FlexItemInfo>();
 }
 
 void LayoutSystem::setItem(NotNull<Node> node, const FlexItemInfo &info) {
-	node->setComponent<FlexItemInfo>(info);
+	LayoutSystem_setItemInfo(node, info);
 }
 
 const GridLayoutInfo *LayoutSystem::getGridInfo() const {
@@ -275,7 +300,7 @@ const GridItemInfo *LayoutSystem::getGridItem(NotNull<Node> node) {
 }
 
 void LayoutSystem::setGridItem(NotNull<Node> node, const GridItemInfo &info) {
-	node->setComponent<GridItemInfo>(info);
+	LayoutSystem_setItemInfo(node, info);
 }
 
 const TableLayoutInfo *LayoutSystem::getTableInfo() const {
@@ -298,7 +323,7 @@ const TableRowInfo *LayoutSystem::getTableRow(NotNull<Node> node) {
 }
 
 void LayoutSystem::setTableRow(NotNull<Node> node, const TableRowInfo &info) {
-	node->setComponent<TableRowInfo>(info);
+	LayoutSystem_setItemInfo(node, info);
 }
 
 const TableCellInfo *LayoutSystem::getTableCell(NotNull<Node> node) {
@@ -306,7 +331,7 @@ const TableCellInfo *LayoutSystem::getTableCell(NotNull<Node> node) {
 }
 
 void LayoutSystem::setTableCell(NotNull<Node> node, const TableCellInfo &info) {
-	node->setComponent<TableCellInfo>(info);
+	LayoutSystem_setItemInfo(node, info);
 }
 
 void LayoutSystem::setTableColumns(NotNull<Node> node, const TableColumnsComponent &value) {

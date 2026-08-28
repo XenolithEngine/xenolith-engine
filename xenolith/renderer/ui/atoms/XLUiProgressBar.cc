@@ -21,11 +21,11 @@
  **/
 
 #include "XLUiProgressBar.h"
+#include "XLUiControlLock.h" // applyControlIndeterminate: the writer of every control state bit
 #include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-static constexpr StringView s_indeterminateClass = StringView("indeterminate");
 
 ProgressBar::~ProgressBar() { }
 
@@ -88,13 +88,7 @@ void ProgressBar::setProgress(float value) {
 
 	_progress = value;
 
-	// There is no `:indeterminate` in the CSS subset, so the state is published as a style class -
-	// the same way a form publishes a rejected field as `invalid`.
-	if (isIndeterminate()) {
-		addStyleClass(s_indeterminateClass);
-	} else {
-		removeStyleClass(s_indeterminateClass);
-	}
+	applyControlIndeterminate(this, isIndeterminate());
 
 	if (_fill) {
 		_fill->setVisible(!isIndeterminate());

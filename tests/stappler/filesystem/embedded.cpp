@@ -208,8 +208,8 @@ void performEmbeddedFilesystemTests() {
 			"embed: ftw depth == 1 reports a subdirectory without descending");
 
 	checkEq(StringView(walk(StringView("resources"), -1, true)),
-			StringView(".:d|config.json:f|empty:d|hello.txt:f|nested:d|nested/binary.dat:f|" "neste"
-																							 "d/" "deep:d|" "nested/" "deep/" "leaf." "txt:f|" "вставлен" "ный " "файл." "txt:f|"),
+			StringView(
+					".:d|config.json:f|empty:d|hello.txt:f|nested:d|nested/binary.dat:f|" "neste" "d/" "deep:d|" "nested/" "deep/" "leaf." "txt:f|" "вставлен" "ный " "файл." "txt:f|"),
 			"embed: ftw of the bundle root walks everything, empty directories included");
 
 	// Early exit: returning false from the callback must stop the walk
@@ -249,6 +249,51 @@ void performEmbeddedFilesystemTests() {
 	if (region.getRegion()) {
 		checkEq(StringView((const char *)region.getRegion(), 5), StringView("Hello"),
 				"embed: the mapped region holds the file's bytes");
+	}
+
+	/* --- and it survives being MOVED ---
+
+	Every caller in this tree writes `auto r = mapFile(...)`, where the guaranteed copy elision of a
+	prvalue return means no move ever happens - so until now nothing exercised the move at all, and
+	the two fields it silently dropped (`_size` and `_location`) were never compared against
+	anything. A mapping held in a MEMBER, which is what a memory-mapped file format needs, goes
+	through the move on every assignment.
+
+	The size is asserted FIRST and on its own: it is the field whose loss is invisible, because a
+	region that reports zero bytes still reports a valid pointer. */
+	check(region.getSize() > 0, "embed: a mapped region reports its size");
+
+	{
+		const auto size = region.getSize();
+		auto moved = sp::move(region);
+		check(moved.getSize() == size, "embed: a moved mapping keeps its size");
+		check(moved.getView().size() == size, "embed: ... so its view is not empty");
+		check(moved.getRegion() != nullptr && bool(moved),
+				"embed: ... and it still points at the mapping");
+		checkEq(StringView((const char *)moved.getView().data(), 5), StringView("Hello"),
+				"embed: ... which still holds the file's bytes");
+
+		// The source is left empty rather than left sharing: two regions unmapping one pointer is
+		// the failure this half prevents.
+		check(!region && region.getRegion() == nullptr && region.getSize() == 0,
+				"embed: the moved-from region is empty");
+
+		// Move-assignment over a LIVE mapping: what the target already held has to be released
+		// before it is overwritten, and a leaked mapping is invisible to every allocator counter.
+		auto second = filesystem::MemoryMappedRegion::mapFile(
+				FileInfo("resources/nested/deep/leaf.txt", FileCategory::Embedded),
+				filesystem::MappingType::Private, filesystem::ProtFlags::MapRead);
+		const auto secondSize = second.getSize();
+		region = sp::move(second);
+		check(region.getSize() == secondSize && region.getSize() > 0,
+				"embed: move-assignment carries the size of the new mapping");
+		check(!second, "embed: ... and empties the one it took from");
+
+		// Self-assignment must not release what it is about to keep.
+		auto &alias = region;
+		region = sp::move(alias);
+		check(bool(region) && region.getSize() == secondSize,
+				"embed: assigning a region to itself leaves it intact");
 	}
 
 	// A compressed entry has no contiguous image to point at, so mapping must fail rather than

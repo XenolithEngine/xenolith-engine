@@ -40,6 +40,9 @@ class SceneContent2d;
 
 namespace ui {
 
+class Panel;
+struct PopupSurfaceConfig;
+
 // One auxiliary surface belonging to a parent window: Dialog, Utility, Popup or Tooltip.
 //
 // It materializes as a native subwindow where the platform advertises
@@ -138,6 +141,18 @@ public:
 	AppWindow *getWindow() const;
 	basic2d::SceneLayout2d *getLayout() const { return _layout; }
 
+	/* The panel the surface was built AROUND: what `PopupSurfaceConfig::makePanel` returned, or the
+	plain Panel that stands in for it. Null for a surface built from a bare ContentBuilder, which
+	owes nobody a panel.
+
+	The layout above is a wrapper - it paints nothing, and exists to carry the style systems a
+	native path needs and to be the thing pushOverlay stretches - so the node a caller asked to
+	have built is a child of it and not it. Without this a caller reaching for its own content had
+	to walk the layout's children and cast, which is a guess about a structure this class owns and
+	changes: it was wrong the first time anyone tried, and silently, because a failed cast and an
+	unopened surface both read as null. */
+	Panel *getPanel() const { return _panel; }
+
 	// The parent this surface hangs off. Null once the parent is gone.
 	AppWindow *getParent() const { return _parent; }
 
@@ -154,6 +169,10 @@ public:
 
 protected:
 	friend class SubWindowSession;
+	// Sets _panel while the content is being built. Not part of the surface's public life: the
+	// panel is settled once, by whoever builds it, and is read-only from then on.
+	friend Rc<SubWindow> openPopupSurface(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
+			PopupSurfaceConfig &&);
 
 	bool openNative(NotNull<AppWindow> parent, Config &&);
 	bool openOverlay(NotNull<AppWindow> parent, Config &&);
@@ -165,6 +184,9 @@ protected:
 
 	// Overlay path: the node pushed onto the parent's content.
 	Rc<basic2d::SceneLayout2d> _layout;
+
+	// Borrowed, not owned: _layout holds it, and it is cleared with _layout.
+	Panel *_panel = nullptr;
 
 	AppWindow *_parent = nullptr;
 	CloseCallback _onClose;

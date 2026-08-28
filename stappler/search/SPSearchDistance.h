@@ -119,6 +119,18 @@ public:
 
 	size_t nmatch() const;
 
+	// The edit distance itself: the number of insert/delete/replace operations in the alignment.
+	//
+	// Needed by anything that uses this as a similarity threshold rather than as an alignment -
+	// a vocabulary asking "which known words are within k edits of what was typed" cannot be
+	// written without it, and deriving it as size() - nmatch() only happens to work for a global
+	// alignment.
+	//
+	// When a `maxDistance` cutoff was given and the two strings are farther apart than that, the
+	// alignment is not computed at all and this reports maxOf<uint32_t>() - "farther than you
+	// asked about", which is not the same claim as any concrete number.
+	uint32_t distance() const { return _distance; }
+
 	sprt::__pool_string info() const;
 
 	Storage storage() const;

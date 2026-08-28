@@ -157,6 +157,55 @@ each window renders on demand, so `frame` is per window too.
   hint; `showTip(Config &&, key, …)` takes a surface of your own and keys the slot
   so re-showing the same thing refreshes the timer instead of flapping.
 
+### A panel on a surface: `ui::openPopupSurface`
+
+`SubWindow` gives you the WINDOW. What every popup then has to do with it is the
+same six things, and each of them is a thing to get wrong exactly once — so they
+live in one function
+([XLUiPopupSurface.h](../../../../xenolith/renderer/ui/XLUiPopupSurface.h)) that
+a menu, a search palette and a colour picker all open through:
+
+[source,cpp]
+----
+ui::PopupSurfaceConfig config;
+config.size = Extent2(258, 114);              // settled BEFORE any node exists
+config.panelType = "color-picker";            // what a stylesheet addresses it as
+config.stylesheetSource = mySheet;            // the NATIVE path needs its own
+config.content = [](NotNull<ui::SubWindow> surface, NotNull<ui::Panel> panel) {
+	// panel is already named, typed, placed, sized and painted
+};
+
+auto surface = ui::openPopupSurface(window, ui::placementForNode(anchor), sp::move(config));
+----
+
+What it does, and why each one is not the caller's business:
+
+. **The sheet.** A native popup is a scene of its own, and the `ui::StyleSystem`
+  carrying the application's sheet lives on the parent window's content and does
+  not reach it — so a surface that loads none comes up unstyled. `stylesheet` /
+  `stylesheetSource` are applied on that path only; on the overlay path the panel
+  inherits the outer sheet anyway.
+. **`RenderingLevel::Solid`.** Opaque geometry is drawn first and writes depth
+  while the surface pass only *tests* against it, so a panel left at the default
+  level cannot cover the labels of whatever is under it on the overlay path.
+. **A colour of its own.** `fallbackColor` is what it paints when no sheet ever
+  arrives — a `ui::Panel` with nothing declared is opaque **white**.
+. **The native extent.** The panel fills whatever the window system settled on,
+  which is not necessarily what was asked for.
+. **The overlay placement.** `pushOverlay` stretches the layout over the whole
+  parent and puts its origin at the bottom left, so the panel goes at the rect the
+  placement resolved — converted out of that rect's Y-**down** space into the
+  scene's Y-**up** one.
+. **The tap outside.** A native `Popup` is dismissed by the window system; an
+  overlay has no such contract and takes itself down. `onOutsideTap` overrides
+  that for a surface that is one link of something bigger — a submenu closes the
+  whole chain rather than itself.
+
+`makePanel` is for a surface whose panel is a class of its own (`ui::SearchPicker`
+passes its content that way); left unset, a plain `ui::Panel` is made. The extent
+stays the caller's: a menu measures its source before any node exists, a palette
+opens at its full height so it does not resize under the pointer.
+
 ### Hints on hover: `ui::TooltipSystem`
 
 Do **not** hand-roll "pointer entered → start a timer → show a tip". Declare the

@@ -43,6 +43,10 @@ static constexpr float ClampMax = 120.0f;
 // count as a third one.
 static constexpr float FlowRowWidth = 600.0f;
 
+// The late row is the same width, with one 200px item in it from the start. The second child is
+// added a second later and has to end up with the other 400.
+static constexpr float LateFixedWidth = 200.0f;
+
 static constexpr auto s_css = StringView(R"css(
 .clamp-row {
 	display: flex;
@@ -66,6 +70,21 @@ static constexpr auto s_css = StringView(R"css(
 	width: 100px;
 	height: 40px;
 }
+
+/* The newcomer declares NO size of its own - only that it grows. A Layer's content size is zero
+   until something gives it one, so if the container is never told that this child's item terms
+   arrived, zero is exactly what it keeps. */
+.late-row {
+	display: flex;
+	flex-direction: row;
+	column-gap: 0px;
+}
+.late-row > .fixed { flex-basis: 200px; height: 60px; }
+.late-row > .late { flex-grow: 1; flex-basis: 0px; height: 60px; }
+/* toggled in phase 2. It changes ONE item term of ONE child that is already on screen and already
+   laid out, and it changes nothing else - no size, no margin, no visibility. The only way the row
+   can answer it is if a stylesheet writing an item component tells the CONTAINER. */
+.late-row > .fixed.wide { flex-grow: 1; }
 
 .stack-row {
 	display: flex;
@@ -115,6 +134,13 @@ bool CssFlowLayout::init() {
 	// it counted as an item, ate a third of the row and got placed by the container
 	_flowOverlay = _flowRow->addChild(Rc<Layer>::create(Color::Black), ZOrder(2));
 	_flowOverlay->addStyleClass("overlay");
+
+	// Only the fixed half exists now. The other one is added in phase 1, once this row has been
+	// laid out at least once - which is the whole point of it.
+	_lateRow = addChild(Rc<Layer>::create(Color::Grey_300), ZOrder(1));
+	_lateRow->addStyleClass("late-row");
+	_lateFixed = _lateRow->addChild(Rc<Layer>::create(Color::Teal_400), ZOrder(1));
+	_lateFixed->addStyleClass("fixed");
 
 	// Added in a, b, c order; the stylesheet then places them b, c, a and draws them a, c, b.
 	auto makeStackBox = [this](StringView cls) {
@@ -194,6 +220,56 @@ void CssFlowLayout::runPhase1() {
 	// the two sequences really are different - if they matched, the test would prove nothing
 	expect(children.at(0) != _stackB, "placement and draw order came out identical");
 
+	/* THE LATE CHILD, added to a row that has been laid out for a second already.
+
+	Nothing sizes it here and nothing is meant to: the sheet says `flex-grow: 1` and says nothing
+	else, so the only way it can come out at anything but zero is if the container re-lays-out after
+	the style pass wrote its item terms. Half a second is many frames; a failure here is not a race
+	that needed longer. */
+	expectNear("the late row starts with only its fixed item", _lateFixed->getContentSize().width,
+			LateFixedWidth);
+
+	_lateGrown = _lateRow->addChild(Rc<Layer>::create(Color::Pink_400), ZOrder(1));
+	_lateGrown->addStyleClass("late");
+
+	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.5f), [this] { runPhase2(); }));
+}
+
+void CssFlowLayout::runPhase2() {
+	/* Two assertions rather than one, because the two halves of this fail differently and a single
+	width would not say which.
+
+	The sheet's word reaching the CHILD is the first: `flex-grow: 1` on the item component. The
+	container being TOLD is the second: the width. A grow of 1 with a width of 0 is the defect this
+	phase exists for - the terms arrived and nobody re-laid-out. A grow of 0 is a different failure
+	entirely, and means the rule stopped matching. */
+	auto item = ui::LayoutSystem::getItem(_lateGrown);
+	expect(item != nullptr && item->grow == 1.0f,
+			"the stylesheet did not reach the late child's flex item terms");
+	expectNear("late child width", _lateGrown->getContentSize().width,
+			FlowRowWidth - LateFixedWidth);
+	expectNear("the fixed item kept its width", _lateFixed->getContentSize().width, LateFixedWidth);
+
+	/* And now the same claim without the timing.
+
+	Phase 1 adds a child, which is a structural change and dirties a good deal on its own; a row
+	that came out right there has not necessarily heard the sheet. This toggles a class on a child
+	that has been laid out for a second and a half, and the class carries ONE declaration - a
+	`flex-grow`. Nothing else about the node moves, so nothing else can dirty the row: if the
+	container is not told that a child's item terms changed, these widths do not move either. */
+	_lateFixed->addStyleClass("wide");
+
+	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.5f), [this] { runPhase3(); }));
+}
+
+void CssFlowLayout::runPhase3() {
+	// 600 of row, 200 of it the fixed item's basis, 400 free - and now two items with a grow of 1
+	// to share it, so 200 each on top of what they had.
+	expectNear("the fixed item grew when its class did", _lateFixed->getContentSize().width,
+			LateFixedWidth + 200.0f);
+	expectNear("...and the late child gave up exactly that much",
+			_lateGrown->getContentSize().width, 200.0f);
+
 	log::source().warn("CssFlowTest", "SUMMARY: ", _checks, " checks, ", _failures, " failures");
 }
 
@@ -210,8 +286,12 @@ void CssFlowLayout::handleContentSizeDirty() {
 	_flowRow->setPosition(Vec2(40.0f, top - 120.0f));
 	_flowRow->setContentSize(Size2(FlowRowWidth, 60.0f));
 
+	_lateRow->setAnchorPoint(Vec2(0.0f, 1.0f));
+	_lateRow->setPosition(Vec2(40.0f, top - 240.0f));
+	_lateRow->setContentSize(Size2(FlowRowWidth, 60.0f));
+
 	_stackRow->setAnchorPoint(Vec2(0.0f, 1.0f));
-	_stackRow->setPosition(Vec2(40.0f, top - 240.0f));
+	_stackRow->setPosition(Vec2(40.0f, top - 360.0f));
 	_stackRow->setContentSize(Size2(FlowRowWidth, 60.0f));
 }
 

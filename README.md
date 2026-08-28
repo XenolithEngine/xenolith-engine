@@ -146,8 +146,8 @@ Application libraries on top of Xenolith Runtime:
   tessellation (`stappler_tess`), fonts (`stappler_font`).
 * **Documents** — `stappler_document` (HTML/EPUB), `stappler_layout` (layout engine), `stappler_pug`
   (templates).
-* **Other** — `stappler_zip`, `stappler_filesystem`, `stappler_wasm` (WebAssembly guest code via
-  WAMR).
+* **Other** — `stappler_zip` (self-contained ZIP reader/writer, zlib the only dependency),
+  `stappler_filesystem`, `stappler_wasm` (WebAssembly guest code via WAMR).
 
 The memory management model is based on two interfaces: memory pools (`mem_pool`) and standard
 allocation (`mem_std`).

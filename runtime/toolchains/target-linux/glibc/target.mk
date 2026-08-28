@@ -113,7 +113,7 @@ $(TARGET_GLIBC): $(TARGET_AS) $(HOST_GCC_CC) $(TARGET_SYSROOT)/sysroot
 # The clang used here is the intermediate one from host-linux-glibc, not
 # hosts/$(HOST_ID): installing the latter needs a finished target sysroot, so
 # depending on it here would close a bootstrap cycle.
-$(TARGET_CMAKE_CLANG_TOOLCHAIN): $(TARGET_SYSROOT)/sysroot $(TARGET_GLIBC)
+$(TARGET_CMAKE_CLANG_TOOLCHAIN): $(TARGET_SYSROOT)/sysroot $(TARGET_GLIBC) $(LOCAL_MAKEFILE)
 	@echo "set(CMAKE_SYSTEM_NAME Linux)" > $@
 	@echo "set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_TARGET))" >> $@
 	@echo "set(CMAKE_SYSROOT $(realpath $(TARGET_SYSROOT)))" >> $@

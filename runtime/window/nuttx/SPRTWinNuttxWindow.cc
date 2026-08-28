@@ -150,24 +150,36 @@ Status NuttxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 		area.h = fb_coord_t(y1 > y0 ? y1 - y0 : 0);
 	}
 
+	// The flush is paired with the copy, row by row, and covers exactly the bytes written.
+	//
+	// It used to run once over the whole mapping regardless of damage, which made it the only
+	// full-surface cost left in the frame: a 1824x984 scanout is 7.2 MB, i.e. ~112k `dc civac`
+	// per frame to publish the ~12% of it a typical frame actually touches. Everything else on
+	// this path - the rasterizer, the copy below - is already proportional to the damage.
+	//
+	// arm64_dcache_range() aligns the start down to a cache line and covers the partial tail, so
+	// a row range that is not line-aligned (any damage whose x is not a multiple of 16 px) is
+	// handled by the arch code rather than needing padding here.
 	auto *dst = _owner->getMapping();
 	const uint32_t stride = _owner->getStride();
 	if (damage.empty()) {
 		::memcpy(dst, _shadow, _shadowSize);
+#ifdef CONFIG_ARCH_DCACHE
+		// _shadowSize, not getMappingSize(): the mapping may be larger than the swapchain extent,
+		// and the tail beyond it was never written.
+		up_flush_dcache(uintptr_t(dst), uintptr_t(dst) + _shadowSize);
+#endif
 	} else if (area.w > 0 && area.h > 0) {
 		const size_t rowBytes = size_t(area.w) * 4;
 		const size_t xOff = size_t(area.x) * 4;
 		for (fb_coord_t row = 0; row < area.h; ++row) {
 			const size_t off = size_t(area.y + row) * stride + xOff;
 			::memcpy(dst + off, _shadow + off, rowBytes);
+#ifdef CONFIG_ARCH_DCACHE
+			up_flush_dcache(uintptr_t(dst + off), uintptr_t(dst + off + rowBytes));
+#endif
 		}
 	}
-
-#ifdef CONFIG_ARCH_DCACHE
-	if (dst && _owner->getMappingSize() > 0) {
-		up_flush_dcache(uintptr_t(dst), uintptr_t(dst) + _owner->getMappingSize());
-	}
-#endif
 
 #ifdef FBIO_UPDATE
 	// QEMU virtio-gpu needs RESOURCE_FLUSH via FBIO_UPDATE. bcm2711 mailbox

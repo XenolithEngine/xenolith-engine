@@ -122,7 +122,7 @@ bool CodeEditor::loadFile(const FileInfo &file) {
 bool CodeEditor::saveFile() {
 	// A read-only editor is a VIEWER, and Ctrl+S in one must not write the file back — the text is
 	// the file's own, so the write would be a no-op on a good day and a truncation on a bad one.
-	if (_readOnly || _path.empty()) {
+	if (isReadOnly() || _path.empty()) {
 		return false;
 	}
 

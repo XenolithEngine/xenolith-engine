@@ -935,6 +935,7 @@ exports:
         _pthread_equal,
         _pthread_exit,
         ___pthread_fchdir,
+        _pthread_getname_np,
         _pthread_getschedparam,
         _pthread_getspecific,
         _pthread_get_stackaddr_np,

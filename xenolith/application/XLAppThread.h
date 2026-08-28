@@ -107,6 +107,14 @@ public:
 	// Platform-services interface (clipboard / screen-info / URL). On the server these delegate to
 	// the OS via the Context; on the client they are routed to the remote server (stubbed for now).
 
+	// Whether this process can reach a system clipboard at all.
+	//
+	// False on a remote client, where the three calls below are still safe to make but a write goes
+	// nowhere. Reported rather than pretended: ClipboardSession::write refuses instead of answering
+	// Ok on a transport that discards. This is a question about the TRANSPORT - whether the
+	// PLATFORM has a clipboard is WindowCapabilities' business.
+	virtual bool hasClipboard() const { return true; }
+
 	// Read data from OS clipboard
 	//
 	// - dataCallback will receive data with selected type in this thread

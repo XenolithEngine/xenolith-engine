@@ -45,8 +45,11 @@ menu-item {
 menu-item:hover {
 	background-color: #2f2f38;
 }
-menu-item.checked {
+menu-item:checked {
 	background-color: #2a2a44;
+}
+menu-item.highlighted {
+	background-color: #3a3a5c;
 }
 menu-item > label {
 	color: #e8e8e8;
@@ -72,6 +75,17 @@ button {
 button > label {
 	color: #e8e8e8;
 	font-size: 15px;
+}
+text-input {
+	width: 220px;
+	height: 34px;
+	background-color: #292929;
+	outline-width: 1px;
+	outline-color: rgba(255,255,255,.15);
+	border-radius: 6px;
+	padding: 0 10px;
+	color: #e8e8e8;
+	font-size: 14px;
 }
 )css");
 
@@ -154,6 +168,14 @@ bool MenuLayout::init() {
 			ZOrder(2));
 	_openButton->setName("open-popup");
 
+	/* Somebody else in this window who wants the arrows. It is what makes "the menu owns the
+	keyboard" a checkable statement rather than a claim: with the inline menu's keyboard off the
+	arrows move this caret, and with it on they must not. */
+	_neighbour = addChild(Rc<ui::TextInput>::create(), ZOrder(2));
+	_neighbour->setName("neighbour");
+	_neighbour->setText("abcdef");
+	_neighbour->setCaretBlink(false);
+
 	return true;
 }
 
@@ -231,6 +253,11 @@ void MenuLayout::handleContentSizeDirty() {
 		_openButton->setAnchorPoint(Anchor::TopLeft);
 		_openButton->setPosition(Vec2(40.0f + _menuWidth + 40.0f, getWorkTop() - 20.0f));
 	}
+
+	if (_neighbour) {
+		_neighbour->setAnchorPoint(Anchor::TopLeft);
+		_neighbour->setPosition(Vec2(40.0f + _menuWidth + 40.0f, getWorkTop() - 80.0f));
+	}
 }
 
 void MenuLayout::updateInlineMenu() {
@@ -286,6 +313,16 @@ Value MenuLayout::encodeState() const {
 	ret.setString(_lastActivated, "lastActivated");
 	ret.setInteger(int64_t(_customBuilds), "customBuilds");
 	ret.setBool(_popup != nullptr, "popupOpen");
+	ret.setBool(_menu && _menu->isKeyboardEnabled(), "keyboard");
+	if (_menu) {
+		auto highlighted = _menu->getHighlighted();
+		ret.setString(highlighted ? highlighted->getName() : StringView(), "highlighted");
+	}
+	if (_neighbour) {
+		ret.setString(_neighbour->getText(), "neighbourText");
+		ret.setInteger(int64_t(_neighbour->getCursor().start), "neighbourCursor");
+		ret.setBool(_neighbour->isFocused(), "neighbourFocused");
+	}
 	if (_popup) {
 		ret.setBool(_popup->isNative(), "popupNative");
 		ret.setString(_popup->getId(), "popupId");
@@ -426,6 +463,36 @@ void MenuLayout::registerCommands() {
 		if (_popup) {
 			_popup->dismiss();
 			_popup = nullptr;
+			return ackValue(true);
+		}
+		return ackValue(false);
+	});
+
+	addCommand("keyboard", "Give the inline menu the keyboard, or take it away: {value}",
+			[this](Value &&args) {
+		if (!_menu) {
+			return ackValue(false);
+		}
+		_menu->setKeyboardEnabled(static_cast<const Value &>(args).getBool("value"));
+		return ackValue(true);
+	});
+
+	addCommand("highlight", "Move the inline menu's highlight: {item} by name, or {delta} by step",
+			[this](Value &&args) {
+		if (!_menu) {
+			return ackValue(false);
+		}
+		const Value &a = args;
+		if (a.isInteger("delta")) {
+			return ackValue(_menu->moveHighlight(int32_t(a.getInteger("delta"))));
+		}
+		_menu->setHighlighted(getItem(a));
+		return ackValue(_menu->getHighlighted() != nullptr);
+	});
+
+	addCommand("focus-neighbour", "Put the caret in the field beside the menu", [this](Value &&) {
+		if (_neighbour) {
+			_neighbour->focus();
 			return ackValue(true);
 		}
 		return ackValue(false);

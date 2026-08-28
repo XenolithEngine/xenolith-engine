@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include "SPGost3411-2012.cc"
 #include "SPHtmlParser.cc"
 #include "SPLog.cc"
+#include "SPDiagnosticRegistry.cc" // after SPLog: the same kind of process-wide, never-freed table
 #include "SPSharedModule.cc"
 
 #include "platform/SPCoreRuntime.cc"

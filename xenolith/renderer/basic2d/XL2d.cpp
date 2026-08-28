@@ -32,6 +32,7 @@
 #include "XL2dFrameContext.cc"
 
 #include "XL2dSprite.cc"
+#include "XL2dScale9Sprite.cc"
 #include "XL2dLayer.cc"
 #include "XL2dLabel.cc"
 #include "XL2dScene.cc"
@@ -44,7 +45,6 @@
 #include "XL2dVectorSprite.cc"
 
 #include "XL2dActionAcceleratedMove.cc"
-#include "XL2dImageLayer.cc"
 #include "XL2dLayerRounded.cc"
 #include "XL2dLinearProgress.cc"
 #include "XL2dRoundedProgress.cc"

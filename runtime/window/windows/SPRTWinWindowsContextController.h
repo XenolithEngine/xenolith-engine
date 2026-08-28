@@ -62,6 +62,7 @@ public:
 	virtual void handleContextWillDestroy() override;
 
 	virtual Status readFromClipboard(Rc<ClipboardRequest> &&) override;
+	virtual Status probeClipboard(Rc<ClipboardProbe> &&) override;
 	virtual Status writeToClipboard(Rc<ClipboardData> &&) override;
 
 	virtual void openUrl(StringView) override;
