@@ -179,6 +179,13 @@ struct SP_PUBLIC FrameInfo {
 	// (child node must be higher than or at the same level as parent)
 	mem_pool::Vector<float> depthStack;
 
+	// How deep the visit currently is inside subtrees marked with Node::setOverlay. A counter rather
+	// than a flag because overlays nest, and leaving an inner one must not leave the outer one.
+	//
+	// Not a stack, unlike its neighbours above: there is nothing per-level to remember - a node is
+	// either inside an overlay subtree or it is not.
+	uint32_t overlayDepth = 0;
+
 	// Stack of context manipulators. The context corresponds to a separate render queue
 	// to which data will be sent when the context is popped from the stack
 	mem_pool::Vector<Rc<FrameContextHandle>> contextStack;
@@ -200,6 +207,9 @@ struct SP_PUBLIC FrameInfo {
 	// Node::wrapVisit when it pushes that node's systems, and by the mid-frame catch-up when it
 	// reproduces the same state (see Node::isVisitPassed / Node::VisitCatchUp). Non-owning.
 	Node *currentNode = nullptr;
+
+	// Whether what is being drawn right now belongs to the Overlay level
+	bool isOverlay() const { return overlayDepth > 0; }
 
 	mem_pool::Vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
 		auto it = systemStack.find(comp->getFrameTag());

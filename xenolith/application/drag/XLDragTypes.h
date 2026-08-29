@@ -142,6 +142,18 @@ struct SP_PUBLIC DragOffer {
 	Function<Rc<Node>()> decorator;
 	Vec2 decoratorOffset;
 
+	/* Do not build the decorator at beginDrag; the source will supply it later, through
+	DragSession::setDecorator.
+
+	It exists for a decorator whose CONTENT is not available yet - the one case that matters being a
+	cutout of the frame, which needs a frame to be rendered before it holds anything. Building the
+	ghost first and filling it in afterwards would not do: the ghost is under the pointer, which at
+	that moment is over the very thing being captured, so it would photograph itself.
+
+	While there is no decorator there is simply nothing following the pointer. A frame or two of that
+	reads as the press taking effect, not as a missing ghost. */
+	bool decoratorDeferred = false;
+
 	// Where to park it. Null means the drag system's owner, which is the right answer whenever the
 	// decorator draws itself. It is NOT the right answer when the decorator takes its look from a
 	// stylesheet: a StyleResolver only sees its own subtree, so a ghost parked above that subtree

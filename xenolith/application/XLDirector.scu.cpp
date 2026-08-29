@@ -34,3 +34,4 @@
 #include "resources/XLResourceObject.cc"
 #include "resources/XLTemporaryResource.cc"
 #include "resources/XLTexture.cc"
+#include "resources/XLFrameCapture.cc"

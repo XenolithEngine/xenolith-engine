@@ -326,6 +326,18 @@ void Node::setVisible(bool visible) {
 	}
 }
 
+void Node::setOverlay(bool value) {
+	// Nothing to mark: the flag is read by the visit, on the next frame, for this node and everything
+	// under it - there is no cached per-descendant state to invalidate, which is exactly why the level
+	// is carried on FrameInfo rather than resolved into each node.
+	//
+	// What it does NOT do is produce damage. Changing only the level moves pixels between passes
+	// without moving any geometry, so a partial redraw has nothing to notice. In practice this is set
+	// while a node is being attached, which damages the area anyway; a live flip on a settled node
+	// wants a setVisible() cycle or a moved node around it.
+	_overlay = value;
+}
+
 void Node::setRotation(float rotation) {
 	if (_rotation.z == rotation && _rotation.x == 0 && _rotation.y == 0) {
 		return;
@@ -1387,6 +1399,11 @@ Rect Node::getBoundingBox() const {
 	return TransformRect(rect, getNodeToParentTransform());
 }
 
+Rect Node::getWorldBoundingBox() const {
+	Rect rect(0, 0, _contentSize.width, _contentSize.height);
+	return TransformRect(rect, getNodeToWorldTransform());
+}
+
 void Node::resume() {
 	if (_paused) {
 		_paused = false;
@@ -1944,6 +1961,11 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		info.depthStack.push_back(sprt::max(info.depthStack.back(), _depthIndex));
 	}
 
+	// Entered, never left: a descendant cannot step back out of an overlay (see setOverlay)
+	if (_overlay) {
+		++info.overlayDepth;
+	}
+
 	size_t i = 0;
 
 	visitInfo.flags = flags;
@@ -2032,6 +2054,10 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 	info.currentNode = prevNode;
 
 	for (auto &it : systems) { info.popSystem(it); }
+
+	if (_overlay) {
+		--info.overlayDepth;
+	}
 
 	if (_depthIndex > 0.0f) {
 		info.depthStack.pop_back();

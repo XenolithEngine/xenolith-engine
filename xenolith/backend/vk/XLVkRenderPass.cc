@@ -710,6 +710,18 @@ bool RenderPass::writeDescriptors(const QueuePassHandle &handle, DescriptorPool 
 	return true;
 }
 
+bool RenderPass::usesAlternativeAttachments(const QueuePassHandle &handle) const {
+	for (auto &it : _variableAttachments) {
+		if (auto aHandle = handle.getAttachmentHandle(it->attachment)) {
+			if (aHandle->getQueueData()->image
+					&& !aHandle->getQueueData()->image->isSwapchainImage()) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
 		const Callback<void()> &cb, bool writeBarriers) {
 	if (handle.isRedrawSkipped()) {
@@ -720,16 +732,7 @@ void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
 		return;
 	}
 
-	bool useAlternative = false;
-	for (auto &it : _variableAttachments) {
-		if (auto aHandle = handle.getAttachmentHandle(it->attachment)) {
-			if (aHandle->getQueueData()->image
-					&& !aHandle->getQueueData()->image->isSwapchainImage()) {
-				useAlternative = true;
-				break;
-			}
-		}
-	}
+	bool useAlternative = usesAlternativeAttachments(handle);
 
 	Vector<QueuePassHandle::ImageInputOutputBarrier> imageBarriersData;
 	Vector<QueuePassHandle::BufferInputOutputBarrier> bufferBarriersData;
@@ -1179,6 +1182,40 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 				!= VK_SUCCESS) {
 			return pass.cleanup(dev);
 		}
+	}
+
+	/* The Overlay level is recorded as a SECOND instance over the same framebuffer, after the frame
+	has been drawn and copied out, so its variants differ from the base ones in exactly two fields per
+	attachment: the contents are loaded rather than cleared or discarded, and the initial layout is
+	the layout the base pass left the attachment in.
+
+	Everything else - formats, sample counts, subpass structure, dependencies - is left byte-identical
+	on purpose. That is what makes these render passes COMPATIBLE with the base ones, and therefore
+	what lets the pipelines already compiled against the base pass be bound inside this one. */
+	auto makeOverlayVariant = [&](const Vector<VkAttachmentDescription> &base,
+									  Variant variant) -> bool {
+		auto descriptions = base;
+		for (auto &d : descriptions) {
+			d.initialLayout = d.finalLayout;
+			d.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			d.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		}
+
+		renderPassInfo.attachmentCount = uint32_t(descriptions.size());
+		renderPassInfo.pAttachments = descriptions.data();
+
+		return dev.getTable()->vkCreateRenderPass(dev.getDevice(), &renderPassInfo, nullptr,
+					   &pass.renderPasses[toInt(variant)])
+				== VK_SUCCESS;
+	};
+
+	if (!makeOverlayVariant(_attachmentDescriptions, Variant::Overlay)) {
+		return pass.cleanup(dev);
+	}
+
+	if (hasAlternative
+			&& !makeOverlayVariant(_attachmentDescriptionsAlternative, Variant::OverlayOffscreen)) {
+		return pass.cleanup(dev);
 	}
 
 	if (initDescriptors(dev, data, pass)) {

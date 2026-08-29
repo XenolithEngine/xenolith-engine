@@ -73,9 +73,16 @@ struct SP_PUBLIC VertexPlanContext {
 	Vector<VertexSpan> shadowSolidSpans;
 	Vector<VertexSpan> shadowSdfSpans;
 
+	// Kept apart from materialSpans, and that separation is the whole point: the backend has to be
+	// able to draw these AFTER the frame has been copied out (see FrameCapture). Merged into
+	// materialSpans they would be indistinguishable - the per-bucket counters below are statistics,
+	// not boundaries.
+	Vector<VertexSpan> overlaySpans;
+
 	uint32_t solidCmds = 0;
 	uint32_t surfaceCmds = 0;
 	uint32_t transparentCmds = 0;
+	uint32_t overlayCmds = 0;
 
 	const core::Material *getMaterialById(core::MaterialId id) const {
 		return materialSet ? materialSet->getMaterialById(id) : nullptr;
@@ -146,6 +153,11 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 
 	Map<SpanView<ZOrder>, float, ZOrderLess> paths;
 
+	// Overlay zPaths are kept apart from `paths` because they do not take part in the content's depth
+	// ordering at all: updatePathsDepth puts every one of them at the near plane. See it for why
+	// zero, and not merely a band below the content.
+	Map<SpanView<ZOrder>, float, ZOrderLess> overlayPaths;
+
 	// fill write plan
 	MaterialWritePlan globalWritePlan;
 
@@ -158,6 +170,10 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	// write plan for transparent objects, that should be drawn in order
 	Map<SpanView<ZOrder>, Map<core::MaterialId, MaterialWritePlan>, ZOrderLess>
 			transparentWritePlan;
+
+	// write plan for the Overlay level: drawn last, after the frame has been captured. Shaped like
+	// the transparent plan - keyed by zPath - so painter's order is what orders it.
+	Map<SpanView<ZOrder>, Map<core::MaterialId, MaterialWritePlan>, ZOrderLess> overlayWritePlan;
 
 	Extent3 surfaceExtent;
 	core::SurfaceTransformFlags transform = core::SurfaceTransformFlags::Identity;
@@ -225,9 +241,21 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	void pushInitial(WriteTarget &writeTarget);
 	void pushPlanVertexes(WriteTarget &writeTarget,
 			Map<core::MaterialId, MaterialWritePlan> &writePlan);
+	// `out` takes the general spans; `withShadows` is false for the overlay, which is drawn after
+	// everything and casts nothing.
 	void drawWritePlan(Context &, WriteTarget &writeTarget,
-			Map<core::MaterialId, MaterialWritePlan> &writePlan);
-	void drawWritePlanFlat(Context &, WriteTarget &writeTarget);
+			Map<core::MaterialId, MaterialWritePlan> &writePlan, mem_std::Vector<VertexSpan> &out,
+			bool withShadows);
+
+	// `overlay` picks which bucket is sorted and where the spans go. Two separate sorts, because the
+	// two sets are recorded by two separate passes.
+	void drawWritePlanFlat(Context &, WriteTarget &writeTarget, bool overlay);
+
+	// The depth a zPath draws at, from whichever of the two bands it belongs to
+	float getPathDepth(SpanView<ZOrder>) const;
+
+	// The overlay sub-plan for one zPath, created on first use
+	Map<core::MaterialId, MaterialWritePlan> &acquireOverlayPlan(SpanView<ZOrder>);
 	void pushAll(Context &, WriteTarget &writeTarget);
 
 	// Nothing was submitted this frame: only the prologue quad has to be written.

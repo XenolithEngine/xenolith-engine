@@ -34,6 +34,7 @@
 #include "XLWgpuFontQueue.h"
 #include "XLMtlFontQueue.h"
 #include "XLSoftFontQueue.h"
+#include "XLGlesFontQueue.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 
@@ -163,6 +164,15 @@ void FontComponent::handleStart(Context *a) {
 		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
 				== core::InstanceApi::Software) {
 			_queue = Rc<soft::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::GLES) {
+			_queue = Rc<gles::FontQueue>::create("FontQueue");
 		}
 	}
 #endif

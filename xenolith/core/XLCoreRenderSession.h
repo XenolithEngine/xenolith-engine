@@ -28,6 +28,7 @@
 #include "XLCoreFrameRequestProxy.h"
 #include "XLCorePresentationEngine.h"
 #include "XLCoreTextInput.h"
+#include "XLCoreFrameCapture.h"
 
 #include <sprt/runtime/window/dialog.h>
 
@@ -227,6 +228,20 @@ public:
 	virtual void compileMaterials(Rc<MaterialInputData> &&,
 			const Vector<Rc<DependencyEvent>> & = Vector<Rc<DependencyEvent>>()) = 0;
 	virtual void compileImage(const Rc<DynamicImage> &, Function<void(bool)> && = nullptr) = 0;
+
+	/* What this window wants copied out of the frame that is being built, or null when nothing.
+
+	Called once per frame while the frame's inputs are assembled, and it TAKES the request: two
+	frames never carry the same capture. The default answers null, which is the right answer for
+	every implementation that has no local window to capture from - the remote proxy included. */
+	virtual Rc<FrameCaptureInput> takeFrameCaptureInput() { return nullptr; }
+
+	/* Render one frame offscreen, presenting nothing, so that a pass can do work inside it.
+
+	Only a frame capture uses this, and only where the presented image cannot be read: there the
+	copy has to come out of an image this window owns rather than out of the swapchain. False means
+	no such frame could be scheduled and the caller's work will never happen. */
+	virtual bool scheduleOffscreenFrame(Function<void(bool)> && = nullptr) { return false; }
 
 	// Make `queue` the active render graph and begin presentation with it.
 	// Maps onto AppWindow::runWithQueue().

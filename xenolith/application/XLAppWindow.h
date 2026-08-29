@@ -38,6 +38,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Director;
 class ServerAppThread;
+class FrameCapture;
 
 enum class AppWindowConfigFlags {
 	None = 0,
@@ -181,6 +182,8 @@ public:
 	virtual void compileMaterials(Rc<core::MaterialInputData> &&,
 			const Vector<Rc<core::DependencyEvent>> & =
 					Vector<Rc<core::DependencyEvent>>()) override;
+	virtual Rc<core::FrameCaptureInput> takeFrameCaptureInput() override;
+	virtual bool scheduleOffscreenFrame(Function<void(bool)> && = nullptr) override;
 	virtual void compileImage(const Rc<core::DynamicImage> &,
 			Function<void(bool)> && = nullptr) override;
 	virtual void attachRenderQueue(const Rc<core::Queue> &) override;
@@ -254,6 +257,14 @@ public:
 	// in <application> or <activity>
 	virtual void handleBackButton() override;
 
+	/* The window's frame-capture facility: a cutout of what this window last drew, as a Texture.
+
+	Built on first use and kept afterwards - a window that never captures pays nothing. App thread
+	only, like everything else a scene talks to. Never null; ask isAvailable() before relying on it,
+	because whether a cutout can be produced at all depends on the backend and on what this surface
+	allows (see _swapchainTransferSrc). */
+	FrameCapture *getFrameCapture();
+
 protected:
 	virtual core::ImageInfo getSwapchainImageInfo(const core::SwapchainConfig &cfg) const override;
 	virtual core::ImageViewInfo getSwapchainImageViewInfo(
@@ -301,6 +312,9 @@ protected:
 	// teardown can answer whatever is still outstanding, and so a scene can ask whether a dialog
 	// is up. Entries remove themselves from the completion wrapper installed in openDialog.
 	Vector<Rc<sprt::window::DialogRequest>> _pendingDialogs;
+
+	// Built lazily by getFrameCapture(); app thread only.
+	Rc<FrameCapture> _frameCapture;
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;
