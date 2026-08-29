@@ -132,9 +132,34 @@ uint32_t ImageAttachmentHandle::enumerateDirtyDescriptors(const PassHandle &pass
 
 void ImageAttachmentHandle::enumerateAttachmentObjects(
 		const Callback<void(core::Object *, const core::SubresourceRangeInfo &)> &cb) {
+	/* ENUMERATE WHAT IS THERE. An attachment with nothing behind it reports nothing, the way the
+	buffer handle above reports an empty list and the base class reports nothing at all - and the
+	way writeDescriptor and enumerateDirtyDescriptors, ten lines up, already answer for this very
+	attachment.
+
+	A core::ImageStorage without an image is a legal state rather than a broken one, and a
+	SwapchainImage spends most of its life in it: before its image is acquired, after setPresented,
+	and after invalidateImage - which is what a window being destroyed does to the frames that are
+	already in flight for it. Barriers are recorded on a worker thread, so that invalidation can
+	land between the readiness check that let this frame through and the recording of its commands;
+	dereferencing here crashed the process on that race, one run in ten, whenever a popup was
+	dismissed while its swapchain frame was being recorded.
+
+	Nothing is lost by staying quiet. The objects this frame actually draws into were retained for
+	its whole duration by FrameQueue::onRenderPassReady (which guards the very same way), so the
+	recording is safe; what is skipped is the barrier bookkeeping for an image that no longer has a
+	next frame to be handed to. */
 	auto img = getImage();
-	cb(img->getImage(),
-			core::SubresourceRangeInfo(core::ObjectType::Image, img->getImage()->getAspects()));
+	if (!img) {
+		return;
+	}
+
+	auto obj = img->getImage();
+	if (!obj) {
+		return;
+	}
+
+	cb(obj.get(), core::SubresourceRangeInfo(core::ObjectType::Image, obj->getAspects()));
 }
 
 } // namespace stappler::xenolith::vk

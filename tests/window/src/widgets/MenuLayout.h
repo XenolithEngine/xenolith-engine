@@ -41,7 +41,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // The source deliberately contains one of everything a menu can hold: a plain command, one with a
 // leading icon, one with a subtitle, one with a hotkey, a title long enough to wrap at the fixed
 // width, a separator, a checkable KeepOpen toggle, a custom node with a factory, a disabled item, a
-// hidden item, and a submenu.
+// hidden item, and a submenu - which itself carries one, so that "nested levels" is three deep and
+// not two.
+//
+// The POINTER is driven through `menu.hover`, which calls MenuSystem::handleItemHovered - the very
+// call ui::MenuItem makes on the entering edge of a real hover. It has to be a seam rather than an
+// injected MouseMove: the mouse-over recognizer gates on WindowState::Pointer, which headless has
+// no way to report over a row.
 class MenuLayout : public TestLayout {
 public:
 	virtual bool init() override;
@@ -51,6 +57,10 @@ protected:
 	virtual void registerCommands() override;
 
 	void buildSource();
+
+	// The popup form of the same menu. One body for the button and for `menu.open`, so that what a
+	// check opens is what a click opens - the hover config included.
+	bool openPopup();
 
 	// Re-measure the inline menu through the measurement protocol, which is also what a
 	// `fit-content` ancestor would do.
@@ -63,8 +73,18 @@ protected:
 
 	ui::MenuSourceItem *getItem(const Value &args) const;
 
+	/* The MenuSystem of one level of the open menu: 0 is the inline one, 1 the popup, 2 its
+	submenu, 3 the level below that. Walked through MenuPopupChain rather than remembered, because
+	the chain is what owns every level but the first. Null when that level is not open. */
+	ui::MenuSystem *getMenuForLevel(int64_t level) const;
+	ui::MenuPopupChain *getChainForLevel(int64_t level) const;
+
+	// Apply _hover to every level that exists right now, and to every one opened afterwards.
+	void applyHoverConfig();
+
 	Rc<ui::MenuSource> _source;
 	Rc<ui::MenuSource> _submenu;
+	Rc<ui::MenuSource> _deepSubmenu;
 	ui::Panel *_menuPanel = nullptr;
 	ui::MenuSystem *_menu = nullptr;
 	ui::Button *_openButton = nullptr;
@@ -77,6 +97,10 @@ protected:
 	// The width the inline menu is pinned to, so that wrapping is deterministic rather than a
 	// function of whatever font the host happens to have.
 	float _menuWidth = 320.0f;
+
+	// What the pointer does, for the inline menu and for every popup this stand opens. Held here so
+	// that a check can set the delays it wants to reason about instead of waiting out the defaults.
+	ui::MenuHoverConfig _hover;
 
 	uint32_t _customBuilds = 0;
 	uint32_t _activations = 0;
