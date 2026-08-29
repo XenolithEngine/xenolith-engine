@@ -927,16 +927,43 @@ bool WriteIterator::add(SpanView<bool> val) {
 	}
 	return false;
 }
+
+/* Append one array of fixed-width elements.
+
+THE ADDRESS OF THE ARRAY, NOT THE ARRAY. `dbus_message_iter_append_fixed_array` takes `const void *`
+and dereferences it as `const void **` (`_dbus_type_writer_write_fixed_multi` reads `*vp` and copies
+from there), so the pointer handed over has to be the address of the array pointer. Passing the
+array itself makes libdbus read the first eight BYTES OF THE DATA as an address and copy from
+whatever that lands on: the studio's file dialog crashed inside `_dbus_string_copy_len` with the
+faulting address spelling "/home/sb" - the opening bytes of the very path being written.
+
+An EMPTY array appends nothing at all. It is a legal value, and it is written by opening and closing
+the container around no elements; handing libdbus the address of a null pointer to copy zero bytes
+from would be reintroducing the same class of question at zero length. */
+template <typename T>
+static bool appendFixedArray(Library *lib, DBusMessageIter *iter, Type element, const char *sig,
+		SpanView<T> val) {
+	DBusMessageIter sub;
+	if (!lib->dbus_message_iter_open_container(iter, toInt(Type::Array), sig, &sub)) {
+		return false;
+	}
+	if (!val.empty()) {
+		auto ptr = val.data();
+		lib->dbus_message_iter_append_fixed_array(&sub, toInt(element), &ptr, int(val.size()));
+	}
+	return lib->dbus_message_iter_close_container(iter, &sub);
+}
+
 bool WriteIterator::add(SpanView<uint8_t> val) {
 	if (!canAddType(Type::Array)) {
 		return false;
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "y", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Byte), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Byte, "y", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -947,10 +974,10 @@ bool WriteIterator::add(SpanView<int16_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "n", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Int16), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Int16, "n", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -961,10 +988,10 @@ bool WriteIterator::add(SpanView<uint16_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "q", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Uint16), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Uint16, "q", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -975,10 +1002,10 @@ bool WriteIterator::add(SpanView<int32_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "i", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Int32), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Int32, "i", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -989,10 +1016,10 @@ bool WriteIterator::add(SpanView<uint32_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "u", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Uint32), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Uint32, "u", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -1003,10 +1030,10 @@ bool WriteIterator::add(SpanView<int64_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "x", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Int64), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Int64, "x", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -1017,10 +1044,10 @@ bool WriteIterator::add(SpanView<uint64_t> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "t", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Uint64), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Uint64, "t", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }
@@ -1031,10 +1058,10 @@ bool WriteIterator::add(SpanView<double> val) {
 	}
 
 	subtype = Type::Array;
-	DBusMessageIter sub;
-	lib->dbus_message_iter_open_container(&iter, toInt(Type::Array), "d", &sub);
-	lib->dbus_message_iter_append_fixed_array(&sub, toInt(Type::Double), val.data(), val.size());
-	lib->dbus_message_iter_close_container(&iter, &sub);
+	if (!appendFixedArray(lib, &iter, Type::Double, "d", val)) {
+		valid = false;
+		return false;
+	}
 	++index;
 	return true;
 }

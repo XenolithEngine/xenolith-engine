@@ -244,6 +244,12 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 			return chain->openSubmenu(item, row);
 		});
 
+		// The pair of it, which is what a hover on another row asks for. dismissChild with nothing
+		// open is free, so the menu never has to know whether there is anything to take down.
+		menu->setSubmenuCloseHandler([chain] { chain->dismissChild(); });
+
+		menu->setHoverConfig(chain->getConfig().hover);
+
 		if (chain->getConfig().keyboard) {
 			menu->setKeyboardEnabled(true);
 			auto &highlight = chain->getConfig().highlight;
@@ -325,6 +331,13 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 		return false;
 	}
 
+	/* Already up for this very row: say yes and change nothing. The pointer coming back out of a
+	submenu onto the row that opened it asks again on every entering edge, and so does a second
+	click - rebuilding here would flicker the level and drop everything opened below it. */
+	if (_child && _childItem == item.get() && _child->isOpen()) {
+		return true;
+	}
+
 	// getSubmenu, not getBuiltSubmenu: this IS the moment a lazy factory is meant to run.
 	auto source = item->getSubmenu();
 	if (!source) {
@@ -354,13 +367,16 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 	config.preferNative = _config.preferNative;
 	// Inherited, unlike `highlight`: that one names a row of THIS menu and means nothing here.
 	config.keyboard = _config.keyboard;
+	config.hover = _config.hover;
 
 	_child = MenuPopup_open(parentWindow, placementForNode(row, MenuSide::Right), source,
 			sp::move(config), this);
+	_childItem = _child ? Rc<MenuSourceButton>(item.get()) : nullptr;
 	return _child != nullptr;
 }
 
 void MenuPopupChain::dismissChild() {
+	_childItem = nullptr;
 	if (auto child = sp::move(_child)) {
 		_child = nullptr;
 		child->dismiss();

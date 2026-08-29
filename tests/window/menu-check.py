@@ -409,17 +409,138 @@ try:
     check("Left takes that level down", popup_id(s, 1) is None)
     check("and leaves the menu it came from standing", popup_id(s) is not None)
 
-    # NOT CHECKED HERE: that the pointer entering a row moves the highlight onto it, so that a
-    # menu never shows a keyboard cursor on one row and a hover on another. The behaviour is real -
-    # MenuItem reports the hover edge to its system - but it cannot be driven from this side: an
-    # injected MouseMove does not put the window's pointer state over the row, so the mouse-over
-    # recognizer never fires and neither would any :hover check written here. It needs a real
-    # pointer, like xcb-side-check.py does. 
-
     s.ok("input", window=root, native=True, events=key("ESCAPE"))
     time.sleep(0.8)
     check("Escape takes the whole chain down", popup_id(s) is None)
     check("and chooses nothing", s.invoke("menu.state")["activations"] == 0)
+
+    # --- the pointer opens the levels ---------------------------------------------------------------
+    #
+    # WHAT IS DRIVEN HERE, AND WHERE THIS STOPS. `menu.hover` calls MenuSystem::handleItemHovered -
+    # the very call ui::MenuItem makes on the entering edge of a real hover - so everything above
+    # that call is checked: which row arms what, the two delays, the cancellation, the idempotence
+    # and the depth. That a real pointer produces the call is MenuItem's hover-edge tracker, and it
+    # cannot be driven from this side at all: an injected MouseMove does not put the window's
+    # POINTER STATE over the row, and the mouse-over recognizer gates on exactly that. It needs a
+    # real pointer, the way xcb-side-check.py needs a real keyboard.
+    #
+    # The delays are set by the check rather than waited out: a dwell is a number, and a check that
+    # sleeps through the default one is checking the clock.
+    s.invoke("menu.reset-counters")
+    s.invoke("menu.hover-config", enabled=True, open=0, close=0)
+    s.invoke("menu.open")
+    time.sleep(0.6)
+    root = popup_id(s)
+
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.8)
+    child = popup_id(s, 1)
+    check("a hovered submenu row opens the level", child is not None)
+    check("and a hover is not a choice", s.invoke("menu.state")["activations"] == 0, )
+
+    chain = s.invoke("menu.chain")
+    check("the chain knows which row the open level hangs off",
+            chain["depth"] == 2 and chain["levels"][0]["child"] == "submenu", chain)
+
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.5)
+    check("hovering the same row again keeps the very same surface", popup_id(s, 1) == child,
+            popup_id(s, 1))
+
+    s.invoke("menu.hover", item="plain", level=1)
+    time.sleep(0.5)
+    check("hovering another row takes the level down", popup_id(s, 1) is None)
+    check("and leaves the menu it belonged to standing", popup_id(s) is not None)
+    check("the chain is one level again", s.invoke("menu.chain")["depth"] == 1)
+
+    # The dwell is real, and it is CANCELLED rather than queued.
+    s.invoke("menu.hover-config", open=4000, close=4000)
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.4)
+    check("a dwell that has not elapsed opens nothing", popup_id(s, 1) is None)
+    s.invoke("menu.hover", item="plain", level=1)
+    time.sleep(0.6)
+    check("and a hover on another row cancels it rather than queueing it", popup_id(s, 1) is None)
+
+    # The reason the close waits longer than the open: the pointer on its way into a submenu crosses
+    # the rows below the one that opened it, and coming back must find it still there.
+    s.invoke("menu.hover-config", open=0, close=4000)
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.6)
+    child = popup_id(s, 1)
+    check("a zero dwell opens on the spot", child is not None)
+    s.invoke("menu.hover", item="plain", level=1)
+    time.sleep(0.3)
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.5)
+    check("crossing a row on the way back leaves the submenu standing, and the same one",
+            popup_id(s, 1) == child, popup_id(s, 1))
+
+    # --- nested levels, plural ----------------------------------------------------------------------
+    s.invoke("menu.hover-config", open=0, close=0)
+    s.invoke("menu.hover", item="sub-more", level=2)
+    time.sleep(0.8)
+    chain = s.invoke("menu.chain")
+    check("a hover inside a submenu opens a THIRD level", chain["depth"] == 3, chain)
+    check("and every level names the row the next one hangs off",
+            [lv["child"] for lv in chain["levels"]] == ["submenu", "sub-more", ""], chain)
+    check("three surfaces stand at once",
+            len([w for w in s.ok("windows")["windows"] if w["type"] == "Popup"]) == 3)
+
+    s.invoke("menu.hover", item="sub-one", level=2)
+    time.sleep(0.5)
+    check("a hover on a plain row of that submenu takes down only the level below it",
+            s.invoke("menu.chain")["depth"] == 2)
+
+    # A row that cannot be chosen cannot be entered either.
+    s.invoke("menu.hover", item="plain", level=1)
+    time.sleep(0.4)
+    s.invoke("menu.set-enabled", item="submenu", value=False)
+    s.ok("frame", count=3, window=root)
+    s.invoke("menu.hover", item="submenu", level=1)
+    time.sleep(0.5)
+    check("a disabled submenu row does not open on hover either",
+            s.invoke("menu.chain")["depth"] == 1)
+    s.invoke("menu.set-enabled", item="submenu", value=True)
+
+    s.invoke("menu.close")
+    time.sleep(0.5)
+
+    # --- the same answer with no window in play -----------------------------------------------------
+    #
+    # The inline menu's handlers only write down what was asked of them, which is what makes the two
+    # halves of a hover separable: the submenu is decided whether or not the keyboard is in play, and
+    # the highlight is not.
+    s.invoke("menu.reset-counters")
+    s.invoke("menu.hover", item="submenu", level=0)
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("an inline menu answers the pointer through the same seam",
+            "submenu-open:submenu" in (st["log"] or []), st["log"])
+    check("without taking a highlight it does not own", st["highlighted"] == "", st["highlighted"])
+
+    s.invoke("menu.hover", item="plain", level=0)
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("and a hover elsewhere asks it to close", (st["log"] or [])[-1] == "submenu-close",
+            st["log"])
+    check("none of which is an activation", st["activations"] == 0, st["activations"])
+
+    # --- and the switch turns all of it off ---------------------------------------------------------
+    s.invoke("menu.hover-config", enabled=False)
+    s.invoke("menu.reset-counters")
+    s.invoke("menu.hover", item="submenu", level=0)
+    time.sleep(0.3)
+    check("with hover-open off the pointer decides nothing",
+            (s.invoke("menu.state")["log"] or []) == [])
+
+    s.invoke("menu.activate", item="submenu")
+    time.sleep(0.3)
+    st = s.invoke("menu.state")
+    check("and the click opens it exactly as it always did",
+            "submenu-open:submenu" in (st["log"] or []), st["log"])
+    check("which is still not an activation", st["activations"] == 0, st["activations"])
+    s.invoke("menu.hover-config", enabled=True)
 
 finally:
     try:

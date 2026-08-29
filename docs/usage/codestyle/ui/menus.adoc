@@ -203,6 +203,36 @@ away takes its descendants with it through `handleExit`.
 * A lazy `SubmenuFactory` runs on first open and the result is cached, so a
   submenu keeps its state when it is reopened.
 
+#### Opening one by hover
+
+A row with a submenu opens it when the pointer *stops on it*, and any other row
+takes the open one back down. Both go through the same two seams a click uses —
+`MenuSystem::setSubmenuHandler` and its pair `setSubmenuCloseHandler` — so a menu
+that opens submenus its own way closes them its own way, and a menu with neither
+behaves exactly as it did before.
+
+**The two delays are not the same number**, and `MenuHoverConfig` is where they
+live (`openSubmenu`, `openDelay` 220 ms, `closeDelay` 400 ms). Opening is a
+decision the user made by stopping on a row; *closing may be no decision at all*
+— the pointer on its way into an open submenu crosses the rows below the one that
+opened it, and every one of those is a hover that would otherwise take the
+submenu away from under it. So the close waits longer, and any hover arriving in
+the meantime cancels it. That is what makes the diagonal trip survivable without
+tracking which direction the pointer came from.
+
+`MenuConfig::hover` carries the same numbers down the whole chain, like `style`,
+so every level of one menu answers the pointer alike; an inline menu is told with
+`MenuSystem::setHoverConfig`. `openSubmenu = false` returns the old behaviour
+exactly: a click and `Right`, nothing else.
+
+**`MenuPopupChain::openSubmenu` is idempotent for the row that is already open.**
+Not an optimization: the pointer leaving a submenu back onto the row that opened
+it asks again on every entering edge, and rebuilding the level would flicker it
+and drop whatever was open below it. The chain is also the *only* record of which
+submenu is up — `MenuSystem` deliberately keeps none, because a copy would go
+stale the moment a level is taken down by something else (`Left` asks the chain
+directly) and a stale copy would then refuse to reopen the row it named.
+
 ### Activation order
 
 `willActivate` → the item's own callback → `activate`. The popup dismisses in the
@@ -325,7 +355,14 @@ with a `ui::TextInput` beside the inline one. Inspector commands: `menu.metrics`
 `menu.state`, `menu.open`, `menu.close`, `menu.activate`, `menu.set-checked`,
 `menu.set-enabled`, `menu.set-visible`, `menu.set-title`, `menu.set-width`,
 `menu.keyboard`, `menu.highlight`, `menu.focus-neighbour`,
-`menu.reset-counters`.
+`menu.reset-counters`, `menu.hover`, `menu.hover-config`, `menu.chain`.
+
+`menu.hover` reports a pointer entering a row at a given level of the open chain
+(0 is the inline menu), through the very call `ui::MenuItem` makes on the
+entering edge of a real hover. It has to be a seam: the mouse-over recognizer
+gates on `WindowState::Pointer`, and an injected `MouseMove` cannot put a
+headless window's pointer over a row. So the check covers everything above that
+call, and that `MenuItem` makes it needs a real pointer to see.
 
 [source,sh]
 ----
