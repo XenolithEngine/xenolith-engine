@@ -65,6 +65,11 @@ struct SP_PUBLIC MenuConfig {
 	String highlight;
 	bool keyboard = true;
 
+	/* How the POINTER drives the chain: whether a hovered row opens its submenu, and after how
+	long. Carried down to every submenu, like `style`, so that one menu answers the pointer the same
+	way at every level. */
+	MenuHoverConfig hover;
+
 	// Fired after an item's own callback has run and after the menu chain has been taken down.
 	Function<void(NotNull<MenuSourceItem>)> onActivate;
 
@@ -152,11 +157,19 @@ public:
 	MenuPopupChain *getParent() const { return _parent; }
 	SubWindow *getChild() const { return _child; }
 
+	// The row the open child belongs to, or null when nothing is open. This is the ONE record of
+	// which submenu is up: MenuSystem keeps none, because a copy of this would go stale.
+	MenuSourceButton *getChildItem() const { return _childItem; }
+
 	// The root of the chain - the menu the user opened first.
 	MenuPopupChain *getRoot();
 
-	// Open `item`'s submenu beside `row`. Takes down whatever submenu was open here first. False
-	// when the item has no submenu, or the surface it would hang off is gone.
+	/* Open `item`'s submenu beside `row`. Takes down whatever OTHER submenu was open here first.
+	False when the item has no submenu, or the surface it would hang off is gone.
+
+	IDEMPOTENT for the item that is already open, and that is not an optimization: the pointer
+	leaving a submenu back onto the row that opened it asks again, so does a second click, and
+	rebuilding the level would flicker it and lose whatever the user had opened below it. */
 	virtual bool openSubmenu(NotNull<MenuSourceButton>, NotNull<Node> row);
 
 	virtual void dismissChild();
@@ -171,6 +184,9 @@ protected:
 	MenuPopupChain *_parent = nullptr;
 
 	Rc<SubWindow> _child;
+
+	// Which row `_child` belongs to. Cleared with it, so the two can never disagree.
+	Rc<MenuSourceButton> _childItem;
 
 	// What openMenu was called with, minus the callbacks the chain replaces. A submenu is opened
 	// with a copy of it.

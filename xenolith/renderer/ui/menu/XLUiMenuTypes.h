@@ -99,6 +99,29 @@ struct SP_PUBLIC MenuStyle {
 	bool operator==(const MenuStyle &) const = default;
 };
 
+/* When the POINTER opens a submenu, and when it takes one down.
+
+Not part of MenuStyle, and deliberately so: these are not inputs of the measurement, and changing
+one does not move a single row. They are the two numbers that make hover navigation usable rather
+than twitchy.
+
+THE TWO DELAYS ARE NOT THE SAME NUMBER, and no desktop menu has ever made them one. Opening is a
+decision the user made by stopping on a row. Closing may be no decision at all: the pointer on its
+way INTO an open submenu crosses the rows below the one that opened it, and every one of those is a
+hover that would otherwise take the submenu away from under it. So the close waits longer, and any
+hover arriving in the meantime cancels it - which is what makes the diagonal trip survivable
+without tracking the direction the pointer came from. */
+struct SP_PUBLIC MenuHoverConfig {
+	// Off returns the old behaviour exactly: a submenu row opens on a click and on Right, and a
+	// hover means nothing but the highlight.
+	bool openSubmenu = true;
+
+	TimeInterval openDelay = TimeInterval::milliseconds(220);
+	TimeInterval closeDelay = TimeInterval::milliseconds(400);
+
+	bool operator==(const MenuHoverConfig &) const = default;
+};
+
 /* The resolved geometry of one menu: the SINGLE place a width or a height is decided.
 
 One call answers all three questions that would otherwise drift apart: how big a popup surface to
