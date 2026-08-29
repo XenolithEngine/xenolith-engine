@@ -148,6 +148,11 @@ void WindowDecorations::handleLayoutInParent(Node *parent) {
 	setAnchorPoint(Anchor::Middle);
 	setLocalZOrder(ZOrder::max() - ZOrder(1));
 
+	// The title bar belongs to the window, not to the frame's contents: a drag ghost must not paint
+	// over it, and a cutout of the frame has no business containing it either. Both follow from
+	// putting it on the same level as the ghost, where this ZOrder still keeps it above.
+	setOverlay(true);
+
 	auto newState = parent->getDirector()->getRenderServer()->getWindowState();
 	if (newState != _currentState) {
 		updateWindowState(parent->getDirector()->getRenderServer()->getWindowState());

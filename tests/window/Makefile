@@ -71,6 +71,15 @@ LOCAL_MODULES += \
 	xenolith_renderer_basic2d_soft
 endif
 
+# OpenGL ES build variant: `make GLES=1` adds the GLES-over-EGL backend and its 2d clear pass;
+# select at runtime with `testapp --headless --gapi gles`. M1 renders a cleared background only -
+# draw commands are dropped by design, so expect a solid-colour frame, not the test scene.
+ifeq ($(GLES),1)
+LOCAL_MODULES += \
+	xenolith_backend_gles \
+	xenolith_renderer_basic2d_gles
+endif
+
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=
 

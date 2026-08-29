@@ -13,6 +13,15 @@ LOCAL_MODULES += \
 	xenolith_renderer_basic2d_soft
 endif
 
+# OpenGL ES build variant: `make GLES=1` adds the GLES backend and its 2d clear pass; select at
+# runtime with `headlesstest --headless --gapi gles`. M1 renders a cleared background only -
+# draw commands are dropped by design, so the screenshot is the scene's background colour.
+ifeq ($(GLES),1)
+LOCAL_MODULES += \
+	xenolith_backend_gles \
+	xenolith_renderer_basic2d_gles
+endif
+
 LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 LOCAL_MAIN := src/main.cpp
 include $(STAPPLER_BUILD_ROOT)/universal.mk

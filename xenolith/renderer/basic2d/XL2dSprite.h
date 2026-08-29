@@ -171,6 +171,12 @@ protected:
 
 	RenderingLevel _renderingLevel = RenderingLevel::Default;
 	RenderingLevel _realRenderingLevel = RenderingLevel::Default;
+
+	// Whether this sprite was drawn inside a subtree marked with Node::setOverlay, as of the last
+	// frame. Read back from FrameInfo in draw() rather than resolved from the parent chain: the
+	// answer changes when an ANCESTOR is marked or when this node is reparented, and neither of
+	// those is something a cached parent walk would hear about.
+	bool _inOverlay = false;
 	core::MaterialId _materialId = 0;
 
 	// if not defined - use pipeline matching algorithm
