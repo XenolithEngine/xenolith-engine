@@ -90,8 +90,8 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 
 	auto texLayout = queueBuilder.addTextureSetLayout("General", samplers);
 
-	_output = queueBuilder.addAttachemnt("Output",
-			[&](AttachmentBuilder &builder) -> Rc<Attachment> {
+	_output =
+			queueBuilder.addAttachemnt("Output", [&](AttachmentBuilder &builder) -> Rc<Attachment> {
 		// swapchain output
 		builder.defineAsOutput();
 
@@ -135,12 +135,22 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 		return Rc<IgnoredInputAttachment>::create(builder);
 	});
 
+	// Rectangles of the presented image to copy out after the render pass ends. Generic and
+	// input-only: it owns no GPU resource (every image belongs to the cutout that asked for it) and
+	// takes no framebuffer slot - it is in the graph so the frame knows the dependency exists.
+	_capture = queueBuilder.addAttachemnt(core::FrameCaptureAttachmentName,
+			[](AttachmentBuilder &builder) -> Rc<Attachment> {
+		builder.defineAsInput();
+		return Rc<core::FrameCaptureAttachment>::create(builder);
+	});
+
 	auto colorAttachment = passBuilder.addAttachment(_output);
 
 	passBuilder.addAttachment(_vertexes);
 	passBuilder.addAttachment(_materials);
 	passBuilder.addAttachment(lights);
 	passBuilder.addAttachment(particles);
+	passBuilder.addAttachment(_capture);
 
 	// Must stay at index 0 - VertexPassHandle::prepareMaterialCommands pushes constants through
 	// getPipelineLayout(0).

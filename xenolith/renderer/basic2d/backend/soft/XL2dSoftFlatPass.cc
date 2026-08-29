@@ -165,6 +165,12 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		}
 
 		_spans = sp::move(ctx.materialSpans);
+
+		// The Overlay level, appended rather than kept apart: this backend does no frame capture, so
+		// there is nothing to record between the two - and drawing them in sequence is all "on top"
+		// needs here.
+		for (auto &it : ctx.overlaySpans) { _spans.emplace_back(it); }
+
 		_drawStates = commands->states;
 
 		// Publish before the attachment reports readiness: the pass reads it back when it decides

@@ -262,7 +262,7 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	_drawStat.vertexes = plan->globalWritePlan.vertexes - plan->excludeVertexes;
 	_drawStat.triangles = (plan->globalWritePlan.indexes - plan->excludeIndexes) / 3;
 	_drawStat.zPaths = uint32_t(plan->paths.size());
-	_drawStat.drawCalls = uint32_t(_plan.materialSpans.size());
+	_drawStat.drawCalls = uint32_t(_plan.materialSpans.size() + _plan.overlaySpans.size());
 	_drawStat.solidCmds = _plan.solidCmds;
 	_drawStat.surfaceCmds = _plan.surfaceCmds;
 	_drawStat.transparentCmds = _plan.transparentCmds;
@@ -305,7 +305,7 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	}
 
 	_attachment->loadData(sp::move(_input), sp::move(_indexes), sp::move(_vertexes),
-			sp::move(_transforms), sp::move(_plan.materialSpans),
+			sp::move(_transforms), sp::move(_plan.materialSpans), sp::move(_plan.overlaySpans),
 			sp::move(_plan.shadowSolidSpans), sp::move(_plan.shadowSdfSpans), plan->maxShadowValue,
 			sp::move(damageState));
 
@@ -363,14 +363,16 @@ bool VertexAttachmentHandle::empty() const { return !_indexes || !_vertexes || !
 
 void VertexAttachmentHandle::loadData(Rc<FrameContextHandle2d> &&data, Rc<Buffer> &&indexes,
 		Rc<Buffer> &&vertexes, Rc<Buffer> &&transforms, Vector<VertexSpan> &&spans,
-		Vector<VertexSpan> &&shadowSolidSpans, Vector<VertexSpan> &&shadowSdfSpans,
-		float maxShadowValue, Rc<core::FrameDamageState> &&damage) {
+		Vector<VertexSpan> &&overlaySpans, Vector<VertexSpan> &&shadowSolidSpans,
+		Vector<VertexSpan> &&shadowSdfSpans, float maxShadowValue,
+		Rc<core::FrameDamageState> &&damage) {
 	_damage = sp::move(damage);
 	_commands = move(data);
 	_indexes = move(indexes);
 	_vertexes = move(vertexes);
 	_transforms = move(transforms);
 	_spans = sp::move(spans);
+	_overlaySpans = sp::move(overlaySpans);
 	_shadowSolidSpans = sp::move(shadowSolidSpans);
 	_shadowSdfSpans = sp::move(shadowSdfSpans);
 
@@ -426,6 +428,36 @@ bool VertexPassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 	if (auto particleBuffer = q.getAttachment(pass->getParticles())) {
 		_particles =
 				static_cast<const ParticleEmitterAttachmentHandle *>(particleBuffer->handle.get());
+	}
+
+	/* A frame that was asked for no cutout leaves these null, and recordFrameCapture then records
+	nothing - which is the whole cost of an idle capture.
+
+	An input with no regions is the ordinary case, not an error: FrameContext2d submits one on every
+	frame because an input attachment that is not fed wedges the frame waiting for it. */
+	_captureInput = nullptr;
+	_captureSource = nullptr;
+	_captureSourcePresented = false;
+
+	if (auto capture = q.getAttachment(pass->getCapture())) {
+		auto input = dynamic_cast<const core::FrameCaptureInput *>(capture->handle->getInput());
+		if (input && !input->regions.empty()) {
+			_captureInput = input;
+		}
+	}
+
+	if (_captureInput) {
+		if (auto output = q.getAttachment(pass->getOutput())) {
+			if (auto storage = output->image.get()) {
+				_captureSource = static_cast<Image *>(storage->getImage().get());
+				_captureSourcePresented = storage->isSwapchainImage();
+			}
+		}
+		if (!_captureSource) {
+			// Nothing to copy out of. The frame still completes, and the input's completion still
+			// runs - the targets are simply told the capture did not happen.
+			_captureInput = nullptr;
+		}
 	}
 
 	return QueuePassHandle::prepare(q, sp::move(cb));
@@ -495,6 +527,17 @@ void VertexPassHandle::prepareRenderPass(CommandBuffer &buf) {
 }
 
 void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &buf) {
+	drawSpans(materials, buf, _vertexBuffer->getVertexData());
+}
+
+/* Record one set of spans.
+
+Split out of prepareMaterialCommands so it can be run twice over two disjoint sets: the content, and
+then - after the frame has been copied out - the Overlay level. Nothing here depends on the iteration
+index or on the previous span, and the spans carry absolute firstIndex/vertexOffset/firstInstance, so
+two runs produce exactly the pixels one run over the concatenation would. */
+void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &buf,
+		SpanView<VertexSpan> spans) {
 	auto commands = _vertexBuffer->getCommands();
 	auto pass = static_cast<RenderPass *>(_data->impl.get());
 
@@ -516,8 +559,6 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 			UVec2::convertFromPacked(buf.bindBufferAddress(_vertexBuffer->getVertexes().get()));
 	pcb.transformPointer =
 			UVec2::convertFromPacked(buf.bindBufferAddress(_vertexBuffer->getTransforms().get()));
-
-	auto spans = _vertexBuffer->getVertexData();
 
 	// Use commented code to debug drawing command-by-command
 	//static size_t ctrl = 0;
@@ -638,6 +679,124 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 
 void VertexPassHandle::finalizeRenderPass(CommandBuffer &buf) {
 	buf.cmdWriteTimestamp(core::PipelineStage::BottomOfPipe, TimestampEndTag);
+
+	// The order here is the whole point of the Overlay level: the frame is copied out first, and only
+	// then does the overlay draw on top of it. So a cutout can never contain the overlay - a drag
+	// ghost cannot photograph itself - and that holds however the ghost was created and whenever.
+	recordFrameCapture(buf);
+	recordOverlayPass(buf);
+}
+
+void VertexPassHandle::recordOverlayPass(CommandBuffer &buf) {
+	// isRedrawSkipped: the target image already holds this exact frame and RenderPass::perform
+	// recorded nothing at all, not even the barriers - so the image is in a layout this pass has not
+	// established, and there is by definition nothing new to draw over it.
+	if (isRedrawSkipped()) {
+		return;
+	}
+
+	auto spans = _vertexBuffer ? _vertexBuffer->getOverlayData() : SpanView<VertexSpan>();
+	if (spans.empty()) {
+		return;
+	}
+
+	auto pass = _data->impl.cast<RenderPass>();
+	if (!pass->getRenderPass(RenderPassVariant::Default)) {
+		return;
+	}
+
+	// Same render area as the content pass: with a partial redraw everything outside the damaged
+	// rectangle is unchanged, overlay geometry included - the damage collector walks the overlay
+	// commands like any other, so anything the overlay moved is already inside it.
+	const VkRect2D *renderArea = nullptr;
+	VkRect2D area;
+	if (hasPartialRedrawArea(area)) {
+		renderArea = &area;
+	}
+
+	auto variant = pass->usesAlternativeAttachments(*this) ? RenderPassVariant::OverlayOffscreen
+														   : RenderPassVariant::Overlay;
+	if (!pass->getRenderPass(variant)) {
+		return;
+	}
+
+	buf.cmdBeginRenderPass(pass, static_cast<Framebuffer *>(getFramebuffer()),
+			VK_SUBPASS_CONTENTS_INLINE, variant, renderArea);
+
+	recordOverlaySubpasses(buf, spans);
+
+	buf.cmdEndRenderPass();
+}
+
+void VertexPassHandle::recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
+	drawSpans(_materialBuffer->getSet().get(), buf, spans);
+}
+
+void VertexPassHandle::recordFrameCapture(CommandBuffer &buf) {
+	if (!_captureInput || !_captureSource) {
+		return;
+	}
+
+	/* The layout the pass left the source in. RenderPass::perform has already written its output
+	barriers by the time this runs, so this is what the image is in right now.
+
+	Restoring it afterwards is not tidiness: the next frame's partial redraw begins its render pass
+	with initialLayout = PRESENT_SRC and loadOp = LOAD (see XLVkRenderPass.cc, Variant::Load), so a
+	presented image left in TRANSFER_SRC would make the next frame load from a layout the image is
+	not in. */
+	const VkImageLayout sourceLayout = _captureSourcePresented
+			? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+			: VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+	Vector<ImageMemoryBarrier> barriers;
+	barriers.reserve(_captureInput->regions.size() + 1);
+
+	if (sourceLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+		barriers.emplace_back(ImageMemoryBarrier(_captureSource,
+				VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, sourceLayout,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL));
+	}
+
+	for (auto &it : _captureInput->regions) {
+		// UNDEFINED rather than the SHADER_READ_ONLY the target actually holds: the copy overwrites
+		// every pixel of it, so there is nothing to preserve. A target is written exactly once and
+		// nothing samples it before its capture completes, so there is no reader to race with.
+		barriers.emplace_back(ImageMemoryBarrier(static_cast<Image *>(it.target.get()),
+				VkAccessFlags(0), VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL));
+	}
+
+	buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, 0, barriers);
+
+	for (auto &it : _captureInput->regions) {
+		VkImageCopy copy{};
+		copy.srcSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+		copy.srcOffset = VkOffset3D{int32_t(it.src.x), int32_t(it.src.y), 0};
+		copy.dstSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+		copy.dstOffset = VkOffset3D{0, 0, 0};
+		copy.extent = VkExtent3D{it.src.width, it.src.height, 1};
+
+		buf.cmdCopyImage(_captureSource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				static_cast<Image *>(it.target.get()), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy);
+	}
+
+	barriers.clear();
+
+	if (sourceLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+		barriers.emplace_back(ImageMemoryBarrier(_captureSource, VK_ACCESS_TRANSFER_READ_BIT,
+				VkAccessFlags(0), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sourceLayout));
+	}
+
+	for (auto &it : _captureInput->regions) {
+		barriers.emplace_back(ImageMemoryBarrier(static_cast<Image *>(it.target.get()),
+				VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	}
+
+	buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
+			barriers);
 }
 
 void VertexPassHandle::clearDynamicState(CommandBuffer &buf) {

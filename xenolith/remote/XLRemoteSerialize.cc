@@ -461,7 +461,7 @@ Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &v) {
 Value serializeSwapchainConfig(const core::SwapchainConfig &c) {
 	// Compact flat array. Fixed field order:
 	// [presentMode, presentModeFast, imageFormat, colorSpace, alpha, transform, imageCount,
-	//  extentW, extentH, clipped, transfer, liveResize, fullscreenMode]
+	//  extentW, extentH, clipped, transfer, liveResize, fullscreenMode, transferSrc]
 	// fullscreenHandle is a raw void* (server-local) -> not serialized.
 	Value v(Value::Type::ARRAY);
 	v.addInteger(ei(c.presentMode));
@@ -477,6 +477,9 @@ Value serializeSwapchainConfig(const core::SwapchainConfig &c) {
 	v.addBool(c.transfer);
 	v.addBool(c.liveResize);
 	v.addInteger(ei(c.fullscreenMode));
+	// Appended rather than inserted: an older peer simply does not send it, and at() answers with
+	// the default for a slot that is not there.
+	v.addBool(c.transferSrc);
 	return v;
 }
 
@@ -503,6 +506,7 @@ core::SwapchainConfig deserializeSwapchainConfig(const Value &v) {
 	c.transfer = at(10).getBool();
 	c.liveResize = at(11).getBool();
 	c.fullscreenMode = sprt::window::FullScreenExclusiveMode(at(12).getInteger());
+	c.transferSrc = at(13).getBool();
 	return c;
 }
 

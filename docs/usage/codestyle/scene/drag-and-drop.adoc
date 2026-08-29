@@ -182,8 +182,13 @@ exist.
 ## The decorator
 
 The source supplies a factory; the session owns the node and parks it at
-`DragSystem::DecoratorZOrder` — above ordinary content, below `WindowDecorations`,
-in a band of its own because `sortAllChildren` is unstable.
+`DragSystem::DecoratorZOrder`, on the **Overlay draw level** — the session calls
+`setOverlay(true)` on whatever node it installs. The level is what puts the ghost
+above ordinary content and, on the Vulkan path, what draws it after the frame has
+been captured; the ZOrder then decides where it sits among the other things on that
+level, which is how it stays below `WindowDecorations`. A band of its own, because
+`sortAllChildren` is unstable. See
+[node-geometry.adoc](node-geometry.adoc) for the level itself.
 
 It is parked under the drag system's owner by default. A decorator that takes its
 look from a stylesheet must set `DragOffer::decoratorParent` to a node **inside**
@@ -192,6 +197,75 @@ ever sees its own subtree.
 
 The decorator must carry no `InputListener`: it would sit between the pointer and
 the source that owns the drag.
+
+### A decorator that is not ready yet
+
+`DragOffer::decoratorDeferred` says "build nothing now, I will hand you one":
+`beginDrag` creates no node, and the source calls
+`DragSession::setDecorator(node)` when it finally has one. Until then nothing
+follows the pointer, which for a frame or two reads as the press taking effect
+rather than as a missing ghost. A `setDecorator` that arrives after the drop is a
+no-op, so a late answer cannot park a node nobody will remove.
+
+It exists for one case: a ghost that shows the *pixels of the thing being dragged*
+— see below — has nothing to show until a frame has been rendered, so there is no
+node to install yet.
+
+It is **not** what keeps the ghost out of its own cutout. That used to be its
+second job, and it was a trap: the pointer sits on the row being copied when the
+drag begins, so a ghost built too early was photographed along with it. The
+decorator now goes on the Overlay level, which draws after the capture, so the
+exclusion holds however and whenever the ghost was made. `XL_DNDTREE_GHOST_NOW=1`
+in the dndtree example reproduces the old timing on purpose and must produce a
+byte-identical cutout.
+
+## A ghost made of the frame itself
+
+`FrameCapture` (`xenolith/application/resources/XLFrameCapture.h`) copies a
+rectangle of what the window last drew into a `Texture`, so a drag ghost can *be*
+the row instead of being a second drawing of it:
+
+```cpp
+auto capture = static_cast<AppWindow *>(getDirector()->getRenderServer())->getFrameCapture();
+if (capture && capture->isAvailable()) {
+    auto region = FrameCapture::makeRegion(worldRect,
+            getDirector()->getGeneralProjection(), constraints.extent);
+    capture->request(region, [source = Rc<DragSource>(source)](FrameCaptureTarget *t) {
+        if (auto session = source->getSession()) { session->setDecorator(makeSprite(t)); }
+    });
+    offer.decoratorDeferred = true;   // see above
+}
+```
+
+Four things about it are not obvious:
+
+* **One cutout is one image**, sized to the rectangle and written once. There is no
+  full-screen history to resize when the window is, and a `Sprite` shows it whole.
+* **The region is in surface pixels, y-down.** `FrameCapture::makeRegion` converts
+  a world rect through the projection rather than flipping y, because the
+  projection is what bakes surface pre-rotation. Size a sprite from
+  `getExtent()` divided by `FrameConstraints::density`, not from the rect.
+* **Build the world rect with `Node::getWorldBoundingBox()`.** A world origin plus a
+  content size is not a world rect: the scene root is scaled by the surface density,
+  so the origin is in surface pixels and the size in logical units, and the region
+  comes out half-size on every HiDPI surface.
+* **A captured frame carries no meaningful alpha.** The compositor was told the
+  surface is opaque, so that channel is not a transparency to inherit — draw the
+  cutout with `ColorMode(R, G, B, One)` or it blends itself away to nothing.
+* **`isAvailable()` is not a formality.** Only the Vulkan backend has a copy path;
+  every consumer needs something else to draw, and `XL_NO_FRAME_CAPTURE=1` is how
+  that fallback gets exercised on a machine where capturing works.
+* **The cutout never contains the Overlay level.** The copy is recorded between the
+  content pass and the overlay pass, so anything under a `setOverlay(true)` node —
+  the ghost itself, the window decorations — is outside every capture by
+  construction, not by timing.
+
+Where the presented image cannot be read (`SwapchainConfig::transferSrc` refused —
+Vulkan guarantees only `ColorAttachment` for a swapchain image) the copy instead
+rides one extra frame rendered offscreen. That costs a frame and shows a freshly
+drawn scene rather than the one on screen; for a ghost that is an improvement,
+since such a frame cannot contain the ghost. `XL_NO_SWAPCHAIN_TRANSFER_SRC=1`
+forces that route for testing.
 
 ## What is not implemented
 
@@ -223,12 +297,17 @@ Two things will genuinely change, and are worth knowing now:
 | Two overlapping targets at the same `ZOrder` | `sortAllChildren` is unstable, so which one is "topmost" permutes between frames. Give siblings distinct orders |
 | A hover highlight written as a `Component` | the components phase re-converges up to 12 times per frame; writing one every frame can thrash it. Change a property on a node the target already owns |
 | A stylesheet-styled decorator with no `decoratorParent` | it is parked on the `SceneContent`, outside the `StyleResolver`'s subtree, and renders unstyled |
+| A decorator installed without the Overlay level | a bare ZOrder puts it last in the scene but still inside the frame that gets copied out, so a captured ghost photographs itself. `DragSession` sets the level for you; a hand-parked node has to |
+| Expecting an overlay node to appear in a cutout | it never can — the copy is recorded between the two passes. Capture the content, not the thing drawn over it |
+| A capture region built from `convertToWorldSpace` plus `getContentSize()` | the two are in different spaces once the scene is scaled by the density, so the region is half-size and the ghost shows a corner of the row. Use `Node::getWorldBoundingBox()` |
+| Drawing a cutout without `ColorMode(R,G,B,One)` | the presented image's alpha is not a transparency; the ghost blends away to nothing |
 | An encode callback capturing `this` of a node | it may run on any thread once the OS path lands. Capture copies |
 | Expecting a clipboard round trip to work in a windowed test | taking the OS selection needs an input serial from a focused window. Run those headless, where the controller keeps the data in process |
 
 ## Trying it
 
 ```sh
+XL_FRAME_CAPTURE_TEST=1 ./testapp --headless   # the cutout, and that the Overlay level is not in it
 XL_DRAG_BASIC_TEST=1   ./testapp   # roster, bracket, topmost-wins, exactly-once
 XL_DRAG_ACTIONS_TEST=1 ./testapp   # modifiers, negotiation, cursor
 XL_DRAG_TEXT_TEST=1    ./testapp   # a text field receiving a drop
@@ -244,6 +323,7 @@ API-driven phases bypass.
 
 * [Node / System / Component](node-system-component.adoc) — which phase and which
   `SystemFlags` a behaviour belongs in
+* [Node geometry](node-geometry.adoc) — the Overlay draw level a decorator is put on
 * [Docking](../ui/docking.adoc) — the first consumer: `DockSystem` is one drop
   target over its own split tree
 * [Forms](../ui/forms.adoc) — the same shape one layer up: a coordinator system

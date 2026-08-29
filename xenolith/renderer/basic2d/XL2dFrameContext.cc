@@ -26,6 +26,7 @@
 #include "XLCoreLoop.h"
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
+#include "XLCoreRenderSession.h"
 #include "XLDirector.h"
 #include "SPBitmap.h"
 
@@ -97,14 +98,38 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 	// (the dependency is shared by pointer); it matters only for the remote message ordering.
 	FrameContext::submitHandle(frame, handle);
 
+	/* Rectangles of this frame the window wants copied out.
+
+	Asked for here rather than in the render-thread lambda below because the request lives on the
+	app thread, and TAKEN rather than read: two frames must never carry the same capture.
+
+	Submitted on EVERY frame, empty when nothing is armed. An attachment declared as input and then
+	not fed does not degrade - the frame waits for an input that never comes and wedges - which is
+	the whole reason the flat queue carries IgnoredInputAttachment for lights and particles. An
+	empty input costs one small Rc and makes the pass record nothing. */
+	Rc<core::FrameCaptureInput> capture;
+	if (_captureAttachmentData) {
+		if (auto server = frame.director->getRenderServer()) {
+			capture = server->takeFrameCaptureInput();
+		}
+		if (!capture) {
+			capture = Rc<core::FrameCaptureInput>::alloc();
+		}
+		frame.resolvedInputs.emplace(_captureAttachmentData);
+	}
+
 	frame.director->performOnRenderThread(
 			[this, req = frame.request, q = _queue, dir = frame.director,
-					h = Rc<FrameContextHandle2d>(h)]() mutable {
+					capture = sp::move(capture), h = Rc<FrameContextHandle2d>(h)]() mutable {
 		// One shared handle feeds all three attachments: dedup so the (potentially large) batch is
 		// serialized + shipped only once on the remote path.
 		const core::AttachmentData *atts[] = {_vertexAttachmentData, _lightAttachmentData,
 			_particleEmitterAttachmentData};
 		req->addInput(makeSpanView(atts, 3), Rc<FrameContextHandle2d>(h));
+
+		if (capture) {
+			req->addInput(_captureAttachmentData, sp::move(capture));
+		}
 	},
 			this);
 }
@@ -126,6 +151,8 @@ bool FrameContext2d::initWithQueue(core::Queue *queue) {
 			_lightAttachmentData = it;
 		} else if (it->key == ParticleEmittersAttachment) {
 			_particleEmitterAttachmentData = it;
+		} else if (it->key == core::FrameCaptureAttachmentName) {
+			_captureAttachmentData = it;
 		}
 	}
 

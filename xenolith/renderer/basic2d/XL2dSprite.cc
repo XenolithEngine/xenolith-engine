@@ -213,6 +213,14 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		_vertexColorDirty = false;
 	}
 
+	// Before the material is resolved, and in the same frame it changes: the overlay decides the
+	// blend and depth state (Transparent-class, so the overlay never writes depth), and the command
+	// pushed further down this same call has to match the material it will be drawn with.
+	if (frame.isOverlay() != _inOverlay) {
+		_inOverlay = frame.isOverlay();
+		_materialDirty = true;
+	}
+
 	if (_materialDirty) {
 		updateBlendAndDepth();
 
@@ -492,6 +500,10 @@ void Sprite::updateBlendAndDepth() {
 		shouldWriteDepth = false;
 		break;
 	case RenderingLevel::Transparent:
+	// A sprite never resolves to Overlay on its own - the level is applied to the COMMAND, from the
+	// visit (see Sprite::buildCmdInfo), and the material is left as the sprite chose it. This case
+	// exists for a direct setRenderingLevel(Overlay), and treats it as what it behaves like.
+	case RenderingLevel::Overlay:
 		shouldBlendColors = true;
 		shouldWriteDepth = false;
 		break;
@@ -524,7 +536,8 @@ void Sprite::updateBlendAndDepth() {
 		}
 	}
 	if (_realRenderingLevel == RenderingLevel::Surface
-			|| _realRenderingLevel == RenderingLevel::Transparent) {
+			|| _realRenderingLevel == RenderingLevel::Transparent
+			|| _realRenderingLevel == RenderingLevel::Overlay) {
 		if (depth.compare != toInt(core::CompareOp::LessOrEqual)) {
 			depth.compare = toInt(core::CompareOp::LessOrEqual);
 			_materialDirty = true;
@@ -548,6 +561,12 @@ void Sprite::updateBlendAndDepth() {
 }
 
 RenderingLevel Sprite::getRealRenderingLevel() const {
+	// The Overlay level outranks everything a sprite could resolve for itself, including an explicit
+	// setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	if (_inOverlay) {
+		return RenderingLevel::Overlay;
+	}
+
 	auto level = _renderingLevel;
 	if (level == RenderingLevel::Default) {
 		RenderingLevel parentLevel = RenderingLevel::Default;
@@ -592,7 +611,12 @@ bool Sprite::checkVertexDirty() const { return _vertexesDirty; }
 
 CmdInfo Sprite::buildCmdInfo(const FrameInfo &frame) const {
 	auto handle = static_cast<const FrameContextHandle2d *>(frame.currentContext);
-	return CmdInfo{frame.zPath, _materialId, handle->getCurrentState(), _realRenderingLevel,
+	// The overlay wins over whatever this sprite resolved for itself: a subtree lifted onto the
+	// overlay goes as a whole, or the ghost's label would stay behind with the content it was cut out
+	// of. getRealRenderingLevel says the same thing for the material; this covers the command even in
+	// the frame the two have not agreed yet.
+	return CmdInfo{frame.zPath, _materialId, handle->getCurrentState(),
+		frame.isOverlay() ? RenderingLevel::Overlay : _realRenderingLevel,
 		_displayedColor.a > 0.0f ? frame.depthStack.back() : 0.0f};
 }
 

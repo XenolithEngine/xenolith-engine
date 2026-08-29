@@ -51,15 +51,51 @@ bool DragSession::init(NotNull<DragSystem> system, DragOffer &&offer, Rc<Ref> &&
 	// Build, park, THEN keep. Calling the factory inline into addChild and holding the raw return
 	// hands the scene a node whose only reference just died at the end of the full expression
 	_decoratorParent = _offer.decoratorParent ? _offer.decoratorParent : system->getOwner();
-	if (_offer.decorator && _decoratorParent) {
+	if (_offer.decorator && !_offer.decoratorDeferred && _decoratorParent) {
 		Rc<Node> node = _offer.decorator();
 		if (node) {
-			_decoratorParent->addChild(node, DragSystem::DecoratorZOrder);
-			_decorator = node;
+			installDecorator(sp::move(node));
 		}
 	}
 
 	return true;
+}
+
+void DragSession::setDecorator(Rc<Node> &&node) {
+	// A drop can end the drag while whatever was producing this node is still in flight; installing
+	// it then would park a node nothing will ever remove.
+	if (_finished || !_decoratorParent) {
+		return;
+	}
+
+	if (_decorator) {
+		_decorator->removeFromParent(true);
+		_decorator = nullptr;
+	}
+
+	if (node) {
+		installDecorator(sp::move(node));
+		// Straight to the pointer: the drag may have travelled a long way since it began, and
+		// nothing else moves the decorator until the next pointer event.
+		updateDecorator();
+	}
+}
+
+void DragSession::installDecorator(Rc<Node> &&node) {
+	/* The Overlay level, not merely a high ZOrder.
+
+	A ZOrder puts the ghost last in the scene; the overlay puts it after the frame has been COPIED
+	OUT. That distinction is the whole reason a ghost made of captured pixels works at all: at the
+	moment a drag begins the pointer is sitting on the source row, so a ghost drawn as ordinary
+	content would be photographed by the very capture it is made of - and it would then photograph
+	that photograph on the next drag. Being on the overlay makes that impossible by construction
+	rather than by getting the timing right.
+
+	DecoratorZOrder still decides what the ghost is above and below, but now only among the other
+	things on the overlay. */
+	node->setOverlay(true);
+	_decoratorParent->addChild(node, DragSystem::DecoratorZOrder);
+	_decorator = sp::move(node);
 }
 
 DragEvent DragSession::makeEvent(DropTarget *target) const {
@@ -68,7 +104,7 @@ DragEvent DragSession::makeEvent(DropTarget *target) const {
 	ev.data = _data;
 	ev.worldLocation = _world;
 	ev.location = (target && target->getOwner()) ? target->getOwner()->convertToNodeSpace(_world)
-												: _world;
+												 : _world;
 	ev.allowed = _offer.allowedActions;
 	ev.preferred = _preferred;
 	ev.modifiers = _modifiers;

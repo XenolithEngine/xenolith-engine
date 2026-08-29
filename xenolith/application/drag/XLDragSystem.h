@@ -54,6 +54,11 @@ public:
 	DropTarget *getTarget() const { return _target; }
 	Node *getDecorator() const { return _decorator; }
 
+	// Install (or replace) the node that follows the pointer. For a source that set
+	// DragOffer::decoratorDeferred and had nothing to show yet at beginDrag. Ignored once the drag
+	// has finished, so a capture that lands late is a no-op rather than a leak.
+	void setDecorator(Rc<Node> &&);
+
 	DragActions getAllowedActions() const { return _offer.allowedActions; }
 
 	// The single action the modifiers ask for right now, clamped to what the source allows. A
@@ -87,6 +92,10 @@ protected:
 
 	// The current target left the scene: leave fires, the drag continues
 	virtual void handleTargetGone(NotNull<DropTarget>);
+
+	// Park the node on the decorator parent, on the Overlay level. See the definition for why the
+	// level rather than the ZOrder is what matters.
+	void installDecorator(Rc<Node> &&);
 
 	DragEvent makeEvent(DropTarget *) const;
 	void setTarget(DropTarget *, DragActions resolved);
@@ -139,10 +148,11 @@ class SP_PUBLIC DragSystem : public System {
 public:
 	static uint64_t Id;
 
-	// Above ordinary content and above the basic2d overlay stack, but strictly below
-	// WindowDecorations at ZOrder::max() - 1: a drag ghost must not paint over the title bar.
-	// A band of its own, shared with nothing - sortAllChildren is unstable, so equal ZOrders
-	// permute between frames
+	// The decorator is put on the Overlay LEVEL (see DragSession::installDecorator), which is what
+	// puts it above ordinary content and, crucially, after the frame has been captured. This ZOrder
+	// is what orders it against the other things on that level - WindowDecorations at
+	// ZOrder::max() - 1, which a drag ghost must not paint over. A band of its own, shared with
+	// nothing: sortAllChildren is unstable, so equal ZOrders permute between frames
 	static constexpr ZOrder DecoratorZOrder = ZOrder::max() - ZOrder(16);
 
 	// Deeply negative so the drag's cursor layer is applied after every widget's; see the class

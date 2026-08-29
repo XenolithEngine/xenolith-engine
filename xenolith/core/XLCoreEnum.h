@@ -472,7 +472,16 @@ enum class RenderingLevel {
 	Default,
 	Solid,
 	Surface,
-	Transparent
+	Transparent,
+
+	// Drawn last, in a pass of its own, AFTER the frame has been captured (see FrameCapture). In
+	// every other respect it behaves as Transparent: a bucket of its own keyed by zPath, so painter's
+	// order is what orders it.
+	//
+	// Last on purpose. It is the level a node hands DOWN to its subtree (Node::setOverlay), so it has
+	// to win over whatever level a descendant declares for itself - and sprt::max over this enum is
+	// what several places already use to resolve an inherited level.
+	Overlay
 };
 
 enum class ObjectType {

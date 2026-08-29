@@ -31,6 +31,7 @@
 #include "widgets/ButtonLayout.h"
 #include "css/CombinatorLayout.h"
 #include "render/DamageLayout.h"
+#include "render/FrameCaptureLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
 #include "layout/TableLayout.h"
@@ -477,6 +478,13 @@ static const TestInfo s_renderTests[] = {
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "
 				   "square must be visible at any moment - a second one is a trail."),
 		TestRegistry_make<DamageLayout>, true},
+
+	TestInfo{StringView("frame-capture"), StringView("XL_FRAME_CAPTURE_TEST"),
+		StringView("Capturing a rectangle of the frame as a texture"),
+		StringView("Two 2x2 colour blocks side by side. The left one is drawn; the right one is a "
+				   "cutout of the frame, so after frame-capture.request and one more frame the two "
+				   "must be identical - a swapped quadrant means a flipped or misplaced copy."),
+		TestRegistry_make<FrameCaptureLayout>, true},
 };
 
 // src/window - windows and the render graphs behind them

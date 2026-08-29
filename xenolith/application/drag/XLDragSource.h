@@ -74,6 +74,11 @@ public:
 	// The system this source last started a drag with; null when idle
 	DragSystem *getDragSystem() const { return _drag; }
 
+	// The drag this source has in flight, or null when it has none. What a source with a deferred
+	// decorator calls once it finally has something to show - and null is the ordinary answer for
+	// anything that arrives after the drop.
+	DragSession *getSession() const;
+
 protected:
 	using InputListener::init;
 

@@ -1,0 +1,493 @@
+/**
+ Copyright (c) 2026 Stappler LLC <admin@stappler.dev>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "XLCommon.h" // IWYU pragma: keep
+
+#include "dndtree/DndTreeView.h"
+#include "XLDragSource.h"
+#include "XLDropTarget.h"
+#include "XLUiPanel.h"
+#include "XL2dLabel.h"
+#include "XL2dSprite.h"
+#include "XLAppWindow.h"
+#include "director/XLDirector.h"
+
+#include <stdlib.h> // getenv
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
+
+namespace {
+
+// The node that follows the pointer. A plain ui::Panel with a label: everything it looks like comes
+// from `.drag-ghost` in the demo's stylesheet, which is why it MUST be parked inside the subtree
+// that carries the StyleResolver (see DragOffer::decoratorParent).
+static Rc<Node> makeDragGhost(StringView title) {
+	auto ghost = Rc<ui::Panel>::create();
+	ghost->addStyleClass("drag-ghost");
+	// under the pointer, not beside it; the sheet says the same thing, so the ghost is centred
+	// even before the first style pass runs
+	ghost->setAnchorPoint(Anchor::Middle);
+
+	auto label = ghost->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+	label->setType("label");
+	label->setString(title);
+	return ghost;
+}
+
+// The captured row, as the node that follows the pointer. Nothing about it is drawn a second time:
+// these are the pixels the row had on screen.
+static Rc<Node> makeCaptureGhost(FrameCaptureTarget *target, float density) {
+	auto sprite = Rc<basic2d::Sprite>::create(Rc<Texture>(target->getTexture()));
+	if (!sprite) {
+		return nullptr;
+	}
+
+	sprite->setAnchorPoint(Anchor::Middle);
+
+	// A capture is measured in SURFACE pixels; the scene is not. At density 1 the two agree and at
+	// density 2 a cutout drawn at its pixel size would come out twice too large.
+	const auto extent = target->getExtent();
+	sprite->setContentSize(Size2(float(extent.width) / density, float(extent.height) / density));
+
+	// A captured frame carries no meaningful alpha - the compositor was told the surface is opaque,
+	// so whatever the swapchain image holds in that channel is not a transparency to inherit.
+	// Without this the ghost blends itself away to nothing.
+	sprite->setColorMode(core::ColorMode(core::ComponentMapping::R, core::ComponentMapping::G,
+			core::ComponentMapping::B, core::ComponentMapping::One));
+
+	// Enough to read as a ghost rather than as a second copy of the row.
+	sprite->setOpacity(0.85f);
+	return sprite;
+}
+
+/* Rebuild `src` and everything under it inside another model.
+
+This is what a transfer between two models costs, and why a transfer INSIDE one does not pay it: an
+ItemId belongs to the model that allocated it, so an element crossing over is a different element on
+the other side, and everything keyed by the old id (an expansion, a selection) is gone with it.
+
+Spans are skipped rather than recreated: a span stands for rows nobody stores, answered by a
+callback that belongs to whoever installed it. There is nothing here to copy. */
+static data::Model::Node *cloneInto(data::Model *model, data::Model::Node *src,
+		data::Model::Node *dstParent, size_t index, size_t &created) {
+	data::Model::Value payload = src->getData();
+
+	if (!src->isCategory()) {
+		auto leaf = model->emplaceItem(dstParent, index, sp::move(payload));
+		if (leaf) {
+			++created;
+		}
+		return leaf;
+	}
+
+	auto made = model->emplaceCategory(dstParent, index, sp::move(payload));
+	if (!made) {
+		return nullptr;
+	}
+	++created;
+
+	// `src` is never an ancestor of `dstParent` - canAccept() refuses that - so the child list
+	// being walked here cannot be the one being appended to.
+	for (auto &child : src->getChildren()) {
+		if (child->isSpan()) {
+			continue;
+		}
+		cloneInto(model, child, made, maxOf<size_t>(), created);
+	}
+	return made;
+}
+
+// True when `node` is `candidate` or one of its ancestors, i.e. dropping into `node` would put a
+// subtree inside itself. Pure: it only walks parent links.
+static bool isSelfOrDescendantOf(const data::Model::Node *node,
+		const data::Model::Node *candidate) {
+	for (auto it = node; it; it = it->getParent()) {
+		if (it == candidate) {
+			return true;
+		}
+	}
+	return false;
+}
+
+} // namespace
+
+bool DndTreeView::init(data::Model *source, StringView title) {
+	if (!ui::TreeView::init(source)) {
+		return false;
+	}
+
+	_title = title.str<Interface>();
+	setName(_title);
+
+	attachViewTarget();
+	return true;
+}
+
+void DndTreeView::setMessageCallback(MessageCallback &&cb) { _message = sp::move(cb); }
+
+void DndTreeView::report(StringView message) {
+	if (_message) {
+		_message(message);
+	}
+}
+
+auto DndTreeView::payloadOf(const DragEvent &event) -> DndItemPayload * {
+	if (!event.data || !event.data->isLocal(DndItemPayload::TypeName)) {
+		return nullptr;
+	}
+	// The type tag has already answered whose payload this is, so the cast cannot be wrong - but
+	// a dynamic_cast is what keeps that true if a second local type is ever added here.
+	return dynamic_cast<DndItemPayload *>(event.data->getLocal());
+}
+
+auto DndTreeView::resolveDropSpot(size_t index) const -> DropSpot {
+	auto model = getSource();
+	if (!model) {
+		return DropSpot();
+	}
+
+	// The background of the view: whatever is dropped there joins the root, at the end.
+	auto row = getRow(index);
+	if (!row || !row->node) {
+		return DropSpot{model->getRoot(), maxOf<size_t>()};
+	}
+
+	// A category is a place; dropping on it means "put it in here".
+	if (row->isCategory()) {
+		return DropSpot{row->node.get(), maxOf<size_t>()};
+	}
+
+	// A leaf is a position: the drop lands right after it, among its siblings. A span row has no
+	// element behind it, but it does sit somewhere - so it still answers with a position.
+	auto parent = row->node->getParent();
+	if (!parent) {
+		return DropSpot{model->getRoot(), maxOf<size_t>()};
+	}
+	return DropSpot{parent, row->node->getChildIndex() + 1};
+}
+
+bool DndTreeView::canAccept(const DndItemPayload *payload, const DropSpot &spot) const {
+	if (!payload || !payload->node || !payload->model || !spot.valid()) {
+		return false;
+	}
+
+	auto model = getSource();
+	if (!model || !spot.parent->isCategory()) {
+		return false;
+	}
+
+	// Inside one model this would detach a cycle from the tree (Model::moveNode refuses it anyway);
+	// across two it would make cloneInto() walk a child list it is appending to. Refusing in the
+	// PREDICATE is what turns both into a NoDrop cursor instead of a silent no-op.
+	if (payload->model.get() == model && isSelfOrDescendantOf(spot.parent, payload->node.get())) {
+		return false;
+	}
+
+	// A drop that would put the element back exactly where it already is does nothing, and saying so
+	// in the PREDICATE matters beyond tidiness: at the moment a drag begins the pointer sits on the
+	// source row, so accepting would light that row up as a drop target - and, for a ghost made of
+	// the frame, that highlight would be copied straight into the ghost.
+	if (payload->model.get() == model && payload->node->getParent() == spot.parent) {
+		const auto current = payload->node->getChildIndex();
+		const auto target =
+				(spot.index == maxOf<size_t>()) ? spot.parent->getChildCount() : spot.index;
+		if (target == current || target == current + 1) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool DndTreeView::applyTransfer(DndItemPayload *payload, const DropSpot &spot, DragActions action) {
+	if (!canAccept(payload, spot)) {
+		return false;
+	}
+
+	auto model = getSource();
+	const bool sameModel = (payload->model.get() == model);
+
+	if (action == DragActions::Move && sameModel) {
+		size_t index = spot.index;
+
+		// Model::moveNode reads `index` in the child list AS IT WILL BE once the node is taken out
+		// of its current place. A spot derived from a sibling BELOW the node is therefore one slot
+		// too far - and this is the only place that knows both numbers.
+		if (payload->node->getParent() == spot.parent && index != maxOf<size_t>()
+				&& payload->node->getChildIndex() < index) {
+			--index;
+		}
+
+		if (!model->moveNode(payload->node.get(), spot.parent, index)) {
+			return false;
+		}
+
+		// the element is already where it belongs; the source must not delete it afterwards
+		payload->consumed = true;
+		report(toString("moved '", payload->title, "' inside ", _title));
+		return true;
+	}
+
+	size_t created = 0;
+	if (!cloneInto(model, payload->node.get(), spot.parent, spot.index, created)) {
+		return false;
+	}
+	_clones += created;
+
+	if (action == DragActions::Move) {
+		// a cross-model move: the copy is in place, and the source's completion deletes the
+		// original - which is what `consumed` staying false says.
+		report(toString("moved '", payload->title, "' from ", payload->origin, " to ", _title));
+	} else {
+		report(toString("copied '", payload->title, "' from ", payload->origin, " to ", _title));
+	}
+	return true;
+}
+
+void DndTreeView::finishTransfer(DndItemPayload *payload, DragActions action) {
+	if (!payload || !payload->model || !payload->node) {
+		return;
+	}
+
+	// DragActions::None means the drag ended without a drop - cancelled, refused, or dropped
+	// nowhere - and then nothing at all happened to the original.
+	if (action != DragActions::Move || payload->consumed) {
+		return;
+	}
+
+	payload->model->removeNode(payload->node.get());
+}
+
+Rc<DndItemPayload> DndTreeView::makePayload(size_t index) const {
+	auto row = getRow(index);
+	if (!row || !row->node || row->isSpanItem()) {
+		return nullptr; // the items inside a span are a length, not elements: nothing to carry
+	}
+
+	auto model = getSource();
+	if (!model || row->node.get() == model->getRoot()) {
+		return nullptr;
+	}
+
+	auto payload = Rc<DndItemPayload>::create();
+	payload->model = model;
+	payload->node = row->node;
+	payload->title = row->getData().getString(getLabelKey());
+	payload->origin = _title;
+	return payload;
+}
+
+FrameCapture *DndTreeView::getFrameCapture() const {
+	auto director = getDirector();
+	auto server = director ? director->getRenderServer() : nullptr;
+	// In local mode the render server IS the window; a remote one has no capture to offer and
+	// answers null through the same call, which is why this is not a dynamic_cast.
+	return server ? static_cast<AppWindow *>(server)->getFrameCapture() : nullptr;
+}
+
+bool DndTreeView::requestGhostCapture(size_t index, DragSource *source, DragOffer &offer) {
+	auto capture = getFrameCapture();
+	if (!capture || !capture->isAvailable() || !source) {
+		return false;
+	}
+
+	auto row = getRowNode(index);
+	auto director = getDirector();
+	if (!row || !director) {
+		return false;
+	}
+
+	// The row's box in WORLD space - not its world origin plus its content size, which mixes two
+	// spaces and silently halves the region on a HiDPI surface. makeRegion does the projection and
+	// the y flip, and clamps a row that is half-scrolled out of the view.
+	const auto &constraints = director->getFrameConstraints();
+
+	const auto region =
+			FrameCapture::makeRegion(row->getWorldBoundingBox(), director->getGeneralProjection(),
+					Extent2(constraints.extent.width, constraints.extent.height));
+
+	const auto density = constraints.density > 0.0f ? constraints.density : 1.0f;
+
+	auto target = capture->request(region,
+			[source = Rc<DragSource>(source), density](FrameCaptureTarget *target) {
+		// Null once the drop has already happened - a capture that lands late is a no-op, not a
+		// node parked on the scene forever.
+		auto session = source->getSession();
+		if (!session || !target->isReady()) {
+			return;
+		}
+		session->setDecorator(makeCaptureGhost(target, density));
+	});
+
+	if (!target) {
+		return false;
+	}
+
+	/* Nothing follows the pointer until the copy lands - not for safety any more, but because there
+	is nothing to show yet: the sprite has no texture until the capture arrives.
+
+	It used to be the safety too. The pointer sits on the row being copied, so a ghost parked now
+	would be drawn over it and photographed with it. That is no longer possible: the decorator goes
+	on the Overlay level, which draws after the frame has been captured.
+
+	XL_DNDTREE_GHOST_NOW=1 puts the drawn ghost up immediately AND still asks for the cutout, which
+	reproduces exactly that old hazard. The cutout it produces has to come out identical to the
+	deferred one - that is the check that the protection is structural rather than a matter of
+	timing. */
+	if (auto value = ::getenv("XL_DNDTREE_GHOST_NOW")) {
+		if (StringView(value) != "0") {
+			return false;
+		}
+	}
+
+	offer.decoratorDeferred = true;
+	return true;
+}
+
+bool DndTreeView::fillOffer(size_t index, DragSource *source, DragOffer &offer) {
+	auto payload = makePayload(index);
+	if (!payload) {
+		return false; // a plain refusal, not an error: this row is not draggable
+	}
+
+	offer.local = payload;
+	offer.localType = DndItemPayload::TypeName.str<Interface>();
+	offer.label = payload->title;
+
+	// The OS-shaped half of the same payload. Nothing in this demo reads it, but declaring it is
+	// what makes the row droppable into a ui::TextInput - and what the clipboard would take if the
+	// row also offered a Copy command.
+	offer.types = Vector<String>{String("text/plain")};
+	offer.encode = [text = payload->title](StringView type) -> sprt::window::Bytes {
+		// copies only, and no scene node: this callback is stored under a contract that says it may
+		// run on any thread once the OS drag path exists
+		if (!type.starts_with("text/plain")) {
+			return sprt::window::Bytes();
+		}
+		return BytesView(reinterpret_cast<const uint8_t *>(text.data()), text.size())
+				.bytes<sprt::window::Bytes>();
+	};
+
+	// Move is what a tree of elements does by default; Ctrl asks for a Copy, and the target has the
+	// last word on both.
+	offer.allowedActions = DragActions::Move | DragActions::Copy;
+	offer.defaultAction = DragActions::Move;
+
+	// Parked inside the styled subtree, not on the scene content: a StyleResolver only sees its
+	// own, and the drawn ghost below takes its whole look from the sheet. It is also where the
+	// captured ghost goes, so this is set whichever of the two is used.
+	offer.decoratorParent = _ghostParent;
+
+	// A cutout of the row itself where the window can produce one; the drawn ghost is the fallback
+	// for a backend or a surface that cannot, and looks like a row rather than being one. Under
+	// XL_DNDTREE_GHOST_NOW the capture is armed and the drawn ghost goes up as well, so the cutout
+	// is taken with a ghost already on screen - see requestGhostCapture.
+	if (!requestGhostCapture(index, source, offer)) {
+		offer.decorator = [title = payload->title]() -> Rc<Node> { return makeDragGhost(title); };
+	}
+
+	// Runs exactly once, whatever ended the drag. An Rc on the view, because the completion may run
+	// after the row that started the drag has been rebuilt out of existence by the drop itself.
+	offer.completion = [self = Rc<DndTreeView>(this), payload](DragActions action) {
+		finishTransfer(payload, action);
+		if (action == DragActions::None) {
+			self->report(toString("'", payload->title, "' was dropped nowhere"));
+		} else {
+			// the target has already said what it did, but it said so BEFORE the line above took
+			// the original away: an empty message re-reads the counts and keeps the words
+			self->report(StringView());
+		}
+	};
+
+	return true;
+}
+
+Rc<Node> DndTreeView::buildRowNode(RowBuilder &builder) {
+	auto node = ui::TreeView::buildRowNode(builder);
+
+	// A row callback that took the row over completely (RowBuilder::setNode) yields something that
+	// is not a RowNode, and then there is no index to read back. This demo never does that, but the
+	// hook has to survive one that would.
+	if (auto row = dynamic_cast<RowNode *>(node.get())) {
+		attachRowHandlers(row);
+	}
+	return node;
+}
+
+void DndTreeView::attachRowHandlers(RowNode *row) {
+	// `row` is captured raw and `this` with it: the systems below are owned BY that node, which is
+	// owned by the controller this view owns, so neither pointer can outlive the lambda holding it.
+	// An Rc either way would be a cycle.
+
+	// The builder is installed after the source exists because it needs the source itself: a
+	// capture-backed ghost is handed to that source's session once the copy lands.
+	auto source = row->addSystem(Rc<DragSource>::create(nullptr));
+	source->setOfferBuilder([this, row, source](DragOffer &offer) {
+		return fillOffer(row->getRowIndex(), source, offer);
+	});
+
+	row->addSystem(Rc<DropTarget>::create(DropTargetSlots{
+		.accept = [this, row](const DragEvent &event) -> DragResponse {
+		auto payload = payloadOf(event);
+		if (!payload || !canAccept(payload, resolveDropSpot(row->getRowIndex()))) {
+			return DragResponse(); // not here: the search continues underneath this row
+		}
+		// never a bare constant: answering with more than the source offered would claim an
+		// action it cannot perform
+		return DragResponse{event.allowed & (DragActions::Move | DragActions::Copy)};
+	},
+		// feedback belongs here and not in accept(), which runs for rows that never become current
+		.enter = [row](const DragEvent &) { row->addStyleClass("drop-into"); },
+		.leave = [row](const DragEvent &) { row->removeStyleClass("drop-into"); },
+		.drop =
+				[this, row](const DragEvent &event, DragActions action) {
+		auto payload = payloadOf(event);
+		// read everything first: applyTransfer is what invalidates this row
+		return payload && applyTransfer(payload, resolveDropSpot(row->getRowIndex()), action);
+	},
+	}));
+}
+
+void DndTreeView::attachViewTarget() {
+	// The view's own background, under every row. It is visited BEFORE its rows, so it registers
+	// first and the drag - which walks the roster backwards - finds a row on top of it wherever
+	// one is drawn. What is left is the empty space below the last row, which is exactly the
+	// "append to the root" the tree needs to be droppable when it holds nothing at all.
+	addSystem(Rc<DropTarget>::create(DropTargetSlots{
+		.accept = [this](const DragEvent &event) -> DragResponse {
+		auto payload = payloadOf(event);
+		if (!payload || !canAccept(payload, resolveDropSpot(maxOf<size_t>()))) {
+			return DragResponse();
+		}
+		return DragResponse{event.allowed & (DragActions::Move | DragActions::Copy)};
+	},
+		.enter = [this](const DragEvent &) { addStyleClass("drop-root"); },
+		.leave = [this](const DragEvent &) { removeStyleClass("drop-root"); },
+		.drop =
+				[this](const DragEvent &event, DragActions action) {
+		auto payload = payloadOf(event);
+		return payload && applyTransfer(payload, resolveDropSpot(maxOf<size_t>()), action);
+	},
+	}));
+}
+
+} // namespace stappler::xenolith::examples

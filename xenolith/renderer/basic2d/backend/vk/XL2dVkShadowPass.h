@@ -103,6 +103,8 @@ public:
 protected:
 	virtual void prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &buf) override;
 
+	virtual void recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) override;
+
 	// shadows
 	const ShadowLightDataAttachmentHandle *_shadowData = nullptr;
 	const ImageAttachmentHandle *_sdfImage = nullptr;

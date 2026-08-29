@@ -34,10 +34,12 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/backend/webgpu/webgpu.mk \
 	$(XENOLITH_MODULE_DIR)/backend/mtl/mtl.mk \
 	$(XENOLITH_MODULE_DIR)/backend/soft/soft.mk \
+	$(XENOLITH_MODULE_DIR)/backend/gles/gles.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/basic2d.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/webgpu/basic2d-webgpu.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/mtl/basic2d-mtl.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/soft/basic2d-soft.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/gles/basic2d-gles.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/richtext/richtext.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/pug/pug.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/ui/ui.mk \

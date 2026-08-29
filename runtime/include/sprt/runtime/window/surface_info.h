@@ -169,6 +169,13 @@ struct SPRT_API SwapchainConfig {
 	Extent2 extent;
 	bool clipped = false;
 	bool transfer = true;
+
+	// Whether the presented images may be READ - copied out of, in place, by whatever rendered
+	// them. The spec guarantees only ColorAttachment for a swapchain image, so this is a request
+	// that a surface is free to refuse (SurfaceInfo::supportedUsageFlags is what answers), and
+	// anything relying on it needs a path for the refusal.
+	bool transferSrc = false;
+
 	bool liveResize = false;
 
 	// Used when gAPI support for the fullscreen mode required
