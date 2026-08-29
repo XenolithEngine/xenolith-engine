@@ -65,8 +65,20 @@ public:
 
 	/* Asked to open `item`'s submenu, anchored on the row's node. Return true when it did: opening a
 	submenu is navigation rather than a choice, so the item's own callback does NOT run and no
-	activation is reported. Unset, a submenu row behaves like any other command. */
+	activation is reported. Unset, a submenu row behaves like any other command.
+
+	It has to be IDEMPOTENT for the item whose submenu is already open - the pointer coming back out
+	of a submenu onto the row that opened it asks again, and an implementation that tore the level
+	down and rebuilt it would flicker. MenuPopupChain::openSubmenu answers that in the one object
+	that knows, which is why this system caches no answer of its own. */
 	using SubmenuHandler = Function<bool(NotNull<MenuSourceButton>, NotNull<Node>)>;
+
+	/* Asked to take down whatever submenu this menu has open, because the pointer moved to another
+	row. The pair of SubmenuHandler: a menu that opens submenus its own way closes them its own way,
+	and a menu with no handler for either behaves as it always did.
+
+	Free to be called with nothing open - it is not told, and must not care. */
+	using SubmenuCloseHandler = Function<void()>;
 
 	// The nearest MenuSystem at or above `node`. There is no acquireForNode: a menu is something an
 	// application builds deliberately, not something a widget can conjure over itself.
@@ -134,6 +146,17 @@ public:
 	virtual void setWillActivateCallback(ActivateCallback &&);
 
 	virtual void setSubmenuHandler(SubmenuHandler &&);
+	virtual void setSubmenuCloseHandler(SubmenuCloseHandler &&);
+
+	// --- the pointer ----------------------------------------------------------------------------
+
+	/* Whether a hovered row opens its submenu, and after how long. See MenuHoverConfig for why the
+	two delays differ.
+
+	A popup carries it down its whole chain (MenuConfig::hover), so every level of one menu answers
+	the pointer alike; an inline menu is told here. */
+	virtual void setHoverConfig(const MenuHoverConfig &);
+	const MenuHoverConfig &getHoverConfig() const { return _hover; }
 
 	// --- the keyboard ---------------------------------------------------------------------------
 
@@ -185,7 +208,14 @@ public:
 	// callback.
 	virtual void handleItemActivated(NotNull<MenuSourceItem>);
 
-	// Called by a row when the pointer entered it. See setHighlighted.
+	/* Called by a row when the pointer entered it - the ENTERING EDGE only, and the only thing this
+	system hears about the pointer at all.
+
+	It carries two independent answers, and they are independent on purpose. The keyboard's cursor
+	follows the pointer, but only while the keyboard is in play (see setHighlighted). The submenu
+	answers whether or not it is: a row with a submenu arms the open timer, ANY other row arms the
+	close timer, and either arming cancels whatever was armed before - so running the pointer down a
+	list leaves one pending answer rather than a queue of them. */
 	virtual void handleItemHovered(NotNull<MenuSourceItem>);
 
 protected:
@@ -194,10 +224,21 @@ protected:
 		Rc<Node> node;
 	};
 
+	// The one pending answer to the pointer. Its own tag, so that a menu on a node that runs other
+	// actions cancels only this.
+	static constexpr uint32_t SubmenuDelayActionTag = "XLUiMenuSubmenu"_tag;
+
 	// The group goes on BEFORE the listener: a listener takes the nearest group off the frame
 	// stack as it registers, and one added first would come up with none.
 	void enableKeyboard();
 	void disableKeyboard();
+
+	/* Arm the pointer's answer: `item` to open its submenu, null to take down whatever is open.
+	Cancels the previous one first, and a zero delay is answered on the spot rather than through the
+	action manager. */
+	void armSubmenu(MenuSourceButton *item, TimeInterval delay);
+	void cancelSubmenuDelay();
+	void fireSubmenu();
 
 	bool handleKey(const GestureData &);
 
@@ -230,6 +271,15 @@ protected:
 	ActivateCallback _activateCallback;
 	ActivateCallback _willActivateCallback;
 	SubmenuHandler _submenuHandler;
+	SubmenuCloseHandler _submenuCloseHandler;
+	MenuHoverConfig _hover;
+
+	/* What the armed timer is about: the row whose submenu is to open, or null for "close whatever
+	is open". It is NOT a record of what IS open - this system deliberately keeps none. A cache of
+	that would go stale the moment a level is taken down by something other than a hover (Left in a
+	submenu asks the chain directly), and a stale one would refuse to reopen the row it named. */
+	Rc<MenuSourceButton> _pendingSubmenu;
+	bool _submenuArmed = false;
 
 	bool _itemsDirty = true;
 

@@ -141,6 +141,17 @@ bool MenuLayout::init() {
 		_activationLog.emplace_back(_lastActivated);
 	});
 
+	/* An inline menu has no chain to open a surface in, so its handlers only WRITE DOWN what was
+	asked of them. That is the point: what the pointer decides is a property of MenuSystem, and here
+	it is readable with no window in play at all - which is also the only place the disabled seam
+	(`hover.openSubmenu = false`) can be told apart from a menu that simply has nowhere to open. */
+	_menu->setSubmenuHandler([this](NotNull<ui::MenuSourceButton> item, NotNull<Node>) -> bool {
+		_activationLog.emplace_back(toString("submenu-open:", item->getName()));
+		return true;
+	});
+	_menu->setSubmenuCloseHandler([this] { _activationLog.emplace_back("submenu-close"); });
+	_menu->setHoverConfig(_hover);
+
 	_openButton = addChild(TestLayout::makeButton("Open popup",
 								   [this] {
 		if (_popup) {
@@ -148,22 +159,7 @@ bool MenuLayout::init() {
 			_popup = nullptr;
 			return;
 		}
-
-		if (auto window = getAppWindow()) {
-			ui::MenuConfig config;
-			config.idPrefix = String("menu-test");
-			config.title = String("Menu test");
-			// A native popup is a scene of its own: the layout's sheet does not reach it, so the
-			// same CSS travels with the menu.
-			config.stylesheetSource = s_menuCss.str<Interface>();
-			config.onActivate = [this](NotNull<ui::MenuSourceItem> item) {
-				++_activations;
-				_lastActivated = item->getName().str<Interface>();
-				_activationLog.emplace_back(_lastActivated);
-			};
-			config.onClose = [this] { _popup = nullptr; };
-			_popup = ui::openMenuForNode(window, _openButton, _source, sp::move(config));
-		}
+		openPopup();
 	}),
 			ZOrder(2));
 	_openButton->setName("open-popup");
@@ -179,6 +175,35 @@ bool MenuLayout::init() {
 	return true;
 }
 
+bool MenuLayout::openPopup() {
+	if (_popup || !_openButton) {
+		return _popup != nullptr;
+	}
+
+	auto window = getAppWindow();
+	if (!window) {
+		return false;
+	}
+
+	ui::MenuConfig config;
+	config.idPrefix = String("menu-test");
+	config.title = String("Menu test");
+	// A native popup is a scene of its own: the layout's sheet does not reach it, so the same CSS
+	// travels with the menu.
+	config.stylesheetSource = s_menuCss.str<Interface>();
+	// Carried down the whole chain by MenuPopupChain, so every level answers the pointer alike.
+	config.hover = _hover;
+	config.onActivate = [this](NotNull<ui::MenuSourceItem> item) {
+		++_activations;
+		_lastActivated = item->getName().str<Interface>();
+		_activationLog.emplace_back(_lastActivated);
+	};
+	config.onClose = [this] { _popup = nullptr; };
+
+	_popup = ui::openMenuForNode(window, _openButton, _source, sp::move(config));
+	return _popup != nullptr;
+}
+
 void MenuLayout::buildSource() {
 	_submenu = Rc<ui::MenuSource>::create();
 	_submenu->addButton("sub-one", "Submenu one", [this](NotNull<ui::MenuSourceButton> item) {
@@ -187,6 +212,19 @@ void MenuLayout::buildSource() {
 	_submenu->addButton("sub-two", "Submenu two", [this](NotNull<ui::MenuSourceButton> item) {
 		_activationLog.emplace_back(toString("callback:", item->getName()));
 	});
+
+	/* A third level, appended AFTER the two rows the geometry checks stand on so that none of them
+	moves. It is what makes "nested levels" plural: a submenu opening a submenu is the case where a
+	level has both a parent and a child, and only the third one has that. */
+	_deepSubmenu = Rc<ui::MenuSource>::create();
+	_deepSubmenu->addButton("deep-one", "Deeper one", [this](NotNull<ui::MenuSourceButton> item) {
+		_activationLog.emplace_back(toString("callback:", item->getName()));
+	});
+	_deepSubmenu->addButton("deep-two", "Deeper two", [this](NotNull<ui::MenuSourceButton> item) {
+		_activationLog.emplace_back(toString("callback:", item->getName()));
+	});
+	_submenu->addSubmenu("sub-more", "Deeper still", basic2d::IconName::None,
+			Rc<ui::MenuSource>(_deepSubmenu));
 
 	_source = Rc<ui::MenuSource>::create();
 
@@ -276,6 +314,44 @@ AppWindow *MenuLayout::getAppWindow() const {
 
 ui::MenuSourceItem *MenuLayout::getItem(const Value &args) const {
 	return _source ? _source->getItem(args.getString("item")) : nullptr;
+}
+
+ui::MenuPopupChain *MenuLayout::getChainForLevel(int64_t level) const {
+	if (level < 1 || !_popup) {
+		return nullptr;
+	}
+
+	// getPanel() answers on both materializations, which is what makes this work in headless (where
+	// a popup is a real window) and in an overlay build alike.
+	auto chain = ui::MenuPopupChain::findForNode(_popup->getPanel());
+	for (int64_t i = 1; chain && i < level; ++i) {
+		auto child = chain->getChild();
+		chain = child ? ui::MenuPopupChain::findForNode(child->getPanel()) : nullptr;
+	}
+	return chain;
+}
+
+ui::MenuSystem *MenuLayout::getMenuForLevel(int64_t level) const {
+	if (level <= 0) {
+		return _menu;
+	}
+	auto chain = getChainForLevel(level);
+	auto surface = chain ? chain->getSurface() : nullptr;
+	return surface ? ui::MenuSystem::findForNode(surface->getPanel()) : nullptr;
+}
+
+void MenuLayout::applyHoverConfig() {
+	if (_menu) {
+		_menu->setHoverConfig(_hover);
+	}
+	// Every level that is already up. A level opened later takes it from MenuConfig::hover, which
+	// openPopup fills in from the same field.
+	for (int64_t level = 1; auto menu = getMenuForLevel(level); ++level) {
+		menu->setHoverConfig(_hover);
+		if (level > 8) {
+			break; // a chain this deep is a bug, not a menu
+		}
+	}
 }
 
 Value MenuLayout::encodeMetrics() const {
@@ -388,6 +464,66 @@ void MenuLayout::registerCommands() {
 		return ackValue(item != nullptr);
 	});
 
+	/* THE POINTER, reported through the very call ui::MenuItem makes on the entering edge of a real
+	hover. It cannot be an injected MouseMove: the mouse-over recognizer gates on
+	WindowState::Pointer, and headless has no way to put the pointer over a row. So what this drives
+	is everything ABOVE that call - which is all of what this change is. */
+	addCommand("hover", "Report a pointer entering a row: {item, level} (0 inline, 1 popup, 2 its "
+					 "submenu, ...)",
+			[this](Value &&args) {
+		const Value &a = args;
+		auto menu = getMenuForLevel(a.getInteger("level"));
+		auto source = menu ? menu->getSource() : nullptr;
+		auto item = source ? source->getItem(a.getString("item")) : nullptr;
+		if (menu && item) {
+			menu->handleItemHovered(item);
+			return ackValue(true);
+		}
+		return ackValue(false);
+	});
+
+	addCommand("hover-config",
+			"What a hover does, at every level: {enabled, open, close} - delays in milliseconds",
+			[this](Value &&args) {
+		const Value &a = args;
+		if (a.isBool("enabled")) {
+			_hover.openSubmenu = a.getBool("enabled");
+		}
+		if (a.isInteger("open")) {
+			_hover.openDelay = TimeInterval::milliseconds(uint64_t(a.getInteger("open")));
+		}
+		if (a.isInteger("close")) {
+			_hover.closeDelay = TimeInterval::milliseconds(uint64_t(a.getInteger("close")));
+		}
+		applyHoverConfig();
+		return ackValue(true);
+	});
+
+	addCommand("chain",
+			"The open menu chain: one entry per level, with the row its child hangs off",
+			[this](Value &&) {
+		Value ret;
+		Value levels;
+		if (_popup) {
+			for (int64_t level = 1; auto chain = getChainForLevel(level); ++level) {
+				auto surface = chain->getSurface();
+				Value entry;
+				entry.setInteger(level, "level");
+				entry.setString(surface ? surface->getId() : StringView(), "id");
+				// Which row THIS level has a child open for - null when it is the last one.
+				auto item = chain->getChildItem();
+				entry.setString(item ? item->getName() : StringView(), "child");
+				levels.addValue(sp::move(entry));
+				if (level > 8) {
+					break;
+				}
+			}
+		}
+		ret.setInteger(int64_t(levels.size()), "depth");
+		ret.setValue(sp::move(levels), "levels");
+		return ret;
+	});
+
 	addCommand("set-checked", "Toggle an item: {item, value}", [this](Value &&args) {
 		auto item = getItem(args);
 		if (item) {
@@ -441,21 +577,7 @@ void MenuLayout::registerCommands() {
 	});
 
 	addCommand("open", "Open the popup form of the same menu", [this](Value &&) {
-		if (!_popup && _openButton) {
-			if (auto window = getAppWindow()) {
-				ui::MenuConfig config;
-				config.idPrefix = String("menu-test");
-				config.title = String("Menu test");
-				config.stylesheetSource = s_menuCss.str<Interface>();
-				config.onActivate = [this](NotNull<ui::MenuSourceItem> item) {
-					++_activations;
-					_lastActivated = item->getName().str<Interface>();
-					_activationLog.emplace_back(_lastActivated);
-				};
-				config.onClose = [this] { _popup = nullptr; };
-				_popup = ui::openMenuForNode(window, _openButton, _source, sp::move(config));
-			}
-		}
+		openPopup();
 		return ackValue(_popup != nullptr);
 	});
 

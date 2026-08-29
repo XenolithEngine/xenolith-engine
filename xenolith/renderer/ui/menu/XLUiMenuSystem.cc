@@ -26,6 +26,7 @@
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLInputListener.h"
+#include "XLAction.h" // the pointer's dwell is a Sequence on the owner, as in ui::TooltipSystem
 #include "XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -318,6 +319,8 @@ void MenuSystem::handleRemoved() {
 	if (_source) {
 		_source->removeObserver(this);
 	}
+	// While the owner is still ours to stop the pending action on.
+	cancelSubmenuDelay();
 	disableKeyboard();
 	System::handleRemoved();
 }
@@ -325,6 +328,7 @@ void MenuSystem::handleRemoved() {
 void MenuSystem::handleExit() {
 	// The rows are children of a node on its way out; nothing to tear down beyond dropping our own
 	// references to them, which keeps a removed menu from holding its items alive.
+	cancelSubmenuDelay();
 	System::handleExit();
 }
 
@@ -365,6 +369,19 @@ void MenuSystem::setWillActivateCallback(ActivateCallback &&cb) {
 
 void MenuSystem::setSubmenuHandler(SubmenuHandler &&handler) {
 	_submenuHandler = sp::move(handler);
+}
+
+void MenuSystem::setSubmenuCloseHandler(SubmenuCloseHandler &&handler) {
+	_submenuCloseHandler = sp::move(handler);
+}
+
+void MenuSystem::setHoverConfig(const MenuHoverConfig &config) {
+	if (_hover == config) {
+		return;
+	}
+	_hover = config;
+	// Whatever the pointer had pending was decided under the old numbers.
+	cancelSubmenuDelay();
 }
 
 void MenuSystem::setKeyboardEnabled(bool value) {
@@ -657,6 +674,10 @@ MenuSourceItem *MenuSystem::getItemForNode(NotNull<Node> node) const {
 }
 
 void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
+	// The pointer was only about to answer; the click just answered. A pending close left armed here
+	// would take down the submenu this very call is opening.
+	cancelSubmenuDelay();
+
 	auto button = (item->getType() == MenuSourceItem::Type::Button)
 			? static_cast<MenuSourceButton *>(item.get())
 			: nullptr;
@@ -691,17 +712,94 @@ void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
 }
 
 void MenuSystem::handleItemHovered(NotNull<MenuSourceItem> item) {
-	// Only while the keyboard is in play: without it there is no highlight to move, and `:hover`
-	// alone is what a mouse-driven menu has always shown.
-	if (!_keyboardEnabled) {
-		return;
-	}
+	const Row *hovered = nullptr;
 	for (auto &row : _rows) {
 		if (row.item == item) {
-			if (isSelectable(row)) {
-				setHighlighted(item);
-			}
-			return;
+			hovered = &row;
+			break;
+		}
+	}
+	if (!hovered) {
+		return; // not a row of ours
+	}
+
+	const bool selectable = isSelectable(*hovered);
+
+	/* The keyboard's cursor, and only while the keyboard is in play: without it there is no
+	highlight to mean anything, and `:hover` alone is what a mouse-driven menu has always shown. */
+	if (_keyboardEnabled && selectable) {
+		setHighlighted(item);
+	}
+
+	if (!_hover.openSubmenu || !_submenuHandler) {
+		return;
+	}
+
+	auto button = (selectable && item->getType() == MenuSourceItem::Type::Button)
+			? static_cast<MenuSourceButton *>(item.get())
+			: nullptr;
+
+	if (button && button->hasSubmenu()) {
+		armSubmenu(button, _hover.openDelay);
+	} else {
+		// ANY other row, disabled ones and separators included: the pointer has left the row that
+		// opened the submenu, and where it landed does not change that.
+		armSubmenu(nullptr, _hover.closeDelay);
+	}
+}
+
+void MenuSystem::armSubmenu(MenuSourceButton *item, TimeInterval delay) {
+	auto owner = _owner;
+	if (!owner) {
+		return;
+	}
+
+	owner->stopAllActionsByTag(SubmenuDelayActionTag);
+
+	_pendingSubmenu = item;
+	_submenuArmed = true;
+
+	if (!delay) {
+		fireSubmenu();
+		return;
+	}
+
+	// Rc, not `this`: the action manager holds the action, and this system can be taken off its
+	// owner while it runs.
+	owner->runAction(
+			Rc<Sequence>::create(delay, [self = Rc<MenuSystem>(this)] { self->fireSubmenu(); }),
+			SubmenuDelayActionTag);
+}
+
+void MenuSystem::cancelSubmenuDelay() {
+	_pendingSubmenu = nullptr;
+	_submenuArmed = false;
+	if (_owner) {
+		_owner->stopAllActionsByTag(SubmenuDelayActionTag);
+	}
+}
+
+void MenuSystem::fireSubmenu() {
+	if (!_submenuArmed) {
+		return;
+	}
+
+	auto item = sp::move(_pendingSubmenu);
+	_pendingSubmenu = nullptr;
+	_submenuArmed = false;
+
+	if (!item) {
+		if (_submenuCloseHandler) {
+			_submenuCloseHandler();
+		}
+		return;
+	}
+
+	// Re-read the row: the menu may have been rebuilt while the delay ran, and an item that is no
+	// longer there is an answer that no longer applies.
+	if (_submenuHandler) {
+		if (auto node = getNodeForItem(item.get())) {
+			_submenuHandler(item.get(), node);
 		}
 	}
 }
