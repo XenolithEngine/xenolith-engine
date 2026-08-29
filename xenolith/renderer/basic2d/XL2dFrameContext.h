@@ -48,6 +48,8 @@ public:
 protected:
 	bool initWithQueue(core::Queue *);
 
+	// Null for a queue that cannot capture; nothing is submitted for it then.
+	const core::AttachmentData *_captureAttachmentData = nullptr;
 	const core::AttachmentData *_materialAttachmentData = nullptr;
 	const core::AttachmentData *_vertexAttachmentData = nullptr;
 	const core::AttachmentData *_lightAttachmentData = nullptr;

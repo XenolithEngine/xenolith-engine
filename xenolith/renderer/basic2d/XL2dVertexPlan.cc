@@ -45,9 +45,9 @@ void VertexPlan::pushCommand(Context &ctx, const Command *cmd) {
 	}
 }
 
-VertexPlan::StatePlanInfo *VertexPlan::acquireStatePlan(
-		FrameContextHandle2d *input, const core::Material *material,
-		Map<core::MaterialId, MaterialWritePlan> &writePlan, const CmdInfo *cmd) {
+VertexPlan::StatePlanInfo *VertexPlan::acquireStatePlan(FrameContextHandle2d *input,
+		const core::Material *material, Map<core::MaterialId, MaterialWritePlan> &writePlan,
+		const CmdInfo *cmd) {
 	auto materialIt = writePlan.find(cmd->material);
 	if (materialIt == writePlan.end()) {
 		if (material) {
@@ -80,18 +80,21 @@ VertexPlan::StatePlanInfo *VertexPlan::acquireStatePlan(
 			}
 		}
 
-		auto pathsIt = paths.find(cmd->zPath);
-		if (pathsIt == paths.end()) {
-			paths.emplace(cmd->zPath, 0.0f);
+		// Which band this zPath draws in. Overlay paths are collected separately so
+		// updatePathsDepth can place them nearer than every content path.
+		auto &pathMap = (cmd->renderingLevel == RenderingLevel::Overlay) ? overlayPaths : paths;
+		auto pathsIt = pathMap.find(cmd->zPath);
+		if (pathsIt == pathMap.end()) {
+			pathMap.emplace(cmd->zPath, 0.0f);
 		}
 
 		return &stateIt->second;
 	}
 	return nullptr;
 }
-void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input,
-		const core::Material *material, Map<core::MaterialId, MaterialWritePlan> &writePlan,
-		const Command *c, const CmdInfo *cmd, SpanView<InstanceVertexData> vertexes) {
+void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input, const core::Material *material,
+		Map<core::MaterialId, MaterialWritePlan> &writePlan, const Command *c, const CmdInfo *cmd,
+		SpanView<InstanceVertexData> vertexes) {
 	auto statePlan = acquireStatePlan(input, material, writePlan, cmd);
 
 	if (statePlan) {
@@ -164,8 +167,7 @@ void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input,
 	}
 }
 
-void VertexPlan::pushVertexData(Context &ctx, const Command *c,
-		const CmdVertexArray *cmd) {
+void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexArray *cmd) {
 	auto material = ctx.getMaterialById(cmd->material);
 	if (!material) {
 		return;
@@ -187,7 +189,13 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c,
 	}
 #endif
 
-	if (material->getPipeline()->isSolid()) {
+	// Before the isSolid() test on purpose: the overlay takes the command whatever its pipeline is.
+	// A solid pipeline is safe there because the overlay draws at the near plane, ahead of every
+	// content path - see updatePathsDepth.
+	if (cmd->renderingLevel == RenderingLevel::Overlay) {
+		emplaceWritePlan(ctx.input, material, acquireOverlayPlan(cmd->zPath), c, cmd,
+				cmd->vertexes);
+	} else if (material->getPipeline()->isSolid()) {
 		emplaceWritePlan(ctx.input, material, solidWritePlan, c, cmd, cmd->vertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
 		emplaceWritePlan(ctx.input, material, surfaceWritePlan, c, cmd, cmd->vertexes);
@@ -205,8 +213,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c,
 #endif
 };
 
-void VertexPlan::applyNormalized(SpanView<InstanceVertexData> &vertexes,
-		const CmdDeferred *cmd) {
+void VertexPlan::applyNormalized(SpanView<InstanceVertexData> &vertexes, const CmdDeferred *cmd) {
 	// apply transforms;
 	if (cmd->normalized) {
 		for (auto &it : vertexes) {
@@ -247,8 +254,7 @@ void VertexPlan::applyNormalized(SpanView<InstanceVertexData> &vertexes,
 	}
 }
 
-void VertexPlan::pushDeferred(Context &ctx, const Command *c,
-		const CmdDeferred *cmd) {
+void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred *cmd) {
 	auto material = ctx.getMaterialById(cmd->material);
 	if (!material) {
 		return;
@@ -298,7 +304,10 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c,
 		for (auto &iv : storedVertexes) { ctx.damage->addInstances(c, cmd, iv); }
 	}
 
-	if (cmd->renderingLevel == RenderingLevel::Solid) {
+	if (cmd->renderingLevel == RenderingLevel::Overlay) {
+		emplaceWritePlan(ctx.input, material, acquireOverlayPlan(cmd->zPath), c, cmd,
+				storedVertexes);
+	} else if (cmd->renderingLevel == RenderingLevel::Solid) {
 		emplaceWritePlan(ctx.input, material, solidWritePlan, c, cmd, storedVertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
 		emplaceWritePlan(ctx.input, material, surfaceWritePlan, c, cmd, storedVertexes);
@@ -338,7 +347,9 @@ void VertexPlan::pushParticleEmitter(Context &ctx, const Command *c,
 		}
 	};
 
-	if (material->getPipeline()->isSolid()) {
+	if (cmd->renderingLevel == RenderingLevel::Overlay) {
+		emplacePlan(acquireOverlayPlan(cmd->zPath));
+	} else if (material->getPipeline()->isSolid()) {
 		emplacePlan(solidWritePlan);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
 		emplacePlan(surfaceWritePlan);
@@ -359,6 +370,40 @@ void VertexPlan::updatePathsDepth() {
 		it.second = depthOffset;
 		depthOffset -= depthScale;
 	}
+
+	/* The overlay draws at depth ZERO - the near plane - and every overlay path shares it.
+
+	Not a band of its own below the content, which is what this first tried. A band is not enough:
+	the depth buffer this level is tested against is not just "where the content geometry was". The
+	shadow queue runs two more subpasses after the general one, and what they leave in the depth
+	attachment can be nearer than any content path - measurably so, along the diagonal of a solid
+	quad. Zero is the one value that cannot lose, and it is exactly why the level is Transparent-
+	class (LessOrEqual, no depth write): at zero, LessOrEqual passes against anything at all.
+
+	Sharing one value between overlay paths costs nothing, because depth is not what orders them.
+	The overlay bucket is keyed by zPath and drawn in painter's order, like the transparent one. */
+	for (auto &it : overlayPaths) { it.second = 0.0f; }
+}
+
+float VertexPlan::getPathDepth(SpanView<ZOrder> zOrder) const {
+	auto it = paths.find(zOrder);
+	if (it != paths.end()) {
+		return it->second;
+	}
+	it = overlayPaths.find(zOrder);
+	if (it != overlayPaths.end()) {
+		return it->second;
+	}
+	return 0.0f;
+}
+
+auto VertexPlan::acquireOverlayPlan(SpanView<ZOrder> zOrder)
+		-> Map<core::MaterialId, MaterialWritePlan> & {
+	auto v = overlayWritePlan.find(zOrder);
+	if (v == overlayWritePlan.end()) {
+		v = overlayWritePlan.emplace(zOrder, Map<core::MaterialId, MaterialWritePlan>()).first;
+	}
+	return v->second;
 }
 
 void VertexPlan::pushInitial(WriteTarget &writeTarget) {
@@ -524,12 +569,8 @@ void VertexPlan::pushPlanVertexes(WriteTarget &writeTarget,
 			// used as firstInstance for instanced drawing to access transform array
 			packedInstance->transformOffset = writeTarget.transtormOffset;
 
-			float zOffset = 0.0f;
+			float zOffset = getPathDepth(packedInstance->zOrder);
 			float depthValue = 0.0f;
-			auto pathIt = paths.find(packedInstance->zOrder);
-			if (pathIt != paths.end()) {
-				zOffset = pathIt->second;
-			}
 
 			if (packedInstance->depthValue > 0.0f) {
 				auto f16 = sprt::halffloat::encode(packedInstance->depthValue);
@@ -615,12 +656,8 @@ void VertexPlan::pushPlanVertexes(WriteTarget &writeTarget,
 			for (auto &it : state.second.particles) {
 				TransformData inst(it->transform);
 
-				float zOffset = 0.0f;
+				float zOffset = getPathDepth(it->zPath);
 				float depthValue = 0.0f;
-				auto pathIt = paths.find(it->zPath);
-				if (pathIt != paths.end()) {
-					zOffset = pathIt->second;
-				}
 
 				if (it->depthValue > 0.0f) {
 					auto f16 = sprt::halffloat::encode(it->depthValue);
@@ -636,7 +673,8 @@ void VertexPlan::pushPlanVertexes(WriteTarget &writeTarget,
 }
 
 void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
-		Map<core::MaterialId, MaterialWritePlan> &writePlan) {
+		Map<core::MaterialId, MaterialWritePlan> &writePlan, mem_std::Vector<VertexSpan> &out,
+		bool withShadows) {
 	// optimize draw order, minimize switching pipeline, textureSet and descriptors
 	Vector<const sprt::pair<const core::MaterialId, MaterialWritePlan> *> drawOrder;
 
@@ -788,9 +826,15 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 	// General drawing
 	for (auto &it : drawOrder) {
 		for (auto &state : it->second.states) {
-			processStatePlan(it->first, state.first, state.second, StatePlanGeneral,
-					ctx.materialSpans);
+			processStatePlan(it->first, state.first, state.second, StatePlanGeneral, out);
 		}
+	}
+
+	// The overlay is drawn after the scene has been lit and, on the Vulkan path, after it has been
+	// copied out. A shadow it cast would have to be composited into a frame that is already final,
+	// so it casts none.
+	if (!withShadows) {
+		return;
 	}
 
 	// Shadow solids
@@ -816,8 +860,7 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 // per material); only the order in which spans are emitted changes. Every VertexDataPlanInfo across
 // all three plans is collected, sorted by (zPath, traversal order), and written out with absolute
 // vertex indexes so that adjacent entries sharing a material+state collapse into a single draw.
-void VertexPlan::drawWritePlanFlat(Context &ctx,
-		WriteTarget &writeTarget) {
+void VertexPlan::drawWritePlanFlat(Context &ctx, WriteTarget &writeTarget, bool overlay) {
 	struct FlatDrawEntry {
 		SpanView<ZOrder> zOrder;
 		core::MaterialId material;
@@ -847,9 +890,15 @@ void VertexPlan::drawWritePlanFlat(Context &ctx,
 		}
 	};
 
-	collectPlan(solidWritePlan);
-	collectPlan(surfaceWritePlan);
-	for (auto &it : transparentWritePlan) { collectPlan(it.second); }
+	auto &out = overlay ? ctx.overlaySpans : ctx.materialSpans;
+
+	if (overlay) {
+		for (auto &it : overlayWritePlan) { collectPlan(it.second); }
+	} else {
+		collectPlan(solidWritePlan);
+		collectPlan(surfaceWritePlan);
+		for (auto &it : transparentWritePlan) { collectPlan(it.second); }
+	}
 
 	if (entries.empty()) {
 		return;
@@ -900,14 +949,13 @@ void VertexPlan::drawWritePlanFlat(Context &ctx,
 		// indexes are written sequentially, so a non-instanced entry that follows a non-instanced
 		// span of the same material+state just extends it
 		if (!entry.instanced && currentIdx != maxOf<size_t>() && currentStatePlan == entry.statePlan
-				&& ctx.materialSpans[currentIdx].material == entry.material
-				&& ctx.materialSpans[currentIdx].state == entry.state
-				&& ctx.materialSpans[currentIdx].instanceCount == 1) {
-			ctx.materialSpans[currentIdx].indexCount += indexCount;
+				&& out[currentIdx].material == entry.material
+				&& out[currentIdx].state == entry.state && out[currentIdx].instanceCount == 1) {
+			out[currentIdx].indexCount += indexCount;
 			continue;
 		}
 
-		ctx.materialSpans.emplace_back(VertexSpan{.material = entry.material,
+		out.emplace_back(VertexSpan{.material = entry.material,
 			.indexCount = indexCount,
 			.instanceCount = entry.instanced ? entry.data->transformCount : 1,
 			.firstIndex = firstIndex,
@@ -924,7 +972,7 @@ void VertexPlan::drawWritePlanFlat(Context &ctx,
 			currentIdx = maxOf<size_t>();
 			currentStatePlan = nullptr;
 		} else {
-			currentIdx = ctx.materialSpans.size() - 1;
+			currentIdx = out.size() - 1;
 			currentStatePlan = entry.statePlan;
 		}
 	}
@@ -939,6 +987,7 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	pushPlanVertexes(writeTarget, solidWritePlan);
 	pushPlanVertexes(writeTarget, surfaceWritePlan);
 	for (auto &it : transparentWritePlan) { pushPlanVertexes(writeTarget, it.second); }
+	for (auto &it : overlayWritePlan) { pushPlanVertexes(writeTarget, it.second); }
 
 #if XL_FRAME_ACCOUNT
 	const auto spanStart = sp::platform::nanoclock(ClockType::Monotonic);
@@ -950,10 +999,13 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 #endif
 
 	if (flatOrder) {
-		drawWritePlanFlat(ctx, writeTarget);
+		drawWritePlanFlat(ctx, writeTarget, false);
 
 		// everything is drawn in painter's order, so there is no solid/surface split to report
 		ctx.transparentCmds = uint32_t(ctx.materialSpans.size());
+
+		drawWritePlanFlat(ctx, writeTarget, true);
+		ctx.overlayCmds = uint32_t(ctx.overlaySpans.size());
 #if XL_FRAME_ACCOUNT
 		closeSpans();
 #endif
@@ -961,19 +1013,27 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	}
 
 	uint32_t counter = 0;
-	drawWritePlan(ctx, writeTarget, solidWritePlan);
+	drawWritePlan(ctx, writeTarget, solidWritePlan, ctx.materialSpans, true);
 
 	ctx.solidCmds = uint32_t(ctx.materialSpans.size() - counter);
 	counter = uint32_t(ctx.materialSpans.size());
 
-	drawWritePlan(ctx, writeTarget, surfaceWritePlan);
+	drawWritePlan(ctx, writeTarget, surfaceWritePlan, ctx.materialSpans, true);
 
 	ctx.surfaceCmds = uint32_t(ctx.materialSpans.size() - counter);
 	counter = uint32_t(ctx.materialSpans.size());
 
-	for (auto &it : transparentWritePlan) { drawWritePlan(ctx, writeTarget, it.second); }
+	for (auto &it : transparentWritePlan) {
+		drawWritePlan(ctx, writeTarget, it.second, ctx.materialSpans, true);
+	}
 
 	ctx.transparentCmds = uint32_t(ctx.materialSpans.size() - counter);
+
+	for (auto &it : overlayWritePlan) {
+		drawWritePlan(ctx, writeTarget, it.second, ctx.overlaySpans, false);
+	}
+
+	ctx.overlayCmds = uint32_t(ctx.overlaySpans.size());
 #if XL_FRAME_ACCOUNT
 	closeSpans();
 #endif

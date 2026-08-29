@@ -430,59 +430,74 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		}
 	};
 
-	cmd = commands->commands->getFirst();
-	while (cmd) {
-		if (cmd->type == CommandType::VertexArray) {
-			auto vertexCmd = reinterpret_cast<const CmdVertexArray *>(cmd->data);
+	// Two walks, content then overlay: this backend emits spans straight in list order, so the only
+	// way the Overlay level gets to be last is to visit it last. There is no frame capture here to
+	// record in between, which is why one pass is enough for both.
+	for (int overlayPass = 0; overlayPass < 2; ++overlayPass) {
+		cmd = commands->commands->getFirst();
+		while (cmd) {
+			if (cmd->type == CommandType::VertexArray) {
+				auto vertexCmd = reinterpret_cast<const CmdVertexArray *>(cmd->data);
 
-			for (auto &iv : vertexCmd->vertexes) {
-				emitVertexes(vertexCmd->material, vertexCmd->zPath, vertexCmd->state, iv.data,
-						iv.instances);
-			}
-		} else if (cmd->type == CommandType::Deferred) {
-			auto deferredCmd = reinterpret_cast<const CmdDeferred *>(cmd->data);
-
-			// deferred tesselation results (e.g. labels): skip if not ready
-			// and the producer did not request waiting
-			if (!deferredCmd->deferred->isWaitOnReady() && !deferredCmd->deferred->isReady()) {
-				cmd = cmd->next;
-				continue;
-			}
-
-			deferredCmd->deferred->acquireResult([&](SpanView<InstanceVertexData> result,
-													  DeferredVertexResult::Flags) {
-				for (auto &iv : result) {
-					// bake view/model transforms into per-span instances
-					Vector<TransformData> instances;
-					if (iv.instances.empty()) {
-						instances.emplace_back(TransformData());
-					} else {
-						for (auto &inst : iv.instances) { instances.emplace_back(inst); }
-					}
-
-					for (auto &inst : instances) {
-						if (deferredCmd->normalized) {
-							auto modelTransform = deferredCmd->modelTransform * inst.transform;
-
-							Mat4 newMV;
-							newMV.m[12] = sprt::floor(modelTransform.m[12]);
-							newMV.m[13] = sprt::floor(modelTransform.m[13]);
-							newMV.m[14] = sprt::floor(modelTransform.m[14]);
-
-							inst.transform = deferredCmd->viewTransform * newMV;
-						} else {
-							inst.transform = deferredCmd->viewTransform
-									* deferredCmd->modelTransform * inst.transform;
-						}
-					}
-
-					emitVertexes(deferredCmd->material, deferredCmd->zPath, deferredCmd->state,
-							iv.data, instances);
+				if ((vertexCmd->renderingLevel == RenderingLevel::Overlay) != bool(overlayPass)) {
+					cmd = cmd->next;
+					continue;
 				}
-			});
+
+				for (auto &iv : vertexCmd->vertexes) {
+					emitVertexes(vertexCmd->material, vertexCmd->zPath, vertexCmd->state, iv.data,
+							iv.instances);
+				}
+			} else if (cmd->type == CommandType::Deferred) {
+				auto deferredCmd = reinterpret_cast<const CmdDeferred *>(cmd->data);
+
+				if ((deferredCmd->renderingLevel == RenderingLevel::Overlay) != bool(overlayPass)) {
+					cmd = cmd->next;
+					continue;
+				}
+
+				// deferred tesselation results (e.g. labels): skip if not ready
+				// and the producer did not request waiting
+				if (!deferredCmd->deferred->isWaitOnReady() && !deferredCmd->deferred->isReady()) {
+					cmd = cmd->next;
+					continue;
+				}
+
+				deferredCmd->deferred->acquireResult(
+						[&](SpanView<InstanceVertexData> result, DeferredVertexResult::Flags) {
+					for (auto &iv : result) {
+						// bake view/model transforms into per-span instances
+						Vector<TransformData> instances;
+						if (iv.instances.empty()) {
+							instances.emplace_back(TransformData());
+						} else {
+							for (auto &inst : iv.instances) { instances.emplace_back(inst); }
+						}
+
+						for (auto &inst : instances) {
+							if (deferredCmd->normalized) {
+								auto modelTransform = deferredCmd->modelTransform * inst.transform;
+
+								Mat4 newMV;
+								newMV.m[12] = sprt::floor(modelTransform.m[12]);
+								newMV.m[13] = sprt::floor(modelTransform.m[13]);
+								newMV.m[14] = sprt::floor(modelTransform.m[14]);
+
+								inst.transform = deferredCmd->viewTransform * newMV;
+							} else {
+								inst.transform = deferredCmd->viewTransform
+										* deferredCmd->modelTransform * inst.transform;
+							}
+						}
+
+						emitVertexes(deferredCmd->material, deferredCmd->zPath, deferredCmd->state,
+								iv.data, instances);
+					}
+				});
+			}
+			cmd = cmd->next;
 		}
-		cmd = cmd->next;
-	}
+	} // overlayPass
 
 	if (auto path = ::getenv("XL_DUMP_QUADS")) {
 		// steady-state frame dump: overwritten every frame, last write wins

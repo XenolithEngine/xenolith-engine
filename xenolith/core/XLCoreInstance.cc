@@ -40,6 +40,10 @@
 #include "XLSoftPlatform.h"
 #endif
 
+#ifdef MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesPlatform.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Value encodeInstanceInfo(const InstanceInfo &info) {
@@ -113,6 +117,16 @@ Rc<Instance> Instance::create(Rc<InstanceInfo> &&info) {
 		}
 	}
 #endif
+#ifdef MODULE_XENOLITH_BACKEND_GLES
+	if (info->api == InstanceApi::GLES) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&gles::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_GLES_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
 	return nullptr;
 }
 
@@ -137,6 +151,7 @@ StringView getInstanceApiName(InstanceApi backend) {
 	case InstanceApi::WebGPU: return "WebGPU"; break;
 	case InstanceApi::Metal: return "Metal"; break;
 	case InstanceApi::Software: return "Software"; break;
+	case InstanceApi::GLES: return "GLES"; break;
 	}
 	return StringView();
 }
