@@ -400,8 +400,9 @@ bool TextInput::init() {
 
 	// Text dropped onto the field lands the same way pasted text does - same type rule, same
 	// insertion point, same validation. A drop target and a paste target really are one handler
-	addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this](const DragEvent &event) -> DragResponse {
+	setDropTarget(this,
+			DropTargetSlots{
+				.accept = [this](const DragEvent &event) -> DragResponse {
 		if (isReadOnly() || !event.data) {
 			return DragResponse();
 		}
@@ -412,8 +413,9 @@ bool TextInput::init() {
 		// Either is fine here: whether the source deletes its original is the SOURCE's business
 		return DragResponse{event.allowed & (DragActions::Copy | DragActions::Move)};
 	},
-		.drop = [this](const DragEvent &event, DragActions) { return handleTextDrop(event); },
-	}));
+				.drop = [this](const DragEvent &event,
+								DragActions) { return handleTextDrop(event); },
+			});
 
 	// A key event carries the pointer location (the platform backends fill it in from the last
 	// mouse position), so the default filter - "is the node under the pointer" - would only deliver

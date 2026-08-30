@@ -526,7 +526,7 @@ void DndTreeView::attachRowHandlers(RowNode *row) {
 void DndTreeView::attachDropSlots() {
 	/* ONE seam for the whole tree, rows and empty space alike.
 
-	There used to be a DropTarget per row plus one on the view, and every one of them had to
+	There used to be a drop target per row plus one on the view, and every one of them had to
 	re-derive where a drop would land and light itself up for it. All of that is ui::TreeView's now:
 	it resolves the zone from the pointer, draws the insertion line or the highlight, and opens a
 	closed category the drag rests on. What is genuinely this demo's - whether a payload may go to a

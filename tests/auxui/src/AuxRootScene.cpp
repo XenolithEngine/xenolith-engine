@@ -120,26 +120,27 @@ bool AuxRootScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	_edgeLabel->setFontSize(14);
 	_edgeLabel->setColor(Color::White);
 	_edgeLabel->setAnchorPoint(Anchor::BottomLeft);
-	_edgeLabel->addSystem(Rc<ui::TooltipTarget>::create("Tip: flipped above the edge"));
+	ui::setTooltip(_edgeLabel, "Tip: flipped above the edge");
 
-	// Hover tooltip on the heading — the whole thing, dwell included, is the TooltipTarget. What
-	// used to be here by hand (a tagged Sequence, an _hoverArmed flag, a leave that had to NOT
-	// dismiss) is now TooltipSystem's problem.
-	_heading->addSystem(Rc<ui::TooltipTarget>::create("Tip: hovering the heading"));
+	// Hover tooltip on the heading — the whole thing, dwell included, is TooltipSystem's. What used
+	// to be here by hand (a tagged Sequence, an _hoverArmed flag, a leave that had to NOT dismiss)
+	// is now its problem, and the node only says what the hint says.
+	ui::setTooltip(_heading, "Tip: hovering the heading");
 
-	// A second target with a factory of its own and a pointer anchor, so the harness exercises both
-	// halves of what a target may override.
-	_btnPopup->addSystem(Rc<ui::TooltipTarget>::create(ui::TooltipInfo{
-		.text = "Tip: opens the menu",
-		.factory = [](NotNull<ui::SubWindow> surface,
-						   const ui::TooltipRequest &req) -> Rc<basic2d::SceneLayout2d> {
+	// A second hint with a factory of its own and a pointer anchor, so the harness exercises both
+	// halves of what a node may override.
+	ui::setTooltip(_btnPopup,
+			ui::TooltipInfo{
+				.text = "Tip: opens the menu",
+				.factory = [](NotNull<ui::SubWindow> surface,
+								   const ui::TooltipRequest &req) -> Rc<basic2d::SceneLayout2d> {
 		auto layout = ui::TooltipSystem::buildDefaultTooltip(surface, req);
 		// Named so an inspector dump can tell a custom hint from the stock one.
 		layout->setName("aux-tip-custom");
 		return layout;
 	},
-		.placement = ui::TooltipPlacement{.anchorMode = ui::TooltipAnchorMode::Pointer},
-	}));
+				.placement = ui::TooltipPlacement{.anchorMode = ui::TooltipAnchorMode::Pointer},
+			});
 
 
 	content->pushLayout(layout);

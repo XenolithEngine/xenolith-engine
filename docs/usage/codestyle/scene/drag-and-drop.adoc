@@ -5,10 +5,11 @@
 * One `DragSystem` per scene, on the `SceneContent`. `DragSystem::acquireForNode(node)`
   finds it or installs it — a widget never has to demand that the application
   arranged one first.
-* **A drop target registers itself by being drawn.** Add a `DropTarget` system to
-  a node; during its owner's visit it publishes its world rect to the nearest
-  `DragSystem` above it. So the topmost target receives, and an invisible one
-  does not exist.
+* **A drop target registers itself by being drawn.** `setDropTarget(node, slots)`
+  attaches a `DropTargetComponent` — data, with no lifecycle and no input of its
+  own — and raises `HitTestFlags::DropTarget` on the node, which is what makes the
+  node publish the rect it was drawn with into the frame's hit-test registry. So
+  the topmost target receives, and an invisible one does not exist.
 * **A source is an `InputListener`** — `DragSource` — because the three things a
   source must get right (the threshold, the pointer capture, the abort on exit)
   are all listener-level.
@@ -49,7 +50,7 @@ working. `DragSource` exists for the widgets that have no listener of their own.
 ## Making a node a drop target
 
 ```cpp
-node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
+setDropTarget(node, DropTargetSlots{
     .accept = [](const DragEvent &e) -> DragResponse {
         if (!e.data->isLocal("app/item")) { return DragResponse(); }
         return DragResponse{e.allowed & DragActions::Move};
@@ -57,8 +58,13 @@ node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
     .enter = [this](const DragEvent &) { showHighlight(); },
     .leave = [this](const DragEvent &) { hideHighlight(); },
     .drop  = [this](const DragEvent &e, DragActions) { return take(e.data->getLocal()); },
-}));
+});
 ```
+
+`setDropTargetEnabled` / `setDropTargetPadding` adjust it, `removeDropTarget` takes
+it away, and `getDropTarget` reads it back. Use them rather than the raw component
+API: the flag on the node is a cache of the component's presence, and a node with
+one and not the other wins a hit test and then offers nothing.
 
 `accept` is a **predicate and must be pure**. It is called during hit testing, for
 candidates that may never become the current target, possibly several times in one
@@ -75,7 +81,7 @@ transparent to a drag rather than a wall.
 
 ### Dropping into a `ui::TreeView`
 
-A tree is not one place, and it does not want one `DropTarget` per row. Rows are
+A tree is not one place, and it does not want one drop target per row. Rows are
 virtualized — only the ones in view are nodes — while the geometry answers for all
 of them, so a per-row target could only ever cover what happens to be materialized,
 and the empty space below the last row, the only way into the ROOT of the tree, has
@@ -117,7 +123,7 @@ have to be *reachable*.
 how far **down** the row the pointer is, 0 at its top edge and 1 at its bottom — so
 a test names a band rather than synthesizing a pointer for it.
 
-`accept` is the same **pure predicate** the raw `DropTarget` takes, at a position;
+`accept` is the same **pure predicate** a raw drop target takes, at a position;
 `DragActions::None` still means *not here* and lets the drag fall through. There is
 no `enter`/`over`/`leave` to fill in, because the feedback is the widget's:
 
@@ -159,26 +165,38 @@ pointer.
 
 ## How a target is found
 
-Not by a registry, and not by walking the scene. `DropTarget::handleVisitSelf`
-publishes the target and its world rect into the nearest `DragSystem` on the frame
-stack, once per frame. Three things follow, and none of them is otherwise cheap to
-get right:
+Not by a registry of the drag system's own, and not by walking the scene. The NODE
+registers itself, once per frame, from inside its own visit: `Node::visitSelf` sees
+`HitTestFlags::DropTarget` and publishes the rect it was drawn with into the
+window's hit-test registry (`InputListenerStorage`). Three things follow, and none
+of them is otherwise cheap to get right:
 
-* the world rect is the one that was **drawn** — it comes from the visit's own
-  transform stack, so there is nothing to re-derive and nothing to fall out of
-  sync with;
+* the world rect is the one that was **drawn** — the visit has just built it, so
+  there is nothing to re-derive and nothing to fall out of sync with, and a rotated
+  target is hit where it was drawn rather than across its bounding box;
 * registration order is visit order is **paint order**, so the drag walks the
-  roster backwards and the first hit is the topmost target;
+  registry backwards and the first hit is the topmost target;
 * a node that is not visited is not registered. Invisible, `display: none`,
   detached — all of them stop being drop targets for free.
 
-The roster is therefore one frame old when a pointer event reads it. That is the
+The registry is therefore one frame old when a pointer event reads it. That is the
 same staleness ordinary input already has: the dispatcher resolves every event
 against the previously committed listener storage.
 
-**Do not** hit-test drop targets with `Node::isTouched`: it checks `isVisible()`
-rather than the effective visibility, and it redoes a transform the roster already
-holds.
+It is **one registry for the whole window**, shared with context menus, tooltips and
+the listeners themselves. Ask it with `InputDispatcher::foreachHitTest(mask, cb)`;
+containment is the caller's to decide, with `HitTestRec::contains(point, padding)`,
+because the padding belongs to whoever is asking.
+
+**Do not** hit-test drop targets with `Node::isTouched`: it answers about the tree
+as it is right now, not about the frame the event is being resolved against. The
+registry's own test — and `Node::isTouchedAsDrawn` under it — is the one that
+matches what the user clicked on.
+
+**A component has no `handleExit`,** so nothing announces a target leaving the
+scene. `DragSystem::update` notices instead: it checks every frame that the current
+target's node is still running and still carries a component, and fires `leave` when
+it is not.
 
 ## The payload
 
@@ -422,7 +440,7 @@ Two things will genuinely change, and are worth knowing now:
 | A source without `setExclusive()` | the dispatcher freezes an event chain's listener set at `Begin` and never re-targets, so the drag stops receiving `Move` the moment the pointer leaves the source. `DragSource` does this for you |
 | Accumulating `swipe.delta` | `updateDrag` takes a **position**, in world space and physical pixels. Deltas are not density-divided and a burst of moves in one frame would drift |
 | Two overlapping targets at the same `ZOrder` | `sortAllChildren` is unstable, so which one is "topmost" permutes between frames. Give siblings distinct orders |
-| A `DropTarget` per row of a `ui::TreeView` / `ui::TableView` | the rows are virtualized: the target exists only while the row is on screen, and the empty space that answers for the root has no row at all. Use `TreeView::setDropSlots` / `TableView::setReorderCallback`, which put one target on the view |
+| A drop target per row of a `ui::TreeView` / `ui::TableView` | the rows are virtualized: the target exists only while the row is on screen, and the empty space that answers for the root has no row at all. Use `TreeView::setDropSlots` / `TableView::setReorderCallback`, which put one target on the view |
 | Restarting an auto-expand dwell on every pointer move | a pointer creeping across a folder would then never open it. `TreeView` restarts only when the CATEGORY changes; a tooltip's dwell is the one that means "the pointer stopped" |
 | A hover highlight written as a `Component` | the components phase re-converges up to 12 times per frame; writing one every frame can thrash it. Change a property on a node the target already owns |
 | A stylesheet-styled decorator with no `decoratorParent` | it is parked on the `SceneContent`, outside the `StyleResolver`'s subtree, and renders unstyled |

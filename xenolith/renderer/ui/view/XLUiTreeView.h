@@ -324,7 +324,7 @@ public:
 
 	/* --- dropping into the tree ---------------------------------------------------------------
 
-	ONE DropTarget, ON THE VIEW, never one per row. Not an optimization: a row that scrolled out of
+	ONE drop target, ON THE VIEW, never one per row. Not an optimization: a row that scrolled out of
 	sight is no longer a node, while the geometry still answers for it, so a per-row target can only
 	ever cover the handful of rows that happen to be materialized - and the empty space below the
 	last row, which is the only way to reach the root of a tree, has no row to carry one. The view
@@ -502,7 +502,9 @@ protected:
 	bool _forceRebuild = false;
 
 	// --- dropping into the tree ---
-	Rc<DropTarget> _dropTarget;
+	// The target is a component on this node now, so there is nothing to hold - only whether it is
+	// currently declared
+	bool _hasDropTarget = false;
 	DropSlots _dropSlots;
 	DropPosition _dropPosition; // what the feedback on screen is showing
 	basic2d::Layer *_insertionLine = nullptr;

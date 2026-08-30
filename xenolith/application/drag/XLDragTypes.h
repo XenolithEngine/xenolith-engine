@@ -177,6 +177,10 @@ struct SP_PUBLIC DragEvent {
 	DragSession *session = nullptr;
 	DragData *data = nullptr;
 
+	// The node receiving this - the one carrying the DropTargetComponent. Null while the drag is
+	// over nothing
+	Node *target = nullptr;
+
 	// world (screen) space, physical pixels - the space input events arrive in
 	Vec2 worldLocation;
 
@@ -219,7 +223,7 @@ feedback belongs. `enter` and `leave` bracket exactly: every enter gets its leav
 the drag is cancelled or the target leaves the scene mid-drag.
 
 An empty slot is a no-op. A target with no `accept` never accepts anything, which makes an
-unconfigured DropTarget inert rather than surprising. */
+unconfigured drop target inert rather than surprising. */
 struct SP_PUBLIC DropTargetSlots {
 	Function<DragResponse(const DragEvent &)> accept;
 
