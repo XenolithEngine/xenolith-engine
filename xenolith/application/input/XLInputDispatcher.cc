@@ -338,6 +338,10 @@ void InputDispatcher::setListenerExclusiveForKey(const InputListener *l, InputKe
 	}
 }
 
+bool InputDispatcher::isEventActive(uint32_t id) const {
+	return _activeEvents.find(id) != _activeEvents.end();
+}
+
 bool InputDispatcher::hasActiveInput() const {
 	return !_activeEvents.empty() || !_activeKeys.empty();
 }

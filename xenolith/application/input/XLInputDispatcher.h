@@ -91,6 +91,11 @@ public:
 	WindowState getWindowState() const { return _windowState; }
 	bool hasActiveInput() const;
 
+	// Whether the chain that began with this event id is still open - i.e. the pointer has not been
+	// released or cancelled. For whoever holds something whose life is tied to a press but who is
+	// no longer in that chain to be told when it ends; see DragSystem::update.
+	bool isEventActive(uint32_t id) const;
+
 	const InputEvent *getPointerEvent() const {
 		return _hasPointerEvent ? &_pointerEvent : nullptr;
 	}

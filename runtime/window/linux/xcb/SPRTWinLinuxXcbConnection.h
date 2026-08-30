@@ -222,10 +222,11 @@ public:
 	void handleClipboardChanged();
 
 	// A touchscreen was attached or detached; push the new value into every window.
-	void handleTouchscreenStateChanged(bool);
+	void handleInputDevicesStateChanged(bool pointer, bool touchscreen);
 
 	// Whether a touchscreen is attached, for windows created after the initial probe.
 	bool hasTouchscreen() const;
+	bool hasPointer() const;
 
 protected:
 	bool checkCookie(xcb_void_cookie_t cookie, StringView errMessage);

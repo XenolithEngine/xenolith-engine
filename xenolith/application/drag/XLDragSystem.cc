@@ -24,6 +24,8 @@
 #include "XLNode.h"
 #include "XLScene.h"
 #include "XLSceneContent.h"
+#include "XLInputDispatcher.h"
+#include "director/XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -313,6 +315,9 @@ void DragSystem::handleAdded(Node *owner) {
 	_cursorListener = Rc<InputListener>::create(CursorListenerPriority);
 	_cursorListener->setEnabled(false);
 	owner->addSystem(_cursorListener);
+
+	// The drag has to notice a press ending that it is no longer in the chain for; see update().
+	scheduleUpdate();
 }
 
 void DragSystem::handleRemoved() {
@@ -338,6 +343,40 @@ void DragSystem::handleExit() {
 	_pendingTargets.clear();
 
 	System::handleExit();
+}
+
+void DragSystem::update(const UpdateTime &time) {
+	System::update(time);
+
+	/* Who ends a drag whose source is gone.
+
+	Normally the source's own listener sees the release and commits. But a source that left the
+	scene mid-drag is inert - InputListener refuses every event once its owner is gone - and it no
+	longer cancels the drag either (see DragSource::handleExit), so nothing would ever tell the
+	session that the pointer came up. The press itself is the thing to watch: while the dispatcher
+	still holds the chain that began this drag, the button is down.
+
+	Committing rather than cancelling, because the chain ends when the user lets go. It ends on a
+	cancellation too - the pointer leaving the window - but that also puts the pointer outside every
+	target, so the commit finds nothing to drop on and is a no-op. */
+	if (!_session || !_owner) {
+		return;
+	}
+
+	// A drag with no input chain behind it - beginDrag called from code, as the tests do - has no
+	// press to outlive. Watching for the disappearance of an id that was never there would end it
+	// on its first frame.
+	if (_session->getInputEventId() == 0) {
+		return;
+	}
+
+	auto director = _owner->getDirector();
+	auto dispatcher = director ? director->getInputDispatcher() : nullptr;
+	if (!dispatcher || dispatcher->isEventActive(_session->getInputEventId())) {
+		return;
+	}
+
+	commitDrag();
 }
 
 void DragSystem::handleVisitBegin(FrameInfo &info) {
@@ -399,6 +438,12 @@ DragSession *DragSystem::beginDrag(DragOffer &&offer, Rc<Ref> &&source, uint32_t
 void DragSystem::updateDrag(const Vec2 &worldLocation, InputModifier mods) {
 	if (_session) {
 		_session->update(worldLocation, mods);
+	}
+}
+
+void DragSystem::refreshDrag() {
+	if (_session) {
+		_session->update(_session->getWorldLocation(), _session->getModifiers());
 	}
 }
 

@@ -87,7 +87,7 @@ public:
 	void handleLeaveNotify(xcb_leave_notify_event_t *);
 
 	// A touchscreen was attached or detached, as seen by XInput2 on the shared connection.
-	void handleTouchscreenStateChanged(bool);
+	void handleInputDevicesStateChanged(bool pointer, bool touchscreen);
 	// Rebuilds _sideModifiers from the server's own view of which keys are physically down
 	void resyncSideModifiers();
 

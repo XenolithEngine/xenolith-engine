@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiTableView.h"
+#include "XLUiDragScrollSystem.h"
 #include "XLUiStyleSystem.h"
 #include "XLInteractiveComponent.h"
 #include "XL2dLabel.h"
@@ -58,6 +59,16 @@ bool TableView::init(Model *source) {
 
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
+
+	// On the SCROLL, not on this node: the header lives OUTSIDE it, and the edge band has to be
+	// measured against the viewport rows actually scroll in.
+	DragScrollSystem::acquireForNode(_scroll);
+
+	// The scroll bar is built by basic2d out of nodes that can paint a fill and one radius; this
+	// hands it nodes a stylesheet can paint outlines and four corners on, under the types
+	// `scroll-indicator` and `scroll-indicator-track`. Done here rather than left to the
+	// application because a widget of this layer is expected to answer to CSS everywhere else.
+	useStyledScrollIndicator(_scroll);
 
 	_sourceListener = addSystem(Rc<DataListener<Model>>::create(
 			[this](SubscriptionFlags flags) { handleSourceDirty(flags); }, source));

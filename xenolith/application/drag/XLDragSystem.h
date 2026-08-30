@@ -179,6 +179,8 @@ public:
 	virtual void handleRemoved() override;
 	virtual void handleExit() override;
 
+	virtual void update(const UpdateTime &) override;
+
 	virtual void handleVisitBegin(FrameInfo &) override;
 	virtual void handleVisitEnd(FrameInfo &) override;
 
@@ -189,6 +191,21 @@ public:
 	// `worldLocation` is world (screen) space, physical pixels - what an input event carries.
 	// Never accumulate deltas: this is a position, and the drag is a fixed point of it
 	virtual void updateDrag(const Vec2 &worldLocation, InputModifier = InputModifier::None);
+
+	/* Re-resolve what the drag is over, at the position it is already at.
+
+	For when the SCENE moved under a pointer that did not: a list auto-scrolling at its edge, a
+	panel animating into place. Drag events arrive only on pointer motion - DragSession::update is
+	called from DragSource::handleDragMove and nowhere else - so after such a move everything the
+	drag decided is about a target that has slid away, and nothing will say so.
+
+	Call it only on a frame where something actually moved. Calling it every frame regardless is the
+	thing this exists to avoid: it would make handleDragOver a 60Hz event for every drag everywhere
+	in order to fix a case that arises only while a scroller is scrolling itself.
+
+	Not from a visit hook: this can fire handleDragLeave/handleDragEnter, and a target is entitled
+	to mutate the scene in those. */
+	virtual void refreshDrag();
 
 	virtual void commitDrag();
 

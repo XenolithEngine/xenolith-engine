@@ -80,8 +80,16 @@ tree-view {
 	flex-basis: 0px;
 }
 
-/* the whole view is the drop target while the pointer is over its empty space */
-tree-view.drop-root { outline-color: var(--drop); outline-width: 2px; outline-style: solid; }
+/* ui::TreeView carries the drop feedback itself; the sheet only says what it looks like.
+   `drop-root` is on the VIEW while the pointer is over the empty space below the last row, which is
+   the one place that answers for the root. The others are nodes the widget puts up over the row it
+   resolved: a fill for "into this category", and a bar with an upright at its left end for "between
+   these two rows" - both starting at that row's own indent rather than at the view's edge. */
+tree-view.drop-root  { outline-color: var(--drop); outline-width: 2px; outline-style: solid; }
+tree-drop-highlight  { background-color: var(--drop); opacity: 0.55; }
+/* the upright is a CHILD of the line, not a node that inherits from it, so it is named too */
+tree-insertion-line,
+tree-insertion-stem { background-color: #fcb400; }
 
 tree-row {
 	/* a row is a Panel, and an unstyled Panel is an opaque WHITE surface - the view's own
@@ -99,7 +107,6 @@ tree-row {
 
 tree-row:hover      { background-color: var(--row-hover); }
 tree-row.selected   { background-color: var(--row-selected); }
-tree-row.drop-into  { background-color: var(--drop); }
 tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label { font-weight: bold; }
 
 .tree-toggle {
@@ -116,6 +123,34 @@ tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label { font-weight:
 
 .tree-icon  { flex: 0 0 16px; width: 16px; height: 16px; color: var(--text-dim); }
 .tree-label { flex-grow: 1; color: var(--text); font-size: 14px; white-space: nowrap; }
+
+/* --- the context menu ----------------------------------------------------------------------- */
+/* The trees declare a context menu; the menu opens as a popup, and a popup is a SCENE of its own -
+   the ui::StyleSystem carrying this sheet lives on THIS window's content and does not reach it. The
+   demo hands the same literal to ui::ContextMenuSystem, which is why these rules can be here and
+   why the variables above resolve inside the menu as well. */
+menu            { background-color: #2b3038; border-radius: 6px;
+                  outline-color: #14161a; outline-width: 1px; outline-style: solid; }
+menu-item       { background-color: transparent; border-radius: 4px; }
+menu-item:hover { background-color: var(--row-hover); }
+menu-item > label { color: var(--text); font-size: 13px; }
+
+/* --- the scroll bars ------------------------------------------------------------------------ */
+/* ui::TreeView hands its indicator to the stylesheet for itself (ui::useStyledScrollIndicator), so
+   these are ordinary rules on two ordinary nodes. The TRACK is what the pointer is over - it is the
+   node carrying the input - which is why `:hover` belongs on it and not on the thumb. `.active` is
+   on both while a pointing device is attached, i.e. while the bar can be grabbed at all; without
+   one it is thin, inert and fades away after a scroll, which is what a touch list does.
+
+   Two things are deliberately NOT here. The WIDTH: the view rewrites the content size of both nodes
+   on every scroll, so a width from a sheet would be overwritten within the frame - that one is
+   setIndicatorThickness()'s to say. And the resting OPACITY, which the view animates: these colours
+   are what it fades in and out, so they are opaque and the fade does the blending. */
+scroll-indicator-track       { background-color: #0d0f12; border-radius: 4px; }
+scroll-indicator-track:hover { background-color: #05070a; }
+
+scroll-indicator             { background-color: #6f7b8d; border-radius: 4px; }
+scroll-indicator.active      { background-color: #97a4b6; }
 
 /* --- what follows the pointer --------------------------------------------------------------- */
 /* An explicit size, because the ghost is parked under a node with no layout of its own: there is
@@ -191,9 +226,12 @@ static Rc<data::Model> makeLibraryModel() {
 		return nullptr;
 	}
 
-	addGroup(model, "Widgets", "Widget", 5);
-	addGroup(model, "Shapes", "Shape", 4);
-	addGroup(model, "Icons", "Icon", 6);
+	// Deliberately more rows than fit: a list that does not overflow has no scroll bar and no edge
+	// to auto-scroll at, so a demo of dragging BETWEEN two trees would be showing neither. Three
+	// groups is what the self-check reads, so the length is in the leaves under them.
+	addGroup(model, "Widgets", "Widget", 12);
+	addGroup(model, "Shapes", "Shape", 10);
+	addGroup(model, "Icons", "Icon", 14);
 	return model;
 }
 
@@ -206,7 +244,10 @@ static Rc<data::Model> makeProjectModel() {
 		return nullptr;
 	}
 
-	addGroup(model, "Scene A", "Node", 3);
+	// Long enough to overflow as well, so the RECEIVING tree has an edge to auto-scroll at: a drop
+	// past the bottom of what is visible is the case the whole scroll-while-dragging path exists
+	// for. The rest of this model is shape rather than length - the self-check reads all of it.
+	addGroup(model, "Scene A", "Node", 26);
 	// deliberately empty: a category with no children is the case a per-ROW drop target has to
 	// handle on its own, since there is no child row under the pointer to answer for it
 	addCategory(model, model->getRoot(), "Scene B");
@@ -486,19 +527,46 @@ void DndTreeDemoLayout::runSelfCheck() {
 	expect(loose01 && !loose01->isCategory(), "row 2 of 'Project' is not a leaf");
 
 	{
-		// a category is a PLACE: the drop goes inside it, at the end
-		auto spot = _left->resolveDropSpot(0);
-		expect(spot.parent == widgets && spot.index == maxOf<size_t>(),
-				"a drop on a category does not append into it");
+		using Kind = ui::TreeView::DropPosition::Kind;
+		const auto band = ui::TreeView::CategoryDropBand;
 
-		// a leaf is a POSITION: the drop goes right after it, among its siblings
-		auto after = _right->resolveDropSpot(2);
-		expect(after.parent == root(_right) && after.index == 3,
-				"a drop on a leaf does not land after it");
+		// A LEAF is only ever a position, and its two halves are the two insertion points around
+		// it. 'Loose item 01' is child 2 of the root, so before it is index 2 and after it index 3.
+		auto before = _right->getDropPositionForRow(2, 0.25f);
+		expect(before.kind == Kind::Before && before.parent == root(_right) && before.index == 2,
+				"the upper half of a leaf does not insert before it");
 
-		// the view's background answers for the root
-		auto background = _right->resolveDropSpot(maxOf<size_t>());
-		expect(background.parent == root(_right) && background.index == maxOf<size_t>(),
+		auto after = _right->getDropPositionForRow(2, 0.75f);
+		expect(after.kind == Kind::After && after.parent == root(_right) && after.index == 3,
+				"the lower half of a leaf does not insert after it");
+
+		// A CATEGORY is both, so its row is three zones: a band at each end to stand beside it, and
+		// the wide middle to go inside. 'Widgets' is child 0 of the Library root.
+		auto intoCat = _left->getDropPositionForRow(0, 0.5f);
+		expect(intoCat.kind == Kind::Into && intoCat.parent == widgets
+						&& intoCat.index == maxOf<size_t>(),
+				"the middle of a category does not append into it");
+
+		auto beforeCat = _left->getDropPositionForRow(0, band / 2.0f);
+		expect(beforeCat.kind == Kind::Before && beforeCat.parent == root(_left)
+						&& beforeCat.index == 0,
+				"the top band of a category does not insert before it");
+
+		auto afterCat = _left->getDropPositionForRow(0, 1.0f - band / 2.0f);
+		expect(afterCat.kind == Kind::After && afterCat.parent == root(_left)
+						&& afterCat.index == 1,
+				"the bottom band of a category does not insert after it");
+
+		// The bands are the edges and nothing more: just inside either one is still 'into'. This is
+		// the assertion that would catch the ratio being read the wrong way round.
+		expect(_left->getDropPositionForRow(0, band + 0.01f).kind == Kind::Into
+						&& _left->getDropPositionForRow(0, 1.0f - band - 0.01f).kind == Kind::Into,
+				"a category's middle band does not reach its declared edges");
+
+		// the empty space below the last row answers for the root
+		auto background = _right->getDropPositionForRow(maxOf<size_t>(), 0.5f);
+		expect(background.kind == Kind::Into && background.parent == root(_right)
+						&& background.row == maxOf<size_t>() && background.index == maxOf<size_t>(),
 				"a drop on the background does not append to the root");
 	}
 
@@ -507,7 +575,7 @@ void DndTreeDemoLayout::runSelfCheck() {
 	auto widgetsPayload = _left->makePayload(0);
 	expect(widgetsPayload != nullptr, "row 0 of 'Library' produced no payload");
 	if (widgetsPayload) {
-		expect(!_left->canAccept(widgetsPayload, _left->resolveDropSpot(0)),
+		expect(!_left->canAccept(widgetsPayload, _left->getDropPositionForRow(0, 0.5f)),
 				"a category was accepted as a drop target for itself");
 	}
 
@@ -516,8 +584,11 @@ void DndTreeDemoLayout::runSelfCheck() {
 	if (widgetsPayload && sceneB) {
 		const auto clonesBefore = _right->getCloneCount();
 		const auto movedId = widgetsPayload->node->getId();
+		// read from the group rather than written as a literal: how many leaves it holds is the
+		// demo's content, and the claim here is that ALL of them travelled, whatever the number
+		const auto movedLeaves = widgetsPayload->node->getChildCount();
 
-		auto spot = _right->resolveDropSpot(1); // into the empty 'Scene B'
+		auto spot = _right->getDropPositionForRow(1, 0.5f); // into the empty 'Scene B'
 		expect(_right->applyTransfer(widgetsPayload, spot, DragActions::Move),
 				"a cross-model move was refused");
 		expect(!widgetsPayload->consumed,
@@ -529,12 +600,13 @@ void DndTreeDemoLayout::runSelfCheck() {
 		expect(root(_left)->getChildCount() == 2, "the moved group is still in 'Library'");
 		expect(_left->getSource()->getNode(movedId) == nullptr,
 				"the moved element still resolves in the source model");
-		// the group itself lands in 'Scene B', and its five leaves land under the group - a
-		// transfer carries a SUBTREE, it does not spill its contents into the target
+		// the group itself lands in 'Scene B', and its leaves land under the group - a transfer
+		// carries a SUBTREE, it does not spill its contents into the target
 		expect(sceneB->getChildCount() == 1, "'Scene B' did not receive the moved group");
-		expect(sceneB->getChildCount() == 1 && sceneB->getChildren().front()->getChildCount() == 5,
-				"the moved group arrived without its five leaves");
-		expect(_right->getCloneCount() - clonesBefore == 6,
+		expect(sceneB->getChildCount() == 1
+						&& sceneB->getChildren().front()->getChildCount() == movedLeaves,
+				"the moved group arrived without all of its leaves");
+		expect(_right->getCloneCount() - clonesBefore == movedLeaves + 1,
 				"the moved subtree was not rebuilt element by element");
 	}
 
@@ -547,8 +619,11 @@ void DndTreeDemoLayout::runSelfCheck() {
 			const auto id = payload->node->getId();
 			const auto clonesBefore = _right->getCloneCount();
 
-			expect(_right->applyTransfer(payload, DndTreeView::DropSpot{sceneB, maxOf<size_t>()},
-						   DragActions::Move),
+			// built rather than resolved from a row: the transfer above has already moved a group
+			// into 'Scene B', and the row list catches up with the model on a later frame
+			auto into = ui::TreeView::DropPosition{ui::TreeView::DropPosition::Kind::Into,
+				maxOf<size_t>(), sceneB, maxOf<size_t>()};
+			expect(_right->applyTransfer(payload, into, DragActions::Move),
 					"a move inside one model was refused");
 			expect(payload->consumed, "a move inside one model did not claim the relocation");
 			expect(_right->getCloneCount() == clonesBefore, "a move inside one model cloned");
@@ -568,14 +643,91 @@ void DndTreeDemoLayout::runSelfCheck() {
 		expect(payload != nullptr, "row 3 of 'Project' produced no payload");
 		if (payload) {
 			const auto before = root(_left)->getChildCount();
-			expect(_left->applyTransfer(payload, _left->resolveDropSpot(maxOf<size_t>()),
-						   DragActions::Copy),
+			expect(_left->applyTransfer(payload,
+						   _left->getDropPositionForRow(maxOf<size_t>(), 0.5f), DragActions::Copy),
 					"a cross-model copy was refused");
 			DndTreeView::finishTransfer(payload, DragActions::Copy);
 
 			expect(root(_left)->getChildCount() == before + 1, "the copy did not reach 'Library'");
 			expect(payload->node->getParent() == root(_right),
 					"the copy removed the element it was made from");
+		}
+	}
+
+	/* 7. The context menu: what a right click would OFFER, and what choosing it does.
+
+	Driven through buildContextMenu, which is the very call the coordinator makes once it has
+	resolved the row from the point - so what is skipped here is the pointer and the popup window,
+	not the menu. */
+	{
+		auto leafMenu = _right->buildContextMenu(2); // 'Loose item 01', a leaf
+		expect(leafMenu != nullptr, "a leaf offered no menu at all");
+		if (leafMenu) {
+			expect(leafMenu->count() == 1 && leafMenu->getItem("delete") != nullptr,
+					"a leaf's menu is not just Delete");
+		}
+
+		// A category offers the toggle as well, and the toggle SAYS which way it goes: the row is
+		// collapsed here, so the item has to read Expand
+		auto catMenu = _right->buildContextMenu(0); // 'Scene A', collapsed
+		expect(catMenu != nullptr, "a category offered no menu");
+		if (catMenu) {
+			auto toggle = dynamic_cast<ui::MenuSourceButton *>(catMenu->getItem("toggle"));
+			expect(toggle != nullptr, "a category's menu has no expand/collapse item");
+			expect(toggle && toggle->getTitle() == "Expand",
+					"a collapsed category does not offer to expand");
+			expect(catMenu->getItem("delete") != nullptr, "a category cannot be deleted");
+
+			// Choosing it runs the item's own callback - the same one the row would have run
+			if (toggle && toggle->getCallback()) {
+				toggle->getCallback()(toggle);
+			}
+			expect(_right->isRowExpanded(0), "choosing Expand did not open the category");
+
+			// ...and the next menu says the opposite, because it is built from the state, not
+			// remembered from the last time. The source is held in a LOCAL: getItem hands back a
+			// raw pointer into it, and a temporary would be gone by the time it is read
+			auto reopened = _right->buildContextMenu(0);
+			auto again = reopened
+					? dynamic_cast<ui::MenuSourceButton *>(reopened->getItem("toggle"))
+					: nullptr;
+			expect(again && again->getTitle() == "Collapse",
+					"an expanded category still offers to expand");
+			if (again && again->getCallback()) {
+				again->getCallback()(again);
+			}
+			expect(!_right->isRowExpanded(0), "choosing Collapse did not close the category");
+		}
+
+		// The empty space below the last row belongs to the root, which is not an element: what it
+		// offers is about the whole tree
+		auto rootMenu = _right->buildContextMenu(maxOf<size_t>());
+		expect(rootMenu && rootMenu->getItem("expand-all") && rootMenu->getItem("collapse-all"),
+				"the background does not offer the whole-tree commands");
+
+		/* Deleting takes the element out of the MODEL, and the row list follows through the
+		model's own notification rather than through anything the menu does.
+
+		Everything here is read at the moment of the deletion rather than assumed: the sections
+		above have moved elements around, so what row 2 stands for now - and whose child it is -
+		is not what it was when this check was written. */
+		if (auto victim = _right->getRow(2); victim && victim->node) {
+			auto parent = victim->node->getParent();
+			const auto id = victim->node->getId();
+			const auto before = parent ? parent->getChildCount() : 0;
+
+			auto menu = _right->buildContextMenu(2);
+			auto item = menu ? menu->getItem("delete") : nullptr;
+			auto deleteItem = dynamic_cast<ui::MenuSourceButton *>(item);
+			expect(deleteItem != nullptr, "the row offered no Delete to choose");
+			if (deleteItem && deleteItem->getCallback()) {
+				deleteItem->getCallback()(deleteItem);
+			}
+
+			expect(parent && parent->getChildCount() == before - 1,
+					"Delete did not remove the element from its parent");
+			expect(_right->getSource()->getNode(id) == nullptr,
+					"the deleted element still resolves in the model");
 		}
 	}
 
@@ -588,6 +740,17 @@ void DndTreeDemoLayout::runSelfCheck() {
 
 void DndTreeDemoLayout::handleEnter(Scene *scene) {
 	basic2d::SceneLayout2d::handleEnter(scene);
+
+	/* The context menus the trees declare open as popups of their own, and a popup is a SCENE of
+	its own: the ui::StyleSystem carrying the sheet above lives on this window's content and does
+	not reach it. Handing the same literal to the menu is what keeps it from coming up unstyled -
+	which on a dark demo means black on black. */
+	if (auto menus = ui::ContextMenuSystem::acquireForNode(this)) {
+		menus->setMenuConfigCallback([](ui::MenuConfig &config) {
+			config.stylesheetSource = s_css.str<Interface>();
+			config.idPrefix = String("dnd");
+		});
+	}
 
 	_inspectorScene = scene;
 	addInspectorCommands(scene);
@@ -679,8 +842,7 @@ void DndTreeDemoLayout::addInspectorCommands(Scene *scene) {
 	// would, hands it to the same applyTransfer, and runs the same completion. So a headless run
 	// exercises the drop itself rather than a second implementation of it.
 	if (inspector::addCommand(content, "dndtree.transfer",
-				"Drag a row between the trees: {from: left|right, row, to: left|right, " "targe" "t"
-																								 " " "(row " "index; " "omit for " "the " "backgroun" "d), " "action: " "move|" "copy}",
+				"Move a row: {from, row, to, target, side: before|into|after, action}",
 				[this](Value &&args, Function<void(Value &&)> &&done) {
 		const Value &in = args;
 		Value result;
@@ -707,17 +869,93 @@ void DndTreeDemoLayout::addInspectorCommands(Scene *scene) {
 				? size_t(sprt::max(in.getInteger("target"), int64_t(0)))
 				: maxOf<size_t>();
 
-		const bool ok = to->applyTransfer(payload, to->resolveDropSpot(target), action);
+		// Where in the target row the pointer would have been. A leaf reads this as a half and a
+		// category as one of its three bands, which is why it is named rather than numbered.
+		const auto side = in.getString("side");
+		const float offset = (side == "before") ? 0.05f : (side == "into" ? 0.5f : 0.95f);
+
+		const auto pos = to->getDropPositionForRow(target, offset);
+		const bool ok = to->applyTransfer(payload, pos, action);
 		DndTreeView::finishTransfer(payload, ok ? action : DragActions::None);
 
 		result.setBool(ok, "ok");
 		result.setString(payload->title, "element");
 		result.setBool(payload->consumed, "relocated");
+		// what the tree said the drop meant, so a headless run can assert the zone and not only
+		// the outcome
+		switch (pos.kind) {
+		case ui::TreeView::DropPosition::Kind::Into: result.setString("into", "spot"); break;
+		case ui::TreeView::DropPosition::Kind::Before: result.setString("before", "spot"); break;
+		case ui::TreeView::DropPosition::Kind::After: result.setString("after", "spot"); break;
+		default: result.setString("none", "spot"); break;
+		}
+		result.setInteger(int64_t(pos.index), "spotIndex");
 		result.setInteger(int64_t(from->getSource()->getNodeCount() - 1), "sourceCount");
 		result.setInteger(int64_t(to->getSource()->getNodeCount() - 1), "targetCount");
 		done(sp::move(result));
 	})) {
 		_inspectorCommands.emplace_back("dndtree.transfer");
+	}
+
+	// Again the pointer's own path without the pointer: buildContextMenu is what the coordinator
+	// calls once it has resolved the row, and `activate` runs the item's own callback - the very
+	// one the menu row would have run.
+	if (inspector::addCommand(content, "dndtree.context-menu",
+				"What a right click offers: {tree, row, activate}",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &in = args;
+		Value result;
+
+		auto view = viewByName(in.getString("tree"));
+		if (!view) {
+			result.setString("unknown tree", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		// The very menu a pointer would get, from the very call the pointer makes - not a
+		// description of it written twice
+		const auto row = in.isInteger("row") ? size_t(in.getInteger("row")) : maxOf<size_t>();
+		auto source = view->buildContextMenu(row);
+		if (!source) {
+			result.setBool(false, "ok");
+			done(sp::move(result));
+			return;
+		}
+
+		Value items(Value::Type::ARRAY);
+		for (auto &item : source->getItems()) {
+			Value entry;
+			entry.setString(item->getName(), "name");
+			if (auto button = dynamic_cast<ui::MenuSourceButton *>(item.get())) {
+				entry.setString(button->getTitle(), "title");
+			} else {
+				entry.setString("separator", "type");
+			}
+			entry.setBool(item->isEnabled(), "enabled");
+			items.addValue(sp::move(entry));
+		}
+		result.setValue(sp::move(items), "items");
+
+		// Choosing one runs the item's OWN callback, which is what the menu row would have run
+		auto activate = in.getString("activate");
+		if (!activate.empty()) {
+			bool ran = false;
+			if (auto item = source->getItem(activate)) {
+				if (auto button = dynamic_cast<ui::MenuSourceButton *>(item)) {
+					if (auto &cb = button->getCallback()) {
+						cb(button);
+						ran = true;
+					}
+				}
+			}
+			result.setBool(ran, "activated");
+		}
+
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	})) {
+		_inspectorCommands.emplace_back("dndtree.context-menu");
 	}
 
 	if (inspector::addCommand(content, "dndtree.reset", "Regenerate the content of both trees",

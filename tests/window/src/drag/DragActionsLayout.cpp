@@ -99,6 +99,20 @@ void DragActionsLayout::handleEnter(Scene *scene) {
 	_drag = DragSystem::acquireForNode(this);
 }
 
+void DragActionsLayout::handleExit() {
+	// The system lives on the scene CONTENT, not on this layout, so a session started here outlives
+	// the layout that started it: switch away mid-sequence and the next stand finds a drag already
+	// in flight, with the cursor still Grabbing. A programmatic drag has no input chain to end it
+	// either - the one that watches a press chain does not apply - so ending it is this stand's own
+	// job, exactly as committing it is
+	if (_drag && _drag->isDragging()) {
+		_drag->cancelDrag();
+	}
+	_drag = nullptr;
+
+	TestLayout::handleExit();
+}
+
 Node *DragActionsLayout::addTarget(StringView name, const Rect &rect, DragActions accepted) {
 	auto node = addChild(Rc<basic2d::Layer>::create(Color::Teal_700), ZOrder(1));
 	node->setName(name);

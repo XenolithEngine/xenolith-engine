@@ -21,7 +21,10 @@
  **/
 
 #include "XLUiTreeView.h"
+#include "XLUiDragScrollSystem.h"
 #include "XLUiButton.h"
+#include "XLAction.h" // Sequence: the auto-expand dwell, see armDropExpand
+#include "XL2dLayer.h"
 #include "XLInteractiveComponent.h"
 #include "XLUiStyleSystem.h"
 
@@ -55,6 +58,16 @@ bool TreeView::init(Model *source) {
 
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
+
+	// On the SCROLL, not on this node: the edge band is measured against the viewport, and a list
+	// you cannot drag past the bottom of is a list you cannot drop into the part you cannot see.
+	DragScrollSystem::acquireForNode(_scroll);
+
+	// The scroll bar is built by basic2d out of nodes that can paint a fill and one radius; this
+	// hands it nodes a stylesheet can paint outlines and four corners on, under the types
+	// `scroll-indicator` and `scroll-indicator-track`. Done here rather than left to the
+	// application because a widget of this layer is expected to answer to CSS everywhere else.
+	useStyledScrollIndicator(_scroll);
 
 	// One listener for the WHOLE model. A Model node knows its parent, so the model is the single
 	// Subscription and a change anywhere in the tree arrives here — which is why nothing in this
@@ -744,6 +757,330 @@ bool TreeView::getRowRect(size_t index, Rect &out) const {
 
 size_t TreeView::getRowIndexAt(const Vec2 &nodeLocation) const {
 	return ui::getRowIndexAt(makeGeometrySource(), nodeLocation);
+}
+
+// ---- dropping into the tree ---------------------------------------------------------------------
+
+auto TreeView::getDropPositionForRow(size_t index, float offset) const -> DropPosition {
+	auto model = getSource();
+	if (!model) {
+		return DropPosition();
+	}
+
+	auto root = model->getRoot();
+
+	// No row: the empty space below the last one, and everything dropped there joins the root at
+	// the end. This is the only way into an EMPTY tree, which has no row to answer for it.
+	auto row = getRow(index);
+	if (!row || !row->node) {
+		return DropPosition{DropPosition::Kind::Into, maxOf<size_t>(), root, maxOf<size_t>()};
+	}
+
+	const bool category = row->isCategory();
+
+	// A category is a PLACE as well as a position, so the wide middle of its row is "into it" and a
+	// band at each end is "beside it". A leaf is only ever a position, and its halves are its two
+	// answers - there is no third thing a leaf could mean.
+	if (category && offset >= CategoryDropBand && offset < 1.0f - CategoryDropBand) {
+		return DropPosition{DropPosition::Kind::Into, index, row->node, maxOf<size_t>()};
+	}
+
+	// A span row has no element of its own - the items inside a span are a length, not elements -
+	// but the span ITSELF is a child of its parent, so it still answers for a place among siblings.
+	auto parent = row->node->getParent();
+	if (!parent) {
+		// the root shown as row 0 (setRootVisible) has no parent to insert beside, so the whole of
+		// its row can only mean "into it"
+		return DropPosition{DropPosition::Kind::Into, index, root, maxOf<size_t>()};
+	}
+
+	// Which side of the row, from the same number. One test serves both kinds: a leaf is split at
+	// its middle, and a category that reached this line is already outside its middle, so which
+	// half the point falls in is which band it came from.
+	const bool after = (offset >= 0.5f);
+	const auto child = row->node->getChildIndex();
+	return after ? DropPosition{DropPosition::Kind::After, index, parent, child + 1}
+				 : DropPosition{DropPosition::Kind::Before, index, parent, child};
+}
+
+auto TreeView::getDropPositionAt(const Vec2 &nodeLocation) const -> DropPosition {
+	const auto index = getRowIndexAt(nodeLocation);
+
+	// How far DOWN the row the pointer is. Y is UP here, so it counts from the row's TOP edge -
+	// which is the edge "before" is on, a row's predecessor being drawn above it.
+	float offset = 0.5f;
+	Rect rect;
+	if (index != maxOf<size_t>() && getRowRect(index, rect) && rect.size.height > 0.0f) {
+		offset = (rect.origin.y + rect.size.height - nodeLocation.y) / rect.size.height;
+	}
+
+	return getDropPositionForRow(index, offset);
+}
+
+float TreeView::getRowIndentX(size_t index) const {
+	auto node = getRowNode(index);
+	if (!node) {
+		return nan();
+	}
+
+	// The leftmost child, not the first one: the children are ordered by ZOrder and a row built by
+	// a caller may put anything anywhere, while "where the content starts" is a question about the
+	// boxes rather than about the order. A row with no children at all has no indent to report.
+	float left = nan();
+	for (auto &child : node->getChildren()) {
+		if (!child->isEffectivelyVisible()) {
+			continue;
+		}
+		const auto x = child->getBoundingBox().origin.x;
+		left = sprt::isnan(left) ? x : sprt::min(left, x);
+	}
+
+	if (sprt::isnan(left)) {
+		return nan();
+	}
+
+	// Through the world rather than by assuming the row shares an origin with this node: the rows
+	// live under a ScrollView whose root moves as it scrolls.
+	return convertToNodeSpace(node->convertToWorldSpace(Vec2(left, 0.0f))).x;
+}
+
+bool TreeView::getDropPositionRect(const DropPosition &pos, Rect &out) const {
+	if (pos.row == maxOf<size_t>()) {
+		return false; // the root has no rectangle of its own; the whole view stands for it
+	}
+
+	Rect rect;
+	switch (pos.kind) {
+	case DropPosition::Kind::None: return false;
+
+	case DropPosition::Kind::Into:
+		if (!getRowRect(pos.row, rect)) {
+			return false;
+		}
+		break;
+
+	// A boundary is a gap between two rows, numbered by the row BELOW it - so "before row r" is
+	// boundary r and "after row r" is boundary r + 1, which for the last row is one past the end
+	// and is answered with its bottom edge.
+	case DropPosition::Kind::Before:
+		if (!ui::getRowBoundaryRect(makeGeometrySource(), pos.row, rect, InsertionLineThickness)) {
+			return false;
+		}
+		break;
+	case DropPosition::Kind::After:
+		if (!ui::getRowBoundaryRect(makeGeometrySource(), pos.row + 1, rect,
+					InsertionLineThickness)) {
+			return false;
+		}
+		break;
+	}
+
+	// Cut back to the ANCHOR row's indent - pos.row either way, since that is the element the
+	// position is expressed against. A row with no node reports none, and then the indicator spans
+	// the width as it did before; that is the honest answer rather than a guessed indent.
+	const auto left = getRowIndentX(pos.row);
+	if (!sprt::isnan(left) && left > rect.origin.x && left < rect.getMaxX()) {
+		rect.size.width -= left - rect.origin.x;
+		rect.origin.x = left;
+	}
+
+	out = rect;
+	return true;
+}
+
+void TreeView::setDropSlots(DropSlots &&slots) {
+	_dropSlots = sp::move(slots);
+	setDropEnabled(true);
+}
+
+void TreeView::setDropEnabled(bool value) {
+	if (_dropEnabled == value) {
+		return;
+	}
+	_dropEnabled = value;
+	updateDropSystems();
+}
+
+void TreeView::setDropExpandDelay(TimeInterval value) {
+	_dropExpandDelay = value;
+	// Whatever is running was armed with the old delay; the next hover arms the new one.
+	cancelDropExpand();
+}
+
+void TreeView::updateDropSystems() {
+	if (!_dropEnabled) {
+		clearDropPosition();
+		if (_dropTarget) {
+			removeSystem(_dropTarget);
+			_dropTarget = nullptr;
+		}
+		return;
+	}
+
+	if (_dropTarget) {
+		return;
+	}
+
+	_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
+		.accept = [this](const DragEvent &event) -> DragResponse {
+		if (!_dropSlots.accept) {
+			return DragResponse(); // nothing was wired up: the view is inert, not surprising
+		}
+		// PURE, and it has to be: this runs during hit testing. Resolving a position is a query
+		// over the geometry and the model, and the caller's predicate is held to the same rule -
+		// so nothing here moves, highlights or remembers.
+		return DragResponse{_dropSlots.accept(event, getDropPositionAt(event.location))};
+	},
+		.enter = [this](const DragEvent &event) { updateDropPosition(event); },
+		.over = [this](const DragEvent &event) { updateDropPosition(event); },
+		.leave = [this](const DragEvent &) { clearDropPosition(); },
+		.drop =
+				[this](const DragEvent &event, DragActions action) {
+		// Re-resolved from the event rather than read out of _dropPosition: `leave` fires BEFORE
+		// `drop` and has already cleared it, which is what keeps enter/leave an exact bracket.
+		return _dropSlots.drop ? _dropSlots.drop(event, getDropPositionAt(event.location), action)
+							   : false;
+	},
+	}));
+}
+
+void TreeView::updateDropPosition(const DragEvent &event) {
+	auto pos = getDropPositionAt(event.location);
+	if (pos == _dropPosition) {
+		// The pointer moved inside the same zone. Nothing to redraw - and, crucially, nothing to
+		// restart: the dwell measures time over a category, not time since the last movement.
+		return;
+	}
+
+	_dropPosition = sp::move(pos);
+	showDropFeedback();
+	armDropExpand();
+}
+
+void TreeView::clearDropPosition() {
+	_dropPosition = DropPosition();
+	cancelDropExpand();
+	hideDropFeedback();
+}
+
+void TreeView::showDropFeedback() {
+	Rect rect;
+	const bool into = (_dropPosition.kind == DropPosition::Kind::Into);
+	const bool hasRect = getDropPositionRect(_dropPosition, rect);
+
+	// The root - what the empty space below the last row answers for - has no rectangle of its own,
+	// because it is the WHOLE view that would take the drop. A style class is how that is said, so
+	// a sheet decides what it looks like; there is no node here to paint.
+	if (_dropPosition.kind != DropPosition::Kind::None && _dropPosition.row == maxOf<size_t>()) {
+		addStyleClass("drop-root");
+	} else {
+		removeStyleClass("drop-root");
+	}
+
+	if (hasRect && into) {
+		if (!_dropHighlight) {
+			// Translucent, and painted HERE rather than left to the sheet: an unstyled fill over a
+			// row would hide the very row it is pointing at. A rule on `tree-drop-highlight`
+			// overrides it.
+			_dropHighlight = addChild(Rc<basic2d::Layer>::create(Color4B(0x2E, 0x7D, 0x32, 0x80)),
+					ZOrder(64));
+			_dropHighlight->setType("tree-drop-highlight");
+			_dropHighlight->setAnchorPoint(Anchor::BottomLeft);
+		}
+		_dropHighlight->setPosition(rect.origin);
+		_dropHighlight->setContentSize(rect.size);
+	} else if (_dropHighlight) {
+		_dropHighlight->removeFromParent(true);
+		_dropHighlight = nullptr;
+	}
+
+	if (hasRect && !into) {
+		if (!_insertionLine) {
+			_insertionLine = addChild(Rc<basic2d::Layer>::create(Color4B(0xFC, 0xB4, 0x00, 0xFF)),
+					ZOrder(64));
+			_insertionLine->setType("tree-insertion-line");
+			_insertionLine->setAnchorPoint(Anchor::BottomLeft);
+
+			// The upright, as a CHILD of the line: the two are one indicator, so they are built,
+			// moved and taken down as one thing, and the upright needs no position of its own after
+			// this - the line's left end is where it belongs, and that is the origin it sits at.
+			auto stem = _insertionLine->addChild(
+					Rc<basic2d::Layer>::create(Color4B(0xFC, 0xB4, 0x00, 0xFF)), ZOrder(1));
+			stem->setType("tree-insertion-stem");
+			stem->setAnchorPoint(Anchor::MiddleLeft);
+			stem->setPosition(Vec2(0.0f, InsertionLineThickness / 2.0f));
+			stem->setContentSize(Size2(InsertionLineThickness, InsertionStemHeight));
+		}
+		_insertionLine->setPosition(rect.origin);
+		_insertionLine->setContentSize(rect.size);
+	} else if (_insertionLine) {
+		_insertionLine->removeFromParent(true);
+		_insertionLine = nullptr;
+	}
+}
+
+void TreeView::hideDropFeedback() {
+	removeStyleClass("drop-root");
+	if (_dropHighlight) {
+		_dropHighlight->removeFromParent(true);
+		_dropHighlight = nullptr;
+	}
+	if (_insertionLine) {
+		_insertionLine->removeFromParent(true);
+		_insertionLine = nullptr;
+	}
+}
+
+void TreeView::armDropExpand() {
+	// Only a CLOSED category, and only where the drop would go INTO it. A drag resting between two
+	// leaves is aiming at a place that already exists; there is nothing to open for it.
+	Rc<ModelNode> candidate;
+	if (_dropPosition.kind == DropPosition::Kind::Into && _dropPosition.row != maxOf<size_t>()) {
+		if (auto row = getRow(_dropPosition.row); row && row->isCategory() && !row->expanded) {
+			candidate = row->node;
+		}
+	}
+
+	if (candidate == _dropExpandCandidate) {
+		return; // already counting for this very category - restarting it would mean it never fires
+	}
+
+	cancelDropExpand();
+
+	_dropExpandCandidate = sp::move(candidate);
+	if (!_dropExpandCandidate || !_dropExpandDelay) {
+		return;
+	}
+
+	// Rc on the view, not `this`: the ActionManager holds the action, and the run below outlives
+	// any single frame of the drag.
+	runAction(Rc<Sequence>::create(_dropExpandDelay,
+					  [self = Rc<TreeView>(this)] { self->fireDropExpand(); }),
+			DropExpandActionTag);
+}
+
+void TreeView::cancelDropExpand() {
+	_dropExpandCandidate = nullptr;
+	stopAllActionsByTag(DropExpandActionTag);
+}
+
+void TreeView::fireDropExpand() {
+	auto candidate = sp::move(_dropExpandCandidate);
+	_dropExpandCandidate = nullptr;
+	if (!candidate) {
+		return;
+	}
+
+	// Found again rather than remembered: the row list may have been re-derived while the dwell ran
+	// - by another expansion, or by a change in the model - and the index would name another row.
+	for (size_t i = 0; i < _rows.size(); ++i) {
+		if (_rows[i].node == candidate) {
+			// The category stays at its own index and keeps its rectangle; only rows BELOW it move,
+			// so what is on screen for this position is still right and nothing is re-drawn here.
+			expandRow(i);
+			return;
+		}
+	}
 }
 
 void TreeView::handleRowTap(size_t index, uint32_t count) {

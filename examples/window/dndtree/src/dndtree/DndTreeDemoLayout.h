@@ -41,9 +41,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 //     the whole point: an ItemId belongs to the model that allocated it, so a row that stays in
 //     its own tree is MOVED (identity, expansion and selection survive) while a row that crosses
 //     over has to be rebuilt on the other side and deleted here. Both cases are one drag.
-//   * The drag itself is stock: a DragSource and a DropTarget per row, plus one DropTarget on each
-//     view's background so an empty tree - "Scene B" starts out empty - is still somewhere to drop.
-//     Ctrl asks for a Copy, Shift for a Move, and the target has the last word.
+//   * The drag itself is stock: a DragSource per row, and ui::TreeView::setDropSlots for the whole
+//     of the receiving half. The tree resolves WHERE a drop lands - before or after a leaf by which
+//     half of it the pointer is in, into a category over the whole of its row, into the root over
+//     the empty space below the last one - draws the line or the highlight for it, and opens a
+//     closed category the drag rests on for half a second. This demo answers only whether a given
+//     payload may go to a given place, and what putting it there means across two models. Ctrl asks
+//     for a Copy, Shift for a Move, and the target has the last word.
 //
 // The content is generated in code (makeLibraryModel / makeProjectModel), and the self-check drives
 // the very same transfer path the pointer does, so what it proves is what a drop actually does.

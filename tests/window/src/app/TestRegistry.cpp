@@ -68,6 +68,8 @@
 #include "render/RenderLevelLayout.h"
 #include "render/Scale9Layout.h"
 #include "widgets/CanvasViewLayout.h"
+#include "widgets/ScrollBarLayout.h"
+#include "widgets/ContextMenuLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SelectorLayout.h"
@@ -76,6 +78,10 @@
 #include "css/VisibilityLayout.h"
 #include "css/WatchCssLayout.h"
 #include "css/WatchCssRecursiveLayout.h"
+#include "drag/DragBasicLayout.h"
+#include "drag/DragActionsLayout.h"
+#include "drag/DragPayloadLayout.h"
+#include "drag/DragTextLayout.h"
 
 #include <stdlib.h> // getenv
 
@@ -422,6 +428,29 @@ static const TestInfo s_widgetsTests[] = {
 		StringView("Rows that never match the size their item declared. The list must still scroll "
 				   "and the run must end with 0 failures instead of stalling on a rebuild loop."),
 		TestRegistry_make<ScrollThrashLayout>},
+
+	TestInfo{StringView("context-menu"), StringView("XL_CONTEXT_MENU_TEST"),
+		StringView("ui::ContextMenuTarget / ui::ContextMenuSystem"),
+		StringView("Nested regions that answer a right click differently, and the two ways of "
+				   "refusing one. A menu is declared by a target that publishes itself while it is "
+				   "DRAWN, so the topmost wins and an invisible one does not exist; the point "
+				   "reaches the builder in the target's own space; a target offering nothing "
+				   "blocks the region under it rather than falling through; and a widget that "
+				   "swallows the right button stops the menu without declaring anything. On touch "
+				   "the same menu comes from a long press - and from a mouse held just as long, it "
+				   "must not. Inspector: context-menu.state, context-menu.open-at, "
+				   "context-menu.close, context-menu.reset."),
+		TestRegistry_make<ContextMenuLayout>, true},
+
+	TestInfo{StringView("scrollbar"), StringView("XL_SCROLLBAR_TEST"),
+		StringView("basic2d::ScrollView scroll bar"),
+		StringView("A list four times taller than its viewport. The thumb's length must encode the "
+				   "ratio and its position must be the exact inverse of the scroll position - both "
+				   "checked by equality, since a doubled response and a correct one look alike. The "
+				   "bar is grabbable only where a pointing device exists, which is what "
+				   "--headless-no-pointer takes away. Inspector: scrollbar.state, scrollbar.scroll, "
+				   "scrollbar.reset-taps."),
+		TestRegistry_make<ScrollBarLayout>, true},
 };
 
 // src/text - text shaping
@@ -509,6 +538,47 @@ static const TestInfo s_windowTests[] = {
 		TestRegistry_make<QueueCacheLayout>},
 };
 
+// src/drag - the drag-and-drop protocol
+static const TestInfo s_dragTests[] = {
+	TestInfo{StringView("drag-basic"), StringView("XL_DRAG_BASIC_TEST"),
+		StringView("Drag protocol: roster, bracket, topmost-wins"),
+		StringView("A target exists for a drag only while it is DRAWN, so the hidden one must never "
+				   "be entered and of the two overlapping ones only the one on top may receive. "
+				   "enter/leave must bracket in every path out, cancellation included, a drag must "
+				   "complete exactly once, and the drop must survive destroying its own source - "
+				   "which is what an ordinary Move does. The run must end with 0 failures. "
+				   "Inspector: drag-basic.targets."),
+		TestRegistry_make<DragBasicLayout>},
+
+	TestInfo{StringView("drag-actions"), StringView("XL_DRAG_ACTIONS_TEST"),
+		StringView("Drag actions and the cursor"),
+		StringView("The source offers a mask, the modifier states a PREFERENCE and the target has "
+				   "the last word: a Copy-only target must not refuse a drag held under Shift, it "
+				   "must answer Copy. The cursor is the visible half of the same state and comes "
+				   "from the window-wide layer the drag system owns, because during a drag the "
+				   "pointer is over the target and nothing the source owns can set it. The run must "
+				   "end with 0 failures."),
+		TestRegistry_make<DragActionsLayout>},
+
+	TestInfo{StringView("drag-payload"), StringView("XL_DRAG_PAYLOAD_TEST"),
+		StringView("Drag payload: lazy encoding, clipboard round trip"),
+		StringView("One offer read two ways. Listing types, matching them and choosing one must "
+				   "materialize NO bytes, and a drop that takes the live object must not encode at "
+				   "all - otherwise every hover over every target would serialize the payload "
+				   "again. RUN THIS ONE HEADLESS: the clipboard round trip is deterministic only "
+				   "where the controller keeps the data in process. The run must end with 0 "
+				   "failures."),
+		TestRegistry_make<DragPayloadLayout>},
+
+	TestInfo{StringView("drag-text"), StringView("XL_DRAG_TEXT_TEST"),
+		StringView("A text field receiving a drop"),
+		StringView("Dropping text and pasting it are one feature, matched by the same type rule and "
+				   "inserted at the same caret - including where they are allowed to differ: a "
+				   "read-only field must refuse both, and neither may invent a type the payload "
+				   "never offered. The run must end with 0 failures."),
+		TestRegistry_make<DragTextLayout>},
+};
+
 // One entry per directory. Nesting is arbitrary - a group may declare `groups` of its own - but the
 // source tree is one level deep, so this list is flat as well.
 static const TestGroup s_groups[] = {
@@ -534,6 +604,11 @@ static const TestGroup s_groups[] = {
 	TestGroup{StringView("render"), StringView("Rendering"),
 		StringView("What actually reaches the screen: damage tracking and rendering levels."), {},
 		s_renderTests},
+
+	TestGroup{StringView("drag"), StringView("Drag and drop"),
+		StringView("The drag protocol, action negotiation, and the payload shared with the "
+				   "clipboard."),
+		{}, s_dragTests},
 
 	TestGroup{StringView("window"), StringView("Windows"),
 		StringView("A second Root window, and render queues compiled before any window exists."),
