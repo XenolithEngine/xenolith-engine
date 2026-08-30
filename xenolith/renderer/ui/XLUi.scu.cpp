@@ -33,6 +33,7 @@
 
 #include "atoms/XLUiPanel.cc"
 #include "layout/XLUiScrollSystem.cc" // after Panel: the scroll indicator is one
+#include "layout/XLUiDragScrollSystem.cc" // after ScrollSystem: it drives one of the two
 #include "atoms/XLUiBadge.cc"
 #include "atoms/XLUiProgressBar.cc"
 #include "atoms/XLUiTableBorderPainter.cc"
@@ -87,6 +88,7 @@
 #include "XLUiSubWindowSession.cc"
 #include "XLUiPopupSurface.cc" // after SubWindowSession: every popup opens through its slot
 #include "menu/XLUiMenuPopup.cc" // after PopupSurface: a menu is one, measured first
+#include "menu/XLUiContextMenu.cc" // after MenuPopup: it opens through openMenu
 #include "XLUiTooltipSystem.cc" // after SubWindowSession: the hint goes through its tip slot
 
 #include "input/XLUiSelect.cc" // after MenuPopup: the list it opens is one

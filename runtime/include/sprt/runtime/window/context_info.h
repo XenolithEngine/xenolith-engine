@@ -38,6 +38,12 @@ enum class ContextFlags : uint32_t {
 
 	// Application shold be terminated when all it's windows were closed
 	DestroyWhenAllWindowsClosed = 1 << 1,
+
+	// Headless only: report windows as having no pointing device, i.e. without
+	// WindowState::InputPointer. Headless emulates a desktop window manager and normally claims
+	// one, so this exists to reach the touch-shaped branch of a widget that adapts to the input
+	// devices available - the branch no amount of injected input can otherwise produce.
+	HeadlessNoPointer = 1 << 2,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(ContextFlags)

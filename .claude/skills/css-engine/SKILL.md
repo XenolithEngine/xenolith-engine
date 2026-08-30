@@ -319,6 +319,15 @@ Scrollbars are real child nodes (`type = "scrollbar"`, classes `xl-ui-scrollbar`
 `xl-ui-scrollbar-vertical`/`-horizontal`), so ordinary CSS styles them and
 `scrollbar { display: none }` removes them. Beware: `.container > *` matches them too.
 
+**There are two scrollbars.** The one above belongs to `ui::ScrollSystem` (what `overflow`
+creates). A virtualized view — `ui::TreeView`, `ui::TableView`, `basic2d::ScrollView` — has its
+own, under `scroll-indicator` (the thumb) and `scroll-indicator-track` (the strip, which carries
+the input, so `:hover` on it is the pointer being over the bar). Both nodes get `.active` while
+the bar is grabbable, i.e. while a pointing device exists. Its SIZE is not a style — the view
+rewrites it on every scroll; use `ScrollView::setIndicatorThickness`. A bare `basic2d::ScrollView`
+answers only to `background-color`/`opacity`/`display`; `ui::useStyledScrollIndicator(view)` swaps
+its nodes for Panels so radius and outline reach it (TreeView/TableView already do this).
+
 A vertical wheel over a **horizontal-only** scroller is redirected to the horizontal axis
 (browser behaviour — a mouse has no horizontal wheel); Shift+wheel does the same explicitly.
 Dragging scrolls. Inertia after release is TOUCH-only, keyed on `InputModifier::Touch` (the

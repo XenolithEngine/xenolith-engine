@@ -371,6 +371,34 @@ if (hasFlag(w->getCapabilities(), WindowCapabilities::Fullscreen)) {
 example of all of this: it rebuilds its menu from the capability bits and from
 `ScreenInfo`.
 
+### Three questions about a pointer, three different answers
+
+These get confused, and the confusion is expensive: a widget wired to the wrong
+one behaves correctly in every test and wrongly on somebody's machine.
+
+| Ask this | Read this | True when |
+|---|---|---|
+| is a pointing device attached at all? | `WindowState::InputPointer` | a mouse, trackpad or trackball exists for this window — the pair of `WindowState::InputTouch`. Independent of where the cursor is, or whether there is one on screen |
+| is the cursor over this window right now? | `WindowState::Pointer` | the pointer is inside the window. It drops the moment the cursor leaves, and comes back when it returns |
+| did THIS event come from a finger? | `InputModifier::Touch` on the event | the backend marked this one event as touch-sourced. Nothing to do with what devices exist |
+
+The rule of thumb: **`InputPointer` decides what a widget OFFERS, `Pointer` decides
+what it is doing this instant, and `InputModifier::Touch` decides how one gesture
+is interpreted.** A scroll bar is the worked example of all three — it is wide and
+grabbable while a pointing device exists (`InputPointer`), it lights up while the
+cursor is on it (`Pointer`, through `:hover`), and it coasts after the release only
+for a finger (`InputModifier::Touch`). Wiring the first of those to `Pointer`
+instead makes the bar shrink and stop answering every time the cursor leaves the
+window.
+
+Platforms answer `InputPointer` where they can: wayland from the seat's
+capabilities, xcb from the enabled non-XTEST slave pointers (a master pointer
+exists in every session, including a mouseless one, so counting those would make
+the flag a constant), windows from `SM_MOUSEPRESENT`, macOS unconditionally.
+Android and iOS do not set it. Headless sets it by default, and
+`--headless-no-pointer` takes it away — which is what makes the other branch
+testable at all.
+
 ## Sharing a compiled render queue
 
 A scene normally builds and compiles its own render graph, which is the slow part

@@ -1221,6 +1221,22 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		sendResponse(session, serial, encodeConstraints(server->getConstraints()));
 	} else if (op == "geometry") {
 		sendResponse(session, serial, encodeGeometry(server->getWindowGeometry()));
+	} else if (op == "state") {
+		// The raw bits AND the names: a test asserts on a name, while a bug report wants the number
+		// that produced it. getWindowStateDescription is the runtime's own printer, so the two can
+		// never drift apart the way a table copied over here would.
+		auto state = server->getWindowState();
+
+		Value result;
+		result.setInteger(int64_t(sprt::toInt(state)), "bits");
+
+		StringStream names;
+		sprt::window::getWindowStateDescription([&](StringView str) {
+			// every name is emitted with a leading space; the first one has nothing to separate
+			names << (names.empty() ? str.sub(1) : str);
+		}, state);
+		result.setString(names.str(), "state");
+		sendResponse(session, serial, sp::move(result));
 	} else if (op == "resize") {
 		auto width = uint32_t(req.getInteger("width", 0));
 		auto height = uint32_t(req.getInteger("height", 0));
@@ -1247,7 +1263,7 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	} else {
 		sendError(session, serial,
 				toString("unknown window op: ", op,
-						"; expected 'resize', 'constraints', 'geometry' or 'close'"));
+						"; expected 'resize', 'constraints', 'geometry', 'state' or 'close'"));
 	}
 }
 

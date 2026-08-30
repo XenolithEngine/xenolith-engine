@@ -46,6 +46,12 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
                               (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    drag-check.py             runs the four drag-and-drop stands, one process each, and
+                              reports the summary each of them prints
+    scrollbar-check.py        headless assertions for basic2d::ScrollView's scroll bar:
+                              geometry, the drag, the paint, and the pointing device
+    context-menu-check.py     headless assertions for ui::ContextMenuTarget /
+                              ui::ContextMenuSystem: who is asked, and what refuses
     style-check.py            headless assertions for the CSS engine: control states, the
                               functional pseudo-classes, and the arithmetic
     scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry
@@ -200,6 +206,53 @@ number after every read, including a read whose preference list matches nothing.
 covers the halves that used to be duplicated between `ui::TextInput` and `ui::TextView`: what one
 copies the other must paste, a masked field must still refuse, and a paste whose field lost focus
 must not land.
+
+`scrollbar-check.py` runs the stand twice: once as usual and once under
+`--headless-no-pointer`. That second pass is the reason `WindowState::InputPointer`
+exists — the bar is thick, grabbable and permanent where a pointing device is attached,
+and thin, inert and fading where none is — and it is not observable any other way: the
+two look alike in a screenshot and identical in the scene tree. The paint section works
+the same way in miniature, checking the bar BEFORE `ui::useStyledScrollIndicator` as
+well as after: `background-color` must reach it either way, `border-radius` and
+`outline` only after, and a check that only looked at the second half would pass just as
+happily if the swap had happened somewhere it should not.
+
+It also looks at the PIXELS, which no other check here does, and that is not thoroughness for its
+own sake: the bar was invisible on screen for a while with every number about it right. The thumb
+is a child of the track, opacity multiplies down a subtree, and the track sits at zero opacity
+whenever the pointer is not on it — so the bar was drawn only while being pointed at, and the
+state a check reads (size, position, opacity, resolved fill) said nothing about it. The screenshot
+is decoded in-process with `zlib`; no image library is needed.
+
+One more trap it encodes, because it cost an hour: a press aimed at the exact boundary
+between two rows reaches NEITHER row, so `rowTaps` reads 0 and looks like "the bar
+swallowed it". The stand reports a second counter, `viewTaps`, for that reason - the
+scroll view's own answer to the same press tells "delivered and swallowed" from "never
+arrived".
+
+`context-menu-check.py` is mostly about menus that must NOT open, which on screen is
+indistinguishable from nothing happening: an invisible target, a target that offers nothing, a
+widget that swallows the right button, a right DRAG rather than a click, and a mouse held down for
+as long as a finger would be. The stand answers with two counters rather than one - how many
+builders ran and which target answered - because "refused" and "never reached" are different bugs
+that look alike from outside. The menu itself is a real window in headless, so what it contains is
+read out of its own scene and a row is clicked in it by id.
+
+`drag-check.py` is the odd one out: it asserts nothing itself. The four drag stands
+(`drag/drag-basic`, `drag/drag-actions`, `drag/drag-payload`, `drag/drag-text`) run their phases
+from a `Sequence` of `DelayTime`s and do their own checking, ending with a
+`SUMMARY: N checks, M failures` line, so what a driver owes them is time - and in headless there is
+no time except the frames it asks for. The script steps frames until that line appears rather than
+waiting a fixed count, which would bake this machine's pacing into the test.
+
+It gives each stand its own PROCESS, and that is the point of it rather than an accident: the
+`DragSystem` lives on the scene content, not on a layout, so stands sharing a process share it too.
+A stand that begins a drag in one phase and commits it in another has to cancel it in `handleExit`,
+or a layout switch landing mid-sequence leaves the session in flight and the next stand finds
+`beginDrag` refusing with the cursor stuck on `Grabbing`. Nothing ends a programmatic drag on its
+own - it has no input chain, so the release detection that watches a press chain never applies.
+`drag-basic` and `drag-actions` do cancel, so the layout sweep passes either way; a process per
+stand is what makes a failure mean what it says.
 
 ## Building
 

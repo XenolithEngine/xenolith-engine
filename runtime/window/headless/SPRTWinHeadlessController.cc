@@ -97,6 +97,15 @@ bool HeadlessContextController::init(NotNull<Context> ctx, ContextConfig &&confi
 	return true;
 }
 
+bool HeadlessContextController::hasPointerDevice() const {
+	// Through the live Context, not through _contextInfo: that member is a staging slot the
+	// controller MOVES into the Context at handleConfigurationChanged and then nulls, so by the
+	// time any window is created it is empty and reading it here silently answers the default.
+	// It is still the only source before the handover, hence both.
+	auto info = _context ? _context->getInfo() : _contextInfo.get();
+	return !info || !hasFlag(info->flags, ContextFlags::HeadlessNoPointer);
+}
+
 WindowCapabilities HeadlessContextController::getCapabilities() const {
 	// The one thing this controller really provides. Everything else on the list needs a window
 	// system: decorations, cursors, fullscreen and mode switching, an OS icon, native dialogs.

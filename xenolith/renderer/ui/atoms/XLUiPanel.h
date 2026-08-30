@@ -26,6 +26,12 @@
 #include "XLUiConfig.h"
 #include "XLUiStyleResolver.h" // ResolvedStyle + document::ParameterName of setStyleValue below
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
+
+class ScrollView;
+
+} // namespace stappler::xenolith::basic2d
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The resolved paint of a Panel and of everything built on one (badge, checkbox, button, ...): a
@@ -88,6 +94,26 @@ protected:
 	// background is rebuilt. The guard keeps an unchanged value from re-dirtying the cascade.
 	void updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &);
 };
+
+/* Give a scroll view a bar a stylesheet can paint.
+
+basic2d builds the bar out of LayerRounded, which draws a fill and one radius - so `background-color`
+and `opacity` reach it already, and `outline-*` and four separate corners have nowhere to land. This
+swaps both of its nodes for Panels, which paint all of it, and registers the surface appliers for the
+two types the view gives them:
+
+    scroll-indicator-track        { background-color: transparent; border-radius: 5px; }
+    scroll-indicator-track:hover  { background-color: rgba(0,0,0,0.25); }
+    scroll-indicator              { background-color: rgba(255,255,255,0.35); border-radius: 3px; }
+    scroll-indicator.active       { outline: 1px solid rgba(0,0,0,0.4); }
+    tree-view scroll-indicator-track { display: none; }
+
+`.active` is on both nodes while the bar is grabbable - see ScrollView. `display: none` removes the
+bar; its SIZE is not a style, because the view rewrites it on every scroll (setIndicatorThickness).
+
+ui::TreeView and ui::TableView call this for themselves. Idempotent, and it keeps whatever the bar
+was painted with, so calling it changes nothing until a rule matches. */
+SP_PUBLIC void useStyledScrollIndicator(NotNull<basic2d::ScrollView>);
 
 } // namespace stappler::xenolith::ui
 
