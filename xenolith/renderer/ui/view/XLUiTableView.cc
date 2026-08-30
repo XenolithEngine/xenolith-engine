@@ -891,25 +891,27 @@ void TableView::setReorderEnabled(bool value) {
 
 void TableView::updateReorderSystems() {
 	if (_reorderEnabled) {
-		if (!_dropTarget) {
-			_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
-				.accept = [this](const DragEvent &event) -> DragResponse {
+		if (!_hasDropTarget) {
+			_hasDropTarget = true;
+			setDropTarget(this,
+					DropTargetSlots{
+						.accept = [this](const DragEvent &event) -> DragResponse {
 				if (!TableView_payloadOf(event, this)) {
 					return DragResponse();
 				}
 				return DragResponse{DragActions::Move};
 			},
-				.enter =
-						[this](const DragEvent &event) {
+						.enter =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.over =
-						[this](const DragEvent &event) {
+						.over =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.leave = [this](const DragEvent &) { hideInsertionLine(); },
-				.drop =
-						[this](const DragEvent &event, DragActions) {
+						.leave = [this](const DragEvent &) { hideInsertionLine(); },
+						.drop =
+								[this](const DragEvent &event, DragActions) {
 				auto payload = TableView_payloadOf(event, this);
 				if (!payload) {
 					return false;
@@ -917,7 +919,7 @@ void TableView::updateReorderSystems() {
 				// Read the index out before anything moves: the drop is what invalidates it.
 				return handleReorderDrop(payload->index, event.location);
 			},
-			}));
+					});
 		}
 
 		if (!_reorderKeys) {
@@ -943,9 +945,9 @@ void TableView::updateReorderSystems() {
 		}
 	} else {
 		hideInsertionLine();
-		if (_dropTarget) {
-			removeSystem(_dropTarget);
-			_dropTarget = nullptr;
+		if (_hasDropTarget) {
+			removeDropTarget(this);
+			_hasDropTarget = false;
 		}
 		if (_reorderKeys) {
 			removeSystem(_reorderKeys);

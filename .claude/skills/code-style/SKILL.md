@@ -195,7 +195,7 @@ lifetime, or for error detection. Details and examples:
     which becomes a native subwindow or an in-scene overlay depending on
     `WindowCapabilities::Subwindows` — check capabilities before offering
     fullscreen, decorations or mode switching too. A hint that appears **on hover**
-    is `ui::TooltipTarget` on the node plus `ui::TooltipSystem` on the scene, never
+    is `ui::setTooltip(node, ...)` plus `ui::TooltipSystem` on the scene, never
     a hand-rolled timer. OS dialogs are an
     `Rc<sprt::window::DialogRequest>` handed to `AppWindow::openDialog` (parented,
     cancelled with the window) or `Context::openDialog` (windowless); **keep the
@@ -236,9 +236,13 @@ lifetime, or for error detection. Details and examples:
     the **rects follow on the next layout pass**.
 
 28. **Drag and drop is one `DragSystem` per scene, and a drop target registers
-    itself by being DRAWN.** Add a `DropTarget` to a node and it publishes its
-    world rect from inside its own visit, so the topmost target receives and an
-    invisible one does not exist. `accept` is a **pure predicate** — it runs during
+    itself by being DRAWN.** `setDropTarget(node, slots)` attaches a
+    `DropTargetComponent` - data, no lifecycle, no input - and raises
+    `HitTestFlags::DropTarget`, so the node publishes the rect it was drawn with
+    into the window's hit-test registry and the topmost target receives while an
+    invisible one does not exist. That registry answers every "what is under this
+    point" in the engine - drop targets, context menus, hints and the listeners
+    themselves - and is asked with `InputDispatcher::foreachHitTest`. `accept` is a **pure predicate** — it runs during
     hit testing, for targets that never become current; feedback belongs in
     `enter`/`over`/`leave`, which bracket exactly. A source captures the pointer
     (`setExclusive()`) or the drag dies at its own edge, and `updateDrag` takes a

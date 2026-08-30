@@ -910,19 +910,21 @@ void TreeView::setDropExpandDelay(TimeInterval value) {
 void TreeView::updateDropSystems() {
 	if (!_dropEnabled) {
 		clearDropPosition();
-		if (_dropTarget) {
-			removeSystem(_dropTarget);
-			_dropTarget = nullptr;
+		if (_hasDropTarget) {
+			removeDropTarget(this);
+			_hasDropTarget = false;
 		}
 		return;
 	}
 
-	if (_dropTarget) {
+	if (_hasDropTarget) {
 		return;
 	}
 
-	_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this](const DragEvent &event) -> DragResponse {
+	_hasDropTarget = true;
+	setDropTarget(this,
+			DropTargetSlots{
+				.accept = [this](const DragEvent &event) -> DragResponse {
 		if (!_dropSlots.accept) {
 			return DragResponse(); // nothing was wired up: the view is inert, not surprising
 		}
@@ -931,17 +933,17 @@ void TreeView::updateDropSystems() {
 		// so nothing here moves, highlights or remembers.
 		return DragResponse{_dropSlots.accept(event, getDropPositionAt(event.location))};
 	},
-		.enter = [this](const DragEvent &event) { updateDropPosition(event); },
-		.over = [this](const DragEvent &event) { updateDropPosition(event); },
-		.leave = [this](const DragEvent &) { clearDropPosition(); },
-		.drop =
-				[this](const DragEvent &event, DragActions action) {
+				.enter = [this](const DragEvent &event) { updateDropPosition(event); },
+				.over = [this](const DragEvent &event) { updateDropPosition(event); },
+				.leave = [this](const DragEvent &) { clearDropPosition(); },
+				.drop =
+						[this](const DragEvent &event, DragActions action) {
 		// Re-resolved from the event rather than read out of _dropPosition: `leave` fires BEFORE
 		// `drop` and has already cleared it, which is what keeps enter/leave an exact bracket.
 		return _dropSlots.drop ? _dropSlots.drop(event, getDropPositionAt(event.location), action)
 							   : false;
 	},
-	}));
+			});
 }
 
 void TreeView::updateDropPosition(const DragEvent &event) {

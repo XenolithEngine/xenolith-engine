@@ -184,8 +184,7 @@ void DragScrollSystem::update(const UpdateTime &time) {
 	auto session = _drag->getSession();
 	if (_scope == Scope::TargetInside) {
 		auto target = session->getTarget();
-		auto owner = target ? target->getOwner() : nullptr;
-		if (!owner || !DragScroll_sameBranch(owner, _owner)) {
+		if (!target || !DragScroll_sameBranch(target, _owner)) {
 			stop();
 			return;
 		}

@@ -23,6 +23,7 @@
 #include "XLNode.h"
 
 #include "XLInputListener.h"
+#include "XLInputDispatcher.h"
 #include "XLScene.h"
 #include "XLDirector.h"
 #include "XLScheduler.h"
@@ -912,25 +913,37 @@ bool Node::removeSystem(System *com) {
 		return false;
 	}
 
-	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
-		if ((*iter) == com) {
-			if (com->isAncestorComponentsCounted()) {
-				adjustAncestorComponentsListeners(-1);
-				com->clearAncestorComponentsCounted();
-			}
+	/* The erase happens AFTER the callbacks, and the position is looked up again for it.
 
-			if (this->isRunning()
-					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
-				com->handleExit();
-			}
-
-			com->handleRemoved();
-
-			_systems.erase(iter);
-			return true;
-		}
+	handleExit and handleRemoved are entitled to remove other systems from this same node, and the
+	ones that carry listeners of their own routinely do - DragSystem takes its cursor layer with it,
+	ContextMenuSystem and TooltipSystem their listeners. Any iterator taken before those calls has
+	had the ground moved under it: erase() shifts everything after the hole, so an index from before
+	can point one element past what it named, and this would then remove the wrong system. */
+	auto it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it == _systems.end()) {
+		return false;
 	}
-	return false;
+
+	// The list is about to stop holding it, and the callbacks below run on it
+	Rc<System> ref = com;
+
+	if (com->isAncestorComponentsCounted()) {
+		adjustAncestorComponentsListeners(-1);
+		com->clearAncestorComponentsCounted();
+	}
+
+	if (this->isRunning() && hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
+		com->handleExit();
+	}
+
+	com->handleRemoved();
+
+	it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it != _systems.end()) {
+		_systems.erase(it);
+	}
+	return true;
 }
 
 bool Node::removeSystemByTag(uint64_t tag) {
@@ -940,7 +953,9 @@ bool Node::removeSystemByTag(uint64_t tag) {
 
 	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
 		if ((*iter)->getFrameTag() == tag) {
-			auto com = (*iter);
+			// Same rule as removeSystem: the callbacks may remove other systems from this node, so
+			// the position is looked up again for the erase
+			Rc<System> com = *iter;
 			if (com->isAncestorComponentsCounted()) {
 				adjustAncestorComponentsListeners(-1);
 				com->clearAncestorComponentsCounted();
@@ -952,7 +967,10 @@ bool Node::removeSystemByTag(uint64_t tag) {
 			if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
 				com->handleRemoved();
 			}
-			_systems.erase(iter);
+			auto pos = sprt::find(_systems.begin(), _systems.end(), com.get());
+			if (pos != _systems.end()) {
+				_systems.erase(pos);
+			}
 			return true;
 		}
 	}
@@ -964,24 +982,29 @@ bool Node::removeAllSystemByTag(uint64_t tag) {
 		return false;
 	}
 
-	auto iter = _systems.begin();
-	while (iter != _systems.end()) {
-		if ((*iter)->getFrameTag() == tag) {
-			auto com = (*iter);
-			if (com->isAncestorComponentsCounted()) {
-				adjustAncestorComponentsListeners(-1);
-				com->clearAncestorComponentsCounted();
-			}
-			if (this->isRunning()
-					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
-				com->handleExit();
-			}
-			if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
-				com->handleRemoved();
-			}
-			iter = _systems.erase(iter);
-		} else {
-			++iter;
+	// Collected first, removed after: the callbacks below may remove systems of their own from this
+	// node, and a loop walking the live list would erase whatever slid into the hole
+	Vector<Rc<System>> matched;
+	for (auto &it : _systems) {
+		if (it->getFrameTag() == tag) {
+			matched.emplace_back(it);
+		}
+	}
+
+	for (auto &com : matched) {
+		if (com->isAncestorComponentsCounted()) {
+			adjustAncestorComponentsListeners(-1);
+			com->clearAncestorComponentsCounted();
+		}
+		if (this->isRunning() && hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
+			com->handleExit();
+		}
+		if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
+			com->handleRemoved();
+		}
+		auto pos = sprt::find(_systems.begin(), _systems.end(), com.get());
+		if (pos != _systems.end()) {
+			_systems.erase(pos);
 		}
 	}
 	return false;
@@ -1701,6 +1724,32 @@ bool Node::isTouched(const Vec2 &location, float padding) {
 	return isTouchedNodeSpace(point, padding);
 }
 
+const Mat4 &Node::getModelToNodeTransform() const {
+	if (_modelViewInverseDirty) {
+		_modelViewInverse = _modelViewTransform.getInversed();
+		_modelViewInverseDirty = false;
+	}
+	return _modelViewInverse;
+}
+
+bool Node::isTouchedAsDrawn(const Vec2 &worldLocation, float padding) const {
+	// Never visited: there is no drawn frame to answer about, and the identity matrix would put
+	// the node at the origin and answer for whatever happens to be there
+	if (!_modelViewValid || !_visible) {
+		return false;
+	}
+
+	auto point = getModelToNodeTransform().transformPoint(worldLocation);
+	return point.x > -padding && point.y > -padding && point.x < _contentSize.width + padding
+			&& point.y < _contentSize.height + padding;
+}
+
+void Node::setHitTestFlags(HitTestFlags flags) { _hitTestFlags = flags; }
+
+void Node::addHitTestFlags(HitTestFlags flags) { _hitTestFlags |= flags; }
+
+void Node::removeHitTestFlags(HitTestFlags flags) { _hitTestFlags &= ~flags; }
+
 bool Node::isTouchedNodeSpace(const Vec2 &point, float padding) {
 	if (!isVisible()) {
 		return false;
@@ -1878,6 +1927,8 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 	if (_transformDirty
 			|| (flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None) {
 		_modelViewTransform = this->transform(parentWorld);
+		_modelViewInverseDirty = true;
+		_modelViewValid = true;
 	}
 	if (_transformDirty) {
 		_transformDirty = false;
@@ -1888,6 +1939,26 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 }
 
 void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera) {
+	/* Publish this node into the frame's hit-test registry, if it offers anything to it.
+
+	Here, and not in a system of its own, is the whole point: the rect is the one that was drawn (the
+	visit has just built _modelViewTransform), the order is paint order, and a node the visit does
+	not reach is not registered - so invisible, clipped-away and detached subtrees stop answering
+	with no bookkeeping at all. What used to cost a Ref-derived System with a virtual visit hook on
+	every drop target, context-menu target and tooltip is now one flag test. */
+	if (_hitTestFlags != HitTestFlags::None && info.input) {
+		const URect *scissor = nullptr;
+		if (auto ctx = info.currentContext) {
+			if (auto state = ctx->getState(ctx->getCurrentState())) {
+				if (state->isScissorEnabled()) {
+					scissor = &state->scissor;
+				}
+			}
+		}
+		info.input->addHitTest(this, _modelViewTransform, _contentSize, _hitTestFlags, getOpacity(),
+				scissor);
+	}
+
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitSelf)) {

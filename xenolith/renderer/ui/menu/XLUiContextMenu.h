@@ -25,7 +25,14 @@
 
 #include "XLUiMenuPopup.h"
 #include "XLInputListener.h"
+#include "XLNode.h"
 #include "XLSystem.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class InputDispatcher;
+
+}
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -47,71 +54,56 @@ struct SP_PUBLIC ContextMenuRequest {
 	bool fromTouch = false;
 };
 
-/** Declares that a node has a context menu. Add it and forget it - it has no input of its own.
+/** Declares that a node has a context menu. Set it and forget it - it has no input of its own.
 
-    node->addSystem(Rc<ui::ContextMenuTarget>::create(source));
+    ui::setContextMenu(node, source);
 
-    node->addSystem(Rc<ui::ContextMenuTarget>::create(
-            [this](const ui::ContextMenuRequest &req) -> Rc<ui::MenuSource> {
+    ui::setContextMenu(node, [this](const ui::ContextMenuRequest &req) -> Rc<ui::MenuSource> {
         return buildMenuAt(req.location);   // a menu that depends on WHERE it was asked for
-    }));
+    });
 
-WHY IT IS NOT A LISTENER. A listener per element is the obvious implementation and the wrong one:
-a menu is declared on many nodes and used on almost none of them, and in a virtualized view the
-node that would carry the listener exists only while it is on screen. So the input lives once, on
-the scene (ContextMenuSystem), and this only says WHAT the node offers.
+WHY IT IS DATA AND NOT A LISTENER. A listener per element is the obvious implementation and the
+wrong one: a menu is declared on many nodes and used on almost none of them, and in a virtualized
+view the node that would carry the listener exists only while it is on screen. So the input lives
+once, on the scene (ContextMenuSystem), and this only says WHAT the node offers - which is a fact
+about the node, and a fact belongs in a Component.
 
-HOW IT IS FOUND - the same way a DropTarget is, and for the same three reasons. The target registers
-itself once per frame from inside its owner's visit, into the nearest ContextMenuSystem on the frame
-stack: the world rect is exactly the one that was drawn, registration order is paint order (so the
-topmost is found by walking the roster backwards), and a node that is not visited is not registered,
-which makes an invisible or detached subtree stop offering a menu with no bookkeeping at all.
+HOW IT IS FOUND - through the frame's hit-test registry, the same one drop targets use. The node
+publishes the rect it was DRAWN with, once per frame, from inside its own visit (see HitTestFlags):
+the rect needs no re-deriving, registration order is paint order so the topmost is found by walking
+the registry backwards, and a node that is not visited is not registered - which makes an invisible
+or detached subtree stop offering a menu with no bookkeeping at all.
 
-The roster is one frame old when a press reads it, exactly like the listener storage the dispatcher
-resolves every event against.
+The registry is one frame old when a press reads it, exactly like the listener storage the
+dispatcher resolves every event against.
 
 A TARGET THAT OFFERS NOTHING BLOCKS. `resolve` returning null does not fall through to the target
 underneath: the search stops at the topmost target, and that is how a widget says "no menu here"
 inside a region that has one. Falling through would mean a right click on a control inside a panel
 silently gets the panel's menu, which is never what the control wanted. */
-class SP_PUBLIC ContextMenuTarget : public System {
-public:
-	// What the node offers for one request. Null means "no menu", and blocks - see the class note.
+struct SP_PUBLIC ContextMenuComponent {
+	static ComponentId Id;
+
+	// What the node offers for one request. Null means "no menu", and blocks - see the note above.
 	using Builder = Function<Rc<MenuSource>(const ContextMenuRequest &)>;
-
-	virtual ~ContextMenuTarget() = default;
-
-	virtual bool init() override;
 
 	// A fixed menu. The source is shared, not copied: mutating it between openings is how an
 	// application keeps one menu up to date.
-	virtual bool init(Rc<MenuSource> &&);
+	Rc<MenuSource> source;
 
 	// A menu built per request. Both may be set; the builder wins, and the fixed source is the
 	// fallback for a builder that returns null.
-	virtual bool init(Builder &&);
+	Builder builder;
 
-	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags) override;
+	// Inflates the hit test on every side, in world units. Same idea, and same reason, as
+	// DropTargetComponent::padding and InputListener::setTouchPadding.
+	float padding = 0.0f;
 
-	virtual void setSource(Rc<MenuSource> &&);
-	MenuSource *getSource() const { return _source; }
-
-	virtual void setBuilder(Builder &&);
-	bool hasBuilder() const { return _builder != nullptr; }
-
-	// Inflates the registered world rect on every side, in world units. Same idea, and same reason,
-	// as DropTarget::setPadding and InputListener::setTouchPadding.
-	void setPadding(float value) { _padding = value; }
-	float getPadding() const { return _padding; }
+	bool enabled = true;
 
 	// What this target offers for `request`. Public because that is the whole seam: a test asks it
 	// directly, with no pointer and no window.
-	virtual Rc<MenuSource> resolve(const ContextMenuRequest &);
-
-protected:
-	Rc<MenuSource> _source;
-	Builder _builder;
-	float _padding = 0.0f;
+	Rc<MenuSource> resolve(const ContextMenuRequest &) const;
 };
 
 /** The context-menu coordinator. One per scene, on the SceneContent.
@@ -122,10 +114,9 @@ protected:
     });
 
 WHERE IT LIVES, and how it is reached: exactly as DragSystem. On `SceneContent`, put there by
-`acquireForNode` if nobody did, nesting asserted against - the frame stack hands a descendant the
-NEAREST system with this tag, so a second one deeper would quietly take half the targets with it.
-Targets register through the frame stack because they run inside a visit; everything public here
-runs outside one, so it uses `findForNode`, which walks the parent chain.
+`acquireForNode` if nobody did, and reached by `findForNode`, which walks the parent chain. Targets
+do not come through here at all - a node publishes itself into the window's hit-test registry and
+this system reads that registry, so there is no roster here to keep in step with the scene.
 
 THE INPUT IS TWO LISTENERS, one at each end of the dispatcher's walk, because opening a menu and
 closing one are opposite claims on the same press:
@@ -145,7 +136,7 @@ must use one of them:
   the pointer exclusively - which is what DragSource does when a drag starts - turns this
   listener's event into a Cancel, and the menu does not open. That is the mechanism for "this
   gesture is mine";
-- AN EMPTY TARGET. A node that declares a ContextMenuTarget offering nothing blocks the menu of the
+- AN EMPTY TARGET. A node whose ContextMenuComponent offers nothing blocks the menu of the
   region it sits in. That is the mechanism for "this widget has no menu of its own either".
 
 A plain Processed is deliberately invisible: ui::Button already answers a right tap and does not
@@ -192,13 +183,10 @@ public:
 	virtual void handleExit() override;
 
 	virtual void handleVisitBegin(FrameInfo &) override;
-	virtual void handleVisitEnd(FrameInfo &) override;
 
-	// Registration point for ContextMenuTarget, meaningful only during a visit.
-	void addTarget(NotNull<ContextMenuTarget>, const Rect &worldRect);
-
-	// Size of the committed roster - the targets that were visited last frame.
-	size_t getTargetCount() const { return _targets.size(); }
+	// How many context-menu targets the committed frame registered. Answered by the hit-test
+	// registry, which is the only place that knows: this system keeps no roster of its own.
+	size_t getTargetCount() const;
 
 	/* Fills in what an application wants every context menu in this scene to look like: the
 	stylesheet above all - a native popup is a scene of its own and does not inherit the parent
@@ -229,9 +217,9 @@ public:
 	SubWindow *getMenu() const { return _menu; }
 	bool isMenuOpen() const;
 
-	// The target the open menu came from, or the last one if it has closed. Null before the first
+	// The node the open menu came from, or the last one if it has closed. Null before the first
 	// opening.
-	ContextMenuTarget *getCurrentTarget() const { return _currentTarget; }
+	Node *getCurrentTarget() const { return _currentTarget; }
 
 	InputListener *getListener() const { return _listener; }
 
@@ -239,16 +227,15 @@ public:
 	InputListener *getDismissListener() const { return _dismissListener; }
 
 protected:
-	struct TargetRec {
-		Rc<ContextMenuTarget> target;
-		Rect worldRect;
-	};
-
-	// The topmost target containing the point, and what it offers. Null target means nothing was
-	// under the point at all; a null source with a non-null target is a refusal.
-	ContextMenuTarget *findTarget(const Vec2 &worldLocation) const;
+	// The topmost node offering a menu at that point, or null when nothing was under it at all.
+	// What it OFFERS is a separate question - a target that answers with nothing is a refusal, and
+	// the search stops at it either way.
+	Node *findTarget(const Vec2 &worldLocation) const;
 
 	AppWindow *getAppWindow() const;
+
+	// The window's input dispatcher, which owns the hit-test registry. Null outside a scene
+	InputDispatcher *getDispatcher() const;
 
 	// Puts the listeners on the owner once the owner is running - which is later than when they
 	// are added. See the implementation: this is the one thing about this class that is not
@@ -258,15 +245,10 @@ protected:
 	// The dismiss listener answers only while a menu is up; this is the one place that decides it.
 	void updateDismissListener();
 
-	// Written during the visit, read from input callbacks one frame later. NOT pool-allocated: it
-	// outlives the frame that filled it.
-	Vector<TargetRec> _targets;
-	Vector<TargetRec> _pendingTargets;
-
 	Rc<InputListener> _listener;
 	Rc<InputListener> _dismissListener;
 	Rc<SubWindow> _menu;
-	Rc<ContextMenuTarget> _currentTarget;
+	Rc<Node> _currentTarget;
 
 	Function<void(MenuConfig &)> _configCallback;
 	TimeInterval _longPress = DefaultLongPressInterval;
@@ -278,8 +260,13 @@ protected:
 
 // Adds (or replaces) a context menu on `node`, and makes sure the scene has a coordinator. The
 // short way in: one call instead of a target plus an acquire.
-SP_PUBLIC ContextMenuTarget *setContextMenu(NotNull<Node>, Rc<MenuSource> &&);
-SP_PUBLIC ContextMenuTarget *setContextMenu(NotNull<Node>, ContextMenuTarget::Builder &&);
+SP_PUBLIC const ContextMenuComponent *setContextMenu(NotNull<Node>, Rc<MenuSource> &&);
+SP_PUBLIC const ContextMenuComponent *setContextMenu(NotNull<Node>,
+		ContextMenuComponent::Builder &&);
+
+SP_PUBLIC const ContextMenuComponent *getContextMenu(NotNull<Node>);
+SP_PUBLIC void setContextMenuEnabled(NotNull<Node>, bool);
+SP_PUBLIC void removeContextMenu(NotNull<Node>);
 
 } // namespace stappler::xenolith::ui
 

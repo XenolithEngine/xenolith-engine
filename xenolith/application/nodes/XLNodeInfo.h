@@ -71,6 +71,40 @@ enum class NodeEventFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(NodeEventFlags)
 
+/** What a node offers to the per-frame hit-test registry (see InputListenerStorage::addHitTest).
+
+A node with any of these bits set publishes the rect it was DRAWN with, once per frame, from its own
+visit. Whoever asks "what is under this point" walks that registry backwards - registration order is
+paint order - instead of keeping a list of its own, and a node that is not visited is not registered,
+so an invisible, clipped-away or detached subtree stops answering with no bookkeeping at all.
+
+The bit is a CACHE of "this node carries the matching component", maintained by the setter functions
+that attach those components (ui::setContextMenu, setDropTarget, ui::setTooltip). Never set it by
+hand: a bit with no component behind it makes the node win a hit test and then offer nothing, which
+looks exactly like a target that deliberately blocks. */
+enum class HitTestFlags : uint32_t {
+	None,
+
+	// An InputListener is attached to this node. Maintained by the listener itself; this is what
+	// lets the listener publish the geometry its own hit test reads back (see
+	// InputListener::_shouldProcessEvent).
+	Pointer = 1 << 0,
+
+	// DropTargetComponent: a drag can be dropped here
+	DropTarget = 1 << 1,
+
+	// ui::ContextMenuComponent: a right click or a long press opens a menu here
+	ContextMenu = 1 << 2,
+
+	// ui::TooltipComponent: resting the pointer here shows a hint
+	Tooltip = 1 << 3,
+
+	// 1 << 16 and up are free for applications
+	ApplicationMask = 0xFFFF'0000,
+};
+
+SP_DEFINE_ENUM_AS_MASK(HitTestFlags)
+
 // How a content measurement request interprets its constraints.
 // Semantics mirror font::Formatter::ContentRequest.
 enum class MeasureMode : uint8_t {

@@ -24,6 +24,7 @@
 
 #include "XLAppWindow.h"
 #include "XLDirector.h"
+#include "XLInputDispatcher.h"
 #include "XLFrameContext.h"
 #include "XLNode.h"
 #include "XLScene.h"
@@ -33,81 +34,19 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 uint64_t ContextMenuSystem::Id = System::GetNextSystemId();
 
-// --- ContextMenuTarget -------------------------------------------------------------------------
+// --- ContextMenuComponent ----------------------------------------------------------------------
 
-bool ContextMenuTarget::init() {
-	if (!System::init()) {
-		return false;
-	}
+ComponentId ContextMenuComponent::Id;
 
-	// Owner events for the lifetime, scene events for handleExit, visit-self for the per-frame
-	// registration. Nothing else: this system reads no node state, lays out nothing and, above all,
-	// listens to nothing
-	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleVisitSelf;
-	return true;
-}
-
-bool ContextMenuTarget::init(Rc<MenuSource> &&source) {
-	if (!init()) {
-		return false;
-	}
-
-	_source = sp::move(source);
-	return true;
-}
-
-bool ContextMenuTarget::init(Builder &&builder) {
-	if (!init()) {
-		return false;
-	}
-
-	_builder = sp::move(builder);
-	return true;
-}
-
-void ContextMenuTarget::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags flags) {
-	System::handleVisitSelf(info, node, flags);
-
-	if (!_enabled) {
-		return;
-	}
-
-	// The nearest ContextMenuSystem above us on the frame stack. Absent when nobody installed one,
-	// which is not an error: the node simply has no menu in that scene
-	auto menus = info.getSystem<ContextMenuSystem>(ContextMenuSystem::Id);
-	if (!menus) {
-		return;
-	}
-
-	// Exactly the rect that was drawn - the transform stack already holds it, so there is nothing
-	// to re-derive and nothing to get out of sync with
-	auto rect = TransformRect(Rect(Vec2(0, 0), node->getContentSize()),
-			info.modelTransformStack.back());
-
-	if (_padding > 0.0f) {
-		rect.origin.x -= _padding;
-		rect.origin.y -= _padding;
-		rect.size.width += _padding * 2.0f;
-		rect.size.height += _padding * 2.0f;
-	}
-
-	menus->addTarget(this, rect);
-}
-
-void ContextMenuTarget::setSource(Rc<MenuSource> &&source) { _source = sp::move(source); }
-
-void ContextMenuTarget::setBuilder(Builder &&builder) { _builder = sp::move(builder); }
-
-Rc<MenuSource> ContextMenuTarget::resolve(const ContextMenuRequest &request) {
+Rc<MenuSource> ContextMenuComponent::resolve(const ContextMenuRequest &request) const {
 	// The builder decides first and may decline; the fixed source is what it falls back to. A
 	// target with neither offers nothing, which blocks rather than falls through - see the header
-	if (_builder) {
-		if (auto source = _builder(request)) {
-			return source;
+	if (builder) {
+		if (auto result = builder(request)) {
+			return result;
 		}
 	}
-	return _source;
+	return source;
 }
 
 // --- ContextMenuSystem -------------------------------------------------------------------------
@@ -149,19 +88,19 @@ bool ContextMenuSystem::init() {
 
 	_frameTag = ContextMenuSystem::Id;
 
-	// Owner + scene events for the lifetime; visit control for the roster brackets; the frame stack
-	// so descendants can find us during their own visit. No visit-self, no node events, no update
-	// tick - the listener is what wakes this system up
+	// Owner and scene events for the lifetime, and visit control for one thing only: the visit is
+	// the last chance to attach the listeners (see attachListener). Targets publish themselves into
+	// the window's hit-test registry, so there is no roster here to bracket
 	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleVisitControl | SystemFlags::AddToFrameStack;
+			| SystemFlags::HandleVisitControl;
 	return true;
 }
 
 void ContextMenuSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 
-	// getSystem<T>(tag) hands a descendant the NEAREST system with this tag, so a second one deeper
-	// in the tree would quietly take every target below it out of this roster
+	// findForNode hands a widget the NEAREST system above it, so a second one deeper in the tree
+	// would open menus for half the scene and leave the other half to this one
 	sprt_passert(findForNode(owner->getParent()) == nullptr,
 			"ContextMenuSystem must not be nested");
 
@@ -281,9 +220,6 @@ void ContextMenuSystem::handleRemoved() {
 		}
 	}
 
-	_targets.clear();
-	_pendingTargets.clear();
-
 	System::handleRemoved();
 }
 
@@ -291,8 +227,6 @@ void ContextMenuSystem::handleExit() {
 	// The scene is being torn down with a menu open on it. Take it along rather than leaving a
 	// surface parented to a content node on its way out
 	close();
-	_targets.clear();
-	_pendingTargets.clear();
 
 	System::handleExit();
 }
@@ -303,19 +237,18 @@ void ContextMenuSystem::handleVisitBegin(FrameInfo &info) {
 	// The last chance for the listener to join, and the one that always works: by the first visit
 	// everything above this system is running. See attachListener
 	attachListener();
-
-	_pendingTargets.clear();
 }
 
-void ContextMenuSystem::handleVisitEnd(FrameInfo &info) {
-	// Everything below has registered by now. Swap rather than assign: the outgoing vector becomes
-	// next frame's scratch and keeps its capacity
-	_targets.swap(_pendingTargets);
-	System::handleVisitEnd(info);
-}
-
-void ContextMenuSystem::addTarget(NotNull<ContextMenuTarget> target, const Rect &worldRect) {
-	_pendingTargets.emplace_back(TargetRec{Rc<ContextMenuTarget>(target.get()), worldRect});
+size_t ContextMenuSystem::getTargetCount() const {
+	size_t count = 0;
+	if (auto dispatcher = getDispatcher()) {
+		dispatcher->foreachHitTest(HitTestFlags::ContextMenu,
+				[&](const InputListenerStorage::HitTestRec &) {
+			++count;
+			return true;
+		});
+	}
+	return count;
 }
 
 void ContextMenuSystem::setMenuConfigCallback(Function<void(MenuConfig &)> &&cb) {
@@ -340,19 +273,31 @@ void ContextMenuSystem::setEnabled(bool value) {
 
 bool ContextMenuSystem::isMenuOpen() const { return _menu && _menu->isOpen(); }
 
-ContextMenuTarget *ContextMenuSystem::findTarget(const Vec2 &worldLocation) const {
-	// Backwards: the roster was filled in visit order, which is paint order, so the last entry
-	// containing the point is the topmost one drawn there
-	for (size_t i = _targets.size(); i > 0; --i) {
-		auto &rec = _targets[i - 1];
-		if (!rec.target->isEnabled() || !rec.target->getOwner()) {
-			continue;
-		}
-		if (rec.worldRect.containsPoint(worldLocation)) {
-			return rec.target.get();
-		}
+InputDispatcher *ContextMenuSystem::getDispatcher() const {
+	auto owner = getOwner();
+	auto director = owner ? owner->getDirector() : nullptr;
+	return director ? director->getInputDispatcher() : nullptr;
+}
+
+Node *ContextMenuSystem::findTarget(const Vec2 &worldLocation) const {
+	Node *found = nullptr;
+	if (auto dispatcher = getDispatcher()) {
+		// Topmost first: the registry is walked backwards, because registration order is visit order
+		// is paint order
+		dispatcher->foreachHitTest(HitTestFlags::ContextMenu,
+				[&](const InputListenerStorage::HitTestRec &rec) {
+			auto comp = getContextMenu(rec.node);
+			if (!comp || !comp->enabled) {
+				return true;
+			}
+			if (!rec.contains(worldLocation, comp->padding)) {
+				return true;
+			}
+			found = rec.node;
+			return false;
+		});
 	}
-	return nullptr;
+	return found;
 }
 
 AppWindow *ContextMenuSystem::getAppWindow() const {
@@ -369,29 +314,30 @@ bool ContextMenuSystem::openAt(const Vec2 &worldLocation, bool fromTouch, InputM
 		return false;
 	}
 
-	auto target = findTarget(worldLocation);
-	if (!target) {
+	auto node = findTarget(worldLocation);
+	if (!node) {
 		return false;
 	}
 
-	auto node = target->getOwner();
-	if (!node) {
+	auto comp = getContextMenu(node);
+	if (!comp) {
 		return false;
 	}
 
 	ContextMenuRequest request;
 	request.worldLocation = worldLocation;
 	// In the DECLARING node's space, so a view can ask which of its rows this was without
-	// converting anything itself
-	request.location = node->convertToNodeSpace(worldLocation);
+	// converting anything itself. Through the transform the node was DRAWN with, because that is
+	// what the hit test just answered against
+	request.location = node->getModelToNodeTransform().transformPoint(worldLocation);
 	request.modifiers = mods;
 	request.fromTouch = fromTouch;
 
-	auto source = target->resolve(request);
+	auto source = comp->resolve(request);
 
 	// Remembered even when the answer was "nothing": what a test and a caller both want to know is
 	// which target ANSWERED, not which one happened to have a menu
-	_currentTarget = target;
+	_currentTarget = node;
 
 	if (!source || source->countVisible() == 0) {
 		return false;
@@ -460,27 +406,56 @@ void ContextMenuSystem::close() {
 
 // --- the short way in --------------------------------------------------------------------------
 
-static ContextMenuTarget *ContextMenu_attach(NotNull<Node> node, Rc<ContextMenuTarget> &&target) {
-	// A second target on one node would register twice and shadow itself; replacing is what a
-	// caller means by setting a menu on a node that already has one
-	if (auto prev = node->getSystemByType<ContextMenuTarget>()) {
-		node->removeSystem(prev);
-	}
+static const ContextMenuComponent *ContextMenu_attach(NotNull<Node> node,
+		const Callback<void(NotNull<ContextMenuComponent>)> &fill) {
+	auto ret = node->setOrUpdateComponent<ContextMenuComponent>(
+			[&](NotNull<ContextMenuComponent> comp) {
+		// Both halves are cleared first: setting a fixed menu on a node that had a builder must
+		// replace it, not leave the builder in front of it
+		comp->source = nullptr;
+		comp->builder = nullptr;
+		fill(comp);
+		return true;
+	});
 
-	auto ret = node->addSystem(sp::move(target));
+	// The flag and the component are one declaration: the visit reads the flag, the hit test reads
+	// the component
+	node->addHitTestFlags(HitTestFlags::ContextMenu);
 
-	// The coordinator has to exist before the first press, and nothing else would create it. Not in
-	// the target's handleAdded: the parent chain is not complete there
+	// The coordinator has to exist before the first press, and nothing else would create it
 	ContextMenuSystem::acquireForNode(node);
 	return ret;
 }
 
-ContextMenuTarget *setContextMenu(NotNull<Node> node, Rc<MenuSource> &&source) {
-	return ContextMenu_attach(node, Rc<ContextMenuTarget>::create(sp::move(source)));
+const ContextMenuComponent *setContextMenu(NotNull<Node> node, Rc<MenuSource> &&source) {
+	return ContextMenu_attach(node,
+			[&](NotNull<ContextMenuComponent> comp) { comp->source = sp::move(source); });
 }
 
-ContextMenuTarget *setContextMenu(NotNull<Node> node, ContextMenuTarget::Builder &&builder) {
-	return ContextMenu_attach(node, Rc<ContextMenuTarget>::create(sp::move(builder)));
+const ContextMenuComponent *setContextMenu(NotNull<Node> node,
+		ContextMenuComponent::Builder &&builder) {
+	return ContextMenu_attach(node,
+			[&](NotNull<ContextMenuComponent> comp) { comp->builder = sp::move(builder); });
+}
+
+const ContextMenuComponent *getContextMenu(NotNull<Node> node) {
+	return node->getComponent<ContextMenuComponent>();
+}
+
+void setContextMenuEnabled(NotNull<Node> node, bool value) {
+	node->updateComponent<ContextMenuComponent>([&](NotNull<ContextMenuComponent> comp) {
+		if (comp->enabled == value) {
+			return false;
+		}
+		comp->enabled = value;
+		return true;
+	});
+}
+
+void removeContextMenu(NotNull<Node> node) {
+	if (node->removeComponent<ContextMenuComponent>()) {
+		node->removeHitTestFlags(HitTestFlags::ContextMenu);
+	}
 }
 
 } // namespace stappler::xenolith::ui

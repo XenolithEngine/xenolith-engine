@@ -33,6 +33,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class DirectorWindow;
 
+/** Everything one committed frame says about where input can land: the listeners, and the hit-test
+registry every "what is under this point" question is answered from.
+
+Both halves are filled by the same visit, at the same moment, and by the same rule - a node
+publishes what it DREW - so they cannot disagree about geometry, and both go stale together when the
+next frame is committed. That staleness is the contract, not a compromise: an event is resolved
+against the frame the user was looking at when they acted. */
 class SP_PUBLIC InputListenerStorage : public sprt::PoolRef {
 public:
 	struct Rec {
@@ -40,6 +47,34 @@ public:
 		Rc<FocusGroup> focus;
 		WindowLayer layer;
 		uint32_t order = 0;
+	};
+
+	/* One node's offer to be found under a point (see HitTestFlags).
+
+	Rc, like the Rc<InputListener> above it and for the same reason: a hit test hands the node to a
+	callback that is entitled to restructure the scene, up to and including deleting the node it was
+	just given. The cost is that a removed node outlives its removal by one committed frame. */
+	struct HitTestRec {
+		Rc<Node> node;
+
+		// The AABB of the drawn rect. A cheap reject before the exact test, which is what makes a
+		// long registry affordable; it is NOT the answer, since a rotated node covers less than its
+		// own bounding box
+		Rect worldRect;
+
+		// The clip the node was drawn under. A point outside it is a point the user cannot see, so
+		// it is not one they can hit either
+		URect scissor;
+
+		float opacity = 1.0f;
+		HitTestFlags flags = HitTestFlags::None;
+		uint32_t order = 0;
+		bool scissorEnabled = false;
+
+		// AABB, then scissor, then the node's own drawn geometry. `padding` is the ASKER'S, not the
+		// record's: how far outside itself a target reaches is a property of what is being asked
+		// (a hover padding and a drop padding are different numbers about the same node)
+		bool contains(const Vec2 &world, float padding = 0.0f) const;
 	};
 
 	virtual ~InputListenerStorage();
@@ -50,6 +85,32 @@ public:
 	void reserve(const InputListenerStorage *);
 
 	void addListener(NotNull<InputListener>, FocusGroup *, WindowLayer &&);
+
+	// Registration point for a node with HitTestFlags; meaningful only during a visit. `scissor` is
+	// null when the node was drawn unclipped
+	void addHitTest(NotNull<Node>, const Mat4 &worldTransform, const Size2 &, HitTestFlags,
+			float opacity, const URect *scissor);
+
+	/* Every node offering any of `mask`, TOPMOST FIRST - registration order is visit order is paint
+	order, so the walk runs backwards. The callback returns false to stop (it has its answer) or true
+	to keep looking at whatever is underneath; this returns false when it was stopped.
+
+	Containment is the CALLBACK's to decide, with HitTestRec::contains, because the padding belongs
+	to the asker: how far outside itself a node reaches is a property of the question (a hover
+	padding and a drop padding are different numbers about the same node), and a record whose own box
+	misses the point may still be the answer to a question asked with one. */
+	bool foreachHitTest(HitTestFlags mask, const Callback<bool(const HitTestRec &)> &) const;
+
+	// Union of every registered node's flags. "Does this frame contain any tooltip at all" in one
+	// test, so a system with nothing to do does not walk the registry to find that out
+	HitTestFlags getHitTestMask() const { return _hitTestMask; }
+
+	size_t getHitTestCount() const;
+
+	// Which committed frame this is. Stamped on every listener at commit, which is how a listener
+	// reached outside the walk (an active gesture chain holds one) can tell whether it was still
+	// being drawn when the event it is being offered arrived
+	uint64_t getGeneration() const { return _generation; }
 
 	void sort();
 
@@ -62,10 +123,20 @@ public:
 	SpanView<Rec *> getFocusGroupListener(FocusGroup *) const;
 
 protected:
+	friend class InputDispatcher;
+
 	mem_pool::Vector<Rec> *_preSceneEvents = nullptr;
 	mem_pool::Vector<Rec> *_sceneEvents = nullptr; // in reverse order
 	mem_pool::Vector<Rec> *_postSceneEvents = nullptr;
 	mem_pool::Map<FocusGroup *, mem_pool::Vector<Rec *>> *_focus = nullptr;
+
+	// In paint order, walked backwards. One vector and no spatial index: the registry holds only
+	// nodes that opted in, an AABB reject is a handful of comparisons, and paint order IS the
+	// semantics of the answer - an index would have to reconstruct it
+	mem_pool::Vector<HitTestRec> *_hitTest = nullptr;
+	HitTestFlags _hitTestMask = HitTestFlags::None;
+
+	uint64_t _generation = 0;
 	uint32_t _order = 0;
 };
 
@@ -99,6 +170,21 @@ public:
 	const InputEvent *getPointerEvent() const {
 		return _hasPointerEvent ? &_pointerEvent : nullptr;
 	}
+
+	/* "What is under this point", answered from the committed frame - see
+	InputListenerStorage::foreachHitTest, which this forwards to.
+
+	The one way to ask. A subsystem that keeps a roster of its own is keeping a second copy of this
+	one, filled by the same visit from the same numbers. */
+	bool foreachHitTest(HitTestFlags mask,
+			const Callback<bool(const InputListenerStorage::HitTestRec &)> &) const;
+
+	// Union of the committed frame's hit-test flags; None when nothing registered (or before the
+	// first frame)
+	HitTestFlags getHitTestMask() const;
+
+	// Which frame the events being dispatched right now are resolved against
+	uint64_t getCommittedGeneration() const;
 
 	// When Director connected to other window, we should update cached WindowState
 	void resetWindowState(WindowState, bool propagate);
@@ -150,6 +236,10 @@ protected:
 	HashMap<uint32_t, EventHandlersInfo> _activeKeySyms;
 	Rc<InputListenerStorage> _events;
 	Rc<InputListenerStorage> _tmpEvents;
+
+	// Ever-growing; the committed storage carries the current value. Never reset, so a stamp from
+	// an old frame can never be mistaken for a current one
+	uint64_t _generation = 0;
 	Rc<sprt::PoolRef> _pool;
 
 	// The last MouseMove, as the dispatcher itself saw it - see getPointerEvent()

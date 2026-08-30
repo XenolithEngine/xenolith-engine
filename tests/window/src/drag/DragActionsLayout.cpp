@@ -120,16 +120,16 @@ Node *DragActionsLayout::addTarget(StringView name, const Rect &rect, DragAction
 	node->setPosition(rect.origin);
 	node->setContentSize(rect.size);
 
-	node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept =
-				[accepted](const DragEvent &event) -> DragResponse {
+	setDropTarget(node,
+			DropTargetSlots{
+				.accept = [accepted](const DragEvent &event) -> DragResponse {
 		// the canonical shape of an accept slot: what I can do, intersected with what the
 		// source offers. Never a bare constant, or the target claims actions the source
 		// never had
 		return DragResponse{event.allowed & accepted};
 	},
-		.drop = [](const DragEvent &, DragActions) { return true; },
-	}));
+				.drop = [](const DragEvent &, DragActions) { return true; },
+			});
 
 	return node;
 }
@@ -343,9 +343,7 @@ void DragActionsLayout::registerCommands() {
 			result.setString(actionName(session->getPreferredAction()), "preferred");
 			result.setString(actionName(session->getResolvedAction()), "resolved");
 			auto target = session->getTarget();
-			result.setString(target && target->getOwner() ? target->getOwner()->getName()
-														  : StringView(),
-					"target");
+			result.setString(target ? target->getName() : StringView(), "target");
 		}
 		result.setInteger(int64_t(_completions), "completions");
 		result.setString(actionName(_lastCompletion), "last");
