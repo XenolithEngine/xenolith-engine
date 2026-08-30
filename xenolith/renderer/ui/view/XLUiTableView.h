@@ -386,7 +386,9 @@ protected:
 	bool _reorderEnabled = false;
 	Function<bool(size_t from, size_t to)> _reorderCallback;
 	InputListener *_reorderKeys = nullptr;
-	Rc<DropTarget> _dropTarget;
+	// The target is a component on this node now, so there is nothing to hold - only whether it is
+	// currently declared
+	bool _hasDropTarget = false;
 	basic2d::Layer *_insertionLine = nullptr;
 
 	TableColumnsComponent _geometry; // the one copy every row and the header is stamped from

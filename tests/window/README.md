@@ -50,8 +50,12 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
                               reports the summary each of them prints
     scrollbar-check.py        headless assertions for basic2d::ScrollView's scroll bar:
                               geometry, the drag, the paint, and the pointing device
-    context-menu-check.py     headless assertions for ui::ContextMenuTarget /
+    context-menu-check.py     headless assertions for ui::ContextMenuComponent /
                               ui::ContextMenuSystem: who is asked, and what refuses
+    hit-test-check.py         headless assertions for the per-frame hit-test registry:
+                              paint order, rotation, scissors, flags and padding
+    tooltip-check.py          headless assertions for ui::TooltipComponent hover hints:
+                              the coordinator, the dwell, and a node that slides away
     style-check.py            headless assertions for the CSS engine: control states, the
                               functional pseudo-classes, and the arithmetic
     scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry
@@ -237,6 +241,20 @@ as long as a finger would be. The stand answers with two counters rather than on
 builders ran and which target answered - because "refused" and "never reached" are different bugs
 that look alike from outside. The menu itself is a real window in headless, so what it contains is
 read out of its own scene and a row is clicked in it by id.
+
+`hit-test-check.py` asks the registry directly, with no subsystem in the way, because every rule it
+has is invisible from outside: a node that answers when it should not looks exactly like one that
+answers correctly until you ask WHAT answered. The two checks worth knowing about are the square
+turned 45 degrees - a point in the corner of its own bounding box is a MISS, which the per-target
+rosters this registry replaced got wrong - and the node overflowing a scissor, which is a fact about
+the frame it was drawn in and cannot be derived from the node alone.
+
+`tooltip-check.py` declares every hint in `init()`, before the layout is in a scene, and never
+acquires a `TooltipSystem`. That is deliberate: a hint is data now, and data cannot notice its own
+arrival in a scene the way the listener it replaced could, so the coordinator existing at all is the
+first assertion - and the one that would silently break every hint an application declares while
+building a widget. The last section slides a node out from under a pointer that does not move, which
+is the case no synthetic pointer movement would ever catch.
 
 `drag-check.py` is the odd one out: it asserts nothing itself. The four drag stands
 (`drag/drag-basic`, `drag/drag-actions`, `drag/drag-payload`, `drag/drag-text`) run their phases

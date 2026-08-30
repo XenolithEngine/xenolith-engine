@@ -246,14 +246,13 @@ enum class InlineEditTrigger {
 An InputListener rather than a plain System, and for a reason the tree states twice: a System may
 not add or remove a sibling System from its own handleAdded/handleRemoved, because Node::removeSystem
 runs those while holding an iterator into the list. That is why ScrollSystem, FormInputListener,
-TooltipTarget and DragSource all ARE listeners instead of owning one. This is the same family, and
-ui::TooltipTarget is its direct model. */
+ScrollSystem and DragSource ARE listeners instead of owning one. This is the same family. */
 class SP_PUBLIC InlineEditTarget : public InputListener {
 public:
 	virtual ~InlineEditTarget() = default;
 
 	/* Takes its argument on purpose: InputListener::init(int32_t priority = 0) would be HIDDEN by a
-	zero-argument override, which then silently never runs. Same reason TooltipTarget, ScrollSystem
+	zero-argument override, which then silently never runs. Same reason ScrollSystem
 	and FormInputListener all take arguments. */
 	virtual bool init(InlineEditTrigger);
 	virtual bool init(InlineEditTrigger, StringView text);

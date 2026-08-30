@@ -348,6 +348,53 @@ can be ordered both before and after unprioritised ones.
 iterating, so a handler may add, remove, enable/disable or re-prioritise systems
 (including itself) mid-dispatch without invalidating the walk.
 
+## The hit-test registry: a node publishing itself
+
+Several subsystems need the same answer — *what is under this point* — and each
+used to keep a roster of its own, filled by a `System` per participating node from
+that node's `handleVisitSelf`. There is now one registry per window, and the node
+itself fills it.
+
+A node opts in with `HitTestFlags` (`Node::setHitTestFlags` / `addHitTestFlags`),
+and `Node::visitSelf` publishes it — before `draw`, from the transform the visit
+has just built:
+
+[source,cpp]
+----
+if (_hitTestFlags != HitTestFlags::None && info.input) {
+    info.input->addHitTest(this, _modelViewTransform, _contentSize, _hitTestFlags,
+            getOpacity(), scissor);
+}
+----
+
+`info.input` is the `InputListenerStorage` being built for this frame — the same
+object the listeners register into — so both halves are filled by one visit, from
+one set of numbers, and are committed together at the end of `Scene::render`.
+
+What follows from registering *in the visit*:
+
+* the world rect is the one that was **drawn**, so nothing is re-derived and the
+  exact test (`Node::isTouchedAsDrawn`) handles rotation, unlike an AABB roster;
+* registration order is visit order is **paint order**, so the walk runs backwards
+  and the topmost participant answers first;
+* a node the visit does not reach is not registered — invisible, `display: none`,
+  detached, or clipped away by a scissor, all for free.
+
+The bits are a **cache of a component's presence**, maintained by the setters that
+attach it (`setDropTarget`, `ui::setContextMenu`, `ui::setTooltip`) plus
+`InputListener`, which raises `Pointer` for its owner. The query side is
+`InputDispatcher::foreachHitTest(mask, cb)`; containment is the caller's decision,
+via `HitTestRec::contains(point, padding)`, because the padding belongs to whoever
+is asking — a hover padding and a drop padding are different numbers about the
+same node.
+
+The registry is one frame old when an event reads it, which is the staleness input
+already has: every event is resolved against the previously committed storage.
+`InputListener` leans on that directly — its `_visitGeneration` is stamped at
+commit, and a listener whose stamp is not the current one was not drawn in the
+frame the event belongs to, which is what replaced the per-event walk up the parent
+chain asking every ancestor whether it was visible.
+
 ## Ancestor components: demand-driven propagation
 
 `ComponentsDirty` is only pushed *down* the tree into subtrees that actually

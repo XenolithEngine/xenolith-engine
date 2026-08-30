@@ -263,15 +263,21 @@ menus->setMenuConfigCallback([](ui::MenuConfig &config) {
 });
 ----
 
-**The declaration has no input of its own.** `ContextMenuTarget` is a `System`,
-not a listener: a listener per element is the obvious implementation and the
-wrong one, since a menu is declared on many nodes and used on almost none, and in
-a virtualized view the node that would carry it exists only while it is on
-screen. The target publishes its world rect from inside its own visit, into the
-`ContextMenuSystem` on the frame stack — the same arrangement as `DropTarget`,
-with the same three consequences: the rect is exactly the one that was drawn,
-registration order is paint order so the topmost answers, and a node that is not
-visited is not a target at all.
+**The declaration has no input of its own, and no lifecycle either.**
+`ContextMenuComponent` is data on the node: a listener per element is the obvious
+implementation and the wrong one, since a menu is declared on many nodes and used
+on almost none, and in a virtualized view the node that would carry it exists only
+while it is on screen. `setContextMenu` also raises `HitTestFlags::ContextMenu`,
+which makes the node publish the rect it was drawn with into the window's hit-test
+registry — the same one drop targets and tooltips use, with the same three
+consequences: the rect is exactly the one that was drawn, registration order is
+paint order so the topmost answers, and a node that is not visited is not a target
+at all.
+
+`setContextMenuEnabled` turns one off without removing it, `removeContextMenu`
+takes both the component and the flag away, and `getContextMenu` reads it back.
+Use them rather than the raw component API — the flag is a cache of the
+component's presence.
 
 `ContextMenuRequest::location` is in the **declaring node's** space, which is what
 lets a view resolve its own row from it (`TreeView::getRowIndexAt`) without
@@ -288,10 +294,10 @@ right button to itself has to use one of them:
   (`setSwallowEvent(InputEventName::Begin)`), or that takes the pointer
   exclusively — which is what `DragSource` does when a drag starts — turns the
   coordinator's gesture into a `Cancel`, and no menu opens;
-* **declare an empty target.** A `ContextMenuTarget` whose builder returns null
-  **blocks**: the search stops at the topmost target and does not fall through to
-  the region under it. That is how a control says "no menu here" inside a panel
-  that has one.
+* **declare an empty target.** A `ContextMenuComponent` whose builder returns
+  null **blocks**: the search stops at the topmost target and does not fall
+  through to the region under it. That is how a control says "no menu here" inside
+  a panel that has one.
 
 A plain `Processed` is deliberately invisible. `ui::Button` already answers a
 right tap and does not swallow it, and a button must not stop the panel around it

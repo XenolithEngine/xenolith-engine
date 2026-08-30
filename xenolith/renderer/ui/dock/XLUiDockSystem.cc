@@ -64,15 +64,15 @@ void DockSystem::handleAdded(Node *owner) {
 	// How the dock receives dragged panels. One target for the whole dock, not one per frame: a
 	// frame is resolved by walking the split tree, which is both cheaper than a scene traversal
 	// and immune to whatever the parked panels' own input listeners are doing
-	_dropTarget = owner->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this](const DragEvent &event) { return handleDragAccept(event); },
-		.enter = [this](const DragEvent &event) { handleDragEnter(event); },
-		.over = [this](const DragEvent &event) { handleDragOver(event); },
-		.leave = [this](const DragEvent &event) { handleDragLeave(event); },
-		.drop = [this](const DragEvent &event, DragActions action) {
-		return handleDragDrop(event, action);
-	},
-	}));
+	setDropTarget(owner,
+			DropTargetSlots{
+				.accept = [this](const DragEvent &event) { return handleDragAccept(event); },
+				.enter = [this](const DragEvent &event) { handleDragEnter(event); },
+				.over = [this](const DragEvent &event) { handleDragOver(event); },
+				.leave = [this](const DragEvent &event) { handleDragLeave(event); },
+				.drop = [this](const DragEvent &event,
+								DragActions action) { return handleDragDrop(event, action); },
+			});
 
 	syncNodes();
 	invalidateLayout();

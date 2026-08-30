@@ -113,24 +113,24 @@ Node *DragBasicLayout::addTarget(StringView name, const Rect &rect, ZOrder z, Co
 	node->setPosition(rect.origin);
 	node->setContentSize(rect.size);
 
-	node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept =
-				[counters, accept](const DragEvent &event) -> DragResponse {
+	setDropTarget(node,
+			DropTargetSlots{
+				.accept = [counters, accept](const DragEvent &event) -> DragResponse {
 		++counters->accepts;
 		return accept ? DragResponse{event.allowed} : DragResponse();
 	},
-		.enter = [counters](const DragEvent &) { ++counters->enters; },
-		.over = [counters](const DragEvent &) { ++counters->overs; },
-		.leave = [counters](const DragEvent &) { ++counters->leaves; },
-		.drop =
-				[counters, extra = sp::move(extraOnDrop)](const DragEvent &, DragActions) {
+				.enter = [counters](const DragEvent &) { ++counters->enters; },
+				.over = [counters](const DragEvent &) { ++counters->overs; },
+				.leave = [counters](const DragEvent &) { ++counters->leaves; },
+				.drop =
+						[counters, extra = sp::move(extraOnDrop)](const DragEvent &, DragActions) {
 		++counters->drops;
 		if (extra) {
 			extra();
 		}
 		return true;
 	},
-	}));
+			});
 
 	return node;
 }

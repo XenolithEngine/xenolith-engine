@@ -70,6 +70,8 @@
 #include "widgets/CanvasViewLayout.h"
 #include "widgets/ScrollBarLayout.h"
 #include "widgets/ContextMenuLayout.h"
+#include "widgets/HitTestLayout.h"
+#include "widgets/TooltipLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SelectorLayout.h"
@@ -441,6 +443,29 @@ static const TestInfo s_widgetsTests[] = {
 				   "must not. Inspector: context-menu.state, context-menu.open-at, "
 				   "context-menu.close, context-menu.reset."),
 		TestRegistry_make<ContextMenuLayout>, true},
+
+	TestInfo{StringView("hit-test"), StringView("XL_HIT_TEST_TEST"),
+		StringView("The per-frame hit-test registry"),
+		StringView("One registry answers \"what is under this point\" for drag targets, context "
+				   "menus and tooltips alike, and a node publishes itself into it by being DRAWN. "
+				   "So the topmost wins, an invisible node is simply absent, the part of a node "
+				   "scrolled outside its scissor cannot be hit, and a square turned 45 degrees is "
+				   "missed in the corners of its own bounding box - the box is only the fast "
+				   "reject. The padding belongs to whoever asks, not to the record. Inspector: "
+				   "hit-test.registry, hit-test.query, hit-test.rects."),
+		TestRegistry_make<HitTestLayout>, true},
+
+	TestInfo{StringView("tooltip"), StringView("XL_TOOLTIP_TEST"),
+		StringView("ui::TooltipComponent hover hints"),
+		StringView("A hint is data on a node, and ONE listener on the scene decides which node the "
+				   "pointer rests on. So the hints here are declared in init(), before anything is "
+				   "in a scene, and the coordinator appearing at all is a check; the topmost of two "
+				   "overlapping nodes wins; a hover padding belongs to the node that declared it; a "
+				   "disabled hint is invisible to the resolution; and a node slid out from under a "
+				   "pointer that never moved loses the hint. Inspector: tooltip.state, "
+				   "tooltip.set-delay, tooltip.set-text, tooltip.set-enabled, tooltip.remove, "
+				   "tooltip.move."),
+		TestRegistry_make<TooltipLayout>, true},
 
 	TestInfo{StringView("scrollbar"), StringView("XL_SCROLLBAR_TEST"),
 		StringView("basic2d::ScrollView scroll bar"),
