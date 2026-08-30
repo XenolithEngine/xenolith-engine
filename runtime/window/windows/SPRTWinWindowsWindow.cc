@@ -50,6 +50,15 @@ bool WindowsWindow_hasTouchDigitizer() {
 	return (GetSystemMetrics(SM_DIGITIZER) & (NID_INTEGRATED_TOUCH | NID_EXTERNAL_TOUCH)) != 0;
 }
 
+// Whether a pointing device is attached right now.
+//
+// SM_MOUSEPRESENT is the system's own answer to that question and covers trackpads and trackballs
+// as well - Windows reports every one of them as a mouse. It is not affected by the touchscreen:
+// a tablet with no mouse reports false here and true from the digitizer metric above.
+bool WindowsWindow_hasPointerDevice() {
+	return GetSystemMetrics(SM_MOUSEPRESENT) != 0;
+}
+
 // Whether the message being dispatched right now was synthesized from a touchscreen.
 //
 // Windows feeds touch to plain WM_MOUSE* messages, and the only trace of where they came from is
@@ -278,6 +287,9 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 
 	if (WindowsWindow_hasTouchDigitizer()) {
 		_info->state |= WindowState::InputTouch;
+	}
+	if (WindowsWindow_hasPointerDevice()) {
+		_info->state |= WindowState::InputPointer;
 	}
 
 	if (!auxiliary) {
@@ -1091,10 +1103,11 @@ Status WindowsWindow::handleMouseWheel(Vec2 value) {
 	return Status::Ok;
 }
 
-Status WindowsWindow::handleTouchAvailable(bool value) {
-	updateState(0,
-			value ? _info->state | WindowState::InputTouch
-				  : _info->state & ~WindowState::InputTouch);
+Status WindowsWindow::handleInputDevicesAvailable(bool pointer, bool touch) {
+	auto state = _info->state;
+	state = pointer ? (state | WindowState::InputPointer) : (state & ~WindowState::InputPointer);
+	state = touch ? (state | WindowState::InputTouch) : (state & ~WindowState::InputTouch);
+	updateState(0, state);
 	return Status::Ok;
 }
 

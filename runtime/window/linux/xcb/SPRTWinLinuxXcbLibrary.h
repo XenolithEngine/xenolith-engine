@@ -363,6 +363,7 @@ public:
 	SPRT_DEFINE_PROTO(xcb_input_xi_query_device_reply)
 	SPRT_DEFINE_PROTO(xcb_input_xi_query_device_infos_iterator)
 	SPRT_DEFINE_PROTO(xcb_input_xi_device_info_next)
+	SPRT_DEFINE_PROTO(xcb_input_xi_device_info_name)
 	SPRT_DEFINE_PROTO(xcb_input_xi_device_info_classes_iterator)
 	SPRT_DEFINE_PROTO(xcb_input_device_class_next)
 	SPRT_DEFINE_PROTO(xcb_input_xi_select_events)

@@ -187,8 +187,15 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 
 	_currentExtent = Extent2(_info->rect.width, _info->rect.height);
 
-	if (_display->seat && _display->seat->touch) {
-		_info->state |= WindowState::InputTouch;
+	if (_display->seat) {
+		// The seat's capabilities as they stand right now; a hotplug later arrives through
+		// notifyInputDevicesAvailable.
+		if (_display->seat->pointer) {
+			_info->state |= WindowState::InputPointer;
+		}
+		if (_display->seat->touch) {
+			_info->state |= WindowState::InputTouch;
+		}
 	}
 
 	if (hasFlag(_info->capabilities, WindowCapabilities::ServerSideCursors)
@@ -1560,10 +1567,11 @@ void WaylandWindow::updateKeyRepeatTimer() {
 
 void WaylandWindow::notifyScreenChange() { XL_WAYLAND_LOG("notifyScreenChange"); }
 
-void WaylandWindow::notifyTouchAvailable(bool value) {
-	updateState(_configureSerial,
-			value ? _info->state | WindowState::InputTouch
-				  : _info->state & ~WindowState::InputTouch);
+void WaylandWindow::notifyInputDevicesAvailable(bool pointer, bool touch) {
+	auto state = _info->state;
+	state = pointer ? (state | WindowState::InputPointer) : (state & ~WindowState::InputPointer);
+	state = touch ? (state | WindowState::InputTouch) : (state & ~WindowState::InputTouch);
+	updateState(_configureSerial, state);
 }
 
 void WaylandWindow::motifyThemeChanged(const ThemeInfo &theme) {
