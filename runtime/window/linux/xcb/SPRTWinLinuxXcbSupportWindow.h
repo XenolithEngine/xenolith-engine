@@ -94,12 +94,16 @@ public:
 	// extension is missing or too old, which is indistinguishable from "no touchscreen" for callers.
 	bool hasTouchscreen() const { return _xinput.hasTouchscreen; }
 
+	// Whether a pointing device is currently attached. Same caveat as above.
+	bool hasPointer() const { return _xinput.hasPointer; }
+
 	// Handle an XI2 generic event; returns true if it was ours. Called from XcbConnection::poll
 	// for XCB_GE_GENERIC, since XGE events carry no first_event to demultiplex on.
 	bool handleGenericEvent(xcb_ge_generic_event_t *);
 
-	// Re-run XIQueryDevice and update hasTouchscreen. Returns true if the value changed.
-	bool updateTouchscreenState();
+	// Re-run XIQueryDevice and update hasTouchscreen / hasPointer. Returns true if either changed.
+	// One round trip answers both: the device list is the same list.
+	bool updateInputDevicesState();
 
 protected:
 	// `enabled` means "the extension is there and a version request was sent", and the only thing
@@ -149,6 +153,10 @@ protected:
 
 		// Whether a direct-touch device (a touchscreen, as opposed to a touchpad) is attached.
 		bool hasTouchscreen = false;
+
+		// Whether a real pointing device - a mouse, a trackpad, a trackball - is attached. See
+		// updateInputDevicesState for what "real" has to exclude here.
+		bool hasPointer = false;
 
 		// XI 2.2 is where the touch device classes appeared; below it a touchscreen is invisible.
 		bool hasTouchClasses() const {

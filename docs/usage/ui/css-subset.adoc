@@ -54,8 +54,7 @@ CSS text ──parse──> document::StyleContainer      (stappler_document)
                     ├─ per-type appliers          (button, panel, checkbox, badge,
                     │                             select, vector-field, color-field,
                     │                             text-input, number-field,
-                    │                             inline-editor,
-                    │                             table-insertion-line)
+                    │                             inline-editor)
                     ├─ applyDefault()             (opacity, colors, visibility, size)
                     └─ applyLayout()              (Flex/GridLayoutInfo + per-item info)
                           ▼
@@ -290,11 +289,9 @@ mapping. `border-radius` and `outline-*` are not: they are handled by the
 (`button`, `panel`, `checkbox`, `badge`, `select`, `vector-field`, `color-field`,
 `color-picker`, and — through
 the text-input applier set — `text-input`, `number-field` and `inline-editor`
-(the field `ui::InlineEditor` opens over a rectangle). `ui::TableView` adds two
-more of its own: `table-insertion-line`, the 2px bar that shows where a dragged
-row would land, and the class `xl-ui-table-drag-handle` on the cell of the
-column a caller declared under `TableView::ReorderColumnKey`; see
-`StyleResolver::registerTypeApplier`
+(the field `ui::InlineEditor` opens over a rectangle). `ui::TableView` adds the
+class `xl-ui-table-drag-handle` on the cell of the column a caller declared under
+`TableView::ReorderColumnKey`; see `StyleResolver::registerTypeApplier`
 and the atoms under
 [xenolith/renderer/ui/atoms](../../../xenolith/renderer/ui/atoms)). A plain
 `basic2d::Layer` draws a rectangle and has nowhere to put a radius, so the rule
@@ -320,6 +317,30 @@ register an applier for your own node type. [`XL_PANEL_TEST`, `XL_BUTTON_TEST`]
 Note also that those widget headers must be included directly by the application
 (`XLUiPanel.h`, `XLUiCheckbox.h`, `XLUiBadge.h`, `XLUiButton.h`) — they are part
 of the public API of `xenolith_renderer_ui`, not internals of its SCU.
+
+### The nodes a drag puts up
+
+`ui::TableView` and `ui::TreeView` draw the feedback for a drop themselves, as
+nodes of their own with a type but **no applier of their own**: they are plain
+`basic2d::Layer`s, so `background-color`, `opacity` and `visibility` reach them
+and `border-radius` does not.
+
+| Type / class | Put up by | What it marks |
+|---|---|---|
+| `table-insertion-line` | `ui::TableView` | the boundary a dragged row would land on |
+| `tree-insertion-line` | `ui::TreeView` | the boundary a drop would insert at — the half of a leaf the pointer is in decides which. Starts at the anchor row's indent, not at the view's edge |
+| `tree-insertion-stem` | `ui::TreeView` | the upright at the line's left end, marking that indent — a child of the line, so it takes its own colour |
+| `tree-drop-highlight` | `ui::TreeView` | the category row a drop would go INTO — its middle 60%, the bands at either end meaning "beside it" and drawing the line instead. Cut back to the row's indent like the line |
+| `tree-view.drop-root` | `ui::TreeView` | on the VIEW, while the pointer is over the empty space below the last row — the one place that answers for the root, and so the one that has no rectangle to draw |
+
+    tree-insertion-line, tree-insertion-stem { background-color: #fcb400; }
+    tree-drop-highlight { background-color: #2e7d32; opacity: 0.55; }
+    tree-view.drop-root { outline-color: #2e7d32; outline-width: 2px; outline-style: solid; }
+
+They ship a colour of their own, so a tree is legible with no sheet at all;
+a rule on the type replaces it. The upright is a child of the line and not a
+descendant that inherits from it, so a sheet that re-colours one must name both. The highlight's is deliberately translucent —
+an opaque fill over a row would hide the row it is pointing at.
 
 ### Writing a type applier: the reset command
 
@@ -702,6 +723,53 @@ It is a `ui::Panel` with `type = "scrollbar"` and the classes `xl-ui-scrollbar` 
 layout ever touches it. Two consequences: a `.container > *` selector of your own
 will also match it (name the type instead), and the bar is an overlay — it reserves
 no space, so turning it on never re-lays anything out.
+
+#### The other bar: a virtualized view's indicator
+
+There are **two** scrollbars in the engine and they are different objects. The one
+above belongs to `ui::ScrollSystem`, which is what `overflow` puts on a container.
+A virtualized view — `ui::TreeView`, `ui::TableView`, anything on
+`basic2d::ScrollView` — scrolls itself, and its bar is that view's own indicator,
+under two other types:
+
+```css
+scroll-indicator-track        { background-color: transparent; border-radius: 5px; }
+scroll-indicator-track:hover  { background-color: rgba(0,0,0,0.25); }
+
+scroll-indicator              { background-color: rgba(255,255,255,0.35); border-radius: 3px; }
+scroll-indicator.active       { outline: 1px solid rgba(0,0,0,0.4); }
+
+tree-view scroll-indicator-track { display: none; }   /* no bar in this widget */
+```
+
+* the **track** is the strip the thumb runs in. It carries the input, so `:hover`
+  on it is the pointer being over the bar — which is what the rule above is for:
+  the track is transparent at rest and appears under the pointer;
+* **`.active`** is on both nodes while the bar can be grabbed, which is while the
+  window reports a pointing device (`WindowState::InputPointer`). It is not a
+  synonym for `:hover`: `.active` says the bar is aimable at all, `:hover` says the
+  pointer is on it right now. Without a pointing device the bar is thin, inert and
+  fades away after a scroll, the way a touch scroller's does;
+* **the SIZE is not a style.** The view writes the content size of both nodes on
+  every scroll, so a `width` from a sheet is overwritten within the frame. Set it
+  from code (`ScrollView::setIndicatorThickness(idle, active)`), and use a sheet
+  for colour, radius, outline and `display: none`.
+
+`ui::TreeView` and `ui::TableView` answer to all of that as built. A bare
+`basic2d::ScrollView` answers to `background-color`, `opacity` and `display: none`
+only — its bar is made of nodes that draw a fill and one radius, and `outline` has
+nowhere to land. One call fixes it:
+
+```cpp
+#include "XLUiPanel.h"
+
+ui::useStyledScrollIndicator(scrollView);   // swaps both nodes for ui::Panels
+```
+
+That is the whole of the layering: `basic2d` is below `renderer/ui` and cannot
+build a node that paints an outline, so the seam is a node swap made from above
+rather than a feature the lower layer grew. The call keeps whatever the bar was
+painted with and is idempotent.
 
 ### Scroll chaining and code access
 

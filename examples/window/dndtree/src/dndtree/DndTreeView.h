@@ -24,6 +24,7 @@
 #define EXAMPLES_WINDOW_DNDTREE_SRC_DNDTREE_DNDTREEVIEW_H_
 
 #include "XLUiTreeView.h"
+#include "XLUiContextMenu.h"
 #include "XLDragTypes.h"
 #include "XLFrameCapture.h"
 
@@ -62,9 +63,12 @@ engine's, and this class only attaches a DragSource and a DropTarget to each row
 built. That is deliberate - a demo whose interesting half lived in a subclass of the model or of
 the row would not show how the two subsystems meet.
 
-WHERE A DROP LANDS. A row answers for a place in the tree, not for itself: dropping ON a category
-appends to it, dropping on a leaf inserts right AFTER that leaf in its parent. The view's own
-background answers with "append to the root", which is what makes an empty tree a target at all.
+WHERE A DROP LANDS is ui::TreeView's answer, not this class's: the upper half of a leaf is "before
+it", the lower half "after it", the whole of a category's row is "into it", and the empty space
+below the last row is "append to the root". The insertion line, the highlight and the dwell that
+opens a closed category under the pointer come with it. What is left here - and it is the only half
+a tree cannot answer - is whether THIS payload may land at a given place and what moving it there
+means, which is ui::TreeView::DropSlots.
 
 WHY THE INDEX IS READ BACK AND NEVER CAPTURED. A row node survives a rebuild whenever its RowKey
 still matches, and the rebuild hands it to whichever index that row moved to. A lambda that
@@ -75,14 +79,7 @@ public:
 	using ModelNode = data::Model::Node;
 	using MessageCallback = Function<void(StringView)>;
 
-	// Where an element would be inserted. `parent` is always a Category; a null one means the spot
-	// could not be resolved and nothing may be dropped there.
-	struct DropSpot {
-		ModelNode *parent = nullptr;
-		size_t index = maxOf<size_t>(); // maxOf: append
-
-		bool valid() const { return parent != nullptr; }
-	};
+	using DropPosition = ui::TreeView::DropPosition;
 
 	virtual ~DndTreeView() = default;
 
@@ -98,18 +95,16 @@ public:
 	void setMessageCallback(MessageCallback &&);
 
 	// --- the drop model, callable without a drag -----------------------------------------------
-	// The three below are the whole of what a drop does, and none of them touches an input event.
-	// That is what lets the self-check and the inspector commands exercise the REAL path instead of
-	// a parallel implementation of it.
+	// Both below are the whole of what a drop does, and neither touches an input event. That is
+	// what lets the self-check and the inspector commands exercise the REAL path instead of a
+	// parallel implementation of it - the position they are given comes from the same
+	// TreeView::getDropPositionForRow the pointer resolves.
 
-	// Where a drop on row `index` would land; maxOf<size_t>() asks for the view's own background.
-	DropSpot resolveDropSpot(size_t index) const;
-
-	// Pure: it is called during hit testing, for targets that may never become current.
-	bool canAccept(const DndItemPayload *, const DropSpot &) const;
+	// Pure: it is called during hit testing, for positions the drag may never come to rest on.
+	bool canAccept(const DndItemPayload *, const DropPosition &) const;
 
 	// Apply the drop. A single resolved action, never a mask. False means nothing was done.
-	bool applyTransfer(DndItemPayload *, const DropSpot &, DragActions);
+	bool applyTransfer(DndItemPayload *, const DropPosition &, DragActions);
 
 	// What the SOURCE side of a drag owes the payload once the drop has been applied (or not):
 	// a Move whose target did not relocate the element itself has to delete the original here.
@@ -123,6 +118,22 @@ public:
 	// apart from a relocation.
 	size_t getCloneCount() const { return _clones; }
 
+	// --- the context menu, callable without a pointer ------------------------------------------
+
+	/* What a right click on `index` offers, or on the empty space below the last row when it is
+	maxOf<size_t>(). Null when there is nothing to offer at all.
+
+	Public and index-driven for the same reason canAccept and applyTransfer are: the check drives
+	the REAL menu rather than a parallel description of it. The row is resolved from the pointer by
+	the widget (TreeView::getRowIndexAt), so what is left over here is only what the menu SAYS. */
+	Rc<ui::MenuSource> buildContextMenu(size_t index);
+
+	// Delete the element a row stands for, and whatever hangs under it. What the menu's own item
+	// does; false when that row is not one that can go.
+	bool removeRow(size_t index);
+
+	virtual void handleEnter(Scene *) override;
+
 protected:
 	using ui::TreeView::init;
 
@@ -131,7 +142,16 @@ protected:
 	virtual Rc<Node> buildRowNode(RowBuilder &) override;
 
 	void attachRowHandlers(RowNode *);
-	void attachViewTarget();
+
+	// Hands the tree the two answers only this class can give. Everything else about the drop -
+	// where it lands, what is drawn for it, when a closed category opens - is the widget's.
+	void attachDropSlots();
+
+	/* One ContextMenuTarget, ON THE VIEW, never one per row - the same arrangement, and the same
+	reason, as the single DropTarget above it: a row that scrolled out of sight is no longer a node
+	to carry anything, while the geometry still answers for it, and the empty space below the last
+	row has no row at all. The target resolves the row from the point it is given. */
+	void attachContextMenu();
 
 	// `source` is the DragSource that will run this drag: a capture-backed ghost is installed on
 	// its session, long after this returns.

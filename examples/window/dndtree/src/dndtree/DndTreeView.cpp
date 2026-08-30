@@ -24,7 +24,6 @@
 
 #include "dndtree/DndTreeView.h"
 #include "XLDragSource.h"
-#include "XLDropTarget.h"
 #include "XLUiPanel.h"
 #include "XL2dLabel.h"
 #include "XL2dSprite.h"
@@ -74,8 +73,10 @@ static Rc<Node> makeCaptureGhost(FrameCaptureTarget *target, float density) {
 	sprite->setColorMode(core::ColorMode(core::ComponentMapping::R, core::ComponentMapping::G,
 			core::ComponentMapping::B, core::ComponentMapping::One));
 
-	// Enough to read as a ghost rather than as a second copy of the row.
-	sprite->setOpacity(0.85f);
+	// Enough to read as a ghost rather than as a second copy of the row - and no more than that,
+	// because the ghost is a FULL-WIDTH copy centred on the pointer, so it lies over the very row
+	// the tree is drawing its insertion line or its highlight on. It has to be seen through.
+	sprite->setOpacity(0.6f);
 	return sprite;
 }
 
@@ -138,11 +139,111 @@ bool DndTreeView::init(data::Model *source, StringView title) {
 	_title = title.str<Interface>();
 	setName(_title);
 
-	attachViewTarget();
+	attachDropSlots();
 	return true;
 }
 
+void DndTreeView::handleEnter(Scene *scene) {
+	ui::TreeView::handleEnter(scene);
+
+	// NOT in init(): ui::setContextMenu acquires the scene's coordinator, and a node has no scene
+	// until it is added to one
+	attachContextMenu();
+}
+
 void DndTreeView::setMessageCallback(MessageCallback &&cb) { _message = sp::move(cb); }
+
+void DndTreeView::attachContextMenu() {
+	ui::setContextMenu(this, [this](const ui::ContextMenuRequest &req) -> Rc<ui::MenuSource> {
+		// The point arrives in THIS node's space, which is the space the row geometry answers in -
+		// so resolving the row is the same call the drop uses, and a row scrolled out of sight is
+		// answered for just as well as one on screen
+		return buildContextMenu(getRowIndexAt(req.location));
+	});
+}
+
+Rc<ui::MenuSource> DndTreeView::buildContextMenu(size_t index) {
+	auto source = Rc<ui::MenuSource>::create();
+	auto row = getRow(index);
+
+	if (!row || !row->node) {
+		// The empty space below the last row belongs to the root, and the only thing the root can
+		// be asked is what to do with everything at once
+		source->addButton("expand-all", "Expand all", [this](NotNull<ui::MenuSourceButton>) {
+			for (size_t i = 0; i < getRowCount(); ++i) {
+				auto it = getRow(i);
+				if (it && it->node && it->node->isCategory() && !it->expanded) {
+					expandRow(i);
+				}
+			}
+			report("expanded every category");
+		});
+		source->addButton("collapse-all", "Collapse all", [this](NotNull<ui::MenuSourceButton>) {
+			// Backwards, so collapsing one cannot renumber a row this walk has not reached yet
+			for (size_t i = getRowCount(); i > 0; --i) {
+				auto it = getRow(i - 1);
+				if (it && it->node && it->node->isCategory() && it->expanded) {
+					collapseRow(i - 1);
+				}
+			}
+			report("collapsed every category");
+		});
+		return source;
+	}
+
+	// The name of the element, for the message - read now, because the callback runs after the
+	// menu has closed and the row it was built for may have moved by then
+	auto label = row->node->getData().getString("name");
+
+	if (row->node->isCategory()) {
+		const bool expanded = row->expanded;
+
+		/* The index is captured here and NOT read back, unlike everywhere else in this class.
+
+		A menu is a decision about the row that was pointed at, and it is made while that row still
+		exists: the popup is modal enough that nothing renumbers the tree under it. What the widget
+		re-reads on every event is a different problem - a row node outliving its index. */
+		source->addButton("toggle", expanded ? "Collapse" : "Expand",
+				[this, index, expanded, label](NotNull<ui::MenuSourceButton>) {
+			if (expanded) {
+				collapseRow(index);
+			} else {
+				expandRow(index);
+			}
+			report(toString(expanded ? "collapsed " : "expanded ", label));
+		});
+		source->addSeparator("sep");
+	}
+
+	source->addButton("delete", "Delete", [this, index, label](NotNull<ui::MenuSourceButton>) {
+		if (removeRow(index)) {
+			report(toString("deleted ", label));
+		}
+	});
+	return source;
+}
+
+bool DndTreeView::removeRow(size_t index) {
+	auto row = getRow(index);
+	if (!row || !row->node) {
+		return false;
+	}
+
+	auto model = getSource();
+	if (!model) {
+		return false;
+	}
+
+	// The selection is an INDEX, not an identity: leaving it where it was would move it onto
+	// whatever row slid up into that slot
+	if (getSelectedRow() == index) {
+		setSelectedRow(maxOf<size_t>());
+	}
+
+	// The model's own notification is what rebuilds the rows - the view listens to it - so there
+	// is nothing to refresh here
+	return model->removeNode(row->node.get());
+}
 
 void DndTreeView::report(StringView message) {
 	if (_message) {
@@ -159,33 +260,7 @@ auto DndTreeView::payloadOf(const DragEvent &event) -> DndItemPayload * {
 	return dynamic_cast<DndItemPayload *>(event.data->getLocal());
 }
 
-auto DndTreeView::resolveDropSpot(size_t index) const -> DropSpot {
-	auto model = getSource();
-	if (!model) {
-		return DropSpot();
-	}
-
-	// The background of the view: whatever is dropped there joins the root, at the end.
-	auto row = getRow(index);
-	if (!row || !row->node) {
-		return DropSpot{model->getRoot(), maxOf<size_t>()};
-	}
-
-	// A category is a place; dropping on it means "put it in here".
-	if (row->isCategory()) {
-		return DropSpot{row->node.get(), maxOf<size_t>()};
-	}
-
-	// A leaf is a position: the drop lands right after it, among its siblings. A span row has no
-	// element behind it, but it does sit somewhere - so it still answers with a position.
-	auto parent = row->node->getParent();
-	if (!parent) {
-		return DropSpot{model->getRoot(), maxOf<size_t>()};
-	}
-	return DropSpot{parent, row->node->getChildIndex() + 1};
-}
-
-bool DndTreeView::canAccept(const DndItemPayload *payload, const DropSpot &spot) const {
+bool DndTreeView::canAccept(const DndItemPayload *payload, const DropPosition &spot) const {
 	if (!payload || !payload->node || !payload->model || !spot.valid()) {
 		return false;
 	}
@@ -198,7 +273,8 @@ bool DndTreeView::canAccept(const DndItemPayload *payload, const DropSpot &spot)
 	// Inside one model this would detach a cycle from the tree (Model::moveNode refuses it anyway);
 	// across two it would make cloneInto() walk a child list it is appending to. Refusing in the
 	// PREDICATE is what turns both into a NoDrop cursor instead of a silent no-op.
-	if (payload->model.get() == model && isSelfOrDescendantOf(spot.parent, payload->node.get())) {
+	if (payload->model.get() == model
+			&& isSelfOrDescendantOf(spot.parent.get(), payload->node.get())) {
 		return false;
 	}
 
@@ -206,7 +282,7 @@ bool DndTreeView::canAccept(const DndItemPayload *payload, const DropSpot &spot)
 	// in the PREDICATE matters beyond tidiness: at the moment a drag begins the pointer sits on the
 	// source row, so accepting would light that row up as a drop target - and, for a ghost made of
 	// the frame, that highlight would be copied straight into the ghost.
-	if (payload->model.get() == model && payload->node->getParent() == spot.parent) {
+	if (payload->model.get() == model && payload->node->getParent() == spot.parent.get()) {
 		const auto current = payload->node->getChildIndex();
 		const auto target =
 				(spot.index == maxOf<size_t>()) ? spot.parent->getChildCount() : spot.index;
@@ -218,7 +294,8 @@ bool DndTreeView::canAccept(const DndItemPayload *payload, const DropSpot &spot)
 	return true;
 }
 
-bool DndTreeView::applyTransfer(DndItemPayload *payload, const DropSpot &spot, DragActions action) {
+bool DndTreeView::applyTransfer(DndItemPayload *payload, const DropPosition &spot,
+		DragActions action) {
 	if (!canAccept(payload, spot)) {
 		return false;
 	}
@@ -232,12 +309,12 @@ bool DndTreeView::applyTransfer(DndItemPayload *payload, const DropSpot &spot, D
 		// Model::moveNode reads `index` in the child list AS IT WILL BE once the node is taken out
 		// of its current place. A spot derived from a sibling BELOW the node is therefore one slot
 		// too far - and this is the only place that knows both numbers.
-		if (payload->node->getParent() == spot.parent && index != maxOf<size_t>()
+		if (payload->node->getParent() == spot.parent.get() && index != maxOf<size_t>()
 				&& payload->node->getChildIndex() < index) {
 			--index;
 		}
 
-		if (!model->moveNode(payload->node.get(), spot.parent, index)) {
+		if (!model->moveNode(payload->node.get(), spot.parent.get(), index)) {
 			return false;
 		}
 
@@ -248,7 +325,7 @@ bool DndTreeView::applyTransfer(DndItemPayload *payload, const DropSpot &spot, D
 	}
 
 	size_t created = 0;
-	if (!cloneInto(model, payload->node.get(), spot.parent, spot.index, created)) {
+	if (!cloneInto(model, payload->node.get(), spot.parent.get(), spot.index, created)) {
 		return false;
 	}
 	_clones += created;
@@ -444,50 +521,32 @@ void DndTreeView::attachRowHandlers(RowNode *row) {
 	source->setOfferBuilder([this, row, source](DragOffer &offer) {
 		return fillOffer(row->getRowIndex(), source, offer);
 	});
+}
 
-	row->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this, row](const DragEvent &event) -> DragResponse {
+void DndTreeView::attachDropSlots() {
+	/* ONE seam for the whole tree, rows and empty space alike.
+
+	There used to be a DropTarget per row plus one on the view, and every one of them had to
+	re-derive where a drop would land and light itself up for it. All of that is ui::TreeView's now:
+	it resolves the zone from the pointer, draws the insertion line or the highlight, and opens a
+	closed category the drag rests on. What is genuinely this demo's - whether a payload may go to a
+	place, and what putting it there means for two models - is what is left. */
+	setDropSlots(ui::TreeView::DropSlots{
+		.accept = [this](const DragEvent &event, const DropPosition &pos) -> DragActions {
 		auto payload = payloadOf(event);
-		if (!payload || !canAccept(payload, resolveDropSpot(row->getRowIndex()))) {
-			return DragResponse(); // not here: the search continues underneath this row
+		if (!payload || !canAccept(payload, pos)) {
+			return DragActions::None; // not here: the search continues under this view
 		}
 		// never a bare constant: answering with more than the source offered would claim an
 		// action it cannot perform
-		return DragResponse{event.allowed & (DragActions::Move | DragActions::Copy)};
+		return event.allowed & (DragActions::Move | DragActions::Copy);
 	},
-		// feedback belongs here and not in accept(), which runs for rows that never become current
-		.enter = [row](const DragEvent &) { row->addStyleClass("drop-into"); },
-		.leave = [row](const DragEvent &) { row->removeStyleClass("drop-into"); },
 		.drop =
-				[this, row](const DragEvent &event, DragActions action) {
+				[this](const DragEvent &event, const DropPosition &pos, DragActions action) {
 		auto payload = payloadOf(event);
-		// read everything first: applyTransfer is what invalidates this row
-		return payload && applyTransfer(payload, resolveDropSpot(row->getRowIndex()), action);
+		return payload && applyTransfer(payload, pos, action);
 	},
-	}));
-}
-
-void DndTreeView::attachViewTarget() {
-	// The view's own background, under every row. It is visited BEFORE its rows, so it registers
-	// first and the drag - which walks the roster backwards - finds a row on top of it wherever
-	// one is drawn. What is left is the empty space below the last row, which is exactly the
-	// "append to the root" the tree needs to be droppable when it holds nothing at all.
-	addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this](const DragEvent &event) -> DragResponse {
-		auto payload = payloadOf(event);
-		if (!payload || !canAccept(payload, resolveDropSpot(maxOf<size_t>()))) {
-			return DragResponse();
-		}
-		return DragResponse{event.allowed & (DragActions::Move | DragActions::Copy)};
-	},
-		.enter = [this](const DragEvent &) { addStyleClass("drop-root"); },
-		.leave = [this](const DragEvent &) { removeStyleClass("drop-root"); },
-		.drop =
-				[this](const DragEvent &event, DragActions action) {
-		auto payload = payloadOf(event);
-		return payload && applyTransfer(payload, resolveDropSpot(maxOf<size_t>()), action);
-	},
-	}));
+	});
 }
 
 } // namespace stappler::xenolith::examples

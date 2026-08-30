@@ -44,6 +44,7 @@ class DragActionsLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleEnter(Scene *) override;
+	virtual void handleExit() override;
 
 protected:
 	virtual void registerCommands() override;
