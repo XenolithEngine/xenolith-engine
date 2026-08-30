@@ -40,10 +40,10 @@
 
 #include "input/XLUiControlLock.cc" // the widget half of the lock; the state half is in application
                                  // with a reason attached, and every widget below calls in
-                                 // here. It also builds a ui::TooltipTarget, whose
-                                 // definition arrives much later in this unit - that is
-                                 // fine (the header defines the class) and this include
-                                 // cannot move down past its callers.
+// here. It also sets a ui::TooltipComponent, whose
+// definition arrives much later in this unit - that is
+// fine (the header defines the class) and this include
+// cannot move down past its callers.
 #include "input/XLUiButton.cc"
 #include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiChip.cc" // after Badge and Button: a chip is one, with the other on it

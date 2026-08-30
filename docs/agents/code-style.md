@@ -131,7 +131,7 @@ header, a platform branch, or an allocation. The essentials:
   mechanical off, and tracks `:disabled`; `read-only` is readable and copyable but
   not editable; `locked` is "you may not write here at all, and here is why" —
   `ui::setEditLock(node, reason)` paints it, clears the `Enabled` bit, hangs the
-  reason off a `ui::TooltipTarget` (only if the node has no hint of its own) and
+  reason off a `ui::TooltipComponent` (only if the node has no hint of its own) and
   takes the field out of the form's tab ring. A locked control is also disabled,
   and the two compose: unlocking restores what the application last asked for, not
   "on". `ui::applyControlEnabled` is the **single** writer of the `Enabled` bit and

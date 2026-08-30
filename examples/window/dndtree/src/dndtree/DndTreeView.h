@@ -59,8 +59,8 @@ struct DndItemPayload : public Ref {
 /* A ui::TreeView whose rows can be dragged out of it and dropped into another one.
 
 Everything here is composition over the stock widget: the tree, its rows and its model are the
-engine's, and this class only attaches a DragSource and a DropTarget to each row node as it is
-built. That is deliberate - a demo whose interesting half lived in a subclass of the model or of
+engine's, and this class only attaches a DragSource to each row node as it is built, and one drop
+target and one context menu to the view. That is deliberate - a demo whose interesting half lived in a subclass of the model or of
 the row would not show how the two subsystems meet.
 
 WHERE A DROP LANDS is ui::TreeView's answer, not this class's: the upper half of a leaf is "before
@@ -147,10 +147,10 @@ protected:
 	// where it lands, what is drawn for it, when a closed category opens - is the widget's.
 	void attachDropSlots();
 
-	/* One ContextMenuTarget, ON THE VIEW, never one per row - the same arrangement, and the same
-	reason, as the single DropTarget above it: a row that scrolled out of sight is no longer a node
-	to carry anything, while the geometry still answers for it, and the empty space below the last
-	row has no row at all. The target resolves the row from the point it is given. */
+	/* One context menu, ON THE VIEW, never one per row - the same arrangement, and the same reason,
+	as the single drop target above it: a row that scrolled out of sight is no longer a node to
+	carry anything, while the geometry still answers for it, and the empty space below the last row
+	has no row at all. The builder resolves the row from the point it is given. */
 	void attachContextMenu();
 
 	// `source` is the DragSource that will run this drag: a capture-backed ghost is installed on

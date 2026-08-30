@@ -214,32 +214,40 @@ hint on the node and let
 
 [source,cpp]
 ----
-node->addSystem(Rc<ui::TooltipTarget>::create("Save the document"));
+ui::setTooltip(node, "Save the document");
 
-node->addSystem(Rc<ui::TooltipTarget>::create(ui::TooltipInfo{
+ui::setTooltip(node, ui::TooltipInfo{
 	.text = "Save the document",
 	.factory = [](NotNull<ui::SubWindow> w, const ui::TooltipRequest &req) { … },
 	.placement = ui::TooltipPlacement{ .anchorMode = ui::TooltipAnchorMode::Pointer },
-}));
+});
 
 // the coordinator installs itself on SceneContent on first use
 auto *tips = ui::TooltipSystem::acquireForNode(node);
 tips->setHoverDelay(TimeInterval::milliseconds(400));
 ----
 
-* **`TooltipSystem` is the coordinator, `TooltipTarget` the declaration.** The
-  dwell delay, the subwindow config and `TooltipMode` (`Overlay` vs `Native`) are
-  the system's, so hints behave alike everywhere; the factory and the placement
-  are the target's, with the system's as defaults. There is deliberately no
-  per-target delay.
+* **`TooltipSystem` is the coordinator, `ui::TooltipComponent` the declaration.**
+  The dwell delay, the subwindow config and `TooltipMode` (`Overlay` vs `Native`)
+  are the system's, so hints behave alike everywhere; the factory and the placement
+  are the node's, with the system's as defaults. There is deliberately no per-node
+  delay. `setTooltipText`, `setTooltipEnabled` and `removeTooltip` edit a hint
+  afterwards, and rebuild one that is currently up.
 * **The delay is a dwell, not a timeout since entry** — every pointer move within
   the node restarts it. It is an `Action` on purpose: a running action keeps
   `Director::hasActiveInteractions()` true, so the delay actually elapses in an
   app that renders on demand, which a looper timer would not.
-* `TooltipTarget` **is** an `InputListener` (like `ScrollSystem`), because a
-  `System` may not add a sibling system from its own `handleAdded`/`handleRemoved`.
-  Its `init` takes arguments for a reason: a zero-argument `init()` would be
-  hidden by `InputListener::init(int32_t priority = 0)` and silently never run.
+* **The hint is data; one listener on the scene resolves which node the pointer is
+  on.** It used to be an `InputListener` per hinted node — a registration, a sort
+  entry and a hit test per event apiece, for a hint used perhaps once a session.
+  Now the node publishes itself into the frame's hit-test registry
+  (`HitTestFlags::Tooltip`) and `TooltipSystem` asks that registry: on every
+  pointer move, and once per frame besides, which is what notices a node sliding
+  out from under a pointer that has not moved.
+* **Declare it whenever you like, including before the node is in a scene.** A
+  hint declared while a widget is being built parks a one-shot system on the node
+  that installs the coordinator on the node's first visit and then removes itself.
+  It is the only per-node object left, and it does not survive that frame.
 * **Leave `mode` at `Overlay`.** Under `Native` the tip takes the pointer off the
   parent window, so the target reports a leave it never had — `hideOnLeave` is
   ignored there and only the hide timer closes the hint.
@@ -434,7 +442,7 @@ prewarmed graph.
 | saving `WindowGeometry::rect` without checking `hasPosition` | on Wayland the origin is zero because it is unknown, and the window reopens in the corner |
 | setting `WindowInfo::rect`'s x/y without `WindowCreationFlags::UsePosition` | the position is ignored: `(0, 0)` is the default and cannot be told from a request |
 | a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
-| hand-rolling a hover delay | `ui::TooltipTarget` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
+| hand-rolling a hover delay | `ui::setTooltip` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
 | reading `WindowPlacement::gravity` as "the direction it opens" | it names which **edge of the surface** lands on the anchor point, so `gravity = Top` puts the surface *below* |
 
 ## Related

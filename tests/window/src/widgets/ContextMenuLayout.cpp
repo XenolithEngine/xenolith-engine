@@ -242,9 +242,7 @@ Value ContextMenuLayout::encodeState() const {
 	// Which target ANSWERED, which is not the same as which one had a menu: a refusal is an answer
 	if (_menus) {
 		if (auto target = _menus->getCurrentTarget()) {
-			if (auto owner = target->getOwner()) {
-				ret.setString(owner->getName(), "currentTarget");
-			}
+			ret.setString(target->getName(), "currentTarget");
 		}
 	}
 
