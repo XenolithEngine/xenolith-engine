@@ -324,6 +324,49 @@ needs no parent matrix, because `isTouched` walks the parent chain itself.
 `_inPendingPhases` guards a node against re-entering *itself*; nested attaches
 made from a handler run their own catch-up normally.
 
+## Reading a result: when the answer is there
+
+Everything the phases produce — a content size, a laid-out child box, where a
+row's label starts — is a **result**, not a property. Writing the input and
+reading the output in the same statement reads the *previous* pass's answer, and
+the mistake is invisible: the number is plausible, just one frame stale, and in
+the cases that matter (an editor placed over a row that has never been laid out)
+it is the fallback rather than the answer.
+
+There is **no way to settle the scene synchronously from outside a frame**, and
+that is a property of the design rather than a gap in it. Every phase body takes
+a `FrameInfo` and delivers child events through its `systemStack`; that stack is
+built by the pass as it descends, and `Scene::getFrameInfo()` is non-null only for
+the duration of `visitDraw`. A second, synthetic pass would be a second
+implementation of the pipeline — the one thing the catch-up above exists to avoid.
+So the question to ask is never "settle it now", it is **"tell me when it is
+settled"**, and the answer depends on who builds the node:
+
+* **You attached it, from inside a frame.** Nothing to do: the catch-up above ran
+  as you attached it, so the node is styled, sized and laid out by the time
+  `addChild` returns and its geometry can be read on the next line. *From outside
+  a frame* — an input handler, a menu callback, a timer — there is no pass to
+  catch up on, and the same read gives the fallback.
+* **You are the container and want a child's size.** `Node::settleForMeasure()` on
+  the child; `ui::LayoutSystem` already calls it everywhere it measures.
+* **Somebody else builds the node.** A virtualized row belongs to its view, and
+  arrives at the view's pace. Ask, and be told:
+  `ui::TreeView::requestRebuildNodes(cb)` / `ui::TableView::requestRebuildNodes(cb)`
+  runs `cb` at the END of the rebuild, from inside the visit that performed it —
+  every row that rebuild built was attached mid-frame and has therefore already
+  caught up, so that is the first moment the new rows can be measured, and the
+  last one worth waiting for.
+
+**Do not poll for it.** A visit-end callback that re-checks every frame, with a
+counter to decide when to give up, is the shape to recognise and refuse. It is
+wrong twice over: it asks *after* the moment the answer became complete, and the
+counter merges two different questions — "the pass has not run yet", which is a
+matter of one hop, and "this will never happen", which is not a matter of time at
+all. The second question always has a real answer. For a virtualized row it is
+"the row is outside the scroll window", which is decidable on the spot and fixed
+by scrolling to it, not by waiting longer. `examples/window/dndtree` names an
+element the moment it is created and is written this way end to end.
+
 ## System dispatch order (priority)
 
 Within a node, systems are dispatched in ascending **priority** — a lower

@@ -116,8 +116,11 @@ public:
 	Rc<DndItemPayload> makePayload(size_t index) const;
 
 	// How many elements this view built from a copy - the self-check reads it to tell a clone
-	// apart from a relocation.
+	// apart from a relocation. Counts clones into the CURRENT model, so replacing the model zeroes
+	// it: a count carried over from a tree that is gone answers about nothing.
 	size_t getCloneCount() const { return _clones; }
+
+	virtual void setSource(Model *) override;
 
 	// --- the context menu, callable without a pointer ------------------------------------------
 
@@ -150,10 +153,6 @@ public:
 	no element, no rectangle. */
 	bool beginRename(size_t index);
 
-	// Must agree with `inline-editor { padding-left/right }` in the demo's stylesheet - see
-	// beginRename, which grows the rect by it so the editor's text lands exactly on the label's.
-	static constexpr float RenameEditorPadding = 6.0f;
-
 	bool isRenaming() const { return _rename != nullptr; }
 	ui::InlineEditSession *getRenameSession() const { return _rename; }
 
@@ -173,8 +172,11 @@ public:
 	The editor does not open in this call. A brand-new row has no NODE yet - the model's
 	notification re-derives the rows at once, but the nodes are rebuilt in the view's next
 	components phase - and where a row's content starts is decided by the stylesheet, so it does
-	not exist until that node has been laid out. So the opening waits for the row; see
-	settlePendingEdit. */
+	not exist until that node has been laid out.
+
+	So the opening is REQUESTED rather than waited for: ui::TreeView::requestRebuildNodes takes the
+	callback that opens it, and answers at the one moment the answer is complete - inside the
+	rebuild, with the new rows already styled and laid out. See settlePendingEdit. */
 	bool beginCreate(size_t index, bool category);
 
 	/* Where beginCreate puts a new element for a menu opened over `index`, in MODEL terms - ready
@@ -199,12 +201,15 @@ public:
 	// True between beginCreate and the editor actually opening - normally one frame.
 	bool isEditorPending() const { return _pendingEdit != ItemId(0); }
 
-	/* Settle whatever beginCreate is waiting for, now: open the editor once the row has a node,
-	give up when the element is gone.
+	/* Open the editor beginCreate asked for, or decide that it cannot be opened.
 
-	Called once per visit of this view, and public because a wait that spans frames cannot be
-	observed from a check that has none - the demo's self-check runs before the layout is even in a
-	scene. Doing nothing is the normal answer. */
+	What the rebuild callback runs. Every case it distinguishes is decidable AT THAT MOMENT - the
+	element is gone, the row is outside the scroll window, the row is there - which is what makes
+	this a decision rather than a wait: nothing here counts frames or asks again on a timer.
+
+	Public because the demo's self-check has no frames at all - it runs before the layout is in a
+	scene, so no rebuild will ever call this - and the one case it exercises, an element taken away
+	before the editor could open, has to be reachable without one. */
 	void settlePendingEdit();
 
 	/* The sheet to carry to whatever this view opens OUTSIDE its own subtree.
@@ -273,6 +278,25 @@ protected:
 	// index taken before one means nothing afterwards - the id is what still names the element.
 	size_t rowIndexForId(ItemId) const;
 
+	/* Scroll until row `index` is at the top of the window. False when there is nothing to scroll.
+
+	The one answer to "this row exists and has no node": only rows inside the scroll window are
+	built, so a row nobody can see is not waiting for anything - it is waiting for the view to be
+	pointed at it. Reads the offset straight off the controller's item, which carries it for EVERY
+	row, materialized or not (rebuildRows commits one item per row with the height it resolved
+	before any node existed). */
+	bool revealRow(size_t index);
+
+	// Where the editor must stop, so it does not run under the scroll bar.
+	float getEditorRightLimit() const;
+
+	/* The box to give the editor for a row whose content occupies `rect`: grown by the padding the
+	stylesheet gives the field, so the text lands on the label, and kept clear of the scroll bar.
+
+	Takes the editor because that is what the padding is read FROM - the number lives in the sheet,
+	not in this file. */
+	Rect makeEditorRect(Rect rect, Node *editor) const;
+
 
 	String _title;
 	Node *_ghostParent = nullptr; // raw: it is an ancestor of this view, so it outlives it
@@ -287,10 +311,18 @@ protected:
 	// The element the open editor would take back out on a cancel; 0 while a plain rename is open
 	ItemId _provisional;
 
-	// The element created by beginCreate whose editor has not opened yet, and how many more visits
-	// it may wait for its row before the wait gives up on it
+	// The element created by beginCreate whose editor has not opened yet
 	ItemId _pendingEdit;
-	uint32_t _pendingEditFrames = 0;
+
+	/* What that pending editor is waiting for. NOT a countdown: each state is entered because of
+	something this class DID about the state before it, and the next rebuild answers it. There are
+	only two, because there are only two reasons a just-created row has no node yet - the rebuild
+	has not run, or the row is off screen - and the second has an action rather than a delay. */
+	enum class PendingStage {
+		Rows, // the model changed; the row nodes are being rebuilt for it
+		Reveal, // the row was outside the window, so the view was scrolled to it
+	};
+	PendingStage _pendingStage = PendingStage::Rows;
 };
 
 } // namespace stappler::xenolith::examples

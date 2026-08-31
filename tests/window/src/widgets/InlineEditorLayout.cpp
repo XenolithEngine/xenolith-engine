@@ -384,6 +384,14 @@ Value InlineEditorLayout::encodeState() const {
 	ret.setBool(_refuse, "refusing");
 	ret.setBool(_closeOnScroll, "closeOnScroll");
 
+	// What the rebuild callback saw, beside what the same row measures NOW: equal means the answer
+	// was complete when it arrived
+	ret.setInteger(int64_t(_rebuildAnswers), "rebuildAnswers");
+	ret.setInteger(std::lround(_rebuildRowWidth), "rebuildRowWidth");
+	Rect watched;
+	ret.setInteger(getCellRect(_rebuildWatchRow, watched) ? std::lround(watched.size.width) : 0,
+			"watchRowWidth");
+
 	if (_table) {
 		ret.setInteger(int64_t(_table->getRowCount()), "rowCount");
 		if (auto scroll = _table->getScroll()) {
@@ -521,6 +529,26 @@ void InlineEditorLayout::registerCommands() {
 		return ackValue(true);
 	});
 
+	/* The engine seam an inline editor over a virtualized row depends on: ask the view to report
+	when its row nodes are current, instead of watching for it every frame. */
+	addCommand("rebuild-callback", "Ask the table to report when its rows are rebuilt: {row}",
+			[this](Value &&args) {
+		if (!_table) {
+			return ackValue(false);
+		}
+		_rebuildWatchRow =
+				size_t(sprt::max(static_cast<const Value &>(args).getInteger("row"), int64_t(0)));
+		_rebuildRowWidth = 0.0f;
+		_table->requestRebuildNodes([this] {
+			++_rebuildAnswers;
+			Rect rect;
+			if (getCellRect(_rebuildWatchRow, rect)) {
+				_rebuildRowWidth = rect.size.width;
+			}
+		});
+		return ackValue(true);
+	});
+
 	addCommand("overlays", "How many overlays the scene content is holding", [this](Value &&) {
 		Value ret;
 		auto content = dynamic_cast<basic2d::SceneContent2d *>(
@@ -540,6 +568,7 @@ void InlineEditorLayout::registerCommands() {
 
 	addCommand("reset-counters", "Zero the ending counters", [this](Value &&) {
 		_commits = _cancels = _closes = _refusals = 0;
+		_rebuildAnswers = 0;
 		_lastCommit.clear();
 		return ackValue(true);
 	});

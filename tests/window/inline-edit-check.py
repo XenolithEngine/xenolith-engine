@@ -12,8 +12,11 @@ Everything here runs headless. The load-bearing facts are the ones a screenshot 
   * Escape restores the text the edit started from - no field here does that on its own, only
     ui::NumberField restores anything, and it restores a different thing;
   * a commit is a QUESTION: refused, the session stays open with the text intact;
-  * and the commit arrives exactly ONCE even when Enter and the press that follows it land in the
-    same interaction, which is the normal way of finishing an edit with the mouse.
+  * the commit arrives exactly ONCE even when Enter and the press that follows it land in the
+    same interaction, which is the normal way of finishing an edit with the mouse;
+  * and ONE editor is open at a time for the whole application: opening the next one cancels
+    whatever was open, refused commits included, so two overlays over one keyboard focus is not a
+    state the widget can be left in.
 
     tests/window/inline-edit-check.py [path-to-testapp]
 
@@ -144,6 +147,10 @@ def state():
 
 def values(st):
     return st.get("values") or []
+
+
+def overlays():
+    return s.invoke("inline-edit.overlays")["count"]
 
 
 try:
@@ -328,6 +335,34 @@ try:
     s.invoke("inline-edit.scroll", delta=-int(round(state().get("scroll", 0) / 100.0)))
     s.ok("frame", count=4)
 
+    # --- being TOLD the rows are current, instead of watching for it ---------------------------------
+    # A row of a virtualized list is built by the view, at the view's pace, so anything placed over one
+    # - an inline editor above all - has to know when it is there. requestRebuildNodes(cb) is that
+    # answer, and the claim under test is WHEN it arrives: at the end of the rebuild, from inside the
+    # visit that performed it, with every row it built already caught up on the visit's phases. What
+    # the callback measures has to be final; a callback landing a hop early would read a zero, or a
+    # width that then changed.
+    s.invoke("inline-edit.reset-counters")
+    check("asking for a report is accepted",
+            s.invoke("inline-edit.rebuild-callback", row=3)["ok"] is True)
+    # Not asserted here: that nothing has answered YET. A command turn over the socket may itself
+    # produce a frame, so "before the next frame" is not a state this side can observe - what it can
+    # observe, and what the claim is about, is that the answer arrives ONCE and arrives complete.
+    s.ok("frame", count=1)
+    st = state()
+    check("the request is answered, exactly once", st["rebuildAnswers"] == 1, st)
+    check("... with the row already measured", st["rebuildRowWidth"] > 0, st)
+    check("... at the width it still has, so there was nothing left to wait for",
+            st["rebuildRowWidth"] == st["watchRowWidth"], st)
+
+    s.ok("frame", count=3)
+    check("a report is one-shot", state()["rebuildAnswers"] == 1, state())
+
+    # ...including across a rebuild nobody attached it to: the callback was consumed, not re-armed
+    s.invoke("inline-edit.rebuild")
+    s.ok("frame", count=3)
+    check("... and is not re-run by the next rebuild", state()["rebuildAnswers"] == 1, state())
+
     # --- the anchor leaving the scene ----------------------------------------------------------------
     s.invoke("inline-edit.reset-counters")
     s.invoke("inline-edit.begin", target="cell", row=1)
@@ -400,6 +435,73 @@ try:
     check("cancelling ends it", st["customEditing"] is False, st)
     check("... without committing", st["commits"] == 0 and st["cancels"] == 1, st)
     check("... and the target is what it was", st["customValue"] is False, st)
+
+    # --- one editor at a time, application-wide ------------------------------------------------------
+    # Two editors at once is not a state this can be in. They are overlays over a single keyboard
+    # focus, so the second takes it and the first is left standing, unfocused, still holding a commit
+    # that will be delivered whenever something finally closes it - out of order with the edit that
+    # replaced it. Worse, as this section's own failure mode shows: with the rule removed the first
+    # session goes on reporting itself open while the scene holds only ONE overlay, which is the
+    # second one, and the next ending on that session takes the process down. Opening the next
+    # session CANCELS the open one, whatever it holds; keeping the outgoing value is the CALLER's to
+    # ask for, by committing before it opens the next.
+    s.invoke("inline-edit.refuse", value=False)
+    s.invoke("inline-edit.reset-counters")
+    s.invoke("inline-edit.begin", target="label")
+    s.ok("frame", count=3)
+    s.invoke("inline-edit.type", value="never meant to be kept")
+    s.ok("frame", count=2)
+    st = state()
+    seeded = st["labelText"]
+    check("a label edit is open", st["labelEditing"] is True, st)
+    check("... and the scene holds one overlay", overlays() == 1, overlays())
+
+    s.invoke("inline-edit.begin", target="custom")
+    s.ok("frame", count=3)
+    st = state()
+    check("opening another editor closes the open one", st["labelEditing"] is False, st)
+    check("... the new one is open", st["customEditing"] is True, st)
+    check("... and the scene still holds one overlay", overlays() == 1, overlays())
+    # The whole of the rule: the ending is a CANCEL, so what was typed is dropped and the label is
+    # what it was seeded with. A commit here would be this side deciding for the author.
+    check("... the outgoing edit was cancelled, not committed",
+            st["cancels"] == 1 and st["commits"] == 0, st)
+    check("... so the label kept the text it started from", st["labelText"] == seeded, st)
+
+    s.invoke("inline-edit.cancel")
+    s.ok("frame", count=3)
+    check("the scene is left with no overlay", overlays() == 0, overlays())
+
+    # A REFUSED commit is the case that used to leave two editors on screen. A caller that means to
+    # keep the outgoing value commits it first - and is answered `false`, because the commit was
+    # refused and that session is STILL open. Opening the next one has to take it away anyway.
+    s.invoke("inline-edit.reset-counters")
+    s.invoke("inline-edit.refuse", value=True)
+    s.invoke("inline-edit.begin", target="label")
+    s.ok("frame", count=3)
+    s.invoke("inline-edit.type", value="refused text")
+    s.ok("frame", count=2)
+    check("a refused commit is answered false", s.invoke("inline-edit.commit")["ok"] is False)
+    s.ok("frame", count=2)
+    st = state()
+    check("... and leaves that editor open", st["labelEditing"] is True, st)
+    check("... on its own overlay", overlays() == 1, overlays())
+
+    s.invoke("inline-edit.refuse", value=False)
+    s.invoke("inline-edit.begin", target="custom")
+    s.ok("frame", count=3)
+    st = state()
+    check("opening the next editor takes the refused one away", st["labelEditing"] is False, st)
+    check("... leaving the one overlay that is open", overlays() == 1, overlays())
+    check("... and the refused text was never committed behind the author's back",
+            st["commits"] == 0, st)
+    check("... it was cancelled", st["cancels"] == 1, st)
+    check("... and the label is what it was", st["labelText"] == seeded, st)
+
+    s.invoke("inline-edit.cancel")
+    s.ok("frame", count=3)
+    check("nothing is left open", overlays() == 0 and state()["customEditing"] is False, state())
+
 finally:
     s.close()
     proc.kill()
