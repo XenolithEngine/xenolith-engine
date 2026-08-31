@@ -222,8 +222,9 @@ Status WindowsContextController::handleDisplayChanged(Extent2) {
 
 Status WindowsContextController::handleInputDevicesChanged() {
 	auto hasTouch = WindowsWindow_hasTouchDigitizer();
+	auto hasPointer = WindowsWindow_hasPointerDevice();
 	for (auto &it : _activeWindows) {
-		it.get_cast<WindowsWindow>()->handleTouchAvailable(hasTouch);
+		it.get_cast<WindowsWindow>()->handleInputDevicesAvailable(hasPointer, hasTouch);
 	}
 	return Status::Ok;
 }

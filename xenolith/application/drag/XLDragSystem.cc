@@ -24,6 +24,8 @@
 #include "XLNode.h"
 #include "XLScene.h"
 #include "XLSceneContent.h"
+#include "XLInputDispatcher.h"
+#include "director/XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -98,13 +100,16 @@ void DragSession::installDecorator(Rc<Node> &&node) {
 	_decorator = sp::move(node);
 }
 
-DragEvent DragSession::makeEvent(DropTarget *target) const {
+DragEvent DragSession::makeEvent(Node *target) const {
 	DragEvent ev;
 	ev.session = const_cast<DragSession *>(this);
 	ev.data = _data;
+	ev.target = target;
 	ev.worldLocation = _world;
-	ev.location = (target && target->getOwner()) ? target->getOwner()->convertToNodeSpace(_world)
-												 : _world;
+	// Through the transform the target was DRAWN with, not convertToNodeSpace: the hit test that
+	// chose this target answered against the drawn frame, and a point resolved against a live tree
+	// that has moved since would not be the point that was hit
+	ev.location = target ? target->getModelToNodeTransform().transformPoint(_world) : _world;
 	ev.allowed = _offer.allowedActions;
 	ev.preferred = _preferred;
 	ev.modifiers = _modifiers;
@@ -120,43 +125,52 @@ void DragSession::update(const Vec2 &world, InputModifier mods) {
 	_modifiers = mods;
 	_preferred = modifiersToActions(mods, _offer.allowedActions, _offer.defaultAction);
 
-	DropTarget *next = nullptr;
+	Node *next = nullptr;
 	DragActions resolved = DragActions::None;
 	auto cursorOverride = WindowCursor::Undefined;
 
-	// Backwards: the roster was filled in visit order, which is paint order, so the last entry
-	// containing the point is the topmost one drawn there
-	auto &targets = _system->_targets;
-	for (size_t i = targets.size(); i > 0; --i) {
-		auto &rec = targets[i - 1];
-		if (!rec.target->isEnabled() || !rec.target->getOwner()) {
-			continue;
-		}
-		if (!rec.worldRect.containsPoint(world)) {
-			continue;
-		}
+	// Topmost first: the registry is walked backwards, because registration order is visit order is
+	// paint order
+	if (auto dispatcher = _system->getDispatcher()) {
+		dispatcher->foreachHitTest(HitTestFlags::DropTarget,
+				[&, this](const InputListenerStorage::HitTestRec &rec) {
+			auto comp = getDropTarget(rec.node);
+			if (!comp || !comp->enabled) {
+				return true;
+			}
+			// The padding is the TARGET's, which is why the registry hands over records instead of
+			// answers - it cannot know how far outside itself each tenant reaches
+			if (!rec.contains(world, comp->padding)) {
+				return true;
+			}
 
-		auto response = rec.target->handleDragAccept(makeEvent(rec.target));
+			auto response =
+					comp->slots.accept ? comp->slots.accept(makeEvent(rec.node)) : DragResponse();
 
-		// The modifier's preference wins when the target can do it; otherwise whatever both
-		// sides CAN agree on happens. That is what lets a Copy-only target take a drag the user
-		// is holding Shift over, instead of silently refusing it
-		auto common = response.accepted & _offer.allowedActions;
-		auto action = hasFlag(common, _preferred) ? _preferred : pickAction(common);
-		if (action == DragActions::None) {
-			continue; // this one refuses; keep looking at whatever is under it
-		}
+			// The modifier's preference wins when the target can do it; otherwise whatever both
+			// sides CAN agree on happens. That is what lets a Copy-only target take a drag the user
+			// is holding Shift over, instead of silently refusing it
+			auto common = response.accepted & _offer.allowedActions;
+			auto action = hasFlag(common, _preferred) ? _preferred : pickAction(common);
+			if (action == DragActions::None) {
+				return true; // this one refuses; keep looking at whatever is under it
+			}
 
-		next = rec.target;
-		resolved = action;
-		cursorOverride = response.cursor;
-		break;
+			next = rec.node;
+			resolved = action;
+			cursorOverride = response.cursor;
+			return false;
+		});
 	}
 
 	setTarget(next, resolved);
 
 	if (_target) {
-		_target->handleDragOver(makeEvent(_target));
+		if (auto comp = getDropTarget(_target)) {
+			if (comp->slots.over) {
+				comp->slots.over(makeEvent(_target));
+			}
+		}
 	}
 
 	updateDecorator();
@@ -172,32 +186,44 @@ void DragSession::update(const Vec2 &world, InputModifier mods) {
 	}
 }
 
-void DragSession::setTarget(DropTarget *next, DragActions resolved) {
+void DragSession::setTarget(Node *next, DragActions resolved) {
 	if (next == _target) {
 		_resolved = resolved;
 		return;
 	}
 
 	if (_target) {
-		_target->handleDragLeave(makeEvent(_target));
+		if (auto comp = getDropTarget(_target)) {
+			if (comp->slots.leave) {
+				comp->slots.leave(makeEvent(_target));
+			}
+		}
 	}
 
 	_target = next;
 	_resolved = resolved;
 
 	if (_target) {
-		_target->handleDragEnter(makeEvent(_target));
+		if (auto comp = getDropTarget(_target)) {
+			if (comp->slots.enter) {
+				comp->slots.enter(makeEvent(_target));
+			}
+		}
 	}
 }
 
-void DragSession::handleTargetGone(NotNull<DropTarget> target) {
+void DragSession::handleTargetGone(NotNull<Node> target) {
 	if (_target != target.get()) {
 		return;
 	}
 
 	// The node left the scene under the pointer. Its `leave` still fires - the bracket is a
 	// promise - but the drag itself carries on looking for somewhere else to land
-	_target->handleDragLeave(makeEvent(_target));
+	if (auto comp = getDropTarget(_target)) {
+		if (comp->slots.leave) {
+			comp->slots.leave(makeEvent(_target));
+		}
+	}
 	_target = nullptr;
 	_resolved = DragActions::None;
 }
@@ -230,7 +256,7 @@ void DragSession::finish(bool performDrop) {
 	// Snapshot first. The drop is allowed to destroy the source, the target and half the subtree
 	// they live in - which is exactly what moving a docked panel does - so nothing may be read
 	// out of a member after it runs
-	Rc<DropTarget> target = _target;
+	Rc<Node> target = _target;
 	auto resolved = _resolved;
 	auto completion = sp::move(_offer.completion);
 
@@ -240,12 +266,25 @@ void DragSession::finish(bool performDrop) {
 	if (target) {
 		auto ev = makeEvent(target);
 
-		// leave BEFORE drop, so the target's highlight is already down while the structural
-		// change happens - and so `enter` and `leave` stay an exact bracket in every path
-		target->handleDragLeave(ev);
+		/* leave BEFORE drop, so the target's highlight is already down while the structural change
+		happens - and so `enter` and `leave` stay an exact bracket in every path.
+
+		The component is looked up again for the drop rather than held across the leave: a slot is
+		entitled to take the target apart, and this is the one path where that is routine. The
+		node itself is held by the Rc above, which is what keeps the slot being CALLED alive while
+		it destroys everything around it. */
+		if (auto comp = getDropTarget(target)) {
+			if (comp->slots.leave) {
+				comp->slots.leave(ev);
+			}
+		}
 
 		if (performDrop && resolved != DragActions::None) {
-			dropped = target->handleDragDrop(ev, resolved);
+			if (auto comp = getDropTarget(target)) {
+				if (comp->slots.drop) {
+					dropped = comp->slots.drop(ev, resolved);
+				}
+			}
 		}
 	}
 
@@ -294,25 +333,26 @@ bool DragSystem::init() {
 
 	_frameTag = DragSystem::Id;
 
-	// Owner + scene events for the lifetime; visit control for the roster brackets; the frame
-	// stack so descendants can find us during their own visit. No visit-self, no node events,
-	// no update tick - a live pointer already keeps frames coming
-	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleVisitControl | SystemFlags::AddToFrameStack;
+	// Owner and scene events for the lifetime, and nothing else. No visit hooks: drop targets
+	// publish themselves into the window's hit-test registry, so there is no roster here to bracket
+	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents;
 	return true;
 }
 
 void DragSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 
-	// getSystem<T>(tag) hands a descendant the NEAREST system with this tag, so a second one
-	// deeper in the tree would quietly take every target below it out of this roster
+	// findForNode hands a widget the NEAREST system above it, so a second one deeper in the tree
+	// would run a drag of its own for half the scene
 	sprt_passert(findForNode(owner->getParent()) == nullptr, "DragSystem must not be nested");
 
 	// The cursor layer. Idle it is disabled, so it registers nothing and costs nothing
 	_cursorListener = Rc<InputListener>::create(CursorListenerPriority);
 	_cursorListener->setEnabled(false);
 	owner->addSystem(_cursorListener);
+
+	// The drag has to notice a press ending that it is no longer in the chain for; see update().
+	scheduleUpdate();
 }
 
 void DragSystem::handleRemoved() {
@@ -325,49 +365,88 @@ void DragSystem::handleRemoved() {
 		_cursorListener = nullptr;
 	}
 
-	_targets.clear();
-	_pendingTargets.clear();
-
 	System::handleRemoved();
 }
 
 void DragSystem::handleExit() {
 	// The whole subtree is leaving the scene; there is nowhere left to drop
 	cancelDrag();
-	_targets.clear();
-	_pendingTargets.clear();
 
 	System::handleExit();
 }
 
-void DragSystem::handleVisitBegin(FrameInfo &info) {
-	System::handleVisitBegin(info);
-	_pendingTargets.clear();
-}
+void DragSystem::update(const UpdateTime &time) {
+	System::update(time);
 
-void DragSystem::handleVisitEnd(FrameInfo &info) {
-	// Everything below has registered by now. Swap rather than assign: the outgoing vector
-	// becomes next frame's scratch and keeps its capacity
-	_targets.swap(_pendingTargets);
-	System::handleVisitEnd(info);
-}
+	/* Who says the current target is gone.
 
-void DragSystem::addTarget(NotNull<DropTarget> target, const Rect &worldRect) {
-	_pendingTargets.emplace_back(TargetRec{Rc<DropTarget>(target.get()), worldRect});
-}
+	A DropTargetComponent has no lifecycle of its own - that is the point of it being data - so
+	nothing announces a target leaving the scene or dropping its component the way the old
+	target-as-a-System did from handleExit. This is where it is noticed instead, which is also the
+	only place that can notice the second case at all.
 
-void DragSystem::handleTargetGone(NotNull<DropTarget> target) {
+	Only "gone", not "no longer under the pointer": re-resolving every frame would turn
+	handleDragOver into a 60Hz event for every drag everywhere, which is exactly what refreshDrag()
+	exists to keep opt-in. */
 	if (_session) {
-		_session->handleTargetGone(target);
+		if (auto target = _session->getTarget()) {
+			if (!target->isRunning() || !getDropTarget(target)) {
+				_session->handleTargetGone(target);
+			}
+		}
 	}
 
-	// Drop it from the committed roster too, or its last known rect stays hittable until the
-	// next frame replaces the whole thing
-	for (auto it = _targets.begin(); it != _targets.end(); ++it) {
-		if (it->target == target.get()) {
-			_targets.erase(it);
-			break;
-		}
+	/* Who ends a drag whose source is gone.
+
+	Normally the source's own listener sees the release and commits. But a source that left the
+	scene mid-drag is inert - InputListener refuses every event once its owner is gone - and it no
+	longer cancels the drag either (see DragSource::handleExit), so nothing would ever tell the
+	session that the pointer came up. The press itself is the thing to watch: while the dispatcher
+	still holds the chain that began this drag, the button is down.
+
+	Committing rather than cancelling, because the chain ends when the user lets go. It ends on a
+	cancellation too - the pointer leaving the window - but that also puts the pointer outside every
+	target, so the commit finds nothing to drop on and is a no-op. */
+	if (!_session || !_owner) {
+		return;
+	}
+
+	// A drag with no input chain behind it - beginDrag called from code, as the tests do - has no
+	// press to outlive. Watching for the disappearance of an id that was never there would end it
+	// on its first frame.
+	if (_session->getInputEventId() == 0) {
+		return;
+	}
+
+	auto director = _owner->getDirector();
+	auto dispatcher = director ? director->getInputDispatcher() : nullptr;
+	if (!dispatcher || dispatcher->isEventActive(_session->getInputEventId())) {
+		return;
+	}
+
+	commitDrag();
+}
+
+InputDispatcher *DragSystem::getDispatcher() const {
+	auto director = _owner ? _owner->getDirector() : nullptr;
+	return director ? director->getInputDispatcher() : nullptr;
+}
+
+size_t DragSystem::getTargetCount() const {
+	size_t count = 0;
+	if (auto dispatcher = getDispatcher()) {
+		dispatcher->foreachHitTest(HitTestFlags::DropTarget,
+				[&](const InputListenerStorage::HitTestRec &) {
+			++count;
+			return true;
+		});
+	}
+	return count;
+}
+
+void DragSystem::handleTargetGone(NotNull<Node> target) {
+	if (_session) {
+		_session->handleTargetGone(target);
 	}
 }
 
@@ -399,6 +478,12 @@ DragSession *DragSystem::beginDrag(DragOffer &&offer, Rc<Ref> &&source, uint32_t
 void DragSystem::updateDrag(const Vec2 &worldLocation, InputModifier mods) {
 	if (_session) {
 		_session->update(worldLocation, mods);
+	}
+}
+
+void DragSystem::refreshDrag() {
+	if (_session) {
+		_session->update(_session->getWorldLocation(), _session->getModifiers());
 	}
 }
 

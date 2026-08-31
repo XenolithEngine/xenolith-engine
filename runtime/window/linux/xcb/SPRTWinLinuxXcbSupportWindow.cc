@@ -189,7 +189,7 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 				_xcb->xcb_input_xi_select_events(_connection->getConnection(),
 						_connection->getDefaultScreen()->root, 1, &eventMask.head);
 
-				updateTouchscreenState();
+				updateInputDevicesState();
 			}
 		}
 	}
@@ -628,7 +628,36 @@ void XcbSupportWindow::handleExtensionEvent(int et, xcb_generic_event_t *e) {
 	}
 }
 
-bool XcbSupportWindow::updateTouchscreenState() {
+/* Whether one XInput device counts as a pointing device for WindowState::InputPointer.
+
+Three exclusions, and every one of them is load-bearing:
+
+ - MASTER_POINTER is the virtual cursor the server keeps whether or not anything drives it. There is
+   always exactly one, so counting masters makes the answer the constant `true`.
+ - the XTEST slave pair exists in every session too - that is how XTEST synthesizes input - and it
+   is a SLAVE_POINTER like any mouse. Only its NAME tells it apart, which is why the device name is
+   read at all.
+ - a touchscreen attaches as a slave pointer as well (that is how core events reach a client from
+   one), so a direct-touch device has to be taken back out or a tablet reports a mouse.
+
+A touchpad is DEPENDENT touch and is deliberately kept: it is a pointing device.  */
+static bool XcbSupportWindow_isRealPointer(const XcbLibrary *xcb,
+		xcb_input_xi_device_info_t *info, bool directTouch) {
+	if (directTouch) {
+		return false;
+	}
+
+	if (info->type != XCB_INPUT_DEVICE_TYPE_SLAVE_POINTER
+			&& info->type != XCB_INPUT_DEVICE_TYPE_FLOATING_SLAVE) {
+		return false;
+	}
+
+	auto name = xcb->xcb_input_xi_device_info_name(info);
+	auto view = StringView(name, info->name_len);
+	return !view.empty() && view.find("XTEST") == Max<size_t>;
+}
+
+bool XcbSupportWindow::updateInputDevicesState() {
 	if (!_xinput.initialized || !_xinput.hasTouchClasses()) {
 		return false;
 	}
@@ -640,13 +669,16 @@ bool XcbSupportWindow::updateTouchscreenState() {
 		return false;
 	}
 
-	bool found = false;
+	bool touchscreen = false;
+	bool pointer = false;
+
 	auto devices = _xcb->xcb_input_xi_query_device_infos_iterator(reply);
-	for (; devices.rem && !found; _xcb->xcb_input_xi_device_info_next(&devices)) {
+	for (; devices.rem; _xcb->xcb_input_xi_device_info_next(&devices)) {
 		if (!devices.data->enabled) {
 			continue;
 		}
 
+		bool directTouch = false;
 		auto classes = _xcb->xcb_input_xi_device_info_classes_iterator(devices.data);
 		for (; classes.rem; _xcb->xcb_input_device_class_next(&classes)) {
 			if (classes.data->type != XCB_INPUT_DEVICE_CLASS_TYPE_TOUCH) {
@@ -654,20 +686,33 @@ bool XcbSupportWindow::updateTouchscreenState() {
 			}
 
 			// DIRECT means the user touches the surface being pointed at - a touchscreen.
-			// DEPENDENT is a touchpad, which is a pointing device and not what this flag is about.
+			// DEPENDENT is a touchpad, which is a pointing device and not what THAT flag is about.
 			auto touch = reinterpret_cast<xcb_input_touch_class_t *>(classes.data);
 			if (touch->mode == XCB_INPUT_TOUCH_MODE_DIRECT) {
-				found = true;
+				directTouch = true;
 				break;
 			}
 		}
+
+		if (directTouch) {
+			touchscreen = true;
+		}
+
+		if (!pointer && XcbSupportWindow_isRealPointer(_xcb, devices.data, directTouch)) {
+			pointer = true;
+		}
+
+		if (touchscreen && pointer) {
+			break;
+		}
 	}
 
-	if (found == _xinput.hasTouchscreen) {
+	if (touchscreen == _xinput.hasTouchscreen && pointer == _xinput.hasPointer) {
 		return false;
 	}
 
-	_xinput.hasTouchscreen = found;
+	_xinput.hasTouchscreen = touchscreen;
+	_xinput.hasPointer = pointer;
 	return true;
 }
 
@@ -679,8 +724,8 @@ bool XcbSupportWindow::handleGenericEvent(xcb_ge_generic_event_t *ev) {
 	if (ev->event_type == XCB_INPUT_HIERARCHY) {
 		// A device was added, removed, enabled or disabled. The event says which device changed,
 		// but not whether anything with a touch class is left, so just re-ask.
-		if (updateTouchscreenState()) {
-			_connection->handleTouchscreenStateChanged(_xinput.hasTouchscreen);
+		if (updateInputDevicesState()) {
+			_connection->handleInputDevicesStateChanged(_xinput.hasPointer, _xinput.hasTouchscreen);
 		}
 	}
 

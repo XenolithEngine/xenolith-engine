@@ -38,13 +38,23 @@ bool Label::Selection::init() {
 	return true;
 }
 
-void Label::Selection::clear() { _vertexes.clear(); }
+void Label::Selection::clear() {
+	_vertexes.clear();
+	_bounds = Rect::ZERO;
+}
 
 void Label::Selection::emplaceRect(const Rect &rect) {
-	_vertexes.addQuad().setGeometry(Vec4(rect.origin.x,
-											_contentSize.height - rect.origin.y - rect.size.height,
-											_textureLayer, 1.0f),
-			rect.size);
+	// The layout hands rects down from the TOP of the box; this node, like every node, measures
+	// from the bottom.
+	const Rect placed(rect.origin.x, _contentSize.height - rect.origin.y - rect.size.height,
+			rect.size.width, rect.size.height);
+
+	_vertexes.addQuad().setGeometry(Vec4(placed.origin.x, placed.origin.y, _textureLayer, 1.0f),
+			placed.size);
+
+	// ZERO is the empty marker set by clear(); a real highlight always has a height, so it can
+	// never be mistaken for one.
+	_bounds = _bounds.equals(Rect::ZERO) ? placed : _bounds.unionWithRect(placed);
 }
 
 // Sprite::updateColor only marks the vertexes when the colour VALUE changed, which is right for a
@@ -652,6 +662,21 @@ void Label::handleContentSizeDirty() {
 
 	_selection->setContentSize(_contentSize);
 	_marked->setContentSize(_contentSize);
+
+	// The highlight quads are built against the HEIGHT of the node that carries them - the label is
+	// Y-up and the layout's rects are Y-down - and that height only arrives here, one phase after
+	// applyLayout computed the rects from the size it had just assigned. So a label that had never
+	// been laid out built its selection against a height of zero and put it below the text, where
+	// the field's scissor cuts it away. That is not a corner case: an inline editor is seeded and
+	// selected in the same act, before its first visit, and its selection never appeared at all.
+	// Rebuilding here is what makes the height and the rects agree, on this path and on every
+	// later resize (a re-wrap, a font-size change) that used to leave an open selection misplaced.
+	if (_selection->getTextCursor() != core::TextCursor::InvalidCursor) {
+		setSelectionCursor(_selection->getTextCursor());
+	}
+	if (_marked->getTextCursor() != core::TextCursor::InvalidCursor) {
+		setMarkedCursor(_marked->getTextCursor());
+	}
 }
 
 void Label::handleTransformDirty(const Mat4 &parent) {
@@ -1012,6 +1037,8 @@ void Label::setSelectionColor(const Color4F &c) { _selection->setColor(c, false)
 
 Color4F Label::getSelectionColor() const { return _selection->getColor(); }
 
+Rect Label::getSelectionRect() const { return _selection->getBounds(); }
+
 void Label::setMarkedCursor(core::TextCursor c) {
 	_marked->clear();
 	_marked->setVisible(c != core::TextCursor::InvalidCursor && c.length > 0);
@@ -1028,6 +1055,8 @@ core::TextCursor Label::getMarkedCursor() const { return _marked->getTextCursor(
 void Label::setMarkedColor(const Color4F &c) { _marked->setColor(c, false); }
 
 Color4F Label::getMarkedColor() const { return _marked->getColor(); }
+
+Rect Label::getMarkedRect() const { return _marked->getBounds(); }
 
 
 LabelDeferredResult::~LabelDeferredResult() { }

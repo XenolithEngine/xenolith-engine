@@ -22,6 +22,8 @@
 
 #include "XLUiPanel.h"
 #include "XLUiStyleResolver.h"
+#include "XL2dScrollView.h"
+#include "XL2dLayerRounded.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -162,12 +164,18 @@ void Panel::updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &cb) 
 }
 
 void Panel::setPathColor(const Color4B &color, bool withOpacity) {
+	// The alpha a colourless call keeps is the OWN layer's, not the one a stylesheet may have put
+	// on the node a moment ago: this is the widget painting itself, and what it is amending is its
+	// own previous paint.
+	_ownPainted = true;
+	_ownStyle.backgroundColor =
+			withOpacity ? color : Color4B(color.r, color.g, color.b, _ownStyle.backgroundColor.a);
+
 	updateStyle([&](NotNull<PanelStyleComponent> c) {
-		auto value = withOpacity ? color : Color4B(color.r, color.g, color.b, c->backgroundColor.a);
-		if (c->backgroundColor == value) {
+		if (c->backgroundColor == _ownStyle.backgroundColor) {
 			return false;
 		}
-		c->backgroundColor = value;
+		c->backgroundColor = _ownStyle.backgroundColor;
 		return true;
 	});
 }
@@ -180,6 +188,10 @@ Color4B Panel::getPathColor() const {
 }
 
 void Panel::setBorderRadius(float radius) {
+	_ownPainted = true;
+	_ownStyle.borderRadiusTopLeft = _ownStyle.borderRadiusTopRight = radius;
+	_ownStyle.borderRadiusBottomRight = _ownStyle.borderRadiusBottomLeft = radius;
+
 	updateStyle([&](NotNull<PanelStyleComponent> c) {
 		if (c->borderRadiusTopLeft == radius && c->borderRadiusTopRight == radius
 				&& c->borderRadiusBottomRight == radius && c->borderRadiusBottomLeft == radius) {
@@ -199,6 +211,10 @@ float Panel::getBorderRadius() const {
 }
 
 void Panel::setOutline(const Color4B &color, float width) {
+	_ownPainted = true;
+	_ownStyle.outlineColor = color;
+	_ownStyle.outlineWidth = width;
+
 	updateStyle([&](NotNull<PanelStyleComponent> c) {
 		if (c->outlineColor == color && c->outlineWidth == width) {
 			return false;
@@ -213,12 +229,27 @@ bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 		const document::StyleValue &value) {
 	using document::ParameterName;
 
-	// CmdReset arrives before the parameters of every style pass (it is not a CSS property, and
-	// no stylesheet can produce it). Dropping the component is the whole implementation: whatever
-	// the pass still declares recreates it below, and whatever it no longer declares is gone -
-	// which is the only way a rule that stopped matching can be undone.
+	/* CmdReset arrives before the parameters of every style pass (it is not a CSS property, and no
+	stylesheet can produce it). It undoes the previous pass in full: whatever this pass still
+	declares is re-applied below, and whatever it no longer declares is gone - which is the only way
+	a rule that stopped matching can be undone.
+
+	IT UNDOES STYLING, NOT PAINT. What the widget put on itself through setPathColor and friends is
+	not a declaration and no pass owns it, so the reset rewinds the component to that layer instead
+	of dropping it; only a widget that never painted itself ends up with no component at all, which
+	is the state the defaults in updateBackgroundImage stand for. Storing both layers in the one
+	component (as this did) made them indistinguishable, and a widget painted from code lost its
+	paint to the first resolver pass that touched it. */
 	if (name == ParameterName::CmdReset) {
-		if (removeComponent<PanelStyleComponent>()) {
+		if (_ownPainted) {
+			updateStyle([&](NotNull<PanelStyleComponent> c) {
+				if (*c == _ownStyle) {
+					return false;
+				}
+				*c = _ownStyle;
+				return true;
+			});
+		} else if (removeComponent<PanelStyleComponent>()) {
 			markContentSizeDirty();
 		}
 		return true;
@@ -274,6 +305,77 @@ bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 		return false;
 	}
 	return true;
+}
+
+namespace {
+
+// A Panel answering to a type of its own.
+//
+// A derived class rather than a free function because Panel::registerStyleAppliers is protected:
+// the appliers route through Panel::setStyleValue, so whoever registers a type has to BE a Panel.
+class ScrollIndicatorPanel : public Panel {
+public:
+	virtual bool init(StringView type) {
+		if (!Panel::init()) {
+			return false;
+		}
+
+		// Panel::init() made this a `panel`, and it is not one: a sheet's panel rules paint cards
+		// and dialogs, and the scroll bar has no business inheriting them
+		removeStyleClass("xl-ui-panel");
+		setType(type);
+		registerStyleAppliers(type);
+		return true;
+	}
+
+protected:
+	using Panel::init;
+};
+
+// Carry over what the node being replaced actually PAINTED with.
+//
+// Not the node's colour: LayerRounded keeps its fill in a path colour and leaves the node's own
+// colour to mean opacity - the track is created black with alpha 0 - so copying that as a tint
+// would multiply every colour a sheet later asks for by black. The fill goes to the fill, and the
+// tint is reset to white, which leaves setIndicatorColor() meaning exactly what it meant before:
+// on a white fill a tint IS the colour.
+static void UiPanel_adoptIndicatorPaint(Node *from, ScrollIndicatorPanel *to) {
+	if (auto layer = dynamic_cast<basic2d::LayerRounded *>(from)) {
+		to->setPathColor(layer->getPathColor(), true);
+		to->setBorderRadius(layer->getBorderRadius());
+	} else {
+		to->setPathColor(Color4B(from->getColor()), false);
+	}
+}
+
+} // namespace
+
+void useStyledScrollIndicator(NotNull<basic2d::ScrollView> view) {
+	// Idempotent: TreeView and TableView each ask for this in init(), and an application that also
+	// asks must not end up with a second pair of nodes
+	if (dynamic_cast<Panel *>(view->getIndicatorNode())) {
+		return;
+	}
+
+	auto track = Rc<ScrollIndicatorPanel>::create(StringView("scroll-indicator-track"));
+	auto thumb = Rc<ScrollIndicatorPanel>::create(StringView("scroll-indicator"));
+	if (!track || !thumb) {
+		return;
+	}
+
+	// Read the old paint BEFORE the swap: setIndicator*Node re-imposes the view's own geometry and
+	// identity on the new node, and the old one is gone by the time it returns
+	UiPanel_adoptIndicatorPaint(view->getIndicatorTrackNode(), track);
+	UiPanel_adoptIndicatorPaint(view->getIndicatorNode(), thumb);
+
+	// The track first: it is the thumb's parent, and swapping it moves whatever thumb is current
+	view->setIndicatorTrackNode(Rc<Node>(track.get()));
+	view->setIndicatorNode(Rc<Node>(thumb.get()));
+
+	// setIndicatorNode carried the old colour across as a tint, which for a Panel would multiply
+	// the fill just adopted. The fill is the colour now
+	thumb->setColor(Color4F::WHITE, false);
+	track->setColor(Color4F::WHITE, false);
 }
 
 } // namespace stappler::xenolith::ui

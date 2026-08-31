@@ -370,6 +370,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_device_reply)
 		SPRT_LOAD_PROTO(xinput, xcb_input_xi_query_device_infos_iterator)
 		SPRT_LOAD_PROTO(xinput, xcb_input_xi_device_info_next)
+		SPRT_LOAD_PROTO(xinput, xcb_input_xi_device_info_name)
 		SPRT_LOAD_PROTO(xinput, xcb_input_xi_device_info_classes_iterator)
 		SPRT_LOAD_PROTO(xinput, xcb_input_device_class_next)
 		SPRT_LOAD_PROTO(xinput, xcb_input_xi_select_events)

@@ -127,6 +127,12 @@ def state(widget="plain"):
     return s.invoke("text-input.state", widget=widget, settle=0.0)
 
 
+def rgb(color):
+    """The ink of a reported colour, without its alpha - which the caret and the selection use
+    differently: the same ink, dimmed."""
+    return (color["r"], color["g"], color["b"])
+
+
 def step(n=1):
     s.ok("frame", count=n)
     time.sleep(0.15)
@@ -483,6 +489,70 @@ st = state()
 expect("\t" not in st["text"], "tab did not type a character", repr(st["text"]))
 expect(st["text"] == "abcd", "tab left the text alone", repr(st["text"]))
 expect(not st["focused"], "tab blurs a field with no navigate callback", st["focused"])
+settle(0.5)
+
+print("== 12. the caret and the selection take the text's ink ==")
+# A caret in the widget's own default ink is invisible on any theme whose text is not that ink, and
+# it used to be exactly that: the colour was read off the label's NODE TINT, while the text itself
+# is painted from the inherited `color` the sheet declares. Both halves of the rule are here: the
+# fields carrying `.tinted` name their colours and must keep them, `readonly` names none and must
+# come out in the text's ink.
+s.invoke("text-input.select-all", widget="plain", settle=0.0)
+step()
+st = state("plain")
+expect(rgb(st["labelSelectionColor"]) == (0x7a, 0x56, 0x00),
+        "a declared --selection-color is used verbatim", st["labelSelectionColor"])
+expect(rgb(st["appliedCaretColor"]) == (0xfc, 0xb4, 0x00),
+        "a declared --caret-color is used verbatim", st["appliedCaretColor"])
+expect(rgb(st["labelMarkedColor"]) == (0x2b, 0x5f, 0x7a),
+        "a declared --marked-color is used verbatim", st["labelMarkedColor"])
+
+s.invoke("text-input.select-all", widget="readonly", settle=0.0)
+step()
+st = state("readonly")
+expect(rgb(st["textColor"]) == (0xe8, 0xe8, 0xe8),
+        "the field's text is drawn in the sheet's colour", st["textColor"])
+expect(rgb(st["appliedCaretColor"]) == rgb(st["textColor"]),
+        "a caret with no colour of its own takes the text's",
+        (st["appliedCaretColor"], st["textColor"]))
+expect(rgb(st["labelSelectionColor"]) == rgb(st["textColor"]),
+        "and so does the selection", (st["labelSelectionColor"], st["textColor"]))
+expect(rgb(st["labelMarkedColor"]) == rgb(st["textColor"]),
+        "and the marked range", (st["labelMarkedColor"], st["textColor"]))
+expect(st["labelSelectionColor"]["a"] < 255,
+        "the selection is the same ink, dimmed - not a block of it",
+        st["labelSelectionColor"]["a"])
+settle(0.5)
+
+print("== 13. the line is centred in the box, and the highlight is inside the line ==")
+# Two facts a colour check cannot see. A single-line field puts its text in the MIDDLE of its box:
+# `readonly` is deliberately far taller than its line, so bottom-aligning it (what the field used
+# to do, unnoticed while every box was barely taller than the text) would leave the text 13px low.
+# That gap is the whole reason an inline editor over a list row read as misaligned.
+st = state("readonly")
+centre = (st["viewportHeight"] - st["labelHeight"]) / 2.0
+expect(st["viewportHeight"] - st["labelHeight"] > 8.0,
+        "the tall field really is much taller than its line",
+        (st["viewportHeight"], st["labelHeight"]))
+expect(abs(st["labelY"] - centre) < 0.5, "the line sits in the middle of the box",
+        (st["labelY"], centre))
+
+st = state("plain")
+expect(abs(st["placeholderY"] - st["labelY"]) < 0.5,
+        "the placeholder sits exactly where the text will",
+        (st["placeholderY"], st["labelY"]))
+
+# And the highlight is built against the size the label actually HAS. It is computed from a
+# top-down rect flipped against the label's height, so a height that arrives after the rects puts
+# the quads below the text, where the field's scissor removes them - visible nowhere, yet reported
+# by every cursor field above as a live selection.
+s.invoke("text-input.select-all", widget="plain", settle=0.0)
+step()
+st = state("plain")
+sel = st["labelSelectionRect"]
+expect(sel["width"] > 0.0 and sel["height"] > 0.0, "a selection is actually drawn", sel)
+expect(sel["y"] >= -0.5 and sel["y"] + sel["height"] <= st["labelHeight"] + 0.5,
+        "and it is drawn over the line, not under it", (sel, st["labelHeight"]))
 settle(0.5)
 
 print()

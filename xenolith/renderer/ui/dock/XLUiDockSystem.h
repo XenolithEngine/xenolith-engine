@@ -259,7 +259,6 @@ protected:
 	Map<String, Rc<Node>> _content;
 
 	// how the dock receives drags; installed on the owner in handleAdded
-	Rc<DropTarget> _dropTarget;
 
 	// the highlight, alive only between a drag entering this dock and leaving it
 	Rc<DockDropIndicator> _indicator;

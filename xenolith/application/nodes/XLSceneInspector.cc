@@ -25,6 +25,7 @@
 #include "XLFocusWithin.h"
 
 #include "XLNode.h"
+#include "XLAction.h" // RenderContinuously, for the `render` command
 #include "XLInheritedStyle.h"
 #include "XLDirector.h"
 #include "XLAppThread.h"
@@ -983,6 +984,46 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		Value result;
 		result.setInteger(count, "count");
 		sendResponse(session, serial, sp::move(result));
+	} else if (cmd == "render") {
+		/* Hold the render loop OPEN, for everything that changes without anyone touching it.
+
+		A window is drawn when something dirties it, and plenty of what a check wants to look at
+		dirties nothing an outside caller can see: a deferred style pass, an action's step, a probe
+		landing, a load finishing. Nobody moves the mouse during an automated run, so those changes
+		are computed and never drawn - which reads from the outside as "the fix did nothing", and
+		reads in a screenshot as the frame before it. This makes the scene redraw regardless.
+
+		It does not produce frames by itself: in headless mode `frame` is still what advances the
+		presentation engine, and this is what makes each of those frames redraw the scene rather
+		than re-present the last one. The pair is the idiom - `render` once, `frame` as needed.
+
+		{seconds: N} bounds it; without one it runs until the window closes. {stop: true} takes it
+		off. Re-invoking replaces the previous one: the action is tagged, and per window, so an
+		auxiliary window is held open through its own `window` id. */
+		if (!target->_owner) {
+			sendError(session, serial, "no scene");
+			return;
+		}
+
+		static constexpr uint32_t RenderTag = "XLInspectorRender"_tag;
+
+		const auto seconds = req.getDouble("seconds");
+		const auto stop = req.getBool("stop");
+
+		target->_owner->stopAllActionsByTag(RenderTag);
+		if (!stop) {
+			if (seconds > 0.0) {
+				target->_owner->runAction(Rc<RenderContinuously>::create(float(seconds)),
+						RenderTag);
+			} else {
+				target->_owner->runAction(Rc<RenderContinuously>::create(), RenderTag);
+			}
+		}
+
+		Value result;
+		result.setBool(!stop, "running");
+		result.setDouble(seconds, "seconds");
+		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "window") {
 		target->handleWindow(session, serial, sp::move(request));
 	} else if (cmd == "quit") {
@@ -1221,6 +1262,22 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		sendResponse(session, serial, encodeConstraints(server->getConstraints()));
 	} else if (op == "geometry") {
 		sendResponse(session, serial, encodeGeometry(server->getWindowGeometry()));
+	} else if (op == "state") {
+		// The raw bits AND the names: a test asserts on a name, while a bug report wants the number
+		// that produced it. getWindowStateDescription is the runtime's own printer, so the two can
+		// never drift apart the way a table copied over here would.
+		auto state = server->getWindowState();
+
+		Value result;
+		result.setInteger(int64_t(sprt::toInt(state)), "bits");
+
+		StringStream names;
+		sprt::window::getWindowStateDescription([&](StringView str) {
+			// every name is emitted with a leading space; the first one has nothing to separate
+			names << (names.empty() ? str.sub(1) : str);
+		}, state);
+		result.setString(names.str(), "state");
+		sendResponse(session, serial, sp::move(result));
 	} else if (op == "resize") {
 		auto width = uint32_t(req.getInteger("width", 0));
 		auto height = uint32_t(req.getInteger("height", 0));
@@ -1247,7 +1304,7 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	} else {
 		sendError(session, serial,
 				toString("unknown window op: ", op,
-						"; expected 'resize', 'constraints', 'geometry' or 'close'"));
+						"; expected 'resize', 'constraints', 'geometry', 'state' or 'close'"));
 	}
 }
 

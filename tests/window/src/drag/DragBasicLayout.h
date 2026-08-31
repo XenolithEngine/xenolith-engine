@@ -45,6 +45,7 @@ class DragBasicLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleEnter(Scene *) override;
+	virtual void handleExit() override;
 
 protected:
 	// Per-target counters. `accepts` is bumped from the acceptance predicate, which is called

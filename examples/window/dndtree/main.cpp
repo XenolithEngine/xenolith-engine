@@ -31,9 +31,10 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
-// Window identity for the example: a regular window with user-space decorations, wide enough that
-// both trees are on screen side by side - a drag between them is the whole point, and it cannot be
-// demonstrated in a window that shows one of them at a time.
+// Window identity for the example: an ordinary system-decorated window (nothing here asks for
+// WindowCreationFlags::UserSpaceDecorations), with a floor on its size rather than a starting
+// extent. The floor is the point: both trees have to be on screen side by side, and a drag between
+// them cannot be demonstrated in a window narrow enough to show one of them at a time.
 DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
 	if (!cfg.window) {
 		cfg.window = Rc<sprt::window::WindowInfo>::alloc();
