@@ -47,12 +47,14 @@ its own, above everything, and the list underneath is free to rebuild as often a
 
 WHAT ENDS A SESSION, and what each ending does with what was typed:
 
-  Enter            commit
-  a press outside  commit (this is "focus loss"; the overlay sees the press, the editor never does)
-  scrolling        commit - the rect it was placed against no longer means the same row
-  window resize    commit, for the same reason
-  the anchor exits commit
-  Escape           CANCEL, and the editor is restored to what it was seeded with
+  Enter               commit
+  a press outside     commit (this is "focus loss"; the overlay sees the press, the editor never
+                      does)
+  scrolling           commit - the rect it was placed against no longer means the same row
+  window resize       commit, for the same reason
+  the anchor exits    commit
+  Escape              CANCEL, and the editor is restored to what it was seeded with
+  another edit opens  CANCEL - see InlineEditSession::init
 
 Committing is a QUESTION, not a notification: `onCommit` returns false to refuse, and a refused
 session stays open with the text intact so the author can fix it. And whatever the ending, the
@@ -138,10 +140,20 @@ protected:
 	bool _hasScroll = false;
 };
 
-/** One editing session. Keep the Rc for as long as the edit should stay open. */
+/** One editing session. Keep the Rc for as long as the edit should stay open.
+
+ONE OF THEM IS OPEN AT A TIME, application-wide. Opening a session CANCELS whatever was open, and it
+does so before it reads anything about the scene - the previous session's onCancel and onClose are
+free to move the very rows the new one is being placed over. A caller that means to keep what the
+outgoing editor holds commits it FIRST; a caller whose commit is REFUSED (`onCommit` answered false,
+so that session is still open) has to decide there and then, because leaving it open only hands its
+ending to the next open. */
 class SP_PUBLIC InlineEditSession : public Ref {
 public:
-	virtual ~InlineEditSession() = default;
+	virtual ~InlineEditSession();
+
+	// The open session, or null. Never more than one - see the note above.
+	static InlineEditSession *getActive();
 
 	virtual bool init(NotNull<Node> anchorContent, const Rect &, Rc<Node> &&editor,
 			InlineEditConfig &&);

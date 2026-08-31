@@ -155,7 +155,14 @@ header highlighted for it, because "stands for no hit" and "is not a hit" were t
 all: its whole reason to exist is that rebuilding every row of a virtualized table underneath an
 open editor leaves the typed text alone, and that a scroll ENDS the edit by keeping what was typed
 rather than dropping it. Nothing about either is visible in a frame - the editor looks the same
-whether the text survived or was silently replaced by a rebuild. `ui::TableView`'s reorder is two such claims at once: a row scrolled out of view still has to
+whether the text survived or was silently replaced by a rebuild. The same file also pins the rule
+that ONE editor is open at a time application-wide, opening the next one cancelling whatever was
+open - refused commits included, which is the case that used to leave a session reporting itself
+open over an overlay the scene had already replaced, and the next ending on it took the process
+down. And it pins the seam that makes an editor over a virtualized row possible at all:
+`requestRebuildNodes(cb)` answers ONCE, at the end of the rebuild, with the rows it built already
+measured - the width the callback reads has to be the width they still have, or a caller would have
+something left to wait for and no way to know it. `ui::TableView`'s reorder is two such claims at once: a row scrolled out of view still has to
 answer with a rectangle - which is what the drop index and the insertion line are computed from -
 and after a move the selection has to follow the ROW rather than the index it used to sit at, two
 states that look identical for one frame and diverge forever after. The hotkey
