@@ -250,6 +250,9 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 
 		menu->setHoverConfig(chain->getConfig().hover);
 
+		// What keeps this level from being closed by the level above while the pointer is in it
+		menu->setPointerEnterHandler([chain] { chain->handlePointerEntered(); });
+
 		if (chain->getConfig().keyboard) {
 			menu->setKeyboardEnabled(true);
 			auto &highlight = chain->getConfig().highlight;
@@ -373,6 +376,17 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 			sp::move(config), this);
 	_childItem = _child ? Rc<MenuSourceButton>(item.get()) : nullptr;
 	return _child != nullptr;
+}
+
+void MenuPopupChain::handlePointerEntered() {
+	// EVERY level above, not only the one that opened this: a pointer that reached a third level
+	// crossed the second and the first, and each of them armed a close on the way past.
+	for (auto parent = _parent; parent; parent = parent->_parent) {
+		auto owner = parent->getOwner();
+		if (auto menu = owner ? owner->getSystemByType<MenuSystem>() : nullptr) {
+			menu->cancelSubmenuDelay();
+		}
+	}
 }
 
 void MenuPopupChain::dismissChild() {

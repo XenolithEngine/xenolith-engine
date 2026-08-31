@@ -95,6 +95,22 @@ obvious way of driving frames.
   polling "has it happened yet" competes with what it is waiting for. Measured: at eight thousand
   nodes a 20 Hz poll of a command that touches the scene stopped frames happening at all.
 
+**And a frame is not a REDRAW** — the fourth fact, and the one that sends a reader looking for a bug
+that is already fixed. A window draws what is dirty, and a scene that changed itself from a callback
+(a deferred style pass, an action stepping, a probe landing, a load finishing) dirtied nothing the
+outside can see. `frame` advances the presentation engine all the same, so what comes back is the
+picture from BEFORE the change. Nobody is moving the mouse during an automated run, which is the one
+thing that would have dirtied it by accident.
+
+The other half is the inspector's `render` command: `{"cmd": "render"}` runs a tagged
+`RenderContinuously` on that window's scene, so every frame after it redraws. `{"seconds": N}` bounds
+it, `{"stop": true}` takes it off, and `"window"` aims it at an auxiliary window like every other
+command. It produces no frames of its own — `frame` is still what advances a headless presentation
+engine — so the idiom is `render` once, when the app comes up, and `frame` as often as the work
+needs. **Send it before any screenshot, and before reading anything a callback computed.** In the
+studio repository `studiocheck.hold_render()` is the same call. Absent it, a screenshot is evidence
+about the wrong frame.
+
 The consequence for any harness: **do not poll, and do not capture to force a frame.** Drive one
 frame, then wait for evidence that it happened — a counter incremented during the visit — or better,
 let the run live inside the scene and answer once when it is done. The studio repository's
