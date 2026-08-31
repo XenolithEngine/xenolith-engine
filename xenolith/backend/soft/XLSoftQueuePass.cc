@@ -29,6 +29,8 @@
 #include "XLCoreFrameRequest.h"
 #include "XLCoreSwapchain.h"
 
+#include <sprt/cxx/atomic>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
 bool RenderPass::init(Device &dev, const core::QueuePassData &data) {
@@ -271,6 +273,115 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 	return true;
 }
 
+/* ---- the frame budget ---------------------------------------------------------------------------
+
+Counters are cumulative and every report is a running average over the whole run, like the
+rasterizer profile. That is what makes a short interval usable: any one frame of a software
+renderer is noise (a font atlas batch, a scheduler tick), and the average is the only form in which
+these numbers can be compared between two builds.
+
+Atomic because `present` need not be the thread that ran the pass - the presentation engine calls
+it wherever the swapchain lives - and because being wrong about that would show up as a plausible
+number rather than as a crash. Five relaxed increments a frame cost nothing next to the work being
+measured. */
+static sprt::atomic<uint64_t> s_budgetStage[toInt(FrameStage::Count)] = {};
+static sprt::atomic<uint64_t> s_budgetFrames{0};
+static sprt::atomic<uint64_t> s_budgetPeriod{0};
+
+// The reporting interval, resolved once. Same grammar as XL_SOFT_PROFILE: N = every N frames,
+// unset or 0 = off, anything unparseable = 60.
+static uint64_t FrameBudget_interval() {
+	static const uint64_t value = [] () -> uint64_t {
+		auto env = ::getenv("XL_SOFT_BUDGET");
+		if (!env) {
+			return 0;
+		}
+		auto str = StringView(env);
+		if (str == "0") {
+			return 0;
+		}
+		auto n = str.readInteger(10).get(0);
+		return n > 0 ? uint64_t(n) : 60;
+	}();
+	return value;
+}
+
+bool isFrameBudgetEnabled() { return FrameBudget_interval() != 0; }
+
+void addFrameStageTime(FrameStage stage, uint64_t micros) {
+	if (stage < FrameStage::Count) {
+		s_budgetStage[toInt(stage)].fetch_add(micros);
+	}
+}
+
+// When the last present returned. Zero until the first one, which is what makes the first frame
+// of a run contribute nothing: it has no previous present to measure a gap from, and charging it
+// with everything that happened before the window existed would poison the average for good.
+static Time s_budgetPresented;
+
+void openFrameBudget() {
+	if (FrameBudget_interval() == 0 || s_budgetPresented == Time()) {
+		return;
+	}
+	addFrameStageTime(FrameStage::Wait, (Time::now() - s_budgetPresented).toMicros());
+}
+
+void closeFrameBudget() {
+	auto interval = FrameBudget_interval();
+	if (interval == 0) {
+		return;
+	}
+
+	// The period is present-to-present.
+	auto &previous = s_budgetPresented;
+	auto now = Time::now();
+	auto frames = s_budgetFrames.fetch_add(1) + 1;
+	if (previous != Time()) {
+		s_budgetPeriod.fetch_add((now - previous).toMicros());
+	}
+	previous = now;
+
+	if (frames % interval != 0) {
+		return;
+	}
+
+	uint64_t stage[toInt(FrameStage::Count)];
+	uint64_t accounted = 0;
+	for (uint32_t i = 0; i < toInt(FrameStage::Count); ++i) {
+		stage[i] = s_budgetStage[i].load();
+		accounted += stage[i];
+	}
+
+	auto period = s_budgetPeriod.load();
+
+	// `other` is a subtraction, so it can come out negative: the stages are timed on the loop
+	// thread while the period is measured at present, and on the very first reports the two have
+	// not yet covered the same frames. Report it clamped rather than as a wrapped unsigned - a
+	// negative residual means "not enough frames yet", not "the app half is free".
+	auto other = period > accounted ? period - accounted : 0;
+
+	// Percentages of the period, not of the accounted total: the whole question is how much of the
+	// frame the render half is, and normalizing to itself would hide exactly that.
+	auto pct = [&] (uint64_t v) { return period ? double(v) * 100.0 / double(period) : 0.0; };
+	auto per = [&] (uint64_t v) { return double(v) / double(frames); };
+
+	log::source().debug("soft::budget", "frames=", frames, " period=", per(period),
+			"us/frame (", period ? 1'000'000.0 * double(frames) / double(period) : 0.0, " fps)");
+	log::source().debug("soft::budget", "  wait=", per(stage[toInt(FrameStage::Wait)]), "us ",
+			pct(stage[toInt(FrameStage::Wait)]), "%",
+			" vertex=", per(stage[toInt(FrameStage::Vertex)]), "us ",
+			pct(stage[toInt(FrameStage::Vertex)]), "%",
+			" record=", per(stage[toInt(FrameStage::Record)]), "us ",
+			pct(stage[toInt(FrameStage::Record)]), "%",
+			" clear=", per(stage[toInt(FrameStage::Clear)]), "us ",
+			pct(stage[toInt(FrameStage::Clear)]), "%");
+	log::source().debug("soft::budget", "  raster=", per(stage[toInt(FrameStage::Raster)]), "us ",
+			pct(stage[toInt(FrameStage::Raster)]), "%",
+			" present=", per(stage[toInt(FrameStage::Present)]), "us ",
+			pct(stage[toInt(FrameStage::Present)]), "%",
+			" other=", per(other), "us ", pct(other), "%");
+}
+
 // XL_SOFT_PROFILE=1 reports what the rasterizer actually costs.
 //
 // It times raster::draw and nothing else, deliberately. A frame-level number would be useless
@@ -451,6 +562,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// whose damage is the whole surface it is the single largest writer.
 		raster::FillStats clearFill;
 		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
+			FrameStageTimer timer(FrameStage::Clear);
 			auto imgAttachment =
 					static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
 			for (auto &it : redrawAreas) {
@@ -458,7 +570,10 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			}
 		}
 
-		recordSubpass(q, *subpass, *buf);
+		{
+			FrameStageTimer timer(FrameStage::Record);
+			recordSubpass(q, *subpass, *buf);
+		}
 
 		// The command list is built once; only the rasterization repeats, per tile of per region,
 		// and a command outside a tile is rejected before any pixel work. The tiling and the
@@ -469,9 +584,17 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		auto started = Time::now();
 		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
 				&tiling);
+		auto elapsed = Time::now() - started;
 		tiling.fill.add(clearFill);
-		QueuePassHandle_profileFrame(Time::now() - started, redrawAreas, tiling,
+		QueuePassHandle_profileFrame(elapsed, redrawAreas, tiling,
 				Extent2(target.width, target.height));
+
+		// The same span the profile above reports, charged to the budget as well: the two
+		// instruments are turned on separately, and the budget must not depend on the profile
+		// being on to know what the rasterizer cost.
+		if (isFrameBudgetEnabled()) {
+			addFrameStageTime(FrameStage::Raster, elapsed.toMicros());
+		}
 
 		_frameFill.add(tiling.fill);
 		handlePassRasterized(q);

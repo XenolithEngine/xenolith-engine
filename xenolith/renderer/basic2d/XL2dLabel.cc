@@ -521,11 +521,11 @@ Rc<LabelDeferredResult> Label::runDeferred(sprt::dispatch::Looper *queue, TextLa
 #if XL_FRAME_ACCOUNT
 		// The other kind of deferred task, and it has to be counted too: a node view at full detail
 		// is a dozen Labels, so on a graph the text can outweigh the tesselation.
-		const auto workStart = sp::platform::nanoclock(ClockType::Monotonic);
+		const auto workStart = core::getAccountClock();
 #endif
 		auto result = Label::writeResult(format, color, layer);
 #if XL_FRAME_ACCOUNT
-		ret->setWorkTime(sp::platform::nanoclock(ClockType::Monotonic) - workStart);
+		ret->setWorkTime(core::getAccountClock() - workStart);
 #endif
 		ret->setResult(sp::move(result));
 	}, ret);
