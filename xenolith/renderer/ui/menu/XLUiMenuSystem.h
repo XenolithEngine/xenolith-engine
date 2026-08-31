@@ -145,8 +145,27 @@ public:
 	is one the user then has to dismiss by hand. */
 	virtual void setWillActivateCallback(ActivateCallback &&);
 
+	/* Told that the pointer arrived over this menu - the entering edge, and anywhere ON it rather
+	than on a row of it.
+
+	A level of a chain reports UPWARDS with this. The menu above armed a close the moment the
+	pointer left the row that opened this one, and the pointer having arrived here is exactly what
+	must call that off: without it the level is taken down under the pointer that walked into it,
+	which is the whole thing the close delay exists to prevent. It resumes on its own - the pointer
+	going back to a row of the level above arms it again.
+
+	Rows cannot answer this. A pointer resting on a separator, on the padding, or in the gap between
+	two rows is still in this menu, and none of those is a row that reports a hover. */
+	using PointerEnterHandler = Function<void()>;
+	virtual void setPointerEnterHandler(PointerEnterHandler &&);
+
 	virtual void setSubmenuHandler(SubmenuHandler &&);
 	virtual void setSubmenuCloseHandler(SubmenuCloseHandler &&);
+
+	/* Forget whatever the pointer had pending here - an open that has not fired, a close that has
+	not fired. Public because a level of a chain calls it on the levels ABOVE it: see
+	MenuPopupChain::handlePointerEntered. Free to be called with nothing armed. */
+	virtual void cancelSubmenuDelay();
 
 	// --- the pointer ----------------------------------------------------------------------------
 
@@ -237,8 +256,12 @@ protected:
 	Cancels the previous one first, and a zero delay is answered on the spot rather than through the
 	action manager. */
 	void armSubmenu(MenuSourceButton *item, TimeInterval delay);
-	void cancelSubmenuDelay();
 	void fireSubmenu();
+
+	// The listener that reports the pointer over the menu AS A WHOLE; built only for a menu that
+	// asked to be told (setPointerEnterHandler), because nothing else needs one.
+	void enablePointerListener();
+	void disablePointerListener();
 
 	bool handleKey(const GestureData &);
 
@@ -291,6 +314,9 @@ protected:
 	// reason _system is raw in MenuItem.
 	FocusGroup *_focus = nullptr;
 	InputListener *_keyListener = nullptr;
+
+	PointerEnterHandler _pointerEnterHandler;
+	InputListener *_pointerListener = nullptr;
 	Rc<MenuSourceItem> _highlighted;
 	bool _keyboardEnabled = false;
 };

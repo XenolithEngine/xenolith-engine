@@ -44,7 +44,8 @@ DO NOT use these (they parse but do nothing, or don't exist):
 | `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
 | `overscroll-behavior` `scroll-behavior` `scroll-snap-*` `scrollbar-gutter` | **not registered** (`overflow` itself IS supported — see below) |
 | `background` shorthand | **absent** — write `background-color` etc. individually |
-| `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`) can draw them |
+| `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`, and `menu`, the popup surface) can draw them |
+| `outline-*` / `border-radius` inheriting into children | they do **not**, as on the web — box decoration stays on the box that declared it |
 | `border-*` (the line, not the radius) | parsed everywhere, **consumed only by table cells** — elsewhere use `outline-*` |
 | bare number for size (`width: 100`) | **rejected** — must have a unit (`100px`/`100%`/`1em`); only `line-height: 1.5` takes a bare number |
 | elliptical `border-radius: H / V` | only H read; `/ V` dropped |
@@ -193,6 +194,11 @@ NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, `:not()`/
 ```
 - Untyped: the value is raw text parsed where it is substituted, so a variable can be a colour,
   a length or a shorthand. A typo is diagnosed at the USE, not at the declaration.
+- **Widgets read variables for what the subset has no property for.** `ui::TextInput` takes
+  `--caret-color`, `--selection-color` and `--marked-color`; declare none and all three follow
+  the TEXT's colour (the caret in the same ink, the other two dimmed). A single-line field
+  **centres its line vertically** in what `height` and `padding` leave, so vertical padding is
+  symmetry, not placement.
 - **The variable inherits; a declaration using it does not.** `width: var(--w)` on a parent is
   not the child's width.
 - Full cascade of variables is resolved before substitution, so a variable from a MORE specific

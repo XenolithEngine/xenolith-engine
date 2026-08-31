@@ -78,13 +78,19 @@ public:
 	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
 			const document::StyleValue &);
 
+	/* Registers the shared surface appliers (background-color, outline-*, border-radius, CmdReset)
+	for CSS type `type`, routing them all into Panel::setStyleValue. Repeated calls for the same
+	type are ignored.
+
+	Every Panel-derived atom calls it with its own type from init(). It is PUBLIC because a caller
+	that renames a panel's type from outside - ui::openPopupSurface gives the menu surface the type
+	`menu` - has to register the appliers under that name too: without them the type matches, the
+	declarations are read, and nothing consumes them, so `background-color` ends up as the node's
+	TINT and multiplies the fill instead of replacing it. */
+	static void registerStyleAppliers(StringView type);
+
 protected:
 	using VectorSprite::init;
-
-	// Registers the shared surface appliers (background-color, outline-*, border-radius, CmdReset)
-	// for CSS type `type`, routing them all into Panel::setStyleValue. Every Panel-derived atom
-	// calls it with its own type from init(); repeated calls for the same type are ignored.
-	static void registerStyleAppliers(StringView type);
 
 	// (re)build the VectorImage: a (optionally rounded) rect filled with the resolved background
 	// colour, plus an outline stroke when its width is > 0

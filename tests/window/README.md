@@ -91,6 +91,16 @@ event only becomes text when it is injected with `native: true`, which routes it
 window and therefore through the platform's text-input processor; IME composition has no keystroke
 at all and goes through the separate `text` command.
 
+Two of its assertions are geometry rather than state, because a selection that is REPORTED and a
+selection that is DRAWN are different facts. The highlight is built by flipping the layout's
+top-down rects against the label's height, so one computed before the label had a height lands
+below the text, where the field's scissor removes it - live in every cursor field and visible
+nowhere. Both `text-input-check.py` and `inline-edit-check.py` read back where the highlight
+actually ended up, and the second is the one that reproduces it: an inline editor is seeded and
+selected before its first visit, which no placed field ever is. The same two read back where the
+LINE is, because a single-line field centres it in its box and only a box much taller than its
+line - which is what an editor covering a list row gets - can tell centred from bottom-aligned.
+
 `xcb-side-check.py` is the exception to all of this: it needs a live X11 server and python-xlib,
 because it drives a real window with XTEST. That is the only way to check that the backend reports
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and

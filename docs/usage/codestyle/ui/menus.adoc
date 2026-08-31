@@ -225,6 +225,23 @@ so every level of one menu answers the pointer alike; an inline menu is told wit
 `MenuSystem::setHoverConfig`. `openSubmenu = false` returns the old behaviour
 exactly: a click and `Right`, nothing else.
 
+**Arriving in a level cancels the close the level above had armed**, and nothing
+re-arms it until the pointer goes back to a row up there. The delay alone was
+never enough: it makes the diagonal trip *survivable*, not certain, and a pointer
+that took longer than 400 ms — or that simply stopped on the way — had the
+submenu taken down from under it. So the level that was arrived at says so, up
+the whole chain (`MenuSystem::setPointerEnterHandler` →
+`MenuPopupChain::handlePointerEntered` → `cancelSubmenuDelay` on every level
+above). It is reported for the MENU, not for a row of it: a pointer resting on a
+separator, on the padding or in the gap between two rows is still in that menu,
+and none of those is a row that hovers.
+
+A hover in a menu is reported at all only because the row's mouse-over recognizer
+does **not** require the window to hold the keyboard focus
+(`InputMouseOverInfo::onlyFocused`): a popup surface never takes focus, so a menu
+gated on it would never highlight a row and never open a level by pointing. That
+is `ui::Button`'s setting, and every widget built on one inherits it.
+
 **`MenuPopupChain::openSubmenu` is idempotent for the row that is already open.**
 Not an optimization: the pointer leaving a submenu back onto the row that opened
 it asks again on every entering edge, and rebuilding the level would flicker it
@@ -453,8 +470,12 @@ The context-menu half has a stand of its own behind `XL_CONTEXT_MENU_TEST=1`
 invisible target, one that offers nothing, and a widget that swallows the right
 button. `tests/window/context-menu-check.py` drives it — 36 checks, headless.
 `examples/window/dndtree` is the worked example: a right click on a row offers
-Delete, and on a category Expand/Collapse as well, built by
-`DndTreeView::buildContextMenu` from the row the point resolved to.
+Rename and Delete, and on a category Expand/Collapse as well, built by
+`DndTreeView::buildContextMenu` from the row the point resolved to. Rename is the
+one that leaves the menu behind — it opens a `ui::InlineEditSession` over the row's
+rectangle, which is a second place the sheet has to be carried by hand: an inline
+editor lives on an overlay of the scene's content node, outside the subtree the
+application's `ui::StyleResolver` walks, exactly as a popup is a scene of its own.
 
 `tests/window` carries the stand behind `XL_MENU_TEST=1`
 (`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup,

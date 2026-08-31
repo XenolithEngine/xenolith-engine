@@ -129,11 +129,53 @@ tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label { font-weight:
    the ui::StyleSystem carrying this sheet lives on THIS window's content and does not reach it. The
    demo hands the same literal to ui::ContextMenuSystem, which is why these rules can be here and
    why the variables above resolve inside the menu as well. */
-menu            { background-color: #2b3038; border-radius: 6px;
-                  outline-color: #14161a; outline-width: 1px; outline-style: solid; }
-menu-item       { background-color: transparent; border-radius: 4px; }
-menu-item:hover { background-color: var(--row-hover); }
-menu-item > label { color: var(--text); font-size: 13px; }
+menu {
+	background-color: #2b3038;
+	border-radius: 6px;
+	outline-color: #14161a;
+	outline-width: 1px;
+	outline-style: solid;
+}
+
+/* A row is a ui::Button under the type `menu-item`, so the interactive pseudo-classes are the
+   ordinary ones. `transparent` rather than the menu's own colour: the surface is what shows
+   through a row nobody is pointing at, exactly as with `tree-row` above. */
+menu-item          { background-color: transparent; border-radius: 4px; }
+menu-item:hover    { background-color: var(--row-hover); }
+menu-item:active   { background-color: #3f4854; }
+menu-item:disabled { background-color: transparent; }
+
+menu-item > label            { color: var(--text); font-size: 13px; }
+menu-item:disabled > label   { color: #5c6470; }
+
+/* The four slots a row can carry, each its own node and its own type: the leading icon, the
+   accelerator, the second line, and the chevron on a row that opens a submenu. */
+.xl-ui-menu-item-icon { color: var(--text); }
+menu-item-shortcut    { color: var(--text-dim); font-size: 12px; }
+menu-item-subtitle    { color: var(--text-dim); font-size: 11px; }
+menu-item-trailing    { color: var(--text-dim); }
+menu-item:hover > menu-item-trailing { color: var(--text); }
+
+/* The separator is a Panel of its own inside the row that stands for it, so the colour goes on the
+   line and not on the row. */
+menu-separator { background-color: #3f4854; }
+
+/* --- renaming a row ------------------------------------------------------------------------- */
+/* The editor is an overlay in THIS scene, not a popup, so these ordinary rules reach it - unlike
+   the menu rules above, which have to be handed to the popup separately. It is sized by the
+   rectangle it was opened over (the row's), so there is no width or height here: what a sheet has
+   to say is only what it looks like. */
+inline-editor {
+	background-color: #1b1e24;
+	outline-color: #fcb400;
+	outline-width: 1px;
+	outline-style: solid;
+	border-radius: 3px;
+	padding-left: 6px;
+	padding-right: 6px;
+	color: #ffffff;
+	font-size: 14px;
+}
 
 /* --- the scroll bars ------------------------------------------------------------------------ */
 /* ui::TreeView hands its indicator to the stylesheet for itself (ui::useStyledScrollIndicator), so
@@ -455,8 +497,8 @@ void DndTreeDemoLayout::refreshStatus(StringView lastAction) {
 	const auto right = _right && _right->getSource() ? _right->getSource()->getNodeCount() : 0;
 
 	// getNodeCount() counts the root too, and a root is not something anybody dragged there.
-	_statusLabel->setString(toString("Library: ", left ? left - 1 : 0,
-			"   Project: ", right ? right - 1 : 0, "   |   Ctrl = copy, Shift = move   |   ",
+	_statusLabel->setString(toString("Library: ", left ? left - 1 : 0, "   Project: ",
+			right ? right - 1 : 0, "   |   Ctrl = copy, Shift = move, right click = menu   |   ",
 			_lastAction.empty() ? StringView("idle") : StringView(_lastAction)));
 }
 
@@ -663,8 +705,11 @@ void DndTreeDemoLayout::runSelfCheck() {
 		auto leafMenu = _right->buildContextMenu(2); // 'Loose item 01', a leaf
 		expect(leafMenu != nullptr, "a leaf offered no menu at all");
 		if (leafMenu) {
-			expect(leafMenu->count() == 1 && leafMenu->getItem("delete") != nullptr,
-					"a leaf's menu is not just Delete");
+			// New, Rename, Delete - a leaf is not somewhere to expand or collapse, so those are
+			// the only three
+			expect(leafMenu->count() == 3, "a leaf's menu is not New, Rename and Delete");
+			expect(leafMenu->getItem("rename") != nullptr, "a leaf cannot be renamed");
+			expect(leafMenu->getItem("delete") != nullptr, "a leaf cannot be deleted");
 		}
 
 		// A category offers the toggle as well, and the toggle SAYS which way it goes: the row is
@@ -700,10 +745,37 @@ void DndTreeDemoLayout::runSelfCheck() {
 		}
 
 		// The empty space below the last row belongs to the root, which is not an element: what it
-		// offers is about the whole tree
+		// offers is about the whole tree - and it cannot be renamed, because there is nothing there
+		// to give a name to
 		auto rootMenu = _right->buildContextMenu(maxOf<size_t>());
 		expect(rootMenu && rootMenu->getItem("expand-all") && rootMenu->getItem("collapse-all"),
 				"the background does not offer the whole-tree commands");
+		expect(rootMenu && rootMenu->getItem("rename") == nullptr,
+				"the background offers to rename something that is not an element");
+
+		/* Renaming writes through to the MODEL, and the row follows through the model's own
+		notification - the same shape as Delete below, and the same reason: nothing here refreshes
+		anything.
+
+		Driven through renameRow rather than through the editor: this runs before the layout is in
+		a scene, so there is no overlay to open one on. What the editor's commit does with the text
+		is this call, so what is skipped is the typing. */
+		if (auto row = _right->getRow(1); row && row->node) {
+			const auto id = row->node->getId();
+			const auto before = row->node->getData().getString("name");
+
+			expect(!_right->renameRow(1, "  "), "a name of nothing but blanks was accepted");
+			expect(_right->getSource()->getNode(id)->getData().getString("name") == before,
+					"a refused rename changed the element anyway");
+
+			expect(_right->renameRow(1, "  Renamed row  "), "a rename was refused");
+			expect(_right->getSource()->getNode(id)->getData().getString("name") == "Renamed row",
+					"the new name did not reach the model, or kept its blanks");
+			expect(_right->getRow(1) && _right->getRow(1)->node
+							&& _right->getRow(1)->node->getData().getString("name")
+									== "Renamed row",
+					"the row still stands for the old name");
+		}
 
 		/* Deleting takes the element out of the MODEL, and the row list follows through the
 		model's own notification rather than through anything the menu does.
@@ -731,6 +803,112 @@ void DndTreeDemoLayout::runSelfCheck() {
 		}
 	}
 
+	/* 8. Creating an element from the menu: where it goes, and what it leaves behind.
+
+	Only the half that has no editor in it. `New` puts a REAL element into the model and then waits
+	for its row before opening one - and this runs before the layout is in a scene, exactly as the
+	rename above does, so there is no overlay for an editor to live on. What is checkable here is
+	everything up to that point: what the menu offers, where the element lands, and that the
+	waiting editor gives up cleanly when the element is taken away again. The editor half is driven
+	over the inspector instead, with `dndtree.create` followed by `dndtree.rename`. */
+	{
+		auto menu = _left->buildContextMenu(1); // a leaf
+		auto entry = menu ? dynamic_cast<ui::MenuSourceButton *>(menu->getItem("new")) : nullptr;
+		expect(entry != nullptr, "a row offers nothing to create");
+		expect(entry && entry->hasSubmenu(), "New is not a submenu, so nothing opens on hover");
+
+		auto items = entry ? entry->getSubmenu() : nullptr;
+		expect(items && items->getItem("new-item") && items->getItem("new-category"),
+				"New does not offer both kinds");
+
+		// The empty space is not an element, so it offers no Rename and no Delete - but it is
+		// still somewhere to put something, which is the whole point of it answering for the root
+		auto rootMenu = _left->buildContextMenu(maxOf<size_t>());
+		expect(rootMenu && rootMenu->getItem("new") != nullptr,
+				"the background offers nowhere to create");
+
+		if (auto cat = _left->getRow(0); cat && cat->node && cat->node->isCategory()) {
+			auto point = _left->getInsertPoint(0);
+			expect(point.parent == cat->node, "a new element on a category did not go into it");
+			expect(point.index == 0, "a new element in a category did not go in first");
+
+			// ...and open it, so that the leaf rows below exist for the rest of this section. The
+			// sections above leave the trees in a state this one may not assume anything about.
+			if (!cat->expanded) {
+				_left->expandRow(0);
+			}
+		}
+
+		/* The row is SEARCHED for rather than named: the sections above have moved elements between
+		the trees and opened and closed categories, so which index holds a leaf is not something
+		this check may assume - and a category would send the new element somewhere else entirely,
+		which is the rule just above. */
+		size_t leafRow = maxOf<size_t>();
+		for (size_t i = 0; i < _left->getRowCount(); ++i) {
+			auto it = _left->getRow(i);
+			if (it && it->node && !it->node->isCategory() && it->node->getParent()) {
+				leafRow = i;
+				break;
+			}
+		}
+		expect(leafRow != maxOf<size_t>(), "the left tree has no leaf to create beside");
+
+		if (auto leaf = _left->getRow(leafRow); leaf && leaf->node) {
+			auto point = _left->getInsertPoint(leafRow);
+			expect(point.parent == leaf->node->getParent(),
+					"a new element beside a leaf did not land among its siblings");
+			expect(point.index == leaf->node->getChildIndex() + 1,
+					"a new element beside a leaf did not land directly after it");
+		}
+
+		auto rootPoint = _left->getInsertPoint(maxOf<size_t>());
+		expect(rootPoint.parent == _left->getSource()->getRoot(),
+				"the background sends a new element somewhere other than the root");
+		expect(rootPoint.index == maxOf<size_t>(),
+				"a new element from the background is not appended");
+
+		// Choosing the item is what a click does, and the only way to observe that the callback
+		// hanging off it is the one that creates something
+		if (auto leaf = _left->getRow(leafRow); leaf && leaf->node) {
+			auto parent = leaf->node->getParent();
+			const auto before = parent ? parent->getChildCount() : 0;
+			const auto at = leaf->node->getChildIndex() + 1;
+
+			auto rowMenu = _left->buildContextMenu(leafRow);
+			auto rowEntry = rowMenu ? dynamic_cast<ui::MenuSourceButton *>(rowMenu->getItem("new"))
+									: nullptr;
+			auto rowItems = rowEntry ? rowEntry->getSubmenu() : nullptr;
+			auto item = rowItems
+					? dynamic_cast<ui::MenuSourceButton *>(rowItems->getItem("new-item"))
+					: nullptr;
+			if (item && item->getCallback()) {
+				item->getCallback()(item);
+			}
+
+			expect(parent && parent->getChildCount() == before + 1,
+					"choosing New did not add an element");
+			expect(parent && at < parent->getChildCount()
+							&& parent->getChildren()[at]->getData().getString("name") == "New item",
+					"the new element is not where the menu said it would go, or has no name");
+			expect(_left->isEditorPending(),
+					"nothing is waiting to name the new element, so it never will be");
+
+			/* Taking it away again must call the waiting editor off.
+
+			The element is what the editor was waiting for; with it gone there is nothing left to
+			name, and a wait that outlived its subject would open an editor over whatever row had
+			moved into that slot. */
+			if (parent && at < parent->getChildCount()) {
+				_left->getSource()->removeNode(parent->getChildren()[at]);
+			}
+			_left->settlePendingEdit();
+			expect(!_left->isEditorPending(),
+					"the editor is still waiting for an element that is gone");
+			expect(parent && parent->getChildCount() == before,
+					"removing the new element left something behind");
+		}
+	}
+
 	// The models are left where the transfers above put them: the CALLER restores them, so there
 	// is one place that decides what the demo's starting state is.
 	_selfCheckDone = true;
@@ -750,6 +928,15 @@ void DndTreeDemoLayout::handleEnter(Scene *scene) {
 			config.stylesheetSource = s_css.str<Interface>();
 			config.idPrefix = String("dnd");
 		});
+	}
+
+	// The same boundary, crossed a second time: the inline editor a Rename opens lives on an
+	// overlay of the scene's content node, which is outside the subtree this layout's resolver
+	// walks. See DndTreeView::setStylesheetSource.
+	for (auto view : {_left, _right}) {
+		if (view) {
+			view->setStylesheetSource(s_css);
+		}
 	}
 
 	_inspectorScene = scene;
@@ -956,6 +1143,118 @@ void DndTreeDemoLayout::addInspectorCommands(Scene *scene) {
 		done(sp::move(result));
 	})) {
 		_inspectorCommands.emplace_back("dndtree.context-menu");
+	}
+
+	/* The rename, from the outside: open the editor, read what it holds, type into it and commit.
+
+	The same session the menu's Rename item opens - this command only reaches into it, so what is
+	driven here is the real editor over the real row and not a second path that happens to write the
+	same field. */
+	if (inspector::addCommand(content, "dndtree.rename",
+				"Drive an inline rename: {tree, row, text, commit, cancel}",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &in = args;
+		Value result;
+
+		auto view = viewByName(in.getString("tree"));
+		if (!view) {
+			result.setString("unknown tree", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		if (in.isInteger("row")) {
+			result.setBool(view->beginRename(size_t(in.getInteger("row"))), "opened");
+		}
+
+		auto session = view->getRenameSession();
+		if (session) {
+			/* The editor is a widget like any other, and this is what a keystroke would have left
+			in it.
+
+			`text` and `commit` are separate arguments on purpose, and a caller has to step a frame
+			between them: a focused ui::TextInput does not take a write, it REQUESTS one from the
+			platform's text-input processor and receives it back as an echo. Committing in the same
+			call would commit what the field still held. */
+			if (auto editor = dynamic_cast<ui::TextInput *>(session->getEditor())) {
+				if (in.isString("text")) {
+					editor->setText(in.getString("text"));
+				}
+				result.setString(editor->getText(), "text");
+			}
+
+			if (in.getBool("cancel")) {
+				session->cancel();
+			} else if (in.getBool("commit")) {
+				// False means the commit was REFUSED and the session is still open - the one
+				// outcome a caller cannot see from the model
+				result.setBool(session->commit(), "committed");
+			}
+		}
+
+		result.setBool(view->isRenaming(), "editing");
+		// Whether a cancel would take an element back out - the difference between naming a new
+		// element and renaming an existing one, which is invisible in every other field here
+		result.setBool(view->isCreating(), "creating");
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	})) {
+		_inspectorCommands.emplace_back("dndtree.rename");
+	}
+
+	if (inspector::addCommand(content, "dndtree.create",
+				"Create an element from the menu: {tree, row, kind=item|category}",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &in = args;
+		Value result;
+
+		auto view = viewByName(in.getString("tree"));
+		if (!view) {
+			result.setString("unknown tree", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		/* Through the MENU, not through beginCreate.
+
+		The menu is the whole of what this feature is: an item that hangs off a submenu nobody can
+		reach is a feature that does not exist. Running the item's own callback is what the popup
+		does when it is chosen, so this drives the same path a click does - and it is also the only
+		way to observe that the two items are where they are said to be. */
+		const auto row = in.isInteger("row") ? size_t(in.getInteger("row")) : maxOf<size_t>();
+		auto menu = view->buildContextMenu(row);
+		auto entry = menu ? dynamic_cast<ui::MenuSourceButton *>(menu->getItem("new")) : nullptr;
+		auto items = entry ? entry->getSubmenu() : nullptr;
+		if (!items) {
+			result.setString("the menu offers nothing to create", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		result.setBool(entry->hasSubmenu(), "submenu");
+
+		const auto kind = in.getString("kind");
+		auto item = dynamic_cast<ui::MenuSourceButton *>(
+				items->getItem(kind == "category" ? "new-category" : "new-item"));
+		if (!item || !item->getCallback()) {
+			result.setString("no such item", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		item->getCallback()(item);
+
+		/* The editor is NOT open yet, and saying so is the point.
+
+		A new row has no node until the view has rebuilt and laid it out, so the session opens a
+		frame or two later - which is why `pending` is reported here and every caller has to step a
+		frame before asking for `dndtree.rename`. */
+		result.setBool(view->isEditorPending(), "pending");
+		result.setBool(view->isRenaming(), "editing");
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	})) {
+		_inspectorCommands.emplace_back("dndtree.create");
 	}
 
 	if (inspector::addCommand(content, "dndtree.reset", "Regenerate the content of both trees",

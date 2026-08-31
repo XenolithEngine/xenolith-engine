@@ -181,7 +181,10 @@ header, a platform branch, or an allocation. The essentials:
   the hole invisible.
 - `ui::TableView` publishes its ROW GEOMETRY - `getRowRect`, `getCellRect`,
   `getRowIndexAt`, `getRowBoundaryAt`, shared with `ui::TreeView` through
-  `ui::RowGeometrySource` - and it answers for a row that has no node, because
+  `ui::RowGeometrySource` (`TreeView` adds `getRowContentRect`, the row's box cut
+  back to where its NAME starts - an inline rename opened over the whole row puts
+  its text several columns left of the text it replaces) - and it answers for a
+  row that has no node, because
   only the nodes are virtualized: `rebuildRows()` commits one controller item per
   row with the height it resolved beforehand. Reordering builds on that:
   `setReorderCallback` asks `bool(from, to)` where `to` is the row's FINAL index,

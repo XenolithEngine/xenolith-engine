@@ -83,7 +83,12 @@ struct SP_PUBLIC InlineEditConfig {
 	// A press outside commits. Off makes an outside press CANCEL instead.
 	bool commitOnFocusLoss = true;
 
-	// Grows the rect the editor is placed on, and keeps it from collapsing.
+	/* Grows the rect the editor is placed on, and keeps it from collapsing.
+
+	The rect itself stays the caller's business, and over a scrolled list that includes keeping off
+	the scroll bar: a row spans the whole width of its view, bar included, which is right for a
+	hairline drawn over the text and wrong for a field being typed into. How wide that strip is is
+	the scroll view's answer - basic2d::ScrollView::getIndicatorReservedSize. */
 	Padding padding;
 	Size2 minSize;
 
