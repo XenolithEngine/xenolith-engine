@@ -82,6 +82,12 @@ static constexpr auto s_checkboxFill = Color4B(0x43, 0xa0, 0x47, 255);
 static constexpr auto s_checkedFill = Color4B(0xe5, 0x39, 0x35, 255);
 static constexpr auto s_badgeFill = Color4B(0x8e, 0x24, 0xaa, 255);
 static constexpr auto s_plainFill = Color4B(0xff, 0x8f, 0x00, 255);
+static constexpr auto s_tintedFill = Color4B(0x00, 0x89, 0x7b, 255);
+
+// Nothing in the sheet is anywhere near it, so a button wearing this colour can only have got it
+// from the setPathColor call in init() - never from a rule that half-matched.
+static constexpr auto s_codeFill = Color4B(0xff, 0x00, 0xff, 255);
+static constexpr float s_codeRadius = 6.0f;
 
 } // namespace
 
@@ -106,6 +112,13 @@ bool PanelLayout::init() {
 
 	_resettable = addChild(Rc<ui::Button>::create(), ZOrder(1));
 	_resettable->addStyleClass("tinted");
+
+	// Painted BEFORE the class goes on, which is the order every widget that paints itself uses:
+	// the constructor knows its own default, the stylesheet arrives later.
+	_painted = addChild(Rc<ui::Button>::create(), ZOrder(1));
+	_painted->setPathColor(s_codeFill, true);
+	_painted->setBorderRadius(s_codeRadius);
+	_painted->addStyleClass("tinted");
 
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(1.0f), [this] { runPhase1(); },
 			Rc<DelayTime>::create(1.0f), [this] { runPhase2(); }, Rc<DelayTime>::create(1.0f),
@@ -163,6 +176,16 @@ void PanelLayout::runPhase1() {
 		expect(false, "initial", "badge has no label child");
 	}
 
+	// The stylesheet is the upper layer: while `.tinted` matches, its fill covers the one the
+	// button painted on itself. (A code paint that beat CSS would be the opposite bug, and just as
+	// wrong - it would make a stylesheet unable to restyle anything a widget draws by default.)
+	expectColor("initial", "code-painted button under a matching rule", _painted->getPathColor(),
+			s_tintedFill);
+
+	// The rule says nothing about corners, so this one is the widget's own the whole way through.
+	expect(_painted->getBorderRadius() == s_codeRadius, "initial",
+			"code-painted button lost its border-radius to a rule that never mentioned one");
+
 	log::source().warn("PanelTest", "initial done: ", _checks, " checks, ", _failures,
 			" failures; checking the checkbox");
 
@@ -181,11 +204,24 @@ void PanelLayout::runPhase2() {
 			"button has no style component while `.tinted` is applied");
 
 	_resettable->removeStyleClass("tinted");
+	_painted->removeStyleClass("tinted");
 }
 
 void PanelLayout::runPhase3() {
 	expect(_resettable->getComponent<ui::PanelStyleComponent>() == nullptr, "reset",
 			"CmdReset did not drop the button's style component when its rule stopped matching");
+
+	// The same pass, the same rule, the same reset - and the opposite outcome, because this button
+	// painted itself. White here is the failure the whole distinction exists to prevent.
+	expectColor("reset", "code-painted button after its rule stopped matching",
+			_painted->getPathColor(), s_codeFill);
+	expect(_painted->getBorderRadius() == s_codeRadius, "reset",
+			"CmdReset took the code-painted button's border-radius with the rule");
+
+	// ... and it keeps a component, because it has paint to keep. The two assertions above and this
+	// one are one statement: the reset separates styling from paint rather than clearing the node.
+	expect(_painted->getComponent<ui::PanelStyleComponent>() != nullptr, "reset",
+			"a code-painted widget was left with no style component to hold its own paint");
 
 	log::source().warn("PanelTest", "SUMMARY: ", _checks, " checks, ", _failures, " failures");
 }
@@ -195,7 +231,7 @@ void PanelLayout::handleContentSizeDirty() {
 
 	const float top = getWorkTop() - 40.0f;
 
-	Node *nodes[] = {_panel, _checkbox, _badge, _plainLayer, _resettable};
+	Node *nodes[] = {_panel, _checkbox, _badge, _plainLayer, _resettable, _painted};
 	float x = 48.0f;
 	for (auto n : nodes) {
 		if (n) {
