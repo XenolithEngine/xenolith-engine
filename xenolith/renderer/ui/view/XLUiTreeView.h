@@ -30,6 +30,7 @@
 #include "XL2dScrollView.h"
 #include "XL2dScrollController.h"
 #include "XLUiRowGeometry.h"
+#include "XLDropTarget.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -155,6 +156,73 @@ public:
 		}
 	};
 
+	/* Where a drop into this tree would land, resolved from one point.
+
+	THE ZONES ARE NOT THE SAME ON EVERY ROW, and that is the whole of this type.
+
+	A LEAF is a POSITION and nothing else: its upper half means "before this element", its lower
+	half "after it", so both insertion points around it are reachable without aiming at the hairline
+	between two rows.
+
+	A CATEGORY is both - it is somewhere to go INTO and something to stand beside - so its row is
+	split three ways, by CategoryDropBand: a thin band at each end means "before it" / "after it",
+	and the wide middle means "into it". The middle is deliberately the large share. Even thirds
+	would make "into this folder" as easy to miss as to hit, and it is the answer a drag over a
+	folder almost always wants; the two edge bands only have to be reachable, which is why one
+	fifth of the row is enough for each.
+
+	`parent` and `index` are the answer in MODEL terms, ready for data::Model::moveNode or
+	emplaceItem(): `index` is maxOf<size_t>() for an append. `row` is the row the pointer was over,
+	kept because the feedback is drawn against it, and maxOf<size_t>() when the point was in the
+	empty space below the last row - which answers for the root, and is what makes an EMPTY tree a
+	place to drop at all.
+
+	Geometry and the model decide it and nothing else: getDropPositionAt() answers the same with no
+	drag in flight, which is what lets a test drive the zone rule directly. */
+	struct SP_PUBLIC DropPosition {
+		enum class Kind {
+			None, // nowhere: there is no model at all
+			Into, // append to `parent`
+			Before, // insert at `index`, above the row
+			After, // insert at `index`, below the row
+		};
+
+		Kind kind = Kind::None;
+		size_t row = maxOf<size_t>();
+
+		// Rc, not a raw pointer: a position outlives the event it was resolved from - the dwell
+		// below holds one across a rebuild - and a category can be taken out of the model meanwhile.
+		Rc<ModelNode> parent;
+		size_t index = maxOf<size_t>();
+
+		bool valid() const { return kind != Kind::None && parent; }
+
+		bool operator==(const DropPosition &other) const {
+			return kind == other.kind && row == other.row && parent == other.parent
+					&& index == other.index;
+		}
+	};
+
+	/* The seam between a tree and whatever may be dropped into it.
+
+	The view answers WHERE a drop would land, draws the feedback for it and opens the categories the
+	drag rests on; the caller answers WHETHER this payload may land there and what to do when it
+	does. Neither half knows the other's business, which is why the zone rule, the insertion line
+	and the dwell can live in the widget for every caller instead of each one growing its own.
+
+	`accept` is a PREDICATE and must be pure. It is called during hit testing, for positions the drag
+	may never come to rest on and possibly several times in one frame. Answer with the subset of
+	`event.allowed` acceptable AT `pos`, or DragActions::None for "not here" - which lets the drag
+	fall through to whatever is drawn under this view. There is nothing for a caller to draw: all
+	feedback is the view's. */
+	struct SP_PUBLIC DropSlots {
+		Function<DragActions(const DragEvent &, const DropPosition &)> accept;
+
+		// Apply the drop. `action` is a single resolved bit. False means nothing was actually done,
+		// and the source's completion is told DragActions::None
+		Function<bool(const DragEvent &, const DropPosition &, DragActions)> drop;
+	};
+
 	using RowFunction = Function<void(RowBuilder &)>;
 	using RowHeightFunction = Function<float(const Row &)>;
 	using RowEventFunction = Function<void(size_t index, const Row &)>;
@@ -241,6 +309,24 @@ public:
 	// and changed - a new row callback, a new label key - because the key cannot see that.
 	virtual void requestRebuildNodes(bool force = false);
 
+	/* The same request, with an ANSWER: `cb` runs once the row nodes are current again.
+
+	It runs at the END of that rebuild, from inside the visit that performed it - and that is the
+	first moment a new row can be MEASURED, not merely the first moment it exists. A node attached
+	while a frame is in flight catches up on the phases the pass has already gone by, as it is
+	attached (Node::runPendingPhases), so every row this rebuild built is styled, sized and placed
+	by the time the rebuild returns. Anything later - a scheduled tick, a visit-end callback - is
+	asking after the answer was already there, and has to guess how long to wait for it.
+
+	One-shot, and coalesced into whatever rebuild is already pending: several callers asking in one
+	turn are all answered by the one rebuild, in the order they asked. A callback that asks again is
+	answered by the NEXT rebuild and never re-entrantly by this one.
+
+	What it may NOT assume is that the row it cares about has a node. A rebuild builds the rows
+	inside the scroll window and no others, so "the answer is ready" and "the row is on screen" are
+	different facts - the second is getRowNode()'s to give. */
+	virtual void requestRebuildNodes(Function<void()> &&cb, bool force = false);
+
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
@@ -252,7 +338,83 @@ public:
 
 	There is no getCellRect here: a tree row is not divided into columns. */
 	bool getRowRect(size_t index, Rect &out) const;
+
+	/* The same rectangle, with its LEFT edge moved to where the row's content starts.
+
+	A row is an indent, an expander slot, an icon and then the label; an editor opened over the
+	whole row starts its text at the view's edge, several columns left of the name it is replacing.
+	This is what puts it exactly over the text instead. The vertical extent stays the ROW's - the
+	label's own box is a line of text inside a taller row, and an editor that height would be a slot
+	rather than a row being edited.
+
+	Only a materialized row can answer, because where the content starts is decided by the sheet
+	(the indent is a padding computed from --tree-depth) and is not derivable from the model. For a
+	row that scrolled out of the window this falls back to getRowRect, which always answers. */
+	bool getRowContentRect(size_t index, Rect &out) const;
+
 	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
+
+	/* --- dropping into the tree ---------------------------------------------------------------
+
+	ONE drop target, ON THE VIEW, never one per row. Not an optimization: a row that scrolled out of
+	sight is no longer a node, while the geometry still answers for it, so a per-row target can only
+	ever cover the handful of rows that happen to be materialized - and the empty space below the
+	last row, which is the only way to reach the root of a tree, has no row to carry one. The view
+	resolves the row from the pointer instead (getDropPositionAt), and both cases fall out of the
+	same arithmetic. */
+
+	// The share of a CATEGORY's row, at each end, that means "beside it" rather than "into it". A
+	// leaf has no such band - its two halves are its only two answers.
+	static constexpr float CategoryDropBand = 0.2f;
+
+	virtual void setDropSlots(DropSlots &&); // also enables dropping
+	const DropSlots &getDropSlots() const { return _dropSlots; }
+
+	virtual void setDropEnabled(bool);
+	bool isDropEnabled() const { return _dropEnabled; }
+
+	/* How long a drag has to rest on a COLLAPSED category before the view opens it. Zero opens
+	none.
+
+	The dwell is NOT restarted by movement, unlike a tooltip's: it measures how long the drag has
+	been over THIS category, so a pointer creeping across a folder still opens it, and only moving
+	off the folder cancels it. It is an Action rather than a looper timer, because a running action
+	keeps the frame loop awake and so the delay actually elapses in an app that renders on demand. */
+	virtual void setDropExpandDelay(TimeInterval);
+	TimeInterval getDropExpandDelay() const { return _dropExpandDelay; }
+
+	// Where a drop would land for a point in this node's space.
+	DropPosition getDropPositionAt(const Vec2 &nodeLocation) const;
+
+	/* The position row `index` answers for, `offset` saying how far DOWN the row the pointer is: 0
+	at its top edge, 1 at its bottom. maxOf<size_t>() asks for the empty space below the last row.
+
+	A float rather than a side, because a category has three answers and a leaf two, and the number
+	is what both are read out of - see DropPosition and CategoryDropBand. */
+	DropPosition getDropPositionForRow(size_t index, float offset) const;
+
+	/* The rectangle the feedback for `pos` occupies, in this node's space: the row's own box for
+	Into, a thin bar on the boundary for Before/After. False when there is nothing to draw, the
+	empty space below the last row having no rectangle of its own.
+
+	Both are cut back on the left to the ANCHOR row's indent, so the indicator sits at the level the
+	element would land at. That is not decoration: "after this row" and "after its parent" are the
+	same horizontal line drawn across a tree, and the indent is the only thing that tells them
+	apart. */
+	bool getDropPositionRect(const DropPosition &, Rect &out) const;
+
+	/* Where row `index` begins its own content, in this node's space - its indent.
+
+	Read back off the laid-out row rather than computed: TreeView writes `--tree-depth` onto the row
+	and a SHEET turns it into a padding, so the pixel indent never exists in C++ (see makeRow). What
+	does exist, once the row has been laid out, is where its children actually start.
+
+	nan() for a row that has no node - one scrolled out of the window. Nothing here needs an answer
+	for one, since the only row this is asked about is the row under the pointer. */
+	float getRowIndentX(size_t index) const;
+
+	// What the view is showing feedback for right now; Kind::None while no drag is over it.
+	const DropPosition &getDropPosition() const { return _dropPosition; }
 
 protected:
 	using Panel::init;
@@ -310,6 +472,27 @@ protected:
 	// Drop the expansion of everything under `cat` and release the children it loaded lazily.
 	void forgetSubtree(ModelNode *cat);
 
+	// The dwell that opens a collapsed category under a drag, tracked by TAG on this node: "is one
+	// running?" is then always a question for the node, and a finished one leaves nothing stale.
+	static constexpr uint32_t DropExpandActionTag = "XLUiTreeDropExpand"_tag;
+	static constexpr float InsertionLineThickness = 2.0f;
+
+	// The upright at the left end of the insertion line, marking the indent it sits at.
+	static constexpr float InsertionStemHeight = 10.0f;
+
+	virtual void updateDropSystems();
+
+	// enter / over: re-resolve, move the feedback, and restart the dwell when the category changed
+	virtual void updateDropPosition(const DragEvent &);
+	void clearDropPosition();
+
+	void showDropFeedback();
+	void hideDropFeedback();
+
+	void armDropExpand();
+	void cancelDropExpand();
+	void fireDropExpand();
+
 	basic2d::ScrollView *_scroll = nullptr;
 	Rc<basic2d::ScrollController> _controller;
 	DataListener<Model> *_sourceListener = nullptr;
@@ -349,6 +532,25 @@ protected:
 	// The pending rebuild must build every row from scratch: something the RowKey cannot see - the
 	// row callback itself - decides how a row looks, and it changed.
 	bool _forceRebuild = false;
+
+	// Who asked to be told when the nodes are next current. Taken off the list before they run, so
+	// one that asks again is served by the following rebuild.
+	Vector<Function<void()>> _rebuildCallbacks;
+
+	// --- dropping into the tree ---
+	// The target is a component on this node now, so there is nothing to hold - only whether it is
+	// currently declared
+	bool _hasDropTarget = false;
+	DropSlots _dropSlots;
+	DropPosition _dropPosition; // what the feedback on screen is showing
+	basic2d::Layer *_insertionLine = nullptr;
+	basic2d::Layer *_dropHighlight = nullptr;
+
+	// The category the dwell is running for. Held by Rc rather than by row index, because the row
+	// list can be re-derived while the dwell runs and the index would then name something else.
+	Rc<ModelNode> _dropExpandCandidate;
+	TimeInterval _dropExpandDelay = TimeInterval::milliseconds(500);
+	bool _dropEnabled = false;
 };
 
 // Chooses what a row looks like. Every setter is optional: a builder the factory never touches
@@ -435,6 +637,11 @@ public:
 	const RowKey &getRowKey() const { return _key; }
 	void setRowKey(RowKey &&key) { _key = sp::move(key); }
 
+	// The node in the CONTENT slot - the label, or whatever a row callback put in its place. What
+	// an inline editor is placed over; see TreeView::getRowContentRect.
+	Node *getContentNode() const { return _content; }
+	void setContentNode(Node *node) { _content = node; }
+
 	// The node occupying the expander slot, when it is one that handles its own taps. A tap inside
 	// it is the expander's alone: the row does not also select on it. Nothing else could arbitrate
 	// this - the row's listener and the expander's are two independent listeners over overlapping
@@ -450,6 +657,7 @@ protected:
 	RowKey _key;
 	InputListener *_listener = nullptr;
 	Node *_expander = nullptr; // a child of this node, so no ownership is needed
+	Node *_content = nullptr; // likewise
 };
 
 } // namespace stappler::xenolith::ui

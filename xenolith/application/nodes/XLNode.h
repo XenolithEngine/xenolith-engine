@@ -486,6 +486,35 @@ public:
 	virtual bool isTouched(const Vec2 &location, float padding = 0.0f);
 	virtual bool isTouchedNodeSpace(const Vec2 &location, float padding = 0.0f);
 
+	/* The world transform this node was DRAWN with, as of its last visit.
+
+	Not the same as getNodeToWorldTransform(), which rebuilds the answer by multiplying its way up
+	the parent chain on every call. This one was computed once, by the visit, and is what every
+	frame-consistent question about where the node IS should be asked against - a pointer event is
+	resolved against the frame that was drawn, not against a tree that may have moved since. */
+	const Mat4 &getModelTransform() const { return _modelViewTransform; }
+
+	// Its inverse, computed on demand and kept until the next visit rebuilds the transform
+	const Mat4 &getModelToNodeTransform() const;
+
+	/* isTouched, answered against the drawn frame rather than the live tree.
+
+	Both are honest questions and they differ: isTouched() says "is that point on this node right
+	now", which is what a widget that just moved itself wants; this says "was that point on this
+	node as it was last drawn", which is what an input event - always resolved against the
+	previously committed frame - must ask. A node that has never been visited answers false. */
+	bool isTouchedAsDrawn(const Vec2 &worldLocation, float padding = 0.0f) const;
+
+	/* Which per-frame hit-test registries this node publishes itself into; see HitTestFlags.
+
+	Maintained by the component setters (setDropTarget, ui::setContextMenu, ui::setTooltip) and by
+	InputListener. An application declaring a registry of its own uses the bits above
+	HitTestFlags::ApplicationMask. */
+	void setHitTestFlags(HitTestFlags);
+	void addHitTestFlags(HitTestFlags);
+	void removeHitTestFlags(HitTestFlags);
+	HitTestFlags getHitTestFlags() const { return _hitTestFlags; }
+
 	// Callbacks bound with default CallbackSystem to reduce common node memory footprint.
 	// System will be created when first callback attached, and marked with DefaultCallbackSystemTag
 	// to separate it from user-defined systems
@@ -611,6 +640,9 @@ protected:
 
 	NodeEventFlags _eventFlags = NodeEventFlags::None;
 
+	// Which hit-test registries this node publishes itself into (see setHitTestFlags)
+	HitTestFlags _hitTestFlags = HitTestFlags::None;
+
 	// This node's own opt-in as an ancestor-components listener (see setWantsAncestorComponents)
 	bool _wantsAncestorComponents = false;
 
@@ -641,6 +673,16 @@ protected:
 	mutable Mat4 _transform = Mat4::IDENTITY;
 	mutable Mat4 _inverse = Mat4::IDENTITY;
 	Mat4 _modelViewTransform = Mat4::IDENTITY;
+
+	// Inverse of _modelViewTransform, built on demand by getModelToNodeTransform and thrown away
+	// wherever the visit rebuilds the transform itself
+	mutable Mat4 _modelViewInverse = Mat4::IDENTITY;
+	mutable bool _modelViewInverseDirty = true;
+
+	// Whether _modelViewTransform describes an actual visit. False until the first one, which is
+	// what makes isTouchedAsDrawn refuse a node nobody has drawn yet instead of testing it against
+	// the identity matrix
+	bool _modelViewValid = false;
 
 	Vector<Rc<Node>> _children;
 	Node *_parent = nullptr;

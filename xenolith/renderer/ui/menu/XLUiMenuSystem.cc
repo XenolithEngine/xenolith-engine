@@ -310,6 +310,9 @@ void MenuSystem::handleAdded(Node *owner) {
 	if (_keyboardEnabled) {
 		enableKeyboard();
 	}
+	if (_pointerEnterHandler) {
+		enablePointerListener();
+	}
 
 	_itemsDirty = true;
 	owner->markLayoutChildrenDirty();
@@ -322,6 +325,7 @@ void MenuSystem::handleRemoved() {
 	// While the owner is still ours to stop the pending action on.
 	cancelSubmenuDelay();
 	disableKeyboard();
+	disablePointerListener();
 	System::handleRemoved();
 }
 
@@ -365,6 +369,15 @@ void MenuSystem::setActivateCallback(ActivateCallback &&cb) { _activateCallback 
 
 void MenuSystem::setWillActivateCallback(ActivateCallback &&cb) {
 	_willActivateCallback = sp::move(cb);
+}
+
+void MenuSystem::setPointerEnterHandler(PointerEnterHandler &&handler) {
+	_pointerEnterHandler = sp::move(handler);
+	if (_pointerEnterHandler) {
+		enablePointerListener();
+	} else {
+		disablePointerListener();
+	}
 }
 
 void MenuSystem::setSubmenuHandler(SubmenuHandler &&handler) {
@@ -746,6 +759,37 @@ void MenuSystem::handleItemHovered(NotNull<MenuSourceItem> item) {
 		// opened the submenu, and where it landed does not change that.
 		armSubmenu(nullptr, _hover.closeDelay);
 	}
+}
+
+void MenuSystem::enablePointerListener() {
+	if (_pointerListener || !_owner) {
+		return;
+	}
+
+	/* On the MENU, not on its rows, and that is the point: the answer has to be "the pointer is in
+	this menu", which a row cannot give for a separator, for the padding or for the gap between two
+	rows. The rows keep their own listeners; nesting two mouse-over listeners is ordinary here (a
+	ui::TreeView and its rows do the same).
+
+	onlyFocused false: a menu surface never takes the keyboard focus, so a hover gated on it would
+	never be reported at all. */
+	_pointerListener = _owner->addSystem(Rc<InputListener>::create());
+	_pointerListener->addMouseOverRecognizer([this](const GestureData &data) {
+		// The entering edge alone. Leaving is not an event this seam has anything to say about: a
+		// pointer that left this menu either arrived at another one, which reports for itself, or
+		// left the chain entirely, and a menu is not dismissed by the pointer wandering off.
+		if (data.event == GestureEvent::Began && _pointerEnterHandler) {
+			_pointerEnterHandler();
+		}
+		return true;
+	}, InputMouseOverInfo(false));
+}
+
+void MenuSystem::disablePointerListener() {
+	if (_pointerListener && _owner) {
+		_owner->removeSystem(_pointerListener);
+	}
+	_pointerListener = nullptr;
 }
 
 void MenuSystem::armSubmenu(MenuSourceButton *item, TimeInterval delay) {
