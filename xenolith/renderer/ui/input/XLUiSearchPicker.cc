@@ -740,6 +740,10 @@ Rc<Node> SearchPickerContent::buildTitleNode(const SearchHit &hit) const {
 	panel->addStyleClass("xl-ui-table-cell");
 	panel->addStyleClass("xl-ui-search-picker-cell");
 	Panel::registerStyleAppliers("table-cell");
+	// ... including the paint the view gives the cells it builds itself: a cell handed in from
+	// outside is the one place a table cannot do it, and Panel's default is opaque white, so this
+	// row's ground and its selection would be covered (TableView_paintCellDefaults).
+	panel->setPathColor(Color4B(0, 0, 0, 0), true);
 
 	auto label = panel->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
 	label->setType("label");

@@ -45,6 +45,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // every type applier BEFORE the parameters, so a widget can drop styling that the new resolve is
 // no longer going to mention. Without it, a declaration that stopped matching would stay applied
 // forever, because a style pass only ever sees the parameters that ARE present.
+//
+// And the OTHER half of the same command: the reset undoes styling, not paint. Two buttons carry
+// the one rule that is taken away - one plain, one that also painted itself through
+// `setPathColor` - so the same pass has to leave the first with no style component at all and the
+// second with exactly the colour its own code gave it.
 class PanelLayout : public TestLayout {
 public:
 	virtual bool init() override;
@@ -67,6 +72,11 @@ protected:
 	basic2d::Layer *_plainLayer = nullptr;
 	// styled by exactly one rule, which is taken away in the last phase - see CmdReset above
 	ui::Button *_resettable = nullptr;
+	// the same rule, on a button that ALSO painted itself from code. The reset has to undo the
+	// rule and leave the paint: a widget's own colour is not a declaration, and no style pass owns
+	// it. Without that distinction this button goes white the moment `.tinted` stops matching -
+	// which is what every panel painted from code did.
+	ui::Button *_painted = nullptr;
 
 	uint32_t _checks = 0;
 	uint32_t _failures = 0;
