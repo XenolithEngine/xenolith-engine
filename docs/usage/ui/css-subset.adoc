@@ -154,6 +154,12 @@ selectors (`[attr]`, `[attr=val]` — these parse but never match).
 | overflow | `overflow` `overflow-x` `overflow-y` (`visible \| hidden \| clip \| scroll \| auto`) |
 | engine | `-xl-z-order` `-xl-anchor-point` `-xl-position` |
 
+Everything in the **text** row is inherited, and everything else is not — the same
+split as on the web. In particular the whole of `outline-*` and `border-radius`
+stay on the box that declared them: a rounded, outlined panel does not round or
+frame its children. (They were inherited until this was fixed, which is what put a
+border around every row of a menu whose surface declared one.)
+
 ### Parsed and ignored — do not use these
 
 | Feature | Reality |
@@ -220,6 +226,30 @@ What to expect:
 
 `ResolvedStyle::getCustomProperty(name)` reads a variable's raw text directly,
 for a widget or a test that wants the value rather than its effect.
+
+Widgets use that to carry what the subset has no property for. `ui::TextInput`
+reads three:
+
+```css
+text-input {
+	--caret-color:     #fcb400;
+	--selection-color: #7a5600;   /* the highlight behind selected text */
+	--marked-color:    #2b5f7a;   /* the IME's composition range */
+}
+```
+
+**Declare none and all three follow the text's own colour** — the caret in the
+same ink, the selection and the marked range in that ink dimmed. It is derived
+from the colour the label is PAINTED with (the inherited `color`), not from the
+node's tint, which is what a widget happens to have been built with: deriving
+from the tint gave every field on a dark theme a black caret it could not show.
+
+A single-line field **centres its line vertically** in what `height` and
+`padding` leave, so vertical padding is symmetry, not placement: `height: 64px`
+with no padding puts the text in the middle of the box, not on its floor. That
+is what lets a field stand in for something else — `ui::InlineEditor` is given
+the height of the row it covers, and its text has to land where that row's label
+was.
 
 ### Custom properties declared on ONE node
 
@@ -289,7 +319,11 @@ mapping. `border-radius` and `outline-*` are not: they are handled by the
 (`button`, `panel`, `checkbox`, `badge`, `select`, `vector-field`, `color-field`,
 `color-picker`, and — through
 the text-input applier set — `text-input`, `number-field` and `inline-editor`
-(the field `ui::InlineEditor` opens over a rectangle). `ui::TableView` adds the
+(the field `ui::InlineEditor` opens over a rectangle), and `menu` — the panel that
+IS a popup surface, which `ui::openPopupSurface` registers under whatever type its
+caller named it (without that the type matched, the declarations were read, and
+nothing consumed them: `background-color` landed on the node's tint and multiplied
+the surface's fallback instead of replacing it). `ui::TableView` adds the
 class `xl-ui-table-drag-handle` on the cell of the column a caller declared under
 `TableView::ReorderColumnKey`; see `StyleResolver::registerTypeApplier`
 and the atoms under

@@ -320,6 +320,20 @@ public:
 
 	There is no getCellRect here: a tree row is not divided into columns. */
 	bool getRowRect(size_t index, Rect &out) const;
+
+	/* The same rectangle, with its LEFT edge moved to where the row's content starts.
+
+	A row is an indent, an expander slot, an icon and then the label; an editor opened over the
+	whole row starts its text at the view's edge, several columns left of the name it is replacing.
+	This is what puts it exactly over the text instead. The vertical extent stays the ROW's - the
+	label's own box is a line of text inside a taller row, and an editor that height would be a slot
+	rather than a row being edited.
+
+	Only a materialized row can answer, because where the content starts is decided by the sheet
+	(the indent is a padding computed from --tree-depth) and is not derivable from the model. For a
+	row that scrolled out of the window this falls back to getRowRect, which always answers. */
+	bool getRowContentRect(size_t index, Rect &out) const;
+
 	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
 
 	/* --- dropping into the tree ---------------------------------------------------------------
@@ -601,6 +615,11 @@ public:
 	const RowKey &getRowKey() const { return _key; }
 	void setRowKey(RowKey &&key) { _key = sp::move(key); }
 
+	// The node in the CONTENT slot - the label, or whatever a row callback put in its place. What
+	// an inline editor is placed over; see TreeView::getRowContentRect.
+	Node *getContentNode() const { return _content; }
+	void setContentNode(Node *node) { _content = node; }
+
 	// The node occupying the expander slot, when it is one that handles its own taps. A tap inside
 	// it is the expander's alone: the row does not also select on it. Nothing else could arbitrate
 	// this - the row's listener and the expander's are two independent listeners over overlapping
@@ -616,6 +635,7 @@ protected:
 	RowKey _key;
 	InputListener *_listener = nullptr;
 	Node *_expander = nullptr; // a child of this node, so no ownership is needed
+	Node *_content = nullptr; // likewise
 };
 
 } // namespace stappler::xenolith::ui

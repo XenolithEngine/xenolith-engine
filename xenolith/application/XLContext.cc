@@ -468,11 +468,24 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 		ret.colorSpace = it->second;
 	}
 
-	if (hasFlag(w->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
-			&& hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Premultiplied)) {
-		// For user-space decoration, compositor can provide Premultiplied alpha mode, use it
+	/* A window that is not a rectangle has to be BLENDED, not merely drawn.
+
+	Two of them ask for it. User-space decorations round the window's own corners and drop a shadow
+	outside them, and an undecorated Popup or Tooltip IS its panel - `ui::openPopupSurface` sizes the
+	window to the panel exactly, so a `border-radius` on that panel leaves the window's four corners
+	outside the shape it draws. With an Opaque surface those corners keep whatever the scene was
+	cleared to, and they used to keep WHITE: four bright specks around every menu on a dark theme.
+
+	Only asked for, never required: `supportedCompositeAlpha` is the compositor's answer, and where
+	it cannot blend the window stays opaque and the corners fall back to the clear colour. */
+	const bool shaped = windowInfo
+			&& (hasFlag(windowInfo->flags, WindowCreationFlags::UserSpaceDecorations)
+					|| windowInfo->type == WindowType::Popup
+					|| windowInfo->type == WindowType::Tooltip);
+
+	if (shaped && hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Premultiplied)) {
 		ret.alpha = core::CompositeAlphaFlags::Premultiplied;
-	} else if (hasFlag(w->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
+	} else if (shaped
 			&& hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Postmultiplied)) {
 		ret.alpha = core::CompositeAlphaFlags::Postmultiplied;
 	} else if (hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Opaque)) {

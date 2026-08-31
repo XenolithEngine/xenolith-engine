@@ -25,6 +25,8 @@
 #include "dndtree/DndTreeView.h"
 #include "XLDragSource.h"
 #include "XLUiPanel.h"
+#include "XLUiStyleSystem.h"
+#include "XLUiStyleResolver.h"
 #include "XL2dLabel.h"
 #include "XL2dSprite.h"
 #include "XLAppWindow.h"
@@ -140,6 +142,17 @@ bool DndTreeView::init(data::Model *source, StringView title) {
 	setName(_title);
 
 	attachDropSlots();
+
+	/* Visit-END, and a system of its own because TreeView has already taken this node's default one.
+
+	It is where a newly created row can first be measured: the rows built earlier in this same pass
+	- TreeView rebuilds them in its components phase - have by then been visited, and therefore
+	styled and laid out, so where a row's content starts is finally a real number. A scheduled tick
+	would answer half a frame too early, and the components phase is the pass that CAUSES the
+	rebuild rather than the one that finishes it. */
+	auto pending = addSystem(Rc<CallbackSystem>::create());
+	pending->setVisitEndCallback([this](CallbackSystem *, FrameInfo &) { settlePendingEdit(); });
+
 	return true;
 }
 
@@ -188,6 +201,8 @@ Rc<ui::MenuSource> DndTreeView::buildContextMenu(size_t index) {
 			}
 			report("collapsed every category");
 		});
+		source->addSeparator("sep-root");
+		addCreateSubmenu(source, index);
 		return source;
 	}
 
@@ -215,12 +230,39 @@ Rc<ui::MenuSource> DndTreeView::buildContextMenu(size_t index) {
 		source->addSeparator("sep");
 	}
 
+	addCreateSubmenu(source, index);
+
+	source->addButton("rename", "Rename", [this, index](NotNull<ui::MenuSourceButton>) {
+		// No name is captured here, unlike the items around it: what the editor opens with is read
+		// when it opens, and by then the menu that asked for it has closed
+		beginRename(index);
+	});
+
 	source->addButton("delete", "Delete", [this, index, label](NotNull<ui::MenuSourceButton>) {
 		if (removeRow(index)) {
 			report(toString("deleted ", label));
 		}
 	});
 	return source;
+}
+
+void DndTreeView::addCreateSubmenu(ui::MenuSource *source, size_t index) {
+	/* A SUBMENU, not two items at the top level.
+
+	`New` is one decision followed by a second - what kind - and a menu that spelt both out at the
+	top level would put the two rarest items above Rename and Delete. Opening it on hover costs
+	nothing to declare: ui::MenuConfig::hover is on by default and carries down every level, so a
+	submenu here behaves like a submenu anywhere else in the application. */
+	auto items = Rc<ui::MenuSource>::create();
+
+	// The index is captured, like every other item's: a menu is a decision about the row that was
+	// pointed at, taken while that row still exists
+	items->addButton("new-item", "Item",
+			[this, index](NotNull<ui::MenuSourceButton>) { beginCreate(index, false); });
+	items->addButton("new-category", "Category",
+			[this, index](NotNull<ui::MenuSourceButton>) { beginCreate(index, true); });
+
+	source->addSubmenu("new", "New", sp::move(items));
 }
 
 bool DndTreeView::removeRow(size_t index) {
@@ -243,6 +285,344 @@ bool DndTreeView::removeRow(size_t index) {
 	// The model's own notification is what rebuilds the rows - the view listens to it - so there
 	// is nothing to refresh here
 	return model->removeNode(row->node.get());
+}
+
+bool DndTreeView::renameNode(ModelNode *node, StringView name) {
+	auto model = getSource();
+	if (!node || !model) {
+		return false;
+	}
+
+	auto trimmed = name;
+	trimmed.trimChars<StringView::WhiteSpace>();
+	if (trimmed.empty()) {
+		// Not a name. Said here rather than in either caller, because both mean the same thing by
+		// it and the editor's commit turns this one `false` into "the session stays open"
+		return false;
+	}
+
+	// The whole payload is copied and one key rewritten, rather than a fresh Value holding a name:
+	// a row's data belongs to the element, and this demo only happens to keep nothing else in it.
+	// A rename must not be what deletes the rest.
+	auto value = node->getData();
+	value.setString(trimmed, "name");
+
+	// setNodeData bumps the element's revision and posts Update::Data; the view listens to the
+	// model, so the row rebuilds itself with the new label and nothing here has to refresh
+	model->setNodeData(node, sp::move(value));
+	return true;
+}
+
+bool DndTreeView::renameRow(size_t index, StringView name) {
+	auto row = getRow(index);
+	return row && row->node && renameNode(row->node.get(), name);
+}
+
+bool DndTreeView::beginRename(size_t index) { return beginEdit(index, ItemId(0)); }
+
+bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
+	auto row = getRow(index);
+	if (!row || !row->node) {
+		return false;
+	}
+
+	/* The row's rectangle, cut back to where its NAME starts.
+
+	Not the whole row: a row is an indent, an expander slot and an icon before the label, and an
+	editor over all of it would put the text being edited several columns left of the text it
+	replaces. The vertical extent is still the row's - the editor stands in for the row, not for the
+	line of text inside it. */
+	Rect rect;
+	if (!getRowContentRect(index, rect) || rect.size.height <= 0.0f) {
+		return false;
+	}
+
+	/* Cut back to where the scroll bar begins.
+
+	A row spans the whole width of the view, bar included - the bar is drawn OVER the rows, which is
+	right for a hairline that fades away and wrong for a field the author is typing into. The strip
+	to keep clear is the scroll view's own answer (ScrollView::getIndicatorReservedSize), which
+	reserves the bar's WIDEST thickness rather than the one in force, so the editor does not have to
+	be re-laid out when the bar swells under a pointer. The editor's own padding is taken off as
+	well, because the rect is grown by it below. */
+	if (auto scroll = getScroll()) {
+		const auto limit =
+				_contentSize.width - scroll->getIndicatorReservedSize() - RenameEditorPadding;
+		const auto right = sprt::min(rect.getMaxX(), limit);
+		rect.size.width = sprt::max(right - rect.origin.x, 0.0f);
+		if (rect.size.width <= 0.0f) {
+			return false;
+		}
+	}
+
+	// One at a time, and the outgoing one COMMITS: a second Rename is a decision about another row,
+	// not a reason to throw away what was typed into this one
+	if (_rename) {
+		_rename->commit();
+	}
+
+	/* The element, by id, and never the index again.
+
+	An edit lasts as long as the author takes over it, and the model is live underneath: a drop, a
+	delete or a sort renumbers the rows while the editor sits over one of them. The id is what still
+	means the same element when the commit finally arrives. */
+	const auto id = row->node->getId();
+
+	ui::InlineTextEditConfig config;
+	config.text = row->node->getData().getString("name");
+
+	/* Grown by exactly the editor's own horizontal padding, so that the TEXT lands on the label.
+
+	The field draws its text at `rect.left + padding-left`, and the rect above puts `rect.left` on
+	the label - which would push the text right by the padding. Moving the rect out by the same
+	amount cancels it, and the box ends up slightly wider than the name on both sides, which is what
+	a rename box looks like everywhere. The number has to agree with `inline-editor`'s padding in
+	the demo's stylesheet; it is the one place the two have to be read together. */
+	config.padding = Padding().setLeft(RenameEditorPadding).setRight(RenameEditorPadding);
+	config.onCommit = [this, id](StringView value) {
+		auto model = getSource();
+		auto node = model ? model->getNode(id) : nullptr;
+		if (!node) {
+			// The element went away while it was being typed over. Refusing would leave an editor
+			// open over a row that no longer exists, so the value is dropped and the session ends
+			report("the element being renamed is gone");
+			return true;
+		}
+
+		if (!renameNode(node, value)) {
+			// A refused commit keeps the session open with the text still in it, which is the only
+			// way the author is told the name was not taken
+			report("a name cannot be empty");
+			return false;
+		}
+
+		report(toString("renamed to ", value));
+		return true;
+	};
+	/* Escape is what makes a created element PROVISIONAL, and the only thing that does.
+
+	Not "the name was left empty": an empty name is refused by the commit and the session stays
+	open, so the element is still being named. Not a press outside or a scroll either - both commit,
+	and an element named `New item` is a perfectly ordinary element. Only an explicit cancel says
+	the author changed their mind about creating it at all. */
+	config.onCancel = [this, provisional] {
+		if (provisional == ItemId(0)) {
+			return;
+		}
+		auto model = getSource();
+		if (auto node = model ? model->getNode(provisional) : nullptr) {
+			if (getSelectedRow() != maxOf<size_t>()) {
+				// The selection is an index; taking a row out from under it would move it onto
+				// whatever slid up into that slot. Same rule as removeRow.
+				setSelectedRow(maxOf<size_t>());
+			}
+			model->removeNode(node);
+			report("discarded the new element");
+		}
+	};
+
+	config.onClose = [this] {
+		_rename = nullptr;
+		_provisional = ItemId(0);
+	};
+
+	// THIS VIEW is the anchor: its space is where the rectangle keeps its meaning while the rows
+	// underneath are destroyed and rebuilt
+	_rename = ui::beginInlineTextEdit(this, rect, sp::move(config));
+	if (!_rename) {
+		return false;
+	}
+
+	_provisional = provisional;
+
+	/* The sheet has to be carried to the editor, because the editor is not down here.
+
+	It sits on an overlay of the scene's CONTENT node, outside the subtree the application's
+	ui::StyleResolver walks - so without this it comes up as the unstyled white field a bare
+	ui::TextInput is. A StyleSystem of its own supplies the rules and a recursive resolver applies
+	them to it and its children, which is the whole of what needs styling. */
+	if (auto editor = _rename->getEditor()) {
+		if (!_stylesheet.empty()) {
+			editor->addSystem(Rc<ui::StyleSystem>::create(_stylesheet));
+			editor->addSystem(Rc<ui::StyleResolver>::create(true));
+		}
+
+		/* The Overlay LEVEL, not merely a high ZOrder - the same thing the drag ghost asks for.
+
+		A label is drawn on RenderingLevel::Surface and an opaque box on Solid, and the levels are
+		painted in that order for the whole scene: without this the row's own text comes back on top
+		of the field that is supposed to have replaced it, however late the field is in z. */
+		editor->setOverlay(true);
+	}
+	return true;
+}
+
+size_t DndTreeView::rowIndexForId(ItemId id) const {
+	if (id == ItemId(0)) {
+		return maxOf<size_t>();
+	}
+	auto rows = getRows();
+	for (size_t i = 0; i < rows.size(); ++i) {
+		if (rows[i].node && rows[i].node->getId() == id) {
+			return i;
+		}
+	}
+	return maxOf<size_t>();
+}
+
+DndTreeView::InsertPoint DndTreeView::getInsertPoint(size_t index) const {
+	InsertPoint ret;
+
+	auto model = getSource();
+	if (!model) {
+		return ret;
+	}
+
+	auto row = getRow(index);
+	if (!row || !row->node || row->node->isSpan()) {
+		// The empty space below the last row, or a row that is not an element: the root is what
+		// answers, exactly as it does for a drop there
+		ret.parent = model->getRoot();
+		return ret; // index stays maxOf: append
+	}
+
+	if (row->node->isCategory()) {
+		/* Into it, and FIRST rather than appended.
+
+		Appending is what a file manager does, but a category here may be long and already open, and
+		the row the author is about to type into would then be built somewhere below the fold - an
+		editor over a row that is not on screen. First puts the new row directly under the one that
+		was clicked, which is where the author is looking. */
+		ret.parent = row->node;
+		ret.index = 0;
+		return ret;
+	}
+
+	// A leaf is a position: the new element stands directly after it, among its siblings
+	ret.parent = row->node->getParent();
+	ret.index = row->node->getChildIndex() + 1;
+	return ret;
+}
+
+bool DndTreeView::beginCreate(size_t index, bool category) {
+	auto model = getSource();
+	if (!model) {
+		return false;
+	}
+
+	// A closed category has to open before anything is put inside it, or the row the author is
+	// about to name is created where they cannot see it. Done before the insert point is resolved
+	// only because expanding renumbers the rows BELOW this one - this row's own index is unmoved.
+	if (auto row = getRow(index); row && row->isCategory() && !row->expanded) {
+		expandRow(index);
+	}
+
+	auto point = getInsertPoint(index);
+	if (!point.parent) {
+		return false;
+	}
+
+	/* A real name, not an empty one.
+
+	The editor opens with it selected, so the first keystroke replaces it and it costs the author
+	nothing; and it means that every ending EXCEPT an explicit cancel leaves a named element behind.
+	An empty placeholder would make a press outside produce a row with no label. */
+	Value data;
+	data.setString(category ? "New category" : "New item", "name");
+
+	auto node = category ? model->emplaceCategory(point.parent, point.index, sp::move(data))
+						 : model->emplaceItem(point.parent, point.index, sp::move(data));
+	if (!node) {
+		return false;
+	}
+
+	// One at a time, and the outgoing one commits - the same rule as a second Rename
+	if (_rename) {
+		_rename->commit();
+	}
+
+	/* Re-derive the rows NOW rather than waiting for the model's own notification.
+
+	That notification is a scheduler tick, and a tick only happens on a frame: a model change on its
+	own does not dirty the scene, so an idle window would sit on the old rows until something else
+	woke it. This both re-derives the rows in this call - which is what gives the new element a row
+	index to be found by - and marks the view dirty, which is what asks for the frame that builds
+	the row node the editor is waiting for. */
+	invalidateSource();
+
+	_pendingEdit = node->getId();
+
+	/* How many visits the row may take to appear before the wait gives up.
+
+	Three is a bound, not a measurement: the rows are re-derived in the call above, the row NODES
+	are rebuilt in the view's next components phase, and the pass that builds one also lays it out -
+	so one visit is the normal answer and the rest is slack for a row that has to be scrolled to or
+	loaded first. */
+	_pendingEditFrames = 3;
+	report(toString("naming a new ", category ? "category" : "item"));
+	return true;
+}
+
+/* Visit-END is where this is called from, not the components phase and not a scheduled tick.
+
+By then the rows rebuilt earlier in this same pass - TreeView rebuilds them in its components phase
+- have been visited, and therefore styled and laid out, so where a row's content starts is finally
+a real number rather than the fallback getRowContentRect gives for a row with no node. */
+void DndTreeView::settlePendingEdit() {
+	if (_pendingEdit == ItemId(0)) {
+		return;
+	}
+
+	/* Gone from the MODEL, not merely absent from the rows.
+
+	The two are different questions and the model is the one that matters: a row holds an Rc to its
+	element, so a removal is still listed until the next rebuild, and a check that only looked at
+	the rows would go on waiting for a row that is never coming. Whoever took the element out -
+	another view, a delete, the self-check - has already answered what should happen to it. */
+	auto model = getSource();
+	if (!model || !model->getNode(_pendingEdit)) {
+		_pendingEdit = ItemId(0);
+		return;
+	}
+
+	const auto index = rowIndexForId(_pendingEdit);
+	if (index == maxOf<size_t>()) {
+		// The element is in the model but has no row: it is inside something collapsed, or the
+		// rows have not been re-derived yet. Both are answered by waiting.
+		if (_pendingEditFrames > 0) {
+			--_pendingEditFrames;
+			return;
+		}
+		_pendingEdit = ItemId(0);
+		report("the new element has no row - use Rename to name it");
+		return;
+	}
+
+	// The row's NODE is what carries the answer this waits for: without one getRowContentRect
+	// falls back to the whole row, and the editor would be placed at the view's edge rather than
+	// over the label.
+	if (!getRowNode(index)) {
+		if (_pendingEditFrames > 0) {
+			--_pendingEditFrames;
+			return;
+		}
+
+		/* A row that never materializes is one outside the scroll window, and an editor placed on a
+		rectangle off the screen is one the author can neither see nor answer. The element STAYS -
+		it is a real element with a real name, which is exactly why it was given one - and Rename
+		is how it gets another. Removing it would be the worse answer: silently undoing what was
+		asked for because the view could not show it. */
+		_pendingEdit = ItemId(0);
+		report("the new element is out of view - use Rename to name it");
+		return;
+	}
+
+	const auto id = _pendingEdit;
+	_pendingEdit = ItemId(0);
+
+	if (beginEdit(index, id)) {
+		setSelectedRow(index);
+	}
 }
 
 void DndTreeView::report(StringView message) {
