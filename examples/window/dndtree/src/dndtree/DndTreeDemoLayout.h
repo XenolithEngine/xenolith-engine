@@ -62,8 +62,10 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
-	// Build the two models, the dock and the frames. Called by init(), and again by the Reset
-	// button - which is what makes a demo that has been dragged into a mess recoverable.
+	// Build the two models, the dock and the frames. Called ONCE, from init(): the dock's split, its
+	// frames and the two tree nodes outlive everything the demo does to their content. Putting a
+	// demo that has been dragged into a mess back is resetContent()'s job, and that is what the
+	// Reset button calls - it replaces the models under the same two trees.
 	void buildDock();
 
 	// One configured tree over one model. The dock's panel builder calls this on first show and the
@@ -90,6 +92,15 @@ protected:
 	// two, copy) leaves behind. Prints "N checks, M failures" on completion, and leaves the models
 	// where its transfers put them - the caller restores with resetContent().
 	void runSelfCheck();
+
+	/* The check, bracketed by the state it reads and the state the demo shows.
+
+	Both callers go through here, so what the check starts from is said once and a second run means
+	the same as the first: fresh models, both trees closed - which is what section 1 asserts and
+	what every later section is written against - then the run, then the demo's own starting state
+	back. Called at start-up only when XL_DNDTREE_SELFCHECK is set, and by `dndtree.selfcheck`
+	whenever it is asked: the variable gates the AUTOMATIC run, not the check. */
+	void performSelfCheck();
 
 	void addInspectorCommands(Scene *);
 

@@ -137,7 +137,20 @@ lifetime, or for error detection. Details and examples:
     structural root like `Scene`. To pick **which phase / `SystemFlags` / hook**
     a behaviour belongs in, read
     [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc)
-    — don't re-derive the phase order from the sources. Geometry: Y up, `anchorPoint` normalized,
+    — don't re-derive the phase order from the sources. **Geometry is a RESULT, not
+    a property**: a size or a laid-out box read in the same statement that changed
+    its input is the previous pass's answer. A node you attach from inside a frame
+    catches up as you attach it and can be read on the next line; from outside one
+    there is nothing to catch up on. There is deliberately no way to settle the
+    scene synchronously off-frame — every phase needs the pass's `FrameInfo` and
+    `systemStack` — so **ask to be told, never poll**: `settleForMeasure()` for a
+    child's size, `TreeView`/`TableView::requestRebuildNodes(cb)` for a row
+    somebody else builds (the callback runs at the end of the rebuild, inside the
+    visit, when the new rows are already styled and placed). A visit-end callback
+    with a frame counter is the shape to refuse: it asks after the answer was
+    complete, and the counter merges "not yet" with "never", though the second
+    always has a real answer (for a row: it is outside the scroll window — scroll
+    to it). Geometry: Y up, `anchorPoint` normalized,
     `contentSize` untransformed, rotation in radians; convert points with
     `convertToNodeSpace`/`convertToWorldSpace`. Node identity feeds CSS
     (`NodeIdentity` component): `setType()` → tag selector, **`setName()` → `#id`

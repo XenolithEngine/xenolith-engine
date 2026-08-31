@@ -273,6 +273,24 @@ public:
 	// flight is styled and laid out on that frame rather than the next.
 	virtual void requestRebuildNodes(bool force = false);
 
+	/* The same request, with an ANSWER: `cb` runs once the row nodes are current again.
+
+	It runs at the END of that rebuild, from inside the visit that performed it - and that is the
+	first moment a new row can be MEASURED, not merely the first moment it exists. A node attached
+	while a frame is in flight catches up on the phases the pass has already gone by, as it is
+	attached (Node::runPendingPhases), so every row this rebuild built is styled, sized and placed
+	by the time the rebuild returns. Anything later - a scheduled tick, a visit-end callback - is
+	asking after the answer was already there, and has to guess how long to wait for it.
+
+	One-shot, and coalesced into whatever rebuild is already pending: several callers asking in one
+	turn are all answered by the one rebuild, in the order they asked. A callback that asks again is
+	answered by the NEXT rebuild and never re-entrantly by this one.
+
+	What it may NOT assume is that the row it cares about has a node. A rebuild builds the rows
+	inside the scroll window and no others, so "the answer is ready" and "the row is on screen" are
+	different facts - the second is getRowNode()'s to give. */
+	virtual void requestRebuildNodes(Function<void()> &&cb, bool force = false);
+
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
@@ -418,6 +436,10 @@ protected:
 	bool _rebuildPending = false;
 	bool _forceRebuild = false;
 	bool _inDataRequest = false;
+
+	// Who asked to be told when the nodes are next current. Taken off the list before they run, so
+	// one that asks again is served by the following rebuild.
+	Vector<Function<void()>> _rebuildCallbacks;
 };
 
 // Chooses what a row looks like. Every setter is optional: a builder the callback never touches

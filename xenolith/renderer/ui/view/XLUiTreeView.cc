@@ -525,6 +525,13 @@ void TreeView::requestRebuildNodes(bool force) {
 	markComponentsDirty();
 }
 
+void TreeView::requestRebuildNodes(Function<void()> &&cb, bool force) {
+	if (cb) {
+		_rebuildCallbacks.emplace_back(sp::move(cb));
+	}
+	requestRebuildNodes(force);
+}
+
 void TreeView::rebuildRows() {
 	if (!_controller) {
 		return;
@@ -579,6 +586,17 @@ void TreeView::rebuildRows() {
 
 	// Whatever was not claimed belonged to a row that is gone, or to one that now looks different.
 	_reusableRows.clear();
+
+	/* The answer, delivered here and not a hop later.
+
+	Every row this pass built was attached while the frame is in flight, so each caught up on the
+	visit's phases as it was attached (Node::runPendingPhases) and commitChanges() above has placed
+	it - which makes this the first moment the new rows can be measured, and therefore the last
+	moment worth waiting for. Taken off the list BEFORE they run: a callback that asks for another
+	rebuild is answered by that one. */
+	auto callbacks = sp::move(_rebuildCallbacks);
+	_rebuildCallbacks.clear();
+	for (auto &it : callbacks) { it(); }
 }
 
 auto TreeView::makeRowKey(const Row &row) -> RowKey {
