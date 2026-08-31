@@ -91,6 +91,20 @@ void DragBasicLayout::handleEnter(Scene *scene) {
 	_drag = DragSystem::acquireForNode(this);
 }
 
+void DragBasicLayout::handleExit() {
+	// The system lives on the scene CONTENT, not on this layout, so a session started here outlives
+	// the layout that started it: switch away mid-sequence and the next stand finds a drag already
+	// in flight, with the cursor still Grabbing. A programmatic drag has no input chain to end it
+	// either - the one that watches a press chain does not apply - so ending it is this stand's own
+	// job, exactly as committing it is
+	if (_drag && _drag->isDragging()) {
+		_drag->cancelDrag();
+	}
+	_drag = nullptr;
+
+	TestLayout::handleExit();
+}
+
 Node *DragBasicLayout::addTarget(StringView name, const Rect &rect, ZOrder z, Counters *counters,
 		bool accept, Function<void()> &&extraOnDrop) {
 	auto node = addChild(Rc<basic2d::Layer>::create(Color::Teal_700), z);
@@ -99,24 +113,24 @@ Node *DragBasicLayout::addTarget(StringView name, const Rect &rect, ZOrder z, Co
 	node->setPosition(rect.origin);
 	node->setContentSize(rect.size);
 
-	node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept =
-				[counters, accept](const DragEvent &event) -> DragResponse {
+	setDropTarget(node,
+			DropTargetSlots{
+				.accept = [counters, accept](const DragEvent &event) -> DragResponse {
 		++counters->accepts;
 		return accept ? DragResponse{event.allowed} : DragResponse();
 	},
-		.enter = [counters](const DragEvent &) { ++counters->enters; },
-		.over = [counters](const DragEvent &) { ++counters->overs; },
-		.leave = [counters](const DragEvent &) { ++counters->leaves; },
-		.drop =
-				[counters, extra = sp::move(extraOnDrop)](const DragEvent &, DragActions) {
+				.enter = [counters](const DragEvent &) { ++counters->enters; },
+				.over = [counters](const DragEvent &) { ++counters->overs; },
+				.leave = [counters](const DragEvent &) { ++counters->leaves; },
+				.drop =
+						[counters, extra = sp::move(extraOnDrop)](const DragEvent &, DragActions) {
 		++counters->drops;
 		if (extra) {
 			extra();
 		}
 		return true;
 	},
-	}));
+			});
 
 	return node;
 }

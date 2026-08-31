@@ -29,10 +29,16 @@
 
 #include <sprt/cxx/optional>
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class InputDispatcher;
+
+}
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class TooltipSystem;
-class TooltipTarget;
+struct TooltipInfo;
 
 // Where the hint hangs off.
 enum class TooltipAnchorMode {
@@ -89,9 +95,10 @@ struct SP_PUBLIC TooltipRequest {
 	// The hovered node.
 	Node *target = nullptr;
 
-	// The target that declared the hint, so a factory shared by many nodes can read back whatever
-	// it put there.
-	TooltipTarget *source = nullptr;
+	// What the node declared, so a factory shared by many nodes can read back whatever it put
+	// there. Never null while the factory runs - it is a copy, taken when the hint was built, and
+	// not a pointer into a widget that may be gone by then on the native path.
+	const TooltipInfo *info = nullptr;
 
 	StringView text;
 
@@ -137,79 +144,48 @@ struct SP_PUBLIC TooltipInfo {
 
 /** Declares that a node has a hint, and carries what that hint is.
 
-	node->addSystem(Rc<TooltipTarget>::create("Save the document"));
+    ui::setTooltip(node, "Save the document");
 
-	node->addSystem(Rc<TooltipTarget>::create(TooltipInfo{
-		.text = "Save the document",
-		.factory = [](NotNull<SubWindow>, const TooltipRequest &req) { ... },
-	}));
+    ui::setTooltip(node, ui::TooltipInfo{
+        .text = "Save the document",
+        .factory = [](NotNull<SubWindow>, const TooltipRequest &req) { ... },
+    });
 
-IT IS AN InputListener, not a System owning one. A System cannot add a sibling system from its own
-handleAdded/handleRemoved - Node::removeSystem runs those while holding an iterator into the very
-list it would mutate. ScrollSystem solved this the same way, and the same choice pays a second time
-here: InputListener::settlePointerState() already answers "is the pointer over me" with no event in
-hand, so a target attached while the pointer is ALREADY resting on the node arms its delay instead
-of waiting for the next move.
+IT IS DATA, NOT A LISTENER. This used to be an InputListener of its own on every node with a hint -
+one registration in the dispatcher's storage, one sort entry and one hit test per event, for a node
+whose hint is used perhaps once a session. Now the node publishes itself into the frame's hit-test
+registry like every other participant (see HitTestFlags), and ONE listener on the scene resolves
+which of them the pointer is resting on.
 
-THE DELAY IS NOT HERE. This reports hover; TooltipSystem decides how long a pointer must rest. One
-node's hint appearing sooner than its neighbour's is a bug, not a feature, so there is deliberately
-no per-target override.
+THE DELAY IS NOT HERE. This says what the hint is; TooltipSystem decides how long a pointer must
+rest. One node's hint appearing sooner than its neighbour's is a bug, not a feature, so there is
+deliberately no per-node override.
 
 App-thread only. */
-class SP_PUBLIC TooltipTarget : public InputListener {
-public:
-	virtual ~TooltipTarget() = default;
+struct SP_PUBLIC TooltipComponent {
+	static ComponentId Id;
 
-	// Both take arguments on purpose: InputListener::init(int32_t priority = 0) would HIDE a
-	// zero-argument override, which then silently never runs. Same reason ScrollSystem,
-	// FormInputListener and DragSource all take arguments.
-	virtual bool init(TooltipInfo &&);
-	virtual bool init(StringView text);
+	TooltipInfo info;
 
-	virtual void handleExit() override;
-
-	virtual void setInfo(TooltipInfo &&);
-	const TooltipInfo &getInfo() const { return _info; }
-
-	// Changing the text of a hint that is currently UP rebuilds it in place.
-	virtual void setText(StringView);
-	StringView getText() const { return _info.text; }
-
-	virtual void setFactory(TooltipFactory &&);
-
-	virtual void setPlacement(const TooltipPlacement &);
-	virtual void clearPlacement();
-	const sprt::optional<TooltipPlacement> &getPlacement() const { return _info.placement; }
-
-	// True while the pointer is resting on the owner - which is not the same as the hint being up,
-	// the delay may still be running.
-	bool isHovered() const { return _hovered; }
-
-	// The system this target reports to, or null before its first hover.
-	TooltipSystem *getSystem() const { return _system; }
-
-protected:
-	using InputListener::init;
-
-	// Shared tail of both init overloads.
-	bool setup();
-
-	// Walks the parent chain and installs a system if there is none. Deferred to the first hover
-	// rather than done in handleAdded: the parent chain is not complete there, and the hover
-	// callbacks that need it all run OUTSIDE a visit anyway. Same split as DragSystem's
-	// findForNode vs. frame-stack registration.
-	TooltipSystem *acquireSystem();
-
-	TooltipInfo _info;
-
-	// Raw: the system lives on the SceneContent above us and outlives every target under it.
-	// Cleared in handleExit, which is also where we tell it we are going.
-	TooltipSystem *_system = nullptr;
-	bool _hovered = false;
+	// A disabled hint is not found. For a widget that carries a hint only in some of its states
+	bool enabled = true;
 };
 
-// How the scene's hints behave. Everything here is a default a TooltipTarget may override, except
-// the delay - see the note on TooltipTarget.
+// Attaches a hint to `node`, or replaces the one it has, and marks the node as a participant in the
+// hit-test registry. The only supported way in: the flag is a cache of this component's presence
+SP_PUBLIC const TooltipComponent *setTooltip(NotNull<Node>, TooltipInfo &&);
+SP_PUBLIC const TooltipComponent *setTooltip(NotNull<Node>, StringView text);
+
+SP_PUBLIC const TooltipComponent *getTooltip(NotNull<Node>);
+
+// Changing the text of a hint that is currently UP rebuilds it in place
+SP_PUBLIC void setTooltipText(NotNull<Node>, StringView);
+SP_PUBLIC void setTooltipEnabled(NotNull<Node>, bool);
+
+SP_PUBLIC void removeTooltip(NotNull<Node>);
+
+// How the scene's hints behave. Everything here is a default a TooltipComponent may override,
+// except the delay - see the note on TooltipComponent.
 struct SP_PUBLIC TooltipConfig {
 	using WindowCreationFlags = sprt::window::WindowCreationFlags;
 
@@ -280,6 +256,10 @@ public:
 	// The dwell action on the owner.
 	static constexpr uint32_t DelayActionTag = "XLUiTooltipDelay"_tag;
 
+	// The hover listener's priority. Post-scene, like the dismiss one, and for the same reason: it
+	// only watches, so it belongs after everything that acts. It consumes nothing either way.
+	static constexpr int32_t HoverListenerPriority = -0x1F00;
+
 	// Deeply negative so the dismiss listener sits in the dispatcher's post-scene band and sees
 	// what every widget already had its chance at. It swallows nothing.
 	static constexpr int32_t DismissListenerPriority = -0x2000;
@@ -302,7 +282,15 @@ public:
 	virtual bool init() override;
 
 	virtual void handleAdded(Node *) override;
+	virtual void handleRemoved() override;
+	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
+	virtual void handleVisitBegin(FrameInfo &) override;
+
+	// One hit-test query per frame, and only while the scene has a hint in it at all. This is what
+	// notices a node sliding out from under a pointer that did not move - a scrolling list, a panel
+	// animating into place - which used to come from the per-target listener's geometry updates
+	virtual void update(const UpdateTime &) override;
 
 	virtual void setConfig(const TooltipConfig &);
 	const TooltipConfig &getConfig() const { return _config; }
@@ -321,33 +309,45 @@ public:
 
 	// Show `target`'s hint right now, skipping the delay. `pointerWorld` only matters under
 	// TooltipAnchorMode::Pointer.
-	virtual bool showFor(NotNull<TooltipTarget>, Vec2 pointerWorld);
+	virtual bool showFor(NotNull<Node>, Vec2 pointerWorld);
 
 	// Take the hint down and cancel any delay in flight. Idempotent.
 	virtual void hide();
 
 	bool isVisible() const;
 
-	// The target whose hint is up, or null.
-	TooltipTarget *getCurrentTarget() const { return _shown; }
+	// The node's hint changed - text, factory, or the component going away. Rebuilds a hint that is
+	// currently up for it, and is a no-op otherwise. Public because the component setters are free
+	// functions: a node's hint can be edited from anywhere, and something has to notice.
+	void handleNodeChanged(NotNull<Node>);
 
-	// The target the delay is running for, or null.
-	TooltipTarget *getPendingTarget() const { return _pending; }
+	// The node whose hint is up, or null.
+	Node *getCurrentTarget() const { return _shown; }
+
+	// The node the delay is running for, or null.
+	Node *getPendingTarget() const { return _pending; }
+
+	// The node the pointer is resting on, hint or no hint yet. Null when it is on none.
+	Node *getHoveredTarget() const { return _hovered; }
+
+	InputListener *getHoverListener() const { return _hoverListener; }
 
 protected:
-	friend class TooltipTarget;
+	/* Which node the pointer is resting on, asked of the frame's hit-test registry.
 
-	// --- called by TooltipTarget ---
+	`fromMove` says whether the pointer actually moved. It is the difference between the two callers
+	and it decides one thing: a move restarts the dwell (that is what makes the delay "the pointer
+	stopped" rather than "the pointer arrived"), a per-frame re-resolution must not, or a hint would
+	never appear in a scene that keeps drawing. */
+	void resolveHover(const Vec2 &pointerWorld, bool fromMove);
 
-	// Pointer entered the target, or moved within it. Both restart the dwell.
-	void handleTargetHover(NotNull<TooltipTarget>, Vec2 pointerWorld);
-	void handleTargetLeave(NotNull<TooltipTarget>);
+	// Pointer entered the node, or moved within it. Both restart the dwell.
+	void handleTargetHover(NotNull<Node>, Vec2 pointerWorld);
+	void handleTargetLeave(NotNull<Node>);
 
-	// The target is leaving the scene, whether or not it was hovered.
-	void handleTargetGone(NotNull<TooltipTarget>);
+	// The node is leaving the scene, or has stopped offering a hint.
+	void handleTargetGone(NotNull<Node>);
 
-	// The target's content changed under a hint that is already up.
-	void handleTargetChanged(NotNull<TooltipTarget>);
 
 	void armDelay();
 	void cancelDelay();
@@ -355,13 +355,19 @@ protected:
 	// The dwell elapsed. Builds and opens.
 	void fire();
 
-	bool present(NotNull<TooltipTarget>, Vec2 pointerWorld);
+	bool present(NotNull<Node>, Vec2 pointerWorld);
 
-	const TooltipPlacement &placementFor(NotNull<TooltipTarget>) const;
+	const TooltipPlacement &placementFor(NotNull<Node>) const;
 	sprt::window::WindowPlacement makePlacement(const TooltipRequest &,
 			const TooltipPlacement &) const;
 
-	Rect getTargetWorldRect(NotNull<TooltipTarget>) const;
+	Rect getTargetWorldRect(NotNull<Node>) const;
+
+	InputDispatcher *getDispatcher() const;
+
+	// One listener on the owner, in place of one per node with a hint. It carries a move
+	// recognizer and nothing else: it decides nothing, it only says the pointer went somewhere
+	void updateHoverListener();
 
 	AppWindow *getWindow() const;
 	SubWindowSession *getSession() const;
@@ -370,14 +376,22 @@ protected:
 	TooltipConfig _config;
 	TooltipFactory _defaultFactory;
 
-	// Raw: a target lives under this node, and tells us on the way out. An Rc here would keep a
-	// removed widget alive for as long as a hint that was never shown.
-	TooltipTarget *_pending = nullptr;
-	TooltipTarget *_shown = nullptr;
+	/* Rc now, where the old target pointers were raw.
+
+	A target used to announce its own departure from handleExit; a component cannot, so a node that
+	leaves the scene while its hint is up would leave a dangling pointer behind. Holding it is also
+	what lets `fire` run against the node the dwell was armed for even if it has just been detached -
+	it finds it not running and declines, instead of reading freed memory. */
+	Rc<Node> _pending;
+	Rc<Node> _shown;
+	Rc<Node> _hovered;
 
 	Vec2 _pointer;
+	bool _hasPointer = false;
+
 	Rc<SubWindow> _tip;
 	Rc<InputListener> _dismissListener;
+	Rc<InputListener> _hoverListener;
 };
 
 } // namespace stappler::xenolith::ui

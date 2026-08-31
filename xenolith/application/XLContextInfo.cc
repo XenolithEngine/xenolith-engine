@@ -167,6 +167,18 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.context->flags |= sprt::window::ContextFlags::Headless;
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--headless-no-pointer"},
+			.description = StringView(
+					"Headless only: report windows as having no pointing device, so a widget that "
+					"adapts to the input devices available takes its touch-shaped branch"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::HeadlessNoPointer;
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--decor <decoration-description>"},
 			.description = StringView("Define window decoration paddings"),
 			.callback = [](ContextConfig &target, StringView pattern,

@@ -54,6 +54,13 @@ public:
 
 } // namespace
 
+/* The one inline edit that is open, application-wide, or null.
+
+A plain pointer and no lock: an inline edit is scene-graph work, and the scene graph is
+app-thread-only and therefore lock-free. The slot is cleared by close() and by the destructor, so a
+session that is simply dropped without being ended cannot leave it dangling. */
+static InlineEditSession *s_activeInlineEdit = nullptr;
+
 // ---- InlineEditLayout ---------------------------------------------------------------------------
 
 bool InlineEditLayout::init(NotNull<Node> anchor, const Rect &rect, Rc<Node> &&editor,
@@ -260,10 +267,45 @@ bool InlineEditLayout::handleTap(Vec2 pt) {
 
 // ---- InlineEditSession --------------------------------------------------------------------------
 
+InlineEditSession::~InlineEditSession() {
+	// A session let go of without being ended - the caller simply dropped the Rc - must not leave
+	// the application-wide slot pointing at freed memory.
+	if (s_activeInlineEdit == this) {
+		s_activeInlineEdit = nullptr;
+	}
+}
+
+InlineEditSession *InlineEditSession::getActive() { return s_activeInlineEdit; }
+
 bool InlineEditSession::init(NotNull<Node> anchorContent, const Rect &rect, Rc<Node> &&editor,
 		InlineEditConfig &&config) {
 	if (!editor) {
 		return false;
+	}
+
+	/* ONE inline edit at a time, for the whole application, and the outgoing one is CANCELLED.
+
+	Two editors at once is not a state this can be in: they are overlays over a single keyboard
+	focus, and the second one takes it - which leaves the first standing, unfocused, still holding a
+	commit that will be delivered whenever something finally closes it, out of order with the edit
+	that replaced it. Cancelling is the only ending that keeps nothing: a caller that wants the
+	outgoing value has to say so by committing it FIRST, which is a decision only that caller can
+	make.
+
+	Done before anything below reads the scene, because the cancel runs the previous session's
+	onCancel and onClose, and those are free to change the very geometry this init is about to place
+	an editor against. The cost is that a session which then fails to open still took the previous
+	one away - and that reads as "the edit did not start", while a rectangle resolved before those
+	callbacks ran would be a silent misplacement. */
+	if (auto prev = s_activeInlineEdit; prev && prev != this) {
+		Rc<InlineEditSession> hold(prev);
+		hold->cancel();
+		if (s_activeInlineEdit == hold.get()) {
+			// cancel() answers false only from inside that session's own commit callback, which
+			// finish() refuses to re-enter. Nothing will close it later, so the slot must not go on
+			// pointing at it.
+			s_activeInlineEdit = nullptr;
+		}
 	}
 
 	auto scene = anchorContent->getScene();
@@ -312,6 +354,10 @@ bool InlineEditSession::init(NotNull<Node> anchorContent, const Rect &rect, Rc<N
 	});
 	anchorContent->addSystemItem(_anchorWatch);
 
+	// Registered only once everything above has succeeded: a session that could not open is not one
+	// the next open has to cancel.
+	s_activeInlineEdit = this;
+
 	return true;
 }
 
@@ -334,6 +380,12 @@ void InlineEditSession::close() {
 		return;
 	}
 	_finished = true;
+
+	// Released BEFORE the callbacks below, so that an onClose which opens the next editor finds the
+	// slot empty rather than being made to cancel a session that has already ended.
+	if (s_activeInlineEdit == this) {
+		s_activeInlineEdit = nullptr;
+	}
 
 	auto onClose = sp::move(_config.onClose);
 	_config.onClose = nullptr;

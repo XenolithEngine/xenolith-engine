@@ -41,6 +41,7 @@ class WindowClass;
 // Whether a touchscreen is attached right now. Defined in SPRTWinWindowsWindow.cc, declared here
 // because the controller re-probes it on WM_DEVICECHANGE and comes earlier in the SCU.
 bool WindowsWindow_hasTouchDigitizer();
+bool WindowsWindow_hasPointerDevice();
 
 class WindowsWindow : public NativeWindow {
 public:
@@ -123,7 +124,7 @@ public:
 	Status handleMouseCaptureChanged();
 
 	// A digitizer was plugged or unplugged; re-probed value pushed down from the message window.
-	Status handleTouchAvailable(bool);
+	Status handleInputDevicesAvailable(bool pointer, bool touch);
 
 	Status handlePositionChanging(WINDOWPOS *);
 	Status handlePositionChanged(const WINDOWPOS *);

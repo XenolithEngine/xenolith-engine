@@ -38,6 +38,8 @@ InputListenerStorage::InputListenerStorage(PoolRef *p) : PoolRef(p) {
 		_focus = new (_pool) mem_pool::Map<FocusGroup *, mem_pool::Vector<Rec *>>;
 		_focus->memory_persistent(true);
 
+		_hitTest = new (_pool) mem_pool::Vector<HitTestRec>;
+
 		_sceneEvents->reserve(256);
 	});
 }
@@ -48,6 +50,8 @@ void InputListenerStorage::clear() {
 		_preSceneEvents->clear();
 		_sceneEvents->clear();
 		_postSceneEvents->clear();
+		_hitTest->clear();
+		_hitTestMask = HitTestFlags::None;
 		_order = 0;
 	});
 }
@@ -56,6 +60,7 @@ void InputListenerStorage::reserve(const InputListenerStorage *st) {
 	_preSceneEvents->reserve(st->_preSceneEvents->size());
 	_sceneEvents->reserve(st->_sceneEvents->size());
 	_postSceneEvents->reserve(st->_postSceneEvents->size());
+	_hitTest->reserve(st->_hitTest->size());
 }
 
 void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup *focus,
@@ -87,6 +92,60 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 		which is the first moment every Rec has its final address. */
 	});
 }
+
+bool InputListenerStorage::HitTestRec::contains(const Vec2 &world, float padding) const {
+	// The AABB first: it rejects almost everything for the price of four comparisons, and the exact
+	// test below costs a matrix-vector product
+	if (!worldRect.containsPoint(world, padding)) {
+		return false;
+	}
+
+	if (scissorEnabled) {
+		// Float, not URect::containsPoint(UVec2): the location can be negative (a pointer dragged
+		// off the window), and the cast to unsigned would wrap it INTO the rect instead of out of it
+		if (world.x < float(scissor.x) || world.y < float(scissor.y)
+				|| world.x >= float(scissor.x + scissor.width)
+				|| world.y >= float(scissor.y + scissor.height)) {
+			return false;
+		}
+	}
+
+	return node && node->isTouchedAsDrawn(world, padding);
+}
+
+void InputListenerStorage::addHitTest(NotNull<Node> node, const Mat4 &worldTransform,
+		const Size2 &size, HitTestFlags flags, float opacity, const URect *scissor) {
+	perform([&, this] {
+		HitTestRec rec{Rc<Node>(node.get()), TransformRect(Rect(Vec2(0, 0), size), worldTransform),
+			URect(), opacity, flags, ++_order, false};
+		if (scissor) {
+			rec.scissor = *scissor;
+			rec.scissorEnabled = true;
+		}
+		_hitTest->emplace_back(sp::move(rec));
+		_hitTestMask |= flags;
+	});
+}
+
+bool InputListenerStorage::foreachHitTest(HitTestFlags mask,
+		const Callback<bool(const HitTestRec &)> &cb) const {
+	// Backwards: registration order is visit order is paint order, so the last match is the topmost
+	for (size_t i = _hitTest->size(); i > 0; --i) {
+		const auto &rec = _hitTest->at(i - 1);
+		if ((rec.flags & mask) == HitTestFlags::None) {
+			continue;
+		}
+		if (!rec.node) {
+			continue;
+		}
+		if (!cb(rec)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+size_t InputListenerStorage::getHitTestCount() const { return _hitTest->size(); }
 
 void InputListenerStorage::sort() {
 	// Rebuilt from scratch: this is the first moment every Rec has its final address.
@@ -168,6 +227,8 @@ void InputDispatcher::commitStorage(core::RenderServerChannel *window,
 		_tmpEvents->clear();
 	}
 
+	_events->_generation = ++_generation;
+
 	// Sort focus groups
 	_events->sort();
 
@@ -180,7 +241,14 @@ void InputDispatcher::commitStorage(core::RenderServerChannel *window,
 	}, nullptr);
 
 	sprt::window::Vector<WindowLayer> layers;
-	_events->foreachListener([&](const InputListenerStorage::Rec &rec) {
+	_events->foreachListener([&, this](const InputListenerStorage::Rec &rec) {
+		// Which frame this listener was drawn in, stamped here rather than read at visit time
+		// because the visit fills a storage that is not committed yet. A listener the dispatcher
+		// reaches OUTSIDE this walk - an active gesture chain holds the ones it captured - compares
+		// its stamp against the current one and finds it stale; see
+		// InputListener::_shouldProcessEvent
+		rec.listener->_visitGeneration = _generation;
+
 		if (rec.layer) {
 			layers.emplace_back(rec.layer);
 		}
@@ -188,6 +256,22 @@ void InputDispatcher::commitStorage(core::RenderServerChannel *window,
 	}, nullptr);
 
 	window->updateLayers(sp::move(layers));
+}
+
+bool InputDispatcher::foreachHitTest(HitTestFlags mask,
+		const Callback<bool(const InputListenerStorage::HitTestRec &)> &cb) const {
+	if (!_events) {
+		return true;
+	}
+	return _events->foreachHitTest(mask, cb);
+}
+
+HitTestFlags InputDispatcher::getHitTestMask() const {
+	return _events ? _events->getHitTestMask() : HitTestFlags::None;
+}
+
+uint64_t InputDispatcher::getCommittedGeneration() const {
+	return _events ? _events->getGeneration() : 0;
 }
 
 void InputDispatcher::handleInputEvent(const InputEventData &event) {
@@ -336,6 +420,10 @@ void InputDispatcher::setListenerExclusiveForKey(const InputListener *l, InputKe
 	if (it != _activeKeys.end()) {
 		setListenerExclusive(it->second, l);
 	}
+}
+
+bool InputDispatcher::isEventActive(uint32_t id) const {
+	return _activeEvents.find(id) != _activeEvents.end();
 }
 
 bool InputDispatcher::hasActiveInput() const {

@@ -225,6 +225,23 @@ so every level of one menu answers the pointer alike; an inline menu is told wit
 `MenuSystem::setHoverConfig`. `openSubmenu = false` returns the old behaviour
 exactly: a click and `Right`, nothing else.
 
+**Arriving in a level cancels the close the level above had armed**, and nothing
+re-arms it until the pointer goes back to a row up there. The delay alone was
+never enough: it makes the diagonal trip *survivable*, not certain, and a pointer
+that took longer than 400 ms — or that simply stopped on the way — had the
+submenu taken down from under it. So the level that was arrived at says so, up
+the whole chain (`MenuSystem::setPointerEnterHandler` →
+`MenuPopupChain::handlePointerEntered` → `cancelSubmenuDelay` on every level
+above). It is reported for the MENU, not for a row of it: a pointer resting on a
+separator, on the padding or in the gap between two rows is still in that menu,
+and none of those is a row that hovers.
+
+A hover in a menu is reported at all only because the row's mouse-over recognizer
+does **not** require the window to hold the keyboard focus
+(`InputMouseOverInfo::onlyFocused`): a popup surface never takes focus, so a menu
+gated on it would never highlight a row and never open a level by pointing. That
+is `ui::Button`'s setting, and every widget built on one inherits it.
+
 **`MenuPopupChain::openSubmenu` is idempotent for the row that is already open.**
 Not an optimization: the pointer leaving a submenu back onto the row that opened
 it asks again on every entering edge, and rebuilding the level would flicker it
@@ -238,6 +255,105 @@ directly) and a stale copy would then refuse to reopen the row it named.
 `willActivate` → the item's own callback → `activate`. The popup dismisses in the
 first, which is why an action is free to put another surface up in its place
 without leaving the menu standing behind it.
+
+## Context menus
+
+A menu the user asks for by right-clicking, or by holding a finger down, is
+declared per node and driven once per scene:
+
+[source,cpp]
+----
+#include "XLUiContextMenu.h"
+
+// a fixed menu
+ui::setContextMenu(node, source);
+
+// or one built for the point it was asked at
+ui::setContextMenu(view, [this](const ui::ContextMenuRequest &req) -> Rc<ui::MenuSource> {
+    return buildMenuForRow(view->getRowIndexAt(req.location));
+});
+
+// the scene's coordinator, for what every menu in it should look like
+auto menus = ui::ContextMenuSystem::acquireForNode(node);
+menus->setMenuConfigCallback([](ui::MenuConfig &config) {
+    config.stylesheetSource = String(s_css);   // a popup is a scene of its own
+});
+----
+
+**The declaration has no input of its own, and no lifecycle either.**
+`ContextMenuComponent` is data on the node: a listener per element is the obvious
+implementation and the wrong one, since a menu is declared on many nodes and used
+on almost none, and in a virtualized view the node that would carry it exists only
+while it is on screen. `setContextMenu` also raises `HitTestFlags::ContextMenu`,
+which makes the node publish the rect it was drawn with into the window's hit-test
+registry — the same one drop targets and tooltips use, with the same three
+consequences: the rect is exactly the one that was drawn, registration order is
+paint order so the topmost answers, and a node that is not visited is not a target
+at all.
+
+`setContextMenuEnabled` turns one off without removing it, `removeContextMenu`
+takes both the component and the flag away, and `getContextMenu` reads it back.
+Use them rather than the raw component API — the flag is a cache of the
+component's presence.
+
+`ContextMenuRequest::location` is in the **declaring node's** space, which is what
+lets a view resolve its own row from it (`TreeView::getRowIndexAt`) without
+converting anything.
+
+### What stops a menu
+
+"Only if nobody else took the press" cannot be asked: the dispatcher does not
+record whether an event was handled, and `InputEventState::Processed` does not
+even stop the walk. There are two mechanisms instead, and a widget that wants the
+right button to itself has to use one of them:
+
+* **capture it.** A listener that swallows the press
+  (`setSwallowEvent(InputEventName::Begin)`), or that takes the pointer
+  exclusively — which is what `DragSource` does when a drag starts — turns the
+  coordinator's gesture into a `Cancel`, and no menu opens;
+* **declare an empty target.** A `ContextMenuComponent` whose builder returns
+  null **blocks**: the search stops at the topmost target and does not fall
+  through to the region under it. That is how a control says "no menu here" inside
+  a panel that has one.
+
+A plain `Processed` is deliberately invisible. `ui::Button` already answers a
+right tap and does not swallow it, and a button must not stop the panel around it
+from opening its menu.
+
+### An open menu covers the scene
+
+A click outside an open menu **dismisses it and reaches nothing else**; the next
+click is an ordinary one. That is what every desktop menu does, and it is why the
+coordinator has *two* listeners rather than one: opening is asked last, after
+every widget has had its chance, while closing has to be asked FIRST — a dismiss
+listener in the post-scene band would be told about a press the widget under the
+pointer had already acted on. The dismissing one swallows the press
+(`Processed` → `Captured`, which cancels everyone else for that chain) and is
+enabled only while a menu is up.
+
+One rule for every button: a *right* click while a menu is open closes it too,
+rather than replacing it with another menu. "A click outside is spent on the
+dismissal" is easier to predict than a rule per button.
+
+On a real window system a native popup holds a pointer grab and the parent never
+sees the press at all, so none of this runs there. It is for the in-scene overlay
+path — and for headless, where the emulated window manager delivers to the parent.
+
+### The two gestures
+
+The mouse opens on **release** — a tap recognizer, press-and-release without
+moving past the tap tolerance. That is what desktop applications do, and it is
+what leaves a right-button drag possible; `ui::CanvasView` pans with one.
+
+The touchscreen opens on a **long press** (`setLongPressInterval`, 500 ms by
+default), and the recognizer has to read `InputModifier::Touch` off the event to
+know it was a finger: `InputMouseButton::Touch` *is* `MouseLeft`, so the button
+says nothing. It is deliberately **not** a capturing press recognizer — this
+listener is the last one asked and every press in the window reaches it, so
+capturing would take the pointer away from whatever was actually being pressed.
+
+`ContextMenuSystem::openAt(worldLocation)` is the same call without the pointer,
+which is what a test drives and what a keyboard binding would use.
 
 ## Hotkeys
 
@@ -348,6 +464,18 @@ moves the highlight onto it, so a menu never shows a keyboard cursor on one row
 and a hover on another.
 
 ## Exercising it
+
+The context-menu half has a stand of its own behind `XL_CONTEXT_MENU_TEST=1`
+(`src/widgets/ContextMenuLayout.cpp`): nested regions that answer differently, an
+invisible target, one that offers nothing, and a widget that swallows the right
+button. `tests/window/context-menu-check.py` drives it — 36 checks, headless.
+`examples/window/dndtree` is the worked example: a right click on a row offers
+Rename and Delete, and on a category Expand/Collapse as well, built by
+`DndTreeView::buildContextMenu` from the row the point resolved to. Rename is the
+one that leaves the menu behind — it opens a `ui::InlineEditSession` over the row's
+rectangle, which is a second place the sheet has to be carried by hand: an inline
+editor lives on an overlay of the scene's content node, outside the subtree the
+application's `ui::StyleResolver` walks, exactly as a popup is a scene of its own.
 
 `tests/window` carries the stand behind `XL_MENU_TEST=1`
 (`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup,

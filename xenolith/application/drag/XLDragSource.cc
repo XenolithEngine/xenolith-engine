@@ -49,14 +49,19 @@ bool DragSource::init(OfferBuilder &&builder, float threshold) {
 }
 
 void DragSource::handleExit() {
-	// The node is leaving the scene with the button still down - which is the NORMAL case, since
-	// the drop that ends the drag routinely removes the source. Aborting here rather than at each
-	// of those call sites is what keeps this from being everybody's problem
-	if (_dragging && _drag) {
-		_drag->cancelDrag(this);
-	}
-	_dragging = false;
-	_drag = nullptr;
+	/* The node is leaving the scene with the button still down, and the drag SURVIVES it.
+
+	This used to abort here, on the reasoning that a drop routinely removes its own source. But the
+	source node going away is not the same event as the drag ending, and a list that scrolls under
+	its own drag proves it: a virtualized row is unbuilt the moment it leaves the window, which
+	killed every drag that reached the edge of a long list. A target disappearing mid-drag has
+	always been ordinary here (see DragSystem::handleTargetGone); a source is no different - the
+	session holds an Rc on this object and the payload is already a value.
+
+	`_detached` is what keeps InputListener::handleExit below from undoing that: it cancels every
+	recognizer, and the swipe's cancellation would otherwise arrive as a perfectly ordinary "the
+	user let go". */
+	_detached = _dragging;
 
 	InputListener::handleExit();
 }
@@ -90,6 +95,7 @@ bool DragSource::handleDragBegin(const GestureSwipe &swipe) {
 
 	_drag = drag;
 	_dragging = true;
+	_detached = false;
 
 	// The pointer is off this node by the next event, and the dispatcher freezes an event chain's
 	// listener set at Begin - it can shrink, never re-target. Without the capture the drag stops
@@ -110,6 +116,12 @@ void DragSource::handleDragMove(const GestureSwipe &swipe) {
 
 void DragSource::handleDragEnd(bool cancelled) {
 	if (!_dragging) {
+		return;
+	}
+
+	// The recognizer being torn down with the node, not the user letting go. Told apart by
+	// _detached, because at this level the two arrive as the same call.
+	if (_detached) {
 		return;
 	}
 
