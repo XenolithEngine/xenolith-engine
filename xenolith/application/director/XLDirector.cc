@@ -37,6 +37,114 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 Director::Director() { sprt::memset(&_drawStat, 0, sizeof(DrawStat)); }
 
+#if XL_FRAME_ACCOUNT
+/* ---- the app account (XL_APP_ACCOUNT=N) ---------------------------------------------------------
+
+The counterpart of the software backend's frame budget (XL_SOFT_BUDGET, see
+docs/agents/measuring-frames.md). That instrument accounts for the render half and lands everything
+it cannot see in one bucket called `wait`; this one says what is inside it.
+
+Reported the same way - running averages over the whole run, every N frames - so the two logs can
+be read against each other directly, even though they are counted on different threads and neither
+knows about the other. They must be read as averages of the same run, not of the same frame: the
+app half of frame N and the render half of frame N are published at different moments, and pairing
+individual lines would describe two different frames.
+
+The split that matters:
+
+	update  everything acquireFrame does before posting the visit - the scheduler, the action
+	        manager, input dispatch, and whatever the application's own update() does.
+	visit   the scene graph walk that builds the frame's command list.
+	spawned deferred tesselation tasks STARTED by that visit. A steady frame must report zero:
+	        anything else means the scene is re-tesselating something every frame, and that is a
+	        bug in the scene, not a cost of the renderer.
+
+`work` and `wait` come back on DrawStat from the consuming side and ARE NOT PARTS OF ONE WHOLE -
+work is summed across worker threads and may exceed the frame, wait is one thread standing still.
+Never add them. */
+static uint64_t Director_accountInterval() {
+	static const uint64_t value = [] () -> uint64_t {
+		auto env = ::getenv("XL_APP_ACCOUNT");
+		if (!env) {
+			return 0;
+		}
+		auto str = StringView(env);
+		if (str == "0") {
+			return 0;
+		}
+		auto n = str.readInteger(10).get(0);
+		return n > 0 ? uint64_t(n) : 60;
+	}();
+	return value;
+}
+
+// Runs on the app thread, at the point where the visit closes the account, so the counters are
+// touched by one thread and need no synchronization. `stat` is the last DrawStat the render half
+// sent back; it lags the visit by a frame or so, which does not matter to an average.
+static void Director_reportAccount(uint64_t update, uint64_t visit, uint32_t spawned,
+		const DrawStat &stat) {
+	auto interval = Director_accountInterval();
+	if (interval == 0) {
+		return;
+	}
+
+	static uint64_t frames = 0;
+	static uint64_t updateSum = 0;
+	static uint64_t visitSum = 0;
+	static uint64_t spawnedSum = 0;
+	static uint64_t deferWork = 0;
+	static uint64_t deferWait = 0;
+	static uint64_t deferCount = 0;
+	static uint64_t deferWaited = 0;
+	static uint64_t writeTime = 0;
+	static uint64_t spanTime = 0;
+	static uint64_t damageTime = 0;
+	static uint64_t planTime = 0;
+
+	++frames;
+	updateSum += update;
+	visitSum += visit;
+	spawnedSum += spawned;
+	deferWork += stat.deferredWorkTime;
+	deferWait += stat.deferredWaitTime;
+	deferCount += stat.deferredCount;
+	deferWaited += stat.deferredWaited;
+	writeTime += stat.writeTime;
+	spanTime += stat.spanTime;
+	damageTime += stat.damageTime;
+	planTime += stat.planTime;
+
+	if (frames % interval != 0) {
+		return;
+	}
+
+	// Microseconds, because that is what the frame budget prints and the whole point is to put the
+	// two side by side. The clocks below are nanosecond ones.
+	auto per = [&] (uint64_t v) { return double(v) / double(frames) / 1'000.0; };
+
+	log::source().debug("app::account", "frames=", frames,
+			" appHalf=", per(updateSum + visitSum), "us",
+			" (update=", per(updateSum), "us visit=", per(visitSum), "us)",
+			" spawned/frame=", double(spawnedSum) / double(frames),
+			" clock=", core::getAccountClockName(),
+			" res=", double(core::getAccountClockResolution()) / 1'000.0, "us");
+	log::source().debug("app::account", "  defer: work=", per(deferWork), "us",
+			" wait=", per(deferWait), "us",
+			" count/frame=", double(deferCount) / double(frames),
+			" waited/frame=", double(deferWaited) / double(frames));
+
+	// The vertex stage's own phases, not the app thread's - they belong to whichever budget stage
+	// runs VertexPlan (`vertex` on the software backend). Reported here because DrawStat is the
+	// channel they arrive on, and because a `vertex` stage that is large is answered by exactly
+	// these four numbers. `damage` and `plan` are the command walk split in two and are NESTED in
+	// it: read as "of the walk, this much is that", never added to write and span.
+	log::source().debug("app::account", "  vertexPlan: write=", per(writeTime), "us",
+			" span=", per(spanTime), "us",
+			" (walk: damage=", per(damageTime), "us plan=", per(planTime), "us)");
+}
+#endif
+
+
 Director::~Director() { log::source().info("Director", "~Director"); }
 
 bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constraints,
@@ -163,7 +271,8 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	_deferredSpawned = 0;
 	// A clock of its own, in NANOSECONDS. `t` above is `clock()`, which is microseconds - fine for
 	// a frame-rate average and too coarse for a visit that can be a few tens of microseconds.
-	const auto appStart = sp::platform::nanoclock(ClockType::Monotonic);
+	const auto appStart = core::getAccountClock();
+	core::markFrame(core::FrameMark::AcquireStart);
 #endif
 
 	setFrameConstraints(req->getFrameConstraints());
@@ -186,7 +295,8 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		}
 
 #if XL_FRAME_ACCOUNT
-		const auto visitStart = sp::platform::nanoclock(ClockType::Monotonic);
+		const auto visitStart = core::getAccountClock();
+		core::markFrame(core::FrameMark::VisitStart);
 #endif
 
 		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
@@ -216,9 +326,12 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 		The two pieces are added rather than reported apart because they are one thing - everything
 		this thread does for the frame - and because between them there is nothing but the hop. */
-		_lastAppFrameTime = _pendingAppTime
-				+ (sp::platform::nanoclock(ClockType::Monotonic) - visitStart);
+		core::markFrame(core::FrameMark::VisitEnd);
+		const auto visitTime = core::getAccountClock() - visitStart;
+		_lastAppFrameTime = _pendingAppTime + visitTime;
 		_lastDeferredSpawned = _deferredSpawned;
+
+		Director_reportAccount(_pendingAppTime, visitTime, _lastDeferredSpawned, _drawStat);
 #endif
 	}, this, true);
 
@@ -228,7 +341,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 #if XL_FRAME_ACCOUNT
 	// Half of the account; the lambda above adds the visit and publishes the total.
-	_pendingAppTime = sp::platform::nanoclock(ClockType::Monotonic) - appStart;
+	_pendingAppTime = core::getAccountClock() - appStart;
 #endif
 
 	cb(true);

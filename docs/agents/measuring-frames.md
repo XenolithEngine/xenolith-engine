@@ -12,6 +12,9 @@ the frame path is the last place an unconditional clock read belongs.
 | instrument | answers | how it is turned on |
 |---|---|---|
 | `XL_FRAME_ACCOUNT=1` | what a whole frame cost, split into the visit, the render half, and deferred work vs waiting for it | a build flag, passed to the project makefile |
+| `XL_SOFT_BUDGET=N` | what the wall-clock frame was spent on, split into named stages | an environment variable, software backend only |
+| `XL_APP_ACCOUNT=N` | what the app thread's half of that frame was spent on | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
+| `XL_FRAME_TIMELINE=N` | a closed account of the whole frame, both halves and the hand-offs between them | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
 | `XL_SOFT_PROFILE=N` | what the software rasterizer cost, per frame | an environment variable, software backend only |
 | `XL_FONT_CACHE_LOG=1` | every batch of glyphs that actually reaches the atlas | an environment variable |
 | `DrawStat::pixelsFilled` | the same fill number, live on screen | always on, shown by the FPS overlay when a backend fills it |
@@ -146,6 +149,180 @@ intersected with the scissor, *not* the scissor — counting the scissor instead
 roughly the glyph count per frame, which on a text-heavy scene reads as a 100x overdraw that is not
 there. A metric of the wrong thing is worse than no metric; whoever changes a kernel's clip changes
 its counter in the same edit.
+
+## The frame budget (`XL_SOFT_BUDGET=N`)
+
+Software backend only, and the question one level above the rasterizer profile: not *how fast did
+the rasterizer run* but *how much of the frame was the rasterizer at all*. Reports every N frames,
+running averages over the whole run, same grammar as `XL_SOFT_PROFILE` (unset or `0` is off,
+unparseable is 60).
+
+```
+soft::budget frames= period=…us/frame (… fps)
+  wait=…us …%  vertex=…us …%  record=…us …%  clear=…us …%
+  raster=…us …%  present=…us …%  other=…us …%
+```
+
+Everything the software backend does to a frame happens on the loop thread in a fixed order, so the
+frame really is a sum of stages:
+
+| stage | where | scales with |
+|---|---|---|
+| `wait` | previous present → first thing the render half does | the app thread's update and scene visit. `preStartFrame = false` on this backend, so nothing overlaps it |
+| `vertex` | `VertexAttachmentHandle::loadVertexes` | the **scene** — every command is walked even on a frame that repaints a cursor |
+| `record` | `recordSubpass` | the scene: vertex stage per vertex, material/texture resolution, glyph runs |
+| `clear` | the attachment load op | the **damage** |
+| `raster` | `drawTiled` — the same span `XL_SOFT_PROFILE` times | the damage, and the overdraw inside it |
+| `present` | `Swapchain::present` | the damage, plus whatever the window system charges |
+| `other` | `period` minus all of the above | nothing — it is the residual |
+
+Two things the split is for:
+
+- **Damage tracking only shrinks the bottom half of the table.** `clear`, `raster` and `present`
+  follow the damage; `wait`, `vertex` and `record` follow the scene and do not care that the frame
+  repainted twelve percent of the screen. A scene that grows makes frames more expensive even when
+  the picture barely moves, and this is the instrument that shows it.
+- **`raster` is where an ISA kernel, a tile size or a worker count can help, and nothing else is.**
+  Measured on qemu-armv8a, 640×480, debug, SMP=4, steady kiosk frame: `wait` 50%, `raster` 24%,
+  `vertex` 8.6%, `record` 8.2%, `other` 6.2%, `present` 2.8%, `clear` 0.3%. Halving the rasterizer
+  there buys 12% of the frame. That is the number to have before optimizing anything.
+
+`other` should stay small. It is large when frames reach present without passing through the stages
+— the damage tracker skipping the pass entirely is the ordinary cause — and the report is then
+describing frames it did not measure. It is also large for the first few reports of a run, before
+the stage counters and the period have covered the same frames; it is clamped at zero rather than
+allowed to wrap, so a run that has not settled reads as `other=0`, not as a huge number.
+
+`wait` says where the app thread's half of the frame went, not what it went on. When `wait`
+dominates, this instrument has said all it can and the next question is `XL_FRAME_ACCOUNT=1`.
+
+### Turning it on where there is no shell
+
+The counters are guarded by one relaxed load in five places per frame, so the instrument stays in a
+shipping build. It has to: an RTOS board that boots the app as `CONFIG_INIT_ENTRYPOINT` has no
+shell to set an environment variable from, and the only way a number reaches its log is for the app
+to ask for it itself. `board/nuttx-qemu/apps/hello/hello_main.c` does exactly that, with
+`setenv(…, 0)` so a shell can still override it where there is one.
+
+## The app account (`XL_APP_ACCOUNT=N`)
+
+The other half of the frame budget, and the answer to a `wait=` that turned out to be the largest
+stage. Compiled in only under `XL_FRAME_ACCOUNT=1`; reported only when the variable names an
+interval. Running averages over the whole run, same grammar and same interval as the budget, so the
+two logs are read against each other — as averages of the same run, never as a pair of lines about
+the same frame.
+
+```
+app::account frames= appHalf=…us (update=…us visit=…us) spawned/frame=…
+  defer: work=…us wait=…us count/frame=… waited/frame=…
+  vertexPlan: write=…us span=…us (walk: damage=…us plan=…us)
+```
+
+| | what it is |
+|---|---|
+| `update` | everything `acquireFrame` does before posting the visit: scheduler, actions, input, the application's own `update()` |
+| `visit` | the scene graph walk that builds the command list |
+| `spawned` | deferred tesselation tasks **started** by that visit |
+| `defer` | the consuming side, off `DrawStat`. `work` is summed across workers and may exceed the frame; `wait` is one thread standing still and is always inside it. **Never add them** |
+| `vertexPlan` | the vertex stage's own phases — the render half, not the app thread; `damage` and `plan` are nested inside the command walk |
+
+**`spawned/frame` is the number to look at first, and a steady frame must report zero.** Anything
+else means something re-tesselates every frame, and that is a property of the scene, not a cost of
+the renderer.
+
+`appHalf` well below the budget's `wait=` is not a contradiction: `wait` runs from the previous
+present to the first thing the render half does, and the app thread working is only part of what is
+in there. The remainder is scheduling latency between the two threads.
+
+### The instrument that was half the frame
+
+Measured on the NuttX kiosk, qemu-armv8a, 640×480, steady state, `Scene2d`'s FPS overlay on → off:
+
+| | overlay on | overlay off |
+|---|---|---|
+| period | 38 583 µs (25.9 fps) | 18 352 µs (54.5 fps) |
+| `visit` | 5 684 µs | 1 951 µs |
+| `spawned/frame` | 1.41 | 0.019 |
+| `raster` | 9 310 µs | 206 µs |
+| `record` | 3 105 µs | 29 µs |
+
+`Scene2d` shows the overlay in any build that is not NDEBUG. Its label restates the frame rate and
+the pixel counts every frame, so `setString` differs every frame, the label re-tesselates, and a
+white `Layer` the size of the text is repainted on top — which is most of the damage the rasterizer
+is handed. **A frame measured with the overlay on is measuring the overlay too.** Turn it off
+before drawing any conclusion about the scene; on the NuttX kiosk that is `XL_KIOSK_FPS=0`.
+
+## The frame timeline (`XL_FRAME_TIMELINE=N`)
+
+The instrument that answers a gap the other two cannot, because the gap belongs to neither of them.
+
+The budget measures the render half and lands the rest in `wait`; the app account says what the app
+thread did. On raspberrypi-4b `wait` was 12.9 ms of a 19.5 ms frame and the app thread worked for
+1 ms of it. **The other 11.9 ms was what happens between the two.**
+
+Six marks on the frame's own path, each bucket the interval *ending* at its mark. They close on
+themselves — the six sum to the period — which is what makes a missing cost impossible to hide.
+
+| bucket | span | what it is |
+|---|---|---|
+| `render` | VertexStart → Presented | the render half; the backend budget splits this one further |
+| `postPresent` | Presented → Scheduled | engine bookkeeping after a present, plus the deliberate wait for the present window when a target frame interval is set |
+| `toApp` | Scheduled → AcquireStart | **getting from the loop thread to the app thread** |
+| `update` | AcquireStart → VisitStart | scheduler, actions, input, plus the "break current stack frame" hop |
+| `visit` | VisitStart → VisitEnd | the scene graph walk |
+| `toLoop` | VisitEnd → VertexStart | back to the loop thread, frame graph setup included |
+
+**Three of the six are thread hand-offs, and a hand-off is not free** — which is what this
+instrument was built to find, and what it found on its first run.
+
+On raspberrypi-4b, 2400 frames: `toApp` **47.5%** of an 18.6 ms frame — 8.8 ms for one
+`performOnAppThread` (`AppWindow::acquireFrameData`) to be picked up by a thread that was idle for
+most of the frame. Together with `toLoop` that was 53.7% of the frame spent on two threads waiting
+to notice each other, against 45.8% of actual work.
+
+It was a bug, in `SPEvent-nuttx.cc`. `spinWait` had a guard for a *stopped* clock — after 64
+`sched_yield()` calls with no visible time passing it gave up and slept the whole remaining
+timeout, deaf to `_wakeupReq`. On this board the clock is not stopped, it is **coarse**: 64 yields
+take ~150 µs and `CLOCK_MONOTONIC` advances once a millisecond, so the guard fired on every wait
+and every wait became a deaf 16 ms sleep. 8.8 ms is the average latency of a post landing at a
+random point in one. Three fixes: pick the clock by measured resolution (the same probe the account
+clock uses), sleep in one-tick slices rechecking the flag between them, and drain the wakeup
+*before* firing handles rather than after so a signal arriving mid-iteration is not cleared unserved.
+
+After: `toApp` 28.7% → **5.7%** on qemu-armv8a, frame 42.0 ms → 30.9 ms, and `render` became the
+largest bucket at 65% — which is where a renderer's frame is supposed to spend itself.
+
+**The lesson generalises past this one bug.** A hand-off costs whatever the waiting side's wake-up
+path costs, and on an RTOS that path is easy to get wrong in a way no correctness test notices: the
+frames still render, in order, with the right pixels. Only a closed account of the period shows it.
+
+**The marks assume frames do not overlap.** They are recorded in sequence from three threads, and
+concurrent frames would interleave them and make every bucket meaningless. The software
+presentation engine sets `preStartFrame = false`, so this holds there; a backend that starts a
+frame early must not turn this on.
+
+## The clock all three instruments read
+
+`core::getAccountClock()`, and it is not `nanoclock(Monotonic)` — the difference is not academic.
+
+On a tickless desktop CLOCK_MONOTONIC is the right source and resolves to nanoseconds. On an RTOS
+it need not be: NuttX with `CONFIG_USEC_PER_TICK=1000` and no `CONFIG_SCHED_TICKLESS` advances it
+once a millisecond, and every phase measured here is shorter than that. Measured on raspberrypi-4b,
+600 frames: `update`, `span`, `damage` and `plan` all reported **exactly 0.0**, and every total was
+an exact multiple of 1000 µs — the signature of a quantized clock, not of free work. The frame
+budget showed microsecond detail on the same run, because `Time::now()` reads CLOCK_REALTIME and on
+that build it is the finer of the two.
+
+So the source is chosen by **measuring** it, not by name. `clock_getres` cannot be trusted for this
+— NuttX answers it with the tick period for both clocks even when one is finer — so the probe reads
+each clock until it changes and takes the step, once, at first use. Monotonic wins ties; realtime is
+taken only when measurably better, and the boards where it wins have no RTC and nothing to step it.
+
+**Every account site reads this one clock**, because the numbers are compared and subtracted across
+modules and two sources of different resolution would produce differences that are neither. The
+resolution is printed in the app account and the timeline (`clock= res=`): a number below the
+clock's own step is not a measurement, and a reader must be able to see that without knowing the
+board.
 
 ## Rules for any timing run
 
