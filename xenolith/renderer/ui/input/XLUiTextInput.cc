@@ -24,6 +24,7 @@
 #include "XLDropTarget.h"
 #include "XLAction.h"
 #include "XLDirector.h"
+#include "XLInheritedStyle.h" // the colour a Label actually paints with
 #include "XLUiTextDocument.h" // TextDocument::diff - what the platform echo changed
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -88,6 +89,9 @@ void TextInput::registerStyleAppliers(StringView type) {
 
 ComponentId TextInputStyleComponent::Id;
 
+// The frame-stack tag the style watch publishes itself under; see TextInput::init
+static constexpr uint64_t TextInputStyleWatchTag = "XLUiTextInputStyleWatch"_tag;
+
 TextInputContainer::~TextInputContainer() { }
 
 bool TextInputContainer::init() {
@@ -111,6 +115,15 @@ bool TextInputContainer::init() {
 	_caret = _label->addChild(Rc<basic2d::Layer>::create(Color::White), ZOrder(1));
 	_caret->setAnchorPoint(Anchor::BottomLeft);
 	_caret->setVisible(false);
+
+	/* A label's height is the LAYOUT's answer, not the setter's: it settles in the label's own
+	content-size phase, which is inside this node's visit and therefore after every hook this node
+	has. So the centring is driven from there rather than guessed from the font.
+
+	It still lands in the same frame: the phase that notifies runs before the model matrix is
+	rebuilt, so a position written from here is the one that frame draws with. */
+	_label->setContentSizeDirtyCallback([this] { updateLabelPosition(); });
+	_placeholder->setContentSizeDirtyCallback([this] { updateLabelPosition(); });
 
 	// ApplyForAll, not ApplyForNodesBelow: "below" means children with a NEGATIVE z-order (see
 	// Node::wrapVisit), and the label and placeholder sit at ZOrder(0), i.e. "above". Scoping the
@@ -152,7 +165,8 @@ void TextInputContainer::update(const UpdateTime &time) {
 void TextInputContainer::handleContentSizeDirty() {
 	Node::handleContentSizeDirty();
 
-	_placeholder->setPosition(Vec2(0.0f, 0.0f));
+	_placeholder->setPositionX(0.0f);
+	updateLabelPosition();
 
 	// The caret spans the whole inner box of the field, not the glyph height: a bar shorter than
 	// the box reads as misaligned against the text, and an empty field would show a stub. The font
@@ -298,6 +312,34 @@ void TextInputContainer::setAutoScrollTarget(const Vec2 &worldLocation) {
 	}
 }
 
+void TextInputContainer::updateLabelPosition() {
+	/* A single line sits in the MIDDLE of the box.
+
+	It used to sit on the bottom edge, which passed unnoticed only because a stock field is barely
+	taller than its line: with `height: 39px` and `padding: 8px` the box is 23px and the line about
+	21. Give the field a whole row's worth of height - which is exactly what an inline editor
+	placed over a list row gets - and the text drops to the floor of the box, visibly below the
+	label it was supposed to be replacing. Centring is also what the caret already assumed: it is
+	given the full height of the box, so a bottom-aligned line was the one thing not centred in it.
+
+	max(0) rather than a signed offset: a line taller than the box (a font-size the field was not
+	built for) starts at the top and overflows downwards, where the scissor cuts it - the same way
+	horizontal overflow is handled. */
+	const auto centre = [&](basic2d::Label *label) {
+		label->setPositionY(
+				sprt::max(0.0f, (_contentSize.height - label->getContentSize().height) / 2.0f));
+	};
+
+	centre(_label);
+	centre(_placeholder);
+
+	// The caret's vertical origin is expressed against the label, its parent, so it travelled with
+	// it. Writing it here rather than only marking the caret dirty keeps it from lagging the text
+	// by a frame; the horizontal half is left to the ordinary flush in visitDraw.
+	_caret->setPositionY(-_label->getPosition().y);
+	_caretDirty = true;
+}
+
 void TextInputContainer::updateCaretPosition() {
 	const auto cpos =
 			_label->empty() ? _label->getCursorOrigin() : _label->getCursorPosition(_cursorActive);
@@ -389,6 +431,27 @@ bool TextInput::init() {
 
 	registerStyleAppliers("text-input");
 
+	/* Told when the LABEL's inherited style arrives, because that is later than this node's own.
+
+	The caret and the selection are derived from the colour the text is painted in, and that colour
+	reaches the label as an InheritedColorStyle written during the LABEL's components phase - which
+	runs when the label is visited, after this node has already run its own. A derivation triggered
+	only by this node's components would therefore read the colour of the frame before, and for a
+	sheet that colours the label without colouring the field (`label { color: … }`) it would never
+	read anything at all.
+
+	The frame stack is how a parent hears about its subtree: this system publishes itself under a
+	tag, and the label's components phase delivers to the nearest ancestor carrying it. */
+	auto styleWatch = addSystem(Rc<CallbackSystem>::create());
+	styleWatch->setFrameTag(TextInputStyleWatchTag);
+	styleWatch->setChildComponentsDirtyCallback(
+			[this](CallbackSystem *, Node *, const ComponentMask &mask) {
+		if (mask.contains(InheritedColorStyle::Id.value)) {
+			updateStyleColors();
+		}
+	});
+	styleWatch->setSystemFlags(styleWatch->getSystemFlags() | SystemFlags::AddToFrameStack);
+
 	setType("text-input");
 	addStyleClass("xl-ui-text-input");
 	setRenderingLevel(RenderingLevel::Surface);
@@ -400,8 +463,9 @@ bool TextInput::init() {
 
 	// Text dropped onto the field lands the same way pasted text does - same type rule, same
 	// insertion point, same validation. A drop target and a paste target really are one handler
-	addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [this](const DragEvent &event) -> DragResponse {
+	setDropTarget(this,
+			DropTargetSlots{
+				.accept = [this](const DragEvent &event) -> DragResponse {
 		if (isReadOnly() || !event.data) {
 			return DragResponse();
 		}
@@ -412,8 +476,9 @@ bool TextInput::init() {
 		// Either is fine here: whether the source deletes its original is the SOURCE's business
 		return DragResponse{event.allowed & (DragActions::Copy | DragActions::Move)};
 	},
-		.drop = [this](const DragEvent &event, DragActions) { return handleTextDrop(event); },
-	}));
+				.drop = [this](const DragEvent &event,
+								DragActions) { return handleTextDrop(event); },
+			});
 
 	// A key event carries the pointer location (the platform backends fill it in from the last
 	// mouse position), so the default filter - "is the node under the pointer" - would only deliver
@@ -581,7 +646,12 @@ void TextInput::handleContentSizeDirty() {
 void TextInput::handleComponentsDirty(const ComponentMask &mask) {
 	VectorSprite::handleComponentsDirty(mask);
 
-	if (mask.contains(TextInputStyleComponent::Id.value)) {
+	// The inherited colour as well as the field's own paint: the caret and the selection are
+	// derived from the text colour, and that arrives as an InheritedColorStyle written by the style
+	// resolver. Same protocol Label itself uses, and the same limit - a change on an ANCESTOR is
+	// seen only because the resolver rewrites the component on this node too (XLInheritedStyle.h)
+	if (mask.contains(TextInputStyleComponent::Id.value)
+			|| mask.contains(InheritedColorStyle::Id.value)) {
 		updateStyleColors();
 	}
 }
@@ -657,25 +727,38 @@ void TextInput::updateBackgroundImage() {
 }
 
 void TextInput::updateStyleColors() {
+	// No component at all is the ORDINARY case for a field no rule of the masked kind matched, and
+	// such a field still needs a visible caret. Everything below therefore has to work without one
 	auto style = getComponent<TextInputStyleComponent>();
-	if (!style) {
-		return;
+
+	/* The colour the label PAINTS with, which is not the colour its node is tinted with.
+
+	A Label takes its text colour from the inherited-style components the stylesheet writes (CSS
+	`color` is an inherited property - see XLInheritedStyle.h), and leaves Node::getColor() at
+	whatever the widget set it to when it was built. Deriving from the tint therefore gave every
+	styled field a caret and a selection in the widget's default ink - black, and invisible, on
+	every dark theme - while the text itself was drawn in the colour the sheet asked for. */
+	auto label = _container->getLabel();
+	auto text = Color4F(label->getColor());
+	const auto inherited = accumulateInheritedStyle<InheritedColorStyle>(label);
+	if (inherited.defined & InheritedColorStyle::DefinedColor) {
+		text = Color4F(inherited.color);
 	}
 
-	// Fallbacks derive from the text colour, so an unconfigured field still has a visible caret and
-	// a selection that reads as "the same ink, dimmed".
-	const auto text = Color4F(_container->getLabel()->getColor());
-
-	_container->setCaretColor(style->hasCaretColor ? Color4F(style->caretColor) : text);
+	// Fallbacks derive from that text colour, so an unconfigured field still has a visible caret and
+	// a selection that reads as "the same ink, dimmed". A colour named explicitly by
+	// --caret-color / --selection-color / --marked-color always wins.
+	_container->setCaretColor(style && style->hasCaretColor ? Color4F(style->caretColor) : text);
 
 	auto selection = text;
 	selection.a = 0.35f;
 	_container->setSelectionColor(
-			style->hasSelectionColor ? Color4F(style->selectionColor) : selection);
+			style && style->hasSelectionColor ? Color4F(style->selectionColor) : selection);
 
 	auto marked = text;
 	marked.a = 0.5f;
-	_container->setMarkedColor(style->hasMarkedColor ? Color4F(style->markedColor) : marked);
+	_container->setMarkedColor(
+			style && style->hasMarkedColor ? Color4F(style->markedColor) : marked);
 }
 
 bool TextInput::setStyleValue(const ResolvedStyle &style, document::ParameterName name,

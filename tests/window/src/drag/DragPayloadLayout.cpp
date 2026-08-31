@@ -57,17 +57,18 @@ bool DragPayloadLayout::init() {
 	_target->setAnchorPoint(Anchor::BottomLeft);
 	_target->setPosition(TargetRect.origin);
 	_target->setContentSize(TargetRect.size);
-	_target->addSystem(Rc<DropTarget>::create(DropTargetSlots{
-		.accept = [](const DragEvent &event) { return DragResponse{event.allowed}; },
-		.drop =
-				[this](const DragEvent &event, DragActions) {
+	setDropTarget(_target,
+			DropTargetSlots{
+				.accept = [](const DragEvent &event) { return DragResponse{event.allowed}; },
+				.drop =
+						[this](const DragEvent &event, DragActions) {
 		++_drops;
 		// The in-process path: take the live object and never ask for bytes. This is the read
 		// that must not cost a serialization
 		_dropSawLocal = event.data && event.data->isLocal(LocalType);
 		return true;
 	},
-	}));
+			});
 
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.6f), [this] { runPhase1(); },
 			Rc<DelayTime>::create(0.3f), [this] { runPhase2(); }, Rc<DelayTime>::create(0.8f),

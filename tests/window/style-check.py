@@ -442,6 +442,28 @@ try:
     check("...and it still had to MATCH to be considered", sbg("where-one") == WHERE_LOSES,
             hexc(sbg("where-one")))
 
+    print("\n-- 11a. box decoration stays where it was written")
+    # `outline-*` and `border-radius` are not inherited on the web, and were here: every descendant
+    # of a box with a 1px outline drew one of its own, which is what put a border around every row
+    # of a menu whose surface declared one. The colour beside them is the control - it IS inherited,
+    # so a child reporting nothing at all would read as "no style reached this node" instead.
+    check("the box itself has the outline it declared",
+            sel["inh-parent"]["hasOutlineWidth"] and sel["inh-parent"]["hasOutlineColor"]
+            and sel["inh-parent"]["hasOutlineStyle"], sel["inh-parent"])
+    check("...and the radius", sel["inh-parent"]["hasRadius"], sel["inh-parent"])
+    check("a child inherits neither the outline width nor its colour",
+            not sel["inh-child"]["hasOutlineWidth"] and not sel["inh-child"]["hasOutlineColor"],
+            sel["inh-child"])
+    check("...nor the outline style", not sel["inh-child"]["hasOutlineStyle"], sel["inh-child"])
+    check("...nor the corner radius", not sel["inh-child"]["hasRadius"], sel["inh-child"])
+    # The control, in two halves: the child DOES take the parent's inherited property, and a sample
+    # outside the box does not - so "the child reports nothing" cannot pass for "nothing declares
+    # it anywhere".
+    check("but it does inherit what IS inherited, which is what makes the four above meaningful",
+            sel["inh-child"]["hasFontWeight"], sel["inh-child"])
+    check("...and a sample outside the box has none of it",
+            not sel["bad5"]["hasFontWeight"], sel["bad5"])
+
     print("\n-- 12. a refused argument takes its own rule down, and nothing else")
     for name, what in (("bad1", "a combinator inside :is()"),
             ("bad2", "a nested functional pseudo-class"), ("bad3", "an empty :is()"),

@@ -76,7 +76,7 @@ void setEditLock(NotNull<Node> node, uint32_t reasonCode) {
 
 	auto reason = diagnostic::getMessage(reasonCode);
 	if (!reason.empty()) {
-		if (auto tooltip = node->getSystemByType<TooltipTarget>()) {
+		if (getTooltip(node)) {
 			// Someone else's hint. Changing its text would silently destroy what the application
 			// put there, and clearing the lock would then take away a hint the lock never owned -
 			// so it is left exactly as it is, and the reason stays readable through
@@ -84,10 +84,10 @@ void setEditLock(NotNull<Node> node, uint32_t reasonCode) {
 			if (isControlLocked(node)
 					&& node->getComponent<InteractiveComponent>()->hasControlFlag(
 							ControlFlags::OwnsTooltip)) {
-				tooltip->setText(reason);
+				setTooltipText(node, reason);
 			}
 		} else {
-			node->addSystem(Rc<TooltipTarget>::create(reason));
+			setTooltip(node, reason);
 			setControlOwnsTooltip(node, true);
 		}
 	}
@@ -102,9 +102,7 @@ void clearEditLock(NotNull<Node> node) {
 	node->removeStyleClass(s_editLockClass);
 
 	if (released.ownsTooltip) {
-		if (auto tooltip = node->getSystemByType<TooltipTarget>()) {
-			node->removeSystem(tooltip);
-		}
+		removeTooltip(node);
 	}
 
 	if (auto target = dynamic_cast<EditLockTarget *>(node.get())) {

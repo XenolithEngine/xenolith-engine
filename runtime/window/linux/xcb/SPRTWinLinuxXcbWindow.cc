@@ -187,9 +187,12 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	}
 
 	// The device list is probed once when the connection comes up; windows created later read the
-	// current answer here, and get subsequent changes through handleTouchscreenStateChanged.
+	// current answer here, and get subsequent changes through handleInputDevicesStateChanged.
 	if (_connection->hasTouchscreen()) {
 		_info->state |= WindowState::InputTouch;
+	}
+	if (_connection->hasPointer()) {
+		_info->state |= WindowState::InputPointer;
 	}
 
 	_xcb = _connection->getXcb();
@@ -1005,12 +1008,14 @@ void XcbWindow::handleLeaveNotify(xcb_leave_notify_event_t *ev) {
 	updateState(ev->time, _info->state & ~WindowState::Pointer);
 }
 
-void XcbWindow::handleTouchscreenStateChanged(bool value) {
+void XcbWindow::handleInputDevicesStateChanged(bool pointer, bool touchscreen) {
+	auto state = _info->state;
+	state = pointer ? (state | WindowState::InputPointer) : (state & ~WindowState::InputPointer);
+	state = touchscreen ? (state | WindowState::InputTouch) : (state & ~WindowState::InputTouch);
+
 	// XI hierarchy events carry a server timestamp, but it is not the user-interaction time this
 	// window tracks, so pass 0 the way the other non-input state updates here do.
-	updateState(0,
-			value ? _info->state | WindowState::InputTouch
-				  : _info->state & ~WindowState::InputTouch);
+	updateState(0, state);
 }
 
 /* X11 delivers key events only to the focused window, so a modifier released elsewhere leaves
