@@ -124,6 +124,11 @@ protected:
 	virtual void onOverscroll(float delta) override;
 	virtual void updateIndicatorPosition() override;
 
+	// The thumb spans the whole data set here, not the loaded slice, so the pair has to be
+	// overridden together - and the inverse is deliberately inert. See the .cc.
+	virtual float getIndicatorRelativePosition() const override;
+	virtual void setIndicatorRelativePosition(float) override;
+
 	uint32_t _categoryLookupLevel = 0;
 	bool _itemsForSubcats = false;
 	bool _categoryDirty = true;

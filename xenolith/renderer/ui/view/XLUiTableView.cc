@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiTableView.h"
+#include "XLUiDragScrollSystem.h"
 #include "XLUiStyleSystem.h"
 #include "XLInteractiveComponent.h"
 #include "XL2dLabel.h"
@@ -75,6 +76,16 @@ bool TableView::init(Model *source) {
 
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
+
+	// On the SCROLL, not on this node: the header lives OUTSIDE it, and the edge band has to be
+	// measured against the viewport rows actually scroll in.
+	DragScrollSystem::acquireForNode(_scroll);
+
+	// The scroll bar is built by basic2d out of nodes that can paint a fill and one radius; this
+	// hands it nodes a stylesheet can paint outlines and four corners on, under the types
+	// `scroll-indicator` and `scroll-indicator-track`. Done here rather than left to the
+	// application because a widget of this layer is expected to answer to CSS everywhere else.
+	useStyledScrollIndicator(_scroll);
 
 	_sourceListener = addSystem(Rc<DataListener<Model>>::create(
 			[this](SubscriptionFlags flags) { handleSourceDirty(flags); }, source));
@@ -339,6 +350,13 @@ void TableView::requestRebuildNodes(bool force) {
 	// The components phase is opt-in per visit, so asking for the rebuild is also asking for the
 	// phase that performs it.
 	markComponentsDirty();
+}
+
+void TableView::requestRebuildNodes(Function<void()> &&cb, bool force) {
+	if (cb) {
+		_rebuildCallbacks.emplace_back(sp::move(cb));
+	}
+	requestRebuildNodes(force);
 }
 
 void TableView::dropSpanData() {
@@ -637,6 +655,17 @@ void TableView::rebuildRows() {
 
 	_controller->commitChanges();
 	_reusableRows.clear();
+
+	/* The answer, delivered here and not a hop later.
+
+	Every row this pass built was attached while the frame is in flight, so each caught up on the
+	visit's phases as it was attached (Node::runPendingPhases) and commitChanges() above has placed
+	it - which makes this the first moment the new rows can be measured, and therefore the last
+	moment worth waiting for. Taken off the list BEFORE they run: a callback that asks for another
+	rebuild is answered by that one. */
+	auto callbacks = sp::move(_rebuildCallbacks);
+	_rebuildCallbacks.clear();
+	for (auto &it : callbacks) { it(); }
 }
 
 auto TableView::makeRowKey(const Row &row) const -> RowKey {
@@ -907,25 +936,27 @@ void TableView::setReorderEnabled(bool value) {
 
 void TableView::updateReorderSystems() {
 	if (_reorderEnabled) {
-		if (!_dropTarget) {
-			_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
-				.accept = [this](const DragEvent &event) -> DragResponse {
+		if (!_hasDropTarget) {
+			_hasDropTarget = true;
+			setDropTarget(this,
+					DropTargetSlots{
+						.accept = [this](const DragEvent &event) -> DragResponse {
 				if (!TableView_payloadOf(event, this)) {
 					return DragResponse();
 				}
 				return DragResponse{DragActions::Move};
 			},
-				.enter =
-						[this](const DragEvent &event) {
+						.enter =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.over =
-						[this](const DragEvent &event) {
+						.over =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.leave = [this](const DragEvent &) { hideInsertionLine(); },
-				.drop =
-						[this](const DragEvent &event, DragActions) {
+						.leave = [this](const DragEvent &) { hideInsertionLine(); },
+						.drop =
+								[this](const DragEvent &event, DragActions) {
 				auto payload = TableView_payloadOf(event, this);
 				if (!payload) {
 					return false;
@@ -933,7 +964,7 @@ void TableView::updateReorderSystems() {
 				// Read the index out before anything moves: the drop is what invalidates it.
 				return handleReorderDrop(payload->index, event.location);
 			},
-			}));
+					});
 		}
 
 		if (!_reorderKeys) {
@@ -959,9 +990,9 @@ void TableView::updateReorderSystems() {
 		}
 	} else {
 		hideInsertionLine();
-		if (_dropTarget) {
-			removeSystem(_dropTarget);
-			_dropTarget = nullptr;
+		if (_hasDropTarget) {
+			removeDropTarget(this);
+			_hasDropTarget = false;
 		}
 		if (_reorderKeys) {
 			removeSystem(_reorderKeys);

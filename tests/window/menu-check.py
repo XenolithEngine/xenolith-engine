@@ -15,7 +15,7 @@ surface is the wrong size.
 With no argument it expects the debug x86_64-linux binary in place. It starts its own app instance,
 runs the checks and prints "N checks, M failures"; exit status is the result.
 """
-import json, os, socket, struct, subprocess, sys, time
+import base64, json, os, socket, struct, subprocess, sys, time
 
 ADDR = os.environ.get("XENOLITH_INSPECTOR_SOCK", "/tmp/xl-menu-check.sock")
 
@@ -276,6 +276,74 @@ try:
                 top = float(pos.split(",")[1])
                 return top - h / 2.0
         return None
+
+    # --- the corners of a shaped window ------------------------------------------------------------
+    # A popup surface IS its panel - the window is sized to it exactly - so a `border-radius` on that
+    # panel leaves the window's four corners outside the shape anything draws, showing whatever the
+    # scene was cleared to. That used to be WHITE, which put a bright speck at each corner of every
+    # menu. Raw pixels rather than the PNG: the four bytes at the origin are the whole claim, and
+    # white and transparent are the same in either channel order.
+    shot = s.ok("screenshot", window=root, format="raw")
+    data = shot["data"]
+    if isinstance(data, str) and data.startswith("BASE64:"):
+        data = base64.urlsafe_b64decode(data[7:] + "=" * (-len(data[7:]) % 4))
+    corner = tuple(data[0:4])
+    check("a menu's corner is not painted white", corner != (255, 255, 255, 255), corner)
+    check("...it is cleared to nothing, so a compositor can show what is behind it",
+            corner == (0, 0, 0, 0), corner)
+
+    # --- pointing at a row, with a real pointer ---------------------------------------------------
+    # The only check here that goes through one. A popup surface never takes the keyboard focus -
+    # it has no reason to - and the mouse-over recognizer was gated on focus as well as on the
+    # pointer, so no row of any menu ever reported a hover: nothing highlighted, and a submenu could
+    # only be opened by clicking it. `menu.hover` further down drives the same call directly, which
+    # is what lets it say anything about the delays; this one says the pointer reaches it at all.
+    s.ok("input", window=root, native=True,
+            events=[{"event": "MouseMove", "x": 60, "y": popup_row_center("submenu")}])
+    for _ in range(12):
+        time.sleep(0.08)
+        s.ok("frame", count=1, window=root)
+    check("pointing at a submenu row opens it, with no click", popup_id(s, 1) is not None)
+    check("...and pointing is not an activation", s.invoke("menu.state")["activations"] == 0)
+
+    # The diagonal trip into it. Crossing a row of the parent on the way is a hover like any other
+    # and arms the parent's close; arriving in the level below is what has to call that off. The
+    # delay alone cannot: a pointer that took longer than it, or that stopped on the way, would have
+    # the level taken down from under it - which is what happened, the surface being destroyed while
+    # the pointer sat in it.
+    child = popup_id(s, 1)
+    child_rows = s.ok("scene", window=child)["text"]
+
+    def row_center_in(tree, name):
+        for line in tree.split("\n"):
+            if f"#{name} " in line and "menu-item" in line:
+                sz = line.split("sz=")[1].split(" ")[0]
+                pos = line.split("pos=(")[1].split(")")[0]
+                return float(pos.split(",")[1]) - float(sz.split("x")[1]) / 2.0
+        return None
+
+    s.ok("input", window=root, native=True,
+            events=[{"event": "MouseMove", "x": 60, "y": popup_row_center("plain")}])
+    time.sleep(0.1)
+    s.ok("frame", count=1, window=root)
+    s.ok("input", window=child, native=True,
+            events=[{"event": "MouseMove", "x": 60, "y": row_center_in(child_rows, "sub-one")}])
+    for _ in range(16):
+        time.sleep(0.08)
+        s.ok("frame", count=1, window=root)
+        if popup_id(s, 1) is not None:
+            s.ok("frame", count=1, window=child)
+    check("the pointer resting in a submenu keeps it open past the close delay",
+            popup_id(s, 1) == child, (popup_id(s, 1), child))
+
+    # And back out to the parent: the close it forgot is armed again by the row it returns to,
+    # which is the only thing that should re-arm it
+    s.ok("input", window=root, native=True,
+            events=[{"event": "MouseMove", "x": 60, "y": popup_row_center("plain")}])
+    for _ in range(14):
+        time.sleep(0.08)
+        s.ok("frame", count=1, window=root)
+    check("...and going back to a row of the parent takes it down again", popup_id(s, 1) is None)
 
     # --- the submenu chain -------------------------------------------------------------------------
     s.ok("input", window=root, native=True, events=tap(200, popup_row_center("submenu")))

@@ -679,12 +679,6 @@ void Tesselator::Data::resolveFills(Tesselator *self) {
 		uint32_t idx;
 	};
 
-	/*const auto keyOf = [&](float x, float y) {
-		const int64_t cx = int64_t(sprt::floor(x / cell));
-		const int64_t cy = int64_t(sprt::floor(y / cell));
-		return (cx << 32) ^ (cy & 0xFFFF'FFFF);
-	};*/
-
 	mem_std::Vector<Entry> cells;
 	cells.reserve(_fills.size() * 4);
 	for (uint32_t i = 0; i < boxes.size(); ++i) {

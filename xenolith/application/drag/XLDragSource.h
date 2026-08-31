@@ -91,6 +91,10 @@ protected:
 	// raw: the system lives on the scene content, which outlives any source; cleared on exit
 	DragSystem *_drag = nullptr;
 	bool _dragging = false;
+
+	// The owner left the scene while this drag was in flight. Kept so the recognizer teardown that
+	// follows is not mistaken for the user releasing the pointer - see handleExit.
+	bool _detached = false;
 };
 
 } // namespace stappler::xenolith

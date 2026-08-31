@@ -610,10 +610,34 @@ void DataScrollView::updateIndicatorPosition() {
 	const float max = getScrollMaxPosition()
 			+ (_itemsCount - _currentSliceStart.get() - _currentSliceLen) * itemSize;
 
-	const float value = (_scrollPosition - min) / (max - min);
+	const float value = (max > min) ? ((getScrollPosition() - min) / (max - min)) : 0.0f;
 
 	ScrollView::updateIndicatorPosition(_indicator,
-			(isVertical() ? scrollHeight : scrollWidth) / scrollLength, value, true, 20.0f);
+			(isVertical() ? scrollHeight : scrollWidth) / scrollLength, value, true,
+			IndicatorMinLength);
+}
+
+float DataScrollView::getIndicatorRelativePosition() const {
+	const float itemSize = getScrollLength() / _currentSliceLen;
+	const float min = getScrollMinPosition() - _currentSliceStart.get() * itemSize;
+	const float max = getScrollMaxPosition()
+			+ (_itemsCount - _currentSliceStart.get() - _currentSliceLen) * itemSize;
+
+	if (sprt::isnan(min) || sprt::isnan(max) || max <= min) {
+		return 0.0f;
+	}
+	return sprt::clamp((getScrollPosition() - min) / (max - min), 0.0f, 1.0f);
+}
+
+void DataScrollView::setIndicatorRelativePosition(float value) {
+	/* Deliberately inert: this view's thumb maps over the WHOLE data set, most of which is not
+	loaded, so the inverse is not a scroll position at all - it is a request for a slice that does
+	not exist yet. Inheriting the base class's inverse would take the number literally and teleport
+	the view to a position inside the loaded slice, which is a different place entirely.
+
+	So a data view's bar SHOWS where the reader is in the whole set and cannot be dragged. Making it
+	draggable means loading a slice from a fraction, which is the data source's decision and not
+	this widget's - see setSource. */
 }
 
 void DataScrollView::onOverscroll(float delta) {

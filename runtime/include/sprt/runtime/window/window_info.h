@@ -205,6 +205,16 @@ enum class WindowState : uint64_t {
 	// for per-event source detection use InputModifier::Touch.
 	InputTouch = 1LLU << 23,
 
+	// A pointing device - a mouse, a trackpad, a trackball - is available as an input device for
+	// this window. The pair of InputTouch, and about the device being *available* in exactly the
+	// same sense.
+	//
+	// Three neighbouring questions that are easy to confuse, and are answered by three different
+	// things: "is there a pointing device at all" is THIS; "is the cursor over the window right
+	// now" is WindowState::Pointer, which drops the moment it leaves; "did THIS event come from a
+	// finger" is InputModifier::Touch.
+	InputPointer = 1LLU << 24,
+
 	// Extra space here
 
 	// Values for allowed window actions
@@ -242,7 +252,7 @@ enum class WindowState : uint64_t {
 
 	All = Modal | Sticky | Maximized | Shaded | SkipTaskbar | Minimized | Fullscreen | Above | Below
 			| DemandsAttention | Focused | Resizing | Pointer | CloseGuard | CloseRequest | Enabled
-			| DecorationState | InputTouch | AllowedActionsMask | TilingMask,
+			| DecorationState | InputTouch | InputPointer | AllowedActionsMask | TilingMask,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowState)

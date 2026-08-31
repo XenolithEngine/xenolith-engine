@@ -28,6 +28,7 @@
 #include "XLAction.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
+#include "XLInputDispatcher.h"
 #include "XLScene.h"
 
 #include <cmath>
@@ -94,113 +95,122 @@ Rc<basic2d::SceneLayout2d> TooltipSystem::buildDefaultTooltip(NotNull<SubWindow>
 	return layout;
 }
 
-// --- TooltipTarget ---------------------------------------------------------------------------
+// --- TooltipComponent -------------------------------------------------------------------------
 
-bool TooltipTarget::init(TooltipInfo &&info) {
-	if (!InputListener::init()) {
-		return false;
-	}
-	_info = sp::move(info);
-	return setup();
-}
+ComponentId TooltipComponent::Id;
 
-bool TooltipTarget::init(StringView text) {
-	if (!InputListener::init()) {
-		return false;
-	}
-	_info.text = text.str<Interface>();
-	return setup();
-}
+/* Make sure the scene has a coordinator, whenever that becomes possible.
 
-bool TooltipTarget::setup() {
-	// onlyFocused = false is required, not a preference: a hint inside a Popup would never appear
-	// otherwise, because a popup window never carries WindowState::Focused.
-	addMouseOverRecognizer([this](const GestureData &data) {
-		switch (data.event) {
-		case GestureEvent::Began:
-			_hovered = true;
-			if (auto *system = acquireSystem()) {
-				system->handleTargetHover(this, data.location());
-			}
-			break;
-		case GestureEvent::Moved:
-			// Every move restarts the dwell - this is what makes the delay "the pointer stopped"
-			// rather than "the pointer arrived".
-			if (_hovered) {
-				if (auto *system = acquireSystem()) {
-					system->handleTargetHover(this, data.location());
-				}
-			}
-			break;
-		case GestureEvent::Ended:
-		case GestureEvent::Cancelled:
-			_hovered = false;
-			if (_system) {
-				_system->handleTargetLeave(this);
-			}
-			break;
-		default: break;
-		}
-		return true;
-	}, InputMouseOverInfo{_info.hoverPadding, false});
-
-	return true;
-}
-
-void TooltipTarget::handleExit() {
-	_hovered = false;
-	if (_system) {
-		// Tell it before we go: a dwell running for a node that is leaving the scene would fire on
-		// a target with no owner.
-		_system->handleTargetGone(this);
-		_system = nullptr;
-	}
-	InputListener::handleExit();
-}
-
-TooltipSystem *TooltipTarget::acquireSystem() {
-	if (!_system) {
-		_system = TooltipSystem::acquireForNode(getOwner());
-	}
-	return _system;
-}
-
-void TooltipTarget::setInfo(TooltipInfo &&info) {
-	_info = sp::move(info);
-	setTouchPadding(_info.hoverPadding);
-	if (_system) {
-		_system->handleTargetChanged(this);
-	}
-}
-
-void TooltipTarget::setText(StringView text) {
-	if (_info.text == text) {
+A hint is routinely declared while a widget is being BUILT - `label->setString(...); setTooltip(label,
+...)`, long before anything is added to a scene - and a component, unlike the listener this replaced,
+cannot notice its own arrival there later. So when there is no scene yet the acquire is deferred to
+one, with a one-shot system that removes itself the moment it has done its job. It is the only
+per-node object left in this design, it exists for at most one scene entry, and nothing carries it
+afterwards. */
+static void Tooltip_acquireSystem(NotNull<Node> node) {
+	if (node->getScene()) {
+		TooltipSystem::acquireForNode(node);
 		return;
 	}
-	_info.text = text.str<Interface>();
-	if (_system) {
-		_system->handleTargetChanged(this);
+
+	static constexpr uint64_t AnchorTag = "XLUiTooltipAnchor"_tag;
+	for (auto &it : node->getSystems()) {
+		if (it->getFrameTag() == AnchorTag) {
+			return; // already waiting
+		}
+	}
+
+	auto anchor = Rc<CallbackSystem>::create();
+	anchor->setFrameTag(AnchorTag);
+
+	/* On the first VISIT, not on entering the scene.
+
+	Node::handleEnter sets `_running` at its very end, after its children have entered, so a system
+	added to the content node from inside a descendant's entry is never handed handleEnter - it
+	would never run, never schedule its update tick and never attach its listener. By the first
+	visit everything above is running and an ordinary addSystem does the right thing. */
+	anchor->setVisitSelfCallback([](CallbackSystem *self, FrameInfo &, Node *, NodeVisitFlags) {
+		auto owner = self->getOwner();
+		if (!owner) {
+			return;
+		}
+		TooltipSystem::acquireForNode(owner);
+
+		// Node::visitSelf iterates a COPY of the system list, so removing ourselves from inside it
+		// is safe - and the copy is what keeps this object alive until the loop is done
+		owner->removeSystem(self);
+	});
+	node->addSystem(sp::move(anchor));
+}
+
+static const TooltipComponent *Tooltip_attach(NotNull<Node> node,
+		const Callback<void(NotNull<TooltipComponent>)> &fill) {
+	auto ret = node->setOrUpdateComponent<TooltipComponent>([&](NotNull<TooltipComponent> comp) {
+		fill(comp);
+		return true;
+	});
+
+	// The flag and the component are one declaration: the visit reads the flag, the hover
+	// resolution reads the component
+	node->addHitTestFlags(HitTestFlags::Tooltip);
+
+	Tooltip_acquireSystem(node);
+
+	// A hint that is already up and describes this node is describing something that just changed
+	if (auto system = TooltipSystem::findForNode(node)) {
+		system->handleNodeChanged(node);
+	}
+	return ret;
+}
+
+const TooltipComponent *setTooltip(NotNull<Node> node, TooltipInfo &&info) {
+	return Tooltip_attach(node,
+			[&](NotNull<TooltipComponent> comp) { comp->info = sp::move(info); });
+}
+
+const TooltipComponent *setTooltip(NotNull<Node> node, StringView text) {
+	return Tooltip_attach(node,
+			[&](NotNull<TooltipComponent> comp) { comp->info.text = text.str<Interface>(); });
+}
+
+const TooltipComponent *getTooltip(NotNull<Node> node) {
+	return node->getComponent<TooltipComponent>();
+}
+
+void setTooltipText(NotNull<Node> node, StringView text) {
+	auto changed = node->updateComponent<TooltipComponent>([&](NotNull<TooltipComponent> comp) {
+		if (comp->info.text == text) {
+			return false;
+		}
+		comp->info.text = text.str<Interface>();
+		return true;
+	});
+	if (changed) {
+		if (auto system = TooltipSystem::findForNode(node)) {
+			system->handleNodeChanged(node);
+		}
 	}
 }
 
-void TooltipTarget::setFactory(TooltipFactory &&factory) {
-	_info.factory = sp::move(factory);
-	if (_system) {
-		_system->handleTargetChanged(this);
+void setTooltipEnabled(NotNull<Node> node, bool value) {
+	node->updateComponent<TooltipComponent>([&](NotNull<TooltipComponent> comp) {
+		if (comp->enabled == value) {
+			return false;
+		}
+		comp->enabled = value;
+		return true;
+	});
+	if (auto system = TooltipSystem::findForNode(node)) {
+		system->handleNodeChanged(node);
 	}
 }
 
-void TooltipTarget::setPlacement(const TooltipPlacement &placement) {
-	_info.placement = placement;
-	if (_system) {
-		_system->handleTargetChanged(this);
-	}
-}
-
-void TooltipTarget::clearPlacement() {
-	_info.placement.reset();
-	if (_system) {
-		_system->handleTargetChanged(this);
+void removeTooltip(NotNull<Node> node) {
+	if (node->removeComponent<TooltipComponent>()) {
+		node->removeHitTestFlags(HitTestFlags::Tooltip);
+		if (auto system = TooltipSystem::findForNode(node)) {
+			system->handleNodeChanged(node);
+		}
 	}
 }
 
@@ -231,8 +241,8 @@ TooltipSystem *TooltipSystem::acquireForNode(Node *node) {
 		}
 	}
 
-	log::source().warn("TooltipSystem",
-			"acquireForNode: the node is not in a scene with a content node");
+	// Quiet: a node with no scene is the ordinary case for a hint declared while a widget is being
+	// built, and Tooltip_acquireSystem retries on entry
 	return nullptr;
 }
 
@@ -243,10 +253,12 @@ bool TooltipSystem::init() {
 
 	_frameTag = TooltipSystem::Id;
 
-	// Owner and scene events for the lifetime, and nothing else: no visit, no node events, no
-	// update tick. A pointer at rest is reported to us by the targets, and the dwell action is what
-	// keeps frames coming while it runs.
-	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents;
+	// Owner and scene events for the lifetime, and visit control for one thing only: the visit is
+	// the last chance to attach the listeners (see handleVisitBegin). The update tick is scheduled
+	// separately - it is what notices a node sliding out from under a still pointer, which used to
+	// come from each target's own geometry updates.
+	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
+			| SystemFlags::HandleVisitControl;
 
 	_defaultFactory = [](NotNull<SubWindow> surface, const TooltipRequest &request) {
 		return buildDefaultTooltip(surface, request);
@@ -256,7 +268,100 @@ bool TooltipSystem::init() {
 
 void TooltipSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
+
+	_hoverListener = Rc<InputListener>::create(HoverListenerPriority);
+	_hoverListener->addMoveRecognizer([this](const GestureData &data) {
+		if (data.input) {
+			_pointer = data.input->currentLocation;
+			_hasPointer = true;
+			resolveHover(_pointer, true);
+		}
+		// Never consumed: this listener decides nothing and must not take a MouseMove away from
+		// anything that does
+		return false;
+	});
+
+	updateHoverListener();
 	updateDismissListener();
+
+	// A hint has to appear in a scene where nothing else is happening, so the tick has to exist
+	// before the pointer stops moving
+	scheduleUpdate();
+}
+
+void TooltipSystem::handleRemoved() {
+	cancelDelay();
+	hide();
+
+	for (auto listener : {&_hoverListener, &_dismissListener}) {
+		if (*listener) {
+			if (_owner) {
+				_owner->removeSystem(listener->get());
+			}
+			*listener = nullptr;
+		}
+	}
+
+	_hovered = nullptr;
+	System::handleRemoved();
+}
+
+void TooltipSystem::handleEnter(Scene *scene) {
+	System::handleEnter(scene);
+
+	// Node::handleEnter sets `_running` at its very end, after its children have entered - and
+	// acquireForNode is reached from a descendant's handleEnter, inside that window. A system added
+	// to a node that is not running yet is never handed handleEnter (see Node::addSystemItem), and
+	// an InputListener that never entered refuses every event. So the attachment is retried here,
+	// by which time everything above is certainly running. Same fix as ContextMenuSystem's.
+	updateHoverListener();
+	updateDismissListener();
+}
+
+void TooltipSystem::handleVisitBegin(FrameInfo &info) {
+	System::handleVisitBegin(info);
+
+	// The last chance for the listeners to join, and the one that always works.
+	// Node::handleEnter sets `_running` at its very end, after its children have entered - and
+	// acquireForNode is reached from a descendant's entry, which is inside that window. A system
+	// added to a node that is not running yet is never handed handleEnter (see Node::addSystemItem),
+	// and an InputListener that never entered refuses every event. By the first visit everything
+	// above is certainly running. Same fix as ContextMenuSystem's.
+	updateHoverListener();
+	updateDismissListener();
+}
+
+void TooltipSystem::updateHoverListener() {
+	if (_owner && _hoverListener && !_hoverListener->getOwner() && _owner->isRunning()) {
+		_owner->addSystem(_hoverListener);
+	}
+}
+
+void TooltipSystem::update(const UpdateTime &time) {
+	System::update(time);
+
+	if (!_hasPointer) {
+		return;
+	}
+
+	auto dispatcher = getDispatcher();
+	if (!dispatcher) {
+		return;
+	}
+
+	// A scene with no hint in it pays one flag test per frame and nothing else
+	if (!hasFlag(dispatcher->getHitTestMask(), HitTestFlags::Tooltip)) {
+		return;
+	}
+
+	// The pointer has not moved - so no dwell is restarted - but what is UNDER it may have
+	resolveHover(_pointer, false);
+}
+
+InputDispatcher *TooltipSystem::getDispatcher() const {
+	auto owner = getOwner();
+	auto director = owner ? owner->getDirector() : nullptr;
+	return director ? director->getInputDispatcher() : nullptr;
 }
 
 void TooltipSystem::handleExit() {
@@ -345,7 +450,64 @@ void TooltipSystem::updateDismissListener() {
 
 // --- hover state machine -----------------------------------------------------------------------
 
-void TooltipSystem::handleTargetHover(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
+void TooltipSystem::resolveHover(const Vec2 &pointerWorld, bool fromMove) {
+	auto dispatcher = getDispatcher();
+	if (!dispatcher) {
+		return;
+	}
+
+	/* A pointer that is not in the window is not resting on anything.
+
+	The old per-node listeners got this from GestureMouseOverRecognizer, which gates on
+	WindowState::Pointer; asked centrally it has to be gated here, or a window the pointer has left
+	would keep whatever it was last over. */
+	if (!hasFlag(dispatcher->getWindowState(), WindowState::Pointer)) {
+		if (_hovered) {
+			auto prev = sp::move(_hovered);
+			_hovered = nullptr;
+			handleTargetLeave(prev);
+		}
+		return;
+	}
+
+	Node *found = nullptr;
+	dispatcher->foreachHitTest(HitTestFlags::Tooltip,
+			[&](const InputListenerStorage::HitTestRec &rec) {
+		auto comp = getTooltip(rec.node);
+		if (!comp || !comp->enabled) {
+			return true;
+		}
+		// The hover padding is the NODE's, which is why the registry hands over records rather than
+		// answers: a thin target is hard to rest a pointer on, and how thin is its own business
+		if (!rec.contains(pointerWorld, comp->info.hoverPadding)) {
+			return true;
+		}
+		found = rec.node;
+		return false;
+	});
+
+	if (found == _hovered) {
+		// Same node. A real movement restarts the dwell; a re-resolution on a frame where nothing
+		// moved must not, or the delay would be rearmed forever and the hint would never appear
+		if (found && fromMove) {
+			handleTargetHover(found, pointerWorld);
+		}
+		return;
+	}
+
+	if (_hovered) {
+		auto prev = sp::move(_hovered);
+		_hovered = nullptr;
+		handleTargetLeave(prev);
+	}
+
+	_hovered = found;
+	if (found) {
+		handleTargetHover(found, pointerWorld);
+	}
+}
+
+void TooltipSystem::handleTargetHover(NotNull<Node> target, Vec2 pointerWorld) {
 	_pointer = pointerWorld;
 
 	if (_shown == target.get()) {
@@ -362,7 +524,7 @@ void TooltipSystem::handleTargetHover(NotNull<TooltipTarget> target, Vec2 pointe
 	armDelay();
 }
 
-void TooltipSystem::handleTargetLeave(NotNull<TooltipTarget> target) {
+void TooltipSystem::handleTargetLeave(NotNull<Node> target) {
 	if (_pending == target.get()) {
 		cancelDelay();
 	}
@@ -378,7 +540,7 @@ void TooltipSystem::handleTargetLeave(NotNull<TooltipTarget> target) {
 	}
 }
 
-void TooltipSystem::handleTargetGone(NotNull<TooltipTarget> target) {
+void TooltipSystem::handleTargetGone(NotNull<Node> target) {
 	if (_pending == target.get()) {
 		cancelDelay();
 	}
@@ -387,13 +549,16 @@ void TooltipSystem::handleTargetGone(NotNull<TooltipTarget> target) {
 	}
 }
 
-void TooltipSystem::handleTargetChanged(NotNull<TooltipTarget> target) {
+void TooltipSystem::handleNodeChanged(NotNull<Node> target) {
 	if (_shown != target.get()) {
 		return;
 	}
 
-	// Rebuild in place: the hint is describing something that just changed under it.
-	if (target->isHovered()) {
+	// Rebuild in place: the hint is describing something that just changed under it. Still hovered
+	// is asked of the resolution rather than of the node - "is the pointer on me" is not a fact a
+	// node carries any more
+	auto comp = getTooltip(target);
+	if (_hovered == target.get() && comp && comp->enabled) {
 		present(target, _pointer);
 	} else {
 		hide();
@@ -428,31 +593,33 @@ void TooltipSystem::cancelDelay() {
 }
 
 void TooltipSystem::fire() {
-	auto *target = _pending;
+	auto target = sp::move(_pending);
 	_pending = nullptr;
 
-	if (!target || !target->isHovered() || !target->getOwner()) {
+	// Still the node the pointer is on, and still in the scene: the dwell is half a second, and a
+	// list can scroll a row out from under a still pointer in that time
+	if (!target || _hovered != target || !target->isRunning()) {
 		return;
 	}
 
 	present(target, _pointer);
 }
 
-bool TooltipSystem::showFor(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
+bool TooltipSystem::showFor(NotNull<Node> target, Vec2 pointerWorld) {
 	cancelDelay();
 	_pointer = pointerWorld;
 	return present(target, pointerWorld);
 }
 
-bool TooltipSystem::present(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
-	auto node = target->getOwner();
+bool TooltipSystem::present(NotNull<Node> node, Vec2 pointerWorld) {
 	auto session = getSession();
-	if (!node || !session) {
+	auto comp = getTooltip(node);
+	if (!session || !comp) {
 		return false;
 	}
 
-	const auto &info = target->getInfo();
-	const auto &placement = placementFor(target);
+	const auto &info = comp->info;
+	const auto &placement = placementFor(node);
 
 	auto size = info.size;
 	if (size == Extent2::ZERO) {
@@ -463,10 +630,10 @@ bool TooltipSystem::present(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
 
 	TooltipRequest request;
 	request.target = node;
-	request.source = target;
+	request.info = &info;
 	request.text = info.text;
 	request.data = &info.data;
-	request.nodeWorldRect = getTargetWorldRect(target);
+	request.nodeWorldRect = getTargetWorldRect(node);
 	request.pointer = pointerWorld;
 	request.size = size;
 
@@ -485,18 +652,21 @@ bool TooltipSystem::present(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
 	config.idPrefix = _config.idPrefix;
 	config.preferNative = _config.mode == TooltipMode::Native;
 
-	// Everything the builder reads is OWNED by the closure, and the target is held by Rc. On the
-	// native path the builder does not run until the subwindow's scene is presented, by which time
-	// the widget that asked for the hint may be long gone - a TooltipRequest pointing into its
-	// TooltipInfo would be reading freed memory. Same reason DragSession holds its source by Rc.
-	config.content = [factory = sp::move(factory), source = Rc<TooltipTarget>(target),
-							 text = info.text, data = info.data, rect = request.nodeWorldRect,
-							 pointer = pointerWorld, size](NotNull<SubWindow> surface) mutable {
+	/* Everything the builder reads is OWNED by the closure, the node included, by Rc.
+
+	On the native path the builder does not run until the subwindow's scene is presented, by which
+	time the widget that asked for the hint may be long gone - and its TooltipComponent with it, so
+	a TooltipRequest pointing into that component would be reading freed memory. The info is COPIED
+	here for exactly that reason; `req.info` then points into the copy, which lives as long as the
+	closure. Same reason DragSession holds its source by Rc. */
+	config.content = [factory = sp::move(factory), source = Rc<Node>(node.get()), info = info,
+							 rect = request.nodeWorldRect, pointer = pointerWorld,
+							 size](NotNull<SubWindow> surface) mutable {
 		TooltipRequest req;
-		req.source = source;
-		req.target = source->getOwner();
-		req.text = text;
-		req.data = &data;
+		req.target = source;
+		req.info = &info;
+		req.text = info.text;
+		req.data = &info.data;
 		req.nodeWorldRect = rect;
 		req.pointer = pointer;
 		req.size = size;
@@ -510,12 +680,12 @@ bool TooltipSystem::present(NotNull<TooltipTarget> target, Vec2 pointerWorld) {
 		hideDelay = SubWindowSession::DefaultHideDelay;
 	}
 
-	// The target's identity keys the slot: re-presenting the same target refreshes rather than
-	// flaps, and a different target replaces.
-	auto key = toString(reinterpret_cast<uintptr_t>(target.get()), "-", info.text);
+	// The node's identity keys the slot: re-presenting the same node refreshes rather than flaps,
+	// and a different node replaces.
+	auto key = toString(reinterpret_cast<uintptr_t>(node.get()), "-", info.text);
 
 	_tip = session->showTip(sp::move(config), key, hideDelay);
-	_shown = _tip ? target.get() : nullptr;
+	_shown = _tip ? node.get() : nullptr;
 	return _shown != nullptr;
 }
 
@@ -527,16 +697,13 @@ void TooltipSystem::hide() {
 	}
 }
 
-const TooltipPlacement &TooltipSystem::placementFor(NotNull<TooltipTarget> target) const {
-	const auto &own = target->getPlacement();
+const TooltipPlacement &TooltipSystem::placementFor(NotNull<Node> node) const {
+	auto comp = getTooltip(node);
+	const auto &own = comp ? comp->info.placement : sprt::optional<TooltipPlacement>();
 	return own ? *own : _config.placement;
 }
 
-Rect TooltipSystem::getTargetWorldRect(NotNull<TooltipTarget> target) const {
-	auto node = target->getOwner();
-	if (!node) {
-		return Rect::ZERO;
-	}
+Rect TooltipSystem::getTargetWorldRect(NotNull<Node> node) const {
 
 	// Four corners, not origin+size: the node may be rotated or scaled, and the anchor rect the
 	// placement wants is the axis-aligned box it actually occupies.

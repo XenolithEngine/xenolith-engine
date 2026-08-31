@@ -5,10 +5,11 @@
 * One `DragSystem` per scene, on the `SceneContent`. `DragSystem::acquireForNode(node)`
   finds it or installs it — a widget never has to demand that the application
   arranged one first.
-* **A drop target registers itself by being drawn.** Add a `DropTarget` system to
-  a node; during its owner's visit it publishes its world rect to the nearest
-  `DragSystem` above it. So the topmost target receives, and an invisible one
-  does not exist.
+* **A drop target registers itself by being drawn.** `setDropTarget(node, slots)`
+  attaches a `DropTargetComponent` — data, with no lifecycle and no input of its
+  own — and raises `HitTestFlags::DropTarget` on the node, which is what makes the
+  node publish the rect it was drawn with into the frame's hit-test registry. So
+  the topmost target receives, and an invisible one does not exist.
 * **A source is an `InputListener`** — `DragSource` — because the three things a
   source must get right (the threshold, the pointer capture, the abort on exit)
   are all listener-level.
@@ -49,7 +50,7 @@ working. `DragSource` exists for the widgets that have no listener of their own.
 ## Making a node a drop target
 
 ```cpp
-node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
+setDropTarget(node, DropTargetSlots{
     .accept = [](const DragEvent &e) -> DragResponse {
         if (!e.data->isLocal("app/item")) { return DragResponse(); }
         return DragResponse{e.allowed & DragActions::Move};
@@ -57,8 +58,13 @@ node->addSystem(Rc<DropTarget>::create(DropTargetSlots{
     .enter = [this](const DragEvent &) { showHighlight(); },
     .leave = [this](const DragEvent &) { hideHighlight(); },
     .drop  = [this](const DragEvent &e, DragActions) { return take(e.data->getLocal()); },
-}));
+});
 ```
+
+`setDropTargetEnabled` / `setDropTargetPadding` adjust it, `removeDropTarget` takes
+it away, and `getDropTarget` reads it back. Use them rather than the raw component
+API: the flag on the node is a cache of the component's presence, and a node with
+one and not the other wins a hit test and then offers nothing.
 
 `accept` is a **predicate and must be pure**. It is called during hit testing, for
 candidates that may never become the current target, possibly several times in one
@@ -73,28 +79,124 @@ Returning `DragResponse()` (no accepted action) means *not here*, and the search
 continues with whatever is underneath. That is what makes a decorative overlay
 transparent to a drag rather than a wall.
 
+### Dropping into a `ui::TreeView`
+
+A tree is not one place, and it does not want one drop target per row. Rows are
+virtualized — only the ones in view are nodes — while the geometry answers for all
+of them, so a per-row target could only ever cover what happens to be materialized,
+and the empty space below the last row, the only way into the ROOT of the tree, has
+no row to carry one. So the widget carries a single target on itself and resolves
+the row from the pointer:
+
+```cpp
+tree->setDropSlots(ui::TreeView::DropSlots{
+    .accept = [this](const DragEvent &e, const ui::TreeView::DropPosition &pos) {
+        auto item = payloadOf(e);
+        return (item && mayGo(item, pos)) ? (e.allowed & DragActions::Move) : DragActions::None;
+    },
+    .drop = [this](const DragEvent &e, const ui::TreeView::DropPosition &pos, DragActions a) {
+        return apply(payloadOf(e), pos, a);
+    },
+});
+```
+
+**The zones are not the same on every row**, and that is the point of
+`DropPosition`:
+
+| Where the pointer is | `kind` | `parent` / `index` |
+|---|---|---|
+| upper half of a **leaf** | `Before` | its parent, its own child index |
+| lower half of a **leaf** | `After` | its parent, one past it |
+| top `CategoryDropBand` of a **category** | `Before` | its parent, its own child index |
+| the middle of a **category** | `Into` | the category, append |
+| bottom `CategoryDropBand` of a **category** | `After` | its parent, one past it |
+| the empty space below the last row | `Into` | the root, append |
+
+A leaf has two answers because there is no third thing it could mean; a category is
+both somewhere to go into and something to stand beside, so it has three. The split
+is **0.2 / 0.6 / 0.2** (`TreeView::CategoryDropBand`), and the middle is the large
+share on purpose: even thirds would make "into this folder" as easy to miss as to
+hit, and it is what a drag over a folder almost always wants. The edge bands only
+have to be *reachable*.
+
+`getDropPositionForRow(index, offset)` takes that fraction directly — `offset` is
+how far **down** the row the pointer is, 0 at its top edge and 1 at its bottom — so
+a test names a band rather than synthesizing a pointer for it.
+
+`accept` is the same **pure predicate** a raw drop target takes, at a position;
+`DragActions::None` still means *not here* and lets the drag fall through. There is
+no `enter`/`over`/`leave` to fill in, because the feedback is the widget's:
+
+* an insertion line on the boundary (`tree-insertion-line`) for `Before` / `After`,
+  with an upright at its left end (`tree-insertion-stem`);
+* a fill over the row (`tree-drop-highlight`) for `Into`;
+* the class `drop-root` on the view itself when the position is the root, which is
+  the one answer with no rectangle of its own.
+
+**Both are cut back on the left to the anchor row's indent**, and that is not
+decoration. A horizontal line drawn across a tree cannot tell "after this row" from
+"after its parent" — they are the same line — so the indent is the only thing that
+says which level the element would land at, and the upright is what makes an indent
+readable when there is no row beside it to compare against.
+
+The pixel indent is **read back off the laid-out row** (`getRowIndentX`), never
+computed: `TreeView` writes `--tree-depth` onto the row and a *sheet* turns it into
+a padding, so the number does not exist in C++. A row with no node — one scrolled
+out of the window — reports none, and the indicator spans the width instead of
+guessing.
+
+The first two are plain `basic2d::Layer`s carrying a type — a sheet re-colours them
+and nothing else about them is styleable — and the third is a class on the view,
+which is an ordinary `ui::Panel` and takes an outline like any other. See
+[css-subset](../../ui/css-subset.adoc#the-nodes-a-drag-puts-up).
+
+**A collapsed category opens under a drag that rests on it** — but only while the
+position is `Into`, so resting in an edge band, where the drop would land *beside*
+the folder, never opens it. It happens after
+`setDropExpandDelay()` — half a second by default, zero to never. The dwell measures
+time over THAT category rather than time since the pointer last moved, so a pointer
+creeping across a folder still opens it; only moving off cancels it. It is an
+`Action` and not a looper timer, because a running action keeps the frame loop awake
+and so the delay actually elapses in an app that renders on demand.
+
+`getDropPositionAt()` and `getDropPositionForRow()` answer the same with **no drag in
+flight**, which is what lets a test drive the zone rule without synthesizing a
+pointer.
+
 ## How a target is found
 
-Not by a registry, and not by walking the scene. `DropTarget::handleVisitSelf`
-publishes the target and its world rect into the nearest `DragSystem` on the frame
-stack, once per frame. Three things follow, and none of them is otherwise cheap to
-get right:
+Not by a registry of the drag system's own, and not by walking the scene. The NODE
+registers itself, once per frame, from inside its own visit: `Node::visitSelf` sees
+`HitTestFlags::DropTarget` and publishes the rect it was drawn with into the
+window's hit-test registry (`InputListenerStorage`). Three things follow, and none
+of them is otherwise cheap to get right:
 
-* the world rect is the one that was **drawn** — it comes from the visit's own
-  transform stack, so there is nothing to re-derive and nothing to fall out of
-  sync with;
+* the world rect is the one that was **drawn** — the visit has just built it, so
+  there is nothing to re-derive and nothing to fall out of sync with, and a rotated
+  target is hit where it was drawn rather than across its bounding box;
 * registration order is visit order is **paint order**, so the drag walks the
-  roster backwards and the first hit is the topmost target;
+  registry backwards and the first hit is the topmost target;
 * a node that is not visited is not registered. Invisible, `display: none`,
   detached — all of them stop being drop targets for free.
 
-The roster is therefore one frame old when a pointer event reads it. That is the
+The registry is therefore one frame old when a pointer event reads it. That is the
 same staleness ordinary input already has: the dispatcher resolves every event
 against the previously committed listener storage.
 
-**Do not** hit-test drop targets with `Node::isTouched`: it checks `isVisible()`
-rather than the effective visibility, and it redoes a transform the roster already
-holds.
+It is **one registry for the whole window**, shared with context menus, tooltips and
+the listeners themselves. Ask it with `InputDispatcher::foreachHitTest(mask, cb)`;
+containment is the caller's to decide, with `HitTestRec::contains(point, padding)`,
+because the padding belongs to whoever is asking.
+
+**Do not** hit-test drop targets with `Node::isTouched`: it answers about the tree
+as it is right now, not about the frame the event is being resolved against. The
+registry's own test — and `Node::isTouchedAsDrawn` under it — is the one that
+matches what the user clicked on.
+
+**A component has no `handleExit`,** so nothing announces a target leaving the
+scene. `DragSystem::update` notices instead: it checks every frame that the current
+target's node is still running and still carries a component, and fires `leave` when
+it is not.
 
 ## The payload
 
@@ -165,8 +267,7 @@ The source node is routinely destroyed by the very drop that ends the drag — t
 is what a move *is*. Two rules make that safe, and both are already in place:
 
 * **`finish()` is a single funnel and runs its body at most once.** Drop, cancel,
-  the source leaving the scene, the system leaving the scene — all of them go
-  through it.
+  the system leaving the scene — all of them go through it.
 * **The system detaches the session before finishing it.** Anything that re-enters
   during the drop — a source's `handleExit`, a target's — finds no drag in flight
   and becomes a no-op instead of recursing.
@@ -178,6 +279,50 @@ cannot dangle.
 Inside a `drop` slot, **read everything first, then mutate**. The handle you were
 given may not resolve afterwards, and the node that delivered the drag may not
 exist.
+
+### A source leaving the scene does not end the drag
+
+The node a drag started from can disappear mid-drag, and that is ordinary rather
+than exceptional: the rows of a `ui::TreeView` are virtualized, so scrolling — or
+the auto-scroll below — recycles the very row being dragged. Ending the drag there
+would mean a list you cannot drag past its own edge.
+
+So `handleExit` on a `DragSource` no longer cancels. The session holds the source
+by `Rc` and the payload has been a value since it was offered, so nothing it needs
+went away with the node.
+
+What did go away is the only listener that could hear the button come up: a
+detached `InputListener` refuses every event before any filter of yours runs, and
+the chain's listener set is frozen at `Begin`. So the release is detected from the
+other side — `DragSystem::update()` watches whether the dispatcher still has the
+press chain that started the drag (`InputDispatcher::isEventActive`) and
+**commits** when it does not. Commits, not cancels: a chain ends when the button
+is released, and on a real cancel the pointer is nowhere near a target and the
+commit finds nothing to drop into. A drag begun from code has no chain at all
+(`getInputEventId() == 0`) and is exempt — watching for the disappearance of an id
+that never existed would end it on the first frame.
+
+### Auto-scroll at the edge of a list
+
+`ui::DragScrollSystem` (in `renderer/ui`, the only layer that can see both
+`DragSystem` and the two scrollers) nudges a scroll view while a drag rests near
+its edge. `ui::TreeView` and `ui::TableView` install one on their **scroll view**
+— not on the widget: the edge band is measured against the viewport, and a
+`TableView`'s header lives outside it.
+
+Two things about it are worth knowing before writing another one:
+
+* **it must be scoped.** By default (`Scope::TargetInside`) a list scrolls only
+  while the drag's current target belongs to the same branch. Without that,
+  dragging a dock tab across the screen would scroll every list it passed over;
+* **it has to re-ask where the drag is.** Drag events arrive on pointer MOTION
+  alone, so once the pointer stops nothing recomputes the drop position while the
+  content slides out from under it — the insertion line stays on a row that has
+  left the screen. `DragSystem::refreshDrag()` re-resolves the drag at its current
+  world position with no event, and the nudge calls it **only on a frame where the
+  content actually moved**. Calling it every frame instead would make `over` a
+  60 Hz callback for every drag in the application, to pay for a case that arises
+  only here.
 
 ## The decorator
 
@@ -215,9 +360,9 @@ It is **not** what keeps the ghost out of its own cutout. That used to be its
 second job, and it was a trap: the pointer sits on the row being copied when the
 drag begins, so a ghost built too early was photographed along with it. The
 decorator now goes on the Overlay level, which draws after the capture, so the
-exclusion holds however and whenever the ghost was made. `XL_DNDTREE_GHOST_NOW=1`
-in the dndtree example reproduces the old timing on purpose and must produce a
-byte-identical cutout.
+exclusion holds however and whenever the ghost was made — a property of the draw
+order rather than of the timing, and therefore not something a caller can get
+wrong.
 
 ## A ghost made of the frame itself
 
@@ -226,7 +371,10 @@ rectangle of what the window last drew into a `Texture`, so a drag ghost can *be
 the row instead of being a second drawing of it:
 
 ```cpp
-auto capture = static_cast<AppWindow *>(getDirector()->getRenderServer())->getFrameCapture();
+// dynamic_cast, not static_cast: in local mode the render server IS the window, but it may be a
+// network proxy, and only a dynamic_cast turns that into a null instead of a call into something else
+auto window = dynamic_cast<AppWindow *>(getDirector()->getRenderServer());
+auto capture = window ? window->getFrameCapture() : nullptr;
 if (capture && capture->isAvailable()) {
     auto region = FrameCapture::makeRegion(worldRect,
             getDirector()->getGeneralProjection(), constraints.extent);
@@ -295,12 +443,16 @@ Two things will genuinely change, and are worth knowing now:
 | A source without `setExclusive()` | the dispatcher freezes an event chain's listener set at `Begin` and never re-targets, so the drag stops receiving `Move` the moment the pointer leaves the source. `DragSource` does this for you |
 | Accumulating `swipe.delta` | `updateDrag` takes a **position**, in world space and physical pixels. Deltas are not density-divided and a burst of moves in one frame would drift |
 | Two overlapping targets at the same `ZOrder` | `sortAllChildren` is unstable, so which one is "topmost" permutes between frames. Give siblings distinct orders |
+| A drop target per row of a `ui::TreeView` / `ui::TableView` | the rows are virtualized: the target exists only while the row is on screen, and the empty space that answers for the root has no row at all. Use `TreeView::setDropSlots` / `TableView::setReorderCallback`, which put one target on the view |
+| Restarting an auto-expand dwell on every pointer move | a pointer creeping across a folder would then never open it. `TreeView` restarts only when the CATEGORY changes; a tooltip's dwell is the one that means "the pointer stopped" |
 | A hover highlight written as a `Component` | the components phase re-converges up to 12 times per frame; writing one every frame can thrash it. Change a property on a node the target already owns |
 | A stylesheet-styled decorator with no `decoratorParent` | it is parked on the `SceneContent`, outside the `StyleResolver`'s subtree, and renders unstyled |
 | A decorator installed without the Overlay level | a bare ZOrder puts it last in the scene but still inside the frame that gets copied out, so a captured ghost photographs itself. `DragSession` sets the level for you; a hand-parked node has to |
 | Expecting an overlay node to appear in a cutout | it never can — the copy is recorded between the two passes. Capture the content, not the thing drawn over it |
 | A capture region built from `convertToWorldSpace` plus `getContentSize()` | the two are in different spaces once the scene is scaled by the density, so the region is half-size and the ghost shows a corner of the row. Use `Node::getWorldBoundingBox()` |
 | Drawing a cutout without `ColorMode(R,G,B,One)` | the presented image's alpha is not a transparency; the ghost blends away to nothing |
+| Ending a drag because its source left the scene | the rows of a virtualized view are recycled by the scroll, so that is the ordinary case, not an error. The release is detected from the press chain instead — see "A source leaving the scene" |
+| Calling `refreshDrag()` every frame | it re-runs `over` on the current target, so a list under a parked drag would fire it at 60 Hz. Call it only on a frame where something actually moved, and from `update()` rather than a visit hook |
 | An encode callback capturing `this` of a node | it may run on any thread once the OS path lands. Capture copies |
 | Expecting a clipboard round trip to work in a windowed test | taking the OS selection needs an input serial from a focused window. Run those headless, where the controller keeps the data in process |
 
@@ -313,6 +465,20 @@ XL_DRAG_ACTIONS_TEST=1 ./testapp   # modifiers, negotiation, cursor
 XL_DRAG_TEXT_TEST=1    ./testapp   # a text field receiving a drop
 XL_DRAG_PAYLOAD_TEST=1 ./testapp --headless   # lazy encoding + clipboard round trip
 ```
+
+The same four are in the registry as the `drag` group, so the inspector reaches them
+without restarting the app: `layout drag/drag-basic`, `drag/drag-actions`,
+`drag/drag-payload`, `drag/drag-text`. Each runs its phases on a timeline of
+`DelayTime`s and ends with a `SUMMARY: N checks, M failures` line in the log, so
+what a driver waits for is that line, not a frame count.
+
+One consequence of the registry that a stand of your own has to answer as well: the
+`DragSystem` lives on the scene CONTENT, so a session started by a layout outlives
+that layout. A stand that begins a drag in one phase and commits it in another must
+cancel it in `handleExit`, or a layout switch mid-sequence leaves the drag in flight
+and the next stand finds `beginDrag` refusing and the cursor stuck on `Grabbing`.
+Nothing ends a programmatic drag on its own: it has no input chain, so the release
+detection that watches a press chain never applies to it.
 
 `drag-actions` also registers `drag-actions.points` and `drag-actions.state` for
 the `SceneInspector`, so a synthetic pointer drag can be driven and read back step

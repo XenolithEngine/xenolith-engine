@@ -55,7 +55,15 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 	info.maxImageExtent = _extent;
 	info.maxImageArrayLayers = 1;
 
-	info.supportedCompositeAlpha = core::CompositeAlphaFlags::Opaque;
+	/* Premultiplied as well as Opaque, though there is no compositor here.
+
+	The pseudo-swapchain is an ordinary RGBA image and Loop::captureImage reads it whole, alpha
+	included, so a window that asks to be blended renders exactly the pixels a real compositor would
+	have been handed. Claiming Opaque only would make a shaped window - a menu with rounded corners
+	is one - come out headless with its corners filled in, which is the one thing a headless frame
+	must not do differently from a windowed one. */
+	info.supportedCompositeAlpha =
+			core::CompositeAlphaFlags::Opaque | core::CompositeAlphaFlags::Premultiplied;
 	info.supportedTransforms = core::SurfaceTransformFlags::Identity;
 	info.currentTransform = core::SurfaceTransformFlags::Identity;
 

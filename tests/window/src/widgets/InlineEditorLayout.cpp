@@ -356,6 +356,22 @@ Value InlineEditorLayout::encodeState() const {
 	if (session) {
 		if (auto input = dynamic_cast<ui::TextInput *>(session->getEditor())) {
 			ret.setString(input->getText(), "editorText");
+
+			/* The editor is seeded and selected BEFORE its first visit, so its label has no size
+			yet when the highlight is computed. Reporting where the highlight ended up - not merely
+			that a selection exists - is the only way to see the difference: a selection built
+			against a height of zero sits below the text, where the field's scissor removes it, and
+			every other field here still reads as if it were on screen. */
+			auto label = input->getContainer()->getLabel();
+			auto rect = label->getSelectionRect();
+			Value sel;
+			sel.setDouble(double(rect.origin.y), "y");
+			sel.setDouble(double(rect.size.height), "height");
+			sel.setDouble(double(rect.size.width), "width");
+			sel.setDouble(double(label->getContentSize().height), "labelHeight");
+			sel.setDouble(double(label->getPosition().y), "labelY");
+			sel.setDouble(double(input->getContainer()->getContentSize().height), "viewportHeight");
+			ret.setValue(sp::move(sel), "editorSelection");
 		}
 		ret.setBool(session->getLayout() != nullptr, "overlay");
 	}
@@ -367,6 +383,14 @@ Value InlineEditorLayout::encodeState() const {
 	ret.setString(_lastCommit, "lastCommit");
 	ret.setBool(_refuse, "refusing");
 	ret.setBool(_closeOnScroll, "closeOnScroll");
+
+	// What the rebuild callback saw, beside what the same row measures NOW: equal means the answer
+	// was complete when it arrived
+	ret.setInteger(int64_t(_rebuildAnswers), "rebuildAnswers");
+	ret.setInteger(std::lround(_rebuildRowWidth), "rebuildRowWidth");
+	Rect watched;
+	ret.setInteger(getCellRect(_rebuildWatchRow, watched) ? std::lround(watched.size.width) : 0,
+			"watchRowWidth");
 
 	if (_table) {
 		ret.setInteger(int64_t(_table->getRowCount()), "rowCount");
@@ -505,6 +529,26 @@ void InlineEditorLayout::registerCommands() {
 		return ackValue(true);
 	});
 
+	/* The engine seam an inline editor over a virtualized row depends on: ask the view to report
+	when its row nodes are current, instead of watching for it every frame. */
+	addCommand("rebuild-callback", "Ask the table to report when its rows are rebuilt: {row}",
+			[this](Value &&args) {
+		if (!_table) {
+			return ackValue(false);
+		}
+		_rebuildWatchRow =
+				size_t(sprt::max(static_cast<const Value &>(args).getInteger("row"), int64_t(0)));
+		_rebuildRowWidth = 0.0f;
+		_table->requestRebuildNodes([this] {
+			++_rebuildAnswers;
+			Rect rect;
+			if (getCellRect(_rebuildWatchRow, rect)) {
+				_rebuildRowWidth = rect.size.width;
+			}
+		});
+		return ackValue(true);
+	});
+
 	addCommand("overlays", "How many overlays the scene content is holding", [this](Value &&) {
 		Value ret;
 		auto content = dynamic_cast<basic2d::SceneContent2d *>(
@@ -524,6 +568,7 @@ void InlineEditorLayout::registerCommands() {
 
 	addCommand("reset-counters", "Zero the ending counters", [this](Value &&) {
 		_commits = _cancels = _closes = _refusals = 0;
+		_rebuildAnswers = 0;
 		_lastCommit.clear();
 		return ackValue(true);
 	});

@@ -167,6 +167,34 @@ Real components in-tree: `ButtonStyleComponent`, `VisibilityComponent`
 [XLInheritedStyle.h](../../../../xenolith/application/nodes/XLInheritedStyle.h),
 `FlexLayoutInfo` / `FlexItemInfo`, `InteractiveComponent`.
 
+### A declaration is data, even when it looks like behaviour
+
+`DropTargetComponent`, `ui::ContextMenuComponent` and `ui::TooltipComponent` are
+the pattern worth copying. Each one says what a node OFFERS — a set of drop slots,
+a menu source, a hint — and each used to be a `System` (a whole `InputListener`, in
+the tooltip's case) on every node that offered it. That is one `Ref`-derived object
+and one virtual call per node per frame, for a capability used on almost none of
+them: a menu is declared on every row and opened on one.
+
+They are one component and one coordinator now, joined by a bit in
+`Node::getHitTestFlags()`: the node publishes the rect it was drawn with into the
+frame's hit-test registry, and the single system on the scene reads that registry
+when the pointer does something. The test to apply is not "does it react" but "does
+it react on its OWN": a declaration that only ever answers somebody else's question
+is data, and the thing that asks is the system.
+
+Two consequences follow, and both have to be handled deliberately:
+
+* **the flag is a cache of the component's presence.** Attach and detach through
+  the free functions (`setDropTarget` / `ui::setContextMenu` / `ui::setTooltip` and
+  their `remove*`), never `setComponent` directly, or a node wins a hit test and
+  then offers nothing;
+* **a component has no lifecycle.** Nothing announces its arrival in a scene or its
+  departure from one. Whoever cares has to notice: `DragSystem::update` checks that
+  the target it is over is still running and still carries a component, and
+  `ui::setTooltip` parks a one-shot system that installs the coordinator on the
+  node's first visit and then removes itself.
+
 ## Choosing, in practice
 
 | You want to… | Use |
@@ -176,6 +204,7 @@ Real components in-tree: `ButtonStyleComponent`, `VisibilityComponent`
 | lay out children | a `System` with `HandleLayoutChildren` (+ frame stack for child events) |
 | answer "how big do you want to be?" | a `System` with `HandleMeasure` — see [content-measurement.adoc](../../ui/content-measurement.adoc) |
 | attach data a style or another system will read | a `Component` |
+| declare that a node can be found under the pointer | a `Component` + `HitTestFlags`, never a listener per node |
 | store one value used only by your own code | a member of your system, not a component |
 
 If a design still seems to need a `Node` subclass, the usual missing piece is a

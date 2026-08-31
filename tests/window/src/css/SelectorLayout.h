@@ -52,10 +52,14 @@ protected:
 	struct Sample {
 		String name;
 		basic2d::Layer *node = nullptr;
+		// Placed by its parent rather than by the grid below; see handleContentSizeDirty
+		bool nested = false;
 	};
 
+	// `parent` null puts the sample in the grid; naming one nests it, which is the only way to say
+	// anything about INHERITANCE - every other sample here is a sibling of every other.
 	basic2d::Layer *addSample(StringView name, StringView type,
-			sprt::initializer_list<StringView> classes);
+			sprt::initializer_list<StringView> classes, Node *parent = nullptr);
 
 	Value encodeSample(const Sample &) const;
 

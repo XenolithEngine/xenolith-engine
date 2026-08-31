@@ -71,7 +71,7 @@ constant of the calling module:
 
 Applies the `locked` style class, clears the Enabled bit and raises ReadOnly (a locked control IS
 disabled and it may not be written to - `:disabled` and `:read-only` both match), installs a
-ui::TooltipTarget carrying the message IF the node has none of its own, and asks the widget to stop
+ui::TooltipComponent carrying the message IF the node has none of its own, and asks the widget to stop
 accepting edits. Synchronous: nothing here waits for the next frame, because a lock that arrives a
 frame late is a lock that let one more edit through. */
 SP_PUBLIC void setEditLock(NotNull<Node>, uint32_t reasonCode);

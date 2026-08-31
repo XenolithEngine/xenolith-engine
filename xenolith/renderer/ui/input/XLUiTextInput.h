@@ -142,6 +142,11 @@ public:
 	virtual void setAutoScrollTarget(const Vec2 &worldLocation);
 
 protected:
+	// Centres the text and the placeholder in the box, vertically. Virtual because "in the middle
+	// of one line" is only what a SINGLE-line field means: ui::TextViewContainer starts its text
+	// at the top and positions its own labels.
+	virtual void updateLabelPosition();
+
 	virtual void updateCaretPosition();
 	virtual void updateCaretBlink();
 	virtual void runAdjustLabel(float pos);
@@ -173,6 +178,12 @@ protected:
 //     --caret-color:#FCB400; --selection-color:rgba(252,180,0,.35); }
 //   text-input:hover { outline-color:rgba(255,255,255,.30); }
 //   text-input:focus { outline-color:#FCB400; }
+//
+// THE BOX. The line is centred VERTICALLY in what `height` and `padding` leave, so vertical
+// padding is symmetry rather than placement, and a box far taller than its line still reads as one
+// field. It matters most where the field is standing in for something else: an ui::InlineEditor
+// gets the height of the row it covers, and a line resting on the floor of that box would sit
+// visibly below the label it replaced.
 //
 // STATE OWNERSHIP. The OS-side IME owns the text input state; this widget does not. `_inputState`
 // is a read-only mirror written ONLY by handleTextInput(), the TextInputHandler callback. Every
