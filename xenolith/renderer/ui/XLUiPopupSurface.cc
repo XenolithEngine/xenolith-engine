@@ -103,6 +103,16 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 		}
 		if (!config.panelType.empty()) {
 			panel->setType(config.panelType);
+
+			/* A type of its own needs the surface appliers registered UNDER that name.
+
+			The type is what a stylesheet addresses (`menu { … }`), and with nothing registered for
+			it the resolver reads the declarations and finds nobody to consume them: the fill keeps
+			the fallback and `background-color` lands on the node's TINT instead, which then
+			multiplies the fallback rather than replacing it. That is a menu asked to be #2b3038
+			and drawn almost black. Idempotent, and a panel class that already registered richer
+			appliers for this type keeps them. */
+			Panel::registerStyleAppliers(config.panelType);
 		}
 		if (!config.panelClass.empty()) {
 			panel->addStyleClass(config.panelClass);

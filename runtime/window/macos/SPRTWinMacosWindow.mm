@@ -161,6 +161,13 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	const bool utility = _info->type == WindowType::Utility;
 	const bool dialog = _info->type == WindowType::Dialog;
 
+	// A Mac always has one: a laptop's trackpad is not detachable and a desktop needs a mouse to be
+	// usable at all. Unconditional rather than probed, because there is nothing here that could
+	// ever answer otherwise - and a probe that always says yes is worse than a statement that it
+	// always is. InputTouch is deliberately NOT set: a trackpad is a pointing device, not a
+	// touchscreen, and no Mac has the latter.
+	_info->state |= WindowState::InputPointer;
+
 	// NSPanel for every window that belongs to another one: it is the only way to get the narrow
 	// palette title bar for Utility and a non-activating surface for Popup/Tooltip, since both
 	// style bits are ignored on a plain NSWindow. User-space decorations are the exception - that

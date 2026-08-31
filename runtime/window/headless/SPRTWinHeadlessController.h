@@ -67,6 +67,10 @@ public:
 
 	virtual bool isCursorSupported(WindowCursor, bool serverSide) const override { return false; }
 	virtual WindowCapabilities getCapabilities() const override;
+
+	// Whether windows of this context report WindowState::InputPointer. True unless
+	// ContextFlags::HeadlessNoPointer was asked for - see that flag for why it exists.
+	bool hasPointerDevice() const;
 	virtual void openUrl(StringView) override;
 
 	// An in-process clipboard. There is no window system to own a selection here, so the base

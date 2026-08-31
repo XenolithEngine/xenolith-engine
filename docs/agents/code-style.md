@@ -131,7 +131,7 @@ header, a platform branch, or an allocation. The essentials:
   mechanical off, and tracks `:disabled`; `read-only` is readable and copyable but
   not editable; `locked` is "you may not write here at all, and here is why" —
   `ui::setEditLock(node, reason)` paints it, clears the `Enabled` bit, hangs the
-  reason off a `ui::TooltipTarget` (only if the node has no hint of its own) and
+  reason off a `ui::TooltipComponent` (only if the node has no hint of its own) and
   takes the field out of the form's tab ring. A locked control is also disabled,
   and the two compose: unlocking restores what the application last asked for, not
   "on". `ui::applyControlEnabled` is the **single** writer of the `Enabled` bit and
@@ -171,17 +171,43 @@ header, a platform branch, or an allocation. The essentials:
   scrolling and by `invalidateSource()`, and a `ui::TextInput` holds the IME, so
   an editor parented into the cell would lose the typed text to a rebuild nobody
   asked for. It ends on Enter, on a press outside, on a scroll and on the anchor
-  leaving the scene - all of them COMMITTING, and only Escape cancelling - and
-  the commit is delivered at most once however many of those arrive together.
+  leaving the scene - all of them COMMITTING - with Escape and the opening of the
+  NEXT edit cancelling, and the commit is delivered at most once however many of
+  those arrive together. ONE session is open application-wide
+  (`InlineEditSession::getActive()`), and opening another cancels it BEFORE the
+  new one reads any geometry, because that cancel is free to move the rows it
+  would be placed over; a caller that wants the outgoing value keeps it by
+  committing first, and a caller whose commit was REFUSED has to decide there and
+  then rather than leave the ending to the next open.
   A caller that supplies its OWN editor through `setFactory` must also supply
   `setCollectCallback`: this side is handed a node it cannot interpret, so
   without it the commit carries a Nil - and it did, silently, until the studio's
   control binder became the first caller to take that path. `collect` stays
   optional because a display has nothing to report, which is exactly what made
   the hole invisible.
+- **A layout result is read when the pass that produced it says so.** A node
+  attached from inside a frame catches up on the visit's phases as it is attached
+  (`Node::runPendingPhases`), so its geometry is readable on the next line;
+  attached from outside one - an input handler, a menu callback - there is no pass
+  to catch up on, and the same read gives the fallback. There is deliberately no
+  synchronous off-frame settle: every phase body needs the pass's `FrameInfo` and
+  its `systemStack`, and a synthetic one would be a second implementation of the
+  pipeline. So the caller ASKS TO BE TOLD - `Node::settleForMeasure()` for a
+  child's size, `ui::TreeView`/`ui::TableView::requestRebuildNodes(cb)` for a row
+  the view builds at its own pace, whose callback runs at the END of the rebuild,
+  inside the visit, when every row it built has already caught up. Polling from a
+  visit-end callback with a frame counter is the shape to refuse: it asks after the
+  answer was complete, and the counter merges "the pass has not run" with "this
+  will never happen" - and the second is not a matter of time. For a virtualized
+  row it means "outside the scroll window", which is decidable at once and fixed by
+  scrolling to it. `examples/window/dndtree` names a new element the moment it is
+  created and is written that way end to end.
 - `ui::TableView` publishes its ROW GEOMETRY - `getRowRect`, `getCellRect`,
   `getRowIndexAt`, `getRowBoundaryAt`, shared with `ui::TreeView` through
-  `ui::RowGeometrySource` - and it answers for a row that has no node, because
+  `ui::RowGeometrySource` (`TreeView` adds `getRowContentRect`, the row's box cut
+  back to where its NAME starts - an inline rename opened over the whole row puts
+  its text several columns left of the text it replaces) - and it answers for a
+  row that has no node, because
   only the nodes are virtualized: `rebuildRows()` commits one controller item per
   row with the height it resolved beforehand. Reordering builds on that:
   `setReorderCallback` asks `bool(from, to)` where `to` is the row's FINAL index,

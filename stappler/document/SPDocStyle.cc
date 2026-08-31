@@ -2260,6 +2260,13 @@ StyleParameter::StyleParameter(ParameterName name, MediaQueryId query, StyleRule
 StyleParameter::StyleParameter(const StyleParameter &p, MediaQueryId query, StyleRule r)
 : name(p.name), mediaQuery(query), value(p.value), rule(r) { }
 
+/* The list is of what is NOT inherited; everything absent from it is.
+
+Box decoration is all of it: the whole of `outline-*` and all four corner radii, which are not
+inherited on the web either. Letting the outline's width and colour through - only its STYLE was
+listed - meant every descendant of a box with a 1px outline drew one of its own, so a menu whose
+surface declared a border came out with that border around every row in it. The radii went the same
+way: a rounded panel rounded every child it had. */
 bool StyleList::isInheritable(ParameterName name) {
 	if (name == ParameterName::CssMarginTop || name == ParameterName::CssMarginRight
 			|| name == ParameterName::CssMarginBottom || name == ParameterName::CssMarginLeft
@@ -2270,7 +2277,13 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssMaxWidth || name == ParameterName::CssMaxHeight
 			|| name == ParameterName::CssDisplay || name == ParameterName::CssFloat
 			|| name == ParameterName::CssClear || name == ParameterName::CssBackgroundColor
-			|| name == ParameterName::CssOutlineStyle || name == ParameterName::CssBorderTopStyle
+			|| name == ParameterName::CssOutlineStyle || name == ParameterName::CssOutlineWidth
+			|| name == ParameterName::CssOutlineColor
+			|| name == ParameterName::CssBorderTopLeftRadius
+			|| name == ParameterName::CssBorderTopRightRadius
+			|| name == ParameterName::CssBorderBottomRightRadius
+			|| name == ParameterName::CssBorderBottomLeftRadius
+			|| name == ParameterName::CssBorderTopStyle
 			|| name == ParameterName::CssBorderRightStyle
 			|| name == ParameterName::CssBorderBottomStyle
 			|| name == ParameterName::CssBorderLeftStyle || name == ParameterName::CssBorderTopWidth
@@ -2299,7 +2312,8 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssGridTemplateAreas
 			|| name == ParameterName::CssGridAutoColumns || name == ParameterName::CssGridAutoRows
 			|| name == ParameterName::CssGridColumnStart || name == ParameterName::CssGridColumnEnd
-			|| name == ParameterName::CssGridRowStart || name == ParameterName::CssGridRowEnd
+			|| name == ParameterName::CssGridRowStart
+			|| name == ParameterName::CssGridRowEnd
 			// Table. `border-collapse` is deliberately NOT here: it IS inherited in CSS, and the
 			// table container reads it off whichever element declared it. `border-spacing` is
 			// inherited on the web too, but here only the container ever reads it, so inheriting it
@@ -2307,7 +2321,8 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssTableLayout
 			|| name == ParameterName::CssBorderSpacingHorizontal
 			|| name == ParameterName::CssBorderSpacingVertical
-			|| name == ParameterName::CssXlColumnSpan || name == ParameterName::CssXlRowSpan
+			|| name == ParameterName::CssXlColumnSpan
+			|| name == ParameterName::CssXlRowSpan
 			// `overflow` is not inherited in CSS, and it especially must not be here: a scroll
 			// container that leaked its overflow into every descendant would make each of them a
 			// scroll container of its own.

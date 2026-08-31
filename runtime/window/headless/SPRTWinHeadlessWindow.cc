@@ -89,6 +89,14 @@ bool HeadlessWindow::init(NotNull<HeadlessContextController> c, Rc<WindowInfo> &
 		info->state |= WindowState::AllowedMove;
 	}
 
+	// There is no device to probe, so the emulated WM declares one: this backend injects mouse
+	// events and nothing else, and a widget that adapts to the input devices available should see
+	// what it would see on a desktop. ContextFlags::HeadlessNoPointer takes it away, which is the
+	// only way to reach the touch-shaped branch of such a widget under test.
+	if (c->hasPointerDevice()) {
+		info->state |= WindowState::InputPointer;
+	}
+
 	// Subwindows is the one capability this backend really has: the controller creates auxiliary
 	// windows itself, so a menu can open a submenu off this window like anywhere else. Everything
 	// else - decorations, cursors, fullscreen, an OS icon - needs a window system.

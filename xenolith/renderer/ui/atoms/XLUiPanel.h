@@ -26,12 +26,19 @@
 #include "XLUiConfig.h"
 #include "XLUiStyleResolver.h" // ResolvedStyle + document::ParameterName of setStyleValue below
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
+
+class ScrollView;
+
+} // namespace stappler::xenolith::basic2d
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The resolved paint of a Panel and of everything built on one (badge, checkbox, button, ...): a
 // fill, an optional outline stroke and the four CSS corner radii. Created on the first styled
-// attribute and dropped by CmdReset, so a widget that no rule matches carries NO component at all
-// and paints the defaults below.
+// attribute or on the first direct paint, and rewound by CmdReset to whatever the widget painted
+// on ITSELF - so a widget that no rule matches and that never painted itself carries NO component
+// at all and draws the defaults below.
 struct PanelStyleComponent {
 	static ComponentId Id;
 
@@ -43,6 +50,8 @@ struct PanelStyleComponent {
 	float borderRadiusTopRight = 0.0f;
 	float borderRadiusBottomRight = 0.0f;
 	float borderRadiusBottomLeft = 0.0f;
+
+	bool operator==(const PanelStyleComponent &) const = default;
 };
 
 // Passive rounded container: background-color, outline-color/-width and border-radius driven by
@@ -57,9 +66,19 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	// Direct paint, for surfaces built outside a stylesheet (auxiliary windows that do not share
-	// the main StyleSystem). CSS is the primary path; these write the same style component, so a
-	// style pass that declares the attribute overrides them.
+	/* Direct paint: for surfaces built outside a stylesheet (auxiliary windows that do not share
+	the main StyleSystem), and for the default a widget gives itself - a scroll indicator, a colour
+	swatch, a menu separator, a table cell that must not hide the row it stands on.
+
+	CSS remains the primary path and still wins: these values are the layer UNDER the stylesheet,
+	and a pass that declares the attribute overrides them for as long as its rule matches.
+
+	What they are NOT is styling, and that is what CmdReset turns on. The reset does not take this
+	layer away - it rewinds the component TO it, and the pass that follows re-applies whatever it
+	still declares. Kept in the styled component itself (as they were), they were indistinguishable
+	from a declaration and every resolver pass wiped them: under a recursive resolver the swatch,
+	the indicator, the separator and every panel painted from code turned white on the first
+	restyle, whether or not any rule matched them. */
 	virtual void setPathColor(const Color4B &, bool withOpacity);
 	virtual Color4B getPathColor() const;
 
@@ -72,13 +91,19 @@ public:
 	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
 			const document::StyleValue &);
 
+	/* Registers the shared surface appliers (background-color, outline-*, border-radius, CmdReset)
+	for CSS type `type`, routing them all into Panel::setStyleValue. Repeated calls for the same
+	type are ignored.
+
+	Every Panel-derived atom calls it with its own type from init(). It is PUBLIC because a caller
+	that renames a panel's type from outside - ui::openPopupSurface gives the menu surface the type
+	`menu` - has to register the appliers under that name too: without them the type matches, the
+	declarations are read, and nothing consumes them, so `background-color` ends up as the node's
+	TINT and multiplies the fill instead of replacing it. */
+	static void registerStyleAppliers(StringView type);
+
 protected:
 	using VectorSprite::init;
-
-	// Registers the shared surface appliers (background-color, outline-*, border-radius, CmdReset)
-	// for CSS type `type`, routing them all into Panel::setStyleValue. Every Panel-derived atom
-	// calls it with its own type from init(); repeated calls for the same type are ignored.
-	static void registerStyleAppliers(StringView type);
 
 	// (re)build the VectorImage: a (optionally rounded) rect filled with the resolved background
 	// colour, plus an outline stroke when its width is > 0
@@ -87,7 +112,34 @@ protected:
 	// mutate the style component, creating it on demand; when the callback reports a change the
 	// background is rebuilt. The guard keeps an unchanged value from re-dirtying the cascade.
 	void updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &);
+
+	// The widget's OWN paint - what setPathColor / setBorderRadius / setOutline wrote, and the
+	// layer CmdReset rewinds to. The flag is what tells "painted white on purpose" apart from
+	// "never painted", and therefore whether a reset restores the component or drops it: a widget
+	// nobody painted and no rule styles must carry no component at all.
+	PanelStyleComponent _ownStyle;
+	bool _ownPainted = false;
 };
+
+/* Give a scroll view a bar a stylesheet can paint.
+
+basic2d builds the bar out of LayerRounded, which draws a fill and one radius - so `background-color`
+and `opacity` reach it already, and `outline-*` and four separate corners have nowhere to land. This
+swaps both of its nodes for Panels, which paint all of it, and registers the surface appliers for the
+two types the view gives them:
+
+    scroll-indicator-track        { background-color: transparent; border-radius: 5px; }
+    scroll-indicator-track:hover  { background-color: rgba(0,0,0,0.25); }
+    scroll-indicator              { background-color: rgba(255,255,255,0.35); border-radius: 3px; }
+    scroll-indicator.active       { outline: 1px solid rgba(0,0,0,0.4); }
+    tree-view scroll-indicator-track { display: none; }
+
+`.active` is on both nodes while the bar is grabbable - see ScrollView. `display: none` removes the
+bar; its SIZE is not a style, because the view rewrites it on every scroll (setIndicatorThickness).
+
+ui::TreeView and ui::TableView call this for themselves. Idempotent, and it keeps whatever the bar
+was painted with, so calling it changes nothing until a rule matches. */
+SP_PUBLIC void useStyledScrollIndicator(NotNull<basic2d::ScrollView>);
 
 } // namespace stappler::xenolith::ui
 
