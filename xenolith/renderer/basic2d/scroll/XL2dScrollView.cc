@@ -644,6 +644,17 @@ float ScrollView::getIndicatorThickness() const {
 	return _indicatorHasPointer ? _indicatorThicknessActive : _indicatorThicknessIdle;
 }
 
+float ScrollView::getIndicatorReservedSize() const {
+	// The same test updateIndicatorPosition() places the bar under: content that fits has no bar,
+	// and reserving a strip for one that is not drawn would inset an overlay for nothing. A length
+	// that is still nan - no range committed yet - fails this comparison and therefore RESERVES,
+	// which is the side to be wrong on: an overlay too narrow by a few points is not a defect.
+	if (getScrollLength() <= _scrollSize) {
+		return 0.0f;
+	}
+	return _indicatorInset + sprt::max(_indicatorThicknessIdle, _indicatorThicknessActive);
+}
+
 void ScrollView::setIndicatorThickness(float idle, float active) {
 	_indicatorThicknessIdle = idle;
 	_indicatorThicknessActive = active;
