@@ -240,16 +240,18 @@ bool Tesselator::pushFillCandidate(SpanView<Vec2> pts) {
 		return false;
 	}
 
-	auto copy = reinterpret_cast<Vec2 *>(
-			memory::pool::palloc(_data->_pool, sizeof(Vec2) * pts.size()));
+	auto copy =
+			reinterpret_cast<Vec2 *>(memory::pool::palloc(_data->_pool, sizeof(Vec2) * pts.size()));
 	for (size_t i = 0; i < pts.size(); ++i) {
 		copy[i] = pts[i];
 
 		// The bounding box is what sets the vertex tolerance, and it has to see every contour -
 		// including the ones that never reach the sweep - or the tolerance would depend on which
 		// contours happened to be accepted.
-		_data->_bmin = Vec2(sprt::min(_data->_bmin.x, pts[i].x), sprt::min(_data->_bmin.y, pts[i].y));
-		_data->_bmax = Vec2(sprt::max(_data->_bmax.x, pts[i].x), sprt::max(_data->_bmax.y, pts[i].y));
+		_data->_bmin =
+				Vec2(sprt::min(_data->_bmin.x, pts[i].x), sprt::min(_data->_bmin.y, pts[i].y));
+		_data->_bmax =
+				Vec2(sprt::max(_data->_bmax.x, pts[i].x), sprt::max(_data->_bmax.y, pts[i].y));
 	}
 
 	_data->_fills.emplace_back(SpanView<Vec2>(copy, pts.size()));
@@ -531,8 +533,7 @@ static bool Tesselator_ribbonIsClear(const StrokeCandidate &cand, uint32_t &budg
 	const auto loX = [&](uint32_t i) { return sprt::min(pts[i].x, pts[i + 1].x); };
 	const auto hiX = [&](uint32_t i) { return sprt::max(pts[i].x, pts[i + 1].x); };
 
-	sprt::sort(order.begin(), order.end(),
-			[&](uint32_t a, uint32_t b) { return loX(a) < loX(b); });
+	sprt::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) { return loX(a) < loX(b); });
 
 	mem_std::Vector<uint32_t> active;
 	for (auto i : order) {
@@ -678,11 +679,11 @@ void Tesselator::Data::resolveFills(Tesselator *self) {
 		uint32_t idx;
 	};
 
-	const auto keyOf = [&](float x, float y) {
+	/*const auto keyOf = [&](float x, float y) {
 		const int64_t cx = int64_t(sprt::floor(x / cell));
 		const int64_t cy = int64_t(sprt::floor(y / cell));
 		return (cx << 32) ^ (cy & 0xFFFF'FFFF);
-	};
+	};*/
 
 	mem_std::Vector<Entry> cells;
 	cells.reserve(_fills.size() * 4);
@@ -803,8 +804,8 @@ void Tesselator::Data::resolveCandidates() {
 	for (auto &it : _candidates) {
 		StrokeWriter::buildRibbon(it, ring);
 
-		auto pts = reinterpret_cast<Vec2 *>(
-				memory::pool::palloc(_pool, sizeof(Vec2) * ring.size()));
+		auto pts =
+				reinterpret_cast<Vec2 *>(memory::pool::palloc(_pool, sizeof(Vec2) * ring.size()));
 		for (size_t i = 0; i < ring.size(); ++i) {
 			// Same frame as everything else in the mesh; see Data::pushVertex.
 			pts[i] = ring[i] - _inputOrigin;
@@ -850,8 +851,7 @@ bool Tesselator::prepare(TessResult &res) {
 	FILL without a skirt: that resolver returns early when there are no stroke candidates, which is
 	every plain path. Six hundred and sixty-two icons noticed. */
 	_data->_bypassFringe = 0.0f;
-	if ((_data->_relocateRule == RelocateRule::Auto
-				|| _data->_relocateRule == RelocateRule::Never)
+	if ((_data->_relocateRule == RelocateRule::Auto || _data->_relocateRule == RelocateRule::Never)
 			&& (_data->_boundaryOffset > 0.0f || _data->_boundaryInset > 0.0f)) {
 		_data->_bypassFringe = _data->_boundaryOffset + _data->_boundaryInset * 0.5f;
 	}
@@ -1091,9 +1091,8 @@ bool Tesselator::write(TessResult &res) {
 				// The displaced twins, then a quad per ring edge between the twin and its original
 				// - the same pair of triangles `exportQuad` emits, in the same order.
 				for (uint32_t i = 0; i < total; ++i) {
-					res.pushVertex(res.target, base + i,
-							scratch[i].point + _data->_outputOrigin, scratch[i].value,
-							scratch[i].norm);
+					res.pushVertex(res.target, base + i, scratch[i].point + _data->_outputOrigin,
+							scratch[i].value, scratch[i].norm);
 				}
 
 				for (uint32_t i = 0; i < total; ++i) {

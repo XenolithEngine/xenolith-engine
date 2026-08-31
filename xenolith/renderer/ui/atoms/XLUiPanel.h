@@ -30,8 +30,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The resolved paint of a Panel and of everything built on one (badge, checkbox, button, ...): a
 // fill, an optional outline stroke and the four CSS corner radii. Created on the first styled
-// attribute and dropped by CmdReset, so a widget that no rule matches carries NO component at all
-// and paints the defaults below.
+// attribute or on the first direct paint, and rewound by CmdReset to whatever the widget painted
+// on ITSELF - so a widget that no rule matches and that never painted itself carries NO component
+// at all and draws the defaults below.
 struct PanelStyleComponent {
 	static ComponentId Id;
 
@@ -43,6 +44,8 @@ struct PanelStyleComponent {
 	float borderRadiusTopRight = 0.0f;
 	float borderRadiusBottomRight = 0.0f;
 	float borderRadiusBottomLeft = 0.0f;
+
+	bool operator==(const PanelStyleComponent &) const = default;
 };
 
 // Passive rounded container: background-color, outline-color/-width and border-radius driven by
@@ -57,9 +60,19 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	// Direct paint, for surfaces built outside a stylesheet (auxiliary windows that do not share
-	// the main StyleSystem). CSS is the primary path; these write the same style component, so a
-	// style pass that declares the attribute overrides them.
+	/* Direct paint: for surfaces built outside a stylesheet (auxiliary windows that do not share
+	the main StyleSystem), and for the default a widget gives itself - a scroll indicator, a colour
+	swatch, a menu separator, a table cell that must not hide the row it stands on.
+
+	CSS remains the primary path and still wins: these values are the layer UNDER the stylesheet,
+	and a pass that declares the attribute overrides them for as long as its rule matches.
+
+	What they are NOT is styling, and that is what CmdReset turns on. The reset does not take this
+	layer away - it rewinds the component TO it, and the pass that follows re-applies whatever it
+	still declares. Kept in the styled component itself (as they were), they were indistinguishable
+	from a declaration and every resolver pass wiped them: under a recursive resolver the swatch,
+	the indicator, the separator and every panel painted from code turned white on the first
+	restyle, whether or not any rule matched them. */
 	virtual void setPathColor(const Color4B &, bool withOpacity);
 	virtual Color4B getPathColor() const;
 
@@ -87,6 +100,13 @@ protected:
 	// mutate the style component, creating it on demand; when the callback reports a change the
 	// background is rebuilt. The guard keeps an unchanged value from re-dirtying the cascade.
 	void updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &);
+
+	// The widget's OWN paint - what setPathColor / setBorderRadius / setOutline wrote, and the
+	// layer CmdReset rewinds to. The flag is what tells "painted white on purpose" apart from
+	// "never painted", and therefore whether a reset restores the component or drops it: a widget
+	// nobody painted and no rule styles must carry no component at all.
+	PanelStyleComponent _ownStyle;
+	bool _ownPainted = false;
 };
 
 } // namespace stappler::xenolith::ui

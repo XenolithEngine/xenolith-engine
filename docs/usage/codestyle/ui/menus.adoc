@@ -366,7 +366,7 @@ call, and that `MenuItem` makes it needs a real pointer to see.
 
 [source,sh]
 ----
-tests/window/menu-check.py          # 61 checks, headless, no display
+tests/window/menu-check.py          # 84 checks, headless, no display
 ----
 
 The load-bearing assertion is that the metrics *are* the layout: `menu.metrics`
