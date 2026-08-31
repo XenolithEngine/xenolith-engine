@@ -32,8 +32,6 @@
 #include "XLAppWindow.h"
 #include "director/XLDirector.h"
 
-#include <stdlib.h> // getenv
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 namespace {
@@ -119,8 +117,8 @@ static data::Model::Node *cloneInto(data::Model *model, data::Model::Node *src,
 	return made;
 }
 
-// True when `node` is `candidate` or one of its ancestors, i.e. dropping into `node` would put a
-// subtree inside itself. Pure: it only walks parent links.
+// True when `node` is `candidate` or one of its descendants, i.e. dropping `candidate` into `node`
+// would put a subtree inside itself. Pure: it only walks parent links.
 static bool isSelfOrDescendantOf(const data::Model::Node *node,
 		const data::Model::Node *candidate) {
 	for (auto it = node; it; it = it->getParent()) {
@@ -143,16 +141,6 @@ bool DndTreeView::init(data::Model *source, StringView title) {
 
 	attachDropSlots();
 
-	/* Visit-END, and a system of its own because TreeView has already taken this node's default one.
-
-	It is where a newly created row can first be measured: the rows built earlier in this same pass
-	- TreeView rebuilds them in its components phase - have by then been visited, and therefore
-	styled and laid out, so where a row's content starts is finally a real number. A scheduled tick
-	would answer half a frame too early, and the components phase is the pass that CAUSES the
-	rebuild rather than the one that finishes it. */
-	auto pending = addSystem(Rc<CallbackSystem>::create());
-	pending->setVisitEndCallback([this](CallbackSystem *, FrameInfo &) { settlePendingEdit(); });
-
 	return true;
 }
 
@@ -162,6 +150,14 @@ void DndTreeView::handleEnter(Scene *scene) {
 	// NOT in init(): ui::setContextMenu acquires the scene's coordinator, and a node has no scene
 	// until it is added to one
 	attachContextMenu();
+}
+
+void DndTreeView::setSource(Model *source) {
+	// The count is about THIS model: a clone made into a tree that has been replaced is not one of
+	// the elements the new tree holds, and leaving it in would have the counter answering about two
+	// different trees at once.
+	_clones = 0;
+	ui::TreeView::setSource(source);
 }
 
 void DndTreeView::setMessageCallback(MessageCallback &&cb) { _message = sp::move(cb); }
@@ -321,6 +317,20 @@ bool DndTreeView::renameRow(size_t index, StringView name) {
 bool DndTreeView::beginRename(size_t index) { return beginEdit(index, ItemId(0)); }
 
 bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
+	/* The outgoing editor is settled FIRST, before a single row is read.
+
+	One at a time is the engine's rule (ui::InlineEditSession cancels whatever is open when the next
+	one opens), so what is left to decide here is the ENDING: a second Rename is a decision about
+	another row, not a reason to throw away what was typed into this one, so it COMMITS. A refused
+	commit - a name of nothing but blanks - is cancelled on the spot rather than left standing:
+	leaving it open would hand its ending to the session opened below, and by then this call has
+	already read the row geometry that a cancel can renumber. */
+	if (auto previous = _rename) {
+		if (!previous->commit()) {
+			previous->cancel();
+		}
+	}
+
 	auto row = getRow(index);
 	if (!row || !row->node) {
 		return false;
@@ -337,28 +347,12 @@ bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
 		return false;
 	}
 
-	/* Cut back to where the scroll bar begins.
-
-	A row spans the whole width of the view, bar included - the bar is drawn OVER the rows, which is
-	right for a hairline that fades away and wrong for a field the author is typing into. The strip
-	to keep clear is the scroll view's own answer (ScrollView::getIndicatorReservedSize), which
-	reserves the bar's WIDEST thickness rather than the one in force, so the editor does not have to
-	be re-laid out when the bar swells under a pointer. The editor's own padding is taken off as
-	well, because the rect is grown by it below. */
-	if (auto scroll = getScroll()) {
-		const auto limit =
-				_contentSize.width - scroll->getIndicatorReservedSize() - RenameEditorPadding;
-		const auto right = sprt::min(rect.getMaxX(), limit);
-		rect.size.width = sprt::max(right - rect.origin.x, 0.0f);
-		if (rect.size.width <= 0.0f) {
-			return false;
-		}
-	}
-
-	// One at a time, and the outgoing one COMMITS: a second Rename is a decision about another row,
-	// not a reason to throw away what was typed into this one
-	if (_rename) {
-		_rename->commit();
+	// Cut back to where the scroll bar begins. Only to reject a row with nothing left of it; the
+	// box the field actually gets is clamped again below, once its own padding is known.
+	const auto right = sprt::min(rect.getMaxX(), getEditorRightLimit());
+	rect.size.width = sprt::max(right - rect.origin.x, 0.0f);
+	if (rect.size.width <= 0.0f) {
+		return false;
 	}
 
 	/* The element, by id, and never the index again.
@@ -370,15 +364,6 @@ bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
 
 	ui::InlineTextEditConfig config;
 	config.text = row->node->getData().getString("name");
-
-	/* Grown by exactly the editor's own horizontal padding, so that the TEXT lands on the label.
-
-	The field draws its text at `rect.left + padding-left`, and the rect above puts `rect.left` on
-	the label - which would push the text right by the padding. Moving the rect out by the same
-	amount cancels it, and the box ends up slightly wider than the name on both sides, which is what
-	a rename box looks like everywhere. The number has to agree with `inline-editor`'s padding in
-	the demo's stylesheet; it is the one place the two have to be read together. */
-	config.padding = Padding().setLeft(RenameEditorPadding).setRight(RenameEditorPadding);
 	config.onCommit = [this, id](StringView value) {
 		auto model = getSource();
 		auto node = model ? model->getNode(id) : nullptr;
@@ -411,9 +396,10 @@ bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
 		}
 		auto model = getSource();
 		if (auto node = model ? model->getNode(provisional) : nullptr) {
-			if (getSelectedRow() != maxOf<size_t>()) {
-				// The selection is an index; taking a row out from under it would move it onto
-				// whatever slid up into that slot. Same rule as removeRow.
+			// The selection is an INDEX, so taking THIS row out from under it would move it onto
+			// whatever slid up into that slot - and a selection on any other row is none of this
+			// call's business. Exactly removeRow's rule, asked of the row being removed.
+			if (getSelectedRow() == rowIndexForId(provisional)) {
 				setSelectedRow(maxOf<size_t>());
 			}
 			model->removeNode(node);
@@ -421,6 +407,8 @@ bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
 		}
 	};
 
+	// Unconditional, because only one session can be open at a time and this view closes the
+	// outgoing one itself before opening the next: whatever is closing here IS what _rename holds.
 	config.onClose = [this] {
 		_rename = nullptr;
 		_provisional = ItemId(0);
@@ -453,8 +441,61 @@ bool DndTreeView::beginEdit(size_t index, ItemId provisional) {
 		painted in that order for the whole scene: without this the row's own text comes back on top
 		of the field that is supposed to have replaced it, however late the field is in z. */
 		editor->setOverlay(true);
+
+		/* Now that the field exists and carries the sheet, ask the sheet how wide its padding is
+		and give the session the box that puts the TEXT on the label. Doing it here rather than in
+		the config above is what lets the number be READ instead of repeated - see makeEditorRect. */
+		_rename->setRect(makeEditorRect(rect, editor));
 	}
 	return true;
+}
+
+float DndTreeView::getEditorRightLimit() const {
+	/* Where the scroll bar begins.
+
+	A row spans the whole width of the view, bar included - the bar is drawn OVER the rows, which is
+	right for a hairline that fades away and wrong for a field the author is typing into. The strip
+	to keep clear is the scroll view's own answer, which reserves the bar's WIDEST thickness rather
+	than the one in force, so the editor is not re-laid out when the bar swells under a pointer. */
+	auto scroll = getScroll();
+	return scroll ? _contentSize.width - scroll->getIndicatorReservedSize() : _contentSize.width;
+}
+
+Rect DndTreeView::makeEditorRect(Rect rect, Node *editor) const {
+	/* The field's own horizontal padding, READ FROM THE SHEET rather than repeated here.
+
+	It has to be known, because the field draws its text at `left + padding-left` while `rect.left`
+	is already on the label: without moving the box out by the same amount, the text would sit one
+	padding to the right of the text it replaces. Growing it on both sides cancels that exactly and
+	leaves a box slightly wider than the name, which is what a rename box looks like everywhere.
+
+	And it has to be read, because the number belongs to `inline-editor { padding-left/right }` in
+	the demo's stylesheet. A constant here would be a second declaration of it, in another file,
+	that nobody editing the first would think to change. ui::StyleResolver::resolveStyleForNode
+	answers against the sheet installed on the field a moment ago, in this call - a StyleSystem
+	publishes itself as it is added, so there is no pass to wait for. */
+	auto style = ui::StyleResolver::resolveStyleForNode(editor);
+	if (style) {
+		const auto fontSize = float(style.font().fontSize.get());
+		const auto read = [&](document::ParameterName name, const document::Metric &m) {
+			// `auto` is not a length; a sheet that leaves the padding out leaves the box alone
+			return style.has(name) && !m.isAuto()
+					? style.media().computeValueAuto(m, rect.size.width, fontSize)
+					: 0.0f;
+		};
+
+		const auto left = read(document::ParameterName::CssPaddingLeft, style.paddingLeft());
+		const auto right = read(document::ParameterName::CssPaddingRight, style.paddingRight());
+		if (!sprt::isnan(left) && !sprt::isnan(right)) {
+			rect.origin.x -= left;
+			rect.size.width += left + right;
+		}
+	}
+
+	// Clamped again, on the grown box this time: what must stay clear of the bar is what is drawn.
+	const auto right = sprt::min(rect.getMaxX(), getEditorRightLimit());
+	rect.size.width = sprt::max(right - rect.origin.x, 0.0f);
+	return rect;
 }
 
 size_t DndTreeView::rowIndexForId(ItemId id) const {
@@ -510,6 +551,15 @@ bool DndTreeView::beginCreate(size_t index, bool category) {
 		return false;
 	}
 
+	// The outgoing editor, settled before anything is read or written - the same rule and the same
+	// reason as beginEdit, and here it also matters that a cancel can take a provisional element
+	// back out, which renumbers the very rows the insert point below is resolved against.
+	if (auto previous = _rename) {
+		if (!previous->commit()) {
+			previous->cancel();
+		}
+	}
+
 	// A closed category has to open before anything is put inside it, or the row the author is
 	// about to name is created where they cannot see it. Done before the insert point is resolved
 	// only because expanding renumbers the rows BELOW this one - this row's own index is unmoved.
@@ -536,11 +586,6 @@ bool DndTreeView::beginCreate(size_t index, bool category) {
 		return false;
 	}
 
-	// One at a time, and the outgoing one commits - the same rule as a second Rename
-	if (_rename) {
-		_rename->commit();
-	}
-
 	/* Re-derive the rows NOW rather than waiting for the model's own notification.
 
 	That notification is a scheduler tick, and a tick only happens on a frame: a model change on its
@@ -551,23 +596,27 @@ bool DndTreeView::beginCreate(size_t index, bool category) {
 	invalidateSource();
 
 	_pendingEdit = node->getId();
+	_pendingStage = PendingStage::Rows;
 
-	/* How many visits the row may take to appear before the wait gives up.
+	/* Asked for, with an answer - not watched for.
 
-	Three is a bound, not a measurement: the rows are re-derived in the call above, the row NODES
-	are rebuilt in the view's next components phase, and the pass that builds one also lays it out -
-	so one visit is the normal answer and the rest is slack for a row that has to be scrolled to or
-	loaded first. */
-	_pendingEditFrames = 3;
+	The call above re-derives the rows here and now, but the row NODES are rebuilt at the start of
+	the view's next visit, and where a row's content starts is a layout result. requestRebuildNodes
+	says "tell me when that has happened", and the answer arrives at the one moment it is complete:
+	inside the rebuild, with the new rows already styled, sized and placed. Nothing polls, and
+	nothing counts frames - what the callback finds is final. */
+	requestRebuildNodes([this] { settlePendingEdit(); });
+
 	report(toString("naming a new ", category ? "category" : "item"));
 	return true;
 }
 
-/* Visit-END is where this is called from, not the components phase and not a scheduled tick.
+/* Run from ui::TreeView's rebuild callback, which is the moment the rows are current AND laid out.
 
-By then the rows rebuilt earlier in this same pass - TreeView rebuilds them in its components phase
-- have been visited, and therefore styled and laid out, so where a row's content starts is finally
-a real number rather than the fallback getRowContentRect gives for a row with no node. */
+There is nothing left to wait for by then, so every branch below DECIDES. That is what the frame
+counter this used to carry was hiding: it served two questions with one guess - "the rebuild has not
+run yet", which is now answered by being called at all, and "this row will never have a node", which
+is answered here, by scrolling to it. */
 void DndTreeView::settlePendingEdit() {
 	if (_pendingEdit == ItemId(0)) {
 		return;
@@ -576,8 +625,7 @@ void DndTreeView::settlePendingEdit() {
 	/* Gone from the MODEL, not merely absent from the rows.
 
 	The two are different questions and the model is the one that matters: a row holds an Rc to its
-	element, so a removal is still listed until the next rebuild, and a check that only looked at
-	the rows would go on waiting for a row that is never coming. Whoever took the element out -
+	element, so a removal is still listed until the next rebuild. Whoever took the element out -
 	another view, a delete, the self-check - has already answered what should happen to it. */
 	auto model = getSource();
 	if (!model || !model->getNode(_pendingEdit)) {
@@ -587,31 +635,33 @@ void DndTreeView::settlePendingEdit() {
 
 	const auto index = rowIndexForId(_pendingEdit);
 	if (index == maxOf<size_t>()) {
-		// The element is in the model but has no row: it is inside something collapsed, or the
-		// rows have not been re-derived yet. Both are answered by waiting.
-		if (_pendingEditFrames > 0) {
-			--_pendingEditFrames;
-			return;
-		}
+		/* In the model and not among the rows. Unreachable rather than slow: beginCreate re-derives
+		the rows in its own call, and the parent it inserted under is either a category it opened,
+		the parent of a row that is on the list, or the root. Saying so beats waiting for a row that
+		is not coming. */
 		_pendingEdit = ItemId(0);
 		report("the new element has no row - use Rename to name it");
 		return;
 	}
 
-	// The row's NODE is what carries the answer this waits for: without one getRowContentRect
-	// falls back to the whole row, and the editor would be placed at the view's edge rather than
-	// over the label.
+	// The row's NODE is what carries the answer: without one getRowContentRect falls back to the
+	// whole row, and the editor would be placed at the view's edge rather than over the label.
 	if (!getRowNode(index)) {
-		if (_pendingEditFrames > 0) {
-			--_pendingEditFrames;
+		if (_pendingStage == PendingStage::Rows && revealRow(index)) {
+			/* The only reason a row that EXISTS has no node: it is outside the scroll window, and
+			only what is inside gets built. So this is not something to wait through - the view is
+			pointed at the row, which is what the author expects of a row they just made anyway, and
+			the rebuild that follows brings the answer back here. */
+			_pendingStage = PendingStage::Reveal;
+			requestRebuildNodes([this] { settlePendingEdit(); });
 			return;
 		}
 
-		/* A row that never materializes is one outside the scroll window, and an editor placed on a
-		rectangle off the screen is one the author can neither see nor answer. The element STAYS -
-		it is a real element with a real name, which is exactly why it was given one - and Rename
-		is how it gets another. Removing it would be the worse answer: silently undoing what was
-		asked for because the view could not show it. */
+		/* Revealed and still not built. Not a wait: there is nothing left to try, and an editor
+		placed on a rectangle off the screen is one the author can neither see nor answer. The
+		element STAYS - it is a real element with a real name, which is exactly why it was given
+		one - and Rename is how it gets another. Removing it would be the worse answer: silently
+		undoing what was asked for because the view could not show it. */
 		_pendingEdit = ItemId(0);
 		report("the new element is out of view - use Rename to name it");
 		return;
@@ -623,6 +673,37 @@ void DndTreeView::settlePendingEdit() {
 	if (beginEdit(index, id)) {
 		setSelectedRow(index);
 	}
+}
+
+bool DndTreeView::revealRow(size_t index) {
+	auto scroll = getScroll();
+	// The CONST overload: the other one marks the item list dirty, and reading a position is not a
+	// reason to cost a rebuild
+	const auto controller = static_cast<const basic2d::ScrollController *>(getController());
+	if (!scroll || !controller) {
+		return false;
+	}
+
+	auto &items = controller->getItems();
+	if (index >= items.size()) {
+		return false;
+	}
+
+	/* The row's own offset along the scroll axis, straight off its item.
+
+	Not derived from getRowRect: that answers in THIS node's space, for drawing over, while a scroll
+	position is the controller's own axis - and the item carries exactly that number for every row,
+	built or not. `pos` puts the row at the TOP of the window, which is where a row created below
+	the fold should appear; clamped to the end so the last one does not scroll into empty space. */
+	const auto length = scroll->getScrollLength();
+	const auto target = scroll->getNodeScrollPosition(items.at(index).pos);
+	if (sprt::isnan(target) || sprt::isnan(length)) {
+		return false;
+	}
+
+	scroll->setScrollPosition(
+			sprt::clamp(target, 0.0f, sprt::max(length - scroll->getScrollSize(), 0.0f)));
+	return true;
 }
 
 void DndTreeView::report(StringView message) {
@@ -756,9 +837,12 @@ Rc<DndItemPayload> DndTreeView::makePayload(size_t index) const {
 FrameCapture *DndTreeView::getFrameCapture() const {
 	auto director = getDirector();
 	auto server = director ? director->getRenderServer() : nullptr;
-	// In local mode the render server IS the window; a remote one has no capture to offer and
-	// answers null through the same call, which is why this is not a dynamic_cast.
-	return server ? static_cast<AppWindow *>(server)->getFrameCapture() : nullptr;
+	// In local mode the render server IS the window; later it may be a network proxy, which has no
+	// capture to offer. A dynamic_cast is what turns that into a null rather than into a call
+	// through a pointer to something else - the same shape ui::ColorField and ui::ContextMenuSystem
+	// use to reach the window.
+	auto window = dynamic_cast<AppWindow *>(server);
+	return window ? window->getFrameCapture() : nullptr;
 }
 
 bool DndTreeView::requestGhostCapture(size_t index, DragSource *source, DragOffer &offer) {
@@ -799,23 +883,13 @@ bool DndTreeView::requestGhostCapture(size_t index, DragSource *source, DragOffe
 		return false;
 	}
 
-	/* Nothing follows the pointer until the copy lands - not for safety any more, but because there
-	is nothing to show yet: the sprite has no texture until the capture arrives.
+	/* Nothing follows the pointer until the copy lands - not for safety, but because there is
+	nothing to show yet: the sprite has no texture until the capture arrives.
 
 	It used to be the safety too. The pointer sits on the row being copied, so a ghost parked now
 	would be drawn over it and photographed with it. That is no longer possible: the decorator goes
-	on the Overlay level, which draws after the frame has been captured.
-
-	XL_DNDTREE_GHOST_NOW=1 puts the drawn ghost up immediately AND still asks for the cutout, which
-	reproduces exactly that old hazard. The cutout it produces has to come out identical to the
-	deferred one - that is the check that the protection is structural rather than a matter of
-	timing. */
-	if (auto value = ::getenv("XL_DNDTREE_GHOST_NOW")) {
-		if (StringView(value) != "0") {
-			return false;
-		}
-	}
-
+	on the Overlay level, which draws after the frame has been captured, so the exclusion holds
+	however and whenever the ghost was made. */
 	offer.decoratorDeferred = true;
 	return true;
 }
@@ -830,19 +904,10 @@ bool DndTreeView::fillOffer(size_t index, DragSource *source, DragOffer &offer) 
 	offer.localType = DndItemPayload::TypeName.str<Interface>();
 	offer.label = payload->title;
 
-	// The OS-shaped half of the same payload. Nothing in this demo reads it, but declaring it is
-	// what makes the row droppable into a ui::TextInput - and what the clipboard would take if the
-	// row also offered a Copy command.
-	offer.types = Vector<String>{String("text/plain")};
-	offer.encode = [text = payload->title](StringView type) -> sprt::window::Bytes {
-		// copies only, and no scene node: this callback is stored under a contract that says it may
-		// run on any thread once the OS drag path exists
-		if (!type.starts_with("text/plain")) {
-			return sprt::window::Bytes();
-		}
-		return BytesView(reinterpret_cast<const uint8_t *>(text.data()), text.size())
-				.bytes<sprt::window::Bytes>();
-	};
+	// No `types`/`encode`: this drag is between two trees of one application and never leaves it,
+	// so the OS-shaped half of the payload would be a MIME type nothing asks for and a copy of the
+	// row's name made for nobody. A row that wanted to be droppable into a ui::TextInput, or
+	// copyable to the clipboard, would declare them - and would have a reader for them.
 
 	// Move is what a tree of elements does by default; Ctrl asks for a Copy, and the target has the
 	// last word on both.
@@ -855,9 +920,7 @@ bool DndTreeView::fillOffer(size_t index, DragSource *source, DragOffer &offer) 
 	offer.decoratorParent = _ghostParent;
 
 	// A cutout of the row itself where the window can produce one; the drawn ghost is the fallback
-	// for a backend or a surface that cannot, and looks like a row rather than being one. Under
-	// XL_DNDTREE_GHOST_NOW the capture is armed and the drawn ghost goes up as well, so the cutout
-	// is taken with a ghost already on screen - see requestGhostCapture.
+	// for a backend or a surface that cannot, and looks like a row rather than being one.
 	if (!requestGhostCapture(index, source, offer)) {
 		offer.decorator = [title = payload->title]() -> Rc<Node> { return makeDragGhost(title); };
 	}

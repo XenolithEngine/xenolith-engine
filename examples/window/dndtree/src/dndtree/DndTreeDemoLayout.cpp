@@ -33,6 +33,8 @@
 #include "XL2dSceneContent.h"
 #include "XLSceneInspector.h"
 
+#include <stdlib.h> // getenv
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 namespace {
@@ -337,17 +339,33 @@ bool DndTreeDemoLayout::init() {
 	makeControlBar();
 	buildDock();
 
-	// The self-check drives real transfers through the real models and leaves them where it
-	// finished; resetContent() is what puts the demo's declared content back - the same call the
-	// Reset button makes, so there is exactly one description of what "the starting state" is.
-	runSelfCheck();
-	resetContent();
+	/* XL_DNDTREE_SELFCHECK gates the AUTOMATIC run, and nothing else.
+
+	A test that runs on every start of an example costs everyone who opens it a full round of
+	transfers through both models before they see anything, and then undoes them. So it is off by
+	default - but the check itself is always compiled in and always reachable: `dndtree.selfcheck`
+	with `run` performs it on demand, from the same call below, at any point in the session. */
+	if (auto value = ::getenv("XL_DNDTREE_SELFCHECK"); value && StringView(value) != "0") {
+		performSelfCheck();
+	} else {
+		// The demo's declared starting state - the same call the Reset button makes, and the same
+		// one performSelfCheck() ends with, so there is one description of what that state is.
+		resetContent();
+	}
+
 	refreshStatus("drag a row from one tree into the other");
 
 	return true;
 }
 
 void DndTreeDemoLayout::buildDock() {
+	// Exactly once. A second call would hang a SECOND DockSystem on the same node - two systems
+	// writing one set of frame rectangles - and would leave the panel builders below registered
+	// against models the trees they already built are not showing.
+	if (_dock) {
+		return;
+	}
+
 	_libraryModel = makeLibraryModel();
 	_projectModel = makeProjectModel();
 
@@ -355,10 +373,8 @@ void DndTreeDemoLayout::buildDock() {
 	// geometry directly, and two writers would fight (handleAdded asserts it). A plain Node is
 	// exactly that. DockSystem distributes over _owner->getContentSize(), so this node has to be
 	// sized in handleContentSizeDirty().
-	if (!_dockRoot) {
-		_dockRoot = addChild(Rc<Node>::create(), ZOrder(1));
-		_dockRoot->setAnchorPoint(Anchor::BottomLeft);
-	}
+	_dockRoot = addChild(Rc<Node>::create(), ZOrder(1));
+	_dockRoot->setAnchorPoint(Anchor::BottomLeft);
 
 	_dock = _dockRoot->addSystem(Rc<ui::DockSystem>::create());
 	_dock->setSplitterThickness(6.0f);
@@ -533,6 +549,31 @@ DndTreeView *DndTreeDemoLayout::viewByName(StringView name) const {
 		return _right;
 	}
 	return nullptr;
+}
+
+void DndTreeDemoLayout::performSelfCheck() {
+	if (!_left || !_right) {
+		return;
+	}
+
+	/* What the check reads: the demo's declared content, with both trees CLOSED.
+
+	Section 1 asserts exactly that, and every later section is written against what it leaves. So
+	the state is established here rather than assumed from whatever the session had reached - which
+	is what makes a run from the inspector, an hour into a session with elements dragged all over,
+	mean the same thing as the run at start-up. */
+	resetContent();
+	collapseAll(_left);
+	collapseAll(_right);
+
+	_checks = 0;
+	_failures = 0;
+	_selfCheckDone = false;
+	runSelfCheck();
+
+	// ...and the demo back to what an author expects to be looking at. runSelfCheck() leaves the
+	// models where its transfers put them, on purpose: it is the caller who knows what to do next.
+	resetContent();
 }
 
 void DndTreeDemoLayout::runSelfCheck() {
@@ -1270,10 +1311,23 @@ void DndTreeDemoLayout::addInspectorCommands(Scene *scene) {
 		_inspectorCommands.emplace_back("dndtree.reset");
 	}
 
+	/* Reporting the self-check, and RUNNING it.
+
+	XL_DNDTREE_SELFCHECK decides only whether the check runs by itself at start-up; it does not take
+	the check out of the build and it does not take it away from here. `run` performs it now, from
+	the state it needs and back to the demo's own, so a headless caller can ask for it whenever it
+	likes instead of having to have set an environment variable before the app started. */
 	if (inspector::addCommand(content, "dndtree.selfcheck",
-				"Report the result of the layout's own structural self-check",
+				"Report the layout's structural self-check, or run it now: {run}",
 				[this](Value &&args, Function<void(Value &&)> &&done) {
+		if (static_cast<const Value &>(args).getBool("run")) {
+			performSelfCheck();
+		}
+
 		Value result;
+		// `ran` apart from `ok`: a check nobody performed is not one that failed, and zero checks
+		// alone cannot tell those two apart
+		result.setBool(_selfCheckDone, "ran");
 		result.setBool(_selfCheckDone && _failures == 0, "ok");
 		result.setInteger(int64_t(_checks), "checks");
 		result.setInteger(int64_t(_failures), "failures");

@@ -360,9 +360,9 @@ It is **not** what keeps the ghost out of its own cutout. That used to be its
 second job, and it was a trap: the pointer sits on the row being copied when the
 drag begins, so a ghost built too early was photographed along with it. The
 decorator now goes on the Overlay level, which draws after the capture, so the
-exclusion holds however and whenever the ghost was made. `XL_DNDTREE_GHOST_NOW=1`
-in the dndtree example reproduces the old timing on purpose and must produce a
-byte-identical cutout.
+exclusion holds however and whenever the ghost was made — a property of the draw
+order rather than of the timing, and therefore not something a caller can get
+wrong.
 
 ## A ghost made of the frame itself
 
@@ -371,7 +371,10 @@ rectangle of what the window last drew into a `Texture`, so a drag ghost can *be
 the row instead of being a second drawing of it:
 
 ```cpp
-auto capture = static_cast<AppWindow *>(getDirector()->getRenderServer())->getFrameCapture();
+// dynamic_cast, not static_cast: in local mode the render server IS the window, but it may be a
+// network proxy, and only a dynamic_cast turns that into a null instead of a call into something else
+auto window = dynamic_cast<AppWindow *>(getDirector()->getRenderServer());
+auto capture = window ? window->getFrameCapture() : nullptr;
 if (capture && capture->isAvailable()) {
     auto region = FrameCapture::makeRegion(worldRect,
             getDirector()->getGeneralProjection(), constraints.extent);
