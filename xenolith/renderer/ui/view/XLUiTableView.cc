@@ -21,6 +21,7 @@
  **/
 
 #include "XLUiTableView.h"
+#include "XLUiDragScrollSystem.h"
 #include "XLUiStyleSystem.h"
 #include "XLInteractiveComponent.h"
 #include "XL2dLabel.h"
@@ -29,6 +30,23 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 static const Value s_nullValue;
+
+/* A CELL IS A WINDOW ONTO ITS ROW, not a surface of its own.
+
+The row carries the ground, the odd/even alternation, the hover and the selection; the cell carries
+the padding, the borders and the text. Panel's construction default is an OPAQUE WHITE surface, so
+a cell that says nothing covers all four of the row's colours a pixel after they are drawn - which
+is what every table built on this widget looked like: the rules matched, the row was painted, and
+the cells painted over it. Five of the six stylesheets in this tree and its sibling never wrote the
+one declaration that would have stopped it, including the one demonstrating the widget.
+
+So the view paints its own cells, in code and not in a sheet: it is the arithmetic of a table
+rather than a colour anyone chooses, and a table that needs the opposite is a table whose rows have
+nothing to show. A `table-cell { background-color: ... }` rule still overrides it - this is the
+layer UNDER the stylesheet, and it survives a restyle for the same reason (Panel::setPathColor). */
+static void TableView_paintCellDefaults(NotNull<Panel> cell) {
+	cell->setPathColor(Color4B(0, 0, 0, 0), true);
+}
 
 TableView::~TableView() { }
 
@@ -58,6 +76,16 @@ bool TableView::init(Model *source) {
 
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
+
+	// On the SCROLL, not on this node: the header lives OUTSIDE it, and the edge band has to be
+	// measured against the viewport rows actually scroll in.
+	DragScrollSystem::acquireForNode(_scroll);
+
+	// The scroll bar is built by basic2d out of nodes that can paint a fill and one radius; this
+	// hands it nodes a stylesheet can paint outlines and four corners on, under the types
+	// `scroll-indicator` and `scroll-indicator-track`. Done here rather than left to the
+	// application because a widget of this layer is expected to answer to CSS everywhere else.
+	useStyledScrollIndicator(_scroll);
 
 	_sourceListener = addSystem(Rc<DataListener<Model>>::create(
 			[this](SubscriptionFlags flags) { handleSourceDirty(flags); }, source));
@@ -322,6 +350,13 @@ void TableView::requestRebuildNodes(bool force) {
 	// The components phase is opt-in per visit, so asking for the rebuild is also asking for the
 	// phase that performs it.
 	markComponentsDirty();
+}
+
+void TableView::requestRebuildNodes(Function<void()> &&cb, bool force) {
+	if (cb) {
+		_rebuildCallbacks.emplace_back(sp::move(cb));
+	}
+	requestRebuildNodes(force);
 }
 
 void TableView::dropSpanData() {
@@ -620,6 +655,17 @@ void TableView::rebuildRows() {
 
 	_controller->commitChanges();
 	_reusableRows.clear();
+
+	/* The answer, delivered here and not a hop later.
+
+	Every row this pass built was attached while the frame is in flight, so each caught up on the
+	visit's phases as it was attached (Node::runPendingPhases) and commitChanges() above has placed
+	it - which makes this the first moment the new rows can be measured, and therefore the last
+	moment worth waiting for. Taken off the list BEFORE they run: a callback that asks for another
+	rebuild is answered by that one. */
+	auto callbacks = sp::move(_rebuildCallbacks);
+	_rebuildCallbacks.clear();
+	for (auto &it : callbacks) { it(); }
 }
 
 auto TableView::makeRowKey(const Row &row) const -> RowKey {
@@ -747,7 +793,16 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 		// The grip column is the view's to fill, and the caller's callback is not asked about it:
 		// what goes there is a DragSource, and a cell node from outside would have replaced it.
 		if (_reorderEnabled && StringView(_columns[i].key) == ReorderColumnKey) {
-			Rc<Node> gripCell = header ? Rc<Node>(Rc<Panel>::create()) : makeReorderCell(index);
+			Rc<Node> gripCell;
+			if (header) {
+				// the header's grip cell is a bare Panel - no handle, nothing to drag from a
+				// column title - and it stands over the header's ground like any other cell
+				auto panel = Rc<Panel>::create();
+				TableView_paintCellDefaults(panel);
+				gripCell = panel;
+			} else {
+				gripCell = makeReorderCell(index);
+			}
 			if (gripCell) {
 				gripCell->setType("table-cell");
 				gripCell->addStyleClass("xl-ui-table-cell");
@@ -788,6 +843,7 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			panel->removeStyleClass("xl-ui-panel");
 			panel->addStyleClass("xl-ui-table-cell");
 			Panel::registerStyleAppliers("table-cell");
+			TableView_paintCellDefaults(panel);
 
 			// The icon goes in first and carries a lower ZOrder, so that a cell laid out as a flex
 			// row puts it before the label - document order is what the row layout reads.
@@ -880,25 +936,27 @@ void TableView::setReorderEnabled(bool value) {
 
 void TableView::updateReorderSystems() {
 	if (_reorderEnabled) {
-		if (!_dropTarget) {
-			_dropTarget = addSystem(Rc<DropTarget>::create(DropTargetSlots{
-				.accept = [this](const DragEvent &event) -> DragResponse {
+		if (!_hasDropTarget) {
+			_hasDropTarget = true;
+			setDropTarget(this,
+					DropTargetSlots{
+						.accept = [this](const DragEvent &event) -> DragResponse {
 				if (!TableView_payloadOf(event, this)) {
 					return DragResponse();
 				}
 				return DragResponse{DragActions::Move};
 			},
-				.enter =
-						[this](const DragEvent &event) {
+						.enter =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.over =
-						[this](const DragEvent &event) {
+						.over =
+								[this](const DragEvent &event) {
 				showInsertionLine(getRowBoundaryAt(event.location));
 			},
-				.leave = [this](const DragEvent &) { hideInsertionLine(); },
-				.drop =
-						[this](const DragEvent &event, DragActions) {
+						.leave = [this](const DragEvent &) { hideInsertionLine(); },
+						.drop =
+								[this](const DragEvent &event, DragActions) {
 				auto payload = TableView_payloadOf(event, this);
 				if (!payload) {
 					return false;
@@ -906,7 +964,7 @@ void TableView::updateReorderSystems() {
 				// Read the index out before anything moves: the drop is what invalidates it.
 				return handleReorderDrop(payload->index, event.location);
 			},
-			}));
+					});
 		}
 
 		if (!_reorderKeys) {
@@ -932,9 +990,9 @@ void TableView::updateReorderSystems() {
 		}
 	} else {
 		hideInsertionLine();
-		if (_dropTarget) {
-			removeSystem(_dropTarget);
-			_dropTarget = nullptr;
+		if (_hasDropTarget) {
+			removeDropTarget(this);
+			_hasDropTarget = false;
 		}
 		if (_reorderKeys) {
 			removeSystem(_reorderKeys);
@@ -950,6 +1008,7 @@ Rc<Node> TableView::makeReorderCell(size_t index) {
 	panel->addStyleClass("xl-ui-table-cell");
 	panel->addStyleClass("xl-ui-table-drag-handle");
 	Panel::registerStyleAppliers("table-cell");
+	TableView_paintCellDefaults(panel);
 
 	auto icon = panel->addChild(
 			Rc<basic2d::IconSprite>::create(IconName::Editor_drag_handle_outline), ZOrder(0));

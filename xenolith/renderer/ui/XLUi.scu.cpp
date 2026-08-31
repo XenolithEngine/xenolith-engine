@@ -33,16 +33,17 @@
 
 #include "atoms/XLUiPanel.cc"
 #include "layout/XLUiScrollSystem.cc" // after Panel: the scroll indicator is one
+#include "layout/XLUiDragScrollSystem.cc" // after ScrollSystem: it drives one of the two
 #include "atoms/XLUiBadge.cc"
 #include "atoms/XLUiProgressBar.cc"
 #include "atoms/XLUiTableBorderPainter.cc"
 
 #include "input/XLUiControlLock.cc" // the widget half of the lock; the state half is in application
                                  // with a reason attached, and every widget below calls in
-                                 // here. It also builds a ui::TooltipTarget, whose
-                                 // definition arrives much later in this unit - that is
-                                 // fine (the header defines the class) and this include
-                                 // cannot move down past its callers.
+// here. It also sets a ui::TooltipComponent, whose
+// definition arrives much later in this unit - that is
+// fine (the header defines the class) and this include
+// cannot move down past its callers.
 #include "input/XLUiButton.cc"
 #include "atoms/XLUiCloseGuardWidget.cc"
 #include "input/XLUiChip.cc" // after Badge and Button: a chip is one, with the other on it
@@ -87,6 +88,7 @@
 #include "XLUiSubWindowSession.cc"
 #include "XLUiPopupSurface.cc" // after SubWindowSession: every popup opens through its slot
 #include "menu/XLUiMenuPopup.cc" // after PopupSurface: a menu is one, measured first
+#include "menu/XLUiContextMenu.cc" // after MenuPopup: it opens through openMenu
 #include "XLUiTooltipSystem.cc" // after SubWindowSession: the hint goes through its tip slot
 
 #include "input/XLUiSelect.cc" // after MenuPopup: the list it opens is one

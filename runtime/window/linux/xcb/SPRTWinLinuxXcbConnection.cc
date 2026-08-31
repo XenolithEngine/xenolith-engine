@@ -929,8 +929,10 @@ void XcbConnection::handleClipboardChanged() {
 
 bool XcbConnection::hasTouchscreen() const { return _support && _support->hasTouchscreen(); }
 
-void XcbConnection::handleTouchscreenStateChanged(bool value) {
-	for (auto &it : _windows) { it.second->handleTouchscreenStateChanged(value); }
+bool XcbConnection::hasPointer() const { return _support && _support->hasPointer(); }
+
+void XcbConnection::handleInputDevicesStateChanged(bool pointer, bool touchscreen) {
+	for (auto &it : _windows) { it.second->handleInputDevicesStateChanged(pointer, touchscreen); }
 }
 
 bool XcbConnection::checkCookie(xcb_void_cookie_t cookie, StringView errMessage) {

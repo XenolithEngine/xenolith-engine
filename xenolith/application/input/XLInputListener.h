@@ -53,6 +53,8 @@ public:
 
 	bool init(int32_t priority = 0);
 
+	virtual void handleAdded(Node *) override;
+	virtual void handleRemoved() override;
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags flags) override;
@@ -176,6 +178,9 @@ public:
 protected:
 	friend class FocusGroup;
 
+	// Stamps _visitGeneration when the storage this listener registered into is committed
+	friend class InputDispatcher;
+
 	virtual void handleFocusIn(FocusGroup *);
 	virtual void handleFocusOut(FocusGroup *);
 
@@ -216,6 +221,19 @@ protected:
 
 	bool _visitScissorEnabled = false;
 	URect _visitScissor;
+
+	/* Which committed frame this listener was last drawn in - stamped by InputDispatcher at commit.
+
+	It is what stands in for the old walk up the parent chain asking every ancestor whether it is
+	visible: a listener whose owner was not visited never registered, so it is not in the committed
+	storage and this does not match. Cheaper than the walk, and it answers about the frame the event
+	is actually being resolved against rather than about the tree as it is right now. A listener
+	reached OUTSIDE that walk - an active gesture chain holds the ones it captured - is exactly the
+	case that needs asking. */
+	uint64_t _visitGeneration = 0;
+
+	// The owner's opacity as of that frame, for _opacityFilter
+	float _visitOpacity = 1.0f;
 
 	// Whether any recognizer here keeps state derived from a hit test against the owner
 	// (GestureRecognizer::requiresGeometryUpdate) - if none does, there is nothing to settle

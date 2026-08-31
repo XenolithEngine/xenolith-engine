@@ -38,6 +38,10 @@ bool SubWindowScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 	auto sceneInfo = appWindow ? appWindow->getSceneInfo() : nullptr;
 	auto queue = sceneInfo ? sceneInfo->getQueue() : nullptr;
 
+	// Set before the base init, not after: buildQueueResources runs inside it and is where this
+	// scene says what to clear to, which depends on what kind of window it is
+	_subWindow = subWindow.get();
+
 	if (queue) {
 		if (!Scene2d::init(app, window, Rc<core::Queue>(queue), constraints)) {
 			return false;
@@ -46,7 +50,6 @@ bool SubWindowScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 		return false;
 	}
 
-	_subWindow = subWindow.get();
 	_builder = sp::move(builder);
 
 	_content = Rc<basic2d::SceneContent2d>::create();
@@ -57,6 +60,27 @@ bool SubWindowScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 	setFpsVisible(false);
 
 	return true;
+}
+
+void SubWindowScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
+	Scene2d::buildQueueResources(info, builder);
+
+	/* An undecorated surface IS its panel, so what the scene is cleared to is only ever seen where
+	the panel does not reach: the four corners a `border-radius` rounds away. White - the default,
+	and right for a window whose content fills it - put a bright speck at each of them.
+
+	Transparent, so a compositor that agreed to blend this window (Context::handleAppWindowSurfaceUpdate
+	asks for premultiplied alpha for exactly these types) shows whatever is behind the menu there.
+	Where it would not, the surface stays opaque and the corners come out black instead - still the
+	wrong pixels, but the ones that read as a shadow rather than as a defect.
+
+	A Dialog or a Utility window is left alone: those are ordinary rectangles with a frame the window
+	system draws, and clearing them to nothing would only make an unpainted corner harder to see. */
+	if (_subWindow
+			&& (_subWindow->getType() == sprt::window::WindowType::Popup
+					|| _subWindow->getType() == sprt::window::WindowType::Tooltip)) {
+		info.backgroundColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 }
 
 void SubWindowScene::handleEnter(Scene *scene) {

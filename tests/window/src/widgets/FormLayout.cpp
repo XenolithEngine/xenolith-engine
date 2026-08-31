@@ -302,9 +302,9 @@ Value FormLayout::encodeState() const {
 			field.setString(ui::getEditLockReason(owner), "lockReason");
 			field.setBool(owner->hasStyleClass("locked"), "lockedClass");
 
-			// The hint the lock installed, read back through the target it installed it on.
-			if (auto tooltip = owner->getSystemByType<ui::TooltipTarget>()) {
-				field.setString(tooltip->getText(), "tooltip");
+			// The hint the lock installed, read back out of the component it installed it in.
+			if (auto tooltip = ui::getTooltip(owner)) {
+				field.setString(tooltip->info.text, "tooltip");
 			} else {
 				field.setString(StringView(), "tooltip");
 			}

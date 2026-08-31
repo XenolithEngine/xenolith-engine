@@ -96,6 +96,35 @@ bool InputListener::init(int32_t priority) {
 	return true;
 }
 
+void InputListener::handleAdded(Node *owner) {
+	System::handleAdded(owner);
+
+	// A node with a listener is a node that can be found under a pointer, so it joins the frame's
+	// hit-test registry like every other participant. What the listener itself needs from that
+	// registry is its OWN geometry (see handleVisitSelf); the record is there so that anything
+	// asking "is there an interactive widget here" gets one answer rather than a second copy
+	owner->addHitTestFlags(HitTestFlags::Pointer);
+}
+
+void InputListener::handleRemoved() {
+	// Only when this was the last one: a node routinely carries several listeners, and the flag
+	// describes the NODE
+	if (_owner) {
+		bool other = false;
+		for (auto &it : _owner->getSystems()) {
+			if (it.get() != this && dynamic_cast<InputListener *>(it.get())) {
+				other = true;
+				break;
+			}
+		}
+		if (!other) {
+			_owner->removeHitTestFlags(HitTestFlags::Pointer);
+		}
+	}
+
+	System::handleRemoved();
+}
+
 void InputListener::handleEnter(Scene *scene) {
 	System::handleEnter(scene);
 
@@ -141,6 +170,11 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 			}
 		}
 	}
+
+	// The owner's paint as of this frame, for the opacity filter. Read here rather than at event
+	// time for the same reason as everything else in this hook: the event is about the frame that
+	// was drawn
+	_visitOpacity = node->getOpacity();
 
 	if (_enabled) {
 		auto g = info.getSystem<FocusGroup>(FocusGroup::Id);
@@ -532,14 +566,24 @@ bool InputListener::shouldProcessEvent(const InputEvent &event) const {
 
 bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 	auto node = getOwner();
-	if (node && _running) {
-		bool visible = node->isVisible();
-		auto p = node->getParent();
-		while (visible && p) {
-			visible = p->isVisible();
-			p = p->getParent();
-		}
-		if (visible && event.data.hasLocation() && _visitScissorEnabled) {
+	if (!node || !_running) {
+		return false;
+	}
+
+	/* Was the owner drawn in the frame this event is being resolved against?
+
+	This one comparison replaces the walk up the parent chain that used to ask every ancestor
+	whether it was visible. It answers strictly more: a listener whose owner is invisible, has a
+	`display: none` ancestor, was detached, or is simply disabled never registered, so it is not in
+	the committed storage - and it answers about the frame the user was looking at rather than about
+	a tree that may have moved since. */
+	auto dispatcher = _scene ? _scene->getDirector()->getInputDispatcher() : nullptr;
+	if (!dispatcher || _visitGeneration != dispatcher->getCommittedGeneration()) {
+		return false;
+	}
+
+	if (event.data.hasLocation()) {
+		if (_visitScissorEnabled) {
 			// Compared in float rather than through URect::containsPoint(UVec2): the location can
 			// be negative (a pointer dragged off the window), and the cast to unsigned would wrap
 			// it into the rect instead of out of it.
@@ -551,14 +595,15 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 				return false;
 			}
 		}
-		if (visible
-				&& (!event.data.hasLocation()
-						|| node->isTouched(event.currentLocation, _touchPadding))
-				&& node->getOpacity() >= _opacityFilter) {
-			return true;
+
+		// Against the transform the node was DRAWN with, not one rebuilt by multiplying its way up
+		// the parent chain and inverting the result on every event
+		if (!node->isTouchedAsDrawn(event.currentLocation, _touchPadding)) {
+			return false;
 		}
 	}
-	return false;
+
+	return _visitOpacity >= _opacityFilter;
 }
 
 void InputListener::addEventMask(const EventMask &mask) {

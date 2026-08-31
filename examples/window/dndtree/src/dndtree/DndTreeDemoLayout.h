@@ -41,9 +41,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 //     the whole point: an ItemId belongs to the model that allocated it, so a row that stays in
 //     its own tree is MOVED (identity, expansion and selection survive) while a row that crosses
 //     over has to be rebuilt on the other side and deleted here. Both cases are one drag.
-//   * The drag itself is stock: a DragSource and a DropTarget per row, plus one DropTarget on each
-//     view's background so an empty tree - "Scene B" starts out empty - is still somewhere to drop.
-//     Ctrl asks for a Copy, Shift for a Move, and the target has the last word.
+//   * The drag itself is stock: a DragSource per row, and ui::TreeView::setDropSlots for the whole
+//     of the receiving half. The tree resolves WHERE a drop lands - before or after a leaf by which
+//     half of it the pointer is in, into a category over the whole of its row, into the root over
+//     the empty space below the last one - draws the line or the highlight for it, and opens a
+//     closed category the drag rests on for half a second. This demo answers only whether a given
+//     payload may go to a given place, and what putting it there means across two models. Ctrl asks
+//     for a Copy, Shift for a Move, and the target has the last word.
 //
 // The content is generated in code (makeLibraryModel / makeProjectModel), and the self-check drives
 // the very same transfer path the pointer does, so what it proves is what a drop actually does.
@@ -58,8 +62,10 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
-	// Build the two models, the dock and the frames. Called by init(), and again by the Reset
-	// button - which is what makes a demo that has been dragged into a mess recoverable.
+	// Build the two models, the dock and the frames. Called ONCE, from init(): the dock's split, its
+	// frames and the two tree nodes outlive everything the demo does to their content. Putting a
+	// demo that has been dragged into a mess back is resetContent()'s job, and that is what the
+	// Reset button calls - it replaces the models under the same two trees.
 	void buildDock();
 
 	// One configured tree over one model. The dock's panel builder calls this on first show and the
@@ -86,6 +92,15 @@ protected:
 	// two, copy) leaves behind. Prints "N checks, M failures" on completion, and leaves the models
 	// where its transfers put them - the caller restores with resetContent().
 	void runSelfCheck();
+
+	/* The check, bracketed by the state it reads and the state the demo shows.
+
+	Both callers go through here, so what the check starts from is said once and a second run means
+	the same as the first: fresh models, both trees closed - which is what section 1 asserts and
+	what every later section is written against - then the run, then the demo's own starting state
+	back. Called at start-up only when XL_DNDTREE_SELFCHECK is set, and by `dndtree.selfcheck`
+	whenever it is asked: the variable gates the AUTOMATIC run, not the check. */
+	void performSelfCheck();
 
 	void addInspectorCommands(Scene *);
 

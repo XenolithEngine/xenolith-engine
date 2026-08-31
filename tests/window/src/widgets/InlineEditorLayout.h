@@ -107,6 +107,18 @@ protected:
 
 	// What the cell editor is opened with, so that the option can be seen to do something.
 	bool _closeOnScroll = true;
+
+	/* What TableView::requestRebuildNodes(cb) answered, and what the watched row MEASURED at the
+	moment it answered.
+
+	The claim under test is not that the callback arrives - it is WHEN. A row built by that rebuild
+	was attached while the frame was in flight, so it caught up on the visit's phases as it was
+	attached; if that holds, the width recorded inside the callback is the row's final one, and a
+	caller has nothing left to wait for. A callback that landed before the layout would record a
+	zero, and one that landed a hop early would record a width that then changed. */
+	uint32_t _rebuildAnswers = 0;
+	size_t _rebuildWatchRow = maxOf<size_t>();
+	float _rebuildRowWidth = 0.0f;
 };
 
 } // namespace stappler::xenolith::app
