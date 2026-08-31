@@ -72,6 +72,19 @@ static constexpr auto s_selectorCss = StringView(R"css(
 
 .bad5 { background-color: #00acc1; }
 
+/* Box decoration is NOT inherited - the same as on the web - and `font-weight` beside it is the
+   control that IS. A child of this box must report neither the outline nor the radius, and must
+   report the weight: without the control a child reporting nothing could equally mean that no
+   style reached it at all. The weight rather than the colour, because `.base` above gives every
+   sample a colour of its own and would answer for the child whatever inheritance did. */
+.inh-box {
+	outline-width: 3px;
+	outline-color: #123456;
+	outline-style: solid;
+	border-radius: 7px;
+	font-weight: bold;
+}
+
 /* Last on purpose: an unbalanced argument is the one refusal whose recovery could eat what
    follows it, so nothing follows it. */
 .bad5:not(.a { background-color: #000005; }
@@ -84,8 +97,10 @@ static int64_t encodeColor(const Color4B &c) {
 } // namespace
 
 Layer *SelectorLayout::addSample(StringView name, StringView type,
-		sprt::initializer_list<StringView> classes) {
-	auto node = addChild(Rc<Layer>::create(Color::Black), ZOrder(int16_t(_samples.size() + 1)));
+		sprt::initializer_list<StringView> classes, Node *parent) {
+	auto owner = parent ? parent : static_cast<Node *>(this);
+	auto node =
+			owner->addChild(Rc<Layer>::create(Color::Black), ZOrder(int16_t(_samples.size() + 1)));
 	node->setName(name);
 	if (!type.empty()) {
 		node->setType(type);
@@ -93,7 +108,7 @@ Layer *SelectorLayout::addSample(StringView name, StringView type,
 	node->addStyleClass("base");
 	for (auto &cl : classes) { node->addStyleClass(cl); }
 	node->addSystem(Rc<ui::StyleResolver>::create());
-	_samples.emplace_back(Sample{name.str<Interface>(), node});
+	_samples.emplace_back(Sample{name.str<Interface>(), node, parent != nullptr});
 	return node;
 }
 
@@ -103,6 +118,23 @@ Value SelectorLayout::encodeSample(const Sample &sample) const {
 	ret.setInteger(encodeColor(style.background().backgroundColor), "background");
 	auto c = style.color();
 	ret.setInteger(encodeColor(Color4B(c.r, c.g, c.b, 255)), "color");
+
+	/* Whether a parameter REACHED this node at all, which is what inheritance decides.
+
+	`has()` rather than a value: a compiled block answers with the CSS default for a parameter that
+	was never declared, so a width read back as zero cannot be told from a width nobody wrote. The
+	four below are box decoration - not inherited on the web, and until this was fixed inherited
+	here, which drew the parent's border around every descendant it had. */
+	using document::ParameterName;
+	ret.setBool(style.has(ParameterName::CssOutlineWidth), "hasOutlineWidth");
+	ret.setBool(style.has(ParameterName::CssOutlineColor), "hasOutlineColor");
+	ret.setBool(style.has(ParameterName::CssOutlineStyle), "hasOutlineStyle");
+	ret.setBool(style.has(ParameterName::CssBorderTopLeftRadius), "hasRadius");
+
+	// The control, and it is `font-weight` rather than `color` because `.base` gives every sample a
+	// colour of its own: a property no other rule in this sheet declares is the only one whose
+	// presence on a child can only have come from the parent.
+	ret.setBool(style.has(ParameterName::CssFontWeight), "hasFontWeight");
 	return ret;
 }
 
@@ -152,6 +184,15 @@ bool SelectorLayout::init() {
 	addSample("where-both", StringView(), {"wa", "wb"});
 	addSample("where-one", StringView(), {"wa"});
 
+	/* Inheritance: a child of a decorated box, and the box itself.
+
+	Nested, unlike everything else here, because that is the only shape in which the question can be
+	asked. The parent's `font-weight` is the CONTROL: it IS inherited, so a child reporting nothing at all
+	would otherwise read as "no style reached this node" rather than as "the box decoration stayed
+	where it was written". */
+	auto inhParent = addSample("inh-parent", StringView(), {"inh-box"});
+	addSample("inh-child", StringView(), {}, inhParent);
+
 	// refusals: the malformed rule must not apply, and its neighbour must survive
 	addSample("bad1", StringView(), {"bad1"});
 	addSample("bad2", StringView(), {"bad2"});
@@ -172,6 +213,14 @@ void SelectorLayout::handleContentSizeDirty() {
 	float y = getWorkTop() - 16.0f;
 	for (auto &it : _samples) {
 		it.node->setAnchorPoint(Vec2(0.0f, 1.0f));
+
+		// A nested sample is placed inside its parent and takes no grid slot of its own
+		if (it.nested) {
+			it.node->setContentSize(Size2(size / 2.0f, size / 2.0f));
+			it.node->setPosition(Vec2(4.0f, size - 4.0f));
+			continue;
+		}
+
 		it.node->setContentSize(Size2(size, size));
 		it.node->setPosition(Vec2(x, y));
 		x += step;

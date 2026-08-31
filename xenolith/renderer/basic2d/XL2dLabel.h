@@ -79,10 +79,15 @@ public:
 		virtual core::TextCursor getTextCursor() const { return _cursor; }
 		virtual void setTextCursor(core::TextCursor c) { _cursor = c; }
 
+		// Union of the quads currently emplaced, in this node's own space. Empty when nothing is
+		// highlighted. See Label::getSelectionRect on why the drawn extent is worth asking for.
+		const Rect &getBounds() const { return _bounds; }
+
 	protected:
 		virtual void updateVertexes(FrameInfo &frame) override;
 
 		core::TextCursor _cursor = core::TextCursor::InvalidCursor;
+		Rect _bounds = Rect::ZERO;
 	};
 
 	static void writeQuads(VertexArray &vertexes,
@@ -162,6 +167,15 @@ public:
 
 	virtual void setSelectionColor(const Color4F &);
 	virtual Color4F getSelectionColor() const;
+
+	/* Where the highlight is actually DRAWN, in the label's own space; empty without a selection.
+
+	Not the same question as getSelectionCursor(), and the difference is the load-bearing one: the
+	cursor is what the label was TOLD to highlight, this is the geometry it built from it. The two
+	part company whenever the quads were computed against a size the label no longer has, which is
+	also how a selection can be set, reported and still be invisible. */
+	virtual Rect getSelectionRect() const;
+	virtual Rect getMarkedRect() const;
 
 	virtual void setMarkedCursor(core::TextCursor);
 	virtual core::TextCursor getMarkedCursor() const;

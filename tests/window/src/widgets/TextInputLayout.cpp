@@ -24,6 +24,7 @@
 
 #include "widgets/TextInputLayout.h"
 #include "XLUiStyleResolver.h"
+#include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -43,6 +44,11 @@ text-input {
 	outline-width: 1px;
 	border-radius: 7px;
 	padding: 8px 12px;
+}
+/* On a CLASS, not on the type, so that one field is left without them: a caret and a selection
+   with no colour of their own must come out in the text's ink, and a rule that reached every field
+   would leave that half of the rule untested. */
+text-input.tinted {
 	--caret-color: #fcb400;
 	--selection-color: #7a5600;
 	--marked-color: #2b5f7a;
@@ -55,6 +61,11 @@ text-input:focus {
 }
 text-input.wide {
 	width: 520px;
+}
+/* A box far taller than its line, so that "the text is centred" and "the text is on the floor"
+   cannot be confused: at the stock 39px they differ by a single pixel. */
+text-input.tall {
+	height: 64px;
 }
 label {
 	color: #e8e8e8;
@@ -91,6 +102,7 @@ bool TextInputLayout::init() {
 
 	_plain = addChild(Rc<ui::TextInput>::create(), ZOrder(1));
 	_plain->setName("plain");
+	_plain->addStyleClass("tinted");
 	_plain->setPlaceholder("Type here");
 	_plain->setCallback([this](StringView str) {
 		++_changeCallbacks;
@@ -100,17 +112,22 @@ bool TextInputLayout::init() {
 
 	_password = addChild(Rc<ui::TextInput>::create(), ZOrder(1));
 	_password->setName("password");
+	_password->addStyleClass("tinted");
 	_password->setPlaceholder("Password");
 	_password->setPasswordMode(ui::TextInputPasswordMode::ShowNone);
 
+	// Deliberately NOT `tinted`: this is the field whose caret and selection have to be derived
+	// from the text colour, which is the behaviour every unconfigured field in an application gets
 	_readOnly = addChild(Rc<ui::TextInput>::create(), ZOrder(1));
 	_readOnly->setName("readonly");
+	_readOnly->addStyleClass("tall");
 	_readOnly->setText("Read-only value");
 	_readOnly->setReadOnly(true);
 
 	_long = addChild(Rc<ui::TextInput>::create(), ZOrder(1));
 	_long->setName("long");
 	_long->addStyleClass("wide");
+	_long->addStyleClass("tinted");
 	_long->setText(s_longText);
 
 	// Deterministic screenshots: a blinking caret is a coin flip in a still image.
@@ -180,8 +197,39 @@ Value TextInputLayout::encodeState(ui::TextInput *input) const {
 	auto sel = container->getLabel()->getSelectionCursor();
 	ret.setInteger(int64_t(sel.start), "labelSelectionStart");
 	ret.setInteger(int64_t(sel.length), "labelSelectionLength");
+	// The colour the selection was actually DRAWN with, and the ink it should match when the field
+	// declares none of its own
 	ret.setValue(encodeColor(Color4B(container->getLabel()->getSelectionColor())),
 			"labelSelectionColor");
+	ret.setValue(encodeColor(Color4B(container->getCaret()->getColor())), "appliedCaretColor");
+	ret.setValue(encodeColor(Color4B(container->getLabel()->getMarkedColor())), "labelMarkedColor");
+
+	// Where the highlight is DRAWN, not what it was told to cover: a selection built against a
+	// size the label did not have yet lands outside the box and is scissored away, while every
+	// cursor field above still reports it as present.
+	auto selRect = container->getLabel()->getSelectionRect();
+	Value rect;
+	rect.setDouble(double(selRect.origin.x), "x");
+	rect.setDouble(double(selRect.origin.y), "y");
+	rect.setDouble(double(selRect.size.width), "width");
+	rect.setDouble(double(selRect.size.height), "height");
+	ret.setValue(sp::move(rect), "labelSelectionRect");
+
+	// The single line and the box it has to sit in the middle of.
+	ret.setDouble(double(container->getLabel()->getPosition().y), "labelY");
+	ret.setDouble(double(container->getLabel()->getContentSize().height), "labelHeight");
+	ret.setDouble(double(container->getPlaceholder()->getPosition().y), "placeholderY");
+	ret.setDouble(double(container->getContentSize().height), "viewportHeight");
+
+	// The text's own ink, accumulated the way the Label paints it: an inherited `color` beats the
+	// node's tint, and it is the tint that used to be handed to the caret
+	auto label = container->getLabel();
+	auto textColor = Color4B(label->getColor());
+	const auto inherited = accumulateInheritedStyle<InheritedColorStyle>(label);
+	if (inherited.defined & InheritedColorStyle::DefinedColor) {
+		textColor = Color4B(inherited.color);
+	}
+	ret.setValue(encodeColor(textColor), "textColor");
 
 	Value interactive;
 	if (auto ic = input->getComponent<InteractiveComponent>()) {

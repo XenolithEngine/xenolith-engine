@@ -43,6 +43,9 @@ public:
 	virtual bool init(NotNull<AppThread>, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &, NotNull<SubWindow>, SubWindow::ContentBuilder &&);
 
+	// Clears a shaped surface to nothing instead of to white; see the definition.
+	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &) override;
+
 	virtual void handleEnter(Scene *) override;
 	virtual void handlePresented(Director *) override;
 

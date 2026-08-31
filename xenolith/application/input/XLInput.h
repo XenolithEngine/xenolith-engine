@@ -227,9 +227,26 @@ struct InputMoveInfo {
 
 struct InputMouseOverInfo {
 	float padding = 0.0f;
+
+	/* Whether the window must hold the KEYBOARD focus for a hover to count.
+
+	True is right for an ordinary window: one sitting in the background should not light up under a
+	pointer crossing it on its way somewhere else. It is wrong for anything living in a POPUP - a
+	menu row, a dropdown list - because a popup surface never takes focus at all, so with this on
+	the hover is never reported: no row highlights, and no submenu opens by pointing at it. */
 	bool onlyFocused = true;
 
-	InputMouseOverInfo(float p = 0.0f, bool f = true) : padding(p), onlyFocused(f) { }
+	InputMouseOverInfo() = default;
+
+	/* A bool on its own means `onlyFocused`, which is what every call site that passes one means.
+
+	An overload rather than a default argument, and this is the whole reason it exists: against
+	`(float, bool)` alone a bare `false` converts to a PADDING of zero and leaves onlyFocused at
+	true. Silently - and it did, in every widget that had asked to be hoverable without focus,
+	which is why a menu row never highlighted and a submenu only ever opened on a click. */
+	InputMouseOverInfo(bool f) : onlyFocused(f) { }
+
+	InputMouseOverInfo(float p, bool f = true) : padding(p), onlyFocused(f) { }
 };
 
 struct InputKeyInfo {

@@ -165,6 +165,23 @@ try:
     check("and it is on an overlay of its own",
             st.get("overlay") is True and s.invoke("inline-edit.overlays")["count"] == 1)
 
+    # The editor is seeded and selected in the same act as its creation, before it has ever been
+    # laid out - which is exactly the case a placed field never presents. The highlight is built by
+    # flipping a top-down rect against the label's height, so a height that only arrives on the
+    # first visit put the quads below the text, where the field's scissor removes them: a selection
+    # reported by every cursor field and drawn nowhere. And the line itself must sit in the MIDDLE
+    # of the editor's box, or the editor does not land on the text it is covering.
+    sel = st.get("editorSelection") or {}
+    check("the seeded text comes up selected", sel.get("width", 0.0) > 0.0, sel)
+    check("and the highlight is drawn over the line, not under it",
+            sel.get("y", -1.0) >= -0.5
+                    and sel.get("y", 0.0) + sel.get("height", 0.0)
+                            <= sel.get("labelHeight", 0.0) + 0.5, sel)
+    check("the editor's line is centred in its box",
+            abs(sel.get("labelY", -1.0)
+                    - (sel.get("viewportHeight", 0.0) - sel.get("labelHeight", 0.0)) / 2.0) < 0.5,
+            sel)
+
     s.invoke("inline-edit.type", value="Rotate")
     s.ok("frame", count=2)
     check("typing reaches it", state().get("editorText") == "Rotate")

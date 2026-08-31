@@ -174,6 +174,20 @@ public:
 
 	virtual void dismissChild();
 
+	/* The pointer has arrived over THIS level; the levels above must forget whatever they had
+	pending.
+
+	Each of them armed a close the moment the pointer left the row that opened the level below - the
+	diagonal trip into a submenu crosses the rows under its opener, and every one of those is such a
+	hover. The close waits longer than the open so that the trip is survivable, but waiting is not
+	enough on its own: a pointer that took longer than the delay, or that stopped on the way, would
+	still have the level taken down from under it. Arriving here is the definite answer that the
+	trip succeeded, and it is the level that was arrived at that gives it.
+
+	Nothing is re-armed here. The pointer going back to a row of a level above arms that level's
+	close again, which is the only thing that should. */
+	virtual void handlePointerEntered();
+
 	// Take the whole chain down, from the root. Safe to call from inside a row of any level.
 	virtual void dismissChain();
 

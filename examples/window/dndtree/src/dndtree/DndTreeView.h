@@ -24,6 +24,7 @@
 #define EXAMPLES_WINDOW_DNDTREE_SRC_DNDTREE_DNDTREEVIEW_H_
 
 #include "XLUiTreeView.h"
+#include "XLUiInlineEditor.h"
 #include "XLUiContextMenu.h"
 #include "XLDragTypes.h"
 #include "XLFrameCapture.h"
@@ -132,6 +133,90 @@ public:
 	// does; false when that row is not one that can go.
 	bool removeRow(size_t index);
 
+	/* Give the element a row stands for a new name.
+
+	The model write, with no editor anywhere near it - which is what lets a check drive a rename
+	without a scene, a pointer or a window, and what the editor's own commit calls. False for a row
+	that is not an element and for a name with nothing but blanks in it; the caller decides what a
+	refusal means, and the editor turns it into "the session stays open". */
+	bool renameRow(size_t index, StringView name);
+
+	/* Open an inline editor over a row and rename it with what is typed.
+
+	What the menu's Rename item does. The editor is NOT a child of the row: a row is destroyed by
+	scrolling and rebuilt whenever its RowKey changes, and the rename is the very edit that changes
+	it - so it lives on an overlay, anchored to THIS view, over the rectangle the row occupies in
+	this view's space (ui::beginInlineTextEdit). False when there is nothing to open over: no scene,
+	no element, no rectangle. */
+	bool beginRename(size_t index);
+
+	// Must agree with `inline-editor { padding-left/right }` in the demo's stylesheet - see
+	// beginRename, which grows the rect by it so the editor's text lands exactly on the label's.
+	static constexpr float RenameEditorPadding = 6.0f;
+
+	bool isRenaming() const { return _rename != nullptr; }
+	ui::InlineEditSession *getRenameSession() const { return _rename; }
+
+	/* Create an element and hand it straight to the editor.
+
+	What the menu's New submenu does. The element goes into the MODEL at once, rather than being
+	drawn beside the tree as a preview: the row it makes is the very thing being named, so the
+	author sees where the new item is going before typing anything, and everything else that reads
+	the tree - the drop model, the other view, the self-check - sees one consistent model
+	throughout. What makes it provisional is only what Escape does: a CANCELLED edit takes the
+	element back out again. Every other ending keeps it under whatever name it has by then, which
+	is the same rule a rename follows.
+
+	`index` is the row the menu was opened over, maxOf<size_t>() for the empty space below the last
+	one. False when there is nowhere to put it.
+
+	The editor does not open in this call. A brand-new row has no NODE yet - the model's
+	notification re-derives the rows at once, but the nodes are rebuilt in the view's next
+	components phase - and where a row's content starts is decided by the stylesheet, so it does
+	not exist until that node has been laid out. So the opening waits for the row; see
+	settlePendingEdit. */
+	bool beginCreate(size_t index, bool category);
+
+	/* Where beginCreate puts a new element for a menu opened over `index`, in MODEL terms - ready
+	for Model::emplaceItem. A null parent means there is nowhere to put one.
+
+	NOT the drop model's three zones, and deliberately so: a drop happens at a POINT inside a row
+	and can therefore read which half of it was aimed at, while a menu is opened over a row as a
+	whole. What is left is the same vocabulary with the halves collapsed - a category is somewhere
+	to go INTO, anything else is something to stand beside, and the empty space below the last row
+	answers for the root. */
+	struct InsertPoint {
+		Rc<ModelNode> parent;
+		size_t index = maxOf<size_t>();
+	};
+	InsertPoint getInsertPoint(size_t index) const;
+
+	// The element the open editor would take back out if the edit were cancelled, or 0 for a
+	// rename. What tells the two apart from outside.
+	ItemId getProvisionalId() const { return _provisional; }
+	bool isCreating() const { return _provisional != ItemId(0); }
+
+	// True between beginCreate and the editor actually opening - normally one frame.
+	bool isEditorPending() const { return _pendingEdit != ItemId(0); }
+
+	/* Settle whatever beginCreate is waiting for, now: open the editor once the row has a node,
+	give up when the element is gone.
+
+	Called once per visit of this view, and public because a wait that spans frames cannot be
+	observed from a check that has none - the demo's self-check runs before the layout is even in a
+	scene. Doing nothing is the normal answer. */
+	void settlePendingEdit();
+
+	/* The sheet to carry to whatever this view opens OUTSIDE its own subtree.
+
+	An inline editor is not a child of the row it edits - it lives on an overlay of the scene's
+	content node, which is a sibling of the layout whose ui::StyleResolver covers this view. So the
+	rules that style everything else here do not reach it, and it comes up as a bare white field
+	unless the sheet is handed over. Exactly the same boundary as ui::MenuConfig::stylesheetSource,
+	which the demo already crosses for the context menu; this is the second place it has to. */
+	void setStylesheetSource(StringView value) { _stylesheet = value.str<Interface>(); }
+	StringView getStylesheetSource() const { return _stylesheet; }
+
 	virtual void handleEnter(Scene *) override;
 
 protected:
@@ -153,6 +238,10 @@ protected:
 	has no row at all. The builder resolves the row from the point it is given. */
 	void attachContextMenu();
 
+	// The `New` submenu, added to both menus this class builds - the one over a row and the one
+	// over the empty space, which differ in everything else.
+	void addCreateSubmenu(ui::MenuSource *, size_t index);
+
 	// `source` is the DragSource that will run this drag: a capture-backed ghost is installed on
 	// its session, long after this returns.
 	bool fillOffer(size_t index, DragSource *source, DragOffer &offer);
@@ -171,10 +260,37 @@ protected:
 
 	static DndItemPayload *payloadOf(const DragEvent &);
 
+	// The one write. Both entry points above end here, so "what a rename does to the model" is said
+	// once - including the rule that an empty name is not a name.
+	bool renameNode(ModelNode *, StringView name);
+
+	/* Open the editor over row `index`. `provisional` is the element a CANCEL removes - the whole
+	difference between creating and renaming, which is otherwise the same editor over the same
+	rectangle with the same commit. */
+	bool beginEdit(size_t index, ItemId provisional);
+
+	// The row showing `id`, or maxOf<size_t>(). Rows are re-derived by every model change, so an
+	// index taken before one means nothing afterwards - the id is what still names the element.
+	size_t rowIndexForId(ItemId) const;
+
+
 	String _title;
 	Node *_ghostParent = nullptr; // raw: it is an ancestor of this view, so it outlives it
 	MessageCallback _message;
 	size_t _clones = 0;
+
+	// The open rename, or null. Held because the demo has to be able to say whether one is open -
+	// and because a second Rename commits the first rather than abandoning it
+	Rc<ui::InlineEditSession> _rename;
+	String _stylesheet;
+
+	// The element the open editor would take back out on a cancel; 0 while a plain rename is open
+	ItemId _provisional;
+
+	// The element created by beginCreate whose editor has not opened yet, and how many more visits
+	// it may wait for its row before the wait gives up on it
+	ItemId _pendingEdit;
+	uint32_t _pendingEditFrames = 0;
 };
 
 } // namespace stappler::xenolith::examples

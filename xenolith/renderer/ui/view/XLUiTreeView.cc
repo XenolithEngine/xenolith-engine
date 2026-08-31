@@ -714,14 +714,17 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 			icon->addStyleClass("tree-icon");
 		}
 
+		// Remembered either way: it is where the name is, which is what an inline editor has to be
+		// placed over (getRowContentRect)
 		if (builder._content) {
-			rowNode->addChild(builder._content, ZOrder(3));
+			rowNode->setContentNode(rowNode->addChild(builder._content, ZOrder(3)));
 		} else {
 			auto label = rowNode->addChild(Rc<basic2d::Label>::create(), ZOrder(3));
 			label->setType("label");
 			label->addStyleClass("tree-label");
 			label->setString(builder._hasLabel ? StringView(builder._label)
 											   : StringView(row.getData().getString(_labelKey)));
+			rowNode->setContentNode(label);
 		}
 
 		ZOrder z(4);
@@ -753,6 +756,40 @@ RowGeometrySource TreeView::makeGeometrySource() const {
 
 bool TreeView::getRowRect(size_t index, Rect &out) const {
 	return ui::getRowRect(makeGeometrySource(), index, out);
+}
+
+bool TreeView::getRowContentRect(size_t index, Rect &out) const {
+	if (!getRowRect(index, out)) {
+		return false;
+	}
+
+	auto node = getRowNode(index);
+	auto content = node ? node->getContentNode() : nullptr;
+	if (!content) {
+		// The row is not on screen, so where its content starts is not knowable - the whole row is
+		// the honest answer rather than a guess at the indent
+		return true;
+	}
+
+	// Four corners rather than the origin: a row is not rotated today, but this is the same box the
+	// drop feedback and the tooltip anchor both derive, and none of them may assume that
+	const auto size = content->getContentSize();
+	const Vec2 corners[4] = {
+		convertToNodeSpace(content->convertToWorldSpace(Vec2::ZERO)),
+		convertToNodeSpace(content->convertToWorldSpace(Vec2(size.width, 0.0f))),
+		convertToNodeSpace(content->convertToWorldSpace(Vec2(0.0f, size.height))),
+		convertToNodeSpace(content->convertToWorldSpace(Vec2(size.width, size.height))),
+	};
+
+	float left = corners[0].x;
+	for (uint32_t i = 1; i < 4; ++i) { left = sprt::min(left, corners[i].x); }
+
+	// The right edge stays the row's: an editor sized to the label's own width would be as wide as
+	// the name that is being replaced, which is the one width it must not be
+	const float right = out.origin.x + out.size.width;
+	out.origin.x = sprt::min(left, right);
+	out.size.width = sprt::max(right - out.origin.x, 0.0f);
+	return true;
 }
 
 size_t TreeView::getRowIndexAt(const Vec2 &nodeLocation) const {

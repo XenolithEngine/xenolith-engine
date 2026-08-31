@@ -184,6 +184,10 @@ protected:
 
 	virtual void updateCaretPosition() override;
 
+	// Nothing to centre: a multi-line view starts its text at the TOP and positions its own pooled
+	// labels per frame. The base's single-line label is inherited but never shown here.
+	virtual void updateLabelPosition() override { }
+
 	// Reads line height and cell width off the reference label; cheap once measured, and
 	// re-runs every frame so a font swap or a density change is picked up without a hook.
 	void measureFont();

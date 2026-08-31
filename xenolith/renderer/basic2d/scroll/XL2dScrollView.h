@@ -172,6 +172,15 @@ public:
 	virtual void setIndicatorThickness(float idle, float active);
 	float getIndicatorThickness() const; // the one in force right now
 
+	/* The strip along the scrolled edge the bar can occupy: its inset plus the WIDEST thickness it
+	takes, not the one in force.
+
+	What an overlay placed over the content has to keep clear of. The widest, because the bar swells
+	when a pointing device is attached and shrinks again when it is not, so anything sized against
+	the current thickness would be clear of it only half the time. Zero while the content fits,
+	since there is then no bar at all. */
+	float getIndicatorReservedSize() const;
+
 	/* Where the thumb sits along its track, 0..1, and the inverse.
 
 	A pair on purpose: the forward direction is the expression updateIndicatorPosition() places the

@@ -157,6 +157,19 @@ each window renders on demand, so `frame` is per window too.
   hint; `showTip(Config &&, key, …)` takes a surface of your own and keys the slot
   so re-showing the same thing refreshes the timer instead of flapping.
 
+**A `Popup` or a `Tooltip` is a SHAPED window**, and the engine asks for it to be
+blended: `Context::handleAppWindowSurfaceUpdate` picks premultiplied alpha for
+those two types (and for anything with `UserSpaceDecorations`) whenever the
+compositor offers it, and `ui::SubWindowScene` clears their scene to nothing
+rather than to white. Both halves are needed and neither is optional to
+understand: such a window is sized to its panel exactly, so a `border-radius` on
+that panel leaves the window's four corners outside everything that is drawn —
+they show the clear colour, and white specks at the corners of every menu is what
+that looked like. Where the compositor will not blend, the surface stays opaque
+and the corners come out black instead of transparent. `Dialog` and `Utility`
+are left alone: they are ordinary rectangles with a frame the window system
+draws.
+
 ### A panel on a surface: `ui::openPopupSurface`
 
 `SubWindow` gives you the WINDOW. What every popup then has to do with it is the

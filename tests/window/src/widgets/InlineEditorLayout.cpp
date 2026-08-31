@@ -356,6 +356,22 @@ Value InlineEditorLayout::encodeState() const {
 	if (session) {
 		if (auto input = dynamic_cast<ui::TextInput *>(session->getEditor())) {
 			ret.setString(input->getText(), "editorText");
+
+			/* The editor is seeded and selected BEFORE its first visit, so its label has no size
+			yet when the highlight is computed. Reporting where the highlight ended up - not merely
+			that a selection exists - is the only way to see the difference: a selection built
+			against a height of zero sits below the text, where the field's scissor removes it, and
+			every other field here still reads as if it were on screen. */
+			auto label = input->getContainer()->getLabel();
+			auto rect = label->getSelectionRect();
+			Value sel;
+			sel.setDouble(double(rect.origin.y), "y");
+			sel.setDouble(double(rect.size.height), "height");
+			sel.setDouble(double(rect.size.width), "width");
+			sel.setDouble(double(label->getContentSize().height), "labelHeight");
+			sel.setDouble(double(label->getPosition().y), "labelY");
+			sel.setDouble(double(input->getContainer()->getContentSize().height), "viewportHeight");
+			ret.setValue(sp::move(sel), "editorSelection");
 		}
 		ret.setBool(session->getLayout() != nullptr, "overlay");
 	}
