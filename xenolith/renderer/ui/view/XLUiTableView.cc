@@ -31,6 +31,23 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 static const Value s_nullValue;
 
+/* A CELL IS A WINDOW ONTO ITS ROW, not a surface of its own.
+
+The row carries the ground, the odd/even alternation, the hover and the selection; the cell carries
+the padding, the borders and the text. Panel's construction default is an OPAQUE WHITE surface, so
+a cell that says nothing covers all four of the row's colours a pixel after they are drawn - which
+is what every table built on this widget looked like: the rules matched, the row was painted, and
+the cells painted over it. Five of the six stylesheets in this tree and its sibling never wrote the
+one declaration that would have stopped it, including the one demonstrating the widget.
+
+So the view paints its own cells, in code and not in a sheet: it is the arithmetic of a table
+rather than a colour anyone chooses, and a table that needs the opposite is a table whose rows have
+nothing to show. A `table-cell { background-color: ... }` rule still overrides it - this is the
+layer UNDER the stylesheet, and it survives a restyle for the same reason (Panel::setPathColor). */
+static void TableView_paintCellDefaults(NotNull<Panel> cell) {
+	cell->setPathColor(Color4B(0, 0, 0, 0), true);
+}
+
 TableView::~TableView() { }
 
 bool TableView::init() { return init(nullptr); }
@@ -935,7 +952,16 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 		// The grip column is the view's to fill, and the caller's callback is not asked about it:
 		// what goes there is a DragSource, and a cell node from outside would have replaced it.
 		if (_reorderEnabled && StringView(_columns[i].key) == ReorderColumnKey) {
-			Rc<Node> gripCell = header ? Rc<Node>(Rc<Panel>::create()) : makeReorderCell(index);
+			Rc<Node> gripCell;
+			if (header) {
+				// the header's grip cell is a bare Panel - no handle, nothing to drag from a
+				// column title - and it stands over the header's ground like any other cell
+				auto panel = Rc<Panel>::create();
+				TableView_paintCellDefaults(panel);
+				gripCell = panel;
+			} else {
+				gripCell = makeReorderCell(index);
+			}
 			if (gripCell) {
 				gripCell->setType("table-cell");
 				gripCell->addStyleClass("xl-ui-table-cell");
@@ -976,6 +1002,7 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			panel->removeStyleClass("xl-ui-panel");
 			panel->addStyleClass("xl-ui-table-cell");
 			Panel::registerStyleAppliers("table-cell");
+			TableView_paintCellDefaults(panel);
 
 			// The icon goes in first and carries a lower ZOrder, so that a cell laid out as a flex
 			// row puts it before the label - document order is what the row layout reads.
@@ -1123,6 +1150,7 @@ Rc<Node> TableView::makeReorderCell(size_t index) {
 	panel->addStyleClass("xl-ui-table-cell");
 	panel->addStyleClass("xl-ui-table-drag-handle");
 	Panel::registerStyleAppliers("table-cell");
+	TableView_paintCellDefaults(panel);
 
 	auto icon = panel->addChild(
 			Rc<basic2d::IconSprite>::create(IconName::Editor_drag_handle_outline), ZOrder(0));
