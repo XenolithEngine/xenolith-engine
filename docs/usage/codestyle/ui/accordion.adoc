@@ -1,0 +1,218 @@
+# Accordions: `AccordionView`, and the panel vocabulary it shares with the dock
+
+**TL;DR**
+
+* An accordion is a **widget**, not a system: `Rc<ui::AccordionView>::create()`, sized and
+  positioned like any other node. The dock is a system because it owns a whole tree of frames;
+  a stack of sections needs nothing of the sort.
+* It is **not a `ui::TreeView` with two levels**. A tree is driven by a `data::Model` whose shape
+  it discovers and it virtualizes rows; an accordion's sections are declared in the application's
+  own source and there are a dozen at most.
+* A section **IS a parked panel** in exactly the sense `ui::DockSystem` means: the same
+  `DockPanelDescriptor`, the same lazy builder, the same `ui::PanelRegistry`, the same
+  `ui::PanelHandle` drag with the same `"xl/dock-panel"` payload.
+* Hand an accordion and a dock the **same registry** and a panel can be dragged between them,
+  keeping its node — and with it its scroll position, its selection and its half-typed text.
+* A **tap on a header toggles** the section; only the **grip** starts a drag.
+* `AccordionExpansion` is `Multi` (default) or `Single`; `AccordionSizing` is `Fit` (default,
+  content-sized and scrolling) or `Fill` (open sections share the height).
+
+## Two containers, one registry
+
+[source,cpp]
+----
+auto registry = Rc<ui::PanelRegistry>::create();
+
+registry->registerPanel({
+    .id = "console", .title = "Console",
+    .icon = IconName::Action_list_solid,
+    .minSize = Size2(240.0f, 100.0f),
+    .builder = [] { return Rc<ConsolePanel>::create(); },
+});
+
+// the dock takes the shared registry instead of making one of its own
+auto dock = dockRoot->addSystem(Rc<ui::DockSystem>::create(Rc<ui::PanelRegistry>(registry)));
+dock->setLayout(ui::DockLayoutSpec::leaf({String("editor")}));
+
+auto side = addChild(Rc<ui::AccordionView>::create(Rc<ui::PanelRegistry>(registry)));
+side->setSections({String("explorer"), String("console")});
+----
+
+`DockSystem::create()` with no argument still makes a registry of its own, so nothing that existed
+before this had to change. `registerPanel` on either container forwards to the registry; reach for
+the registry directly when two of them share it, so it is obvious where the panels live.
+
+## What the registry owns, and the one rule it enforces
+
+|===
+| | Owned by `PanelRegistry`
+
+| the descriptors | id, title, icon, minimum, flags, the lazy builder
+| the content | `builder` runs **at most once**, and the node is kept forever after
+| **the host claim** | which container currently holds each panel
+|===
+
+The third is the one that is easy to miss and impossible to bolt on later. A panel node has one
+identity, so it can be parked in exactly one place — and that is not something every drop slot can
+be trusted to remember. `acquireContent(id, forHost)` tells the previous host to `releasePanel`
+before recording the new one, so a container never asks who has a panel: it just acquires.
+
+`releasePanel` is **not** `closePanel`. Structurally they do the same thing — the section goes, the
+frame folds away — but a release is a move, so no "closed" callback fires. An application that
+treats `closed` as *the user is done with this* would otherwise act on something that never happened.
+
+The eviction re-enters: releasing a dock's active tab makes that frame show the next one, which
+acquires. That terminates only because the ids differ, so the invariant is **asserted**, not hoped
+for: `releasePanel(id)` must never acquire content for that same `id`.
+
+## The handle, and where a drag may start from
+
+`ui::PanelHandle : public Button` is the grab point of a parked panel wherever it is parked.
+`ui::DockTab` and `ui::AccordionHeader` are both one. Sharing the `DragOffer` alone would have been
+the obvious half; the half that matters is the rest — the threshold, the pointer capture
+(`setExclusive`, without which the drag dies a few pixels in), the tap refusal while dragging, and
+the abort in `handleExit` for the drag that outlived its own node, since the drop routinely destroys
+the very node that delivered it.
+
+Two seams for a subclass:
+
+`canBeginDragAt(worldLocation)` — **where** on the node a drag may start. A dock tab says anywhere:
+its press already means "show this", which is what a drag ends up doing anyway. An accordion header
+says only on its grip, because its press means "open this so I can see inside" — a drag from
+anywhere on it would make every slightly imprecise click pull the panel loose.
+
+`updatePanelDragOffer(offer, payload)` — what the origin *is*. A dock stamps its `DockNodeHandle`;
+a linear container stamps its index. Both also carry `host`, which is what a drop compares first.
+
+## Sizing
+
+A collapsed section is its header, whatever the policy. An open one:
+
+|===
+| | `Fit` (default) | `Fill`
+
+| the section | `flex-basis: fit-content` | `flex-grow: 1, flex-basis: 0`
+| the view | scrolls when the total runs past it | nothing scrolls
+| good for | a list of unrelated panels | a side pane of working panels
+|===
+
+Either way the section's floor is its header plus the `minSize` its descriptor declared — which is
+where the shared registry's minimum means something on this side, the way it floors a dock frame on
+the other.
+
+## Dropping
+
+One target on the view, never one per section: a per-section target cannot answer for the gap after
+the last one, which is the append position. It resolves an **insertion index and nothing else** — a
+section holds exactly one panel, so unlike a dock frame there is no "into" and nothing to subdivide.
+
+`getDropIndexAt()` answers with **no drag in flight**, so a test can name a slot rather than
+synthesizing a pointer for it.
+
+## Styling
+
+[source,css]
+----
+accordion-view             { background-color: #1e1e1e; }
+accordion-view.drop-active { outline-color: #3d7ecf; outline-width: 1px; }
+
+/* every rule carrying padding/gap/alignment MUST also declare display:flex - those are read only
+   inside the resolver's flex branch, and a rule without `display` never enters it */
+accordion-section          { background-color: #232323; }
+accordion-body             { display: flex; padding: 6px; background-color: #1e1e1e; }
+accordion-header           { display: flex; align-items: center; column-gap: 6px;
+                             padding: 4px 8px; background-color: #2b2b2b; }
+accordion-header:hover     { background-color: #333333; }
+accordion-header.expanded  { background-color: #383838; }
+accordion-header > label   { color: #c8c8c8; font-size: 13px; }
+
+/* an icon button has no intrinsic size: without a width these collapse to nothing and draw on top
+   of the title. The same is true of `dock-tab-close`. */
+.accordion-chevron         { width: 16px; height: 16px; }
+.accordion-grip            { width: 16px; height: 16px; }
+accordion-close            { width: 16px; height: 16px; }
+
+accordion-drop-indicator   { background-color: #3d7ecf; }
+dock-drag-ghost            { background-color: #2c2c2c; }   /* one drag, one look, either container */
+----
+
+The chevron is **imperative** — the icon is swapped between
+`Navigation_chevron_right_solid` and `Navigation_expand_more_solid` rather than the sprite rotated,
+because the CSS subset has no `transform` and a rotation would be invisible to a rule that wanted to
+restyle the two states apart.
+
+## Persistence
+
+`save()` carries the order and which sections stand open; never a title, an icon or a minimum, which
+come back from the registry. With a shared registry it and `DockSystem::save()` are **two halves of
+one arrangement**, restored against that same registry: each half claims its own panels, and a panel
+named by neither stays closed.
+
+## Traps
+
+|===
+| Trap | What actually happens
+
+| A `LayoutSystem` on the `AccordionView` itself
+| The view holds one viewport child which it sizes directly, and carries no layout — because a
+  `DragOffer::decoratorParent` must be neither a flex container (the ghost becomes a flex item and
+  is laid out into the stack) nor clipped (it vanishes at the first edge it crosses). An unclipped
+  node with no layout is the only thing that is neither, which is exactly what a dock root is.
+
+| `ScrollSystem` with `Overflow::Hidden` on the cross axis
+| **Hidden is an overflow axis.** `ScrollSystem` hands `LayoutSystem::setOverflowAxes(clipsX(),
+  clipsY())`, and on such an axis the content is laid out at its NATURAL size so there is something
+  to clip. Declaring it for the horizontal axis therefore stops the sections stretching to the
+  viewport width. Use `Visible` for an axis that must not overflow; the box is still scissored,
+  because that is gated on `clipsX() || clipsY()`.
+
+| `GestureSwipe::firstTouch` as the press origin
+| It is the **current** point — the recognizer reassigns it on every event. By the time `Began`
+  fires it is a threshold's travel from the press, which for a grab point smaller than the threshold
+  means it has left it entirely. `swipe.input->originalLocation` is the press.
+
+| Identifying a section by child index
+| `sortAllChildren` is not stable, and inside the viewport child order IS flow order, so equal
+  orders reshuffle the stack between frames. Sections take distinct increasing ZOrders; identity is
+  the panel id.
+
+| A drop indicator left in the viewport's flow
+| It is a flex column, so the caret would be laid out as one more section. It carries
+  `OutOfFlowComponent` — the in-code equivalent of `position: absolute`.
+
+| Hiding a collapsed section's panel instead of taking it out
+| A hidden subtree still costs the layout and style passes every frame, which for an expensive panel
+  is the cost the collapse was meant to avoid. It is detached — `removeFromParent(false)`, no
+  cleanup, since the registry still holds it.
+
+| Expecting a dock frame to grow with an accordion parked in it
+| `DockSystem::measureLeaf` floors a frame from each panel's DESCRIPTOR and never measures the node,
+  so a parked accordion contributes only its own descriptor's minimum. `getNaturalMinSize()` exists
+  so an application can feed it back.
+
+| Collapsing the last open section in `Single` mode
+| Refused. `Single` means exactly one, and nothing open is a state that mode exists to rule out.
+|===
+
+## Trying it
+
+[source,sh]
+----
+XL_ACCORDION_TEST=1 ./testapp --headless   # the stand's own checks
+tests/window/accordion-check.py            # those, plus the drag through the real input path
+----
+
+The stand runs a dock and an accordion side by side over one registry. Its inspector commands —
+`accordion.sections`, `accordion.drop-index`, `accordion.builds`, `accordion.host`,
+`accordion.probe` — are what let the driver script name a grip, resolve a slot and read back which
+container holds what, without guessing a pixel. `accordion.builds` is the one that matters: a
+rebuilt panel looks identical on screen and in a layout dump, and has silently lost everything the
+user did to it.
+
+`examples/window/dock` is the same arrangement to drive by hand.
+
+## Related
+
+* [docking.adoc](docking.adoc) — the other consumer of the same vocabulary
+* [../scene/drag-and-drop.adoc](../scene/drag-and-drop.adoc) — the drag the handle rides on
+* [../../ui/css-subset.adoc](../../ui/css-subset.adoc) — what the stylesheet above can say

@@ -30,6 +30,11 @@
 #include "css/CalcLayout.h"
 #include "widgets/ButtonLayout.h"
 #include "css/CombinatorLayout.h"
+#include "dock/AccordionLayout.h"
+#include "dock/DockLayoutLayout.h"
+#include "dock/DockSplitterLayout.h"
+#include "dock/DockTabsLayout.h"
+#include "dock/DockPersistLayout.h"
 #include "render/DamageLayout.h"
 #include "render/FrameCaptureLayout.h"
 #include "layout/FitContentLayout.h"
@@ -73,6 +78,7 @@
 #include "widgets/HitTestLayout.h"
 #include "widgets/TooltipLayout.h"
 #include "widgets/ScrollThrashLayout.h"
+#include "widgets/SelectionLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
@@ -476,6 +482,22 @@ static const TestInfo s_widgetsTests[] = {
 				   "--headless-no-pointer takes away. Inspector: scrollbar.state, scrollbar.scroll, "
 				   "scrollbar.reset-taps."),
 		TestRegistry_make<ScrollBarLayout>, true},
+
+	TestInfo{StringView("selection"), StringView("XL_SELECTION_TEST"),
+		StringView("The scene-wide selection chain"),
+		StringView("Two lists and a plain node over one SelectionSystem. One thing is selected at a "
+				   "time, scene-wide, and the loser is told; the identity survives its row being "
+				   "recycled away, which is when the chain falls back to the owning container; and "
+				   "moving the selection between two rows of the same list must not restyle a "
+				   "single ancestor - that last one is counted, not looked at, because a "
+				   "release-before-retain implementation passes every other check. It also carries "
+				   "a real ui::TreeView opted in as an owner, where expanding a category ABOVE "
+				   "the selected row must leave the selection on the same element, and hotkey "
+				   "subscribers at four depths, which is the only way the deepest-first delivery "
+				   "order is observable. Inspector: selection.state, selection.select, "
+				   "selection.materialize, selection.node, selection.hotkey-log, "
+				   "selection.clear-log, selection.set-consume."),
+		TestRegistry_make<SelectionLayout>, true},
 };
 
 // src/text - text shaping
@@ -604,6 +626,57 @@ static const TestInfo s_dragTests[] = {
 		TestRegistry_make<DragTextLayout>},
 };
 
+// src/dock - the docking system: the split tree, dividers, tabs and the saved layout
+
+static const TestInfo s_dockTests[] = {
+	TestInfo{StringView("dock-layout"), StringView("XL_DOCK_LAYOUT_TEST"),
+		StringView("Dock split tree, minimums and tiling"),
+		StringView("Every frame and divider is a FLAT child of the dock root, tiled from the tree "
+				   "alone: the rects must cover the root exactly, with no overlap and no gap, and "
+				   "a constraint must only ever get stronger - a frame can never come out smaller "
+				   "than the largest panel parked in it. The run must end with 0 failures. "
+				   "Inspector: dock-layout.layout."),
+		TestRegistry_make<DockLayoutLayout>},
+
+	TestInfo{StringView("dock-splitter"), StringView("XL_DOCK_SPLITTER_TEST"),
+		StringView("Dock dividers: clamping and the drag fixed point"),
+		StringView("A divider re-derives its split's ratio from where it landed, clamped so neither "
+				   "side goes below its propagated minimum. The derivation works in ratio space, so "
+				   "a hundred small deltas must land exactly where one large one does - whether or "
+				   "not a layout pass ran in between. The run must end with 0 failures."),
+		TestRegistry_make<DockSplitterLayout>},
+
+	TestInfo{StringView("dock-tabs"), StringView("XL_DOCK_TABS_TEST"),
+		StringView("Dock tabs, lazy panel content and the drop zones"),
+		StringView("A panel's node is built once and then survives everything - switching tabs, "
+				   "reordering, being dragged into another frame, the source frame collapsing "
+				   "behind it - which is why the build count is what this asserts. Plus the zone "
+				   "model: the strip beats the body, an edge band beats the middle, and dropping a "
+				   "lone panel back into its own frame is not a drop. 0 failures. Inspector: "
+				   "dock-tabs.hit-test, dock-tabs.builds."),
+		TestRegistry_make<DockTabsLayout>},
+
+	TestInfo{StringView("dock-persist"), StringView("XL_DOCK_PERSIST_TEST"),
+		StringView("Dock save / rearrange / restore"),
+		StringView("The saved value carries the shape and the membership and nothing else - no "
+				   "rects, no node ids, no titles - so a restore must rebuild the arrangement from "
+				   "the registry alone. A panel the file never mentions stays CLOSED unless it is "
+				   "OpenByDefault, and a malformed file must leave what is on screen untouched. "
+				   "The run must end with 0 failures."),
+		TestRegistry_make<DockPersistLayout>},
+
+	TestInfo{StringView("accordion"), StringView("XL_ACCORDION_TEST"),
+		StringView("Accordion beside a dock, over one panel registry"),
+		StringView("A dock and a ui::AccordionView sharing one ui::PanelRegistry. A panel dragged "
+				   "between them must arrive as the SAME node - the build counter is what says so, "
+				   "since a rebuilt panel looks identical and has silently lost its state - and it "
+				   "must be parked in exactly one of them at a time. Plus both zone rules, the "
+				   "collapse, a save/restore round trip, and that tearing the dock down leaves the "
+				   "accordion's panels alone. The run must end with 0 failures. Inspector: "
+				   "accordion.sections, accordion.host, accordion.probe."),
+		TestRegistry_make<AccordionLayout>},
+};
+
 // One entry per directory. Nesting is arbitrary - a group may declare `groups` of its own - but the
 // source tree is one level deep, so this list is flat as well.
 static const TestGroup s_groups[] = {
@@ -634,6 +707,10 @@ static const TestGroup s_groups[] = {
 		StringView("The drag protocol, action negotiation, and the payload shared with the "
 				   "clipboard."),
 		{}, s_dragTests},
+
+	TestGroup{StringView("dock"), StringView("Docking"),
+		StringView("Parking panels: the split tree, dividers, tabs and the saved arrangement."), {},
+		s_dockTests},
 
 	TestGroup{StringView("window"), StringView("Windows"),
 		StringView("A second Root window, and render queues compiled before any window exists."),

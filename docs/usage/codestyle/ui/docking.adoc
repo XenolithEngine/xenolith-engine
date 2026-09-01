@@ -130,10 +130,19 @@ dock->movePanel("console", otherFrame);           // carry it across
 dock->closePanel("console");                      // the last one out folds the frame away
 ----
 
-The builder runs **at most once**. The node it returns is held by the system
-across every move, so a panel keeps its scroll position, its selection and its
-half-typed text when it is dragged somewhere else — none of which would show up
-in a layout dump, which is why the test counts builder calls.
+The builder runs **at most once**. The node it returns is held across every
+move, so a panel keeps its scroll position, its selection and its half-typed
+text when it is dragged somewhere else — none of which would show up in a layout
+dump, which is why the test counts builder calls.
+
+It is held by a **`ui::PanelRegistry`**, not by the dock: the descriptors, the
+built nodes, and the record of which container currently holds each panel.
+`DockSystem::create()` makes one; `create(registry)` takes one that already
+exists, which is how a dock and a `ui::AccordionView` come to share a set of
+panels — and how a panel can be dragged out of a frame into a stack of sections
+and back, as the same node. The registry is what enforces the rule that makes
+that safe: a panel is parked in exactly ONE place, and acquiring it tells the
+previous holder to give it up. See [accordion.adoc](accordion.adoc).
 
 Closing the last panel of a frame collapses it and its sibling takes the space,
 unless the frame was declared `Permanent`.
@@ -233,6 +242,7 @@ succeeds, so a malformed file leaves what is on screen untouched.
 | the whole tree left empty | one default frame |
 | a registered panel the file never mentions | **stays closed** — that is the point of persisting |
 | ...unless it is `OpenByDefault` | opened, into its `defaultFrame` or the largest frame |
+| ...unless another container is holding it | left where it is. With a shared registry a dock's save is one HALF of an arrangement, and the other half's panels are not this one's to claim |
 | the same id twice | the first wins, the rest are dropped with a warning |
 
 ## Traps
@@ -250,7 +260,8 @@ succeeds, so a malformed file leaves what is on screen untouched.
 
 ## Trying it
 
-`tests/window` carries four dock tests, each self-checking:
+`tests/window` carries four dock tests, plus one that pairs a dock with an
+accordion over a single registry. Each is self-checking:
 
 [source,sh]
 ----
@@ -258,7 +269,11 @@ XL_DOCK_LAYOUT_TEST=1   ./testapp --headless   # the tree, the minimums, the til
 XL_DOCK_SPLITTER_TEST=1 ./testapp --headless   # dividers, clamping, the drag fixed point
 XL_DOCK_TABS_TEST=1     ./testapp --headless   # tabs, lazy content, the drop zones
 XL_DOCK_PERSIST_TEST=1  ./testapp --headless   # save / rearrange / restore round trip
+XL_ACCORDION_TEST=1     ./testapp --headless   # a dock and an accordion over ONE panel registry
 ----
+
+They are also in the test registry as the `dock` group, so the inspector reaches
+one by name (`layout dock/dock-tabs`) without restarting the app.
 
 Each registers inspector commands for its own state — `dock-layout.layout` dumps
 the whole tree, `dock-tabs.hit-test` resolves a drop point, `dock-tabs.builds`
@@ -275,4 +290,6 @@ verified through the real input path rather than through the arithmetic alone.
   `fit-content` protocol the tab strip and the frame minimum are built on.
 * [css-subset.adoc](../../ui/css-subset.adoc) — what the stylesheet above can and
   cannot say.
+* [accordion.adoc](accordion.adoc) — the other consumer of the panel vocabulary,
+  and the `PanelRegistry` the two of them share.
 * [forms.adoc](forms.adoc) — the same coordinator-system shape, for a form.
