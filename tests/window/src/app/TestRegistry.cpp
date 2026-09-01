@@ -78,6 +78,7 @@
 #include "widgets/HitTestLayout.h"
 #include "widgets/TooltipLayout.h"
 #include "widgets/ScrollThrashLayout.h"
+#include "widgets/SelectionLayout.h"
 #include "text/ShapingLayout.h"
 #include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
@@ -481,6 +482,22 @@ static const TestInfo s_widgetsTests[] = {
 				   "--headless-no-pointer takes away. Inspector: scrollbar.state, scrollbar.scroll, "
 				   "scrollbar.reset-taps."),
 		TestRegistry_make<ScrollBarLayout>, true},
+
+	TestInfo{StringView("selection"), StringView("XL_SELECTION_TEST"),
+		StringView("The scene-wide selection chain"),
+		StringView("Two lists and a plain node over one SelectionSystem. One thing is selected at a "
+				   "time, scene-wide, and the loser is told; the identity survives its row being "
+				   "recycled away, which is when the chain falls back to the owning container; and "
+				   "moving the selection between two rows of the same list must not restyle a "
+				   "single ancestor - that last one is counted, not looked at, because a "
+				   "release-before-retain implementation passes every other check. It also carries "
+				   "a real ui::TreeView opted in as an owner, where expanding a category ABOVE "
+				   "the selected row must leave the selection on the same element, and hotkey "
+				   "subscribers at four depths, which is the only way the deepest-first delivery "
+				   "order is observable. Inspector: selection.state, selection.select, "
+				   "selection.materialize, selection.node, selection.hotkey-log, "
+				   "selection.clear-log, selection.set-consume."),
+		TestRegistry_make<SelectionLayout>, true},
 };
 
 // src/text - text shaping

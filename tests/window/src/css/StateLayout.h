@@ -60,6 +60,8 @@ public:
 protected:
 	virtual void registerCommands() override;
 
+	Node *selectionSample(StringView) const;
+
 	// Everything the script addresses by name. `panel` and `nested` are the focus-within pair
 	struct Sample {
 		String name;
@@ -73,6 +75,16 @@ protected:
 	void addSample(StringView name, Node *);
 
 	Vector<Sample> _samples;
+
+	// The selection trio (+ a sibling leaf), and whichever leaf currently wears the marker
+	Node *_selOuter = nullptr;
+	Node *_selInner = nullptr;
+	Node *_selLeaf = nullptr;
+	Node *_selLeaf2 = nullptr;
+	Node *_selected = nullptr;
+
+	// The chain currently carrying the marker - what updateSelectionChain must be handed to undo
+	Vector<Rc<Node>> _chain;
 
 	ui::FormSystem *_form = nullptr;
 
