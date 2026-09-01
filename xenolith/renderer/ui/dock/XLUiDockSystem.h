@@ -26,6 +26,7 @@
 #include "XLUiDockTree.h"
 #include "XLUiDockFrame.h"
 #include "XLUiDockDragVisuals.h"
+#include "XLUiPanelHost.h"
 #include "XLDropTarget.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -54,8 +55,14 @@ a frame can never end up smaller than the largest panel it holds.
 
 THE THREE PASSES, kept separate on purpose. `updateMinimums` is pure and may run inside
 handleMeasure; `distribute` writes only into the tree; `commitGeometry` is the only thing that
-touches a node. That separation is what makes the measurement protocol safe to answer. */
-class SP_PUBLIC DockSystem : public System {
+touches a node. That separation is what makes the measurement protocol safe to answer.
+
+WHERE THE PANELS THEMSELVES LIVE. Not here: in a ui::PanelRegistry, which this system creates for
+itself unless one is handed to it. Sharing one with another container - a ui::AccordionView - is what
+lets a panel be dragged from this dock into that one and arrive with its node intact. Every panel
+method below therefore reads as "my structure, plus whatever the registry says", and the registry is
+what enforces that a panel is parked in exactly one place at a time. */
+class SP_PUBLIC DockSystem : public System, public PanelHost {
 public:
 	// same band as LayoutSystem: after styling has resolved, before anything user-level
 	static constexpr uint32_t DockDefaultPriority = System::DefaultPriority - 100;
@@ -89,6 +96,10 @@ public:
 
 	virtual bool init() override;
 
+	// Run against a registry somebody else owns, so this dock and another container share one set of
+	// panels: dragging one across then moves the node rather than rebuilding it.
+	virtual bool init(Rc<PanelRegistry> &&);
+
 	virtual void handleAdded(Node *) override;
 	virtual void handleRemoved() override;
 	virtual void handleLayoutChildren() override;
@@ -101,13 +112,17 @@ public:
 	static DockSystem *findForNode(Node *);
 
 	// --- panel registry ----------------------------------------------------
+	//
+	// Convenience forwards: the registry is where a panel actually is described and built. Use them
+	// for a dock that owns its registry; reach for the registry itself when two containers share it.
 
 	// Register what a panel is. The content node is not built here: `builder` runs at most once,
 	// on first show, and the node is then kept across moves so a panel keeps its state when it is
-	// dragged into another frame.
+	// dragged into another frame - or into another container entirely.
 	void registerPanel(DockPanelDescriptor &&);
 	void unregisterPanel(StringView id);
-	const DockPanelDescriptor *getPanelDescriptor(StringView id) const;
+
+	virtual PanelRegistry *getPanelRegistry() const override { return _registry; }
 
 	// --- structure ---------------------------------------------------------
 
@@ -126,12 +141,28 @@ public:
 
 	// Show a panel. An empty `target` resolves to the descriptor's defaultFrame, then to the frame
 	// the panel was last in, then to the largest one.
+	//
+	// A panel another container is holding is taken from it: the registry evicts the previous host
+	// as part of handing the node over, so nothing here has to ask first.
 	bool openPanel(StringView id, DockNodeHandle target = DockNodeHandle(),
 			size_t index = maxOf<size_t>());
-	bool closePanel(StringView id);
-	bool activatePanel(StringView id);
+	virtual bool closePanel(StringView id) override;
+	virtual bool activatePanel(StringView id) override;
 	bool movePanel(StringView id, DockNodeHandle target, size_t index = maxOf<size_t>());
-	bool isPanelOpen(StringView id) const;
+	virtual bool isPanelOpen(StringView id) const override;
+
+	// --- PanelHost ---------------------------------------------------------
+
+	virtual Ref *getPanelHostRef() override { return this; }
+
+	// Take the panel out of the tree without reporting it closed: it is moving elsewhere. The node
+	// is untouched - the registry hands it to the new host - and an emptied frame folds away exactly
+	// as it does for a close.
+	virtual void releasePanel(StringView id) override;
+
+	// The dock root. It is inside the StyleResolver's subtree and it is never clipped, so a ghost
+	// parked here takes its `dock-drag-ghost` rule and survives crossing every frame boundary.
+	virtual Node *getPanelDecoratorParent() const override { return _owner; }
 
 	// --- frames ------------------------------------------------------------
 
@@ -225,6 +256,11 @@ protected:
 	// create the scene node for every slot that has none, drop the ones whose slot is gone
 	void syncNodes();
 
+	// Take every panel node parked inside `roots` out of the scene WITHOUT cleanup, before those
+	// subtrees are destroyed. The registry outlives them and may be shared, so this is scoped: a
+	// panel belonging to another container must not be touched. See the body for the full reason.
+	void detachPanelsUnder(const Set<Node *> &roots);
+
 	void commitGeometry();
 
 	// re-parent the active panel's content into a frame's body, building it on first show, and
@@ -235,6 +271,10 @@ protected:
 	void updateFrameTabs(DockTreeNode &);
 
 	Node *acquireContent(StringView panelId);
+
+	// The body of both closePanel and releasePanel: the panel leaves the tree and an emptied frame
+	// folds away. `notify` is the only difference - a release is a move, not a close.
+	bool takePanelOut(StringView id, bool notify);
 
 	// coalesce: mutations only mark the owner dirty, so many of them cost one placement per frame
 	void invalidateLayout();
@@ -253,10 +293,10 @@ protected:
 	bool handleDragDrop(const DragEvent &, DragActions);
 
 	DockTree _tree;
-	Map<String, DockPanelDescriptor> _descriptors;
 
-	// built content, kept alive across moves between frames and across a frame's destruction
-	Map<String, Rc<Node>> _content;
+	// What a panel is and what its node is, possibly shared with another container. Never null after
+	// init(): a dock with no registry handed to it makes its own.
+	Rc<PanelRegistry> _registry;
 
 	// how the dock receives drags; installed on the owner in handleAdded
 

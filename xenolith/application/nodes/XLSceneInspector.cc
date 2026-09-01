@@ -23,6 +23,7 @@
 #include "XLSceneInspector.h"
 #include "XLInteractiveComponent.h"
 #include "XLFocusWithin.h"
+#include "XLSelection.h"
 
 #include "XLNode.h"
 #include "XLAction.h" // RenderContinuously, for the `render` command
@@ -241,6 +242,14 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 	}
 	if (hasFocusWithin(node)) {
 		out << " :focus-within";
+	}
+	// Both halves of the selection, for the same reason focus-within is printed here: they come
+	// from a marker component, so nothing else in this dump would show them
+	if (isNodeSelected(node)) {
+		out << " :selected";
+	}
+	if (hasSelectionWithin(node)) {
+		out << " :selection-within";
 	}
 
 	auto size = node->getContentSize();

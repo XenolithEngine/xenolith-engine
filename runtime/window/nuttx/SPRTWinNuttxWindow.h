@@ -66,6 +66,10 @@ protected:
 	Extent2 _extent;
 	uint8_t *_shadow = nullptr;
 	size_t _shadowSize = 0;
+
+	// Whether this driver implements FBIO_UPDATE. Probed on the first present and never again:
+	// the answer belongs to the driver, and asking every frame is not free - see present().
+	bool _updateSupported = true;
 };
 
 class NuttxWindow : public NativeWindow {
