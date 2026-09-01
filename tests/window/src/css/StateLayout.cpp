@@ -25,6 +25,7 @@
 #include "XLUiStyleResolver.h"
 #include "XLInteractiveComponent.h"
 #include "XLFocusWithin.h"
+#include "XLSelection.h"
 #include "XLUiControlLock.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -63,6 +64,9 @@ static constexpr auto s_stateCss = StringView(R"css(
 .s-focus:focus-visible { background-color: #d81b60; }
 
 .s-within:focus-within { background-color: #00acc1; }
+
+.s-sel:selected { background-color: #8e24aa; }
+.s-selw:selection-within { background-color: #00897b; }
 )css");
 
 static int64_t encodeColor(const Color4B &c) {
@@ -85,6 +89,12 @@ Value StateLayout::encodeSample(const Sample &sample) const {
 	}
 	if (hasFocusWithin(sample.node)) {
 		flags |= uint32_t(InteractiveState::FocusWithin);
+	}
+	if (hasSelectionWithin(sample.node)) {
+		flags |= uint32_t(InteractiveState::SelectionWithin);
+	}
+	if (isNodeSelected(sample.node)) {
+		flags |= uint32_t(InteractiveState::Selected);
 	}
 	ret.setInteger(int64_t(flags), "flags");
 
@@ -196,6 +206,35 @@ bool StateLayout::init() {
 	addSample("nested", _nested);
 	ui::addFormField(_nested, StringView("nested"));
 
+	// The selection trio, deliberately shaped like the focus-within one above: two ancestors that
+	// must BOTH take `:selection-within`, and a leaf that takes `:selected` as well. They are plain
+	// ui::Panels with no InteractiveComponent of their own - which is the point, since a marker
+	// component is the only way they could carry either state without also claiming `:enabled`.
+	_selOuter = addChild(Rc<ui::Panel>::create(), ZOrder(11));
+	_selOuter->addStyleClass("st");
+	_selOuter->addStyleClass("s-selw");
+	addSample("sel-outer", _selOuter);
+
+	_selInner = _selOuter->addChild(Rc<ui::Panel>::create(), ZOrder(1));
+	_selInner->addStyleClass("st");
+	_selInner->addStyleClass("s-selw");
+	addSample("sel-inner", _selInner);
+
+	_selLeaf = _selInner->addChild(Rc<ui::Panel>::create(), ZOrder(1));
+	_selLeaf->addStyleClass("st");
+	// `s-sel` only: wearing `s-selw` as well would make two rules of EQUAL specificity match this
+	// node - one class and one pseudo-class each - and source order would hand the leaf the
+	// ancestor colour. Its `:selection-within` is asserted through the flags instead.
+	_selLeaf->addStyleClass("s-sel");
+	addSample("sel-leaf", _selLeaf);
+
+	// A second leaf under the SAME inner panel: moving the selection between the two is what
+	// proves the shared ancestors do not blink
+	_selLeaf2 = _selInner->addChild(Rc<ui::Panel>::create(), ZOrder(2));
+	_selLeaf2->addStyleClass("st");
+	_selLeaf2->addStyleClass("s-sel");
+	addSample("sel-leaf2", _selLeaf2);
+
 	return true;
 }
 
@@ -251,7 +290,50 @@ Node *StateLayout::getTarget(const Value &args) const {
 	return nullptr;
 }
 
+Node *StateLayout::selectionSample(StringView name) const {
+	for (auto &it : _samples) {
+		if (it.name == name) {
+			return it.node;
+		}
+	}
+	return nullptr;
+}
+
 void StateLayout::registerCommands() {
+	/* Drive the two markers DIRECTLY, with no SelectionSystem in sight.
+
+	That is the whole point of this group: it asserts that the component, the two InteractiveFlags
+	bits, the selector parser and the five fold-in sites agree with each other - a claim that has to
+	hold before anything is built on top, and one that a system in the middle would only blur. */
+	addCommand("select", "Move the selection marker: {leaf} (empty clears)", [this](Value &&args) {
+		auto leaf = static_cast<const Value &>(args).getString("leaf");
+		auto next = leaf.empty() ? nullptr : selectionSample(leaf);
+
+		// Leaf bit off the old one FIRST, then the chain move, then the leaf bit on the new one.
+		// The chain release is what may take the component away, and it refuses to while `selected`
+		// is still set - so clearing the bit first is what lets a node that is leaving the
+		// selection entirely actually lose its component.
+		if (_selected != next) {
+			// The chains are COLLECTED and kept, not re-walked from the anchors: what has to be
+			// released is what was retained, which stops being derivable the moment a node leaves
+			// the graph. Nothing here detaches anything, but the API takes the chain so that a
+			// caller which does cannot get it wrong
+			Vector<Rc<Node>> chain;
+			buildSelectionChain(next, chain);
+
+			setNodeSelected(_selected, false);
+			updateSelectionChain(_chain, chain);
+			setNodeSelected(next, true);
+
+			_chain = sp::move(chain);
+			_selected = next;
+		}
+
+		Value ret;
+		ret.setString(leaf, "selected");
+		return ret;
+	});
+
 	addCommand("state", "Every sample: its interactive flags and its RESOLVED background/color",
 			[this](Value &&) {
 		Value ret;

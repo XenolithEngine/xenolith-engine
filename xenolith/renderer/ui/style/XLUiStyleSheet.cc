@@ -22,6 +22,7 @@
 
 #include "XLUiStyleSheet.h"
 #include "XLFocusWithin.h"
+#include "XLSelection.h"
 #include "XLNode.h"
 #include "XLInteractiveComponent.h"
 #include "SPDocument.h"
@@ -106,6 +107,14 @@ struct SceneNodeAccess {
 		// be given interactive state just to carry it - see XLUiFocusWithin.h
 		if (hasFocusWithin(n)) {
 			state |= uint32_t(InteractiveState::FocusWithin);
+		}
+		// Same story, same reason: a selectable node is often a plain container, so both halves of
+		// the selection come from a marker component rather than from interactive state
+		if (hasSelectionWithin(n)) {
+			state |= uint32_t(InteractiveState::SelectionWithin);
+		}
+		if (isNodeSelected(n)) {
+			state |= uint32_t(InteractiveState::Selected);
 		}
 		return state;
 	}
