@@ -1,0 +1,249 @@
+# The selection chain
+
+**TL;DR**
+
+* One `SelectionSystem` per scene, on the `SceneContent`, acquired the way
+  `DragSystem` is (`acquireForNode`). **One selection at a time, scene-wide**:
+  selecting into a different container clears the previous one wholesale.
+* A selection is an **owner** plus the **items it handed out**. Items are opaque
+  `SelectionItem`s — an `Rc<Ref>` identity and an index — and **never a `Node *`**:
+  rows are virtualized, so the selected row may have no node at all.
+* A container joins by implementing **`SelectionOwner`** and being told to:
+  `TreeView`/`TableView::setSelectionOwned(true)`. **Opt-in**, because the same
+  widget is what `ui::SearchPicker` and `ui::Select` put inside a popup.
+* CSS: **`:selected`** on the item, **`:selection-within`** on every ancestor up
+  to the root. Both come from a marker component, not from interactive state.
+* Hotkeys are offered **along the chain, deepest first** — the row, its parents,
+  then the container — before the ordinary walk. **`HotkeyFlags::SelectedOnly`**
+  restricts a binding to that pass.
+* **Nothing is derived from focus.** Selection is set by an explicit call and by
+  nothing else; "focusing me selects me" is one line in a widget that wants it.
+
+## Why it exists
+
+The engine could already say *where typing goes*. It could not say *what the user
+is working on* — and three things need that answer: which listener gets a hotkey
+and in what order, which hotkeys may fire at all, and what the whole hierarchy
+looks like in CSS.
+
+Before this, a selection was a `size_t` index private to one widget, with no
+scene-wide meaning; `TreeView` never remapped it on a rebuild, so expanding a
+category above the selected row silently moved the selection onto a different
+element. Two tables that both had a selected row were resolved by nothing but
+paint order. And Ctrl+Z reached the right history only because
+`TextInputManager` allows one IME handler per window.
+
+## Selecting
+
+[source,cpp]
+----
+auto system = SelectionSystem::acquireForNode(this);
+
+// A container with items of its own
+SelectionItem item{modelNode, spanOffset};
+system->select(this, makeSpanView(&item, 1));
+
+// A plain node that IS its own identity - a canvas object, a card, a panel
+system->selectNode(node);
+
+system->clear();
+----
+
+`select()` answers `false` when nothing changed, so a widget may call it on every
+tap without checking first.
+
+## Identity, not index, and not a node
+
+`SelectionItem` is `{Rc<Ref> ref; uint64_t index;}`, and both halves are needed. A
+`TreeView` row is `(ModelNode, offset)`: a `Kind::Span` node stands for many rows
+that share its `ItemId` and differ only by offset. An `ItemId` is allocated once
+and never reused, which is what makes the pair survive a rebuild — an insertion or
+a removal anywhere cannot make an identity mean a different element.
+
+**A node is a projection of an identity, recomputed every frame**, and it may be
+absent: a row scrolled out of its window, or inside a collapsed category, has no
+node while remaining perfectly selected. `SelectionOwner::resolveSelectionNode`
+answers `null` for those, and is asked once per item per frame — keep it to a map
+lookup, and never let it *build* the node. A selection is not a reason to
+materialize a row the user cannot see.
+
+This is also why the **owner** is recorded and not just the items: when nothing is
+materialized, the owner is what the chain anchors on, so a hotkey still reaches
+the container's undo history.
+
+## The chain
+
+`getChain()` is the anchor and every ancestor up to the scene root, deepest first.
+The anchor is:
+
+* the single item's node, when there is **exactly one** item and it is
+  materialized;
+* the **owner's** node otherwise — which covers both a recycled row and a
+  multi-item selection. Anchoring a multi-item selection on an arbitrary one of
+  its items would offer that row's own listener a chord the other selected rows
+  never see; a multi-item operation belongs to the container.
+
+**The chain is published into the committed frame** (`InputListenerStorage::setSelectionChain`)
+during the visit, and the dispatcher reads it from there. It is never re-derived
+at event time: a hotkey callback is entitled to restructure the scene, up to and
+including deleting the node it was reached through, so the walk has to be over
+`Rc`s taken from the frame the user was looking at when they pressed the key.
+
+Consequence: a selection that changes during a commit reaches the storage **one
+frame later**, the same lag `:focus-within` and the hit-test registry already
+have. Do not "fix" it by re-publishing after the commit — that would make the
+storage describe a frame nobody drew.
+
+## Releasing the marker: keep the chain, never re-walk it
+
+`updateSelectionChain` takes **collected chains**, not anchors, and this is not a
+stylistic choice:
+
+[source,cpp]
+----
+Vector<Rc<Node>> next;
+buildSelectionChain(anchor, next);
+updateSelectionChain(_chain, next);   // retains `next` BEFORE releasing `_chain`
+_chain = sp::move(next);
+----
+
+Releasing by walking `getParent()` from the old anchor reads the graph at a moment
+that is not the moment it was retained — and in the ordinary virtualized case the
+anchor has been **detached** in between. The walk stops at the detached node and
+every ancestor above it keeps a count nothing will ever release, so a container
+stays `:selection-within` forever with nothing selected in it.
+
+Retain-before-release is the other half: a shared ancestor of the two chains goes
+`1 -> 2 -> 1` and never loses its component, so neither it nor anything under it is
+restyled for a move that never left it.
+
+## CSS
+
+[source,css]
+----
+tree-row:selected          { background-color: #094771; }
+tree-view:selection-within { outline-color: #3d7ecf; outline-width: 1px; }
+----
+
+`:selected` is **not** the `.selected` class and does not replace it. The class is
+written by `TreeView`, `TableView` and `ui::Chip` to mean "my own current row",
+and two of those are not the scene selection at all — a chip that is on, a nav tab
+that is the current page. A tree row simply wears both.
+
+Both pseudo-classes come from `SelectionComponent`, a marker component, for the
+reason `FocusWithinComponent` is one: `InteractiveComponent` defaults to
+`Enabled`, so writing the bit there would switch `:enabled` on for a plain
+container and `:disabled` off, and only while something happened to be selected.
+
+There is no `:unselected` and no `:not-selection-within`: the negative would match
+every node in the scene.
+
+## Hotkeys along the chain
+
+`InputDispatcher::handleHotkey` gains one pass between the keyboard owner and the
+ordinary walk: the chain, **deepest first**, with the normal walk order breaking
+ties within one chain node. A chain listener that declines is not offered the key
+again below — declining is an answer.
+
+`HotkeyFlags::SelectedOnly` restricts a binding to that pass. It **narrows who is
+offered** the chord and nothing more: the engine contract is still that a handler
+with nothing to do returns `false`, so `TableView`'s reorder keys carry the flag
+*and* keep their own check that there is a row to move.
+
+A binding with `SelectedOnly` on a view that has not opted in is never offered
+anything, so `TableView` adds the flag only while `isSelectionOwned()`.
+
+## Focus
+
+**Nothing here watches focus, and no engine rule ties the two.** The coupling is
+one call in the widget that wants it:
+
+[source,cpp]
+----
+listener->setFocusCallback([this](bool focused) {
+    if (focused) {
+        if (auto system = SelectionSystem::findForNode(this)) {
+            system->selectNode(this);
+        }
+    }
+    // losing focus does NOT clear the selection - see below
+});
+----
+
+An engine-enforced "focus lives inside the selection" cannot be written, for three
+independent reasons:
+
+. `commitStorage` commits **every** `FocusGroup` in the frame. A scene routinely
+  has several — a form, a dock panel, a menu popup — each with its own focused
+  listener, so there is no single "the focus" to be inside anything.
+. `ui::FormSystem` answers `true` for **every** listener while nothing is focused,
+  so "focus is outside the selection" is not decidable.
+. `FocusGroup::setFocus` only records `_nextListener`; the swap fires inside
+  `commitStorage`, after the visit. A selection reacting to a focus commit would
+  publish its answer one commit later, every time.
+
+The coupling is deliberately **asymmetric**: taking focus may select, losing focus
+must not clear. Dropping focus opens `FormSystem`'s gate for every form listener,
+so treating a blur as "nothing is current any more" would clear the selection
+whenever a field was merely left.
+
+`select()` re-entered from inside a change callback is applied by a loop after the
+current delivery returns — never on top of it — and a request equal to the current
+state is dropped before any callback runs. That stops `A -> A`. It does **not**
+stop two owners selecting each other, because neither request ever equals the
+current state, so the loop is bounded at `MaxRedirects` and says so in the log.
+
+## Traps
+
+[cols="1,3"]
+|===
+| Trap | What actually happens
+
+| Putting the bits on `InteractiveComponent`
+| It defaults to `Enabled`, so a plain container given one starts matching
+  `:enabled` and stops matching `:disabled`.
+
+| Releasing the chain before retaining the new one
+| A shared ancestor loses its component for an instant and its whole subtree is
+  restyled for a move that never left it.
+
+| Releasing by walking `getParent()`
+| The anchor may already be detached, and every counter above it is stranded. Keep
+  the chain you retained.
+
+| Addressing a row by `Node *` or by index
+| Rows are virtualized and indices shift on every rebuild. Both are how a
+  selection ends up on a different element with nothing to say it happened.
+
+| Dropping the identity when no row matches
+| "Hidden" and "gone" arrive here identically and need the same answer: keep the
+  identity, drop only the index. Re-expanding a category then brings the selection
+  back, and a stale `ItemId` simply never matches again.
+
+| Making a popup's list a selection owner
+| `ui::SearchPicker` and `ui::Select` drive `setSelectedRow` on lists of their own.
+  A popup that joined the scene selection would silently discard the
+  application's. Participation is opt-in per instance.
+
+| Expecting a selected row to have a listener
+| A `TreeView` row gets an `InputListener` only when selection is enabled, and
+  even then it carries only hover and tap. "The element's own listener receives
+  the hotkey" is a contract the application opts into by subscribing on the row.
+
+| `Node::cleanup()` and the markers
+| `removeFromParent()` defaults to `cleanup()`, which calls `removeAllComponents()`
+  — taking the selection markers *and* the node's name, which is also a component.
+|===
+
+## Verification
+
+`XL_SELECTION_TEST` (`widgets/selection`) and `tests/window/selection-check.py`.
+The stand covers the system and the markers; the driver covers everything that
+only exists across frames — the chain spelled out deepest-first, the delivery
+order of a chord along it, and that holding one selection still for a hundred
+frames restyles nothing.
+
+`XL_STATE_TEST` group 7b drives the two markers directly, with no system in the
+middle, so that the component, the two `InteractiveFlags` bits, the selector
+parser and the five fold-in sites are asserted to agree before anything is built
+on top.
