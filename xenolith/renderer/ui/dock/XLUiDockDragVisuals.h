@@ -23,7 +23,7 @@
 #ifndef XENOLITH_RENDERER_UI_DOCK_XLUIDOCKDRAGVISUALS_H_
 #define XENOLITH_RENDERER_UI_DOCK_XLUIDOCKDRAGVISUALS_H_
 
-#include "XLUiDockTab.h"
+#include "XLUiDockTypes.h"
 #include "XLUiPanel.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {

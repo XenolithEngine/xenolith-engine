@@ -24,6 +24,7 @@
 
 #include "XL2dSceneLayout.h"
 #include "XLUiDockSystem.h"
+#include "XLUiAccordionView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -73,6 +74,11 @@ protected:
 	void runSelfCheck();
 
 	ui::DockSystem *_dock = nullptr;
+
+	// One registry behind BOTH containers, which is the whole reason the accordion is here: a panel
+	// dragged between them is MOVED, node and all, rather than rebuilt on the other side.
+	Rc<ui::PanelRegistry> _registry;
+	ui::AccordionView *_accordion = nullptr;
 
 	Node *_background = nullptr; // full-bleed backdrop behind everything
 	Node *_dockRoot = nullptr;   // flat owner: every DockFrame is its direct child (no layout of its own)
