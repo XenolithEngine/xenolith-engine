@@ -75,6 +75,7 @@ the `scene/` articles route to it rather than restating it.
 | [Node / System / Component](scene/node-system-component.adoc) | adding behaviour or data to the scene graph — read **before** subclassing `Node` |
 | [Drag and drop](scene/drag-and-drop.adoc) | making something draggable or droppable; the payload a drag and the clipboard share |
 | [Global hotkeys](scene/hotkeys.adoc) | a named key combination delivered ahead of the ordinary key route; registering, subscribing, delivery order |
+| [The selection chain](scene/selection.adoc) | what the user is working ON: one selection per scene, `:selected`/`:selection-within`, and hotkeys routed along it |
 
 ### `ui/` — the widget kit
 

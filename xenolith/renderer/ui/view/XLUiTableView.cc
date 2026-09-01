@@ -293,11 +293,26 @@ void TableView::setSelectionEnabled(bool value) {
 }
 
 void TableView::setSelectedRow(size_t index) {
-	if (_selectedRow == index) {
+	// No early return on the index; see TreeView::setSelectedRow
+	setSelectedIdentity((index < _rows.size()) ? _rows[index].getId() : ItemId(0));
+}
+
+void TableView::setSelectedIdentity(ItemId id) {
+	if (_selectedId == id) {
 		return;
 	}
+
 	const auto prev = _selectedRow;
-	_selectedRow = index;
+
+	_selectedId = id;
+
+	// The index is a PROJECTION of the identity, so it is derived rather than assigned
+	remapSelection();
+
+	const auto index = _selectedRow;
+	if (prev == index) {
+		return;
+	}
 
 	// Selection changes no row's SHAPE, so it never rebuilds: flip the class on the two nodes
 	// involved, if they happen to be on screen.
@@ -314,6 +329,119 @@ void TableView::setSelectedRow(size_t index) {
 	depending on which widget the caller happened to hold. "Moving the selection" and "the user
 	picked a row" are different events, and only the widget that received the tap knows which one
 	happened. */
+
+	publishSelection();
+}
+
+void TableView::bindReorderHotkeys() {
+	if (!_reorderKeys) {
+		return;
+	}
+
+	auto &hk = EngineHotkeys::get();
+
+	/* SelectedOnly only once this table actually owns the scene's selection.
+
+	Unconditionally would silence reordering everywhere, because ownership is opt-in: a table that
+	never joined the selection is never on the chain, so the flag would decline the chord for it
+	forever. What the flag buys where it does apply is the case that has no other answer - two
+	tables that both have a selected row, resolved today by nothing but paint order.
+
+	The flag NARROWS WHO IS OFFERED the key; it does not replace handleReorderHotkey's own check
+	that there is a row to move. Those are different questions, and the engine contract is that a
+	handler with nothing to do returns false so the chord falls through to whoever is below. */
+	const auto flags = HotkeyFlags::Repeatable
+			| (_selectionOwned ? HotkeyFlags::SelectedOnly : HotkeyFlags::None);
+
+	_reorderKeys->removeHotkey(hk.moveItemUp);
+	_reorderKeys->removeHotkey(hk.moveItemDown);
+
+	_reorderKeys->addHotkey(hk.moveItemUp, [this](HotkeyId, const InputEvent &) {
+		return handleReorderHotkey(false);
+	}, flags);
+	_reorderKeys->addHotkey(hk.moveItemDown, [this](HotkeyId, const InputEvent &) {
+		return handleReorderHotkey(true);
+	}, flags);
+
+	/* No touch filter, deliberately, and the one that used to be here is gone.
+
+	Its comment said a key event carries the last pointer position, so the default filter would
+	answer Alt+Up only while the mouse happened to hover the table. That was true of the hand-rolled
+	key binding this replaced; it has not been true since the hotkey path arrived.
+	InputListener::handleHotkey is called by the dispatcher directly and consults neither
+	canHandleEvent nor the touch filter - so the filter guarded nothing, on a listener that has no
+	recognizers to guard. */
+}
+
+void TableView::setSelectionOwned(bool value) {
+	if (_selectionOwned == value) {
+		return;
+	}
+	_selectionOwned = value;
+
+	// The reorder bindings are gated on ownership, so they have to be re-flagged when it changes
+	bindReorderHotkeys();
+
+	if (_selectionOwned) {
+		publishSelection();
+	} else if (auto system = SelectionSystem::findForNode(this)) {
+		// Only if it was ours; see TreeView::setSelectionOwned
+		if (system->getOwner() == this) {
+			system->clear();
+		}
+	}
+}
+
+SelectionItem TableView::makeSelectionItem(size_t index) const {
+	if (index >= _rows.size()) {
+		return SelectionItem();
+	}
+	// A table row is one model node, so unlike a tree there is no span offset to carry
+	return SelectionItem{_rows[index].node.get(), 0};
+}
+
+void TableView::publishSelection() {
+	if (!_selectionOwned || _applyingSelection) {
+		return;
+	}
+
+	auto system = SelectionSystem::acquireForNode(this);
+	if (!system) {
+		return;
+	}
+
+	if (_selectedId == ItemId(0)) {
+		if (system->getOwner() == this) {
+			system->clear();
+		}
+		return;
+	}
+
+	if (_selectedRow < _rows.size()) {
+		auto item = makeSelectionItem(_selectedRow);
+		system->select(this, makeSpanView(&item, 1));
+	}
+}
+
+Node *TableView::resolveSelectionNode(const SelectionItem &item) const {
+	for (size_t i = 0; i < _rows.size(); ++i) {
+		if (_rows[i].node.get() == item.ref.get()) {
+			return getRowNode(i);
+		}
+	}
+	return nullptr;
+}
+
+void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {
+	_applyingSelection = true;
+
+	if (items.empty()) {
+		setSelectedIdentity(ItemId(0));
+	} else if (auto node = dynamic_cast<ModelNode *>(items.front().ref.get())) {
+		setSelectedIdentity(node->getId());
+	}
+
+	_applyingSelection = false;
 }
 
 // A model change no longer needs the whole table rebuilt: the node's revision is in the RowKey, so
@@ -597,10 +725,32 @@ void TableView::rebuildHeader() {
 	buildCells(_header, nullptr, 0, true);
 }
 
+void TableView::remapSelection() {
+	if (_selectedId == ItemId(0)) {
+		_selectedRow = maxOf<size_t>();
+		return;
+	}
+
+	for (size_t i = 0; i < _rows.size(); ++i) {
+		if (_rows[i].getId() == _selectedId) {
+			_selectedRow = i;
+			return;
+		}
+	}
+
+	// No row shows this identity right now - hidden or gone, which need the same answer. Only the
+	// INDEX is dropped; see TreeView::remapSelection for why the identity is kept
+	_selectedRow = maxOf<size_t>();
+}
+
 void TableView::rebuildRows() {
 	if (!_controller) {
 		return;
 	}
+
+	// BEFORE the nodes are made: makeRow() reads _selectedRow to decide whether the row it is
+	// building wears the selection
+	remapSelection();
 
 	const auto force = _forceRebuild;
 	_forceRebuild = false;
@@ -694,10 +844,19 @@ auto TableView::getRowNode(size_t index) const -> RowNode * {
 }
 
 void TableView::updateRowNode(RowNode *node, size_t index) {
-	if (index == _selectedRow) {
+	const auto selected = (index == _selectedRow);
+
+	if (selected) {
 		node->addStyleClass("selected");
 	} else {
 		node->removeStyleClass("selected");
+	}
+
+	// And the scene-wide half - a different claim from the class, and applied per node rather than
+	// once per selection change because a virtualized row's node is recycled underneath it. See
+	// TreeView::updateRowNode
+	if (_selectionOwned) {
+		setNodeSelected(node, selected);
 	}
 }
 
@@ -942,24 +1101,7 @@ void TableView::updateReorderSystems() {
 
 		if (!_reorderKeys) {
 			_reorderKeys = addSystem(Rc<InputListener>::create());
-
-			auto &hk = EngineHotkeys::get();
-			_reorderKeys->addHotkey(hk.moveItemUp, [this](HotkeyId, const InputEvent &) {
-				return handleReorderHotkey(false);
-			}, HotkeyFlags::Repeatable);
-			_reorderKeys->addHotkey(hk.moveItemDown, [this](HotkeyId, const InputEvent &) {
-				return handleReorderHotkey(true);
-			}, HotkeyFlags::Repeatable);
-
-			// A key event carries the last pointer position, so the default filter would answer
-			// Alt+Up only while the mouse happened to hover the table.
-			_reorderKeys->setTouchFilter(
-					[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
-				if (event.data.isKeyEvent()) {
-					return true;
-				}
-				return cb(event);
-			});
+			bindReorderHotkeys();
 		}
 	} else {
 		hideInsertionLine();
@@ -1078,22 +1220,12 @@ bool TableView::reorderRow(size_t from, size_t to) {
 		return false;
 	}
 
-	/* The selection follows the ROW, not the index.
+	/* The selection follows the ROW, and it does so BY ITSELF now.
 
-	Computed here rather than left to the caller, because the caller answers in model terms and the
-	selection is the view's. A selection left on its old number silently points at whatever slid
-	into that place. */
-	if (_selectedRow != maxOf<size_t>()) {
-		size_t selected = _selectedRow;
-		if (selected == from) {
-			selected = to;
-		} else if (from < selected && selected <= to) {
-			--selected;
-		} else if (to <= selected && selected < from) {
-			++selected;
-		}
-		setSelectedRow(selected);
-	}
+	This used to recompute the index by hand here - the only remap in either view, and correct only
+	for the one mutation it was written for. It is deleted rather than kept alongside remapSelection()
+	because the two would both fire on a reorder and apply the shift twice. The identity is stored,
+	the rebuild re-derives the index from it, and a reorder is simply a rebuild. */
 	return true;
 }
 

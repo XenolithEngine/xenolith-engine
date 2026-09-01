@@ -22,6 +22,7 @@
 
 #include "XLUiStyleResolver.h"
 #include "XLFocusWithin.h"
+#include "XLSelection.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiScrollSystem.h"
@@ -964,6 +965,7 @@ void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask 
 				|| mask.count(NodeIdentity::Id.value) != 0
 				|| mask.count(InteractiveComponent::Id.value) != 0
 				|| mask.count(FocusWithinComponent::Id.value) != 0
+				|| mask.count(SelectionComponent::Id.value) != 0
 				|| mask.count(StyleSystemState::Id.value) != 0
 				// a node-local custom property changed: nothing moved and no rule started or
 				// stopped matching, so this is the only signal that its style is stale
@@ -1017,6 +1019,12 @@ void StyleResolver::apply() {
 	// fires on a node whose only change was gaining or losing `:focus-within`.
 	if (hasFocusWithin(_owner)) {
 		currentInteractiveMask |= toInt(InteractiveState::FocusWithin);
+	}
+	if (hasSelectionWithin(_owner)) {
+		currentInteractiveMask |= toInt(InteractiveState::SelectionWithin);
+	}
+	if (isNodeSelected(_owner)) {
+		currentInteractiveMask |= toInt(InteractiveState::Selected);
 	}
 
 	if (currentInteractiveMask == _interactiveMask && currentSourceId == _sourceSystemId

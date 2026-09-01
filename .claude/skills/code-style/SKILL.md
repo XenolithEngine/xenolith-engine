@@ -284,6 +284,27 @@ lifetime, or for error detection. Details and examples:
     suite; ported bit arithmetic carrying a "transcribed literally" comment is
     not to be simplified.
 
+30. **One selection per scene, addressed by IDENTITY, and never derived from
+    focus.** `SelectionSystem` sits on the `SceneContent` like `DragSystem`;
+    selecting into a different container clears the previous selection wholesale.
+    A container joins by implementing `SelectionOwner` and being told to
+    (`setSelectionOwned(true)`) — **opt-in**, because the same `TreeView` is what
+    a picker puts inside a popup. An item is an opaque `SelectionItem`
+    (`Rc<Ref>` + index), **never a `Node *` and never an index**: rows are
+    virtualized, so a selected row often has no node, and an index shifts on every
+    rebuild. The node is a projection, re-resolved each frame; the OWNER is what
+    the chain falls back to when nothing is materialized. CSS gets `:selected` on
+    the item and `:selection-within` on every ancestor, from a marker component —
+    `InteractiveComponent` defaults to `Enabled` and would switch `:enabled` on
+    for a plain container. **The chain is published into the committed frame** and
+    walked deepest-first for hotkeys ahead of the ordinary route;
+    `HotkeyFlags::SelectedOnly` restricts a binding to that pass but never excuses
+    a handler from returning `false` when it has nothing to do. Keep the chain you
+    retained and release exactly it — re-walking `getParent()` strands every
+    counter above a row that was detached in between. Focus coupling is one
+    explicit call in the widget that wants it, and it is asymmetric: taking focus
+    may select, losing focus must not clear.
+
 ## Where to read more
 
 | Task | Article |
@@ -297,6 +318,7 @@ lifetime, or for error detection. Details and examples:
 | What the formatter enforces and what it deliberately leaves alone | [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc) |
 | Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [strings.adoc](../../../docs/usage/codestyle/core/strings.adoc) |
 | Comparing or sorting text, case mapping, domain names, touching a generated Unicode table | [unicode-and-text.adoc](../../../docs/usage/codestyle/core/unicode-and-text.adoc) |
+| Selecting something, routing a hotkey or an Undo to what is selected, `:selected` / `:selection-within` | [selection.adoc](../../../docs/usage/codestyle/scene/selection.adoc) |
 | A function that can fail; `Status`/`Result<T>`, logging, assertions | [errors-and-status.adoc](../../../docs/usage/codestyle/core/errors-and-status.adoc) |
 | Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [threads-and-dispatch.adoc](../../../docs/usage/codestyle/core/threads-and-dispatch.adoc) |
 | Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |

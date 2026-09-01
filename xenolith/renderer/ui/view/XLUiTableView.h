@@ -34,6 +34,7 @@
 #include "XL2dLayer.h"
 #include "XLDragSource.h"
 #include "XLDropTarget.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -107,7 +108,9 @@ The `table-icon` above is what CellBuilder::setIcon adds, before the cell's labe
 Declare the horizontal rules with `border-bottom` rather than `border-top`: a virtualized row
 collapses only the borders it can see - the vertical lines between its own cells, and its own top
 and bottom - so a line declared on both sides of a row boundary is drawn twice. */
-class SP_PUBLIC TableView : public Panel {
+/* A table view can hold the SCENE'S selection, not just one of its own - opt-in per instance, see
+setSelectionOwned(). */
+class SP_PUBLIC TableView : public Panel, public SelectionOwner {
 public:
 	using Model = data::Model;
 	using ModelNode = data::Model::Node;
@@ -265,6 +268,20 @@ public:
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
 	size_t getSelectedRow() const { return _selectedRow; }
 
+	/* Join the SCENE-WIDE selection - see TreeView::setSelectionOwned, which this mirrors exactly,
+	including why it is opt-in.
+
+	It is also what makes the reorder keys land in the right table: two tables that both have a
+	selected row are resolved today by nothing but paint order. */
+	virtual void setSelectionOwned(bool);
+	bool isSelectionOwned() const { return _selectionOwned; }
+
+	// --- SelectionOwner ----------------------------------------------------
+
+	virtual Node *getSelectionOwnerNode() override { return this; }
+	virtual Node *resolveSelectionNode(const SelectionItem &) const override;
+	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
+
 	// Re-derive the rows and re-request their data.
 	virtual void invalidateSource();
 
@@ -362,6 +379,25 @@ protected:
 			Map<uint64_t, Value> &);
 
 	virtual void rebuildRows();
+
+	/* Put _selectedRow back on the row it was on, by IDENTITY, after _rows has been re-derived.
+
+	Same job as TreeView::remapSelection, and the same reason. It also REPLACES the hand-written
+	index arithmetic reorderRow used to do: a reorder is a rebuild like any other, so the selection
+	follows the row through the identity it already has, and there is no second formula that has to
+	agree with the first. */
+	void remapSelection();
+
+	// The single mutator both setSelectedRow() and handleSelectionChanged() go through; see
+	// TreeView::setSelectedIdentity for what the indirection buys
+	void setSelectedIdentity(ItemId);
+
+	void publishSelection();
+
+	// (Re-)register the reorder chords on _reorderKeys with the flags ownership currently implies
+	void bindReorderHotkeys();
+
+	SelectionItem makeSelectionItem(size_t index) const;
 	virtual void rebuildHeader();
 	virtual Rc<Node> makeRow(size_t index);
 	virtual Rc<Node> buildRowNode(RowBuilder &);
@@ -429,6 +465,15 @@ protected:
 	// so the first answer is never swallowed as "unchanged".
 	float _reportedHeight = nan();
 	size_t _selectedRow = maxOf<size_t>();
+
+	// WHAT is selected, as opposed to where it currently sits; _selectedRow is derived from this on
+	// every rebuild. See remapSelection()
+	ItemId _selectedId = ItemId(0);
+
+	bool _selectionOwned = false;
+
+	// Set while applying a change that came FROM the system; see TreeView
+	bool _applyingSelection = false;
 
 	bool _autoHeight = false;
 	bool _headerVisible = true;

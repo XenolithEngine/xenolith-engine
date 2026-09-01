@@ -79,9 +79,36 @@ child (`A > B`), adjacent sibling (`A + B`), general sibling (`A ~ B`), comma
 lists. Specificity is the standard (id, class+pseudo, tag) triple, with source
 order breaking ties. [`XL_COMBINATOR_TEST`, `XL_SPECIFICITY_TEST`]
 
-Interactive pseudo-classes that really work: `:hover`, `:focus`, `:active`,
-`:checked`, `:enabled`, `:disabled` — driven by `ui::InteractiveComponent`, so
-they need an input listener on the node. [`XL_HOVER_TEST`]
+Interactive pseudo-classes that really work: `:hover`, `:focus`, `:focus-visible`,
+`:active`, `:checked`, `:enabled`, `:disabled`, `:invalid`, `:valid`,
+`:read-only`, `:read-write`, `:indeterminate`, `:required`, `:optional`,
+`:default` — driven by `ui::InteractiveComponent`, so they need an input listener
+on the node. [`XL_HOVER_TEST`, `XL_STATE_TEST`]
+
+Three more are published by **marker components** rather than by interactive
+state, because the node that carries them is usually a plain container and giving
+it interactive state would switch `:enabled` on for it as a side effect:
+
+[cols="1,4"]
+|===
+| Pseudo-class | What it means
+
+| `:focus-within`
+| The focused listener is on this node or below it (`FocusWithinComponent`).
+
+| `:selected`
+| This node is an item of the **scene's** selection — not the same thing as the
+  `.selected` class, which several widgets write to mean "my own current row" (a
+  chip that is on, a nav tab that is the current page). A tree row wears both.
+
+| `:selection-within`
+| The selection is on this node or below it, so a stylesheet can light up the
+  whole hierarchy leading down to what is selected.
+|===
+
+See [The selection chain](../codestyle/scene/selection.adoc). There is
+deliberately no `:unselected` or `:not-focus-within`: the negative would match
+every node in the scene. [`XL_STATE_TEST`, `XL_SELECTION_TEST`]
 
 A node carrying **no** `InteractiveComponent` reads as state zero, and
 `:disabled` is implemented as "not `:enabled`" — so a widget that never wrote the

@@ -31,6 +31,7 @@
 #include "XL2dScrollController.h"
 #include "XLUiRowGeometry.h"
 #include "XLDropTarget.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -92,7 +93,9 @@ in C++:
   .tree-label { flex-grow:1; font-size:13px; white-space:nowrap; }
 
 A row also carries `expanded` / `collapsed` / `leaf`, `loading` and `selected` style classes. */
-class SP_PUBLIC TreeView : public Panel {
+/* A tree view can hold the SCENE'S selection, not just one of its own - opt-in per instance, see
+setSelectionOwned(). */
+class SP_PUBLIC TreeView : public Panel, public SelectionOwner {
 public:
 	using Model = data::Model;
 	using ModelNode = data::Model::Node;
@@ -294,6 +297,28 @@ public:
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
 	size_t getSelectedRow() const { return _selectedRow; }
 
+	/* Join the SCENE-WIDE selection: this view's selected row becomes the one thing the scene
+	considers current, its rows match `:selected`, the view itself matches `:selection-within`, and
+	hotkeys are offered to the row and then to this view before anything else (see
+	SelectionSystem, XLSelectionSystem.h).
+
+	OPT-IN, and it has to be. A TreeView is also what ui::SearchPicker and ui::Select put inside a
+	popup, and those drive setSelectedRow() on lists of their own. If every view joined on
+	construction, opening a picker would take the scene's selection away from whatever the user was
+	actually working on and never give it back. So a private list keeps the private index it has
+	always had, and an application says which view is the real one. */
+	virtual void setSelectionOwned(bool);
+	bool isSelectionOwned() const { return _selectionOwned; }
+
+	// --- SelectionOwner ----------------------------------------------------
+
+	virtual Node *getSelectionOwnerNode() override { return this; }
+
+	// The row node showing this item, or null while it is scrolled out or inside a collapsed branch
+	virtual Node *resolveSelectionNode(const SelectionItem &) const override;
+
+	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
+
 	// Re-derive the rows and re-request their data. Only the ROOT Source is watched through a
 	// DataListener — Source has no parent links, so a subcategory's setDirty() does not reach it —
 	// so call this after mutating a subcategory from outside.
@@ -447,6 +472,33 @@ protected:
 	// requestRebuildNodes(). Rows whose RowKey survived keep their nodes.
 	virtual void rebuildRows();
 
+	/* Put _selectedRow back on the row it was on, by IDENTITY, after _rows has been re-derived.
+
+	The index alone does not survive a rebuild and never did: expanding a category above the
+	selected row shifts every row below it, so the same number now names a different element and
+	the highlight silently moves. Nothing about that is visible in a layout dump - the selection is
+	still "row 7", it is simply the wrong row 7.
+
+	The identity is what is stored (see _selectedId); the index is a PROJECTION of it, recomputed
+	here. A selection whose row is gone from the model entirely - its category collapsed, its
+	element deleted - is dropped rather than moved to a neighbour. */
+	void remapSelection();
+
+	/* Move the selection to an IDENTITY rather than to an index - the single mutator both
+	setSelectedRow() and handleSelectionChanged() go through, so the two cannot drift.
+
+	An identity that is not currently a row (its category is collapsed) is still REMEMBERED: the
+	index becomes maxOf, and re-expanding the category brings the selection back. That is the
+	difference between "not on screen" and "not selected", and only the identity can tell them
+	apart. */
+	void setSelectedIdentity(ItemId, uint64_t offset);
+
+	// Hand the current selection to the scene's SelectionSystem. No-op unless owned
+	void publishSelection();
+
+	// The opaque identity of row `index`, as SelectionSystem stores it
+	SelectionItem makeSelectionItem(size_t index) const;
+
 	virtual Rc<Node> makeRow(size_t index);
 	virtual Rc<Node> buildRowNode(RowBuilder &);
 
@@ -498,6 +550,21 @@ protected:
 	DataListener<Model> *_sourceListener = nullptr;
 
 	Vector<Row> _rows;
+
+	/* WHAT IS SELECTED, as opposed to where it currently sits. `_selectedRow` is derived from this
+	on every rebuild; this is the thing that is actually true across one.
+
+	Both halves are needed: a Span node stands for many rows that share its ItemId and differ only
+	by offset, so the id alone could not tell the third element of a span from the fourth. */
+	ItemId _selectedId = ItemId(0);
+	uint64_t _selectedOffset = 0;
+
+	bool _selectionOwned = false;
+
+	// Set while this view is applying a change that CAME FROM the system, so publishSelection()
+	// does not hand the system back what it just said. The equality checks would stop the cycle
+	// anyway; this stops it from starting
+	bool _applyingSelection = false;
 
 	// By id rather than by node pointer: a category that is collapsed, dropped and lazily reloaded
 	// comes back as a different object but the same element, and the subtree that was open under it
