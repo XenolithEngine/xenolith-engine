@@ -240,8 +240,12 @@ lifetime, or for error detection. Details and examples:
     `SystemManagedLayout` marker enforces the second and tells the style resolver
     the dock owns its children's `ContentSize`), and a frame is identified by its
     `DockNodeHandle`, **never** by child index — `sortAllChildren` is unstable.
-    A panel is registered once (`id`, title, icon, minimum, **lazy builder**) and
-    its node is built at most once and then kept across every move. Constraints
+    A panel is registered once (`id`, title, icon, minimum, **lazy builder**) in a
+    `PanelRegistry`, and its node is built at most once and then kept across every
+    move. That registry can be **shared** with a `ui::AccordionView`, which is what
+    lets a panel be dragged between a dock frame and a stack of sections as the same
+    node; it enforces that a panel is parked in exactly ONE place, and `releasePanel`
+    (a move) is not `closePanel` (the user is done with it). Constraints
     only ever get stronger: a frame's minimum is its declared floor raised to the
     largest panel in it plus the tab strip, and a split's is its children's sum
     along its axis plus the divider. `ratio` divides the space left **after** the
@@ -305,6 +309,7 @@ lifetime, or for error detection. Details and examples:
 | Shipping a directory of resources inside the binary; `FileCategory::Embedded`, `LOCAL_EMBED_DIRS`, the BundleFS format | [embedded-files.adoc](../../../docs/usage/codestyle/core/embedded-files.adoc) |
 | Building a form; adding a field, a validator or a widget of your own to one; Tab order, focus, submit/reset | [ui/forms.adoc](../../../docs/usage/codestyle/ui/forms.adoc) |
 | An IDE-style layout of parked panels: frames, tabs, dividers, drag & drop between frames, saving the arrangement | [ui/docking.adoc](../../../docs/usage/codestyle/ui/docking.adoc) |
+| A vertical stack of collapsible sections declared in advance; sharing panels with a dock and dragging them across by a grip on the header | [ui/accordion.adoc](../../../docs/usage/codestyle/ui/accordion.adoc) |
 | A menu: the item model, the columns that line its rows up, wrapped titles, accelerators, a popup and its submenu chain | [ui/menus.adoc](../../../docs/usage/codestyle/ui/menus.adoc) |
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash, restore-from-trash, and asking whether one type is served at all | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |

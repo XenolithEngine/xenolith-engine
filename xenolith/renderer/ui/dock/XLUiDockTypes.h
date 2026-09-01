@@ -28,6 +28,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
+class PanelHost;
+
 /** The parking system: panels, frames and the tree that divides them.
 
 A PANEL is what an application actually wants on screen - an explorer, an editor, a console. It is
@@ -135,18 +137,30 @@ struct SP_PUBLIC DockNodeHandle {
 	bool operator==(const DockNodeHandle &) const = default;
 };
 
-// What a dragged tab carries as the drag's in-process payload.
+// What a dragged panel handle carries as the drag's in-process payload.
 //
 // A Ref rather than a bare string, because DragData's fast path hands over a live object - and
-// because the SOURCE frame has to travel with the panel: the drop needs it to recognise the cases
+// because WHERE THE PANEL CAME FROM has to travel with it: a drop needs that to recognise the cases
 // that are no-ops, such as dropping a frame's only panel back into that same frame.
+//
+// The origin is recorded twice over, at two granularities, because a panel can be dragged between
+// containers of different kinds: `host` says which container, `source`/`sourceIndex` say where
+// inside it. A target compares the host first - a drag that arrived from somewhere else has no
+// no-op case to check, and its `source` handle means nothing in this container's tree.
 struct SP_PUBLIC DockPanelPayload : public Ref {
 	// The drag's local type tag. A target checks this before touching anything else, and a drag
 	// carrying anything else is simply not ours
 	static constexpr auto TypeName = StringView("xl/dock-panel");
 
 	String panelId;
-	DockNodeHandle source;
+
+	// Two fields for one thing, because PanelHost is deliberately not a Ref (see XLUiPanelHost.h):
+	// `host` is identity and dispatch, `hostRef` is the only thing keeping it alive for the drag.
+	PanelHost *host = nullptr;
+	Rc<Ref> hostRef;
+
+	DockNodeHandle source; // the frame within a dock host; empty for any other kind
+	size_t sourceIndex = maxOf<size_t>(); // the position within a linear host; unset for a dock
 };
 
 // Marker on every frame node: which slot of the tree it materializes.
