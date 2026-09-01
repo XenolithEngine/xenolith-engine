@@ -226,6 +226,18 @@ void NativeWindow::updateLayers(Vector<WindowLayer> &&layers) {
 }
 
 void NativeWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb, Ref *ref) {
+	/* A COMPLETION IS OPTIONAL, and the runtime's own caller relies on that: XcbWindow::mapWindow
+	asks for WindowInfo::fullscreen - the documented "initial fullscreen mode" - with no callback at
+	all, and so does anything else that wants the state changed rather than reported.
+
+	Normalized once, here, because every branch below answers through `cb` and there are fifteen of
+	them, several already moved into continuations. An empty sprt::function is not a callable that
+	does nothing; calling one aborts the process. So a window asked to open fullscreen crashed on
+	the frame it mapped, on the only backend that honours the field. */
+	if (!cb) {
+		cb = [](Status) { };
+	}
+
 	if (!hasFlag(_info->capabilities, WindowCapabilities::Fullscreen)) {
 		cb(Status::ErrorNotSupported);
 		return;

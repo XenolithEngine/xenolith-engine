@@ -28,6 +28,7 @@
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
 #include "XLCoreDevice.h"
+#include "XLCoreRenderSession.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -99,6 +100,12 @@ void PresentationEngine::scheduleNextImage(Function<void(PresentationFrame *, bo
 	} else {
 		frameFlags = PresentationFrame::None;
 	}
+
+#if XL_FRAME_ACCOUNT
+	// After the display-link barrier above: a call that returns without scheduling anything is not
+	// the start of a frame, and marking it would charge the wait to the wrong bucket.
+	markFrame(FrameMark::Scheduled);
+#endif
 
 	if (scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder,
 				_serial, frameFlags, sp::move(cb)))) {
@@ -463,6 +470,12 @@ void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<Presentati
 
 	auto clock = sp::platform::clock(ClockType::Monotonic);
 	auto res = _swapchain->present(queue, image, presentInfo);
+#if XL_FRAME_ACCOUNT
+	// Closes the timeline. Here and not in the backend's swapchain: every backend presents through
+	// this call, and the mark has to be the same point on every one of them for the buckets to
+	// mean the same thing.
+	markFrame(FrameMark::Presented);
+#endif
 	auto dt = updatePresentationInterval();
 
 	if (res == Status::ErrorFullscreenLost) {

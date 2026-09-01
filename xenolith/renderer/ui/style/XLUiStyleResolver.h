@@ -235,7 +235,15 @@ everything the previous pass left on the node, because a pass carries only the d
 that are present and a rule that stopped matching would otherwise stay applied forever. The
 intended shape is that the styling lives in a component, and the reset removes it - a widget
 with no component paints its defaults (see `ui::Panel` / `PanelStyleComponent`, shared by every
-atom built on a Panel: badge, checkbox, button). Pinned by `XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
+atom built on a Panel: badge, checkbox, button).
+
+THE RESET UNDOES STYLING, AND ONLY STYLING. What a widget painted on ITSELF from code - a scroll
+indicator, a colour swatch, a table cell that must not hide its row - is no pass's to take away:
+`ui::Panel` keeps that layer of its own and the reset rewinds the component to it rather than
+dropping it, so the pass that follows overrides only what it actually declares. An applier that
+stores both layers in the one place cannot tell them apart, and under a recursive resolver every
+widget painted from code loses its paint on the first restyle. Both halves pinned by
+`XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
 subtree from one system: it publishes on the frame stack and resolves each descendant as
 that descendant's content-size / layout-children event arrives, once per source version.
 
