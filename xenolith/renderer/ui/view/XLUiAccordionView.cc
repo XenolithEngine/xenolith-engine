@@ -234,8 +234,8 @@ void AccordionSection::setExpanded(bool value) {
 					.grow = _expanded ? 1.0f : 0.0f,
 					.shrink = _expanded ? 1.0f : 0.0f,
 					.basis = _expanded ? 0.0f : 0.0f,
-					.maxMain = _expanded ? FlexItemInfo::Auto : 0.0f,
 					.order = 1,
+					.maxMain = _expanded ? FlexItemInfo::Auto : 0.0f,
 				});
 	}
 }
@@ -577,9 +577,13 @@ void AccordionView::setSizing(AccordionSizing value) {
 	}
 }
 
-void AccordionView::setPanelOpenedCallback(PanelCallback &&cb) { _panelOpenedCallback = sp::move(cb); }
+void AccordionView::setPanelOpenedCallback(PanelCallback &&cb) {
+	_panelOpenedCallback = sp::move(cb);
+}
 
-void AccordionView::setPanelClosedCallback(PanelCallback &&cb) { _panelClosedCallback = sp::move(cb); }
+void AccordionView::setPanelClosedCallback(PanelCallback &&cb) {
+	_panelClosedCallback = sp::move(cb);
+}
 
 void AccordionView::setPanelExpandedCallback(PanelCallback &&cb) {
 	_panelExpandedCallback = sp::move(cb);
@@ -736,9 +740,8 @@ void AccordionView::updateSectionContent(AccordionSection *section) {
 	// Only an OPEN section holds its panel. Acquiring here rather than when the section is built is
 	// what makes the builder lazy in the same sense the dock's is: a section nobody has opened has
 	// never built anything.
-	Node *content = section->isExpanded()
-			? _registry->acquireContent(section->getPanelId(), this)
-			: nullptr;
+	Node *content = section->isExpanded() ? _registry->acquireContent(section->getPanelId(), this)
+										  : nullptr;
 
 	// Take out whatever else is in there. Detach WITHOUT cleanup: the node stays alive in the
 	// registry, and Node::cleanup() would destroy its systems (a Label's EventListener among them),
