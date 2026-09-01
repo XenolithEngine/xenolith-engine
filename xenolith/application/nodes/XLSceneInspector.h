@@ -51,8 +51,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 //    Replies may arrive out of order - screenshots and scene commands complete asynchronously.
 //
 // Commands: `scene`, `logs`, `fonts`, `windows`, `commands`, `invoke`, `screenshot`, `input`,
-// `text`, `frame`, `window`, `quit`. `commands`/`invoke` expose whatever the running scene
-// registered through addCommand.
+// `text`, `frame`, `render`, `window`, `quit`. `commands`/`invoke` expose whatever the running
+// scene registered through addCommand.
+//
+// `frame` and `render` are the pair that makes a headless run show what it is doing: `frame`
+// advances the presentation engine, `render` (a tagged RenderContinuously on the scene) is what
+// makes each of those frames redraw a scene nobody is touching. Without the second one, anything
+// that dirties itself from a callback - a deferred style pass, an action, a probe landing - is
+// computed and never drawn, and a screenshot shows the frame before it.
 //
 // Every command except `logs` (a process-wide ring buffer), `fonts` (the application's font
 // controller, shared by every window) and `quit` (which shuts the process down) acts on ONE

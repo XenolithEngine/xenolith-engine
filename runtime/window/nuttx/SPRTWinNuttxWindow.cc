@@ -182,14 +182,28 @@ Status NuttxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 	}
 
 #ifdef FBIO_UPDATE
-	// QEMU virtio-gpu needs RESOURCE_FLUSH via FBIO_UPDATE. bcm2711 mailbox
-	// FB is live GPU memory (no updatearea), so the ioctl returns ENOTTY.
-	// Scanout is already visible — do not fail the present.
-	if (::ioctl(_owner->getFd(), FBIO_UPDATE, (unsigned long)(uintptr_t)&area) < 0
-			&& errno != ENOTTY && errno != ENOSYS) {
-		oslog::vperror(__SPRT_LOCATION, "NuttxSoftwareSwapchain",
-				"FBIO_UPDATE failed: ", errno);
-		return Status::ErrorUnknown;
+	// QEMU virtio-gpu needs RESOURCE_FLUSH via FBIO_UPDATE. bcm2711 mailbox FB is live GPU memory
+	// (no updatearea), so the ioctl returns ENOTTY. Scanout is already visible — do not fail the
+	// present.
+	//
+	// Probed once, then never called again on a driver that does not have it. The answer belongs
+	// to the driver and cannot change between frames, and asking anyway is not free: NuttX logs
+	// every unsupported ioctl through fb_ioctl, and a board whose syslog goes to a FAT file on an
+	// SD card pays for that in the frame path.
+	//
+	// Measured on raspberrypi-4b, 1920x1080, syslog to /sd/logs: two syslog lines per present at
+	// ~69ms each, i.e. 138ms of a 157ms frame - 87% of the frame spent announcing that an ioctl
+	// the board never needed is still not supported. The rest of the frame was 19.6ms (~51 fps).
+	if (_updateSupported) {
+		if (::ioctl(_owner->getFd(), FBIO_UPDATE, (unsigned long)(uintptr_t)&area) < 0) {
+			if (errno == ENOTTY || errno == ENOSYS) {
+				_updateSupported = false;
+			} else {
+				oslog::vperror(__SPRT_LOCATION, "NuttxSoftwareSwapchain",
+						"FBIO_UPDATE failed: ", errno);
+				return Status::ErrorUnknown;
+			}
+		}
 	}
 #else
 	(void)area;

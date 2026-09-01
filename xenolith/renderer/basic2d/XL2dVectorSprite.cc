@@ -38,12 +38,12 @@ static Rc<VectorCanvasDeferredResult> VectorSprite_runDeferredVectorCavas(
 #if XL_FRAME_ACCOUNT
 		// Inside the task, so it is the work and not the queue latency in front of it. Stamped
 		// before setResult, because setResult is what raises the signal the consumer waits on.
-		const auto workStart = sp::platform::nanoclock(ClockType::Monotonic);
+		const auto workStart = core::getAccountClock();
 #endif
 		auto canvas = VectorCanvas::getInstance();
 		auto result = canvas->draw(config, move(image));
 #if XL_FRAME_ACCOUNT
-		ret->setWorkTime(sp::platform::nanoclock(ClockType::Monotonic) - workStart);
+		ret->setWorkTime(core::getAccountClock() - workStart);
 #endif
 		ret->setResult(sp::move(result));
 	}, ret);

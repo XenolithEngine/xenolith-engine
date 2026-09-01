@@ -86,7 +86,10 @@ controller already committed to. Use setRowHeightCallback() for variable heights
 CSS: the widget is type "table-view", the header "table-header", a row "table-row" and a cell
 "table-cell" (all Panels, so all take background-color / outline / border-radius - and note that a
 Panel with no fill declared is an opaque WHITE surface, so a row meant to show the view's own
-background must say so). A row carries `even`/`odd`, `selected` and `loading` style classes; a
+background must say so). THE CELLS ARE THE EXCEPTION: the view paints its own transparent, because
+a cell that covered its row would hide the ground, the alternation, the hover and the selection all
+at once - a sheet that wants an opaque cell says so and wins, as it does over any direct paint. A
+row carries `even`/`odd`, `selected` and `loading` style classes; a
 header cell carries `header-cell` plus the column's own `Column::styleClass`. Each row publishes the
 height it was laid out with as `--table-row-h`, and each cell its column index as
 `--table-col-index`.

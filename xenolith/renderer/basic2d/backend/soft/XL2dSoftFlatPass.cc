@@ -92,6 +92,23 @@ void VertexAttachmentHandle::submitInput(core::FrameQueue &q, Rc<core::Attachmen
 
 bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		const Rc<FrameContextHandle2d> &commands) {
+	// The first thing the render half does, so the gap since the previous present closes here and
+	// is charged to `wait`. Order matters: open the frame before starting the vertex timer, or the
+	// app thread's half lands in the vertex stage.
+	sf::openFrameBudget();
+
+#if XL_FRAME_ACCOUNT
+	// Opens the render half on the frame timeline: same point the budget's `wait` stage ends at,
+	// so the two instruments agree on where the halves meet.
+	core::markFrame(core::FrameMark::VertexStart);
+#endif
+
+	// The frame budget's `vertex` stage: the plan, and the vertex/index/transform arrays it
+	// writes. This is the part of the render half that scales with the scene rather than with the
+	// damage - every command is walked even on a frame that repaints a cursor - so it is the one
+	// place where a big static scene can cost more than the pixels it produces.
+	sf::FrameStageTimer timer(sf::FrameStage::Vertex);
+
 	auto attachment = static_cast<VertexAttachment *>(_attachment.get());
 
 	auto materialAttachment =
@@ -181,12 +198,38 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 			}
 		}
 
+#if XL_FRAME_ACCOUNT
+		// Before the delete below: the plan owns these and the pool goes with it.
+		_account = core::DrawStat{};
+		_account.deferredWorkTime = plan->deferredWorkTime;
+		_account.deferredWaitTime = plan->deferredWaitTime;
+		_account.deferredCount = plan->deferredCount;
+		_account.deferredWaited = plan->deferredWaited;
+		_account.writeTime = plan->writeTime;
+		_account.spanTime = plan->spanTime;
+		_account.damageTime = plan->damageTime;
+		_account.planTime = plan->planTime;
+#endif
+
 		delete plan;
 		return true;
 	}, pool);
 	memory::pool::destroy(pool);
 	return ret;
 }
+
+#if XL_FRAME_ACCOUNT
+void VertexAttachmentHandle::fillAccount(core::DrawStat &stat) const {
+	stat.deferredWorkTime = _account.deferredWorkTime;
+	stat.deferredWaitTime = _account.deferredWaitTime;
+	stat.deferredCount = _account.deferredCount;
+	stat.deferredWaited = _account.deferredWaited;
+	stat.writeTime = _account.writeTime;
+	stat.spanTime = _account.spanTime;
+	stat.damageTime = _account.damageTime;
+	stat.planTime = _account.planTime;
+}
+#endif
 
 
 bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
@@ -404,6 +447,12 @@ void FlatPassHandle::handlePassRasterized(core::FrameQueue &) {
 	core::DrawStat stat{};
 	stat.pixelsTotal = uint64_t(_frameSurface.width) * uint64_t(_frameSurface.height);
 	stat.pixelsFilled = _frameFill.total();
+
+#if XL_FRAME_ACCOUNT
+	// The vertex stage's own account. Not part of "only the two fields" above: these come from the
+	// VertexPlan, which this backend really does run, so they are measured rather than assumed.
+	_vertexHandle->fillAccount(stat);
+#endif
 
 	client->pushDrawStat(stat);
 }

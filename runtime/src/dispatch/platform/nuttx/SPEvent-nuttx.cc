@@ -26,21 +26,62 @@ static int64_t nuttx_timespec_ns(const struct timespec &ts) {
 	return static_cast<int64_t>(ts.tv_sec) * 1000000000ll + ts.tv_nsec;
 }
 
-static int64_t nuttx_now_ns() {
+static int64_t nuttx_read_ns(clockid_t id) {
 	struct timespec ts;
-	if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-		int64_t n = nuttx_timespec_ns(ts);
-		if (n != 0) {
-			return n;
-		}
-	}
-	// bcm2711 mailbox bring-up has been seen with CLOCK_MONOTONIC stuck at 0
-	// while CLOCK_REALTIME (and sleep()) still advance. Timers and spinWait
-	// must not freeze the looper in that case — the scene would never present.
-	if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+	if (clock_gettime(id, &ts) == 0) {
 		return nuttx_timespec_ns(ts);
 	}
 	return 0;
+}
+
+/* Which clock the looper reads, decided by MEASURING both rather than by name.
+
+This used to be CLOCK_MONOTONIC with a fallback to CLOCK_REALTIME only when monotonic was stuck at
+zero — seen during bcm2711 mailbox bring-up, where realtime and sleep() still advanced. That is not
+enough, and the gap it left cost half the frame.
+
+On raspberrypi-4b monotonic is not stuck, it is COARSE: CONFIG_USEC_PER_TICK=1000 with no
+CONFIG_SCHED_TICKLESS, so it advances once a millisecond, while CLOCK_REALTIME resolves to 315ns on
+the same build. Over the ~150us that 64 sched_yield() calls take, a coarse clock is
+indistinguishable from a stopped one — so spinWait's "the clock is dead" guard fired on every
+single wait, and every wait became a 16ms sleep that could not see a wakeup. Measured: 8.8ms of a
+18.6ms frame was one performOnAppThread waiting to be noticed.
+
+The probe reads each clock until it changes and takes the step; a clock that never moves, or that
+answers zero, scores worst and loses. Once, at first use. A stopped monotonic therefore still ends
+up on realtime, exactly as the old fallback intended - and a merely coarse one does too. */
+static clockid_t nuttx_probe_clock() {
+	auto step = [](clockid_t id) -> int64_t {
+		auto start = nuttx_read_ns(id);
+		if (start == 0) {
+			return INT64_MAX;
+		}
+		// Bounded: a clock that never advances must not hang the first wait.
+		for (uint32_t i = 0; i < 200000u; ++i) {
+			auto now = nuttx_read_ns(id);
+			if (now > start) {
+				return now - start;
+			}
+		}
+		return INT64_MAX;
+	};
+
+	// Monotonic wins ties: it is the correct clock for a duration, and realtime is taken only when
+	// measurably finer. The boards where that happens have no RTC and no time sync, so there is
+	// nothing to step the wall clock mid-run.
+	return step(CLOCK_REALTIME) < step(CLOCK_MONOTONIC) ? CLOCK_REALTIME : CLOCK_MONOTONIC;
+}
+
+static int64_t nuttx_now_ns() {
+	static const clockid_t source = nuttx_probe_clock();
+
+	auto n = nuttx_read_ns(source);
+	if (n != 0) {
+		return n;
+	}
+
+	// The chosen source stopped answering. The other one is better than freezing the looper.
+	return nuttx_read_ns(source == CLOCK_REALTIME ? CLOCK_MONOTONIC : CLOCK_REALTIME);
 }
 
 static int64_t nuttx_rel_timeout(TimeInterval ival, int64_t nearest, int64_t now) {
@@ -149,24 +190,59 @@ void NuttxData::drainWakeup() {
 	__atomic_store_n(&_wakeupReq, 0, __ATOMIC_SEQ_CST);
 }
 
+/* Wait for a wakeup, a deadline, or the timeout - without ever going deaf.
+
+Two rules, and the second one is the whole point:
+
+  * a wakeup posted while this thread waits must be SEEN, not slept through. The old code, once it
+    decided the clock was not advancing, called usleep for the entire remaining timeout and never
+    looked at _wakeupReq again. On raspberrypi-4b that decision was wrong every time (see
+    nuttx_now_ns) and every wait became a deaf 16ms sleep: measured 8.8ms average latency on a post
+    from the loop thread to the app thread, 47% of an 18.6ms frame.
+
+  * an idle looper must not burn a core. So: a short yield-spin first, because a wakeup from
+    another thread usually lands within microseconds and catching it there costs one scheduler
+    round trip; then sleep in slices, rechecking between them.
+
+The slice is one scheduler tick. Worst-case wakeup latency is therefore one tick rather than the
+whole timeout, and a sleep never outlasts what it can react to. Getting below a tick needs a real
+blocking primitive (a semaphore posted by notifyWakeup) rather than a shorter sleep - usleep cannot
+resolve finer than the tick anyway.
+
+Bounded by the slice count as well as by the clock, so a genuinely dead clock ends the wait instead
+of spinning in it. */
 void NuttxData::spinWait(int timeoutMs) {
 	if (timeoutMs <= 0) {
 		return;
 	}
-	int64_t start = nuttx_now_ns();
-	int64_t until = start + int64_t(timeoutMs) * 1'000'000ll;
-	unsigned spins = 0;
-	while (nuttx_now_ns() < until) {
-		if (__atomic_load_n(&_wakeupReq, __ATOMIC_SEQ_CST) != 0) {
-			break;
+
+	static constexpr unsigned YieldSpins = 64;
+	static constexpr unsigned SliceUs = 1000;
+
+	const int64_t start = nuttx_now_ns();
+	const int64_t until = start + int64_t(timeoutMs) * 1'000'000ll;
+
+	const auto pending = [this] {
+		return __atomic_load_n(&_wakeupReq, __ATOMIC_SEQ_CST) != 0;
+	};
+
+	for (unsigned spins = 0; spins < YieldSpins; ++spins) {
+		if (pending()) {
+			return;
 		}
 		sched_yield();
-		// Clock not advancing: yield-spin would be infinite. usleep works on
-		// the init task (the tick is alive).
-		if (++spins >= 64 && nuttx_now_ns() <= start) {
-			::usleep(static_cast<unsigned>(timeoutMs) * 1000u);
-			break;
+	}
+
+	const unsigned slices =
+			(static_cast<unsigned>(timeoutMs) * 1000u + SliceUs - 1u) / SliceUs;
+	for (unsigned i = 0; i < slices; ++i) {
+		if (pending()) {
+			return;
 		}
+		if (nuttx_now_ns() >= until) {
+			return;
+		}
+		::usleep(SliceUs);
 	}
 }
 
@@ -222,12 +298,19 @@ Status NuttxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 	pushContext(&ctx, RunContext::Run);
 
 	while (ctx.state == RunContext::Running) {
+		/* Drained BEFORE the handles are fired, not after.
+		
+		A signal that arrives while fireThreadHandles/fireExpired are running has already had its
+		work queued - `pending` is set on the handle - but a drain placed after them would clear
+		_wakeupReq without that work having been picked up, and the following wait would sleep out
+		its whole timeout with the task sitting there. Clearing first means the flag can only be
+		set again by a signal this iteration has not yet served, which is exactly what the wait
+		below must not sleep through. */
+		drainWakeup();
+
 		fireThreadHandles(&ctx);
 		if (ctx.state != RunContext::Running) break;
 		fireExpired(&ctx);
-		if (ctx.state != RunContext::Running) break;
-
-		drainWakeup();
 		if (ctx.state != RunContext::Running) break;
 
 		int64_t now = nuttx_now_ns();
