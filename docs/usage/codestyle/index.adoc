@@ -82,6 +82,7 @@ the `scene/` articles route to it rather than restating it.
 |---|---|
 | [Forms: `FormSystem`, fields and focus](ui/forms.adoc) | building a form, adding a field to one, driving Tab/submit/validation, or joining a widget of your own to a form |
 | [Docking: `DockSystem`, frames, panels and the split tree](ui/docking.adoc) | building an IDE-style layout of parked panels: declaring frames and their constraints, tabs, dividers, drag and drop between frames, saving and restoring the arrangement |
+| [Accordions: `AccordionView` and the shared panel registry](ui/accordion.adoc) | a vertical stack of sections declared in advance rather than discovered from a model, and moving a panel between one and a dock by the grip on its header |
 | [Menus: `MenuSource`, `MenuSystem` and the popup chain](ui/menus.adoc) | building a menu: the item model, the shared columns that line the icons and accelerators up, wrapped multi-line titles, custom nodes, hotkeys, and opening one as a popup with submenus |
 
 ### `window/` — windows and OS integration
