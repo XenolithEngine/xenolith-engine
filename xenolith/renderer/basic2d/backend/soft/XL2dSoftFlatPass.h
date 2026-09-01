@@ -101,6 +101,17 @@ public:
 	// and outlives the frame either way.
 	core::RenderClientChannel *getClient() const { return _client; }
 
+#if XL_FRAME_ACCOUNT
+	// Copy what the vertex stage did with this frame into a DrawStat.
+	//
+	// This backend runs the same VertexPlan the Vulkan one does, so every field the plan itself
+	// measures is honestly measurable here - the deferred account and the stage's own phase
+	// split. What is NOT filled is the GPU submission: no buffers are spawned and nothing is
+	// uploaded, so bufferTime and uploadTime stay at zero, which is the truth rather than a
+	// missing measurement.
+	void fillAccount(core::DrawStat &) const;
+#endif
+
 protected:
 	// Builds the backend-neutral VertexPlan and writes it into host arrays. Everything the flat
 	// queue can emit goes through it - vertex arrays, deferred results (vector images, labels)
@@ -109,6 +120,11 @@ protected:
 
 	Rc<core::MaterialSet> _materialSet;
 	DamageCollector _damage;
+
+#if XL_FRAME_ACCOUNT
+	// Taken from the plan before it is destroyed; loadVertexes owns the pool the plan lives in.
+	core::DrawStat _account = {};
+#endif
 	Vector<VertexSpan> _spans;
 	Vector<Vertex> _vertexes;
 	Vector<uint32_t> _indexes;

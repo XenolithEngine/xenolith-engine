@@ -69,6 +69,16 @@ enum class InteractiveFlags : uint32_t {
 	// a separate marker component rather than by the node's own interactive state - see
 	// XLUiFocusWithin.h for why a container must not be given interactive state to carry it.
 	FocusWithin = 1 << 11, // :focus-within
+
+	// This node is one of the items of the scene's current selection - what the user is working ON,
+	// as opposed to where typing goes. Published by a marker component, for the same reason
+	// FocusWithin is: a selectable node is often a plain container, and handing it interactive state
+	// just to carry a bit would switch :enabled on for it. See XLSelection.h.
+	Selected = 1 << 12, // :selected
+
+	// The selection is on this node or somewhere below it - the ancestor half, so a stylesheet can
+	// light up the whole hierarchy that leads down to what is selected.
+	SelectionWithin = 1 << 13, // :selection-within
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(InteractiveFlags)

@@ -40,9 +40,11 @@
 #include "input/XLInputDispatcher.cc"
 #include "input/XLInteractiveComponent.cc"
 #include "input/XLFocusWithin.cc" // after the component: the one state it does NOT keep
+#include "input/XLSelection.cc" // beside FocusWithin: the same marker shape, for the selection
 #include "input/XLInputListener.cc"
 #include "input/XLFocusGroup.cc"
 #include "input/XLTextInputManager.cc"
+#include "input/XLSelectionSystem.cc" // after the Selection marker it writes and the Scene it installs itself on
 
 #include "drag/XLDragTypes.cc"
 #include "drag/XLDropTarget.cc"

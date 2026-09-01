@@ -160,14 +160,12 @@ public:
 	void removeHotkey(HotkeyId);
 	bool hasHotkey(HotkeyId) const;
 
-	// Any of `ids` this listener is subscribed to, honouring `focused` for FocusedOnly bindings.
-	// `repeated` is true for a key auto-repeat, which only Repeatable bindings receive.
-	bool canHandleHotkey(SpanView<HotkeyId> ids, bool focused, bool repeated,
-			bool exclusiveScoped) const;
+	// Any of `ids` this listener is subscribed to and is eligible for under `ctx` - see
+	// HotkeyContext, which carries what each HotkeyFlags value is tested against
+	bool canHandleHotkey(SpanView<HotkeyId> ids, const HotkeyContext &ctx) const;
 
 	// Delivers the first matching binding; returns true when the callback consumed the hotkey
-	bool handleHotkey(SpanView<HotkeyId> ids, const InputEvent &, bool focused, bool repeated,
-			bool exclusiveScoped);
+	bool handleHotkey(SpanView<HotkeyId> ids, const InputEvent &, const HotkeyContext &ctx);
 
 	void setWindowStateCallback(Function<bool(WindowState, WindowState)> &&);
 
@@ -195,8 +193,7 @@ protected:
 	};
 
 	// True when this binding is eligible for the current delivery pass
-	bool isHotkeyEligible(const HotkeyBinding &, bool focused, bool repeated,
-			bool exclusiveScoped) const;
+	bool isHotkeyEligible(const HotkeyBinding &, const HotkeyContext &) const;
 
 	using EventCallback = sprt::variant<Function<bool()>, Function<bool(WindowState, WindowState)>>;
 

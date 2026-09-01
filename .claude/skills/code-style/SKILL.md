@@ -240,8 +240,12 @@ lifetime, or for error detection. Details and examples:
     `SystemManagedLayout` marker enforces the second and tells the style resolver
     the dock owns its children's `ContentSize`), and a frame is identified by its
     `DockNodeHandle`, **never** by child index — `sortAllChildren` is unstable.
-    A panel is registered once (`id`, title, icon, minimum, **lazy builder**) and
-    its node is built at most once and then kept across every move. Constraints
+    A panel is registered once (`id`, title, icon, minimum, **lazy builder**) in a
+    `PanelRegistry`, and its node is built at most once and then kept across every
+    move. That registry can be **shared** with a `ui::AccordionView`, which is what
+    lets a panel be dragged between a dock frame and a stack of sections as the same
+    node; it enforces that a panel is parked in exactly ONE place, and `releasePanel`
+    (a move) is not `closePanel` (the user is done with it). Constraints
     only ever get stronger: a frame's minimum is its declared floor raised to the
     largest panel in it plus the tab strip, and a split's is its children's sum
     along its axis plus the divider. `ratio` divides the space left **after** the
@@ -280,6 +284,27 @@ lifetime, or for error detection. Details and examples:
     suite; ported bit arithmetic carrying a "transcribed literally" comment is
     not to be simplified.
 
+30. **One selection per scene, addressed by IDENTITY, and never derived from
+    focus.** `SelectionSystem` sits on the `SceneContent` like `DragSystem`;
+    selecting into a different container clears the previous selection wholesale.
+    A container joins by implementing `SelectionOwner` and being told to
+    (`setSelectionOwned(true)`) — **opt-in**, because the same `TreeView` is what
+    a picker puts inside a popup. An item is an opaque `SelectionItem`
+    (`Rc<Ref>` + index), **never a `Node *` and never an index**: rows are
+    virtualized, so a selected row often has no node, and an index shifts on every
+    rebuild. The node is a projection, re-resolved each frame; the OWNER is what
+    the chain falls back to when nothing is materialized. CSS gets `:selected` on
+    the item and `:selection-within` on every ancestor, from a marker component —
+    `InteractiveComponent` defaults to `Enabled` and would switch `:enabled` on
+    for a plain container. **The chain is published into the committed frame** and
+    walked deepest-first for hotkeys ahead of the ordinary route;
+    `HotkeyFlags::SelectedOnly` restricts a binding to that pass but never excuses
+    a handler from returning `false` when it has nothing to do. Keep the chain you
+    retained and release exactly it — re-walking `getParent()` strands every
+    counter above a row that was detached in between. Focus coupling is one
+    explicit call in the widget that wants it, and it is asymmetric: taking focus
+    may select, losing focus must not clear.
+
 ## Where to read more
 
 | Task | Article |
@@ -293,6 +318,7 @@ lifetime, or for error detection. Details and examples:
 | What the formatter enforces and what it deliberately leaves alone | [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc) |
 | Passing/building/parsing text, `StringView` lifetime, pool vs malloc strings, unicode | [strings.adoc](../../../docs/usage/codestyle/core/strings.adoc) |
 | Comparing or sorting text, case mapping, domain names, touching a generated Unicode table | [unicode-and-text.adoc](../../../docs/usage/codestyle/core/unicode-and-text.adoc) |
+| Selecting something, routing a hotkey or an Undo to what is selected, `:selected` / `:selection-within` | [selection.adoc](../../../docs/usage/codestyle/scene/selection.adoc) |
 | A function that can fail; `Status`/`Result<T>`, logging, assertions | [errors-and-status.adoc](../../../docs/usage/codestyle/core/errors-and-status.adoc) |
 | Posting work to a thread, timers, async I/O, `Looper`/`Task`/`Handle`, cross-thread lifetime | [threads-and-dispatch.adoc](../../../docs/usage/codestyle/core/threads-and-dispatch.adoc) |
 | Node geometry, anchor/contentSize/transforms, coordinate conversion, which `Node` subclass to use | [node-geometry.adoc](../../../docs/usage/codestyle/scene/node-geometry.adoc) |
@@ -305,6 +331,7 @@ lifetime, or for error detection. Details and examples:
 | Shipping a directory of resources inside the binary; `FileCategory::Embedded`, `LOCAL_EMBED_DIRS`, the BundleFS format | [embedded-files.adoc](../../../docs/usage/codestyle/core/embedded-files.adoc) |
 | Building a form; adding a field, a validator or a widget of your own to one; Tab order, focus, submit/reset | [ui/forms.adoc](../../../docs/usage/codestyle/ui/forms.adoc) |
 | An IDE-style layout of parked panels: frames, tabs, dividers, drag & drop between frames, saving the arrangement | [ui/docking.adoc](../../../docs/usage/codestyle/ui/docking.adoc) |
+| A vertical stack of collapsible sections declared in advance; sharing panels with a dock and dragging them across by a grip on the header | [ui/accordion.adoc](../../../docs/usage/codestyle/ui/accordion.adoc) |
 | A menu: the item model, the columns that line its rows up, wrapped titles, accelerators, a popup and its submenu chain | [ui/menus.adoc](../../../docs/usage/codestyle/ui/menus.adoc) |
 | Opening a second window, a popup/menu/tooltip; fullscreen, monitors, window state | [windows.adoc](../../../docs/usage/codestyle/window/windows.adoc) |
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash, restore-from-trash, and asking whether one type is served at all | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |

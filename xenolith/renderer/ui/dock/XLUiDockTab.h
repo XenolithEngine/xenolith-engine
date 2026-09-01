@@ -23,9 +23,7 @@
 #ifndef XENOLITH_RENDERER_UI_DOCK_XLUIDOCKTAB_H_
 #define XENOLITH_RENDERER_UI_DOCK_XLUIDOCKTAB_H_
 
-#include "XLUiDockTypes.h"
-#include "XLDragSystem.h"
-#include "XLUiButton.h"
+#include "XLUiPanelHandle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -33,21 +31,20 @@ class DockSystem;
 
 // One tab in a frame's strip: the icon and title of a parked panel, plus an optional close button.
 //
-// It is a Button, so the whole tap/hover/active machinery - and with it `:hover` and `:active` in
-// CSS - comes for free. What it adds is the drag that pulls the panel out of this frame, which is
-// why the panel id and not just a caption is on it.
+// It is a PanelHandle, so the drag that pulls the panel out of this frame - threshold, pointer
+// capture, abort on exit - is the same one an accordion header uses, and so is everything a Button
+// brings with it. What a TAB adds is the frame it belongs to: the whole of the tab is a grab point
+// (there is nothing else a press on it could mean), and the frame handle is what a drop reads to
+// recognise a move that would change nothing.
 //
 // CSS type "dock-tab"; the style class `active` is on the one showing, and the close affordance is
 // "dock-tab-close".
-class SP_PUBLIC DockTab : public Button {
+class SP_PUBLIC DockTab : public PanelHandle {
 public:
 	virtual ~DockTab() = default;
 
 	virtual bool init(NotNull<DockSystem>, DockNodeHandle frame, StringView panelId);
 
-	virtual void handleExit() override;
-
-	StringView getPanelId() const { return _panelId; }
 	DockNodeHandle getFrame() const { return _frame; }
 	void setFrame(DockNodeHandle handle) { _frame = handle; }
 
@@ -57,27 +54,17 @@ public:
 	// mirrors DockPanelFlags::Closable; hides the close affordance when off
 	virtual void setClosable(bool);
 
-	bool isDragging() const { return _dragging; }
-
 protected:
-	using Button::init;
+	using PanelHandle::init;
 
 	virtual bool handleLeftTap() override;
 
-	bool handleDragBegin(const GestureSwipe &);
-	void handleDrag(const GestureSwipe &);
-	void handleDragEnd(bool cancelled);
-
-	DockSystem *_system = nullptr; // non-owning: the system outlives every node it created
-
-	// the general drag coordinator, acquired when a drag starts; non-owning for the same reason
-	DragSystem *_drag = nullptr;
+	// the frame this tab sits in travels with the panel; see DockPanelPayload
+	virtual void updatePanelDragOffer(DragOffer &, DockPanelPayload &) override;
 
 	DockNodeHandle _frame;
-	String _panelId;
 	Button *_close = nullptr;
 	bool _active = false;
-	bool _dragging = false;
 };
 
 } // namespace stappler::xenolith::ui
