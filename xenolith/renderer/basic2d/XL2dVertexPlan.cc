@@ -174,7 +174,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 	}
 
 #if XL_FRAME_ACCOUNT
-	auto mark = sp::platform::nanoclock(ClockType::Monotonic);
+	auto mark = core::getAccountClock();
 #endif
 
 	if (ctx.collectDamage) {
@@ -183,7 +183,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 
 #if XL_FRAME_ACCOUNT
 	{
-		auto now = sp::platform::nanoclock(ClockType::Monotonic);
+		auto now = core::getAccountClock();
 		damageTime += now - mark;
 		mark = now;
 	}
@@ -209,7 +209,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 	}
 
 #if XL_FRAME_ACCOUNT
-	planTime += sp::platform::nanoclock(ClockType::Monotonic) - mark;
+	planTime += core::getAccountClock() - mark;
 #endif
 };
 
@@ -280,7 +280,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 	anything. Without it a frame that waited once for 10ms and a frame that waited ten times for
 	1ms report the same total. */
 	const bool wasReady = cmd->deferred->isReady();
-	const auto waitStart = sp::platform::nanoclock(ClockType::Monotonic);
+	const auto waitStart = core::getAccountClock();
 #endif
 
 	cmd->deferred->acquireResult(
@@ -291,7 +291,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 	});
 
 #if XL_FRAME_ACCOUNT
-	deferredWaitTime += sp::platform::nanoclock(ClockType::Monotonic) - waitStart;
+	deferredWaitTime += core::getAccountClock() - waitStart;
 	deferredWorkTime += cmd->deferred->takeWorkTime();
 	++deferredCount;
 	if (!wasReady) {
@@ -980,7 +980,7 @@ void VertexPlan::drawWritePlanFlat(Context &ctx, WriteTarget &writeTarget, bool 
 
 void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 #if XL_FRAME_ACCOUNT
-	const auto writeStart = sp::platform::nanoclock(ClockType::Monotonic);
+	const auto writeStart = core::getAccountClock();
 #endif
 
 	pushInitial(writeTarget);
@@ -990,11 +990,11 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	for (auto &it : overlayWritePlan) { pushPlanVertexes(writeTarget, it.second); }
 
 #if XL_FRAME_ACCOUNT
-	const auto spanStart = sp::platform::nanoclock(ClockType::Monotonic);
+	const auto spanStart = core::getAccountClock();
 	writeTime += spanStart - writeStart;
 	// Closed on every exit below, including the early one.
 	const auto closeSpans = [&] {
-		spanTime += sp::platform::nanoclock(ClockType::Monotonic) - spanStart;
+		spanTime += core::getAccountClock() - spanStart;
 	};
 #endif
 

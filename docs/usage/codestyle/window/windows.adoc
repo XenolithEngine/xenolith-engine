@@ -356,6 +356,36 @@ and a tiling one certainly will.
 `WindowCapabilities::WindowPosition` is the one bit that answers both columns;
 `hasPosition` on the snapshot follows it.
 
+### What cannot be asked for at creation
+
+The geometry can. The two STATES an application is just as likely to want back —
+maximized and fullscreen — mostly cannot, and each for its own reason.
+
+`WindowInfo::fullscreen` is the initial fullscreen mode and is applied as the
+window maps, on X11. No other backend reads it today, so an application that must
+open fullscreen everywhere asks again from the app thread as well; the second ask
+is free when the first one worked, because the window already carries the flag.
+
+There is **no maximized equivalent at all**. `WindowInfo::state` is the runtime's
+own record of what the window IS rather than a request, and no
+`WindowCreationFlags` stands for it — so a window that should open maximized opens
+at its normal size and is maximized by `enableState(WindowState::Maximized)` a
+moment later.
+
+That moment is later than it looks. `getUpdatableStateFlags()` is read off the
+`Allowed*` flags the window manager reports, and those arrive in a state change of
+their own — **after** the one that says the window is mapped. Asking at the map
+event asks a window that has not yet said it may be maximized, and `enableState`
+declines it with an error in the log. Wait for the flag, and put a deadline on the
+wait: a state change at any later moment is the USER doing something, and applying
+a start-up restore to it makes the application fight its own user.
+
+One more thing follows from doing it late: between the ask and the window
+manager's answer the window may already report the maximized geometry while its
+state still says otherwise. A saver that takes that rect as the normal one
+replaces the geometry the user wants back with the size of their screen,
+permanently. Ignore geometry while a state you asked for has not arrived.
+
 ## Capabilities, state and fullscreen
 
 Every interesting window operation is behind a `WindowCapabilities` bit, and each
@@ -451,6 +481,8 @@ prewarmed graph.
 | a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
 | hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
+| `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
+| saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |
 | reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` / `getWindowGeometry()` |
 | saving `WindowGeometry::rect` without checking `hasPosition` | on Wayland the origin is zero because it is unknown, and the window reopens in the corner |
 | setting `WindowInfo::rect`'s x/y without `WindowCreationFlags::UsePosition` | the position is ignored: `(0, 0)` is the default and cannot be told from a request |

@@ -138,6 +138,8 @@ public:
 
 	virtual void updateLayers(Vector<WindowLayer> &&);
 
+	// `cb` is optional: pass nothing to change the state without being told the outcome, which is
+	// what the map-time application of WindowInfo::fullscreen does.
 	virtual void setFullscreen(FullscreenInfo &&, Function<void(Status)> &&cb, Ref *ref);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events);

@@ -203,6 +203,13 @@ dock-drop-indicator   { background-color: #3d7ecf; }
 dock-drag-ghost       { background-color: #2c2c2c; }
 ----
 
+**A dock a sheet says nothing about is WHITE.** The frame, the tab strip and every
+tab are `ui::Panel`s, and a Panel with no fill declared is an opaque white surface —
+so the block above is not decoration, it is the difference between a dock and a white
+band across the top of every panel with a white ground behind it. The table INSIDE a
+frame is not in this class: `ui::TableView` paints its own cells transparent, because
+a cell is a window onto its row rather than a surface of its own.
+
 The **icon is imperative** — it comes from `DockPanelDescriptor::icon`, because
 the CSS subset has no `icon` property. The **divider thickness is a system
 parameter** (`setSplitterThickness`), not CSS: it is an input of the layout, and

@@ -152,7 +152,7 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 #if XL_FRAME_ACCOUNT
 		// One clock read at each boundary, so the four phases add up to the stage instead of being
 		// four independent measurements of overlapping things.
-		auto phaseMark = sp::platform::nanoclock(ClockType::Monotonic);
+		auto phaseMark = core::getAccountClock();
 #endif
 
 		auto cmd = _input->commands->getFirst();
@@ -163,7 +163,7 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 
 #if XL_FRAME_ACCOUNT
 		{
-			auto now = sp::platform::nanoclock(ClockType::Monotonic);
+			auto now = core::getAccountClock();
 			_walkTime = now - phaseMark;
 			phaseMark = now;
 		}
@@ -193,7 +193,7 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 
 #if XL_FRAME_ACCOUNT
 		{
-			auto now = sp::platform::nanoclock(ClockType::Monotonic);
+			auto now = core::getAccountClock();
 			_bufferTime = now - phaseMark;
 			phaseMark = now;
 		}
@@ -231,8 +231,8 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 
 #if XL_FRAME_ACCOUNT
 		// The write plus the spans; the plan splits the two for itself.
-		_fillTime = sp::platform::nanoclock(ClockType::Monotonic) - phaseMark;
-		phaseMark = sp::platform::nanoclock(ClockType::Monotonic);
+		_fillTime = core::getAccountClock() - phaseMark;
+		phaseMark = core::getAccountClock();
 #endif
 
 		if (_persistentMapping) {
@@ -246,7 +246,7 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 		}
 
 #if XL_FRAME_ACCOUNT
-		_uploadTime = sp::platform::nanoclock(ClockType::Monotonic) - phaseMark;
+		_uploadTime = core::getAccountClock() - phaseMark;
 #endif
 
 		finalize(plan);

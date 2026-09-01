@@ -449,11 +449,37 @@ if (name == ParameterName::CmdReset) {
 }
 ----
 
-That is `ui::Button` with `ButtonStyleComponent`. A widget that keeps its paint
-directly in the node instead (like `ui::Panel`, whose fill and radius live in
-`LayerRounded`) has no component to drop, so its reset restores the values `init()`
-set. Both are correct; the component form is preferred because the fallback is then
-written in exactly one place.
+That is `ui::Panel` with `PanelStyleComponent`, and with it every atom built on a
+Panel — badge, checkbox, button, dock frame, table cell.
+
+**A widget's own paint is not styling, and the reset must not take it away.** One
+component can end up holding two things that look alike and are not: what a rule
+declared, and what the widget painted on ITSELF — `Panel::setPathColor`,
+`setOutline`, `setBorderRadius`, as a scroll indicator, a colour swatch, a menu
+separator or a table cell that must not hide the row it stands on all do. Only the
+first belongs to the pass. So `Panel` keeps that second layer of its own and the reset
+**rewinds the component to it** rather than dropping it; a widget that never painted
+itself has nothing to keep, its component goes, and "no component" keeps meaning "no
+styling and no paint":
+
+[source,cpp]
+----
+if (name == ParameterName::CmdReset) {
+    if (_ownPainted) {
+        // rewind to what the widget painted on itself; the parameters that follow
+        // overwrite whatever this pass still declares, so CSS still wins
+        updateStyle([&](NotNull<PanelStyleComponent> c) { ... *c = _ownStyle; ... });
+    } else if (removeComponent<PanelStyleComponent>()) {
+        markContentSizeDirty();
+    }
+    return true;
+}
+----
+
+Keeping both layers in the one place is a bug that hides well: nothing looks wrong
+until a recursive resolver touches the widget, and then everything painted from code
+falls back to the struct's default — for a Panel, opaque WHITE — whether or not any
+rule ever matched it.
 
 Two practical notes:
 
@@ -470,7 +496,7 @@ only when present, so on a plain `Layer` a removed declaration keeps its last
 value until something else overwrites it. The two exceptions that do reset
 themselves are `VisibilityComponent` (`display`/`visibility`) and
 `OutOfFlowComponent` (`position`), both of which are removed when the rule stops
-applying. [`XL_PANEL_TEST`]
+applying. [`XL_PANEL_TEST`, driven by `tests/window/panel-check.py`]
 
 ## Sizing
 

@@ -1305,7 +1305,8 @@ void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
 	// something changed). A style pass carries only the declarations that are present, so when a
 	// rule stops matching - a class flip, an edited stylesheet - its properties just go missing
 	// and nothing below would undo them. The applier answers by dropping whatever it took from
-	// the previous pass; the loop underneath then re-applies what is still declared.
+	// the previous pass - and no more than that: what the widget painted on itself is not the
+	// pass's to take. The loop underneath then re-applies what is still declared.
 	//
 	// It is a pseudo-parameter: no CSS syntax produces it, so it never appears in `s` and an
 	// applier only sees it if it listed CmdReset in its ParameterMask. Its value is unspecified.

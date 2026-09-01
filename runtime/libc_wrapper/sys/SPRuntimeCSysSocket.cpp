@@ -2532,17 +2532,28 @@ __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol)
 		::ioctlsocket(__s, (long)FIONBIO, &__nb);
 	}
 	return __s;
-#elif SPRT_APPLE
+#elif SPRT_APPLE || SPRT_EMBOX
 	// macOS ships no SOCK_CLOEXEC/SOCK_NONBLOCK for socket() either: strip them and
 	// emulate with fcntl(), as accept4() does.
-	int __s = ::socket(__domain, __type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC), __protocol);
+	//
+	// Embox is the same case and worse. It has no SOCK_NONBLOCK/SOCK_CLOEXEC
+	// anywhere in its tree, and its socket() matches the type against a table of
+	// registered socket types: an unrecognised bit is not ignored, it is
+	// EPROTOTYPE. This surface publishes both flags (cross/embox_sprt/sockdef.h)
+	// and libcurl ORs them into socktype for every connection it opens, so passing
+	// the type through unchanged failed every socket() curl made -- on the board,
+	// as "failed to open socket: Protocol wrong type for socket" with no packet on
+	// the wire. accept4() below already carried the Embox emulation; socket() was
+	// the half that did not.
+	int __s = ::socket(__domain, __type & ~(__SPRT_SOCK_NONBLOCK | __SPRT_SOCK_CLOEXEC),
+			__protocol);
 	if (__s < 0) {
 		return -1;
 	}
-	if (__type & SOCK_CLOEXEC) {
+	if (__type & __SPRT_SOCK_CLOEXEC) {
 		::fcntl(__s, F_SETFD, ::fcntl(__s, F_GETFD, 0) | FD_CLOEXEC);
 	}
-	if (__type & SOCK_NONBLOCK) {
+	if (__type & __SPRT_SOCK_NONBLOCK) {
 		::fcntl(__s, F_SETFL, ::fcntl(__s, F_GETFL, 0) | O_NONBLOCK);
 	}
 	return __s;

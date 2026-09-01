@@ -69,6 +69,84 @@ struct FrameTimingInfo {
 #endif
 };
 
+#if XL_FRAME_ACCOUNT
+/* ---- the clock every account site reads ----------------------------------------------------------
+
+Not `nanoclock(Monotonic)` directly, and the difference is not academic.
+
+On a tickless desktop CLOCK_MONOTONIC is the right source and resolves to nanoseconds. On an RTOS
+it need not be: NuttX with CONFIG_USEC_PER_TICK=1000 and no CONFIG_SCHED_TICKLESS advances
+CLOCK_MONOTONIC once a millisecond, and every phase measured here is shorter than that. Measured on
+raspberrypi-4b, 600 frames: `update`, `span`, `damage` and `plan` all reported exactly 0.0, and
+every total was an exact multiple of 1000us - the signature of a quantized clock, not of free work.
+The software backend's frame budget showed microsecond detail on the same run, because Time::now()
+reads CLOCK_REALTIME and on that build it is the finer of the two.
+
+So the source is chosen by MEASURING it, not by name. clock_getres cannot be trusted for this -
+NuttX answers it with the tick period for both clocks even when one is finer - so the probe reads
+each clock until it changes and takes the step. Once, at first use.
+
+One clock for every site, because the account's numbers are compared and subtracted across modules;
+two sources with different resolutions would produce differences that are neither.
+
+`getAccountClockResolution` exists so a report can print it. A number below the clock's own step is
+not a measurement, and a reader must be able to see that without knowing the board. */
+SP_PUBLIC uint64_t getAccountClock();
+SP_PUBLIC uint64_t getAccountClockResolution(); // nanoseconds, measured
+SP_PUBLIC StringView getAccountClockName();
+
+/* ---- the frame timeline (XL_FRAME_TIMELINE=N) ----------------------------------------------------
+
+A CLOSED account of the whole frame, and the instrument that answers a gap.
+
+The software backend's frame budget measures the render half stage by stage and lands the rest in
+`wait` - the span from one present to the first thing the next frame's render half does. On
+raspberrypi-4b that turned out to be 12.9ms of a 19.5ms frame, while the app thread's own account
+said it worked for 1ms of it. Neither instrument could say what the other 11.9ms was, because it
+belongs to neither: it is what happens BETWEEN them.
+
+So the marks are placed on the frame's path itself, in order, and each bucket is the interval
+ENDING at its mark. They close on themselves - the six sum to the period - which is what makes a
+missing cost impossible to hide:
+
+	render        VertexStart -> Presented. The render half, whatever it is made of; the backend's
+	              own budget splits this one further.
+	postPresent   Presented -> Scheduled. What the presentation engine does after a present before
+	              it decides to start another frame - and, when a target frame interval is set,
+	              the deliberate wait for the present window.
+	toApp         Scheduled -> AcquireStart. Getting from the loop thread to the app thread.
+	update        AcquireStart -> VisitStart. The scheduler, actions and input, plus the
+	              deliberate "break current stack frame" hop that posts the visit.
+	visit         VisitStart -> VisitEnd. The scene graph walk.
+	toLoop        VisitEnd -> VertexStart. Back to the loop thread, frame graph setup included.
+
+Three of the six are thread hand-offs, and on an RTOS a hand-off is not free: a looper that is
+asleep wakes on a scheduler tick, so each one costs at least one tick and the account can be mostly
+hops. That is a real finding rather than a measurement error, which is why they are named and
+reported rather than summed into the stages around them.
+
+Marks are recorded in sequence and the sequence is serial - one frame at a time on this path, and
+the software presentation engine sets preStartFrame = false so two frames never overlap. Concurrent
+frames would interleave marks and the buckets would be meaningless; a backend that starts a frame
+early must not turn this on. */
+enum class FrameMark : uint32_t {
+	Presented,
+	Scheduled,
+	AcquireStart,
+	VisitStart,
+	VisitEnd,
+	VertexStart,
+	Count
+};
+
+// Whether XL_FRAME_TIMELINE named a non-zero interval. Check before taking a clock.
+SP_PUBLIC bool isFrameTimelineEnabled();
+
+// Record one mark. Charges the interval since the previous mark to this mark's bucket, and reports
+// every Nth time the timeline closes (that is, on every Nth Presented).
+SP_PUBLIC void markFrame(FrameMark);
+#endif
+
 struct SP_PUBLIC DrawStat {
 	uint32_t vertexes;
 	uint32_t triangles;

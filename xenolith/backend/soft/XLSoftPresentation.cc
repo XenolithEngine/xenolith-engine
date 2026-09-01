@@ -290,7 +290,13 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 			return Status::ErrorInvalidArguemnt;
 		}
 
-		st = _software->present(index, info.damage);
+		{
+			// On a framebuffer window this is the copy into the scanout mapping plus the cache
+			// maintenance that publishes it - the one stage whose cost is set by the window
+			// system rather than by the scene.
+			FrameStageTimer timer(FrameStage::Present);
+			st = _software->present(index, info.damage);
+		}
 
 		markPresented(index);
 
@@ -299,6 +305,11 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		}
 		++_presentedFrames;
 		_presentTime = sp::platform::clock(ClockType::Monotonic);
+
+		// Close the account here rather than in runPass: a frame the damage tracker let through
+		// unchanged never reaches the pass, and charging the period only to the frames that did
+		// rasterize would report a frame rate the window never ran at.
+		closeFrameBudget();
 	} while (0);
 
 	if (!sprt::status::isSuccessful(st)) {
