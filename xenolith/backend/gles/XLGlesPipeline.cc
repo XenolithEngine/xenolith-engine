@@ -159,35 +159,31 @@ bool Shader::setup(Device &dev, SpanView<uint32_t> data) {
 		return false;
 	}
 
-	// data is UTF-8 text packed into uint32_t words with word-alignment padding at the end - trim
-	// it back before handing the null-terminated source to the compiler.
+	// data is UTF-8 text packed into uint32_t words with zero padding at the end - trim the
+	// padding back and hand the compiler an explicit length. A null `length` would make
+	// glShaderSource take the pointer as a C string, and the packing only leaves a terminator
+	// when the text does not end on a word boundary: a source whose length is a multiple of four
+	// has none, and the driver then lexes whatever follows the allocation. That is what the
+	// "syntax error, unexpected $undefined" at a line past the end of the file was - the source
+	// was fine, the read ran off it.
 	auto code = reinterpret_cast<const char *>(data.data());
 	auto codeSize = size_t(data.size()) * sizeof(uint32_t);
 	while (codeSize > 0 && code[codeSize - 1] == '\0') { --codeSize; }
 
+	const GLint codeLength = GLint(codeSize);
+
 	GLuint handle = name;
-	table.glShaderSource(handle, 1, &code, nullptr);
+	table.glShaderSource(handle, 1, &code, &codeLength);
 	table.glCompileShader(handle);
 
 	GLint status = GL_FALSE;
 	table.glGetShaderiv(handle, GL_COMPILE_STATUS, &status);
 
-	// Retry: this driver's GLSL frontend has been observed to flakily reject a valid source -
-	// re-issuing the same source on a fresh shader object clears it. The failure is intermittent
-	// and sometimes survives a couple of immediate retries, so give it more attempts with a short
-	// pause between them; a single bad frame must not be able to kill the whole context.
-	for (int attempt = 2; attempt <= 8 && status != GL_TRUE; ++attempt) {
-		if (attempt > 2) {
-			sp::platform::sleep(2'000); // 2ms, let the driver settle before re-trying
-		}
-		table.glDeleteShader(handle);
-		handle = table.glCreateShader(type);
-		if (handle == 0) { break; }
-		table.glShaderSource(handle, 1, &code, nullptr);
-		table.glCompileShader(handle);
-		table.glGetShaderiv(handle, GL_COMPILE_STATUS, &status);
-	}
-
+	// No retry loop here. There used to be one, for a frontend that "flakily rejected a valid
+	// source" - but the source was not valid: it was read past its end (see the length above), and
+	// whether the byte after the buffer happened to be a zero decided the run. With the length
+	// passed explicitly a compile either succeeds or the source is wrong, and re-issuing it would
+	// only delay the diagnostic.
 	if (status != GL_TRUE) {
 		log::source().error("gles::Shader", "Fail to compile ", _name, ": ", readGlLog(table, true, handle));
 		if (handle != 0) { table.glDeleteShader(handle); }

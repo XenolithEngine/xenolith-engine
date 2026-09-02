@@ -370,26 +370,29 @@ void Instance::probeXcbVisual(const char *clientExtensions) {
 		return;
 	}
 
+	// Alpha is left unconstrained on purpose: the window whose visual this is checked against is
+	// usually a plain depth-24 TrueColor one, which maps to a config with no alpha bits. Device::
+	// init picks the config the same way, so the two have to ask the same question.
 	const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
 		EGL_RED_SIZE, 8,
 		EGL_GREEN_SIZE, 8,
 		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
 		EGL_NONE,
 	};
 
-	EGLConfig configs[32] = {nullptr};
+	EGLConfig configs[64] = {nullptr};
 	EGLint numConfigs = 0;
-	if (!_egl.eglChooseConfig(dpy, attribs, configs, 32, &numConfigs) || numConfigs == 0) {
-		log::source().warn("GLES", "xcb visual probe: no RGBA8 window configs on the xcb display");
+	if (!_egl.eglChooseConfig(dpy, attribs, configs, 64, &numConfigs) || numConfigs == 0) {
+		log::source().warn("GLES", "xcb visual probe: no 8-bit window configs on the xcb display");
 		_egl.eglTerminate(dpy);
 		return;
 	}
 
-	// The xcb window already exists with its own visual by the time a surface is created, so the
-	// backend is usable only if one of the RGBA8 configs maps to that same visual.
+	// The xcb window already exists with its own visual by the time a surface is created, and EGL
+	// refuses (EGL_BAD_MATCH) a config that does not carry that visual - so the backend is usable
+	// only if one of the window configs maps to it.
 	auto compatible = false;
 	EGLint matchedVisual = 0;
 	for (EGLint i = 0; i < numConfigs; ++i) {
@@ -407,9 +410,9 @@ void Instance::probeXcbVisual(const char *clientExtensions) {
 		log::source().info("GLES", "xcb visual probe: window visual ", support.xcb.visual_id,
 				" matches an EGLConfig (visual ", matchedVisual, ")");
 	} else {
-		log::source().warn("GLES",
-				"xcb visual probe: no RGBA8 EGLConfig matches the window visual ",
-				support.xcb.visual_id, " - the xcb window creation has to let the gAPI pick one");
+		log::source().warn("GLES", "xcb visual probe: no EGLConfig matches the window visual ",
+				support.xcb.visual_id, " - windowed presentation over xcb will be refused, and the "
+				"xcb window creation would have to let the gAPI pick the visual");
 	}
 
 	_egl.eglTerminate(dpy);

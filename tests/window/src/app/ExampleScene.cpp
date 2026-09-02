@@ -91,8 +91,17 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// Инспектор живёт на SceneContent, поэтому регистрируем команды уже после setContent.
 	registerCommands();
 
-	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter)
-	setFpsVisible(true);
+	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter).
+	//
+	// XL_HIDE_FPS=1 гасит счётчик для всех укладок сразу. Он меняется каждый кадр, поэтому сцена
+	// с ним никогда не «устаканивается»: снимок, снятый по правилу «два одинаковых кадра подряд»,
+	// не получить вовсе — а это единственный способ сравнить два бэкенда на одной укладке
+	// (tests/parity/layouts.py).
+	bool fpsVisible = true;
+	if (auto value = ::getenv("XL_HIDE_FPS")) {
+		fpsVisible = StringView(value) == "0";
+	}
+	setFpsVisible(fpsVisible);
 
 	return true;
 }

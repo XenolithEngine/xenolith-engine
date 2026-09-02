@@ -151,7 +151,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 				continue; // nothing was recorded for this subpass - the load ops stand as is
 			}
 
-			if (!executeDrawList(*buf, extent.height)) {
+			if (!executeDrawList(*buf)) {
 				ok = false;
 				break;
 			}
@@ -165,7 +165,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 
 // One pass over a recorded buffer. The vertex format is whatever the recorder described (the flat
 // contract's five attributes on a 48-byte stride), so nothing here knows what a frame looks like.
-bool QueuePassHandle::executeDrawList(const CommandBuffer &buf, uint32_t targetHeight) {
+bool QueuePassHandle::executeDrawList(const CommandBuffer &buf) {
 	auto &table = _device->getTable();
 	if (!table.hasGlDraw()) {
 		log::source().error("gles::QueuePassHandle", "GL draw entrypoints are missing");
@@ -266,12 +266,10 @@ bool QueuePassHandle::executeDrawList(const CommandBuffer &buf, uint32_t targetH
 				|| draw.scissor.height != lastScissor.height) {
 			table.glEnable(GL_SCISSOR_TEST);
 			// rotateScissor reports the rect in top-left origin (the software backend's bitmap
-			// convention). glScissor measures its lower-left corner from the bottom of the
-			// framebuffer, so flip Y against the target height - the same reason the vertex shader
-			// negates gl_Position.y. Without this a clip would cut out the vertically mirrored
-			// region instead of the one it was asked to keep.
-			const GLint scissorY = GLint(targetHeight) - GLint(draw.scissor.y) - GLint(draw.scissor.height);
-			table.glScissor(GLint(draw.scissor.x), scissorY,
+			// convention), and that is the space this backend renders in: the vertex shader does
+			// not mirror the geometry, so GL row 0 is the image's top row and a scissor rect goes
+			// through unchanged. Flipping it here would clip the vertically mirrored region.
+			table.glScissor(GLint(draw.scissor.x), GLint(draw.scissor.y),
 					GLsizei(draw.scissor.width), GLsizei(draw.scissor.height));
 			lastScissor = draw.scissor;
 		}
@@ -314,6 +312,13 @@ bool QueuePassHandle::executeDrawList(const CommandBuffer &buf, uint32_t targetH
 	}
 
 	table.glBindVertexArray(0);
+	// The VAO describes this draw list and nothing else - the next one respecifies every attribute
+	// from its own recorder - so it dies with the list. Keeping it would leak one GL object per
+	// subpass per frame, which a headless run of a few frames never shows and a window running at
+	// 60 FPS turns into thousands a minute.
+	if (table.glDeleteVertexArrays) {
+		table.glDeleteVertexArrays(1, &vao);
+	}
 	return success;
 }
 

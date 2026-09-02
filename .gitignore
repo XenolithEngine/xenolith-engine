@@ -9,6 +9,7 @@ xcuserdata
 **/.idea
 **/compile_commands.json
 **/.cache
+**/__pycache__
 **/.clangd
 **/.vscode
 
