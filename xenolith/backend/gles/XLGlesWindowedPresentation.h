@@ -78,9 +78,13 @@ protected:
 
 	uint32_t _nextIndex = 0;
 	EGLSurface _windowSurface = EGL_NO_SURFACE;
+	// The native window the EGLSurface was built on where the platform needs one of its own: the
+	// wl_egl_window wrapping the session's wl_surface. Null on xcb, which uses the window id.
+	void *_nativeEglWindow = nullptr;
 	Extent2 _extent;
 	WindowedSurface *_wsurface = nullptr; // the surface holding the native window handle
 	uint64_t _surfaceCreateAttempt = 0; // throttles lazy-surface retries (monotonic microseconds)
+	bool _swapIntervalSet = false; // the interval is surface state, set once the surface is current
 };
 
 // Presentation engine for a windowed gles surface. run()/recreateSwapchain() are inherited

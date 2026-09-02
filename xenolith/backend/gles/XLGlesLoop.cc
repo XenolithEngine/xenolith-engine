@@ -638,17 +638,9 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 			return;
 		}
 
-		// glReadPixels fills rows bottom-up; flip to host order in place with one row of scratch.
-		const auto rowSize = size_t(width) * 4;
-		Bytes row(rowSize);
-		for (uint32_t y = 0; y < height / 2; ++y) {
-			uint8_t *a = _captureStorage.data() + size_t(y) * rowSize;
-			uint8_t *b = _captureStorage.data() + size_t(height - 1 - y) * rowSize;
-			sprt::memcpy(row.data(), a, rowSize);
-			sprt::memcpy(a, b, rowSize);
-			sprt::memcpy(b, row.data(), rowSize);
-		}
-
+		// No row flip: glReadPixels hands back rows starting at GL row 0, and GL row 0 is where
+		// this backend puts the image's TOP row (the vertex shader does not mirror the geometry -
+		// see XL2dGlesFlatPass.cc), so what comes out is already host order.
 		cb(info, BytesView(_captureStorage));
 	}, this, true);
 }

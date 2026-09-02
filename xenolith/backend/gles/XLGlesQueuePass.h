@@ -135,10 +135,7 @@ protected:
 
 	// Walk one recorded buffer: build its VAO from the described attributes, bind its buffers and
 	// issue each draw with state applied only on change. Runs where the context is current.
-	// `targetHeight` is the bound framebuffer's height in pixels: rotateScissor emits a rect in
-	// top-left origin (the software backend's bitmap convention), but glScissor wants bottom-left,
-	// so the executor flips Y against it.
-	bool executeDrawList(const CommandBuffer &, uint32_t targetHeight);
+	bool executeDrawList(const CommandBuffer &);
 
 	Device *_device = nullptr;
 };

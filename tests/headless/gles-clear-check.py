@@ -248,14 +248,21 @@ def main():
         # Headless renders on demand and `screenshot` reads back the LAST presented image, which
         # trails the frames just submitted (xlclient.py measured a few-frame lag). Burn several
         # frames first, then settle on two consecutive identical captures before asserting.
+        #
+        # Equality alone is not the signal: until the first frame carrying the `show` above
+        # reaches the swapchain, consecutive captures agree on the *stale* image - the scene with
+        # its drawables still visible - and the assertion below then fails on content that is no
+        # longer being drawn. So burn MIN_ROUNDS rounds before trusting equality, the same guard
+        # xlclient.py applies with --min-rounds.
+        MIN_ROUNDS = 6
         previous = None
         info = data = None
         settled = False
-        for _ in range(6):
+        for round_index in range(10):
             session.call("frame", count=4)
             info = session.call("screenshot")
             data = decode_bytes(info["data"])
-            if data == previous:
+            if data == previous and round_index + 1 >= MIN_ROUNDS:
                 settled = True
                 break
             previous = data

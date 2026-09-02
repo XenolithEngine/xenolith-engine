@@ -70,8 +70,10 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	}
 
 	// Windowed when a session platform display was opened; the config below must then also carry
-	// EGL_WINDOW_BIT so the same config can back an EGLWindowSurface.
+	// EGL_WINDOW_BIT so the same config can back an EGLWindowSurface. Such a display belongs to the
+	// window system's connection, not to us - end() records that by leaving it alone.
 	bool windowed = dpy != EGL_NO_DISPLAY;
+	_ownsDisplay = !windowed;
 	if (!windowed) {
 		if (info.eglDevice != nullptr) {
 			dpy = instance->getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, info.eglDevice);
@@ -106,7 +108,11 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 			_surface = EGL_NO_SURFACE;
 		}
 		if (_display != EGL_NO_DISPLAY) {
-			table.eglTerminate(_display);
+			// Same rule as end(): a display belonging to the session's connection is not ours to
+			// terminate, not even when init fails on it.
+			if (_ownsDisplay) {
+				table.eglTerminate(_display);
+			}
 			_display = EGL_NO_DISPLAY;
 		}
 	};
@@ -119,7 +125,49 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	// creation, so it is gone: a windowed device fails cleanly when no window-capable config exists.
 	EGLConfig config = nullptr;
 	EGLint numConfigs = 0;
-	if (windowed) {
+
+	// X first, and by the window's visual rather than by channel depth. An xcb window already has
+	// a visual by the time a surface is created, and eglCreatePlatformWindowSurfaceEXT rejects
+	// (EGL_BAD_MATCH) every config whose EGL_NATIVE_VISUAL_ID is not exactly that visual - so
+	// asking for RGBA8 and hoping is how a window renders every frame and shows none. Alpha is
+	// deliberately not constrained here: a plain depth-24 TrueColor window, which is what a
+	// toolkit-less window creation gets, maps to a config with no alpha bits at all.
+	if (windowed && support.backendMask.test(toInt(sprt::window::SurfaceBackend::Xcb))
+			&& support.xcb.visual_id != 0) {
+		const EGLint visualAttribs[] = {
+			EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+			EGL_RED_SIZE, 8,
+			EGL_GREEN_SIZE, 8,
+			EGL_BLUE_SIZE, 8,
+			EGL_NONE,
+		};
+
+		EGLConfig configs[64] = {nullptr};
+		EGLint count = 0;
+		if (table.eglChooseConfig(dpy, visualAttribs, configs, 64, &count) && count > 0) {
+			for (EGLint i = 0; i < count && !config; ++i) {
+				EGLint visualId = 0;
+				if (table.eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_ID, &visualId)
+						&& uint32_t(visualId) == support.xcb.visual_id) {
+					config = configs[i];
+					numConfigs = 1;
+				}
+			}
+		}
+
+		if (config) {
+			log::source().info("gles::Device", "WSI: config picked by the xcb window visual ",
+					support.xcb.visual_id);
+		} else {
+			log::source().warn("gles::Device", "No EGL window config maps to the xcb window visual ",
+					support.xcb.visual_id, "; falling back to a plain RGBA8 config - the window "
+					"surface will be refused unless the window system can be told which visual to "
+					"use");
+		}
+	}
+
+	if (!config && windowed) {
 		const EGLint windowAttribs[] = {
 			EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
 			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
@@ -146,7 +194,7 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 				return false;
 			}
 		}
-	} else {
+	} else if (!config) {
 		const EGLint configAttribs[] = {
 			EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
 			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
@@ -258,6 +306,13 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 }
 
 void Device::end() {
+	// The compiled programs live in this device's own shader cache (Loop::compileQueue hands every
+	// Shader to addProgram), and nothing else drops that cache: left alone it holds them until
+	// ~Device, where core::Device::invalidateObjects reports each one as "not destroyed before
+	// device destruction". They are ours to release, and here is where the context is still alive
+	// to release them - vk::Device does the same before its own invalidateObjects.
+	clearShaders();
+
 	// Close the door to deferred deletions and drop what is queued: eglDestroyContext below
 	// reclaims every name that was ever allocated, so there is nothing left to delete.
 	{
@@ -277,7 +332,17 @@ void Device::end() {
 		_surface = EGL_NO_SURFACE;
 	}
 	if (_display != EGL_NO_DISPLAY) {
-		t.eglTerminate(_display);
+		// Only a display this backend opened for itself (the surfaceless/device probe path) gets
+		// terminated. A windowed display is EGL's shared handle for the session's wayland or xcb
+		// connection, and by the time this runs the connection is already gone: Context::
+		// handleWillDestroy drops the window-system controller before it stops the loop, and the
+		// loop's stop task lands afterwards. eglTerminate then makes the driver marshal wayland
+		// requests through freed proxies, which is a SIGSEGV inside libwayland-client on the way
+		// out. Everything this device created - context, render surface, GL objects - is released
+		// above; what is left belongs to a connection that no longer exists.
+		if (_ownsDisplay) {
+			t.eglTerminate(_display);
+		}
 		_display = EGL_NO_DISPLAY;
 	}
 
@@ -322,23 +387,53 @@ void Device::drainPendingReleases() {
 }
 
 bool Device::createWindowSurface(sprt::window::SurfaceBackend backend, void *nativeWindow,
-		EGLSurface &out) {
+		Extent2 extent, EGLSurface &out, void *&outNativeWindow) {
 	auto &t = getTable();
 	if (!t.eglCreatePlatformWindowSurfaceEXT || _display == EGL_NO_DISPLAY) {
 		log::source().error("gles::Device", "No eglCreatePlatformWindowSurfaceEXT or no display");
 		return false;
 	}
 
-	// The device's display was opened on the matching platform (wayland or xcb), so the window
-	// handle is passed straight through: for wayland it is the wl_surface, for xcb the window id.
-	if (backend != sprt::window::SurfaceBackend::Wayland
-			&& backend != sprt::window::SurfaceBackend::Xcb) {
+	// The device's display was opened on the matching platform (wayland or xcb), but neither takes
+	// the handle the window system reports: each platform extension names its own native window
+	// type, and getting it wrong is an EGL_BAD_NATIVE_WINDOW at surface creation - a window that
+	// renders every frame and shows none.
+	EGLSurface surface = EGL_NO_SURFACE;
+	void *created = nullptr;
+	EGLint attribs[] = {EGL_NONE};
+
+	switch (backend) {
+	case sprt::window::SurfaceBackend::Wayland: {
+		// EGL_EXT_platform_wayland: a `struct wl_egl_window *`, not the wl_surface. It is a
+		// client-side object (libwayland-egl allocates the buffer queue), so it can be made before
+		// the compositor has mapped anything.
+		if (!t.hasWaylandEgl()) {
+			log::source().error("gles::Device",
+					"libwayland-egl.so.1 is not available: no windowed presentation on wayland");
+			return false;
+		}
+		created = t.wl_egl_window_create(nativeWindow, int(extent.width), int(extent.height));
+		if (!created) {
+			log::source().error("gles::Device", "Fail to create the wl_egl_window for ",
+					extent.width, "x", extent.height);
+			return false;
+		}
+		surface = t.eglCreatePlatformWindowSurfaceEXT(_display, _config, created, attribs);
+		break;
+	}
+	case sprt::window::SurfaceBackend::Xcb: {
+		// EGL_EXT_platform_xcb: a POINTER to the xcb_window_t, where the pre-platform
+		// eglCreateWindowSurface took the id by value. The pointer is read during the call only,
+		// so a local holds it.
+		auto windowId = uint32_t(reinterpret_cast<uintptr_t>(nativeWindow));
+		surface = t.eglCreatePlatformWindowSurfaceEXT(_display, _config, &windowId, attribs);
+		break;
+	}
+	default:
 		log::source().error("gles::Device", "Unsupported window backend for WSI: ", toInt(backend));
 		return false;
 	}
 
-	EGLint attribs[] = {EGL_NONE};
-	auto surface = t.eglCreatePlatformWindowSurfaceEXT(_display, _config, nativeWindow, attribs);
 	if (surface == EGL_NO_SURFACE) {
 		auto err = EGLint(t.eglGetError()); // capture before any other EGL call consumes it
 		EGLint visualId = 0;
@@ -346,11 +441,34 @@ bool Device::createWindowSurface(sprt::window::SurfaceBackend backend, void *nat
 		log::source().error("gles::Device", "Fail to create the EGL window surface, error ",
 				err, " backend=", toInt(backend), " nativeWindow=",
 				nativeWindow ? "set" : "null", " config visual=", int(visualId));
+		if (created && t.wl_egl_window_destroy) {
+			t.wl_egl_window_destroy(created);
+		}
 		return false;
 	}
 
 	out = surface;
+	outNativeWindow = created;
 	return true;
+}
+
+void Device::destroyWindowSurface(EGLSurface &surface, void *&nativeWindow) {
+	auto &t = getTable();
+	if (surface != EGL_NO_SURFACE) {
+		if (_display != EGL_NO_DISPLAY && t.eglDestroySurface) {
+			t.eglDestroySurface(_display, surface);
+		}
+		surface = EGL_NO_SURFACE;
+	}
+
+	// Second, and only after the EGLSurface built on it is gone: the driver holds the buffer queue
+	// for as long as the surface exists.
+	if (nativeWindow) {
+		if (t.wl_egl_window_destroy) {
+			t.wl_egl_window_destroy(nativeWindow);
+		}
+		nativeWindow = nullptr;
+	}
 }
 
 Rc<core::Sampler> Device::getSampler(const core::SamplerInfo &info) {

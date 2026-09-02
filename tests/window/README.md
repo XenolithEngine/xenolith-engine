@@ -453,6 +453,18 @@ This fully replaces the earlier environment-driven batch mode (`XL_SCREENSHOT_TE
 `XL_FLEX_GRID`, `XL_PUG_DARK`, `XL_FITCONTENT_APPEND`): that one shot a list fixed up front in a
 single run and then exited, whereas the same thing is now driven from outside, in any order.
 
+`tests/parity/layouts.py` is that sweep run twice, once per gAPI backend, with the two pictures
+diffed - the acceptance gate for a backend that has to draw the same UI as the reference one:
+
+```
+python3 ../parity/layouts.py [--reference vulkan] [--subject gles] [layout ...]
+```
+
+It sets `XL_FLAT_QUEUE=1` (the reference must be on the same frame graph as a backend that has only
+the flat queue) and `XL_HIDE_FPS=1` on both sides. The second is what makes a capture possible at
+all: the FPS counter changes every frame, so a scene carrying it never settles into two identical
+frames. `XL_HIDE_FPS=1` hides it for every layout, where `hideFps` in the registry hides it for one.
+
 ## Android
 
 To run on Android, import the gradle project from the proj.android directory into Android Studio.
