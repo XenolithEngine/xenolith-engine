@@ -398,10 +398,17 @@ void FontRenderPassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&syn
 	}
 
 	auto &input = _fontAttachment->getInput();
-	auto instance = input->image->getInstance();
-	if (!instance) {
-		log::source().error("gles::FontQueue", "Target image has no initial instance");
-		fail();
+	if (!input->image->getInstance()) {
+		// No instance on the target image: either compileImage has not run yet, or - and this is
+		// the one that actually happens - the controller finalized the image on the way out while
+		// a font frame was still in flight (FontControllerLocal::invalidate clears it, and the
+		// frame graph is unwound after). DynamicImage::updateInstance is a no-op without an
+		// instance, so there is nothing this pass could deliver in either case; failing it would
+		// only turn a dropped update into a failed render pass during shutdown. Release what waits
+		// on the frame and complete, the way the no-glyphs case below does.
+		q.getFrame()->signalDependencies(true);
+		if (onSubmited) { onSubmited(true); }
+		if (onComplete) { onComplete(true); }
 		return;
 	}
 
