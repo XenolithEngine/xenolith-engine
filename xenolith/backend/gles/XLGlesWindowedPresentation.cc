@@ -22,7 +22,9 @@
 
 #include "XLGlesWindowedPresentation.h"
 #include "XLGlesObject.h"
+#include "XLGlesDevice.h"
 #include "XLCoreLoop.h"
+#include "XLCoreSwapchain.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
@@ -48,9 +50,17 @@ core::SurfaceInfo WindowedSurface::getSurfaceOptions(const core::Device &,
 	info.minImageCount = 1;
 	info.maxImageCount = 8;
 
+	// This is where the swapchain's size comes from: Context::handleAppWindowSurfaceUpdate takes
+	// SwapchainConfig::extent straight from currentExtent. A Vulkan surface answers it from
+	// vkGetPhysicalDeviceSurfaceCapabilitiesKHR, which is the window system's own current answer;
+	// EGL has no such query (asking the wl_egl_window would return the size we ourselves gave it),
+	// so the extent is pushed in from the window instead - WindowedPresentationEngine refreshes it
+	// before every read. maxImageExtent must not be that same value: it is a ceiling, and a
+	// ceiling equal to the current size clamps every growth back to where it started, which is a
+	// window that goes fullscreen and keeps rendering at its old size.
 	info.currentExtent = _extent;
 	info.minImageExtent = Extent2(1, 1);
-	info.maxImageExtent = _extent;
+	info.maxImageExtent = Extent2(1 << 14, 1 << 14);
 	info.maxImageArrayLayers = 1;
 
 	info.supportedCompositeAlpha = core::CompositeAlphaFlags::Opaque;
@@ -65,11 +75,15 @@ core::SurfaceInfo WindowedSurface::getSurfaceOptions(const core::Device &,
 			core::ColorSpace::SRGB_NONLINEAR_KHR);
 	info.formats.emplace_back(core::ImageFormat::R8_UNORM, core::ColorSpace::SRGB_NONLINEAR_KHR);
 
-	// A compositor paces us: mailbox is the right default (present the newest frame without
-	// tearing), fifo for a strict vsync.
-	info.presentModes.emplace_back(core::PresentMode::Mailbox);
-	info.presentModes.emplace_back(core::PresentMode::Fifo);
+	// EGL has two present modes and no third: eglSwapInterval(1) is Fifo and eglSwapInterval(0) is
+	// Immediate. Mailbox - present the newest frame, discard the ones overtaken by it, never tear -
+	// has no expression here at all; a driver may or may not behave that way behind interval 0, and
+	// there is no way to ask. Reporting it would be reporting a guarantee this backend cannot give,
+	// so it is left out and the engine picks from what is real. Immediate first: presentation is
+	// paced by the PresentationEngine's own clock, and a blocking swap on top of it parks the loop
+	// thread (see the swap interval in present()).
 	info.presentModes.emplace_back(core::PresentMode::Immediate);
+	info.presentModes.emplace_back(core::PresentMode::Fifo);
 
 	return info;
 }
@@ -158,18 +172,29 @@ auto WindowedSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Sta
 }
 
 Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image,
-		const core::PresentInfo &) {
+		const core::PresentInfo &info) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
 	}
 
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
+	auto slot = maxOf<uint32_t>();
 	if (image) {
-		auto index = findSlot(image);
-		if (index != maxOf<uint32_t>()) {
-			markPresented(index);
+		slot = findSlot(image);
+		if (slot != maxOf<uint32_t>()) {
+			markPresented(slot);
 		}
+
+	// The image now holds a complete frame, and the core image storage has to be told: the swapchain
+	// keeps a per-image snapshot of what was drawn, and an image handed back WITHOUT this mark is
+	// treated as holding something unknown and has its snapshot dropped (invalidateImage). Only vk
+	// did this before, which is why the mark exists at all - it is what separates "this image was
+	// finished" from "this image was recycled mid-flight".
+	//
+	// It also clears ImageStorage::_image, so every use of getImageIndex() has to come first: the
+	// slot is captured above and reused below rather than looked up again.
+		static_cast<core::SwapchainImage *>(image)->setPresented();
 	}
 
 	if (_acquiredImages > 0) {
@@ -214,7 +239,6 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	auto ctx = dev->getContext();
 	auto renderSurface = dev->getRenderSurface();
 
-	auto slot = findSlot(image);
 	if (slot == maxOf<uint32_t>()) {
 		return Status::Ok;
 	}
@@ -272,7 +296,33 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		t.glDeleteFramebuffers(1, &fbo);
 	}
 
-	t.eglSwapBuffers(dpy, _windowSurface);
+	// Hand the compositor the damaged rectangles where the display can take them: it then repaints
+	// that much of the screen instead of the whole surface. The rectangles are what the core's
+	// tracker computed against the PRESENTED snapshot (an empty list means "assume everything"), and
+	// they arrive in this backend's top-origin space while EGL measures its own from the bottom left
+	// of the surface - hence the flip. More than MaxRects is not worth describing, and the tracker
+	// never produces more.
+	EGLint rects[4 * core::SwapchainDamage::MaxRects];
+	EGLint count = 0;
+	if (dev->hasSwapWithDamage() && !info.damage.empty()) {
+		for (auto &it : info.damage) {
+			if (count == EGLint(core::SwapchainDamage::MaxRects)) {
+				break;
+			}
+			auto *r = rects + count * 4;
+			r[0] = EGLint(it.x);
+			r[1] = EGLint(h) - EGLint(it.y) - EGLint(it.height);
+			r[2] = EGLint(it.width);
+			r[3] = EGLint(it.height);
+			++count;
+		}
+	}
+
+	if (count > 0) {
+		t.eglSwapBuffersWithDamageKHR(dpy, _windowSurface, rects, count);
+	} else {
+		t.eglSwapBuffers(dpy, _windowSurface);
+	}
 
 	// Restore the render surface so the next frame renders into textures as usual.
 	if (!t.eglMakeCurrent(dpy, renderSurface, renderSurface, ctx)) {
@@ -281,6 +331,31 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	}
 
 	return Status::Ok;
+}
+
+void WindowedPresentationEngine::syncSurfaceExtent() {
+	auto surface = _surface.get_cast<WindowedSurface>();
+	if (!surface || !_window) {
+		return;
+	}
+
+	// Read through a throwaway serial: the engine's own is bumped by createSwapchain, and this is
+	// a peek at the window's geometry rather than a new frame's worth of constraints.
+	uint64_t serial = 0;
+	auto constraints = _window->exportConstraints(serial);
+	if (constraints.extent.width != 0 && constraints.extent.height != 0) {
+		surface->setExtent(Extent2(constraints.extent.width, constraints.extent.height));
+	}
+}
+
+bool WindowedPresentationEngine::run() {
+	syncSurfaceExtent();
+	return PresentationEngine::run();
+}
+
+bool WindowedPresentationEngine::recreateSwapchain() {
+	syncSurfaceExtent();
+	return PresentationEngine::recreateSwapchain();
 }
 
 Rc<SwapchainBase> WindowedPresentationEngine::makeSwapchain(const core::SurfaceInfo &info,
