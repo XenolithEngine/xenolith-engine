@@ -94,9 +94,17 @@ class SP_PUBLIC WindowedPresentationEngine final : public PresentationEngine {
 public:
 	virtual ~WindowedPresentationEngine() = default;
 
+	virtual bool run() override;
+	virtual bool recreateSwapchain() override;
+
 protected:
 	virtual Rc<SwapchainBase> makeSwapchain(const core::SurfaceInfo &,
 			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode) override;
+
+	// Copy the window's current size onto the surface. Both entry points that read the surface's
+	// options do this first, because that is the only way the new size can reach them: the surface
+	// has nothing to query it from (see WindowedSurface::getSurfaceOptions).
+	void syncSurfaceExtent();
 };
 
 } // namespace stappler::xenolith::gles

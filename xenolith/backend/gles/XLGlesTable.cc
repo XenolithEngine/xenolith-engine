@@ -73,6 +73,8 @@ void EglTable::loadEgl(sprt::Dso &dso) {
 			eglGetProcAddress("eglQueryDeviceStringEXT"));
 	eglQueryDisplayAttribEXT = reinterpret_cast<PFNEGLQUERYDISPLAYATTRIBEXTPROC>(
 			eglGetProcAddress("eglQueryDisplayAttribEXT"));
+	eglSwapBuffersWithDamageKHR = reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
+			eglGetProcAddress("eglSwapBuffersWithDamageKHR"));
 
 #if SPRT_LINUX
 	// wayland-egl ships as its own library, not as part of libEGL: a wayland window surface needs

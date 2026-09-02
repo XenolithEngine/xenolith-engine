@@ -65,6 +65,10 @@ public:
 	EGLContext getContext() const { return _context; }
 	EGLSurface getRenderSurface() const { return _surface; }
 
+	// Whether this display can take a damage region with the swap (EGL_KHR_swap_buffers_with_damage).
+	// False means the present falls back to a plain eglSwapBuffers, which is a full-surface hint.
+	bool hasSwapWithDamage() const { return _swapWithDamage; }
+
 	// Create an EGLWindowSurface on this device's display for the given native window handle.
 	// Each platform extension spells its native window differently, and neither spells it the way
 	// the window system hands it over: wayland needs the wl_surface wrapped in a wl_egl_window
@@ -111,6 +115,7 @@ protected:
 	// EGL's shared handle for a connection this backend does not own, and end() must not terminate
 	// it. See Device::end.
 	bool _ownsDisplay = true;
+	bool _swapWithDamage = false;
 	EGLConfig _config = nullptr;
 	EGLContext _context = EGL_NO_CONTEXT;
 	EGLSurface _surface = EGL_NO_SURFACE;

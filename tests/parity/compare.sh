@@ -42,7 +42,8 @@
 #                        backend, same scene - only how much of the surface gets
 #                        rasterized differs, so it is always exact. A case where damage
 #                        never engaged is reported as vacuous rather than counted as
-#                        proof, and the gate fails if none of them engaged
+#                        proof, and the gate fails if none of them engaged. --subject
+#                        chooses the backend under test (soft or gles)
 #     --tiles [WxH]      compare rasterization cut into tiles against the untiled one. Same
 #                        backend, same scene, same memory - only how the work is divided
 #                        differs, so it is always exact. Default 128x128
@@ -190,13 +191,19 @@ fi
 # alone was written by an earlier frame, so agreement here is the statement that partial
 # redraw composes with itself - and disagreement is a real defect, not a rounding choice.
 #
-# Both sides carry XL_SOFT_DAMAGE_LOG=1: without it a silently disabled damage path renders
+# Both sides carry the backend's damage log: without it a silently disabled damage path renders
 # the same picture as a working one, and the gate would pass by measuring nothing.
 if [[ "$DAMAGE" == 1 ]]; then
-	REFERENCE="soft"
-	SUBJECT="soft"
-	REF_ENV="XL_SOFT_FORCE_FULL_REDRAW=1 XL_SOFT_DAMAGE_LOG=1"
-	SUB_ENV="XL_SOFT_DAMAGE_LOG=1"
+	# The backend is compared against itself, so --subject picks which one is asked the question;
+	# each carries its own pair of switches because each decides the redraw in its own pass.
+	REFERENCE="$SUBJECT"
+	case "$SUBJECT" in
+		soft) damagePrefix="XL_SOFT" ;;
+		gles) damagePrefix="XL_GLES" ;;
+		*) echo "--damage: no full-redraw switch for backend '$SUBJECT'" >&2; exit 2 ;;
+	esac
+	REF_ENV="${damagePrefix}_FORCE_FULL_REDRAW=1 ${damagePrefix}_DAMAGE_LOG=1"
+	SUB_ENV="${damagePrefix}_DAMAGE_LOG=1"
 fi
 
 # Tiled rasterization against untiled. A tile is nothing but a smaller clip rectangle, and the
