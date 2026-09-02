@@ -240,6 +240,11 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	EGLSurface surface = EGL_NO_SURFACE;
 	bool surfacelessOk = hasExtension(displayExtensions, "EGL_KHR_surfaceless_context");
 
+	// A display extension, so it is a property of THIS display and has to be asked here rather than
+	// of the client string (the M0 recon found it in the display list and not in the client one).
+	_swapWithDamage = table.eglSwapBuffersWithDamageKHR != nullptr
+			&& hasExtension(displayExtensions, "EGL_KHR_swap_buffers_with_damage");
+
 	// A render pbuffer is only creatable when the config advertises PBUFFER_BIT (a window-only
 	// config does not). When neither that nor a surfaceless context is available there is nothing
 	// to make current - which is fine on a display that supports surfaceless contexts and fatal
@@ -286,7 +291,11 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	_display = dpy;
 	_alive.store(true);
 	log::source().info("gles::Device", "Context ready on ", info.deviceName, " (", info.version,
-			") windowed=", windowed ? "yes" : "no");
+			") windowed=", windowed ? "yes" : "no",
+			// Whether a present can carry a damage region is not visible from anywhere else, and a
+			// missing extension looks exactly like a working one: the picture is the same, the
+			// compositor just repaints more of the screen.
+			windowed ? (_swapWithDamage ? " swap-with-damage=yes" : " swap-with-damage=no") : "");
 
 	// The same two formats the probe's config guarantees: everything else the backend could accept
 	// (R8G8B8A8_SRGB) is a texture-level feature, not an allocation one.
