@@ -137,7 +137,24 @@ protected:
 	// issue each draw with state applied only on change. Runs where the context is current.
 	bool executeDrawList(const CommandBuffer &);
 
+	// Ask the swapchain's damage tracker what this frame actually has to redraw into the image it
+	// was given, and record the answer in the three members below. Vulkan expresses it as a render
+	// area and soft as a list of rasterized regions; GL has neither, so it is a scissor rectangle -
+	// which bounds the load-op clears as well as the draws, because glClear* obeys the scissor
+	// test. That makes the fragment work and the clear proportional to what changed; the vertex
+	// work is not, and the redraw the frame skips entirely is where the real saving is.
+	void preparePartialRedraw(core::FrameQueue &);
+
 	Device *_device = nullptr;
+
+	// The image already holds exactly this frame and the queue asked for SkipEmptyFrames: the pass
+	// does nothing at all - no clear, no draws - and the image is presented as it stands.
+	bool _skipRedraw = false;
+
+	// Only _partialRedrawArea changed since this image last held a frame; everything outside it is
+	// still valid and must be preserved.
+	bool _partialRedraw = false;
+	URect _partialRedrawArea;
 };
 
 } // namespace stappler::xenolith::gles

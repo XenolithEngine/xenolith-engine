@@ -94,6 +94,12 @@ struct SP_PUBLIC EglTable {
 	decltype(&eglSwapBuffers) eglSwapBuffers = nullptr;
 	decltype(&eglSwapInterval) eglSwapInterval = nullptr;
 
+	// EGL_KHR_swap_buffers_with_damage: the compositor is told which rectangles of the surface
+	// actually changed, so it can repaint that much of the screen instead of all of it. The direct
+	// analogue of VK_KHR_incremental_present, and a display extension rather than a client one -
+	// resolved through eglGetProcAddress, null when the driver has no such thing.
+	PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC eglSwapBuffersWithDamageKHR = nullptr;
+
 	// --- wayland-egl (libwayland-egl.so.1) ---
 	// EGL_EXT_platform_wayland does not take the wl_surface: its native window is a
 	// `struct wl_egl_window *`, the client-side buffer queue that libwayland-egl binds to a

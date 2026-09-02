@@ -83,8 +83,19 @@ uint32_t SwapchainBase::findSlot(const core::ImageStorage *image) const {
 	return maxOf<uint32_t>();
 }
 
-void SwapchainBase::invalidateImage(const core::ImageStorage *image, bool) {
+void SwapchainBase::invalidateImage(const core::ImageStorage *image, bool release) {
 	if (!image) {
+		return;
+	}
+
+	// An image handed back WITHOUT having been presented takes its damage snapshot with it: the
+	// snapshot was committed when the pass asked what to redraw, and what actually reached the
+	// image after that is unknown - the frame may have been dropped before it drew anything. Left
+	// standing, that snapshot tells the next frame the image already holds content it never
+	// received, and the difference is skipped for good: a line of text that never appears, in an
+	// image the tracker believes is up to date.
+	if (!static_cast<const core::SwapchainImage *>(image)->isPresented()) {
+		invalidateImage(uint32_t(image->getImageIndex()), release);
 		return;
 	}
 
@@ -100,6 +111,8 @@ void SwapchainBase::invalidateImage(const core::ImageStorage *image, bool) {
 }
 
 void SwapchainBase::invalidateImage(uint32_t index, bool) {
+	_damage.invalidateImage(index);
+
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
 	if (index < _acquired.size() && _acquired[index]) {
