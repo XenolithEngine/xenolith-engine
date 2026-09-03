@@ -31,10 +31,11 @@ static constexpr IconName s_menuCheckIcon = IconName::Navigation_check_solid;
 // What a row that opens a submenu shows on the right when it declares no trailing icon.
 static constexpr IconName s_menuSubmenuIcon = IconName::Navigation_chevron_right_solid;
 
-/* The row's own colours, for a menu that reached the screen with no stylesheet in scope - a native
-popup in an application that passed neither MenuConfig::stylesheet nor stylesheetSource. Same
-reasoning as the stock tooltip: the default menu surface is dark, and a Label's default ink is
-black, so without these an unstyled menu is black on black.
+/* The row's own colours, for a menu that reached the screen with no stylesheet in scope - which
+since ui::openPopupSurface started sharing the opener's sheet means an application that has no
+ui::StyleSystem at all, a test stand or a tool. Same reasoning as the stock tooltip: the default
+menu surface is dark, and a Label's default ink is black, so without these such a menu is black on
+black.
 
 CSS still wins: `color` arrives as an inherited style component, which overrides a Label's explicit
 setter by design. */

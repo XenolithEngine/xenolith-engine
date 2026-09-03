@@ -99,6 +99,7 @@
 
 #include "input/XLUiSelect.cc" // after MenuPopup: the list it opens is one
 #include "input/XLUiChipRow.cc" // after MenuPopup: the "+" opens a menu
-#include "input/XLUiColorField.cc" // after PopupSurface: its own picker is one
+#include "input/XLUiColorPicker.cc" // after Slider, NumberField and Button: the surface is made of them
+#include "input/XLUiColorField.cc" // after ColorPicker: its own picker is one
 #include "search/XLUiSearchSystem.cc" // no order dependency: it draws nothing and opens nothing
 #include "input/XLUiSearchPicker.cc" // after SearchSystem and MenuPopup: it queries one and opens through the other

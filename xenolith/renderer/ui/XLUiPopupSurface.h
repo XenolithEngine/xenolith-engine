@@ -34,8 +34,11 @@ A ui::SubWindow is the WINDOW. What every popup then has to do with it is the sa
 each of them is a thing to get wrong exactly once:
 
  1. on the NATIVE path the surface is a scene of its own, and the ui::StyleSystem carrying the
-    application's sheet lives on the parent window's content and does not reach it - so a popup
-    that does not load a sheet of its own comes up unstyled;
+    application's sheet lives in the parent window's scene and does not reach it - so unless the
+    sheet is handed over, the popup comes up unstyled. It is handed over by DEFAULT here: the sheet
+    in force where the popup was opened from is shared with the surface's own scene, so an
+    application that never heard of any of this gets a styled dropdown. `stylesheet` /
+    `stylesheetSource` still override it for a surface whose look is its own;
  2. the panel has to be RenderingLevel::Solid: opaque geometry is drawn first and writes depth
     while the surface pass only TESTS against it, so a panel left at the default level cannot cover
     the labels of whatever is under it on the overlay path;
@@ -56,18 +59,31 @@ what goes in it.
 
 The result IS the handle: keep the Rc for as long as the surface should stay open. */
 struct SP_PUBLIC PopupSurfaceConfig {
-	/* The stylesheet the surface's own scene loads, used on the NATIVE path only - see (1).
+	/* A stylesheet OF THE SURFACE'S OWN, replacing the inherited one - see (1). Used on the NATIVE
+	path only.
 
-	Empty means "no sheet": the panel then paints itself with `fallbackColor`, the way
-	ui::TooltipSystem's stock hint does. On the overlay path the panel is pushed under the parent's
-	content and inherits the outer sheet, and declaring one here is harmless - the resolver applies
-	outer sheets first. */
+	Reach for it when the popup's look is genuinely not the application's: a test stand, an
+	auxiliary window that ships no .css of its own. Leaving both of these empty is the ordinary
+	case, and means "the sheet that styles whatever opened me"; if that search also comes up empty
+	the panel paints itself with `fallbackColor`, the way ui::TooltipSystem's stock hint does.
+
+	On the overlay path neither is needed nor read: the layout is pushed under the parent's content
+	and is already inside the outer sheet's scope. */
 	String stylesheet;
 	FileCategory stylesheetCategory = FileCategory::Bundled;
 
-	// The same thing as a literal, for a surface whose look is declared in code (a test stand, an
-	// auxiliary window that ships no .css). Applied after `stylesheet`, so the two compose.
+	// The same thing as a literal. Applied after `stylesheet`, so the two compose.
 	String stylesheetSource;
+
+	/* Which node the popup belongs to - the ui::Select, the ui::ColorField, the row that opened a
+	submenu. Read ONCE, synchronously, inside openPopupSurface: the sheet in force for this node is
+	found by walking up from it and shared with the surface's own scene. Never stored, so a raw
+	pointer is safe here and an owning one would be a lie.
+
+	Left unset, the search starts at the parent window's top layout instead, which is where an
+	application that declares its sheet on the layout rather than on the content keeps it - and
+	which is also what chains a submenu onto its parent popup's inherited sheet. */
+	Node *styleSource = nullptr;
 
 	String title;
 	String idPrefix;

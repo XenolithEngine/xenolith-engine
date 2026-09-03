@@ -47,7 +47,9 @@ struct SP_PUBLIC SimpleGradient {
 	bool operator==(const SimpleGradient &) const;
 	bool operator!=(const SimpleGradient &) const;
 
-	Color4B colors[4]; // bl - br - tl - tr
+	// bl - br - tl - tr. NOT the order VertexArray::Quad wants (tl - bl - tr - br); Layer
+	// transposes between the two, and a second reader of this array has to do the same.
+	Color4B colors[4];
 };
 
 /**
@@ -71,6 +73,10 @@ protected:
 
 	virtual void updateVertexes(FrameInfo &frame) override;
 	virtual void updateVertexesColor() override;
+
+	// The four corners, tinted by the node's own colour and transposed into the quad's vertex
+	// order. `out` is four Color4F.
+	void writeGradientColors(Color4F *out) const;
 
 	virtual RenderingLevel getRealRenderingLevel() const override;
 

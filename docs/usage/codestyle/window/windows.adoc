@@ -183,7 +183,7 @@ a menu, a search palette and a colour picker all open through:
 ui::PopupSurfaceConfig config;
 config.size = Extent2(258, 114);              // settled BEFORE any node exists
 config.panelType = "color-picker";            // what a stylesheet addresses it as
-config.stylesheetSource = mySheet;            // the NATIVE path needs its own
+config.styleSource = anchor;                  // whose sheet the surface inherits
 config.content = [](NotNull<ui::SubWindow> surface, NotNull<ui::Panel> panel) {
 	// panel is already named, typed, placed, sized and painted
 };
@@ -194,10 +194,13 @@ auto surface = ui::openPopupSurface(window, ui::placementForNode(anchor), sp::mo
 What it does, and why each one is not the caller's business:
 
 . **The sheet.** A native popup is a scene of its own, and the `ui::StyleSystem`
-  carrying the application's sheet lives on the parent window's content and does
-  not reach it — so a surface that loads none comes up unstyled. `stylesheet` /
-  `stylesheetSource` are applied on that path only; on the overlay path the panel
-  inherits the outer sheet anyway.
+  carrying the application's sheet lives in the parent window's scene, out of its
+  reach — so the sheet is handed over: the one in force for `styleSource` (the
+  widget the popup belongs to; the parent window's top layout when it is unset)
+  is shared with the surface's own scene, parsed once. `stylesheet` /
+  `stylesheetSource` replace it for a surface whose look is its own. All of this
+  is the native path only; on the overlay path the panel is pushed under the
+  parent's content and is already inside the outer sheet's scope.
 . **`RenderingLevel::Solid`.** Opaque geometry is drawn first and writes depth
   while the surface pass only *tests* against it, so a panel left at the default
   level cannot cover the labels of whatever is under it on the overlay path.
@@ -209,10 +212,20 @@ What it does, and why each one is not the caller's business:
   parent and puts its origin at the bottom left, so the panel goes at the rect the
   placement resolved — converted out of that rect's Y-**down** space into the
   scene's Y-**up** one.
-. **The tap outside.** A native `Popup` is dismissed by the window system; an
-  overlay has no such contract and takes itself down. `onOutsideTap` overrides
-  that for a surface that is one link of something bigger — a submenu closes the
-  whole chain rather than itself.
+. **The tap outside, and the input the overlay stands in front of.** A native
+  `Popup` is dismissed by the window system; an overlay has no such contract and
+  takes itself down. `onOutsideTap` overrides that for a surface that is one link
+  of something bigger — a submenu closes the whole chain rather than itself.
++
+  What keeps the press off the scene *under* an overlay is an **exclusive
+  `FocusGroup`** on its layout, not a swallowing listener, and the two are not
+  interchangeable: a swallowed event makes its own listener the exclusive owner of
+  the rest of the gesture, so a layout-wide listener that answers "handled" to
+  every press takes the `End` with it and every tap inside the popup dies between
+  its halves. The group instead drops everyone outside it from the dispatch
+  without owning anything. It is `EventMaskTouch` and `Propagate`, so the keyboard
+  is untouched and the content is free to carry groups of its own.
+  `basic2d::OverlaySurface` is the same pattern.
 
 `makePanel` is for a surface whose panel is a class of its own (`ui::SearchPicker`
 passes its content that way); left unset, a plain `ui::Panel` is made. The extent

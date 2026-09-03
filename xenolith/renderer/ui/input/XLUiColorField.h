@@ -29,6 +29,7 @@
 #include "XL2dLayerRounded.h"
 #include "XL2dIconSprite.h"
 #include "XLUiControlLock.h"
+#include "XLUiColorPicker.h" // the built-in picker: its surface, its params and its tabs
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -71,8 +72,14 @@ swatch's colour is the VALUE, so it is written in code rather than by a sheet - 
 decoration. The built-in picker's surface is type `color-picker`. */
 class SP_PUBLIC ColorField : public Panel, public EditLockTarget {
 public:
-	// The accepted colour. Not fired for a refusal, and not for a value a program assigned
-	// silently.
+	/* The accepted colour. Not fired for a refusal, and not for a value a program assigned
+	silently.
+
+	IT FIRES THROUGHOUT A DRAG of the built-in picker's bars, the way ui::Slider's callback does and
+	for the same reason: a colour that only arrived when the surface closed would leave the swatch,
+	the hex line and whatever the application paints from this all showing the old value while the
+	person is choosing. An owner that records history is the one that groups a gesture into a single
+	entry. */
 	using ColorCallback = Function<void(const Color4B &)>;
 
 	// The hex line took or lost the caret. The FORM ADAPTER listens here: a tap that puts the caret
@@ -135,6 +142,19 @@ public:
 	// The template the built-in surface is opened from: its stylesheet, its title, its flags. The
 	// content, the size and the placement are the widget's and are overwritten.
 	virtual void setPickerConfig(PopupSurfaceConfig &&);
+	const PopupSurfaceConfig &getPickerConfig() const { return _pickerConfig; }
+
+	/* Which of RGB / HSL / HSV the built-in surface opens on.
+
+	Named for the COLOUR mode, because `PickerMode` above already means something else on this
+	widget - which picker a tap opens at all. The two never appear in one sentence and would be a
+	trap in one name.
+
+	Kept HERE rather than in the surface, because the surface does not outlive a choice: it is
+	created on every open and destroyed on every close, so a tab remembered inside it would be
+	remembered for exactly as long as the person could still see it. */
+	virtual void setPickerColorMode(ColorPickerMode);
+	ColorPickerMode getPickerColorMode() const { return _pickerMode; }
 
 	virtual void setValueCallback(ColorCallback &&);
 	virtual void setFocusCallback(FocusCallback &&);
@@ -222,6 +242,7 @@ protected:
 
 	Rc<SubWindow> _picker;
 	PopupSurfaceConfig _pickerConfig;
+	ColorPickerMode _pickerMode = ColorPickerMode::RGB;
 
 	// The cancellation token of the system dialog that is up, and what says one IS up. Kept because
 	// a second tap must not open a second dialog, and because a field leaving the scene has to take

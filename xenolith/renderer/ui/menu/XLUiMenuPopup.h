@@ -36,15 +36,16 @@ system for exactly the extent the measurement produced, which is why the two can
 struct SP_PUBLIC MenuConfig {
 	MenuStyle style;
 
-	/* The stylesheet the menu's own scene loads, used on the NATIVE path only.
+	/* A stylesheet OF THE MENU'S OWN, replacing the inherited one. Used on the NATIVE path only.
 
-	A native popup is a scene of its own: the ui::StyleSystem carrying the application's sheet lives
-	on the PARENT window's content and does not reach it, so without this every node in the menu
-	comes up unstyled. On the overlay path the menu is pushed under that same content and inherits
-	the outer sheet, and declaring one here is harmless - the resolver applies outer sheets first.
+	A native popup is a scene of its own, and the ui::StyleSystem carrying the application's sheet
+	lives in the PARENT window's scene - so ui::openPopupSurface shares that sheet with it. Leaving
+	this empty is therefore the ordinary case and means "look like the application"; declare one
+	for a menu whose look is genuinely not the application's. If neither is available the menu
+	paints itself in its own neutral colours, the way ui::TooltipSystem's stock hint does.
 
-	Empty means "no sheet": the menu then paints itself with its own neutral colours, the way
-	ui::TooltipSystem's stock hint does. */
+	On the overlay path neither is read: the menu is pushed under that same content and is already
+	inside the outer sheet's scope. */
 	String stylesheet;
 	FileCategory stylesheetCategory = FileCategory::Bundled;
 
