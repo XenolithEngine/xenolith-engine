@@ -355,7 +355,39 @@ extern "C" __SPRT_ID(uint64_t) __libc_main_thread = 0;
 
 extern "C" int main(int argc, char **argv, char **envp) __attribute__((weak));
 
+// Startup trace, off unless asked for. On a target with no debugger and no
+// stdio until step 4, a raw write(64) at each numbered step is the only way to
+// see how far startup got -- and it is how the hang in the static constructors
+// was located when the first real program ran under the K7 loader. Costs
+// nothing when off; the marks are single characters so the sequence reads as
+// "[0[1[2[3[4" on the console.
+#if defined(__SPRT_EL0_STARTUP_TRACE) && __SPRT_EL0_STARTUP_TRACE
+static void __el0_mark(char c) {
+	char buf[2] = {'[', 0};
+	buf[1] = c;
+	__el0_write(1, buf, 2);
+}
+
+// Which .init_array entry is about to run, as two hex digits. The table is in
+// link order, so an index maps straight back to a translation unit:
+//
+//     llvm-objdump -s -j .init_array app.elf   # the pointers, in order
+//     llvm-nm -C --defined-only -n app.elf     # what each one is
+//
+// A constructor that hangs or faults leaves its own index as the last thing on
+// the console, which is the entire diagnostic.
+static void __el0_mark_idx(char kind, unsigned long i) {
+	static const char hex[] = "0123456789abcdef";
+	char buf[4] = {'[', kind, hex[(i >> 4) & 0xf], hex[i & 0xf]};
+	__el0_write(1, buf, 4);
+}
+#else
+static void __el0_mark(char) { }
+static void __el0_mark_idx(char, unsigned long) { }
+#endif
+
 extern "C" __SPRT_NORETURN void __el0_start_main(unsigned long *sp) {
+	__el0_mark('0');
 	// 1. argc / argv / envp / auxv, straight off the startup stack.
 	auto argc = (int)sp[0];
 	auto argv = (char **)(sp + 1);
@@ -383,6 +415,7 @@ extern "C" __SPRT_NORETURN void __el0_start_main(unsigned long *sp) {
 		}
 	}
 
+	__el0_mark('1');
 	// 2. Seed the stack canary before anything guarded returns. Without
 	// AT_RANDOM there is nothing better than a fixed value -- and a fixed
 	// canary is still a canary against an accidental overrun, which is what it
@@ -395,25 +428,32 @@ extern "C" __SPRT_NORETURN void __el0_start_main(unsigned long *sp) {
 		__stack_chk_guard = 0x00'0a'ff'0d'de'ad'be'efUL;
 	}
 
+	__el0_mark('2');
 	// 3. TLS, before the libc: __libc's constructor touches errno, and errno is
 	// a thread_local.
 	__el0_setup_tls(phdr, phnum, phent);
 
+	__el0_mark('3');
 	// 4. The libc singleton: fd 0/1/2, the C locale, the fd tables.
 	auto libc = new (s_libcBuffer, sprt::nothrow) sprt::__libc;
 	__libc_main_thread = libc->mainThread;
 
+	__el0_mark('4');
 	// 5. Static constructors. preinit first, as the ELF ABI requires.
 	for (auto f = __preinit_array_start; f != __preinit_array_end; ++f) {
+		__el0_mark_idx('p', (unsigned long)(f - __preinit_array_start));
 		(*f)(argc, argv, envp);
 	}
 	for (auto f = __init_array_start; f != __init_array_end; ++f) {
+		__el0_mark_idx('i', (unsigned long)(f - __init_array_start));
 		(*f)(argc, argv, envp);
 	}
 
+	__el0_mark('5');
 	// 6. main, then exit -- which drains atexit, flushes stdio and issues
 	// exit_group(94). A program with no main links (the runtime is also built as
 	// a library) and exits cleanly.
+	__el0_mark('m');
 	int ret = 0;
 	if (&main) {
 		ret = main(argc, argv, envp);

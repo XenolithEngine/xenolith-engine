@@ -26,13 +26,27 @@
 # builtins build produces a truncated compiler-rt missing the pieces that depend
 # on the unwinder. Same reasoning as target-wasm.
 #
-# LIBUNWIND_IS_BAREMETAL is ON here and that is a temporary answer. The
-# non-baremetal ELF path finds .eh_frame through dl_iterate_phdr and
-# PT_GNU_EH_FRAME -- which our link does emit -- but it also needs a
-# dl_iterate_phdr and a <link.h>, and the libc has neither yet. So for now the
-# unwinder scans between __eh_frame_start/__eh_frame_end, which app-aarch64.lds
-# provides. Contour L4 supplies dl_iterate_phdr for a static image and flips this
-# to Off; nothing else in this file changes.
+# LIBUNWIND_IS_BAREMETAL stays ON, and contour L4 settled that it is the right
+# answer rather than a temporary one. The plan called for flipping it Off and
+# writing a dl_iterate_phdr; reading what the flag actually does says otherwise:
+#
+#   * src/config.h turns _LIBUNWIND_SUPPORT_DWARF_INDEX on in baremetal mode, so
+#     the unwinder uses the .eh_frame_hdr BINARY SEARCH TABLE -- the same index
+#     the dl_iterate_phdr path would find through PT_GNU_EH_FRAME. There is no
+#     linear FDE scan here to get rid of.
+#   * The section bounds come from app-aarch64.lds, i.e. from the linker, which
+#     is the one party that knows them exactly. dl_iterate_phdr would recover the
+#     same two numbers at run time, from our own phdrs, for one static ET_EXEC
+#     that can never gain a second object (decision D5).
+#   * _LIBUNWIND_REMEMBER_ALLOC is alloca in baremetal mode and malloc otherwise.
+#     Unwinding without touching the allocator is worth having on a target where
+#     an unwind can start from inside it.
+#   * _LIBUNWIND_USE_DLADDR goes to 0, which costs only symbol NAMES in
+#     unw_get_proc_name -- there is no dynamic symbol table to read them from.
+#
+# So flipping it would mean writing dl_iterate_phdr and <link.h> to obtain what
+# the linker already told us, and paying for it in the remember-stack. Verified
+# by ehtest on the board: eleven cases including a 25-frame unwind and a longjmp.
 #
 # COMPILER_RT_INSTALL_PATH is set EXPLICITLY rather than left to LLVM's
 # derivation. Without it the builtins land in lib/<os_dir>/ here while the same
