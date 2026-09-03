@@ -1418,7 +1418,11 @@ bool TableView::RowNode::init(TableView *view, size_t index, bool interactive) {
 				_view->handleRowTap(_index, tap.count);
 			}
 			return true;
-		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 1});
+			/* Two taps, reported IMMEDIATELY - the same reasoning as TreeView::RowNode's. Capped
+			at one, `count` could never be anything but 1 and setActivateCallback was unreachable
+			from any pointer; Immediate keeps the plain single click out of the double-tap
+			interval. */
+		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 2, InputTapFlags::Immediate});
 	}
 
 	return true;

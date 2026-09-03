@@ -1382,7 +1382,13 @@ bool TreeView::RowNode::init(TreeView *view, size_t index, bool interactive) {
 				_view->handleRowTap(_index, tap.count);
 			}
 			return true;
-		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 1});
+			/* TWO taps, reported IMMEDIATELY. handleRowTap reads `count` to tell "the user moved
+			the selection" from "the user opened this row", so a recognizer capped at one tap left
+			setActivateCallback unreachable from any pointer - the count could never be anything
+			but 1. Immediate is what keeps the ordinary single click free of the double-tap
+			interval: tap 1 is reported the moment it happens and tap 2 when it arrives, instead of
+			every click waiting to find out whether a second one follows. */
+		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 2, InputTapFlags::Immediate});
 	}
 
 	return true;

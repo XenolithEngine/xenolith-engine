@@ -99,19 +99,28 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 
 			auto index = size_t(data.getInteger("index"));
 			if (index < _hits.size()) {
-				builder.setContent(buildTitleNode(_hits[index]));
+				/* A LABEL, where the flat list gets a `table-cell` around one - and the difference
+				is not decoration. A tree row is a flex row declared by the stylesheet, and a flex
+				item is measured only if it can answer: a Label can, a Panel with no layout of its
+				own cannot and keeps whatever ContentSize it has, which is zero. Wrapped, every
+				result row came out as a zero box parked at the row's midpoint, so its text drew
+				half a row too high, overlapping the row above - and `tree-row > label`, the
+				selector an application writes for the category rows the tree builds itself, missed
+				it one level down, leaving the text at the Label's own near-black default. */
+				builder.setContent(buildTitleLabel(_hits[index]));
 			}
 			builder.setName(toString("search-picker-row-", builder.getIndex()));
 		});
 
-		_tree->setSelectCallback([this](size_t index, const TreeView::Row &) {
-			// The tree is the other writer of the selection; keeping our own copy in step is what
-			// lets the arrow keys and the mouse agree about what "selected" means. A category row
-			// stands for no hit, so selecting one selects nothing.
-			_selected = getHitForRow(index);
-		});
-		_tree->setActivateCallback([this](size_t index, const TreeView::Row &row) {
-			// Activating a category OPENS it. It is not a result and there is nothing to report.
+		_tree->setSelectCallback([this](size_t index, const TreeView::Row &row) {
+			/* A TAP IS THE CHOICE. This runs for a tap and for nothing else - TreeView::
+			setSelectedRow, which is what the arrow keys move, deliberately reports nothing - and
+			in a dropdown one click on a row is how a person picks it. Waiting for a second click
+			(which is what leaving this to the activate callback means) is not what any list a
+			person has ever used does.
+
+			So there is no activate callback on this tree: the first tap has already resolved the
+			interaction, and a second one would only toggle a category straight back shut. */
 			if (row.isCategory()) {
 				_tree->toggleRow(index);
 				return;
@@ -143,11 +152,8 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 			}
 		});
 		_results->setSelectCallback([this](size_t index, const TableView::Row &) {
-			// The table is the other writer of the selection; keeping our own copy in step is what
-			// lets the arrow keys and the mouse agree about what "selected" means.
-			_selected = index;
-		});
-		_results->setActivateCallback([this](size_t index, const TableView::Row &) {
+			// A tap, and in a dropdown that is the choice - the grouped list above says why, and
+			// the two modes of one widget must not disagree about what a click means.
 			_selected = index;
 			activateSelected();
 		});
@@ -730,24 +736,15 @@ bool SearchPickerContent::handleKey(const GestureData &data) {
 	return false;
 }
 
-Rc<Node> SearchPickerContent::buildTitleNode(const SearchHit &hit) const {
-	/* The same shape TableView builds for a plain cell - a `table-cell` Panel with a `label`
-	inside - rather than a bare Label. The cell is what the table sizes; a label handed over
-	directly is positioned and then left at zero width, which is a row that renders nothing. */
-	auto panel = Rc<Panel>::create();
-	panel->setType("table-cell");
-	panel->removeStyleClass("xl-ui-panel");
-	panel->addStyleClass("xl-ui-table-cell");
-	panel->addStyleClass("xl-ui-search-picker-cell");
-	Panel::registerStyleAppliers("table-cell");
-	// ... including the paint the view gives the cells it builds itself: a cell handed in from
-	// outside is the one place a table cannot do it, and Panel's default is opaque white, so this
-	// row's ground and its selection would be covered (TableView_paintCellDefaults).
-	panel->setPathColor(Color4B(0, 0, 0, 0), true);
-
-	auto label = panel->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+Rc<basic2d::Label> SearchPickerContent::buildTitleLabel(const SearchHit &hit) const {
+	auto label = Rc<basic2d::Label>::create();
 	label->setType("label");
+	/* BOTH classes. `table-label` is what the cell below puts a title in and what a sheet written
+	for the flat list addresses; `tree-label` is what ui::TreeView calls the label it builds itself,
+	so a row handed in from here answers to the same rule as the category rows beside it rather
+	than needing a selector nobody knew to write. */
 	label->addStyleClass("table-label");
+	label->addStyleClass("tree-label");
 	label->addStyleClass("xl-ui-search-picker-title");
 	label->setAlignment(font::TextAlign::Left);
 	label->setString(hit.title);
@@ -761,6 +758,29 @@ Rc<Node> SearchPickerContent::buildTitleNode(const SearchHit &hit) const {
 		label->setTextRangeStyle(range.first, range.second,
 				basic2d::Label::Style(Color3B(color.r, color.g, color.b)));
 	}
+
+	return label;
+}
+
+Rc<Node> SearchPickerContent::buildTitleNode(const SearchHit &hit) const {
+	/* The same shape TableView builds for a plain cell - a `table-cell` Panel with a `label`
+	inside - rather than a bare Label. The cell is what the TABLE sizes; a label handed to a table
+	directly is positioned and then left at zero width, which is a row that renders nothing.
+
+	A tree row is the other way round - see the row callback - which is why the wrapper lives here
+	and not in buildTitleLabel. */
+	auto panel = Rc<Panel>::create();
+	panel->setType("table-cell");
+	panel->removeStyleClass("xl-ui-panel");
+	panel->addStyleClass("xl-ui-table-cell");
+	panel->addStyleClass("xl-ui-search-picker-cell");
+	Panel::registerStyleAppliers("table-cell");
+	// ... including the paint the view gives the cells it builds itself: a cell handed in from
+	// outside is the one place a table cannot do it, and Panel's default is opaque white, so this
+	// row's ground and its selection would be covered (TableView_paintCellDefaults).
+	panel->setPathColor(Color4B(0, 0, 0, 0), true);
+
+	panel->addChild(buildTitleLabel(hit), ZOrder(1));
 
 	return panel;
 }
@@ -1102,6 +1122,9 @@ Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
 	surfaceConfig.stylesheet = config.stylesheet;
 	surfaceConfig.stylesheetCategory = config.stylesheetCategory;
 	surfaceConfig.stylesheetSource = config.stylesheetSource;
+	// Where the list's look comes from when the application named no sheet: the control it drops
+	// out of. Read before this call returns and never kept - see PopupSurfaceConfig::styleSource.
+	surfaceConfig.styleSource = anchor;
 	surfaceConfig.title = config.title.empty() ? String("Search") : config.title;
 	surfaceConfig.idPrefix = config.idPrefix.empty() ? String("search-picker") : config.idPrefix;
 	surfaceConfig.size = size;
