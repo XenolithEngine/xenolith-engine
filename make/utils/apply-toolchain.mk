@@ -44,6 +44,8 @@ else ifeq ($(TARGET_SYSTEM),NuttX)
 	include $(BUILD_ROOT)/os/nuttx.mk
 else ifeq ($(TARGET_SYSTEM),Embox)
 	include $(BUILD_ROOT)/os/embox.mk
+else ifeq ($(TARGET_SYSTEM),EmboxUser)
+	include $(BUILD_ROOT)/os/embox-user.mk
 else
 $(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif
