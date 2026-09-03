@@ -58,6 +58,16 @@ public:
 
 	remote::ObjectRegistry *getSharedObjects() const { return _sharedObjects; }
 
+	// SHA-256 of the listener's DER SubjectPublicKeyInfo, for handing to a client out-of-band so it
+	// can authenticate this server (see remote::Listener::getCertificateFingerprint). Empty while not
+	// listening -- the certificate is generated when the listener opens.
+	BytesView getListenerFingerprint() const;
+
+	// True while a remote client holds the single connection slot and its connection is live. The
+	// end-to-end check polls this to know the client actually got through the handshake, rather than
+	// inferring it from a screenshot.
+	bool hasRemoteClient() const;
+
 	// The server-side font endpoint (remote::Domain::Font). Persists across client reconnects; used by
 	// RemoteRenderClient to reconcile a frame's font dependency ids. Null if xenolith_font is absent.
 	RemoteFontServer *getFontServer() const { return _fontServer.get(); }
@@ -175,6 +185,12 @@ protected:
 	remote::Address _listenAddress;
 	Rc<remote::Listener> _listener;
 	Rc<sprt::dispatch::PollHandle> _listenPoll;
+
+	// Readiness on the ACCEPTED connection, which is a different fd from the listener's on every
+	// transport whose accept yields a new socket (unix, tcp). QUIC hides this: one UDP socket carries
+	// both accepts and connection data, so listener readiness happened to cover the connection too --
+	// and a transport where it does not was serviced only by the 1s update tick.
+	Rc<sprt::dispatch::PollHandle> _clientPoll;
 	Rc<RemoteRenderClient> _remoteClient;
 
 	// Server font endpoint (Domain::Font). Created once in loadExtensions, persists across reconnects
@@ -187,6 +203,18 @@ protected:
 
 	// A just-accepted connection awaiting its setup handshake (driven from pumpListener).
 	Rc<remote::ServerConnection> _pendingConnection;
+
+	// Connections refused in the accept callback (the single-client slot was taken, or the handshake
+	// rate limit is in force). pumpListener answers each with GlobalError::Busy and drops it, so the
+	// peer is told rather than left to time its own handshake out.
+	Vector<Rc<remote::ServerConnection>> _refusedConnections;
+
+	// Handshake rate limit (monotonic us). Failures back off exponentially; a success resets both.
+	// The window is global rather than per-address because the QUIC listener multiplexes every peer
+	// over one UDP socket and exposes no per-connection address -- that lands with PeerIdentity in
+	// the transport abstraction.
+	uint64_t _handshakeBackoffUntil = 0;
+	uint32_t _handshakeFailures = 0;
 	Rc<remote::ObjectRegistry> _sharedObjects;
 
 	// Keepalive (monotonic us): ping the client every kKeepalivePingIntervalUs and terminate the

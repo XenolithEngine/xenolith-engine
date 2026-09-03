@@ -52,6 +52,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 static constexpr uint64_t kKeepalivePingIntervalUs = 1'000'000; // 1s
 static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000; // 5s
 
+// Rate limit on setup handshakes. Every failure (bad key, bad protocol) doubles a cool-off window
+// during which further connections are refused outright, so guessing a 64-byte bearer key costs the
+// attacker wall-clock time instead of being free. A successful handshake clears it, so a legitimate
+// client that mistypes a token once is delayed by 250ms, not locked out.
+static constexpr uint64_t kHandshakeBackoffBaseUs = 250'000; // after the 1st failure
+static constexpr uint64_t kHandshakeBackoffMaxUs = 8'000'000; // ceiling
+
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 ServerAppThread::~ServerAppThread() { }
@@ -61,6 +68,16 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 bool ServerAppThread::init(NotNull<Context> ctx) {
 	_context = ctx;
 	return true;
+}
+
+BytesView ServerAppThread::getListenerFingerprint() const {
+	return _listener ? _listener->getCertificateFingerprint() : BytesView();
+}
+
+bool ServerAppThread::hasRemoteClient() const {
+	// isClosed() is non-const on the connection (it pumps events), and this accessor is a read for
+	// diagnostics, so ask only whether the slot is taken.
+	return _remoteClient != nullptr;
 }
 
 const ContextInfo *ServerAppThread::getContextInfo() const { return _context->getInfo(); }
@@ -427,7 +444,7 @@ bool ServerAppThread::startListening() {
 	// internal timers are pumped from performAppUpdate() (same appUpdateInterval cadence as the main
 	// update timer), so no separate listen timer is needed.
 	_listenPoll =
-			_appLooper->listenPollableHandle(_listener->getPollFd(), sprt::dispatch::PollFlags::In,
+			_appLooper->listenPollableHandle(_listener->getPollHandle(), sprt::dispatch::PollFlags::In,
 					[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
 		pumpListener();
 		return Status::Ok;
@@ -442,6 +459,10 @@ bool ServerAppThread::stopListening() {
 		_sharedObjects = nullptr;
 	}
 
+	if (_clientPoll) {
+		_clientPoll->cancel();
+		_clientPoll = nullptr;
+	}
 	if (_listenPoll) {
 		_listenPoll->cancel();
 		_listenPoll = nullptr;
@@ -470,6 +491,16 @@ void ServerAppThread::pumpListener() {
 	if (_remoteClient && _remoteClient->isClosed()) {
 		log::source().info("AppThread", "remote client disconnected; window reverts to fallback");
 		resetRemoteClient();
+	}
+
+	// Answer, then drop, every connection the accept callback refused.
+	if (!_refusedConnections.empty()) {
+		auto refused = sp::move(_refusedConnections);
+		_refusedConnections.clear();
+		for (auto &it : refused) {
+			it->reject(remote::GlobalError::Busy);
+			it->close();
+		}
 	}
 
 	// Run the setup handshake for a freshly accepted connection (bounded, synchronous).
@@ -535,6 +566,10 @@ void ServerAppThread::resetRemoteClient() {
 		// Drop per-connection gating state; the persistent font store + network atlas survive.
 		_fontServer->reset();
 	}
+	if (_clientPoll) {
+		_clientPoll->cancel();
+		_clientPoll = nullptr;
+	}
 	if (_remoteClient) {
 		_remoteClient->closeConnection();
 		_remoteClient = nullptr;
@@ -572,6 +607,11 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
 		switch (remote::WindowCode(h.code)) {
 		case remote::WindowCode::CompileQueue: {
+			// Every reply below goes through `conn`, which is null once the client is gone (the
+			// message can still be sitting in the reader's deferred queue), so bail before using it.
+			if (!conn || !_sharedObjects) {
+				return true;
+			}
 			auto val = data::read<Interface>(payload);
 			auto q = _sharedObjects->resolveQueue(val.getInteger());
 			if (!q) {
@@ -724,7 +764,7 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				sprt::window::WindowLayer layer;
 				__sprt_memcpy(&layer, rest.data() + i * sizeof(sprt::window::WindowLayer),
 						sizeof(sprt::window::WindowLayer));
-				log::source().info("AppThread", "UpdateLayers: layer[", i, "] rect{",
+				log::source().debug("AppThread", "UpdateLayers: layer[", i, "] rect{",
 						layer.rect.origin.x, ",", layer.rect.origin.y, " ", layer.rect.size.width,
 						"x", layer.rect.size.height, "} cursor=", uint32_t(toInt(layer.cursor)),
 						" flags=", uint32_t(toInt(layer.flags)));
@@ -772,10 +812,23 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 }
 
 void ServerAppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn) {
+	// Inside the cool-off that a failed handshake opened: refuse without doing any handshake work, so
+	// repeated key guesses cost the peer time rather than costing us CPU.
+	if (_handshakeBackoffUntil
+			&& sp::platform::clock(ClockType::Monotonic) < _handshakeBackoffUntil) {
+		log::source().warn("AppThread", "handshake rate limit in force; refusing new connection");
+		_refusedConnections.emplace_back(sp::move(conn));
+		return;
+	}
+
 	if (_remoteClient || _pendingConnection) {
 		log::source().warn("AppThread",
-				"remote client already connected; rejecting new connection (single connection)");
-		return; // conn dropped
+				"remote client already connected; refusing new connection (single connection)");
+		// Answer the refusal instead of dropping the connection silently -- a dropped one leaves the
+		// peer waiting out its whole handshake deadline with no idea why. Deferred like the accepting
+		// path below, so no handshake I/O runs nested inside the accept callback.
+		_refusedConnections.emplace_back(sp::move(conn));
+		return;
 	}
 	// Defer the handshake to pumpListener so it doesn't run nested inside the accept callback.
 	_pendingConnection = sp::move(conn);
@@ -787,15 +840,42 @@ void ServerAppThread::completePendingHandshake() {
 
 	auto status = conn->handshake(_expectedKey, _dictionary);
 	if (status != remote::GlobalError::Ok) {
+		// Open (or widen) the cool-off: each consecutive failure doubles it, up to the ceiling.
+		auto backoff = kHandshakeBackoffBaseUs << sprt::min(_handshakeFailures, uint32_t(8));
+		backoff = sprt::min(backoff, kHandshakeBackoffMaxUs);
+		++_handshakeFailures;
+		_handshakeBackoffUntil = sp::platform::clock(ClockType::Monotonic) + backoff;
+
 		log::source().error("AppThread", "client handshake failed (status ",
-				uint32_t(toInt(status)), "); dropping connection");
+				uint32_t(toInt(status)), "); dropping connection, refusing further ones for ",
+				backoff / 1'000, "ms");
 		return; // conn dropped, slot stays free
 	}
+
+	// A real client got through: forget the failures so one mistyped token does not linger.
+	_handshakeFailures = 0;
+	_handshakeBackoffUntil = 0;
 
 	log::source().info("AppThread", "client authenticated");
 
 	_remoteClient = Rc<RemoteRenderClient>::create(this, sp::move(conn));
 	if (_remoteClient) {
+		// Wake on the connection's own readiness. Without this the session advances only on the app
+		// update tick (1s), which is not a slow session -- it is a broken one: every request/reply
+		// round trip costs a second and the frame protocol never keeps up.
+		if (auto c = _remoteClient->getConnection()) {
+			auto handle = c->getPollHandle();
+			// native_handle is a bare union with no comparison; compare the fd it carries. A transport
+			// whose accept returns the listening socket itself (QUIC) is already covered by _listenPoll.
+			if (handle.fd >= 0 && handle.fd != _listener->getPollHandle().fd) {
+				_clientPoll = _appLooper->listenPollableHandle(handle,
+						sprt::dispatch::PollFlags::In,
+						[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
+					pumpListener();
+					return Status::Ok;
+				}, this);
+			}
+		}
 		_remoteClient->announce(_sharedObjects);
 		// Do NOT take the windows over yet: the client must first compile each shared queue and attach
 		// it to its Director. The per-window handover happens when the client sends WindowCode::AttachQueue

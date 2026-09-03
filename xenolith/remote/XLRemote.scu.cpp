@@ -26,9 +26,14 @@
 #include "XLCommon.h"
 
 #include "XLRemoteAddress.cc"
+#include "XLRemoteTransport.cc"
+#include "XLRemoteTransportMem.cc"
+#include "XLRemoteTransportQuic.cc"
+#include "XLRemoteTransportUnix.cc"
 #include "XLRemoteProtocol.cc"
 #include "XLRemoteObject.cc"
 #include "XLRemoteSerialize.cc"
+#include "XLRemoteConnection.cc"
 #include "XLRemoteListener.cc"
 #include "XLRemoteConnector.cc"
 

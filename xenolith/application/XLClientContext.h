@@ -56,6 +56,12 @@ public:
 	void setSuggestedDictionary(BytesView d) { _suggestedDict = d.bytes<Interface>(); }
 	BytesView getSuggestedDictionary() const { return _suggestedDict; }
 
+	// SHA-256 of the server's DER SubjectPublicKeyInfo, learned out-of-band alongside the address and
+	// the key (see remote::Listener::getCertificateFingerprint). Leaving it empty connects without
+	// authenticating the server, which also exposes the bearer key to a man in the middle.
+	void setServerFingerprint(BytesView fp) { _serverFingerprint = fp.bytes<Interface>(); }
+	BytesView getServerFingerprint() const { return _serverFingerprint; }
+
 	// Create the client's main thread and start it.
 	virtual void run();
 	virtual void stop();
@@ -79,6 +85,7 @@ protected:
 	remote::Address _serverAddress;
 	Bytes _bearerKey;
 	Bytes _suggestedDict;
+	Bytes _serverFingerprint;
 
 	Function<bool(NotNull<RemoteWindow>)> _onWindowConnected;
 	Function<void(NotNull<RemoteWindow>)> _onWindowDisconnected;

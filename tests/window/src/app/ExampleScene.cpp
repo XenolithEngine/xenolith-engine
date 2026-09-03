@@ -37,6 +37,7 @@
 #include "app/GeneralLayout.h" // MonitorModeSelectionLayout.cc, included below, builds on it
 #include "app/LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
+#include "XLServerAppThread.h" // ServerAppThread: listener state for the `remote` command
 
 #include "window/MonitorModeSelectionLayout.cc"
 
@@ -150,21 +151,51 @@ void ExampleScene::handlePresented(Director *dir) {
 // Window sharing is Linux-only for now; the shared queue is vk-based and
 // can not be compiled on a WebGPU device
 #if SPRT_LINUX
-	/*if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
+	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
 			== core::InstanceApi::Vulkan) {
-		// When live reload is active, listen on the session's negotiated address + bearer key (the same
-		// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
-		// fixed port, for a manually launched client.
-		StringView shareAddr("127.0.0.1:4480");
-		BytesView shareKey = remote::getDevBearerKey();
+		// Sharing is OFF unless asked for, because it opens a listening socket: a plain run of this
+		// app must not start accepting connections.
+		//
+		// Three ways to ask, in priority order:
+		//   1. live reload (--watch) -- the session's negotiated address + key, the same pair it
+		//      hands each client it launches;
+		//   2. XL_REMOTE_SHARE=<address> [+ XL_REMOTE_TOKEN=<token>, key = Sha512(token)] -- what
+		//      remote-check.py drives, so an end-to-end run needs no code change;
+		//   3. nothing -> no listener.
+		StringView shareAddr;
+		Bytes shareKey;
+
 		if (auto lr = dynamic_cast<LiveReloadAppThread *>(dir->getApplication())) {
 			if (!lr->getServerAddress().empty()) {
 				shareAddr = lr->getServerAddress();
-				shareKey = lr->getBearerKey();
+				shareKey = lr->getBearerKey().bytes<Interface>();
 			}
 		}
-		dir->shareQueue(sp::move(builder), shareAddr, shareKey);
-	}*/
+
+		if (shareAddr.empty()) {
+			if (auto env = ::getenv("XL_REMOTE_SHARE")) {
+				shareAddr = StringView(env);
+				if (auto tok = ::getenv("XL_REMOTE_TOKEN")) {
+					auto h = crypto::Sha512::perform(StringView(tok));
+					shareKey = BytesView(h.data(), h.size()).bytes<Interface>();
+				} else {
+#if DEBUG
+					shareKey = remote::getDevBearerKey().bytes<Interface>();
+#else
+					log::source().error("ExampleScene",
+							"XL_REMOTE_SHARE without XL_REMOTE_TOKEN needs a debug build");
+					shareAddr = StringView();
+#endif
+				}
+			}
+		}
+
+		if (!shareAddr.empty()) {
+			log::source().info("ExampleScene", "sharing this window at ", shareAddr);
+			dir->shareQueue(sp::move(builder), shareAddr,
+					BytesView(shareKey.data(), shareKey.size()));
+		}
+	}
 #endif
 }
 
@@ -244,6 +275,31 @@ void ExampleScene::registerCommands() {
 		Value result;
 		result.setValue(sp::move(layouts), "layouts");
 		result.setValue(sp::move(tree), "tree");
+		done(sp::move(result));
+	});
+
+	// Remote render session status, for tests/window/remote-check.py.
+	//
+	// A screenshot alone cannot tell a client-rendered frame from a server-rendered one -- both draw
+	// the same scene through the same window. So the state that decides it is reported directly:
+	// whether the listener is up, the SPKI the client must pin (only knowable after the listener
+	// opens, which is why the driver polls for it), and whether a client holds the connection.
+	inspector::addCommand(content, "remote", "Remote render session status: { listening, spki, "
+										 "clientConnected }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app) {
+			result.setBool(false, "ok");
+			result.setString("not a server app thread", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+		result.setBool(app->isListening(), "listening");
+		result.setBool(app->hasRemoteClient(), "clientConnected");
+		auto fp = app->getListenerFingerprint();
+		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
 		done(sp::move(result));
 	});
 

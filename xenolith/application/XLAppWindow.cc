@@ -425,12 +425,18 @@ core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool
 void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 		Function<void(NotNull<core::PresentationFrame>)> &&cb) {
 	// Tag the frame remote up front, on the presentation thread, so the engine tracks it for
-	// connection-reset cleanup even while it is only awaiting the client's reply below. The render
-	// client is only swapped via ServerAppThread::takeoverShared* (app thread), so this pointer read is
-	// benign.
-	if (_client && _client->isRemote()) {
+	// connection-reset cleanup even while it is only awaiting the client's reply below.
+	//
+	// Read through the atomic mirror, NOT through `_client`. That pointer is written on the app
+	// thread (ServerAppThread::takeoverShared*) and this runs on the presentation thread: a plain
+	// read of it is a data race, whatever the old comment here claimed. The consequence is not
+	// theoretical -- a frame handed to a remote client but read as local is never marked, so
+	// PresentationEngine's connection-reset cleanup does not know to kill it, and a dropped
+	// connection leaves it in flight for ever.
+	if (_clientIsRemote.load(sprt::memory_order_acquire)) {
 		frame->markRemote();
 	}
+
 
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
@@ -809,6 +815,13 @@ void AppWindow::invalidateRemoteFrames() {
 			_presentationEngine->invalidateRemoteFrames();
 		}
 	}, this);
+}
+
+void AppWindow::setRenderClient(core::RenderClientChannel *c) {
+	core::RenderServerChannel::setRenderClient(c);
+	// Publish after the base has stored the pointer, so a presentation-thread reader that sees the
+	// flag also sees everything the app thread wrote before it.
+	_clientIsRemote.store(c && c->isRemote(), sprt::memory_order_release);
 }
 
 void AppWindow::resetForRenderClientChange() {

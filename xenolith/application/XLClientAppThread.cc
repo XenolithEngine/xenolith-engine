@@ -71,7 +71,13 @@ bool ClientAppThread::worker() {
 
 		log::source().info("ClientAppThread", "connecting to ", addr.description());
 
-		auto conn = remote::ClientConnection::connect(addr);
+		if (_clientContext->getServerFingerprint().empty()) {
+			log::source().warn("ClientAppThread",
+					"no server fingerprint configured: the server is NOT authenticated and the "
+					"bearer key is exposed to a man in the middle");
+		}
+
+		auto conn = remote::ClientConnection::connect(addr, _clientContext->getServerFingerprint());
 		if (!conn) {
 			log::source().error("ClientAppThread", "failed to connect to ", addr.description());
 			return false;
@@ -92,7 +98,7 @@ bool ClientAppThread::worker() {
 
 		// Drive the async message-dispatch loop: socket readiness gives a prompt wakeup; QUIC timers
 		// are pumped from performAppUpdate (same appUpdateInterval cadence).
-		_listenPoll = _appLooper->listenPollableHandle(_connection->getPollFd(),
+		_listenPoll = _appLooper->listenPollableHandle(_connection->getPollHandle(),
 				sprt::dispatch::PollFlags::In,
 				[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
 			pumpConnection();
@@ -157,8 +163,7 @@ bool ClientAppThread::remoteSendError(remote::Domain d, uint8_t code, uint32_t s
 	if (!_connection || !_connection->isOpen()) {
 		return false;
 	}
-	// ClientConnection::sendError takes a typed GlobalError code (unlike the server's uint8_t).
-	return _connection->sendError(d, remote::GlobalError(code), serial) == remote::GlobalError::Ok;
+	return _connection->sendError(d, code, serial) == remote::GlobalError::Ok;
 }
 
 bool ClientAppThread::remoteSendCborWithReply(remote::Domain d, uint8_t code, const Value &v,

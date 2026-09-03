@@ -33,6 +33,7 @@
 #include "XLCoreDynamicImage.h" // DynamicImageInstance for the atlas material image
 #include "XLCoreQueue.h" // getGraphicPipeline
 #include "XLCoreLoop.h" // gapi loop performOnThread for frame-input submission
+#include "XLCoreFrameCapture.h" // FrameCaptureAttachmentName + FrameCaptureInput
 
 #include "SPData.h"
 
@@ -155,12 +156,72 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		//		sq->queue->getName(), "' (id ", queueId, ")");
 		localProxy->selectQueue(sq->queue);
 		_pendingFrames.emplace(frameId, localProxy);
+		submitServerOwnedInputs(frameId, localProxy);
 		pending->cb(true);
 	},
 			kAcquireFrameReplyTimeoutUs);
 
 	if (!sent) {
 		pending->cb(false);
+	}
+}
+
+/* Feed the inputs a remote client CANNOT produce.
+ *
+ * `FrameCapture` carries which rectangles of this frame the window wants copied out. That is server
+ * state -- it lives on the AppWindow and is armed by whoever asked for a capture on this side -- and
+ * the client's RemoteWindow has no way to know it: its takeFrameCaptureInput() is the base's, which
+ * answers null. So the client's frame context never ships this attachment.
+ *
+ * And an input attachment that is declared and then never fed does not degrade. It WEDGES: the
+ * FrameRequest waits for an input that never comes, the frame never completes, it stays in
+ * PresentationEngine::_activeFrames, and scheduleNextImage refuses to schedule anything after it.
+ * The window stops producing frames entirely, which reads from outside as "the client connected but
+ * the picture never changed". (XL2dFrameContext::submitInput carries the same warning, which is why
+ * the local path submits an empty capture on EVERY frame rather than skipping it.)
+ *
+ * So the server supplies it here, once per frame, exactly as the local frame context does -- taken,
+ * not read, because two frames must never carry the same capture.
+ */
+void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId,
+		NotNull<core::LocalFrameRequestProxy> proxy) {
+	auto req = Rc<core::FrameRequest>(proxy->getRequest());
+	if (!req) {
+		return;
+	}
+	auto &queue = req->getQueue();
+	if (!queue) {
+		return;
+	}
+
+	const core::AttachmentData *captureData = nullptr;
+	for (auto &a : queue->getAttachments()) {
+		if (a->key == core::FrameCaptureAttachmentName
+				&& hasFlag(a->usage, core::AttachmentUsage::Input)) {
+			captureData = a;
+			break;
+		}
+	}
+	if (!captureData) {
+		return; // a queue without the capture attachment has nothing to feed
+	}
+
+	Rc<core::FrameCaptureInput> capture;
+	if (auto reg = _host ? _host->getSharedObjects() : nullptr) {
+		if (auto w = static_cast<AppWindow *>(reg->resolveWindow(_windowId))) {
+			capture = w->takeFrameCaptureInput();
+		}
+	}
+	if (!capture) {
+		// Empty is the normal case: nothing armed. It still has to be submitted -- see above.
+		capture = Rc<core::FrameCaptureInput>::alloc();
+	}
+
+	// Inputs are added on the gapi loop thread, like every other input on this path.
+	if (auto loop = _host->getGlLoop()) {
+		loop->performOnThread([req, captureData, capture = sp::move(capture)]() mutable {
+			req->addInput(captureData, sp::move(capture));
+		});
 	}
 }
 
