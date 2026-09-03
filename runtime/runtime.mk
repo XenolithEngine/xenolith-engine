@@ -35,6 +35,15 @@ RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # link the runtime never see this define and get the libc++ value-type projection.
 MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
 
+# SPRT_STARTUP_TRACE=1 turns on the startup trace in the freestanding EL0 backend
+# (libc_impl/src/embox_user/startup.cc): one mark per startup step and one per
+# static constructor, written with a raw write(2) syscall. It is the only way to
+# see how far startup got on a target with no debugger and no stdio until step 4,
+# and it is off by default because every mark is a syscall.
+ifeq ($(SPRT_STARTUP_TRACE),1)
+MODULE_RUNTIME_COMMON_CFLAGS += -D__SPRT_EL0_STARTUP_TRACE=1
+endif
+
 # Set by <root>/runtime/Makefile when SPRT_SHARED=1. Flips SPRT_API/SPRT_GLOBAL to the
 # export side of the ABI (__declspec(dllexport) on Windows) and swaps the freestanding
 # entry point from mainCRTStartup to _DllMainCRTStartup.
