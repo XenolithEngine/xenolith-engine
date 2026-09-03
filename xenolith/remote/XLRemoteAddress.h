@@ -27,20 +27,41 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// A listen/connect endpoint for the remote render session: either a network host:port or a
-// Unix-domain socket path. Parsed from a string:
-//   "unix:/run/xenolith.sock"  -> unix-domain
-//   "127.0.0.1:4480" / ":4480" -> network (empty host == all interfaces)
+// A listen/connect endpoint for the remote render session. The leading scheme selects WHICH
+// transport carries the session; TransportRegistry resolves it to a registered implementation, so a
+// build only understands the schemes it actually linked.
+//
+//   "quic://127.0.0.1:4480"       QUIC over UDP (the default when no scheme is given)
+//   "127.0.0.1:4480" / ":4480"    same thing, kept working for every existing caller
+//   "tcp://host:4480"             TLS 1.3 over TCP
+//   "unix:/run/xenolith.sock"     AF_UNIX stream socket
+//   "mem:name"                    in-process loopback, for tests
+//
+// An empty host means "all interfaces" on the listen side and loopback on the connect side.
+enum class AddressScheme {
+	Quic, // network host:port over QUIC; the default
+	Tcp, // network host:port over TLS/TCP
+	Unix, // filesystem path
+	Mem, // in-process pair, named by `path`
+};
+
+SP_PUBLIC StringView getSchemeName(AddressScheme);
+
 struct SP_PUBLIC Address {
-	bool unixDomain = false;
-	String host; // network host; empty == all interfaces
-	String path; // unix-domain socket path
+	AddressScheme scheme = AddressScheme::Quic;
+	String host; // network host; empty == all interfaces (listen) / loopback (connect)
+	String path; // unix-domain socket path, or the mem: endpoint name
 	uint16_t port = 0;
 
 	static Address parse(StringView);
 
-	bool isUnix() const { return unixDomain; }
-	bool empty() const { return !unixDomain && port == 0 && host.empty(); }
+	// True for a scheme addressed by a path rather than host:port.
+	bool isPathBased() const { return scheme == AddressScheme::Unix || scheme == AddressScheme::Mem; }
+
+	// Kept for callers written before schemes existed.
+	bool isUnix() const { return scheme == AddressScheme::Unix; }
+
+	bool empty() const { return isPathBased() ? path.empty() : (port == 0 && host.empty()); }
 
 	String description() const;
 

@@ -55,8 +55,11 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 		}
 	}
 
+	// Index 6 is the queue array; the WindowInfo the server appends lives at 7 (see
+	// RemoteRenderClient::announce). Reading 6 here built every client-side WindowInfo out of the
+	// queue list.
 	if (val.hasValue(7)) {
-		_info = remote::deserializeWindowInfo(val.getValue(6));
+		_info = remote::deserializeWindowInfo(val.getValue(7));
 	}
 
 	if (_queues.empty()) {
