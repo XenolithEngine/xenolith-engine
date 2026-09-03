@@ -37,6 +37,34 @@ THE SOFTWARE.
 // later milestone (wasm-port-draft.adoc §7); the skeleton only needs to compile,
 // so the entry points below are stubs.
 
+#elif SPRT_EMBOX_USER
+
+// setjmp/longjmp ARE real here -- musl's aarch64 pair, built into
+// runtime_musl_libc -- so this target belongs with the platform-libc branches
+// below, not with the wasm stubs. What it cannot do is reach them through
+// <setjmp.h>: with -nostdinc the umbrella forwards to a system header that does
+// not exist, and runtime_core is compiled hosted (__STDC_HOSTED__ == 1) so the
+// umbrella takes that fork. Declare the four entries against the sprt native
+// types instead, the way core/embox_user/libc.h does for the rest of the libc.
+//
+// <unwind.h> resolves: it is a compiler header, and target.mk points
+// -resource-dir at this sysroot's lib/clang.
+#include <unwind.h>
+
+#include <sprt/c/cross/__sprt_file_ptr.h>
+#include <sprt/c/cross/__sprt_setjmp.h>
+
+extern "C" {
+int setjmp(__SPRT_ID(native_jmp_buf)) __SPRT_NOEXCEPT;
+__SPRT_NORETURN void longjmp(__SPRT_ID(native_jmp_buf), int) __SPRT_NOEXCEPT;
+__SPRT_NORETURN void siglongjmp(__SPRT_ID(native_sigjmp_buf), int) __SPRT_NOEXCEPT;
+
+// The diagnostic path below reports an unrecoverable longjmp before aborting.
+extern __SPRT_ID(FILE) * stderr;
+int fprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT, const char *__SPRT_RESTRICT, ...) __SPRT_NOEXCEPT;
+__SPRT_NORETURN void abort(void) __SPRT_NOEXCEPT;
+}
+
 #else
 
 #include <stdlib.h>
@@ -46,7 +74,11 @@ THE SOFTWARE.
 
 #endif
 
-#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM)
+// Only where jmp_buf IS the platform's. On the targets whose libc is ours,
+// <setjmp.h>'s jmp_buf is the sprt WRAPPER (__sprt___ext_jmp_buf: the native
+// buffer plus the CFA and the pending result), which is deliberately larger than
+// the native one -- so the comparison would be between two different things.
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EMBOX_USER)
 static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
 static_assert(sizeof(sigjmp_buf) == sizeof(__sprt_native_sigjmp_buf));
 #endif
@@ -144,7 +176,7 @@ __asm__(
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -180,7 +212,10 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 	// simply ignored (aarch64 drops the extra register). Same shape as the NuttX
 	// branch below.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
-#elif SPRT_NUTTX
+#elif SPRT_NUTTX || SPRT_EMBOX_USER
+	// Same as the Embox branch above: sigjmp_buf and jmp_buf are one type, and
+	// there is no signal mask to save until K8, so the plain saver fills the same
+	// buffer and savemask is ignored (aarch64 drops the extra argument).
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
 #else
 #error Not implemented
@@ -266,7 +301,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
@@ -338,7 +373,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
