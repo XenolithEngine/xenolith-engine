@@ -28,6 +28,23 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 	// TextDecoder rejects views over a SharedArrayBuffer, so slice() out a plain copy.
 	const readStr = (p, l) => dec.decode(u8().slice(p, p + l));
 	const bkey = (p, l) => { const b = u8(); let s = ""; for (let i = 0; i < l; i++) s += String.fromCharCode(b[p + i]); return s; };
+	// The bundle map holds files only, so directories are implicit in the keys. Derive
+	// the parent set once and let bundle_size answer -2 for it: that is how the guest
+	// VFS learns a bundled directory exists (stat/opendir on it used to be ENOENT, which
+	// makes any compiler drop the include path it lives on). A host that predates the
+	// sentinel keeps returning -1 and keeps the old file-only behaviour.
+	let bundleDirs = null;
+	const bundleDirSet = () => {
+		if (!bundleDirs) {
+			bundleDirs = new Set(["/"]);
+			for (const k of Object.keys(bundle)) {
+				for (let i = k.lastIndexOf("/"); i > 0; i = k.lastIndexOf("/", i - 1)) {
+					bundleDirs.add(k.slice(0, i));
+				}
+			}
+		}
+		return bundleDirs;
+	};
 	const timeOrigin = (typeof performance !== "undefined" && performance.timeOrigin) || 0;
 	const env = [];
 	const packed = (list) => {
@@ -67,7 +84,7 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			args_copy(t, b) { return copy(argv)(t, b); },
 			environ_sizes() { return packed(env); },
 			environ_copy(t, b) { return copy(env)(t, b); },
-			bundle_size(p, l) { const f = bundle[bkey(p, l)]; return f ? f.length : -1; },
+			bundle_size(p, l) { const k = bkey(p, l); const f = bundle[k]; if (f) { return f.length; } return bundleDirSet().has(k) ? -2 : -1; },
 			// Viewport backing size (device px), packed as (width << 16 | height); 0 if unknown.
 			display_size() { return ((dispW & 0xFFFF) << 16) | (dispH & 0xFFFF); },
 			// devicePixelRatio x1000 (so content lays out in CSS px, renders at device px); 0 if unknown.
