@@ -224,9 +224,31 @@ public:
 	static constexpr float CoverageLoadFactor = 1.5f;
 	static constexpr float DefaultMaxLoadFactor = 1.0f;
 
-	// Find first node in chain with hashValue, or empty node to insert with hashValue
+	/* Find first node in chain with hashValue, or empty node to insert with hashValue.
+	Null when the table holds neither - see below.
+
+	The walk skips nodes that are active but belong to ANOTHER bucket (a node at the home slot can
+	carry a value whose own home is elsewhere), and stops at the first free node or at a node of
+	this bucket.
+
+	IT IS BOUNDED BY THE CAPACITY, and that bound is not a safety net - it is the answer for a case
+	the table is legitimately in. A FULL table (_size == _capacity, which insert() leaves behind
+	whenever the last free slot is taken) has no free node to stop at, so a lookup for a key whose
+	bucket holds nothing walks every slot and comes back to where it started; unbounded, that is an
+	infinite loop inside a plain `find` on a miss, with no allocation, no assertion and no way for a
+	caller to tell what happened.
+
+	NULL MEANS "THIS TABLE HAS NO BUCKET FOR THAT HASH", which is exactly what the callers were
+	already written for: `find_node` reads it as a miss, `find_bucket_or_grow` rehashes and asks
+	again, `rehash` refuses the layout it was building. */
 	static node_type *lookup_bucket_chain(node_type *storage, size_type capacity,
 			hash_type hashValue, node_type *erased = nullptr) noexcept {
+		if (!storage || capacity == 0) {
+			// A table with no storage has no bucket for anything, and `hashValue % 0` is not a
+			// question to ask on the way to finding that out.
+			return nullptr;
+		}
+
 		auto end = storage + capacity;
 		auto targetPos = hashValue % capacity;
 		node_type *node = storage + targetPos;
@@ -234,13 +256,16 @@ public:
 		// Node at insert pos can store value with hash != hashValue;
 		// In this case node->hash != insertPos
 		// Skip this nodes and use first non-active or node, where node->hash == insertPos
-		while (node == erased || (node->active && (node->hash % capacity) != targetPos)) {
+		for (size_type probes = 0; probes < capacity; ++probes) {
+			if (node != erased && (!node->active || (node->hash % capacity) == targetPos)) {
+				return node;
+			}
 			++node;
 			if (node >= end) {
 				node -= capacity;
 			}
 		}
-		return node;
+		return nullptr;
 	}
 
 	~hash_memory() noexcept { clear_deallocate(); }
@@ -737,8 +762,9 @@ public:
 		auto hashValue = _hasher(k);
 		auto hashPosition = hashValue % _capacity;
 
+		// Null: a full table with nothing of this bucket in it, which is a miss like any other.
 		auto chain = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, hashValue);
-		if (!chain->active) {
+		if (!chain || !chain->active) {
 			return nullptr;
 		}
 
@@ -794,6 +820,9 @@ public:
 		}
 		auto hashValue = _hasher(k);
 		auto chain = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, hashValue);
+		if (!chain) {
+			return 0; // full table, no bucket for this hash: nothing to count
+		}
 
 		size_type counter = 0;
 		if (chain->active) {
@@ -944,7 +973,7 @@ public:
 			return nullptr;
 		}
 		auto head = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, n);
-		if (head->active && head->hash % _capacity == n) {
+		if (head && head->active && head->hash % _capacity == n) {
 			return head;
 		}
 		return nullptr;
@@ -1005,8 +1034,8 @@ protected:
 	node_type *find_prev_in_chain(node_type *node, node_type *erased = nullptr) {
 		auto chain = lookup_bucket_chain(_storage, _capacity, node->hash, erased);
 
-		// if we are the head of chain
-		if (node == chain) {
+		// if we are the head of chain - or there is no chain to be in
+		if (!chain || node == chain) {
 			return nullptr;
 		}
 
