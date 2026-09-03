@@ -38,8 +38,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 uint64_t TooltipSystem::Id = System::GetNextSystemId();
 
 // The stock hint's metrics. Deliberately not stylesheet-driven defaults: a scene with no
-// StyleSystem (tests/auxui is one) still has to get a readable hint, and on the native path the
-// hint is a scene of its own that the parent window's sheet does not reach.
+// StyleSystem (tests/auxui is one) still has to get a readable hint. A scene that HAS one styles
+// the hint on either path - ui::openPopupSurface shares the sheet with a native surface too - so
+// these are the floor, not the look.
 static constexpr float kTipHeight = 34.0f;
 static constexpr float kTipFontSize = 13.0f;
 static constexpr float kTipPadding = 12.0f;

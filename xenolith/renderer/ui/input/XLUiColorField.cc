@@ -39,258 +39,6 @@ static constexpr float s_colorGap = 8.0f;
 static constexpr float s_colorSwatchWidth = 32.0f;
 static constexpr float s_colorSwatchRadius = 3.0f;
 
-/* The built-in picker's metrics, in points, and DELIBERATELY not stylesheet-driven - the same
-choice ui::TooltipSystem's stock hint makes. This surface exists for the platforms where the system
-colour dialog does not, and it may well come up in an application that never named a stylesheet for
-it; a picker that needs a sheet to be usable is not a fallback. */
-static constexpr float s_pickerPadding = 12.0f;
-static constexpr float s_pickerRowHeight = 28.0f;
-static constexpr float s_pickerGap = 8.0f;
-static constexpr float s_pickerPreviewWidth = 44.0f;
-static constexpr float s_pickerSwatch = 24.0f;
-static constexpr float s_pickerSwatchGap = 6.0f;
-static constexpr uint32_t s_pickerColumns = 8;
-static constexpr float s_pickerMinWidth = 240.0f;
-static constexpr Color4B s_pickerSurfaceColor = Color4B(0x20, 0x20, 0x26, 0xFF);
-
-/* What a picker with nothing declared offers. Sixteen colours, because the grid is eight wide and
-two rows of it are enough to be useful without pretending to be a palette an application designed.
-An application that has a theme passes its own through setPalette. */
-static constexpr Color4B s_defaultPalette[] = {
-	Color4B(0x00, 0x00, 0x00, 0xFF),
-	Color4B(0x44, 0x44, 0x44, 0xFF),
-	Color4B(0x88, 0x88, 0x88, 0xFF),
-	Color4B(0xCC, 0xCC, 0xCC, 0xFF),
-	Color4B(0xFF, 0xFF, 0xFF, 0xFF),
-	Color4B(0xE5, 0x39, 0x35, 0xFF),
-	Color4B(0xFB, 0x8C, 0x00, 0xFF),
-	Color4B(0xFD, 0xD8, 0x35, 0xFF),
-	Color4B(0x43, 0xA0, 0x47, 0xFF),
-	Color4B(0x00, 0x89, 0x7B, 0xFF),
-	Color4B(0x1E, 0x88, 0xE5, 0xFF),
-	Color4B(0x39, 0x49, 0xAB, 0xFF),
-	Color4B(0x8E, 0x24, 0xAA, 0xFF),
-	Color4B(0xD8, 0x1B, 0x60, 0xFF),
-	Color4B(0x6D, 0x4C, 0x41, 0xFF),
-	Color4B(0x54, 0x6E, 0x7A, 0xFF),
-};
-
-// ---- the built-in picker's surface -------------------------------------------------------------
-
-namespace {
-
-struct ColorPickerParams {
-	Color4B value = Color4B::WHITE;
-	bool alpha = false;
-	Vector<Color4B> palette;
-
-	// A colour was chosen. The receiver closes the surface FIRST - see the comment at the call.
-	Function<void(const Color4B &)> onPick;
-
-	// The surface asked to go away. Also what Escape calls, and what "there is somewhere to close
-	// to" is judged by.
-	Function<void()> onClose;
-};
-
-// The surface: a hex line beside a preview, over a grid of swatches.
-class ColorPickerContent : public Panel {
-public:
-	static Extent2 measure(const ColorPickerParams &);
-
-	virtual ~ColorPickerContent() = default;
-
-	virtual bool init(ColorPickerParams &&);
-
-	virtual void handleEnter(Scene *) override;
-	virtual void handleContentSizeDirty() override;
-
-protected:
-	using Panel::init;
-
-	bool commitText();
-	bool handleTap(const Vec2 &location);
-
-	ColorPickerParams _params;
-
-	basic2d::LayerRounded *_preview = nullptr;
-	TextInput *_hex = nullptr;
-	Vector<basic2d::LayerRounded *> _swatches;
-	InputListener *_listener = nullptr;
-};
-
-Extent2 ColorPickerContent::measure(const ColorPickerParams &params) {
-	const auto count = uint32_t(params.palette.size());
-	const uint32_t rows = count ? (count + s_pickerColumns - 1) / s_pickerColumns : 0;
-
-	float width = s_pickerMinWidth;
-	if (count) {
-		const uint32_t columns = sprt::min(count, s_pickerColumns);
-		width = sprt::max(width,
-				s_pickerPadding * 2.0f + float(columns) * s_pickerSwatch
-						+ float(columns - 1) * s_pickerSwatchGap);
-	}
-
-	float height = s_pickerPadding * 2.0f + s_pickerRowHeight;
-	if (rows) {
-		height += s_pickerGap + float(rows) * s_pickerSwatch + float(rows - 1) * s_pickerSwatchGap;
-	}
-
-	return Extent2(uint32_t(std::lround(width)), uint32_t(std::lround(height)));
-}
-
-bool ColorPickerContent::init(ColorPickerParams &&params) {
-	if (!Panel::init()) {
-		return false;
-	}
-
-	_params = sp::move(params);
-
-	setType("color-picker");
-	removeStyleClass("xl-ui-panel");
-	addStyleClass("xl-ui-color-picker");
-	registerStyleAppliers("color-picker");
-
-	_preview =
-			addChild(Rc<basic2d::LayerRounded>::create(Color4F(_params.value), s_colorSwatchRadius),
-					ZOrder(1));
-	_preview->setName("preview");
-
-	_hex = addChild(Rc<TextInput>::create(), ZOrder(1));
-	_hex->setName("hex");
-	_hex->addStyleClass("xl-ui-color-hex");
-	_hex->setCaretBlink(false);
-	_hex->setText(ColorField::formatColor(_params.value, _params.alpha));
-	_hex->setEnterCallback([this] { commitText(); });
-
-	uint32_t index = 0;
-	for (auto &it : _params.palette) {
-		auto swatch = addChild(Rc<basic2d::LayerRounded>::create(Color4F(it), s_colorSwatchRadius),
-				ZOrder(1));
-		swatch->setName(mem_std::toString("swatch-", index));
-		_swatches.emplace_back(swatch);
-		++index;
-	}
-
-	_listener = addSystem(Rc<InputListener>::create());
-	_listener->addTapRecognizer([this](const GestureTap &tap) {
-		if (tap.event == GestureEvent::Activated) {
-			return handleTap(convertToNodeSpace(tap.location()));
-		}
-		return true;
-	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
-
-	/* Escape is a HOTKEY, not a key: the engine registers it as `back` and the hotkey pass consumes
-	it before any key recognizer runs, so bound as a raw keycode it would simply never arrive. The
-	same trap ui::SearchPickerContent names.
-
-	Gated on having somewhere to close TO rather than on focus: a surface in a popup may not have
-	been given the keyboard yet when the user hits Escape. */
-	_listener->addHotkey(EngineHotkeys::get().back, [this](HotkeyId, const InputEvent &) {
-		if (_params.onClose) {
-			_params.onClose();
-			return true;
-		}
-		return false;
-	}, HotkeyFlags::None);
-
-	_listener->setTouchFilter(
-			[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
-		// A key event carries a pointer location, so the default filter would answer only while the
-		// mouse happens to be over the surface.
-		if (event.data.isKeyEvent()) {
-			return true;
-		}
-		return cb(event);
-	});
-
-	return true;
-}
-
-void ColorPickerContent::handleEnter(Scene *scene) {
-	Panel::handleEnter(scene);
-
-	// The caret starts in the hex line: it is the only part of this surface a keyboard can reach.
-	if (_hex) {
-		_hex->focus();
-	}
-}
-
-void ColorPickerContent::handleContentSizeDirty() {
-	Panel::handleContentSizeDirty();
-
-	const float width = _contentSize.width;
-	const float height = _contentSize.height;
-	if (width <= 0.0f || height <= 0.0f) {
-		return;
-	}
-
-	const float top = height - s_pickerPadding;
-
-	if (_preview) {
-		_preview->setAnchorPoint(Anchor::TopLeft);
-		_preview->setPosition(Vec2(s_pickerPadding, top));
-		_preview->setContentSize(Size2(s_pickerPreviewWidth, s_pickerRowHeight));
-	}
-
-	if (_hex) {
-		const float left = s_pickerPadding + s_pickerPreviewWidth + s_pickerGap;
-		_hex->setAnchorPoint(Anchor::TopLeft);
-		_hex->setPosition(Vec2(left, top));
-		_hex->setContentSize(
-				Size2(sprt::max(width - left - s_pickerPadding, 0.0f), s_pickerRowHeight));
-	}
-
-	float rowTop = top - s_pickerRowHeight - s_pickerGap;
-	for (uint32_t i = 0; i < uint32_t(_swatches.size()); ++i) {
-		const uint32_t column = i % s_pickerColumns;
-		const uint32_t row = i / s_pickerColumns;
-		_swatches[i]->setAnchorPoint(Anchor::TopLeft);
-		_swatches[i]->setPosition(
-				Vec2(s_pickerPadding + float(column) * (s_pickerSwatch + s_pickerSwatchGap),
-						rowTop - float(row) * (s_pickerSwatch + s_pickerSwatchGap)));
-		_swatches[i]->setContentSize(Size2(s_pickerSwatch, s_pickerSwatch));
-	}
-}
-
-bool ColorPickerContent::commitText() {
-	if (!_hex) {
-		return false;
-	}
-
-	Color4B color;
-	if (!sprt::geom::readColor(_hex->getText(), color)) {
-		// The refusal is marked HERE and the surface stays: the text is what the user is still
-		// working on, and taking it away would be answering a mistake by hiding it.
-		applyControlInvalid(_hex, true);
-		return false;
-	}
-
-	applyControlInvalid(_hex, false);
-	if (_params.onPick) {
-		_params.onPick(color);
-	}
-	return true;
-}
-
-bool ColorPickerContent::handleTap(const Vec2 &location) {
-	for (uint32_t i = 0; i < uint32_t(_swatches.size()); ++i) {
-		auto &node = _swatches[i];
-		const auto pos = node->getPosition();
-		const auto size = node->getContentSize();
-		// Anchored top-left, so the rect runs down from the position.
-		const Rect rect(pos.x, pos.y - size.height, size.width, size.height);
-		if (rect.containsPoint(location)) {
-			if (_params.onPick) {
-				_params.onPick(_params.palette[i]);
-			}
-			return true;
-		}
-	}
-	return false;
-}
-
-} // namespace
-
 // ---- the hex line --------------------------------------------------------------------------
 
 /* A ui::TextInput that reports the focus EDGE.
@@ -367,7 +115,7 @@ bool ColorField::init() {
 	addStyleClass("xl-ui-color-field");
 	registerStyleAppliers("color-field");
 
-	for (auto &it : s_defaultPalette) { _palette.emplace_back(it); }
+	for (auto &it : getDefaultColorPalette()) { _palette.emplace_back(it); }
 
 	_swatch = addChild(Rc<basic2d::LayerRounded>::create(Color4F(_value), s_colorSwatchRadius),
 			ZOrder(1));
@@ -596,6 +344,17 @@ void ColorField::close() {
 
 void ColorField::setPickerConfig(PopupSurfaceConfig &&config) { _pickerConfig = sp::move(config); }
 
+void ColorField::setPickerColorMode(ColorPickerMode mode) {
+	_pickerMode = mode;
+
+	// The surface that is already up follows: an application switching the mode with the picker
+	// open means the picker in front of the user, not the next one.
+	auto panel = _picker ? _picker->getPanel() : nullptr;
+	if (auto content = dynamic_cast<ColorPickerContent *>(panel)) {
+		content->setMode(mode);
+	}
+}
+
 void ColorField::setValueCallback(ColorCallback &&cb) { _valueCallback = sp::move(cb); }
 
 void ColorField::setFocusCallback(FocusCallback &&cb) { _focusCallback = sp::move(cb); }
@@ -790,6 +549,18 @@ bool ColorField::openFallbackPicker() {
 	params.alpha = _alpha;
 	params.palette = _palette;
 
+	params.mode = _pickerMode;
+
+	/* The tab is kept across an open and a close, and that is a property of the FIELD rather than
+	of the surface: a person who edits in HSL edits in HSL, and a picker that came back on RGB every
+	time would make them say so once per colour. */
+	params.onMode = [this](ColorPickerMode mode) { _pickerMode = mode; };
+
+	/* A BAR IS BEING DRAGGED, and the surface stays up. The swatch and the hex line follow it live,
+	which is the whole reason a field carries a picker with bars rather than a grid of swatches: a
+	colour chosen without seeing it applied is a colour chosen blind. */
+	params.onChange = [this](const Color4B &color) { setValue(color); };
+
 	params.onPick = [this](const Color4B &color) {
 		// Close FIRST: the value's callback is free to put something else in this surface's place,
 		// and a picker still standing behind it is one the user has to dismiss by hand.
@@ -799,12 +570,14 @@ bool ColorField::openFallbackPicker() {
 	params.onClose = [this] { close(); };
 
 	auto config = _pickerConfig;
+	// The field is where the picker's look comes from when the application named no sheet.
+	config.styleSource = this;
 	config.size = ColorPickerContent::measure(params);
 	config.title = config.title.empty() ? String("Colour") : config.title;
 	config.idPrefix = config.idPrefix.empty() ? String("color-picker") : config.idPrefix;
 	config.layoutName = String("color-picker-layout");
 	config.panelName = String("color-picker");
-	config.fallbackColor = s_pickerSurfaceColor;
+	config.fallbackColor = ColorPickerContent::SurfaceColor;
 
 	// The surface IS the content, and it types and classes itself in init.
 	config.makePanel = [params = sp::move(params)](NotNull<SubWindow>,
