@@ -1,0 +1,29 @@
+diff --git a/llvm/include/llvm/Support/ExitCodes.h b/llvm/include/llvm/Support/ExitCodes.h
+index 4eb5dedc6..0ed59a3bd 100644
+--- a/llvm/include/llvm/Support/ExitCodes.h
++++ b/llvm/include/llvm/Support/ExitCodes.h
+@@ -20,7 +20,7 @@
+ 
+ #if HAVE_SYSEXITS_H
+ #include <sysexits.h>
+-#elif __MVS__ || defined(_WIN32)
++#elif __MVS__ || defined(_WIN32) || defined(__wasm__)
+ // <sysexits.h> does not exist on z/OS and Windows. The only value used in LLVM
+ // is EX_IOERR, which is used to signal a special error condition (broken pipe).
+ // Define the macro with its usual value from BSD systems, which is chosen to
+diff --git a/llvm/lib/Support/Unix/Memory.inc b/llvm/lib/Support/Unix/Memory.inc
+index bac208a7d..5f6d73f84 100644
+--- a/llvm/lib/Support/Unix/Memory.inc
++++ b/llvm/lib/Support/Unix/Memory.inc
+@@ -163,6 +163,11 @@ std::error_code Memory::releaseMappedMemory(MemoryBlock &M) {
+ 
+ std::error_code Memory::protectMappedMemory(const MemoryBlock &M,
+                                             unsigned Flags) {
++#if defined(__wasm__)
++  // Wasm does not allow making memory read-only or executable.
++  return std::error_code(ENOSYS, std::generic_category());
++#endif
++
+   static const Align PageSize = Align(Process::getPageSizeEstimate());
+   if (M.Address == nullptr || M.AllocatedSize == 0)
+     return std::error_code();
