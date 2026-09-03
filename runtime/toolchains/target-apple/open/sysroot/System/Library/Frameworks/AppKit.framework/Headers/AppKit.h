@@ -740,10 +740,38 @@ SPRT_FOUNDATION_EXTERN NSApplication *NSApp;
 - (NSInteger)windowLevel;
 @end
 
-/* ---- NSImage ------------------------------------------------------------- */
+/* ---- NSImage / NSBitmapImageRep ----------------------------------------- */
+typedef NSString *NSColorSpaceName;
+
+typedef NS_OPTIONS(NSUInteger, NSBitmapFormat) {
+	NSBitmapFormatAlphaFirst = 1 << 0,
+	NSBitmapFormatAlphaNonpremultiplied = 1 << 1,
+	NSBitmapFormatFloatingPointSamples = 1 << 2,
+};
+
+@interface NSImageRep : NSObject
+@end
+
 @interface NSImage : NSObject
+- (instancetype)initWithSize:(NSSize)size;
 - (nullable instancetype)initWithContentsOfFile:(NSString *)fileName;
+- (void)addRepresentation:(NSImageRep *)imageRep;
 @property NSSize size;
+@end
+
+@interface NSBitmapImageRep : NSImageRep
+- (nullable instancetype)initWithBitmapDataPlanes:(unsigned char *_Nullable *_Nullable)planes
+									   pixelsWide:(NSInteger)width
+									   pixelsHigh:(NSInteger)height
+									bitsPerSample:(NSInteger)bps
+								  samplesPerPixel:(NSInteger)spp
+										 hasAlpha:(BOOL)alpha
+										 isPlanar:(BOOL)isPlanar
+								   colorSpaceName:(NSColorSpaceName)colorSpaceName
+									 bitmapFormat:(NSBitmapFormat)bitmapFormat
+									  bytesPerRow:(NSInteger)rBytes
+									 bitsPerPixel:(NSInteger)pBits;
+@property(nullable, readonly) unsigned char *bitmapData;
 @end
 
 @interface NSBundle (SPRTAppKitImages)
@@ -831,6 +859,7 @@ SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeRTF;
 SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeHTML;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameAqua;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameDarkAqua;
+SPRT_FOUNDATION_EXTERN NSColorSpaceName const NSDeviceRGBColorSpace;
 
 /* ---- window notifications ------------------------------------------------ */
 SPRT_FOUNDATION_EXTERN NSNotificationName const NSWindowWillCloseNotification;
