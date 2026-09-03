@@ -27,8 +27,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-const Vec2 SimpleGradient::Horizontal(0.0f, 1.0f);
-const Vec2 SimpleGradient::Vertical(-1.0f, 0.0f);
+/* The direction each name means, as a vector in the node's own space: X to the right, Y up.
+
+They used to be the other way round - `Horizontal` was (0, 1) and `Vertical` was (-1, 0) - which,
+together with the corner mix-up fixed in updateVertexes below, cancelled out into a gradient that
+ran along the axis the caller did NOT ask for. Nothing in the tree had ever built a two-colour
+SimpleGradient, so neither half had a chance to be noticed until something did. */
+const Vec2 SimpleGradient::Horizontal(1.0f, 0.0f);
+const Vec2 SimpleGradient::Vertical(0.0f, 1.0f);
 
 SimpleGradient SimpleGradient::progress(const SimpleGradient &a, const SimpleGradient &b, float p) {
 	SimpleGradient ret;
@@ -153,12 +159,7 @@ void Layer::updateVertexes(FrameInfo &frame) {
 								_flippedY, _rotated);
 
 	Color4F color[4];
-	for (int i = 0; i < 4; i++) {
-		color[i] = Color4F(_displayedColor.r * (_gradient.colors[i].r / 255.0f),
-				_displayedColor.g * (_gradient.colors[i].g / 255.0f),
-				_displayedColor.b * (_gradient.colors[i].b / 255.0f),
-				_displayedColor.a * _gradient.colors[i].a / 255.0f);
-	}
+	writeGradientColors(color);
 
 	quad.setColor(makeSpanView(color, 4));
 }
@@ -166,15 +167,28 @@ void Layer::updateVertexes(FrameInfo &frame) {
 void Layer::updateVertexesColor() {
 	if (!_vertexes.empty()) {
 		Color4F color[4];
-		for (int i = 0; i < 4; i++) {
-			color[i] = Color4F(_displayedColor.r * (_gradient.colors[i].r / 255.0f),
-					_displayedColor.g * (_gradient.colors[i].g / 255.0f),
-					_displayedColor.b * (_gradient.colors[i].b / 255.0f),
-					_displayedColor.a * _gradient.colors[i].a / 255.0f);
-		}
+		writeGradientColors(color);
 
 		_vertexes.getQuad(0, 0).setColor(makeSpanView(color, 4));
 	}
+}
+
+/* The gradient's four corners, in the order the QUAD wants them.
+
+SimpleGradient::colors is `bl, br, tl, tr` - its own documented order, and the one every constructor
+above writes. VertexArray::Quad is `tl, bl, tr, br`, which its setGeometry spells out. Handing one
+straight to the other transposes the square, so a gradient asked for left-to-right came out
+bottom-to-top and every quad of a horizontal ramp rendered as a flat band. */
+void Layer::writeGradientColors(Color4F *out) const {
+	auto apply = [&](const Color4B &c) {
+		return Color4F(_displayedColor.r * (c.r / 255.0f), _displayedColor.g * (c.g / 255.0f),
+				_displayedColor.b * (c.b / 255.0f), _displayedColor.a * (c.a / 255.0f));
+	};
+
+	out[0] = apply(_gradient.colors[2]); // tl
+	out[1] = apply(_gradient.colors[0]); // bl
+	out[2] = apply(_gradient.colors[3]); // tr
+	out[3] = apply(_gradient.colors[1]); // br
 }
 
 RenderingLevel Layer::getRealRenderingLevel() const {
