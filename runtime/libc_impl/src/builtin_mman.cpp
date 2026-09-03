@@ -26,6 +26,8 @@ THE SOFTWARE.
 #include "windows/mman.cc"
 #elif SPRT_WASM
 #include "wasm/mman.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/mman.cc"
 #endif
 
 namespace sprt {

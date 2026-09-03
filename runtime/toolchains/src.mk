@@ -322,6 +322,7 @@ $(SRC_ROOT)/openssl: | prepare
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
 	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 	$(call rule_cp,replacements/openssl/50-wasm-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
+	$(call rule_cp,replacements/openssl/51-embox-user-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
 # https://github.com/gost-engine/engine # revised: 18 aug 2026
 openssl-gost-engine_REPO       := https://github.com/gost-engine/engine.git
