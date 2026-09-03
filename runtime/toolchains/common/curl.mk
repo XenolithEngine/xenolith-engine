@@ -117,6 +117,30 @@ CONFIGURE += \
 	-DCURL_CA_PATH=none
 endif
 
+ifdef EMBOX_USER
+# Same shape as the EMBOX branch below, minus the project-include (which patches
+# around Embox libc quirks that do not exist here -- the libc is ours).
+#
+# THREADED_RESOLVER off, and not only because pthread_create is ENOSYS until
+# phase L3b: a threaded resolver has nothing to resolve. Sockets at EL0 are
+# milestone M3, so curl is built for its protocol and TLS code, not to open a
+# connection -- see the note in target-embox-user/Makefile about why it is built
+# at all.
+CONFIGURE += \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF \
+	-DCMAKE_USE_PTHREADS_INIT=ON \
+	-DHAVE_THREADS_POSIX=ON \
+	-DCURL_CA_BUNDLE=none \
+	-DCURL_CA_PATH=none
+endif
+
 ifdef EMBOX
 CONFIGURE += \
 	-DCMAKE_PROJECT_CURL_INCLUDE=$(MAKE_ROOT)embox-curl-project-include.cmake \

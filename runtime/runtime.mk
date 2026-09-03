@@ -275,6 +275,32 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 
 
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# Freestanding, so the same shape as WASM and Windows: our own libc, our own
+# STL headers, an explicit -nostdlib link that pulls the toolchain runtimes by
+# name. What differs from WASM is only which archives exist and where.
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+# simde, from the sysroot; -nostdinc dropped the default paths.
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+# Export the sprt libc + STL headers to consumers: with -nostdinc, <stdio.h> and
+# <optional> have to resolve here or not at all.
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+# compiler-rt builtins: the out-of-line 128-bit soft-float and integer helpers
+# clang emits calls to but does not inline. Static, so members come in on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/embox_user/libclang_rt.builtins-$(TARGET_ARCH).a
+# libc++abi + libunwind: guards, RTTI, __dynamic_cast, and the EH personality.
+# Whether throw/catch actually unwinds depends on libunwind finding
+# PT_GNU_EH_FRAME at run time, which is contour L4's problem, not this line's.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
 ifeq ($(TARGET_SYSTEM),WASM)
 MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
 # The sysroot's usr/include carries simde (SIMD-everywhere), needed by the geom

@@ -22,10 +22,11 @@
 
 // The wcs* collation/compare entry points are owned by the freestanding libc's
 // own builtin_wchar.cpp / builtin_locale.cpp (they route through the locale
-// backend). Windows relies on that; wasm is freestanding the same way, so it
-// skips the musl versions here to avoid duplicate symbols. wcsstr is the one
-// exception — the builtins do not provide it, so musl supplies it everywhere.
-#if !SPRT_WASM
+// backend). Windows relies on that; the other freestanding targets (wasm, Embox
+// EL0) are in the same position, so they skip the musl versions here to avoid
+// duplicate symbols. wcsstr is the one exception — the builtins do not provide
+// it, so musl supplies it everywhere.
+#if !SPRT_WASM && !SPRT_EMBOX_USER
 #include "../../musl-libc/src/string/wcscasecmp_l.c"
 #include "../../musl-libc/src/string/wcsncasecmp_l.c"
 #include "../../musl-libc/src/string/wcscasecmp.c"
@@ -46,8 +47,16 @@
 #pragma clang diagnostic ignored "-Wunused-label"
 #pragma clang diagnostic ignored "-Wunused-variable"
 
+// x86_64 and aarch64 have hand-written assembly upstream, so the C versions are
+// skipped there -- but on a FREESTANDING target something still has to compile
+// that assembly, and until Embox EL0 nothing did (see
+// musl_aarch64.S). memmove has no aarch64 assembly, so it comes from C
+// here regardless.
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+#if SPRT_EMBOX_USER
+#include "../../musl-libc/src/string/memmove.c"
+#endif
 #else
 #include "../../musl-libc/src/string/memcpy.c"
 #include "../../musl-libc/src/string/memmove.c"
