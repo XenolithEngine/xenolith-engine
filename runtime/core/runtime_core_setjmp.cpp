@@ -237,7 +237,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -267,7 +267,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
