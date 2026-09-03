@@ -37,19 +37,20 @@ THE SOFTWARE.
 
 #include <sys/socket.h>
 
-// On the RTOS targets the sprt libc shim stands in for the platform libc at
-// compile time (deps build against sprt include_libc, not the RTOS sysroot —
-// see the NUTTX/EMBOX branches of common/configure.mk), so the AF_UNIX address
-// type must be visible there too. The Linux/musl layout matches their own
-// <sys/un.h>.
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS)
-
+// In a non-hosted build the sprt libc shim IS the libc at compile time (deps build against sprt
+// include_libc rather than the platform sysroot — see the NUTTX/EMBOX branches of
+// common/configure.mk), so the AF_UNIX address type has to come from here. The Linux/musl layout
+// matches what every one of those targets uses.
+//
+// This was previously narrowed to `SPRT_WASM || SPRT_HOSTED_RTOS`, contradicting the comment above
+// it: a cross Linux or musl target got no declaration at all, so `struct sockaddr_un` was an
+// incomplete type for anything above the libc — AF_UNIX was unusable on exactly the targets whose
+// kernels support it best. SO_PEERCRED and the AF_UNIX constants were already exposed for them,
+// which is the shape of an oversight rather than a decision.
 struct sockaddr_un {
 	__SPRT_ID(sa_family_t) sun_family; // AF_UNIX
 	char sun_path[108]; // pathname
 };
-
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS
 
 #endif
 

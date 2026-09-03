@@ -80,6 +80,10 @@ public:
 	// All inputs for a frame were submitted; stop routing further input for it.
 	void handleFrameCommit(uint64_t frameId);
 
+	// Feed the inputs the client cannot produce because they are server state (FrameCapture). An
+	// input attachment left unfed wedges the frame and stalls the window -- see the .cc.
+	void submitServerOwnedInputs(uint64_t frameId, NotNull<core::LocalFrameRequestProxy>);
+
 	// A client-forwarded runtime material compile (WindowCode::CompileMaterials): resolve image refs (the
 	// atlas image id -> the font server's DynamicImage), reconstruct the materials, compile into the
 	// window's MaterialSet under the client-assigned ids, and register the gating deps so a frame using a

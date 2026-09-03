@@ -26,7 +26,8 @@
 
 #include <sprt/runtime/utils/compress.h>
 
-#include <openssl/ssl.h>
+#include "XLRemoteTransport.h"
+
 #ifdef DELETE
 #undef DELETE
 #endif
@@ -152,6 +153,7 @@ static bool getConstraints(Reader &r, core::FrameConstraints &c) {
 
 // --- dev key ---
 
+#if DEBUG
 BytesView getDevBearerKey() {
 	static uint8_t key[kBearerKeySize];
 	static bool inited = [] {
@@ -161,55 +163,80 @@ BytesView getDevBearerKey() {
 	(void)inited;
 	return BytesView(key, kBearerKeySize);
 }
+#endif
 
 // --- stream I/O + handshake ---
 
-// Cap on a single frame to bound allocations from a hostile/garbled peer.
+// Cap on a single frame to bound allocations from a hostile/garbled peer. It bounds the on-wire
+// size AND the decompressed size, so a compressed frame can never expand past it.
 static constexpr uint32_t kMaxFrameSize = 64u * 1'024 * 1'024;
 
-// Read exactly n bytes (bounded by an absolute deadline); non-blocking-friendly (pumps QUIC events).
-static bool streamReadFull(SSL *ssl, uint8_t *buf, size_t n, uint64_t deadline) {
+// The single decision point for "may this frame decompress to rawSize", so the two decode paths
+// (readFrame and MessageReader::append) cannot drift apart again -- they used to disagree by 4x.
+//
+// The bound is ABSOLUTE, with no compression-ratio test on top, and that is deliberate. A ratio cap
+// would have to sit below what LZ4 can actually produce to reject anything at all (its own ceiling
+// is around 250:1), and legitimate traffic on this protocol reaches that range: a batch of near
+// identical InputEventData structs, or a CBOR queue blob full of zeroed fields, compresses an order
+// of magnitude better than typical data. So a ratio low enough to fire would refuse real frames,
+// and one high enough to be safe could never fire. kMaxFrameSize bounds the allocation either way,
+// which is the property that actually matters against a decompression bomb.
+static bool isAcceptableRawSize(const MessageHeader &, uint32_t rawSize, size_t) {
+	return rawSize <= kMaxFrameSize;
+}
+
+// Read exactly n bytes, bounded by an absolute deadline.
+//
+// Still blocking, and still only used by the SETUP HANDSHAKE: it runs once per connection, before
+// any frame, and its deadline is the point. Every other path goes through OutgoingQueue and the
+// non-blocking drain in poll(). Between retries the transport is pumped, which is what lets a
+// datagram-based one make progress at all.
+static bool streamReadFull(TransportConnection &conn, uint8_t *buf, size_t n, uint64_t deadline) {
+	auto stream = conn.getStream(StreamClass::Control);
+	if (!stream) {
+		return false;
+	}
 	size_t got = 0;
 	while (got < n) {
 		size_t r = 0;
-		if (SSL_read_ex(ssl, buf + got, n - got, &r) == 1) {
+		if (stream->read(buf + got, n - got, r) != Status::Ok) {
+			return false; // closed or fatal
+		}
+		if (r > 0) {
 			got += r;
 			continue;
 		}
-		int err = SSL_get_error(ssl, 0);
-		if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
-			return false; // closed or fatal
-		}
-		SSL_handle_events(ssl);
+		conn.handleEvents();
 		if (sp::platform::clock(ClockType::Monotonic) >= deadline) {
 			return false;
 		}
-		sp::platform::sleep(1'000); // 1ms
+		sp::platform::sleep(1'000);
 	}
 	return true;
 }
 
-// Write exactly n bytes (bounded by an absolute deadline); non-blocking-friendly. SSL_write_ex queues
-// into the QUIC stream send buffer; under backpressure (buffer full / peer flow-control window
-// exhausted) it returns WANT_WRITE having accepted nothing, so we pump events and retry until the
-// deadline rather than failing mid-message (which would truncate the frame on the peer).
-static bool streamWriteAll(SSL *ssl, const uint8_t *buf, size_t n, uint64_t deadline) {
+// Write exactly n bytes, bounded by an absolute deadline. Handshake-only, for the same reason.
+static bool streamWriteAll(TransportConnection &conn, const uint8_t *buf, size_t n,
+		uint64_t deadline) {
+	auto stream = conn.getStream(StreamClass::Control);
+	if (!stream) {
+		return false;
+	}
 	size_t off = 0;
 	while (off < n) {
 		size_t w = 0;
-		if (SSL_write_ex(ssl, buf + off, n - off, &w) == 1) {
+		if (stream->write(BytesView(buf + off, n - off), w) != Status::Ok) {
+			return false; // closed or fatal
+		}
+		if (w > 0) {
 			off += w;
 			continue;
 		}
-		int err = SSL_get_error(ssl, 0);
-		if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
-			return false; // closed or fatal
-		}
-		SSL_handle_events(ssl);
+		conn.handleEvents();
 		if (sp::platform::clock(ClockType::Monotonic) >= deadline) {
 			return false;
 		}
-		sp::platform::sleep(1'000); // 1ms
+		sp::platform::sleep(1'000);
 	}
 	return true;
 }
@@ -223,8 +250,9 @@ static bool readMessagePayloadWithHeader(BytesViewNetwork view, const MessageHea
 		return true;
 	}
 
+	// `view` has already consumed the 4-byte raw size, so what is left is the compressed payload.
 	auto csize = view.readUnsigned32();
-	if (csize > kMaxFrameSize * 4) {
+	if (!isAcceptableRawSize(h, csize, view.size())) {
 		return false;
 	}
 
@@ -287,12 +315,10 @@ bool readMessagePayload(BytesViewNetwork &view, BytesView dict,
 	return true;
 }
 
-bool readFrame(void *ssl, uint64_t deadline, BytesView dict,
+bool readFrame(TransportConnection &conn, uint64_t deadline, BytesView dict,
 		const Callback<void(const MessageHeader &, BytesView payload)> &cb) {
-	auto s = (SSL *)ssl;
-
 	MessageHeader h;
-	if (!streamReadFull(s, (uint8_t *)&h, sizeof(MessageHeader), deadline)) {
+	if (!streamReadFull(conn, (uint8_t *)&h, sizeof(MessageHeader), deadline)) {
 		return false;
 	}
 
@@ -305,7 +331,7 @@ bool readFrame(void *ssl, uint64_t deadline, BytesView dict,
 
 	auto buf = __sprt_typed_malloca(uint8_t, h.size);
 
-	if (h.size > 0 && !streamReadFull(s, buf, h.size, deadline)) {
+	if (h.size > 0 && !streamReadFull(conn, buf, h.size, deadline)) {
 		__sprt_freea(buf);
 		return false;
 	}
@@ -319,9 +345,9 @@ bool readFrame(void *ssl, uint64_t deadline, BytesView dict,
 	return success;
 }
 
-SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageType t, Domain d,
-		uint8_t msg, uint32_t serial, BytesView payload) {
-	auto s = (SSL *)ssl;
+void encodeFrame(Bytes &out, BytesView dict, MessageType t, Domain d, uint8_t msg, uint32_t serial,
+		BytesView payload) {
+	auto at = out.size();
 
 	if (payload.empty()) {
 		MessageHeader mh;
@@ -331,18 +357,19 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 		mh.code = msg;
 		mh.serial = sprt::byteorder::HostToNetwork(serial);
 		mh.size = 0;
-		return streamWriteAll(s, (const uint8_t *)&mh, sizeof(MessageHeader), deadline);
+		out.resize(at + sizeof(MessageHeader));
+		__sprt_memcpy(out.data() + at, &mh, sizeof(MessageHeader));
+		return;
 	}
-
-	uint32_t frameSize = 0;
-	bool usingDict = false;
 
 	uint32_t bound = sprt::lz4_getCompressBounds(payload.size());
 	if (bound == 0) {
-		return false;
+		return;
 	}
 
-	auto frameData = __sprt_typed_malloca(uint8_t, sizeof(MessageHeader) + 4 + bound);
+	// Worst case up front, then shrink to what was actually produced.
+	out.resize(at + sizeof(MessageHeader) + 4 + sprt::max(bound, uint32_t(payload.size())));
+	auto frameData = out.data() + at;
 
 	MessageHeader *mh = (MessageHeader *)frameData;
 	mh->msgtype = toInt(t);
@@ -351,14 +378,12 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 	mh->code = msg;
 	mh->serial = sprt::byteorder::HostToNetwork(serial);
 
-	// Domain::Data carries large opaque binary blocks (e.g. screenshot pixels). The LZ4 *dictionary*
-	// round-trip (LZ4_compress_fast_continue + LZ4_decompress_safe_usingDict) does not survive these
-	// big blocks -- decompression returns the wrong length and the frame is dropped -- so compress them
-	// with plain (dictionary-less) LZ4, which decodes reliably at any size/ratio. The dictionary is
-	// tuned for the small CBOR control messages and gives raw pixel data nothing anyway.
+	// See the note in sendFrame's original body: Domain::Data blocks do not survive the LZ4
+	// dictionary round-trip, and the dictionary buys raw pixels nothing anyway.
 	bool useDict = !dict.empty() && d != Domain::Data;
 
 	uint32_t clen = 0;
+	bool usingDict = false;
 	if (useDict) {
 		clen = sprt::lz4_compressDataDict(payload.data(), payload.size(),
 				frameData + sizeof(MessageHeader) + 4, bound, dict.data(), dict.size());
@@ -366,39 +391,73 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 			usingDict = true;
 		}
 	}
-
 	if (clen == 0) {
 		clen = sprt::lz4_compressData(payload.data(), payload.size(),
 				frameData + sizeof(MessageHeader) + 4, bound);
 		usingDict = false;
 	}
 
+	size_t frameSize;
 	if (clen + 4 < payload.size()) {
 		mh->msgflags = toInt(MessageFlags::Compressed);
 		if (usingDict) {
 			mh->msgflags |= toInt(MessageFlags::Dictionary);
 		}
 		mh->size = sprt::byteorder::HostToNetwork(clen + 4);
-
-		// write uncompressed size (network byte order, to match the BytesViewNetwork reader in
-		// decodeMessagePayload / readMessagePayloadWithHeader -- otherwise a compressed frame's rawSize
-		// is byte-swapped on the peer and rejected as oversized)
+		// Uncompressed size in network byte order, to match the BytesViewNetwork reader on the peer.
 		*(uint32_t *)(frameData + sizeof(MessageHeader)) =
 				sprt::byteorder::HostToNetwork(uint32_t(payload.size()));
-
 		frameSize = sizeof(MessageHeader) + 4 + clen;
 	} else {
 		mh->msgflags = 0;
 		mh->size = sprt::byteorder::HostToNetwork(uint32_t(payload.size()));
 		frameSize = sizeof(MessageHeader) + payload.size();
-		memcpy(frameData + sizeof(MessageHeader), payload.data(), payload.size());
+		__sprt_memcpy(frameData + sizeof(MessageHeader), payload.data(), payload.size());
 	}
 
-	auto result = streamWriteAll(s, frameData, frameSize, deadline);
+	out.resize(at + frameSize);
+}
 
-	__sprt_freea(frameData);
+bool OutgoingQueue::push(BytesView dict, MessageType t, Domain d, uint8_t code, uint32_t serial,
+		BytesView payload) {
+	if (pending() > kMaxPending) {
+		return false;
+	}
+	encodeFrame(_buffer, dict, t, d, code, serial, payload);
+	return true;
+}
 
-	return result;
+bool OutgoingQueue::flush(TransportStream *stream) {
+	if (!stream || empty()) {
+		return true;
+	}
+	while (_offset < _buffer.size()) {
+		size_t w = 0;
+		if (stream->write(BytesView(_buffer.data() + _offset, _buffer.size() - _offset), w)
+				!= Status::Ok) {
+			return false; // closed or fatal
+		}
+		if (w == 0) {
+			break; // backpressure, not an error: leave the rest for the next poll
+		}
+		_offset += w;
+	}
+
+	if (_offset >= _buffer.size()) {
+		_buffer.clear();
+		_offset = 0;
+	} else if (_offset >= 64u * 1'024) {
+		// Reclaim the consumed prefix once it is worth the move, so a long-lived connection does not
+		// keep growing a buffer it has already sent.
+		_buffer.erase(_buffer.begin(), _buffer.begin() + _offset);
+		_offset = 0;
+	}
+	return true;
+}
+
+void OutgoingQueue::clear() {
+	_buffer.clear();
+	_offset = 0;
 }
 
 // --- MessageReader (receive-side stream reassembler) ---
@@ -420,7 +479,7 @@ static bool decodeMessagePayload(const MessageHeader &h, BytesView wire, BytesVi
 
 	auto r = BytesViewNetwork(wire);
 	uint32_t rawSize = r.readUnsigned32();
-	if (rawSize > kMaxFrameSize) {
+	if (!isAcceptableRawSize(h, rawSize, r.size())) {
 		return false;
 	}
 	out.resize(rawSize);
@@ -531,6 +590,13 @@ static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 	h.status = in.readUnsigned();
 	h.dictSource = in.readUnsigned();
 
+	// Nothing validated these before, so a reply from a foreign protocol was accepted as far as its
+	// status byte. The readers zero-fill past the end, so a truncated hello also lands here as
+	// magic == 0 and is caught by the same check.
+	if (h.magic != kProtocolMagic || h.version != kProtocolVersion) {
+		return false;
+	}
+
 	if (h.status != 0) {
 		return true;
 	}
@@ -553,7 +619,8 @@ static uint8_t *writeMessageHeader(uint8_t *buf, MessageType type, MessageFlags 
 	return buf;
 }
 
-GlobalError clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t deadline,
+GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView dict,
+		uint64_t deadline,
 		const Callback<void(const ServerHello &out)> &cb) {
 	uint32_t clientHelloSize = sizeof(uint32_t) * 3 + key.size() + dict.size();
 
@@ -573,18 +640,22 @@ GlobalError clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t d
 		buf = writeData(buf, dict);
 	}
 
-	if (!streamWriteAll((SSL *)ssl, d, clientHelloSize + sizeof(MessageHeader), deadline)) {
-		return GlobalError::NetworkBackend;
-	}
+	// Free before branching: the early return on a write failure used to leak `d` whenever
+	// __sprt_malloca had fallen back to the heap (a large suggested dictionary).
+	auto sent = streamWriteAll(conn, d, clientHelloSize + sizeof(MessageHeader), deadline);
 
 	__sprt_freea(d);
 
+	if (!sent) {
+		return GlobalError::NetworkBackend;
+	}
+
 	GlobalError result = GlobalError::NetworkBackend;
 
-	if (!readFrame(ssl, deadline, BytesView(), [&](const MessageHeader &h, BytesView d) {
+	if (!readFrame(conn, deadline, BytesView(), [&](const MessageHeader &h, BytesView d) {
 		ServerHello sh;
 		if (!decodeServerHello(d, sh)) {
-			result = GlobalError::NetworkBackend;
+			result = GlobalError::BadProtocol;
 			return;
 		}
 
@@ -601,17 +672,20 @@ GlobalError clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t d
 	return result;
 }
 
-static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey) {
+static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey,
+		bool requireBearerKey) {
 	GlobalError status;
-	if (ch.version != kProtocolVersion) {
+	// The magic was parsed but never checked, so a foreign protocol reached the key comparison.
+	if (ch.magic != kProtocolMagic || ch.version != kProtocolVersion) {
 		status = GlobalError::BadProtocol;
 	} else if (ch.authMode != toInt(AuthMode::BearerKey)) {
 		status = GlobalError::UnsupportedAuth;
+	} else if (!requireBearerKey) {
+		// The transport vouched for the peer; the key is not consulted.
+		status = GlobalError::Ok;
 	} else if (expectedKey.empty()
 			|| !crypto::isEqualConstantTime(BytesView(ch.authData.data(), ch.authData.size()),
 					expectedKey)) {
-		auto exp = base16::encode<Interface>(expectedKey);
-		auto data = base16::encode<Interface>(ch.authData);
 		status = GlobalError::AuthFailed;
 	} else {
 		status = GlobalError::Ok;
@@ -619,15 +693,49 @@ static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey) 
 	return status;
 }
 
-GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
-		Bytes &negotiatedDict, uint64_t deadline) {
+// Emit the ServerHello reply. Shared by the negotiating path and by serverHandshakeReject, so the
+// refusal answer cannot drift from the accepting one.
+static bool writeServerHello(TransportConnection &conn, GlobalError status, DictSource dictSource,
+		BytesView serverDict, uint64_t deadline) {
+	size_t serverHello = sizeof(uint32_t) * 2;
+	bool withDict = (status == GlobalError::Ok && dictSource == DictSource::Server);
+	if (withDict) {
+		serverHello += sizeof(uint16_t) + serverDict.size();
+	}
+
+	auto d = __sprt_typed_malloca(uint8_t, serverHello + sizeof(MessageHeader));
+
+	auto buf = writeMessageHeader(d, MessageType::Server, MessageFlags::None, Domain::Global,
+			toInt(GlobalCode::ServerHello), 0, serverHello);
+
+	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(kProtocolMagic));
+	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(kProtocolVersion));
+	buf = writeValue8(buf, toInt(status));
+	buf = writeValue8(buf, toInt(dictSource));
+
+	if (withDict) {
+		// Network byte order, like every other size on the wire: decodeServerHello reads it through
+		// a BytesViewNetwork, so a host-order write here was byte-swapped on every little-endian peer.
+		buf = writeValue16(buf, sprt::byteorder::HostToNetwork(uint16_t(serverDict.size())));
+		buf = writeData(buf, serverDict);
+	}
+
+	// Free the ALLOCATION, not the write cursor: `buf` has been advanced past the start of `d`, and
+	// releasing it corrupted the heap whenever __sprt_malloca had spilled (a large dictionary).
+	auto result = streamWriteAll(conn, d, serverHello + sizeof(MessageHeader), deadline);
+	__sprt_freea(d);
+	return result;
+}
+
+GlobalError serverHandshake(TransportConnection &conn, BytesView expectedKey, BytesView serverDict,
+		Bytes &negotiatedDict, uint64_t deadline, bool requireBearerKey) {
 	negotiatedDict.clear();
 
 	GlobalError outStatus = GlobalError::BadProtocol;
 	DictSource dictSource = DictSource::None;
 
 	// || !decodeClientHello(payload, ch)
-	if (!readFrame(ssl, deadline, BytesView(), [&](const MessageHeader &, BytesView b) {
+	if (!readFrame(conn, deadline, BytesView(), [&](const MessageHeader &, BytesView b) {
 		ClientHello ch;
 
 		auto networkBytes = BytesViewNetwork(b);
@@ -643,7 +751,7 @@ GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDi
 		ch.authData = networkBytes.readBytes<sprt::endian::native>(authDataSize);
 		ch.suggestedDict = networkBytes.readBytes<sprt::endian::native>(dictSize);
 
-		outStatus = negotiateHello(ch, expectedKey);
+		outStatus = negotiateHello(ch, expectedKey, requireBearerKey);
 
 		if (outStatus == GlobalError::Ok) {
 			if (serverDict.empty() && !ch.suggestedDict.empty()) {
@@ -657,56 +765,18 @@ GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDi
 		outStatus = GlobalError::BadProtocol;
 	}
 
-	// write short error message
-	size_t serverHello = sizeof(uint32_t) * 2;
-	if (outStatus == GlobalError::Ok && dictSource == DictSource::Server) {
-		serverHello += sizeof(uint16_t) + serverDict.size();
-	}
-
-	auto d = __sprt_typed_malloca(uint8_t, serverHello + sizeof(MessageHeader));
-
-	auto buf = writeMessageHeader(d, MessageType::Server, MessageFlags::None, Domain::Global,
-			toInt(GlobalCode::ServerHello), 0, serverHello);
-
-	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(kProtocolMagic));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(kProtocolVersion));
-	buf = writeValue8(buf, toInt(outStatus));
-	buf = writeValue8(buf, toInt(dictSource));
-
-	if (outStatus == GlobalError::Ok && dictSource == DictSource::Server) {
-		buf = writeValue16(buf, uint16_t(serverDict.size()));
-		buf = writeData(buf, serverDict);
-	}
-
-	streamWriteAll((SSL *)ssl, d, serverHello + sizeof(MessageHeader), deadline);
-	__sprt_freea(buf);
+	writeServerHello(conn, outStatus, dictSource, serverDict, deadline);
 	return outStatus;
 }
 
-SP_PUBLIC GlobalError sendPing(void *ssl, Role role, uint32_t serial) {
-	MessageHeader buf = {0};
-
-	writeMessageHeader((uint8_t *)&buf, MessageTypeRequest(role), MessageFlags::None,
-			Domain::Global, toInt(GlobalCode::Ping), serial, 0);
-
-	if (streamWriteAll((SSL *)ssl, (uint8_t *)&buf, sizeof(MessageHeader),
-				sp::platform::clock(ClockType::Monotonic) + 500'000)) {
-		return GlobalError::Ok;
-	}
-	return GlobalError::NetworkBackend;
-}
-
-SP_PUBLIC GlobalError sendPong(void *ssl, Role role, uint32_t serial) {
-	MessageHeader buf = {0};
-
-	writeMessageHeader((uint8_t *)&buf, MessageTypeReply(role), MessageFlags::None, Domain::Global,
-			toInt(GlobalCode::Pong), serial, 0);
-
-	if (streamWriteAll((SSL *)ssl, (uint8_t *)&buf, sizeof(MessageHeader),
-				sp::platform::clock(ClockType::Monotonic) + 500'000)) {
-		return GlobalError::Ok;
-	}
-	return GlobalError::NetworkBackend;
+GlobalError serverHandshakeReject(TransportConnection &conn, GlobalError status,
+		uint64_t deadline) {
+	// The ClientHello is deliberately NOT read: nothing is being negotiated, and a blocking read here
+	// would let any peer stall the server's thread for the whole deadline just by connecting and
+	// staying silent. QUIC's two directions are independent, so the refusal is delivered whether or
+	// not the hello has arrived -- the client is sitting in its own readFrame either way.
+	writeServerHello(conn, status, DictSource::None, BytesView(), deadline);
+	return status;
 }
 
 } // namespace stappler::xenolith::remote

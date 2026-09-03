@@ -25,6 +25,7 @@
 
 #include "XLCommon.h"
 #include "XLCoreInfo.h" // core::FrameConstraints
+#include "XLRemoteTransport.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -72,6 +73,7 @@ enum class GlobalError : uint8_t {
 	BadProtocol = 2, // magic/version mismatch or malformed
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
+	Busy = 5, // the server's client slot is taken; it accepts no second connection right now
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
@@ -310,12 +312,17 @@ struct ServerHello {
 	BytesView dict; // dictionary bytes when dictSource == Server (else empty)
 };
 
+#if DEBUG
 // Shared 64-byte development bearer key (both demo client and server use this by default).
+//
+// Debug-only on purpose: the value is a fixed pattern computed from a constant, so a release build
+// that shipped it would present -- and accept -- a key every reader of this header already knows.
+// A release build must be handed a real key (AppThread::setBearerKey / ClientContext::setBearerKey).
 SP_PUBLIC BytesView getDevBearerKey();
+#endif
 
-// --- stream I/O over a QUIC connection (the SSL* is passed as void* to keep OpenSSL out of this
-// header). All reads are bounded by an absolute wall-clock deadline in microseconds
-// (sp::platform::clock(Monotonic) timebase). ---
+// --- stream I/O over a TransportConnection. All reads are bounded by an absolute wall-clock
+// deadline in microseconds (sp::platform::clock(Monotonic) timebase). ---
 
 // Message framing: a 12-byte MessageHeader followed by `size` payload bytes (uncompressed). readFrame
 // reads one full message bounded by `deadline` and invokes cb(header, payload) (header fields already
@@ -324,11 +331,45 @@ SP_PUBLIC BytesView getDevBearerKey();
 SP_PUBLIC bool readMessagePayload(BytesViewNetwork &view, BytesView dict,
 		const Callback<void(const MessageHeader &, BytesView)> &);
 
-SP_PUBLIC bool readFrame(void *ssl, uint64_t deadline, BytesView dict,
+SP_PUBLIC bool readFrame(TransportConnection &, uint64_t deadline, BytesView dict,
 		const Callback<void(const MessageHeader &, BytesView payload)> &cb);
 
-SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageType, Domain,
-		uint8_t msg, uint32_t serial, BytesView);
+// Frame one message (header + optionally-compressed payload) onto the end of `out`. The wire bytes
+// are exactly what sendFrame would have written.
+SP_PUBLIC void encodeFrame(Bytes &out, BytesView dict, MessageType, Domain, uint8_t msg,
+		uint32_t serial, BytesView payload);
+
+// Send-side buffer.
+//
+// sendFrame BLOCKS the calling thread: when the QUIC send buffer or the peer's flow-control window
+// is full, SSL_write_ex accepts nothing and it busy-waits in 1ms sleeps up to its deadline. On the
+// app thread that stalls the frame the scene is building, and the peer decides for how long.
+//
+// So a message is framed into this queue instead and drained non-blockingly from the connection's
+// poll(), which the looper already drives on socket readiness and on every update tick. Ordering is
+// FIFO, which is what the protocol needs; the handshake stays synchronous on purpose (it runs once,
+// before any frame, and its deadline is the point).
+class SP_PUBLIC OutgoingQueue {
+public:
+	// A peer that never drains must not grow our memory without bound. Past this the connection is
+	// not stalled, it is dead, and the caller should drop it.
+	static constexpr size_t kMaxPending = 64u * 1'024 * 1'024;
+
+	// Frame a message and append it. Never blocks. False once the queue is over kMaxPending.
+	bool push(BytesView dict, MessageType, Domain, uint8_t code, uint32_t serial, BytesView payload);
+
+	// Write as much as the transport accepts right now. A partial write is success -- the remainder
+	// waits for the next call. False only on a fatal write error, i.e. drop the connection.
+	bool flush(TransportStream *);
+
+	bool empty() const { return _offset >= _buffer.size(); }
+	size_t pending() const { return _buffer.size() - _offset; }
+	void clear();
+
+protected:
+	Bytes _buffer;
+	size_t _offset = 0; // how much of _buffer the transport has already taken
+};
 
 // Receive-side stream reassembler. A QUIC stream is an ordered byte stream with no message
 // boundaries, so a socket wakeup yields an arbitrary number of bytes -- possibly a partial frame, or
@@ -372,21 +413,28 @@ protected:
 // Client side: send ClientHello (bearer key + suggested dict), read ServerHello into `out`, and fill
 // `negotiatedDict` with the dictionary to use for subsequent data frames. Returns true iff
 // out.status == Ok.
-SP_PUBLIC GlobalError clientHandshake(void *ssl, BytesView bearerKey, BytesView dict,
+SP_PUBLIC GlobalError clientHandshake(TransportConnection &, BytesView bearerKey, BytesView dict,
 		uint64_t deadlineUs, const Callback<void(const ServerHello &out)> &);
 
 // Server side: read ClientHello, validate (magic/version/mode + constant-time key compare against
 // `expectedKey`), negotiate the dictionary (server priority, else client suggestion, else none),
 // and reply with ServerHello (window info on success). Fills `outStatus` and `negotiatedDict`.
 // Returns true iff authenticated.
-SP_PUBLIC GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
-		Bytes &negotiatedDict, uint64_t deadlineUs);
+// `requireBearerKey` false accepts the client whatever key it presents. Pass false only when the
+// TRANSPORT already established who the peer is (TransportCaps::PeerAuthenticated -- unix-domain
+// credentials), where the key would add nothing: the kernel's answer is stronger than a shared
+// secret, and access control is the socket's permissions.
+SP_PUBLIC GlobalError serverHandshake(TransportConnection &, BytesView expectedKey,
+		BytesView serverDict, Bytes &negotiatedDict, uint64_t deadlineUs,
+		bool requireBearerKey = true);
 
-// Ping request
-SP_PUBLIC GlobalError sendPing(void *ssl, Role, uint32_t serial);
+// Server side: answer a connection with `status` instead of negotiating -- the way to turn one away
+// (GlobalError::Busy) so the peer gets a real answer rather than waiting out its own handshake
+// deadline. The ClientHello is not read (see the .cc), so this only ever blocks on the write.
+// Returns `status`; the caller closes the connection afterwards.
+SP_PUBLIC GlobalError serverHandshakeReject(TransportConnection &, GlobalError status,
+		uint64_t deadlineUs);
 
-// Ping response
-SP_PUBLIC GlobalError sendPong(void *ssl, Role, uint32_t serial);
 
 } // namespace stappler::xenolith::remote
 
