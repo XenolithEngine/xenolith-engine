@@ -148,8 +148,9 @@ public:
 	// 0 if no frame interval is set
 	uint64_t getPresentationFrameInterval() const;
 
-	// State flags you can enable or disable
-	WindowState getUpdatableStateFlags() const;
+	// getUpdatableStateFlags() now lives on core::RenderServerChannel: it reads only the mirrored
+	// _state and _capabilities, so the remote proxy answers enableState() by the same rules this
+	// window does.
 
 	// try to change WindowState by adding new flag
 	// Only one flag can be set per call
