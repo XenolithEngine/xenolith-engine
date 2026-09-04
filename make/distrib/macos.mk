@@ -107,53 +107,53 @@ else
 ifndef LOCAL_MACOS_ICON
 $(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
 	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
-	@$(WRITE) $@ '<?xml version=$"1.0$" encoding=$"UTF-8$"?>'
-	@$(APPEND) $@ '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
-	@$(APPEND) $@ '<plist version="1.0">'
-	@$(APPEND) $@ '<dict>'
-	@$(APPEND) $@ '	<key>CFBundleExecutable</key>'
-	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
-	@$(APPEND) $@ '	<key>CFBundleName</key>'
-	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
-	@$(APPEND) $@ '	<key>CFBundleDisplayName</key>'
-	@$(APPEND) $@ '	<string>$(APPCONFIG_APP_NAME)</string>'
-	@$(APPEND) $@ '	<key>CFBundleIdentifier</key>'
-	@$(APPEND) $@ '	<string>$(APPCONFIG_BUNDLE_NAME)</string>'
-	@$(APPEND) $@ '	<key>CFBundlePackageType</key>'
-	@$(APPEND) $@ '	<string>APPL</string>'
-	@$(APPEND) $@ '	<key>LSMinimumSystemVersion</key>'
-	@$(APPEND) $@ '	<string>$(TARGET_OSVER)</string>'
-	@$(APPEND) $@ '	<key>NSHighResolutionCapable</key>'
-	@$(APPEND) $@ '	<true/>'
-	@$(APPEND) $@ '</dict>'
-	@$(APPEND) $@ '</plist>'
+	@$(WRITE_START) '<?xml version=$"1.0$" encoding=$"UTF-8$"?>' $(WRITE_END)
+	@$(APPEND_START) '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' $(APPEND_END)
+	@$(APPEND_START) '<plist version="1.0">' $(APPEND_END)
+	@$(APPEND_START) '<dict>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleExecutable</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(LOCAL_EXECUTABLE)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleName</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(LOCAL_EXECUTABLE)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleDisplayName</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(APPCONFIG_APP_NAME)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleIdentifier</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(APPCONFIG_BUNDLE_NAME)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundlePackageType</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>APPL</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>LSMinimumSystemVersion</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(TARGET_OSVER)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>NSHighResolutionCapable</key>' $(APPEND_END)
+	@$(APPEND_START) '	<true/>' $(APPEND_END)
+	@$(APPEND_START) '</dict>' $(APPEND_END)
+	@$(APPEND_START) '</plist>' $(APPEND_END)
 else
 $(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
 	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
-	@$(WRITE) $@ '<?xml version=$"1.0$" encoding=$"UTF-8$"?>'
-	@$(APPEND) $@ '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
-	@$(APPEND) $@ '<plist version="1.0">'
-	@$(APPEND) $@ '<dict>'
-	@$(APPEND) $@ '	<key>CFBundleExecutable</key>'
-	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
-	@$(APPEND) $@ '	<key>CFBundleName</key>'
-	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
-	@$(APPEND) $@ '	<key>CFBundleDisplayName</key>'
-	@$(APPEND) $@ '	<string>$(APPCONFIG_APP_NAME)</string>'
-	@$(APPEND) $@ '	<key>CFBundleIdentifier</key>'
-	@$(APPEND) $@ '	<string>$(APPCONFIG_BUNDLE_NAME)</string>'
-	@$(APPEND) $@ '	<key>CFBundlePackageType</key>'
-	@$(APPEND) $@ '	<string>APPL</string>'
-	@$(APPEND) $@ '	<key>LSMinimumSystemVersion</key>'
-	@$(APPEND) $@ '	<string>$(TARGET_OSVER)</string>'
-	@$(APPEND) $@ '	<key>NSHighResolutionCapable</key>'
-	@$(APPEND) $@ '	<true/>'
-	@$(APPEND) $@ '	<key>CFBundleIconFile</key>'
-	@$(APPEND) $@ '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>'
-	@$(APPEND) $@ '	<key>CFBundleIconName</key>'
-	@$(APPEND) $@ '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>'
-	@$(APPEND) $@ '</dict>'
-	@$(APPEND) $@ '</plist>'
+	@$(WRITE_START) '<?xml version=$"1.0$" encoding=$"UTF-8$"?>' $(WRITE_END)
+	@$(APPEND_START) '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' $(APPEND_END)
+	@$(APPEND_START) '<plist version="1.0">' $(APPEND_END)
+	@$(APPEND_START) '<dict>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleExecutable</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(LOCAL_EXECUTABLE)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleName</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(LOCAL_EXECUTABLE)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleDisplayName</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(APPCONFIG_APP_NAME)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleIdentifier</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(APPCONFIG_BUNDLE_NAME)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundlePackageType</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>APPL</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>LSMinimumSystemVersion</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(TARGET_OSVER)</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>NSHighResolutionCapable</key>' $(APPEND_END)
+	@$(APPEND_START) '	<true/>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleIconFile</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>' $(APPEND_END)
+	@$(APPEND_START) '	<key>CFBundleIconName</key>' $(APPEND_END)
+	@$(APPEND_START) '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>' $(APPEND_END)
+	@$(APPEND_START) '</dict>' $(APPEND_END)
+	@$(APPEND_START) '</plist>' $(APPEND_END)
 endif
 endif
 

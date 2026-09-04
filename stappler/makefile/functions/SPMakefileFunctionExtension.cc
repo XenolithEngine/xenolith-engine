@@ -175,5 +175,57 @@ static bool Function_xl_make_plain(const Callback<void(StringView)> &out, void *
 	return true;
 }
 
+// $(xl_reverse <words>) / $(xl_uniq <words>) -- iterative, O(1) call-stack.
+// GNU make's usual recursive $(call reverse,$(wordlist 2,...)) is one frame per
+// word; Safari wasm throws RangeError: Maximum call stack size exceeded around
+// ~80 modules (see reverse_modules / unique_modules in resolve-modules.mk).
+static bool Function_xl_reverse(const Callback<void(StringView)> &out, void *,
+		VariableEngine &engine, SpanView<StmtValue *> args) {
+	auto text = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	Vector<StringView> words;
+	text.split<StringView::WhiteSpace>([&](StringView word) {
+		if (!word.empty()) {
+			words.emplace_back(word);
+		}
+	});
+	bool first = true;
+	for (size_t i = words.size(); i > 0; --i) {
+		if (first) {
+			first = false;
+		} else {
+			out << ' ';
+		}
+		out << words[i - 1];
+	}
+	return true;
+}
+
+static bool Function_xl_uniq(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
+		SpanView<StmtValue *> args) {
+	auto text = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	Vector<StringView> words;
+	text.split<StringView::WhiteSpace>([&](StringView word) {
+		if (word.empty()) {
+			return;
+		}
+		for (auto &w : words) {
+			if (w == word) {
+				return;
+			}
+		}
+		words.emplace_back(word);
+	});
+	bool first = true;
+	for (auto &w : words) {
+		if (first) {
+			first = false;
+		} else {
+			out << ' ';
+		}
+		out << w;
+	}
+	return true;
+}
+
 
 } // namespace stappler::makefile

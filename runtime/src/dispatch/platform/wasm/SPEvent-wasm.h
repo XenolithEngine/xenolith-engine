@@ -31,6 +31,7 @@
 namespace sprt::dispatch {
 
 class WasmThreadHandle;
+class WasmProcessHandle;
 
 // One armed timer, held in the reactor's deadline list. `handle` is a raw
 // pointer: an armed handle is retained by the queue (HandleClass::run) and is
@@ -62,6 +63,14 @@ struct SPRT_API WasmData : public PlatformQueueData {
 	// touches this list (register/unregister/fire all run on it).
 	Queue::Vector<WasmThreadHandle *> _threadHandles;
 
+	// In-flight "processes": clang/llvm-ar/ld running in host Web Workers.
+	// Process output stays on the JS host (completeJob). notify() only touches
+	// the memfs path so make sees the target — it must not copy the bytes in
+	// (35MiB Mach-O OOMs xlmake and the recipe becomes a fake linker error 1).
+	// xlmake never creates those workers; spawnProcess registers a handle here
+	// and the JS host posts completions into a SAB, then notifies _wakeword.
+	Queue::Vector<WasmProcessHandle *> _processHandles;
+
 	static constexpr int32_t WakeupPresent = int32_t(1) << 30;
 	static constexpr int32_t WakeupCancel = int32_t(1) << 29;
 
@@ -82,6 +91,11 @@ struct SPRT_API WasmData : public PlatformQueueData {
 	void unregisterThreadHandle(WasmThreadHandle *);
 	// Dispatch every ThreadHandle that has pending cross-thread work. Returns count.
 	uint32_t fireThreadHandles(RunContext *);
+
+	void registerProcessHandle(WasmProcessHandle *);
+	void unregisterProcessHandle(WasmProcessHandle *);
+	// Drain host process completions (SAB) and notify matching handles.
+	uint32_t fireProcessHandles(RunContext *);
 
 	// Futex: bump the generation and wake any waiter (loop thread / another
 	// worker blocked in wait32).
@@ -160,11 +174,42 @@ protected:
 	WasmData *_wasm = nullptr; // cached reactor for cross-thread wakeups
 };
 
+// Host-side subprocess (clang.wasm in a Web Worker). Not a real OS process:
+// `process_spawn` posts the command line to JS; JS runs llvm-driver off this
+// thread and completes via process_poll after notifying `_wakeword`.
+struct WasmProcessSource {
+	int32_t id = -1;
+
+	void cancel() { }
+};
+
+class WasmProcessHandle : public ProcessHandle {
+public:
+	virtual ~WasmProcessHandle() = default;
+
+	bool init(HandleClass *, ProcessInfo &&, WasmData *);
+
+	virtual NativeHandle getNativeHandle() const override { return NativeHandle(-1); }
+
+	Status rearm(WasmData *, WasmProcessSource *);
+	Status disarm(WasmData *, WasmProcessSource *);
+	void notify(WasmData *, WasmProcessSource *, const NotifyData &);
+
+	int32_t processId() const { return _id; }
+
+protected:
+	ProcessInfo::ReaderCallback _reader;
+	char _outPath[4096] = {};
+	int32_t _id = -1;
+	WasmData *_wasm = nullptr;
+};
+
 struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _wasmTimerClass;
 	HandleClass _wasmThreadClass;
 	HandleClass _wasmFileInlineClass;
 	HandleClass _wasmWatchClass;
+	HandleClass _wasmProcessClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

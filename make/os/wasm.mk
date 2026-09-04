@@ -89,9 +89,11 @@ endif
 # default is 64 KiB - far below what a native main thread gets. An overflow runs below
 # address 0 and traps as "memory access out of bounds" in whatever function it hit: edlib's
 # alignment in stappler_search does it on wasm32, libc++'s format tests on wasm64, where every
-# pointer-sized field doubles the frames. The main thread gets the 1 MiB a spawned thread has
-# (__SPRT_WASM_THREAD_STACK in pthread_native_wasm.cc).
-OSTYPE_WASM_STACK_SIZE ?= 1048576
+# pointer-sized field doubles the frames. xlake needs more still: its nested $(eval $(call
+# follow_deps_module)) during resolve-modules.mk overflows even the 1 MiB a spawned thread
+# gets (__SPRT_WASM_THREAD_STACK in pthread_native_wasm.cc), so the default covers the
+# deepest known consumer.
+OSTYPE_WASM_STACK_SIZE ?= 8388608 # 8 MiB
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
 	-Wl,-z,stack-size=$(OSTYPE_WASM_STACK_SIZE) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
