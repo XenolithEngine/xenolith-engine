@@ -57,6 +57,7 @@ public:
 
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
@@ -111,6 +112,13 @@ protected:
 	// Client-minted material dependency ids -> the server-local events the forwarded compile signals, so a
 	// frame using a not-yet-compiled material waits. Reconciled in handleFrameInput.
 	Map<uint32_t, Rc<core::DependencyEvent>> _materialDeps;
+
+	// The last DrawStat the render half produced for this client, waiting for a frame request to
+	// carry it. `_drawStatDirty` is what keeps an idle window from re-sending the same numbers:
+	// nothing new was drawn, so there is nothing new to say. Written on the app thread only (the
+	// push hops there first), read there too, so no synchronization is needed.
+	core::DrawStat _drawStat{};
+	bool _drawStatDirty = false;
 };
 
 } // namespace stappler::xenolith

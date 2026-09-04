@@ -28,6 +28,7 @@
 #include "XLContext.h"
 #include "SPSharedModule.h"
 #include "XLDirector.h"
+#include "XLTextInputManager.h" // cancel text input when the session ends
 #include "XLCoreAttachment.h" // core::DependencyEvent id mask
 #include "XLCoreInfo.h" // core::ImageInfoData / ImageFormat / Extent3
 #include "XLRemoteBlockTransfer.h"
@@ -275,6 +276,23 @@ void ClientAppThread::pumpConnection() {
 	}
 
 	if (disconnect && _connection) {
+		/* Tell the focused widget its authority is gone. The state belongs to the server's
+		processor, so once the connection is down no echo will ever arrive again -- and a field left
+		"enabled" would keep its caret blinking and go on waiting for text that cannot come.
+		cancel() delivers enabled=false to the handler and then calls releaseTextInput(), which
+		no-ops on a dead connection.
+		
+		Invisible in the current end-to-end check, because the client process exits on disconnect.
+		That is exactly why it is written here rather than discovered later by whoever first keeps a
+		client alive across a reconnect. */
+		for (auto &it : _windows) {
+			if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
+				if (auto tm = dir->getTextInputManager()) {
+					tm->cancel();
+				}
+			}
+		}
+
 		if (_blockTransfer) {
 			_blockTransfer->reset();
 		}
@@ -402,7 +420,53 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 
-			wIt->second->acquireFrame(frameId, constraints, sp::move(sendReply));
+			// Indices 3/4 are the server's frame telemetry, appended in M4. Read them by TYPE:
+			// absent (a version-1 server, or a frame with no new stat) means "no update", and the
+			// window keeps what it had.
+			core::FrameTimingInfo timing;
+			core::DrawStat stat{};
+			const core::FrameTimingInfo *timingPtr = nullptr;
+			const core::DrawStat *statPtr = nullptr;
+			if (val.getValue(3).isArray()) {
+				timing = remote::deserializeFrameTiming(val.getValue(3));
+				timingPtr = &timing;
+			}
+			if (val.getValue(4).isArray()) {
+				stat = remote::deserializeDrawStat(val.getValue(4));
+				statPtr = &stat;
+			}
+
+			wIt->second->acquireFrame(frameId, constraints, timingPtr, statPtr,
+					sp::move(sendReply));
+			return true;
+		}
+		case remote::WindowCode::TextInputState: {
+			// server -> client: [windowId, TextInputState]. The processor's echo, on its way to the
+			// focused widget through the Director's TextInputManager.
+			auto val = data::read<Interface>(payload);
+			auto windowId = uint64_t(val.getInteger(0));
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "TextInputState for unknown window ",
+						windowId);
+				return true;
+			}
+			wIt->second->handleTextInput(remote::deserializeTextInputState(val.getValue(1)));
+			return true;
+		}
+		case remote::WindowCode::WindowGeometryChanged: {
+			// server -> client: [windowId, WindowGeometry]. Updates the window's mirror and lets the
+			// scene hear about the move.
+			auto val = data::read<Interface>(payload);
+			auto windowId = uint64_t(val.getInteger(0));
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "WindowGeometryChanged for unknown window ",
+						windowId);
+				return true;
+			}
+			wIt->second->handleWindowGeometryChanged(
+					remote::deserializeWindowGeometry(val.getValue(1)));
 			return true;
 		}
 		case remote::WindowCode::InputEvents: {

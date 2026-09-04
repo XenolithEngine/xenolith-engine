@@ -495,9 +495,9 @@ bool ServerAppThread::startListening() {
 	// Drive accept on this looper: readiness on the listener socket gives a prompt wakeup; QUIC's
 	// internal timers are pumped from performAppUpdate() (same appUpdateInterval cadence as the main
 	// update timer), so no separate listen timer is needed.
-	_listenPoll =
-			_appLooper->listenPollableHandle(_listener->getPollHandle(), sprt::dispatch::PollFlags::In,
-					[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
+	_listenPoll = _appLooper->listenPollableHandle(_listener->getPollHandle(),
+			sprt::dispatch::PollFlags::In,
+			[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
 		pumpListener();
 		return Status::Ok;
 	}, this);
@@ -845,6 +845,112 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 			return true;
 		};
+		case remote::WindowCode::TextInputControl: {
+			// Fire-and-forget: the answer travels back as a TextInputState echo, not as a reply.
+			if (!_sharedObjects) {
+				return true;
+			}
+			auto val = data::read<Interface>(payload);
+			auto w = static_cast<AppWindow *>(
+					_sharedObjects->resolveWindow(uint64_t(val.getInteger("w"))));
+			if (!w) {
+				return true;
+			}
+			switch (remote::TextInputOp(val.getInteger("op"))) {
+			case remote::TextInputOp::Acquire:
+				w->acquireTextInput(remote::deserializeTextInputRequest(val.getValue("req")));
+				break;
+			case remote::TextInputOp::Release: w->releaseTextInput(); break;
+			case remote::TextInputOp::Perform:
+				w->performTextInput(remote::deserializeTextInputCommand(val.getValue("cmd")));
+				break;
+			}
+			return true;
+		}
+		case remote::WindowCode::WindowControl: {
+			// One handler for every op a remote scene can ask of its window. The reply is always a
+			// Status, so the client's callback path is the same whatever it asked for.
+			if (!conn || !_sharedObjects) {
+				return true;
+			}
+			auto val = data::read<Interface>(payload);
+			auto windowId = uint64_t(val.getInteger("w"));
+			auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
+			if (!w) {
+				conn->sendError(remote::Domain::Window,
+						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
+				return true;
+			}
+
+			auto reply = [conn, serial = h.serial, code = h.code](Status st) {
+				Value r;
+				r.addInteger(int64_t(toInt(st)));
+				conn->sendCborReply(serial, remote::Domain::Window, code, r);
+			};
+
+			switch (remote::WindowControlOp(val.getInteger("op"))) {
+			case remote::WindowControlOp::Close:
+				// Answer BEFORE closing. The reply travels over a connection the close is about to
+				// tear down, so the other order loses it and the client waits out its deadline for
+				// a window that did shut. The scene inspector's own close op is ordered the same
+				// way for the same reason.
+				reply(Status::Ok);
+				w->close(val.getBool("graceful"));
+				break;
+			case remote::WindowControlOp::EnableState:
+				// The client already refused what its mirrors said was impossible; this re-check is
+				// against a peer that sent it anyway.
+				reply(w->enableState(core::WindowState(uint64_t(val.getInteger("state"))))
+								? Status::Ok
+								: Status::Declined);
+				break;
+			case remote::WindowControlOp::DisableState:
+				reply(w->disableState(core::WindowState(uint64_t(val.getInteger("state"))))
+								? Status::Ok
+								: Status::Declined);
+				break;
+			case remote::WindowControlOp::SetFullscreen: {
+				auto info = remote::deserializeFullscreenInfo(val.getValue("fs"));
+				if (!w->setFullscreen(sp::move(info), [reply](Status st) { reply(st); }, this)) {
+					reply(Status::Declined);
+				}
+				break;
+			}
+			case remote::WindowControlOp::SetPreferredFrameRate:
+				if (!w->setPreferredFrameRate(float(val.getDouble("rate")),
+							[reply](Status st) { reply(st); })) {
+					reply(Status::Declined);
+				}
+				break;
+			case remote::WindowControlOp::SetPreferredFrameInterval:
+				w->setPreferredFrameInterval(uint64_t(val.getInteger("iv")));
+				reply(Status::Ok);
+				break;
+			case remote::WindowControlOp::SetWindowExtent: {
+				auto &ext = val.getValue("ext");
+				w->setWindowExtent(
+						Extent2(uint32_t(ext.getInteger(0)), uint32_t(ext.getInteger(1))),
+						[reply](Status st) { reply(st); }, this);
+				break;
+			}
+			case remote::WindowControlOp::OpenWindowMenu: {
+				auto &p = val.getValue("pos");
+				reply(w->openWindowMenu(Vec2(float(p.getDouble(0)), float(p.getDouble(1))))
+								? Status::Ok
+								: Status::Declined);
+				break;
+			}
+			case remote::WindowControlOp::BackButton:
+				w->handleBackButton();
+				reply(Status::Ok);
+				break;
+			default:
+				conn->sendError(remote::Domain::Window, toInt(remote::WindowError::NotImplemented),
+						h.serial);
+				break;
+			}
+			return true;
+		}
 		default:
 			if (conn) {
 				conn->sendError(remote::Domain::Window, toInt(remote::GlobalError::NotImplemented),
@@ -1025,6 +1131,16 @@ void ServerAppThread::takeoverSharedWindows(core::RenderClientChannel *client) {
 			// Reverting to the local Director: kill any in-flight frames the (now-gone) remote client was
 			// producing so a frame stuck on it cannot wedge presentation before the local scene resumes.
 			w->invalidateRemoteFrames();
+
+			/* And give the keyboard back. If the departed client had acquired text input, the native
+			window's processor is still enabled with ITS request -- so it keeps claiming printable
+			keys, Backspace, Delete and Escape before the server's own scene ever sees them, and on
+			a mobile backend the OS keyboard stays up. The symptom is "the server stopped accepting
+			typing after the client left", which is very hard to trace back to here.
+			
+			Called unconditionally: releasing input that was never acquired is a no-op, and a flag
+			tracking whether it was would be one more thing to get wrong on a disconnect path. */
+			w->releaseTextInput();
 		}
 		// On revert (client == nullptr) restore the window's own local Director.
 		w->setRenderClient(

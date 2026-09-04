@@ -31,6 +31,9 @@
 #include "XLInputListener.h" // DEBUG: verify forwarded input reaches the scene
 #include "XLUiCloseGuardWidget.h"
 #include "XLEntryPoint.h"
+#include "XLSceneInspector.h"
+#include "XLUiTextInput.h"
+#include "XLUiStyleResolver.h"
 
 #include <stdlib.h> // getenv for the screenshot output path
 
@@ -74,8 +77,28 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	// attached"); generate the label quads in the foreground instead.
 	_label->setDeferred(false);
 
+	/* Текстовое поле — единственная проверка текстового ввода, которую нельзя подделать.
+	
+	Оно не декорация: `TextInput::focus()` уходит в `TextInputManager::run` -> 
+	`getRenderServer()->acquireTextInput(...)`, то есть на `RemoteWindow`. Без сфокусированного поля
+	запрос ввода вообще не покидает клиента, и проверка «эхо доходит» проверяла бы пустоту.
+	
+	Резолвер стилей нужен полю, а не сцене: без него у поля нет ни шрифта, ни цвета каретки. */
+	content->addSystem(Rc<ui::StyleResolver>::create(true));
+
+	_input = content->addChild(Rc<ui::TextInput>::create(), ZOrder(1));
+	_input->setName("remote-input");
+	_input->setPlaceholder("remote text");
+	// Мигающая каретка — подбрасывание монеты в неподвижном снимке.
+	_input->setCaretBlink(false);
+	_input->setContentSize(Size2(320.0f, 48.0f));
+
 	// Применяем содержимое сцены
 	setContent(content);
+
+	// Команды инспектора регистрируются на SceneContent, поэтому — после setContent
+	registerCommands();
+	registerTextCommand();
 
 	// Remote runtime font materials are now forwarded to the server for compilation; enable text.
 	setFpsVisible(true);
@@ -122,6 +145,12 @@ void ClientScene::handleContentSizeDirty() {
 	if (_label) {
 		_label->setPosition(_contentSize / 2.0f);
 	}
+	if (_input) {
+		// Top-left, not bottom-left: the FPS overlay lives in the bottom corner and would draw over
+		// the field, making a visual check of the text useless.
+		_input->setAnchorPoint(Vec2(0.0f, 1.0f));
+		_input->setPosition(Vec2(48.0f, _contentSize.height - 48.0f));
+	}
 }
 
 void ClientScene::handleEnter(Scene *scene) {
@@ -133,6 +162,13 @@ void ClientScene::handleEnter(Scene *scene) {
 	// серверу setReadyForNextFrame, а сервер обеспечивает непрерывную выдачу кадров.
 	// CallFunc в конце каждого цикла логирует счётчик — так в логе клиента видно, что действие
 	// реально продвигается во времени (то есть кадры действительно поступают).
+	/* Фокус берётся здесь, а не по команде инспектора: acquireTextInput должен уйти на сервер сам,
+	как только сцена поехала, — иначе проверка эха зависела бы от того, что драйвер не забыл его
+	попросить. */
+	if (_input) {
+		_input->focus();
+	}
+
 	if (_square && !_animStarted) {
 		_animStarted = true;
 		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
@@ -141,6 +177,100 @@ void ClientScene::handleEnter(Scene *scene) {
 			//log::source().info("ClientScene", "animation tick ", _animTick);
 		})));
 	}
+}
+
+/* Наблюдаемая точка для драйвера: что клиент ЗНАЕТ о своём окне, отдельно от того, что он
+нарисовал.
+   
+Разделение существенно. Сцена клиента перестраивалась при ресайзе и до M4 — констрейнты едут в
+каждом AcquireFrame. Не работало другое: окно на клиенте не знало о себе ничего после announce, а
+телеметрию сервер вообще не слал, поэтому FPS-панель показывала 1.0/1.0/0.0 — заглушечные значения,
+неотличимые снаружи от «сервер медленный». Поэтому команда отдаёт и размер сцены, и зеркала окна: без
+такого разделения проверка ресайза проходила бы, ничего не проверяя. */
+void ClientScene::registerCommands() {
+	auto content = getContent();
+
+	inspector::addCommand(content, "client-state",
+			"What the client's window knows about itself: "
+			"{ sceneWidth, sceneHeight, constraintsWidth, constraintsHeight, density, "
+			"geomX, geomY, geomWidth, geomHeight, hasPosition }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		auto server = _director ? _director->getRenderServer() : nullptr;
+		if (!server) {
+			result.setBool(false, "ok");
+			result.setString("no render session", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+		result.setDouble(_contentSize.width, "sceneWidth");
+		result.setDouble(_contentSize.height, "sceneHeight");
+
+		auto &c = server->getConstraints();
+		result.setInteger(c.extent.width, "constraintsWidth");
+		result.setInteger(c.extent.height, "constraintsHeight");
+		result.setDouble(c.density, "density");
+
+		auto &g = server->getWindowGeometry();
+		result.setInteger(g.rect.x, "geomX");
+		result.setInteger(g.rect.y, "geomY");
+		result.setInteger(g.rect.width, "geomWidth");
+		result.setInteger(g.rect.height, "geomHeight");
+		result.setBool(g.hasPosition, "hasPosition");
+		done(sp::move(result));
+	});
+
+	inspector::addCommand(content, "client-stats",
+			"Server frame telemetry as the client received it: "
+			"{ lastFrameInterval, avgFrameInterval, lastFrameTime, drawVertexes, drawCalls, "
+			"pixelsTotal, pixelsFilled }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		if (!_director) {
+			result.setBool(false, "ok");
+			result.setString("no director", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+
+		auto t = _director->getRenderServer()->getFrameTiming();
+		result.setInteger(int64_t(t.lastFrameInterval), "lastFrameInterval");
+		result.setInteger(int64_t(t.avgFrameInterval), "avgFrameInterval");
+		result.setInteger(int64_t(t.lastFrameTime), "lastFrameTime");
+
+		auto &d = _director->getDrawStat();
+		result.setInteger(int64_t(d.vertexes), "drawVertexes");
+		result.setInteger(int64_t(d.drawCalls), "drawCalls");
+		result.setInteger(int64_t(d.pixelsTotal), "pixelsTotal");
+		result.setInteger(int64_t(d.pixelsFilled), "pixelsFilled");
+		done(sp::move(result));
+	});
+}
+
+void ClientScene::registerTextCommand() {
+	inspector::addCommand(getContent(), "client-text",
+			"The client's text field: { text, cursor*, marked*, focused }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		if (!_input) {
+			result.setBool(false, "ok");
+			result.setString("no text field", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+		result.setString(_input->getText().str<Interface>(), "text");
+		auto cursor = _input->getCursor();
+		result.setInteger(cursor.start, "cursorStart");
+		result.setInteger(cursor.length, "cursorLength");
+		auto marked = _input->getMarked();
+		result.setInteger(marked.start, "markedStart");
+		result.setInteger(marked.length, "markedLength");
+		result.setBool(_input->isFocused(), "focused");
+		done(sp::move(result));
+	});
 }
 
 void ClientScene::requestRemoteScreenshot() {

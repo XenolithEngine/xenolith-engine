@@ -67,9 +67,15 @@ public:
 			Ref * = nullptr) override;
 	virtual void acquireTextInput(core::TextInputRequest &&) override;
 	virtual void releaseTextInput() override;
+	virtual void performTextInput(core::TextInputCommand &&) override;
 	virtual void close(bool graceful = true) override;
 
 	virtual void handleBackButton() override;
+
+	// Not overridden before: the base answered ErrorNotSupported, which is right for a channel with
+	// no window and wrong for one whose window is simply elsewhere.
+	virtual void setWindowExtent(Extent2, Function<void(Status)> && = nullptr,
+			Ref * = nullptr) override;
 
 	virtual const sprt::window::WindowInfo *getInfo() const override;
 
@@ -99,6 +105,17 @@ public:
 
 	virtual void handleInputEvents(Vector<core::InputEventData> &&events) override;
 
+	// Server-pushed text-input state (WindowCode::TextInputState) -- the echo from the window's
+	// processor. Not an override, for the same reason handleWindowGeometryChanged is not: this is
+	// the receiving end of a RenderClientChannel call the server made.
+	void handleTextInput(const core::TextInputState &);
+
+	// Server-pushed window geometry (WindowCode::WindowGeometryChanged). Updates the mirror
+	// getWindowGeometry() serves and forwards to the local Director, so a remote scene hears about
+	// a move on the same hook a local one does. Not an override: RenderServerChannel has no such
+	// method -- this is the receiving end of a RenderClientChannel call made on the server.
+	void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
+
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) override;
 
 	uint64_t getServerId() const { return _id; }
@@ -108,7 +125,12 @@ public:
 	// Drive the local Director for a server frame request: the scene graph selects one of the shared
 	// queues; `reply` is invoked with that queue's server id (0 if none could be selected). Per-frame
 	// attachment input is NOT serialized at this stage.
+	// `timing` and `stat` ride along with the request (see RemoteRenderClient::acquireFrame); pass
+	// null for either when the server did not send it, which is how a version-1 server looks. Null
+	// means "no update", NOT zeros -- overwriting the mirror with zeros every frame would make the
+	// client's FPS overlay flicker to nothing against an older server.
 	void acquireFrame(uint64_t frameId, const core::FrameConstraints &,
+			const core::FrameTimingInfo *timing, const core::DrawStat *stat,
 			Function<void(uint64_t queueId)> &&reply);
 
 protected:
@@ -122,6 +144,22 @@ protected:
 
 	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
 	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;
+
+	/* Send one WindowCode::WindowControl request and route its Status back to `cb`.
+	
+	Every control op funnels through here. The reply is delivered by the ordinary reply machinery
+	(AppThread::waitForReply keys by serial), so a dropped connection is already handled: the request
+	watchdog synthesizes an error reply and `cb` gets an error Status instead of silence. That is
+	precisely the defect this milestone fixes elsewhere in this class -- acquireScreenInfo and
+	setFullscreen used to take a callback and never call it. */
+	void sendWindowControl(remote::WindowControlOp, Value &&args, Function<void(Status)> &&cb);
+
+	// Fire-and-forget counterpart for the text-input ops; the answer is the state echo, not a reply.
+	void sendTextInputControl(Value &&args);
+
+	// The server's frame telemetry, mirrored here because getFrameTiming() is a synchronous getter
+	// the wire cannot answer. Fed by the AcquireFrame piggyback.
+	core::FrameTimingInfo _frameTiming;
 
 	// Last forwarded WindowLayer payload (the raw WindowLayer[] bytes, no window-id prefix), so identical
 	// per-frame layer sets are not re-sent (updateLayers is driven every input commit).

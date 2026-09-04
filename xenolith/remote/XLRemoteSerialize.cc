@@ -26,6 +26,7 @@
 #include "XLCoreMaterial.h" // complete core::MaterialSet/Material/MaterialAttachment for the codec
 
 #include "SPData.h"
+#include "SPString.h" // string::toUtf8 for the text-input codecs
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -361,9 +362,268 @@ core::FrameConstraints deserializeFrameConstraints(const Value &v) {
 	return c;
 }
 
+Value serializeWindowGeometry(const sprt::window::WindowGeometry &g) {
+	// [x, y, width, height, hasPosition]
+	Value v(Value::Type::ARRAY);
+	v.addInteger(int64_t(g.rect.x));
+	v.addInteger(int64_t(g.rect.y));
+	v.addInteger(int64_t(g.rect.width));
+	v.addInteger(int64_t(g.rect.height));
+	v.addBool(g.hasPosition);
+	return v;
+}
+
+sprt::window::WindowGeometry deserializeWindowGeometry(const Value &v) {
+	sprt::window::WindowGeometry g;
+	if (!v.isArray()) {
+		return g; // malformed: keep defaults, which read as "unknown"
+	}
+	auto &arr = v.getArray();
+	auto at = [&](size_t i) -> const Value & {
+		static const Value nil;
+		return i < arr.size() ? arr[i] : nil;
+	};
+	g.rect.x = int32_t(at(0).getInteger());
+	g.rect.y = int32_t(at(1).getInteger());
+	g.rect.width = int32_t(at(2).getInteger());
+	g.rect.height = int32_t(at(3).getInteger());
+	// Not derived from a zero origin: on Wayland and the windowless backends the platform never
+	// reports a position, and "0,0" there means unknown rather than top-left. The flag is the only
+	// thing that distinguishes the two, so it travels explicitly.
+	g.hasPosition = at(4).getBool();
+	return g;
+}
+
+Value serializeFrameTiming(const core::FrameTimingInfo &t) {
+	// [lastFrameInterval, avgFrameInterval, lastFrameTime, lastFenceFrameTime,
+	//  lastTimestampFrameTime] (+ [5] lastFrameOrder under XL_FRAME_ACCOUNT)
+	Value v(Value::Type::ARRAY);
+	v.addInteger(int64_t(t.lastFrameInterval));
+	v.addInteger(int64_t(t.avgFrameInterval));
+	v.addInteger(int64_t(t.lastFrameTime));
+	v.addInteger(int64_t(t.lastFenceFrameTime));
+	v.addInteger(int64_t(t.lastTimestampFrameTime));
+#if XL_FRAME_ACCOUNT
+	v.addInteger(int64_t(t.lastFrameOrder));
+#endif
+	return v;
+}
+
+core::FrameTimingInfo deserializeFrameTiming(const Value &v) {
+	core::FrameTimingInfo t;
+	if (!v.isArray()) {
+		return t;
+	}
+	auto &arr = v.getArray();
+	auto at = [&](size_t i) -> uint64_t {
+		return i < arr.size() ? uint64_t(arr[i].getInteger()) : uint64_t(0);
+	};
+	t.lastFrameInterval = at(0);
+	t.avgFrameInterval = at(1);
+	t.lastFrameTime = at(2);
+	t.lastFenceFrameTime = at(3);
+	t.lastTimestampFrameTime = at(4);
+#if XL_FRAME_ACCOUNT
+	// Absent when the peer was built without the flag; `at` answers 0, which is what "not measured"
+	// means everywhere else in this struct.
+	t.lastFrameOrder = at(5);
+#endif
+	return t;
+}
+
+Value serializeDrawStat(const core::DrawStat &d) {
+	Value v(Value::Type::ARRAY);
+	v.addInteger(int64_t(d.vertexes));
+	v.addInteger(int64_t(d.triangles));
+	v.addInteger(int64_t(d.zPaths));
+	v.addInteger(int64_t(d.drawCalls));
+	v.addInteger(int64_t(d.cachedImages));
+	v.addInteger(int64_t(d.cachedFramebuffers));
+	v.addInteger(int64_t(d.cachedImageViews));
+	v.addInteger(int64_t(d.materials));
+	v.addInteger(int64_t(d.solidCmds));
+	v.addInteger(int64_t(d.surfaceCmds));
+	v.addInteger(int64_t(d.transparentCmds));
+	v.addInteger(int64_t(d.shadowsCmds));
+	v.addInteger(int64_t(d.vertexInputTime));
+	v.addInteger(int64_t(d.pixelsTotal));
+	v.addInteger(int64_t(d.pixelsFilled));
+#if XL_FRAME_ACCOUNT
+	v.addInteger(int64_t(d.deferredWorkTime));
+	v.addInteger(int64_t(d.deferredWaitTime));
+	v.addInteger(int64_t(d.deferredCount));
+	v.addInteger(int64_t(d.deferredWaited));
+	v.addInteger(int64_t(d.frameOrder));
+	v.addInteger(int64_t(d.walkTime));
+	v.addInteger(int64_t(d.bufferTime));
+	v.addInteger(int64_t(d.writeTime));
+	v.addInteger(int64_t(d.spanTime));
+	v.addInteger(int64_t(d.uploadTime));
+	v.addInteger(int64_t(d.damageTime));
+	v.addInteger(int64_t(d.planTime));
+	v.addInteger(int64_t(d.queueWaitTime));
+	v.addInteger(int64_t(d.fillTime));
+#endif
+	return v;
+}
+
+core::DrawStat deserializeDrawStat(const Value &v) {
+	// Brace-initialized: most members of DrawStat carry no default initializer, so a plain
+	// declaration would leave them holding whatever was on the stack (see the note in
+	// XL2dSoftFlatPass.cc). A short array must decode to zeros, not to garbage.
+	core::DrawStat d{};
+	if (!v.isArray()) {
+		return d;
+	}
+	auto &arr = v.getArray();
+	auto at = [&](size_t i) -> uint64_t {
+		return i < arr.size() ? uint64_t(arr[i].getInteger()) : uint64_t(0);
+	};
+	d.vertexes = uint32_t(at(0));
+	d.triangles = uint32_t(at(1));
+	d.zPaths = uint32_t(at(2));
+	d.drawCalls = uint32_t(at(3));
+	d.cachedImages = uint32_t(at(4));
+	d.cachedFramebuffers = uint32_t(at(5));
+	d.cachedImageViews = uint32_t(at(6));
+	d.materials = uint32_t(at(7));
+	d.solidCmds = uint32_t(at(8));
+	d.surfaceCmds = uint32_t(at(9));
+	d.transparentCmds = uint32_t(at(10));
+	d.shadowsCmds = uint32_t(at(11));
+	d.vertexInputTime = uint32_t(at(12));
+	d.pixelsTotal = at(13);
+	d.pixelsFilled = at(14);
+#if XL_FRAME_ACCOUNT
+	d.deferredWorkTime = at(15);
+	d.deferredWaitTime = at(16);
+	d.deferredCount = uint32_t(at(17));
+	d.deferredWaited = uint32_t(at(18));
+	d.frameOrder = at(19);
+	d.walkTime = at(20);
+	d.bufferTime = at(21);
+	d.writeTime = at(22);
+	d.spanTime = at(23);
+	d.uploadTime = at(24);
+	d.damageTime = at(25);
+	d.planTime = at(26);
+	d.queueWaitTime = at(27);
+	d.fillTime = at(28);
+#endif
+	return d;
+}
+
+namespace {
+
+// UTF-16 payload <-> UTF-8 on the wire. The cursors that index it are NOT touched: they are UTF-16
+// offsets on both sides, and the same characters yield the same UTF-16 sequence.
+static void textToValue(Value &v, WideStringView str) {
+	v.addString(string::toUtf8<Interface>(str));
+}
+
+static WideString textFromValue(const Value &v) {
+	auto utf8 = StringView(v.getString());
+	WideString ret;
+	size_t size = sprt::unicode::getUtf16Length(utf8);
+	ret.resize(size);
+	sprt::unicode::toUtf16(ret.data(), ret.size(), utf8, &size);
+	ret.resize(size);
+	return ret;
+}
+
+static void cursorToValue(Value &v, const sprt::window::TextCursor &c) {
+	v.addInteger(int64_t(c.start));
+	v.addInteger(int64_t(c.length));
+}
+
+} // namespace
+
+Value serializeTextInputRequest(const core::TextInputRequest &r) {
+	// [text, cursorStart, cursorLength, markedStart, markedLength, serial, type]
+	Value v(Value::Type::ARRAY);
+	textToValue(v, r.string ? WideStringView(r.string->string) : WideStringView());
+	cursorToValue(v, r.cursor);
+	cursorToValue(v, r.marked);
+	v.addInteger(int64_t(r.serial));
+	v.addInteger(ei(r.type));
+	return v;
+}
+
+core::TextInputRequest deserializeTextInputRequest(const Value &v) {
+	core::TextInputRequest r;
+	if (!v.isArray()) {
+		return r;
+	}
+	auto &arr = v.getArray();
+	auto at = [&](size_t i) -> const Value & {
+		static const Value nil;
+		return i < arr.size() ? arr[i] : nil;
+	};
+	// A fresh buffer per request: TextInputString is never shared identity, so only the characters
+	// have to survive the trip.
+	r.string = Rc<sprt::window::TextInputString>::alloc();
+	r.string->string = textFromValue(at(0));
+	r.cursor = core::TextCursor(uint32_t(at(1).getInteger()), uint32_t(at(2).getInteger()));
+	r.marked = core::TextCursor(uint32_t(at(3).getInteger()), uint32_t(at(4).getInteger()));
+	r.serial = uint64_t(at(5).getInteger());
+	r.type = sprt::window::TextInputType(at(6).getInteger());
+	return r;
+}
+
+Value serializeTextInputState(const core::TextInputState &st) {
+	// The request's fields, plus the two the processor owns: whether input is on, and where
+	// composition stands.
+	Value v = serializeTextInputRequest(st.getRequest());
+	v.addBool(st.enabled);
+	v.addInteger(ei(st.compose));
+	return v;
+}
+
+core::TextInputState deserializeTextInputState(const Value &v) {
+	auto st = deserializeTextInputRequest(v).getState();
+	if (v.isArray()) {
+		// getState() does not carry these across (see SPRuntimeInput.cc) -- they are the
+		// processor's, not the request's, so they are read back explicitly.
+		st.enabled = v.getBool(7);
+		st.compose = sprt::window::InputKeyComposeState(v.getInteger(8));
+	}
+	return st;
+}
+
+Value serializeTextInputCommand(const core::TextInputCommand &c) {
+	// [op, text, replacementStart, replacementLength, markedStart, markedLength, compose]
+	Value v(Value::Type::ARRAY);
+	v.addInteger(ei(c.op));
+	textToValue(v, WideStringView(c.text));
+	cursorToValue(v, c.replacement);
+	cursorToValue(v, c.marked);
+	v.addInteger(ei(c.compose));
+	return v;
+}
+
+core::TextInputCommand deserializeTextInputCommand(const Value &v) {
+	core::TextInputCommand c;
+	if (!v.isArray()) {
+		return c;
+	}
+	auto &arr = v.getArray();
+	auto at = [&](size_t i) -> const Value & {
+		static const Value nil;
+		return i < arr.size() ? arr[i] : nil;
+	};
+	c.op = sprt::window::TextInputCommandOp(at(0).getInteger());
+	c.text = textFromValue(at(1));
+	// InvalidCursor ({Max<uint32_t>, 0}) is the default for both ranges and travels as those
+	// numbers -- it means "no range given", which is not the same as an empty range at 0.
+	c.replacement = core::TextCursor(uint32_t(at(2).getInteger()), uint32_t(at(3).getInteger()));
+	c.marked = core::TextCursor(uint32_t(at(4).getInteger()), uint32_t(at(5).getInteger()));
+	c.compose = sprt::window::InputKeyComposeState(at(6).getInteger());
+	return c;
+}
+
 // --- WindowInfo / SwapchainConfig codecs (same compact flat-array style) ----
 
-static Value fullscreenToValue(const sprt::window::FullscreenInfo &f) {
+Value serializeFullscreenInfo(const sprt::window::FullscreenInfo &f) {
 	// [monitorName, edidVendorId, edidModel, edidSerial, modeW, modeH, modeRate, modeScale, flags]
 	// EdidInfo::vendor is a derived lookup cache (from vendorId) -> not serialized.
 	Value v(Value::Type::ARRAY);
@@ -379,7 +639,7 @@ static Value fullscreenToValue(const sprt::window::FullscreenInfo &f) {
 	return v;
 }
 
-static sprt::window::FullscreenInfo valueToFullscreen(const Value &v) {
+sprt::window::FullscreenInfo deserializeFullscreenInfo(const Value &v) {
 	sprt::window::FullscreenInfo f;
 	if (!v.isArray()) {
 		return f;
@@ -414,7 +674,7 @@ Value serializeWindowInfo(const sprt::window::WindowInfo &c) {
 	v.addInteger(int64_t(c.rect.height));
 	v.addDouble(c.density);
 	v.addInteger(ei(c.flags));
-	v.addValue(fullscreenToValue(c.fullscreen));
+	v.addValue(serializeFullscreenInfo(c.fullscreen));
 	v.addInteger(ei(c.preferredPresentMode));
 	v.addInteger(ei(c.imageFormat));
 	v.addInteger(ei(c.colorSpace));
@@ -445,7 +705,7 @@ Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &v) {
 	info->rect.height = uint32_t(at(5).getInteger());
 	info->density = float(at(6).getDouble());
 	info->flags = sprt::window::WindowCreationFlags(at(7).getInteger());
-	info->fullscreen = valueToFullscreen(at(8));
+	info->fullscreen = deserializeFullscreenInfo(at(8));
 	info->preferredPresentMode = sprt::window::PresentMode(at(9).getInteger());
 	info->imageFormat = sprt::window::ImageFormat(at(10).getInteger());
 	info->colorSpace = sprt::window::ColorSpace(at(11).getInteger());

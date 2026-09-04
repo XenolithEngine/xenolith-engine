@@ -978,54 +978,8 @@ core::FrameTimingInfo AppWindow::getFrameTiming() const {
 	return info;
 }
 
-WindowState AppWindow::getUpdatableStateFlags() const {
-	auto caps = getCapabilities();
-	WindowState flags = WindowState::None;
-
-	if (hasFlag(caps, WindowCapabilities::AboveBelowState)) {
-		flags |= WindowState::Above | WindowState::Below;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DemandsAttentionState)) {
-		flags |= WindowState::DemandsAttention;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::SkipTaskbarState)) {
-		flags |= WindowState::SkipTaskbar | WindowState::SkipPager;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::CloseGuard)) {
-		flags |= WindowState::CloseGuard | WindowState::CloseRequest;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DecorationState)) {
-		flags |= WindowState::DecorationState;
-	}
-
-	for (auto it : sp::flags(_state)) {
-		switch (it) {
-		case WindowState::AllowedMinimize: flags |= WindowState::Minimized; break;
-		case WindowState::AllowedShade: flags |= WindowState::Shaded; break;
-		case WindowState::AllowedStick: flags |= WindowState::Sticky; break;
-		case WindowState::AllowedMaximizeVert: flags |= WindowState::MaximizedVert; break;
-		case WindowState::AllowedMaximizeHorz: flags |= WindowState::MaximizedHorz; break;
-		case WindowState::AllowedClose: flags |= WindowState::CloseRequest; break;
-		case WindowState::AllowedFullscreen: flags |= WindowState::Fullscreen; break;
-		default: break;
-		}
-	}
-	return flags;
-}
-
 bool AppWindow::enableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
-		return false;
-	}
-
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "enableState:", state, " is not updatable");
+	if (!validateStateChange(state, "enableState")) {
 		return false;
 	}
 
@@ -1034,14 +988,7 @@ bool AppWindow::enableState(WindowState state) {
 }
 
 bool AppWindow::disableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
-		return false;
-	}
-
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "disableState:", state, " is not updatable");
+	if (!validateStateChange(state, "disableState")) {
 		return false;
 	}
 
