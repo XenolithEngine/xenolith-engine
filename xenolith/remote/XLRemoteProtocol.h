@@ -135,6 +135,66 @@ enum class WindowCode {
 	// client forwards them and the server applies them to the native window (cursor,
 	// hit-testing, server-side decorations). WindowLayer is trivially copyable -> opaque
 	// blob. Fire-and-forget; the client only sends on change.
+
+	// --- M4: window domain completeness ------------------------------------------------------
+
+	WindowGeometryChanged = 11, // server -> client notification: [windowId, WindowGeometry]. Where
+	// the window now is, in the logical space WindowInfo::rect uses. A SIBLING of the frame
+	// constraints and not part of them: a title-bar drag must not cost a scene relayout.
+	//
+	// Constraints have deliberately NO message of their own. They already travel in every
+	// AcquireFrame, and the client's Director applies them there exactly as a local one does
+	// (Director::acquireFrame -> setFrameConstraints), so a second carrier would be a second
+	// source of truth for the same fact. Geometry has no such carrier -- and, unlike constraints,
+	// the server already has a live hook that fires only on a real change
+	// (AppWindow::notifyWindowGeometry), so the deduplication is done before the wire.
+
+	WindowControl = 12, // client -> server REQUEST: everything a scene can ask of the window it
+	// draws into -- close, state flags, fullscreen, frame rate/interval, extent, window menu, back
+	// button. ONE code with an operation discriminant rather than nine codes, because the reply is
+	// the same for all of them (a Status) and the routing is identical.
+	//
+	// Payload is a keyed CBOR map, not a positional array: the arguments differ per operation, and
+	// "which index means what depends on the op" is exactly the fragility the flat-array style
+	// avoids where the fields are homogeneous. Keys: "w" (window id), "op" (WindowControlOp), plus
+	// at most one operation-specific value -- see WindowControlOp.
+	//
+	// Reply: [int32 Status]. The `bool` these calls return to the scene is decided LOCALLY, from
+	// the mirrored window state, and is a precondition; the Status is what the window actually did.
+	// The server re-checks the precondition, because a client can send anything.
+
+	TextInputControl = 13, // client -> server notification: [w, op, req|cmd]. The scene asking the
+	// window's text-input processor to start, stop, or perform an edit (see TextInputOp).
+	//
+	// A NOTIFICATION and not a request, deliberately. The answer to "did the IME accept this" does
+	// not come back as a return value even locally -- it comes back as a state echo, below. Making
+	// it a request would also mean an IME activation that timed out could take the whole session
+	// down through the request watchdog, and losing a keyboard must not cost the connection.
+	// server -> client notification: [windowId, TextInputState]. The echo: what the processor
+	// decided the state now is. This is the ONLY source of truth for the client's widget -- the
+	// state belongs to the IME on the OS side, never to the application, so a client that updated
+	// its own field when it sent the request would be showing text the server has not accepted.
+	TextInputState = 14,
+};
+
+// Operations carried by WindowCode::TextInputControl.
+enum class TextInputOp : uint8_t {
+	Acquire = 0, // "req": array (serializeTextInputRequest) -- start or update IME capture
+	Release = 1, // no argument -- stop capture
+	Perform = 2, // "cmd": array (serializeTextInputCommand) -- drive the processor as an IME would
+};
+
+// Operations carried by WindowCode::WindowControl, with the payload key each one reads.
+enum class WindowControlOp : uint8_t {
+	Close = 0, // "graceful": bool
+	EnableState = 1, // "state": int64 (core::WindowState, 64-bit)
+	DisableState = 2, // "state": int64
+	SetFullscreen = 3, // "fs": array (serializeFullscreenInfo)
+	SetPreferredFrameRate = 4, // "rate": double
+	SetPreferredFrameInterval = 5, // "iv": int64 (microseconds)
+	SetWindowExtent = 6, // "ext": [width, height]
+	OpenWindowMenu = 7, // "pos": [x, y] in scene coords; Vec2::INVALID means "at the pointer"
+	BackButton = 8, // no argument
 };
 
 enum class WindowError : uint8_t {
@@ -372,7 +432,8 @@ public:
 	static constexpr size_t kMaxPending = 64u * 1'024 * 1'024;
 
 	// Frame a message and append it. Never blocks. False once the queue is over kMaxPending.
-	bool push(BytesView dict, MessageType, Domain, uint8_t code, uint32_t serial, BytesView payload);
+	bool push(BytesView dict, MessageType, Domain, uint8_t code, uint32_t serial,
+			BytesView payload);
 
 	// Write as much as the transport accepts right now. A partial write is success -- the remainder
 	// waits for the next call. False only on a fatal write error, i.e. drop the connection.

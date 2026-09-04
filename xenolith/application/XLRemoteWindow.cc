@@ -36,6 +36,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 static constexpr uint64_t kCompileQueueReplyTimeoutUs = 15'000'000; // 15s
 static constexpr uint64_t kAttachQueueReplyTimeoutUs = 5'000'000; // 5s
 
+// A window-control op is a short round trip on the server's app thread. Bounded rather than
+// generous: a server that has not answered one in five seconds is not a server whose session should
+// carry on, and the request watchdog will say so.
+static constexpr uint64_t kWindowControlReplyTimeoutUs = 5'000'000; // 5s
+
 RemoteWindow::~RemoteWindow() { }
 
 bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
@@ -64,8 +69,19 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 	// Index 6 is the queue array; the WindowInfo the server appends lives at 7 (see
 	// RemoteRenderClient::announce). Reading 6 here built every client-side WindowInfo out of the
 	// queue list.
-	if (val.hasValue(7)) {
+	//
+	// Guarded by the TYPE, not by hasValue(): the slot is always present now (a window with no info
+	// sends an empty value there), and hasValue() on an array is only a bounds check -- it would
+	// have accepted the empty and built a default WindowInfo out of nothing.
+	if (val.getValue(7).isArray()) {
 		_info = remote::deserializeWindowInfo(val.getValue(7));
+	}
+
+	// [8] Geometry as of connect time, so getWindowGeometry() answers something real before the
+	// window first moves. Absent from a version-1 server: the mirror then stays at its defaults,
+	// which read as "unknown".
+	if (val.getValue(8).isArray()) {
+		_appWindowGeometry = remote::deserializeWindowGeometry(val.getValue(8));
 	}
 
 	if (_queues.empty()) {
@@ -128,12 +144,40 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 }
 
 void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &c,
+		const core::FrameTimingInfo *timing, const core::DrawStat *stat,
 		Function<void(uint64_t queueId)> &&reply) {
 	// `_client` is this window's local Director (set via RenderServerChannel::setRenderClient).
 	if (!_client) {
 		slog().error("RemoteWindow", "acquireFrame: no client");
 		reply(0);
 		return;
+	}
+
+	/* The window's own constraints mirror, and the ONLY place it is written after the announce.
+	
+	There is deliberately no ConstraintsChanged message: the constraints are already here, in every
+	frame request, and the Director below applies them exactly as a local one does. What was missing
+	is only that the WINDOW never learned them -- getConstraints() answered the announce-time value
+	for the life of the session, so a scene (or the inspector) asking the window rather than the
+	director got a stale size forever.
+	
+	The mirror therefore catches up with the first frame after a resize. That is not a gap in
+	practice: a resize recreates the swapchain, and a recreated swapchain produces a frame. */
+	if (_appFrameConstraints != c) {
+		_appFrameConstraints = c;
+		_client->handleConstraintsChanged(c);
+	}
+
+	// Telemetry that rode along with the request. Absent means "the server said nothing this time"
+	// -- keep the previous value rather than zeroing the mirror.
+	if (timing) {
+		_frameTiming = *timing;
+	}
+	if (stat) {
+		// Straight to the Director, which owns the copy the FPS overlay reads. Already on the app
+		// thread here, so no hop: the local path's performOnAppThread exists only because the local
+		// push originates on the render thread.
+		_client->pushDrawStat(*stat);
 	}
 
 	// Stream each per-attachment input the moment the scene submits it, then a commit. These run on
@@ -276,26 +320,175 @@ void RemoteWindow::setReadyForNextFrame() {
 				Value(_id));
 	}
 }
-void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) { }
-core::FrameTimingInfo RemoteWindow::getFrameTiming() const { return core::FrameTimingInfo(); }
+/* --- window control (WindowCode::WindowControl) ------------------------------------------------
 
-void RemoteWindow::acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &&, Ref *) { }
-void RemoteWindow::acquireTextInput(core::TextInputRequest &&) { }
-void RemoteWindow::releaseTextInput() { }
-void RemoteWindow::close(bool graceful) { }
+Every method below splits into two halves, and the split is the whole design.
 
-void RemoteWindow::handleBackButton() { }
+The `bool` these calls return is answered LOCALLY, from `_state` and `_capabilities` -- mirrors this
+window already keeps -- using the same rules the real window uses, because those rules now live on
+the shared base (RenderServerChannel::validateStateChange and friends). They have to be answered
+locally: the signatures are synchronous, and a round trip cannot produce a return value. So the
+bool is a PRECONDITION.
+
+The `Status` is the OUTCOME, and it comes back in the reply. The server re-runs the precondition on
+receipt -- a client can send anything -- and answers Declined if it disagrees. That disagreement is
+what a test asserts is absent. */
+
+void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
+		Function<void(Status)> &&cb) {
+	args.setInteger(int64_t(_id), "w");
+	args.setInteger(int64_t(toInt(op)), "op");
+
+	if (!_thread
+			|| !_thread->sendMessageWithReply(remote::Domain::Window,
+					toInt(remote::WindowCode::WindowControl), args,
+					[cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) mutable {
+		if (!cb) {
+			return;
+		}
+		if (remote::isError(h)) {
+			cb(Status::ErrorNotSupported);
+			return;
+		}
+		cb(Status(int32_t(data::read<Interface>(payload).getInteger(0))));
+	}, kWindowControlReplyTimeoutUs)) {
+		// Not connected, or the send failed outright. Answer rather than drop: a caller that never
+		// hears back cannot tell "refused" from "still working".
+		if (cb) {
+			cb(Status::ErrorNotSupported);
+		}
+	}
+}
+
+void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) {
+	Value args;
+	args.setInteger(int64_t(intervalUs), "iv");
+	sendWindowControl(remote::WindowControlOp::SetPreferredFrameInterval, sp::move(args), nullptr);
+}
+
+core::FrameTimingInfo RemoteWindow::getFrameTiming() const { return _frameTiming; }
+
+void RemoteWindow::acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &&cb, Ref *) {
+	// Screen enumeration is its own domain and belongs to a later milestone. What is fixed here is
+	// the silence: this used to take the callback and drop it, so every caller waited forever for
+	// an answer that was never coming. There is no ScreenInfo to hand back, so the honest thing is
+	// an empty one -- delivered, not withheld.
+	if (cb) {
+		cb(Rc<core::ScreenInfo>::alloc());
+	}
+}
+
+/* --- text input (WindowCode::TextInputControl / ::TextInputState) --------------------------------
+
+The local contract is that the state belongs to the IME on the OS side, never to the application:
+the application only ever REQUESTS a state, and what it gets back through the echo is the answer.
+That is preserved here exactly. Nothing below touches the local TextInputManager -- the client's
+widget learns what happened only when handleTextInput arrives from the server. Updating the field
+optimistically would show text the server has not accepted. */
+
+void RemoteWindow::acquireTextInput(core::TextInputRequest &&req) {
+	Value args;
+	args.setInteger(int64_t(toInt(remote::TextInputOp::Acquire)), "op");
+	args.setValue(remote::serializeTextInputRequest(req), "req");
+	sendTextInputControl(sp::move(args));
+}
+
+void RemoteWindow::releaseTextInput() {
+	Value args;
+	args.setInteger(int64_t(toInt(remote::TextInputOp::Release)), "op");
+	sendTextInputControl(sp::move(args));
+}
+
+void RemoteWindow::performTextInput(core::TextInputCommand &&cmd) {
+	Value args;
+	args.setInteger(int64_t(toInt(remote::TextInputOp::Perform)), "op");
+	args.setValue(remote::serializeTextInputCommand(cmd), "cmd");
+	sendTextInputControl(sp::move(args));
+}
+
+void RemoteWindow::sendTextInputControl(Value &&args) {
+	auto conn = _thread ? _thread->getConnection() : nullptr;
+	if (!conn) {
+		return;
+	}
+	args.setInteger(int64_t(_id), "w");
+	conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::TextInputControl),
+			args);
+}
+
+void RemoteWindow::handleTextInput(const core::TextInputState &state) {
+	// The echo, straight through to the Director's TextInputManager -- the same hop a local window
+	// makes in AppWindow::handleTextInput.
+	if (_client) {
+		_client->handleTextInput(state);
+	}
+}
+
+void RemoteWindow::close(bool graceful) {
+	Value args;
+	args.setBool(graceful, "graceful");
+	sendWindowControl(remote::WindowControlOp::Close, sp::move(args), nullptr);
+}
+
+void RemoteWindow::handleBackButton() {
+	sendWindowControl(remote::WindowControlOp::BackButton, Value(), nullptr);
+}
 
 const sprt::window::WindowInfo *RemoteWindow::getInfo() const { return _info; }
 
-bool RemoteWindow::enableState(core::WindowState) { return false; }
-bool RemoteWindow::disableState(core::WindowState) { return false; }
-
-bool RemoteWindow::setFullscreen(core::FullscreenInfo &&, Function<void(Status)> &&, Ref *) {
-	return false;
+bool RemoteWindow::enableState(core::WindowState state) {
+	if (!validateStateChange(state, "enableState")) {
+		return false;
+	}
+	Value args;
+	args.setInteger(int64_t(toInt(state)), "state");
+	sendWindowControl(remote::WindowControlOp::EnableState, sp::move(args), nullptr);
+	return true;
 }
 
-bool RemoteWindow::setPreferredFrameRate(float, Function<void(Status)> &&) { return false; }
+bool RemoteWindow::disableState(core::WindowState state) {
+	if (!validateStateChange(state, "disableState")) {
+		return false;
+	}
+	Value args;
+	args.setInteger(int64_t(toInt(state)), "state");
+	sendWindowControl(remote::WindowControlOp::DisableState, sp::move(args), nullptr);
+	return true;
+}
+
+bool RemoteWindow::setFullscreen(core::FullscreenInfo &&info, Function<void(Status)> &&cb, Ref *) {
+	// Same gate AppWindow applies, from the same mirrored capabilities. And when it refuses, the
+	// callback is ANSWERED: dropping it here is what made a refused fullscreen indistinguishable
+	// from one still in progress.
+	if (!canSetFullscreen()) {
+		if (cb) {
+			cb(Status::ErrorNotSupported);
+		}
+		return false;
+	}
+	Value args;
+	args.setValue(remote::serializeFullscreenInfo(info), "fs");
+	sendWindowControl(remote::WindowControlOp::SetFullscreen, sp::move(args), sp::move(cb));
+	return true;
+}
+
+bool RemoteWindow::setPreferredFrameRate(float rate, Function<void(Status)> &&cb) {
+	// Returns true unconditionally, matching AppWindow. That is arguably wrong there -- the
+	// interface says to gate on WindowCapabilities::PreferredFrameRate and it does not -- but the
+	// two sides must answer alike, and changing the local path is not this milestone's business.
+	Value args;
+	args.setDouble(rate, "rate");
+	sendWindowControl(remote::WindowControlOp::SetPreferredFrameRate, sp::move(args), sp::move(cb));
+	return true;
+}
+
+void RemoteWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref *) {
+	Value args;
+	auto &ext = args.emplace("ext");
+	ext.addInteger(int64_t(extent.width));
+	ext.addInteger(int64_t(extent.height));
+	sendWindowControl(remote::WindowControlOp::SetWindowExtent, sp::move(args), sp::move(cb));
+}
 
 void RemoteWindow::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
@@ -343,7 +536,17 @@ bool RemoteWindow::deliverScreenshot(uint32_t serial, const core::ImageInfoData 
 	return true;
 }
 
-bool RemoteWindow::openWindowMenu(Vec2 pos) { return false; }
+bool RemoteWindow::openWindowMenu(Vec2 pos) {
+	if (!canOpenWindowMenu()) {
+		return false;
+	}
+	Value args;
+	auto &p = args.emplace("pos");
+	p.addDouble(pos.x);
+	p.addDouble(pos.y);
+	sendWindowControl(remote::WindowControlOp::OpenWindowMenu, sp::move(args), nullptr);
+	return true;
+}
 
 void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
 	// Server-forwarded platform input (WindowCode::InputEvents): replay it into the local Director's
@@ -357,6 +560,16 @@ void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
 	}
 	if (_client) {
 		_client->handleInputEvents(sp::move(events));
+	}
+}
+
+void RemoteWindow::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+	// The server pushes this only when the geometry actually changed (AppWindow::notifyWindowGeometry
+	// compares first), so there is nothing to deduplicate here. Update the mirror, then let the
+	// scene hear about it through the same hook a local window uses.
+	_appWindowGeometry = g;
+	if (_client) {
+		_client->handleWindowGeometryChanged(g);
 	}
 }
 

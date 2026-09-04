@@ -1305,6 +1305,51 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 			result.setBool(true, "resized");
 			sendResponse(session, serial, sp::move(result));
 		}, this);
+	} else if (op == "updatable") {
+		// Which state flags this window will act on, as bits and as names. Exists so a driver can
+		// compare the two sides of a remote session: the rules live on the shared channel base, so
+		// a local window and a remote proxy must answer identically -- and a proxy reading the
+		// wrong mirror shows up here as a different number rather than as a mysterious refusal.
+		auto flags = server->getUpdatableStateFlags();
+
+		Value result;
+		result.setInteger(int64_t(sprt::toInt(flags)), "bits");
+
+		StringStream names;
+		sprt::window::getWindowStateDescription(
+				[&](StringView str) { names << (names.empty() ? str.sub(1) : str); }, flags);
+		result.setString(names.str(), "state");
+		sendResponse(session, serial, sp::move(result));
+	} else if (op == "enable-state" || op == "disable-state") {
+		auto name = req.getString("state");
+		auto state = core::WindowState::None;
+		for (auto it : sprt::flags(core::WindowState(maxOf<uint64_t>()))) {
+			StringStream n;
+			sprt::window::getWindowStateDescription([&](StringView str) { n << str.sub(1); }, it);
+			if (n.str() == name) {
+				state = it;
+				break;
+			}
+		}
+		if (state == core::WindowState::None) {
+			sendError(session, serial, toString("unknown window state: ", name));
+			return;
+		}
+
+		// `accepted` is the SYNCHRONOUS answer - the window's own precondition - and not whether
+		// the window system honoured it. That distinction is the point on a remote session: the
+		// client decides this from its mirrors without a round trip.
+		Value result;
+		result.setBool(op == "enable-state" ? server->enableState(state)
+											: server->disableState(state),
+				"accepted");
+		result.setString(name, "state");
+		sendResponse(session, serial, sp::move(result));
+	} else if (op == "frame-interval") {
+		server->setPreferredFrameInterval(uint64_t(req.getInteger("value")));
+		Value result;
+		result.setBool(true, "ok");
+		sendResponse(session, serial, sp::move(result));
 	} else if (op == "close") {
 		Value result;
 		result.setBool(true, "closing");
@@ -1312,8 +1357,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		server->close(!req.hasValue("graceful") || req.getBool("graceful"));
 	} else {
 		sendError(session, serial,
-				toString("unknown window op: ", op,
-						"; expected 'resize', 'constraints', 'geometry', 'state' or 'close'"));
+				toString("unknown window op: ", op, "; expected resize, constraints, geometry,",
+						" state, updatable, enable-state, disable-state, frame-interval, close"));
 	}
 }
 

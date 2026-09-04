@@ -75,6 +75,118 @@ void performSerializeTests() {
 	}
 
 	{
+		// M4 codecs. The interesting cases are not "does a number survive" -- they are the two
+		// places where this could be wrong in a way nothing would notice at runtime.
+		sprt::window::WindowGeometry g;
+		g.rect = sprt::geom::IRect{-100, 40, 1'280, 720};
+		g.hasPosition = true;
+
+		auto rg = deserializeWindowGeometry(serializeWindowGeometry(g));
+		check(rg.rect.x == -100 && rg.rect.y == 40 && rg.rect.width == 1'280
+						&& rg.rect.height == 720,
+				"serialize: WindowGeometry rect survives, negative origin included");
+		check(rg.hasPosition, "serialize: WindowGeometry carries hasPosition");
+
+		// A zero origin with hasPosition=false must NOT come back as "at the top-left corner":
+		// on Wayland and the windowless backends the platform never reports a position, and the
+		// flag is the only thing that separates "unknown" from "0,0".
+		sprt::window::WindowGeometry unknown;
+		unknown.rect = sprt::geom::IRect{0, 0, 800, 600};
+		auto ru = deserializeWindowGeometry(serializeWindowGeometry(unknown));
+		check(!ru.hasPosition, "serialize: an unknown position stays unknown");
+	}
+
+	{
+		core::FrameTimingInfo t;
+		t.lastFrameInterval = 16'666;
+		t.avgFrameInterval = 16'700;
+		t.lastFrameTime = 4'200;
+		t.lastFenceFrameTime = 3'100;
+		t.lastTimestampFrameTime = 2'900;
+
+		auto rt = deserializeFrameTiming(serializeFrameTiming(t));
+		check(rt.lastFrameInterval == t.lastFrameInterval
+						&& rt.avgFrameInterval == t.avgFrameInterval
+						&& rt.lastFrameTime == t.lastFrameTime
+						&& rt.lastFenceFrameTime == t.lastFenceFrameTime
+						&& rt.lastTimestampFrameTime == t.lastTimestampFrameTime,
+				"serialize: FrameTimingInfo round-trips");
+
+		/* THE case this codec exists for. Both these structs grow members under XL_FRAME_ACCOUNT,
+		so their size is a build-flag fact -- and the ABI tag hashes only InputEventData and
+		WindowLayer, so a server built with the flag and a client built without it connect
+		successfully today. A raw dump would corrupt that pair. Field-by-field with the flagged
+		members APPENDED means the shorter side reads the prefix it understands. */
+		auto truncated = serializeFrameTiming(t);
+		while (truncated.size() > 3) { truncated.getArray().pop_back(); }
+		auto rp = deserializeFrameTiming(truncated);
+		check(rp.lastFrameInterval == t.lastFrameInterval && rp.lastFrameTime == t.lastFrameTime,
+				"serialize: a shorter timing array decodes its prefix");
+		checkEq(rp.lastFenceFrameTime, uint64_t(0),
+				"serialize: missing timing fields read as zero, not as garbage");
+	}
+
+	{
+		core::DrawStat d{};
+		d.vertexes = 12'000;
+		d.triangles = 4'000;
+		d.drawCalls = 17;
+		d.vertexInputTime = 1'234;
+		d.pixelsTotal = 800 * 600;
+		d.pixelsFilled = 1'000'000; // overdraw: legitimately larger than the target
+
+		auto rd = deserializeDrawStat(serializeDrawStat(d));
+		check(rd.vertexes == d.vertexes && rd.triangles == d.triangles
+						&& rd.drawCalls == d.drawCalls && rd.vertexInputTime == d.vertexInputTime,
+				"serialize: DrawStat counters round-trip");
+		check(rd.pixelsTotal == d.pixelsTotal && rd.pixelsFilled == d.pixelsFilled,
+				"serialize: DrawStat 64-bit pixel counters round-trip");
+
+		// Most of DrawStat has no default initializer, so a short array must decode to zeros
+		// rather than to whatever was on the stack.
+		auto empty = deserializeDrawStat(Value());
+		check(empty.vertexes == 0 && empty.pixelsTotal == 0 && empty.drawCalls == 0,
+				"serialize: a malformed DrawStat decodes to zeros, not to stack contents");
+	}
+
+	{
+		/* Text input. The cursors are UTF-16 INDICES and the text travels as UTF-8, so the pair
+		only stays consistent if the round trip reproduces the same UTF-16 sequence. ASCII would
+		never show a mistake here: the two encodings agree on length. This string does not. */
+		core::TextInputState st;
+		st.string = Rc<sprt::window::TextInputString>::alloc();
+		st.string->string = sprt::window::WideString(u"Hiにほ");
+		st.cursor = core::TextCursor(4, 2);
+		st.marked = core::TextCursor(2, 2);
+		st.serial = 0xDEAD'BEEFull;
+		st.enabled = true;
+		st.type = sprt::window::TextInputType::Text;
+		st.compose = sprt::window::InputKeyComposeState::Composing;
+
+		auto rs = deserializeTextInputState(serializeTextInputState(st));
+		check(rs.getStringView() == st.getStringView(),
+				"serialize: TextInputState text survives UTF-16 -> UTF-8 -> UTF-16");
+		checkEq(rs.size(), st.size(), "serialize: and keeps its UTF-16 length");
+		check(rs.cursor == st.cursor && rs.marked == st.marked,
+				"serialize: TextInputState cursors are unchanged UTF-16 offsets");
+		checkEq(rs.serial, st.serial, "serialize: the correlation serial round-trips");
+		check(rs.enabled && rs.compose == st.compose,
+				"serialize: enabled/compose are carried (getState() drops them)");
+
+		core::TextInputCommand cmd;
+		cmd.op = core::TextInputCommandOp::SetMarked;
+		cmd.text = sprt::window::WideString(u"にほ");
+		cmd.marked = core::TextCursor(0, 2);
+		auto rc = deserializeTextInputCommand(serializeTextInputCommand(cmd));
+		check(rc.op == cmd.op && rc.text == cmd.text && rc.marked == cmd.marked,
+				"serialize: TextInputCommand round-trips");
+		// InvalidCursor is a VALUE (the default for an unset range), not an absence. Decoding it as
+		// {0,0} would turn "no range given" into "an empty range at the start".
+		check(rc.replacement == core::TextCursor::InvalidCursor,
+				"serialize: an unset range stays InvalidCursor, not {0,0}");
+	}
+
+	{
 		core::SwapchainConfig cfg;
 		cfg.extent = Extent2(800, 600);
 		cfg.imageCount = 3;
@@ -94,7 +206,8 @@ void performSerializeTests() {
 		announce.addString("main"); // AnnounceWindowId
 		announce.addInteger(0); // AnnounceState
 		announce.addInteger(0); // AnnounceCapabilities
-		announce.addValue(serializeFrameConstraints(core::FrameConstraints())); // AnnounceConstraints
+		announce.addValue(
+				serializeFrameConstraints(core::FrameConstraints())); // AnnounceConstraints
 		announce.addValue(serializeSwapchainConfig(core::SwapchainConfig())); // AnnounceSwapchain
 
 		auto &queues = announce.emplace(); // AnnounceQueues

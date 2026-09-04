@@ -94,9 +94,19 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 			}
 		}
 
+		// [7] WindowInfo. Emitted UNCONDITIONALLY, even when the window has none: it used to be
+		// skipped, which made every later index depend on whether a window happened to have info,
+		// and an index that moves is exactly the defect D4 was. The reader tells "absent" from
+		// "present" by the value's TYPE, not by its position.
 		if (auto info = it.second.window->getInfo()) {
 			v.addValue(remote::serializeWindowInfo(*info));
+		} else {
+			v.addValue(Value());
 		}
+
+		// [8] Geometry as of connect time. Without it the client's mirror is zeros until the window
+		// first moves -- and "0,0 0x0" is indistinguishable from a window at the top-left corner.
+		v.addValue(remote::serializeWindowGeometry(it.second.window->getWindowGeometry()));
 	}
 
 	_connection->sendCborMessage(remote::Domain::Global,
@@ -121,6 +131,29 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	req.addInteger(int64_t(frameId));
 	req.addInteger(int64_t(windowId));
 	req.addValue(remote::serializeFrameConstraints(proxy->getFrameConstraints()));
+
+	/* [3] Frame timing, [4] the last DrawStat. Appended to a message that already goes out once per
+	frame, rather than given messages of their own.
+	
+	getFrameTiming() is a SYNCHRONOUS by-value getter on the channel -- six call sites in Director
+	feed the FPS overlay -- so a remote client cannot answer it with a request; it needs a mirror,
+	and a mirror needs a push. This is that push, at zero extra messages.
+	
+	Both describe the frame BEFORE this one. That is not a compromise made for the wire: the local
+	path is the same, because Director::pushDrawStat hops to the app thread asynchronously and the
+	overlay reads whatever landed. */
+	if (auto registry = _host->getSharedObjects()) {
+		if (auto w = static_cast<AppWindow *>(registry->resolveWindow(windowId))) {
+			req.addValue(remote::serializeFrameTiming(w->getFrameTiming()));
+		}
+	}
+	if (_drawStatDirty) {
+		if (!req.hasValue(3)) {
+			req.addValue(Value()); // keep [4] at index 4 even when the window went away
+		}
+		req.addValue(remote::serializeDrawStat(_drawStat));
+		_drawStatDirty = false;
+	}
 
 	// Hold the completion across the async reply and guarantee it fires exactly once (on reply or on
 	// send failure) without a use-after-move on `cb`.
@@ -459,8 +492,39 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	window->compileMaterials(sp::move(input), events);
 }
 
-void RemoteRenderClient::handleRenderQueueAttached(const Rc<core::Queue> &) { }
-void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &) { }
+void RemoteRenderClient::handleRenderQueueAttached(const Rc<core::Queue> &) {
+	// Deliberately not forwarded. Its only consumer is Director::_availableQueues, which is written
+	// and never read; and on this path the CLIENT is the side that picks the queue
+	// (Scene2d::selectServerQueue over the announced list) and tells the server through
+	// AttachQueue -- so a message here would inform the better-informed side. See M4 in the plan.
+}
+
+void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &) {
+	// Deliberately not forwarded either, but for the opposite reason: the constraints already reach
+	// the client in every AcquireFrame, where its Director applies them exactly as a local one does.
+	// A second carrier would be a second source of truth. (This hook has no caller in the engine at
+	// all today -- AppWindow::handleSwapchainUpdated notifies only the native window.)
+}
+
+void RemoteRenderClient::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+	// This one IS forwarded: geometry has no other carrier, and the server has already decided the
+	// change is real (AppWindow::notifyWindowGeometry compares against its mirror before calling),
+	// so a window that is merely redrawing sends nothing.
+	// _windowId is "the window we last served a frame for" -- the same approximation
+	// handleInputEvents lives with, and the same one M5 removes by putting the window id in every
+	// packet. Before the first frame it is 0 and the update is dropped; that is covered, because
+	// the announce carries the window's geometry as it was at connect time.
+	if (isClosed() || _windowId == 0) {
+		return;
+	}
+
+	Value msg;
+	msg.addInteger(int64_t(_windowId));
+	msg.addValue(remote::serializeWindowGeometry(g));
+
+	_connection->sendCborMessage(remote::Domain::Window,
+			toInt(remote::WindowCode::WindowGeometryChanged), msg);
+}
 
 void RemoteRenderClient::handleInputEvents(Vector<core::InputEventData> &&events) {
 	// The server's window dispatches platform input here (this client is the window's render endpoint
@@ -484,9 +548,51 @@ void RemoteRenderClient::handleInputEvents(Vector<core::InputEventData> &&events
 			BytesView(blob.data(), blob.size()));
 }
 
-void RemoteRenderClient::handleTextInput(const core::TextInputState &) { }
-void RemoteRenderClient::handleFramePresented(uint64_t) { }
-void RemoteRenderClient::pushDrawStat(const core::DrawStat &) { }
+void RemoteRenderClient::handleTextInput(const core::TextInputState &state) {
+	// The window's processor decided the state changed; the client's widget has no other way to
+	// learn it. This is the echo half of text input, and the only source of truth for the field on
+	// the far side.
+	if (isClosed() || _windowId == 0) {
+		return;
+	}
+
+	Value msg;
+	msg.addInteger(int64_t(_windowId));
+	msg.addValue(remote::serializeTextInputState(state));
+
+	_connection->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::TextInputState),
+			msg);
+}
+void RemoteRenderClient::handleFramePresented(uint64_t) {
+	// Not forwarded, and deliberately not made to fire either. Nothing calls this hook anywhere in
+	// the engine (the one that does fire is the unrelated PresentationWindow::handleFramePresented,
+	// which takes a frame rather than an order), and Director::handleFramePresented is an explicit
+	// no-op on the receiving side. Wiring it would mean a per-frame thread hop plus a per-frame
+	// message to move a number into something that discards it.
+	//
+	// When client-side pacing does need a presented-frame signal, the carrier is the AcquireFrame
+	// piggyback below -- already once per frame, already on the app thread -- and the number is
+	// already there as FrameTimingInfo::lastFrameOrder.
+}
+
+void RemoteRenderClient::pushDrawStat(const core::DrawStat &stat) {
+	// Arrives on the RENDER thread (the vertex pass calls it through FrameContextHandle::client),
+	// where the connection must not be touched. Hop to the app thread and hold the value for the
+	// next frame request, exactly as Director::pushDrawStat holds it for the local FPS overlay.
+	//
+	// This is also why a message of its own would buy nothing: the hop is needed either way, so a
+	// separate DrawStat message would be this plus a message.
+	//
+	// Rc, not a raw `this`: the push can outlive the connection (resetRemoteClient drops the
+	// client), and the task must then be a no-op rather than a use-after-free.
+	if (!_host) {
+		return;
+	}
+	_host->performOnAppThread([self = Rc<RemoteRenderClient>(this), stat] {
+		self->_drawStat = stat;
+		self->_drawStatDirty = true;
+	}, this);
+}
 
 void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet> set,
 		NotNull<remote::ObjectRegistry> registry) {
