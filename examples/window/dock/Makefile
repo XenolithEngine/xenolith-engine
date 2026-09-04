@@ -27,7 +27,8 @@ STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../../make
 LOCAL_ROOT   := $(dir $(LOCAL_MAKEFILE))
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 
-# What to build: one executable demonstrating ui::DockFrame / ui::DockSystem
+# What to build: one executable demonstrating ui::DockSystem - frames, the two kinds of tab
+# strip, and the drag & drop that moves panels between them
 LOCAL_EXECUTABLE := dock
 
 # Module catalogs, then the modules to use (deps resolved transitively)
@@ -47,7 +48,7 @@ LOCAL_SRCS_DIRS     := src
 LOCAL_INCLUDES_OBJS := src
 
 # App identity (baked into the binary / bundle)
-APPCONFIG_APP_NAME    := DockFrame Example
+APPCONFIG_APP_NAME    := Dock Example
 APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.examples.dockframe
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

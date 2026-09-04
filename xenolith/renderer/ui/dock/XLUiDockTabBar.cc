@@ -72,6 +72,41 @@ void DockTabBar::setSide(DockTabBarSide side) {
 			.alignItems = FlexAlign::Stretch,
 		});
 	}
+
+	// the tabs already in the strip changed kind along with it; see applyOrientation
+	for (auto &it : _tabs) { applyOrientation(it); }
+}
+
+// Re-run the content-size phase of everything below `node`. That is what makes the nearest
+// recursive StyleResolver resolve those nodes again - the same thing the resolver does to itself
+// when a stylesheet reloads, and for the same reason: a style-only change moves no geometry, so a
+// descendant would otherwise never signal and would keep its stale style until some unrelated
+// relayout happened to wake it.
+static void DockTabBar_restyleSubtree(Node *node) {
+	for (auto &child : node->getChildren()) {
+		child->markContentSizeDirty();
+		DockTabBar_restyleSubtree(child);
+	}
+}
+
+void DockTabBar::applyOrientation(DockTab *tab) const {
+	const bool vertical = isVertical();
+	const auto want = vertical ? StringView("vertical") : StringView("horizontal");
+	if (tab->hasStyleClass(want)) {
+		return; // already this kind: setTabs runs on every layout pass, and this must be a no-op
+	}
+
+	tab->removeStyleClass(vertical ? StringView("horizontal") : StringView("vertical"));
+	tab->addStyleClass(want);
+
+	/* And re-arm what is INSIDE the tab.
+
+	The class flipped on the tab, but the rules that make an icon rail what it is are written for
+	its children - `dock-tab.vertical > label { display: none }` is the whole trick. A recursive
+	resolver re-resolves a descendant when THAT descendant's own phase fires, and a label whose own
+	identity did not change has no reason to fire one; without this a strip could turn on its side
+	while its tabs kept the kind they were built with. */
+	DockTabBar_restyleSubtree(tab);
 }
 
 void DockTabBar::setTabs(SpanView<DockTab *> tabs) {
@@ -107,6 +142,8 @@ void DockTabBar::setTabs(SpanView<DockTab *> tabs) {
 					.shrink = 0.0f,
 					.basis = FlexItemInfo::FitContent,
 				});
+		// a tab that has just ARRIVED from another strip carries that strip's kind
+		applyOrientation(it);
 		z = ZOrder(z.get() + 1);
 	}
 }

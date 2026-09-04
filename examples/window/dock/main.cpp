@@ -27,19 +27,20 @@
 // the headers DockDemoLayout.h pulls in, so their definitions come from these two.
 #include "XL2dScene.h"
 #include "XL2dSceneContent.h"
+#include "XLUiStyleSystem.h"
+#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 // Window identity for the example: a regular window with user-space decorations, and a floor so the
-// dock tree always has room to show its frames side by side.
+// dock tree always has room for the rail, the editor and the bottom band at once.
 DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
 	if (!cfg.window) {
 		cfg.window = Rc<sprt::window::WindowInfo>::alloc();
 	}
 
-	cfg.window->flags = sprt::window::WindowCreationFlags::Regular
-			| sprt::window::WindowCreationFlags::UserSpaceDecorations;
-	cfg.window->minExtent = Extent2(1024, 640);
+	cfg.window->flags = sprt::window::WindowCreationFlags::Regular;
+	cfg.window->minExtent = Extent2(1'100, 680);
 });
 
 // The single scene: a stock 2D scene whose content hosts the DockFrame demo.
@@ -55,6 +56,15 @@ public:
 
 		auto content = Rc<basic2d::SceneContent2d>::create();
 		content->setDefaultLights();
+
+		/* The stylesheet goes HERE rather than on the layout, and the resolver with it.
+
+		A tab's hint is a ui::SubWindow, and an in-scene one is pushed onto the CONTENT - beside
+		the layout, not under it. A sheet installed one level lower would style every tab in the
+		window and none of the hints that pop out of them. */
+		content->addSystem(Rc<ui::StyleSystem>::create(getDockDemoStylesheet()));
+		content->addSystem(Rc<ui::StyleResolver>::create(true));
+
 		content->pushLayout(Rc<DockDemoLayout>::create());
 		setContent(content);
 
