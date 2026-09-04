@@ -174,6 +174,15 @@ public:
 			StringView panelId, float ratio = 0.5f);
 	bool closeFrame(DockNodeHandle);
 
+	/* Re-declare a parking place: its name (and with it its CSS #id), its floor, its flags and
+	which edge carries its tab strip.
+
+	The TREE is the source of truth for all four - a frame node the system builds later, after a
+	restore or a collapse, reads them from there and not from the node - so both are written here.
+	Flipping `tabBarSide` is the interesting one: the strip changes axis, its tabs change kind, and
+	the frame's floor is re-measured from the strip's new intrinsic size. */
+	bool setFrameParams(DockNodeHandle, const DockFrameParams &);
+
 	// --- parameters --------------------------------------------------------
 
 	// Thickness of the divider between two frames, in points. It is a system parameter and not a

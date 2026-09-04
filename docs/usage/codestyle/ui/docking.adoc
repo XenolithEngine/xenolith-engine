@@ -147,6 +147,24 @@ previous holder to give it up. See [accordion.adoc](accordion.adoc).
 Closing the last panel of a frame collapses it and its sibling takes the space,
 unless the frame was declared `Permanent`.
 
+## Re-declaring a parking place
+
+[source,cpp]
+----
+auto frame  = dock->findFrameByName("sidebar");
+auto params = dock->getFrameNode(frame)->getParams();
+params.tabBarSide = ui::DockTabBarSide::Top;      // an icon rail becomes a row of labelled tabs
+dock->setFrameParams(frame, params);
+----
+
+`setFrameParams` writes the **tree**, not just the node — the name, the floor,
+the flags and the tab-bar side all come back from there when the system rebuilds
+a frame after a restore, and a change written only onto the node would be lost
+by the next `restore()` and would be missing from `save()`.
+
+Read the whole block back and change the one field, as above. Assigning a fresh
+`DockFrameParams` silently un-declares the other three.
+
 ## Dragging
 
 A **divider** is dragged with the pointer and re-derives its split's ratio from
@@ -200,8 +218,38 @@ dock-splitter         { background-color: #2a2a2a; }
 dock-splitter:hover,
 dock-splitter.dragging { background-color: #3d7ecf; }
 dock-drop-indicator   { background-color: #3d7ecf; }
-dock-drag-ghost       { background-color: #2c2c2c; }
+/* nothing lays a drag decorator out; see the note below */
+dock-drag-ghost       { width: 150px; height: 32px; background-color: #2c2c2c; }
+
+/* AN ICON RAIL is the vertical strip with its titles taken away. Nothing in C++
+   distinguishes the two kinds - this is the whole of it. */
+dock-tab.vertical                  { padding: 9px; }
+dock-tab.vertical > label          { display: none; }
+dock-tab.vertical > dock-tab-close { display: none; }
+dock-tab.vertical > icon           { width: 22px; height: 22px; }
 ----
+
+**A tab carries the strip's orientation as its OWN class**, `horizontal` or
+`vertical`, beside the `active` one. `dock-tab-bar.vertical dock-tab` would say
+the same thing and would go stale: a recursive `StyleResolver` re-resolves a node
+when *that node's* identity changes, so a strip that flips side, or a tab dragged
+into a strip of the other kind, would keep the look it was built with. The class
+is re-stamped on arrival, and the tab's children are re-armed with it — which is
+what makes the two kinds interchangeable at runtime.
+
+**A tab's title is also its hint.** `DockTab::setString` publishes it through
+`ui::setTooltip`, because the title is the first thing a stylesheet takes away:
+an icon rail has nothing on it to read. The hint costs a component and the
+scene's hover delay, and a labelled strip never shows it. For it to be *styled*,
+the sheet has to be on the `SceneContent` — an in-scene hint is an overlay pushed
+beside the layout, not under it.
+
+**The drag ghost needs a box.** `DragSystem` only moves its decorator, and the
+dock root places its own children, so a `width`/`height` on `dock-drag-ghost`
+reaches the node as an intrinsic hint that no layout will ever read.
+`DockDragGhost` reads it itself, and falls back to `DockDragGhost::DefaultSize`
+when the sheet says nothing — so an unstyled ghost is still a surface and not a
+caption floating on its own.
 
 **A dock a sheet says nothing about is WHITE.** The frame, the tab strip and every
 tab are `ui::Panel`s, and a Panel with no fill declared is an opaque white surface —
@@ -257,6 +305,9 @@ succeeds, so a malformed file leaves what is on screen untouched.
 | `dock-tab { padding: 4px }` with no `display: flex` in the same rule | **silently ignored**. `padding`, the gaps and the alignment are read only inside the resolver's flex branch, which a rule without `display` never enters. The widget's own built-in values stay in force |
 | Expecting a panel to be sized by the body it is parked in | it is, but only because the body carries a layout of its own. A panel parked in a node with no layout would keep whatever size it was built with — none |
 | A tab bar side of `Bottom`/`Right` | the flow is reversed, not the geometry. `first` is still the strip; `FlexItemInfo::order` is what fixes the flow order, because child order follows ZOrder |
+| `dock-tab-bar.vertical dock-tab { ... }` to style an icon rail | resolved once and then left alone. Key off the tab's own `dock-tab.vertical` class instead — see Styling |
+| `dock-tab > icon` expected before the title | `ui::Button` builds its label at a lower ZOrder than its icon, and z-order IS the placement order. Move it with `order: -1`, not with `-xl-z-order` |
+| `DockFrame::setParams` to turn a strip | the node changes and the TREE does not, so the next `save()`/`restore()` loses it. `DockSystem::setFrameParams` writes both |
 
 ## Trying it
 
@@ -274,6 +325,12 @@ XL_ACCORDION_TEST=1     ./testapp --headless   # a dock and an accordion over ON
 
 They are also in the test registry as the `dock` group, so the inspector reaches
 one by name (`layout dock/dock-tabs`) without restarting the app.
+
+`examples/window/dock` is the same machinery as one application to drive by hand:
+three frames, an icon rail beside two strips of labelled tabs, and every action
+also a `dock.*` inspector command — `dock.state` dumps the tree with each frame's
+tabs *as rendered*, and `dock.hittest` / `dock.drop` resolve and commit a drop
+point, which is how the edge-band split is exercised with no input event at all.
 
 Each registers inspector commands for its own state — `dock-layout.layout` dumps
 the whole tree, `dock-tabs.hit-test` resolves a drop point, `dock-tabs.builds`

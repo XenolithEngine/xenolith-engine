@@ -48,6 +48,11 @@ public:
 	DockNodeHandle getFrame() const { return _frame; }
 	void setFrame(DockNodeHandle handle) { _frame = handle; }
 
+	// The title, which is also what the tab OFFERS AS A HINT: a strip narrowed to icons is a
+	// stylesheet's decision (`dock-tab.vertical > label { display: none }`), and the hint is what
+	// keeps the title readable after it.
+	virtual void setString(StringView) override;
+
 	virtual void setActive(bool);
 	bool isActive() const { return _active; }
 

@@ -23,6 +23,7 @@
 #include "XLUiDockTab.h"
 #include "XLUiDockSystem.h"
 #include "XLUiLayoutSystem.h"
+#include "XLUiTooltipSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -61,6 +62,25 @@ bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView 
 	}));
 
 	return true;
+}
+
+void DockTab::setString(StringView value) {
+	Button::setString(value);
+
+	// The title becomes the tab's HINT as well, because the title is the first thing a stylesheet
+	// takes away: an icon rail is `dock-tab.vertical > label { display: none }` and what is left
+	// on screen is a glyph with nothing to read. Declaring the hint HERE rather than leaving it to
+	// the application is what makes the two kinds of strip interchangeable - a tab dragged from a
+	// labelled strip into a rail must not arrive anonymous, and the application that dragged it
+	// never touched either node.
+	//
+	// It costs a component and the scene's hover delay, and it shows nothing until a pointer comes
+	// to rest, so the labelled strip pays no visible price for it.
+	if (value.empty()) {
+		removeTooltip(this);
+	} else {
+		setTooltip(this, value);
+	}
 }
 
 void DockTab::setActive(bool value) {
