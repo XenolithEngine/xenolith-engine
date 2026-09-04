@@ -59,6 +59,15 @@ public:
 	// Whether this queue asked for per-frame damage tracking at all.
 	bool isDamageTracked() const { return _damageTracked; }
 
+	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d,
+	// exactly as on every other backend -- submitInput below already casts to it. Without this the
+	// default null makes a Software server unable to accept a remote client's frame at all, which is
+	// how it behaved until the client stopped being Vulkan-only.
+	virtual Rc<core::AttachmentInputData> makeInputData(
+			NotNull<core::RenderClientChannel> client) const override {
+		return makeFrameContextInput(client);
+	}
+
 	virtual Rc<core::AttachmentHandle> makeFrameHandle(const core::FrameQueue &) override;
 
 protected:

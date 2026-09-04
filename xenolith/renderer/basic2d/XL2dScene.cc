@@ -30,6 +30,7 @@
 #include "XLInputListener.h"
 #include "XLSceneContent.h"
 #include "XLAppWindow.h"
+#include "XLRemoteWindow.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "backend/vk/XL2dVkShadowPass.h"
@@ -343,6 +344,7 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 			Color4F::WHITE,
 		};
 
+		describeQueue(queueInfo);
 		buildQueueResources(queueInfo, builder);
 
 		if (!buildQueue(app, queueInfo, builder)) {
@@ -358,7 +360,16 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 		return true;
 	} else {
 		// client mode - we should select a scene, instead of creating it
-		auto serverQueue = selectServerQueue(app, window);
+		QueueInfo queueInfo{
+			Extent2(constraints.extent.width, constraints.extent.height),
+			Color4F::WHITE,
+		};
+
+		// Only the describing half runs here: buildQueueResources adds resources to a builder, and
+		// on this path the graph is the server's -- there is nothing to add them to.
+		describeQueue(queueInfo);
+
+		auto serverQueue = selectServerQueue(app, window, queueInfo);
 		if (serverQueue.empty()) {
 			log::source().error("Scene2d", "Fail to select remote queue");
 			return false;
@@ -592,8 +603,58 @@ void Scene2d::updateInputEventData(InputEventData &data, const InputEventData &s
 	data.input.modifiers |= InputModifier::Unmanaged;
 }
 
+void Scene2d::describeQueue(QueueInfo &) { }
+
 StringView Scene2d::selectServerQueue(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window) {
+		NotNull<core::RenderServerChannel> window, const QueueInfo &info) {
+	auto rw = dynamic_cast<RemoteWindow *>(window.get());
+	if (!rw) {
+		log::source().error("Scene2d", "selectServerQueue: window is not a remote one");
+		return StringView();
+	}
+
+	// What the server can actually run. Null while the peer exchange has not happened (a version-1
+	// server); then api filtering is simply skipped rather than guessed at.
+	auto serverApi = core::InstanceApi::None;
+	if (auto peer = app->getServerInfo()) {
+		serverApi = peer->api;
+	}
+
+	const RemoteWindow::RemoteQueueInfo *exact = nullptr;
+	const RemoteWindow::RemoteQueueInfo *compatible = nullptr;
+
+	for (auto &it : rw->getQueues()) {
+		// A queue built for another backend describes passes and pipelines this server cannot run;
+		// it is not a downgrade, it is unusable. A queue that never said (an untagged one, or a
+		// version-1 server) is not excluded -- silence is not a mismatch.
+		if (serverApi != core::InstanceApi::None && it.api != core::InstanceApi::None
+				&& it.api != serverApi) {
+			continue;
+		}
+		if (it.typeTag == toInt(info.type)) {
+			exact = &it;
+			break;
+		}
+		if (!compatible) {
+			compatible = &it;
+		}
+	}
+
+	if (exact) {
+		return exact->name;
+	}
+	if (compatible) {
+		// Both graphs draw the same 2d content; they differ in what they can additionally do
+		// (shadows, particles, depth). Taking the other one is the same downgrade buildQueue
+		// already performs locally for a backend that has only the flat path -- worth saying out
+		// loud, not worth refusing to render over.
+		log::source().info("Scene2d", "no server queue of the requested type (", toInt(info.type),
+				"); rendering through '", compatible->name, "' (type ", compatible->typeTag, ")");
+		return compatible->name;
+	}
+
+	log::source().error("Scene2d", "no server queue is usable by this client (server api ",
+			toInt(serverApi), ")");
 	return StringView();
 }
 

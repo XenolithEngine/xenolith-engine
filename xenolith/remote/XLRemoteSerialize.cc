@@ -1034,6 +1034,12 @@ Bytes QueueCodec::encodeQueue(const core::Queue &queue,
 	root.setInteger(int64_t(kCodecVersion), "v");
 	root.setString(queue.getName(), "name");
 	root.setInteger(ei(queue.getDefaultSyncPassState()), "syncState");
+	// The graph's own description of itself (M3.3). Carried so the client's mirror answers
+	// getApi()/getTypeTag() truthfully -- the announce tells the client which queue to pick, this
+	// makes the queue it picked still know what it is afterwards.
+	root.setInteger(ei(queue.getApi()), "api");
+	root.setInteger(queue.getTypeTag(), "typeTag");
+	root.setInteger(ei(queue.getDamageFlags()), "damage");
 
 	root.setValue(QueueEncoder::emitTable(enc.programs,
 						  [&](const ProgramData *p) { return enc.emitProgram(p); }),
@@ -1203,6 +1209,9 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 		data->key = StringView(root.getString("name")).pdup(pool);
 		data->compiled = true;
 		data->defaultSyncPassState = core::FrameRenderPassState(root.getInteger("syncState"));
+		data->api = core::InstanceApi(root.getInteger("api"));
+		data->typeTag = uint32_t(root.getInteger("typeTag"));
+		data->damage = core::QueueDamageFlags(root.getInteger("damage"));
 
 		// 1) allocate every node empty; build index -> ptr tables
 		auto alloc = [&](const char *key, auto &tbl, auto makeNode) {

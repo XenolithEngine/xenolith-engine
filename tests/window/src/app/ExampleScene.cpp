@@ -122,37 +122,35 @@ void ExampleScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
 
-	// Remote client needs a separate queue
-	core::Queue::Builder builder("RemoteClientQueue");
+	// Очередь для удалённого клиента.
+	//
+	// Имя намеренно НЕ "RemoteClientQueue": клиент раньше искал очередь именно по этой строке, то
+	// есть согласование держалось на договорённости, которой нет ни в одном протоколе. Теперь имя —
+	// только ручка, а выбор идёт по тому, чем очередь ЯВЛЯЕТСЯ (gAPI и тип); имя, которого клиент
+	// никогда не видел, — самая прямая проверка этого.
+	core::Queue::Builder builder("SharedWindowQueue");
 
 	QueueInfo queueInfo{
 		Extent2(_constraints.extent.width, _constraints.extent.height),
 		Color4F::WHITE,
 	};
 
+	describeQueue(queueInfo);
 	buildQueueResources(queueInfo, builder);
 
-#if MODULE_XENOLITH_BACKEND_VK
-	// The shared queue is vk-specific: building it on any other loop (e.g. --gapi soft, which has
-	// no depth formats at all) would describe passes that device can not compile.
-	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
-			== core::InstanceApi::Vulkan) {
-		basic2d::vk::ShadowPass::RenderQueueInfo info{
-			dir->getApplication()->getGlLoop(),
-			queueInfo.extent,
-			basic2d::vk::ShadowPass::Flags::None,
-			queueInfo.backgroundColor,
-		};
-
-		basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+	// Строим тот же граф, что построила бы локальная сцена на этом бэкенде, — а не жёстко
+	// vk::ShadowPass. Раньше здесь была ветка «только Vulkan», потому что клиент всё равно не мог
+	// узнать, на чём работает сервер; теперь очередь сама себя описывает (api/typeTag уходят в
+	// SharedObjectsAnnounce), и клиент выбирает по этому описанию. Значит окно можно шарить с
+	// любого бэкенда, включая --gapi soft.
+	if (!buildQueue(dir->getApplication(), queueInfo, builder)) {
+		log::source().error("ExampleScene", "fail to build the shared queue");
+		return;
 	}
-#endif
 
-// Window sharing is Linux-only for now; the shared queue is vk-based and
-// can not be compiled on a WebGPU device
+// Window sharing is Linux-only for now (the listener needs a socket).
 #if SPRT_LINUX
-	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
-			== core::InstanceApi::Vulkan) {
+	{
 		// Sharing is OFF unless asked for, because it opens a listening socket: a plain run of this
 		// app must not start accepting connections.
 		//
@@ -430,7 +428,9 @@ void ExampleScene::switchLayout(const TestInfo &info, float settle,
 	})));
 }
 
-void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
+// Какую очередь просит сцена. Живёт отдельно от buildQueueResources, потому что этот ответ нужен
+// и удалённой сцене: она ничего не строит, но по нему выбирает очередь сервера.
+void ExampleScene::describeQueue(QueueInfo &info) {
 	// XL_FLAT_QUEUE=1 — облегчённая очередь отрисовки: без теней, частиц, буфера глубины
 	// и шейдера постобработки
 	if (auto value = ::getenv("XL_FLAT_QUEUE")) {
@@ -458,7 +458,9 @@ void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &bu
 			log::source().info("ExampleScene", "Empty frame skipping disabled");
 		}
 	}
+}
 
+void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
 	builder.addImage("xenolith-2-480.png",
 			core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled,
 					core::ImageHints::Opaque),

@@ -176,17 +176,6 @@ void ClientScene::requestRemoteScreenshot() {
 	});
 }
 
-StringView ClientScene::selectServerQueue(NotNull<AppThread> app,
-		NotNull<core::RenderServerChannel> window) {
-	auto rw = static_cast<RemoteWindow *>(window.get());
-	for (auto &it : rw->getQueues()) {
-		if (it.name == "RemoteClientQueue") {
-			return it.name;
-		}
-	}
-	return StringView();
-}
-
 // Регистрируем ClientScene как основной класс сцены для приложения
 // Под капотом:
 // - Создаётся функция, сопоставляющая окно приложения и сцену

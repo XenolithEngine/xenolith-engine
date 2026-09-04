@@ -236,6 +236,8 @@ bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
 	builder.setDamageFlags(info.damage);
+	builder.setApi(InstanceApi::Software);
+	builder.setTypeTag(toInt(QueueType::Flat));
 
 	builder.addPass("MaterialSwapchainPass", PassType::Graphics, RenderOrderingHighest,
 			[&](QueuePassBuilder &passBuilder) -> Rc<core::QueuePass> {

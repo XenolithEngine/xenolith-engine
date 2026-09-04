@@ -59,6 +59,11 @@ static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000; // 5s
 static constexpr uint64_t kHandshakeBackoffBaseUs = 250'000; // after the 1st failure
 static constexpr uint64_t kHandshakeBackoffMaxUs = 8'000'000; // ceiling
 
+// A client must answer ServerInfo within this budget. Generous compared to a frame deadline -- it
+// is answered from the client's app thread on its first update tick, before anything is running --
+// but bounded, because nothing is announced until it arrives.
+static constexpr uint64_t kPeerInfoReplyTimeoutUs = 5'000'000; // 5s
+
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 ServerAppThread::~ServerAppThread() { }
@@ -86,7 +91,51 @@ core::Loop *ServerAppThread::getGlLoop() const {
 	return static_cast<core::Loop *>(_context->getGlLoop());
 }
 
-void ServerAppThread::handleThreadInitialized() { _context->handleAppThreadCreated(this); }
+void ServerAppThread::handleThreadInitialized() {
+	updateServerInfo();
+	_context->handleAppThreadCreated(this);
+}
+
+void ServerAppThread::updateServerInfo() {
+	auto info = remote::PeerInfo::makeLocal();
+
+	if (auto loop = getGlLoop()) {
+		if (auto instance = loop->getInstance()) {
+			info.api = instance->getApi();
+		}
+	}
+
+	// The window subsystem is a property of the windows, not of the process: the same binary on the
+	// same Linux is xcb or wayland or headless depending on what it opened. Any window answers, and
+	// a server with none yet honestly answers Unknown.
+	if (!_windows.empty()) {
+		auto w = *_windows.begin();
+		info.wm = remote::toWindowSubsystem(w->getSurfaceBackend());
+		if (hasFlag(w->getCapabilities(), sprt::window::WindowCapabilities::Subwindows)) {
+			info.features |= remote::PeerFeatures::Subwindows;
+		}
+	}
+
+	// The server owns the GPU, so it can always hand a frame back (WindowCode::RequestScreenshot).
+	info.features |= remote::PeerFeatures::FrameCapture;
+	if (_fontServer) {
+		info.features |= remote::PeerFeatures::FontServer;
+	}
+	if (hasClipboard()) {
+		info.features |= remote::PeerFeatures::Clipboard;
+	}
+
+	if (!_listenAddress.empty()) {
+		info.transportScheme = remote::getSchemeName(_listenAddress.scheme).str<Interface>();
+		// Caps belong to the TRANSPORT, not to this particular listener, so ask the registry: the
+		// answer is the same before the socket is bound and after it is gone.
+		if (auto t = remote::TransportRegistry::get(_listenAddress.scheme)) {
+			info.transportCaps = t->getCaps();
+		}
+	}
+
+	_localInfo = sp::move(info);
+}
 
 void ServerAppThread::handleThreadDisposed() { _context->handleAppThreadDestroyed(this); }
 
@@ -275,6 +324,8 @@ Rc<Director> ServerAppThread::handleAppWindowCreated(NotNull<AppWindow> w,
 	auto dir = makeDirector(w, c);
 	if (dir) {
 		_windows.emplace(w.get());
+		// A window is what names the window subsystem (and its subwindow support).
+		updateServerInfo();
 	}
 	return dir;
 }
@@ -296,6 +347,7 @@ void ServerAppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director
 	}
 	removeListener(w);
 	_windows.erase(w.get());
+	updateServerInfo();
 
 	if (_windows.empty()) {
 		// In practice, listening is started by loader Scene, that rxist if at least one window exists;
@@ -449,6 +501,7 @@ bool ServerAppThread::startListening() {
 		pumpListener();
 		return Status::Ok;
 	}, this);
+	updateServerInfo(); // the transport is now known
 	pumpListener();
 	return true;
 }
@@ -474,6 +527,7 @@ bool ServerAppThread::stopListening() {
 		_listener->close();
 		_listener = nullptr;
 	}
+	updateServerInfo();
 	return true;
 }
 
@@ -518,6 +572,15 @@ void ServerAppThread::pumpListener() {
 		}
 	}
 
+	// A dispatcher may decide the session is over (an incompatible peer), but it runs INSIDE the
+	// poll above -- inside the reader that is iterating its own pending messages. Dropping the
+	// connection there frees the reader out from under that loop, so the decision is recorded and
+	// carried out here instead.
+	if (_resetClientRequested) {
+		_resetClientRequested = false;
+		resetRemoteClient();
+	}
+
 	// Request watchdog (same Looper cadence as keepalive below): if the client left one of our requests
 	// unanswered past that request's own reply deadline -- e.g. it received AcquireFrame but never
 	// replied -- the waiters were just failed with a local protocol error, so drop the connection.
@@ -558,6 +621,7 @@ void ServerAppThread::resetRemoteClient() {
 	// frames), drop any still-outstanding reply waiters for the dead connection (their frames were just
 	// invalidated), then close the connection and free the single-connection slot for a new client.
 	takeoverSharedWindows(nullptr);
+	_resetClientRequested = false;
 	_requests.clear();
 	if (_blockTransfer) {
 		_blockTransfer->reset();
@@ -876,14 +940,76 @@ void ServerAppThread::completePendingHandshake() {
 				}, this);
 			}
 		}
-		_remoteClient->announce(_sharedObjects);
-		// Do NOT take the windows over yet: the client must first compile each shared queue and attach
-		// it to its Director. The per-window handover happens when the client sends WindowCode::AttachQueue
-		// (handled in dispatchMessage); until then the server keeps rendering through the local Directors,
-		// so AcquireFrame requests never reach a client that isn't ready to serve them.
 		// Start the keepalive clock fresh so the timeout is measured from connection establishment.
 		_lastPingTime = _lastPongTime = sp::platform::clock(ClockType::Monotonic);
+
+		// Say who we are and find out who they are BEFORE anything is announced. Until the wire
+		// format becomes build-independent (M6) InputEvents and UpdateLayers are raw struct dumps,
+		// so a build mismatch is memory corruption rather than a rejected message -- and a check
+		// that runs after the client has already been handed the shared objects would be checking
+		// too late. handleClientInfo is where the session actually starts.
+		updateServerInfo();
+		if (!sendMessageWithReply(remote::Domain::Global, toInt(remote::GlobalCode::ServerInfo),
+					remote::serializePeerInfo(_localInfo),
+					[this](const remote::MessageHeader &h, BytesView payload) {
+			handleClientInfo(h, payload);
+		}, kPeerInfoReplyTimeoutUs)) {
+			log::source().error("AppThread", "failed to send ServerInfo; dropping connection");
+			resetRemoteClient();
+		}
 	}
+}
+
+void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView payload) {
+	if (!_remoteClient) {
+		return; // the connection went away while the request was outstanding
+	}
+
+	if (remote::isError(h)) {
+		if (remote::GlobalError(h.code) == remote::GlobalError::NotImplemented) {
+			// A version-1 client: it does not know this message, and that is a supported answer.
+			// It has the same wire format we do or it would not have got this far on anything else,
+			// so the session proceeds exactly as it did before this milestone existed.
+			log::source().info("AppThread",
+					"client does not implement ServerInfo; continuing as a version-1 peer");
+		} else {
+			log::source().error("AppThread", "client refused ServerInfo (code ", uint32_t(h.code),
+					"); dropping connection");
+			_resetClientRequested = true;
+			return;
+		}
+	} else {
+		auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+		// An honest client refuses first -- it computes the same tag from the same facts and can
+		// see the mismatch the moment ServerInfo arrives, which is why the usual outcome is the
+		// error branch above. This one catches a peer that answered anyway: a stale build with a
+		// broken check, or one that is not the client it claims to be.
+		if (!_localInfo.isAbiCompatible(info)) {
+			StringStream clientDesc;
+			StringStream localDesc;
+			info.description([&](StringView str) { clientDesc << str; });
+			_localInfo.description([&](StringView str) { localDesc << str; });
+			log::source().error("AppThread",
+					"incompatible client build; dropping connection\n  client: ", clientDesc.str(),
+					"\n  server: ", localDesc.str());
+			if (auto conn = _remoteClient->getConnection()) {
+				conn->sendError(remote::Domain::Global,
+						toInt(remote::GlobalError::IncompatiblePeer), h.serial);
+			}
+			_resetClientRequested = true;
+			return;
+		}
+
+		StringStream desc;
+		info.description([&](StringView str) { desc << str; });
+		log::source().info("AppThread", "client: ", desc.str());
+	}
+
+	// Do NOT take the windows over yet: the client must first compile each shared queue and attach
+	// it to its Director. The per-window handover happens when the client sends WindowCode::AttachQueue
+	// (handled in dispatchMessage); until then the server keeps rendering through the local Directors,
+	// so AcquireFrame requests never reach a client that isn't ready to serve them.
+	_remoteClient->announce(_sharedObjects);
 }
 
 void ServerAppThread::takeoverSharedWindows(core::RenderClientChannel *client) {
@@ -961,6 +1087,8 @@ void ServerAppThread::loadExtensions() {
 		}
 	}
 #endif
+
+	updateServerInfo(); // PeerFeatures::FontServer depends on what just loaded
 }
 
 void ServerAppThread::finalizeExtensions() {

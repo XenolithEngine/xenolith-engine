@@ -287,6 +287,13 @@ void CommandList::addCommand(Command *cmd) {
 
 FrameContextHandle2d::~FrameContextHandle2d() { particleEmitters.clear(); }
 
+Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel> client) {
+	auto ret = Rc<FrameContextHandle2d>::alloc();
+	ret->clock = sprt::platform::clock(sprt::platform::ClockType::Monotonic);
+	ret->client = client;
+	return ret;
+}
+
 // --- remote render-session wire format -------------------------------------------------------
 //
 // Compact host-order binary blob (same-build ABI: POD vertex/instance structs are memcpy'd). Layout:
