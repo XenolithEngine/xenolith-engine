@@ -22,291 +22,491 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "dock/DockDemoLayout.h"
-#include "XLUiStyleResolver.h"
-#include "XLUiStyleSystem.h" // StyleSystem: the rule-supplying half of the stylesheet pair
-#include "XLUiButton.h"
-#include "XLUiLayoutSystem.h"
-#include "XL2dLabel.h"
+#include "XLUiStyleSystem.h" // setStyleVariable: the per-panel accent colour
+#include "XLScene.h" // Scene::getContent, which the inspector commands are registered on
+#include "XL2dSceneContent.h" // and the definition of what it answers, so it is a Node here
+#include "XLSceneInspector.h"
+#include "XL2dIconSprite.h"
+#include "XL2dLayer.h"
+#include "XLAction.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 namespace {
 
-// The stylesheet. It is the whole reason a frame's `name` exists: it becomes the node's CSS #id,
-// so `dock-frame#sidebar` below addresses one parking place by name and gives it its own fill.
-// Everything else the dock paints (tab strip, tabs, splitter) takes a rule from the same sheet.
+using basic2d::IconName;
+
+/* The stylesheet.
+
+Everything the demo looks like is here rather than in C++, which is the rule the kit is written to:
+the layout builds structure, the sheet decides sizes and colours. Two blocks are worth reading even
+if the rest is skimmed:
+
+  * THE TWO KINDS OF TAB. `dock-tab.horizontal` is an icon, a title and a close affordance in a
+    row; `dock-tab.vertical` is the same node with the title and the affordance switched off and
+    padding that squares it around a bigger icon. Nothing in C++ distinguishes them - DockTabBar
+    stamps the class from the side its frame declared, and a tab dragged into the other kind of
+    strip is re-stamped on arrival. Its title is not lost with its label: DockTab publishes it as
+    the tab's HINT, which is what the rail's icons show on hover;
+
+  * `display: flex` IS WHAT LETS A RULE REACH A WIDGET'S OWN LAYOUT. The strips and the tabs build
+    theirs in code, and padding, the gaps and the alignment are read only inside the resolver's
+    flex branch - a rule without `display` never enters it and is silently ignored. Which is also
+    why `flex-direction` is spelled out for both strips: a rule that opens that branch and says
+    nothing about the direction gets the default, `row`, and a vertical strip would come out as a
+    row of icons across the top of the sidebar. */
 static constexpr auto s_css = StringView(R"css(
-/* every frame gets a base fill; the named ones override it */
-dock-frame         { background-color: #232323; }
-
-/* one parking place addressed by its declared name -> its CSS id */
-dock-frame#sidebar  { background-color: #1b3a5c; }
-dock-frame#problems { background-color: #3a2417; }
-
-/* the strip is self-sized from its tabs (flex-basis: fit-content), so it must be a flex item of
-   a run that has one - DockFrame builds that run itself, and this rule only refines padding. */
-dock-frame-body    { display: flex; padding: 6px; }
-
-/* the tab strip, horizontal and vertical alike (the `.vertical` class is set by the frame) */
-dock-tab-bar       { background-color: #171717; }
-dock-tab           { display: flex; padding: 4px 10px; background-color: #2b2b2b; }
-dock-tab.active    { background-color: #383838; }
-dock-tab > label   { color: #c8c8c8; font-size: 13px; }
-/* an icon button has no intrinsic size, so without this the close affordance collapses to nothing
-   and draws on top of the title instead of after it */
-dock-tab-close     { width: 16px; height: 16px; }
-
-/* the divider between two frames, and the drop indicator a drag paints */
-dock-splitter      { background-color: #2a2a2a; }
-dock-drop-indicator{ background-color: #3d7ecf; }
-
-/* The accordion beside the dock. It shares the dock's panel registry, so a panel dragged across
-   arrives as the same node - and it shares the drag GHOST too, which is why `dock-drag-ghost` is
-   the rule for both and there is no `accordion-drag-ghost`. */
-accordion-view            { background-color: #1a1a1a; }
-accordion-view.drop-active{ outline-color: #3d7ecf; outline-width: 1px; }
-accordion-section         { background-color: #232323; }
-accordion-body            { display: flex; padding: 6px; background-color: #1e1e1e; }
-accordion-header          { display: flex; align-items: center; column-gap: 6px;
-                            padding: 4px 8px; background-color: #2b2b2b; }
-accordion-header:hover    { background-color: #333333; }
-accordion-header.expanded { background-color: #383838; }
-accordion-header > label  { color: #c8c8c8; font-size: 13px; }
-/* the chevron says open/shut; the GRIP is the only part a drag may start from */
-.accordion-chevron        { width: 16px; height: 16px; }
-.accordion-grip           { width: 16px; height: 16px; }
-accordion-close           { width: 16px; height: 16px; }
-accordion-drop-indicator  { background-color: #3d7ecf; }
-dock-drag-ghost           { background-color: #2c2c2c; }
-
-/* the demo's own chrome (control bar, status strip) - not dock types at all */
-.demo-bar          { display: flex; align-items: center; column-gap: 10px; padding: 8px 12px;
-                     background-color: #141414; }
-button             { width: 150px; height: 34px; background-color: #1e88e5; border-radius: 6px;
-                     display: flex; justify-content: center; align-items: center; }
-button > label     { color: #ffffff; font-size: 13px; }
-.status           { color: #9ecbff; font-size: 14px; }
-)css");
-
-// The declared layout, as a spec. Kept in one place so buildDock() and the reset button agree on
-// what "the demo" is - the self-check restores exactly this after it has exercised moves/splits.
-static ui::DockLayoutSpec s_spec() {
-	using Spec = ui::DockLayoutSpec;
-
-	// A left sidebar (its tab strip on the LEFT edge), and to its right an editor over a bottom
-	// band that already carries two tabs. Three frames, one of them with two panels: every feature
-	// of DockFrame has something to show before any input at all.
-	return Spec::hsplit(0.24f,
-			Spec::leaf({String("explorer")}, {.name = String("sidebar"), .tabBarSide = ui::DockTabBarSide::Left}),
-			Spec::vsplit(0.72f,
-					Spec::leaf({String("editor")}, {.name = String("main")}),
-					Spec::leaf({String("console"), String("problems")}, {.name = String("bottom")})));
+:root {
+	--surface:  #0f0f13;
+	--frame:    #24242d;
+	--strip:    #1a1a21;
+	--tab:      #2e2e38;
+	--tab-on:   #3f3f4d;
+	--outline:  #3c3c48;
+	--accent:   #4d8dd8;
+	--text:     #e8e8ee;
+	--muted:    #9696a4;
 }
 
-// The lazy panel content: a coloured swatch and the panel's own name. The node is built at most
-// once (on first show) and then kept across every move, which is what DockSystem promises - the
-// self-check counts the builds to prove it holds here too.
-static Rc<Node> makePanelBody(StringView title, Color4F color) {
+/* ---- the frame ------------------------------------------------------- */
+
+/* `#demo-root` has no `height`: nothing above it lays it out, so handleContentSizeDirty sizes it
+   by hand. Everything below it is a flex item of something. */
+#demo-root { display: flex; flex-direction: column; }
+#demo-bar  { order: 0; -xl-z-order: 2; display: flex; flex-direction: row; align-items: center;
+             column-gap: 10px; padding: 10px 14px; background-color: #0e0e12; }
+
+/* The dock's owner is a flex ITEM and never a flex container: DockSystem writes every frame's
+   geometry itself, and a LayoutSystem beside it would fight for the same children. */
+#dock-root { order: 1; -xl-z-order: 1; flex-grow: 1; }
+
+/* ---- the parking places ---------------------------------------------- */
+
+dock-frame          { background-color: var(--frame); border-radius: 6px; }
+dock-frame#sidebar  { background-color: #1c1c24; }
+dock-frame-body     { display: flex; padding: 10px; }
+
+dock-splitter          { background-color: var(--surface); border-radius: 3px; }
+dock-splitter:hover,
+dock-splitter.dragging { background-color: var(--accent); }
+
+/* ---- the tab strips -------------------------------------------------- */
+
+dock-tab-bar            { background-color: var(--strip); }
+dock-tab-bar.horizontal { display: flex; flex-direction: row; align-items: stretch;
+                          column-gap: 5px; padding: 5px; }
+dock-tab-bar.vertical   { display: flex; flex-direction: column; align-items: stretch;
+                          row-gap: 5px; padding: 5px; }
+
+/* ---- kind one: a labelled tab ---------------------------------------- */
+
+dock-tab                { display: flex; flex-direction: row; align-items: center;
+                          justify-content: center; column-gap: 7px; padding: 6px 11px;
+                          border-radius: 5px 5px 0px 0px; background-color: var(--tab); }
+dock-tab:hover          { background-color: #33333f; }
+dock-tab.active         { background-color: var(--tab-on); }
+dock-tab > label        { color: var(--muted); font-size: 13px; }
+dock-tab.active > label { color: var(--text); }
+/* `order`, not `-xl-z-order`: ui::Button builds its label at a lower z than its icon, and z-order
+   IS the placement order inside a flex run - so without this the glyph comes out AFTER the title.
+   `order` is applied after that sort and moves the item without touching what draws on top. */
+dock-tab > icon         { order: -1; width: 16px; height: 16px; color: var(--muted); }
+dock-tab.active > icon  { color: var(--accent); }
+
+/* An icon button has no intrinsic size, so without this the close affordance collapses to nothing
+   and draws on top of the title; and a Panel with no fill declared is an opaque WHITE block, so
+   without `transparent` it is a white square rather than a glyph. */
+dock-tab-close       { width: 15px; height: 15px; background-color: transparent; }
+dock-tab-close > icon{ width: 15px; height: 15px; color: var(--muted); }
+dock-tab-close:hover > icon { color: var(--text); }
+
+/* ---- kind two: a square icon in a rail -------------------------------- */
+
+/* Below the rules above, and deliberately: `dock-tab.vertical > icon` and `dock-tab.active > icon`
+   have the same specificity, so the later one wins for a tab that is both. */
+dock-tab.vertical                 { padding: 9px; border-radius: 6px; }
+dock-tab.vertical > label         { display: none; }
+dock-tab.vertical > dock-tab-close{ display: none; }
+dock-tab.vertical > icon          { width: 22px; height: 22px; }
+
+/* ---- what a drag draws ------------------------------------------------ */
+
+dock-drop-indicator       { background-color: rgba(77,141,216,.30);
+                            outline-color: var(--accent); outline-width: 2px; border-radius: 4px; }
+dock-drop-indicator.caret { background-color: var(--accent); outline-width: 0px; }
+/* The ghost needs an explicit BOX. Nothing lays a drag decorator out - the drag system only moves
+   it under the pointer - so a ghost with no size declared is a surface of zero extent with a
+   caption drawn beside it, which is not obviously a bug when you first see it. */
+dock-drag-ghost           { width: 150px; height: 32px; background-color: var(--tab-on);
+                            border-radius: 6px; outline-color: var(--accent); outline-width: 1px; }
+dock-drag-ghost > label   { color: var(--text); font-size: 13px; }
+dock-drag-ghost > icon    { width: 16px; height: 16px; color: var(--accent); }
+
+/* ---- a tab's hint ----------------------------------------------------- */
+
+/* The stock ui::TooltipSystem hint, which is what the rail's icons answer with. It is an overlay
+   on the SCENE CONTENT, which is why this sheet is installed there and not on the layout. */
+tooltip                   { background-color: #2b2b36; outline-color: var(--outline);
+                            outline-width: 1px; border-radius: 5px; }
+label.xl-ui-tooltip-label { color: var(--text); font-size: 12px; }
+
+/* ---- what a panel puts on screen -------------------------------------- */
+
+/* Each body declares its own `--accent` with ui::setStyleVariable, so one rule paints six panels
+   in six colours: a per-node property is inherited by the subtree and beats every rule that
+   matched the same node. */
+.panel-body       { display: flex; flex-direction: column; row-gap: 8px; }
+.panel-head       { display: flex; flex-direction: row; align-items: center; column-gap: 9px; }
+.panel-head > icon{ width: 22px; height: 22px; color: var(--accent); }
+.panel-title      { color: var(--text); font-size: 15px; }
+/* pushed to the end of the row by its own auto margin, which is the one thing `auto` is good for
+   on a flex item - `justify-content` would have to move every item to place this one */
+.panel-count      { margin-left: auto; color: var(--muted); font-size: 11px; }
+/* ONE LINE, and short enough to stay one in the narrowest frame: a Label that wraps is measured
+   at the width it had when it was measured, and a frame the user drags narrower re-wraps under a
+   box that was sized for fewer lines. */
+.panel-hint       { color: var(--muted); font-size: 12px; }
+.panel-rule       { height: 3px; border-radius: 2px; background-color: var(--accent); }
+
+/* ---- the chrome ------------------------------------------------------- */
+
+.demo-title { color: var(--text); font-size: 15px; font-weight: bold; }
+.status     { flex-grow: 1; color: #9ecbff; font-size: 13px; }
+
+button       { height: 30px; display: flex; flex-direction: row; justify-content: center;
+               align-items: center; padding: 0px 14px; border-radius: 5px;
+               background-color: var(--tab); outline-color: var(--outline); outline-width: 1px; }
+button:hover { background-color: var(--tab-on); }
+button > label { color: var(--text); font-size: 13px; }
+/* A DEFINITE basis, not `fit-content`. A ui::Button measured on demand answers with its LABEL's
+   box - neither the `height` nor the `padding` declared above is in that answer - so a
+   fit-content button comes out as a bare caption with no chrome at all. Give the basis and the
+   whole rule applies. */
+#demo-bar > button { flex: 0 0 108px; }
+)css");
+
+// What a panel IS, in one place: the id the layout and every command name it by, what its tab
+// shows, and the colour its body is painted in.
+struct PanelInfo {
+	StringView id;
+	StringView title;
+	IconName icon;
+	StringView accent;
+	StringView hint;
+	Size2 minSize;
+};
+
+static SpanView<PanelInfo> getPanels() {
+	static const PanelInfo s_panels[] = {
+		{"explorer", "Explorer", IconName::File_folder_solid, "#e0a33e", "Drag me out of the rail.",
+			Size2(150.0f, 110.0f)},
+		{"search", "Search", IconName::Action_search_solid, "#59b98a",
+			"Hover a rail icon for its title.", Size2(150.0f, 110.0f)},
+		{"history", "History", IconName::Action_history_solid, "#b98ad9",
+			"Drop a tab here to make it an icon.", Size2(150.0f, 110.0f)},
+		{"editor", "Editor", IconName::Action_code_solid, "#4d8dd8",
+			"Drop a tab on this frame's edge to split it.", Size2(280.0f, 160.0f)},
+		{"preview", "Preview", IconName::Action_visibility_solid, "#3fb0c8",
+			"Switching tabs never rebuilds a panel.", Size2(240.0f, 140.0f)},
+		{"console", "Console", IconName::Action_terminal_solid, "#7f8ea3",
+			"Drag a divider to re-proportion two frames.", Size2(220.0f, 90.0f)},
+		{"problems", "Problems", IconName::Alert_warning_solid, "#d97b5a",
+			"Close me with the x, then press Reopen.", Size2(200.0f, 90.0f)},
+	};
+	return makeSpanView(s_panels, sizeof(s_panels) / sizeof(PanelInfo));
+}
+
+static const PanelInfo *getPanel(StringView id) {
+	for (auto &it : getPanels()) {
+		if (it.id == id) {
+			return &it;
+		}
+	}
+	return nullptr;
+}
+
+/* The declared layout, as a spec.
+
+Kept in one place so the Reset button, the self-check and init() agree on what "the demo" is. Three
+frames: a sidebar carrying its strip on the LEFT - which is what makes it an icon rail - and beside
+it an editor over a bottom band. Both of the others take the default Top, so the two kinds of strip
+are on screen from the first frame drawn, with no input at all. */
+static ui::DockLayoutSpec makeSpec() {
+	using Spec = ui::DockLayoutSpec;
+
+	/* The sidebar's share is deliberately tiny. A split's `ratio` divides what is left AFTER both
+	sides got their minimums, so a sidebar declared 250pt wide with a 0.06 share stays a sidebar as
+	the window grows instead of taking a quarter of every extra point. */
+	return Spec::hsplit(0.06f,
+			Spec::leaf({String("explorer"), String("search"), String("history")},
+					{
+						.name = String("sidebar"),
+						.minSize = Size2(250.0f, 0.0f),
+						.tabBarSide = ui::DockTabBarSide::Left,
+					}),
+			Spec::vsplit(0.68f,
+					Spec::leaf({String("editor"), String("preview")}, {.name = String("editor")}),
+					Spec::leaf({String("console"), String("problems")},
+							{.name = String("bottom")})));
+}
+
+// A panel's content: the icon and the name it is known by, a rule in its own colour, and one line
+// saying what to try with it. Built at most once, on first show, and kept across every move.
+static Rc<Node> makePanelBody(const PanelInfo &info, size_t builds) {
 	auto body = Rc<Node>::create();
+	body->setName(info.id); // its CSS #id, so a rule can address one panel by name
+	body->addStyleClass("panel-body");
 	body->setAnchorPoint(Anchor::BottomLeft);
 
-	auto swatch = body->addChild(Rc<basic2d::Layer>::create(color), ZOrder(1));
-	swatch->setName("panel-swatch");
+	// One declaration on this node paints its icon and its rule; the subtree inherits it, and it
+	// beats the `--accent` the sheet declares on `:root`.
+	ui::setStyleVariable(body, "--accent", info.accent);
 
-	auto caption = body->addChild(Rc<basic2d::Label>::create(), ZOrder(2));
-	caption->setString(title);
+	auto head = body->addChild(Rc<Node>::create(), ZOrder(1));
+	head->addStyleClass("panel-head");
+
+	auto icon = head->addChild(Rc<basic2d::IconSprite>::create(info.icon), ZOrder(1));
+	icon->setType("icon"); // an IconSprite is not typed for CSS until somebody says so
+
+	auto title = head->addChild(Rc<basic2d::Label>::create(), ZOrder(2));
+	title->addStyleClass("panel-title");
+	title->setString(info.title);
+
+	// The lazy builder's call count, stamped into what it built: a panel that was ever rebuilt
+	// would say so on screen, which is a stronger claim than a number in a log.
+	auto count = head->addChild(Rc<basic2d::Label>::create(), ZOrder(3));
+	count->addStyleClass("panel-count");
+	count->setString(toString("built ", builds, "x"));
+
+	auto rule = body->addChild(Rc<basic2d::Layer>::create(), ZOrder(2));
+	rule->addStyleClass("panel-rule");
+
+	auto hint = body->addChild(Rc<basic2d::Label>::create(), ZOrder(3));
+	hint->addStyleClass("panel-hint");
+	hint->setString(info.hint);
+
 	return body;
 }
 
+// How long the self-check waits for the layout pass that follows its reset. Shorter than the
+// settle an inspector command waits out, so `dock.selfcheck` answers with its own result.
+static constexpr float SelfCheckSettle = 0.05f;
+
+static StringView getSideName(ui::DockTabBarSide side) {
+	switch (side) {
+	case ui::DockTabBarSide::Top: return StringView("top");
+	case ui::DockTabBarSide::Bottom: return StringView("bottom");
+	case ui::DockTabBarSide::Left: return StringView("left");
+	case ui::DockTabBarSide::Right: return StringView("right");
+	}
+	return StringView("top");
+}
+
+static bool readSide(StringView name, ui::DockTabBarSide &out) {
+	if (name == "top") {
+		out = ui::DockTabBarSide::Top;
+	} else if (name == "bottom") {
+		out = ui::DockTabBarSide::Bottom;
+	} else if (name == "left") {
+		out = ui::DockTabBarSide::Left;
+	} else if (name == "right") {
+		out = ui::DockTabBarSide::Right;
+	} else {
+		return false;
+	}
+	return true;
+}
+
 } // namespace
+
+StringView getDockDemoStylesheet() { return s_css; }
+
+// ---- construction ----------------------------------------------------------------------------
 
 bool DockDemoLayout::init() {
 	if (!basic2d::SceneLayout2d::init()) {
 		return false;
 	}
 
-	// The stylesheet is a system that only SUPPLIES rules; the recursive resolver below is what
-	// actually applies them to every node in this subtree (frames, tabs, buttons and their labels).
-	addSystem(Rc<ui::StyleSystem>::create(s_css));
-	addSystem(Rc<ui::StyleResolver>::create(true));
+	// The stylesheet and its resolver are NOT installed here - they are on the SceneContent, so
+	// that they reach the hints a rail's icons pop out. See getDockDemoStylesheet().
 
-	_background = addChild(Rc<basic2d::Layer>::create(Color::Grey_900), ZOrder(0));
-	_background->setAnchorPoint(Anchor::BottomLeft);
+	_background =
+			addChild(Rc<basic2d::Layer>::create(Color4F(0.075f, 0.075f, 0.09f, 1.0f)), ZOrder(0));
+	_background->setName("demo-background");
 
-	buildDock(); // registers the panels, builds the split tree, the control bar and runs the self-check
+	// The flex column is a CHILD and not this node: a recursive StyleResolver re-resolves its
+	// descendants and never its own owner, so a `display: flex` written for the node carrying it
+	// is a rule that never runs.
+	_root = addChild(Rc<Node>::create(), ZOrder(1));
+	_root->setName("demo-root");
 
-	// The engine renders on demand: with nothing dirty it stops producing frames, and a callback
-	// that changes state off-screen is only picked up the next time something wakes the loop. This
-	// demo is meant to be watched (buttons, drags), so hold the loop open like every other test
-	// layout does - RenderContinuously draws nothing and damages nothing, it only keeps frames coming.
-	runAction(Rc<RenderContinuously>::create());
+	buildControlBar();
+
+	_dockRoot = _root->addChild(Rc<Node>::create(), ZOrder(1));
+	_dockRoot->setName("dock-root");
+
+	_dock = _dockRoot->addSystem(Rc<ui::DockSystem>::create());
+	_dock->setSplitterThickness(6.0f);
+
+	// A panel that was closed is not gone: its node is kept, and Reopen brings back exactly what
+	// was there. Recording the id here is what lets one button stand for any tab's x.
+	_dock->setPanelClosedCallback([this](StringView id) {
+		_lastClosed = id.str<Interface>();
+		refreshStatus(toString("'", id, "' closed - Reopen brings it back"));
+	});
+	_dock->setPanelActivatedCallback(
+			[this](StringView id) { refreshStatus(toString("'", id, "' activated")); });
+
+	registerPanels();
+	applyLayout();
+
+	refreshStatus("drag a tab onto another frame, or onto its edge to split it");
 
 	return true;
 }
 
-void DockDemoLayout::buildDock() {
-	if (_dock) {
-		_dock->handleRemoved();
-		_dock = nullptr;
-	}
-
-	// The dock's owner must NOT carry a LayoutSystem of its own - the system writes every frame's
-	// geometry directly, and two writers would fight (handleAdded asserts it). A plain Node is
-	// exactly that: no layout of its own, just a parent for the flat frames. DockSystem distributes
-	// over _owner->getContentSize(), so this node must be sized in handleContentSizeDirty().
-	if (!_dockRoot) {
-		_dockRoot = addChild(Rc<Node>::create(), ZOrder(1));
-		_dockRoot->setAnchorPoint(Anchor::BottomLeft);
-	}
-
-	// ONE registry behind both containers. Without this each of them would describe and build its
-	// own copy of a panel, and dragging one across would rebuild it on the other side - losing the
-	// scroll position, the selection and the half-typed text that made it worth moving.
-	if (!_registry) {
-		_registry = Rc<ui::PanelRegistry>::create();
-	}
-
-	_dock = _dockRoot->addSystem(Rc<ui::DockSystem>::create(Rc<ui::PanelRegistry>(_registry)));
-	_dock->setSplitterThickness(6.0f);
-
-	// --- the panel registry --------------------------------------------------------------
-	// id, title, icon and minimum are declared once; the builder runs at most once on first show.
-	auto registerPanel = [this](StringView id, StringView title, basic2d::IconName icon, Size2 minSize, Color4F color) {
+void DockDemoLayout::registerPanels() {
+	for (auto &info : getPanels()) {
 		ui::DockPanelDescriptor desc;
-		desc.id = id.str<Interface>();
-		desc.title = title.str<Interface>();
-		desc.icon = icon;
-		desc.minSize = minSize;
-		// the builder takes no arguments: it is called at most once on first show and its node
-		// is then kept alive across every move, so it must not depend on where the panel sits.
-		desc.builder = [this, key = id.str<Interface>(), title = title.str<Interface>(), color]() -> Rc<Node> {
-			auto it = _builds.find(key);
+		desc.id = info.id.str<Interface>();
+		desc.title = info.title.str<Interface>();
+		desc.icon = info.icon;
+		// The panel's floor, which is what strengthens the constraint of whatever frame it is
+		// parked in - and through that of every split above it.
+		desc.minSize = info.minSize;
+
+		/* The builder takes no arguments and runs at most ONCE, on first show. Its node is then
+		kept alive across every move, which is the point: a panel dragged into another frame - or
+		into a strip of the other kind - arrives as the same node, with its state intact. The
+		count is stamped into the body it builds, so a rebuild would be visible on screen. */
+		desc.builder = [this, id = desc.id]() -> Rc<Node> {
+			auto it = _builds.find(id);
 			size_t next = (it != _builds.end()) ? it->second + 1 : 1;
-			_builds.insert_or_assign(key, next);
-			return makePanelBody(title, color);
+			_builds.insert_or_assign(id, next);
+			return makePanelBody(*getPanel(id), next);
 		};
-		_registry->registerPanel(sp::move(desc));
-	};
 
-	registerPanel("explorer", "Explorer", basic2d::IconName::File_folder_solid, Size2(180.0f, 120.0f), Color4F(0.16f, 0.55f, 0.75f, 1.0f));
-	registerPanel("editor", "Editor", basic2d::IconName::Action_code_solid, Size2(320.0f, 200.0f), Color4F(0.20f, 0.60f, 0.40f, 1.0f));
-	registerPanel("console", "Console", basic2d::IconName::Action_list_solid, Size2(240.0f, 100.0f), Color4F(0.55f, 0.35f, 0.75f, 1.0f));
-	registerPanel("problems", "Problems", basic2d::IconName::Action_info_solid, Size2(200.0f, 90.0f), Color4F(0.80f, 0.55f, 0.15f, 1.0f));
-
-	// --- the initial split tree ----------------------------------------------------------
-	bool ok = _dock->setLayout(s_spec());
-	if (ok) {
-		runSelfCheck();
+		_dock->registerPanel(sp::move(desc));
 	}
-
-	// --- the accordion beside it ----------------------------------------------------------
-	// A stack of the same panels, declared in advance rather than discovered from a model. Drag a
-	// section here by the GRIP on its header and it lands in the dock; drag a dock tab back and it
-	// lands between two sections. Pressing a header toggles it instead, which is why the grip
-	// exists at all.
-	if (!_accordion) {
-		_accordion = addChild(Rc<ui::AccordionView>::create(Rc<ui::PanelRegistry>(_registry)),
-				ZOrder(1));
-		_accordion->setAnchorPoint(Anchor::BottomLeft);
-		_accordion->setSections({String("problems")});
-	}
-
-	makeControlBar();
-	refreshStatus("layout set");
 }
 
-void DockDemoLayout::makeControlBar() {
-	// The row is a flex container: it sizes itself from its items, so nothing here has to know
-	// how many buttons there are or how wide they turned out.
-	if (!_controlBarRow) {
-		_controlBarRow = addChild(Rc<Node>::create(), ZOrder(2));
-		_controlBarRow->setAnchorPoint(Anchor::TopLeft);
-		_controlBarRow->addStyleClass("demo-bar");
-		_controlBarRow->addSystem(Rc<ui::LayoutSystem>::create(ui::FlexLayoutInfo{
-				.direction = ui::FlexDirection::Row,
-				.alignItems = ui::FlexAlign::Center,
-				.columnGap = 10.0f,
-		}));
+void DockDemoLayout::applyLayout() { _dock->setLayout(makeSpec()); }
 
-		_statusLabel = _controlBarRow->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
-		_statusLabel->addStyleClass("status");
-	}
+void DockDemoLayout::buildControlBar() {
+	_controlBar = _root->addChild(Rc<Node>::create(), ZOrder(2));
+	_controlBar->setName("demo-bar");
 
-	// The frame handles are resolved at CLICK time, not here: a Reset rebuilds the tree and every
-	// handle captured earlier dies with it - by name survives that.
-	makeControl("Activate editor", [this] {
-		if (_dock->activatePanel("editor")) {
-			refreshStatus("'editor' activated");
-		} else {
-			refreshStatus("'editor' is not open");
-		}
-	});
-	makeControl("Move explorer -> main", [this] {
-		auto main = _dock->findFrameByName("main");
-		if (main.empty()) {
-			refreshStatus("no 'main' frame to move into - Reset first");
+	auto title = _controlBar->addChild(Rc<basic2d::Label>::create(), ZOrder(0));
+	title->addStyleClass("demo-title");
+	title->setString("Dock");
+
+	_statusLabel = _controlBar->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
+	_statusLabel->addStyleClass("status");
+
+	// Every control is the programmatic twin of something the pointer can do, and goes through the
+	// same public operation. The frame is resolved BY NAME at click time, not captured here: a
+	// Reset rebuilds the tree and every handle taken earlier dies with it.
+	makeControl("Rail ⇄ tabs", [this] {
+		auto frame = _dock->findFrameByName("sidebar");
+		auto node = _dock->getFrameNode(frame);
+		if (!node) {
+			refreshStatus("no 'sidebar' frame - Reset first");
 			return;
 		}
-		if (_dock->movePanel("explorer", main)) {
-			refreshStatus("'explorer' moved into 'main'");
+		const bool rail = node->getTabBar()->isVertical();
+		setFrameSide("sidebar", rail ? ui::DockTabBarSide::Top : ui::DockTabBarSide::Left);
+		refreshStatus(rail ? "sidebar strip: labelled tabs on top"
+						   : "sidebar strip: an icon rail on the left");
+	});
+
+	makeControl("Split editor", [this] {
+		auto frame = _dock->findFrameByName("editor");
+		// splitFrameWithPanel is exactly what a drop on an edge band commits, panel and all
+		if (_dock->splitFrameWithPanel(frame, ui::DockAxis::Horizontal, false, "preview").empty()) {
+			refreshStatus("could not split 'editor' - Reset first");
 		} else {
-			refreshStatus("could not move 'explorer'");
+			refreshStatus("'preview' carved a frame out of 'editor'");
 		}
 	});
-	makeControl("Split main", [this] {
-		auto main = _dock->findFrameByName("main");
-		if (auto created = _dock->splitFrame(main, ui::DockAxis::Horizontal, true); !created.empty()) {
-			refreshStatus("a new frame carved out of 'main'");
-		} else {
-			refreshStatus("could not split 'main' - Reset first if it is gone");
-		}
-	});
-	makeControl("Close / reopen", [this] {
+
+	makeControl("Reopen", [this] {
 		if (_lastClosed.empty()) {
-			// first click: close the demo's hidden tab - the one thing that is NOT showing, so a
-			// closed panel and its folded frame are both visible in one motion.
-			if (!_dock->closePanel("problems")) {
-				refreshStatus("'problems' was not open");
-				return;
-			}
-			_lastClosed = "problems";
-			refreshStatus(toString("'", _lastClosed, "' closed (its empty frame folded) - click again to reopen"));
+			refreshStatus("nothing has been closed yet - try a tab's x");
 			return;
 		}
-
-		if (_dock->isPanelOpen(_lastClosed)) {
-			// still parked somewhere: just bring it forward.
-			_dock->activatePanel(_lastClosed);
-			refreshStatus(toString("'", _lastClosed, "' activated"));
-			return;
-		}
-
-		// closed AND its frame folded away: open it back into whatever room is left - the system
-		// resolves an empty target to the largest frame.
 		if (_dock->openPanel(_lastClosed)) {
-			String reopened = _lastClosed;
+			refreshStatus(toString("'", _lastClosed, "' reopened - and never rebuilt"));
 			_lastClosed.clear();
-			refreshStatus(toString("'", reopened, "' reopened"));
 		} else {
 			refreshStatus("could not reopen - Reset first");
 		}
 	});
-	makeControl("Reset layout", [this] { buildDock(); });
 
-	if (_selfCheckDone && _failures == 0) {
-		refreshStatus(toString("self-check passed: ", toInt(_checks), " checks, 0 failures"));
-	} else if (_selfCheckDone) {
-		refreshStatus(toString("self-check: ", toInt(_checks), " checks, ", toInt(_failures),
-				" FAILURES - see the log"));
-	} else {
-		refreshStatus("layout set");
-	}
+	makeControl("Reset", [this] {
+		applyLayout();
+		_lastClosed.clear();
+		refreshStatus("layout reset");
+	});
+
+	makeControl("Self-check", [this] { runSelfCheck(); });
 }
 
 ui::Button *DockDemoLayout::makeControl(StringView label, Function<void()> &&action) {
-	auto button = _controlBarRow->addChild(Rc<ui::Button>::create(sp::move(action)), ZOrder(3));
+	// The z-order counts up from the title so the buttons keep the order they were declared in:
+	// inside a flex row the child order IS the placement order.
+	auto button = _controlBar->addChild(Rc<ui::Button>::create(sp::move(action)),
+			ZOrder(int32_t(_controlBar->getChildren().size())));
 	button->setString(label);
 	return button;
+}
+
+void DockDemoLayout::handleContentSizeDirty() {
+	basic2d::SceneLayout2d::handleContentSizeDirty();
+
+	// The only two nodes placed by hand, and both for the same reason: SceneLayout2d carries no
+	// LayoutSystem, so nothing above them lays them out. Everything below `#demo-root` is a flex
+	// item of something, and hand-placing one of those would fight the layout pass.
+	for (auto node : {_background, _root}) {
+		if (node) {
+			node->setAnchorPoint(Anchor::BottomLeft);
+			node->setPosition(Vec2::ZERO);
+			node->setContentSize(getContentSize());
+		}
+	}
+}
+
+// ---- operations ------------------------------------------------------------------------------
+
+bool DockDemoLayout::setFrameSide(StringView frameName, ui::DockTabBarSide side) {
+	auto frame = _dock->findFrameByName(frameName);
+	auto node = _dock->getFrameNode(frame);
+	if (!node) {
+		return false;
+	}
+
+	// The whole params block, with one field changed: the tree is the source of truth for a
+	// parking place's name, floor and flags as well, and dropping them here would silently
+	// un-declare them.
+	auto params = node->getParams();
+	params.tabBarSide = side;
+	return _dock->setFrameParams(frame, params);
+}
+
+bool DockDemoLayout::commitDrop(StringView panelId, const ui::DockDropTarget &target) {
+	using Kind = ui::DockDropTarget::Kind;
+
+	switch (target.kind) {
+	case Kind::None: return false;
+	case Kind::Center: return _dock->movePanel(panelId, target.frame);
+	case Kind::TabStrip: return _dock->movePanel(panelId, target.frame, target.tabIndex);
+	default:
+		// every split zone: the frame is subdivided and the dragged panel takes the side that was
+		// dropped on. `isFirst` is the low side of the axis - left, or TOP.
+		auto created = _dock->splitFrameWithPanel(target.frame, target.getAxis(), target.isFirst(),
+				panelId);
+		return !created.empty();
+	}
 }
 
 void DockDemoLayout::refreshStatus(StringView lastAction) {
@@ -314,9 +514,12 @@ void DockDemoLayout::refreshStatus(StringView lastAction) {
 		return;
 	}
 
-	size_t frames = _dock->getTree().getLeafCount();
-	auto out = toString("frames: ", toInt(frames), "   |   ", (lastAction.empty() ? StringView("idle") : lastAction));
-	_statusLabel->setString(out);
+	if (!lastAction.empty()) {
+		_lastAction = lastAction.str<Interface>();
+	}
+
+	_statusLabel->setString(toString("frames: ", _dock->getTree().getLeafCount(), "   |   ",
+			_lastAction.empty() ? StringView("idle") : StringView(_lastAction)));
 }
 
 size_t DockDemoLayout::buildCount(StringView id) const {
@@ -324,157 +527,394 @@ size_t DockDemoLayout::buildCount(StringView id) const {
 	return (it != _builds.end()) ? it->second : 0;
 }
 
-void DockDemoLayout::runSelfCheck() {
-	if (_selfCheckDone || !_dock) {
+// ---- the inspector ---------------------------------------------------------------------------
+
+void DockDemoLayout::handleEnter(Scene *scene) {
+	basic2d::SceneLayout2d::handleEnter(scene);
+
+	_inspectorScene = scene;
+	registerCommands();
+
+	runSelfCheck();
+}
+
+void DockDemoLayout::handleExit() {
+	// A lambda that captured a destroyed layout is a dangling call from the inspector socket, so
+	// the commands go down with the layout rather than with the scene.
+	if (!_inspectorCommands.empty()) {
+		if (_inspectorScene) {
+			if (auto i = inspector::get(_inspectorScene->getContent())) {
+				for (auto &it : _inspectorCommands) { i->removeCommand(it); }
+			}
+		}
+		_inspectorCommands.clear();
+	}
+	_inspectorScene = nullptr;
+
+	basic2d::SceneLayout2d::handleExit();
+}
+
+void DockDemoLayout::addCommand(StringView name, StringView description,
+		Function<Value(const Value &)> &&handler) {
+	if (!_inspectorScene || !handler) {
 		return;
 	}
 
-	auto expect = [this](bool cond, StringView what) {
-		++_checks;
-		if (!cond) {
-			++_failures;
-			log::source().error("DockFrameExample", "self-check: ", what);
+	auto full = toString("dock.", name);
+	if (!inspector::addCommand(_inspectorScene->getContent(), full, description,
+				[this, handler = sp::move(handler)](Value &&args,
+						Function<void(Value &&)> &&done) mutable {
+		// CONST, and that is what keeps a missing argument from being a crash: the non-const
+		// data::Value getters assert in debug on a key that is not there, where a read through a
+		// const reference answers an empty value.
+		const Value &in = args;
+		auto result = handler(in);
+
+		/* Answer only once the change has been on screen for a moment. Every action here moves
+		geometry, and a mutation writes the tree immediately while the RECTS follow on the next
+		layout pass - so a reply sent now would be read against the previous frame's arrangement.
+		This layout holds a RenderContinuously, so the delay is real rendering time. */
+		runAction(Rc<Sequence>::create(0.15f,
+				Function<void()>([done = sp::move(done), result = sp::move(result)]() mutable {
+			done(sp::move(result));
+		})));
+	})) {
+		return; // no inspector on this scene - the app was not built with one
+	}
+
+	_inspectorCommands.emplace_back(sp::move(full));
+}
+
+ui::DockNodeHandle DockDemoLayout::resolveFrame(const Value &args) const {
+	if (StringView name = args.getString("frame"); !name.empty()) {
+		return _dock->findFrameByName(name);
+	}
+	if (StringView panel = args.getString("panel"); !panel.empty()) {
+		return _dock->findFrameForPanel(panel);
+	}
+	return ui::DockNodeHandle();
+}
+
+Value DockDemoLayout::encodeTree() const {
+	Value slots(Value::Type::ARRAY);
+
+	// Depth-first from the root, a split before its children: the order a dump wants, and the
+	// only order in which the arrangement can be read back. The nodes' order among the dock root's
+	// CHILDREN means nothing - sortAllChildren is unstable.
+	_dock->getTree().eachInOrder([&](const ui::DockTreeNode &n) {
+		Value slot;
+		slot.setInteger(n.self.index, "index");
+		slot.setValue(Value{Value(n.rect.origin.x), Value(n.rect.origin.y),
+						  Value(n.rect.size.width), Value(n.rect.size.height)},
+				"rect");
+		slot.setValue(Value{Value(n.minSize.width), Value(n.minSize.height)}, "min");
+
+		if (n.isSplit()) {
+			slot.setString("split", "kind");
+			slot.setString(n.axis == ui::DockAxis::Horizontal ? "h" : "v", "axis");
+			slot.setDouble(n.ratio, "ratio");
+			slots.addValue(sp::move(slot));
+			return;
 		}
-	};
+
+		slot.setString("frame", "kind");
+		slot.setString(n.params.name, "name");
+		slot.setString(getSideName(n.params.tabBarSide), "side");
+		slot.setInteger(int64_t(n.active), "active");
+
+		// The tabs AS RENDERED, not as the tree describes them: the class is what the stylesheet
+		// keys the two kinds off, and the size is what a square icon proves itself by.
+		Value tabs(Value::Type::ARRAY);
+		if (auto frame = _dock->getFrameNode(n.self); frame && frame->getTabBar()) {
+			for (auto &tab : frame->getTabBar()->getTabs()) {
+				Value entry;
+				entry.setString(tab->getPanelId(), "id");
+				entry.setString(tab->getString(), "title");
+				entry.setBool(tab->isActive(), "active");
+				entry.setString(tab->hasStyleClass("vertical") ? "vertical" : "horizontal", "kind");
+				entry.setValue(Value{Value(tab->getContentSize().width),
+								   Value(tab->getContentSize().height)},
+						"size");
+				tabs.addValue(sp::move(entry));
+			}
+		}
+		slot.setValue(sp::move(tabs), "tabs");
+		slots.addValue(sp::move(slot));
+	});
+
+	return slots;
+}
+
+void DockDemoLayout::registerCommands() {
+	addCommand("state", "The whole tree: every slot, and a frame's tabs as they are rendered",
+			[this](const Value &) {
+		Value ret;
+		ret.setValue(encodeTree(), "slots");
+		ret.setInteger(int64_t(_dock->getTree().getLeafCount()), "frames");
+		ret.setString(_lastAction, "lastAction");
+		ret.setString(_lastClosed, "lastClosed");
+
+		Value builds;
+		for (auto &it : _builds) { builds.setInteger(int64_t(it.second), it.first); }
+		ret.setValue(sp::move(builds), "builds");
+
+		ret.setInteger(int64_t(_checks), "checks");
+		ret.setInteger(int64_t(_failures), "failures");
+		return ret;
+	});
+
+	addCommand("activate", "Bring one panel forward: {panel}", [this](const Value &args) {
+		Value ret;
+		ret.setBool(_dock->activatePanel(args.getString("panel")), "ok");
+		return ret;
+	});
+
+	addCommand("move", "Park a panel in a frame: {panel, frame, index}", [this](const Value &args) {
+		Value ret;
+		auto target = _dock->findFrameByName(args.getString("frame"));
+		if (target.empty()) {
+			ret.setString("no such frame", "error");
+			return ret;
+		}
+		auto index = args.hasValue("index") ? size_t(args.getInteger("index")) : maxOf<size_t>();
+		ret.setBool(_dock->movePanel(args.getString("panel"), target, index), "ok");
+		refreshStatus(toString("'", args.getString("panel"), "' moved into '",
+				args.getString("frame"), "'"));
+		return ret;
+	});
+
+	addCommand("split", "Subdivide a frame, optionally taking a panel with it: "
+					"{frame, axis: h|v, first, panel}",
+			[this](const Value &args) {
+		Value ret;
+		auto frame = resolveFrame(args);
+		if (frame.empty()) {
+			ret.setString("no such frame", "error");
+			return ret;
+		}
+		auto axis = (args.getString("axis") == "v") ? ui::DockAxis::Vertical
+													: ui::DockAxis::Horizontal;
+		auto created = _dock->splitFrameWithPanel(frame, axis, args.getBool("first"),
+				args.getString("panel"));
+		ret.setBool(!created.empty(), "ok");
+		ret.setInteger(created.index, "frame");
+		refreshStatus("frame split");
+		return ret;
+	});
+
+	addCommand("side", "Turn a frame's strip: {frame, side: top|bottom|left|right}",
+			[this](const Value &args) {
+		Value ret;
+		ui::DockTabBarSide side = ui::DockTabBarSide::Top;
+		if (!readSide(args.getString("side"), side)) {
+			ret.setString("side must be top, bottom, left or right", "error");
+			return ret;
+		}
+		StringView name = args.getString("frame");
+		ret.setBool(setFrameSide(name, side), "ok");
+		refreshStatus(toString("'", name, "' strip -> ", getSideName(side)));
+		return ret;
+	});
+
+	addCommand("close", "Close one panel: {panel}", [this](const Value &args) {
+		Value ret;
+		ret.setBool(_dock->closePanel(args.getString("panel")), "ok");
+		return ret;
+	});
+
+	addCommand("open", "Open a closed panel, optionally into a named frame: {panel, frame}",
+			[this](const Value &args) {
+		Value ret;
+		ret.setBool(_dock->openPanel(args.getString("panel"), resolveFrame(args)), "ok");
+		return ret;
+	});
+
+	/* The two that make drag and drop scriptable. `hittest` is the pure question a drag asks on
+	every pointer move - it resolves a point in the DOCK ROOT's own coordinate space against the
+	tree, without a scene hit test and without an input event; `drop` commits what it answered,
+	through the same public operations the dock's own drop slot uses. Together they exercise the
+	edge-band split that is otherwise reachable only by dragging. */
+	addCommand("hittest", "What a drop at a dock-root point would do: {x, y, panel}",
+			[this](const Value &args) {
+		auto t = _dock->hitTest(Vec2(float(args.getDouble("x")), float(args.getDouble("y"))),
+				args.getString("panel"));
+		Value ret;
+		ret.setInteger(toInt(t.kind), "kind");
+		ret.setBool(t.isSplit(), "isSplit");
+		ret.setInteger(t.frame.index, "frame");
+		ret.setInteger(int64_t(t.tabIndex), "tabIndex");
+		ret.setValue(Value{Value(t.highlight.origin.x), Value(t.highlight.origin.y),
+						 Value(t.highlight.size.width), Value(t.highlight.size.height)},
+				"highlight");
+		return ret;
+	});
+
+	addCommand("drop", "Commit that drop: {panel, x, y}", [this](const Value &args) {
+		Value ret;
+		StringView panel = args.getString("panel");
+		auto t =
+				_dock->hitTest(Vec2(float(args.getDouble("x")), float(args.getDouble("y"))), panel);
+		ret.setInteger(toInt(t.kind), "kind");
+		ret.setBool(commitDrop(panel, t), "ok");
+		refreshStatus(toString("'", panel, "' dropped"));
+		return ret;
+	});
+
+	addCommand("reset", "Restore the declared layout", [this](const Value &) {
+		applyLayout();
+		_lastClosed.clear();
+		refreshStatus("layout reset");
+		return Value(true);
+	});
+
+	addCommand("selfcheck", "Re-run the structural checks", [this](const Value &) {
+		runSelfCheck();
+		Value ret;
+		ret.setInteger(int64_t(_checks), "checks");
+		ret.setInteger(int64_t(_failures), "failures");
+		return ret;
+	});
+}
+
+// ---- the self-check --------------------------------------------------------------------------
+
+void DockDemoLayout::expect(bool condition, StringView message) {
+	++_checks;
+	if (!condition) {
+		++_failures;
+		log::source().warn("DockExample", "FAILED: ", message);
+	}
+}
+
+void DockDemoLayout::runSelfCheck() {
+	applyLayout();
+
+	/* ONE PASS LATER. setLayout writes the tree immediately, but the RECTS follow on the next
+	layout pass - and check 6 asks the hit test where the editor frame's left edge is, which before
+	that pass is (0,0,0,0) for every slot. This layout holds a RenderContinuously, so the delay is
+	real rendering time; it is also shorter than the settle an inspector command waits out, so
+	`dock.selfcheck` still answers with the result of the run it started. */
+	runAction(Rc<Sequence>::create(SelfCheckSettle, Function<void()>([this] { runChecks(); })));
+}
+
+void DockDemoLayout::runChecks() {
+	_checks = 0;
+	_failures = 0;
 
 	auto panelsIn = [this](ui::DockNodeHandle h) {
 		auto span = _dock->getPanelsInFrame(h);
 		return Vector<String>(span.begin(), span.end());
 	};
 
-	// 1. The declared frames exist and were found by name - the whole point of giving them one at all.
+	// 1. The declared frames exist and are found BY NAME - which is also their CSS #id, and the
+	//    only identity that survives a Reset.
 	auto sidebar = _dock->findFrameByName("sidebar");
-	auto main = _dock->findFrameByName("main");
+	auto editor = _dock->findFrameByName("editor");
 	auto bottom = _dock->findFrameByName("bottom");
-	// DockNodeHandle converts to bool only EXPLICITLY, so the check reads a negated empty().
+	// DockNodeHandle converts to bool only EXPLICITLY, so the check reads as a negated empty().
 	expect(!sidebar.empty(), "the 'sidebar' frame was not found by name");
-	expect(!main.empty(), "the 'main' frame was not found by name");
+	expect(!editor.empty(), "the 'editor' frame was not found by name");
 	expect(!bottom.empty(), "the 'bottom' frame was not found by name");
+	if (sidebar.empty() || editor.empty() || bottom.empty()) {
+		return;
+	}
 
-	// 2. Each panel is parked where setLayout put it - the membership of every leaf.
-	if (sidebar && main && bottom) {
-		auto side = panelsIn(sidebar);
-		expect(side.size() == 1 && side[0] == "explorer", "'explorer' is not the only panel in 'sidebar'");
+	// 2. Every panel is parked where the spec put it, in the order the spec gave.
+	expect(panelsIn(sidebar) == Vector<String>{"explorer", "search", "history"},
+			"'sidebar' does not hold the three rail panels in order");
+	expect(panelsIn(editor) == Vector<String>{"editor", "preview"},
+			"'editor' does not hold its two tabs in order");
+	expect(panelsIn(bottom) == Vector<String>{"console", "problems"},
+			"'bottom' does not hold its two tabs in order");
 
-		auto m = panelsIn(main);
-		expect(m.size() == 1 && m[0] == "editor", "'editor' is not the only panel in 'main'");
+	// 3. THE TWO KINDS OF STRIP, which is what this demo is about. The sidebar's is vertical and
+	//    every tab in it is marked so - the class is what the stylesheet narrows to an icon.
+	auto sidebarNode = _dock->getFrameNode(sidebar);
+	auto editorNode = _dock->getFrameNode(editor);
+	expect(sidebarNode && sidebarNode->getTabBar()->isVertical(),
+			"the 'sidebar' strip is not vertical");
+	expect(editorNode && !editorNode->getTabBar()->isVertical(),
+			"the 'editor' strip is not horizontal");
 
-		auto b = panelsIn(bottom);
-		expect(b.size() == 2, "'bottom' does not hold two tabs");
-		if (b.size() == 2) {
-			expect(b[0] == "console" && b[1] == "problems", "'bottom' is in the wrong tab order");
+	if (sidebarNode && editorNode) {
+		for (auto &tab : sidebarNode->getTabBar()->getTabs()) {
+			expect(tab->hasStyleClass("vertical"),
+					toString("rail tab '", tab->getPanelId(), "' is not marked vertical"));
+		}
+		for (auto &tab : editorNode->getTabBar()->getTabs()) {
+			expect(tab->hasStyleClass("horizontal"),
+					toString("tab '", tab->getPanelId(), "' is not marked horizontal"));
 		}
 	}
 
-	// 3. Only what is actually showing was built: 'explorer', 'editor' and the ACTIVE panel of the
-	//    two-tab frame ('console'). 'problems' sits behind it and must not exist yet - that is the
-	//    lazy builder, and rebuilding it later would be caught by its count.
-	expect(buildCount("explorer") == 1, "'explorer' was not built exactly once");
-	expect(buildCount("editor") == 1, "'editor' was not built exactly once");
-	expect(buildCount("console") == 1, "'console' was not built exactly once");
-	expect(buildCount("problems") == 0, "the hidden tab 'problems' must not be built yet");
-
-	// 4. The active panel of a multi-tab frame is the one named by `active` in the spec: index 0.
-	if (bottom) {
-		auto node = _dock->getTree().get(bottom);
-		expect(node && node->isLeaf() && node->active == 0, "'bottom' did not keep its active tab");
+	// 4. THE LAZY BUILDER, in its two halves. "Never twice" is the promise that holds for the life
+	//    of the application, whatever has been dragged where; "not yet" is only true of a panel
+	//    nothing has shown, so it is asserted on the first run and never again.
+	for (auto &info : getPanels()) {
+		expect(buildCount(info.id) <= 1,
+				toString("'", info.id, "' was built more than once - lazy content is broken"));
 	}
+	expect(buildCount("explorer") == 1, "'explorer' is showing but was not built");
+	expect(buildCount("editor") == 1, "'editor' is showing but was not built");
+	expect(buildCount("console") == 1, "'console' is showing but was not built");
+	if (!_checked) {
+		expect(buildCount("search") == 0, "the hidden rail tab 'search' must not be built yet");
+		expect(buildCount("preview") == 0, "the hidden tab 'preview' must not be built yet");
+	}
+	_checked = true;
 
-	// 5. Moving a panel carries its node with it - the builder must NOT run again for 'explorer'.
-	if (sidebar && main) {
-		bool moved = _dock->movePanel("explorer", main);
-		expect(moved, "moving 'explorer' into 'main' failed");
+	// 5. A PANEL CARRIED BETWEEN THE TWO KINDS OF STRIP IS NOT REBUILT. Its tab is a different
+	//    node in the other strip - tabs belong to a frame - but the panel's content is the one it
+	//    already had, which is the promise the whole registry exists for.
+	expect(_dock->movePanel("explorer", editor), "moving 'explorer' into 'editor' failed");
+	expect(buildCount("explorer") == 1, "moving 'explorer' rebuilt it - lazy content is broken");
 
-		if (moved) {
-			auto afterMove = panelsIn(main);
-			expect(afterMove.size() == 2 && afterMove[0] == "editor" && afterMove[1] == "explorer",
-					"'explorer' did not land at the end of 'main's tab strip");
-
-			// still exactly one build: a rebuild would make this two.
-			expect(buildCount("explorer") == 1, "moving 'explorer' rebuilt it - lazy content is broken");
-
-			// restore the declared layout so the demo starts where it was meant to start.
-			_dock->setLayout(s_spec());
-			expect(buildCount("explorer") == 1, "restoring the layout rebuilt 'explorer'");
+	// and the tab it arrived as is one of the receiving strip's kind, not the rail's
+	if (auto tabs = editorNode ? editorNode->getTabBar() : nullptr) {
+		bool marked = false;
+		for (auto &tab : tabs->getTabs()) {
+			if (tab->getPanelId() == "explorer") {
+				marked = tab->hasStyleClass("horizontal");
+			}
 		}
+		expect(marked, "'explorer' did not arrive as a horizontal tab");
 	}
 
-	// 6. Splitting a frame adds exactly one leaf and never shrinks the dock's propagated minimum.
-	//    `main` is re-resolved: check 5 ended with setLayout(), which rebuilds the tree, so every
-	//    handle captured in step 1 is stale by now - by name stays valid across that.
-	if (auto main = _dock->findFrameByName("main")) {
-		auto before = _dock->getTree().getRootMinSize();
-		auto newLeaf = _dock->splitFrame(main, ui::DockAxis::Horizontal, true);
-		expect(newLeaf && _dock->getTree().isValid(newLeaf), "splitting 'main' produced no frame");
+	// 6. AN EDGE DROP IS A SPLIT. The hit test answers a point in the dock root's own space; the
+	//    left edge band of the editor frame must resolve to SplitLeft, and committing it adds
+	//    exactly one frame. This is the drag-to-split path, minus the dragging.
+	const auto rect = _dock->getTree().get(editor)->rect;
+	const auto edge = Vec2(rect.origin.x + 12.0f, rect.getMidY());
+	auto target = _dock->hitTest(edge, "console");
+	expect(target.kind == ui::DockDropTarget::Kind::SplitLeft,
+			"a drop on the editor's left edge does not resolve to a split");
 
-		if (newLeaf) {
-			auto after = _dock->getTree().getRootMinSize();
-			expect(after.width >= before.width - 0.5f, "splitting a frame shrank the dock minimum");
-			expect(_dock->getTree().getLeafCount() == 4, "split did not add exactly one leaf");
+	const auto before = _dock->getTree().getLeafCount();
+	expect(commitDrop("console", target), "committing the edge drop failed");
+	expect(_dock->getTree().getLeafCount() == before + 1, "the edge drop did not add one frame");
+	expect(buildCount("console") == 1, "the edge drop rebuilt 'console'");
 
-			_dock->setLayout(s_spec());
-			expect(_dock->getTree().getLeafCount() == 3, "restore after split left the wrong leaf count");
-		}
-	}
-
-	// 7. save/restore round-trips shape and membership (the registry's titles/icons never travel).
+	// 7. save/restore round-trips the shape and the membership - and the tab bar side with them,
+	//    which is what keeps the rail a rail across a restart.
 	auto saved = _dock->save();
-	bool restored = _dock->restore(saved);
-	expect(restored, "restoring a freshly-saved layout failed");
-
-	if (restored) {
-		auto sidebar2 = _dock->findFrameByName("sidebar");
-		auto bottom2 = _dock->findFrameByName("bottom");
-		expect(sidebar2 && panelsIn(sidebar2).size() == 1 && panelsIn(sidebar2)[0] == "explorer",
-				"restore lost 'explorer' in 'sidebar'");
-		if (bottom2) {
-			auto b = panelsIn(bottom2);
-			expect(b.size() == 2, "restore did not keep both tabs of 'bottom'");
-		}
+	expect(_dock->restore(saved), "restoring a freshly-saved layout failed");
+	if (auto restored = _dock->getFrameNode(_dock->findFrameByName("sidebar"))) {
+		expect(restored->getTabBar()->isVertical(), "restore lost the sidebar's vertical strip");
+	} else {
+		expect(false, "restore lost the 'sidebar' frame");
 	}
 
-	_selfCheckDone = true;
-	log::source().warn("DockFrameExample", "self-check: ", _checks, " checks, ", _failures, " failures");
-}
+	// Put the demo back where it was meant to start.
+	applyLayout();
 
-void DockDemoLayout::handleContentSizeDirty() {
-	basic2d::SceneLayout2d::handleContentSizeDirty();
-
-	auto size = getContentSize();
-	if (_background) {
-		_background->setContentSize(size);
+	if (_failures == 0) {
+		log::source().warn("DockExample", "self-check: ", _checks, " checks, 0 failures");
+		refreshStatus(toString("self-check passed: ", _checks, " checks"));
+	} else {
+		log::source().error("DockExample", "self-check: ", _checks, " checks, ", _failures,
+				" failures");
+		refreshStatus(toString("self-check: ", _failures, " FAILURES - see the log"));
 	}
-
-	// The control row is a self-managed flex container, but nothing above it lays out its owner -
-	// SceneLayout2d has no LayoutSystem of its own - so the strip gets an explicit size here:
-	// full width at the top, and the dock takes whatever is left below.
-	constexpr float kBarHeight = 52.0f;
-	if (_controlBarRow) {
-		_controlBarRow->setAnchorPoint(Anchor::TopLeft);
-		_controlBarRow->setPosition(Vec2(16.0f, size.height - 16.0f));
-		_controlBarRow->setContentSize(Size2(sprt::max(0.0f, size.width - 32.0f), kBarHeight));
-	}
-
-	// A fixed column on the right for the accordion, and the dock takes the rest. Neither of them
-	// lays the other out - they are siblings sharing a registry, not a container and its content.
-	constexpr float kSideWidth = 240.0f;
-	const float bodyHeight = sprt::max(0.0f, size.height - kBarHeight);
-	const float dockWidth = sprt::max(0.0f, size.width - kSideWidth);
-
-	if (_dockRoot) {
-		_dockRoot->setContentSize(Size2(dockWidth, bodyHeight));
-	}
-
-	if (_accordion) {
-		// Inset from the window edge, so the close affordance at the end of a header is not flush
-		// against it.
-		constexpr float kSideInset = 8.0f;
-		_accordion->setPosition(Vec2(dockWidth, kSideInset));
-		_accordion->setContentSize(
-				Size2(sprt::max(0.0f, kSideWidth - kSideInset), sprt::max(0.0f, bodyHeight - kSideInset)));
-	}
-
-	refreshStatus();
 }
 
 } // namespace stappler::xenolith::examples

@@ -428,6 +428,28 @@ bool DockSystem::closeFrame(DockNodeHandle h) {
 	return true;
 }
 
+bool DockSystem::setFrameParams(DockNodeHandle h, const DockFrameParams &params) {
+	auto leaf = _tree.get(h);
+	if (!leaf || !leaf->isLeaf()) {
+		return false;
+	}
+	if (leaf->params == params) {
+		return true;
+	}
+
+	leaf->params = params;
+
+	if (auto frame = static_cast<DockFrame *>(leaf->node.get())) {
+		frame->setParams(params);
+		// the close affordance follows DockFrameFlags::AllowClose, so the strip has to be brought
+		// in line with the flags as well as with the side the frame has just been given
+		updateFrameTabs(*leaf);
+	}
+
+	invalidateLayout();
+	return true;
+}
+
 // --- persistence -----------------------------------------------------------
 
 Value DockSystem::save() const { return _tree.save(); }
