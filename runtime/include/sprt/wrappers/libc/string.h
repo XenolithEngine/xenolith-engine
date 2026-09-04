@@ -319,12 +319,22 @@ __SPRT_BEGIN_DECL
 
 #if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 
+// In a C++ APPLICATION build the block above has already pulled the constexpr
+// sprt::strnlen(const char *, size_t) into the global namespace with
+// `using namespace sprt::_cstring_dll`. Declaring the C one as well puts two functions
+// with the SAME signature in the same scope, and every unqualified strnlen() call
+// becomes ambiguous. strlen never had the problem: its C declaration lives in the block
+// above, which excludes C++ outright. The runtime's own build (__SPRT_BUILD) issues no
+// using-directive, so there ::strnlen must stay - runtime/libc_wrapper/c/
+// SPRuntimeCString.cpp calls it to implement the umbrella.
+#if !defined(__cplusplus) || defined(__SPRT_BUILD)
 SPRT_UMBRELLA_FUNC
 size_t strnlen(const char *str, size_t n) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strnlen(str, n);
 }
+#endif
 #endif
 
 #endif

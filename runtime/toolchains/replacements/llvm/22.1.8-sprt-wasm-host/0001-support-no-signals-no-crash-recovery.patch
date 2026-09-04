@@ -1,0 +1,178 @@
+diff --git a/llvm/lib/Support/CrashRecoveryContext.cpp b/llvm/lib/Support/CrashRecoveryContext.cpp
+index 1ba0c2383..4bdc632b8 100644
+--- a/llvm/lib/Support/CrashRecoveryContext.cpp
++++ b/llvm/lib/Support/CrashRecoveryContext.cpp
+@@ -13,8 +13,16 @@
+ #include "llvm/Support/Signals.h"
+ #include "llvm/Support/thread.h"
+ #include <cassert>
++#include <cstdlib>
++#if !defined(__wasm__)
++#include <csignal>
++#endif
+ #include <mutex>
++#if !defined(__wasm__)
++// sprt's wasm setjmp is a no-op and longjmp traps, so the recovery path below is
++// compiled out entirely rather than jumping into a trap.
+ #include <setjmp.h>
++#endif
+ 
+ using namespace llvm;
+ 
+@@ -31,7 +39,9 @@ struct CrashRecoveryContextImpl {
+   const CrashRecoveryContextImpl *Next;
+ 
+   CrashRecoveryContext *CRC;
++#if !defined(__wasm__)
+   ::jmp_buf JumpBuffer;
++#endif
+   volatile unsigned Failed : 1;
+   unsigned SwitchedThread : 1;
+   unsigned ValidJumpBuffer : 1;
+@@ -50,9 +60,7 @@ public:
+   /// Called when the separate crash-recovery thread was finished, to
+   /// indicate that we don't need to clear the thread-local CurrentContext.
+   void setSwitchedThread() {
+-#if defined(LLVM_ENABLE_THREADS) && LLVM_ENABLE_THREADS != 0
+     SwitchedThread = true;
+-#endif
+   }
+ 
+   // If the function ran by the CrashRecoveryContext crashes or fails, then
+@@ -72,9 +80,11 @@ public:
+ 
+     CRC->RetCode = RetCode;
+ 
++#if !defined(__wasm__)
+     // Jump back to the RunSafely we were called under.
+     if (ValidJumpBuffer)
+       longjmp(JumpBuffer, 1);
++#endif
+ 
+     // Otherwise let the caller decide of the outcome of the crash. Currently
+     // this occurs when using SEH on Windows with MSVC or clang-cl.
+@@ -329,7 +339,16 @@ static void uninstallExceptionOrSignalHandlers() {
+   }
+ }
+ 
+-#else // !_WIN32
++#elif defined(__wasm__)
++
++// WASI implementation.
++//
++// WASI traps are always fatal, and recovery is not possible. Do nothing.
++
++static void installExceptionOrSignalHandlers() {}
++static void uninstallExceptionOrSignalHandlers() {}
++
++#else // !_WIN32 && !__wasm__
+ 
+ // Generic POSIX implementation.
+ //
+@@ -417,10 +436,12 @@ bool CrashRecoveryContext::RunSafely(function_ref<void()> Fn) {
+     CrashRecoveryContextImpl *CRCI = new CrashRecoveryContextImpl(this);
+     Impl = CRCI;
+ 
++#if !defined(__wasm__)
+     CRCI->ValidJumpBuffer = true;
+     if (setjmp(CRCI->JumpBuffer) != 0) {
+       return false;
+     }
++#endif
+   }
+ 
+   Fn();
+@@ -467,7 +488,9 @@ bool CrashRecoveryContext::isCrash(int RetCode) {
+ bool CrashRecoveryContext::throwIfCrash(int RetCode) {
+   if (!isCrash(RetCode))
+     return false;
+-#if defined(_WIN32)
++#if defined(__wasm__)
++  ::abort();
++#elif defined(_WIN32)
+   ::RaiseException(RetCode, 0, 0, NULL);
+ #else
+   llvm::sys::unregisterHandlers();
+diff --git a/llvm/lib/Support/InitLLVM.cpp b/llvm/lib/Support/InitLLVM.cpp
+index b90f4e071..90c719693 100644
+--- a/llvm/lib/Support/InitLLVM.cpp
++++ b/llvm/lib/Support/InitLLVM.cpp
+@@ -83,6 +83,7 @@ InitLLVM::InitLLVM(int &Argc, const char **&Argv,
+   // Bring stdin/stdout/stderr into a known state.
+   sys::AddSignalHandler(CleanupStdHandles, nullptr);
+ 
++#if !defined(__wasm__)
+   if (InstallPipeSignalExitHandler)
+     // The pipe signal handler must be installed before any other handlers are
+     // registered. This is because the Unix \ref RegisterHandlers function does
+@@ -96,6 +97,7 @@ InitLLVM::InitLLVM(int &Argc, const char **&Argv,
+   sys::PrintStackTraceOnErrorSignal(Argv[0]);
+   install_out_of_memory_new_handler();
+   RaiseLimits();
++#endif
+ 
+ #ifdef __MVS__
+ 
+diff --git a/llvm/lib/Support/Signals.cpp b/llvm/lib/Support/Signals.cpp
+index f160a135f..5ead63eca 100644
+--- a/llvm/lib/Support/Signals.cpp
++++ b/llvm/lib/Support/Signals.cpp
+@@ -353,9 +353,35 @@ static bool printMarkupStackTrace(StringRef Argv0, void **StackTrace, int Depth,
+ }
+ 
+ // Include the platform-specific parts of this class.
+-#ifdef LLVM_ON_UNIX
++#if defined(__wasm__)
++// WASI has no POSIX signals. Stub every handler LLVM tools call at startup.
++void llvm::sys::AddSignalHandler(sys::SignalHandlerCallback FnPtr,
++                                 void *Cookie) {}
++void llvm::sys::RunInterruptHandlers() {}
++void sys::CleanupOnSignal(uintptr_t Context) {}
++bool llvm::sys::RemoveFileOnSignal(StringRef Filename, std::string *ErrMsg) {
++  return false;
++}
++void llvm::sys::DontRemoveFileOnSignal(StringRef Filename) {}
++void llvm::sys::DisableSystemDialogsOnCrash() {}
++void llvm::sys::PrintStackTraceOnErrorSignal(StringRef Argv0,
++                                             bool DisableCrashReporting) {
++  (void)Argv0;
++  (void)DisableCrashReporting;
++}
++void llvm::sys::PrintStackTrace(raw_ostream &OS, int Depth) {
++  (void)OS;
++  (void)Depth;
++}
++void llvm::sys::SetInterruptFunction(void (*IF)()) { (void)IF; }
++void llvm::sys::SetInfoSignalFunction(void (*Handler)()) { (void)Handler; }
++void llvm::sys::SetOneShotPipeSignalFunction(void (*Handler)()) {
++  (void)Handler;
++}
++void llvm::sys::DefaultOneShotPipeSignalHandler() {}
++void sys::unregisterHandlers() {}
++#elif defined(LLVM_ON_UNIX)
+ #include "Unix/Signals.inc"
+-#endif
+-#ifdef _WIN32
++#elif defined(_WIN32)
+ #include "Windows/Signals.inc"
+ #endif
+diff --git a/llvm/lib/Support/Unix/Watchdog.inc b/llvm/lib/Support/Unix/Watchdog.inc
+index b33e52d88..eacb0e9b6 100644
+--- a/llvm/lib/Support/Unix/Watchdog.inc
++++ b/llvm/lib/Support/Unix/Watchdog.inc
+@@ -19,13 +19,13 @@
+ namespace llvm {
+ namespace sys {
+ Watchdog::Watchdog(unsigned int seconds) {
+-#ifdef HAVE_UNISTD_H
++#if HAVE_UNISTD_H && !defined(__wasm__)
+   alarm(seconds);
+ #endif
+ }
+ 
+ Watchdog::~Watchdog() {
+-#ifdef HAVE_UNISTD_H
++#if HAVE_UNISTD_H && !defined(__wasm__)
+   alarm(0);
+ #endif
+ }

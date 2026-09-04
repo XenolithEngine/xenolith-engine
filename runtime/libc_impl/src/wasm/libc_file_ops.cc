@@ -51,9 +51,16 @@ __attribute__((import_module("sprt"), import_name("fd_read"))) int __sprt_host_f
 		void *buf, __SPRT_ID(size_t) len, double off);
 
 // Read-only "Bundled" resources the browser pulls (fetch). bundle_size returns the byte
-// size of `path` (or -1 if absent); bundle_read copies up to `cap` bytes into `buf` and
+// size of `path` (-1 if absent, __SPRT_BUNDLE_DIR if `path` names a bundled DIRECTORY);
+// bundle_read copies up to `cap` bytes into `buf` and
 // returns the byte count (or -1). The JS side preloads these before _start so both calls
 // are synchronous. This backs LocationCategory::Bundled; tmp/persistent use memfs/OPFS.
+// bundle_size answers this instead of a byte count when the path is a directory. The
+// bundle map is a flat path->bytes dict, so its directories exist only as key prefixes;
+// without this the guest cannot tell "no such path" from "a directory you may descend".
+// Older hosts never produce it, so they degrade to the previous file-only behaviour.
+static constexpr int __SPRT_BUNDLE_DIR = -2;
+
 __attribute__((import_module("sprt"), import_name("bundle_size"))) int __sprt_host_bundle_size(
 		const char *path, __SPRT_ID(size_t) pathLen);
 __attribute__((import_module("sprt"), import_name("bundle_read"))) int __sprt_host_bundle_read(
@@ -781,7 +788,9 @@ static bool __memfs_is_dir_path(const char *abs) {
 			return true;
 		}
 	}
-	return false;
+	// Nothing local: the path may still be a directory of the read-only bundle, whose
+	// entries are materialised lazily and so leave no inode behind until opened.
+	return __sprt_host_bundle_size(abs, len) == __SPRT_BUNDLE_DIR;
 }
 
 static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(mode_t) mode) {
@@ -821,6 +830,16 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 static __memfs_inode *__memfs_load_bundle(const char *abspath) {
 	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
 	int sz = __sprt_host_bundle_size(abspath, plen);
+	if (sz == __SPRT_BUNDLE_DIR) {
+		// A bundled directory: materialise it as an empty read-only dir inode so stat()
+		// and opendir() succeed. Its children stay lazy - each is loaded when opened -
+		// so the snapshot readdir() takes lists only what has been touched so far.
+		auto dir = __memfs_create(abspath, true, 0555);
+		if (dir) {
+			dir->readonly = true;
+		}
+		return dir;
+	}
 	if (sz < 0) {
 		return nullptr; // not a bundled resource
 	}

@@ -1,0 +1,45 @@
+diff --git a/llvm/lib/ExecutionEngine/Interpreter/ExternalFunctions.cpp b/llvm/lib/ExecutionEngine/Interpreter/ExternalFunctions.cpp
+index 9fe748981..7599b1f3b 100644
+--- a/llvm/lib/ExecutionEngine/Interpreter/ExternalFunctions.cpp
++++ b/llvm/lib/ExecutionEngine/Interpreter/ExternalFunctions.cpp
+@@ -34,7 +34,9 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include <cassert>
+ #include <cmath>
++#if !defined(__wasm__)
+ #include <csignal>
++#endif
+ #include <cstdint>
+ #include <cstdio>
+ #include <cstring>
+@@ -339,7 +341,11 @@ static GenericValue lle_X_exit(FunctionType *FT, ArrayRef<GenericValue> Args) {
+ static GenericValue lle_X_abort(FunctionType *FT, ArrayRef<GenericValue> Args) {
+   //FIXME: should we report or raise here?
+   //report_fatal_error("Interpreted program raised SIGABRT");
++#if defined(__wasm__)
++  abort();
++#else
+   raise (SIGABRT);
++#endif
+   return GenericValue();
+ }
+ 
+diff --git a/llvm/lib/Support/raw_socket_stream.cpp b/llvm/lib/Support/raw_socket_stream.cpp
+index f71631730..feb204956 100644
+--- a/llvm/lib/Support/raw_socket_stream.cpp
++++ b/llvm/lib/Support/raw_socket_stream.cpp
+@@ -41,6 +41,8 @@
+ 
+ using namespace llvm;
+ 
++#if defined(_WIN32) || !defined(__wasm__)
++
+ #ifdef _WIN32
+ WSABalancer::WSABalancer() {
+   WSADATA WsaData;
+@@ -356,3 +358,5 @@ ssize_t raw_socket_stream::read(char *Ptr, size_t Size,
+   }
+   return raw_fd_stream::read(Ptr, Size);
+ }
++
++#endif // defined(_WIN32) || !defined(__wasm__)
