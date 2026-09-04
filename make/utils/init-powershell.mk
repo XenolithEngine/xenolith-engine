@@ -42,6 +42,8 @@ rule_mkdir = powershell New-Item -ItemType Directory -Force -Path $(1) | Out-Nul
 
 WRITE_START = echo
 WRITE_END = > $$@
+APPEND_START = echo
+APPEND_END = >> $$@
 
 shell_override_file = \
 	$(call print_verbose,Powershell (override): $(shell Set-Content "$(strip $(1))" '$(strip $(2))') )

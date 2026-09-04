@@ -71,7 +71,7 @@
 // with the wasm engine + the timer handle. Threads/sockets/processes/files are
 // not wired yet (see wasm-dispatch-design).
 #if SPRT_WASM
-#include "platform/wasm/SPEvent-wasm.cc"
+#include "platform/wasm/SPEvent-wasm.cc" // mkdir parents before writing clang -o product
 #endif
 
 #if SPRT_NUTTX

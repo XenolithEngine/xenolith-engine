@@ -14,7 +14,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
-import { makeImports } from "./sprt-imports.mjs";
+import { makeImports, PROC_CTRL_BYTES, PROC_OUT_BYTES, writeProcessCompletion } from "./sprt-imports.mjs";
 
 const wasmPath = process.argv[2];
 if (!wasmPath) {
@@ -87,12 +87,49 @@ const spawn = (threadPtr, stackTop, stackSize, tlsBase) => {
 };
 
 let exitCode = 0;
+const processCtrl = new SharedArrayBuffer(PROC_CTRL_BYTES);
+const processOut = new SharedArrayBuffer(PROC_OUT_BYTES);
+let processWakePtr = 0;
+const onProcess = globalThis.__xlmakeOnProcess || (async (cmd) => {
+	return { code: 127, stdout: "xlmake: no process worker: " + cmd.slice(0, 80) + "\n" };
+});
+const postProcess = (msg) => {
+	if (msg.type !== "process-spawn") {
+		return;
+	}
+	processWakePtr = msg.wakePtr;
+	const finish = (r) => {
+		writeProcessCompletion(processCtrl, processOut, memory, processWakePtr, {
+			id: msg.id,
+			code: (r && r.code) | 0,
+			stdout: (r && r.stdout) || "",
+			bytes: r && r.bytes,
+		});
+	};
+	let r;
+	try {
+		r = onProcess(msg.cmd);
+	} catch (err) {
+		finish({ code: 127, stdout: String(err) });
+		return;
+	}
+	// Node runs the engine on this thread: Atomics.wait blocks the event loop, so a
+	// Promise completion would never run. Finish synchronously when we can.
+	if (r && typeof r.then === "function") {
+		r.then(finish, (err) => finish({ code: 127, stdout: String(err) }));
+	} else {
+		finish(r);
+	}
+};
 const imports = makeImports({
 	memory,
 	argv: [argv[0] || "libctest", ...argv.slice(1)],
 	bundle,
 	log: (stream, text) => (stream === "stderr" ? process.stderr : process.stdout).write(text),
 	spawn,
+	processCtrl,
+	processOut,
+	postProcess,
 	onExit: (code) => { exitCode = code; },
 });
 

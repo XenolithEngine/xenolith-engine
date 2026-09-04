@@ -64,7 +64,7 @@ BUILD_VULKAN_MOLTENVK_PATH := $(BUILD_BUNDLE_FRAMEWORKS)/libMoltenVK.dylib
 
 $(BUILD_MOLTENVK_ICD_PATH): $(BUILD_VULKAN_MOLTENVK_PATH)
 	@$(call rule_mkdir,$(dir $@))
-	@echo '{"file_format_version":"1.0.0","ICD":{"library_path":"$(BUILD_MOLTENVK_ICD_RELPATH)","api_version":"1.4.0","is_portability_driver":true}}' > $@
+	@$(WRITE_START) '{"file_format_version":"1.0.0","ICD":{"library_path":"$(BUILD_MOLTENVK_ICD_RELPATH)","api_version":"1.4.0","is_portability_driver":true}}' $(WRITE_END)
 
 $(BUILD_BUNDLE_FRAMEWORKS)/%.dylib: $(TARGET_LIB_DIR)/%.dylib
 	@$(call rule_mkdir,$(dir $@))

@@ -126,8 +126,10 @@ static bool Function_shell(const Callback<void(StringView)> &out, void *, Variab
 
 	FILE *fp = popen(cmd.data(), "r");
 	if (fp == NULL) {
-		engine.getCallContext()->err->reportError(toString("Failed to run command: '", cmd, '\''));
-		return false;
+		// GNU make: $(shell) of a missing command is empty, not a parse error.
+		// Wasm has no popen; git/uname/etc. in detect-build-number.mk must not
+		// abort the include of compile.mk (that left ifdef STAPPLER_TARGET open).
+		return true;
 	}
 
 	// Read the whole output verbatim. fgets/fread chunk boundaries are NOT line boundaries:

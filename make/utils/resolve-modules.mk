@@ -51,6 +51,8 @@ else
 include $(TOOLKIT_MODULE_LIST)
 endif # MAKE_4_1
 
+$(call print_verbose,(resolve-modules.mk) module files included list=$(words $(TOOLKIT_MODULE_LIST)))
+
 $(foreach module,$(LOCAL_MODULES_OPTIONAL),$(eval $(call include_module_optional,$(module))))
 
 define emplace_module =
@@ -79,13 +81,26 @@ TOOLKIT_MODULE_VARS := $(sort $(TOOLKIT_MODULE_VARS) $(1))
 $(foreach module,$($(1)_SHARED_CONSUME),$(eval $(call define_consumed,$(2),$(MODULE_$(module)))))
 endef # merge_module
 
+# Reverse / uniq. The recursive $(call …,$(wordlist 2,…)) form is one
+# VariableEngine::call frame per module; Safari wasm throws RangeError:
+# Maximum call stack size exceeded. xlmake.wasm (uname sysname WASM) uses
+# iterative $(xl_reverse)/$(xl_uniq). Native xlmake / GNU make keep the
+# recursive form — their C stacks are deep enough, and older xlmake has
+# no xl_reverse builtin yet.
+ifeq ($(XL_UNAME_SYSNAME),WASM)
+reverse_modules = $(xl_reverse $(1))
+unique_modules = $(xl_uniq $(1))
+else
 reverse_modules = $(if $(wordlist 2,2,$(1)),$(call reverse_modules,$(wordlist 2,$(words $(1)),$(1))) $(firstword $(1)),$(1))
 unique_modules = $(if $1,$(firstword $1) $(call unique_modules,$(filter-out $(firstword $1),$1)))
+endif
 
 
+$(call print_verbose,(resolve-modules.mk) follow_deps LOCAL_MODULES=$(LOCAL_MODULES))
 ifdef MAKE_4_1
 $(foreach module,$(LOCAL_MODULES),$(foreach MOD,$(MODULE_$(module)),\
 	$(eval $(call follow_deps_module,$(MOD)))))
+$(call print_verbose,(resolve-modules.mk) deps done n=$(words $(LOCAL_MODULES)) $(LOCAL_MODULES))
 
 ifdef BUILD_SHARED
 $(foreach module,$(LOCAL_MODULES),$(foreach MOD,$(MODULE_$(module)),\

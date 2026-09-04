@@ -249,11 +249,13 @@ else
 $(call print_verbose,(defaults.mk) Try to find target file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 
 -include $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+$(call print_verbose,(defaults.mk) after target.mk TARGET_SYSROOT=$(TARGET_SYSROOT))
 STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)
 
 ifndef TARGET_SYSROOT
 $(call print_verbose,(defaults.mk) Failed! Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 -include $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+$(call print_verbose,(defaults.mk) after runtime target.mk TARGET_SYSROOT=$(TARGET_SYSROOT))
 STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)
 endif
 
@@ -274,9 +276,13 @@ LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)
 # при каждом обращении к тому же дереву через другое написание пути.
 # Листовой каталог сборки может ещё не существовать, поэтому берём realpath самого
 # глубокого существующего родителя и дописываем недостающий остаток.
-sp_realpath = $(if $(realpath $(1)),$(realpath $(1)),$(addsuffix /$(notdir $(1)),$(call sp_realpath,$(patsubst %/,%,$(dir $(1))))))
+# Canonicalize an existing prefix; if nothing on disk matches, stop at the
+# filesystem root (`$(dir /foo)` is `/`) or `.` instead of recursing forever.
+sp_realpath = $(if $(realpath $(1)),$(realpath $(1)),$(if $(filter / ./ .,$(dir $(1)) $(1)),$(1),$(addsuffix /$(notdir $(1)),$(call sp_realpath,$(patsubst %/,%,$(dir $(1)))))))
 
+$(call print_verbose,(defaults.mk) sp_realpath LOCAL_OUTDIR=$(LOCAL_OUTDIR))
 BUILD_OUTDIR := $(abspath $(call sp_realpath,$(LOCAL_OUTDIR))/$(STAPPLER_TARGET)/$(BUILD_TYPE))
+$(call print_verbose,(defaults.mk) BUILD_OUTDIR=$(BUILD_OUTDIR))
 
 $(call print_verbose,(defaults.mk) STAPPLER_TARGET: $(STAPPLER_TARGET))
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))

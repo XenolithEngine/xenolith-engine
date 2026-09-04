@@ -31,7 +31,7 @@ THE SOFTWARE.
 #include "windows/libc_dir_ops.cc"
 #elif SPRT_WASM
 #include "wasm/libc.cc"
-#include "wasm/libc_file_ops.cc"
+#include "wasm/libc_file_ops.cc" // bundle_dir hydrates stub dirs on opendir
 #include "wasm/libc_opfs.cc"
 #include "wasm/libc_dir_ops.cc"
 #include "wasm/libc_path.cc"

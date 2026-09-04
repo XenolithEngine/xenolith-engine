@@ -43,6 +43,8 @@ rule_mkdir = $(GLOBAL_MKDIR) $(1)
 
 WRITE_START = echo
 WRITE_END = > $$@
+APPEND_START = echo
+APPEND_END = >> $$@
 
 shell_arith = $(shell echo $$($(1)) )
 

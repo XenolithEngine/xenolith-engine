@@ -24,7 +24,7 @@ THE SOFTWARE.
 // libc_file_ops.cc (same TU). Backends by mount (see SPRuntimeFilesystem-wasm): tmp and
 // cwd-relative -> in-memory tmpfs; LocationCategory::Bundled -> read-only browser fetch
 // (loaded on open via __memfs_load_bundle); persistent -> OPFS (later, with workers).
-// cwd is "/". __strcoll is a plain byte compare (C locale only).
+// cwd is virtual (s_cwd in libc_file_ops.cc). __strcoll is a plain byte compare (C locale only).
 
 #include "dirent.h"
 #include "fcntl.h"
@@ -201,6 +201,11 @@ __SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
 		ino = sprt::__memfs_load_bundle(abs);
 	}
 	if (!ino) {
+		if (sprt::__memfs_hydrate_bundle_dir(abs)) {
+			ino = sprt::__memfs_find(abs);
+		}
+	}
+	if (!ino) {
 		__sprt_errno = ENOENT;
 		return -1;
 	}
@@ -244,6 +249,11 @@ __SPRT_C_FUNC int access(const char *path, int) __SPRT_NOEXCEPT {
 	}
 	if (!ino) {
 		ino = sprt::__memfs_load_bundle(abs);
+	}
+	if (!ino) {
+		if (sprt::__memfs_hydrate_bundle_dir(abs)) {
+			ino = sprt::__memfs_find(abs);
+		}
 	}
 	if (!ino) {
 		__sprt_errno = ENOENT;
@@ -400,31 +410,65 @@ __SPRT_C_FUNC int ftruncate(int fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
 	return 0;
 }
 
+__SPRT_C_FUNC int chdir(const char *path) __SPRT_NOEXCEPT {
+	if (!path || !path[0]) {
+		__sprt_errno = ENOENT;
+		return -1;
+	}
+	char abs[4096];
+	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	if (!(abs[0] == '/' && abs[1] == '\0')) {
+		auto ino = sprt::__memfs_find(abs);
+		if (!ino) {
+			sprt::__memfs_hydrate_bundle_dir(abs);
+			ino = sprt::__memfs_find(abs);
+		}
+		if (!ino) {
+			__sprt_errno = ENOENT;
+			return -1;
+		}
+		if (!ino->isDir) {
+			__sprt_errno = ENOTDIR;
+			return -1;
+		}
+	}
+	__SPRT_ID(size_t) n = __builtin_strlen(abs);
+	if (n >= sizeof(sprt::s_cwd)) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	__builtin_memcpy(sprt::s_cwd, abs, n + 1);
+	return 0;
+}
+
 __SPRT_C_FUNC char *getcwd(char *buf, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT {
+	__SPRT_ID(size_t) n = __builtin_strlen(sprt::s_cwd);
 	if (!buf) {
 		// GNU extension (glibc/musl, and what the runtime's callers use): a null
 		// buffer means "allocate one for me", with size 0 meaning "as large as
 		// needed". The caller frees it.
-		if (size != 0 && size < 2) {
+		__SPRT_ID(size_t) need = n + 1;
+		if (size != 0 && size < need) {
 			__sprt_errno = ERANGE;
 			return nullptr;
 		}
-		auto p = (char *)__sprt_malloc(size ? size : 2);
+		auto p = (char *)__sprt_malloc(size ? size : need);
 		if (!p) {
 			__sprt_errno = ENOMEM;
 			return nullptr;
 		}
-		p[0] = '/';
-		p[1] = '\0';
+		__builtin_memcpy(p, sprt::s_cwd, need);
 		return p;
 	}
-	if (size >= 2) {
-		buf[0] = '/';
-		buf[1] = '\0';
-		return buf;
+	if (size < n + 1) {
+		__sprt_errno = ERANGE;
+		return nullptr;
 	}
-	__sprt_errno = ERANGE;
-	return nullptr;
+	__builtin_memcpy(buf, sprt::s_cwd, n + 1);
+	return buf;
 }
 
 // --- directory streams ---------------------------------------------------
@@ -434,6 +478,9 @@ __SPRT_C_FUNC char *getcwd(char *buf, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT {
 // opendir() passes -1.
 static __SPRT_ID(DIR) * __memfs_opendir_abs(const char *abs, int ownedFd) {
 	bool isRoot = (abs[0] == '/' && abs[1] == '\0');
+	// Always hydrate: a stub dir created as a child of a parent listing has no
+	// grandchildren until we ask the bundle (ftw of font/ missed font/backend/vk).
+	sprt::__memfs_hydrate_bundle_dir(abs);
 	if (!isRoot) {
 		auto d = sprt::__memfs_find(abs);
 		if (!d) {
@@ -899,7 +946,8 @@ __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
 		return nullptr;
 	}
 	if (!sprt::__memfs_find(abs) && !sprt::__memfs_is_dir_path(abs)
-			&& !sprt::__memfs_load_bundle(abs)) {
+			&& !sprt::__memfs_load_bundle(abs)
+			&& !sprt::__memfs_hydrate_bundle_dir(abs)) {
 		__sprt_errno = ENOENT;
 		return nullptr;
 	}

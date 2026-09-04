@@ -75,7 +75,12 @@ OSTYPE_GENERAL_LDFLAGS += -L$(TARGET_SYSROOT)/usr/lib
 # calls __wasm_init_tls before the thread entry (__xl_thread_entry). The exports below are
 # the surface the JS thread broker needs.
 OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
-OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
+# wasm-ld's default shadow stack is 64 KiB. xlmake's nested $(eval $(call
+# follow_deps_module)) during resolve-modules.mk blows that and traps as
+# "memory access out of bounds" in VariableEngine::resolve / Pool::alloc.
+OSTYPE_WASM_STACK_SIZE := 8388608 # 8 MiB
+OSTYPE_EXEC_LDFLAGS := -Wl,-z,stack-size=$(OSTYPE_WASM_STACK_SIZE) \
+	-Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
 	-Wl,--export-table

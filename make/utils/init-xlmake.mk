@@ -31,6 +31,8 @@ GLOBAL_ECHO ?= $(ECHO)
 
 WRITE_START = $(WRITE) $$@
 WRITE_END =
+APPEND_START = $(APPEND) $$@
+APPEND_END =
 
 rule_rm = $(REMOVE) $(1)
 rule_cp = $(CP) $(1) $(2)
@@ -73,6 +75,12 @@ else ifeq ($(UNAME),Windows)
 ANDROID_HOST := windows-$(ANDROID_DISTRIB_ARCH)
 
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-pc-windows-msvc
+
+else ifeq ($(UNAME),WASM)
+
+# xlmake itself is the compiler driver: clang.wasm runs in a host Web Worker.
+STAPPLER_HOST_ARCH ?= wasm32
+STAPPLER_HOST ?= wasm32-unknown-unknown
 
 else
 

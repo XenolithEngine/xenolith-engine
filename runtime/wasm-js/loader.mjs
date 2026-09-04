@@ -13,7 +13,17 @@
 //   opts.args (extra argv entries after argv0, e.g. a test-suite name)
 //   opts.canvas: an on-page <canvas> whose control is transferred to the engine worker as an
 //   OffscreenCanvas (the engine's WebGPU surface). The worker owns it for the app's lifetime.
-export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, canvas, density } = {}) {
+import { writeProcessCompletion, formatError } from "./sprt-imports.mjs";
+export { formatError };
+
+function completeProcess(shared, rec) {
+	if (!shared || !shared.processCtrl) {
+		return;
+	}
+	writeProcessCompletion(shared.processCtrl, shared.processOut, shared.memory, shared.wakePtr, rec);
+}
+
+export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, canvas, density, onProcess, onInit, onFilePut, sdkGzUrl, mkGzUrl, productBundle, memoryInitial, memoryMaximum, sdkSab } = {}) {
 	return new Promise((resolve, reject) => {
 		let shared = null; // { module, memory, bundle, tidBuf, gpuCtrl } published by the engine worker
 		// Capture the canvas backing size BEFORE transfer (afterwards width/height read back 0) so
@@ -25,9 +35,15 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 		// GPU broker worker exists (created on init-threads), then handed to it.
 		let offscreen = canvas ? canvas.transferControlToOffscreen() : null;
 
+		const fail = (err) => {
+			const text = formatError(err);
+			(onStderr || onStdout)?.(text + "\n");
+			reject(err instanceof Error ? err : new Error(text));
+		};
+
 		const wire = (w) => {
 			w.onmessage = (e) => handle(e.data);
-			w.onerror = (ev) => (onStderr || onStdout)?.("[worker error] " + (ev.message || ev.filename || ev) + "\n");
+			w.onerror = (ev) => (onStderr || onStdout)?.("[worker error] " + formatError(ev) + "\n");
 		};
 
 		const handle = (m) => {
@@ -52,8 +68,37 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 					g.postMessage({ memory: m.memory, canvas: offscreen, ctrl: m.gpuCtrl, scratchPtr: m.scratchPtr }, [offscreen]);
 					offscreen = null;
 				}
+				onInit?.(m);
 				break;
 			case "gpu-ready": onStdout?.("[gpu] ready (" + m.info + ")\n"); break;
+			case "process-spawn": {
+				shared.wakePtr = m.wakePtr;
+				const finish = (code, stdout) => completeProcess(shared, { id: m.id, code, stdout });
+				if (onProcess) {
+					Promise.resolve(onProcess(m.cmd, m)).then((r) => {
+						if (r == null || r === undefined) {
+							return;
+						}
+						// clang-worker posts {type:"done", exitCode, bytes} — that is not a
+						// process-completion record. Writing it as one used to mark a successful
+						// ld64 (exit 0, 35MiB macho) as recipe error 1.
+						if (r.type === "done" || ("exitCode" in r && !("code" in r))) {
+							return;
+						}
+						completeProcess(shared, {
+							id: m.id,
+							code: (r && r.code) | 0,
+							stdout: (r && r.stdout) || "",
+							bytes: r && r.bytes,
+						});
+					}).catch((err) => {
+						finish(127, String(err));
+					});
+				} else {
+					finish(127, "xlmake: no process worker (clang.wasm host not wired)\n");
+				}
+				break;
+			}
 			case "spawn": {
 				// Create the thread worker here (free event loop) and hand it the module,
 				// shared memory and the pre-allocated stack/TLS the requester set up.
@@ -66,16 +111,24 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 				});
 				break;
 			}
+			case "file-put": onFilePut?.(m.path, m.bytes); break;
 			case "stdout": onStdout?.(m.text); break;
 			case "stderr": (onStderr || onStdout)?.(m.text); break;
 			case "exit": onExit?.(m.code); resolve(m.code); break;
-			case "error": reject(new Error(m.message)); break;
+			case "error": fail(new Error(m.message || "worker error")); break;
 			}
 		};
 
 		const engine = new Worker(new URL("./worker.mjs", import.meta.url), { type: "module" });
 		wire(engine);
-		engine.onerror = (err) => reject(err);
-		engine.postMessage({ wasmUrl, bundleManifest: bundle, argv0, args, hasCanvas: !!offscreen, dispW, dispH, dispDensity });
+		engine.onerror = (err) => fail(err);
+		const absWasm = wasmUrl && (wasmUrl.startsWith("http:") || wasmUrl.startsWith("https:") || wasmUrl.startsWith("blob:") || wasmUrl.startsWith("file:"))
+			? wasmUrl
+			: new URL(wasmUrl || "app.wasm", (typeof location !== "undefined" && location.href) || import.meta.url).href;
+		engine.postMessage({
+			wasmUrl: absWasm, bundleManifest: bundle, argv0, args,
+			hasCanvas: !!offscreen, dispW, dispH, dispDensity,
+			sdkGzUrl, mkGzUrl, productBundle, memoryInitial, memoryMaximum, sdkSab,
+		});
 	});
 }

@@ -35,7 +35,7 @@
 #include "SPMakefileBlock.cc"
 #include "SPMakefileRule.cc"
 #include "SPMakefileStmt.cc"
-#include "SPMakefileVariable.cc"
+#include "SPMakefileVariable.cc" // xl_reverse / xl_uniq; getAbsolutePath keeps "/"
 #include "SPMakefileExecutor.cc"
 #include "SPMakefileBuiltins.cc"
 #include "SPMakefileProject.cc"

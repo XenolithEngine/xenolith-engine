@@ -59,6 +59,16 @@ __attribute__((import_module("sprt"), import_name("bundle_size"))) int __sprt_ho
 __attribute__((import_module("sprt"), import_name("bundle_read"))) int __sprt_host_bundle_read(
 		const char *path, __SPRT_ID(size_t) pathLen, void *buf, __SPRT_ID(size_t) cap);
 
+// Immediate children of a bundled directory as NUL-separated names. A directory
+// child ends with '/'. Returns the byte count written (or needed if > cap), or
+// -1 if `path` is not a prefix of any bundled file. Used by opendir/$(wildcard).
+__attribute__((import_module("sprt"), import_name("bundle_dir"))) int __sprt_host_bundle_dir(
+		const char *path, __SPRT_ID(size_t) pathLen, void *buf, __SPRT_ID(size_t) cap);
+
+// Push a memfs file to the JS host so clang.wasm workers can overlay it into /work.
+__attribute__((import_module("sprt"), import_name("file_put"))) void __sprt_host_file_put(
+		const char *path, __SPRT_ID(size_t) pathLen, const void *buf, __SPRT_ID(size_t) len);
+
 // clock_gettime is defined by wasm/time.cc in this same libc. The __sprt_time.h
 // prototype is namespaced when this TU is built without __SPRT_BUILD, so declare
 // the plain entry we call for memfs timestamps.
@@ -316,6 +326,10 @@ static int __file_close(__fd_slot *fp) {
 			if (__opfs_store(n->ino->path, n->ino->data, n->ino->size) == 0) {
 				n->ino->dirty = false;
 			}
+		}
+		if (n->ino && !n->ino->isDir && n->ino->data && !n->ino->readonly) {
+			__sprt_host_file_put(n->ino->path, __builtin_strlen(n->ino->path), n->ino->data,
+					n->ino->size);
 		}
 		// Free only the open description; the inode (content) persists in the registry.
 		__sprt_free(n);
@@ -625,14 +639,26 @@ int __file_munmap_anon(void *addr, size_t length) {
 
 static __memfs_inode *s_memfs = nullptr; // singly-linked list of files/dirs
 
+// Virtual cwd for getcwd/chdir. File ops resolve relative paths against this.
+static char s_cwd[4096] = "/";
+
 // Normalize `path` into an absolute, "/"-rooted form in `out`, collapsing "//", "." and
-// resolving "..". cwd is "/" (see getcwd), so a relative path is rooted at "/".
+// resolving "..". A relative path is rooted at `s_cwd` (getcwd/chdir).
 static bool __memfs_normpath(const char *path, char *out, __SPRT_ID(size_t) cap) {
 	__SPRT_ID(size_t) len = 0;
-	if (cap < 2) {
+	if (cap < 2 || !path) {
 		return false;
 	}
-	out[len++] = '/';
+	if (path[0] != '/') {
+		__SPRT_ID(size_t) cl = __builtin_strlen(s_cwd);
+		if (cl == 0 || cl >= cap) {
+			return false;
+		}
+		__builtin_memcpy(out, s_cwd, cl);
+		len = cl;
+	} else {
+		out[len++] = '/';
+	}
 	const char *p = path;
 	while (*p) {
 		while (*p == '/') {
@@ -781,7 +807,8 @@ static bool __memfs_is_dir_path(const char *abs) {
 			return true;
 		}
 	}
-	return false;
+	char probe = 0;
+	return __sprt_host_bundle_dir(abs, len, &probe, 1) >= 0;
 }
 
 static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(mode_t) mode) {
@@ -817,8 +844,36 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 	return n;
 }
 
+// Fill `ino` from the bundle if it is a lazy stub (readonly, no payload yet).
+static bool __memfs_fill_bundle(const char *abspath, __memfs_inode *ino) {
+	if (!ino || ino->data || ino->isDir) {
+		return true;
+	}
+	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+	int sz = __sprt_host_bundle_size(abspath, plen);
+	if (sz < 0) {
+		return false;
+	}
+	ino->readonly = true;
+	ino->size = (__SPRT_ID(size_t))sz;
+	if (sz > 0) {
+		if (!__memfs_reserve(ino, (__SPRT_ID(size_t))sz)) {
+			return false;
+		}
+		int rd = __sprt_host_bundle_read(abspath, plen, ino->data, (__SPRT_ID(size_t))sz);
+		ino->size = (rd > 0) ? (__SPRT_ID(size_t))rd : 0;
+	}
+	return true;
+}
+
 // Try to satisfy a missing path from the read-only Bundled overlay (browser fetch).
 static __memfs_inode *__memfs_load_bundle(const char *abspath) {
+	if (auto existing = __memfs_find(abspath)) {
+		if (existing->readonly) {
+			__memfs_fill_bundle(abspath, existing);
+		}
+		return existing;
+	}
 	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
 	int sz = __sprt_host_bundle_size(abspath, plen);
 	if (sz < 0) {
@@ -828,7 +883,8 @@ static __memfs_inode *__memfs_load_bundle(const char *abspath) {
 	if (!ino) {
 		return nullptr;
 	}
-	ino->readonly = true; // Bundled overlay is read-only (JS-served, immutable)
+	ino->readonly = true;
+	ino->size = (__SPRT_ID(size_t))sz;
 	if (sz > 0) {
 		if (!__memfs_reserve(ino, (__SPRT_ID(size_t))sz)) {
 			return nullptr;
@@ -837,6 +893,94 @@ static __memfs_inode *__memfs_load_bundle(const char *abspath) {
 		ino->size = (rd > 0) ? (__SPRT_ID(size_t))rd : 0;
 	}
 	return ino;
+}
+
+// Materialize a bundled directory (and its immediate children) into memfs so
+// opendir/readdir/stat/$(wildcard) see the overlay. File children are loaded;
+// subdirectory children get empty dir inodes and hydrate on the next opendir.
+static bool __memfs_hydrate_bundle_dir(const char *abspath) {
+	if (!abspath || !abspath[0]) {
+		return false;
+	}
+	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+	__SPRT_ID(size_t) cap = 16 * 1024;
+	auto buf = (char *)__sprt_malloc(cap);
+	if (!buf) {
+		return false;
+	}
+	int n = __sprt_host_bundle_dir(abspath, plen, buf, cap);
+	if (n > (int)cap) {
+		__sprt_free(buf);
+		cap = (__SPRT_ID(size_t))n;
+		buf = (char *)__sprt_malloc(cap);
+		if (!buf) {
+			return false;
+		}
+		n = __sprt_host_bundle_dir(abspath, plen, buf, cap);
+	}
+	if (n < 0) {
+		__sprt_free(buf);
+		return false;
+	}
+	auto dir = __memfs_find(abspath);
+	if (!dir) {
+		dir = __memfs_create(abspath, true, 0755);
+		if (dir) {
+			dir->readonly = true;
+		}
+	} else if (!dir->isDir) {
+		__sprt_free(buf);
+		return false;
+	}
+	int off = 0;
+	while (off < n) {
+		const char *name = buf + off;
+		__SPRT_ID(size_t) nl = __builtin_strlen(name);
+		off += (int)nl + 1;
+		if (nl == 0) {
+			continue;
+		}
+		bool isDir = name[nl - 1] == '/';
+		if (isDir) {
+			--nl;
+		}
+		char child[512];
+		bool root = (abspath[0] == '/' && abspath[1] == '\0');
+		__SPRT_ID(size_t) need = (root ? 1 : plen + 1) + nl + 1;
+		if (need > sizeof(child)) {
+			continue;
+		}
+		if (root) {
+			child[0] = '/';
+			__builtin_memcpy(child + 1, name, nl);
+			child[1 + nl] = 0;
+		} else {
+			__builtin_memcpy(child, abspath, plen);
+			child[plen] = '/';
+			__builtin_memcpy(child + plen + 1, name, nl);
+			child[plen + 1 + nl] = 0;
+		}
+		if (__memfs_find(child)) {
+			continue;
+		}
+		if (isDir) {
+			auto d = __memfs_create(child, true, 0755);
+			if (d) {
+				d->readonly = true;
+			}
+		} else {
+			// Stub only — payload is filled on open. Wildcard of the engine
+			// tree must not copy every source into wasm memfs.
+			auto f = __memfs_create(child, false, 0444);
+			if (f) {
+				f->readonly = true;
+				int sz = __sprt_host_bundle_size(child, __builtin_strlen(child));
+				f->size = sz > 0 ? (__SPRT_ID(size_t))sz : 0;
+			}
+		}
+	}
+	__sprt_free(buf);
+	return true;
 }
 
 // Remove a file (dir=false) or empty directory (dir=true) from the registry.
@@ -914,6 +1058,13 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 	} else {
 		if (!ino) {
 			ino = __memfs_load_bundle(abs); // read-only Bundled (browser fetch)
+		} else if (ino->readonly && !ino->data && !ino->isDir) {
+			__memfs_fill_bundle(abs, ino);
+		}
+		if (!ino) {
+			if (__memfs_hydrate_bundle_dir(abs)) {
+				ino = __memfs_find(abs);
+			}
 		}
 		if (!ino) {
 			if (!(flags & __SPRT_O_CREAT)) {
@@ -925,6 +1076,9 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 				return -1;
 			}
 		} else {
+			if (ino->isDir) {
+				__memfs_hydrate_bundle_dir(abs);
+			}
 			if ((flags & __SPRT_O_CREAT) && (flags & __SPRT_O_EXCL)) {
 				__sprt_errno = EEXIST;
 				return -1;

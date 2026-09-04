@@ -86,6 +86,8 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("xl_mkdir", 1, 1, Function_xl_mkdir),
 	makeFn("xl_make_path", 1, 1, Function_xl_make_path),
 	makeFn("xl_make_plain", 1, 1, Function_xl_make_plain),
+	makeFn("xl_reverse", 1, 1, Function_xl_reverse),
+	makeFn("xl_uniq", 1, 1, Function_xl_uniq),
 };
 
 StringView getOriginName(Origin o) {
@@ -685,23 +687,36 @@ StringView VariableEngine::getAbsolutePath(StringView str) const {
 	mem_std::Interface::StringType posixStorage;
 	str = filesystem::toPosixPath(str, posixStorage);
 
+	auto keepRoot = [](StringView ret) -> StringView {
+		// GNU make keeps "/" as "/". StringView::merge trims "/" to empty, and
+		// reconstructPath(".") drops the dot, so joining onto the filesystem root
+		// would otherwise yield an empty path — $(abspath .) / $(realpath .) fail
+		// and defaults.mk's recursive sp_realpath blows the wasm stack.
+		return ret.empty() ? StringView("/") : ret;
+	};
 	if (filepath::isAbsolute(str)) {
 		auto ret = StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
 		ret.backwardSkipChars<StringView::Chars<'/'>>();
-		return ret;
-	} else {
-		if (!_rootPath.empty()) {
-			return StringView(filepath::reconstructPath<Interface>(
-									  filepath::merge<Interface>(_rootPath, str)))
-					.pdup(_pool);
-		} else {
-			auto path = filesystem::findPath<Interface>(FileInfo{str}, filesystem::Access::Exists);
-			if (!path.empty()) {
-				return StringView(path).pdup(_pool);
-			}
-		}
+		return keepRoot(ret);
 	}
-	return StringView();
+	StringView base = _rootPath;
+	if (base.empty()) {
+		auto path = filesystem::findPath<Interface>(FileInfo{str}, filesystem::Access::Exists);
+		if (!path.empty()) {
+			return StringView(path).pdup(_pool);
+		}
+		return StringView();
+	}
+	if (str == "." || str == "./" || str.empty()) {
+		auto ret = base;
+		ret.backwardSkipChars<StringView::Chars<'/'>>();
+		return keepRoot(ret);
+	}
+	auto rec = StringView(filepath::reconstructPath<Interface>(
+								  filepath::merge<Interface>(base, str)))
+					   .pdup(_pool);
+	rec.backwardSkipChars<StringView::Chars<'/'>>();
+	return keepRoot(rec);
 }
 
 bool VariableEngine::call(const Callback<void(StringView)> &out, StringView fn, StmtType type,
