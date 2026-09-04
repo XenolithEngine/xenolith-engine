@@ -437,6 +437,9 @@ static __SPRT_ID(DIR) * __memfs_opendir_abs(const char *abs, int ownedFd) {
 	if (!isRoot) {
 		auto d = sprt::__memfs_find(abs);
 		if (!d) {
+			d = sprt::__memfs_load_bundle(abs); // read-only Bundled directory
+		}
+		if (!d) {
 			__sprt_errno = ENOENT;
 			return nullptr;
 		}
