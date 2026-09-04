@@ -65,6 +65,9 @@ THE SOFTWARE.
 #define __SPRT_PATH_MAX 4096
 #define __SPRT_NGROUPS_MAX 32
 #define __SPRT_ARG_MAX 131072
+// POSIX floor for ARG_MAX: the value every conforming system must be at least able to
+// accept. Portable code uses it as a lower bound when the runtime value is unknown.
+#define __SPRT_POSIX_ARG_MAX 4096
 #define __SPRT_IOV_MAX 1024
 #define __SPRT_SYMLOOP_MAX 40
 #define __SPRT_WORD_BIT 32

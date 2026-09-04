@@ -534,6 +534,16 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch)
+	# wasm host: LLVM itself cross-compiled to wasm32-unknown-unknown, running on the
+	# sprt runtime (the in-browser clang). Every hunk is guarded by __wasm__, so these
+	# are inert for the other hosts built from this same tree.
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0001-support-no-signals-no-crash-recovery.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0002-support-no-process-control.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0003-support-filesystem-gaps.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0004-support-no-sockets.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0005-support-memory-and-exit-codes.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0006-abi-visibility-on-wasm.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0007-driver-and-lockfile-no-pid.patch)
 
 # https://download.gnome.org/sources/libxml2  # revised: 18 aug 2026
 # Supply chain: GNOME publishes a .sha256sum next to the tarball but no signature;
