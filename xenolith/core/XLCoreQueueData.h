@@ -28,9 +28,15 @@
 #include "XLCoreResource.h"
 #include "XLCoreFrameDamage.h"
 
+#include <sprt/runtime/window/gapi.h>
+
 #include <sprt/cxx/typeindex>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
+
+// Also declared by XLCoreInstance.h; a using-declaration may legally appear more than once at
+// namespace scope, and QueueData needs the name without pulling the whole Instance header in.
+using sprt::window::gapi::InstanceApi;
 
 class Instance;
 class Queue;
@@ -458,6 +464,23 @@ struct SP_PUBLIC QueueData : NamedMem {
 	FrameRenderPassState defaultSyncPassState = FrameRenderPassState::Submitted;
 	PassRecordingMode recordingMode = PassRecordingMode::Default;
 	QueueDamageFlags damage = QueueDamageFlags::None;
+
+	// Which backend this graph was DESCRIBED for. A queue's passes name pipelines, formats and
+	// attachments that only one gAPI can compile, so "which api" is a property of the queue itself
+	// and not just of the device it happened to be compiled on. Set by whoever builds the graph
+	// (the basic2d pass makers do it for their own queues); None means nobody said.
+	//
+	// A remote client is the reason this became explicit: it adopts a queue the SERVER built and
+	// cannot look at a device to find out what it is.
+	sprt::window::gapi::InstanceApi api = sprt::window::gapi::InstanceApi::None;
+
+	// Renderer-defined shape tag, opaque to core. basic2d writes its Scene2d::QueueType here so a
+	// remote scene can ask for "the flat one" without knowing the server's queue names; another
+	// renderer may use it for whatever distinction it needs. 0 == unset.
+	//
+	// It is not an enum because core has no business enumerating a renderer's queue shapes, and a
+	// string would only move the name-matching problem rather than remove it.
+	uint32_t typeTag = 0;
 
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedInput;
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedOutput;

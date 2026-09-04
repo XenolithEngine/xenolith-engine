@@ -244,7 +244,9 @@ void ClientAppThread::pumpConnection() {
 		return dispatchMessage(h, payload);
 	});
 
-	bool disconnect = false;
+	// A dispatcher can decide the session is over (an incompatible peer, say); it must not tear the
+	// connection down from inside the poll that is iterating it.
+	bool disconnect = _disconnectRequested;
 
 	// Request watchdog (same cadence as keepalive): if the server left one of our requests unanswered
 	// past that request's own reply deadline, the waiter was just failed with a local protocol error --
@@ -352,9 +354,18 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::GlobalCode::SharedObjectsAnnounce:
 			handleAnnounce(data::read<Interface>(payload));
 			return true;
+		case remote::GlobalCode::ServerInfo: handleServerInfo(h, payload); return true;
 		default:
 			log::source().warn("ClientAppThread", "unhandled global message (code ",
 					uint32_t(h.code), ")");
+			// A request we do not understand must be ANSWERED, not just dropped: the peer is
+			// holding a waiter with a deadline, and silence turns "I don't know that message" into
+			// "the client is dead" two seconds later. This is what lets a newer server probe an
+			// older client (ServerInfo does exactly that) instead of killing the session.
+			if (!remote::isReplyOrError(h) && _connection) {
+				_connection->sendError(remote::Domain::Global,
+						toInt(remote::GlobalError::NotImplemented), h.serial);
+			}
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
@@ -430,6 +441,10 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		default:
 			log::source().warn("ClientAppThread", "unhandled window message (code ",
 					uint32_t(h.code), ")");
+			if (!remote::isReplyOrError(h) && _connection) {
+				_connection->sendError(remote::Domain::Window,
+						toInt(remote::WindowError::NotImplemented), h.serial);
+			}
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
@@ -489,6 +504,76 @@ Rc<Scene> ClientAppThread::makeScene(NotNull<RemoteWindow> w, const core::FrameC
 		return nullptr;
 	}
 	return scene;
+}
+
+remote::PeerInfo ClientAppThread::makeClientInfo() const {
+	auto ret = remote::PeerInfo::makeLocal();
+	// A client renders nothing itself: it leaves `api` at None and claims no window subsystem,
+	// because the window it draws for belongs to the server. Saying "xcb" here because the client
+	// process happens to run under X would be answering a question nobody asked.
+	if (_connection) {
+		if (auto t = _connection->getTransport()) {
+			ret.transportCaps = t->getCaps();
+		}
+	}
+	ret.transportScheme =
+			remote::getSchemeName(_clientContext->getServerAddress().scheme).str<Interface>();
+
+#if DEBUG
+	// XL_REMOTE_FAKE_ABI=<hex> -- report a different ABI tag than this build actually has.
+	//
+	// A test hook, and it exists because the alternative is worse: the rejection path is the one
+	// thing in this exchange that must work and can never be reached by running two binaries from
+	// the same tree. Without it "an incompatible client is refused" is a claim nobody has run.
+	// Debug-only, and it can only make this client be REFUSED -- there is no value it can carry
+	// that gets a client accepted which would not have been.
+	if (auto env = ::getenv("XL_REMOTE_FAKE_ABI")) {
+		auto str = StringView(env);
+		auto forced = uint64_t(str.readInteger(16).get(0));
+		log::source().warn("ClientAppThread", "XL_REMOTE_FAKE_ABI: reporting abi ", forced,
+				" instead of ", ret.abi);
+		ret.abi = forced;
+	}
+#endif
+
+	return ret;
+}
+
+void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView payload) {
+	auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+	auto local = makeClientInfo();
+
+	if (!local.isAbiCompatible(info)) {
+		// Until M6 the two sides memcpy InputEventData/WindowLayer at each other, so this is not a
+		// version disagreement to warn about and carry on from -- it is the difference between
+		// rendering and corrupting memory. Refuse in the reply so the server learns why, and end
+		// the session rather than waiting to be dropped.
+		StringStream serverDesc;
+		StringStream localDesc;
+		info.description([&](StringView str) { serverDesc << str; });
+		local.description([&](StringView str) { localDesc << str; });
+		log::source().error("ClientAppThread",
+				"incompatible server build; refusing the session\n  server: ", serverDesc.str(),
+				"\n  client: ", localDesc.str());
+		if (_connection) {
+			_connection->sendError(remote::Domain::Global,
+					toInt(remote::GlobalError::IncompatiblePeer), h.serial);
+		}
+		_disconnectRequested = true;
+		return;
+	}
+
+	_serverInfo = sp::move(info);
+	_hasServerInfo = true;
+
+	StringStream desc;
+	_serverInfo.description([&](StringView str) { desc << str; });
+	log::source().info("ClientAppThread", "server: ", desc.str());
+
+	if (_connection) {
+		_connection->sendCborReply(h.serial, remote::Domain::Global,
+				toInt(remote::GlobalCode::ServerInfo), remote::serializePeerInfo(local));
+	}
 }
 
 void ClientAppThread::handleAnnounce(const Value &data) {

@@ -50,6 +50,7 @@ static const TestEntry s_testList[] = {
 	{"framing", &stappler::xenolith::remote::performFramingTests},
 	{"serialize", &stappler::xenolith::remote::performSerializeTests},
 	{"transport", &stappler::xenolith::remote::performTransportTests},
+	{"peerinfo", &stappler::xenolith::remote::performPeerInfoTests},
 };
 
 int main(int argc, const char *argv[]) {

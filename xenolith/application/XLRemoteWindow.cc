@@ -47,10 +47,16 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 	_appSwapchainConfig = remote::deserializeSwapchainConfig(val.getValue(5));
 
 	for (auto &qIt : val.getValue(6).asArray()) {
-		if (qIt.isArray() && qIt.size() == 2) {
+		// [id, name] is the version-1 shape; [id, name, api, typeTag, damage] is what a server that
+		// describes its queues sends (M3.3). Accept both -- a shorter entry simply leaves the
+		// descriptive fields at their "nobody said" defaults, which is what selection tests for.
+		if (qIt.isArray() && qIt.size() >= 2) {
 			_queues.emplace_back(RemoteQueueInfo{
 				static_cast<uint64_t>(qIt.getInteger(0)),
 				qIt.getString(1),
+				core::InstanceApi(qIt.getInteger(2)),
+				static_cast<uint32_t>(qIt.getInteger(3)),
+				core::QueueDamageFlags(qIt.getInteger(4)),
 			});
 		}
 	}

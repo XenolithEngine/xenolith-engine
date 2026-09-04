@@ -85,6 +85,12 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 				auto &v = queues.emplace();
 				v.addInteger(qIt);
 				v.addString(q->queue->getName());
+				// What the queue IS, so the client can select one it can actually drive instead of
+				// recognising a name both sides agreed on out of band (M3.3). See
+				// Scene2d::selectServerQueue.
+				v.addInteger(toInt(q->queue->getApi()));
+				v.addInteger(q->queue->getTypeTag());
+				v.addInteger(toInt(q->queue->getDamageFlags()));
 			}
 		}
 
@@ -259,9 +265,19 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 		}
 		atts.emplace_back(attData);
 	}
-	if (atts.empty() || !input || !input->deserialize(bytes, &remoteWaitDependencyIds)) {
+	// Say WHICH step failed and for which attachment: "failed to reconstruct" covers three
+	// unrelated causes (a key this queue does not have, an attachment with no input type, a payload
+	// the input rejects) and they are fixed in three different places.
+	if (atts.empty() || !input) {
+		StringStream keys;
+		for (auto key : attachmentKeys) { keys << " '" << key << "'"; }
 		log::source().warn("RemoteRenderClient", "FrameInput ", frameId,
-				" failed to reconstruct input");
+				": no attachment of queue '", queue->getName(), "' accepts input for", keys.str());
+		return;
+	}
+	if (!input->deserialize(bytes, &remoteWaitDependencyIds)) {
+		log::source().warn("RemoteRenderClient", "FrameInput ", frameId, ": attachment '",
+				atts.front()->key, "' rejected its ", bytes.size(), "-byte payload");
 		return;
 	}
 

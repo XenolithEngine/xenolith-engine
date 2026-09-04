@@ -27,6 +27,7 @@
 
 #include "XLContextInfo.h"
 #include "XLEvent.h"
+#include "XLRemotePeerInfo.h"
 #include "XLRemoteProtocol.h"
 #include "XLResourceCache.h"
 #include "XLScene.h"
@@ -163,6 +164,19 @@ public:
 	// Local GPU loop, server-only; nullptr on a client (no local rendering). Used by the graphics
 	// path (Director / ResourceCache / 2D renderer) that still reaches the loop directly.
 	virtual core::Loop *getGlLoop() const { return nullptr; }
+
+	// Who owns the window this thread draws into: the OS, the window system and the gAPI (M3.5).
+	//
+	// Deliberately answered by BOTH kinds of thread. Locally the answer is this process itself,
+	// which is the truth and needs no special case; on a client it is the SERVER, because the
+	// scene runs here but the window is over there. That is what lets scene code ask "which
+	// platform am I drawing for" once, instead of a `#if` that is silently wrong the moment the
+	// scene is remote.
+	//
+	// Null only while the answer is not known yet (a client before the ServerInfo exchange, a
+	// server before its gAPI loop exists). A caller that gets null should keep its previous
+	// behaviour rather than assume a platform.
+	virtual const remote::PeerInfo *getServerInfo() const { return nullptr; }
 
 	sprt::dispatch::Looper *getLooper() const { return _appLooper; }
 

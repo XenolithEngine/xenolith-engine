@@ -68,6 +68,11 @@ public:
 	// inferring it from a screenshot.
 	bool hasRemoteClient() const;
 
+	// This process's own identity: OS, window subsystem, gAPI, features (M3.5). On a server the
+	// answer to "who owns the window" is itself, so local scene code asks the same question a
+	// remote scene does and gets the same shape of answer.
+	virtual const remote::PeerInfo *getServerInfo() const override { return &_localInfo; }
+
 	// The server-side font endpoint (remote::Domain::Font). Persists across client reconnects; used by
 	// RemoteRenderClient to reconcile a frame's font dependency ids. Null if xenolith_font is absent.
 	RemoteFontServer *getFontServer() const { return _fontServer.get(); }
@@ -144,6 +149,16 @@ protected:
 	void pumpListener();
 	void handleRemoteConnection(Rc<remote::ServerConnection> &&);
 
+	// Recompute _localInfo. Cheap; called from the few points where an answer can change (a window
+	// appears and names the window subsystem, the listener opens and names the transport, the font
+	// extension loads). Deliberately not lazy-on-read: the read is on a const getter used from
+	// scene code, and a mutable cache there would buy nothing at this rate.
+	void updateServerInfo();
+
+	// The peer answered our ServerInfo request (or refused it). On a compatible peer this is where
+	// the session actually begins -- the announce happens here and not before.
+	void handleClientInfo(const remote::MessageHeader &, BytesView payload);
+
 	// Swap every shared window's render client: `client` (the connected remote client) takes over on
 	// connect; pass nullptr to revert each window to its own local Director on disconnect.
 	void takeoverSharedWindows(core::RenderClientChannel *client);
@@ -178,6 +193,9 @@ protected:
 
 	Context *_context = nullptr;
 
+	// Who we are, as told to a connecting client and as answered to local scene code.
+	remote::PeerInfo _localInfo;
+
 	Set<AppWindow *> _windows;
 	HashMap<String, Rc<Director>> _preservedDirectors;
 
@@ -192,6 +210,10 @@ protected:
 	// and a transport where it does not was serviced only by the 1s update tick.
 	Rc<sprt::dispatch::PollHandle> _clientPoll;
 	Rc<RemoteRenderClient> _remoteClient;
+
+	// Set by a dispatcher that decided the session is over; acted on in pumpListener, which is the
+	// only place allowed to drop the connection (a dispatcher runs inside its poll).
+	bool _resetClientRequested = false;
 
 	// Server font endpoint (Domain::Font). Created once in loadExtensions, persists across reconnects
 	// (only its per-connection dependency registry is reset on disconnect).

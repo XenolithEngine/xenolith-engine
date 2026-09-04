@@ -60,8 +60,10 @@ protected:
 
 	void requestRemoteScreenshot();
 
-	virtual StringView selectServerQueue(NotNull<AppThread> app,
-			NotNull<core::RenderServerChannel> window) override;
+	// Очередь сервера НЕ выбирается здесь: раньше сцена искала её по имени "RemoteClientQueue",
+	// то есть согласование держалось на строке, о которой обе стороны договорились заранее.
+	// Теперь работает реализация Scene2d по умолчанию — она сопоставляет gAPI сервера и тип
+	// очереди (M3.4). Отсутствие этого переопределения и есть проверка.
 };
 
 } // namespace stappler::xenolith::client

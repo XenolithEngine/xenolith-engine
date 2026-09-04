@@ -88,6 +88,14 @@ public:
 
 	virtual const ContextInfo *getContextInfo() const override;
 
+	// The SERVER's identity, not this process's: the scene runs here, the window and the GPU are
+	// over there (M3.5). Null until the ServerInfo exchange completes, and against a version-1
+	// server that has no such message it stays null for the whole session -- so a caller must have
+	// a sensible answer for "not known".
+	virtual const remote::PeerInfo *getServerInfo() const override {
+		return _hasServerInfo ? &_serverInfo : nullptr;
+	}
+
 	// `timeoutUs` is this request's reply deadline (relative us; 0 == none) -- see waitForReply.
 	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
@@ -129,12 +137,28 @@ protected:
 
 	void handleAnnounce(const Value &);
 
+	// What this client tells the server about itself. Answers the ServerInfo request.
+	remote::PeerInfo makeClientInfo() const;
+
+	// Validate the server's PeerInfo and answer with ours -- or refuse with IncompatiblePeer and
+	// end the session. Runs before anything has been announced.
+	void handleServerInfo(const remote::MessageHeader &, BytesView payload);
+
 	ClientContext *_clientContext = nullptr;
 
 	Rc<sprt::dispatch::PollHandle> _listenPoll;
 	Rc<remote::ClientConnection> _connection;
 
 	Rc<remote::ObjectFactory> _sharedObjects;
+
+	// The server's identity (GlobalCode::ServerInfo). Kept for the whole session; a reconnect
+	// builds a new thread.
+	remote::PeerInfo _serverInfo;
+	bool _hasServerInfo = false;
+
+	// Set by a dispatcher that has decided the session is over; acted on in pumpConnection, which
+	// is the only place allowed to drop the connection (a dispatcher runs inside its poll).
+	bool _disconnectRequested = false;
 
 	// Keepalive (monotonic us): the server pings us periodically; if no ping arrives within the
 	// timeout the server is presumed gone and the client disconnects. Reset on connect and each ping.

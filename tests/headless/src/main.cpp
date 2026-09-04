@@ -506,7 +506,7 @@ protected:
 		return err;
 	}
 
-	virtual void buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) override {
+	virtual void describeQueue(QueueInfo &info) override {
 		// XL_FLAT_QUEUE=1 - the lightweight render queue: no shadows, particles, depth buffer or
 		// postprocessing. Same name and same semantics as tests/window, because a backend-parity
 		// comparison is only meaningful when both sides build the same frame graph - and the
@@ -517,7 +517,9 @@ protected:
 				log::source().info("HeadlessScene", "Using flat (lightweight) 2d render queue");
 			}
 		}
+	}
 
+	virtual void buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) override {
 		builder.addImage(CheckerTextureName,
 				core::ImageInfo(Extent2(CheckerExtent, CheckerExtent),
 						core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled,

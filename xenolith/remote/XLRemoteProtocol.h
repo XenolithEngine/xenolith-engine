@@ -66,6 +66,20 @@ enum class GlobalCode {
 	Ping = 2,
 	Pong = 3,
 	SharedObjectsAnnounce = 4,
+
+	// Who each side is: CBOR PeerInfo (XLRemotePeerInfo.h). A REQUEST the server sends immediately
+	// after the handshake and BEFORE it announces anything; the client answers with its own PeerInfo
+	// in the reply, or refuses with GlobalError::IncompatiblePeer. Nothing is shared until that
+	// exchange completes -- the point of it is to stop a build mismatch before the first raw struct
+	// dump, not to report one afterwards.
+	//
+	// One request/reply rather than two independent notifications: both directions are checked, and
+	// the server has an answer before it announces rather than a message it hopes arrived.
+	//
+	// A version-1 peer that predates this code answers with a NotImplemented error, and the session
+	// continues exactly as it did before -- which is what makes this an extension of version 1 and
+	// not a new version.
+	ServerInfo = 5,
 };
 
 enum class GlobalError : uint8_t {
@@ -74,6 +88,8 @@ enum class GlobalError : uint8_t {
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
 	Busy = 5, // the server's client slot is taken; it accepts no second connection right now
+	IncompatiblePeer = 6, // the peer's ABI tag differs: raw struct dumps between these two builds
+	// would be memory corruption, not a protocol error (see PeerInfo::abi)
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
