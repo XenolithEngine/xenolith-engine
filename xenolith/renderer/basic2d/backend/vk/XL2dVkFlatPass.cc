@@ -48,6 +48,10 @@ bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
 	builder.setDamageFlags(info.damage);
+	// What this graph IS, recorded on the graph itself: a remote client adopts a queue built here
+	// and has no device to ask (M3.3).
+	builder.setApi(InstanceApi::Vulkan);
+	builder.setTypeTag(toInt(QueueType::Flat));
 
 	// A single graphics pass - no compute pass for particles.
 	builder.addPass("MaterialSwapchainPass", PassType::Graphics, RenderOrderingHighest,

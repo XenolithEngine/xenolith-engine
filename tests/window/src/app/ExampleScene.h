@@ -61,6 +61,7 @@ protected:
 
 	virtual void handlePresented(Director *) override;
 
+	virtual void describeQueue(QueueInfo &) override;
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &) override;
 
 	// Expose the test registry over the inspector socket: `layouts` lists it, `layout` switches to

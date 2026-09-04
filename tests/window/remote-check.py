@@ -17,7 +17,15 @@ and then asserts the things a screenshot cannot:
   * frames actually flow: the server's window keeps presenting while the client renders it;
   * a client started with the WRONG token is refused - the bearer key is load-bearing, not decorative.
 
-    tests/window/remote-check.py [--transport quic|unix] [path-to-testapp] [path-to-clientapp]
+    tests/window/remote-check.py [--transport quic|unix] [--gapi vulkan|soft|gles]
+                                [path-to-testapp] [path-to-clientapp]
+
+`--gapi` runs the server on another backend (the backend has to be linked in:
+`SOFT=1 xenolith-cli build tests/window` for `--gapi soft`). The client's scene does not change and is not
+recompiled: it asks for a queue by what it needs, and the server's queues say what they are (gAPI
+and shape), so the same client renders through a Vulkan server's shadow queue or a Software server's
+flat one. Before that, the client recognised one hardcoded queue NAME and a Software server could
+not be shared at all.
 
 `--transport unix` runs the identical scenario over an AF_UNIX socket instead of QUIC. That is the
 point of the transport abstraction and the only way to show it holds: the protocol above the seam
@@ -101,7 +109,7 @@ def check(name, ok, detail=""):
         print(f"  FAIL {name} {detail}")
 
 
-def start_server(binary, addr, share, token):
+def start_server(binary, addr, share, token, gapi=None):
     env = dict(os.environ)
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + addr
     env["XL_REMOTE_SHARE"] = share
@@ -116,7 +124,10 @@ def start_server(binary, addr, share, token):
         pass
     # cwd matters: bundled resources are looked up relative to it, and a server started elsewhere
     # renders with missing textures (see "Bundled resources still have to be found" in gui-debug).
-    proc = subprocess.Popen([binary, "--headless", "--width", "800", "--height", "600"],
+    cmd = [binary, "--headless", "--width", "800", "--height", "600"]
+    if gapi:
+        cmd += ["--gapi", gapi]
+    proc = subprocess.Popen(cmd,
             env=env, cwd=os.path.dirname(os.path.abspath(binary)) or None,
             stdout=open(SERVER_LOG, "w"), stderr=subprocess.STDOUT)
     for _ in range(600):
@@ -148,8 +159,10 @@ def wait_for(session, predicate, timeout=20.0, step=0.1):
     return status
 
 
-def spawn_client(binary, share, token, spki, inspector=None):
+def spawn_client(binary, share, token, spki, inspector=None, extra_env=None):
     env = dict(os.environ)
+    if extra_env:
+        env.update(extra_env)
     if inspector:
         # The client is a full app with an inspector of its own; pointing it at a private socket is
         # what lets this check look at the CLIENT's scene graph rather than infer it.
@@ -186,13 +199,22 @@ def kill(proc):
 
 def main():
     transport = "quic"
+    gapi = None
     argv = [a for a in sys.argv[1:]]
-    if argv and argv[0] == "--transport":
-        transport = argv[1]
-        argv = argv[2:]
-    elif argv and argv[0].startswith("--transport="):
-        transport = argv[0].split("=", 1)[1]
-        argv = argv[1:]
+    while argv and argv[0].startswith("--"):
+        opt, argv = argv[0], argv[1:]
+        if "=" in opt:
+            opt, value = opt.split("=", 1)
+        else:
+            if not argv:
+                raise SystemExit(f"{opt} needs a value")
+            value, argv = argv[0], argv[1:]
+        if opt == "--transport":
+            transport = value
+        elif opt == "--gapi":
+            gapi = value
+        else:
+            raise SystemExit(f"unknown option: {opt}")
     if transport not in ("quic", "unix"):
         raise SystemExit(f"unknown transport: {transport}")
 
@@ -226,9 +248,9 @@ def main():
     client = None
     bad_client = None
     try:
-        print(f"transport: {transport}\nserver: {server_bin}\nclient: {client_bin}\n"
-                f"share:  {share}")
-        server = start_server(server_bin, sock, share, token)
+        print(f"transport: {transport}\ngapi:   {gapi or 'default'}\nserver: {server_bin}\n"
+                f"client: {client_bin}\nshare:  {share}")
+        server = start_server(server_bin, sock, share, token, gapi=gapi)
         s = Session(sock)
         s.ok("frame", count=3)
 
@@ -276,6 +298,39 @@ def main():
             # the bearer key genuinely played no part and the credentials did.
             token = token + "-deliberately-wrong"
 
+        # --- a client whose build cannot exchange raw structs with this server -------------------
+        #
+        # Until the wire format is build-independent, InputEvents and UpdateLayers are raw
+        # struct dumps: a build mismatch is memory corruption in one of the two processes, not a
+        # message somebody rejects. So the server asks who the client is BEFORE announcing
+        # anything, and refuses on a mismatched ABI tag.
+        #
+        # XL_REMOTE_FAKE_ABI is what makes this runnable at all -- two binaries built from one tree
+        # necessarily agree, so the rejection path would otherwise be a claim nobody had executed.
+        bad_client = spawn_client(client_bin, share, token, spki,
+                extra_env={"XL_REMOTE_FAKE_ABI": "0123456789abcdef"})
+        st = wait_for(s, lambda x: x.get("clientConnected"), timeout=8.0)
+        check("a client with a different ABI does not hold the connection",
+                not st.get("clientConnected"), str(st))
+        dump = s.ok("logs") or {}
+        lines = "\n".join(str(x) for x in (dump.get("lines") or []))
+        check("the server records that the client refused the session",
+                "client refused ServerInfo" in lines,
+                "not in %d log lines" % len(dump.get("lines") or []))
+        # The client is the side that refuses in this scenario, and that is the honest order: it
+        # computes the same tag from the same facts, so it sees the mismatch the moment ServerInfo
+        # arrives -- before the server has announced anything or sent it a single raw struct.
+        bad_log = open(CLIENT_LOG).read() if os.path.exists(CLIENT_LOG) else ""
+        check("the client says WHY, naming both builds",
+                "incompatible server build" in bad_log and "server:" in bad_log
+                        and "client:" in bad_log,
+                bad_log[-200:].replace("\n", " | "))
+        kill(bad_client)
+        bad_client = None
+        for _ in range(10):
+            s.ok("frame", count=1)
+            time.sleep(0.1)
+
         # --- the real client ---------------------------------------------------------------------
         client = spawn_client(client_bin, share, token, spki, inspector=client_sock)
         st = wait_for(s, lambda x: x.get("clientConnected"), timeout=25.0)
@@ -307,6 +362,40 @@ def main():
         check("the client scene carries the cursor region", "sz=100.0x120.0" in tree,
                 (tree or "<no answer>")[:160].replace("\n", " | "))
 
+        # --- the client knows what it is drawing for --------------------------------------------
+        #
+        # The scene runs here but the window, the GPU and the OS are the server's. Before this the
+        # client knew nothing about the far end at all, so anything platform-shaped in a scene was a
+        # local `#if` that is simply wrong when the scene is remote.
+        client_log = open(CLIENT_LOG).read() if os.path.exists(CLIENT_LOG) else ""
+        server_ident = ""
+        for line in client_log.splitlines():
+            if "ClientAppThread: server:" in line:
+                server_ident = line.split("ClientAppThread: server:", 1)[1].strip()
+        check("the client learned who the server is", bool(server_ident), "no identity line logged")
+        expect_api = {"soft": "Software", "gles": "GLES", "webgpu": "WebGPU"}.get(gapi, "Vulkan")
+        check("the server identity names its gAPI, OS and window system",
+                all(x in server_ident for x in ("Linux", expect_api, "headless")),
+                server_ident[:160])
+
+        # --- the queue was chosen by what it IS -------------------------------------------------
+        #
+        # The server's shared queue is named "SharedWindowQueue". The client renders through it, so
+        # it found it -- and the name occurs NOWHERE in the client, which is the whole claim: the
+        # two sides no longer agree on a string neither protocol nor build enforces.
+        client_src = os.path.join(root, "client")
+        hits = []
+        for dirpath, dirnames, filenames in os.walk(client_src):
+            dirnames[:] = [d for d in dirnames if d != "stappler-build"]
+            for fn in filenames:
+                if not fn.endswith((".cpp", ".h", ".cc", ".css")):
+                    continue
+                full = os.path.join(dirpath, fn)
+                with open(full, "r", errors="replace") as f:
+                    if "SharedWindowQueue" in f.read():
+                        hits.append(os.path.relpath(full, root))
+        check("the client never names the server's queue", not hits, str(hits))
+
         # Frames must keep flowing while the client renders.
         s.ok("frame", count=5)
         time.sleep(0.5)
@@ -322,18 +411,12 @@ def main():
         after = grab(s)
         check("a frame was captured after the takeover", after.startswith(b"\x89PNG"),
                 f"{len(after)} bytes")
-        # KNOWN DEFECT, deliberately left failing rather than removed. D13 in the plan.
-        #
-        # Routing is NOT the problem, and the logs say so: after the takeover exactly one frame is
-        # handed to the remote client and none to the server. That one frame never completes -- the
-        # client forwards its runtime material with a gating font-atlas dependency and the frame
-        # waits on it -- so presentation never advances and the swapchain keeps the last frame the
-        # server drew. Every later step_frame finds a frame still in flight and schedules nothing.
-        #
-        # Hence: identical bytes here mean the first remote frame is stuck, not that the capture
-        # path is wrong. Fixing it is the forwarded-material/dependency path, not the screenshot.
+        # THE assertion, and the one that found D13/D14: identical bytes mean the window is still
+        # showing the last frame the SERVER drew, i.e. the first remote frame never completed. Only
+        # a real capture can tell that apart from a healthy session -- every status field looks the
+        # same either way.
         check("the captured frame reflects the client that took the window over", after != before,
-                "byte-identical: the first remote frame never completed (stuck on its material dep)")
+                "byte-identical: the first remote frame never completed")
 
         shot = f"/tmp/xl-remote-check-{os.getpid()}.png"
         if after:

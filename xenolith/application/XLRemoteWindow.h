@@ -32,9 +32,15 @@ class ClientAppThread;
 
 class SP_PUBLIC RemoteWindow : public Ref, public core::RenderServerChannel {
 public:
+	// One shared queue as the server announced it. `api` and `typeTag` are what a scene matches
+	// against to pick a queue it can drive (see Scene2d::selectServerQueue); `name` is left for
+	// diagnostics and for a scene that really does want a queue by name.
 	struct RemoteQueueInfo {
 		uint64_t id;
 		String name;
+		core::InstanceApi api = core::InstanceApi::None;
+		uint32_t typeTag = 0;
+		core::QueueDamageFlags damage = core::QueueDamageFlags::None;
 	};
 
 	virtual ~RemoteWindow();
