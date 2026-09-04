@@ -33,6 +33,8 @@ bool ClearPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) 
 	// between frames, which M1 cannot do - so damage tracking is forced off until M4, whatever a
 	// caller asked for.
 	builder.setDamageFlags(QueueDamageFlags::None);
+	builder.setApi(InstanceApi::GLES);
+	builder.setTypeTag(toInt(QueueType::Flat));
 
 	builder.addPass("GlesClearPass", PassType::Graphics, RenderOrderingHighest,
 			[&](QueuePassBuilder &passBuilder) -> Rc<core::QueuePass> {

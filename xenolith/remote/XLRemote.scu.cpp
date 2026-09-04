@@ -31,6 +31,7 @@
 #include "XLRemoteTransportQuic.cc"
 #include "XLRemoteTransportUnix.cc"
 #include "XLRemoteProtocol.cc"
+#include "XLRemotePeerInfo.cc"
 #include "XLRemoteObject.cc"
 #include "XLRemoteSerialize.cc"
 #include "XLRemoteConnection.cc"
