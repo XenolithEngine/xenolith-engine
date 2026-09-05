@@ -38,11 +38,11 @@ THE SOFTWARE.
 // -------------------------------------------------------------------------
 // [alloc.errors] std::set_new_handler / std::get_new_handler
 //
-// On wasm libc++abi is built from source and owns these (cxa_handlers.cpp /
+// Where libc++abi is built from source it owns these (cxa_handlers.cpp /
 // cxa_default_handlers.cpp), so defining them here too would be a duplicate
-// symbol. Elsewhere (the freestanding MSVC ABI, no libc++abi) sprt provides the
-// single new-handler storage.
-#if !SPRT_WASM
+// symbol -- that is wasm and Embox EL0. Elsewhere (the freestanding MSVC ABI, no
+// libc++abi) sprt provides the single new-handler storage.
+#if !SPRT_WASM && !SPRT_EMBOX_USER
 namespace std {
 static void *__sprt_new_handler = nullptr;
 
@@ -54,13 +54,13 @@ new_handler get_new_handler() noexcept {
 	return reinterpret_cast<new_handler>(__atomic_load_n(&__sprt_new_handler, __ATOMIC_SEQ_CST));
 }
 } // namespace std
-#endif // !SPRT_WASM
+#endif // !SPRT_WASM && !SPRT_EMBOX_USER
 
 __SPRT_C_FUNC void (*__sprt_get_new_handler(void))(void) {
 	return reinterpret_cast<void (*)(void)>(std::get_new_handler());
 }
 
-#if SPRT_WINDOWS || SPRT_WASM
+#if SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 
 // Full replaceable operator new/delete set over mimalloc's typed API. mimalloc is
 // the standard allocator on these targets (libc_impl/malloc.mk); its SCU is
@@ -207,7 +207,7 @@ void operator delete[](void *ptr, size_t sz) noexcept { return ::free_sized(ptr,
 // operator delete(void*, size_t, align_val_t) and its array form are provided
 // inline by <sprt/cxx/new>.
 
-#endif // SPRT_WINDOWS || SPRT_WASM
+#endif // SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 
 // MS C++ ABI function
 __SPRT_C_FUNC void _purecall(void) {

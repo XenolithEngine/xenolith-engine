@@ -69,4 +69,8 @@ THE SOFTWARE.
 #include "wasm/startup.cc"
 #include "wasm/terminate.cc"
 #include "wasm/except.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/startup.cc"
+#include "embox_user/terminate.cc"
+#include "embox_user/except.cc"
 #endif

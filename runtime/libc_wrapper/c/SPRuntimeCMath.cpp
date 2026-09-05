@@ -82,10 +82,15 @@ static_assert(HUGE_VALL == __SPRT_HUGE_VALL);
 
 namespace sprt {
 
+// The freestanding targets (Windows, wasm, Embox EL0) forward to the
+// __fpclassify*/__signbit* helpers their own libm exports -- musl's, for the two
+// that link runtime_musl_libc. The generic branches below need an `fpclassify`
+// macro or function from a platform <math.h>, and on a -nostdinc target there is
+// none.
 __SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
 #if SPRT_APPLE
 	return ::__fpclassifyd(v);
-#elif SPRT_WINDOWS || SPRT_WASM
+#elif SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassify(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -94,7 +99,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
-#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassifyf(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -103,7 +108,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
-#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassifyl(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -115,7 +120,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
 #if SPRT_APPLE
 	return ::__inline_signbitd(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbit(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);
@@ -128,7 +133,7 @@ __SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
 #if SPRT_APPLE
 	return ::__inline_signbitf(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbitf(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);
@@ -141,7 +146,7 @@ __SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbitl)(long double v) {
 #if SPRT_APPLE
 	return ::__inline_signbitl(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbitl(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);

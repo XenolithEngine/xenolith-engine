@@ -33,6 +33,8 @@ THE SOFTWARE.
 #include "windows/locale.cc"
 #elif SPRT_WASM
 #include "wasm/locale.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/locale.cc"
 #endif
 
 namespace sprt {

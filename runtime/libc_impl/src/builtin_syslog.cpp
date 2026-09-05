@@ -20,12 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// System logging (<syslog.h>) compile unit. Backed only on the freestanding wasm
-// target (silent no-op stubs - see wasm/syslog.cc); the hosted and Windows targets
-// use the platform libc, so this unit is empty there.
+// System logging (<syslog.h>) compile unit. Backed on the freestanding targets
+// (silent no-op stubs - see wasm/syslog.cc and embox_user/syslog.cc); the hosted
+// and Windows targets use the platform libc, so this unit is empty there.
 
 #include <sprt/c/bits/__sprt_def.h>
 
 #if SPRT_WASM
 #include "wasm/syslog.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/syslog.cc"
 #endif

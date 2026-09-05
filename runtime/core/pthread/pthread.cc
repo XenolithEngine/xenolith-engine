@@ -27,6 +27,11 @@ THE SOFTWARE.
 
 #if SPRT_WASM
 #include "pthread_native_wasm.cc"
+#elif SPRT_EMBOX_USER
+// No <pthread.h>: on this target there is no platform libc to forward to, and
+// the umbrella header would forward to a system one that -nostdinc removed. The
+// backend is single-threaded by construction -- see its header comment (L3a).
+#include "pthread_native_embox_user.cc"
 #elif !defined(SPRT_WINDOWS)
 #include <pthread.h>
 

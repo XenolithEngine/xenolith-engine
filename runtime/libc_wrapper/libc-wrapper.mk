@@ -109,6 +109,29 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PR
 endif # ($(TARGET_SYSTEM),Windows)
 
 
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# Freestanding Embox EL0 libc, same reasoning as the WASM block below: with
+# -ffreestanding __STDC_HOSTED__ is 0, so the wrapper's C units resolve
+# <stdio.h>/<complex.h>/... against include_libc rather than against a platform
+# libc -- and on this target there is no platform libc on the path at all.
+#
+# Note this is NOT the "NuttX Embox" block above: that one borrows musl's math to
+# fill gaps in Embox's own libm. Here the whole libm is ours already
+# (runtime_musl_libc), so there is nothing to fill.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
+	-ffreestanding \
+	-fbuiltin \
+	-funwind-tables \
+	-fasynchronous-unwind-tables
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+endif # ($(TARGET_SYSTEM),EmboxUser)
+
+
 ifeq ($(TARGET_SYSTEM),WASM)
 # Freestanding wasm libc, like Windows: -ffreestanding makes __STDC_HOSTED__ == 0
 # so the wrapper C units include the runtime's own public libc headers (found in

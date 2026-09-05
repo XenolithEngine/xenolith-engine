@@ -42,9 +42,9 @@ THE SOFTWARE.
 
 	Unlike the rest of the libc surface there is no umbrella here: the declarations
 	below are the plain public names, resolved straight out of the sprt libc. That
-	limits them to the targets whose libc carries a terminal backend - wasm and
-	Windows - and leaves the header empty on the hosted targets, where an sprt
-	application does not get <termios.h> at all. Adding it there means giving
+	limits them to the targets whose libc carries a terminal backend - wasm,
+	Windows and Embox EL0 - and leaves the header empty on the hosted targets,
+	where an sprt application does not get <termios.h> at all. Adding it there means giving
 	__sprt_tc* a wrapper over the platform libc (libc_wrapper/c/common), and a
 	conversion for the platforms whose struct termios is not the asm-generic one
 	this header describes (notably Darwin: 20 control characters, long flags and
@@ -60,7 +60,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/cross/__sprt_sysid.h> // pid_t
 
-#if SPRT_WASM || SPRT_WINDOWS
+#if SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER
 
 typedef unsigned char cc_t;
 typedef unsigned int speed_t;
@@ -207,7 +207,7 @@ SPRT_API __SPRT_ID(pid_t) tcgetsid(int __fd);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_WINDOWS
+#endif // SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER
 
 #endif
 

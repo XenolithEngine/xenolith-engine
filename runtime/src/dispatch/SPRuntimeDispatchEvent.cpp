@@ -78,7 +78,13 @@
 #include "platform/nuttx/SPEvent-nuttx.cc"
 #endif
 
-#if SPRT_EMBOX
+// Both Embox models share this backend, which is what SPRT_EMBOX_ANY is for.
+// It asks nothing of the platform beyond usleep, clock_gettime and atomics: a
+// timer heap plus an atomic wakeup word, no descriptors and no readiness
+// primitive -- because hosted Embox has neither epoll nor futex, and EL0 has no
+// ppoll syscall either (that is milestone M2). The two arrive at the same
+// reactor from opposite directions.
+#if SPRT_EMBOX_ANY
 #include "platform/embox/SPEvent-embox.cc"
 #endif
 

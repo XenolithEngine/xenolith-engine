@@ -35,6 +35,13 @@ THE SOFTWARE.
 #include "wasm/libc_opfs.cc"
 #include "wasm/libc_dir_ops.cc"
 #include "wasm/libc_path.cc"
+#elif SPRT_EMBOX_USER
+// No opfs sibling: there is a real filesystem behind openat(56), so the path
+// family is syscalls rather than a memfs (embox_user/libc_path.cc).
+#include "embox_user/libc.cc"
+#include "embox_user/libc_file_ops.cc"
+#include "embox_user/libc_dir_ops.cc"
+#include "embox_user/libc_path.cc"
 #endif
 
 namespace sprt {

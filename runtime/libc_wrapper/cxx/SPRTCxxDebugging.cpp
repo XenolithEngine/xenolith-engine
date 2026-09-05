@@ -95,6 +95,11 @@ bool is_debugger_present() noexcept {
 #elif SPRT_HOSTED_RTOS
 	// No debugger-detection facility in a NuttX flat build.
 	return false;
+#elif SPRT_EMBOX_USER
+	// Nothing to ask: there is no ptrace, no /proc and no second process to
+	// attach one (D5). A JTAG debugger on the board sees the whole system at
+	// once, so even a truthful answer would not mean what a caller expects.
+	return false;
 #else
 #error "Not implemented"
 #endif
