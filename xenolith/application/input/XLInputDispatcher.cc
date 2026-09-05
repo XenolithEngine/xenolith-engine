@@ -39,6 +39,7 @@ InputListenerStorage::InputListenerStorage(PoolRef *p) : PoolRef(p) {
 		_focus->memory_persistent(true);
 
 		_hitTest = new (_pool) mem_pool::Vector<HitTestRec>;
+		_selectionChain = new (_pool) mem_pool::Vector<Rc<Node>>;
 
 		_sceneEvents->reserve(256);
 	});
@@ -52,6 +53,12 @@ void InputListenerStorage::clear() {
 		_postSceneEvents->clear();
 		_hitTest->clear();
 		_hitTestMask = HitTestFlags::None;
+
+		// Not optional bookkeeping. A storage is reused across frames, so a chain left here would
+		// stand in a frame where nothing is selected - and it would not fail loudly, it would show
+		// up much later as a SelectedOnly hotkey firing with no selection anywhere
+		_selectionChain->clear();
+
 		_order = 0;
 	});
 }
@@ -61,6 +68,26 @@ void InputListenerStorage::reserve(const InputListenerStorage *st) {
 	_sceneEvents->reserve(st->_sceneEvents->size());
 	_postSceneEvents->reserve(st->_postSceneEvents->size());
 	_hitTest->reserve(st->_hitTest->size());
+	_selectionChain->reserve(st->_selectionChain->size());
+}
+
+void InputListenerStorage::setSelectionChain(SpanView<Rc<Node>> chain) {
+	perform([&, this] {
+		_selectionChain->clear();
+		for (auto &node : chain) { _selectionChain->emplace_back(node); }
+	});
+}
+
+size_t InputListenerStorage::getSelectionDepth(const Node *node) const {
+	if (!node) {
+		return maxOf<size_t>();
+	}
+	for (size_t i = 0; i < _selectionChain->size(); ++i) {
+		if (_selectionChain->at(i).get() == node) {
+			return i;
+		}
+	}
+	return maxOf<size_t>();
 }
 
 void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup *focus,
@@ -268,6 +295,10 @@ bool InputDispatcher::foreachHitTest(HitTestFlags mask,
 
 HitTestFlags InputDispatcher::getHitTestMask() const {
 	return _events ? _events->getHitTestMask() : HitTestFlags::None;
+}
+
+SpanView<Rc<Node>> InputDispatcher::getSelectionChain() const {
+	return _events ? _events->getSelectionChain() : SpanView<Rc<Node>>();
 }
 
 uint64_t InputDispatcher::getCommittedGeneration() const {
@@ -649,24 +680,86 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		return l.focus != exclusiveGroup && !(l.focus && l.focus->isParentGroup(exclusiveGroup));
 	};
 
+	// Whether a listener's owner is on the committed selection chain - what SelectedOnly is tested
+	// against. Read from the storage, never from the live SelectionSystem: see
+	// InputListenerStorage::setSelectionChain for why that distinction is not pedantry
+	auto isInSelection = [&](const InputListenerStorage::Rec &l) {
+		return _events->getSelectionDepth(l.listener->getOwner()) != maxOf<size_t>();
+	};
+
+	auto contextFor = [&](const InputListenerStorage::Rec &l, bool focusedOverride) {
+		return HotkeyContext{focusedOverride || isFocused(l), repeated, isScoped(l),
+			isInSelection(l)};
+	};
+
 	// The listener that currently owns the keyboard gets the first word, whatever the walk order
 	// would otherwise be. Only a SingleFocus group actually designates one; a group without it
 	// lets everybody through and would swallow the whole first pass.
 	Rc<InputListener> focusedListener;
-	bool focusedScoped = false;
+	HotkeyContext focusedContext;
 	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
 		if (l.focus && hasFlag(l.focus->getFlags(), FocusGroup::Flags::SingleFocus) && isFocused(l)
-				&& l.listener->canHandleHotkey(ids, true, repeated, isScoped(l))) {
+				&& l.listener->canHandleHotkey(ids, contextFor(l, true))) {
 			focusedListener = l.listener;
-			focusedScoped = isScoped(l);
+			focusedContext = contextFor(l, true);
 			return false;
 		}
 		return true;
 	}, nullptr);
 
-	if (focusedListener
-			&& focusedListener->handleHotkey(ids, event, true, repeated, focusedScoped)) {
+	if (focusedListener && focusedListener->handleHotkey(ids, event, focusedContext)) {
 		return true;
+	}
+
+	/* PASS B: the SELECTION CHAIN, deepest first.
+
+	The selected element's own listener, then its parents, then the container that owns it - which
+	is what makes an Undo land in the history of the thing the user is working on rather than in
+	whichever of two identical tables happens to be painted last.
+
+	It is a pass rather than a re-ordering of the walk below because the two orders answer different
+	questions. The ordinary walk is about the SCENE - bands, priorities, paint order - and is right
+	for a global binding. This one is about the SELECTION, and within it paint order means nothing:
+	a row is not "above" its own list in any sense a user would recognize.
+
+	A chain listener that declines is NOT offered the key again below; declining is an answer. */
+	Vector<Rc<InputListener>> chainOffered;
+
+	if (!_events->getSelectionChain().empty()) {
+		struct Candidate {
+			const InputListenerStorage::Rec *rec;
+			size_t depth;
+			uint32_t order;
+		};
+
+		Vector<Candidate> candidates;
+		uint32_t seq = 0;
+		_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+			auto depth = _events->getSelectionDepth(l.listener->getOwner());
+			if (depth != maxOf<size_t>() && l.listener != focusedListener) {
+				candidates.emplace_back(Candidate{&l, depth, seq});
+			}
+			++seq;
+			return true;
+		}, nullptr);
+
+		// Depth first, and the ordinary walk order within one depth: a node may own several
+		// listeners, and nothing about the selection says which of them should come first, so the
+		// answer the rest of the engine already gives is kept. `seq` rather than a stable_sort
+		// because the tie-break is then written down instead of inherited from the algorithm
+		sprt::sort(candidates.begin(), candidates.end(), [](const Candidate &l, const Candidate &r) {
+			return (l.depth != r.depth) ? (l.depth < r.depth) : (l.order < r.order);
+		});
+
+		for (auto &c : candidates) { chainOffered.emplace_back(c.rec->listener); }
+
+		for (auto &c : candidates) {
+			// Re-checked per candidate: an earlier one may have torn the scene down around this
+			// listener, which is precisely what a hotkey callback is entitled to do
+			if (c.rec->listener->handleHotkey(ids, event, contextFor(*c.rec, false))) {
+				return true;
+			}
+		}
 	}
 
 	bool handled = false;
@@ -674,7 +767,11 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		if (l.listener == focusedListener) {
 			return true; // already had its turn
 		}
-		if (l.listener->handleHotkey(ids, event, isFocused(l), repeated, isScoped(l))) {
+		if (sprt::find(chainOffered.begin(), chainOffered.end(), l.listener)
+				!= chainOffered.end()) {
+			return true; // offered along the chain above, and declined
+		}
+		if (l.listener->handleHotkey(ids, event, contextFor(l, false))) {
 			handled = true;
 			return false;
 		}

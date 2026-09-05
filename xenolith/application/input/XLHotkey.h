@@ -134,9 +134,42 @@ enum class HotkeyFlags : uint32_t {
 
 	// Also fire on key auto-repeat, not just on the initial press
 	Repeatable = 1 << 2,
+
+	/* Deliver only while this listener's owner is on the committed SELECTION CHAIN - the mirror of
+	   FocusedOnly, and the reason an Undo lands in the right history rather than in the unknown.
+
+	   A listener with nothing selected above it is simply not OFFERED the chord, which leaves it
+	   for whoever is below. That is the whole meaning of the flag: it narrows who is asked, it
+	   never makes a handler consume a key it cannot serve. The engine contract stays "a handler
+	   with nothing to do returns false", and this flag does not replace it - a selected TableView
+	   still checks that it has a row to move.
+
+	   See SelectionSystem (XLSelectionSystem.h) for what puts a node on the chain, and
+	   InputDispatcher::handleHotkey for the pass that walks it. */
+	SelectedOnly = 1 << 3,
 };
 
 SP_DEFINE_ENUM_AS_MASK(HotkeyFlags)
+
+/* Everything about the DELIVERY that a binding's flags are tested against.
+
+Four booleans threaded through three functions became one struct when the fourth arrived: at the
+call sites they were four adjacent `bool`s in a row, which is a swap waiting to happen and which no
+compiler would ever diagnose. */
+struct SP_PUBLIC HotkeyContext {
+	// This listener is entitled to keyboard events in its focus group. Not isFocused(): see
+	// HotkeyFlags::FocusedOnly
+	bool focused = false;
+
+	// A key auto-repeat rather than the initial press
+	bool repeated = false;
+
+	// An Exclusive focus group has scoped the walk to itself, and this listener is outside it
+	bool exclusiveScoped = false;
+
+	// This listener's owner is on the committed selection chain
+	bool inSelection = false;
+};
 
 // Return true to consume the hotkey: the dispatcher stops the walk and the ordinary key route
 // does not run. The id says which hotkey matched, since one callback may serve several.

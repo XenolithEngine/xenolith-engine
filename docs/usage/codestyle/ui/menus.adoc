@@ -182,11 +182,15 @@ any node exists, `MenuPopupChain`, and the keyboard. Clicking away from a submen
 therefore takes the whole chain down rather than that one link, which is what
 `PopupSurfaceConfig::onOutsideTap` is for.
 
-**Pass a stylesheet.** A native popup is a scene of its own; the `ui::StyleSystem`
-carrying the application's sheet lives on the *parent* window's content and does
-not reach it. `MenuConfig::stylesheet` names a file, `stylesheetSource` carries
-CSS as a literal, and the two compose. With neither, the menu paints itself with
-its own neutral colours rather than coming up black on black.
+**The sheet is inherited; pass one only to override it.** A native popup is a
+scene of its own, and the `ui::StyleSystem` carrying the application's sheet lives
+in the *parent* window's scene — so `ui::openPopupSurface` shares that sheet with
+the popup, and a styled application gets a styled menu without saying anything.
+`MenuConfig::stylesheet` names a file and `stylesheetSource` carries CSS as a
+literal, for a menu whose look is genuinely not the application's; they replace
+the inherited sheet rather than composing with it. Where there is no sheet at all
+— a test stand, a tool — the menu paints itself with its own neutral colours
+rather than coming up black on black.
 
 ### Submenus
 
@@ -276,7 +280,7 @@ ui::setContextMenu(view, [this](const ui::ContextMenuRequest &req) -> Rc<ui::Men
 // the scene's coordinator, for what every menu in it should look like
 auto menus = ui::ContextMenuSystem::acquireForNode(node);
 menus->setMenuConfigCallback([](ui::MenuConfig &config) {
-    config.stylesheetSource = String(s_css);   // a popup is a scene of its own
+    config.stylesheetSource = String(s_css);   // only to OVERRIDE the inherited sheet
 });
 ----
 
@@ -411,9 +415,9 @@ paints nothing, while the line inside it is `menu-separator`.
 | It measures cells only at max-content, so a row with wrapped text comes out one
   line tall
 
-| A native popup with no stylesheet
-| It is a scene of its own and the parent's sheet does not reach it — pass
-  `MenuConfig::stylesheet` or `stylesheetSource`
+| A native popup unstyled in an application that has no `ui::StyleSystem`
+| There is no sheet to inherit, so the menu falls back to its own neutral
+  colours — install one, or pass `MenuConfig::stylesheet`/`stylesheetSource`
 
 | A recognizer with `onlyFocused = true` inside a menu
 | `WindowType::Popup` never carries `WindowState::Focused`, so it never fires

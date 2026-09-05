@@ -25,6 +25,7 @@
 
 #include "XLCommon.h"
 #include "XLCoreInfo.h" // core::FrameConstraints
+#include "XLRemoteTransport.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -65,6 +66,20 @@ enum class GlobalCode {
 	Ping = 2,
 	Pong = 3,
 	SharedObjectsAnnounce = 4,
+
+	// Who each side is: CBOR PeerInfo (XLRemotePeerInfo.h). A REQUEST the server sends immediately
+	// after the handshake and BEFORE it announces anything; the client answers with its own PeerInfo
+	// in the reply, or refuses with GlobalError::IncompatiblePeer. Nothing is shared until that
+	// exchange completes -- the point of it is to stop a build mismatch before the first raw struct
+	// dump, not to report one afterwards.
+	//
+	// One request/reply rather than two independent notifications: both directions are checked, and
+	// the server has an answer before it announces rather than a message it hopes arrived.
+	//
+	// A version-1 peer that predates this code answers with a NotImplemented error, and the session
+	// continues exactly as it did before -- which is what makes this an extension of version 1 and
+	// not a new version.
+	ServerInfo = 5,
 };
 
 enum class GlobalError : uint8_t {
@@ -72,6 +87,9 @@ enum class GlobalError : uint8_t {
 	BadProtocol = 2, // magic/version mismatch or malformed
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
+	Busy = 5, // the server's client slot is taken; it accepts no second connection right now
+	IncompatiblePeer = 6, // the peer's ABI tag differs: raw struct dumps between these two builds
+	// would be memory corruption, not a protocol error (see PeerInfo::abi)
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
@@ -117,6 +135,66 @@ enum class WindowCode {
 	// client forwards them and the server applies them to the native window (cursor,
 	// hit-testing, server-side decorations). WindowLayer is trivially copyable -> opaque
 	// blob. Fire-and-forget; the client only sends on change.
+
+	// --- M4: window domain completeness ------------------------------------------------------
+
+	WindowGeometryChanged = 11, // server -> client notification: [windowId, WindowGeometry]. Where
+	// the window now is, in the logical space WindowInfo::rect uses. A SIBLING of the frame
+	// constraints and not part of them: a title-bar drag must not cost a scene relayout.
+	//
+	// Constraints have deliberately NO message of their own. They already travel in every
+	// AcquireFrame, and the client's Director applies them there exactly as a local one does
+	// (Director::acquireFrame -> setFrameConstraints), so a second carrier would be a second
+	// source of truth for the same fact. Geometry has no such carrier -- and, unlike constraints,
+	// the server already has a live hook that fires only on a real change
+	// (AppWindow::notifyWindowGeometry), so the deduplication is done before the wire.
+
+	WindowControl = 12, // client -> server REQUEST: everything a scene can ask of the window it
+	// draws into -- close, state flags, fullscreen, frame rate/interval, extent, window menu, back
+	// button. ONE code with an operation discriminant rather than nine codes, because the reply is
+	// the same for all of them (a Status) and the routing is identical.
+	//
+	// Payload is a keyed CBOR map, not a positional array: the arguments differ per operation, and
+	// "which index means what depends on the op" is exactly the fragility the flat-array style
+	// avoids where the fields are homogeneous. Keys: "w" (window id), "op" (WindowControlOp), plus
+	// at most one operation-specific value -- see WindowControlOp.
+	//
+	// Reply: [int32 Status]. The `bool` these calls return to the scene is decided LOCALLY, from
+	// the mirrored window state, and is a precondition; the Status is what the window actually did.
+	// The server re-checks the precondition, because a client can send anything.
+
+	TextInputControl = 13, // client -> server notification: [w, op, req|cmd]. The scene asking the
+	// window's text-input processor to start, stop, or perform an edit (see TextInputOp).
+	//
+	// A NOTIFICATION and not a request, deliberately. The answer to "did the IME accept this" does
+	// not come back as a return value even locally -- it comes back as a state echo, below. Making
+	// it a request would also mean an IME activation that timed out could take the whole session
+	// down through the request watchdog, and losing a keyboard must not cost the connection.
+	// server -> client notification: [windowId, TextInputState]. The echo: what the processor
+	// decided the state now is. This is the ONLY source of truth for the client's widget -- the
+	// state belongs to the IME on the OS side, never to the application, so a client that updated
+	// its own field when it sent the request would be showing text the server has not accepted.
+	TextInputState = 14,
+};
+
+// Operations carried by WindowCode::TextInputControl.
+enum class TextInputOp : uint8_t {
+	Acquire = 0, // "req": array (serializeTextInputRequest) -- start or update IME capture
+	Release = 1, // no argument -- stop capture
+	Perform = 2, // "cmd": array (serializeTextInputCommand) -- drive the processor as an IME would
+};
+
+// Operations carried by WindowCode::WindowControl, with the payload key each one reads.
+enum class WindowControlOp : uint8_t {
+	Close = 0, // "graceful": bool
+	EnableState = 1, // "state": int64 (core::WindowState, 64-bit)
+	DisableState = 2, // "state": int64
+	SetFullscreen = 3, // "fs": array (serializeFullscreenInfo)
+	SetPreferredFrameRate = 4, // "rate": double
+	SetPreferredFrameInterval = 5, // "iv": int64 (microseconds)
+	SetWindowExtent = 6, // "ext": [width, height]
+	OpenWindowMenu = 7, // "pos": [x, y] in scene coords; Vec2::INVALID means "at the pointer"
+	BackButton = 8, // no argument
 };
 
 enum class WindowError : uint8_t {
@@ -310,12 +388,17 @@ struct ServerHello {
 	BytesView dict; // dictionary bytes when dictSource == Server (else empty)
 };
 
+#if DEBUG
 // Shared 64-byte development bearer key (both demo client and server use this by default).
+//
+// Debug-only on purpose: the value is a fixed pattern computed from a constant, so a release build
+// that shipped it would present -- and accept -- a key every reader of this header already knows.
+// A release build must be handed a real key (AppThread::setBearerKey / ClientContext::setBearerKey).
 SP_PUBLIC BytesView getDevBearerKey();
+#endif
 
-// --- stream I/O over a QUIC connection (the SSL* is passed as void* to keep OpenSSL out of this
-// header). All reads are bounded by an absolute wall-clock deadline in microseconds
-// (sp::platform::clock(Monotonic) timebase). ---
+// --- stream I/O over a TransportConnection. All reads are bounded by an absolute wall-clock
+// deadline in microseconds (sp::platform::clock(Monotonic) timebase). ---
 
 // Message framing: a 12-byte MessageHeader followed by `size` payload bytes (uncompressed). readFrame
 // reads one full message bounded by `deadline` and invokes cb(header, payload) (header fields already
@@ -324,11 +407,46 @@ SP_PUBLIC BytesView getDevBearerKey();
 SP_PUBLIC bool readMessagePayload(BytesViewNetwork &view, BytesView dict,
 		const Callback<void(const MessageHeader &, BytesView)> &);
 
-SP_PUBLIC bool readFrame(void *ssl, uint64_t deadline, BytesView dict,
+SP_PUBLIC bool readFrame(TransportConnection &, uint64_t deadline, BytesView dict,
 		const Callback<void(const MessageHeader &, BytesView payload)> &cb);
 
-SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageType, Domain,
-		uint8_t msg, uint32_t serial, BytesView);
+// Frame one message (header + optionally-compressed payload) onto the end of `out`. The wire bytes
+// are exactly what sendFrame would have written.
+SP_PUBLIC void encodeFrame(Bytes &out, BytesView dict, MessageType, Domain, uint8_t msg,
+		uint32_t serial, BytesView payload);
+
+// Send-side buffer.
+//
+// sendFrame BLOCKS the calling thread: when the QUIC send buffer or the peer's flow-control window
+// is full, SSL_write_ex accepts nothing and it busy-waits in 1ms sleeps up to its deadline. On the
+// app thread that stalls the frame the scene is building, and the peer decides for how long.
+//
+// So a message is framed into this queue instead and drained non-blockingly from the connection's
+// poll(), which the looper already drives on socket readiness and on every update tick. Ordering is
+// FIFO, which is what the protocol needs; the handshake stays synchronous on purpose (it runs once,
+// before any frame, and its deadline is the point).
+class SP_PUBLIC OutgoingQueue {
+public:
+	// A peer that never drains must not grow our memory without bound. Past this the connection is
+	// not stalled, it is dead, and the caller should drop it.
+	static constexpr size_t kMaxPending = 64u * 1'024 * 1'024;
+
+	// Frame a message and append it. Never blocks. False once the queue is over kMaxPending.
+	bool push(BytesView dict, MessageType, Domain, uint8_t code, uint32_t serial,
+			BytesView payload);
+
+	// Write as much as the transport accepts right now. A partial write is success -- the remainder
+	// waits for the next call. False only on a fatal write error, i.e. drop the connection.
+	bool flush(TransportStream *);
+
+	bool empty() const { return _offset >= _buffer.size(); }
+	size_t pending() const { return _buffer.size() - _offset; }
+	void clear();
+
+protected:
+	Bytes _buffer;
+	size_t _offset = 0; // how much of _buffer the transport has already taken
+};
 
 // Receive-side stream reassembler. A QUIC stream is an ordered byte stream with no message
 // boundaries, so a socket wakeup yields an arbitrary number of bytes -- possibly a partial frame, or
@@ -372,21 +490,28 @@ protected:
 // Client side: send ClientHello (bearer key + suggested dict), read ServerHello into `out`, and fill
 // `negotiatedDict` with the dictionary to use for subsequent data frames. Returns true iff
 // out.status == Ok.
-SP_PUBLIC GlobalError clientHandshake(void *ssl, BytesView bearerKey, BytesView dict,
+SP_PUBLIC GlobalError clientHandshake(TransportConnection &, BytesView bearerKey, BytesView dict,
 		uint64_t deadlineUs, const Callback<void(const ServerHello &out)> &);
 
 // Server side: read ClientHello, validate (magic/version/mode + constant-time key compare against
 // `expectedKey`), negotiate the dictionary (server priority, else client suggestion, else none),
 // and reply with ServerHello (window info on success). Fills `outStatus` and `negotiatedDict`.
 // Returns true iff authenticated.
-SP_PUBLIC GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
-		Bytes &negotiatedDict, uint64_t deadlineUs);
+// `requireBearerKey` false accepts the client whatever key it presents. Pass false only when the
+// TRANSPORT already established who the peer is (TransportCaps::PeerAuthenticated -- unix-domain
+// credentials), where the key would add nothing: the kernel's answer is stronger than a shared
+// secret, and access control is the socket's permissions.
+SP_PUBLIC GlobalError serverHandshake(TransportConnection &, BytesView expectedKey,
+		BytesView serverDict, Bytes &negotiatedDict, uint64_t deadlineUs,
+		bool requireBearerKey = true);
 
-// Ping request
-SP_PUBLIC GlobalError sendPing(void *ssl, Role, uint32_t serial);
+// Server side: answer a connection with `status` instead of negotiating -- the way to turn one away
+// (GlobalError::Busy) so the peer gets a real answer rather than waiting out its own handshake
+// deadline. The ClientHello is not read (see the .cc), so this only ever blocks on the write.
+// Returns `status`; the caller closes the connection afterwards.
+SP_PUBLIC GlobalError serverHandshakeReject(TransportConnection &, GlobalError status,
+		uint64_t deadlineUs);
 
-// Ping response
-SP_PUBLIC GlobalError sendPong(void *ssl, Role, uint32_t serial);
 
 } // namespace stappler::xenolith::remote
 

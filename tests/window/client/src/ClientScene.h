@@ -53,6 +53,10 @@ protected:
 	// Текстовая метка — проверка удалённого рендеринга шрифтов (материал шрифта компилируется на сервере)
 	basic2d::Label *_label = nullptr;
 
+	// Текстовое поле — проверка удалённого текстового ввода в обе стороны: фокус уходит на сервер
+	// как acquireTextInput, а всё, что поле показывает, приходит обратно эхом от его процессора.
+	ui::TextInput *_input = nullptr;
+
 	// Запускаем бесконечную анимацию квадрата ровно один раз (проверка работы runAction в
 	// клиентском контексте: пока действие активно, клиент шлёт серверу setReadyForNextFrame)
 	bool _animStarted = false;
@@ -60,8 +64,15 @@ protected:
 
 	void requestRemoteScreenshot();
 
-	virtual StringView selectServerQueue(NotNull<AppThread> app,
-			NotNull<core::RenderServerChannel> window) override;
+	// Команды инспектора, через которые драйвер читает состояние клиента напрямую, а не угадывает
+	// его по картинке.
+	void registerCommands();
+	void registerTextCommand();
+
+	// Очередь сервера НЕ выбирается здесь: раньше сцена искала её по имени "RemoteClientQueue",
+	// то есть согласование держалось на строке, о которой обе стороны договорились заранее.
+	// Теперь работает реализация Scene2d по умолчанию — она сопоставляет gAPI сервера и тип
+	// очереди (M3.4). Отсутствие этого переопределения и есть проверка.
 };
 
 } // namespace stappler::xenolith::client

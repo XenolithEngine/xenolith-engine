@@ -28,6 +28,7 @@
 #include "XLContext.h"
 #include "SPSharedModule.h"
 #include "XLDirector.h"
+#include "XLTextInputManager.h" // cancel text input when the session ends
 #include "XLCoreAttachment.h" // core::DependencyEvent id mask
 #include "XLCoreInfo.h" // core::ImageInfoData / ImageFormat / Extent3
 #include "XLRemoteBlockTransfer.h"
@@ -71,7 +72,13 @@ bool ClientAppThread::worker() {
 
 		log::source().info("ClientAppThread", "connecting to ", addr.description());
 
-		auto conn = remote::ClientConnection::connect(addr);
+		if (_clientContext->getServerFingerprint().empty()) {
+			log::source().warn("ClientAppThread",
+					"no server fingerprint configured: the server is NOT authenticated and the "
+					"bearer key is exposed to a man in the middle");
+		}
+
+		auto conn = remote::ClientConnection::connect(addr, _clientContext->getServerFingerprint());
 		if (!conn) {
 			log::source().error("ClientAppThread", "failed to connect to ", addr.description());
 			return false;
@@ -92,7 +99,7 @@ bool ClientAppThread::worker() {
 
 		// Drive the async message-dispatch loop: socket readiness gives a prompt wakeup; QUIC timers
 		// are pumped from performAppUpdate (same appUpdateInterval cadence).
-		_listenPoll = _appLooper->listenPollableHandle(_connection->getPollFd(),
+		_listenPoll = _appLooper->listenPollableHandle(_connection->getPollHandle(),
 				sprt::dispatch::PollFlags::In,
 				[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
 			pumpConnection();
@@ -157,8 +164,7 @@ bool ClientAppThread::remoteSendError(remote::Domain d, uint8_t code, uint32_t s
 	if (!_connection || !_connection->isOpen()) {
 		return false;
 	}
-	// ClientConnection::sendError takes a typed GlobalError code (unlike the server's uint8_t).
-	return _connection->sendError(d, remote::GlobalError(code), serial) == remote::GlobalError::Ok;
+	return _connection->sendError(d, code, serial) == remote::GlobalError::Ok;
 }
 
 bool ClientAppThread::remoteSendCborWithReply(remote::Domain d, uint8_t code, const Value &v,
@@ -239,7 +245,9 @@ void ClientAppThread::pumpConnection() {
 		return dispatchMessage(h, payload);
 	});
 
-	bool disconnect = false;
+	// A dispatcher can decide the session is over (an incompatible peer, say); it must not tear the
+	// connection down from inside the poll that is iterating it.
+	bool disconnect = _disconnectRequested;
 
 	// Request watchdog (same cadence as keepalive): if the server left one of our requests unanswered
 	// past that request's own reply deadline, the waiter was just failed with a local protocol error --
@@ -268,6 +276,23 @@ void ClientAppThread::pumpConnection() {
 	}
 
 	if (disconnect && _connection) {
+		/* Tell the focused widget its authority is gone. The state belongs to the server's
+		processor, so once the connection is down no echo will ever arrive again -- and a field left
+		"enabled" would keep its caret blinking and go on waiting for text that cannot come.
+		cancel() delivers enabled=false to the handler and then calls releaseTextInput(), which
+		no-ops on a dead connection.
+		
+		Invisible in the current end-to-end check, because the client process exits on disconnect.
+		That is exactly why it is written here rather than discovered later by whoever first keeps a
+		client alive across a reconnect. */
+		for (auto &it : _windows) {
+			if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
+				if (auto tm = dir->getTextInputManager()) {
+					tm->cancel();
+				}
+			}
+		}
+
 		if (_blockTransfer) {
 			_blockTransfer->reset();
 		}
@@ -347,9 +372,18 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::GlobalCode::SharedObjectsAnnounce:
 			handleAnnounce(data::read<Interface>(payload));
 			return true;
+		case remote::GlobalCode::ServerInfo: handleServerInfo(h, payload); return true;
 		default:
 			log::source().warn("ClientAppThread", "unhandled global message (code ",
 					uint32_t(h.code), ")");
+			// A request we do not understand must be ANSWERED, not just dropped: the peer is
+			// holding a waiter with a deadline, and silence turns "I don't know that message" into
+			// "the client is dead" two seconds later. This is what lets a newer server probe an
+			// older client (ServerInfo does exactly that) instead of killing the session.
+			if (!remote::isReplyOrError(h) && _connection) {
+				_connection->sendError(remote::Domain::Global,
+						toInt(remote::GlobalError::NotImplemented), h.serial);
+			}
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
@@ -386,7 +420,53 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 
-			wIt->second->acquireFrame(frameId, constraints, sp::move(sendReply));
+			// Indices 3/4 are the server's frame telemetry, appended in M4. Read them by TYPE:
+			// absent (a version-1 server, or a frame with no new stat) means "no update", and the
+			// window keeps what it had.
+			core::FrameTimingInfo timing;
+			core::DrawStat stat{};
+			const core::FrameTimingInfo *timingPtr = nullptr;
+			const core::DrawStat *statPtr = nullptr;
+			if (val.getValue(3).isArray()) {
+				timing = remote::deserializeFrameTiming(val.getValue(3));
+				timingPtr = &timing;
+			}
+			if (val.getValue(4).isArray()) {
+				stat = remote::deserializeDrawStat(val.getValue(4));
+				statPtr = &stat;
+			}
+
+			wIt->second->acquireFrame(frameId, constraints, timingPtr, statPtr,
+					sp::move(sendReply));
+			return true;
+		}
+		case remote::WindowCode::TextInputState: {
+			// server -> client: [windowId, TextInputState]. The processor's echo, on its way to the
+			// focused widget through the Director's TextInputManager.
+			auto val = data::read<Interface>(payload);
+			auto windowId = uint64_t(val.getInteger(0));
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "TextInputState for unknown window ",
+						windowId);
+				return true;
+			}
+			wIt->second->handleTextInput(remote::deserializeTextInputState(val.getValue(1)));
+			return true;
+		}
+		case remote::WindowCode::WindowGeometryChanged: {
+			// server -> client: [windowId, WindowGeometry]. Updates the window's mirror and lets the
+			// scene hear about the move.
+			auto val = data::read<Interface>(payload);
+			auto windowId = uint64_t(val.getInteger(0));
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "WindowGeometryChanged for unknown window ",
+						windowId);
+				return true;
+			}
+			wIt->second->handleWindowGeometryChanged(
+					remote::deserializeWindowGeometry(val.getValue(1)));
 			return true;
 		}
 		case remote::WindowCode::InputEvents: {
@@ -425,6 +505,10 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		default:
 			log::source().warn("ClientAppThread", "unhandled window message (code ",
 					uint32_t(h.code), ")");
+			if (!remote::isReplyOrError(h) && _connection) {
+				_connection->sendError(remote::Domain::Window,
+						toInt(remote::WindowError::NotImplemented), h.serial);
+			}
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
@@ -484,6 +568,76 @@ Rc<Scene> ClientAppThread::makeScene(NotNull<RemoteWindow> w, const core::FrameC
 		return nullptr;
 	}
 	return scene;
+}
+
+remote::PeerInfo ClientAppThread::makeClientInfo() const {
+	auto ret = remote::PeerInfo::makeLocal();
+	// A client renders nothing itself: it leaves `api` at None and claims no window subsystem,
+	// because the window it draws for belongs to the server. Saying "xcb" here because the client
+	// process happens to run under X would be answering a question nobody asked.
+	if (_connection) {
+		if (auto t = _connection->getTransport()) {
+			ret.transportCaps = t->getCaps();
+		}
+	}
+	ret.transportScheme =
+			remote::getSchemeName(_clientContext->getServerAddress().scheme).str<Interface>();
+
+#if DEBUG
+	// XL_REMOTE_FAKE_ABI=<hex> -- report a different ABI tag than this build actually has.
+	//
+	// A test hook, and it exists because the alternative is worse: the rejection path is the one
+	// thing in this exchange that must work and can never be reached by running two binaries from
+	// the same tree. Without it "an incompatible client is refused" is a claim nobody has run.
+	// Debug-only, and it can only make this client be REFUSED -- there is no value it can carry
+	// that gets a client accepted which would not have been.
+	if (auto env = ::getenv("XL_REMOTE_FAKE_ABI")) {
+		auto str = StringView(env);
+		auto forced = uint64_t(str.readInteger(16).get(0));
+		log::source().warn("ClientAppThread", "XL_REMOTE_FAKE_ABI: reporting abi ", forced,
+				" instead of ", ret.abi);
+		ret.abi = forced;
+	}
+#endif
+
+	return ret;
+}
+
+void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView payload) {
+	auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+	auto local = makeClientInfo();
+
+	if (!local.isAbiCompatible(info)) {
+		// Until M6 the two sides memcpy InputEventData/WindowLayer at each other, so this is not a
+		// version disagreement to warn about and carry on from -- it is the difference between
+		// rendering and corrupting memory. Refuse in the reply so the server learns why, and end
+		// the session rather than waiting to be dropped.
+		StringStream serverDesc;
+		StringStream localDesc;
+		info.description([&](StringView str) { serverDesc << str; });
+		local.description([&](StringView str) { localDesc << str; });
+		log::source().error("ClientAppThread",
+				"incompatible server build; refusing the session\n  server: ", serverDesc.str(),
+				"\n  client: ", localDesc.str());
+		if (_connection) {
+			_connection->sendError(remote::Domain::Global,
+					toInt(remote::GlobalError::IncompatiblePeer), h.serial);
+		}
+		_disconnectRequested = true;
+		return;
+	}
+
+	_serverInfo = sp::move(info);
+	_hasServerInfo = true;
+
+	StringStream desc;
+	_serverInfo.description([&](StringView str) { desc << str; });
+	log::source().info("ClientAppThread", "server: ", desc.str());
+
+	if (_connection) {
+		_connection->sendCborReply(h.serial, remote::Domain::Global,
+				toInt(remote::GlobalCode::ServerInfo), remote::serializePeerInfo(local));
+	}
 }
 
 void ClientAppThread::handleAnnounce(const Value &data) {

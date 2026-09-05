@@ -31,10 +31,17 @@ ComponentId DockFrameComponent::Id;
 
 uint64_t DockSystem::SystemFrameTag = System::GetNextSystemId();
 
-bool DockSystem::init() {
+bool DockSystem::init() { return init(Rc<PanelRegistry>::create()); }
+
+bool DockSystem::init(Rc<PanelRegistry> &&registry) {
+	if (!registry) {
+		return false;
+	}
 	if (!System::init()) {
 		return false;
 	}
+
+	_registry = sp::move(registry);
 
 	_systemPriority = DockDefaultPriority;
 
@@ -74,20 +81,41 @@ void DockSystem::handleAdded(Node *owner) {
 								DragActions action) { return handleDragDrop(event, action); },
 			});
 
+	_registry->addHost(this);
+
 	syncNodes();
 	invalidateLayout();
 }
 
-void DockSystem::handleRemoved() {
-	if (_owner) {
-		// Panel nodes we keep alive in _content are parented inside the frames below; clean them
-		// WITHOUT cleanup first, or Node::cleanup() would destroy their systems while _content - and
-		// anything that re-parents such a node later - still holds it. Same invariant as syncNodes().
-		for (auto &[key, node] : _content) {
-			if (node && node->getParent() != nullptr) {
+void DockSystem::detachPanelsUnder(const Set<Node *> &roots) {
+	if (roots.empty()) {
+		return;
+	}
+
+	// A panel node the registry keeps alive may be parked inside a subtree that is about to be
+	// cleaned. Node::cleanup() recurses into children and would destroy its systems (a Label's
+	// EventListener among them), leaving a dangling system pointer on a node the registry - and
+	// whoever re-parents it next - still holds. So take it out first, WITHOUT cleanup: a plain
+	// detach fires handleExit, which is exactly how a system pauses while its node is out of the
+	// scene, and re-entry replays handleEnter.
+	//
+	// It attaches to a frame's BODY, one level below the frame itself, so the whole ancestor chain
+	// has to be walked rather than just the direct parent. And with a registry that may be SHARED
+	// with another container, the walk is what keeps this from tearing that container's live panels
+	// out from under it: only what is inside `roots` is ours to detach.
+	_registry->foreachContent([&](StringView, Node *node) {
+		for (auto p = node->getParent(); p != nullptr; p = p->getParent()) {
+			if (roots.find(p) != roots.end()) {
 				node->removeFromParent(false);
+				return;
 			}
 		}
+	});
+}
+
+void DockSystem::handleRemoved() {
+	if (_owner) {
+		detachPanelsUnder(Set<Node *>{_owner});
 
 		_tree.each([&](DockTreeNode &n) {
 			if (n.node) {
@@ -96,6 +124,11 @@ void DockSystem::handleRemoved() {
 			}
 		});
 	}
+
+	// Give up every claim: the panels this dock was holding are now parked nowhere, and they keep
+	// their content, so re-opening one anywhere brings back exactly what was there.
+	_registry->releaseHost(this);
+
 	System::handleRemoved();
 }
 
@@ -111,24 +144,10 @@ DockSystem *DockSystem::findForNode(Node *node) {
 // --- registry --------------------------------------------------------------
 
 void DockSystem::registerPanel(DockPanelDescriptor &&desc) {
-	if (desc.id.empty()) {
-		log::source().error("ui::DockSystem", "a panel descriptor needs a non-empty id");
-		return;
-	}
-	auto id = desc.id;
-	_descriptors.insert_or_assign(sp::move(id), sp::move(desc));
+	_registry->registerPanel(sp::move(desc));
 }
 
-void DockSystem::unregisterPanel(StringView id) {
-	closePanel(id);
-	_descriptors.erase(id.str<Interface>());
-	_content.erase(id.str<Interface>());
-}
-
-const DockPanelDescriptor *DockSystem::getPanelDescriptor(StringView id) const {
-	auto it = _descriptors.find(id.str<Interface>());
-	return (it != _descriptors.end()) ? &it->second : nullptr;
-}
+void DockSystem::unregisterPanel(StringView id) { _registry->unregisterPanel(id); }
 
 // --- structure -------------------------------------------------------------
 
@@ -224,7 +243,17 @@ bool DockSystem::openPanel(StringView id, DockNodeHandle target, size_t index) {
 	return true;
 }
 
-bool DockSystem::closePanel(StringView id) {
+bool DockSystem::closePanel(StringView id) { return takePanelOut(id, true); }
+
+void DockSystem::releasePanel(StringView id) {
+	// Structurally identical to a close - the frame folds away just the same - but NOT reported as
+	// one: the panel is moving to another container, and an application that treats `closed` as
+	// "the user is done with this" would act on something that did not happen. The node is not
+	// touched here at all; the registry hands it to the new host.
+	takePanelOut(id, false);
+}
+
+bool DockSystem::takePanelOut(StringView id, bool notify) {
 	auto h = _tree.findFrameForPanel(id);
 	auto leaf = _tree.get(h);
 	if (!leaf) {
@@ -255,7 +284,7 @@ bool DockSystem::closePanel(StringView id) {
 	}
 	invalidateLayout();
 
-	if (_panelClosedCallback) {
+	if (notify && _panelClosedCallback) {
 		_panelClosedCallback(id);
 	}
 	return true;
@@ -419,11 +448,18 @@ bool DockSystem::restore(const Value &value) {
 
 	// Panels the file did not mention stay closed, EXCEPT the ones declared OpenByDefault: those
 	// are how a panel introduced by a newer build of the application still shows up.
-	for (auto &it : _descriptors) {
+	for (auto &it : _registry->getPanelDescriptors()) {
 		if (!hasFlag(it.second.flags, DockPanelFlags::OpenByDefault)) {
 			continue;
 		}
 		if (isPanelOpen(it.first)) {
+			continue;
+		}
+		// Somebody ELSE is holding it. Opening it here would take it away from them, which is the
+		// opposite of what "open this by default" asks for: a shared registry makes a dock's saved
+		// layout one half of an arrangement, and the other half's panels are not this one's to
+		// claim. A container that wants it back restores its own half.
+		if (auto host = _registry->getHost(it.first); host != nullptr && host != this) {
 			continue;
 		}
 		openPanel(it.first);
@@ -693,31 +729,52 @@ bool DockSystem::handleDragDrop(const DragEvent &event, DragActions) {
 	const auto target = hitTest(event.location, payload->panelId);
 	const auto panelId = payload->panelId;
 	const auto source = payload->source;
+	const bool fromHere = (payload->host == this);
 
 	if (target.kind == DockDropTarget::Kind::None) {
 		return false;
 	}
 
-	// dropping the only panel of a frame back into that same frame changes nothing
-	if (target.frame == source && !target.isSplit()) {
+	// Dropping the only panel of a frame back into that same frame changes nothing.
+	//
+	// `fromHere` is not a shortcut, it is what makes the comparison mean anything: a DockNodeHandle
+	// is an index into ONE tree's arena, so the handle of another dock's frame can equal one of ours
+	// by coincidence and this would refuse a perfectly good drop. A panel arriving from anywhere
+	// else has no no-op case here at all - wherever it lands is somewhere it was not.
+	if (fromHere && target.frame == source && !target.isSplit()) {
 		if (getPanelsInFrame(source).size() == 1) {
 			return false;
 		}
 	}
 
+	// A panel another container is holding is taken from it by the registry as part of handing over
+	// the node, on the acquire that updateFrameContent does at the end of every path below. So there
+	// is nothing to negotiate here - only the arrival to report, which for a panel that was not open
+	// in this dock a moment ago is an open rather than a move.
+	const bool arriving = !fromHere && !isPanelOpen(panelId);
+
+	bool applied = false;
 	switch (target.kind) {
 	case DockDropTarget::Kind::None: return false;
-	case DockDropTarget::Kind::Center: return movePanel(panelId, target.frame, maxOf<size_t>());
+	case DockDropTarget::Kind::Center:
+		applied = movePanel(panelId, target.frame, maxOf<size_t>());
+		break;
 	case DockDropTarget::Kind::TabStrip:
-		return movePanel(panelId, target.frame, target.tabIndex);
-	default: break;
+		applied = movePanel(panelId, target.frame, target.tabIndex);
+		break;
+	default:
+		// A split zone: subdivide the target and park the panel in the new place. Both go through
+		// the same public operations an application would call, so a drop can never reach a code
+		// path the API does not already expose - and the whole thing stays drivable from a test.
+		applied = !splitFrameWithPanel(target.frame, target.getAxis(), target.isFirst(), panelId)
+						   .empty();
+		break;
 	}
 
-	// A split zone: subdivide the target and park the panel in the new place. Both go through the
-	// same public operations an application would call, so a drop can never reach a code path the
-	// API does not already expose - and the whole thing stays drivable from a test.
-	auto created = splitFrameWithPanel(target.frame, target.getAxis(), target.isFirst(), panelId);
-	return !created.empty();
+	if (applied && arriving && _panelOpenedCallback) {
+		_panelOpenedCallback(panelId);
+	}
+	return applied;
 }
 
 // --- the placement pass ----------------------------------------------------
@@ -831,26 +888,11 @@ void DockSystem::commitGeometry() {
 // --- scene nodes -----------------------------------------------------------
 
 Node *DockSystem::acquireContent(StringView panelId) {
-	auto key = panelId.str<Interface>();
-	if (auto it = _content.find(key); it != _content.end()) {
-		return it->second.get();
-	}
-
-	auto desc = getPanelDescriptor(panelId);
-	if (!desc || !desc->builder) {
-		return nullptr;
-	}
-
-	auto node = desc->builder();
-	if (!node) {
-		log::source().error("ui::DockSystem", "the builder of panel '", panelId,
-				"' returned nothing");
-		return nullptr;
-	}
-
-	auto raw = node.get();
-	_content.emplace(sp::move(key), sp::move(node));
-	return raw;
+	// Builds it on first show, and - when another container was holding it - takes it from there:
+	// the registry evicts the previous host before handing the node over, so this dock never has to
+	// ask who had it. That eviction can re-enter this system through releasePanel, which is why the
+	// callers of this read everything they need before calling it.
+	return _registry->acquireContent(panelId, this);
 }
 
 void DockSystem::updateFrameTabs(DockTreeNode &leaf) {
@@ -973,29 +1015,14 @@ void DockSystem::syncNodes() {
 			orphans.emplace_back(child);
 		}
 	}
-	// A panel node we keep alive in _content may still be parented INSIDE an orphan frame that is
-	// about to be cleaned: Node::cleanup() recurses into children and would destroy its systems (a
-	// Label's EventListener among them), leaving a dangling system pointer on the very node we are
-	// about to re-parent elsewhere. It attaches to the frame's BODY, one level below the orphan
-	// itself - so walk the whole ancestor chain, not just the direct parent; handleExit is all it
-	// needs while out of the scene, and re-entry replays handleEnter. Only then may the orphan be
-	// cleaned safely.
+	// A panel node the registry keeps alive may still be parented INSIDE an orphan frame that is
+	// about to be cleaned. Take those out first - see detachPanelsUnder for why a plain detach, and
+	// why the whole ancestor chain has to be walked. Only then may the orphan be cleaned safely.
 	Set<Node *> dead;
 	for (auto &it : orphans) {
 		dead.emplace(it.get());
 	}
-	for (auto &[key, node] : _content) {
-		if (!node || node->getParent() == nullptr) {
-			continue;
-		}
-		bool inDeadSubtree = false;
-		for (Node *p = node->getParent(); p != nullptr && !inDeadSubtree; p = p->getParent()) {
-			inDeadSubtree = dead.find(p) != dead.end();
-		}
-		if (inDeadSubtree) {
-			node->removeFromParent(false);
-		}
-	}
+	detachPanelsUnder(dead);
 
 	for (auto &it : orphans) { it->removeFromParent(true); }
 

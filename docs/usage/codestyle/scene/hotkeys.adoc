@@ -10,8 +10,11 @@
   and, critically, is **not hit-tested against the pointer position**.
 * Return **`true` to consume**: the walk stops there and the ordinary key route
   never runs. Return `false` and the next subscriber is offered it.
-* Order: the listener that currently **owns the keyboard goes first**, then
-  everybody else in the dispatcher's normal walk order.
+* Order: the listener that currently **owns the keyboard goes first**, then the
+  **selection chain deepest-first**, then everybody else in the dispatcher's
+  normal walk order.
+* **`HotkeyFlags::SelectedOnly`** narrows a binding to listeners on the selection
+  chain — the mirror of `FocusedOnly`, and how an Undo finds the right history.
 * The name is the identity (`org.stappler.xenolith.<area>.<action>`); the
   combination is data and can be **rebound at runtime** without invalidating the id.
 * One combination can carry **several** hotkeys — `Escape` is both
@@ -44,9 +47,13 @@ populated.
 The last three are named for the ACTION rather than for a widget, and that is the
 point: whoever owns the focused thing answers them — a text view with its own
 history, a document editor with the document's, a file browser with the project's
-— so an application arbitrates by focus rather than by binding three different
-chords. A handler that has nothing to undo must return `false` and let the chord
-through; swallowing it is how a person eventually undoes the wrong thing. Redo has
+— so an application arbitrates by *which history is current* rather than by
+binding three different chords. That used to mean focus alone, which only ever
+worked because `TextInputManager` allows one IME handler per window; the general
+answer is the **selection**, and `HotkeyFlags::SelectedOnly` is how a handler says
+it needs one (see [The selection chain](selection.adoc)). A handler that has
+nothing to undo must return `false` and let the chord through, flag or no flag;
+swallowing it is how a person eventually undoes the wrong thing. Redo has
 two ids because the registry holds one combination per id and the habit is split:
 `Ctrl+Y` on Windows, `Ctrl+Shift+Z` elsewhere. Neither needs
 `ReserveFromTextInput` — the text-input processor already declines every `Ctrl`
@@ -141,6 +148,11 @@ focused field's subtree". A listener with no focus group above it always qualifi
 . **The keyboard owner first.** The first listener in walk order whose group has
   `SingleFocus` and which the group lets have keys is offered every matching
   subscription, whatever its flags.
+. **Then the selection chain, deepest first.** The selected element's own
+  listener, then its ancestors, then the container that owns it — see
+  [The selection chain](selection.adoc). Within one chain node the ordinary
+  walk order breaks the tie. A chain listener that declines is *not* offered the
+  key again in the next step; declining is an answer.
 . **Then everybody else**, in the dispatcher's normal walk order: the pre-scene
   band by descending priority, then the scene in reverse visit order (front-most
   node first), then the post-scene band.

@@ -146,12 +146,6 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::MouseRight}), 1});
 
-#if SPRT_APPLE
-	_theme = ButtonIconTheme::Apple;
-#else
-	_theme = ButtonIconTheme::Default;
-#endif
-
 	/* From the FIRST frame, not from the first thing that touches the button. A node with no
 	InteractiveComponent reads as state 0 to the style resolver, and `:disabled` is "not :enabled" -
 	so an untouched button matched `button:disabled` while it was perfectly usable, and
@@ -178,6 +172,25 @@ void Button::handleEnter(Scene *scene) {
 	Panel::handleEnter(scene);
 
 	_windowState = _director->getRenderServer()->getWindowState();
+
+	/* Which OS these window controls belong to, asked of the thread rather than of the build.
+	`#if SPRT_APPLE` was the right answer only while the scene and the window were in the same
+	process: a remote client draws the chrome for the SERVER's window, so a Linux client against a
+	macOS server drew the wrong traffic lights, and a macOS client against a Linux server drew Apple
+	ones onto a window that has none. Locally getServerInfo() answers "this process", so the local
+	behaviour is unchanged.
+
+	Deferred to handleEnter because the answer needs a director; a button built before it is in a
+	scene has nobody to ask. */
+	auto theme = ButtonIconTheme::Default;
+	if (auto app = _director ? _director->getApplication() : nullptr) {
+		if (auto peer = app->getServerInfo()) {
+			if (remote::isApplePlatform(peer->platform)) {
+				theme = ButtonIconTheme::Apple;
+			}
+		}
+	}
+	_theme = theme;
 
 	updateState();
 }
