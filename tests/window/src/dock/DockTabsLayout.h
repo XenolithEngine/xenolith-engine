@@ -56,6 +56,12 @@ protected:
 	void runPhase4();
 	void runPhase5();
 
+	// The two things a SIDE RAIL needs and a plain frame does not: a place that may only be divided
+	// one way, and a place that can be shut to its strip. Built on a layout of their own, after the
+	// phases above have finished with theirs.
+	void runPhase6();
+	void runPhase7();
+
 	size_t buildCount(StringView id) const;
 	Vector<String> panelsOf(ui::DockNodeHandle) const;
 
@@ -64,6 +70,11 @@ protected:
 
 	ui::DockNodeHandle _left;
 	ui::DockNodeHandle _right;
+
+	// phases 6-7: a vertical-only rail beside an ordinary frame
+	ui::DockNodeHandle _rail;
+	ui::DockNodeHandle _body;
+	float _railOpenMin = 0.0f;
 
 	Map<String, size_t> _builds;
 	Map<String, Rc<Node>> _built;
