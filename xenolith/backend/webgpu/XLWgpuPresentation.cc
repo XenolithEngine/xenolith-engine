@@ -556,12 +556,11 @@ bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> de
 	opts.acquireImageWithoutFence = true;
 
 #if SPRT_WASM
-	// Use the present window to pace the frame loop. On a real rotating swapchain a deferred
-	// present would consume the NEXT frame's texture, so it had to run immediately — but the
-	// wasm/JS binding has no rotation (wgpuSurfacePresent is a no-op and getCurrentTexture always
-	// returns the same offscreen presentTex, which the broker blits to the canvas at rAF/vsync).
-	// So deferring the present is safe here and is what bounds the frame rate to the target
-	// interval; without it the loop (present -> scheduleNextImage -> present) runs unbounded.
+	// Use the present window to pace the frame loop. Deferring the present is safe on the wasm/JS
+	// binding because it has no swapchain rotation (wgpuSurfacePresent is a no-op and
+	// getCurrentTexture always returns the same offscreen presentTex, which the broker blits to
+	// the canvas at rAF/vsync), and it is what bounds the frame rate to the target interval:
+	// without it the loop (present -> scheduleNextImage -> present) runs unbounded.
 	opts.usePresentWindow = true;
 #else
 	opts.usePresentWindow = false;

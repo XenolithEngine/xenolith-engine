@@ -1324,7 +1324,7 @@ void TextInput::handleTextInput(const TextInputState &data) {
 
 	if (corrected) {
 		// The correction has to travel back, or the platform keeps editing the string it thinks it
-		// has and the next keystroke undoes the fix.
+		// has and the next keystroke reverts it.
 		pushRequest(_inputState.string, _inputState.cursor, _inputState.marked);
 	}
 

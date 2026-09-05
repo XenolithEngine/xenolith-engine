@@ -283,9 +283,8 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	// compiled queues (selectQueue logs if the name is unknown).
 	req->selectQueue(_scene->getQueue());
 
-	// Keep the scene alive for as long as the frame it produced. This used to be done by the
-	// queue's begin/end callbacks, which had to capture the Scene and therefore welded the queue
-	// to it; here the pin belongs to the request, and the queue stays shareable.
+	// Keep the scene alive for as long as the frame it produced. The pin belongs to the request,
+	// not to the queue, so the queue itself stays shareable between scenes.
 	req->setSceneRef(Rc<Ref>(_scene.get()));
 
 	// break current stack frame, perform on next one

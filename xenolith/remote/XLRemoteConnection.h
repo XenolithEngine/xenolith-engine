@@ -30,9 +30,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
 // One protocol session over a transport connection.
 //
-// Server and client used to be two classes with the same body: their poll() implementations were
-// identical to the byte, and every send differed only in which MessageType it stamped. They are one
-// class now, with the role as data -- the only thing that ever actually varied.
+// Server and client are the same class: poll() is identical for both, and the role is data -- it
+// only decides which MessageType a send stamps.
 //
 // Everything here runs on the owning AppThread. The transport underneath may be QUIC, a unix socket,
 // TLS over TCP or an in-process pipe; this class does not know and must not care.

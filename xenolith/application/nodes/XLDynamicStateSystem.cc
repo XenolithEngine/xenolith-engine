@@ -124,11 +124,10 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			ret.enabled |= core::DynamicState::Scissor;
 			ret.scissor = viewRect;
 		} else {
-			// A nested scissor is the INTERSECTION of the two boxes, so the extents have to come
-			// from the clamped EDGES. Taking min(width) let a child that starts inside the parent
-			// run past the parent's far edge; and a child that did not overlap at all used to skip
-			// the branch entirely, leaving the parent's rect in force - so content scrolled fully
-			// out of a nested container drew unclipped instead of disappearing.
+			// A nested scissor is the INTERSECTION of the two boxes, so the extents are derived
+			// from the clamped EDGES: min(width) alone would let a child that starts inside the
+			// parent run past its far edge, and boxes that do not overlap at all collapse to an
+			// empty rect rather than to the parent's.
 			const uint32_t minX = sprt::max(ret.scissor.x, viewRect.x);
 			const uint32_t minY = sprt::max(ret.scissor.y, viewRect.y);
 			const uint32_t maxX =

@@ -74,8 +74,7 @@ void FocusGroup::setEventMask(EventMask &&mask) { _eventMask = sp::move(mask); }
 void FocusGroup::setFlags(Flags flags) { _flags = flags; }
 
 bool FocusGroup::setFocus(InputListener *listener) {
-	// Refused rather than crashed. Null used to be dereferenced here, and "clear the focus" is an
-	// obvious thing for a caller to try - but it has no meaning in this group: updateWithListeners
+	// Null is refused: "clear the focus" has no meaning in this group, because updateWithListeners
 	// gives focus to listeners.front() whenever the focused one is gone, so a non-empty group
 	// always has a focused listener. Moving focus means naming the listener to move it to
 	if (!listener) {

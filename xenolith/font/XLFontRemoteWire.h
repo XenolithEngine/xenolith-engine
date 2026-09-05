@@ -31,9 +31,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 // the client controller (encode) and the server endpoint (decode). `density` is stored as 16.16 fixed
 // point so we never depend on Value floating-point support.
 //
-// NOTE (compile stage): the plan specifies a packed-binary GlyphRequest; we use CBOR here for robustness
-// and minimal bug surface. It is straightforward to swap for a packed layout later without touching the
-// control flow on either side.
+// The encoding is CBOR rather than a packed binary layout; it can be swapped for one later without
+// touching the control flow on either side.
 inline Value encodeFontSpec(const FontSpecializationVector &s) {
 	Value v;
 	v.setInteger(int64_t(s.fontStyle.get()), "st");

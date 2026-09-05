@@ -468,8 +468,7 @@ void View::onFigure(const document::Node *node) {
 }
 
 void View::onImageFigure(StringView src, StringView alt, const document::Node *node) {
-	// A full-screen image viewer used to be pushed here; it lived on the Material Design kit that
-	// is gone. Nothing is opened until it is rebuilt on the ui kit.
+	// TODO: full-screen image viewer, to be built on the ui kit.
 }
 
 void View::onVideoFigure(StringView src) { _director->getApplication()->openUrl(src); }

@@ -42,8 +42,7 @@ bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<core::Instance> 
 	}
 
 	// The rasterizer fans tiles out to this looper's pool and takes part in the work itself, so
-	// what it can use is the pool plus the thread that submits. Filled in here because it has been
-	// a stub since M0 and a stub that reports 1 reads as "this build has no tiling".
+	// what it can use is the pool plus the thread that submits.
 	_backendFeatures.threadCount = uint32_t(looper->getWorkersCount()) + 1;
 
 	looper->performOnThread([&] {

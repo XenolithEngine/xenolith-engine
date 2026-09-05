@@ -36,7 +36,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-// The rasterizer is a stappler module now (it depends on nothing but stappler_core and is useful
+// The rasterizer is a stappler module (it depends on nothing but stappler_core and is useful
 // outside a renderer). The alias keeps the backend and the 2d renderer spelling it `soft::raster`,
 // which is where it reads best from their side.
 namespace raster = ::stappler::raster;
@@ -47,8 +47,8 @@ class Loop;
 
 // What the rasterizer is allowed to do on this build. Filled once, at Loop init.
 struct SP_PUBLIC BackendFeatures {
-	// Number of worker threads the rasterizer may fan tiles out to. M0 rasterizes inline on the
-	// loop thread, so this is informational until tiling lands.
+	// Number of worker threads the rasterizer may fan tiles out to: the loop's pool plus the
+	// submitting thread, which takes part in the work itself.
 	uint32_t threadCount = 1;
 };
 

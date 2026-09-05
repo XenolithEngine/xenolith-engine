@@ -31,15 +31,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
 // What carries the session, separated from what the session SAYS.
 //
-// The protocol layer used to be sewn to OpenSSL: an `SSL *` travelled through every entry point as
-// a `void *`, and both connection classes held SSL_CTX/EVP_PKEY/X509/fd in their own fields. There
-// was no seam to put another transport at, which made unix-domain sockets, a plain TLS fallback, a
-// browser (WebTransport) client and an in-process loopback for tests all equally impossible.
-//
-// The seam is here. Above it the protocol only ever moves bytes over an ordered stream; below it a
+// This is the seam. Above it the protocol only ever moves bytes over an ordered stream; below it a
 // transport decides how those bytes travel, who the peer is, and how the looper learns there is
-// work. Each implementation registers itself under an address scheme, so a build understands
-// exactly the schemes it managed to link.
+// work -- QUIC, a unix-domain socket, plain TLS over TCP, a browser WebTransport client or an
+// in-process loopback for tests. Each implementation registers itself under an address scheme, so
+// a build understands exactly the schemes it managed to link.
 
 // What a transport can do. The protocol adapts rather than assuming; anything not declared here is
 // emulated above (or simply not used).
