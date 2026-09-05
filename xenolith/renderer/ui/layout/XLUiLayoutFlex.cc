@@ -303,8 +303,7 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 		// An overflow main axis is freed ONLY when the content genuinely does not fit. While it
 		// still fits, the container behaves like any other: grow distributes the slack and
 		// justify-content places what is left. Freeing it unconditionally would break every
-		// `overflow: auto` container that also holds a `flex-grow: 1` filler - a much bigger
-		// regression than the squashing it set out to fix.
+		// `overflow: auto` container that also holds a `flex-grow: 1` filler.
 		const bool overflowing =
 				ovf.main && boundedMain && (sumOuterBase + gapTotal) > contentMain + FlexEpsilon;
 

@@ -29,9 +29,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::gles {
 bool ClearPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
-	// GLES backend plan §2.5: partial redraw and frame skipping both rest on preserving the image
-	// between frames, which M1 cannot do - so damage tracking is forced off until M4, whatever a
-	// caller asked for.
+	// Partial redraw and frame skipping both rest on preserving the image between frames, which
+	// this queue does not do - so damage tracking is forced off, whatever a caller asked for.
 	builder.setDamageFlags(QueueDamageFlags::None);
 	builder.setApi(InstanceApi::GLES);
 	builder.setTypeTag(toInt(QueueType::Flat));

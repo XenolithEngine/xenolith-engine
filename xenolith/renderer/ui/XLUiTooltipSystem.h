@@ -289,7 +289,7 @@ public:
 
 	// One hit-test query per frame, and only while the scene has a hint in it at all. This is what
 	// notices a node sliding out from under a pointer that did not move - a scrolling list, a panel
-	// animating into place - which used to come from the per-target listener's geometry updates
+	// animating into place
 	virtual void update(const UpdateTime &) override;
 
 	virtual void setConfig(const TooltipConfig &);

@@ -141,7 +141,7 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 
 	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame. It exists for the
 	// benchmark: with damage tracking on, a static scene skips its frames entirely and every kernel
-	// set measures the same zero. Never for production - it throws away the biggest win M2 bought.
+	// set measures the same zero. Never for production - it throws away all of damage tracking.
 	static const bool forceFull = [] {
 		auto value = ::getenv("XL_SOFT_FORCE_FULL_REDRAW");
 		return value && StringView(value) != "0";

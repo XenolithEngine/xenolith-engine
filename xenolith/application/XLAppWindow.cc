@@ -108,19 +108,15 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 	if (!_presentationEngine->isRunning()) {
 		// Every non-Root window maps before its first present; only Root defers.
 		//
-		// For Popup/Tooltip that has always been about behaviour: hit-testing and the dismiss
-		// monitors need a placed window from the moment the menu exists. Dialog and Utility are here
-		// for a harder reason - deferring their map is actively broken. With TWO decorated auxiliary
-		// windows open at once, tearing either of them down poisons the present path (the surviving
-		// windows start failing MaterialSwapchainPass and the process goes down). One such window
-		// alone is fine, and four override-redirect popups are fine; it takes two windows on the
-		// deferred path. Mapping them immediately avoids it entirely.
-		//
-		// NOTE: that is a containment, not a root-cause fix. The defect lives in the deferred path
-		// itself (the map hangs off handleFrameReady, because scheduleNextImage is dropped without a
-		// word while the swapchain does not exist yet - it is built asynchronously from the first WM
-		// configure). Root still uses it, and is safe only because there is normally one of them;
-		// the cost of deferring for Root is what it buys - no unpainted window at startup.
+		// Popup/Tooltip need it for behaviour: hit-testing and the dismiss monitors need a placed
+		// window from the moment the menu exists. Dialog and Utility need it because the deferred
+		// path is defective - with TWO decorated auxiliary windows deferred at once, tearing either
+		// of them down poisons the present path for the survivors (MaterialSwapchainPass starts
+		// failing and the process goes down). The defect is in the deferred map itself: it hangs
+		// off handleFrameReady, and scheduleNextImage is dropped silently while the swapchain does
+		// not exist yet (it is built asynchronously from the first WM configure). Root keeps the
+		// deferred path - there is normally one Root, and deferring is what keeps it from showing
+		// an unpainted window at startup.
 		const auto type = _window->getInfo()->type;
 		if (type != sprt::window::WindowType::Root) {
 			_window->mapWindow();
@@ -612,8 +608,9 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 					_window->getExtent(), this);
 		}
 
-		log::source().error("AppWindow", "Windowed presentation is not implemented for the GLES "
-				"backend (M2): surface backend ", toInt(ifaceInfo.backend));
+		log::source().error("AppWindow",
+				"Windowed presentation is not implemented for the GLES backend: surface backend ",
+				toInt(ifaceInfo.backend));
 		return nullptr;
 	}
 #endif

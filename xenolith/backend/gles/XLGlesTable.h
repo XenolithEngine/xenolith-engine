@@ -45,7 +45,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 // without GL still loads the module); GL entrypoints are resolved with eglGetProcAddress once a
 // context exists, with libGLESv2 as the fallback carrier some dispatchers need for core calls.
 //
-// Only the subset the current milestone uses is resolved: the table grows as the backend does.
+// Only the subset the backend actually calls is resolved.
 struct SP_PUBLIC EglTable {
 	EglTable() = default;
 	EglTable(EglTable &&) = default;
@@ -59,7 +59,7 @@ struct SP_PUBLIC EglTable {
 	// called on the calling thread: dispatchers are allowed to answer per-context.
 	void loadGl();
 
-	// The M0 minimum: enough EGL to probe a device and enough GL to name it.
+	// The probe minimum: enough EGL to open a device and enough GL to name it.
 	explicit operator bool() const {
 		return eglGetError && eglGetDisplay && eglInitialize && eglTerminate && eglQueryString
 				&& eglBindAPI && eglChooseConfig && eglCreateContext && eglDestroyContext
@@ -87,7 +87,7 @@ struct SP_PUBLIC EglTable {
 	// EGL 1.5 entrypoint; older libEGL exports only the EXT twin, resolved below.
 	decltype(&eglGetPlatformDisplay) eglGetPlatformDisplay = nullptr;
 
-	// --- Windowed WSI (M2): create an EGLWindowSurface on the session's platform display and
+	// --- Windowed WSI: create an EGLWindowSurface on the session's platform display and
 	//     swap it to the screen. Resolved through the DSO like the rest; null when the driver
 	//     lacks them, in which case windowed presentation is unavailable (headless still works).
 	PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC eglCreatePlatformWindowSurfaceEXT = nullptr;
@@ -158,8 +158,8 @@ struct SP_PUBLIC EglTable {
 	decltype(&glBindFramebuffer) glBindFramebuffer = nullptr;
 	decltype(&glFramebufferTexture2D) glFramebufferTexture2D = nullptr;
 	decltype(&glCheckFramebufferStatus) glCheckFramebufferStatus = nullptr;
-	// Windowed WSI (M2): copy a rendered texture onto the default framebuffer (the window
-	// surface). Core GLES 3.0.
+	// Windowed WSI: copy a rendered texture onto the default framebuffer (the window surface).
+	// Core GLES 3.0.
 	decltype(&glBlitFramebuffer) glBlitFramebuffer = nullptr;
 	// Desktop-GL entrypoint (not part of the ES API, absent from the GLES3 headers): desktop
 	// drivers behind EGL still export it. Used for diagnostics only - callers must null-check.
@@ -185,7 +185,7 @@ struct SP_PUBLIC EglTable {
 	decltype(&glReadPixels) glReadPixels = nullptr;
 	decltype(&glPixelStorei) glPixelStorei = nullptr;
 
-	// --- M2: shaders, programs, VAOs, draws and per-draw state ---
+	// --- Shaders, programs, VAOs, draws and per-draw state ---
 	decltype(&glCreateShader) glCreateShader = nullptr;
 	decltype(&glDeleteShader) glDeleteShader = nullptr;
 	decltype(&glShaderSource) glShaderSource = nullptr;
@@ -240,8 +240,8 @@ struct SP_PUBLIC EglTable {
 	decltype(&glUniform1i) glUniform1i = nullptr;
 	decltype(&glUniform4i) glUniform4i = nullptr;
 
-	// The M2 draw path on top of hasGlDevice: compiling programs and executing a recorded span
-	// list needs all of these, so the pass fails with a named diagnostic rather than a null call.
+	// The draw path on top of hasGlDevice: compiling programs and executing a recorded span list
+	// needs all of these, so the pass fails with a named diagnostic rather than a null call.
 	bool hasGlDraw() const {
 		return hasGlDevice() && glCreateShader && glDeleteShader && glShaderSource
 				&& glCompileShader && glGetShaderiv && glCreateProgram && glDeleteProgram
@@ -253,8 +253,8 @@ struct SP_PUBLIC EglTable {
 				&& glActiveTexture && glUniform4i;
 	}
 
-	// The M1 minimum on top of operator bool: everything a device needs to create objects, run
-	// a clear pass and read the result back.
+	// The device minimum on top of operator bool: everything needed to create objects, run a clear
+	// pass and read the result back.
 	bool hasGlDevice() const {
 		return glGetString && glGetIntegerv && glGetError && glFinish
 				&& glGenBuffers && glDeleteBuffers && glBindBuffer && glBufferData

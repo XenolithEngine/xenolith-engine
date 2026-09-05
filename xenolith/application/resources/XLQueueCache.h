@@ -35,17 +35,16 @@ class RenderServerChannel;
 // Named, already-compiled render graphs, kept for scenes that want to adopt one instead of
 // building their own.
 //
-// What it buys: a popup or a dialog opens dozens of times over a session, and every open used to
-// run the whole render-queue compiler - render passes, pipelines, texture-set layout, the internal
-// resource. Prewarm the graph once and every later open is a Rc copy.
+// What it buys: a popup or a dialog opens dozens of times over a session, and building its queue
+// runs the whole render-queue compiler - render passes, pipelines, texture-set layout, the
+// internal resource. Prewarm the graph once and every later open is a Rc copy.
 //
 // Why it is safe to build a queue before the window that will use it exists: a compiled Queue holds
 // nothing window-specific. Extent is not baked (FrameQueue::setup rewrites every image attachment's
 // extent from the frame's FrameConstraints), framebuffers live in the loop-global FrameCache, the
 // attachment format comes from Loop::getCommonFormat() and is the same for every window on the
-// loop, and the queue is bound to a frame per-frame through FrameRequest::setQueue. The one thing
-// that used to weld a queue to a scene - the begin/end callbacks capturing a Scene* - is gone; the
-// per-frame pin now lives on the FrameRequest.
+// loop, and the queue is bound to a frame per-frame through FrameRequest::setQueue - the scene is
+// pinned per frame on the FrameRequest, never captured by the queue itself.
 //
 // Key: the queue name, chosen by the application. Not a derived hash - buildQueueResources is a
 // virtual an application fills with arbitrary content, so there is no canonical form to hash. The

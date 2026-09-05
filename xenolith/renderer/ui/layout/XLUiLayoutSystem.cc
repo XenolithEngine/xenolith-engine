@@ -483,9 +483,8 @@ static bool LayoutSystem_isContentSized(Node *node) {
 // ancestor through the frame stack. That chain breaks at a content-sized container - a
 // fit-content item does NOT own its size, the container above it does, so re-laying out its
 // children leaves its ContentSize untouched and the ancestor never learns that the size it
-// measured from this subtree went stale (a label deep inside kept its old box, so the text
-// overflowed it). Walk out explicitly instead, stopping at the first container whose size the
-// content no longer determines.
+// measured from this subtree went stale. Walk out explicitly instead, stopping at the first
+// container whose size the content does not determine.
 static void LayoutSystem_invalidateMeasuredAncestors(Node *node) {
 	while (LayoutSystem_isContentSized(node)) {
 		auto parent = node->getParent();
