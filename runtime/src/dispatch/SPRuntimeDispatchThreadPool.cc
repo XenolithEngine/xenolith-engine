@@ -221,7 +221,11 @@ Status ThreadPool::WorkerContext::perform(Rc<Task> &&task, bool first) {
 	++tasksInExecution;
 	++tasksInQueue;
 	inputQueue.push(task->getPriority().get(), first, sprt::move(task));
-	inputCondition.notify_one();
+
+	{
+		sprt::unique_lock lock(inputMutexQueue);
+		inputCondition.notify_one();
+	}
 	return Status::Ok;
 }
 
