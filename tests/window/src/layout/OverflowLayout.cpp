@@ -25,6 +25,8 @@
 #include "layout/OverflowLayout.h"
 #include "XLUiStyleResolver.h"
 #include "XLUiScrollSystem.h"
+#include "XLUiPanel.h"
+
 #include "XLAction.h"
 #include "XLDirector.h"
 #include "XLInputDispatcher.h"
@@ -117,9 +119,50 @@ bool OverflowLayout::init() {
 	_coercedBox->addStyleClass("col");
 	_coercedBox->addStyleClass("coerced");
 
+	/* A SURFACE-LEVEL WIDGET INSIDE THE CLIP, AND ONE OUTSIDE IT.
+
+	Not about overflow as such: it is the regression case for a DRAW ORDER bug that only a scissor
+	could expose. `ui::Panel` renders at `RenderingLevel::Surface`, which blends and does NOT write
+	depth, so two overlapping surface draws are resolved by submission order alone. The vertex plan
+	held the state groups of one material in a `Map<StateId, …>` and drew them in StateId order -
+	an allocation counter with no relation to painter's order - and `StateIdNone` is `maxOf`, so the
+	group OUTSIDE the scissor always came last and always painted over the group inside it.
+
+	The failure was total and silent: every `ui::Panel` and every `ui::TextInput` inside a clipped
+	subtree drew nothing at all, while the labels beside them - Transparent, bucketed by zPath -
+	drew normally. It is checked by EYE, here, because what went wrong is which pixels survive and
+	the plan is not reachable from a layout: the left box must show a red panel clipped to its
+	frame, and the right one a magenta panel over a green one.
+
+	Both boxes carry a panel of the SAME material as the other's, which is what puts them in one
+	material plan and two state groups - the whole condition for the bug. */
+	_clipPanelBox = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
+	_clipPanelBox->addStyleClass("col");
+	_clipPanelBox->addStyleClass("clipped");
+	{
+		auto panel = _clipPanelBox->addChild(Rc<ui::Panel>::create(), ZOrder(1));
+		panel->addStyleClass("oversized");
+	}
+
+	_loosePanelBox = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
+	{
+		auto lower = _loosePanelBox->addChild(Rc<ui::Panel>::create(), ZOrder(1));
+		lower->setAnchorPoint(Vec2(0.0f, 0.0f));
+		lower->setPosition(Vec2(10.0f, 40.0f));
+		lower->setContentSize(Size2(200.0f, 40.0f));
+		lower->setPathColor(Color4B(0, 200, 0, 255), true);
+
+		auto upper = _loosePanelBox->addChild(Rc<ui::Panel>::create(), ZOrder(2));
+		upper->setAnchorPoint(Vec2(0.0f, 0.0f));
+		upper->setPosition(Vec2(30.0f, 20.0f));
+		upper->setContentSize(Size2(200.0f, 40.0f));
+		upper->setPathColor(Color4B(255, 0, 255, 255), true);
+	}
+
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(1.2f), [this] { runPhase1(); },
 			Rc<DelayTime>::create(1.2f), [this] { runPhase2(); }, Rc<DelayTime>::create(1.2f),
-			[this] { runPhase3(); }, Rc<DelayTime>::create(1.2f), [this] { runPhase4(); }, Rc<DelayTime>::create(1.2f), [this] { runPhase5(); }));
+			[this] { runPhase3(); }, Rc<DelayTime>::create(1.2f), [this] { runPhase4(); },
+			Rc<DelayTime>::create(1.2f), [this] { runPhase5(); }));
 
 	return true;
 }
@@ -413,12 +456,13 @@ void OverflowLayout::handleContentSizeDirty() {
 
 	const float top = getWorkTop() - 40.0f;
 
-	Layer *boxes[] = {_scrollBox, _visibleBox, _hiddenBox, _fitBox, _coercedBox, _tearBox};
-	for (size_t i = 0; i < 6; ++i) {
+	Layer *boxes[] = {_scrollBox, _visibleBox, _hiddenBox, _fitBox, _coercedBox, _tearBox,
+		_clipPanelBox, _loosePanelBox};
+	for (size_t i = 0; i < 8; ++i) {
 		boxes[i]->setAnchorPoint(Vec2(0.0f, 1.0f));
 		boxes[i]->setContentSize(Size2(220.0f, BoxHeight));
-		boxes[i]->setPosition(Vec2(24.0f + float(i % 5) * 240.0f,
-				top - float(i / 5) * (BoxHeight + 40.0f)));
+		boxes[i]->setPosition(
+				Vec2(24.0f + float(i % 5) * 240.0f, top - float(i / 5) * (BoxHeight + 40.0f)));
 	}
 }
 
