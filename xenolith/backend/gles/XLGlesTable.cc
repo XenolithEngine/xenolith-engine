@@ -49,6 +49,7 @@ void EglTable::loadEgl(sprt::Dso &dso) {
 	// window surface creator is an EXT entrypoint that most loaders also export, but resolve it
 	// through eglGetProcAddress as a fallback for a thin libEGL.
 	eglSwapBuffers = dso.sym<decltype(eglSwapBuffers)>("eglSwapBuffers");
+	eglSwapInterval = dso.sym<decltype(eglSwapInterval)>("eglSwapInterval");
 	eglCreatePlatformWindowSurfaceEXT =
 			dso.sym<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(
 					"eglCreatePlatformWindowSurfaceEXT");
@@ -72,6 +73,22 @@ void EglTable::loadEgl(sprt::Dso &dso) {
 			eglGetProcAddress("eglQueryDeviceStringEXT"));
 	eglQueryDisplayAttribEXT = reinterpret_cast<PFNEGLQUERYDISPLAYATTRIBEXTPROC>(
 			eglGetProcAddress("eglQueryDisplayAttribEXT"));
+	eglSwapBuffersWithDamageKHR = reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
+			eglGetProcAddress("eglSwapBuffersWithDamageKHR"));
+
+#if SPRT_LINUX
+	// wayland-egl ships as its own library, not as part of libEGL: a wayland window surface needs
+	// it to wrap the wl_surface into the wl_egl_window the platform extension expects. A missing
+	// library is not a failure - the wayland branch of createWindowSurface reports it instead, and
+	// headless and xcb presentation do not use it at all.
+	_waylandEglModule = sprt::Dso(StringView("libwayland-egl.so.1"));
+	if (_waylandEglModule) {
+		wl_egl_window_create =
+				_waylandEglModule.sym<WlEglWindowCreateProc>(StringView("wl_egl_window_create"));
+		wl_egl_window_destroy =
+				_waylandEglModule.sym<WlEglWindowDestroyProc>(StringView("wl_egl_window_destroy"));
+	}
+#endif
 }
 
 void EglTable::loadGl() {

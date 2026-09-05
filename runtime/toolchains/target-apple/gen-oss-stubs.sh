@@ -74,7 +74,7 @@ awk '
   s = $0
   if      (s ~ /^_OBJC_(META)?CLASS_\$_UTType/ || s ~ /^_UTType/ || s ~ /^_kUT/)           b = "UniformTypeIdentifiers"
   else if (s ~ /^_OBJC_(META)?CLASS_\$_CA/)                                                 b = "QuartzCore"
-  else if (s ~ /^_OBJC_(META)?CLASS_\$_(NSAnimationContext|NSApplication|NSColor|NSColorPanel|NSColorSpace|NSCursor|NSEvent|NSFont|NSFontManager|NSFontPanel|NSImage|NSOpenPanel|NSPanel|NSPasteboard|NSPasteboardItem|NSSavePanel|NSScreen|NSTrackingArea|NSView|NSViewController|NSWindow|NSWorkspace|NSRunningApplication)$/) b = "AppKit"
+  else if (s ~ /^_OBJC_(META)?CLASS_\$_(NSAnimationContext|NSApplication|NSBitmapImageRep|NSColor|NSColorPanel|NSColorSpace|NSCursor|NSEvent|NSFont|NSFontManager|NSFontPanel|NSImage|NSImageRep|NSOpenPanel|NSPanel|NSPasteboard|NSPasteboardItem|NSSavePanel|NSScreen|NSTrackingArea|NSView|NSViewController|NSWindow|NSWorkspace|NSRunningApplication)$/) b = "AppKit"
   # NS class OWNERSHIP mirrors the real SDK: the toll-free-bridged base classes
   # are CORE FOUNDATION objc-classes, NSObject is libobjc own; the rest Foundation.
   else if (s ~ /^_OBJC_(META)?CLASS_\$_NS(Array|Data|Date|Dictionary|MutableArray|MutableDictionary|RunLoop|URL)$/) b = "CoreFoundation"
@@ -83,7 +83,7 @@ awk '
   # non-class AppKit data symbols (SDK: AppKit exports). The window notifications are
   # AppKit-owned despite the plain _NS prefix, so they must be named before the generic
   # _NS<Upper> -> Foundation rule below catches them.
-  else if (s == "_NSApp" || s ~ /^_NSPasteboardType/ || s ~ /^_NSWindow.*Notification$/)    b = "AppKit"
+  else if (s == "_NSApp" || s == "_NSDeviceRGBColorSpace" || s ~ /^_NSPasteboardType/ || s ~ /^_NSWindow.*Notification$/)    b = "AppKit"
   # SDK quirk: _NSRunLoopCommonModes is a CORE FOUNDATION export
   else if (s == "_NSRunLoopCommonModes")                                                    b = "CoreFoundation"
   # remaining _NS<Upper> functions/constants are Foundation exports

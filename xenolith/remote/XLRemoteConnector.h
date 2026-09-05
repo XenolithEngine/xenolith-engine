@@ -23,60 +23,34 @@
 #ifndef XENOLITH_REMOTE_XLREMOTECONNECTOR_H_
 #define XENOLITH_REMOTE_XLREMOTECONNECTOR_H_
 
-#include "XLRemoteAddress.h"
-#include "XLRemoteProtocol.h"
+#include "XLRemoteConnection.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// One established QUIC connection to a server (client side). Owns the OpenSSL SSL*, its SSL_CTX*,
-// and the bound UDP socket (held as void*/int to keep OpenSSL out of this header). The connection
-// is blocking this stage; per-connection stream I/O (the render protocol) is a later stage.
-class SP_PUBLIC ClientConnection : public Ref {
+// One established connection to a server, client side.
+class SP_PUBLIC ClientConnection : public Connection {
 public:
-	static Rc<ClientConnection> connect(const Address &);
+	// Dial the address, resolving its scheme through the TransportRegistry.
+	//
+	// `expectedFingerprint` is the SHA-256 of the server's DER SubjectPublicKeyInfo, obtained
+	// out-of-band (Listener::getCertificateFingerprint). On a TLS-based transport a non-empty value
+	// is what authenticates the server; WITHOUT it the certificate is ephemeral and self-signed, so
+	// any man in the middle both intercepts the session and receives the bearer key the handshake
+	// then presents. Transports that authenticate by other means (a unix socket) ignore it.
+	static Rc<ClientConnection> connect(const Address &,
+			BytesView expectedFingerprint = BytesView());
 
 	virtual ~ClientConnection();
 
-	bool init(void *ctx, void *ssl, int fd); // takes ownership of all three
+	bool init(Rc<TransportConnection> &&conn) {
+		return Connection::init(sp::move(conn), Role::Client);
+	}
 
-	void *getSsl() const { return _ssl; }
-	bool isOpen() const { return _ssl != nullptr; }
+	bool isOpen() const { return getTransport() != nullptr; }
 
-	int getPollFd() const { return _fd; }
-
-	// Run the X11-like setup handshake: authenticate with `key`, offer `suggestedDict`, and receive
-	// the server's reply (window info + negotiated dictionary) into `out`. On success the negotiated
-	// dictionary is stored for subsequent sendData/recvData. Returns true iff out.status == Ok.
+	// Run the setup handshake: authenticate with `key`, offer `suggestedDict`, and take the server's
+	// reply. On success the negotiated dictionary is stored for subsequent messages.
 	GlobalError handshake(BytesView key, BytesView suggestedDict);
-
-	GlobalError ping();
-	GlobalError pong(uint32_t serial);
-
-	GlobalError sendCborMessage(Domain, uint8_t message, const Value &,
-			uint32_t *outSerial = nullptr);
-	GlobalError sendMessage(Domain, uint8_t message, BytesView, uint32_t *outSerial = nullptr);
-
-	GlobalError sendCborReply(uint32_t serial, Domain, uint8_t message, const Value &);
-	GlobalError sendReply(uint32_t serial, Domain, uint8_t message, BytesView);
-
-	GlobalError sendError(Domain, GlobalError code, uint32_t failedMessageSerial);
-
-	// Non-blocking: drain the QUIC stream into the reassembler and dispatch complete messages. `cb`
-	// returns true to consume a message, false to defer it (kept and retried on a later poll, so
-	// replies/events can be handled out of order by serial). Driven by the host AppThread's looper.
-	void poll(const Callback<bool(const MessageHeader &, BytesView)> &cb);
-
-	// Gracefully shut the QUIC connection down (sends CONNECTION_CLOSE via SSL_shutdown). Idempotent.
-	void close();
-
-protected:
-	void *_ctx = nullptr; // SSL_CTX*
-	void *_ssl = nullptr; // SSL* (the connection)
-	int _fd = -1; // bound UDP socket (SSL_set_fd uses BIO_NOCLOSE)
-	bool _shutdown = false;
-	Bytes _dict; // negotiated LZ4 dictionary (empty == none)
-	uint32_t _clientSerial = 1; // for handshake = 0
-	MessageReader _reader; // receive-side stream reassembler + deferred-message queue
 };
 
 } // namespace stappler::xenolith::remote

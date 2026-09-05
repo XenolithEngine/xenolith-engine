@@ -52,10 +52,32 @@ dock-tab-bar       { background-color: #171717; }
 dock-tab           { display: flex; padding: 4px 10px; background-color: #2b2b2b; }
 dock-tab.active    { background-color: #383838; }
 dock-tab > label   { color: #c8c8c8; font-size: 13px; }
+/* an icon button has no intrinsic size, so without this the close affordance collapses to nothing
+   and draws on top of the title instead of after it */
+dock-tab-close     { width: 16px; height: 16px; }
 
 /* the divider between two frames, and the drop indicator a drag paints */
 dock-splitter      { background-color: #2a2a2a; }
 dock-drop-indicator{ background-color: #3d7ecf; }
+
+/* The accordion beside the dock. It shares the dock's panel registry, so a panel dragged across
+   arrives as the same node - and it shares the drag GHOST too, which is why `dock-drag-ghost` is
+   the rule for both and there is no `accordion-drag-ghost`. */
+accordion-view            { background-color: #1a1a1a; }
+accordion-view.drop-active{ outline-color: #3d7ecf; outline-width: 1px; }
+accordion-section         { background-color: #232323; }
+accordion-body            { display: flex; padding: 6px; background-color: #1e1e1e; }
+accordion-header          { display: flex; align-items: center; column-gap: 6px;
+                            padding: 4px 8px; background-color: #2b2b2b; }
+accordion-header:hover    { background-color: #333333; }
+accordion-header.expanded { background-color: #383838; }
+accordion-header > label  { color: #c8c8c8; font-size: 13px; }
+/* the chevron says open/shut; the GRIP is the only part a drag may start from */
+.accordion-chevron        { width: 16px; height: 16px; }
+.accordion-grip           { width: 16px; height: 16px; }
+accordion-close           { width: 16px; height: 16px; }
+accordion-drop-indicator  { background-color: #3d7ecf; }
+dock-drag-ghost           { background-color: #2c2c2c; }
 
 /* the demo's own chrome (control bar, status strip) - not dock types at all */
 .demo-bar          { display: flex; align-items: center; column-gap: 10px; padding: 8px 12px;
@@ -137,7 +159,14 @@ void DockDemoLayout::buildDock() {
 		_dockRoot->setAnchorPoint(Anchor::BottomLeft);
 	}
 
-	_dock = _dockRoot->addSystem(Rc<ui::DockSystem>::create());
+	// ONE registry behind both containers. Without this each of them would describe and build its
+	// own copy of a panel, and dragging one across would rebuild it on the other side - losing the
+	// scroll position, the selection and the half-typed text that made it worth moving.
+	if (!_registry) {
+		_registry = Rc<ui::PanelRegistry>::create();
+	}
+
+	_dock = _dockRoot->addSystem(Rc<ui::DockSystem>::create(Rc<ui::PanelRegistry>(_registry)));
 	_dock->setSplitterThickness(6.0f);
 
 	// --- the panel registry --------------------------------------------------------------
@@ -156,7 +185,7 @@ void DockDemoLayout::buildDock() {
 			_builds.insert_or_assign(key, next);
 			return makePanelBody(title, color);
 		};
-		_dock->registerPanel(sp::move(desc));
+		_registry->registerPanel(sp::move(desc));
 	};
 
 	registerPanel("explorer", "Explorer", basic2d::IconName::File_folder_solid, Size2(180.0f, 120.0f), Color4F(0.16f, 0.55f, 0.75f, 1.0f));
@@ -168,6 +197,18 @@ void DockDemoLayout::buildDock() {
 	bool ok = _dock->setLayout(s_spec());
 	if (ok) {
 		runSelfCheck();
+	}
+
+	// --- the accordion beside it ----------------------------------------------------------
+	// A stack of the same panels, declared in advance rather than discovered from a model. Drag a
+	// section here by the GRIP on its header and it lands in the dock; drag a dock tab back and it
+	// lands between two sections. Pressing a header toggles it instead, which is why the grip
+	// exists at all.
+	if (!_accordion) {
+		_accordion = addChild(Rc<ui::AccordionView>::create(Rc<ui::PanelRegistry>(_registry)),
+				ZOrder(1));
+		_accordion->setAnchorPoint(Anchor::BottomLeft);
+		_accordion->setSections({String("problems")});
 	}
 
 	makeControlBar();
@@ -414,9 +455,23 @@ void DockDemoLayout::handleContentSizeDirty() {
 		_controlBarRow->setContentSize(Size2(sprt::max(0.0f, size.width - 32.0f), kBarHeight));
 	}
 
+	// A fixed column on the right for the accordion, and the dock takes the rest. Neither of them
+	// lays the other out - they are siblings sharing a registry, not a container and its content.
+	constexpr float kSideWidth = 240.0f;
+	const float bodyHeight = sprt::max(0.0f, size.height - kBarHeight);
+	const float dockWidth = sprt::max(0.0f, size.width - kSideWidth);
+
 	if (_dockRoot) {
-		auto dockSize = Size2(size.width, sprt::max(0.0f, size.height - kBarHeight));
-		_dockRoot->setContentSize(dockSize);
+		_dockRoot->setContentSize(Size2(dockWidth, bodyHeight));
+	}
+
+	if (_accordion) {
+		// Inset from the window edge, so the close affordance at the end of a header is not flush
+		// against it.
+		constexpr float kSideInset = 8.0f;
+		_accordion->setPosition(Vec2(dockWidth, kSideInset));
+		_accordion->setContentSize(
+				Size2(sprt::max(0.0f, kSideWidth - kSideInset), sprt::max(0.0f, bodyHeight - kSideInset)));
 	}
 
 	refreshStatus();

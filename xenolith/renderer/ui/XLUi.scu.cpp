@@ -75,13 +75,19 @@
 #include "forms/XLUiFormSystem.cc"
 #include "forms/XLUiFormAdapters.cc"
 
+#include "dock/XLUiPanelRegistry.cc" // before every host: each of them holds one
 #include "dock/XLUiDockTree.cc"
-#include "dock/XLUiDockTab.cc"
+#include "dock/XLUiPanelHandle.cc" // after PanelRegistry: it drags a panel out of a host
+#include "dock/XLUiDockTab.cc" // after PanelHandle: a tab is one, with a frame on it
 #include "dock/XLUiDockTabBar.cc"
 #include "dock/XLUiDockSplitter.cc"
 #include "dock/XLUiDockFrame.cc"
 #include "dock/XLUiDockDragVisuals.cc"
 #include "dock/XLUiDockSystem.cc"
+#include "view/XLUiAccordionView.cc" // after DockSystem: the second PanelHost, sharing its registry,
+                                     // its panel handle and its drag ghost. Out of the view/ block
+                                     // above for that reason - the dependency, not the directory,
+                                     // is what orders this unit (see Select after the menu block)
 
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"
@@ -93,6 +99,7 @@
 
 #include "input/XLUiSelect.cc" // after MenuPopup: the list it opens is one
 #include "input/XLUiChipRow.cc" // after MenuPopup: the "+" opens a menu
-#include "input/XLUiColorField.cc" // after PopupSurface: its own picker is one
+#include "input/XLUiColorPicker.cc" // after Slider, NumberField and Button: the surface is made of them
+#include "input/XLUiColorField.cc" // after ColorPicker: its own picker is one
 #include "search/XLUiSearchSystem.cc" // no order dependency: it draws nothing and opens nothing
 #include "input/XLUiSearchPicker.cc" // after SearchSystem and MenuPopup: it queries one and opens through the other

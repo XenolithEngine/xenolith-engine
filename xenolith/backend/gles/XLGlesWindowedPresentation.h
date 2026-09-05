@@ -78,9 +78,13 @@ protected:
 
 	uint32_t _nextIndex = 0;
 	EGLSurface _windowSurface = EGL_NO_SURFACE;
+	// The native window the EGLSurface was built on where the platform needs one of its own: the
+	// wl_egl_window wrapping the session's wl_surface. Null on xcb, which uses the window id.
+	void *_nativeEglWindow = nullptr;
 	Extent2 _extent;
 	WindowedSurface *_wsurface = nullptr; // the surface holding the native window handle
 	uint64_t _surfaceCreateAttempt = 0; // throttles lazy-surface retries (monotonic microseconds)
+	bool _swapIntervalSet = false; // the interval is surface state, set once the surface is current
 };
 
 // Presentation engine for a windowed gles surface. run()/recreateSwapchain() are inherited
@@ -90,9 +94,17 @@ class SP_PUBLIC WindowedPresentationEngine final : public PresentationEngine {
 public:
 	virtual ~WindowedPresentationEngine() = default;
 
+	virtual bool run() override;
+	virtual bool recreateSwapchain() override;
+
 protected:
 	virtual Rc<SwapchainBase> makeSwapchain(const core::SurfaceInfo &,
 			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode) override;
+
+	// Copy the window's current size onto the surface. Both entry points that read the surface's
+	// options do this first, because that is the only way the new size can reach them: the surface
+	// has nothing to query it from (see WindowedSurface::getSurfaceOptions).
+	void syncSurfaceExtent();
 };
 
 } // namespace stappler::xenolith::gles

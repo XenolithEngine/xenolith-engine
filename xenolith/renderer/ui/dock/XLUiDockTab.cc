@@ -27,13 +27,11 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView panelId) {
-	if (!Button::init()) {
+	if (!PanelHandle::init(system, panelId)) {
 		return false;
 	}
 
-	_system = system;
 	_frame = frame;
-	_panelId = panelId.str<Interface>();
 
 	setType("dock-tab");
 	removeStyleClass("xl-ui-panel");
@@ -62,36 +60,7 @@ bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView 
 		.padding = Padding(4.0f, 10.0f),
 	}));
 
-	// A drag pulls the panel out of its frame. It only begins after DragThreshold points of
-	// travel, which is past the tap tolerance, so the tap recognizer on the same listener has
-	// normally already given up by then - handleLeftTap still refuses while _dragging, belt and
-	// braces, the same guard shape ui::TextInput uses around its drag-selection.
-	_listener->addSwipeRecognizer(
-			[this](const GestureSwipe &swipe) {
-		switch (swipe.event) {
-		case GestureEvent::Began: return handleDragBegin(swipe);
-		case GestureEvent::Activated: handleDrag(swipe); return true;
-		case GestureEvent::Ended: handleDragEnd(false); return true;
-		case GestureEvent::Cancelled: handleDragEnd(true); return true;
-		}
-		return false;
-	},
-			InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
-				DockSystem::DefaultDragThreshold, false});
-
 	return true;
-}
-
-void DockTab::handleExit() {
-	// The tab is leaving the scene for whatever reason - its frame collapsed, the layout was
-	// restored, the whole dock was removed. A drag that outlived its own tab has nothing left to
-	// commit, so it is aborted here rather than at each of those call sites.
-	if (_dragging && _drag) {
-		_drag->cancelDrag(this);
-	}
-	_dragging = false;
-	_drag = nullptr;
-	Button::handleExit();
 }
 
 void DockTab::setActive(bool value) {
@@ -109,8 +78,8 @@ void DockTab::setActive(bool value) {
 void DockTab::setClosable(bool value) {
 	if (value && !_close) {
 		_close = addChild(Rc<Button>::create([this] {
-			if (_system) {
-				_system->closePanel(_panelId);
+			if (_host) {
+				_host->closePanel(_panelId);
 			}
 		}),
 				ZOrder(3));
@@ -124,95 +93,19 @@ void DockTab::setClosable(bool value) {
 }
 
 bool DockTab::handleLeftTap() {
-	if (_dragging) {
+	if (isDragging()) {
 		return false; // this pointer belongs to a drag; a tap on release would be a second action
 	}
-	if (_system) {
-		_system->activatePanel(_panelId);
+	if (_host) {
+		_host->activatePanel(_panelId);
 	}
 	return true;
 }
 
-bool DockTab::handleDragBegin(const GestureSwipe &swipe) {
-	if (_dragging || !_system) {
-		return false;
-	}
-
-	auto desc = _system->getPanelDescriptor(_panelId);
-	if (!desc || !hasFlag(desc->flags, DockPanelFlags::Movable)) {
-		return false;
-	}
-
-	auto drag = DragSystem::acquireForNode(this);
-	if (!drag) {
-		return false;
-	}
-
-	// The source frame travels with the panel: the drop needs it to recognise the moves that would
-	// change nothing, and the tab node may not survive long enough to be asked
-	auto payload = Rc<DockPanelPayload>::create();
-	payload->panelId = _panelId;
-	payload->source = _frame;
-
-	// Only the three fields the ghost draws, copied out. Capturing the descriptor whole would drag
-	// its `builder` along - a Function copy for something the ghost never calls
-	DockPanelDescriptor ghost;
-	ghost.id = desc->id;
-	ghost.title = desc->title;
-	ghost.icon = desc->icon;
-
-	DragOffer offer;
-	offer.local = payload;
-	offer.localType = DockPanelPayload::TypeName.str<Interface>();
-	offer.label = desc->title.empty() ? desc->id : desc->title;
-	// A panel is MOVED between frames, never copied: there is one node with one identity, and the
-	// dock keeps it alive across the move precisely so it is not rebuilt
-	offer.allowedActions = DragActions::Move;
-	offer.defaultAction = DragActions::Move;
-	offer.decorator = [ghost = sp::move(ghost)]() -> Rc<Node> {
-		return Rc<DockDragGhost>::create(ghost);
-	};
-	// Inside the dock root, not on the scene content: the ghost takes its look from
-	// `dock-drag-ghost` in a stylesheet, and a StyleResolver only ever sees its own subtree
-	offer.decoratorParent = _system->getOwner();
-
-	if (!drag->beginDrag(sp::move(offer), Rc<Ref>(this), swipe.getId())) {
-		return false;
-	}
-
-	_drag = drag;
-	_dragging = true;
-
-	// capture: the pointer immediately leaves the tab, and the recognizer has to keep delivering
-	_listener->setExclusive();
-
-	_drag->updateDrag(swipe.location(), swipe.input->data.getModifiers());
-	return true;
-}
-
-void DockTab::handleDrag(const GestureSwipe &swipe) {
-	if (_dragging && _drag) {
-		_drag->updateDrag(swipe.location(), swipe.input->data.getModifiers());
-	}
-}
-
-void DockTab::handleDragEnd(bool cancelled) {
-	if (!_dragging) {
-		return;
-	}
-	_dragging = false;
-
-	auto drag = _drag;
-	_drag = nullptr;
-	if (!drag) {
-		return;
-	}
-
-	if (cancelled) {
-		drag->cancelDrag(this);
-	} else {
-		drag->commitDrag();
-	}
+void DockTab::updatePanelDragOffer(DragOffer &, DockPanelPayload &payload) {
+	// The source frame, so a drop can recognise the no-ops - dropping a frame's only panel back
+	// into that same frame - without asking this node, which the drop may well destroy.
+	payload.source = _frame;
 }
 
 } // namespace stappler::xenolith::ui

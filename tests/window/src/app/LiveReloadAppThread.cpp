@@ -130,12 +130,26 @@ void LiveReloadAppThread::launchClient(StringView stagedExe) {
 		resetRemoteClient();
 	}
 
-	// `'<exe>' <address> <token>` run via the app looper (/bin/sh -c). The client reads argv[1] as the
-	// server address to dial and argv[2] as the token (key = Sha512(token)) — this is how the server
-	// "прокидывает" the negotiated address + secret on the command line.
+	// `'<exe>' <address> <token> <spki>` run via the app looper (/bin/sh -c). The client reads argv[1]
+	// as the server address to dial, argv[2] as the token (key = Sha512(token)) and argv[3] as our
+	// certificate's SPKI fingerprint — this is how the server "прокидывает" the negotiated address,
+	// secret and identity on the command line.
+	//
+	// The fingerprint is what stops the token from being handed to whoever answers on that port: the
+	// listener's certificate is ephemeral and self-signed, so without pinning it the client has no way
+	// to tell this server from a man in the middle.
 	mem_std::Interface::StringType cmd;
 	cmd.append("'").append(stagedExe.data(), stagedExe.size()).append("' ").append(_serverAddress);
 	cmd.append(" ").append(_bearerToken);
+
+	auto fp = getListenerFingerprint();
+	if (!fp.empty()) {
+		auto fpStr = remote::Listener::encodeFingerprint(fp);
+		cmd.append(" ").append(fpStr.data(), fpStr.size());
+	} else {
+		log::source().warn("live-reload",
+				"listener has no certificate yet; launching the client without a fingerprint");
+	}
 
 	_clientProc = _appLooper->spawnProcess(StringView(cmd), [](StringView out) {
 		out.trimChars<StringView::WhiteSpace>();

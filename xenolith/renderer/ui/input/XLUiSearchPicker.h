@@ -125,7 +125,9 @@ struct SP_PUBLIC SearchPickerConfig {
 	// The id of the current value, so the list opens with it selected rather than at the top.
 	String highlight;
 
-	// A native popup is a window of its own and the parent's sheet does not reach into it.
+	/* A sheet OF THE LIST'S OWN, for the native path. Leave both empty - the ordinary case - and
+	the surface inherits the sheet that styles the control it drops out of, which is what
+	ui::openPopupSurface does with PopupSurfaceConfig::styleSource. */
 	String stylesheet;
 	String stylesheetSource;
 	FileCategory stylesheetCategory = FileCategory::Bundled;
@@ -279,6 +281,10 @@ protected:
 
 	virtual bool handleKey(const GestureData &);
 
+	/* One result's title, highlight and all. A tree row takes the label bare (a flex row measures
+	a Label and cannot measure a Panel); a table cell takes it wrapped (a table sizes the cell and
+	leaves a bare label at zero width). */
+	Rc<basic2d::Label> buildTitleLabel(const SearchHit &) const;
 	Rc<Node> buildTitleNode(const SearchHit &) const;
 
 	// Which category a hit is filed under, by the config's rule or by the default one.

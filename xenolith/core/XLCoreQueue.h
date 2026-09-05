@@ -81,6 +81,13 @@ public:
 	FrameRenderPassState getDefaultSyncPassState() const;
 	PassRecordingMode getRecordingMode() const;
 
+	// Which backend the graph was described for, what the renderer tagged it as, and what it opts
+	// into for damage. Set at build time (see Builder below) -- these describe the GRAPH, so they
+	// are readable on a queue that was never compiled, and on a remote mirror of somebody else's.
+	InstanceApi getApi() const;
+	uint32_t getTypeTag() const;
+	QueueDamageFlags getDamageFlags() const;
+
 	const HashTable<ProgramData *> &getPrograms() const;
 	const HashTable<QueuePassData *> &getPasses() const;
 	const HashTable<GraphicPipelineData *> &getGraphicPipelines() const;
@@ -354,6 +361,12 @@ public:
 
 	// What this queue opts into for per-frame damage tracking; see QueueDamageFlags.
 	void setDamageFlags(QueueDamageFlags);
+
+	// Which backend this graph is described for, and the renderer's own shape tag for it (see
+	// QueueData::api / QueueData::typeTag). Whoever emits the passes is who knows both, so the
+	// pass makers set them rather than the caller having to remember.
+	void setApi(InstanceApi);
+	void setTypeTag(uint32_t);
 
 	const AttachmentData *addAttachemnt(StringView name,
 			const Callback<Rc<Attachment>(AttachmentBuilder &)> &);

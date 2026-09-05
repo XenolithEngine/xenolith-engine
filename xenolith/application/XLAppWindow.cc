@@ -425,12 +425,18 @@ core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool
 void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 		Function<void(NotNull<core::PresentationFrame>)> &&cb) {
 	// Tag the frame remote up front, on the presentation thread, so the engine tracks it for
-	// connection-reset cleanup even while it is only awaiting the client's reply below. The render
-	// client is only swapped via ServerAppThread::takeoverShared* (app thread), so this pointer read is
-	// benign.
-	if (_client && _client->isRemote()) {
+	// connection-reset cleanup even while it is only awaiting the client's reply below.
+	//
+	// Read through the atomic mirror, NOT through `_client`. That pointer is written on the app
+	// thread (ServerAppThread::takeoverShared*) and this runs on the presentation thread: a plain
+	// read of it is a data race, whatever the old comment here claimed. The consequence is not
+	// theoretical -- a frame handed to a remote client but read as local is never marked, so
+	// PresentationEngine's connection-reset cleanup does not know to kill it, and a dropped
+	// connection leaves it in flight for ever.
+	if (_clientIsRemote.load(sprt::memory_order_acquire)) {
 		frame->markRemote();
 	}
+
 
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
@@ -811,6 +817,13 @@ void AppWindow::invalidateRemoteFrames() {
 	}, this);
 }
 
+void AppWindow::setRenderClient(core::RenderClientChannel *c) {
+	core::RenderServerChannel::setRenderClient(c);
+	// Publish after the base has stored the pointer, so a presentation-thread reader that sees the
+	// flag also sees everything the app thread wrote before it.
+	_clientIsRemote.store(c && c->isRemote(), sprt::memory_order_release);
+}
+
 void AppWindow::resetForRenderClientChange() {
 	_context->performOnThread([this] {
 		if (_presentationEngine) {
@@ -965,54 +978,8 @@ core::FrameTimingInfo AppWindow::getFrameTiming() const {
 	return info;
 }
 
-WindowState AppWindow::getUpdatableStateFlags() const {
-	auto caps = getCapabilities();
-	WindowState flags = WindowState::None;
-
-	if (hasFlag(caps, WindowCapabilities::AboveBelowState)) {
-		flags |= WindowState::Above | WindowState::Below;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DemandsAttentionState)) {
-		flags |= WindowState::DemandsAttention;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::SkipTaskbarState)) {
-		flags |= WindowState::SkipTaskbar | WindowState::SkipPager;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::CloseGuard)) {
-		flags |= WindowState::CloseGuard | WindowState::CloseRequest;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DecorationState)) {
-		flags |= WindowState::DecorationState;
-	}
-
-	for (auto it : sp::flags(_state)) {
-		switch (it) {
-		case WindowState::AllowedMinimize: flags |= WindowState::Minimized; break;
-		case WindowState::AllowedShade: flags |= WindowState::Shaded; break;
-		case WindowState::AllowedStick: flags |= WindowState::Sticky; break;
-		case WindowState::AllowedMaximizeVert: flags |= WindowState::MaximizedVert; break;
-		case WindowState::AllowedMaximizeHorz: flags |= WindowState::MaximizedHorz; break;
-		case WindowState::AllowedClose: flags |= WindowState::CloseRequest; break;
-		case WindowState::AllowedFullscreen: flags |= WindowState::Fullscreen; break;
-		default: break;
-		}
-	}
-	return flags;
-}
-
 bool AppWindow::enableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
-		return false;
-	}
-
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "enableState:", state, " is not updatable");
+	if (!validateStateChange(state, "enableState")) {
 		return false;
 	}
 
@@ -1021,14 +988,7 @@ bool AppWindow::enableState(WindowState state) {
 }
 
 bool AppWindow::disableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
-		return false;
-	}
-
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "disableState:", state, " is not updatable");
+	if (!validateStateChange(state, "disableState")) {
 		return false;
 	}
 

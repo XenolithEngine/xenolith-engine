@@ -37,24 +37,10 @@ THE SOFTWARE.
 
 #include <sys/socket.h>
 
-// On the RTOS and freestanding targets the sprt libc shim stands in for the
-// platform libc at compile time (deps build against sprt include_libc, not a
-// platform sysroot — see the NUTTX/EMBOX/EMBOX_USER branches of
-// common/configure.mk), so the AF_UNIX address type must be visible there too.
-// The Linux/musl layout matches their own <sys/un.h>.
-//
-// Visible even where AF_UNIX cannot work: OpenSSL's BIO layer embeds a
-// sockaddr_un in its address union unconditionally, so the TYPE has to exist for
-// libcrypto to compile at all. On Embox EL0 every socket call is ENOSYS until
-// milestone M3, which is a run-time answer, not a compile-time one.
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER)
-
 struct sockaddr_un {
 	__SPRT_ID(sa_family_t) sun_family; // AF_UNIX
 	char sun_path[108]; // pathname
 };
-
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 
 #endif
 

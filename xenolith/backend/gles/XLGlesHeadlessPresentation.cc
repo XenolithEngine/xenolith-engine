@@ -23,6 +23,7 @@
 #include "XLGlesHeadlessPresentation.h"
 #include "XLGlesObject.h"
 #include "XLCoreLoop.h"
+#include "XLCoreSwapchain.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
@@ -156,6 +157,10 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		if (index != maxOf<uint32_t>()) {
 			markPresented(index);
 		}
+
+		// The image holds a complete frame - see the same call in WindowedSwapchain::present for
+		// what the mark is worth. Last use of the storage: it clears ImageStorage::_image.
+		static_cast<core::SwapchainImage *>(image)->setPresented();
 	}
 
 	if (_acquiredImages > 0) {
