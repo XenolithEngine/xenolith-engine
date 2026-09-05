@@ -11,7 +11,12 @@
 #define __GNUC_MINOR__ 17
 #endif
 
-#if SPRT_WASM
+// musl's own <math.h> hides M_PI, M_PI_2 and the rest behind
+// _XOPEN_SOURCE/_GNU_SOURCE/_BSD_SOURCE, and the complex sources pulled into the
+// adapter SCUs below use them directly. Any target that compiles those sources
+// against musl's headers therefore has to ask for the feature set -- that is
+// every freestanding target linking runtime_musl_libc, not wasm alone.
+#if SPRT_WASM || SPRT_EMBOX_USER
 #define _GNU_SOURCE
 #endif
 

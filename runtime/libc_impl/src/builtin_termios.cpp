@@ -20,10 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Terminal I/O (<termios.h>) compile unit. Backed on the two freestanding targets:
-// wasm has no controlling terminal, so it gets no-op ENOTTY stubs (wasm/termios.cc),
-// while Windows maps the interface onto the console mode (windows/termios.cc). Hosted
-// targets use the platform libc, so this unit is empty there.
+// Terminal I/O (<termios.h>) compile unit. Backed on the freestanding targets:
+// wasm has no controlling terminal and Embox EL0 has no termios ioctls, so both
+// get no-op ENOTTY stubs, while Windows maps the interface onto the console mode
+// (windows/termios.cc). Hosted targets use the platform libc, so this unit is
+// empty there.
 
 #include <sprt/c/bits/__sprt_def.h>
 
@@ -31,4 +32,6 @@ THE SOFTWARE.
 #include "wasm/termios.cc"
 #elif SPRT_WINDOWS
 #include "windows/termios.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/termios.cc"
 #endif
