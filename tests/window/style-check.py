@@ -51,6 +51,8 @@ DEFAULT = 0xC0CA33
 FOCUS = 0x3949AB
 FOCUS_VISIBLE = 0xD81B60
 FOCUS_WITHIN = 0x00ACC1
+SELECTED = 0x8E24AA
+SELECTION_WITHIN = 0x00897B
 
 # ...and the selector stand's, for the second half of the run
 SEL_BASE = 0x616161
@@ -75,6 +77,8 @@ F_REQUIRED = 1 << 8
 F_DEFAULT = 1 << 9
 F_FOCUS_VISIBLE = 1 << 10
 F_FOCUS_WITHIN = 1 << 11
+F_SELECTED = 1 << 12
+F_SELECTION_WITHIN = 1 << 13
 
 # Keys are addressed by NAME, and a Tab that carries no keychar skips the text-input processor -
 # the false positive that once hid a whole class of key bugs (see form-check.py)
@@ -371,6 +375,55 @@ try:
             (flags(st, "inner") & F_FOCUS_WITHIN) == 0
             and (flags(st, "outer") & F_FOCUS_WITHIN) == 0,
             f'{hex(flags(st, "inner"))} {hex(flags(st, "outer"))}')
+
+    print("\n-- 7b. :selected and :selection-within, driven straight at the marker")
+    # No SelectionSystem involved on purpose: this asserts that the component, the two flag bits,
+    # the selector parser and the five fold-in sites agree. Everything later is built on that.
+    s.invoke("state.select", leaf="sel-leaf")
+    step()
+    st = state()
+    check("the leaf is :selected", bg(st, "sel-leaf") == SELECTED, hexc(bg(st, "sel-leaf")))
+    check("...and carries the bit", (flags(st, "sel-leaf") & F_SELECTED) != 0,
+            hex(flags(st, "sel-leaf")))
+    check("both ancestors are :selection-within",
+            bg(st, "sel-inner") == SELECTION_WITHIN and bg(st, "sel-outer") == SELECTION_WITHIN,
+            f'{hexc(bg(st, "sel-inner"))} {hexc(bg(st, "sel-outer"))}')
+    check("...and both carry the bit",
+            (flags(st, "sel-inner") & F_SELECTION_WITHIN) != 0
+            and (flags(st, "sel-outer") & F_SELECTION_WITHIN) != 0,
+            f'{hex(flags(st, "sel-inner"))} {hex(flags(st, "sel-outer"))}')
+    check("a plain Panel does NOT gain :enabled by carrying the state",
+            (flags(st, "sel-outer") & F_ENABLED) == 0, hex(flags(st, "sel-outer")))
+    check("the sibling leaf is untouched", (flags(st, "sel-leaf2") & F_SELECTED) == 0,
+            hex(flags(st, "sel-leaf2")))
+
+    # The counter property: moving between two leaves under the same parents must leave those
+    # parents alone. A retain-after-release implementation passes every check above and fails here.
+    s.invoke("state.select", leaf="sel-leaf2")
+    step()
+    st = state()
+    check("the selection moved to the sibling",
+            (flags(st, "sel-leaf2") & F_SELECTED) != 0
+            and (flags(st, "sel-leaf") & F_SELECTED) == 0,
+            f'{hex(flags(st, "sel-leaf"))} {hex(flags(st, "sel-leaf2"))}')
+    check("the shared ancestors never blinked",
+            (flags(st, "sel-inner") & F_SELECTION_WITHIN) != 0
+            and (flags(st, "sel-outer") & F_SELECTION_WITHIN) != 0,
+            f'{hex(flags(st, "sel-inner"))} {hex(flags(st, "sel-outer"))}')
+    check("the leaf that lost it is not :selection-within either",
+            (flags(st, "sel-leaf") & F_SELECTION_WITHIN) == 0, hex(flags(st, "sel-leaf")))
+
+    s.invoke("state.select", leaf="")
+    step()
+    st = state()
+    check("clearing takes the whole chain down",
+            bg(st, "sel-inner") == BASE and bg(st, "sel-outer") == BASE
+            and bg(st, "sel-leaf2") == BASE,
+            f'{hexc(bg(st, "sel-inner"))} {hexc(bg(st, "sel-outer"))}')
+    check("...and leaves no marker behind",
+            (flags(st, "sel-outer") & (F_SELECTED | F_SELECTION_WITHIN)) == 0
+            and (flags(st, "sel-leaf2") & (F_SELECTED | F_SELECTION_WITHIN)) == 0,
+            f'{hex(flags(st, "sel-outer"))} {hex(flags(st, "sel-leaf2"))}')
 
     # --------------------------------------------------------------------------------------------
     # Section two lives in another stand. The inspector's `layout` command swaps it in; the previous

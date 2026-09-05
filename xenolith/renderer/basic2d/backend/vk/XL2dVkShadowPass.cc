@@ -45,6 +45,8 @@ bool ShadowPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info)
 	using namespace core;
 
 	builder.setDamageFlags(info.damage);
+	builder.setApi(InstanceApi::Vulkan);
+	builder.setTypeTag(toInt(QueueType::Default));
 
 	const AttachmentData *particleEmitters = nullptr;
 

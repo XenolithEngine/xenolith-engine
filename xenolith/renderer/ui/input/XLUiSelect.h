@@ -143,12 +143,13 @@ public:
 	virtual void setMenuStyle(const MenuStyle &);
 	const MenuStyle &getMenuStyle() const { return _menuStyle; }
 
-	/* The template the list is opened with: the stylesheet it carries, the title, whether it
-	prefers a native surface. The callbacks, the placement and `highlight` are filled in by open().
+	/* The template the list is opened with: the title, whether it prefers a native surface, a
+	stylesheet if the list's look is its own. The callbacks, the placement and `highlight` are
+	filled in by open().
 
-	DECLARING THE STYLESHEET IS NOT OPTIONAL for a styled application: a native popup is a scene of
-	its own and the application's sheet does not reach it. With none declared the list paints itself
-	in the menu's own neutral colours, which is right for a test stand and wrong for a product. */
+	The stylesheet is optional: a native popup is a scene of its own, but ui::openPopupSurface
+	hands it the sheet in force where the list was opened from, so a styled application gets a
+	styled list without declaring anything. Declare one to give the surface a look of its own. */
 	virtual void setPopupConfig(MenuConfig &&);
 	const MenuConfig &getPopupConfig() const { return _popupConfig; }
 

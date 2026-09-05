@@ -253,12 +253,33 @@ void TreeView::setSelectionEnabled(bool value) {
 }
 
 void TreeView::setSelectedRow(size_t index) {
-	if (_selectedRow == index) {
+	// No early return on the index: with the row hidden, the index is already maxOf while the
+	// identity is still set, so clearing has to reach setSelectedIdentity to have any effect
+	if (index < _rows.size()) {
+		setSelectedIdentity(_rows[index].getId(), _rows[index].offset);
+	} else {
+		setSelectedIdentity(ItemId(0), 0);
+	}
+}
+
+void TreeView::setSelectedIdentity(ItemId id, uint64_t offset) {
+	if (_selectedId == id && _selectedOffset == offset) {
 		return;
 	}
 
 	const auto previous = _selectedRow;
-	_selectedRow = index;
+
+	_selectedId = id;
+	_selectedOffset = offset;
+
+	// The index is a PROJECTION of the identity, so it is derived rather than assigned - which also
+	// covers the case the caller cannot: an identity that is real but not currently a row
+	remapSelection();
+
+	const auto index = _selectedRow;
+	if (previous == index) {
+		return;
+	}
 
 	// The selection is a style class and nothing else, and the two rows it moves between are on
 	// screen with every node they need. Asking for a rebuild here - which is what this used to do -
@@ -271,6 +292,83 @@ void TreeView::setSelectedRow(size_t index) {
 	if (auto node = getRowNode(index)) {
 		updateRowNode(node, index);
 	}
+
+	publishSelection();
+}
+
+void TreeView::setSelectionOwned(bool value) {
+	if (_selectionOwned == value) {
+		return;
+	}
+	_selectionOwned = value;
+
+	if (_selectionOwned) {
+		publishSelection();
+	} else if (auto system = SelectionSystem::findForNode(this)) {
+		// Leaving takes the scene's selection with it only if it was OURS. A view that opts out
+		// while another container holds the selection must not clear that container's
+		if (system->getOwner() == this) {
+			system->clear();
+		}
+	}
+}
+
+SelectionItem TreeView::makeSelectionItem(size_t index) const {
+	if (index >= _rows.size()) {
+		return SelectionItem();
+	}
+	// The ModelNode is the identity - a Ref whose ItemId is allocated once and never reused - and
+	// the offset distinguishes the rows of one span from each other
+	return SelectionItem{_rows[index].node.get(), _rows[index].offset};
+}
+
+void TreeView::publishSelection() {
+	if (!_selectionOwned || _applyingSelection) {
+		return;
+	}
+
+	// acquireForNode rather than findForNode: a view told to own the selection should not also
+	// require the application to have installed the system first
+	auto system = SelectionSystem::acquireForNode(this);
+	if (!system) {
+		return;
+	}
+
+	if (_selectedId == ItemId(0)) {
+		// Only if it is still ours. Another container may have taken it in the meantime, and
+		// clearing our own selection is not a reason to clear theirs
+		if (system->getOwner() == this) {
+			system->clear();
+		}
+		return;
+	}
+
+	if (_selectedRow < _rows.size()) {
+		auto item = makeSelectionItem(_selectedRow);
+		system->select(this, makeSpanView(&item, 1));
+	}
+}
+
+Node *TreeView::resolveSelectionNode(const SelectionItem &item) const {
+	for (size_t i = 0; i < _rows.size(); ++i) {
+		if (_rows[i].node.get() == item.ref.get() && _rows[i].offset == item.index) {
+			return getRowNode(i);
+		}
+	}
+	return nullptr;
+}
+
+void TreeView::handleSelectionChanged(SpanView<SelectionItem> items) {
+	// Applying what the SYSTEM decided, so publishSelection() must not hand it straight back
+	_applyingSelection = true;
+
+	if (items.empty()) {
+		setSelectedIdentity(ItemId(0), 0);
+	} else if (auto node = dynamic_cast<ModelNode *>(items.front().ref.get())) {
+		setSelectedIdentity(node->getId(), items.front().index);
+	}
+
+	_applyingSelection = false;
 }
 
 /* Forget what the SPANS answered, so the next model pass asks again.
@@ -532,10 +630,41 @@ void TreeView::requestRebuildNodes(Function<void()> &&cb, bool force) {
 	requestRebuildNodes(force);
 }
 
+void TreeView::remapSelection() {
+	if (_selectedId == ItemId(0)) {
+		_selectedRow = maxOf<size_t>();
+		return;
+	}
+
+	for (size_t i = 0; i < _rows.size(); ++i) {
+		if (_rows[i].getId() == _selectedId && _rows[i].offset == _selectedOffset) {
+			_selectedRow = i;
+			return;
+		}
+	}
+
+	/* No row shows this identity right now. Only the INDEX is dropped - never the identity.
+
+	Two situations reach here and they must not be told apart, because they need the same answer:
+	the row is HIDDEN (its category collapsed, or a parent of it), or the element is GONE. Keeping
+	the identity makes the first case work - re-expanding the category brings the selection back
+	rather than making the user pick again - and costs nothing in the second, where a stale ItemId
+	simply never matches again. It cannot come to mean a different element: an ItemId is allocated
+	once and never reused, which is the property this whole mechanism rests on.
+
+	What is NOT done here is moving the selection to whatever is nearest. That is how an operation
+	silently lands on the wrong element. */
+	_selectedRow = maxOf<size_t>();
+}
+
 void TreeView::rebuildRows() {
 	if (!_controller) {
 		return;
 	}
+
+	// BEFORE the nodes are made: makeRow() reads _selectedRow to decide whether the row it is
+	// building wears the selection, so the index has to already mean the right row by then
+	remapSelection();
 
 	// Carry the live row nodes across the rebuild. A rebuild changes WHICH rows are on screen far
 	// more often than WHAT any one of them shows: opening a category leaves every row above it
@@ -647,10 +776,24 @@ auto TreeView::getRowNode(size_t index) const -> RowNode * {
 }
 
 void TreeView::updateRowNode(RowNode *node, size_t index) {
-	if (index == _selectedRow) {
+	const auto selected = (index == _selectedRow);
+
+	if (selected) {
 		node->addStyleClass("selected");
 	} else {
 		node->removeStyleClass("selected");
+	}
+
+	/* And the scene-wide half, which is a different claim from the class above and must stay one:
+	`.selected` is "this widget's current row" and is written by every TreeView, owned or not, while
+	`:selected` is "this is an item of the SCENE's selection". Two of the three widgets that write
+	the class - ui::Chip, a nav tab - are not the scene selection at all.
+
+	Applied HERE rather than once when the selection moves, because a virtualized row's node comes
+	and goes while the selection stands perfectly still: the node showing row 7 a moment ago may be
+	showing row 30 now. */
+	if (_selectionOwned) {
+		setNodeSelected(node, selected);
 	}
 }
 
@@ -1239,7 +1382,13 @@ bool TreeView::RowNode::init(TreeView *view, size_t index, bool interactive) {
 				_view->handleRowTap(_index, tap.count);
 			}
 			return true;
-		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 1});
+			/* TWO taps, reported IMMEDIATELY. handleRowTap reads `count` to tell "the user moved
+			the selection" from "the user opened this row", so a recognizer capped at one tap left
+			setActivateCallback unreachable from any pointer - the count could never be anything
+			but 1. Immediate is what keeps the ordinary single click free of the double-tap
+			interval: tap 1 is reported the moment it happens and tap 2 when it arrives, instead of
+			every click waiting to find out whether a second one follows. */
+		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 2, InputTapFlags::Immediate});
 	}
 
 	return true;

@@ -930,6 +930,10 @@ static bool applyPseudoClass(StringView name, StyleContainer::CompoundSelector &
 		out.pseudoRequire |= uint32_t(P::FocusVisible);
 	} else if (name == "focus-within") {
 		out.pseudoRequire |= uint32_t(P::FocusWithin);
+	} else if (name == "selected") {
+		out.pseudoRequire |= uint32_t(P::Selected);
+	} else if (name == "selection-within") {
+		out.pseudoRequire |= uint32_t(P::SelectionWithin);
 	} else if (name == "root") {
 		out.requireRoot = true;
 	} else if (name == "empty") {

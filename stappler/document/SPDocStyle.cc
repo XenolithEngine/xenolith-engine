@@ -2299,6 +2299,12 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssBottom || name == ParameterName::CssLeft
 			|| name == ParameterName::CssXlAnchorPointX || name == ParameterName::CssXlAnchorPointY
 			|| name == ParameterName::CssXlPositionX || name == ParameterName::CssXlPositionY
+			// `-xl-z-order` is this engine's `z-index`, and no more inheritable than that one:
+			// it is a node's place among its SIBLINGS. Inherited, a single declaration on a
+			// container flattened the z-order of its whole subtree to one value - and since
+			// sortAllChildren is an unstable sort, the children then permuted between passes.
+			// A form felt it worst of all: its tab ring is document order, which is z-order.
+			|| name == ParameterName::CssXlZOrder
 			|| name == ParameterName::CssFlexDirection || name == ParameterName::CssFlexWrap
 			|| name == ParameterName::CssOrder || name == ParameterName::CssFlexGrow
 			|| name == ParameterName::CssFlexShrink || name == ParameterName::CssFlexBasis

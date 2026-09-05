@@ -107,6 +107,25 @@ public:
 
 	size_t getHitTestCount() const;
 
+	/* The scene's selection chain as of this frame: the anchor, then every ancestor up to the root,
+	DEEPEST FIRST. Empty when nothing is selected.
+
+	PUBLISHED DURING THE VISIT, never read live - the same contract as the hit-test registry above,
+	and for a sharper reason. A hotkey delivered along this chain reaches a callback that is entitled
+	to restructure the scene, up to and including deleting the node it was just given, so the walk
+	must be over `Rc`s taken from the frame the user was actually looking at when they pressed the
+	key. Re-deriving it from getParent() at event time would resolve against a graph that may already
+	differ, and would hold raw pointers across exactly the callback licensed to invalidate them.
+
+	Written by SelectionSystem::handleVisitSelf; see XLSelectionSystem.h. */
+	void setSelectionChain(SpanView<Rc<Node>>);
+
+	SpanView<Rc<Node>> getSelectionChain() const { return *_selectionChain; }
+
+	// Where `node` sits on the chain, 0 being the anchor; maxOf<size_t>() when it is not on it.
+	// This is the sort key of the hotkey chain pass - deepest first is the delivery order
+	size_t getSelectionDepth(const Node *) const;
+
 	// Which committed frame this is. Stamped on every listener at commit, which is how a listener
 	// reached outside the walk (an active gesture chain holds one) can tell whether it was still
 	// being drawn when the event it is being offered arrived
@@ -135,6 +154,10 @@ protected:
 	// semantics of the answer - an index would have to reconstruct it
 	mem_pool::Vector<HitTestRec> *_hitTest = nullptr;
 	HitTestFlags _hitTestMask = HitTestFlags::None;
+
+	// Deepest first. Rc for the reason spelled out on setSelectionChain: a hotkey callback reached
+	// along this may delete the very node it was reached through
+	mem_pool::Vector<Rc<Node>> *_selectionChain = nullptr;
 
 	uint64_t _generation = 0;
 	uint32_t _order = 0;
@@ -182,6 +205,13 @@ public:
 	// Union of the committed frame's hit-test flags; None when nothing registered (or before the
 	// first frame)
 	HitTestFlags getHitTestMask() const;
+
+	/* The selection chain of the COMMITTED frame, deepest first - the anchor, then its ancestors.
+
+	The one way to ask, and the reason it is asked here rather than of the SelectionSystem: by the
+	time an event is dispatched the live selection may already have moved, and this has to answer
+	for the frame the user was looking at when they acted. Empty before the first frame. */
+	SpanView<Rc<Node>> getSelectionChain() const;
 
 	// Which frame the events being dispatched right now are resolved against
 	uint64_t getCommittedGeneration() const;

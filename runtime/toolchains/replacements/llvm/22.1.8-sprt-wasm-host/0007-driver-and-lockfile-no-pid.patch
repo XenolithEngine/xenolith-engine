@@ -1,0 +1,35 @@
+diff --git a/clang/lib/Driver/Driver.cpp b/clang/lib/Driver/Driver.cpp
+index eb3f9cbea..9a60f223a 100644
+--- a/clang/lib/Driver/Driver.cpp
++++ b/clang/lib/Driver/Driver.cpp
+@@ -1859,7 +1859,7 @@ bool Driver::getCrashDiagnosticFile(StringRef ReproCrashFilename,
+     CrashDiagDir = "/";
+   path::append(CrashDiagDir, "Library/Logs/DiagnosticReports");
+   int PID =
+-#if LLVM_ON_UNIX
++#if LLVM_ON_UNIX && !defined(__wasm__)
+       getpid();
+ #else
+       0;
+diff --git a/llvm/lib/Support/LockFileManager.cpp b/llvm/lib/Support/LockFileManager.cpp
+index 0891ef980..d49476b60 100644
+--- a/llvm/lib/Support/LockFileManager.cpp
++++ b/llvm/lib/Support/LockFileManager.cpp
+@@ -95,7 +95,7 @@ static std::error_code getHostID(SmallVectorImpl<char> &HostID) {
+   StringRef UUIDRef(UUIDStr);
+   HostID.append(UUIDRef.begin(), UUIDRef.end());
+ 
+-#elif LLVM_ON_UNIX
++#elif !defined(__wasm__)
+   char HostName[256];
+   HostName[255] = 0;
+   HostName[0] = 0;
+@@ -112,7 +112,7 @@ static std::error_code getHostID(SmallVectorImpl<char> &HostID) {
+ }
+ 
+ bool LockFileManager::processStillExecuting(StringRef HostID, int PID) {
+-#if LLVM_ON_UNIX && !defined(__ANDROID__)
++#if LLVM_ON_UNIX && !defined(__ANDROID__) && !defined(__wasm__)
+   SmallString<256> StoredHostID;
+   if (getHostID(StoredHostID))
+     return true; // Conservatively assume it's executing on error.

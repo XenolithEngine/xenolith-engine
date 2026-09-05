@@ -69,6 +69,7 @@ extern CALayerContentsFilter const kCAFilterTrilinear;
 @property CGFloat cornerRadius;
 @property CGFloat borderWidth;
 @property (nullable) CGColorRef borderColor;
+@property (nullable) CGColorRef backgroundColor;
 @property BOOL needsDisplayOnBoundsChange;
 @property (weak, nullable) id<CALayerDelegate> delegate;
 @property (nullable, copy) NSArray *sublayers;

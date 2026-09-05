@@ -146,6 +146,16 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) override;
 };
 
+// Mint an empty FrameContextHandle2d for a remote client's frame input.
+//
+// Every backend's vertex attachment consumes exactly this type and mints it exactly this way -- the
+// body touches no backend type at all. It lives here rather than being written once per backend
+// because "which input type the 2d vertex attachment takes" is a basic2d fact, and five copies of
+// it is five chances for one backend to quietly not support a remote client. See
+// core::Attachment::makeInputData, whose default null is what a queue that cannot serve a remote
+// frame reports.
+SP_PUBLIC Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel>);
+
 } // namespace stappler::xenolith::basic2d
 
 #endif /* XENOLITH_RENDERER_BASIC2D_XL2DCOMMANDLIST_H_ */

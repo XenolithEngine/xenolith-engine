@@ -325,6 +325,64 @@ static void edgecases3() {
 }
 
 
+/* A FULL TABLE, AND A LOOKUP THAT MISSES IT.
+
+`_size == _capacity` is a state the container legitimately reaches: growth is decided when the
+bucket a key lands in is already OCCUPIED, so an insert that finds a FREE bucket takes the last
+slot without any rehash. The seven keys below all live in bucket 0 (identity hash, capacity 8) and
+fill slots 0..6; the eighth goes straight into the free slot 7, and the table is full.
+
+Looking for a key that is NOT there is then the case `lookup_bucket_chain` could not answer: its
+home slot holds a foreign node, there is no free node anywhere to stop at, and the walk came back
+to where it started. Unbounded, that is an infinite loop inside `find` - no allocation, no
+assertion, nothing for a caller to see - which is how it was found: an application whose window came
+up, bound its socket and answered nothing, with one thread at 100%. */
+static void edgecases4() {
+	using unordered_set = __malloc_unordered_set<size_t>;
+
+	unordered_set set;
+	set.rehash(8);
+	// High enough that the load factor never decides to grow: what is under test is the table that
+	// is genuinely full, not the one that grew before it could be.
+	set.max_load_factor(10.0f);
+
+	// All of these are 0 modulo 8, so they collide in bucket 0 and are placed along slots 0..6
+	set.insert({size_t(0), size_t(8), size_t(16), size_t(24), size_t(32), size_t(40), size_t(48)});
+
+	// ... and this one has slot 7 to itself: a FREE bucket, so nothing grows and the table is left
+	// with no free node at all
+	set.insert(size_t(7));
+
+	sprt::cout << "edgecases4 - full table, missing key: ";
+	if (set.size() != 8) {
+		sprt::cout << "FAIL (size " << set.size() << ")\n";
+		return;
+	}
+
+	// Bucket 1 holds a node whose home is bucket 0, and no node of bucket 1 exists: the walk has
+	// nowhere to stop
+	if (set.find(size_t(1)) != set.end() || set.find(size_t(3)) != set.end()
+			|| set.count(size_t(1)) != 0) {
+		sprt::cout << "FAIL (found a key that was never inserted)\n";
+		return;
+	}
+
+	// and everything that IS there is still found
+	bool allFound = true;
+	for (auto &it : {size_t(0), size_t(8), size_t(16), size_t(24), size_t(32), size_t(40),
+			 size_t(48), size_t(7)}) {
+		if (set.find(it) == set.end()) {
+			allFound = false;
+		}
+	}
+	sprt::cout << (allFound ? "PASS\n" : "FAIL (lost a key that was inserted)\n");
+
+	// The insert that follows a full table grows it rather than searching a table with no room
+	set.insert(size_t(9));
+	sprt::cout << "edgecases4 - insert into a full table: "
+			   << ((set.size() == 9 && set.find(size_t(9)) != set.end()) ? "PASS\n" : "FAIL\n");
+}
+
 void performMallocUnorderedSetTests() {
 	using unordered_set = __malloc_unordered_set<int>;
 
@@ -333,6 +391,7 @@ void performMallocUnorderedSetTests() {
 	edgecases1();
 	edgecases2();
 	edgecases3();
+	edgecases4();
 
 	// Test 1: Default constructor and empty check
 	{

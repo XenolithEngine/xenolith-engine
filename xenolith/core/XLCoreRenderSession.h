@@ -409,6 +409,10 @@ public:
 	// announced). Cleared on teardown.
 	virtual void setRenderClient(core::RenderClientChannel *c);
 
+	// The counterpart of setRenderClient. Non-owning: the client is kept alive by _clientRef when
+	// it is a Ref, and by its owner otherwise.
+	core::RenderClientChannel *getRenderClient() const { return _client; }
+
 	core::WindowState getWindowState() const { return _state; }
 
 	sprt::window::WindowCapabilities getCapabilities() const { return _capabilities; }
@@ -430,6 +434,32 @@ public:
 	Check `hasPosition` before trusting the origin: on Wayland and the windowless backends the
 	platform never reports one, and the zeroes there mean "unknown", not "top-left corner". */
 	const sprt::window::WindowGeometry &getWindowGeometry() const { return _appWindowGeometry; }
+
+	/* ---- what this window will accept, decided from mirrored state alone ------------------------
+
+	enableState/disableState/openWindowMenu/setFullscreen answer `bool` SYNCHRONOUSLY, so a channel
+	that has to ask another process cannot produce that answer from the reply - it has to know it
+	locally. Everything the decision needs is already here: `_state` and `_capabilities` are mirrors
+	both implementations keep.
+
+	So the rules live on the base rather than in whichever implementation happened to grow them
+	first. The remote proxy then refuses exactly what the real window would have refused, and the
+	two cannot drift apart - which is what makes "the client and the server answer identically" a
+	property of the code rather than of a test. */
+
+	// Flags enableState/disableState will act on. Anything outside this mask is refused without
+	// reaching the window system.
+	core::WindowState getUpdatableStateFlags() const;
+
+	// One flag per call (Maximized is the documented exception - it is two), and it must be
+	// updatable. Logs the reason, because a silent `false` here is very hard to trace.
+	bool validateStateChange(core::WindowState, StringView op) const;
+
+	bool canOpenWindowMenu() const { return hasFlag(_state, core::WindowState::AllowedWindowMenu); }
+
+	bool canSetFullscreen() const {
+		return hasFlag(_capabilities, sprt::window::WindowCapabilities::Fullscreen);
+	}
 
 protected:
 	Rc<Ref> _clientRef = nullptr;

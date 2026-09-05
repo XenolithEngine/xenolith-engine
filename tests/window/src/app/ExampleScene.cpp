@@ -37,6 +37,7 @@
 #include "app/GeneralLayout.h" // MonitorModeSelectionLayout.cc, included below, builds on it
 #include "app/LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
+#include "XLServerAppThread.h" // ServerAppThread: listener state for the `remote` command
 
 #include "window/MonitorModeSelectionLayout.cc"
 
@@ -91,8 +92,17 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// Инспектор живёт на SceneContent, поэтому регистрируем команды уже после setContent.
 	registerCommands();
 
-	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter)
-	setFpsVisible(true);
+	// Тест, которому счётчик мешает, гасит его сам при входе (TestLayout::handleEnter).
+	//
+	// XL_HIDE_FPS=1 гасит счётчик для всех укладок сразу. Он меняется каждый кадр, поэтому сцена
+	// с ним никогда не «устаканивается»: снимок, снятый по правилу «два одинаковых кадра подряд»,
+	// не получить вовсе — а это единственный способ сравнить два бэкенда на одной укладке
+	// (tests/parity/layouts.py).
+	bool fpsVisible = true;
+	if (auto value = ::getenv("XL_HIDE_FPS")) {
+		fpsVisible = StringView(value) == "0";
+	}
+	setFpsVisible(fpsVisible);
 
 	return true;
 }
@@ -112,50 +122,78 @@ void ExampleScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
 
-	// Remote client needs a separate queue
-	core::Queue::Builder builder("RemoteClientQueue");
+	// Очередь для удалённого клиента.
+	//
+	// Имя намеренно НЕ "RemoteClientQueue": клиент раньше искал очередь именно по этой строке, то
+	// есть согласование держалось на договорённости, которой нет ни в одном протоколе. Теперь имя —
+	// только ручка, а выбор идёт по тому, чем очередь ЯВЛЯЕТСЯ (gAPI и тип); имя, которого клиент
+	// никогда не видел, — самая прямая проверка этого.
+	core::Queue::Builder builder("SharedWindowQueue");
 
 	QueueInfo queueInfo{
 		Extent2(_constraints.extent.width, _constraints.extent.height),
 		Color4F::WHITE,
 	};
 
+	describeQueue(queueInfo);
 	buildQueueResources(queueInfo, builder);
 
-#if MODULE_XENOLITH_BACKEND_VK
-	// The shared queue is vk-specific: building it on any other loop (e.g. --gapi soft, which has
-	// no depth formats at all) would describe passes that device can not compile.
-	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
-			== core::InstanceApi::Vulkan) {
-		basic2d::vk::ShadowPass::RenderQueueInfo info{
-			dir->getApplication()->getGlLoop(),
-			queueInfo.extent,
-			basic2d::vk::ShadowPass::Flags::None,
-			queueInfo.backgroundColor,
-		};
-
-		basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+	// Строим тот же граф, что построила бы локальная сцена на этом бэкенде, — а не жёстко
+	// vk::ShadowPass. Раньше здесь была ветка «только Vulkan», потому что клиент всё равно не мог
+	// узнать, на чём работает сервер; теперь очередь сама себя описывает (api/typeTag уходят в
+	// SharedObjectsAnnounce), и клиент выбирает по этому описанию. Значит окно можно шарить с
+	// любого бэкенда, включая --gapi soft.
+	if (!buildQueue(dir->getApplication(), queueInfo, builder)) {
+		log::source().error("ExampleScene", "fail to build the shared queue");
+		return;
 	}
-#endif
 
-// Window sharing is Linux-only for now; the shared queue is vk-based and
-// can not be compiled on a WebGPU device
+// Window sharing is Linux-only for now (the listener needs a socket).
 #if SPRT_LINUX
-	/*if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
-			== core::InstanceApi::Vulkan) {
-		// When live reload is active, listen on the session's negotiated address + bearer key (the same
-		// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
-		// fixed port, for a manually launched client.
-		StringView shareAddr("127.0.0.1:4480");
-		BytesView shareKey = remote::getDevBearerKey();
+	{
+		// Sharing is OFF unless asked for, because it opens a listening socket: a plain run of this
+		// app must not start accepting connections.
+		//
+		// Three ways to ask, in priority order:
+		//   1. live reload (--watch) -- the session's negotiated address + key, the same pair it
+		//      hands each client it launches;
+		//   2. XL_REMOTE_SHARE=<address> [+ XL_REMOTE_TOKEN=<token>, key = Sha512(token)] -- what
+		//      remote-check.py drives, so an end-to-end run needs no code change;
+		//   3. nothing -> no listener.
+		StringView shareAddr;
+		Bytes shareKey;
+
 		if (auto lr = dynamic_cast<LiveReloadAppThread *>(dir->getApplication())) {
 			if (!lr->getServerAddress().empty()) {
 				shareAddr = lr->getServerAddress();
-				shareKey = lr->getBearerKey();
+				shareKey = lr->getBearerKey().bytes<Interface>();
 			}
 		}
-		dir->shareQueue(sp::move(builder), shareAddr, shareKey);
-	}*/
+
+		if (shareAddr.empty()) {
+			if (auto env = ::getenv("XL_REMOTE_SHARE")) {
+				shareAddr = StringView(env);
+				if (auto tok = ::getenv("XL_REMOTE_TOKEN")) {
+					auto h = crypto::Sha512::perform(StringView(tok));
+					shareKey = BytesView(h.data(), h.size()).bytes<Interface>();
+				} else {
+#if DEBUG
+					shareKey = remote::getDevBearerKey().bytes<Interface>();
+#else
+					log::source().error("ExampleScene",
+							"XL_REMOTE_SHARE without XL_REMOTE_TOKEN needs a debug build");
+					shareAddr = StringView();
+#endif
+				}
+			}
+		}
+
+		if (!shareAddr.empty()) {
+			log::source().info("ExampleScene", "sharing this window at ", shareAddr);
+			dir->shareQueue(sp::move(builder), shareAddr,
+					BytesView(shareKey.data(), shareKey.size()));
+		}
+	}
 #endif
 }
 
@@ -235,6 +273,31 @@ void ExampleScene::registerCommands() {
 		Value result;
 		result.setValue(sp::move(layouts), "layouts");
 		result.setValue(sp::move(tree), "tree");
+		done(sp::move(result));
+	});
+
+	// Remote render session status, for tests/window/remote-check.py.
+	//
+	// A screenshot alone cannot tell a client-rendered frame from a server-rendered one -- both draw
+	// the same scene through the same window. So the state that decides it is reported directly:
+	// whether the listener is up, the SPKI the client must pin (only knowable after the listener
+	// opens, which is why the driver polls for it), and whether a client holds the connection.
+	inspector::addCommand(content, "remote", "Remote render session status: { listening, spki, "
+										 "clientConnected }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app) {
+			result.setBool(false, "ok");
+			result.setString("not a server app thread", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+		result.setBool(app->isListening(), "listening");
+		result.setBool(app->hasRemoteClient(), "clientConnected");
+		auto fp = app->getListenerFingerprint();
+		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
 		done(sp::move(result));
 	});
 
@@ -365,7 +428,9 @@ void ExampleScene::switchLayout(const TestInfo &info, float settle,
 	})));
 }
 
-void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
+// Какую очередь просит сцена. Живёт отдельно от buildQueueResources, потому что этот ответ нужен
+// и удалённой сцене: она ничего не строит, но по нему выбирает очередь сервера.
+void ExampleScene::describeQueue(QueueInfo &info) {
 	// XL_FLAT_QUEUE=1 — облегчённая очередь отрисовки: без теней, частиц, буфера глубины
 	// и шейдера постобработки
 	if (auto value = ::getenv("XL_FLAT_QUEUE")) {
@@ -393,7 +458,9 @@ void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &bu
 			log::source().info("ExampleScene", "Empty frame skipping disabled");
 		}
 	}
+}
 
+void ExampleScene::buildQueueResources(QueueInfo &info, core::Queue::Builder &builder) {
 	builder.addImage("xenolith-2-480.png",
 			core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled,
 					core::ImageHints::Opaque),

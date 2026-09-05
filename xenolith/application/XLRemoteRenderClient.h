@@ -57,6 +57,7 @@ public:
 
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
@@ -79,6 +80,10 @@ public:
 
 	// All inputs for a frame were submitted; stop routing further input for it.
 	void handleFrameCommit(uint64_t frameId);
+
+	// Feed the inputs the client cannot produce because they are server state (FrameCapture). An
+	// input attachment left unfed wedges the frame and stalls the window -- see the .cc.
+	void submitServerOwnedInputs(uint64_t frameId, NotNull<core::LocalFrameRequestProxy>);
 
 	// A client-forwarded runtime material compile (WindowCode::CompileMaterials): resolve image refs (the
 	// atlas image id -> the font server's DynamicImage), reconstruct the materials, compile into the
@@ -107,6 +112,13 @@ protected:
 	// Client-minted material dependency ids -> the server-local events the forwarded compile signals, so a
 	// frame using a not-yet-compiled material waits. Reconciled in handleFrameInput.
 	Map<uint32_t, Rc<core::DependencyEvent>> _materialDeps;
+
+	// The last DrawStat the render half produced for this client, waiting for a frame request to
+	// carry it. `_drawStatDirty` is what keeps an idle window from re-sending the same numbers:
+	// nothing new was drawn, so there is nothing new to say. Written on the app thread only (the
+	// push hops there first), read there too, so no synchronization is needed.
+	core::DrawStat _drawStat{};
+	bool _drawStatDirty = false;
 };
 
 } // namespace stappler::xenolith

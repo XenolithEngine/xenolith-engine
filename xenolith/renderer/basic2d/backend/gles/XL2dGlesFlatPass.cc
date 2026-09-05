@@ -101,14 +101,20 @@ void main() {
 			float((f & uint(4)) != uint(0)),
 			float((f & uint(8)) != uint(0)));
 
+	// The transform matrix is built once by the shared vertex plan in Vulkan's NDC convention and
+	// is used here unchanged - Y is NOT negated. GL's window origin is at the bottom left where
+	// Vulkan's is at the top, but nothing forces this backend to read its own render target that
+	// way: it treats GL row 0 as the image's TOP row, and then the viewport transform maps a
+	// vertex to exactly the window coordinate Vulkan gives it (XLGlesQueuePass.cc executeDrawList
+	// keeps scissor rects in the same top-origin space, XLGlesLoop.cc captureImage reads rows out
+	// in that order, and only the blit onto the default framebuffer flips - see
+	// XLGlesWindowedPresentation.cc present).
+	//
+	// Mirroring the geometry instead would draw the same picture but not the same pixels: the
+	// top-left fill rule is applied in window space, so a reflected primitive breaks a tie on the
+	// opposite edge, and an edge landing exactly on a half-pixel - a table border, a 1px rule -
+	// lands one row lower than it does under Vulkan.
 	gl_Position = (transform.transform * p * mask) + transform.offset;
-	// The transform matrix is built once by the shared vertex plan in Vulkan's NDC convention,
-	// where clip +Y points toward the top of the surface. OpenGL's clip space is flipped (+Y
-	// toward the bottom), so negate Y here to land the geometry where the Vulkan/soft backends
-	// put it. Without this the whole frame renders as a vertical mirror - invisible for
-	// vertically symmetric content, wrong for anything that is not (stacked sprites, dash
-	// patterns, alpha gradients).
-	gl_Position.y = -gl_Position.y;
 	fragColor = color * transform.instanceColor;
 	fragTexCoord = vec2(tex.x, tex.y);
 }
@@ -332,6 +338,8 @@ bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
 	builder.setDamageFlags(info.damage);
+	builder.setApi(InstanceApi::GLES);
+	builder.setTypeTag(toInt(QueueType::Flat));
 
 	builder.addPass("MaterialSwapchainPass", PassType::Graphics, RenderOrderingHighest,
 			[&](QueuePassBuilder &passBuilder) -> Rc<core::QueuePass> {

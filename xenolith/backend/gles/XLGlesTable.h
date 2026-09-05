@@ -92,6 +92,30 @@ struct SP_PUBLIC EglTable {
 	//     lacks them, in which case windowed presentation is unavailable (headless still works).
 	PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC eglCreatePlatformWindowSurfaceEXT = nullptr;
 	decltype(&eglSwapBuffers) eglSwapBuffers = nullptr;
+	decltype(&eglSwapInterval) eglSwapInterval = nullptr;
+
+	// EGL_KHR_swap_buffers_with_damage: the compositor is told which rectangles of the surface
+	// actually changed, so it can repaint that much of the screen instead of all of it. The direct
+	// analogue of VK_KHR_incremental_present, and a display extension rather than a client one -
+	// resolved through eglGetProcAddress, null when the driver has no such thing.
+	PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC eglSwapBuffersWithDamageKHR = nullptr;
+
+	// --- wayland-egl (libwayland-egl.so.1) ---
+	// EGL_EXT_platform_wayland does not take the wl_surface: its native window is a
+	// `struct wl_egl_window *`, the client-side buffer queue that libwayland-egl binds to a
+	// surface. Handing eglCreatePlatformWindowSurfaceEXT the wl_surface itself is what an
+	// EGL_BAD_NATIVE_WINDOW (12299) reports, and no frame ever reaches the compositor.
+	//
+	// The library is opened separately from libEGL, and its absence is not an error: it only
+	// means windowed presentation on wayland is unavailable (headless and xcb still work). The
+	// wayland types are not declared here - the handles are opaque to this backend.
+	using WlEglWindowCreateProc = void *(*)(void *surface, int width, int height);
+	using WlEglWindowDestroyProc = void (*)(void *window);
+
+	WlEglWindowCreateProc wl_egl_window_create = nullptr;
+	WlEglWindowDestroyProc wl_egl_window_destroy = nullptr;
+
+	bool hasWaylandEgl() const { return wl_egl_window_create && wl_egl_window_destroy; }
 
 	// --- EGL extensions, resolved through eglGetProcAddress ---
 	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = nullptr;
@@ -245,6 +269,10 @@ struct SP_PUBLIC EglTable {
 
 	// Open lazily by loadGl when eglGetProcAddress refuses a core GL entrypoint.
 	sprt::Dso _glesModule;
+
+	// Carrier of the wl_egl_window_* entrypoints above; opened by loadEgl where the platform has
+	// one, left empty everywhere else.
+	sprt::Dso _waylandEglModule;
 };
 
 // Does the space-separated extension list exported by eglQueryString/glGetString name this

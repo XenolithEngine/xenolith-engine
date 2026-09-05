@@ -42,7 +42,23 @@ int main(int argc, const char *argv[]) {
 			auto h = crypto::Sha512::perform(StringView(argv[2]));
 			ctx->setBearerKey(BytesView(h.data(), h.size()));
 		} else {
+#if DEBUG
 			ctx->setBearerKey(remote::getDevBearerKey());
+#else
+			// The shared dev key exists only in a debug build (its value is a known constant), so a
+			// release client has nothing to fall back on and must be given a token.
+			log::source().error("client",
+					"no token: a release build carries no development bearer key; pass the session "
+					"token as the 2nd argument");
+			return 1;
+#endif
+		}
+
+		// Server identity: the SPKI fingerprint the live-reload server passes as the 3rd CLI arg.
+		// Without it the self-signed server certificate is accepted blindly and the bearer key above
+		// goes to whoever answered on that port.
+		if (argc > 3) {
+			ctx->setServerFingerprint(base16::decode<Interface>(StringView(argv[3])));
 		}
 
 		ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });

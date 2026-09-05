@@ -485,37 +485,38 @@ void InputListener::removeHotkey(HotkeyId id) { _hotkeys.erase(id); }
 
 bool InputListener::hasHotkey(HotkeyId id) const { return _hotkeys.find(id) != _hotkeys.end(); }
 
-bool InputListener::isHotkeyEligible(const HotkeyBinding &binding, bool focused, bool repeated,
-		bool exclusiveScoped) const {
-	if (repeated && !hasFlag(binding.flags, HotkeyFlags::Repeatable)) {
+bool InputListener::isHotkeyEligible(const HotkeyBinding &binding,
+		const HotkeyContext &ctx) const {
+	if (ctx.repeated && !hasFlag(binding.flags, HotkeyFlags::Repeatable)) {
 		return false;
 	}
-	if (hasFlag(binding.flags, HotkeyFlags::FocusedOnly) && !focused) {
+	if (hasFlag(binding.flags, HotkeyFlags::FocusedOnly) && !ctx.focused) {
 		return false;
 	}
-	if (exclusiveScoped && !hasFlag(binding.flags, HotkeyFlags::BypassExclusive)) {
+	if (hasFlag(binding.flags, HotkeyFlags::SelectedOnly) && !ctx.inSelection) {
+		return false;
+	}
+	if (ctx.exclusiveScoped && !hasFlag(binding.flags, HotkeyFlags::BypassExclusive)) {
 		return false;
 	}
 	return true;
 }
 
-bool InputListener::canHandleHotkey(SpanView<HotkeyId> ids, bool focused, bool repeated,
-		bool exclusiveScoped) const {
+bool InputListener::canHandleHotkey(SpanView<HotkeyId> ids, const HotkeyContext &ctx) const {
 	if (_hotkeys.empty() || !_running || !_owner) {
 		return false;
 	}
 	for (auto &id : ids) {
 		auto it = _hotkeys.find(id);
-		if (it != _hotkeys.end()
-				&& isHotkeyEligible(it->second, focused, repeated, exclusiveScoped)) {
+		if (it != _hotkeys.end() && isHotkeyEligible(it->second, ctx)) {
 			return true;
 		}
 	}
 	return false;
 }
 
-bool InputListener::handleHotkey(SpanView<HotkeyId> ids, const InputEvent &event, bool focused,
-		bool repeated, bool exclusiveScoped) {
+bool InputListener::handleHotkey(SpanView<HotkeyId> ids, const InputEvent &event,
+		const HotkeyContext &ctx) {
 	if (_hotkeys.empty() || !_running || !_owner) {
 		return false;
 	}
@@ -527,8 +528,7 @@ bool InputListener::handleHotkey(SpanView<HotkeyId> ids, const InputEvent &event
 			break;
 		}
 		auto it = _hotkeys.find(id);
-		if (it == _hotkeys.end()
-				|| !isHotkeyEligible(it->second, focused, repeated, exclusiveScoped)) {
+		if (it == _hotkeys.end() || !isHotkeyEligible(it->second, ctx)) {
 			continue;
 		}
 		if (it->second.callback(id, event)) {

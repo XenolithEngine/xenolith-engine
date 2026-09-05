@@ -1548,6 +1548,132 @@ bool readColor(const StringView &str, Color3B &color) {
 	return false;
 }
 
+// ---- HSL and HSV, in floats ---------------------------------------------------------------
+
+// The shared front half of both conversions: the channels as floats, and the two extremes every
+// cylindrical model is written from.
+struct _ColorMaxMin {
+	float r, g, b;
+	float max, min, delta;
+};
+
+static _ColorMaxMin colorMaxMin(const Color3B &color) {
+	_ColorMaxMin ret;
+	ret.r = float(color.r) / 255.0f;
+	ret.g = float(color.g) / 255.0f;
+	ret.b = float(color.b) / 255.0f;
+	ret.max = sprt::max(ret.r, sprt::max(ret.g, ret.b));
+	ret.min = sprt::min(ret.r, sprt::min(ret.g, ret.b));
+	ret.delta = ret.max - ret.min;
+	return ret;
+}
+
+// The hue, in [0, 360). Zero for a grey - see the header on why that is an answer rather than an
+// omission.
+static float colorHue(const _ColorMaxMin &c) {
+	if (c.delta <= 0.0f) {
+		return 0.0f;
+	}
+
+	float h;
+	if (c.max == c.r) {
+		h = (c.g - c.b) / c.delta;
+	} else if (c.max == c.g) {
+		h = 2.0f + (c.b - c.r) / c.delta;
+	} else {
+		h = 4.0f + (c.r - c.g) / c.delta;
+	}
+
+	h *= 60.0f;
+	// The red sector runs either side of 0, so a colour with more blue than green lands negative.
+	if (h < 0.0f) {
+		h += 360.0f;
+	}
+	return h;
+}
+
+// One channel back out of a hue, as a fraction of the chroma. Both inverses need exactly this, so
+// the sector arithmetic is written once.
+static float colorChannelFromHue(float h) {
+	// The hue is taken modulo a turn rather than clamped: 420 and 60 are one colour, and a caller
+	// stepping a slider past the end means to wrap.
+	h -= sprt::floor(h / 360.0f) * 360.0f;
+
+	const float sector = h / 60.0f;
+	if (sector < 1.0f) {
+		return 1.0f;
+	} else if (sector < 2.0f) {
+		return 2.0f - sector;
+	} else if (sector < 4.0f) {
+		return 0.0f;
+	} else if (sector < 5.0f) {
+		return sector - 4.0f;
+	}
+	return 1.0f;
+}
+
+// The three channels of the fully saturated colour at `h`, each in [0, 1].
+static void colorHueChannels(float h, float &r, float &g, float &b) {
+	r = colorChannelFromHue(h);
+	g = colorChannelFromHue(h - 120.0f);
+	b = colorChannelFromHue(h + 120.0f);
+}
+
+// Round-to-nearest rather than truncate: 0.5f/255 has to come back as 128, and truncation walks a
+// value down by one on every round trip.
+static uint8_t colorByte(float v) { return uint8_t(sprt::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); }
+
+void rgbToHsl(const Color3B &color, float &h, float &s, float &l) {
+	const auto c = colorMaxMin(color);
+
+	h = colorHue(c);
+	l = (c.max + c.min) * 0.5f;
+
+	if (c.delta <= 0.0f) {
+		s = 0.0f;
+	} else {
+		// The denominator is the width of the band the lightness leaves for chroma, and it narrows
+		// to nothing at both ends - which is why black and white are excluded by `delta` above
+		// rather than divided by here.
+		const float span = 1.0f - sprt::fabs(2.0f * l - 1.0f);
+		s = span > 0.0f ? c.delta / span : 0.0f;
+	}
+}
+
+void rgbToHsv(const Color3B &color, float &h, float &s, float &v) {
+	const auto c = colorMaxMin(color);
+
+	h = colorHue(c);
+	v = c.max;
+	s = c.max > 0.0f ? c.delta / c.max : 0.0f;
+}
+
+Color3B hslToRgb(float h, float s, float l) {
+	s = sprt::clamp(s, 0.0f, 1.0f);
+	l = sprt::clamp(l, 0.0f, 1.0f);
+
+	const float chroma = (1.0f - sprt::fabs(2.0f * l - 1.0f)) * s;
+	const float base = l - chroma * 0.5f;
+
+	float r, g, b;
+	colorHueChannels(h, r, g, b);
+	return Color3B(colorByte(base + chroma * r), colorByte(base + chroma * g),
+			colorByte(base + chroma * b));
+}
+
+Color3B hsvToRgb(float h, float s, float v) {
+	s = sprt::clamp(s, 0.0f, 1.0f);
+	v = sprt::clamp(v, 0.0f, 1.0f);
+
+	const float chroma = v * s;
+	const float base = v - chroma;
+
+	float r, g, b;
+	colorHueChannels(h, r, g, b);
+	return Color3B(colorByte(base + chroma * r), colorByte(base + chroma * g),
+			colorByte(base + chroma * b));
+}
+
 
 MD_COLOR_SPEC_DEFINE(Red, 0, ffebee, ffcdd2, ef9a9a, e57373, ef5350, f44336, e53935, d32f2f, c62828,
 		b71c1c, ff8a80, ff5252, ff1744, d50000);
