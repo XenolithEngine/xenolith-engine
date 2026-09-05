@@ -218,10 +218,13 @@ static const TestInfo s_layoutTests[] = {
 
 	TestInfo{StringView("overflow"), StringView("XL_OVERFLOW_TEST"),
 		StringView("CSS overflow: clipping and scrolling"),
-		StringView("Five boxes over the same content. `overflow-y: auto` keeps the items at their "
+		StringView("Six boxes over the same content. `overflow-y: auto` keeps the items at their "
 				   "declared height and scrolls; `visible` still crushes them; `hidden` clips an "
 				   "oversized child; a box whose content fits keeps flex-grow working and reports "
-				   "no range; and a single non-visible axis coerces the other one."),
+				   "no range; and a single non-visible axis coerces the other one. The last two "
+				   "are read by EYE: a surface-level ui::Panel inside the clip must draw (red, "
+				   "clipped), and two outside it must stack green under magenta - the draw-order "
+				   "case a scissor exposes."),
 		TestRegistry_make<OverflowLayout>},
 
 	TestInfo{StringView("auto-margin"), StringView("XL_AUTO_MARGIN_TEST"), StringView("margin: auto on a flex item"),
