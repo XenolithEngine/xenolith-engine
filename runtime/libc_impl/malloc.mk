@@ -70,6 +70,23 @@ MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
 	 -funwind-tables -fasynchronous-unwind-tables \
 	-DMALLOC_NO_PRIVATE_NAMESPACE
 
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# mimalloc reserves an arena of virtual address space up front and lets the OS
+# back it lazily; on Linux the default 1 GiB costs nothing until touched. Embox
+# EL0 has no demand paging -- every mapping is physical memory the kernel hands
+# over on the spot -- so that default is a request for the whole machine. It is
+# not a slow start either: the kernel's page allocator answers an impossible
+# request by walking every free run it has, so the first malloc() of the first
+# program never returned. See xenolith-os docs/EMBOX-USERSPACE.md, K5.
+#
+# 32 MiB is mimalloc's own MI_SEGMENT_SIZE, which is the smallest value it will
+# actually use (mi_arena_reserve rounds up to it). Further arenas are reserved on
+# demand, so this is a starting size and not a ceiling.
+#
+# The value is in KiB, as mi_option_arena_reserve is.
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += -DMI_DEFAULT_ARENA_RESERVE=32*1024
+endif
+
 endif # ($(TARGET_SYSTEM),WASM)
 
 MODULE_RUNTIME_MALLOC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
