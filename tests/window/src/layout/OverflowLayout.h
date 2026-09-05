@@ -63,6 +63,9 @@ protected:
 	basic2d::Layer *_fitBox = nullptr;
 	basic2d::Layer *_fitFiller = nullptr;
 	basic2d::Layer *_coercedBox = nullptr;
+	// The draw-order regression case; see the note where they are built.
+	basic2d::Layer *_clipPanelBox = nullptr;
+	basic2d::Layer *_loosePanelBox = nullptr;
 	basic2d::Layer *_tearBox = nullptr;
 	basic2d::Layer *_tearFirst = nullptr;
 

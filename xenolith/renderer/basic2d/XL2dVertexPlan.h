@@ -129,6 +129,16 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 		uint32_t gradientStart = 0;
 		uint32_t gradientCount = 0;
 
+		/* WHEN THIS STATE WAS FIRST SEEN, in the traversal that built the plan - painter's order,
+		the same clock `VertexDataPlanInfo::order` is stamped from.
+
+		Kept because the states of one material are held in a `Map<StateId, …>`, and a StateId is an
+		allocation counter: it says when a state VALUE was interned, which has nothing to do with
+		when the geometry carrying it is drawn. Drawing them in StateId order is therefore arbitrary,
+		and for a plan whose overlap is resolved by submission order alone - the SURFACE plan blends
+		and does not write depth - arbitrary is wrong. See the note in drawWritePlan. */
+		uint32_t order = 0;
+
 	private:
 		static void append(VertexDataPlanInfo *&head, VertexDataPlanInfo *&tail,
 				VertexDataPlanInfo *info) {
