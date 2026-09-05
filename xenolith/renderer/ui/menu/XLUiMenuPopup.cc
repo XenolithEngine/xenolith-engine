@@ -166,7 +166,7 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 //
 // What is a MENU here is the measurement, the chain and the keyboard; everything a popup surface
 // has to do to be one - the sheet its own scene needs, the panel's level and placement, the tap
-// that closes it - is ui::openPopupSurface's, and this used to be a copy of it.
+// that closes it - is left to ui::openPopupSurface.
 static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
 		MenuConfig &&config, MenuPopupChain *parent) {

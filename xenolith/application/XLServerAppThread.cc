@@ -222,9 +222,9 @@ void ServerAppThread::readFromClipboard(Function<void(Status, BytesView, StringV
 }
 
 void ServerAppThread::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref) {
-	// Same holder, and here it also fixes a use-after-move: the fallback below used to call a `cb`
-	// that had already been moved into the lambda above it, which is exactly the path a platform
-	// without a probe (Windows, macOS) takes every time.
+	// Same holder as read() above: the callback is claimed exactly once, by whichever branch gets
+	// there first - the probe's own answer, or the failure fallback below, which is the path every
+	// platform without a probe (Windows, macOS) takes.
 	auto answer = Rc<ClipboardAnswer<Function<void(Status, SpanView<StringView>)>>>::alloc();
 	answer->callback = sp::move(cb);
 	answer->target = ref;

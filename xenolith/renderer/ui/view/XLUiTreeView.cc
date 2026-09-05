@@ -282,9 +282,8 @@ void TreeView::setSelectedIdentity(ItemId id, uint64_t offset) {
 	}
 
 	// The selection is a style class and nothing else, and the two rows it moves between are on
-	// screen with every node they need. Asking for a rebuild here - which is what this used to do -
-	// threw away and remade every visible row on a plain click, which is precisely the redraw a
-	// click should not cause. A row that is not materialized needs nothing: makeRow() reads
+	// screen with every node they need, so only those two are restyled - a plain click must not
+	// remake every visible row. A row that is not materialized needs nothing: makeRow() reads
 	// _selectedRow when it builds it.
 	if (auto node = getRowNode(previous)) {
 		updateRowNode(node, previous);

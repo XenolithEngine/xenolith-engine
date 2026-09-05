@@ -238,11 +238,10 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	}
 
 	// Gate EVERY frame that would draw before the data is on the GPU, not just the one in which this
-	// node happened to re-render. The dependency used to be moved into the first frame and dropped;
-	// with continuous rendering several more frames are produced while the upload is still running,
-	// and those drew against data that is not there yet - for a Label that means point sprites whose
-	// CharId the atlas cannot resolve, which collapse to zero size, i.e. missing text. So keep the
-	// dependency until it fires, and hand a reference to each frame in between.
+	// node re-rendered: with continuous rendering several more frames are produced while the upload
+	// is still running, and drawing against data that is not there yet means, for a Label, point
+	// sprites whose CharId the atlas cannot resolve - they collapse to zero size, i.e. missing
+	// text. So the dependency is kept until it fires and a reference handed to each frame between.
 	//
 	// The list is also re-armed here rather than only at layout time: the resource can be replaced
 	// after this node was laid out, and nothing in its vertex data would show it.

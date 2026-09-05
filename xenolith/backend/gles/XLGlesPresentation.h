@@ -33,8 +33,8 @@ class Instance;
 
 // Everything a gles swapchain does that does not depend on where the pixels end up. Only init,
 // acquire and present differ between presenting into a window and presenting into nothing, so
-// they are the only three left to the subclasses. The images here are GL textures: M1 renders
-// into them and reads them back with glReadPixels; blitting them onto an EGL surface is M2.
+// they are the only three left to the subclasses. The images here are GL textures: the headless
+// swapchain reads them back with glReadPixels, the windowed one blits them onto an EGL surface.
 class SP_PUBLIC SwapchainBase : public core::Swapchain {
 public:
 	virtual ~SwapchainBase();
@@ -105,9 +105,9 @@ public:
 
 protected:
 	// The transport-specific half of createSwapchain. Everything around it - constraints, the
-	// frame cache registration, retiring the previous swapchain - is the same either way. M1 has
-	// no window presentation, so this answers an error and the headless engine overrides it with
-	// a real construction.
+	// frame cache registration, retiring the previous swapchain - is the same either way. The base
+	// has no transport of its own and answers an error; the headless and windowed engines override
+	// it with a real construction.
 	virtual Rc<SwapchainBase> makeSwapchain(const core::SurfaceInfo &,
 			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode);
 };
