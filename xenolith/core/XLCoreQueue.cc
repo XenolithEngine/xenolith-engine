@@ -813,6 +813,12 @@ FrameRenderPassState Queue::getDefaultSyncPassState() const { return _data->defa
 
 PassRecordingMode Queue::getRecordingMode() const { return _data->recordingMode; }
 
+InstanceApi Queue::getApi() const { return _data->api; }
+
+uint32_t Queue::getTypeTag() const { return _data->typeTag; }
+
+QueueDamageFlags Queue::getDamageFlags() const { return _data->damage; }
+
 const HashTable<ProgramData *> &Queue::getPrograms() const { return _data->programs; }
 
 const HashTable<QueuePassData *> &Queue::getPasses() const { return _data->passes; }
@@ -1670,6 +1676,10 @@ void Queue::Builder::setDefaultSyncPassState(FrameRenderPassState val) {
 void Queue::Builder::setRecordingMode(PassRecordingMode val) { _data->recordingMode = val; }
 
 void Queue::Builder::setDamageFlags(QueueDamageFlags val) { _data->damage = val; }
+
+void Queue::Builder::setApi(InstanceApi val) { _data->api = val; }
+
+void Queue::Builder::setTypeTag(uint32_t val) { _data->typeTag = val; }
 
 const AttachmentData *Queue::Builder::addAttachemnt(StringView name,
 		const Callback<Rc<Attachment>(AttachmentBuilder &)> &cb) {

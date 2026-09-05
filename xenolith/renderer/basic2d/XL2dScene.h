@@ -27,6 +27,7 @@
 #include "XLCoreRenderSession.h"
 #include "XLScene.h"
 #include "XLInput.h"
+#include "XL2d.h" // QueueType, re-exported below
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -34,14 +35,9 @@ class VectorSprite;
 
 class SP_PUBLIC Scene2d : public Scene {
 public:
-	enum class QueueType {
-		// full-featured queue: shadows, pseudo-SDF, particles, depth buffer, post-processing
-		Default,
-
-		// lightweight queue: no shadows, no particles, no depth buffer, no post-processing
-		// (Vulkan only; the WebGPU and Metal queues are already of this shape)
-		Flat,
-	};
+	// Declared in XL2d.h so the backend pass makers can tag their queues with it; re-exported here
+	// because Scene2d::QueueType is how the rest of the engine spells it.
+	using QueueType = basic2d::QueueType;
 
 	struct QueueInfo {
 		Extent2 extent;
@@ -89,6 +85,15 @@ public:
 	virtual void setContent(SceneContent *) override;
 
 protected:
+	// What kind of queue this scene wants, before anything is built.
+	//
+	// Separate from buildQueueResources because it is the half that is meaningful on BOTH paths: a
+	// local scene turns the answer into a graph, a remote one matches it against the graphs the
+	// server already has. Setting `type` from buildQueueResources worked only locally -- a client
+	// never builds a queue, so the preference had nowhere to be read from and every remote scene
+	// silently got whatever the server's first queue happened to be.
+	virtual void describeQueue(QueueInfo &);
+
 	// override this to add initial resources to be compiled woth render queue
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &);
 
@@ -98,8 +103,12 @@ protected:
 	void updateInputEventData(InputEventData &data, const InputEventData &source, Vec2 pos,
 			uint32_t id);
 
+	// Which of the server's shared queues this scene renders through, by name (the name is the
+	// handle the rest of the client/server exchange uses -- see RemoteWindow::compileRenderQueue).
+	// The default matches on what the queue IS: the server's gAPI and the shape `info` asked for.
+	// Empty means nothing usable was offered, and scene construction fails.
 	virtual StringView selectServerQueue(NotNull<AppThread> app,
-			NotNull<core::RenderServerChannel> window);
+			NotNull<core::RenderServerChannel> window, const QueueInfo &info);
 
 	InputEventData _data1 = InputEventData{maxOf<uint32_t>() - 1};
 	InputEventData _data2 = InputEventData{maxOf<uint32_t>() - 2};

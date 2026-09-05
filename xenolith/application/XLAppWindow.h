@@ -129,6 +129,10 @@ public:
 	// possibly-stale display-link barrier and pumps one fresh frame. From any thread.
 	void resetForRenderClientChange();
 
+	// Publishes `_clientIsRemote` alongside the base's `_client`, so the presentation thread can ask
+	// whether this window is served remotely without racing on a pointer only the app thread owns.
+	virtual void setRenderClient(core::RenderClientChannel *) override;
+
 	// Block current thread until next frame
 	virtual bool waitUntilFrame() override;
 
@@ -144,8 +148,9 @@ public:
 	// 0 if no frame interval is set
 	uint64_t getPresentationFrameInterval() const;
 
-	// State flags you can enable or disable
-	WindowState getUpdatableStateFlags() const;
+	// getUpdatableStateFlags() now lives on core::RenderServerChannel: it reads only the mirrored
+	// _state and _capabilities, so the remote proxy answers enableState() by the same rules this
+	// window does.
 
 	// try to change WindowState by adding new flag
 	// Only one flag can be set per call
@@ -318,6 +323,11 @@ protected:
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;
+	// Whether the current render client serves this window over the wire. Mirrors
+	// `_client->isRemote()` for readers on the presentation thread, which must not touch `_client`
+	// itself (the app thread owns it).
+	sprt::atomic<bool> _clientIsRemote = false;
+
 	bool _firstFrameCompleted = false;
 	bool _mapOnFirstFrame = false;
 };

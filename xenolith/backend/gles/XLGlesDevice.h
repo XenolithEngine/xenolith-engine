@@ -65,12 +65,27 @@ public:
 	EGLContext getContext() const { return _context; }
 	EGLSurface getRenderSurface() const { return _surface; }
 
-	// Create an EGLWindowSurface on this device's display for the given native window handle. The
-	// backend picks the platform token and attrib list (wayland: the wl_surface itself; xcb: the
-	// window id). Fails when the driver lacks eglCreatePlatformWindowSurfaceEXT or the config does
-	// not carry EGL_WINDOW_BIT - both of which are the "windowed presentation unavailable" case.
+	// Whether this display can take a damage region with the swap (EGL_KHR_swap_buffers_with_damage).
+	// False means the present falls back to a plain eglSwapBuffers, which is a full-surface hint.
+	bool hasSwapWithDamage() const { return _swapWithDamage; }
+
+	// Create an EGLWindowSurface on this device's display for the given native window handle.
+	// Each platform extension spells its native window differently, and neither spells it the way
+	// the window system hands it over: wayland needs the wl_surface wrapped in a wl_egl_window
+	// (created here, returned through outNativeWindow, and owned by the caller), xcb needs a
+	// pointer to the window id rather than the id itself. Fails when the driver lacks
+	// eglCreatePlatformWindowSurfaceEXT, when libwayland-egl is missing, or when the config does
+	// not carry EGL_WINDOW_BIT - all of which are the "windowed presentation unavailable" case.
 	bool createWindowSurface(sprt::window::SurfaceBackend backend, void *nativeWindow,
-			EGLSurface &out);
+			Extent2 extent, EGLSurface &out, void *&outNativeWindow);
+
+	// Undo createWindowSurface: the EGLSurface first, then the native window it was built on -
+	// the wl_egl_window has to outlive the surface that references it. Both handles are cleared.
+	//
+	// There is no resize counterpart on purpose: a window that changes size makes the presentation
+	// engine build a new swapchain, and the new one creates its own pair at the new extent while
+	// the old one destroys its own here.
+	void destroyWindowSurface(EGLSurface &surface, void *&nativeWindow);
 
 	// Queue a GL delete for execution on the loop thread (drainPendingReleases). Safe from any
 	// thread: when end() has already run, the call is dropped - context teardown reclaims every
@@ -96,6 +111,11 @@ protected:
 
 	DeviceInfo _deviceInfo;
 	EGLDisplay _display = EGL_NO_DISPLAY;
+	// False when _display was opened on the session's own wayland/xcb connection: that display is
+	// EGL's shared handle for a connection this backend does not own, and end() must not terminate
+	// it. See Device::end.
+	bool _ownsDisplay = true;
+	bool _swapWithDamage = false;
 	EGLConfig _config = nullptr;
 	EGLContext _context = EGL_NO_CONTEXT;
 	EGLSurface _surface = EGL_NO_SURFACE;

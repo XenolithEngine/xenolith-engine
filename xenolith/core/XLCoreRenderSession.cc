@@ -191,6 +191,69 @@ void RenderServerChannel::setWindowExtent(Extent2, Function<void(Status)> &&cb, 
 	}
 }
 
+/* Moved down here from AppWindow, unchanged.
+ *
+ * It reads nothing but `_capabilities` and `_state`, both of which are mirrors every implementation
+ * of this channel keeps - so it never belonged to one of them. A remote proxy that answered
+ * enableState() from its own copy of these rules would drift from the real window the first time
+ * either list changed; sharing the one implementation makes that impossible rather than unlikely. */
+core::WindowState RenderServerChannel::getUpdatableStateFlags() const {
+	using sprt::window::WindowCapabilities;
+
+	auto caps = getCapabilities();
+	WindowState flags = WindowState::None;
+
+	if (hasFlag(caps, WindowCapabilities::AboveBelowState)) {
+		flags |= WindowState::Above | WindowState::Below;
+	}
+
+	if (hasFlag(caps, WindowCapabilities::DemandsAttentionState)) {
+		flags |= WindowState::DemandsAttention;
+	}
+
+	if (hasFlag(caps, WindowCapabilities::SkipTaskbarState)) {
+		flags |= WindowState::SkipTaskbar | WindowState::SkipPager;
+	}
+
+	if (hasFlag(caps, WindowCapabilities::CloseGuard)) {
+		flags |= WindowState::CloseGuard | WindowState::CloseRequest;
+	}
+
+	if (hasFlag(caps, WindowCapabilities::DecorationState)) {
+		flags |= WindowState::DecorationState;
+	}
+
+	for (auto it : sp::flags(_state)) {
+		switch (it) {
+		case WindowState::AllowedMinimize: flags |= WindowState::Minimized; break;
+		case WindowState::AllowedShade: flags |= WindowState::Shaded; break;
+		case WindowState::AllowedStick: flags |= WindowState::Sticky; break;
+		case WindowState::AllowedMaximizeVert: flags |= WindowState::MaximizedVert; break;
+		case WindowState::AllowedMaximizeHorz: flags |= WindowState::MaximizedHorz; break;
+		case WindowState::AllowedClose: flags |= WindowState::CloseRequest; break;
+		case WindowState::AllowedFullscreen: flags |= WindowState::Fullscreen; break;
+		default: break;
+		}
+	}
+	return flags;
+}
+
+bool RenderServerChannel::validateStateChange(core::WindowState state, StringView op) const {
+	auto c = sprt::popcount(toInt(state));
+	if (c != 1 && state != WindowState::Maximized) {
+		log::source().error("RenderServerChannel", op,
+				": only one flag should be defined in state");
+		return false;
+	}
+
+	if ((state & getUpdatableStateFlags()) != state) {
+		log::source().error("RenderServerChannel", op, ": ", state, " is not updatable");
+		return false;
+	}
+
+	return true;
+}
+
 Status RenderServerChannel::openDialog(NotNull<sprt::window::DialogRequest> req) {
 	// No OS behind this channel (RemoteWindow). Answer rather than drop, so the caller does not
 	// wait forever for a callback that will never come.

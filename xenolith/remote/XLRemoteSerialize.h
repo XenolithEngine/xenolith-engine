@@ -86,6 +86,56 @@ SP_PUBLIC Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &);
 SP_PUBLIC Value serializeSwapchainConfig(const core::SwapchainConfig &);
 SP_PUBLIC core::SwapchainConfig deserializeSwapchainConfig(const Value &);
 
+// Where the window is, in the logical space WindowInfo::rect uses. A sibling of FrameConstraints and
+// not part of it, for the same reason handleWindowGeometryChanged is a sibling of
+// handleConstraintsChanged: a window that only MOVED must not cost a scene relayout.
+SP_PUBLIC Value serializeWindowGeometry(const sprt::window::WindowGeometry &);
+SP_PUBLIC sprt::window::WindowGeometry deserializeWindowGeometry(const Value &);
+
+/* Frame telemetry, sent to the client alongside every AcquireFrame.
+ *
+ * Field-by-field, and NOT as a raw dump, because both structs grow extra members under
+ * `#if XL_FRAME_ACCOUNT` -- their size is a build-flag fact. The ABI tag from M3 hashes only
+ * InputEventData and WindowLayer, so a server built with the flag and a client built without it
+ * connect successfully TODAY; a dump would corrupt that pair rather than merely disagree.
+ *
+ * The flagged fields are therefore appended at the END of the array and read only when both the
+ * array is long enough and this build has the members to put them in. That is what lets the two
+ * sides agree on the prefix and ignore the rest. */
+// Already used by the WindowInfo codec; exported because WindowControl's SetFullscreen carries the
+// same structure. EdidInfo::vendor is deliberately NOT serialized -- it is a derived lookup cache
+// over vendorId, and a StringView into a string that would not survive the trip.
+SP_PUBLIC Value serializeFullscreenInfo(const sprt::window::FullscreenInfo &);
+SP_PUBLIC sprt::window::FullscreenInfo deserializeFullscreenInfo(const Value &);
+
+SP_PUBLIC Value serializeFrameTiming(const core::FrameTimingInfo &);
+SP_PUBLIC core::FrameTimingInfo deserializeFrameTiming(const Value &);
+
+SP_PUBLIC Value serializeDrawStat(const core::DrawStat &);
+SP_PUBLIC core::DrawStat deserializeDrawStat(const Value &);
+
+/* Text input, in both directions (WindowCode::TextInputControl and ::TextInputState).
+ *
+ * The text is carried as UTF-8 while the cursors stay UTF-16 INDICES, which is only sound because
+ * the round trip reproduces the same UTF-16 sequence -- UTF-8 is the transport encoding here, not a
+ * re-indexing. Everything on both sides of the wire indexes in UTF-16 (TextCursor is defined
+ * against it), so converting the offsets too would be the bug, not the fix.
+ *
+ * The one text this cannot carry is a lone surrogate, which a live IME can legally produce
+ * mid-composition and UTF-8 cannot represent. Known limitation; the headless processor does not
+ * compose, so it does not arise on the test path.
+ *
+ * TextCursor::InvalidCursor is {Max<uint32_t>, 0} and is a VALUE, not an absence -- it is the
+ * default for a command's replacement/marked ranges. It travels as those numbers. */
+SP_PUBLIC Value serializeTextInputRequest(const core::TextInputRequest &);
+SP_PUBLIC core::TextInputRequest deserializeTextInputRequest(const Value &);
+
+SP_PUBLIC Value serializeTextInputState(const core::TextInputState &);
+SP_PUBLIC core::TextInputState deserializeTextInputState(const Value &);
+
+SP_PUBLIC Value serializeTextInputCommand(const core::TextInputCommand &);
+SP_PUBLIC core::TextInputCommand deserializeTextInputCommand(const Value &);
+
 // CompileMaterials wire codec for a single core::MaterialImage (the headless client forwards a runtime
 // material it cannot GPU-compile; see WindowCode::CompileMaterials). The image is referenced by its
 // stable wire index -- the server owns the GPU objects and resolves the real image itself -- so only the

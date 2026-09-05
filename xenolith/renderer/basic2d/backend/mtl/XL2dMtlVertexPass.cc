@@ -554,6 +554,9 @@ Rc<core::AttachmentHandle> IgnoredInputAttachment::makeFrameHandle(
 bool MaterialVertexPass::makeRenderQueue(core::Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
+	builder.setApi(InstanceApi::Metal);
+	builder.setTypeTag(toInt(QueueType::Flat));
+
 	SamplerInfo samplers[] = {
 		SamplerInfo{
 			.magFilter = Filter::Nearest,

@@ -58,6 +58,25 @@ using glsl::RoundedRect2DIndex;
 using glsl::Polygon2DIndex;
 
 using stappler::font::Autofit;
+
+/* Which of the two 2d render graphs a queue is.
+ *
+ * It lives here, and not inside Scene2d, because it is written into core::QueueData::typeTag by the
+ * backend pass makers -- the pass IS what decides the shape, so having it set there is what keeps a
+ * hand-built queue (one that never went through Scene2d::buildQueue) from being untagged. Scene2d
+ * re-exports it as Scene2d::QueueType.
+ *
+ * The values are explicit and start at 1 because they now travel: 0 is `typeTag` unset, and a value
+ * here may not be renumbered while a client may be matching against a server's.
+ */
+enum class QueueType : uint32_t {
+	// full-featured queue: shadows, pseudo-SDF, particles, depth buffer, post-processing
+	Default = 1,
+
+	// lightweight queue: no shadows, no particles, no depth buffer, no post-processing
+	// (Vulkan only; the WebGPU, Metal, GLES and Software queues are already of this shape)
+	Flat = 2,
+};
 using core::SamplerIndex;
 
 using glsl::ParticleIndirectCommand;
