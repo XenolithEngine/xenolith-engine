@@ -48,10 +48,17 @@ export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig
 #
 # Эти флаги будут использоваться при сборке без CMake.
 #
-SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS) --target=$(SP_TARGET) -isystem $(SP_INSTALL_PREFIX)/usr/include
-SP_CXXFLAGS := $(SP_OPT) $(SP_USER_CXXFLAGS) --target=$(SP_TARGET) -isystem $(SP_INSTALL_PREFIX)/usr/include
-SP_CPPFLAGS := --target=$(SP_TARGET) -isystem $(SP_INSTALL_PREFIX)/usr/include $(SP_USER_CPPFLAGS)
-SP_LDFLAGS := --target=$(SP_TARGET) -L$(SP_INSTALL_PREFIX)/usr/lib $(SP_USER_LDFLAGS)
+# The clang triple, which is NOT always the target's on-disk name. They coincide
+# for every target whose name happens to be a valid triple, and diverge as soon
+# as one carries a +suffix: `aarch64-embox-none-elf+user` makes clang read
+# `elf+user` as a version and reject it. SP_ARCH_TARGET_CLANG is the triple where
+# the two differ; fall back to SP_TARGET so nothing else has to change.
+SP_TARGET_TRIPLE := $(if $(SP_ARCH_TARGET_CLANG),$(SP_ARCH_TARGET_CLANG),$(SP_TARGET))
+
+SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS) --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CXXFLAGS := $(SP_OPT) $(SP_USER_CXXFLAGS) --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CPPFLAGS := --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include $(SP_USER_CPPFLAGS)
+SP_LDFLAGS := --target=$(SP_TARGET_TRIPLE) -L$(SP_INSTALL_PREFIX)/usr/lib $(SP_USER_LDFLAGS)
 
 # Если используется SP_TOOLCHAIN_FILE, значит, мы используем разделёные HOST и TARGET файлы, и
 # -resource-dir нужно явно определить внутри TARGET
@@ -117,6 +124,32 @@ SP_CXXFLAGS += -nostdinc -nostdinc++ -nostdlib -std=gnu++2a $(SP_WASM_FEATURES) 
 SP_CPPFLAGS += -nostdinc $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
 SP_LDFLAGS += -nostdlib $(SP_WASM_FEATURES)
 endif # WASM
+ifdef EMBOX_USER
+# Embox user mode (EL0). Freestanding, exactly like WASM above and for the same
+# reason: the sprt runtime IS the libc, and at toolchain-build time only its
+# headers are needed. Kept in sync with the app flags (make/os/embox-user.mk +
+# target-embox-user/init-target.mk) -- a dependency compiled against different
+# headers than the application is the failure this mirroring prevents.
+#
+# -march=armv8-a with no -mtune: one binary runs on the A53 of QEMU virt and the
+# A72 of a Pi 4 (decision D3), so nothing board-specific may enter here.
+SP_EMBOX_USER_ARCH_FLAGS := -march=armv8-a
+SP_EMBOX_USER_C_INCLUDES := -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+SP_EMBOX_USER_CXX_INCLUDES := -isystem $(SP_RUNTIME_ROOT)/include_libc/cxx -isystem $(SP_RUNTIME_ROOT)/libcxx/include -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+# clang adds no resource include dir for a -nostdinc freestanding target, so
+# <stdatomic.h>/<stdarg.h> and the intrinsics do not resolve. -idirafter puts it
+# at the lowest priority: it fills the clang-builtin gaps without shadowing an
+# sprt libc header.
+SP_EMBOX_USER_RESOURCE_INC := -idirafter $(SP_INSTALL_PREFIX)/lib/clang/include
+# C deps stay freestanding; C++ deps compile HOSTED (no -ffreestanding, so
+# __STDC_HOSTED__ is 1) because the sprt STL only exposes the C library under
+# std:: in that mode, and third-party C++ (harfbuzz) relies on it. Same split as
+# WASM.
+SP_CFLAGS += -nostdinc -ffreestanding -nostdlib $(SP_EMBOX_USER_ARCH_FLAGS) $(SP_EMBOX_USER_C_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
+SP_CXXFLAGS += -nostdinc -nostdinc++ -nostdlib -std=gnu++2a $(SP_EMBOX_USER_ARCH_FLAGS) $(SP_EMBOX_USER_CXX_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
+SP_CPPFLAGS += -nostdinc $(SP_EMBOX_USER_ARCH_FLAGS) $(SP_EMBOX_USER_C_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
+SP_LDFLAGS += -nostdlib $(SP_EMBOX_USER_ARCH_FLAGS)
+endif # EMBOX_USER
 
 
 ifdef NUTTX
@@ -234,6 +267,50 @@ CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib -Wl,--no-entry -Wl,--export-if-defi
 	-L$(SP_INSTALL_PREFIX)/usr/lib -lsprt \
 	$(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a
 endif # WASM
+ifdef EMBOX_USER
+# NO arch flags here, matching the NuttX and Embox branches. cmake gives its own
+# compile lines the architecture through CMAKE_C_COMPILER_TARGET, but a raw
+# ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS} invocation inside a cmake -P script (libpng's
+# genchk.cmake is one) gets the flags WITHOUT the target -- and then -march=armv8-a
+# reaches a compiler defaulting to the host triple, which rejects it as an unknown
+# CPU. The arch flags stay in SP_CFLAGS, where the triple always travels with them.
+# --target= goes IN the flags, not only in CMAKE_C_COMPILER_TARGET. cmake adds the
+# latter to its own compile lines, but a raw ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
+# invocation inside a cmake -P script (libpng's genchk.cmake) sees the flags alone
+# -- and then -D__EMBOX_USER__ arrives at a compiler defaulting to the host arch,
+# which sends the sprt headers looking for embox_user_sprt/x86_64_sprt/. The flags
+# have to be self-contained for that case.
+#
+# Arch flags stay OUT, matching the NuttX and Embox branches: the triple already
+# implies the armv8-a baseline, and a stray -march on a host-targeted invocation
+# is what this comment's first version was written about.
+CONFIGURE_CMAKE_C_FLAGS_INIT += --target=$(SP_TARGET_TRIPLE) -nostdinc -ffreestanding $(SP_EMBOX_USER_C_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += --target=$(SP_TARGET_TRIPLE) -nostdinc -nostdinc++ -std=gnu++2a $(SP_EMBOX_USER_CXX_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
+# Feature probes link against the live libsprt.a with NO --allow-undefined, so an
+# absent function fails the link and is correctly detected as ABSENT. That is what
+# replaces a hand-maintained list of -DHAVE_*=OFF -- and it matters more here than
+# anywhere: this target's syscall table is a fifth of Linux's, so the probes find
+# a great deal absent, and each one they get wrong is a call that traps on a board.
+# The probe has to link what an APPLICATION links, or it fails for reasons that
+# have nothing to do with the function it is asking about -- curl's QUIC probe
+# reported "QUICTLS API support is missing" when what was actually missing was
+# _Unwind_Resume. libc++abi and libunwind belong on the line for the same reason
+# the builtins do: -nostdlib means nothing is implicit.
+#
+# The unwinder's .eh_frame scan bounds are defsym'd to zero rather than taken
+# from share/app-aarch64.lds. An application gets the real values from that
+# script; a probe cannot, because the script reads ADDR(.eh_frame_hdr) and a
+# probe TU with no unwind data has no such section -- which lld rejects outright.
+# Zeroing them is safe HERE and only here: a feature probe has to link, never to
+# run, and these four are unwinder internals no probe is ever testing.
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib \
+	-L$(SP_INSTALL_PREFIX)/usr/lib -lsprt \
+	$(SP_INSTALL_PREFIX)/usr/lib/libc++abi.a \
+	$(SP_INSTALL_PREFIX)/usr/lib/libunwind.a \
+	$(SP_INSTALL_PREFIX)/lib/clang/lib/embox_user/libclang_rt.builtins-aarch64.a \
+	-Wl,--defsym=__eh_frame_start=0 -Wl,--defsym=__eh_frame_end=0 \
+	-Wl,--defsym=__eh_frame_hdr_start=0 -Wl,--defsym=__eh_frame_hdr_end=0
+endif # EMBOX_USER
 
 ifdef LINUX
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
@@ -447,6 +524,9 @@ endif
 
 ifdef EMBOX
 CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)embox-deps-project-include.cmake
+endif
+ifdef EMBOX_USER
+CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)embox-user-deps-project-include.cmake
 endif
 
 ifeq ($(DEBUG),1)
