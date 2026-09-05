@@ -369,10 +369,9 @@ void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) {
 core::FrameTimingInfo RemoteWindow::getFrameTiming() const { return _frameTiming; }
 
 void RemoteWindow::acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &&cb, Ref *) {
-	// Screen enumeration is its own domain and belongs to a later milestone. What is fixed here is
-	// the silence: this used to take the callback and drop it, so every caller waited forever for
-	// an answer that was never coming. There is no ScreenInfo to hand back, so the honest thing is
-	// an empty one -- delivered, not withheld.
+	// Screen enumeration is its own domain and belongs to a later milestone: there is no ScreenInfo
+	// to hand back, so an empty one is delivered rather than the callback dropped - a caller must
+	// never be left waiting for an answer that is not coming.
 	if (cb) {
 		cb(Rc<core::ScreenInfo>::alloc());
 	}

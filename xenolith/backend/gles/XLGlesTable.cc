@@ -45,7 +45,7 @@ void EglTable::loadEgl(sprt::Dso &dso) {
 	// twin, reachable through eglGetProcAddress like any other extension.
 	eglGetPlatformDisplay = dso.sym<decltype(eglGetPlatformDisplay)>("eglGetPlatformDisplay");
 
-	// Windowed WSI (M2): eglSwapBuffers is core EGL 1.0 and always in the library; the platform
+	// Windowed WSI: eglSwapBuffers is core EGL 1.0 and always in the library; the platform
 	// window surface creator is an EXT entrypoint that most loaders also export, but resolve it
 	// through eglGetProcAddress as a fallback for a thin libEGL.
 	eglSwapBuffers = dso.sym<decltype(eglSwapBuffers)>("eglSwapBuffers");
@@ -164,7 +164,7 @@ void EglTable::loadGl() {
 	glReadPixels = reinterpret_cast<decltype(glReadPixels)>(resolve("glReadPixels"));
 	glPixelStorei = reinterpret_cast<decltype(glPixelStorei)>(resolve("glPixelStorei"));
 
-	// M2: shaders and programs. glShaderSource/glGetShaderInfoLog are core entrypoints in the
+	// Shaders and programs. glShaderSource/glGetShaderInfoLog are core entrypoints in the
 	// GLES 3.x ABI, so they resolve exactly like everything above when a dispatcher keeps them
 	// out of eglGetProcAddress.
 	glCreateShader = reinterpret_cast<decltype(glCreateShader)>(resolve("glCreateShader"));

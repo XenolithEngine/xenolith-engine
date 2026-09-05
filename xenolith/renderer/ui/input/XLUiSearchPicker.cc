@@ -373,11 +373,9 @@ void SearchPickerContent::handleResult(SearchResult &&result) {
 	if (!_config.highlight.empty()) {
 		for (uint32_t i = 0; i < _hits.size(); ++i) {
 			// THROUGH A CONST REFERENCE, because `data` is the caller's and `id` is optional in it:
-			// `_hits` is a non-const member, so the plain subscript picks the non-const `getString`,
-			// which on a missing key hands back the shared null container and trips an assert. Every
-			// caller whose items carry no `id` - which is every caller that identifies a hit by its
-			// title - crashed here the first time a picker with a VALUE was opened, since
-			// SearchPicker::open always fills `highlight` in from it.
+			// `_hits` is a non-const member, so the plain subscript would pick the non-const
+			// `getString`, which on a missing key hands back the shared null container and trips
+			// an assert - the normal case for items that identify a hit by its title.
 			const auto &hit = _hits[i];
 			if (hit.data.getString("id") == _config.highlight
 					|| StringView(hit.title) == StringView(_config.highlight)) {

@@ -256,8 +256,7 @@ bool TooltipSystem::init() {
 
 	// Owner and scene events for the lifetime, and visit control for one thing only: the visit is
 	// the last chance to attach the listeners (see handleVisitBegin). The update tick is scheduled
-	// separately - it is what notices a node sliding out from under a still pointer, which used to
-	// come from each target's own geometry updates.
+	// separately - it is what notices a node sliding out from under a still pointer.
 	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleVisitControl;
 

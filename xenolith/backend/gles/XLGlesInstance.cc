@@ -144,9 +144,9 @@ bool Instance::init() {
 		_devices.emplace_back(sp::move(device));
 	}
 
-	// §3.3 of the backend plan: a device reports presentation support when the session's window
-	// backend has a matching EGL platform extension. Which EGLDeviceEXT actually backs the
-	// session display is resolved at surface creation (M2), not here.
+	// A device reports presentation support when the session's window backend has a matching EGL
+	// platform extension. Which EGLDeviceEXT actually backs the session display is resolved at
+	// surface creation, not here.
 	auto &support = _backendInfo->supportInfo;
 	auto presentable = false;
 	if (support.backendMask.test(toInt(sprt::window::SurfaceBackend::Wayland))) {

@@ -57,7 +57,7 @@ public:
 	// be unique per view and never reused.
 	uint64_t getNextObjectIndex() { return _objectIndex.fetch_add(1) + 1; }
 
-	// --- Windowed WSI (M2): the loop thread's context/display/render surface are what a windowed
+	// --- Windowed WSI: the loop thread's context/display/render surface are what a windowed
 	//     swapchain needs to blit its texture onto an EGLWindowSurface and eglSwapBuffers. The
 	//     render surface is the pbuffer/surfaceless one makeCurrent used at init; presenting
 	//     temporarily rebinds the context to the window surface, then restores this one.

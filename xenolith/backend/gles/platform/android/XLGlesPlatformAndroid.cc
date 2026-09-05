@@ -31,8 +31,8 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	// The Android path (ANativeWindow surfaces, context-loss recovery) lands at milestone M5.
-	log::source().error("GLES", "The Android platform is not implemented yet (milestone M5)");
+	// The Android path (ANativeWindow surfaces, context-loss recovery) is not implemented.
+	log::source().error("GLES", "The Android platform is not implemented yet");
 	return nullptr;
 }
 

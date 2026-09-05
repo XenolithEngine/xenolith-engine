@@ -115,8 +115,9 @@ bool Buffer::init(Device &dev, const core::BufferData &data) {
 		table.glBindBuffer(target, name);
 		table.glBufferData(target, GLsizei(data.size), staging.data(), usage);
 	} else if (data.size > 0) {
-		// No source to fill from: the storage exists with undefined content. Nothing in M1 reads
-		// such a buffer back, and zeroing a large allocation here would cost more than it saves.
+		// No source to fill from: the storage exists with undefined content. Nothing reads such a
+		// buffer back before it is written, and zeroing a large allocation would cost more than it
+		// saves.
 		table.glBindBuffer(target, name);
 		table.glBufferData(target, GLsizei(data.size), nullptr, usage);
 	}
@@ -138,16 +139,16 @@ bool Image::setup(Device &dev, const core::ImageInfoData &info,
 		return false;
 	}
 
-	// M1 renders into single-layer 2D textures only; layered and 3D images come with the draw path.
+	// Single-layer 2D textures only; layered and 3D images are not implemented.
 	if (info.imageType != core::ImageType::Image2D
 			|| sprt::max(uint32_t(info.arrayLayers.get()), uint32_t(1)) > 1
 			|| info.extent.depth > 1) {
-		log::source().error("gles::Image", "Layered or 3D images are not supported in M1");
+		log::source().error("gles::Image", "Layered or 3D images are not supported");
 		return false;
 	}
 
 	if (sprt::max(uint32_t(info.mipLevels.get()), uint32_t(1)) > 1) {
-		log::source().error("gles::Image", "Mipmapped textures are not supported in M1");
+		log::source().error("gles::Image", "Mipmapped textures are not supported");
 		return false;
 	}
 
@@ -280,7 +281,7 @@ bool Sampler::init(Device &dev, const core::SamplerInfo &info) {
 		switch (mode) {
 		case core::SamplerAddressMode::Repeat: return GL_REPEAT;
 		case core::SamplerAddressMode::MirroredRepeat: return GL_MIRRORED_REPEAT;
-		default: // ClampToEdge and the border variant, which needs no border colour in M1
+		default: // ClampToEdge and the border variant, which needs no border colour here
 			return GL_CLAMP_TO_EDGE;
 		}
 	};
@@ -307,8 +308,8 @@ bool Sampler::init(Device &dev, const core::SamplerInfo &info) {
 	}
 	_glSampler = name;
 
-	// Single-level textures only in M1: the min filter is the plain one, whatever the mipmap mode
-	// asked for - there are no mip levels to choose between.
+	// Single-level textures only: the min filter is the plain one, whatever the mipmap mode asked
+	// for - there are no mip levels to choose between.
 	table.glSamplerParameteri(name, GL_TEXTURE_MIN_FILTER, minFilter);
 	table.glSamplerParameteri(name, GL_TEXTURE_MAG_FILTER, magFilter);
 	table.glSamplerParameteri(name, GL_TEXTURE_WRAP_S, mapWrap(info.addressModeU));

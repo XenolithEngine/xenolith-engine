@@ -49,7 +49,7 @@ bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 
 	builder.setDamageFlags(info.damage);
 	// What this graph IS, recorded on the graph itself: a remote client adopts a queue built here
-	// and has no device to ask (M3.3).
+	// and has no device to ask.
 	builder.setApi(InstanceApi::Vulkan);
 	builder.setTypeTag(toInt(QueueType::Flat));
 

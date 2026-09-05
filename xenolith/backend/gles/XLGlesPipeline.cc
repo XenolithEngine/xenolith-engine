@@ -163,9 +163,7 @@ bool Shader::setup(Device &dev, SpanView<uint32_t> data) {
 	// padding back and hand the compiler an explicit length. A null `length` would make
 	// glShaderSource take the pointer as a C string, and the packing only leaves a terminator
 	// when the text does not end on a word boundary: a source whose length is a multiple of four
-	// has none, and the driver then lexes whatever follows the allocation. That is what the
-	// "syntax error, unexpected $undefined" at a line past the end of the file was - the source
-	// was fine, the read ran off it.
+	// has none, and the driver would then lex whatever follows the allocation.
 	auto code = reinterpret_cast<const char *>(data.data());
 	auto codeSize = size_t(data.size()) * sizeof(uint32_t);
 	while (codeSize > 0 && code[codeSize - 1] == '\0') { --codeSize; }
@@ -179,11 +177,8 @@ bool Shader::setup(Device &dev, SpanView<uint32_t> data) {
 	GLint status = GL_FALSE;
 	table.glGetShaderiv(handle, GL_COMPILE_STATUS, &status);
 
-	// No retry loop here. There used to be one, for a frontend that "flakily rejected a valid
-	// source" - but the source was not valid: it was read past its end (see the length above), and
-	// whether the byte after the buffer happened to be a zero decided the run. With the length
-	// passed explicitly a compile either succeeds or the source is wrong, and re-issuing it would
-	// only delay the diagnostic.
+	// The source length is passed explicitly, so a compile either succeeds or the source is wrong
+	// - no retry loop.
 	if (status != GL_TRUE) {
 		log::source().error("gles::Shader", "Fail to compile ", _name, ": ", readGlLog(table, true, handle));
 		if (handle != 0) { table.glDeleteShader(handle); }

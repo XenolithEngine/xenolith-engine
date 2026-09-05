@@ -461,8 +461,8 @@ void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {
 	_applyingSelection = false;
 }
 
-// A model change no longer needs the whole table rebuilt: the node's revision is in the RowKey, so
-// a replaced payload fails to match on its own row and only that row is remade. What is dropped
+// A model change does not rebuild the whole table: the node's revision is in the RowKey, so a
+// replaced payload fails to match on its own row and only that row is remade. What is dropped
 // here is what the key cannot see — a span's answers, which come from outside the model entirely.
 void TableView::invalidateSource() {
 	dropSpanData();
@@ -604,9 +604,8 @@ void TableView::restampColumns() {
 }
 
 void TableView::rebuildModel() {
-	// Harvested BEFORE _rows is cleared. This used to clear first and then walk the empty vector, so
-	// the carry-over map was always empty and every payload was re-requested on every single
-	// rebuild — a window resize re-fetched the whole visible table.
+	// Harvested BEFORE _rows is cleared: this map is what carries loaded payloads over the rebuild,
+	// so a window resize does not re-fetch the whole visible table.
 	Map<Model::Position, Value> loaded;
 	for (auto &row : _rows) {
 		if (row.dataLoaded && row.node && row.node->isSpan()) {

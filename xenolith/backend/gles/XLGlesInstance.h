@@ -33,8 +33,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
 // What the application layer hands to the GLES instance: a snapshot of the window system the
 // controller runs on (the same data the Vulkan branch consumes). EGL needs it twice: to decide
-// which platform extensions matter for presentation, and later (M2) to build window surfaces
-// from the native handles.
+// which platform extensions matter for presentation, and to build window surfaces from the
+// native handles.
 struct SP_PUBLIC InstanceBackendInfo : public core::InstanceBackendInfo {
 	virtual ~InstanceBackendInfo() = default;
 

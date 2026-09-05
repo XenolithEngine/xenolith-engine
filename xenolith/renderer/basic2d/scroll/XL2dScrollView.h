@@ -101,8 +101,7 @@ public:
 	static constexpr float IndicatorInset = 2.0f;
 	static constexpr float IndicatorMinLength = 20.0f;
 
-	// Action tags on the thumb: the pulse to full on motion, and the settle back afterwards. Named
-	// because the two used to be the bare literals 19 and 18.
+	// Action tags on the thumb: the pulse to full on motion, and the settle back afterwards.
 	static constexpr uint32_t IndicatorShowActionTag = 19;
 	static constexpr uint32_t IndicatorSettleActionTag = 18;
 
@@ -273,8 +272,8 @@ protected:
 	bool _indicatorVisible = true;
 	bool _indicatorIgnorePadding = false;
 
-	// Geometry of the bar, in points. Fields rather than literals because the thickness is now a
-	// function of what input devices exist, and because a caller may want a fatter bar.
+	// Geometry of the bar, in points. Fields rather than literals because the thickness depends on
+	// what input devices exist, and because a caller may want a fatter bar.
 	float _indicatorThicknessIdle = IndicatorThicknessIdle;
 	float _indicatorThicknessActive = IndicatorThicknessActive;
 	float _indicatorInset = IndicatorInset;

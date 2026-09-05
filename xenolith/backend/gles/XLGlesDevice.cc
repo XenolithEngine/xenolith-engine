@@ -241,7 +241,7 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	bool surfacelessOk = hasExtension(displayExtensions, "EGL_KHR_surfaceless_context");
 
 	// A display extension, so it is a property of THIS display and has to be asked here rather than
-	// of the client string (the M0 recon found it in the display list and not in the client one).
+	// of the client string, which does not list it.
 	_swapWithDamage = table.eglSwapBuffersWithDamageKHR != nullptr
 			&& hasExtension(displayExtensions, "EGL_KHR_swap_buffers_with_damage");
 
@@ -343,12 +343,10 @@ void Device::end() {
 	if (_display != EGL_NO_DISPLAY) {
 		// Only a display this backend opened for itself (the surfaceless/device probe path) gets
 		// terminated. A windowed display is EGL's shared handle for the session's wayland or xcb
-		// connection, and by the time this runs the connection is already gone: Context::
-		// handleWillDestroy drops the window-system controller before it stops the loop, and the
-		// loop's stop task lands afterwards. eglTerminate then makes the driver marshal wayland
-		// requests through freed proxies, which is a SIGSEGV inside libwayland-client on the way
-		// out. Everything this device created - context, render surface, GL objects - is released
-		// above; what is left belongs to a connection that no longer exists.
+		// connection, which is already gone by the time this runs (Context::handleWillDestroy
+		// drops the window-system controller before it stops the loop), so eglTerminate would
+		// marshal requests through freed proxies. Everything this device created - context,
+		// render surface, GL objects - is released above.
 		if (_ownsDisplay) {
 			t.eglTerminate(_display);
 		}

@@ -32,8 +32,7 @@
 // (commands are recorded into a list and executed against the current context on submit), no
 // descriptor sets (a fixed binding table built at queue compilation), one texture per draw. It
 // exists for GPUs with no usable Vulkan driver - embedded Linux stacks (Mali/VideoCore/i.MX),
-// older Android devices and emulators. See GLES_BACKEND_PLAN.md in the repository root for the
-// contract mapping and the milestone layout.
+// older Android devices and emulators.
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
@@ -42,8 +41,8 @@ class Loop;
 class Device;
 
 // core::ImageFormat -> the GLES triple (internal format, pixel format, pixel type) for the
-// subset the backend actually accepts (§2.11 of the plan). `internalFormat` is zero for
-// anything the backend can not allocate - that is how callers detect an unsupported image.
+// subset the backend actually accepts. `internalFormat` is zero for anything the backend can
+// not allocate - that is how callers detect an unsupported image.
 // B8G8R8A8_UNORM maps to RGBA8 storage: on Linux the loop reports it as the common format
 // (SPRTWinLinuxController), and a frame whose output attachment is tagged with it must be
 // allocatable, exactly like it is for soft/vk where B8G8R8A8 is native. Channel semantics are
