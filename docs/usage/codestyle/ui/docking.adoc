@@ -147,6 +147,54 @@ previous holder to give it up. See [accordion.adoc](accordion.adoc).
 Closing the last panel of a frame collapses it and its sibling takes the space,
 unless the frame was declared `Permanent`.
 
+## A side rail: one axis, and shutting it
+
+Two things a rail needs that an ordinary frame does not.
+
+**It may only be divided ONE WAY.** `AllowSplit` is all-or-nothing; the two
+narrowing flags say which axes a DROP may use, and **neither of them set means
+both** — so every layout written before they existed keeps its meaning.
+
+[source,cpp]
+----
+Spec::leaf({String("explorer")}, {
+    .name = String("rail"),
+    .flags = ui::DockFrameFlags::Default | ui::DockFrameFlags::AllowSplitVertical,
+    .tabBarSide = ui::DockTabBarSide::Left,
+});
+----
+
+A band the frame does not offer is not "nowhere": the pointer is still over the
+frame, so it falls through to `Center`. That is why the distances to the
+forbidden edges are left OUT of the nearest-edge comparison rather than rejected
+after it — rejecting afterwards would answer `None` where the honest answer is
+the middle. The flags narrow drops only: `splitFrame` is the application asking
+outright, and is never refused on an axis.
+
+**It can be SHUT to its tab strip.**
+
+[source,cpp]
+----
+dock->setFrameCollapsed(rail, true);         // the body leaves the flow
+dock->setSplitRatio(dock->getRootNode(), 0); // ...and the divider can follow it down
+----
+
+A collapsed leaf reports **only its strip** as its minimum: the panels' declared
+floors and the frame's own `minSize` are both dropped, because a place showing
+nothing has no business reserving the room its content would need. That is the
+whole mechanism — nothing here moves a divider; shut the frames, then set the
+ratio, and the minimums stop it on the strip.
+
+The body is taken out with `display: none` (a `VisibilityComponent`) and not with
+`setVisible(false)`: an invisible box is still a box the flex run reserves width
+for, and the rail would come out exactly as wide shut as it was open. The frame
+node gains the class `collapsed`, so a stylesheet can say what a shut place looks
+like.
+
+The flag is **tree state**, written by `save()`/`restore()` — a rail somebody shut
+stays shut across a restart, which a flag on the scene node could not manage
+(the node is rebuilt every time the tree materializes itself).
+
 ## Re-declaring a parking place
 
 [source,cpp]
@@ -308,6 +356,9 @@ succeeds, so a malformed file leaves what is on screen untouched.
 | `dock-tab-bar.vertical dock-tab { ... }` to style an icon rail | resolved once and then left alone. Key off the tab's own `dock-tab.vertical` class instead — see Styling |
 | `dock-tab > icon` expected before the title | `ui::Button` builds its label at a lower ZOrder than its icon, and z-order IS the placement order. Move it with `order: -1`, not with `-xl-z-order` |
 | `DockFrame::setParams` to turn a strip | the node changes and the TREE does not, so the next `save()`/`restore()` loses it. `DockSystem::setFrameParams` writes both |
+| `AllowSplitVertical` expected to ENABLE vertical splits | it narrows, it does not grant. Without `AllowSplit` the frame is not divisible at all, and with `AllowSplit` alone both axes were already offered |
+| `setFrameCollapsed` expected to move the divider | it only lowers the minimum. The divider goes where the ratio puts it — set one afterwards, or nothing appears to happen |
+| `setVisible(false)` on a frame body instead of collapsing it | an invisible box still takes its room; the frame stays exactly as wide. Collapse uses `display: none`, which the flex run removes from the flow |
 
 ## Trying it
 

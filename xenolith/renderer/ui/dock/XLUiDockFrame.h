@@ -54,6 +54,17 @@ public:
 	// where the active panel's node is parented
 	Node *getBody() const { return _body; }
 
+	/* SHUT TO THE TAB STRIP: the body stops being displayed and the strip is all that is left.
+
+	`display: none` and not `setVisible(false)`, through a VisibilityComponent: an invisible box is
+	still a box the flex run reserves room for, and what is wanted here is for the body to take no
+	room at all so the strip becomes the frame's whole width. The class `collapsed` goes on the frame
+	so a stylesheet can say what a shut place looks like.
+
+	It says nothing about the tree - DockSystem::setFrameCollapsed writes that and then tells this. */
+	virtual void setCollapsed(bool);
+	bool isCollapsed() const { return _collapsed; }
+
 	DockTabBar *getTabBar() const { return _tabBar; }
 
 	// The strip's rect in THIS frame's coordinate space, as of the last layout. A drop test works
@@ -71,6 +82,7 @@ protected:
 	DockFrameParams _params;
 	DockTabBar *_tabBar = nullptr;
 	Node *_body = nullptr;
+	bool _collapsed = false;
 };
 
 } // namespace stappler::xenolith::ui

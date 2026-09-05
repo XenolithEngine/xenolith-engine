@@ -183,6 +183,19 @@ public:
 	the frame's floor is re-measured from the strip's new intrinsic size. */
 	bool setFrameParams(DockNodeHandle, const DockFrameParams &);
 
+	/* SHUT A PARKING PLACE TO ITS TAB STRIP, or open it again.
+
+	What it costs the layout is the point: a collapsed leaf reports only its strip as its minimum -
+	the panels' declared floors AND the frame's own are both dropped, because a place that is showing
+	nothing has no business reserving the room its content would need. The divider above it can then
+	travel down to the strip, which is what turns a side pane into an icon rail. Nothing here moves a
+	divider: shut the frames, then set the ratio, and the minimums stop it in the right place.
+
+	The flag lives in the TREE and is written by save()/restore(), so a rail somebody shut stays shut
+	across a restart. */
+	bool setFrameCollapsed(DockNodeHandle, bool);
+	bool isFrameCollapsed(DockNodeHandle) const;
+
 	// --- parameters --------------------------------------------------------
 
 	// Thickness of the divider between two frames, in points. It is a system parameter and not a
