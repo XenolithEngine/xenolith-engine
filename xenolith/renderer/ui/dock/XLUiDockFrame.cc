@@ -105,6 +105,33 @@ void DockFrame::setParams(const DockFrameParams &params) {
 	updateFlow();
 }
 
+void DockFrame::setCollapsed(bool value) {
+	if (value == _collapsed) {
+		return;
+	}
+	_collapsed = value;
+
+	if (_collapsed) {
+		addStyleClass("collapsed");
+	} else {
+		removeStyleClass("collapsed");
+	}
+
+	if (_body) {
+		/* `displayNone`, and the distinction is the whole of it: `visibilityHidden` keeps the box,
+		which would leave the strip sharing the frame with a full-width invisible body and the place
+		exactly as wide as it was. The flex run collapses a display:none item outright, so the strip
+		becomes the frame - which is what a shut rail IS. */
+		_body->setOrUpdateComponent<VisibilityComponent>([&](NotNull<VisibilityComponent> vis) {
+			if (vis->displayNone == _collapsed) {
+				return false;
+			}
+			vis->displayNone = _collapsed;
+			return true;
+		});
+	}
+}
+
 void DockFrame::updateFlow() {
 	auto layout = getSystemByType<LayoutSystem>();
 	if (!layout) {
