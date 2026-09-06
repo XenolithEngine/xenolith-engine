@@ -137,7 +137,62 @@ PeerInfo PeerInfo::makeLocal() {
 #endif
 	ret.platform = kLocalPlatform;
 	ret.arch = kLocalArch;
+	ret.globalCodes = kSupportedGlobalCodes;
+	ret.windowCodes = kSupportedWindowCodes;
+	ret.dataCodes = kSupportedDataCodes;
+	ret.fontCodes = kSupportedFontCodes;
 	return ret;
+}
+
+bool PeerInfo::supports(Domain domain, uint8_t code) const {
+	uint64_t mask = 0;
+	switch (domain) {
+	case Domain::Global: mask = globalCodes; break;
+	case Domain::Window: mask = windowCodes; break;
+	case Domain::Data: mask = dataCodes; break;
+	case Domain::Font: mask = fontCodes; break;
+	default: return false;
+	}
+	if (mask == 0) {
+		// Said nothing -- which is what a peer built before this field does. Assuming the worst here
+		// would refuse to send it anything at all; assuming the best leaves it exactly where it was,
+		// answering NotImplemented to what it does not know.
+		return true;
+	}
+	return (mask & codeBit(code)) != 0;
+}
+
+void PeerInfo::describeMissingCodes(const PeerInfo &other, const Callback<void(StringView)> &out)
+		const {
+	auto report = [&](Domain d, StringView name) {
+		uint64_t mine = getSupportedCodes(d);
+		uint64_t theirs = 0;
+		switch (d) {
+		case Domain::Global: theirs = other.globalCodes; break;
+		case Domain::Window: theirs = other.windowCodes; break;
+		case Domain::Data: theirs = other.dataCodes; break;
+		case Domain::Font: theirs = other.fontCodes; break;
+		default: break;
+		}
+		if (theirs == 0) {
+			return; // said nothing; not the same as missing everything
+		}
+		auto missing = mine & ~theirs;
+		if (!missing) {
+			return;
+		}
+		out << name << ":";
+		for (uint8_t i = 0; i < 64; ++i) {
+			if (missing & codeBit(i)) {
+				out << " " << uint32_t(i);
+			}
+		}
+		out << "; ";
+	};
+	report(Domain::Global, "global");
+	report(Domain::Window, "window");
+	report(Domain::Data, "data");
+	report(Domain::Font, "font");
 }
 
 void PeerInfo::description(const Callback<void(StringView)> &out) const {
@@ -186,11 +241,27 @@ Value serializePeerInfo(const PeerInfo &info) {
 	transport.setString(info.transportScheme, "scheme");
 	transport.setInteger(toInt(info.transportCaps), "caps");
 
+	// One key per domain rather than an array: the domains are named things, not positions, and a
+	// domain added later must not shift the meaning of the others.
+	Value &codes = ret.emplace("codes");
+	codes.setInteger(int64_t(info.globalCodes), "g");
+	codes.setInteger(int64_t(info.windowCodes), "w");
+	codes.setInteger(int64_t(info.dataCodes), "d");
+	codes.setInteger(int64_t(info.fontCodes), "f");
+
 	return ret;
 }
 
 PeerInfo deserializePeerInfo(const Value &val) {
 	PeerInfo ret;
+
+	// Absent for a peer that predates the field; the zeros that leaves mean "said nothing", which is
+	// what PeerInfo::supports reads them as.
+	const Value &codes = val.getValue("codes");
+	ret.globalCodes = uint64_t(codes.getInteger("g"));
+	ret.windowCodes = uint64_t(codes.getInteger("w"));
+	ret.dataCodes = uint64_t(codes.getInteger("d"));
+	ret.fontCodes = uint64_t(codes.getInteger("f"));
 
 	const Value &engine = val.getValue("engine");
 	ret.engineVersion = engine.getString("version");

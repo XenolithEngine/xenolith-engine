@@ -88,6 +88,15 @@ public:
 	virtual void handleNativeInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
+	/* The id this window was given when it was shared, or 0 when it is not shared at all.
+	
+	Every call into RenderClientChannel carries it, because one channel serves all of a server's
+	shared windows and cannot otherwise tell which of them is speaking. The registry is asked each
+	time rather than the answer being cached: sharing and unsharing happen on this same thread, so a
+	cached copy would be a second truth that has to be invalidated, and the lookup is a map probe on
+	a map with as many entries as the process has shared windows. App thread only. */
+	uint64_t getSharedWindowId() const;
+
 	Context *getContext() const { return _context; }
 	ServerAppThread *getApplication() const { return _application; }
 

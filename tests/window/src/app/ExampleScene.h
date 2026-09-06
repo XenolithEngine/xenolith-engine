@@ -77,6 +77,10 @@ protected:
 	Rc<Queue> _remoteQueue;
 
 	uint32_t _geometryChangeCount = 0;
+
+	// Handle of the second window offered to the remote session (`remote-share-second`). Kept so a
+	// repeated command is a no-op rather than a second window, and cleared by its close callback.
+	Rc<WindowSceneInfo> _secondSharedWindow;
 	sprt::window::WindowGeometry _lastGeometry;
 };
 

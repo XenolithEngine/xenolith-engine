@@ -57,12 +57,13 @@ public:
 
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
-	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
-	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
-	virtual void handleTextInput(const core::TextInputState &) override;
+	virtual void handleWindowGeometryChanged(uint64_t windowId,
+			const sprt::window::WindowGeometry &) override;
+	virtual void handleInputEvents(uint64_t windowId, Vector<core::InputEventData> &&) override;
+	virtual void handleTextInput(uint64_t windowId, const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
 
-	virtual void pushDrawStat(const core::DrawStat &) override;
+	virtual void pushDrawStat(uint64_t windowId, const core::DrawStat &) override;
 
 	// This client serves frames over the QUIC connection: its frames are tagged remote so the server's
 	// PresentationEngine can force-invalidate them if the connection is reset.
@@ -83,7 +84,8 @@ public:
 
 	// Feed the inputs the client cannot produce because they are server state (FrameCapture). An
 	// input attachment left unfed wedges the frame and stalls the window -- see the .cc.
-	void submitServerOwnedInputs(uint64_t frameId, NotNull<core::LocalFrameRequestProxy>);
+	void submitServerOwnedInputs(uint64_t frameId, uint64_t windowId,
+			NotNull<core::LocalFrameRequestProxy>);
 
 	// A client-forwarded runtime material compile (WindowCode::CompileMaterials): resolve image refs (the
 	// atlas image id -> the font server's DynamicImage), reconstruct the materials, compile into the
@@ -100,25 +102,35 @@ protected:
 	Rc<remote::ServerConnection> _connection;
 	uint64_t _nextFrameId = 1; // monotonic wire token correlating an AcquireFrame request/reply
 
-	// The window this client most recently produced a frame for; the wire id used to route forwarded
-	// input back to the client's matching RemoteWindow. Captured in acquireFrame (frames flow before any
-	// input). TODO(multi-window): one client may serve several windows; carry the id per input batch.
-	uint64_t _windowId = 0;
-
 	// In-flight frames the client is still streaming input for, keyed by the wire frame id. Each
 	// proxy wraps the armed server FrameRequest; touched only on the app (dispatch) thread.
-	Map<uint64_t, Rc<core::LocalFrameRequestProxy>> _pendingFrames;
+	//
+	// The window is carried alongside because the reply to an AcquireFrame arrives ASYNCHRONOUSLY: by
+	// the time it lands, another window may well have asked for a frame of its own, so "the window we
+	// asked about most recently" is not the window this reply is about.
+	struct PendingFrame {
+		Rc<core::LocalFrameRequestProxy> proxy;
+		uint64_t windowId = 0;
+	};
+	Map<uint64_t, PendingFrame> _pendingFrames;
 
 	// Client-minted material dependency ids -> the server-local events the forwarded compile signals, so a
 	// frame using a not-yet-compiled material waits. Reconciled in handleFrameInput.
 	Map<uint32_t, Rc<core::DependencyEvent>> _materialDeps;
 
-	// The last DrawStat the render half produced for this client, waiting for a frame request to
-	// carry it. `_drawStatDirty` is what keeps an idle window from re-sending the same numbers:
+	// The last DrawStat the render half produced, PER WINDOW, waiting for that window's next frame
+	// request to carry it. `dirty` is what keeps an idle window from re-sending the same numbers:
 	// nothing new was drawn, so there is nothing new to say. Written on the app thread only (the
 	// push hops there first), read there too, so no synchronization is needed.
-	core::DrawStat _drawStat{};
-	bool _drawStatDirty = false;
+	//
+	// Per window and not one slot: this client serves every shared window, so a single slot hands
+	// whichever window asks next the numbers another window drew -- and telemetry attributed to the
+	// wrong window is worse than none.
+	struct WindowDrawStat {
+		core::DrawStat stat{};
+		bool dirty = false;
+	};
+	Map<uint64_t, WindowDrawStat> _drawStats;
 };
 
 } // namespace stappler::xenolith
