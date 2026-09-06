@@ -76,6 +76,8 @@ Rc<FrameContextHandle> FrameContext2d::makeHandle(FrameInfo &frame) {
 	auto h = Rc<FrameContextHandle2d>::alloc();
 	h->clock = frame.director->getUpdateTime().app;
 	h->client = frame.director;
+	// Locally built frame: the client IS this window's Director, so the id is the local-request 0.
+	h->windowId = 0;
 	h->context = this;
 	h->commands = Rc<CommandList>::create(frame.pool);
 	return h;

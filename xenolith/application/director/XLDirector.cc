@@ -186,10 +186,25 @@ ResourceCache *Director::getResourceCache() const {
 
 Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView addr, BytesView key,
 		BytesView dict) {
+	if (!_application || !_application->isServerThread()) {
+		return nullptr;
+	}
+	// Credentials first, on the app thread that owns them, and only then the window. Setting them
+	// from inside the compile callback (as this used to) meant the FIRST window carried them, which
+	// worked only because there was exactly one.
+	auto a = addr.str<Interface>();
+	auto k = key.bytes<Interface>();
+	auto d = dict.bytes<Interface>();
+	_application->performOnAppThread([app = Rc<AppThread>(_application), a, k, d] {
+		app->setBearerKey(BytesView(k.data(), k.size()));
+		app->setListenAddress(a);
+	}, this);
+
+	return shareQueue(sp::move(builder));
+}
+
+Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder) {
 	struct ShareInfo : public Ref {
-		String addr;
-		Bytes key;
-		Bytes dict;
 		Rc<Director> director;
 		Rc<AppThread> application;
 		Rc<AppWindow> window;
@@ -203,9 +218,6 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView 
 
 	auto info = Rc<ShareInfo>::alloc();
 
-	info->addr = addr.str<Interface>();
-	info->key = key.bytes<Interface>();
-	info->dict = dict.bytes<Interface>();
 	info->director = this;
 	info->application = _application;
 
@@ -228,14 +240,11 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView 
 				}
 
 				info->application->performOnAppThread([info] {
-					// Dev/demo: launch the remote render-session listener on a fixed address and allow this
-					// window to be taken over by a connecting client (X11-style split, transport bring-up).
-					// The bearer key a client must present is the shared dev key; no server dictionary is set, so a
-					// client's suggested dictionary will be used.
+					// Allow this window to be taken over by a connecting client (X11-style split).
+					// The listener's address and bearer key were set by whoever opened the session;
+					// no server dictionary is set, so a client's suggested one will be used.
 					Vector<core::Queue *> queues{info->queue.get()};
 
-					info->application->setBearerKey(info->key);
-					info->application->setListenAddress(info->addr);
 					info->application->shareWindow(info->window, queues, info->materials);
 				});
 			}
@@ -357,7 +366,7 @@ void Director::handleRenderQueueAttached(const Rc<core::Queue> &queue) {
 
 void Director::handleConstraintsChanged(const core::FrameConstraints &c) { setFrameConstraints(c); }
 
-void Director::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+void Director::handleWindowGeometryChanged(uint64_t, const sprt::window::WindowGeometry &g) {
 	// Straight through: unlike constraints, geometry changes nothing the director owns - no scene
 	// size, no transform - so there is nothing to recompute and nothing to guard against. The
 	// scene is the only consumer.
@@ -366,7 +375,7 @@ void Director::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g
 	}
 }
 
-void Director::handleInputEvents(Vector<core::InputEventData> &&events) {
+void Director::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events) {
 	for (auto &event : events) {
 		if (event.isPointEvent()) {
 			event.point.density = _constraints.density;
@@ -375,7 +384,7 @@ void Director::handleInputEvents(Vector<core::InputEventData> &&events) {
 	}
 }
 
-void Director::handleTextInput(const core::TextInputState &state) {
+void Director::handleTextInput(uint64_t, const core::TextInputState &state) {
 	auto copy = state;
 	_textInput->handleInputUpdate(copy);
 }
@@ -541,7 +550,7 @@ void Director::runScene(Rc<Scene> &&scene) {
 	});
 }
 
-void Director::pushDrawStat(const DrawStat &stat) {
+void Director::pushDrawStat(uint64_t, const DrawStat &stat) {
 	_application->performOnAppThread([this, stat] { _drawStat = stat; }, this, false);
 }
 

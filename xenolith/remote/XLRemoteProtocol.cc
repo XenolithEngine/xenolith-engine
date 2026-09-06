@@ -26,6 +26,8 @@
 
 #include <sprt/runtime/utils/compress.h>
 
+#include <stdlib.h> // getenv for the debug-only XL_REMOTE_FAKE_VERSION hook
+
 #include "XLRemoteTransport.h"
 
 #ifdef DELETE
@@ -560,6 +562,47 @@ void MessageReader::clear() {
 	_pending.clear();
 }
 
+void WireWriter::writeU8(uint8_t v) { _out->emplace_back(v); }
+
+void WireWriter::writeU16(uint16_t v) {
+	auto n = sprt::byteorder::HostToNetwork(v);
+	auto p = reinterpret_cast<const uint8_t *>(&n);
+	_out->insert(_out->end(), p, p + sizeof(n));
+}
+
+void WireWriter::writeU32(uint32_t v) {
+	auto n = sprt::byteorder::HostToNetwork(v);
+	auto p = reinterpret_cast<const uint8_t *>(&n);
+	_out->insert(_out->end(), p, p + sizeof(n));
+}
+
+void WireWriter::writeU64(uint64_t v) {
+	auto n = sprt::byteorder::HostToNetwork(v);
+	auto p = reinterpret_cast<const uint8_t *>(&n);
+	_out->insert(_out->end(), p, p + sizeof(n));
+}
+
+void WireWriter::writeFloatBits(float v) {
+	// Through the bits, never through a numeric conversion: NaN is a value this protocol carries on
+	// purpose (see the class comment), and a NaN is not required to survive float -> anything -> float.
+	uint32_t bits = 0;
+	__sprt_memcpy(&bits, &v, sizeof(bits));
+	writeU32(bits);
+}
+
+void WireWriter::writeBytes(BytesView d) {
+	_out->insert(_out->end(), d.data(), d.data() + d.size());
+}
+
+void WireWriter::writeZero(size_t count) { _out->insert(_out->end(), count, uint8_t(0)); }
+
+float readFloatBits(BytesViewNetwork &in) {
+	auto bits = in.readUnsigned32();
+	float v = 0.0f;
+	__sprt_memcpy(&v, &bits, sizeof(v));
+	return v;
+}
+
 [[nodiscard]]
 static uint8_t *writeValue8(uint8_t *buf, uint8_t t) {
 	buf[0] = t;
@@ -590,15 +633,25 @@ static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 	h.status = in.readUnsigned();
 	h.dictSource = in.readUnsigned();
 
-	// Nothing validated these before, so a reply from a foreign protocol was accepted as far as its
-	// status byte. The readers zero-fill past the end, so a truncated hello also lands here as
-	// magic == 0 and is caught by the same check.
-	if (h.magic != kProtocolMagic || h.version != kProtocolVersion) {
+	// The magic answers "is this our protocol at all". A reply from a foreign one used to be accepted
+	// as far as its status byte; the readers zero-fill past the end, so a truncated hello lands here
+	// as magic == 0 and is caught by the same check.
+	if (h.magic != kProtocolMagic) {
 		return false;
 	}
 
+	// The STATUS is read before the version is judged, and the order matters. A refusal carries a
+	// reason -- Busy, AuthFailed -- and rejecting the hello on its version first threw that reason
+	// away, leaving the client to report a local BadProtocol for a server that had told it exactly
+	// what was wrong. A peer that got the magic right has earned being listened to.
 	if (h.status != 0) {
 		return true;
+	}
+
+	// An accepting hello of another version is not usable: the codes are the same and the bytes
+	// under them are not (see kProtocolVersion).
+	if (h.version != kProtocolVersion) {
+		return false;
 	}
 
 	if (h.dictSource == toInt(DictSource::Server)) {
@@ -606,6 +659,26 @@ static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 		h.dict = BytesView(in.readBytes(s));
 	}
 	return true;
+}
+
+/* The version this client puts in its ClientHello.
+ *
+ * Normally kProtocolVersion. XL_REMOTE_FAKE_VERSION=<n> makes it something else, and it exists for
+ * the same reason XL_REMOTE_FAKE_ABI does: two binaries built from one tree necessarily agree on the
+ * version, so "a peer of the wrong version is refused" would be a claim nobody had ever executed.
+ * Debug-only, and it can only get this client REFUSED -- there is no value it can carry that gets a
+ * client accepted which would not have been.
+ */
+static uint16_t announcedProtocolVersion() {
+#if DEBUG
+	if (auto env = ::getenv("XL_REMOTE_FAKE_VERSION")) {
+		auto forced = uint16_t(StringView(env).readInteger(10).get(kProtocolVersion));
+		log::source().warn("remote::Protocol", "XL_REMOTE_FAKE_VERSION: announcing version ", forced,
+				" instead of ", kProtocolVersion);
+		return forced;
+	}
+#endif
+	return kProtocolVersion;
 }
 
 static uint8_t *writeMessageHeader(uint8_t *buf, MessageType type, MessageFlags flags,
@@ -630,7 +703,7 @@ GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView 
 			toInt(GlobalCode::ClientHello), 0, clientHelloSize);
 
 	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(kProtocolMagic));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(kProtocolVersion));
+	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(announcedProtocolVersion()));
 	buf = writeValue8(buf, toInt(AuthMode::BearerKey));
 	buf = writeValue8(buf, toInt(ClientHelloFlags::None));
 	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(static_cast<uint16_t>(key.size())));
@@ -769,13 +842,51 @@ GlobalError serverHandshake(TransportConnection &conn, BytesView expectedKey, By
 	return outStatus;
 }
 
+StringView getGlobalErrorName(GlobalError e) {
+	switch (e) {
+	case GlobalError::Ok: return StringView("Ok"); break;
+	case GlobalError::BadProtocol: return StringView("BadProtocol"); break;
+	case GlobalError::UnsupportedAuth: return StringView("UnsupportedAuth"); break;
+	case GlobalError::AuthFailed: return StringView("AuthFailed"); break;
+	case GlobalError::Busy: return StringView("Busy"); break;
+	case GlobalError::IncompatiblePeer: return StringView("IncompatiblePeer"); break;
+	case GlobalError::NotImplemented: return StringView("NotImplemented"); break;
+	case GlobalError::NetworkBackend: return StringView("NetworkBackend"); break;
+	}
+	return StringView("Unknown");
+}
+
+// How long a refusal waits for the ClientHello before answering anyway. Short on purpose -- see
+// serverHandshakeReject.
+static constexpr uint64_t kRejectHelloWaitUs = 100'000;
+
 GlobalError serverHandshakeReject(TransportConnection &conn, GlobalError status,
 		uint64_t deadline) {
-	// The ClientHello is deliberately NOT read: nothing is being negotiated, and a blocking read here
-	// would let any peer stall the server's thread for the whole deadline just by connecting and
-	// staying silent. QUIC's two directions are independent, so the refusal is delivered whether or
-	// not the hello has arrived -- the client is sitting in its own readFrame either way.
-	writeServerHello(conn, status, DictSource::None, BytesView(), deadline);
+	/* Read the ClientHello and throw it away, THEN answer.
+	 *
+	 * This used to write immediately, on the reasoning that "QUIC's two directions are independent,
+	 * so the refusal is delivered whether or not the hello has arrived". That is wrong, and the way
+	 * it is wrong is invisible on any other transport. QUIC has no single byte pipe: it has streams,
+	 * and this connection runs in OpenSSL's AUTO_BIDI default-stream mode, where each side's default
+	 * stream is the FIRST one to exist. A client's default stream is the one it created by sending
+	 * its hello. A server that writes before anything has arrived has no incoming stream to bind to,
+	 * so it creates a server-initiated one instead -- and the client, reading its own default stream,
+	 * never sees a byte of it. The refusal was written successfully, to a stream nobody was reading,
+	 * and the peer learned of it by timing out: exactly the silence this function exists to replace.
+	 *
+	 * So the read is not a formality, it is what binds the default stream to the client's. The wait
+	 * is short and separate from `deadline` because the original concern was real: a peer that
+	 * connects and says nothing must not park this thread. A legitimate client's hello is already in
+	 * flight when the connection completes, and one that misses the window is no worse off than
+	 * before -- it times out, as it did for every refusal until now. */
+	auto helloDeadline = sprt::min(deadline,
+			sp::platform::clock(ClockType::Monotonic) + kRejectHelloWaitUs);
+	readFrame(conn, helloDeadline, BytesView(), [](const MessageHeader &, BytesView) { });
+
+	if (!writeServerHello(conn, status, DictSource::None, BytesView(), deadline)) {
+		log::source().error("remote::Protocol", "failed to deliver the refusal (",
+				getGlobalErrorName(status), "); the peer will only learn of it by timing out");
+	}
 	return status;
 }
 

@@ -223,29 +223,29 @@ void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest
 	// GlyphRequest: the gating dependency id + one entry per face carrying (contentHash, spec, the
 	// client-minted FaceId, chars). The server resolves the font by hash, opens the face with the forced
 	// id, rasterizes the chars, and gates the dependency.
-	Value faces;
+	Vector<GlyphRequestFace> faces;
+	faces.reserve(objects.size());
 	for (auto &it : objects) {
 		if (!it.object) {
 			continue;
 		}
 		auto &data = it.object->getData();
-		Value face;
-		face.setInteger(int64_t(data ? data->getContentHash() : 0), "h");
-		face.setValue(encodeFontSpec(it.object->getSpec()), "spec");
-		face.setInteger(int64_t(it.object->getId()), "id");
-		Value chars;
-		for (auto c : it.chars) { chars.addInteger(int64_t(c)); }
-		face.setValue(sp::move(chars), "chars");
-		faces.addValue(sp::move(face));
+		GlyphRequestFace face;
+		face.contentHash = data ? data->getContentHash() : 0;
+		face.spec = it.object->getSpec();
+		face.faceId = it.object->getId();
+		face.chars.reserve(it.chars.size());
+		for (auto c : it.chars) { face.chars.emplace_back(c); }
+		faces.emplace_back(sp::move(face));
 	}
 
-	Value req;
-	req.setInteger(int64_t(dep ? dep->getId() : 0), "dep");
-	req.setValue(sp::move(faces), "faces");
+	Bytes req;
+	encodeGlyphRequest(req, dep ? dep->getId() : 0, faces);
 
 	//log::source().info("FontControllerRemote", "submitGlyphs: ", objects.size(), " face(s), dep ",
 	//		dep ? dep->getId() : 0);
-	_owner->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::GlyphRequest), req);
+	_owner->remoteSendRaw(remote::Domain::Font, toInt(remote::FontCode::GlyphRequest),
+			BytesView(req.data(), req.size()));
 }
 
 Rc<core::DependencyEvent> FontControllerRemote::makeDependency() {

@@ -126,9 +126,10 @@ class MemConnection : public TransportConnection {
 public:
 	virtual ~MemConnection() = default;
 
-	bool init(Rc<MemPipe> &&in, Rc<MemPipe> &&out, StringView name) {
-		_stream = Rc<MemStream>::create(sp::move(in), sp::move(out));
-		if (!_stream) {
+	bool init(Rc<MemStream> &&control, Rc<MemStream> &&bulk, StringView name) {
+		_control = sp::move(control);
+		_bulk = sp::move(bulk);
+		if (!_control || !_bulk) {
 			return false;
 		}
 		// Both ends of a mem: pair are this process, so the peer is as authenticated as it gets --
@@ -144,16 +145,28 @@ public:
 		// MessageFramed is NOT declared: the pipe is a byte stream like every other transport here,
 		// so the reassembler above stays on the same code path a socket exercises. Claiming framing
 		// would make the tests stop covering the case that actually ships.
-		return TransportCaps::Encrypted | TransportCaps::PeerAuthenticated;
+		//
+		// MultiStream IS declared, and it is real: Bulk is a genuinely independent pipe pair, so this
+		// is the transport on which the stream seam is exercised. It is deliberately the only one for
+		// now -- QUIC could offer the same but does not implement it yet, and declaring a capability
+		// nobody honours is how the protocol layer above ends up trusting a lie.
+		return TransportCaps::Encrypted | TransportCaps::PeerAuthenticated
+				| TransportCaps::MultiStream;
 	}
 
-	virtual TransportStream *getStream(StreamClass) override { return _stream; }
+	// Control and Frame share a pipe; Bulk gets its own. Frame is not separated here because nothing
+	// above maps a domain onto it (see streamClassForDomain) -- a third pipe would be untestable
+	// scaffolding.
+	virtual TransportStream *getStream(StreamClass c) override {
+		return c == StreamClass::Bulk ? _bulk.get() : _control.get();
+	}
 
 	virtual const PeerIdentity &getPeerIdentity() const override { return _peer; }
 
 	virtual Status handleEvents() override {
 		// Nothing to service: a write already delivered.
-		if (_onReadable && _stream->getIn()->pending() > 0) {
+		if (_onReadable
+				&& (_control->getIn()->pending() > 0 || _bulk->getIn()->pending() > 0)) {
 			_onReadable();
 		}
 		return Status::Ok;
@@ -161,7 +174,10 @@ public:
 
 	virtual void setOnReadable(Function<void()> &&cb) override { _onReadable = sp::move(cb); }
 
-	virtual bool isClosed() override { return _closed || _stream->getIn()->closed; }
+	// Liveness is a property of the CONNECTION, so it is read off the control pipe alone: the two
+	// pipes are closed together below, and a peer that has drained control but not bulk has not
+	// somehow half-disconnected.
+	virtual bool isClosed() override { return _closed || _control->getIn()->closed; }
 
 	virtual void close(bool) override {
 		if (_closed) {
@@ -170,11 +186,13 @@ public:
 		_closed = true;
 		// Close the direction WE write: the peer must still drain what we already sent, which is why
 		// MemStream::isClosed also waits for the buffer to empty.
-		_stream->getOut()->closed = true;
+		_control->getOut()->closed = true;
+		_bulk->getOut()->closed = true;
 	}
 
 protected:
-	Rc<MemStream> _stream;
+	Rc<MemStream> _control;
+	Rc<MemStream> _bulk;
 	PeerIdentity _peer;
 	Function<void()> _onReadable;
 	bool _closed = false;
@@ -248,15 +266,34 @@ void MemListener::close() {
 }
 
 Rc<TransportConnection> MemListener::accept(StringView name) {
-	// One pipe per direction; the two endpoints get them crossed over.
-	auto toServer = Rc<MemPipe>::alloc();
-	auto toClient = Rc<MemPipe>::alloc();
-	if (!toServer || !toClient) {
+	// One pipe per direction per stream class; the two endpoints get them crossed over. The pairing is
+	// positional and settled here, at accept, which is why the wire needs no preamble announcing what
+	// a stream is for -- a socket transport that opens streams later would need one.
+	auto makeStreams = [](Rc<MemPipe> &controlIn, Rc<MemPipe> &controlOut, Rc<MemPipe> &bulkIn,
+								Rc<MemPipe> &bulkOut) {
+		return pair(Rc<MemStream>::create(Rc<MemPipe>(controlIn), Rc<MemPipe>(controlOut)),
+				Rc<MemStream>::create(Rc<MemPipe>(bulkIn), Rc<MemPipe>(bulkOut)));
+	};
+
+	auto controlToServer = Rc<MemPipe>::alloc();
+	auto controlToClient = Rc<MemPipe>::alloc();
+	auto bulkToServer = Rc<MemPipe>::alloc();
+	auto bulkToClient = Rc<MemPipe>::alloc();
+	if (!controlToServer || !controlToClient || !bulkToServer || !bulkToClient) {
 		return nullptr;
 	}
 
-	auto server = Rc<MemConnection>::create(Rc<MemPipe>(toServer), Rc<MemPipe>(toClient), name);
-	auto client = Rc<MemConnection>::create(Rc<MemPipe>(toClient), Rc<MemPipe>(toServer), name);
+	auto serverStreams = makeStreams(controlToServer, controlToClient, bulkToServer, bulkToClient);
+	auto clientStreams = makeStreams(controlToClient, controlToServer, bulkToClient, bulkToServer);
+	if (!serverStreams.first || !serverStreams.second || !clientStreams.first
+			|| !clientStreams.second) {
+		return nullptr;
+	}
+
+	auto server = Rc<MemConnection>::create(sp::move(serverStreams.first),
+			sp::move(serverStreams.second), name);
+	auto client = Rc<MemConnection>::create(sp::move(clientStreams.first),
+			sp::move(clientStreams.second), name);
 	if (!server || !client) {
 		return nullptr;
 	}
@@ -272,7 +309,8 @@ public:
 	virtual AddressScheme getScheme() const override { return AddressScheme::Mem; }
 
 	virtual TransportCaps getCaps() const override {
-		return TransportCaps::Encrypted | TransportCaps::PeerAuthenticated;
+		return TransportCaps::Encrypted | TransportCaps::PeerAuthenticated
+				| TransportCaps::MultiStream;
 	}
 
 	virtual Rc<TransportConnection> connect(const Address &addr,

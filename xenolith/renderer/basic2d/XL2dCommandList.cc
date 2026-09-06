@@ -287,10 +287,12 @@ void CommandList::addCommand(Command *cmd) {
 
 FrameContextHandle2d::~FrameContextHandle2d() { particleEmitters.clear(); }
 
-Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel> client) {
+Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel> client,
+		uint64_t windowId) {
 	auto ret = Rc<FrameContextHandle2d>::alloc();
 	ret->clock = sprt::platform::clock(sprt::platform::ClockType::Monotonic);
 	ret->client = client;
+	ret->windowId = windowId;
 	return ret;
 }
 

@@ -294,7 +294,7 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	_drawStat.fillTime = _fillTime;
 #endif
 	if (_input->client) {
-		_input->client->pushDrawStat(_drawStat);
+		_input->client->pushDrawStat(_input->windowId, _drawStat);
 	}
 
 	// Publish before the attachment reports readiness, so the loop thread sees a fully written

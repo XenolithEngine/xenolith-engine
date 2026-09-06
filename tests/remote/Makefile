@@ -30,7 +30,7 @@ LOCAL_MODULES_PATHS = stappler/stappler-modules.mk xenolith/xenolith-modules.mk
 
 # Only the transport module and what it needs: these tests exercise the wire codecs, which own no
 # GPU objects and need no backend.
-LOCAL_MODULES := xenolith_remote
+LOCAL_MODULES := xenolith_remote xenolith_font
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 LOCAL_SRCS_DIRS := protocol

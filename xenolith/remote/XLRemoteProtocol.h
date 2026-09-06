@@ -33,9 +33,35 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // length-framed ([u32 len][payload]); subsequent data messages are LZ4-compressed with the
 // dictionary negotiated here. Everything is network byte order.
 
-constexpr uint32_t kProtocolMagic = 0x584C'5231; // 'XLR1'
-constexpr uint16_t kProtocolVersion = 1;
+/* 'XLRP' -- version-NEUTRAL, and that is the change.
+ *
+ * It used to be 'XLR1', with the version digit inside the magic as well as in its own field. That
+ * makes the version unnegotiable in principle: a peer of a different version fails on the magic, at
+ * the first four bytes, before anything can look at a version field or a status byte and say what
+ * went wrong. Bumping such a magic also means every future bump has two places to keep in step.
+ * From here the magic answers only "is this our protocol at all", and the version answers "which
+ * one" -- which is the question a peer can actually be told the answer to. */
+constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
+
+/* Version 2: InputEvents and UpdateLayers stopped being raw dumps of C++ structs and became a typed
+ * format (see XLRemoteSerialize.h). The same code carrying different bytes is exactly the change a
+ * version exists for -- a version-1 peer would parse a v2 batch as its own struct array and act on
+ * whatever that produced, so the two are refused for each other at the handshake rather than left
+ * to find out.
+ *
+ * Compatibility with version 1 is deliberately NOT kept. Doing so would mean both codecs living
+ * side by side forever and the layout tag still gating v1 sessions -- that is, the milestone half
+ * done, in exchange for old peers that do not exist: the only client anyone runs is rebuilt from
+ * this tree by live-reload. */
+constexpr uint16_t kProtocolVersion = 2;
 constexpr uint32_t kBearerKeySize = 64;
+
+// Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).
+// The layout each one describes is documented with its codec in XLRemoteSerialize.h; the numbers
+// live here because they are facts about the wire, and because the peer-info fingerprint reports
+// them without wanting the codec's headers.
+constexpr uint16_t kInputEventRecordSize = 40;
+constexpr uint16_t kWindowLayerRecordSize = 24;
 
 enum class Role {
 	Generic = 0,
@@ -59,6 +85,37 @@ enum class Domain : uint8_t {
 	Font = 3, // font source sync + glyph rasterization requests; see FontCode below
 	Error = 255,
 };
+
+// Which transport stream a domain's messages ride. On a transport without TransportCaps::MultiStream
+// every class folds onto the same stream and this mapping changes nothing.
+//
+// The split is by ORDERING OBLIGATION, not by message size, and that is why Font sits with Window
+// rather than with the other bulk carrier:
+//
+//   Control -- Global, Window, Font. Their relative order carries meaning and the wire is what
+//     enforces it: SharedObjectsAnnounce must precede the first AcquireFrame for a window the client
+//     has not heard of; AttachQueue must precede the frames it enables; and the client flushes a
+//     frame's Domain::Font glyph requests immediately BEFORE its FrameInput (XLRemoteWindow.cc), so
+//     that the server registers the gating dependency before it reconciles the frame against it.
+//     Putting Font on its own stream would break exactly that, and only under load -- the frame
+//     would reconcile against a dependency that has not arrived and the glyphs would go ungated.
+//     Font is cheap to keep here anyway: the large font payloads travel as Domain::Data blocks
+//     (DataType::Font), so what remains on this domain is requests and metadata.
+//
+//   Bulk -- Data. The only domain that owes nothing to the order of another, and precisely the one
+//     that causes head-of-line blocking today: an 8 MiB screenshot delays every InputEvents behind
+//     it. Separating it is the whole point of the exercise.
+//
+// StreamClass::Frame is deliberately unused for now. Separating frame traffic from input needs the
+// "input then frame" ordering to be re-established explicitly, which belongs with the typed wire
+// format rather than here; until then it folds onto Control and costs nothing.
+constexpr StreamClass streamClassForDomain(Domain d) {
+	switch (d) {
+	case Domain::Data: return StreamClass::Bulk; break;
+	default: break;
+	}
+	return StreamClass::Control;
+}
 
 enum class GlobalCode {
 	ClientHello = 0,
@@ -88,11 +145,44 @@ enum class GlobalError : uint8_t {
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
 	Busy = 5, // the server's client slot is taken; it accepts no second connection right now
-	IncompatiblePeer = 6, // the peer's ABI tag differs: raw struct dumps between these two builds
-	// would be memory corruption, not a protocol error (see PeerInfo::abi)
+	IncompatiblePeer = 6, // reserved. Until M6 this refused a peer whose struct layout differed,
+	// because InputEvents/UpdateLayers were raw dumps of it; the typed format retired the reason,
+	// and a differing wire-contract tag is now reported rather than acted on (see PeerInfo::abi).
+	// Kept because a peer may still send it, and because renumbering a wire code buys nothing
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
+
+/* --- what this build knows how to receive -------------------------------------------------------
+ *
+ * One bit per message code, one mask per domain, exchanged in PeerInfo (XLRemotePeerInfo.h). A peer
+ * can then ask before it sends, rather than sending and learning from a NotImplemented reply -- and,
+ * more usefully, a log can say up front what the other side is missing instead of leaving a later
+ * symptom unexplained.
+ *
+ * BUILD-level, not role-level: the mask says "my dispatcher has a case for this code", not "I expect
+ * to receive it". Who sends what is already fixed by the protocol's own direction, so narrowing
+ * these per role would encode the same fact twice.
+ *
+ * Maintained by hand beside the enum, which is a second source of truth -- so tests/remote pins the
+ * contents, and a code added without a handler (or a handler added without a bit) shows up as a
+ * failing assertion rather than as a message that quietly does nothing.
+ */
+constexpr uint64_t codeBit(uint8_t code) { return code < 64 ? (uint64_t(1) << code) : 0; }
+
+template <typename Code>
+constexpr uint64_t codeBit(Code c) {
+	return codeBit(uint8_t(toInt(c)));
+}
+
+constexpr uint64_t kSupportedGlobalCodes = codeBit(GlobalCode::ClientHello)
+		| codeBit(GlobalCode::ServerHello) | codeBit(GlobalCode::Ping) | codeBit(GlobalCode::Pong)
+		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo);
+
+// A name for a handshake/global failure, for logs. A refusal is the one thing a client learns about
+// a server it could not talk to, and "status 5" is not an answer a person can act on -- "Busy" says
+// to try later, "AuthFailed" says the key is wrong, and they call for opposite responses.
+SP_PUBLIC StringView getGlobalErrorName(GlobalError);
 
 enum class WindowCode {
 	CompileQueue = 0,
@@ -177,6 +267,17 @@ enum class WindowCode {
 	TextInputState = 14,
 };
 
+// Every WindowCode has a handler on the side that receives it; see the note on codeBit.
+constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
+		| codeBit(WindowCode::UpdateMaterials) | codeBit(WindowCode::AcquireFrame)
+		| codeBit(WindowCode::FrameInput) | codeBit(WindowCode::FrameCommit)
+		| codeBit(WindowCode::AttachQueue) | codeBit(WindowCode::ReadyForNextFrame)
+		| codeBit(WindowCode::RequestScreenshot) | codeBit(WindowCode::CompileMaterials)
+		| codeBit(WindowCode::InputEvents) | codeBit(WindowCode::UpdateLayers)
+		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
+		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState);
+
+
 // Operations carried by WindowCode::TextInputControl.
 enum class TextInputOp : uint8_t {
 	Acquire = 0, // "req": array (serializeTextInputRequest) -- start or update IME capture
@@ -218,13 +319,34 @@ enum class WindowError : uint8_t {
 //   Release   (notification) -- sender: it will no longer reference the blob; the receiver may drop it.
 //   Unavailable(notification) -- receiver: it can no longer hold the blob (eviction, even after a
 //             Release race); the sender must stop referencing that id.
+//   Cancel    (notification) -- sender: it is abandoning a transfer still in flight; the receiver
+//             drops the partial buffer. The mirror image of Unavailable, for the other end.
 enum class DataCode : uint8_t {
 	Announce = 0,
 	Packet = 1,
 	Complete = 2,
 	Release = 3,
 	Unavailable = 4,
+
+	// Cancel (notification, CBOR {id}) -- the SENDER abandons a transfer it is still streaming; the
+	// receiver drops the partial buffer and answers nothing.
+	//
+	// The receiver's half of this already exists and is called Unavailable: "I can no longer hold
+	// this". Cancel is deliberately not made to work in both directions, because then one fact would
+	// have two names on the wire. What was missing was only the sender's side -- until now the only
+	// way to stop sending was Release, which MEANS "I no longer reference the blob" and merely
+	// stopped the stream as a side effect of the transfer record going away.
+	//
+	// Additive: a peer that predates this answers a notification it does not know with nothing at
+	// all (an unknown NOTIFICATION is dropped, only a request gets NotImplemented), so the worst case
+	// against an old peer is the transfer completing as it does today.
+	Cancel = 5,
 };
+
+constexpr uint64_t kSupportedDataCodes = codeBit(DataCode::Announce) | codeBit(DataCode::Packet)
+		| codeBit(DataCode::Complete) | codeBit(DataCode::Release)
+		| codeBit(DataCode::Unavailable) | codeBit(DataCode::Cancel);
+
 
 enum class DataError : uint8_t {
 	Ok = 0,
@@ -233,6 +355,9 @@ enum class DataError : uint8_t {
 	BadHeader = 3, // malformed/inconsistent Announce header
 	HashMismatch = 4, // a received packet failed its announced hash
 	UnknownTransfer = 5, // a Packet/Complete/Release/Unavailable referenced an unknown id
+	Cancelled = 6, // the sender abandoned the transfer (DataCode::Cancel), or the local side did.
+	// Reported to whoever was waiting on the blob so that "it was called off" is distinguishable
+	// from "it arrived corrupt" (HashMismatch) and from "the peer refused it" (Declined)
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
@@ -277,6 +402,26 @@ enum class FontCode : uint8_t {
 	AtlasReady = 4,
 	CompileImage = 5,
 };
+
+// CompileImage is deliberately ABSENT: the code is declared but neither side dispatches it, and a
+// peer that advertised it would be promising something it drops on the floor. It is the one entry
+// that makes this mask carry information rather than restate the enum.
+constexpr uint64_t kSupportedFontCodes = codeBit(FontCode::SourcesAnnounce)
+		| codeBit(FontCode::SourcesReady) | codeBit(FontCode::FontInline)
+		| codeBit(FontCode::GlyphRequest) | codeBit(FontCode::AtlasReady);
+
+// The mask this build advertises for `d`, or 0 for a domain it does not implement at all.
+constexpr uint64_t getSupportedCodes(Domain d) {
+	switch (d) {
+	case Domain::Global: return kSupportedGlobalCodes; break;
+	case Domain::Window: return kSupportedWindowCodes; break;
+	case Domain::Data: return kSupportedDataCodes; break;
+	case Domain::Font: return kSupportedFontCodes; break;
+	default: break;
+	}
+	return 0;
+}
+
 
 enum class FontError : uint8_t {
 	Ok = 0,
@@ -396,6 +541,43 @@ struct ServerHello {
 // A release build must be handed a real key (AppThread::setBearerKey / ClientContext::setBearerKey).
 SP_PUBLIC BytesView getDevBearerKey();
 #endif
+
+/* Append scalars to a buffer in network byte order.
+ *
+ * The counterpart of BytesViewNetwork, which the tree has had all along. The write side did not: it
+ * was a handful of private helpers taking an ALREADY-swapped value, so every call site had to
+ * remember `writeValue32(buf, HostToNetwork(x))` -- and one of them did not, which is why
+ * writeServerHello carries a note about a dictionary size that arrived byte-swapped on every
+ * little-endian peer. Here the conversion is the writer's, and there is nothing left to forget.
+ *
+ * Floats travel as their BIT PATTERN rather than as a number, because some of them are not numbers:
+ * InputEventData::input.x defaults to NaN and hasLocation() is defined by isnan(), so a NaN that
+ * came back as a different NaN -- or as zero -- would change what the event means. */
+class SP_PUBLIC WireWriter {
+public:
+	explicit WireWriter(Bytes &out) : _out(&out) { }
+
+	void writeU8(uint8_t);
+	void writeU16(uint16_t);
+	void writeU32(uint32_t);
+	void writeU64(uint64_t);
+
+	// The IEEE-754 bits of `v`, not a rounded value. See the note above on NaN.
+	void writeFloatBits(float v);
+
+	void writeBytes(BytesView);
+
+	// `count` zero bytes. Padding inside a fixed-size record is written explicitly so that what
+	// travels is defined -- the raw dumps this replaces shipped whatever the compiler left there.
+	void writeZero(size_t count);
+
+protected:
+	Bytes *_out = nullptr;
+};
+
+// Read the IEEE-754 bits of a float back. Symmetric with WireWriter::writeFloatBits, and used
+// instead of BytesViewNetwork::readFloat32 for the same reason: the bit pattern is what was sent.
+SP_PUBLIC float readFloatBits(BytesViewNetwork &);
 
 // --- stream I/O over a TransportConnection. All reads are bounded by an absolute wall-clock
 // deadline in microseconds (sp::platform::clock(Monotonic) timebase). ---

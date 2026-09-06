@@ -59,15 +59,25 @@ public:
 	Rc<core::Queue> shareQueue(core::Queue::Builder &&, StringView addr, BytesView key,
 			BytesView dict = BytesView());
 
+	/* The same, for a window joining a session that is ALREADY running.
+	
+	Credentials and the listen address are set once, by whoever opened the session; re-supplying them
+	for a second window is not merely redundant, it is refused (setBearerKey fails outright while the
+	listener is up). A connected client is re-announced, so the window appears without reconnecting. */
+	Rc<core::Queue> shareQueue(core::Queue::Builder &&);
+
 	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
 	// command batch via acquireFrame(); other entries deliver platform events / contract changes.
 	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy>,
 			Function<void(bool)> &&) override;
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
-	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) override;
-	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
-	virtual void handleTextInput(const core::TextInputState &) override;
+	// windowId is ignored throughout: a Director drives exactly one window, so the id can only ever
+	// name that window. It is in the signature for the remote channel, which drives many.
+	virtual void handleWindowGeometryChanged(uint64_t windowId,
+			const sprt::window::WindowGeometry &) override;
+	virtual void handleInputEvents(uint64_t windowId, Vector<core::InputEventData> &&) override;
+	virtual void handleTextInput(uint64_t windowId, const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
 
 	void update(uint64_t t);
@@ -105,7 +115,7 @@ public:
 
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 
-	virtual void pushDrawStat(const DrawStat &) override;
+	virtual void pushDrawStat(uint64_t windowId, const DrawStat &) override;
 
 	const UpdateTime &getUpdateTime() const { return _time; }
 	const DrawStat &getDrawStat() const { return _drawStat; }

@@ -63,9 +63,12 @@ using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
 // choose - it becomes WindowInfo::rect's x/y plus WindowCreationFlags::UsePosition. Only honoured
 // where WindowCapabilities::WindowPosition is present, and even there it is a hint a window manager
 // may override.
+// `shareRemote` offers the window to a remote render session as soon as it is presented - see
+// SecondaryScene::shareWithRemoteSession. Requires a session to be running already.
 Rc<WindowSceneInfo> open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose = nullptr,
-		Rc<core::Queue> &&queue = nullptr, sprt::optional<IVec2> origin = sprt::nullopt);
+		Rc<core::Queue> &&queue = nullptr, sprt::optional<IVec2> origin = sprt::nullopt,
+		bool shareRemote = false);
 
 // The scene of the window behind `handle`, or null while it has none. Lets a test reach into the
 // other window's graph.
@@ -90,13 +93,29 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
+	virtual void handlePresented(Director *) override;
 
 	StringView getWindowId() const { return _windowId; }
+
+	/* Offer THIS window to the remote render session the process already has open.
+	
+	It lives on the scene because the queue-building half of it (describeQueue /
+	buildQueueResources / buildQueue) is protected on Scene2d - a window can only be shared by
+	something that is itself a Scene2d, which is exactly the right constraint: the graph being shared
+	has to be the one this scene would draw.
+	
+	Returns false when there is no session to join. Called after presentation, because a Director is
+	needed and the queue is built against the presented constraints. */
+	bool shareWithRemoteSession();
+
+	void setShareRemote(bool value) { _shareRemote = value; }
 
 protected:
 	using Scene2d::init;
 
 	String _windowId;
+	bool _shareRemote = false;
+	bool _shared = false;
 };
 
 } // namespace stappler::xenolith::app

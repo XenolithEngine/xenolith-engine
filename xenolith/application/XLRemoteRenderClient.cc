@@ -64,6 +64,7 @@ void RemoteRenderClient::closeConnection() {
 		_connection = nullptr;
 	}
 	_pendingFrames.clear();
+	_drawStats.clear();
 }
 
 void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
@@ -121,10 +122,6 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		return;
 	}
 
-	// Remember the window we serve so forwarded input (handleInputEvents) can be routed back to the
-	// client's matching RemoteWindow.
-	_windowId = windowId;
-
 	auto frameId = _nextFrameId++;
 
 	Value req;
@@ -147,12 +144,14 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 			req.addValue(remote::serializeFrameTiming(w->getFrameTiming()));
 		}
 	}
-	if (_drawStatDirty) {
+	// This window's own statistics, never another's.
+	auto statIt = _drawStats.find(windowId);
+	if (statIt != _drawStats.end() && statIt->second.dirty) {
 		if (!req.hasValue(3)) {
 			req.addValue(Value()); // keep [4] at index 4 even when the window went away
 		}
-		req.addValue(remote::serializeDrawStat(_drawStat));
-		_drawStatDirty = false;
+		req.addValue(remote::serializeDrawStat(statIt->second.stat));
+		statIt->second.dirty = false;
 	}
 
 	// Hold the completion across the async reply and guarantee it fires exactly once (on reply or on
@@ -170,7 +169,7 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 
 	auto sent = _host->sendMessageWithReply(remote::Domain::Window,
 			toInt(remote::WindowCode::AcquireFrame), req,
-			[this, pending, frameId, localProxy](const remote::MessageHeader &h,
+			[this, pending, frameId, windowId, localProxy](const remote::MessageHeader &h,
 					BytesView payload) {
 		if (remote::isError(h)) {
 			log::source().warn("RemoteRenderClient", "AcquireFrame ", frameId, " rejected (code ",
@@ -194,8 +193,8 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		//log::source().info("RemoteRenderClient", "AcquireFrame ", frameId, " -> queue '",
 		//		sq->queue->getName(), "' (id ", queueId, ")");
 		localProxy->selectQueue(sq->queue);
-		_pendingFrames.emplace(frameId, localProxy);
-		submitServerOwnedInputs(frameId, localProxy);
+		_pendingFrames.emplace(frameId, PendingFrame{localProxy, windowId});
+		submitServerOwnedInputs(frameId, windowId, localProxy);
 		pending->cb(true);
 	},
 			kAcquireFrameReplyTimeoutUs);
@@ -221,8 +220,13 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
  *
  * So the server supplies it here, once per frame, exactly as the local frame context does -- taken,
  * not read, because two frames must never carry the same capture.
+ *
+ * `windowId` comes from the FRAME, not from whatever window asked most recently. This runs inside the
+ * asynchronous reply to AcquireFrame, so with more than one window the two are routinely different --
+ * and because the capture is TAKEN, getting it wrong does not merely misattribute: it steals the
+ * capture from the window that armed it and hands it to one that did not ask.
  */
-void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId,
+void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId, uint64_t windowId,
 		NotNull<core::LocalFrameRequestProxy> proxy) {
 	auto req = Rc<core::FrameRequest>(proxy->getRequest());
 	if (!req) {
@@ -247,7 +251,7 @@ void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId,
 
 	Rc<core::FrameCaptureInput> capture;
 	if (auto reg = _host ? _host->getSharedObjects() : nullptr) {
-		if (auto w = static_cast<AppWindow *>(reg->resolveWindow(_windowId))) {
+		if (auto w = static_cast<AppWindow *>(reg->resolveWindow(windowId))) {
 			capture = w->takeFrameCaptureInput();
 		}
 	}
@@ -270,7 +274,7 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 	if (it == _pendingFrames.end()) {
 		return;
 	}
-	auto req = Rc<core::FrameRequest>(it->second->getRequest());
+	auto req = Rc<core::FrameRequest>(it->second.proxy->getRequest());
 	if (!req) {
 		return;
 	}
@@ -294,7 +298,7 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 			continue;
 		}
 		if (!input) {
-			input = attData->attachment->makeInputData(this);
+			input = attData->attachment->makeInputData(this, it->second.windowId);
 		}
 		atts.emplace_back(attData);
 	}
@@ -506,58 +510,58 @@ void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &
 	// all today -- AppWindow::handleSwapchainUpdated notifies only the native window.)
 }
 
-void RemoteRenderClient::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
+void RemoteRenderClient::handleWindowGeometryChanged(uint64_t windowId,
+		const sprt::window::WindowGeometry &g) {
 	// This one IS forwarded: geometry has no other carrier, and the server has already decided the
 	// change is real (AppWindow::notifyWindowGeometry compares against its mirror before calling),
 	// so a window that is merely redrawing sends nothing.
-	// _windowId is "the window we last served a frame for" -- the same approximation
-	// handleInputEvents lives with, and the same one M5 removes by putting the window id in every
-	// packet. Before the first frame it is 0 and the update is dropped; that is covered, because
-	// the announce carries the window's geometry as it was at connect time.
-	if (isClosed() || _windowId == 0) {
+	//
+	// windowId is the caller's own, so this no longer has to wait for a first frame to learn which
+	// window it is talking about -- and no longer misroutes to the window that happened to render
+	// last. A window that is not shared reports 0 and is dropped, which is correct: the client has
+	// never heard of it.
+	if (isClosed() || windowId == 0) {
 		return;
 	}
 
 	Value msg;
-	msg.addInteger(int64_t(_windowId));
+	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeWindowGeometry(g));
 
 	_connection->sendCborMessage(remote::Domain::Window,
 			toInt(remote::WindowCode::WindowGeometryChanged), msg);
 }
 
-void RemoteRenderClient::handleInputEvents(Vector<core::InputEventData> &&events) {
+void RemoteRenderClient::handleInputEvents(uint64_t windowId,
+		Vector<core::InputEventData> &&events) {
 	// The server's window dispatches platform input here (this client is the window's render endpoint
-	// while a remote client is attached). Forward the whole batch to the real client as a raw blob:
-	// [u64 windowId (network order)][InputEventData[] native layout]. InputEventData is trivially
-	// copyable, so the array ships verbatim (client + server share one build/ABI).
-	static_assert(__is_trivially_copyable(core::InputEventData),
-			"InputEventData must be trivially copyable to ship as a raw blob");
-	if (!_connection || _connection->isClosed() || _windowId == 0 || events.empty()) {
+	// while a remote client is attached). Forward the whole batch in the typed wire format -- field
+	// by field, network byte order, the variant chosen by the event (see serializeInputEvents).
+	//
+	// This used to be a raw dump of the struct array, which is why the ABI tag had to gate the
+	// session: between builds that laid InputEventData out differently, the receiver read padding as
+	// a keycode. Nothing here depends on this build's layout any more.
+	if (!_connection || _connection->isClosed() || windowId == 0 || events.empty()) {
 		return;
 	}
 
-	const size_t payloadBytes = events.size() * sizeof(core::InputEventData);
 	Bytes blob;
-	blob.resize(sizeof(uint64_t) + payloadBytes);
-	uint64_t widN = sprt::byteorder::HostToNetwork(_windowId);
-	__sprt_memcpy(blob.data(), &widN, sizeof(uint64_t));
-	__sprt_memcpy(blob.data() + sizeof(uint64_t), events.data(), payloadBytes);
+	remote::serializeInputEvents(blob, windowId, events);
 
 	_connection->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::InputEvents),
 			BytesView(blob.data(), blob.size()));
 }
 
-void RemoteRenderClient::handleTextInput(const core::TextInputState &state) {
+void RemoteRenderClient::handleTextInput(uint64_t windowId, const core::TextInputState &state) {
 	// The window's processor decided the state changed; the client's widget has no other way to
 	// learn it. This is the echo half of text input, and the only source of truth for the field on
 	// the far side.
-	if (isClosed() || _windowId == 0) {
+	if (isClosed() || windowId == 0) {
 		return;
 	}
 
 	Value msg;
-	msg.addInteger(int64_t(_windowId));
+	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeTextInputState(state));
 
 	_connection->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::TextInputState),
@@ -575,7 +579,7 @@ void RemoteRenderClient::handleFramePresented(uint64_t) {
 	// already there as FrameTimingInfo::lastFrameOrder.
 }
 
-void RemoteRenderClient::pushDrawStat(const core::DrawStat &stat) {
+void RemoteRenderClient::pushDrawStat(uint64_t windowId, const core::DrawStat &stat) {
 	// Arrives on the RENDER thread (the vertex pass calls it through FrameContextHandle::client),
 	// where the connection must not be touched. Hop to the app thread and hold the value for the
 	// next frame request, exactly as Director::pushDrawStat holds it for the local FPS overlay.
@@ -588,9 +592,8 @@ void RemoteRenderClient::pushDrawStat(const core::DrawStat &stat) {
 	if (!_host) {
 		return;
 	}
-	_host->performOnAppThread([self = Rc<RemoteRenderClient>(this), stat] {
-		self->_drawStat = stat;
-		self->_drawStatDirty = true;
+	_host->performOnAppThread([self = Rc<RemoteRenderClient>(this), windowId, stat] {
+		self->_drawStats.insert_or_assign(windowId, WindowDrawStat{stat, true});
 	}, this);
 }
 

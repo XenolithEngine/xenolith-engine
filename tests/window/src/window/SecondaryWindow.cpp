@@ -27,6 +27,7 @@
 #include "XLAppWindow.h"
 #include "XLContext.h"
 #include "XLDirector.h"
+#include "XLServerAppThread.h" // ServerAppThread::isListening for shareWithRemoteSession
 
 #include <sprt/runtime/window/window_info.h>
 
@@ -34,7 +35,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue,
-		sprt::optional<IVec2> origin) {
+		sprt::optional<IVec2> origin, bool shareRemote) {
 	if (!builder || id.empty()) {
 		log::source().error("SecondaryWindow", "open: id and builder are required");
 		return nullptr;
@@ -49,10 +50,14 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 	// also removes a latent hazard: ContextController re-uniques a colliding id, so the id the
 	// scene factory used to look up was not necessarily the one asked for here.
 	auto sceneInfo = Rc<WindowSceneInfo>::create(
-			[builder = sp::move(builder), id = id.str<Interface>()](NotNull<AppThread> app,
-					NotNull<core::RenderServerChannel> window,
+			[builder = sp::move(builder), id = id.str<Interface>(), shareRemote](
+					NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 					const core::FrameConstraints &c) mutable -> Rc<Scene> {
-		return Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
+		auto scene = Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
+		if (scene) {
+			scene->setShareRemote(shareRemote);
+		}
+		return scene;
 	},
 			sp::move(onClose));
 
@@ -134,6 +139,47 @@ void SecondaryScene::handleEnter(Scene *scene) {
 void SecondaryScene::handleExit() {
 	log::source().info("SecondaryWindow", "scene exited id=", _windowId);
 	Scene2d::handleExit();
+}
+
+void SecondaryScene::handlePresented(Director *dir) {
+	Scene2d::handlePresented(dir);
+	if (_shareRemote && !_shared) {
+		// Once, and only once: handlePresented can run again (a swapchain rebuild re-presents the
+		// scene) and sharing the same window twice would announce it twice.
+		_shared = shareWithRemoteSession();
+	}
+}
+
+bool SecondaryScene::shareWithRemoteSession() {
+	auto dir = getDirector();
+	auto app = dir ? dynamic_cast<ServerAppThread *>(dir->getApplication()) : nullptr;
+	if (!app || !app->isListening()) {
+		// Nothing to join. Not an error worth failing the window over -- a secondary window is
+		// perfectly useful unshared -- but worth saying, because the caller asked for sharing.
+		log::source().warn("SecondaryWindow", "shareWithRemoteSession: no session is listening");
+		return false;
+	}
+
+	core::Queue::Builder builder(toString("SharedWindowQueue.", _windowId));
+
+	QueueInfo queueInfo{
+		Extent2(_constraints.extent.width, _constraints.extent.height),
+		Color4F::WHITE,
+	};
+
+	describeQueue(queueInfo);
+	buildQueueResources(queueInfo, builder);
+
+	if (!buildQueue(dir->getApplication(), queueInfo, builder)) {
+		log::source().error("SecondaryWindow", "shareWithRemoteSession: fail to build the queue");
+		return false;
+	}
+
+	// The no-credentials overload: the address and bearer key belong to the session that is already
+	// running, and re-supplying them while the listener is up is refused.
+	dir->shareQueue(sp::move(builder));
+	log::source().info("SecondaryWindow", "sharing window '", _windowId, "' with the session");
+	return true;
 }
 
 } // namespace stappler::xenolith::app

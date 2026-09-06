@@ -42,7 +42,7 @@ bool BlockTransferManager::init(AppThread *owner) {
 }
 
 uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Value &&meta,
-		Value &&reason, Function<void(uint64_t id, bool ok)> &&onComplete) {
+		Value &&reason, Function<void(uint64_t id, bool ok)> &&onComplete, int32_t priority) {
 	if (!_owner || data.size() > remote::kMaxBlockTransferSize) {
 		if (onComplete) {
 			onComplete(0, false);
@@ -73,6 +73,7 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 	t.data = data.bytes<Interface>();
 	t.packetSize = psize;
 	t.packetCount = packetCount;
+	t.priority = priority;
 	t.onComplete = sp::move(onComplete);
 	_outgoing.emplace(id, sp::move(t));
 
@@ -86,39 +87,24 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 	announce.setValue(sp::move(reason), "reason");
 	announce.setValue(sp::move(meta), "meta");
 
-	auto failOut = [this](uint64_t tid) {
-		auto it = _outgoing.find(tid);
-		if (it == _outgoing.end()) {
-			return;
-		}
-		auto cb = sp::move(it->second.onComplete);
-		_outgoing.erase(it);
-		if (cb) {
-			cb(tid, false);
-		}
-	};
-
 	if (!_owner->remoteSendCborWithReply(remote::Domain::Data, toInt(remote::DataCode::Announce),
 				announce, [this, id](const remote::MessageHeader &h, BytesView) {
 		auto it = _outgoing.find(id);
 		if (it == _outgoing.end()) {
-			return; // released / reset while the announce was in flight
+			return; // released / cancelled / reset while the announce was in flight
 		}
 		if (remote::isError(h)) {
 			log::source().warn("BlockTransfer", "transfer ", id, " declined (code ",
 					uint32_t(h.code), ")");
-			auto cb = sp::move(it->second.onComplete);
-			_outgoing.erase(it);
-			if (cb) {
-				cb(id, false);
-			}
+			finishOutgoing(id, false);
 			return;
 		}
-		// Accepted (mirror reply, no error): start the paced packet stream.
+		// Accepted (mirror reply, no error): join the paced packet stream.
 		it->second.nextPacket = 0;
-		pumpOutgoing(id);
+		it->second.accepted = true;
+		schedulePump();
 	}, kAnnounceReplyTimeoutUs)) {
-		failOut(id);
+		finishOutgoing(id, false);
 		return 0;
 	}
 
@@ -132,12 +118,75 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 // long enough for streamWriteAll's deadline to truncate it.
 static constexpr uint32_t kPacketBatch = 8;
 
-void BlockTransferManager::pumpOutgoing(uint64_t id) {
+void BlockTransferManager::finishOutgoing(uint64_t id, bool ok) {
 	auto it = _outgoing.find(id);
 	if (it == _outgoing.end()) {
-		return; // released / reset while paced send was in flight
+		return;
 	}
-	auto &t = it->second;
+	// Move the callback out before erasing: it is commonly a closure owning the very things the
+	// transfer references, and calling it from inside the map entry it is about is a trap.
+	auto cb = sp::move(it->second.onComplete);
+	_outgoing.erase(it);
+	if (cb) {
+		cb(id, ok);
+	}
+}
+
+/* Which transfer gets the next batch.
+ *
+ * Highest priority first; among equals, the one after whoever went last, wrapping around. Before
+ * this there was no chooser at all -- every transfer pumped itself, so two of them interleaved in
+ * whatever order the looper happened to run their tasks and a priority had nothing to act on. */
+BlockTransferManager::OutgoingTransfer *BlockTransferManager::selectNextTransfer() {
+	OutgoingTransfer *best = nullptr;
+	OutgoingTransfer *firstOfBand = nullptr;
+	int32_t bestPriority = 0;
+
+	for (auto &it : _outgoing) {
+		auto &t = it.second;
+		if (!t.accepted || t.nextPacket >= t.packetCount) {
+			continue;
+		}
+		if (!firstOfBand || t.priority > bestPriority) {
+			// A strictly better band: everything chosen so far is outranked.
+			bestPriority = t.priority;
+			firstOfBand = &t;
+			best = nullptr;
+		} else if (t.priority < bestPriority) {
+			continue;
+		}
+		// Within the best band, prefer the smallest id STRICTLY AFTER the one served last -- that is
+		// the round-robin. `firstOfBand` (smallest id in the band) is the wrap-around answer.
+		if (t.id < firstOfBand->id) {
+			firstOfBand = &t;
+		}
+		if (t.id > _lastServed && (!best || t.id < best->id)) {
+			best = &t;
+		}
+	}
+	return best ? best : firstOfBand;
+}
+
+void BlockTransferManager::schedulePump() {
+	if (_pumpScheduled || !_owner) {
+		return;
+	}
+	_pumpScheduled = true;
+	// Keep the manager alive across the deferral: the connection can go away first.
+	auto self = Rc<BlockTransferManager>(this);
+	_owner->performOnAppThread([self] {
+		self->_pumpScheduled = false;
+		self->pumpOutgoing();
+	}, _owner, true);
+}
+
+void BlockTransferManager::pumpOutgoing() {
+	auto sel = selectNextTransfer();
+	if (!sel) {
+		return; // nothing accepted and unfinished
+	}
+	auto &t = *sel;
+	_lastServed = t.id;
 
 	uint32_t emitted = 0;
 	while (t.nextPacket < t.packetCount && emitted < kPacketBatch) {
@@ -163,15 +212,15 @@ void BlockTransferManager::pumpOutgoing(uint64_t id) {
 		++emitted;
 	}
 
-	if (t.nextPacket < t.packetCount) {
-		// More to send: yield to the looper so I/O is serviced (the peer drains, MAX_DATA/MAX_STREAM_DATA
-		// arrive) before the next batch. Keep the manager alive across the deferral.
-		auto self = Rc<BlockTransferManager>(this);
-		_owner->performOnAppThread([self, id] { self->pumpOutgoing(id); }, _owner, true);
-	} else {
+	if (t.nextPacket >= t.packetCount) {
 		log::source().info("BlockTransfer", "streamed all ", t.packetCount,
 				" packet(s) for transfer ", t.id);
 	}
+
+	// Yield to the looper so I/O is serviced (the peer drains, MAX_DATA/MAX_STREAM_DATA arrive)
+	// before the next batch. Asked unconditionally: this transfer may be done while another is not,
+	// and schedulePump is a no-op when there is nothing left to send.
+	schedulePump();
 }
 
 void BlockTransferManager::deliverIncoming(IncomingTransfer &t) {
@@ -328,9 +377,31 @@ bool BlockTransferManager::handleComplete(const remote::MessageHeader &, BytesVi
 bool BlockTransferManager::handleRelease(const remote::MessageHeader &, BytesView payload) {
 	auto val = data::read<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
-	if (_incoming.erase(id)) {
-		log::source().info("BlockTransfer", "released incoming transfer ", id);
+	auto it = _incoming.find(id);
+	if (it == _incoming.end()) {
+		return true;
 	}
+	// A Release for a transfer that never finished assembling is a half-received blob being thrown
+	// away, and whoever was waiting on it has to be told -- the same obligation Cancel has. (A
+	// Release AFTER delivery is the normal case and owes nothing: the data was already handed over.)
+	bool pending = it->second.receivedCount < it->second.packetCount;
+	log::source().info("BlockTransfer", "released incoming transfer ", id);
+	if (pending) {
+		abandonIncoming(id);
+	} else {
+		_incoming.erase(it);
+	}
+	return true;
+}
+
+bool BlockTransferManager::handleCancel(const remote::MessageHeader &, BytesView payload) {
+	auto val = data::read<Interface>(payload);
+	uint64_t id = uint64_t(val.getInteger("id"));
+	if (_incoming.find(id) == _incoming.end()) {
+		return true; // never accepted it, or already dropped: nothing to undo
+	}
+	log::source().info("BlockTransfer", "sender cancelled incoming transfer ", id);
+	abandonIncoming(id);
 	return true;
 }
 
@@ -343,24 +414,76 @@ bool BlockTransferManager::handleUnavailable(const remote::MessageHeader &, Byte
 	}
 	log::source().info("BlockTransfer", "receiver dropped transfer ", id, " (unavailable)");
 	bool wasPending = !it->second.completed;
-	auto cb = sp::move(it->second.onComplete);
-	_outgoing.erase(it);
-	if (wasPending && cb) {
-		cb(id, false);
-	}
+	finishOutgoing(id, !wasPending);
 	return true;
 }
 
 void BlockTransferManager::releaseObject(uint64_t id) {
-	if (!_outgoing.erase(id)) {
+	auto it = _outgoing.find(id);
+	if (it == _outgoing.end()) {
 		return;
 	}
+	// Releasing a transfer that never completed still owes its caller an answer. This used to erase
+	// the record and destroy onComplete with it, so a caller that released early -- or released on a
+	// path it had not thought about -- simply never heard back.
+	bool pending = !it->second.completed;
 	if (_owner) {
 		Value v;
 		v.setInteger(int64_t(id), "id");
 		_owner->remoteSendCbor(remote::Domain::Data, toInt(remote::DataCode::Release), v, nullptr);
 	}
+	finishOutgoing(id, !pending);
 	log::source().info("BlockTransfer", "released outgoing transfer ", id);
+}
+
+void BlockTransferManager::cancelTransfer(uint64_t id) {
+	auto it = _outgoing.find(id);
+	if (it == _outgoing.end()) {
+		return;
+	}
+	if (it->second.completed) {
+		// Already delivered: there is nothing to call off, and telling the receiver to throw away a
+		// blob it has finished with would be a Release, not a Cancel.
+		return;
+	}
+	if (_owner) {
+		Value v;
+		v.setInteger(int64_t(id), "id");
+		_owner->remoteSendCbor(remote::Domain::Data, toInt(remote::DataCode::Cancel), v, nullptr);
+	}
+	log::source().info("BlockTransfer", "cancelled outgoing transfer ", id, " after ",
+			it->second.nextPacket, " of ", it->second.packetCount, " packet(s)");
+	finishOutgoing(id, false);
+}
+
+size_t BlockTransferManager::cancelAllTransfers() {
+	// Collect first: cancelTransfer erases from the map it would otherwise be iterating, and its
+	// callback can start a transfer of its own.
+	Vector<uint64_t> ids;
+	ids.reserve(_outgoing.size());
+	for (auto &it : _outgoing) {
+		if (!it.second.completed) {
+			ids.emplace_back(it.first);
+		}
+	}
+	for (auto id : ids) { cancelTransfer(id); }
+	return ids.size();
+}
+
+void BlockTransferManager::abandonIncoming(uint64_t id) {
+	auto it = _incoming.find(id);
+	if (it == _incoming.end()) {
+		return;
+	}
+	// Copy what the notification needs before the entry goes: the callback may start something that
+	// touches this manager.
+	auto type = it->second.type;
+	auto meta = it->second.meta;
+	auto reason = it->second.reason;
+	_incoming.erase(it);
+	if (onCancelled) {
+		onCancelled(id, type, meta, reason);
+	}
 }
 
 void BlockTransferManager::markUnavailable(uint64_t id) {
@@ -381,6 +504,7 @@ bool BlockTransferManager::dispatch(const remote::MessageHeader &h, BytesView pa
 	case remote::DataCode::Complete: return handleComplete(h, payload);
 	case remote::DataCode::Release: return handleRelease(h, payload);
 	case remote::DataCode::Unavailable: return handleUnavailable(h, payload);
+	case remote::DataCode::Cancel: return handleCancel(h, payload);
 	default:
 		log::source().warn("BlockTransfer", "unhandled data message (code ", uint32_t(h.code), ")");
 		return true; // consume unknown control messages (don't defer indefinitely)
@@ -388,8 +512,26 @@ bool BlockTransferManager::dispatch(const remote::MessageHeader &h, BytesView pa
 }
 
 void BlockTransferManager::reset() {
+	// Settle everything before dropping it. A disconnect used to clear both maps outright, which
+	// destroyed every pending onComplete and every half-assembled incoming blob in silence -- so a
+	// caller waiting on a screenshot when the link went down waited for the rest of the session.
+	Vector<uint64_t> outgoing;
+	outgoing.reserve(_outgoing.size());
+	for (auto &it : _outgoing) {
+		if (!it.second.completed) {
+			outgoing.emplace_back(it.first);
+		}
+	}
+	Vector<uint64_t> incoming;
+	incoming.reserve(_incoming.size());
+	for (auto &it : _incoming) { incoming.emplace_back(it.first); }
+
+	for (auto id : outgoing) { finishOutgoing(id, false); }
+	for (auto id : incoming) { abandonIncoming(id); }
+
 	_outgoing.clear();
 	_incoming.clear();
+	_lastServed = 0;
 	// _nextId stays monotonic across reconnects so transfer ids remain unambiguous in logs.
 }
 

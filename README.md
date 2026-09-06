@@ -124,7 +124,7 @@ stage (protocol and object scaffolding).
 
 * **Transport** — QUIC (via OpenSSL), ALPN `xlremote`; the server uses an ephemeral self-signed
   P-256 certificate.
-* **Protocol** — custom (magic `XLR1`, version 1), bearer-key authentication (64 bytes,
+* **Protocol** — custom (magic `XLRP`, version 2), bearer-key authentication (64 bytes,
   constant-time comparison), an X11-like handshake.
 * **Serialization** — CBOR: the compiled render graph and resources are encoded into a blob; GPU
   objects are addressed by id on the server, with corresponding GPU-less "thin" handles on the

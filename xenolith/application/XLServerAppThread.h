@@ -161,6 +161,11 @@ protected:
 
 	// Swap every shared window's render client: `client` (the connected remote client) takes over on
 	// connect; pass nullptr to revert each window to its own local Director on disconnect.
+	// Re-send the shared-object announce to a connected client. Called whenever the set of shared
+	// windows changes; a no-op when nobody is connected, because the announce sent at handshake time
+	// will carry whatever the set is by then.
+	void republishSharedObjects();
+
 	void takeoverSharedWindows(core::RenderClientChannel *client);
 
 	// Swap a single shared window's render client (resolved by its server-assigned id). Driven by the
