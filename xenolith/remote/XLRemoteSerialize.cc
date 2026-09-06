@@ -1988,4 +1988,206 @@ bool QueueCodec::decodeMaterials(BytesView bytes, ObjectFactory &factory) {
 	return true;
 }
 
+// --- the typed wire format for input and layers (M6) -----------------------
+//
+// See the long note in XLRemoteSerialize.h for the envelope and why this one codec is packed binary
+// rather than a CBOR array like everything above it.
+
+namespace {
+
+// Batch header: [u64 windowId][u16 recordSize][u16 reserved][u32 count]
+constexpr size_t kBatchHeaderSize = sizeof(uint64_t) + sizeof(uint16_t) * 2 + sizeof(uint32_t);
+
+// Which 16-byte variant the trailing part of an InputEventData record carries. Answered by the
+// EVENT, through the engine's own table, so encoder and decoder cannot disagree about it.
+//
+// The bounds check is not defensive programming, it is the documented contract: `event` comes from
+// platform back-ends and InputEventData::hasInput() itself checks the range before indexing this
+// table (see the note in runtime/.../window/input.h). A value off the wire deserves at least as
+// much suspicion as one off a back-end.
+static sprt::window::InputEventDataType variantOf(sprt::window::InputEventName event) {
+	auto idx = toInt(event);
+	if (idx >= toInt(sprt::window::InputEventName::Max)) {
+		return sprt::window::InputEventDataType::None;
+	}
+	return sprt::window::InputEventInfo[idx].dataType;
+}
+
+static void writeBatchHeader(WireWriter &w, uint64_t windowId, uint16_t recordSize, uint32_t count) {
+	w.writeU64(windowId);
+	w.writeU16(recordSize);
+	w.writeU16(0); // reserved: keeps the count 4-byte aligned and leaves room for a flag
+	w.writeU32(count);
+}
+
+/* Parse the envelope and leave the reader positioned at the first record.
+ *
+ * Returns false for a malformed batch and true for a well-formed one, with the record count in
+ * `outCount` -- rather than returning the count, because zero is a legitimate batch and "no records"
+ * must not be reported the same way as "this is not a batch". */
+static bool readBatchHeader(BytesViewNetwork &in, uint64_t &outWindowId, uint16_t &outRecordSize,
+		uint32_t &outCount, uint16_t minimumRecordSize) {
+	outCount = 0;
+	if (in.size() < kBatchHeaderSize) {
+		return false;
+	}
+	outWindowId = in.readUnsigned64();
+	outRecordSize = uint16_t(in.readUnsigned16());
+	in.readUnsigned16(); // reserved
+	auto count = in.readUnsigned32();
+
+	// A record shorter than what this build reads is not a peer we can decode a prefix of -- the
+	// prefix IS the whole of what we read. Longer is fine and expected: that is a newer peer.
+	if (outRecordSize < minimumRecordSize) {
+		return false;
+	}
+	if (count && in.size() / outRecordSize < count) {
+		return false; // truncated: fewer whole records than the header claims
+	}
+	outCount = count;
+	return true;
+}
+
+} // namespace
+
+void serializeInputEvents(Bytes &out, uint64_t windowId, SpanView<core::InputEventData> events) {
+	out.clear();
+	out.reserve(kBatchHeaderSize + events.size() * kInputEventRecordSize);
+
+	WireWriter w(out);
+	writeBatchHeader(w, windowId, kInputEventRecordSize, uint32_t(events.size()));
+
+	for (auto &e : events) {
+		w.writeU32(e.id);
+		w.writeU32(toInt(e.event));
+
+		// union #1 is always the `input` variant: InputEventType::Custom appears nowhere in
+		// InputEventInfo, so `custom` is unreachable today -- and it has the same shape anyway
+		// (u32, u32, f32, f32), so these four fields serve it unchanged if it ever becomes reachable.
+		w.writeU32(toInt(e.input.button));
+		w.writeU32(uint32_t(toInt(e.input.modifiers)));
+		w.writeFloatBits(e.input.x);
+		w.writeFloatBits(e.input.y);
+
+		switch (variantOf(e.event)) {
+		case sprt::window::InputEventDataType::Point:
+			w.writeFloatBits(e.point.valueX);
+			w.writeFloatBits(e.point.valueY);
+			w.writeFloatBits(e.point.density);
+			w.writeZero(4);
+			break;
+		case sprt::window::InputEventDataType::Key:
+			w.writeU16(uint16_t(toInt(e.key.keycode)));
+			w.writeU16(uint16_t(toInt(e.key.compose)));
+			w.writeU32(e.key.keysym);
+			w.writeU32(uint32_t(e.key.keychar));
+			w.writeZero(4);
+			break;
+		case sprt::window::InputEventDataType::Window:
+			w.writeU64(uint64_t(toInt(e.window.state)));
+			w.writeU64(uint64_t(toInt(e.window.changes)));
+			break;
+		case sprt::window::InputEventDataType::None: w.writeZero(16); break;
+		}
+	}
+}
+
+bool deserializeInputEvents(BytesView payload, uint64_t &outWindowId,
+		Vector<core::InputEventData> &out) {
+	BytesViewNetwork in(payload.data(), payload.size());
+	uint16_t recordSize = 0;
+	uint32_t count = 0;
+	if (!readBatchHeader(in, outWindowId, recordSize, count, kInputEventRecordSize)) {
+		return false;
+	}
+
+	out.reserve(count);
+	for (uint32_t i = 0; i < count; ++i) {
+		auto record = in.readBytes<sprt::endian::network>(recordSize);
+		BytesViewNetwork r(record.data(), record.size());
+
+		core::InputEventData e;
+		e.id = r.readUnsigned32();
+		e.event = core::InputEventName(r.readUnsigned32());
+		e.input.button = core::InputMouseButton(r.readUnsigned32());
+		e.input.modifiers = core::InputModifier(r.readUnsigned32());
+		e.input.x = readFloatBits(r);
+		e.input.y = readFloatBits(r);
+
+		// The variant is chosen from the event we just read, not from anything the sender asserted
+		// separately -- so a record cannot claim to be one shape and be read as another.
+		switch (variantOf(e.event)) {
+		case sprt::window::InputEventDataType::Point:
+			e.point.valueX = readFloatBits(r);
+			e.point.valueY = readFloatBits(r);
+			e.point.density = readFloatBits(r);
+			break;
+		case sprt::window::InputEventDataType::Key:
+			e.key.keycode = core::InputKeyCode(r.readUnsigned16());
+			e.key.compose = core::InputKeyComposeState(r.readUnsigned16());
+			e.key.keysym = r.readUnsigned32();
+			e.key.keychar = char32_t(r.readUnsigned32());
+			break;
+		case sprt::window::InputEventDataType::Window:
+			e.window.state = sprt::window::WindowState(r.readUnsigned64());
+			e.window.changes = sprt::window::WindowState(r.readUnsigned64());
+			break;
+		case sprt::window::InputEventDataType::None:
+			// An event this build does not know. It is kept rather than dropped: the batch's other
+			// events are still meaningful, and the dispatcher already ignores an out-of-range name.
+			break;
+		}
+		out.emplace_back(e);
+	}
+	return true;
+}
+
+void serializeWindowLayers(Bytes &out, uint64_t windowId,
+		SpanView<sprt::window::WindowLayer> layers) {
+	out.clear();
+	out.reserve(kBatchHeaderSize + layers.size() * kWindowLayerRecordSize);
+
+	WireWriter w(out);
+	writeBatchHeader(w, windowId, kWindowLayerRecordSize, uint32_t(layers.size()));
+
+	for (auto &l : layers) {
+		w.writeFloatBits(l.rect.origin.x);
+		w.writeFloatBits(l.rect.origin.y);
+		w.writeFloatBits(l.rect.size.width);
+		w.writeFloatBits(l.rect.size.height);
+		w.writeU8(uint8_t(toInt(l.cursor)));
+		// Explicit, where the dump shipped whatever the compiler left between `cursor` and `flags`.
+		// Those three bytes also fed the memcmp that decides whether the layers changed at all.
+		w.writeZero(3);
+		w.writeU32(uint32_t(toInt(l.flags)));
+	}
+}
+
+bool deserializeWindowLayers(BytesView payload, uint64_t &outWindowId,
+		sprt::window::Vector<sprt::window::WindowLayer> &out) {
+	BytesViewNetwork in(payload.data(), payload.size());
+	uint16_t recordSize = 0;
+	uint32_t count = 0;
+	if (!readBatchHeader(in, outWindowId, recordSize, count, kWindowLayerRecordSize)) {
+		return false;
+	}
+
+	for (uint32_t i = 0; i < count; ++i) {
+		auto record = in.readBytes<sprt::endian::network>(recordSize);
+		BytesViewNetwork r(record.data(), record.size());
+
+		sprt::window::WindowLayer l;
+		l.rect.origin.x = readFloatBits(r);
+		l.rect.origin.y = readFloatBits(r);
+		l.rect.size.width = readFloatBits(r);
+		l.rect.size.height = readFloatBits(r);
+		l.cursor = sprt::window::WindowCursor(r.readUnsigned());
+		r.readUnsigned16();
+		r.readUnsigned(); // the three padding bytes
+		l.flags = sprt::window::WindowLayerFlags(r.readUnsigned32());
+		out.emplace_back(l);
+	}
+	return true;
+}
+
 } // namespace stappler::xenolith::remote

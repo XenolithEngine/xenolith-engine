@@ -33,13 +33,38 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 bool Connection::init(Rc<TransportConnection> &&conn, Role role) {
 	_transport = sp::move(conn);
 	_role = role;
-	return _transport != nullptr;
+	if (!_transport) {
+		return false;
+	}
+
+	// Resolve the class -> stream mapping ONCE, here, and deduplicate by pointer. Asking the transport
+	// again later would be both wasteful and unsafe: the state that belongs to a stream (its partial
+	// frame, its unsent tail) is keyed by the identity we settle on now.
+	for (uint32_t i = 0; i < kStreamClassCount; ++i) {
+		auto stream = _transport->getStream(StreamClass(i));
+		uint32_t canonical = i;
+		for (uint32_t j = 0; j < i; ++j) {
+			if (_streams[j].stream == stream) {
+				canonical = j;
+				break;
+			}
+		}
+		_canonicalClass[i] = uint8_t(canonical);
+		if (canonical == i) {
+			_streams[i].stream = stream;
+			_distinctClasses[_distinctCount++] = uint8_t(i);
+		}
+	}
+	return true;
 }
 
-TransportStream *Connection::getStream() const {
-	// Every message class rides one stream for now. StreamClass exists so that mapping can change on
-	// a MultiStream transport without touching a single caller.
-	return _transport ? _transport->getStream(StreamClass::Control) : nullptr;
+Connection::StreamState *Connection::getStreamState(StreamClass c) {
+	auto idx = _canonicalClass[toInt(c)];
+	return _streams[idx].stream ? &_streams[idx] : nullptr;
+}
+
+TransportStream *Connection::getStream(StreamClass c) const {
+	return _streams[_canonicalClass[toInt(c)]].stream;
 }
 
 sprt::dispatch::NativeHandle Connection::getPollHandle() const {
@@ -53,12 +78,16 @@ GlobalError Connection::enqueue(MessageType t, Domain d, uint8_t code, uint32_t 
 	if (!_transport) {
 		return GlobalError::NetworkBackend;
 	}
-	if (!_out.push(BytesView(_dict.data(), _dict.size()), t, d, code, serial, payload)) {
-		log::source().error("remote::Connection", "send queue overflow (", _out.pending(),
+	auto state = getStreamState(streamClassForDomain(d));
+	if (!state) {
+		return GlobalError::NetworkBackend;
+	}
+	if (!state->out.push(BytesView(_dict.data(), _dict.size()), t, d, code, serial, payload)) {
+		log::source().error("remote::Connection", "send queue overflow (", state->out.pending(),
 				" bytes unsent); the peer is not draining");
 		return GlobalError::NetworkBackend;
 	}
-	return _out.flush(getStream()) ? GlobalError::Ok : GlobalError::NetworkBackend;
+	return state->out.flush(state->stream) ? GlobalError::Ok : GlobalError::NetworkBackend;
 }
 
 GlobalError Connection::ping() {
@@ -102,62 +131,72 @@ GlobalError Connection::sendError(Domain d, uint8_t code, uint32_t failedMessage
 }
 
 void Connection::poll(const Callback<bool(const MessageHeader &, BytesView)> &dispatchCb) {
-	auto stream = getStream();
-	if (!stream) {
+	if (!_transport || _distinctCount == 0) {
 		return;
 	}
 
-	// Drain whatever the send queue still holds from earlier enqueues that hit backpressure. This is
+	// Drain whatever the send queues still hold from earlier enqueues that hit backpressure. This is
 	// the only place a stalled write makes progress, which is why the looper drives poll() on
 	// readiness AND on every update tick.
-	if (!_out.flush(stream)) {
-		log::source().error("remote::Connection", "send failed; dropping connection");
-		close();
-		return;
+	for (uint32_t i = 0; i < _distinctCount; ++i) {
+		auto &state = _streams[_distinctClasses[i]];
+		if (!state.out.flush(state.stream)) {
+			log::source().error("remote::Connection", "send failed; dropping connection");
+			close();
+			return;
+		}
 	}
 
-	// Service the transport (datagrams, retransmit timers), then drain it into the reassembler. The
-	// reader holds any partial frame across pumps, so a message spanning two reads is handled
-	// correctly; complete frames are then dispatched (deferred ones stay queued).
+	// Service the transport (datagrams, retransmit timers) ONCE, not per stream: a multi-stream
+	// transport still has a single event source underneath (QUIC multiplexes every stream over one UDP
+	// socket), so servicing it per stream would repeat the same work.
 	_transport->handleEvents();
 
+	// Streams are visited in StreamClass order, so Control drains before Bulk. That is the point of
+	// separating them: a screenshot in flight must not push input to the back of this pump either.
 	uint8_t buf[4'096];
-	for (;;) {
-		size_t n = 0;
-		if (stream->read(buf, sizeof(buf), n) != Status::Ok || n == 0) {
-			break; // drained or closed
-		}
+	for (uint32_t i = 0; i < _distinctCount; ++i) {
+		auto &state = _streams[_distinctClasses[i]];
+		for (;;) {
+			size_t n = 0;
+			if (state.stream->read(buf, sizeof(buf), n) != Status::Ok || n == 0) {
+				break; // drained or closed
+			}
 
-		BytesViewNetwork nw(buf, n);
+			BytesViewNetwork nw(buf, n);
 
-		// Fast path: only when the reassembler is fully idle -- no buffered partial AND nothing queued.
-		// Then this chunk begins on a frame boundary and can be parsed (and dispatched inline) straight
-		// out of it, no copy into _buffer. Requiring an empty buffer avoids desync: with a buffered
-		// partial the fresh bytes are that frame's continuation, and parsing them as a new header would
-		// scramble the stream. Requiring an empty pending queue preserves order: queued frames dispatch
-		// at end-of-poll, so fast-path-dispatching newer frames ahead of them would reorder the stream
-		// (e.g. a FrameInput after its FrameCommit). When either holds, fall through to append().
-		if (!_reader.hasPartialMessage() && !_reader.hasPending()) {
-			while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
-				if (!dispatchCb(h, data)) {
-					_reader.addMessage(h, data);
+			// Fast path: only when the reassembler is fully idle -- no buffered partial AND nothing
+			// queued. Then this chunk begins on a frame boundary and can be parsed (and dispatched
+			// inline) straight out of it, no copy into _buffer. Requiring an empty buffer avoids desync:
+			// with a buffered partial the fresh bytes are that frame's continuation, and parsing them as
+			// a new header would scramble the stream. Requiring an empty pending queue preserves order:
+			// queued frames dispatch at end-of-poll, so fast-path-dispatching newer frames ahead of them
+			// would reorder the stream (e.g. a FrameInput after its FrameCommit). When either holds,
+			// fall through to append(). Both conditions are per stream, which is exactly why the state
+			// is per stream too.
+			if (!state.reader.hasPartialMessage() && !state.reader.hasPending()) {
+				while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
+					if (!dispatchCb(h, data)) {
+						state.reader.addMessage(h, data);
+					}
+				})) { }
+			}
+
+			// Buffer the remainder: a trailing partial frame, or the whole chunk when a partial was
+			// already buffered. The reassembler completes it on a later read.
+			if (!nw.empty()) {
+				if (!state.reader.append(BytesView(nw.data(), nw.size()),
+							BytesView(_dict.data(), _dict.size()))) {
+					log::source().error("remote::Connection",
+							"framing violation; dropping connection");
+					close();
+					return;
 				}
-			})) { }
-		}
-
-		// Buffer the remainder: a trailing partial frame, or the whole chunk when a partial was already
-		// buffered. The reassembler completes it on a later read.
-		if (!nw.empty()) {
-			if (!_reader.append(BytesView(nw.data(), nw.size()),
-						BytesView(_dict.data(), _dict.size()))) {
-				log::source().error("remote::Connection", "framing violation; dropping connection");
-				close();
-				return;
 			}
 		}
-	}
 
-	_reader.dispatch(dispatchCb);
+		state.reader.dispatch(dispatchCb);
+	}
 }
 
 void Connection::close() {
@@ -166,8 +205,11 @@ void Connection::close() {
 	}
 	// Give the queued messages one last chance to leave before the shutdown handshake: whatever the
 	// caller enqueued a moment ago has not necessarily reached the wire yet.
-	_out.flush(getStream());
-	_out.clear();
+	for (uint32_t i = 0; i < _distinctCount; ++i) {
+		auto &state = _streams[_distinctClasses[i]];
+		state.out.flush(state.stream);
+		state.out.clear();
+	}
 	_transport->close(true);
 	_shutdown = true;
 }

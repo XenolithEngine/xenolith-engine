@@ -61,18 +61,18 @@ void performPeerInfoTests() {
 		// dumps depend on is what ends the session.
 		auto a = PeerInfo::makeLocal();
 		auto b = PeerInfo::makeLocal();
-		check(a.isAbiCompatible(b), "peerinfo: two peers of the same build are compatible");
+		check(a.isWireCompatible(b), "peerinfo: two peers of the same build share a wire contract");
 
 		b.abi = a.abi ^ 1;
-		check(!a.isAbiCompatible(b), "peerinfo: a differing abi tag is incompatible");
+		check(!a.isWireCompatible(b), "peerinfo: a differing tag is reported as a mismatch");
 
 		// A peer that never filled the field is not "compatible by default". Zero is the value a
 		// truncated/absent message decodes to, so treating it as a match would make the check
 		// silently vanish exactly when the message was malformed.
 		b.abi = 0;
-		check(!a.isAbiCompatible(b), "peerinfo: an absent abi tag is not a match");
+		check(!a.isWireCompatible(b), "peerinfo: an absent abi tag is not a match");
 		auto zero = PeerInfo();
-		check(!zero.isAbiCompatible(zero), "peerinfo: two absent tags do not match each other");
+		check(!zero.isWireCompatible(zero), "peerinfo: two absent tags do not match each other");
 	}
 
 	{
@@ -173,6 +173,48 @@ void performPeerInfoTests() {
 		// enumerator happens to share its number.
 		check(toWindowSubsystem(SurfaceBackend::QNX) == WindowSubsystem::Unknown,
 				"peerinfo: an unmapped backend is Unknown, not a wrong answer");
+	}
+	{
+		/* The code masks (M6.3).
+		
+		 They are maintained by hand beside the enums, which makes them a second source of truth --
+		 so what they contain is pinned here. A code added without a handler, or a handler added
+		 without its bit, fails an assertion in review rather than becoming a message that quietly
+		 does nothing. */
+		auto local = PeerInfo::makeLocal();
+		check(local.supports(Domain::Window, toInt(WindowCode::InputEvents))
+						&& local.supports(Domain::Window, toInt(WindowCode::TextInputState)),
+				"peerinfo: this build advertises the window codes it handles");
+		check(local.supports(Domain::Data, toInt(DataCode::Cancel)),
+				"peerinfo: Cancel is advertised, so a peer knows a transfer can be called off");
+
+		// THE entry that makes the mask more than a restatement of the enum: FontCode::CompileImage
+		// is declared and dispatched by nobody.
+		check(!local.supports(Domain::Font, toInt(FontCode::CompileImage)),
+				"peerinfo: a declared-but-unhandled code is NOT advertised");
+		check(local.supports(Domain::Font, toInt(FontCode::GlyphRequest)),
+				"peerinfo: the font codes that do have handlers are advertised");
+
+		// Silence is not a claim of emptiness. A peer built before the field says nothing, and
+		// refusing to send it anything would turn a missing diagnostic into a dead session.
+		PeerInfo quiet;
+		check(quiet.supports(Domain::Window, toInt(WindowCode::AcquireFrame)),
+				"peerinfo: a peer that advertised nothing is assumed to support everything");
+
+		auto val = serializePeerInfo(local);
+		auto bytes = data::write<Interface>(val, data::EncodeFormat::Cbor);
+		auto back = deserializePeerInfo(data::read<Interface>(bytes));
+		check(back.windowCodes == local.windowCodes && back.fontCodes == local.fontCodes,
+				"peerinfo: the masks survive a CBOR round trip");
+
+		// And the report names what is missing rather than only that something is.
+		auto older = local;
+		older.fontCodes &= ~codeBit(FontCode::GlyphRequest);
+		StringStream missing;
+		local.describeMissingCodes(older, [&](StringView str) { missing << str; });
+		check(missing.str().find("font") != maxOf<size_t>()
+						&& missing.str().find("3") != maxOf<size_t>(),
+				toString("peerinfo: the missing code is named: '", missing.str(), "'"));
 	}
 }
 

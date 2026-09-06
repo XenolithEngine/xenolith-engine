@@ -40,12 +40,9 @@ public:
 	virtual bool init(AttachmentBuilder &) override;
 
 	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
-	virtual Rc<core::AttachmentInputData> makeInputData(
-			NotNull<core::RenderClientChannel> client) const override {
-		auto ret = Rc<FrameContextHandle2d>::alloc();
-		ret->clock = sprt::platform::clock(sprt::platform::ClockType::Monotonic);
-		ret->client = client;
-		return ret;
+	virtual Rc<core::AttachmentInputData> makeInputData(NotNull<core::RenderClientChannel> client,
+			uint64_t windowId) const override {
+		return makeFrameContextInput(client, windowId);
 	}
 
 protected:
