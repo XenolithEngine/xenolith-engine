@@ -63,10 +63,9 @@ struct FrameTimingInfo {
 	uint64_t lastFenceFrameTime = 0;
 	uint64_t lastTimestampFrameTime = 0;
 
-#if XL_FRAME_ACCOUNT
-	// Which frame `lastFrameTime` is about - see PresentationEngine::getLastFrameOrder.
+	// Which frame `lastFrameTime` is about, and the signal that a frame has been drawn at all -
+	// see PresentationEngine::getLastFrameOrder for why the second use is what ungated it.
 	uint64_t lastFrameOrder = 0;
-#endif
 };
 
 #if XL_FRAME_ACCOUNT

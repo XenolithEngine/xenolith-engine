@@ -144,6 +144,25 @@ Same after anything that changes the scene: `invoke_command` / `send_input` /
 `window_control resize` → `step_frame` → `screenshot`. If a screenshot looks
 stale, you skipped the step.
 
+**Stepping is a REQUEST; `presented` is the receipt.** `step_frame` sets the
+presentation engine's ready flag and returns — measured at a tenth of a
+millisecond, with nothing drawn yet — so a read taken straight afterwards races
+the render loop. A screenshot does not close that gap either: it answers with the
+frame *before* the one you asked for. The reply now carries **`presented`**, the
+order of the last frame that actually completed
+(`core::PresentationEngine::getLastFrameOrder`), and `count: 0` asks for nothing
+and only reports. So the exact wait is:
+
+```
+n = step_frame(count: 0).presented    # where we are
+step_frame(count: 1)                  # ask
+poll step_frame(count: 0) until presented > n     # ~2 ms, a couple of polls
+```
+
+That is what a scripted check should do instead of sleeping. `tests/lib/studiocheck.py`
+in xlstudio wraps it as `step(frames)`; rebuilding one 150 ms sleep-and-hope on it
+made that script twice as fast and stopped it failing under load.
+
 **Each window steps on its own.** Every window has its own presentation engine,
 so `step_frame` with no `window` argument advances only the main one — a menu or
 a dialog stays on whatever frame it last drew until you step *it*.

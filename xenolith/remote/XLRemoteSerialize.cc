@@ -396,16 +396,14 @@ sprt::window::WindowGeometry deserializeWindowGeometry(const Value &v) {
 
 Value serializeFrameTiming(const core::FrameTimingInfo &t) {
 	// [lastFrameInterval, avgFrameInterval, lastFrameTime, lastFenceFrameTime,
-	//  lastTimestampFrameTime] (+ [5] lastFrameOrder under XL_FRAME_ACCOUNT)
+	//  lastTimestampFrameTime, lastFrameOrder]
 	Value v(Value::Type::ARRAY);
 	v.addInteger(int64_t(t.lastFrameInterval));
 	v.addInteger(int64_t(t.avgFrameInterval));
 	v.addInteger(int64_t(t.lastFrameTime));
 	v.addInteger(int64_t(t.lastFenceFrameTime));
 	v.addInteger(int64_t(t.lastTimestampFrameTime));
-#if XL_FRAME_ACCOUNT
 	v.addInteger(int64_t(t.lastFrameOrder));
-#endif
 	return v;
 }
 
@@ -423,11 +421,10 @@ core::FrameTimingInfo deserializeFrameTiming(const Value &v) {
 	t.lastFrameTime = at(2);
 	t.lastFenceFrameTime = at(3);
 	t.lastTimestampFrameTime = at(4);
-#if XL_FRAME_ACCOUNT
-	// Absent when the peer was built without the flag; `at` answers 0, which is what "not measured"
-	// means everywhere else in this struct.
+	// Absent when the peer predates this entry; `at` answers 0, which is what "not measured" means
+	// everywhere else in this struct - and a peer that sends one to a reader that does not want it
+	// is reading by index and ignores the tail, so the pair stays compatible both ways.
 	t.lastFrameOrder = at(5);
-#endif
 	return t;
 }
 
