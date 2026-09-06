@@ -135,10 +135,20 @@ public:
 	uint64_t getLastFrameInterval() const;
 	uint64_t getAvgFrameInterval() const;
 	uint64_t getLastFrameTime() const;
-#if XL_FRAME_ACCOUNT
-	// Which frame getLastFrameTime() is about. A "last" value with no name cannot be attributed.
+
+	/* THE ORDER OF THE LAST FRAME THAT ACTUALLY COMPLETED, and it is not only an accounting field.
+
+	It began as one - a "last" value with no name cannot be attributed, so getLastFrameTime() needed
+	to say which frame it was about - and was gated behind XL_FRAME_ACCOUNT accordingly. It is
+	ungated because it answers a second question that has no other answer: HAS A FRAME BEEN DRAWN
+	SINCE I ASKED. Nothing else exposes that. `setReadyForNextFrame` only sets a flag and returns,
+	rendering is on demand, and a screenshot hands back the frame BEFORE the one you asked for - so
+	an external driver stepping this window had no way to wait for its own request and could only
+	sleep and hope. Watching this number advance is that wait, and it costs one store per frame.
+
+	Monotonic among completed frames, and it counts frames that were PRESENTED: a capture frame
+	returns before this is written and is correctly absent. */
 	uint64_t getLastFrameOrder() const { return _lastFrameOrder; }
-#endif
 	uint64_t getLastFenceFrameTime() const;
 	uint64_t getLastTimestampFrameTime() const;
 
@@ -256,9 +266,7 @@ protected:
 	sprt::atomic<uint64_t> _avgPresentationIntervalValue = 0;
 
 	uint64_t _lastFrameTime = 0;
-#if XL_FRAME_ACCOUNT
 	uint64_t _lastFrameOrder = 0;
-#endif
 	MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
 	sprt::atomic<uint64_t> _avgFrameTimeValue = 0;
 
