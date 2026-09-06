@@ -92,10 +92,10 @@ void ScrollController::onScrollPosition(bool force) {
 	// that settles in one or two rounds.
 	//
 	// It does NOT settle when an item's node reports a fresh size every time it is built (a row
-	// whose label re-shapes on construction is the usual source). Each round then destroys the
+	// whose label re-shapes on construction is the usual source): each round then destroys the
 	// nodes that fell out of the moved window and builds their replacements, all inside a single
-	// frame - which is how this loop used to run away and eat gigabytes. Bound it like the
-	// component cascade in Node::visit: give up, say so, and let the frame finish.
+	// frame, without ever converging. So the loop is bounded like the component cascade in
+	// Node::visit: give up, say so, and let the frame finish.
 	uint32_t guard = 0;
 	do {
 		if (++guard > 12) {

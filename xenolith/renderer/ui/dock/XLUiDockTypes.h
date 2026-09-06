@@ -70,10 +70,43 @@ enum class DockFrameFlags : uint32_t {
 	AllowResize = 1 << 3, // the splitters bounding it are draggable
 	Permanent = 1 << 4, // never collapsed, even when it holds no panel at all
 
+	/* WHICH AXES A DROP MAY SUBDIVIDE THIS PLACE ALONG, and NEITHER of them set means BOTH.
+
+	A side rail that may only ever stack its panels declares AllowSplitVertical alone, and its left
+	and right edge bands stop being split zones - they fall through to the middle, which is the
+	honest answer for a place that cannot be divided that way.
+
+	The "neither means both" reading is what keeps this from being a format change: `AllowSplit` and
+	every flag word already written by an application or saved in a layout keep meaning exactly what
+	they meant. It is also why these are FLAGS rather than a field of their own - DockTree::saveNode
+	writes the word as an integer, so the pair survives save/restore for free.
+
+	They narrow AllowSplit and do not stand in for it: a frame with neither AllowSplit nor these is
+	not divisible at all. And they are about DROPS - `splitFrame` is the application asking for a
+	split outright, which is its own business and is never refused on an axis. */
+	AllowSplitVertical = 1 << 5, // stacked: the SplitTop / SplitBottom zones
+	AllowSplitHorizontal = 1 << 6, // side by side: the SplitLeft / SplitRight zones
+
 	Default = AllowSplit | AllowDrop | AllowClose | AllowResize,
 };
 
 SP_DEFINE_ENUM_AS_MASK(DockFrameFlags)
+
+// May a DROP subdivide a frame with these flags along this axis? Answers the "neither bit set means
+// both axes" rule in one place, so no caller has to remember it.
+constexpr bool allowsSplitAxis(DockFrameFlags flags, DockAxis axis) {
+	if (!hasFlag(flags, DockFrameFlags::AllowSplit)) {
+		return false;
+	}
+	const auto axes =
+			flags & (DockFrameFlags::AllowSplitVertical | DockFrameFlags::AllowSplitHorizontal);
+	if (axes == DockFrameFlags::None) {
+		return true; // nothing narrowed: both, which is what every layout written so far means
+	}
+	return hasFlag(flags,
+			axis == DockAxis::Horizontal ? DockFrameFlags::AllowSplitHorizontal
+										 : DockFrameFlags::AllowSplitVertical);
+}
 
 // What a panel permits.
 enum class DockPanelFlags : uint32_t {
@@ -239,6 +272,9 @@ struct SP_PUBLIC DockLayoutSpec {
 	DockFrameParams params;
 	Vector<String> panels; // in tab order
 	size_t active = 0; // index into `panels`
+
+	// shut to its tab strip; see DockTreeNode::collapsed and DockSystem::setFrameCollapsed
+	bool collapsed = false;
 
 	static DockLayoutSpec leaf(Vector<String> &&panels, DockFrameParams && = DockFrameParams());
 	static DockLayoutSpec hsplit(float ratio, DockLayoutSpec &&left, DockLayoutSpec &&right);

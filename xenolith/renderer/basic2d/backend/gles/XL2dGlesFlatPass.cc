@@ -484,7 +484,7 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
 
 	// All six variants have to exist even though the fragment stage samples a 2D view in every
-	// case (M2): a material is matched to a pipeline by the *value* of PipelineMaterialInfo, and
+	// case: a material is matched to a pipeline by the *value* of PipelineMaterialInfo, and
 	// one that asks for an array or 3d view would otherwise find nothing - failing not with an
 	// error but with an empty frame.
 	auto blendInfo = BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha, BlendOp::Add,

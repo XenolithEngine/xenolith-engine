@@ -273,6 +273,15 @@ InlineEditSession::~InlineEditSession() {
 	if (s_activeInlineEdit == this) {
 		s_activeInlineEdit = nullptr;
 	}
+
+	/* Nor the ANCHOR'S SYSTEM, for the same reason and one step less obviously. The watch below
+	captures `this`, the anchor holds it, and the anchor is under no obligation to go first - so a
+	dropped session leaves a node whose exit calls a freed object. Disarming the callback is what
+	can be done from here without asking: removeSystem would take `_anchor`, and an anchor that
+	died first is exactly the case this is about. */
+	if (_anchorWatch) {
+		_anchorWatch->setExitCallback(nullptr);
+	}
 }
 
 InlineEditSession *InlineEditSession::getActive() { return s_activeInlineEdit; }
@@ -465,7 +474,16 @@ Rc<InlineEditSession> beginInlineTextEdit(NotNull<Node> anchorContent, const Rec
 	config.minSize = textConfig.minSize;
 	config.styleClass = sp::move(textConfig.styleClass);
 
-	config.collect = [input = input.get()] { return Value(input->getText()); };
+	/* The FIELD is held, not borrowed, and both closures below do it.
+
+	They are read by finish(), and finish() runs from the anchor's exit - "the thing being edited is
+	leaving the scene". A teardown reaches the overlay this field lives on and the anchor in whatever
+	order it likes, so by the time the anchor exits, the layout may already be down and the field
+	destroyed with it. A raw pointer here was a virtual call through a freed node, and the commit that
+	carries the typed text is exactly the path that makes it. Holding it costs one reference for as
+	long as the session, and closes no cycle: what the field holds of the session (its Enter callback)
+	is a raw pointer, deliberately. */
+	config.collect = [input] { return Value(input->getText()); };
 
 	if (auto cb = sp::move(textConfig.onCommit)) {
 		config.onCommit = [cb = sp::move(cb)](const Value &value) { return cb(value.getString()); };
@@ -478,8 +496,7 @@ Rc<InlineEditSession> beginInlineTextEdit(NotNull<Node> anchorContent, const Rec
 	The field will not do it: of every widget here only ui::NumberField restores anything on its
 	own, and even that is about a value that does not parse. Restoring here means a caller that
 	reads the field in onCancel sees what the edit started from. */
-	config.onCancel = [input = input.get(), text = textConfig.text,
-							  cb = sp::move(textConfig.onCancel)] {
+	config.onCancel = [input, text = textConfig.text, cb = sp::move(textConfig.onCancel)] {
 		input->setText(text);
 		if (cb) {
 			cb();

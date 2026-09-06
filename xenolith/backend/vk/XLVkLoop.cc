@@ -220,8 +220,7 @@ struct Loop::Internal final : memory::AllocPool {
 
 			auto iit = dependencyRequests.find(it.get());
 			if (iit == dependencyRequests.end()) {
-				// Nothing waits on this event. The erase below used to run unconditionally, on an
-				// end() iterator.
+				// Nothing waits on this event
 				continue;
 			}
 

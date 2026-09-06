@@ -958,15 +958,8 @@ Status PresentationEngine::acquireScheduledImage() {
 
 void PresentationEngine::scheduleImageAcquisition() {
 	// One retry timer per engine, and it repeats on its own (count = Infinite), so a second one is
-	// never useful.
-	//
-	// Without this guard every failed acquire armed a NEW infinite timer while leaving the previous
-	// one running - and since each firing retries and, on another failure, schedules again, the
-	// timer population DOUBLED every interval. A handful of consecutive VK_NOT_READY / VK_TIMEOUT
-	// results (routine as soon as a second window shares the present queue) was enough to saturate
-	// the completion queue, and from there the context thread never leaves its poll loop: closing a
-	// window is a queued task, so the application could no longer be shut down at all - it just kept
-	// spinning at 100% CPU.
+	// never useful: each firing retries and schedules again on failure, so arming a new timer per
+	// failed acquire would double the timer population every interval.
 	//
 	// Status::Ok is "armed and running"; anything else means the handle is spent and a new one is
 	// needed (see Handle::getStatus).
@@ -1068,7 +1061,7 @@ void PresentationEngine::presentSwapchainImage(Rc<DeviceQueue> &&queue,
 		NotNull<PresentationFrame> frame, ImageStorage *image, uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("presentSwapchainImage");
 	// After end()/EndOfLife both _swapchain and the frame's swapchain can be null, and `null ==
-	// null` used to pass the equality check straight into a null SwapchainImage deref.
+	// null` passes the equality check below - hence the explicit null tests.
 	auto *swImage = frame->getSwapchainImage();
 	if (_running && _swapchain && swImage && frame->getSwapchain() == _swapchain
 			&& !frame->hasFlag(PresentationFrame::Invalidated) && swImage->isSubmitted()) {

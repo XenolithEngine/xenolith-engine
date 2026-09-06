@@ -21,12 +21,15 @@ THE SOFTWARE.
 **/
 
 // Socket / resolver / poll compile unit. The POSIX socket layer is backed only on
-// the freestanding wasm target (as no-op ENOSYS stubs - see wasm/socket.cc); the
-// hosted and Windows targets get their implementations from the platform libc /
-// winsock, so this unit is empty for them.
+// the two freestanding targets, as no-op ENOSYS stubs (wasm/socket.cc, and
+// embox_user/socket.cc where sockets are milestone M3); the hosted and Windows
+// targets get their implementations from the platform libc / winsock, so this
+// unit is empty for them.
 
 #include <sprt/c/bits/__sprt_def.h>
 
 #if SPRT_WASM
 #include "wasm/socket.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/socket.cc"
 #endif

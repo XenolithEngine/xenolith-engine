@@ -32,12 +32,25 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // surface. It carries NO InputListener at all - one would put it between the pointer and the tab
 // that owns the drag.
 //
+// NOTHING LAYS A DECORATOR OUT. DragSystem only moves it, and its parent - the dock root - places
+// its children by its own rules, so the style resolver hands a CSS `width`/`height` down as a
+// MeasureComponent hint rather than committing it. There is no layout here to read that hint, so
+// this widget reads it itself; see handleComponentsDirty. Without that a ghost is a surface of
+// zero extent with a caption drawn beside it, which does not look like a bug the first time.
+//
 // CSS type "dock-drag-ghost".
 class SP_PUBLIC DockDragGhost : public Panel {
 public:
+	// What an unstyled ghost is. Big enough for a 16pt icon and a short title at the padding the
+	// widget gives itself.
+	static constexpr Size2 DefaultSize = Size2(150.0f, 32.0f);
+
 	virtual ~DockDragGhost() = default;
 
 	virtual bool init(const DockPanelDescriptor &);
+
+	// commits the size a stylesheet asked for; see the class comment
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 protected:
 	using Panel::init;

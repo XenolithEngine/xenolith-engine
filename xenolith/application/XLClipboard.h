@@ -162,9 +162,8 @@ public:
 	uint64_t read(SpanView<StringView> preference, ReadCallback &&, Ref *target = nullptr);
 	uint64_t readText(ReadCallback &&, Ref *target = nullptr);
 
-	// Drop the answer to whatever is in flight and release its target. THIS is the staleness serial
-	// the widgets used to carry: a blur, a focus the platform revoked, a document closed under an
-	// editor.
+	// Drop the answer to whatever is in flight and release its target: a blur, a focus the platform
+	// revoked, a document closed under an editor.
 	void cancel();
 
 	bool isPending() const { return _pending != nullptr; }

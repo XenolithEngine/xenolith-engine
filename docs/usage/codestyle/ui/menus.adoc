@@ -166,11 +166,16 @@ subwindow where the platform has them and an in-scene overlay where it does not,
 and **headless is on the native side**, so a menu is a separately renderable
 window with no display in play.
 
-`placementForNode` is the arithmetic every hand-written menu in this tree has got
-wrong at least once: the anchor rect comes from the node's four **corners** in
-world space (the node may be rotated or scaled), converted into the scene
-*content's* space (which undoes the density scale — scene space is physical
-pixels, `WindowPlacement` is logical points), and flipped into Y-down at the end.
+`placementForNode` adds the **side** to `ui::placementAnchorRect`, which is the
+arithmetic every hand-written popup in this tree has got wrong at least once: the
+anchor rect comes from the node's four **corners** (the node may be rotated or
+scaled), converted into the scene *content's* space (which undoes the density
+scale — scene space is physical pixels, `WindowPlacement` is logical points), and
+flipped into Y-down at the end. It lives in
+[XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h) rather than
+here because a menu, a dropdown and a hint have to answer "where is the anchor"
+the same way — `ui::TooltipSystem` once answered it differently, and its hints
+landed tens of points off on any window whose density was not 1.
 
 **The surface itself is not the menu's.** `openMenu` builds it through
 `ui::openPopupSurface`

@@ -67,6 +67,15 @@ public:
 protected:
 	using Panel::init;
 
+	/* Stamp the strip's orientation onto ONE TAB, as the class `horizontal` or `vertical`.
+
+	The strip carries the same pair, so `dock-tab-bar.vertical dock-tab` would appear to say this
+	already. It does not say it for long enough: a recursive StyleResolver re-resolves a node when
+	that NODE's own identity changes, so a strip that flips side keeps its tabs painted the way
+	they were until something else happens to touch them. The class on the tab itself is what makes
+	the two kinds of strip - a labelled row and an icon rail - interchangeable at runtime. */
+	void applyOrientation(DockTab *) const;
+
 	DockTabBarSide _side = DockTabBarSide::Top;
 	Vector<DockTab *> _tabs;
 };

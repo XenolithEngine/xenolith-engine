@@ -327,10 +327,10 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 
 Rc<SwapchainBase> PresentationEngine::makeSwapchain(const core::SurfaceInfo &,
 		const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode) {
-	// Window presentation needs an EGL surface bound to the window and a blit of the texture onto
-	// it - that is M2. The headless engine overrides this with a real construction; reaching here
-	// means a gapped window asked for a swapchain on a backend that cannot give one yet.
-	log::source().error("gles::PresentationEngine", "Window presentation is not supported in M1");
+	// The base engine has no transport: the headless and windowed engines override this with a
+	// real construction, so reaching here means a swapchain was asked of the base itself.
+	log::source().error("gles::PresentationEngine",
+			"Window presentation is not supported by the base engine");
 	return nullptr;
 }
 

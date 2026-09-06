@@ -48,8 +48,8 @@ public:
 // A bound endpoint, owned by the host AppThread. It owns no thread: the host registers
 // getPollHandle() with its Looper (PollFlags::In) and drives handleEvents()/getEventTimeout().
 //
-// The transport underneath is chosen by the address's scheme, so this class no longer knows what
-// QUIC is -- it only knows how to turn accepted transport connections into protocol sessions.
+// The transport underneath is chosen by the address's scheme, so this class knows nothing about
+// QUIC -- only how to turn accepted transport connections into protocol sessions.
 class SP_PUBLIC Listener : public Ref {
 public:
 	using AcceptCallback = Function<void(Rc<ServerConnection> &&)>;

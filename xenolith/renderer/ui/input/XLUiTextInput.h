@@ -526,9 +526,8 @@ protected:
 	// anchor of a Shift-selection or a drag-selection; InvalidCursor when none is running
 	uint32_t _selectionAnchor = maxOf<uint32_t>();
 
-	// The clipboard transport, built on first use. It carries the staleness serial that used to be
-	// a field here, and unlike that serial it can actually be CANCELLED - which is what blur() and
-	// a focus the platform revoked now do.
+	// The clipboard transport, built on first use. It carries the staleness serial and can be
+	// CANCELLED - which is what blur() and a focus the platform revoked do.
 	Rc<ClipboardSession> _clipboard;
 
 	// see pendingCursor()

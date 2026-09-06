@@ -60,6 +60,13 @@ float wheelZoomFactor(float delta, float divisor) {
 	return sprt::exp(-delta / divisor);
 }
 
+float wheelZoomRatio(float notches, float ratioPerNotch) {
+	if (!(ratioPerNotch > 0.0f)) {
+		return 1.0f;
+	}
+	return sprt::pow(ratioPerNotch, notches);
+}
+
 Viewport zoomAt(const Viewport &view, Vec2 screenAnchor, float factor, const ZoomLimits &limits) {
 	Viewport out = view;
 

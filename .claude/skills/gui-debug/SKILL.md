@@ -181,6 +181,30 @@ send_input   {window: "menu-1", native: true, events: [...]}   # click a menu ro
 - Tooltips stay in-scene overlays by default (`preferNative = false`), so look
   for a tip in the parent window's tree, not in `list_windows`.
 
+## User-space decorations are on in headless
+
+Headless advertises `WindowCapabilities::UserSpaceDecorations`, so an app that
+asks for them gets them: the window system draws no frame, `SceneContent` builds
+the decorations node, and the capture is the frame a decorated desktop window
+presents. The grips are live — a drag on a `MoveGrip` (a title bar) moves the
+pseudo-window on the virtual screen, and a drag on one of the eight resize edges
+resizes it; read the result with `window_control op:"geometry"`.
+
+Two things that will otherwise waste an iteration:
+
+- **A grip press is swallowed** — the window system takes it everywhere else, and
+  so does this one. A click within **6pt of any window edge** is a resize grip
+  unless something declares `WindowLayerFlags::GripGuard` over it, so aim a check
+  at a widget's middle rather than its corner.
+- **While a drag runs, the coordinates you inject are read against the window rect
+  as it was when the press landed.** A synthetic pointer has no root coordinates,
+  so a drag from `(x0, y0)` to `(x1, y1)` moves the window by exactly
+  `(x1 - x0, y0 - y1)` — the Y flip because window space is Y-up and the screen
+  is Y-down.
+
+A moved or resized window is real state: an app that persists its geometry (the
+studio does) will reopen where a probe left it.
+
 ## Debug loop
 
 ```

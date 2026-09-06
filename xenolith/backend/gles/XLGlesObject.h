@@ -47,7 +47,7 @@ protected:
 
 // A 2D texture created with immutable storage (glTexStorage2D): the allocation happens once at
 // init, and everything after it is a plain glTexSubImage2D. Rows are tightly packed on upload
-// (GL_UNPACK_ALIGNMENT=1), matching the ImageInfoData contract. Mipmaps do not exist in M1:
+// (GL_UNPACK_ALIGNMENT=1), matching the ImageInfoData contract. Mipmaps do not exist here:
 // single-level textures only, which also bounds what the samplers can say.
 class SP_PUBLIC Image final : public core::ImageObject {
 public:

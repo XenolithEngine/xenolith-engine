@@ -28,9 +28,10 @@ THE SOFTWARE.
 	- hosted SPRT build -> forwards to the system <netdb.h> (#include_next)
 	- otherwise         -> SPRT-own declarations below (Linux/musl layout).
 
-	Name resolution is unavailable on freestanding wasm (there is no resolver), so
-	the sprt libc implements these as no-op stubs: getaddrinfo()/getnameinfo() report
-	EAI_FAIL and the by-name lookups return NULL. The full struct/prototype surface
+	Name resolution is unavailable on the freestanding targets (wasm has no
+	resolver; Embox EL0 has no socket syscall to reach the one the kernel does
+	have), so the sprt libc implements these as no-op stubs: getaddrinfo()/
+	getnameinfo() report EAI_FAIL and the by-name lookups return NULL. The full struct/prototype surface
 	is provided so consumers (e.g. OpenSSL's socket BIOs) compile unchanged.
 */
 
@@ -49,7 +50,7 @@ THE SOFTWARE.
 // type/prototype surface must be visible there too. The Linux/musl ABI values
 // match their own <netdb.h>, so the same definitions work for every
 // freestanding target.
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS)
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER)
 
 struct hostent {
 	char *h_name; // official name of host
@@ -163,7 +164,7 @@ void endprotoent(void);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 
 #endif
 

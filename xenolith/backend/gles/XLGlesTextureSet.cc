@@ -49,8 +49,8 @@ bool TextureSet::init(Device &dev, const TextureSetLayout &layout) {
 }
 
 void TextureSet::write(const core::MaterialLayout &set) {
-	// Writing a set is just retaining the views: M1 has no binding to update and the M2 draw path
-	// reads the slot table directly.
+	// Writing a set is just retaining the views: there is no descriptor set to update, the draw
+	// path reads the slot table directly.
 	_slotViews.clear();
 	_slotViews.resize(set.usedImageSlots);
 	_layoutIndexes.clear();

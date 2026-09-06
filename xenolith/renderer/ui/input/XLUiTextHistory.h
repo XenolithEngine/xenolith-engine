@@ -30,11 +30,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // UNDO FOR TEXT, OVER THE ONE POINT WHERE TEXT ACTUALLY CHANGES.
 //
-// The engine had no undo anywhere; this is it, and it is deliberately NOT inside TextDocument.
+// The history sits beside TextDocument rather than inside it, at the choke point that mutates it.
 // A document is flat data and index arithmetic - it has no caret, no selection and no way to
 // tell the platform anything. Undo has to put back the caret as well as the characters, and then
 // re-push the IME window, or the next echo would be diffed against a base that no longer exists.
-// So the history sits beside the document, at the choke point that mutates it.
 //
 // WHY THE TARGET IS AN INTERFACE. There are two text authorities in this stack and they are not
 // alike. TextView owns a TextDocument outright and edits it locally. A plain TextInput owns

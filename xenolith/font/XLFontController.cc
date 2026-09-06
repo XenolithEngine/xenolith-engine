@@ -516,24 +516,15 @@ Rc<FontFaceSet> FontController::getLayoutForString(const FontParameters &f, cons
 Rc<core::DependencyEvent> FontController::addTextureChars(const Rc<FontFaceSet> &l,
 		SpanView<CharLayoutData> chars) {
 	// The caller needs a gating dependency whenever the glyphs it just laid out may not be in the
-	// atlas yet - and that is NOT the same question as "are they new".
+	// atlas yet - which is NOT the same question as "are they new". FontFaceObject::_required is
+	// permanent and process-wide, so it reports "new" only to the very first requester of a glyph,
+	// ever; a second window laying the SAME string out is told nothing is new while the atlas is
+	// still catching up, and its point sprites index a CharId the atlas does not hold yet.
 	//
-	// FontFaceObject::_required is permanent and process-wide, so it reports "new" only to the very
-	// first requester of a glyph, ever. Every later caller used to get whatever _dependency happened
-	// to be, which is null once the flush handed it over. With one window that is mostly harmless -
-	// the same node usually is the first requester. With two windows it is the bug: window A lays
-	// the string out, gets the dependency and waits for the atlas; window B lays the SAME string out
-	// a tick later, is told nothing is new, waits for nothing, and draws point sprites whose CharId
-	// is not in the atlas index yet - they collapse to zero size, i.e. invisible text. Each window
-	// must wait for the glyphs it needs; only one of them did.
-	//
-	// So gate on the atlas being confirmed current instead. Once the atlas has caught up, a
+	// So the gate is "is the atlas confirmed current", and it needs both halves: a batch still
+	// running means glyphs laid out but not rasterised, whatever the generation counter says
+	// (batches overlap, and a later one can land first). Once the atlas has caught up, a
 	// known-glyph request opens nothing and returns null.
-	//
-	// "Caught up" needs both halves. A batch still running means glyphs that are laid out but not
-	// rasterised, whatever the generation counter says - batches overlap, and a later one can land
-	// first. So: gate while anything is in flight, and gate while new glyphs have appeared since the
-	// last quiet moment.
 	if (l->addTextureChars(chars)) {
 		// Genuinely new characters: they are in _required but in no batch, so the caller must wait
 		// for the batch that will carry them.
@@ -831,13 +822,10 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 			// DynamicImage::updateInstance), and every replacement makes each window recompile the
 			// materials that sample it. So every flush needs a gating dependency - including the ones
 			// _dirty was raised for by removeUnusedLayouts() or addFont() rather than by a glyph
-			// request, which used to be submitted with none at all.
-			//
-			// An ungated flush is what actually breaks a second window: the atlas is swapped under it
-			// and its material recompile is gated on nothing, so it keeps sampling the previous
-			// instance and renders only the glyphs that instance happened to hold. Minting the
-			// dependency here also puts the batch into _uploadsInFlight below, which is what makes
-			// addTextureChars() gate everyone who lays glyphs out while it runs.
+			// request; an ungated flush swaps the atlas under a window whose material recompile
+			// waits on nothing. Minting the dependency here also puts the batch into
+			// _uploadsInFlight below, which is what makes addTextureChars() gate everyone who lays
+			// glyphs out while it runs.
 			if (!_dependency) {
 				_dependency = makeDependency();
 			}

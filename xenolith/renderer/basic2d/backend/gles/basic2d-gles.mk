@@ -33,7 +33,7 @@ MODULE_XENOLITH_RENDERER_BASIC2D_GLES_SHARED_SPEC_SUMMARY := Xenolith 2d rendere
 
 define MODULE_XENOLITH_RENDERER_BASIC2D_GLES_SHARED_SPEC_DESCRIPTION
 Module libxenolith-renderer-basic2d-gles implements the 2d render queue for the
-OpenGL ES backend. M1 provides a clear-only pass; the flat draw path lands in M2.
+OpenGL ES backend: the flat draw path, plus a clear-only pass for bring-up.
 endef
 
 # module name resolution

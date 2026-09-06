@@ -63,6 +63,9 @@ VertexPlan::StatePlanInfo *VertexPlan::acquireStatePlan(FrameContextHandle2d *in
 		auto stateIt = materialIt->second.states.find(cmd->state);
 		if (stateIt == materialIt->second.states.end()) {
 			stateIt = materialIt->second.states.emplace(cmd->state, StatePlanInfo()).first;
+			// The traversal clock, stamped once: this is where painter's order between the state
+			// groups of one material is recorded, since the map itself keys on the StateId.
+			stateIt->second.order = orderCounter++;
 
 			if (cmd->state != StateIdNone) {
 				auto state = input->getState(cmd->state);
@@ -96,6 +99,7 @@ void VertexPlan::emplaceWritePlan(FrameContextHandle2d *input, const core::Mater
 		Map<core::MaterialId, MaterialWritePlan> &writePlan, const Command *c, const CmdInfo *cmd,
 		SpanView<InstanceVertexData> vertexes) {
 	auto statePlan = acquireStatePlan(input, material, writePlan, cmd);
+
 
 	if (statePlan) {
 		InstanceVertexData *packedStart = const_cast<InstanceVertexData *>(vertexes.data());
@@ -823,11 +827,39 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 		}
 	};
 
+	/* THE STATE GROUPS OF ONE MATERIAL, IN THE ORDER THEY WERE FIRST SEEN - which is painter's
+	order - and NOT in StateId order, which is what iterating the map gives.
+
+	A StateId is an allocation counter over interned state VALUES; two groups of one material are
+	ordered by it for no reason connected to drawing. That is harmless for the SOLID plan, which
+	writes depth and may be drawn in any order, and wrong for the SURFACE plan, which blends and
+	does NOT write depth (see Sprite::updateBlendAndDepth): two surface draws that overlap are
+	resolved by submission order alone, exactly as transparent ones are.
+
+	It went unnoticed because a material usually has exactly ONE state group, where map order and
+	traversal order are the same list. The moment an ancestor installs a scissor the material splits
+	in two, and the failure is SYSTEMATIC rather than a coin flip: `StateIdNone` is `maxOf`, so the
+	group with no state always sorted LAST and always painted over the group inside the scissor.
+	What that looked like was every ui::Panel and every ui::TextInput inside a clipped subtree
+	drawing nothing at all, while the labels beside them - Transparent, bucketed by zPath - drew. */
+	auto eachStateInOrder = [](const MaterialWritePlan &plan,
+									const Callback<void(StateId, const StatePlanInfo &)> &cb) {
+		Vector<const sprt::pair<const StateId, StatePlanInfo> *> ordered;
+		ordered.reserve(plan.states.size());
+		for (auto &state : plan.states) { ordered.emplace_back(&state); }
+		sprt::sort(ordered.begin(), ordered.end(),
+				[](const sprt::pair<const StateId, StatePlanInfo> *l,
+						const sprt::pair<const StateId, StatePlanInfo> *r) {
+			return l->second.order < r->second.order;
+		});
+		for (auto &it : ordered) { cb(it->first, it->second); }
+	};
+
 	// General drawing
 	for (auto &it : drawOrder) {
-		for (auto &state : it->second.states) {
-			processStatePlan(it->first, state.first, state.second, StatePlanGeneral, out);
-		}
+		eachStateInOrder(it->second, [&](StateId stateId, const StatePlanInfo &statePlan) {
+			processStatePlan(it->first, stateId, statePlan, StatePlanGeneral, out);
+		});
 	}
 
 	// The overlay is drawn after the scene has been lit and, on the Vulkan path, after it has been
@@ -839,18 +871,18 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 
 	// Shadow solids
 	for (auto &it : drawOrder) {
-		for (auto &state : it->second.states) {
-			processStatePlan(it->first, state.first, state.second, StatePlanShadowSolid,
+		eachStateInOrder(it->second, [&](StateId stateId, const StatePlanInfo &statePlan) {
+			processStatePlan(it->first, stateId, statePlan, StatePlanShadowSolid,
 					ctx.shadowSolidSpans);
-		}
+		});
 	}
 
 	// Shadow volumes
 	for (auto &it : drawOrder) {
-		for (auto &state : it->second.states) {
-			processStatePlan(it->first, state.first, state.second, StatePlanShadowVolumes,
+		eachStateInOrder(it->second, [&](StateId stateId, const StatePlanInfo &statePlan) {
+			processStatePlan(it->first, stateId, statePlan, StatePlanShadowVolumes,
 					ctx.shadowSdfSpans);
-		}
+		});
 	}
 }
 
@@ -993,9 +1025,7 @@ void VertexPlan::pushAll(Context &ctx, WriteTarget &writeTarget) {
 	const auto spanStart = core::getAccountClock();
 	writeTime += spanStart - writeStart;
 	// Closed on every exit below, including the early one.
-	const auto closeSpans = [&] {
-		spanTime += core::getAccountClock() - spanStart;
-	};
+	const auto closeSpans = [&] { spanTime += core::getAccountClock() - spanStart; };
 #endif
 
 	if (flatOrder) {

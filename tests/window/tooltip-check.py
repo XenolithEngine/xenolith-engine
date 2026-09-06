@@ -193,6 +193,16 @@ try:
     check("and says what that node declared", st.get("shownText") == "plain hint",
             st.get("shownText"))
 
+    # WHICH PASS IT IS DRAWN IN, and nothing else in the dump answers it. An in-scene hint is a
+    # child of the scene content like any other, so a high z-order only decides where it comes in
+    # the ORDINARY passes - it would still be depth-tested and painted against the scene it is
+    # supposed to sit on top of. RenderingLevel::Overlay is a pass of its own, drawn last, and
+    # SubWindow::openOverlay marks the whole layout with it. The mark is inherited and cannot be
+    # escaped from inside, so the tip's root is the one line that carries it.
+    tip = [l for l in app.s.call("scene")["result"]["text"].splitlines() if "#aux-tip" in l]
+    check("the hint is in the scene as an overlay, not merely at a high z-order",
+            len(tip) == 1 and "overlay" in tip[0], tip)
+
     print("the topmost node wins")
     x, y = centre(rects["over"])
     app.move(x, y)

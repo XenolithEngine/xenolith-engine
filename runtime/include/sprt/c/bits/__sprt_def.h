@@ -60,6 +60,15 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_EMBOX embox_sprt
 #define __SPRT_PLATFORM_ID_EMBOX 9
 
+// Embox in user mode: the application is a real EL0 process on its own
+// freestanding libc (runtime/libc_impl), reaching the kernel only through the
+// syscall boundary. Deliberately a SEPARATE platform from EMBOX rather than a
+// flag on it - the two share a kernel but not a libc, not a set of types, and
+// not an address space, so nothing that is true of one is automatically true of
+// the other. See xenolith-os docs/EMBOX-USERSPACE.md.
+#define __SPRT_PLATFORM_NAME_EMBOX_USER embox_user_sprt
+#define __SPRT_PLATFORM_ID_EMBOX_USER 10
+
 
 /*
 	Defines one of:
@@ -73,9 +82,16 @@ THE SOFTWARE.
 	SPRT_WASM
 	SPRT_NUTTX
 	SPRT_EMBOX
+	SPRT_EMBOX_USER
 
-	for platform detection. SPRT_HOSTED_RTOS is 1 on NuttX and Embox
-	(flat hosted POSIX, no epoll/futex/fork).
+	for platform detection. SPRT_HOSTED_RTOS is 1 on NuttX and hosted Embox
+	(flat hosted POSIX, no epoll/futex/fork) - it means "links against the
+	RTOS's own libc", so SPRT_EMBOX_USER, which brings its own, is NOT in it.
+
+	SPRT_EMBOX_ANY is 1 in both Embox modes. Use it only for what is true of the
+	Embox KERNEL regardless of where the code runs (device names, /dev/fb0
+	geometry, board quirks); anything about Embox's libc, its types, or its flat
+	address space is SPRT_EMBOX alone.
 
 	Additionally defines SPRT_APPLE on any Apple/Darwin platform (macOS, iOS,
 	darwin-unknown) - use it for libSystem/XNU behavior that is shared across the
@@ -111,6 +127,16 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
 #define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
+#elif defined(__EMBOX_USER__)
+// Embox RTOS, user mode (EL0). Driven by the target-embox toolchain's `+user`
+// variant, which defines __EMBOX_USER__ and NOT __EMBOX__: none of the Embox
+// libc headers are on the include path for this target, so every branch keyed on
+// SPRT_EMBOX (which assumes them) must stay off. Tested before __EMBOX__ anyway,
+// so that a build that defines both still resolves to the more specific one
+// rather than silently compiling the hosted paths against a libc that is absent.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_EMBOX_USER
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_EMBOX_USER
+#define SPRT_EMBOX_USER __SPRT_PLATFORM_ID_EMBOX_USER
 #elif defined(__EMBOX__)
 // Embox RTOS. LLVM has no "embox" OSType, so the toolchain drives -D__EMBOX__
 // explicitly from target-embox. Tested before __linux__ because Embox may leak
@@ -144,8 +170,17 @@ THE SOFTWARE.
 #error "Unknown platform"
 #endif
 
+// "Hosted on an RTOS": there is a platform libc to forward to, and it is neither
+// glibc nor Darwin's. SPRT_EMBOX_USER is deliberately absent - it has no platform
+// libc at all, so it takes the freestanding paths, not these.
 #if SPRT_NUTTX || SPRT_EMBOX
 #define SPRT_HOSTED_RTOS 1
+#endif
+
+// Either Embox mode. For code that depends on the Embox KERNEL and not on which
+// side of the EL0 boundary it runs (see the note above the platform detection).
+#if SPRT_EMBOX || SPRT_EMBOX_USER
+#define SPRT_EMBOX_ANY 1
 #endif
 
 

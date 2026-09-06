@@ -136,9 +136,8 @@ public:
 
 	// Estimates every block's rows for wrapping at `columns` cells: ceil(cells / columns), cells
 	// counted by countCells(). One O(document) pass, run when wrapping turns on or the width
-	// changes - the same occasions that used to re-lay the whole document out as one label. The
-	// estimate is monospace-exact for ASCII; the measured value from a materialized label
-	// replaces it block by block.
+	// changes. The estimate is monospace-exact for ASCII; the measured value from a materialized
+	// label replaces it block by block.
 	void estimateRows(uint32_t columns);
 
 	// The incremental counterpart: re-estimates [firstBlock, pastLast) after an edit reset the

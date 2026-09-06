@@ -1495,7 +1495,7 @@ void TextView::handleTextInput(const TextInputState &data) {
 	if (data.enabled && _handler.isActive()) {
 		if (needRepush) {
 			// The correction has to travel back, or the platform keeps editing the string it
-			// thinks it has and the next keystroke undoes the fix.
+			// thinks it has and the next keystroke reverts it.
 			pushWindow();
 		} else if (_gMarked.length == 0 && data.compose != InputKeyComposeState::Composing
 				&& needsReanchor()) {

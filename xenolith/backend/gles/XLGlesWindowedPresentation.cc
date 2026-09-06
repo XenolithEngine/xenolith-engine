@@ -126,12 +126,10 @@ bool WindowedSwapchain::init(Device &dev, NotNull<core::Loop>, const core::Surfa
 
 	_extent = cfg.extent;
 
-	// The EGLWindowSurface is created lazily in present(), not here. A wl_egl_window can be made
-	// before the compositor maps anything, so this is no longer about the window being ready - it
-	// is about staying self-healing: a driver that refuses the surface once (no libwayland-egl on
-	// this box, a window whose handle is not live yet) gets asked again on the next frame instead
-	// of failing swapchain creation outright. The native handle lives on the surface, which
-	// finalize() keeps reachable.
+	// The EGLWindowSurface is created lazily in present(), not here, to stay self-healing: a
+	// driver that refuses the surface once (no libwayland-egl on this box, a window whose handle
+	// is not live yet) is asked again on the next frame instead of failing swapchain creation
+	// outright. The native handle lives on the surface, which finalize() keeps reachable.
 	_wsurface = surface;
 	_windowSurface = EGL_NO_SURFACE;
 

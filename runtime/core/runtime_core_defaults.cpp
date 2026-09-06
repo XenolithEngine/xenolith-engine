@@ -63,6 +63,12 @@ THE SOFTWARE.
 #include "wasm/clock_gettime.cc"
 #include "wasm/sched.cc"
 #include "wasm/libc.h"
+#elif SPRT_EMBOX_USER
+// Freestanding like wasm and Windows -- the libc is ours, so the prototypes
+// come from our own header rather than from a platform <time.h>/<sched.h>.
+#include "embox_user/clock_gettime.cc"
+#include "embox_user/sched.cc"
+#include "embox_user/libc.h"
 #elif SPRT_HOSTED_RTOS
 // Both RTOS targets are hosted POSIX on their own libc, so the Linux
 // libc/sched/clock_gettime adapters apply verbatim — their <sched.h>, <time.h>,
@@ -246,6 +252,13 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	// inherit AppThread's id, Looper::isOnThisThread went false, and compileQueue
 	// posted into a mutex it already held. Kernel gettid() is the identity.
 	return ::gettid();
+#elif SPRT_EMBOX_USER
+	// gettid(178) is a real syscall here, so the kernel's thread id is available
+	// directly -- and it is the identity every other subsystem sees. Taking it
+	// from the kernel rather than from tl_self is the same argument the hosted
+	// RTOS branch above makes: a thread the libc did not create still has to
+	// answer correctly.
+	return (__SPRT_ID(pid_t))__el0_gettid();
 #else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
@@ -553,7 +566,11 @@ int __catclose_empty(__SPRT_ID(nl_catd) catd) {
 } // namespace sprt
 
 
-#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM)
+// Targets with a platform <sys/utsname.h> to forward to. The freestanding ones
+// (Windows, wasm, Embox EL0) each answer in their own file below -- there is no
+// platform header on their include path at all, so this is a compile-time split,
+// not a runtime one.
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EMBOX_USER)
 #include <sys/utsname.h>
 #include <sprt/c/sys/__sprt_utsname.h>
 
@@ -604,6 +621,10 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 #elif SPRT_WASM
 
 #include "wasm/uname.cc"
+
+#elif SPRT_EMBOX_USER
+
+#include "embox_user/uname.cc"
 
 #else
 

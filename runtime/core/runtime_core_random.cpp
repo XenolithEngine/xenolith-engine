@@ -28,6 +28,8 @@ THE SOFTWARE.
 #include "windows/getrandom.cc"
 #elif SPRT_WASM
 #include "wasm/getrandom.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/getrandom.cc"
 #else
 #include <stdlib.h>
 #include <unistd.h>

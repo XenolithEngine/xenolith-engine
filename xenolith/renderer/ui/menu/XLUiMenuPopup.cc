@@ -89,47 +89,13 @@ static void MenuPopup_applySide(sprt::window::WindowPlacement &ret, MenuSide sid
 }
 
 sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor, MenuSide side, IVec2 offset) {
-	using namespace sprt::window;
-
-	WindowPlacement ret;
+	sprt::window::WindowPlacement ret;
 	ret.offset = offset;
 
-	auto scene = anchor->getScene();
-	auto content = scene ? scene->getContent() : nullptr;
-	if (!content) {
-		return ret;
-	}
-
-	const auto size = anchor->getContentSize();
-
-	/* Four corners, not origin+size: the node may be rotated or scaled, and the rect the menu hangs
-	off has to be the one that is actually on screen.
-
-	Both conversions are load-bearing. convertToWorldSpace alone answers in SCENE space, which is
-	physical pixels - Scene scales its whole subtree by the density - while WindowPlacement is in
-	the window's logical points. On a HiDPI display the two differ by a factor of two, and mixing
-	them puts the menu somewhere off the window entirely. */
-	Vec2 corners[4] = {
-		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2::ZERO)),
-		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(size.width, 0.0f))),
-		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(0.0f, size.height))),
-		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(size.width, size.height))),
-	};
-
-	Vec2 low = corners[0];
-	Vec2 high = corners[0];
-	for (auto &it : corners) {
-		low.x = sprt::min(low.x, it.x);
-		low.y = sprt::min(low.y, it.y);
-		high.x = sprt::max(high.x, it.x);
-		high.y = sprt::max(high.y, it.y);
-	}
-
-	// Scene nodes are Y-up; WindowPlacement is Y-down from the parent content's top-left.
-	const float topYDown = content->getContentSize().height - high.y;
-
-	ret.anchorRect = IRect(int32_t(std::lround(low.x)), int32_t(std::lround(topYDown)),
-			uint32_t(std::lround(high.x - low.x)), uint32_t(std::lround(high.y - low.y)));
+	// The corners, the conversion through the scene content and the Y flip all live in
+	// ui::placementAnchorRect - a menu, a dropdown and a hint have to answer "where is the anchor"
+	// the same way, so there is one answer and this is not it.
+	ret.anchorRect = placementAnchorRect(anchor);
 
 	MenuPopup_applySide(ret, side);
 
@@ -141,21 +107,9 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 	sprt::window::WindowPlacement ret;
 	ret.offset = offset;
 
-	auto scene = space->getScene();
-	auto content = scene ? scene->getContent() : nullptr;
-	if (!content) {
-		return ret;
-	}
-
-	// A point has no corners, so what placementForNode measures is skipped and what it CONVERTS is
-	// not: the two-step through the content is what undoes the scene's density scale, and a menu
-	// placed without it lands off the window on a HiDPI display.
-	const auto at = content->convertToNodeSpace(space->convertToWorldSpace(location));
-
-	// An empty rect. Every backend reads a zero-sized anchor as "this point", which is what a
-	// context menu means, and it keeps the four sides answering as they do for a node.
-	ret.anchorRect = IRect(int32_t(std::lround(at.x)),
-			int32_t(std::lround(content->getContentSize().height - at.y)), 0, 0);
+	// Empty by construction: every backend reads a zero-sized anchor as "this point", which is what
+	// a context menu means, and it keeps the four sides answering as they do for a node.
+	ret.anchorRect = placementAnchorPoint(space, space->convertToWorldSpace(location));
 
 	MenuPopup_applySide(ret, side);
 
@@ -166,7 +120,7 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 //
 // What is a MENU here is the measurement, the chain and the keyboard; everything a popup surface
 // has to do to be one - the sheet its own scene needs, the panel's level and placement, the tap
-// that closes it - is ui::openPopupSurface's, and this used to be a copy of it.
+// that closes it - is left to ui::openPopupSurface.
 static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
 		MenuConfig &&config, MenuPopupChain *parent) {

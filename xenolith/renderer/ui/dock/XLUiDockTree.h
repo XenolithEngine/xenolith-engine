@@ -65,6 +65,14 @@ struct SP_PUBLIC DockTreeNode {
 	Vector<String> panels; // tab order
 	size_t active = 0; // index into `panels`
 
+	/* COLLAPSED TO ITS TAB STRIP: the body is out of the way and the frame's minimum is the strip's
+	own size, whatever the panels parked here declare.
+
+	It is a property of the SLOT and not of the node, because it has to survive a save: an icon rail
+	somebody shut stays shut across a restart, and a flag on the scene node would be rebuilt as
+	"open" every time the tree materialized itself. */
+	bool collapsed = false;
+
 	// --- the scene node, opaque here ---------------------------------------
 	Rc<Node> node;
 
