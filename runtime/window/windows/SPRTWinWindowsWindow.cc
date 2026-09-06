@@ -1096,8 +1096,10 @@ Status WindowsWindow::handleMouseWheel(Vec2 value) {
 		}},
 	});
 
-	event.point.valueX = value.x * 10.0f;
-	event.point.valueY = value.y * 10.0f;
+	// `value` is already in detents (WM_MOUSEWHEEL's delta over WHEEL_DELTA), so this is the same
+	// conversion xcb makes: one notch, one InputScrollNotch.
+	event.point.valueX = value.x * InputScrollNotch;
+	event.point.valueY = value.y * InputScrollNotch;
 
 	_pendingEvents.emplace_back(sprt::move(event));
 	return Status::Ok;

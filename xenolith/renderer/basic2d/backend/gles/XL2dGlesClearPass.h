@@ -35,11 +35,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::gles {
 // backend is referred by its full name through the alias.
 namespace glesb = stappler::xenolith::gles;
 
-// M1 clear pass: one graphics pass that clears its output attachment to the background colour
+// Clear-only queue: one graphics pass that clears its output attachment to the background colour
 // and presents it. The scene's draw commands travel input attachments (VertexInput2d, lights,
 // particles), but this queue declares none of them - a submit with no target returns false in
 // FrameRequest::addInput and is dropped without an error, so a screenshot reads exactly the
-// cleared colour. Replaced by the flat pass in M2.
+// cleared colour. A scene draws through FlatPass instead; this one is the bring-up minimum.
 class SP_PUBLIC ClearPass : public core::QueuePass {
 public:
 	struct RenderQueueInfo {
@@ -65,7 +65,7 @@ protected:
 };
 
 // The executor is the backend's own handle: it binds the framebuffer, applies the clear and
-// submits through a GL fence. Nothing to add in M1 - there are no subpasses to record.
+// submits through a GL fence. Nothing to add - there are no subpasses to record.
 class SP_PUBLIC ClearPassHandle : public glesb::QueuePassHandle {
 public:
 	virtual ~ClearPassHandle() = default;

@@ -854,25 +854,29 @@ void XcbWindow::handleButtonPress(xcb_button_press_event_t *ev) {
 		}},
 	});
 
+	// One button press IS one detent on X11 - buttons 4-7 are how the wheel is reported - so the
+	// amount is exactly one notch's worth. Named rather than written out: a consumer that wants
+	// notches divides by the same constant, and a literal on each side of that division is how the
+	// two drift apart. See InputScrollNotch.
 	switch (btn) {
 	case InputMouseButton::MouseScrollUp:
 		event.event = InputEventName::Scroll;
 		event.point.valueX = 0.0f;
-		event.point.valueY = 10.0f;
+		event.point.valueY = InputScrollNotch;
 		break;
 	case InputMouseButton::MouseScrollDown:
 		event.event = InputEventName::Scroll;
 		event.point.valueX = 0.0f;
-		event.point.valueY = -10.0f;
+		event.point.valueY = -InputScrollNotch;
 		break;
 	case InputMouseButton::MouseScrollLeft:
 		event.event = InputEventName::Scroll;
-		event.point.valueX = 10.0f;
+		event.point.valueX = InputScrollNotch;
 		event.point.valueY = 0.0f;
 		break;
 	case InputMouseButton::MouseScrollRight:
 		event.event = InputEventName::Scroll;
-		event.point.valueX = -10.0f;
+		event.point.valueX = -InputScrollNotch;
 		event.point.valueY = 0.0f;
 		break;
 	default: break;

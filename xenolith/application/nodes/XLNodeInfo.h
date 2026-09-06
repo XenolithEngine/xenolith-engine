@@ -49,9 +49,9 @@ enum class NodeVisitFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(NodeVisitFlags)
 
-// This flags used to alter Node::handle<X> behavior
+// Flags to alter Node::handle<X> behavior
 // If some flag is set, corresponding function will be called not only when node's
-// own dirty flag is set. but when dirty flag was set in some of node's parents
+// own dirty flag is set, but when dirty flag was set in some of node's parents
 enum class NodeEventFlags : uint32_t {
 	None,
 
@@ -61,8 +61,8 @@ enum class NodeEventFlags : uint32_t {
 	// Call Node::handleContentSizeDirty if parent ContentSize was dirty
 	HandleParentContentSize = 1 << 1,
 
-	// NB: bit 1 << 2 was NodeEventFlags::HandleComponents; ancestor components-dirty is now
-	// opted into per-System via SystemFlags::HandleAncestorComponents (or a Node subclass via
+	// NB: bit 1 << 2 is unused - ancestor components-dirty is opted into per-System via
+	// SystemFlags::HandleAncestorComponents (or a Node subclass via
 	// Node::setWantsAncestorComponents), driven by a subtree listener counter
 
 	// Call Node::handleReorderChildDirty if parent childs was updated

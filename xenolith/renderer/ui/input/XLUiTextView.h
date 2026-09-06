@@ -261,11 +261,11 @@ protected:
 //   .text-view-current-line { background-color:rgba(255,255,255,.05); }
 //
 // TWO LAYERS OF STATE. The document lives in a TextDocument, rendered as a Label per visible
-// block (see TextViewContainer). TextInput's _inputState no longer holds the document -
-// it holds a WINDOW of it, a few kilobytes around the caret, because the IME contract carries
-// its whole string through every request and echo: with the document in there, every keystroke
-// would cost O(document) in the echo path. XLTextInputManager itself advises sending "only the
-// current paragraph"; this class is that advice, implemented.
+// block (see TextViewContainer). TextInput's _inputState holds only a WINDOW of it, a few
+// kilobytes around the caret, because the IME contract carries its whole string through every
+// request and echo: with the document in there, every keystroke would cost O(document) in the
+// echo path. XLTextInputManager itself advises sending "only the current paragraph"; this class
+// is that advice, implemented.
 //
 // The window protocol, in one paragraph. Every push carries a serial (a small engine hook), and
 // every edit the runtime's TextInputProcessor makes starts as a copy of the state it is based

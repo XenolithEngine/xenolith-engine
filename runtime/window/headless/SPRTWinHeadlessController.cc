@@ -94,6 +94,23 @@ bool HeadlessContextController::init(NotNull<Context> ctx, ContextConfig &&confi
 	// support requirement). acquireDefaultConfig normally sets it, but a controller constructed
 	// straight from a hand-built config may have missed that path.
 	_contextInfo->flags |= ContextFlags::Headless;
+
+	/* THE DECORATION METRICS, because WindowCapabilities::UserSpaceDecorations is advertised and
+	the eight resize edges are laid out from these numbers.
+
+	`resizeInset` is the whole of it, and 6pt is the Windows figure rather than the Linux one on
+	purpose. WindowDecorations hangs each resize bar OUTSIDE the content box, `inset` back in - so
+	with an inset of zero every one of them lands outside the surface and cannot be pressed at all.
+	That works on X11 because the surface is inset within a larger window whose margin is the
+	shadow; here, as on Win32, the surface IS the window, so the grips have to be inside it.
+
+	`borderRadius` and `shadowWidth` stay ZERO, which is not an omission: a pseudo-window has
+	nothing behind it and no compositor to blend against, so a rounded corner would cut pixels out
+	of the captured frame with nothing to show through, and a shadow would be drawn onto the
+	application's own ground. A headless frame is therefore the frame a squared-off desktop window
+	presents - which is also what keeps a capture comparable with the windowed one. */
+	_themeInfo.decorations.resizeInset = 6.0f;
+
 	return true;
 }
 
@@ -107,8 +124,8 @@ bool HeadlessContextController::hasPointerDevice() const {
 }
 
 WindowCapabilities HeadlessContextController::getCapabilities() const {
-	// The one thing this controller really provides. Everything else on the list needs a window
-	// system: decorations, cursors, fullscreen and mode switching, an OS icon, native dialogs.
+	// What this controller really provides. Everything else on the list needs a window system:
+	// server-side decorations, cursors, fullscreen and mode switching, an OS icon, native dialogs.
 	//
 	// Subwindows is not a courtesy bit: createWindow really does build an auxiliary window with its
 	// own pseudo-swapchain, so ui::SubWindow takes the native path here and a headless run
@@ -116,7 +133,16 @@ WindowCapabilities HeadlessContextController::getCapabilities() const {
 	// WindowPosition: the pseudo-window owns its own geometry outright, so the position a caller
 	// asks for is the position it gets - which is what makes a save/restore round trip testable
 	// with no window system in play.
-	return WindowCapabilities::Subwindows | WindowCapabilities::WindowPosition;
+	// UserSpaceDecorations is not one either, and it is the cheapest of the three to be honest
+	// about: the capability says the window system draws NO frame and the application draws its
+	// own, and that is what a pseudo-window is by construction - there is no title bar, no border
+	// and no shadow anywhere but in the application's own surface. So the flag survives
+	// Context::configureWindow, SceneContent builds the decorations node, and a headless frame is
+	// the frame that application draws for itself. The other half - what a press on one of those
+	// grips DOES - is HeadlessWindow's; see the note there, and see init() for the one theme value
+	// that decides whether the grips can be reached at all.
+	return WindowCapabilities::Subwindows | WindowCapabilities::WindowPosition
+			| WindowCapabilities::UserSpaceDecorations;
 }
 
 void HeadlessContextController::openUrl(StringView url) {

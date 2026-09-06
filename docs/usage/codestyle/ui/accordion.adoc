@@ -209,7 +209,9 @@ container holds what, without guessing a pixel. `accordion.builds` is the one th
 rebuilt panel looks identical on screen and in a layout dump, and has silently lost everything the
 user did to it.
 
-`examples/window/dock` is the same arrangement to drive by hand.
+`examples/window/form` is the accordion on its own, with a form in every section, to drive by
+hand. (`examples/window/dock` used to carry one beside its dock; it is now about the dock's own
+two kinds of tab strip and nothing else.)
 
 ## Related
 

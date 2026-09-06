@@ -48,7 +48,12 @@ THE SOFTWARE.
 // priorities/facilities/options surface must be visible there too. The
 // Linux/musl ABI values match their own <syslog.h>, so the same definitions
 // work for every freestanding target.
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS)
+// Every target whose libc is the sprt shim: no platform <syslog.h> to forward
+// to, so the priority/facility constants are defined here. They have to exist
+// even where nothing logs -- OpenSSL's bss_log.c names LOG_DAEMON/LOG_EMERG
+// unconditionally, and on Embox EL0 the syslog calls themselves are silent
+// no-ops (libc_impl embox_user/syslog.cc).
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER)
 
 // clang-format off
 // priorities (highest to lowest)
@@ -113,7 +118,7 @@ void vsyslog(int __priority, const char *__format, va_list __ap);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 
 #endif
 

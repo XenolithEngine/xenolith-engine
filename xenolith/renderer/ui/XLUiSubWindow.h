@@ -206,6 +206,37 @@ protected:
 	bool _closeFired = false;
 };
 
+/** The anchor rect a WindowPlacement wants for `anchor`: the box that node actually occupies, in
+the coordinates the placement is resolved in.
+
+This is the arithmetic every hand-written popup in this tree has got wrong at least once, so it has
+one answer and everything that opens off a node calls it - menus, dropdowns, hints:
+
+- the box is built from the node's four CORNERS, not from its origin and size, because the node may
+  be rotated or scaled and what the popup hangs off is the box that is actually on screen;
+- the corners are then converted into the scene CONTENT's space. Both conversions are load-bearing:
+  convertToWorldSpace alone answers in SCENE space, which is physical pixels - Scene scales its
+  whole subtree by the density - while WindowPlacement is in the window's logical points. On a
+  HiDPI display the two differ by a factor of two, and mixing them puts the popup somewhere off the
+  window entirely;
+- and it is flipped into WindowPlacement's Y-DOWN space at the end, from the content's top-left.
+
+Answers an empty rect for a node that is in no scene, which is the same thing every backend reads
+as "the origin", and is the only sane answer when there is no space to be placed in. */
+SP_PUBLIC IRect placementAnchorRect(NotNull<Node> anchor);
+
+/** The same, for a POINT rather than a node - what a context menu and a pointer-anchored hint open
+off.
+
+`worldLocation` is in WORLD space, which is what an input event carries and what
+convertToWorldSpace answers; `inScene` is any node of the scene the point belongs to, and is only
+there to find the content. A caller holding a point in some node's OWN coordinates converts it
+first - naming the space in the signature is what keeps the density scale from being applied twice
+or not at all.
+
+The rect comes out EMPTY, which every backend reads as "this exact point". */
+SP_PUBLIC IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation);
+
 } // namespace ui
 } // namespace stappler::xenolith
 

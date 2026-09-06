@@ -173,8 +173,8 @@ BytesView getDevBearerKey() {
 // size AND the decompressed size, so a compressed frame can never expand past it.
 static constexpr uint32_t kMaxFrameSize = 64u * 1'024 * 1'024;
 
-// The single decision point for "may this frame decompress to rawSize", so the two decode paths
-// (readFrame and MessageReader::append) cannot drift apart again -- they used to disagree by 4x.
+// The single decision point for "may this frame decompress to rawSize", shared by both decode
+// paths (readFrame and MessageReader::append) so they cannot drift apart.
 //
 // The bound is ABSOLUTE, with no compression-ratio test on top, and that is deliberate. A ratio cap
 // would have to sit below what LZ4 can actually produce to reject anything at all (its own ceiling
@@ -713,8 +713,8 @@ GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView 
 		buf = writeData(buf, dict);
 	}
 
-	// Free before branching: the early return on a write failure used to leak `d` whenever
-	// __sprt_malloca had fallen back to the heap (a large suggested dictionary).
+	// Free before branching: the early return on a write failure would otherwise leak `d` whenever
+	// __sprt_malloca fell back to the heap (a large suggested dictionary).
 	auto sent = streamWriteAll(conn, d, clientHelloSize + sizeof(MessageHeader), deadline);
 
 	__sprt_freea(d);

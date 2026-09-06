@@ -42,6 +42,8 @@ THE SOFTWARE.
 #include <sprt/c/cross/nuttx_sprt/errno.h>
 #elif SPRT_EMBOX
 #include <sprt/c/cross/embox_sprt/errno.h>
+#elif SPRT_EMBOX_USER
+#include <sprt/c/cross/embox_user_sprt/errno.h>
 #elif SPRT_WINDOWS
 #include <sprt/c/cross/windows_sprt/errno.h>
 #else
