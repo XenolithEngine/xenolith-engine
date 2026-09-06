@@ -169,11 +169,10 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			panel->addStyleClass(config.panelClass);
 		}
 
-		/* A SceneLayout2d paints nothing, so the surface IS this panel - and it has to be
-		RenderingLevel::Solid: opaque geometry is drawn first and writes depth, while the surface
-		pass only TESTS against it, so a panel left at the default level cannot cover the labels of
-		whatever is underneath it on the overlay path. */
-		panel->setRenderingLevel(RenderingLevel::Solid);
+		/* A SceneLayout2d paints nothing, so the surface IS this panel. It keeps the DEFAULT
+		rendering level: on the overlay path SubWindow::openOverlay lifts the whole layout onto
+		RenderingLevel::Overlay, which is a pass of its own drawn after everything, and on the
+		native path there is nothing behind the panel to be resolved against. */
 		panel->setPathColor(config.fallbackColor, false);
 		panel->setAnchorPoint(Anchor::TopLeft);
 		panel->setContentSize(Size2(float(size.width), float(size.height)));
@@ -212,7 +211,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			tap has to be measured against, and a menu's handler needs the chain that content made.
 
 			WHAT KEEPS THE PRESS OFF THE SCENE UNDER THE OVERLAY IS THE FOCUS GROUP, not a
-			swallowing listener, and the distinction is the whole of (6).
+			swallowing listener, and the distinction is the whole of (5).
 
 			A swallowed event makes its own listener the EXCLUSIVE owner of the rest of the
 			gesture, so a layout-wide listener that answered "handled" to every press took the

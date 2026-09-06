@@ -403,6 +403,12 @@ a rule on the type replaces it. The upright is a child of the line and not a
 descendant that inherits from it, so a sheet that re-colours one must name both. The highlight's is deliberately translucent —
 an opaque fill over a row would hide the row it is pointing at.
 
+`ui::DockDragGhost` (`dock-drag-ghost`) is in the same class and translucent for
+the same reason — but it is a `ui::Panel` with the Panel appliers registered, not
+a bare Layer, so `background-color: rgba(…)` on it reaches the **fill** rather
+than the node's opacity, and its caption and icon stay at full strength over a
+see-through ground.
+
 ### Writing a type applier: the reset command
 
 If you register an applier for your own node type, there is one contract that is

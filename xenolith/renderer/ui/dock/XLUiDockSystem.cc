@@ -316,6 +316,12 @@ bool DockSystem::activatePanel(StringView id) {
 	return true;
 }
 
+void DockSystem::handlePanelTapped(StringView id) {
+	if (_panelTapCallback) {
+		_panelTapCallback(id);
+	}
+}
+
 bool DockSystem::movePanel(StringView id, DockNodeHandle target, size_t index) {
 	auto targetLeaf = _tree.get(target);
 	if (!targetLeaf || !targetLeaf->isLeaf()) {
@@ -543,6 +549,8 @@ void DockSystem::setPanelClosedCallback(PanelCallback &&cb) { _panelClosedCallba
 void DockSystem::setPanelActivatedCallback(PanelCallback &&cb) {
 	_panelActivatedCallback = sp::move(cb);
 }
+
+void DockSystem::setPanelTapCallback(PanelCallback &&cb) { _panelTapCallback = sp::move(cb); }
 
 // --- resizing --------------------------------------------------------------
 

@@ -44,6 +44,21 @@ bool DockDragGhost::init(const DockPanelDescriptor &desc) {
 	// the widget's job and not the layout's.
 	setContentSize(DefaultSize);
 
+	/* And a PAINT to draw with, for the same reason - the way ui::TreeView ships the colours of its
+	own drag feedback. A ui::Panel with nothing declared is opaque WHITE (see Panel's own note), so
+	an application that has not written a `dock-drag-ghost` rule was dragging a solid white slab
+	around its scene.
+
+	Translucent on purpose: the ghost is under the pointer, over the very layout the drop is being
+	aimed at, and an opaque one hides the drop indicator it is meant to be aimed by. `withOpacity`
+	is what puts that alpha in the FILL - a Panel's own paint is its background, not the node's
+	opacity, so the icon and the caption stay at full strength.
+
+	This is a layer UNDER the sheet, not beside it: any `dock-drag-ghost { background-color: … }`
+	replaces it outright. */
+	setPathColor(Color4B(0x26, 0x26, 0x2E, 0xC8), true);
+	setBorderRadius(6.0f);
+
 	// Its own flex run, built here for the same reason DockTab builds one: the ghost is the tab's
 	// icon-and-title pair again, and it must look like one without an application having written a
 	// rule for a widget it did not create. NOTHING SIZES IT, though - the drag system only moves

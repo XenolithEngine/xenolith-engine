@@ -97,9 +97,11 @@ bool HeadlessWindow::init(NotNull<HeadlessContextController> c, Rc<WindowInfo> &
 		info->state |= WindowState::InputPointer;
 	}
 
-	// Subwindows is the one capability this backend really has: the controller creates auxiliary
-	// windows itself, so a menu can open a submenu off this window like anywhere else. Everything
-	// else - decorations, cursors, fullscreen, an OS icon - needs a window system.
+	// Subwindows and UserSpaceDecorations are the capabilities this backend really has: the
+	// controller creates auxiliary windows itself, so a menu can open a submenu off this window
+	// like anywhere else, and a window with no window system around it draws its own frame by
+	// definition. Everything else - server-side decorations, cursors, fullscreen, an OS icon -
+	// needs a window system.
 	return NativeWindow::init(c, move(info), c->getCapabilities());
 }
 
@@ -247,6 +249,160 @@ Status HeadlessWindow::setExtent(Extent2 extent) {
 	// (and captured) at the new extent.
 	_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::WindowResized);
 	return Status::Ok;
+}
+
+/* THE EMULATED WINDOW MANAGER'S HALF OF USER-SPACE DECORATIONS.
+
+The capability says the window system draws no frame and the application draws its own, which
+leaves the application with a title bar and eight resize edges that nothing acts on unless the
+backend acts on them. Every other backend hands the press to the WM - xcb _NET_WM_MOVERESIZE,
+Wayland xdg_toplevel::move, Win32 HTCAPTION - and there is no WM here, so this window moves and
+resizes ITSELF on the virtual screen it already owns. Without this the capability would be a
+courtesy bit: the flag would survive Context::configureWindow, the decorations would be built, and
+a drag on them would do nothing at all.
+
+A grip press is SWALLOWED, exactly as it is everywhere else: the window system takes the drag, so
+the scene never sees the press or anything after it. WindowLayerFlags::GripGuard has already
+resolved to nothing by the time _gripFlags is read (see NativeWindow::updateLayerState), so a
+button drawn on a title bar keeps its click.
+
+WHAT AN INJECTED COORDINATE MEANS WHILE A DRAG RUNS: it is read against the window rect AS IT WAS
+WHEN THE PRESS LANDED. A real pointer reports root coordinates and the window slides out from under
+it; a synthetic one has no root to report, so the drag is defined in the frame the caller was
+aiming in - which is what makes a drag from (x0, y0) to (x1, y1) move the window by exactly
+(x1 - x0, y0 - y1), whatever happened in between. */
+void HeadlessWindow::handleInputEvents(Vector<InputEventData> &&events) {
+	// The flag is INHERITED by every auxiliary window of a decorated one (see SubWindow::open), and
+	// a menu or a hint must not be draggable by its own edges - it is placed by its owner and
+	// dismissed by a press, not resized. Same exclusion every other backend makes, spelled the same
+	// way: `auxiliary` is Popup and Tooltip, and Dialog and Utility are ordinary windows.
+	const bool auxiliary = _info->type == WindowType::Popup || _info->type == WindowType::Tooltip;
+	if (auxiliary || !hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		NativeWindow::handleInputEvents(sprt::move(events));
+		return;
+	}
+
+	Vector<InputEventData> forwarded;
+	forwarded.reserve(events.size());
+
+	for (auto &event : events) {
+		if (_gripDrag != WindowLayerFlags::None) {
+			switch (event.event) {
+			case InputEventName::Move:
+			case InputEventName::MouseMove: updateGripDrag(event.getLocation()); continue;
+			case InputEventName::End:
+			case InputEventName::Cancel: _gripDrag = WindowLayerFlags::None; continue;
+			default: break;
+			}
+		} else if (event.event == InputEventName::Begin
+				&& event.getButton() == InputMouseButton::MouseLeft) {
+			// The layer under the press has to be resolved BEFORE the grip is read. A real pointer
+			// could not have pressed without travelling there first, so every other backend reads
+			// a grip its own motion handler already computed; an injected stream is routinely a
+			// Begin with no move in front of it, and would engage whatever the last hover left.
+			handleMotionEvent(event);
+
+			auto grip = _gripFlags & WindowLayerFlags::GripMask;
+			if (grip != WindowLayerFlags::None && startGripDrag(grip, event.getLocation())) {
+				continue;
+			}
+		}
+		forwarded.emplace_back(event);
+	}
+
+	NativeWindow::handleInputEvents(sprt::move(forwarded));
+}
+
+bool HeadlessWindow::startGripDrag(WindowLayerFlags grip, Vec2 local) {
+	// The emulated WM has no policy of its own beyond the one init() derived from the creation
+	// flags - so what an application asked not to be allowed, it is not allowed here either.
+	const bool move = grip == WindowLayerFlags::MoveGrip;
+	if (!hasFlag(_info->state, move ? WindowState::AllowedMove : WindowState::AllowedResize)) {
+		return false;
+	}
+
+	_gripDrag = grip;
+	_gripAnchor = local;
+	_gripRect = IRect(_info->rect.x, _info->rect.y, _extent.width, _extent.height);
+
+	// A menu can not outlive its owner being grabbed - the anchor it was placed against is about to
+	// move. Every backend takes them down on a reconfigure; here the reconfigure starts now.
+	_controller->dismissChildPopups(this, "owner-grabbed");
+	return true;
+}
+
+void HeadlessWindow::updateGripDrag(Vec2 local) {
+	// The window's own space is Y-UP and in logical points; the virtual screen is Y-DOWN. Both
+	// deltas are taken against the anchor frozen at the press - see the note above.
+	const int32_t dx = int32_t(roundf(local.x - _gripAnchor.x));
+	const int32_t dy = -int32_t(roundf(local.y - _gripAnchor.y));
+
+	if (_gripDrag == WindowLayerFlags::MoveGrip) {
+		applyGripGeometry(
+				IRect(_gripRect.x + dx, _gripRect.y + dy, _gripRect.width, _gripRect.height));
+		return;
+	}
+
+	int32_t left = _gripRect.x;
+	int32_t top = _gripRect.y;
+	int32_t right = left + int32_t(_gripRect.width);
+	int32_t bottom = top + int32_t(_gripRect.height);
+
+	switch (_gripDrag) {
+	case WindowLayerFlags::ResizeTopLeftGrip:
+		left += dx;
+		top += dy;
+		break;
+	case WindowLayerFlags::ResizeTopGrip: top += dy; break;
+	case WindowLayerFlags::ResizeTopRightGrip:
+		right += dx;
+		top += dy;
+		break;
+	case WindowLayerFlags::ResizeRightGrip: right += dx; break;
+	case WindowLayerFlags::ResizeBottomRightGrip:
+		right += dx;
+		bottom += dy;
+		break;
+	case WindowLayerFlags::ResizeBottomGrip: bottom += dy; break;
+	case WindowLayerFlags::ResizeBottomLeftGrip:
+		left += dx;
+		bottom += dy;
+		break;
+	case WindowLayerFlags::ResizeLeftGrip: left += dx; break;
+	default: return;
+	}
+
+	auto clamped = clampWindowExtent(
+			Extent2(uint32_t(sprt::max(1, right - left)), uint32_t(sprt::max(1, bottom - top))),
+			_info->minExtent, _info->maxExtent);
+
+	// The edge the grip does NOT hold stays put, so a window dragged past its minimum stops growing
+	// on the side under the pointer instead of sliding away from it.
+	if (left != _gripRect.x) {
+		left = right - int32_t(clamped.width);
+	}
+	if (top != _gripRect.y) {
+		top = bottom - int32_t(clamped.height);
+	}
+
+	applyGripGeometry(IRect(left, top, clamped.width, clamped.height));
+}
+
+void HeadlessWindow::applyGripGeometry(const IRect &rect) {
+	const bool moved = rect.x != _info->rect.x || rect.y != _info->rect.y;
+
+	_info->rect.x = rect.x;
+	_info->rect.y = rect.y;
+
+	if (applyExtent(Extent2(rect.width, rect.height))) {
+		// Same path a WM-driven resize takes; applyExtent has already reported the geometry and
+		// taken the child popups down.
+		_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::WindowResized);
+	} else if (moved) {
+		// A move changes nothing about the swapchain, but everything about where a popup would be
+		// placed - and it is the one geometry change this backend could not make before.
+		_controller->notifyWindowGeometryChanged(this);
+	}
 }
 
 // There is no on-screen keyboard to raise, but the window still stands in for the IME so that a

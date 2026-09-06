@@ -148,6 +148,7 @@ public:
 			size_t index = maxOf<size_t>());
 	virtual bool closePanel(StringView id) override;
 	virtual bool activatePanel(StringView id) override;
+	virtual void handlePanelTapped(StringView id) override;
 	bool movePanel(StringView id, DockNodeHandle target, size_t index = maxOf<size_t>());
 	virtual bool isPanelOpen(StringView id) const override;
 
@@ -228,6 +229,15 @@ public:
 	void setPanelOpenedCallback(PanelCallback &&);
 	void setPanelClosedCallback(PanelCallback &&);
 	void setPanelActivatedCallback(PanelCallback &&);
+
+	/* A person pressed a tab. Fires on every tap, INCLUDING the one that changed nothing, and never
+	on a programmatic activation - see PanelHost::handlePanelTapped for why that is a different
+	event from "activated" and not a louder version of it.
+
+	This is what a collapsed side rail listens to: its tab strip stays visible and hit-testable
+	while its body is folded away, so the tab is there to be clicked and nothing else would report
+	the click. */
+	void setPanelTapCallback(PanelCallback &&);
 
 	// --- resizing ----------------------------------------------------------
 
@@ -337,6 +347,7 @@ protected:
 	PanelCallback _panelOpenedCallback;
 	PanelCallback _panelClosedCallback;
 	PanelCallback _panelActivatedCallback;
+	PanelCallback _panelTapCallback;
 };
 
 } // namespace stappler::xenolith::ui

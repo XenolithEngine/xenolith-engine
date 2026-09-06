@@ -53,6 +53,23 @@ public:
 	// Bring the panel forward: activate its tab, expand its section.
 	virtual bool activatePanel(StringView id) = 0;
 
+	/* A PERSON pressed the panel's handle. ui::DockTab raises it, right after activatePanel, so a
+	handler already sees the new active panel; a host whose handle is something else raises it from
+	there.
+
+	Separate from activation, and not a rename of it, for two reasons that pull in opposite
+	directions:
+
+	 - it fires on a tap that CHANGED NOTHING - the front tab of a stack, the only tab of a place -
+	   which is exactly the click a collapsed rail has to answer to, and which activatePanel returns
+	   early on;
+	 - it does NOT fire on a programmatic activation - restoring a saved layout, a scripted command -
+	   so an application can answer the CLICK without answering its own bookkeeping.
+
+	Optional: the default does nothing, so a host that has no notion of being folded away (an
+	AccordionView) need not know this exists. */
+	virtual void handlePanelTapped(StringView id) { }
+
 	// Take the panel out and treat it as closed by the user. The node survives in the registry, so
 	// re-opening it brings back exactly what was there.
 	virtual bool closePanel(StringView id) = 0;

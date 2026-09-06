@@ -22,11 +22,30 @@
 
 #include "widgets/CanvasViewLayout.h"
 
+#include "XL2dLabel.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 namespace {
+
+// The control's parts by the names the widget gives them. A test-only walk on purpose: the widget
+// owes a caller the control and not a handle on each of its three pieces, and a stand that needs
+// one is a stand, not an application.
+static Node *CanvasViewLayout_find(Node *parent, StringView name) {
+	if (!parent) {
+		return nullptr;
+	}
+	for (auto &it : parent->getChildren()) {
+		if (it->getName() == name) {
+			return it;
+		}
+		if (auto found = CanvasViewLayout_find(it, name)) {
+			return found;
+		}
+	}
+	return nullptr;
+}
 
 // One at the origin, one up-and-right, one down-and-left. Two markers would not catch a sign error
 // on either axis, and none of the three numbers is a multiple of another.
@@ -93,6 +112,41 @@ Value CanvasViewLayout::encodeState() const {
 
 	ret.setBool(_canvas->isClipped(), "clipped");
 
+	/* THE FLOATING CONTROL, and the two button centres in SCENE coordinates rather than its own.
+
+	A check that pressed the buttons through a socket shortcut would prove the callbacks and nothing
+	about the control being reachable; the point of reporting where a pointer would land is that the
+	check can press them with a real click, and a control laid out off the surface fails. */
+	if (auto zoom = _canvas->getZoomControl()) {
+		auto &z = ret.newDict("zoomControl");
+		z.setBool(true, "enabled");
+		z.setDouble(zoom->getPosition().x, "x");
+		z.setDouble(zoom->getPosition().y, "y");
+		z.setDouble(zoom->getContentSize().width, "width");
+		z.setDouble(zoom->getContentSize().height, "height");
+
+		auto encodeAt = [&](StringView name, Node *node) {
+			if (!node) {
+				return;
+			}
+			auto &b = z.newDict(name);
+			const auto size = node->getContentSize();
+			const auto at = node->convertToWorldSpace(Vec2(size.width * 0.5f, size.height * 0.5f));
+			b.setDouble(at.x, "x");
+			b.setDouble(at.y, "y");
+		};
+		encodeAt("minus", CanvasViewLayout_find(zoom, "canvas-zoom-out"));
+		encodeAt("plus", CanvasViewLayout_find(zoom, "canvas-zoom-in"));
+
+		if (auto label = dynamic_cast<basic2d::Label *>(
+					CanvasViewLayout_find(zoom, "canvas-zoom-value"))) {
+			z.setString(label->getString8(), "value");
+		}
+	} else {
+		auto &z = ret.newDict("zoomControl");
+		z.setBool(false, "enabled");
+	}
+
 	auto &markers = ret.newDict("markers");
 	for (auto &it : _markers) {
 		auto &m = markers.newDict(it.first.name);
@@ -136,13 +190,34 @@ void CanvasViewLayout::registerCommands() {
 		return encodeState();
 	});
 
-	// The notch, through the SAME constant the wheel goes through. A check that spelled 90 itself
+	// The notch, through the SAME constant the wheel goes through. A check that spelled 1.1 itself
 	// would be asserting its own arithmetic; this asserts the widget's.
 	addCommand("wheel", "Zoom as the wheel would: {x, y, notches}", [this](Value &&args) {
 		const auto notches = float(args.getDouble("notches"));
 		_canvas->zoomAt(Vec2(float(args.getDouble("x")), float(args.getDouble("y"))),
-				sprt::geom::wheelZoomFactor(-notches * ui::CanvasView::WheelNotchPixels));
+				sprt::geom::wheelZoomRatio(notches, ui::CanvasView::ZoomStepRatio));
 		return encodeState();
+	});
+
+	/* A SCENE POINT, ANSWERED IN BOTH SPACES, and it is what makes "no parallax" checkable.
+
+	Parallax is not a number the widget reports; it is a property of two moments - the world point
+	under the pointer before a drag and the one under it after. A check that wanted to compute that
+	itself would need this node's transform, which is exactly what it must not have to reproduce.
+	So it asks for the answer at a point, drags, and asks again. */
+	addCommand("probe", "A scene point in the canvas's spaces: {x, y}", [this](Value &&args) {
+		const auto scene = Vec2(float(args.getDouble("x")), float(args.getDouble("y")));
+		const auto node = _canvas->convertToNodeSpace(scene);
+		const auto world = _canvas->worldLocation(scene);
+
+		Value ret;
+		auto &n = ret.newDict("node");
+		n.setDouble(node.x, "x");
+		n.setDouble(node.y, "y");
+		auto &w = ret.newDict("world");
+		w.setDouble(world.x, "x");
+		w.setDouble(world.y, "y");
+		return ret;
 	});
 
 	addCommand("fit", "Frame every marker", [this](Value &&) {
@@ -171,8 +246,22 @@ void CanvasViewLayout::registerCommands() {
 		Value ret;
 		ret.setDouble(_canvas->getZoomLimits().min, "min");
 		ret.setDouble(_canvas->getZoomLimits().max, "max");
-		ret.setDouble(ui::CanvasView::WheelNotchPixels, "notchPixels");
+		ret.setDouble(ui::CanvasView::ZoomStepRatio, "stepRatio");
+
+		// What one detent of the wheel is worth in a Scroll event. Reported so the check can inject
+		// a REAL event of exactly one notch without spelling the figure itself - the amount and the
+		// division the widget makes by it are the pair that was wrong, and a check carrying its own
+		// copy of one of them could not have seen it.
+		ret.setDouble(sprt::window::InputScrollNotch, "notchAmount");
 		return ret;
+	});
+
+	addCommand("zoom-control", "Turn the floating control on or off: {enabled}",
+			[this](Value &&args) {
+		if (args.hasValue("enabled")) {
+			_canvas->setZoomControlEnabled(args.getBool("enabled"));
+		}
+		return encodeState();
 	});
 }
 
