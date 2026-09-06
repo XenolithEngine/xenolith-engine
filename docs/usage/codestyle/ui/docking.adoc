@@ -195,6 +195,24 @@ The flag is **tree state**, written by `save()`/`restore()` — a rail somebody 
 stays shut across a restart, which a flag on the scene node could not manage
 (the node is rebuilt every time the tree materializes itself).
 
+**A shut frame's strip is still live**, and that is what makes a click on one of
+its icons the natural way to open it back up. The seam for that is
+`setPanelTapCallback`, and it is deliberately not `setPanelActivatedCallback`:
+
+[source,cpp]
+----
+dock->setPanelTapCallback([this](StringView id) { setCollapsed(false); });
+----
+
+`activated` fires when the front panel of a place **changed**, so it says nothing
+on the commonest click there is — the tab that is already active, which for a
+one-panel rail is every click — and it *does* fire on `restore()`, which would
+unfold a rail while a saved layout was being put back. `tapped` is the other way
+round on both counts: a person pressed the handle, whatever it changed. It runs
+right after the activation, so a handler already sees the panel it asked for in
+front, and `PanelHost::handlePanelTapped` defaults to nothing so a host with no
+notion of being folded away need not know it exists.
+
 ## Re-declaring a parking place
 
 [source,cpp]
@@ -299,12 +317,20 @@ reaches the node as an intrinsic hint that no layout will ever read.
 when the sheet says nothing — so an unstyled ghost is still a surface and not a
 caption floating on its own.
 
-**A dock a sheet says nothing about is WHITE.** The frame, the tab strip and every
-tab are `ui::Panel`s, and a Panel with no fill declared is an opaque white surface —
-so the block above is not decoration, it is the difference between a dock and a white
-band across the top of every panel with a white ground behind it. The table INSIDE a
-frame is not in this class: `ui::TableView` paints its own cells transparent, because
-a cell is a window onto its row rather than a surface of its own.
+**The ghost is the one part that brings its own colour**, translucent, the way
+`ui::TreeView` ships the colours of its own drag feedback: it is dragged over
+scenes that may never have heard of `dock-drag-ghost`, and an opaque one hides
+the drop indicator it is being aimed by. A rule on the type replaces it outright.
+Note `background-color: rgba(…)` reaches the **fill** here, not the node's
+opacity, because the type has the Panel appliers registered — so a see-through
+ground leaves the caption and the icon at full strength.
+
+**The rest of a dock a sheet says nothing about is WHITE.** The frame, the tab strip
+and every tab are `ui::Panel`s, and a Panel with no fill declared is an opaque white
+surface — so the block above is not decoration, it is the difference between a dock and
+a white band across the top of every panel with a white ground behind it. The table
+INSIDE a frame is not in this class: `ui::TableView` paints its own cells transparent,
+because a cell is a window onto its row rather than a surface of its own.
 
 The **icon is imperative** — it comes from `DockPanelDescriptor::icon`, because
 the CSS subset has no `icon` property. The **divider thickness is a system

@@ -112,7 +112,20 @@ SPRT_API float clampZoom(float zoom, const ZoomLimits &);
 //
 // Exponential because equal notches must be equal RATIOS. A linear step is coarse when zoomed out
 // and imperceptible when zoomed in, which is the same complaint from both ends of the range.
+//
+// The PIXEL form, for a device that reports scrolling as a distance (a touchpad). Where the input is
+// counted in notches, `wheelZoomRatio` below says the same thing in the units a person picks.
 SPRT_API float wheelZoomFactor(float delta, float divisor = 500.0f);
+
+// The same curve stated as the RATIO one notch is worth: ratioPerNotch^notches.
+//
+// Identical arithmetic to wheelZoomFactor and identical reasoning for it - equal notches, equal
+// ratios - but parameterised by the number anyone actually chooses. "A notch is a tenth" is 1.1;
+// nobody has to know what a tenth is in pixels, and the two constants can no longer drift apart by
+// one of them being retuned.
+//
+// A ratio of zero or less is a fault further up and answers 1.0 rather than a zoom of nothing.
+SPRT_API float wheelZoomRatio(float notches, float ratioPerNotch);
 
 // Zoom by `factor` while the world point under `screenAnchor` stays under it.
 //

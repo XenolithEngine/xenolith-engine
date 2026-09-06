@@ -264,6 +264,15 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 		<< sprt::io_fixed(color.r, 2) << "," << sprt::io_fixed(color.g, 2) << ","
 		<< sprt::io_fixed(color.b, 2) << "," << sprt::io_fixed(color.a, 2) << ")";
 
+	// The one property of a node that has no appearance of its own and decides everything about
+	// where it lands: an overlay subtree is drawn in a pass of its own, last, at zero depth. Two
+	// nodes with the same box and the same z draw in opposite orders depending on it, so a check
+	// that a popup is ABOVE the scene has nothing else to read. Inherited and not escapable, so
+	// only the root of such a subtree says it.
+	if (node->isOverlay()) {
+		out << " overlay";
+	}
+
 	if (auto style = node->getComponent<InheritedColorStyle>()) {
 		if (style->defined & InheritedColorStyle::DefinedColor) {
 			out << " inhColor=(" << style->color.r << "," << style->color.g << "," << style->color.b

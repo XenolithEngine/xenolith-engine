@@ -105,10 +105,13 @@ struct SP_PUBLIC TooltipRequest {
 	// Never null; an empty Value when the target declared none.
 	const Value *data = nullptr;
 
-	// The target's world rect, as of the moment the delay elapsed.
+	// The target's world rect, as of the moment the delay elapsed. SCENE space - physical pixels,
+	// since the Scene scales its subtree by the density - which is the space a factory's own nodes
+	// convert to and from. It is NOT the space a WindowPlacement is resolved in; see
+	// ui::placementAnchorRect for that one.
 	Rect nodeWorldRect;
 
-	// World pointer position, same moment.
+	// Pointer position, same moment and the same scene space.
 	Vec2 pointer;
 
 	// The extent the surface was opened with. A factory that builds to a different size will be
