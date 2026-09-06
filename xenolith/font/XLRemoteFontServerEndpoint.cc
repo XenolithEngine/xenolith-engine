@@ -139,32 +139,28 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	if (!_owner || !_component || !_controller) {
 		return;
 	}
-	auto v = data::read<Interface>(payload);
-	auto depId = uint32_t(v.getInteger("dep"));
-	//log::source().info("RemoteFontServerEndpoint", "GlyphRequest: dep ", depId, ", ",
-	//		v.getValue("faces").size(), " face(s)");
+	uint32_t depId = 0;
+	Vector<GlyphRequestFace> faces;
+	if (!decodeGlyphRequest(payload, depId, faces)) {
+		log::source().warn("RemoteFontServerEndpoint", "malformed glyph request (", payload.size(),
+				" bytes)");
+		return;
+	}
 
 	Vector<FontUpdateRequest> requests;
-	for (auto &f : v.getValue("faces").asArray()) {
-		auto hash = uint64_t(f.getInteger("h"));
-		auto sit = _store.find(hash);
+	for (auto &f : faces) {
+		auto sit = _store.find(f.contentHash);
 		if (sit == _store.end()) {
 			log::source().warn("RemoteFontServerEndpoint", "glyph request for unknown font hash ",
-					hash);
+					f.contentHash);
 			continue;
 		}
-		auto spec = decodeFontSpec(f.getValue("spec"));
-		auto faceId = uint16_t(f.getInteger("id"));
 		// Adopt the client's FaceId so the CharIds it baked into its vertexes resolve in our atlas.
-		auto face = _library->openFontFace(sit->second, spec, faceId);
+		auto face = _library->openFontFace(sit->second, f.spec, f.faceId);
 		if (!face) {
 			continue;
 		}
-		Vector<char32_t> chars;
-		for (auto &c : f.getValue("chars").asArray()) {
-			chars.emplace_back(char32_t(c.getInteger()));
-		}
-		requests.emplace_back(FontUpdateRequest{sp::move(face), sp::move(chars), false});
+		requests.emplace_back(FontUpdateRequest{sp::move(face), sp::move(f.chars), false});
 	}
 
 	auto dep = getOrCreateDep(depId);

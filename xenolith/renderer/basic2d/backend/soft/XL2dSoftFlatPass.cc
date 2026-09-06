@@ -72,6 +72,7 @@ void VertexAttachmentHandle::submitInput(core::FrameQueue &q, Rc<core::Attachmen
 	}
 
 	_client = d->client;
+	_windowId = d->windowId;
 
 	q.getFrame()->waitForDependencies(data->waitDependencies,
 			[this, d = sp::move(d), cb = sp::move(cb)](core::FrameHandle &handle,
@@ -456,7 +457,7 @@ void FlatPassHandle::handlePassRasterized(core::FrameQueue &) {
 	_vertexHandle->fillAccount(stat);
 #endif
 
-	client->pushDrawStat(stat);
+	client->pushDrawStat(_vertexHandle->getWindowId(), stat);
 }
 
 namespace {

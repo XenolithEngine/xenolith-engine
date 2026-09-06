@@ -88,8 +88,8 @@ bool ClientAppThread::worker() {
 		auto code = conn->handshake(_clientContext->getBearerKey(),
 				_clientContext->getSuggestedDictionary());
 		if (code != remote::GlobalError::Ok) {
-			log::source().error("ClientAppThread", "handshake failed (status ",
-					uint32_t(toInt(code)), ")");
+			log::source().error("ClientAppThread", "handshake refused: ",
+					remote::getGlobalErrorName(code), " (status ", uint32_t(toInt(code)), ")");
 			conn->close();
 			return false; // give up: the thread loop ends and the client process exits
 		}
@@ -217,6 +217,26 @@ void ClientAppThread::loadExtensions() {
 			}
 			log::source().warn("ClientAppThread", "screenshot transfer ", id,
 					" had no matching captureScreenshot() waiter (serial ", serial, ")");
+		};
+
+		// The other outcome. A screenshot that is called off -- the server cancelled it, or the link
+		// dropped with packets still to come -- leaves a captureScreenshot() callback that would
+		// otherwise wait for the rest of the session. Empty info + empty pixels is already this
+		// path's "it did not work" (captureScreenshot answers exactly that when it cannot even send),
+		// so the waiter needs no new shape to understand it.
+		_blockTransfer->onCancelled = [this](uint64_t id, BlockTransferManager::DataType t,
+											  const Value &, const Value &reason) {
+			if (t != remote::DataType::Screenshot) {
+				return;
+			}
+			auto serial = uint32_t(reason.getInteger("serial"));
+			for (auto &it : _windows) {
+				if (it.second->deliverScreenshot(serial, core::ImageInfoData(), BytesView())) {
+					log::source().info("ClientAppThread", "screenshot transfer ", id,
+							" was cancelled; its waiter was told");
+					return;
+				}
+			}
 		};
 	}
 
@@ -470,26 +490,14 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		}
 		case remote::WindowCode::InputEvents: {
-			// server -> client: a raw blob [u64 windowId (network order)][InputEventData[] native layout].
-			// Reconstruct the batch and replay it into the named window (its local Director -> scene).
-			if (payload.size() < sizeof(uint64_t)) {
-				return true;
-			}
-			uint64_t widN = 0;
-			memcpy(&widN, payload.data(), sizeof(uint64_t));
-			auto windowId = sprt::byteorder::NetworkToHost(widN);
-
-			auto rest = payload.sub(sizeof(uint64_t));
-			if (rest.size() % sizeof(core::InputEventData) != 0) {
-				log::source().warn("ClientAppThread", "InputEvents: misaligned blob (", rest.size(),
-						" bytes)");
-				return true;
-			}
-			auto count = rest.size() / sizeof(core::InputEventData);
+			// server -> client: the typed input batch (see serializeInputEvents). Reconstruct it and
+			// replay it into the named window (its local Director -> scene).
+			uint64_t windowId = 0;
 			Vector<core::InputEventData> events;
-			events.resize(count);
-			if (count) {
-				memcpy(events.data(), rest.data(), rest.size());
+			if (!remote::deserializeInputEvents(payload, windowId, events)) {
+				log::source().warn("ClientAppThread", "InputEvents: malformed batch (",
+						payload.size(), " bytes)");
+				return true;
 			}
 
 			auto wIt = _windows.find(windowId);
@@ -607,24 +615,24 @@ void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView
 	auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
 	auto local = makeClientInfo();
 
-	if (!local.isAbiCompatible(info)) {
-		// Until M6 the two sides memcpy InputEventData/WindowLayer at each other, so this is not a
-		// version disagreement to warn about and carry on from -- it is the difference between
-		// rendering and corrupting memory. Refuse in the reply so the server learns why, and end
-		// the session rather than waiting to be dropped.
+	if (!local.isWireCompatible(info)) {
+		// Reported, not refused. Until M6 the two sides memcpy'd InputEventData/WindowLayer at each
+		// other and this was memory corruption waiting to happen; the messages are typed now, so a
+		// differing tag says the builds disagree about an enum ceiling -- something to have in the
+		// log if a later symptom needs explaining, not a reason to refuse the session.
 		StringStream serverDesc;
 		StringStream localDesc;
 		info.description([&](StringView str) { serverDesc << str; });
 		local.description([&](StringView str) { localDesc << str; });
-		log::source().error("ClientAppThread",
-				"incompatible server build; refusing the session\n  server: ", serverDesc.str(),
-				"\n  client: ", localDesc.str());
-		if (_connection) {
-			_connection->sendError(remote::Domain::Global,
-					toInt(remote::GlobalError::IncompatiblePeer), h.serial);
-		}
-		_disconnectRequested = true;
-		return;
+		log::source().warn("ClientAppThread",
+				"server was built against a different wire contract; continuing\n  server: ",
+				serverDesc.str(), "\n  client: ", localDesc.str());
+	}
+
+	StringStream missing;
+	local.describeMissingCodes(info, [&](StringView str) { missing << str; });
+	if (!missing.empty()) {
+		log::source().warn("ClientAppThread", "server does not implement: ", missing.str());
 	}
 
 	_serverInfo = sp::move(info);
@@ -702,7 +710,18 @@ void ClientAppThread::handleAnnounce(const Value &data) {
 	}
 
 	performOnAppThread([this, connectedWindows, disconnectedWindows] {
-		for (auto &it : disconnectedWindows) { handleWindowDisconnected(it); }
+		for (auto &it : disconnectedWindows) {
+			// End the window's Director before anyone is told the window is gone. Dropping the last
+			// reference is NOT enough: a scene that is never exited never runs handleExit, so
+			// everything it registered on the way in -- its inspector among them -- stays registered
+			// for a window that no longer exists. The server does exactly this in
+			// handleAppWindowDestroyed; the client simply never had a path that removed a window,
+			// because until now the only way to lose one was to lose the whole connection.
+			if (auto dir = dynamic_cast<Director *>(it->getRenderClient())) {
+				dir->end();
+			}
+			handleWindowDisconnected(it);
+		}
 
 		for (auto &it : connectedWindows) {
 			auto wIt = _windows.find(it->getServerId());

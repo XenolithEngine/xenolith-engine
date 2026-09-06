@@ -154,7 +154,8 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 // it is five chances for one backend to quietly not support a remote client. See
 // core::Attachment::makeInputData, whose default null is what a queue that cannot serve a remote
 // frame reports.
-SP_PUBLIC Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel>);
+SP_PUBLIC Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel>,
+		uint64_t windowId);
 
 } // namespace stappler::xenolith::basic2d
 

@@ -63,9 +63,9 @@ public:
 	// exactly as on every other backend -- submitInput below already casts to it. Without this the
 	// default null makes a Software server unable to accept a remote client's frame at all, which is
 	// how it behaved until the client stopped being Vulkan-only.
-	virtual Rc<core::AttachmentInputData> makeInputData(
-			NotNull<core::RenderClientChannel> client) const override {
-		return makeFrameContextInput(client);
+	virtual Rc<core::AttachmentInputData> makeInputData(NotNull<core::RenderClientChannel> client,
+			uint64_t windowId) const override {
+		return makeFrameContextInput(client, windowId);
 	}
 
 	virtual Rc<core::AttachmentHandle> makeFrameHandle(const core::FrameQueue &) override;
@@ -110,6 +110,10 @@ public:
 	// and outlives the frame either way.
 	core::RenderClientChannel *getClient() const { return _client; }
 
+	// Copied beside the channel, for the same reason and at the same moment: the input this came from
+	// is not held, so anything needed after prepare() has to be lifted out of it here.
+	uint64_t getWindowId() const { return _windowId; }
+
 #if XL_FRAME_ACCOUNT
 	// Copy what the vertex stage did with this frame into a DrawStat.
 	//
@@ -140,6 +144,7 @@ protected:
 	Vector<TransformData> _transforms;
 	Vector<DrawStateValues> _drawStates;
 	Rc<core::RenderClientChannel> _client;
+	uint64_t _windowId = 0;
 };
 
 // Flat render queue for the software backend: one graphics pass, one subpass, drawing straight

@@ -268,6 +268,11 @@ void AppWindow::setContentExtent(Extent2 extent) {
 	}, this);
 }
 
+uint64_t AppWindow::getSharedWindowId() const {
+	auto objs = _application ? _application->getSharedObjects() : nullptr;
+	return objs ? objs->get(const_cast<AppWindow *>(this)) : 0;
+}
+
 void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	if (!_presentationEngine) {
 		return;
@@ -297,7 +302,7 @@ void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 						}));
 			}
 		}
-		_client->handleInputEvents(sp::move(events));
+		_client->handleInputEvents(getSharedWindowId(), sp::move(events));
 		setReadyForNextFrame();
 	}, this, true);
 }
@@ -321,7 +326,7 @@ void AppWindow::handleTextInput(const TextInputState &state) {
 
 	_application->performOnAppThread([this, state = state]() mutable {
 		if (_client) {
-			_client->handleTextInput(state);
+			_client->handleTextInput(getSharedWindowId(), state);
 		}
 	}, this, true);
 	setReadyForNextFrame();
@@ -443,14 +448,7 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
 		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req);
 		if (_client && proxy) {
-			uint64_t windowId = 0;
-
-			auto objs = _application->getSharedObjects();
-			if (objs) {
-				windowId = objs->get(this);
-			}
-
-			_client->acquireFrame(windowId, proxy,
+			_client->acquireFrame(getSharedWindowId(), proxy,
 					[guard = Rc<AppWindow>(this), frame, cb = sp::move(cb)](bool success) mutable {
 				guard->_context->performOnThread(
 						[frame = move(frame), cb = sp::move(cb)]() mutable {
@@ -774,7 +772,7 @@ void AppWindow::notifyWindowGeometry() const {
 		// thread allowed to write it - the same arrangement _appFrameConstraints has above.
 		const_cast<sprt::window::WindowGeometry &>(_appWindowGeometry) = geometry;
 		if (_client) {
-			_client->handleWindowGeometryChanged(geometry);
+			_client->handleWindowGeometryChanged(getSharedWindowId(), geometry);
 		}
 	}, const_cast<AppWindow *>(this));
 }

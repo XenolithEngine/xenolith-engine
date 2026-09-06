@@ -76,19 +76,43 @@ public:
 	void close();
 
 protected:
+	static constexpr uint32_t kStreamClassCount = 3;
+
+	// Everything that belongs to ONE transport stream. A reassembler holds the bytes of a single
+	// ordered channel -- feeding it two streams would interleave their bytes and scramble the framing
+	// -- so a stream that is really independent needs its own, and its own send queue with it.
+	struct StreamState {
+		TransportStream *stream = nullptr;
+		MessageReader reader; // receive-side stream reassembler + deferred-message queue
+		OutgoingQueue out; // send-side buffer, drained from poll()
+	};
+
 	// Frame a message into the send queue and push out what the transport takes right now; never
 	// blocks (see OutgoingQueue). Every send above funnels through here.
 	GlobalError enqueue(MessageType, Domain, uint8_t code, uint32_t serial, BytesView payload);
 
-	TransportStream *getStream() const;
+	StreamState *getStreamState(StreamClass);
+	TransportStream *getStream(StreamClass) const;
 
 	Rc<TransportConnection> _transport;
 	Role _role = Role::Generic;
 	Bytes _dict; // negotiated LZ4 dictionary (empty == none)
+
+	// One serial space for the whole connection, not one per stream. A request and its reply belong to
+	// the same domain and therefore ride the same stream, so nothing is gained by splitting the space
+	// -- while a shared one keeps AppThread::_requests a plain map keyed by serial.
 	uint32_t _serial = 1; // the handshake is always serial 0
 	bool _shutdown = false;
-	MessageReader _reader; // receive-side stream reassembler + deferred-message queue
-	OutgoingQueue _out; // send-side buffer, drained from poll()
+
+	// Indexed by StreamClass. A slot is populated only if it is the CANONICAL owner of its transport
+	// stream: a transport that folds classes together (unix, quic, and every class of a single-stream
+	// transport) returns the same pointer for several classes, and then the first of them owns the
+	// state and the rest alias it through _canonicalClass. So a single-stream transport ends up with
+	// exactly one state and behaves precisely as it did before this existed -- no branch on caps.
+	StreamState _streams[kStreamClassCount];
+	uint8_t _canonicalClass[kStreamClassCount] = {0, 1, 2};
+	uint8_t _distinctClasses[kStreamClassCount] = {0, 0, 0};
+	uint8_t _distinctCount = 0;
 };
 
 } // namespace stappler::xenolith::remote

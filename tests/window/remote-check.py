@@ -35,7 +35,7 @@ required at all.
 
 Prints "N checks, M failures"; exit status is the result.
 """
-import base64, json, os, secrets, socket, struct, subprocess, sys, time
+import base64, json, os, secrets, socket, struct, subprocess, sys, threading, time
 
 
 class Session:
@@ -92,6 +92,9 @@ class Session:
 
 
 # Both processes' output, kept: a two-process failure is not diagnosable without them.
+PRIMARY_WINDOW_ID = "org.stappler.app.testapp"
+SECOND_WINDOW_ID = "remote-second"
+
 SERVER_LOG = f"/tmp/xl-remote-check-server-{os.getpid()}.log"
 CLIENT_LOG = f"/tmp/xl-remote-check-client-{os.getpid()}.log"
 
@@ -176,11 +179,14 @@ def spawn_client(binary, share, token, spki, inspector=None, extra_env=None):
             stdout=open(CLIENT_LOG, "a"), stderr=subprocess.STDOUT)
 
 
-def grab(session):
-    """One screenshot as PNG bytes. Steps first: headless renders only when asked."""
+def grab(session, window=None):
+    """One screenshot as PNG bytes. Steps first: headless renders only when asked.
+
+    `window` names an auxiliary window by its id (the inspector's `window` argument); without it the
+    session's own window answers, which is what every caller predating a second window expects."""
     session.ok("frame", count=3)
     time.sleep(0.3)
-    img = session.ok("screenshot") or {}
+    img = (session.ok("screenshot", window=window) if window else session.ok("screenshot")) or {}
     data = img.get("data") or ""
     if isinstance(data, str) and data.startswith("BASE64:"):
         raw = data[len("BASE64:"):]
@@ -298,33 +304,82 @@ def main():
             # the bearer key genuinely played no part and the credentials did.
             token = token + "-deliberately-wrong"
 
-        # --- a client whose build cannot exchange raw structs with this server -------------------
+        # --- a client whose build reports a different wire contract ------------------------------
         #
-        # Until the wire format is build-independent, InputEvents and UpdateLayers are raw
-        # struct dumps: a build mismatch is memory corruption in one of the two processes, not a
-        # message somebody rejects. So the server asks who the client is BEFORE announcing
-        # anything, and refuses on a mismatched ABI tag.
+        # This check used to assert the OPPOSITE, and the inversion is the point of the milestone.
+        # While InputEvents and UpdateLayers were raw struct dumps, a build disagreement was memory
+        # corruption in one of the two processes rather than a message somebody rejects, so the
+        # server asked who the client was before announcing anything and refused on a mismatched
+        # tag. The messages are typed now -- field by field, network byte order, the variant chosen
+        # by the event -- so what the compiler did with a struct is no longer visible on the wire,
+        # and refusing over it would turn a diagnostic into an outage.
         #
-        # XL_REMOTE_FAKE_ABI is what makes this runnable at all -- two binaries built from one tree
-        # necessarily agree, so the rejection path would otherwise be a claim nobody had executed.
-        bad_client = spawn_client(client_bin, share, token, spki,
+        # XL_REMOTE_FAKE_ABI is what makes either direction runnable at all: two binaries built from
+        # one tree necessarily agree, so neither the old refusal nor this acceptance would ever be
+        # executed without it.
+        bad_client = spawn_client(client_bin, share, token, spki, inspector=client_sock,
                 extra_env={"XL_REMOTE_FAKE_ABI": "0123456789abcdef"})
-        st = wait_for(s, lambda x: x.get("clientConnected"), timeout=8.0)
-        check("a client with a different ABI does not hold the connection",
-                not st.get("clientConnected"), str(st))
+        st = wait_for(s, lambda x: x.get("clientConnected"), timeout=25.0)
+        check("a client declaring a different wire contract is no longer refused",
+                bool(st.get("clientConnected")), str(st))
+
+        # Connecting is the weak half. The strong half is that it DRAWS: the takeover happens, and
+        # the window stops showing the server's own scene. Every frame of it goes through the typed
+        # codec, which is the thing that made refusing unnecessary.
+        mismatched_shot = b""
+        if st.get("clientConnected"):
+            for _ in range(20):
+                s.ok("frame", count=2)
+                time.sleep(0.2)
+                if os.path.exists(client_sock):
+                    break
+            time.sleep(1.0)
+            mismatched_shot = grab(s)
+        check("and it renders the window it was given", mismatched_shot.startswith(b"\x89PNG")
+                        and mismatched_shot != before,
+                "the frame is still the server's own scene")
+
+        # Both sides must SAY that the builds differ. Silently carrying on would lose the one thing
+        # the tag is still good for -- explaining a later symptom.
         dump = s.ok("logs") or {}
         lines = "\n".join(str(x) for x in (dump.get("lines") or []))
-        check("the server records that the client refused the session",
-                "client refused ServerInfo" in lines,
+        check("the server reports the mismatch instead of acting on it",
+                "different wire contract" in lines,
                 "not in %d log lines" % len(dump.get("lines") or []))
-        # The client is the side that refuses in this scenario, and that is the honest order: it
-        # computes the same tag from the same facts, so it sees the mismatch the moment ServerInfo
-        # arrives -- before the server has announced anything or sent it a single raw struct.
         bad_log = open(CLIENT_LOG).read() if os.path.exists(CLIENT_LOG) else ""
-        check("the client says WHY, naming both builds",
-                "incompatible server build" in bad_log and "server:" in bad_log
+        check("the client says so too, naming both builds",
+                "different wire contract" in bad_log and "server:" in bad_log
                         and "client:" in bad_log,
                 bad_log[-200:].replace("\n", " | "))
+        kill(bad_client)
+        bad_client = None
+        # Wait for the slot to actually free before the next phase, rather than assuming a killed
+        # process frees it. On unix the socket closes with the process; on QUIC a SIGKILLed peer
+        # sends no CONNECTION_CLOSE, so the server only learns of it when the keepalive expires --
+        # which is several seconds, and long enough for the next check to read a stale answer.
+        wait_for(s, lambda x: not x.get("clientConnected"), timeout=15.0)
+
+        # --- a client of the wrong protocol version ----------------------------------------------
+        #
+        # The tag stopped gating the session above; the VERSION took over that job, and this is what
+        # says so. It is a different question from the tag's: the tag asks whether two builds agree
+        # about an enum ceiling, which is worth reporting, while the version asks whether the same
+        # message code carries the same bytes -- and in version 1 InputEvents was a raw struct dump
+        # where in 2 it is a typed batch. A v1 peer would parse one as the other.
+        #
+        # XL_REMOTE_FAKE_VERSION exists for exactly the reason XL_REMOTE_FAKE_ABI does: two binaries
+        # from one tree agree on the version, so without it the refusal is unexecutable.
+        bad_client = spawn_client(client_bin, share, token, spki,
+                extra_env={"XL_REMOTE_FAKE_VERSION": "1"})
+        for _ in range(20):
+            s.ok("frame", count=1)
+            time.sleep(0.1)
+            if bad_client.poll() is not None:
+                break
+        check("a client announcing the previous protocol version is refused",
+                bad_client.poll() is not None, "still running after 2s")
+        st = s.invoke("remote") or {}
+        check("and it never held the session", not st.get("clientConnected"), str(st))
         kill(bad_client)
         bad_client = None
         for _ in range(10):
@@ -574,6 +629,189 @@ def main():
         st = c.invoke("client-text") or {}
         check("unmarking commits the composed text", st.get("text") == "Hiabにほ"
                         and st.get("markedLength") == 0, str(st))
+
+        # --- one connection, two windows (M5) --------------------------------------------------
+        #
+        # Everything up to here is one server window served by one client, which is the shape the
+        # protocol was built around and the shape in which a whole class of defects is invisible: a
+        # channel that keeps "the window we served last" routes perfectly while there is only one.
+        #
+        # The second window is opened AFTER the client is connected, deliberately. The announce used
+        # to be sent exactly once, at handshake, so a window shared later reached nobody -- and the
+        # client half of the reconciliation (adding what is new, dropping what is gone) had been
+        # written all along and never exercised.
+        before_second = [w["id"] for w in (c.ok("windows") or {}).get("windows", [])]
+        check("the client starts with exactly one window", before_second == [PRIMARY_WINDOW_ID],
+                str(before_second))
+
+        st = s.invoke("remote-share-second") or {}
+        check("the server accepts the request for a second shared window", bool(st.get("ok")),
+                str(st))
+
+        st = wait_for(s, lambda v: v.get("sharedWindows", 0) >= 2, timeout=25.0)
+        check("the server offers two windows", st.get("sharedWindows") == 2, str(st))
+
+        # The window travels to the client over the existing connection; give it frames to arrive on.
+        client_windows = []
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            s.ok("frame", count=2)
+            time.sleep(0.2)
+            client_windows = [w["id"] for w in (c.ok("windows") or {}).get("windows", [])]
+            if SECOND_WINDOW_ID in client_windows:
+                break
+        check("a window shared mid-session reaches the connected client",
+                SECOND_WINDOW_ID in client_windows, str(client_windows))
+        check("and the first window is still there", PRIMARY_WINDOW_ID in client_windows,
+                str(client_windows))
+
+        if SECOND_WINDOW_ID in client_windows:
+            # Each window carries its OWN geometry, which is the cheapest way to see that the
+            # announce is per window rather than one window's numbers copied onto both.
+            w1 = c.invoke("client-state") or {}
+            w2 = c.ok("invoke", name="client-state", window=SECOND_WINDOW_ID) or {}
+            check("each client window mirrors its own size",
+                    (w1.get("constraintsWidth"), w1.get("constraintsHeight")) == (800, 600)
+                            and (w2.get("constraintsWidth"), w2.get("constraintsHeight"))
+                                    == (320, 240),
+                    f"w1={w1.get('constraintsWidth')}x{w1.get('constraintsHeight')} "
+                    f"w2={w2.get('constraintsWidth')}x{w2.get('constraintsHeight')}")
+
+            # THE routing check. Resizing the SECOND window on the server must move the SECOND
+            # window's mirror on the client and leave the first alone. A channel that answers
+            # "whichever window rendered most recently" gets this wrong in whichever direction it
+            # last happened to render -- and gets it wrong intermittently, which is worse.
+            s.ok("window", op="resize", width=360, height=280, window=SECOND_WINDOW_ID)
+            for _ in range(10):
+                s.ok("frame", count=2)
+                time.sleep(0.2)
+            w1 = c.invoke("client-state") or {}
+            w2 = c.ok("invoke", name="client-state", window=SECOND_WINDOW_ID) or {}
+            check("a resize of the second window reaches the second window's mirror",
+                    (w2.get("constraintsWidth"), w2.get("constraintsHeight")) == (360, 280),
+                    f"{w2.get('constraintsWidth')}x{w2.get('constraintsHeight')}")
+            check("and does not disturb the first window's mirror",
+                    (w1.get("constraintsWidth"), w1.get("constraintsHeight")) == (800, 600),
+                    f"{w1.get('constraintsWidth')}x{w1.get('constraintsHeight')}")
+
+            # Both windows are really being drawn, and drawn differently.
+            shot1 = grab(s)
+            shot2 = grab(s, window=SECOND_WINDOW_ID)
+            check("both shared windows produce frames",
+                    shot1.startswith(b"\x89PNG") and shot2.startswith(b"\x89PNG"),
+                    f"{len(shot1)} / {len(shot2)} bytes")
+            check("the two windows are not the same picture", shot1 != shot2,
+                    "byte-identical: one window is showing the other's frame")
+
+            if gapi == "soft":
+                # The decisive one for per-window telemetry, and the same trick M4 used: pixelsTotal
+                # is the window's own surface area, a number the client cannot invent and cannot get
+                # from the other window. With a single DrawStat slot per client -- which is what
+                # this replaced -- whichever window rendered last overwrites the other, so one of
+                # these two reports the wrong window's area.
+                st1 = c.invoke("client-stats") or {}
+                st2 = c.ok("invoke", name="client-stats", window=SECOND_WINDOW_ID) or {}
+                check("each window receives ITS OWN draw statistics",
+                        st1.get("pixelsTotal") == 800 * 600
+                                and st2.get("pixelsTotal") == 360 * 280,
+                        f"w1={st1.get('pixelsTotal')} w2={st2.get('pixelsTotal')}")
+
+            # Close the second window FROM THE REMOTE SCENE, and from the auxiliary window rather
+            # than the one the session started with: WindowControl carries a window id, so this is
+            # where sending it from the wrong window would show. It also drives the withdrawal half
+            # of the announce -- the server re-announces without it and the client drops its mirror,
+            # which is the same reconciliation as the addition above, run backwards.
+            c.ok("window", op="close", window=SECOND_WINDOW_ID)
+            st = wait_for(s, lambda v: v.get("sharedWindows", 0) <= 1, timeout=20.0)
+            check("the remote scene closes the auxiliary window it was given",
+                    st.get("sharedWindows") == 1, str(st))
+
+            client_windows = []
+            deadline = time.monotonic() + 15.0
+            while time.monotonic() < deadline:
+                s.ok("frame", count=2)
+                time.sleep(0.2)
+                client_windows = [w["id"] for w in (c.ok("windows") or {}).get("windows", [])]
+                if SECOND_WINDOW_ID not in client_windows:
+                    break
+            check("and the client drops the window it can no longer draw into",
+                    client_windows == [PRIMARY_WINDOW_ID], str(client_windows))
+
+        # --- the single-connection policy is stated, not merely enforced (M5.4) ----------------
+        #
+        # A second client used to be dropped in silence: the connection object was destroyed and the
+        # peer learned of it only when its own handshake deadline expired, which is indistinguishable
+        # from a server that is not there. It now gets a ServerHello carrying GlobalError::Busy --
+        # "come back later", which is a different instruction from "your key is wrong".
+        #
+        # Checked here rather than at the start because it needs the slot to be TAKEN, and the first
+        # client only holds it once its session is up.
+        second = spawn_client(client_bin, share, token, spki)
+        try:
+            for _ in range(20):
+                s.ok("frame", count=1)
+                time.sleep(0.1)
+                if second.poll() is not None:
+                    break
+            check("a second client is turned away rather than left hanging",
+                    second.poll() is not None, "still running after 2s")
+            st = s.invoke("remote") or {}
+            check("and the first client keeps the session", bool(st.get("clientConnected")), str(st))
+            log = ""
+            try:
+                with open(CLIENT_LOG) as f:
+                    log = f.read()
+            except OSError:
+                pass
+            check("the refusal names its reason: the server is busy",
+                    "handshake refused: Busy" in log,
+                    "no Busy refusal in the client log")
+        finally:
+            kill(second)
+
+        # --- a bulk transfer can be called off (M5.5) ------------------------------------------
+        #
+        # A screenshot is the one thing on this connection that keeps streaming long after the
+        # message that asked for it was answered, and until now it could not be stopped: Release
+        # meant "I no longer reference the blob" and halted the stream only as a side effect, with
+        # nothing said to the waiter on the far side. So a caller whose transfer went away -- called
+        # off, or cut by a disconnect -- waited for the rest of the session.
+        #
+        # The screenshot is requested on a SECOND connection to the client's inspector, because the
+        # request does not answer until its pixels arrive: asking on the main session would block the
+        # very loop that has to cancel it.
+        st = s.invoke("remote-cancel-transfers") or {}
+        check("nothing is cancelled when nothing is in flight", st.get("cancelled") == 0, str(st))
+
+        shot_result = {}
+
+        def request_screenshot():
+            try:
+                sess = Session(client_sock)
+                shot_result["ok"] = bool((sess.ok("screenshot") or {}).get("data"))
+                sess.close()
+            except BaseException as exc:  # SystemExit included: `ok` raises it on a failed command
+                shot_result["failed"] = str(exc)
+
+        shot_thread = threading.Thread(target=request_screenshot)
+        shot_thread.start()
+
+        cancelled = 0
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and shot_thread.is_alive():
+            s.ok("frame", count=1)
+            cancelled += (s.invoke("remote-cancel-transfers") or {}).get("cancelled", 0)
+            time.sleep(0.02)
+        shot_thread.join(timeout=10.0)
+
+        check("the server calls off a screenshot that is still streaming", cancelled >= 1,
+                f"cancelled {cancelled}")
+        # THE assertion, and the reason any of this exists: the waiter is settled. Hanging here is
+        # what the old code did -- the transfer record was erased and its callback destroyed with it.
+        check("a cancelled transfer does not leave its caller waiting",
+                not shot_thread.is_alive(), "the screenshot request never came back")
+        check("and the caller is told it failed rather than handed a blank image",
+                "failed" in shot_result, str(shot_result))
 
         # Frames must keep flowing while the client renders.
         s.ok("frame", count=5)

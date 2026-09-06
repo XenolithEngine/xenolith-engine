@@ -256,13 +256,22 @@ public:
 	bool init(void *ctx, void *ssl, int fd);
 
 	virtual TransportCaps getCaps() const override {
-		// QUIC gives independent streams and datagrams; neither is used yet (the protocol still
-		// interleaves everything on the default stream), but declaring them is what lets the message
-		// classes start mapping onto real streams without another transport change.
-		return TransportCaps::Encrypted | TransportCaps::MultiStream | TransportCaps::Datagrams
-				| TransportCaps::Pollable;
+		// MultiStream and Datagrams are NOT declared, even though QUIC provides both. This connection
+		// runs on the default stream (SSL_read_ex/SSL_write_ex against the connection SSL) and nothing
+		// here has ever called SSL_new_stream or SSL_accept_stream; QuicStream::isClosed even asks about
+		// the CONNECTION rather than a stream. It cost nothing to declare them while no caller read
+		// caps, but the protocol layer now maps message classes onto whatever streams a transport says
+		// it has -- so an unbacked claim here would silently fold Bulk back onto Control while
+		// everything above believed it was separated.
+		//
+		// Restoring them means all of: SSL_new_stream on the initiator, SSL_accept_stream plus an
+		// incoming-stream policy on the acceptor, a preamble on each new stream saying which class it
+		// carries (mem: needs none because it pairs its pipes at accept time), and per-stream close
+		// semantics.
+		return TransportCaps::Encrypted | TransportCaps::Pollable;
 	}
 
+	// Every class folds onto the default stream; see getCaps.
 	virtual TransportStream *getStream(StreamClass) override { return _stream; }
 
 	virtual const PeerIdentity &getPeerIdentity() const override { return _peer; }
@@ -567,9 +576,9 @@ public:
 
 	virtual AddressScheme getScheme() const override { return AddressScheme::Quic; }
 
+	// Kept in step with QuicConnection::getCaps -- see the note there on what MultiStream would take.
 	virtual TransportCaps getCaps() const override {
-		return TransportCaps::Encrypted | TransportCaps::MultiStream | TransportCaps::Datagrams
-				| TransportCaps::Pollable;
+		return TransportCaps::Encrypted | TransportCaps::Pollable;
 	}
 
 	virtual Rc<TransportConnection> connect(const Address &, const TransportClientConfig &) override;

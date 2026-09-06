@@ -57,11 +57,29 @@ public:
 	// on success, onComplete(id, false) on decline / reply-timeout / a later Unavailable. The id matches
 	// the return value, so the callback can release(id) once it is done referencing the blob. Returns the
 	// new transfer id, or 0 on immediate failure.
+	//
+	// `priority` orders this transfer against the OTHER transfers this manager is streaming: higher
+	// goes first, equal priorities take turns. It says nothing to the peer and is not on the wire --
+	// the order in which a sender empties its own queue is the sender's business, and telling the
+	// receiver would only invite it to have an opinion it cannot act on.
 	uint64_t startTransfer(DataType, BytesView data, Value &&meta, Value &&reason,
-			Function<void(uint64_t id, bool ok)> &&onComplete);
+			Function<void(uint64_t id, bool ok)> &&onComplete, int32_t priority = 0);
 
 	// Sender: announce we will no longer reference id (Release notification) and drop our retained copy.
+	//
+	// Release means "I am done REFERENCING this", not "stop sending". Calling it mid-stream does stop
+	// the stream, as a side effect of the record going away -- use cancelTransfer for that, which says
+	// so and reports it.
 	void releaseObject(uint64_t id);
+
+	// Sender: abandon a transfer that is still streaming (Cancel notification). The receiver drops
+	// whatever it has assembled; onComplete fires with false, so the caller learns the outcome instead
+	// of waiting for a completion that is never coming.
+	void cancelTransfer(uint64_t id);
+
+	// Cancel every transfer still streaming; returns how many. Not the same as reset(), which is the
+	// disconnect path and cannot tell the peer anything.
+	size_t cancelAllTransfers();
 
 	// Receiver: announce we can no longer hold id (Unavailable notification) and drop our retained copy.
 	void markUnavailable(uint64_t id);
@@ -72,6 +90,11 @@ public:
 	Function<bool(DataType, uint64_t size, const Value &meta, const Value &reason)> acceptPolicy;
 	Function<void(uint64_t id, DataType, const Value &meta, const Value &reason, BytesView data)>
 			onReceived;
+
+	// Receiver: an accepted transfer will NOT arrive after all -- the sender cancelled it, or the
+	// connection dropped mid-stream. Whoever was waiting on the blob has to be told, or it waits
+	// forever; onReceived cannot carry that, because there is no data to deliver.
+	Function<void(uint64_t id, DataType, const Value &meta, const Value &reason)> onCancelled;
 
 	// Route a Domain::Data request/notification (called from the subclass dispatchMessage). The Announce
 	// *reply* never arrives here -- it is consumed by AppThread::dispatchMessage's reply-by-serial path
@@ -90,6 +113,10 @@ protected:
 		uint32_t packetCount = 0;
 		uint32_t nextPacket = 0; // paced sender cursor (see pumpOutgoing)
 		bool completed = false;
+		// Streaming starts only once the receiver has accepted the Announce; until then the transfer
+		// exists but must not be picked by the scheduler.
+		bool accepted = false;
+		int32_t priority = 0;
 		Function<void(uint64_t, bool)> onComplete;
 	};
 
@@ -107,23 +134,46 @@ protected:
 		Value reason;
 	};
 
-	// Paced sender: emit a bounded batch of packets for transfer `id`, then -- if any remain or a send
-	// hit backpressure -- reschedule itself on the app looper so the peer can drain and extend its
-	// flow-control window. Streaming the whole blob synchronously instead exhausts the QUIC window and
-	// truncates a frame mid-write (corrupting the stream).
-	void pumpOutgoing(uint64_t id);
+	/* Paced sender: emit a bounded batch of packets for ONE transfer, then -- if anything remains
+	anywhere -- reschedule on the app looper so the peer can drain and extend its flow-control window.
+	Streaming a whole blob synchronously instead exhausts the QUIC window and truncates a frame
+	mid-write (corrupting the stream).
+	
+	ONE pump for the manager, not one per transfer. Each transfer used to reschedule itself, which
+	meant there was no point at which "which packet goes next" was decided -- two transfers simply
+	interleaved in whatever order the looper ran their tasks, and a priority had nowhere to apply.
+	Now selectNextTransfer is that point. */
+	void schedulePump();
+	void pumpOutgoing();
+	OutgoingTransfer *selectNextTransfer();
+
+	// Drop an outgoing transfer and settle its caller. `ok` is what onComplete is told; the callback
+	// is moved out BEFORE the erase, because it commonly owns things that reference the manager.
+	void finishOutgoing(uint64_t id, bool ok);
+
 	void deliverIncoming(IncomingTransfer &);
+
+	// Drop an incoming transfer that will never complete and tell whoever was waiting.
+	void abandonIncoming(uint64_t id);
 
 	bool handleAnnounce(const remote::MessageHeader &, BytesView payload);
 	bool handlePacket(const remote::MessageHeader &, BytesView payload);
 	bool handleComplete(const remote::MessageHeader &, BytesView payload);
 	bool handleRelease(const remote::MessageHeader &, BytesView payload);
 	bool handleUnavailable(const remote::MessageHeader &, BytesView payload);
+	bool handleCancel(const remote::MessageHeader &, BytesView payload);
 
 	AppThread *_owner = nullptr;
 	uint64_t _nextId = 1;
 	HashMap<uint64_t, OutgoingTransfer> _outgoing; // keyed by our id (we are the sender)
 	HashMap<uint64_t, IncomingTransfer> _incoming; // keyed by the peer's id (we are the receiver)
+
+	// One pump task in flight at a time; without this every accept and every batch would queue
+	// another, and N transfers would get N times the looper's attention rather than sharing it.
+	bool _pumpScheduled = false;
+	// Last transfer served a batch, so equal priorities take turns instead of the first-found one
+	// starving the rest.
+	uint64_t _lastServed = 0;
 };
 
 } // namespace stappler::xenolith

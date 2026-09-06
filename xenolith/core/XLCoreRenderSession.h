@@ -257,6 +257,15 @@ public:
 	virtual void acquireFrame(uint64_t windowId, NotNull<FrameRequestProxy> proxy,
 			Function<void(bool)> &&) = 0;
 
+	/* WHICH WINDOW every call below is about, on the same terms as acquireFrame above: the id the
+	server's ObjectRegistry gave the window, or 0 for a local self-request.
+
+	One RenderClientChannel serves ALL of a server's shared windows -- setRenderClient installs the
+	same object on each -- so a channel cannot tell from the call itself who is asking. The remote one
+	used to answer that with "the window we most recently produced a frame for", which is right only
+	while there is exactly one window and silently misroutes input the moment there are two. A local
+	Director has exactly one window and ignores the id. */
+
 	// The server announces the active render graph the client must target (the shared contract).
 	// Maps onto the runWithQueue handshake.
 	virtual void handleRenderQueueAttached(const Rc<Queue> &) = 0;
@@ -275,17 +284,18 @@ public:
 
 	Non-pure: a client that does not care where its window is - and most do not - should not have
 	to say so. */
-	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &) { }
+	virtual void handleWindowGeometryChanged(uint64_t windowId, const sprt::window::WindowGeometry &) {
+	}
 
 	// Input + window-state events from the platform. WindowState changes arrive as
 	// InputEventName::WindowState entries within the batch, as today.
-	virtual void handleInputEvents(Vector<InputEventData> &&) = 0;
-	virtual void handleTextInput(const TextInputState &) = 0;
+	virtual void handleInputEvents(uint64_t windowId, Vector<InputEventData> &&) = 0;
+	virtual void handleTextInput(uint64_t windowId, const TextInputState &) = 0;
 
 	// Frame-lifecycle feedback for client-side pacing/stats (a frame finished presenting).
 	virtual void handleFramePresented(uint64_t frameOrder) = 0;
 
-	virtual void pushDrawStat(const DrawStat &) = 0;
+	virtual void pushDrawStat(uint64_t windowId, const DrawStat &) = 0;
 
 	// True for a client that serves frames over the wire (remote transport). The server tags such a
 	// client's frames PresentationFrame::Remote so they can be force-invalidated if the connection drops

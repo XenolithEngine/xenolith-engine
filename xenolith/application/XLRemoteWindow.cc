@@ -177,7 +177,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 		// Straight to the Director, which owns the copy the FPS overlay reads. Already on the app
 		// thread here, so no hop: the local path's performOnAppThread exists only because the local
 		// push originates on the render thread.
-		_client->pushDrawStat(*stat);
+		_client->pushDrawStat(0, *stat);
 	}
 
 	// Stream each per-attachment input the moment the scene submits it, then a commit. These run on
@@ -420,7 +420,7 @@ void RemoteWindow::handleTextInput(const core::TextInputState &state) {
 	// The echo, straight through to the Director's TextInputManager -- the same hop a local window
 	// makes in AppWindow::handleTextInput.
 	if (_client) {
-		_client->handleTextInput(state);
+		_client->handleTextInput(0, state);
 	}
 }
 
@@ -559,7 +559,7 @@ void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
 		}
 	}
 	if (_client) {
-		_client->handleInputEvents(sp::move(events));
+		_client->handleInputEvents(0, sp::move(events));
 	}
 }
 
@@ -569,41 +569,36 @@ void RemoteWindow::handleWindowGeometryChanged(const sprt::window::WindowGeometr
 	// scene hear about it through the same hook a local window uses.
 	_appWindowGeometry = g;
 	if (_client) {
-		_client->handleWindowGeometryChanged(g);
+		_client->handleWindowGeometryChanged(0, g);
 	}
 }
 
 void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&layers) {
 	// The client's scene graph (InputDispatcher) computes the window's interaction layers (hit/cursor/
-	// drag regions), but the server owns the real OS window. Forward them as a raw blob
-	// [u64 windowId (network order)][WindowLayer[] native layout]; the server applies them to its native
-	// window. WindowLayer is trivially copyable, so the array ships verbatim (one build/ABI).
-	static_assert(__is_trivially_copyable(sprt::window::WindowLayer),
-			"WindowLayer must be trivially copyable to ship as a raw blob");
+	// drag regions), but the server owns the real OS window. Forward them in the typed wire format
+	// (see serializeWindowLayers); the server applies them to its native window.
+
 	auto conn = _thread ? _thread->getConnection() : nullptr;
 	if (!conn) {
 		return;
 	}
 
-	const size_t payloadBytes = layers.size() * sizeof(sprt::window::WindowLayer);
-	const uint8_t *payloadPtr = reinterpret_cast<const uint8_t *>(layers.data());
+	Bytes blob;
+	remote::serializeWindowLayers(blob, _id, layers);
 
-	// Dedup: the dispatcher recomputes the layer set every input commit; skip an unchanged set so the
-	// server is not flooded with identical updates each frame.
-	if (_lastLayersBlob.size() == payloadBytes
-			&& (payloadBytes == 0
-					|| sprt::memcmp(_lastLayersBlob.data(), payloadPtr, payloadBytes) == 0)) {
+	/* Dedup: the dispatcher recomputes the layer set on every input commit, so an unchanged set must
+	not flood the server with an update per frame.
+	
+	Compared on the SERIALIZED bytes rather than on the structs, which is a real difference and not
+	just a convenience: WindowLayer has three bytes of padding between `cursor` and `flags`, and the
+	old comparison ran over them -- so two identical layer sets could differ in bytes nobody had
+	written, and the deduplication would silently stop working. The serialized form has no
+	unwritten bytes in it. */
+	if (_lastLayersBlob.size() == blob.size()
+			&& (blob.empty() || sprt::memcmp(_lastLayersBlob.data(), blob.data(), blob.size()) == 0)) {
 		return;
 	}
-	_lastLayersBlob.assign(payloadPtr, payloadPtr + payloadBytes);
-
-	Bytes blob;
-	blob.resize(sizeof(uint64_t) + payloadBytes);
-	uint64_t widN = sprt::byteorder::HostToNetwork(_id);
-	__sprt_memcpy(blob.data(), &widN, sizeof(uint64_t));
-	if (payloadBytes) {
-		__sprt_memcpy(blob.data() + sizeof(uint64_t), payloadPtr, payloadBytes);
-	}
+	_lastLayersBlob = blob;
 
 	slog().info("RemoteWindow", "updateLayers: forwarding ", layers.size(), " layer(s)");
 	conn->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateLayers),
