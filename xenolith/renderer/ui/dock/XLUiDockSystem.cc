@@ -316,6 +316,12 @@ bool DockSystem::activatePanel(StringView id) {
 	return true;
 }
 
+void DockSystem::handlePanelTapped(StringView id) {
+	if (_panelTapCallback) {
+		_panelTapCallback(id);
+	}
+}
+
 bool DockSystem::movePanel(StringView id, DockNodeHandle target, size_t index) {
 	auto targetLeaf = _tree.get(target);
 	if (!targetLeaf || !targetLeaf->isLeaf()) {
@@ -428,6 +434,52 @@ bool DockSystem::closeFrame(DockNodeHandle h) {
 	return true;
 }
 
+bool DockSystem::setFrameParams(DockNodeHandle h, const DockFrameParams &params) {
+	auto leaf = _tree.get(h);
+	if (!leaf || !leaf->isLeaf()) {
+		return false;
+	}
+	if (leaf->params == params) {
+		return true;
+	}
+
+	leaf->params = params;
+
+	if (auto frame = static_cast<DockFrame *>(leaf->node.get())) {
+		frame->setParams(params);
+		// the close affordance follows DockFrameFlags::AllowClose, so the strip has to be brought
+		// in line with the flags as well as with the side the frame has just been given
+		updateFrameTabs(*leaf);
+	}
+
+	invalidateLayout();
+	return true;
+}
+
+bool DockSystem::setFrameCollapsed(DockNodeHandle h, bool value) {
+	auto leaf = _tree.get(h);
+	if (!leaf || !leaf->isLeaf()) {
+		return false;
+	}
+	if (leaf->collapsed == value) {
+		return true;
+	}
+
+	leaf->collapsed = value;
+
+	if (auto frame = static_cast<DockFrame *>(leaf->node.get())) {
+		frame->setCollapsed(value);
+	}
+
+	invalidateLayout();
+	return true;
+}
+
+bool DockSystem::isFrameCollapsed(DockNodeHandle h) const {
+	auto leaf = _tree.get(h);
+	return leaf && leaf->isLeaf() && leaf->collapsed;
+}
+
 // --- persistence -----------------------------------------------------------
 
 Value DockSystem::save() const { return _tree.save(); }
@@ -497,6 +549,8 @@ void DockSystem::setPanelClosedCallback(PanelCallback &&cb) { _panelClosedCallba
 void DockSystem::setPanelActivatedCallback(PanelCallback &&cb) {
 	_panelActivatedCallback = sp::move(cb);
 }
+
+void DockSystem::setPanelTapCallback(PanelCallback &&cb) { _panelTapCallback = sp::move(cb); }
 
 // --- resizing --------------------------------------------------------------
 
@@ -629,16 +683,26 @@ DockDropTarget DockSystem::hitTest(const Vec2 &rootLocal, StringView draggedPane
 		}
 	}
 
-	if (hasFlag(leaf->params.flags, DockFrameFlags::AllowSplit)) {
+	{
+		// Which of the four bands this place actually offers. A frame that may only be stacked has
+		// no left and no right zone at all - and the distances to those edges must be left OUT of
+		// the "nearest" comparison rather than merely rejected afterwards, or a pointer near the
+		// left edge would resolve to the nearest edge, find it forbidden, and answer NOTHING where
+		// the honest answer is the middle.
+		const bool splitH = allowsSplitAxis(leaf->params.flags, DockAxis::Horizontal);
+		const bool splitV = allowsSplitAxis(leaf->params.flags, DockAxis::Vertical);
+
 		const float band =
 				sprt::min(_edgeDropBand, 0.25f * sprt::min(body.size.width, body.size.height));
-		if (band > 0.0f) {
-			const float dxLeft = rootLocal.x - body.origin.x;
-			const float dxRight = body.getMaxX() - rootLocal.x;
-			const float dyBottom = rootLocal.y - body.origin.y;
-			const float dyTop = body.getMaxY() - rootLocal.y;
+		if (band > 0.0f && (splitH || splitV)) {
+			constexpr float Never = maxOf<float>();
 
-			// the closest edge wins, so a corner resolves to one zone rather than to neither
+			const float dxLeft = splitH ? rootLocal.x - body.origin.x : Never;
+			const float dxRight = splitH ? body.getMaxX() - rootLocal.x : Never;
+			const float dyBottom = splitV ? rootLocal.y - body.origin.y : Never;
+			const float dyTop = splitV ? body.getMaxY() - rootLocal.y : Never;
+
+			// the closest OFFERED edge wins, so a corner resolves to one zone rather than to neither
 			const float nearest = sprt::min(sprt::min(dxLeft, dxRight), sprt::min(dyBottom, dyTop));
 			if (nearest < band) {
 				if (nearest == dxLeft) {
@@ -808,11 +872,18 @@ Size2 DockSystem::measureLeaf(const DockTreeNode &leaf) const {
 	// Only ONE panel is visible at a time, so the place has to fit the LARGEST of them - not their
 	// sum. This is where a panel's declared minimum strengthens the frame's, and through the
 	// bottom-up pass in DockTree, every split above it.
+	//
+	// A COLLAPSED frame skips this entirely: its body is out of the way, and a place that is not
+	// showing a panel has no business claiming the room that panel would need. That is the whole
+	// mechanism behind shutting a side rail - the propagated minimum drops to the strip, and the
+	// divider above can finally travel down to it.
 	Size2 content;
-	for (auto &id : leaf.panels) {
-		if (auto desc = getPanelDescriptor(id)) {
-			content.width = sprt::max(content.width, desc->minSize.width);
-			content.height = sprt::max(content.height, desc->minSize.height);
+	if (!leaf.collapsed) {
+		for (auto &id : leaf.panels) {
+			if (auto desc = getPanelDescriptor(id)) {
+				content.width = sprt::max(content.width, desc->minSize.width);
+				content.height = sprt::max(content.height, desc->minSize.height);
+			}
 		}
 	}
 
@@ -1032,6 +1103,9 @@ void DockSystem::syncNodes() {
 		}
 		if (n.isLeaf()) {
 			auto frame = Rc<DockFrame>::create(n.params, n.self);
+			// a slot restored as shut materializes shut: the flag is the tree's, and this is the
+			// moment the node it describes first exists
+			frame->setCollapsed(n.collapsed);
 			n.node = frame;
 			_owner->addChild(frame, FrameZOrder);
 			updateFrameContent(n);

@@ -105,10 +105,13 @@ struct SP_PUBLIC TooltipRequest {
 	// Never null; an empty Value when the target declared none.
 	const Value *data = nullptr;
 
-	// The target's world rect, as of the moment the delay elapsed.
+	// The target's world rect, as of the moment the delay elapsed. SCENE space - physical pixels,
+	// since the Scene scales its subtree by the density - which is the space a factory's own nodes
+	// convert to and from. It is NOT the space a WindowPlacement is resolved in; see
+	// ui::placementAnchorRect for that one.
 	Rect nodeWorldRect;
 
-	// World pointer position, same moment.
+	// Pointer position, same moment and the same scene space.
 	Vec2 pointer;
 
 	// The extent the surface was opened with. A factory that builds to a different size will be
@@ -289,7 +292,7 @@ public:
 
 	// One hit-test query per frame, and only while the scene has a hint in it at all. This is what
 	// notices a node sliding out from under a pointer that did not move - a scrolling list, a panel
-	// animating into place - which used to come from the per-target listener's geometry updates
+	// animating into place
 	virtual void update(const UpdateTime &) override;
 
 	virtual void setConfig(const TooltipConfig &);

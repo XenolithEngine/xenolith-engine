@@ -95,9 +95,8 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 			}
 		}
 
-		// [7] WindowInfo. Emitted UNCONDITIONALLY, even when the window has none: it used to be
-		// skipped, which made every later index depend on whether a window happened to have info,
-		// and an index that moves is exactly the defect D4 was. The reader tells "absent" from
+		// [7] WindowInfo. Emitted UNCONDITIONALLY, even when the window has none, so no later index
+		// depends on whether a window happened to have info. The reader tells "absent" from
 		// "present" by the value's TYPE, not by its position.
 		if (auto info = it.second.window->getInfo()) {
 			v.addValue(remote::serializeWindowInfo(*info));

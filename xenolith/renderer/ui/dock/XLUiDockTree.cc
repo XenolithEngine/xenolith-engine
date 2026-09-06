@@ -200,6 +200,9 @@ DockNodeHandle DockTree::buildSpec(const DockLayoutSpec &spec, DockNodeHandle pa
 		auto params = spec.params;
 		auto panels = spec.panels;
 		h = makeLeaf(sp::move(params), sp::move(panels), spec.active);
+		if (auto n = get(h)) {
+			n->collapsed = spec.collapsed;
+		}
 	}
 	if (auto n = get(h)) {
 		n->parent = parent;
@@ -368,9 +371,20 @@ void DockTree::updateMinimumsAt(DockNodeHandle h, const MeasureLeaf &measure, fl
 	}
 
 	if (n->isLeaf()) {
+		const bool collapsed = n->collapsed;
 		const Size2 content = measure ? measure(*n) : Size2::ZERO;
 		// re-read: the callback runs arbitrary code and may have touched the arena
 		n = get(h);
+		if (collapsed) {
+			/* THE DECLARED FLOOR IS DROPPED TOO, and that is the point rather than an oversight.
+
+			`params.minSize` is what the application reserved for the place's CONTENT - a sidebar
+			says 250pt because a tree needs 250pt. A shut rail is showing no content, so honouring
+			that floor would leave the divider stuck exactly where it was and the collapse would do
+			nothing visible. What is left is the strip, which measureLeaf still reports. */
+			n->minSize = content;
+			return;
+		}
 		n->minSize = Size2(sprt::max(n->params.minSize.width, content.width),
 				sprt::max(n->params.minSize.height, content.height));
 		return;
@@ -586,6 +600,11 @@ Value DockTree::saveNode(DockNodeHandle h) const {
 	for (auto &id : n->panels) { panels.addString(id); }
 	ret.setValue(sp::move(panels), "panels");
 	ret.setInteger(n->active, "active");
+	// Written only when it is TRUE - a file that says nothing about a frame's shut-ness describes an
+	// open one, which is what every layout written before this existed meant.
+	if (n->collapsed) {
+		ret.setBool(true, "collapsed");
+	}
 	return ret;
 }
 
@@ -657,6 +676,7 @@ bool DockTree::readSpec(const Value &src, DockLayoutSpec &out,
 
 	const auto active = size_t(sprt::max(src.getInteger("active", 0), int64_t(0)));
 	out.active = out.panels.empty() ? 0 : sprt::min(active, out.panels.size() - 1);
+	out.collapsed = src.getBool("collapsed");
 	return true;
 }
 

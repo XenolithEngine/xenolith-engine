@@ -34,10 +34,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 //
 // The GPU backends pack glyphs into an atlas image so that a run of text costs one texture binding.
 // A software rasterizer has no bindings to save - picking a different source pointer per glyph is
-// free - so the atlas would buy nothing and cost a great deal: every time a new character appears
-// on screen, the atlas is re-packed, re-allocated and every previously rasterized glyph is copied
-// into it again. And that is not a start-up cost: FontFaceObject::_required only ever grows, so the
-// whole set is resubmitted on every update.
+// free - so an atlas would buy nothing and cost plenty: every new character on screen re-packs and
+// re-allocates it and copies every glyph in again, on every update (FontFaceObject::_required only
+// ever grows, so the whole set is resubmitted each time).
 //
 // Here glyphs are simply appended to a slab and never moved. A glyph is rasterized once, in place,
 // by FreeType itself (font::FontFaceObject::renderTextureUnsafe writes into the slot this class

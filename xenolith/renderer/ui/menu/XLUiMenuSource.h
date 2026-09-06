@@ -214,8 +214,7 @@ public:
 	virtual bool init() override;
 	virtual bool init(FactoryFunction &&, MeasureFunction &&);
 
-	// A node of a fixed size. Both dimensions are kept by copy() - the removed material2d version
-	// dropped its minimum width in exactly this overload and again in its copy().
+	// A node of a fixed size; both dimensions are kept by copy().
 	virtual bool init(FactoryFunction &&, Size2);
 
 	virtual Rc<MenuSourceItem> copy() const override;

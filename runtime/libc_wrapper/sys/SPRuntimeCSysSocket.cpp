@@ -35,7 +35,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/runtime/log.h>
 
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 
 // The browser sandbox has no socket layer; every entry point is an ENOSYS stub. See
 // libc_impl/src/wasm/socket.cc for the public symbols; here the __sprt_* backing mirrors
@@ -185,9 +185,16 @@ __SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp
 // ABI validation (hosted). The per-platform cross <sys/socket.h> surface
 // (cross/<platform>/socket.h + sockdef.h) is defined to match the native header
 // value-for-value and layout-for-layout, so the forwarders below are plain casts.
+//
+// Skipped on the freestanding targets: there is no native <sys/socket.h> to
+// compare against, because the sprt types ARE the only definition of these
+// structs on those targets. Nothing goes unchecked as a result -- on Embox EL0
+// the socket calls are ENOSYS stubs until milestone M3 (libc_impl
+// embox_user/socket.cc), and when they become real the thing to pin them against
+// is the kernel's wire layout, not a header that does not exist.
 // ---------------------------------------------------------------------------
 
-#if !SPRT_WASM && !SPRT_WINDOWS
+#if !SPRT_WASM && !SPRT_WINDOWS && !SPRT_EMBOX_USER
 
 static_assert(sizeof(struct __SPRT_ID(sockaddr)) == sizeof(struct ::sockaddr),
 		"sockaddr size differs from native");
@@ -2507,7 +2514,7 @@ static_assert(__SPRT_TCP_ZEROCOPY_RECEIVE == TCP_ZEROCOPY_RECEIVE, "TCP_ZEROCOPY
 
 namespace sprt {
 
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 #define __SPRT_SOCK_ENOSYS() \
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__, \
 			" not available on this platform"); \
@@ -2515,7 +2522,7 @@ namespace sprt {
 	return -1
 #endif
 __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	// winsock's socket() takes a bare SOCK_* value and rejects anything above it, so the
@@ -2565,7 +2572,7 @@ __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol)
 }
 
 __SPRT_C_FUNC int __SPRT_ID(socketpair)(int __domain, int __type, int __protocol, SOCKET __sv[2]) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	(void)__domain, (void)__type, (void)__protocol, (void)__sv;
@@ -2578,7 +2585,7 @@ __SPRT_C_FUNC int __SPRT_ID(socketpair)(int __domain, int __type, int __protocol
 
 __SPRT_C_FUNC int __SPRT_ID(
 		bind)(SOCKET __fd, const struct __SPRT_ID(sockaddr) * __addr, __SPRT_ID(socklen_t) __len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::bind(__fd, __addr, __len);
@@ -2589,7 +2596,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(connect)(SOCKET __fd, const struct __SPRT_ID(sockaddr) * __addr,
 		__SPRT_ID(socklen_t) __len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::connect(__fd, __addr, __len);
@@ -2599,7 +2606,7 @@ __SPRT_C_FUNC int __SPRT_ID(connect)(SOCKET __fd, const struct __SPRT_ID(sockadd
 }
 
 __SPRT_C_FUNC int __SPRT_ID(listen)(SOCKET __fd, int __backlog) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #else
 	return ::listen(__fd, __backlog);
@@ -2609,7 +2616,7 @@ __SPRT_C_FUNC int __SPRT_ID(listen)(SOCKET __fd, int __backlog) {
 __SPRT_C_FUNC SOCKET __SPRT_ID(accept)(SOCKET __fd,
 		struct __SPRT_ID(sockaddr) * __SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::accept(__fd, __addr, __len);
@@ -2621,7 +2628,7 @@ __SPRT_C_FUNC SOCKET __SPRT_ID(accept)(SOCKET __fd,
 __SPRT_C_FUNC SOCKET __SPRT_ID(accept4)(SOCKET __fd,
 		struct __SPRT_ID(sockaddr) * __SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len, int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	// winsock has no accept4(): accept() then map SOCK_NONBLOCK to FIONBIO (CLOEXEC is
@@ -2656,7 +2663,7 @@ __SPRT_C_FUNC SOCKET __SPRT_ID(accept4)(SOCKET __fd,
 __SPRT_C_FUNC int __SPRT_ID(getsockname)(SOCKET __fd,
 		struct __SPRT_ID(sockaddr) * __SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::getsockname(__fd, __addr, __len);
@@ -2668,7 +2675,7 @@ __SPRT_C_FUNC int __SPRT_ID(getsockname)(SOCKET __fd,
 __SPRT_C_FUNC int __SPRT_ID(getpeername)(SOCKET __fd,
 		struct __SPRT_ID(sockaddr) * __SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::getpeername(__fd, __addr, __len);
@@ -2678,7 +2685,7 @@ __SPRT_C_FUNC int __SPRT_ID(getpeername)(SOCKET __fd,
 }
 
 __SPRT_C_FUNC int __SPRT_ID(shutdown)(SOCKET __fd, int __how) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #else
 	return ::shutdown(__fd, __how);
@@ -2700,7 +2707,7 @@ static bool __sprt_sockopt_is_timeo(int __level, int __optname) {
 
 __SPRT_C_FUNC int __SPRT_ID(getsockopt)(SOCKET __fd, int __level, int __optname,
 		sockdata_t *__SPRT_RESTRICT __optval, __SPRT_ID(socklen_t) * __SPRT_RESTRICT __optlen) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::getsockopt(__fd, __level, __optname, __optval, __optlen);
@@ -2725,7 +2732,7 @@ __SPRT_C_FUNC int __SPRT_ID(getsockopt)(SOCKET __fd, int __level, int __optname,
 
 __SPRT_C_FUNC int __SPRT_ID(setsockopt)(SOCKET __fd, int __level, int __optname,
 		const sockdata_t *__optval, __SPRT_ID(socklen_t) __optlen) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::setsockopt(__fd, __level, __optname, __optval, __optlen);
@@ -2746,7 +2753,7 @@ __SPRT_C_FUNC int __SPRT_ID(setsockopt)(SOCKET __fd, int __level, int __optname,
 
 __SPRT_C_FUNC socksize_t __SPRT_ID(
 		send)(SOCKET __fd, const sockdata_t *__buf, __SPRT_ID(size_t) __n, int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	// winsock send() takes an int length and returns int; the char* buffer matches directly.
@@ -2758,7 +2765,7 @@ __SPRT_C_FUNC socksize_t __SPRT_ID(
 
 __SPRT_C_FUNC socksize_t __SPRT_ID(
 		recv)(SOCKET __fd, sockdata_t *__buf, __SPRT_ID(size_t) __n, int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::recv(__fd, __buf, (int)__n, __flags);
@@ -2770,7 +2777,7 @@ __SPRT_C_FUNC socksize_t __SPRT_ID(
 __SPRT_C_FUNC socksize_t __SPRT_ID(sendto)(SOCKET __fd, const sockdata_t *__buf,
 		__SPRT_ID(size_t) __n, int __flags, const struct __SPRT_ID(sockaddr) * __addr,
 		__SPRT_ID(socklen_t) __addr_len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::sendto(__fd, __buf, (int)__n, __flags, __addr, __addr_len);
@@ -2782,7 +2789,7 @@ __SPRT_C_FUNC socksize_t __SPRT_ID(sendto)(SOCKET __fd, const sockdata_t *__buf,
 __SPRT_C_FUNC socksize_t __SPRT_ID(recvfrom)(SOCKET __fd, sockdata_t *__SPRT_RESTRICT __buf,
 		__SPRT_ID(size_t) __n, int __flags, struct __SPRT_ID(sockaddr) * __SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __addr_len) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	return ::recvfrom(__fd, __buf, (int)__n, __flags, __addr, __addr_len);
@@ -2811,7 +2818,7 @@ static WSABUF *__sprt_win_gather(const struct __SPRT_ID(iovec) * __iov, unsigned
 
 __SPRT_C_FUNC socksize_t __SPRT_ID(
 		sendmsg)(SOCKET __fd, const struct __SPRT_ID(msghdr) * __message, int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	// winsock has no sendmsg(); WSASendTo carries the scatter/gather iovec (ancillary
@@ -2839,7 +2846,7 @@ __SPRT_C_FUNC socksize_t __SPRT_ID(
 
 __SPRT_C_FUNC socksize_t __SPRT_ID(
 		recvmsg)(SOCKET __fd, struct __SPRT_ID(msghdr) * __message, int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS
 	WSABUF __stack[16];
@@ -2871,7 +2878,7 @@ __SPRT_C_FUNC socksize_t __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(sendmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * __msgvec,
 		unsigned int __vlen, unsigned int __flags) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS || SPRT_APPLE || SPRT_HOSTED_RTOS
 	// No native sendmmsg(): loop sendmsg() over the batch (Linux semantics - return the
@@ -2895,7 +2902,7 @@ __SPRT_C_FUNC int __SPRT_ID(sendmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 
 __SPRT_C_FUNC int __SPRT_ID(recvmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * __msgvec,
 		unsigned int __vlen, unsigned int __flags, struct __SPRT_TIMESPEC_NAME *__timeout) {
-#if SPRT_WASM
+#if SPRT_WASM || SPRT_EMBOX_USER
 	__SPRT_SOCK_ENOSYS();
 #elif SPRT_WINDOWS || SPRT_APPLE || SPRT_HOSTED_RTOS
 	// No native recvmmsg(): loop recvmsg(). The timeout is best-effort (not applied

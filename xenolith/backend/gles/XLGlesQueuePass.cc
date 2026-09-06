@@ -471,9 +471,8 @@ bool QueuePassHandle::executeDrawList(const CommandBuffer &buf) {
 
 	table.glBindVertexArray(0);
 	// The VAO describes this draw list and nothing else - the next one respecifies every attribute
-	// from its own recorder - so it dies with the list. Keeping it would leak one GL object per
-	// subpass per frame, which a headless run of a few frames never shows and a window running at
-	// 60 FPS turns into thousands a minute.
+	// from its own recorder - so it dies with the list instead of accumulating one GL object per
+	// subpass per frame.
 	if (table.glDeleteVertexArrays) {
 		table.glDeleteVertexArrays(1, &vao);
 	}

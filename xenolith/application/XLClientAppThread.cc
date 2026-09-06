@@ -115,8 +115,7 @@ bool ClientAppThread::worker() {
 		_sharedObjects = Rc<remote::ObjectFactory>::create();
 	}
 
-	// Run the looper (update timer + connection poll handle) until the thread stops. The connection
-	// loop lives here now -- the client is no longer single-shot.
+	// Run the looper (update timer + connection poll handle) until the thread stops.
 	return AppThread::worker();
 }
 

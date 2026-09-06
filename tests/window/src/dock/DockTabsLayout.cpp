@@ -100,7 +100,8 @@ bool DockTabsLayout::init() {
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.6f), [this] { runPhase1(); },
 			Rc<DelayTime>::create(0.3f), [this] { runPhase2(); }, Rc<DelayTime>::create(0.3f),
 			[this] { runPhase3(); }, Rc<DelayTime>::create(0.3f), [this] { runPhase4(); },
-			Rc<DelayTime>::create(0.3f), [this] { runPhase5(); }));
+			Rc<DelayTime>::create(0.3f), [this] { runPhase5(); }, Rc<DelayTime>::create(0.3f),
+			[this] { runPhase6(); }, Rc<DelayTime>::create(0.3f), [this] { runPhase7(); }));
 	return true;
 }
 
@@ -305,6 +306,123 @@ void DockTabsLayout::runPhase5() {
 	// the closed panel's node is kept: reopening it must not rebuild
 	_dock->openPanel("beta", _right);
 	expect(buildCount("beta") == 1, "phase5", "reopening a closed panel rebuilt it");
+
+	log::source().warn("DockTabsTest", "phase5 done: ", _checks, " checks, ", _failures,
+			" failures; building a side rail");
+
+	/* A LAYOUT OF THEIR OWN for the two rail properties, rather than narrowing one of the frames
+	above: `left` is gone by now, and a rail is a Left-strip place whose minimum is a WIDTH - the
+	frames above carry Top strips, whose collapse would drop a height and leave the divider between
+	them exactly where it was. */
+	using Spec = ui::DockLayoutSpec;
+	_dock->setLayout(Spec::hsplit(0.3f,
+			Spec::leaf({String("alpha"), String("beta")},
+					{
+						.name = String("rail"),
+						.minSize = Size2(160.0f, 0.0f),
+						// narrowed to ONE axis: a rail stacks its panels and is never divided
+						// side by side
+						.flags = ui::DockFrameFlags::Default
+								| ui::DockFrameFlags::AllowSplitVertical,
+						.tabBarSide = ui::DockTabBarSide::Left,
+					}),
+			Spec::leaf({String("gamma")}, {.name = String("body")})));
+
+	_rail = _dock->findFrameByName("rail");
+	_body = _dock->findFrameByName("body");
+}
+
+void DockTabsLayout::runPhase6() {
+	auto &tree = _dock->getTree();
+	auto rail = tree.get(_rail);
+	if (!rail || !_dock->getFrameNode(_rail)) {
+		expect(false, "phase6", "the rail frame was not built");
+		return;
+	}
+
+	// --- ONE AXIS ONLY -------------------------------------------------------------------
+	// The two bands the rail offers, and the two it does not. A forbidden band is not "nothing":
+	// the point is still over the frame, and the honest answer there is the middle.
+	const auto rect = rail->rect;
+	auto bar = _dock->getFrameNode(_rail)->getTabBar();
+	const float stripWidth = bar->getContentSize().width;
+	const float inset = EdgeBand / 2.0f;
+	const float bodyLeft = rect.origin.x + stripWidth;
+	const float midY = rect.getMidY();
+
+	auto zoneAt = [&](float x, float y) { return _dock->hitTest(Vec2(x, y), "gamma").kind; };
+
+	expect(zoneAt(rect.getMidX(), rect.getMaxY() - inset) == ui::DockDropTarget::Kind::SplitTop,
+			"phase6", "the top band of a vertical-only rail must still split it");
+	expect(zoneAt(rect.getMidX(), rect.origin.y + inset) == ui::DockDropTarget::Kind::SplitBottom,
+			"phase6", "the bottom band of a vertical-only rail must still split it");
+	expect(zoneAt(bodyLeft + inset, midY) == ui::DockDropTarget::Kind::Center, "phase6",
+			"the left band of a vertical-only rail must fall through to the middle");
+	expect(zoneAt(rect.getMaxX() - inset, midY) == ui::DockDropTarget::Kind::Center, "phase6",
+			"the right band of a vertical-only rail must fall through to the middle");
+
+	// ...and the ordinary frame beside it still offers all four
+	auto bodyRect = tree.get(_body)->rect;
+	expect(_dock->hitTest(Vec2(bodyRect.origin.x + inset, bodyRect.getMidY()), "alpha").kind
+					== ui::DockDropTarget::Kind::SplitLeft,
+			"phase6", "narrowing one frame must not narrow its neighbour");
+
+	// --- SHUTTING IT ---------------------------------------------------------------------
+	// What it is worth is the MINIMUM: open, the rail is floored by its declared 160pt; shut, by
+	// the strip alone. That difference is what lets the divider travel down to the icons.
+	_railOpenMin = rail->minSize.width;
+	expect(_railOpenMin >= 160.0f, "phase6", "an open rail must honour its declared floor");
+	expect(!_dock->isFrameCollapsed(_rail), "phase6", "a fresh frame must not be collapsed");
+
+	log::source().warn("DockTabsTest", "phase6 done: ", _checks, " checks, ", _failures,
+			" failures; shutting the rail");
+
+	expect(_dock->setFrameCollapsed(_rail, true), "phase6", "collapsing the rail was refused");
+}
+
+void DockTabsLayout::runPhase7() {
+	auto &tree = _dock->getTree();
+	auto rail = tree.get(_rail);
+	if (!rail) {
+		expect(false, "phase7", "the rail frame is gone");
+		return;
+	}
+
+	expect(_dock->isFrameCollapsed(_rail), "phase7", "the rail did not stay collapsed");
+
+	auto frame = _dock->getFrameNode(_rail);
+	expect(frame && frame->isCollapsed(), "phase7", "the frame node was not told");
+	expect(frame && frame->hasStyleClass("collapsed"), "phase7",
+			"a shut frame must carry the `collapsed` class for a stylesheet");
+
+	// the body is out of the FLOW, not merely invisible: a hidden box would keep its width and the
+	// rail would be exactly as wide shut as it was open
+	if (frame) {
+		auto vis = frame->getBody()->getComponent<VisibilityComponent>();
+		expect(vis && vis->displayNone, "phase7", "a shut frame's body must be display:none");
+	}
+
+	const float stripWidth = frame ? frame->getTabBar()->getContentSize().width : 0.0f;
+	expect(stripWidth > 0.0f, "phase7", "the rail has no strip to collapse to");
+	expectNear("phase7", "a shut rail's minimum is its strip", rail->minSize.width, stripWidth);
+	expect(rail->minSize.width < _railOpenMin, "phase7",
+			"shutting the rail did not lower its minimum");
+
+	// and the divider can now travel all the way down to it
+	_dock->setSplitRatio(tree.getRoot(), 0.0f);
+
+	// re-opening restores the floor, which is the other half of the claim
+	expect(_dock->setFrameCollapsed(_rail, false), "phase7", "re-opening the rail was refused");
+	expect(!_dock->isFrameCollapsed(_rail), "phase7", "the rail did not re-open");
+	expect(frame && !frame->hasStyleClass("collapsed"), "phase7",
+			"the `collapsed` class outlived the collapse");
+
+	// a shut rail survives a save/restore round trip: it is tree state, not node state
+	_dock->setFrameCollapsed(_rail, true);
+	auto saved = _dock->save();
+	expect(_dock->restore(saved), "phase7", "restoring a layout with a shut frame failed");
+	expect(_dock->isFrameCollapsed(_dock->findFrameByName("rail")), "phase7",
+			"restore lost the rail's collapsed state");
 
 	log::source().warn("DockTabsTest", "SUMMARY: ", _checks, " checks, ", _failures, " failures");
 }

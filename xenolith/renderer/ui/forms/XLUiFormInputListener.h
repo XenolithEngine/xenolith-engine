@@ -25,10 +25,8 @@
 
 #include "XLUiFormTypes.h"
 
-// isInvalid() below calls isControlInvalid(), which is declared here. It used to compile only
-// because every consumer happened to include this header after one that had already pulled that
-// declaration in - an accident of include order, and the first translation unit to reach this
-// header first does not build.
+// isInvalid() below calls isControlInvalid(), declared here - included so this header stands on
+// its own instead of depending on the consumer's include order.
 #include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {

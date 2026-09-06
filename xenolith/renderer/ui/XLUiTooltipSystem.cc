@@ -256,8 +256,7 @@ bool TooltipSystem::init() {
 
 	// Owner and scene events for the lifetime, and visit control for one thing only: the visit is
 	// the last chance to attach the listeners (see handleVisitBegin). The update tick is scheduled
-	// separately - it is what notices a node sliding out from under a still pointer, which used to
-	// come from each target's own geometry updates.
+	// separately - it is what notices a node sliding out from under a still pointer.
 	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleVisitControl;
 
@@ -706,8 +705,11 @@ const TooltipPlacement &TooltipSystem::placementFor(NotNull<Node> node) const {
 
 Rect TooltipSystem::getTargetWorldRect(NotNull<Node> node) const {
 
-	// Four corners, not origin+size: the node may be rotated or scaled, and the anchor rect the
-	// placement wants is the axis-aligned box it actually occupies.
+	// Four corners, not origin+size: the node may be rotated or scaled, and what a factory wants to
+	// relate its hint to is the axis-aligned box the node actually occupies.
+	//
+	// SCENE space, ie physical pixels - see TooltipRequest::nodeWorldRect. The placement is NOT
+	// resolved from this; makePlacement asks ui::placementAnchorRect for the logical-point box.
 	const auto size = node->getContentSize();
 	const Vec2 corners[4] = {
 		node->convertToWorldSpace(Vec2::ZERO),
@@ -730,28 +732,33 @@ Rect TooltipSystem::getTargetWorldRect(NotNull<Node> node) const {
 
 sprt::window::WindowPlacement TooltipSystem::makePlacement(const TooltipRequest &request,
 		const TooltipPlacement &placement) const {
-	auto owner = getOwner();
-	const float sceneHeight = owner ? owner->getContentSize().height : 0.0f;
-
-	// Scene nodes are Y-up; WindowPlacement is Y-down from the parent's content top-left. Flipping
-	// the rect swaps which edge is "top", so the anchor rect is built from the flipped extremes
-	// rather than by flipping its origin.
-	Rect rect;
-	if (placement.anchorMode == TooltipAnchorMode::Pointer) {
-		rect = Rect(request.pointer.x, request.pointer.y, 0.0f, 0.0f);
-	} else {
-		rect = request.nodeWorldRect;
-	}
-
-	const float topYDown = sceneHeight - (rect.origin.y + rect.size.height);
-
 	sprt::window::WindowPlacement ret;
-	ret.anchorRect = IRect(int32_t(std::lround(rect.origin.x)), int32_t(std::lround(topYDown)),
-			uint32_t(std::lround(rect.size.width)), uint32_t(std::lround(rect.size.height)));
 	ret.anchor = placement.anchor;
 	ret.gravity = placement.gravity;
 	ret.offset = placement.offset;
 	ret.adjustment = placement.adjustment;
+
+	Node *inScene = request.target ? request.target : getOwner();
+	if (!inScene) {
+		return ret;
+	}
+
+	/* The anchor box is ui::placementAnchorRect's, and deliberately NOT derived from
+	`request.nodeWorldRect` sitting right beside it: that rect is in SCENE space, which is physical
+	pixels, while a WindowPlacement is in the window's logical points. Subtracting one from the
+	other put the hint tens of points off on every window whose density is not 1 - and the further
+	down the window the anchor was, the further off it landed, which is why this read as "depends on
+	the window size". The rect stays in the request because a factory relating the hint to scene
+	geometry wants exactly that space; it is just not the space a placement is resolved in.
+
+	Menus, dropdowns and hints all ask the same function now, so there is one answer to "where is
+	the anchor" and it cannot drift apart again. */
+	if (placement.anchorMode == TooltipAnchorMode::Pointer) {
+		ret.anchorRect = placementAnchorPoint(inScene, request.pointer);
+	} else {
+		ret.anchorRect = placementAnchorRect(inScene);
+	}
+
 	return ret;
 }
 

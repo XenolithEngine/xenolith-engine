@@ -35,6 +35,15 @@ RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # link the runtime never see this define and get the libc++ value-type projection.
 MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
 
+# SPRT_STARTUP_TRACE=1 turns on the startup trace in the freestanding EL0 backend
+# (libc_impl/src/embox_user/startup.cc): one mark per startup step and one per
+# static constructor, written with a raw write(2) syscall. It is the only way to
+# see how far startup got on a target with no debugger and no stdio until step 4,
+# and it is off by default because every mark is a syscall.
+ifeq ($(SPRT_STARTUP_TRACE),1)
+MODULE_RUNTIME_COMMON_CFLAGS += -D__SPRT_EL0_STARTUP_TRACE=1
+endif
+
 # Set by <root>/runtime/Makefile when SPRT_SHARED=1. Flips SPRT_API/SPRT_GLOBAL to the
 # export side of the ABI (__declspec(dllexport) on Windows) and swaps the freestanding
 # entry point from mainCRTStartup to _DllMainCRTStartup.
@@ -271,6 +280,32 @@ MODULE_RUNTIME_LIBS += -limport
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/windows/clang_rt.builtins-$(TARGET_ARCH).lib
 MODULE_RUNTIME_GENERAL_CFLAGS +=
 MODULE_RUNTIME_GENERAL_CXXFLAGS +=
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# Freestanding, so the same shape as WASM and Windows: our own libc, our own
+# STL headers, an explicit -nostdlib link that pulls the toolchain runtimes by
+# name. What differs from WASM is only which archives exist and where.
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+# simde, from the sysroot; -nostdinc dropped the default paths.
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+# Export the sprt libc + STL headers to consumers: with -nostdinc, <stdio.h> and
+# <optional> have to resolve here or not at all.
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+# compiler-rt builtins: the out-of-line 128-bit soft-float and integer helpers
+# clang emits calls to but does not inline. Static, so members come in on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/embox_user/libclang_rt.builtins-$(TARGET_ARCH).a
+# libc++abi + libunwind: guards, RTTI, __dynamic_cast, and the EH personality.
+# Whether throw/catch actually unwinds depends on libunwind finding
+# PT_GNU_EH_FRAME at run time, which is contour L4's problem, not this line's.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
 MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 

@@ -27,4 +27,6 @@ THE SOFTWARE.
 #include "windows/dlfcn.cc"
 #elif SPRT_WASM
 #include "wasm/dlfcn.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/dlfcn.cc"
 #endif

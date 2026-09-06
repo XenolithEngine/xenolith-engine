@@ -31,8 +31,8 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	// Windows runs GLES through ANGLE; that path lands at milestone M6.
-	log::source().error("GLES", "The Windows/ANGLE platform is not implemented yet (milestone M6)");
+	// Windows runs GLES through ANGLE; that path is not implemented.
+	log::source().error("GLES", "The Windows/ANGLE platform is not implemented yet");
 	return nullptr;
 }
 

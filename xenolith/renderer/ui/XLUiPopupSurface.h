@@ -30,7 +30,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /** One panel on a surface of its own: what a menu, a search palette and a colour picker all are.
 
-A ui::SubWindow is the WINDOW. What every popup then has to do with it is the same six things, and
+A ui::SubWindow is the WINDOW. What every popup then has to do with it is the same five things, and
 each of them is a thing to get wrong exactly once:
 
  1. on the NATIVE path the surface is a scene of its own, and the ui::StyleSystem carrying the
@@ -39,19 +39,21 @@ each of them is a thing to get wrong exactly once:
     in force where the popup was opened from is shared with the surface's own scene, so an
     application that never heard of any of this gets a styled dropdown. `stylesheet` /
     `stylesheetSource` still override it for a surface whose look is its own;
- 2. the panel has to be RenderingLevel::Solid: opaque geometry is drawn first and writes depth
-    while the surface pass only TESTS against it, so a panel left at the default level cannot cover
-    the labels of whatever is under it on the overlay path;
- 3. it needs a colour of its own for the case where no sheet ever arrives, because a ui::Panel with
+ 2. it needs a colour of its own for the case where no sheet ever arrives, because a ui::Panel with
     nothing declared is opaque WHITE;
- 4. on the native path it fills whatever extent the window system actually settled on, which is not
+ 3. on the native path it fills whatever extent the window system actually settled on, which is not
     necessarily the one that was asked for;
- 5. on the OVERLAY path SceneContent2d::pushOverlay stretches the layout over the whole parent and
+ 4. on the OVERLAY path SceneContent2d::pushOverlay stretches the layout over the whole parent and
     puts its origin at the bottom left - right for an overlay and wrong for a popup - so the panel
     goes at the rect the placement resolved, converted from that rect's Y-DOWN space into the
     scene's Y-UP one;
- 6. a native Popup is dismissed by the window system when the user clicks away from it; an overlay
+ 5. a native Popup is dismissed by the window system when the user clicks away from it; an overlay
     has no such contract and has to take itself down.
+
+What is NOT here, and used to be: forcing the panel to RenderingLevel::Solid so it could cover what
+was under it. SubWindow::openOverlay lifts the whole layout onto RenderingLevel::Overlay - a pass of
+its own, drawn last - so the surface is above the scene by construction and is free to be
+translucent.
 
 Everything above is this function's. What is left to a caller is what actually differs: the extent
 (a menu measures its source, a palette opens at its full height), the node that IS the surface, and

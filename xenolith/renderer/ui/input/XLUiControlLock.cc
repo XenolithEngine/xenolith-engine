@@ -27,8 +27,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The narrower second word for a control that is disabled BECAUSE something else owns its value.
-// A class rather than a pseudo-class, because the CSS subset has no `:locked` - and unlike the
-// classes this kit used to publish beside its states, this one has nothing to be replaced by.
+// A class rather than a pseudo-class, because the CSS subset has no `:locked`.
 static constexpr auto s_editLockClass = StringView("locked");
 
 bool isEditLocked(const Node *node) { return isControlLocked(node); }

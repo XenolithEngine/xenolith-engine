@@ -665,12 +665,10 @@ void Label::handleContentSizeDirty() {
 
 	// The highlight quads are built against the HEIGHT of the node that carries them - the label is
 	// Y-up and the layout's rects are Y-down - and that height only arrives here, one phase after
-	// applyLayout computed the rects from the size it had just assigned. So a label that had never
-	// been laid out built its selection against a height of zero and put it below the text, where
-	// the field's scissor cuts it away. That is not a corner case: an inline editor is seeded and
-	// selected in the same act, before its first visit, and its selection never appeared at all.
-	// Rebuilding here is what makes the height and the rects agree, on this path and on every
-	// later resize (a re-wrap, a font-size change) that used to leave an open selection misplaced.
+	// applyLayout computed the rects from the size it had just assigned. Rebuilding an open
+	// selection here is what keeps the height and the rects in agreement: on the first layout (an
+	// inline editor is seeded and selected before its first visit, with a height still zero) and
+	// on every later resize - a re-wrap, a font-size change.
 	if (_selection->getTextCursor() != core::TextCursor::InvalidCursor) {
 		setSelectionCursor(_selection->getTextCursor());
 	}

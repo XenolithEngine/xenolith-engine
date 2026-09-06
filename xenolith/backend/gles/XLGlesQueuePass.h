@@ -102,8 +102,8 @@ protected:
 	Vector<Rc<Ref>> _held;
 };
 
-// A queue attachment that carries an image. The backend adds nothing to it in M1 - like the soft
-// one, it exists so a pass names its output with the backend's own type instead of core's.
+// A queue attachment that carries an image. The backend adds nothing to it - like the soft one,
+// it exists so a pass names its output with the backend's own type instead of core's.
 class SP_PUBLIC ImageAttachment : public core::AttachmentTyped<core::AttachmentHandle, core::ImageAttachment> {
 public:
 	virtual ~ImageAttachment() = default;
@@ -113,11 +113,10 @@ class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {
 public:
 	virtual ~QueuePassHandle() = default;
 
-	// Scene-space scissor -> target pixels, honouring the surface pre-rotation. Ported from soft:
-	// the transform is a property of the presented surface, not of the API, so both backends have
-	// to agree on it or clipped content would land in different places. M1 does not clip at all -
-	// there are no draw commands - but the helper goes with its executor and the M2 pass will use
-	// it for glScissor.
+	// Scene-space scissor -> target pixels, honouring the surface pre-rotation, and the source of
+	// every glScissor this backend issues. Ported from soft: the transform is a property of the
+	// presented surface, not of the API, so both backends have to agree on it or clipped content
+	// would land in different places.
 	static URect rotateScissor(const core::FrameConstraints &constraints, const URect &scissor);
 
 	virtual bool prepare(core::FrameQueue &, Function<void(bool)> &&) override;

@@ -48,6 +48,12 @@ class HeadlessContextController;
 //
 // No input, no cursor, no text input: events are injected by the external controller straight into
 // AppWindow::handleInputEvents. Focus and pointer ownership are the controller's to hand out.
+//
+// It IS a user-space-decorated window, though, and not by omission: with no window system there is
+// no frame but the one the application draws, which is exactly what
+// WindowCapabilities::UserSpaceDecorations means. So this window is also the window manager for
+// itself - a press on a grip the application declared moves or resizes it on the virtual screen,
+// where every other backend would hand the press to the WM. See handleInputEvents.
 class HeadlessWindow final : public NativeWindow {
 public:
 	virtual ~HeadlessWindow();
@@ -85,6 +91,11 @@ public:
 	void updateFocusState(bool);
 	void updatePointerState(bool);
 
+	// The other half of WindowCapabilities::UserSpaceDecorations: a press on a grip the application
+	// declared moves or resizes THIS window instead of reaching the scene. See the note over the
+	// definition for what an injected coordinate means while such a drag runs.
+	virtual void handleInputEvents(Vector<InputEventData> &&) override;
+
 protected:
 	virtual bool updateTextInput(const TextInputRequest &,
 			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
@@ -93,12 +104,27 @@ protected:
 	// Shared by setExtent and setContentExtent; true if the extent actually moved.
 	bool applyExtent(Extent2);
 
+	// Engage `grip` at `local` (the window's own space). False when this window's declared policy
+	// refuses it, in which case the press is ordinary input after all.
+	bool startGripDrag(WindowLayerFlags grip, Vec2 local);
+
+	// One step of a running grip drag, and the move/resize it resolves to.
+	void updateGripDrag(Vec2 local);
+	void applyGripGeometry(const IRect &);
+
 	// The controller is always the one this window was created by - init() takes nothing else.
 	HeadlessContextController *getHeadlessController() const;
 
 	Extent2 _extent;
 	bool _mapped = false;
 	bool _closed = false;
+
+	// The grip a press engaged - None while nothing is being dragged - and the pointer position
+	// and window rect it engaged at. Both anchors are frozen at the press, which is what the
+	// injected coordinates are then read against.
+	WindowLayerFlags _gripDrag = WindowLayerFlags::None;
+	Vec2 _gripAnchor;
+	IRect _gripRect;
 };
 
 } // namespace sprt::window

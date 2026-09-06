@@ -46,7 +46,6 @@ enum class ControlFlags : uint32_t {
 	None = 0,
 
 	// Something else owns this control's value: it may not be edited, and `lockReason` says why.
-	// Replaces the presence of a separate component, which is what used to carry this.
 	Locked = 1 << 0,
 
 	OwnerEnabled = 1 << 1,
@@ -70,7 +69,7 @@ struct InteractiveComponent {
 	InteractiveState state = InteractiveState::Enabled;
 
 	// Bookkeeping, not style. Default: nobody has locked anything and the widget considers itself
-	// enabled - the same starting point the separate lock component used to have.
+	// enabled.
 	ControlFlags flags = ControlFlags::OwnerEnabled;
 
 	// Why this control is locked, as a code in the diagnostic registry; NoMessage when it is not.

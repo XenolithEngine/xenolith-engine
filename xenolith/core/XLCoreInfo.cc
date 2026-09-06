@@ -325,9 +325,8 @@ String ImageInfo::description() const {
 }
 
 size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
-	// Blocks, not pixels. This check used to multiply BYTES PER BLOCK by a pixel count, which for
-	// BC7 asks for sixteen times the space the image occupies - so a correct buffer was refused and
-	// a compressed texture could not be loaded at all.
+	// Blocks, not pixels: for a compressed format the size is blocks * bytes-per-block, which
+	// getFormatImageSize accounts for.
 	uint64_t expectedSize = getFormatImageSize(format, extent, arrayLayers.get());
 	if (expectedSize > expected) {
 		log::source().error("core::ImageData", "Not enoudh space for image: ", expectedSize,
