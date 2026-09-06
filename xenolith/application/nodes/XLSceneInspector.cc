@@ -994,13 +994,24 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 			sendError(session, serial, "no render session");
 			return;
 		}
-		// The headless window renders on demand, so this is what actually produces frames. Each
-		// window has its own presentation engine, so each one has to be stepped on its own.
-		auto count = sprt::max(req.getInteger("count", 1), int64_t(1));
+		/* The headless window renders on demand, so this is what actually produces frames. Each
+		window has its own presentation engine, so each one has to be stepped on its own.
+
+		ASKING IS NOT DRAWING, and `presented` below is what closes that gap. `setReadyForNextFrame`
+		sets a flag and returns - it is a request, not a frame - so this reply has always come back
+		before anything was rendered, in about a tenth of a millisecond. A caller that then read the
+		scene, or shot it, was racing the render loop and could only sleep and hope; every flaky
+		check in this repository and in xlstudio has been that race. `presented` is the order of the
+		last frame that actually COMPLETED (PresentationEngine::getLastFrameOrder), so the wait is:
+		read it, ask for a frame, and poll until it has advanced.
+
+		`count` may be 0, which asks for nothing and only reports - that is the poll. */
+		auto count = sprt::max(req.getInteger("count", 1), int64_t(0));
 		for (int64_t i = 0; i < count; ++i) { server->setReadyForNextFrame(); }
 
 		Value result;
 		result.setInteger(count, "count");
+		result.setInteger(int64_t(server->getFrameTiming().lastFrameOrder), "presented");
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "render") {
 		/* Hold the render loop OPEN, for everything that changes without anyone touching it.
