@@ -284,8 +284,8 @@ void ScrollView::setIndicatorColor(const Color4B &val, bool withOpacity) {
 }
 
 Color4F ScrollView::getIndicatorColor() const {
-	// Read back what setIndicatorColor wrote. Reading the NODE's colour instead - which is what
-	// this used to do - never round-tripped: the setter writes the path and leaves the node alone.
+	// Read back what setIndicatorColor wrote: the setter writes the path and leaves the node
+	// alone, so the node's own colour would not round-trip.
 	if (auto layer = dynamic_cast<LayerRounded *>(_indicator)) {
 		return Color4F(layer->getPathColor());
 	}

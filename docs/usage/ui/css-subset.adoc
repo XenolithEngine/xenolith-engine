@@ -403,6 +403,12 @@ a rule on the type replaces it. The upright is a child of the line and not a
 descendant that inherits from it, so a sheet that re-colours one must name both. The highlight's is deliberately translucent —
 an opaque fill over a row would hide the row it is pointing at.
 
+`ui::DockDragGhost` (`dock-drag-ghost`) is in the same class and translucent for
+the same reason — but it is a `ui::Panel` with the Panel appliers registered, not
+a bare Layer, so `background-color: rgba(…)` on it reaches the **fill** rather
+than the node's opacity, and its caption and icon stay at full strength over a
+see-through ground.
+
 ### Writing a type applier: the reset command
 
 If you register an applier for your own node type, there is one contract that is
@@ -792,6 +798,19 @@ What you must know, because none of it matches the web exactly:
 * **Nothing is virtualized.** Every child of a scroll container is a real node,
   always. A long list belongs in `ui::TreeView` / `ui::TableView`, which build only
   the rows in the window.
+* **A clip splits the draw plan, and that used to reorder it.** Clipping installs a
+  dynamic state on the subtree, so geometry of one material that was a single batch
+  becomes two — one carrying the scissor, one not. The vertex plan held those groups
+  in a map keyed by `StateId` and drew them in that order, which is an allocation
+  counter rather than painter's order; since `StateIdNone` sorts last, whatever was
+  OUTSIDE the clip was always drawn after whatever was inside it. Anything at
+  `RenderingLevel::Surface` — `ui::Panel`, `ui::TextInput`, `basic2d::Label`'s
+  background — blends without writing depth, so the later draw simply covered the
+  earlier one: every panel and every text field inside a clipped subtree drew
+  nothing, while the labels beside them (Transparent, bucketed by zPath) drew
+  normally. Fixed by stamping each state group with the traversal order it was first
+  seen at and emitting the groups in that order; the case is `XL_OVERFLOW_TEST`'s
+  last two boxes, which are read by eye.
 
 ### Scrollbars
 

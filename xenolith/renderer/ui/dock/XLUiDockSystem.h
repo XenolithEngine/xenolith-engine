@@ -148,6 +148,7 @@ public:
 			size_t index = maxOf<size_t>());
 	virtual bool closePanel(StringView id) override;
 	virtual bool activatePanel(StringView id) override;
+	virtual void handlePanelTapped(StringView id) override;
 	bool movePanel(StringView id, DockNodeHandle target, size_t index = maxOf<size_t>());
 	virtual bool isPanelOpen(StringView id) const override;
 
@@ -173,6 +174,28 @@ public:
 	DockNodeHandle splitFrameWithPanel(DockNodeHandle frame, DockAxis, bool firstIsNew,
 			StringView panelId, float ratio = 0.5f);
 	bool closeFrame(DockNodeHandle);
+
+	/* Re-declare a parking place: its name (and with it its CSS #id), its floor, its flags and
+	which edge carries its tab strip.
+
+	The TREE is the source of truth for all four - a frame node the system builds later, after a
+	restore or a collapse, reads them from there and not from the node - so both are written here.
+	Flipping `tabBarSide` is the interesting one: the strip changes axis, its tabs change kind, and
+	the frame's floor is re-measured from the strip's new intrinsic size. */
+	bool setFrameParams(DockNodeHandle, const DockFrameParams &);
+
+	/* SHUT A PARKING PLACE TO ITS TAB STRIP, or open it again.
+
+	What it costs the layout is the point: a collapsed leaf reports only its strip as its minimum -
+	the panels' declared floors AND the frame's own are both dropped, because a place that is showing
+	nothing has no business reserving the room its content would need. The divider above it can then
+	travel down to the strip, which is what turns a side pane into an icon rail. Nothing here moves a
+	divider: shut the frames, then set the ratio, and the minimums stop it in the right place.
+
+	The flag lives in the TREE and is written by save()/restore(), so a rail somebody shut stays shut
+	across a restart. */
+	bool setFrameCollapsed(DockNodeHandle, bool);
+	bool isFrameCollapsed(DockNodeHandle) const;
 
 	// --- parameters --------------------------------------------------------
 
@@ -206,6 +229,15 @@ public:
 	void setPanelOpenedCallback(PanelCallback &&);
 	void setPanelClosedCallback(PanelCallback &&);
 	void setPanelActivatedCallback(PanelCallback &&);
+
+	/* A person pressed a tab. Fires on every tap, INCLUDING the one that changed nothing, and never
+	on a programmatic activation - see PanelHost::handlePanelTapped for why that is a different
+	event from "activated" and not a louder version of it.
+
+	This is what a collapsed side rail listens to: its tab strip stays visible and hit-testable
+	while its body is folded away, so the tab is there to be clicked and nothing else would report
+	the click. */
+	void setPanelTapCallback(PanelCallback &&);
 
 	// --- resizing ----------------------------------------------------------
 
@@ -315,6 +347,7 @@ protected:
 	PanelCallback _panelOpenedCallback;
 	PanelCallback _panelClosedCallback;
 	PanelCallback _panelActivatedCallback;
+	PanelCallback _panelTapCallback;
 };
 
 } // namespace stappler::xenolith::ui

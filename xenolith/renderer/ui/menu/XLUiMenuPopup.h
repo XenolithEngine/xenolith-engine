@@ -84,15 +84,9 @@ struct SP_PUBLIC MenuConfig {
 
 /** Resolve where a menu opening off `anchor` should be placed.
 
-This is the arithmetic every hand-written menu in this tree has got wrong at least once, in one
-place:
-
-- the anchor rect is built from the node's four CORNERS in world space, not from its origin and
-  size, because the node may be rotated or scaled;
-- it is then converted into the scene CONTENT's space, which undoes the density scale - scene space
-  is physical pixels, while WindowPlacement is in the window's logical points, and on a HiDPI
-  display the two differ by a factor of two;
-- and it is flipped into WindowPlacement's Y-DOWN space at the end.
+The anchor rect itself is ui::placementAnchorRect's - corners, the conversion through the scene
+content that undoes the density scale, and the Y flip - so that a menu, a dropdown and a hint
+cannot drift apart on where the anchor is. What is added here is the SIDE.
 
 `gravity` in the result names which edge OF THE MENU lands on the anchor point, not the direction
 the menu opens - see the note in windows.adoc. */
@@ -106,7 +100,8 @@ which scene the point belongs to, so a canvas passes itself and the location the
 
 The anchor rect comes out EMPTY, which every backend reads as "this exact point". Everything else -
 the conversion through the scene content that undoes the density scale, the Y flip, and which edge
-of the menu lands on the anchor - is shared with placementForNode rather than spelled again. */
+of the menu lands on the anchor - is ui::placementAnchorPoint's and MenuPopup_applySide's, shared
+with placementForNode rather than spelled again. */
 SP_PUBLIC sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 &location,
 		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
 

@@ -28,10 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
-// M1 stores, it does not bind: the samplers are compiled here and the slot views kept on the set,
-// but nothing is uploaded to a unit yet - that happens with the draw path in M2. The shape already
-// matches what a real binding will need (samplers by layout index, views by image slot), so the
-// renderer side can be written against it now.
+// The set stores rather than binds: the samplers are compiled here and the slot views kept on the
+// set (samplers by layout index, views by image slot); the draw path binds one texture+sampler per
+// unit as it records.
 class SP_PUBLIC TextureSetLayout final : public core::TextureSetLayout {
 public:
 	virtual ~TextureSetLayout() = default;
@@ -54,7 +53,7 @@ public:
 
 	virtual void write(const core::MaterialLayout &) override;
 
-	// View bound to an image slot, or null when the slot is unused. The M2 draw path resolves a
+	// View bound to an image slot, or null when the slot is unused. The draw path resolves a
 	// material's samplerImageIdx through this and binds texture+sampler for one unit at a time.
 	core::ImageView *getSlotView(uint32_t slot) const {
 		return slot < _slotViews.size() ? _slotViews[slot].get() : nullptr;
