@@ -1,0 +1,32 @@
+# Symbols the +open .tbd stubs export that the audit cannot confirm against the
+# pinned macOS SDK. Format:
+#
+#     <symbol>                  | <reason>
+#     <library.dylib>:<symbol>  | <reason>      (waives only the ownership check)
+#
+# Nothing belongs here that is merely inconvenient. A symbol is waivable only if
+# it is genuinely newer than the SDK being validated against, or if the stub
+# deliberately attributes it to a different library than the SDK does and that
+# choice is understood. Everything else is a bug in the stubs or in the curated
+# lists that feed gen-oss-stubs.sh.
+
+# --- newer than the pinned SDK ---------------------------------------------
+# os_unfair_lock_lock_with_flags is the macOS 15 locking API. It is exported
+# deliberately: LLVM 22.1's tsan Darwin interceptors gate on __MAC_15_0, which
+# AvailabilityVersions-141 defines even though the rest of the pinned manifest
+# is the 14.5 tag. The reference is a weak import (__API_AVAILABLE(macos(15.0))
+# plus -mmacosx-version-min=14.5), so a binary built against it still loads on
+# macOS 14. It cannot appear in a 14.5 SDK tbd, so it is waived here rather than
+# removed. See the os-lock-flags splice in open-sysroot.mk.
+_os_unfair_lock_lock_with_flags | macOS 15 API; absent from the pinned 14.5 SDK, weak-imported
+
+# --- deliberate ownership divergence ---------------------------------------
+# The toll-free-bridged Foundation classes are exported by CoreFoundation in the
+# real SDK, and gen-oss-stubs.sh's classifier buckets them there too. These three
+# were added to Foundation.tbd by hand instead. Foundation reexports
+# CoreFoundation, so the load command still resolves on a real Mac, but it is a
+# real divergence from the "same library as the SDK" rule and is recorded rather
+# than hidden. Moving them to CoreFoundation.tbd and re-baking would clear these.
+Foundation:_OBJC_CLASS_$_NSArray        | shipped in Foundation.tbd; SDK owns it in CoreFoundation
+Foundation:_OBJC_CLASS_$_NSMutableArray | shipped in Foundation.tbd; SDK owns it in CoreFoundation
+Foundation:_OBJC_CLASS_$_NSURL          | shipped in Foundation.tbd; SDK owns it in CoreFoundation

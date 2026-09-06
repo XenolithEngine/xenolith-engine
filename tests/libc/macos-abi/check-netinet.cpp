@@ -1,0 +1,160 @@
+// Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+// ---------------------------------------------------------------------------
+// cross/macos_sprt/netinetdef.h <-> Darwin <netinet/in.h> + <netinet/tcp.h>.
+//
+// These are setsockopt() option numbers, forwarded to libSystem untranslated,
+// and they are the table most likely to be quietly wrong: the IP_* space is
+// almost entirely renumbered relative to Linux, and Darwin has options Linux
+// does not (IP_RECVIF, IP_RECVDSTADDR) while lacking several Linux ones.
+//
+// Every assert here is a *two-way* check -- see abi_check.h. A name Darwin does
+// not have fails with "use of undeclared identifier", so the table cannot carry
+// an option that does not exist. That matters because portable code treats a
+// defined macro as a feature test: on the Windows side exactly this class of
+// bug (IP_BIND_ADDRESS_NO_PORT carrying the Linux number) broke the curl build.
+//
+// Compile-time only; see check.sh.
+// ---------------------------------------------------------------------------
+
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
+#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_netinet.h>
+#include "abi_check.h"
+
+// === address string lengths and reserved ports ===
+SPRT_CONST(INET_ADDRSTRLEN);
+SPRT_CONST(INET6_ADDRSTRLEN);
+SPRT_CONST(IPPORT_RESERVED);
+
+// === IPPROTO_* (a Darwin enum, not macros -- but sprt spells them macros) ===
+SPRT_CONST(IPPROTO_IP);
+SPRT_CONST(IPPROTO_HOPOPTS);
+SPRT_CONST(IPPROTO_ICMP);
+SPRT_CONST(IPPROTO_IGMP);
+SPRT_CONST(IPPROTO_IPIP);
+SPRT_CONST(IPPROTO_TCP);
+SPRT_CONST(IPPROTO_EGP);
+SPRT_CONST(IPPROTO_PUP);
+SPRT_CONST(IPPROTO_UDP);
+SPRT_CONST(IPPROTO_IDP);
+SPRT_CONST(IPPROTO_TP);
+SPRT_CONST(IPPROTO_IPV6);
+SPRT_CONST(IPPROTO_ROUTING);
+SPRT_CONST(IPPROTO_FRAGMENT);
+SPRT_CONST(IPPROTO_RSVP);
+SPRT_CONST(IPPROTO_GRE);
+SPRT_CONST(IPPROTO_ESP);
+SPRT_CONST(IPPROTO_AH);
+SPRT_CONST(IPPROTO_ICMPV6);
+SPRT_CONST(IPPROTO_NONE);
+SPRT_CONST(IPPROTO_DSTOPTS);
+SPRT_CONST(IPPROTO_MTP);
+SPRT_CONST(IPPROTO_ENCAP);
+SPRT_CONST(IPPROTO_PIM);
+SPRT_CONST(IPPROTO_SCTP);
+SPRT_CONST(IPPROTO_RAW);
+SPRT_CONST(IPPROTO_MAX);
+
+// === IP_* socket options ===
+SPRT_CONST(IP_TOS);
+SPRT_CONST(IP_TTL);
+SPRT_CONST(IP_HDRINCL);
+SPRT_CONST(IP_OPTIONS);
+SPRT_CONST(IP_RECVOPTS);
+SPRT_CONST(IP_RETOPTS);
+SPRT_CONST(IP_PKTINFO);
+SPRT_CONST(IP_RECVTTL);
+SPRT_CONST(IP_RECVTOS);
+SPRT_CONST(IP_IPSEC_POLICY);
+SPRT_CONST(IP_MULTICAST_IF);
+SPRT_CONST(IP_MULTICAST_TTL);
+SPRT_CONST(IP_MULTICAST_LOOP);
+SPRT_CONST(IP_ADD_MEMBERSHIP);
+SPRT_CONST(IP_DROP_MEMBERSHIP);
+SPRT_CONST(IP_UNBLOCK_SOURCE);
+SPRT_CONST(IP_BLOCK_SOURCE);
+SPRT_CONST(IP_ADD_SOURCE_MEMBERSHIP);
+SPRT_CONST(IP_DROP_SOURCE_MEMBERSHIP);
+SPRT_CONST(IP_MSFILTER);
+SPRT_CONST(IP_RECVRETOPTS);
+SPRT_CONST(IP_RECVDSTADDR);
+SPRT_CONST(IP_RECVIF);
+SPRT_CONST(IP_DEFAULT_MULTICAST_TTL);
+SPRT_CONST(IP_DEFAULT_MULTICAST_LOOP);
+SPRT_CONST(IP_MAX_MEMBERSHIPS);
+
+// === source-specific multicast ===
+SPRT_CONST(MCAST_JOIN_GROUP);
+SPRT_CONST(MCAST_LEAVE_GROUP);
+SPRT_CONST(MCAST_JOIN_SOURCE_GROUP);
+SPRT_CONST(MCAST_LEAVE_SOURCE_GROUP);
+SPRT_CONST(MCAST_BLOCK_SOURCE);
+SPRT_CONST(MCAST_UNBLOCK_SOURCE);
+SPRT_CONST(MCAST_EXCLUDE);
+SPRT_CONST(MCAST_INCLUDE);
+
+// === IPV6_* socket options ===
+SPRT_CONST(IPV6_2292PKTINFO);
+SPRT_CONST(IPV6_2292HOPOPTS);
+SPRT_CONST(IPV6_2292DSTOPTS);
+SPRT_CONST(IPV6_2292RTHDR);
+SPRT_CONST(IPV6_2292PKTOPTIONS);
+SPRT_CONST(IPV6_CHECKSUM);
+SPRT_CONST(IPV6_2292HOPLIMIT);
+SPRT_CONST(IPV6_UNICAST_HOPS);
+SPRT_CONST(IPV6_MULTICAST_IF);
+SPRT_CONST(IPV6_MULTICAST_HOPS);
+SPRT_CONST(IPV6_MULTICAST_LOOP);
+SPRT_CONST(IPV6_JOIN_GROUP);
+SPRT_CONST(IPV6_LEAVE_GROUP);
+SPRT_CONST(IPV6_V6ONLY);
+SPRT_CONST(IPV6_IPSEC_POLICY);
+SPRT_CONST(IPV6_RECVTCLASS);
+SPRT_CONST(IPV6_TCLASS);
+SPRT_CONST(IPV6_RTHDR_LOOSE);
+SPRT_CONST(IPV6_RTHDR_STRICT);
+SPRT_CONST(IPV6_RTHDR_TYPE_0);
+
+// === TCP_* socket options ===
+SPRT_CONST(TCP_NODELAY);
+SPRT_CONST(TCP_MAXSEG);
+SPRT_CONST(TCP_MAX_SACK);
+SPRT_CONST(TCP_NOPUSH);
+SPRT_CONST(TCP_NOOPT);
+SPRT_CONST(TCP_MAX_WINSHIFT);
+SPRT_CONST(TCP_KEEPALIVE);
+SPRT_CONST(TCP_CONNECTIONTIMEOUT);
+SPRT_CONST(TCP_MAXOLEN);
+SPRT_CONST(TCP_MAXHLEN);
+SPRT_CONST(TCP_RXT_CONNDROPTIME);
+SPRT_CONST(TCP_MINMSS);
+SPRT_CONST(TCP_RXT_FINDROP);
+SPRT_CONST(TCP_KEEPINTVL);
+SPRT_CONST(TCP_KEEPCNT);
+SPRT_CONST(TCP_SENDMOREACKS);
+SPRT_CONST(TCP_ENABLE_ECN);
+SPRT_CONST(TCP_FASTOPEN);
+SPRT_CONST(TCP_CONNECTION_INFO);
+SPRT_CONST(TCP_MSS);
+SPRT_CONST(TCP_NOTSENT_LOWAT);
+SPRT_CONST(TCP_MAXWIN);
