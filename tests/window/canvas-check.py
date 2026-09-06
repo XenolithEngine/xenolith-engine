@@ -20,6 +20,11 @@ widget replaces:
   * ONE NOTCH IS ONE RATIO. Equal notches must be equal ratios, and the number of pixels a notch is
     worth must come from the widget rather than from the caller - two of the copies said 100 and one
     said 90, so the same wheel zoomed two canvases differently.
+  * AND ONE NOTCH IS ONE STEP, asked through a REAL Scroll event. The event carries an AMOUNT, not a
+    count of clicks, and turning one into the other is the widget's own division - which was missing:
+    a detent of ten units went into the exponent whole, so one click of the wheel was the step to the
+    tenth power. Asking through `canvas.wheel`, which takes notches, asserts the curve and can never
+    see the units; only injected input can.
   * FRAMING HAS ITS OWN RANGE. A world too big to be framed inside the gesture range must still be
     framable; clamping a fit to the gesture range is how a large document becomes unframable.
   * IT CLIPS. Three of the four copies did not, and a thing dragged past the edge painted over
@@ -92,27 +97,52 @@ class Session:
         self.s.close()
 
 
-def start_app(binary):
+def start_app(binary, addr=ADDR, width=1024, height=768, density=None):
     env = dict(os.environ)
     env["XL_CANVAS_TEST"] = "1"
-    env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + ADDR
+    env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + addr
     try:
-        os.unlink(ADDR)
+        os.unlink(addr)
     except OSError:
         pass
-    proc = subprocess.Popen([binary, "--headless", "--width", "1024", "--height", "768"],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    argv = [binary, "--headless", "--width", str(width), "--height", str(height)]
+    if density is not None:
+        argv += ["--density", str(density)]
+    proc = subprocess.Popen(argv, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(600):
-        if os.path.exists(ADDR):
+        if os.path.exists(addr):
             try:
-                s = Session()
-                s.close()
+                probe = Session(addr)
+                probe.close()
                 return proc
             except OSError:
                 pass
         time.sleep(0.05)
     proc.kill()
     raise SystemExit("app did not come up")
+
+
+def drag_events(x0, y0, x1, y1, button="MouseMiddle", steps=8):
+    # A press, a run of moves and a release. The moves have to be several: a swipe is recognized
+    # only once the pointer has actually travelled, so a Begin alone never starts one.
+    ev = [{"event": "Begin", "x": x0, "y": y0, "button": button}]
+    for i in range(1, steps + 1):
+        t = float(i) / float(steps)
+        ev.append({"event": "Move", "x": x0 + (x1 - x0) * t, "y": y0 + (y1 - y0) * t,
+                "button": button})
+    ev.append({"event": "End", "x": x1, "y": y1, "button": button})
+    return ev
+
+
+def click_events(x, y):
+    return [{"event": "Begin", "x": x, "y": y, "button": "MouseLeft"},
+            {"event": "End", "x": x, "y": y, "button": "MouseLeft"}]
+
+
+def wheel_events(x, y, amount):
+    """A REAL Scroll event. It carries an AMOUNT, not a count of notches - which is the whole
+    point of asking through this road rather than through `canvas.wheel`."""
+    return [{"event": "Scroll", "x": x, "y": y, "button": "None", "valueY": amount}]
 
 
 checks = 0
@@ -275,12 +305,39 @@ try:
     check("equal notches are equal RATIOS, not equal steps",
           near(z1 / z0, z2 / z1, 1e-4), (z0, z1, z2))
 
-    # The ratio, derived from what the widget says its constant is rather than from a number written
-    # here: a check carrying its own 90 would go on passing if the widget's changed.
-    import math
-    expect = math.exp(limits["notchPixels"] / 500.0)
-    check("... and the ratio is exp(notchPixels / 500), the curve the widget declares",
-          near(z1 / z0, expect, 1e-4), (z1 / z0, expect))
+    # The ratio, taken from what the widget says its step is rather than from a number written here:
+    # a check carrying its own 1.1 would go on passing if the widget's changed.
+    check("... and one notch is exactly the ratio the widget declares",
+          near(z1 / z0, limits["stepRatio"], 1e-4), (z1 / z0, limits["stepRatio"]))
+    check("... which is a tenth, gentle enough to aim with",
+          near(limits["stepRatio"], 1.1, 1e-6), limits["stepRatio"])
+
+    # ---- and through a real event, which is where the units live ----------------------------
+    #
+    # `canvas.wheel` above hands the widget a count of NOTCHES, so it can only ever assert the curve.
+    # The window system delivers an AMOUNT, and the division from one to the other is the widget's -
+    # which is exactly the step that was wrong: the raw amount went into the exponent, so a detent
+    # of ten units raised the step to the tenth power and one click of the wheel was 1.1**10, two and
+    # a half times the scale. This is the road that can see it.
+    set_view(0.0, 0.0, 1.0)
+    step()
+    z0 = state()["viewport"]["zoom"]
+    s.ok("input", events=wheel_events(ANCHOR_X, ANCHOR_Y, limits["notchAmount"]))
+    step()
+    z1 = state()["viewport"]["zoom"]
+
+    check("ONE REAL NOTCH of the wheel is one step, not the step ten times over",
+          near(z1 / z0, limits["stepRatio"], 1e-4), (z0, z1, z1 / z0, limits["stepRatio"]))
+    check("... and a notch is delivered as an AMOUNT, which is more than one unit",
+          limits["notchAmount"] > 1.0, limits["notchAmount"])
+
+    # The wheel turned the other way undoes it exactly - the same check as above stated backwards,
+    # and the one that pins the SIGN: a scroll up must magnify.
+    s.ok("input", events=wheel_events(ANCHOR_X, ANCHOR_Y, -limits["notchAmount"]))
+    step()
+    check("a notch back is the same step down, so up and down cancel",
+          near(state()["viewport"]["zoom"], z0, 1e-4), (state()["viewport"]["zoom"], z0))
+    check("... and scrolling UP is what magnifies", z1 > z0, (z0, z1))
 
     # ---- framing --------------------------------------------------------------------------------
     print("\n-- fit --")
@@ -329,6 +386,117 @@ try:
     st = s.invoke("canvas.set-clipped", clipped=True, settle=0.0)
     step()
     check("and back on again", st.get("scissorEnabled") is True, st.get("scissorEnabled"))
+
+    # ---- the floating control -------------------------------------------------------------------
+    print("\n-- the floating zoom control --")
+
+    set_view(0.0, 0.0, 1.0)
+    step()
+    st = state()
+    zc = st["zoomControl"]
+    v = st["viewport"]
+
+    check("a canvas carries the control by default", zc["enabled"] is True, zc)
+    check("... and it is INSIDE the surface, which is what makes it pressable",
+          0.0 <= zc["x"] and 0.0 <= zc["y"]
+          and zc["x"] + zc["width"] <= v["width"] + 1e-3
+          and zc["y"] + zc["height"] <= v["height"] + 1e-3, (zc, v))
+    check("... the readout says the zoom, as a percentage", zc["value"] == "100%", zc["value"])
+
+    # A REAL press at the button's own centre, which is the half of this that the callback cannot
+    # prove: a control laid out off the surface, or under something, has a callback that works and a
+    # button nobody can hit.
+    s.ok("input", native=True, events=click_events(zc["plus"]["x"], zc["plus"]["y"]))
+    step()
+    st = state()
+    check("a click on + zooms in by exactly one step",
+          near(st["viewport"]["zoom"] / v["zoom"], limits["stepRatio"], 1e-4),
+          (st["viewport"]["zoom"], limits["stepRatio"]))
+    check("... and the readout followed", st["zoomControl"]["value"] == "110%",
+          st["zoomControl"]["value"])
+    agree(st, "... and the markers are still where the math puts them")
+
+    s.ok("input", native=True, events=click_events(zc["minus"]["x"], zc["minus"]["y"]))
+    step()
+    st = state()
+    check("a click on - takes it back", near(st["viewport"]["zoom"], v["zoom"], 1e-4),
+          st["viewport"]["zoom"])
+    check("... and so does the readout", st["zoomControl"]["value"] == "100%",
+          st["zoomControl"]["value"])
+
+    # The step is the WHEEL's step. Two roads to a zoom that disagreed would be the same defect this
+    # widget was written to remove, one level up.
+    set_view(0.0, 0.0, 1.0)
+    step()
+    s.invoke("canvas.wheel", x=200.0, y=200.0, notches=1.0, settle=0.0)
+    step()
+    by_wheel = state()["viewport"]["zoom"]
+    set_view(0.0, 0.0, 1.0)
+    step()
+    zc = state()["zoomControl"]
+    s.ok("input", native=True, events=click_events(zc["plus"]["x"], zc["plus"]["y"]))
+    step()
+    by_button = state()["viewport"]["zoom"]
+    check("the button and the wheel take the SAME step", near(by_wheel, by_button, 1e-4),
+          (by_wheel, by_button))
+
+    st = s.invoke("canvas.zoom-control", enabled=False, settle=0.0)
+    step()
+    check("it can be turned off, for a canvas with its own chrome in that corner",
+          state()["zoomControl"]["enabled"] is False, state()["zoomControl"])
+    s.invoke("canvas.zoom-control", enabled=True, settle=0.0)
+    step()
+    check("... and back on", state()["zoomControl"]["enabled"] is True, state()["zoomControl"])
+
+    # ---- no parallax ----------------------------------------------------------------------------
+    #
+    # THE PROPERTY, NOT A NUMBER: a pan must leave the world point under the pointer under the
+    # pointer. It is asked twice at DIFFERENT densities because that is where the defect lived - the
+    # gesture delta arrives in scene units (physical pixels) and the world's position is in the
+    # canvas's own, so a canvas that added the raw delta moved the world by `density` times what the
+    # pointer moved. At density 1 the two spaces coincide and the bug is invisible.
+    print("\n-- a pan follows the pointer, at any density --")
+
+    def pan_holds(session, name, x0, y0, x1, y1):
+        session.invoke("canvas.set-view", x=0.0, y=0.0, zoom=1.0, settle=0.0)
+        session.ok("frame", count=2)
+        time.sleep(0.15)
+        before = session.invoke("canvas.probe", x=x0, y=y0, settle=0.0)["world"]
+        session.ok("input", native=True, events=drag_events(x0, y0, x1, y1))
+        session.ok("frame", count=2)
+        time.sleep(0.15)
+        after = session.invoke("canvas.probe", x=x1, y=y1, settle=0.0)["world"]
+        moved = session.invoke("canvas.state", settle=0.0)["viewport"]
+        check(name, near(before["x"], after["x"], 0.5) and near(before["y"], after["y"], 0.5),
+              (before, after))
+        return moved
+
+    moved = pan_holds(s, "the world point under the pointer is still under it after a drag",
+                      300.0, 300.0, 460.0, 380.0)
+    check("... and the drag actually panned, so the check had something to hold",
+          abs(moved["x"]) > 1.0 and abs(moved["y"]) > 1.0, moved)
+
+    hidpi_addr = ADDR + "-hidpi"
+    hidpi_proc = start_app(binary, addr=hidpi_addr, width=2048, height=1536, density=2)
+    hidpi = Session(hidpi_addr)
+    try:
+        # No layout switch: XL_CANVAS_TEST already opened this stand, and the second instance is
+        # this one at twice the density and twice the surface - the same logical window.
+        hidpi.ok("frame", count=3)
+        time.sleep(0.2)
+        moved = pan_holds(hidpi, "... and at density 2, where a raw delta moved it twice as far",
+                          600.0, 600.0, 920.0, 760.0)
+        check("... having panned there too", abs(moved["x"]) > 1.0 and abs(moved["y"]) > 1.0, moved)
+    finally:
+        try:
+            hidpi.close()
+        except Exception:
+            pass
+        hidpi_proc.terminate()
+        try:
+            hidpi_proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            hidpi_proc.kill()
 
     print(f"\n{checks} checks, {failures} failures")
 finally:
