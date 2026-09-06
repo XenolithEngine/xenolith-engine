@@ -408,6 +408,22 @@ static constexpr struct {
 	{InputEventName::WindowState, InputEventType::Input, InputEventDataType::Window},
 };
 
+/* WHAT ONE DETENT OF A MOUSE WHEEL IS WORTH in `InputEventData::point.valueX/valueY`.
+
+A Scroll event carries an AMOUNT, not a count of clicks, because the devices do not agree that there
+are clicks: a notched wheel steps, a trackpad and a free-spinning wheel do not, and a backend that
+reported "one" for a detent would have nothing to report for the other two. So the amount is a
+distance in an abstract scroll unit, and this is the size of the step a detent makes - the figure the
+discrete backends emit (xcb, Windows) and the figure the continuous ones land near (Wayland's
+libinput axis, one detent's worth).
+
+A consumer that scrolls CONTENT multiplies the amount by a step of its own and never looks at this;
+ui::ScrollSystem and the text views do exactly that. A consumer that wants NOTCHES - anything whose
+step is stated per click of the wheel, a zoom above all - divides by this first. Getting that
+division wrong is not a small error: at a tenth per notch, treating the amount as a count of notches
+compounds it ten times and one click of the wheel becomes two and a half times the scale. */
+constexpr float InputScrollNotch = 10.0f;
+
 struct SPRT_API InputEventData {
 	static InputEventData BoolEvent(InputEventName event, bool value) {
 		return InputEventData{

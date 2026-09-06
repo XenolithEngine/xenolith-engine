@@ -157,6 +157,34 @@ each window renders on demand, so `frame` is per window too.
   hint; `showTip(Config &&, key, …)` takes a surface of your own and keys the slot
   so re-showing the same thing refreshes the timer instead of flapping.
 
+**Headless also advertises `WindowCapabilities::UserSpaceDecorations`**, and for
+the plainest of reasons: the capability says the window system draws *no* frame
+and the application draws its own, and that is what a pseudo-window is by
+construction. So the flag survives `Context::configureWindow`, `SceneContent`
+builds the decorations node, and a headless capture is the frame a decorated
+desktop window presents. It is not a courtesy bit either — a press on one of
+those grips is acted on: `HeadlessWindow` moves and resizes itself on the virtual
+screen it already owns, where every other backend hands the press to the WM
+(`_NET_WM_MOVERESIZE`, `xdg_toplevel::move`, `HTCAPTION`). Two things to know
+before writing a check against it:
+
+* **while a grip drag runs, an injected coordinate is read against the window
+  rect as it was when the press landed** — a synthetic pointer has no root
+  coordinates to report, so a drag from `(x0, y0)` to `(x1, y1)` moves the window
+  by exactly `(x1 - x0, y0 - y1)`;
+* the emulated theme sets `decorations.resizeInset = 6pt` and leaves
+  `borderRadius`/`shadowWidth` at **zero**. The inset is the Win32 figure rather
+  than the X11 one because `WindowDecorations` hangs each resize bar outside the
+  content box and `inset` back in: with a surface that IS the window, an inset of
+  zero puts all eight of them out of reach. The radius and the shadow stay off
+  because a pseudo-window has nothing behind it — a rounded corner would cut
+  pixels out of the capture with nothing to show through.
+
+A grip press is **swallowed**, as it is everywhere else, so a widget drawn on a
+title bar needs `WindowLayerFlags::GripGuard` over itself or its click is a window
+drag. `Popup` and `Tooltip` are excluded: they inherit the flag from their owner
+and must not be draggable by their own edges.
+
 **A `Popup` or a `Tooltip` is a SHAPED window**, and the engine asks for it to be
 blended: `Context::handleAppWindowSurfaceUpdate` picks premultiplied alpha for
 those two types (and for anything with `UserSpaceDecorations`) whenever the
@@ -201,9 +229,6 @@ What it does, and why each one is not the caller's business:
   `stylesheetSource` replace it for a surface whose look is its own. All of this
   is the native path only; on the overlay path the panel is pushed under the
   parent's content and is already inside the outer sheet's scope.
-. **`RenderingLevel::Solid`.** Opaque geometry is drawn first and writes depth
-  while the surface pass only *tests* against it, so a panel left at the default
-  level cannot cover the labels of whatever is under it on the overlay path.
 . **A colour of its own.** `fallbackColor` is what it paints when no sheet ever
   arrives — a `ui::Panel` with nothing declared is opaque **white**.
 . **The native extent.** The panel fills whatever the window system settled on,
@@ -211,7 +236,14 @@ What it does, and why each one is not the caller's business:
 . **The overlay placement.** `pushOverlay` stretches the layout over the whole
   parent and puts its origin at the bottom left, so the panel goes at the rect the
   placement resolved — converted out of that rect's Y-**down** space into the
-  scene's Y-**up** one.
+  scene's Y-**up** one. The layout is also lifted onto
+  **`RenderingLevel::Overlay`** — a pass of its own, drawn last, at zero depth —
+  which is what puts the surface above the scene. That used to be
+  `RenderingLevel::Solid` on the panel, one node at a time, and it cost every
+  popup the ability to be translucent; `setOverlay` is inherited by the whole
+  subtree and cannot be escaped from inside, so marking the layout marks the
+  popup. The window decorations are on the overlay too, at `ZOrder::max() - 1`,
+  so the frame still covers a menu.
 . **The tap outside, and the input the overlay stands in front of.** A native
   `Popup` is dismissed by the window system; an overlay has no such contract and
   takes itself down. `onOutsideTap` overrides that for a surface that is one link
@@ -291,6 +323,18 @@ work-area edge. `Dialog` and `Utility` are placed by the window manager.
 **There are no global coordinates in this API.** On Wayland the compositor
 computes the position; elsewhere the engine computes the same thing
 (`computeWindowPlacement`). Do not try to convert to screen coordinates yourself.
+
+**Do not build `anchorRect` by hand — ask `ui::placementAnchorRect(node)`**, or
+`ui::placementAnchorPoint(inScene, worldLocation)` for a point
+([XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h)). It is the
+one answer to "where is the anchor", and there is a reason it is one: the box has
+to come from the node's four **corners** (it may be rotated or scaled), be
+converted into the scene **content's** space — `convertToWorldSpace` alone answers
+in scene space, which is *physical pixels*, while a `WindowPlacement` is in
+logical points — and be flipped into Y-down at the end. Miss the second step and
+the surface lands correctly at density 1 and further and further off as the
+anchor moves down a HiDPI window, which is how a tooltip drifted for a while
+before this became one function.
 
 Two things about `gravity` and `offset` are worth knowing before you tune a
 placement:
@@ -502,6 +546,7 @@ prewarmed graph.
 | a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
 | hand-rolling a hover delay | `ui::setTooltip` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
 | reading `WindowPlacement::gravity` as "the direction it opens" | it names which **edge of the surface** lands on the anchor point, so `gravity = Top` puts the surface *below* |
+| treating a `Scroll` event's amount as a count of wheel clicks | it is a scroll **amount** — a trackpad has no clicks to count — and one detent is `sprt::window::InputScrollNotch` of it; divide before using a per-notch step, or the step is applied ten times over |
 
 ## Related
 

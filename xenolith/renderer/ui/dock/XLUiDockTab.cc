@@ -117,7 +117,10 @@ bool DockTab::handleLeftTap() {
 		return false; // this pointer belongs to a drag; a tap on release would be a second action
 	}
 	if (_host) {
+		// Activation first, so a tap handler sees the panel it asked for already in front - a rail
+		// that unfolds on this tap unfolds onto the right body.
 		_host->activatePanel(_panelId);
+		_host->handlePanelTapped(_panelId);
 	}
 	return true;
 }

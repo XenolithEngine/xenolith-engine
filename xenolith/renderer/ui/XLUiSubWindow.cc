@@ -58,6 +58,56 @@ static basic2d::SceneContent2d *contentForWindow(AppWindow *w) {
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
 
+IRect placementAnchorRect(NotNull<Node> anchor) {
+	auto scene = anchor->getScene();
+	auto content = scene ? scene->getContent() : nullptr;
+	if (!content) {
+		return IRect();
+	}
+
+	// Four corners, not origin+size, and both conversions - see the header for why each of the
+	// three steps is load-bearing.
+	const auto size = anchor->getContentSize();
+	const Vec2 corners[4] = {
+		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2::ZERO)),
+		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(size.width, 0.0f))),
+		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(0.0f, size.height))),
+		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2(size.width, size.height))),
+	};
+
+	Vec2 low = corners[0];
+	Vec2 high = corners[0];
+	for (auto &it : corners) {
+		low.x = sprt::min(low.x, it.x);
+		low.y = sprt::min(low.y, it.y);
+		high.x = sprt::max(high.x, it.x);
+		high.y = sprt::max(high.y, it.y);
+	}
+
+	// Scene nodes are Y-up; WindowPlacement is Y-down from the content's top-left. The flip swaps
+	// which edge is "top", so the rect is built from the flipped extremes rather than by flipping
+	// its origin.
+	const float topYDown = content->getContentSize().height - high.y;
+
+	return IRect(int32_t(std::lround(low.x)), int32_t(std::lround(topYDown)),
+			uint32_t(std::lround(high.x - low.x)), uint32_t(std::lround(high.y - low.y)));
+}
+
+IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation) {
+	auto scene = inScene->getScene();
+	auto content = scene ? scene->getContent() : nullptr;
+	if (!content) {
+		return IRect();
+	}
+
+	// A point has no corners, so what the node form MEASURES is skipped and what it CONVERTS is
+	// not: the step into the content's space is what undoes the scene's density scale.
+	const auto at = content->convertToNodeSpace(worldLocation);
+
+	return IRect(int32_t(std::lround(at.x)),
+			int32_t(std::lround(content->getContentSize().height - at.y)), 0, 0);
+}
+
 SubWindow::~SubWindow() { }
 
 bool SubWindow::platformSupportsSubwindows(NotNull<AppWindow> parent) {
@@ -201,6 +251,25 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 	if (!layout) {
 		return false;
 	}
+
+	/* A surface that could not become a real window still has to look like one: it must sit ON TOP
+	of the scene, not be resolved against it.
+
+	A high ZOrder does not do that. It gives the subtree a late zPath, and a zPath decides the order
+	WITHIN a level - the overlay would still be depth-tested and painted against everything the
+	scene draws at the same level, which is the "the popup mixes with what is under it" this used to
+	be. RenderingLevel::Overlay is a pass of its own, drawn last, at zero depth, after all of it.
+
+	setOverlay is inherited by the whole subtree and cannot be escaped from inside, so marking the
+	layout is marking the popup - a menu made of a panel, rows, labels and icons needs this one
+	call. Which is also why the popup surface no longer forces its panel to RenderingLevel::Solid:
+	that was this problem answered one node at a time, and it cost every popup the ability to be
+	translucent.
+
+	Note what stays ABOVE: the window decorations live on the overlay too, at ZOrder::max() - 1, and
+	the drag ghost at ZOrder::max() - 16 - so the frame still covers a menu and a dragged panel
+	still passes over one. */
+	layout->setOverlay(true);
 
 	// computeWindowPlacement answers in the same Y-down space it was asked in; scene nodes are Y-up.
 	const float yUp = contentSize.height - float(placed.y);
