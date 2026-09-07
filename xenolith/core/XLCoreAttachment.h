@@ -146,7 +146,13 @@ public:
 	// Mint an empty input-data object of the concrete type this attachment consumes, so a remote
 	// server can deserialize a wire blob into it (see AttachmentInputData::deserialize). Default null:
 	// only input attachments that participate in the remote render session override this.
-	virtual Rc<AttachmentInputData> makeInputData(NotNull<RenderClientChannel>) const {
+	//
+	// `windowId` is which shared window this frame belongs to. It travels with the input rather than
+	// being looked up later because this is the last point at which it is known for certain: the
+	// render pass that eventually reports a DrawStat runs on another thread, long after, and the
+	// channel it reports to serves every window at once.
+	virtual Rc<AttachmentInputData> makeInputData(NotNull<RenderClientChannel>,
+			uint64_t windowId) const {
 		return nullptr;
 	}
 

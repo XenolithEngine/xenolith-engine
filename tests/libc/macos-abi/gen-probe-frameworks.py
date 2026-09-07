@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio> -- MIT (see check.sh)
+#
+# gen-probe-frameworks.py [--check] [OVERLAY] [OUT]
+#
+# Regenerate probe/probe-frameworks.mm from the hand-written framework headers in
+# runtime/toolchains/target-apple/open/sysroot/System/Library/Frameworks.
+#
+# Those headers are the part of the +open sysroot with no open-source original:
+# AppKit, Metal, QuartzCore, CoreGraphics, CoreText, Foundation, CoreServices,
+# Network, ... are written by hand and carry "only the declarations actually used
+# by real code in this repository" (target-apple/README.md). Their values were
+# validated against the real SDK once, by hand. Enumerating them by hand here
+# would rot the moment somebody adds a declaration, so the probe is GENERATED
+# from the overlay: every enumerator the overlay declares is emitted, and
+# check.sh then compares each one against the SDK's value.
+#
+# The result is baked into git (like target-apple/gen-syscall-header.sh), so a
+# normal run of check.sh does not need this script -- only adding declarations
+# to the overlay does. `--check` re-derives and diffs instead of writing, which
+# is how check.sh notices that the overlay grew and the probe did not.
+
+import os, re, sys, glob, collections
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
+DEFAULT_OVERLAY = os.path.join(REPO, 'runtime/toolchains/target-apple/open/sysroot'
+                                     '/System/Library/Frameworks')
+DEFAULT_OUT = os.path.join(HERE, 'probe', 'probe-frameworks.mm')
+
+# Umbrella header per framework, in include order. Only the ones the overlay
+# actually ships an umbrella for are emitted -- CoreText and Security, for
+# instance, are .tbd-only here (no Headers/ at all), and IOKit/IOSurface are
+# reached through the headers that need them rather than an umbrella of their
+# own. CoreFoundation's umbrella lives in include_libc, not the framework dir.
+UMBRELLAS = [
+    ('CoreFoundation',         '<CoreFoundation/CoreFoundation.h>', None),
+    ('Foundation',             '<Foundation/Foundation.h>',         'Foundation/Headers/Foundation.h'),
+    ('CoreGraphics',           '<CoreGraphics/CoreGraphics.h>',     'CoreGraphics/Headers/CoreGraphics.h'),
+    ('QuartzCore',             '<QuartzCore/QuartzCore.h>',         'QuartzCore/Headers/QuartzCore.h'),
+    ('Metal',                  '<Metal/Metal.h>',                   'Metal/Headers/Metal.h'),
+    ('AppKit',                 '<AppKit/AppKit.h>',                 'AppKit/Headers/AppKit.h'),
+    ('CoreServices',           '<CoreServices/CoreServices.h>',     'CoreServices/Headers/CoreServices.h'),
+    ('Network',                '<Network/Network.h>',               'Network/Headers/Network.h'),
+    ('UniformTypeIdentifiers', '<UniformTypeIdentifiers/UniformTypeIdentifiers.h>',
+                               'UniformTypeIdentifiers/Headers/UniformTypeIdentifiers.h'),
+]
+
+# Enumerators that exist in the overlay but cannot be compared against the
+# pinned 14.5 SDK. Each needs a reason; nothing is dropped silently.
+EXCLUDED = {
+    'MTLMathModeSafe':                      'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLMathModeRelaxed':                   'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLMathModeFast':                      'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLMathFloatingPointFunctionsFast':    'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLMathFloatingPointFunctionsPrecise': 'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLLanguageVersion3_2':                'Metal 3.2 / macOS 15; absent from the 14.5 SDK',
+    'MTLLanguageVersion1_0':                'API_UNAVAILABLE(macos) in the SDK -- iOS-only',
+}
+
+OVERLAY_DIR = [DEFAULT_OVERLAY]
+
+LICENSE = open(os.path.join(HERE, 'check-errno.cpp')).read().split('\n// ------')[0]
+
+ENUM_PATTERNS = [
+    re.compile(r'\b(?:NS_ENUM|NS_OPTIONS|NS_CLOSED_ENUM|CF_ENUM|CF_OPTIONS)'
+               r'\s*\([^)]*\)\s*\{(.*?)\}', re.S),
+    re.compile(r'\benum\b[^{;]*\{(.*?)\}', re.S),
+]
+
+
+def extract(overlay):
+    found = collections.defaultdict(set)
+    for path in sorted(glob.glob(overlay + '/**/*.h', recursive=True)):
+        fw = path.split('Frameworks/')[1].split('.framework')[0]
+        txt = open(path, errors='replace').read()
+        txt = re.sub(r'/\*.*?\*/', '', txt, flags=re.S)
+        txt = re.sub(r'//[^\n]*', '', txt)
+        for pat in ENUM_PATTERNS:
+            for m in pat.finditer(txt):
+                for item in m.group(1).split(','):
+                    mm = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|$)', item.strip())
+                    if mm:
+                        found[fw].add(mm.group(1))
+    return found
+
+
+def render(found):
+    out = [LICENSE.rstrip('\n'), '', '''// ---------------------------------------------------------------------------
+// +open sysroot <-> real macOS SDK: the hand-written framework surface.
+//
+// GENERATED by gen-probe-frameworks.py -- do not edit by hand. Regenerate with
+//
+//     ./gen-probe-frameworks.py
+//
+// after adding declarations to
+// runtime/toolchains/target-apple/open/sysroot/System/Library/Frameworks.
+// check.sh runs the generator in --check mode, so an overlay that grew without
+// a regenerated probe is itself reported as a failure.
+//
+// Every enumerator the overlay declares is emitted here as an `extern "C"`
+// constant. check.sh compiles this file twice -- once against the real SDK,
+// once against the +open sysroot -- and diffs the emitted values, so a
+// hand-written constant that drifted from Apple's shows up as a diff, and one
+// that Apple does not declare under that name at all fails to compile against
+// the SDK. (That is how the overlay's NSWindowCollectionBehaviorAllowsTiling /
+// DisallowsTiling were found: right values, but AppKit spells them
+// NSWindowCollectionBehaviorFullScreen{Allows,Disallows}Tiling.)
+//
+// Compile-time only; nothing here runs. See check.sh.
+// ---------------------------------------------------------------------------
+''']
+    for _, inc, probe_path in UMBRELLAS:
+        if probe_path and not os.path.exists(os.path.join(OVERLAY_DIR[0],
+                                                          probe_path.replace('/Headers/',
+                                                                             '.framework/Headers/'))):
+            continue
+        out.append('#import %s' % inc)
+    out += ['', '#define V(x) extern "C" __attribute__((used)) const long long abi_##x = (long long)(x);', '']
+    for fw in sorted(found):
+        emit = sorted(n for n in found[fw] if n not in EXCLUDED)
+        skipped = sorted(n for n in found[fw] if n in EXCLUDED)
+        out.append('// === %s (%d) %s' % (fw, len(emit), '=' * max(3, 50 - len(fw))))
+        out += ['V(%s)' % n for n in emit]
+        for n in skipped:
+            out.append('// omitted: %-38s %s' % (n, EXCLUDED[n]))
+        out.append('')
+    return '\n'.join(out)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    check = '--check' in sys.argv
+    overlay = args[0] if args else DEFAULT_OVERLAY
+    out = args[1] if len(args) > 1 else DEFAULT_OUT
+    if not os.path.isdir(overlay):
+        print('gen-probe-frameworks: overlay not found: %s' % overlay, file=sys.stderr)
+        return 0  # nothing to do; check.sh treats this as a skip
+    OVERLAY_DIR[0] = overlay
+    text = render(extract(overlay))
+    if check:
+        current = open(out).read() if os.path.exists(out) else ''
+        if current != text:
+            print('gen-probe-frameworks: %s is stale -- the overlay declares enumerators the '
+                  'probe does not cover (or vice versa).\n'
+                  '                      Re-run ./gen-probe-frameworks.py and commit the result.'
+                  % os.path.relpath(out, REPO), file=sys.stderr)
+            return 1
+        return 0
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    open(out, 'w').write(text)
+    n = text.count('\nV(')
+    print('gen-probe-frameworks: wrote %s (%d enumerators, %d omitted)'
+          % (os.path.relpath(out, REPO), n, len(EXCLUDED)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
