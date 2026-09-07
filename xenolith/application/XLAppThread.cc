@@ -241,6 +241,10 @@ bool AppThread::remoteSendCborWithReply(remote::Domain, uint8_t, const Value &,
 	return false;
 }
 
+size_t AppThread::cancelOutgoingTransfers() {
+	return _blockTransfer ? _blockTransfer->cancelAllTransfers() : 0;
+}
+
 void AppThread::waitForReply(uint32_t serial,
 		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
 	uint64_t deadline = timeoutUs ? sp::platform::clock(ClockType::Monotonic) + timeoutUs : 0;

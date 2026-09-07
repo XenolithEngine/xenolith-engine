@@ -50,9 +50,9 @@ public:
 	bool isDamageTracked() const { return _damageTracked; }
 
 	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
-	virtual Rc<core::AttachmentInputData> makeInputData(
-			NotNull<core::RenderClientChannel> client) const override {
-		return makeFrameContextInput(client);
+	virtual Rc<core::AttachmentInputData> makeInputData(NotNull<core::RenderClientChannel> client,
+			uint64_t windowId) const override {
+		return makeFrameContextInput(client, windowId);
 	}
 
 protected:

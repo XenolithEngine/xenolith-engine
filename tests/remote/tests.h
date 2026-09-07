@@ -73,6 +73,8 @@ void performAddressTests();
 void performFramingTests();
 void performSerializeTests();
 void performTransportTests();
+void performStreamTests();
+void performWireTests();
 void performPeerInfoTests();
 
 } // namespace stappler::xenolith::remote

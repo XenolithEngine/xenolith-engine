@@ -146,6 +146,64 @@ SP_PUBLIC Value serializeMaterialImage(const core::MaterialImage &);
 // for the caller to resolve to a real image.
 SP_PUBLIC core::MaterialImage deserializeMaterialImage(const Value &, uint64_t &outImageId);
 
+/* --- the typed wire format for input and layers (M6) -----------------------------------------
+ *
+ * These two are the only structures that used to travel as a RAW DUMP of their C++ layout, and the
+ * only reason the ABI tag from M3 had to gate a session: with a dump, a build disagreement is not a
+ * rejected message, it is one process reading another's padding as a keycode. Everything else on
+ * this wire has always been field-by-field.
+ *
+ * Packed binary rather than a CBOR array -- unlike every other codec in this header, and on purpose.
+ * Input is the hot path: a batch travels on every frame that saw a pointer move, and a data::Value
+ * per field per event would allocate on both sides for no benefit. The layout below is fixed, so
+ * there is nothing for a self-describing encoding to describe.
+ *
+ * Batch envelope, both messages:
+ *
+ *   [u64 windowId][u16 recordSize][u16 reserved][u32 count][record x count]
+ *
+ * `recordSize` is what makes the format extensible without a version: a peer that appends a field
+ * to the record stays readable by an older one, which decodes the prefix it knows and STEPS BY THE
+ * DECLARED SIZE to the next record. That is the binary form of the trick the CBOR codecs above get
+ * from a short array, and it is why the size is on the wire rather than assumed from a constant.
+ *
+ * Every field is written explicitly, including padding, so what travels is a fact of the protocol
+ * rather than of the compiler. Floats travel as their IEEE bits (WireWriter::writeFloatBits): NaN is
+ * a value here, not an absence -- InputEventData::input.x defaults to NaN and hasLocation() is
+ * defined by isnan().
+ *
+ * NOT fixed by any of this: what the NUMBERS mean. `event` rides as an integer, so two builds that
+ * disagree about which InputEventName is 7 -- a value inserted in the middle -- misread each other
+ * exactly as a dump would. The enum values are part of the wire contract, and tests/remote pins
+ * them; that is the half of the old ABI tag that was doing real work. */
+
+// InputEventData record: 40 bytes.
+//   [u32 id][u32 event][u32 button][u32 modifiers][u32 x bits][u32 y bits][16 bytes variant]
+// The variant is selected by InputEventInfo[event].dataType, so it is the EVENT that says how the
+// last 16 bytes are read -- not the sender's memory layout:
+//   Point  : [u32 valueX bits][u32 valueY bits][u32 density bits][u32 zero]
+//   Key    : [u16 keycode][u16 compose][u32 keysym][u32 keychar][u32 zero]
+//   Window : [u64 state][u64 changes]
+//   None   : 16 zero bytes
+// The size itself lives in XLRemoteProtocol.h, with the other facts about the wire.
+
+SP_PUBLIC void serializeInputEvents(Bytes &out, uint64_t windowId,
+		SpanView<core::InputEventData>);
+
+// Returns false when the blob is not a well-formed batch (short header, or a record size that
+// cannot hold the fields this build reads). `outWindowId` is filled whenever the header parsed.
+SP_PUBLIC bool deserializeInputEvents(BytesView, uint64_t &outWindowId,
+		Vector<core::InputEventData> &out);
+
+// WindowLayer record: 24 bytes.
+//   [u32 x bits][u32 y bits][u32 width bits][u32 height bits][u8 cursor][3 zero][u32 flags]
+
+SP_PUBLIC void serializeWindowLayers(Bytes &out, uint64_t windowId,
+		SpanView<sprt::window::WindowLayer>);
+
+SP_PUBLIC bool deserializeWindowLayers(BytesView, uint64_t &outWindowId,
+		sprt::window::Vector<sprt::window::WindowLayer> &out);
+
 } // namespace stappler::xenolith::remote
 
 #endif /* XENOLITH_REMOTE_XLREMOTESERIALIZE_H_ */
