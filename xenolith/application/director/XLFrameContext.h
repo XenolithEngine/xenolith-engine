@@ -117,6 +117,14 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 
 	uint64_t clock;
 	Rc<core::RenderClientChannel> client; // (to send stats)
+
+	/* Which shared window this frame is for, as RenderClientChannel numbers them (0 = local).
+	
+	It rides the frame's input because that is the last place it is known: the render pass that
+	reports the DrawStat runs on another thread well after the fact, and `client` above is one object
+	shared by every window of a server. Set beside `client`, always, so the two cannot disagree. */
+	uint64_t windowId = 0;
+
 	FrameContext *context = nullptr;
 
 	Vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;

@@ -128,8 +128,8 @@ typedef NS_OPTIONS(NSUInteger, NSWindowCollectionBehavior) {
 	NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7,
 	NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8,
 	NSWindowCollectionBehaviorFullScreenNone = 1 << 9,
-	NSWindowCollectionBehaviorAllowsTiling = 1 << 11,
-	NSWindowCollectionBehaviorDisallowsTiling = 1 << 12,
+	NSWindowCollectionBehaviorFullScreenAllowsTiling = 1 << 11,
+	NSWindowCollectionBehaviorFullScreenDisallowsTiling = 1 << 12,
 };
 
 typedef NS_OPTIONS(NSUInteger, NSAutoresizingMaskOptions) {
@@ -159,7 +159,8 @@ typedef NS_ENUM(NSUInteger, NSWindowButton) {
 	NSWindowZoomButton,
 	NSWindowToolbarButton,
 	NSWindowDocumentIconButton,
-	NSWindowDocumentVersionsButton,
+	// AppKit skips 5: the value is assigned explicitly in <AppKit/NSWindow.h>.
+	NSWindowDocumentVersionsButton = 6,
 };
 
 typedef NSInteger NSWindowLevel;
@@ -194,7 +195,13 @@ typedef NS_ENUM(NSInteger, NSViewLayerContentsPlacement) {
 	NSViewLayerContentsPlacementScaleProportionallyToFill = 2,
 	NSViewLayerContentsPlacementCenter = 3,
 	NSViewLayerContentsPlacementTop = 4,
-	NSViewLayerContentsPlacementTopLeft = 5,
+	NSViewLayerContentsPlacementTopRight = 5,
+	NSViewLayerContentsPlacementRight = 6,
+	NSViewLayerContentsPlacementBottomRight = 7,
+	NSViewLayerContentsPlacementBottom = 8,
+	NSViewLayerContentsPlacementBottomLeft = 9,
+	NSViewLayerContentsPlacementLeft = 10,
+	NSViewLayerContentsPlacementTopLeft = 11,
 };
 typedef NS_OPTIONS(NSUInteger, NSApplicationPresentationOptions) {
 	NSApplicationPresentationDefault = 0,

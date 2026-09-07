@@ -33,6 +33,7 @@
 
 #include "app/ExampleScene.h"
 #include "window/SecondaryWindow.h"
+#include "XL2dLayerRounded.h" // marker layer for the second shared window
 #include "app/TestRegistry.h"
 #include "app/GeneralLayout.h" // MonitorModeSelectionLayout.cc, included below, builds on it
 #include "app/LiveReloadAppThread.h" // live-reload session addr+key, when active
@@ -296,8 +297,86 @@ void ExampleScene::registerCommands() {
 		result.setBool(true, "ok");
 		result.setBool(app->isListening(), "listening");
 		result.setBool(app->hasRemoteClient(), "clientConnected");
+		// How many windows the session is offering. The driver waits on this rather than on a
+		// sleep: a window opens asynchronously and shares itself once presented, so "did the second
+		// window make it into the announce" has no other observable answer.
+		auto objs = app->getSharedObjects();
+		result.setInteger(objs ? int64_t(objs->getWindows().size()) : 0, "sharedWindows");
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
+		done(sp::move(result));
+	});
+
+	/* Call off every bulk transfer this server is still streaming.
+	
+	The only bulk producer today is the screenshot a remote client asks for, and it is precisely the
+	thing that used to be uncancellable: Release meant "I stop referencing the blob" and stopped the
+	stream only as a side effect, without telling the far side's waiter anything. Reports how many
+	were actually in flight, so a check can tell "cancelled one" from "there was nothing to cancel".*/
+	inspector::addCommand(content, "remote-cancel-transfers",
+			"Cancel every in-flight Domain::Data transfer; answers { cancelled }",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app) {
+			result.setBool(false, "ok");
+			result.setString("not a server app thread", "error");
+			done(sp::move(result));
+			return;
+		}
+		result.setBool(true, "ok");
+		result.setInteger(int64_t(app->cancelOutgoingTransfers()), "cancelled");
+		done(sp::move(result));
+	});
+
+	/* Open a SECOND Root window and offer it to the same remote session.
+	
+	This is what makes "one connection, several windows" observable end to end. It is a command
+	rather than something the app does on startup because a plain run must keep opening exactly one
+	window -- every other check in the suite compares against that.
+	
+	The reply says the window was REQUESTED, not that it arrived: it appears asynchronously and
+	shares itself when its scene is first presented. Wait for `remote`.sharedWindows to reach 2. */
+	inspector::addCommand(content, "remote-share-second",
+			"Open a second Root window and share it with the running remote session",
+			[this](Value &&, Function<void(Value &&)> &&done) {
+		Value result;
+		auto server = getDirector() ? getDirector()->getRenderServer() : nullptr;
+		if (!server) {
+			result.setBool(false, "ok");
+			result.setString("no render server on this window", "error");
+			done(sp::move(result));
+			return;
+		}
+		if (_secondSharedWindow) {
+			result.setBool(true, "ok");
+			result.setBool(true, "alreadyOpen");
+			done(sp::move(result));
+			return;
+		}
+
+		_secondSharedWindow = SecondaryWindow::open(static_cast<AppWindow *>(server),
+				"remote-second", Extent2(320, 240),
+				[](StringView) -> Rc<basic2d::SceneLayout2d> {
+			// Deliberately unlike the primary scene: the check that the client really drew THIS
+			// window is a screenshot comparison, and two identical scenes would pass it while
+			// proving nothing.
+			auto layout = Rc<basic2d::SceneLayout2d>::create();
+			auto marker = layout->addChild(Rc<basic2d::LayerRounded>::create(Color::Red_500, 0.0f));
+			marker->setAnchorPoint(Anchor::Middle);
+			marker->setContentSize(Size2(160, 90));
+			marker->setPositionZ(0.0f);
+			layout->setLayoutCallback([marker](Node *node) {
+				marker->setPosition(node->getContentSize() / 2.0f);
+			});
+			return layout;
+		}, [this](NotNull<WindowSceneInfo>) { _secondSharedWindow = nullptr; }, nullptr,
+				sprt::nullopt, /* shareRemote */ true);
+
+		result.setBool(_secondSharedWindow != nullptr, "ok");
+		if (!_secondSharedWindow) {
+			result.setString("could not request the window", "error");
+		}
 		done(sp::move(result));
 	});
 

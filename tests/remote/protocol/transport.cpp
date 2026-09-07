@@ -131,11 +131,41 @@ void performTransportTests() {
 	}
 
 	{
-		// Without MultiStream every class is the same channel -- the protocol may ask for any of them
-		// and must still get one connected stream.
-		check(client->getStream(StreamClass::Frame) == cs
-						&& client->getStream(StreamClass::Bulk) == cs,
-				"transport: single-stream transport folds every class onto one");
+		// mem: is the one transport that really separates streams, and this is what the protocol layer
+		// above reads to decide whether Bulk is worth its own reassembler.
+		check(client->hasCaps(TransportCaps::MultiStream),
+				"transport: mem: declares MultiStream");
+
+		// Control and Frame fold together because nothing maps a domain onto Frame yet (see
+		// streamClassForDomain); Bulk is a genuinely different channel. Both halves must agree, or one
+		// side would write where the other never reads.
+		check(client->getStream(StreamClass::Frame) == cs,
+				"transport: Frame folds onto Control while no domain uses it");
+		check(client->getStream(StreamClass::Bulk) != cs
+						&& client->getStream(StreamClass::Bulk) != nullptr,
+				"transport: Bulk is a separate channel");
+		check(server->getStream(StreamClass::Frame) == ss
+						&& server->getStream(StreamClass::Bulk) != ss,
+				"transport: both halves fold the classes the same way");
+	}
+
+	{
+		// The separation has to be real in both directions: bytes written on one class must not surface
+		// on another. A shared pipe would pass every other test in this file and fail only here.
+		size_t written = 0;
+		auto bulk = client->getStream(StreamClass::Bulk);
+		auto serverBulk = server->getStream(StreamClass::Bulk);
+		checkEq(uint64_t(bulk->write(BytesView((const uint8_t *)"bulk", 4), written)),
+				uint64_t(Status::Ok), "transport: a write on Bulk succeeds");
+
+		uint8_t probe[8] = {0};
+		size_t got = 0;
+		ss->read(probe, sizeof(probe), got);
+		checkEq(uint64_t(got), uint64_t(0), "transport: Bulk bytes do not surface on Control");
+
+		serverBulk->read(probe, sizeof(probe), got);
+		check(got == 4 && __sprt_memcmp(probe, "bulk", 4) == 0,
+				"transport: Bulk bytes arrive on Bulk");
 	}
 
 	{

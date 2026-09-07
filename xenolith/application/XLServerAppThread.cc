@@ -64,6 +64,15 @@ static constexpr uint64_t kHandshakeBackoffMaxUs = 8'000'000; // ceiling
 // but bounded, because nothing is announced until it arrives.
 static constexpr uint64_t kPeerInfoReplyTimeoutUs = 5'000'000; // 5s
 
+/* Where a screenshot sits in the sender's own queue: BELOW the default.
+ *
+ * A screenshot is diagnostics. Anything else this side ever streams in bulk -- a font payload, most
+ * obviously -- is something a frame is waiting on, and a frame waiting behind a capture nobody is
+ * looking at yet is the wrong trade. Negative rather than "everything else positive" so that a
+ * future caller which says nothing about priority still outranks it without having to know this
+ * exists. */
+static constexpr int32_t kScreenshotTransferPriority = -1;
+
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 ServerAppThread::~ServerAppThread() { }
@@ -106,11 +115,22 @@ void ServerAppThread::updateServerInfo() {
 	}
 
 	// The window subsystem is a property of the windows, not of the process: the same binary on the
-	// same Linux is xcb or wayland or headless depending on what it opened. Any window answers, and
-	// a server with none yet honestly answers Unknown.
-	if (!_windows.empty()) {
-		auto w = *_windows.begin();
-		info.wm = remote::toWindowSubsystem(w->getSurfaceBackend());
+	// same Linux is xcb or wayland or headless depending on what it opened. A server with none yet
+	// honestly answers Unknown.
+	//
+	// PeerInfo describes the PROCESS, so with several windows the subsystem is taken from the first
+	// and the capability is a UNION. That asymmetry is not sloppiness: every window of a process
+	// shares one window subsystem (they come from the same ContextController), so any of them is the
+	// right answer; a capability, on the other hand, is granted per window, and reporting "no
+	// subwindows" because the first window happened not to ask for them would deny a feature the
+	// client can really use. Per-window truth travels per window, in the announce -- this field is
+	// the coarse process-level answer and says so.
+	bool first = true;
+	for (auto w : _windows) {
+		if (first) {
+			info.wm = remote::toWindowSubsystem(w->getSurfaceBackend());
+			first = false;
+		}
 		if (hasFlag(w->getCapabilities(), sprt::window::WindowCapabilities::Subwindows)) {
 			info.features |= remote::PeerFeatures::Subwindows;
 		}
@@ -335,6 +355,9 @@ void ServerAppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director
 
 	if (_sharedObjects) {
 		_sharedObjects->drop(w);
+		// Withdraw it from a connected client too: the announce is a snapshot, so a window missing
+		// from the new one is how the client learns it went away (handleWindowDisconnected).
+		republishSharedObjects();
 	}
 
 	if (d) {
@@ -389,7 +412,19 @@ bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q,
 	}
 
 	_sharedObjects->shareWindow(w, q, materials);
+
+	// A client that is ALREADY connected has to be told, or the window it cannot see is a window it
+	// can never draw into. The announce is a full snapshot and the client reconciles it (adding what
+	// is new, dropping what is gone), so re-sending it is the whole mechanism -- no incremental
+	// message, and no way for the two sides to drift.
+	republishSharedObjects();
 	return true;
+}
+
+void ServerAppThread::republishSharedObjects() {
+	if (_remoteClient && !_remoteClient->isClosed() && _sharedObjects) {
+		_remoteClient->announce(_sharedObjects);
+	}
 }
 
 bool ServerAppThread::setBearerKey(BytesView key) {
@@ -792,7 +827,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 								if (ok && _blockTransfer) {
 									_blockTransfer->releaseObject(tid);
 								}
-							});
+							},
+									kScreenshotTransferPriority);
 							log::source().info("AppThread", "captured window ", windowId,
 									" -> screenshot transfer ", id);
 						},
@@ -807,36 +843,28 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		};
 		case remote::WindowCode::UpdateLayers: {
 			// client -> server: the window's interaction layers (hit/cursor/drag regions) computed by the
-			// client's scene graph. Raw blob [u64 windowId (network order)][WindowLayer[] native layout];
-			// reconstruct and apply to the real window so the OS does cursor/hit-testing/decorations.
-			if (!_sharedObjects || payload.size() < sizeof(uint64_t)) {
+			// client's scene graph, in the typed wire format (see serializeWindowLayers).
+			// Reconstruct and apply to the real window so the OS does cursor/hit-testing/decorations.
+			if (!_sharedObjects) {
 				return true;
 			}
-			uint64_t widN = 0;
-			__sprt_memcpy(&widN, payload.data(), sizeof(uint64_t));
-			auto windowId = sprt::byteorder::NetworkToHost(widN);
-
-			auto rest = payload.sub(sizeof(uint64_t));
-			if (rest.size() % sizeof(sprt::window::WindowLayer) != 0) {
-				log::source().warn("AppThread", "UpdateLayers: misaligned blob (", rest.size(),
+			uint64_t windowId = 0;
+			sprt::window::Vector<sprt::window::WindowLayer> layers;
+			if (!remote::deserializeWindowLayers(payload, windowId, layers)) {
+				log::source().warn("AppThread", "UpdateLayers: malformed batch (", payload.size(),
 						" bytes)");
 				return true;
 			}
-			auto count = rest.size() / sizeof(sprt::window::WindowLayer);
-			sprt::window::Vector<sprt::window::WindowLayer> layers;
-			for (size_t i = 0; i < count; ++i) {
-				sprt::window::WindowLayer layer;
-				__sprt_memcpy(&layer, rest.data() + i * sizeof(sprt::window::WindowLayer),
-						sizeof(sprt::window::WindowLayer));
+			for (size_t i = 0; i < layers.size(); ++i) {
+				auto &layer = layers[i];
 				log::source().debug("AppThread", "UpdateLayers: layer[", i, "] rect{",
 						layer.rect.origin.x, ",", layer.rect.origin.y, " ", layer.rect.size.width,
 						"x", layer.rect.size.height, "} cursor=", uint32_t(toInt(layer.cursor)),
 						" flags=", uint32_t(toInt(layer.flags)));
-				layers.emplace_back(layer);
 			}
 
 			if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
-				log::source().info("AppThread", "UpdateLayers: applying ", count,
+				log::source().info("AppThread", "UpdateLayers: applying ", layers.size(),
 						" layer(s) to window ", windowId);
 				w->updateLayers(sp::move(layers));
 			} else {
@@ -1090,25 +1118,33 @@ void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView
 		// see the mismatch the moment ServerInfo arrives, which is why the usual outcome is the
 		// error branch above. This one catches a peer that answered anyway: a stale build with a
 		// broken check, or one that is not the client it claims to be.
-		if (!_localInfo.isAbiCompatible(info)) {
+		if (!_localInfo.isWireCompatible(info)) {
+			// Said out loud, and no longer fatal. Before M6 this was the difference between
+			// rendering and corrupting memory, because InputEvents and UpdateLayers were dumps of
+			// each side's struct layout. They are field-by-field now, so a differing tag means the
+			// two builds disagree about some enum's ceiling -- worth knowing when something later
+			// looks wrong, not worth refusing to draw over.
 			StringStream clientDesc;
 			StringStream localDesc;
 			info.description([&](StringView str) { clientDesc << str; });
 			_localInfo.description([&](StringView str) { localDesc << str; });
-			log::source().error("AppThread",
-					"incompatible client build; dropping connection\n  client: ", clientDesc.str(),
-					"\n  server: ", localDesc.str());
-			if (auto conn = _remoteClient->getConnection()) {
-				conn->sendError(remote::Domain::Global,
-						toInt(remote::GlobalError::IncompatiblePeer), h.serial);
-			}
-			_resetClientRequested = true;
-			return;
+			log::source().warn("AppThread",
+					"client was built against a different wire contract; continuing\n  client: ",
+					clientDesc.str(), "\n  server: ", localDesc.str());
 		}
 
 		StringStream desc;
 		info.description([&](StringView str) { desc << str; });
 		log::source().info("AppThread", "client: ", desc.str());
+
+		// What the client's build does NOT implement, named. The point of the mask is that this is
+		// knowable at connect time rather than one NotImplemented at a time, once something has
+		// already gone looking for the message.
+		StringStream missing;
+		_localInfo.describeMissingCodes(info, [&](StringView str) { missing << str; });
+		if (!missing.empty()) {
+			log::source().warn("AppThread", "client does not implement: ", missing.str());
+		}
 	}
 
 	// Do NOT take the windows over yet: the client must first compile each shared queue and attach

@@ -219,6 +219,15 @@ public:
 	virtual void waitForReply(uint32_t,
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
+	/* Abandon every Domain::Data block this side is still streaming, telling the peer (Cancel) and
+	settling each waiting caller with a failure. Returns how many were cancelled.
+	
+	Bulk transfers are the one thing on this connection that keeps running long after the request
+	that started it was answered, so it is also the one thing that needs a way to be called off --
+	when what the blob was for has gone away, or when the process is winding down and would otherwise
+	spend seconds pushing pixels nobody will look at. App thread only. */
+	size_t cancelOutgoingTransfers();
+
 protected:
 	// The block-transfer manager and the font remote endpoints drive the remoteSend* facade below.
 	friend class BlockTransferManager;
