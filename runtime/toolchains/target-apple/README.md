@@ -86,7 +86,12 @@ Priority ladder, applied per missing piece:
 3. **The real SDK for validation only**: every hand-written constant, enum
    value, struct layout and every tbd symbol is checked against the SDK before
    it is added (e.g. all 87 `MTLPixelFormat` values are spelled explicitly);
-   Nothing is copied.
+   Nothing is copied. That check is no longer a manual step --
+   [`tests/libc/macos-abi`](../../../tests/libc/macos-abi) re-runs it: it diffs
+   the overlay's constants, struct layouts and ObjC property types against the
+   SDK by compiling the same probe against both sysroots, and audits every tbd
+   symbol for existence and library ownership. It runs from Linux with a stock
+   clang, and prints SKIP when no SDK is reachable.
 
 ## Where the link stubs come from: the bake
 
