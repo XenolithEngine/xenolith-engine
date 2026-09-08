@@ -38,9 +38,36 @@ bool Panel::init() {
 
 	setType("panel");
 	addStyleClass("xl-ui-panel");
-	setRenderingLevel(RenderingLevel::Surface);
+
+	// DEFAULT, so that `getRealRenderingLevel` below can answer `Solid` for a panel that is an
+	// opaque hard-edged rectangle. It used to be a fixed `Surface`, which is a blended draw - and a
+	// blended draw never writes the destination alpha. See the header.
+	setRenderingLevel(RenderingLevel::Default);
 	registerStyleAppliers("panel");
 	return true;
+}
+
+RenderingLevel Panel::getRealRenderingLevel() const {
+	// The overlay outranks everything, exactly as it does for every other sprite: a subtree lifted
+	// onto it goes as a whole.
+	if (_inOverlay) {
+		return RenderingLevel::Overlay;
+	}
+
+	// Anything the caller asked for explicitly is the caller's, and VectorSprite already knows how
+	// to honour it.
+	if (_renderingLevel != RenderingLevel::Default) {
+		return VectorSprite::getRealRenderingLevel();
+	}
+
+	/* AN OPAQUE HARD-EDGED RECTANGLE IS A GROUND. `_imageIsSolid` is the rasterizer's own answer -
+	no antialiased path, every fill and stroke at full opacity - and the node's own opacity has to
+	be full as well, since it multiplies what the fragment writes. */
+	if (_imageIsSolid && _displayedColor.a >= 1.0f) {
+		return RenderingLevel::Solid;
+	}
+
+	return RenderingLevel::Surface;
 }
 
 void Panel::registerStyleAppliers(StringView type) {
@@ -123,8 +150,12 @@ void Panel::updateBackgroundImage() {
 	})
 			.setFillColor(style->backgroundColor)
 			.setStyle(vg::DrawFlags::Fill)
-			// a hard-edged rect needs none of it; rounded corners and strokes do
-			.setAntialiased(rounded || style->outlineWidth > 0.0f);
+			/* ONLY A CURVE NEEDS IT. A rounded corner does; a straight edge does not, and neither
+			does the straight stroke around one - an axis-aligned outline rasterizes clean without
+			it. That matters beyond the pixels: an antialiased path is never `_imageIsSolid`, so
+			antialiasing a square panel is what would put a ground into the blended pass and leave
+			the destination alpha where it found it. */
+			.setAntialiased(rounded);
 
 	if (style->outlineWidth > 0.0f && style->outlineStyle != document::BorderStyle::None) {
 		path->setStyle(vg::DrawFlags::FillAndStroke)
