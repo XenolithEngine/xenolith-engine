@@ -390,7 +390,7 @@ touching the binding.
 
 [source,css]
 ----
-menu                  { background-color: #202026; border-radius: 6px; }
+menu                  { background-color: #202026; }   /* see "a surface is a ground" below */
 menu-item             { background-color: #00000000; }
 menu-item:hover       { background-color: #2f2f38; }
 menu-item:disabled    { }                       /* Button gives :disabled and .disabled */
@@ -437,9 +437,43 @@ paints nothing, while the line inside it is `menu-separator`.
 | A `ui::Panel` in a menu with no fill declared
 | It is opaque **white**, not transparent
 
+| A rounded or translucent-edged panel on a NATIVE popup
+| The window it hangs off gave it `UserSpaceDecorations`, so its surface is
+  transparent by construction; a panel that is not a `Solid` draw never writes the
+  destination alpha and the window behind shows through it. See below
+
 | Expecting `bindMenuHotkeys` to reach a lazy submenu
 | It binds only submenus that have been built; declare the command where it lives
 |===
+
+## A surface is a ground, and a ground is `Solid`
+
+`ui::Panel` resolves its own rendering level: an opaque, hard-edged rectangle is
+**`RenderingLevel::Solid`**, and everything else is `Surface`. That is not a
+performance note — it decides whether the panel writes the framebuffer's **alpha**.
+`Solid` draws with blending off, so the fragment's alpha lands; `Surface` and
+`Transparent` blend, and a blended draw leaves the destination alpha exactly where
+it found it.
+
+On the window an application owns that is invisible: the surface starts opaque. A
+**native popup** does not — it inherits `WindowCreationFlags::UserSpaceDecorations`
+from the window it hangs off, so its surface is transparent by construction and the
+desktop's rounded corner is cut out of it by the `FrameClipper` pass. A menu whose
+panel is not a ground therefore comes up at alpha 0: the colours are right, the
+text is right, and the window behind it shows through all of it.
+
+Three things make a panel non-solid, and a panel is **one image**, so any one of
+them decides the level for the whole surface:
+
+* a `border-radius` — a curve has to be rasterized antialiased;
+* a translucent `background-color`;
+* a translucent `outline-color`, even a 1px one.
+
+An axis-aligned outline is not one of them: a straight edge needs no antialiasing
+and an opaque one keeps the panel solid. So a popup's own surface should carry
+neither a radius (**the window's corner is the window's**, cut from the desktop
+theme's radius) nor a translucent edge; mix the edge down against the fill instead
+of blending it.
 
 ## The keyboard is a mode, and it is a `FocusGroup`
 

@@ -66,6 +66,25 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
+	/* THE LEVEL A PANEL DRAWS AT, and it is not the fixed `Surface` it used to be.
+
+	`Surface` means blending is ON, and a blended draw leaves the DESTINATION ALPHA where it found
+	it. On an opaque window nobody can tell; on a transparent one - a popup, which inherits
+	`UserSpaceDecorations` from the window it hangs off - the whole surface comes out with alpha 0
+	and the window behind it shows through, colour and all. A menu drawn over a file tree showed the
+	tree.
+
+	So a panel that is genuinely an opaque hard-edged rectangle - no radius, no translucency, an
+	image the rasterizer drew without antialiasing - draws at `Solid`, where blending is off and the
+	fragment's own alpha is what lands in the framebuffer. Everything else keeps `Surface`: a
+	rounded corner and a translucent fill both NEED the blend, and neither can be a ground.
+
+	`Surface` rather than `Transparent` for that remainder, which is what the fixed level bought and
+	is worth keeping: a surface is depth-ordered like the rest of the interface instead of being
+	sorted into the painter's-order bucket by zPath. An explicit `setRenderingLevel` still wins over
+	all of it. */
+	virtual RenderingLevel getRealRenderingLevel() const override;
+
 	/* Direct paint: for surfaces built outside a stylesheet (auxiliary windows that do not share
 	the main StyleSystem), and for the default a widget gives itself - a scroll indicator, a colour
 	swatch, a menu separator, a table cell that must not hide the row it stands on.
