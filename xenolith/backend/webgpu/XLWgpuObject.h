@@ -43,8 +43,10 @@ public:
 	WGPUBuffer getBuffer() const { return _buffer; }
 
 protected:
-	bool setup(Device &, const core::BufferInfo &,
-			const Callback<size_t(uint8_t *, uint64_t)> *fill);
+	bool setup(Device &, const core::BufferInfo &, bool willUpload);
+	bool upload(Device &, uint64_t gpuSize, const uint8_t *bytes, size_t n);
+	bool upload(Device &, uint64_t gpuSize, const core::BufferData *);
+	bool upload(Device &, uint64_t gpuSize, BytesView);
 
 	WGPUBuffer _buffer = nullptr;
 };
