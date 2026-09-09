@@ -38,8 +38,12 @@ LOCAL_MODULES_PATHS = \
 LOCAL_MODULES := \
 	xenolith_application_main \
 	xenolith_renderer_ui \
-	xenolith_backend_vk \
 	xenolith_resources_assets
+ifeq ($(findstring wasm32,$(STAPPLER_TARGET)),wasm32)
+LOCAL_MODULES += xenolith_backend_webgpu xenolith_renderer_basic2d_webgpu
+else
+LOCAL_MODULES += xenolith_backend_vk
+endif
 
 # Sources: main.cpp is the TU with the scene factory; src/ holds the demo layout.
 # The source scan is recursive, so nothing has to be listed by name.

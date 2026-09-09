@@ -1236,6 +1236,31 @@ void StyleResolver::resolveOwnerIfStale() {
 }
 
 void StyleResolver::resolveForNode(Node *node) {
+	if (!node) {
+		return;
+	}
+	if (_inResolve) {
+		for (auto *n : _pendingResolve) {
+			if (n == node) {
+				return;
+			}
+		}
+		_pendingResolve.emplace_back(node);
+		return;
+	}
+
+	struct ResolveScope {
+		StyleResolver *resolver;
+		explicit ResolveScope(StyleResolver *r) : resolver(r) { resolver->_inResolve = true; }
+		~ResolveScope() {
+			resolver->_inResolve = false;
+			auto pending = sp::move(resolver->_pendingResolve);
+			resolver->_pendingResolve.clear();
+			for (auto *n : pending) { resolver->resolveForNode(n); }
+		}
+	};
+	ResolveScope scope(this);
+
 	auto style = resolveStyleForNode(node);
 	if (!style.valid()) {
 		return;
@@ -1297,7 +1322,7 @@ void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
 		sprt::bitset<toInt(document::ParameterName::Max)> &handled) {
 	auto &reg = getTypeApplierRegistry();
 	auto it = reg.find(node->getType());
-	if (it == reg.end()) {
+	if (it == reg.end() || !it->second.applier) {
 		return;
 	}
 
