@@ -168,6 +168,10 @@ protected:
 	Node *_indicatorH = nullptr;
 
 	Function<void(Vec2)> _scrollCallback;
+
+	// Last wheel event time. A burst of events inside ~80ms is a pixel stream (trackpad, wasm
+	// Chrome), even when a single amount happens to equal InputScrollNotch.
+	Time _lastWheelTime;
 };
 
 // Walk the ancestor chain from `node` upward and ask every ScrollSystem on it to reveal `node`.

@@ -6,6 +6,7 @@ SPDX-License-Identifier: MIT
 #define SPRT_RUNTIME_WINDOW_WASM_CONTROLLER_H
 
 #include <sprt/runtime/window/controller.h>
+#include <sprt/runtime/dispatch/handle.h>
 
 #if SPRT_WASM
 
@@ -13,7 +14,7 @@ namespace sprt::window {
 
 // Browser context controller: drives the engine loop on the worker's dispatch::Looper and
 // hosts a single OffscreenCanvas window. No native windowing — the canvas + WebGPU come
-// from the JS host; input events arrive over a Looper pollable-handle pipe (later).
+// from the JS host; pointer/key events arrive via sprt.input_poll (WasmWindow).
 class WasmContextController : public ContextController {
 public:
 	static Rc<WasmContextController> create(NotNull<Context>, ContextConfig &&,
@@ -31,6 +32,13 @@ public:
 
 protected:
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
+	// There is no window-system fd to poll. Linux/XCB/Wayland call notifyPendingWindows
+	// from their display socket; wasm has to drive that itself so WasmWindow::pollHostInput
+	// sees live display_size (resize) and input_poll (pointer/keys).
+	static void onHostPoll(WasmContextController *, dispatch::TimerHandle *, uint32_t, Status);
+
+	Rc<dispatch::TimerHandle> _pollTimer;
 };
 
 } // namespace sprt::window

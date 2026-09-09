@@ -255,9 +255,64 @@ void ScrollSystem::scrollBy(Vec2 delta) {
 	commitOffset();
 }
 
+// Discrete backends (xcb, Windows, macOS line-mode) emit ±1 or ±N*InputScrollNotch per
+// detent. Precise ones (macOS trackpad, wasm Chrome) emit a pixel distance per event, often
+// many per frame. Treating the latter as notches - 48pt and a 0.1s ease, restarted every
+// event - is what makes CSS overflow:auto stutter on a trackpad while basic2d::ScrollView,
+// which applies the amount as a distance, stays smooth.
+static bool ScrollSystem_isNotchComponent(float v) {
+	const float a = std::fabs(v);
+	if (a < 1.0e-4f) {
+		return false;
+	}
+	if (std::fabs(a - 1.0f) < 1.0e-3f) {
+		return true;
+	}
+	const float notches = a / sprt::window::InputScrollNotch;
+	const float nearest = std::round(notches);
+	return nearest >= 1.0f && nearest <= 3.0f && std::fabs(notches - nearest) < 1.0e-3f;
+}
+
+static float ScrollSystem_notchDelta(float amount, float scale) {
+	if (amount == 0.0f) {
+		return 0.0f;
+	}
+	const float a = std::fabs(amount);
+	const float notches = (std::fabs(a - 1.0f) < 1.0e-3f)
+			? amount
+			: amount / sprt::window::InputScrollNotch;
+	return -notches * ScrollSystem_wheelStep / scale;
+}
+
 bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
-	Vec2 delta(-s.amount.x * ScrollSystem_wheelStep / _worldScale.x,
-			-s.amount.y * ScrollSystem_wheelStep / _worldScale.y);
+	if (!_owner) {
+		return false;
+	}
+	bool discrete =
+			ScrollSystem_isNotchComponent(s.amount.x) || ScrollSystem_isNotchComponent(s.amount.y);
+	const auto now = Time::now();
+	if (_lastWheelTime.toMicros() != 0 && (now - _lastWheelTime).toMicros() < 80'000ULL) {
+		discrete = false;
+	}
+	_lastWheelTime = now;
+
+	Vec2 delta;
+	if (discrete) {
+		delta = Vec2(ScrollSystem_notchDelta(s.amount.x, _worldScale.x),
+				ScrollSystem_notchDelta(s.amount.y, _worldScale.y));
+	} else {
+		// Amount is already a distance in points (CSS pixels on wasm, scrollingDelta on
+		// macOS). Do not fold display density in: pointer coords are backing pixels and
+		// need /worldScale, wheel pixels are not.
+		delta = Vec2(-s.amount.x, -s.amount.y);
+		const auto own = _owner->getScale();
+		if (own.x != 0.0f && own.x != 1.0f) {
+			delta.x /= own.x;
+		}
+		if (own.y != 0.0f && own.y != 1.0f) {
+			delta.y /= own.y;
+		}
+	}
 
 	// A vertical wheel is redirected to the horizontal axis when this container can only scroll
 	// horizontally - the browser rule, and the only thing that makes a horizontal-only strip (a tab
@@ -288,10 +343,18 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 
 	_velocity = Vec2::ZERO; // a wheel notch cancels any fling in progress
 
-	// Added to where the easing is HEADING, not to where it currently is. That is what makes N
-	// notches in quick succession travel exactly N steps, the same total an un-animated wheel would
-	// have covered - the animation changes when the content arrives, never how far it goes.
-	scrollToAnimated(getScrollTarget() + Vec2(canX ? delta.x : 0.0f, canY ? delta.y : 0.0f));
+	const Vec2 step(canX ? delta.x : 0.0f, canY ? delta.y : 0.0f);
+	if (discrete) {
+		// Added to where the easing is HEADING, not to where it currently is. That is what makes N
+		// notches in quick succession travel exactly N steps, the same total an un-animated wheel would
+		// have covered - the animation changes when the content arrives, never how far it goes.
+		scrollToAnimated(getScrollTarget() + step);
+	} else {
+		// Precise streams already ARE the motion. Easing each event, and cancelling the previous
+		// ease when the next arrives, is the stutter.
+		_owner->stopAllActionsByTag(WheelActionTag);
+		scrollBy(step);
+	}
 	return true;
 }
 

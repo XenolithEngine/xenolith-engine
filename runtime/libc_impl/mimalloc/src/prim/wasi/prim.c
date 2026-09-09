@@ -53,39 +53,61 @@ int _mi_prim_free(void* addr, size_t size ) {
     return p;
   }
 #elif defined(__wasi__)
-  static void* mi_memory_grow( size_t size ) {
-    size_t base = (size > 0 ? __builtin_wasm_memory_grow(0,_mi_divide_up(size, _mi_os_page_size()))
-                            : __builtin_wasm_memory_size(0));
-    if (base == SIZE_MAX) return NULL;
-    return (void*)(base * _mi_os_page_size());
-  }
+  // sprt: direct memory.grow is forbidden. sbrk (libc_impl/src/wasm/unistd.cc)
+  // is the single growth path on this target - it owns the one lock that
+  // serializes grow across wasm agents, and it also maintains the program
+  // break this allocator allocates from. A direct grow here would both bypass
+  // that lock (interleaved grows corrupt page metadata) and desynchronize the
+  // break, so it must not compile.
+  #error "sprt: direct memory.grow on wasi must go through sbrk (single grow lock)"
 #endif
 
-#if defined(MI_USE_PTHREADS)
+#if defined(__wasi__)
+// memory.grow is not atomic across wasm agents. pthread_mutex wait is
+// instance-local; a raw atomic in shared linear memory is what actually
+// serializes grow from the engine worker and thread workers. Without this,
+// two concurrent grows overlap, mimalloc metadata is corrupted, and the
+// next page init does `page_size / block_size` with block_size==0.
+//
+// Do not busy-spin: shared-memory growth needs other agents parked, and a
+// tight atomic RMW loop on this word deadlocks the grower (ENOMEM, then
+// "allocation error: Out of memory"). Park waiters with memory.atomic.wait32.
+//
+// sprt: this is the OUTER lock of a nesting pair - it is held across the
+// probe+grow sequence in mi_prim_mem_grow, and the grow itself (sbrk) takes
+// the INNER brk lock in libc_impl/src/wasm/unistd.cc. Two instances of the
+// same idiom on purpose: collapsing them into one lock self-deadlocks the
+// first aligned grow (tests/wthread catches exactly that).
+static volatile int mi_wasm_grow_lock = 0;
+static void mi_grow_lock(void) {
+  while (__atomic_exchange_n(&mi_wasm_grow_lock, 1, __ATOMIC_ACQUIRE)) {
+    __builtin_wasm_memory_atomic_wait32((int*)&mi_wasm_grow_lock, 1, -1LL);
+  }
+}
+static void mi_grow_unlock(void) {
+  __atomic_store_n(&mi_wasm_grow_lock, 0, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify((int*)&mi_wasm_grow_lock, 1);
+}
+#elif defined(MI_USE_PTHREADS)
 static pthread_mutex_t mi_heap_grow_mutex = PTHREAD_MUTEX_INITIALIZER;
+static void mi_grow_lock(void) { pthread_mutex_lock(&mi_heap_grow_mutex); }
+static void mi_grow_unlock(void) { pthread_mutex_unlock(&mi_heap_grow_mutex); }
+#else
+static void mi_grow_lock(void) { }
+static void mi_grow_unlock(void) { }
 #endif
 
 static void* mi_prim_mem_grow(size_t size, size_t try_alignment) {
   void* p = NULL;
   if (try_alignment <= 1) {
-    // `sbrk` is not thread safe in general so try to protect it (we could skip this on WASM but leave it in for now)
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_lock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_lock();
     p = mi_memory_grow(size);
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_unlock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_unlock();
   }
   else {
     void* base = NULL;
     size_t alloc_size = 0;
-    // to allocate aligned use a lock to try to avoid thread interaction
-    // between getting the current size and actual allocation
-    // (also, `sbrk` is not thread safe in general)
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_lock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_lock();
     {
       void* current = mi_memory_grow(0);  // get current size
       if (current != NULL) {
@@ -94,9 +116,7 @@ static void* mi_prim_mem_grow(size_t size, size_t try_alignment) {
         base = mi_memory_grow(alloc_size);
       }
     }
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_unlock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_unlock();
     if (base != NULL) {
       p = _mi_align_up_ptr(base, try_alignment);
       if ((uint8_t*)p + size > (uint8_t*)base + alloc_size) {

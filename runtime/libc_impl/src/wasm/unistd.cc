@@ -36,6 +36,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_time.h>
 
 // Pulls in __libc, StringView, the fd dispatch tables, and (via sys/stat.h) the
@@ -110,15 +111,44 @@ constexpr __wasm_uptr WASM_PAGE_BYTES = 65536u;
 // Current program break; 0 means "not yet initialised" (lazily set to the base).
 __wasm_uptr s_wasm_break = 0;
 
+// Serialize brk/sbrk (and thus every memory.grow: mimalloc grows through
+// sbrk, and its wasi prim layer wraps this lock in an OUTER file-local lock
+// across its probe+grow pair - the nesting is load-bearing, collapsing the
+// two into one self-deadlocks the first aligned grow, see tests/wthread).
+// A busy-spin here would deadlock memory.grow (shared growth needs other
+// agents parked). Park waiters.
+int s_wasm_brk_lock = 0;
+constexpr int64_t WASM_GROW_STUCK_NS = 10 * 1000 * 1000 * 1000ll; // 10 s
+
+const char s_growStuckMsg[] =
+		"sprt: wasm memory.grow lock held over 10s by another agent; still waiting\n";
+
+void __wasm_brk_lock(void) {
+	while (__atomic_exchange_n(&s_wasm_brk_lock, 1, __ATOMIC_ACQUIRE)) {
+		// wait32: 0 woken, 1 value changed, 2 timed out. A holder that died
+		// mid-grow would hang every waiter; the timeout only makes that
+		// observable - the waiter parks again, it must NOT proceed (memory
+		// handed out after a mid-grow death overlaps a live allocation).
+		if (__builtin_wasm_memory_atomic_wait32(&s_wasm_brk_lock, 1, WASM_GROW_STUCK_NS) == 2) {
+			// Raw write(2), not perror/stderr: the FILE lock inside stdio
+			// could be held by a thread waiting on this very lock.
+			write(2, s_growStuckMsg, sizeof(s_growStuckMsg) - 1);
+		}
+	}
+}
+
+void __wasm_brk_unlock(void) {
+	__atomic_store_n(&s_wasm_brk_lock, 0, __ATOMIC_RELEASE);
+	__builtin_wasm_memory_atomic_notify(&s_wasm_brk_lock, 1);
+}
+
 __wasm_uptr __wasm_break_base(void) {
 	// 16-byte (max_align_t) aligned so the very first hand-out is aligned.
 	__wasm_uptr base = reinterpret_cast<__wasm_uptr>(&__heap_base);
 	return (base + 15u) & ~static_cast<__wasm_uptr>(15u);
 }
 
-} // namespace
-
-extern "C" int brk(void *__addr) __SPRT_NOEXCEPT {
+int __wasm_brk_unlocked(void *__addr) {
 	const __wasm_uptr base = __wasm_break_base();
 	if (s_wasm_break == 0) {
 		s_wasm_break = base;
@@ -134,6 +164,7 @@ extern "C" int brk(void *__addr) __SPRT_NOEXCEPT {
 		if (static_cast<__SIZE_TYPE__>(__builtin_wasm_memory_grow(0, pages))
 				== static_cast<__SIZE_TYPE__>(-1)) {
 			__sprt_errno = ENOMEM;
+			__sprt_perror("wasm memory.grow");
 			return -1;
 		}
 	}
@@ -141,23 +172,37 @@ extern "C" int brk(void *__addr) __SPRT_NOEXCEPT {
 	return 0;
 }
 
+} // namespace
+
+extern "C" int brk(void *__addr) __SPRT_NOEXCEPT {
+	__wasm_brk_lock();
+	const int rc = __wasm_brk_unlocked(__addr);
+	__wasm_brk_unlock();
+	return rc;
+}
+
 extern "C" void *sbrk(__INTPTR_TYPE__ __incr) __SPRT_NOEXCEPT {
+	__wasm_brk_lock();
 	if (s_wasm_break == 0) {
 		s_wasm_break = __wasm_break_base();
 	}
 	const __wasm_uptr old = s_wasm_break;
 	if (__incr == 0) {
+		__wasm_brk_unlock();
 		return reinterpret_cast<void *>(old);
 	}
 	const __wasm_uptr want = old + static_cast<__wasm_uptr>(__incr);
 	// Overflow / underflow guard in either direction.
 	if ((__incr > 0 && want < old) || (__incr < 0 && want > old)) {
+		__wasm_brk_unlock();
 		__sprt_errno = ENOMEM;
 		return reinterpret_cast<void *>(static_cast<__INTPTR_TYPE__>(-1));
 	}
-	if (brk(reinterpret_cast<void *>(want)) != 0) {
+	if (__wasm_brk_unlocked(reinterpret_cast<void *>(want)) != 0) {
+		__wasm_brk_unlock();
 		return reinterpret_cast<void *>(static_cast<__INTPTR_TYPE__>(-1));
 	}
+	__wasm_brk_unlock();
 	return reinterpret_cast<void *>(old);
 }
 
@@ -170,6 +215,30 @@ extern "C" long fpathconf(int fd, int name) __SPRT_NOEXCEPT {
 	}
 	return __wasm_pathconf(name);
 }
+
+extern "C" int gethostname(char *name, size_t len) __SPRT_NOEXCEPT {
+	static const char host[] = "localhost";
+	if (!name || len == 0) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// Truncate to len - 1 chars so the NUL terminator never eats a copied char.
+	size_t n = sizeof(host) - 1;
+	if (n > len - 1) {
+		n = len - 1;
+	}
+	for (size_t i = 0; i < n; i++) {
+		name[i] = host[i];
+	}
+	name[n] = 0;
+	return 0;
+}
+
+extern "C" int utimes(const char *, const struct __SPRT_TIMEVAL_NAME[2]) __SPRT_NOEXCEPT {
+	return 0;
+}
+
+extern "C" int fchown(int, __SPRT_ID(uid_t), __SPRT_ID(gid_t)) __SPRT_NOEXCEPT { return 0; }
 
 // fsync/fdatasync live in the memfs TU (wasm/libc_path.cc) where the inode + OPFS
 // backend are in scope: an OPFS-backed file must be written back on fsync.

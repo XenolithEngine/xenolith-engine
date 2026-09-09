@@ -386,6 +386,14 @@ protected:
 	// changes (a class flip on it bringing in a different `--brand`) every descendant's applied
 	// style is stale - the descendants themselves saw no event at all.
 	HashMap<Node *, uint64_t> _nodeCustomProperties;
+
+	// applyDefault mutates components and size, which can re-enter this resolver (a nested
+	// handleChildComponentsDirty, or a scroll row attached mid-visit). A nested resolveForNode
+	// would run applyDefault on a second ResolvedStyle while the caller's is still live; on wasm
+	// that is `RuntimeError: null function` (empty Function after a failed malloc, or a virtual
+	// hop from a worker table). Queue the other node and drain when the outer apply returns.
+	bool _inResolve = false;
+	Vector<Node *> _pendingResolve;
 };
 
 } // namespace stappler::xenolith::ui

@@ -5,24 +5,109 @@
 // The engine lives in the worker: its threads (Atomics.wait is forbidden on the main
 // thread), its WebGPU device/render loop, and synchronous OPFS all require this context.
 
-import { makeImports } from "./sprt-imports.mjs";
+import { makeImports, INPUT_SAB_BYTES, DISPLAY_SAB_BYTES, writeDisplay, PROC_CTRL_BYTES, PROC_OUT_BYTES } from "./sprt-imports.mjs";
 import { makeWebgpuThunks, GPU_CTRL_BYTES } from "./webgpu.mjs";
 
 async function loadBundle(manifest) {
 	const out = {};
 	for (const [mount, url] of Object.entries(manifest || {})) {
-		try { out[mount] = new Uint8Array(await (await fetch(url)).arrayBuffer()); } catch (_) {}
+		if (url instanceof Uint8Array) {
+			out[mount] = url;
+			continue;
+		}
+		if (url && typeof url === "object" && url.buffer instanceof ArrayBuffer) {
+			out[mount] = url instanceof Uint8Array ? url : new Uint8Array(url);
+			continue;
+		}
+		try {
+			const res = await fetch(url);
+			if (!res.ok) {
+				console.warn("bundle miss", mount, url, res.status);
+				continue;
+			}
+			out[mount] = new Uint8Array(await res.arrayBuffer());
+		} catch (err) {
+			console.warn("bundle fetch", mount, url, err);
+		}
 	}
 	return out;
 }
 
+function createXlmakeMemory(post, initial, maximum) {
+	const ini = Math.max(512, initial | 0 || 2048);
+	const max = Math.max(ini, maximum | 0 || 4096);
+	const attempts = [[ini, max], [Math.min(ini, 2048), Math.min(max, 4096)], [1024, 2048]];
+	const seen = new Set();
+	let last = null;
+	for (const [i, m] of attempts) {
+		const key = i + ":" + m;
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		try {
+			const memory = new WebAssembly.Memory({ initial: i, maximum: m, shared: true });
+			post({ type: "stdout", text: "xlmake: wasm memory " + i + ".." + m + " pages ("
+				+ Math.round(i * 64 / 1024) + ".." + Math.round(m * 64 / 1024) + "MiB)\n" });
+			return memory;
+		} catch (e) {
+			last = e;
+			post({ type: "stderr", text: "xlmake: Memory(" + i + "," + m + ") failed: " + e + "\n" });
+		}
+	}
+	throw last || new Error("xlmake: WebAssembly.Memory(shared) failed");
+}
+
+const inputQueue = [];
+
 self.onmessage = async (e) => {
-	const { wasmUrl, bundleManifest, argv0, args, hasCanvas, dispW, dispH, dispDensity } = e.data;
+	if (e.data && e.data.type === "input") {
+		const evs = e.data.events;
+		if (Array.isArray(evs) && evs.length) {
+			for (const ev of evs) {
+				inputQueue.push(ev);
+			}
+		}
+		return;
+	}
+	const { wasmUrl, bundleManifest, argv0, args, hasCanvas, dispW, dispH, dispDensity,
+		wantProcess, memoryInitial, memoryMaximum, productBundle } = e.data;
 	const post = (m) => self.postMessage(m);
 	try {
 		const bundle = await loadBundle(bundleManifest);
+		if (productBundle) {
+			for (const [path, data] of Object.entries(productBundle)) {
+				if (data) {
+					bundle[path] = data;
+				}
+			}
+		}
 		const module = await WebAssembly.compile(await (await fetch(wasmUrl)).arrayBuffer());
-		const memory = new WebAssembly.Memory({ initial: 512, maximum: 16384, shared: true });
+		let memory;
+		if (wantProcess && !hasCanvas) {
+			memory = createXlmakeMemory(post, memoryInitial, memoryMaximum);
+		} else {
+			// Shared memory.grow after thread workers exist returns -1 in the browser
+			// (`wasm memory.grow: Out of memory`), then malloc fails and release
+			// sprt_passert is a no-op → `RuntimeError: null function`. Commit the
+			// full 1 GiB ceiling up front so sbrk never grow()s. Fall back if the
+			// tab cannot reserve that much.
+			const maxPages = 16384;
+			let pages = 0;
+			for (const n of [16384, 8192, 4096]) {
+				try {
+					memory = new WebAssembly.Memory({ initial: n, maximum: maxPages, shared: true });
+					pages = n;
+					break;
+				} catch (err) {
+					post({ type: "stdout", text: `wasm memory ${n} pages refused (${err})\n` });
+				}
+			}
+			if (!memory) {
+				throw new Error("cannot allocate shared wasm memory");
+			}
+			post({ type: "stdout", text: `wasm memory ${(pages * 64) / 1024} MiB committed (grow disabled)\n` });
+		}
 
 		// Shared atomic tid source: every worker draws unique native thread ids from it.
 		const tidBuf = new SharedArrayBuffer(4);
@@ -36,6 +121,22 @@ self.onmessage = async (e) => {
 		// Control block for the GPU broker: every worker marshals its wgpu* calls through this
 		// to the one worker that owns the device + OffscreenCanvas (see gpu-broker.mjs).
 		const gpuCtrl = hasCanvas ? new SharedArrayBuffer(GPU_CTRL_BYTES) : null;
+		const inputSab = hasCanvas ? new SharedArrayBuffer(INPUT_SAB_BYTES) : null;
+		const displaySab = hasCanvas ? new SharedArrayBuffer(DISPLAY_SAB_BYTES) : null;
+		if (displaySab) {
+			writeDisplay(displaySab, dispW, dispH, dispDensity);
+		}
+		const processCtrl = wantProcess ? new SharedArrayBuffer(PROC_CTRL_BYTES) : null;
+		let processOut = null;
+		if (wantProcess) {
+			try {
+				processOut = new SharedArrayBuffer(PROC_OUT_BYTES);
+				post({ type: "stderr", text: "xlmake: process SAB " + Math.round(PROC_OUT_BYTES / 1048576) + "MiB\n" });
+			} catch (e) {
+				throw new Error("xlmake: process SAB SharedArrayBuffer("
+					+ Math.round(PROC_OUT_BYTES / 1048576) + "MiB) failed: " + e);
+			}
+		}
 
 		// thread_spawn cannot create the worker here: this worker is about to block in
 		// Atomics.wait, which would stall a child worker's startup. Draw a unique tid and
@@ -49,7 +150,9 @@ self.onmessage = async (e) => {
 		const imports = makeImports({
 			memory, bundle, argv: [argv0 || "app", ...(args || [])],
 			log: (s, t) => post({ type: s, text: t }),
-			spawn, opfsSab, dispW, dispH, dispDensity,
+			spawn, opfsSab, dispW, dispH, dispDensity, inputQueue, inputSab, displaySab,
+			processCtrl, processOut, postProcess: wantProcess ? post : null,
+			onFilePut: wantProcess ? (path, bytes) => post({ type: "file-put", path, bytes }) : null,
 			onExit: (c) => post({ type: "exit", code: c }),
 		});
 
@@ -72,7 +175,7 @@ self.onmessage = async (e) => {
 
 		// Publish module + shared memory + control blocks so the main thread can create the
 		// thread / OPFS / GPU workers on demand, then run the program.
-		post({ type: "init-threads", module, memory, bundle, tidBuf, opfsSab, gpuCtrl, scratchPtr, dispW, dispH, dispDensity });
+		post({ type: "init-threads", module, memory, bundle, tidBuf, opfsSab, gpuCtrl, scratchPtr, dispW, dispH, dispDensity, inputSab, displaySab, processCtrl, processOut });
 
 		instance.exports._start();
 		post({ type: "exit", code: 0 });

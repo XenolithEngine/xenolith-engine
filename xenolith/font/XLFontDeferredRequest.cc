@@ -46,6 +46,13 @@ void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<Fo
 	data->onTexture = sp::move(onTex);
 	data->onComplete = sp::move(onComp);
 
+#if defined(__wasm32__)
+	// Wasm thread workers are separate module instances sharing linear memory.
+	// Fan-out malloc through mimalloc from those workers races memory.grow and
+	// corrupts page queues (divide-by-zero in mi_page_fresh_alloc). Rasterise
+	// on the caller instead.
+	data->runThread();
+#else
 	uint32_t n = queue->getWorkersCount();
 	if (n == 0) {
 		n = 1;
@@ -53,6 +60,7 @@ void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<Fo
 	for (uint32_t i = 0; i < n; ++i) {
 		queue->performAsync([data]() { data->runThread(); });
 	}
+#endif
 }
 
 void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
@@ -63,6 +71,9 @@ void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
 	data->onRender = sp::move(onRender);
 	data->onComplete = sp::move(onComp);
 
+#if defined(__wasm32__)
+	data->runThread();
+#else
 	uint32_t n = queue->getWorkersCount();
 	if (n == 0) {
 		n = 1;
@@ -70,6 +81,7 @@ void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
 	for (uint32_t i = 0; i < n; ++i) {
 		queue->performAsync([data]() { data->runThread(); });
 	}
+#endif
 }
 
 DeferredRequest::~DeferredRequest() { }
