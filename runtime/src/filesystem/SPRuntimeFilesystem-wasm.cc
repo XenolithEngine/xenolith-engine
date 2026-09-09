@@ -73,13 +73,21 @@ void _initSystemPaths(LookupData &data) {
 	auto defaultInterface = getDefaultInterface();
 	auto &appConfig = getAppConfig();
 
-	// %PLATFORM% — the read-only app bundle (JS fetch overlay), from AppConfig.bundlePath.
+	// %PLATFORM% — the JS host overlay is always "/app". Native APPCONFIG_BUNDLE_PATH
+	// (`$EXEC_DIR:$CWD`) is not a browser mount; honour expanded extras but never skip /app
+	// or FileInfo("resources/…", Bundled) 404s against the playground bundle.
 	auto &bundledLoc = data._resourceLocations[toInt(LocationCategory::Bundled)];
 	bundledLoc.init = true;
+	bundledLoc.paths.emplace_back(LocationInfo{
+		StringView("/app"),
+		LookupFlags::Private,
+		LocationFlags::Locateable,
+		defaultInterface,
+	});
 	if (!appConfig.bundlePath.empty()) {
 		appConfig.bundlePath.split<StringView::Chars<':'>>([&](StringView str) {
 			auto value = readVariable(data._pool, str);
-			if (!value.empty()) {
+			if (!value.empty() && value != "/app") {
 				bundledLoc.paths.emplace_back(LocationInfo{
 					value,
 					LookupFlags::Private,
@@ -87,16 +95,6 @@ void _initSystemPaths(LookupData &data) {
 					defaultInterface,
 				});
 			}
-		});
-	} else {
-		// No explicit bundlePath: default the read-only bundle to "/app", matching the platform
-		// resource dir (see SPRuntimePlatform-wasm.cc). Bundled files then resolve to
-		// "/app/<path>" and reach the fetch overlay via the libc bundle_read host import.
-		bundledLoc.paths.emplace_back(LocationInfo{
-			StringView("/app"),
-			LookupFlags::Private,
-			LocationFlags::Locateable,
-			defaultInterface,
 		});
 	}
 
