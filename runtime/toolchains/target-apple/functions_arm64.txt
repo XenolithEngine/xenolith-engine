@@ -436,6 +436,7 @@
         _initgroups,
         _kevent64,
         _mach_absolute_time,
+        _mach_init_routine,
         _mach_task_self_,
         _mach_thread_self,
         _mach_timebase_info,
