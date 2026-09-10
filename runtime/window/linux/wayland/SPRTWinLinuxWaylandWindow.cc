@@ -1258,6 +1258,8 @@ void WaylandWindow::handlePointerFrame() {
 	_pointerEvents.clear();
 }
 
+static constexpr uint32_t KeyStateRepeated = 2;
+
 void WaylandWindow::handleKeyboardEnter(Vector<uint32_t> &&keys, uint32_t depressed,
 		uint32_t latched, uint32_t locked) {
 	handleKeyModifiers(depressed, latched, locked);
@@ -1299,6 +1301,18 @@ void WaylandWindow::handleKeyboardLeave() {
 }
 
 void WaylandWindow::handleKey(uint32_t time, uint32_t scancode, uint32_t state) {
+	// `repeated` (wl_keyboard 10) is a pseudo-state: the compositor announced a zero repeat rate,
+	// took repetition over itself, and this is one of its repeats. The key stays logically down,
+	// so it must not reach the release path below - that would drop it from _keys, hand the
+	// application a release while the key is still held, and leave every further repeat with
+	// nothing to replay.
+	if (state == KeyStateRepeated) {
+		if (auto it = _keys.find(scancode); it != _keys.end()) {
+			emitKeyRepeat(it->second, time);
+		}
+		return;
+	}
+
 	auto inputKey = _display->seat->translateKey(scancode);
 
 	// A modifier key reports its own side on its own press, which is what the Win32 backend does
@@ -1449,33 +1463,35 @@ void WaylandWindow::updateSideModifiers() {
 	_activeModifiers = (_activeModifiers & ~SideMask) | sides;
 }
 
-// Wayland has no repeat events: wl_keyboard.repeat_info only states the rate and the delay, and
-// making the repeats out of them is the client's job. Driven by the timer below.
+void WaylandWindow::emitKeyRepeat(const KeyData &key, uint32_t id) {
+	InputEventData event({
+		id,
+		InputEventName::KeyRepeated,
+		{{
+			InputMouseButton::None,
+			_activeModifiers,
+			float(_surfaceX),
+			float(_surfaceY),
+		}},
+	});
+
+	event.key.keycode = _display->seat->translateKey(key.scancode);
+	// Everything the press resolved is replayed as it was: a repeat is the same key producing
+	// the same character again, and re-running it through the compose state machine here would
+	// feed it a symbol the user never pressed a second time.
+	event.key.compose = key.compose;
+	event.key.keysym = key.keysym;
+	event.key.keychar = key.codepoint;
+
+	_pendingEvents.emplace_back(move(event));
+}
+
+// Used only when the compositor told us a non-zero repeat rate, which means it does not repeat
+// keys itself and the repeats are ours to make. Driven by the timer below.
 void WaylandWindow::handleKeyRepeat() {
 	auto t = sprt::platform::clock(platform::ClockType::Monotonic);
 
-	auto spawnRepeatEvent = [&, this](const KeyData &it) {
-		InputEventData event({
-			uint32_t(t),
-			InputEventName::KeyRepeated,
-			{{
-				InputMouseButton::None,
-				_activeModifiers,
-				float(_surfaceX),
-				float(_surfaceY),
-			}},
-		});
-
-		event.key.keycode = _display->seat->translateKey(it.scancode);
-		// Everything the press resolved is replayed as it was: a repeat is the same key producing
-		// the same character again, and re-running it through the compose state machine here would
-		// feed it a symbol the user never pressed a second time.
-		event.key.compose = it.compose;
-		event.key.keysym = it.keysym;
-		event.key.keychar = it.codepoint;
-
-		_pendingEvents.emplace_back(move(event));
-	};
+	auto spawnRepeatEvent = [&, this](const KeyData &it) { emitKeyRepeat(it, uint32_t(t)); };
 
 	// delay is in milliseconds (as the protocol gives it), interval already in microseconds
 	uint64_t repeatDelay = uint64_t(_display->seat->keyState.keyRepeatDelay) * 1'000;
@@ -2163,13 +2179,12 @@ void WaylandWindow::applyWindowIcon() {
 			continue;
 		}
 		auto stride = uint32_t(img.extent.width * 4);
-		packIconArgbPremultiplied(img,
-				reinterpret_cast<uint32_t *>(_iconMapping + offset));
+		packIconArgbPremultiplied(img, reinterpret_cast<uint32_t *>(_iconMapping + offset));
 
 		// ARGB, not xRGB: an icon is exactly the case where the alpha channel matters.
-		auto buffer = wl_shm_pool_create_buffer(_iconPool, int32_t(offset),
-				int32_t(img.extent.width), int32_t(img.extent.height), int32_t(stride),
-				WL_SHM_FORMAT_ARGB8888);
+		auto buffer =
+				wl_shm_pool_create_buffer(_iconPool, int32_t(offset), int32_t(img.extent.width),
+						int32_t(img.extent.height), int32_t(stride), WL_SHM_FORMAT_ARGB8888);
 		if (!buffer) {
 			oslog::vperror(__SPRT_LOCATION, "WaylandWindow", "Fail to create icon buffer ",
 					img.extent.width);
