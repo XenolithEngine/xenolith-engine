@@ -107,6 +107,8 @@
 #include "markdown/XLUiMarkdownTypes.cc"
 #include "markdown/XLUiMarkdownFlow.cc" // after Types: the run map is what it indexes nodes by
 #include "markdown/XLUiMarkdownSelection.cc" // after Flow: it reads the reading order
+#include "markdown/XLUiMarkdownImage.cc" // after Types: an image is a box inside a Label
+#include "markdown/XLUiMarkdownStyle.cc" // after Types: it resolves what a range style carries
 #include "markdown/XLUiMarkdownRegistry.cc" // after Panel, Layer and TableBorderPainter: a block
 // is built out of them
 #include "markdown/XLUiMarkdownBuilder.cc" // after Registry: it dispatches every block through one

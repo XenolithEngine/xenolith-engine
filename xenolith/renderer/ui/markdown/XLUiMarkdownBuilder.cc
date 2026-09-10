@@ -37,9 +37,25 @@ static bool MarkdownBuilder_isInline(StringView tag) {
 	return getMarkdownInlineForTag(tag) != MarkdownInline::Max;
 }
 
+// The tags open at a point of the descent, as the key the cascade is asked and cached on.
+static String MarkdownBuilder_chainKey(SpanView<StringView> chain) {
+	StringStream out;
+	for (size_t i = 0; i < chain.size(); ++i) {
+		if (i > 0) {
+			out << '>';
+		}
+		out << chain[i];
+	}
+	return out.str();
+}
+
 MarkdownBuilder::MarkdownBuilder(NotNull<Node> root, NotNull<MarkdownRegistry> registry,
-		const MarkdownInlineStyles &styles)
-: _root(root), _registry(registry), _flow(Rc<MarkdownFlow>::alloc()), _styles(styles) { }
+		const MarkdownInlineStyles &styles, font::FontController *controller)
+: _root(root)
+, _registry(registry)
+, _flow(Rc<MarkdownFlow>::alloc())
+, _styles(styles)
+, _inlineResolver(controller) { }
 
 document::SourceSpan MarkdownBuilder::spanOf(const document::Node &source) {
 	auto node = &source;
@@ -55,7 +71,18 @@ document::SourceSpan MarkdownBuilder::spanOf(const document::Node &source) {
 
 uint32_t MarkdownBuilder::registerFlow(Node *node, MarkdownFlowKind kind,
 		const document::Node &source, uint32_t textLength) {
-	return _flow->emplace(node, kind, spanOf(source), textLength);
+	auto index = _flow->emplace(node, kind, spanOf(source), textLength, &source);
+
+	// The first thing readable inside a block is where that block's id points. A list item's `id`
+	// is on the item, but the item is a container with no position of its own - this is the
+	// moment a position exists for it.
+	if (!_pendingAnchors.empty()) {
+		auto textBegin = _flow->getEntries()[index].textBegin;
+		for (auto &it : _pendingAnchors) { _anchors.emplace(sp::move(it), textBegin); }
+		_pendingAnchors.clear();
+	}
+
+	return index;
 }
 
 uint32_t MarkdownBuilder::build(const document::Node &page) {
@@ -147,6 +174,17 @@ void MarkdownBuilder::buildChildren(Node *parent, const document::Node &source) 
 }
 
 void MarkdownBuilder::buildBlock(Node *parent, const document::Node &source) {
+	auto pending = _pendingAnchors.size();
+	buildBlockContent(parent, source);
+
+	// An id on a block that produced nothing readable stays unbound rather than drifting onto
+	// whatever block comes next.
+	if (_pendingAnchors.size() > pending) {
+		_pendingAnchors.resize(pending);
+	}
+}
+
+void MarkdownBuilder::buildBlockContent(Node *parent, const document::Node &source) {
 	auto tag = source.getHtmlName();
 
 	MarkdownBuilderContext ctx{this, parent, &source};
@@ -171,6 +209,7 @@ void MarkdownBuilder::buildBlock(Node *parent, const document::Node &source) {
 	// parser attached, e.g. `language-cpp` on a fenced block.
 	if (!source.getHtmlId().empty()) {
 		added->setName(source.getHtmlId());
+		_pendingAnchors.emplace_back(source.getHtmlId().str<Interface>());
 	}
 	for (auto &cl : source.getClasses()) { added->addStyleClass(cl); }
 
@@ -208,6 +247,52 @@ void MarkdownBuilder::buildRawText(basic2d::Label *label, const document::Node &
 	commitText(label, state, source);
 }
 
+void MarkdownBuilder::applyInlineStyles(basic2d::Label *label, Vector<TextRange> &ranges) {
+	// Ascending by start, and an enclosing range before the range it encloses: a later range wins
+	// per parameter, which is what makes `**bold *and italic***` compose instead of fight.
+	sprt::sort(ranges.begin(), ranges.end(), [](const TextRange &l, const TextRange &r) {
+		if (l.start != r.start) {
+			return l.start < r.start;
+		}
+		return l.count > r.count;
+	});
+
+	for (auto &it : ranges) {
+		basic2d::Label::Style style;
+
+		/* The stylesheet decides, and its SILENCE decides too.
+
+		A sheet in scope that says nothing about `strong` means the document is not to embolden
+		it - so the built-in table is consulted only when no sheet answered at all, which is the
+		case of a view built outside any scene. Anything else would make the table a floor no
+		stylesheet could lower. */
+		if (!_inlineResolver.resolve(label, it.chain, style) && !_inlineResolver.isValid()) {
+			style = _styles.get(it.kind);
+		}
+
+		if (style.params.empty()) {
+			continue;
+		}
+		label->setTextRangeStyle(it.start, it.count, sp::move(style));
+	}
+}
+
+void MarkdownBuilder::restyleText(basic2d::Label *label, const document::Node &source) {
+	// The same walk as the build, for its POSITIONS only: the text it rebuilds is thrown away,
+	// and with it the runs and links, which the Label already carries and which a stylesheet
+	// cannot change. A verbatim block has no inline elements to find, so this correctly produces
+	// nothing for a code fence.
+	TextState state;
+	for (auto &it : source.getNodes()) { collectText(state, *it, MarkdownInline::Text); }
+
+	if (state.ranges.empty() && label->getStyles().empty()) {
+		return;
+	}
+
+	label->clearStyles();
+	applyInlineStyles(label, state.ranges);
+}
+
 void MarkdownBuilder::collectText(TextState &state, const document::Node &source,
 		MarkdownInline kind) {
 	auto tag = source.getHtmlName();
@@ -225,32 +310,147 @@ void MarkdownBuilder::collectText(TextState &state, const document::Node &source
 	}
 
 	if (tag == "img") {
-		// Images are a later milestone; the alt text keeps the sentence readable meanwhile, and
-		// carries no run because it is not a slice of the source.
-		auto alt = source.getAttribute("alt");
+		collectImage(state, source);
+		return;
+	}
+
+	auto own = getMarkdownInlineForTag(tag);
+	auto effective = (own == MarkdownInline::Max) ? kind : own;
+	auto inlineElement = (own != MarkdownInline::Max);
+
+	// The DOCUMENT's tag, not the canonical name of the kind: it is what a stylesheet author
+	// sees and writes, and the two differ wherever a construct has an alias (`b` for `strong`).
+	if (inlineElement) {
+		state.chain.emplace_back(tag);
+	}
+
+	auto start = uint32_t(state.text.size());
+	for (auto &it : source.getNodes()) { collectText(state, *it, effective); }
+	auto count = uint32_t(state.text.size()) - start;
+
+	// An id on an inline is the only record that the reference site exists: there is no node for
+	// it, and a footnote's way back is exactly such an id.
+	if (inlineElement && !source.getHtmlId().empty()) {
+		state.anchors.emplace_back(source.getHtmlId().str<Interface>(), start);
+	}
+
+	// The chain is captured while this element is still on it, and only then popped.
+	if (inlineElement) {
+		if (count > 0) {
+			state.ranges.emplace_back(
+					TextRange{start, count, own, MarkdownBuilder_chainKey(state.chain)});
+		}
+		state.chain.pop_back();
+	}
+
+	if (count == 0 || !inlineElement) {
+		return;
+	}
+
+	if (own == MarkdownInline::Link) {
+		state.links.emplace_back(
+				MarkdownRunMap::Link{start, count, source.getAttribute("href").str<Interface>(),
+					source.getAttribute("title").str<Interface>()});
+	}
+}
+
+// A `width`/`height` the author wrote in the markup. MMD puts them in a `style` attribute, which
+// the document processor parsed into the node's own style list - so this is the resolved metric,
+// and only an absolute one is usable here: a percentage has nothing to be a percentage OF until
+// the paragraph is being laid out, which is after the box has to be known.
+static float MarkdownBuilder_declaredMetric(const document::Node &source,
+		document::ParameterName name) {
+	for (auto &it : source.getStyle().get(name)) {
+		if (it.value.sizeValue.metric == document::Metric::Units::Px) {
+			return it.value.sizeValue.value;
+		}
+	}
+	return 0.0f;
+}
+
+void MarkdownBuilder::collectImage(TextState &state, const document::Node &source) {
+	MarkdownImageRequest request{source.getAttribute("src"), source.getAttribute("alt"),
+		Size2(MarkdownBuilder_declaredMetric(source, document::ParameterName::CssWidth),
+				MarkdownBuilder_declaredMetric(source, document::ParameterName::CssHeight))};
+
+	MarkdownImageSource resolved;
+	if (_imageResolver) {
+		resolved = (*_imageResolver)(request);
+	} else if (request.declared.width > 0.0f && request.declared.height > 0.0f) {
+		resolved.size = request.declared;
+	}
+
+	/* Nothing to show and no size to keep: the picture leaves its alt text behind, which is what
+	a reader of a README with a missing badge should see. It is text like any other and takes no
+	run, because those characters are not a slice of the source. */
+	if (resolved.size.width <= 0.0f || resolved.size.height <= 0.0f) {
+		auto alt = request.alt;
 		if (!alt.empty()) {
 			state.text.append(string::toUtf16<Interface>(alt));
 		}
 		return;
 	}
 
-	auto own = getMarkdownInlineForTag(tag);
-	auto effective = (own == MarkdownInline::Max) ? kind : own;
+	/* ONE character stands for the picture, and the formatter is told to leave a box the size of
+	that picture where the character is. The character is what keeps the image in the reading
+	order: a caret can stand beside it, a selection can contain it, and the run below points it at
+	the `![alt](src)` that produced it - so copying a selection that crosses a picture copies the
+	picture's markup. */
+	auto charIndex = uint32_t(state.text.size());
+	state.text.push_back(MarkdownObjectChar);
 
-	auto start = uint32_t(state.text.size());
-	for (auto &it : source.getNodes()) { collectText(state, *it, effective); }
-	auto count = uint32_t(state.text.size()) - start;
+	auto span = source.getSourceSpan();
+	if (!span.empty() && span.end() <= _source.size()) {
+		// Not verbatim: one character on screen, a whole `![alt](src)` in the source. The flag is
+		// what stops a copy from slicing into the middle of it.
+		state.runs.emplace_back(MarkdownRunMap::Run{charIndex, 1, span.offset, span.length, false});
+	}
 
-	if (count == 0 || own == MarkdownInline::Max) {
+	state.objects.emplace_back(charIndex, request.alt.str<Interface>());
+	state.images.emplace_back(
+			TextState::Image{charIndex, resolved.size, sp::move(resolved.texture), &source});
+}
+
+void MarkdownBuilder::commitImages(basic2d::Label *label, TextState &state) {
+	if (state.images.empty()) {
+		label->clearInlineObjects();
 		return;
 	}
 
-	state.ranges.emplace_back(pair(pair(start, count), own));
+	Vector<basic2d::Label::InlineObject> objects;
+	objects.reserve(state.images.size());
+	for (auto &it : state.images) {
+		objects.emplace_back(basic2d::Label::InlineObject{it.charIndex, it.size});
+	}
+	label->setInlineObjects(sp::move(objects));
 
-	if (own == MarkdownInline::Link) {
-		state.links.emplace_back(
-				MarkdownRunMap::Link{start, count, source.getAttribute("href").str<Interface>(),
-					source.getAttribute("title").str<Interface>()});
+	auto system = label->addSystem(Rc<MarkdownImageSystem>::create());
+
+	uint32_t index = 0;
+	for (auto &it : state.images) {
+		auto sprite = label->addChild(Rc<basic2d::Sprite>::create(), ZOrder(1));
+		applyIdentity(sprite, "img");
+		if (it.source && !it.source->getHtmlId().empty()) {
+			sprite->setName(it.source->getHtmlId());
+		}
+		if (it.source) {
+			for (auto &cl : it.source->getClasses()) { sprite->addStyleClass(cl); }
+		}
+
+		// Photographic content, not an icon: the sprite's own default is nearest.
+		sprite->setSamplerIndex(core::SamplerIndex::DefaultFilterLinear);
+		sprite->setTextureAutofit(Autofit::Contain);
+		if (it.texture) {
+			sprite->setTexture(Rc<Texture>(it.texture));
+		}
+
+		// It has no place in any layout: it stands where the text left a hole for it, and the
+		// only thing that may move it is the system that reads that hole back.
+		sprite->setComponent<OutOfFlowComponent>();
+		sprite->setVisible(false);
+
+		system->addImage(sprite, index);
+		++index;
 	}
 }
 
@@ -310,29 +510,27 @@ void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state,
 	// setString clears the style vector, so the string always goes first.
 	label->setString(WideStringView(state.text));
 
-	// Ascending by start, and an enclosing range before the range it encloses: a later range wins
-	// per parameter, which is what makes `**bold *and italic***` compose instead of fight.
-	sprt::sort(state.ranges.begin(), state.ranges.end(), [](const auto &l, const auto &r) {
-		if (l.first.first != r.first.first) {
-			return l.first.first < r.first.first;
-		}
-		return l.first.second > r.first.second;
-	});
+	applyInlineStyles(label, state.ranges);
 
-	for (auto &it : state.ranges) {
-		auto style = _styles.get(it.second);
-		if (style.params.empty()) {
-			continue;
-		}
-		label->setTextRangeStyle(it.first.first, it.first.second, sp::move(style));
-	}
+	// After the string and before anything reads the layout: the objects are part of how the text
+	// shapes, not decoration over it.
+	commitImages(label, state);
 
 	// Always, even with no runs at all: the component is also how a node finds itself in the
 	// reading order, and a block whose text the parser could not place still has a place in it.
 	label->setComponent<MarkdownRunMap>(
-			MarkdownRunMap{sp::move(state.runs), sp::move(state.links)});
+			MarkdownRunMap{sp::move(state.objects), sp::move(state.runs), sp::move(state.links)});
 
-	registerFlow(label, MarkdownFlowKind::Text, source, uint32_t(state.text.size()));
+	auto index = registerFlow(label, MarkdownFlowKind::Text, source, uint32_t(state.text.size()));
+
+	// Now that the block has a place in the reading order, the inline ids collected inside it can
+	// be turned into document positions.
+	if (!state.anchors.empty()) {
+		auto textBegin = _flow->getEntries()[index].textBegin;
+		for (auto &it : state.anchors) {
+			_anchors.emplace(sp::move(it.first), textBegin + it.second);
+		}
+	}
 }
 
 } // namespace stappler::xenolith::ui
