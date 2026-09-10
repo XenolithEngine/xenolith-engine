@@ -114,6 +114,36 @@ void TextLayout::getLabelRects(Vector<Rect> &ret, uint32_t firstCharId, uint32_t
 			density, origin, p);
 }
 
+Rect TextLayout::getObjectRect(uint32_t rangeIndex, float density, const Vec2 &origin) const {
+	if (rangeIndex >= _data.ranges.size()) {
+		return Rect::ZERO;
+	}
+
+	auto &range = _data.ranges[rangeIndex];
+	if (range.count == 0 || range.start + range.count > _data.chars.size()) {
+		return Rect::ZERO;
+	}
+
+	// The box is the range's last cell: `read(w, h)` appends exactly one, and taking the last is
+	// what the document layout engine does with the same structure.
+	auto charIndex = range.start + range.count - 1;
+	auto &spec = _data.chars[charIndex];
+
+	auto line = _data.getLine(charIndex);
+	if (!line) {
+		return Rect::ZERO;
+	}
+
+	/* The box sits ON the baseline, and the baseline is not the bottom of the line box: the
+	descender hangs below it. `line->pos` is the line's foot, so the box's own foot is that much
+	higher, and its top is one box-height above that. */
+	auto descent = float(range.metrics.height) - float(range.metrics.size);
+	auto top = (float(line->pos) - float(range.height) - descent) / density;
+
+	return Rect(float(spec.pos) / density + origin.x, top + origin.y, float(spec.advance) / density,
+			float(range.height) / density);
+}
+
 LabelBase::DescriptionStyle::DescriptionStyle() {
 	font.fontFamily = StringView("default");
 	font.fontSize = FontSize(14);
@@ -688,6 +718,19 @@ void LabelBase::prependTextWithStyle(const WideStringView &str, Style &&style) {
 	setTextRangeStyle(0, str.size(), sp::move(style));
 }
 
+void LabelBase::setInlineObjects(Vector<InlineObject> &&objects) {
+	_inlineObjects = sp::move(objects);
+	setLabelDirty();
+}
+
+void LabelBase::clearInlineObjects() {
+	if (_inlineObjects.empty()) {
+		return;
+	}
+	_inlineObjects.clear();
+	setLabelDirty();
+}
+
 void LabelBase::clearStyles() {
 	_styles.clear();
 	setLabelDirty();
@@ -780,6 +823,73 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 
 			auto start = _string16.c_str() + it.start;
 			auto len = it.length;
+
+			/* A span carrying an inline object is read in pieces: the text before the object, a
+			BOX in place of the object's own character, then the text after it. The box takes the
+			character's place rather than being inserted beside it, so the layout still produces
+			one cell per character of the string and every index the label answers with keeps
+			meaning what it meant.
+
+			Locale tags are not consulted on such a span: resolving them rewrites the text and
+			moves every index in it, and a label is never both a translation target and a picture
+			frame. */
+			if (!_inlineObjects.empty()) {
+				size_t pos = it.start;
+				size_t end = it.start + it.length;
+				bool ok = true;
+
+				for (auto &object : _inlineObjects) {
+					if (object.charIndex < pos || object.charIndex >= end) {
+						continue;
+					}
+
+					if (object.charIndex > pos) {
+						if (!formatter.read(params.font, params.text, _string16.c_str() + pos,
+									object.charIndex - pos)) {
+							ok = false;
+							break;
+						}
+					}
+
+					/* An object wider than the line is scaled to fit it, keeping its aspect.
+
+					This is the moment the available width is known - it is what the label was
+					told to wrap at - and it is re-decided on every re-wrap, so a picture follows
+					the column it sits in instead of running off the edge of it. */
+					auto size = object.size;
+					if (_width > 0.0f && size.width > _width) {
+						size.height *= _width / size.width;
+						size.width = _width;
+					}
+
+					if (!formatter.read(params.font, params.text,
+								uint16_t(roundf(size.width * density)),
+								uint16_t(roundf(size.height * density)))) {
+						ok = false;
+						break;
+					}
+
+					// The range the reservation just produced: the only handle back to the box.
+					object.rangeIndex = uint32_t(format->getData()->ranges.size() - 1);
+					pos = object.charIndex + 1;
+				}
+
+				if (ok && pos < end) {
+					ok = formatter.read(params.font, params.text, _string16.c_str() + pos,
+							end - pos);
+				}
+
+				if (!ok) {
+					success = false;
+					break;
+				}
+
+				if (!format->getData()->ranges.empty()) {
+					format->getData()->ranges.back().colorDirty = params.colorDirty;
+					format->getData()->ranges.back().opacityDirty = params.opacityDirty;
+				}
+				continue;
+			}
 
 			if (_localeEnabled && hasLocaleTags(WideStringView(start, len))) {
 				WideString str(resolveLocaleTags(WideStringView(start, len)));

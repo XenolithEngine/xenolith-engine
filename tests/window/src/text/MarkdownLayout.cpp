@@ -120,6 +120,11 @@ Value MarkdownLayout::encodeNode(const Node *node) const {
 	Value ret;
 	ret.setString(node->getType(), "type");
 
+	// The document's own `id`, which is also this node's CSS `#id` and what an anchor names.
+	if (!node->getName().empty()) {
+		ret.setString(node->getName(), "name");
+	}
+
 	if (auto classes = node->getStyleClasses()) {
 		auto &list = ret.emplace("classes");
 		for (auto &it : *classes) { list.addString(it); }
@@ -265,6 +270,13 @@ Value MarkdownLayout::encodeSelection() const {
 	ret.setString(_view->getSelectedText(), "text");
 	ret.setString(_view->getSelectedMarkup(), "markup");
 
+	auto color = _view->getSelectionColor();
+	auto &tint = ret.emplace("selectionColor");
+	tint.addDouble(color.r);
+	tint.addDouble(color.g);
+	tint.addDouble(color.b);
+	tint.addDouble(color.a);
+
 	auto &entries = ret.emplace("entries");
 	for (auto &it : _view->getFlow()->getEntries()) {
 		auto label = dynamic_cast<const basic2d::Label *>(it.node.get());
@@ -334,6 +346,157 @@ void MarkdownLayout::registerCommands() {
 
 	addCommand("flow", "The document in reading order: every entry, its positions and its span",
 			[this](Value &&) { return encodeFlow(); });
+
+	/* Every inline image: where its box ended up and whether anything is in it yet. The two are
+	deliberately separate - the box is the promise the layout made, the texture is what arrived
+	later, and the milestone's whole claim is that the second does not move the first. */
+	addCommand("images", "Every image: its box, its source and whether its texture is loaded",
+			[this](Value &&) {
+		Value ret;
+		auto &list = ret.emplace("images");
+
+		for (auto &entry : _view->getFlow()->getEntries()) {
+			auto label = dynamic_cast<basic2d::Label *>(entry.node.get());
+			if (!label) {
+				continue;
+			}
+
+			auto system = label->getSystemByType<ui::MarkdownImageSystem>();
+			uint32_t index = 0;
+			for (auto &object : label->getInlineObjects()) {
+				Value one;
+				one.setInteger(int64_t(entry.textBegin + object.charIndex), "position");
+				one.setInteger(int64_t(object.charIndex), "charIndex");
+
+				auto &size = one.emplace("size");
+				size.addInteger(int64_t(roundf(object.size.width)));
+				size.addInteger(int64_t(roundf(object.size.height)));
+
+				auto rect = label->getInlineObjectRect(index);
+				auto &box = one.emplace("box");
+				box.addInteger(int64_t(roundf(rect.origin.x)));
+				box.addInteger(int64_t(roundf(rect.origin.y)));
+				box.addInteger(int64_t(roundf(rect.size.width)));
+				box.addInteger(int64_t(roundf(rect.size.height)));
+
+				if (system && index < system->getImageCount()) {
+					auto placed = system->getImageRect(index);
+					auto &p = one.emplace("placed");
+					p.addInteger(int64_t(roundf(placed.origin.x)));
+					p.addInteger(int64_t(roundf(placed.origin.y)));
+				}
+
+				list.addValue(sp::move(one));
+				++index;
+			}
+		}
+		return ret;
+	});
+
+	addCommand("anchors", "Every id in the document and the reading position it names",
+			[this](Value &&) {
+		Value ret;
+		auto &list = ret.emplace("anchors");
+		for (auto &it : _view->getAnchors()) {
+			Value entry;
+			entry.setString(it.first, "id");
+			entry.setInteger(int64_t(it.second), "position");
+			list.addValue(sp::move(entry));
+		}
+		ret.setInteger(int64_t(_view->getScrollSystem()
+									   ? _view->getScrollSystem()->getScrollPosition().y
+									   : 0.0f),
+				"scrollY");
+		return ret;
+	});
+
+	/* What a style RANGE actually carries, which is the only way to see that the cascade reached
+	an inline: the tree dump can count ranges but not read them, and a range that resolved to
+	nothing is indistinguishable there from one that resolved to the wrong thing. */
+	addCommand("inline-styles", "The style the range under a position resolved to: {position}",
+			[this](Value &&args) {
+		Value ret;
+		auto position = uint32_t(args.getInteger("position"));
+		auto entry = _view->getFlow()->findByPosition(position);
+		if (!entry || !entry->node) {
+			ret.setBool(false, "found");
+			return ret;
+		}
+
+		auto label = dynamic_cast<basic2d::Label *>(entry->node.get());
+		if (!label) {
+			ret.setBool(false, "found");
+			return ret;
+		}
+
+		auto local = position - entry->textBegin;
+		ret.setBool(true, "found");
+		ret.setInteger(int64_t(local), "charIndex");
+
+		auto &list = ret.emplace("styles");
+		for (auto &spec : label->getStyles()) {
+			if (local < spec.start || local >= spec.start + spec.length) {
+				continue;
+			}
+			for (auto &param : spec.style.params) {
+				Value one;
+				one.setInteger(int64_t(spec.start), "start");
+				one.setInteger(int64_t(spec.length), "length");
+				switch (param.name) {
+				case basic2d::Label::Style::Name::Color:
+					one.setString("color", "name");
+					one.setString(toString(int(param.value.color.r), ",", int(param.value.color.g),
+										  ",", int(param.value.color.b)),
+							"value");
+					break;
+				case basic2d::Label::Style::Name::FontWeight:
+					one.setString("font-weight", "name");
+					one.setInteger(int64_t(param.value.fontWeight.get()), "value");
+					break;
+				case basic2d::Label::Style::Name::FontStyle:
+					one.setString("font-style", "name");
+					one.setInteger(int64_t(param.value.fontStyle.get()), "value");
+					break;
+				case basic2d::Label::Style::Name::FontSize:
+					one.setString("font-size", "name");
+					one.setInteger(int64_t(param.value.fontSize.get()), "value");
+					break;
+				case basic2d::Label::Style::Name::FontFamily:
+					one.setString("font-family", "name");
+					one.setInteger(int64_t(param.value.fontFamily), "value");
+					break;
+				case basic2d::Label::Style::Name::TextDecoration:
+					one.setString("text-decoration", "name");
+					one.setInteger(int64_t(toInt(param.value.textDecoration)), "value");
+					break;
+				case basic2d::Label::Style::Name::VerticalAlign:
+					one.setString("vertical-align", "name");
+					one.setInteger(int64_t(toInt(param.value.verticalAlign)), "value");
+					break;
+				default: one.setString("other", "name"); break;
+				}
+				list.addValue(sp::move(one));
+			}
+		}
+		return ret;
+	});
+
+	/* Follow the link under a position without synthesizing a click: an anchor jump is a scroll,
+	and a scroll started by a synthetic tap would have to be told apart from the tap's own. */
+	addCommand("activate-link", "Follow the link under a position: {position}",
+			[this](Value &&args) {
+		Value ret;
+		auto position = uint32_t(args.getInteger("position"));
+		auto link = _view->getFlow()->findLink(position);
+		ret.setBool(link != nullptr, "found");
+		if (link) {
+			ret.setString(link->href, "href");
+			_lastLink.clear();
+			_view->handleLinkActivated(*link);
+		}
+		ret.setString(_lastLink, "lastLink");
+		return ret;
+	});
 
 	/* The milestone's whole point, made observable: a range of reading positions, handed back as
 	the markup that produced it. `mode` is `normalized` (the edges are closed up) or `raw` (the

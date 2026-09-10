@@ -35,6 +35,11 @@ that Label's string - which is what makes a line break inside a bold word work a
 inline would hand the formatter a sequence of independent layouts with nothing to break between.
 
 `Text` is the absence of any of them and carries no style of its own. */
+// The character an image occupies in a block's string: U+FFFC OBJECT REPLACEMENT CHARACTER.
+// One character, so that a picture has a place in the reading order like anything else - a caret
+// can stand beside it, a selection can contain it, and the source map can point it at `![](…)`.
+constexpr char16_t MarkdownObjectChar = u'￼';
+
 enum class MarkdownInline {
 	Text,
 	Strong, // **bold**
@@ -123,6 +128,14 @@ struct SP_PUBLIC MarkdownRunMap {
 		bool operator==(const Link &) const = default;
 	};
 
+	/* The alt text of each inline object, by the character it stands at.
+
+	An image occupies one character of the string (U+FFFC) and that character renders as nothing
+	anywhere outside this widget - so a copy of the VISIBLE text puts the alt text there instead,
+	which is what the author wrote for exactly this purpose. The markup copy needs none of this:
+	the run at that character already points at the whole `![alt](src)`. */
+	Vector<Pair<uint32_t, String>> objects;
+
 	Vector<Run> runs;
 	Vector<Link> links;
 
@@ -137,6 +150,9 @@ struct SP_PUBLIC MarkdownRunMap {
 
 	// The link whose range covers `charIndex`, or nullptr.
 	const Link *findLink(uint32_t charIndex) const;
+
+	// The alt text of the object standing at `charIndex`, or empty.
+	StringView findObjectText(uint32_t charIndex) const;
 
 	bool operator==(const MarkdownRunMap &) const = default;
 };

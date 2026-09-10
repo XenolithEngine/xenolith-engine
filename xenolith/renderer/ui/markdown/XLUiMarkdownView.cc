@@ -92,6 +92,25 @@ h4 { font-size: 17px; }
 h5 { font-size: 15px; }
 h6 { font-size: 14px; color: #555555; }
 
+/* A `div` has no layout of its own, and in this widget that means it has NONE: the resolver
+builds a flex container for `display: flex` and for nothing else, so an unstyled container
+collapses its children onto the origin. The parser wraps footnotes and citations in one, which is
+how a document with a footnote used to come out in a heap. */
+div, figure {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+}
+
+/* The parser writes these blocks after the document body, separated by a rule of their own. */
+.footnotes, .citations, .glossary { margin-top: 12px; }
+
+h6.footnotes_header, h6.citations_header, h6.glossary_header {
+	font-size: 15px;
+	color: #555555;
+	margin-bottom: 6px;
+}
+
 ul, ol, dl {
 	display: flex;
 	flex-direction: column;
@@ -177,10 +196,34 @@ pre-scroll {
 	overflow-x: auto;
 }
 
-code {
-	font-family: monospace;
+/* THE INLINE CONSTRUCTS.
+
+These are the rules that make a Markdown document restyleable at all. An inline is a style range
+inside its block's Label, not a node, so nothing here matches an element that exists - the widget
+manufactures a probe for the length of the cascade query and throws it away (ui::MarkdownInlineResolver).
+What reaches the range is only what these rules change ABOUT THE BLOCK, which is why `code` may
+name a family without also fixing a size: inline code in a heading stays heading-sized.
+
+Only the twelve properties a range style can carry are read here; `white-space` and friends are
+properties of a paragraph and are ignored on an inline. */
+strong, b { font-weight: bold; }
+em, i { font-style: italic; }
+del, s { text-decoration: line-through; }
+ins { color: #2e7d32; }
+mark { color: #333300; }
+sub { vertical-align: sub; }
+sup { vertical-align: super; }
+
+a { color: #1565c0; text-decoration: underline; }
+
+/* `code` is BOTH the inline construct and the block inside a `pre`. The bare rule is the inline
+one; the block overrides the colour back, because a red fence would be unreadable. */
+code { font-family: monospace; color: #b71c1c; }
+
+pre code {
 	font-size: 13px;
 	white-space: pre;
+	color: #1a1a1a;
 }
 
 hr {
@@ -245,6 +288,10 @@ bool MarkdownView::init() {
 	// priority is what puts it ahead of the scroll the sheet asks for.
 	_selection = addSystem(Rc<MarkdownSelectionSystem>::create(this));
 
+	// A sheet an application puts ABOVE the view changes what the inlines resolve to, and only
+	// nodes that ask are told about an ancestor's components.
+	setWantsAncestorComponents(true);
+
 	return true;
 }
 
@@ -277,6 +324,88 @@ void MarkdownView::handleEnter(Scene *scene) {
 	}
 }
 
+void MarkdownView::handleComponentsDirty(const ComponentMask &mask) {
+	Node::handleComponentsDirty(mask);
+	invalidateInlineStyles();
+}
+
+void MarkdownView::handleAncestorComponentsDirty() {
+	Node::handleAncestorComponentsDirty();
+	invalidateInlineStyles();
+}
+
+void MarkdownView::update(const UpdateTime &time) {
+	Node::update(time);
+
+	if (_inlineStylesDirty) {
+		_inlineStylesDirty = false;
+		unscheduleUpdate();
+		restyleInlines();
+	}
+}
+
+uint32_t MarkdownView::getStyleGeneration() const {
+	uint32_t generation = 0;
+	for (auto p = static_cast<const Node *>(this); p != nullptr; p = p->getParent()) {
+		if (auto state = p->getComponent<StyleSystemState>()) {
+			generation = generation * 31 + state->version + 1;
+		}
+	}
+	return generation;
+}
+
+void MarkdownView::invalidateInlineStyles() {
+	auto generation = getStyleGeneration();
+	if (generation == _styleVersion) {
+		return;
+	}
+
+	_styleVersion = generation;
+
+	// Nothing to restyle before the first build, and a rebuild resolves against the new sheet on
+	// its own.
+	if (_treeDirty || _blocks == 0) {
+		return;
+	}
+
+	updateSelectionColor();
+
+	_inlineStylesDirty = true;
+	scheduleUpdate();
+}
+
+void MarkdownView::updateSelectionColor() {
+	// The custom property is read off the view's own resolved style, which is also the moment the
+	// inline deltas are decided - the two answer to the same reload.
+	auto style = StyleResolver::resolveStyleForNode(this);
+	if (!style.valid()) {
+		return;
+	}
+
+	Color4B color;
+	if (!sprt::geom::readColor(style.getCustomProperty("--md-selection-color"), color)) {
+		return;
+	}
+
+	setSelectionColor(Color4F(color));
+}
+
+void MarkdownView::restyleInlines() {
+	MarkdownBuilder builder(_content, _registry, _inlineStyles,
+			_director ? _director->getApplication()->getExtension<font::FontController>()
+					  : nullptr);
+	builder.setSource(getSource());
+
+	for (auto &entry : _flow->getEntries()) {
+		if (entry.kind != MarkdownFlowKind::Text || !entry.source || !entry.node) {
+			continue;
+		}
+		if (auto label = dynamic_cast<basic2d::Label *>(entry.node.get())) {
+			builder.restyleText(label, *entry.source);
+		}
+	}
+}
+
 void MarkdownView::setSource(StringView markdown) {
 	setDocument(Rc<document::DocumentMarkdown>::create(
 			BytesView(reinterpret_cast<const uint8_t *>(markdown.data()), markdown.size()),
@@ -284,7 +413,82 @@ void MarkdownView::setSource(StringView markdown) {
 }
 
 void MarkdownView::setSourceFile(const FileInfo &file) {
+	// A relative `src` in the document means "beside the document", so the document's own
+	// directory is the base unless the caller says otherwise afterwards.
+	setImageBase(filepath::root(file.path), file.category);
 	setDocument(Rc<document::DocumentMarkdown>::create(file, StringView("text/markdown")));
+}
+
+void MarkdownView::setImageResolver(MarkdownImageResolver &&resolver) {
+	_imageResolver = sp::move(resolver);
+	_treeDirty = true;
+	if (isRunning()) {
+		rebuild();
+	}
+}
+
+void MarkdownView::setImageBase(StringView path, FileCategory category) {
+	_imageBasePath = path.str<Interface>();
+	_imageBaseCategory = category;
+}
+
+MarkdownImageSource MarkdownView::resolveImage(const MarkdownImageRequest &request) {
+	MarkdownImageSource ret;
+
+	if (request.src.empty()) {
+		return ret;
+	}
+
+	// Not a local file. Fetching it would put a network stack and a cache inside a widget whose
+	// job is to draw a document; an application that wants remote images supplies a resolver.
+	if (request.src.find("://") != maxOf<size_t>()) {
+		return ret;
+	}
+
+	auto path = filepath::isAbsolute(request.src)
+			? request.src.str<Interface>()
+			: filepath::merge<Interface>(_imageBasePath, request.src);
+
+	FileInfo file(path, _imageBaseCategory);
+
+	/* The extent comes from the file's HEADER, not from decoding it - a few bytes read here, and
+	the box the paragraph reserves is already the right one. The pixels arrive whenever the loop
+	gets to them and find their place kept, which is the whole reason a document does not re-flow
+	as its images appear. */
+	uint32_t width = 0;
+	uint32_t height = 0;
+	if (!bitmap::getImageSize(file, width, height) || width == 0 || height == 0) {
+		return ret;
+	}
+
+	ret.size = Size2(float(width), float(height));
+
+	// What the markup asked for wins, one axis at a time; the other follows the file's own
+	// aspect so a lone `width=` does not squash the picture.
+	if (request.declared.width > 0.0f && request.declared.height > 0.0f) {
+		ret.size = request.declared;
+	} else if (request.declared.width > 0.0f) {
+		ret.size = Size2(request.declared.width,
+				request.declared.width * float(height) / float(width));
+	} else if (request.declared.height > 0.0f) {
+		ret.size = Size2(request.declared.height * float(width) / float(height),
+				request.declared.height);
+	}
+
+	if (!_director) {
+		return ret;
+	}
+
+	// Keyed by the RESOLVED path: the cache is global, and two documents in two directories both
+	// referring to `image.png` are not the same image.
+	if (auto cache = _director->getResourceCache()) {
+		ret.texture = cache->addExternalImage(path,
+				core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled), file,
+				TimeInterval::seconds(600),
+				TemporaryResourceFlags::RemoveOnClear | TemporaryResourceFlags::CompileWhenAdded);
+	}
+
+	return ret;
 }
 
 void MarkdownView::setDocument(Rc<document::DocumentMarkdown> &&doc) {
@@ -310,6 +514,7 @@ void MarkdownView::rebuild() {
 	// The flow holds every node it indexes, so it goes first - or a rebuilt document would keep
 	// the previous one alive in its own index.
 	_flow = Rc<MarkdownFlow>::alloc();
+	_anchors.clear();
 	_content->removeAllChildren();
 	_blocks = 0;
 	_treeDirty = false;
@@ -324,10 +529,23 @@ void MarkdownView::rebuild() {
 		return;
 	}
 
-	MarkdownBuilder builder(_content, _registry, _inlineStyles);
+	MarkdownBuilder builder(_content, _registry, _inlineStyles,
+			_director ? _director->getApplication()->getExtension<font::FontController>()
+					  : nullptr);
 	builder.setSource(_document->getSource());
+
+	// A local `MarkdownImageResolver` so that the builder holds a pointer to something that
+	// outlives the build - a Callback owns nothing, and the view's own function is what it wraps.
+	MarkdownImageResolver resolver = [this](const MarkdownImageRequest &request) {
+		return _imageResolver ? _imageResolver(request) : resolveImage(request);
+	};
+	builder.setImageResolver(&resolver);
 	_blocks = builder.build(*page->getRoot());
 	_flow = builder.getFlow();
+	_anchors = builder.getAnchors();
+
+	_styleVersion = getStyleGeneration();
+	updateSelectionColor();
 
 	// The colour lives on each Label separately, so a fresh tree has to be told again.
 	_flow->setSelectionColor(_selectionColor);
@@ -402,7 +620,39 @@ void MarkdownView::setLinkCallback(Function<void(StringView, StringView)> &&cb) 
 	_linkCallback = sp::move(cb);
 }
 
+uint32_t MarkdownView::getAnchorPosition(StringView id) const {
+	if (id.starts_with("#")) {
+		id = id.sub(1);
+	}
+	auto it = _anchors.find(id);
+	return it != _anchors.end() ? it->second : maxOf<uint32_t>();
+}
+
+bool MarkdownView::scrollToAnchor(StringView id) {
+	auto position = getAnchorPosition(id);
+	if (position == maxOf<uint32_t>()) {
+		return false;
+	}
+
+	auto entry = _flow->findByPosition(position);
+	if (!entry || !entry->node) {
+		return false;
+	}
+
+	// Every scroll between the node and here, not just this view's own: a footnote inside a
+	// scrolled block has two to satisfy.
+	scrollIntoView(entry->node, Padding(8.0f));
+	return true;
+}
+
 void MarkdownView::handleLinkActivated(const MarkdownRunMap::Link &link) {
+	// A link into the document is the document's own business, and answering it here is what
+	// makes footnotes work with no application code at all. Only what points outward is offered
+	// to the callback.
+	if (link.href.starts_with("#") && scrollToAnchor(link.href)) {
+		return;
+	}
+
 	if (_linkCallback) {
 		_linkCallback(link.href, link.title);
 	}

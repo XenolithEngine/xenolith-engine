@@ -41,6 +41,10 @@ void DocumentProcessor::processHtml(const Content &c, const StringView &str, con
 	exportTokenTree(buffer, t);
 	exportFootnoteList(buffer);
 	exportCitationList(buffer);
+
+	// A glossary reference is emitted as a link to `#gn_N` like any other; without this the
+	// target it points at is never written, and `[?term]` renders as a link that goes nowhere.
+	exportGlossaryList(buffer);
 	flushBuffer();
 
 	auto &headerStack = content->getHeaders();

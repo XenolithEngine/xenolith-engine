@@ -110,6 +110,15 @@ auto MarkdownRunMap::findRun(uint32_t charIndex) const -> const Run * {
 	return nullptr;
 }
 
+StringView MarkdownRunMap::findObjectText(uint32_t charIndex) const {
+	for (auto &it : objects) {
+		if (it.first == charIndex) {
+			return it.second;
+		}
+	}
+	return StringView();
+}
+
 auto MarkdownRunMap::findLink(uint32_t charIndex) const -> const Link * {
 	for (auto &it : links) {
 		if (charIndex >= it.charStart && charIndex < it.charStart + it.charCount) {

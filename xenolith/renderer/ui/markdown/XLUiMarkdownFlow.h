@@ -46,6 +46,15 @@ struct SP_PUBLIC MarkdownFlowEntry {
 	uint32_t textLength = 0; // UTF-16 code units of the Label's string; 0 for Atomic
 	document::SourceSpan span; // the block this entry belongs to, whole
 	MarkdownFlowKind kind = MarkdownFlowKind::Text;
+
+	/* The document node this entry was built from. A pointer, not a reference held: the document
+	outlives every tree built from it, and the flow is discarded with the tree.
+
+	It is here so that the inline appearance can be resolved AGAIN - a stylesheet reload has to
+	restyle ranges that were baked into a Label at build time, and re-walking the source is what
+	recovers where each range was. Rebuilding the tree instead would work too, and would throw
+	away the selection. */
+	const document::Node *source = nullptr;
 };
 
 /* THE DOCUMENT IN READING ORDER, as one flat vector.
@@ -74,7 +83,8 @@ public:
 	StringView getSource() const { return _source; }
 
 	// Append in reading order; returns the new entry's index. The builder is the only caller.
-	uint32_t emplace(Node *, MarkdownFlowKind, document::SourceSpan, uint32_t textLength);
+	uint32_t emplace(Node *, MarkdownFlowKind, document::SourceSpan, uint32_t textLength,
+			const document::Node *source = nullptr);
 
 	const Vector<MarkdownFlowEntry> &getEntries() const { return _entries; }
 

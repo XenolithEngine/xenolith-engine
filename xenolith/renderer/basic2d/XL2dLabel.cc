@@ -880,9 +880,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 	_glyphGeneration = _source->getGlyphGeneration();
 
 	if (_deferred) {
-		_deferredResult =
-				runDeferredCounted(_director->getApplication()->getLooper(), _format,
-						_displayedColor);
+		_deferredResult = runDeferredCounted(_director->getApplication()->getLooper(), _format,
+				_displayedColor);
 		_vertexes.clear();
 		_vertexColorDirty = false;
 	} else {
@@ -976,6 +975,22 @@ Vec2 Label::getCursorOrigin() const {
 		break;
 	}
 	return Vec2::ZERO;
+}
+
+Rect Label::getInlineObjectRect(uint32_t index) const {
+	if (!_format || index >= _inlineObjects.size()) {
+		return Rect::ZERO;
+	}
+
+	auto rect = _format->getObjectRect(_inlineObjects[index].rangeIndex, _labelDensity);
+	if (rect.size.width <= 0.0f && rect.size.height <= 0.0f) {
+		return Rect::ZERO;
+	}
+
+	// The layout measures downward from the top of the text; this node is Y-up from its own
+	// origin, exactly the flip getCursorPosition makes for a caret.
+	rect.origin.y = _contentSize.height - rect.origin.y - rect.size.height;
+	return rect;
 }
 
 Pair<uint32_t, bool> Label::getCharIndex(const Vec2 &pos, font::CharSelectMode mode) const {
