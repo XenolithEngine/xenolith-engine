@@ -47,7 +47,10 @@ are answered separately:
    since the last flush. Innermost matters: exporting `## Header` walks the block token before
    the text token, and attributing the run to the block would make the text start at the `##`.
    exportToken() is therefore wrapped, and a token claims the growth only when no token below it
-   already did. */
+   already did. The wrapper has to go on all THREE exporters: verbatim text (a code fence, an
+   indented block, an inline `code`) leaves through exportTokenRaw and a formula through
+   exportTokenMath, and a run that goes out through either of those is text like any other - it
+   was left unspanned once, and a code block then had no source map at all. */
 class SP_PUBLIC DocumentProcessor : public HtmlProcessor {
 public:
 	virtual ~DocumentProcessor() = default;
@@ -59,6 +62,8 @@ protected:
 
 	// span bookkeeping: see the class comment
 	virtual void exportToken(const CallbackStream &, token *t) override;
+	virtual void exportTokenRaw(const CallbackStream &, token *t) override;
+	virtual void exportTokenMath(const CallbackStream &, token *t) override;
 
 	void processStyle(const StringView &name, document::StyleList &, const StringView &);
 
@@ -78,6 +83,10 @@ protected:
 	// Span of the element a push hook is creating: the token's own range, widened to its mate
 	// (a paired marker) and to `nodeSpanEnd` (markup the token does not cover), which it consumes.
 	document::SourceSpan nodeSpanFor(token *);
+
+	// Run one of the base exporters, and let `t` claim whatever it appended unless something
+	// nested inside it claimed that first.
+	void claimTextSpan(token *t, const Callback<void()> &exportFn);
 
 	void extendTextSpan(token *);
 	document::SourceSpan takeTextSpan();

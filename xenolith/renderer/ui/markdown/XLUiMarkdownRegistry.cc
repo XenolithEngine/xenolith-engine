@@ -187,7 +187,18 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 
 	// --- painted blocks -------------------------------------------------------------------
 
-	ret->set("hr", makeLayerFactory());
+	// A rule is read as a break in the document, so it holds a place in the reading order even
+	// though there is nothing in it to read. A row does not: its cells speak for it.
+	ret->set("hr",
+			MarkdownTagFactory{
+				.create = [](const MarkdownBuilderContext &) -> Rc<Node> {
+		return Rc<Node>(Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f)));
+	},
+				.buildContent = [](const MarkdownBuilderContext &ctx, Node *node) -> bool {
+		ctx.builder->registerFlow(node, MarkdownFlowKind::Atomic, *ctx.source);
+		return true;
+	},
+			});
 	ret->set("tr", makeLayerFactory());
 
 	// --- list item ------------------------------------------------------------------------
@@ -220,6 +231,10 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 			checkbox->setChecked(!box->getAttribute("checked").empty(), true);
 			checkbox->setEnabled(false);
 			node->addStyleClass("md-task");
+
+			// The checkbox stands for the `[x]` the source holds, and carries its span: a copy
+			// that starts on it starts on the marker.
+			builder->registerFlow(checkbox, MarkdownFlowKind::Atomic, *box);
 		} else {
 			auto marker = builder->makeLabel(node, "li-marker");
 			marker->removeStyleClass("md-li-marker");
@@ -231,6 +246,11 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 				marker->setString(MarkdownRegistry_bullet(depth));
 				marker->addStyleClass("md-marker-bullet");
 			}
+
+			// The builder wrote this text, not the document: it is read, so it is in the flow,
+			// and it maps to the item it marks rather than to any bytes of its own.
+			builder->registerFlow(marker, MarkdownFlowKind::Marker, *ctx.source,
+					uint32_t(marker->getString().size()));
 		}
 
 		auto content = node->addChild(Rc<Node>::create());

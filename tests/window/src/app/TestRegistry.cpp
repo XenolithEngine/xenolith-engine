@@ -513,9 +513,15 @@ static const TestInfo s_textTests[] = {
 	TestInfo{StringView("markdown"), StringView("XL_MARKDOWN_TEST"), StringView("ui::MarkdownView"),
 		StringView("A Markdown document as scene nodes: every block is a node named after its tag, "
 				   "every inline construct is a style range inside its block's label, and a "
-				   "paragraph re-wraps when the view narrows. Inspector: markdown.dump, "
-				   "markdown.source, markdown.file, markdown.width, markdown.style, "
-				   "markdown.app-style."),
+				   "paragraph re-wraps when the view narrows. Any range of the document hands "
+				   "back the markup that produced it, a drag selects across blocks without "
+				   "scrolling the document under it, and a copy puts the original markdown on "
+				   "the clipboard beside the readable text. Inspector: markdown.dump, "
+				   "markdown.flow, markdown.range, markdown.selection, markdown.select, "
+				   "markdown.select-all, markdown.clear-selection, markdown.point, "
+				   "markdown.position-point, markdown.copy, markdown.clipboard-read, "
+				   "markdown.clipboard-state, markdown.source, markdown.file, markdown.width, "
+				   "markdown.style, markdown.app-style."),
 		TestRegistry_make<MarkdownLayout>},
 };
 
