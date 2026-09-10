@@ -24,6 +24,7 @@
 #define XENOLITH_RENDERER_UI_MARKDOWN_XLUIMARKDOWNBUILDER_H_
 
 #include "XLUiMarkdownRegistry.h"
+#include "XLUiMarkdownFlow.h"
 #include "SPDocMarkdown.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -71,6 +72,22 @@ public:
 	// Verbatim text, for a block whose content is not inline markup (a code fence).
 	void buildRawText(basic2d::Label *label, const document::Node &source);
 
+	/* Put a node the factory made itself into the reading order.
+
+	Every Label the builder fills joins the flow on its own, but a factory that writes a node's
+	text directly - a list bullet, an item number - or produces a block with no text at all - a
+	rule, a task checkbox - has to say so, or the document's order will have a hole where the
+	reader sees something. */
+	uint32_t registerFlow(Node *, MarkdownFlowKind, const document::Node &source,
+			uint32_t textLength = 0);
+
+	MarkdownFlow *getFlow() const { return _flow; }
+
+	// The span to attribute a node to: its own, or the nearest ancestor that has one. A wrapper
+	// the parser invented (the `code` inside a `pre`) carries no span, and the block around it is
+	// the honest answer for everything the flow does with it.
+	static document::SourceSpan spanOf(const document::Node &source);
+
 	// Create a Label already typed and classed for `tag`, and add it to `parent`.
 	basic2d::Label *makeLabel(Node *parent, StringView tag);
 
@@ -82,7 +99,10 @@ public:
 
 	// The source text every SourceSpan indexes into; empty when the caller had no document.
 	StringView getSource() const { return _source; }
-	void setSource(StringView source) { _source = source; }
+	void setSource(StringView source) {
+		_source = source;
+		_flow->setSource(source);
+	}
 
 	uint32_t getBlockCount() const { return _blocks; }
 
@@ -101,7 +121,7 @@ protected:
 
 	void collectText(TextState &, const document::Node &source, MarkdownInline);
 	void appendValue(TextState &, const document::Node &value);
-	void commitText(basic2d::Label *, TextState &);
+	void commitText(basic2d::Label *, TextState &, const document::Node &source);
 
 	// Do the rendered characters repeat the source bytes one for one? False whenever the parser
 	// transformed them - decoded an entity, or applied smart typography.
@@ -109,6 +129,7 @@ protected:
 
 	Rc<Node> _root;
 	Rc<MarkdownRegistry> _registry;
+	Rc<MarkdownFlow> _flow;
 	MarkdownInlineStyles _styles;
 	StringView _source;
 	uint32_t _blocks = 0;

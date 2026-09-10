@@ -24,3 +24,4 @@
 
 #include "SPDocMarkdownProcessor.cc"
 #include "SPDocMarkdown.cc"
+#include "SPDocMarkdownMarkup.cc"
