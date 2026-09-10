@@ -327,6 +327,17 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 	if (_shapingEnabled) {
 		for (uint16_t i = first; i < lineEnd; ++i) {
 			auto &cd = _output.chars.at(i);
+
+			/* A reserved box is not shaped and must keep the width it was reserved with.
+
+			It has no face (`face == 0`, and face ids start at 1), so `shapeVisualRun` never
+			reaches it to put an advance back - zeroing it here would collapse the box and shift
+			everything after it to the left. A swallowed control character wears the same marker
+			but has no width to lose. */
+			if (cd.charID == CharLayoutData::InvalidChar && cd.advance > 0) {
+				continue;
+			}
+
 			cd.gid = 0;
 			cd.advance = 0;
 			cd.yOffset = 0;
@@ -344,9 +355,13 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 		} else if (!rtl) {
 			for (uint16_t i = runFirst; i < runEnd; ++i) {
 				auto &cd = _output.chars.at(i);
-				if (const int16_t sp = graphemeSpacing(cd.charID)) {
-					cd.advance =
-							uint16_t(cd.advance + sp); // letter/word-spacing folds into the cell
+				// A reserved box has the width it asked for; letter-spacing is a property of
+				// text and would quietly widen the hole an image sits in.
+				if (cd.charID != CharLayoutData::InvalidChar) {
+					if (const int16_t sp = graphemeSpacing(cd.charID)) {
+						cd.advance = uint16_t(
+								cd.advance + sp); // letter/word-spacing folds into the cell
+					}
 				}
 				cd.pos = int16_t(x);
 				x += cd.advance;
@@ -364,8 +379,10 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 						}
 					}
 				}
-				if (const int16_t sp = graphemeSpacing(cd.charID)) {
-					cd.advance = uint16_t(cd.advance + sp);
+				if (cd.charID != CharLayoutData::InvalidChar) {
+					if (const int16_t sp = graphemeSpacing(cd.charID)) {
+						cd.advance = uint16_t(cd.advance + sp);
+					}
 				}
 				cd.pos = int16_t(x);
 				x += cd.advance;
@@ -411,6 +428,16 @@ int32_t Formatter::shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, 
 	auto placeSub = [&](uint16_t subFirst, uint16_t subLen) {
 		FontFaceObject *face = faceById(_output.chars.at(subFirst).face);
 		if (!face) {
+			/* A sub-run with no face is not text to shape. The case that matters is a RESERVED
+			BOX - an inline object, which has no face by construction (ids start at 1) and already
+			carries the width it was reserved with. It still has to be placed and still has to
+			move the pen: returning here left it at a stale position and drew everything after it
+			on top of it. */
+			for (uint16_t i = subFirst; i < uint16_t(subFirst + subLen); ++i) {
+				auto &cd = _output.chars.at(i);
+				cd.pos = int16_t(x);
+				x += cd.advance;
+			}
 			return;
 		}
 

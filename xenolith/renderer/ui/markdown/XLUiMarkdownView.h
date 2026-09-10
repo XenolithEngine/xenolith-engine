@@ -76,6 +76,21 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 
+	/* A stylesheet reload arrives at one of these two, and which one depends on WHOSE sheet moved:
+	the view's own (`addStyle`, a watched file) bumps a component on this node, an application's
+	sheet on an ancestor bumps one up there.
+
+	The resolver restyles every node of the subtree by itself; what it cannot reach is the style
+	RANGES inside the labels, which were resolved when the text was committed. Those are redone -
+	and only those, so the tree, the reading order and the selection all survive a reload. */
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+	virtual void handleAncestorComponentsDirty() override;
+
+	// Deferred, because both hooks above fire while the resolver is walking this subtree, and a
+	// probe added or removed under a Label in the middle of that walk would move the ground the
+	// walk stands on.
+	virtual void update(const UpdateTime &) override;
+
 	/* The view's box is its owner's decision, and never its own content's.
 
 	A node carrying a HandleMeasure system - and a LayoutSystem is one - fixes its own size from its
@@ -187,6 +202,25 @@ public:
 	const MarkdownInlineStyles &getInlineStyles() const { return _inlineStyles; }
 	void setInlineStyles(const MarkdownInlineStyles &);
 
+	// --- images ---
+
+	/* WHERE THE PICTURES COME FROM.
+
+	The default reads a local file: `src` is resolved against `setImageBase` (which `setSourceFile`
+	fills in with the document's own directory), the size is taken from the file's header and the
+	decode is left to the render loop. A `src` that is not a local path - a URL above all - draws
+	nothing, because this widget depends on neither the network nor a storage backend.
+
+	An application that wants more replaces the whole step. It is handed what the markup said and
+	answers with a texture and a box; either may be empty, and an empty box means "show the alt
+	text instead". */
+	void setImageResolver(MarkdownImageResolver &&);
+
+	// The directory a relative `src` is resolved against. Set for you by setSourceFile, from the
+	// document's own location.
+	void setImageBase(StringView path, FileCategory = FileCategory::Custom);
+	StringView getImageBase() const { return _imageBasePath; }
+
 	// --- extension ---
 
 	void setRegistry(Rc<MarkdownRegistry> &&);
@@ -202,24 +236,66 @@ public:
 
 	uint32_t getBlockCount() const { return _blocks; }
 
-	// --- links ---
+	// --- links and anchors ---
 
-	// Fired by a plain click on a link range. A drag that begins on a link is a selection, not a
-	// visit, so only a tap gets here.
+	/* Fired by a plain click on a link range that LEFT the document. A drag that begins on a link
+	is a selection, not a visit, so only a tap gets here - and a link into the document itself
+	(`#fn_1`) is followed by the view before the callback is consulted, so an application handles
+	only what it can actually act on. */
 	void setLinkCallback(Function<void(StringView href, StringView title)> &&);
 	void handleLinkActivated(const MarkdownRunMap::Link &);
+
+	// Every `id` in the document, mapped to the reading position it names. Includes the ids of
+	// inline elements - a footnote's reference site is one, and it has no node.
+	const Map<String, uint32_t> &getAnchors() const { return _anchors; }
+
+	// The position an `#id` names, or maxOf<uint32_t>() when the document has no such id. A
+	// leading '#' is accepted, so an href can be passed straight in.
+	uint32_t getAnchorPosition(StringView id) const;
+
+	/* Bring an anchor into view. False when the document has no such id - which is what
+	`handleLinkActivated` uses to decide that a link points outward.
+
+	A footnote and its way back are the same operation in both directions, and so is a table of
+	contents: any `#id` a heading carries works the same way. */
+	bool scrollToAnchor(StringView id);
 
 protected:
 	// Resolve what only a live scene can answer (the monospace family) and fold it into the
 	// inline table. Returns true when the table changed.
 	bool updateInlineStyles();
 
+	// Re-resolve every label's style ranges against the sheet as it stands now.
+	void restyleInlines();
+
+	// Read `--md-selection-color` off the view's own resolved style, if the sheet declares it.
+	void updateSelectionColor();
+
+	// Note that some sheet in scope moved, and arrange for the ranges to be resolved again.
+	void invalidateInlineStyles();
+
+	// A number that changes whenever any stylesheet in scope does: the versions of every
+	// StyleSystemState from this node up. One counter cannot do - the view carries its own sheet
+	// AND an application may put one above it, and either may move without the other.
+	uint32_t getStyleGeneration() const;
+
 	ClipboardSession *acquireClipboard();
+
+	// The built-in resolver: a local file, its extent read from the header.
+	MarkdownImageSource resolveImage(const MarkdownImageRequest &);
 
 	// The menu a right click or a long press opens over the document.
 	void buildContextMenu();
 
 	Rc<document::DocumentMarkdown> _document;
+	Map<String, uint32_t> _anchors;
+	MarkdownImageResolver _imageResolver;
+	String _imageBasePath;
+	FileCategory _imageBaseCategory = FileCategory::Custom;
+
+	// The stylesheet generation the labels' ranges were resolved at; a reload moves it.
+	uint32_t _styleVersion = 0;
+	bool _inlineStylesDirty = false;
 	Rc<MarkdownRegistry> _registry;
 	Rc<MarkdownFlow> _flow;
 	Rc<ClipboardSession> _clipboard;

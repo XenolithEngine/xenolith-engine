@@ -557,6 +557,214 @@ frames(2)
 check("a drag held at the edge scrolls the document to it", scrolled > resting,
         (resting, scrolled))
 
+# ==================================================================================================
+# M6 - the cascade reaches an inline, a picture sits inside a paragraph, a footnote leads somewhere.
+#
+# Everything below installs a document of its own, because the checks above measure screen points
+# against positions in the sample and any edit to it would move all of them.
+# ==================================================================================================
+
+sel("clear-selection")
+
+# Long enough that the footnote definitions are below the fold: a jump that does not have to move
+# anything proves nothing.
+M6_SRC = """# Notes
+
+A claim[^note] with **bold** and a [link](https://xenolith.studio) in it.
+
+> A quote with **bold** in it.
+
+""" + "".join(f"Filler paragraph number {i} to push the notes off the screen.\n\n"
+        for i in range(40)) + """
+[^note]: The evidence.
+"""
+
+s.ok("invoke", name="markdown.source", args={"text": M6_SRC})
+time.sleep(0.5)
+frames(4)
+
+m6 = s.ok("invoke", name="markdown.dump", args={"settle": 0.6})
+m6_tree = m6["tree"]
+m6_text = sel("range", begin=0)["text"]
+
+
+def styles_at(needle, occurrence=0):
+    """The style parameters covering the first character of `needle` in the document's text."""
+    at = -1
+    for _ in range(occurrence + 1):
+        at = m6_text.index(needle, at + 1)
+    got = s.ok("invoke", name="markdown.inline-styles", args={"position": at})
+    return {p["name"]: p["value"] for p in (got.get("styles") or [])}
+
+
+# --- the cascade reaches an inline ----------------------------------------------------------------
+
+bold = styles_at("bold")
+check("a stylesheet rule reached an inline construct", "font-weight" in bold, bold)
+check("and it is the weight the built-in sheet asks for", bold.get("font-weight") == 700, bold)
+
+link_style = styles_at("link")
+check("a link takes its colour from the sheet", "color" in link_style, link_style)
+check("and its underline too", "text-decoration" in link_style, link_style)
+
+# The whole point of resolving through the cascade rather than a table: the SAME construct answers
+# differently depending on where it sits.
+s.ok("invoke", name="markdown.style",
+        args={"css": "p strong { color: #0000ff; } blockquote p strong { color: #00aa00; }"})
+time.sleep(0.6)
+frames(4)
+
+para_bold = styles_at("bold", 0)
+quote_bold = styles_at("bold", 1)
+check("the same construct resolves differently in two contexts",
+        para_bold.get("color") != quote_bold.get("color"), (para_bold, quote_bold))
+check("a paragraph's bold took the paragraph rule", para_bold.get("color") == "0,0,255", para_bold)
+check("a quote's bold took the quote rule", quote_bold.get("color") == "0,170,0", quote_bold)
+
+# An application sheet ABOVE the view: it reaches the inlines too, and a class beats a tag.
+s.ok("invoke", name="markdown.app-style", args={"css": ".md-strong { font-style: italic; }"})
+time.sleep(0.6)
+frames(4)
+check("a sheet above the view reaches an inline as well",
+        "font-style" in styles_at("bold"), styles_at("bold"))
+
+# A reload restyles the ranges in place; nothing is rebuilt, so the selection is still there.
+sel("select", begin=2, end=8)
+s.ok("invoke", name="markdown.style", args={"css": "em { font-weight: bold; }"})
+time.sleep(0.6)
+frames(4)
+kept = sel("selection")
+check("a stylesheet reload leaves the selection alone",
+        kept["begin"] == 2 and kept["end"] == 8, (kept["begin"], kept["end"]))
+
+# --- footnotes ------------------------------------------------------------------------------------
+
+footnotes = next((n for n in walk(m6_tree) if "footnotes" in (n.get("classes") or [])), None)
+check("the footnote definitions became a block", footnotes is not None)
+check("and the block has a height of its own",
+        footnotes and footnotes["size"][1] > 10, footnotes["size"] if footnotes else None)
+
+definition = next((n for n in walk(m6_tree) if n.get("name") == "fn_1"), None)
+check("the definition kept the id it is reached by", definition is not None)
+
+anchors = {a["id"]: a["position"] for a in sel("anchors")["anchors"]}
+check("the reference site is an anchor even though it is not a node", "fnref_1" in anchors, anchors)
+check("and so is the definition", "fn_1" in anchors, anchors)
+check("a heading is one too, which is a table of contents for free",
+        any(k not in ("fn_1", "fnref_1") for k in anchors), anchors)
+
+# The reference is a link into the document: the view follows it itself and the application is
+# never told, which is what makes a footnote work with no application code.
+sel("clear-selection")
+before_scroll = sel("anchors")["scrollY"]
+followed = s.ok("invoke", name="markdown.activate-link", args={"position": anchors["fnref_1"]})
+frames(6)
+check("the footnote reference is a link", followed["found"] and followed["href"] == "#fn_1",
+        followed)
+check("and following it did not bother the application", followed["lastLink"] == "", followed)
+
+after_scroll = sel("anchors")["scrollY"]
+check("following it scrolled the document to the definition", after_scroll > before_scroll,
+        (before_scroll, after_scroll))
+
+# The way back is the same operation in the other direction, and it is an anchor on an INLINE -
+# there is no node anywhere in the scene that carries `fnref_1`.
+m6_flow = sel("flow")["entries"]
+m6_dump = s.ok("invoke", name="markdown.dump", args={})["tree"]
+back_pos = None
+for node in walk(m6_dump):
+    for char_start, _, href in (node.get("linkRanges") or []):
+        if href != "#fnref_1":
+            continue
+        entry = next((e for e in m6_flow
+                if e["kind"] == "text" and e["length"] == len(node["text"])), None)
+        if entry:
+            back_pos = entry["begin"] + char_start
+check("the definition carries a way back", back_pos is not None)
+
+returned = s.ok("invoke", name="markdown.activate-link", args={"position": back_pos})
+frames(6)
+back_scroll = sel("anchors")["scrollY"]
+check("and the way back returns to the reference",
+        returned["href"] == "#fnref_1" and back_scroll < after_scroll,
+        (returned, after_scroll, back_scroll))
+
+# An outward link is still the application's, which is the other half of the same decision.
+outward = s.ok("invoke", name="markdown.activate-link",
+        args={"position": m6_text.index("link") + 1})
+frames(2)
+check("an outward link still reaches the application",
+        outward["lastLink"].startswith("https://"), outward)
+
+# --- a CSS-declared selection colour ---------------------------------------------------------------
+
+# On the view's own class rather than its tag: a custom property declared on a selector the
+# built-in sheet already uses does not survive the re-parse - see the note in MARKDOWN_UI_PLAN.md.
+s.ok("invoke", name="markdown.style",
+        args={"css": ".xl-ui-markdown-view { --md-selection-color: #ff8800; }"})
+time.sleep(0.6)
+frames(4)
+sel("select", begin=2, end=10)
+tinted = sel("selection")
+check("the highlight colour comes from the stylesheet",
+        [round(c * 255) for c in tinted["selectionColor"][:3]] == [255, 136, 0],
+        tinted.get("selectionColor"))
+sel("clear-selection")
+
+# --- pictures ---------------------------------------------------------------------------------------
+
+# Back to the full width first: a check above narrowed the view, and at 520 the logo no longer
+# fits beside the words - which is correct behaviour but not what the next checks are about.
+s.ok("invoke", name="markdown.width", args={"width": 1100, "settle": 0.5})
+s.ok("invoke", name="markdown.file", args={"path": os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "images.md")})
+time.sleep(0.8)
+s.ok("invoke", name="markdown.dump", args={"settle": 0.8})
+frames(6)
+
+images = s.ok("invoke", name="markdown.images", args={})["images"]
+check("both pictures reserved a box", len(images) == 2, len(images))
+
+if len(images) == 2:
+    inline_img, block_img = images
+    check("the inline picture's box has the size of the file",
+            inline_img["size"] == [598, 480], inline_img["size"])
+    check("and the box was actually placed in the line",
+            inline_img["box"][2] == 598 and inline_img["box"][3] == 480, inline_img["box"])
+    check("the node was moved onto its box",
+            inline_img["placed"][0] == inline_img["box"][0], (inline_img["placed"],
+            inline_img["box"]))
+
+    # The text after the picture starts past it: that is what "the image is IN the line" means,
+    # as opposed to drawn over it.
+    before_pt = sel("position-point", position=inline_img["position"] - 1)
+    after_pt = sel("position-point", position=inline_img["position"] + 1)
+    check("the text after the picture begins past its box",
+            after_pt["x"] - before_pt["x"] >= inline_img["box"][2], (before_pt["x"],
+            after_pt["x"]))
+
+    # The box is decided from the file HEADER, before any pixel is decoded - so it is the same
+    # once the texture has arrived. This is the milestone's readiness criterion.
+    frames(20)
+    time.sleep(0.5)
+    frames(10)
+    settled = s.ok("invoke", name="markdown.images", args={})["images"]
+    check("the box did not move once the picture loaded",
+            settled[0]["box"] == inline_img["box"], (inline_img["box"], settled[0]["box"]))
+
+    img_text = sel("range", begin=0)["text"]
+    check("the readable text carries the alt text, not the object character",
+            "the logo" in img_text and "\ufffc" not in img_text, repr(img_text[:60]))
+
+    markup = sel("range", begin=inline_img["position"], end=inline_img["position"] + 1)["markup"]
+    check("and a copy of the picture's own position is the picture's markup",
+            markup.strip().startswith("![the logo]"), markup)
+
+figure = next((n for n in walk(s.ok("invoke", name="markdown.dump", args={})["tree"])
+        if n.get("type") == "figcaption"), None)
+check("a picture alone in its paragraph got a caption", figure is not None,
+        figure["text"] if figure else None)
+
 stop.set()
 time.sleep(0.1)
 s.ok("render", stop=True)
