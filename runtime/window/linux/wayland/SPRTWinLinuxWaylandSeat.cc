@@ -243,16 +243,12 @@ static struct wl_keyboard_listener s_WaylandKeyboardListener{// keymap
 			}
 		}
 	},
-
 	.repeat_info = [](void *data, wl_keyboard *wl_keyboard, int32_t rate, int32_t delay) {
 		auto seat = (WaylandSeat *)data;
-		seat->keyState.keyRepeatRate = rate;
-		seat->keyState.keyRepeatDelay = delay;
-		if (rate > 0) {
-			seat->keyState.keyRepeatInterval = 1'000'000 / rate;
-		} else {
-			seat->keyState.keyRepeatInterval = sprt::Max<int32_t>;
-		}
+
+		seat->keyState.keyRepeatRate = sprt::max(rate, 0);
+		seat->keyState.keyRepeatDelay = delay > 0 ? delay : KeyState::DefaultKeyRepeatDelay;
+		seat->keyState.keyRepeatInterval = rate > 0 ? 1'000'000 / rate : 0;
 	}
 };
 

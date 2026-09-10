@@ -217,9 +217,12 @@ struct KeyState {
 	xkb_mod_index_t capsLockIndex = 0;
 	xkb_mod_index_t numLockIndex = 0;
 
-	int32_t keyRepeatRate = 0;
-	int32_t keyRepeatDelay = 0;
-	int32_t keyRepeatInterval = 0;
+	static constexpr int32_t DefaultKeyRepeatRate = 25; // characters per second
+	static constexpr int32_t DefaultKeyRepeatDelay = 600; // milliseconds
+
+	int32_t keyRepeatRate = DefaultKeyRepeatRate;
+	int32_t keyRepeatDelay = DefaultKeyRepeatDelay;
+	int32_t keyRepeatInterval = 1'000'000 / DefaultKeyRepeatRate;
 	uint32_t modsDepressed = 0;
 	uint32_t modsLatched = 0;
 	uint32_t modsLocked = 0;
