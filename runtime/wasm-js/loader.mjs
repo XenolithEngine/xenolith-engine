@@ -257,11 +257,24 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 		h: canvas ? (canvas.height | 0) : 0,
 		dpr: density || 1,
 	};
+	// Forward a size change to the engine only once it has been stable for
+	// DISPLAY_SETTLE_MS. The engine handles a resize synchronously inside its
+	// 8 ms poll (swapchain recreate + wgpuSurfaceConfigure), and a drag-resize
+	// storm of those wedges Firefox's WebGPU worker; Chrome merely wastes work.
+	// `size` itself stays live so input coordinate mapping tracks the canvas.
+	let displayTimer = null;
+	const DISPLAY_SETTLE_MS = 120;
 	const setDisplay = (w, h, dens) => {
 		size.w = w | 0;
 		size.h = h | 0;
 		size.dpr = dens || size.dpr;
-		writeDisplay(displaySab, size.w, size.h, Math.round(size.dpr * 1000));
+		if (displayTimer !== null) {
+			clearTimeout(displayTimer);
+		}
+		displayTimer = setTimeout(() => {
+			displayTimer = null;
+			writeDisplay(displaySab, size.w, size.h, Math.round(size.dpr * 1000));
+		}, DISPLAY_SETTLE_MS);
 	};
 
 	const done = new Promise((resolve, reject) => {
