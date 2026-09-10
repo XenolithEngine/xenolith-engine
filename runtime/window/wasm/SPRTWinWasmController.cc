@@ -12,6 +12,7 @@ SPDX-License-Identifier: MIT
 #include <sprt/runtime/dispatch/event.h>
 #include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/log.h>
+#include <malloc.h> // __sprt_malloc_usage
 
 namespace sprt::window {
 
@@ -55,12 +56,41 @@ void WasmContextController::onHostPoll(WasmContextController *c, dispatch::Timer
 	if (!status::isSuccessful(status) || !c) {
 		return;
 	}
+	// Allocator heartbeat: the browser pre-commits the whole 1 GiB ceiling, so a
+	// heap burn-down is invisible until sbrk fails and the tab dies with
+	// "null function". Report growth while it is still cheap to watch. This
+	// timer ticks every ~8 ms; 625 ticks is ~5 s.
+	static constexpr uint32_t REPORT_INTERVAL_TICKS = 625;
+	static constexpr size_t REPORT_DELTA = 16 * 1024 * 1024; // or +16 MiB since last report
+	static thread_local uint32_t s_ticks = 0;
+	static thread_local size_t s_lastReportBytes = 0;
+	++s_ticks;
+	if (s_ticks % REPORT_INTERVAL_TICKS == 0) {
+		const size_t used = __sprt_malloc_usage();
+		if (used >= s_lastReportBytes + REPORT_DELTA) {
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "mem",
+					"mimalloc in use: ", uint64_t(used / (1024 * 1024)), " MiB (+",
+					uint64_t((used - s_lastReportBytes) / (1024 * 1024)), " MiB since last report)");
+			s_lastReportBytes = used;
+		}
+	}
 	c->retainPollDepth();
 	c->notifyPendingWindows();
 	c->releasePollDepth();
 }
 
 bool WasmContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	// The canvas is the only window: every WasmWindow binds to the same
+	// host display, so a second window (a SubWindow - context menus, popups)
+	// would put two presentation engines on one WebGPU surface. They
+	// invalidate each other's swapchain every frame and the recreate cycle
+	// burns the wasm heap to the 1 GiB ceiling. Reject the request instead:
+	// SubWindow::openNative fails and falls back to the in-scene overlay.
+	if (!_activeWindows.empty()) {
+		oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "WasmContextController",
+				"rejecting second window — one canvas, the surface falls back to the overlay");
+		return false;
+	}
 	auto window = Rc<WasmWindow>::create(this, sprt::move(wInfo), getCapabilities());
 	if (window) {
 		notifyWindowCreated(window);
