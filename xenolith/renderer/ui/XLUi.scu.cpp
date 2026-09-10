@@ -103,3 +103,10 @@
 #include "input/XLUiColorField.cc" // after ColorPicker: its own picker is one
 #include "search/XLUiSearchSystem.cc" // no order dependency: it draws nothing and opens nothing
 #include "input/XLUiSearchPicker.cc" // after SearchSystem and MenuPopup: it queries one and opens through the other
+
+#include "markdown/XLUiMarkdownTypes.cc"
+#include "markdown/XLUiMarkdownRegistry.cc" // after Panel, Layer and TableBorderPainter: a block
+                                            // is built out of them
+#include "markdown/XLUiMarkdownBuilder.cc" // after Registry: it dispatches every block through one
+#include "markdown/XLUiMarkdownView.cc" // last: it composes the builder, the style system and the
+                                        // scroll the sheet asks for

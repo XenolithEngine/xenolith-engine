@@ -38,6 +38,25 @@ enum class DynamicStateApplyMode : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DynamicStateApplyMode)
 
+/* WHICH AXES A SCISSOR ACTUALLY CLIPS.
+
+The hardware scissor is one rectangle, so a clip is always two ranges - but a caller often means
+only one of them. A document that scrolls vertically clips top and bottom and has no business
+cutting anything off at its sides; a code block that scrolls sideways is the same statement turned
+ninety degrees.
+
+An axis left out is not narrowed to the box: the rect is opened on it, and what remains is whatever
+an ancestor scissor already imposed. So one rectangle expresses both axes independently, and
+`overflow-x` and `overflow-y` no longer have to agree. */
+enum class ScissorAxes : uint32_t {
+	None = 0,
+	Horizontal = 1 << 0,
+	Vertical = 1 << 1,
+	Both = Horizontal | Vertical,
+};
+
+SP_DEFINE_ENUM_AS_MASK(ScissorAxes)
+
 class SP_PUBLIC DynamicStateSystem : public System, protected FrameStateOwnerInterface {
 public:
 	virtual ~DynamicStateSystem() = default;
@@ -61,12 +80,15 @@ public:
 
 	virtual StateId getCurrentStateId() const { return _currentStateId; }
 
-	virtual void enableScissor(Padding outline = Padding());
+	virtual void enableScissor(Padding outline = Padding(), ScissorAxes axes = ScissorAxes::Both);
 	virtual void disableScissor();
 	virtual bool isScissorEnabled() const { return _scissorEnabled; }
 
 	virtual void setScissorOutlone(Padding value) { _scissorOutline = value; }
 	virtual Padding getScissorOutline() const { return _scissorOutline; }
+
+	virtual void setScissorAxes(ScissorAxes value) { _scissorAxes = value; }
+	virtual ScissorAxes getScissorAxes() const { return _scissorAxes; }
 
 protected:
 	using System::init;
@@ -82,6 +104,7 @@ protected:
 
 	bool _ignoreParentState = false;
 	bool _scissorEnabled = false;
+	ScissorAxes _scissorAxes = ScissorAxes::Both;
 	Padding _scissorOutline;
 	StateId _currentStateId = maxOf<StateId>();
 

@@ -1,0 +1,5 @@
+# Vendored MultiMarkdown port: kept in upstream formatting so it stays comparable with the
+# source it was taken from (libstappler extra/document/mmd, itself a port of MultiMarkdown-6).
+# Reformat it only together with a re-sync.
+DisableFormat: true
+SortIncludes: Never

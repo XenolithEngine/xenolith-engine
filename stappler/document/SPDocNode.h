@@ -29,6 +29,24 @@
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
+/* Byte range of the source text that produced a node.
+
+A format that keeps its source around (Markdown) records where every node came from, so a consumer
+can map a rendered character back to the markup that made it - which is what a selection has to do
+to copy the ORIGINAL markup rather than the rendered text. A format that does not track positions
+leaves the span empty, and an empty span means "unknown", never "start of the document". */
+struct SP_PUBLIC SourceSpan {
+	uint32_t offset = 0;
+	uint32_t length = 0;
+
+	uint32_t end() const { return offset + length; }
+	bool empty() const { return length == 0; }
+
+	explicit operator bool() const { return length != 0; }
+
+	bool operator==(const SourceSpan &) const = default;
+};
+
 class SP_PUBLIC Node : public memory::PoolInterface::AllocBaseType {
 public:
 	using Interface = memory::PoolInterface;
@@ -53,14 +71,14 @@ public:
 	Node &operator=(const Node &) = default;
 
 	Node(StringView htmlName);
-	Node(StringView htmlName, WideString &&value);
+	Node(StringView htmlName, WideString &&value, SourceSpan = SourceSpan());
 
 	Node *pushNode(Node *);
 
 	void setAttribute(StringView name, StringView value);
 
-	void pushValue(StringView str);
-	void pushValue(WideString &&str);
+	void pushValue(StringView str, SourceSpan = SourceSpan());
+	void pushValue(WideString &&str, SourceSpan = SourceSpan());
 
 	void finalize();
 
@@ -71,6 +89,10 @@ public:
 
 	void setNodeId(NodeId id);
 	NodeId getNodeId() const;
+
+	// Where this node came from in the document's source text; empty when unknown.
+	void setSourceSpan(SourceSpan);
+	SourceSpan getSourceSpan() const { return _source; }
 
 	const StyleList &getStyle() const;
 	StyleList &getStyle();
@@ -105,6 +127,7 @@ protected:
 	bool _autoRefs = false;
 
 	NodeId _nodeId = NodeIdNone;
+	SourceSpan _source;
 	Node *_parent = nullptr;
 	String _htmlId;
 	String _htmlName;

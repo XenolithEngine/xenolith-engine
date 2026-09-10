@@ -80,6 +80,7 @@
 #include "widgets/ScrollThrashLayout.h"
 #include "widgets/SelectionLayout.h"
 #include "text/ShapingLayout.h"
+#include "text/MarkdownLayout.h"
 #include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
 #include "css/StateLayout.h"
@@ -509,6 +510,13 @@ static const TestInfo s_textTests[] = {
 		StringView("Rows of the same text with shaping and bidi off, then on: kerning, ligatures, "
 				   "Arabic joining and RTL order must differ between them."),
 		TestRegistry_make<ShapingLayout>},
+	TestInfo{StringView("markdown"), StringView("XL_MARKDOWN_TEST"), StringView("ui::MarkdownView"),
+		StringView("A Markdown document as scene nodes: every block is a node named after its tag, "
+				   "every inline construct is a style range inside its block's label, and a "
+				   "paragraph re-wraps when the view narrows. Inspector: markdown.dump, "
+				   "markdown.source, markdown.file, markdown.width, markdown.style, "
+				   "markdown.app-style."),
+		TestRegistry_make<MarkdownLayout>},
 };
 
 // src/template - pug templates and the template-system cascade

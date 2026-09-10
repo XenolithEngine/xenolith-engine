@@ -81,9 +81,10 @@ void DynamicStateSystem::setStateApplyMode(DynamicStateApplyMode value) {
 
 void DynamicStateSystem::setIgnoreParentState(bool val) { _ignoreParentState = val; }
 
-void DynamicStateSystem::enableScissor(Padding outline) {
+void DynamicStateSystem::enableScissor(Padding outline, ScissorAxes axes) {
 	_scissorEnabled = true;
 	_scissorOutline = outline;
+	_scissorAxes = axes;
 }
 
 void DynamicStateSystem::disableScissor() { _scissorEnabled = false; }
@@ -108,10 +109,28 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			bottomLeft.y = b;
 		}
 
-		const float x0 = sprt::max(roundf(bottomLeft.x), 0.0f);
-		const float y0 = sprt::max(roundf(bottomLeft.y), 0.0f);
-		const float x1 = sprt::max(roundf(topRight.x), x0);
-		const float y1 = sprt::max(roundf(topRight.y), y0);
+		float x0 = sprt::max(roundf(bottomLeft.x), 0.0f);
+		float y0 = sprt::max(roundf(bottomLeft.y), 0.0f);
+		float x1 = sprt::max(roundf(topRight.x), x0);
+		float y1 = sprt::max(roundf(topRight.y), y0);
+
+		// An axis nobody asked to clip is OPENED rather than set to the node's box: the rectangle
+		// still has two ranges, but on this one it reaches past any surface, so the intersection
+		// below leaves whatever an ancestor scissor already imposed. That is what lets
+		// `overflow-y: auto` clip vertically and cut nothing off at the sides.
+		//
+		// The bound is a number no framebuffer reaches rather than the maximum of the type: a
+		// scissor is handed to the backend as an offset plus an extent, and those have to stay
+		// inside what a signed 32-bit rect can hold once they are added together.
+		constexpr float kOpen = float(1 << 24);
+		if (!hasFlag(_scissorAxes, ScissorAxes::Horizontal)) {
+			x0 = 0.0f;
+			x1 = kOpen;
+		}
+		if (!hasFlag(_scissorAxes, ScissorAxes::Vertical)) {
+			y0 = 0.0f;
+			y1 = kOpen;
+		}
 
 		return URect{uint32_t(x0), uint32_t(y0), uint32_t(x1 - x0), uint32_t(y1 - y0)};
 	};
