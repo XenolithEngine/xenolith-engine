@@ -179,7 +179,8 @@ public:
 	void handleKeyRepeat();
 
 	// Starts the repeat timer while a repeating key is held and stops it when the last one goes up.
-	// Wayland sends no repeats of its own - the client is told the rate and has to make them.
+	// Only compositors that announce a repeat rate need it: those announce zero instead and send
+	// the repeats themselves, which arrive through handleKey as the `repeated` key state.
 	void updateKeyRepeatTimer();
 
 	void notifyScreenChange();
@@ -303,6 +304,11 @@ protected:
 
 	Map<uint32_t, KeyData> _keys;
 	Rc<dispatch::TimerHandle> _keyRepeatTimer;
+
+	// Replays a held key as a KeyRepeated event, for both repeat sources: the compositor's own
+	// repeats and, when it does not make them, our timer.
+	void emitKeyRepeat(const KeyData &, uint32_t id);
+
 	WindowCursor _cursor = WindowCursor::Default;
 
 	uint32_t _buttonGripSerial = 0;
