@@ -145,6 +145,13 @@ public:
 	virtual Vec2 getCursorPosition(uint32_t charIndex, bool prefix = true) const;
 	virtual Vec2 getCursorOrigin() const;
 
+	/* WHERE AN INLINE OBJECT'S BOX ENDED UP, in this node's own space (Y-up from its origin).
+
+	`index` is into `getInlineObjects()`. The rectangle is empty until the text has been shaped,
+	and it moves with every re-wrap - a caller that draws over the box has to ask again whenever
+	the label's layout can have changed, which is what ui::MarkdownImageSystem does. */
+	virtual Rect getInlineObjectRect(uint32_t index) const;
+
 	/*
 	returns character index in FormatSpec for position in label or maxOf<uint32_t>()
 

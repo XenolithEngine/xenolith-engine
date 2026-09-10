@@ -25,9 +25,9 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 uint32_t MarkdownFlow::emplace(Node *node, MarkdownFlowKind kind, document::SourceSpan span,
-		uint32_t textLength) {
+		uint32_t textLength, const document::Node *source) {
 	auto index = uint32_t(_entries.size());
-	_entries.emplace_back(MarkdownFlowEntry{node, _next, textLength, span, kind});
+	_entries.emplace_back(MarkdownFlowEntry{node, _next, textLength, span, kind, source});
 
 	// One position past the end of the entry: the boundary between two blocks, which a range has
 	// to be able to contain or "select these two paragraphs" would not include the break.
@@ -238,7 +238,29 @@ void MarkdownFlow::writeText(const Callback<void(StringView)> &out, uint32_t beg
 			continue;
 		}
 
-		out(string::toUtf8<Interface>(string.sub(from, to - from)));
+		/* An object character renders as nothing outside this widget, so it is replaced by the alt
+		text the author wrote for exactly that purpose. Everything between two objects is copied
+		whole. The MARKUP copy needs none of this: the run at that character already points at the
+		whole `![alt](src)`. */
+		auto map = label->getComponent<MarkdownRunMap>();
+		auto pos = from;
+		for (auto i = from; i < to; ++i) {
+			if (string[i] != MarkdownObjectChar) {
+				continue;
+			}
+
+			if (i > pos) {
+				out(string::toUtf8<Interface>(string.sub(pos, i - pos)));
+			}
+			if (map) {
+				out(map->findObjectText(i));
+			}
+			pos = i + 1;
+		}
+
+		if (pos < to) {
+			out(string::toUtf8<Interface>(string.sub(pos, to - pos)));
+		}
 	}
 }
 
