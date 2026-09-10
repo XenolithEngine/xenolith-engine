@@ -686,9 +686,14 @@ void WaylandWindow::handleToplevelGeometry(xdg_toplevel *xdg_toplevel, int32_t w
 	}
 }
 
+// The compositor asked for the window, which is a request and not an order: close() is what knows
+// that, and a close the application refuses comes back as WindowState::CloseRequest for it to
+// answer. Going straight to notifyWindowClosed here dropped a guarded close on the floor - the
+// window stayed, with nothing raised for anybody to see - and it is what the xcb and Windows
+// backends route through close() for the same reason.
 void WaylandWindow::handleToplevelClose(xdg_toplevel *xdg_toplevel) {
 	XL_WAYLAND_LOG("handleToplevelClose");
-	_controller->notifyWindowClosed(this);
+	close();
 }
 
 void WaylandWindow::handlePopupConfigure(xdg_popup *, int32_t x, int32_t y, int32_t width,
