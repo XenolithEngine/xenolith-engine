@@ -72,6 +72,10 @@ bool CanvasViewLayout::init() {
 	auto listener = _canvas->addSystem(Rc<InputListener>::create());
 	_canvas->attachGestures(listener);
 
+	// WHAT THERE IS TO FRAME, asked rather than handed over - which is what the control's own
+	// framing buttons press, and therefore what this stand has to declare for them to do anything.
+	_canvas->setFitBounds([this]() { return markerBounds(); });
+
 	for (auto &m : s_markers) {
 		auto node = _canvas->getWorld()->addChild(Rc<basic2d::Layer>::create(m.color));
 		node->setAnchorPoint(Vec2(0.0f, 0.0f));
@@ -90,6 +94,15 @@ void CanvasViewLayout::handleContentSizeDirty() {
 	if (_canvas) {
 		_canvas->setContentSize(Size2(_contentSize.width, _contentSize.height - CaptionHeight));
 	}
+}
+
+sprt::geom::Bounds CanvasViewLayout::markerBounds() const {
+	sprt::geom::Bounds bounds;
+	for (auto &it : _markers) {
+		bounds.add(Rect(it.first.world.x, it.first.world.y, it.first.size.width,
+				it.first.size.height));
+	}
+	return bounds;
 }
 
 /* BOTH NUMBERS FOR THE SAME MARKER, and that is the whole design of this stand.
@@ -137,6 +150,9 @@ Value CanvasViewLayout::encodeState() const {
 		};
 		encodeAt("minus", CanvasViewLayout_find(zoom, "canvas-zoom-out"));
 		encodeAt("plus", CanvasViewLayout_find(zoom, "canvas-zoom-in"));
+		encodeAt("fitWidth", CanvasViewLayout_find(zoom, "canvas-zoom-fit-width"));
+		encodeAt("fitHeight", CanvasViewLayout_find(zoom, "canvas-zoom-fit-height"));
+		encodeAt("reset", CanvasViewLayout_find(zoom, "canvas-zoom-reset"));
 
 		if (auto label = dynamic_cast<basic2d::Label *>(
 					CanvasViewLayout_find(zoom, "canvas-zoom-value"))) {
@@ -220,13 +236,42 @@ void CanvasViewLayout::registerCommands() {
 		return ret;
 	});
 
-	addCommand("fit", "Frame every marker", [this](Value &&) {
-		sprt::geom::Bounds bounds;
-		for (auto &it : _markers) {
-			bounds.add(Rect(it.first.world.x, it.first.world.y, it.first.size.width,
-					it.first.size.height));
+	/* FRAMING, BY ONE AXIS OR BY BOTH. `{axis}` is the word the control's three buttons stand for:
+	absent or "both" frames the whole of it, "width" and "height" frame it across or down and let it
+	run off the other way. The bounds come from the same provider the buttons use, so what this
+	command frames and what a press frames cannot be two different rectangles. */
+	addCommand("fit", "Frame every marker: {axis: both|width|height}, {padding}",
+			[this](Value &&args) {
+		const Value &in = args;
+		auto named = in.getString("axis");
+		auto axis = sprt::geom::FitAxis::Both;
+		if (named == "width") {
+			axis = sprt::geom::FitAxis::Width;
+		} else if (named == "height") {
+			axis = sprt::geom::FitAxis::Height;
 		}
-		_canvas->fit(bounds);
+
+		/* THE PADDING IS ASKABLE, and it is what makes the axes tellable apart AT ALL in this stand.
+		Three markers 860 by 520 in a surface of 1400 frame at more than 1:1 on either axis, and
+		framing clamps at 1 - so both axes answer the same number and a check pressing the buttons
+		could not see which one was read. A padding wide enough to matter puts the answer back inside
+		the range, on both axes and by different amounts. The buttons take the default, which is what
+		the presses below assert instead: that they are reachable and that they frame. */
+		if (in.hasValue("padding")) {
+			sprt::geom::FitConfig config;
+			config.axis = axis;
+			config.padding = float(in.getDouble("padding"));
+			_canvas->fit(markerBounds(), config);
+		} else {
+			_canvas->fit(axis);
+		}
+		return encodeState();
+	});
+
+	// 1:1, which is the control's third framing button and needs no bounds at all - and which keeps
+	// the world point in the middle of the surface where it is.
+	addCommand("reset-zoom", "Back to 100 % without moving the centre", [this](Value &&) {
+		_canvas->resetZoom();
 		return encodeState();
 	});
 
