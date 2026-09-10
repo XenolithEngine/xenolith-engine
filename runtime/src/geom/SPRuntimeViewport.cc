@@ -115,11 +115,28 @@ Viewport fitBounds(const Bounds &bounds, Vec2 screenSize, const FitConfig &confi
 	const float boundsW = bounds.max.x - bounds.min.x;
 	const float boundsH = bounds.max.y - bounds.min.y;
 
-	// Zero extent on either axis - one object with no size, or a world in a single row - goes to the
-	// limit's maximum rather than to 1. Any other answer either divides by zero or invents a scale.
-	const float fitZoom = (boundsW > 0.0f && boundsH > 0.0f)
-			? sprt::min(availW / boundsW, availH / boundsH)
-			: limits.max;
+	/* Zero extent on an axis THAT DECIDES - one object with no size, or a world in a single row -
+	goes to the limit's maximum rather than to 1. Any other answer either divides by zero or invents a
+	scale. An axis this config does not fit by is not asked about its extent at all, which is what
+	makes "fit by width" work on a world that has no height. */
+	float fitZoom = limits.max;
+	switch (config.axis) {
+	case FitAxis::Both:
+		if (boundsW > 0.0f && boundsH > 0.0f) {
+			fitZoom = sprt::min(availW / boundsW, availH / boundsH);
+		}
+		break;
+	case FitAxis::Width:
+		if (boundsW > 0.0f) {
+			fitZoom = availW / boundsW;
+		}
+		break;
+	case FitAxis::Height:
+		if (boundsH > 0.0f) {
+			fitZoom = availH / boundsH;
+		}
+		break;
+	}
 
 	out.zoom = clampZoom(fitZoom, limits);
 

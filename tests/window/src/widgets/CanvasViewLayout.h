@@ -63,6 +63,10 @@ protected:
 	// marker the two numbers that must agree.
 	Value encodeState() const;
 
+	// What there is to frame. The provider the canvas is given, and the same rectangle the
+	// `fit` command uses - so a button press and a command cannot frame two different worlds.
+	sprt::geom::Bounds markerBounds() const;
+
 	ui::CanvasView *_canvas = nullptr;
 	Vector<Pair<Marker, Node *>> _markers;
 };

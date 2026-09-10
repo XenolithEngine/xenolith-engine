@@ -254,6 +254,26 @@ public:
 	virtual void setSizing(AccordionSizing);
 	AccordionSizing getSizing() const { return _sizing; }
 
+	/* ONE SECTION AGAINST THE VIEW'S POLICY, and the case it exists for is a section with nothing in
+	it.
+
+	`Fill` divides the height between the open sections evenly, which is right for a pane of working
+	panels and wrong for the one among them that has nothing to show: a findings list that found
+	nothing is one sentence, and under `Fill` it is one sentence centred in a third of a rail. Setting
+	that section to `Fit` makes it ask for its declared minimum and no more, while its neighbours go
+	on sharing what is left.
+
+	The view's own policy is unchanged and so is its scrolling: a `Fit` section inside a `Fill` view
+	does not scroll, it simply does not grow. `clearSectionSizing` puts a section back under the
+	view's policy; `setSizing` does not clear these, because a per-section answer is a fact about that
+	section rather than about the mode it happens to be in. */
+	virtual void setSectionSizing(StringView id, AccordionSizing);
+	virtual void clearSectionSizing(StringView id);
+
+	// What decides this section's height: its own override where it has one, the view's policy
+	// otherwise. Answers for an id no section carries, so a caller need not check first.
+	AccordionSizing getSectionSizing(StringView id) const;
+
 	// --- callbacks ---------------------------------------------------------
 
 	void setPanelOpenedCallback(PanelCallback &&);
@@ -349,6 +369,12 @@ protected:
 
 	AccordionExpansion _expansion = AccordionExpansion::Multi;
 	AccordionSizing _sizing = AccordionSizing::Fit;
+
+	// The sections that answer for themselves. Empty is the ordinary state - see setSectionSizing.
+	// Keyed by panel id and NOT by section pointer: a section is rebuilt by syncSections, and an
+	// override is a decision about the panel rather than about the node currently showing it.
+	Map<String, AccordionSizing> _sectionSizing;
+
 	bool _dropEnabled = true;
 
 	PanelCallback _panelOpenedCallback;

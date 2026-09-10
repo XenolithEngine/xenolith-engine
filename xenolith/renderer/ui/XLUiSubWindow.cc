@@ -58,12 +58,48 @@ static basic2d::SceneContent2d *contentForWindow(AppWindow *w) {
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
 
+/* HOW MANY OF THE WINDOW'S LOGICAL POINTS ONE POINT OF THE SCENE CONTENT'S SPACE IS WORTH.
+
+Almost always one, and the two cases where it is not are the reason this exists at all.
+
+There are two densities in play and they are not the same number. `surfaceDensity` is the DISPLAY's,
+and it is the one the window system scales by: every backend divides pixels by it to answer where a
+window is (`NativeWindow::getContentScreenRect`) and multiplies by it to be told where to put one -
+so the window's logical points are pixels over `surfaceDensity`. `density` is that multiplied by the
+APPLICATION's own `WindowInfo::density`, the factor `--density` sets, and it is what the scene graph
+is laid out in: `Scene::setFrameConstraints` divides the content by it and scales the root by it, so
+the content node's space is pixels over `density`.
+
+The two spaces therefore differ by exactly `WindowInfo::density` - which is 1 unless an application
+asked for something else, and the whole of this file was written while it was. With `--density 1.5`
+a menu came out a third of the way to the left of the button it hung off, and no test saw it because
+no test passes that option.
+
+Answered from the SCENE's constraints and not the director's, because the scene is what the caller
+already has and the two are the same object's. */
+static float placementPointScale(const Node *inScene) {
+	auto scene = inScene->getScene();
+	if (!scene) {
+		return 1.0f;
+	}
+
+	const auto &c = scene->getFrameConstraints();
+	if (c.density <= 0.0f || c.surfaceDensity <= 0.0f) {
+		// A window that has not been given constraints yet. 1.0 is what every caller assumed before
+		// this function existed, and it is the only answer that cannot make things worse.
+		return 1.0f;
+	}
+	return c.density / c.surfaceDensity;
+}
+
 IRect placementAnchorRect(NotNull<Node> anchor) {
 	auto scene = anchor->getScene();
 	auto content = scene ? scene->getContent() : nullptr;
 	if (!content) {
 		return IRect();
 	}
+
+	const auto k = placementPointScale(anchor);
 
 	// Four corners, not origin+size, and both conversions - see the header for why each of the
 	// three steps is load-bearing.
@@ -87,10 +123,15 @@ IRect placementAnchorRect(NotNull<Node> anchor) {
 	// Scene nodes are Y-up; WindowPlacement is Y-down from the content's top-left. The flip swaps
 	// which edge is "top", so the rect is built from the flipped extremes rather than by flipping
 	// its origin.
+	//
+	// Flipped in the CONTENT's space and scaled afterwards, in that order: the step to the window's
+	// points is a uniform scale about the content's top-left corner, which is the origin the flip
+	// has just measured from.
 	const float topYDown = content->getContentSize().height - high.y;
 
-	return IRect(int32_t(std::lround(low.x)), int32_t(std::lround(topYDown)),
-			uint32_t(std::lround(high.x - low.x)), uint32_t(std::lround(high.y - low.y)));
+	return IRect(int32_t(std::lround(low.x * k)), int32_t(std::lround(topYDown * k)),
+			uint32_t(std::lround((high.x - low.x) * k)),
+			uint32_t(std::lround((high.y - low.y) * k)));
 }
 
 IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation) {
@@ -101,11 +142,13 @@ IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation) {
 	}
 
 	// A point has no corners, so what the node form MEASURES is skipped and what it CONVERTS is
-	// not: the step into the content's space is what undoes the scene's density scale.
+	// not: the step into the content's space is what undoes the scene's density scale, and the
+	// scale beside it is what carries the result the rest of the way into the window's own points.
 	const auto at = content->convertToNodeSpace(worldLocation);
+	const auto k = placementPointScale(inScene);
 
-	return IRect(int32_t(std::lround(at.x)),
-			int32_t(std::lround(content->getContentSize().height - at.y)), 0, 0);
+	return IRect(int32_t(std::lround(at.x * k)),
+			int32_t(std::lround((content->getContentSize().height - at.y) * k)), 0, 0);
 }
 
 SubWindow::~SubWindow() { }
@@ -203,7 +246,22 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 	info->placement = config.placement;
 	info->flags = config.flags;
 
-	if (hasFlag(parentInfo->flags, WindowCreationFlags::UserSpaceDecorations)) {
+	/* USER-SPACE DECORATIONS ARE INHERITED BY WHAT IS ANCHORED, and by nothing else.
+
+	A popup or a tip is CHROME of the window it hangs off: it has no title, nothing closes it but the
+	pointer leaving, and a system frame around one would be a frame around a menu. Those follow their
+	parent, so an application that draws its own decorations draws its menus to match.
+
+	A DIALOG OR A UTILITY IS A WINDOW. The window manager places it, the author moves it, and what
+	they reach for to close it is the frame - so it gets the system's, whatever the parent does. This
+	used to be inherited too, and the studio's preview came up as a bare rectangle with no title bar
+	and no close button: a second window of the application wearing the application's own
+	decorations, which the application had not drawn for it and had no way to.
+
+	A caller that wants the other answer says so in `config.flags`, and that is honoured either way -
+	this only adds, never takes away. */
+	const bool anchored = config.type == WindowType::Popup || config.type == WindowType::Tooltip;
+	if (anchored && hasFlag(parentInfo->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		info->flags |= WindowCreationFlags::UserSpaceDecorations;
 	}
 

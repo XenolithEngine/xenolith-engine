@@ -233,7 +233,12 @@ protected:
 	/* The bucket a combination is filed under. A combination with no side constraint is filed
 	   under its base modifiers alone; a sided one under base+side. Lookup therefore probes two
 	   buckets — the event's full modifiers and its base ones — which is exactly "the sided
-	   bindings for this side, plus every binding that does not care". */
+	   bindings for this side, plus every binding that does not care".
+
+	   THE KEYCODE IS IN THE LOW BITS AND MUST STAY THERE. The implementation says at length what
+	   putting it in the high ones cost; the short version is that these keys are hashed by
+	   identity and bucketed by a power-of-two modulus, so a constant low half is a table that
+	   rehashes itself to death. */
 	static uint64_t comboKey(InputKeyCode, InputModifier);
 
 	mutable sprt::qmutex _mutex;

@@ -61,6 +61,15 @@ thing that can be out of step with what is actually on screen. With the transfor
 The world's anchor point is (0,0) and its rotation is never touched. Both are invariants this class
 relies on, and both are set once in init().
 
+---- WHAT THERE IS TO FRAME IS ASKED FOR, NOT HANDED OVER -----------------------------------------
+
+`fit(bounds)` frames a rectangle a caller worked out at that moment, and that is right for a caller
+that has just decided to frame. It is not enough for the control's own framing buttons, which are
+pressed at a moment nobody can predict and after the world has changed size any number of times: a
+remembered rectangle is the one handed over at the last `fit`. So `setFitBounds` takes a FUNCTION and
+the buttons ask it. A canvas that never declares one keeps them, disabled - a control whose row of
+buttons depended on how its owner was configured would look different in every canvas that has one.
+
 ---- GESTURES GO ON SOMEBODY ELSE'S LISTENER ------------------------------------------------------
 
 `attachGestures(InputListener *)` rather than a listener of this widget's own, and the reason comes
@@ -103,8 +112,9 @@ public:
 	// One wheel notch, and one press of the control's buttons, as a ratio. See the header note.
 	static constexpr float ZoomStepRatio = 1.1f;
 
-	// The floating control's box, and how far it is kept from the corner it hangs in.
-	static constexpr Size2 ZoomControlSize = Size2(118.0f, 26.0f);
+	// The floating control's box, and how far it is kept from the corner it hangs in. Seven things in
+	// a row: the step pair around the readout, then the three that frame.
+	static constexpr Size2 ZoomControlSize = Size2(212.0f, 26.0f);
 	static constexpr float ZoomControlMargin = 8.0f;
 
 	virtual ~CanvasView() = default;
@@ -141,6 +151,33 @@ public:
 			const sprt::geom::FitConfig & = sprt::geom::FitConfig(),
 			const sprt::geom::ZoomLimits & = sprt::geom::FramingZoom);
 
+	/* WHAT THERE IS TO FRAME, ASKED FOR RATHER THAN REMEMBERED.
+
+	This widget cannot name a single thing it shows, so the bounds are the owner's - and the control's
+	framing buttons are pressed at a moment nobody can predict. A remembered rectangle would be the
+	one handed over at the last `fit`, which is stale the moment the document changes size; asking is
+	the only form of this that cannot go out of date, and it costs a call per press.
+
+	Without one the framing buttons are disabled rather than absent: a control whose row of buttons
+	depends on how its owner was configured is a control that looks different in every canvas. */
+	void setFitBounds(Function<sprt::geom::Bounds()> &&);
+	bool hasFitBounds() const { return !!_fitBounds; }
+
+	// Frame what `setFitBounds` answers, along the given axes. Does nothing without a provider.
+	void fit(sprt::geom::FitAxis = sprt::geom::FitAxis::Both);
+
+	/* SET THE ZOOM WITHOUT MOVING THE CENTRE - the world point in the middle of the surface stays
+	where it is. What a scale CHOSEN from a list means, and what "100 %" means: writing the scale
+	alone would also move the picture, by an amount that depends on how far the world's origin
+	happens to be from the middle, so a canvas stepped through a list of scales walks sideways.
+
+	The same anchoring as `zoomBy`, stated as a destination instead of as a factor - which is the
+	form a preset arrives in. */
+	void setZoom(float);
+
+	// 100 %, which is that with the destination named.
+	void resetZoom() { setZoom(1.0f); }
+
 	// A location as an InputEvent carries it, in world coordinates.
 	Vec2 worldLocation(const Vec2 &sceneLocation) const;
 
@@ -154,12 +191,18 @@ public:
 
 	const sprt::geom::ZoomLimits &getZoomLimits() const { return _limits; }
 
-	/* THE FLOATING ZOOM CONTROL: "-", the zoom as a percentage, "+". On by default.
+	/* THE FLOATING ZOOM CONTROL: "-", the zoom as a percentage, "+", then fit-width, fit-height and
+	1:1. On by default.
 
 	It is chrome about the VIEWPORT, which is the one thing this widget does own - it names nothing
 	that is drawn, and every canvas that has a wheel has the same need for a readout and a step that
 	does not require one. A step is `ZoomStepRatio`, the wheel's own, so the two roads to a zoom
 	cannot disagree.
+
+	The three on the right are here for the same reason and not in any caller's toolbar: "as wide as
+	the surface", "as tall as it" and "1:1" are questions about the viewport and about nothing else.
+	The first two need to know what there is to frame, which only the owner does - see
+	`setFitBounds`, without which they are disabled.
 
 	It hangs in the BOTTOM-LEFT corner by default, because the corner a canvas already uses for its
 	own chrome is the bottom-right one (a minimap, an overview). `setZoomControlPlacement` moves it,
@@ -195,10 +238,17 @@ protected:
 	// change.
 	Vec2 _surfaceScale = Vec2(1.0f, 1.0f);
 
-	// The floating control and its three parts. Null together.
+	// What there is to frame, asked at the moment of a press. Null is the ordinary state for a canvas
+	// that frames itself and never offers the buttons.
+	Function<sprt::geom::Bounds()> _fitBounds;
+
+	// The floating control and its six parts. Null together.
 	Panel *_zoomControl = nullptr;
 	Button *_zoomOut = nullptr;
 	Button *_zoomIn = nullptr;
+	Button *_fitWidth = nullptr;
+	Button *_fitHeight = nullptr;
+	Button *_zoomReset = nullptr;
 	basic2d::Label *_zoomLabel = nullptr;
 
 	Vec2 _zoomCorner = Vec2(0.0f, 0.0f);

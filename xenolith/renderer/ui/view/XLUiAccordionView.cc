@@ -577,6 +577,37 @@ void AccordionView::setSizing(AccordionSizing value) {
 	}
 }
 
+void AccordionView::setSectionSizing(StringView id, AccordionSizing value) {
+	auto key = id.str<Interface>();
+	auto it = _sectionSizing.find(key);
+	if (it != _sectionSizing.end() && it->second == value) {
+		return;
+	}
+	_sectionSizing.emplace(sp::move(key), value).first->second = value;
+
+	// The section may not exist yet: an override set before the panel arrives is honoured when it
+	// does, because updateSectionFlex reads the map rather than a field on the section.
+	if (auto section = getSection(id)) {
+		updateSectionFlex(section);
+	}
+}
+
+void AccordionView::clearSectionSizing(StringView id) {
+	auto it = _sectionSizing.find(id.str<Interface>());
+	if (it == _sectionSizing.end()) {
+		return;
+	}
+	_sectionSizing.erase(it);
+	if (auto section = getSection(id)) {
+		updateSectionFlex(section);
+	}
+}
+
+AccordionSizing AccordionView::getSectionSizing(StringView id) const {
+	auto it = _sectionSizing.find(id.str<Interface>());
+	return it != _sectionSizing.end() ? it->second : _sizing;
+}
+
 void AccordionView::setPanelOpenedCallback(PanelCallback &&cb) {
 	_panelOpenedCallback = sp::move(cb);
 }
@@ -703,7 +734,62 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 		return;
 	}
 
-	switch (_sizing) {
+	// THIS SECTION'S POLICY, which is the view's unless the section answers for itself - see
+	// setSectionSizing. Read here and nowhere else, so the two cases below are the only place the
+	// difference between them exists.
+	const auto sizing = getSectionSizing(section->getPanelId());
+
+	/* AND THE BODY CARRIES THE SAME POLICY - WHEN THE PANEL CAN ANSWER FOR ITS OWN HEIGHT.
+
+	A section is measured through its own flex run, and the measurement pass resolves an item with a
+	DEFINITE basis to that basis: `grow` is skipped while measuring, since there is no free space to
+	share out in a size nobody has fixed yet. The body's basis is 0, so a section measured with
+	`FitContent` came back as its HEADER and nothing else, and `Fit` meant "the declared floor"
+	rather than "the content decides". The panel inside already got `FitContent` from
+	`updateSectionContent`; the one item between it and the section did not.
+
+	AND ONLY WHEN THERE IS SOMETHING TO MEASURE. `measureNode` answers with a node's CURRENT
+	ContentSize when nothing in it opted into the protocol - a fine answer for placing that node and
+	a useless one here, because it is the size this very layout gave it last frame: a section would
+	then keep whatever height it happened to have and never give any of it back. So a panel that
+	states its height (a `MeasureComponent`, a `HandleMeasure` system) sizes its section, and one
+	that says nothing leaves the section at its declared floor, which is what `Fit` has always done
+	for it.
+
+	Written here rather than in `AccordionSection::setExpanded`, which also writes this item: that
+	method knows nothing about the view's policy, and every call to it is followed by this one. */
+	if (auto body = section->getBody()) {
+		auto content = body->getChildren().empty() ? nullptr : body->getChildren().front();
+		const bool measurable = sizing == AccordionSizing::Fit && content
+				&& LayoutSystem::canMeasure(content);
+
+		LayoutSystem::setItem(body,
+				FlexItemInfo{
+					.grow = 1.0f,
+					.shrink = 1.0f,
+					.basis = measurable ? FlexItemInfo::FitContent : 0.0f,
+					.order = 1,
+				});
+
+		/* AND THE PANEL INSIDE IT, EVERY TIME AND NOT ONLY WHEN IT ARRIVES.
+
+		`updateSectionContent` writes this item too - but only on the pass that PARKS the node, and a
+		section's policy changes long after that: the findings panel switches a section to `Fit` the
+		moment its list becomes a sentence, with the panel parked since the tab opened. The item
+		stayed on the basis the section had when it was first shown, so the whole chain above it
+		measured a panel that had been told to fill. Written here because this is the one place the
+		policy is read. */
+		if (content) {
+			LayoutSystem::setItem(content,
+					FlexItemInfo{
+						.grow = 1.0f,
+						.shrink = 1.0f,
+						.basis = measurable ? FlexItemInfo::FitContent : 0.0f,
+					});
+		}
+	}
+
+	switch (sizing) {
 	case AccordionSizing::Fit:
 		// The content decides, and the viewport scrolls when the total runs past it.
 		LayoutSystem::setItem(section,
@@ -758,12 +844,16 @@ void AccordionView::updateSectionContent(AccordionSection *section) {
 	if (content && content->getParent() != body) {
 		content->removeFromParent(false);
 		body->addChild(content);
-		// Fill the body; a panel that wants less says so with CSS on its own node.
+		// Fill the body; a panel that wants less says so with CSS on its own node. A SEED and not
+		// the decision: `updateSectionFlex` writes this item again on every change of policy and is
+		// where the rule lives, because a section's policy changes long after its panel is parked.
 		LayoutSystem::setItem(content,
 				FlexItemInfo{
 					.grow = 1.0f,
 					.shrink = 1.0f,
-					.basis = _sizing == AccordionSizing::Fit ? FlexItemInfo::FitContent : 0.0f,
+					.basis = getSectionSizing(section->getPanelId()) == AccordionSizing::Fit
+							? FlexItemInfo::FitContent
+							: 0.0f,
 				});
 	}
 }

@@ -440,6 +440,72 @@ try:
     check("the button and the wheel take the SAME step", near(by_wheel, by_button, 1e-4),
           (by_wheel, by_button))
 
+    # ---- and the three that FRAME ---------------------------------------------------------------
+    print("\n-- fit by width, by height, and back to 1:1 --")
+
+    """WHAT AN AXIS MEANS, MEASURED. The markers are wider than they are tall in a surface that is
+    wider than it is tall, so fitting by width and fitting by height are different numbers - which is
+    what lets this fail: an axis read and then ignored would answer the same zoom twice, and so would
+    `min(w, h)` in place of both branches.
+
+    PRESSED FOR REAL, at the centres the stand reports. A button whose callback works and whose box
+    is off the surface is a button nobody can hit, and the callback alone cannot tell the two apart -
+    the same argument the two buttons above are pressed under."""
+    def world_centre():
+        v = state()["viewport"]
+        return ((v["width"] / 2.0 - v["x"]) / v["zoom"], (v["height"] / 2.0 - v["y"]) / v["zoom"])
+
+    # THE ARITHMETIC FIRST, through the command and with a padding wide enough to matter: three
+    # markers 860 by 520 in a surface of 1400 frame at more than 1:1 either way, and framing clamps
+    # at 1 - so with the default padding both axes answer the same number and there is nothing to
+    # tell apart. The presses below are about the BUTTONS; this is about the axis.
+    PAD = 380.0
+    both = s.invoke("canvas.fit", padding=PAD, settle=0.0)
+    step()
+    both_zoom, both_centre = both["viewport"]["zoom"], world_centre()
+    wide = s.invoke("canvas.fit", axis="width", padding=PAD, settle=0.0)["viewport"]["zoom"]
+    step()
+    wide_centre = world_centre()
+    tall = s.invoke("canvas.fit", axis="height", padding=PAD, settle=0.0)["viewport"]["zoom"]
+    step()
+    tall_centre = world_centre()
+
+    check("the two axes are different scales", abs(wide - tall) > 1e-3, (wide, tall))
+    check("... and fitting by BOTH is the smaller of them, which is what 'the whole of it' means",
+          near(both_zoom, min(wide, tall), 1e-4), (both_zoom, wide, tall))
+    check("... and neither of them moved the centre",
+          near(both_centre[0], wide_centre[0], 0.5) and near(both_centre[1], wide_centre[1], 0.5)
+          and near(both_centre[0], tall_centre[0], 0.5)
+          and near(both_centre[1], tall_centre[1], 0.5),
+          (both_centre, wide_centre, tall_centre))
+
+    # AND NOW THE BUTTONS, pressed for real at the centres the stand reports. What they have to prove
+    # is that they are reachable and that they run the widget's own framing - so the view is put
+    # somewhere they must move it away from first.
+    framed = s.invoke("canvas.fit", settle=0.0)["viewport"]["zoom"]
+    step()
+    for name in ("fitWidth", "fitHeight"):
+        set_view(0.0, 0.0, 2.0)
+        step()
+        zc = state()["zoomControl"]
+        s.ok("input", native=True, events=click_events(zc[name]["x"], zc[name]["y"]))
+        step()
+        check(f"a click on {name} frames, and by the widget's own arithmetic",
+              near(state()["viewport"]["zoom"], framed, 1e-4),
+              (name, state()["viewport"]["zoom"], framed))
+
+    zc = state()["zoomControl"]
+    s.ok("input", native=True, events=click_events(zc["reset"]["x"], zc["reset"]["y"]))
+    step()
+    check("1:1 is exactly one", near(state()["viewport"]["zoom"], 1.0, 1e-4),
+          state()["viewport"]["zoom"])
+    check("... and it did not move the centre either",
+          near(both_centre[0], world_centre()[0], 0.5)
+          and near(both_centre[1], world_centre()[1], 0.5), (both_centre, world_centre()))
+    check("... and the readout says so", state()["zoomControl"]["value"] == "100%",
+          state()["zoomControl"]["value"])
+    agree(state(), "... and the markers are still where the math puts them")
+
     st = s.invoke("canvas.zoom-control", enabled=False, settle=0.0)
     step()
     check("it can be turned off, for a canvas with its own chrome in that corner",

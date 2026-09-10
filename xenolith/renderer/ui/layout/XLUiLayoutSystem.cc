@@ -247,9 +247,32 @@ void LayoutSystem::setPadding(Padding value) {
 	});
 }
 
+bool LayoutSystem::canMeasure(NotNull<Node> node) { return LayoutSystem_canMeasure(node); }
+
 void LayoutSystem::markItemDirty(NotNull<Node> node) {
 	if (auto parent = node->getParent()) {
 		parent->markLayoutChildrenDirty();
+	}
+}
+
+/* THE SAME NEWS, TOLD ALL THE WAY UP: this node measures differently than it did.
+
+`markItemDirty` tells the node's own container, which is right for a change to how it is PLACED - a
+grow, a basis, an order - because nothing above that container was decided by it. An intrinsic size
+is the other case: a container sized by `fit-content` asked this node how tall it was and built its
+own height out of the answer, and so did the container above THAT. Dirtying one level leaves every
+one of those holding a measurement of a node that has since changed - a properties column that lost
+six rows kept the height of the selection before it, because the accordion section above it had
+already been measured and was never asked again.
+
+To the root rather than to the first non-measuring ancestor: which containers measured this one is
+not a question a node can answer, the flag is one bool, and it is set only when something really
+moved. */
+void LayoutSystem::markMeasureDirty(NotNull<Node> node) {
+	auto parent = node->getParent();
+	while (parent) {
+		parent->markLayoutChildrenDirty();
+		parent = parent->getParent();
 	}
 }
 

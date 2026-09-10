@@ -328,6 +328,51 @@ void AccordionLayout::registerCommands() {
 		return ret;
 	});
 
+	/* THE SIZING POLICY, of the view and of ONE section. Both here rather than two commands, because
+	the whole question this answers is which of the two decided a section's height - and a check that
+	set them through different doors could not put the two side by side in one assertion. */
+	addCommand("sizing", "Set the policy: {view: fit|fill}, {panel, sizing: fit|fill|view}",
+			[this](Value &&args) {
+		const Value &req = args;
+		auto read = [](StringView name, ui::AccordionSizing &out) {
+			if (name == "fit") {
+				out = ui::AccordionSizing::Fit;
+				return true;
+			} else if (name == "fill") {
+				out = ui::AccordionSizing::Fill;
+				return true;
+			}
+			return false;
+		};
+
+		if (auto sizing = ui::AccordionSizing::Fit; read(req.getString("view"), sizing)) {
+			_accordion->setSizing(sizing);
+		}
+		if (req.isString("panel")) {
+			auto panel = req.getString("panel");
+			if (auto sizing = ui::AccordionSizing::Fit; read(req.getString("sizing"), sizing)) {
+				_accordion->setSectionSizing(panel, sizing);
+			} else if (req.getString("sizing") == "view") {
+				_accordion->clearSectionSizing(panel);
+			}
+		}
+
+		Value ret;
+		auto name = [](ui::AccordionSizing s) {
+			return s == ui::AccordionSizing::Fit ? StringView("fit") : StringView("fill");
+		};
+		ret.setString(name(_accordion->getSizing()), "view");
+		// Per section, and the OWN answer beside the effective one: "this section is Fit" and "this
+		// section is Fit because the view is" are different facts, and only the pair can tell them
+		// apart.
+		auto &per = ret.newDict("sections");
+		for (auto &id : _accordion->getSections()) {
+			per.setString(name(_accordion->getSectionSizing(id)), id);
+		}
+		ret.setDouble(_accordion->getNaturalMinSize().height, "naturalHeight");
+		return ret;
+	});
+
 	addCommand("drop-index", "Insertion index for a point in the view: {x, y}", [this](Value &&args) {
 		const Value &req = args;
 		Value ret;
@@ -380,6 +425,11 @@ void AccordionLayout::registerCommands() {
 				Vec2(header->getContentSize().width * 0.75f, header->getContentSize().height / 2.0f));
 		ret.setDouble(body.x, "headerX");
 		ret.setDouble(body.y, "headerY");
+
+		// The header's own height, so a check can assert what a section's floor is MADE of - the
+		// header plus the panel's declared minimum - rather than compare against a figure it read
+		// off the screen once and would have to re-read after any change of style.
+		ret.setDouble(header->getContentSize().height, "headerHeight");
 		return ret;
 	});
 

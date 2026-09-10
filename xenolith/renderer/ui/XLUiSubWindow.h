@@ -219,6 +219,11 @@ one answer and everything that opens off a node calls it - menus, dropdowns, hin
   whole subtree by the density - while WindowPlacement is in the window's logical points. On a
   HiDPI display the two differ by a factor of two, and mixing them puts the popup somewhere off the
   window entirely;
+- and the result is then scaled by `density / surfaceDensity`, which is the application's own
+  `WindowInfo::density` and is 1 unless something asked for another. The content's space is pixels
+  over the FULL density and the window's points are pixels over the DISPLAY's alone, so the two are
+  the same space only while that factor is one. `--density 1.5` was enough to open every menu a
+  third of the way from the widget it belonged to; the implementation says the rest;
 - and it is flipped into WindowPlacement's Y-DOWN space at the end, from the content's top-left.
 
 Answers an empty rect for a node that is in no scene, which is the same thing every backend reads

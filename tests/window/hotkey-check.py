@@ -64,6 +64,7 @@ class Session:
 
 
 # mods: 1 = Shift, 4 = Ctrl (see InputModifier)
+SHIFT = 1
 CTRL = 4
 CTRL_LEFT = 1 << 16   # CtrlL
 CTRL_RIGHT = 1 << 17  # CtrlR
@@ -356,6 +357,50 @@ try:
 
     # Put it back, so a re-run from a live app starts from the same place
     rebind("org.stappler.test.hotkey.action", "Ctrl+K")
+
+    print("== 14. a name is a name whatever case it is written in ==")
+    # A COMBINATION IS WRITTEN IN TWO STYLES AT ONCE, and until this it had to be written in both
+    # exactly: the modifiers are CamelCase in the table and the keys are SHOUTING, so somebody who
+    # has just typed `RIGHT_BRACKET` writes `SHIFT` beside it and gets a combination that parses as
+    # nothing at all. `HotkeyRegistry::add` then answers HotkeyId(0), the subscription binds
+    # nothing, and the command silently never works - which is what it did in a shipped editor.
+    clear()
+    rebind("org.stappler.test.hotkey.action", "Ctrl+SHIFT+K")
+    listing = {it["name"]: it for it in s.invoke("hotkey.list", settle=0.0)["hotkeys"]}
+    expect(listing.get("org.stappler.test.hotkey.action", {}).get("combo") == "Ctrl+Shift+K",
+           "a modifier spelled in the key style is still that modifier",
+           repr(listing.get("org.stappler.test.hotkey.action")))
+
+    send("K", "K", CTRL | SHIFT)
+    st = log()
+    expect(names(st["log"])[:1] == ["org.stappler.test.hotkey.action"],
+           "and the combination it parsed to is the one that fires", repr(names(st["log"])))
+
+    # The other direction, and the one nobody would think to test until the first one had failed: a
+    # KEY written in the modifiers' style. Both name-spaces are folded, and it was checked that no
+    # modifier name is also a key name under any capitalisation - so folding cannot make one
+    # spelling mean two things.
+    clear()
+    rebind("org.stappler.test.hotkey.action", "ctrl+k")
+    listing = {it["name"]: it for it in s.invoke("hotkey.list", settle=0.0)["hotkeys"]}
+    expect(listing.get("org.stappler.test.hotkey.action", {}).get("combo") == "Ctrl+K",
+           "a key spelled in the modifier style is still that key",
+           repr(listing.get("org.stappler.test.hotkey.action")))
+
+    send("K", "k", CTRL)
+    st = log()
+    expect(names(st["log"])[:1] == ["org.stappler.test.hotkey.action"],
+           "and it fires as it always did", repr(names(st["log"])))
+
+    # A NAME THAT IS NEITHER IS STILL REFUSED. Folding the comparison must not turn the parser into
+    # one that accepts anything: `NOTAKEY` is not a key under any capitalisation, so the whole
+    # combination is still invalid and setCombo still declines it - which leaves the hotkey on the
+    # one it already had.
+    rebind("org.stappler.test.hotkey.action", "Ctrl+NOTAKEY")
+    listing = {it["name"]: it for it in s.invoke("hotkey.list", settle=0.0)["hotkeys"]}
+    expect(listing.get("org.stappler.test.hotkey.action", {}).get("combo") == "Ctrl+K",
+           "an unknown name is still an unknown name, and the old binding stands",
+           repr(listing.get("org.stappler.test.hotkey.action")))
 
 finally:
     print(f"\nSUMMARY: {CHECKS} checks, {len(FAIL)} failures")

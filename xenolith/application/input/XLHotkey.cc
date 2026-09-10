@@ -95,6 +95,28 @@ bool HotkeyCombo::matchesSides(InputModifier eventModifiers) const {
 	return true;
 }
 
+/* NAMES ARE MATCHED WITHOUT REGARD TO CASE, and that is a fix rather than a courtesy.
+
+The two name-spaces this parser reads are spelled in two different styles - the modifiers CamelCase
+(`Ctrl`, `ShiftL`), the keys SHOUTING (`EQUAL`, `RIGHT_BRACKET`, `KP_ADD`) - and a combination is
+written with both in one string. `Ctrl+SHIFT+RIGHT_BRACKET` is what somebody writes who has just
+written the key half; it used to fall through the modifier table, be looked up as a KEY, fail (the
+keycodes are `LEFT_SHIFT` and `RIGHT_SHIFT`, there is no `SHIFT`), and take the whole combination
+down with it. `HotkeyRegistry::add` then answered HotkeyId(0) and the subscription bound nothing, so
+the command simply never worked - which is what two of the studio's screen-editor commands had been
+doing since they were written.
+
+IT IS UNAMBIGUOUS, and that was checked rather than assumed: no modifier name is also a key name
+under any capitalisation, and no two key names differ only by case. So folding the comparison cannot
+make one spelling mean two things.
+
+ASCII folding (`caseCompare_c`), not the Unicode one: these are identifiers out of a table in this
+repository, not text in somebody's language, and the rule about case mapping strings rather than
+characters is about the latter. */
+static bool hotkeyNameIs(StringView token, StringView name) {
+	return !name.empty() && sprt::detail::caseCompare_c(token, name) == 0;
+}
+
 HotkeyCombo HotkeyCombo::parse(StringView str) {
 	HotkeyCombo ret;
 
@@ -112,11 +134,11 @@ HotkeyCombo HotkeyCombo::parse(StringView str) {
 		bool isModifier = false;
 		for (auto &it : HotkeyModifierFamilies) {
 			// the sided spellings first: "CtrlL" must not be mistaken for "Ctrl" plus junk
-			if (!it.leftName.empty() && token == it.leftName) {
+			if (hotkeyNameIs(token, it.leftName)) {
 				ret.modifiers |= it.base | it.left;
-			} else if (!it.rightName.empty() && token == it.rightName) {
+			} else if (hotkeyNameIs(token, it.rightName)) {
 				ret.modifiers |= it.base | it.right;
-			} else if (token == it.baseName) {
+			} else if (hotkeyNameIs(token, it.baseName)) {
 				ret.modifiers |= it.base;
 			} else {
 				continue;
@@ -136,7 +158,7 @@ HotkeyCombo HotkeyCombo::parse(StringView str) {
 
 		for (uint32_t i = 1; i < toInt(InputKeyCode::Max); ++i) {
 			auto code = InputKeyCode(i);
-			if (core::getInputKeyCodeName(code) == token) {
+			if (hotkeyNameIs(token, core::getInputKeyCodeName(code))) {
 				ret.keycode = code;
 				break;
 			}
@@ -193,8 +215,26 @@ HotkeyRegistry *HotkeyRegistry::getInstance() {
 	return s_instance;
 }
 
+/* THE KEYCODE GOES IN THE LOW BITS, AND THE ORDER IS THE WHOLE OF THIS FUNCTION.
+
+It used to be the other way round - `keycode << 32 | mods` - and that is a key with 32 CONSTANT low
+bits for every combination that carries no modifier. `sprt::hash` of an unsigned integer is the
+IDENTITY, and the table buckets by `hash % capacity` with a capacity that comes out of the allocator
+as a power of two: so `keycode << 32` is congruent to 0 for every capacity up to 2^32, and every
+modifier-less hotkey in the process landed in bucket ZERO.
+
+That is not a slow lookup, it is a runaway. `find_bucket_or_grow` reads the collision count back as
+a load factor, and once the misses catch up with the size it rehashes on EVERY insert, doubling as
+it goes: an application that registered a couple of dozen hotkeys - Escape, Tab, Enter, Space, the
+four arrows, a slash - grew this table to a hundred and sixty million buckets and thirty-nine
+gigabytes before the machine stopped it. It was found from a studio that added seven more.
+
+Both halves still fit and the mapping is still one-to-one: InputKeyCode is a uint16_t and
+InputModifier's highest bit is 1 << 25, so the two occupy 42 bits between them and no pair of
+combinations can collide by construction. What changed is only which half a table sees when it looks
+at the bottom of the number. */
 uint64_t HotkeyRegistry::comboKey(InputKeyCode keycode, InputModifier mods) {
-	return (uint64_t(toInt(keycode)) << 32) | uint64_t(toInt(mods));
+	return (uint64_t(toInt(mods)) << 16) | uint64_t(toInt(keycode));
 }
 
 void HotkeyRegistry::bind(HotkeyId id, HotkeyCombo combo) {

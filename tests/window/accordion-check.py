@@ -228,6 +228,51 @@ def drive(s, c):
     c.expect(after == builds_before,
             "a panel was rebuilt by the round trip: %s -> %s" % (builds_before, after))
 
+    # --- one section against the view's policy ------------------------------
+    #
+    # `Fill` divides the height between the open sections evenly, which is right for a pane of
+    # working panels and wrong for the one among them that has nothing to show. A section set to
+    # `Fit` asks for its declared minimum and no more, while its neighbours go on sharing what is
+    # left - and the two halves of that are what the assertions below are: the one shrank, and the
+    # others took what it gave up.
+    for row in s.invoke("accordion.sections"):
+        if not row["expanded"]:
+            probe = s.invoke("accordion.probe", panel=row["id"])
+            s.tap((probe["headerX"], probe["headerY"]))
+
+    s.invoke("accordion.sizing", view="fill")
+    s.frames(3)
+    rows = {r["id"]: r["rect"][3] for r in s.invoke("accordion.sections")}
+    c.expect(len(rows) >= 2, "the stand has fewer than two sections to compare")
+    order = sorted(rows)
+    small, big = order[0], order[1]
+    c.expect(abs(rows[small] - rows[big]) < 2.0,
+            "under Fill two open sections are not the same height: %s" % rows)
+
+    st = s.invoke("accordion.sizing", panel=small, sizing="fit")
+    s.frames(3)
+    after_fit = {r["id"]: r["rect"][3] for r in s.invoke("accordion.sections")}
+
+    c.expect(st["view"] == "fill" and st["sections"][small] == "fit"
+            and st["sections"][big] == "fill",
+            "the section did not answer for itself while the view stayed Fill: %s" % st)
+    c.expect(after_fit[small] < rows[small] - 20.0,
+            "a Fit section inside a Fill view did not shrink: %s -> %s" % (rows, after_fit))
+    c.expect(after_fit[big] > rows[big] + 20.0,
+            "the neighbour did not take what the Fit section gave up: %s -> %s" % (rows, after_fit))
+
+    # ITS DECLARED MINIMUM AND NO MORE. The stand's panels declare 50, and a section is that plus
+    # its header - so what is asserted is the arithmetic rather than a figure read off the screen.
+    header = s.invoke("accordion.probe", panel=small)
+    c.expect(after_fit[small] < 50.0 + header.get("headerHeight", 40.0) + 8.0,
+            "a Fit section is taller than its header plus its declared minimum: %s" % after_fit)
+
+    s.invoke("accordion.sizing", panel=small, sizing="view")
+    s.frames(3)
+    back = {r["id"]: r["rect"][3] for r in s.invoke("accordion.sections")}
+    c.expect(abs(back[small] - back[big]) < 2.0,
+            "clearing the override did not put the section back under the view's policy: %s" % back)
+
 
 binary = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(
         os.path.abspath(__file__)), "stappler-build/x86_64-unknown-linux-gnu/debug/cc/testapp")
