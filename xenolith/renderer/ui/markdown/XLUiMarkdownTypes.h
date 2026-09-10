@@ -126,6 +126,12 @@ struct SP_PUBLIC MarkdownRunMap {
 	Vector<Run> runs;
 	Vector<Link> links;
 
+	// Where this Label sits in the document's reading order (ui::MarkdownFlow), and the global
+	// position of its first character. Written when the flow is assembled, so that a Label found
+	// by hit testing is located in the flow without a search.
+	uint32_t flowIndex = maxOf<uint32_t>();
+	uint32_t textBegin = 0;
+
 	// The run covering `charIndex`, or nullptr between runs.
 	const Run *findRun(uint32_t charIndex) const;
 

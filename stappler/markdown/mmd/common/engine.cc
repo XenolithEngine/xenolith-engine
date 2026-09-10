@@ -1126,7 +1126,9 @@ handle_line:
 
 				// Move children to parent
 				// Add ':' back
-				if (e->str[l->child->start - 1] == ':') {
+				// A definition that opens the source has nothing before it: reading str[-1] here
+				// faulted on any fragment starting with a `[label]:` line
+				if (l->child->start > 0 && e->str[l->child->start - 1] == ':') {
 					temp = sp_mmd_token_new(COLON, l->child->start - 1, 1);
 					sp_mmd_token_append_child(block, temp);
 				}

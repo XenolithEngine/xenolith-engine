@@ -801,7 +801,9 @@ void HtmlProcessor::exportBacktick(const CallbackStream &out, token *t) {
 		} else {
 			printLocalizedChar(out, QUOTE_LEFT_DOUBLE);
 		} else if (t->start < t->mate->start) {
-			pushNode(nullptr, "code");
+			// the opening marker knows its mate, so the node spans the whole `code` with both
+			// delimiters - a consumer mapping a node back to its markup needs them
+			pushNode(t, "code");
 	} else {
 		popNode();
 	}
@@ -857,7 +859,7 @@ void HtmlProcessor::exportPairBacktick(const CallbackStream &out, token *t) {
 		return;
 	}
 
-	pushNode(nullptr, "code");
+	pushNode(t, "code");
 	exportTokenTreeRaw(out, t->child);
 	popNode();
 }
@@ -1106,13 +1108,15 @@ void HtmlProcessor::exportPairBracketFootnote(const CallbackStream &out, token *
 		}
 
 		String ref = string::toString<memory::PoolInterface>("#fn_", temp_short3);
+		// the reference marker is written by the processor, so the token is the only thing that
+		// knows which bytes of the source these nodes stand for
 		if (temp_short2 == used_footnotes.size()) {
-			pushNode(nullptr, "a", { pair("href", ref), pair("title", localize("see footnote")), pair("class", "footnote") });
+			pushNode(t, "a", { pair("href", ref), pair("title", localize("see footnote")), pair("class", "footnote") });
 		} else {
 			String id = string::toString<memory::PoolInterface>("fnref_", temp_short3);
-			pushNode(nullptr, "a", { pair("href", ref), pair("id", id), pair("title", localize("see footnote")), pair("class", "footnote") });
+			pushNode(t, "a", { pair("href", ref), pair("id", id), pair("title", localize("see footnote")), pair("class", "footnote") });
 		}
-		pushNode(nullptr, "sup");
+		pushNode(t, "sup");
 		out << temp_short;
 		popNode();
 		popNode();
@@ -1324,7 +1328,7 @@ void HtmlProcessor::exportMath(const CallbackStream &out, token *t) {
 
 void HtmlProcessor::exportSubscript(const CallbackStream &out, token *t) {
 	if (t->mate) {
-		((t->start < t->mate->start) ? pushNode(nullptr, "sub") : popNode());
+		((t->start < t->mate->start) ? pushNode(t, "sub") : popNode());
 	} else if (t->len != 1) {
 		pushNode(t, "sub");
 		exportTokenTree(out, t->child);
@@ -1336,7 +1340,7 @@ void HtmlProcessor::exportSubscript(const CallbackStream &out, token *t) {
 
 void HtmlProcessor::exportSuperscript(const CallbackStream &out, token *t) {
 	if (t->mate) {
-		((t->start < t->mate->start) ? pushNode(nullptr, "sup") : popNode());
+		((t->start < t->mate->start) ? pushNode(t, "sup") : popNode());
 	} else if (t->len != 1) {
 		pushNode(t, "sup");
 		exportTokenTree(out, t->child);

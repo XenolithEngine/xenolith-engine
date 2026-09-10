@@ -55,13 +55,27 @@ protected:
 	// The tree as the check reads it: one entry per node, with its type, classes, text extent
 	// and the source runs the builder recorded.
 	Value encodeTree() const;
+	Value encodeFlow() const;
 	Value encodeNode(const Node *) const;
+
+	// What is selected, and - the part a check cannot see any other way - which labels actually
+	// carry a drawn highlight, where the handles are, and whether the document scrolled.
+	Value encodeSelection() const;
 
 	basic2d::Layer *_background = nullptr;
 	ui::MarkdownView *_view = nullptr;
 
 	// 0 means "follow the work area"; a command sets it to exercise re-wrapping.
 	float _width = 0.0f;
+
+	// The clipboard is asserted on by reading it back, exactly as ClipboardLayout does: the write
+	// and the read each cross to the context thread, so a command cannot see its own answer.
+	Rc<ClipboardSession> _clipboard;
+	size_t _deliveries = 0;
+	Value _lastRead;
+
+	// The last link a click followed, so a check can name it.
+	String _lastLink;
 };
 
 } // namespace stappler::xenolith::app

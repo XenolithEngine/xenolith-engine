@@ -79,12 +79,12 @@ void DocumentProcessor::processHtml(const Content &c, const StringView &str, con
 	_page->finalize();
 }
 
-void DocumentProcessor::exportToken(const CallbackStream &out, token *t) {
+void DocumentProcessor::claimTextSpan(token *t, const Callback<void()> &exportFn) {
 	auto claimedBelow = _textSpanClaimed;
 	_textSpanClaimed = false;
 
 	auto before = buffer.weak().size();
-	HtmlProcessor::exportToken(out, t);
+	exportFn();
 
 	if (!_textSpanClaimed && t && buffer.weak().size() > before) {
 		// nothing below claimed the growth, so this token is the one that wrote it
@@ -93,6 +93,18 @@ void DocumentProcessor::exportToken(const CallbackStream &out, token *t) {
 	}
 
 	_textSpanClaimed = _textSpanClaimed || claimedBelow;
+}
+
+void DocumentProcessor::exportToken(const CallbackStream &out, token *t) {
+	claimTextSpan(t, [&] { HtmlProcessor::exportToken(out, t); });
+}
+
+void DocumentProcessor::exportTokenRaw(const CallbackStream &out, token *t) {
+	claimTextSpan(t, [&] { HtmlProcessor::exportTokenRaw(out, t); });
+}
+
+void DocumentProcessor::exportTokenMath(const CallbackStream &out, token *t) {
+	claimTextSpan(t, [&] { HtmlProcessor::exportTokenMath(out, t); });
 }
 
 document::SourceSpan DocumentProcessor::nodeSpanFor(token *t) {

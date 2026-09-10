@@ -67,6 +67,9 @@ void Node::pushValue(StringView str, SourceSpan source) {
 
 void Node::pushValue(WideString &&str, SourceSpan source) {
 	auto n = new (memory::pool::acquire()) Node(StringView("__value__"), sp::move(str), source);
+	// A text run is a child like any other, and a consumer walking up from one - to find the
+	// block it belongs to, say - has nothing to walk without this.
+	n->_parent = this;
 	_nodes.emplace_back(n);
 }
 

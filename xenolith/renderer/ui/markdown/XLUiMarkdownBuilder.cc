@@ -39,7 +39,24 @@ static bool MarkdownBuilder_isInline(StringView tag) {
 
 MarkdownBuilder::MarkdownBuilder(NotNull<Node> root, NotNull<MarkdownRegistry> registry,
 		const MarkdownInlineStyles &styles)
-: _root(root), _registry(registry), _styles(styles) { }
+: _root(root), _registry(registry), _flow(Rc<MarkdownFlow>::alloc()), _styles(styles) { }
+
+document::SourceSpan MarkdownBuilder::spanOf(const document::Node &source) {
+	auto node = &source;
+	while (node) {
+		auto span = node->getSourceSpan();
+		if (!span.empty()) {
+			return span;
+		}
+		node = node->getParent();
+	}
+	return document::SourceSpan();
+}
+
+uint32_t MarkdownBuilder::registerFlow(Node *node, MarkdownFlowKind kind,
+		const document::Node &source, uint32_t textLength) {
+	return _flow->emplace(node, kind, spanOf(source), textLength);
+}
 
 uint32_t MarkdownBuilder::build(const document::Node &page) {
 	_blocks = 0;
@@ -114,7 +131,7 @@ void MarkdownBuilder::buildChildren(Node *parent, const document::Node &source) 
 		// sheet can address it, and the container's inherited text properties still reach it.
 		auto label = makeLabel(parent, toString(source.getHtmlName(), "-text"));
 		label->addStyleClass("md-text");
-		commitText(label, state);
+		commitText(label, state, source);
 		++_blocks;
 	};
 
@@ -178,7 +195,7 @@ void MarkdownBuilder::buildBlock(Node *parent, const document::Node &source) {
 void MarkdownBuilder::buildText(basic2d::Label *label, const document::Node &source) {
 	TextState state;
 	for (auto &it : source.getNodes()) { collectText(state, *it, MarkdownInline::Text); }
-	commitText(label, state);
+	commitText(label, state, source);
 }
 
 void MarkdownBuilder::buildRawText(basic2d::Label *label, const document::Node &source) {
@@ -188,7 +205,7 @@ void MarkdownBuilder::buildRawText(basic2d::Label *label, const document::Node &
 	TextState state;
 	for (auto &it : source.getNodes()) { collectText(state, *it, MarkdownInline::Text); }
 	state.ranges.clear();
-	commitText(label, state);
+	commitText(label, state, source);
 }
 
 void MarkdownBuilder::collectText(TextState &state, const document::Node &source,
@@ -265,7 +282,8 @@ bool MarkdownBuilder::isVerbatim(WideStringView text, document::SourceSpan span)
 	return WideStringView(decoded) == text;
 }
 
-void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state) {
+void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state,
+		const document::Node &source) {
 	// The document keeps its text verbatim, newlines and all, because a newline between two words
 	// is a space and only the block knows which one it is. Trailing whitespace, though, belongs to
 	// no word: it is trimmed once per block, and the last run shrinks with it so the source map
@@ -309,10 +327,12 @@ void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state) {
 		label->setTextRangeStyle(it.first.first, it.first.second, sp::move(style));
 	}
 
-	if (!state.runs.empty() || !state.links.empty()) {
-		label->setComponent<MarkdownRunMap>(
-				MarkdownRunMap{sp::move(state.runs), sp::move(state.links)});
-	}
+	// Always, even with no runs at all: the component is also how a node finds itself in the
+	// reading order, and a block whose text the parser could not place still has a place in it.
+	label->setComponent<MarkdownRunMap>(
+			MarkdownRunMap{sp::move(state.runs), sp::move(state.links)});
+
+	registerFlow(label, MarkdownFlowKind::Text, source, uint32_t(state.text.size()));
 }
 
 } // namespace stappler::xenolith::ui

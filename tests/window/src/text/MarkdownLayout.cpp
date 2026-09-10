@@ -21,6 +21,7 @@
  **/
 
 #include "text/MarkdownLayout.h"
+#include "XLDirector.h"
 #include "XLUiStyleResolver.h"
 #include "XLUiLayoutSystem.h"
 
@@ -91,6 +92,11 @@ bool MarkdownLayout::init() {
 
 	_view = addChild(Rc<ui::MarkdownView>::create(s_sample), ZOrder(1));
 
+	// Recorded rather than acted on: what a check needs to know is that the click reached the
+	// right link, not what an application would do with it.
+	_view->setLinkCallback(
+			[this](StringView href, StringView) { _lastLink = href.str<Interface>(); });
+
 	return true;
 }
 
@@ -147,6 +153,16 @@ Value MarkdownLayout::encodeNode(const Node *node) const {
 		if (!map->links.empty()) {
 			auto &links = ret.emplace("links");
 			for (auto &it : map->links) { links.addString(it.href); }
+
+			// The same links with their character ranges, which is what a check needs to aim a
+			// click at one of them.
+			auto &ranges = ret.emplace("linkRanges");
+			for (auto &it : map->links) {
+				auto &r = ranges.emplace();
+				r.addInteger(int64_t(it.charStart));
+				r.addInteger(int64_t(it.charCount));
+				r.addString(it.href);
+			}
 		}
 	}
 
@@ -205,7 +221,108 @@ Value MarkdownLayout::encodeTree() const {
 		e.addInteger(int64_t(roundf(extent.height)));
 	}
 
+	ret.setInteger(int64_t(_view->getTextLength()), "textLength");
 	ret.setValue(encodeNode(_view->getContentNode()), "tree");
+	return ret;
+}
+
+// The document in reading order: one row per entry, in the order a reader reads them.
+Value MarkdownLayout::encodeFlow() const {
+	Value ret;
+	auto flow = _view->getFlow();
+	ret.setInteger(int64_t(_view->getTextLength()), "textLength");
+
+	auto &entries = ret.emplace("entries");
+	for (auto &it : flow->getEntries()) {
+		Value entry;
+		entry.setString(it.node ? it.node->getType() : StringView(), "type");
+		switch (it.kind) {
+		case ui::MarkdownFlowKind::Text: entry.setString("text", "kind"); break;
+		case ui::MarkdownFlowKind::Marker: entry.setString("marker", "kind"); break;
+		case ui::MarkdownFlowKind::Atomic: entry.setString("atomic", "kind"); break;
+		}
+		entry.setInteger(int64_t(it.textBegin), "begin");
+		entry.setInteger(int64_t(it.textLength), "length");
+		entry.setInteger(int64_t(it.span.offset), "srcOffset");
+		entry.setInteger(int64_t(it.span.length), "srcLength");
+		entries.addValue(sp::move(entry));
+	}
+	return ret;
+}
+
+/* What is selected, and how the document shows it.
+
+The interesting half is `entries`: which labels actually carry a drawn highlight. A range is a
+pair of numbers and could be right while nothing is painted, or painted on a block the range never
+touched - and neither shows up in a screenshot of a document this dense. */
+Value MarkdownLayout::encodeSelection() const {
+	Value ret;
+
+	auto range = _view->getSelectionRange();
+	ret.setInteger(int64_t(range.first), "begin");
+	ret.setInteger(int64_t(range.second), "end");
+	ret.setBool(_view->hasSelection(), "hasSelection");
+	ret.setString(_view->getSelectedText(), "text");
+	ret.setString(_view->getSelectedMarkup(), "markup");
+
+	auto &entries = ret.emplace("entries");
+	for (auto &it : _view->getFlow()->getEntries()) {
+		auto label = dynamic_cast<const basic2d::Label *>(it.node.get());
+		if (!label) {
+			continue;
+		}
+		auto cursor = label->getSelectionCursor();
+		if (cursor == core::TextCursor::InvalidCursor || cursor.length == 0) {
+			continue;
+		}
+
+		Value entry;
+		entry.setString(it.node->getType(), "type");
+		entry.setInteger(int64_t(cursor.start), "cursorStart");
+		entry.setInteger(int64_t(cursor.length), "cursorLength");
+
+		auto rect = label->getSelectionRect();
+		auto &r = entry.emplace("rect");
+		r.addInteger(int64_t(roundf(rect.size.width)));
+		r.addInteger(int64_t(roundf(rect.size.height)));
+
+		entries.addValue(sp::move(entry));
+	}
+
+	// The two carets the handles are supposed to stand on, so a check can say whether a handle is
+	// merely visible or actually in the right place.
+	auto &carets = ret.emplace("carets");
+	for (auto position : {range.first, range.second}) {
+		auto point = _view->getFlow()->getPointForPosition(position);
+		auto &c = carets.emplace();
+		if (point.first.isValid()) {
+			c.addInteger(int64_t(roundf(point.first.x)));
+			c.addInteger(int64_t(roundf(point.first.y)));
+		}
+	}
+
+	if (auto selection = _view->getSelectionSystem()) {
+		ret.setBool(selection->isTouchMode(), "touchMode");
+		ret.setBool(selection->isDragging(), "dragging");
+
+		auto &handles = ret.emplace("handles");
+		for (auto start : {true, false}) {
+			auto point = selection->getHandlePosition(start);
+			auto &h = handles.emplace();
+			if (point.isValid()) {
+				h.addInteger(int64_t(roundf(point.x)));
+				h.addInteger(int64_t(roundf(point.y)));
+			}
+		}
+	}
+
+	// A drag that scrolls the document instead of selecting it is the failure this stand exists
+	// to catch, so the offset is reported next to the range.
+	if (auto scroll = _view->getScrollSystem()) {
+		ret.setInteger(int64_t(roundf(scroll->getScrollPosition().y)), "scrollY");
+	}
+
+	ret.setString(_lastLink, "lastLink");
 	return ret;
 }
 
@@ -214,6 +331,123 @@ void MarkdownLayout::registerCommands() {
 
 	addCommand("dump", "The built tree: type, classes, text, source runs and measured size",
 			[this](Value &&) { return encodeTree(); });
+
+	addCommand("flow", "The document in reading order: every entry, its positions and its span",
+			[this](Value &&) { return encodeFlow(); });
+
+	/* The milestone's whole point, made observable: a range of reading positions, handed back as
+	the markup that produced it. `mode` is `normalized` (the edges are closed up) or `raw` (the
+	slice as it stands). */
+	addCommand("range", "The markup and the text of a range: {begin, end, mode}",
+			[this](Value &&args) {
+		const Value &in = args;
+		auto begin = uint32_t(in.getInteger("begin"));
+		auto end = in.hasValue("end") ? uint32_t(in.getInteger("end")) : _view->getTextLength();
+		auto mode = (in.getString("mode") == "raw") ? document::MarkdownMarkup::Raw
+													: document::MarkdownMarkup::Normalized;
+
+		Value ret;
+		ret.setInteger(int64_t(begin), "begin");
+		ret.setInteger(int64_t(end), "end");
+
+		auto range = _view->getSourceRangeForTextRange(begin, end);
+		ret.setInteger(int64_t(range.first), "srcBegin");
+		ret.setInteger(int64_t(range.second), "srcEnd");
+		ret.setString(_view->getMarkupForRange(begin, end, mode), "markup");
+		ret.setString(_view->getTextForRange(begin, end), "text");
+		return ret;
+	});
+
+	// --- selection ---
+
+	addCommand("selection", "What is selected, which labels paint it, and where the handles are",
+			[this](Value &&) { return encodeSelection(); });
+
+	addCommand("select", "Select a range of reading positions: {begin, end}", [this](Value &&args) {
+		_view->setSelectionRange(uint32_t(args.getInteger("begin")),
+				uint32_t(args.getInteger("end")));
+		return encodeSelection();
+	});
+
+	addCommand("select-all", "Select the whole document", [this](Value &&) {
+		_view->selectAll();
+		return encodeSelection();
+	});
+
+	addCommand("clear-selection", "Drop the selection", [this](Value &&) {
+		_view->clearSelection();
+		return encodeSelection();
+	});
+
+	addCommand("position-point", "Where a reading position is on screen: {position}",
+			[this](Value &&args) {
+		auto point = _view->getFlow()->getPointForPosition(uint32_t(args.getInteger("position")));
+		Value ret;
+		ret.setBool(point.first.isValid(), "ok");
+		if (point.first.isValid()) {
+			ret.setDouble(double(point.first.x), "x");
+			ret.setDouble(double(point.first.y), "y");
+			ret.setDouble(double(point.second), "height");
+		}
+		return ret;
+	});
+
+	addCommand("point", "The reading position under a window point: {x, y}", [this](Value &&args) {
+		auto position = _view->getFlow()->getPositionForPoint(
+				Vec2(float(args.getDouble("x")), float(args.getDouble("y"))));
+		Value ret;
+		ret.setInteger(int64_t(position), "position");
+		return ret;
+	});
+
+	// --- copying ---
+
+	addCommand("copy", "Copy the selection: {mode}", [this](Value &&args) {
+		// Through a const reference: a non-const get*() on a missing key asserts, and `mode` is
+		// optional here.
+		const Value &in = args;
+		auto mode = (in.getString("mode") == "raw") ? document::MarkdownMarkup::Raw
+													: document::MarkdownMarkup::Normalized;
+		Value ret;
+		ret.setBool(_view->copy(mode), "ok");
+		return ret;
+	});
+
+	addCommand("clipboard-read", "Read the clipboard back: {prefer}", [this](Value &&args) {
+		if (!_clipboard) {
+			_clipboard = Rc<ClipboardSession>::create(_director->getApplication());
+		}
+
+		const Value &in = args;
+		Vector<String> preference;
+		for (auto &it : in.getArray("prefer")) { preference.emplace_back(it.getString()); }
+		if (preference.empty()) {
+			preference.emplace_back("text/plain");
+		}
+
+		Vector<StringView> views;
+		for (auto &it : preference) { views.emplace_back(it); }
+
+		auto serial = _clipboard->read(views, [this](const ClipboardSession::Result &result) {
+			++_deliveries;
+			_lastRead = Value();
+			_lastRead.setBool(result.ok(), "ok");
+			_lastRead.setString(result.type, "type");
+			_lastRead.setString(result.text(), "text");
+		}, this);
+
+		Value ret;
+		ret.setInteger(int64_t(serial), "serial");
+		ret.setInteger(int64_t(_deliveries), "deliveries");
+		return ret;
+	});
+
+	addCommand("clipboard-state", "What the last clipboard read answered", [this](Value &&) {
+		Value ret;
+		ret.setInteger(int64_t(_deliveries), "deliveries");
+		ret.setValue(_lastRead, "lastRead");
+		return ret;
+	});
 
 	addCommand("source", "Replace the document: {text}", [this](Value &&args) {
 		_view->setSource(args.getString("text"));
