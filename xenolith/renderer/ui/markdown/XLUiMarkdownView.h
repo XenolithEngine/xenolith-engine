@@ -24,8 +24,11 @@
 #define XENOLITH_RENDERER_UI_MARKDOWN_XLUIMARKDOWNVIEW_H_
 
 #include "XLUiMarkdownBuilder.h"
+#include "XLUiMarkdownSelection.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiScrollSystem.h"
+#include "XLSelectionSystem.h"
+#include "XLClipboard.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -50,10 +53,20 @@ is the nearest - so an application rule of EQUAL specificity loses. Two routes w
 `getDefaultStyleSheet()` returns the built-in text, and replacing the sheet outright
 (`getStyleSystem()->setStyleSheet(…)`) turns it off.
 
-WHAT IT DOES NOT DO YET. Selection, copying and link activation are later milestones. What this
-milestone already records for them is on every produced Label: a `MarkdownRunMap` saying which
-bytes of the source each character came from, and where the links are. */
-class SP_PUBLIC MarkdownView : public Node {
+READING A RANGE. The document has a reading order of its own (ui::MarkdownFlow), numbered across
+every block, and two questions can be asked of any range in it: what it SAID (`getTextForRange`)
+and how it was WRITTEN (`getMarkupForRange`). The second is the one this whole feature exists for -
+a range comes back as the original Markdown, closed up wherever an edge cut a construct in half.
+
+SELECTING AND COPYING. A drag, a double or triple click, Ctrl+A or `setSelectionRange` all end in
+the same place: a range of reading positions, painted by the labels themselves and copied out as
+the markup that produced it. `ui::MarkdownSelectionSystem` holds the gestures and explains how
+they are kept away from the two scrolls in this tree.
+
+The view is a `SelectionOwner`, which is what makes "one selection per scene" true for a document
+too: selecting a row in a tree elsewhere puts this one out, and the notification comes back here
+so the highlight goes with it. */
+class SP_PUBLIC MarkdownView : public Node, public SelectionOwner {
 public:
 	virtual ~MarkdownView() = default;
 
@@ -87,6 +100,75 @@ public:
 	// Discard the node tree and build it again. What a registry swap and a live style reload
 	// both go through.
 	void rebuild();
+
+	// --- reading order ---
+
+	// The document in reading order; never null, empty until the first build.
+	MarkdownFlow *getFlow() const { return _flow; }
+
+	// The last position of the document: a range is a pair inside `[0, getTextLength()]`.
+	uint32_t getTextLength() const { return _flow->getLength(); }
+
+	// The bytes of the source a range of positions covers, edges moved outward wherever the
+	// mapping is not exact. `getMarkupForRange` is this plus document::writeMarkdownFragment.
+	Pair<uint32_t, uint32_t> getSourceRangeForTextRange(uint32_t begin, uint32_t end) const;
+
+	// The ORIGINAL markup for a range: what a copy puts on the clipboard.
+	void writeMarkupForRange(const Callback<void(StringView)> &, uint32_t begin, uint32_t end,
+			document::MarkdownMarkup = document::MarkdownMarkup::Normalized) const;
+	String getMarkupForRange(uint32_t begin, uint32_t end,
+			document::MarkdownMarkup = document::MarkdownMarkup::Normalized) const;
+
+	// The visible text of the same range.
+	void writeTextForRange(const Callback<void(StringView)> &, uint32_t begin, uint32_t end) const;
+	String getTextForRange(uint32_t begin, uint32_t end) const;
+
+	// --- selection ---
+
+	MarkdownSelectionSystem *getSelectionSystem() const { return _selection; }
+
+	bool hasSelection() const { return _selectionEnd > _selectionBegin; }
+	Pair<uint32_t, uint32_t> getSelectionRange() const {
+		return pair(_selectionBegin, _selectionEnd);
+	}
+
+	/* Show a range as selected. Everything that selects goes through here - the gestures, the
+	hotkeys, and a caller driving the widget - so this is also where the scene is told that the
+	document now holds the one selection it allows. */
+	void setSelectionRange(uint32_t begin, uint32_t end);
+	void selectAll();
+	void clearSelection();
+
+	String getSelectedText() const;
+	String getSelectedMarkup(document::MarkdownMarkup = document::MarkdownMarkup::Normalized) const;
+
+	// The colour every label paints its highlight with; also read from `--md-selection-color`.
+	void setSelectionColor(const Color4F &);
+	Color4F getSelectionColor() const { return _selectionColor; }
+
+	// --- copying ---
+
+	/* WHAT MAY LEAVE THE WIDGET, which is a policy and therefore the caller's to set. `Both` puts
+	the markup on the clipboard first and the plain text after it; `TextOnly` withholds the markup
+	from a document shown in confidence; `Nothing` refuses. */
+	enum class CopyPolicy {
+		Both,
+		TextOnly,
+		Nothing,
+	};
+
+	void setCopyPolicy(CopyPolicy policy) { _copyPolicy = policy; }
+	CopyPolicy getCopyPolicy() const { return _copyPolicy; }
+
+	// Put the selection on the clipboard. False when there is nothing to copy, the policy refuses,
+	// or the transport cannot carry it.
+	bool copy(document::MarkdownMarkup = document::MarkdownMarkup::Normalized);
+
+	// --- SelectionOwner ---
+
+	virtual Node *getSelectionOwnerNode() override { return this; }
+	virtual Node *resolveSelectionNode(const SelectionItem &) const override;
+	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
 
 	// --- styling ---
 
@@ -122,17 +204,30 @@ public:
 
 	// --- links ---
 
-	// Registered now, fired by a later milestone: this milestone paints link ranges and records
-	// their targets, but has no hit testing of its own yet.
+	// Fired by a plain click on a link range. A drag that begins on a link is a selection, not a
+	// visit, so only a tap gets here.
 	void setLinkCallback(Function<void(StringView href, StringView title)> &&);
+	void handleLinkActivated(const MarkdownRunMap::Link &);
 
 protected:
 	// Resolve what only a live scene can answer (the monospace family) and fold it into the
 	// inline table. Returns true when the table changed.
 	bool updateInlineStyles();
 
+	ClipboardSession *acquireClipboard();
+
+	// The menu a right click or a long press opens over the document.
+	void buildContextMenu();
+
 	Rc<document::DocumentMarkdown> _document;
 	Rc<MarkdownRegistry> _registry;
+	Rc<MarkdownFlow> _flow;
+	Rc<ClipboardSession> _clipboard;
+	MarkdownSelectionSystem *_selection = nullptr;
+	Color4F _selectionColor = Color4F(Color::LightBlue_200);
+	uint32_t _selectionBegin = 0;
+	uint32_t _selectionEnd = 0;
+	CopyPolicy _copyPolicy = CopyPolicy::Both;
 	StyleSystem *_styleSystem = nullptr;
 	Node *_content = nullptr;
 	MarkdownInlineStyles _inlineStyles;

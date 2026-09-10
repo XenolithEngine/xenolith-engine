@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiMarkdownView.h"
+#include "XLUiContextMenu.h"
+#include "XLUiMenuSource.h"
 #include "XLUiStyleResolver.h"
 #include "XLUiScrollSystem.h"
 #include "XLFontController.h"
@@ -224,6 +226,7 @@ bool MarkdownView::init() {
 	setAnchorPoint(Anchor::BottomLeft);
 
 	_registry = MarkdownRegistry::createDefault();
+	_flow = Rc<MarkdownFlow>::alloc();
 
 	// The view's own sheet, plus the one resolver that styles the whole produced subtree. One
 	// recursive resolver, never one per node: it publishes itself on the frame stack and every
@@ -237,6 +240,10 @@ bool MarkdownView::init() {
 	_content->setType("markdown-body");
 	_content->addStyleClass("md-body");
 	_content->setAnchorPoint(Anchor::BottomLeft);
+
+	// After the content node, so the handles it may create sit above the document; its system
+	// priority is what puts it ahead of the scroll the sheet asks for.
+	_selection = addSystem(Rc<MarkdownSelectionSystem>::create(this));
 
 	return true;
 }
@@ -259,6 +266,9 @@ bool MarkdownView::init(const FileInfo &file) {
 
 void MarkdownView::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
+
+	// Not in init(): a node has no scene to hang a menu coordinator on until it is in one.
+	buildContextMenu();
 
 	updateInlineStyles();
 
@@ -293,6 +303,13 @@ StringView MarkdownView::getSource() const {
 }
 
 void MarkdownView::rebuild() {
+	// Every label the selection was painted on is about to be discarded, and the positions it
+	// held indexed a document that no longer exists.
+	_selectionBegin = _selectionEnd = 0;
+
+	// The flow holds every node it indexes, so it goes first - or a rebuilt document would keep
+	// the previous one alive in its own index.
+	_flow = Rc<MarkdownFlow>::alloc();
 	_content->removeAllChildren();
 	_blocks = 0;
 	_treeDirty = false;
@@ -310,6 +327,43 @@ void MarkdownView::rebuild() {
 	MarkdownBuilder builder(_content, _registry, _inlineStyles);
 	builder.setSource(_document->getSource());
 	_blocks = builder.build(*page->getRoot());
+	_flow = builder.getFlow();
+
+	// The colour lives on each Label separately, so a fresh tree has to be told again.
+	_flow->setSelectionColor(_selectionColor);
+}
+
+Pair<uint32_t, uint32_t> MarkdownView::getSourceRangeForTextRange(uint32_t begin,
+		uint32_t end) const {
+	return _flow->getSourceRange(begin, end);
+}
+
+void MarkdownView::writeMarkupForRange(const Callback<void(StringView)> &out, uint32_t begin,
+		uint32_t end, document::MarkdownMarkup mode) const {
+	if (!_document) {
+		return;
+	}
+	auto range = _flow->getSourceRange(begin, end);
+	document::writeMarkdownFragment(out, *_document, range.first, range.second, mode);
+}
+
+String MarkdownView::getMarkupForRange(uint32_t begin, uint32_t end,
+		document::MarkdownMarkup mode) const {
+	String ret;
+	writeMarkupForRange([&](StringView str) { ret.append(str.data(), str.size()); }, begin, end,
+			mode);
+	return ret;
+}
+
+void MarkdownView::writeTextForRange(const Callback<void(StringView)> &out, uint32_t begin,
+		uint32_t end) const {
+	_flow->writeText(out, begin, end);
+}
+
+String MarkdownView::getTextForRange(uint32_t begin, uint32_t end) const {
+	String ret;
+	writeTextForRange([&](StringView str) { ret.append(str.data(), str.size()); }, begin, end);
+	return ret;
 }
 
 bool MarkdownView::addStyle(StringView css) {
@@ -346,6 +400,151 @@ void MarkdownView::setRegistry(Rc<MarkdownRegistry> &&registry) {
 
 void MarkdownView::setLinkCallback(Function<void(StringView, StringView)> &&cb) {
 	_linkCallback = sp::move(cb);
+}
+
+void MarkdownView::handleLinkActivated(const MarkdownRunMap::Link &link) {
+	if (_linkCallback) {
+		_linkCallback(link.href, link.title);
+	}
+}
+
+// --- selection ---------------------------------------------------------------------------------
+
+void MarkdownView::setSelectionRange(uint32_t begin, uint32_t end) {
+	auto length = getTextLength();
+	begin = sprt::min(begin, length);
+	end = sprt::min(end, length);
+	if (begin > end) {
+		sprt::swap(begin, end);
+	}
+
+	if (_selectionBegin == begin && _selectionEnd == end) {
+		return;
+	}
+
+	_selectionBegin = begin;
+	_selectionEnd = end;
+
+	_flow->applySelection(begin, end);
+	if (_selection) {
+		_selection->updateHandles();
+	}
+
+	/* One selection per scene, and the document is now holding it.
+
+	Through `select()` with an item rather than `selectNode()`, and the difference is the whole
+	reason to be a SelectionOwner: an owner installed by `selectNode` is never told that the
+	selection moved elsewhere, so its highlight would stay on screen next to somebody else's. */
+	if (auto system = SelectionSystem::acquireForNode(this)) {
+		if (end > begin) {
+			SelectionItem item{Rc<Ref>(this), 0};
+			system->select(this, makeSpanView(&item, 1));
+		} else if (system->getOwner() == this) {
+			system->clear();
+		}
+	}
+}
+
+void MarkdownView::selectAll() { setSelectionRange(0, getTextLength()); }
+
+void MarkdownView::clearSelection() { setSelectionRange(0, 0); }
+
+Node *MarkdownView::resolveSelectionNode(const SelectionItem &) const {
+	// The document is one item and it is this node: there are no rows to materialize.
+	return const_cast<MarkdownView *>(this);
+}
+
+void MarkdownView::handleSelectionChanged(SpanView<SelectionItem> items) {
+	if (!items.empty()) {
+		return;
+	}
+
+	// The scene's selection went to somebody else. Drop the highlight WITHOUT touching the system
+	// again: it is in the middle of notifying, and this is the losing half of that call.
+	_selectionBegin = _selectionEnd = 0;
+	_flow->applySelection(0, 0);
+	if (_selection) {
+		_selection->updateHandles();
+	}
+}
+
+String MarkdownView::getSelectedText() const {
+	return getTextForRange(_selectionBegin, _selectionEnd);
+}
+
+String MarkdownView::getSelectedMarkup(document::MarkdownMarkup mode) const {
+	return getMarkupForRange(_selectionBegin, _selectionEnd, mode);
+}
+
+void MarkdownView::setSelectionColor(const Color4F &color) {
+	if (_selectionColor == color) {
+		return;
+	}
+	_selectionColor = color;
+	_flow->setSelectionColor(color);
+}
+
+// --- copying -----------------------------------------------------------------------------------
+
+ClipboardSession *MarkdownView::acquireClipboard() {
+	if (!_clipboard && _director) {
+		_clipboard = Rc<ClipboardSession>::create(_director->getApplication());
+	}
+	return _clipboard;
+}
+
+bool MarkdownView::copy(document::MarkdownMarkup mode) {
+	if (!hasSelection() || _copyPolicy == CopyPolicy::Nothing) {
+		return false;
+	}
+
+	auto clipboard = acquireClipboard();
+	if (!clipboard) {
+		return false;
+	}
+
+	auto plain = getSelectedText();
+	if (_copyPolicy == CopyPolicy::TextOnly) {
+		return clipboard->writeText(plain) == Status::Ok;
+	}
+
+	/* Both representations, markup first.
+
+	The order is the advertisement's preference, not the answer: a reader negotiates its own list
+	against this one. What it buys is that an application that understands Markdown is OFFERED it,
+	while anything asking for plain text still gets something readable. The offer copies the bytes,
+	so these locals may die here. */
+	ClipboardOffer offer;
+	offer.setLabel("Markdown fragment")
+			.addText(getSelectedMarkup(mode), "text/markdown")
+			.addText(plain, "text/plain");
+
+	return clipboard->write(sp::move(offer), this) == Status::Ok;
+}
+
+void MarkdownView::buildContextMenu() {
+	if (getContextMenu(this)) {
+		return;
+	}
+
+	setContextMenu(this, [this](const ContextMenuRequest &) -> Rc<MenuSource> {
+		auto source = Rc<MenuSource>::create();
+
+		// The two copies are offered only when there is something to copy: a menu item that
+		// cannot act is worse than a menu without it.
+		if (hasSelection() && _copyPolicy != CopyPolicy::Nothing) {
+			source->addButton("copy", "Copy", [this](NotNull<MenuSourceButton>) { copy(); });
+			if (_copyPolicy == CopyPolicy::Both) {
+				source->addButton("copy-source", "Copy as Markdown",
+						[this](NotNull<MenuSourceButton>) { copy(document::MarkdownMarkup::Raw); });
+			}
+			source->addSeparator("copy-end");
+		}
+
+		source->addButton("select-all", "Select all",
+				[this](NotNull<MenuSourceButton>) { selectAll(); });
+		return source;
+	});
 }
 
 bool MarkdownView::updateInlineStyles() {
