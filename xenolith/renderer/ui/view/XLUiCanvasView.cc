@@ -40,6 +40,16 @@ constexpr float ZoomControlPadding = 3.0f;
 constexpr float ZoomControlGap = 2.0f;
 constexpr uint16_t ZoomFontSize = 14;
 
+// The wider space between the pair that STEPS the zoom and the three that FRAME it. Five buttons in
+// an even row would be five buttons a person has to read one at a time; the gap is what says the row
+// is two groups, and it costs nothing to draw.
+constexpr float ZoomControlGroupGap = 8.0f;
+
+// The glyph inside a framing button, and the colour every one of the control's marks is drawn in -
+// see the note on setZoomControlEnabled for why a colour is written here at all.
+constexpr float ZoomIconSize = 18.0f;
+constexpr Color4F ZoomControlInk = Color4F(0.94f, 0.94f, 0.96f, 1.0f);
+
 // Above the world, and above whatever a caller has put in it: this is chrome, and a document drawn
 // over its own zoom readout would be a document nobody can zoom out of.
 constexpr ZOrder ZoomControlZOrder = ZOrder(1'000);
@@ -149,6 +159,41 @@ void CanvasView::fit(const sprt::geom::Bounds &bounds, const sprt::geom::FitConf
 	updateZoomControl();
 }
 
+void CanvasView::setFitBounds(Function<sprt::geom::Bounds()> &&fn) {
+	_fitBounds = sp::move(fn);
+
+	// The buttons say so at once rather than at the next press: a control that looks available and
+	// answers nothing is worse than one that says what it cannot do.
+	if (_fitWidth) {
+		_fitWidth->setEnabled(!!_fitBounds);
+		_fitHeight->setEnabled(!!_fitBounds);
+	}
+}
+
+void CanvasView::fit(sprt::geom::FitAxis axis) {
+	if (!_fitBounds) {
+		return;
+	}
+
+	sprt::geom::FitConfig config;
+	config.axis = axis;
+	fit(_fitBounds(), config);
+}
+
+void CanvasView::setZoom(float zoom) {
+	/* THE CENTRE FIRST, and against the OLD viewport. `offset = screenCentre - worldCentre * zoom` is
+	the same equation `fitBounds` solves, with the zoom given instead of computed - and reading the
+	world centre after the scale is written would read it through the NEW zoom, which is the
+	arithmetic that makes a change of scale slide the picture sideways. */
+	auto view = getViewport();
+	const Vec2 screenCentre(_contentSize.width * 0.5f, _contentSize.height * 0.5f);
+	const Vec2 worldCentre = view.toWorld(screenCentre);
+
+	view.zoom = sprt::geom::clampZoom(zoom, _limits);
+	view.offset = screenCentre - worldCentre * view.zoom;
+	setViewport(view);
+}
+
 Vec2 CanvasView::worldLocation(const Vec2 &sceneLocation) const {
 	return getViewport().toWorld(convertToNodeSpace(sceneLocation));
 }
@@ -206,7 +251,7 @@ void CanvasView::setZoomControlEnabled(bool value) {
 	if (!value) {
 		_zoomControl->removeFromParent(true);
 		_zoomControl = nullptr;
-		_zoomOut = _zoomIn = nullptr;
+		_zoomOut = _zoomIn = _fitWidth = _fitHeight = _zoomReset = nullptr;
 		_zoomLabel = nullptr;
 		_zoomShown = -1;
 		return;
@@ -232,13 +277,41 @@ void CanvasView::setZoomControlEnabled(bool value) {
 			Rc<Button>::create(StringView("+"), [this] { zoomBy(ZoomStepRatio); }));
 	_zoomIn->setName("canvas-zoom-in");
 
-	for (auto *b : {_zoomOut, _zoomIn}) {
+	/* AND THE THREE THAT FRAME. The two axes go through `fit(FitAxis)`, which asks the owner what
+	there is to frame - so a canvas that never said is a canvas whose two buttons are disabled, and
+	`setFitBounds` turns them on the moment it is told. "1:1" is not one of them: a reset needs no
+	bounds and is therefore always available, which is also why it is the button of the three that a
+	canvas with nothing declared can still be got out of a bad zoom with. */
+	_fitWidth =
+			_zoomControl->addChild(Rc<Button>::create([this] { fit(sprt::geom::FitAxis::Width); }));
+	_fitWidth->setName("canvas-zoom-fit-width");
+	_fitWidth->setIcon(IconName::Action_swap_horiz_solid);
+	_fitWidth->setEnabled(!!_fitBounds);
+
+	_fitHeight = _zoomControl->addChild(
+			Rc<Button>::create([this] { fit(sprt::geom::FitAxis::Height); }));
+	_fitHeight->setName("canvas-zoom-fit-height");
+	_fitHeight->setIcon(IconName::Action_swap_vert_solid);
+	_fitHeight->setEnabled(!!_fitBounds);
+
+	// In words rather than as a glyph, and next to a readout in percent on purpose: "1:1" is what the
+	// percentage will say once it is pressed, and no icon in the set says that without being learned.
+	_zoomReset =
+			_zoomControl->addChild(Rc<Button>::create(StringView("1:1"), [this] { resetZoom(); }));
+	_zoomReset->setName("canvas-zoom-reset");
+
+	for (auto *b : {_zoomOut, _zoomIn, _fitWidth, _fitHeight, _zoomReset}) {
+		b->setType("button");
 		b->addStyleClass("canvas-zoom-button");
 		b->setPathColor(Color4B(0x3A, 0x3A, 0x46, 0xFF), true);
 		b->setBorderRadius(3.0f);
-		b->setLabelColor(Color4F(0.94f, 0.94f, 0.96f, 1.0f));
+		b->setLabelColor(ZoomControlInk);
 		if (auto label = b->getLabel()) {
 			label->setFontSize(ZoomFontSize);
+		}
+		if (auto glyph = b->getIconSprite()) {
+			glyph->setContentSize(Size2(ZoomIconSize, ZoomIconSize));
+			glyph->setColor(ZoomControlInk);
 		}
 	}
 
@@ -276,22 +349,36 @@ void CanvasView::layoutZoomControl() {
 					+ _zoomMargin * (1.0f - 2.0f * _zoomCorner.y)));
 
 	const float inner = size.height - ZoomControlPadding * 2.0f;
-	const float labelWidth =
-			size.width - ZoomControlPadding * 2.0f - ZoomButtonSize * 2.0f - ZoomControlGap * 2.0f;
+	const float mid = size.height * 0.5f;
 
-	_zoomOut->setAnchorPoint(Vec2(0.0f, 0.5f));
-	_zoomOut->setContentSize(Size2(ZoomButtonSize, inner));
-	_zoomOut->setPosition(Vec2(ZoomControlPadding, size.height * 0.5f));
+	// The readout takes WHATEVER IS LEFT, and is given it as a fixed width: the number changing from
+	// two digits to three must not walk the buttons around under the pointer. Everything else in the
+	// row has a size stated here, so "what is left" is arithmetic rather than a measurement.
+	const float labelWidth = size.width - ZoomControlPadding * 2.0f - ZoomButtonSize * 5.0f
+			- ZoomControlGap * 4.0f - ZoomControlGroupGap;
 
-	_zoomIn->setAnchorPoint(Vec2(1.0f, 0.5f));
-	_zoomIn->setContentSize(Size2(ZoomButtonSize, inner));
-	_zoomIn->setPosition(Vec2(size.width - ZoomControlPadding, size.height * 0.5f));
+	// LEFT TO RIGHT WITH ONE CURSOR. Six things in a row, and the alternative - each placed against
+	// the edge it is nearest - is six expressions that have to be kept consistent by hand.
+	float x = ZoomControlPadding;
+	auto place = [&](Node *node, float width, float gapAfter) {
+		node->setAnchorPoint(Vec2(0.0f, 0.5f));
+		node->setContentSize(Size2(width, inner));
+		node->setPosition(Vec2(x, mid));
+		x += width + gapAfter;
+	};
 
-	// The readout is CENTRED in the run between the buttons and given a fixed width, so the number
-	// changing width does not walk the two buttons around under the pointer.
-	_zoomLabel->setAnchorPoint(Vec2(0.5f, 0.5f));
+	place(_zoomOut, ZoomButtonSize, ZoomControlGap);
+
+	// The label sizes its own height from the text, so it is placed rather than sized.
+	_zoomLabel->setAnchorPoint(Vec2(0.0f, 0.5f));
 	_zoomLabel->setWidth(labelWidth);
-	_zoomLabel->setPosition(Vec2(size.width * 0.5f, size.height * 0.5f));
+	_zoomLabel->setPosition(Vec2(x, mid));
+	x += labelWidth + ZoomControlGap;
+
+	place(_zoomIn, ZoomButtonSize, ZoomControlGroupGap);
+	place(_fitWidth, ZoomButtonSize, ZoomControlGap);
+	place(_fitHeight, ZoomButtonSize, ZoomControlGap);
+	place(_zoomReset, ZoomButtonSize, ZoomControlPadding);
 }
 
 void CanvasView::updateZoomControl() {

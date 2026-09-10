@@ -91,7 +91,10 @@ def highlighted(tree):
     return None
 
 
-def start_app(binary):
+def start_app(binary, args=()):
+    """`args` are handed to the binary after the harness's own four. One caller needs them, and it
+    needs them for the one option that changes what every other check here silently assumes:
+    `--density`, which redefines how many points the window is laid out in."""
     env = dict(os.environ)
     env["XL_MENU_TEST"] = "1"
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + ADDR
@@ -99,7 +102,8 @@ def start_app(binary):
         os.unlink(ADDR)
     except OSError:
         pass
-    proc = subprocess.Popen([binary, "--headless", "--width", "1024", "--height", "768"],
+    proc = subprocess.Popen(
+            [binary, "--headless", "--width", "1024", "--height", "768"] + list(args),
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(200):
         if os.path.exists(ADDR):
@@ -609,6 +613,65 @@ try:
             "submenu-open:submenu" in (st["log"] or []), st["log"])
     check("which is still not an activation", st["activations"] == 0, st["activations"])
     s.invoke("menu.hover-config", enabled=True)
+
+    # =============================================================================================
+    print("== a popup is placed in the WINDOW's points, not in the scene's ==")
+    # THERE ARE TWO DENSITIES AND THEY ARE NOT THE SAME NUMBER. `surfaceDensity` is the display's,
+    # and it is what the window system scales by; `density` is that times the application's own
+    # `WindowInfo::density`, and it is what the scene graph is laid out in. `placementAnchorRect`
+    # converts a widget's corners into the scene CONTENT's space, which is pixels over the second -
+    # so handing that straight to a WindowPlacement is right only while the first is the whole of
+    # it. With `--density 1.5` every menu in every application opened a third of the way from the
+    # widget it belonged to, and no check saw it because no check passed the option.
+    #
+    # ASSERTED AS A RATIO BETWEEN TWO RUNS, so that nothing here has to restate the placement
+    # arithmetic - which is the thing under test and would agree with itself.
+
+    def anchor_and_popup():
+        """The open button's box in the layout's own points, and where the popup landed."""
+        s.invoke("menu.open")
+        s.ok("frame", count=3)
+        time.sleep(0.3)
+        dump = s.ok("scene")
+        text = dump.get("text") or (dump.get("result") or {}).get("text", "")
+        lines = text.split("\n")
+        # The first line with a size is the scene content: the popup's Y is measured DOWN from its
+        # top edge, so the flip needs its height.
+        content_h = next(float(l.split("sz=")[1].split(" ")[0].split("x")[1])
+                         for l in lines if "sz=" in l)
+        line = next(l for l in lines if "#open-popup " in l)
+        x, y = (float(v) for v in line.split("pos=(")[1].split(")")[0].split(","))
+        win = [w for w in s.ok("windows")["windows"] if w["type"] == "Popup"][0]
+        return {"anchorX": x, "anchorYDown": content_h - y, "x": win["x"], "y": win["y"]}
+
+    plain = anchor_and_popup()
+    check("at the default density a popup opens on its anchor's own left edge",
+          plain["x"] == round(plain["anchorX"]), plain)
+
+    s.call("quit")
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    s.close()
+
+    proc = start_app(binary, ("--density", "1.5"))
+    s = Session()
+    s.ok("frame", count=3)
+    time.sleep(0.3)
+    dense = anchor_and_popup()
+
+    # The precondition, said out loud: the anchor is in the SAME place in the layout both times. It
+    # is not the same number of pixels - the window is 1024x768 of those either way, so at 1.5 the
+    # layout has two thirds as many points to put it in - but this button is placed from the top
+    # left, so its own box is where it was.
+    check("the anchor sits in the same place in the layout at either density",
+          dense["anchorX"] == plain["anchorX"]
+          and abs(dense["anchorYDown"] - plain["anchorYDown"]) < 0.5, (plain, dense))
+
+    check("and the popup follows it, a density-and-a-half further along",
+          dense["x"] == round(plain["x"] * 1.5) and dense["y"] == round(plain["y"] * 1.5),
+          (plain, dense))
 
 finally:
     try:

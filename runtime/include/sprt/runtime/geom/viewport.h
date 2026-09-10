@@ -155,9 +155,26 @@ struct SPRT_API Bounds {
 	void add(const Rect &);
 };
 
+// Which axes decide the zoom.
+//
+// Only the zoom: padding and centring are the same in all three cases, and that is what makes
+// "fitted by width" mean what a person expects - the world fills the surface across, is centred
+// down, and runs off the top and bottom if it is taller than the frame allows.
+//
+// `stappler::font::Autofit` names these three and two more (Cover, Contain) for image placement, and
+// this enum's Both IS its Contain. It is not reused because it lives a floor above the runtime,
+// which cannot see it; the two are deliberately spelled the same way.
+enum class FitAxis {
+	Both,
+	Width,
+	Height,
+};
+
 struct SPRT_API FitConfig {
 	// Screen pixels kept clear on every side.
 	float padding = 64.0f;
+
+	FitAxis axis = FitAxis::Both;
 };
 
 // The viewport that frames `bounds` centred in a surface of `screenSize`.
@@ -170,8 +187,10 @@ struct SPRT_API FitConfig {
 // Degenerate inputs, all of which a caller can reach:
 //   * bounds not valid (an empty document) -> the origin at the centre of the surface, zoom clamped
 //     from 1. There is nothing to frame, and a viewport is still owed.
-//   * bounds of zero extent (one object with no size) -> the zoom goes to the limit's maximum rather
-//     than to 1, which is the only answer that does not divide by zero.
+//   * bounds of zero extent ON AN AXIS THAT DECIDES (one object with no size) -> the zoom goes to the
+//     limit's maximum rather than to 1, which is the only answer that does not divide by zero. An
+//     axis the config does not fit by is never asked about its extent, so a world in a single row
+//     has a width to be fitted by like any other.
 //
 // The caller must not frame into a surface that has no size yet: every fit run inside a "ready"
 // callback centres the world in a 1x1 frame, and a separate "the host has real dimensions now" flag

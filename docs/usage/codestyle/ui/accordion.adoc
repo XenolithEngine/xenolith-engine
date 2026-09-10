@@ -100,6 +100,47 @@ Either way the section's floor is its header plus the `minSize` its descriptor d
 where the shared registry's minimum means something on this side, the way it floors a dock frame on
 the other.
 
+### What `Fit` measures, and what it does when there is nothing to measure
+
+`Fit` puts `flex-basis: fit-content` on the section, on its body **and** on the panel inside it. All
+three matter: the measurement pass resolves an item with a definite basis to that basis — `grow` is
+skipped, since there is no free space to share out in a size nobody has fixed yet — so one link in
+that chain left at `0` makes the whole section measure as its header.
+
+**A panel that cannot answer a measurement is left at the floor instead.** `measureNode` falls back
+to a node's current `ContentSize` when nothing in it opted into the protocol, which is a fine answer
+for placing that node and a useless one here: it is the size this very layout gave it last frame, so
+the section would keep whatever height it happened to have and never give any of it back. So the
+chain above is written only when `LayoutSystem::canMeasure()` says the panel has something to say —
+a `MeasureComponent`, or a system with `SystemFlags::HandleMeasure`.
+
+**A panel that states its height must state it before it is parked.** The question is asked when the
+section lays the panel out; one that grew its `MeasureComponent` on its first rebuild was asked a
+frame too early and answered no, permanently. Publish an empty component (a negative axis is
+"unspecified") when the widget is built, and fill it in later.
+
+**Write the height into `maxContent`, not into `normal`.** `normal` is where the style resolver
+publishes a CSS width or height, and it publishes the pair — an axis the sheet did not name arrives
+as `-1`. A panel writing its height there loses it to the next resolve of any rule that gives it a
+width. `maxContent` is the intrinsic answer, which is what a measured height is, and it is what
+`MeasureMode::MaxContent` — the mode `fit-content` resolves through — asks for first.
+
+### One section against the view
+
+`setSectionSizing(id, sizing)` puts a single section under the other policy; `clearSectionSizing`
+puts it back, and `getSectionSizing` answers what actually decides a section's height. The case it
+exists for is a section with nothing in it: under `Fill` every open section takes an equal share, so
+a findings panel that found nothing centres one sentence in a third of a rail. That section under
+`Fit` measures its content and stops there, while its neighbours go on sharing what is left.
+
+The view's own policy is untouched and so is its scrolling — a `Fit` section inside a `Fill` view
+does not scroll, it simply does not grow. Note which way round that makes the risk: `Fit` asks for
+the whole height of what a section holds, and inside a `Fill` view there is nothing to scroll if the
+answer is larger than the rail. Use it for content whose height is bounded by construction.
+
+An override set before the panel arrives is honoured when it does, and `setSizing` does not clear
+one: a per-section answer is a fact about that section rather than about the mode it is in.
+
 ## Dropping
 
 One target on the view, never one per section: a per-section target cannot answer for the gap after

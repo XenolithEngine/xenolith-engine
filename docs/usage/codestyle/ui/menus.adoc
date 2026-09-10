@@ -170,12 +170,27 @@ window with no display in play.
 arithmetic every hand-written popup in this tree has got wrong at least once: the
 anchor rect comes from the node's four **corners** (the node may be rotated or
 scaled), converted into the scene *content's* space (which undoes the density
-scale — scene space is physical pixels, `WindowPlacement` is logical points), and
+scale — scene space is physical pixels, `WindowPlacement` is logical points),
+scaled by `density / surfaceDensity` (the application's own `WindowInfo::density`,
+which is 1 unless something asked for another — see below), and
 flipped into Y-down at the end. It lives in
 [XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h) rather than
 here because a menu, a dropdown and a hint have to answer "where is the anchor"
 the same way — `ui::TooltipSystem` once answered it differently, and its hints
 landed tens of points off on any window whose density was not 1.
+
+**There are two densities and only one of them is the window system's.**
+`FrameConstraints::surfaceDensity` is the display's, and it is what the window
+system scales by: every backend divides pixels by it to say where a window is and
+multiplies by it to be told where to put one. `FrameConstraints::density` is that
+times the application's own `WindowInfo::density` — the factor `--density` sets —
+and it is what the scene graph is laid out in. So the content's space is pixels
+over the second and a `WindowPlacement` is pixels over the first, and the step
+between them is the ratio. It is 1 for an application that never asks for a
+density of its own, which is why this went unnoticed until one did: with
+`--density 1.5` every menu in the window opened a third of the way from the widget
+it belonged to. `tests/window/menu-check.py` runs the stand twice, once at each
+density, and asserts that the popup follows its anchor.
 
 **The surface itself is not the menu's.** `openMenu` builds it through
 `ui::openPopupSurface`
