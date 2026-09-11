@@ -7,6 +7,7 @@ compatibility-version: 0
 exports:
   - targets:         [ x86_64-macos, arm64-macos ]
     symbols:         [
+        __objc_empty_cache,
         _objc_alloc,
         _objc_alloc_init,
         _objc_autorelease,
@@ -16,7 +17,6 @@ exports:
         _OBJC_CLASS_$_NSObject,
         _objc_copyWeak,
         _objc_destroyWeak,
-        __objc_empty_cache,
         _objc_enumerationMutation,
         _objc_getClass,
         _objc_initWeak,

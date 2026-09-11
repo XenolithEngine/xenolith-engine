@@ -194,7 +194,7 @@ $(OSS_STAMP)/libplatform: $(OPEN_DIR)/patches/os-lock-flags.h | $(APPLE_OSS_SRC)
 	cp -f $(APPLE_OSS_SRC)/libplatform/include/setjmp.h   $(DST_INC)/
 	cp -f $(APPLE_OSS_SRC)/libplatform/include/ucontext.h $(DST_INC)/
 	grep -q os_unfair_lock_flags_t $(DST_INC)/os/lock.h || \
-		sed -i '/^void os_unfair_lock_assert_not_owner/r $(OPEN_DIR)/patches/os-lock-flags.h' $(DST_INC)/os/lock.h
+		perl -i -pe 'BEGIN { local $$/; open my $$fh, q(<$(OPEN_DIR)/patches/os-lock-flags.h) or die $$!; $$ins = <$$fh>; } $$_ .= $$ins if /^void os_unfair_lock_assert_not_owner/' $(DST_INC)/os/lock.h
 	@touch $@
 
 # libclosure: the Blocks runtime header (CFRunLoopPerformBlock uses ^{} blocks)
@@ -238,7 +238,7 @@ $(OSS_STAMP)/xnu: | $(APPLE_OSS_SRC)/xnu $(OSS_STAMP)
 	@for h in mach/i386/_structs.h mach/arm/_structs.h; do \
 		f=$(DST_INC)/$$h; \
 		[ -e "$$f" ] && ! grep -q '<stdint.h>' "$$f" && \
-			sed -i 's|#include <machine/types.h>|#include <machine/types.h>\n#include <stdint.h>|' "$$f" || true; \
+			perl -i -pe 's|#include <machine/types.h>|#include <machine/types.h>\n#include <stdint.h>|' "$$f" || true; \
 	done
 	cp -f $(APPLE_OSS_SRC)/xnu/libsyscall/mach/mach/vm_page_size.h $(DST_INC)/mach/
 	-cp -f $(APPLE_OSS_SRC)/xnu/libsyscall/mach/mach/mach_init.h  $(DST_INC)/mach/ 2>/dev/null || true
@@ -285,7 +285,7 @@ $(OSS_STAMP)/dyld: $(OSS_STAMP)/xnu | $(APPLE_OSS_SRC)/dyld $(OSS_STAMP)
 	@# dyld-1160.6 dyld.h USES DYLD_EXCLAVEKIT_UNAVAILABLE (a newer availability
 	@# annotation) but never defines it — only DYLD_DRIVERKIT_UNAVAILABLE. Inject an
 	@# empty guarded fallback.
-	sed -i 's/^#ifdef __DRIVERKIT_19_0$$/#ifndef DYLD_EXCLAVEKIT_UNAVAILABLE\n#define DYLD_EXCLAVEKIT_UNAVAILABLE\n#endif\n#ifdef __DRIVERKIT_19_0/' $(DST_INC)/mach-o/dyld.h
+	perl -i -pe 's/^#ifdef __DRIVERKIT_19_0$$/#ifndef DYLD_EXCLAVEKIT_UNAVAILABLE\n#define DYLD_EXCLAVEKIT_UNAVAILABLE\n#endif\n#ifdef __DRIVERKIT_19_0/' $(DST_INC)/mach-o/dyld.h
 	cp -f $(APPLE_OSS_SRC)/dyld/include/dlfcn.h           $(DST_INC)/
 	@touch $@
 
@@ -317,7 +317,7 @@ $(OSS_STAMP)/Carbon: | $(APPLE_OSS_SRC)/CarbonHeaders $(OSS_STAMP)
 $(OSS_STAMP)/CF: $(OSS_STAMP)/libdispatch $(OSS_STAMP)/Carbon | $(APPLE_OSS_SRC)/swift-foundation $(OSS_STAMP)
 	@mkdir -p $(DST_INC)/CoreFoundation
 	cp -f $(APPLE_OSS_SRC)/swift-foundation/Sources/CoreFoundation/include/*.h $(DST_INC)/CoreFoundation/
-	sed -i 's/^#define DEPLOYMENT_RUNTIME_SWIFT 1/#define DEPLOYMENT_RUNTIME_SWIFT 0/' $(DST_INC)/CoreFoundation/CFAvailability.h
+	perl -i -pe 's/^#define DEPLOYMENT_RUNTIME_SWIFT 1/#define DEPLOYMENT_RUNTIME_SWIFT 0/' $(DST_INC)/CoreFoundation/CFAvailability.h
 	@touch $@
 
 $(OSS_STAMP)/Security: $(OSS_STAMP)/CF | $(APPLE_OSS_SRC)/Security $(OSS_STAMP)
@@ -376,7 +376,7 @@ $(OSS_STAMP)/libc: $(OSS_STAMP)/xnu | $(APPLE_OSS_SRC)/Libc $(APPLE_OSS_SRC)/lib
 	cp -Rf $(APPLE_OSS_SRC)/xnu/bsd/sys/.                 $(DST_INC)/sys/
 	@# bake the platform macro right after the include guard (SDK parity — see
 	@# the SP_XNU_PLATFORM block at the top of this file)
-	sed -i 's/^#define _CDEFS_H_$$/&\n\n#ifndef XNU_PLATFORM_$(SP_XNU_PLATFORM)\n#define XNU_PLATFORM_$(SP_XNU_PLATFORM) 1\n#endif/' $(DST_INC)/sys/cdefs.h
+	perl -i -pe 's/^#define _CDEFS_H_$$/$$&\n\n#ifndef XNU_PLATFORM_$(SP_XNU_PLATFORM)\n#define XNU_PLATFORM_$(SP_XNU_PLATFORM) 1\n#endif/' $(DST_INC)/sys/cdefs.h
 	grep -q 'XNU_PLATFORM_$(SP_XNU_PLATFORM) 1' $(DST_INC)/sys/cdefs.h
 	-cp -Rf $(APPLE_OSS_SRC)/xnu/bsd/machine/.           $(DST_INC)/machine/ 2>/dev/null || true
 	-cp -Rf $(APPLE_OSS_SRC)/xnu/bsd/i386/.              $(DST_INC)/i386/ 2>/dev/null || true
@@ -400,7 +400,7 @@ $(OSS_STAMP)/libc: $(OSS_STAMP)/xnu | $(APPLE_OSS_SRC)/Libc $(APPLE_OSS_SRC)/lib
 	@# the public xlocale/_*.h (strcasecmp_l, ...) never load. Strip those blocks to
 	@# match the public SDK header form.
 	@for f in `grep -rl '//Begin-Libc' $(DST_INC) 2>/dev/null`; do \
-		sed -i '\#//Begin-Libc#,\#//End-Libc#d' "$$f" ; \
+		perl -ni -e 'print unless m{//Begin-Libc} .. m{//End-Libc}' "$$f" ; \
 	done
 	@touch $@
 

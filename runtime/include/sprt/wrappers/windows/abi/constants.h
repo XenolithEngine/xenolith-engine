@@ -211,6 +211,13 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define __SPRT_INVALID_FILE_ATTRIBUTES     ((DWORD)-1)
 #define __SPRT_INFINITE                    0xFFFFFFFF
 
+/* Control event types for SetConsoleCtrlHandler handlers (real SDK values) */
+#define __SPRT_CTRL_C_EVENT         0
+#define __SPRT_CTRL_BREAK_EVENT     1
+#define __SPRT_CTRL_CLOSE_EVENT     2
+#define __SPRT_CTRL_LOGOFF_EVENT    5
+#define __SPRT_CTRL_SHUTDOWN_EVENT  6
+
 #define __SPRT_HANDLE_FLAG_INHERIT             0x00000001
 #define __SPRT_HANDLE_FLAG_PROTECT_FROM_CLOSE  0x00000002
  

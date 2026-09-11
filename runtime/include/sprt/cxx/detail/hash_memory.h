@@ -503,17 +503,6 @@ public:
 
 			chain = lookup_bucket_chain(_storage, _capacity, hashValue);
 		} else if (chain->active) {
-			/* [unord.req]: grow when the insert would take load_factor() past max_load_factor(),
-			where load_factor() is size() / bucket_count().
-
-			Landing on an occupied bucket is not by itself a reason to grow - it is what an
-			open-addressed table does, and with any real hash it happens long before the table is
-			full (the birthday bound). The previous test measured a private ratio of entries to
-			OCCUPIED buckets, which is above 1 whenever a single entry has ever been displaced; at
-			the standard max_load_factor of 1.0 that grew the table on the first collision and
-			kept growing until no key collided with any other - on the order of size^2 buckets.
-			Measured: a map of 1601 pointers reached two million buckets and a hundred megabytes,
-			and a large document exhausted the machine. */
 			if (float(_size + 1) > _maxLoadFactor * float(_capacity) || _size + 1 >= _capacity) {
 				rehash(newCapacity);
 
@@ -1163,9 +1152,6 @@ protected:
 	size_type _size = 0;
 	size_type _capacity = 0;
 	size_type _allocated = 0;
-	// Entries not sitting in their own home bucket. A diagnostic: it says how well the hasher
-	// spreads THIS key set, and a table where it approaches _size is one whose lookups walk
-	// chains. The growth policy is the standard's load factor and does not read it.
 	size_type _hashMisses = 0;
 	float _maxLoadFactor = DefaultMaxLoadFactor;
 };

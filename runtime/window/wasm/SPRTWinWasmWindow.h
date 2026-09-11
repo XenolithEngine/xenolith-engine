@@ -31,11 +31,14 @@ public:
 	// on the window to patch in the real size (see Surface::getSurfaceOptions).
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const override;
 	virtual Extent2 getExtent() const override { return _extent; }
-	virtual void cancelTextInput() override { }
+	virtual void dispatchPendingEvents() override;
+	virtual void cancelTextInput() override;
 	virtual bool updateTextInput(const TextInputRequest &,
-			TextInputFlags = TextInputFlags::RunIfDisabled) override { return false; }
+			TextInputFlags = TextInputFlags::RunIfDisabled) override;
 
 protected:
+	void pollHostInput();
+
 	Extent2 _extent;
 	float _density = 1.0f;
 };

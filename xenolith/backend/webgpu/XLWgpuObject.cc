@@ -73,32 +73,29 @@ WGPUBufferUsage getWGPUBufferUsage(core::BufferUsage usage) {
 	return ret;
 }
 
-bool Buffer::setup(Device &dev, const core::BufferInfo &info,
-		const Callback<size_t(uint8_t *, uint64_t)> *fill) {
+bool Buffer::setup(Device &dev, const core::BufferInfo &info, bool willUpload) {
 	_info = info;
 
 	WGPUBufferDescriptor bufDesc = WGPU_BUFFER_DESCRIPTOR_INIT;
 	bufDesc.label = WGPUStringView{info.key.data(), info.key.size()};
 	bufDesc.usage = getWGPUBufferUsage(info.usage);
-	bufDesc.size = info.size;
-	bufDesc.mappedAtCreation = fill != nullptr;
+	uint64_t gpuSize = info.size;
+	if (willUpload) {
+		bufDesc.usage |= WGPUBufferUsage_CopyDst;
+		if (gpuSize % 4) {
+			gpuSize += 4 - (gpuSize % 4);
+		}
+		if (gpuSize == 0) {
+			gpuSize = 4;
+		}
+	}
+	bufDesc.size = gpuSize;
+	bufDesc.mappedAtCreation = false;
 
 	_buffer = wgpuDeviceCreateBuffer(dev.getDevice(), &bufDesc);
 	if (!_buffer) {
 		log::source().error("webgpu::Buffer", "Fail to create buffer: ", info.key);
 		return false;
-	}
-
-	if (fill) {
-		auto mem = reinterpret_cast<uint8_t *>(wgpuBufferGetMappedRange(_buffer, 0, info.size));
-		if (!mem) {
-			log::source().error("webgpu::Buffer", "Fail to map buffer: ", info.key);
-			wgpuBufferRelease(_buffer);
-			_buffer = nullptr;
-			return false;
-		}
-		(*fill)(mem, info.size);
-		wgpuBufferUnmap(_buffer);
 	}
 
 	return core::BufferObject::init(dev,
@@ -107,28 +104,76 @@ bool Buffer::setup(Device &dev, const core::BufferInfo &info,
 	}, core::ObjectType::Buffer, core::ObjectHandle(_buffer));
 }
 
-bool Buffer::init(Device &dev, const core::BufferInfo &info, BytesView initialData) {
-	if (initialData.empty()) {
-		return setup(dev, info, nullptr);
+bool Buffer::upload(Device &dev, uint64_t gpuSize, const uint8_t *bytes, size_t n) {
+	if (!_buffer || !bytes || n == 0) {
+		return true;
 	}
+	auto tmp = static_cast<uint8_t *>(::malloc(size_t(gpuSize)));
+	if (!tmp) {
+		log::source().error("webgpu::Buffer", "Fail to allocate upload: ", _info.key);
+		return false;
+	}
+	sprt::memset(tmp, 0, size_t(gpuSize));
+	sprt::memcpy(tmp, bytes, sprt::min(n, size_t(gpuSize)));
+	wgpuQueueWriteBuffer(dev.getQueue(), _buffer, 0, tmp, size_t(gpuSize));
+	::free(tmp);
+	return true;
+}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
-		auto bytes = sprt::min(uint64_t(initialData.size()), size);
-		sprt::memcpy(mem, initialData.data(), bytes);
-		return size_t(bytes);
-	});
-	return setup(dev, info, &cb);
+bool Buffer::upload(Device &dev, uint64_t gpuSize, BytesView initialData) {
+	return upload(dev, gpuSize, initialData.data(), initialData.size());
+}
+
+bool Buffer::upload(Device &dev, uint64_t gpuSize, const core::BufferData *src) {
+	if (!_buffer || !src) {
+		return true;
+	}
+	auto tmp = static_cast<uint8_t *>(::malloc(size_t(gpuSize)));
+	if (!tmp) {
+		log::source().error("webgpu::Buffer", "Fail to allocate upload: ", _info.key);
+		return false;
+	}
+	sprt::memset(tmp, 0, size_t(gpuSize));
+	src->writeData(tmp, size_t(src->size ? src->size : gpuSize));
+	wgpuQueueWriteBuffer(dev.getQueue(), _buffer, 0, tmp, size_t(gpuSize));
+	::free(tmp);
+	return true;
+}
+
+bool Buffer::init(Device &dev, const core::BufferInfo &info, BytesView initialData) {
+	const bool willUpload = !initialData.empty();
+	if (!setup(dev, info, willUpload)) {
+		return false;
+	}
+	uint64_t gpuSize = _info.size;
+	if (willUpload) {
+		if (gpuSize % 4) {
+			gpuSize += 4 - (gpuSize % 4);
+		}
+		if (gpuSize == 0) {
+			gpuSize = 4;
+		}
+		return upload(dev, gpuSize, initialData);
+	}
+	return true;
 }
 
 bool Buffer::init(Device &dev, const core::BufferData &data) {
-	if (data.data.empty() && !data.memCallback && !data.stdCallback) {
-		return setup(dev, data, nullptr);
+	const bool willUpload = !data.data.empty() || data.memCallback || data.stdCallback;
+	if (!setup(dev, data, willUpload)) {
+		return false;
 	}
-
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
-		return data.writeData(mem, size_t(size));
-	});
-	return setup(dev, data, &cb);
+	if (!willUpload) {
+		return true;
+	}
+	uint64_t gpuSize = data.size;
+	if (gpuSize % 4) {
+		gpuSize += 4 - (gpuSize % 4);
+	}
+	if (gpuSize == 0) {
+		gpuSize = 4;
+	}
+	return upload(dev, gpuSize, &data);
 }
 
 bool Sampler::init(Device &dev, const core::SamplerInfo &info) {
@@ -236,9 +281,13 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 		// Blocks, not pixels - see core::getFormatImageSize.
 		uint64_t expected = core::getFormatImageSize(info.format, info.extent);
 
-		Vector<uint8_t> tmp;
-		tmp.resize(expected, 0);
-		data.writeData(tmp.data(), size_t(expected));
+		auto tmp = static_cast<uint8_t *>(::malloc(size_t(expected)));
+		if (!tmp) {
+			log::source().error("webgpu::Image", "Fail to allocate upload: ", data.key);
+			return false;
+		}
+		sprt::memset(tmp, 0, size_t(expected));
+		data.writeData(tmp, size_t(expected));
 
 		WGPUTexelCopyTextureInfo dst;
 		dst.texture = _texture;
@@ -255,8 +304,9 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 		WGPUExtent3D writeSize{info.extent.width, info.extent.height,
 			sprt::max(info.extent.depth, info.arrayLayers.get())};
 
-		wgpuQueueWriteTexture(dev.getQueue(), &dst, tmp.data(), size_t(expected), &layout,
+		wgpuQueueWriteTexture(dev.getQueue(), &dst, tmp, size_t(expected), &layout,
 				&writeSize);
+		::free(tmp);
 	}
 
 	return true;

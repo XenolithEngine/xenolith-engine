@@ -259,20 +259,27 @@ size_t BufferData::writeData(uint8_t *mem, size_t expected) const {
 
 	if (!data.empty()) {
 		auto outsize = data.size();
-		sprt::memcpy(mem, data.data(), size);
+		const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(data.size()), size)));
+		sprt::memcpy(mem, data.data(), n);
 		return outsize;
 	} else if (memCallback) {
 		size_t outsize = size;
-		memCallback(mem, expected, [&, this](BytesView data) {
-			outsize = data.size();
-			sprt::memcpy(mem, data.data(), size);
+		memCallback(mem, expected, [&, this](BytesView view) {
+			outsize = view.size();
+			const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(view.size()), size)));
+			if (mem && view.data() && n) {
+				sprt::memcpy(mem, view.data(), n);
+			}
 		});
 		return outsize;
 	} else if (stdCallback) {
 		size_t outsize = size;
-		stdCallback(mem, expected, [&, this](BytesView data) {
-			outsize = data.size();
-			sprt::memcpy(mem, data.data(), size);
+		stdCallback(mem, expected, [&, this](BytesView view) {
+			outsize = view.size();
+			const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(view.size()), size)));
+			if (mem && view.data() && n) {
+				sprt::memcpy(mem, view.data(), n);
+			}
 		});
 		return outsize;
 	}
