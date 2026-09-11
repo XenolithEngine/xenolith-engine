@@ -92,7 +92,7 @@ protected:
 	void buildInputBar();
 
 	ChatBubble *appendBubble(ChatRole role);
-	ChatBubble *appendCard(StringView styleClass);
+	ChatBubble *appendCard(StringView styleClass, bool markdown = false);
 
 	// --- one request -----------------------------------------------------
 	/* Sends the history as it stands and hangs a fresh assistant bubble under it. Called for a new

@@ -24,6 +24,7 @@
 
 #include "agentchat/ChatHistory.h"
 #include "XLUiPanel.h"
+#include "XLUiMarkdownView.h"
 #include "XL2dLabel.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
@@ -45,18 +46,48 @@ A per-node custom property is the supported channel for a value that differs per
 (ui::setStyleVariable). It reads as a declaration written for this node, the sheet picks it up with
 var(), and both widths are therefore definite before anything is measured. The bubble is one share
 of the log rather than the width of its own text, because measuring the text would need the
-formatted layout, and that only exists after the pass that needed the answer. */
+formatted layout, and that only exists after the pass that needed the answer.
+
+THE ANSWER SLOT IS EITHER A LABEL OR A DOCUMENT. A question, a system note and a tool result are
+flat text and get a Label. What a model writes is Markdown - headings, lists, fenced code - and gets
+a ui::MarkdownView, which turns it into real nodes styled by the same sheet as everything else here.
+Only that one slot differs; the thinking above it and the line under it stay labels either way.
+
+The two slots are measured differently, and the difference is the reason there are two paths at all.
+A Label reports the height its own text came to. A MarkdownView deliberately never measures itself -
+its box is its owner's to set, which is what lets the caller decide the width every paragraph in it
+wraps to - so the height of an answer is read off the body node INSIDE it, one pass after the text
+was committed. */
 class ChatBubble : public ui::Panel {
 public:
 	virtual ~ChatBubble() = default;
 
 	/* The style class the bubble carries, which is what the sheet keys off. A chat message passes
-	its role; a saved entry passes its own name, so the same card serves both columns. */
+	its role; a saved entry passes its own name, so the same card serves both columns.
+
+	`markdown` chooses the answer slot: a ui::MarkdownView rather than a Label. It is decided here
+	and never changed, because the two slots are measured by different means.
+
+	The one-argument form is spelled out rather than defaulted: ui::Panel publishes its base
+	`init(StringView)` - the one that takes SVG path data - and only a declaration with the SAME
+	parameter list hides it. A default argument does not, and the call then has two equally good
+	candidates. */
 	virtual bool init(StringView styleClass);
+	virtual bool init(StringView styleClass, bool markdown);
 	virtual bool init(ChatRole role);
 
 	// The answer. Called once for a question, and on every delta while an answer streams.
 	void setBody(StringView);
+
+	/* Show everything setBody has been given, however recently it arrived. The end of a turn calls
+	it, so the last delta is never left sitting behind the throttle below. */
+	void flushBody();
+
+	/* Offered once per frame by the panel, with the application clock. A Markdown answer is
+	reparsed and rebuilt whole on every commit, and a model emits tokens far faster than a reader
+	can use a new layout - so a commit is taken at most a few times a second and the deltas in
+	between only accumulate. A label answer has nothing to do here. */
+	void tickBody(uint64_t now);
 
 	// The model's thinking, shown above the answer in a muted style. The label is built on the
 	// first non-empty call and not before: most models never send one.
@@ -74,6 +105,9 @@ public:
 
 	void setWrapWidth(float);
 
+	bool isMarkdown() const { return _bodyView != nullptr; }
+	ui::MarkdownView *getBodyView() const { return _bodyView; }
+
 	/* The height a wrapped label ends up with is only known once it has been formatted, which is
 	after whatever call changed the text. The layout calls this from its tick, and the bubble
 	republishes its own height when the total changed. */
@@ -88,11 +122,36 @@ protected:
 
 	void setTopText(StringView text, StringView styleClass);
 
-	void applyWrapWidth() const;
+	void applyWrapWidth();
+
+	// Hand the pending text to the document and re-measure. What both flushBody and the throttle
+	// end in; does nothing when there is nothing pending.
+	void commitBody();
+
+	// Shape a label now and answer with the height its text came to.
+	float measureLabel(basic2d::Label *) const;
+
+	// The height the document came out at, and the pass that hands the view its box.
+	float measureBodyView();
+
+	// The rows, top to bottom, skipping the ones this card does not have.
+	void eachRow(const Callback<void(Node *)> &) const;
 
 	basic2d::Label *_reasoningLabel = nullptr;
 	basic2d::Label *_bodyLabel = nullptr;
 	basic2d::Label *_metaLabel = nullptr;
+
+	// The answer slot when the card renders Markdown; _bodyLabel is null exactly then.
+	ui::MarkdownView *_bodyView = nullptr;
+
+	// The answer as text, kept whichever slot shows it: it is what getBody answers with, and what
+	// a throttled commit hands to the document.
+	String _body;
+
+	// When the document was last rebuilt, on the application clock, and whether _body has moved
+	// since. Both are meaningless for a label card.
+	uint64_t _bodyTime = 0;
+	bool _bodyDirty = false;
 
 	float _wrapWidth = 0.0f;
 	float _height = 0.0f;
