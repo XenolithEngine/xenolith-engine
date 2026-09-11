@@ -63,31 +63,19 @@ int _mi_prim_free(void* addr, size_t size ) {
 #endif
 
 #if defined(__wasi__)
-// memory.grow is not atomic across wasm agents. pthread_mutex wait is
-// instance-local; a raw atomic in shared linear memory is what actually
-// serializes grow from the engine worker and thread workers. Without this,
-// two concurrent grows overlap, mimalloc metadata is corrupted, and the
-// next page init does `page_size / block_size` with block_size==0.
+// sprt: there is exactly ONE lock for linear-memory growth and it lives in the
+// libc (libc_impl/src/wasm/unistd.cc), because brk/sbrk own the program break
+// and must take it anyway. This layer does not add a second one; it takes that
+// same lock across the probe+grow pair below, and the sbrk it calls in between
+// simply re-enters it (the lock is recursive).
 //
-// Do not busy-spin: shared-memory growth needs other agents parked, and a
-// tight atomic RMW loop on this word deadlocks the grower (ENOMEM, then
-// "allocation error: Out of memory"). Park waiters with memory.atomic.wait32.
-//
-// sprt: this is the OUTER lock of a nesting pair - it is held across the
-// probe+grow sequence in mi_prim_mem_grow, and the grow itself (sbrk) takes
-// the INNER brk lock in libc_impl/src/wasm/unistd.cc. Two instances of the
-// same idiom on purpose: collapsing them into one lock self-deadlocks the
-// first aligned grow (tests/wthread catches exactly that).
-static volatile int mi_wasm_grow_lock = 0;
-static void mi_grow_lock(void) {
-  while (__atomic_exchange_n(&mi_wasm_grow_lock, 1, __ATOMIC_ACQUIRE)) {
-    __builtin_wasm_memory_atomic_wait32((int*)&mi_wasm_grow_lock, 1, -1LL);
-  }
-}
-static void mi_grow_unlock(void) {
-  __atomic_store_n(&mi_wasm_grow_lock, 0, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify((int*)&mi_wasm_grow_lock, 1);
-}
+// Why it is needed at all: memory.grow is not atomic across wasm agents and a
+// pthread_mutex wait is instance-local, so without a shared-memory lock two
+// concurrent grows overlap, mimalloc metadata is corrupted, and the next page
+// init divides by a block_size of 0.
+#include <unistd.h> // __sprt_wasm_grow_lock
+static void mi_grow_lock(void) { __sprt_wasm_grow_lock(); }
+static void mi_grow_unlock(void) { __sprt_wasm_grow_unlock(); }
 #elif defined(MI_USE_PTHREADS)
 static pthread_mutex_t mi_heap_grow_mutex = PTHREAD_MUTEX_INITIALIZER;
 static void mi_grow_lock(void) { pthread_mutex_lock(&mi_heap_grow_mutex); }

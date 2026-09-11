@@ -105,13 +105,19 @@ export function writeProcessCompletion(processCtrl, processOut, memory, wakePtr,
 	Atomics.store(i32, slot + 6, pathOff);
 	Atomics.store(i32, slot + 7, pl);
 
+	// Publication is in claim order, so this waits for the writer that claimed the
+	// slot before ours. With a single writer (the loader completes on the main
+	// thread) the condition already holds and this never spins.
 	while (Atomics.load(i32, PROC_WR) !== claimed) {
-		// previous writer is still filling its slot
 		if (performance.now() > deadline) {
-			console.error("sprt-imports: previous writer stalled for " + PROC_WAIT_MS + "ms, dropping completion for proc " + id);
-			// Roll the claim back, but only if no other writer claimed since.
-			Atomics.compareExchange(i32, PROC_CLAIM, claimed + 1, claimed);
-			return false;
+			// Never leave the ring wedged: rolling our claim back would strand
+			// PROC_WR below it forever and every later completion would wait on a
+			// sequence number that can no longer arrive. Publish through instead -
+			// our own slot is filled, and an unfilled slot in between reads back as
+			// id 0, which the guest has no job for and drops.
+			console.error("sprt-imports: writer " + (claimed - 1) + " stalled for "
+				+ PROC_WAIT_MS + "ms, publishing proc " + id + " over it");
+			break;
 		}
 	}
 	Atomics.store(i32, PROC_WR, claimed + 1);
