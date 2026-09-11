@@ -101,6 +101,10 @@ static uint32_t MarkdownRegistry_itemIndex(const document::Node &item) {
 		return 1;
 	}
 
+	// Counting the siblings before this one is O(items) per item, i.e. quadratic over the list.
+	// Acceptable for the lists a document actually contains; a document that is one enormous
+	// numbered list is the case to fix, and the fix belongs in the builder's own walk rather than
+	// in a cache written back into the parsed document.
 	uint32_t index = 0;
 	for (auto &it : parent->getNodes()) {
 		if (it->getHtmlName() == "li") {

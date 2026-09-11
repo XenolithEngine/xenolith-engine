@@ -393,6 +393,82 @@ void MarkdownLayout::registerCommands() {
 		return ret;
 	});
 
+	/* WHAT THE LAST DOCUMENT COST. The three halves are kept apart because they have three
+	different budgets: parsing is one-off per document, building is what the first frame waits
+	for, and re-styling is what a stylesheet reload has to fit into a frame. */
+	addCommand("timings", "What the last document cost: parse, build and restyle in nanoseconds",
+			[this](Value &&) {
+		auto &t = _view->getTimings();
+		Value ret;
+		ret.setInteger(int64_t(t.parse), "parse");
+		ret.setInteger(int64_t(t.build), "build");
+		ret.setInteger(int64_t(t.restyle), "restyle");
+		ret.setInteger(int64_t(t.blocks), "blocks");
+		ret.setInteger(int64_t(t.sourceLength), "sourceLength");
+		ret.setInteger(int64_t(t.probes), "probes");
+		ret.setInteger(int64_t(_view->getFlow()->getEntries().size()), "flowEntries");
+		ret.setInteger(int64_t(_view->getTextLength()), "textLength");
+
+		// The laid-out height of the document, so a settling loop can poll something cheap: the
+		// tree dump answers the same question by encoding every node, which on a large document
+		// is tens of megabytes per call.
+		ret.setInteger(int64_t(roundf(_view->getContentNode()->getContentSize().height)), "height");
+
+		// What the virtualizer is holding: a document past the threshold shows only a window of
+		// its blocks, and these are how a check sees that it really is only a window.
+		auto &virt = _view->getVirtualizer();
+		ret.setBool(virt.isEnabled(), "virtual");
+		ret.setInteger(int64_t(virt.getBlockCount()), "virtualBlocks");
+		ret.setInteger(int64_t(virt.getVisibleCount()), "visibleBlocks");
+		ret.setInteger(int64_t(virt.getMeasuredCount()), "measuredBlocks");
+		ret.setInteger(int64_t(roundf(virt.getKnownHeight())), "knownHeight");
+		auto &adv = ret.emplace("advances");
+		for (uint32_t i = 0; i < 8 && i < virt.getBlockCount(); ++i) {
+			adv.addInteger(int64_t(roundf(virt.getAdvance(i))));
+		}
+
+		// What the document actually costs to keep on screen, which is the other half of the
+		// question: every one of these is visited, and every label was shaped.
+		uint32_t nodes = 0;
+		uint32_t labels = 0;
+		auto count = [&](auto &&self, const Node *node) -> void {
+			++nodes;
+			if (dynamic_cast<const basic2d::Label *>(node)) {
+				++labels;
+			}
+			for (auto &it : node->getChildren()) { self(self, it); }
+		};
+		count(count, _view->getContentNode());
+		ret.setInteger(int64_t(nodes), "nodes");
+		ret.setInteger(int64_t(labels), "labels");
+		return ret;
+	});
+
+	addCommand("anchor", "Scroll to an anchor by id: {id}", [this](Value &&args) {
+		Value ret;
+		auto id = args.getString("id");
+		ret.setBool(_view->scrollToAnchor(id), "found");
+		ret.setInteger(int64_t(_view->getAnchorPosition(id)), "position");
+		ret.setInteger(int64_t(_view->getScrollSystem()
+									   ? _view->getScrollSystem()->getScrollPosition().y
+									   : 0.0f),
+				"scrollY");
+		return ret;
+	});
+
+	addCommand("virtual", "Set the block count past which only the visible part is laid out, and "
+						  "rebuild: {threshold}",
+			[this](Value &&args) {
+		const Value &in = args;
+		_view->setVirtualizationThreshold(in.hasValue("threshold")
+						? uint32_t(in.getInteger("threshold"))
+						: ui::MarkdownVirtualizer::kMinBlocks);
+		Value ret;
+		ret.setInteger(int64_t(_view->getVirtualizationThreshold()), "threshold");
+		ret.setBool(_view->getVirtualizer().isEnabled(), "virtual");
+		return ret;
+	});
+
 	addCommand("anchors", "Every id in the document and the reading position it names",
 			[this](Value &&) {
 		Value ret;
@@ -620,6 +696,24 @@ void MarkdownLayout::registerCommands() {
 	addCommand("file", "Load a document from disk: {path}", [this](Value &&args) {
 		_view->setSourceFile(FileInfo{args.getString("path"), FileCategory::Custom});
 		return encodeTree();
+	});
+
+	/* Load and report only what it cost.
+
+	`file` answers with the whole tree, which on a large document is tens of megabytes of Value
+	built and serialized per call - enough to dwarf what is being measured and to dominate the
+	memory reading taken right after it. */
+	addCommand("load", "Load a document and report only its cost: {path}", [this](Value &&args) {
+		_view->setSourceFile(FileInfo{args.getString("path"), FileCategory::Custom});
+
+		auto &t = _view->getTimings();
+		Value ret;
+		ret.setInteger(int64_t(t.parse), "parse");
+		ret.setInteger(int64_t(t.build), "build");
+		ret.setInteger(int64_t(t.blocks), "blocks");
+		ret.setInteger(int64_t(t.sourceLength), "sourceLength");
+		ret.setInteger(int64_t(t.probes), "probes");
+		return ret;
 	});
 
 	addCommand("width", "Constrain the view's width, to exercise re-wrapping: {width}",

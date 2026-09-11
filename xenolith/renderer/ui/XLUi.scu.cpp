@@ -111,6 +111,7 @@
 #include "markdown/XLUiMarkdownStyle.cc" // after Types: it resolves what a range style carries
 #include "markdown/XLUiMarkdownRegistry.cc" // after Panel, Layer and TableBorderPainter: a block
 // is built out of them
+#include "markdown/XLUiMarkdownVirtual.cc" // after Types: it hides the blocks a Builder made
 #include "markdown/XLUiMarkdownBuilder.cc" // after Registry: it dispatches every block through one
 #include "markdown/XLUiMarkdownView.cc" // last: it composes the builder, the style system and the
 // scroll the sheet asks for

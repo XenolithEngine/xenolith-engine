@@ -451,8 +451,30 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 		updateLabelDensity(_parent->getNodeToWorldTransform());
 	}
 
+	// Anything that would change the answer bumps the revision or the density; either one throws
+	// the whole cache away rather than trying to keep part of it.
+	if (_measureRevision != getLabelRevision() || _measureDensity != _labelDensity) {
+		_measureCache.clear();
+		_measureRevision = getLabelRevision();
+		_measureDensity = _labelDensity;
+	}
+
+	for (auto &it : _measureCache) {
+		if (it.mode == c.mode && it.maxWidth == c.maxWidth) {
+			return it.result;
+		}
+	}
+
+	auto remember = [&](Size2 result) {
+		if (_measureCache.size() >= MaxMeasureCache) {
+			_measureCache.erase(_measureCache.begin());
+		}
+		_measureCache.emplace_back(MeasureCacheEntry{c.mode, c.maxWidth, result});
+		return result;
+	};
+
 	if (_string16.empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
 
 	auto request = font::Formatter::ContentRequest::Normal;
@@ -483,12 +505,13 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 	_width = savedWidth;
 
 	if (!ok) {
+		// Not cached: an overflowing measurement is a failure, not an answer.
 		return getContentSize();
 	}
 	if (spec->empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
-	return Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity);
+	return remember(Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity));
 }
 
 void Label::applyMeasuredSize(const Size2 &size) {
