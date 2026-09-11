@@ -102,6 +102,7 @@ void performPugTests();
 void performCssTests();
 void performFlexboxGridCssTests();
 void performTableCssTests();
+void performMarkdownTests();
 void performCommandLineTests();
 void performRasterTests();
 void performDataValueTests();
