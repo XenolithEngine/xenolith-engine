@@ -399,6 +399,105 @@ __SPRT_C_FUNC int scandirat(int __dir_fd, const char *path,
 	return ret;
 }
 
+// ---- MSVC <io.h> find surface -----------------------------------------------
+//
+// Not built on opendir/readdir above: those enumerate a DIRECTORY, and _wfindfirst
+// takes a PATTERN ("C:\\src\\*.c"). FindFirstFileW is the API that matches wildcards,
+// and it is what the MSVC CRT calls too, so the results agree entry for entry -
+// including the "8.3 short name also matches" behaviour a hand-written globber
+// would silently differ on.
+//
+// The search handle is passed back and forth as a long long, which is what the
+// MSVC prototype does (intptr_t); every handle _wfindfirst returns must reach
+// _findclose.
+
+// FILETIME is 100ns ticks since 1601-01-01, time_t is seconds since 1970-01-01.
+static long long __find_filetime(const FILETIME &ft) {
+	constexpr long long ticksPerSecond = 10'000'000ll;
+	constexpr long long epochDelta = 11'644'473'600ll; // 1601 -> 1970, in seconds
+	auto ticks = (static_cast<long long>(ft.dwHighDateTime) << 32)
+			| static_cast<long long>(ft.dwLowDateTime);
+	if (ticks == 0) {
+		return 0; // the filesystem does not keep this stamp
+	}
+	return ticks / ticksPerSecond - epochDelta;
+}
+
+static void __find_fill(const WIN32_FIND_DATAW &src, struct _wfinddata_t *dst) {
+	// _A_RDONLY/_A_HIDDEN/_A_SYSTEM/_A_SUBDIR/_A_ARCH have the same values as the
+	// FILE_ATTRIBUTE_* bits they come from, so this is a mask, not a translation.
+	dst->attrib = unsigned(src.dwFileAttributes)
+			& unsigned(_A_RDONLY | _A_HIDDEN | _A_SYSTEM | _A_SUBDIR | _A_ARCH);
+	dst->time_create = __find_filetime(src.ftCreationTime);
+	dst->time_access = __find_filetime(src.ftLastAccessTime);
+	dst->time_write = __find_filetime(src.ftLastWriteTime);
+	dst->size = (static_cast<long long>(src.nFileSizeHigh) << 32)
+			| static_cast<long long>(src.nFileSizeLow);
+
+	// cFileName is MAX_PATH wide chars and so is the destination, but copy bounded
+	// and terminate by hand rather than trusting that to stay true.
+	constexpr size_t cap = sizeof(dst->name) / sizeof(dst->name[0]);
+	size_t i = 0;
+	while (i + 1 < cap && src.cFileName[i] != 0) {
+		dst->name[i] = src.cFileName[i];
+		++i;
+	}
+	dst->name[i] = 0;
+}
+
+__SPRT_C_FUNC long long _wfindfirst(const wchar_t *__filespec,
+		struct _wfinddata_t *__findinfo) __SPRT_NOEXCEPT {
+	if (!__filespec || !__findinfo) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	WIN32_FIND_DATAW data;
+	auto handle = FindFirstFileW(__filespec, &data);
+	if (handle == INVALID_HANDLE_VALUE) {
+		DWORD err = GetLastError();
+		switch (err) {
+		// "nothing matched the pattern" is ENOENT, which is how the MSVC CRT
+		// reports it and what callers loop on.
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND:
+		case ERROR_NO_MORE_FILES: __sprt_errno = ENOENT; break;
+		case ERROR_INVALID_NAME: __sprt_errno = EINVAL; break;
+		default: __sprt_errno = platform::lastErrorToErrno(err);
+		}
+		return -1;
+	}
+	__find_fill(data, __findinfo);
+	return static_cast<long long>(reinterpret_cast<__SPRT_ID(intptr_t)>(handle));
+}
+
+__SPRT_C_FUNC int _wfindnext(long long __handle, struct _wfinddata_t *__findinfo) __SPRT_NOEXCEPT {
+	if (__handle == -1 || !__findinfo) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	WIN32_FIND_DATAW data;
+	if (!FindNextFileW(reinterpret_cast<HANDLE>(static_cast<__SPRT_ID(intptr_t)>(__handle)),
+				&data)) {
+		DWORD err = GetLastError();
+		__sprt_errno = (err == ERROR_NO_MORE_FILES) ? ENOENT : platform::lastErrorToErrno(err);
+		return -1;
+	}
+	__find_fill(data, __findinfo);
+	return 0;
+}
+
+__SPRT_C_FUNC int _findclose(long long __handle) __SPRT_NOEXCEPT {
+	if (__handle == -1) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	if (!FindClose(reinterpret_cast<HANDLE>(static_cast<__SPRT_ID(intptr_t)>(__handle)))) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
 } // namespace sprt
 
 #ifdef __clang__
