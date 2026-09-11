@@ -334,8 +334,30 @@ void MarkdownView::handleAncestorComponentsDirty() {
 	invalidateInlineStyles();
 }
 
+void MarkdownView::setVirtualizationThreshold(uint32_t threshold) {
+	if (_virtualThreshold == threshold) {
+		return;
+	}
+	_virtualThreshold = threshold;
+	if (isRunning()) {
+		rebuild();
+	}
+}
+
 void MarkdownView::update(const UpdateTime &time) {
 	Node::update(time);
+
+	if (_virtual.isEnabled()) {
+		auto scroll = getScrollSystem();
+		auto pending =
+				_virtual.update(_contentSize.height, scroll ? scroll->getScrollPosition().y : 0.0f);
+
+		/* Kept scheduled for as long as the document is virtualized, measured or not: the window
+		follows the scroll, and a scroll produces frames rather than an event this view can hook
+		without taking the scroll's single callback away from whoever else may want it. The pass
+		is a walk of the block list and nothing else. */
+		(void)pending;
+	}
 
 	if (_inlineStylesDirty) {
 		_inlineStylesDirty = false;
@@ -391,6 +413,8 @@ void MarkdownView::updateSelectionColor() {
 }
 
 void MarkdownView::restyleInlines() {
+	auto started = sprt::platform::nanoclock(ClockType::Monotonic);
+
 	MarkdownBuilder builder(_content, _registry, _inlineStyles,
 			_director ? _director->getApplication()->getExtension<font::FontController>()
 					  : nullptr);
@@ -404,19 +428,31 @@ void MarkdownView::restyleInlines() {
 			builder.restyleText(label, *entry.source);
 		}
 	}
+
+	_timings.restyle = sprt::platform::nanoclock(ClockType::Monotonic) - started;
+	_timings.probes = builder.getInlineResolver().getProbeCount();
 }
 
 void MarkdownView::setSource(StringView markdown) {
-	setDocument(Rc<document::DocumentMarkdown>::create(
+	auto start = sprt::platform::nanoclock(ClockType::Monotonic);
+	auto doc = Rc<document::DocumentMarkdown>::create(
 			BytesView(reinterpret_cast<const uint8_t *>(markdown.data()), markdown.size()),
-			StringView("text/markdown")));
+			StringView("text/markdown"));
+	_timings.parse = sprt::platform::nanoclock(ClockType::Monotonic) - start;
+
+	setDocument(sp::move(doc));
 }
 
 void MarkdownView::setSourceFile(const FileInfo &file) {
 	// A relative `src` in the document means "beside the document", so the document's own
 	// directory is the base unless the caller says otherwise afterwards.
 	setImageBase(filepath::root(file.path), file.category);
-	setDocument(Rc<document::DocumentMarkdown>::create(file, StringView("text/markdown")));
+
+	auto start = sprt::platform::nanoclock(ClockType::Monotonic);
+	auto doc = Rc<document::DocumentMarkdown>::create(file, StringView("text/markdown"));
+	_timings.parse = sprt::platform::nanoclock(ClockType::Monotonic) - start;
+
+	setDocument(sp::move(doc));
 }
 
 void MarkdownView::setImageResolver(MarkdownImageResolver &&resolver) {
@@ -507,6 +543,8 @@ StringView MarkdownView::getSource() const {
 }
 
 void MarkdownView::rebuild() {
+	auto started = sprt::platform::nanoclock(ClockType::Monotonic);
+
 	// Every label the selection was painted on is about to be discarded, and the positions it
 	// held indexed a document that no longer exists.
 	_selectionBegin = _selectionEnd = 0;
@@ -515,11 +553,13 @@ void MarkdownView::rebuild() {
 	// the previous one alive in its own index.
 	_flow = Rc<MarkdownFlow>::alloc();
 	_anchors.clear();
+	_virtual.clear();
 	_content->removeAllChildren();
 	_blocks = 0;
 	_treeDirty = false;
 
 	if (!_document) {
+		_timings.build = sprt::platform::nanoclock(ClockType::Monotonic) - started;
 		return;
 	}
 
@@ -549,6 +589,18 @@ void MarkdownView::rebuild() {
 
 	// The colour lives on each Label separately, so a fresh tree has to be told again.
 	_flow->setSelectionColor(_selectionColor);
+
+	/* Hide everything the reader cannot see, before the first layout rather than after it: a
+	document of ten thousand blocks would otherwise shape every one of them to produce a
+	screenful. Small documents are left exactly as they were. */
+	if (_virtual.init(_content, _virtualThreshold)) {
+		scheduleUpdate();
+	}
+
+	_timings.build = sprt::platform::nanoclock(ClockType::Monotonic) - started;
+	_timings.blocks = _blocks;
+	_timings.sourceLength = uint32_t(_document->getSource().size());
+	_timings.probes = builder.getInlineResolver().getProbeCount();
 }
 
 Pair<uint32_t, uint32_t> MarkdownView::getSourceRangeForTextRange(uint32_t begin,
@@ -637,6 +689,21 @@ bool MarkdownView::scrollToAnchor(StringView id) {
 	auto entry = _flow->findByPosition(position);
 	if (!entry || !entry->node) {
 		return false;
+	}
+
+	/* A block that is not materialized has no position to scroll to - the layout skipped it, so
+	whatever it last reported is meaningless. Its place in the document is known all the same, as
+	the sum of the advances above it, and that is what the scroll is set from. */
+	if (_virtual.isEnabled()) {
+		auto index = _virtual.findBlock(entry->node);
+		if (index != maxOf<uint32_t>()) {
+			_virtual.ensureMeasuredTo(index);
+			auto top = _virtual.getBlockTop(index);
+			if (auto scroll = getScrollSystem(); scroll && top != maxOf<float>()) {
+				scroll->setScrollPosition(Vec2(0.0f, sprt::max(0.0f, top - 8.0f)));
+				return true;
+			}
+		}
 	}
 
 	// Every scroll between the node and here, not just this view's own: a footnote inside a
