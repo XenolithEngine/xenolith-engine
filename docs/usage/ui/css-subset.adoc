@@ -772,10 +772,15 @@ overlay indicator; `hidden` and `clip` only clip. [`XL_OVERFLOW_TEST`]
 
 What you must know, because none of it matches the web exactly:
 
-* **The two axes are reconciled.** A `visible` axis beside a non-`visible` one
-  computes to `auto`, as in CSS — but here it is also unavoidable: the only clip the
-  engine has is an axis-aligned scissor **rect**, which cannot clip one axis and
-  leave the other alone.
+* **The two axes are INDEPENDENT, where CSS reconciles them.** A `visible` axis beside
+  a non-`visible` one stays visible here; on the web it would compute to `auto`. The
+  scissor is still one rect, but it is built per axis (`ui::ScissorAxes`): the axis
+  nobody asked to clip is opened past any surface, leaving whatever an ancestor
+  scissor imposed. So `overflow-y: auto` scrolls vertically and cuts nothing off at
+  the sides — which is what a document, a code block or a Markdown view wants. The
+  coercion was once enforced, and its cost is the reason it is gone: an
+  `overflow-y: auto` column also overflowed horizontally, so a container sized by its
+  content took the width of its widest unwrapped line and nothing in it ever wrapped.
 * **A scroll container needs a definite size on its scroll axis.** It deliberately
   does not grow to its content (`LayoutSystem::handleMeasure` reports the box on an
   overflow axis), so `height: fit-content` together with `overflow-y: auto` can never

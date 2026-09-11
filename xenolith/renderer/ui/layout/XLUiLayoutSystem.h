@@ -78,10 +78,12 @@ struct SP_PUBLIC OutOfFlowComponent {
 // Written by ui::StyleResolver, read by LayoutSystem (which axes may exceed the box) and by
 // ui::ScrollSystem (what to clip and what to slide).
 //
-// The two axes are already reconciled by the time they land here: CSS computes a `visible` axis to
-// `auto` when the other one is not `visible`, and this engine has no say in the matter - the only
-// clip it has is an axis-aligned scissor RECT, which cannot clip one axis and leave the other
-// alone.
+// THE TWO AXES ARE INDEPENDENT, and are NOT reconciled on the way here. The web computes a
+// `visible` axis to `auto` when the other one is not `visible`, because a clip is a box; this engine
+// used to do the same for the harder reason that its only clip was one axis-aligned scissor RECT.
+// The rect is now built per axis (ui::ScissorAxes: the axis left out is opened past any surface
+// instead of narrowed to the box), so each axis holds exactly what the sheet declared - see the
+// `overflow` block of ui::StyleResolver::applyLayout for what the coercion cost while it lasted.
 struct SP_PUBLIC OverflowComponent {
 	static ComponentId Id;
 

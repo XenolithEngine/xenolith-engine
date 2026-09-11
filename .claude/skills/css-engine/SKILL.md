@@ -304,8 +304,9 @@ content and show an overlay indicator.
 ```
 
 Rules you must know:
-- **A `visible` axis beside a non-`visible` one computes to `auto`.** The clip is one
-  axis-aligned RECT; it cannot clip a single axis.
+- **The two axes are INDEPENDENT, unlike CSS.** A `visible` axis beside a non-`visible`
+  one stays visible (the web computes it to `auto`). The scissor rect is built per axis,
+  so `overflow-y: auto` scrolls vertically and cuts nothing off at the sides.
 - **A scroll container needs a definite size on its scroll axis** — it does not grow to
   its content, so `height: fit-content` + `overflow-y: auto` never scrolls. Likewise
   `height: 100%` on a CHILD resolves against the scrollport and can never overflow it.
