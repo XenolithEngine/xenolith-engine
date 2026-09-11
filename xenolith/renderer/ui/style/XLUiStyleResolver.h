@@ -377,15 +377,23 @@ protected:
 	uint32_t _sourceSystemVersion = 0;
 	uint64_t _sourceSystemId = 0;
 
-	// Freshness map: a node's style is fresh while the stylesheet version is unchanged (the map
-	// is cleared in apply() on a version change) AND its recorded StyleFreshness still matches.
-	HashMap<Node *, StyleFreshness> _nodesUpdated;
+	/* Freshness map: a node's style is fresh while the stylesheet version is unchanged (the map
+	is cleared in apply() on a version change) AND its recorded StyleFreshness still matches.
+
+	Keyed by a POINTER, hence the spreading hasher: the default integer/pointer hashes leave the
+	low bits alone on purpose, and a bucket is chosen by those - so node addresses, which share
+	their alignment bits, would all target the same few buckets and every lookup here would walk
+	a chain. A document is tens of thousands of nodes, and this map is read for each of them on
+	every style pass. */
+	sprt::__malloc_unordered_map<Node *, StyleFreshness, sprt::hash_spread<>, sprt::equal_to<void>>
+			_nodesUpdated;
 
 	// digest of the custom properties each node resolved to, for nodes that have any. Custom
 	// properties are inherited and are substituted at resolve time, so when a node's set
 	// changes (a class flip on it bringing in a different `--brand`) every descendant's applied
 	// style is stale - the descendants themselves saw no event at all.
-	HashMap<Node *, uint64_t> _nodeCustomProperties;
+	sprt::__malloc_unordered_map<Node *, uint64_t, sprt::hash_spread<>, sprt::equal_to<void>>
+			_nodeCustomProperties;
 };
 
 } // namespace stappler::xenolith::ui

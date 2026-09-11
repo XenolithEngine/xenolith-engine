@@ -56,6 +56,9 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
                               paint order, rotation, scissors, flags and padding
     tooltip-check.py          headless assertions for ui::TooltipComponent hover hints:
                               the coordinator, the dwell, and a node that slides away
+    markdown-check.py         headless assertions for ui::MarkdownView: which node each
+                              markdown construct became, inline runs as style ranges,
+                              the source map, task items, and re-wrapping
     style-check.py            headless assertions for the CSS engine: control states, the
                               functional pseudo-classes, and the arithmetic
     scale9-check.py           headless assertions for basic2d::Scale9Sprite geometry

@@ -503,8 +503,7 @@ public:
 
 			chain = lookup_bucket_chain(_storage, _capacity, hashValue);
 		} else if (chain->active) {
-			float newLoadFactor = float(_size + 1) / (float(_size + 1) - float(_hashMisses + 1));
-			if (newLoadFactor > _maxLoadFactor || _size + 1 >= _capacity) {
+			if (float(_size + 1) > _maxLoadFactor * float(_capacity) || _size + 1 >= _capacity) {
 				rehash(newCapacity);
 
 				chain = lookup_bucket_chain(_storage, _capacity, hashValue);
