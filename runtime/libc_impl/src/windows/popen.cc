@@ -40,7 +40,8 @@ THE SOFTWARE.
 
 namespace sprt {
 
-__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {	int p[2], op;
+__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
+	int p[2], op;
 
 	if (*mode == 'r') {
 		op = 0;

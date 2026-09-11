@@ -117,9 +117,9 @@ template <typename T>
 constexpr inline auto AllocatorLocal<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = n == 1 ? sprt::memory::local_allocate<T>() : sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorLocal::allocate");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorLocal::allocate failed");
 	return ptr;
 }
 
@@ -127,9 +127,9 @@ template <typename T>
 constexpr inline auto AllocatorLocal<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = sprt::memory::local_allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorLocal::__allocate (capacity)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorLocal::__allocate (capacity) failed");
 	return ptr;
 }
 
@@ -137,16 +137,16 @@ template <typename T>
 constexpr inline auto AllocatorLocal<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	if (__builtin_mul_overflow(n, sizeof(T), &bytes)) {
 		// n * sizeof(T) overflows size_t: never under-allocate.
-		__sprt_perror("allocation size overflow");
-		sprt_passert(false, "allocation size overflow");
+		__sprt_perror("AllocatorLocal::__allocate (n * sizeof(T) overflows size_t)");
+		sprt_passert(false, "AllocatorLocal::__allocate: n * sizeof(T) overflows size_t");
 		bytes = 0;
 		return nullptr;
 	}
 	T *ptr = sprt::memory::local_allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorLocal::__allocate (sized)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorLocal::__allocate (sized) failed");
 	return ptr;
 }
 
