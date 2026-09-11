@@ -302,8 +302,12 @@ void _mi_page_reclaim(mi_heap_t* heap, mi_page_t* page) {
 // allocate a fresh page from a segment
 static mi_page_t* mi_page_fresh_alloc(mi_heap_t* heap, mi_page_queue_t* pq, size_t block_size, size_t page_alignment) {
   if (block_size == 0) {
-    // Corrupted size class (seen on wasm when two agents raced memory.grow).
-    // Do not reach `page_size / block_size` below.
+    // A size class can only be 0 if the page queue metadata was corrupted, which
+    // on wasm meant two agents racing memory.grow (now impossible: growth goes
+    // through the single lock in libc_impl/src/wasm/unistd.cc). Say so rather
+    // than dividing by it below - a bare NULL here surfaces as an ordinary
+    // out-of-memory and hides the real cause.
+    _mi_error_message(EFAULT, "corrupted page queue: block_size is 0\n");
     return NULL;
   }
   #if !MI_HUGE_PAGE_ABANDON

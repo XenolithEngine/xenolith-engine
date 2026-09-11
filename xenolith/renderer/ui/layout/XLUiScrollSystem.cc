@@ -29,6 +29,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // How far one wheel notch scrolls, in points. The wheel reports notches, not distance.
 static constexpr float ScrollSystem_wheelStep = 48.0f;
 
+// Two wheel events closer than this belong to one gesture: the second and later events of a
+// burst keep the classification the first one got (see handleScrollGesture).
+static constexpr uint64_t ScrollSystem_wheelBurstUs = 80'000ULL;
+
 // How long a notch takes to ease in. Short enough to feel immediate, long enough to read as motion
 // rather than a jump - which is what makes it possible to see WHERE the content went.
 static constexpr float ScrollSystem_wheelDuration = 0.1f;
@@ -288,13 +292,19 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 	if (!_owner) {
 		return false;
 	}
-	bool discrete =
+	// Classify by the SHAPE of the amount, never by timing alone: a wheel spun fast
+	// emits notches 20-50ms apart, so a "burst means pixel stream" rule would turn
+	// every notch after the first into a 10pt nudge. The burst only resolves the
+	// ambiguous case - a pixel stream whose first event happens to land exactly on a
+	// notch value stops being read as one as soon as the second event does not.
+	const bool notchShaped =
 			ScrollSystem_isNotchComponent(s.amount.x) || ScrollSystem_isNotchComponent(s.amount.y);
 	const auto now = Time::now();
-	if (_lastWheelTime.toMicros() != 0 && (now - _lastWheelTime).toMicros() < 80'000ULL) {
-		discrete = false;
-	}
+	const bool inBurst = _lastWheelTime.toMicros() != 0
+			&& (now - _lastWheelTime).toMicros() < ScrollSystem_wheelBurstUs;
+	const bool discrete = notchShaped && (!inBurst || _lastWheelDiscrete);
 	_lastWheelTime = now;
+	_lastWheelDiscrete = discrete;
 
 	Vec2 delta;
 	if (discrete) {

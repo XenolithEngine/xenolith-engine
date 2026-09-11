@@ -113,9 +113,9 @@ template <typename T>
 constexpr inline auto AllocatorMalloc<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = n == 1 ? sprt::memory::allocate<T>() : sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::allocate");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorMalloc::allocate failed");
 	return ptr;
 }
 
@@ -123,9 +123,9 @@ template <typename T>
 constexpr inline auto AllocatorMalloc<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::__allocate (capacity)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorMalloc::__allocate (capacity) failed");
 	return ptr;
 }
 
@@ -134,16 +134,16 @@ constexpr inline auto AllocatorMalloc<T>::__allocate(size_t n, size_t &bytes) co
 		-> T * {
 	if (__builtin_mul_overflow(n, sizeof(T), &bytes)) {
 		// n * sizeof(T) overflows size_t: never under-allocate.
-		__sprt_perror("allocation size overflow");
-		sprt_passert(false, "allocation size overflow");
+		__sprt_perror("AllocatorMalloc::__allocate (n * sizeof(T) overflows size_t)");
+		sprt_passert(false, "AllocatorMalloc::__allocate: n * sizeof(T) overflows size_t");
 		bytes = 0;
 		return nullptr;
 	}
 	T *ptr = sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::__allocate (sized)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorMalloc::__allocate (sized) failed");
 	return ptr;
 }
 
