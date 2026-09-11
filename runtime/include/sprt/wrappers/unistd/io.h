@@ -50,6 +50,91 @@ struct _stat {
 #define O_TEXT _O_TEXT
 #endif
 
+// sprt has no text translation modes (see _O_BINARY above); the wide-mode
+// constants exist so MSVC-surface code (sqlite shell's console handling)
+// compiles, with _setmode() already a no-op-friendly call.
+#ifndef _O_WTEXT
+#define _O_WTEXT 0
+#endif
+
+#ifndef _O_U8TEXT
+#define _O_U8TEXT 0
+#endif
+
+// ---- MSVC underscore aliases ------------------------------------------------
+// MSVC-surface code (sqlite shell, curl) remaps the plain POSIX names to the
+// underscore forms under _WIN32. _stat64/_fstat64 and the _S_* bits are pure
+// name additions (macros are safe); the underscore FUNCTION names are
+// declared and implemented beside their base functions.
+#ifndef _stat64
+#define _stat64 _stat
+#endif
+#ifndef _fstat64
+#define _fstat64 _fstat
+#endif
+#ifndef __stat64
+#define __stat64 _stat
+#endif
+#ifndef __fstat64
+#define __fstat64 _fstat
+#endif
+#ifndef _S_IFCHR
+#define _S_IFCHR S_IFCHR
+#endif
+#ifndef _S_IFIFO
+#define _S_IFIFO S_IFIFO
+#endif
+#ifndef _S_IFREG
+#define _S_IFREG S_IFREG
+#endif
+
+SPRT_API int _access(const char *path, int mode) __SPRT_NOEXCEPT;
+SPRT_API int _mkdir(const char *path) __SPRT_NOEXCEPT;
+SPRT_API int _rmdir(const char *path) __SPRT_NOEXCEPT;
+SPRT_API int _pclose(FILE *stream) __SPRT_NOEXCEPT;
+
+// ---- _wfindfirst / _wfindnext / _findclose (MSVC <io.h> find surface) -------
+// File-attribute bits (real SDK values).
+#ifndef _A_NORMAL
+#define _A_NORMAL 0x00
+#endif
+#ifndef _A_RDONLY
+#define _A_RDONLY 0x01
+#endif
+#ifndef _A_HIDDEN
+#define _A_HIDDEN 0x02
+#endif
+#ifndef _A_SYSTEM
+#define _A_SYSTEM 0x04
+#endif
+#ifndef _A_SUBDIR
+#define _A_SUBDIR 0x10
+#endif
+#ifndef _A_ARCH
+#define _A_ARCH 0x20
+#endif
+
+#ifndef _WFINDDATA_T_DEFINED
+#define _WFINDDATA_T_DEFINED
+struct _wfinddata_t {
+	unsigned attrib;
+	long long time_create; // time_t-sized; kept integral to avoid type leakage
+	long long time_access;
+	long long time_write;
+	long long size;
+	wchar_t name[260];
+};
+#endif
+
+SPRT_API long long _wfindfirst(const wchar_t *filespec, struct _wfinddata_t *findinfo) __SPRT_NOEXCEPT;
+SPRT_API int _wfindnext(long long findhandle, struct _wfinddata_t *findinfo) __SPRT_NOEXCEPT;
+SPRT_API int _findclose(long long findhandle) __SPRT_NOEXCEPT;
+
+// ---- wide file operations ----------------------------------------------------
+SPRT_API int _wchmod(const wchar_t *filename, int pmode) __SPRT_NOEXCEPT;
+SPRT_API int _wmkdir(const wchar_t *dirname) __SPRT_NOEXCEPT;
+SPRT_API int _wunlink(const wchar_t *filename) __SPRT_NOEXCEPT;
+
 #ifndef S_IFREG
 #define S_IFREG __SPRT_S_IFREG
 #endif
@@ -117,6 +202,10 @@ SPRT_API wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath,
 
 
 SPRT_API __SPRT_ID(FILE) * _wfopen(const wchar_t *, const wchar_t *) __SPRT_NOEXCEPT;
+
+// Wide popen: the MSVC CRT surface sqlite's shell and friends expect. The
+// command and mode are converted UTF-16 -> UTF-8 and delegated to popen().
+SPRT_API __SPRT_ID(FILE) * _wpopen(const wchar_t *, const wchar_t *) __SPRT_NOEXCEPT;
 
 
 SPRT_API __SPRT_ID(FILE) * _fsopen(const char *filename, const char *mode, int sh) __SPRT_NOEXCEPT;
