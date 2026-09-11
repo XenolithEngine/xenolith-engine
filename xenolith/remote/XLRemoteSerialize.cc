@@ -460,6 +460,11 @@ Value serializeDrawStat(const core::DrawStat &d) {
 	v.addInteger(int64_t(d.planTime));
 	v.addInteger(int64_t(d.queueWaitTime));
 	v.addInteger(int64_t(d.fillTime));
+	// APPENDED, like every field before them: the wire is positional and a reader takes what it
+	// knows, so a peer built without these three is unaffected by a peer that sends them.
+	v.addInteger(int64_t(d.dependencyWaitTime));
+	v.addInteger(int64_t(d.dependencyCount));
+	v.addInteger(int64_t(d.dependencyWaited));
 #endif
 	return v;
 }
@@ -506,6 +511,9 @@ core::DrawStat deserializeDrawStat(const Value &v) {
 	d.planTime = at(26);
 	d.queueWaitTime = at(27);
 	d.fillTime = at(28);
+	d.dependencyWaitTime = at(29);
+	d.dependencyCount = uint32_t(at(30));
+	d.dependencyWaited = uint32_t(at(31));
 #endif
 	return d;
 }

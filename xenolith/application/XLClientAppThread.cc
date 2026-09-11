@@ -534,14 +534,6 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 	return true;
 }
 
-void ClientAppThread::flushPendingFontGlyphs() {
-#if MODULE_XENOLITH_FONT
-	if (auto fc = getExtension<font::FontController>()) {
-		fc->flushPendingGlyphs(this);
-	}
-#endif
-}
-
 Rc<Director> ClientAppThread::makeDirector(NotNull<RemoteWindow> w,
 		const core::FrameConstraints &c) {
 	Rc<Scene> scene = makeScene(w, c);
