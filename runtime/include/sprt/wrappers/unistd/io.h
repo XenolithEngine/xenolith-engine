@@ -88,10 +88,10 @@ struct _stat {
 #define _S_IFREG S_IFREG
 #endif
 
+// _mkdir/_rmdir are declared in the windows wrappers' <direct.h>; _unlink and
+// _chmod already exist as sprt umbrella functions below.
 SPRT_API int _access(const char *path, int mode) __SPRT_NOEXCEPT;
-SPRT_API int _mkdir(const char *path) __SPRT_NOEXCEPT;
-SPRT_API int _rmdir(const char *path) __SPRT_NOEXCEPT;
-SPRT_API int _pclose(FILE *stream) __SPRT_NOEXCEPT;
+SPRT_API int _pclose(__SPRT_ID(FILE) * stream) __SPRT_NOEXCEPT;
 
 // ---- _wfindfirst / _wfindnext / _findclose (MSVC <io.h> find surface) -------
 // File-attribute bits (real SDK values).
