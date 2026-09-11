@@ -25,6 +25,7 @@
 
 #include "XLUiMarkdownBuilder.h"
 #include "XLUiMarkdownSelection.h"
+#include "XLUiMarkdownVirtual.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiScrollSystem.h"
 #include "XLSelectionSystem.h"
@@ -185,6 +186,40 @@ public:
 	virtual Node *resolveSelectionNode(const SelectionItem &) const override;
 	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
 
+	// --- long documents ---
+
+	/* Only what the reader can see is laid out and shaped; see ui::MarkdownVirtualizer for what
+	that costs and why the nodes still all exist. Switches itself on past a few hundred blocks and
+	is invisible below that. */
+	const MarkdownVirtualizer &getVirtualizer() const { return _virtual; }
+
+	// How many blocks a document needs before only its visible part is laid out. maxOf turns the
+	// whole thing off, which is how a test compares a virtualized document against a plain one.
+	void setVirtualizationThreshold(uint32_t);
+	uint32_t getVirtualizationThreshold() const { return _virtualThreshold; }
+
+	// --- cost ---
+
+	/* WHAT THE LAST DOCUMENT COST, in nanoseconds and in counts.
+
+	Kept by the view because nothing outside it can see the halves apart: parsing happens inside
+	`setSource`, building inside `rebuild`, and re-resolving inline styles on a stylesheet reload -
+	three different budgets that a caller measuring from outside would only ever see summed. */
+	struct Timings {
+		uint64_t parse = 0; // the markdown parser, over the whole source
+		uint64_t build = 0; // the node tree, from the parsed document
+		uint64_t restyle = 0; // re-resolving the inline ranges after a stylesheet reload
+
+		uint32_t blocks = 0;
+		uint32_t sourceLength = 0;
+
+		// Cascade probes the last build resolved. A document whose blocks repeat should cost a
+		// handful; a number near the range count means the cache is not working.
+		uint32_t probes = 0;
+	};
+
+	const Timings &getTimings() const { return _timings; }
+
 	// --- styling ---
 
 	// The built-in sheet, so a test can assert on what actually ships.
@@ -292,6 +327,10 @@ protected:
 	MarkdownImageResolver _imageResolver;
 	String _imageBasePath;
 	FileCategory _imageBaseCategory = FileCategory::Custom;
+
+	Timings _timings;
+	MarkdownVirtualizer _virtual;
+	uint32_t _virtualThreshold = MarkdownVirtualizer::kMinBlocks;
 
 	// The stylesheet generation the labels' ranges were resolved at; a reload moves it.
 	uint32_t _styleVersion = 0;

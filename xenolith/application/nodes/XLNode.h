@@ -595,6 +595,28 @@ protected:
 	// Has the frame's pass already run this node's phases? See the .cc.
 	bool isVisitPassed(const FrameInfo &) const;
 
+public:
+	/* FILL A NODE WITH MANY CHILDREN AND PAY THE CATCH-UP ONCE.
+
+	A child added to a node the frame has already walked past makes that node re-measure and
+	re-lay-out itself on the spot, so that the frame it is in the middle of stays consistent. That
+	is right for one child and quadratic for ten thousand: each add re-sorts and re-lays-out the
+	whole list that is already there.
+
+	Held open, this scope records that the catch-up is owed and performs it once, at the end, with
+	every child in place. Nothing else changes: the children still enter, still get their parent's
+	colour, and the node is still caught up before anyone reads it. */
+	struct SP_PUBLIC BulkChildren {
+		explicit BulkChildren(NotNull<Node>);
+		~BulkChildren();
+
+		BulkChildren(const BulkChildren &) = delete;
+		BulkChildren &operator=(const BulkChildren &) = delete;
+
+		Node *_node = nullptr;
+	};
+
+protected:
 	void runPendingPhases(FrameInfo &);
 
 	virtual void updateCascadeOpacity();
@@ -630,6 +652,14 @@ protected:
 	bool _inPendingPhases = false;
 	bool _contentSizeDirty = true;
 	bool _reorderChildDirty = true;
+
+	// The child list changed and the children have not been told yet; see
+	// markChildrenStructureDirty for why this is a flag rather than a loop.
+	bool _childrenFanoutDirty = false;
+
+	// Depth of open BulkChildren scopes, and whether one of them owes a catch-up.
+	uint32_t _bulkChildren = 0;
+	bool _bulkCatchUpOwed = false;
 	bool _transformDirty = true;
 	bool _measureDirty = false; // opt-in measure phase (see markMeasureDirty)
 	bool _pointerStateDirty = false; // opt-in pull, see settlePointerState
