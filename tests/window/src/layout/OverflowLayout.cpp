@@ -185,8 +185,23 @@ void OverflowLayout::runPhase1() {
 
 	auto ovf = _scrollBox->getComponent<ui::OverflowComponent>();
 	expect(ovf && ovf->y == document::Overflow::Auto, "overflow-y: auto not recorded");
-	// the other axis is coerced to auto, because one scissor rect cannot clip a single axis
-	expect(ovf && ovf->x == document::Overflow::Auto, "overflow-x was not coerced to auto");
+	/* THE AXIS NOBODY ASKED ABOUT STAYS AS IT WAS, and that is the engine's own rule rather than
+	CSS's. The web computes a `visible` axis to `auto` beside a non-visible one because a clip is a
+	box; this once did the same, for the harder reason that the only clip it had was one scissor
+	RECT. It cost more than it bought - an `overflow-y: auto` column also overflowed horizontally,
+	so a container sized by its content took the width of its widest unwrapped line and nothing in
+	it ever wrapped. The scissor is now built per axis (ui::ScissorAxes): the axis left out is
+	OPENED past any surface rather than narrowed to the box, so one axis can scroll while the other
+	flows. */
+	expect(ovf && ovf->x == document::Overflow::Visible,
+			"the undeclared axis was coerced instead of left alone");
+
+	// ...and the consequence, which is the half that can actually be seen: the scissor cuts on the
+	// declared axis only. The component pair above is just what the resolver recorded.
+	auto scissor = _scrollBox->getSystemByType<DynamicStateSystem>();
+	expect(scissor != nullptr, "overflow-y: auto did not install a scissor");
+	expect(scissor && scissor->getScissorAxes() == ScissorAxes::Vertical,
+			"a vertically scrolling box clips horizontally too");
 
 	auto layout = _scrollBox->getSystemByType<ui::LayoutSystem>();
 	expect(layout != nullptr, "scrolling box has no LayoutSystem");
@@ -210,8 +225,12 @@ void OverflowLayout::runPhase1() {
 	expect(hiddenScroll != nullptr, "overflow: hidden did not install a ScrollSystem");
 	expect(hiddenScroll && hiddenScroll->getScrollRange() == Size2::ZERO,
 			"overflow: hidden reported a scroll range");
-	expect(_hiddenBox->getSystemByType<DynamicStateSystem>() != nullptr,
-			"overflow: hidden did not install a scissor");
+	auto hiddenScissor = _hiddenBox->getSystemByType<DynamicStateSystem>();
+	expect(hiddenScissor != nullptr, "overflow: hidden did not install a scissor");
+	// the control for the two single-axis cases above: `overflow: hidden` asked for both, and gets
+	// both, so "only the declared axis clips" cannot pass by the mask being empty
+	expect(hiddenScissor && hiddenScissor->getScissorAxes() == ScissorAxes::Both,
+			"overflow: hidden on both axes did not clip both");
 	// `hidden` clips, it does not squash: the child keeps its declared size and the box hides the
 	// part that does not fit. A `hidden` box that shrank its content would clip nothing.
 	expect(sprt::abs(_hiddenChild->getContentSize().height - 300.0f) < 0.5f,
@@ -225,11 +244,16 @@ void OverflowLayout::runPhase1() {
 	expect(_fitFiller->getContentSize().height > 1.0f,
 			"flex-grow stopped working inside an overflow container");
 
-	// --- axis coercion the other way round -----------------------------------
+	// --- the axes really are independent, declared the other way round -------
+	// `overflow-x: visible; overflow-y: hidden` is the case CSS would reconcile and this engine
+	// does not: x is written down as asked, and only y reaches the scissor.
 	auto coerced = _coercedBox->getComponent<ui::OverflowComponent>();
-	expect(coerced && coerced->x == document::Overflow::Auto,
-			"an explicit `overflow-x: visible` beside a non-visible y was not coerced");
+	expect(coerced && coerced->x == document::Overflow::Visible,
+			"an explicit `overflow-x: visible` was overwritten beside a non-visible y");
 	expect(coerced && coerced->y == document::Overflow::Hidden, "overflow-y: hidden not recorded");
+	auto coercedScissor = _coercedBox->getSystemByType<DynamicStateSystem>();
+	expect(coercedScissor && coercedScissor->getScissorAxes() == ScissorAxes::Vertical,
+			"the explicitly visible axis was clipped anyway");
 
 	/* The wheel eases rather than jumps, and a notch that lands mid-easing ADDS to the target.
 
