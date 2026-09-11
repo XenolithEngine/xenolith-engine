@@ -200,8 +200,74 @@ void ResolvedStyle::expandPendingRule(document::StyleList &dst,
 	}
 }
 
+/* THE MATCH CACHE: which rules match ONE node, kept so the nodes under it do not each re-derive it.
+
+A resolve walks the node's ancestor chain and asks, at every level, which of the sheets' rules match
+that level's node. The studio's nodes sit eighteen levels deep, so that is eighteen questions per
+node - and seventeen of them are about ancestors, asked again by every one of the five hundred nodes
+in the subtree. The answers were identical every time: `collectMatches` is given the level's node,
+that node's own index in the chain (which decides the sheets in scope) and the Bloom bits of that
+node's own ancestors, so a level's match set is a property of THAT NODE ALONE. Measured at 3.6 ms of
+a 6.0 ms style cost on a cold page, i.e. the largest single item left in the visit.
+
+So it is cached per node, and the cache is checked against the CSS match stamp
+(`Node::getStyleMatchId`, folded over the node and every ancestor above it) rather than against an
+epoch: a global epoch would be cleared by every addChild of a page being built, which is exactly when
+the cache has to work. A stamp covers one chain, so building a subtree invalidates that subtree and
+nothing above it.
+
+Entries keyed by a raw pointer are never read for a node that died: the stamp folds in a per-node id
+that is unique for the life of the process, so an address the allocator hands out again cannot match
+what the previous tenant stored. A node removed from its parent also bumps its parent's child-list
+stamp, and the entries left behind are overwritten or dropped with the cache. They carry pointers
+into the sheets (the rule, its string table, its media bits), which a sheet reload would dangle -
+and cannot be read after one, because the sheet lives on the chain and its StyleSystemState version
+is part of the stamp.
+
+The bound is the crude one on purpose: a resolve needs eighteen entries and a page a few hundred, so
+the map is cleared wholesale when it grows past a limit no real page reaches. Cost of being wrong:
+one re-gather per level, the thing that used to happen every time. */
+namespace {
+
+struct MatchCacheEntry {
+	uint64_t stamp = 0;
+	Vector<document::StyleContainer::MatchedRule> matches;
+};
+
+/* Keyed by a POINTER, hence the spreading hasher - the same reason StyleResolver::_nodesUpdated
+gives: node addresses share their alignment bits, and the default pointer hash leaves exactly those
+low bits to choose the bucket. */
+using MatchCacheMap = sprt::__malloc_unordered_map<const Node *, MatchCacheEntry,
+		sprt::hash_spread<>, sprt::equal_to<void>>;
+
+// thread_local rather than global: a process can run several app threads, each with its own scene
+// graph, and nothing here is shared between them
+static MatchCacheMap &getMatchCache() {
+	static thread_local MatchCacheMap tl_cache;
+	return tl_cache;
+}
+
+constexpr size_t MatchCacheLimit = 16'384;
+
+// one level's three versions folded into the running chain stamp (odd multipliers, each version in
+// its own round, so swapping two of them or moving one up the chain changes the result)
+static inline uint64_t foldStyleMatchStamp(uint64_t acc, const Node *node) {
+	acc = (acc ^ node->getStyleMatchId()) * 0x9E37'79B9'7F4A'7C15ull;
+	acc = (acc ^ node->getComponentsVersion()) * 0xC2B2'AE3D'27D4'EB4Full;
+	acc = (acc ^ node->getChildrenStyleVersion()) * 0x1656'67B1'9E37'79F9ull;
+	return acc;
+}
+
+} // namespace
+
+void StyleResolver::dropMatchCache() { getMatchCache().clear(); }
+
 ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 	ResolvedStyle ret;
+#if XL_FRAME_ACCOUNT
+	auto &account = getVisitAccount();
+	const auto chainStart = core::getAccountClock();
+#endif
 
 	// ancestor chain, node first
 	Vector<Node *> chain;
@@ -209,11 +275,16 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 
 	// ancestor Bloom prefix: ancestorBitsFrom[i] = OR of identity tokens over chain[i..root].
 	// A rule targeting chain[L] tests its ancestors chain[L+1..], i.e. ancestorBitsFrom[L+1].
+	// CSS match stamp prefix, same shape and the same walk: stampFrom[i] folds chain[i] and every
+	// ancestor above it, which is everything a match at level i can depend on (see the match cache)
 	Vector<uint64_t> ancestorBitsFrom;
+	Vector<uint64_t> stampFrom;
 	ancestorBitsFrom.resize(chain.size() + 1, 0);
+	stampFrom.resize(chain.size() + 1, 0);
 	for (size_t i = chain.size(); i-- > 0;) {
 		ancestorBitsFrom[i] =
 				ancestorBitsFrom[i + 1] | foldIdentityBits(chain[i]->getComponent<NodeIdentity>());
+		stampFrom[i] = foldStyleMatchStamp(stampFrom[i + 1], chain[i]);
 	}
 
 	// stylesheet scopes on the chain, nearest first
@@ -269,6 +340,9 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 			}
 		}
 		document::StyleContainer::sortMatchedRules(matches);
+#if XL_FRAME_ACCOUNT
+		++getVisitAccount().styleLevels;
+#endif
 	};
 
 	// Build ONLY the raw merged parameter list plus the interpretation context here.
@@ -280,6 +354,47 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 
 	memory::perform([&] {
 		auto style = new (ret._pool) document::StyleList();
+
+		// Both passes walk the SAME levels - the chain from the outermost sheet scope down to the
+		// node - and at each level they need the SAME specificity-sorted rule list. Gathering it
+		// twice was the single biggest item in a resolve (a lookup in every sheet in scope plus a
+		// sort, about 0.44us, twice per chain level). Gather once here; both passes read it.
+		//
+		// In two steps, and the order matters: every level is put in the cache FIRST, and only then
+		// are the pointers taken. An insert may rehash the map, and a pointer taken before one
+		// would be left pointing at a moved entry.
+		const size_t outerLevel = scopes.back().chainIndex;
+		auto &cache = getMatchCache();
+		if (cache.size() > MatchCacheLimit) {
+			cache.clear();
+		}
+		for (size_t i = outerLevel + 1; i-- > 0;) {
+			auto it = cache.find(chain[i]);
+			if (it != cache.end() && it->second.stamp == stampFrom[i]) {
+#if XL_FRAME_ACCOUNT
+				++account.styleLevelHits;
+#endif
+				continue;
+			}
+			if (it == cache.end()) {
+				it = cache.emplace(chain[i], MatchCacheEntry()).first;
+			}
+			it->second.matches.clear();
+			it->second.stamp = stampFrom[i];
+			gatherLevel(it->second.matches, chain[i], i);
+		}
+
+		Vector<const Vector<document::StyleContainer::MatchedRule> *> levelMatches;
+		levelMatches.resize(outerLevel + 1, nullptr);
+		for (size_t i = outerLevel + 1; i-- > 0;) {
+			levelMatches[i] = &cache.find(chain[i])->second.matches;
+		}
+
+#if XL_FRAME_ACCOUNT
+		// the gather is prologue work now, not part of either pass
+		account.styleChainNs += core::getAccountClock() - chainStart;
+		const auto pass1Start = core::getAccountClock();
+#endif
 
 		// PASS 1 - custom properties only, every level, outermost first. They are always
 		// inherited, and the whole cascade of them must be known before a single var() is
@@ -296,10 +411,9 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 					ret._variables->vars.emplace(key, value);
 				}
 			};
-			auto collect = [&](Node *levelNode, size_t chainIndex) {
-				Vector<document::StyleContainer::MatchedRule> matches;
-				gatherLevel(matches, levelNode, chainIndex);
-				for (auto &m : matches) {
+			auto collect = [&](size_t chainIndex) {
+				Node *levelNode = chain[chainIndex];
+				for (auto &m : *levelMatches[chainIndex]) {
 					for (auto &c : m.style->custom) {
 						if (c.mediaQuery != document::MediaQueryIdNone
 								&& !m.media.at(c.mediaQuery.get())) {
@@ -317,18 +431,19 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 					for (auto &it : vars->vars) { declare(it.first, it.second); }
 				}
 			};
-			for (size_t i = scopes.back().chainIndex; i >= 1; --i) { collect(chain[i], i); }
-			collect(node.get(), 0);
+			for (size_t i = outerLevel + 1; i-- > 0;) { collect(i); }
 		}
+
+#if XL_FRAME_ACCOUNT
+		account.stylePass1Ns += core::getAccountClock() - pass1Start;
+		const auto pass2Start = core::getAccountClock();
+#endif
 
 		// PASS 2 - the parameters themselves, in cascade order. A rule's deferred var()
 		// declarations are expanded right after its literal ones, so a substituted value takes
 		// exactly the cascade position it was written at instead of winning by arriving last.
-		auto resolveLevel = [&](document::StyleList &dst, Node *levelNode, size_t chainIndex,
-									bool inherit) {
-			Vector<document::StyleContainer::MatchedRule> matches;
-			gatherLevel(matches, levelNode, chainIndex);
-			for (auto &m : matches) {
+		auto resolveLevel = [&](document::StyleList &dst, size_t chainIndex, bool inherit) {
+			for (auto &m : *levelMatches[chainIndex]) {
 				dst.merge(*m.style, m.media, inherit);
 				// a `width: var(--w)` on an ancestor is not inherited - only the variable is
 				if (!inherit && !m.style->pending.empty()) {
@@ -338,14 +453,15 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		};
 
 		// inheritable parameters cascade from the outermost styled ancestor down
-		for (size_t i = scopes.back().chainIndex; i >= 1; --i) {
-			resolveLevel(*style, chain[i], i, true);
-		}
+		for (size_t i = outerLevel + 1; i-- > 1;) { resolveLevel(*style, i, true); }
 
 		// the node's own matches (full, specificity-sorted) override inherited values
-		resolveLevel(*style, node.get(), 0, false);
+		resolveLevel(*style, 0, false);
 
 		ret._style = style;
+#if XL_FRAME_ACCOUNT
+		account.stylePass2Ns += core::getAccountClock() - pass2Start;
+#endif
 	}, ret._pool);
 
 	// note: string parameters (font-family, background-image, grid tracks) resolve against
@@ -1236,6 +1352,17 @@ void StyleResolver::resolveOwnerIfStale() {
 }
 
 void StyleResolver::resolveForNode(Node *node) {
+#if XL_FRAME_ACCOUNT
+	auto &account = getVisitAccount();
+	++account.styleResolves;
+	const auto styleStart = core::getAccountClock();
+	struct StyleClose {
+		VisitAccount *a;
+		uint64_t start;
+		~StyleClose() { a->styleNs += core::getAccountClock() - start; }
+	} styleClose{&account, styleStart};
+#endif
+
 	auto style = resolveStyleForNode(node);
 	if (!style.valid()) {
 		return;

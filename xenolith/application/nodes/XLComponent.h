@@ -231,8 +231,21 @@ public:
 
 	void resetComponentsDirty();
 
+	/* Monotone per-container counter, bumped by every component mutation below.
+
+	It is the CSS MATCH STAMP's component half (see Node's style-match stamp): what a selector can
+	read about a node - its NodeIdentity, its InteractiveComponent state, the focus-within and
+	selection markers, the StyleSystemState version - lives in components, so one counter over all
+	of them is a conservative "has anything a selector reads changed here". Conservative on purpose:
+	a styling write (an InheritedTextStyle, a PanelStyleComponent) bumps it too and costs the node's
+	cached match list, which is one re-gather out of the chain's eighteen. A filtered version would
+	need a registry of match-relevant component ids and would go stale the first time somebody adds
+	a component a selector can read. */
+	uint64_t getComponentsVersion() const { return _componentsVersion; }
+
 protected:
 	bool _componentsDirty = false;
+	uint64_t _componentsVersion = 0;
 	HashSet<Component, ComponentHash, ComponentEqual> _components;
 	ComponentMask _componentsDirtyMask;
 };
@@ -240,6 +253,7 @@ protected:
 template <typename T, typename... Args>
 T *ComponentContainer::setComponent(Args &&...args) {
 	_componentsDirty = true;
+	++_componentsVersion;
 	_componentsDirtyMask.emplace(T::Id.value);
 	auto it = _components.find(T::Id);
 	if (it == _components.end()) {
@@ -256,6 +270,7 @@ const T *ComponentContainer::updateComponent(const Callback<bool(NotNull<T>)> &c
 	}
 	if (cb((*it).template get<T>())) {
 		_componentsDirty = true;
+		++_componentsVersion;
 		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
@@ -270,11 +285,13 @@ const T *ComponentContainer::setOrUpdateComponent(const Callback<bool(NotNull<T>
 		it = _components.emplace(T::Id).first;
 		(*it).template create<T>();
 		_componentsDirty = true;
+		++_componentsVersion;
 		_componentsDirtyMask.emplace(T::Id.value);
 	}
 
 	if (cb((*it).template get<T>())) {
 		_componentsDirty = true;
+		++_componentsVersion;
 		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
@@ -294,6 +311,7 @@ bool ComponentContainer::removeComponent() {
 	auto it = _components.find(T::Id);
 	if (it != _components.end()) {
 		_componentsDirty = true;
+		++_componentsVersion;
 		_componentsDirtyMask.emplace(T::Id.value);
 		_components.erase(it);
 		return true;

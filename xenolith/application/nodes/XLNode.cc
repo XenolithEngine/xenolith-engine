@@ -32,6 +32,32 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+#if XL_FRAME_ACCOUNT
+VisitAccount &getVisitAccount() {
+	// One frame at a time on one thread - see the declaration. A function-local static, like every
+	// other account's storage in this engine.
+	static VisitAccount s_account;
+	return s_account;
+}
+
+namespace {
+// Adds its own span to one bucket when it goes out of scope. A struct rather than two clock reads at
+// every call site, so a phase cannot be measured with its `else` branch left out.
+struct VisitPhase {
+	uint64_t *bucket;
+	uint64_t start;
+
+	explicit VisitPhase(uint64_t &b) : bucket(&b), start(core::getAccountClock()) { }
+
+	~VisitPhase() { *bucket += core::getAccountClock() - start; }
+};
+} // namespace
+
+#define XL_VISIT_PHASE(name) VisitPhase _visitPhase_##name(getVisitAccount().name)
+#else
+#define XL_VISIT_PHASE(name)
+#endif
+
 ComponentId NodeIdentity::Id;
 ComponentId MeasureComponent::Id;
 ComponentId VisibilityComponent::Id;
@@ -151,7 +177,15 @@ Mat4 Node::getChainParentToNodeTransform(Node *parent, Node *node, bool withPare
 	return ret;
 }
 
-Node::Node() { }
+/* Unique per node for the life of the process - see Node::getStyleMatchId(). Atomic for the same
+reason DataIdentity::allocate is: nodes are built on worker threads too. Nothing compares two ids or
+reads order out of them - uniqueness is the whole contract - and it costs one increment per node. */
+static uint64_t allocateStyleMatchId() {
+	static sprt::atomic<uint64_t> s_styleMatchId(1);
+	return s_styleMatchId.fetch_add(1);
+}
+
+Node::Node() : _styleMatchId(allocateStyleMatchId()) { }
 
 Node::~Node() {
 	for (auto &child : _children) { child->_parent = nullptr; }
@@ -569,6 +603,8 @@ Node::BulkChildren::~BulkChildren() {
 void Node::markChildrenStructureDirty() {
 	_reorderChildDirty = true;
 	++_childrenVersion;
+	// the child list is an input of its children's selectors - see getChildrenStyleVersion()
+	++_childrenStyleVersion;
 	if (!_running) {
 		// nothing has been resolved or laid out yet - building a scene must stay O(n)
 		return;
@@ -781,6 +817,15 @@ StringView Node::getName() const {
 	return StringView();
 }
 
+/* An identity change is an input of the SIBLINGS' selectors too (`.a + .b`, `:nth-of-type`), and
+those are matched against the parent's child list - so the parent's child-list stamp has to move as
+well. O(1): the siblings are not touched, only the number they all read. */
+void Node::markStyleIdentityDirty() {
+	if (_parent) {
+		++_parent->_childrenStyleVersion;
+	}
+}
+
 void Node::setName(StringView str) {
 	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		if (data->name != str) {
@@ -789,6 +834,7 @@ void Node::setName(StringView str) {
 		}
 		return false;
 	});
+	markStyleIdentityDirty();
 }
 
 StringView Node::getType() const {
@@ -806,6 +852,7 @@ void Node::setType(StringView str) {
 		}
 		return false;
 	});
+	markStyleIdentityDirty();
 }
 
 void Node::addStyleClass(StringView cl) {
@@ -817,6 +864,7 @@ void Node::addStyleClass(StringView cl) {
 		}
 		return false;
 	});
+	markStyleIdentityDirty();
 }
 
 void Node::removeStyleClass(StringView cl) {
@@ -828,6 +876,7 @@ void Node::removeStyleClass(StringView cl) {
 		}
 		return false;
 	});
+	markStyleIdentityDirty();
 }
 
 void Node::toggleStyleClass(StringView cl) {
@@ -840,6 +889,7 @@ void Node::toggleStyleClass(StringView cl) {
 		}
 		return true;
 	});
+	markStyleIdentityDirty();
 }
 
 bool Node::hasStyleClass(StringView cl) const {
@@ -1384,12 +1434,46 @@ void Node::setWantsAncestorComponents(bool b) {
 }
 
 void Node::handleTransformDirty(const Mat4 &parentTransform) {
+#if XL_FRAME_ACCOUNT
+	++getVisitAccount().transformCalls;
+#endif
+
+	// The copy below is what lets a system remove itself from inside its own callback; a node with no
+	// systems - most of a scene - should not pay for the possibility. Measured as nothing on its own
+	// (the phase's cost turned out to be one callback, see the account), and kept because it is free.
+	if (_systems.empty()) {
+		return;
+	}
+#if XL_FRAME_ACCOUNT
+	const auto dispatchStart = core::getAccountClock();
+#endif
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleNodeEvents)) {
+#if XL_FRAME_ACCOUNT
+			++getVisitAccount().transformSystems;
+			const auto oneStart = core::getAccountClock();
+#endif
 			it->handleTransformDirty(parentTransform);
+#if XL_FRAME_ACCOUNT
+			/* A TRIPWIRE WITH A NAME, because the account can say "the dispatch" and no more.
+
+			This is how the largest item in a studio page's visit was found: 56 dispatches at 103 us
+			each, and the type was `CallbackSystem` - `basic2d::ScrollViewBase`'s answer to a transform,
+			which hands a virtualized controller a full pass. A millisecond inside one system's
+			notification is pathological by any measure, so it says so, with the name. */
+			const auto oneTime = core::getAccountClock() - oneStart;
+			if (oneTime > 1'000'000) {
+				log::source().debug("visit::account", "a system spent ",
+						double(oneTime) / 1'000'000.0,
+						"ms answering one transform: ", typeid(*it).name());
+			}
+#endif
 		}
 	}
+#if XL_FRAME_ACCOUNT
+	getVisitAccount().transformSystemNs += core::getAccountClock() - dispatchStart;
+#endif
 }
 
 void Node::handleGlobalTransformDirty(const Mat4 &parentTransform) {
@@ -1907,6 +1991,8 @@ bool Node::runContentSizePhase(FrameInfo &info, bool parentResized) {
 }
 
 bool Node::runChildrenPhases(FrameInfo &info, bool parentReordered) {
+	XL_VISIT_PHASE(children);
+
 	// Phase 5: child order. handleReorderChildDirty must not change geometry or components, so it
 	// runs last of the two - sortAllChildren() only applies a reorder already asked for
 	bool reordered = false;
@@ -1931,21 +2017,31 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 	NodeVisitFlags flags = parentFlags;
 	const Mat4 &parentWorld = info.modelTransformStack.back();
 
+#if XL_FRAME_ACCOUNT
+	++getVisitAccount().nodes;
+#endif
+
 	// Phase 1: components
-	if (runComponentsPhase(info, hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty))) {
-		// propagate downward only into subtrees that actually contain a listener; otherwise
-		// strip the flag so listener-less subtrees are skipped entirely
-		if (_ancestorComponentsListeners > 0) {
-			flags |= NodeVisitFlags::ComponentsDirty;
-		} else {
-			flags &= ~NodeVisitFlags::ComponentsDirty;
+	{
+		XL_VISIT_PHASE(components);
+		if (runComponentsPhase(info, hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty))) {
+			// propagate downward only into subtrees that actually contain a listener; otherwise
+			// strip the flag so listener-less subtrees are skipped entirely
+			if (_ancestorComponentsListeners > 0) {
+				flags |= NodeVisitFlags::ComponentsDirty;
+			} else {
+				flags &= ~NodeVisitFlags::ComponentsDirty;
+			}
 		}
 	}
 
 	// Phase 2: measure - fix the node's size. Runs before the transform phase so a measure-induced
 	// setContentSize (which re-dirties _contentSizeDirty/_transformDirty) is visible to the transform
 	// notifications below. Must not change components. Feeds phase 4 and the matrix rebuild
-	runMeasurePhase(info);
+	{
+		XL_VISIT_PHASE(measure);
+		runMeasurePhase(info);
+	}
 
 	// The transform phase and the model-matrix rebuild below are the visit's alone: both need the
 	// PARENT's final world matrix, which only a top-down pass has, which is why runPendingPhases
@@ -1956,18 +2052,23 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 	if (_transformDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentTransform)
 					&& hasFlag(parentFlags, NodeVisitFlags::TransformDirty))) {
+		XL_VISIT_PHASE(transform);
 		handleTransformDirty(parentWorld);
 	}
 	if ((flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None
 			|| _transformDirty || _contentSizeDirty) {
+		XL_VISIT_PHASE(globalTransform);
 		handleGlobalTransformDirty(parentWorld);
 	}
 
 	// Phase 4: content size - the node's size is now fixed
-	if (runContentSizePhase(info,
-				hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
-						&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
-		flags |= NodeVisitFlags::ContentSizeDirty;
+	{
+		XL_VISIT_PHASE(contentSize);
+		if (runContentSizePhase(info,
+					hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
+							&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
+			flags |= NodeVisitFlags::ContentSizeDirty;
+		}
 	}
 
 	// Model matrix: build it with the final size (the anchor offset depends on content size), and
@@ -1987,6 +2088,8 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 }
 
 void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera) {
+	XL_VISIT_PHASE(self);
+
 	/* Publish this node into the frame's hit-test registry, if it offers anything to it.
 
 	Here, and not in a system of its own, is the whole point: the rect is the one that was drawn (the

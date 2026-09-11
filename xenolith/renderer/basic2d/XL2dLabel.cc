@@ -799,11 +799,30 @@ void Label::updateLabelScale(const Mat4 &parent) {
 	updateLabelDensity(parent);
 
 	if (_labelDirty) {
+#if XL_FRAME_ACCOUNT
+		auto &account = getVisitAccount();
+		++account.labelShapes;
+		account.labelShapeChars += uint32_t(_string16.size());
+		const auto shapeStart = core::getAccountClock();
+#endif
 		updateLabel();
+#if XL_FRAME_ACCOUNT
+		account.labelShapeNs += core::getAccountClock() - shapeStart;
+#endif
 	}
 }
 
 void Label::updateLabelDensity(const Mat4 &parent) {
+#if XL_FRAME_ACCOUNT
+	auto &densityAccount = getVisitAccount();
+	++densityAccount.labelDensity;
+	const auto densityStart = core::getAccountClock();
+	struct DensityClose {
+		VisitAccount *a;
+		uint64_t start;
+		~DensityClose() { a->labelDensityNs += core::getAccountClock() - start; }
+	} densityClose{&densityAccount, densityStart};
+#endif
 	Vec3 scale;
 	parent.decompose(&scale, nullptr, nullptr);
 
@@ -819,6 +838,12 @@ void Label::updateLabelDensity(const Mat4 &parent) {
 
 	auto density = sprt::min(sprt::min(scale.x, scale.y), scale.z);
 	if (density != _labelDensity) {
+#if XL_FRAME_ACCOUNT
+		// A change under 1% of the old value is jitter rather than a new scale - see VisitAccount.
+		if (_labelDensity > 0.0f && sprt::abs(density - _labelDensity) < _labelDensity * 0.01f) {
+			++getVisitAccount().labelShapeJitter;
+		}
+#endif
 		_labelDensity = density;
 		setLabelDirty();
 	}
