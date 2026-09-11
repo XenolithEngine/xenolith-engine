@@ -169,9 +169,11 @@ protected:
 
 	Function<void(Vec2)> _scrollCallback;
 
-	// Last wheel event time. A burst of events inside ~80ms is a pixel stream (trackpad, wasm
-	// Chrome), even when a single amount happens to equal InputScrollNotch.
+	// Last wheel event, and how it was classified. Events inside one burst keep the first
+	// event's classification, so a fast wheel spin stays discrete and a pixel stream stays
+	// precise even when one of its amounts happens to equal InputScrollNotch.
 	Time _lastWheelTime;
+	bool _lastWheelDiscrete = false;
 };
 
 // Walk the ancestor chain from `node` upward and ask every ScrollSystem on it to reveal `node`.
