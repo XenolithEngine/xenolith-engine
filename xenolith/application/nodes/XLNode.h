@@ -61,6 +61,126 @@ struct SP_PUBLIC ActionStorage : public Ref {
 	Action *getActionByTag(uint32_t);
 };
 
+#if XL_FRAME_ACCOUNT
+/* WHAT THE VISIT ITSELF WAS SPENT ON, in the visit's own six phases.
+
+The frame account says how long the visit took and the page profile says that it is the largest cost of
+a cold page; neither can say WHICH of the six phases a node's visit is made of paid for it, and there
+is no sampling profiler on every host this is measured on (ptrace is restricted on one of them, and
+`perf` absent). So the phases time themselves, in the vocabulary the code already uses - the numbers
+are named after the comments in `Node::processParentFlags` and `runChildrenPhases`.
+
+  components   phase 1: component updates, and the ancestor notifications they publish
+  measure      phase 2: fixing the node's own size, the HandleMeasure protocol included
+  transform    phase 3a: the transform notification - the node was moved within its parent
+  globalTransform  phase 3b: the WORLD transform notification, where a Label re-shapes and a
+               VectorSprite re-tesselates
+  contentSize  phase 4: handleContentSizeDirty, which is where most widgets rebuild themselves
+  children     phases 5 and 6: the child reorder, and handleLayoutChildren - the layout engine
+  self         visitSelf: the hit-test publish and the node's own draw commands
+
+THE BUCKETS NEST AND MAY THEREFORE DOUBLE COUNT. A container's `children` runs the layout engine,
+which asks its children to MEASURE - that measure is inside the parent's `children` here and inside
+the child's own `measure` when the child is visited. So the sum can exceed the visit, and the numbers
+are read as shares rather than as a partition; `nodes` beside them is the visited count, and the frame
+account's own `appNs` is what the sum is compared against.
+
+App thread only, one frame at a time - reset by `Director::acquireFrame` before the visit it is about
+(beside the deferred counter), read by anybody on the app thread afterwards. Twelve clock reads per
+node: 100 us at three hundred nodes, against the 25 ms visit that made this necessary. */
+struct SP_PUBLIC VisitAccount {
+	uint64_t components = 0;
+	uint64_t measure = 0;
+	/* Phase 3 is split in two, and the split is the reason this account exists at all: the plain
+	notification is arithmetic, while `handleGlobalTransformDirty` is where a node recomputes what
+	depends on its WORLD scale - a Label re-shapes its text there and a VectorSprite re-tesselates.
+	One number for the pair would have said "the transform phase", which is not a thing to go and
+	change. */
+	uint64_t transform = 0;
+	uint64_t globalTransform = 0;
+	uint64_t contentSize = 0;
+	uint64_t children = 0;
+	uint64_t self = 0;
+	uint32_t nodes = 0;
+
+	/* AND THE COUNTS BESIDE THE TIMES, because "phase 3 is 5 ms" does not say whether that is a
+	thousand cheap dispatches or one expensive call. `transformCalls` is how many times the phase ran
+	at all, `transformSystems` how many system callbacks it dispatched. */
+	uint32_t transformCalls = 0;
+	uint32_t transformSystems = 0;
+
+	/* AND WHAT THE TEXT DID INSIDE THAT PHASE, which is where the phase's time turned out to be.
+
+	`labelDensity` counts the world-scale derivations (a Mat4 decompose each) and `labelShapes` the
+	full re-shapes they decided on. Two counts rather than one: a derivation that changes nothing is a
+	different problem from a re-shape, and the ratio between them says which one is the cost. Filled
+	by basic2d::Label, which is the only thing in the engine that re-shapes on a transform. */
+	uint32_t labelDensity = 0;
+	uint32_t labelShapes = 0;
+
+	/* OF THOSE RE-SHAPES, the ones decided by a density that barely moved (under 1%).
+
+	The comparison in `Label::updateLabelDensity` is an exact float one, so a world scale that arrives
+	a hair different re-shapes the whole label. This counter is what says whether that is happening:
+	jitter calls for a tolerance, while two genuinely different scales call for shaping later instead
+	of oftener. The two have different fixes, so they are counted apart. */
+	uint32_t labelShapeJitter = 0;
+
+	// And what those re-shapes COST, measured around `Label::updateLabel` itself, with the characters
+	// they covered. The phase's time turned out to be this number; everything else in phase 3 is
+	// arithmetic.
+	uint64_t labelShapeNs = 0;
+	uint32_t labelShapeChars = 0;
+
+	// The transform phase's body, bisected: the world-scale derivation against the dispatch to the
+	// node's systems. 24 us per call had to be one of the two, and neither looked like it.
+	uint64_t labelDensityNs = 0;
+	uint64_t transformSystemNs = 0;
+
+	/* AND THE SCROLL CONTROLLER'S PASS, which is what that dispatch turned out to be.
+
+	`scrollPasses` is how many times `ScrollController::onScrollPosition` did work (the ones it skips
+	are not counted), `scrollRounds` the convergence rounds inside them, `scrollItems` the items walked
+	- the pass walks every item twice - and the two node counters what it built and destroyed. A pass
+	that walks thousands of items to build three nodes is a different problem from one that builds
+	three hundred. */
+	/* AND WHAT THE STYLING COSTS, which is the other thing a new subtree pays for.
+
+	`styleResolves` counts `ui::StyleResolver::resolveForNode` - one per node per resolve, each of
+	which walks the node's ancestor chain and matches it against every scope's selectors. A page
+	arriving styles its whole subtree, so this is the natural suspect once the item node function is
+	the thing being looked at. */
+	uint32_t styleResolves = 0;
+	uint64_t styleNs = 0;
+
+	/* And one resolve, in its three parts: the prologue (the ancestor chain, the Bloom prefix, the
+	scopes, the pool and the level gather) and the two passes that read what the gather found - PASS
+	1 the custom properties, PASS 2 the parameters.
+
+	`styleLevels` counts the level gathers that actually ran - `collectMatches` plus a sort each -
+	and `styleLevelHits` the ones the match cache answered instead. Their sum is the chain depth per
+	resolve, and the split is the cache's hit rate: the whole point of the stamp (see
+	`Node::getStyleMatchId`) is that the ~18 ancestor levels of a resolve are shared with every other
+	node in the subtree, so a healthy page reads one gather per resolve and hits on the rest. */
+	uint64_t styleChainNs = 0;
+	uint64_t stylePass1Ns = 0;
+	uint64_t stylePass2Ns = 0;
+	uint32_t styleLevels = 0;
+	uint32_t styleLevelHits = 0;
+
+	uint32_t scrollPasses = 0;
+	uint32_t scrollRounds = 0;
+	uint32_t scrollItems = 0;
+	uint32_t scrollBuilt = 0;
+	uint32_t scrollRemoved = 0;
+	uint64_t scrollNs = 0;
+
+	void clear() { *this = VisitAccount(); }
+};
+
+SP_PUBLIC VisitAccount &getVisitAccount();
+#endif
+
 class SP_PUBLIC Node : public Ref, public ComponentContainer {
 public:
 	/* Nodes with transparent zOrder will not be added into zPath */
@@ -191,12 +311,55 @@ public:
 	 * `sortAllChildren` does NOT bump it - the sort only applies a reorder already counted. */
 	uint32_t getChildrenVersion() const { return _childrenVersion; }
 
+	/* THE CSS MATCH STAMP, which says whether a cached answer to "which rules match this node"
+	is still the truth.
+
+	`ui::StyleResolver` resolves a node against its whole ancestor chain, asking at EVERY level
+	which rules match that level's node - eighteen levels deep in a studio page, and the same
+	eighteen for every one of the five hundred nodes on it. A level's match set is a property of
+	that level's node alone, so it is cached (`resolveStyleForNode`); these three numbers are what
+	the cache checks it against, folded over the node and every ancestor above it:
+
+	  getStyleMatchId()         unique per node for the life of the process, so an entry left
+	                            behind by a freed node can never be read as a fresh node that the
+	                            allocator happened to put at the same address
+	  getComponentsVersion()    anything a selector can read about THIS node (identity, interactive
+	                            state, the focus-within / selection markers, the sheet version)
+	  getChildrenStyleVersion() anything a selector can read about this node's CHILD LIST: their
+	                            number (`:empty`), their order and position (`:nth-child`,
+	                            `+`, `~`) and their identities (`.a + .b`, `:nth-of-type`)
+
+	Folding the three over the chain covers every input of the match: a node's own state, every
+	ancestor's state (descendant and child combinators, `:hover` on an ancestor), its position among
+	its siblings (its parent's child-list version) and every ancestor's position (that ancestor's
+	parent's, which is the next level up). A bump anywhere on the chain changes the fold, and the
+	cache re-gathers.
+
+	The one input it does NOT cover is a SIBLING's interactive state - `input:checked + label` -
+	because a component change bumps the node, not its parent's child-list version. That is not a
+	regression: the resolver never re-resolves a sibling on an interactive flip either (it reacts to
+	the events of the node that flipped), so such a rule did not restyle live before the cache. */
+	uint64_t getStyleMatchId() const { return _styleMatchId; }
+
+	/** Child-list version as the CSS matcher needs it: bumped by add/remove/reorder AND by a
+	 * child's identity change, because `.a + .b` and `:nth-of-type` read the siblings' types and
+	 * classes, not just their count. Separate from `getChildrenVersion()` on purpose - that one
+	 * feeds the resolver's freshness map, where an identity change on one child must not make
+	 * every sibling's applied style stale. */
+	uint64_t getChildrenStyleVersion() const { return _childrenStyleVersion; }
+
 	/** The child list changed (add / remove / reorder): bump the version and, while running,
 	 * re-arm every remaining child's content-size phase. A sibling's position among its
 	 * siblings is an input to its style (`:nth-child`) and to layout, and a plain add/remove
 	 * moves nothing, so without this nudge the siblings would never signal and would keep
 	 * answers computed for the old child list. */
 	void markChildrenStructureDirty();
+
+	/** An identity change (`setName`/`setType`/`addStyleClass`/...) is an input of the siblings'
+	 * selectors as well as this node's own, so it bumps the PARENT's child-list style version -
+	 * see getChildrenStyleVersion(). The node's own half is the component version, which the
+	 * identity write has already bumped. */
+	void markStyleIdentityDirty();
 
 	virtual void setParent(Node *parent);
 	virtual Node *getParent() const { return _parent; }
@@ -648,6 +811,10 @@ protected:
 
 	// bumped on every add/remove/reorder of a child - see getChildrenVersion()
 	uint32_t _childrenVersion = 0;
+
+	// the CSS match stamp's other two halves - see getStyleMatchId()
+	uint64_t _styleMatchId = 0;
+	uint64_t _childrenStyleVersion = 0;
 
 	bool _inPendingPhases = false;
 	bool _contentSizeDirty = true;
