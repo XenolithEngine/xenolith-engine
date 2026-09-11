@@ -60,11 +60,6 @@ public:
 
 	remote::ObjectFactory *getSharedObjects() const { return _sharedObjects; }
 
-	// Flush the font controller's pending glyph requests now (used by the remote frame-production path to
-	// send GlyphRequests before the frame's FrameInput, so the server registers the gating dependency
-	// before reconciling the frame against it). No-op if the font module / controller is absent.
-	void flushPendingFontGlyphs();
-
 	// AppThread platform-services interface (TODO: route to the remote server).
 	// The remote transport carries no clipboard yet, and every call below is a stub. Said out loud
 	// so that a caller refuses visibly instead of writing into a void.

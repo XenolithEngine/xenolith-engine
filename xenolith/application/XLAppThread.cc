@@ -29,6 +29,12 @@
 
 #include <sprt/runtime/dispatch/handle.h>
 
+#if MODULE_XENOLITH_FONT
+// Downstream module, reached only through the font::FontController extension type - the same way
+// XLClientAppThread.cc reaches it.
+#include "XLFontController.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppThread, onNetworkState)
@@ -189,6 +195,14 @@ bool AppThread::addListener(NotNull<Ref> ref, Function<void(const UpdateTime &, 
 		return true;
 	}
 	return false;
+}
+
+void AppThread::flushPendingFontGlyphs() {
+#if MODULE_XENOLITH_FONT
+	if (auto fc = getExtension<font::FontController>()) {
+		fc->flushPendingGlyphs(this);
+	}
+#endif
 }
 
 bool AppThread::removeListener(NotNull<Ref> ref) {

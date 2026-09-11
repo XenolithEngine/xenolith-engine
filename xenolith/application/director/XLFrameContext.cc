@@ -233,6 +233,10 @@ void FrameContext::submitMaterials(const FrameInfo &info) {
 	if (!_pendingMaterialsToAdd.empty() || !_pendingMaterialsToRemove.empty()) {
 		Vector<Rc<core::DependencyEvent>> events;
 		if (_materialDependency) {
+			// Stamped where it is handed over, exactly as the font batch's is: the event was minted by
+			// the first addPendingMaterial of this frame and everything up to here is it waiting for
+			// the visit to end. See core::DependencyEvent::markSent.
+			_materialDependency->markSent();
 			events.emplace_back(_materialDependency);
 		}
 

@@ -654,6 +654,7 @@ auto FontController::getControllerInfo() const -> ControllerInfo {
 	ret.name = _name;
 	ret.loaded = _loaded;
 	ret.dirty = _dirty;
+	ret.batches = _submittedBatches;
 	ret.glyphGeneration = _glyphGeneration;
 	ret.submittedGeneration = _submittedGeneration.load();
 	ret.uploadedGeneration = _uploadedGeneration.load();
@@ -895,6 +896,15 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 			// nothing new waits on this instead of opening another one.
 			_submittedDependency = dep;
 
+			// THE HAND-OVER, stamped: everything between the event being minted (inside
+			// addTextureChars, during somebody's layout) and this line is the batch waiting to be
+			// SENT, and this flush runs once per application update - so a dependency minted during a
+			// visit waits here for the next one. `XL_DEP_ACCOUNT=1` is what says by how much.
+			if (dep) {
+				dep->markSent();
+			}
+
+			++_submittedBatches;
 			submitGlyphs(app, sp::move(objects), sp::move(dep));
 		}
 		_dirty = false;

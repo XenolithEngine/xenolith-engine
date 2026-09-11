@@ -86,6 +86,17 @@ struct VertexMaterialVertexProcessor : public Ref {
 	void finalize(VertexPlan *plan);
 
 #if XL_FRAME_ACCOUNT
+	/* Read off the FrameHandle in `run`, not in `finalize`.
+
+	`run` is inside the callback of the wait that gates THIS data, so what is read is that wait -
+	which is the interesting one - and the handle is in hand; `finalize` runs later, on another
+	thread, and reaching back for the frame to read three integers would be borrowing a lifetime for
+	nothing. A wait of another attachment that is still in flight is correctly not counted here: the
+	stat describes what the vertex data waited for. */
+	uint64_t _depWaitTime = 0;
+	uint32_t _depCount = 0;
+	uint32_t _depWaited = 0;
+
 	uint64_t _walkTime = 0;
 	uint64_t _bufferTime = 0;
 	uint64_t _fillTime = 0;
@@ -101,6 +112,11 @@ VertexMaterialVertexProcessor::VertexMaterialVertexProcessor(VertexAttachmentHan
 }
 
 void VertexMaterialVertexProcessor::run(core::FrameHandle &frame) {
+#if XL_FRAME_ACCOUNT
+	_depWaitTime = frame.getDependencyWaitTime();
+	_depCount = frame.getDependencyCount();
+	_depWaited = frame.getDependencyWaited();
+#endif
 	_constraints = frame.getFrameConstraints();
 	_request = frame.getRequest();
 	_persistentMapping = frame.isPersistentMapping();
@@ -278,6 +294,10 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	if (auto pf = _request ? _request->getPresentationFrame() : nullptr) {
 		_drawStat.frameOrder = pf->getFrameOrder();
 	}
+	_drawStat.dependencyWaitTime = _depWaitTime;
+	_drawStat.dependencyCount = _depCount;
+	_drawStat.dependencyWaited = _depWaited;
+
 	_drawStat.deferredWorkTime = plan->deferredWorkTime;
 	_drawStat.deferredWaitTime = plan->deferredWaitTime;
 	_drawStat.deferredCount = plan->deferredCount;

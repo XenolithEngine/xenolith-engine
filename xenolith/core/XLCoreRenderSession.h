@@ -195,6 +195,24 @@ struct SP_PUBLIC DrawStat {
 	uint32_t deferredCount; // results consumed
 	uint32_t deferredWaited; // of those, how many were not finished when we got there
 
+	/* ---- and what the frame waited for work it does not own ---------------------------------------
+
+	`FrameHandle::getDependencyWaitTime` and its two counts, carried on the same channel for the same
+	reason the deferred pair is. THREE different waits live in this struct and they are not parts of
+	one whole:
+
+	  deferredWorkTime  tesselation, summed ACROSS WORKER THREADS - may exceed the frame
+	  deferredWaitTime  the VERTEX STAGE standing still for a deferred result - inside the frame
+	  dependencyWaitTime  the FRAME standing still for another queue's work (the glyph atlas, the
+	                      materials) before an attachment may take its input - also inside the frame,
+	                      and before the vertex stage rather than in it
+
+	The first is an absolute accumulator and the other two are stalls. Adding any of them to another
+	produces a number that describes nothing. */
+	uint64_t dependencyWaitTime;
+	uint32_t dependencyCount;
+	uint32_t dependencyWaited;
+
 	/* WHICH FRAME this describes. pushDrawStat hops to the app thread asynchronously, so a reader
 	there cannot assume the stat in hand belongs to the frame that just ended - and a measurement
 	that attributes a number to the wrong frame is worse than one that reports nothing. */

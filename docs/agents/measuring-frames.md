@@ -5,7 +5,7 @@ that make the difference between a number and a wrong number.*
 
 *Part of the [build & test guide](../../AGENTS.md).*
 
-There are two instruments in this repository and they answer for different halves. Neither is on by
+There are several instruments in this repository and they answer for different halves. Neither is on by
 default, and that is deliberate: **a build that measures itself is not the build that ships**, and
 the frame path is the last place an unconditional clock read belongs.
 
@@ -16,8 +16,74 @@ the frame path is the last place an unconditional clock read belongs.
 | `XL_APP_ACCOUNT=N` | what the app thread's half of that frame was spent on | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
 | `XL_FRAME_TIMELINE=N` | a closed account of the whole frame, both halves and the hand-offs between them | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
 | `XL_SOFT_PROFILE=N` | what the software rasterizer cost, per frame | an environment variable, software backend only |
-| `XL_FONT_CACHE_LOG=1` | every batch of glyphs that actually reaches the atlas | an environment variable |
+| `XL_FONT_CACHE_LOG=1` | every batch of glyphs that actually reaches the atlas, and what that batch's own frame spent its time on | an environment variable |
+| `XL_DEP_ACCOUNT=1` | every gating `DependencyEvent`'s life, split into waiting to be SENT and the queue's own work | an environment variable |
 | `DrawStat::pixelsFilled` | the same fill number, live on screen | always on, shown by the FPS overlay when a backend fills it |
+
+## A gating dependency's two halves (`XL_DEP_ACCOUNT=1`)
+
+A `core::DependencyEvent` is what makes a frame wait for work another queue owes it — the font atlas
+is the one that gates most frames — and "that dependency cost 30 ms" is not a fact anyone can act on.
+It has two halves with two different owners:
+
+```
+dep::account: tag=FontController id=5 queued=0.48ms work=1.27ms total=1.51ms
+```
+
+- **`queued`** — minted but not yet handed over. It belongs to whoever decides WHEN to submit, and no
+  amount of making the work faster removes it.
+
+  This is what the account was written for. A glyph request is minted during a LAYOUT and gates the
+  very frame being built, while `FontController::update` flushes once per application update — so the
+  frame waited for a batch that had not been handed to a queue yet: 0.3–13 ms of a gated frame, against
+  0.6–1.5 ms for the work itself. **Both frame-production roads now flush as soon as the frame is
+  out** — `AppThread::flushPendingFontGlyphs`, called by `RemoteWindow` before its FrameInput (the
+  server must register the gate before it reconciles the frame) and by `Director::acquireFrame` right
+  after the request is committed. Measured over four studio pages, five runs each, medians: 40.9 → 16.3,
+  38.7 → 34.2, 75.1 → 54.6, 67.1 → 46.2 ms.
+
+  **What is left of `queued` is the VISIT, not a scheduling gap**, and that is worth knowing before
+  anyone tries the obvious next thing. A second flush BEFORE the visit was written and removed: the
+  argument for it was that tasks running between the update and the visit mint requests that then wait
+  the visit out, but a Label asks for glyphs when it SHAPES, which is inside the visit. Three
+  interleaved pairs on identical builds, `queued` for the page's first batch: 3.6/33.9/13.9 ms without
+  it against 10.3/7.6/15.4 ms with it - no signal, and in every run the number equalled that frame's
+  visit. A request minted early in a long visit cannot leave before the visit ends.
+- **`work`** — the queue's own half, from the hand-over to the signal.
+
+Stamped by `DependencyEvent::markSent()`, which the sender calls; an event whose sender never calls it
+still reports its total, with `queued=?`, because a zero there would read as "submitted instantly".
+Off costs one load and a branch per signalled event.
+
+## What an atlas batch spends its time on (`XL_FONT_CACHE_LOG=1`)
+
+The same switch that logs every batch on the way in now logs what the batch's own frame did:
+
+```
+FontController: atlas batch: generation=28 faces=7 chars=123 gated=yes
+FontController: atlas frame: wait=0.007ms raster=0.561ms place=0.039ms create=0.007ms
+                values=0.069ms (of it addObject=0.065ms) compile=0.01ms device=0.212ms
+                total=0.905ms glyphs=124 extent=128x128
+```
+
+`FontController::ControllerInfo::batches` (reported by the inspector's `fonts` command) counts
+SUBMISSIONS beside it, which is the machine-independent half of all of this: `glyphGeneration` counts
+requests, while a batch is what gates a frame, so "this page cost two batches" is a claim a check can
+make on any host and no millisecond here is.
+
+`wait` is the font frame standing on its own dependencies, `raster` is FreeType on the workers, then
+the pack in three parts (`place` the rectangles, `create` the `DataAtlas`, `values` the four atlas
+values per glyph), `compile` the index, and `device` the submission. **The instance swap is NOT in
+any of them** — it follows, and what it sets off in each window shows up as the `Material` dependency
+in the account above.
+
+It was written for one defect and found it: `values` was **7–18 ms** of every batch, and all of it was
+`core::DataAtlas::addObject`, at 22–43 **microseconds** per call for a resize, a memcpy and one map
+insert. The map — `DataAtlas::_intNames` — was never reserved, while `_data` beside it always was;
+four inserts per glyph over every glyph the atlas holds (the repack is full) made a 120-glyph atlas
+spend 7–12 ms growing a hash map, with a scene frame gated on the batch waiting for it. One
+`reserve`, and the same step is 0.03–0.12 ms. The studio's page opens, which are gated on two batches
+each, went from 90–180 ms to 12–75 ms.
 
 ## The frame account (`XL_FRAME_ACCOUNT=1`)
 
@@ -45,6 +111,36 @@ What it adds:
 - `DrawStat::deferredWorkTime` / `deferredWaitTime` / `deferredCount` / `deferredWaited` — the
   consuming side, carried back on the channel `pushDrawStat` already uses.
 - `DrawStat::frameOrder` and `FrameTimingInfo::lastFrameOrder` — **which frame each half is about**.
+
+### The three waits of a frame, and the one that had no name
+
+A frame stands still for three different reasons, and until `DrawStat::dependencyWaitTime` existed only
+two of them could be told apart:
+
+| number | who stands still | where | may be added to the others |
+|---|---|---|---|
+| `deferredWorkTime` | the WORKERS, summed | inside the tasks | no — it is an absolute accumulator and may exceed the frame |
+| `deferredWaitTime` | the vertex stage, one thread | `acquireResult`, in the stage | no — it is a stall |
+| `dependencyWaitTime` | the FRAME | `FrameHandle::waitForDependencies`, before an attachment takes its input | no — it is a different stall, before the stage rather than in it |
+
+The third is new and it was the missing one. A frame waits on a `DependencyEvent` for the glyph atlas
+that carries its text and for the materials it samples; that wait is neither the visit, nor the vertex
+stage, nor the device, and it used to be visible only as the remainder of the timeline's `render`
+bucket — a number with no name. It is accumulated at the one choke point every frame and every pass
+goes through, with two counts beside it: `dependencyCount` is every event waited on and
+`dependencyWaited` only those not already signalled, because a frame that waits on five satisfied
+events has not waited at all.
+
+Worked example, the studio's graph page, the frame that builds it (99.9 ms wall):
+
+```
+app 64.7   vtx 0.5   depwait 42.7 (6/6)   dwork 2.1   dstall 0.1
+```
+
+The visit and the dependency wait are the whole frame; the vertex stage is half a millisecond and
+deferral is doing its job (work above stall). The frame after it is the opposite shape — `vtx 12.7`
+of which `walk 11.2`, with `dwork 14.0` against `dstall 11.1`, which is a hundred thousand vertexes
+of background grid being walked and tesselated with nothing to overlap the wait with.
 
 ### The two deferred numbers are two categories and may never be added
 

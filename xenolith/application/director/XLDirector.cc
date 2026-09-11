@@ -324,6 +324,29 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 			}
 		});
 
+		/* THE FRAME IS OUT; ANYTHING IT WAITS ON SHOULD BE ON ITS WAY.
+
+		The visit above is where a Label asks the font controller for glyphs, and that request gates
+		THIS frame. The controller's own flush runs from `update()` - the top of the NEXT frame - so
+		without this line the frame waits for a batch that has not been handed to a queue yet: measured
+		at up to 13 ms of pure queueing (`XL_DEP_ACCOUNT=1`), against 0.6-1.5 ms for the work itself.
+		The remote road already did exactly this, one step earlier in its own sequence
+		(RemoteWindow, before the FrameInput).
+
+		AFTER the `perform` and not inside it: the batch is assembled into containers that outlive this
+		call - they are handed to the gl loop - and everything inside that block is allocated from the
+		frame's own pool, which is released with it.
+
+		AND A SECOND CALL BEFORE THE VISIT WAS TRIED AND REMOVED. The reasoning for it was that tasks
+		running between this frame's update and this lambda (a socket command building widgets) mint
+		requests that then wait out the visit. They do not: a Label asks for glyphs when it SHAPES,
+		which is inside the visit, so there is nothing there for an earlier flush to carry. Measured
+		over three interleaved pairs on identical builds - `queued` 3.6/33.9/13.9 ms without it against
+		10.3/7.6/15.4 with it, and in every single run the number was the length of that frame's visit.
+		A request minted early in a long visit cannot be sent before that visit ends, so this half of
+		the wait is the VISIT's cost wearing another name. */
+		_application->flushPendingFontGlyphs();
+
 #if XL_FRAME_ACCOUNT
 		/* The app half is CLOSED here, not where acquireFrame returns.
 

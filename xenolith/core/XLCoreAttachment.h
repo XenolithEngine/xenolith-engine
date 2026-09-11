@@ -79,6 +79,17 @@ public:
 
 	void addQueue(Rc<Queue> &&);
 
+	/* THE EVENT WAS HANDED OVER, stamped by whoever hands it to the queue that will signal it.
+
+	A gating event's life has two halves and they have different owners: the WAIT TO BE SENT, which
+	belongs to whatever batches work up and decides when to submit it, and the WORK, which belongs to
+	the queue. A single "how long did this take" cannot be acted on - the answer has been "neither, it
+	was waiting to be sent" often enough to be the reason this exists. Idempotent: the first stamp
+	stands, so a re-submitted event still reports the wait that mattered.
+
+	Reported by `XL_DEP_ACCOUNT=1`, which logs both halves when the event fires. Costs one store. */
+	void markSent();
+
 	// Register a callback fired exactly once, when the event becomes fully signalled (its last queue is
 	// signalled). It runs on the signalling thread (typically the GPU loop), so the callback must hop
 	// threads itself for any non-thread-safe work. Used by the remote server to drop a client-mirrored
@@ -88,6 +99,7 @@ public:
 protected:
 	uint32_t _id = GetNextId();
 	uint64_t _clock = sp::platform::clock(ClockType::Monotonic);
+	uint64_t _sentClock = 0; // see markSent; zero means nobody said
 	QueueSet _queues;
 	StringView _tag;
 	bool _success = true;
