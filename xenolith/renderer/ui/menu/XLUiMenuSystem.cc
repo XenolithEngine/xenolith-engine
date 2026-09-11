@@ -99,16 +99,20 @@ static MenuSystem_Columns MenuSystem_collectColumns(font::FontController *contro
 				StringStream text;
 				button->encodeShortcut([&](StringView str) { text << str; });
 				ret.shortcut = sprt::max(ret.shortcut,
-						basic2d::Label::getStringWidth(controller, shortcutStyle, text.str()));
+						basic2d::Label::getStringWidth(controller, shortcutStyle, text.str(), true));
 			}
 
+			/* MEASURED LOCALIZED, because the Label that draws it resolves its tags and this decides
+			the width of the WINDOW the menu opens in. Measured raw, a caption of `@Locale:Menu:Save`
+			sized the popup for the twenty-three characters of the tag and then drew four - and in the
+			other direction a Chinese caption, wider per character than its key, was cut off. */
 			if (auto title = button->getTitle(); !title.empty()) {
 				ret.naturalText = sprt::max(ret.naturalText,
-						basic2d::Label::getStringWidth(controller, titleStyle, title));
+						basic2d::Label::getStringWidth(controller, titleStyle, title, true));
 			}
 			if (auto subtitle = button->getSubtitle(); !subtitle.empty()) {
 				ret.naturalText = sprt::max(ret.naturalText,
-						basic2d::Label::getStringWidth(controller, subtitleStyle, subtitle));
+						basic2d::Label::getStringWidth(controller, subtitleStyle, subtitle, true));
 			}
 			break;
 		}
@@ -152,14 +156,16 @@ static void MenuSystem_resolveRows(font::FontController *controller, NotNull<Men
 		case MenuSourceItem::Type::Button: {
 			auto button = static_cast<MenuSourceButton *>(it.get());
 
+			// Localized here for the same reason as the width: a wrapped caption is as many lines as
+			// the TRANSLATION takes, not as many as its key would.
 			if (auto title = button->getTitle(); !title.empty()) {
 				row.titleHeight = basic2d::Label::getLabelSize(controller, titleStyle, title,
-						style.wrapTitle ? metrics.textColumn : 0.0f)
+						style.wrapTitle ? metrics.textColumn : 0.0f, true)
 										  .height;
 			}
 			if (auto subtitle = button->getSubtitle(); !subtitle.empty()) {
 				row.subtitleHeight = basic2d::Label::getLabelSize(controller, subtitleStyle,
-						subtitle, style.wrapSubtitle ? metrics.textColumn : 0.0f)
+						subtitle, style.wrapSubtitle ? metrics.textColumn : 0.0f, true)
 											 .height;
 			}
 

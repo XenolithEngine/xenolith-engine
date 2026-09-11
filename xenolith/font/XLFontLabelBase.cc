@@ -593,7 +593,18 @@ void LabelBase::setFillerChar(char32_t c) {
 }
 char32_t LabelBase::getFillerChar() const { return _fillerChar; }
 
+/* CALLING THIS AT ALL TAKES THE DECISION AWAY FROM `setString`.
+
+Auto-detection is what makes `setString("@Locale:Key")` work with no ceremony, and it is also what
+made a label that shows DATA localize it: every line of an open file is a Label, so a source line
+beginning with `@Locale:` rendered as NOTHING and a line holding `%foo%` was substituted if some
+table happened to define `foo`. Turning the flag off was no defence, because the next `setString`
+saw `!_localeEnabled`, detected tags and turned it straight back on.
+
+So an explicit call latches: `setLocaleEnabled(false)` means never, not until the next assignment.
+A widget that draws what a person typed or what a file holds says so once, in its constructor. */
 void LabelBase::setLocaleEnabled(bool value) {
+	_localeAuto = false;
 	if (_localeEnabled != value) {
 		_localeEnabled = value;
 		setLabelDirty();
@@ -617,9 +628,7 @@ void LabelBase::setString(const StringView &newString) {
 
 	_string8 = newString.str<Interface>();
 	_string16 = string::toUtf16<Interface>(newString);
-	if (!_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
-		setLocaleEnabled(true);
-	}
+	enableLocaleIfTagged();
 	setLabelDirty();
 	clearStyles();
 }
@@ -631,9 +640,7 @@ void LabelBase::setString(const WideStringView &newString) {
 
 	_string8 = string::toUtf8<Interface>(newString);
 	_string16 = newString.str<Interface>();
-	if (!_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
-		setLocaleEnabled(true);
-	}
+	enableLocaleIfTagged();
 	setLabelDirty();
 	clearStyles();
 }
@@ -641,6 +648,15 @@ void LabelBase::setString(const WideStringView &newString) {
 void LabelBase::setLocalizedString(size_t idx) {
 	setString(localeIndex(idx));
 	setLocaleEnabled(true);
+}
+
+// The auto-detection half of `setString`, and it does nothing once anyone has decided explicitly.
+// Assigning through the member rather than through `setLocaleEnabled` is the point: the setter
+// latches, and detection must not count as a decision.
+void LabelBase::enableLocaleIfTagged() {
+	if (_localeAuto && !_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
+		_localeEnabled = true;
+	}
 }
 
 WideStringView LabelBase::getString() const { return _string16; }

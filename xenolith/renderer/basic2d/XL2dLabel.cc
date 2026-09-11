@@ -23,6 +23,7 @@
 
 #include "XL2dLabel.h"
 #include "XLEventListener.h"
+#include "XLFontLocale.h"
 #include "XLDirector.h"
 #include "XLInheritedStyle.h"
 
@@ -396,26 +397,79 @@ void Label::handleEnter(xenolith::Scene *scene) {
 	// components in its new ancestor chain
 	setLabelDirty();
 
-	if (_source) {
-		return;
-	}
+	if (!_source) {
+		auto source = _director->getApplication()->getExtension<font::FontController>();
+		if (source) {
+			_listener->clear();
+			_localeDelegate = nullptr; // the clear above took it with everything else
 
-	auto source = _director->getApplication()->getExtension<font::FontController>();
-	if (source) {
-		_listener->clear();
+			_listener->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
+					[this](const Event &) { onFontSourceUpdated(); });
 
-		_listener->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
-				[this](const Event &) { onFontSourceUpdated(); });
+			if (source->isLoaded()) {
+				setTexture(Rc<Texture>(source->getTexture()));
+			} else {
+				_listener->listenForEventWithObject(font::FontController::onLoaded, source,
+						[this](const Event &) { onFontSourceUpdated(); }, true);
+			}
 
-		if (source->isLoaded()) {
-			setTexture(Rc<Texture>(source->getTexture()));
-		} else {
-			_listener->listenForEventWithObject(font::FontController::onLoaded, source,
-					[this](const Event &) { onFontSourceUpdated(); }, true);
+			_source = source;
 		}
-
-		_source = source;
 	}
+
+	/* THE ONE SUBSCRIBER TO `locale::onLocale` IN THE ENGINE, and what makes changing the language
+	redraw the window instead of only the next label somebody touches.
+
+	It is cheap because a label stores its string UNRESOLVED: `_string16` still holds `@Locale:Key`,
+	and the tags are expanded during layout. So re-localizing is marking the label dirty - no walk of
+	the tree re-assigning strings, and no second copy of the original text to keep in step.
+
+	Registered here rather than in `init()` because `_listener->clear()` above drops every delegate;
+	registered AFTER that block for the same reason, and guarded so that entering a scene twice leaves
+	one delegate rather than two. */
+	if (!_localeDelegate) {
+		_localeDelegate = _listener->listenForEvent(locale::onLocale,
+				[this](const Event &) { handleLocaleChanged(); });
+	}
+	applyLocaleTextFeatures();
+}
+
+/* WHAT THE LOCALE DECIDES ABOUT THE TEXT, beyond which words it is.
+
+Without HarfBuzz shaping Persian and Arabic draw as isolated, unjoined letterforms; without the
+bidirectional algorithm they draw in visual rather than logical order. Both cost time per layout, so
+they follow the locale rather than being on for every label in every language.
+
+THE DIRECTION IS `Neutral` AND NOT `RightToLeft`, which is the half of this that had to be seen to be
+believed. Forcing the locale's direction onto every label is right only if every label is in that
+language, and in an editor it is not: a file path, a component name and a caption from a module that
+has not been translated yet are all Latin, and under an RTL base direction their neutral characters
+go to the wrong end - `/home/x/types.json` draws as `home/x/types.json/` and a sentence's full stop
+jumps to its front. `Neutral` is CSS `dir=auto`: the base level is resolved per paragraph from its
+first strong character (UAX #9, P2-P3), so a Persian caption is right-to-left and the path beside it
+is not.
+
+`_localeTextFeatures` records that THIS is what turned them on, so switching back to a left-to-right
+language turns off what the locale enabled and leaves alone what a caller asked for itself. */
+void Label::applyLocaleTextFeatures() {
+	const bool rtl = (locale::getTextDirection() == font::TextDirection::RightToLeft);
+
+	setTextDirection(rtl ? font::TextDirection::Neutral : font::TextDirection::LeftToRight);
+
+	if (rtl && !_localeTextFeatures) {
+		_localeTextFeatures = true;
+		setBidiEnabled(true);
+		setShapingEnabled(true);
+	} else if (!rtl && _localeTextFeatures) {
+		_localeTextFeatures = false;
+		setBidiEnabled(false);
+		setShapingEnabled(false);
+	}
+}
+
+void Label::handleLocaleChanged() {
+	applyLocaleTextFeatures();
+	setLabelDirty();
 }
 
 void Label::handleExit() { Sprite::handleExit(); }

@@ -84,11 +84,30 @@ static MarkdownTagFactory makePanelFactory(StringView type) {
 	};
 }
 
+/* A ground a block's CONTENT sits on: a layer that paints nothing until a stylesheet gives it a
+background, and that must not tint or fade what is inside it when it does.
+
+Both of those need saying, because on a Node "paints nothing" is inherited twice over. The alpha IS
+the node's opacity, which multiplies down the whole subtree, and the rgb is multiplied into every
+descendant's colour. A table row built as plain transparent black therefore handed its cells opacity
+zero and the colour black - which on the white page the default sheet is written for looked like
+ordinary dark text, and on any other ground like a table that had never been built.
+
+So the colour is WHITE, the identity of the colour cascade, and both cascades are switched off. That
+is also what CSS says about a background: a box's own background-color is neither something its
+contents are seen through nor something they are tinted by. */
+static Rc<basic2d::Layer> makeGroundLayer() {
+	auto layer = Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 1.0f, 0.0f));
+	layer->setCascadeColorEnabled(false);
+	layer->setCascadeOpacityEnabled(false);
+	return layer;
+}
+
 // A layer, for a block that is nothing but a painted rectangle (a rule, a table row's ground).
 static MarkdownTagFactory makeLayerFactory() {
 	return MarkdownTagFactory{
 		.create = [](const MarkdownBuilderContext &) -> Rc<Node> {
-		return Rc<Node>(Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f)));
+		return Rc<Node>(makeGroundLayer());
 	},
 	};
 }
@@ -357,8 +376,7 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 				}
 				columns = sprt::max(columns, count);
 
-				auto rowNode =
-						node->addChild(Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f)));
+				auto rowNode = node->addChild(makeGroundLayer());
 				MarkdownBuilder::applyIdentity(rowNode, "tr");
 				rowNode->addStyleClass(cls);
 				ctx.builder->buildChildren(rowNode, *row);
@@ -382,8 +400,7 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 				}
 				columns = sprt::max(columns, count);
 
-				auto rowNode =
-						node->addChild(Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f)));
+				auto rowNode = node->addChild(makeGroundLayer());
 				MarkdownBuilder::applyIdentity(rowNode, "tr");
 				rowNode->addStyleClass("md-tbody-row");
 				ctx.builder->buildChildren(rowNode, *it);

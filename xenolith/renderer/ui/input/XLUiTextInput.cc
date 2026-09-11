@@ -99,7 +99,9 @@ bool TextInputContainer::init() {
 		return false;
 	}
 
+	// The text a person typed. The PLACEHOLDER below is a caption and keeps its tags.
 	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(0));
+	_label->setLocaleEnabled(false);
 	_label->setAnchorPoint(Anchor::BottomLeft);
 	_label->setType("label");
 	_label->addStyleClass("xl-ui-text-input-label");
