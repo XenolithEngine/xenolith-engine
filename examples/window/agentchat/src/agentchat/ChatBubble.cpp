@@ -23,6 +23,7 @@
 
 #include "agentchat/ChatBubble.h"
 #include "XLUiStyleSystem.h"
+#include "XLUiScrollSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -35,11 +36,29 @@ static constexpr float s_bubblePadding = 24.0f;
 static constexpr float s_bubbleVerticalPadding = 16.0f;
 static constexpr float s_bubbleRowGap = 4.0f;
 
+/* How often a streaming Markdown answer is rebuilt, in microseconds of application time.
+
+A commit reparses the whole answer and builds the node tree again - ui::MarkdownView::getTimings
+names the two halves - and a model emits tokens several times faster than a reader can use a new
+layout. Eight rebuilds a second reads as continuous and leaves the frame budget alone; the text
+itself is never delayed by more than that, and the end of a turn commits regardless. */
+static constexpr uint64_t s_markdownInterval = 125'000;
+
+// A document that has not been laid out yet reports nothing, and a card of no height is a card
+// that flickers into existence a frame later. One line is the honest placeholder.
+static constexpr float s_minBodyViewHeight = 18.0f;
+
 } // namespace
 
-bool ChatBubble::init(ChatRole role) { return init(getChatRoleName(role)); }
+bool ChatBubble::init(ChatRole role) {
+	// Only the model writes Markdown. A question is what the user typed and a tool result is JSON
+	// someone has to be able to read literally - both stay flat text.
+	return init(getChatRoleName(role), role == ChatRole::Assistant);
+}
 
-bool ChatBubble::init(StringView styleClass) {
+bool ChatBubble::init(StringView styleClass) { return init(styleClass, false); }
+
+bool ChatBubble::init(StringView styleClass, bool markdown) {
 	if (!ui::Panel::init()) {
 		return false;
 	}
@@ -54,17 +73,41 @@ bool ChatBubble::init(StringView styleClass) {
 	and without it every rule in the sheet naming one is inert - the text keeps the engine's default
 	colour and size, and nothing says why. Every widget that owns a label does this (ui::TextInput
 	does it for both of its own). */
-	_bodyLabel = addChild(Rc<basic2d::Label>::create(), ZOrder(2));
-	_bodyLabel->setType("label");
-	_bodyLabel->addStyleClass("body");
+	if (markdown) {
+		/* The view brings its own stylesheet and its own recursive resolver, so an answer is
+		readable before this example says anything about it. What the sheet here then does is
+		outrank it: every rule it writes is keyed on this class, and a class beats the bare tag
+		selectors the built-in sheet is deliberately written with. */
+		_bodyView = addChild(Rc<ui::MarkdownView>::create(), ZOrder(2));
+		_bodyView->addStyleClass("answer");
+
+		// Nothing may leave the card by accident: this is somebody's conversation, and the widget
+		// offers a context menu of its own.
+		_bodyView->setCopyPolicy(ui::MarkdownView::CopyPolicy::Both);
+	} else {
+		_bodyLabel = addChild(Rc<basic2d::Label>::create(), ZOrder(2));
+		_bodyLabel->setType("label");
+		_bodyLabel->addStyleClass("body");
+	}
 
 	return true;
 }
 
-
-
 void ChatBubble::setBody(StringView text) {
-	_bodyLabel->setString(text);
+	if (_body == text) {
+		return;
+	}
+
+	_body = text.str<Interface>();
+
+	if (_bodyView) {
+		/* Recorded, not shown. tickBody decides when a rebuild is worth its cost, and the end of
+		the turn flushes whatever is still waiting - so a delta is never lost, only deferred. */
+		_bodyDirty = true;
+		return;
+	}
+
+	_bodyLabel->setString(_body);
 	applyWrapWidth();
 
 	// Published here rather than waited for: the frame has to follow the text it holds on the same
@@ -72,7 +115,39 @@ void ChatBubble::setBody(StringView text) {
 	refreshHeight();
 }
 
-StringView ChatBubble::getBody() const { return _bodyLabel->getString8(); }
+void ChatBubble::tickBody(uint64_t now) {
+	if (!_bodyDirty) {
+		return;
+	}
+
+	// _bodyTime is zero until the first commit, so the first delta of an answer is shown on the
+	// frame it arrives and only the ones after it wait.
+	if (now - _bodyTime < s_markdownInterval) {
+		return;
+	}
+
+	_bodyTime = now;
+	commitBody();
+}
+
+void ChatBubble::flushBody() {
+	_bodyTime = 0;
+	commitBody();
+}
+
+void ChatBubble::commitBody() {
+	if (!_bodyDirty || !_bodyView) {
+		return;
+	}
+
+	_bodyDirty = false;
+
+	_bodyView->setSource(_body);
+	applyWrapWidth();
+	refreshHeight();
+}
+
+StringView ChatBubble::getBody() const { return _body; }
 
 void ChatBubble::setReasoning(StringView text) { setTopText(text, "reasoning"); }
 
@@ -133,29 +208,72 @@ void ChatBubble::setWrapWidth(float width) {
 	refreshHeight();
 }
 
+void ChatBubble::eachRow(const Callback<void(Node *)> &cb) const {
+	// Top to bottom, which is also the order the sheet's z-orders put them in: what the model
+	// thought, what it answered, and the one line under it.
+	if (_reasoningLabel) {
+		cb(_reasoningLabel);
+	}
+	if (_bodyLabel) {
+		cb(_bodyLabel);
+	}
+	if (_bodyView) {
+		cb(_bodyView);
+	}
+	if (_metaLabel) {
+		cb(_metaLabel);
+	}
+}
+
+float ChatBubble::measureLabel(basic2d::Label *label) const {
+	/* Shape it NOW. A Label re-wraps its text lazily, on the visit that follows the change, so a
+	height read straight after setString is the height of the text BEFORE it - and a card that only
+	ever reads that trails one edit behind for as long as an answer keeps arriving. tryUpdateLabel
+	does nothing when nothing is dirty, so the streaming case pays for the re-shape it was going to
+	pay for anyway, one step earlier. */
+	label->tryUpdateLabel();
+
+	/* The label's OWN size, and it is only its own because the bubble is not a flex container:
+	inside one, the layout assigns each item the box it decided on - computed before the text was
+	re-wrapped at that width - and that assignment overwrites what the formatter measured. Outside
+	one, what a Label reports is what its text actually came to. */
+	return label->getContentSize().height;
+}
+
+float ChatBubble::measureBodyView() {
+	/* A document cannot be shaped on demand the way a label can. ui::MarkdownView measures nothing
+	about itself on purpose - the width is the question its owner answers and the wrapping is the
+	answer - so the height of the answer is whatever the flex column INSIDE it gave the body node,
+	which is a result of the layout pass rather than something readable straight after setSource.
+
+	That is one pass of lag on every commit, and it is why the panel ticks every card every frame
+	instead of trusting the setter: the number arrives after the edit that produced it. */
+	auto content = _bodyView->getContentNode();
+	auto height = content ? content->getContentSize().height : 0.0f;
+
+	if (height < s_minBodyViewHeight) {
+		height = s_minBodyViewHeight;
+	}
+
+	if (_wrapWidth > 0.0f) {
+		_bodyView->setContentSize(Size2(_wrapWidth, height));
+	}
+
+	return height;
+}
+
 void ChatBubble::refreshHeight() {
 	auto height = s_bubbleVerticalPadding;
 	auto count = 0u;
 
-	for (auto label : {_reasoningLabel, _bodyLabel, _metaLabel}) {
-		if (!label) {
-			continue;
+	eachRow([&](Node *node) {
+		if (node == _bodyView) {
+			height += measureBodyView();
+		} else {
+			height += measureLabel(static_cast<basic2d::Label *>(node));
 		}
-
-		/* Shape it NOW. A Label re-wraps its text lazily, on the visit that follows the change, so
-		a height read straight after setString is the height of the text BEFORE it - and a card
-		that only ever reads that trails one edit behind for as long as an answer keeps arriving.
-		tryUpdateLabel does nothing when nothing is dirty, so the streaming case pays for the
-		re-shape it was going to pay for anyway, one step earlier. */
-		label->tryUpdateLabel();
-
-		/* The label's OWN size, and it is only its own because the bubble is not a flex container:
-		inside one, the layout assigns each item the box it decided on - computed before the text
-		was re-wrapped at that width - and that assignment overwrites what the formatter measured.
-		Outside one, what a Label reports is what its text actually came to. */
-		height += label->getContentSize().height;
 		++count;
-	}
+	});
 
 	if (count > 1) {
 		height += float(count - 1) * s_bubbleRowGap;
@@ -169,26 +287,43 @@ void ChatBubble::refreshHeight() {
 	_height = rounded;
 	ui::setStyleVariable(this, "--bubble-height", toString(uint32_t(rounded), "px"));
 	markContentSizeDirty();
+
+	/* THE LOG HAS TO BE TOLD, and telling the row is not telling the log.
+
+	The card's height reaches the row it sits in as an intrinsic hint, and the row's own height is
+	not the row's to write: the log is a flex column, so the log owns it. The engine carries a
+	content-size change outwards only as long as each container's OWN size changes on the way, and
+	that chain ends at the row - which cannot change its size without the log, and the log is never
+	asked. The scroll range is computed from the rows, so a log full of rows that never grew has
+	nothing to scroll, and an answer taller than the window simply runs off the top of it.
+
+	Walking out to the scroller re-measures every container the card's height can move, and this
+	runs only on the frames where the height actually changed - the early return above is what
+	makes it affordable while an answer streams. */
+	for (auto node = getParent(); node; node = node->getParent()) {
+		node->markLayoutChildrenDirty();
+		node->markMeasureDirty();
+		if (node->getSystemByType<ui::ScrollSystem>()) {
+			break;
+		}
+	}
 }
 
 void ChatBubble::handleContentSizeDirty() {
 	ui::Panel::handleContentSizeDirty();
 
-	/* Laid out by hand, top down, because the labels are not flex items - see refreshHeight for why
+	/* Laid out by hand, top down, because the rows are not flex items - see refreshHeight for why
 	they must not be. Y is up, so the first row sits at the top of the box. */
 	auto y = getContentSize().height - s_bubbleVerticalPadding / 2.0f;
 
-	for (auto label : {_reasoningLabel, _bodyLabel, _metaLabel}) {
-		if (!label) {
-			continue;
-		}
-		label->setAnchorPoint(Anchor::TopLeft);
-		label->setPosition(Vec2(s_bubblePadding / 2.0f, y));
-		y -= label->getContentSize().height + s_bubbleRowGap;
-	}
+	eachRow([&](Node *node) {
+		node->setAnchorPoint(Anchor::TopLeft);
+		node->setPosition(Vec2(s_bubblePadding / 2.0f, y));
+		y -= node->getContentSize().height + s_bubbleRowGap;
+	});
 }
 
-void ChatBubble::applyWrapWidth() const {
+void ChatBubble::applyWrapWidth() {
 	if (_wrapWidth <= 0.0f) {
 		return;
 	}
@@ -203,10 +338,17 @@ void ChatBubble::applyWrapWidth() const {
 	A custom property is the supported channel for a value that differs per node. It behaves as a
 	declaration written for this node, the sheet reads it back with var(), and the width is
 	therefore definite BEFORE anything is measured. */
-	auto self = const_cast<ChatBubble *>(this);
-	ui::setStyleVariable(self, "--wrap-width", toString(uint32_t(_wrapWidth), "px"));
-	ui::setStyleVariable(self, "--bubble-width",
+	ui::setStyleVariable(this, "--wrap-width", toString(uint32_t(_wrapWidth), "px"));
+	ui::setStyleVariable(this, "--bubble-width",
 			toString(uint32_t(_wrapWidth + s_bubblePadding), "px"));
+
+	/* The document takes its width the direct way instead, and not for want of a rule: a
+	MarkdownView with a CSS `width` would be sized by the resolver on a node whose interior the
+	view itself lays out, and the height half of the same box has no CSS spelling at all - nothing
+	in the sheet can say "as tall as the document came out". One writer for both axes, here. */
+	if (_bodyView) {
+		_bodyView->setContentSize(Size2(_wrapWidth, _bodyView->getContentSize().height));
+	}
 }
 
 } // namespace stappler::xenolith::examples

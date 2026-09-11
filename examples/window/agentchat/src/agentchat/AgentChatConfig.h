@@ -37,9 +37,9 @@ parser. That is the same seam tests/window uses for `--watch` (tests/window/src/
 The values are resolved on the first call and kept: nothing they read can change while the app runs.
 The returned views point at file-local storage that outlives every caller. */
 
-// Base URL of an OpenAI-compatible agent, `/v1` included, no trailing slash. Default is the test
-// stand on the local network; any such endpoint works - llama.cpp server, LM Studio, Ollama, or a
-// cloud provider once a key is set.
+// Base URL of an OpenAI-compatible agent, `/v1` included, no trailing slash. Default is
+// `http://localhost:1234/v1`, the local server; any such endpoint works - llama.cpp server, LM
+// Studio, Ollama, or a cloud provider once a key is set.
 StringView getAgentEndpoint();
 
 // The model to ask for, when the user named one. Empty means "take the first one /models offers".
