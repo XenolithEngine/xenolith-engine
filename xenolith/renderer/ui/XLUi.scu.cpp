@@ -39,7 +39,7 @@
 #include "atoms/XLUiTableBorderPainter.cc"
 
 #include "input/XLUiControlLock.cc" // the widget half of the lock; the state half is in application
-                                 // with a reason attached, and every widget below calls in
+// with a reason attached, and every widget below calls in
 // here. It also sets a ui::TooltipComponent, whose
 // definition arrives much later in this unit - that is
 // fine (the header defines the class) and this include
@@ -85,9 +85,9 @@
 #include "dock/XLUiDockDragVisuals.cc"
 #include "dock/XLUiDockSystem.cc"
 #include "view/XLUiAccordionView.cc" // after DockSystem: the second PanelHost, sharing its registry,
-                                     // its panel handle and its drag ghost. Out of the view/ block
-                                     // above for that reason - the dependency, not the directory,
-                                     // is what orders this unit (see Select after the menu block)
+// its panel handle and its drag ghost. Out of the view/ block
+// above for that reason - the dependency, not the directory,
+// is what orders this unit (see Select after the menu block)
 
 #include "XLUiSubWindow.cc"
 #include "XLUiSubWindowScene.cc"
@@ -103,3 +103,15 @@
 #include "input/XLUiColorField.cc" // after ColorPicker: its own picker is one
 #include "search/XLUiSearchSystem.cc" // no order dependency: it draws nothing and opens nothing
 #include "input/XLUiSearchPicker.cc" // after SearchSystem and MenuPopup: it queries one and opens through the other
+
+#include "markdown/XLUiMarkdownTypes.cc"
+#include "markdown/XLUiMarkdownFlow.cc" // after Types: the run map is what it indexes nodes by
+#include "markdown/XLUiMarkdownSelection.cc" // after Flow: it reads the reading order
+#include "markdown/XLUiMarkdownImage.cc" // after Types: an image is a box inside a Label
+#include "markdown/XLUiMarkdownStyle.cc" // after Types: it resolves what a range style carries
+#include "markdown/XLUiMarkdownRegistry.cc" // after Panel, Layer and TableBorderPainter: a block
+// is built out of them
+#include "markdown/XLUiMarkdownVirtual.cc" // after Types: it hides the blocks a Builder made
+#include "markdown/XLUiMarkdownBuilder.cc" // after Registry: it dispatches every block through one
+#include "markdown/XLUiMarkdownView.cc" // last: it composes the builder, the style system and the
+// scroll the sheet asks for

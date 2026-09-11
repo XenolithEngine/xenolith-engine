@@ -40,6 +40,7 @@ LOCAL_MODULES ?= \
 	stappler_crypto \
 	stappler_db \
 	stappler_document \
+	stappler_markdown \
 	stappler_font \
 	stappler_vg \
 	stappler_pug \

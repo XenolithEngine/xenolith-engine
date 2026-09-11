@@ -1801,15 +1801,18 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if (s.has(ParameterName::CssOverflowY)) {
 				next.y = s.overflowY();
 			}
-			// CSS computes a `visible` axis to `auto` when the other one is not `visible`. Here it
-			// is not merely spec compliance but a hard constraint: the only clip the engine has is
-			// an axis-aligned scissor RECT, which cannot clip one axis and leave the other alone.
-			if (next.x == Overflow::Visible && next.y != Overflow::Visible) {
-				next.x = Overflow::Auto;
-			}
-			if (next.y == Overflow::Visible && next.x != Overflow::Visible) {
-				next.y = Overflow::Auto;
-			}
+			/* The axes stay as they were declared, and CSS's own "a visible axis computes to auto"
+			rule is deliberately NOT applied here.
+
+			That rule exists on the web because a clip is a box. It used to be enforced here for a
+			harder reason - the only clip the engine had was an axis-aligned scissor RECT - and it
+			cost more than it bought: an `overflow-y: auto` document also overflowed horizontally,
+			and a flex container sized by its content on the overflowing axis then took the width of
+			its widest unwrapped line, so nothing in it ever wrapped.
+
+			A scissor is still one rectangle. It is now built per axis (ui::ScissorAxes): the axis
+			nobody asked to clip is opened past any surface, leaving whatever an ancestor scissor
+			imposed. So one axis really can scroll while the other flows. */
 			node->setOrUpdateComponent<OverflowComponent>([&](NotNull<OverflowComponent> c) {
 				if (*c != next) {
 					*c = next;

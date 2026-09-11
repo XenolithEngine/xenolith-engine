@@ -71,9 +71,13 @@ static void emitLineSelectionRects(const TextLayoutData<Interface> &f, const Lin
 
 	for (uint32_t i = s; i <= e; ++i) {
 		const CharLayoutData &c = f.chars[i];
+		// A glyph-carrier and a zero-width control are not selectable cells. A RESERVED BOX wears
+		// the same marker but has a width: it is an inline object (an image), it occupies its
+		// character's place in the string, and a selection dragged across it would otherwise be
+		// drawn with a hole where the picture is.
 		if ((c.flags & CharLayoutData::FlagGlyphContinuation)
-				|| c.charID == CharLayoutData::InvalidChar) {
-			continue; // glyph-carrier / zero-width control: not a selectable cell
+				|| (c.charID == CharLayoutData::InvalidChar && c.advance == 0)) {
+			continue;
 		}
 		const int32_t a = c.pos;
 		const int32_t b = c.pos + c.advance;
@@ -318,8 +322,10 @@ Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f, const LineLa
 		int32_t lo = 0, hi = 0;
 		for (uint32_t i = line.start; i < line.start + line.count; ++i) {
 			const CharLayoutData &c = f.chars.at(i);
+			// As above: a reserved box has an extent and belongs to the line's visual span, a
+			// zero-width control does not.
 			if ((c.flags & CharLayoutData::FlagGlyphContinuation)
-					|| c.charID == CharLayoutData::InvalidChar) {
+					|| (c.charID == CharLayoutData::InvalidChar && c.advance == 0)) {
 				continue;
 			}
 			const int32_t a = c.pos;

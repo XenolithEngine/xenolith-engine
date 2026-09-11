@@ -451,8 +451,30 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 		updateLabelDensity(_parent->getNodeToWorldTransform());
 	}
 
+	// Anything that would change the answer bumps the revision or the density; either one throws
+	// the whole cache away rather than trying to keep part of it.
+	if (_measureRevision != getLabelRevision() || _measureDensity != _labelDensity) {
+		_measureCache.clear();
+		_measureRevision = getLabelRevision();
+		_measureDensity = _labelDensity;
+	}
+
+	for (auto &it : _measureCache) {
+		if (it.mode == c.mode && it.maxWidth == c.maxWidth) {
+			return it.result;
+		}
+	}
+
+	auto remember = [&](Size2 result) {
+		if (_measureCache.size() >= MaxMeasureCache) {
+			_measureCache.erase(_measureCache.begin());
+		}
+		_measureCache.emplace_back(MeasureCacheEntry{c.mode, c.maxWidth, result});
+		return result;
+	};
+
 	if (_string16.empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
 
 	auto request = font::Formatter::ContentRequest::Normal;
@@ -483,12 +505,13 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 	_width = savedWidth;
 
 	if (!ok) {
+		// Not cached: an overflowing measurement is a failure, not an answer.
 		return getContentSize();
 	}
 	if (spec->empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
-	return Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity);
+	return remember(Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity));
 }
 
 void Label::applyMeasuredSize(const Size2 &size) {
@@ -880,9 +903,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 	_glyphGeneration = _source->getGlyphGeneration();
 
 	if (_deferred) {
-		_deferredResult =
-				runDeferredCounted(_director->getApplication()->getLooper(), _format,
-						_displayedColor);
+		_deferredResult = runDeferredCounted(_director->getApplication()->getLooper(), _format,
+				_displayedColor);
 		_vertexes.clear();
 		_vertexColorDirty = false;
 	} else {
@@ -976,6 +998,22 @@ Vec2 Label::getCursorOrigin() const {
 		break;
 	}
 	return Vec2::ZERO;
+}
+
+Rect Label::getInlineObjectRect(uint32_t index) const {
+	if (!_format || index >= _inlineObjects.size()) {
+		return Rect::ZERO;
+	}
+
+	auto rect = _format->getObjectRect(_inlineObjects[index].rangeIndex, _labelDensity);
+	if (rect.size.width <= 0.0f && rect.size.height <= 0.0f) {
+		return Rect::ZERO;
+	}
+
+	// The layout measures downward from the top of the text; this node is Y-up from its own
+	// origin, exactly the flip getCursorPosition makes for a caret.
+	rect.origin.y = _contentSize.height - rect.origin.y - rect.size.height;
+	return rect;
 }
 
 Pair<uint32_t, bool> Label::getCharIndex(const Vec2 &pos, font::CharSelectMode mode) const {

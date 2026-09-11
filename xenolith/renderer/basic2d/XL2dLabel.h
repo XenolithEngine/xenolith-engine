@@ -145,6 +145,13 @@ public:
 	virtual Vec2 getCursorPosition(uint32_t charIndex, bool prefix = true) const;
 	virtual Vec2 getCursorOrigin() const;
 
+	/* WHERE AN INLINE OBJECT'S BOX ENDED UP, in this node's own space (Y-up from its origin).
+
+	`index` is into `getInlineObjects()`. The rectangle is empty until the text has been shaped,
+	and it moves with every re-wrap - a caller that draws over the box has to ask again whenever
+	the label's layout can have changed, which is what ui::MarkdownImageSystem does. */
+	virtual Rect getInlineObjectRect(uint32_t index) const;
+
 	/*
 	returns character index in FormatSpec for position in label or maxOf<uint32_t>()
 
@@ -232,6 +239,25 @@ protected:
 
 	uint8_t _adjustValue = 0;
 	size_t _updateCount = 0;
+
+	/* WHAT A MEASUREMENT ANSWERED, so it is not shaped again for the same question.
+
+	A measurement is a full shape - HarfBuzz and all - whose layout is then thrown away, and the
+	layout asks for several per pass: the main axis unwrapped, the cross axis at a real width, and
+	the commit. None of them change anything, so the second and third can be answered from here.
+	Keyed by the label's revision and density, which together cover everything that would change
+	the answer; a handful of entries is all a layout pass ever asks for. */
+	struct MeasureCacheEntry {
+		MeasureMode mode = MeasureMode::Normal;
+		float maxWidth = 0.0f;
+		Size2 result;
+	};
+
+	static constexpr size_t MaxMeasureCache = 4;
+
+	uint64_t _measureRevision = 0;
+	float _measureDensity = 0.0f;
+	Vector<MeasureCacheEntry> _measureCache;
 
 	Selection *_selection = nullptr;
 	Selection *_marked = nullptr;
