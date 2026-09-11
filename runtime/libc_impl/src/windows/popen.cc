@@ -194,6 +194,23 @@ __SPRT_C_FUNC int pclose(FILE *f) __SPRT_NOEXCEPT {
 	return status;
 }
 
+// The MSVC spellings. Same calls; code written against the CRT uses this pair.
+__SPRT_C_FUNC FILE *_popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
+	if (!cmd || !mode) {
+		errno = EINVAL;
+		return nullptr;
+	}
+	return popen(cmd, mode);
+}
+
+__SPRT_C_FUNC int _pclose(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		errno = EINVAL;
+		return -1;
+	}
+	return pclose(f);
+}
+
 __SPRT_C_FUNC int system(const char *cmd) __SPRT_NOEXCEPT {
 	auto envBufSize = GetEnvironmentVariableW(L"COMSPEC", nullptr, 0);
 	if (envBufSize == 0 && cmd == nullptr) {
