@@ -470,6 +470,7 @@ Value SceneInspector::getFontInfo() const {
 	totals.setInteger(int64_t(info.charsMemory), "charsMemory");
 	totals.setInteger(int64_t(info.kerningPairs), "kerningPairs");
 	totals.setInteger(int64_t(info.requiredChars), "requiredChars");
+	totals.setInteger(int64_t(info.batches), "batches");
 	totals.setInteger(int64_t(info.glyphGeneration), "glyphGeneration");
 	totals.setInteger(int64_t(info.submittedGeneration), "submittedGeneration");
 	totals.setInteger(int64_t(info.uploadedGeneration), "uploadedGeneration");
