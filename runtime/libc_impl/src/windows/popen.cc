@@ -40,8 +40,7 @@ THE SOFTWARE.
 
 namespace sprt {
 
-__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
-	int p[2], op;
+__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {	int p[2], op;
 
 	if (*mode == 'r') {
 		op = 0;
@@ -138,6 +137,40 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 
 	close(p[op == 0 ? 1 : 0]);
 
+	return f;
+}
+
+// Wide popen (MSVC CRT surface): convert UTF-16 -> UTF-8 and delegate. The
+// wide-only mode letters ('t', 'b', wide variants) carry no extra meaning for
+// sprt's pipes, same as the _O_*TEXT no-op constants in the io wrapper.
+static char *wideToUtf8(const wchar_t *w) {
+	if (!w) {
+		return nullptr;
+	}
+	auto n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+	if (n <= 0) {
+		return nullptr;
+	}
+	auto p = (char *)malloc(n);
+	if (p && WideCharToMultiByte(CP_UTF8, 0, w, -1, p, n, nullptr, nullptr) <= 0) {
+		free(p);
+		return nullptr;
+	}
+	return p;
+}
+
+__SPRT_C_FUNC FILE *_wpopen(const wchar_t *wcmd, const wchar_t *wmode) __SPRT_NOEXCEPT {
+	auto cmd = wideToUtf8(wcmd);
+	auto mode = wideToUtf8(wmode);
+	if (!cmd || !mode) {
+		free(cmd);
+		free(mode);
+		errno = ENOMEM;
+		return nullptr;
+	}
+	auto f = popen(cmd, mode);
+	free(cmd);
+	free(mode);
 	return f;
 }
 

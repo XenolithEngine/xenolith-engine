@@ -64,7 +64,7 @@ const bundle = loadBundle(process.cwd());
 const module = await WebAssembly.compile(readFileSync(wasmPath));
 // Shared linear memory: same shape as the browser harness (worker.mjs). `shared: true` is
 // required — the module is built with atomics/bulk-memory and imports env.memory.
-const memory = new WebAssembly.Memory({ initial: 512, maximum: 16384, shared: true });
+const memory = new WebAssembly.Memory({ initial: 16384, maximum: 16384, shared: true });
 
 // Atomic tid source shared by every thread worker (1 is reserved for this main entry thread).
 const tidBuf = new SharedArrayBuffer(4);

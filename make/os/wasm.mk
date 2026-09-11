@@ -73,12 +73,13 @@ OSTYPE_GENERAL_LDFLAGS += -L$(TARGET_SYSROOT)/usr/lib
 # Each thread runs in its own Worker with its own module instance over the one shared
 # memory; the broker sets that instance's __stack_pointer to a freshly malloc'd stack and
 # calls __wasm_init_tls before the thread entry (__xl_thread_entry). The exports below are
-# the surface the JS thread broker needs.
+# the surface the JS thread broker needs, plus __sprt_malloc_usage so the JS host can
+# watch allocator growth live (a 1 GiB heap burn-down is invisible otherwise).
 OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
-	-Wl,--export-table
+	-Wl,--export=__sprt_malloc_usage,--export-table
 OSTYPE_LIB_LDFLAGS :=
 
 WASM := 1
