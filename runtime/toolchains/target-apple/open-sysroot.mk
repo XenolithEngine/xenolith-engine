@@ -317,7 +317,7 @@ $(OSS_STAMP)/Carbon: | $(APPLE_OSS_SRC)/CarbonHeaders $(OSS_STAMP)
 $(OSS_STAMP)/CF: $(OSS_STAMP)/libdispatch $(OSS_STAMP)/Carbon | $(APPLE_OSS_SRC)/swift-foundation $(OSS_STAMP)
 	@mkdir -p $(DST_INC)/CoreFoundation
 	cp -f $(APPLE_OSS_SRC)/swift-foundation/Sources/CoreFoundation/include/*.h $(DST_INC)/CoreFoundation/
-	sed -i 's/^#define DEPLOYMENT_RUNTIME_SWIFT 1/#define DEPLOYMENT_RUNTIME_SWIFT 0/' $(DST_INC)/CoreFoundation/CFAvailability.h
+	perl -i -pe 's/^#define DEPLOYMENT_RUNTIME_SWIFT 1/#define DEPLOYMENT_RUNTIME_SWIFT 0/' $(DST_INC)/CoreFoundation/CFAvailability.h
 	@touch $@
 
 $(OSS_STAMP)/Security: $(OSS_STAMP)/CF | $(APPLE_OSS_SRC)/Security $(OSS_STAMP)
