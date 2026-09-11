@@ -315,8 +315,9 @@ void ScrollSystem::scrollToAnimated(Vec2 target) {
 	}
 
 	const Vec2 to = _wheelTarget;
-	_owner->runAction(Rc<ActionProgress>::create(ScrollSystem_wheelDuration,
-							  [this, from, to](float p) { applyScrollPosition(from + (to - from) * p); }),
+	_owner->runAction(
+			Rc<ActionProgress>::create(ScrollSystem_wheelDuration,
+					[this, from, to](float p) { applyScrollPosition(from + (to - from) * p); }),
 			WheelActionTag);
 }
 
@@ -400,7 +401,17 @@ void ScrollSystem::updateClip() {
 	}
 	if (_scissor) {
 		if (wantClip) {
-			_scissor->enableScissor();
+			// Only the axes that actually clip. A document that scrolls vertically has no
+			// business cutting anything off at its sides, and an axis left out of the mask is
+			// opened rather than narrowed to the box (see ScissorAxes).
+			auto axes = ScissorAxes::None;
+			if (clipsX()) {
+				axes |= ScissorAxes::Horizontal;
+			}
+			if (clipsY()) {
+				axes |= ScissorAxes::Vertical;
+			}
+			_scissor->enableScissor(_scissor->getScissorOutline(), axes);
 		} else {
 			_scissor->disableScissor();
 		}
@@ -472,8 +483,7 @@ void ScrollSystem::updateIndicators() {
 		// Thumb length is the visible fraction of the content, floored so it stays grabbable; its
 		// travel is what is left of the track.
 		const float content = extent + range;
-		const float length =
-				sprt::max(extent * extent / content, ScrollSystem_indicatorMinLength);
+		const float length = sprt::max(extent * extent / content, ScrollSystem_indicatorMinLength);
 		const float travel = sprt::max(extent - length, 0.0f);
 		const float progress = (horizontal ? float(_scrollX) : float(_scrollY)) / range;
 
