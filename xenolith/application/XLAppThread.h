@@ -186,6 +186,19 @@ public:
 	bool addListener(NotNull<Ref>, Function<void(const UpdateTime &, bool)> &&);
 	bool removeListener(NotNull<Ref>);
 
+	/* SEND THE FONT CONTROLLER'S PENDING GLYPH BATCH NOW, rather than on the next update.
+
+	A glyph request is minted during a LAYOUT - inside the visit - and gates the very frame that is
+	being built; the controller's own flush runs from `update()`, once per application update, so left
+	to itself the batch is not even SENT until the next frame begins. Measured (`XL_DEP_ACCOUNT=1`):
+	up to 13 ms of a gated frame spent with the batch still in hand.
+
+	So both frame-production roads call this as soon as the frame is out: the remote one before its
+	FrameInput (the server has to register the gate before it reconciles the frame), the local one
+	right after the request is committed. On the base because the two roads have different AppThreads
+	and the same need. No-op where the font module or its controller is absent. */
+	void flushPendingFontGlyphs();
+
 	template <typename T>
 	auto addExtension(Rc<T> &&) -> T *;
 

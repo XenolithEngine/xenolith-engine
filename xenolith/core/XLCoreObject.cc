@@ -99,6 +99,22 @@ bool DataAtlas::init(Type t, uint32_t count, uint32_t objectSize, Extent2 imageS
 	_objectSize = objectSize;
 	_imageExtent = imageSize;
 	_data.reserve(count * objectSize);
+
+	/* THE NAME INDEX IS RESERVED TOO, and that line is worth more than the one above it.
+
+	`count` has always been used for the DATA and not for the map, and an unreserved insert here
+	costs 22-43 MICROSECONDS in this runtime's hash map - measured, per call, against 0.1-0.3 us once
+	the buckets exist. `addObject` is called four times per glyph over EVERY glyph the atlas holds
+	(the repack is full, see xenolith/font/README.md), so a font atlas of 120 glyphs spent 7-12 ms of
+	its frame on nothing but growing this map - and a scene frame gated on that batch waited for it.
+
+	Measured end to end on the studio's page-open profile: a cold page went from ~72-100 ms to
+	~41 ms, and its warm re-open from ~20 ms to ~9 ms. See the studio's docs/performance.md,
+	"Opening a page".
+
+	A caller that undercounts still gets the old behaviour for the remainder, which is why the font
+	queue now counts the persistent copies into `count` as well. */
+	_intNames.reserve(count);
 	return true;
 }
 

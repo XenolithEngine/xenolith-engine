@@ -107,6 +107,12 @@ public:
 		size_t charsMemory = 0;
 		size_t kerningPairs = 0;
 		size_t requiredChars = 0; // glyphs the atlas is asked to hold
+		/* HOW MANY BATCHES HAVE BEEN SENT, which is a COUNT and therefore assertable on any machine.
+
+		`glyphGeneration` counts requests and says nothing about how many times the atlas was actually
+		rebuilt; this counts the submissions, and a submission is what gates a frame. "This page cost
+		two batches" is the machine-independent half of "this page took 80 ms". */
+		uint64_t batches = 0;
 		uint64_t glyphGeneration = 0;
 		uint64_t submittedGeneration = 0;
 		uint64_t uploadedGeneration = 0;
@@ -324,6 +330,9 @@ protected:
 	virtual void submitGlyphs(AppThread *, Vector<FontUpdateRequest> &&,
 			Rc<core::DependencyEvent> &&) = 0;
 	virtual Rc<core::DependencyEvent> makeDependency() = 0;
+
+	// Submissions, not requests - see ControllerInfo::batches.
+	uint64_t _submittedBatches = 0;
 	virtual void applyBuilder(AppThread *app, Builder &&) = 0;
 
 	bool _loaded = false;
