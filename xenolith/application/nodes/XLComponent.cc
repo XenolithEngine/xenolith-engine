@@ -50,6 +50,7 @@ void ComponentContainer::removeAllComponents() {
 	_components.clear();
 	_componentsDirtyMask.clear();
 	_componentsDirty = true;
+	++_componentsVersion;
 }
 
 void ComponentContainer::resetComponentsDirty() {
