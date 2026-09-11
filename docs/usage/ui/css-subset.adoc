@@ -159,6 +159,12 @@ or re-ordering a child re-arms every remaining sibling's content-size phase (see
 child-list version into its freshness key. A sheet with no structural selector
 pays nothing for this.
 
+One sibling rule is NOT live, and it is the classic one: a selector that reads a
+sibling's interactive STATE — `input:checked + label`, `.row:hover ~ .row` — is
+matched correctly whenever the sibling is resolved, but a flip of that state
+restyles the node that flipped and not its neighbours. Style the node that holds
+the state, or give the pair a common ancestor and put the state on that.
+
 **Dropped** (the whole rule is skipped, silently): `:not()`, `:is()`, `:where()`,
 `:lang()`, pseudo-elements (`::before`, `::after`, `::marker`), attribute
 selectors (`[attr]`, `[attr=val]` — these parse but never match).

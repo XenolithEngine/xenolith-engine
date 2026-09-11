@@ -307,6 +307,21 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		core::markFrame(core::FrameMark::VisitStart);
 #endif
 
+		/* The visit's own six phases are cleared HERE and not beside the deferred counter above.
+
+		The update runs first and the application's own `update` is called from inside it - which is
+		where a reader of this account is (the studio's page profile samples it per frame) - so a reset
+		at the top of acquireFrame would hand that reader zeros and throw away the frame it was asking
+		about. Nothing between this line and the visit touches the account: only the visit's phases
+		do.
+
+		Under the account flag, like every other line of it: `VisitAccount` does not exist in a shipping
+		build, and this call without its guard broke every build that did not set the flag - found by
+		`tests/window`, whose project does not. */
+#if XL_FRAME_ACCOUNT
+		getVisitAccount().clear();
+#endif
+
 		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
 
 		pool->perform([&, this] {

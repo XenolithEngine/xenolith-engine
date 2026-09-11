@@ -86,6 +86,22 @@ void ScrollController::onScrollPosition(bool force) {
 		return;
 	}
 
+#if XL_FRAME_ACCOUNT
+	/* WHAT THIS PASS COSTS AND WHAT IT DOES, for whoever asks next.
+
+	It was the largest single item in a studio page's visit, and the counts are what said why: 7 passes
+	building 12 item nodes, 52 item walks, 10.5 ms - which is 870 us per NODE FUNCTION and nothing at
+	all in the controller's own bookkeeping (a pass that builds nothing measures 0.00 ms). */
+	auto &account = getVisitAccount();
+	++account.scrollPasses;
+	const auto passStart = core::getAccountClock();
+	struct PassClose {
+		VisitAccount *a;
+		uint64_t start;
+		~PassClose() { a->scrollNs += core::getAccountClock() - start; }
+	} passClose{&account, passStart};
+#endif
+
 	// Convergence loop. A node built below can turn out to be a different size than the item
 	// declared, which shifts every following item (resizeItem) and re-dirties the info - so the
 	// visible window has to be recomputed against the new geometry and the pass repeated. Normally
@@ -98,6 +114,9 @@ void ScrollController::onScrollPosition(bool force) {
 	// Node::visit: give up, say so, and let the frame finish.
 	uint32_t guard = 0;
 	do {
+#if XL_FRAME_ACCOUNT
+		++account.scrollRounds;
+#endif
 		if (++guard > 12) {
 			log::source().warn("ScrollController",
 					"item sizes did not converge in 12 passes - a node function that returns a "
@@ -203,11 +222,19 @@ void ScrollController::reset(float origPosition, float origSize) {
 	_windowBegin = windowBegin;
 	_windowEnd = windowEnd;
 
+#if XL_FRAME_ACCOUNT
+	// Twice over every item: the window above, the add/remove below.
+	getVisitAccount().scrollItems += uint32_t(_nodes.size() * 2);
+#endif
+
 	for (auto &it : _nodes) {
 		auto nodePos = _scroll->getNodeScrollPosition(it.pos);
 		auto nodeSize = _scroll->getNodeScrollSize(it.size);
 		if (nodePos + nodeSize <= position || nodePos >= position + size) {
 			if (it.node && (!_keepNodes || it.node->isVisible())) {
+#if XL_FRAME_ACCOUNT
+				++getVisitAccount().scrollRemoved;
+#endif
 				removeScrollNode(it);
 			}
 		} else {
@@ -225,6 +252,9 @@ void ScrollController::onNextObject(Item &h, float pos, float size) {
 	}
 
 	if (!h.node && h.nodeFunction) {
+#if XL_FRAME_ACCOUNT
+		++getVisitAccount().scrollBuilt;
+#endif
 		auto node = h.nodeFunction(h);
 		if (node) {
 			bool forward = true;

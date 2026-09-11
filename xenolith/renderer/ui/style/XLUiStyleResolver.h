@@ -292,6 +292,11 @@ public:
 	Returns `valid == false` when no stylesheet scope is present. */
 	static ResolvedStyle resolveStyleForNode(NotNull<Node>);
 
+	/* Drop the per-node match cache that resolveStyleForNode keeps (see its definition). Nothing in
+	the engine needs to call this - the cache validates itself against each node's CSS match stamp,
+	so a stale entry is never read - it is here for a test that wants to measure a cold resolve. */
+	static void dropMatchCache();
+
 	virtual ~StyleResolver() = default;
 
 	virtual bool init(bool recursive = false);
