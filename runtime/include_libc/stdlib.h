@@ -132,6 +132,15 @@ THE SOFTWARE.
 #ifndef _aligned_free
 #define _aligned_free(Ptr) __sprt_aligned_free(Ptr)
 #endif
+// clang's <mm_malloc.h> (resource headers) reaches for the mingw spellings
+// under __MINGW32__ — the sprt CRT follows the mingw model (char args, plain
+// main), so TUs built with that define route them to the same allocator.
+#ifndef __mingw_aligned_malloc
+#define __mingw_aligned_malloc(Size, Align) __sprt_aligned_alloc(Align, Size)
+#endif
+#ifndef __mingw_aligned_free
+#define __mingw_aligned_free(Ptr) __sprt_aligned_free(Ptr)
+#endif
 #endif // _WIN32
 
 #endif
