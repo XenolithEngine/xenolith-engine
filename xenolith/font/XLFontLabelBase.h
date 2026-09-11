@@ -312,7 +312,7 @@ public:
 
 	template <char... Chars>
 	void setString(metastring::metastring<Chars...> &&str) {
-		setString(str.to_std_string());
+		setString(StringView(str.template string<String>()));
 	}
 
 	virtual void setString(const StringView &);
@@ -463,6 +463,8 @@ public:
 	void setFillerChar(char32_t);
 	char32_t getFillerChar() const;
 
+	// Latches: once called, `setString` stops deciding for itself. A widget that draws a person's own
+	// text or a file's contents calls `setLocaleEnabled(false)` once and is done.
 	void setLocaleEnabled(bool);
 	bool isLocaleEnabled() const;
 
@@ -491,6 +493,8 @@ public:
 	};
 
 protected:
+	void enableLocaleIfTagged();
+
 	virtual bool hasLocaleTags(const WideStringView &) const;
 	virtual WideString resolveLocaleTags(const WideStringView &) const;
 
@@ -524,6 +528,7 @@ protected:
 	bool _enableLigatures = true;
 
 	bool _localeEnabled = false;
+	bool _localeAuto = true; // cleared by the first setLocaleEnabled() call, whichever way it went
 	bool _labelDirty = true;
 	uint64_t _labelRevision = 1;
 

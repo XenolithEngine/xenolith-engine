@@ -679,7 +679,18 @@ void LayoutSystem::layoutTableRow() {
 			}
 		};
 
-		const Size2 natural = intrinsicSize(node);
+		/* The cell's natural size - what a `vertical-align` other than stretch commits as the
+		cell's box. It has to be MEASURED, not read back off the node.
+
+		A cell whose size this layout owns does not keep what its own formatter came to: the
+		previous pass already overwrote its ContentSize with the box that pass decided on. Reading
+		that back makes zero a FIXED POINT - a Label placed once at height zero reports zero
+		forever after, and the row ends up correctly tall around cells that draw nothing. Ask it
+		instead, at the width it is about to be given, exactly as the track sizing and the row
+		height above already do. */
+		const Size2 natural = LayoutSystem_canMeasure(node)
+				? LayoutSystem::measureNode(node, MeasureConstraints{MeasureMode::Normal, availW})
+				: intrinsicSize(node);
 		float bx = availX, bw = availW, by = availY, bh = availH;
 		selfAlign(cfg.justifySelf, cols.justifyItems, availX, availW, natural.width, bx, bw);
 		selfAlign(cfg.alignSelf, cols.alignItems, availY, availH, natural.height, by, bh);

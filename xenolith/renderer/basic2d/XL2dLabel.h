@@ -205,6 +205,11 @@ protected:
 
 	virtual void updateLabel();
 	virtual void onFontSourceUpdated();
+
+	// Re-resolve the tags on a locale change, and keep bidi/shaping in step with the locale's
+	// direction.
+	virtual void handleLocaleChanged();
+	void applyLocaleTextFeatures();
 	virtual void onFontSourceLoaded();
 	virtual void onLayoutUpdated();
 	virtual void updateColor() override;
@@ -227,6 +232,8 @@ protected:
 	void updateLabelDensity(const Mat4 &parent);
 
 	EventListener *_listener = nullptr;
+	sprt::dispatch::BusDelegate *_localeDelegate = nullptr; // owned by _listener, cleared with it
+	bool _localeTextFeatures = false; // bidi + shaping were turned on by the locale, not by a caller
 	Time _quadRequestTime;
 	Rc<font::FontController> _source;
 	// Glyph generation this label's quads were laid out against. Its CharIds are only resolvable
