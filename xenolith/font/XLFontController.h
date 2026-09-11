@@ -239,6 +239,10 @@ public:
 	Rc<core::DependencyEvent> acquireGatingDependency();
 
 	uint32_t getFamilyIndex(StringView) const;
+
+	// Forget the font sets already built for a family, so the next request rebuilds them with
+	// whatever faces it has now. Called by addFont; the lock is the caller's.
+	void dropLayoutsForFamily(StringView family);
 	StringView getFamilyName(uint32_t idx) const;
 
 	// What is loaded right now - the inspector's `fonts` command, and the way to see a font set that

@@ -102,6 +102,7 @@ bool TextViewContainer::init() {
 	// invisible node is never visited and therefore never styled or laid out - it merely sits
 	// above the viewport where the scissor clips it. See handleContentSizeDirty.
 	_measure = _stage->addChild(Rc<basic2d::Label>::create());
+	_measure->setLocaleEnabled(false); // it measures the content, so it is content
 	_measure->setAnchorPoint(Anchor::BottomLeft);
 	_measure->setType("label");
 	_measure->addStyleClass("xl-ui-text-input-label");
@@ -300,7 +301,13 @@ TextViewContainer::Slot *TextViewContainer::slotForBlock(uint32_t block) {
 }
 
 basic2d::Label *TextViewContainer::makeSlot() {
+	/* WHAT A PERSON TYPED, OR WHAT A FILE HOLDS - never a caption, so the locale must not touch it.
+	`setString` detects tags on its own, which is right for a caption and wrong here: a source line
+	beginning with `@Locale:` resolved to the empty string and DISAPPEARED, and a line holding `%foo%`
+	was substituted if some table happened to define `foo`. The call latches, so every later
+	assignment is taken literally too. */
 	auto label = Rc<basic2d::Label>::create();
+	label->setLocaleEnabled(false);
 	label->setAnchorPoint(Anchor::BottomLeft);
 	// Same selectors as the stock single-line label, so the stylesheet that styles one styles
 	// the other - and a dynamically added node is styled on its first visit, before drawing.
@@ -839,6 +846,7 @@ bool TextView::init() {
 	scissor->enableScissor();
 
 	_gutterLabel = _gutter->addChild(Rc<basic2d::Label>::create());
+	_gutterLabel->setLocaleEnabled(false); // line numbers are the document's, not the interface's
 	_gutterLabel->setAnchorPoint(Anchor::BottomLeft);
 	_gutterLabel->setType("label");
 	_gutterLabel->addStyleClass("text-view-gutter-label");

@@ -356,6 +356,28 @@ void FontController::extend(AppThread *app, const Callback<bool(FontController::
 	}
 }
 
+/* A FAMILY THAT GAINED A FACE HAS TO FORGET THE SETS IT ALREADY BUILT.
+
+`getLayout` answers from `_layouts` by name, and a `FontFaceSet` holds the face list it was created
+with - so a face added afterwards reached only the sets created after it. That is exactly the shape a
+script font is added in: the application learns which scripts it needs once there is a window, by
+which time the interface has already laid out, and the Chinese half of it then drew as nothing at all
+while a menu opened a second later drew correctly.
+
+Dropping the entry does not free the set: whoever is drawing from it holds an `Rc`, and keeps drawing
+the old glyphs until `onFontSourceUpdated` sends it back here for a new one. What it costs is
+re-rasterizing the glyphs of that family once. */
+void FontController::dropLayoutsForFamily(StringView family) {
+	auto it = _layouts.begin();
+	while (it != _layouts.end()) {
+		if (it->second && it->second->getFamily() == family) {
+			it = _layouts.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
 void FontController::addFont(StringView family, Rc<FontFaceData> &&data, bool front) {
 	sprt::unique_lock lock(_layoutSharedMutex);
 	auto familyIt = _families.find(family);
@@ -369,6 +391,8 @@ void FontController::addFont(StringView family, Rc<FontFaceData> &&data, bool fr
 	} else {
 		familyIt->second.data.emplace_back(move(data));
 	}
+
+	dropLayoutsForFamily(family);
 
 	_dirty = true;
 	lock.unlock();
@@ -393,6 +417,8 @@ void FontController::addFont(StringView family, Vector<Rc<FontFaceData>> &&data,
 			for (auto &it : data) { familyIt->second.data.emplace_back(move(it)); }
 		}
 	}
+
+	dropLayoutsForFamily(family);
 
 	_dirty = true;
 	lock.unlock();

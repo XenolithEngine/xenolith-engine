@@ -35,9 +35,11 @@ struct metastring {
 		return {Chars...};
 	}
 
+	// `typename` on the dependent type, without which this overload does not compile at all - and it
+	// never had to, because nothing instantiated it until the locale module did.
 	template <typename String>
 	static constexpr auto string() -> String {
-		return {String::value_type(Chars)...};
+		return {typename String::value_type(Chars)...};
 	}
 
 	static constexpr sprt::array<char, sizeof...(Chars)> array() { return {{Chars...}}; }
