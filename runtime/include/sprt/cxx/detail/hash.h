@@ -137,6 +137,49 @@ struct hash<void *> {
 	size_t operator()(const void *value) const noexcept { return reinterpret_cast<size_t>(value); }
 };
 
+/* A HASHER FOR KEYS WHOSE ENTROPY IS NOT IN THEIR LOW BITS.
+
+The tables in this directory take a bucket with `hash % bucket_count()`, which reads the LOW bits.
+The default hashes deliberately do not touch them - an integer is its own hash, which is what a
+table of dense integer keys wants and what a critical path expects. Some key sets are the opposite
+case: a pointer's low bits are its alignment, a handle steps by a constant, a double holding a
+small integer has a zero mantissa. Every such key lands in a handful of buckets, and the table
+then walks long chains for every lookup.
+
+This is the opt-in for those: pass it as the container's Hash argument, which is the customization
+point, instead of changing what every key type hashes to.
+
+    unordered_map<Node *, Freshness, hash_spread<>> _nodesUpdated;
+
+It wraps another hasher (`hash<void>` by default) and runs murmur3's finalizer over the result -
+a bijection, so it can only move collisions, never create them. */
+template <typename Hash = hash<void>>
+struct hash_spread {
+	using is_transparent = void;
+
+	constexpr static size_t finalize(size_t __h) noexcept {
+		if constexpr (sizeof(size_t) == 8) {
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xFF51'AFD7'ED55'8CCDull);
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xC4CE'B9FE'1A85'EC53ull);
+			__h ^= __h >> 33;
+		} else {
+			__h ^= __h >> 16;
+			__h *= static_cast<size_t>(0x85EB'CA6Bu);
+			__h ^= __h >> 13;
+			__h *= static_cast<size_t>(0xC2B2'AE35u);
+			__h ^= __h >> 16;
+		}
+		return __h;
+	}
+
+	template <typename T>
+	constexpr size_t operator()(const T &value) const noexcept {
+		return finalize(Hash()(value));
+	}
+};
+
 template <>
 struct hash<void> {
 	using is_transparent = void;

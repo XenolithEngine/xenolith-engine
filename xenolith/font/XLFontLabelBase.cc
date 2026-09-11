@@ -1011,6 +1011,9 @@ void LabelBase::makeEffectiveStyle(EffectiveStyle &out) const {
 	out.lineHeightAbsolute = _isLineHeightAbsolute;
 }
 
-void LabelBase::setLabelDirty() { _labelDirty = true; }
+void LabelBase::setLabelDirty() {
+	_labelDirty = true;
+	++_labelRevision;
+}
 
 } // namespace stappler::xenolith::font

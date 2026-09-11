@@ -512,21 +512,57 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 		// child list it no longer has. Redo them here, with the child already caught up by its own
 		// handleEnter above. markMeasureDirty is self-selecting: a node with nothing to measure by
 		// commits no size (see handleMeasure).
-		auto info = _scene ? _scene->getFrameInfo() : nullptr;
-		if (info && isVisitPassed(*info)) {
-			VisitCatchUp scope(info, this);
-			markMeasureDirty();
-			markLayoutChildrenDirty();
-			runPendingPhases(*info);
+		if (_bulkChildren > 0) {
+			// Owed, not skipped: BulkChildren pays it once when the filling is done.
+			_bulkCatchUpOwed = true;
+		} else {
+			auto info = _scene ? _scene->getFrameInfo() : nullptr;
+			if (info && isVisitPassed(*info)) {
+				VisitCatchUp scope(info, this);
+				markMeasureDirty();
+				markLayoutChildrenDirty();
+				runPendingPhases(*info);
+			}
 		}
 	}
 
+	/* Only the NEW child's subtree is recoloured, not this node's whole one.
+
+	Gaining a child cannot change what this node displays, so the siblings already here keep the
+	values they had - and re-deriving them costs a walk of the entire subtree, on every single
+	add. Filling a container is then quadratic in the size of what is in it: a Markdown document
+	of ten thousand blocks spent ninety per cent of its build time in this pair of calls and
+	arrived at the answer it already had. */
 	if (_cascadeColorEnabled) {
-		updateCascadeColor();
+		child->updateDisplayedColor(_displayedColor);
 	}
 
 	if (_cascadeOpacityEnabled) {
-		updateCascadeOpacity();
+		child->updateDisplayedOpacity(_displayedColor.a);
+	}
+}
+
+Node::BulkChildren::BulkChildren(NotNull<Node> node) : _node(node) { ++_node->_bulkChildren; }
+
+Node::BulkChildren::~BulkChildren() {
+	if (--_node->_bulkChildren > 0 || !_node->_bulkCatchUpOwed) {
+		return;
+	}
+
+	_node->_bulkCatchUpOwed = false;
+	if (!_node->_running) {
+		return;
+	}
+
+	auto info = _node->_scene ? _node->_scene->getFrameInfo() : nullptr;
+	if (info && _node->isVisitPassed(*info)) {
+		VisitCatchUp scope(info, _node);
+		_node->markMeasureDirty();
+		_node->markLayoutChildrenDirty();
+		_node->runPendingPhases(*info);
+	} else {
+		_node->markMeasureDirty();
+		_node->markLayoutChildrenDirty();
 	}
 }
 
@@ -537,6 +573,16 @@ void Node::markChildrenStructureDirty() {
 		// nothing has been resolved or laid out yet - building a scene must stay O(n)
 		return;
 	}
+
+	/* The fan-out to the children is RECORDED here and performed once, in the phase that applies
+	the reorder this same call just asked for.
+
+	Doing it here instead is quadratic, and not subtly: filling a container with N children calls
+	this N times - twice per child, because writing a z-order reorders too - and each call walked
+	every child already in it. A ten-thousand-block Markdown document spent twenty seconds in this
+	loop and nowhere else. Deferring changes nothing about who ends up dirty: the flag is consumed
+	in runChildrenPhases, which is what re-sorts the list and re-lays it out, and a node that
+	catches up mid-visit runs those phases too. */
 	for (auto &child : _children) { child->markContentSizeDirty(); }
 }
 
@@ -1865,6 +1911,8 @@ bool Node::runChildrenPhases(FrameInfo &info, bool parentReordered) {
 	// runs last of the two - sortAllChildren() only applies a reorder already asked for
 	bool reordered = false;
 	if (sortAllChildren() || parentReordered) {
+		// The structure change recorded by markChildrenStructureDirty, paid once for however many
+		// children arrived since the last visit.
 		handleReorderChildDirty();
 		_layoutChildrenDirty = true; // child order changed -> re-lay-out children
 		reordered = true;

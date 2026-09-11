@@ -87,6 +87,11 @@ uint32_t MarkdownBuilder::registerFlow(Node *node, MarkdownFlowKind kind,
 
 uint32_t MarkdownBuilder::build(const document::Node &page) {
 	_blocks = 0;
+
+	// Ten thousand blocks arrive here one at a time. Without this the root re-sorts and re-lays
+	// out everything already in it on each one, and the build is quadratic in the document.
+	Node::BulkChildren bulk(_root);
+
 	buildChildren(_root, page);
 	return _blocks;
 }
@@ -473,13 +478,38 @@ void MarkdownBuilder::appendValue(TextState &state, const document::Node &value)
 }
 
 bool MarkdownBuilder::isVerbatim(WideStringView text, document::SourceSpan span) const {
-	// The comparison has to be against the DECODED source, because that is what the parser
-	// produced: `&amp;` became one character, and smart typography turned quotes, dashes and
-	// ellipses into single ones. An ellipsis even keeps the byte count, so comparing lengths
-	// would call a substituted run verbatim.
+	/* The comparison has to be against the DECODED source, because that is what the parser
+	produced: `&amp;` became one character, and smart typography turned quotes, dashes and
+	ellipses into single ones. An ellipsis even keeps the byte count, so comparing lengths would
+	call a substituted run verbatim.
+
+	Decoded as it is compared, never materialized: this runs once per text RUN, and a document of
+	ten thousand blocks was decoding the whole of its own source into a throwaway heap string tens
+	of thousands of times to answer a question that usually fails on the first character. */
 	auto fragment = _source.sub(span.offset, span.length);
-	auto decoded = string::toUtf16<Interface>(fragment);
-	return WideStringView(decoded) == text;
+	size_t at = 0;
+	size_t pos = 0;
+
+	while (pos < fragment.size()) {
+		uint8_t consumed = 0;
+		auto ch =
+				sprt::unicode::utf8Decode32(fragment.data() + pos, fragment.size() - pos, consumed);
+		if (consumed == 0) {
+			return false;
+		}
+		pos += consumed;
+
+		char16_t buf[2] = {0, 0};
+		auto units = sprt::unicode::utf16EncodeBuf(buf, 2, ch);
+		for (uint8_t i = 0; i < units; ++i) {
+			if (at >= text.size() || text[at] != buf[i]) {
+				return false;
+			}
+			++at;
+		}
+	}
+
+	return at == text.size();
 }
 
 void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state,

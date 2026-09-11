@@ -500,6 +500,13 @@ protected:
 
 	virtual void setLabelDirty();
 
+	/* A number that changes whenever a measurement of this label would answer differently.
+
+	Everything that invalidates the shaping - the string, a style range, the font, an inherited
+	component, the width - already goes through setLabelDirty, so this is the one key a cache of
+	measured sizes can trust. */
+	uint64_t getLabelRevision() const { return _labelRevision; }
+
 	WideString _string16;
 	String _string8;
 
@@ -518,6 +525,7 @@ protected:
 
 	bool _localeEnabled = false;
 	bool _labelDirty = true;
+	uint64_t _labelRevision = 1;
 
 	bool _isLineHeightAbsolute = false;
 	float _lineHeight = 0;
