@@ -32,10 +32,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 namespace {
 
-// The agent this example talks to when nothing says otherwise: the test stand on the local
-// network. It is a default and only a default - the endpoint in use is printed in the window's
-// status line, so what the app is talking to is never a guess.
-static constexpr auto s_defaultEndpoint = StringView("http://192.168.3.103:1234/v1");
+// The agent this example talks to when nothing says otherwise: an OpenAI-compatible server on
+// this machine, which is where LM Studio, llama.cpp and Ollama all put one. It is a default and
+// only a default - the endpoint in use is printed in the window's status line, so what the app is
+// talking to is never a guess.
+static constexpr auto s_defaultEndpoint = StringView("http://localhost:1234/v1");
 
 /* Captured from the command line by parseConfigCmd below, read by the getters. File-local statics:
 there is exactly one app instance, and the parse seam runs before anything else in this file. */

@@ -98,7 +98,85 @@ panel.bubble > label.meta      { color: rgba(232,232,236,.5); font-size: 11px; }
 panel.bubble > label.title     { color: var(--text); font-size: 13px; font-weight: bold; }
 
 panel.bubble.error > label.meta     { color: var(--danger); }
+
+/* ---- the answer, as a document ---------------------------------------- */
+
+/* ui::MarkdownView arrives with a stylesheet of its own so that a document is readable before an
+   application says anything. That sheet is written for black text on paper, and every rule in it
+   is a BARE TAG selector on purpose: specificity 0,0,1 is the lowest a matching rule can have, so
+   anything keyed on the view's class outranks it without a fight. Every rule below is.
+
+   The one thing NOT overridden is `overflow-y`, and leaving it alone is load-bearing. It reads as
+   a scroll the card does not want - the card is exactly as tall as its answer, so there is never
+   anything to scroll - but that declaration is also what puts the layout inside the view into
+   overflow mode on the vertical axis, and in that mode the document is laid out at its NATURAL
+   height instead of being squeezed into the box (ui::LayoutSystem::setOverflowAxes). Turn it off
+   and every block in the answer is crushed to a fraction of a pixel by the default flex-shrink,
+   which is exactly how tall the card believed the answer was. */
+markdown-view.answer { font-size: 14px; color: var(--text); }
+
+/* The card has padding of its own, and the document's own would sit inside it twice over. */
+.answer .md-body { padding: 0px; }
+
+/* The blocks. Each one is a node typed with its html tag, so a tag name here names a real element;
+   the inline constructs below are style RANGES and are matched through a probe the widget makes
+   for the length of the cascade query, which is why the same descendant selectors reach both. */
+.answer p, .answer li, .answer dd, .answer dt, .answer .md-text { color: var(--text);
+                                                                  font-size: 14px; }
+.answer p { margin-bottom: 6px; }
+.answer ul, .answer ol, .answer dl { margin-bottom: 6px; }
+.answer li-marker { color: var(--muted); }
+
+.answer h1, .answer h2, .answer h3, .answer h4, .answer h5, .answer h6 {
+	color: var(--text); margin-top: 10px; margin-bottom: 6px; }
+.answer h1 { font-size: 19px; }
+.answer h2 { font-size: 17px; }
+.answer h3 { font-size: 15px; }
+.answer h4, .answer h5, .answer h6 { font-size: 14px; color: var(--muted); }
+
+/* THE INLINE CONSTRUCTS, and why each one has to name a colour even when it is not changing one.
+
+An inline is a style range, not a node: the widget manufactures a PROBE for the length of the
+cascade query and asks what the sheet says about `strong` here (ui::MarkdownInlineResolver). What
+comes back is applied as a DELTA over the block's own style, and a probe that resolves `color` to
+something other than the block's contributes that colour to the range whether or not the rule meant
+to. On paper the difference is #1a1a1a against black and nobody sees it. On this ground the block is
+near-white and the probe is not, and every bold word in an answer comes out unreadable. */
+.answer strong, .answer b, .answer em, .answer i,
+.answer del, .answer s, .answer sub, .answer sup { color: #e8e8ec; }
+
+.answer a   { color: #7fb3ef; }
+.answer ins { color: #7fcf8a; }
+.answer mark { color: #f0d060; }
+
+/* `code` is both the inline construct and the block inside a fence, which is why the fenced one
+   has to name its colour again - the built-in sheet does the same thing for the same reason. */
+.answer code          { color: #e0c48a; }
+.answer pre           { background-color: #101016; border-radius: 4px; padding: 8px 10px;
+                        margin-bottom: 8px; }
+.answer pre code      { color: #d8d8e0; font-size: 12px; }
+
+.answer blockquote      { margin-bottom: 8px; }
+.answer blockquote-bar  { background-color: var(--outline); }
+.answer blockquote-body { background-color: #1a1a22; }
+
+.answer hr { background-color: var(--outline); }
+
+/* A table is a painted panel, not a bare node - it is what draws the collapsed borders - so it has
+   a background whether the sheet names one or not, and the one it is born with is white. Named
+   rather than made transparent: alpha on a colour here becomes the node's OPACITY, and that
+   multiplies down over every cell in the table. */
+.answer table          { background-color: #26262e; }
+.answer th, .answer td { border-color: var(--outline); color: #e8e8ec; }
+
+.answer li-checkbox         { background-color: var(--control); outline-color: var(--outline); }
+.answer li-checkbox:checked { background-color: var(--accent); outline-color: var(--accent); }
+
+/* The card a turn that asked for a tool leaves behind: the same document widget, one hue warmer. */
 panel.bubble.tool-call > label.body { color: #e0c48a; font-size: 12px; }
+.bubble.tool-call .answer p    { color: #e0c48a; font-size: 12px; }
+.bubble.tool-call .answer code { color: #f0d8a8; }
+.bubble.tool-call .answer pre  { background-color: #1d1a14; }
 
 #chat-input-bar { order: 2; flex: 0 0 auto; -xl-z-order: 2;
                   display: flex; flex-direction: row; align-items: center;
@@ -295,20 +373,28 @@ void ChatPanel::update(const UpdateTime &time) {
 		}
 	}
 
-	/* A safety net, not the mechanism: a card republishes its height from its own setters, and this
-	only catches a re-shape nobody asked for - a font that finished loading, a density change. Each
-	call is a handful of reads and an early return. */
-	for (auto &it : _bubbles) { it->refreshHeight(); }
+	/* Two things per card, and only the second is a safety net.
+
+	tickBody is the mechanism for a Markdown answer: setBody only records a delta, and this is what
+	decides that enough of them have piled up to be worth rebuilding the document for.
+
+	refreshHeight republishes a height the card already knows; a card does that from its own setters
+	too, and this only catches a re-shape nobody asked for - a font that finished loading, a density
+	change, or the layout pass that finally measured a document committed a frame ago. */
+	for (auto &it : _bubbles) {
+		it->tickBody(time.app);
+		it->refreshHeight();
+	}
 }
 
 // ---- the log -----------------------------------------------------------------------------
 
-ChatBubble *ChatPanel::appendCard(StringView styleClass) {
+ChatBubble *ChatPanel::appendCard(StringView styleClass, bool markdown) {
 	auto row = _log->addChild(Rc<Node>::create(), ZOrder(int16_t(_bubbles.size() + 1)));
 	row->addStyleClass("msg-row");
 	row->addStyleClass(styleClass);
 
-	auto bubble = row->addChild(Rc<ChatBubble>::create(styleClass), ZOrder(1));
+	auto bubble = row->addChild(Rc<ChatBubble>::create(styleClass, markdown), ZOrder(1));
 	bubble->setWrapWidth(_wrapWidth);
 
 	_bubbles.emplace_back(bubble);
@@ -317,7 +403,10 @@ ChatBubble *ChatPanel::appendCard(StringView styleClass) {
 	return bubble;
 }
 
-ChatBubble *ChatPanel::appendBubble(ChatRole role) { return appendCard(getChatRoleName(role)); }
+// The role decides the slot: what the model writes is Markdown, everything else is flat text.
+ChatBubble *ChatPanel::appendBubble(ChatRole role) {
+	return appendCard(getChatRoleName(role), role == ChatRole::Assistant);
+}
 
 // ---- one exchange ------------------------------------------------------------------------
 
@@ -429,6 +518,12 @@ void ChatPanel::handleStreamDone(Status st, StringView error) {
 
 	auto message = _history.getLast();
 
+	// The last deltas of an answer are still behind the rebuild throttle, and nothing is coming
+	// after them to push them through.
+	if (_streamingBubble) {
+		_streamingBubble->flushBody();
+	}
+
 	if (_streamingBubble && session) {
 		String meta;
 
@@ -502,8 +597,13 @@ void ChatPanel::handleToolCalls(SpanView<ChatToolCall> calls) {
 	so it becomes the record of the call instead of hanging around as an unexplained blank box. */
 	if (_streamingBubble && _streamingBubble->getBody().empty()) {
 		_streamingBubble->addStyleClass("tool-call");
-		_streamingBubble->setBody(toString("calls ", calls.front().name, " ",
-				calls.front().arguments));
+
+		/* Written as Markdown, because that bubble IS one: the arguments are JSON and a fence is
+		what keeps them readable - and keeps a stray underscore in them from turning the rest of
+		the line italic. */
+		_streamingBubble->setBody(toString("calls `", calls.front().name, "`\n\n```json\n",
+				calls.front().arguments, "\n```"));
+		_streamingBubble->flushBody();
 	}
 	_streamingBubble = nullptr;
 
@@ -954,6 +1054,9 @@ void ChatPanel::registerCommands() {
 		parser.finish(callback);
 
 		if (finished) {
+			// The same thing the end of a real turn does: a Markdown answer is committed on a
+			// throttle, and nothing is coming after these deltas to push the last of them through.
+			_streamingBubble->flushBody();
 			_streamingBubble = nullptr;
 		}
 
