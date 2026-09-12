@@ -119,7 +119,8 @@ struct _wfinddata_t {
 	long long time_access;
 	long long time_write;
 	long long size;
-	wchar_t name[260];
+	// The sprt spelling: in C the plain `wchar_t` typedef is only declared further down.
+	__SPRT_ID(wchar_t) name[260];
 };
 #endif
 

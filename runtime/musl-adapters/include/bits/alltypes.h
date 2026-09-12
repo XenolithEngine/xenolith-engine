@@ -77,9 +77,12 @@ typedef __SPRT_ID(uint16_t) wchar_t;
 typedef __SPRT_ID(uint16_t) wint_t;
 typedef __SPRT_ID(uint16_t) wctype_t;
 #else
-// Musl expects 32-bit wchar_t
+// Musl expects 32-bit wchar_t and wint_t (upstream alltypes.h.in: `unsigned wint_t`).
+// wint_t must stay 32-bit on LP64 too: sprt's own <wctype.h> functions take a 32-bit
+// wint_t, and wasm64 links by exact signature, so a 64-bit one here turns every
+// isw*/tow* call between musl and sprt into a trapping stub.
 typedef __SPRT_ID(uint32_t) wchar_t;
-typedef unsigned long wint_t;
+typedef unsigned int wint_t;
 typedef unsigned long wctype_t;
 #endif
 #endif
