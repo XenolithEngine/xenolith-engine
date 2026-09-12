@@ -867,9 +867,16 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 	if (len > 0) {
 		_output.lines.emplace_back(LineLayoutData{first, len, linePos, currentLineHeight});
 
-		// Resolve the line's base direction (CSS `direction`) and, when bidi is enabled, the UAX #9
-		// embedding levels of its characters. `start`/`end` alignment is then resolved against the
-		// line's base direction, CSS-style.
+		/* Resolve the line's base direction (CSS `direction`) and, when bidi is enabled, the UAX #9
+		embedding levels of its characters. `start`/`end` alignment is then resolved against the
+		line's base direction, CSS-style.
+
+		This is a PROVISIONAL answer for the `Neutral` case. layoutLine, just below, overwrites it
+		with the base the bidi pass actually resolved - but only when bidi is ENABLED. With bidi
+		off there is nothing to resolve a neutral base against, so it stays LeftToRight and a
+		Persian paragraph would align `start` to the left with no complaint. That combination is
+		refused upstream: LabelBase::updateFormatSpec turns bidi on whenever the direction is
+		Neutral, and this comment is the reason it does. */
 		_output.lines.back().direction = (_defaultDirection == TextDirection::Neutral)
 				? TextDirection::LeftToRight
 				: _defaultDirection;

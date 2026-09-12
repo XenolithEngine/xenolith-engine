@@ -169,7 +169,15 @@ public:
 
 	// Top-down: a rect for every slot, from the tree's ratios and the minimums the pass above
 	// computed. Writes only DockTreeNode::rect and ::splitterRect.
-	void distribute(const Rect &available, DockOverflowPolicy, float splitterThickness);
+	/* Hand every slot a rect. `rtl` runs the HORIZONTAL splits the other way, so that `first`
+	means the inline START of the row rather than its left edge.
+
+	That is the whole of what makes a docked window mirror, and it is deliberately the only place
+	that knows: a saved layout keeps recording `first` and a ratio, so an arrangement made in
+	English opens mirrored in Persian and mirrors back on the way home. Nothing is migrated and
+	nothing is lost, because the file never named a physical side to begin with. */
+	void distribute(const Rect &available, DockOverflowPolicy, float splitterThickness,
+			bool rtl = false);
 
 	Size2 getRootMinSize() const;
 
@@ -224,7 +232,7 @@ protected:
 	void pruneEmptyLeaves();
 
 	void updateMinimumsAt(DockNodeHandle, const MeasureLeaf &, float thickness);
-	void distributeAt(DockNodeHandle, const Rect &, DockOverflowPolicy, float thickness);
+	void distributeAt(DockNodeHandle, const Rect &, DockOverflowPolicy, float thickness, bool rtl);
 	void eachInOrderAt(DockNodeHandle, const Callback<void(const DockTreeNode &)> &) const;
 
 	Vector<DockTreeNode> _nodes;

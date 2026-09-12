@@ -41,6 +41,8 @@ DO NOT use these (they parse but do nothing, or don't exist):
 | `::before`/`::after`/`::marker` pseudo-elements | **unsupported** — rule is skipped |
 | `[attr]`/`[attr=val]` attribute selectors | parsed, **never match** |
 | `prefers-color-scheme` | **absent** — use `@media (light-level: dim)` or `x-option` |
+| `:dir()` pseudo-class | **unsupported** — use `@media (x-option: rtl)`, which the engine seeds from the locale |
+| `writing-mode` | **absent** — the block axis is always vertical, so `*-block-*` folds onto top/bottom |
 | `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
 | `overscroll-behavior` `scroll-behavior` `scroll-snap-*` `scrollbar-gutter` | **not registered** (`overflow` itself IS supported — see below) |
 | `background` shorthand | **absent** — write `background-color` etc. individually |
@@ -81,10 +83,14 @@ Item (on a direct child):
 
 Any of these works:
 ```css
-.row > .last  { margin-left: auto; }               /* just this item to the end */
+.row > .last  { margin-inline-end: auto; }         /* just this item to the end */
 .row          { justify-content: space-between; }  /* first & last to the edges */
 .row > .spacer { flex-grow: 1; }                   /* explicit slack-eating gap */
 ```
+
+`margin-inline-end: auto` and not `margin-left: auto`: the physical one pins the item to the right
+even in a right-to-left window, where "the end" is the left. The other two are direction-neutral
+already. See **Direction and logical properties**.
 
 ## Width / height
 
@@ -134,6 +140,82 @@ A measured item gets `handleLayoutApplied` with the box it finally received.
     the container it covers — no need to keep it outside any more. Its `width`/`height` are
     committed directly rather than handed to the layout.
 - `relative`/`fixed`/`sticky`/`static`: **no positional effect** (only `-xl-anchor-point`/`-xl-position` run).
+
+## Direction and logical properties
+
+`direction: ltr | rtl` — **inherited**, and it is a property of the CONTAINER, not of the text
+alone. Declaring it once at the root mirrors every flow beneath it.
+
+```css
+:root { direction: rtl; }          /* mirrors flex rows, grid columns, table columns   */
+```
+
+**What it does NOT do: swap `padding-left` for `padding-right`.** The physical properties stay
+physical, exactly as on the web. What follows the direction is:
+
+| follows `direction` | stays physical |
+|---|---|
+| the inline axis of `flex-direction: row` (and `row-reverse` cancels it) | `padding-left/right`, `margin-left/right` |
+| grid and table **column** order | `border-left/right-*`, `left`/`right` offsets |
+| `text-align: start \| end` | `text-align: left \| right` |
+| `justify-*`/`align-*` with `start`/`end`/`self-start`/`self-end` | the same with `left`/`right` |
+| `*-inline-start` / `*-inline-end` | the four corner radii |
+
+Logical box properties, all supported, all resolved against the node's computed direction:
+
+```css
+padding-inline-start / -end     padding-inline: <start> <end>
+margin-inline-start  / -end     margin-inline:  <start> <end>
+inset-inline-start   / -end     inset-inline:   <start> <end>
+border-inline-start-style / -width / -color   (and -end-)
+```
+
+The `*-block-*` spellings are accepted and fold onto top/bottom at parse time — there is no
+`writing-mode` here, so the block axis is always vertical.
+
+**Where a declaration collides.** If a node ends up with both `padding-left` and
+`padding-inline-start`, the LOGICAL one wins, unconditionally. Real CSS decides that by source
+order; this cascade records none, so the rule is fixed and stated here rather than left to luck.
+
+### The three alignment keyword families
+
+They are genuinely three, and the difference only shows once something reverses:
+
+```css
+justify-content: flex-start;  /* follows the FLEX direction, reversal included */
+justify-content: start;       /* follows the WRITING MODE                      */
+justify-content: left;        /* physical, follows neither                     */
+```
+
+### `unicode-bidi`, and the one trap
+
+`normal | embed | isolate | isolate-override | bidi-override | plaintext`. Not inherited.
+
+**On a label, `plaintext` means `dir=auto`** — resolve this label's base direction from its own
+content — and that is what you want whenever an interface mixes scripts, which an editor always
+does. Without it, an inherited `direction: rtl` puts the leading slash of `/home/x/types.json` at
+the far end.
+
+```css
+* { unicode-bidi: plaintext; }   /* every label resolves its own base direction */
+```
+
+Use `*` and not `label`: a `basic2d::Label` carries no CSS tag unless something calls
+`setType("label")`, so a `label` rule silently matches almost nothing.
+
+### Turning it on at run time
+
+The engine sets one media flag itself, from `locale::getTextDirection()`:
+
+```css
+@media (x-option: rtl) { :root { direction: rtl; } }
+```
+
+`ui::StyleSystem` seeds `rtl` in `updateMedia` and re-seeds it on `locale::onLocale`, so a
+stylesheet is the whole of what an application needs. `StyleSystem::setMediaOption(name, on)` sets
+any other flag by hand. Use the media block for the branches `direction` cannot express — which
+way an arrow icon points, which half of a title bar a button cluster sits on — the job CSS gives
+`:dir()`, which this selector subset does not have.
 
 ## Colors
 

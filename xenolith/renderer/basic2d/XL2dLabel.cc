@@ -728,6 +728,49 @@ void Label::makeEffectiveStyle(font::LabelBase::EffectiveStyle &out) const {
 	if (text.defined & InheritedTextStyle::DefinedTextAlign) {
 		out.alignment = text.textAlign;
 	}
+
+	/* CSS `direction` and `unicode-bidi`, and the one place the three layers are ordered.
+
+	`direction` sets the label's BASE direction, as on the web. `unicode-bidi: plaintext` is the
+	other half and needs care: the implementation brackets a SPAN with FSI...PDI, which is right
+	for a nested run and wrong for the element's own paragraph - UAX #9 rule P2 skips everything
+	between an isolate and its PDI when it looks for the paragraph's base, so a label whose whole
+	text sat inside one would resolve to LeftToRight every time, and a Persian caption would align
+	left. On the label ROOT, therefore, `plaintext` means what it means in CSS - resolve the base
+	from the content - and that is spelled `Neutral`, with bidi on.
+
+	Which is exactly what applyLocaleTextFeatures already does for an RTL locale. The two layers
+	agree rather than race, and this is the order they agree in: CSS, then the caller, then the
+	locale. */
+	if (text.defined & InheritedTextStyle::DefinedDirection) {
+		out.direction = text.direction;
+		if (text.direction == font::TextDirection::RightToLeft) {
+			// An RTL base is only honoured by the bidi pass, and RTL scripts need shaping to join.
+			out.bidiEnabled = true;
+			out.shapingEnabled = true;
+		}
+	}
+
+	/* `unicode-bidi` AFTER `direction`, and the order is the whole of the rule.
+
+	`plaintext` means "resolve this box's base direction from its own content", which in CSS
+	overrides whatever `direction` said - that is what the keyword is for. Applied the other way
+	round, an inherited `direction: rtl` would clobber the Neutral a moment later and every Latin
+	path in the window would draw with its leading slash at the far end. */
+	if (text.defined & InheritedTextStyle::DefinedBidi) {
+		if (text.bidi == font::BidiMode::Plaintext) {
+			out.direction = font::TextDirection::Neutral;
+			out.bidiEnabled = true;
+			out.shapingEnabled = true;
+			out.bidiMode = font::BidiMode::Normal; // no isolate around the whole paragraph
+		} else {
+			out.bidiMode = text.bidi;
+			if (text.bidi != font::BidiMode::Normal) {
+				out.bidiEnabled = true;
+			}
+		}
+	}
+
 	if (text.defined & InheritedTextStyle::DefinedLineHeight) {
 		out.lineHeight = text.lineHeight;
 		out.lineHeightAbsolute = text.lineHeightAbsolute;
@@ -1059,10 +1102,29 @@ Vec2 Label::getCursorOrigin() const {
 		return Vec2::ZERO;
 	}
 
-	switch (_alignment) {
+	/* `start`/`end` are direction-relative and have to be resolved before they can be a side. The
+	label's own base direction is the one the formatter used; a `Neutral` base resolved per
+	paragraph, and the first line's resolved direction is the honest answer for an empty or
+	single-paragraph field, which is what a caret origin is asked about. */
+	auto base = _direction;
+	if (base == font::TextDirection::Neutral) {
+		auto data = _format->getData();
+		base = (data && !data->lines.empty()) ? data->lines.front().direction
+											  : font::TextDirection::LeftToRight;
+	}
+	const bool rtl = (base == font::TextDirection::RightToLeft);
+
+	auto alignment = _alignment;
+	switch (alignment) {
+	case TextAlign::Start: alignment = rtl ? TextAlign::Right : TextAlign::Left; break;
+	case TextAlign::End: alignment = rtl ? TextAlign::Left : TextAlign::Right; break;
+	default: break;
+	}
+
+	switch (alignment) {
 	case TextAlign::Left:
 	case TextAlign::Justify:
-	case TextAlign::Start: // CSS `start`: left for the default (ltr) direction
+	case TextAlign::Start:
 		return Vec2(0.0f / _labelDensity,
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;
@@ -1071,7 +1133,7 @@ Vec2 Label::getCursorOrigin() const {
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;
 	case TextAlign::Right:
-	case TextAlign::End: // CSS `end`: right for the default (ltr) direction
+	case TextAlign::End:
 		return Vec2(_contentSize.width / _labelDensity,
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;

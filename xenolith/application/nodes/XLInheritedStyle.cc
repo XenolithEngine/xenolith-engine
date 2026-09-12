@@ -100,6 +100,36 @@ void InheritedTextStyle::merge(const InheritedTextStyle &parent) {
 		lineHeightAbsolute = parent.lineHeightAbsolute;
 		defined |= DefinedLineHeight;
 	}
+	if ((parent.defined & DefinedDirection) && !(defined & DefinedDirection)) {
+		direction = parent.direction;
+		defined |= DefinedDirection;
+	}
+	// `unicode-bidi` is NOT inherited in CSS, so it is deliberately absent from this walk: it is
+	// carried here only for the node that declared it, and the resolver writes it there.
+}
+
+font::TextDirection getInlineDirection(const Node *node) {
+	if (!node) {
+		return font::TextDirection::LeftToRight;
+	}
+	if (auto own = node->getComponent<InheritedTextStyle>()) {
+		if (own->defined & InheritedTextStyle::DefinedDirection) {
+			return own->direction;
+		}
+	}
+
+	// Nothing on this node. The walk is the uncommon path: `direction` is inherited, so a subtree
+	// under a root that declares one carries the component on every node.
+	auto ret = font::TextDirection::LeftToRight;
+	node->findParentWithComponent<InheritedTextStyle>(
+			[&](NotNull<Node>, NotNull<const InheritedTextStyle> c, uint32_t) {
+		if (c->defined & InheritedTextStyle::DefinedDirection) {
+			ret = c->direction;
+			return false; // the nearest declaration wins
+		}
+		return true;
+	});
+	return ret;
 }
 
 } // namespace stappler::xenolith

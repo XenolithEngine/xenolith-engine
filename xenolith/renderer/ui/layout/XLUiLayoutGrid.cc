@@ -25,6 +25,8 @@
 
 #include "XLUiLayoutInternal.h"
 
+#include "XLInheritedStyle.h" // isInlineRtl
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
@@ -405,6 +407,10 @@ void LayoutSystem::layoutGrid() {
 
 	const Size2 containerSize = _owner->getContentSize();
 	const float contentW = sprt::max(containerSize.width - info.padding.horizontal(), 0.0f);
+
+	// CSS `direction: rtl` runs the inline axis - a grid's COLUMN axis - backwards. The tracks are
+	// sized and positioned in logical coordinates and mirrored once at projection, below.
+	const bool rtl = isInlineRtl(_owner);
 	const float contentH = sprt::max(containerSize.height - info.padding.vertical(), 0.0f);
 
 	// 1. Collect items.
@@ -642,8 +648,9 @@ void LayoutSystem::layoutGrid() {
 		const float cellY = rows[it.row.start].position;
 		const float cellBottom = rows[it.row.end - 1].position + rows[it.row.end - 1].base;
 
-		// inset the cell by the item margin
-		float availX = cellX + it.cfg.margin.left;
+		// inset the cell by the item margin. `margin.left` stays the LEFT margin under rtl - only
+		// the mirror below moves the box, and it moves the margins with it.
+		float availX = cellX + (rtl ? it.cfg.margin.right : it.cfg.margin.left);
 		float availW = sprt::max((cellRight - cellX) - it.cfg.margin.horizontal(), 0.0f);
 		float availY = cellY + it.cfg.margin.top;
 		float availH = sprt::max((cellBottom - cellY) - it.cfg.margin.vertical(), 0.0f);
@@ -659,8 +666,12 @@ void LayoutSystem::layoutGrid() {
 		it.boxW = w;
 		it.boxH = h;
 
+		/* THE ONE PHYSICAL STEP. Everything above stayed in logical inline coordinates - the track
+		order, `justify-self`, `grid-column: 2 / 4` - so an RTL grid is the same arithmetic mirrored
+		once, here, inside the content box. Reversing the track array instead would have put the
+		tracks, the alignment and the line numbers into three different spaces. */
 		Vec2 bottomLeft;
-		bottomLeft.x = info.padding.left + it.boxX;
+		bottomLeft.x = info.padding.left + (rtl ? contentW - (it.boxX + it.boxW) : it.boxX);
 		bottomLeft.y = containerSize.height - info.padding.top - it.boxY - it.boxH;
 
 		it.node->setContentSize(Size2(it.boxW, it.boxH));

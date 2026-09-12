@@ -67,6 +67,14 @@ void StyleParameter::set<ParameterName::CssTextAlign, TextAlign>(const TextAlign
 	value.textAlign = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssDirection, TextDirection>(const TextDirection &v) {
+	value.textDirection = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssUnicodeBidi, BidiMode>(const BidiMode &v) {
+	value.bidiMode = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssWhiteSpace, WhiteSpace>(const WhiteSpace &v) {
 	value.whiteSpace = v;
 }
@@ -148,6 +156,14 @@ void StyleParameter::set<ParameterName::CssMarginLeft, Metric>(const Metric &v) 
 	value.sizeValue = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssMarginInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssMarginInlineEnd, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssWidth, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
@@ -185,6 +201,14 @@ void StyleParameter::set<ParameterName::CssPaddingBottom, Metric>(const Metric &
 }
 template <>
 void StyleParameter::set<ParameterName::CssPaddingLeft, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssPaddingInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssPaddingInlineEnd, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
 template <>
@@ -270,6 +294,32 @@ void StyleParameter::set<ParameterName::CssBorderLeftWidth, Metric>(const Metric
 }
 template <>
 void StyleParameter::set<ParameterName::CssBorderLeftColor, Color4B>(const Color4B &v) {
+	value.color4 = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartStyle, BorderStyle>(
+		const BorderStyle &v) {
+	value.borderStyle = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartWidth, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartColor, Color4B>(const Color4B &v) {
+	value.color4 = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndStyle, BorderStyle>(
+		const BorderStyle &v) {
+	value.borderStyle = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndWidth, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndColor, Color4B>(const Color4B &v) {
 	value.color4 = v;
 }
 template <>
@@ -375,6 +425,14 @@ void StyleParameter::set<ParameterName::CssBottom, Metric>(const Metric &v) {
 }
 template <>
 void StyleParameter::set<ParameterName::CssLeft, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssInsetInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssInsetInlineEnd, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
 template <>
@@ -1986,8 +2044,9 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			writeStyle(stream, it.value.sizeValue);
 			break;
 		case ParameterName::CssMediaOption:
-			stream << "media-option: ";
-			writeStyle(stream, it.value.stringId, iface);
+			// The hash of the option's name, not an index into the string table - see the parser.
+			// There is nothing to look it up in, so the number is the honest answer.
+			stream << "media-option: #" << it.value.stringId;
 			break;
 		}
 		if (it.mediaQuery != MediaQueryIdNone) {
@@ -2297,6 +2356,27 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssPageBreakInside || name == ParameterName::CssPosition
 			|| name == ParameterName::CssTop || name == ParameterName::CssRight
 			|| name == ParameterName::CssBottom || name == ParameterName::CssLeft
+			/* THE INLINE-AXIS BOX PROPERTIES, and `unicode-bidi` with them. Box decoration is never
+			   inherited, and `unicode-bidi` describes how ONE box takes part in the bidirectional
+			   algorithm - inherited, an `isolate` on a container would isolate every descendant
+			   separately, which is not what the author asked for and not what CSS does.
+
+			   `CssDirection` is deliberately ABSENT from this list: `direction` IS inherited, and
+			   this function answers `true` by default. That default is the whole reason the
+			   direction reaches a subtree without a line of new plumbing. */
+			|| name == ParameterName::CssUnicodeBidi
+			|| name == ParameterName::CssMarginInlineStart
+			|| name == ParameterName::CssMarginInlineEnd
+			|| name == ParameterName::CssPaddingInlineStart
+			|| name == ParameterName::CssPaddingInlineEnd
+			|| name == ParameterName::CssInsetInlineStart
+			|| name == ParameterName::CssInsetInlineEnd
+			|| name == ParameterName::CssBorderInlineStartStyle
+			|| name == ParameterName::CssBorderInlineStartWidth
+			|| name == ParameterName::CssBorderInlineStartColor
+			|| name == ParameterName::CssBorderInlineEndStyle
+			|| name == ParameterName::CssBorderInlineEndWidth
+			|| name == ParameterName::CssBorderInlineEndColor
 			|| name == ParameterName::CssXlAnchorPointX || name == ParameterName::CssXlAnchorPointY
 			|| name == ParameterName::CssXlPositionX || name == ParameterName::CssXlPositionY
 			// `-xl-z-order` is this engine's `z-index`, and no more inheritable than that one:

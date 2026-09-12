@@ -76,6 +76,8 @@ using font::FontVariant;
 using font::TextTransform;
 using font::TextDecoration;
 using font::TextAlign;
+using font::TextDirection;
+using font::BidiMode;
 using font::WhiteSpace;
 using font::Hyphens;
 using font::VerticalAlign;
@@ -328,6 +330,17 @@ enum class ParameterName : NameSize {
 	CssTextTransform, // enum
 	CssTextDecoration, // enum
 	CssTextAlign, // enum
+
+	/* CSS `direction` and `unicode-bidi` (UAX #9). `direction` is INHERITED and is what makes the
+	   inline axis of a flow run right-to-left; `unicode-bidi` is not inherited and describes how
+	   ONE box takes part in the bidirectional algorithm.
+
+	   Note what `direction` does NOT do: it does not swap `padding-left` for `padding-right`. The
+	   physical sides stay physical, exactly as on the web, and what follows the direction is the
+	   inline axis plus the `*-inline-*` properties below. */
+	CssDirection, // enum (TextDirection)
+	CssUnicodeBidi, // enum (BidiMode)
+
 	CssWhiteSpace, // enum
 	CssHyphens, // enum
 	CssDisplay, // enum
@@ -341,6 +354,17 @@ enum class ParameterName : NameSize {
 	CssMarginRight, // size
 	CssMarginBottom, // size
 	CssMarginLeft, // size
+
+	/* The INLINE-AXIS margins. Their own names rather than a fold onto left/right, because which
+	   physical side they land on is a fact about the NODE (its computed `direction`), and a parser
+	   sees only a declaration. Resolved in ui::StyleResolver::applyLayout, the one place that knows
+	   both. Not inherited.
+
+	   There is no `*-block-*` counterpart in this vocabulary: with no `writing-mode` the block axis
+	   is always vertical, so `margin-block-start` folds onto `margin-top` AT PARSE TIME, where the
+	   mapping is a constant and the fold is exact. */
+	CssMarginInlineStart, // size
+	CssMarginInlineEnd, // size
 	CssWidth, // size
 	CssHeight, // size
 	CssMinWidth, // size
@@ -351,6 +375,8 @@ enum class ParameterName : NameSize {
 	CssPaddingRight, // size
 	CssPaddingBottom, // size
 	CssPaddingLeft, // size
+	CssPaddingInlineStart, // size - see CssMarginInlineStart
+	CssPaddingInlineEnd, // size
 	CssFontFamily, // string id
 	CssBackgroundColor, // color4
 	CssBackgroundImage, // string id
@@ -372,6 +398,12 @@ enum class ParameterName : NameSize {
 	CssBorderLeftStyle, // enum
 	CssBorderLeftWidth, // size
 	CssBorderLeftColor, // color4
+	CssBorderInlineStartStyle, // enum - see CssMarginInlineStart
+	CssBorderInlineStartWidth, // size
+	CssBorderInlineStartColor, // color4
+	CssBorderInlineEndStyle, // enum
+	CssBorderInlineEndWidth, // size
+	CssBorderInlineEndColor, // color4
 	CssOutlineStyle, // enum
 	CssOutlineWidth, // size
 	CssOutlineColor, // color4
@@ -394,6 +426,8 @@ enum class ParameterName : NameSize {
 	CssRight, // size
 	CssBottom, // size
 	CssLeft, // size
+	CssInsetInlineStart, // size - see CssMarginInlineStart
+	CssInsetInlineEnd, // size
 	CssXlAnchorPointX, // float
 	CssXlAnchorPointY, // float
 	CssXlPositionX, // size
@@ -623,6 +657,8 @@ union SP_PUBLIC StyleValue {
 	TextTransform textTransform;
 	TextDecoration textDecoration;
 	TextAlign textAlign;
+	TextDirection textDirection;
+	BidiMode bidiMode;
 	WhiteSpace whiteSpace;
 	Hyphens hyphens;
 	Display display;

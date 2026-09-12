@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiDockSystem.h"
+
+#include "XLInheritedStyle.h" // isInlineRtl
 #include "XLUiDockSplitter.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiStyleSystem.h"
@@ -922,8 +924,10 @@ void DockSystem::apply() {
 
 	_tree.updateMinimums([this](const DockTreeNode &n) { return measureLeaf(n); },
 			_splitterThickness);
+	// A docked window mirrors with the interface's direction: `first` is the inline start, not the
+	// left. See DockTree::distribute for why no saved layout has to be migrated for this.
 	_tree.distribute(Rect(Vec2::ZERO, _owner->getContentSize()), _overflowPolicy,
-			_splitterThickness);
+			_splitterThickness, isInlineRtl(_owner));
 	commitGeometry();
 
 	_inPlacement = false;

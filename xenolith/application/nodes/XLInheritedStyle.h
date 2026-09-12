@@ -112,11 +112,13 @@ struct SP_PUBLIC InheritedTextStyle {
 		DefinedVerticalAlign = 1 << 4,
 		DefinedTextAlign = 1 << 5,
 		DefinedLineHeight = 1 << 6,
+		DefinedDirection = 1 << 7,
+		DefinedBidi = 1 << 8,
 	};
 
 	static constexpr uint32_t DefinedAll = DefinedTextTransform | DefinedTextDecoration
 			| DefinedWhiteSpace | DefinedHyphens | DefinedVerticalAlign | DefinedTextAlign
-			| DefinedLineHeight;
+			| DefinedLineHeight | DefinedDirection | DefinedBidi;
 
 	font::TextTransform textTransform = font::TextTransform::None;
 	font::TextDecoration textDecoration = font::TextDecoration::None;
@@ -124,6 +126,17 @@ struct SP_PUBLIC InheritedTextStyle {
 	font::Hyphens hyphens = font::Hyphens::Manual;
 	font::VerticalAlign verticalAlign = font::VerticalAlign::Baseline;
 	font::TextAlign textAlign = font::TextAlign::Left;
+
+	/* CSS `direction` and `unicode-bidi`. `direction` rides in this component and not in a
+	   component of its own because it IS an inherited text property, so the walk above already
+	   carries it - and because `direction` is inherited, the resolver stamps this component on
+	   every node under a root that declares one, which lets a layout container read its own
+	   direction with a single getComponent and no parent walk in the layout path.
+
+	   `unicode-bidi` is NOT inherited and is only ever written on the node that declared it. */
+	font::TextDirection direction = font::TextDirection::LeftToRight;
+	font::BidiMode bidi = font::BidiMode::Normal;
+
 	float lineHeight = 0.0f; // px when `lineHeightAbsolute`, factor of font size otherwise
 	bool lineHeightAbsolute = false;
 	uint32_t defined = 0;
@@ -152,6 +165,21 @@ inline T accumulateInheritedStyle(NotNull<const Node> node) {
 		});
 	}
 	return ret;
+}
+
+/* THE INLINE DIRECTION IN FORCE AT A NODE, for the code that asks OUTSIDE a style pass.
+
+The layout backends, the scroll indicator and the dock tree all need the direction and none of them
+runs inside StyleResolver. The node's own component answers immediately in the common case, because
+`direction` is inherited and the resolver therefore stamps InheritedTextStyle on every node under a
+root that declares one; the parent walk is the fallback for a subtree with no stylesheet at all.
+
+`LeftToRight` when nothing says otherwise, which keeps every application that never heard of
+`direction` laid out exactly as before. */
+SP_PUBLIC font::TextDirection getInlineDirection(const Node *);
+
+inline bool isInlineRtl(const Node *node) {
+	return getInlineDirection(node) == font::TextDirection::RightToLeft;
 }
 
 } // namespace stappler::xenolith

@@ -140,6 +140,20 @@ public:
 	void setMediaParameters(const document::MediaParameters &);
 	const document::MediaParameters &getMediaParameters() const { return _media; }
 
+	/* Set or clear one `@media (x-option: name)` flag, and re-resolve the subtree.
+
+	The engine sets one of these itself: `rtl`, seeded from `locale::getTextDirection()` in
+	updateMedia and re-seeded when the locale changes. That is what lets a stylesheet say
+
+	    @media (x-option: rtl) { :root { direction: rtl; } }
+
+	and lets an application ship a right-to-left interface without writing any code at all. It is
+	also the channel for the branches `direction` cannot express - which icon a disclosure arrow
+	uses, which half of a title bar the window buttons sit on - the job CSS gives `:dir()`, which
+	this selector subset does not have. */
+	void setMediaOption(StringView name, bool enabled);
+	bool hasMediaOption(StringView name) const { return _media.hasOption(name); }
+
 	// lazily re-evaluated when the sheet version changes
 	SpanView<bool> getMediaResolved();
 
@@ -153,6 +167,11 @@ public:
 
 protected:
 	void updateMedia();
+
+	// Keeps the `rtl` media flag in step with `locale::setLocale`. An EventListener is itself a
+	// System, so it rides on the same owner: added in handleAdded, subscribed in handleEnter.
+	EventListener *_localeListener = nullptr;
+	sprt::dispatch::BusDelegate *_localeDelegate = nullptr; // owned by the listener
 
 	// (re)build _sheet from the recorded sources and swap it in (bumps the sheet version
 	// and invalidates the owner subtree). Used for the initial build and for live reload.
