@@ -217,6 +217,9 @@ The price is narrow and worth naming: a name beginning with a neutral character 
 takes the row's direction for that character. Reserve `plaintext` for what is genuinely mixed —
 paths, identifiers, anything with punctuation at an edge.
 
+`plaintext` does NOT turn shaping on, and should not: it is a statement about base direction, not
+about whether glyphs join. Shaping follows the script — `direction: rtl`, or an RTL locale.
+
 ### Turning it on at run time
 
 The engine sets one media flag itself, from `locale::getTextDirection()`:
@@ -230,6 +233,13 @@ stylesheet is the whole of what an application needs. `StyleSystem::setMediaOpti
 any other flag by hand. Use the media block for the branches `direction` cannot express — which
 way an arrow icon points, which half of a title bar a button cluster sits on — the job CSS gives
 `:dir()`, which this selector subset does not have.
+
+**Reading the resolved direction from C++ belongs in `handleLayoutChildren`, not in
+`handleContentSizeDirty`.** An ancestor's `StyleResolver` re-resolves a node in REACTION to that
+node's content-size phase, so phase 4 sees the direction from before the pass. Widgets that place
+their own children on a side (a scroll bar, a unit suffix, a dropdown arrow) must do it in phase 6,
+which runs later in the same visit. Getting this wrong is invisible on the way into an RTL locale
+and stays wrong on the way back out.
 
 **Put that block at the END of the sheet.** A rule inside `@media` has the same specificity as the
 identical rule outside it, and at equal specificity the LATER declaration wins. An override block

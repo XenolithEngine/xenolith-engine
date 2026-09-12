@@ -263,6 +263,10 @@ public:
 	// over the children, e.g. after a child's content size changed)
 	void markLayoutChildrenDirty() { _layoutChildrenDirty = true; }
 
+	void markIntrinsicSizeDirty() {
+		for (auto p = _parent; p; p = p->_parent) { p->_layoutChildrenDirty = true; }
+	}
+
 	virtual void setVisible(bool visible);
 	virtual bool isVisible() const { return _visible; }
 

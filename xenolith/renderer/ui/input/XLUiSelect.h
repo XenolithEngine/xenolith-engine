@@ -104,6 +104,13 @@ public:
 	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
 
+	/* Phase 6. The side these parts take comes from the resolved `direction`, and an ancestor's
+	   StyleResolver re-resolves this node in reaction to its content-size phase - so phase 4
+	   reads the direction from before the pass. See placeInlineParts. */
+	virtual void handleLayoutChildren() override;
+
+	void placeInlineParts();
+
 	/* Replaces the list. A value that names an option that is still there survives; one that does
 	not is cleared, because a control showing a choice nobody offers any more is lying. */
 	virtual void setOptions(SpanView<SelectOption>);
