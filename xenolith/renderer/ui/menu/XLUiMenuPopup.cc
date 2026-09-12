@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiMenuPopup.h"
+
+#include "XLInheritedStyle.h" // isInlineRtl: which side a submenu opens on
 #include "XLUiPopupSurface.h"
 #include "XLUiSubWindowSession.h"
 #include "XLUiStyleSystem.h"
@@ -326,8 +328,16 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 	config.keyboard = _config.keyboard;
 	config.hover = _config.hover;
 
-	_child = MenuPopup_open(parentWindow, placementForNode(row, MenuSide::Right), source,
-			sp::move(config), this);
+	/* WHICH SIDE A SUBMENU OPENS ON, and it is the only thing in the menu chain that has a side.
+
+	A submenu opens away from the parent's inline start, so in a right-to-left interface it opens
+	to the LEFT. Both cases were written long ago - `MenuSide::Left` is a complete branch of
+	MenuPopup_applySide, screen-edge flip included - and nothing had ever asked for it. The
+	direction comes from the row, which inherits it like any other node. */
+	const auto side = isInlineRtl(row) ? MenuSide::Left : MenuSide::Right;
+
+	_child = MenuPopup_open(parentWindow, placementForNode(row, side), source, sp::move(config),
+			this);
 	_childItem = _child ? Rc<MenuSourceButton>(item.get()) : nullptr;
 	return _child != nullptr;
 }

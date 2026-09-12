@@ -227,6 +227,28 @@ tree-row > label  { color: var(--text); font-size: 13px; }
                  padding: 0px 0px 4px 0px; }
 scroll-indicator       { background-color: #55555f; border-radius: 2px; }
 scroll-indicator-track { background-color: transparent; }
+/* ---- writing direction ------------------------------------------------
+
+THE WHOLE OF WHAT THIS DEMO DOES TO BECOME RIGHT-TO-LEFT. `ui::StyleSystem` seeds the `rtl` media
+flag from `locale::getTextDirection()` and re-seeds it when the language changes, so choosing
+`فارسی` in the bar turns every flex row below round - the caption column moves to the other side of
+its field, the bar fills from the other end, the scroll bar changes edge - without a line of code.
+
+`unicode-bidi: plaintext` is the other half and is what makes it usable rather than merely mirrored:
+it gives every label the base direction of its OWN text, so an email address, a hex colour and a
+`vec3` keep reading left to right inside a right-to-left form. Without it the leading `#` of a
+colour would jump to the far end of the value. It is `*` and not `label` because a Label carries no
+CSS tag unless somebody sets one. */
+
+@media (x-option: rtl) {
+	/* `:root` reaches the two in-scene popups, which are siblings of the layout rather than
+	   descendants of it; `#demo-root` reaches the form. Both, because they are two subtrees. */
+	:root,
+	#demo-root { direction: rtl; }
+}
+
+* { unicode-bidi: plaintext; }
+
 )css");
 
 // A section's panel: the flex column buildFieldGroup fills. Built at most once per section, and
@@ -297,7 +319,7 @@ bool FormDemoLayout::init() {
 void FormDemoLayout::buildLeftColumn() {
 	auto title = _leftColumn->addChild(Rc<basic2d::Label>::create(), ZOrder(0));
 	title->addStyleClass("column-title");
-	title->setString("Plain widgets — one form");
+	title->setString("@Locale:Form:Column:Plain");
 
 	/* The form goes on the COLUMN, so every field built into it joins by walking up one parent.
 	That the column is also the scroll container is a coincidence of layout, not a relationship:
@@ -320,7 +342,7 @@ void FormDemoLayout::buildLeftColumn() {
 void FormDemoLayout::buildRightColumn() {
 	auto title = _rightColumn->addChild(Rc<basic2d::Label>::create(), ZOrder(0));
 	title->addStyleClass("column-title");
-	title->setString("Accordion — a second, independent form");
+	title->setString("@Locale:Form:Column:Accordion");
 
 	/* The form goes on the WRAPPER and not on the accordion.
 
@@ -425,21 +447,35 @@ void FormDemoLayout::buildControlBar() {
 	_statusLabel = _controlBar->addChild(Rc<basic2d::Label>::create(), ZOrder(0));
 	_statusLabel->addStyleClass("status");
 
-	makeControl("Submit left", [this] { _leftForm->submit(); });
-	makeControl("Submit right", [this] { _rightForm->submit(); });
-	makeControl("Reset both", [this] {
+	makeControl("@Locale:Form:Bar:SubmitLeft", [this] { _leftForm->submit(); });
+	makeControl("@Locale:Form:Bar:SubmitRight", [this] { _rightForm->submit(); });
+	makeControl("@Locale:Form:Bar:ResetBoth", [this] {
 		_leftForm->reset();
 		_rightForm->reset();
 	});
-	makeControl("Expand all", [this] {
+	makeControl("@Locale:Form:Bar:ExpandAll", [this] {
 		for (auto group : getFieldGroups()) { _accordion->expandPanel(getFieldGroupName(group)); }
 		refreshStatus("every section open");
 	});
-	makeControl("Collapse all", [this] {
+	makeControl("@Locale:Form:Bar:CollapseAll", [this] {
 		for (auto group : getFieldGroups()) { _accordion->collapsePanel(getFieldGroupName(group)); }
 		refreshStatus("every section shut");
 	});
-	makeControl("Self-check", [this] { runSelfCheck(); });
+	makeControl("@Locale:Form:Bar:SelfCheck", [this] { runSelfCheck(); });
+
+	/* THE LANGUAGE SWITCH, and the point of the demo's third language.
+
+	Its caption is NOT a tag: it names the language it would switch TO, in that language, which is
+	the one string on screen that must not be translated. Everything else here is a tag and
+	re-expands itself when the locale changes; this one is re-assigned by hand, because its content
+	is the choice rather than a word about it. */
+	_localeButton = makeControl(currentFormLocaleName(), [this] {
+		auto name = cycleFormLocale();
+		if (_localeButton) {
+			_localeButton->setString(name);
+		}
+		refreshStatus(toString("language: ", name));
+	});
 }
 
 ui::Button *FormDemoLayout::makeControl(StringView label, Function<void()> &&action) {
@@ -614,6 +650,25 @@ void FormDemoLayout::addCommand(StringView name, StringView description,
 }
 
 void FormDemoLayout::registerCommands() {
+	/* The language switch, drivable without a pointer - the same rule the rest of this demo
+	follows. It answers the language now in force AND whether the interface is mirrored, because
+	those are two different questions: Russian changes every word and nothing else, Persian changes
+	the direction too, and a check that could only see the words could not tell them apart. */
+	addCommand("locale", "Move to the next language; answers its name and the direction",
+			[this](const Value &) {
+		auto name = cycleFormLocale();
+		if (_localeButton) {
+			_localeButton->setString(name);
+		}
+		refreshStatus(toString("language: ", name));
+
+		Value ret;
+		ret.setString(name, "language");
+		ret.setString(locale::getLocale(), "locale");
+		ret.setBool(locale::getTextDirection() == font::TextDirection::RightToLeft, "rtl");
+		return ret;
+	});
+
 	addCommand("state", "Both forms: fields, tab ring, focus, default button",
 			[this](const Value &) {
 		Value ret;

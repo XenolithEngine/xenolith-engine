@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiSelect.h"
+
+#include "XLInheritedStyle.h" // placeInline*: the row follows the inline direction
 #include "XLUiLayoutSystem.h"
 #include "XLInputListener.h"
 #include "XLAppWindow.h"
@@ -81,6 +83,7 @@ bool Select::init() {
 	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(1));
 	_label->setType("label");
 	_label->addStyleClass("xl-ui-select-label");
+	// Reset every layout from the control's own direction - see updateLayout below.
 	_label->setAlignment(font::TextAlign::Left);
 
 	// Its own type rather than a second `icon`: a rule addressing `select > icon` cannot tell two
@@ -180,24 +183,28 @@ void Select::handleContentSizeDirty() {
 		return;
 	}
 
-	float left = s_selectPadding;
+	/* Two cursors walking in from the two INLINE edges - the icon and the caption from the start,
+	the arrow from the end - and the caption takes what is left between them. Written as distances
+	rather than as x, so the same arithmetic serves both directions and only the last step, where
+	a distance becomes a position, knows which edge it is measuring from. */
+	const bool rtl = isInlineRtl(this);
+
+	float startInset = s_selectPadding;
 	if (_icon && _icon->isVisible()) {
-		_icon->setAnchorPoint(Anchor::MiddleLeft);
-		_icon->setPosition(Vec2(left, height / 2.0f));
-		left += _icon->getContentSize().width + s_selectGap;
+		placeInlineStart(_icon, startInset, height / 2.0f, width, rtl);
+		startInset += _icon->getContentSize().width + s_selectGap;
 	}
 
-	float right = width - s_selectPadding;
+	float endInset = s_selectPadding;
 	if (_arrow) {
-		_arrow->setAnchorPoint(Anchor::MiddleRight);
-		_arrow->setPosition(Vec2(right, height / 2.0f));
-		right -= _arrow->getContentSize().width + s_selectGap;
+		placeInlineEnd(_arrow, endInset, height / 2.0f, width, rtl);
+		endInset += _arrow->getContentSize().width + s_selectGap;
 	}
 
 	if (_label) {
-		_label->setAnchorPoint(Anchor::MiddleLeft);
-		_label->setPosition(Vec2(left, height / 2.0f));
-		_label->setWidth(sprt::max(right - left, 0.0f));
+		placeInlineStart(_label, startInset, height / 2.0f, width, rtl);
+		_label->setWidth(sprt::max(width - startInset - endInset, 0.0f));
+		_label->setAlignment(inlineStartAlign(rtl));
 	}
 }
 

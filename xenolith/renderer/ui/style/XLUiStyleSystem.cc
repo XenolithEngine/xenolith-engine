@@ -310,6 +310,15 @@ void StyleSystem::handleExit() {
 	System::handleExit();
 }
 
+// Every descendant, so each one's resolver re-asks. Recursive rather than a frame-stack event,
+// because this runs from a locale change and not from inside a pass.
+static void StyleSystem_markSubtree(Node *node) {
+	for (auto &child : node->getChildren()) {
+		child->markContentSizeDirty();
+		StyleSystem_markSubtree(child);
+	}
+}
+
 void StyleSystem::setMediaOption(StringView name, bool enabled) {
 	if (_media.hasOption(name) == enabled) {
 		return;
@@ -321,8 +330,30 @@ void StyleSystem::setMediaOption(StringView name, bool enabled) {
 	}
 	// Both halves are needed: the first makes getMediaResolved() re-evaluate every query, the
 	// second makes every resolver in the subtree notice that its answer may have changed.
+	// Both halves are needed: the first makes getMediaResolved() re-evaluate every query, the
+	// second makes every resolver in the subtree notice that its answer may have changed.
 	_resolvedForVersion = maxOf<uint32_t>();
 	invalidateStyles();
+
+	/* AND A PASS TO NOTICE IT IN.
+
+	`invalidateStyles` bumps a version, and a version is only READ when a style pass happens for
+	some other reason - so a media flag flipped between frames would sit there unnoticed until
+	something else disturbed the tree. That is not hypothetical: the studio only appeared to work
+	because its own locale handler marks the content dirty a line later, and the same change in an
+	application that did not think to do that did nothing at all.
+
+	Asking here makes the flag's effect the engine's promise rather than each caller's homework.
+
+	The whole SUBTREE and not just the owner: a StyleResolver re-resolves a node when that node's
+	own phase fires, and a media flag changes the answer for every node under the scope at once.
+	Marking only the owner leaves a window styled by the flag it had a frame ago - which is exactly
+	what a language switch looked like before this walk was here. It is a rare event; a style pass
+	over the subtree is what it costs. */
+	if (_owner) {
+		_owner->markContentSizeDirty();
+		StyleSystem_markSubtree(_owner);
+	}
 }
 
 void StyleSystem::updateMedia() {

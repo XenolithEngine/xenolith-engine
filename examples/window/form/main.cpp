@@ -55,6 +55,13 @@ public:
 			return false;
 		}
 
+		/* The string tables, BEFORE anything that carries a tag is built.
+
+		They must also be defined before the StyleSystem below enters the scene, because that is
+		where the `rtl` media flag is first seeded from the locale - a demo that started in Persian
+		would otherwise draw its first frame left to right. */
+		defineFormLocales();
+
 		auto content = Rc<basic2d::SceneContent2d>::create();
 		content->setDefaultLights();
 
