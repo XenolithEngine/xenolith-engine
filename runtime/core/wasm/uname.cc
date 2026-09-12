@@ -52,7 +52,11 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 	__wasm_uname_copy(buf->nodename, "localhost");
 	__wasm_uname_copy(buf->release, "1.0");
 	__wasm_uname_copy(buf->version, "Stappler Runtime WebAssembly");
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_WASM64
+	__wasm_uname_copy(buf->machine, "wasm64");
+#else
 	__wasm_uname_copy(buf->machine, "wasm32");
+#endif
 	return 0;
 }
 
