@@ -80,21 +80,20 @@ OSTYPE_GENERAL_LDFLAGS += -L$(TARGET_SYSROOT)/usr/lib
 # memory64 maximum. The host may still hand the module a smaller maximum (an imported
 # memory only has to fit inside the declared one), which is how a browser that cannot
 # reserve 16 GiB of shared memory falls back.
-#
-# The main thread runs on the stack wasm-ld lays out at the bottom of memory, 64 KiB unless
-# told otherwise (spawned threads get 1 MiB, see pthread_native_wasm.cc). Every pointer and
-# size_t doubles on wasm64, and so do the frames built from them: code that fits 64 KiB on
-# wasm32 (libc++'s format tests do) overflows it there, and an overflow below address 0 is a
-# trap. wasm64 gets the same 1 MiB a thread has.
 ifeq ($(TARGET_ARCH),wasm64)
 OSTYPE_WASM_MAX_MEMORY ?= 17179869184 # 16 GiB (262144 pages)
-OSTYPE_WASM_STACK_LDFLAGS ?= -Wl,-z,stack-size=1048576
 else
 OSTYPE_WASM_MAX_MEMORY ?= 1073741824 # 1 GiB (16384 pages)
-OSTYPE_WASM_STACK_LDFLAGS ?=
 endif
+# The main thread runs on the stack wasm-ld lays out at the bottom of memory, and wasm-ld's
+# default is 64 KiB - far below what a native main thread gets. An overflow runs below
+# address 0 and traps as "memory access out of bounds" in whatever function it hit: edlib's
+# alignment in stappler_search does it on wasm32, libc++'s format tests on wasm64, where every
+# pointer-sized field doubles the frames. The main thread gets the 1 MiB a spawned thread has
+# (__SPRT_WASM_THREAD_STACK in pthread_native_wasm.cc).
+OSTYPE_WASM_STACK_SIZE ?= 1048576
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
-	$(OSTYPE_WASM_STACK_LDFLAGS) \
+	-Wl,-z,stack-size=$(OSTYPE_WASM_STACK_SIZE) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
 	-Wl,--export=__sprt_malloc_usage,--export-table

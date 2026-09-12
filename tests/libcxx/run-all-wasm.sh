@@ -15,11 +15,12 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 TARGET="${SPRT_WASM_TARGET:-wasm32-unknown-unknown}"
 ARCH="${TARGET%%-*}"
 case "$ARCH" in
-  # memory ceiling and main-thread stack, both as make/os/wasm.mk sets them
-  wasm32) WASM_MAX_MEMORY=1073741824; WASM_STACK_FLAGS="" ;;
-  wasm64) WASM_MAX_MEMORY=17179869184; WASM_STACK_FLAGS="-Wl,-z,stack-size=1048576" ;;
+  wasm32) WASM_MAX_MEMORY=1073741824 ;;    # 1 GiB, matches make/os/wasm.mk
+  wasm64) WASM_MAX_MEMORY=17179869184 ;;   # 16 GiB, the V8 memory64 ceiling
   *) echo "error: unsupported wasm target: $TARGET" >&2; exit 1 ;;
 esac
+# the main-thread stack make/os/wasm.mk links with (wasm-ld's own default is 64 KiB)
+WASM_STACK_FLAGS="-Wl,-z,stack-size=1048576"
 TC="$ROOT/runtime/toolchains"
 HOSTBIN="$TC/hosts/x86_64-unknown-linux-gnu/bin"   # linux host clang drives wasm
 SYSROOT="$TC/targets/$TARGET"; RESDIR="$SYSROOT/lib/clang"
