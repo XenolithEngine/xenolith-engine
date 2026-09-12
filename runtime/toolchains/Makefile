@@ -287,7 +287,10 @@ target-windows-dll: \
 target-wasm32-unknown-unknown: host
 	$(MAKE) -C target-wasm TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) wasm32
 
-target-wasm: target-wasm32-unknown-unknown
+target-wasm64-unknown-unknown: host
+	$(MAKE) -C target-wasm TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) wasm64
+
+target-wasm: target-wasm32-unknown-unknown target-wasm64-unknown-unknown
 
 target-aarch64-nuttx-none-elf: host
 	$(MAKE) -C target-nuttx TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) target-aarch64
@@ -311,6 +314,7 @@ clean-targets:
 	rm -rf target-apple/intermediate
 	rm -rf target-android/intermediate
 	rm -rf target-nuttx/intermediate
+	rm -rf target-wasm/intermediate
 
 
 HOSTS_AVAILABLE = $(wildcard hosts/*/)
@@ -395,7 +399,8 @@ RELEASE_TARGETS := \
 	x86_64-apple-ios-simulator \
 	x86_64-pc-windows-msvc \
 	aarch64-pc-windows-msvc \
-	wasm32-unknown-unknown
+	wasm32-unknown-unknown \
+	wasm64-unknown-unknown
 
 RELEASE_HOST_FILES := \
 	$(addprefix $(RELEASE_DIR)/host_,$(addsuffix .tar.xz,$(RELEASE_HOSTS))) \
