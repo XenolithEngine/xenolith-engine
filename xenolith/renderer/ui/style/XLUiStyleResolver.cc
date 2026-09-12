@@ -1185,6 +1185,8 @@ void StyleResolver::apply() {
 		currentInteractiveMask |= toInt(InteractiveState::Selected);
 	}
 
+	log::source().warn("StyleResolver", "apply ver=", currentSourceVersion, " was=",
+			_sourceSystemVersion, " id=", currentSourceId, " wasid=", _sourceSystemId);
 	if (currentInteractiveMask == _interactiveMask && currentSourceId == _sourceSystemId
 			&& currentSourceVersion == _sourceSystemVersion) {
 		return; // no changes to run style resolver
@@ -1384,8 +1386,17 @@ StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) cons
 	// the child-list version enters the key only when some sheet in scope actually uses a
 	// structural pseudo-class; otherwise a sibling insertion would needlessly re-resolve the
 	// whole child list (Node::markChildrenStructureDirty re-arms every sibling's phase)
+	// The style system's version rides along, so that a sheet reload or a media flag flipped
+	// between frames makes every node stale even when nothing moved.
+	uint32_t sourceVersion = 0;
+	node->findParentWithComponent<StyleSystemState>(
+			[&](NotNull<Node>, NotNull<const StyleSystemState> state, uint32_t) {
+		sourceVersion = state->version;
+		return false;
+	});
+
 	return StyleFreshness{p ? p->getContentSize() : Size2::ZERO, node->getContentSize(),
-		(p && _structuralSelectors) ? p->getChildrenVersion() : 0};
+		(p && _structuralSelectors) ? p->getChildrenVersion() : 0, sourceVersion};
 }
 
 // Does the resolved style depend on the parent's content size? Such nodes must re-resolve when

@@ -24,6 +24,7 @@
 #define EXAMPLES_WINDOW_DNDTREE_SRC_DNDTREE_DNDTREEDEMOLAYOUT_H_
 
 #include "dndtree/DndTreeView.h"
+#include "dndtree/DndTreeLocale.h"
 #include "XL2dSceneLayout.h"
 #include "XLUiDockSystem.h"
 
@@ -114,6 +115,9 @@ protected:
 			nullptr; // flat owner: every DockFrame is its direct child, no layout of its own
 	Node *_controlBarRow = nullptr;
 	basic2d::Label *_statusLabel = nullptr;
+	// The language switch. Its caption is the NEXT language's own name, so unlike every other
+	// caption here it is re-assigned rather than re-expanded from a tag.
+	ui::Button *_localeButton = nullptr;
 	String _lastAction;
 
 	DndTreeView *_left = nullptr; // raw: the dock owns both panel nodes and outlives this pointer
