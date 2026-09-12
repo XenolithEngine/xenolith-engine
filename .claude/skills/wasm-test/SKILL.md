@@ -39,9 +39,10 @@ module's memory type itself (`readMemoryImport` in `sprt-imports.mjs`), so the s
 both. Chromium and Firefox run it; Safari has no memory64. WebGPU (`wwin`) is wasm32-only
 until `webgpu.mjs` stops assuming 32-bit pointers.
 
-Headless, without the browser: `tests/runtime/run-wasm.sh` and `tests/libcxx/run-wasm.sh`
-take `SPRT_WASM_TARGET` the same way, and `node runtime/wasm-js/run-node.mjs <module.wasm>`
-runs either width.
+Headless, without the browser: `tests/runtime/run-wasm.sh`, `tests/stappler/run-wasm.sh` and
+`tests/libcxx/run-wasm.sh` take `SPRT_WASM_TARGET` the same way, and
+`node runtime/wasm-js/run-node.mjs <module.wasm>` runs either width. Under Node the persistent
+`/opfs` mount is a host directory (`SPRT_OPFS_ROOT`, or a temporary one removed on exit).
 
 ## Notes
 - The COOP/COEP server (`coop-server.py`) is what makes threads work; a plain static server
