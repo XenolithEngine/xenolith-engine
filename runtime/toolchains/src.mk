@@ -528,6 +528,7 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-lldb-wine/0004-lldb-Adapt-POSIX-Wine-DYLD-to-the-22.1-CreateBreakpoint-API.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-wasm64/0001-compiler-rt-int-comparison-results-on-wasm.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-no-delayload/0001-Support-disable-shell32-ole32-delay-load-no-delayimp.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0001-lldb-Defer-to-sprt-libc-in-PosixApi.h.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0002-lldb-Use-real-terminal-interface-on-sprt-libc.patch)
