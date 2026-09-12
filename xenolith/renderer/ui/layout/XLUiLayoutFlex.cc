@@ -25,6 +25,9 @@
 
 #include "XLUiLayoutInternal.h"
 
+// isInlineRtl: the container asks for its own computed CSS `direction`.
+#include "XLInheritedStyle.h"
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
@@ -451,9 +454,19 @@ void LayoutSystem::layoutFlex() {
 
 	const bool isRow =
 			info.direction == FlexDirection::Row || info.direction == FlexDirection::RowReverse;
-	const bool mainReverse = info.direction == FlexDirection::RowReverse
+	const bool flowReverse = info.direction == FlexDirection::RowReverse
 			|| info.direction == FlexDirection::ColumnReverse;
-	const bool crossReverse = info.wrap == FlexWrap::WrapReverse;
+
+	/* CSS `direction: rtl` RUNS THE INLINE AXIS BACKWARDS, and this engine already knew how to run
+	an axis backwards - that is what `row-reverse` is. So RTL is one exclusive-or away, and the
+	whole of the mirroring below is machinery that already shipped.
+
+	Exclusive-or and not "or", because the two cancel: `row-reverse` inside `direction: rtl` lays
+	out left to right, exactly as CSS says. Only the INLINE axis is affected - a column's main axis
+	is the block axis, so `rtl` reaches it only as its CROSS axis. */
+	const bool rtl = isInlineRtl(_owner);
+	const bool mainReverse = flowReverse != (isRow && rtl);
+	const bool crossReverse = (info.wrap == FlexWrap::WrapReverse) != (!isRow && rtl);
 
 	const Size2 containerSize = _owner->getContentSize();
 

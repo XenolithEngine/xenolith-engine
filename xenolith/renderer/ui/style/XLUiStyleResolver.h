@@ -110,6 +110,8 @@ public:
 	Color3B color() const; // color
 	uint8_t opacity() const; // opacity (0-255)
 	document::TextAlign textAlign() const; // text-align
+	document::TextDirection direction() const; // direction (inherited)
+	document::BidiMode unicodeBidi() const; // unicode-bidi
 	document::TextTransform textTransform() const; // text-transform
 	document::TextDecoration textDecoration() const; // text-decoration
 	document::WhiteSpace whiteSpace() const; // white-space
@@ -139,6 +141,15 @@ public:
 	document::Metric paddingRight() const;
 	document::Metric paddingBottom() const;
 	document::Metric paddingLeft() const;
+
+	// The inline-axis box properties. Which physical side each lands on is decided in
+	// applyLayout, against this node's computed `direction` - see Р7 of the RTL plan.
+	document::Metric paddingInlineStart() const;
+	document::Metric paddingInlineEnd() const;
+	document::Metric marginInlineStart() const;
+	document::Metric marginInlineEnd() const;
+	document::Metric insetInlineStart() const;
+	document::Metric insetInlineEnd() const;
 
 	// positioning (position/top/right/bottom/left, -xl-anchor-point, -xl-position)
 	document::Position position() const;
