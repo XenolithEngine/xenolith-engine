@@ -22,6 +22,8 @@
 
 #include "XLUiStyleSystem.h"
 #include "XLDirector.h"
+#include "XLEventListener.h"
+#include "XLFontLocale.h" // the `rtl` media flag follows the locale
 #include "XLAppThread.h"
 #include "SPFilesystem.h"
 
@@ -260,6 +262,12 @@ void StyleSystem::invalidateStyles() {
 void StyleSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 	owner->setComponent<StyleSystemState>();
+
+	// Added with the owner, subscribed on enter. Adding it from inside handleEnter would be adding
+	// a system while the owner is walking its system list, and the new one would miss the pass.
+	if (!_localeListener) {
+		_localeListener = owner->addSystem(Rc<EventListener>::create());
+	}
 }
 
 void StyleSystem::handleRemoved() {
@@ -275,6 +283,18 @@ void StyleSystem::handleEnter(Scene *scene) {
 	updateMedia();
 	registerWatches();
 
+	/* The language can change while the window is open, and the interface's direction changes with
+	it. The listener itself was added in handleAdded - a system added from inside a system's own
+	enter callback does not reliably enter the scene with it - and only the SUBSCRIPTION is made
+	here, guarded so that entering twice leaves one delegate. Same split, and for the same reason,
+	as basic2d::Label. */
+	if (_localeListener && !_localeDelegate) {
+		_localeDelegate = _localeListener->listenForEvent(locale::onLocale, [this](const Event &) {
+			setMediaOption(StringView("rtl"),
+					locale::getTextDirection() == font::TextDirection::RightToLeft);
+		});
+	}
+
 	_owner->setOrUpdateComponent<StyleSystemState>([&](NotNull<StyleSystemState> state) {
 		state->systemId = _systemId;
 		state->version = 0;
@@ -283,14 +303,42 @@ void StyleSystem::handleEnter(Scene *scene) {
 }
 
 void StyleSystem::handleExit() {
+	// The listener stays - it belongs to the owner, not to this visit - but the delegate goes, so
+	// re-entering re-subscribes exactly once.
+	_localeDelegate = nullptr;
 	cancelWatches();
 	System::handleExit();
+}
+
+void StyleSystem::setMediaOption(StringView name, bool enabled) {
+	if (_media.hasOption(name) == enabled) {
+		return;
+	}
+	if (enabled) {
+		_media.addOption(name);
+	} else {
+		_media.removeOption(name);
+	}
+	// Both halves are needed: the first makes getMediaResolved() re-evaluate every query, the
+	// second makes every resolver in the subtree notice that its answer may have changed.
+	_resolvedForVersion = maxOf<uint32_t>();
+	invalidateStyles();
 }
 
 void StyleSystem::updateMedia() {
 	if (_mediaExplicit || !_owner) {
 		return;
 	}
+
+	/* THE INTERFACE'S WRITING DIRECTION, as a media flag, seeded by the ENGINE.
+
+	Here rather than in the application, because every StyleSystem passes through this function on
+	the way in - including the one a popup window builds for itself, which inherits nothing from
+	the window it opened over. One line here gives every window of every application an
+	`@media (x-option: rtl)` that follows the locale, and costs an application that never heard of
+	RTL exactly nothing: with no such block in its sheet, the flag matches no rule. */
+	setMediaOption(StringView("rtl"),
+			locale::getTextDirection() == font::TextDirection::RightToLeft);
 
 	if (auto dir = _owner->getDirector()) {
 		auto &constraints = dir->getFrameConstraints();

@@ -462,6 +462,41 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssTextAlign>(TextAlign::Center));
 	} else if (value.equals("justify")) {
 		return cb(StyleParameter::create<ParameterName::CssTextAlign>(TextAlign::Justify));
+	} else if (value.equals("start")) {
+		// The direction-relative pair. Resolved per LINE against its base direction by
+		// font::Formatter::resolveTextAlign, which has implemented them all along - the parser was
+		// the only thing standing between a stylesheet and a working `text-align: start`.
+		return cb(StyleParameter::create<ParameterName::CssTextAlign>(TextAlign::Start));
+	} else if (value.equals("end")) {
+		return cb(StyleParameter::create<ParameterName::CssTextAlign>(TextAlign::End));
+	}
+	return false;
+}),
+	pair("direction",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	// Two values and no `auto`: CSS has no `direction: auto`. Resolving the base direction from
+	// the content is `unicode-bidi: plaintext`, below.
+	if (value.equals("ltr")) {
+		return cb(StyleParameter::create<ParameterName::CssDirection>(TextDirection::LeftToRight));
+	} else if (value.equals("rtl")) {
+		return cb(StyleParameter::create<ParameterName::CssDirection>(TextDirection::RightToLeft));
+	}
+	return false;
+}),
+	pair("unicode-bidi",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("normal")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::Normal));
+	} else if (value.equals("embed")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::Embed));
+	} else if (value.equals("isolate")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::Isolate));
+	} else if (value.equals("isolate-override")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::IsolateOverride));
+	} else if (value.equals("bidi-override")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::BidiOverride));
+	} else if (value.equals("plaintext")) {
+		return cb(StyleParameter::create<ParameterName::CssUnicodeBidi>(BidiMode::Plaintext));
 	}
 	return false;
 }),
@@ -818,6 +853,172 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 	Metric data;
 	if (parser::readStyleMetric(value, data)) {
 		return cb(StyleParameter::create<ParameterName::CssPaddingLeft>(data));
+	}
+	return false;
+}),
+	/* THE INLINE AXIS, and the block axis folded onto the physical sides.
+
+	`*-inline-start/end` keep names of their own because which physical side they land on is a fact
+	about the NODE - its computed `direction` - and a parser sees only a declaration. They are
+	resolved in ui::StyleResolver::applyLayout, the one place that knows both. Folding them here
+	would also make them COLLIDE with their physical counterparts in StyleList, which overwrites by
+	ParameterName: a sheet declaring both would lose one for a reason that is not specificity.
+
+	`*-block-start/end` are the opposite case and ARE folded here: with no `writing-mode` in this
+	engine the block axis is always vertical, so the mapping is a constant and the fold is exact. */
+	pair("padding-inline",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssPaddingInlineStart>(top));
+		cb(StyleParameter::create<ParameterName::CssPaddingInlineEnd>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("padding-inline-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssPaddingInlineStart>(data));
+	}
+	return false;
+}),
+	pair("padding-inline-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssPaddingInlineEnd>(data));
+	}
+	return false;
+}),
+	pair("padding-block",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssPaddingTop>(top));
+		cb(StyleParameter::create<ParameterName::CssPaddingBottom>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("padding-block-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssPaddingTop>(data));
+	}
+	return false;
+}),
+	pair("padding-block-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssPaddingBottom>(data));
+	}
+	return false;
+}),
+	pair("margin-inline",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssMarginInlineStart>(top));
+		cb(StyleParameter::create<ParameterName::CssMarginInlineEnd>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("margin-inline-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssMarginInlineStart>(data));
+	}
+	return false;
+}),
+	pair("margin-inline-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssMarginInlineEnd>(data));
+	}
+	return false;
+}),
+	pair("margin-block",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssMarginTop>(top));
+		cb(StyleParameter::create<ParameterName::CssMarginBottom>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("margin-block-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssMarginTop>(data));
+	}
+	return false;
+}),
+	pair("margin-block-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssMarginBottom>(data));
+	}
+	return false;
+}),
+	pair("inset-inline",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssInsetInlineStart>(top));
+		cb(StyleParameter::create<ParameterName::CssInsetInlineEnd>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("inset-inline-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssInsetInlineStart>(data));
+	}
+	return false;
+}),
+	pair("inset-inline-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssInsetInlineEnd>(data));
+	}
+	return false;
+}),
+	pair("inset-block",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric top, right, bottom, left;
+	if (parser::readStyleMargin(value, top, right, bottom, left)) {
+		cb(StyleParameter::create<ParameterName::CssTop>(top));
+		cb(StyleParameter::create<ParameterName::CssBottom>(right));
+		return true;
+	}
+	return false;
+}),
+	pair("inset-block-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssTop>(data));
+	}
+	return false;
+}),
+	pair("inset-block-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssBottom>(data));
 	}
 	return false;
 }),
@@ -1775,6 +1976,56 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
 	return css_readBorderWidth<ParameterName::CssBorderLeftWidth>(value, cb);
 }),
+	/* The inline-axis borders. Same rule as the inline paddings above: named separately, resolved
+	against the node's direction in applyLayout. The block-axis pair folds onto top/bottom. */
+	pair("border-inline-start-style",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderStyle<ParameterName::CssBorderInlineStartStyle>(value, cb);
+}),
+	pair("border-inline-start-color",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderColor<ParameterName::CssBorderInlineStartColor>(value, cb);
+}),
+	pair("border-inline-start-width",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderWidth<ParameterName::CssBorderInlineStartWidth>(value, cb);
+}),
+	pair("border-inline-end-style",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderStyle<ParameterName::CssBorderInlineEndStyle>(value, cb);
+}),
+	pair("border-inline-end-color",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderColor<ParameterName::CssBorderInlineEndColor>(value, cb);
+}),
+	pair("border-inline-end-width",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderWidth<ParameterName::CssBorderInlineEndWidth>(value, cb);
+}),
+	pair("border-block-start-style",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderStyle<ParameterName::CssBorderTopStyle>(value, cb);
+}),
+	pair("border-block-start-color",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderColor<ParameterName::CssBorderTopColor>(value, cb);
+}),
+	pair("border-block-start-width",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderWidth<ParameterName::CssBorderTopWidth>(value, cb);
+}),
+	pair("border-block-end-style",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderStyle<ParameterName::CssBorderBottomStyle>(value, cb);
+}),
+	pair("border-block-end-color",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderColor<ParameterName::CssBorderBottomColor>(value, cb);
+}),
+	pair("border-block-end-width",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readBorderWidth<ParameterName::CssBorderBottomWidth>(value, cb);
+}),
 	pair("border-style",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
 	if (value.empty()) {
@@ -2136,7 +2387,20 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
 	auto str = StyleContainer::resolveCssString(value);
 	if (!str.empty()) {
-		return cb(StyleParameter::create<ParameterName::CssMediaOption>(strCb(str)));
+		/* THE HASH OF THE NAME, not an index into the document's string table.
+
+		`MediaParameters::addOption` keys `_options` by `hash32` of the name, and
+		`MediaParameters::resolveQuery` looks the parsed value up with `hasOption(stringId)`. This
+		used to store `strCb(str)`, which is `DocumentData::addString` - an INDEX into a per-
+		document table. The two id spaces could never meet, so `@media (x-option: …)` matched
+		nothing, ever, in any document. It went unnoticed because until now nothing in the engine
+		called `addOption` at all.
+
+		The hash is the right id here precisely because an option is not a document string: it is
+		compared against a name the application supplies at run time, from a different table or
+		from no table. Nothing else reads this parameter's value. */
+		return cb(StyleParameter::create<ParameterName::CssMediaOption>(
+				StringId(sprt::hash32(str.data(), str.size()))));
 	}
 	return false;
 })};
