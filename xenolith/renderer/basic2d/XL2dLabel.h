@@ -204,6 +204,8 @@ protected:
 	virtual void makeEffectiveStyle(font::LabelBase::EffectiveStyle &) const override;
 
 	virtual void updateLabel();
+
+	virtual void setLabelDirty() override;
 	virtual void onFontSourceUpdated();
 
 	// Re-resolve the tags on a locale change, and keep bidi/shaping in step with the locale's
@@ -231,9 +233,14 @@ protected:
 	// the label dirty when the accumulated world scale changed
 	void updateLabelDensity(const Mat4 &parent);
 
+	// Held while handleLayoutApplied writes the measured box back, so that the assignment does not
+	// re-expire the measurement it came from - that would be a container that never settles.
+	bool _applyingMeasuredSize = false;
+
 	EventListener *_listener = nullptr;
 	sprt::dispatch::BusDelegate *_localeDelegate = nullptr; // owned by _listener, cleared with it
-	bool _localeTextFeatures = false; // bidi + shaping were turned on by the locale, not by a caller
+	bool _localeTextFeatures =
+			false; // bidi + shaping were turned on by the locale, not by a caller
 	Time _quadRequestTime;
 	Rc<font::FontController> _source;
 	// Glyph generation this label's quads were laid out against. Its CharIds are only resolvable

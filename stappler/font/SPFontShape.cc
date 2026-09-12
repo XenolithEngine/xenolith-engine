@@ -126,10 +126,11 @@ bool FontFaceObject::shape(const char32_t *text, size_t length, TextDirection di
 			glyph.glyphId =
 					info[i].codepoint; // after shaping this is the glyph index, not a code point
 			glyph.cluster = info[i].cluster + rstart; // map back to the full run's indices
-			glyph.xAdvance = int16_t(pos[i].x_advance >> 6); // 26.6 fixed-point -> pixels
-			glyph.yAdvance = int16_t(pos[i].y_advance >> 6);
-			glyph.xOffset = int16_t(pos[i].x_offset >> 6);
-			glyph.yOffset = int16_t(pos[i].y_offset >> 6);
+			/* 26.6 fixed-point -> pixels, ROUNDED to nearest, not truncated. */
+			glyph.xAdvance = int16_t((pos[i].x_advance + 32) >> 6);
+			glyph.yAdvance = int16_t((pos[i].y_advance + 32) >> 6);
+			glyph.xOffset = int16_t((pos[i].x_offset + 32) >> 6);
+			glyph.yOffset = int16_t((pos[i].y_offset + 32) >> 6);
 			out.emplace_back(glyph);
 		}
 
