@@ -101,7 +101,11 @@ tree-row {
 	flex-direction: row;
 	align-items: center;
 	height: var(--tree-row-h);
-	padding-left: calc(6px + var(--tree-depth, 0) * var(--tree-indent));
+	/* LOGICAL, and in a tree it is not optional: the indent is what carries the hierarchy, and a
+	   hierarchy indented from the wrong edge is unreadable. `padding-left` would have stayed on
+	   the left in a right-to-left window - correctly, per CSS - and the tree would have been the
+	   one thing in the demo that did not turn round. */
+	padding-inline-start: calc(6px + var(--tree-depth, 0) * var(--tree-indent));
 	padding-right: 8px;
 	column-gap: 6px;
 	border-radius: 3px;
@@ -124,7 +128,28 @@ tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label { font-weight:
 .tree-toggle > icon { width: 16px; height: 16px; color: var(--text); }
 
 .tree-icon  { flex: 0 0 16px; width: 16px; height: 16px; color: var(--text-dim); }
-.tree-label { flex-grow: 1; color: var(--text); font-size: 14px; white-space: nowrap; }
+/* The label GROWS - that is how a row pushes its trailing badges to the far edge - so where the
+   text sits inside that grown box is a question the row has to answer, and under `rtl` it is the
+   difference between a name beside its icon and a name stranded at the other side of the row.
+
+   Two declarations answer it, and the second is the interesting one:
+
+   - `text-align: start` - the CSS initial value is `start`, but this engine's is `Left`, so a
+     label that means "hug my leading edge" has to say so.
+   - `unicode-bidi: normal` - it OPTS OUT of the blanket `plaintext` at the end of this sheet.
+     `start` resolves against the base direction of the line, and `plaintext` derives that from
+     the CONTENT: "Widget 01" is Latin, so its line would be left-to-right and `start` would be
+     the LEFT edge even in a right-to-left window. A tree NAME is a name and belongs against the
+     row's own edge, so it takes the row's direction instead. A label that holds a PATH wants the
+     opposite trade and keeps `plaintext` - see the note at the end of this sheet. */
+.tree-label {
+	flex-grow: 1;
+	color: var(--text);
+	font-size: 14px;
+	white-space: nowrap;
+	text-align: start;
+	unicode-bidi: normal;
+}
 
 /* --- the context menu ----------------------------------------------------------------------- */
 /* The trees declare a context menu; the menu opens as a popup, and a popup is a SCENE of its own -
@@ -237,6 +262,25 @@ scroll-indicator.active      { background-color: #97a4b6; }
 .demo-button > label { color: #ffffff; font-size: 13px; }
 
 .status { flex-grow: 1; color: #9ecbff; font-size: 14px; white-space: nowrap; }
+
+/* ---- writing direction ------------------------------------------------
+
+The two lines that turn this demo round, and they are at the END of the sheet on purpose: a rule
+only beats an earlier one of the same specificity, so a `direction` written above `tree-row` would
+have been overridden by it and nothing would have moved.
+
+`ui::StyleSystem` seeds the `rtl` flag from `locale::getTextDirection()` and re-seeds it when the
+language changes, so the button in the bar only has to change the language.
+
+`unicode-bidi: plaintext` gives every label the base direction of its OWN text, which is what keeps
+a Latin node name reading left to right inside a right-to-left tree. `*` and not `label`, because a
+Label carries no CSS tag unless somebody sets one. */
+@media (x-option: rtl) {
+	:root { direction: rtl; }
+}
+
+* { unicode-bidi: plaintext; }
+
 )css");
 
 static data::Model::Node *addCategory(data::Model *model, data::Model::Node *parent,
@@ -263,7 +307,7 @@ static void addGroup(data::Model *model, StringView group, StringView prefix, si
 
 static Rc<data::Model> makeLibraryModel() {
 	data::Model::Value root;
-	root.setString("Library", "name");
+	root.setString("@Locale:Dnd:Tree:Library", "name");
 
 	auto model = Rc<data::Model>::create(sp::move(root));
 	if (!model) {
@@ -281,7 +325,7 @@ static Rc<data::Model> makeLibraryModel() {
 
 static Rc<data::Model> makeProjectModel() {
 	data::Model::Value root;
-	root.setString("Project", "name");
+	root.setString("@Locale:Dnd:Tree:Project", "name");
 
 	auto model = Rc<data::Model>::create(sp::move(root));
 	if (!model) {
@@ -480,17 +524,28 @@ void DndTreeDemoLayout::makeControlBar() {
 	_statusLabel = _controlBarRow->addChild(Rc<basic2d::Label>::create(), ZOrder(1));
 	_statusLabel->addStyleClass("status");
 
-	makeControl("Expand all", [this] {
+	makeControl("@Locale:Dnd:Bar:ExpandAll", [this] {
 		expandAll(_left);
 		expandAll(_right);
 		refreshStatus("every category opened");
 	});
-	makeControl("Collapse all", [this] {
+	makeControl("@Locale:Dnd:Bar:CollapseAll", [this] {
 		collapseAll(_left);
 		collapseAll(_right);
 		refreshStatus("every category closed");
 	});
-	makeControl("Reset content", [this] { resetContent(); });
+	makeControl("@Locale:Dnd:Bar:Reset", [this] { resetContent(); });
+
+	/* THE LANGUAGE SWITCH. Its caption names the language it would switch TO, in that language,
+	which is the one string here that must not be translated - so it is re-assigned by hand while
+	everything else re-expands its own tag. */
+	_localeButton = makeControl(currentDndTreeLocaleName(), [this] {
+		auto name = cycleDndTreeLocale();
+		if (_localeButton) {
+			_localeButton->setString(name);
+		}
+		refreshStatus(toString("language: ", name));
+	});
 }
 
 ui::Button *DndTreeDemoLayout::makeControl(StringView label, Function<void()> &&action) {
@@ -1309,6 +1364,30 @@ void DndTreeDemoLayout::addInspectorCommands(Scene *scene) {
 		done(sp::move(result));
 	})) {
 		_inspectorCommands.emplace_back("dndtree.reset");
+	}
+
+	/* THE LANGUAGE SWITCH, from outside. The button on the bar does exactly this, so a headless
+	caller drives the real switch and not a second path to the same place.
+
+	The answer carries `rtl` because that is the half nobody can read off a string: the language
+	changed the captions, and `ui::StyleSystem` changed the direction of every box by itself. */
+	if (inspector::addCommand(content, "dndtree.locale",
+				"Move to the next language; answers its name and the direction",
+				[this](Value &&args, Function<void(Value &&)> &&done) {
+		auto name = cycleDndTreeLocale();
+		if (_localeButton) {
+			_localeButton->setString(name);
+		}
+		refreshStatus(toString("language: ", name));
+
+		Value result;
+		result.setString(name, "language");
+		result.setString(locale::getLocale(), "locale");
+		result.setBool(locale::getTextDirection() == font::TextDirection::RightToLeft, "rtl");
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	})) {
+		_inspectorCommands.emplace_back("dndtree.locale");
 	}
 
 	/* Reporting the self-check, and RUNNING it.

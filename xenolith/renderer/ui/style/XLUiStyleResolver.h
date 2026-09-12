@@ -374,6 +374,16 @@ protected:
 		Size2 ownSize;
 		uint32_t parentChildrenVersion = 0;
 
+		/* THE STYLE SOURCE'S VERSION, and without it this stamp answers the wrong question.
+
+		The other three fields ask "has this node's GEOMETRY changed", which is what a re-resolve
+		usually turns on. But a stylesheet reload, and a media flag flipped at run time - the
+		`rtl` one this engine seeds from the locale - change the ANSWER for a node whose geometry
+		did not move at all. A node was then held fresh for ever and the new rules never reached
+		it: an interface switched to a right-to-left language kept the layout of the old one, in
+		every application whose passes did not happen to disturb the tree. */
+		uint32_t sourceVersion = 0;
+
 		bool operator==(const StyleFreshness &) const = default;
 	};
 

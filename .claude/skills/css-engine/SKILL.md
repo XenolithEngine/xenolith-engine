@@ -203,6 +203,20 @@ the far end.
 Use `*` and not `label`: a `basic2d::Label` carries no CSS tag unless something calls
 `setType("label")`, so a `label` rule silently matches almost nothing.
 
+**And the trap inside the trap: `plaintext` also decides where `start` aligns.** `text-align: start`
+resolves against the base direction of the LINE, and `plaintext` derives that from the content. So a
+Latin caption inside a right-to-left row gets a left-to-right line and hugs the LEFT edge of its
+box — correct per CSS, and wrong for a widget whose label grows to fill the row. Opt that one label
+out:
+
+```css
+.tree-label { flex-grow: 1; text-align: start; unicode-bidi: normal; }
+```
+
+The price is narrow and worth naming: a name beginning with a neutral character (`.gitignore`) now
+takes the row's direction for that character. Reserve `plaintext` for what is genuinely mixed —
+paths, identifiers, anything with punctuation at an edge.
+
 ### Turning it on at run time
 
 The engine sets one media flag itself, from `locale::getTextDirection()`:
@@ -216,6 +230,12 @@ stylesheet is the whole of what an application needs. `StyleSystem::setMediaOpti
 any other flag by hand. Use the media block for the branches `direction` cannot express — which
 way an arrow icon points, which half of a title bar a button cluster sits on — the job CSS gives
 `:dir()`, which this selector subset does not have.
+
+**Put that block at the END of the sheet.** A rule inside `@media` has the same specificity as the
+identical rule outside it, and at equal specificity the LATER declaration wins. An override block
+written at the top of the file — where an author naturally puts "this is the direction" — is
+silently beaten by every rule below it, and nothing reports the loss. This costs an hour every time
+it is rediscovered.
 
 ## Colors
 
@@ -232,7 +252,8 @@ Fully supported: `border-radius: 1..4 values` (TL TR BR BL ordering), or per-cor
 ## Font / text (all inherited)
 
 `font-size` (`px`/`em` or named xx-small…xx-large; NOT rem), `font-weight` (`normal`/`bold`/1..1000),
-`font-style`, `font-family`, `text-align` (`left right center justify`), `text-decoration`,
+`font-style`, `font-family`, `text-align` (`left right center justify start end`; the initial value here is `left`, NOT
+CSS's `start`), `text-decoration`,
 `text-transform` (`none uppercase lowercase`), `line-height` (metric or bare-number multiplier),
 `white-space`, `hyphens`, `vertical-align`, `color`.
 

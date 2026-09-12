@@ -56,6 +56,10 @@ public:
 
 		auto content = Rc<basic2d::SceneContent2d>::create();
 		content->setDefaultLights();
+		// The string tables, before anything carrying a tag is built - and before the layout's
+		// StyleSystem enters, because that is where the `rtl` media flag is first seeded.
+		defineDndTreeLocales();
+
 		content->pushLayout(Rc<DndTreeDemoLayout>::create());
 		setContent(content);
 

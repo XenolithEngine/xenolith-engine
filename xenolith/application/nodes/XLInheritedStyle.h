@@ -182,6 +182,34 @@ inline bool isInlineRtl(const Node *node) {
 	return getInlineDirection(node) == font::TextDirection::RightToLeft;
 }
 
+/* PLACE A CHILD BY ITS INLINE EDGE, for a widget that lays its own row out in code.
+
+A widget like `ui::Select` walks a cursor in from the start of its box (icon, then label) and
+another in from the end (the arrow), then gives the label whatever is between them. Both cursors
+are DISTANCES, and only the last step turns a distance into an x - so these two functions are the
+whole of what such a widget needs to work in both directions: keep the arithmetic, swap the edge.
+
+`inset` is measured from the named edge. The anchor is set to match, so the child grows into the
+box rather than out of it. */
+inline void placeInlineStart(Node *child, float inset, float y, float boxWidth, bool rtl) {
+	child->setAnchorPoint(Vec2(rtl ? 1.0f : 0.0f, 0.5f));
+	child->setPosition(Vec2(rtl ? boxWidth - inset : inset, y));
+}
+
+inline void placeInlineEnd(Node *child, float inset, float y, float boxWidth, bool rtl) {
+	child->setAnchorPoint(Vec2(rtl ? 0.0f : 1.0f, 0.5f));
+	child->setPosition(Vec2(rtl ? inset : boxWidth - inset, y));
+}
+
+/* Which way a widget's own caption hugs its box.
+
+NOT `TextAlign::Start`, which resolves against the TEXT's base direction: a Latin caption inside a
+right-to-left control would then hug the left of its box, and the box's left is the far side. What
+a caption follows is the CONTROL's direction, which is this. */
+inline font::TextAlign inlineStartAlign(bool rtl) {
+	return rtl ? font::TextAlign::Right : font::TextAlign::Left;
+}
+
 } // namespace stappler::xenolith
 
 #endif // XENOLITH_APPLICATION_NODES_XLINHERITEDSTYLE_H_

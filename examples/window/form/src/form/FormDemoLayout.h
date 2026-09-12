@@ -23,6 +23,7 @@
 #define EXAMPLES_WINDOW_FORM_SRC_FORM_FORMDEMOLAYOUT_H_
 
 #include "form/FormFields.h"
+#include "form/FormLocale.h"
 #include "XLUiAccordionView.h"
 #include "XLUiFormSystem.h"
 #include "XL2dLabel.h"
@@ -122,6 +123,9 @@ protected:
 
 	Node *_controlBar = nullptr;
 	basic2d::Label *_statusLabel = nullptr;
+	// The language switch. Kept because its caption names the NEXT language in that language, so
+	// it is the one control here that is re-assigned rather than re-expanded from a tag.
+	ui::Button *_localeButton = nullptr;
 
 	// The left column: the node carrying the form is the SCROLLER, so a form is not something a
 	// scroll container has to know about.
