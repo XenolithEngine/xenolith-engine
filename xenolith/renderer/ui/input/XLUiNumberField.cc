@@ -186,23 +186,39 @@ void NumberField::handleContentSizeDirty() {
 
 	TextInput::handleContentSizeDirty();
 
-	if (_unitLabel && _unitLabel->isVisible()) {
-		TextInputStyleComponent defaultStyle;
-		const TextInputStyleComponent *style = &defaultStyle;
-		if (auto c = getComponent<TextInputStyleComponent>()) {
-			style = c;
-		}
+}
 
-		/* Against the inner edge of the padding at the INLINE END, on the viewport's centre line.
-		Not a child of the container, so the container's scissor never clips it.
+void NumberField::handleLayoutChildren() {
+	TextInput::handleLayoutChildren();
+	placeUnitLabel();
+}
 
-		The unit trails the number in both directions - "12 px" reads the same way round in a
-		right-to-left interface, because a quantity and its unit are one phrase - so it follows the
-		inline end rather than a fixed side. */
-		const bool rtl = isInlineRtl(this);
-		const float endPad = rtl ? style->padding.left : style->padding.right;
-		placeInlineEnd(_unitLabel, endPad, _contentSize.height / 2.0f, _contentSize.width, rtl);
+void NumberField::placeUnitLabel() {
+	if (!_unitLabel || !_unitLabel->isVisible()) {
+		return;
 	}
+
+	TextInputStyleComponent defaultStyle;
+	const TextInputStyleComponent *style = &defaultStyle;
+	if (auto c = getComponent<TextInputStyleComponent>()) {
+		style = c;
+	}
+
+	/* Against the inner edge of the padding at the INLINE END, on the viewport's centre line.
+	Not a child of the container, so the container's scissor never clips it.
+
+	The unit trails the number in both directions - "12 px" reads the same way round in a
+	right-to-left interface, because a quantity and its unit are one phrase - so it follows the
+	inline end rather than a fixed side.
+
+	PHASE 6 AND NOT PHASE 4, and that is not a detail: an ancestor's StyleResolver re-resolves this
+	node when its content-size phase FIRES, so a direction read inside handleContentSizeDirty is
+	the one from before the pass. Switching a window back from a right-to-left language left the
+	unit sitting on the wrong edge, on top of the number, with nothing afterwards to correct it.
+	handleLayoutChildren runs later in the same visit, when the style has settled. */
+	const bool rtl = isInlineRtl(this);
+	const float endPad = rtl ? style->padding.left : style->padding.right;
+	placeInlineEnd(_unitLabel, endPad, _contentSize.height / 2.0f, _contentSize.width, rtl);
 }
 
 void NumberField::setDragEnabled(bool value) {

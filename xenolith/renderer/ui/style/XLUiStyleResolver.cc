@@ -1388,11 +1388,30 @@ StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) cons
 	// whole child list (Node::markChildrenStructureDirty re-arms every sibling's phase)
 	// The style system's version rides along, so that a sheet reload or a media flag flipped
 	// between frames makes every node stale even when nothing moved.
+	/* EVERY SCOPE ON THE CHAIN, AND THE NODE'S OWN FIRST.
+
+	The node that OWNS a StyleSystem is in that system's scope - `:root` is that node - and
+	`findParentWithComponent` starts at the parent, so the owner used to see no version at all and was
+	never stale for a flag its own sheet flipped. It kept whatever it had resolved first: a window
+	opened in a right-to-left language kept `direction: rtl` on its root for good, and every node below
+	that did not declare a direction of its own walked up to it - switching to a left-to-right language
+	changed the text and left the whole layout mirrored. A window opened left-to-right never showed it,
+	because its root had never resolved a direction to keep.
+
+	And ALL the scopes rather than the nearest: a node inside a nested sheet (a document tab's) is still
+	matched against the outer sheet's rules, so a media flag flipped on the outer one changes its answer
+	too. The versions are folded, so a change in any of them changes the stamp. */
 	uint32_t sourceVersion = 0;
+	auto foldVersion = [&](uint32_t version) {
+		sourceVersion = (sourceVersion ^ version) * 0x9E37'79B1u + 1;
+	};
+	if (auto own = node->getComponent<StyleSystemState>()) {
+		foldVersion(own->version);
+	}
 	node->findParentWithComponent<StyleSystemState>(
 			[&](NotNull<Node>, NotNull<const StyleSystemState> state, uint32_t) {
-		sourceVersion = state->version;
-		return false;
+		foldVersion(state->version);
+		return true;
 	});
 
 	return StyleFreshness{p ? p->getContentSize() : Size2::ZERO, node->getContentSize(),

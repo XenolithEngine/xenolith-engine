@@ -985,7 +985,11 @@ bool AppWindow::disableState(WindowState state) {
 		return false;
 	}
 
-	_context->performOnThread([this, state]() { _window->disableState(state); }, this);
+	_context->performOnThread([this, state]() {
+		if (_window) {
+			_window->disableState(state);
+		}
+	}, this);
 	return true;
 }
 

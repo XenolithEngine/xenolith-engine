@@ -94,6 +94,9 @@ void performShapeTests() {
 	check(csA.xAdvance > 0 && advDiff <= 1,
 			"shape: HarfBuzz advance matches FreeType getChar advance for 'A'");
 
+	check(!one.empty() && one[0].xAdvance == int16_t(csA.xAdvance),
+			"shape: ... and to the pixel, because line breaking compares the two");
+
 	// --- RTL direction is accepted (Hebrew aleph, bet) ---
 	const char32_t rtl[] = {0x05D0, 0x05D1};
 	mem_std::Vector<font::ShapedGlyph> rtlGlyphs;

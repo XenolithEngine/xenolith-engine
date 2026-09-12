@@ -33,6 +33,15 @@ bool PanelHandle::init(NotNull<PanelHost> host, StringView panelId) {
 	_host = host;
 	_panelId = panelId.str<Interface>();
 
+	/* A TITLE, not a caption. ui::Button centres what it says, because that is what a button is;
+	   a tab and a section header name the thing beside their icon and belong against the leading
+	   edge, the same choice ui::MenuItem makes for a row. Stated here rather than left to whatever
+	   Button happens to default to, because a subclass that reads differently from its base is
+	   the subclass's own business to declare. */
+	if (_label) {
+		_label->setAlignment(font::TextAlign::Left);
+	}
+
 	// A drag pulls the panel out of wherever it is parked. It only begins after DragThreshold points
 	// of travel, which is past the tap tolerance, so the tap recognizer on the same listener has
 	// normally already given up by then - handleLeftTap still refuses while _dragging, belt and

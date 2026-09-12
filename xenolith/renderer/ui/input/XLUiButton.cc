@@ -93,6 +93,7 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 	_label->setType("label");
 	_label->addStyleClass("xl-ui-button-label");
 	_label->setVisible(false);
+	_label->setAlignment(font::TextAlign::Center);
 
 	_icon = addChild(Rc<basic2d::IconSprite>::create(), ZOrder(2));
 	_icon->setType("icon");
@@ -221,12 +222,12 @@ void Button::handleContentSizeDirty() {
 	}
 
 	if (_label) {
-		// the label takes what the icon left of the content box, and is centered in it
+		// the label takes what the icon left of the content box, and is centered in it. The
+		// alignment INSIDE the label is not this fallback's to set - it is a property of being a
+		// button, and it is set once in init() so that the flex path has it too.
 		const float offset = hasIcon ? _icon->getContentSize().width + s_labelPadding : 0.0f;
 		_label->setAnchorPoint(Anchor::Middle);
-		_label->setAlignment(font::TextAlign::Center);
-		_label->setPosition(
-				Vec2((_contentSize.width + offset) / 2.0f, _contentSize.height / 2.0f));
+		_label->setPosition(Vec2((_contentSize.width + offset) / 2.0f, _contentSize.height / 2.0f));
 		_label->setWidth(sprt::max(_contentSize.width - offset - s_labelPadding * 2.0f, 0.0f));
 	}
 }

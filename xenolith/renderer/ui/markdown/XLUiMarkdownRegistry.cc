@@ -76,14 +76,6 @@ static MarkdownTagFactory makeContainerFactory() {
 	};
 }
 
-static MarkdownTagFactory makePanelFactory(StringView type) {
-	return MarkdownTagFactory{
-		.create = [type = type.str<Interface>()](const MarkdownBuilderContext &) -> Rc<Node> {
-		return Rc<Node>(Rc<MarkdownPanel>::create(StringView(type)));
-	},
-	};
-}
-
 /* A ground a block's CONTENT sits on: a layer that paints nothing until a stylesheet gives it a
 background, and that must not tint or fade what is inside it when it does.
 

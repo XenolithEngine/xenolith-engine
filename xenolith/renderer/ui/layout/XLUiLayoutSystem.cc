@@ -268,13 +268,7 @@ already been measured and was never asked again.
 To the root rather than to the first non-measuring ancestor: which containers measured this one is
 not a question a node can answer, the flag is one bool, and it is set only when something really
 moved. */
-void LayoutSystem::markMeasureDirty(NotNull<Node> node) {
-	auto parent = node->getParent();
-	while (parent) {
-		parent->markLayoutChildrenDirty();
-		parent = parent->getParent();
-	}
-}
+void LayoutSystem::markMeasureDirty(NotNull<Node> node) { node->markIntrinsicSizeDirty(); }
 
 // The four item setters follow one shape: write the component through an equality-guarded update,
 // and tell the PARENT when the write changed something. The guard is not an optimization here - see

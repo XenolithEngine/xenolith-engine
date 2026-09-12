@@ -85,6 +85,8 @@ public:
 	virtual void handleContentSizeDirty() override;
 	virtual void handleEnter(Scene *) override;
 
+	virtual void handleLayoutChildren() override;
+
 	virtual void setOverscrollColor(const Color4F &, bool withOpacity = false);
 	virtual Color4F getOverscrollColor() const;
 

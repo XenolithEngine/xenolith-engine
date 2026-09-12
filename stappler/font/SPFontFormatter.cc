@@ -322,6 +322,8 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 		return getLineAdvancePos(uint16_t(first + len - 1));
 	}
 
+	const uint16_t unshapedEnd = getLineAdvancePos(uint16_t(first + len - 1));
+
 	// --- Visual placement: walk runs left-to-right from the line's left edge ---
 	const int16_t lineLeft = _output.chars.at(first).pos;
 	if (_shapingEnabled) {
@@ -390,7 +392,11 @@ uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
 		}
 	}
 
-	return uint16_t(x < lineLeft ? lineLeft : x);
+	const uint16_t shapedEnd = uint16_t(x < lineLeft ? lineLeft : x);
+	if (request == ContentRequest::Normal) {
+		return shapedEnd;
+	}
+	return (unshapedEnd > shapedEnd) ? unshapedEnd : shapedEnd;
 }
 
 // Shape one single-level bidi run and place it starting at x. The run is split into maximal same-face

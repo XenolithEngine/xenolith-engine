@@ -180,6 +180,13 @@ protected:
 
 	virtual void handleContentSizeDirty() override;
 
+	/* Phase 6. The unit's side comes from the resolved `direction`, and an ancestor's StyleResolver
+	   resolves this node in reaction to its content-size phase - so phase 4 reads the direction the
+	   node had a pass ago. See placeUnitLabel. */
+	virtual void handleLayoutChildren() override;
+
+	void placeUnitLabel();
+
 	// The unit's width plus its gap, on the right. Measured in handleContentSizeDirty BEFORE the
 	// base sizes the viewport, which is the only moment it can be trusted.
 	virtual Padding getViewportInset() const override;
