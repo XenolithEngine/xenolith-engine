@@ -47,7 +47,7 @@ OSTYPE_EXEC_CFLAGS :=
 # Freestanding wasm: no host EH/RTTI runtime yet (setjmp/EH is a later milestone),
 # so build without exceptions like the Linux preset, and drop the vla/overloaded
 # diagnostics the rest of the tree already silences.
-# SIMDE_FLOAT16_API=1 (SIMDE_FLOAT16_API_PORTABLE): wasm32 clang has no usable
+# SIMDE_FLOAT16_API=1 (SIMDE_FLOAT16_API_PORTABLE): wasm clang has no usable
 # native _Float16 / __fp16, so force simde's portable (struct-backed) float16 in
 # the geom SIMD headers instead of its default native-type detection.
 OSTYPE_GENERAL_CXXFLAGS := $(OSTYPE_CFLAGS) -Wno-vla-cxx-extension -Wno-overloaded-virtual \
@@ -74,9 +74,27 @@ OSTYPE_GENERAL_LDFLAGS += -L$(TARGET_SYSROOT)/usr/lib
 # memory; the broker sets that instance's __stack_pointer to a freshly malloc'd stack and
 # calls __wasm_init_tls before the thread entry (__xl_thread_entry). The exports below are
 # the surface the JS thread broker needs, plus __sprt_malloc_usage so the JS host can
-# watch allocator growth live (a 1 GiB heap burn-down is invisible otherwise).
-OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
+# watch allocator growth live (a heap burn-down is invisible otherwise).
+#
+# wasm64 (memory64) lifts the 4 GiB address limit; 16 GiB is the most V8 accepts for a
+# memory64 maximum. The host may still hand the module a smaller maximum (an imported
+# memory only has to fit inside the declared one), which is how a browser that cannot
+# reserve 16 GiB of shared memory falls back.
+#
+# The main thread runs on the stack wasm-ld lays out at the bottom of memory, 64 KiB unless
+# told otherwise (spawned threads get 1 MiB, see pthread_native_wasm.cc). Every pointer and
+# size_t doubles on wasm64, and so do the frames built from them: code that fits 64 KiB on
+# wasm32 (libc++'s format tests do) overflows it there, and an overflow below address 0 is a
+# trap. wasm64 gets the same 1 MiB a thread has.
+ifeq ($(TARGET_ARCH),wasm64)
+OSTYPE_WASM_MAX_MEMORY ?= 17179869184 # 16 GiB (262144 pages)
+OSTYPE_WASM_STACK_LDFLAGS ?= -Wl,-z,stack-size=1048576
+else
+OSTYPE_WASM_MAX_MEMORY ?= 1073741824 # 1 GiB (16384 pages)
+OSTYPE_WASM_STACK_LDFLAGS ?=
+endif
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
+	$(OSTYPE_WASM_STACK_LDFLAGS) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
 	-Wl,--export=__sprt_malloc_usage,--export-table
