@@ -66,6 +66,9 @@ void performPathPosixTest();
 void performPathWindowsTest();
 void performDirentTest();
 void performFsExtraTest();
+// MSVC <io.h>: _access / _wchmod / _wmkdir / _wunlink / _wfindfirst family / _pclose
+// (Windows only; prints a skip line elsewhere)
+void performIoMsvcTest();
 void performFnmatchTest();
 void performRegexTest();
 void performGlobTest();

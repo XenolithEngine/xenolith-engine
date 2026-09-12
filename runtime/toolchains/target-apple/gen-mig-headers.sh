@@ -89,7 +89,7 @@ user exc.defs             exc.h
 # <mach/mach_init.h> — the source of mach_host_self()/mach_task_self()/the host_page_size()
 # wrapper. MIG itself does not emit that include, so inject it here to match the SDK
 # (e.g. MoltenVK's MVKOSExtensions.mm includes only <mach/mach_host.h> yet uses all three).
-sed -i 's|#include <mach/port.h>|#include <mach/port.h>\n#include <mach/mach_init.h>|' "$OUT/mach/mach_host.h"
+perl -i -pe 's|#include <mach/port.h>|#include <mach/port.h>\n#include <mach/mach_init.h>|' "$OUT/mach/mach_host.h"
 echo "  patch  mach/mach_host.h (+#include <mach/mach_init.h>)"
 # NOTE: mach_eventlink.defs NOT generated — its header needs <mach/mach_eventlink_types.h>
 # (mach_eventlink_*_option_t), which +open doesn't ship; niche real-time-sync API.

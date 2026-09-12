@@ -130,6 +130,8 @@ __SPRT_WIN_IMPORT WINAPI FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcNa
 
 __SPRT_WIN_IMPORT WINAPI HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
 
+__SPRT_WIN_IMPORT WINAPI HMODULE GetModuleHandleA(LPCSTR lpModuleName);
+
 __SPRT_WIN_IMPORT WINAPI BOOL GetModuleHandleExA(DWORD dwFlags, LPCSTR lpModuleName,
 		HMODULE *phModule);
 
@@ -149,6 +151,7 @@ __SPRT_WIN_IMPORT WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfIma
 #else
 #define GetModuleHandle GetModuleHandleA
 #define GetModuleHandleEx GetModuleHandleExA
+#define LoadLibrary LoadLibraryA
 #endif
 
 __SPRT_END_DECL

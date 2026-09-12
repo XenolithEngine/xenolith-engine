@@ -141,6 +141,40 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 	return f;
 }
 
+// Wide popen (MSVC CRT surface): convert UTF-16 -> UTF-8 and delegate. The
+// wide-only mode letters ('t', 'b', wide variants) carry no extra meaning for
+// sprt's pipes, same as the _O_*TEXT no-op constants in the io wrapper.
+static char *wideToUtf8(const wchar_t *w) {
+	if (!w) {
+		return nullptr;
+	}
+	auto n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+	if (n <= 0) {
+		return nullptr;
+	}
+	auto p = (char *)malloc(n);
+	if (p && WideCharToMultiByte(CP_UTF8, 0, w, -1, p, n, nullptr, nullptr) <= 0) {
+		free(p);
+		return nullptr;
+	}
+	return p;
+}
+
+__SPRT_C_FUNC FILE *_wpopen(const wchar_t *wcmd, const wchar_t *wmode) __SPRT_NOEXCEPT {
+	auto cmd = wideToUtf8(wcmd);
+	auto mode = wideToUtf8(wmode);
+	if (!cmd || !mode) {
+		free(cmd);
+		free(mode);
+		errno = ENOMEM;
+		return nullptr;
+	}
+	auto f = popen(cmd, mode);
+	free(cmd);
+	free(mode);
+	return f;
+}
+
 __SPRT_C_FUNC int pclose(FILE *f) __SPRT_NOEXCEPT {
 	unsigned long status = -1;
 	auto pid = f->pipe_handle;
@@ -158,6 +192,23 @@ __SPRT_C_FUNC int pclose(FILE *f) __SPRT_NOEXCEPT {
 	CloseHandle(pid); // hProcess was kept past CreateProcess; release it now
 
 	return status;
+}
+
+// The MSVC spellings. Same calls; code written against the CRT uses this pair.
+__SPRT_C_FUNC FILE *_popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
+	if (!cmd || !mode) {
+		errno = EINVAL;
+		return nullptr;
+	}
+	return popen(cmd, mode);
+}
+
+__SPRT_C_FUNC int _pclose(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		errno = EINVAL;
+		return -1;
+	}
+	return pclose(f);
 }
 
 __SPRT_C_FUNC int system(const char *cmd) __SPRT_NOEXCEPT {

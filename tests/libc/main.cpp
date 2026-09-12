@@ -55,6 +55,7 @@ static const LibcTest s_tests[] = {
 	{"path_windows", &performPathWindowsTest},
 	{"dirent", &performDirentTest},
 	{"fs_extra", &performFsExtraTest},
+	{"io_msvc", &performIoMsvcTest},
 	{"env", &performEnvTest},
 	// sys/socket.h (loopback UDP + TCP) / poll.h / sys/select.h
 	// wasm32 has no BSD sockets (__sprt_socket/bind/poll are unavailable) — socket() returns

@@ -193,7 +193,16 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 	// +1: white underline pixel
 	_regions.resize(totalCount + 1);
 	_textureTarget.resize(totalCount + 1);
-	_glyphData.resize(CopyBlockSize);
+	// Not CopyBlockSize (32 MiB): a popup that adds glyphs must not grow wasm
+	// shared memory by a full 32 MiB slab or malloc fails with `null function`.
+	uint64_t staging = uint64_t(totalCount + 1) * 2048;
+	if (staging < 256_KiB) {
+		staging = 256_KiB;
+	}
+	if (staging > 8_MiB) {
+		staging = 8_MiB;
+	}
+	_glyphData.resize(staging);
 
 	if (totalCount == 0) {
 		writeAtlasData(handle);
@@ -314,27 +323,24 @@ void FontAttachmentHandle::writeAtlasData(core::FrameHandle &handle) {
 		}
 	}
 
-	if (auto path = ::getenv("XL_DUMP_FONT_ATLAS")) {
-		if (auto f = ::fopen(path, "wb")) {
-			::fprintf(f, "P5\n%u %u\n255\n", _imageExtent.width, _imageExtent.height);
-			::fwrite(_composedImage.data(), 1, _composedImage.size(), f);
-			::fclose(f);
-		}
-	}
-
-	handle.performOnGlThread([this](core::FrameHandle &) {
+	// Complete on the looper the request came from, not through the frame's GL
+	// thread: the pack above must not land on the app thread, where it re-enters
+	// StyleResolver::applyDefault while a Label is still inside handleEnter.
+	// Without a queue there is nobody to hand it to, so finish inline.
+	if (auto *looper = _input ? _input->queue.get() : nullptr) {
+		looper->performOnThread([this]() {
+			if (_onInput) {
+				_onInput(true);
+				_onInput = nullptr;
+			}
+		}, this);
+	} else if (_onInput) {
 		_onInput(true);
 		_onInput = nullptr;
-	}, this, false, "FontAttachmentHandle::writeAtlasData");
+	}
 }
 
 void FontAttachmentHandle::pushAtlasTexture(core::DataAtlas *atlas, const GlyphRegion &region) {
-	if (::getenv("XL_DUMP_FONT_ATLAS")) {
-		log::source().debug("webgpu::FontQueue", "atlas obj=", region.objectId, " ch=",
-				uint32_t(region.objectId) & 0xFFFF, " src=", uint32_t(region.objectId) >> 18,
-				" cell=", region.x, ",", region.y, " ", region.width, "x", region.height);
-	}
-
 	font::FontAtlasValue data[4];
 
 	auto &tex = _textureTarget[region.texOffset];

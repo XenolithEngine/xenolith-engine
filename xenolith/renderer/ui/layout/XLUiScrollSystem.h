@@ -168,6 +168,12 @@ protected:
 	Node *_indicatorH = nullptr;
 
 	Function<void(Vec2)> _scrollCallback;
+
+	// Last wheel event, and how it was classified. Events inside one burst keep the first
+	// event's classification, so a fast wheel spin stays discrete and a pixel stream stays
+	// precise even when one of its amounts happens to equal InputScrollNotch.
+	Time _lastWheelTime;
+	bool _lastWheelDiscrete = false;
 };
 
 // Walk the ancestor chain from `node` upward and ask every ScrollSystem on it to reveal `node`.
