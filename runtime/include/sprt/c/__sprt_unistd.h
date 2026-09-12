@@ -270,6 +270,18 @@ SPRT_API void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT;
 
 #endif
 
+#if SPRT_WASM
+
+/* The one lock that serializes linear-memory growth on wasm. brk/sbrk take it
+   for the memory.grow itself; an allocator that has to keep a probe and the
+   grow that follows it atomic (mimalloc's wasi OS-primitive layer does) holds
+   it across the pair. It is recursive, so the sbrk in between just re-enters.
+   Nothing else needs it: every growth path already goes through brk/sbrk. */
+SPRT_API void __sprt_wasm_grow_lock(void) __SPRT_NOEXCEPT;
+SPRT_API void __sprt_wasm_grow_unlock(void) __SPRT_NOEXCEPT;
+
+#endif /* SPRT_WASM */
+
 SPRT_API int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len);
 
 #if __SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
