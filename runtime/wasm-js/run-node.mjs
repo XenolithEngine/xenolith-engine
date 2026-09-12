@@ -14,7 +14,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
-import { makeImports } from "./sprt-imports.mjs";
+import { makeImports, readMemoryImport, createMemory } from "./sprt-imports.mjs";
 
 const wasmPath = process.argv[2];
 if (!wasmPath) {
@@ -61,10 +61,21 @@ function loadBundle(root) {
 }
 const bundle = loadBundle(process.cwd());
 
-const module = await WebAssembly.compile(readFileSync(wasmPath));
+const wasmBytes = readFileSync(wasmPath);
+const module = await WebAssembly.compile(wasmBytes);
 // Shared linear memory: same shape as the browser harness (worker.mjs). `shared: true` is
 // required — the module is built with atomics/bulk-memory and imports env.memory.
-const memory = new WebAssembly.Memory({ initial: 16384, maximum: 16384, shared: true });
+// wasm32 commits its whole 1 GiB (16384 pages) up front, as it always has. A wasm64 module
+// (i64 memory, BigInt limits) declares up to 16 GiB: commit the same 1 GiB and let sbrk
+// grow() the rest - Node reserves the declared maximum, so growing a shared memory works.
+const memDesc = readMemoryImport(wasmBytes);
+if (!memDesc) {
+	process.stderr.write(`${wasmPath}: the module does not import a memory\n`);
+	process.exit(2);
+}
+const memory = memDesc.memory64
+	? createMemory(memDesc, { initial: 16384 })
+	: createMemory(memDesc, { initial: 16384, maximum: 16384 });
 
 // Atomic tid source shared by every thread worker (1 is reserved for this main entry thread).
 const tidBuf = new SharedArrayBuffer(4);
