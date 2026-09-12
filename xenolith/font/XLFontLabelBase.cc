@@ -793,9 +793,24 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 		formatter.setWidth(static_cast<uint16_t>(roundf(_width * density)));
 		formatter.setRequest(request);
 		formatter.setTextAlignment(eff.alignment);
-		formatter.setTextDirection(_direction);
-		formatter.setBidiEnabled(_bidiEnabled);
-		formatter.setShapingEnabled(_shapingEnabled);
+
+		/* A NEUTRAL BASE DIRECTION IS MEANINGLESS WITHOUT BIDI, and silently so.
+
+		`Neutral` says "resolve the base from the content", and only the bidi pass resolves
+		anything: with it off, Formatter leaves the line at LeftToRight and never says a word
+		(SPFontFormatter.cc, where the line's direction is guessed before layoutLine runs). A
+		Persian paragraph would then reorder correctly and align `start` to the LEFT.
+
+		It stayed hidden because `_bidiEnabled` is false by default and nothing could ask for
+		`text-align: start` - the CSS parser had no such keyword. Both of those are gone now, so
+		the invariant is enforced here rather than left as a trap. */
+		if (eff.direction == TextDirection::Neutral) {
+			eff.bidiEnabled = true;
+		}
+
+		formatter.setTextDirection(eff.direction);
+		formatter.setBidiEnabled(eff.bidiEnabled);
+		formatter.setShapingEnabled(eff.shapingEnabled);
 		formatter.setMaxWidth(static_cast<uint16_t>(roundf(_maxWidth * density)));
 		formatter.setMaxLines(_maxLines);
 		formatter.setOpticalAlignment(_opticalAlignment);
@@ -822,9 +837,9 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			}
 			// CSS `unicode-bidi` for the label's text (#6): inject the span's bidi mode + direction so
 			// the formatter brackets it with the matching Unicode controls.
-			if (_bidiMode != BidiMode::Normal) {
-				params.text.bidi = _bidiMode;
-				params.text.direction = _direction;
+			if (eff.bidiMode != BidiMode::Normal) {
+				params.text.bidi = eff.bidiMode;
+				params.text.direction = eff.direction;
 			}
 			// CSS letter/word-spacing + font-variant-ligatures (#9)
 			if (_letterSpacing != 0.0f) {
@@ -1023,6 +1038,10 @@ void LabelBase::specializeStyle(DescriptionStyle &style, float density) const {
 void LabelBase::makeEffectiveStyle(EffectiveStyle &out) const {
 	out.style = _style;
 	out.alignment = _alignment;
+	out.direction = _direction;
+	out.bidiMode = _bidiMode;
+	out.bidiEnabled = _bidiEnabled;
+	out.shapingEnabled = _shapingEnabled;
 	out.lineHeight = _lineHeight;
 	out.lineHeightAbsolute = _isLineHeightAbsolute;
 }

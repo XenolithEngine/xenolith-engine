@@ -485,6 +485,20 @@ public:
 	struct EffectiveStyle {
 		DescriptionStyle style;
 		TextAlign alignment = TextAlign::Left;
+
+		/* The bidi settings IN FORCE, which is not always what the label was told.
+
+		Three layers can have an opinion about a label's direction - the stylesheet, an explicit
+		`setTextDirection` from the caller, and the locale - and they used to write the same field
+		in whatever order they happened to run. They are resolved here instead, once, in that order
+		of precedence: CSS wins, then the caller, then the locale's default. The stored members are
+		never written by the cascade, so a sheet that stops declaring `direction` hands the label
+		straight back to what its caller asked for. */
+		TextDirection direction = TextDirection::LeftToRight;
+		BidiMode bidiMode = BidiMode::Normal;
+		bool bidiEnabled = false;
+		bool shapingEnabled = false;
+
 		float lineHeight = 0.0f;
 		bool lineHeightAbsolute = false;
 		// owning storage: when non-empty, updateFormatSpec re-points

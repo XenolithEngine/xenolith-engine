@@ -25,6 +25,8 @@
 
 #include "XLUiLayoutInternal.h"
 
+#include "XLInheritedStyle.h" // isInlineRtl
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
@@ -505,6 +507,11 @@ void LayoutSystem::layoutTable() {
 	const Size2 containerSize = _owner->getContentSize();
 	const float contentW = sprt::max(containerSize.width - info.padding.horizontal(), 0.0f);
 
+	// The columns are solved and positioned in logical inline coordinates; rtl mirrors the rows
+	// and the collapsed-border boxes once, at projection. Each ROW mirrors its own cells, in
+	// layoutTableRow, against the same direction it inherits from here.
+	const bool rtl = isInlineRtl(_owner);
+
 	TableSolution sol;
 	if (!solveTable(_owner, info, contentW, sol)) {
 		return;
@@ -551,8 +558,10 @@ void LayoutSystem::layoutTable() {
 		LayoutSystem::setTableColumns(row.node, stamp);
 
 		const Size2 rowSize(usedWidth, row.height);
-		const Vec2 bottomLeft(info.padding.left,
-				containerSize.height - info.padding.top - y - row.height);
+		// A row narrower than the content box sits at the inline START of it, which under rtl is
+		// the right edge. Rows usually fill the box, in which case this is the same number.
+		const float rowX = info.padding.left + (rtl ? contentW - usedWidth : 0.0f);
+		const Vec2 bottomLeft(rowX, containerSize.height - info.padding.top - y - row.height);
 		row.node->setContentSize(rowSize);
 		const Vec2 anchor = row.node->getAnchorPoint();
 		row.node->setPosition(
@@ -586,7 +595,7 @@ void LayoutSystem::layoutTable() {
 			box.row = cell.row;
 			box.columnSpan = colSpan;
 			box.rowSpan = rowSpan;
-			box.box = Rect(info.padding.left + bx,
+			box.box = Rect(info.padding.left + (rtl ? contentW - (bx + bw) : bx),
 					containerSize.height - info.padding.top - top - bh, bw, bh);
 			box.top = cell.cfg.borderTop;
 			box.right = cell.cfg.borderRight;
@@ -625,6 +634,8 @@ void LayoutSystem::layoutTableRow() {
 	}
 	const TableColumnsComponent cols = *colsPtr;
 	const Size2 rowSize = _owner->getContentSize();
+	// The row asks for its OWN direction, which it inherits from the table: `direction` cascades.
+	const bool rtl = isInlineRtl(_owner);
 	const uint32_t columnCount = uint32_t(cols.columns.size());
 
 	Vector<uint8_t> occupied = cols.occupiedColumns;
@@ -657,8 +668,9 @@ void LayoutSystem::layoutTableRow() {
 			cellH = sprt::max(cellH - cols.borderSpacingV, 0.0f);
 		}
 
-		// inset by the cell's own margin, then align inside what is left
-		const float availX = cellX + cfg.margin.left;
+		// inset by the cell's own margin, then align inside what is left. `margin.left` is still
+		// the left margin under rtl; the mirror below moves the box and takes the margins with it.
+		const float availX = cellX + (rtl ? cfg.margin.right : cfg.margin.left);
 		const float availW = sprt::max(cellW - cfg.margin.horizontal(), 0.0f);
 		const float availY = cfg.margin.top;
 		const float availH = sprt::max(cellH - cfg.margin.vertical(), 0.0f);
@@ -697,8 +709,9 @@ void LayoutSystem::layoutTableRow() {
 		bw = sprt::max(bw, 0.0f);
 		bh = sprt::max(bh, 0.0f);
 
-		// project into the row's bottom-left space (by is measured from the row's top)
-		const Vec2 bottomLeft(bx, rowSize.height - by - bh);
+		// Project into the row's bottom-left space (by is measured from the row's top). The
+		// columns were positioned in logical inline coordinates, so rtl mirrors once, here.
+		const Vec2 bottomLeft(rtl ? rowSize.width - (bx + bw) : bx, rowSize.height - by - bh);
 		const Size2 size(bw, bh);
 		node->setContentSize(size);
 		const Vec2 anchor = node->getAnchorPoint();
@@ -711,7 +724,8 @@ void LayoutSystem::layoutTableRow() {
 			box.row = 0;
 			box.columnSpan = colSpan;
 			box.rowSpan = 1;
-			box.box = Rect(cellX, rowSize.height - cellH, cellW, cellH);
+			box.box = Rect(rtl ? rowSize.width - (cellX + cellW) : cellX, rowSize.height - cellH,
+					cellW, cellH);
 			box.top = cfg.borderTop;
 			box.right = cfg.borderRight;
 			box.bottom = cfg.borderBottom;

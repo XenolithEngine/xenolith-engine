@@ -663,6 +663,18 @@ document::TextAlign ResolvedStyle::textAlign() const {
 															  : document::TextAlign::Left;
 }
 
+document::TextDirection ResolvedStyle::direction() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssDirection, v) ? v.textDirection
+															  : document::TextDirection::LeftToRight;
+}
+
+document::BidiMode ResolvedStyle::unicodeBidi() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssUnicodeBidi, v) ? v.bidiMode
+																: document::BidiMode::Normal;
+}
+
 document::TextTransform ResolvedStyle::textTransform() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssTextTransform, v) ? v.textTransform
@@ -797,6 +809,36 @@ document::Metric ResolvedStyle::paddingBottom() const {
 document::Metric ResolvedStyle::paddingLeft() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssPaddingLeft, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingInlineStart() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingInlineStart, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingInlineEnd() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingInlineEnd, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginInlineStart() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginInlineStart, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginInlineEnd() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginInlineEnd, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::insetInlineStart() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssInsetInlineStart, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::insetInlineEnd() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssInsetInlineEnd, v) ? v.sizeValue : document::Metric();
 }
 
 // typed positioning / flex / grid accessors: read the raw value, else the CSS default
@@ -1210,12 +1252,48 @@ static GridAutoFlow toGridAutoFlow(document::GridAutoFlow f) {
 	return GridAutoFlow::Row;
 }
 
+/* ONE AXIS, described well enough to place a CSS Box Alignment keyword on it.
+
+The three keyword families mean three different things, and collapsing them is what this struct
+exists to stop:
+
+  * `flex-start`/`flex-end` are FLEX-relative. The backend lays every line out in flow coordinates
+    and mirrors the whole line when the axis is reversed, so these two map straight through and the
+    backend's own reversal is the answer.
+  * `start`/`end` (and `self-start`/`self-end`) are FLOW-relative - the writing mode's start, not
+    the flex direction's. On a row they are the inline start, which under `direction: rtl` is the
+    right edge; the backend also reverses an RTL row, and the two flips CANCEL. That is why
+    `logicalStart()` below asks only about `reversed`: the direction has already been paid for.
+  * `left`/`right` are PHYSICAL, and are the only family that has to ask the direction here. On an
+    axis that is not the inline one CSS says they behave as `start`, which is what `inlineAxis`
+    selects. */
+struct AlignAxis {
+	bool reversed = false; // the axis is laid out against its natural order
+	bool inlineAxis = false; // this axis is the inline (horizontal) one
+	bool rtl = false; // the inline direction is right-to-left
+
+	// A flow-relative `start` sits at the axis's flow start unless the axis is reversed.
+	bool logicalStart() const { return !reversed; }
+
+	// A physical `left` sits at the flow start when the axis runs that way visually. On a
+	// non-inline axis `left` degrades to `start`, per CSS Box Alignment.
+	bool physicalLeftIsStart() const { return inlineAxis ? !(reversed != rtl) : !reversed; }
+};
+
 // justify-content -> flex main-axis distribution
-static FlexJustify toFlexJustify(Align a) {
+static FlexJustify toFlexJustify(Align a, const AlignAxis &ax) {
 	switch (a) {
+	case Align::FlexStart: return FlexJustify::FlexStart;
+	case Align::FlexEnd: return FlexJustify::FlexEnd;
+	case Align::Start:
+	case Align::SelfStart:
+		return ax.logicalStart() ? FlexJustify::FlexStart : FlexJustify::FlexEnd;
 	case Align::End:
-	case Align::FlexEnd:
-	case Align::Right: return FlexJustify::FlexEnd;
+	case Align::SelfEnd: return ax.logicalStart() ? FlexJustify::FlexEnd : FlexJustify::FlexStart;
+	case Align::Left:
+		return ax.physicalLeftIsStart() ? FlexJustify::FlexStart : FlexJustify::FlexEnd;
+	case Align::Right:
+		return ax.physicalLeftIsStart() ? FlexJustify::FlexEnd : FlexJustify::FlexStart;
 	case Align::Center: return FlexJustify::Center;
 	case Align::SpaceBetween: return FlexJustify::SpaceBetween;
 	case Align::SpaceAround: return FlexJustify::SpaceAround;
@@ -1225,16 +1303,16 @@ static FlexJustify toFlexJustify(Align a) {
 }
 
 // align-items / align-content; Normal/Auto/baseline fall back to Stretch
-static FlexAlign toFlexAlignItems(Align a) {
+static FlexAlign toFlexAlignItems(Align a, const AlignAxis &ax) {
 	switch (a) {
+	case Align::FlexStart: return FlexAlign::FlexStart;
+	case Align::FlexEnd: return FlexAlign::FlexEnd;
 	case Align::Start:
-	case Align::FlexStart:
-	case Align::SelfStart:
-	case Align::Left: return FlexAlign::FlexStart;
+	case Align::SelfStart: return ax.logicalStart() ? FlexAlign::FlexStart : FlexAlign::FlexEnd;
 	case Align::End:
-	case Align::FlexEnd:
-	case Align::SelfEnd:
-	case Align::Right: return FlexAlign::FlexEnd;
+	case Align::SelfEnd: return ax.logicalStart() ? FlexAlign::FlexEnd : FlexAlign::FlexStart;
+	case Align::Left: return ax.physicalLeftIsStart() ? FlexAlign::FlexStart : FlexAlign::FlexEnd;
+	case Align::Right: return ax.physicalLeftIsStart() ? FlexAlign::FlexEnd : FlexAlign::FlexStart;
 	case Align::Center: return FlexAlign::Center;
 	case Align::SpaceBetween: return FlexAlign::SpaceBetween;
 	case Align::SpaceAround: return FlexAlign::SpaceAround;
@@ -1243,24 +1321,30 @@ static FlexAlign toFlexAlignItems(Align a) {
 }
 
 // align-self; Auto/Normal inherit the container's align-items
-static FlexAlign toFlexAlignSelf(Align a) {
+static FlexAlign toFlexAlignSelf(Align a, const AlignAxis &ax) {
 	if (a == Align::Auto || a == Align::Normal) {
 		return FlexAlign::Auto;
 	}
-	return toFlexAlignItems(a);
+	return toFlexAlignItems(a, ax);
 }
 
-// grid justify/align (content or items)
-static GridAlign toGridAlign(Align a) {
+/* Grid justify/align (content or items).
+
+A grid track order is never "reversed" the way a flex line is, so the flow-relative keywords map
+straight through and the backend mirrors the whole inline axis once, at projection. Only the
+physical pair has to ask the direction, and only on the inline axis - `align-*` runs down the block
+axis, where CSS says `left`/`right` behave as `start`. */
+static GridAlign toGridAlign(Align a, bool rtl, bool inlineAxis) {
+	const bool leftIsStart = inlineAxis ? !rtl : true;
 	switch (a) {
 	case Align::Start:
 	case Align::FlexStart:
-	case Align::SelfStart:
-	case Align::Left: return GridAlign::Start;
+	case Align::SelfStart: return GridAlign::Start;
 	case Align::End:
 	case Align::FlexEnd:
-	case Align::SelfEnd:
-	case Align::Right: return GridAlign::End;
+	case Align::SelfEnd: return GridAlign::End;
+	case Align::Left: return leftIsStart ? GridAlign::Start : GridAlign::End;
+	case Align::Right: return leftIsStart ? GridAlign::End : GridAlign::Start;
 	case Align::Center: return GridAlign::Center;
 	case Align::Stretch: return GridAlign::Stretch;
 	case Align::SpaceBetween: return GridAlign::SpaceBetween;
@@ -1271,11 +1355,11 @@ static GridAlign toGridAlign(Align a) {
 }
 
 // grid justify-self / align-self; Auto/Normal inherit the container's items value
-static GridAlign toGridAlignSelf(Align a) {
+static GridAlign toGridAlignSelf(Align a, bool rtl, bool inlineAxis) {
 	if (a == Align::Auto || a == Align::Normal) {
 		return GridAlign::Auto;
 	}
-	return toGridAlign(a);
+	return toGridAlign(a, rtl, inlineAxis);
 }
 
 // One compiled border side -> the edge the table's collapse pass resolves. `border-*-width` is a
@@ -1613,6 +1697,14 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 			v.textAlign = s.textAlign();
 			v.defined |= InheritedTextStyle::DefinedTextAlign;
 		}
+		if (def(ParameterName::CssDirection)) {
+			v.direction = s.direction();
+			v.defined |= InheritedTextStyle::DefinedDirection;
+		}
+		if (def(ParameterName::CssUnicodeBidi)) {
+			v.bidi = s.unicodeBidi();
+			v.defined |= InheritedTextStyle::DefinedBidi;
+		}
 		if (def(ParameterName::CssTextTransform)) {
 			v.textTransform = s.textTransform();
 			v.defined |= InheritedTextStyle::DefinedTextTransform;
@@ -1848,6 +1940,16 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		return s.media().computeValueAuto(m, base, fontSize);
 	};
 
+	/* THE COMPUTED DIRECTION OF THIS NODE, and the only place in the engine that turns an
+	inline-axis declaration into a physical side.
+
+	It has to be here because it is the only place that knows BOTH: the parser saw a declaration
+	and no node, and the layout backend sees a node and no declaration. Note what this does NOT
+	do - it never touches the physical properties. `padding-left` under `direction: rtl` is still
+	the left edge, exactly as on the web; what follows the direction is the inline axis (in the
+	backends) and the `*-inline-*` properties (here). */
+	const bool rtl = s.direction() == document::TextDirection::RightToLeft;
+
 	// map the CSS padding-* onto a container Padding (percent against own width)
 	auto fillPadding = [&](Padding &pad) {
 		if (auto m = s.paddingTop(); s.has(ParameterName::CssPaddingTop) && !m.isAuto()) {
@@ -1861,6 +1963,17 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		}
 		if (auto m = s.paddingLeft(); s.has(ParameterName::CssPaddingLeft) && !m.isAuto()) {
 			pad.left = computeMetric(m, ownSize.width);
+		}
+		// The inline pair AFTER the physical sides, so a sheet declaring both gets the logical
+		// one. CSS would decide that by source order; StyleList records none, and a cross-name
+		// order index would cost the whole cascade a field. Documented in the css-engine skill.
+		if (auto m = s.paddingInlineStart();
+				s.has(ParameterName::CssPaddingInlineStart) && !m.isAuto()) {
+			(rtl ? pad.right : pad.left) = computeMetric(m, ownSize.width);
+		}
+		if (auto m = s.paddingInlineEnd();
+				s.has(ParameterName::CssPaddingInlineEnd) && !m.isAuto()) {
+			(rtl ? pad.left : pad.right) = computeMetric(m, ownSize.width);
 		}
 	};
 	// Map the four CSS border sides onto the edges the table's collapse pass resolves, touching only
@@ -1911,6 +2024,11 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		side(ParameterName::CssMarginRight, s.marginRight(), mrg.right, FlexAutoMargin::Right);
 		side(ParameterName::CssMarginBottom, s.marginBottom(), mrg.bottom, FlexAutoMargin::Bottom);
 		side(ParameterName::CssMarginLeft, s.marginLeft(), mrg.left, FlexAutoMargin::Left);
+		// See fillPadding: the inline pair resolves last and wins over the physical one.
+		side(ParameterName::CssMarginInlineStart, s.marginInlineStart(),
+				rtl ? mrg.right : mrg.left, rtl ? FlexAutoMargin::Right : FlexAutoMargin::Left);
+		side(ParameterName::CssMarginInlineEnd, s.marginInlineEnd(), rtl ? mrg.left : mrg.right,
+				rtl ? FlexAutoMargin::Left : FlexAutoMargin::Right);
 	};
 
 	// A system on this node already owns its children's geometry (SystemManagedLayout): a
@@ -2023,10 +2141,10 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				next.borderSpacingV = computeMetric(m, ownSize.width);
 			}
 			if (s.has(ParameterName::CssJustifyItems)) {
-				next.justifyItems = toGridAlign(s.justifyItems());
+				next.justifyItems = toGridAlign(s.justifyItems(), rtl, true);
 			}
 			if (s.has(ParameterName::CssAlignItems)) {
-				next.alignItems = toGridAlign(s.alignItems());
+				next.alignItems = toGridAlign(s.alignItems(), rtl, false);
 			}
 			fillPadding(next.padding);
 			// the table's own border is the outside participant of the collapse pass. Reuse the
@@ -2091,14 +2209,26 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				if (s.has(ParameterName::CssFlexWrap)) {
 					next.wrap = toFlexWrap(s.flexWrap());
 				}
+
+				/* The two axes as they stand AFTER `flex-direction` and `flex-wrap` are decided,
+				which is why those two are assigned above rather than below: a container whose
+				direction was set in code and whose `justify-content: left` comes from the sheet
+				has to resolve that keyword against the direction actually in force. */
+				const bool isRowFlow = next.direction == FlexDirection::Row
+						|| next.direction == FlexDirection::RowReverse;
+				const bool flowReversed = next.direction == FlexDirection::RowReverse
+						|| next.direction == FlexDirection::ColumnReverse;
+				const AlignAxis mainAxis{flowReversed, isRowFlow, rtl};
+				const AlignAxis crossAxis{next.wrap == FlexWrap::WrapReverse, !isRowFlow, rtl};
+
 				if (s.has(ParameterName::CssJustifyContent)) {
-					next.justifyContent = toFlexJustify(s.justifyContent());
+					next.justifyContent = toFlexJustify(s.justifyContent(), mainAxis);
 				}
 				if (s.has(ParameterName::CssAlignItems)) {
-					next.alignItems = toFlexAlignItems(s.alignItems());
+					next.alignItems = toFlexAlignItems(s.alignItems(), crossAxis);
 				}
 				if (s.has(ParameterName::CssAlignContent)) {
-					next.alignContent = toFlexAlignItems(s.alignContent());
+					next.alignContent = toFlexAlignItems(s.alignContent(), crossAxis);
 				}
 				if (auto gap = s.columnGap(); s.has(ParameterName::CssColumnGap) && !gap.isAuto()) {
 					next.columnGap = computeMetric(gap, ownSize.width);
@@ -2141,16 +2271,16 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 					next.autoFlow = toGridAutoFlow(s.gridAutoFlow());
 				}
 				if (s.has(ParameterName::CssJustifyContent)) {
-					next.justifyContent = toGridAlign(s.justifyContent());
+					next.justifyContent = toGridAlign(s.justifyContent(), rtl, true);
 				}
 				if (s.has(ParameterName::CssAlignContent)) {
-					next.alignContent = toGridAlign(s.alignContent());
+					next.alignContent = toGridAlign(s.alignContent(), rtl, false);
 				}
 				if (s.has(ParameterName::CssJustifyItems)) {
-					next.justifyItems = toGridAlign(s.justifyItems());
+					next.justifyItems = toGridAlign(s.justifyItems(), rtl, true);
 				}
 				if (s.has(ParameterName::CssAlignItems)) {
-					next.alignItems = toGridAlign(s.alignItems());
+					next.alignItems = toGridAlign(s.alignItems(), rtl, false);
 				}
 				if (auto gap = s.columnGap(); s.has(ParameterName::CssColumnGap) && !gap.isAuto()) {
 					next.columnGap = computeMetric(gap, ownSize.width);
@@ -2190,10 +2320,10 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				next.rowSpan = sprt::max(s.rowSpan(), 1u);
 			}
 			if (s.has(ParameterName::CssJustifySelf)) {
-				next.justifySelf = toGridAlignSelf(s.justifySelf());
+				next.justifySelf = toGridAlignSelf(s.justifySelf(), rtl, true);
 			}
 			if (s.has(ParameterName::CssAlignSelf)) {
-				next.alignSelf = toGridAlignSelf(s.alignSelf());
+				next.alignSelf = toGridAlignSelf(s.alignSelf(), rtl, false);
 			}
 			// `vertical-align` is the table-cell spelling of the cross-axis alignment; it is also an
 			// inherited text property, so only map it when this node declares one.
@@ -2275,10 +2405,10 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				}
 			}
 			if (s.has(ParameterName::CssJustifySelf)) {
-				next.justifySelf = toGridAlignSelf(s.justifySelf());
+				next.justifySelf = toGridAlignSelf(s.justifySelf(), rtl, true);
 			}
 			if (s.has(ParameterName::CssAlignSelf)) {
-				next.alignSelf = toGridAlignSelf(s.alignSelf());
+				next.alignSelf = toGridAlignSelf(s.alignSelf(), rtl, false);
 			}
 			if (s.has(ParameterName::CssOrder)) {
 				next.order = s.order();
@@ -2352,7 +2482,21 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				}
 			}
 			if (s.has(ParameterName::CssAlignSelf)) {
-				next.alignSelf = toFlexAlignSelf(s.alignSelf());
+				/* `align-self` sits on the CONTAINER's cross axis, so the axis has to come from
+				the parent - this mapping runs on the item. A parent with no FlexLayoutInfo yet
+				(the style pass reaches children in tree order, and a container written in code
+				may be configured later) falls back to the default row, which is what the item
+				would have got before this change. */
+				AlignAxis selfAxis{false, false, rtl};
+				if (auto parent = node->getParent()) {
+					if (auto pinfo = parent->getComponent<FlexLayoutInfo>()) {
+						const bool parentRow = pinfo->direction == FlexDirection::Row
+								|| pinfo->direction == FlexDirection::RowReverse;
+						selfAxis = AlignAxis{pinfo->wrap == FlexWrap::WrapReverse, !parentRow,
+							rtl};
+					}
+				}
+				next.alignSelf = toFlexAlignSelf(s.alignSelf(), selfAxis);
 			}
 			if (s.has(ParameterName::CssOrder)) {
 				next.order = s.order();

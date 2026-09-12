@@ -433,7 +433,7 @@ float DockTree::minAlongAxis(DockNodeHandle h, DockAxis axis) const {
 }
 
 void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPolicy policy,
-		float thickness) {
+		float thickness, bool rtl) {
 	auto n = get(h);
 	if (!n) {
 		return;
@@ -483,10 +483,18 @@ void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPoli
 	Rect splitRect;
 	Rect secondRect;
 	if (horizontal) {
-		// `first` is the left child; X simply increases
-		firstRect = Rect(rect.origin.x, rect.origin.y, a, rect.size.height);
-		splitRect = Rect(rect.origin.x + a, rect.origin.y, thickness, rect.size.height);
-		secondRect = Rect(rect.origin.x + a + thickness, rect.origin.y, b, rect.size.height);
+		if (rtl) {
+			// `first` is the INLINE-START child, and under rtl the inline start is the right edge -
+			// the same reasoning the vertical case has always used for Y, one axis over.
+			firstRect = Rect(rect.origin.x + b + thickness, rect.origin.y, a, rect.size.height);
+			splitRect = Rect(rect.origin.x + b, rect.origin.y, thickness, rect.size.height);
+			secondRect = Rect(rect.origin.x, rect.origin.y, b, rect.size.height);
+		} else {
+			// `first` is the left child; X simply increases
+			firstRect = Rect(rect.origin.x, rect.origin.y, a, rect.size.height);
+			splitRect = Rect(rect.origin.x + a, rect.origin.y, thickness, rect.size.height);
+			secondRect = Rect(rect.origin.x + a + thickness, rect.origin.y, b, rect.size.height);
+		}
 	} else {
 		// Y points up, so `first` - the TOP child - starts at the high end of the rect
 		firstRect = Rect(rect.origin.x, rect.origin.y + b + thickness, rect.size.width, a);
@@ -498,12 +506,13 @@ void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPoli
 	// but the recursion below rewrites the children, so the divider band is stored first
 	n->splitterRect = splitRect;
 
-	distributeAt(first, firstRect, policy, thickness);
-	distributeAt(second, secondRect, policy, thickness);
+	distributeAt(first, firstRect, policy, thickness, rtl);
+	distributeAt(second, secondRect, policy, thickness, rtl);
 }
 
-void DockTree::distribute(const Rect &available, DockOverflowPolicy policy, float thickness) {
-	distributeAt(_root, available, policy, thickness);
+void DockTree::distribute(const Rect &available, DockOverflowPolicy policy, float thickness,
+		bool rtl) {
+	distributeAt(_root, available, policy, thickness, rtl);
 }
 
 void DockTree::each(const Callback<void(DockTreeNode &)> &cb) {
