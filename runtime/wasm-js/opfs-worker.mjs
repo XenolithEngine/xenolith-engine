@@ -11,9 +11,11 @@
 //
 // The protocol (indices + op codes) must match wasm/libc_opfs.cc.
 
-// Control-block layout (Int32 indices).
+// Control-block layout: Int32 cells for the lock, counters, op and result, then the four
+// pointer-sized op arguments as BigInt64 cells at ARGS_BYTE (i64 on wasm64, so they do not
+// fit an Int32 cell). Must match OPFS_ARGS_BYTE in sprt-imports.mjs.
 const LOCK = 0, REQSEQ = 1, RESPSEQ = 2, OP = 3, RESULT = 4;
-const A0 = 5, A1 = 6, A2 = 7, A3 = 8; // A4 = 9 reserved
+const ARGS_BYTE = 64;
 
 // Ops.
 const OP_STAT = 1, OP_LOAD = 2, OP_STORE = 3, OP_MKDIR = 4, OP_UNLINK = 5,
@@ -25,12 +27,15 @@ const ENOENT = 2, EIO = 5, EEXIST = 17, ENOTDIR = 20, EISDIR = 21, EINVAL = 22,
 
 let ROOT = null; // OPFS root FileSystemDirectoryHandle
 let ctrl = null; // Int32Array over the control SAB
+let args = null; // BigInt64Array over the argument cells of the control SAB
 let memory = null; // the shared WebAssembly.Memory
 const dec = new TextDecoder();
 const enc = new TextEncoder();
 
 const u8 = () => new Uint8Array(memory.buffer);
 const i32 = () => new Int32Array(memory.buffer);
+// Int32 index of an address. Not `p >> 2`: a signed 32-bit shift breaks past 2 GiB.
+const cell = (p) => Math.floor(p / 4);
 // TextDecoder rejects SharedArrayBuffer views, so copy the bytes out first.
 const readPath = (p, l) => dec.decode(u8().slice(p, p + l));
 
@@ -59,8 +64,8 @@ function mapErr(e) {
 async function opStat(pathPtr, pathLen, outPtr) {
 	const rel = readPath(pathPtr, pathLen);
 	if (rel === "") { // the /opfs root itself
-		i32()[outPtr >> 2] = 0;
-		i32()[(outPtr >> 2) + 1] = 1;
+		i32()[cell(outPtr)] = 0;
+		i32()[cell(outPtr) + 1] = 1;
 		return 0;
 	}
 	const { parts, name } = splitPath(rel);
@@ -70,14 +75,14 @@ async function opStat(pathPtr, pathLen, outPtr) {
 	try {
 		const fh = await dir.getFileHandle(name, { create: false });
 		const f = await fh.getFile();
-		i32()[outPtr >> 2] = f.size | 0;
-		i32()[(outPtr >> 2) + 1] = 0;
+		i32()[cell(outPtr)] = f.size | 0;
+		i32()[cell(outPtr) + 1] = 0;
 		return 0;
 	} catch (_) { /* not a file */ }
 	try {
 		await dir.getDirectoryHandle(name, { create: false });
-		i32()[outPtr >> 2] = 0;
-		i32()[(outPtr >> 2) + 1] = 1;
+		i32()[cell(outPtr)] = 0;
+		i32()[cell(outPtr) + 1] = 1;
 		return 0;
 	} catch (e) { return mapErr(e); }
 }
@@ -209,8 +214,9 @@ async function opReaddir(pathPtr, pathLen, outPtr, outCap) {
 
 async function handleOp() {
 	const op = Atomics.load(ctrl, OP);
-	const a0 = Atomics.load(ctrl, A0), a1 = Atomics.load(ctrl, A1);
-	const a2 = Atomics.load(ctrl, A2), a3 = Atomics.load(ctrl, A3);
+	// Pointers are below 2^53 (the memory is at most 16 GiB), so a Number holds them exactly.
+	const a0 = Number(Atomics.load(args, 0)), a1 = Number(Atomics.load(args, 1));
+	const a2 = Number(Atomics.load(args, 2)), a3 = Number(Atomics.load(args, 3));
 	switch (op) {
 	case OP_STAT: return opStat(a0, a1, a2);
 	case OP_LOAD: return opLoad(a0, a1, a2, a3);
@@ -244,6 +250,7 @@ async function loop() {
 self.onmessage = async (e) => {
 	const { opfsSab, mem } = e.data;
 	ctrl = new Int32Array(opfsSab);
+	args = new BigInt64Array(opfsSab, ARGS_BYTE, 4);
 	memory = mem;
 	try {
 		ROOT = await navigator.storage.getDirectory();

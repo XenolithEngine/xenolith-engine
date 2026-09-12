@@ -6,7 +6,7 @@
 
 import { workerData, Worker } from "node:worker_threads";
 import { writeSync } from "node:fs";
-import { makeImports } from "./sprt-imports.mjs";
+import { makeImports, isMemory64, ptrConverter } from "./sprt-imports.mjs";
 
 // A worker's process.stdout/stderr are Writable streams piped to the PARENT and flushed on
 // the parent's event loop. When the parent is blocked synchronously in Atomics.wait (inside
@@ -41,10 +41,11 @@ const imports = makeImports({
 
 const instance = await WebAssembly.instantiate(module, imports);
 const ex = instance.exports;
-ex.__stack_pointer.value = stackTop; // run on this thread's own pre-allocated stack
-ex.__wasm_init_tls(tlsBase || 0);    // initialize this thread's TLS block
+const ptr = ptrConverter(isMemory64(memory)); // wasm64 exports take BigInt pointers
+ex.__stack_pointer.value = ptr(stackTop); // run on this thread's own pre-allocated stack
+ex.__wasm_init_tls(ptr(tlsBase));         // initialize this thread's TLS block
 try {
-	ex.__xl_thread_entry(tid, threadPtr);
+	ex.__xl_thread_entry(tid, ptr(threadPtr));
 } catch (err) {
 	// thread_exit unwinds by throwing { __thread_exit: true } — a normal thread return.
 	if (!(err && typeof err === "object" && err.__thread_exit)) {
