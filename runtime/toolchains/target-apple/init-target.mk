@@ -79,7 +79,7 @@ else
 TOOLCHAIN_SDK_ROOT := $(SP_SDK_ROOT)
 TOOLCHAIN_ISYSTEM :=
 endif
-TOOLCHAIN_CFLAGS := $(TOOLCHAIN_ISYSTEM) -isysroot $(TOOLCHAIN_SDK_ROOT) -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH)
+TOOLCHAIN_CFLAGS := $(TOOLCHAIN_ISYSTEM) -isysroot $(TOOLCHAIN_SDK_ROOT) -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH) $(SP_DEPFLAGS)
 TOOLCHAIN_LDFLAGS := -L$(TOOLCHAIN_SDK_ROOT)/usr/lib -F$(TOOLCHAIN_SDK_ROOT)/System/Library/Frameworks
 
 $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)

@@ -662,6 +662,45 @@ int access(const char *__path, int __mode) __SPRT_NOEXCEPT {
 
 int eaccess(const char *__path, int __mode) __SPRT_NOEXCEPT { return access(__path, __mode); }
 
+// MSVC <io.h> _access (see wrappers/unistd/io.h). Not a spelling of access():
+// the mode bits mean the same thing by accident (0/2/4/6 line up with F_OK/W_OK/
+// R_OK), but the questions differ. access() above asks whether this process may
+// open the file, opens it to find out, and refuses a directory for R_OK/W_OK;
+// _access only ever asks whether the file exists and whether FILE_ATTRIBUTE_READONLY
+// is set, and answers for a directory like any other entry. Code written against
+// the MSVC CRT relies on the second one - `_access(dir, 0)` as an existence test is
+// the common case - so it gets its own implementation instead of a forward.
+__SPRT_C_FUNC int _access(const char *__path, int __mode) __SPRT_NOEXCEPT {
+	if (!__path || !*__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// Unlike the wide functions, this one takes an sprt path: it is the narrow
+	// surface, reached by the same code that calls fopen() next door.
+	return platform::performWithNativePath(__path, [&](const char *path) {
+		auto wpath = __MALLOCA_WSTRING(path);
+		DWORD attr = GetFileAttributesW(wpath);
+		__sprt_freea(wpath);
+		if (attr == INVALID_FILE_ATTRIBUTES) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+		// X_OK has no meaning here and MSVC rejects it outright; everything else is
+		// exist (0) plus the write bit (2). Read (4) is granted whenever the entry
+		// exists, which is what the CRT does.
+		if (__mode & ~(0x02 | 0x04)) {
+			__sprt_errno = EINVAL;
+			return -1;
+		}
+		if ((__mode & 0x02) && (attr & FILE_ATTRIBUTE_READONLY)
+				&& !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			__sprt_errno = EACCES;
+			return -1;
+		}
+		return 0;
+	}, -1);
+}
+
 static ssize_t __readlink(const char *path, char *buf, size_t bufsiz) {
 	auto wpath = __MALLOCA_WSTRING(path);
 	auto strPath = __readlink_str(wpath);
@@ -716,6 +755,34 @@ int unlink(const char *__path) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(__path, [&](const char *path) {
 		return __unlink(path); //
 	}, -1);
+}
+
+// MSVC <io.h> wide unlink. The path is already native (see _wchmod in stat.cc for
+// why that matters), so this is __unlink's body without the conversion in front.
+__SPRT_C_FUNC int _wunlink(const wchar_t *__path) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// Clear read-only first: DeleteFileW refuses a read-only file, and the MSVC CRT
+	// does the same thing before deleting.
+	DWORD attr = GetFileAttributesW(__path);
+	if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY)) {
+		// Try the delete even if this fails - the attribute may already be gone.
+		SetFileAttributesW(__path, attr & ~FILE_ATTRIBUTE_READONLY);
+	}
+	if (!DeleteFileW(__path)) {
+		DWORD err = GetLastError();
+		switch (err) {
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND: __sprt_errno = ENOENT; break;
+		case ERROR_ACCESS_DENIED: __sprt_errno = EACCES; break;
+		case ERROR_SHARING_VIOLATION: __sprt_errno = EBUSY; break;
+		default: __sprt_errno = platform::lastErrorToErrno(err);
+		}
+		return -1;
+	}
+	return 0;
 }
 
 // @AI-geerated

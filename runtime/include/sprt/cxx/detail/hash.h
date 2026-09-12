@@ -137,22 +137,6 @@ struct hash<void *> {
 	size_t operator()(const void *value) const noexcept { return reinterpret_cast<size_t>(value); }
 };
 
-/* A HASHER FOR KEYS WHOSE ENTROPY IS NOT IN THEIR LOW BITS.
-
-The tables in this directory take a bucket with `hash % bucket_count()`, which reads the LOW bits.
-The default hashes deliberately do not touch them - an integer is its own hash, which is what a
-table of dense integer keys wants and what a critical path expects. Some key sets are the opposite
-case: a pointer's low bits are its alignment, a handle steps by a constant, a double holding a
-small integer has a zero mantissa. Every such key lands in a handful of buckets, and the table
-then walks long chains for every lookup.
-
-This is the opt-in for those: pass it as the container's Hash argument, which is the customization
-point, instead of changing what every key type hashes to.
-
-    unordered_map<Node *, Freshness, hash_spread<>> _nodesUpdated;
-
-It wraps another hasher (`hash<void>` by default) and runs murmur3's finalizer over the result -
-a bijection, so it can only move collisions, never create them. */
 template <typename Hash = hash<void>>
 struct hash_spread {
 	using is_transparent = void;
