@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Batch driver: run every tracked scope of the libc++ suite against the sprt STL on
-# wasm32-unknown-unknown (executed headlessly under Node), reusing a single runtime
+# wasm32/wasm64-unknown-unknown (executed headlessly under Node), reusing a single runtime
 # build, and print one machine-readable summary line per scope:
 #   SCOPE|discovered|pass|compile_fail|link_fail|run_fail|unsupported|unresolved
 # Feeds the wasm conformance dashboard. The wasm analogue of run-all.sh.
@@ -10,7 +10,16 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-TARGET="wasm32-unknown-unknown"
+# SPRT_WASM_TARGET selects the pointer width: wasm32-unknown-unknown (default) or
+# wasm64-unknown-unknown (memory64). Everything else below derives from it.
+TARGET="${SPRT_WASM_TARGET:-wasm32-unknown-unknown}"
+ARCH="${TARGET%%-*}"
+case "$ARCH" in
+  # memory ceiling and main-thread stack, both as make/os/wasm.mk sets them
+  wasm32) WASM_MAX_MEMORY=1073741824; WASM_STACK_FLAGS="" ;;
+  wasm64) WASM_MAX_MEMORY=17179869184; WASM_STACK_FLAGS="-Wl,-z,stack-size=1048576" ;;
+  *) echo "error: unsupported wasm target: $TARGET" >&2; exit 1 ;;
+esac
 TC="$ROOT/runtime/toolchains"
 HOSTBIN="$TC/hosts/x86_64-unknown-linux-gnu/bin"   # linux host clang drives wasm
 SYSROOT="$TC/targets/$TARGET"; RESDIR="$SYSROOT/lib/clang"
@@ -18,7 +27,7 @@ SYSROOT="$TC/targets/$TARGET"; RESDIR="$SYSROOT/lib/clang"
 CLANGINC="$(echo "$HOSTBIN"/../lib/clang/*/include)"; WASM_USRINC="$SYSROOT/usr/include"
 LLVM="$ROOT/runtime/toolchains/src/llvm-project"
 SUPPORT="$LLVM/libcxx/test/support"; STDROOT="$LLVM/libcxx/test/std"
-RUNNER="$ROOT/runtime/wasm-js/run-node.mjs"
+RUNNER="${SPRT_WASM_RUNNER:-$ROOT/runtime/wasm-js/run-node.mjs}"
 WASM_FEATURES="-matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint"
 
 echo "== building sprt runtime once ($TARGET) ==" >&2
@@ -46,7 +55,7 @@ grep -v 'builtin_libcxx\.cpp\.o$' "$RTLIST" > "$RTLIST.tmp" \
 
 export SPRT_CXX="$HOSTBIN/c++" SPRT_CC="$HOSTBIN/cc" SPRT_STD_VER="20"
 export SPRT_COMPILE_FLAGS="-std=gnu++2a -fno-exceptions -frtti -funwind-tables -DDEBUG -DSTAPPLER_LOG_LEVEL=2 -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-deprecated-declarations -Wno-unused-command-line-argument --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR -nostdinc -nostdinc++ $WASM_FEATURES -isystem $ROOT/runtime/include_libc/cxx -isystem $ROOT/runtime/libcxx/include -isystem $ROOT/runtime/include_libc -I$ROOT/runtime/include -I$SUPPORT -idirafter $WASM_USRINC -idirafter $CLANGINC"
-export SPRT_LINK_FLAGS="-fuse-ld=lld -nostdlib -L$SYSROOT/usr/lib --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR $WASM_FEATURES -Wl,--import-memory,--shared-memory,--max-memory=1073741824 -Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base -Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry -Wl,--export-table $SYSROOT/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a $SYSROOT/usr/lib/libc++abi.a $SYSROOT/usr/lib/libunwind.a"
+export SPRT_LINK_FLAGS="-fuse-ld=lld -nostdlib -L$SYSROOT/usr/lib --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR $WASM_FEATURES -Wl,--import-memory,--shared-memory,--max-memory=$WASM_MAX_MEMORY -Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base -Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry -Wl,--export-table $WASM_STACK_FLAGS $SYSROOT/lib/clang/lib/wasi/libclang_rt.builtins-$ARCH.a $SYSROOT/usr/lib/libc++abi.a $SYSROOT/usr/lib/libunwind.a"
 export SPRT_EXEC="node $RUNNER" SPRT_RT_OBJS_FILE="$RTLIST"
 export SPRT_RUN_TIMEOUT="${SPRT_RUN_TIMEOUT:-40}"
 
@@ -70,6 +79,9 @@ for s in "${SCOPES[@]}"; do
   [ -d "$STDROOT/$s" ] || { echo "$s|MISSING"; continue; }
   export SPRT_TEST_ROOT="$STDROOT/$s" SPRT_BUILD_DIR="$BUILD/work"
   out="$(python3 "$LIT" -j"$JOBS" --config-prefix=lit "$HERE" -s 2>/dev/null || true)"
+  # Keep the full per-scope lit output (it lists every failing test) so two runs -
+  # e.g. wasm32 vs wasm64 - can be diffed test by test, not only by the counters.
+  mkdir -p "$BUILD/results" && printf '%s\n' "$out" > "$BUILD/results/${s//\//_}.log"
   disc=$(sed -n 's/.*Total Discovered Tests: \([0-9]*\).*/\1/p' <<<"$out" | head -1)
   echo "$s|${disc:-0}|$(field Passed "$out")|$(field 'Compile Failed' "$out")|$(field 'Link Failed' "$out")|$(field 'Runtime Failed' "$out")|$(field Unsupported "$out")|$(field Unresolved "$out")"
 done
