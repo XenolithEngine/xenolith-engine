@@ -10,11 +10,17 @@
 //
 // Usage: node run-node.mjs <module.wasm> [argv0 [args...]]
 // Exit code = the module's proc_exit code (or 0 on normal _start return; 70 on a wasm trap).
+//
+// The persistent /opfs mount (where the app's data/config/state categories live) is a host
+// directory: SPRT_OPFS_ROOT when set, which then keeps its content between runs, otherwise a
+// fresh temporary directory removed on exit.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import { makeImports, readMemoryImport, createMemory } from "./sprt-imports.mjs";
+import { makeNodeOpfs } from "./opfs-node.mjs";
 
 const wasmPath = process.argv[2];
 if (!wasmPath) {
@@ -77,6 +83,12 @@ const memory = memDesc.memory64
 	? createMemory(memDesc, { initial: 16384 })
 	: createMemory(memDesc, { initial: 16384, maximum: 16384 });
 
+let opfsRoot = process.env.SPRT_OPFS_ROOT;
+if (!opfsRoot) {
+	opfsRoot = mkdtempSync(join(tmpdir(), "sprt-opfs-"));
+	process.on("exit", () => { try { rmSync(opfsRoot, { recursive: true, force: true }); } catch { /* ignore */ } });
+}
+
 // Atomic tid source shared by every thread worker (1 is reserved for this main entry thread).
 const tidBuf = new SharedArrayBuffer(4);
 const tidCounter = new Int32Array(tidBuf);
@@ -90,7 +102,7 @@ const threadURL = new URL("./thread-node.mjs", import.meta.url);
 const spawn = (threadPtr, stackTop, stackSize, tlsBase) => {
 	const tid = Atomics.add(tidCounter, 0, 1);
 	const w = new Worker(threadURL, {
-		workerData: { module, memory, tidBuf, tid, threadPtr, stackTop, stackSize, tlsBase },
+		workerData: { module, memory, tidBuf, tid, threadPtr, stackTop, stackSize, tlsBase, opfsRoot },
 	});
 	w.on("error", (e) => process.stderr.write(`[thread ${tid} error] ${(e && e.stack) || e}\n`));
 	w.unref(); // a still-running detached thread must not keep the process alive past exit
@@ -104,6 +116,7 @@ const imports = makeImports({
 	bundle,
 	log: (stream, text) => (stream === "stderr" ? process.stderr : process.stdout).write(text),
 	spawn,
+	opfsHost: makeNodeOpfs({ memory, root: opfsRoot }),
 	onExit: (code) => { exitCode = code; },
 });
 

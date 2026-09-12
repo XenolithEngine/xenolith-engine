@@ -317,7 +317,7 @@ export function formatError(err) {
 	return stack && stack !== head ? head + "\n" + stack : head;
 }
 
-export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab, dispW = 0, dispH = 0, dispDensity = 0, inputQueue = null, inputSab = null, displaySab = null, processCtrl = null, processOut = null, postProcess = null, onFilePut = null }) {
+export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab, opfsHost = null, dispW = 0, dispH = 0, dispDensity = 0, inputQueue = null, inputSab = null, displaySab = null, processCtrl = null, processOut = null, postProcess = null, onFilePut = null }) {
 	const opfsCtrl = opfsSab ? new Int32Array(opfsSab) : null;
 	const opfsArgs = opfsSab ? new BigInt64Array(opfsSab, OPFS_ARGS_BYTE, 4) : null;
 	const u8 = () => new Uint8Array(memory.buffer);
@@ -329,7 +329,20 @@ export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}
 	let procCur = null;
 	// TextDecoder rejects views over a SharedArrayBuffer, so slice() out a plain copy.
 	const readStr = (p, l) => dec.decode(u8().slice(p, p + l));
-	const bkey = (p, l) => { const b = u8(); let s = ""; for (let i = 0; i < l; i++) s += String.fromCharCode(b[p + i]); return s; };
+	// Bundle keys are the Unicode strings the host read from its manifest or directory, and the
+	// guest passes UTF-8: a byte-per-char key never matches a non-ASCII name. ASCII (the common
+	// case) skips the TextDecoder copy.
+	const bkey = (p, l) => {
+		const b = u8();
+		let s = "";
+		for (let i = 0; i < l; i++) {
+			if (b[p + i] >= 0x80) {
+				return readStr(p, l);
+			}
+			s += String.fromCharCode(b[p + i]);
+		}
+		return s;
+	};
 	const bundleFile = (k) => {
 		if (bundle[k]) { return bundle[k]; }
 		if (k.charCodeAt(0) !== 47 && bundle["/" + k]) { return bundle["/" + k]; }
@@ -605,8 +618,10 @@ export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}
 			// control block. Args are pointers/lengths into this same shared memory. This
 			// (engine or thread) worker may block in Atomics.wait; the OPFS worker cannot,
 			// so it drains with Atomics.waitAsync. Returns the op result (>=0) or -errno.
+			// A host with a synchronous filesystem (Node, opfs-node.mjs) passes `opfsHost`
+			// instead and is called directly.
 			opfs_call(op, a0, a1, a2, a3) {
-				if (!opfsCtrl) return -ENOSYS;
+				if (!opfsCtrl) return opfsHost ? opfsHost(op, a0, a1, a2, a3) : -ENOSYS;
 				// Serialise concurrent callers (one outstanding request at a time).
 				while (Atomics.compareExchange(opfsCtrl, OPFS_LOCK, 0, 1) !== 0) { /* spin */ }
 				Atomics.store(opfsCtrl, OPFS_OP, op);
