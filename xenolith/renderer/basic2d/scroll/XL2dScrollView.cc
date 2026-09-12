@@ -261,6 +261,13 @@ void ScrollView::handleContentSizeDirty() {
 	updateIndicatorPosition();
 }
 
+void ScrollView::handleLayoutChildren() {
+	ScrollViewBase::handleLayoutChildren();
+	// See the note on the declaration: this is the first point at which the resolved direction is
+	// certainly this frame's, so it is where the bar's side is decided.
+	updateIndicatorPosition();
+}
+
 void ScrollView::setOverscrollColor(const Color4F &val, bool withOpacity) {
 	_overflowFront->setColor(val, withOpacity);
 	_overflowBack->setColor(val, withOpacity);

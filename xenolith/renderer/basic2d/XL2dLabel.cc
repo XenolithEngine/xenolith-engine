@@ -569,12 +569,26 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 }
 
 void Label::applyMeasuredSize(const Size2 &size) {
+	// The width being written IS the measurement, so setLabelDirty must not announce it as a
+	// change to it; see setLabelDirty.
+	_applyingMeasuredSize = true;
 	if (_width != size.width) {
 		setWidth(size.width);
 	}
 	tryUpdateLabel();
 	// the assigned box wins over the shaped extent committed by applyLayout
 	setContentSize(size);
+	_applyingMeasuredSize = false;
+}
+
+void Label::setLabelDirty() {
+	LabelBase::setLabelDirty();
+
+	// See the note on the declaration. Not while a measured box is being applied: that write is
+	// the answer to a measurement, not a change to one.
+	if (!_applyingMeasuredSize) {
+		markIntrinsicSizeDirty();
+	}
 }
 
 void Label::setStyle(const DescriptionStyle &style) {
@@ -761,8 +775,13 @@ void Label::makeEffectiveStyle(font::LabelBase::EffectiveStyle &out) const {
 		if (text.bidi == font::BidiMode::Plaintext) {
 			out.direction = font::TextDirection::Neutral;
 			out.bidiEnabled = true;
-			out.shapingEnabled = true;
 			out.bidiMode = font::BidiMode::Normal; // no isolate around the whole paragraph
+			/* NOT shaping. `plaintext` is a statement about the BASE DIRECTION - ask the content,
+			   not the box - and says nothing about whether glyphs have to join. Turning shaping on
+			   here put every label in a sheet that writes `* { unicode-bidi: plaintext }` through
+			   HarfBuzz, which is both a cost nobody asked for and a change of metrics. Joining is
+			   the business of the two places that know the script is one that needs it: the
+			   `direction: rtl` branch above, and applyLocaleTextFeatures for an RTL locale. */
 		} else {
 			out.bidiMode = text.bidi;
 			if (text.bidi != font::BidiMode::Normal) {

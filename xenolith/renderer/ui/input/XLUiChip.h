@@ -69,6 +69,13 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
+	/* Phase 6. The side these parts take comes from the resolved `direction`, and an ancestor's
+	   StyleResolver re-resolves this node in reaction to its content-size phase - so phase 4
+	   reads the direction from before the pass. See placeInlineParts. */
+	virtual void handleLayoutChildren() override;
+
+	void placeInlineParts();
+
 	// The leading icon. IconName::None hides it, which is also the default.
 	virtual void setIcon(IconName);
 	IconName getIcon() const;

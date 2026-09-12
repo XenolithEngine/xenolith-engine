@@ -168,9 +168,14 @@ void ColorField::handleExit() {
 	Panel::handleExit();
 }
 
-void ColorField::handleContentSizeDirty() {
-	Panel::handleContentSizeDirty();
+void ColorField::handleContentSizeDirty() { Panel::handleContentSizeDirty(); }
 
+void ColorField::handleLayoutChildren() {
+	Panel::handleLayoutChildren();
+	placeInlineParts();
+}
+
+void ColorField::placeInlineParts() {
 	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and the
 	// placement below would be a second writer of the same positions. Same rule as ui::Select's.
 	if (getSystemByType<LayoutSystem>()) {
@@ -183,6 +188,11 @@ void ColorField::handleContentSizeDirty() {
 		return;
 	}
 
+	/* PHASE 6 AND NOT PHASE 4. An ancestor's StyleResolver re-resolves this node in reaction to its
+	content-size phase, so a direction read from inside handleContentSizeDirty is the one the node
+	had a pass ago. Switching a window back from a right-to-left language left these on the edge
+	they had a moment before, with nothing afterwards to correct the record. handleLayoutChildren
+	runs later in the same visit, when the resolved style has settled. */
 	// The swatch leads, the picker icon trails, and the field takes what is between them.
 	const bool rtl = isInlineRtl(this);
 
