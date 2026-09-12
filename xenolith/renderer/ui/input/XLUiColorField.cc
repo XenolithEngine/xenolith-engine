@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiColorField.h"
+
+#include "XLInheritedStyle.h" // placeInline*: the row follows the inline direction
 #include "XLUiMenuPopup.h" // placementForNode: the arithmetic every popup needs and only this has
 #include "XLUiLayoutSystem.h"
 #include "XLInteractiveComponent.h"
@@ -181,25 +183,26 @@ void ColorField::handleContentSizeDirty() {
 		return;
 	}
 
-	float left = s_colorPadding;
+	// The swatch leads, the picker icon trails, and the field takes what is between them.
+	const bool rtl = isInlineRtl(this);
+
+	float startInset = s_colorPadding;
 	if (_swatch) {
-		_swatch->setAnchorPoint(Anchor::MiddleLeft);
-		_swatch->setPosition(Vec2(left, height / 2.0f));
+		placeInlineStart(_swatch, startInset, height / 2.0f, width, rtl);
 		_swatch->setContentSize(Size2(s_colorSwatchWidth, sprt::max(height - 12.0f, 0.0f)));
-		left += s_colorSwatchWidth + s_colorGap;
+		startInset += s_colorSwatchWidth + s_colorGap;
 	}
 
-	float right = width - s_colorPadding;
+	float endInset = s_colorPadding;
 	if (_icon) {
-		_icon->setAnchorPoint(Anchor::MiddleRight);
-		_icon->setPosition(Vec2(right, height / 2.0f));
-		right -= _icon->getContentSize().width + s_colorGap;
+		placeInlineEnd(_icon, endInset, height / 2.0f, width, rtl);
+		endInset += _icon->getContentSize().width + s_colorGap;
 	}
 
 	if (_input) {
-		_input->setAnchorPoint(Anchor::MiddleLeft);
-		_input->setPosition(Vec2(left, height / 2.0f));
-		_input->setContentSize(Size2(sprt::max(right - left, 0.0f), height));
+		placeInlineStart(_input, startInset, height / 2.0f, width, rtl);
+		_input->setContentSize(
+				Size2(sprt::max(width - startInset - endInset, 0.0f), height));
 	}
 }
 

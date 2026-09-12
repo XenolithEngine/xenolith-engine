@@ -83,14 +83,23 @@ in C++:
   tree-row  { background-color: transparent;
               display:flex; flex-direction:row; align-items:center;
               height: var(--tree-row-h);
-              padding-left: calc(8px + var(--tree-depth, 0) * var(--tree-indent, 16px));
-              padding-right:8px; column-gap:6px; }
+              padding-inline-start: calc(8px + var(--tree-depth, 0) * var(--tree-indent, 16px));
+              padding-inline-end:8px; column-gap:6px; }
   tree-row.selected { background-color:#094771; }
   .tree-toggle { flex:0 0 18px; height:18px; border-radius:9px; }
   .tree-toggle:hover { background-color:#2a2a2a; }
   .tree-toggle > icon { width:16px; height:16px; }
   .tree-icon  { flex:0 0 16px; width:16px; height:16px; }
-  .tree-label { flex-grow:1; font-size:13px; white-space:nowrap; }
+  .tree-label { flex-grow:1; font-size:13px; white-space:nowrap;
+                text-align:start; unicode-bidi:normal; }
+
+The indent is written LOGICALLY on purpose: it is what carries the hierarchy, and in a right-to-left
+window `padding-left` would have kept it on the left - correctly, per CSS - leaving the tree the one
+widget that did not turn round. The label's pair is the other half of the same point: it GROWS, so
+that trailing nodes reach the far edge, and `text-align:start` is what keeps the name against the
+row's own edge inside that grown box. `unicode-bidi:normal` opts the name out of a sheet-wide
+`plaintext`, which would otherwise derive the line's base direction from the name's own script and
+strand a Latin name at the wrong edge of a right-to-left row.
 
 A row also carries `expanded` / `collapsed` / `leaf`, `loading` and `selected` style classes. */
 /* A tree view can hold the SCENE'S selection, not just one of its own - opt-in per instance, see

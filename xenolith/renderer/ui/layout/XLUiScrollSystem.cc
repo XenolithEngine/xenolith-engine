@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiScrollSystem.h"
+
+#include "XLInheritedStyle.h" // isInlineRtl: which side the vertical bar sits on
 #include "XLUiPanel.h"
 #include "XLAction.h"
 
@@ -523,6 +525,8 @@ void ScrollSystem::updateIndicators() {
 	}
 	_indicatorOpacity = target;
 
+	const bool rtl = isInlineRtl(_owner);
+
 	auto place = [&](Node *&node, bool horizontal) {
 		const float range = horizontal ? _range.width : _range.height;
 		const float extent = horizontal ? box.width : box.height;
@@ -565,9 +569,14 @@ void ScrollSystem::updateIndicators() {
 			node->setPosition(Vec2(travel * progress, ScrollSystem_indicatorInset));
 		} else {
 			node->setContentSize(Size2(thickness, length));
+			// The bar sits at the INLINE END of the box, which is the left edge in a
+			// right-to-left interface. It is the one piece of scrolling geometry that has a side:
+			// the horizontal bar spans the width and the scroll ORIGIN is deliberately left
+			// physical (see the css-engine skill).
+			const float x = rtl ? ScrollSystem_indicatorInset
+								: box.width - thickness - ScrollSystem_indicatorInset;
 			// progress runs top-down, the engine's y runs up
-			node->setPosition(Vec2(box.width - thickness - ScrollSystem_indicatorInset,
-					box.height - length - travel * progress));
+			node->setPosition(Vec2(x, box.height - length - travel * progress));
 		}
 	};
 

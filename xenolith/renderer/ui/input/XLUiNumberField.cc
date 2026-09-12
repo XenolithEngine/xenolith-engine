@@ -22,6 +22,8 @@
 
 #include "XLUiNumberField.h"
 
+#include "XLInheritedStyle.h" // placeInlineEnd: the unit trails the number
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The class a refused value is painted with. There is no `:invalid` pseudo-class in the engine's
@@ -191,11 +193,15 @@ void NumberField::handleContentSizeDirty() {
 			style = c;
 		}
 
-		// Against the inner edge of the padding, on the viewport's centre line. Not a child of the
-		// container, so the container's scissor never clips it.
-		_unitLabel->setAnchorPoint(Anchor::MiddleRight);
-		_unitLabel->setPosition(Vec2(sprt::max(_contentSize.width - style->padding.right, 0.0f),
-				_contentSize.height / 2.0f));
+		/* Against the inner edge of the padding at the INLINE END, on the viewport's centre line.
+		Not a child of the container, so the container's scissor never clips it.
+
+		The unit trails the number in both directions - "12 px" reads the same way round in a
+		right-to-left interface, because a quantity and its unit are one phrase - so it follows the
+		inline end rather than a fixed side. */
+		const bool rtl = isInlineRtl(this);
+		const float endPad = rtl ? style->padding.left : style->padding.right;
+		placeInlineEnd(_unitLabel, endPad, _contentSize.height / 2.0f, _contentSize.width, rtl);
 	}
 }
 

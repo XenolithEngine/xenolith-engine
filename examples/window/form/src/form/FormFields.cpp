@@ -277,14 +277,14 @@ namespace {
 
 // ui::TextInput in its three shapes, plus the one field a form deliberately does NOT collect.
 static void buildTextGroup(NotNull<Node> parent, int32_t &z) {
-	auto plain = makeRow(parent, "Name", ZOrder(z++))
+	auto plain = makeRow(parent, "@Locale:Form:Name", ZOrder(z++))
 						 ->addChild(Rc<ui::TextInput>::create(), s_widgetZOrder);
 	plain->setName("name");
 	plain->setPlaceholder("Ada Lovelace");
 	plain->setCaretBlink(false);
 	ui::addFormField(plain, StringView(), ui::FormFieldFlags::Required);
 
-	auto email = makeRow(parent, "Email", ZOrder(z++))
+	auto email = makeRow(parent, "@Locale:Form:Email", ZOrder(z++))
 						 ->addChild(Rc<ui::TextInput>::create(), s_widgetZOrder);
 	email->setName("email");
 	email->setPlaceholder("ada@example.org");
@@ -300,7 +300,7 @@ static void buildTextGroup(NotNull<Node> parent, int32_t &z) {
 		return true;
 	});
 
-	auto password = makeRow(parent, "Password", ZOrder(z++))
+	auto password = makeRow(parent, "@Locale:Form:Password", ZOrder(z++))
 							->addChild(Rc<ui::TextInput>::create(), s_widgetZOrder);
 	password->setName("password");
 	password->setPasswordMode(ui::TextInputPasswordMode::ShowNone);
@@ -312,7 +312,7 @@ static void buildTextGroup(NotNull<Node> parent, int32_t &z) {
 
 	The one field whose behaviour cannot be seen by looking at it - which is why the demo has it,
 	and why the self-check asserts its absence rather than trusting the screen. */
-	auto notes = makeRow(parent, "Notes (transient)", ZOrder(z++))
+	auto notes = makeRow(parent, "@Locale:Form:Notes", ZOrder(z++))
 						 ->addChild(Rc<ui::TextInput>::create(), s_widgetZOrder);
 	notes->setName("notes");
 	notes->setPlaceholder("not collected");
@@ -322,7 +322,7 @@ static void buildTextGroup(NotNull<Node> parent, int32_t &z) {
 
 // ui::NumberField in both arities of number, ui::Slider, and the composite ui::VectorField.
 static void buildNumbersGroup(NotNull<Node> parent, int32_t &z) {
-	auto count = makeRow(parent, "Count (int)", ZOrder(z++))
+	auto count = makeRow(parent, "@Locale:Form:Count", ZOrder(z++))
 						 ->addChild(Rc<ui::NumberField>::create(), s_widgetZOrder);
 	count->setName("count");
 	count->setInteger(true);
@@ -332,7 +332,7 @@ static void buildNumbersGroup(NotNull<Node> parent, int32_t &z) {
 	count->setCaretBlink(false);
 	ui::addFormField(count);
 
-	auto ratio = makeRow(parent, "Ratio (real)", ZOrder(z++))
+	auto ratio = makeRow(parent, "@Locale:Form:Ratio", ZOrder(z++))
 						 ->addChild(Rc<ui::NumberField>::create(), s_widgetZOrder);
 	ratio->setName("ratio");
 	ratio->setRange(0.0, 100.0);
@@ -345,7 +345,7 @@ static void buildNumbersGroup(NotNull<Node> parent, int32_t &z) {
 	ratio->setCaretBlink(false);
 	ui::addFormField(ratio);
 
-	auto volume = makeRow(parent, "Volume", ZOrder(z++))
+	auto volume = makeRow(parent, "@Locale:Form:Volume", ZOrder(z++))
 						  ->addChild(Rc<ui::Slider>::create(), s_widgetZOrder);
 	volume->setName("volume");
 	volume->setRange(0.0, 100.0, 5.0);
@@ -354,7 +354,7 @@ static void buildNumbersGroup(NotNull<Node> parent, int32_t &z) {
 	// The form collects `min + step * index`, not the index - so this reports 60, not 12.
 	ui::addFormField(volume);
 
-	auto offset = makeRow(parent, "Offset (vec3)", ZOrder(z++))
+	auto offset = makeRow(parent, "@Locale:Form:Offset", ZOrder(z++))
 						  ->addChild(Rc<ui::VectorField>::create(3), s_widgetZOrder);
 	offset->setName("offset");
 	offset->setStep(0.1);
@@ -368,13 +368,13 @@ static void buildNumbersGroup(NotNull<Node> parent, int32_t &z) {
 
 // The four ways of choosing something, including both in-scene popups.
 static void buildChoiceGroup(NotNull<Node> parent, int32_t &z) {
-	auto subscribe = makeRow(parent, "Subscribe", ZOrder(z++))
+	auto subscribe = makeRow(parent, "@Locale:Form:Subscribe", ZOrder(z++))
 							 ->addChild(Rc<ui::Checkbox>::create(), s_widgetZOrder);
 	subscribe->setName("subscribe");
 	subscribe->setChecked(true, true);
 	ui::addFormField(subscribe);
 
-	auto role = makeRow(parent, "Role", ZOrder(z++))
+	auto role = makeRow(parent, "@Locale:Form:Role", ZOrder(z++))
 						->addChild(Rc<ui::Select>::create(), s_widgetZOrder);
 	role->setName("role");
 	role->setOptions(ui::makeSelectOptions(SpanView<StringView>({StringView("Reader"),
@@ -394,7 +394,7 @@ static void buildChoiceGroup(NotNull<Node> parent, int32_t &z) {
 	Everything about it is ui::SearchPicker's; the demo only supplies the rows and asks for the
 	overlay path. `grouped` is what makes the empty query show categories instead of a ranked list
 	of forty-four names in some order nobody chose. */
-	auto country = makeRow(parent, "Country (search)", ZOrder(z++))
+	auto country = makeRow(parent, "@Locale:Form:Country", ZOrder(z++))
 						   ->addChild(Rc<ui::SearchPicker>::create(), s_widgetZOrder);
 	country->setName("country");
 	{
@@ -412,7 +412,7 @@ static void buildChoiceGroup(NotNull<Node> parent, int32_t &z) {
 	country->setValue("de", "Germany", true);
 	ui::addFormField(country);
 
-	auto tags = makeRow(parent, "Tags", ZOrder(z++))
+	auto tags = makeRow(parent, "@Locale:Form:Tags", ZOrder(z++))
 						->addChild(Rc<ui::ChipRow>::create(), s_widgetZOrder);
 	tags->setName("tags");
 	tags->setOptions(ui::makeSelectOptions(SpanView<StringView>({StringView("alpha"),
@@ -434,7 +434,7 @@ static void buildColorGroup(NotNull<Node> parent, int32_t &z) {
 	`Fallback` rather than `Auto` on purpose - `Auto` asks the window for a system dialog and takes
 	it where there is one, which would hide the very surface this demo is about. The field below it
 	is left on `Auto` so both policies are on screen at once. */
-	auto accent = makeRow(parent, "Accent (built-in)", ZOrder(z++))
+	auto accent = makeRow(parent, "@Locale:Form:Accent", ZOrder(z++))
 						  ->addChild(Rc<ui::ColorField>::create(), s_widgetZOrder);
 	accent->setName("accent");
 	accent->setValue(Color4B(0x1E, 0x88, 0xE5, 0xFF), true);
@@ -449,7 +449,7 @@ static void buildColorGroup(NotNull<Node> parent, int32_t &z) {
 
 	// With an alpha channel, so the hex it collects is `#rrggbbaa` and the picker grows a fourth
 	// bar. Left on Auto: on a platform with a colour dialog this one opens that instead.
-	auto overlay = makeRow(parent, "Overlay (auto + alpha)", ZOrder(z++))
+	auto overlay = makeRow(parent, "@Locale:Form:Overlay", ZOrder(z++))
 						   ->addChild(Rc<ui::ColorField>::create(), s_widgetZOrder);
 	overlay->setName("overlay");
 	overlay->setAlphaEnabled(true);
@@ -472,7 +472,7 @@ adapter drives a field through non-virtual, window-backed accessors that ui::Tex
 wholesale. A caller who needs one inside a form writes the FormFieldSlots for it - which is exactly
 the seam ui::addFormField(NotNull<Node>, FormFieldSlots &&) exists for. */
 static void buildEditorsGroup(NotNull<Node> parent, int32_t &z) {
-	auto view = makeRow(parent, "TextView", ZOrder(z++))
+	auto view = makeRow(parent, "@Locale:Form:TextView", ZOrder(z++))
 						->addChild(Rc<ui::TextView>::create(), s_widgetZOrder);
 	view->setName("prose");
 	view->addStyleClass("demo-editor");
@@ -483,7 +483,7 @@ static void buildEditorsGroup(NotNull<Node> parent, int32_t &z) {
 												 u"comment beside this call.");
 	view->setText(kProse);
 
-	auto code = makeRow(parent, "CodeEditor", ZOrder(z++))
+	auto code = makeRow(parent, "@Locale:Form:CodeEditor", ZOrder(z++))
 						->addChild(Rc<ui::CodeEditor>::create(), s_widgetZOrder);
 	code->setName("source");
 	code->addStyleClass("demo-editor");

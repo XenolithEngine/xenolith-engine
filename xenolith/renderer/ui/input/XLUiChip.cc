@@ -21,6 +21,8 @@
  **/
 
 #include "XLUiChip.h"
+
+#include "XLInheritedStyle.h" // placeInline*: the row follows the inline direction
 #include "XLUiLayoutSystem.h"
 #include "XLInteractiveComponent.h"
 #include "XLInputListener.h"
@@ -159,23 +161,23 @@ void Chip::handleContentSizeDirty() {
 		return;
 	}
 
-	float left = s_chipPaddingLeft;
+	// The icon leads, the remove button trails, both measured from the INLINE edges.
+	const bool rtl = isInlineRtl(this);
+
+	float startInset = s_chipPaddingLeft;
 	if (_icon && _icon->isVisible()) {
-		_icon->setAnchorPoint(Anchor::MiddleLeft);
-		_icon->setPosition(Vec2(left, height / 2.0f));
-		left += _icon->getContentSize().width + s_chipGap;
+		placeInlineStart(_icon, startInset, height / 2.0f, width, rtl);
+		startInset += _icon->getContentSize().width + s_chipGap;
 	}
 
-	float right = width - s_chipPaddingRight;
 	if (_remove && _remove->isVisible()) {
 		_remove->setContentSize(Size2(s_chipRemoveWidth, s_chipRemoveHeight));
-		_remove->setAnchorPoint(Anchor::MiddleRight);
-		_remove->setPosition(Vec2(right, height / 2.0f));
+		placeInlineEnd(_remove, s_chipPaddingRight, height / 2.0f, width, rtl);
 	}
 
 	if (_label) {
-		_label->setAnchorPoint(Anchor::MiddleLeft);
-		_label->setPosition(Vec2(left, height / 2.0f));
+		placeInlineStart(_label, startInset, height / 2.0f, width, rtl);
+		_label->setAlignment(inlineStartAlign(rtl));
 		// Deliberately no setWidth: a constrained label reports the constrained width afterwards,
 		// and measureNatural() would then answer with whatever the last placement squeezed it into.
 		// A chip is as wide as its text; making it narrower is the ROW's business, not the box's.

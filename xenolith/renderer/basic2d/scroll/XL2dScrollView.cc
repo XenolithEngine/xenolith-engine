@@ -22,6 +22,8 @@
  **/
 
 #include "XL2dScrollView.h"
+
+#include "XLInheritedStyle.h" // isInlineRtl: which side the vertical bar hangs from
 #include "XLInteractiveComponent.h" // the hover bit a stylesheet reads as :hover
 #include "XLInputDispatcher.h"
 #include "director/XLDirector.h"
@@ -735,12 +737,19 @@ void ScrollView::updateIndicatorPosition(Node *indicator, float size, float valu
 			// The track spans the whole run and the thumb is placed INSIDE it, so both the drag
 			// arithmetic and a stylesheet have a box to work against. getIndicatorTravel() reads
 			// the same `r` back out of these two nodes, which is what keeps the inverse honest.
+			/* The bar sits at the INLINE END of the view, so it changes sides with the
+			interface's direction. The track is anchored by the edge it hangs from and the thumb
+			by the same edge INSIDE it, which is why both anchors flip together: getIndicatorTravel
+			reads `r` back out of these two nodes, and an anchor that disagreed with the position
+			would make the inverse lie. */
+			const bool rtl = isInlineRtl(this);
 			_indicatorTrack->setContentSize(Size2(thickness, track));
-			_indicatorTrack->setPosition(Vec2(scrollWidth - inset, paddingLocal.bottom + inset));
+			_indicatorTrack->setPosition(
+					Vec2(rtl ? inset : scrollWidth - inset, paddingLocal.bottom + inset));
 
 			indicator->setContentSize(Size2(thickness, h));
-			indicator->setPosition(Vec2(thickness, r * (1.0f - value)));
-			indicator->setAnchorPoint(Vec2(1, 0));
+			indicator->setPosition(Vec2(rtl ? 0.0f : thickness, r * (1.0f - value)));
+			indicator->setAnchorPoint(Vec2(rtl ? 0.0f : 1.0f, 0.0f));
 		} else {
 			const float track = scrollWidth - inset * 2.0f - paddingLocal.left - paddingLocal.right;
 			float h = track * size;
