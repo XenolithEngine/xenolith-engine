@@ -26,8 +26,9 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_ROOT := $(dir $(realpath $(THIS_FILE)))
 GIT_TAG ?= $(shell git describe --tags --abbrev=0 2>/dev/null)
 
-T_INTERMEDIATE ?= $(abspath $(MAKE_ROOT))/intermediate/wasm32-unknown-unknown
-T_TARGET ?= $(abspath $(MAKE_ROOT))/targets/wasm32-unknown-unknown
+SP_ARCH ?= wasm32
+T_INTERMEDIATE ?= $(abspath $(MAKE_ROOT))/intermediate/$(SP_ARCH)-unknown-unknown
+T_TARGET ?= $(abspath $(MAKE_ROOT))/targets/$(SP_ARCH)-unknown-unknown
 
 # NB: do NOT pre-create lib/clang/lib/wasi here — it is itself a rule target
 # below, and if it already exists make treats that rule as up-to-date and skips
@@ -35,7 +36,7 @@ T_TARGET ?= $(abspath $(MAKE_ROOT))/targets/wasm32-unknown-unknown
 $(T_TARGET):
 	mkdir -p $(T_TARGET)/usr/lib $(T_TARGET)/share
 
-# Static runtimes: libclang_rt.builtins-wasm32.a, libunwind.a, libc++abi.a, libc++.a
+# Static runtimes: libclang_rt.builtins-<arch>.a, libunwind.a, libc++abi.a, libc++.a
 # libsprt.a ships too: it is the runtime (libc AND the libc++ port in one archive) that
 # a freestanding wasm host binary links against - the wasm clang host is built exactly
 # this way. Apps that drive the engine build system still rebuild the runtime from

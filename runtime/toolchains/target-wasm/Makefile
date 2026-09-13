@@ -19,7 +19,7 @@
 # THE SOFTWARE.
 
 # Cross-build the LLVM runtimes (compiler-rt builtins, libunwind, libc++abi,
-# libc++) for the freestanding wasm32 target using the host clang. Mirrors the
+# libc++) for the freestanding wasm32/wasm64 targets using the host clang. Mirrors the
 # two-phase target-windows/target-linux flow: the outer pass (no SP_ARCH) sets up
 # the per-arch variables and drives init-target -> build -> install; the inner
 # pass (SP_ARCH set) builds against the generated wasm toolchain.cmake.
@@ -39,39 +39,45 @@ TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 SP_OPT := -O3
 
 ifndef SP_ARCH
-# --- outer pass: describe the wasm32 target and drive the sub-passes ---
-ARCHS := wasm32
+# --- outer pass: describe the wasm targets and drive the sub-passes ---
+# wasm64 is the same freestanding target over memory64 (LP64): the triple alone switches
+# the pointer width, the feature set and the sprt platform stay the same.
+ARCHS := wasm32 wasm64
 LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
-SP_ARCH_wasm32_INFO_BASE := \
+define wasm_arch_template
+SP_ARCH_$(1)_INFO_BASE := \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
 	SP_RUNTIME_ROOT=$(realpath $(MAKE_ROOT)/../..) \
-	SP_ARCH=wasm32 \
-	SP_RES_ARCH=wasm32 \
-	SP_ARCH_TARGET_CLANG=wasm32-unknown-unknown
+	SP_ARCH=$(1) \
+	SP_RES_ARCH=$(1) \
+	SP_ARCH_TARGET_CLANG=$(1)-unknown-unknown
 
-SP_ARCH_wasm32_INFO := \
-	$(SP_ARCH_wasm32_INFO_BASE) \
-	SP_TARGET=wasm32-unknown-unknown \
-	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/wasm32-unknown-unknown
+SP_ARCH_$(1)_INFO := \
+	$$(SP_ARCH_$(1)_INFO_BASE) \
+	SP_TARGET=$(1)-unknown-unknown \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/$(1)-unknown-unknown
 
-SP_ARCH_wasm32_INSTALL := \
-	$(SP_ARCH_wasm32_INFO_BASE) \
-	T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/wasm32-unknown-unknown \
-	T_TARGET=$(TOOLCHAIN_TARGETS)/wasm32-unknown-unknown
+SP_ARCH_$(1)_INSTALL := \
+	$$(SP_ARCH_$(1)_INFO_BASE) \
+	T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/$(1)-unknown-unknown \
+	T_TARGET=$(TOOLCHAIN_TARGETS)/$(1)-unknown-unknown
+
+$(1):
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/$(1)-unknown-unknown/usr/include $(TOOLCHAIN_OUTPUT_DIR)/$(1)-unknown-unknown/usr/lib
+	$$(MAKE) -f $(TARGET_FILE) $$(SP_ARCH_$(1)_INFO)
+	$$(MAKE) -f $(THIS_FILE) $$(SP_ARCH_$(1)_INFO)
+	$$(MAKE) -f $(INSTALL_TARGET_FILE) $$(SP_ARCH_$(1)_INSTALL)
+endef
 
 all: $(ARCHS)
 
 clean:
 	$(call rule_rm,$(TOOLCHAIN_OUTPUT_DIR))
 
-wasm32:
-	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/wasm32-unknown-unknown/usr/include $(TOOLCHAIN_OUTPUT_DIR)/wasm32-unknown-unknown/usr/lib
-	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_wasm32_INFO)
-	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_wasm32_INFO)
-	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_ARCH_wasm32_INSTALL)
+$(foreach arch,$(ARCHS),$(eval $(call wasm_arch_template,$(arch))))
 
-.PHONY: all clean wasm32
+.PHONY: all clean $(ARCHS)
 
 else # SP_ARCH
 # --- inner pass: build the LLVM runtimes + the third-party dependency libs ---
@@ -130,7 +136,7 @@ FORWARD_VARS := \
 
 ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
-RUNTIME_LIB := $(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a
+RUNTIME_LIB := $(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-$(SP_ARCH).a
 
 # The live sprt runtime archive (libc + core), built the same way target-windows
 # builds sprt.lib. The dependency feature-probes link against it (configure.mk WASM
