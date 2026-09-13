@@ -301,11 +301,6 @@ void _mi_page_reclaim(mi_heap_t* heap, mi_page_t* page) {
 
 // allocate a fresh page from a segment
 static mi_page_t* mi_page_fresh_alloc(mi_heap_t* heap, mi_page_queue_t* pq, size_t block_size, size_t page_alignment) {
-  if (block_size == 0) {
-    // Corrupted size class (seen on wasm when two agents raced memory.grow).
-    // Do not reach `page_size / block_size` below.
-    return NULL;
-  }
   #if !MI_HUGE_PAGE_ABANDON
   mi_assert_internal(pq != NULL);
   mi_assert_internal(mi_heap_contains_queue(heap, pq));

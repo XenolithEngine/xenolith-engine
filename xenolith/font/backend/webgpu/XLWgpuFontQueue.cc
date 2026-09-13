@@ -193,8 +193,8 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 	// +1: white underline pixel
 	_regions.resize(totalCount + 1);
 	_textureTarget.resize(totalCount + 1);
-	// Not CopyBlockSize (32 MiB): a popup that adds glyphs must not grow wasm
-	// shared memory by a full 32 MiB slab or malloc fails with `null function`.
+	// Not CopyBlockSize (32 MiB): size the staging buffer to the actual glyph
+	// count instead of reserving a fixed 32 MiB transient allocation per submit.
 	uint64_t staging = uint64_t(totalCount + 1) * 2048;
 	if (staging < 256_KiB) {
 		staging = 256_KiB;

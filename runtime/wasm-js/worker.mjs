@@ -87,26 +87,15 @@ self.onmessage = async (e) => {
 		if (wantProcess && !hasCanvas) {
 			memory = createXlmakeMemory(post, memoryInitial, memoryMaximum);
 		} else {
-			// Shared memory.grow after thread workers exist returns -1 in the browser
-			// (`wasm memory.grow: Out of memory`), then malloc fails and release
-			// sprt_passert is a no-op → `RuntimeError: null function`. Commit the
-			// full 1 GiB ceiling up front so sbrk never grow()s. Fall back if the
-			// tab cannot reserve that much.
-			const maxPages = 16384;
-			let pages = 0;
-			for (const n of [16384, 8192, 4096]) {
-				try {
-					memory = new WebAssembly.Memory({ initial: n, maximum: maxPages, shared: true });
-					pages = n;
-					break;
-				} catch (err) {
-					post({ type: "stdout", text: `wasm memory ${n} pages refused (${err})\n` });
-				}
-			}
-			if (!memory) {
-				throw new Error("cannot allocate shared wasm memory");
-			}
-			post({ type: "stdout", text: `wasm memory ${(pages * 64) / 1024} MiB committed (grow disabled)\n` });
+			// 32 MiB initial, grow on demand up to the 1 GiB linker ceiling: growth is
+			// serialized by the engine-side sbrk lock (see docs/platforms/wasm.adoc).
+			// The earlier full-ceiling precommit ("grow disabled") turned that lock
+			// into dead code in production. The "shared grow returns -1 once workers
+			// exist" observation that motivated it was the pre-lock growth race plus
+			// mimalloc's default 1 GiB arena reserve hitting the ceiling - not a
+			// browser limitation.
+			memory = new WebAssembly.Memory({ initial: 512, maximum: 16384, shared: true });
+			post({ type: "stdout", text: "wasm memory 32 MiB initial (grow enabled, max 1 GiB)\n" });
 		}
 
 		// Shared atomic tid source: every worker draws unique native thread ids from it.

@@ -32,6 +32,10 @@ THE SOFTWARE.
 //  2. Raw sbrk from several threads at once: every handed-out range must be
 //     above the heap base and pairwise non-overlapping. Only positive deltas -
 //     handing memory back under a live malloc heap would corrupt it.
+//  3. Growth proof: everything above only exercises the growth lock if the
+//     heap really outgrows the runner's initial memory. sbrk(0) is recorded at
+//     entry and the test fails unless the break moved - a runner that
+//     pre-commits the full ceiling would otherwise pass vacuously.
 //
 // Output is deterministic: results are aggregated on the main thread.
 
@@ -126,6 +130,10 @@ constexpr int kSbrkWorkers = 8;
 constexpr int kSbrkRounds = 8;
 constexpr size_t kSbrkChunk = 65536;
 
+// Minimum sbrk growth for a valid run (wasm only): the churn above leaks net
+// ~8 MiB per malloc worker, far past a 32 MiB initial memory.
+constexpr size_t kMinGrowBytes = 1024 * 1024;
+
 struct SbrkRange {
 	uintptr_t start;
 	uintptr_t end;
@@ -155,6 +163,10 @@ void *sbrkWorker(void *arg) {
 } // namespace
 
 int main(int, char **) {
+#if defined(__wasm__)
+	const uintptr_t brkStart = reinterpret_cast<uintptr_t>(sbrk(0));
+#endif
+
 	pthread_t threads[kWorkers];
 
 	printf("wthread: spawning %d malloc workers x %d rounds\n", kWorkers, kRounds);
@@ -218,7 +230,18 @@ int main(int, char **) {
 			total, sbrkFails, overlaps,
 			(overlaps == 0 && sbrkFails == 0) ? "PASS" : "FAIL");
 
-	const bool ok = (fillErrors == 0 && allocFails == 0 && overlaps == 0 && sbrkFails == 0);
+#if defined(__wasm__)
+	const unsigned long growKiB = static_cast<unsigned long>(
+			(reinterpret_cast<uintptr_t>(sbrk(0)) - brkStart) / 1024);
+	const bool grew = growKiB >= kMinGrowBytes / 1024;
+	printf("wthread: heap growth=%lu KiB (min %lu KiB) -> %s\n",
+			growKiB, static_cast<unsigned long>(kMinGrowBytes / 1024),
+			grew ? "PASS" : "FAIL");
+#else
+	const bool grew = true;
+#endif
+
+	const bool ok = (fillErrors == 0 && allocFails == 0 && overlaps == 0 && sbrkFails == 0 && grew);
 	printf("wthread: %s\n", ok ? "ALL PASS" : "FAILED");
 	return ok ? 0 : 1;
 }
