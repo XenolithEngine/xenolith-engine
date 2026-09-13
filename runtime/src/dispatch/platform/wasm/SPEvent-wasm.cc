@@ -25,17 +25,45 @@
 
 #include "SPEvent-wasm.h"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "../fd/SPEventFile.h"
 #include "../fd/SPEventStatWatch.h"
 
 #include <sprt/runtime/dispatch/task.h>
 #include <sprt/runtime/log.h>
 
+
+
 extern "C" {
 // T1 host import (see runtime/core/wasm/clock_gettime.cc): nanoseconds for the
 // given clock id. clkid 1 == CLOCK_MONOTONIC (performance.now()+timeOrigin).
 __attribute__((import_module("sprt"), import_name("clock_now"))) double __sprt_host_clock_now(
 		int clkid);
+
+// Subprocess bridge: JS runs clang.wasm (or llvm-ar / ld64.lld) in a Web
+// Worker. xlmake itself never creates workers. Returns a host-side id >= 1, or
+// -1 if the host has no process handler. `wakeword` is notified from the main
+// thread when a job completes so the reactor's wait32 returns.
+__attribute__((import_module("sprt"), import_name("process_spawn"))) int32_t
+		__sprt_host_process_spawn(const uint8_t *cmd, uint32_t len, int32_t *wakeword);
+
+// Pop one completed job. Returns 1 and writes id/exit code, or 0 if the queue
+// is empty.
+__attribute__((import_module("sprt"), import_name("process_poll"))) int32_t
+		__sprt_host_process_poll(int32_t *outId, int32_t *outCode);
+
+// Copy pending stdout/stderr for `id` into dst. Returns bytes written (0 = done).
+__attribute__((import_module("sprt"), import_name("process_take_output"))) int32_t
+		__sprt_host_process_take_output(int32_t id, uint8_t *dst, uint32_t cap);
+
+// Product file (`-o` path) captured from clang `-o -`. Same pull loop as stdout.
+__attribute__((import_module("sprt"), import_name("process_take_file"))) int32_t
+		__sprt_host_process_take_file(int32_t id, uint8_t *dst, uint32_t cap);
 }
 
 namespace sprt::dispatch {
@@ -234,6 +262,142 @@ Status WasmThreadHandle::perform(dispatch::Function<void()> &&func, Ref *target,
 }
 
 //
+// WasmProcessHandle — clang.wasm in a host Web Worker
+//
+
+static void parseDashO(StringView cmd, char *dst, size_t cap) {
+	if (!dst || cap < 2) {
+		return;
+	}
+	dst[0] = 0;
+	const char *p = cmd.data();
+	size_t n = cmd.size();
+	for (size_t i = 0; i + 2 < n; i++) {
+		bool atTok = (i == 0) || p[i - 1] == ' ' || p[i - 1] == '\t';
+		if (!atTok || p[i] != '-' || p[i + 1] != 'o') {
+			continue;
+		}
+		size_t k = i + 2;
+		if (k < n && p[k] != ' ' && p[k] != '\t') {
+			// -opath
+		} else {
+			while (k < n && (p[k] == ' ' || p[k] == '\t')) {
+				++k;
+			}
+		}
+		size_t e = k;
+		while (e < n && p[e] != ' ' && p[e] != '\t') {
+			++e;
+		}
+		size_t len = e - k;
+		if (len == 0 || len + 1 > cap) {
+			return;
+		}
+		if (len == 1 && p[k] == '-') {
+			return; // -o -
+		}
+		__builtin_memcpy(dst, p + k, len);
+		dst[len] = 0;
+		return;
+	}
+}
+
+bool WasmProcessHandle::init(HandleClass *cl, ProcessInfo &&info, WasmData *w) {
+	if (!Handle::init(cl, sprt::move(info.completion))) {
+		return false;
+	}
+	_reader = sprt::move(info.reader);
+	_wasm = w;
+	parseDashO(info.command, _outPath, sizeof(_outPath));
+	auto source = reinterpret_cast<WasmProcessSource *>(_data);
+	int32_t id = __sprt_host_process_spawn(reinterpret_cast<const uint8_t *>(info.command.data()),
+			uint32_t(info.command.size()), w ? &w->_wakeword : nullptr);
+	if (id < 1) {
+		return false;
+	}
+	source->id = id;
+	_id = id;
+	return true;
+}
+
+Status WasmProcessHandle::rearm(WasmData *w, WasmProcessSource *s) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		_wasm = w;
+		s->id = _id;
+		w->registerProcessHandle(this);
+	}
+	return status;
+}
+
+Status WasmProcessHandle::disarm(WasmData *w, WasmProcessSource *s) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		w->unregisterProcessHandle(this);
+		s->id = -1;
+	}
+	return status;
+}
+
+void WasmProcessHandle::notify(WasmData *w, WasmProcessSource *s, const NotifyData &n) {
+	if (_status != Status::Ok) {
+		return;
+	}
+	_exitCode = int(n.result);
+	if (_reader) {
+		uint8_t buf[4'096];
+		for (;;) {
+			int32_t nread = __sprt_host_process_take_output(_id, buf, uint32_t(sizeof(buf)));
+			if (nread <= 0) {
+				break;
+			}
+			_reader(StringView(reinterpret_cast<const char *>(buf), size_t(nread)));
+		}
+	}
+	if (_outPath[0] && _exitCode == 0) {
+		char dir[sizeof(_outPath)];
+		size_t n = 0;
+		while (_outPath[n] && n + 1 < sizeof(dir)) {
+			dir[n] = _outPath[n];
+			++n;
+		}
+		dir[n] = 0;
+		for (size_t i = 1; i < n; ++i) {
+			if (dir[i] == '/') {
+				dir[i] = 0;
+				::mkdir(dir, 0755);
+				dir[i] = '/';
+			}
+		}
+		// Drain the SAB payload. Do not copy it into xlmake memfs: a 35MiB
+		// Mach-O on top of every .o already stored here OOMs, the recipe
+		// becomes error 1, and a truncated file_put clobbers the host copy
+		// (Chrome 8MiB / Safari 1MiB). JS already has the bytes from completeJob.
+		uint8_t buf[8'192];
+		for (;;) {
+			int32_t nread = __sprt_host_process_take_file(_id, buf, uint32_t(sizeof(buf)));
+			if (nread <= 0) {
+				break;
+			}
+		}
+		int fd = ::open(_outPath, O_WRONLY | O_CREAT | O_TRUNC, 0755);
+		if (fd < 0) {
+			::unlink(_outPath);
+			fd = ::open(_outPath, O_WRONLY | O_CREAT | O_TRUNC, 0755);
+		}
+		if (fd >= 0) {
+			::close(fd);
+		} else if (_reader) {
+			char msg[1088];
+			snprintf(msg, sizeof(msg), "xlmake: cannot touch '%s' errno=%d\n", _outPath, errno);
+			_reader(StringView(msg));
+		}
+	}
+	_status = Status::Suspended;
+	cancel(Status::Done, uint32_t(_exitCode));
+}
+
+//
 // WasmData reactor
 //
 
@@ -296,6 +460,46 @@ uint32_t WasmData::fireThreadHandles(RunContext *) {
 			sprt::release(h, refId);
 			++count;
 		}
+	}
+	return count;
+}
+
+void WasmData::registerProcessHandle(WasmProcessHandle *h) { _processHandles.emplace_back(h); }
+
+void WasmData::unregisterProcessHandle(WasmProcessHandle *h) {
+	for (size_t i = 0; i < _processHandles.size(); ++i) {
+		if (_processHandles[i] == h) {
+			_processHandles[i] = _processHandles.back();
+			_processHandles.pop_back();
+			return;
+		}
+	}
+}
+
+uint32_t WasmData::fireProcessHandles(RunContext *) {
+	uint32_t count = 0;
+	for (;;) {
+		int32_t id = 0;
+		int32_t code = 0;
+		if (__sprt_host_process_poll(&id, &code) <= 0) {
+			break;
+		}
+		WasmProcessHandle *found = nullptr;
+		for (auto h : _processHandles) {
+			if (h->processId() == id) {
+				found = h;
+				break;
+			}
+		}
+		if (!found) {
+			continue;
+		}
+		auto refId = sprt::retain(found);
+		NotifyData nd;
+		nd.result = code;
+		_data->notify(found, nd);
+		sprt::release(found, refId);
+		++count;
 	}
 	return count;
 }
@@ -390,6 +594,7 @@ uint32_t WasmData::poll() {
 
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
+	result += fireProcessHandles(&ctx);
 	drainWakeup();
 
 	popContext(&ctx);
@@ -403,13 +608,14 @@ uint32_t WasmData::wait(TimeInterval ival) {
 	int32_t gen = __atomic_load_n(&_wakeword, __ATOMIC_SEQ_CST);
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
+	result += fireProcessHandles(&ctx);
 	if (result == 0 && ctx.state == RunContext::Running) {
 		int64_t rel = wasm_rel_timeout(ival, nearestDeadline(), wasm_now_ns());
 		if (rel != 0) {
 			__builtin_wasm_memory_atomic_wait32(reinterpret_cast<int *>(&_wakeword), gen, rel);
 		}
 		drainWakeup();
-		result = fireExpired(&ctx) + fireThreadHandles(&ctx);
+		result = fireExpired(&ctx) + fireThreadHandles(&ctx) + fireProcessHandles(&ctx);
 	}
 
 	popContext(&ctx);
@@ -467,6 +673,11 @@ Status WasmData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 			break;
 		}
 
+		fireProcessHandles(&ctx);
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
+
 		drainWakeup();
 		if (ctx.state != RunContext::Running) {
 			break;
@@ -512,6 +723,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 	if (hasFlag(info.engineMask, QueueEngine::Wasm)) {
 		setupWasmHandleClass<WasmTimerHandle, WasmTimerSource>(&_info, &_wasmTimerClass, true);
 		setupWasmHandleClass<WasmThreadHandle, WasmThreadSource>(&_info, &_wasmThreadClass, true);
+		setupWasmHandleClass<WasmProcessHandle, WasmProcessSource>(&_info, &_wasmProcessClass, true);
 		setupInlineFileHandleClass(&_info, &_wasmFileInlineClass);
 		setupStatWatchClass(&_info, &_wasmWatchClass);
 
@@ -556,11 +768,20 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			return makeStatWatchHandle(d, &data->_wasmWatchClass, sprt::move(info), ref);
 		};
 
-		// _listenHandle / _spawnProcess / _socketPoll stay null (sockets and
-		// processes stay ENOSYS in the browser sandbox) - so
-		// listenSocket/connectSocket return nullptr cleanly here; a future
-		// client-side transport would go through a JS WebSocket/WebTransport
-		// bridge over OpenSSL memory BIOs, not through these syscalls.
+		// Sockets stay ENOSYS in the browser sandbox (a future client-side
+		// transport would go through a JS WebSocket/WebTransport bridge, not
+		// these syscalls). Processes are not posix_spawn: spawnProcess posts
+		// the command to a host Web Worker (clang.wasm / llvm-ar / ld64.lld).
+		_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+								 Ref *ref) -> Rc<ProcessHandle> {
+			auto data = static_cast<Queue::Data *>(d);
+			auto w = static_cast<WasmData *>(ptr);
+			auto h = Rc<WasmProcessHandle>::create(&data->_wasmProcessClass, sprt::move(info), w);
+			if (h && ref) {
+				h->setUserdata(ref);
+			}
+			return h;
+		};
 
 		_platformQueue = w;
 		_engine = QueueEngine::Wasm;

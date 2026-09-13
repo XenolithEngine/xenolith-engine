@@ -78,12 +78,13 @@ STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-pc-windows-msvc
 
 else ifeq ($(UNAME),WASM)
 
-# xlmake itself runs as wasm32 (browser / sprt sandbox). The "host" is the
+# xlake itself runs as wasm32 (browser / sprt sandbox). The "host" is the
 # JS-driven clang.wasm pool: runtime/toolchains/hosts/wasm32-unknown-unknown
 # defines its host half (empty bindir; recipes spawn clang/clang++/llvm-ar/
 # ld64.lld that the JS process host executes).
 ANDROID_HOST := wasm-$(ANDROID_DISTRIB_ARCH)
 
+STAPPLER_HOST_ARCH ?= wasm32
 STAPPLER_HOST := wasm32-unknown-unknown
 
 else

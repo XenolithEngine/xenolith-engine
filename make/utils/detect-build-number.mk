@@ -20,7 +20,10 @@
 
 ifdef XLMAKE_VERSION
 
-ifeq ($(UNAME),Windows)
+ifeq ($(UNAME),WASM)
+# xlmake-in-browser has no git; fall through to .build_number / empty.
+sp_detect_git =
+else ifeq ($(UNAME),Windows)
 sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2>nul)
 else
 sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2> /dev/null)
@@ -43,4 +46,4 @@ sp_detect_build_number_file = $(call shell_cat,$(1)/.build_number)
 
 sp_detect_build_number = $(if $(call sp_detect_git,$(1)),\
 	$(call sp_detect_build_write_rev,$(1),$(call sp_detect_build_number_git,$(1))),\
-	$(call sp_detect_build_number_file,$(1)))
+	$(or $(call sp_detect_build_number_file,$(1)),0))
