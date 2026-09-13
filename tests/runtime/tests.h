@@ -32,6 +32,8 @@ void performMemalignMacroTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();
+void performWasm64AbiTest();
+void performWasm64HighMemTest();
 
 void performPthreadCreateTest();
 void performPthreadMutexTest();

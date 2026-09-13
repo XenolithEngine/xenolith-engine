@@ -265,7 +265,7 @@ CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(S
 CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdinc -nostdinc++ -std=gnu++2a $(SP_WASM_FEATURES) $(SP_WASM_CXX_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib -Wl,--no-entry -Wl,--export-if-defined=main \
 	-L$(SP_INSTALL_PREFIX)/usr/lib -lsprt \
-	$(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a
+	$(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-$(SP_ARCH).a
 endif # WASM
 ifdef EMBOX_USER
 # NO arch flags here, matching the NuttX and Embox branches. cmake gives its own
