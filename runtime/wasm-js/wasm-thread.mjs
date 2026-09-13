@@ -2,7 +2,7 @@
 // the stack and TLS block the creator pre-allocated, and enters __xl_thread_entry (which
 // runs the portable __runthead trampoline). Threads may spawn further threads recursively.
 
-import { makeImports } from "./sprt-imports.mjs";
+import { makeImports, isMemory64, ptrConverter } from "./sprt-imports.mjs";
 import { makeWebgpuThunks } from "./webgpu.mjs";
 
 self.onmessage = async (e) => {
@@ -29,10 +29,11 @@ self.onmessage = async (e) => {
 		}
 		instance = await WebAssembly.instantiate(module, imports); // module is compiled → Instance
 		const ex = instance.exports;
-		ex.__stack_pointer.value = stackTop;   // run on this thread's own stack
-		ex.__wasm_init_tls(tlsBase || 0);       // initialize this thread's TLS block
+		const ptr = ptrConverter(isMemory64(memory)); // wasm64 exports take BigInt pointers
+		ex.__stack_pointer.value = ptr(stackTop);   // run on this thread's own stack
+		ex.__wasm_init_tls(ptr(tlsBase));            // initialize this thread's TLS block
 		try {
-			ex.__xl_thread_entry(tid, threadPtr);
+			ex.__xl_thread_entry(tid, ptr(threadPtr));
 		} catch (err) {
 			if (!(err && typeof err === "object" && err.__thread_exit)) {
 				self.postMessage({ type: "error", message: String((err && err.stack) || err) });

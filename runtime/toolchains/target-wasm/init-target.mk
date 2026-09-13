@@ -59,7 +59,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo '# (WASI is not recognised by HandleLLVMOptions), which pairs with the' >> $@
 	@echo '# COMPILER_RT_BAREMETAL_BUILD / LIBUNWIND_IS_BAREMETAL / *_BAREMETAL flags.' >> $@
 	@echo 'set(CMAKE_SYSTEM_NAME Generic)' > $@
-	@echo 'set(CMAKE_SYSTEM_PROCESSOR wasm32)' >> $@
+	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))' >> $@
 	@echo '# On Generic the shared-lib suffix defaults to the static "\.a", so the' >> $@
 	@echo '# always-defined (but EXCLUDE_FROM_ALL) unwind_shared/c++_shared targets' >> $@
 	@echo '# collide with the static ones ("multiple rules generate libunwind.a").' >> $@
@@ -107,7 +107,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'
 	@echo '# Generic = baremetal (LLVM_ON_UNIX/WIN32 = 0), matching the runtimes toolchain.' > $@
 	@echo 'set(CMAKE_SYSTEM_NAME Generic)' >> $@
-	@echo 'set(CMAKE_SYSTEM_PROCESSOR wasm32)' >> $@
+	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))' >> $@
 	@echo '# On Generic the shared-lib suffix defaults to the static ".a"; give shared' >> $@
 	@echo '# libs a distinct suffix so the (never-built) shared targets some deps always' >> $@
 	@echo '# define do not collide with their static archives.' >> $@

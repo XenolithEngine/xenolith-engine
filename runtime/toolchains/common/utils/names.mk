@@ -26,6 +26,7 @@ CONFIGURE_PROC_arm64 := aarch64
 CONFIGURE_PROC_riscv64 := riscv64
 CONFIGURE_PROC_e2k := e2kv4
 CONFIGURE_PROC_wasm32 := wasm32
+CONFIGURE_PROC_wasm64 := wasm64
 
 CONFIGURE_HOST_Linux_x86 := i686-linux-gnu
 CONFIGURE_HOST_Linux_armv7a := armv7a-linux-gnu

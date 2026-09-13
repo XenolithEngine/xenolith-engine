@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Driver: run the upstream libc++ conformance suite against the sprt STL on the
-# wasm32-unknown-unknown target, executed headlessly under Node.js.
+# wasm32-unknown-unknown / wasm64-unknown-unknown target, executed headlessly under Node.js.
 #
 # It mirrors run.sh (build sprt runtime -> collect objects -> export the toolchain
 # contract -> llvm-lit), but targets wasm: each test compiles with the wasm clang,
@@ -21,7 +21,17 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-TARGET="wasm32-unknown-unknown"
+# SPRT_WASM_TARGET selects the pointer width: wasm32-unknown-unknown (default) or
+# wasm64-unknown-unknown (memory64). Everything else below derives from it.
+TARGET="${SPRT_WASM_TARGET:-wasm32-unknown-unknown}"
+ARCH="${TARGET%%-*}"
+case "$ARCH" in
+  wasm32) WASM_MAX_MEMORY=1073741824 ;;    # 1 GiB, matches make/os/wasm.mk
+  wasm64) WASM_MAX_MEMORY=17179869184 ;;   # 16 GiB, the V8 memory64 ceiling
+  *) echo "error: unsupported wasm target: $TARGET" >&2; exit 1 ;;
+esac
+# the main-thread stack make/os/wasm.mk links with (wasm-ld's own default is 64 KiB)
+WASM_STACK_FLAGS="-Wl,-z,stack-size=1048576"
 
 TC="$ROOT/runtime/toolchains"
 # wasm has no dedicated host toolchain: it is the linux host clang driving
@@ -35,7 +45,7 @@ WASM_USRINC="$SYSROOT/usr/include"
 LLVM="$ROOT/runtime/toolchains/src/llvm-project"
 SUPPORT="$LLVM/libcxx/test/support"
 STDROOT="$LLVM/libcxx/test/std"
-RUNNER="$ROOT/runtime/wasm-js/run-node.mjs"
+RUNNER="${SPRT_WASM_RUNNER:-$ROOT/runtime/wasm-js/run-node.mjs}"
 SCOPE="${1:-utilities/optional}"; shift || true
 
 # wasm target features used by the whole runtime build (toolchains/target-wasm):
@@ -114,11 +124,11 @@ export SPRT_COMPILE_ONLY="$COMPILE_ONLY"
 export SPRT_LINK_FLAGS="\
 -fuse-ld=lld -nostdlib -L$SYSROOT/usr/lib \
 --target=$TARGET --sysroot=$SYSROOT -resource-dir $RESDIR $WASM_FEATURES \
--Wl,--import-memory,--shared-memory,--max-memory=1073741824 \
+-Wl,--import-memory,--shared-memory,--max-memory=$WASM_MAX_MEMORY \
 -Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 -Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
--Wl,--export-table \
-$SYSROOT/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a \
+-Wl,--export-table $WASM_STACK_FLAGS \
+$SYSROOT/lib/clang/lib/wasi/libclang_rt.builtins-$ARCH.a \
 $SYSROOT/usr/lib/libc++abi.a \
 $SYSROOT/usr/lib/libunwind.a"
 # Run each linked .wasm headlessly under Node (shared memory + worker threads).

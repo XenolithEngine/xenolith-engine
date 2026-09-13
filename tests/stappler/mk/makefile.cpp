@@ -227,6 +227,15 @@ void performMakefileTests() {
 		}
 
 		// --- fixture B: actual recipe execution via the shell ---
+		// wasm has no process model, so popen() cannot start a shell there (the same reason
+		// runtime_process SKIPs). The execution fixtures still walk the whole build graph -
+		// ordering, phony and recipe-less targets, the missing-rule diagnostic - with dryRun,
+		// which stops exactly at the shell.
+		BuildOptions execOptions;
+#if SPRT_WASM
+		execOptions.dryRun = true;
+		sprt::cout << "    (wasm: no process model, recipes run as a dry run)\n";
+#endif
 		static constexpr StringView kExec =
 				".PHONY: all a b\n"
 				"all: a b\n"
@@ -241,6 +250,7 @@ void performMakefileTests() {
 		errB.callback = logcb;
 		errB.filename = StringView("<exec>");
 		check(mkB->include("exec.mk", kExec, true, &errB), "fixture B parses");
+		mkB->setBuildOptions(execOptions);
 		auto res = mkB->execute(mkB->getTarget("all"), errB);
 		check(res == BuildResult::Built, "execute(all) ran phony recipes");
 
@@ -259,6 +269,7 @@ void performMakefileTests() {
 			errA.callback = logcb;
 			errA.filename = StringView("<agg>");
 			check(mkA->include("agg.mk", kAgg, true, &errA), "recipe-less aggregator parses");
+			mkA->setBuildOptions(execOptions);
 			auto aggRes = mkA->execute(mkA->getTarget("all"), errA);
 			check(aggRes == BuildResult::Built && errA.nerrors == 0,
 					"recipe-less aggregator 'all: a b' builds prereqs without 'No rule' error");
@@ -271,6 +282,7 @@ void performMakefileTests() {
 			errM.filename = StringView("<missing>");
 			check(mkM->include("missing.mk", kMissing, true, &errM),
 					"missing-prereq fixture parses");
+			mkM->setBuildOptions(execOptions);
 			// (the executor logs "No rule to make target 'nope'" below — that diagnostic is expected)
 			auto missRes = mkM->execute(mkM->getTarget("goal"), errM);
 			check(missRes == BuildResult::Failed,

@@ -43,7 +43,7 @@ __attribute__((import_module("sprt"), import_name("clock_now"))) double __sprt_h
 // returns the byte length written (never NUL-terminated by the host), or 0 if the
 // host cannot report a locale. See JS `os_locale`.
 __attribute__((import_module("sprt"), import_name("os_locale"))) int __sprt_host_os_locale(
-		char *dst, int cap);
+		char *dst, size_t cap);
 }
 
 namespace sprt::platform {
@@ -81,7 +81,7 @@ StringView getOsLocale() {
 	// Query the host once and cache in the config pool.
 	static StringView s_locale = [] {
 		char buf[64];
-		auto len = __sprt_host_os_locale(buf, int(sizeof(buf)));
+		auto len = __sprt_host_os_locale(buf, sizeof(buf));
 		if (len <= 0) {
 			return StringView();
 		}
