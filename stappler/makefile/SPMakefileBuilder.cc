@@ -548,6 +548,12 @@ void Builder::spawn(Job *job) {
 		job->cmdSettled = false;
 		auto h = _looper->writeFile(path, data, flags, [this, job](sprt::Status st) {
 			int code = isSuccessful(st) ? 0 : -1;
+			// Drop the last handle reference BEFORE reporting the line done:
+			// the close is what pushes the file content to the host (wasm
+			// file_put). If make advances a dependent target first, the JS
+			// worker pool captures a stale, mid-append snapshot of generated
+			// headers (stappler-buildconfig.h truncation).
+			job->file = nullptr;
 			if (job->inSyncWindow) {
 				job->cmdSettled = true;
 				job->cmdSyncCode = code;
@@ -558,6 +564,7 @@ void Builder::spawn(Job *job) {
 		job->inSyncWindow = false;
 
 		if (job->cmdSettled) {
+			job->file = nullptr; // same close-before-done ordering as the async path
 			onCommandDone(job, job->cmdSyncCode); // synchronous completion (e.g. open error)
 			return;
 		}
