@@ -33,7 +33,7 @@ LIBNAME = openssl
 
 include ../common/configure.mk
 
-OPENSSL_TARGET := wasm32-sprt-clang
+OPENSSL_TARGET := $(SP_ARCH)-sprt-clang
 
 export CMAKECONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/cmake
 export PKGCONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig

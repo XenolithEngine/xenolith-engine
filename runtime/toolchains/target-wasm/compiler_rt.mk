@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# Cross-build the LLVM runtimes for wasm32: compiler-rt (builtins), libunwind and
+# Cross-build the LLVM runtimes for wasm32/wasm64: compiler-rt (builtins), libunwind and
 # libc++abi (NOT libc++ — the runtime ships its own STL). Building them together
 # (the runtimes superbuild, like target-linux) rather than compiler-rt alone is
 # deliberate — a standalone builtins build produces a truncated compiler-rt that
