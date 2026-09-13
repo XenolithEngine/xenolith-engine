@@ -32,6 +32,7 @@ THE SOFTWARE.
 
 #include "SPMakefileBuilder.h"
 #include "SPFilesystem.h" // in-process $(MKDIR)/$(REMOVE)/$(CP) directives (mkdir/remove/copy)
+#include "SPFilesystemFile.h" // in-process $(WRITE)/$(APPEND) on wasm (synchronous memfs write)
 #include "SPMakefileEmbed.h" // in-process $(EMBED) directive (BundleFS codegen)
 
 #include <sprt/runtime/dispatch/looper.h>
@@ -518,12 +519,6 @@ void Builder::spawn(Job *job) {
 			return;
 		}
 
-		auto flags = (cmd.kind == Command::Kind::Write)
-				? (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
-						  | dispatch::OpenFlags::Truncate)
-				: (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
-						  | dispatch::OpenFlags::Append);
-
 		// Decode the destination path to a real filesystem path; decode the content too, in case an
 		// expanded path with a placeholder leaked into it (the file must hold real spaces, not 0x1F).
 		// The decoded copies are parked on the Job because writeFile borrows them until its
@@ -540,6 +535,38 @@ void Builder::spawn(Job *job) {
 		job->writeDataDecoded.assign(dataDecoded.data(), dataDecoded.size());
 		BytesView data(reinterpret_cast<const uint8_t *>(job->writeDataDecoded.data()),
 				job->writeDataDecoded.size());
+
+		// Synchronous file write on wasm: the reactor's async writeFile reports
+		// the line done BEFORE the inline handle's close releases the fd, so the
+		// memfs file_put push to the JS host trails make's target-done by event
+		// loop turns — a dependent compile scheduled right after then captures
+		// a stale mid-append snapshot of a generated header (observed as
+		// stappler-buildconfig.h truncated at its #ifndef; dropping the handle
+		// before the done-callback, f7fcf981, does not close the window). The
+		// wasm VFS is an in-process memfs, so a synchronous write is free; its
+		// close pushes the file to the host before the line reports done.
+#if SPRT_WASM
+		bool writeOk = false;
+		if (cmd.kind == Command::Kind::Write) {
+			writeOk = filesystem::write(FileInfo{path}, data.data(), data.size(), true);
+		} else {
+			auto file = filesystem::File::open(FileInfo{path},
+					filesystem::OpenFlags::Write | filesystem::OpenFlags::Create
+							| filesystem::OpenFlags::Append);
+			if (file) {
+				file.write(data.data(), data.size());
+				file.close();
+				writeOk = true;
+			}
+		}
+		onCommandDone(job, writeOk ? 0 : -1);
+		return;
+#else
+		auto flags = (cmd.kind == Command::Kind::Write)
+				? (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
+						  | dispatch::OpenFlags::Truncate)
+				: (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
+						  | dispatch::OpenFlags::Append);
 
 		// writeFile may fire its completion synchronously on an open error (then return null), unlike
 		// spawnProcess. While inSyncWindow the completion only records the result instead of
@@ -575,6 +602,7 @@ void Builder::spawn(Job *job) {
 		}
 		job->file = h; // keep the handle alive until the async completion fires
 		return;
+#endif // SPRT_WASM
 	}
 	job->file = nullptr; // this line uses a child process, not a file handle
 
