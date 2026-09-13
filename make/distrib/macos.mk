@@ -102,39 +102,63 @@ $(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
 	"</plist>`n", \
 		| Set-Content -NoNewline -Encoding utf8 -Path "$@"
 else
+# Two complete recipes: mid-recipe `ifdef` truncates xlmake, and a shell `if` cannot
+# run under the wasm host (no /bin/sh). Icon keys are a parse-time choice.
+ifndef LOCAL_MACOS_ICON
 $(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
 	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
-	@echo '<?xml version=$"1.0$" encoding=$"UTF-8$"?>' > $@
-	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $@
-	@echo '<plist version="1.0">' >> $@
-	@echo '<dict>' >> $@
-	@echo '	<key>CFBundleExecutable</key>' >> $@
-	@echo '	<string>$(LOCAL_EXECUTABLE)</string>' >> $@
-	@echo '	<key>CFBundleName</key>' >> $@
-	@echo '	<string>$(LOCAL_EXECUTABLE)</string>' >> $@
-	@echo '	<key>CFBundleDisplayName</key>' >> $@
-	@echo '	<string>$(APPCONFIG_APP_NAME)</string>' >> $@
-	@echo '	<key>CFBundleIdentifier</key>' >> $@
-	@echo '	<string>$(APPCONFIG_BUNDLE_NAME)</string>' >> $@
-	@echo '	<key>CFBundlePackageType</key>' >> $@
-	@echo '	<string>APPL</string>' >> $@
-	@echo '	<key>LSMinimumSystemVersion</key>' >> $@
-	@echo '	<string>$(TARGET_OSVER)</string>' >> $@
-	@echo '	<key>NSHighResolutionCapable</key>' >> $@
-	@echo '	<true/>' >> $@
-	@if [ -n "$(LOCAL_MACOS_ICON)" ]; then \
-		echo '	<key>CFBundleIconFile</key>' >> $@; \
-		echo '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>' >> $@; \
-		echo '	<key>CFBundleIconName</key>' >> $@; \
-		echo '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>' >> $@; \
-	fi
-	@echo '</dict>' >> $@
-	@echo '</plist>' >> $@
+	@$(WRITE) $@ '<?xml version=$"1.0$" encoding=$"UTF-8$"?>'
+	@$(APPEND) $@ '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+	@$(APPEND) $@ '<plist version="1.0">'
+	@$(APPEND) $@ '<dict>'
+	@$(APPEND) $@ '	<key>CFBundleExecutable</key>'
+	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
+	@$(APPEND) $@ '	<key>CFBundleName</key>'
+	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
+	@$(APPEND) $@ '	<key>CFBundleDisplayName</key>'
+	@$(APPEND) $@ '	<string>$(APPCONFIG_APP_NAME)</string>'
+	@$(APPEND) $@ '	<key>CFBundleIdentifier</key>'
+	@$(APPEND) $@ '	<string>$(APPCONFIG_BUNDLE_NAME)</string>'
+	@$(APPEND) $@ '	<key>CFBundlePackageType</key>'
+	@$(APPEND) $@ '	<string>APPL</string>'
+	@$(APPEND) $@ '	<key>LSMinimumSystemVersion</key>'
+	@$(APPEND) $@ '	<string>$(TARGET_OSVER)</string>'
+	@$(APPEND) $@ '	<key>NSHighResolutionCapable</key>'
+	@$(APPEND) $@ '	<true/>'
+	@$(APPEND) $@ '</dict>'
+	@$(APPEND) $@ '</plist>'
+else
+$(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
+	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
+	@$(WRITE) $@ '<?xml version=$"1.0$" encoding=$"UTF-8$"?>'
+	@$(APPEND) $@ '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+	@$(APPEND) $@ '<plist version="1.0">'
+	@$(APPEND) $@ '<dict>'
+	@$(APPEND) $@ '	<key>CFBundleExecutable</key>'
+	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
+	@$(APPEND) $@ '	<key>CFBundleName</key>'
+	@$(APPEND) $@ '	<string>$(LOCAL_EXECUTABLE)</string>'
+	@$(APPEND) $@ '	<key>CFBundleDisplayName</key>'
+	@$(APPEND) $@ '	<string>$(APPCONFIG_APP_NAME)</string>'
+	@$(APPEND) $@ '	<key>CFBundleIdentifier</key>'
+	@$(APPEND) $@ '	<string>$(APPCONFIG_BUNDLE_NAME)</string>'
+	@$(APPEND) $@ '	<key>CFBundlePackageType</key>'
+	@$(APPEND) $@ '	<string>APPL</string>'
+	@$(APPEND) $@ '	<key>LSMinimumSystemVersion</key>'
+	@$(APPEND) $@ '	<string>$(TARGET_OSVER)</string>'
+	@$(APPEND) $@ '	<key>NSHighResolutionCapable</key>'
+	@$(APPEND) $@ '	<true/>'
+	@$(APPEND) $@ '	<key>CFBundleIconFile</key>'
+	@$(APPEND) $@ '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>'
+	@$(APPEND) $@ '	<key>CFBundleIconName</key>'
+	@$(APPEND) $@ '	<string>$(basename $(notdir $(LOCAL_MACOS_ICON)))</string>'
+	@$(APPEND) $@ '</dict>'
+	@$(APPEND) $@ '</plist>'
+endif
 endif
 
 # Optional Dock/Finder icon: LOCAL_MACOS_ICON=/path/to/AppIcon.icns → Contents/Resources/<name>.icns
-# and CFBundleIconFile in Info.plist (name without extension). Mid-recipe `ifdef` breaks xlmake
-# (truncates the recipe), so the plist keys use a shell `if` above instead.
+# and CFBundleIconFile in Info.plist (name without extension).
 ifdef LOCAL_MACOS_ICON
 BUILD_MACOS_ICON := $(abspath $(dir $(BUILD_INFO_PLIST))/Resources/$(notdir $(LOCAL_MACOS_ICON)))
 $(BUILD_MACOS_ICON): $(LOCAL_MACOS_ICON) $(BUILD_INFO_PLIST)
