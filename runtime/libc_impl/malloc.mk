@@ -33,9 +33,12 @@ ifeq ($(TARGET_SYSTEM),WASM)
 # the same mimalloc SCU as every other target; -D__wasi__ selects that prim layer.
 #
 # -DMI_USE_PTHREADS keeps mimalloc MULTI-THREADED: the sprt wasm runtime has full
-# pthreads, so mimalloc uses its normal per-thread heaps, a pthread mutex around
-# memory growth, and a pthread-key destructor to reclaim a thread's heap on exit
-# (see the atomic.h + wasi/prim.c overrides) instead of the wasi single-thread stub.
+# pthreads, so mimalloc uses its normal per-thread heaps and a pthread-key destructor
+# to reclaim a thread's heap on exit (see the atomic.h + wasi/prim.c overrides)
+# instead of the wasi single-thread stub. Growth is NOT a pthread mutex here: the
+# wasi prim serializes it with a raw atomic + memory.atomic.wait32 lock word in
+# shared linear memory (a pthread wait is instance-local across the Worker
+# instances that share the memory) - see docs/platforms/wasm.adoc.
 MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
 	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
 MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \

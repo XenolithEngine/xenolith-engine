@@ -1,0 +1,159 @@
+# wasm platform: memory and threading
+
+This document describes how the engine's `wasm32-unknown-unknown` target manages
+linear memory and threads, and why the growth path looks the way it does. The
+host side (browser worker harness, Node runner) lives in
+[../../runtime/wasm-js/](../../runtime/wasm-js/); the browser playground that
+consumes it is the sibling `xenolith-host-wasm` repo (via its `vendor/wasm-js`
+symlink).
+
+## Memory model
+
+Executables are linked with imported, **shared** linear memory
+(`-Wl,--import-memory,--shared-memory,--max-memory=1073741824`,
+[../../make/os/wasm.mk](../../make/os/wasm.mk)):
+
+* **1 GiB ceiling** (16384 pages of 64 KiB) reserved at link time.
+* **32 MiB initial**, grown on demand by the program itself. The browser
+  harness ([`worker.mjs`](../../runtime/wasm-js/worker.mjs)) and the Node
+  runner ([`run-node.mjs`](../../runtime/wasm-js/run-node.mjs)) both create
+  `{ initial: 512, maximum: 16384, shared: true }`.
+
+There is deliberately **no up-front commit of the ceiling**. A full 1 GiB
+precommit was tried (2026-09-10) and reverted: it disables `memory.grow` for
+the process lifetime, which turns the growth lock below into dead code in
+production and costs every tab/window a full 1 GiB of committed memory. Growth
+under the lock is safe — `tests/wthread` proves it with ~200 MiB of concurrent
+growth (see below).
+
+## Threads are separate instances over one memory
+
+`thread_spawn` starts a new JS Worker (browser) or `worker_threads` worker
+(Node) that instantiates **the same compiled module** against the same
+SharedArrayBuffer-backed memory and enters `__xl_thread_entry`. Consequences:
+
+* All shared state, including allocator metadata and lock words, lives in
+  linear memory — never in a JS-side object.
+* A `pthread_mutex` cannot guard growth: its futex wait is **instance-local**
+  (each Worker parks on its own agent), so it does not serialize agents.
+* `Atomics.wait` is forbidden on the browser main thread, hence the engine
+  itself lives in a dedicated Worker and spawns nested workers.
+
+## The single growth path and its two locks
+
+Every byte of heap growth funnels through one function chain:
+
+....
+malloc → mimalloc `_mi_os_mem_alloc` → `mi_prim_mem_grow`
+       → sbrk ([../../runtime/libc_impl/src/wasm/unistd.cc])
+       → memory.grow
+....
+
+* `sbrk` models the program break on linear memory from the linker-provided
+  `__heap_base` and calls `__builtin_wasm_memory_grow(0, pages)` when the break
+  would pass the current memory size.
+* mimalloc's wasi prim layer
+  ([../../runtime/libc_impl/mimalloc/src/prim/wasi/prim.c]) is built with
+  `MI_USE_SBRK`, so its `mi_memory_grow` **is** `sbrk`. The direct
+  `__builtin_wasm_memory_grow` variant in that file is a deliberate `#error`:
+  a second grow path would bypass the locks and desynchronize the break.
+
+Growth is serialized by a **nesting pair** of raw locks in shared linear
+memory:
+
+* **Outer** — `mi_wasm_grow_lock` in `wasi/prim.c`, held across the
+  probe(`sbrk(0)`) + grow sequence of `mi_prim_mem_grow`.
+* **Inner** — `s_wasm_brk_lock` in `unistd.cc`, held by `brk()`/`sbrk()`
+  around the break update and the actual `memory.grow`.
+
+Both use `__atomic_exchange_n` + `memory.atomic.wait32/notify` parking. Two
+rules are load-bearing:
+
+* **Do not collapse the two locks into one.** The outer lock is held across a
+  call into `sbrk`, which takes the inner one; a single shared non-recursive
+  lock self-deadlocks on the first aligned grow. This was tried and reverted
+  the same day — `tests/wthread` catches exactly that collapse.
+* **Do not busy-spin.** Shared-memory growth needs the other agents parked; a
+  tight RMW loop on the lock word deadlocks the grower. Waiters must park in
+  `memory.atomic.wait32`. The inner lock uses a 10 s bounded wait that only
+  *logs* a stuck holder (raw `write(2)` — stdio's FILE lock may be held by a
+  waiter) and parks again: proceeding after a holder died mid-grow would hand
+  out memory overlapping a live allocation.
+
+Why locking matters at all: two racing growers each extend the break from the
+same base and hand out **overlapping** ranges. mimalloc then initializes a
+page from corrupted size-class metadata and divides by `block_size == 0`
+(`mi_page_fresh_alloc`) — the historic wasm crash. Without locks this is
+reachable from ordinary fan-out malloc (e.g. parallel font rasterization on
+worker threads).
+
+## Arena clamp
+
+[../../runtime/libc_impl/malloc.mk](../../runtime/libc_impl/malloc.mk) builds
+the wasm mimalloc with `-DMI_DEFAULT_ARENA_RESERVE=32*1024` (32 MiB; the
+option is in KiB). The default arena reserve is 1 GiB — equal to the entire
+linear-memory ceiling — so the first arena reservation through `sbrk` would
+consume the whole ceiling in one call and every later growth would fail with
+`ENOMEM`. The clamp keeps arena reservations proportional (further arenas are
+reserved on demand, `mi_arena_reserve` rounds up to the segment size).
+
+## What deliberately does not exist
+
+* **No memory shrink.** `sbrk` with a negative delta is refused in the test
+  harness and returning memory under a live malloc heap is not supported.
+* **No `mmap`.** The allocator grows only through `sbrk`.
+* **No per-Worker grow from JS.** Only the wasm side grows memory, through the
+  locked path above.
+
+## Observability
+
+`--export=__sprt_malloc_usage` (added with the wasm window work) plus the
+`mem:` heartbeat in the wasm poll timer report live malloc bytes — the 1 GiB
+*ceiling* is only observable through sbrk failing, so the burn-down is what
+the heartbeat watches. A guard rejects a second wasm window per tab (each
+window carries its own 1 GiB reservation).
+
+## Testing: `tests/wthread`
+
+[../../tests/wthread/](../../tests/wthread/) is the contract for all of the
+above:
+
+1. **malloc/free fan-out** — 8 workers × 24 rounds across mimalloc size
+   classes (16 B … 256 KiB) with fill/verify patterns, churning the heap far
+   past its initial size.
+2. **raw sbrk race** — 8 workers × 8 × 64 KiB; every handed-out range must be
+   pairwise non-overlapping and above the heap base.
+3. **growth proof** — `sbrk(0)` is recorded at entry and the test **fails**
+   unless the break moved by at least 1 MiB. A runner that pre-commits enough
+   memory would otherwise pass vacuously, exercising no growth at all — that
+   is exactly how the 1 GiB precommit silently disabled this lock once.
+
+Build and run headless:
+
+....
+cd <engine>
+toolchains/hosts/$(xenolith-cli detect)/bin/make -C tests/wthread \
+    STAPPLER_TARGET=wasm32-unknown-unknown \
+    STAPPLER_HOST_FILE=toolchains/hosts/<host-triple>/host.mk \
+    STAPPLER_TARGET_FILE=toolchains/targets/wasm32-unknown-unknown/target.mk -j8
+node runtime/wasm-js/run-node.mjs \
+    tests/wthread/stappler-build/wasm32-unknown-unknown/debug/cc/wthreadtest.wasm
+....
+
+(`runtime/wasm-js/xwasm.sh thread` builds + serves the same test for the
+browser.) The runner starts at 512 pages **on purpose** — see point 3. A
+green run prints `ALL PASS` and a `heap growth=` line well into the hundreds
+of MiB.
+
+## History note
+
+The growth lock, the 1 GiB precommit, the wasm font-rasterization fan-out
+disable and a `block_size == 0` guard in `mi_page_fresh_alloc` all landed in
+one commit (2026-09-10). The last three were symptom-level mitigations for the
+race the lock actually fixes; they were removed again after a review — the
+precommit especially, because it made the lock untestable in production and
+the "shared `memory.grow` returns -1 once workers exist" observation that
+motivated it traced back to the pre-lock race plus the default 1 GiB arena
+reserve, not to a browser limitation. If a platform ever does refuse late
+growth, reinstate a precommit **for that platform** as a separate, documented
+decision — do not stack it on top of a lock it silently disables.
