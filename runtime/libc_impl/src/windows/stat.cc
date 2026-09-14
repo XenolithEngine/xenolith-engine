@@ -344,6 +344,38 @@ __SPRT_C_FUNC int mkdirat(int __fd, const char *__path, __SPRT_ID(mode_t) mode) 
 	return ret;
 }
 
+// MSVC <io.h>/<direct.h> wide surface (see wrappers/unistd/io.h).
+//
+// These are NOT the wide halves of chmod/mkdir above. chmod() takes an sprt path
+// and maps it to a native one before it reaches __wchmod; a wchar_t path handed
+// over by MSVC-surface code IS the native path already, so mapping it again would
+// be wrong. That is the whole difference, and the reason these are three lines
+// rather than a call into performWithNativePath.
+
+__SPRT_C_FUNC int _wchmod(const wchar_t *__path, int __pmode) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// _S_IREAD/_S_IWRITE are __SPRT_S_IRUSR/__SPRT_S_IWUSR (io.h), which is what
+	// __wchmod reads - it only ever maps the write bit onto FILE_ATTRIBUTE_READONLY.
+	return __wchmod(__path, __SPRT_ID(mode_t)(__pmode));
+}
+
+__SPRT_C_FUNC int _wmkdir(const wchar_t *__path) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// No mode argument in the MSVC form: the directory takes the inherited ACL,
+	// which is also what __wmkdir ends up with for 0777.
+	if (!CreateDirectoryW(__path, nullptr)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
 __SPRT_C_FUNC int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *times,
 		int flags) __SPRT_NOEXCEPT {
 	int ret = -1;

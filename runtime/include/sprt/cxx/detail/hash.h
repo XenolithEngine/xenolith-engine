@@ -137,6 +137,33 @@ struct hash<void *> {
 	size_t operator()(const void *value) const noexcept { return reinterpret_cast<size_t>(value); }
 };
 
+template <typename Hash = hash<void>>
+struct hash_spread {
+	using is_transparent = void;
+
+	constexpr static size_t finalize(size_t __h) noexcept {
+		if constexpr (sizeof(size_t) == 8) {
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xFF51'AFD7'ED55'8CCDull);
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xC4CE'B9FE'1A85'EC53ull);
+			__h ^= __h >> 33;
+		} else {
+			__h ^= __h >> 16;
+			__h *= static_cast<size_t>(0x85EB'CA6Bu);
+			__h ^= __h >> 13;
+			__h *= static_cast<size_t>(0xC2B2'AE35u);
+			__h ^= __h >> 16;
+		}
+		return __h;
+	}
+
+	template <typename T>
+	constexpr size_t operator()(const T &value) const noexcept {
+		return finalize(Hash()(value));
+	}
+};
+
 template <>
 struct hash<void> {
 	using is_transparent = void;

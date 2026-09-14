@@ -396,16 +396,14 @@ sprt::window::WindowGeometry deserializeWindowGeometry(const Value &v) {
 
 Value serializeFrameTiming(const core::FrameTimingInfo &t) {
 	// [lastFrameInterval, avgFrameInterval, lastFrameTime, lastFenceFrameTime,
-	//  lastTimestampFrameTime] (+ [5] lastFrameOrder under XL_FRAME_ACCOUNT)
+	//  lastTimestampFrameTime, lastFrameOrder]
 	Value v(Value::Type::ARRAY);
 	v.addInteger(int64_t(t.lastFrameInterval));
 	v.addInteger(int64_t(t.avgFrameInterval));
 	v.addInteger(int64_t(t.lastFrameTime));
 	v.addInteger(int64_t(t.lastFenceFrameTime));
 	v.addInteger(int64_t(t.lastTimestampFrameTime));
-#if XL_FRAME_ACCOUNT
 	v.addInteger(int64_t(t.lastFrameOrder));
-#endif
 	return v;
 }
 
@@ -423,11 +421,10 @@ core::FrameTimingInfo deserializeFrameTiming(const Value &v) {
 	t.lastFrameTime = at(2);
 	t.lastFenceFrameTime = at(3);
 	t.lastTimestampFrameTime = at(4);
-#if XL_FRAME_ACCOUNT
-	// Absent when the peer was built without the flag; `at` answers 0, which is what "not measured"
-	// means everywhere else in this struct.
+	// Absent when the peer predates this entry; `at` answers 0, which is what "not measured" means
+	// everywhere else in this struct - and a peer that sends one to a reader that does not want it
+	// is reading by index and ignores the tail, so the pair stays compatible both ways.
 	t.lastFrameOrder = at(5);
-#endif
 	return t;
 }
 
@@ -463,6 +460,11 @@ Value serializeDrawStat(const core::DrawStat &d) {
 	v.addInteger(int64_t(d.planTime));
 	v.addInteger(int64_t(d.queueWaitTime));
 	v.addInteger(int64_t(d.fillTime));
+	// APPENDED, like every field before them: the wire is positional and a reader takes what it
+	// knows, so a peer built without these three is unaffected by a peer that sends them.
+	v.addInteger(int64_t(d.dependencyWaitTime));
+	v.addInteger(int64_t(d.dependencyCount));
+	v.addInteger(int64_t(d.dependencyWaited));
 #endif
 	return v;
 }
@@ -509,6 +511,9 @@ core::DrawStat deserializeDrawStat(const Value &v) {
 	d.planTime = at(26);
 	d.queueWaitTime = at(27);
 	d.fillTime = at(28);
+	d.dependencyWaitTime = at(29);
+	d.dependencyCount = uint32_t(at(30));
+	d.dependencyWaited = uint32_t(at(31));
 #endif
 	return d;
 }

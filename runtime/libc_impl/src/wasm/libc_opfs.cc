@@ -39,9 +39,11 @@ THE SOFTWARE.
 
 extern "C" {
 // Broker one OPFS op to the OPFS worker. `a0..a3` are op-specific (pointers into this
-// shared memory / lengths / sizes). Returns the op result (>= 0) or -errno.
+// shared memory / lengths / sizes), so they are pointer-sized: i32 on wasm32, i64 on
+// wasm64. Returns the op result (>= 0) or -errno.
 __attribute__((import_module("sprt"), import_name("opfs_call"))) int __sprt_host_opfs_call(int op,
-		int a0, int a1, int a2, int a3);
+		__SPRT_ID(intptr_t) a0, __SPRT_ID(intptr_t) a1, __SPRT_ID(intptr_t) a2,
+		__SPRT_ID(intptr_t) a3);
 }
 
 namespace sprt {
@@ -56,7 +58,7 @@ enum : int {
 	__OPFS_READDIR = 7,
 };
 
-#define __OPFS_P(x) ((int)(__SPRT_ID(intptr_t))(x))
+#define __OPFS_P(x) ((__SPRT_ID(intptr_t))(x))
 
 // "/opfs" or "/opfs/..." — the persistent mount.
 static bool __vfs_is_opfs(const char *abs) {
@@ -72,7 +74,7 @@ static const char *__opfs_rel(const char *abs) { return abs + 5; }
 static int __opfs_stat(const char *abs, __SPRT_ID(size_t) *size, bool *isdir) {
 	const char *rel = __opfs_rel(abs);
 	int out[2] = {0, 0};
-	int r = __sprt_host_opfs_call(__OPFS_STAT, __OPFS_P(rel), (int)__builtin_strlen(rel),
+	int r = __sprt_host_opfs_call(__OPFS_STAT, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)),
 			__OPFS_P(out), 0);
 	if (r < 0) {
 		return r;
@@ -89,8 +91,8 @@ static int __opfs_stat(const char *abs, __SPRT_ID(size_t) *size, bool *isdir) {
 // load: read up to `cap` bytes into `buf`; returns bytes read or -errno.
 static int __opfs_load(const char *abs, unsigned char *buf, __SPRT_ID(size_t) cap) {
 	const char *rel = __opfs_rel(abs);
-	return __sprt_host_opfs_call(__OPFS_LOAD, __OPFS_P(rel), (int)__builtin_strlen(rel),
-			__OPFS_P(buf), (int)cap);
+	return __sprt_host_opfs_call(__OPFS_LOAD, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)),
+			__OPFS_P(buf), __OPFS_P(cap));
 }
 
 // store: write `size` bytes back (create/truncate); returns 0 or -errno.
@@ -99,33 +101,34 @@ static int __opfs_store(const char *abs, const unsigned char *data, __SPRT_ID(si
 		return 0;
 	}
 	const char *rel = __opfs_rel(abs);
-	return __sprt_host_opfs_call(__OPFS_STORE, __OPFS_P(rel), (int)__builtin_strlen(rel),
-			__OPFS_P(data), (int)size);
+	return __sprt_host_opfs_call(__OPFS_STORE, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)),
+			__OPFS_P(data), __OPFS_P(size));
 }
 
 static int __opfs_mkdir(const char *abs) {
 	const char *rel = __opfs_rel(abs);
-	return __sprt_host_opfs_call(__OPFS_MKDIR, __OPFS_P(rel), (int)__builtin_strlen(rel), 0, 0);
+	return __sprt_host_opfs_call(__OPFS_MKDIR, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)), 0,
+			0);
 }
 
 static int __opfs_unlink(const char *abs, bool isdir) {
 	const char *rel = __opfs_rel(abs);
-	return __sprt_host_opfs_call(__OPFS_UNLINK, __OPFS_P(rel), (int)__builtin_strlen(rel),
+	return __sprt_host_opfs_call(__OPFS_UNLINK, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)),
 			isdir ? 1 : 0, 0);
 }
 
 static int __opfs_rename(const char *from, const char *to) {
 	const char *rf = __opfs_rel(from), *rt = __opfs_rel(to);
-	return __sprt_host_opfs_call(__OPFS_RENAME, __OPFS_P(rf), (int)__builtin_strlen(rf),
-			__OPFS_P(rt), (int)__builtin_strlen(rt));
+	return __sprt_host_opfs_call(__OPFS_RENAME, __OPFS_P(rf), __OPFS_P(__builtin_strlen(rf)),
+			__OPFS_P(rt), __OPFS_P(__builtin_strlen(rt)));
 }
 
 // readdir: worker writes entries as "<name>\0<type-byte>" (0 file / 1 dir), repeated,
 // into `out`; returns the entry count or -errno.
 static int __opfs_readdir(const char *abs, unsigned char *out, __SPRT_ID(size_t) cap) {
 	const char *rel = __opfs_rel(abs);
-	return __sprt_host_opfs_call(__OPFS_READDIR, __OPFS_P(rel), (int)__builtin_strlen(rel),
-			__OPFS_P(out), (int)cap);
+	return __sprt_host_opfs_call(__OPFS_READDIR, __OPFS_P(rel), __OPFS_P(__builtin_strlen(rel)),
+			__OPFS_P(out), __OPFS_P(cap));
 }
 
 // Resolve an /opfs path to a ready cache inode for open(): hydrate an existing file,

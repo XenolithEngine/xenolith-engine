@@ -80,6 +80,7 @@
 #include "widgets/ScrollThrashLayout.h"
 #include "widgets/SelectionLayout.h"
 #include "text/ShapingLayout.h"
+#include "text/MarkdownLayout.h"
 #include "css/SelectorLayout.h"
 #include "css/SpecificityLayout.h"
 #include "css/StateLayout.h"
@@ -221,8 +222,9 @@ static const TestInfo s_layoutTests[] = {
 		StringView("Six boxes over the same content. `overflow-y: auto` keeps the items at their "
 				   "declared height and scrolls; `visible` still crushes them; `hidden` clips an "
 				   "oversized child; a box whose content fits keeps flex-grow working and reports "
-				   "no range; and a single non-visible axis coerces the other one. The last two "
-				   "are read by EYE: a surface-level ui::Panel inside the clip must draw (red, "
+				   "no range; and a single non-visible axis clips on that axis ALONE, leaving the "
+				   "other one to flow. The last two are read by EYE: a surface-level ui::Panel "
+				   "inside the clip must draw (red, "
 				   "clipped), and two outside it must stack green under magenta - the draw-order "
 				   "case a scissor exposes."),
 		TestRegistry_make<OverflowLayout>},
@@ -509,6 +511,23 @@ static const TestInfo s_textTests[] = {
 		StringView("Rows of the same text with shaping and bidi off, then on: kerning, ligatures, "
 				   "Arabic joining and RTL order must differ between them."),
 		TestRegistry_make<ShapingLayout>},
+	TestInfo{StringView("markdown"), StringView("XL_MARKDOWN_TEST"), StringView("ui::MarkdownView"),
+		StringView("A Markdown document as scene nodes: every block is a node named after its tag, "
+				   "every inline construct is a style range resolved through the CSS cascade, and "
+				   "an image is a box the text leaves for it rather than a break in the "
+				   "paragraph. A paragraph re-wraps when the view narrows. Any range of the "
+				   "document hands back the markup that produced it, a drag selects across blocks "
+				   "without scrolling the document under it, and a copy puts the original "
+				   "markdown on the clipboard beside the readable text. A link into the document "
+				   "scrolls to its anchor, which is what makes footnotes work. Inspector: "
+				   "markdown.dump, markdown.flow, markdown.range, markdown.selection, "
+				   "markdown.select, markdown.select-all, markdown.clear-selection, "
+				   "markdown.point, markdown.position-point, markdown.copy, "
+				   "markdown.clipboard-read, markdown.clipboard-state, markdown.source, "
+				   "markdown.file, markdown.width, markdown.style, markdown.app-style, "
+				   "markdown.inline-styles, markdown.images, markdown.anchors, "
+				   "markdown.activate-link."),
+		TestRegistry_make<MarkdownLayout>},
 };
 
 // src/template - pug templates and the template-system cascade

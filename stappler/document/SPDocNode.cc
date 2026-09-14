@@ -29,8 +29,8 @@ Node::Node() { }
 
 Node::Node(StringView htmlName) : _htmlName(htmlName.str<Interface>()) { }
 
-Node::Node(StringView htmlName, WideString &&value)
-: _htmlName(htmlName.str<Interface>()), _value(move(value)) { }
+Node::Node(StringView htmlName, WideString &&value, SourceSpan source)
+: _source(source), _htmlName(htmlName.str<Interface>()), _value(move(value)) { }
 
 Node *Node::pushNode(Node *node) {
 	propagateValue();
@@ -61,16 +61,23 @@ void Node::setAttribute(StringView name, StringView value) {
 	_attributes.emplace(move(key), value.str<Interface>());
 }
 
-void Node::pushValue(StringView str) { pushValue(string::toUtf16Html<Interface>(str)); }
+void Node::pushValue(StringView str, SourceSpan source) {
+	pushValue(string::toUtf16Html<Interface>(str), source);
+}
 
-void Node::pushValue(WideString &&str) {
-	auto n = new (memory::pool::acquire()) Node(StringView("__value__"), sp::move(str));
+void Node::pushValue(WideString &&str, SourceSpan source) {
+	auto n = new (memory::pool::acquire()) Node(StringView("__value__"), sp::move(str), source);
+	// A text run is a child like any other, and a consumer walking up from one - to find the
+	// block it belongs to, say - has nothing to walk without this.
+	n->_parent = this;
 	_nodes.emplace_back(n);
 }
 
 void Node::finalize() { }
 
 void Node::setNodeId(NodeId id) { _nodeId = id; }
+
+void Node::setSourceSpan(SourceSpan source) { _source = source; }
 NodeId Node::getNodeId() const { return _nodeId; }
 
 const StyleList &Node::getStyle() const { return _style; }
@@ -128,7 +135,8 @@ auto Node::getValueRecursive() const -> WideString {
 
 void Node::propagateValue() {
 	if (!_value.empty()) {
-		auto n = new (memory::pool::acquire()) Node(StringView("__value__"), sp::move(_value));
+		auto n = new (memory::pool::acquire())
+				Node(StringView("__value__"), sp::move(_value), _source);
 		_nodes.emplace_back(n);
 		_value.clear();
 	}

@@ -170,12 +170,27 @@ window with no display in play.
 arithmetic every hand-written popup in this tree has got wrong at least once: the
 anchor rect comes from the node's four **corners** (the node may be rotated or
 scaled), converted into the scene *content's* space (which undoes the density
-scale — scene space is physical pixels, `WindowPlacement` is logical points), and
+scale — scene space is physical pixels, `WindowPlacement` is logical points),
+scaled by `density / surfaceDensity` (the application's own `WindowInfo::density`,
+which is 1 unless something asked for another — see below), and
 flipped into Y-down at the end. It lives in
 [XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h) rather than
 here because a menu, a dropdown and a hint have to answer "where is the anchor"
 the same way — `ui::TooltipSystem` once answered it differently, and its hints
 landed tens of points off on any window whose density was not 1.
+
+**There are two densities and only one of them is the window system's.**
+`FrameConstraints::surfaceDensity` is the display's, and it is what the window
+system scales by: every backend divides pixels by it to say where a window is and
+multiplies by it to be told where to put one. `FrameConstraints::density` is that
+times the application's own `WindowInfo::density` — the factor `--density` sets —
+and it is what the scene graph is laid out in. So the content's space is pixels
+over the second and a `WindowPlacement` is pixels over the first, and the step
+between them is the ratio. It is 1 for an application that never asks for a
+density of its own, which is why this went unnoticed until one did: with
+`--density 1.5` every menu in the window opened a third of the way from the widget
+it belonged to. `tests/window/menu-check.py` runs the stand twice, once at each
+density, and asserts that the popup follows its anchor.
 
 **The surface itself is not the menu's.** `openMenu` builds it through
 `ui::openPopupSurface`
@@ -390,7 +405,7 @@ touching the binding.
 
 [source,css]
 ----
-menu                  { background-color: #202026; border-radius: 6px; }
+menu                  { background-color: #202026; }   /* see "a surface is a ground" below */
 menu-item             { background-color: #00000000; }
 menu-item:hover       { background-color: #2f2f38; }
 menu-item:disabled    { }                       /* Button gives :disabled and .disabled */
@@ -437,9 +452,43 @@ paints nothing, while the line inside it is `menu-separator`.
 | A `ui::Panel` in a menu with no fill declared
 | It is opaque **white**, not transparent
 
+| A rounded or translucent-edged panel on a NATIVE popup
+| The window it hangs off gave it `UserSpaceDecorations`, so its surface is
+  transparent by construction; a panel that is not a `Solid` draw never writes the
+  destination alpha and the window behind shows through it. See below
+
 | Expecting `bindMenuHotkeys` to reach a lazy submenu
 | It binds only submenus that have been built; declare the command where it lives
 |===
+
+## A surface is a ground, and a ground is `Solid`
+
+`ui::Panel` resolves its own rendering level: an opaque, hard-edged rectangle is
+**`RenderingLevel::Solid`**, and everything else is `Surface`. That is not a
+performance note — it decides whether the panel writes the framebuffer's **alpha**.
+`Solid` draws with blending off, so the fragment's alpha lands; `Surface` and
+`Transparent` blend, and a blended draw leaves the destination alpha exactly where
+it found it.
+
+On the window an application owns that is invisible: the surface starts opaque. A
+**native popup** does not — it inherits `WindowCreationFlags::UserSpaceDecorations`
+from the window it hangs off, so its surface is transparent by construction and the
+desktop's rounded corner is cut out of it by the `FrameClipper` pass. A menu whose
+panel is not a ground therefore comes up at alpha 0: the colours are right, the
+text is right, and the window behind it shows through all of it.
+
+Three things make a panel non-solid, and a panel is **one image**, so any one of
+them decides the level for the whole surface:
+
+* a `border-radius` — a curve has to be rasterized antialiased;
+* a translucent `background-color`;
+* a translucent `outline-color`, even a 1px one.
+
+An axis-aligned outline is not one of them: a straight edge needs no antialiasing
+and an opaque one keeps the panel solid. So a popup's own surface should carry
+neither a radius (**the window's corner is the window's**, cut from the desktop
+theme's radius) nor a translucent edge; mix the edge down against the fill instead
+of blending it.
 
 ## The keyboard is a mode, and it is a `FocusGroup`
 

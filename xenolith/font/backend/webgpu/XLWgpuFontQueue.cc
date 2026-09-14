@@ -323,10 +323,10 @@ void FontAttachmentHandle::writeAtlasData(core::FrameHandle &handle) {
 		}
 	}
 
-	// Do not virtual-call FrameHandle from a wasm worker (own function table →
-	// `RuntimeError: null function`). Looper::performOnThread is a direct call.
-	// Also do not run the atlas pack itself on the app thread: that re-enters
-	// StyleResolver::applyDefault while a Label is still in handleEnter.
+	// Complete on the looper the request came from, not through the frame's GL
+	// thread: the pack above must not land on the app thread, where it re-enters
+	// StyleResolver::applyDefault while a Label is still inside handleEnter.
+	// Without a queue there is nobody to hand it to, so finish inline.
 	if (auto *looper = _input ? _input->queue.get() : nullptr) {
 		looper->performOnThread([this]() {
 			if (_onInput) {

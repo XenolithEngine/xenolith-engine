@@ -40,7 +40,8 @@ THE SOFTWARE.
 
 namespace sprt {
 
-__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {	int p[2], op;
+__SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
+	int p[2], op;
 
 	if (*mode == 'r') {
 		op = 0;
@@ -191,6 +192,23 @@ __SPRT_C_FUNC int pclose(FILE *f) __SPRT_NOEXCEPT {
 	CloseHandle(pid); // hProcess was kept past CreateProcess; release it now
 
 	return status;
+}
+
+// The MSVC spellings. Same calls; code written against the CRT uses this pair.
+__SPRT_C_FUNC FILE *_popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
+	if (!cmd || !mode) {
+		errno = EINVAL;
+		return nullptr;
+	}
+	return popen(cmd, mode);
+}
+
+__SPRT_C_FUNC int _pclose(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		errno = EINVAL;
+		return -1;
+	}
+	return pclose(f);
 }
 
 __SPRT_C_FUNC int system(const char *cmd) __SPRT_NOEXCEPT {

@@ -23,6 +23,7 @@
 
 #include "XL2dLabel.h"
 #include "XLEventListener.h"
+#include "XLFontLocale.h"
 #include "XLDirector.h"
 #include "XLInheritedStyle.h"
 
@@ -396,26 +397,79 @@ void Label::handleEnter(xenolith::Scene *scene) {
 	// components in its new ancestor chain
 	setLabelDirty();
 
-	if (_source) {
-		return;
-	}
+	if (!_source) {
+		auto source = _director->getApplication()->getExtension<font::FontController>();
+		if (source) {
+			_listener->clear();
+			_localeDelegate = nullptr; // the clear above took it with everything else
 
-	auto source = _director->getApplication()->getExtension<font::FontController>();
-	if (source) {
-		_listener->clear();
+			_listener->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
+					[this](const Event &) { onFontSourceUpdated(); });
 
-		_listener->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
-				[this](const Event &) { onFontSourceUpdated(); });
+			if (source->isLoaded()) {
+				setTexture(Rc<Texture>(source->getTexture()));
+			} else {
+				_listener->listenForEventWithObject(font::FontController::onLoaded, source,
+						[this](const Event &) { onFontSourceUpdated(); }, true);
+			}
 
-		if (source->isLoaded()) {
-			setTexture(Rc<Texture>(source->getTexture()));
-		} else {
-			_listener->listenForEventWithObject(font::FontController::onLoaded, source,
-					[this](const Event &) { onFontSourceUpdated(); }, true);
+			_source = source;
 		}
-
-		_source = source;
 	}
+
+	/* THE ONE SUBSCRIBER TO `locale::onLocale` IN THE ENGINE, and what makes changing the language
+	redraw the window instead of only the next label somebody touches.
+
+	It is cheap because a label stores its string UNRESOLVED: `_string16` still holds `@Locale:Key`,
+	and the tags are expanded during layout. So re-localizing is marking the label dirty - no walk of
+	the tree re-assigning strings, and no second copy of the original text to keep in step.
+
+	Registered here rather than in `init()` because `_listener->clear()` above drops every delegate;
+	registered AFTER that block for the same reason, and guarded so that entering a scene twice leaves
+	one delegate rather than two. */
+	if (!_localeDelegate) {
+		_localeDelegate = _listener->listenForEvent(locale::onLocale,
+				[this](const Event &) { handleLocaleChanged(); });
+	}
+	applyLocaleTextFeatures();
+}
+
+/* WHAT THE LOCALE DECIDES ABOUT THE TEXT, beyond which words it is.
+
+Without HarfBuzz shaping Persian and Arabic draw as isolated, unjoined letterforms; without the
+bidirectional algorithm they draw in visual rather than logical order. Both cost time per layout, so
+they follow the locale rather than being on for every label in every language.
+
+THE DIRECTION IS `Neutral` AND NOT `RightToLeft`, which is the half of this that had to be seen to be
+believed. Forcing the locale's direction onto every label is right only if every label is in that
+language, and in an editor it is not: a file path, a component name and a caption from a module that
+has not been translated yet are all Latin, and under an RTL base direction their neutral characters
+go to the wrong end - `/home/x/types.json` draws as `home/x/types.json/` and a sentence's full stop
+jumps to its front. `Neutral` is CSS `dir=auto`: the base level is resolved per paragraph from its
+first strong character (UAX #9, P2-P3), so a Persian caption is right-to-left and the path beside it
+is not.
+
+`_localeTextFeatures` records that THIS is what turned them on, so switching back to a left-to-right
+language turns off what the locale enabled and leaves alone what a caller asked for itself. */
+void Label::applyLocaleTextFeatures() {
+	const bool rtl = (locale::getTextDirection() == font::TextDirection::RightToLeft);
+
+	setTextDirection(rtl ? font::TextDirection::Neutral : font::TextDirection::LeftToRight);
+
+	if (rtl && !_localeTextFeatures) {
+		_localeTextFeatures = true;
+		setBidiEnabled(true);
+		setShapingEnabled(true);
+	} else if (!rtl && _localeTextFeatures) {
+		_localeTextFeatures = false;
+		setBidiEnabled(false);
+		setShapingEnabled(false);
+	}
+}
+
+void Label::handleLocaleChanged() {
+	applyLocaleTextFeatures();
+	setLabelDirty();
 }
 
 void Label::handleExit() { Sprite::handleExit(); }
@@ -451,8 +505,30 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 		updateLabelDensity(_parent->getNodeToWorldTransform());
 	}
 
+	// Anything that would change the answer bumps the revision or the density; either one throws
+	// the whole cache away rather than trying to keep part of it.
+	if (_measureRevision != getLabelRevision() || _measureDensity != _labelDensity) {
+		_measureCache.clear();
+		_measureRevision = getLabelRevision();
+		_measureDensity = _labelDensity;
+	}
+
+	for (auto &it : _measureCache) {
+		if (it.mode == c.mode && it.maxWidth == c.maxWidth) {
+			return it.result;
+		}
+	}
+
+	auto remember = [&](Size2 result) {
+		if (_measureCache.size() >= MaxMeasureCache) {
+			_measureCache.erase(_measureCache.begin());
+		}
+		_measureCache.emplace_back(MeasureCacheEntry{c.mode, c.maxWidth, result});
+		return result;
+	};
+
 	if (_string16.empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
 
 	auto request = font::Formatter::ContentRequest::Normal;
@@ -483,12 +559,13 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 	_width = savedWidth;
 
 	if (!ok) {
+		// Not cached: an overflowing measurement is a failure, not an answer.
 		return getContentSize();
 	}
 	if (spec->empty()) {
-		return Size2(0.0f, getFontHeight() / _labelDensity);
+		return remember(Size2(0.0f, getFontHeight() / _labelDensity));
 	}
-	return Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity);
+	return remember(Size2(spec->getWidth() / _labelDensity, spec->getHeight() / _labelDensity));
 }
 
 void Label::applyMeasuredSize(const Size2 &size) {
@@ -776,11 +853,30 @@ void Label::updateLabelScale(const Mat4 &parent) {
 	updateLabelDensity(parent);
 
 	if (_labelDirty) {
+#if XL_FRAME_ACCOUNT
+		auto &account = getVisitAccount();
+		++account.labelShapes;
+		account.labelShapeChars += uint32_t(_string16.size());
+		const auto shapeStart = core::getAccountClock();
+#endif
 		updateLabel();
+#if XL_FRAME_ACCOUNT
+		account.labelShapeNs += core::getAccountClock() - shapeStart;
+#endif
 	}
 }
 
 void Label::updateLabelDensity(const Mat4 &parent) {
+#if XL_FRAME_ACCOUNT
+	auto &densityAccount = getVisitAccount();
+	++densityAccount.labelDensity;
+	const auto densityStart = core::getAccountClock();
+	struct DensityClose {
+		VisitAccount *a;
+		uint64_t start;
+		~DensityClose() { a->labelDensityNs += core::getAccountClock() - start; }
+	} densityClose{&densityAccount, densityStart};
+#endif
 	Vec3 scale;
 	parent.decompose(&scale, nullptr, nullptr);
 
@@ -796,6 +892,12 @@ void Label::updateLabelDensity(const Mat4 &parent) {
 
 	auto density = sprt::min(sprt::min(scale.x, scale.y), scale.z);
 	if (density != _labelDensity) {
+#if XL_FRAME_ACCOUNT
+		// A change under 1% of the old value is jitter rather than a new scale - see VisitAccount.
+		if (_labelDensity > 0.0f && sprt::abs(density - _labelDensity) < _labelDensity * 0.01f) {
+			++getVisitAccount().labelShapeJitter;
+		}
+#endif
 		_labelDensity = density;
 		setLabelDirty();
 	}
@@ -880,9 +982,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 	_glyphGeneration = _source->getGlyphGeneration();
 
 	if (_deferred) {
-		_deferredResult =
-				runDeferredCounted(_director->getApplication()->getLooper(), _format,
-						_displayedColor);
+		_deferredResult = runDeferredCounted(_director->getApplication()->getLooper(), _format,
+				_displayedColor);
 		_vertexes.clear();
 		_vertexColorDirty = false;
 	} else {
@@ -976,6 +1077,22 @@ Vec2 Label::getCursorOrigin() const {
 		break;
 	}
 	return Vec2::ZERO;
+}
+
+Rect Label::getInlineObjectRect(uint32_t index) const {
+	if (!_format || index >= _inlineObjects.size()) {
+		return Rect::ZERO;
+	}
+
+	auto rect = _format->getObjectRect(_inlineObjects[index].rangeIndex, _labelDensity);
+	if (rect.size.width <= 0.0f && rect.size.height <= 0.0f) {
+		return Rect::ZERO;
+	}
+
+	// The layout measures downward from the top of the text; this node is Y-up from its own
+	// origin, exactly the flip getCursorPosition makes for a caret.
+	rect.origin.y = _contentSize.height - rect.origin.y - rect.size.height;
+	return rect;
 }
 
 Pair<uint32_t, bool> Label::getCharIndex(const Vec2 &pos, font::CharSelectMode mode) const {

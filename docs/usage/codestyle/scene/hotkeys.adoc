@@ -65,6 +65,17 @@ chord without `Alt`, which is exactly why the `Alt` chords above do need it.
 five also in a sided form; key names follow `InputKeyCode`, i.e. what
 `getInputKeyCodeName` prints.
 
+**Case does not matter, in either half.** `"Ctrl+SHIFT+K"`, `"ctrl+shift+k"` and
+`"Ctrl+Shift+K"` are one combination. The two name-spaces are spelled in two
+styles — the modifiers CamelCase, the keys SHOUTING — and a combination is written
+with both in one string, so somebody who has just typed `RIGHT_BRACKET` writes
+`SHIFT` beside it. That used to fall through the modifier table, be looked up as a
+*key*, fail (there is no `SHIFT` keycode, only `LEFT_SHIFT` and `RIGHT_SHIFT`),
+and take the whole combination down: `add` then answered `HotkeyId(0)`, the
+subscription bound nothing, and the command silently never worked. Folding is safe
+because no modifier name is also a key name under any capitalisation and no two
+key names differ only by case. A name that is neither is still refused.
+
 **Modifiers are normalized.** `HotkeyCombo::normalize` adds the base bit for
 every sided modifier (`CtrlL` implies `Ctrl`) and drops everything that is not
 part of a chord: `CapsLock`, `NumLock`, `ScrollLock`, the mouse buttons,

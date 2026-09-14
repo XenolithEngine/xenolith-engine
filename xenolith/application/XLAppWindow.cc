@@ -966,9 +966,7 @@ core::FrameTimingInfo AppWindow::getFrameTiming() const {
 		info.lastFrameTime = _presentationEngine->getLastFrameTime();
 		info.lastFenceFrameTime = _presentationEngine->getLastFenceFrameTime();
 		info.lastTimestampFrameTime = _presentationEngine->getLastTimestampFrameTime();
-#if XL_FRAME_ACCOUNT
 		info.lastFrameOrder = _presentationEngine->getLastFrameOrder();
-#endif
 	}
 	return info;
 }
@@ -1141,6 +1139,24 @@ bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) 
 void AppWindow::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
 	_context->performOnThread([this, cb = sp::move(cb)]() mutable {
+		/* THE ENGINE MAY BE GONE BY THE TIME THIS RUNS, and this was the one place in this file
+		that did not say so.
+
+		A capture is a hop onto the context thread, and `end()` clears `_presentationEngine` on that
+		same thread - so a window closed between the ask and the answer leaves this task holding a
+		null. It is not a corner: a headless run drives frames from a socket, and a screenshot in
+		flight while the window goes down is exactly what shutting one down under a driver script
+		looks like. It crashed twice before it was read.
+
+		ANSWERED EMPTY RATHER THAN DROPPED. Every caller already has to handle a capture that
+		produced no pixels - the inspector's turns an empty view into "capture failed" - while a
+		callback that is never called leaves whoever asked waiting for a frame that cannot come. */
+		if (!_presentationEngine) {
+			if (cb) {
+				cb(core::ImageInfoData(), BytesView());
+			}
+			return;
+		}
 		_presentationEngine->captureScreenshot(sp::move(cb));
 	}, this);
 }

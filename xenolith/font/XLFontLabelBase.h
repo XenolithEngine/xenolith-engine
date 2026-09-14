@@ -75,6 +75,17 @@ public:
 	Vector<Rect> getLabelRects(uint32_t first, uint32_t last, float density, const Vec2 & = Vec2(),
 			const Padding &p = Padding()) const;
 
+	/* WHERE A RESERVED BOX ENDED UP, by the index of the range that reserved it.
+
+	A box is not a glyph: the formatter records it as one cell with no character and an advance of
+	the requested width, plus a range of its own carrying the requested height. Nothing else in
+	the layout remembers it, so the range index is the handle, and this is the only way back from
+	it to a rectangle.
+
+	Empty when the index names no range, or when the layout no longer holds the cell (a box that
+	fell outside `maxLines`). The rectangle is in the same space `getLineRect` answers in. */
+	Rect getObjectRect(uint32_t rangeIndex, float density, const Vec2 & = Vec2()) const;
+
 	void getLabelRects(Vector<Rect> &, uint32_t first, uint32_t last, float density,
 			const Vec2 & = Vec2(), const Padding &p = Padding()) const;
 
@@ -301,7 +312,7 @@ public:
 
 	template <char... Chars>
 	void setString(metastring::metastring<Chars...> &&str) {
-		setString(str.to_std_string());
+		setString(StringView(str.template string<String>()));
 	}
 
 	virtual void setString(const StringView &);
@@ -328,6 +339,35 @@ public:
 	virtual void prependTextWithStyle(const WideStringView &, Style &&);
 
 	virtual void clearStyles();
+
+	/* AN INLINE OBJECT: a box in the line where a glyph would be.
+
+	The formatter can reserve a run of empty width and height instead of shaping a character
+	(`Formatter::read(font, text, w, h)`), and a line breaks around that box like it would around
+	a word. This is how something that is not text - an image - sits INSIDE a paragraph without
+	cutting the paragraph into pieces.
+
+	The object stands in for exactly ONE character of the string, which should be U+FFFC (OBJECT
+	REPLACEMENT CHARACTER). One character, not zero, so that every index the label answers with
+	keeps meaning the same thing: a caret can stand before or after the image, a selection can
+	contain it, and whoever maps characters back to a source maps it to whatever wrote it.
+
+	The label draws nothing for it. The caller draws over the box, asking `getObjectRect` for
+	where it landed - which is knowable only after the text has been shaped and wrapped. */
+	struct InlineObject {
+		uint32_t charIndex = 0;
+		Size2 size;
+
+		// Filled in by the layout: the range the reservation produced, which is the handle
+		// `TextLayout::getObjectRect` takes. maxOf when this object was not laid out.
+		uint32_t rangeIndex = maxOf<uint32_t>();
+	};
+
+	// Ascending by `charIndex`; the caller keeps them so. Setting the string does not clear them,
+	// because the two are written together and the string comes first.
+	virtual void setInlineObjects(Vector<InlineObject> &&);
+	const Vector<InlineObject> &getInlineObjects() const { return _inlineObjects; }
+	virtual void clearInlineObjects();
 
 	virtual const StyleVec &getStyles() const;
 	virtual const StyleVec &getCompiledStyles() const;
@@ -423,6 +463,8 @@ public:
 	void setFillerChar(char32_t);
 	char32_t getFillerChar() const;
 
+	// Latches: once called, `setString` stops deciding for itself. A widget that draws a person's own
+	// text or a file's contents calls `setLocaleEnabled(false)` once and is done.
 	void setLocaleEnabled(bool);
 	bool isLocaleEnabled() const;
 
@@ -451,6 +493,8 @@ public:
 	};
 
 protected:
+	void enableLocaleIfTagged();
+
 	virtual bool hasLocaleTags(const WideStringView &) const;
 	virtual WideString resolveLocaleTags(const WideStringView &) const;
 
@@ -459,6 +503,13 @@ protected:
 	virtual void makeEffectiveStyle(EffectiveStyle &) const;
 
 	virtual void setLabelDirty();
+
+	/* A number that changes whenever a measurement of this label would answer differently.
+
+	Everything that invalidates the shaping - the string, a style range, the font, an inherited
+	component, the width - already goes through setLabelDirty, so this is the one key a cache of
+	measured sizes can trust. */
+	uint64_t getLabelRevision() const { return _labelRevision; }
 
 	WideString _string16;
 	String _string8;
@@ -477,7 +528,9 @@ protected:
 	bool _enableLigatures = true;
 
 	bool _localeEnabled = false;
+	bool _localeAuto = true; // cleared by the first setLocaleEnabled() call, whichever way it went
 	bool _labelDirty = true;
+	uint64_t _labelRevision = 1;
 
 	bool _isLineHeightAbsolute = false;
 	float _lineHeight = 0;
@@ -485,6 +538,7 @@ protected:
 	String _fontFamilyStorage;
 	DescriptionStyle _style;
 	StyleVec _styles;
+	Vector<InlineObject> _inlineObjects;
 	StyleVec _compiledStyles;
 
 	uint16_t _charsWidth;

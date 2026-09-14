@@ -25,6 +25,10 @@
 #include "XLCoreLoop.h"
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
+#if XL_FRAME_ACCOUNT
+// getAccountClock: one clock for every account site, so the numbers can be subtracted across modules.
+#include "XLCoreRenderSession.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -398,10 +402,56 @@ void FrameHandle::onOutputAttachmentInvalidated(FrameAttachmentData *data) {
 	_request->onOutputInvalidated(*_loop, *data);
 }
 
+#if XL_FRAME_ACCOUNT
+void FrameHandle::accountDependencies(const Vector<Rc<DependencyEvent>> &events) {
+	// Counted BEFORE the wait: an event that fires while we wait was still one we waited for, and
+	// `_depWaited` is about what could have stalled us when we asked.
+	_depCount.fetch_add(uint32_t(events.size()));
+	for (auto &it : events) {
+		if (!it->isSignaled()) {
+			_depWaited.fetch_add(1);
+		}
+	}
+}
+#endif
+
+/* ONE WAIT, ACCOUNTED FOR, and a no-op in a build without the account.
+
+A struct rather than two `#if` blocks around the call below, for two reasons. The waiting code stays
+readable - there is no preprocessor inside the lambda or its capture list - and each wait carries its
+OWN start, which a member could not: a frame's attachments submit their input concurrently (the vertex
+pass and the shadow pass both wait), so two waits of one frame can overlap. Empty in the shipping
+build, so capturing it by value costs nothing and warns about nothing. */
+namespace {
+struct DependencyWaitAccount {
+#if XL_FRAME_ACCOUNT
+	FrameHandle *frame = nullptr;
+	uint64_t start = 0;
+
+	DependencyWaitAccount(FrameHandle *f, const Vector<Rc<DependencyEvent>> &events)
+	: frame(f), start(getAccountClock()) {
+		f->accountDependencies(events);
+	}
+
+	void close() const { frame->accountDependencyWait(getAccountClock() - start); }
+#else
+	DependencyWaitAccount(FrameHandle *, const Vector<Rc<DependencyEvent>> &) { }
+
+	void close() const { }
+#endif
+};
+} // namespace
+
 void FrameHandle::waitForDependencies(const Vector<Rc<DependencyEvent>> &events,
 		Function<void(FrameHandle &, bool)> &&cb) {
 	auto linkId = sprt::retain(this);
-	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId](bool success) {
+
+	// THE ONE CHOKE POINT every frame and every pass waits through, which is why the account is here
+	// and not at the six call sites.
+	DependencyWaitAccount account(this, events);
+
+	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId, account](bool success) {
+		account.close();
 		cb(*this, success);
 		sprt::release(this, linkId);
 	});

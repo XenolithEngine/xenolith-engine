@@ -78,10 +78,12 @@ struct SP_PUBLIC OutOfFlowComponent {
 // Written by ui::StyleResolver, read by LayoutSystem (which axes may exceed the box) and by
 // ui::ScrollSystem (what to clip and what to slide).
 //
-// The two axes are already reconciled by the time they land here: CSS computes a `visible` axis to
-// `auto` when the other one is not `visible`, and this engine has no say in the matter - the only
-// clip it has is an axis-aligned scissor RECT, which cannot clip one axis and leave the other
-// alone.
+// THE TWO AXES ARE INDEPENDENT, and are NOT reconciled on the way here. The web computes a
+// `visible` axis to `auto` when the other one is not `visible`, because a clip is a box; this engine
+// used to do the same for the harder reason that its only clip was one axis-aligned scissor RECT.
+// The rect is now built per axis (ui::ScissorAxes: the axis left out is opened past any surface
+// instead of narrowed to the box), so each axis holds exactly what the sheet declared - see the
+// `overflow` block of ui::StyleResolver::applyLayout for what the coercion cost while it lasted.
 struct SP_PUBLIC OverflowComponent {
 	static ComponentId Id;
 
@@ -206,6 +208,17 @@ public:
 	// legacy flex-basis:auto fallback reads)
 	static Size2 measureNode(Node *, const MeasureConstraints &);
 
+	/* Can this node answer a measurement AT ALL - as against answer it with its current size?
+	
+	True when a system opted into the protocol (`SystemFlags::HandleMeasure`: a Label, a nested flex
+	container, one an application wrote) or when a `MeasureComponent` states the answer outright.
+	`measureNode` falls back to the node's ContentSize for everything else, which is a perfectly good
+	answer for laying out and a useless one for DECIDING whether to size a container by its content:
+	a container that did would be echoing back the size it gave that node last frame.
+	
+	The cheap predicate only - it asks nothing and measures nothing. */
+	static bool canMeasure(NotNull<Node>);
+
 	LayoutMode getMode() const { return _mode; }
 	void setMode(LayoutMode);
 
@@ -224,6 +237,14 @@ public:
 	void setPadding(Padding);
 
 	static void markItemDirty(NotNull<Node>);
+
+	/* This node's INTRINSIC size changed - every measure above it is stale.
+
+	For a node that answers `handleMeasure` or carries a `MeasureComponent` and has just changed what
+	it would answer. `markItemDirty` above dirties one level, which is all a change of PLACEMENT can
+	affect; a change of SIZE reaches every `fit-content` container that built its own height out of
+	this one, and those may be several levels up. See the definition. */
+	static void markMeasureDirty(NotNull<Node>);
 
 	// helpers to read / assign per-item flex parameters via the component system
 	static const FlexItemInfo *getItem(NotNull<Node>);

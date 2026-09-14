@@ -29,6 +29,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // How far one wheel notch scrolls, in points. The wheel reports notches, not distance.
 static constexpr float ScrollSystem_wheelStep = 48.0f;
 
+// Two wheel events closer than this belong to one gesture: the second and later events of a
+// burst keep the classification the first one got (see handleScrollGesture).
+static constexpr uint64_t ScrollSystem_wheelBurstUs = 80'000ULL;
+
 // How long a notch takes to ease in. Short enough to feel immediate, long enough to read as motion
 // rather than a jump - which is what makes it possible to see WHERE the content went.
 static constexpr float ScrollSystem_wheelDuration = 0.1f;
@@ -288,13 +292,19 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 	if (!_owner) {
 		return false;
 	}
-	bool discrete =
+	// Classify by the SHAPE of the amount, never by timing alone: a wheel spun fast
+	// emits notches 20-50ms apart, so a "burst means pixel stream" rule would turn
+	// every notch after the first into a 10pt nudge. The burst only resolves the
+	// ambiguous case - a pixel stream whose first event happens to land exactly on a
+	// notch value stops being read as one as soon as the second event does not.
+	const bool notchShaped =
 			ScrollSystem_isNotchComponent(s.amount.x) || ScrollSystem_isNotchComponent(s.amount.y);
 	const auto now = Time::now();
-	if (_lastWheelTime.toMicros() != 0 && (now - _lastWheelTime).toMicros() < 80'000ULL) {
-		discrete = false;
-	}
+	const bool inBurst = _lastWheelTime.toMicros() != 0
+			&& (now - _lastWheelTime).toMicros() < ScrollSystem_wheelBurstUs;
+	const bool discrete = notchShaped && (!inBurst || _lastWheelDiscrete);
 	_lastWheelTime = now;
+	_lastWheelDiscrete = discrete;
 
 	Vec2 delta;
 	if (discrete) {
@@ -378,8 +388,9 @@ void ScrollSystem::scrollToAnimated(Vec2 target) {
 	}
 
 	const Vec2 to = _wheelTarget;
-	_owner->runAction(Rc<ActionProgress>::create(ScrollSystem_wheelDuration,
-							  [this, from, to](float p) { applyScrollPosition(from + (to - from) * p); }),
+	_owner->runAction(
+			Rc<ActionProgress>::create(ScrollSystem_wheelDuration,
+					[this, from, to](float p) { applyScrollPosition(from + (to - from) * p); }),
 			WheelActionTag);
 }
 
@@ -463,7 +474,17 @@ void ScrollSystem::updateClip() {
 	}
 	if (_scissor) {
 		if (wantClip) {
-			_scissor->enableScissor();
+			// Only the axes that actually clip. A document that scrolls vertically has no
+			// business cutting anything off at its sides, and an axis left out of the mask is
+			// opened rather than narrowed to the box (see ScissorAxes).
+			auto axes = ScissorAxes::None;
+			if (clipsX()) {
+				axes |= ScissorAxes::Horizontal;
+			}
+			if (clipsY()) {
+				axes |= ScissorAxes::Vertical;
+			}
+			_scissor->enableScissor(_scissor->getScissorOutline(), axes);
 		} else {
 			_scissor->disableScissor();
 		}
@@ -535,8 +556,7 @@ void ScrollSystem::updateIndicators() {
 		// Thumb length is the visible fraction of the content, floored so it stays grabbable; its
 		// travel is what is left of the track.
 		const float content = extent + range;
-		const float length =
-				sprt::max(extent * extent / content, ScrollSystem_indicatorMinLength);
+		const float length = sprt::max(extent * extent / content, ScrollSystem_indicatorMinLength);
 		const float travel = sprt::max(extent - length, 0.0f);
 		const float progress = (horizontal ? float(_scrollX) : float(_scrollY)) / range;
 

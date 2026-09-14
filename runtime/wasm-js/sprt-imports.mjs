@@ -15,9 +15,99 @@
 // these imports is not wrong, it is just ignored.
 
 // OPFS control-block indices + ops (must match opfs-worker.mjs and wasm/libc_opfs.cc).
-const OPFS_LOCK = 0, OPFS_REQSEQ = 1, OPFS_RESPSEQ = 2, OPFS_OP = 3, OPFS_RESULT = 4,
-	OPFS_A0 = 5, OPFS_A1 = 6, OPFS_A2 = 7, OPFS_A3 = 8;
+// The Int32 cells carry the lock, the sequence counters, the op and the result; the four
+// op arguments are pointer-sized (i64 on wasm64), so they live in a BigInt64 view that
+// starts at OPFS_ARGS_BYTE, past the Int32 cells.
+const OPFS_LOCK = 0, OPFS_REQSEQ = 1, OPFS_RESPSEQ = 2, OPFS_OP = 3, OPFS_RESULT = 4;
+export const OPFS_ARGS_BYTE = 64;
+export const OPFS_SAB_BYTES = OPFS_ARGS_BYTE + 4 * 8;
 const ENOSYS = 38;
+
+// ---- wasm32 / wasm64 ---------------------------------------------------------------------
+// A wasm64 module (memory64) imports an i64-indexed memory. Every pointer and size_t then
+// crosses the host boundary as a BigInt: import parameters arrive as BigInts, and the
+// exported globals (__stack_pointer) and entry points (__wasm_init_tls, __xl_thread_entry)
+// want BigInts back. Inside the host a pointer is always a plain Number - the memory is at
+// most 16 GiB, far below 2^53 - so the conversion happens only at the edge.
+
+// Reads the memory import out of a module's bytes: the JS API has no way to ask a compiled
+// module whether the memory it imports is i32 or i64, and the memory must exist before the
+// module can be instantiated. Returns { memory64, shared, initial, maximum } in pages
+// (maximum is null when the module declares none), or null for a module importing no memory.
+export function readMemoryImport(bytes) {
+	const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+	let o = 8; // magic + version
+	const leb = () => {
+		let v = 0, mul = 1, byte;
+		do {
+			byte = b[o++];
+			v += (byte & 0x7f) * mul;
+			mul *= 128;
+		} while (byte & 0x80);
+		return v;
+	};
+	// Not `o += leb()`: that reads `o` before leb() advances it past the length.
+	const skipName = () => { const len = leb(); o += len; };
+	const limits = () => {
+		const flags = b[o++];
+		const initial = leb();
+		const maximum = (flags & 0x01) ? leb() : null;
+		if (flags & 0x08) { leb(); } // custom page size (log2)
+		return { memory64: (flags & 0x04) !== 0, shared: (flags & 0x02) !== 0, initial, maximum };
+	};
+	while (o < b.length) {
+		const id = b[o++];
+		const size = leb();
+		const end = o + size;
+		if (id !== 2) {
+			o = end;
+			continue;
+		}
+		for (let n = leb(); n > 0; --n) {
+			skipName();
+			skipName();
+			const kind = b[o++];
+			switch (kind) {
+			case 0: leb(); break;             // function: type index
+			case 1: o++; limits(); break;     // table: reftype + limits
+			case 2: return limits();          // memory
+			case 3: o += 2; break;            // global: valtype + mutability
+			case 4: o++; leb(); break;        // tag: attribute + type index
+			default: return null;
+			}
+		}
+		return null;
+	}
+	return null;
+}
+
+// An existing memory knows its index type only through its API: grow() on an i64 memory
+// takes and returns BigInts. A zero-page grow is a no-op on the shared memories used here.
+export function isMemory64(memory) {
+	try {
+		return typeof memory.grow(0n) === "bigint";
+	} catch (_) {
+		return false;
+	}
+}
+
+// Creates the shared memory a module imports. `maximum` (pages) may lower the module's own
+// maximum - an imported memory only has to fit inside the declared limits - which is how a
+// host that cannot reserve the full maximum up front falls back to a smaller one.
+export function createMemory(desc, { initial, maximum } = {}) {
+	const init = Math.max(desc.initial, initial || 0);
+	const max = Math.max(init, Math.min(desc.maximum ?? Infinity, maximum ?? Infinity));
+	if (desc.memory64) {
+		return new WebAssembly.Memory({ address: "i64", initial: BigInt(init), maximum: BigInt(max), shared: true });
+	}
+	return new WebAssembly.Memory({ initial: init, maximum: max, shared: true });
+}
+
+// Converts a host-side pointer (a Number) to the representation the module's own exports
+// take: a BigInt on wasm64, unchanged on wasm32.
+export function ptrConverter(memory64) {
+	return memory64 ? (v) => BigInt(v || 0) : (v) => v || 0;
+}
 
 // Host↔engine shared blocks. The engine App thread blocks in Atomics.wait, so its
 // onmessage never runs — pointer/keys and live display size must live in a SAB the
@@ -105,22 +195,30 @@ export function writeProcessCompletion(processCtrl, processOut, memory, wakePtr,
 	Atomics.store(i32, slot + 6, pathOff);
 	Atomics.store(i32, slot + 7, pl);
 
+	// Publication is in claim order, so this waits for the writer that claimed the
+	// slot before ours. With a single writer (the loader completes on the main
+	// thread) the condition already holds and this never spins.
 	while (Atomics.load(i32, PROC_WR) !== claimed) {
-		// previous writer is still filling its slot
 		if (performance.now() > deadline) {
-			console.error("sprt-imports: previous writer stalled for " + PROC_WAIT_MS + "ms, dropping completion for proc " + id);
-			// Roll the claim back, but only if no other writer claimed since.
-			Atomics.compareExchange(i32, PROC_CLAIM, claimed + 1, claimed);
-			return false;
+			// Never leave the ring wedged: rolling our claim back would strand
+			// PROC_WR below it forever and every later completion would wait on a
+			// sequence number that can no longer arrive. Publish through instead -
+			// our own slot is filled, and an unfilled slot in between reads back as
+			// id 0, which the guest has no job for and drops.
+			console.error("sprt-imports: writer " + (claimed - 1) + " stalled for "
+				+ PROC_WAIT_MS + "ms, publishing proc " + id + " over it");
+			break;
 		}
 	}
 	Atomics.store(i32, PROC_WR, claimed + 1);
 
 	const buf = memoryBuffer(memory);
 	if (buf && wakePtr) {
+		// Division, not `>> 2`: a signed 32-bit shift breaks for addresses past 2 GiB.
 		const mem = new Int32Array(buf);
-		Atomics.add(mem, wakePtr >> 2, 1);
-		Atomics.notify(mem, wakePtr >> 2);
+		const cell = Math.floor(Number(wakePtr) / 4);
+		Atomics.add(mem, cell, 1);
+		Atomics.notify(mem, cell);
 	}
 	return true;
 }
@@ -219,8 +317,9 @@ export function formatError(err) {
 	return stack && stack !== head ? head + "\n" + stack : head;
 }
 
-export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab, dispW = 0, dispH = 0, dispDensity = 0, inputQueue = null, inputSab = null, displaySab = null, processCtrl = null, processOut = null, postProcess = null, onFilePut = null }) {
+export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab, opfsHost = null, dispW = 0, dispH = 0, dispDensity = 0, inputQueue = null, inputSab = null, displaySab = null, processCtrl = null, processOut = null, postProcess = null, onFilePut = null }) {
 	const opfsCtrl = opfsSab ? new Int32Array(opfsSab) : null;
+	const opfsArgs = opfsSab ? new BigInt64Array(opfsSab, OPFS_ARGS_BYTE, 4) : null;
 	const u8 = () => new Uint8Array(memory.buffer);
 	const dv = () => new DataView(memory.buffer);
 	const dec = new TextDecoder();
@@ -230,7 +329,20 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 	let procCur = null;
 	// TextDecoder rejects views over a SharedArrayBuffer, so slice() out a plain copy.
 	const readStr = (p, l) => dec.decode(u8().slice(p, p + l));
-	const bkey = (p, l) => { const b = u8(); let s = ""; for (let i = 0; i < l; i++) s += String.fromCharCode(b[p + i]); return s; };
+	// Bundle keys are the Unicode strings the host read from its manifest or directory, and the
+	// guest passes UTF-8: a byte-per-char key never matches a non-ASCII name. ASCII (the common
+	// case) skips the TextDecoder copy.
+	const bkey = (p, l) => {
+		const b = u8();
+		let s = "";
+		for (let i = 0; i < l; i++) {
+			if (b[p + i] >= 0x80) {
+				return readStr(p, l);
+			}
+			s += String.fromCharCode(b[p + i]);
+		}
+		return s;
+	};
 	const bundleFile = (k) => {
 		if (bundle[k]) { return bundle[k]; }
 		if (k.charCodeAt(0) !== 47 && bundle["/" + k]) { return bundle["/" + k]; }
@@ -270,15 +382,32 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 	const copy = (list) => (table, buf) => {
 		let p = buf;
 		for (let i = 0; i < list.length; i++) {
-			dv().setUint32(table + i * 4, p, true);
+			if (memory64) {
+				dv().setBigUint64(table + i * 8, BigInt(p), true);
+			} else {
+				dv().setUint32(table + i * 4, p, true);
+			}
 			const b = enc.encode(list[i]); u8().set(b, p); p += b.length; u8()[p++] = 0;
 		}
 		return 0;
 	};
 
+	// Pointer and size_t parameters of a wasm64 module arrive as BigInts; the bodies below
+	// work in Numbers. Every import returns an int or a double, so results pass unchanged.
+	const toNumber = (a) => (typeof a === "bigint" ? Number(a) : a);
+	const adaptPointers = (table) => {
+		if (memory64) {
+			for (const name of Object.keys(table)) {
+				const fn = table[name];
+				table[name] = (...args) => fn(...args.map(toNumber));
+			}
+		}
+		return table;
+	};
+
 	return {
 		env: { memory },
-		sprt: {
+		sprt: adaptPointers({
 			clock_now(id) { return (id === 1 ? performance.now() + timeOrigin : Date.now()) * 1e6; },
 			clock_res() { return 1e3; },
 			fd_write(h, buf, len) { log?.(h === 2 ? "stderr" : "stdout", readStr(buf, len)); return len; },
@@ -489,15 +618,17 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			// control block. Args are pointers/lengths into this same shared memory. This
 			// (engine or thread) worker may block in Atomics.wait; the OPFS worker cannot,
 			// so it drains with Atomics.waitAsync. Returns the op result (>=0) or -errno.
+			// A host with a synchronous filesystem (Node, opfs-node.mjs) passes `opfsHost`
+			// instead and is called directly.
 			opfs_call(op, a0, a1, a2, a3) {
-				if (!opfsCtrl) return -ENOSYS;
+				if (!opfsCtrl) return opfsHost ? opfsHost(op, a0, a1, a2, a3) : -ENOSYS;
 				// Serialise concurrent callers (one outstanding request at a time).
 				while (Atomics.compareExchange(opfsCtrl, OPFS_LOCK, 0, 1) !== 0) { /* spin */ }
 				Atomics.store(opfsCtrl, OPFS_OP, op);
-				Atomics.store(opfsCtrl, OPFS_A0, a0);
-				Atomics.store(opfsCtrl, OPFS_A1, a1);
-				Atomics.store(opfsCtrl, OPFS_A2, a2);
-				Atomics.store(opfsCtrl, OPFS_A3, a3);
+				Atomics.store(opfsArgs, 0, BigInt(a0));
+				Atomics.store(opfsArgs, 1, BigInt(a1));
+				Atomics.store(opfsArgs, 2, BigInt(a2));
+				Atomics.store(opfsArgs, 3, BigInt(a3));
 				const my = Atomics.add(opfsCtrl, OPFS_REQSEQ, 1) + 1;
 				Atomics.notify(opfsCtrl, OPFS_REQSEQ);
 				let cur = Atomics.load(opfsCtrl, OPFS_RESPSEQ);
@@ -506,6 +637,6 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 				Atomics.store(opfsCtrl, OPFS_LOCK, 0);
 				return res;
 			},
-		},
+		}),
 	};
 }

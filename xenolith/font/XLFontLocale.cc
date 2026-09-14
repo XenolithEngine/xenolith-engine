@@ -66,10 +66,11 @@ public:
 	bool hasLocaleTagsFast(WideStringView r);
 	bool hasLocaleTags(WideStringView r);
 
-	WideStringView resolveTag(WideStringView);
+	uint32_t pluralForm(uint32_t n) const;
 
-	mem_std::WideString resolveLocaleTags(WideStringView r);
-	StringView language(const StringView &locale);
+	WideStringView resolveTag(WideStringView, SpanView<WideStringView> args);
+
+	mem_std::WideString resolveLocaleTags(WideStringView r, SpanView<WideStringView> args);
 
 	StringView timeToken(TimeTokens tok);
 	const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &timeTokenTable();
@@ -157,6 +158,56 @@ LocaleManager::LocaleManager(Ref *ref, memory::pool_t *p)
 				pair("Shortcut:Megabytes", "Mb"),
 				pair("Shortcut:Pages", "p"),
 			});
+
+	/* Two more, because the key-level fallback makes a locale with no table of its own read
+	ENGLISH rather than nothing - correct, and still wrong for a Chinese or Persian window whose
+	own widgets would then say "Copy" in the middle of its own language. A widget the engine
+	draws for itself has to speak every language the engine claims to know. */
+	define("zh-cn",
+			{
+				pair("SystemSearch", "搜索"),
+				pair("SystemFontSize", "字号"),
+				pair("SystemTheme", "主题"),
+				pair("SystemThemeLight", "浅色主题"),
+				pair("SystemThemeNeutral", "中性主题"),
+				pair("SystemThemeDark", "深色主题"),
+				pair("SystemMore", "更多"),
+				pair("SystemRestore", "恢复"),
+				pair("SystemRemoved", "已删除"),
+				pair("SystemCopy", "复制"),
+				pair("SystemCut", "剪切"),
+				pair("SystemPaste", "粘贴"),
+				pair("SystemTapExit", "再按一次退出"),
+
+				pair("SystemErrorOverflowChars", "字符过多"),
+				pair("SystemErrorInvalidChar", "无效字符"),
+
+				pair("Shortcut:Megabytes", "MB"),
+				pair("Shortcut:Pages", "页"),
+			});
+
+	define("fa-ir",
+			{
+				pair("SystemSearch", "جست‌وجو"),
+				pair("SystemFontSize", "اندازه قلم"),
+				pair("SystemTheme", "پوسته"),
+				pair("SystemThemeLight", "پوسته روشن"),
+				pair("SystemThemeNeutral", "پوسته خنثی"),
+				pair("SystemThemeDark", "پوسته تاریک"),
+				pair("SystemMore", "بیشتر"),
+				pair("SystemRestore", "بازگردانی"),
+				pair("SystemRemoved", "حذف شد"),
+				pair("SystemCopy", "رونوشت"),
+				pair("SystemCut", "برش"),
+				pair("SystemPaste", "چسباندن"),
+				pair("SystemTapExit", "برای خروج یک بار دیگر بزنید"),
+
+				pair("SystemErrorOverflowChars", "نویسه‌ها بیش از حد است"),
+				pair("SystemErrorInvalidChar", "نویسه نامعتبر"),
+
+				pair("Shortcut:Megabytes", "مگابایت"),
+				pair("Shortcut:Pages", "ص"),
+			});
 }
 
 bool LocaleManager::init() { return true; }
@@ -202,61 +253,146 @@ void LocaleManager::define(const StringView &locale,
 	}
 }
 
-WideStringView LocaleManager::string(const WideStringView &str) {
-	auto it = _strings.find(_locale.id);
-	if (it == _strings.end()) {
-		it = _strings.find(_default.id);
-	}
-	if (it == _strings.end()) {
-		it = _strings.begin();
-	}
+/* THE LOOKUP CHAIN, AND IT IS WALKED PER KEY RATHER THAN PER TABLE.
 
-	if (it != _strings.end()) {
-		auto sit = it->second.find(str);
-		if (sit != it->second.end()) {
-			return sit->second;
+A table that EXISTS but lacks the key used to end the search: `find(_locale.id)` succeeded, the key
+missed, and the caller got an empty string. So a locale translated in part rendered its untranslated
+strings as NOTHING - not as the language underneath them - and a label simply disappeared. Every step
+below is tried for every key, and `find` says whether this table answered:
+
+  1. the exact locale          `fa-ir`
+  2. any table of the same LANGUAGE - `fa-af` answers for an `fa-ir` nobody defined
+  3. the default locale, then its language, by the same two rules
+  4. `en-us`, the one id this module defines for itself, so there is always a floor
+
+The final step replaces `_strings.begin()`, which took whichever table sorted first and therefore
+answered with a DIFFERENT language as tables were added. */
+template <typename Map, typename Fn>
+static bool LocaleManager_lookup(Map &map, const LocaleIdentifier &locale,
+		const LocaleIdentifier &def, const Fn &find) {
+	auto exact = [&](StringView id) {
+		if (id.empty()) {
+			return false;
 		}
-	}
+		auto it = map.find(id);
+		return it != map.end() && find(it->second);
+	};
 
-	return WideStringView();
+	// A language matches `<lang>-<anything>`; the prefix test alone would let `fake-xx` answer for
+	// `fa`, so the separator is part of it.
+	auto byLanguage = [&](StringView lang) {
+		if (lang.empty()) {
+			return false;
+		}
+		for (auto &it : map) {
+			StringView id(it.first);
+			if (id.size() > lang.size() && id.starts_with(lang) && id[lang.size()] == '-'
+					&& find(it.second)) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	return exact(locale.id) || byLanguage(locale.language) || exact(def.id)
+			|| byLanguage(def.language) || exact(StringView("en-us"));
+}
+
+WideStringView LocaleManager::string(const WideStringView &str) {
+	WideStringView ret;
+	LocaleManager_lookup(_strings, _locale, _default, [&](auto &table) {
+		auto sit = table.find(str);
+		if (sit == table.end()) {
+			return false;
+		}
+		ret = sit->second;
+		return true;
+	});
+	return ret;
 }
 
 WideStringView LocaleManager::string(size_t index) {
-	auto it = _indexes.find(_locale.id);
-	if (it == _indexes.end()) {
-		it = _indexes.find(_default.id);
-	}
-	if (it == _indexes.end()) {
-		it = _indexes.begin();
-	}
-
-	if (it != _indexes.end()) {
-		auto sit = it->second.find(index);
-		if (sit != it->second.end()) {
-			return sit->second;
+	WideStringView ret;
+	LocaleManager_lookup(_indexes, _locale, _default, [&](auto &table) {
+		auto sit = table.find(index);
+		if (sit == table.end()) {
+			return false;
 		}
-	}
-
-	return WideStringView();
+		ret = sit->second;
+		return true;
+	});
+	return ret;
 }
 
 WideStringView LocaleManager::numeric(const WideStringView &str, uint32_t numEq) {
 	auto fmt = string(str);
 	WideStringView r(fmt);
+	WideStringView last;
 	while (!r.empty()) {
 		WideStringView def = r.readUntil<WideStringView::Chars<':'>>();
 		if (r.is(':')) {
 			++r;
 		}
 
+		last = def;
 		if (numEq == 0) {
 			return def;
-		} else {
-			--numEq;
 		}
+		--numEq;
 	}
 
-	return WideStringView();
+	/* A DEFINITION WITH FEWER FORMS THAN THE LANGUAGE ASKS FOR gives its LAST form, where it used to
+	give nothing at all. `pluralForm` answers 2 for a Russian count of five, so a definition written
+	with two words - an English table copied, a form forgotten - made the text VANISH for exactly the
+	counts nobody tests. Reading wrong is a translation bug somebody can see; rendering empty is not.
+	*/
+	return last;
+}
+
+/* THE PLURAL FORM THE COUNT TAKES, as an index into a `numeric` definition.
+
+CLDR's cardinal rules, for the categories this engine can actually spell with a colon-separated list.
+Three families cover everything it ships with, and an unknown language gets the two-form rule because
+that is what most of the table is:
+
+  one form    zh ja ko vi th id ms - a count never changes the word, and the list is one word long
+  two forms   en de fr es it fa tr ... - `one` then `other`; fa calls 0 and 1 `one`, which is why it
+              is not the English rule with a different name
+  three forms ru uk be - `one` (1, 21, 31 ... but not 11), `few` (2-4, 22-24 ... but not 12-14),
+              `many` (0, 5-20, 25-30 ...)
+
+It is deliberately NOT the full CLDR table: a rule that is in here is one a translator can see
+working, and a language added later should come with its table rather than ahead of it. */
+uint32_t LocaleManager::pluralForm(uint32_t n) const {
+	auto lang = _locale.language;
+	if (lang.empty()) {
+		lang = _default.language;
+	}
+
+	if (lang == "zh" || lang == "ja" || lang == "ko" || lang == "vi" || lang == "th"
+			|| lang == "id" || lang == "ms") {
+		return 0;
+	}
+
+	if (lang == "ru" || lang == "uk" || lang == "be") {
+		auto mod10 = n % 10;
+		auto mod100 = n % 100;
+		if (mod10 == 1 && mod100 != 11) {
+			return 0;
+		}
+		if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+			return 1;
+		}
+		return 2;
+	}
+
+	// Persian counts 0 as `one` and English does not, so it is a rule of its own rather than the
+	// English one under another name.
+	if (lang == "fa" || lang == "hi") {
+		return n <= 1 ? 0 : 1;
+	}
+
+	return n == 1 ? 0 : 1;
 }
 
 void LocaleManager::setDefault(StringView def) {
@@ -318,7 +454,7 @@ bool LocaleManager::hasLocaleTagsFast(WideStringView r) {
 				shortView = WideStringView(shortView.data(),
 						sprt::min(maxChars, r.size() - (shortView.data() - r.data())));
 				shortView.skipChars< WideStringView::CharGroup<CharGroupId::Alphanumeric>,
-						WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '='>>();
+						WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '=', '?'>>();
 				if (shortView.is('%')) {
 					return true;
 				}
@@ -354,7 +490,7 @@ bool LocaleManager::hasLocaleTags(WideStringView r) {
 					}
 				} else {
 					r.skipChars< WideStringView::CharGroup<CharGroupId::Alphanumeric>,
-							WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '='>>();
+							WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '=', '?'>>();
 					if (r.is('%')) {
 						return true;
 					}
@@ -366,7 +502,7 @@ bool LocaleManager::hasLocaleTags(WideStringView r) {
 	return false;
 }
 
-WideStringView LocaleManager::resolveTag(WideStringView token) {
+WideStringView LocaleManager::resolveTag(WideStringView token, SpanView<WideStringView> args) {
 	WideStringView replacement;
 	if (token.is('=')) {
 		auto numToken = token;
@@ -378,29 +514,50 @@ WideStringView LocaleManager::resolveTag(WideStringView token) {
 				}
 			});
 		}
-	} else if (token.is(u"?")) {
+	} else if (token.is('?')) {
 		auto numToken = token;
 		++numToken;
 		auto numValue = numToken.readInteger();
-		if (numValue.valid() && numValue.get() > 0) {
-			auto index = numValue.get();
-			if (numToken.is(':')) {
-				++numToken;
-				replacement = numeric(token, uint32_t(index));
+		/* `>= 0` AND NOT `> 0`: `numeric(key, 0)` returns the FIRST word of the list, which for every
+		three-form language is the singular - so the old test made the one form a count reaches most
+		often the only one the tag could not ask for. */
+		if (numValue.valid() && numValue.get() >= 0 && numToken.is(':')) {
+			++numToken;
+			/* `numToken` AND NOT `token`: what `numeric` looks up is the KEY, and the key is what
+			follows the colon. Handed the whole `?2:Files` token it searched the table for a key
+			nothing defines and answered empty every single time. */
+			replacement = numeric(numToken, uint32_t(numValue.get()));
+		}
+	} else if (!args.empty()
+			&& token.is<WideStringView::CharGroup<CharGroupId::Numbers>>()) {
+		/* A POSITIONAL ARGUMENT - `%1%` .. `%9%`, one-based - and the reason word order can belong to
+		the translation rather than to the call site. Digits alone, so no key can be shadowed: with no
+		args the branch is not taken and the tag falls through to the table exactly as before. */
+		auto numToken = token;
+		auto numValue = numToken.readInteger();
+		if (numValue.valid() && numToken.empty()) {
+			auto idx = numValue.get();
+			if (idx > 0 && size_t(idx) <= args.size()) {
+				replacement = args[size_t(idx) - 1];
 			}
 		}
 	} else {
-		if (replacement.empty() && !token.is('=')) {
-			replacement = string(token);
-		}
+		replacement = string(token);
 	}
 	return replacement;
 }
 
-WideString LocaleManager::resolveLocaleTags(WideStringView r) {
+WideString LocaleManager::resolveLocaleTags(WideStringView r, SpanView<WideStringView> args) {
 	if (r.is(u"@Locale:")) { // raw locale string
 		r += "@Locale:"_len;
-		return string(r).str<mem_std::Interface>();
+		/* A whole-string key may still carry tags of its own - that is what makes `%1%` usable from a
+		table value rather than only from a hand-written template. Resolved only when there is
+		something to resolve, so the common case stays one lookup and one copy. */
+		auto value = string(r);
+		if (!args.empty() && hasLocaleTags(value)) {
+			return resolveLocaleTags(value, args);
+		}
+		return value.str<mem_std::Interface>();
 	} else {
 		mem_std::WideString ret;
 		ret.reserve(r.size());
@@ -410,13 +567,13 @@ WideString LocaleManager::resolveLocaleTags(WideStringView r) {
 			if (r.is('%')) {
 				++r;
 				auto token = r.readChars< WideStringView::CharGroup<CharGroupId::Alphanumeric>,
-						WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '='>>();
+						WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '=', '?'>>();
 				if (!r.is('%')) {
 					ret.push_back(u'%');
 					ret.append(token.data(), token.size());
 				} else {
 					++r;
-					auto replacement = resolveTag(token);
+					auto replacement = resolveTag(token, args);
 					if (replacement.empty()) {
 						ret.push_back(u'%');
 						ret.append(token.data(), token.size());
@@ -432,32 +589,27 @@ WideString LocaleManager::resolveLocaleTags(WideStringView r) {
 	return mem_std::WideString();
 }
 
-StringView LocaleManager::language(const StringView &locale) {
-	if (locale == "ru-ru") {
-		return "Русский";
-	} else if (locale.starts_with("en-")) {
-		return "English";
-	}
-	return StringView();
-}
-
 StringView LocaleManager::timeToken(TimeTokens tok) {
-	auto it = _timeTokens.find(_locale.id);
-	if (it == _timeTokens.end()) {
-		it = _timeTokens.find(_default.id);
-	}
-
-	auto &table = it == _timeTokens.end() ? _defaultTime : it->second;
-	return table[toInt(tok)];
+	StringView ret;
+	// An entry a table left blank is a MISS, not an answer: a `define` that filled ten of the fourteen
+	// tokens would otherwise render the other four as nothing.
+	LocaleManager_lookup(_timeTokens, _locale, _default, [&](auto &table) {
+		if (table[toInt(tok)].empty()) {
+			return false;
+		}
+		ret = table[toInt(tok)];
+		return true;
+	});
+	return ret.empty() ? StringView(_defaultTime[toInt(tok)]) : ret;
 }
 
 const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &LocaleManager::timeTokenTable() {
-	auto it = _timeTokens.find(_locale.id);
-	if (it == _timeTokens.end()) {
-		it = _timeTokens.find(_default.id);
-	}
-
-	return it == _timeTokens.end() ? _defaultTime : it->second;
+	sprt::array<mem_pool::String, toInt(TimeTokens::Max)> *ret = nullptr;
+	LocaleManager_lookup(_timeTokens, _locale, _default, [&](auto &table) {
+		ret = &table;
+		return true;
+	});
+	return ret ? *ret : _defaultTime;
 }
 
 LocaleManager *LocaleManager::s_sharedInstance = nullptr;
@@ -503,11 +655,95 @@ bool hasLocaleTags(const WideStringView &r) {
 }
 
 WideString resolveLocaleTags(const WideStringView &r) {
-	return LocaleManager::getInstance()->resolveLocaleTags(r);
+	return LocaleManager::getInstance()->resolveLocaleTags(r, SpanView<WideStringView>());
 }
 
-StringView language(const StringView &locale) {
-	return LocaleManager::getInstance()->language(locale);
+WideString resolveLocaleTags(const WideStringView &r, SpanView<WideStringView> args) {
+	return LocaleManager::getInstance()->resolveLocaleTags(r, args);
+}
+
+uint32_t pluralForm(uint32_t n) { return LocaleManager::getInstance()->pluralForm(n); }
+
+/* THE BASE DIRECTION OF THE CURRENT LOCALE, and the one place that knowledge lives.
+
+`LanguageInfo` has no direction field, so this is a list rather than a lookup - and a short one on
+purpose: a script is right-to-left or it is not, and the languages written in Arabic, Hebrew and Thaana
+script are the whole of it. `Neutral` is never returned, because a base direction resolved from the
+first strong character is a property of the TEXT and this answers about the LOCALE. */
+TextDirection getTextDirection(StringView language) {
+	if (language == "ar" || language == "fa" || language == "he" || language == "ur"
+			|| language == "ps" || language == "sd" || language == "ug" || language == "yi"
+			|| language == "dv" || language == "ckb") {
+		return TextDirection::RightToLeft;
+	}
+	return TextDirection::LeftToRight;
+}
+
+TextDirection getTextDirection() {
+	auto info = LocaleManager::getInstance()->getLocaleInfo();
+	auto lang = info.id.language;
+	if (lang.empty()) {
+		lang = LocaleManager::getInstance()->getDefaultInfo().id.language;
+	}
+	return getTextDirection(lang);
+}
+
+String pluralFormat(StringView key, uint32_t count, SpanView<StringView> extra) {
+	auto mgr = LocaleManager::getInstance();
+
+	// The form first, then the substitution: `numeric` splits the definition on ':' and hands back
+	// ONE template, and that template is what carries `%1%`.
+	auto form = mgr->numeric(string::toUtf16<mem_std::Interface>(key), mgr->pluralForm(count));
+	if (form.empty()) {
+		// The tag, so a missing definition is VISIBLE. An empty string here reads as a label that
+		// was meant to be blank, which is the one thing it never is.
+		return toString("%", key, "%");
+	}
+
+	auto countStr = toString(count);
+
+	Vector<WideString> storage;
+	Vector<WideStringView> args;
+	storage.reserve(extra.size() + 1);
+	args.reserve(extra.size() + 1);
+	storage.emplace_back(string::toUtf16<mem_std::Interface>(countStr));
+	args.emplace_back(storage.back());
+	for (auto &it : extra) {
+		storage.emplace_back(string::toUtf16<mem_std::Interface>(it));
+		args.emplace_back(storage.back());
+	}
+
+	return string::toUtf8<mem_std::Interface>(mgr->resolveLocaleTags(form, args));
+}
+
+String format(StringView key, SpanView<StringView> args) {
+	// The arguments are widened into a local vector because the resolver works in UTF-16 throughout:
+	// the table is stored that way, and converting the template down instead would have to convert it
+	// back again for every tag.
+	Vector<WideString> storage;
+	Vector<WideStringView> views;
+	storage.reserve(args.size());
+	views.reserve(args.size());
+	for (auto &it : args) {
+		storage.emplace_back(string::toUtf16<mem_std::Interface>(it));
+		views.emplace_back(storage.back());
+	}
+
+	auto tag = string::toUtf16<mem_std::Interface>(key);
+	if (!WideStringView(tag).is(u"@Locale:")) {
+		// A bare key is accepted as well as a tag: `format("Studio:Menu:Undo", …)` reads better at a
+		// call site that is building a string rather than handing one to a label.
+		tag = string::toUtf16<mem_std::Interface>(toString("@Locale:", key));
+	}
+
+	auto out = string::toUtf8<mem_std::Interface>(
+			LocaleManager::getInstance()->resolveLocaleTags(tag, views));
+	if (out.empty()) {
+		// A key nothing defines. The tag is returned so the miss is VISIBLE - an empty string reads
+		// as a caption that was meant to be blank, which is the one thing it never is.
+		return toString("%", key, "%");
+	}
+	return out;
 }
 
 StringView timeToken(TimeTokens tok) { return LocaleManager::getInstance()->timeToken(tok); }

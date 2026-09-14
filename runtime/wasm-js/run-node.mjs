@@ -10,11 +10,17 @@
 //
 // Usage: node run-node.mjs <module.wasm> [argv0 [args...]]
 // Exit code = the module's proc_exit code (or 0 on normal _start return; 70 on a wasm trap).
+//
+// The persistent /opfs mount (where the app's data/config/state categories live) is a host
+// directory: SPRT_OPFS_ROOT when set, which then keeps its content between runs, otherwise a
+// fresh temporary directory removed on exit.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
-import { makeImports, PROC_CTRL_BYTES, PROC_OUT_BYTES, writeProcessCompletion } from "./sprt-imports.mjs";
+import { makeImports, readMemoryImport, createMemory, PROC_CTRL_BYTES, PROC_OUT_BYTES, writeProcessCompletion } from "./sprt-imports.mjs";
+import { makeNodeOpfs } from "./opfs-node.mjs";
 
 const wasmPath = process.argv[2];
 if (!wasmPath) {
@@ -61,12 +67,27 @@ function loadBundle(root) {
 }
 const bundle = loadBundle(process.cwd());
 
-const module = await WebAssembly.compile(readFileSync(wasmPath));
+const wasmBytes = readFileSync(wasmPath);
+const module = await WebAssembly.compile(wasmBytes);
 // Shared linear memory: same shape as the browser harness (worker.mjs). `shared: true` is
 // required — the module is built with atomics/bulk-memory and imports env.memory.
-// Small initial on purpose: growth runs through the engine's single sbrk lock and must
-// stay exercised (tests/wthread fails unless the break actually moves).
-const memory = new WebAssembly.Memory({ initial: 512, maximum: 16384, shared: true });
+// wasm32 commits its whole 1 GiB (16384 pages) up front, as it always has. A wasm64 module
+// (i64 memory, BigInt limits) declares up to 16 GiB: commit the same 1 GiB and let sbrk
+// grow() the rest - Node reserves the declared maximum, so growing a shared memory works.
+const memDesc = readMemoryImport(wasmBytes);
+if (!memDesc) {
+	process.stderr.write(`${wasmPath}: the module does not import a memory\n`);
+	process.exit(2);
+}
+const memory = memDesc.memory64
+	? createMemory(memDesc, { initial: 16384 })
+	: createMemory(memDesc, { initial: 16384, maximum: 16384 });
+
+let opfsRoot = process.env.SPRT_OPFS_ROOT;
+if (!opfsRoot) {
+	opfsRoot = mkdtempSync(join(tmpdir(), "sprt-opfs-"));
+	process.on("exit", () => { try { rmSync(opfsRoot, { recursive: true, force: true }); } catch { /* ignore */ } });
+}
 
 // Atomic tid source shared by every thread worker (1 is reserved for this main entry thread).
 const tidBuf = new SharedArrayBuffer(4);
@@ -81,7 +102,7 @@ const threadURL = new URL("./thread-node.mjs", import.meta.url);
 const spawn = (threadPtr, stackTop, stackSize, tlsBase) => {
 	const tid = Atomics.add(tidCounter, 0, 1);
 	const w = new Worker(threadURL, {
-		workerData: { module, memory, tidBuf, tid, threadPtr, stackTop, stackSize, tlsBase },
+		workerData: { module, memory, tidBuf, tid, threadPtr, stackTop, stackSize, tlsBase, opfsRoot },
 	});
 	w.on("error", (e) => process.stderr.write(`[thread ${tid} error] ${(e && e.stack) || e}\n`));
 	w.unref(); // a still-running detached thread must not keep the process alive past exit
@@ -132,6 +153,7 @@ const imports = makeImports({
 	processCtrl,
 	processOut,
 	postProcess,
+	opfsHost: makeNodeOpfs({ memory, root: opfsRoot }),
 	onExit: (code) => { exitCode = code; },
 });
 

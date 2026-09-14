@@ -331,10 +331,15 @@ one answer to "where is the anchor", and there is a reason it is one: the box ha
 to come from the node's four **corners** (it may be rotated or scaled), be
 converted into the scene **content's** space — `convertToWorldSpace` alone answers
 in scene space, which is *physical pixels*, while a `WindowPlacement` is in
-logical points — and be flipped into Y-down at the end. Miss the second step and
+logical points — then scaled by `density / surfaceDensity`, and flipped into Y-down
+at the end. Miss the second step and
 the surface lands correctly at density 1 and further and further off as the
 anchor moves down a HiDPI window, which is how a tooltip drifted for a while
-before this became one function.
+before this became one function. Miss the third and it lands correctly on every
+window whose `WindowInfo::density` is 1 and off by that factor on every other —
+the content's space is pixels over the *full* density and a placement is pixels
+over the *display's* alone. `--density 1.5` was enough to move every menu in a
+window a third of the way from its own widget.
 
 Two things about `gravity` and `offset` are worth knowing before you tune a
 placement:

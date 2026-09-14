@@ -34,6 +34,23 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 static sprt::atomic<uint32_t> s_eventId = 1;
 static uint32_t s_eventIdMask = 0;
 
+/* ---- XL_DEP_ACCOUNT=1: what a gating dependency's life was spent on ------------------------------
+
+Same grammar as the other instruments: unset or `0` is off, anything else on. Off costs one load and
+a branch per signalled event, which is a handful per frame.
+
+The two halves are reported APART because they have different owners and different fixes. `queued` is
+the event sitting in hand, minted but not yet submitted - time that belongs to whoever decides when
+to submit, and which no amount of making the work faster will remove. `work` is the queue's own half.
+A `queued` that dwarfs `work` is a scheduling problem wearing a performance problem's clothes. */
+static bool DependencyEvent_accountEnabled() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_DEP_ACCOUNT");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
+}
+
 uint32_t DependencyEvent::GetNextId() {
 	return (s_eventId.fetch_add(1) & 0x7FFFFFFFu) | s_eventIdMask;
 }
@@ -62,6 +79,25 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 	}
 
 	const bool signaled = _queues.empty();
+
+	// `!_signaled` so the account reports the TRANSITION and not every later call: signal() on an
+	// event whose queue set is already empty answers true again, and the log read as two batches.
+	if (signaled && !_signaled.load() && DependencyEvent_accountEnabled()) {
+		const auto now = sp::platform::clock(ClockType::Monotonic);
+		// `queued` is absent rather than zero where nobody stamped the hand-over: an event whose
+		// sender does not call markSent can still report its total, and a zero there would read as
+		// "submitted instantly", which is the one wrong answer.
+		if (_sentClock) {
+			log::source().debug("dep::account", "tag=", _tag, " id=", _id,
+					" queued=", double(_sentClock - _clock) / 1'000.0,
+					"ms work=", double(now - _sentClock) / 1'000.0,
+					"ms total=", double(now - _clock) / 1'000.0, "ms");
+		} else {
+			log::source().debug("dep::account", "tag=", _tag, " id=", _id,
+					" queued=? work=? total=", double(now - _clock) / 1'000.0, "ms");
+		}
+	}
+
 	// Publish before running the callback: the callback may hand control to another thread, and a
 	// reader that gets there first must already see the event as fired.
 	_signaled.store(signaled);
@@ -74,6 +110,12 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 		cb();
 	}
 	return signaled;
+}
+
+void DependencyEvent::markSent() {
+	if (!_sentClock) {
+		_sentClock = sp::platform::clock(ClockType::Monotonic);
+	}
 }
 
 bool DependencyEvent::isSignaled() const { return _signaled.load(); }

@@ -5,7 +5,7 @@
 // The engine lives in the worker: its threads (Atomics.wait is forbidden on the main
 // thread), its WebGPU device/render loop, and synchronous OPFS all require this context.
 
-import { makeImports, INPUT_SAB_BYTES, DISPLAY_SAB_BYTES, writeDisplay, PROC_CTRL_BYTES, PROC_OUT_BYTES } from "./sprt-imports.mjs";
+import { makeImports, INPUT_SAB_BYTES, DISPLAY_SAB_BYTES, writeDisplay, PROC_CTRL_BYTES, PROC_OUT_BYTES, readMemoryImport, createMemory } from "./sprt-imports.mjs";
 import { makeWebgpuThunks, GPU_CTRL_BYTES } from "./webgpu.mjs";
 
 async function loadBundle(manifest) {
@@ -82,9 +82,29 @@ self.onmessage = async (e) => {
 				}
 			}
 		}
-		const module = await WebAssembly.compile(await (await fetch(wasmUrl)).arrayBuffer());
+		const bytes = await (await fetch(wasmUrl)).arrayBuffer();
+		const module = await WebAssembly.compile(bytes);
+		const memDesc = readMemoryImport(bytes);
 		let memory;
-		if (wantProcess && !hasCanvas) {
+		if (memDesc && memDesc.memory64) {
+			// wasm64: the module declares up to 16 GiB, which a tab may not be able to reserve as
+			// shared memory. Commit the same 1 GiB the wasm32 path does and step the MAXIMUM down
+			// instead - an imported memory only has to fit inside the declared limits.
+			const initial = 16384;
+			for (const maximum of [memDesc.maximum, 131072, 65536]) {
+				try {
+					memory = createMemory(memDesc, { initial, maximum });
+					post({ type: "stdout", text: `wasm64 memory ${(initial * 64) / 1024} MiB committed, `
+						+ `maximum ${(Math.min(maximum, memDesc.maximum) * 64) / 1024} MiB\n` });
+					break;
+				} catch (err) {
+					post({ type: "stdout", text: `wasm64 memory maximum ${maximum} pages refused (${err})\n` });
+				}
+			}
+			if (!memory) {
+				throw new Error("cannot allocate shared wasm64 memory");
+			}
+		} else if (wantProcess && !hasCanvas) {
 			memory = createXlmakeMemory(post, memoryInitial, memoryMaximum);
 		} else {
 			// 32 MiB initial, grow on demand up to the 1 GiB linker ceiling: growth is
@@ -160,7 +180,7 @@ self.onmessage = async (e) => {
 
 		// Small persistent scratch in wasm memory for the broker's out-param arrays (surface
 		// capabilities). Allocated here where malloc has a valid TLS; handed to the broker.
-		const scratchPtr = gpuCtrl ? instance.exports.malloc(256) : 0;
+		const scratchPtr = gpuCtrl ? Number(instance.exports.malloc(256)) : 0;
 
 		// Publish module + shared memory + control blocks so the main thread can create the
 		// thread / OPFS / GPU workers on demand, then run the program.
