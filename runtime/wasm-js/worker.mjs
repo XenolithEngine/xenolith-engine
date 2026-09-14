@@ -180,7 +180,8 @@ self.onmessage = async (e) => {
 
 		// Small persistent scratch in wasm memory for the broker's out-param arrays (surface
 		// capabilities). Allocated here where malloc has a valid TLS; handed to the broker.
-		const scratchPtr = gpuCtrl ? Number(instance.exports.malloc(256)) : 0;
+		// wasm64 malloc takes/returns i64: BigInt in, Number out (memory < 2^53).
+		const scratchPtr = gpuCtrl ? Number(instance.exports.malloc(memDesc.memory64 ? 256n : 256)) : 0;
 
 		// Publish module + shared memory + control blocks so the main thread can create the
 		// thread / OPFS / GPU workers on demand, then run the program.

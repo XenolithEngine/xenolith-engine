@@ -220,8 +220,8 @@ const I64_RET = new Set([
 	"wgpuDeviceGetQueue", "wgpuDeviceCreateShaderModule", "wgpuDeviceCreateBuffer", "wgpuDeviceCreateTexture",
 	"wgpuDeviceCreateSampler", "wgpuDeviceCreateBindGroupLayout", "wgpuDeviceCreateBindGroup",
 	"wgpuDeviceCreatePipelineLayout", "wgpuDeviceCreateRenderPipeline", "wgpuDeviceCreateComputePipeline",
-	"wgpuDeviceCreateCommandEncoder", "wgpuCommandEncoderBeginRenderPass", "wgpuCommandEncoderBeginComputePass",
-	"wgpuCommandEncoderFinish",
+	"wgpuDeviceCreateCommandEncoder", "wgpuTextureCreateView", "wgpuCommandEncoderBeginRenderPass",
+	"wgpuCommandEncoderBeginComputePass", "wgpuCommandEncoderFinish",
 ]);
 
 // ---- memory codec -------------------------------------------------------------------------
@@ -689,7 +689,9 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	const c = makeCodec(memory, w64);
 	// wasm64 imports take/return i64 for pointer-sized values: JS must hand over BigInt.
 	const arg64 = w64 ? (v) => BigInt(v) : (v) => v;
-	const call = (fn, ...a) => getTable().get(fn)(...a);
+	// Indirect calls go through the module's table — a table64 on wasm64, whose
+	// JS API takes i64 (BigInt) indices too.
+	const call = (fn, ...a) => getTable().get(w64 ? BigInt(fn) : fn)(...a);
 	// malloc returns i64 on wasm64 — normalize to Number (linear memory < 2^53).
 	const mallocPtr = (n) => Number(getExports().malloc(w64 ? BigInt(n) : n));
 	const freePtr = (p) => getExports().free(w64 ? BigInt(p) : p);
@@ -733,12 +735,16 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	}
 
 	// --- locally-handled functions (override the generic thunks) ---------------------------
+	// Pointer/size_t ARGUMENTS arrive as BigInt on wasm64 (i64 imports); the
+	// arithmetic below is Number-only, so normalize first (memory < 2^53).
+	const ptrArg = (v) => Number(v);
 	// Device request: fetch the broker's device handle, then fire the C callback on THIS
 	// worker (its indirect table). Callback signature: (status u32, WGPUDevice, StringView*,
 	// void*, void*) — everything but the status is pointer-sized.
-	wgpu.wgpuAdapterRequestDevice = (_ad, _desc, cbInfoPtr) => {
+	wgpu.wgpuAdapterRequestDevice = (_ad, _desc, cbInfoPtrRaw) => {
+		const p = ptrArg(cbInfoPtrRaw);
 		const dev = broker(FUNC_ID.$getDevice, []);
-		const o = LO.callbackInfo, p = cbInfoPtr;
+		const o = LO.callbackInfo;
 		const cb = c.ptr(p + o.callback), ud1 = c.ptr(p + o.userdata1), ud2 = c.ptr(p + o.userdata2);
 		call(cb, 1 /*Success*/, arg64(dev), arg64(emptySV()), arg64(ud1), arg64(ud2));
 	};
@@ -748,8 +754,8 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	// We can't truly wait on the GPU from here, but marshalled submits are already ordered on
 	// the queue, so delivering on poll is the right shape for the frame loop.
 	const pendingWorkDone = [];
-	wgpu.wgpuQueueOnSubmittedWorkDone = (_queue, cbInfoPtr) => {
-		const o = LO.callbackInfo, p = cbInfoPtr;
+	wgpu.wgpuQueueOnSubmittedWorkDone = (_queue, cbInfoPtrRaw) => {
+		const p = ptrArg(cbInfoPtrRaw), o = LO.callbackInfo;
 		pendingWorkDone.push([c.ptr(p + o.callback), c.ptr(p + o.userdata1), c.ptr(p + o.userdata2)]);
 	};
 	wgpu.wgpuDevicePoll = (_dev, _wait, _wsi) => {
@@ -759,10 +765,11 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	// Mapped range (mappedAtCreation uploads): malloc here (TLS-valid), register the pointer
 	// with the broker so its unmap flushes our bytes into the GPU buffer. Returns void* —
 	// i64 on wasm64.
-	const getRange = (buffer, offset, size) => {
+	const getRange = (buffer, offsetRaw, sizeRaw) => {
+		const offset = ptrArg(offsetRaw), size = ptrArg(sizeRaw);
 		let ptr = mappedPtr.get(buffer);
 		if (!ptr) { ptr = mallocPtr(size || 4); mappedPtr.set(buffer, ptr); broker(FUNC_ID.$setMapped, [buffer, ptr, size || 4]); }
-		return arg64(ptr + (offset | 0));
+		return arg64(ptr + offset);
 	};
 	wgpu.wgpuBufferGetMappedRange = getRange;
 	wgpu.wgpuBufferGetConstMappedRange = getRange;
@@ -773,8 +780,8 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	// Async map (readback / screenshots): not wired through the broker yet — report cancelled so
 	// the engine doesn't wait forever. (Milestone: the render path uses writeBuffer + mapped
 	// creation, not read-back mapping.)
-	wgpu.wgpuBufferMapAsync = (_buffer, _mode, _offset, _size, cbInfoPtr) => {
-		const o = LO.callbackInfo, p = cbInfoPtr;
+	wgpu.wgpuBufferMapAsync = (_buffer, _mode, _offset, _size, cbInfoPtrRaw) => {
+		const p = ptrArg(cbInfoPtrRaw), o = LO.callbackInfo;
 		const cb = c.ptr(p + o.callback), ud1 = c.ptr(p + o.userdata1), ud2 = c.ptr(p + o.userdata2);
 		call(cb, 2 /*CallbackCancelled*/, arg64(emptySV()), arg64(ud1), arg64(ud2));
 	};
