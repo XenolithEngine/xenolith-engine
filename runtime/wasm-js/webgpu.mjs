@@ -14,8 +14,16 @@
 //     the calling instance itself: C callbacks (need that worker's indirect table) and wasm
 //     malloc (need that worker's TLS-valid allocator). Those never cross to the broker.
 //
-// wasm32 layout: 4-byte fields unless noted; WGPUStringView = {ptr,len} (8B); WGPUColor = 4x
-// f64 (8-aligned); u64 fields 8-aligned; handles are u32 broker-table ids (0 == null).
+// ABI: the contract header (xenolith/backend/webgpu/webgpu/webgpu.h) uses real C types —
+// handles are opaque-struct POINTERS, lengths are size_t, callbacks are function pointers —
+// so the byte layout follows the module's address size. wasm32: pointer-sized fields are 4B,
+// WGPUStringView = {ptr,len} (8B). wasm64 (LP64): every pointer-sized field is 8B, StringView
+// 16B, u64 fields 8-aligned; enums/WGPUBool/WGPUFlags stay u32. All offsets are DERIVED from
+// the header by the layout engine below (no hand-maintained constants); the wasm32 column
+// reproduces the pre-wasm64 constants byte-for-byte. Handles remain u32 broker-table ids
+// (0 == null) regardless of their on-wire width.
+
+import { isMemory64 } from "./sprt-imports.mjs";
 
 // ---- enum decode tables (int -> WebGPU string; values per webgpu.h) -----------------------
 const TEXTURE_FORMAT = { 0: undefined, 1: "r8unorm", 7: "r16float", 8: "rg8unorm", 12: "r32float",
@@ -45,7 +53,127 @@ const TEX_SAMPLE = { 2: "float", 3: "unfilterable-float", 4: "depth", 5: "sint",
 const STORAGE_ACCESS = { 2: "write-only", 3: "read-only", 4: "read-write" };
 const ALPHA_MODE = { 0: "opaque", 1: "opaque", 2: "premultiplied", 3: "premultiplied", 4: "opaque" };
 
-const WHOLE = 0xFFFFFFFF; // low+high both all-ones -> WGPU_WHOLE_SIZE
+const WHOLE32 = 0xFFFFFFFF; // low+high both all-ones -> WGPU_WHOLE_SIZE (wasm32 read)
+const WHOLE64 = 0xFFFFFFFFFFFFFFFFn;
+
+// ---- struct layout engine -------------------------------------------------------------------
+// Field kinds: P = pointer-sized (pointers, handles, callbacks), SV = WGPUStringView,
+// Z = size_t (4B on wasm32/ILP32, 8B on wasm64/LP64), u64 = uint64_t (8B on both),
+// u32/i32 = enums/flags/bool, u16/f32/f64 as in C. Sizes/alignments per the module ABI;
+// offsets are C rules (member alignment, struct padded to max align).
+function layout(w64, fields) {
+	const k = {
+		P: [w64 ? 8 : 4, w64 ? 8 : 4],
+		SV: [w64 ? 16 : 8, w64 ? 8 : 4],
+		Z: [w64 ? 8 : 4, w64 ? 8 : 4],
+		u64: [8, 8], u32: [4, 4], i32: [4, 4], u16: [2, 2], f32: [4, 4], f64: [8, 8],
+	};
+	let cur = 0, maxA = 1;
+	const off = {};
+	for (const [name, kind] of fields) {
+		const [size, align] = kind.S ? [kind.S._size, kind.S._align] : k[kind];
+		cur = Math.ceil(cur / align) * align;
+		off[name] = cur;
+		cur += size;
+		maxA = Math.max(maxA, align);
+	}
+	off._size = Math.ceil(cur / maxA) * maxA;
+	off._align = maxA;
+	return off;
+}
+
+// Exported for verification gates: the wasm32 column must keep matching the
+// on-wire ABI the engine was built against before the layout engine existed.
+export function webgpuLayouts(w64) {
+	const L = {};
+	L.P = w64 ? 8 : 4;
+	L.stringView = layout(w64, [["data", "P"], ["length", "Z"]]);
+	L.chained = layout(w64, [["next", "P"], ["sType", "u32"]]);
+	L.shaderWgsl = layout(w64, [["chain", { S: L.chained }], ["code", "SV"]]);
+	L.extent3d = layout(w64, [["width", "u32"], ["height", "u32"], ["depthOrArrayLayers", "u32"]]);
+	L.origin3d = layout(w64, [["x", "u32"], ["y", "u32"], ["z", "u32"]]);
+	L.color = layout(w64, [["r", "f64"], ["g", "f64"], ["b", "f64"], ["a", "f64"]]);
+	L.stencilFace = layout(w64, [["compare", "u32"], ["failOp", "u32"], ["depthFailOp", "u32"], ["passOp", "u32"]]);
+	L.adapterInfo = layout(w64, [["next", "P"], ["vendor", "SV"], ["architecture", "SV"], ["device", "SV"],
+		["description", "SV"], ["backendType", "u32"], ["adapterType", "u32"], ["vendorID", "u32"], ["deviceID", "u32"]]);
+	L.limits = layout(w64, [["next", "P"],
+		["maxTextureDimension1D", "u32"], ["maxTextureDimension2D", "u32"], ["maxTextureDimension3D", "u32"],
+		["maxTextureArrayLayers", "u32"], ["maxBindGroups", "u32"], ["maxBindGroupsPlusVertexBuffers", "u32"],
+		["maxBindingsPerBindGroup", "u32"], ["maxDynamicUniformBuffersPerPipelineLayout", "u32"],
+		["maxDynamicStorageBuffersPerPipelineLayout", "u32"], ["maxSampledTexturesPerShaderStage", "u32"],
+		["maxSamplersPerShaderStage", "u32"], ["maxStorageBuffersPerShaderStage", "u32"],
+		["maxStorageTexturesPerShaderStage", "u32"], ["maxUniformBuffersPerShaderStage", "u32"],
+		["maxUniformBufferBindingSize", "u64"], ["maxStorageBufferBindingSize", "u64"],
+		["minUniformBufferOffsetAlignment", "u32"], ["minStorageBufferOffsetAlignment", "u32"],
+		["maxVertexBuffers", "u32"], ["maxBufferSize", "u64"],
+		["maxVertexAttributes", "u32"], ["maxVertexBufferArrayStride", "u32"], ["maxInterStageShaderVariables", "u32"],
+		["maxColorAttachments", "u32"], ["maxColorAttachmentBytesPerSample", "u32"],
+		["maxComputeWorkgroupStorageSize", "u32"], ["maxComputeInvocationsPerWorkgroup", "u32"],
+		["maxComputeWorkgroupSizeX", "u32"], ["maxComputeWorkgroupSizeY", "u32"], ["maxComputeWorkgroupSizeZ", "u32"],
+		["maxComputeWorkgroupsPerDimension", "u32"]]);
+	L.supportedFeatures = layout(w64, [["featureCount", "Z"], ["features", "P"]]);
+	L.shaderModuleDesc = layout(w64, [["next", "P"], ["label", "SV"]]);
+	L.bufferDesc = layout(w64, [["next", "P"], ["label", "SV"], ["usage", "u32"], ["size", "u64"], ["mappedAtCreation", "u32"]]);
+	L.samplerDesc = layout(w64, [["next", "P"], ["label", "SV"],
+		["addressModeU", "u32"], ["addressModeV", "u32"], ["addressModeW", "u32"],
+		["magFilter", "u32"], ["minFilter", "u32"], ["mipmapFilter", "u32"],
+		["lodMinClamp", "f32"], ["lodMaxClamp", "f32"], ["compare", "u32"], ["maxAnisotropy", "u16"]]);
+	L.textureDesc = layout(w64, [["next", "P"], ["label", "SV"], ["usage", "u32"], ["dimension", "u32"],
+		["size", { S: L.extent3d }], ["format", "u32"], ["mipLevelCount", "u32"], ["sampleCount", "u32"],
+		["viewFormatCount", "Z"], ["viewFormats", "P"]]);
+	L.textureViewDesc = layout(w64, [["next", "P"], ["label", "SV"], ["format", "u32"], ["dimension", "u32"],
+		["baseMipLevel", "u32"], ["mipLevelCount", "u32"], ["baseArrayLayer", "u32"], ["arrayLayerCount", "u32"],
+		["aspect", "u32"], ["usage", "u32"]]);
+	L.bufferBinding = layout(w64, [["next", "P"], ["type", "u32"], ["hasDynamicOffset", "u32"], ["minBindingSize", "u64"]]);
+	L.samplerBinding = layout(w64, [["next", "P"], ["type", "u32"]]);
+	L.textureBinding = layout(w64, [["next", "P"], ["sampleType", "u32"], ["viewDimension", "u32"], ["multisampled", "u32"]]);
+	L.storageTextureBinding = layout(w64, [["next", "P"], ["access", "u32"], ["format", "u32"], ["viewDimension", "u32"]]);
+	L.bglEntry = layout(w64, [["next", "P"], ["binding", "u32"], ["visibility", "u32"],
+		["buffer", { S: L.bufferBinding }], ["sampler", { S: L.samplerBinding }],
+		["texture", { S: L.textureBinding }], ["storageTexture", { S: L.storageTextureBinding }]]);
+	L.bglDesc = layout(w64, [["next", "P"], ["label", "SV"], ["entryCount", "Z"], ["entries", "P"]]);
+	L.bgEntry = layout(w64, [["next", "P"], ["binding", "u32"], ["buffer", "P"],
+		["offset", "u64"], ["size", "u64"], ["sampler", "P"], ["textureView", "P"]]);
+	L.bgDesc = layout(w64, [["next", "P"], ["label", "SV"], ["layout", "P"], ["entryCount", "Z"], ["entries", "P"]]);
+	L.pipelineLayoutDesc = layout(w64, [["next", "P"], ["label", "SV"], ["bindGroupLayoutCount", "Z"], ["bindGroupLayouts", "P"]]);
+	L.blendComponent = layout(w64, [["operation", "u32"], ["srcFactor", "u32"], ["dstFactor", "u32"]]);
+	L.colorTarget = layout(w64, [["next", "P"], ["format", "u32"], ["blend", "P"], ["writeMask", "u32"]]);
+	L.vertexState = layout(w64, [["next", "P"], ["module", "P"], ["entryPoint", "SV"],
+		["constantCount", "Z"], ["constants", "P"], ["bufferCount", "Z"], ["buffers", "P"]]);
+	L.primitiveState = layout(w64, [["next", "P"], ["topology", "u32"], ["stripIndexFormat", "u32"],
+		["frontFace", "u32"], ["cullMode", "u32"], ["unclippedDepth", "u32"]]);
+	L.multisampleState = layout(w64, [["next", "P"], ["count", "u32"], ["mask", "u32"], ["alphaToCoverageEnabled", "u32"]]);
+	L.depthStencilState = layout(w64, [["next", "P"], ["format", "u32"], ["depthWriteEnabled", "u32"],
+		["depthCompare", "u32"], ["stencilFront", { S: L.stencilFace }], ["stencilBack", { S: L.stencilFace }],
+		["stencilReadMask", "u32"], ["stencilWriteMask", "u32"],
+		["depthBias", "i32"], ["depthBiasSlopeScale", "f32"], ["depthBiasClamp", "f32"]]);
+	L.fragmentState = layout(w64, [["next", "P"], ["module", "P"], ["entryPoint", "SV"],
+		["constantCount", "Z"], ["constants", "P"], ["targetCount", "Z"], ["targets", "P"]]);
+	L.renderPipelineDesc = layout(w64, [["next", "P"], ["label", "SV"], ["layout", "P"],
+		["vertex", { S: L.vertexState }], ["primitive", { S: L.primitiveState }], ["depthStencil", "P"],
+		["multisample", { S: L.multisampleState }], ["fragment", "P"]]);
+	L.progStage = layout(w64, [["next", "P"], ["module", "P"], ["entryPoint", "SV"],
+		["constantCount", "Z"], ["constants", "P"]]);
+	L.computePipelineDesc = layout(w64, [["next", "P"], ["label", "SV"], ["layout", "P"], ["compute", { S: L.progStage }]]);
+	L.renderPassColorAtt = layout(w64, [["next", "P"], ["view", "P"], ["depthSlice", "u32"],
+		["resolveTarget", "P"], ["loadOp", "u32"], ["storeOp", "u32"], ["clearValue", { S: L.color }]]);
+	L.renderPassDepthAtt = layout(w64, [["view", "P"], ["depthLoadOp", "u32"], ["depthStoreOp", "u32"],
+		["depthClearValue", "f32"], ["depthReadOnly", "u32"], ["stencilLoadOp", "u32"], ["stencilStoreOp", "u32"],
+		["stencilClearValue", "u32"], ["stencilReadOnly", "u32"]]);
+	L.renderPassDesc = layout(w64, [["next", "P"], ["label", "SV"], ["colorAttachmentCount", "Z"],
+		["colorAttachments", "P"], ["depthStencilAttachment", "P"], ["occlusionQuerySet", "P"], ["timestampWrites", "P"]]);
+	L.texelCopyBufferLayout = layout(w64, [["offset", "u64"], ["bytesPerRow", "u32"], ["rowsPerImage", "u32"]]);
+	L.texelCopyBufferInfo = layout(w64, [["layout", { S: L.texelCopyBufferLayout }], ["buffer", "P"]]);
+	L.texelCopyTextureInfo = layout(w64, [["texture", "P"], ["mipLevel", "u32"], ["origin", { S: L.origin3d }], ["aspect", "u32"]]);
+	L.surfaceConfig = layout(w64, [["next", "P"], ["device", "P"], ["format", "u32"], ["usage", "u32"],
+		["width", "u32"], ["height", "u32"], ["viewFormatCount", "Z"], ["viewFormats", "P"],
+		["alphaMode", "u32"], ["presentMode", "u32"]]);
+	L.surfaceCaps = layout(w64, [["next", "P"], ["usages", "u32"], ["formatCount", "Z"], ["formats", "P"],
+		["presentModeCount", "Z"], ["presentModes", "P"], ["alphaModeCount", "Z"], ["alphaModes", "P"]]);
+	L.surfaceTexture = layout(w64, [["next", "P"], ["texture", "P"], ["status", "u32"]]);
+	L.callbackInfo = layout(w64, [["next", "P"], ["mode", "u32"], ["callback", "P"], ["userdata1", "P"], ["userdata2", "P"]]);
+	return L;
+}
 
 // ---- shared control block layout (ctrl SharedArrayBuffer) ---------------------------------
 // i32 header + a BigInt64 args area (holds i32 and i64 args losslessly).
@@ -85,26 +213,54 @@ export const BROKER_FUNCS = [
 ];
 const FUNC_ID = Object.fromEntries(BROKER_FUNCS.map((n, i) => [n, i]));
 
+// wgpu functions whose C return is pointer-sized/size_t (handle creators, EnumerateAdapters):
+// a wasm64 module expects those imports to RETURN i64, so the thunk hands back a BigInt.
+const I64_RET = new Set([
+	"wgpuCreateInstance", "wgpuInstanceEnumerateAdapters", "wgpuInstanceCreateSurface",
+	"wgpuDeviceGetQueue", "wgpuDeviceCreateShaderModule", "wgpuDeviceCreateBuffer", "wgpuDeviceCreateTexture",
+	"wgpuDeviceCreateSampler", "wgpuDeviceCreateBindGroupLayout", "wgpuDeviceCreateBindGroup",
+	"wgpuDeviceCreatePipelineLayout", "wgpuDeviceCreateRenderPipeline", "wgpuDeviceCreateComputePipeline",
+	"wgpuDeviceCreateCommandEncoder", "wgpuCommandEncoderBeginRenderPass", "wgpuCommandEncoderBeginComputePass",
+	"wgpuCommandEncoderFinish",
+]);
+
 // ---- memory codec -------------------------------------------------------------------------
-export function makeCodec(memory) {
+// Reads/writes follow the module ABI: pointer-sized fields (pointers, handles, callbacks)
+// are u32 on wasm32 and u64 on wasm64; u64/size_t fields are 8B on both.
+export function makeCodec(memory, w64) {
 	const dv = () => new DataView(memory.buffer);
 	const u8 = () => new Uint8Array(memory.buffer);
 	const u32 = (p) => dv().getUint32(p, true);
 	const i32 = (p) => dv().getInt32(p, true);
 	const f32 = (p) => dv().getFloat32(p, true);
 	const f64 = (p) => dv().getFloat64(p, true);
-	const u64 = (p) => { const lo = u32(p), hi = u32(p + 4); return hi * 0x100000000 + lo; };
-	const isWhole = (p) => u32(p) === WHOLE && u32(p + 4) === WHOLE;
+	const ptr = w64
+		? (p) => Number(dv().getBigUint64(p, true))
+		: (p) => dv().getUint32(p, true);
+	const handle = ptr; // handles are pointer-typed in the contract header
+	const u64 = w64
+		? (p) => Number(dv().getBigUint64(p, true))
+		: (p) => { const lo = u32(p), hi = u32(p + 4); return hi * 0x100000000 + lo; };
+	const isWhole = w64
+		? (p) => dv().getBigUint64(p, true) === WHOLE64
+		: (p) => u32(p) === WHOLE32 && u32(p + 4) === WHOLE32;
 	const set32 = (p, v) => dv().setUint32(p, v >>> 0, true);
-	const set64 = (p, v) => { dv().setUint32(p, v >>> 0, true); dv().setUint32(p + 4, Math.floor(v / 0x100000000) >>> 0, true); };
+	const setPtr = w64
+		? (p, v) => dv().setBigUint64(p, BigInt(v), true)
+		: (p, v) => dv().setUint32(p, v >>> 0, true);
+	const set64 = w64
+		? (p, v) => dv().setBigUint64(p, BigInt(v), true)
+		: (p, v) => { dv().setUint32(p, v >>> 0, true); dv().setUint32(p + 4, Math.floor(v / 0x100000000) >>> 0, true); };
+	const z = w64 ? u64 : u32;          // size_t read (4B wasm32 / 8B wasm64)
+	const setZ = w64 ? set64 : set32;   // size_t write
 	const bytes = (p, n) => u8().slice(p, p + n);
 	const strView = (p) => {
-		const data = u32(p), len = u32(p + 4);
+		const data = ptr(p), len = w64 ? u64(p + 8) : u32(p + 4);
 		if (!data) return "";
-		if (len === 0xffffffff) { let e = data; const b = u8(); while (b[e]) e++; return new TextDecoder().decode(u8().slice(data, e)); }
+		if (len === 0xffffffff || (w64 && len === 0xffffffffffffffff)) { let e = data; const b = u8(); while (b[e]) e++; return new TextDecoder().decode(u8().slice(data, e)); }
 		return new TextDecoder().decode(u8().slice(data, data + len));
 	};
-	return { dv, u8, u32, i32, f32, f64, u64, isWhole, set32, set64, bytes, strView };
+	return { dv, u8, u32, i32, f32, f64, u64, ptr, handle, isWhole, set32, setPtr, set64, z, setZ, bytes, strView };
 }
 
 // ---- handle table: integer id <-> JS GPU object (lives in the broker) ---------------------
@@ -132,8 +288,10 @@ export async function bootstrapGpu(canvas) {
 // of out-params that need to point at broker-produced arrays (surface capabilities).
 // ==========================================================================================
 export function makeBrokerTable({ memory, gpu, scratchPtr }) {
+	const w64 = isMemory64(memory);
+	const LO = webgpuLayouts(w64);
 	const H = new Handles();
-	const c = makeCodec(memory);
+	const c = makeCodec(memory, w64);
 	const mapped = new Map(); // buffer handle -> { buf, ptr, size } (mappedAtCreation upload)
 
 	// Presentation bridge: the engine renders whenever (off its own clock), but a transferred
@@ -143,118 +301,132 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 	let presentTex = null, presentW = 0, presentH = 0;
 
 	function decodeBlend(p) {
+		// WGPUBlendState: two pure-enum components — same offsets under both ABIs.
 		return {
 			color: { operation: BLEND_OP[c.u32(p)] || "add", srcFactor: BLEND_FACTOR[c.u32(p + 4)] || "one", dstFactor: BLEND_FACTOR[c.u32(p + 8)] || "zero" },
 			alpha: { operation: BLEND_OP[c.u32(p + 12)] || "add", srcFactor: BLEND_FACTOR[c.u32(p + 16)] || "one", dstFactor: BLEND_FACTOR[c.u32(p + 20)] || "zero" },
 		};
 	}
 	function decodePipeline(p) {
-		const layoutH = c.u32(p + 12);
+		const d = LO.renderPipelineDesc, layoutH = c.handle(p + d.layout);
+		const v = p + d.vertex;
 		const desc = {
 			layout: layoutH ? H.get(layoutH) : "auto",
-			vertex: { module: H.get(c.u32(p + 20)), entryPoint: c.strView(p + 24) || undefined },
-			primitive: {
-				topology: TOPOLOGY[c.u32(p + 52)] || "triangle-list",
-				stripIndexFormat: INDEX_FORMAT[c.u32(p + 56)],
-				frontFace: FRONT_FACE[c.u32(p + 60)] || "ccw",
-				cullMode: CULL_MODE[c.u32(p + 64)] || "none",
-			},
-			multisample: { count: c.u32(p + 80) || 1, mask: c.u32(p + 84) || 0xFFFFFFFF, alphaToCoverageEnabled: !!c.u32(p + 88) },
+			vertex: { module: H.get(c.handle(v + LO.vertexState.module)), entryPoint: c.strView(v + LO.vertexState.entryPoint) || undefined },
+			primitive: (() => {
+				const pr = p + d.primitive, s = LO.primitiveState;
+				return {
+					topology: TOPOLOGY[c.u32(pr + s.topology)] || "triangle-list",
+					stripIndexFormat: INDEX_FORMAT[c.u32(pr + s.stripIndexFormat)],
+					frontFace: FRONT_FACE[c.u32(pr + s.frontFace)] || "ccw",
+					cullMode: CULL_MODE[c.u32(pr + s.cullMode)] || "none",
+				};
+			})(),
+			multisample: (() => {
+				const ms = p + d.multisample, s = LO.multisampleState;
+				return { count: c.u32(ms + s.count) || 1, mask: c.u32(ms + s.mask) || 0xFFFFFFFF, alphaToCoverageEnabled: !!c.u32(ms + s.alphaToCoverageEnabled) };
+			})(),
 		};
-		const dsPtr = c.u32(p + 72);
+		const dsPtr = c.ptr(p + d.depthStencil);
 		if (dsPtr) {
-			const dw = c.u32(dsPtr + 8);
+			const s = LO.depthStencilState, dw = c.u32(dsPtr + s.depthWriteEnabled);
 			desc.depthStencil = {
-				format: TEXTURE_FORMAT[c.u32(dsPtr + 4)],
+				format: TEXTURE_FORMAT[c.u32(dsPtr + s.format)],
 				depthWriteEnabled: dw === 2 ? undefined : !!dw,
-				depthCompare: COMPARE[c.u32(dsPtr + 12)] || "always",
-				depthBias: c.i32(dsPtr + 56), depthBiasSlopeScale: c.f32(dsPtr + 60), depthBiasClamp: c.f32(dsPtr + 64),
+				depthCompare: COMPARE[c.u32(dsPtr + s.depthCompare)] || "always",
+				depthBias: c.i32(dsPtr + s.depthBias), depthBiasSlopeScale: c.f32(dsPtr + s.depthBiasSlopeScale), depthBiasClamp: c.f32(dsPtr + s.depthBiasClamp),
 			};
 		}
-		const fragPtr = c.u32(p + 92);
+		const fragPtr = c.ptr(p + d.fragment);
 		if (fragPtr) {
-			const targetCount = c.u32(fragPtr + 24), targetsPtr = c.u32(fragPtr + 28), targets = [];
+			const f = LO.fragmentState, targetCount = c.z(fragPtr + f.targetCount), targetsPtr = c.ptr(fragPtr + f.targets), targets = [];
+			const ts = LO.colorTarget, tstride = ts._size;
 			for (let i = 0; i < targetCount; i++) {
-				const t = targetsPtr + i * 16, blendPtr = c.u32(t + 8);
-				const tgt = { format: TEXTURE_FORMAT[c.u32(t + 4)] || gpu.format, writeMask: c.u32(t + 12) };
+				const t = targetsPtr + i * tstride, blendPtr = c.ptr(t + ts.blend);
+				const tgt = { format: TEXTURE_FORMAT[c.u32(t + ts.format)] || gpu.format, writeMask: c.u32(t + ts.writeMask) };
 				if (blendPtr) tgt.blend = decodeBlend(blendPtr);
 				targets.push(tgt);
 			}
-			desc.fragment = { module: H.get(c.u32(fragPtr + 4)), entryPoint: c.strView(fragPtr + 8) || undefined, targets };
+			desc.fragment = { module: H.get(c.handle(fragPtr + f.module)), entryPoint: c.strView(fragPtr + f.entryPoint) || undefined, targets };
 		}
 		return desc;
 	}
 	function decodeRenderPass(p) {
-		const count = c.u32(p + 12), attsPtr = c.u32(p + 16), colorAttachments = [];
+		const d = LO.renderPassDesc, count = c.z(p + d.colorAttachmentCount), attsPtr = c.ptr(p + d.colorAttachments), colorAttachments = [];
+		const a = LO.renderPassColorAtt, stride = a._size;
 		for (let i = 0; i < count; i++) {
-			const b = attsPtr + i * 56;
+			const b = attsPtr + i * stride;
 			colorAttachments.push({
-				view: H.get(c.u32(b + 4)),
-				resolveTarget: H.get(c.u32(b + 12)) || undefined,
-				loadOp: LOAD_OP[c.u32(b + 16)] || "clear",
-				storeOp: STORE_OP[c.u32(b + 20)] || "store",
-				clearValue: { r: c.f64(b + 24), g: c.f64(b + 32), b: c.f64(b + 40), a: c.f64(b + 48) },
+				view: H.get(c.handle(b + a.view)),
+				resolveTarget: H.get(c.handle(b + a.resolveTarget)) || undefined,
+				loadOp: LOAD_OP[c.u32(b + a.loadOp)] || "clear",
+				storeOp: STORE_OP[c.u32(b + a.storeOp)] || "store",
+				clearValue: (() => {
+					const q = b + a.clearValue, o = LO.color;
+					return { r: c.f64(q + o.r), g: c.f64(q + o.g), b: c.f64(q + o.b), a: c.f64(q + o.a) };
+				})(),
 			});
 		}
 		const rp = { colorAttachments };
-		const dsPtr = c.u32(p + 20);
+		const dsPtr = c.ptr(p + d.depthStencilAttachment);
 		if (dsPtr) {
-			const d = {
-				view: H.get(c.u32(dsPtr + 0)),
-				depthLoadOp: LOAD_OP[c.u32(dsPtr + 4)], depthStoreOp: STORE_OP[c.u32(dsPtr + 8)],
-				depthClearValue: c.f32(dsPtr + 12), depthReadOnly: !!c.u32(dsPtr + 16),
+			const s = LO.renderPassDepthAtt, dsa = {
+				view: H.get(c.handle(dsPtr + s.view)),
+				depthLoadOp: LOAD_OP[c.u32(dsPtr + s.depthLoadOp)], depthStoreOp: STORE_OP[c.u32(dsPtr + s.depthStoreOp)],
+				depthClearValue: c.f32(dsPtr + s.depthClearValue), depthReadOnly: !!c.u32(dsPtr + s.depthReadOnly),
 			};
-			const slo = c.u32(dsPtr + 20);
+			const slo = c.u32(dsPtr + s.stencilLoadOp);
 			if (slo) {
-				d.stencilLoadOp = LOAD_OP[slo]; d.stencilStoreOp = STORE_OP[c.u32(dsPtr + 24)];
-				d.stencilClearValue = c.u32(dsPtr + 28); d.stencilReadOnly = !!c.u32(dsPtr + 32);
+				dsa.stencilLoadOp = LOAD_OP[slo]; dsa.stencilStoreOp = STORE_OP[c.u32(dsPtr + s.stencilStoreOp)];
+				dsa.stencilClearValue = c.u32(dsPtr + s.stencilClearValue); dsa.stencilReadOnly = !!c.u32(dsPtr + s.stencilReadOnly);
 			}
-			rp.depthStencilAttachment = d;
+			rp.depthStencilAttachment = dsa;
 		}
 		return rp;
 	}
-	// WGPUBindGroupLayoutEntry (stride 80, 8-aligned): binding@4, visibility@8, then four
-	// sub-layouts. WGPUBufferBindingLayout is 8-aligned (u64 minBindingSize) so `buffer` starts
-	// at @16 (padded), pushing every following field: buffer.type@20, hasDynamicOffset@24,
-	// minBindingSize@32; sampler.type@44; texture{sampleType@52,viewDim@56,multisampled@60};
-	// storageTexture{access@68,format@72,viewDim@76}.
 	function decodeBGLEntry(p) {
-		const e = { binding: c.u32(p + 4), visibility: c.u32(p + 8) };
-		const bufType = c.u32(p + 20), samType = c.u32(p + 44), texSample = c.u32(p + 52), stAccess = c.u32(p + 68);
-		if (bufType) e.buffer = { type: BUFFER_BINDING[bufType], hasDynamicOffset: !!c.u32(p + 24), minBindingSize: c.u64(p + 32) };
+		const e = { binding: c.u32(p + LO.bglEntry.binding), visibility: c.u32(p + LO.bglEntry.visibility) };
+		const bb = p + LO.bglEntry.buffer, sb = p + LO.bglEntry.sampler, tb = p + LO.bglEntry.texture, st = p + LO.bglEntry.storageTexture;
+		const bufType = c.u32(bb + LO.bufferBinding.type), samType = c.u32(sb + LO.samplerBinding.type),
+			texSample = c.u32(tb + LO.textureBinding.sampleType), stAccess = c.u32(st + LO.storageTextureBinding.access);
+		if (bufType) e.buffer = { type: BUFFER_BINDING[bufType], hasDynamicOffset: !!c.u32(bb + LO.bufferBinding.hasDynamicOffset), minBindingSize: c.u64(bb + LO.bufferBinding.minBindingSize) };
 		else if (samType) e.sampler = { type: SAMPLER_BINDING[samType] };
-		else if (texSample) e.texture = { sampleType: TEX_SAMPLE[texSample], viewDimension: VIEW_DIM[c.u32(p + 56)] || "2d", multisampled: !!c.u32(p + 60) };
-		else if (stAccess) e.storageTexture = { access: STORAGE_ACCESS[stAccess], format: TEXTURE_FORMAT[c.u32(p + 72)], viewDimension: VIEW_DIM[c.u32(p + 76)] || "2d" };
+		else if (texSample) e.texture = { sampleType: TEX_SAMPLE[texSample], viewDimension: VIEW_DIM[c.u32(tb + LO.textureBinding.viewDimension)] || "2d", multisampled: !!c.u32(tb + LO.textureBinding.multisampled) };
+		else if (stAccess) e.storageTexture = { access: STORAGE_ACCESS[stAccess], format: TEXTURE_FORMAT[c.u32(st + LO.storageTextureBinding.format)], viewDimension: VIEW_DIM[c.u32(st + LO.storageTextureBinding.viewDimension)] || "2d" };
 		return e;
 	}
 	function decodeBGEntry(p) {
-		const binding = c.u32(p + 4), bufH = c.u32(p + 8), samH = c.u32(p + 32), viewH = c.u32(p + 36);
+		const s = LO.bgEntry;
+		const binding = c.u32(p + s.binding), bufH = c.handle(p + s.buffer), samH = c.handle(p + s.sampler), viewH = c.handle(p + s.textureView);
 		if (bufH) {
-			const r = { buffer: H.get(bufH), offset: c.u64(p + 16) };
-			if (!c.isWhole(p + 24)) { const s = c.u64(p + 24); if (s) r.size = s; }
+			const r = { buffer: H.get(bufH), offset: c.u64(p + s.offset) };
+			if (!c.isWhole(p + s.size)) { const sz = c.u64(p + s.size); if (sz) r.size = sz; }
 			return { binding, resource: r };
 		}
 		if (samH) return { binding, resource: H.get(samH) };
 		return { binding, resource: H.get(viewH) };
 	}
 	function fillLimits(p, lim) {
-		const g = (k, d) => (lim && lim[k] != null ? lim[k] : d);
-		c.set32(p + 4, g("maxTextureDimension1D", 8192)); c.set32(p + 8, g("maxTextureDimension2D", 8192));
-		c.set32(p + 12, g("maxTextureDimension3D", 2048)); c.set32(p + 16, g("maxTextureArrayLayers", 256));
-		c.set32(p + 20, g("maxBindGroups", 4)); c.set32(p + 24, g("maxBindGroupsPlusVertexBuffers", 24));
-		c.set32(p + 28, g("maxBindingsPerBindGroup", 1000)); c.set32(p + 32, g("maxDynamicUniformBuffersPerPipelineLayout", 8));
-		c.set32(p + 36, g("maxDynamicStorageBuffersPerPipelineLayout", 4)); c.set32(p + 40, g("maxSampledTexturesPerShaderStage", 16));
-		c.set32(p + 44, g("maxSamplersPerShaderStage", 16)); c.set32(p + 48, g("maxStorageBuffersPerShaderStage", 8));
-		c.set32(p + 52, g("maxStorageTexturesPerShaderStage", 4)); c.set32(p + 56, g("maxUniformBuffersPerShaderStage", 12));
-		c.set64(p + 64, g("maxUniformBufferBindingSize", 65536)); c.set64(p + 72, g("maxStorageBufferBindingSize", 134217728));
-		c.set32(p + 80, g("minUniformBufferOffsetAlignment", 256)); c.set32(p + 84, g("minStorageBufferOffsetAlignment", 256));
-		c.set32(p + 88, g("maxVertexBuffers", 8)); c.set64(p + 96, g("maxBufferSize", 268435456));
-		c.set32(p + 104, g("maxVertexAttributes", 16)); c.set32(p + 108, g("maxVertexBufferArrayStride", 2048));
-		c.set32(p + 112, g("maxInterStageShaderVariables", 16)); c.set32(p + 116, g("maxColorAttachments", 8));
-		c.set32(p + 120, g("maxColorAttachmentBytesPerSample", 32)); c.set32(p + 124, g("maxComputeWorkgroupStorageSize", 16384));
-		c.set32(p + 128, g("maxComputeInvocationsPerWorkgroup", 256)); c.set32(p + 132, g("maxComputeWorkgroupSizeX", 256));
-		c.set32(p + 136, g("maxComputeWorkgroupSizeY", 256)); c.set32(p + 140, g("maxComputeWorkgroupSizeZ", 64));
-		c.set32(p + 144, g("maxComputeWorkgroupsPerDimension", 65535));
+		const g = (k, def) => (lim && lim[k] != null ? lim[k] : def);
+		const o = LO.limits;
+		const put32 = (f, k, def) => c.set32(p + o[f], g(k, def));
+		const put64 = (f, k, def) => c.set64(p + o[f], g(k, def));
+		put32("maxTextureDimension1D", "maxTextureDimension1D", 8192); put32("maxTextureDimension2D", "maxTextureDimension2D", 8192);
+		put32("maxTextureDimension3D", "maxTextureDimension3D", 2048); put32("maxTextureArrayLayers", "maxTextureArrayLayers", 256);
+		put32("maxBindGroups", "maxBindGroups", 4); put32("maxBindGroupsPlusVertexBuffers", "maxBindGroupsPlusVertexBuffers", 24);
+		put32("maxBindingsPerBindGroup", "maxBindingsPerBindGroup", 1000); put32("maxDynamicUniformBuffersPerPipelineLayout", "maxDynamicUniformBuffersPerPipelineLayout", 8);
+		put32("maxDynamicStorageBuffersPerPipelineLayout", "maxDynamicStorageBuffersPerPipelineLayout", 4); put32("maxSampledTexturesPerShaderStage", "maxSampledTexturesPerShaderStage", 16);
+		put32("maxSamplersPerShaderStage", "maxSamplersPerShaderStage", 16); put32("maxStorageBuffersPerShaderStage", "maxStorageBuffersPerShaderStage", 8);
+		put32("maxStorageTexturesPerShaderStage", "maxStorageTexturesPerShaderStage", 4); put32("maxUniformBuffersPerShaderStage", "maxUniformBuffersPerShaderStage", 12);
+		put64("maxUniformBufferBindingSize", "maxUniformBufferBindingSize", 65536); put64("maxStorageBufferBindingSize", "maxStorageBufferBindingSize", 134217728);
+		put32("minUniformBufferOffsetAlignment", "minUniformBufferOffsetAlignment", 256); put32("minStorageBufferOffsetAlignment", "minStorageBufferOffsetAlignment", 256);
+		put32("maxVertexBuffers", "maxVertexBuffers", 8); put64("maxBufferSize", "maxBufferSize", 268435456);
+		put32("maxVertexAttributes", "maxVertexAttributes", 16); put32("maxVertexBufferArrayStride", "maxVertexBufferArrayStride", 2048);
+		put32("maxInterStageShaderVariables", "maxInterStageShaderVariables", 16); put32("maxColorAttachments", "maxColorAttachments", 8);
+		put32("maxColorAttachmentBytesPerSample", "maxColorAttachmentBytesPerSample", 32); put32("maxComputeWorkgroupStorageSize", "maxComputeWorkgroupStorageSize", 16384);
+		put32("maxComputeInvocationsPerWorkgroup", "maxComputeInvocationsPerWorkgroup", 256); put32("maxComputeWorkgroupSizeX", "maxComputeWorkgroupSizeX", 256);
+		put32("maxComputeWorkgroupSizeY", "maxComputeWorkgroupSizeY", 256); put32("maxComputeWorkgroupSizeZ", "maxComputeWorkgroupSizeZ", 64);
+		put32("maxComputeWorkgroupsPerDimension", "maxComputeWorkgroupsPerDimension", 65535);
 	}
 
 	return {
@@ -276,7 +448,7 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		wgpuInstanceProcessEvents: () => {},
 		wgpuSetLogLevel: () => {},
 		wgpuSetLogCallback: () => {},
-		wgpuInstanceEnumerateAdapters: (_inst, _opts, adaptersPtr) => { if (adaptersPtr) c.set32(adaptersPtr, H.add(gpu.adapter)); return 1; },
+		wgpuInstanceEnumerateAdapters: (_inst, _opts, adaptersPtr) => { if (adaptersPtr) c.setPtr(adaptersPtr, H.add(gpu.adapter)); return 1; },
 		wgpuInstanceCreateSurface: () => H.add({ surface: true }),
 		// The engine polls this (wgpu-native model) to wait for a submission to finish before
 		// presenting/recycling. WebGPU completion is async, but the browser keeps GPU objects
@@ -285,79 +457,90 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		wgpuDevicePoll: () => 1,
 
 		wgpuAdapterGetInfo: (_ad, infoPtr) => {
-			for (let o = 4; o <= 28; o += 8) { c.set32(infoPtr + o, 0); c.set32(infoPtr + o + 4, 0); }
-			c.set32(infoPtr + 36, 2); c.set32(infoPtr + 40, 2); c.set32(infoPtr + 44, 0); c.set32(infoPtr + 48, 0);
+			const o = LO.adapterInfo;
+			for (const f of ["vendor", "architecture", "device", "description"]) {
+				const sv = infoPtr + o[f];
+				c.setPtr(sv, 0); c.setZ(sv + LO.stringView.length, 0);
+			}
+			c.set32(infoPtr + o.backendType, 2); c.set32(infoPtr + o.adapterType, 2);
+			c.set32(infoPtr + o.vendorID, 0); c.set32(infoPtr + o.deviceID, 0);
 			return 1;
 		},
 		wgpuAdapterInfoFreeMembers: () => {},
 		wgpuAdapterGetLimits: (_ad, limPtr) => { fillLimits(limPtr, gpu.adapter.limits); return 1; },
-		wgpuAdapterGetFeatures: (_ad, featPtr) => { c.set32(featPtr, 0); c.set32(featPtr + 4, 0); },
+		wgpuAdapterGetFeatures: (_ad, featPtr) => { const o = LO.supportedFeatures; c.setZ(featPtr + o.featureCount, 0); c.setPtr(featPtr + o.features, 0); },
 		wgpuSupportedFeaturesFreeMembers: () => {},
 		wgpuAdapterAddRef: () => {},
 		wgpuAdapterRelease: (h) => H.release(h),
 
 		wgpuDeviceGetQueue: () => H.add(gpu.queue),
 		wgpuDeviceGetLimits: (_dev, limPtr) => { fillLimits(limPtr, gpu.device.limits); return 1; },
-		wgpuDeviceGetFeatures: (_dev, featPtr) => { c.set32(featPtr, 0); c.set32(featPtr + 4, 0); },
+		wgpuDeviceGetFeatures: (_dev, featPtr) => { const o = LO.supportedFeatures; c.setZ(featPtr + o.featureCount, 0); c.setPtr(featPtr + o.features, 0); },
 		wgpuDeviceRelease: (h) => H.release(h),
 
 		wgpuDeviceCreateShaderModule: (_dev, descPtr) => {
-			const chain = c.u32(descPtr), code = chain ? c.strView(chain + 8) : "";
+			const chain = c.ptr(descPtr + LO.shaderModuleDesc.next), code = chain ? c.strView(chain + LO.shaderWgsl.code) : "";
 			return H.add(gpu.device.createShaderModule({ code }));
 		},
 		wgpuDeviceCreateBuffer: (_dev, descPtr) => {
-			const usage = c.u32(descPtr + 12), size = c.u64(descPtr + 16), mappedAtCreation = !!c.u32(descPtr + 24);
+			const o = LO.bufferDesc, usage = c.u32(descPtr + o.usage), size = c.u64(descPtr + o.size), mappedAtCreation = !!c.u32(descPtr + o.mappedAtCreation);
 			return H.add(gpu.device.createBuffer({ size, usage, mappedAtCreation }));
 		},
-		wgpuDeviceCreateTexture: (_dev, descPtr) => H.add(gpu.device.createTexture({
-			usage: c.u32(descPtr + 12), dimension: TEX_DIM[c.u32(descPtr + 16)] || "2d",
-			size: { width: c.u32(descPtr + 20), height: c.u32(descPtr + 24), depthOrArrayLayers: c.u32(descPtr + 28) || 1 },
-			format: TEXTURE_FORMAT[c.u32(descPtr + 32)], mipLevelCount: c.u32(descPtr + 36) || 1, sampleCount: c.u32(descPtr + 40) || 1,
-		})),
+		wgpuDeviceCreateTexture: (_dev, descPtr) => {
+			const o = LO.textureDesc, sz = descPtr + o.size, e = LO.extent3d;
+			return H.add(gpu.device.createTexture({
+				usage: c.u32(descPtr + o.usage), dimension: TEX_DIM[c.u32(descPtr + o.dimension)] || "2d",
+				size: { width: c.u32(sz + e.width), height: c.u32(sz + e.height), depthOrArrayLayers: c.u32(sz + e.depthOrArrayLayers) || 1 },
+				format: TEXTURE_FORMAT[c.u32(descPtr + o.format)], mipLevelCount: c.u32(descPtr + o.mipLevelCount) || 1, sampleCount: c.u32(descPtr + o.sampleCount) || 1,
+			}));
+		},
 		wgpuDeviceCreateSampler: (_dev, descPtr) => {
+			const o = LO.samplerDesc, d = descPtr;
 			const desc = {
-				addressModeU: ADDRESS[c.u32(descPtr + 12)] || "clamp-to-edge", addressModeV: ADDRESS[c.u32(descPtr + 16)] || "clamp-to-edge",
-				addressModeW: ADDRESS[c.u32(descPtr + 20)] || "clamp-to-edge", magFilter: FILTER[c.u32(descPtr + 24)] || "nearest",
-				minFilter: FILTER[c.u32(descPtr + 28)] || "nearest", mipmapFilter: FILTER[c.u32(descPtr + 32)] || "nearest",
-				lodMinClamp: c.f32(descPtr + 36), lodMaxClamp: c.f32(descPtr + 40) || 32, maxAnisotropy: c.dv().getUint16(descPtr + 48, true) || 1,
+				addressModeU: ADDRESS[c.u32(d + o.addressModeU)] || "clamp-to-edge", addressModeV: ADDRESS[c.u32(d + o.addressModeV)] || "clamp-to-edge",
+				addressModeW: ADDRESS[c.u32(d + o.addressModeW)] || "clamp-to-edge", magFilter: FILTER[c.u32(d + o.magFilter)] || "nearest",
+				minFilter: FILTER[c.u32(d + o.minFilter)] || "nearest", mipmapFilter: FILTER[c.u32(d + o.mipmapFilter)] || "nearest",
+				lodMinClamp: c.f32(d + o.lodMinClamp), lodMaxClamp: c.f32(d + o.lodMaxClamp) || 32, maxAnisotropy: c.dv().getUint16(d + o.maxAnisotropy, true) || 1,
 			};
-			const cmp = c.u32(descPtr + 44); if (cmp) desc.compare = COMPARE[cmp];
+			const cmp = c.u32(d + o.compare); if (cmp) desc.compare = COMPARE[cmp];
 			return H.add(gpu.device.createSampler(desc));
 		},
 		wgpuDeviceCreateBindGroupLayout: (_dev, descPtr) => {
-			const count = c.u32(descPtr + 12), ptr = c.u32(descPtr + 16), entries = [];
-			for (let i = 0; i < count; i++) entries.push(decodeBGLEntry(ptr + i * 80));
+			const o = LO.bglDesc, count = c.z(descPtr + o.entryCount), ptr = c.ptr(descPtr + o.entries), entries = [];
+			for (let i = 0; i < count; i++) entries.push(decodeBGLEntry(ptr + i * LO.bglEntry._size));
 			return H.add(gpu.device.createBindGroupLayout({ entries }));
 		},
 		wgpuDeviceCreateBindGroup: (_dev, descPtr) => {
-			const layout = H.get(c.u32(descPtr + 12)), count = c.u32(descPtr + 16), ptr = c.u32(descPtr + 20), entries = [];
-			for (let i = 0; i < count; i++) entries.push(decodeBGEntry(ptr + i * 40));
+			const o = LO.bgDesc, layout = H.get(c.handle(descPtr + o.layout)), count = c.z(descPtr + o.entryCount), ptr = c.ptr(descPtr + o.entries), entries = [];
+			for (let i = 0; i < count; i++) entries.push(decodeBGEntry(ptr + i * LO.bgEntry._size));
 			return H.add(gpu.device.createBindGroup({ layout, entries }));
 		},
 		wgpuDeviceCreatePipelineLayout: (_dev, descPtr) => {
-			const count = c.u32(descPtr + 12), ptr = c.u32(descPtr + 16), bindGroupLayouts = [];
-			for (let i = 0; i < count; i++) bindGroupLayouts.push(H.get(c.u32(ptr + i * 4)));
+			const o = LO.pipelineLayoutDesc, count = c.z(descPtr + o.bindGroupLayoutCount), ptr = c.ptr(descPtr + o.bindGroupLayouts), bindGroupLayouts = [];
+			for (let i = 0; i < count; i++) bindGroupLayouts.push(H.get(c.handle(ptr + i * LO.P)));
 			return H.add(gpu.device.createPipelineLayout({ bindGroupLayouts }));
 		},
 		wgpuDeviceCreateRenderPipeline: (_dev, descPtr) => H.add(gpu.device.createRenderPipeline(decodePipeline(descPtr))),
 		wgpuDeviceCreateComputePipeline: (_dev, descPtr) => {
-			const layoutH = c.u32(descPtr + 12);
+			const o = LO.computePipelineDesc, layoutH = c.handle(descPtr + o.layout), cs = descPtr + o.compute;
 			return H.add(gpu.device.createComputePipeline({
 				layout: layoutH ? H.get(layoutH) : "auto",
-				compute: { module: H.get(c.u32(descPtr + 20)), entryPoint: c.strView(descPtr + 24) || undefined },
+				compute: { module: H.get(c.handle(cs + LO.progStage.module)), entryPoint: c.strView(cs + LO.progStage.entryPoint) || undefined },
 			}));
 		},
 		wgpuDeviceCreateCommandEncoder: () => H.add(gpu.device.createCommandEncoder()),
 
 		wgpuQueueSubmit: (queue, count, cmdsPtr) => {
-			const cmds = []; for (let i = 0; i < count; i++) cmds.push(H.get(c.u32(cmdsPtr + i * 4)));
+			const cmds = []; for (let i = 0; i < count; i++) cmds.push(H.get(c.handle(cmdsPtr + i * LO.P)));
 			H.get(queue).submit(cmds);
 		},
 		wgpuQueueWriteBuffer: (queue, buffer, offset, dataPtr, size) => H.get(queue).writeBuffer(H.get(buffer), Number(offset), c.bytes(dataPtr, size)),
 		wgpuQueueWriteTexture: (queue, destPtr, dataPtr, dataSize, layoutPtr, extentPtr) => {
-			const dest = { texture: H.get(c.u32(destPtr)), mipLevel: c.u32(destPtr + 4),
-				origin: { x: c.u32(destPtr + 8), y: c.u32(destPtr + 12), z: c.u32(destPtr + 16) }, aspect: ASPECT[c.u32(destPtr + 20)] || "all" };
-			const layout = { offset: c.u64(layoutPtr), bytesPerRow: c.u32(layoutPtr + 8), rowsPerImage: c.u32(layoutPtr + 12) || undefined };
+			const t = LO.texelCopyTextureInfo, or = destPtr + t.origin, og = LO.origin3d;
+			const dest = { texture: H.get(c.handle(destPtr + t.texture)), mipLevel: c.u32(destPtr + t.mipLevel),
+				origin: { x: c.u32(or + og.x), y: c.u32(or + og.y), z: c.u32(or + og.z) }, aspect: ASPECT[c.u32(destPtr + t.aspect)] || "all" };
+			const bl = LO.texelCopyBufferLayout;
+			const layout = { offset: c.u64(layoutPtr + bl.offset), bytesPerRow: c.u32(layoutPtr + bl.bytesPerRow), rowsPerImage: c.u32(layoutPtr + bl.rowsPerImage) || undefined };
 			const extent = { width: c.u32(extentPtr), height: c.u32(extentPtr + 4), depthOrArrayLayers: c.u32(extentPtr + 8) || 1 };
 			H.get(queue).writeTexture(dest, c.bytes(dataPtr, dataSize), layout, extent);
 		},
@@ -374,14 +557,14 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 
 		wgpuTextureCreateView: (tex, descPtr) => {
 			if (!descPtr) return H.add(H.get(tex).createView());
-			const desc = {};
-			const fmt = c.u32(descPtr + 12); if (fmt) desc.format = TEXTURE_FORMAT[fmt];
-			const dim = c.u32(descPtr + 16); if (dim) desc.dimension = VIEW_DIM[dim];
-			desc.baseMipLevel = c.u32(descPtr + 20);
-			const mlc = c.u32(descPtr + 24); if (mlc) desc.mipLevelCount = mlc;
-			desc.baseArrayLayer = c.u32(descPtr + 28);
-			const alc = c.u32(descPtr + 32); if (alc) desc.arrayLayerCount = alc;
-			const asp = c.u32(descPtr + 36); if (asp) desc.aspect = ASPECT[asp];
+			const o = LO.textureViewDesc, desc = {};
+			const fmt = c.u32(descPtr + o.format); if (fmt) desc.format = TEXTURE_FORMAT[fmt];
+			const dim = c.u32(descPtr + o.dimension); if (dim) desc.dimension = VIEW_DIM[dim];
+			desc.baseMipLevel = c.u32(descPtr + o.baseMipLevel);
+			const mlc = c.u32(descPtr + o.mipLevelCount); if (mlc) desc.mipLevelCount = mlc;
+			desc.baseArrayLayer = c.u32(descPtr + o.baseArrayLayer);
+			const alc = c.u32(descPtr + o.arrayLayerCount); if (alc) desc.arrayLayerCount = alc;
+			const asp = c.u32(descPtr + o.aspect); if (asp) desc.aspect = ASPECT[asp];
 			return H.add(H.get(tex).createView(desc));
 		},
 		wgpuTextureRelease: (h) => H.release(h),
@@ -398,9 +581,11 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		wgpuCommandEncoderBeginRenderPass: (enc, descPtr) => H.add(H.get(enc).beginRenderPass(decodeRenderPass(descPtr))),
 		wgpuCommandEncoderBeginComputePass: (enc) => H.add(H.get(enc).beginComputePass()),
 		wgpuCommandEncoderCopyTextureToBuffer: (enc, srcPtr, dstPtr, extentPtr) => {
-			const src = { texture: H.get(c.u32(srcPtr)), mipLevel: c.u32(srcPtr + 4),
-				origin: { x: c.u32(srcPtr + 8), y: c.u32(srcPtr + 12), z: c.u32(srcPtr + 16) }, aspect: ASPECT[c.u32(srcPtr + 20)] || "all" };
-			const dst = { buffer: H.get(c.u32(dstPtr + 16)), offset: c.u64(dstPtr), bytesPerRow: c.u32(dstPtr + 8), rowsPerImage: c.u32(dstPtr + 12) || undefined };
+			const t = LO.texelCopyTextureInfo, or = srcPtr + t.origin, og = LO.origin3d;
+			const src = { texture: H.get(c.handle(srcPtr + t.texture)), mipLevel: c.u32(srcPtr + t.mipLevel),
+				origin: { x: c.u32(or + og.x), y: c.u32(or + og.y), z: c.u32(or + og.z) }, aspect: ASPECT[c.u32(srcPtr + t.aspect)] || "all" };
+			const bi = LO.texelCopyBufferInfo, bl = LO.texelCopyBufferLayout, lb = dstPtr + bi.layout;
+			const dst = { buffer: H.get(c.handle(dstPtr + bi.buffer)), offset: c.u64(lb + bl.offset), bytesPerRow: c.u32(lb + bl.bytesPerRow), rowsPerImage: c.u32(lb + bl.rowsPerImage) || undefined };
 			const extent = { width: c.u32(extentPtr), height: c.u32(extentPtr + 4), depthOrArrayLayers: c.u32(extentPtr + 8) || 1 };
 			H.get(enc).copyTextureToBuffer(src, dst, extent);
 		},
@@ -410,7 +595,7 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 
 		wgpuRenderPassEncoderSetPipeline: (pass, pipe) => H.get(pass).setPipeline(H.get(pipe)),
 		wgpuRenderPassEncoderSetBindGroup: (pass, index, group, offCount, offPtr) => {
-			const offs = []; for (let i = 0; i < offCount; i++) offs.push(c.u32(offPtr + i * 4));
+			const offs = []; for (let i = 0; i < offCount; i++) offs.push(c.u32(offPtr + i * 4)); // uint32_t offsets
 			H.get(pass).setBindGroup(index, H.get(group), offs);
 		},
 		wgpuRenderPassEncoderSetIndexBuffer: (pass, buffer, format, offset, size) =>
@@ -436,22 +621,24 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 			// prefers bgra, so the context incurs one extra internal copy at present — a benign perf
 			// warning we accept until the 2d pipelines can be built against the preferred format.
 			// point the caps arrays at the shared scratch region (persistent; FreeMembers no-ops)
+			const o = LO.surfaceCaps;
 			c.set32(scratchPtr, 18 /*rgba8unorm*/);
 			c.set32(scratchPtr + 4, 1 /*fifo*/); c.set32(scratchPtr + 8, 1 /*opaque*/);
-			c.set32(capsPtr + 4, 0x13);
-			c.set32(capsPtr + 8, 1); c.set32(capsPtr + 12, scratchPtr);
-			c.set32(capsPtr + 16, 1); c.set32(capsPtr + 20, scratchPtr + 4);
-			c.set32(capsPtr + 24, 1); c.set32(capsPtr + 28, scratchPtr + 8);
+			c.set32(capsPtr + o.usages, 0x13);
+			c.setZ(capsPtr + o.formatCount, 1); c.setPtr(capsPtr + o.formats, scratchPtr);
+			c.setZ(capsPtr + o.presentModeCount, 1); c.setPtr(capsPtr + o.presentModes, scratchPtr + 4);
+			c.setZ(capsPtr + o.alphaModeCount, 1); c.setPtr(capsPtr + o.alphaModes, scratchPtr + 8);
 			return 1;
 		},
 		wgpuSurfaceCapabilitiesFreeMembers: () => {},
 		wgpuSurfaceConfigure: (_surf, cfgPtr) => {
-			const width = c.u32(cfgPtr + 16), height = c.u32(cfgPtr + 20);
-			const format = TEXTURE_FORMAT[c.u32(cfgPtr + 8)] || gpu.format;
+			const o = LO.surfaceConfig;
+			const width = c.u32(cfgPtr + o.width), height = c.u32(cfgPtr + o.height);
+			const format = TEXTURE_FORMAT[c.u32(cfgPtr + o.format)] || gpu.format;
 			if (gpu.canvas) { gpu.canvas.width = width; gpu.canvas.height = height; }
 			// The canvas is the blit target (CopyDst); the engine renders into presentTex.
 			gpu.context.configure({ device: gpu.device, format, usage: 0x12 /*RenderAttachment|CopyDst*/,
-				alphaMode: ALPHA_MODE[c.u32(cfgPtr + 32)] || "opaque" });
+				alphaMode: ALPHA_MODE[c.u32(cfgPtr + o.alphaMode)] || "opaque" });
 			presentW = width; presentH = height;
 			presentTex = gpu.device.createTexture({ size: { width, height }, format,
 				usage: 0x11 /*RenderAttachment|CopySrc*/ });
@@ -459,7 +646,8 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		wgpuSurfaceUnconfigure: () => { try { gpu.context.unconfigure(); } catch {} presentTex = null; },
 		wgpuSurfaceGetCurrentTexture: (_surf, outPtr) => {
 			// hand the engine the offscreen present texture, not the live canvas texture
-			c.set32(outPtr + 4, H.add(presentTex)); c.set32(outPtr + 8, 1 /*SuccessOptimal*/);
+			const o = LO.surfaceTexture;
+			c.setPtr(outPtr + o.texture, H.add(presentTex)); c.set32(outPtr + o.status, 1 /*SuccessOptimal*/);
 		},
 		wgpuSurfacePresent: () => 1,
 		wgpuSurfaceRelease: (h) => H.release(h),
@@ -494,21 +682,33 @@ export async function runBroker({ ctrl, table, onError }) {
 // or TLS-valid malloc are done locally.
 // ==========================================================================================
 export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
+	const w64 = isMemory64(memory);
+	const LO = webgpuLayouts(w64);
 	const ci = new Int32Array(ctrl);
 	const ba = new BigInt64Array(ctrl, ARGS_OFF, ARGS_MAX);
-	const c = makeCodec(memory);
+	const c = makeCodec(memory, w64);
+	// wasm64 imports take/return i64 for pointer-sized values: JS must hand over BigInt.
+	const arg64 = w64 ? (v) => BigInt(v) : (v) => v;
 	const call = (fn, ...a) => getTable().get(fn)(...a);
-	const malloc = (n) => getExports().malloc(n);
+	// malloc returns i64 on wasm64 — normalize to Number (linear memory < 2^53).
+	const mallocPtr = (n) => Number(getExports().malloc(w64 ? BigInt(n) : n));
+	const freePtr = (p) => getExports().free(w64 ? BigInt(p) : p);
 	const mappedPtr = new Map(); // buffer handle -> local wasm ptr (freed on unmap)
 	let svScratch = 0;
-	const emptySV = () => { if (!svScratch) { svScratch = malloc(8); c.set32(svScratch, 0); c.set32(svScratch + 4, 0); } return svScratch; };
+	const emptySV = () => {
+		if (!svScratch) {
+			svScratch = mallocPtr(LO.stringView._size);
+			c.setPtr(svScratch + LO.stringView.data, 0); c.setZ(svScratch + LO.stringView.length, 0);
+		}
+		return svScratch;
+	};
 
 	// synchronous marshalled call: one caller at a time (LOCK), block until the broker answers.
 	function broker(funcId, args) {
 		while (Atomics.compareExchange(ci, LOCK, 0, 1) !== 0) { Atomics.wait(ci, LOCK, 1); }
 		Atomics.store(ci, FUNC, funcId);
 		Atomics.store(ci, NARG, args.length);
-		for (let i = 0; i < args.length; i++) { const a = args[i]; ba[i] = typeof a === "bigint" ? a : BigInt(a | 0); }
+		for (let i = 0; i < args.length; i++) { const a = args[i]; ba[i] = typeof a === "bigint" ? a : BigInt(a); }
 		Atomics.store(ci, STATUS, ST_REQ);
 		Atomics.notify(ci, STATUS);
 		while (Atomics.load(ci, STATUS) !== ST_DONE) { Atomics.wait(ci, STATUS, ST_REQ); }
@@ -520,20 +720,27 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	}
 
 	const wgpu = {};
-	// Every broker-side function becomes a thin marshalling thunk.
+	// Every broker-side function becomes a thin marshalling thunk. BigInt-returning (i64)
+	// functions on wasm64 must hand a BigInt back to the module.
 	for (const name of BROKER_FUNCS) {
 		if (name[0] === "$") continue;
 		const id = FUNC_ID[name];
-		wgpu[name] = (...args) => broker(id, args);
+		if (w64 && I64_RET.has(name)) {
+			wgpu[name] = (...args) => BigInt(broker(id, args));
+		} else {
+			wgpu[name] = (...args) => broker(id, args);
+		}
 	}
 
 	// --- locally-handled functions (override the generic thunks) ---------------------------
 	// Device request: fetch the broker's device handle, then fire the C callback on THIS
-	// worker (its indirect table). cbInfo: {..., callback@8, ud1@12, ud2@16}.
+	// worker (its indirect table). Callback signature: (status u32, WGPUDevice, StringView*,
+	// void*, void*) — everything but the status is pointer-sized.
 	wgpu.wgpuAdapterRequestDevice = (_ad, _desc, cbInfoPtr) => {
 		const dev = broker(FUNC_ID.$getDevice, []);
-		const cb = c.u32(cbInfoPtr + 8), ud1 = c.u32(cbInfoPtr + 12), ud2 = c.u32(cbInfoPtr + 16);
-		call(cb, 1 /*Success*/, dev, emptySV(), ud1, ud2);
+		const o = LO.callbackInfo, p = cbInfoPtr;
+		const cb = c.ptr(p + o.callback), ud1 = c.ptr(p + o.userdata1), ud2 = c.ptr(p + o.userdata2);
+		call(cb, 1 /*Success*/, arg64(dev), arg64(emptySV()), arg64(ud1), arg64(ud2));
 	};
 	// Submitted-work-done + poll: the engine registers a completion callback (AllowProcessEvents
 	// mode) then spins wgpuDevicePoll waiting for it — that is how fences (Fence::arm) and
@@ -542,31 +749,34 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 	// the queue, so delivering on poll is the right shape for the frame loop.
 	const pendingWorkDone = [];
 	wgpu.wgpuQueueOnSubmittedWorkDone = (_queue, cbInfoPtr) => {
-		pendingWorkDone.push([c.u32(cbInfoPtr + 8), c.u32(cbInfoPtr + 12), c.u32(cbInfoPtr + 16)]);
+		const o = LO.callbackInfo, p = cbInfoPtr;
+		pendingWorkDone.push([c.ptr(p + o.callback), c.ptr(p + o.userdata1), c.ptr(p + o.userdata2)]);
 	};
 	wgpu.wgpuDevicePoll = (_dev, _wait, _wsi) => {
-		while (pendingWorkDone.length) { const [cb, ud1, ud2] = pendingWorkDone.shift(); call(cb, 1 /*Success*/, emptySV(), ud1, ud2); }
+		while (pendingWorkDone.length) { const [cb, ud1, ud2] = pendingWorkDone.shift(); call(cb, 1 /*Success*/, arg64(emptySV()), arg64(ud1), arg64(ud2)); }
 		return 1;
 	};
 	// Mapped range (mappedAtCreation uploads): malloc here (TLS-valid), register the pointer
-	// with the broker so its unmap flushes our bytes into the GPU buffer.
+	// with the broker so its unmap flushes our bytes into the GPU buffer. Returns void* —
+	// i64 on wasm64.
 	const getRange = (buffer, offset, size) => {
 		let ptr = mappedPtr.get(buffer);
-		if (!ptr) { ptr = malloc(size || 4); mappedPtr.set(buffer, ptr); broker(FUNC_ID.$setMapped, [buffer, ptr, size || 4]); }
-		return ptr + (offset | 0);
+		if (!ptr) { ptr = mallocPtr(size || 4); mappedPtr.set(buffer, ptr); broker(FUNC_ID.$setMapped, [buffer, ptr, size || 4]); }
+		return arg64(ptr + (offset | 0));
 	};
 	wgpu.wgpuBufferGetMappedRange = getRange;
 	wgpu.wgpuBufferGetConstMappedRange = getRange;
 	wgpu.wgpuBufferUnmap = (buffer) => {
 		broker(FUNC_ID.wgpuBufferUnmap, [buffer]); // broker flushes + unmaps
-		const ptr = mappedPtr.get(buffer); if (ptr) { getExports().free(ptr); mappedPtr.delete(buffer); }
+		const ptr = mappedPtr.get(buffer); if (ptr) { freePtr(ptr); mappedPtr.delete(buffer); }
 	};
 	// Async map (readback / screenshots): not wired through the broker yet — report cancelled so
 	// the engine doesn't wait forever. (Milestone: the render path uses writeBuffer + mapped
 	// creation, not read-back mapping.)
 	wgpu.wgpuBufferMapAsync = (_buffer, _mode, _offset, _size, cbInfoPtr) => {
-		const cb = c.u32(cbInfoPtr + 8), ud1 = c.u32(cbInfoPtr + 12), ud2 = c.u32(cbInfoPtr + 16);
-		call(cb, 2 /*CallbackCancelled*/, emptySV(), ud1, ud2);
+		const o = LO.callbackInfo, p = cbInfoPtr;
+		const cb = c.ptr(p + o.callback), ud1 = c.ptr(p + o.userdata1), ud2 = c.ptr(p + o.userdata2);
+		call(cb, 2 /*CallbackCancelled*/, arg64(emptySV()), arg64(ud1), arg64(ud2));
 	};
 	return wgpu;
 }
