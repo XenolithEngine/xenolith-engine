@@ -23,24 +23,19 @@
 #include "XLClipboard.h"
 #include "XLAppThread.h"
 
-/* WHAT EACH PLATFORM ACTUALLY DOES, because the guarantees above are written against this table and
-not against the API's prose. Established by reading the backends, not by testing them:
+/* Platform clipboard behaviour the session guarantees are written against:
 
-  headless   read/probe/write, in process. Both callbacks fire INSIDE the call. Last write wins.
-  linux xcb  read is asynchronous (a TARGETS round trip, then a second conversion, INCR for large
-             payloads); UTF8_STRING/STRING are aliased to text/plain in both directions.
-  wayland    the selector runs synchronously, and the type it returns must be an EXACT member of
-             what was offered - otherwise the request is dropped WITHOUT calling dataCallback.
-  windows    no read, no probe; write returns Ok having discarded the payload. The WinRT
-             implementation exists in the source, commented out.
-  macos      lazy, multi-representation write; read requires an exact match but reports the refusal.
-             No probe.
-  android    multi-representation through a ContentProvider; may deliver from a worker thread. An
-             EMPTY type list means CLEAR THE CLIPBOARD - which is why write() refuses one here.
-  base       read calls back AND returns a failure; probe returns a failure and never calls back.
-
-Two of those rows are why "exactly one answer" needs both halves: wayland can answer zero times and
-the base controller can answer twice. */
+  headless   read/probe/write in process; both callbacks fire inside the call. Last write wins.
+  linux xcb  read is asynchronous (TARGETS, then conversion, INCR for large payloads);
+             UTF8_STRING/STRING are aliased to text/plain.
+  wayland    the selector runs synchronously and must return an exact offered type, otherwise
+             the request is dropped without calling dataCallback.
+  windows    no read, no probe; write returns Ok and discards the payload.
+  macos      lazy multi-representation write; read needs an exact match, reports refusal. No probe.
+  android    multi-representation via a ContentProvider; may deliver from a worker thread. An
+             empty type list clears the clipboard.
+  base       read calls back and returns a failure; probe returns a failure without calling back.
+*/
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -67,8 +62,7 @@ ClipboardOffer &ClipboardOffer::addRepresentation(StringView type, BytesView dat
 
 	for (auto &it : _eager) {
 		if (StringView(it.type) == type) {
-			// Position is preference, so a repeated type keeps its place rather than moving to the
-			// end of the list
+			// A repeated type keeps its position (position is preference)
 			it.data = sp::move(bytes);
 			return *this;
 		}
@@ -107,9 +101,8 @@ Rc<sprt::window::ClipboardData> ClipboardOffer::takeClipboardData(Ref *owner) {
 	data->label = StringView(label).str<sprt::window::String>();
 	for (auto &it : types) { data->types.emplace_back(StringView(it).str<sprt::window::String>()); }
 
-	// The eager table travels INTO the callback rather than beside it: the platform may ask on any
-	// thread, at any later time, and a lambda owning its copy is the only arrangement that does not
-	// depend on this offer still existing
+	// The eager table is moved into the callback: the platform may call it on any thread, after
+	// this offer is gone
 	if (!_eager.empty()) {
 		data->encodeCallback = [eager = sp::move(_eager), chained = sp::move(encode)](
 									   StringView type) -> sprt::window::Bytes {
@@ -130,23 +123,21 @@ Rc<sprt::window::ClipboardData> ClipboardOffer::takeClipboardData(Ref *owner) {
 
 // ---- the read in flight --------------------------------------------------------------------------
 
-/* Split off from the session because the type selector runs on an OS thread and must not be able to
-reach a session that may already be gone. The session holds one of these at a time; the callbacks
-hold it too, so it outlives a cancel. */
+/* Separate from the session because the type selector runs on an OS thread and must not reach a
+session that may be gone. The callbacks hold it too, so it outlives a cancel. */
 struct ClipboardSession::Pending : public Ref {
 	uint64_t serial = 0;
 
 	// Read by the selector on an unknown thread and never mutated after read() hands it over
 	sprt::window::Vector<sprt::window::String> preference;
 
-	// Written by the selector on an unknown thread, read by the delivery on the app thread. The
-	// flag is the fence: released after the list is filled, acquired before it is read.
+	// Written by the selector on an unknown thread, read by delivery on the app thread; the flag is
+	// set after the list is filled and checked before it is read.
 	sprt::atomic<bool> selectorRan = false;
 	sprt::window::Vector<sprt::window::String> available;
 
-	// App thread only. Both the backend's answer and ServerAppThread's "it never started" land
-	// here, and the base controller produces BOTH - so the first one to arrive takes the claim and
-	// the second is dropped.
+	// App thread only. The backend's answer and ServerAppThread's "never started" both land here;
+	// the first takes the claim.
 	bool claimed = false;
 	bool cancelled = false;
 
@@ -174,8 +165,7 @@ uint64_t ClipboardSession::read(SpanView<StringView> preference, ReadCallback &&
 		return 0;
 	}
 
-	// A read that supersedes another drops it here rather than letting two answers race for the
-	// same widget
+	// A new read supersedes the one in flight
 	cancel();
 
 	auto pending = Rc<Pending>::alloc();
@@ -188,8 +178,7 @@ uint64_t ClipboardSession::read(SpanView<StringView> preference, ReadCallback &&
 
 	_pending = pending;
 
-	// Delivery is app-thread-only, so the claim needs no atomic: ServerAppThread hops the backend's
-	// answer here, and its own "the read never started" answer is posted here too
+	// Delivery is app-thread-only, so the claim needs no atomic
 	auto deliver = [pending](Status st, BytesView data, StringView type) {
 		if (pending->claimed || pending->cancelled) {
 			return;
@@ -208,8 +197,8 @@ uint64_t ClipboardSession::read(SpanView<StringView> preference, ReadCallback &&
 			result.available = availableViews;
 		}
 
-		// A backend that ignored the selection is refused rather than parsed: what came back has to
-		// be something the caller asked for
+		// A backend that ignored the selection is refused: the type must be one the caller asked
+		// for
 		if (result.ok() && !type.empty()) {
 			Vector<StringView> want;
 			want.reserve(pending->preference.size());
@@ -230,7 +219,7 @@ uint64_t ClipboardSession::read(SpanView<StringView> preference, ReadCallback &&
 		pending->target = nullptr;
 	};
 
-	// Runs on an UNKNOWN thread: it may look at strings and at this object, and at nothing else
+	// Runs on an unknown thread: may touch only the strings and this object
 	auto select = [pending](SpanView<StringView> available) -> StringView {
 		for (auto &it : available) {
 			pending->available.emplace_back(it.str<sprt::window::String>());
@@ -242,21 +231,19 @@ uint64_t ClipboardSession::read(SpanView<StringView> preference, ReadCallback &&
 
 		auto chosen = preferMimeType(available, want);
 
-		// Published after the list is complete, so a delivery that arrives inline (headless, macOS,
-		// the Android text path) sees either all of it or none
+		// Published after the list is complete, so an inline delivery (headless, macOS, Android
+		// text) sees all of it or none
 		pending->selectorRan.store(true, sprt::memory_order_release);
 
-		// The view points into `available`, which is what the platform handed us - see
-		// preferMimeType. Returning a string of our own is what wayland answers with silence
+		// The view points into `available`, as the platform requires (see preferMimeType)
 		return chosen;
 	};
 
 	const auto serial = pending->serial;
 	_app->readFromClipboard(sp::move(deliver), sp::move(select), pending);
 
-	// The read may already be over: headless, macOS and the Android text path answer inside the
-	// call above. Reading _pending rather than `pending` is deliberate - a superseding read from
-	// inside the callback has to win
+	// The read may already be over (headless, macOS and Android text answer inline). Compare with
+	// _pending, not `pending`, so a superseding read from inside the callback wins
 	if (this->pending() == pending && pending->claimed) {
 		_pending = nullptr;
 	}
@@ -273,8 +260,7 @@ void ClipboardSession::cancel() {
 		return;
 	}
 
-	// Held across the reset: the backend's lambdas may already be gone, which would make the
-	// session's own reference the last one
+	// Held across the reset: the session's reference may be the last one
 	Rc<Ref> held = _pending;
 	auto p = static_cast<Pending *>(held.get());
 	_pending = nullptr;
@@ -296,15 +282,13 @@ Status ClipboardSession::write(ClipboardOffer &&offer, Ref *owner) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
-	// Refused rather than sent: on Android an empty type list means "clear the clipboard", so
-	// forwarding it would destroy the user's clipboard on one platform and do nothing on the rest
+	// Refused: on Android an empty type list clears the clipboard
 	if (offer.empty()) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
 	if (!_app->hasClipboard()) {
-		// Reported rather than pretended: a transport that discards writes must not answer Ok, or
-		// a caller can never find out why nothing was pasted
+		// A transport that discards writes must not answer Ok
 		return Status::ErrorNotImplemented;
 	}
 

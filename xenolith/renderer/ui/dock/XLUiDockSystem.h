@@ -33,35 +33,17 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /** The parking system: one system on the node a dock is rooted at.
 
-THE ONE THING TO KNOW. Every frame node is a FLAT direct child of this system's owner. The split
-tree is a data structure in here; nothing in the scene graph nests. `handleLayoutChildren` walks
-the tree, computes a rect per slot and writes `setContentSize` + `setPosition` on those flat
-children. Two consequences that are easy to get wrong:
+Every frame node is a flat direct child of the owner; the split tree exists only as data here, and
+`handleLayoutChildren` writes each child's size and position from it. The owner must not also
+carry a LayoutSystem (asserted in handleAdded). Frames share a ZOrder and sortAllChildren is not
+stable, so identify a frame by its DockNodeHandle or DockFrameComponent, never by child index.
 
- - the owner MUST NOT also carry a LayoutSystem. Two systems with HandleLayoutChildren both write
-   every child's geometry and neither wins. handleAdded asserts this, and the owner must never be
-   `display: flex` in a stylesheet - which is what the SystemManagedLayout marker it sets prevents;
+Effective minimums of frames and splits are recomputed from the parked panels and only ever
+strengthen the declared ones. `updateMinimums` is pure (safe inside handleMeasure), `distribute`
+writes only into the tree, `commitGeometry` is the only pass that touches nodes.
 
- - a frame's index among the owner's children means NOTHING. Node::sortAllChildren is not a stable
-   sort and frames share a ZOrder, so their order permutes. Identify a frame by its DockNodeHandle
-   or its DockFrameComponent, never by position.
-
-WHAT THE APPLICATION DECLARES, AND WHAT THE SYSTEM THEN OWNS. The application registers a
-descriptor per panel (id, title, icon, minimum size, a lazy builder) and one initial structure of
-frames with their constraints. From there the system runs itself: it splits and merges frames,
-moves panels between them, and recomputes the effective minimum of every frame and every split
-from the panels actually parked in them. A constraint is only ever strengthened by that pass -
-a frame can never end up smaller than the largest panel it holds.
-
-THE THREE PASSES, kept separate on purpose. `updateMinimums` is pure and may run inside
-handleMeasure; `distribute` writes only into the tree; `commitGeometry` is the only thing that
-touches a node. That separation is what makes the measurement protocol safe to answer.
-
-WHERE THE PANELS THEMSELVES LIVE. Not here: in a ui::PanelRegistry, which this system creates for
-itself unless one is handed to it. Sharing one with another container - a ui::AccordionView - is what
-lets a panel be dragged from this dock into that one and arrive with its node intact. Every panel
-method below therefore reads as "my structure, plus whatever the registry says", and the registry is
-what enforces that a panel is parked in exactly one place at a time. */
+Panels live in a ui::PanelRegistry, created here unless one is passed in; sharing it with another
+container lets a panel move between them with its node intact. */
 class SP_PUBLIC DockSystem : public System, public PanelHost {
 public:
 	// same band as LayoutSystem: after styling has resolved, before anything user-level
@@ -77,11 +59,8 @@ public:
 	// quarter of the frame so a small frame still has a middle to drop into
 	static constexpr float DefaultEdgeDropBand = 48.0f;
 
-	// ZOrder bands. They must stay DISTINCT: sortAllChildren is unstable, so equal-ZOrder siblings
-	// permute between frames and a splitter could end up drawn and hit-tested under a frame.
-	//
-	// There is no band for the drag ghost: it is the general drag system's decorator now, parked
-	// at DragSystem::DecoratorZOrder - inside this owner, but above every band here.
+	// ZOrder bands must stay distinct: sortAllChildren is unstable, so equal bands would let a
+	// splitter draw and hit-test under a frame. The drag ghost uses DragSystem::DecoratorZOrder.
 	static constexpr ZOrder FrameZOrder = ZOrder(0);
 	static constexpr ZOrder SplitterZOrder = ZOrder(64);
 	static constexpr ZOrder IndicatorZOrder = ZOrder(128);
@@ -96,8 +75,8 @@ public:
 
 	virtual bool init() override;
 
-	// Run against a registry somebody else owns, so this dock and another container share one set of
-	// panels: dragging one across then moves the node rather than rebuilding it.
+	// Run against a registry somebody else owns, so this dock and another container share one set
+	// of panels: dragging one across then moves the node rather than rebuilding it.
 	virtual bool init(Rc<PanelRegistry> &&);
 
 	virtual void handleAdded(Node *) override;
@@ -106,19 +85,16 @@ public:
 	virtual bool handleMeasure(const MeasureConstraints &, Size2 &) override;
 	virtual void handleChildContentSizeDirty(Node *) override;
 
-	// The nearest DockSystem at or above `node`. Everything public here happens OUTSIDE a visit
-	// (a button in a panel body asking to close itself), which is why this walks the parent chain
-	// rather than the frame stack - that one is only alive while a node is being visited.
+	// The nearest DockSystem at or above `node`. Walks the parent chain, not the frame stack, so it
+	// works outside a visit.
 	static DockSystem *findForNode(Node *);
 
 	// --- panel registry ----------------------------------------------------
 	//
-	// Convenience forwards: the registry is where a panel actually is described and built. Use them
-	// for a dock that owns its registry; reach for the registry itself when two containers share it.
+	// Forwards to the registry; use the registry directly when it is shared between containers.
 
-	// Register what a panel is. The content node is not built here: `builder` runs at most once,
-	// on first show, and the node is then kept across moves so a panel keeps its state when it is
-	// dragged into another frame - or into another container entirely.
+	// `builder` runs at most once, on first show; the node is then kept across moves, including
+	// moves into another container.
 	void registerPanel(DockPanelDescriptor &&);
 	void unregisterPanel(StringView id);
 
@@ -140,10 +116,8 @@ public:
 	// --- panels ------------------------------------------------------------
 
 	// Show a panel. An empty `target` resolves to the descriptor's defaultFrame, then to the frame
-	// the panel was last in, then to the largest one.
-	//
-	// A panel another container is holding is taken from it: the registry evicts the previous host
-	// as part of handing the node over, so nothing here has to ask first.
+	// the panel was last in, then to the largest one. A panel held by another container is taken
+	// from it by the registry.
 	bool openPanel(StringView id, DockNodeHandle target = DockNodeHandle(),
 			size_t index = maxOf<size_t>());
 	virtual bool closePanel(StringView id) override;
@@ -156,52 +130,39 @@ public:
 
 	virtual Ref *getPanelHostRef() override { return this; }
 
-	// Take the panel out of the tree without reporting it closed: it is moving elsewhere. The node
-	// is untouched - the registry hands it to the new host - and an emptied frame folds away exactly
-	// as it does for a close.
+	// Take the panel out of the tree without reporting it closed (it is moving elsewhere). The node
+	// is left to the registry; an emptied frame folds away as on close.
 	virtual void releasePanel(StringView id) override;
 
-	// The dock root. It is inside the StyleResolver's subtree and it is never clipped, so a ghost
-	// parked here takes its `dock-drag-ghost` rule and survives crossing every frame boundary.
+	// The dock root: styled and never clipped, so a ghost here gets its `dock-drag-ghost` rule and
+	// stays visible across frame boundaries.
 	virtual Node *getPanelDecoratorParent() const override { return _owner; }
 
 	// --- frames ------------------------------------------------------------
 
 	// Subdivide a frame. `firstIsNew` puts the new frame on the low side of the axis - left for
-	// Horizontal, TOP for Vertical (the scene's Y points up).
+	// Horizontal, top for Vertical (the scene's Y points up).
 	DockNodeHandle splitFrame(DockNodeHandle frame, DockAxis, bool firstIsNew,
 			const DockFrameParams & = DockFrameParams(), float ratio = 0.5f);
 	DockNodeHandle splitFrameWithPanel(DockNodeHandle frame, DockAxis, bool firstIsNew,
 			StringView panelId, float ratio = 0.5f);
 	bool closeFrame(DockNodeHandle);
 
-	/* Re-declare a parking place: its name (and with it its CSS #id), its floor, its flags and
-	which edge carries its tab strip.
-
-	The TREE is the source of truth for all four - a frame node the system builds later, after a
-	restore or a collapse, reads them from there and not from the node - so both are written here.
-	Flipping `tabBarSide` is the interesting one: the strip changes axis, its tabs change kind, and
-	the frame's floor is re-measured from the strip's new intrinsic size. */
+	/* Re-declare a frame's name (its CSS #id), floor, flags and tab strip side. Written to the
+	tree, which is the source of truth for nodes built later, and to the node. Changing `tabBarSide`
+	re-measures the floor from the strip's new orientation. */
 	bool setFrameParams(DockNodeHandle, const DockFrameParams &);
 
-	/* SHUT A PARKING PLACE TO ITS TAB STRIP, or open it again.
-
-	What it costs the layout is the point: a collapsed leaf reports only its strip as its minimum -
-	the panels' declared floors AND the frame's own are both dropped, because a place that is showing
-	nothing has no business reserving the room its content would need. The divider above it can then
-	travel down to the strip, which is what turns a side pane into an icon rail. Nothing here moves a
-	divider: shut the frames, then set the ratio, and the minimums stop it in the right place.
-
-	The flag lives in the TREE and is written by save()/restore(), so a rail somebody shut stays shut
-	across a restart. */
+	/* Collapse a frame to its tab strip, or expand it. A collapsed leaf's minimum is only its strip
+	(panel and frame floors are dropped), so a divider can then move down to the strip; this call
+	does not move dividers itself. The flag is persisted by save()/restore(). */
 	bool setFrameCollapsed(DockNodeHandle, bool);
 	bool isFrameCollapsed(DockNodeHandle) const;
 
 	// --- parameters --------------------------------------------------------
 
-	// Thickness of the divider between two frames, in points. It is a system parameter and not a
-	// CSS one: it is an input of the layout, and the CSS subset has no way to feed one. Style the
-	// divider's appearance with `dock-splitter { ... }`.
+	// Divider thickness in points. A layout input, so not settable from CSS; style the divider's
+	// appearance with `dock-splitter { ... }`.
 	void setSplitterThickness(float);
 	float getSplitterThickness() const { return _splitterThickness; }
 
@@ -210,17 +171,12 @@ public:
 
 	// --- persistence -------------------------------------------------------
 
-	// The shape and the membership; never a panel's title, icon or minimum, which belong to the
-	// descriptor registry and would go stale the moment the application is updated.
+	// Saves shape and membership only; titles, icons and minimums come from the descriptors.
 	Value save() const;
 
-	// Restore a saved layout. Panels the registry no longer knows are dropped with a warning, and
-	// a frame left empty by that folds away - a downgraded application must not be fatal.
-	//
-	// A panel that IS registered but absent from the file stays CLOSED: a panel the user closed
-	// has to stay closed across a restart, which is the whole reason the layout is persisted. The
-	// one exception is DockPanelFlags::OpenByDefault, which is how a panel added by a new version
-	// of the application still appears.
+	// Restore a saved layout. Unknown panel ids are dropped with a warning and emptied frames fold
+	// away. A registered panel absent from the file stays closed, unless it has
+	// DockPanelFlags::OpenByDefault.
 	bool restore(const Value &);
 
 	// --- callbacks ---------------------------------------------------------
@@ -230,13 +186,8 @@ public:
 	void setPanelClosedCallback(PanelCallback &&);
 	void setPanelActivatedCallback(PanelCallback &&);
 
-	/* A person pressed a tab. Fires on every tap, INCLUDING the one that changed nothing, and never
-	on a programmatic activation - see PanelHost::handlePanelTapped for why that is a different
-	event from "activated" and not a louder version of it.
-
-	This is what a collapsed side rail listens to: its tab strip stays visible and hit-testable
-	while its body is folded away, so the tab is there to be clicked and nothing else would report
-	the click. */
+	/* A tab was pressed by the user. Fires on every tap, including one that changed nothing, and
+	never on programmatic activation; a collapsed frame uses it to react to taps on its strip. */
 	void setPanelTapCallback(PanelCallback &&);
 
 	// --- resizing ----------------------------------------------------------
@@ -254,20 +205,12 @@ public:
 
 	// --- receiving a dragged panel -----------------------------------------
 	//
-	// The dock is a DROP TARGET on its own owner, and nothing more: the general DragSystem runs
-	// the drag, and this system only answers "would this land here, and where exactly".
-	//
-	// One target for the whole dock rather than one per frame, because a frame is found by walking
-	// the split tree, not by hit-testing the scene - see hitTest below. The invariant that made the
-	// dock's own session safe is unchanged and now belongs to the drop slot: everything is READ
-	// first, and every structural change happens in one shot afterwards, because the drop can
-	// collapse the frame the drag started in and destroy the tab that was delivering it.
+	// One drop target on the owner for the whole dock; DragSystem runs the drag. A drop reads
+	// everything first and then changes structure in one step, since it can destroy the frame and
+	// tab the drag started from.
 
-	// Where a panel dropped at `rootLocal` (the dock root's own coordinate space) would land.
-	//
-	// Pure arithmetic over the tree, not a scene hit test: it costs O(tree depth) instead of a
-	// traversal, it is not confused by whatever the panels' own input listeners are doing, and it
-	// answers with a handle - which is what a commit needs anyway.
+	// Where a panel dropped at `rootLocal` (dock root space) would land. Walks the split tree,
+	// O(depth), without a scene hit test.
 	DockDropTarget hitTest(const Vec2 &rootLocal, StringView draggedPanelId = StringView()) const;
 
 	// how far into a frame the edge bands that mean "split here" reach
@@ -288,9 +231,8 @@ protected:
 	// create the scene node for every slot that has none, drop the ones whose slot is gone
 	void syncNodes();
 
-	// Take every panel node parked inside `roots` out of the scene WITHOUT cleanup, before those
-	// subtrees are destroyed. The registry outlives them and may be shared, so this is scoped: a
-	// panel belonging to another container must not be touched. See the body for the full reason.
+	// Detach panel nodes inside `roots` without cleanup before those subtrees are destroyed, so the
+	// registry keeps them. Only nodes under `roots`: the registry may be shared.
 	void detachPanelsUnder(const Set<Node *> &roots);
 
 	void commitGeometry();
@@ -326,11 +268,8 @@ protected:
 
 	DockTree _tree;
 
-	// What a panel is and what its node is, possibly shared with another container. Never null after
-	// init(): a dock with no registry handed to it makes its own.
+	// possibly shared with another container; never null after init()
 	Rc<PanelRegistry> _registry;
-
-	// how the dock receives drags; installed on the owner in handleAdded
 
 	// the highlight, alive only between a drag entering this dock and leaving it
 	Rc<DockDropIndicator> _indicator;

@@ -37,14 +37,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* Selection for a list nobody can read: a query line, a result list, and the matched characters
-lit up in each row.
-
-WHY IT IS NOT ui::Select. That widget's own header says it: a list of hundreds - every registered
-component, every member of a large enum - is not a menu. A menu is chosen by looking; this is chosen
-by typing, and the two want opposite things from the keyboard. A menu takes the arrow keys because
-nothing else wants them. Here the query line holds focus the whole time and the arrows move a
-selection somewhere else, which is why this does not reuse MenuSystem's keyboard mode. */
+/* Selection from a long list: a query line, a result list, and the matched characters lit up in
+each row. The query line keeps focus while the arrows move the list selection, so this does not
+use MenuSystem's keyboard mode; for short lists use ui::Select. */
 
 // What a caller can size and colour without writing a stylesheet.
 struct SP_PUBLIC SearchPickerStyle {
@@ -59,28 +54,18 @@ struct SP_PUBLIC SearchPickerStyle {
 
 	float padding = 6.0f;
 
-	/* The colour of a matched fragment.
-
-	Configuration rather than CSS, and this is not a shortcut: a stylesheet addresses NODES, and a
-	character range inside a label is not one. The row, the label and the surface are all styleable
-	in the ordinary way; the run of characters inside the text is the one thing that has to be told. */
+	// The colour of a matched fragment. Set here, not in CSS: a character range inside a label is
+	// not a node a stylesheet can address.
 	Color4B matchColor = Color4B(0xFF, 0xC1, 0x07, 0xFF);
 };
 
-/* The comparison, for a caller with no SearchSystem.
-
-A dozen fixed choices do not deserve an index, a configuration and a source registration, and a
-widget that demanded them would simply not be used for that case. `out` is filled by the callback,
-which is what lets it report its own score and its own highlight ranges rather than being reduced to
-a yes or no. */
+// The comparison, for a caller with no SearchSystem. The callback fills `out` with its own score
+// and highlight ranges.
 using SearchMatchFunction = Function<bool(StringView query, StringView target, SearchHit &out)>;
 
 struct SP_PUBLIC SearchPickerConfig {
-	/* Where results come from. PASSED, never looked up.
-
-	A popup is a scene of its own: nothing of the opener is above it, so SearchSystem::findForNode
-	from inside the surface finds nothing. The same trap the menu code documents for stylesheets,
-	and it catches systems for exactly the same reason. */
+	// Where results come from. Must be passed: a popup is a separate scene, so
+	// SearchSystem::findForNode from inside the surface finds nothing.
 	SearchSystem *system = nullptr;
 	String sourceName;
 
@@ -92,29 +77,13 @@ struct SP_PUBLIC SearchPickerConfig {
 	SearchRequestParams params;
 	SearchPickerStyle style;
 
-	/* GROUP THE RESULTS UNDER CATEGORIES while nothing is typed.
-
-	Off by default, and the flat path is untouched by it: a picker for a field's value wants the
-	best match at the top and has nothing to group by.
-
-	It is on for the case a ranked list cannot serve - a PALETTE. With an empty query there is
-	nothing to rank, and a library of a hundred operations shown as a hundred rows in some
-	deterministic order is a list nobody reads; the categories ARE the answer then. As soon as
-	something is typed the ranking is the answer again, so the same widget collapses to a flat list
-	at depth 0. One widget, because they are one interaction: the query line never loses focus and
-	the arrows keep moving one selection through whatever is showing.
-
-	The results are rendered by a ui::TreeView in this mode rather than a ui::TableView, since only
-	that one has rows at a depth and an expansion state to keep. Nothing else about the widget
-	changes: the same hits, the same highlight, the same keys, the same callbacks. */
+	/* Group the results under categories while the query is empty (a palette); with a query the
+	list is ranked and shown flat at depth 0. Rendered by a ui::TreeView instead of a TableView;
+	hits, highlight, keys and callbacks are the same in both modes. Off by default. */
 	bool grouped = false;
 
-	// Which category a hit belongs to. Empty (or an empty answer) puts the hit under a catch-all,
-	// because a source is under no obligation to categorize everything and dropping a hit that
-	// answered no group would be losing a result to a display decision.
-	//
-	// Unset with `grouped` on, this reads `SearchHit::data["category"]` - the key SearchItem::data
-	// already carries through untouched, so a static list needs no callback at all.
+	// Which category a hit belongs to. An empty answer files the hit under `uncategorized`.
+	// Unset with `grouped` on, this reads `SearchHit::data["category"]`.
 	Function<StringView(const SearchHit &)> group;
 
 	// What an uncategorized hit is filed under. Shown as a category like any other.
@@ -125,9 +94,8 @@ struct SP_PUBLIC SearchPickerConfig {
 	// The id of the current value, so the list opens with it selected rather than at the top.
 	String highlight;
 
-	/* A sheet OF THE LIST'S OWN, for the native path. Leave both empty - the ordinary case - and
-	the surface inherits the sheet that styles the control it drops out of, which is what
-	ui::openPopupSurface does with PopupSurfaceConfig::styleSource. */
+	// A sheet of the list's own, for the native path. Left empty, the surface inherits the sheet
+	// of the control it drops out of (PopupSurfaceConfig::styleSource).
 	String stylesheet;
 	String stylesheetSource;
 	FileCategory stylesheetCategory = FileCategory::Bundled;
@@ -137,15 +105,8 @@ struct SP_PUBLIC SearchPickerConfig {
 	bool preferNative = true;
 	sprt::window::WindowCreationFlags flags = sprt::window::WindowCreationFlags::None;
 
-	/* The query changed, BEFORE a single item is matched against it.
-
-	For the caller whose own index does the ranking: a palette hands this widget a list it has
-	already scored, and the scoring has to happen before `match` is asked about anything. Without
-	the hook that caller would have to trigger its own search from inside `match` on a first call it
-	could only recognize by remembering the last query - which works and is a trick, and a trick in
-	a widget's contract is a thing the next caller gets wrong.
-
-	Runs on both paths, so a source-backed picker can use it to show something of its own. */
+	// The query changed, before any item is matched against it. Lets a caller with its own index
+	// rank and call setItems() first. Runs on both paths.
 	Function<void(StringView query)> onQuery;
 
 	Function<void(const SearchHit &)> onActivate;
@@ -154,9 +115,8 @@ struct SP_PUBLIC SearchPickerConfig {
 
 /** The surface: a query line above a list of results.
 
-Separate from the control that opens it, because it has to work in two places - inside a popup, and
-parented straight into a node. The second is not a convenience: it is what lets the widget be driven
-and asserted with no window at all. */
+Separate from the control that opens it, so it works both inside a popup and parented straight into
+a node (which lets it be driven with no window). */
 class SP_PUBLIC SearchPickerContent : public Panel {
 public:
 	virtual ~SearchPickerContent();
@@ -169,45 +129,34 @@ public:
 
 	TextInput *getQueryInput() const { return _query; }
 
-	// Null in the grouped mode, where the results are a tree. A caller that only wants to reach the
-	// list asks through the row facade below rather than through either of these.
+	// Only one is non-null: the table in flat mode, the tree in grouped mode. Prefer the row
+	// accessors below.
 	TableView *getResults() const { return _results; }
 	TreeView *getTree() const { return _tree; }
 
 	SpanView<SearchHit> getHits() const { return _hits; }
 
-	// What the FIELD shows. Lags by an echo after a programmatic setText, because editing a
-	// TextInput is a request to the platform - so this is what a person sees, not what the list in
-	// front of them answers.
+	// What the field shows. Lags by an echo after a programmatic setText.
 	StringView getQuery() const;
 
-	// What the hits in hand ANSWER. Deterministic the moment the list is rebuilt, which is what
-	// anything asserting about the surface wants: "the list is showing results for X" is a fact,
-	// while "the field has caught up" is a frame away.
+	// The query the current hits answer; up to date as soon as the list is rebuilt.
 	StringView getResultQuery() const { return _resultQuery; }
 
-	/* Replace the local list. For the caller whose OWN index answers the query: set this from
-	`onQuery` - which runs before a single item is walked - and the walk then goes over the answer
-	to that query rather than over a fixed library filtered a second time.
-
-	Has no effect on the source-backed path, where the list is the source's. */
+	/* Replace the local list. Call from `onQuery` to supply the caller's own answer to the query
+	before matching runs. No effect on the source-backed path. */
 	virtual void setItems(Vector<SearchItem> &&);
 	SpanView<SearchItem> getItems() const { return _config.items; }
 
 	/* ---- the rows, whichever view is carrying them ----
 
-	A DISPLAY row is not a hit: in the grouped mode a category is a row and stands for no hit at
-	all, and expanding one shifts every row after it. So the two are counted separately and the
-	mapping is asked for rather than assumed - which is the mistake a caller keeping a vector beside
-	the model would make, and the one the graph editor's palette documented before this. */
+	A display row is not a hit: in grouped mode a category is a row with no hit, and expanding one
+	shifts the rows after it. Use the mapping below rather than assuming one. */
 	size_t getRowCount() const;
 
 	// The hit a display row stands for, or maxOf<size_t>() for a category row.
 	size_t getHitForRow(size_t row) const;
 
-	// What a display row SAYS: a hit's title, or a category's name - the one thing about a category
-	// row that is not derivable from the hits, since the row exists precisely where they do not.
-	// Empty for no such row.
+	// A hit's title or a category's name. Empty for no such row.
 	StringView getRowTitle(size_t row) const;
 
 	// Where a hit is showing, or maxOf<size_t>() when its category is collapsed.
@@ -217,35 +166,19 @@ public:
 	virtual bool toggleRow(size_t row);
 	bool isRowExpanded(size_t row) const;
 
-	/* True while the tree is showing categories: grouped, and nothing typed. With a query the tree
-	is a flat list at depth 0, because a ranking crosses categories.
-
-	Asked of the query THE CURRENT HITS WERE BUILT FOR, never of the field. Editing a TextInput is a
-	request to the platform whose text arrives back by echo, so a widget refreshed with an explicit
-	query has hits for one string and a field still showing another - and reading the field there
-	renders the right results in the wrong MODE, which is a ranked list drawn as a tree of two
-	categories. That is not hypothetical; it is what this was written after.
-
-	Public because it is the one question that cannot be derived from outside: a caller comparing
-	getRowCount() against getHits().size() gets the mode wrong exactly when every category is
-	collapsed, which is the state the tree opens in. */
+	/* True while the tree is showing categories: grouped, and the result query is empty. Decided by
+	the query the current hits were built for, not by the field text, which lags by an echo. */
 	bool isGrouping() const;
 
-	/* Make a hit VISIBLE, expanding the category it sits under. True when it is showing afterwards.
-
-	Grouped, the tree opens with every category closed, so a hit is at no row at all - and a
-	selection at no row is one setSelectedRow cannot take, the arrows cannot move off (they walk
-	what is displayed) and Enter cannot activate. Opening the list ON a value therefore means
-	revealing it, not just naming it. */
+	/* Make a hit visible, expanding its category. True when it is showing afterwards. Needed to
+	select a hit in grouped mode, where categories open collapsed. */
 	bool revealHit(size_t hit);
 
-	// Index into getHits(), or maxOf<size_t>() when the list is empty. A HIT index in both modes,
-	// so a caller that knows what it wants selected does not have to know how it is displayed.
+	// Index into getHits(), or maxOf<size_t>() when the list is empty. A hit index in both modes.
 	size_t getSelected() const { return _selected; }
 	virtual bool setSelected(size_t);
 
-	// One step through what is VISIBLE, skipping category rows: that is what an arrow key means to
-	// a person, and in the grouped mode it is not the same as one step through the hits.
+	// One step through visible hit rows, skipping category rows.
 	virtual bool moveSelection(int32_t delta);
 
 	// Reports the selected hit through the activate callback. False when there is nothing selected.
@@ -257,17 +190,12 @@ public:
 	// Runs the query now, ignoring the system's debounce. What a test drives the widget with.
 	virtual void refresh();
 
-	/* The same, for a query the FIELD does not show yet.
-
-	Editing a TextInput is a REQUEST to the platform: the text arrives back by echo, so immediately
-	after setText the field still reports the old string. A caller whose model was driven from
-	somewhere other than the keyboard - a command, a re-open, a restored session - therefore cannot
-	use the field as the source of truth in the same turn, and refresh() would run the list for the
-	string the field has not caught up with. This runs it for the string the caller means. */
+	/* Runs the given query now. Use after a programmatic setText: the field reports the old string
+	until the platform echoes the edit back. */
 	virtual void refresh(StringView query);
 
-	// The height this surface wants for `count` rows, before any node exists - which is what a
-	// window request needs and what SubWindow::Config::size demands up front.
+	// The height this surface wants for `count` rows, before any node exists (for
+	// SubWindow::Config::size).
 	static float measureHeight(const SearchPickerStyle &, size_t rowCount);
 
 protected:
@@ -281,7 +209,7 @@ protected:
 
 	virtual bool handleKey(const GestureData &);
 
-	/* One result's title, highlight and all. A tree row takes the label bare (a flex row measures
+	/* One result's title with highlight. A tree row takes the label bare (a flex row measures
 	a Label and cannot measure a Panel); a table cell takes it wrapped (a table sizes the cell and
 	leaves a bare label at zero width). */
 	Rc<basic2d::Label> buildTitleLabel(const SearchHit &) const;
@@ -294,9 +222,7 @@ protected:
 
 	TextInput *_query = nullptr;
 
-	// Exactly one of these two is built, decided by `grouped` at init and never changed after: a
-	// widget that swapped its list widget on every keystroke would throw away the scroll, the
-	// styling and the expansion each time.
+	// Exactly one is built, chosen by `grouped` at init and never changed.
 	TableView *_results = nullptr;
 	TreeView *_tree = nullptr;
 
@@ -317,8 +243,7 @@ protected:
 
 /** The control that opens it: shows the chosen value, opens the surface on click or on Enter.
 
-Deliberately shaped like ui::Select from the outside, so that changing one's mind about which of the
-two a field wants is a change of type and not of the code around it. */
+Has the same outer interface as ui::Select, so a field can switch between the two by type. */
 class SP_PUBLIC SearchPicker : public Panel, public EditLockTarget {
 public:
 	virtual ~SearchPicker();
@@ -353,9 +278,7 @@ public:
 	bool isOpen() const { return _popup != nullptr; }
 	SubWindow *getPopup() const { return _popup; }
 
-	// The open list itself - the hits it holds, the row it has selected, the query it answered.
-	// Null while the picker is closed. This is the surface's panel typed back to what this class
-	// asked it to build, and the only supported way to reach it.
+	// The open list surface, or null while the picker is closed.
 	SearchPickerContent *getContent() const;
 
 	basic2d::Label *getLabel() const { return _label; }
@@ -394,8 +317,7 @@ protected:
 
 /** Opens a picker surface over `anchor`, without a SearchPicker control in front of it.
 
-For the cases that are not a field with a value - a command palette, "go to file", the graph's node
-palette - where there is nothing to show when the surface is closed. */
+For uses with no value to show when closed: a command palette, "go to file", a node palette. */
 SP_PUBLIC Rc<SubWindow> openSearchPicker(NotNull<AppWindow>, NotNull<Node> anchor,
 		SearchPickerConfig &&, MenuSide = MenuSide::Below);
 

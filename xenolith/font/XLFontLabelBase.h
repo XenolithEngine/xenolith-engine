@@ -75,15 +75,9 @@ public:
 	Vector<Rect> getLabelRects(uint32_t first, uint32_t last, float density, const Vec2 & = Vec2(),
 			const Padding &p = Padding()) const;
 
-	/* WHERE A RESERVED BOX ENDED UP, by the index of the range that reserved it.
-
-	A box is not a glyph: the formatter records it as one cell with no character and an advance of
-	the requested width, plus a range of its own carrying the requested height. Nothing else in
-	the layout remembers it, so the range index is the handle, and this is the only way back from
-	it to a rectangle.
-
-	Empty when the index names no range, or when the layout no longer holds the cell (a box that
-	fell outside `maxLines`). The rectangle is in the same space `getLineRect` answers in. */
+	/* Where a reserved inline box ended up, by the index of the range that reserved it (the only
+	handle the layout keeps). Empty when the index names no range or the cell was dropped (e.g.
+	past `maxLines`). Same space as `getLineRect`. */
 	Rect getObjectRect(uint32_t rangeIndex, float density, const Vec2 & = Vec2()) const;
 
 	void getLabelRects(Vector<Rect> &, uint32_t first, uint32_t last, float density,
@@ -340,20 +334,11 @@ public:
 
 	virtual void clearStyles();
 
-	/* AN INLINE OBJECT: a box in the line where a glyph would be.
-
-	The formatter can reserve a run of empty width and height instead of shaping a character
-	(`Formatter::read(font, text, w, h)`), and a line breaks around that box like it would around
-	a word. This is how something that is not text - an image - sits INSIDE a paragraph without
-	cutting the paragraph into pieces.
-
-	The object stands in for exactly ONE character of the string, which should be U+FFFC (OBJECT
-	REPLACEMENT CHARACTER). One character, not zero, so that every index the label answers with
-	keeps meaning the same thing: a caret can stand before or after the image, a selection can
-	contain it, and whoever maps characters back to a source maps it to whatever wrote it.
-
-	The label draws nothing for it. The caller draws over the box, asking `getObjectRect` for
-	where it landed - which is knowable only after the text has been shaped and wrapped. */
+	/* An inline object: a box in the line where a glyph would be, reserved with
+	`Formatter::read(font, text, w, h)`; lines break around it like a word. It stands in for
+	exactly one character of the string (should be U+FFFC), so caret, selection and source indexes
+	stay consistent. The label draws nothing; the caller draws over the box using `getObjectRect`
+	after shaping. */
 	struct InlineObject {
 		uint32_t charIndex = 0;
 		Size2 size;
@@ -363,8 +348,8 @@ public:
 		uint32_t rangeIndex = maxOf<uint32_t>();
 	};
 
-	// Ascending by `charIndex`; the caller keeps them so. Setting the string does not clear them,
-	// because the two are written together and the string comes first.
+	// Ascending by `charIndex`; the caller keeps them so. Setting the string does not clear them
+	// (set the string first, then the objects).
 	virtual void setInlineObjects(Vector<InlineObject> &&);
 	const Vector<InlineObject> &getInlineObjects() const { return _inlineObjects; }
 	virtual void clearInlineObjects();
@@ -387,8 +372,8 @@ public:
 	void setAlignment(TextAlign alignment);
 	TextAlign getAlignment() const;
 
-	// base text direction (CSS `direction`) plus opt-in Unicode Bidirectional Algorithm (UAX #9) and
-	// HarfBuzz shaping during layout
+	// base text direction (CSS `direction`) plus opt-in Unicode Bidirectional Algorithm (UAX #9)
+	// and HarfBuzz shaping during layout
 	void setTextDirection(TextDirection);
 	TextDirection getTextDirection() const;
 	void setBidiEnabled(bool);
@@ -463,8 +448,8 @@ public:
 	void setFillerChar(char32_t);
 	char32_t getFillerChar() const;
 
-	// Latches: once called, `setString` stops deciding for itself. A widget that draws a person's own
-	// text or a file's contents calls `setLocaleEnabled(false)` once and is done.
+	// Latches: once called, `setString` stops auto-detecting locale tags. Widgets showing user text
+	// or file contents call `setLocaleEnabled(false)` once.
 	void setLocaleEnabled(bool);
 	bool isLocaleEnabled() const;
 
@@ -477,23 +462,16 @@ public:
 	bool isPersistentGlyphData() const;
 
 	// Effective label-wide layout inputs consumed by updateFormatSpec. The default
-	// makeEffectiveStyle() mirrors the label's own stored fields (_style/_alignment/
-	// _lineHeight); a subclass overrides it to overlay externally-provided values
-	// (e.g. inherited style components) WITHOUT mutating the stored fields — the
-	// stored explicit values stay intact and win again as soon as the overlay
-	// source disappears.
+	// makeEffectiveStyle() mirrors the label's stored fields (_style/_alignment/_lineHeight); a
+	// subclass overlays external values (e.g. inherited style components) without mutating the
+	// stored fields, which win again once the overlay source disappears.
 	struct EffectiveStyle {
 		DescriptionStyle style;
 		TextAlign alignment = TextAlign::Left;
 
-		/* The bidi settings IN FORCE, which is not always what the label was told.
-
-		Three layers can have an opinion about a label's direction - the stylesheet, an explicit
-		`setTextDirection` from the caller, and the locale - and they used to write the same field
-		in whatever order they happened to run. They are resolved here instead, once, in that order
-		of precedence: CSS wins, then the caller, then the locale's default. The stored members are
-		never written by the cascade, so a sheet that stops declaring `direction` hands the label
-		straight back to what its caller asked for. */
+		/* The bidi settings in force. Precedence: stylesheet, then an explicit `setTextDirection`,
+		then the locale default. The cascade never writes the stored members, so a sheet that stops
+		declaring `direction` restores what the caller asked for. */
 		TextDirection direction = TextDirection::LeftToRight;
 		BidiMode bidiMode = BidiMode::Normal;
 		bool bidiEnabled = false;
@@ -518,11 +496,8 @@ protected:
 
 	virtual void setLabelDirty();
 
-	/* A number that changes whenever a measurement of this label would answer differently.
-
-	Everything that invalidates the shaping - the string, a style range, the font, an inherited
-	component, the width - already goes through setLabelDirty, so this is the one key a cache of
-	measured sizes can trust. */
+	/* Changes whenever a measurement of this label would answer differently (everything that
+	invalidates shaping goes through setLabelDirty); a safe key for a measured-size cache. */
 	uint64_t getLabelRevision() const { return _labelRevision; }
 
 	WideString _string16;

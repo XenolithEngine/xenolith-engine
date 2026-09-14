@@ -27,13 +27,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// One slot of the split tree: either a binary SPLIT of two children, or a LEAF - a parking place
-// holding panels as tabs. A Free slot is one the free list has handed back.
+// One slot of the split tree: a split of two children, a leaf holding panels as tabs, or a Free
+// slot on the free list.
 //
-// `node` is the flat scene node this slot materializes (a DockFrame for a leaf, a DockSplitter for
-// a split). The tree stores it and nothing more: it never reads it, never calls anything on it,
-// and every pass below works with a null one. That is deliberate - the whole tree, including the
-// minimum propagation and the distribution, is testable without a scene.
+// `node` is the scene node for the slot (DockFrame or DockSplitter). The tree only stores it and
+// every pass works with a null one, so the tree is testable without a scene.
 struct SP_PUBLIC DockTreeNode {
 	enum class Kind : uint8_t {
 		Free,
@@ -52,9 +50,8 @@ struct SP_PUBLIC DockTreeNode {
 	// --- split -------------------------------------------------------------
 	DockAxis axis = DockAxis::Horizontal;
 
-	// Share of `first` in the space left after BOTH children got their minimums - not a share of
-	// the whole extent. That is what makes a resize feel right: the proportion survives shrinking
-	// all the way down to the minimums instead of crushing the smaller pane to nothing.
+	// Share of `first` in the space left after both children got their minimums, not of the whole
+	// extent, so the proportion holds while shrinking down to the minimums.
 	float ratio = 0.5f;
 
 	DockNodeHandle first;
@@ -65,12 +62,8 @@ struct SP_PUBLIC DockTreeNode {
 	Vector<String> panels; // tab order
 	size_t active = 0; // index into `panels`
 
-	/* COLLAPSED TO ITS TAB STRIP: the body is out of the way and the frame's minimum is the strip's
-	own size, whatever the panels parked here declare.
-
-	It is a property of the SLOT and not of the node, because it has to survive a save: an icon rail
-	somebody shut stays shut across a restart, and a flag on the scene node would be rebuilt as
-	"open" every time the tree materialized itself. */
+	// Collapsed to its tab strip: the minimum is the strip's size, regardless of the panels. Kept
+	// on the slot, not the node, so it is saved and survives node rebuilds.
 	bool collapsed = false;
 
 	// --- the scene node, opaque here ---------------------------------------
@@ -80,8 +73,7 @@ struct SP_PUBLIC DockTreeNode {
 	Size2 minSize; // propagated minimum: own floor for a leaf, composed for a split
 	Rect rect; // root-local, bottom-left origin
 
-	// split only: the divider band between the two children, carved out of `rect`. It is the
-	// geometry of the split's own scene node, the one thing a split materializes.
+	// split only: the divider band carved out of `rect`; the geometry of the split's scene node
 	Rect splitterRect;
 
 	bool isLeaf() const { return kind == Kind::Leaf; }
@@ -90,13 +82,10 @@ struct SP_PUBLIC DockTreeNode {
 
 /** The logical structure of a dock: a binary tree of splits over parking places.
 
-It is a free-list arena of DockTreeNode addressed by generational handles, not a graph of
-ref-counted objects with parent pointers - a split tree has to be walked upwards as well as down,
-and `Rc` in both directions is a cycle while a raw parent pointer left dangling by a merge is
-exactly the bug the generation catches instead.
+A free-list arena of DockTreeNode addressed by generational handles, so parent links cannot dangle
+after a merge.
 
-Three passes run over it, in this order, and they are kept strictly separate because handleMeasure
-is only allowed to run the first:
+Three passes run in this order; handleMeasure may run only the first:
 
   updateMinimums()  bottom-up, pure: the effective minimum of every slot
   distribute()      top-down, writes only into the arena: a rect for every slot
@@ -139,7 +128,7 @@ public:
 
 	// Subdivide a leaf: it keeps its own panels, a new empty leaf is created beside it, and a split
 	// takes their place in the parent. `firstIsNew` puts the new leaf on the low side of the axis
-	// (left for Horizontal, TOP for Vertical). Returns the new leaf, or an empty handle when the
+	// (left for Horizontal, top for Vertical). Returns the new leaf, or an empty handle when the
 	// target is not a leaf or does not allow splitting.
 	DockNodeHandle splitLeaf(DockNodeHandle leaf, DockAxis, bool firstIsNew, DockFrameParams &&,
 			float ratio = 0.5f);
@@ -150,8 +139,7 @@ public:
 
 	// --- queries -----------------------------------------------------------
 
-	// The leaf whose rect contains `point`, as of the last distribute(). O(tree depth): it walks
-	// down through the splits instead of testing every leaf.
+	// The leaf whose rect contains `point`, as of the last distribute(); O(tree depth).
 	DockNodeHandle findLeafAt(const Vec2 &point) const;
 
 	DockNodeHandle findFrameByName(StringView) const;
@@ -167,15 +155,9 @@ public:
 	// across it. Pure - it writes only DockTreeNode::minSize.
 	void updateMinimums(const MeasureLeaf &, float splitterThickness);
 
-	// Top-down: a rect for every slot, from the tree's ratios and the minimums the pass above
-	// computed. Writes only DockTreeNode::rect and ::splitterRect.
-	/* Hand every slot a rect. `rtl` runs the HORIZONTAL splits the other way, so that `first`
-	means the inline START of the row rather than its left edge.
-
-	That is the whole of what makes a docked window mirror, and it is deliberately the only place
-	that knows: a saved layout keeps recording `first` and a ratio, so an arrangement made in
-	English opens mirrored in Persian and mirrors back on the way home. Nothing is migrated and
-	nothing is lost, because the file never named a physical side to begin with. */
+	// Top-down: a rect for every slot, from the ratios and the computed minimums. Writes only
+	// DockTreeNode::rect and ::splitterRect. `rtl` reverses horizontal splits so `first` is the
+	// inline start; this is the only place mirroring happens, saved layouts stay side-neutral.
 	void distribute(const Rect &available, DockOverflowPolicy, float splitterThickness,
 			bool rtl = false);
 
@@ -199,17 +181,11 @@ public:
 
 	static constexpr int64_t SaveVersion = 1;
 
-	// The SHAPE and the MEMBERSHIP, and nothing else. A panel's title, icon and minimum size are
-	// never written: they come from the descriptor registry, and a saved copy of them would go
-	// stale the moment the application is updated.
+	// Shape and membership only; titles, icons and minimums come from the descriptors.
 	Value save() const;
 
-	// Rebuild from a saved layout. `isPanelKnown` decides which ids the registry still has; the
-	// ones it rejects are dropped from their frame with a warning, because a layout naming a panel
-	// this build no longer ships is the normal case for a downgrade, not a failure.
-	//
-	// A candidate tree is built first and swapped in only when the whole build succeeds, so a
-	// malformed save leaves the live layout exactly as it was.
+	// Rebuild from a saved layout. Ids rejected by `isPanelKnown` are dropped with a warning. The
+	// new tree is swapped in only if the whole build succeeds; otherwise the layout is unchanged.
 	bool restore(const Value &, const Callback<bool(StringView)> &isPanelKnown);
 
 protected:
@@ -225,7 +201,7 @@ protected:
 
 	Value saveNode(DockNodeHandle) const;
 
-	// A saved node becomes a spec first, so restore() and setLayout() converge on one build path
+	// a saved node becomes a spec first, so restore() and setLayout() share one build path
 	static bool readSpec(const Value &, DockLayoutSpec &, const Callback<bool(StringView)> &);
 
 	// drop leaves that ended up empty, unless they were declared Permanent

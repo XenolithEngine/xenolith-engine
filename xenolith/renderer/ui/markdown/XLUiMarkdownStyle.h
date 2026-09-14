@@ -28,56 +28,33 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* WHAT THE STYLESHEET SAYS ABOUT AN INLINE CONSTRUCT.
+/* Resolves the stylesheet's rules for an inline construct. Inlines are style ranges, not nodes, so
+a temporary probe node is built, queried through `StyleResolver::resolveStyleForNode` (a static
+that walks parents and needs no frame or running scene) and removed. Inlines are therefore styled
+during the build.
 
-An inline is a style range, not a node, so the cascade has nothing to reach: there is no `strong`
-element for a `strong { }` rule to match. This class manufactures one for the length of a
-question - a PROBE - asks the cascade about it, and throws it away.
+The probe hangs under the block's Label, never among the blocks: applyIdentity derives z-order
+(document order) from the child count, and `:nth-child` counts every child.
 
-WHY THIS CAN BE DONE WHILE THE TREE IS BEING BUILT. `StyleResolver::resolveStyleForNode` is a
-plain static that computes the cascade on the spot: it walks `getParent()`, collects the sheets
-it finds on the way and answers. It needs no frame, no visit and no running scene - only an
-ancestor carrying a StyleSystem, and MarkdownView has had one since its own init(). So an inline
-is styled in the same pass that produces it, and nothing is ever shown unstyled.
-
-WHERE THE PROBE HANGS, and why it is not a detail. It goes UNDER THE BLOCK'S LABEL, which is a
-leaf, never beside the blocks. Two things in this tree count children:
-
-  - MarkdownBuilder::applyIdentity takes a node's z-order from its parent's child count, and
-    z-order here IS document order;
-  - `:nth-child` counts every child of the parent.
-
-A probe parked among the blocks would silently move a paragraph and renumber its siblings. Under
-a Label neither is true, and the descendant chain a rule matches on is the same either way.
-
-A DELTA, NOT A STYLE. A range style is applied over the block's own, so only what DIFFERS from
-the block may be emitted. `ResolvedStyle` answers with the CSS default for a property nobody
-declared, which would make every unstyled property look like a deliberate one - so a property is
-taken only when the probe actually declared it (`has()`) AND its value differs from the block's.
-That second half is what keeps an inherited value - the colour of the paragraph, reaching the
-probe by inheritance - from being re-emitted as a range of its own.
-
-WHAT A RANGE CANNOT CARRY. `LabelBase::Style` names twelve properties; `white-space`,
-`text-align` and `line-height` are not among them and stay with the block, which is correct -
-they are properties of a paragraph, not of a word inside it. */
+The result is a delta over the block's style: a property is taken only when the probe declared it
+(`has()`) and its value differs from the block's, so defaults and inherited values are not
+re-emitted. `LabelBase::Style` has twelve properties; paragraph-level ones (`white-space`,
+`text-align`, `line-height`) stay with the block. */
 class SP_PUBLIC MarkdownInlineResolver final {
 public:
-	// The controller resolves a family NAME into the index a range style carries. Without one, a
-	// `font-family` on an inline is dropped rather than guessed.
+	// The controller maps a family name to a range style's index; without one, an inline
+	// `font-family` is dropped.
 	explicit MarkdownInlineResolver(font::FontController * = nullptr);
 
-	/* The delta the chain `strong>em` (outermost first) adds over `label`'s own text style.
-
-	False means "the sheet had nothing to say about this" - either no stylesheet is in scope, or
-	nothing in it declares anything for the chain. The caller then falls back to the built-in
-	table, which is why a view outside any scene still renders bold as bold. */
+	/* The delta the chain `strong>em` (outermost first) adds over `label`'s own text style. False
+	when no sheet is in scope or nothing declares anything for the chain; the caller then uses the
+	built-in table. */
 	bool resolve(NotNull<basic2d::Label>, StringView chain, basic2d::Label::Style &out);
 
 	// Did any stylesheet answer at all? False for a view with no sheet in scope.
 	bool isValid() const { return _valid; }
 
-	// How many probes were actually resolved: the cost of the pass, and how a test sees that the
-	// cache is doing its job.
+	// How many probes were actually resolved (cache misses).
 	uint32_t getProbeCount() const { return _probes; }
 
 protected:

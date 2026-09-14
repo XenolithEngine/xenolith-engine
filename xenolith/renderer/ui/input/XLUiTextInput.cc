@@ -32,7 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 static constexpr uint32_t TextInputAdjustTag = "XLUiTextInputAdjust"_tag;
 static constexpr uint32_t TextInputBlinkTag = "XLUiTextInputBlink"_tag;
 
-// Half a blink period. 0.53s is the classic value and reads as deliberate rather than nervous.
+// Half a blink period.
 static constexpr float TextInputBlinkHalfPeriod = 0.53f;
 
 static constexpr float TextInputCaretWidth = 1.5f;
@@ -43,20 +43,17 @@ static constexpr float TextInputScrollMargin = 60.0f;
 // pixels per second while a drag-selection pulls the text past an edge
 static constexpr float TextInputAutoScrollSpeed = 300.0f;
 
-// How long the finger has to sit still before the field starts selecting, and the step of every
-// widening after that: hold once for the word, keep holding for the whole text.
+// Hold time before selecting the word, and again before widening to the whole text.
 static constexpr TimeInterval TextInputLongPressInterval = TimeInterval::milliseconds(500);
 
-// Frames stop coming when nothing on screen changes, and a finger resting on the field changes
-// nothing - so the press recognizer, which counts its intervals in update(), would never tick.
+// The press recognizer counts intervals in update(), which needs frames even while nothing
+// on screen changes.
 static constexpr uint32_t TextInputPressTag = "XLUiTextInputPress"_tag;
 
 void TextInput::registerStyleAppliers(StringView type) {
 	using document::ParameterName;
 
-	// One registration per type: the appliers are identical for every field built on this widget,
-	// and a second one for the same type would only rebuild the same callback. Registry and node
-	// graph are both app-thread, so a plain set is enough. Same shape as Panel's.
+	// One registration per type. App-thread only, so a plain set is enough.
 	static Set<String> s_registered;
 	if (!s_registered.emplace(type.str<mem_std::Interface>()).second) {
 		return;
@@ -99,7 +96,7 @@ bool TextInputContainer::init() {
 		return false;
 	}
 
-	// The text a person typed. The PLACEHOLDER below is a caption and keeps its tags.
+	// The text a person typed. The placeholder below is a caption and keeps its tags.
 	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(0));
 	_label->setLocaleEnabled(false);
 	_label->setAnchorPoint(Anchor::BottomLeft);
@@ -118,18 +115,13 @@ bool TextInputContainer::init() {
 	_caret->setAnchorPoint(Anchor::BottomLeft);
 	_caret->setVisible(false);
 
-	/* A label's height is the LAYOUT's answer, not the setter's: it settles in the label's own
-	content-size phase, which is inside this node's visit and therefore after every hook this node
-	has. So the centring is driven from there rather than guessed from the font.
-
-	It still lands in the same frame: the phase that notifies runs before the model matrix is
-	rebuilt, so a position written from here is the one that frame draws with. */
+	/* A label's height settles in its own content-size phase, after this node's hooks, so centring
+	is driven from there. That runs before the model matrix is rebuilt, within the same frame. */
 	_label->setContentSizeDirtyCallback([this] { updateLabelPosition(); });
 	_placeholder->setContentSizeDirtyCallback([this] { updateLabelPosition(); });
 
-	// ApplyForAll, not ApplyForNodesBelow: "below" means children with a NEGATIVE z-order (see
-	// Node::wrapVisit), and the label and placeholder sit at ZOrder(0), i.e. "above". Scoping the
-	// scissor to the below-set would leave the overflowing text unclipped.
+	// ApplyForAll, not ApplyForNodesBelow: "below" means negative z-order (Node::wrapVisit), and
+	// the labels sit at ZOrder(0).
 	// 2px of horizontal bleed so a caret at position 0 or at the very end is not shaved off.
 	_scissor = addSystem(Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll));
 	_scissor->enableScissor(Padding(0.0f, 2.0f));
@@ -140,14 +132,13 @@ bool TextInputContainer::init() {
 void TextInputContainer::update(const UpdateTime &time) {
 	Node::update(time);
 
-	// Vec2::INVALID is a pair of NaNs, and NaN compares equal to nothing - "is a target set" has to
-	// be asked as isValid(), never as == Vec2::INVALID.
+	// Vec2::INVALID is a pair of NaNs: test with isValid(), never == Vec2::INVALID.
 	if (!_autoScrollTarget.isValid() || !hasHorizontalOverflow()) {
 		return;
 	}
 
-	// A drag that left the box keeps pulling the text: the pointer is parked outside, so there is
-	// no further gesture event to react to and the motion has to come from the clock.
+	// A drag parked outside the box keeps pulling the text; with no gesture events, the clock
+	// drives it.
 	const auto width = _contentSize.width;
 	const auto edge = sprt::min(48.0f, width / 3.0f);
 	const auto xPos = convertToNodeSpace(_autoScrollTarget).x;
@@ -170,9 +161,8 @@ void TextInputContainer::handleContentSizeDirty() {
 	_placeholder->setPositionX(0.0f);
 	updateLabelPosition();
 
-	// The caret spans the whole inner box of the field, not the glyph height: a bar shorter than
-	// the box reads as misaligned against the text, and an empty field would show a stub. The font
-	// height is only the fallback for the moment before the box has a size of its own.
+	// The caret spans the whole inner box of the field; the font height is only a fallback until
+	// the box has a size.
 	_caret->setContentSize(Size2(TextInputCaretWidth,
 			_contentSize.height > 0.0f ? _contentSize.height : float(_label->getFontHeight())));
 	_caretDirty = true;
@@ -183,8 +173,8 @@ bool TextInputContainer::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags)
 		return false;
 	}
 
-	// Deferred on purpose: setCursor/handleLabelChanged only mark, so N mutations in one frame
-	// (typing pushes a string change and a cursor change together) cost one recomputation.
+	// Deferred: setCursor/handleLabelChanged only mark, so several mutations in a frame cost one
+	// recomputation.
 	if (_caretDirty) {
 		updateCaretPosition();
 		_caretDirty = false;
@@ -202,8 +192,8 @@ void TextInputContainer::setEnabled(bool value) {
 }
 
 void TextInputContainer::setCursor(TextCursor cursor, uint32_t activePosition) {
-	// without a selection there is only one end, and an unknown moving end keeps the historical
-	// behaviour of following the start of the range
+	// without a selection there is only one end, and an unknown moving end follows the start of
+	// the range
 	if (cursor.length == 0 || activePosition == maxOf<uint32_t>()) {
 		activePosition = cursor.start;
 	}
@@ -293,8 +283,8 @@ void TextInputContainer::moveHorizontalOverflow(float d) {
 float TextInputContainer::getLabelOffset() const { return _label->getPosition().x; }
 
 void TextInputContainer::setAutoScrollTarget(const Vec2 &worldLocation) {
-	// NaN != NaN, so "already stopped" has to be tested through isValid() as well - otherwise every
-	// stop request would fall into the start branch below and leave the field rendering forever
+	// NaN != NaN, so "already stopped" is tested through isValid(); otherwise a stop request would
+	// take the start branch below
 	if (_autoScrollTarget == worldLocation
 			|| (!_autoScrollTarget.isValid() && !worldLocation.isValid())) {
 		return;
@@ -315,18 +305,8 @@ void TextInputContainer::setAutoScrollTarget(const Vec2 &worldLocation) {
 }
 
 void TextInputContainer::updateLabelPosition() {
-	/* A single line sits in the MIDDLE of the box.
-
-	It used to sit on the bottom edge, which passed unnoticed only because a stock field is barely
-	taller than its line: with `height: 39px` and `padding: 8px` the box is 23px and the line about
-	21. Give the field a whole row's worth of height - which is exactly what an inline editor
-	placed over a list row gets - and the text drops to the floor of the box, visibly below the
-	label it was supposed to be replacing. Centring is also what the caret already assumed: it is
-	given the full height of the box, so a bottom-aligned line was the one thing not centred in it.
-
-	max(0) rather than a signed offset: a line taller than the box (a font-size the field was not
-	built for) starts at the top and overflows downwards, where the scissor cuts it - the same way
-	horizontal overflow is handled. */
+	/* A single line is centred vertically in the box. max(0): a line taller than the box starts
+	at the top and overflows downwards into the scissor. */
 	const auto centre = [&](basic2d::Label *label) {
 		label->setPositionY(
 				sprt::max(0.0f, (_contentSize.height - label->getContentSize().height) / 2.0f));
@@ -335,9 +315,8 @@ void TextInputContainer::updateLabelPosition() {
 	centre(_label);
 	centre(_placeholder);
 
-	// The caret's vertical origin is expressed against the label, its parent, so it travelled with
-	// it. Writing it here rather than only marking the caret dirty keeps it from lagging the text
-	// by a frame; the horizontal half is left to the ordinary flush in visitDraw.
+	// The caret is positioned relative to the label, its parent. Its vertical origin is written
+	// here so it does not lag the text by a frame; the horizontal part is flushed in visitDraw.
 	_caret->setPositionY(-_label->getPosition().y);
 	_caretDirty = true;
 }
@@ -351,8 +330,7 @@ void TextInputContainer::updateCaretPosition() {
 	// container's bottom edge is at -label.y in this space.
 	_caret->setPosition(Vec2(cpos.x, -_label->getPosition().y));
 
-	// While a drag-selection pulls the text past an edge, the pointer owns the offset (see update):
-	// a re-centring action on top of it would fight the per-frame slide.
+	// While a drag-selection pulls the text past an edge, the pointer owns the offset (see update).
 	if (_autoScrollTarget.isValid()) {
 		return;
 	}
@@ -401,8 +379,7 @@ void TextInputContainer::runAdjustLabel(float pos) {
 
 	_label->stopAllActionsByTag(TextInputAdjustTag);
 
-	// short hops snap, long ones glide; a fixed duration would crawl for a one-character step and
-	// lag for a select-all jump
+	// short hops snap, long ones glide
 	const auto dist = sprt::fabs(_label->getPosition().x - pos);
 	const float minT = 0.05f;
 	const float maxT = 0.35f;
@@ -426,24 +403,16 @@ bool TextInput::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist from the start: without one the state reads as 0, so
+	`:disabled` would match and isEnabled() would report false. */
 	applyControlEnabled(this, true);
 
 	registerStyleAppliers("text-input");
 
-	/* Told when the LABEL's inherited style arrives, because that is later than this node's own.
-
-	The caret and the selection are derived from the colour the text is painted in, and that colour
-	reaches the label as an InheritedColorStyle written during the LABEL's components phase - which
-	runs when the label is visited, after this node has already run its own. A derivation triggered
-	only by this node's components would therefore read the colour of the frame before, and for a
-	sheet that colours the label without colouring the field (`label { color: … }`) it would never
-	read anything at all.
-
-	The frame stack is how a parent hears about its subtree: this system publishes itself under a
-	tag, and the label's components phase delivers to the nearest ancestor carrying it. */
+	/* Notified when the label's inherited style arrives, which is after this node's own components
+	phase. The caret and selection colours derive from the label's text colour. The system
+	publishes itself on the frame stack under a tag; the label's components phase delivers to the
+	nearest ancestor carrying it. */
 	auto styleWatch = addSystem(Rc<CallbackSystem>::create());
 	styleWatch->setFrameTag(TextInputStyleWatchTag);
 	styleWatch->setChildComponentsDirtyCallback(
@@ -463,8 +432,8 @@ bool TextInput::init() {
 
 	_listener = addSystem(Rc<InputListener>::create());
 
-	// Text dropped onto the field lands the same way pasted text does - same type rule, same
-	// insertion point, same validation. A drop target and a paste target really are one handler
+	// Text dropped onto the field is handled like a paste: same type rule, insertion point and
+	// validation
 	setDropTarget(this,
 			DropTargetSlots{
 				.accept = [this](const DragEvent &event) -> DragResponse {
@@ -475,18 +444,16 @@ bool TextInput::init() {
 		if (event.data->preferType(makeSpanView(&want, 1)).empty()) {
 			return DragResponse();
 		}
-		// Either is fine here: whether the source deletes its original is the SOURCE's business
+		// Either is fine here: whether the source deletes its original is up to the source
 		return DragResponse{event.allowed & (DragActions::Copy | DragActions::Move)};
 	},
 				.drop = [this](const DragEvent &event,
 								DragActions) { return handleTextDrop(event); },
 			});
 
-	// A key event carries the pointer location (the platform backends fill it in from the last
-	// mouse position), so the default filter - "is the node under the pointer" - would only deliver
-	// arrows while the mouse happens to hover the field. A focused text field owns the keyboard
-	// wherever the pointer is, so keyboard events bypass the hit test entirely; pointer events keep
-	// the default behaviour.
+	// A key event carries the last pointer location, so the default hit-test filter would deliver
+	// keys only while the mouse hovers the field. Keyboard events bypass the hit test; pointer
+	// events keep the default.
 	_listener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -506,16 +473,13 @@ bool TextInput::init() {
 		return true;
 	}, false);
 
-	// maxTapCount 3: one tap places the caret, two select a word, three select everything - and
-	// Immediate, because these three are refinements of each other, not alternatives. Waiting to
-	// learn whether a second tap follows would delay the caret of every single click by
-	// TapIntervalAllowed, which is exactly the lag the user sees.
+	// maxTapCount 3: caret, word, everything. Immediate, since each refines the previous; waiting
+	// for a possible second tap would delay every click by TapIntervalAllowed.
 	_listener->addTapRecognizer([this](const GestureTap &tap) { return handleTap(tap); },
 			InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 3,
 				InputTapFlags::Immediate});
 
-	// Continuous, so the hold keeps reporting every interval instead of firing once: that is what
-	// turns "keep holding" into the next, wider selection.
+	// Continuous, so the hold reports every interval and each one widens the selection.
 	_listener->addPressRecognizer(
 			[this](const GesturePress &press) {
 		switch (press.event) {
@@ -543,12 +507,9 @@ bool TextInput::init() {
 		return false;
 	}, InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft})});
 
-	/* Cursor movement stays on a recognizer: Left and Shift+Left are the same motion with a
-	   different flag, not two commands, and the runtime never claims those keys anyway.
-
-	   Everything that IS a command - navigation away from the field, accept, and the clipboard
-	   chords - is a hotkey, so it can be rebound and so the precedence against the form's own
-	   bindings is the walk order rather than two key masks that have to agree. */
+	/* Cursor movement stays on a key recognizer (Shift only adds a flag). Commands - navigation,
+	   accept, clipboard chords - are hotkeys, so they can be rebound and precedence against the
+	   form's bindings follows the walk order. */
 	InputKeyMask keys;
 	keys.set(toInt(InputKeyCode::LEFT));
 	keys.set(toInt(InputKeyCode::RIGHT));
@@ -581,7 +542,7 @@ bool TextInput::init() {
 	_listener->setCursor(WindowCursor::Text);
 
 	// Tap outside the field releases input. Priority 1 puts it above the scene graph, and its touch
-	// filter accepts ONLY points outside the widget, so it never competes with the field's own tap.
+	// filter accepts only points outside the widget.
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
 	_focusListener->addTapRecognizer([this](const GestureTap &) {
@@ -596,8 +557,7 @@ bool TextInput::init() {
 
 	_handler.onData = sprt::bind(&TextInput::handleTextInput, this, sprt::placeholders::_1);
 
-	// Built either way, enabled by nobody: a field with no history costs one empty log and one
-	// pointer, and a subclass that wants one (TextView does) only has to say so.
+	// Always built, disabled by default; TextView enables it.
 	_history.init(this);
 
 
@@ -610,8 +570,7 @@ void TextInput::handleEnter(Scene *scene) {
 }
 
 void TextInput::handleExit() {
-	// The handler's destructor would do this too, but a node can leave the scene and come back;
-	// holding the OS keyboard for an off-scene widget is never right.
+	// Also done by the handler's destructor, but a node can leave the scene and come back.
 	if (_handler.isActive()) {
 		_handler.cancel();
 	}
@@ -629,10 +588,8 @@ void TextInput::handleContentSizeDirty() {
 		style = c;
 	}
 
-	// Room a subclass has taken out of the viewport for something it draws inside the field's own
-	// box - ui::NumberField's unit is the only one today. Folded in HERE rather than re-implemented
-	// there: the caret, the label slide, the overflow test and the point->cursor mapping are all
-	// expressed against the container's size, so this stays the single writer of its geometry.
+	// Room a subclass has taken out of the viewport (see getViewportInset); this stays the single
+	// writer of the container's geometry.
 	const auto inset = getViewportInset();
 
 	const auto width =
@@ -648,10 +605,9 @@ void TextInput::handleContentSizeDirty() {
 void TextInput::handleComponentsDirty(const ComponentMask &mask) {
 	VectorSprite::handleComponentsDirty(mask);
 
-	// The inherited colour as well as the field's own paint: the caret and the selection are
-	// derived from the text colour, and that arrives as an InheritedColorStyle written by the style
-	// resolver. Same protocol Label itself uses, and the same limit - a change on an ANCESTOR is
-	// seen only because the resolver rewrites the component on this node too (XLInheritedStyle.h)
+	// The inherited colour as well as the field's own paint: caret and selection derive from the
+	// text colour (InheritedColorStyle). An ancestor change is seen because the resolver rewrites
+	// the component on this node too (XLInheritedStyle.h)
 	if (mask.contains(TextInputStyleComponent::Id.value)
 			|| mask.contains(InheritedColorStyle::Id.value)) {
 		updateStyleColors();
@@ -678,7 +634,7 @@ void TextInput::updateBackgroundImage() {
 	const Rect box(inset, inset, _contentSize.width - inset * 2.0f,
 			_contentSize.height - inset * 2.0f);
 
-	// shrink each corner radius by the inset so the OUTER edge of the stroke keeps the requested
+	// shrink each corner radius by the inset so the outer edge of the stroke keeps the requested
 	// radius; addBox() itself clamps each corner to the half-box
 	auto outer = [&](float r) { return r > 0.0f ? sprt::max(r - inset, 0.0f) : 0.0f; };
 	const float rtl = outer(style->borderRadiusTopLeft);
@@ -729,17 +685,12 @@ void TextInput::updateBackgroundImage() {
 }
 
 void TextInput::updateStyleColors() {
-	// No component at all is the ORDINARY case for a field no rule of the masked kind matched, and
-	// such a field still needs a visible caret. Everything below therefore has to work without one
+	// A field matched by no rule has no component and still needs a visible caret, so everything
+	// below works without one
 	auto style = getComponent<TextInputStyleComponent>();
 
-	/* The colour the label PAINTS with, which is not the colour its node is tinted with.
-
-	A Label takes its text colour from the inherited-style components the stylesheet writes (CSS
-	`color` is an inherited property - see XLInheritedStyle.h), and leaves Node::getColor() at
-	whatever the widget set it to when it was built. Deriving from the tint therefore gave every
-	styled field a caret and a selection in the widget's default ink - black, and invisible, on
-	every dark theme - while the text itself was drawn in the colour the sheet asked for. */
+	/* The colour the label paints with (inherited-style components, see XLInheritedStyle.h), not
+	Node::getColor(), which stays at the widget's default. */
 	auto label = _container->getLabel();
 	auto text = Color4F(label->getColor());
 	const auto inherited = accumulateInheritedStyle<InheritedColorStyle>(label);
@@ -747,8 +698,7 @@ void TextInput::updateStyleColors() {
 		text = Color4F(inherited.color);
 	}
 
-	// Fallbacks derive from that text colour, so an unconfigured field still has a visible caret and
-	// a selection that reads as "the same ink, dimmed". A colour named explicitly by
+	// Fallbacks derive from that text colour (the selection dimmed). A colour set by
 	// --caret-color / --selection-color / --marked-color always wins.
 	_container->setCaretColor(style && style->hasCaretColor ? Color4F(style->caretColor) : text);
 
@@ -767,10 +717,9 @@ bool TextInput::setStyleValue(const ResolvedStyle &style, document::ParameterNam
 		const document::StyleValue &value) {
 	using document::ParameterName;
 
-	// CmdReset arrives before the parameters of every style pass and means "undo whatever the last
-	// pass left"; a rule that stopped matching simply goes missing, so dropping the component is
-	// the only way to notice. The custom properties are re-read here because, unlike a parameter,
-	// they are never delivered as one.
+	// CmdReset arrives before the parameters of every style pass; dropping the component is how a
+	// rule that stopped matching is noticed. Custom properties are not delivered as parameters, so
+	// they are re-read here.
 	if (name == ParameterName::CmdReset) {
 		bool changed = removeComponent<TextInputStyleComponent>();
 
@@ -893,8 +842,7 @@ void TextInput::setText(WideStringView str) {
 		return;
 	}
 
-	// No handler running, so nothing owns the state but this widget - the one place where writing
-	// _inputState directly is correct, because there is no echo to wait for.
+	// No handler running: no echo will come, so _inputState is written directly.
 	_inputState.string = string;
 	_inputState.cursor = cursor;
 	_inputState.marked = TextCursor::InvalidCursor;
@@ -928,19 +876,16 @@ void TextInput::setPlaceholder(StringView str) {
 StringView TextInput::getPlaceholder() const { return _placeholderText; }
 
 void TextInput::setReadOnly(bool value) {
-	/* Under a lock the visible bit is the LOCK's answer, not the widget's, so it cannot be used to
-	decide "nothing changed": what the widget asks for still has to be recorded, or unlocking would
-	give back "writable" to a field that had been read-only all along. */
+	/* Under a lock the visible bit is the lock's, so it is not used to skip: the request is still
+	recorded for unlock. */
 	if (!isEditLocked(this) && value == isReadOnly()) {
 		return;
 	}
 	applyControlReadOnly(this, value);
 	_container->setReadOnly(value);
 
-	/* A THIRD axis, and it stays one. A read-only field still takes taps and selections so its text
-	can be read and copied, where a disabled one takes nothing - collapsing the two would silently
-	break copy-out-of-a-read-only-field. It is said twice: `:read-only` is what a stylesheet should
-	ask for, and the plain class is kept for sheets written before that pseudo-class existed. */
+	/* Read-only is separate from disabled: a read-only field still takes taps and selections so its
+	text can be copied. Exposed as `:read-only` and as a plain class for older sheets. */
 	if (isReadOnly() && _handler.isActive()) {
 		_handler.cancel();
 	}
@@ -1007,7 +952,7 @@ bool TextInput::copy() {
 		return false;
 	}
 
-	// A masked field's contents are exactly what must not leave the widget
+	// A masked field's contents must not leave the widget
 	if (!canCopySelection()) {
 		return false;
 	}
@@ -1017,9 +962,8 @@ bool TextInput::copy() {
 		return false;
 	}
 
-	// The offer copies the bytes, so the local String may die here. A false answer means the
-	// transport cannot carry it - a remote client - which is why cut() consults this before
-	// deleting anything
+	// The offer copies the bytes. False means the transport cannot carry it (a remote client);
+	// cut() checks this before deleting
 	auto str = string::toUtf8<Interface>(getTextForCursor(cursor));
 	return clipboard->writeText(str) == Status::Ok;
 }
@@ -1028,7 +972,7 @@ bool TextInput::cut() {
 	if (isReadOnly() || !copy()) {
 		return false;
 	}
-	// What was SELECTED, not where the caret is heading: see selectionCursor()
+	// What was selected, not where the caret is heading: see selectionCursor()
 	HistoryEditName name(this, TextHistory::NameCut);
 	insertText(WideStringView(), selectionCursor());
 	return true;
@@ -1044,8 +988,7 @@ bool TextInput::paste() {
 		return false;
 	}
 
-	// The staleness serial, the type negotiation and "answered exactly once" are the session's.
-	// What is left here is what this widget does with the bytes
+	// Staleness, type negotiation and single delivery are handled by the session
 	return clipboard->readText([this](const ClipboardSession::Result &result) {
 		if (!result) {
 			return;
@@ -1053,8 +996,8 @@ bool TextInput::paste() {
 
 		auto text = string::toUtf16<Interface>(result.text());
 
-		// The caret as it is NOW, not as it was when the read started - the user may have moved it.
-		// Length and character filtering happen in validateInput() on the echo
+		// The caret as it is now, not when the read started. Length and character filtering
+		// happen in validateInput() on the echo
 		HistoryEditName name(this, TextHistory::NamePaste);
 		insertText(WideStringView(text), insertionCursor());
 	}, this) != 0;
@@ -1065,8 +1008,7 @@ bool TextInput::handleTextDrop(const DragEvent &event) {
 		return false;
 	}
 
-	// The same rule a pasted payload is matched with, so a field cannot end up accepting a type on
-	// drop that it refuses on paste
+	// The same type rule as paste
 	auto want = StringView("text/plain");
 	auto type = event.data->preferType(makeSpanView(&want, 1));
 	if (type.empty()) {
@@ -1081,7 +1023,7 @@ bool TextInput::handleTextDrop(const DragEvent &event) {
 	auto text = string::toUtf16<Interface>(
 			StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
 
-	// the caret as it is NOW, exactly as a paste does; filtering happens in validateInput()
+	// the caret as it is now, as a paste does; filtering happens in validateInput()
 	HistoryEditName name(this, TextHistory::NameDrop);
 	insertText(WideStringView(text), insertionCursor());
 	return true;
@@ -1098,8 +1040,7 @@ void TextInput::blur() {
 	if (_handler.isActive()) {
 		_handler.cancel();
 	}
-	// A paste in flight belongs to the focus that started it. An answer arriving afterwards would
-	// land on top of whatever the field holds now - or, worse, while another widget is being edited
+	// A paste in flight belongs to the focus that started it
 	if (_clipboard) {
 		_clipboard->cancel();
 	}
@@ -1115,8 +1056,7 @@ void TextInput::selectAll() {
 }
 
 void TextInput::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// The edit lock overrides the request and remembers it for unlock.
 	value = resolveEditLock(this, value);
 	if (value == isEnabled()) {
 		return;
@@ -1163,8 +1103,7 @@ void TextInput::setMaxChars(size_t value) {
 	}
 	_maxChars = value;
 
-	// Enforced through the same correction path as a too-long echo, so there is exactly one place
-	// that truncates.
+	// Enforced through the echo correction path, the single place that truncates.
 	if (_maxChars > 0 && _inputState.size() > _maxChars) {
 		auto state = _inputState;
 		if (validateInput(state)) {
@@ -1260,16 +1199,14 @@ void TextInput::handleTextInput(const TextInputState &data) {
 	const auto previousCursor = _inputState.cursor;
 	const bool wasComposing = _inputState.marked.length > 0;
 
-	// Focus follows what the platform actually granted, not what was asked for - which is what
-	// makes `:focus` in CSS mean something.
+	// Focus follows what the platform granted, not what was asked for.
 	if (_focused != data.enabled) {
 		_focused = data.enabled;
 		if (!_focused) {
 			_focusListener->setEnabled(false);
 			_selectionAnchor = maxOf<uint32_t>();
-			// The SECOND place a pending paste dies, and the one that actually happens: focus is
-			// normally taken by the platform rather than surrendered through blur(), so cancelling
-			// only there would leave the common case unguarded
+			// Cancel a pending paste here too: focus is usually taken by the platform, not
+			// released through blur()
 			if (_clipboard) {
 				_clipboard->cancel();
 			}
@@ -1282,7 +1219,7 @@ void TextInput::handleTextInput(const TextInputState &data) {
 
 	_inputState = sp::move(state);
 
-	// The platform has spoken: whatever the widget had asked for is superseded.
+	// The echo supersedes whatever the widget had asked for.
 	_pendingCursor = _inputState.cursor;
 
 	_container->setEnabled(_focused);
@@ -1291,17 +1228,14 @@ void TextInput::handleTextInput(const TextInputState &data) {
 
 	const bool stringChanged = _inputState.string != previousString;
 	if (stringChanged) {
-		/* The field's text belongs to the platform, so this echo is the only place it is ever seen
-		to change - typing, composition, system autocorrect and a platform-side paste all arrive
-		here and nowhere else. What the edit WAS has to be recovered by diffing, which is exactly
-		what the processor's single-range guarantee makes exact. */
+		/* Every text change arrives here as an echo. The edit is recovered by diffing, which is
+		exact because the processor only performs single-range edits. */
 		if (_historyEchoes > 0) {
-			// This is a history-driven edit coming back. Recording it would make undo undoable,
-			// which is how a history turns into a loop.
+			// A history-driven edit coming back; not recorded again.
 			--_historyEchoes;
 		} else if (_history.isEnabled() && !_history.isApplying()) {
-			// The removed text has to come from the PREVIOUS string: _inputState already holds the
-			// new one by now, so sliceForHistory() would read what replaced it.
+			// The removed text comes from the previous string: _inputState already holds the new
+			// one, so sliceForHistory() would read the replacement.
 			const auto before =
 					previousString ? WideStringView(previousString->string) : WideStringView();
 			const auto after = _inputState.getStringView();
@@ -1325,13 +1259,11 @@ void TextInput::handleTextInput(const TextInputState &data) {
 	_container->setPlaceholderVisible(_inputState.empty() && !_focused);
 
 	if (corrected) {
-		// The correction has to travel back, or the platform keeps editing the string it thinks it
-		// has and the next keystroke reverts it.
+		// Push the correction back, or the next keystroke would revert it.
 		pushRequest(_inputState.string, _inputState.cursor, _inputState.marked);
 	}
 
-	// A marked range is a composition in progress, not committed text: reporting it as a change
-	// would make an autocomplete widget fire on every syllable being assembled.
+	// A marked range is a composition in progress, not committed text.
 	if (stringChanged && _inputState.marked.length == 0 && _callback) {
 		_callback(getText());
 	}
@@ -1356,9 +1288,8 @@ bool TextInput::validateInput(TextInputState &state) {
 
 	auto str = state.getStringView();
 
-	// Enter and Tab reach the field as text, because the runtime's processor consumes the key event
-	// and inserts the character ('\r' remapped to '\n'). Stripping them here is what turns them
-	// back into the actions they were.
+	// Enter and Tab may reach the field as text ('\r' remapped to '\n'); they are stripped here and
+	// turned into actions.
 	bool hasEnter = false;
 	bool hasTab = false;
 	WideString filtered;
@@ -1452,12 +1383,12 @@ uint32_t TextInput::offsetCursor(int32_t delta) const {
 	if (cursor.length > 0) {
 		if (_selectionAnchor == maxOf<uint32_t>()) {
 			// nothing is being extended: moving off a selection collapses it to the edge you are
-			// moving towards, as every editor does
+			// moving towards
 			return uint32_t(math::clamp(delta < 0 ? cursor.start : cursor.start + cursor.length,
 					uint32_t(0), uint32_t(size)));
 		}
 
-		// a selection IS being extended: the step continues from the end the user is moving, so
+		// a selection is being extended: the step continues from the end the user is moving, so
 		// Shift+Left after a rightwards selection shrinks it instead of jumping to its other end
 		from = activeCursorPosition(cursor);
 	}
@@ -1515,18 +1446,17 @@ bool TextInput::handleTextHotkey(HotkeyId id, const InputEvent &) {
 	auto &hk = EngineHotkeys::get();
 
 	if (id == hk.focusNext || id == hk.focusPrev) {
-		/* Shift is the only reason navigation has to be a key event rather than the '\t' the
-		   platform used to insert: a stripped character carries no modifiers, so backwards
-		   navigation cannot be expressed on that path. Inside a form the navigate callback hands
-		   this to the form; standalone, the field just gives up focus. */
+		/* A key event rather than '\t' text, so Shift is available for backwards navigation.
+		   Inside a form the navigate callback hands this to the form; standalone, the field
+		   blurs. */
 		if (_navigateCallback) {
 			return _navigateCallback(id == hk.focusPrev);
 		}
 		blur();
 		return true;
 	} else if (id == hk.textAccept || id == hk.textAcceptKeypad) {
-		// Declining when no callback is set is what lets the form's submit binding, which is
-		// visited after this one, have the key. An explicitly installed callback wins on purpose
+		// Declined when no callback is set, so the form's submit binding (visited later) gets the
+		// key. An installed callback wins
 		if (_enterCallback) {
 			_enterCallback();
 			return true;
@@ -1573,8 +1503,7 @@ bool TextInput::handleTap(const GestureTap &tap) {
 		return false;
 	}
 
-	// The release that ends a long press is a tap too. Swallow it: it would otherwise land as a
-	// single tap and collapse the selection the hold has just made.
+	// The release that ends a long press is also a tap; swallow it to keep the selection.
 	if (_longPressApplied) {
 		_longPressApplied = false;
 		return true;
@@ -1606,8 +1535,7 @@ bool TextInput::handlePress(const GesturePress &press, bool begin) {
 	if (begin) {
 		_longPressApplied = false;
 
-		// The recognizer counts the hold in update(), which only runs while frames are produced -
-		// and a resting finger produces none. Held for exactly as long as the press is.
+		// The recognizer counts the hold in update(), which needs frames; held for the press.
 		if (!getActionByTag(TextInputPressTag)) {
 			runAction(Rc<RenderContinuously>::create(), TextInputPressTag);
 		}
@@ -1621,16 +1549,15 @@ bool TextInput::handlePress(const GesturePress &press, bool begin) {
 }
 
 bool TextInput::handleLongPress(const GesturePress &press) {
-	// A drag took the gesture over: it is selecting by itself, and widening under it would fight
-	// the pointer.
+	// A drag took the gesture over and selects by itself.
 	if (!isEnabled() || _dragSelecting || _panning || _inputState.empty()) {
 		return true;
 	}
 
 	switch (press.tickCount) {
 	case 1: {
-		// Nothing under the finger (past the end of the text) - fall through to the whole text on
-		// the next tick rather than selecting a word at random.
+		// Nothing under the finger (past the end of the text): select the whole text on the
+		// next tick.
 		auto word = getWordForPosition(press.location());
 		if (word != TextCursor::InvalidCursor) {
 			_selectionAnchor = word.start;
@@ -1709,8 +1636,7 @@ void TextInput::setUndoEnabled(bool value) {
 	}
 	_history.setEnabled(value);
 
-	/* The only reason this widget is ever scheduled per frame: the idle window that decides where
-	one undo entry ends and the next begins needs a clock, and nothing in this stack reads one. */
+	/* Scheduled per frame only to give the history's idle window a clock. */
 	if (value) {
 		scheduleUpdate();
 	} else {
@@ -1719,9 +1645,8 @@ void TextInput::setUndoEnabled(bool value) {
 }
 
 bool TextInput::undo() {
-	// A run in progress is committed by the history itself, so Ctrl+Z in the middle of a word
-	// takes back the word. Answering false when there is nothing is what lets the chord fall
-	// through to whoever is below - a document editor, a shell, a project history.
+	// The history commits a run in progress, so Ctrl+Z mid-word undoes the word. False when there
+	// is nothing, so the chord falls through to handlers below.
 	return _history.undo();
 }
 
@@ -1744,19 +1669,16 @@ void TextInput::beginHistoryBatch() {
 
 void TextInput::applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted) {
 	if (_historyBatch) {
-		// Into the shadow, not out to the platform: the entry being undone may hold a whole typed
-		// word, and each request would be computed against a string the platform has not sent back
-		// yet - so all of them would describe the same starting point and only the last would
-		// survive. The batch is asked for once, at the end.
+		// Into the shadow, not to the platform: separate requests against an un-echoed string
+		// would overwrite each other. The batch is requested once, at the end.
 		pos = sprt::min(pos, uint32_t(_historyShadow.size()));
 		removed = sprt::min(removed, uint32_t(_historyShadow.size()) - pos);
 		_historyShadow.replace(pos, removed, inserted.data(), inserted.size());
 		return;
 	}
 
-	// A REQUEST, like every other edit here: the platform owns this text, and an undo that wrote
-	// locally would be overwritten by the next echo. The echo it produces is this edit coming
-	// back, not a new one, so it is counted rather than recorded.
+	// A request, like every other edit here: the platform owns this text. Its echo is counted,
+	// not recorded.
 	++_historyEchoes;
 	insertText(inserted, TextCursor(pos, removed));
 }
@@ -1779,8 +1701,8 @@ void TextInput::endHistoryBatch() {
 }
 
 void TextInput::setHistoryCursor(TextCursor cursor) {
-	// NOT setCursor(): the edit just requested has not been echoed yet, so a cursor push now would
-	// send the string as it still is and cancel it. The echo carries this instead.
+	// Not setCursor(): the requested edit has not been echoed, and a cursor push now would send the
+	// old string and cancel it. Applied on the echo instead.
 	_historyPendingCursor = cursor;
 }
 
@@ -1793,8 +1715,8 @@ void TextInput::recordHistoryEdit(uint32_t pos, uint32_t removed, WideStringView
 void TextInput::update(const UpdateTime &time) {
 	VectorSprite::update(time);
 
-	// `global` rather than `app`: AppThread computes app-time as (start - now) rather than
-	// (now - start), so it decreases and underflows - see XLAppThread::performUpdate.
+	// `global` rather than `app`: AppThread computes app-time as (start - now), so it decreases
+	// and underflows (see XLAppThread::performUpdate).
 	_historyClock = time.global;
 	_history.tickIdle(_historyClock);
 }

@@ -39,8 +39,8 @@ uint64_t ContextMenuSystem::Id = System::GetNextSystemId();
 ComponentId ContextMenuComponent::Id;
 
 Rc<MenuSource> ContextMenuComponent::resolve(const ContextMenuRequest &request) const {
-	// The builder decides first and may decline; the fixed source is what it falls back to. A
-	// target with neither offers nothing, which blocks rather than falls through - see the header
+	// the builder decides first, the fixed source is the fallback; neither means nothing is
+	// offered, which blocks (see the header)
 	if (builder) {
 		if (auto result = builder(request)) {
 			return result;
@@ -66,8 +66,7 @@ ContextMenuSystem *ContextMenuSystem::acquireForNode(Node *node) {
 		return menus;
 	}
 
-	// Nobody installed one. Put it where it belongs rather than making every widget demand that the
-	// application arrange a context-menu system before it can carry a menu
+	// none installed: put one on the scene content
 	if (node) {
 		if (auto scene = node->getScene()) {
 			if (auto content = scene->getContent()) {
@@ -88,9 +87,8 @@ bool ContextMenuSystem::init() {
 
 	_frameTag = ContextMenuSystem::Id;
 
-	// Owner and scene events for the lifetime, and visit control for one thing only: the visit is
-	// the last chance to attach the listeners (see attachListener). Targets publish themselves into
-	// the window's hit-test registry, so there is no roster here to bracket
+	// Visit events only to attach the listeners (see attachListener); targets live in the window's
+	// hit-test registry
 	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleVisitControl;
 	return true;
@@ -99,67 +97,49 @@ bool ContextMenuSystem::init() {
 void ContextMenuSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 
-	// findForNode hands a widget the NEAREST system above it, so a second one deeper in the tree
-	// would open menus for half the scene and leave the other half to this one
+	// findForNode returns the nearest system, so a nested second one would split the scene
 	sprt_passert(findForNode(owner->getParent()) == nullptr,
 			"ContextMenuSystem must not be nested");
 
 	_listener = Rc<InputListener>::create(ListenerPriority);
 
-	/* The mouse: a TAP of the right button, which is press-and-release without moving past the tap
-	tolerance. Not a press recognizer - that would fire while the button is still down and take
-	right-button DRAGGING away from everything that uses it (ui::CanvasView pans with one). */
+	/* Mouse: a right-button tap (press and release within tap tolerance), not a press, so
+	right-button drags (ui::CanvasView panning) still work. */
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event != GestureEvent::Activated) {
 			return false;
 		}
-		// True only when a menu actually opened. It reports Processed either way and swallows
-		// nothing - this listener is the last one asked, so there is nobody left to keep it from
+		// true only when a menu opened; swallows nothing
 		return openAt(tap.location(), false,
 				tap.input ? tap.input->data.input.modifiers : InputModifier::None);
 	}, InputTapInfo{makeButtonMask({InputMouseButton::MouseRight}), 1});
 
-	/* The touchscreen: a finger held still. The button mask cannot express "a finger" -
-	InputMouseButton::Touch IS MouseLeft - so what the event was made by is read off the event
-	itself, exactly as scroll inertia reads it. Without that check a mouse held down for half a
-	second would open a menu. */
+	/* Touch: a long press. InputMouseButton::Touch equals MouseLeft, so the Touch modifier on the
+	event tells a finger from a held mouse button. */
 	_listener->addPressRecognizer(
 			[this](const GesturePress &press) {
-		// The press has to be ACCEPTED for the hold to be timed at all: a callback that declines
-		// Began is never asked again, and the recognizer never reaches Activated
+		// Began must be accepted, or the recognizer never reaches Activated
 		if (press.event != GestureEvent::Activated) {
 			return true;
 		}
 
-		// Declining here cancels the hold, which is what a mouse held down deserves: it is not a
-		// context-menu gesture, and there is nothing more to wait for
+		// not a touch: declining cancels the hold
 		if (!press.input || !hasFlag(press.input->data.input.modifiers, InputModifier::Touch)) {
 			return false;
 		}
 		return openAt(press.location(), true, press.input->data.input.modifiers);
 	},
-			/* NOT InputPressFlags::Capture, which is the default. Capturing would make this
-			listener - which every press in the window reaches, since it is the last one asked -
-			take the pointer exclusively from whatever widget was actually being pressed. The hold
-			is timed just as well without it, and a widget that captures for itself (a drag
-			starting) cancels this one, which is exactly the suppression that should happen. */
+			/* Not InputPressFlags::Capture (the default): this listener sees every press and must
+			not take the pointer from the pressed widget. A widget that captures cancels this hold.
+			*/
 			InputPressInfo{makeButtonMask({InputMouseButton::Touch}), _longPress,
 				InputPressFlags::None});
 
-	/* The other listener: the one that takes an open menu down, and SPENDS the click doing it.
+	/* Dismiss listener: pre-scene band, swallows the press (Captured cancels the rest of the
+	chain), so a click outside an open menu only dismisses it. Enabled only while a menu is open.
 
-	It sits in the pre-scene band, so it is asked before every widget, and it swallows the press -
-	Processed becomes Captured, which cancels everyone else for that whole chain. A click outside an
-	open menu therefore dismisses it and reaches nothing; the next one is an ordinary click. That is
-	what every desktop menu does, and it is the only arrangement that can: a dismiss listener asked
-	last would be told about a press the widget under the pointer had already acted on.
-
-	It is disabled whenever no menu is open, so it registers nothing and costs nothing - the same
-	arrangement as DragSystem's cursor layer.
-
-	On a real window system a native popup holds a pointer grab and the parent window never sees the
-	press at all, so none of this runs there; it is for the in-scene overlay path, and for headless,
-	where the emulated window manager delivers to the parent. */
+	Native popups hold a pointer grab, so this serves the overlay path and headless, where the
+	emulated window manager delivers to the parent. */
 	_dismissListener = Rc<InputListener>::create(DismissListenerPriority);
 	_dismissListener->setEnabled(false);
 	_dismissListener->setSwallowEvent(InputEventName::Begin);
@@ -168,13 +148,10 @@ void ContextMenuSystem::handleAdded(Node *owner) {
 		if (data.event == GestureEvent::Began) {
 			close();
 		}
-		// True for every event of the chain, not just the Began: the swallow turned that Began into
-		// a capture, so this listener owns the rest of the press and has to keep accepting it
+		// accept every event of the chain: the swallowed Began made this listener its owner
 		return true;
 	},
-			// Every button, including the right one: a right click while a menu is up closes it and
-			// does not open the next one. One rule for "a click outside is spent on the dismissal"
-			// is easier to predict than one rule per button
+			// every button: a right click while a menu is up closes it without opening another
 			InputTouchInfo{makeButtonMask({InputMouseButton::MouseLeft,
 				InputMouseButton::MouseRight, InputMouseButton::MouseMiddle})});
 
@@ -188,14 +165,10 @@ void ContextMenuSystem::handleEnter(Scene *scene) {
 }
 
 void ContextMenuSystem::attachListener() {
-	/* Attached when the owner is RUNNING, which is not the same moment as when it exists.
-
-	Node::handleEnter sets `_running` at its very end, after its children have entered - and
-	acquireForNode is reached from a descendant's handleEnter, which is inside that window. A system
-	added to a node that is not running yet is never handed handleEnter (see Node::addSystemItem),
-	and an InputListener that never entered refuses every event before any filter of ours runs. So
-	the attachment is retried: from our own handleEnter, and from the first visit, by which time
-	everything above is certainly running. */
+	/* Attach only once the owner is running. acquireForNode is reached from a descendant's
+	handleEnter, before Node::handleEnter sets `_running`; a system added then never gets
+	handleEnter, and a listener that never entered refuses all events. Retried from handleEnter and
+	the first visit. */
 	if (!_owner || !_owner->isRunning()) {
 		return;
 	}
@@ -224,8 +197,7 @@ void ContextMenuSystem::handleRemoved() {
 }
 
 void ContextMenuSystem::handleExit() {
-	// The scene is being torn down with a menu open on it. Take it along rather than leaving a
-	// surface parented to a content node on its way out
+	// scene torn down with a menu open: close it with the scene
 	close();
 
 	System::handleExit();
@@ -234,8 +206,7 @@ void ContextMenuSystem::handleExit() {
 void ContextMenuSystem::handleVisitBegin(FrameInfo &info) {
 	System::handleVisitBegin(info);
 
-	// The last chance for the listener to join, and the one that always works: by the first visit
-	// everything above this system is running. See attachListener
+	// by the first visit everything above is running; see attachListener
 	attachListener();
 }
 
@@ -282,8 +253,7 @@ InputDispatcher *ContextMenuSystem::getDispatcher() const {
 Node *ContextMenuSystem::findTarget(const Vec2 &worldLocation) const {
 	Node *found = nullptr;
 	if (auto dispatcher = getDispatcher()) {
-		// Topmost first: the registry is walked backwards, because registration order is visit order
-		// is paint order
+		// topmost first: walk backwards, registration order is paint order
 		dispatcher->foreachHitTest(HitTestFlags::ContextMenu,
 				[&](const InputListenerStorage::HitTestRec &rec) {
 			auto comp = getContextMenu(rec.node);
@@ -326,17 +296,14 @@ bool ContextMenuSystem::openAt(const Vec2 &worldLocation, bool fromTouch, InputM
 
 	ContextMenuRequest request;
 	request.worldLocation = worldLocation;
-	// In the DECLARING node's space, so a view can ask which of its rows this was without
-	// converting anything itself. Through the transform the node was DRAWN with, because that is
-	// what the hit test just answered against
+	// in the declaring node's space, through the transform it was drawn with (as the hit test used)
 	request.location = node->getModelToNodeTransform().transformPoint(worldLocation);
 	request.modifiers = mods;
 	request.fromTouch = fromTouch;
 
 	auto source = comp->resolve(request);
 
-	// Remembered even when the answer was "nothing": what a test and a caller both want to know is
-	// which target ANSWERED, not which one happened to have a menu
+	// remembered even when nothing is offered: callers want the target that answered
 	_currentTarget = node;
 
 	if (!source || source->countVisible() == 0) {
@@ -348,36 +315,29 @@ bool ContextMenuSystem::openAt(const Vec2 &worldLocation, bool fromTouch, InputM
 		return false;
 	}
 
-	// One menu at a time. Closing the previous one first, rather than letting two chains coexist:
-	// the second one's outside-tap would take down the wrong chain
+	// one menu at a time: a second chain's outside tap would close the wrong one
 	close();
 
 	MenuConfig config;
 	config.idPrefix = String("context");
 
-	/* The generation is what keeps a REOPENING from erasing itself.
-
-	`onClose` may arrive after the next menu has already been opened - closing one and opening
-	another is one gesture, and a right click while a menu is up is the ordinary way to do it - and
-	a callback that nulled the handle unconditionally would then throw away the handle of the menu
-	that is on screen. */
+	/* `onClose` of the previous menu may arrive after the next one opened (a right click while a
+	menu is up); the generation keeps it from clearing the new handle. */
 	const auto generation = ++_generation;
 	config.onClose = [this, generation] {
 		if (_generation == generation) {
 			_menu = nullptr;
-			// However it went away - an item chosen, Escape, the surface closed - nothing outside
-			// this scene should be swallowed any more
+			// however the menu closed, stop swallowing presses
 			updateDismissListener();
 		}
 	};
 
-	// The application's say - the stylesheet above all, since a native popup is a scene of its own
-	// and does not inherit the parent window's ui::StyleSystem
+	// application customization; above all the stylesheet, which a native popup does not inherit
 	if (_configCallback) {
 		_configCallback(config);
 	}
 
-	// `owner` is the SceneContent, which is the space placementForPoint wants to convert through
+	// `owner` is the SceneContent, the space placementForPoint converts through
 	_menu = openMenu(window, placementForPoint(owner, owner->convertToNodeSpace(worldLocation)),
 			source, sp::move(config));
 
@@ -390,9 +350,8 @@ void ContextMenuSystem::updateDismissListener() {
 		return;
 	}
 
-	// The HANDLE, not isOpen(): a surface is not open the instant openMenu returns - on the native
-	// path the window is still being created - and a menu that swallowed nothing for its first
-	// frames would let exactly the fastest click through
+	// the handle, not isOpen(): a native surface is not open yet when openMenu returns, and the
+	// dismiss listener must already swallow clicks during those frames
 	_dismissListener->setEnabled(_enabled && _menu != nullptr);
 }
 
@@ -410,19 +369,17 @@ static const ContextMenuComponent *ContextMenu_attach(NotNull<Node> node,
 		const Callback<void(NotNull<ContextMenuComponent>)> &fill) {
 	auto ret = node->setOrUpdateComponent<ContextMenuComponent>(
 			[&](NotNull<ContextMenuComponent> comp) {
-		// Both halves are cleared first: setting a fixed menu on a node that had a builder must
-		// replace it, not leave the builder in front of it
+		// clear both so a fixed menu replaces a previous builder
 		comp->source = nullptr;
 		comp->builder = nullptr;
 		fill(comp);
 		return true;
 	});
 
-	// The flag and the component are one declaration: the visit reads the flag, the hit test reads
-	// the component
+	// the visit reads the flag, the hit test reads the component
 	node->addHitTestFlags(HitTestFlags::ContextMenu);
 
-	// The coordinator has to exist before the first press, and nothing else would create it
+	// the coordinator must exist before the first press
 	ContextMenuSystem::acquireForNode(node);
 	return ret;
 }

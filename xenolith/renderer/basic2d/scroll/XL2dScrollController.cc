@@ -87,11 +87,7 @@ void ScrollController::onScrollPosition(bool force) {
 	}
 
 #if XL_FRAME_ACCOUNT
-	/* WHAT THIS PASS COSTS AND WHAT IT DOES, for whoever asks next.
-
-	It was the largest single item in a studio page's visit, and the counts are what said why: 7 passes
-	building 12 item nodes, 52 item walks, 10.5 ms - which is 870 us per NODE FUNCTION and nothing at
-	all in the controller's own bookkeeping (a pass that builds nothing measures 0.00 ms). */
+	/* Pass cost and counts for the visit account; the cost is dominated by item node functions. */
 	auto &account = getVisitAccount();
 	++account.scrollPasses;
 	const auto passStart = core::getAccountClock();
@@ -102,16 +98,10 @@ void ScrollController::onScrollPosition(bool force) {
 	} passClose{&account, passStart};
 #endif
 
-	// Convergence loop. A node built below can turn out to be a different size than the item
-	// declared, which shifts every following item (resizeItem) and re-dirties the info - so the
-	// visible window has to be recomputed against the new geometry and the pass repeated. Normally
-	// that settles in one or two rounds.
-	//
-	// It does NOT settle when an item's node reports a fresh size every time it is built (a row
-	// whose label re-shapes on construction is the usual source): each round then destroys the
-	// nodes that fell out of the moved window and builds their replacements, all inside a single
-	// frame, without ever converging. So the loop is bounded like the component cascade in
-	// Node::visit: give up, say so, and let the frame finish.
+	// Convergence loop: a built node may differ in size from its item, shifting following items
+	// (resizeItem) and re-dirtying the info, so the visible window is recomputed and the pass
+	// repeated (normally one or two rounds). An item whose node reports a fresh size on every build
+	// never converges, so the loop is bounded like the component cascade in Node::visit.
 	uint32_t guard = 0;
 	do {
 #if XL_FRAME_ACCOUNT

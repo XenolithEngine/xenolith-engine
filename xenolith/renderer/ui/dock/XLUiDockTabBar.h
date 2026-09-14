@@ -30,13 +30,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The strip of tabs along one edge of a frame.
 //
-// It runs its own LayoutSystem in flex - a row for a Top/Bottom strip, a column for a Left/Right
-// one - with every tab sized by its own content. That is also what makes the strip self-sizing:
-// the frame gives it `flex-basis: fit-content`, so the height (or width) it reports back is the
-// height the tabs actually need, and the SAME measurement is what floors the frame's minimum.
-//
-// Overflow is deliberately not scrolled in this version: too many tabs simply make the frame's
-// minimum grow, which the placement pass then has to honour.
+// A flex row (Top/Bottom) or column (Left/Right) sized by its tabs; the frame gives it
+// `flex-basis: fit-content`, and the same measurement floors the frame's minimum. Overflow is not
+// scrolled: too many tabs raise the frame's minimum.
 //
 // CSS type "dock-tab-bar", plus the class `horizontal` or `vertical`.
 class SP_PUBLIC DockTabBar : public Panel {
@@ -54,9 +50,7 @@ public:
 
 	SpanView<DockTab *> getTabs() const { return _tabs; }
 
-	// Bring the strip in line with a frame's panel list, reusing the tabs that are already there:
-	// a tab whose panel is still parked here keeps its node, so switching tabs or reordering them
-	// does not rebuild the strip.
+	// Bring the strip in line with a frame's panel list, keeping nodes of tabs still present.
 	virtual void setTabs(SpanView<DockTab *>);
 
 	// index the strip would insert at for a point in its own coordinate space, and the caret to
@@ -67,13 +61,8 @@ public:
 protected:
 	using Panel::init;
 
-	/* Stamp the strip's orientation onto ONE TAB, as the class `horizontal` or `vertical`.
-
-	The strip carries the same pair, so `dock-tab-bar.vertical dock-tab` would appear to say this
-	already. It does not say it for long enough: a recursive StyleResolver re-resolves a node when
-	that NODE's own identity changes, so a strip that flips side keeps its tabs painted the way
-	they were until something else happens to touch them. The class on the tab itself is what makes
-	the two kinds of strip - a labelled row and an icon rail - interchangeable at runtime. */
+	// Set the class `horizontal` or `vertical` on a tab. The strip's own class is not enough: the
+	// resolver does not restyle tabs when only the strip's classes change.
 	void applyOrientation(DockTab *) const;
 
 	DockTabBarSide _side = DockTabBarSide::Top;

@@ -22,16 +22,11 @@
 
 #include "XLUiNumberField.h"
 
-#include "XLInheritedStyle.h" // placeInlineEnd: the unit trails the number
+#include "XLInheritedStyle.h" // placeInlineEnd
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The class a refused value is painted with. There is no `:invalid` pseudo-class in the engine's
-// CSS subset, so this is the only way to say it in a stylesheet - and it is the same word
-// ui::FormSystem marks a rejected field with.
-
-// Between the number and its unit. The same gap ui::VectorField leaves between a component and its
-// label, because the two read as one row when they sit side by side.
+// Gap between the number and its unit, matching ui::VectorField.
 static constexpr float s_numberUnitGap = 4.0f;
 
 double scrubSteps(float travel, float sensitivity) {
@@ -62,16 +57,13 @@ bool NumberField::init() {
 	setType("number-field");
 	removeStyleClass("xl-ui-text-input");
 	addStyleClass("xl-ui-number-field");
-	// The same appliers TextInput registers for itself, under this type as well: a number field
-	// must be stylable without every rule having to say `text-input.number`.
+	// TextInput's appliers, registered under this type too
 	registerStyleAppliers("number-field");
 
-	// A hint to the platform IME, and only a hint - the filtering is handleInputChar's job. It is
-	// still worth setting: on a touch platform it is what raises a numeric keypad.
+	// IME hint only (raises a numeric keypad); filtering is in handleInputChar
 	setInputType(TextInputType::Number_Decimial);
 
-	// PageUp/PageDown are not in TextInput's key mask, so they get a recognizer of their own rather
-	// than a second copy of the base mask that would have to be kept in step with it.
+	// PageUp/PageDown are not in TextInput's key mask, so they get their own recognizer
 	InputKeyMask keys;
 	keys.set(toInt(InputKeyCode::PAGE_UP));
 	keys.set(toInt(InputKeyCode::PAGE_DOWN));
@@ -89,8 +81,7 @@ void NumberField::setInteger(bool value) {
 	_integer = value;
 	setInputType(_integer ? TextInputType::Number_Numbers : TextInputType::Number_Decimial);
 
-	// The value itself is truncated, not just its spelling: a field that says 3 and holds 3.5 is
-	// two different answers to the same question.
+	// truncate the value itself, not only its text
 	if (_integer) {
 		setValue(sprt::trunc(_value), true);
 	} else {
@@ -106,9 +97,7 @@ void NumberField::setRange(double min, double max) {
 	_max = max;
 	_hasRange = true;
 
-	// Nothing is refused retroactively: a value the program set before the range existed stays,
-	// and the range starts governing what is typed and dragged from here on. Clamping here would
-	// change a stored value as a side effect of describing it.
+	// the held value is not clamped; the range applies to what is typed and dragged from now on
 	commit();
 }
 
@@ -152,14 +141,12 @@ void NumberField::setUnit(StringView value) {
 
 	if (!_unitLabel) {
 		if (_unit.empty()) {
-			// Never named a unit, so there is nothing to build and nothing to hide.
+			// no label yet and nothing to show
 			return;
 		}
-		// ZOrder above the viewport: the two never overlap, but the order has to be said rather
-		// than inherited from the order of construction.
+		// explicit ZOrder above the viewport
 		_unitLabel = addChild(Rc<basic2d::Label>::create(), ZOrder(2));
-		// Its own type, shared with ui::VectorField's, so one rule styles the unit wherever it
-		// appears; a sheet that needs to tell them apart writes `number-field > field-unit`.
+		// type shared with ui::VectorField; use `number-field > field-unit` to target this one
 		_unitLabel->setType("field-unit");
 		_unitLabel->addStyleClass("xl-ui-field-unit");
 		_unitLabel->setAlignment(font::TextAlign::Left);
@@ -173,10 +160,8 @@ void NumberField::setUnit(StringView value) {
 Padding NumberField::getViewportInset() const { return Padding().setRight(_unitInset); }
 
 void NumberField::handleContentSizeDirty() {
-	// Measured NOW, before the base sizes the viewport against it: a label shapes itself on its own
-	// update, which runs AFTER this pass, so without asking for it here its width would read zero
-	// and the number would run underneath it. Same reason, same call, as ui::VectorField's
-	// component labels.
+	// Shape the label now, before the base sizes the viewport: its own update runs after this pass
+	// and its width would read zero.
 	if (_unitLabel && _unitLabel->isVisible()) {
 		_unitLabel->tryUpdateLabel();
 		_unitInset = _unitLabel->getContentSize().width + s_numberUnitGap;
@@ -204,18 +189,9 @@ void NumberField::placeUnitLabel() {
 		style = c;
 	}
 
-	/* Against the inner edge of the padding at the INLINE END, on the viewport's centre line.
-	Not a child of the container, so the container's scissor never clips it.
-
-	The unit trails the number in both directions - "12 px" reads the same way round in a
-	right-to-left interface, because a quantity and its unit are one phrase - so it follows the
-	inline end rather than a fixed side.
-
-	PHASE 6 AND NOT PHASE 4, and that is not a detail: an ancestor's StyleResolver re-resolves this
-	node when its content-size phase FIRES, so a direction read inside handleContentSizeDirty is
-	the one from before the pass. Switching a window back from a right-to-left language left the
-	unit sitting on the wrong edge, on top of the number, with nothing afterwards to correct it.
-	handleLayoutChildren runs later in the same visit, when the style has settled. */
+	/* At the inner padding edge on the inline end, on the viewport's centre line; not a child of
+	the container, so its scissor does not clip it. Runs from handleLayoutChildren: the resolved
+	direction is not yet current in handleContentSizeDirty. */
 	const bool rtl = isInlineRtl(this);
 	const float endPad = rtl ? style->padding.left : style->padding.right;
 	placeInlineEnd(_unitLabel, endPad, _contentSize.height / 2.0f, _contentSize.width, rtl);
@@ -250,16 +226,14 @@ void NumberField::updateText() {
 		return;
 	}
 
-	// The echo of this write comes back through handleTextInput, and the field agreeing with itself
-	// is not an edit: without the guard the restored text would be re-read as one.
+	// guard: the echo of this write comes back through handleTextInput
 	_inUpdate = true;
 	setText(text);
 	_inUpdate = false;
 }
 
 double NumberField::stepped(double base, double steps) const {
-	// The drag and the arrows CLAMP, unlike typing. A gesture has no wrong state to be in, and
-	// stopping at the end of the range is what the range is for.
+	// the drag and the arrows clamp, unlike typing
 	return scrubValue(base, steps, _step, _integer, ScrubRange{_hasRange, _min, _max});
 }
 
@@ -279,8 +253,7 @@ void NumberField::setInvalid(bool value, StringView message) {
 bool NumberField::commit() {
 	auto text = getText();
 
-	// An empty field is not a refusal - it is a field somebody is in the middle of retyping. It
-	// holds its value and says nothing.
+	// empty text is not a refusal: the value is kept while retyping
 	if (text.empty()) {
 		setInvalid(false, StringView());
 		return false;
@@ -293,7 +266,7 @@ bool NumberField::commit() {
 		return false;
 	}
 
-	// The WHOLE text has to be the number: "12ab" reading as 12 would accept a value nobody typed.
+	// the whole text must be the number ("12ab" is refused)
 	reader.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 	if (!reader.empty()) {
 		setInvalid(true, StringView("not a number"));
@@ -305,8 +278,7 @@ bool NumberField::commit() {
 		return false;
 	}
 
-	// Typed out of range is REFUSED, where dragged out of range is clamped. See the class comment:
-	// correcting what somebody typed shows them a number they did not write.
+	// typed out of range is refused (dragging clamps instead)
 	if (_hasRange && (parsed < _min || parsed > _max)) {
 		setInvalid(true, toString("must be between ", _min, " and ", _max));
 		return false;
@@ -334,9 +306,7 @@ void NumberField::handleTextInput(const TextInputState &state) {
 
 	commit();
 
-	// The platform can take input away without anyone calling blur() (Escape cancels it), and a
-	// field left holding text that does not parse would say one thing on screen and another
-	// through getValue().
+	// the platform can end input without blur() (Escape); restore unparsable text here too
 	if (!_focused && !_valid) {
 		updateText();
 		setInvalid(false, StringView());
@@ -346,7 +316,7 @@ void NumberField::handleTextInput(const TextInputState &state) {
 void NumberField::setText(WideStringView str) {
 	TextInput::setText(str);
 
-	// Not while updateText() is the one writing: that is the field agreeing with itself.
+	// skip writes made by updateText()
 	if (!_inUpdate) {
 		commit();
 	}
@@ -355,7 +325,7 @@ void NumberField::setText(WideStringView str) {
 void NumberField::blur() {
 	TextInput::blur();
 
-	// What is on screen and what the field holds must agree the moment it stops being edited.
+	// restore the value's text when editing ends with unparsable text
 	if (!_valid) {
 		updateText();
 		setInvalid(false, StringView());
@@ -368,8 +338,7 @@ bool NumberField::handleInputChar(char16_t c) {
 	}
 	switch (c) {
 	case u'-': return true;
-	// The exponent and the fractional part are only a spelling of a real number, and formatValue
-	// may produce either - a filter that refused them would break parse(format(v)) == v.
+	// formatValue may produce an exponent or a fraction, so they are accepted for reals
 	case u'+':
 	case u'.':
 	case u'e':
@@ -389,9 +358,7 @@ bool NumberField::handleKey(const GestureData &data) {
 		return false;
 	}
 
-	// Up and Down are the step here, where TextInput reads them as "to the start / to the end of
-	// the line". A single-line number has nowhere to go vertically, and the step is what those keys
-	// mean on every numeric field there has ever been.
+	// Up/Down step the value instead of moving the caret to the line ends
 	switch (ev.key.keycode) {
 	case InputKeyCode::UP: setValue(stepped(_value, 1.0)); return true;
 	case InputKeyCode::DOWN: setValue(stepped(_value, -1.0)); return true;
@@ -404,8 +371,7 @@ bool NumberField::handleKey(const GestureData &data) {
 }
 
 bool NumberField::handleSwipeBegin(const Vec2 &location) {
-	// A focused field is dragged to select text, and the base class already does that. Scrubbing
-	// only takes over where there is no selection to make.
+	// a focused field is dragged to select text; scrubbing applies only when unfocused
 	if (_focused || !_dragEnabled || isReadOnly()) {
 		return TextInput::handleSwipeBegin(location);
 	}
@@ -421,15 +387,13 @@ bool NumberField::handleSwipe(const Vec2 &location, const Vec2 &delta) {
 		return TextInput::handleSwipe(location, delta);
 	}
 
-	// Accumulated, not applied per frame: a movement shorter than one step has to be remembered,
-	// or a slow drag rounds to nothing on every frame and the value never moves.
+	// accumulated, so sub-step movements are not lost
 	_dragTravel += delta.x;
 
 	const double steps = scrubSteps(_dragTravel, _dragSensitivity);
 	auto value = stepped(_dragOrigin, steps);
 	if (value != _value) {
-		// Not silent: a drag with no live feedback is a drag nobody can aim. Grouping the whole
-		// gesture into one undo entry is the owner's business, not the widget's.
+		// not silent: live feedback; grouping into one undo entry is the owner's job
 		setValue(value);
 	}
 	return true;

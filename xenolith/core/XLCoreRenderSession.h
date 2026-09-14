@@ -34,25 +34,16 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+// Render session boundary between the scene-graph client (Director/Scene/2D renderer) and the
+// windowing + gapi-backend server (NativeWindow/AppWindow/PresentationEngine/Loop).
 //
-// Render session boundary between the scene-graph CLIENT (Director/Scene/2D renderer)
-// and the windowing + gapi-backend SERVER (NativeWindow/AppWindow/PresentationEngine/Loop).
+// The server owns the OS window, input, GPU backend and presentation; the client owns the scene
+// graph and produces per-frame command batches. The server's PresentationEngine pulls frame data
+// from the client. In-process, payloads are core objects passed by Rc and `LocalRenderSession`
+// forwards calls directly; a remote pair serializes the same calls over the wire.
 //
-// The split follows the X11 model: the server owns the OS window, input, GPU backend and
-// presentation; the client owns the scene graph and produces per-frame command batches.
-// The server's PresentationEngine drives the frame flow (pull model) and requests frame
-// data from the client; the client keeps its scene synchronized with the render graph the
-// server actually uses.
-//
-// These two channels are the complete protocol surface. Stage 1 is in-process only:
-// payloads are existing core objects passed by Rc (no serialization), and `LocalRenderSession`
-// forwards calls directly in a single process. A networked implementation will later provide a
-// remote pair that serializes the same calls over the wire (see tests/quicp transport work).
-//
-// Direction convention:
-//   RenderClientChannel - implemented by the CLIENT, called by the SERVER (server -> client)
-//   RenderServerChannel - implemented by the SERVER, called by the CLIENT (client -> server)
-//
+//   RenderClientChannel - implemented by the client, called by the server (server -> client)
+//   RenderServerChannel - implemented by the server, called by the client (client -> server)
 
 // Read-only frame timing/stats mirrored from the server's PresentationEngine for the client
 // (FPS counters, frame-time overlays, etc.).
@@ -63,71 +54,33 @@ struct FrameTimingInfo {
 	uint64_t lastFenceFrameTime = 0;
 	uint64_t lastTimestampFrameTime = 0;
 
-	// Which frame `lastFrameTime` is about, and the signal that a frame has been drawn at all -
-	// see PresentationEngine::getLastFrameOrder for why the second use is what ungated it.
+	// Which frame `lastFrameTime` is about; non-zero means a frame has been drawn at all
+	// (see PresentationEngine::getLastFrameOrder).
 	uint64_t lastFrameOrder = 0;
 };
 
 #if XL_FRAME_ACCOUNT
-/* ---- the clock every account site reads ----------------------------------------------------------
-
-Not `nanoclock(Monotonic)` directly, and the difference is not academic.
-
-On a tickless desktop CLOCK_MONOTONIC is the right source and resolves to nanoseconds. On an RTOS
-it need not be: NuttX with CONFIG_USEC_PER_TICK=1000 and no CONFIG_SCHED_TICKLESS advances
-CLOCK_MONOTONIC once a millisecond, and every phase measured here is shorter than that. Measured on
-raspberrypi-4b, 600 frames: `update`, `span`, `damage` and `plan` all reported exactly 0.0, and
-every total was an exact multiple of 1000us - the signature of a quantized clock, not of free work.
-The software backend's frame budget showed microsecond detail on the same run, because Time::now()
-reads CLOCK_REALTIME and on that build it is the finer of the two.
-
-So the source is chosen by MEASURING it, not by name. clock_getres cannot be trusted for this -
-NuttX answers it with the tick period for both clocks even when one is finer - so the probe reads
-each clock until it changes and takes the step. Once, at first use.
-
-One clock for every site, because the account's numbers are compared and subtracted across modules;
-two sources with different resolutions would produce differences that are neither.
-
-`getAccountClockResolution` exists so a report can print it. A number below the clock's own step is
-not a measurement, and a reader must be able to see that without knowing the board. */
+/* The clock every account site reads. The source is chosen once, at first use, by measuring each
+clock's actual step (clock_getres is unreliable on RTOS targets like NuttX, where CLOCK_MONOTONIC
+may advance once per tick). One clock for every site, so numbers can be compared across modules.
+A value below `getAccountClockResolution` is not a measurement. */
 SP_PUBLIC uint64_t getAccountClock();
 SP_PUBLIC uint64_t getAccountClockResolution(); // nanoseconds, measured
 SP_PUBLIC StringView getAccountClockName();
 
-/* ---- the frame timeline (XL_FRAME_TIMELINE=N) ----------------------------------------------------
+/* The frame timeline (XL_FRAME_TIMELINE=N): a closed account of the whole frame. Each bucket is
+the interval ending at its mark, so the six sum to the period:
 
-A CLOSED account of the whole frame, and the instrument that answers a gap.
-
-The software backend's frame budget measures the render half stage by stage and lands the rest in
-`wait` - the span from one present to the first thing the next frame's render half does. On
-raspberrypi-4b that turned out to be 12.9ms of a 19.5ms frame, while the app thread's own account
-said it worked for 1ms of it. Neither instrument could say what the other 11.9ms was, because it
-belongs to neither: it is what happens BETWEEN them.
-
-So the marks are placed on the frame's path itself, in order, and each bucket is the interval
-ENDING at its mark. They close on themselves - the six sum to the period - which is what makes a
-missing cost impossible to hide:
-
-	render        VertexStart -> Presented. The render half, whatever it is made of; the backend's
-	              own budget splits this one further.
-	postPresent   Presented -> Scheduled. What the presentation engine does after a present before
-	              it decides to start another frame - and, when a target frame interval is set,
-	              the deliberate wait for the present window.
-	toApp         Scheduled -> AcquireStart. Getting from the loop thread to the app thread.
-	update        AcquireStart -> VisitStart. The scheduler, actions and input, plus the
-	              deliberate "break current stack frame" hop that posts the visit.
+	render        VertexStart -> Presented. The render half; the backend's budget splits it further.
+	postPresent   Presented -> Scheduled. Engine work after a present, including the wait for the
+	              present window when a target frame interval is set.
+	toApp         Scheduled -> AcquireStart. Hand-off from the loop thread to the app thread.
+	update        AcquireStart -> VisitStart. Scheduler, actions and input, plus the hop that
+	              posts the visit.
 	visit         VisitStart -> VisitEnd. The scene graph walk.
 	toLoop        VisitEnd -> VertexStart. Back to the loop thread, frame graph setup included.
 
-Three of the six are thread hand-offs, and on an RTOS a hand-off is not free: a looper that is
-asleep wakes on a scheduler tick, so each one costs at least one tick and the account can be mostly
-hops. That is a real finding rather than a measurement error, which is why they are named and
-reported rather than summed into the stages around them.
-
-Marks are recorded in sequence and the sequence is serial - one frame at a time on this path, and
-the software presentation engine sets preStartFrame = false so two frames never overlap. Concurrent
-frames would interleave marks and the buckets would be meaningless; a backend that starts a frame
-early must not turn this on. */
+Marks must be serial: only valid when frames never overlap (preStartFrame = false). */
 enum class FrameMark : uint32_t {
 	Presented,
 	Scheduled,
@@ -162,67 +115,41 @@ struct SP_PUBLIC DrawStat {
 	uint32_t transparentCmds;
 	uint32_t shadowsCmds;
 
+	/* Surface commands the 2d vertex plan drew in painter's order instead of its surface pass,
+	because transparent geometry behind them covered where they draw. Not carried by the remote
+	wire (its positions are fixed). */
+	uint32_t surfacePromotedCmds = 0;
+
 	uint32_t vertexInputTime;
 
-	/* ---- what the rasterizer wrote, for backends that rasterize on the CPU -----------------------
-
-	`pixelsTotal` is the target; `pixelsFilled` is what the kernels actually wrote this frame,
-	counted at their entry points, so a pixel covered by two commands counts twice. The ratio is
-	the overdraw, and it is the number that says whether a frame is cheap because it drew little or
-	expensive because it drew the same pixels repeatedly - the picture is identical either way.
-
-	Zero on a GPU backend, which has no equivalent to report: a fragment count would come from a
-	query pool and mean something else. Zero therefore means "not measured here", which is why the
-	FPS overlay prints the line only when `pixelsTotal` is non-zero rather than printing 0/0.
-	Default-initialized for the same reason - every producer that does not set them leaves them at
-	the value that reads as "absent". */
+	/* CPU rasterizer output: `pixelsTotal` is the target, `pixelsFilled` what the kernels wrote
+	this frame (a pixel covered twice counts twice), so the ratio is the overdraw. Zero on GPU
+	backends, meaning "not measured". */
 	uint64_t pixelsTotal = 0;
 	uint64_t pixelsFilled = 0;
 
 #if XL_FRAME_ACCOUNT
-	/* ---- the frame's deferred account -----------------------------------------------------------
-
-	Carried on DrawStat because that is the one channel that already runs from the render half back
-	to the app thread (Director::pushDrawStat), and adding a second would mean a second ordering to
-	reason about.
-
-	`deferredWorkTime` and `deferredWaitTime` ARE NOT PARTS OF ONE WHOLE and must never be added.
-	The work is summed across worker threads and may exceed the frame; the wait is one thread
-	standing still and is always inside it. A frame where work is large and wait is near zero is
-	deferral doing its job; the two equal is deferral bought nothing. */
+	/* Deferred account, carried back to the app thread via Director::pushDrawStat.
+	`deferredWorkTime` and `deferredWaitTime` must never be added: work is summed across worker
+	threads and may exceed the frame, wait is one thread stalling inside it. */
 	uint64_t deferredWorkTime; // ns, summed across workers
 	uint64_t deferredWaitTime; // ns, on the consuming thread
 	uint32_t deferredCount; // results consumed
 	uint32_t deferredWaited; // of those, how many were not finished when we got there
 
-	/* ---- and what the frame waited for work it does not own ---------------------------------------
-
-	`FrameHandle::getDependencyWaitTime` and its two counts, carried on the same channel for the same
-	reason the deferred pair is. THREE different waits live in this struct and they are not parts of
-	one whole:
-
-	  deferredWorkTime  tesselation, summed ACROSS WORKER THREADS - may exceed the frame
-	  deferredWaitTime  the VERTEX STAGE standing still for a deferred result - inside the frame
-	  dependencyWaitTime  the FRAME standing still for another queue's work (the glyph atlas, the
-	                      materials) before an attachment may take its input - also inside the frame,
-	                      and before the vertex stage rather than in it
-
-	The first is an absolute accumulator and the other two are stalls. Adding any of them to another
-	produces a number that describes nothing. */
+	/* FrameHandle::getDependencyWaitTime and its counts: the frame stalling for another queue's
+	work (glyph atlas, materials) before an attachment takes its input. Inside the frame, before
+	the vertex stage; not additive with the deferred times above. */
 	uint64_t dependencyWaitTime;
 	uint32_t dependencyCount;
 	uint32_t dependencyWaited;
 
-	/* WHICH FRAME this describes. pushDrawStat hops to the app thread asynchronously, so a reader
-	there cannot assume the stat in hand belongs to the frame that just ended - and a measurement
-	that attributes a number to the wrong frame is worse than one that reports nothing. */
+	/* Which frame this describes: pushDrawStat reaches the app thread asynchronously, so the stat
+	may not belong to the frame that just ended. */
 	uint64_t frameOrder;
 
-	/* ---- and WHERE inside the vertex stage the time went, in nanoseconds ------------------------
-
-	`vertexInputTime` is the whole of the stage and has been reported for years; these are the parts
-	it is made of, added because "the vertex stage is ten seconds" is not an answer to what to go
-	and change. One clock read per boundary, so they sum to the stage rather than overlapping.
+	/* Phases of the vertex stage (`vertexInputTime`), in nanoseconds; one clock read per boundary,
+	so they sum to the stage:
 
 	  walk    - the command list, once, into per-material write plans
 	  buffer  - spawning the three device buffers, whose sizes the walk decided
@@ -230,8 +157,7 @@ struct SP_PUBLIC DrawStat {
 	  span    - turning the plans into draw spans, painter order included
 	  upload  - flushing or setting the buffer data afterwards
 
-	`damage` and `plan` are the walk split in two and are NESTED inside it: read as "of the walk,
-	this much is that", never summed with it. */
+	`damage` and `plan` are nested inside `walk`, never summed with it. */
 	uint64_t walkTime;
 	uint64_t bufferTime;
 	uint64_t writeTime;
@@ -241,23 +167,15 @@ struct SP_PUBLIC DrawStat {
 	uint64_t damageTime; // inside walkTime
 	uint64_t planTime; // inside walkTime
 
-	/* THE TWO GAPS the five phases above do not cover, and one of them turned out to be the whole
-	frame.
-
-	`vertexInputTime` is stamped in the processor's CONSTRUCTOR, which runs when the attachment's
-	input is submitted, and closed in `finalize`. Between the two the work is handed to a queue -
-	so the stage's total includes however long it waited there before starting. Measured: the five
-	phases summed to 10 ms of a 10 011 ms stage, and the difference was not in any of them.
-
-	`fillTime` is the whole fill step, of which `writeTime + spanTime` is the part inside pushAll;
-	the rest is the buffer mapping and, when there is no persistent mapping, resizing three host
-	arrays the size of the frame. */
+	/* Gaps the phases above do not cover. `vertexInputTime` starts in the processor's constructor
+	(when input is submitted), so it includes time queued before the body starts. `fillTime` is
+	the whole fill step; beyond `writeTime + spanTime` it holds buffer mapping or host resizing. */
 	uint64_t queueWaitTime; // construction -> the body actually starting
 	uint64_t fillTime; // the whole fill step; writeTime + spanTime is its inner part
 #endif
 };
 
-// Implemented by the CLIENT (Director/scene). The SERVER calls into it.
+// Implemented by the client (Director/scene). The server calls into it.
 class SP_PUBLIC RenderClientChannel : public Ref {
 public:
 	// Out-of-line in the .cc: anchors the vtable (key function) and suppresses the
@@ -274,14 +192,9 @@ public:
 	virtual void acquireFrame(uint64_t windowId, NotNull<FrameRequestProxy> proxy,
 			Function<void(bool)> &&) = 0;
 
-	/* WHICH WINDOW every call below is about, on the same terms as acquireFrame above: the id the
-	server's ObjectRegistry gave the window, or 0 for a local self-request.
-
-	One RenderClientChannel serves ALL of a server's shared windows -- setRenderClient installs the
-	same object on each -- so a channel cannot tell from the call itself who is asking. The remote one
-	used to answer that with "the window we most recently produced a frame for", which is right only
-	while there is exactly one window and silently misroutes input the moment there are two. A local
-	Director has exactly one window and ignores the id. */
+	/* `windowId` in the calls below is the id the server's ObjectRegistry gave the window, or 0 for
+	a local self-request. One channel serves all of a server's shared windows, so the id is the only
+	way to route a call; a local Director has one window and ignores it. */
 
 	// The server announces the active render graph the client must target (the shared contract).
 	// Maps onto the runWithQueue handshake.
@@ -292,20 +205,13 @@ public:
 	virtual void handleConstraintsChanged(const FrameConstraints &) = 0;
 
 	/* The window moved or changed size: where it now is, in the logical space WindowInfo::rect
-	uses, plus the surface extent and density that go with it.
-
-	A SIBLING of handleConstraintsChanged rather than part of it, and deliberately so. Constraints
-	describe what to render and are compared as a whole before a scene is resized; a window's
-	position is not part of that and changes for entirely different reasons. Folding the two
-	together would turn every drag of a title bar into a full scene relayout.
-
-	Non-pure: a client that does not care where its window is - and most do not - should not have
-	to say so. */
+	uses, plus the surface extent and density that go with it. Separate from
+	handleConstraintsChanged so that moving a window does not relayout the scene. */
 	virtual void handleWindowGeometryChanged(uint64_t windowId, const sprt::window::WindowGeometry &) {
 	}
 
 	// Input + window-state events from the platform. WindowState changes arrive as
-	// InputEventName::WindowState entries within the batch, as today.
+	// InputEventName::WindowState entries within the batch.
 	virtual void handleInputEvents(uint64_t windowId, Vector<InputEventData> &&) = 0;
 	virtual void handleTextInput(uint64_t windowId, const TextInputState &) = 0;
 
@@ -321,7 +227,7 @@ public:
 	virtual bool isRemote() const { return false; }
 };
 
-// Implemented by the SERVER (PresentationEngine/window/loop). The CLIENT calls into it.
+// Implemented by the server (PresentationEngine/window/loop). The client calls into it.
 class SP_PUBLIC RenderServerChannel {
 public:
 	virtual ~RenderServerChannel();
@@ -334,18 +240,14 @@ public:
 			const Vector<Rc<DependencyEvent>> & = Vector<Rc<DependencyEvent>>()) = 0;
 	virtual void compileImage(const Rc<DynamicImage> &, Function<void(bool)> && = nullptr) = 0;
 
-	/* What this window wants copied out of the frame that is being built, or null when nothing.
-
-	Called once per frame while the frame's inputs are assembled, and it TAKES the request: two
-	frames never carry the same capture. The default answers null, which is the right answer for
-	every implementation that has no local window to capture from - the remote proxy included. */
+	/* What this window wants copied out of the frame being built, or null. Called once per frame
+	while inputs are assembled; it takes the request, so two frames never carry the same capture.
+	The default (null) suits implementations with no local window, like the remote proxy. */
 	virtual Rc<FrameCaptureInput> takeFrameCaptureInput() { return nullptr; }
 
-	/* Render one frame offscreen, presenting nothing, so that a pass can do work inside it.
-
-	Only a frame capture uses this, and only where the presented image cannot be read: there the
-	copy has to come out of an image this window owns rather than out of the swapchain. False means
-	no such frame could be scheduled and the caller's work will never happen. */
+	/* Render one frame offscreen, presenting nothing, so that a pass can do work inside it. Used by
+	frame capture where the presented image cannot be read. False means no frame was scheduled and
+	the callback will never run. */
 	virtual bool scheduleOffscreenFrame(Function<void(bool)> && = nullptr) { return false; }
 
 	// Make `queue` the active render graph and begin presentation with it.
@@ -365,8 +267,7 @@ public:
 	// Drive the window's text-input processor as the platform IME would: composition (marked text),
 	// insertion at an explicit range, deletion. These edits arrive without a keystroke, so they
 	// cannot be expressed as input events; a test harness reproduces them through here.
-	//
-	// Non-pure on purpose: a channel with no native window behind it has no processor to drive.
+	// Non-pure: a channel with no native window has no processor to drive.
 	virtual void performTextInput(TextInputCommand &&);
 	virtual void close(bool graceful = true) = 0;
 
@@ -388,12 +289,8 @@ public:
 	// WindowCapabilities::PreferredFrameRate should be available
 	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) = 0;
 
-	// Capture current window contents as an image buffer
-	// (makes screenshot of the window's content without OS decorations)
-	//
-	// This call actually performs frame rendering into offscreen buffer
-	// (via PresentationEngine::scheduleSwapchainImage with PresentationFrame::OffscreenTarget),
-	// that then will be returned as info + data
+	// Capture the window contents (without OS decorations) as an image buffer. Renders a frame
+	// into an offscreen target (PresentationFrame::OffscreenTarget) and returns it as info + data.
 	virtual void captureScreenshot(
 			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) = 0;
 
@@ -403,16 +300,12 @@ public:
 	virtual bool openWindowMenu(Vec2 pos) = 0;
 
 	// Open an OS dialog (file picker, colour, font, reveal, trash) owned by this window. The
-	// request's `parentWindowId` is filled in by the implementation and its completion runs on
-	// the app thread. Keep the Rc<DialogRequest>: it is the cancellation token.
+	// implementation fills `parentWindowId`; the completion runs on the app thread. Keep the
+	// Rc<DialogRequest>: it is the cancellation token. Any status other than Ok means the
+	// completion is already scheduled with that status.
 	//
-	// Status::Ok means the dialog was accepted. Anything else means the completion has already
-	// been scheduled with that status, so the caller never answers its own callback.
-	//
-	// Gate on WindowCapabilities::FileDialogs / ColorDialog / FontDialog / SystemFileActions and
-	// fall back to an in-scene picker where the platform has none.
-	//
-	// Non-pure on purpose: RemoteWindow has no OS to ask, and must not be forced to implement it.
+	// Gate on WindowCapabilities::FileDialogs / ColorDialog / FontDialog / SystemFileActions.
+	// Non-pure: RemoteWindow has no OS to ask.
 	virtual Status openDialog(NotNull<sprt::window::DialogRequest>);
 
 	// Dismiss a dialog opened with `req`; its completion still runs, with Status::ErrorCancelled.
@@ -420,13 +313,9 @@ public:
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events) = 0;
 
-	// Inject events at the native-window level instead of straight into the client, so they take
-	// exactly the path a platform backend's events take: NativeWindow::handleInputEvents runs
-	// first, which is where the text-input processor claims printable keys, Backspace, Delete and
-	// Escape before the scene ever sees them. handleInputEvents() bypasses all of that.
-	//
-	// Non-pure on purpose: a channel with no native window behind it falls back to
-	// handleInputEvents().
+	// Inject events at the native-window level, taking the platform path: NativeWindow's text-input
+	// processor claims printable keys, Backspace, Delete and Escape before the scene sees them
+	// (handleInputEvents() bypasses it). Non-pure: without a native window it falls back to that.
 	virtual void handleNativeInputEvents(Vector<InputEventData> &&events);
 
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) = 0;
@@ -451,28 +340,14 @@ public:
 
 	const core::FrameConstraints &getConstraints() const { return _appFrameConstraints; }
 
-	/* Where this window is and how big it is, as of the last update the server pushed.
-
-	This is the app-thread-safe answer to a question WindowInfo cannot be asked from here (see
-	AppWindow::getInfo). `rect` is in logical units - the same space WindowInfo::rect takes - so it
-	can be saved and handed straight back to Context::createWindow with
-	WindowCreationFlags::UsePosition to reopen the window where it was.
-
-	Check `hasPosition` before trusting the origin: on Wayland and the windowless backends the
-	platform never reports one, and the zeroes there mean "unknown", not "top-left corner". */
+	/* Window position and size as of the last server update; app-thread-safe, unlike WindowInfo.
+	`rect` is in logical units, suitable for Context::createWindow with UsePosition. Check
+	`hasPosition` first: Wayland and windowless backends never report an origin. */
 	const sprt::window::WindowGeometry &getWindowGeometry() const { return _appWindowGeometry; }
 
-	/* ---- what this window will accept, decided from mirrored state alone ------------------------
-
-	enableState/disableState/openWindowMenu/setFullscreen answer `bool` SYNCHRONOUSLY, so a channel
-	that has to ask another process cannot produce that answer from the reply - it has to know it
-	locally. Everything the decision needs is already here: `_state` and `_capabilities` are mirrors
-	both implementations keep.
-
-	So the rules live on the base rather than in whichever implementation happened to grow them
-	first. The remote proxy then refuses exactly what the real window would have refused, and the
-	two cannot drift apart - which is what makes "the client and the server answer identically" a
-	property of the code rather than of a test. */
+	/* What this window will accept, decided from the mirrored `_state` and `_capabilities` alone.
+	enableState/disableState/openWindowMenu/setFullscreen answer synchronously, so the rules live
+	on the base and the remote proxy refuses exactly what the real window would. */
 
 	// Flags enableState/disableState will act on. Anything outside this mask is refused without
 	// reaching the window system.

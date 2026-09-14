@@ -95,8 +95,8 @@ AppWindow *SubWindowSession::getWindow() const {
 
 void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float sceneHeight,
 		TimeInterval hideDelay) {
-	// The stock hint lives in TooltipSystem, which is where its look and metrics are configurable.
-	// This overload is that hint with the placement worked out by the caller.
+	// The stock hint's look and metrics live in TooltipSystem; this overload only supplies the
+	// placement.
 	const TooltipConfig tipConfig;
 	const auto size = TooltipSystem::measureDefaultTooltip(text, tipConfig);
 
@@ -104,8 +104,7 @@ void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float scene
 	config.placement = makeTipPlacement(anchorSceneYUp, sceneHeight);
 	config.size = size;
 	config.title = StringView("Tip");
-	// A native tip costs a swapchain for a few hundred milliseconds of hint and takes hover away
-	// from the node it describes.
+	// A native tip costs a swapchain and takes hover away from the node it describes.
 	config.preferNative = false;
 	config.content = [str = text.str<Interface>(), size](NotNull<SubWindow> surface) {
 		TooltipRequest request;
@@ -124,8 +123,7 @@ Rc<SubWindow> SubWindowSession::showTip(SubWindow::Config &&config, StringView k
 		return nullptr;
 	}
 
-	// Same tip already up: refresh the hide timer instead of a dismiss/recreate flap. An empty key
-	// opts out - it identifies nothing, so it can never be "the same".
+	// Same tip already up: refresh the hide timer. An empty key never matches.
 	if (hasTip() && !key.empty() && _tipKey == key) {
 		armHideTimer(hideDelay);
 		return _tip;
@@ -138,12 +136,11 @@ Rc<SubWindow> SubWindowSession::showTip(SubWindow::Config &&config, StringView k
 
 	config.type = SubWindow::WindowType::Tooltip;
 
-	// Chain rather than replace: the slot must be cleared however the surface went away, and a
-	// caller with a close callback of its own is the normal case, not an exotic one.
+	// Chain rather than replace: the slot must be cleared however the surface closes.
 	config.onClose = [life = _life, onClose = sp::move(config.onClose)](
 							 NotNull<SubWindow> surface) mutable {
 		if (auto *session = life ? life->session : nullptr) {
-			// Only if this IS the live tip: a stale surface closing must not clear its successor.
+			// Only if this is the live tip: a stale surface must not clear its successor.
 			if (session->_tip.get() == surface.get()) {
 				session->_tip = nullptr;
 				session->_tipKey.clear();

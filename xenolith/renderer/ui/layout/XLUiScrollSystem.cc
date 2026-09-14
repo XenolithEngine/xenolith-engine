@@ -35,12 +35,10 @@ static constexpr float ScrollSystem_wheelStep = 48.0f;
 // burst keep the classification the first one got (see handleScrollGesture).
 static constexpr uint64_t ScrollSystem_wheelBurstUs = 80'000ULL;
 
-// How long a notch takes to ease in. Short enough to feel immediate, long enough to read as motion
-// rather than a jump - which is what makes it possible to see WHERE the content went.
+// How long a notch takes to ease in.
 static constexpr float ScrollSystem_wheelDuration = 0.1f;
 
-// Overlay indicator geometry. Overlay, not gutter: the thumb floats over the content and reserves
-// no space, so turning it on never re-lays-out anything.
+// Overlay indicator geometry. The thumb floats over the content and reserves no space.
 static constexpr float ScrollSystem_indicatorThickness = 6.0f;
 static constexpr float ScrollSystem_indicatorMinLength = 24.0f;
 static constexpr float ScrollSystem_indicatorInset = 2.0f;
@@ -53,10 +51,16 @@ static constexpr float ScrollSystem_flingCutoff = 8.0f;
 static constexpr float ScrollSystem_indicatorHold = 0.9f;
 static constexpr float ScrollSystem_indicatorFade = 0.25f;
 
-// An indicator already parented to `owner` and carrying `cls`, or null. The ScrollSystem can be
-// dropped and rebuilt mid-frame (a style pass that stops matching, then one that matches again),
-// and a rebuilt instance must adopt the bars the previous one left rather than parent a second
-// pair beside them.
+/* The clip uses its own system type, not the DynamicStateSystem a VectorSprite already has: that
+one is `DoNotApply` and rewritten by the sprite for its own crop. The distinct type lets a rebuilt
+ScrollSystem adopt the previous clip; stacked DynamicStateSystems intersect correctly. */
+class ScrollSystem_ClipState : public DynamicStateSystem {
+public:
+	virtual ~ScrollSystem_ClipState() = default;
+};
+
+// An indicator already parented to `owner` and carrying `cls`, or null. A ScrollSystem rebuilt
+// mid-frame by a style pass adopts the bars the previous instance left.
 static Node *ScrollSystem_findIndicator(Node *owner, StringView cls) {
 	for (auto &child : owner->getChildren()) {
 		if (child->getType() != "scrollbar") {
@@ -76,9 +80,7 @@ static Node *ScrollSystem_makeIndicator(Node *owner, StringView cls) {
 		return existing;
 	}
 
-	// A Panel rather than a plain Layer: it already routes background-color, outline-* and
-	// border-radius out of CSS, so the thumb is styled by ordinary rules and needs no properties of
-	// its own. `scrollbar` is a real type selector, so `scrollbar { ... }` matches.
+	// A Panel, so the thumb is styled by ordinary CSS rules; `scrollbar { ... }` matches the type.
 	auto node = Rc<Panel>::create();
 	node->setType("scrollbar");
 	node->addStyleClass("xl-ui-scrollbar");
@@ -88,12 +90,8 @@ static Node *ScrollSystem_makeIndicator(Node *owner, StringView cls) {
 	node->setOpacity(0.0f);
 	node->setPathColor(Color4B(0, 0, 0, 90), false);
 	node->setBorderRadius(ScrollSystem_indicatorThickness / 2.0f);
-	// Never a flex/grid item, and never moved by the container's pass. styleManaged stays false, so
-	// a style pass that matched nothing leaves it alone (see OutOfFlowComponent).
-	//
-	// Set BEFORE parenting, not after: Node::addChildNode re-runs the owner's measure and layout
-	// straight away, so an indicator parented first would take part in that pass as an ordinary
-	// flex item and eat the free space a `flex-grow` sibling was owed.
+	// Out of flow, not style-managed. Set before parenting: Node::addChildNode re-runs the owner's
+	// layout at once, and the bar would otherwise take free space as a flex item.
 	node->setComponent<OutOfFlowComponent>(OutOfFlowComponent{false});
 	return owner->addChild(node, ZOrder(maxOf<int16_t>()));
 }
@@ -117,10 +115,8 @@ bool ScrollSystem::init(document::Overflow x, document::Overflow y) {
 void ScrollSystem::handleAdded(Node *owner) {
 	InputListener::handleAdded(owner);
 
-	// The bars themselves are built lazily, on the first pass that finds a range to show - not
-	// here. handleAdded runs from inside the style pass, before the owner even has its
-	// LayoutSystem, and parenting a child there re-enters measurement and layout with the container
-	// half-configured.
+	// Bars are built lazily on the first pass with a range: handleAdded runs inside the style pass,
+	// and parenting a child here would re-enter layout with the container half-configured.
 	_indicatorV = ScrollSystem_findIndicator(owner, "xl-ui-scrollbar-vertical");
 	_indicatorH = ScrollSystem_findIndicator(owner, "xl-ui-scrollbar-horizontal");
 
@@ -129,14 +125,12 @@ void ScrollSystem::handleAdded(Node *owner) {
 
 void ScrollSystem::handleRemoved() {
 	if (_scissor) {
-		// Only ever disable it: the system may have been sitting on the node before us (a
-		// VectorSprite ships with one), and removing someone else's clip is not ours to do.
+		// Disabled, not removed (see the class note); a rebuilt instance adopts it by type.
 		_scissor->disableScissor();
 		_scissor = nullptr;
 	}
-	// Scan rather than trust the two pointers: an instance that was rebuilt mid-frame may have
-	// adopted bars it did not create, and a bar left parented after its system is gone would be a
-	// permanent stripe over the content.
+	// Scan rather than trust the two pointers: a rebuilt instance may have adopted bars it did not
+	// create, and a leftover bar would stay over the content.
 	_indicatorV = nullptr;
 	_indicatorH = nullptr;
 	if (_owner) {
@@ -159,8 +153,7 @@ void ScrollSystem::handleRemoved() {
 void ScrollSystem::handleTransformDirty(const Mat4 &parentTransform) {
 	InputListener::handleTransformDirty(parentTransform);
 
-	// Wheel and drag deltas are in screen units; a scroller inside a scaled subtree has to divide
-	// by its own world scale or it moves at the wrong rate.
+	// Wheel and drag deltas are in screen units; divided by the world scale.
 	Vec3 scale;
 	parentTransform.decompose(&scale, nullptr, nullptr);
 	const auto own = _owner->getScale();
@@ -189,16 +182,13 @@ void ScrollSystem::handleLayoutChildren() {
 
 	auto layout = _owner->getSystemByType<LayoutSystem>();
 	if (layout) {
-		// clips, not scrolls: `hidden` must lay the content out at its natural size too, or there
-		// is nothing to clip - shrink would simply squash it into the box instead. Only the
-		// SLIDING below is limited to `scroll`/`auto`.
+		// clips, not scrolls: `hidden` also needs natural-size layout, or shrink squashes the
+		// content; only sliding is limited to `scroll`/`auto`.
 		layout->setOverflowAxes(clipsX(), clipsY());
 	}
 
 	const Size2 box = _owner->getContentSize();
-	// Without a LayoutSystem there is nothing that lays the content out at its natural size, so
-	// there is nothing to scroll - this node clips and no more. That is the right answer for a
-	// SystemManagedLayout widget (a dock, a TreeView): those scroll themselves.
+	// Without a LayoutSystem the node only clips; SystemManagedLayout widgets scroll themselves.
 	const Size2 content = layout ? layout->getContentExtent() : box;
 
 	_range = Size2(scrollsX() ? sprt::max(content.width - box.width, 0.0f) : 0.0f,
@@ -250,8 +240,7 @@ void ScrollSystem::applyScrollPosition(Vec2 value) {
 }
 
 void ScrollSystem::scrollBy(Vec2 delta) {
-	// The delta path accumulates in double before clamping, so a long wheel session deep inside a
-	// large content area does not drift (the same reason ui::TextViewContainer does it).
+	// Accumulates in double before clamping, to avoid drift.
 	const auto prev = getScrollPosition();
 	_scrollX = math::clamp(_scrollX + double(delta.x), 0.0, double(_range.width));
 	_scrollY = math::clamp(_scrollY + double(delta.y), 0.0, double(_range.height));
@@ -261,11 +250,9 @@ void ScrollSystem::scrollBy(Vec2 delta) {
 	commitOffset();
 }
 
-// Discrete backends (xcb, Windows, macOS line-mode) emit ±1 or ±N*InputScrollNotch per
-// detent. Precise ones (macOS trackpad, wasm Chrome) emit a pixel distance per event, often
-// many per frame. Treating the latter as notches - 48pt and a 0.1s ease, restarted every
-// event - is what makes CSS overflow:auto stutter on a trackpad while basic2d::ScrollView,
-// which applies the amount as a distance, stays smooth.
+// Discrete backends (xcb, Windows, macOS line-mode) emit ±1 or ±N*InputScrollNotch per detent;
+// precise ones (macOS trackpad, wasm Chrome) emit pixel distances, often many per frame, which must
+// be applied as distance, not eased as notches.
 static bool ScrollSystem_isNotchComponent(float v) {
 	const float a = std::fabs(v);
 	if (a < 1.0e-4f) {
@@ -294,11 +281,8 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 	if (!_owner) {
 		return false;
 	}
-	// Classify by the SHAPE of the amount, never by timing alone: a wheel spun fast
-	// emits notches 20-50ms apart, so a "burst means pixel stream" rule would turn
-	// every notch after the first into a 10pt nudge. The burst only resolves the
-	// ambiguous case - a pixel stream whose first event happens to land exactly on a
-	// notch value stops being read as one as soon as the second event does not.
+	// Classify by the shape of the amount, not by timing (a fast wheel spin is also a burst). The
+	// burst only disambiguates a pixel stream whose first event lands on a notch value.
 	const bool notchShaped =
 			ScrollSystem_isNotchComponent(s.amount.x) || ScrollSystem_isNotchComponent(s.amount.y);
 	const auto now = Time::now();
@@ -326,13 +310,8 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 		}
 	}
 
-	// A vertical wheel is redirected to the horizontal axis when this container can only scroll
-	// horizontally - the browser rule, and the only thing that makes a horizontal-only strip (a tab
-	// bar, a toolbar) usable with an ordinary mouse, which has no horizontal wheel. Shift asks for
-	// the same thing explicitly.
-	//
-	// Both are FALLBACKS, guarded on delta.x being zero: a backend that already reports the shifted
-	// or tilted wheel as an x amount must not have it swapped a second time.
+	// A vertical wheel goes to the horizontal axis on a horizontal-only container, or with Shift
+	// (browser rule). Only when delta.x is zero, so a backend's own shifted amount is not swapped.
 	const bool horizontalOnly = _range.width > 0.0f && _range.height <= 0.0f;
 	if (delta.x == 0.0f
 			&& (horizontalOnly || hasFlag(s.input->data.input.modifiers, InputModifier::Shift))) {
@@ -340,13 +319,9 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 		delta.y = 0.0f;
 	}
 
-	// Scroll chaining: claim only an axis this container can actually move on. Declining lets the
-	// dispatcher - which walks the scene listeners topmost-first - offer the event to the ancestor
-	// scroller, which is CSS's default `overscroll-behavior: auto` for free.
-	//
-	// Deliberately keyed on "has any range", NOT on "is not already at the edge". The latter is
-	// what makes a nested list hand the wheel to its parent the moment it bottoms out, and browsers
-	// had to invent scroll latching to undo it. Sticky beats jumpy.
+	// Scroll chaining: decline an axis with no range, so the dispatcher offers the event to the
+	// ancestor scroller. Keyed on "has any range", not "not at the edge": a nested list at its end
+	// keeps the wheel instead of handing it to the parent.
 	const bool canX = _range.width > 0.0f && delta.x != 0.0f;
 	const bool canY = _range.height > 0.0f && delta.y != 0.0f;
 	if (!canX && !canY) {
@@ -357,13 +332,10 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 
 	const Vec2 step(canX ? delta.x : 0.0f, canY ? delta.y : 0.0f);
 	if (discrete) {
-		// Added to where the easing is HEADING, not to where it currently is. That is what makes N
-		// notches in quick succession travel exactly N steps, the same total an un-animated wheel would
-		// have covered - the animation changes when the content arrives, never how far it goes.
+		// Added to where the easing is heading, so N quick notches travel exactly N steps.
 		scrollToAnimated(getScrollTarget() + step);
 	} else {
-		// Precise streams already ARE the motion. Easing each event, and cancelling the previous
-		// ease when the next arrives, is the stutter.
+		// Precise streams are applied directly; easing each event would stutter.
 		_owner->stopAllActionsByTag(WheelActionTag);
 		scrollBy(step);
 	}
@@ -403,10 +375,8 @@ bool ScrollSystem::handleSwipeGesture(const GestureSwipe &s) {
 		return false;
 	}
 
-	// Inertia is a TOUCH idiom, and the source is the modifier, not the button: the button here is
-	// always MouseLeft (`InputMouseButton::Touch` is an alias of it), while the backend marks a real
-	// touchscreen with InputModifier::Touch per event. A mouse drag therefore stops dead on release,
-	// which is the only thing that reads correctly under a pointer; a finger coasts.
+	// Inertia only for touch, detected by InputModifier::Touch: the button is always MouseLeft
+	// (`InputMouseButton::Touch` is an alias). A mouse drag stops on release.
 	const bool fromTouch = hasFlag(s.input->data.input.modifiers, InputModifier::Touch);
 
 	switch (s.event) {
@@ -416,16 +386,13 @@ bool ScrollSystem::handleSwipeGesture(const GestureSwipe &s) {
 		_owner->stopAllActionsByTag(WheelActionTag);
 		break;
 	case GestureEvent::Activated:
-		// The pointer drags the CONTENT, so the offset always runs OPPOSITE to the pointer, on both
-		// axes: drag right and the content follows right, which is a smaller x offset; drag up and
-		// it follows up, which is a larger y offset - because a positive y offset is exactly what
-		// moves the content up (see LayoutSystem::setScrollOffset). No axis is inverted twice.
+		// The pointer drags the content, so the offset runs opposite to the pointer on both axes
+		// (a positive y offset moves content up, see LayoutSystem::setScrollOffset).
 		scrollBy(Vec2(canX ? -s.delta.x / _worldScale.x : 0.0f,
 				canY ? -s.delta.y / _worldScale.y : 0.0f));
 		break;
 	case GestureEvent::Ended:
-		// Same sign rule as the drag itself: the content keeps going the way the finger was
-		// pushing it, which is opposite to the pointer's own velocity.
+		// Same sign rule as the drag: opposite to the pointer's velocity.
 		if (fromTouch) {
 			_velocity = Vec2(canX ? -s.velocity.x / _worldScale.x : 0.0f,
 					canY ? -s.velocity.y / _worldScale.y : 0.0f);
@@ -447,8 +414,7 @@ void ScrollSystem::update(const UpdateTime &time) {
 	if (_velocity != Vec2::ZERO) {
 		const auto before = getScrollPosition();
 		scrollBy(_velocity * dt);
-		// Exponential decay, framerate-independent. Reaching a bound kills the fling outright: with
-		// no rubber-band there is nothing left for the remaining energy to do.
+		// Exponential decay, framerate-independent. Reaching a bound stops the fling.
 		_velocity *= std::pow(ScrollSystem_flingDecay, dt);
 		if (_velocity.length() < ScrollSystem_flingCutoff || getScrollPosition() == before) {
 			_velocity = Vec2::ZERO;
@@ -464,21 +430,18 @@ void ScrollSystem::update(const UpdateTime &time) {
 void ScrollSystem::updateClip() {
 	const bool wantClip = clipsX() || clipsY();
 	if (wantClip && !_scissor) {
-		// Reuse an existing one rather than stacking a second: ui::Panel and every other
-		// VectorSprite already ships with a DynamicStateSystem.
-		_scissor = _owner->getSystemByType<DynamicStateSystem>();
+		// Ours, never the sprite's (see ScrollSystem_ClipState); maybe left by a previous instance.
+		_scissor = _owner->getSystemByType<ScrollSystem_ClipState>();
 		if (!_scissor) {
-			// ApplyForAll, not ApplyForNodesBelow: "below" is the NEGATIVE-z-order set, and
-			// ordinary children sit at ZOrder(0), i.e. "above" - they would go unclipped.
+			// ApplyForAll: ApplyForNodesBelow covers only negative z-order, not ordinary children.
 			_scissor = _owner->addSystem(
-					Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll));
+					Rc<ScrollSystem_ClipState>::create(DynamicStateApplyMode::ApplyForAll));
 		}
 	}
 	if (_scissor) {
 		if (wantClip) {
-			// Only the axes that actually clip. A document that scrolls vertically has no
-			// business cutting anything off at its sides, and an axis left out of the mask is
-			// opened rather than narrowed to the box (see ScissorAxes).
+			// Only the axes that clip; an axis left out of the mask is opened, not narrowed to the
+			// box (see ScissorAxes).
 			auto axes = ScissorAxes::None;
 			if (clipsX()) {
 				axes |= ScissorAxes::Horizontal;
@@ -496,9 +459,8 @@ void ScrollSystem::updateClip() {
 void ScrollSystem::updateIndicators() {
 	const Size2 box = _owner->getContentSize();
 
-	// The owner may have rebuilt its children behind our back - removeAllChildren() is how a widget
-	// like StudioTabBar refreshes itself - which drops the bars and leaves these pointers dangling.
-	// Re-validate before touching them; place() then builds a fresh one if it still wants a bar.
+	// The owner may have removed its children (removeAllChildren() on refresh), dropping the bars;
+	// re-validate, and place() builds fresh ones if still wanted.
 	if (_indicatorV && _indicatorV->getParent() != _owner) {
 		_indicatorV = nullptr;
 	}
@@ -545,10 +507,8 @@ void ScrollSystem::updateIndicators() {
 		node->setVisible(true);
 		node->setOpacity(_indicatorOpacity);
 
-		// Thickness from CSS when the sheet declared one. The indicator sits in a flex container, so
-		// `width`/`height` on it are routed into a MeasureComponent as an intrinsic-size INPUT
-		// rather than committed (the ContentSize ownership rule) - and this system is the only
-		// reader that input will ever have, because the layout skips an out-of-flow node.
+		// Thickness from CSS when declared: `width`/`height` inside a flex container land in a
+		// MeasureComponent, which the layout skips for this out-of-flow node, so read it here.
 		float thickness = ScrollSystem_indicatorThickness;
 		if (auto m = node->getComponent<MeasureComponent>()) {
 			const float declared = horizontal ? m->normal.height : m->normal.width;
@@ -569,10 +529,7 @@ void ScrollSystem::updateIndicators() {
 			node->setPosition(Vec2(travel * progress, ScrollSystem_indicatorInset));
 		} else {
 			node->setContentSize(Size2(thickness, length));
-			// The bar sits at the INLINE END of the box, which is the left edge in a
-			// right-to-left interface. It is the one piece of scrolling geometry that has a side:
-			// the horizontal bar spans the width and the scroll ORIGIN is deliberately left
-			// physical (see the css-engine skill).
+			// The bar sits at the inline end (left in RTL); the scroll origin stays physical.
 			const float x = rtl ? ScrollSystem_indicatorInset
 								: box.width - thickness - ScrollSystem_indicatorInset;
 			// progress runs top-down, the engine's y runs up
@@ -625,7 +582,7 @@ bool ScrollSystem::scrollNodeIntoView(NotNull<Node> node, Padding pad) {
 	} else if (topRight.x + pad.right > box.width) {
 		delta.x = sprt::min(topRight.x + pad.right - box.width, bottomLeft.x - pad.left);
 	}
-	// y-up geometry, y-down offset: overshooting the TOP edge means a negative offset delta
+	// y-up geometry, y-down offset: overshooting the top edge means a negative offset delta
 	if (topRight.y + pad.top > box.height) {
 		delta.y = box.height - topRight.y - pad.top;
 	} else if (bottomLeft.y - pad.bottom < 0.0f) {

@@ -48,10 +48,8 @@ protected:
 
 // Pseudo-swapchain: a ring of ordinary bitmaps that stand in for swapchain images.
 //
-// Acquisition is synchronous and hands out no semaphore - nothing produced the image
-// asynchronously, so there is nothing to wait on - and present is bookkeeping only. The image
-// that was presented last is kept addressable, which is what lets a screenshot read "the current
-// screen" without rendering another frame.
+// Acquisition is synchronous and hands out no semaphore; present is bookkeeping only. The last
+// presented image stays addressable, so a screenshot can read it without rendering a frame.
 class SP_PUBLIC HeadlessSwapchain final : public SwapchainBase {
 public:
 	virtual ~HeadlessSwapchain();

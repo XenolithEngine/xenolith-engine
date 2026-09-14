@@ -114,14 +114,8 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 		float x1 = sprt::max(roundf(topRight.x), x0);
 		float y1 = sprt::max(roundf(topRight.y), y0);
 
-		// An axis nobody asked to clip is OPENED rather than set to the node's box: the rectangle
-		// still has two ranges, but on this one it reaches past any surface, so the intersection
-		// below leaves whatever an ancestor scissor already imposed. That is what lets
-		// `overflow-y: auto` clip vertically and cut nothing off at the sides.
-		//
-		// The bound is a number no framebuffer reaches rather than the maximum of the type: a
-		// scissor is handed to the backend as an offset plus an extent, and those have to stay
-		// inside what a signed 32-bit rect can hold once they are added together.
+		// An unclipped axis is opened past any surface, so the intersection below keeps only an
+		// ancestor's clip. Not the type's maximum: offset + extent must fit a signed 32-bit rect.
 		constexpr float kOpen = float(1 << 24);
 		if (!hasFlag(_scissorAxes, ScissorAxes::Horizontal)) {
 			x0 = 0.0f;
@@ -143,10 +137,8 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			ret.enabled |= core::DynamicState::Scissor;
 			ret.scissor = viewRect;
 		} else {
-			// A nested scissor is the INTERSECTION of the two boxes, so the extents are derived
-			// from the clamped EDGES: min(width) alone would let a child that starts inside the
-			// parent run past its far edge, and boxes that do not overlap at all collapse to an
-			// empty rect rather than to the parent's.
+			// A nested scissor is the intersection, so extents come from the clamped edges;
+			// non-overlapping boxes collapse to an empty rect.
 			const uint32_t minX = sprt::max(ret.scissor.x, viewRect.x);
 			const uint32_t minY = sprt::max(ret.scissor.y, viewRect.y);
 			const uint32_t maxX =

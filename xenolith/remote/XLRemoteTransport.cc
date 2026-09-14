@@ -51,9 +51,8 @@ String PeerIdentity::getDescription() const {
 	return s.str();
 }
 
-// Defined by the per-transport translation units. Each is a no-op where its dependencies do not
-// exist, so the set of schemes a build understands is decided by what actually compiled -- asking
-// for a missing one fails with a message (see logUnknownScheme) instead of a link error.
+// Defined by the per-transport translation units; each is a no-op where its dependencies do not
+// exist (a missing scheme is reported by logUnknownScheme).
 void registerMemTransport();
 void registerQuicTransport();
 void registerUnixTransport();
@@ -70,8 +69,7 @@ void initializeTransports() {
 
 // --- registry ---
 
-// One slot per scheme rather than a map: the set is closed and tiny, and an array keeps the lookup
-// free of allocation on a path that runs during connection setup.
+// One slot per scheme: the set is closed and small, and lookup does not allocate.
 namespace {
 
 struct RegistryData {
@@ -118,8 +116,8 @@ Vector<AddressScheme> TransportRegistry::getSchemes() {
 	return out;
 }
 
-// Report what this build DOES understand alongside the refusal: a scheme missing here is a build
-// configuration, not a typo, and the difference is invisible without the list.
+// Report the schemes this build does understand alongside the refusal: a missing scheme is usually
+// a build configuration, not a typo.
 static void logUnknownScheme(const Address &addr, StringView what) {
 	String available;
 	for (auto s : TransportRegistry::getSchemes()) {

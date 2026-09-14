@@ -27,9 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-// What a render queue opts into at build time. All three are implemented, on both the Vulkan and
-// the software backend; Scene2d turns the whole set on for the flat queue and leaves it off for the
-// full one, because preserving an image between frames is what the last two rest on.
+// What a render queue opts into at build time (Vulkan and software backends). The last two
+// require attachments preserved between frames; Scene2d enables the set only for the flat queue.
 enum class QueueDamageFlags : uint32_t {
 	None = 0,
 

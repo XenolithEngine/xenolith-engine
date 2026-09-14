@@ -90,15 +90,8 @@ bool ScrollViewBase::init(Layout layout) {
 	_root->setAnchorPoint((_layout == Vertical) ? Vec2(0.0f, 1.0f) : Vec2::ZERO);
 	_root->setCascadeOpacityEnabled(true);
 	_root->setContentSizeDirtyCallback([this] { onPosition(); });
-	/* MEASURED AND REVERTED: a guard here comparing the position before calling `onPosition`.
-
-	The reasoning was sound - the root is moved by a layout and by an ancestor as well as by a scroll -
-	and it did empty the visit's transform phase (5.5 ms to 0.0). It bought nothing: the controller's
-	pass arrived through the content-size callback below instead, phase 4 grew by exactly what phase 3
-	lost, and the page open did not move outside the noise. The cost is the pass itself, and the pass is
-	the item NODE CONSTRUCTION - 12 nodes at ~850 us each on the studio's assets page, with the
-	controller's own bookkeeping at 52 item walks and 0.00 ms when it builds nothing. See the studio's
-	docs/performance.md, "What is IN the visit". */
+	/* No position-equality guard here: the controller pass would arrive through the content-size
+	callback anyway, and that pass (item node construction) is the actual cost. */
 	_root->setTransformDirtyCallback([this](const Mat4 &) { onPosition(); });
 
 	return true;

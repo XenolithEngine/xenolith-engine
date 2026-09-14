@@ -39,18 +39,14 @@ static FormInputListener *FormAdapters_attach(Node *node, FormFieldSlots &&slots
 FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	/* What a field HOLDS, which for a ui::NumberField is a number and not the text of one. The
-	branch is here rather than in a second overload because NotNull<> converts from either type and
-	the two would be ambiguous at every call site - and this file is already the one place where
-	the form machinery knows what a widget is. */
+	// A ui::NumberField holds a number, not text; an overload would be ambiguous via NotNull<>
 	if (auto number = dynamic_cast<NumberField *>(input.get())) {
-		// An integer field collects an integer and a real one a double: a form that submits 7.0
-		// where the schema says 7 has changed the value on its way out.
+		// Integer field collects an integer, so 7 is not submitted as 7.0
 		slots.collect = [number] {
 			return number->isInteger() ? Value(int64_t(number->getValue()))
 									   : Value(number->getValue());
 		};
-		// silent: the form assigning its value is not somebody editing the field
+		// silent: assigning a form's value must not fire the change callback
 		slots.assign = [number](const Value &v) { number->setValue(v.getDouble(), true); };
 		slots.clear = [number] { number->setValue(0.0, true); };
 	} else {
@@ -58,8 +54,7 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 		slots.assign = [input = input.get()](const Value &v) { input->setText(v.getString()); };
 		slots.clear = [input = input.get()] { input->setText(StringView()); };
 	}
-	// The direction is of no interest to a field with one caret: it enters at whichever end the
-	// caret was left at, whichever way the Tab went
+	// Direction is ignored: the caret stays where it was left
 	slots.setFocused = [input = input.get()](bool value, bool) {
 		if (value) {
 			input->focus();
@@ -68,8 +63,7 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 		}
 	};
 
-	// No `activate`: a single-line field has nothing to do with Enter, so declining is what lets
-	// the form submit instead
+	// No `activate`: Enter in a single-line field submits the form
 	slots.copy = [input = input.get()] { return input->copy(); };
 	slots.cut = [input = input.get()] { return input->cut(); };
 	slots.paste = [input = input.get()] { return input->paste(); };
@@ -78,8 +72,7 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 		return true;
 	};
 
-	// TextInput drives InteractiveComponent's focus counter from the IME echo, which is the only
-	// moment it is actually true. The listener must not write it too
+	// TextInput drives the focus counter from the IME echo; the listener must not write it too
 	slots.ownsFocusStyle = true;
 	slots.focusable = input->isEnabled() && !input->isReadOnly();
 
@@ -88,8 +81,7 @@ FormInputListener *addFormField(NotNull<TextInput> input, StringView name, FormF
 		return nullptr;
 	}
 
-	// Tab arrives at the widget first (it is dispatched before this listener), so the widget has
-	// to hand it over rather than fall back to its standalone blur()
+	// The widget receives Tab before this listener and hands it over instead of blur()
 	input->setNavigateCallback(
 			[listener](bool backwards) { return listener->requestNavigate(backwards); });
 
@@ -101,8 +93,7 @@ FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name, For
 
 	slots.collect = [checkbox = checkbox.get()] { return Value(checkbox->isChecked()); };
 
-	// silent: assigning a form's value is not the user toggling the box, and a change callback
-	// fired here would look like one
+	// silent: assigning a form's value must not fire the change callback
 	slots.assign = [checkbox = checkbox.get()](
 						   const Value &v) { checkbox->setChecked(v.getBool(), true); };
 	slots.clear = [checkbox = checkbox.get()] { checkbox->setChecked(false, true); };
@@ -111,7 +102,7 @@ FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name, For
 		if (!checkbox->isEnabled()) {
 			return false;
 		}
-		// Not silent: this IS the user toggling it, just with the keyboard
+		// Not silent: this is a user toggle from the keyboard
 		checkbox->setChecked(!checkbox->isChecked());
 		return true;
 	};
@@ -126,22 +117,18 @@ FormInputListener *addFormField(NotNull<Checkbox> checkbox, StringView name, For
 FormInputListener *addFormField(NotNull<Select> select, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// The id, not the title: the title is what a person reads and may be localized, the id is what
-	// the value MEANS.
+	// The id, not the (possibly localized) title
 	slots.collect = [select = select.get()] { return Value(select->getValue()); };
 
-	// silent: the form assigning its value is not the user picking an option, and a change callback
-	// fired here would look like one
+	// silent: assigning a form's value must not fire the change callback
 	slots.assign = [select = select.get()](
 						   const Value &v) { select->setValue(v.getString(), true); };
 	slots.clear = [select = select.get()] { select->setValue(StringView(), true); };
 
-	// Enter or Space on the focused control shows the list - the same thing the widget does with
-	// those keys on its own, routed here so the form does not have to know that
+	// Enter or Space on the focused control opens the list
 	slots.activate = [select = select.get()] { return select->open(); };
 
-	// The widget writes the focus counter itself: its focus is also what decides whether it answers
-	// the arrows at all, so the two must be the same flag rather than two that agree
+	// The widget writes the focus counter itself: the same flag gates its arrow handling
 	slots.ownsFocusStyle = true;
 	slots.focusable = select->isEnabled();
 
@@ -160,14 +147,10 @@ FormInputListener *addFormField(NotNull<SearchPicker> picker, StringView name,
 		FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// The id, not the title - the same split as the Select adapter's, and for the same reason: the
-	// title is what a person reads and may be localized, the id is what the value MEANS.
+	// The id, not the (possibly localized) title
 	slots.collect = [picker = picker.get()] { return Value(picker->getValue()); };
 
-	/* Assigning a value the picker cannot resolve to a title shows the id itself.
-
-	That is deliberate: a subtype stored as a hash by a file written before anyone declared a name
-	for it has no title to show, and inventing one would be a lie about the file. */
+	/* A value with no known title is shown as the id itself (e.g. an undeclared subtype hash). */
 	slots.assign = [picker = picker.get()](const Value &v) {
 		auto id = v.getString();
 		picker->setValue(id, id, true);
@@ -193,9 +176,7 @@ FormInputListener *addFormField(NotNull<SearchPicker> picker, StringView name,
 FormInputListener *addFormField(NotNull<VectorField> field, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// One array, not one key per component - the whole reason this widget exists. Integers in an
-	// integer row, for the same reason the ui::NumberField branch above collects one: a form that
-	// submits 7.0 where the schema says 7 has changed the value on its way out.
+	// One array, not one key per component; integers in an integer row
 	slots.collect = [field = field.get()] {
 		Value ret;
 		const bool integer = field->isInteger();
@@ -209,9 +190,7 @@ FormInputListener *addFormField(NotNull<VectorField> field, StringView name, For
 		return ret;
 	};
 
-	// silent: the form assigning its value is not somebody editing the row. A length that does not
-	// match the arity is refused by the widget and nothing moves - assigning half a vector would
-	// describe something other than what was asked for
+	// silent. The widget refuses an array whose length does not match the arity and keeps its value
 	slots.assign = [field = field.get()](const Value &v) {
 		Vector<double> values;
 		values.reserve(v.size());
@@ -225,8 +204,7 @@ FormInputListener *addFormField(NotNull<VectorField> field, StringView name, For
 		field->setValue(values, true);
 	};
 
-	// The row decides WHICH component the focus lands on, and it needs the direction to do it:
-	// Shift+Tab entering a row of numbers means its last field
+	// The row picks the component by direction: Shift+Tab enters at the last one
 	slots.setFocused = [field = field.get()](bool value, bool backwards) {
 		if (value) {
 			field->focusFromNavigation(backwards);
@@ -235,8 +213,7 @@ FormInputListener *addFormField(NotNull<VectorField> field, StringView name, For
 		}
 	};
 
-	// The components are ui::TextInputs: their own editing keys are theirs, and the row has no
-	// caret of its own to copy from
+	// The components are ui::TextInputs and handle their own editing keys; the row has no caret
 	slots.ownsFocusStyle = true;
 	slots.focusable = field->isEnabled();
 
@@ -245,15 +222,12 @@ FormInputListener *addFormField(NotNull<VectorField> field, StringView name, For
 		return nullptr;
 	}
 
-	// Tab off either end of the row is navigation between FIELDS, and the widget hands it here
-	// rather than falling back to its standalone blur()
+	// Tab off either end of the row moves between fields instead of blur()
 	field->setNavigateCallback(
 			[listener](bool backwards) { return listener->requestNavigate(backwards); });
 
-	// A tap that puts the caret in a component has to move the form's focus to this field, or the
-	// form goes on filtering keys to the field it focused last and the arrows die in the component
-	// the user just clicked. The widget cannot ask for this itself: forms/ knows about input/, and
-	// never the other way round
+	// A tap in a component must move the form's focus here, or keys keep going to the previous
+	// field. Wired here because input/ does not depend on forms/
 	field->setFocusCallback([listener](int32_t component) {
 		if (component >= 0) {
 			listener->setFocused();
@@ -266,18 +240,15 @@ FormInputListener *addFormField(NotNull<VectorField> field, StringView name, For
 FormInputListener *addFormField(NotNull<ColorField> field, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// Hex text, not four numbers: it is what the value is written as everywhere it is stored, and
-	// it survives a round trip through JSON unchanged.
+	// Hex text, not four numbers: the stored form, stable through JSON
 	slots.collect = [field = field.get()] { return Value(field->formatValue()); };
 
-	// silent: the form assigning its value is not somebody picking a colour. A string the colour
-	// reader refuses leaves the field exactly as it was.
+	// silent. An unparsable string leaves the field unchanged
 	slots.assign = [field = field.get()](
 						   const Value &v) { field->setValueFromString(v.getString(), true); };
 	slots.clear = [field = field.get()] { field->setValue(Color4B(0, 0, 0, 255), true); };
 
-	// Enter or Space on the focused field shows the picker - the same thing a tap on its swatch
-	// does, routed here so the form does not have to know that
+	// Enter or Space on the focused field opens the picker, like a tap on the swatch
 	slots.activate = [field = field.get()] { return field->open(); };
 
 	slots.setFocused = [field = field.get()](bool value, bool) {
@@ -300,9 +271,7 @@ FormInputListener *addFormField(NotNull<ColorField> field, StringView name, Form
 	field->setNavigateCallback(
 			[listener](bool backwards) { return listener->requestNavigate(backwards); });
 
-	// A tap in the hex line has to move the form's focus to this field, or the form goes on
-	// filtering keys to the field it focused last - the same seam ui::VectorField needs, and for
-	// the same reason it cannot ask for it itself
+	// A tap in the hex line must move the form's focus here, as in ui::VectorField
 	field->setFocusCallback([listener](bool focused) {
 		if (focused) {
 			listener->setFocused();
@@ -315,21 +284,14 @@ FormInputListener *addFormField(NotNull<ColorField> field, StringView name, Form
 FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// The ids, in the order they stand in. The titles are presentation and may be localized out
-	// from under the value; the ORDER is not - an element chain read back reordered is a different
-	// type - so this is an array and never a set.
+	// The ids in display order; order is significant, so this is an array, not a set
 	slots.collect = [row = row.get()] {
 		Value ret;
 		for (auto &it : row->getItems()) { ret.addString(it.id); }
 		return ret;
 	};
 
-	/* Assigning an id nothing declares still produces a chip, titled by the id itself.
-
-	That is deliberate, and it is the same decision the ui::SearchPicker adapter makes: a file
-	written before anyone declared a name for that member has no title to show, and inventing one
-	would be a lie about the file. Dropping it would be worse still - the form would silently
-	collect back less than it was given. */
+	/* An undeclared id still produces a chip titled by the id, so nothing assigned is lost. */
 	slots.assign = [row = row.get()](const Value &v) {
 		Vector<ChipItem> items;
 		items.reserve(v.size());
@@ -344,23 +306,20 @@ FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormField
 				items.emplace_back(ChipItem{String(id), String(), IconName::None, true});
 			}
 		}
-		// silent: the form assigning its value is not somebody building the set
+		// silent: assigning a form's value must not fire the change callback
 		row->setItems(items, true);
 	};
 
 	slots.clear = [row = row.get()] { row->clearItems(true); };
 
-	// Enter or Space on the focused row shows the list - the same thing the widget does with those
-	// keys on its own, routed here so the form does not have to know that
+	// Enter or Space on the focused row opens the list
 	slots.activate = [row = row.get()] { return row->open(); };
 
-	// The widget writes the focus counter itself: its focus is also what decides whether it answers
-	// the arrows at all, so the two must be the same flag rather than two that agree
+	// The widget writes the focus counter itself: the same flag gates its arrow handling
 	slots.ownsFocusStyle = true;
 	slots.focusable = row->isEnabled();
 
-	// The row decides WHICH chip the focus lands on, and it needs the direction to do it: a
-	// Shift+Tab entering a row of chips means its last one
+	// The row picks the chip by direction: Shift+Tab enters at the last one
 	slots.setFocused = [row = row.get()](bool value, bool backwards) {
 		if (value) {
 			row->focusFromNavigation(backwards);
@@ -374,13 +333,11 @@ FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormField
 		return nullptr;
 	}
 
-	// Tab is not navigation INSIDE this widget - the row is one stop of the ring - so it is handed
-	// straight over rather than falling back to the standalone blur()
+	// The row is one stop of the tab ring: Tab is handed to the form instead of blur()
 	row->setNavigateCallback(
 			[listener](bool backwards) { return listener->requestNavigate(backwards); });
 
-	// A tap that selects a chip has to move the form's focus to this field, or the form goes on
-	// filtering keys to the field it focused last and the arrows die in the row the user clicked
+	// A tap on a chip must move the form's focus here, or keys keep going to the previous field
 	row->setFocusCallback([listener](bool focused) {
 		if (focused) {
 			listener->setFocused();
@@ -393,31 +350,25 @@ FormInputListener *addFormField(NotNull<ChipRow> row, StringView name, FormField
 FormInputListener *addFormField(NotNull<Slider> slider, StringView name, FormFieldFlags flags) {
 	FormFieldSlots slots;
 
-	// The VALUE the notch stands for, not the notch. An integer field collects an integer and a
-	// real one a double - the same branch, and the same reason, as the ui::NumberField adapter's.
+	// The value the notch stands for; integer or double as the widget declares
 	slots.collect = [slider = slider.get()] {
 		return slider->isInteger() ? Value(int64_t(slider->getValue())) : Value(slider->getValue());
 	};
 
-	// silent: the form assigning its value is not somebody dragging the handle, and a change
-	// callback fired here would look like one. A value between two notches lands on the nearer -
-	// the widget cannot hold anything else, and refusing would leave the field showing the value
-	// it had rather than the one it was given.
+	// silent. A value between two notches snaps to the nearer one
 	slots.assign = [slider = slider.get()](
 						   const Value &v) { slider->setValue(v.getDouble(), true); };
 
-	// The minimum, not 0.0: "empty" for a slider is the bottom of its scale, and a scale that does
-	// not contain zero would otherwise be cleared to a value it cannot express.
+	// Clears to the minimum, not 0.0, which may lie outside the scale
 	slots.clear = [slider = slider.get()] { slider->setIndex(0, true); };
 
-	// No `activate`: see the header. Enter on a focused slider submits the form.
+	// No `activate`: Enter on a focused slider submits the form.
 
-	// The widget writes the focus counter itself: its focus is also what decides whether it answers
-	// the arrows at all, so the two must be the same flag rather than two that agree
+	// The widget writes the focus counter itself: the same flag gates its arrow handling
 	slots.ownsFocusStyle = true;
 	slots.focusable = slider->isEnabled();
 
-	// The direction is of no interest: a slider has one point of entry, whichever way the Tab went
+	// Direction is ignored: a slider has one point of entry
 	slots.setFocused = [slider = slider.get()](bool value, bool) {
 		if (value) {
 			slider->focus();
@@ -431,18 +382,14 @@ FormInputListener *addFormField(NotNull<Slider> slider, StringView name, FormFie
 		return nullptr;
 	}
 
-	// A tap on the track has to move the form's focus to this field, or the form goes on filtering
-	// keys to the field it focused last and the arrows die in the widget the user just clicked.
-	// The same seam ui::ColorField and ui::ChipRow need, and for the same reason the widget cannot
-	// ask for it itself: forms/ knows about input/, and never the other way round.
+	// A tap on the track must move the form's focus here, or keys keep going to the previous field
 	slider->setFocusCallback([listener](bool focused) {
 		if (focused) {
 			listener->setFocused();
 		}
 	});
 
-	// No setNavigateCallback: a slider does not consume Tab. It is ONE stop of the ring, like a
-	// checkbox, so Tab reaches the form's own handling untouched.
+	// No setNavigateCallback: a slider does not consume Tab, the form handles it directly.
 
 	return listener;
 }

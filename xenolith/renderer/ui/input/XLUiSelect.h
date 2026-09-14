@@ -31,11 +31,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// One choice, as DATA.
-//
-// `id` is the identity: it is what the callback reports, what a form collects, and what a test
-// drives the widget by. `title` is presentation and may be localized out from under you - the same
-// split as ui::MenuSourceItem's name and title, and for the same reason.
+// One choice. `id` is the identity reported to the callback and collected by a form; `title` is
+// presentation and may be localized (as ui::MenuSourceItem's name and title).
 struct SP_PUBLIC SelectOption {
 	String id;
 	String title;
@@ -43,42 +40,23 @@ struct SP_PUBLIC SelectOption {
 	bool enabled = true;
 };
 
-/* The id==title case, which is most of them: a list of names where the name IS the value. An enum
-family's members, a set of role names, the twelve things a slot is allowed to be.
-
-FREE rather than a second setOptions overload, for three reasons. setOptions is VIRTUAL, so an
-overload doubles the override surface of every subclass. ui::ChipRow takes the same element
-(ChipOption IS SelectOption), so one pair of functions serves both widgets instead of two identical
-pairs of overloads. And the result is a Vector the caller may still EDIT - disable one entry, hang
-an icon on another - before handing it over, which an overload cannot offer.
-
-BOTH SPELLINGS EXIST because SpanView<StringView> is not constructible from a Vector<String>: the
-generic SpanView(const T &) needs `T::data()` to give a `const StringView *`, and a Vector<String>
-gives a `const String *`. A Vector<String> is what an enum family's members actually are, so the
-overload that only took views would serve a literal array and nothing else. */
+/* Options where id == title. Also serves ui::ChipRow (ChipOption is SelectOption); the caller may
+edit the result before passing it on. Two overloads because SpanView<StringView> cannot be built
+from a Vector<String>. */
 SP_PUBLIC Vector<SelectOption> makeSelectOptions(SpanView<StringView>);
 SP_PUBLIC Vector<SelectOption> makeSelectOptions(SpanView<String>);
 
 /** A closed control that opens a list: the drop-down.
 
-WHAT IT IS MADE OF, and why none of it is new. The closed face is a ui::Panel with an icon, a label
-and a chevron - the fill, the outline and the corners are the Panel's CSS appliers. The open list is
-a ui::MenuSource shown through ui::openMenuForNode, so it is a real surface with the same placement
-arithmetic, the same dismissal rules and the same keyboard as every other menu in this kit. There is
-no second list widget here.
+The closed face is a ui::Panel with an icon, a label and a chevron, styled by the Panel's CSS
+appliers. The open list is a ui::MenuSource shown through ui::openMenuForNode.
 
-THE KEYBOARD IS IN TWO HALVES, and that is a property of where the two halves live. Closed, this
-node is the one holding focus and Up/Down step the value in place - which is also the only path that
-works where the window system refuses a popup the keyboard focus. Open, the list is a scene of its
-own in a window of its own and this node cannot see those keys at all: ui::MenuSystem handles them,
-and MenuConfig::highlight is how the list knows to start on the current value.
+Closed, the focused control steps the value with Up/Down (this also works where the window system
+denies a popup keyboard focus). Open, the list is its own scene and ui::MenuSystem handles the
+keys, starting at MenuConfig::highlight.
 
-Keys are answered only while the widget is FOCUSED. Inside a ui::FormSystem that works for the same
-reason ui::TextInput's arrows do - the group passes events to listeners at or below the focused
-field's node; standalone, a tap takes focus and a tap outside gives it up.
-
-WHAT IT IS NOT. A list of hundreds - every registered component, every member of a large enum - is
-not a menu and must not be forced into one. That is a search palette, and it is a different widget.
+Keys are answered only while the widget is focused: inside a ui::FormSystem via the focused field's
+node, standalone via tap to focus and tap outside to blur. For long lists use ui::SearchPicker.
 
 CSS: type `select`, class `xl-ui-select`; classes `open` while the list is up and `disabled`.
 Children: `select > icon` (the chosen option's icon, class `xl-ui-select-icon`), `select > label`,
@@ -104,15 +82,13 @@ public:
 	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
 
-	/* Phase 6. The side these parts take comes from the resolved `direction`, and an ancestor's
-	   StyleResolver re-resolves this node in reaction to its content-size phase - so phase 4
-	   reads the direction from before the pass. See placeInlineParts. */
+	/* Places the parts by the resolved `direction`. Done here rather than in the content-size
+	   phase, where an ancestor's StyleResolver has not yet re-resolved it. See placeInlineParts. */
 	virtual void handleLayoutChildren() override;
 
 	void placeInlineParts();
 
-	/* Replaces the list. A value that names an option that is still there survives; one that does
-	not is cleared, because a control showing a choice nobody offers any more is lying. */
+	// Replaces the list. The value is kept if an option still carries it, cleared otherwise.
 	virtual void setOptions(SpanView<SelectOption>);
 	SpanView<SelectOption> getOptions() const { return _options; }
 
@@ -132,8 +108,7 @@ public:
 	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
-	// Step to the next / previous ENABLED option. Does not wrap: a list is not a dial, and running
-	// off its end by holding an arrow down is not a choice anyone made.
+	// Step to the next / previous enabled option. Does not wrap.
 	virtual bool step(int32_t delta);
 
 	// Open the list. False when the widget is disabled, has no options, is already open, or has no
@@ -145,18 +120,13 @@ public:
 	// The surface, while it is up. For a test, and for an owner that has to take it down itself.
 	SubWindow *getPopup() const { return _popup; }
 
-	/* Geometry of the open list. The width defaults to the control's own, resolved at open time -
-	a drop-down narrower than the thing it drops out of looks like a different widget. */
+	// Geometry of the open list. The width defaults to the control's own, resolved at open time.
 	virtual void setMenuStyle(const MenuStyle &);
 	const MenuStyle &getMenuStyle() const { return _menuStyle; }
 
-	/* The template the list is opened with: the title, whether it prefers a native surface, a
-	stylesheet if the list's look is its own. The callbacks, the placement and `highlight` are
-	filled in by open().
-
-	The stylesheet is optional: a native popup is a scene of its own, but ui::openPopupSurface
-	hands it the sheet in force where the list was opened from, so a styled application gets a
-	styled list without declaring anything. Declare one to give the surface a look of its own. */
+	/* The template the list is opened with: title, native preference, optional stylesheet. The
+	callbacks, placement and `highlight` are filled in by open(). Without a stylesheet the surface
+	inherits the sheet in force at the control (ui::openPopupSurface). */
 	virtual void setPopupConfig(MenuConfig &&);
 	const MenuConfig &getPopupConfig() const { return _popupConfig; }
 
@@ -176,8 +146,7 @@ protected:
 	// Index of the option carrying `id`, or -1.
 	int32_t indexOf(StringView id) const;
 
-	// The list, rebuilt from the options each time it is opened: the model is the options vector,
-	// and a cached MenuSource would be a second copy of it to keep in step.
+	// The list, rebuilt from the options each time it is opened.
 	Rc<MenuSource> makeSource();
 
 	virtual void updateContent();

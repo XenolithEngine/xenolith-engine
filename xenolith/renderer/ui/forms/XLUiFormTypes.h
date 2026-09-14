@@ -46,8 +46,7 @@ enum class FormFieldFlags : uint32_t {
 	// Rejected by submit() when its collected value is null, an empty string or an empty container
 	Required = 1 << 0,
 
-	// Reachable by Tab, but never collected and never validated - a search box standing inside the
-	// form's subtree without being part of what the form submits
+	// Reachable by Tab, but never collected or validated (e.g. a search box inside the form)
 	Transient = 1 << 1,
 };
 
@@ -58,48 +57,32 @@ struct FormValidationError {
 	String message;
 };
 
-// What a widget node hands its FormInputListener so the form can drive it.
-//
-// This is the whole seam between a form and a widget: the form knows nothing about TextInput or
-// Checkbox, only about these callbacks. A node fills in what it can actually do - an empty slot is
-// a no-op, and a field with no `collect` never appears in the collected value at all. That is what
-// lets a foreign widget join a form without either side knowing the other's type.
+// Callbacks through which the form drives a widget without knowing its type. An empty slot is a
+// no-op; a field with no `collect` is absent from the collected value.
 struct FormFieldSlots {
 	Function<Value()> collect;
 	Function<void(const Value &)> assign;
 	Function<void()> clear;
 
-	/* Take or release keyboard focus in the widget's own terms: raise the IME, show the caret.
-	Called AFTER the focus group has already switched, never instead of it - the group's focus is
-	what decides who gets keys, and this only tells the widget to catch up.
-
-	`backwards` is the direction of the NAVIGATION that caused this, and false whenever the cause
-	was anything else - a tap, a programmatic focusField(), the field leaving the ring. A simple
-	widget ignores it; a COMPOSITE one cannot, because it has to decide which of its parts the
-	focus landed on: Shift+Tab arriving at a row of number fields means the last one, and a field
-	that always enters at its first part makes backwards navigation walk forwards inside it. */
+	/* Take or release focus in the widget's terms (IME, caret), called after the focus group has
+	switched. `backwards` is true only for Shift+Tab navigation; a composite widget uses it to
+	enter at its last part. */
 	Function<void(bool focused, bool backwards)> setFocused;
 
-	// Enter or Space on a focused field. Return true when the widget consumed it: a Checkbox
-	// toggles, a Button fires. A single-line TextInput returns false, and the form submits instead
+	// Enter or Space on a focused field; true when consumed. False lets the form submit
 	Function<bool()> activate;
 
-	// The standard editing actions. The key bindings for them live in the widget, so that a
-	// ui::TextInput outside a form behaves identically; these slots are the programmatic entry
-	// point - for a context menu, a toolbar, an inspector command, or the form itself
+	// Programmatic editing actions (menus, commands); key bindings stay in the widget
 	Function<bool()> copy;
 	Function<bool()> cut;
 	Function<bool()> paste;
 	Function<bool()> selectAll;
 
-	// The widget writes InteractiveComponent's focus counter itself (ui::TextInput does, because
-	// its focus is the IME's and only the echo knows when it really changed). When false the
-	// listener writes it, so CSS `:focus` also works for widgets that do not. Never both: the
-	// counter is cumulative and a double write leaves it stuck.
+	// True when the widget writes InteractiveComponent's focus counter itself; otherwise the
+	// listener does. Never both: the counter is cumulative
 	bool ownsFocusStyle = false;
 
-	// Never reachable by Tab - a read-only or disabled widget. Read once per frame while the tab
-	// ring is rebuilt, so a widget may flip it at any time
+	// False excludes the widget from the tab ring; re-read on every ring rebuild
 	bool focusable = true;
 };
 

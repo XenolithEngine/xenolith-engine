@@ -28,9 +28,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Reply deadline for an Announce: the receiver answers immediately (accept/decline), so a few seconds
-// is generous. On timeout the request watchdog fails the waiter with a local protocol error and the
-// connection is reset -- the same fate as any other unanswered request.
+// Reply deadline for an Announce, which the receiver answers immediately. On timeout the watchdog
+// fails the waiter and the connection is reset.
 static constexpr uint64_t kAnnounceReplyTimeoutUs = 5'000'000; // 5s
 
 // 12-byte binary header of a Data packet: [u64 id][u32 index], network byte order, then the chunk.
@@ -113,9 +112,8 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 	return id;
 }
 
-// Number of packets to emit per scheduler tick before yielding. Small enough that a batch fits
-// comfortably inside the QUIC flow-control window even on the first tick, so a frame never has to wait
-// long enough for streamWriteAll's deadline to truncate it.
+// Packets emitted per scheduler tick before yielding; small enough to fit inside the QUIC
+// flow-control window on the first tick, so streamWriteAll's deadline never truncates a frame.
 static constexpr uint32_t kPacketBatch = 8;
 
 void BlockTransferManager::finishOutgoing(uint64_t id, bool ok) {
@@ -123,8 +121,7 @@ void BlockTransferManager::finishOutgoing(uint64_t id, bool ok) {
 	if (it == _outgoing.end()) {
 		return;
 	}
-	// Move the callback out before erasing: it is commonly a closure owning the very things the
-	// transfer references, and calling it from inside the map entry it is about is a trap.
+	// Move the callback out before erasing: it often owns what the transfer references.
 	auto cb = sp::move(it->second.onComplete);
 	_outgoing.erase(it);
 	if (cb) {
@@ -132,11 +129,7 @@ void BlockTransferManager::finishOutgoing(uint64_t id, bool ok) {
 	}
 }
 
-/* Which transfer gets the next batch.
- *
- * Highest priority first; among equals, the one after whoever went last, wrapping around. Before
- * this there was no chooser at all -- every transfer pumped itself, so two of them interleaved in
- * whatever order the looper happened to run their tasks and a priority had nothing to act on. */
+/* Which transfer gets the next batch: highest priority first; among equals, round-robin by id. */
 BlockTransferManager::OutgoingTransfer *BlockTransferManager::selectNextTransfer() {
 	OutgoingTransfer *best = nullptr;
 	OutgoingTransfer *firstOfBand = nullptr;
@@ -155,8 +148,8 @@ BlockTransferManager::OutgoingTransfer *BlockTransferManager::selectNextTransfer
 		} else if (t.priority < bestPriority) {
 			continue;
 		}
-		// Within the best band, prefer the smallest id STRICTLY AFTER the one served last -- that is
-		// the round-robin. `firstOfBand` (smallest id in the band) is the wrap-around answer.
+		// Within the best band, prefer the smallest id after the one served last (round-robin);
+		// `firstOfBand` (smallest id in the band) is the wrap-around.
 		if (t.id < firstOfBand->id) {
 			firstOfBand = &t;
 		}
@@ -217,9 +210,8 @@ void BlockTransferManager::pumpOutgoing() {
 				" packet(s) for transfer ", t.id);
 	}
 
-	// Yield to the looper so I/O is serviced (the peer drains, MAX_DATA/MAX_STREAM_DATA arrive)
-	// before the next batch. Asked unconditionally: this transfer may be done while another is not,
-	// and schedulePump is a no-op when there is nothing left to send.
+	// Yield to the looper so I/O is serviced before the next batch. Always scheduled: another
+	// transfer may be unfinished, and schedulePump is a no-op when nothing is left.
 	schedulePump();
 }
 
@@ -254,10 +246,8 @@ bool BlockTransferManager::handleAnnounce(const remote::MessageHeader &h, BytesV
 		return true;
 	};
 
-	// Validate consistency. The psize <= kRecommendedPacketSize bound is the real decompression-bomb
-	// guard for this domain: it caps every subsequent packet frame's decompressed size to a small,
-	// known value, so the transport never needs a ratio heuristic that would reject a strongly
-	// compressed (e.g. flat-colour screenshot) packet.
+	// Validate consistency. The psize <= kRecommendedPacketSize bound is the decompression-bomb
+	// guard: it caps each packet's decompressed size, so no ratio heuristic is needed.
 	if (size > remote::kMaxBlockTransferSize) {
 		return fail(remote::DataError::TooLarge);
 	}
@@ -381,9 +371,8 @@ bool BlockTransferManager::handleRelease(const remote::MessageHeader &, BytesVie
 	if (it == _incoming.end()) {
 		return true;
 	}
-	// A Release for a transfer that never finished assembling is a half-received blob being thrown
-	// away, and whoever was waiting on it has to be told -- the same obligation Cancel has. (A
-	// Release AFTER delivery is the normal case and owes nothing: the data was already handed over.)
+	// Releasing an incompletely assembled transfer must notify the waiter, as Cancel does; a
+	// Release after delivery owes nothing.
 	bool pending = it->second.receivedCount < it->second.packetCount;
 	log::source().info("BlockTransfer", "released incoming transfer ", id);
 	if (pending) {
@@ -423,9 +412,7 @@ void BlockTransferManager::releaseObject(uint64_t id) {
 	if (it == _outgoing.end()) {
 		return;
 	}
-	// Releasing a transfer that never completed still owes its caller an answer. This used to erase
-	// the record and destroy onComplete with it, so a caller that released early -- or released on a
-	// path it had not thought about -- simply never heard back.
+	// Releasing a transfer that never completed still owes its caller an answer.
 	bool pending = !it->second.completed;
 	if (_owner) {
 		Value v;
@@ -442,8 +429,8 @@ void BlockTransferManager::cancelTransfer(uint64_t id) {
 		return;
 	}
 	if (it->second.completed) {
-		// Already delivered: there is nothing to call off, and telling the receiver to throw away a
-		// blob it has finished with would be a Release, not a Cancel.
+		// Already delivered: nothing to call off (discarding a finished blob is a Release, not a
+		// Cancel).
 		return;
 	}
 	if (_owner) {
@@ -457,8 +444,7 @@ void BlockTransferManager::cancelTransfer(uint64_t id) {
 }
 
 size_t BlockTransferManager::cancelAllTransfers() {
-	// Collect first: cancelTransfer erases from the map it would otherwise be iterating, and its
-	// callback can start a transfer of its own.
+	// Collect first: cancelTransfer erases from the map, and its callback can start a new transfer.
 	Vector<uint64_t> ids;
 	ids.reserve(_outgoing.size());
 	for (auto &it : _outgoing) {
@@ -475,8 +461,7 @@ void BlockTransferManager::abandonIncoming(uint64_t id) {
 	if (it == _incoming.end()) {
 		return;
 	}
-	// Copy what the notification needs before the entry goes: the callback may start something that
-	// touches this manager.
+	// Copy what the notification needs before erasing: the callback may touch this manager.
 	auto type = it->second.type;
 	auto meta = it->second.meta;
 	auto reason = it->second.reason;
@@ -512,9 +497,8 @@ bool BlockTransferManager::dispatch(const remote::MessageHeader &h, BytesView pa
 }
 
 void BlockTransferManager::reset() {
-	// Settle everything before dropping it. A disconnect used to clear both maps outright, which
-	// destroyed every pending onComplete and every half-assembled incoming blob in silence -- so a
-	// caller waiting on a screenshot when the link went down waited for the rest of the session.
+	// Settle everything before dropping it, so pending onComplete callbacks and partially received
+	// blobs are notified on disconnect.
 	Vector<uint64_t> outgoing;
 	outgoing.reserve(_outgoing.size());
 	for (auto &it : _outgoing) {

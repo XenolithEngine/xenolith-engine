@@ -81,11 +81,9 @@ struct SP_PUBLIC FlexLayoutInfo {
 	bool operator!=(const FlexLayoutInfo &) const = default;
 };
 
-// Which of an item's margins were written as `auto`. An auto margin is not a distance: it
-// absorbs free space. Along the MAIN axis every auto margin on a line shares the space left
-// after flexing, and `justify-content` gets none of it (`margin-left: auto` pushes an item to
-// the end, `margin: 0 auto` centres it). Along the CROSS axis an item's own auto margins share
-// the space left in its line, and they override `align-self` — including `stretch`.
+// Which of an item's margins were written as `auto`. Main-axis auto margins share the line's
+// free space after flexing, leaving none to `justify-content`; cross-axis auto margins share
+// the space left in the item's line and override `align-self`, including `stretch`.
 enum class FlexAutoMargin : uint8_t {
 	None = 0,
 	Top = 1 << 0,
@@ -104,26 +102,19 @@ struct SP_PUBLIC FlexItemInfo {
 	// sentinel for `flex-basis: auto` and for "no maximum" main size
 	static constexpr float Auto = -1.0f;
 
-	// sentinel for `fit-content`: the size is measured from the node's actual
-	// content via the measurement protocol (System::handleMeasure) instead of
-	// being read from the node's current content size.
-	// - basis == FitContent: main size = min(max-content, available main),
-	//   clamped to [minMain, maxMain] (the `max(min-content, ...)` floor of the
-	//   CSS formula is not derived automatically - use minMain for it);
-	// - crossSize == FitContent: the hypothetical cross size is re-measured
-	//   with the item's final main size as the constraint (e.g. a wrapped
-	//   label: width -> resulting height). Implied when basis == FitContent
-	//   and crossSize == Auto; `Stretch` alignment still overrides it, same
-	//   as it overrides an explicit crossSize.
+	// sentinel for `fit-content`: the size is measured via System::handleMeasure.
+	// - basis: min(max-content, available main), clamped to [minMain, maxMain]; the min-content
+	//   floor is not derived, use minMain for it;
+	// - crossSize: re-measured at the final main size; implied by basis == FitContent with
+	//   crossSize == Auto; `Stretch` alignment still overrides it.
 	static constexpr float FitContent = -2.0f;
 
 	float grow = 0.0f; // `flex-grow`: share of positive free space
 	float shrink = 1.0f; // `flex-shrink`: share of negative free space
 	float basis = Auto; // `flex-basis`: main size before flexing; Auto -> node's content size
 
-	// Definite cross-axis size of the item (the analog of `height` for a row or
-	// `width` for a column). Auto -> the item keeps its node's current cross size
-	// for non-stretch alignment and fills the line when stretched.
+	// definite cross-axis size (`height` for a row, `width` for a column); Auto -> the node's
+	// current cross size for non-stretch alignment, the line's extent when stretched
 	float crossSize = Auto;
 
 	// per-item override of the container's `alignItems`

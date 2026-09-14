@@ -73,21 +73,17 @@ SP_DEFINE_ENUM_AS_MASK(NodeEventFlags)
 
 /** What a node offers to the per-frame hit-test registry (see InputListenerStorage::addHitTest).
 
-A node with any of these bits set publishes the rect it was DRAWN with, once per frame, from its own
-visit. Whoever asks "what is under this point" walks that registry backwards - registration order is
-paint order - instead of keeping a list of its own, and a node that is not visited is not registered,
-so an invisible, clipped-away or detached subtree stops answering with no bookkeeping at all.
+A node with any of these bits publishes its drawn rect once per frame from its own visit. Queries
+walk the registry backwards (registration order is paint order); unvisited nodes are not registered.
 
-The bit is a CACHE of "this node carries the matching component", maintained by the setter functions
-that attach those components (ui::setContextMenu, setDropTarget, ui::setTooltip). Never set it by
-hand: a bit with no component behind it makes the node win a hit test and then offer nothing, which
-looks exactly like a target that deliberately blocks. */
+Each bit mirrors the presence of a component and is maintained by its setter (ui::setContextMenu,
+setDropTarget, ui::setTooltip). Never set it by hand: a bit without a component makes the node win
+a hit test and offer nothing. */
 enum class HitTestFlags : uint32_t {
 	None,
 
-	// An InputListener is attached to this node. Maintained by the listener itself; this is what
-	// lets the listener publish the geometry its own hit test reads back (see
-	// InputListener::_shouldProcessEvent).
+	// An InputListener is attached to this node; maintained by the listener, which reads the
+	// published geometry back in its own hit test (see InputListener::_shouldProcessEvent).
 	Pointer = 1 << 0,
 
 	// DropTargetComponent: a drag can be dropped here

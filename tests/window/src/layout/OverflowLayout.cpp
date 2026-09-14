@@ -144,6 +144,24 @@ bool OverflowLayout::init() {
 		panel->addStyleClass("oversized");
 	}
 
+	/* `overflow: hidden` ON A PANEL, which is what a table cell or a card is.
+
+	`_hiddenBox` above is the same case on a Layer, and a Layer has no DynamicStateSystem of its own.
+	A Panel is a VectorSprite, which does - created DoNotApply, and switched and disabled again by
+	the sprite whenever its image is placed. ScrollSystem used to adopt that one as its clip, so the
+	clip reached nothing: the child was drawn to its full 400x300 over everything beside the box.
+	What was wrong is which pixels survive, so `overflow-check.py` reads them; the Layer box is its
+	control. */
+	_hiddenPanel = addChild(Rc<ui::Panel>::create(), ZOrder(1));
+	_hiddenPanel->setName("hidden-panel");
+	_hiddenPanel->setPathColor(Color4B(238, 238, 238, 255), true);
+	_hiddenPanel->addStyleClass("col");
+	_hiddenPanel->addStyleClass("clipped");
+	{
+		auto child = _hiddenPanel->addChild(Rc<Layer>::create(Color::Red_500), ZOrder(1));
+		child->addStyleClass("oversized");
+	}
+
 	_loosePanelBox = addChild(Rc<Layer>::create(Color::Grey_200), ZOrder(1));
 	{
 		auto lower = _loosePanelBox->addChild(Rc<ui::Panel>::create(), ZOrder(1));
@@ -480,14 +498,37 @@ void OverflowLayout::handleContentSizeDirty() {
 
 	const float top = getWorkTop() - 40.0f;
 
-	Layer *boxes[] = {_scrollBox, _visibleBox, _hiddenBox, _fitBox, _coercedBox, _tearBox,
-		_clipPanelBox, _loosePanelBox};
-	for (size_t i = 0; i < 8; ++i) {
+	Node *boxes[] = {_scrollBox, _visibleBox, _hiddenBox, _fitBox, _coercedBox, _tearBox,
+		_clipPanelBox, _loosePanelBox, _hiddenPanel};
+	for (size_t i = 0; i < 9; ++i) {
 		boxes[i]->setAnchorPoint(Vec2(0.0f, 1.0f));
 		boxes[i]->setContentSize(Size2(220.0f, BoxHeight));
 		boxes[i]->setPosition(
 				Vec2(24.0f + float(i % 5) * 240.0f, top - float(i / 5) * (BoxHeight + 40.0f)));
 	}
+}
+
+void OverflowLayout::registerCommands() {
+	addCommand("state",
+			"The two `overflow: hidden` boxes - a Layer and a Panel - as window rects {x, y, width, "
+			"height}, origin bottom-left",
+			[this](Value &&) {
+		Value ret;
+		auto rect = [&](Node *node, StringView name) {
+			const auto size = node->getContentSize();
+			const auto origin = node->convertToWorldSpace(Vec2::ZERO);
+			Value v;
+			v.setDouble(origin.x, "x");
+			v.setDouble(origin.y, "y");
+			v.setDouble(size.width, "width");
+			v.setDouble(size.height, "height");
+			ret.setValue(sp::move(v), name);
+		};
+		rect(_hiddenBox, "hiddenLayer");
+		rect(_hiddenPanel, "hiddenPanel");
+		ret.setDouble(_contentSize.height, "height");
+		return ret;
+	});
 }
 
 } // namespace stappler::xenolith::app

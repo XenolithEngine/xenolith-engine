@@ -170,15 +170,9 @@ public:
 	bool isCursorSupported(WindowCursor, bool serverSide) const;
 	WindowCapabilities getWindowCapabilities() const;
 
-	/* Whether an OS dialog of this type can actually be served here.
-
-	The capability bits are per GROUP of dialog types and cannot answer for a single one:
-	WindowCapabilities::SystemFileActions covers reveal, trash and restore, and the last of those
-	has no primitive on macOS. Ask this before OFFERING a feature that rests on a dialog type -
-	greying the action out is a better answer than a destructive step that cannot be taken back.
-
-	Safe to call from any thread: the answer is settled when the controller starts and never moves.
-	*/
+	/* Whether an OS dialog of this type can be served here. Capability bits cover groups of types
+	(SystemFileActions includes restore, which macOS lacks), so check this before offering a
+	feature. Safe from any thread: the answer is fixed when the controller starts. */
 	bool isDialogSupported(sprt::window::DialogType) const;
 
 	// Request creation of an additional native window; safe to call from any thread. `info` (and
@@ -188,10 +182,10 @@ public:
 	// Non-Root types require WindowInfo::parent and native subwindow support
 	// (WindowCapabilities::Subwindows)
 	//
-	// `complete` runs once on the app thread with the outcome and the FINAL, uniqued
-	// WindowInfo::id (empty on failure) — the id the caller asked for may have been renamed to
-	// avoid a collision. It reports that the window system accepted the window, NOT the first
-	// frame; the scene arrives separately, through WindowSceneInfo::makeScene.
+	// `complete` runs once on the app thread with the outcome and the final, uniqued WindowInfo::id
+	// (empty on failure; the requested id may be renamed). It reports that the window system
+	// accepted the window, not the first frame; the scene arrives through
+	// WindowSceneInfo::makeScene.
 	virtual void createWindow(Rc<WindowInfo> &&,
 			Function<void(Status, StringView id)> && = nullptr);
 
@@ -202,15 +196,12 @@ public:
 	virtual Status writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&,
 			SpanView<String>, Ref * = nullptr, StringView label = StringView());
 
-	// Hand the controller an already-assembled ClipboardData. Same thread contract as the rest of
-	// this group: call it on the context thread
+	// Hand the controller an already-assembled ClipboardData. Call on the context thread
 	virtual Status writeToClipboard(Rc<sprt::window::ClipboardData> &&);
 
-	// Open an OS dialog with no owning window — CLI-ish paths, or a reveal/trash on a context that
-	// has no visible window. Safe to call from any thread; the completion runs on `target`.
-	//
-	// Dialogs that DO belong to a window go through AppWindow::openDialog instead, which parents
-	// them and cancels them if the window dies.
+	// Open an OS dialog with no owning window (CLI paths, reveal/trash without a visible window).
+	// Safe from any thread; the completion runs on `target`. Window-owned dialogs use
+	// AppWindow::openDialog, which parents them and cancels them with the window.
 	virtual Status openDialog(NotNull<sprt::dispatch::Looper> target,
 			Rc<sprt::window::DialogRequest> &&);
 	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>);

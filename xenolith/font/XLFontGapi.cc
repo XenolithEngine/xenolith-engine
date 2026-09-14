@@ -24,7 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-// Out-of-line virtual destructors anchor the vtables in this TU (stage-1 vtable lesson).
+// Out-of-line virtual destructors anchor the vtables in this TU.
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 FontGapi::~FontGapi() = default;
@@ -34,7 +34,7 @@ FontGapiProxy::~FontGapiProxy() = default;
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
 void FontGapiProxy::compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&cb) {
-	// STUB (stage 3): would request the server to compile the atlas image and report back.
+	// Stub: would request the server to compile the atlas image and report back.
 	log::source().warn("FontGapiProxy",
 			"compileImage: remote font gAPI is not implemented yet (stage-3 stub)");
 	if (cb) {
@@ -44,7 +44,7 @@ void FontGapiProxy::compileImage(const Rc<core::DynamicImage> &, Function<void(b
 
 void FontGapiProxy::updateImage(sprt::dispatch::Looper *, const Rc<core::DynamicImage> &,
 		Vector<FontUpdateRequest> &&, Rc<core::DependencyEvent> &&, Function<void(bool)> &&cb) {
-	// STUB (stage 3): would serialize the glyph requests, ask the server to rasterize them into the
+	// Stub: would serialize the glyph requests, ask the server to rasterize them into the
 	// atlas, and deliver the atlas-ready result back to the client.
 	log::source().warn("FontGapiProxy",
 			"updateImage: remote font gAPI is not implemented yet (stage-3 stub)");

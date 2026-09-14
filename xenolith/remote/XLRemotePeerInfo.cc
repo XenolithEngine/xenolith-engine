@@ -25,9 +25,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// The wire numbering was taken from the runtime's platform/arch ids so there is one numbering
-// rather than two. These are what would fail if the runtime ever renumbered them -- at which point
-// the mapping below has to become an explicit table, and the wire values must NOT follow.
+// The wire numbering follows the runtime's platform/arch ids. If the runtime renumbers them, the
+// mapping below must become an explicit table; the wire values must not change.
 static_assert(toInt(OsPlatform::MacOs) == __SPRT_PLATFORM_ID_MACOS
 				&& toInt(OsPlatform::Ios) == __SPRT_PLATFORM_ID_IOS
 				&& toInt(OsPlatform::Darwin) == __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
@@ -121,8 +120,7 @@ WindowSubsystem toWindowSubsystem(sprt::window::SurfaceBackend b) {
 	case SurfaceBackend::GoogleGames: return WindowSubsystem::Android;
 	case SurfaceBackend::Canvas: return WindowSubsystem::Canvas;
 	case SurfaceBackend::Display: return WindowSubsystem::Display;
-	// Surface / DirectFb / Fuchsia / VI / QNX / OpenHarmony have no engine window path yet; saying
-	// "unknown" is the honest answer, and it is what a client tests against before assuming.
+	// Surface / DirectFb / Fuchsia / VI / QNX / OpenHarmony have no engine window path: Unknown.
 	default: break;
 	}
 	return WindowSubsystem::Unknown;
@@ -154,9 +152,7 @@ bool PeerInfo::supports(Domain domain, uint8_t code) const {
 	default: return false;
 	}
 	if (mask == 0) {
-		// Said nothing -- which is what a peer built before this field does. Assuming the worst here
-		// would refuse to send it anything at all; assuming the best leaves it exactly where it was,
-		// answering NotImplemented to what it does not know.
+		// Said nothing: assume support; the peer answers NotImplemented to what it does not know.
 		return true;
 	}
 	return (mask & codeBit(code)) != 0;
@@ -241,8 +237,7 @@ Value serializePeerInfo(const PeerInfo &info) {
 	transport.setString(info.transportScheme, "scheme");
 	transport.setInteger(toInt(info.transportCaps), "caps");
 
-	// One key per domain rather than an array: the domains are named things, not positions, and a
-	// domain added later must not shift the meaning of the others.
+	// One key per domain rather than an array, so a new domain does not shift the others.
 	Value &codes = ret.emplace("codes");
 	codes.setInteger(int64_t(info.globalCodes), "g");
 	codes.setInteger(int64_t(info.windowCodes), "w");
@@ -255,8 +250,7 @@ Value serializePeerInfo(const PeerInfo &info) {
 PeerInfo deserializePeerInfo(const Value &val) {
 	PeerInfo ret;
 
-	// Absent for a peer that predates the field; the zeros that leaves mean "said nothing", which is
-	// what PeerInfo::supports reads them as.
+	// When absent, the zeros mean "said nothing" (see PeerInfo::supports).
 	const Value &codes = val.getValue("codes");
 	ret.globalCodes = uint64_t(codes.getInteger("g"));
 	ret.windowCodes = uint64_t(codes.getInteger("w"));

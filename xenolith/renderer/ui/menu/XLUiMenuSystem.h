@@ -36,21 +36,15 @@ class MenuItem;
 	auto menu = node->addSystem(Rc<ui::MenuSystem>::create(source));
 	menu->setActivateCallback([](NotNull<ui::MenuSourceItem> item) { run(item->getName()); });
 
-This is the whole consumer: a popup is this system on the content of a ui::SubWindow (see
-XLUiMenuPopup.h), a menu bar drop-down is this system on a panel, a sidebar list is this system on
-a scrolled node. Nothing about it is popup-specific.
+Not popup-specific: a popup is this system on a ui::SubWindow's content (see XLUiMenuPopup.h), and
+it works equally on a panel or a scrolled node.
 
-IT OWNS ITS CHILDREN'S GEOMETRY, the way ui::DockSystem does. The owner therefore must not also
-carry a ui::LayoutSystem - two systems writing every child's ContentSize is not a layout, it is a
-fight - and the owner is marked with SystemManagedLayout so the style resolver keeps out of the
-same business. Colours, fonts, corners and backgrounds remain entirely CSS's.
+It owns its children's geometry: the owner must not carry a ui::LayoutSystem and is marked with
+SystemManagedLayout. Colours, fonts, corners and backgrounds come from CSS.
 
-WHY THE ROWS ARE NOT FLEX CONTAINERS. A row is placed arithmetically from the metrics, not by a
-nested flex pass, and that is a correctness requirement rather than an optimization: a flex column
-measures its items' MAIN axis with MeasureMode::MaxContent, and for a Label max-content means "do
-not wrap at all". A title stacked over a subtitle inside a column flex would therefore be measured
-as one line each and the row would come out too short for the text it is about to draw. The metrics
-wrap the text at the resolved column width and the row is built to the answer.
+Rows are placed arithmetically from the metrics, not by nested flex: a flex column measures its
+items' main axis with MaxContent, which for a Label means no wrapping, so wrapped rows would come
+out too short.
 
 App-thread only. */
 class SP_PUBLIC MenuSystem : public System {
@@ -63,45 +57,28 @@ public:
 	// Fired after the menu has acted on the item. See setActivateCallback.
 	using ActivateCallback = Function<void(NotNull<MenuSourceItem>)>;
 
-	/* Asked to open `item`'s submenu, anchored on the row's node. Return true when it did: opening a
-	submenu is navigation rather than a choice, so the item's own callback does NOT run and no
-	activation is reported. Unset, a submenu row behaves like any other command.
-
-	It has to be IDEMPOTENT for the item whose submenu is already open - the pointer coming back out
-	of a submenu onto the row that opened it asks again, and an implementation that tore the level
-	down and rebuilt it would flicker. MenuPopupChain::openSubmenu answers that in the one object
-	that knows, which is why this system caches no answer of its own. */
+	/* Opens `item`'s submenu anchored on the row's node; return true if it did. Opening is
+	navigation, so the item's callback does not run and no activation is reported. Unset, a submenu
+	row acts as a command. Must be idempotent for the already open item (MenuPopupChain::openSubmenu
+	is). */
 	using SubmenuHandler = Function<bool(NotNull<MenuSourceButton>, NotNull<Node>)>;
 
-	/* Asked to take down whatever submenu this menu has open, because the pointer moved to another
-	row. The pair of SubmenuHandler: a menu that opens submenus its own way closes them its own way,
-	and a menu with no handler for either behaves as it always did.
-
-	Free to be called with nothing open - it is not told, and must not care. */
+	/* Closes this menu's open submenu because the pointer moved to another row; may be called with
+	nothing open. */
 	using SubmenuCloseHandler = Function<void()>;
 
-	// The nearest MenuSystem at or above `node`. There is no acquireForNode: a menu is something an
-	// application builds deliberately, not something a widget can conjure over itself.
+	// The nearest MenuSystem at or above `node`; there is no acquireForNode.
 	static MenuSystem *findForNode(Node *);
 
-	/* Resolve a menu's geometry without building anything.
-
-	This is the single place a menu width or a row height is decided, and it answers three
-	questions that must never disagree: how large a popup surface to ask the window system for
-	(which has to be settled BEFORE any node exists), what a fit-content ancestor should be told
-	about an inline menu, and how tall each row has to be once its text has wrapped.
-
-	`density` must be the density the labels will actually be shaped at, or the measurement and the
-	drawing part company on a HiDPI display - measureForNode reads it off the node. */
+	/* Resolve a menu's geometry without building anything: the popup extent (needed before any node
+	exists), the fit-content answer for an inline menu, and each row's wrapped height. `density`
+	must be the density labels are shaped at; measureForNode reads it off the node. */
 	static MenuMetrics measure(font::FontController *, NotNull<MenuSource>, const MenuStyle &,
 			const MeasureConstraints &, float density = 1.0f);
 
-	/* measure() for a menu whose width is already decided - an inline menu sized by its parent, or
-	a popup surface being rebuilt at the extent the window system actually gave it.
-
-	This is the half of measure() that resolves the rows, so the two can never disagree about where
-	the text wraps. A width narrower than the columns need yields a zero text column, not a negative
-	one. */
+	/* measure() for an already decided width (an inline menu sized by its parent, or a popup at the
+	extent it was given); shares the row pass with measure(). A too narrow width yields a zero text
+	column. */
 	static MenuMetrics measureAtWidth(font::FontController *, NotNull<MenuSource>,
 			const MenuStyle &, float width, float density = 1.0f);
 
@@ -134,74 +111,49 @@ public:
 	// The geometry the last layout pass resolved. Empty before the first one.
 	const MenuMetrics &getMetrics() const { return _metrics; }
 
-	/* Fires after the item's own callback has run and after the menu has decided whether to stay
-	open - which is what lets a popup wrapper close the surface and report the choice in one place
-	without every item's callback having to know it is in a popup. */
+	/* Fires after the item's callback has run and the menu has decided whether to stay open, so a
+	popup wrapper can close and report in one place. */
 	virtual void setActivateCallback(ActivateCallback &&);
 	const ActivateCallback &getActivateCallback() const { return _activateCallback; }
 
-	/* Runs BEFORE the item's own callback, which is what a popup wrapper takes the surface down in:
-	an action is free to put another surface up in its place, and a menu still on screen behind it
-	is one the user then has to dismiss by hand. */
+	/* Runs before the item's callback; a popup wrapper closes its surface here, so an action that
+	opens another surface does not leave the menu behind it. */
 	virtual void setWillActivateCallback(ActivateCallback &&);
 
-	/* Told that the pointer arrived over this menu - the entering edge, and anywhere ON it rather
-	than on a row of it.
-
-	A level of a chain reports UPWARDS with this. The menu above armed a close the moment the
-	pointer left the row that opened this one, and the pointer having arrived here is exactly what
-	must call that off: without it the level is taken down under the pointer that walked into it,
-	which is the whole thing the close delay exists to prevent. It resumes on its own - the pointer
-	going back to a row of the level above arms it again.
-
-	Rows cannot answer this. A pointer resting on a separator, on the padding, or in the gap between
-	two rows is still in this menu, and none of those is a row that reports a hover. */
+	/* Called when the pointer enters this menu anywhere, including separators, padding and gaps
+	between rows. A chain level uses it to cancel the close its parent armed when the pointer left
+	the opener row. */
 	using PointerEnterHandler = Function<void()>;
 	virtual void setPointerEnterHandler(PointerEnterHandler &&);
 
 	virtual void setSubmenuHandler(SubmenuHandler &&);
 	virtual void setSubmenuCloseHandler(SubmenuCloseHandler &&);
 
-	/* Forget whatever the pointer had pending here - an open that has not fired, a close that has
-	not fired. Public because a level of a chain calls it on the levels ABOVE it: see
-	MenuPopupChain::handlePointerEntered. Free to be called with nothing armed. */
+	/* Cancel a pending submenu open or close; safe with nothing armed. Called by a chain level on
+	the levels above it (MenuPopupChain::handlePointerEntered). */
 	virtual void cancelSubmenuDelay();
 
 	// --- the pointer ----------------------------------------------------------------------------
 
-	/* Whether a hovered row opens its submenu, and after how long. See MenuHoverConfig for why the
-	two delays differ.
-
-	A popup carries it down its whole chain (MenuConfig::hover), so every level of one menu answers
-	the pointer alike; an inline menu is told here. */
+	/* Hover behaviour; see MenuHoverConfig. A popup passes it down the chain (MenuConfig::hover).
+	*/
 	virtual void setHoverConfig(const MenuHoverConfig &);
 	const MenuHoverConfig &getHoverConfig() const { return _hover; }
 
 	// --- the keyboard ---------------------------------------------------------------------------
 
-	/* Turn this menu into the keyboard's owner: a FocusGroup and a key listener on the owner node.
-
-	IT IS A MODE, NOT A CONSTANT, and it is OFF by default. The group is Exclusive - while it is
-	there, keys in this window go to this menu and to nothing else (see
-	InputDispatcher::EventHandlersInfo::addListenersFromStorage, which re-collects the listeners
-	scoped to the winning exclusive group). That is right for a menu that IS a surface and wrong for
-	an inline list of commands sitting in somebody else's panel, which would otherwise hold the
-	window's arrows for as long as it exists. So openMenu turns it on for the menu it builds, and an
-	inline menu is turned on by the application when the user starts driving it.
-
-	Being exclusive, an open menu also SWALLOWS the keys it does not use - Ctrl+S with a menu up must
-	not save the document. Flags::Propagate is set so a MenuSourceCustom row carrying a focus group
-	of its own (a search field in a menu) still gets its keys. */
+	/* Make this menu the keyboard owner: a FocusGroup and a key listener on the owner node. Off by
+	default. The group is Exclusive, so while enabled all keys in the window go to this menu and
+	unused ones are swallowed; openMenu enables it for popups, inline menus enable it on demand.
+	Flags::Propagate lets a MenuSourceCustom row with its own focus group receive keys. */
 	virtual void setKeyboardEnabled(bool);
 	bool isKeyboardEnabled() const { return _keyboardEnabled; }
 
 	// The group, or null while the keyboard is off.
 	FocusGroup *getFocusGroup() const { return _focus; }
 
-	/* The row the keyboard is on, marked with the `highlighted` style class.
-
-	There is ONE notion of "the current row": the pointer entering a row moves the highlight to it,
-	so a menu never shows a keyboard cursor on one row and a hover on another. */
+	/* The row the keyboard is on, marked with the `highlighted` style class. Hovering a row moves
+	it, so there is one current row. */
 	virtual void setHighlighted(MenuSourceItem *);
 	MenuSourceItem *getHighlighted() const { return _highlighted; }
 
@@ -227,14 +179,9 @@ public:
 	// callback.
 	virtual void handleItemActivated(NotNull<MenuSourceItem>);
 
-	/* Called by a row when the pointer entered it - the ENTERING EDGE only, and the only thing this
-	system hears about the pointer at all.
-
-	It carries two independent answers, and they are independent on purpose. The keyboard's cursor
-	follows the pointer, but only while the keyboard is in play (see setHighlighted). The submenu
-	answers whether or not it is: a row with a submenu arms the open timer, ANY other row arms the
-	close timer, and either arming cancels whatever was armed before - so running the pointer down a
-	list leaves one pending answer rather than a queue of them. */
+	/* Called by a row on pointer enter. The highlight follows only while the keyboard is enabled.
+	Independently, a submenu row arms the open timer and any other row arms the close timer; arming
+	replaces whatever was armed. */
 	virtual void handleItemHovered(NotNull<MenuSourceItem>);
 
 protected:
@@ -243,30 +190,26 @@ protected:
 		Rc<Node> node;
 	};
 
-	// The one pending answer to the pointer. Its own tag, so that a menu on a node that runs other
-	// actions cancels only this.
+	// Action tag of the pending submenu timer, so only it is cancelled.
 	static constexpr uint32_t SubmenuDelayActionTag = "XLUiMenuSubmenu"_tag;
 
-	// The group goes on BEFORE the listener: a listener takes the nearest group off the frame
-	// stack as it registers, and one added first would come up with none.
+	// The group is added before the listener, which takes the nearest group from the frame stack
+	// when it registers.
 	void enableKeyboard();
 	void disableKeyboard();
 
-	/* Arm the pointer's answer: `item` to open its submenu, null to take down whatever is open.
-	Cancels the previous one first, and a zero delay is answered on the spot rather than through the
-	action manager. */
+	/* Arm a submenu timer: `item` to open, null to close. Cancels the previous one; a zero delay
+	fires immediately. */
 	void armSubmenu(MenuSourceButton *item, TimeInterval delay);
 	void fireSubmenu();
 
-	// The listener that reports the pointer over the menu AS A WHOLE; built only for a menu that
-	// asked to be told (setPointerEnterHandler), because nothing else needs one.
+	// Listener for the pointer over the whole menu; built only when setPointerEnterHandler is set.
 	void enablePointerListener();
 	void disablePointerListener();
 
 	bool handleKey(const GestureData &);
 
-	// A row the keyboard may stand on: a visible, enabled command. A separator has nothing to
-	// activate and a custom row is somebody else's node.
+	// a visible, enabled command; separators and custom rows are not selectable
 	bool isSelectable(const Row &) const;
 
 	// -1 when nothing is highlighted or the highlighted item is no longer a row.
@@ -275,9 +218,8 @@ protected:
 	// The only writer of the `highlighted` style class.
 	void updateHighlightClasses();
 
-	// Bring _rows in line with the model, reusing the node of every item that is still there. Node
-	// reuse is keyed on item IDENTITY, not on the name: a name may be empty (separators) or shared,
-	// and a rebuild that recreated the row under an open menu would drop hover and flicker.
+	// Bring _rows in line with the model, reusing nodes keyed by item identity (names may be empty
+	// or shared); recreating a row under an open menu would drop hover and flicker.
 	void rebuild();
 
 	// Place the rows from the metrics. The only thing here that writes a node's geometry.
@@ -297,21 +239,17 @@ protected:
 	SubmenuCloseHandler _submenuCloseHandler;
 	MenuHoverConfig _hover;
 
-	/* What the armed timer is about: the row whose submenu is to open, or null for "close whatever
-	is open". It is NOT a record of what IS open - this system deliberately keeps none. A cache of
-	that would go stale the moment a level is taken down by something other than a hover (Left in a
-	submenu asks the chain directly), and a stale one would refuse to reopen the row it named. */
+	/* Target of the armed timer: the row to open, or null to close. Not a record of what is open;
+	the chain holds that, and a cache here would go stale when a level closes by other means. */
 	Rc<MenuSourceButton> _pendingSubmenu;
 	bool _submenuArmed = false;
 
 	bool _itemsDirty = true;
 
-	// Guards against our own commits: setContentSize on a row would otherwise come back as a child
-	// content-size event and re-arm the pass we are inside.
+	// Guards against our own commits re-arming the pass through child content-size events.
 	bool _inApply = false;
 
-	// Both owned by the owner node, like every other system it carries; raw here for the same
-	// reason _system is raw in MenuItem.
+	// owned by the owner node, like its other systems
 	FocusGroup *_focus = nullptr;
 	InputListener *_keyListener = nullptr;
 

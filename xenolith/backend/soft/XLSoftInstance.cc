@@ -51,8 +51,7 @@ Rc<core::Loop> Instance::makeLoop(NotNull<sprt::dispatch::Looper> looper,
 }
 
 Rc<Device> Instance::makeDevice(const core::LoopInfo &) const {
-	// deviceIdx is ignored on purpose - there is only ever one device and selecting "another" CPU
-	// is not a thing; an out-of-range index is not an error worth failing a launch over.
+	// deviceIdx is ignored: there is only one device, and an out-of-range index is not an error.
 	return Rc<Device>::create(this);
 }
 

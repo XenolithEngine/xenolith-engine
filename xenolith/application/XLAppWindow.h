@@ -88,13 +88,9 @@ public:
 	virtual void handleNativeInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
-	/* The id this window was given when it was shared, or 0 when it is not shared at all.
-	
-	Every call into RenderClientChannel carries it, because one channel serves all of a server's
-	shared windows and cannot otherwise tell which of them is speaking. The registry is asked each
-	time rather than the answer being cached: sharing and unsharing happen on this same thread, so a
-	cached copy would be a second truth that has to be invalidated, and the lookup is a map probe on
-	a map with as many entries as the process has shared windows. App thread only. */
+	/* The id this window was given when shared, or 0 when not shared. Every RenderClientChannel
+	call carries it, since one channel serves all shared windows. Looked up in the registry each
+	time, not cached. App thread only. */
 	uint64_t getSharedWindowId() const;
 
 	Context *getContext() const { return _context; }
@@ -114,32 +110,30 @@ public:
 	Director *getDirector() const { return _director; }
 
 	// The application payload this window was created with, or null for a window the application
-	// did not create itself (above all the root one, whose WindowInfo is built from the command
-	// line before the app thread exists). App thread.
+	// did not create (e.g. the root window). App thread.
 	WindowSceneInfo *getSceneInfo() const { return _sceneInfo; }
 
 	// Run constraints update process
 	void updateConstraints(core::UpdateConstraintsFlags); // from any thread
 
-	// Re-read the window's geometry from the native window and, if it changed, publish it to the
-	// app thread: the read-only mirror behind getWindowGeometry(), then
-	// RenderClientChannel::handleWindowGeometryChanged. Called by Context whenever the window
-	// system reports a move or a resize. Context thread.
+	// Re-read the geometry from the native window and, if changed, publish it to the app thread
+	// (the getWindowGeometry() mirror, then RenderClientChannel::handleWindowGeometryChanged).
+	// Context thread.
 	void notifyWindowGeometry() const;
 
 	void setReadyForNextFrame() override; // from any thread
 
-	// Force-invalidate all in-flight frames served by a remote render client (PresentationFrame::Remote).
-	// Called when the remote connection is reset so a frame stuck on a dead client cannot wedge the
-	// pipeline before the window reverts to its local Director. From any thread.
+	// Force-invalidate in-flight frames served by a remote render client
+	// (PresentationFrame::Remote), so a frame stuck on a dead client can not wedge the pipeline.
+	// From any thread.
 	void invalidateRemoteFrames();
 
-	// Restart presentation after the window's render client changed (remote takeover or revert). Clears a
-	// possibly-stale display-link barrier and pumps one fresh frame. From any thread.
+	// Restart presentation after the render client changed (remote takeover or revert): clears a
+	// stale display-link barrier and pumps one frame. From any thread.
 	void resetForRenderClientChange();
 
-	// Publishes `_clientIsRemote` alongside the base's `_client`, so the presentation thread can ask
-	// whether this window is served remotely without racing on a pointer only the app thread owns.
+	// Publishes `_clientIsRemote` alongside the base's `_client`, so the presentation thread can
+	// check for a remote client without racing on the app-thread pointer.
 	virtual void setRenderClient(core::RenderClientChannel *) override;
 
 	// Block current thread until next frame
@@ -157,23 +151,22 @@ public:
 	// 0 if no frame interval is set
 	uint64_t getPresentationFrameInterval() const;
 
-	// getUpdatableStateFlags() now lives on core::RenderServerChannel: it reads only the mirrored
-	// _state and _capabilities, so the remote proxy answers enableState() by the same rules this
-	// window does.
+	// getUpdatableStateFlags() is on core::RenderServerChannel, shared with the remote proxy.
 
 	// try to change WindowState by adding new flag
 	// Only one flag can be set per call
 	//
 	// WindowState::Fullscreen: acts like setFullscreen(FullscreenInfo::Current)
-	// WindowState::CloseRequest: if this flag is NOT set in _state:  calls AppWindow::close() (so, ExitGuard can be triggered)
-	// WindowState::CloseRequest: if this flag IS set in _state: forceы window to be closed by WM
+	// WindowState::CloseRequest: if not set in _state, calls AppWindow::close() (ExitGuard applies)
+	// WindowState::CloseRequest: if set in _state, forces the window to be closed by WM
 	virtual bool enableState(WindowState) override; // from app thread
 
 	// try to change WindowState by removing flag
 	// Only one flag can be removed per call
 	//
 	// WindowState::Fullscreen: acts like setFullscreen(FullscreenInfo::None)
-	// WindowState::CloseRequest: if this flag IS set in _state: discards close request and re-enables ExitGuard if it is retained
+	// WindowState::CloseRequest: if set in _state, discards the close request and re-enables
+	// ExitGuard if it is retained
 	virtual bool disableState(WindowState) override; // from app thread
 
 	virtual void acquireTextInput(TextInputRequest &&) override;
@@ -187,8 +180,6 @@ public:
 			Ref * = nullptr) override;
 
 	// core::RenderServerChannel (client -> server) additions.
-	// (setReadyForNextFrame / acquireScreenInfo / acquireTextInput / releaseTextInput / close are
-	//  satisfied by the existing methods.)
 	virtual void compileRenderQueue(const Rc<core::Queue> &,
 			Function<void(bool)> && = nullptr) override;
 	virtual void compileResource(Rc<core::Resource> &&, Function<void(bool)> && = nullptr,
@@ -224,17 +215,12 @@ public:
 	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&,
 			Ref * = nullptr) override;
 
-	// Open an OS dialog owned by this window; its completion runs on the app thread. The dialog is
-	// cancelled if the window closes — the callback still fires, with Status::ErrorCancelled,
-	// rather than being dropped.
-	//
-	// Keep the Rc<DialogRequest>: it is the cancellation token. The backend's DialogHandle never
-	// crosses to this thread.
-	// Whether an OS dialog of this type can be served at all - see Context::isDialogSupported. It
-	// is the same question with the same answer; it is here so that a widget holding a window does
-	// not have to reach past it for the context.
+	// Whether an OS dialog of this type can be served at all (same as Context::isDialogSupported).
 	bool isDialogSupported(sprt::window::DialogType) const;
 
+	// Open an OS dialog owned by this window; its completion runs on the app thread. If the window
+	// closes, the dialog is cancelled and the callback fires with Status::ErrorCancelled.
+	// Keep the Rc<DialogRequest>: it is the cancellation token.
 	virtual Status openDialog(NotNull<sprt::window::DialogRequest>) override;
 	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>) override;
 
@@ -272,11 +258,8 @@ public:
 	virtual void handleBackButton() override;
 
 	/* The window's frame-capture facility: a cutout of what this window last drew, as a Texture.
-
-	Built on first use and kept afterwards - a window that never captures pays nothing. App thread
-	only, like everything else a scene talks to. Never null; ask isAvailable() before relying on it,
-	because whether a cutout can be produced at all depends on the backend and on what this surface
-	allows (see _swapchainTransferSrc). */
+	Created on first use; app thread only. Never null; check isAvailable(), since support depends
+	on the backend and the surface (see _swapchainTransferSrc). */
 	FrameCapture *getFrameCapture();
 
 protected:
@@ -306,7 +289,7 @@ protected:
 	virtual void synchronizeClose();
 
 	// Hand _sceneInfo back to the app thread, where it is destroyed and its close callback fires.
-	// Used by the teardown path that never gets there on its own.
+	// Used by the teardown path that never reaches the app thread on its own.
 	void releaseSceneInfo();
 
 	Rc<Context> _context;
@@ -322,9 +305,9 @@ protected:
 
 	core::WindowState _contextState = core::WindowState::None; // for context thread
 
-	// Dialogs opened through this window that have not answered yet. App thread only. Kept so a
-	// teardown can answer whatever is still outstanding, and so a scene can ask whether a dialog
-	// is up. Entries remove themselves from the completion wrapper installed in openDialog.
+	// Dialogs opened through this window that have not answered yet; app thread only. Used to
+	// answer outstanding dialogs on teardown; entries remove themselves in the openDialog
+	// completion wrapper.
 	Vector<Rc<sprt::window::DialogRequest>> _pendingDialogs;
 
 	// Built lazily by getFrameCapture(); app thread only.
@@ -332,9 +315,8 @@ protected:
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;
-	// Whether the current render client serves this window over the wire. Mirrors
-	// `_client->isRemote()` for readers on the presentation thread, which must not touch `_client`
-	// itself (the app thread owns it).
+	// Whether the current render client is remote; mirrors `_client->isRemote()` for the
+	// presentation thread, which must not touch `_client`.
 	sprt::atomic<bool> _clientIsRemote = false;
 
 	bool _firstFrameCompleted = false;

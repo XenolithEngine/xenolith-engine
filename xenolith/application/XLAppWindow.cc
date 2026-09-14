@@ -77,10 +77,9 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 	_capabilities = _window->getInfo()->capabilities;
 	_windowId = StringView(_window->getInfo()->id).str<String>();
 
-	// Take the application's payload off the WindowInfo here, on the context thread. Taking is a
-	// Rc move, which is legal on any thread; leaving it in place is not, because the WindowInfo
-	// is destroyed here and the payload holds app-thread objects. It goes back to the app thread
-	// in end().
+	// Take the application's payload off the WindowInfo here: the WindowInfo is destroyed on the
+	// context thread, but the payload holds app-thread objects (an Rc move is thread-safe). It goes
+	// back to the app thread in end().
 	if (auto data = _window->takeAppData()) {
 		_sceneInfo = static_cast<WindowSceneInfo *>(data.get());
 		if (_sceneInfo) {
@@ -97,26 +96,19 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 }
 
 void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
-	// attachRenderQueue defers this onto the context thread, and an auxiliary window can be
-	// dismissed before it gets there. Starting the engine on a window that is winding down
-	// strands a swapchain that never presents and poisons the present path for later windows.
+	// attachRenderQueue defers this to the context thread, and an auxiliary window can be dismissed
+	// before then; starting the engine on a closing window strands a swapchain and breaks
+	// presenting.
 	if (!_window || !_presentationEngine || _inCloseRequest) {
 		log::source().debug("WindowDiag", "runWithQueue skipped (dismissed) id=", _windowId);
 		return;
 	}
 
 	if (!_presentationEngine->isRunning()) {
-		// Every non-Root window maps before its first present; only Root defers.
-		//
-		// Popup/Tooltip need it for behaviour: hit-testing and the dismiss monitors need a placed
-		// window from the moment the menu exists. Dialog and Utility need it because the deferred
-		// path is defective - with TWO decorated auxiliary windows deferred at once, tearing either
-		// of them down poisons the present path for the survivors (MaterialSwapchainPass starts
-		// failing and the process goes down). The defect is in the deferred map itself: it hangs
-		// off handleFrameReady, and scheduleNextImage is dropped silently while the swapchain does
-		// not exist yet (it is built asynchronously from the first WM configure). Root keeps the
-		// deferred path - there is normally one Root, and deferring is what keeps it from showing
-		// an unpainted window at startup.
+		// Every non-Root window maps before its first present. Popup/Tooltip need a placed window
+		// for hit-testing and dismiss monitors. Dialog/Utility avoid the deferred map, which breaks
+		// presenting for surviving windows when two deferred decorated windows exist and one is
+		// torn down. Root defers, so it does not show an unpainted window at startup.
 		const auto type = _window->getInfo()->type;
 		if (type != sprt::window::WindowType::Root) {
 			_window->mapWindow();
@@ -148,8 +140,8 @@ void AppWindow::releaseSceneInfo() {
 	if (!_sceneInfo) {
 		return;
 	}
-	// Destroyed on the app thread, never here: it holds scene-graph objects captured by the
-	// opener. `this` is not captured — the window may be gone by the time this runs.
+	// Destroyed on the app thread: it holds scene-graph objects captured by the opener. `this` is
+	// not captured, the window may be gone by then.
 	_application->performOnAppThread([sceneInfo = move(_sceneInfo)]() mutable {
 		sceneInfo->setWindow(nullptr);
 		sceneInfo->fireClose();
@@ -160,8 +152,8 @@ void AppWindow::releaseSceneInfo() {
 
 void AppWindow::end() {
 	if (!_presentationEngine) {
-		// The engine never came up (or end() ran twice). The payload still has to go home: this is
-		// the only path where a window can die without ever reaching the app thread below.
+		// The engine never came up (or end() ran twice); the payload still has to be released on
+		// the app thread.
 		releaseSceneInfo();
 		synchronizeClose();
 		return;
@@ -174,8 +166,7 @@ void AppWindow::end() {
 		engine->end();
 	}
 
-	// Preserve final window capabilities
-	// On Android, through capabilities we know if Director should be preserved
+	// Preserve final window capabilities; on Android they decide whether the Director is preserved.
 	if (_window) {
 		_capabilities = _window->getInfo()->capabilities;
 	}
@@ -185,9 +176,8 @@ void AppWindow::end() {
 		_client = nullptr; // the Director (client endpoint) is being destroyed below
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
 		if (sceneInfo) {
-			// Every teardown route reaches here — own close, parent cascade, WM-side dismiss — so
-			// this is the one place the opener's callback has to fire, and it fires with no id
-			// lookup and no way to be missed.
+			// Every teardown route (own close, parent cascade, WM dismiss) reaches here, so the
+			// opener's callback fires here.
 			sceneInfo->setWindow(nullptr);
 			sceneInfo->fireClose();
 			sceneInfo = nullptr;
@@ -215,8 +205,8 @@ void AppWindow::close(bool graceful) {
 
 	_inCloseRequest = true;
 
-	// Auxiliary windows tear down through the very same path as every other window: the EndOfLife
-	// handshake below is what makes the app thread let go before the engine goes away.
+	// Auxiliary windows use the same teardown path: the EndOfLife handshake below makes the app
+	// thread release the window before the engine goes away.
 	_context->performOnThread([this, w = Rc<NativeWindow>(_window), graceful] {
 		if (w) {
 			if (!w->close()) {
@@ -304,10 +294,9 @@ void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 }
 
 void AppWindow::handleNativeInputEvents(Vector<InputEventData> &&events) {
-	// Deliberately NOT handleInputEvents(): the point is to enter one level lower, at the native
-	// window, so the events pass through NativeWindow::handleInputEvents - pointer bookkeeping and,
-	// above all, the text-input processor's keyboard interception - before reaching the scene. The
-	// native window then calls back into handleInputEvents() through the controller.
+	// Not handleInputEvents(): enter at the native window, so events pass through
+	// NativeWindow::handleInputEvents (pointer bookkeeping, text-input interception) first; it
+	// calls back into handleInputEvents() through the controller.
 	_context->performOnThread([this, events = sp::move(events)]() mutable {
 		if (_window) {
 			_window->handleInputEvents(sp::move(events));
@@ -353,8 +342,8 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	if (cfg.transfer) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferDst;
 	}
-	// What makes a frame capture possible: the presented image can be copied out of, in place, by
-	// the pass that just drew it. selectConfig() only asks for this where the surface allows it.
+	// Frame capture requires presented images readable by the pass that drew them; selectConfig()
+	// requests this where the surface allows it.
 	if (cfg.transferSrc) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
 	}
@@ -392,14 +381,12 @@ core::ImageViewInfo AppWindow::getSwapchainImageViewInfo(const core::ImageInfo &
 core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool fastMode) {
 	auto c = _context->handleAppWindowSurfaceUpdate(this, cfg, fastMode);
 
-	// Ask for readable presented images where the surface offers it. Vulkan guarantees only
-	// ColorAttachment for a swapchain image, so a refusal here is a normal answer and not an error -
-	// what depends on it (FrameCapture) has a path for it. Logged because the answer varies by
-	// driver and compositor, and it is not otherwise visible from inside the app.
+	// Ask for readable presented images where offered. Vulkan guarantees only ColorAttachment for
+	// swapchain images, so a refusal is normal (FrameCapture has a fallback); logged since it
+	// varies by driver and compositor.
 	c.transferSrc = hasFlag(cfg.supportedUsageFlags, core::ImageUsage::TransferSrc);
 
-	// XL_NO_SWAPCHAIN_TRANSFER_SRC=1 - pretend the surface refused. The offscreen path is otherwise
-	// unreachable on hardware that grants TransferSrc, which is all of it here.
+	// XL_NO_SWAPCHAIN_TRANSFER_SRC=1 pretends the surface refused, to exercise the offscreen path.
 	if (auto value = ::getenv("XL_NO_SWAPCHAIN_TRANSFER_SRC")) {
 		if (StringView(value) != "0") {
 			c.transferSrc = false;
@@ -426,14 +413,8 @@ core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool
 void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 		Function<void(NotNull<core::PresentationFrame>)> &&cb) {
 	// Tag the frame remote up front, on the presentation thread, so the engine tracks it for
-	// connection-reset cleanup even while it is only awaiting the client's reply below.
-	//
-	// Read through the atomic mirror, NOT through `_client`. That pointer is written on the app
-	// thread (ServerAppThread::takeoverShared*) and this runs on the presentation thread: a plain
-	// read of it is a data race, whatever the old comment here claimed. The consequence is not
-	// theoretical -- a frame handed to a remote client but read as local is never marked, so
-	// PresentationEngine's connection-reset cleanup does not know to kill it, and a dropped
-	// connection leaves it in flight for ever.
+	// connection-reset cleanup while it awaits the client's reply. Read the atomic mirror, not
+	// `_client`, which is written on the app thread.
 	if (_clientIsRemote.load(sprt::memory_order_acquire)) {
 		frame->markRemote();
 	}
@@ -452,9 +433,8 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 				}, guard);
 			});
 		} else {
-			// No client (or proxy): the window is mid-teardown or never got a Director. Dropping
-			// the callback would leave the frame in _activeFrames forever and wedge EndOfLife —
-			// invalidate it instead so the completion runs and the engine unwinds.
+			// No client (or proxy): the window is mid-teardown or never got a Director. Invalidate
+			// the frame so the completion runs; dropping it would wedge EndOfLife.
 			log::source().debug("WindowDiag", "acquireFrameData dropped id=", _windowId);
 			_context->performOnThread([frame = move(frame)]() mutable {
 				if (frame) {
@@ -563,10 +543,9 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			return nullptr;
 		}
 
-		// Everything else goes through the window system's own CPU buffers, so the rasterizer
-		// writes the frame straight into what gets presented. A window system that cannot provide
-		// them answers null, and there is no copying fallback: it would silently give up the one
-		// property this path exists for.
+		// Otherwise use the window system's CPU buffers, so the rasterizer writes directly into
+		// what is presented. A window system without them returns null; there is no copying
+		// fallback.
 		auto software = _window->makeSoftwareSurface();
 		if (!software) {
 			log::source()
@@ -718,9 +697,8 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	}
 	case sprt::window::SurfaceBackend::Display: {
 #if defined(VK_KHR_display)
-		// Direct-to-display (no window system): create a plane surface on the
-		// connector the window system opened, at the mode it resolved. Both travel
-		// in info.display — NOT WindowInfo (often a desktop default like 1024x768).
+		// Direct-to-display (no window system): create a plane surface on the connector the window
+		// system opened, at the mode it resolved, both from info.display, not WindowInfo.
 		surface = instance->createDisplayPlaneSurface(info);
 		if (surface == VK_NULL_HANDLE) {
 			return nullptr;
@@ -745,9 +723,8 @@ core::FrameConstraints AppWindow::exportConstraints(uint64_t &serial) const {
 		const_cast<sprt::window::FrameConstraints &>(_appFrameConstraints) = c;
 	}, const_cast<AppWindow *>(this));
 
-	// A resize changes the geometry too, and this is the one place both are already being read off
-	// the native window on the context thread - so the mirror rides along instead of racing a
-	// second, separately-timed read.
+	// A resize changes geometry too, and both are read here on the context thread, so the geometry
+	// mirror is updated in the same pass.
 	notifyWindowGeometry();
 	return c;
 }
@@ -760,13 +737,12 @@ void AppWindow::notifyWindowGeometry() const {
 	auto geometry = _window->getWindowGeometry();
 	_application->performOnAppThread([this, geometry] {
 		if (_appWindowGeometry == geometry) {
-			// Nothing moved and nothing resized. The context thread cannot tell - it has no copy of
-			// the mirror - so the comparison belongs here, and it is what keeps a window that is
-			// merely redrawing from waking the scene up.
+			// Nothing moved or resized; compared here since the context thread has no copy of the
+			// mirror.
 			return;
 		}
-		// The mirror is `const` to everything that reads it; this is the one writer, on the one
-		// thread allowed to write it - the same arrangement _appFrameConstraints has above.
+		// The mirror is `const` to readers; this is the single writer, on the app thread (as with
+		// _appFrameConstraints).
 		const_cast<sprt::window::WindowGeometry &>(_appWindowGeometry) = geometry;
 		if (_client) {
 			_client->handleWindowGeometryChanged(getSharedWindowId(), geometry);
@@ -883,8 +859,7 @@ FrameCapture *AppWindow::getFrameCapture() {
 		_frameCapture = Rc<FrameCapture>::create(_application, this);
 	}
 
-	// Re-read rather than latch: the surface has the last word and only answers once a swapchain
-	// has been configured, which may be after the first caller asked.
+	// Re-read, not latched: the surface answers only once a swapchain is configured.
 	_frameCapture->setSurfaceSupported(_appSwapchainConfig.transferSrc);
 	return _frameCapture;
 }
@@ -901,8 +876,7 @@ bool AppWindow::scheduleOffscreenFrame(Function<void(bool)> &&cb) {
 }
 
 Rc<core::FrameCaptureInput> AppWindow::takeFrameCaptureInput() {
-	// Deliberately not getFrameCapture(): this runs once per frame, and a window that has never
-	// been asked for a capture must not grow one just by rendering.
+	// Not getFrameCapture(): runs every frame, and must not create a capture object.
 	if (!_frameCapture || !_frameCapture->hasPending()) {
 		return nullptr;
 	}
@@ -919,8 +893,8 @@ Rc<core::FrameCaptureInput> AppWindow::takeFrameCaptureInput() {
 	}
 
 	if (input->regions.empty()) {
-		// Nothing survived: report the batch rather than leaving every target waiting for a copy
-		// that will never be recorded.
+		// Nothing survived: report the batch so targets do not wait for a copy that will never
+		// happen.
 		_frameCapture->handleCaptured(targets, false);
 		return nullptr;
 	}
@@ -945,7 +919,6 @@ void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bo
 
 void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
 	// Announce it to the client (the Director) so it can resolve this graph by name per frame.
-	// Director::handleRenderQueueAttached / _availableQueues had no caller at all before this.
 	if (_client && queue) {
 		_client->handleRenderQueueAttached(queue);
 	}
@@ -1116,10 +1089,9 @@ Status AppWindow::openDialog(NotNull<sprt::window::DialogRequest> req) {
 		if (!looper) {
 			return; // app thread already gone; nothing can deliver a completion any more
 		}
-		// A window that is winding down needs no special case here: either it is already out of
-		// the controller's active set, and openDialog declines with ErrorCancelled because the
-		// named parent cannot be resolved, or it is still there and performWindowTeardown cancels
-		// the dialog moments later. Both answer the callback rather than dropping it.
+		// A closing window needs no special case: openDialog declines with ErrorCancelled if the
+		// parent is already gone, or performWindowTeardown cancels the dialog; both answer the
+		// callback.
 		_context->openDialog(looper, sp::move(req));
 	}, this);
 	return Status::Ok;
@@ -1143,18 +1115,9 @@ bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) 
 void AppWindow::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
 	_context->performOnThread([this, cb = sp::move(cb)]() mutable {
-		/* THE ENGINE MAY BE GONE BY THE TIME THIS RUNS, and this was the one place in this file
-		that did not say so.
-
-		A capture is a hop onto the context thread, and `end()` clears `_presentationEngine` on that
-		same thread - so a window closed between the ask and the answer leaves this task holding a
-		null. It is not a corner: a headless run drives frames from a socket, and a screenshot in
-		flight while the window goes down is exactly what shutting one down under a driver script
-		looks like. It crashed twice before it was read.
-
-		ANSWERED EMPTY RATHER THAN DROPPED. Every caller already has to handle a capture that
-		produced no pixels - the inspector's turns an empty view into "capture failed" - while a
-		callback that is never called leaves whoever asked waiting for a frame that cannot come. */
+		/* The engine may be gone by the time this runs: `end()` clears `_presentationEngine` on the
+		context thread, so a window closed during a capture leaves a null. Answer empty rather than
+		dropping the callback; callers handle an empty capture as a failure. */
 		if (!_presentationEngine) {
 			if (cb) {
 				cb(core::ImageInfoData(), BytesView());

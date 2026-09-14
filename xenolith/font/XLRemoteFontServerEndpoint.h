@@ -31,12 +31,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 class FontComponent;
 
 // Concrete server font endpoint (see RemoteFontServer). Owns the dedicated network-serving
-// FontControllerLocal (its own FontLibrary + atlas, distinct from the server's local-scene controller),
-// the persistent font store keyed by content hash, and the depId -> DependencyEvent registry. Drives the
-// shared FontComponent GPU queue to rasterize the glyphs a client requests into its own atlas.
+// FontControllerLocal (its own FontLibrary + atlas, distinct from the server's local-scene
+// controller), the persistent font store keyed by content hash, and the depId -> DependencyEvent
+// registry. Drives the shared FontComponent GPU queue to rasterize the glyphs a client requests
+// into its own atlas.
 class SP_PUBLIC RemoteFontServerEndpoint : public RemoteFontServer {
 public:
-	// SharedModule factory. Returns the abstract interface so the server can hold it without a font dep.
+	// SharedModule factory. Returns the abstract interface so the server can hold it without a font
+	// dep.
 	static Rc<RemoteFontServer> createServerFontEndpoint(AppThread *owner, FontComponent *);
 
 	virtual ~RemoteFontServerEndpoint();

@@ -33,9 +33,8 @@ struct AccountClock {
 	bool useRealtime = false;
 	uint64_t resolution = 0; // nanoseconds, measured
 
-	// Reads until the clock moves and returns the step. Bounded: a clock that never advances must
-	// not hang the first frame that asks for the time. 200k reads is a few milliseconds even on a
-	// slow board, well past any plausible tick.
+	// Reads until the clock moves and returns the step, or 0. Bounded so a clock that never
+	// advances cannot hang the first frame.
 	static uint64_t probe(ClockType type) {
 		const auto start = sp::platform::nanoclock(type);
 		for (uint32_t i = 0; i < 200'000; ++i) {
@@ -51,8 +50,7 @@ struct AccountClock {
 		auto mono = probe(ClockType::Monotonic);
 		auto real = probe(ClockType::Realtime);
 
-		// Zero means the probe never saw it move: the worst case, not the best, or a dead clock
-		// would win the comparison below.
+		// Zero means the clock never moved: treat it as the worst resolution.
 		if (mono == 0) {
 			mono = maxOf<uint64_t>();
 		}
@@ -60,9 +58,7 @@ struct AccountClock {
 			real = maxOf<uint64_t>();
 		}
 
-		// Monotonic wins ties: it is the correct clock for a duration, and realtime is taken only
-		// when it is measurably better. A wall clock stepped mid-run would corrupt a sample; the
-		// boards where realtime wins have no RTC and no time sync, so there is nothing to step it.
+		// Monotonic wins ties; realtime is taken only when measurably finer.
 		useRealtime = real < mono;
 		resolution = useRealtime ? real : mono;
 	}
@@ -86,8 +82,7 @@ StringView getAccountClockName() { return getClock().useRealtime ? "realtime" : 
 
 namespace {
 
-// Same grammar as the other instruments: N = report every N frames, unset or 0 = off, anything
-// unparseable = 60.
+// N = report every N frames, unset or 0 = off, anything unparseable = 60.
 static uint64_t timelineInterval() {
 	static const uint64_t value = [] () -> uint64_t {
 		auto env = ::getenv("XL_FRAME_TIMELINE");
@@ -113,8 +108,7 @@ static const char *s_markNames[toInt(FrameMark::Count)] = {
 	"toLoop",
 };
 
-// Relaxed atomics: the marks are made from three threads but strictly in sequence, so there is no
-// race to lose - only a publication to make. One increment per mark is nothing beside a frame.
+// Atomics: marks come from three threads, but strictly in sequence.
 static sprt::atomic<uint64_t> s_bucket[toInt(FrameMark::Count)] = {};
 static sprt::atomic<uint64_t> s_prevMark{0};
 static sprt::atomic<uint64_t> s_closed{0};
@@ -132,14 +126,12 @@ void markFrame(FrameMark mark) {
 	auto now = getAccountClock();
 	auto prev = s_prevMark.exchange(now);
 
-	// The first mark of a run has nothing to measure from and opens the account instead of
-	// contributing to it.
+	// The first mark of a run only opens the account.
 	if (prev != 0) {
 		s_bucket[toInt(mark)].fetch_add(now - prev);
 	}
 
-	// The timeline closes at Presented: that is the mark the period is counted in, and reporting
-	// anywhere else would divide sums that cover a different number of frames.
+	// The timeline closes at Presented, the mark frames are counted in.
 	if (mark != FrameMark::Presented) {
 		return;
 	}
@@ -156,8 +148,7 @@ void markFrame(FrameMark mark) {
 		total += bucket[i];
 	}
 
-	// Nanoseconds in, microseconds out - the other instruments print microseconds and the whole
-	// point of this one is to be read beside them.
+	// Nanoseconds in, microseconds out, matching the other instruments.
 	auto per = [&] (uint64_t v) { return double(v) / double(frames) / 1'000.0; };
 	auto pct = [&] (uint64_t v) { return total ? double(v) * 100.0 / double(total) : 0.0; };
 
@@ -173,10 +164,8 @@ void markFrame(FrameMark mark) {
 }
 #endif
 
-// Out-of-line virtual destructors: each is the vtable key function (anchoring the vtable and
-// typeinfo in this single TU). They are defaulted, so the deleting destructor variant calls
-// operator delete -- safe in this freestanding build with exceptions disabled, so the warning is
-// suppressed here.
+// Out-of-line virtual destructors anchor the vtables in this TU. The deleting destructor calls
+// operator delete, which is safe in this freestanding build, so the warning is suppressed.
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 RenderClientChannel::~RenderClientChannel() = default;
@@ -191,12 +180,8 @@ void RenderServerChannel::setWindowExtent(Extent2, Function<void(Status)> &&cb, 
 	}
 }
 
-/* Moved down here from AppWindow, unchanged.
- *
- * It reads nothing but `_capabilities` and `_state`, both of which are mirrors every implementation
- * of this channel keeps - so it never belonged to one of them. A remote proxy that answered
- * enableState() from its own copy of these rules would drift from the real window the first time
- * either list changed; sharing the one implementation makes that impossible rather than unlikely. */
+/* Reads only the mirrored `_capabilities` and `_state`, so local and remote channels share these
+ * rules. */
 core::WindowState RenderServerChannel::getUpdatableStateFlags() const {
 	using sprt::window::WindowCapabilities;
 

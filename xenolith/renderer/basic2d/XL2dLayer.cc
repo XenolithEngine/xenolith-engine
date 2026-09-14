@@ -27,12 +27,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-/* The direction each name means, as a vector in the node's own space: X to the right, Y up.
-
-They used to be the other way round - `Horizontal` was (0, 1) and `Vertical` was (-1, 0) - which,
-together with the corner mix-up fixed in updateVertexes below, cancelled out into a gradient that
-ran along the axis the caller did NOT ask for. Nothing in the tree had ever built a two-colour
-SimpleGradient, so neither half had a chance to be noticed until something did. */
+/* The direction each name means, as a vector in the node's own space: X to the right, Y up. */
 const Vec2 SimpleGradient::Horizontal(1.0f, 0.0f);
 const Vec2 SimpleGradient::Vertical(0.0f, 1.0f);
 
@@ -173,12 +168,8 @@ void Layer::updateVertexesColor() {
 	}
 }
 
-/* The gradient's four corners, in the order the QUAD wants them.
-
-SimpleGradient::colors is `bl, br, tl, tr` - its own documented order, and the one every constructor
-above writes. VertexArray::Quad is `tl, bl, tr, br`, which its setGeometry spells out. Handing one
-straight to the other transposes the square, so a gradient asked for left-to-right came out
-bottom-to-top and every quad of a horizontal ramp rendered as a flat band. */
+/* The gradient's four corners in quad order: SimpleGradient::colors is `bl, br, tl, tr`, while
+VertexArray::Quad expects `tl, bl, tr, br`. */
 void Layer::writeGradientColors(Color4F *out) const {
 	auto apply = [&](const Color4B &c) {
 		return Color4F(_displayedColor.r * (c.r / 255.0f), _displayedColor.g * (c.g / 255.0f),
@@ -192,8 +183,8 @@ void Layer::writeGradientColors(Color4F *out) const {
 }
 
 RenderingLevel Layer::getRealRenderingLevel() const {
-	// The Overlay level outranks everything a sprite could resolve for itself, including an explicit
-	// setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
 	if (_inOverlay) {
 		return RenderingLevel::Overlay;
 	}

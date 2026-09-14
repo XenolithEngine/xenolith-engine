@@ -28,6 +28,7 @@ require the target platform.
 | [Per-platform detail](docs/agents/platforms.md) | touching Windows, Android or macOS |
 | [Creating a new project](docs/agents/new-project.md) | adding a project makefile |
 | [The ready-made test projects](docs/agents/test-projects.md) | verifying a change — start here rather than writing a new harness |
+| [The test protocol](docs/agents/test-protocol.md) | what to run after an edit and what before a commit, and what each costs |
 | [Verifying on the right target](docs/agents/cross-target.md) | changing code the host cannot build or run |
 | [Toolchains & tools](docs/agents/toolchains.md) | an SDK, sysroot or toolchain question |
 | [Common pitfalls](docs/agents/pitfalls.md) | asking why something does not build |
@@ -60,6 +61,11 @@ directory rather than overwriting each other.
 
 **Re-pinning a golden is a decision to record in the commit message, not a way to make a run
 green.** → [The ready-made test projects](docs/agents/test-projects.md)
+
+**An edit owes `tests/run-checks.py`, a commit owes `tests/run-checks.py full`.** The first picks the
+harnesses the diff can break (12 s for the console ones); the second is the gate, four minutes at
+`-j4`. Every headless check may run in parallel — measured, not assumed. →
+[The test protocol](docs/agents/test-protocol.md)
 
 **Times need a release build, a quiet machine, and no polling for frames.** A debug build does not
 scale timings, it reorders them; a client that polls the app thread competes with the frame it is

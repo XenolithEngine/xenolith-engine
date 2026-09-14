@@ -25,8 +25,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 void FrameCaptureAttachmentHandle::finalize(FrameQueue &queue, bool successful) {
-	// Moved out before the call: finalize runs once per frame, but a completion that re-entered
-	// here - by tearing something down - must not find itself still installed.
+	// Moved out before the call, so a completion that re-enters here is no longer installed.
 	if (auto input = dynamic_cast<FrameCaptureInput *>(_input.get())) {
 		if (auto cb = sp::move(input->completion)) {
 			input->completion = nullptr;

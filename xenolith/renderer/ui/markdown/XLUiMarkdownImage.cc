@@ -64,8 +64,7 @@ void MarkdownImageSystem::reposition() {
 		}
 		it.rect = rect;
 
-		// A box with no extent is a picture the layout has not placed yet - or one that fell
-		// outside a line limit. Either way there is nothing to draw over.
+		// No extent: not placed yet, or beyond a line limit.
 		if (rect.size.width <= 0.0f || rect.size.height <= 0.0f) {
 			it.node->setVisible(false);
 			continue;

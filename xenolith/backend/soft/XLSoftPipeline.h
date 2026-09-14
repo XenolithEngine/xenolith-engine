@@ -27,10 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-// SPIR-V is never interpreted. A shader is a named key: the queue asks for `Loader_FlatVert` /
-// `Loader_FlatFrag` and the rasterizer answers with its built-in C++ stages, the same way the
-// WebGPU backend answers with WGSL. Anything else is rejected at compileQueue time, loudly,
-// rather than silently rendering nothing.
+// SPIR-V is never interpreted. A shader is a named key: `Loader_FlatVert` / `Loader_FlatFrag`
+// select the rasterizer's built-in C++ stages. Anything else is rejected at compileQueue time.
 class SP_PUBLIC Shader final : public core::Shader {
 public:
 	virtual ~Shader() = default;
@@ -46,7 +44,7 @@ protected:
 
 // A pipeline is the small set of switches the kernels actually branch on. Everything else the
 // PipelineData carries (depth, stencil, cull, polygon mode, sample shading) has no meaning in
-// the flat contract and is dropped here on purpose.
+// the flat contract and is dropped.
 class SP_PUBLIC GraphicPipeline final : public core::GraphicPipeline {
 public:
 	virtual ~GraphicPipeline() = default;

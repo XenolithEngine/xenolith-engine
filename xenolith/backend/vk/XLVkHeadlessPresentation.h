@@ -51,14 +51,11 @@ protected:
 
 // Pseudo-swapchain: a ring of ordinary device images that imitate swapchain images.
 //
-// Every image carries ImageUsage::TransferSrc on top of what a real swapchain image would get, so
-// the rendered result is always readable back through Loop::captureImage - that is what makes the
-// "screenshot of the current screen" command possible without rendering an extra frame.
+// Every image also carries ImageUsage::TransferSrc, so Loop::captureImage can read the current
+// screen without rendering an extra frame.
 //
-// Acquisition is synchronous and hands out no semaphore: an unsignalled binary semaphore would end
-// up in pWaitSemaphores and deadlock the queue submit (there is no vkAcquireNextImageKHR here to
-// signal it). For the same reason the engine must run with acquireImageWithoutFence - vk::Fence has
-// no host-signal path.
+// Acquisition is synchronous and hands out no semaphore (an unsignalled one would deadlock the
+// submit). The engine must run with acquireImageWithoutFence: vk::Fence has no host-signal path.
 class SP_PUBLIC HeadlessSwapchain final : public core::Swapchain {
 public:
 	virtual ~HeadlessSwapchain();

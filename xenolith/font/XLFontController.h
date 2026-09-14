@@ -75,9 +75,8 @@ public:
 		FontFaceObject::Usage usage;
 	};
 
-	// One entry of _layouts: a FontFaceSet, which is what "a loaded font" means here - one family at
-	// one specialization (size, style, weight, stretch, grade AND density), holding the faces opened
-	// for it and everything they have cached.
+	// One entry of _layouts: a FontFaceSet - one family at one specialization (size, style, weight,
+	// stretch, grade and density) with the faces opened for it and their caches.
 	struct LayoutInfo {
 		StringView name; // the layout key: family.size.style.weight.stretch.grade.density
 		StringView family;
@@ -85,8 +84,7 @@ public:
 		Metrics metrics;
 
 		// Holders besides _layouts itself. Zero means the next removeUnusedLayouts() drops this
-		// layout - which is exactly what a font set that is created and immediately abandoned (a
-		// stray density, a size no node keeps) looks like from the outside.
+		// layout.
 		uint32_t users = 0;
 		bool persistent = false;
 		uint64_t idleTime = 0; // microseconds since the last getLayout() touch
@@ -107,11 +105,8 @@ public:
 		size_t charsMemory = 0;
 		size_t kerningPairs = 0;
 		size_t requiredChars = 0; // glyphs the atlas is asked to hold
-		/* HOW MANY BATCHES HAVE BEEN SENT, which is a COUNT and therefore assertable on any machine.
-
-		`glyphGeneration` counts requests and says nothing about how many times the atlas was actually
-		rebuilt; this counts the submissions, and a submission is what gates a frame. "This page cost
-		two batches" is the machine-independent half of "this page took 80 ms". */
+		/* Number of batches submitted (each gates a frame); unlike `glyphGeneration`, which counts
+		requests, this is machine-independent and assertable. */
 		uint64_t batches = 0;
 		uint64_t glyphGeneration = 0;
 		uint64_t submittedGeneration = 0;
@@ -120,10 +115,9 @@ public:
 		uint32_t atlasWidth = 0;
 		uint32_t atlasHeight = 0;
 
-		// What the eviction policy sees. `cachePressure` is what is compared against
-		// `evictionThreshold`. `atlasOccupancy` is a diagnostic and NOT the gate - see
-		// config::FontCacheAtlasBudget for why a fill ratio cannot be one. Negative when there is no
-		// atlas image to measure.
+		// What the eviction policy sees: `cachePressure` is compared against `evictionThreshold`.
+		// `atlasOccupancy` is a diagnostic, not the gate (see config::FontCacheAtlasBudget);
+		// negative when there is no atlas image.
 		uint64_t atlasBytes = 0;
 		uint64_t atlasBudget = 0;
 		float cachePressure = -1.0f;
@@ -185,19 +179,18 @@ public:
 		Data *_data;
 	};
 
-	// Reads the eviction debug knobs out of the environment; everything else is set up by the leaf's
+	// Reads the eviction debug knobs from the environment; the rest is set up by the leaf's
 	// initialize().
 	FontController();
 
 	virtual ~FontController() = default;
 
-	// Re-apply an extend() Builder against this controller. The base assembles the Builder; the leaf
-	// (applyBuilder) routes it to its source loader (local: FontComponent::acquireController).
+	// Re-apply an extend() Builder against this controller. The base assembles the Builder; the
+	// leaf (applyBuilder) routes it to its source loader (local: FontComponent::acquireController).
 	void extend(AppThread *app, const Callback<bool(FontController::Builder &)> &);
 
-	// GPU touchpoints implemented by the concrete leaf: local (FontComponentLocal -> gl Loop) or remote
-	// (FontControllerRemote -> server). The base owns only positioning + source state and never touches
-	// the GPU directly.
+	// GPU touchpoints implemented by the concrete leaf: local (FontComponentLocal -> gl Loop) or
+	// remote (FontControllerRemote -> server). The base owns only positioning and source state.
 	virtual void initialize(AppThread *) override = 0;
 	virtual void invalidate(AppThread *) override = 0;
 
@@ -210,10 +203,9 @@ public:
 
 	Rc<core::DependencyEvent> addTextureChars(const Rc<FontFaceSet> &, SpanView<CharLayoutData>);
 
-	// The glyph set a node laid out against. Record it at layout time and hand it back to
-	// isGlyphGenerationUploaded() on every later frame - a node cannot tell from its own vertex data
-	// whether the atlas still holds its glyphs, because the shader resolves them by CharId through
-	// whatever atlas instance is current when the frame runs.
+	// The glyph set a node laid out against. Record it at layout time and pass it to
+	// isGlyphGenerationUploaded() every later frame: the shader resolves CharIds through whatever
+	// atlas instance is current, so vertex data cannot tell whether the glyphs are still there.
 	uint64_t getGlyphGeneration() const { return _glyphGeneration; }
 
 	// True when everything required up to `gen` is confirmed present in the atlas and nothing is
@@ -223,19 +215,10 @@ public:
 	}
 
 	// A dependency to hold frames back until the atlas catches up, for a node whose generation
-	// isGlyphGenerationUploaded() rejects.
-	//
-	// Which event that is depends on whether anything is still waiting to be SENT. If some glyph has
-	// been laid out but not yet handed to the rasterizer, the caller has to wait for the batch that
-	// will carry it, so one is opened (or the accumulating one extended). If everything required is
-	// already on its way, the caller waits for THAT batch instead - a flush always submits the whole
-	// required set, so a batch in flight covers every glyph required when it left.
-	//
-	// The distinction is the whole point. Every label re-arms its gate on every frame for as long as
-	// the atlas is behind, so minting a batch here unconditionally meant the in-flight upload always
-	// had a successor queued before it landed: _uploadsInFlight never reached zero, the generation
-	// never caught up, and the atlas was rebuilt (and every window's materials recompiled) six times
-	// a second for as long as anything was on screen.
+	// isGlyphGenerationUploaded() rejects. If some laid-out glyph is not sent yet, a batch is
+	// opened (or the accumulating one extended); otherwise the batch in flight is returned, since a
+	// flush submits the whole required set. Never mint a batch unconditionally: labels re-arm every
+	// frame, and the in-flight upload would always have a queued successor.
 	Rc<core::DependencyEvent> acquireGatingDependency();
 
 	uint32_t getFamilyIndex(StringView) const;
@@ -245,32 +228,23 @@ public:
 	void dropLayoutsForFamily(StringView family);
 	StringView getFamilyName(uint32_t idx) const;
 
-	// What is loaded right now - the inspector's `fonts` command, and the way to see a font set that
-	// is built and dropped again every frame (users == 0 on a layout nothing keeps).
-	//
-	// Handed out through a callback rather than returned, because everything in LayoutInfo points
-	// into the live layout: it is valid for the duration of the call, under the shared lock, and no
-	// report can keep a layout alive - one extra reference would change what removeUnusedLayouts()
-	// drops, so a diagnostic would alter what it measures.
+	// What is loaded right now (the inspector's `fonts` command). LayoutInfo points into live
+	// layouts: valid only during the callback, under the shared lock, and it holds no reference so
+	// the report does not change what removeUnusedLayouts() drops.
 	void enumerateLayouts(const Callback<void(const LayoutInfo &)> &) const;
 
 	// The totals for the same walk. Counts every cached entry, so it is a report, not a per-frame
 	// call.
 	ControllerInfo getControllerInfo() const;
 
-	// How full the glyph cache is, 0..1 (and past 1 when a budget is exceeded). This is what gates
-	// eviction: a font set nobody holds is kept until this crosses the threshold.
-	//
-	// Two contributors, whichever is higher. The atlas IMAGE, for a backend that has one - it grows
-	// with what is cached, so its size against config::FontCacheAtlasBudget is the real pressure
-	// (its fill RATIO is not; see that constant). And the number of live sets against
-	// config::FontCacheMaxLayouts, which is the only bound available to a controller with no atlas
-	// of its own - the software rasterizer, which gives every glyph its own texture, and a remote
-	// client, whose atlas lives on the server and is managed by the server's own controller.
+	// How full the glyph cache is, 0..1 (past 1 when a budget is exceeded); a font set nobody holds
+	// is kept until this crosses the threshold. The higher of: atlas image size against
+	// config::FontCacheAtlasBudget, and live set count against config::FontCacheMaxLayouts (the
+	// only bound without a local atlas - the software rasterizer and a remote client).
 	virtual float getCachePressure() const;
 
-	// Debug: go back to dropping every unused font set on every update, the behaviour that predates
-	// the threshold. Seeded from XL_FONT_EVICT_ALWAYS.
+	// Debug: drop every unused font set on every update, ignoring the threshold. Seeded from
+	// XL_FONT_EVICT_ALWAYS.
 	void setEvictAlways(bool value) { _evictAlways.store(value); }
 	bool isEvictAlways() const { return _evictAlways.load(); }
 
@@ -281,15 +255,14 @@ public:
 
 	virtual void update(AppThread *, const UpdateTime &clock, bool) override;
 
-	// Submit any pending (dirty) glyphs to the gAPI endpoint now, gated by the current dependency. Called
-	// from update() on the app-update cadence; the remote client also calls it from its frame-production
-	// path (before the FrameInput is sent) so the server registers the gating dependency before the frame
-	// references it -- otherwise the frame's reconcile finds nothing and the glyphs are not actually gated.
+	// Submit pending (dirty) glyphs to the gAPI endpoint now, gated by the current dependency.
+	// Called from update(); the remote client also calls it before sending a FrameInput, so the
+	// server registers the gating dependency before the frame references it.
 	virtual void flushPendingGlyphs(AppThread *);
 
-	// Route a remote::Domain::Font notification addressed at this controller (server->client AtlasReady,
-	// etc.). The base consumes-and-ignores; FontControllerRemote overrides to drive the client protocol.
-	// Generic primitive signature so the base needs no remote:: types.
+	// Route a remote::Domain::Font notification addressed at this controller (AtlasReady, etc.).
+	// The base ignores it; FontControllerRemote drives the client protocol. Generic signature so
+	// the base needs no remote:: types.
 	virtual bool dispatchFontMessage(uint8_t code, uint32_t serial, BytesView payload) {
 		return true;
 	}
@@ -321,16 +294,14 @@ protected:
 	// (it walks _layouts under the shared lock). See FontFaceObject::hasPendingChars.
 	bool hasPendingGlyphs() const;
 
-	// Forget every submission, so the next flush sends the full set again. For a batch that failed:
-	// its characters are required but no longer on their way, and nothing else would ever re-send
-	// them - the flush skips a set that has not grown. App thread.
+	// Forget every submission, so the next flush sends the full set again. For a failed batch:
+	// the flush skips a set that has not grown, so nothing else would re-send it. App thread.
 	void resetSubmittedGlyphs();
 
-	// Leaf hooks. submitGlyphs hands a batch of glyph-raster requests (+ the gating dependency) to the
-	// leaf's gAPI endpoint (local: FontComponent -> gl Loop / VkFontQueue; remote: proxy -> server).
-	// makeDependency builds the DependencyEvent that gates the atlas update covering those glyphs
-	// (local: signalled by the FontQueue; remote: reconciled + signalled on the server). applyBuilder
-	// routes an extend() Builder to the leaf's source loader.
+	// Leaf hooks. submitGlyphs hands glyph-raster requests (+ the gating dependency) to the leaf's
+	// gAPI endpoint (local: FontComponent -> gl Loop / VkFontQueue; remote: proxy -> server).
+	// makeDependency builds the DependencyEvent gating that atlas update. applyBuilder routes an
+	// extend() Builder to the leaf's source loader.
 	virtual void submitGlyphs(AppThread *, Vector<FontUpdateRequest> &&,
 			Rc<core::DependencyEvent> &&) = 0;
 	virtual Rc<core::DependencyEvent> makeDependency() = 0;
@@ -357,28 +328,19 @@ protected:
 	Vector<StringView> _familiesNames;
 	Map<String, FamilySpec> _families;
 	HashMap<StringView, Rc<FontFaceSet>> _layouts;
-	// The batch being accumulated for the next flush. Handed to submitGlyphs() and dropped there, so
-	// it reaches the frames built before that flush and never a later one.
+	// The batch being accumulated for the next flush. Handed to submitGlyphs() and dropped there,
+	// so it reaches the frames built before that flush and never a later one.
 	Rc<core::DependencyEvent> _dependency;
 
-	// The last batch that WAS handed to the rasterizer, kept until it signals. This is what a caller
-	// with nothing new to send waits on (acquireGatingDependency): its glyphs are already inside it,
-	// so re-using it costs nothing, while opening another batch costs a full atlas rebuild in every
-	// window. Dropped as soon as it fires, so a caller never waits on a batch that has landed.
+	// The last batch handed to the rasterizer, kept until it signals. A caller with nothing new to
+	// send waits on it (acquireGatingDependency) instead of opening another batch. Dropped as soon
+	// as it fires.
 	Rc<core::DependencyEvent> _submittedDependency;
 
-	// "Is every required glyph actually in the atlas the shader samples?" - the question
-	// addTextureChars() has to answer, and the one FontFaceObject::_required cannot: that set is
-	// permanent and process-wide, so it says "already required" to a window that has never had its
-	// glyphs uploaded.
-	//
-	// _glyphGeneration is bumped whenever any face gains a new required glyph, and a batch carries
-	// the generation that was current when it was submitted.
-	//
-	// A generation may only be declared present once NOTHING is in flight. Confirming it per batch
-	// is wrong: flushes overlap (a batch is submitted every tick for as long as the atlas is
-	// behind), and a later batch can reach the atlas first - it then confirmed a generation whose
-	// own, slower batch was still rasterising, and the gate opened too early.
+	// Whether every required glyph is in the atlas the shader samples (FontFaceObject::_required
+	// is process-wide and cannot answer that). _glyphGeneration is bumped when any face gains a
+	// required glyph; a batch carries the generation current at submission. A generation is
+	// confirmed only once nothing is in flight: batches overlap and can land out of order.
 	uint64_t _glyphGeneration = 0;
 	sprt::atomic<uint64_t> _submittedGeneration = 0;
 	sprt::atomic<uint64_t> _uploadedGeneration = 0;

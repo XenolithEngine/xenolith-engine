@@ -267,7 +267,7 @@ uint32_t CommandList::pushParticleEmitter(uint64_t id, const Mat4 &t, CmdInfo &&
 		cmdData->depthValue = info.depthValue;
 		cmdData->bounds = info.bounds;
 
-		// note: prefix increment, NOT suffix
+		// note: prefix increment, not suffix
 		ret = cmdData->transformIndex = ++_preallocatedTransforms;
 
 		addCommand(cmd);
@@ -386,8 +386,8 @@ static TransformData transformInstance(const TransformData &src, const Mat4 &vie
 	return inst;
 }
 
-// Emit one immediate vertex command. For a resolved Deferred command pass its view/model transforms;
-// for an immediate VertexArray pass nullptr (instances are written as-is).
+// Emit one immediate vertex command. For a resolved Deferred command pass its view/model
+// transforms; for an immediate VertexArray pass nullptr (instances are written as-is).
 static void writeVertexCommand(BinWriter &w, const CmdInfo &info,
 		SpanView<InstanceVertexData> arrays, const Mat4 *view, const Mat4 *model, bool normalized) {
 	w.u32(info.material);
@@ -442,7 +442,8 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 		w.pod(s.scissor);
 	}
 
-	// commands: build into a side buffer first (Deferred resolves may add entries), then prefix count
+	// commands: build into a side buffer first (Deferred resolves may add entries), then prefix
+	// count
 	BinWriter cmds;
 	uint32_t cmdCount = 0;
 	uint32_t skippedParticles = 0;
@@ -479,8 +480,9 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 	w.u32(cmdCount);
 	w.raw(cmds.buf.data(), cmds.buf.size());
 
-	// Remote font dependencies: ship the client-minted (high-bit masked) dependency ids so the server can
-	// gate this frame on its own atlas-update events. The DependencyEvents themselves never cross the wire.
+	// Remote font dependencies: ship the client-minted (high-bit masked) dependency ids so the
+	// server can gate this frame on its own atlas-update events. The DependencyEvents themselves
+	// never cross the wire.
 	BinWriter deps;
 	uint32_t depCount = 0;
 	for (auto &d : waitDependencies) {
@@ -581,7 +583,8 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 
 	// Remote font dependency ids (reconciled to real, frame-gating events on the server by
 	// RemoteRenderClient::handleFrameInput). Output into the caller-provided vector wired via
-	// makeInputData; if absent (local path), the ids are still consumed from the stream but discarded.
+	// makeInputData; if absent (local path), the ids are still consumed from the stream but
+	// discarded.
 	auto depCount = r.u32();
 	if (remoteDeps) {
 		remoteDeps->clear();

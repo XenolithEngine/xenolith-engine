@@ -395,7 +395,7 @@ bool Loop::updateMaterialSet(NotNull<core::MaterialSet> data,
 
 void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<DependencyEvent>> &deps) const {
-	// deps are events OTHERS wait on: signal them when the update is applied
+	// deps are events others wait on: signal them when the update is applied
 	auto loop = const_cast<Loop *>(this);
 	loop->performOnThread([loop, req = sp::move(req), deps = deps]() mutable {
 		bool success = false;
@@ -419,7 +419,7 @@ void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 
 		loop->signalDependencies(deps, nullptr, success);
 	}, loop, false);
-	// NOT immediate: the caller (updateDynamicImage) holds the attachment's
+	// Not immediate: the caller (updateDynamicImage) holds the attachment's
 	// dynamic-tracker mutex, updateMaterials re-locks it via addDynamicTracker
 }
 
@@ -659,7 +659,7 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 	performOnThread([this, ctx, image]() mutable {
 		auto info = image->getInfo();
 		// keep rows 256-aligned in the readback buffer, repack on delivery. Rows are rows of
-		// BLOCKS - the same for a swapchain image, where the block is one pixel, and not the same
+		// blocks - the same for a swapchain image, where the block is one pixel, and not the same
 		// for anything compressed.
 		const uint64_t rowBytes = core::getFormatRowSize(info.format, info.extent.width);
 		const uint32_t rowCount = core::getFormatRowCount(info.format, info.extent.height);

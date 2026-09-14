@@ -75,8 +75,7 @@ SearchSystem *SearchSystem::acquireForNode(Node *node) {
 
 SearchSystem::~SearchSystem() {
 	if (_configuration) {
-		// Destroyed before the pool it was built in: its own child pool is registered under this
-		// one, and destroying the parent first would leave the destructor freeing memory twice.
+		// Destroy before the pool: its child pool is registered under it
 		_configuration->~Configuration();
 		_configuration = nullptr;
 	}
@@ -107,15 +106,13 @@ bool SearchSystem::init() {
 		return false;
 	}
 
-	// Owner and scene events for the lifetime, and the update tick for the debounce. No visit, no
-	// node events: this system draws nothing and cares about no geometry.
+	// Owner and scene events only; the debounce uses the update tick. No visit
 	_systemFlags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents;
 	return true;
 }
 
 void SearchSystem::handleExit() {
-	// Whatever was waiting out the debounce will never be asked for now, and an in-flight request
-	// would call back into a scene that is gone.
+	// Drop the pending request and cancel in-flight ones before the scene goes away
 	_pending.reset();
 	for (auto &it : _inFlight) {
 		if (it.source && it.handle) {
@@ -137,7 +134,7 @@ void SearchSystem::update(const UpdateTime &time) {
 	}
 
 	if (_pendingSince == 0) {
-		// First tick after the request was queued: this is where the wait starts being measured.
+		// First tick after queueing: start measuring the wait
 		_pendingSince = time.app;
 		return;
 	}
@@ -204,8 +201,7 @@ uint64_t SearchSystem::query(StringView sourceName, StringView queryString,
 
 	auto source = getSource(sourceName);
 	if (!source) {
-		// Not a crash and not silence: a picker aimed at a source the application has not
-		// registered yet shows "nothing found" and keeps working.
+		// Unknown source: answer at once with an empty result
 		if (callback) {
 			SearchResult result;
 			result.query = queryString.str<Interface>();
@@ -224,14 +220,12 @@ uint64_t SearchSystem::query(StringView sourceName, StringView queryString,
 	request.callback = sp::move(callback);
 
 	if (_debounce.toMicroseconds() == 0 || !isRunning()) {
-		// Nothing to debounce against without an update tick, and a caller that asked for no delay
-		// gets none.
+		// No debounce requested, or no update tick to debounce with
 		dispatch(request);
 		return id;
 	}
 
-	// A keystroke replaces whatever was waiting. Its callback is dropped rather than invoked with
-	// an empty result: it was overtaken, and an overtaken request has no answer, not a blank one.
+	// Replaces the waiting request; its callback is dropped, not called with an empty result
 	_pendingSince = 0;
 	_pending = sp::move(request);
 	scheduleUpdate();
@@ -264,8 +258,7 @@ void SearchSystem::dispatch(Request &request) {
 	auto &stored = _inFlight.back();
 	stored.dispatched = true;
 
-	// `this` is safe to capture unqualified: handleExit cancels everything in flight, and a source
-	// that ignores its cancel is a source that outlives its own system, which nothing here can fix.
+	// Capturing `this` relies on handleExit cancelling every in-flight request
 	stored.handle = stored.source->query(stored.query, stored.params,
 			[this, id, generation](SearchResult &&result) {
 		result.generation = generation;
@@ -290,8 +283,7 @@ void SearchSystem::handleCompletion(uint64_t requestId, SearchResult &&result) {
 		return;
 	}
 
-	// Late: a newer query has already been answered. Delivering this would move the list backwards
-	// to what the user typed two keystrokes ago.
+	// Late: a newer query has already been answered
 	if (result.generation < _delivered) {
 		return;
 	}
@@ -303,8 +295,7 @@ void SearchSystem::handleCompletion(uint64_t requestId, SearchResult &&result) {
 // ---- StaticSearchSource -----------------------------------------------------------------------
 
 StaticSearchSource::~StaticSearchSource() {
-	// The index first: its storage lives in the pool, and releasing it afterwards would be a read
-	// of memory that is already gone.
+	// Release the index before the pool that holds its storage
 	_index = nullptr;
 	_vocabulary = nullptr;
 	if (_pool) {
@@ -327,8 +318,7 @@ bool StaticSearchSource::init(StringView name, SearchMatchMode mode) {
 void StaticSearchSource::handleAttached(SearchSystem *system) {
 	SearchSource::handleAttached(system);
 
-	// The configuration lives on the system, so a Text index built before attaching would have been
-	// built against nothing.
+	// Text mode needs the system's configuration, so rebuild after attaching
 	_dirty = true;
 }
 
@@ -363,10 +353,8 @@ void StaticSearchSource::addLoweredRange(SearchHit &hit, StringView title, Strin
 		return;
 	}
 
-	/* The index lowercases what it is given, so its offsets address the lowered form. For almost
-	every string the two have the same byte length and the offsets transfer unchanged; where a
-	lowercase mapping changes the encoded length - the Turkish dotted capital I is the everyday
-	example - they do not, and an untranslated offset would underline the wrong letters. */
+	/* Offsets address the lowercased form; remap them when lowercasing changed the byte length
+	(e.g. Turkish dotted capital I). */
 	if (title.size() != lowered.size()) {
 		search::Distance alignment(title, lowered);
 		if (!alignment.empty()) {
@@ -414,8 +402,7 @@ void StaticSearchSource::rebuild() {
 void StaticSearchSource::doRebuild() {
 	switch (_mode) {
 	case SearchMatchMode::Subsequence:
-		// Nothing to build: the matcher walks the strings themselves. The lowered forms are still
-		// wanted for the typo fallback, which compares whole strings.
+		// No index; lowered titles only for the whole-string typo fallback
 		if (_typoTolerance) {
 			_lowered.reserve(_items.size());
 			for (auto &it : _items) {
@@ -431,9 +418,7 @@ void StaticSearchSource::doRebuild() {
 		_lowered.reserve(_items.size());
 		for (uint32_t i = 0; i < _items.size(); ++i) {
 			auto &item = _items[i];
-			// The node id is the ITEM INDEX, not the item's own id: the result has to find its way
-			// back to the title and the payload, and the caller's id space is not required to be
-			// dense or even unique.
+			// Node id is the item index, not item.id, which need not be dense or unique
 			_index->add(item.title, int64_t(i), item.tag);
 			_lowered.emplace_back(string::tolower<Interface>(item.title));
 		}
@@ -451,8 +436,7 @@ void StaticSearchSource::doRebuild() {
 
 	case SearchMatchMode::Text: {
 		if (!_system) {
-			// No configuration to stem with. Left unbuilt rather than built with a default one:
-			// an index whose language silently differs from the query's is worse than an empty one.
+			// No configuration to stem with; left unbuilt rather than using a default language
 			log::source().warn("ui::StaticSearchSource",
 					"Text mode needs the SearchSystem's configuration; add the source to a system "
 					"before querying it");
@@ -471,8 +455,7 @@ void StaticSearchSource::doRebuild() {
 			memory::perform_temporary([&] {
 				search::SearchVector vec;
 				size_t counter = 0;
-				// The title outranks the body: a hit in the name of the thing is a better answer
-				// than a hit in a paragraph about it.
+				// Title ranks above subtitle, subtitle above body
 				counter = cfg.makeSearchVector(vec, item.title, search::SearchRank::A, counter);
 				if (!item.subtitle.empty()) {
 					counter = cfg.makeSearchVector(vec, item.subtitle, search::SearchRank::B,
@@ -521,8 +504,7 @@ uint64_t StaticSearchSource::query(StringView queryString, const SearchRequestPa
 	case SearchMatchMode::Text: queryText(queryString, params, result); break;
 	}
 
-	// Descending by score, and by title where the scores tie, so the order of a query does not
-	// depend on the order the items happened to be added in.
+	// By score descending, then by title, so order does not depend on insertion order
 	sprt::sort(result.hits.begin(), result.hits.end(),
 			[](const SearchHit &l, const SearchHit &r) {
 		if (l.score != r.score) {
@@ -580,8 +562,7 @@ void StaticSearchSource::querySubsequence(StringView queryString, const SearchRe
 			continue;
 		}
 
-		// The fallback: the whole typed string against the whole title. It reports no ranges - an
-		// edit distance says how far apart two strings are, not which of their characters agreed.
+		// Typo fallback: edit distance of the whole query to the whole title, without ranges
 		auto k = search::Vocabulary::distanceForQuery(queryString);
 		if (k == 0) {
 			continue;
@@ -598,8 +579,7 @@ void StaticSearchSource::querySubsequence(StringView queryString, const SearchRe
 		hit.tag = item.tag;
 		hit.title = item.title;
 		hit.subtitle = item.subtitle;
-		// Below anything the matcher accepted: a corrected guess is an answer of last resort, and
-		// it must never outrank a name the user actually typed part of.
+		// Negative score: ranks below every direct match
 		hit.score = -float(distance.distance());
 		hit.data = item.data;
 		result.hits.emplace_back(sp::move(hit));
@@ -663,8 +643,7 @@ void StaticSearchSource::queryPrefix(StringView queryString, const SearchRequest
 
 				auto &item = _items[index];
 
-				// A word may be reached twice once the query has been expanded; the item is one
-				// answer either way, and the better score is the one it earned.
+				// An expanded query may reach an item twice; keep one hit with the best score
 				bool merged = false;
 				for (auto &existing : result.hits) {
 					if (existing.id == item.id && existing.title == item.title) {
@@ -697,9 +676,7 @@ void StaticSearchSource::queryPrefix(StringView queryString, const SearchRequest
 		collect(queryString);
 
 		if (_vocabulary && result.hits.empty()) {
-			/* Expansion only when the exact request found nothing. A query that already works must
-			not have its results reshuffled by guesses about what else it could have been - the
-			tolerance is for when a person mistyped, not for when they did not. */
+			/* Expand only when the exact query found nothing; working queries keep their order. */
 			mem_std::String expanded;
 			StringView(queryString).split<search::SearchIndex::DefaultSep>([&](StringView word) {
 				auto k = search::Vocabulary::distanceForQuery(word);
@@ -769,11 +746,8 @@ void StaticSearchSource::queryText(StringView queryString, const SearchRequestPa
 			hit.score = rank;
 			hit.data = item.data;
 
-			/* The highlight comes from stemming the title again rather than from
-			`Configuration::makeHeadline`: the headline builder returns a string with markers in it,
-			and reading positions back out of a marked-up copy is guesswork. Stemming reports the
-			ORIGINAL word as a view into the title, so the range is arithmetic on pointers the
-			caller already owns. */
+			/* Highlight by re-stemming the title: stemPhrase yields views into the title, giving
+			exact offsets (makeHeadline returns only a marked-up copy). */
 			cfg.stemPhrase(item.title, [&](StringView word, StringView stem, search::ParserToken) {
 				for (auto &it : stems) {
 					if (StringView(it) == stem) {

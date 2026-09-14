@@ -44,25 +44,15 @@ bool DockFrame::init(const DockFrameParams &params, DockNodeHandle handle) {
 
 	setComponent<DockFrameComponent>(DockFrameComponent{handle});
 
-	// The strip-then-body arrangement is one flex run, built here rather than expected from a
-	// stylesheet. It carries no SystemManagedLayout marker: the resolver only tears down layouts
-	// it created itself, so this one survives.
-	//
-	// A stylesheet refines it only through a rule that ALSO declares `display: flex` - padding and
-	// the gaps are read inside the resolver's flex branch, and a rule without `display` never
-	// enters it. The DIRECTION stays the widget's own either way: it follows the tab bar's side,
-	// and updateFlow re-asserts it after any such refinement.
+	// Strip and body are one flex layout built here; no SystemManagedLayout, the resolver does not
+	// remove layouts it did not create. CSS padding and gaps apply only with `display: flex`; the
+	// direction follows the tab bar side and updateFlow re-asserts it.
 	addSystem(Rc<LayoutSystem>::create());
 
 	_tabBar = addChild(Rc<DockTabBar>::create(params.tabBarSide), ZOrder(1));
-	// Two things are set here that look redundant and are not.
-	//
-	// `basis = FitContent` is what makes the strip self-size from its tabs, and it is the SAME
-	// measurement DockSystem reads as the frame's floor - one source of truth for the strip.
-	//
-	// `order` fixes the FLOW order explicitly. Flow follows child order, child order follows
-	// ZOrder, and the strip wants a higher ZOrder than the body - so without an explicit order the
-	// strip would be laid out AFTER the body and a `Top` strip would come out at the bottom.
+	// `basis = FitContent` sizes the strip from its tabs, the same measurement DockSystem uses as
+	// the frame's floor. `order` is explicit because flow follows ZOrder and the strip's ZOrder is
+	// higher than the body's.
 	LayoutSystem::setItem(_tabBar,
 			FlexItemInfo{
 				.grow = 0.0f,
@@ -82,10 +72,8 @@ bool DockFrame::init(const DockFrameParams &params, DockNodeHandle handle) {
 				.order = 1, // always after the strip in the flow; see the tab bar above
 			});
 
-	// The body needs a layout of its own, or the panel parked in it would keep whatever size it
-	// was created with - which for a freshly built node is none at all. One stretched column over
-	// a single child is the whole job: the panel fills the body, minus whatever padding CSS asks
-	// for on `dock-frame-body`.
+	// Without its own layout the body would leave the parked panel at its creation size; a
+	// stretched column makes the panel fill the body minus `dock-frame-body` padding.
 	_body->addSystem(Rc<LayoutSystem>::create(FlexLayoutInfo{
 		.direction = FlexDirection::Column,
 		.alignItems = FlexAlign::Stretch,
@@ -118,10 +106,8 @@ void DockFrame::setCollapsed(bool value) {
 	}
 
 	if (_body) {
-		/* `displayNone`, and the distinction is the whole of it: `visibilityHidden` keeps the box,
-		which would leave the strip sharing the frame with a full-width invisible body and the place
-		exactly as wide as it was. The flex run collapses a display:none item outright, so the strip
-		becomes the frame - which is what a shut rail IS. */
+		// displayNone, not visibilityHidden: the flex layout drops the item entirely, so the strip
+		// takes the whole frame.
 		_body->setOrUpdateComponent<VisibilityComponent>([&](NotNull<VisibilityComponent> vis) {
 			if (vis->displayNone == _collapsed) {
 				return false;
@@ -138,9 +124,9 @@ void DockFrame::updateFlow() {
 		return;
 	}
 
-	// The strip comes FIRST in the flow for a Top or Left side and last otherwise. CSS `column`
-	// runs top-down (the engine compensates for the Y-up axis), so Top is a plain column and
-	// Bottom is the reversed one; the same for Left/Right and rows.
+	// The strip comes first in the flow for Top/Left, last otherwise. CSS `column` runs top-down
+	// (the engine compensates for Y-up), so Bottom is ColumnReverse; the same for Left/Right with
+	// rows.
 	FlexDirection direction = FlexDirection::Column;
 	switch (_params.tabBarSide) {
 	case DockTabBarSide::Top: direction = FlexDirection::Column; break;

@@ -54,9 +54,8 @@ void InputListenerStorage::clear() {
 		_hitTest->clear();
 		_hitTestMask = HitTestFlags::None;
 
-		// Not optional bookkeeping. A storage is reused across frames, so a chain left here would
-		// stand in a frame where nothing is selected - and it would not fail loudly, it would show
-		// up much later as a SelectedOnly hotkey firing with no selection anywhere
+		// The storage is reused across frames; a stale chain would fire SelectedOnly hotkeys
+		// with nothing selected
 		_selectionChain->clear();
 
 		_order = 0;
@@ -112,24 +111,20 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 			_preSceneEvents->emplace(lb, Rec{input.get(), focus, sp::move(layer), ++_order});
 		}
 
-		/* The focus groups are NOT recorded here. A Rec lives inside one of the three vectors, and
-		both emplace_back and the ordered emplace() above move the elements already in it - so a
-		pointer taken now dangles the moment the next listener of the same band arrives, and the
-		group's own list would be read through it a few lines later. They are collected in sort(),
-		which is the first moment every Rec has its final address. */
+		/* Focus groups are not recorded here: emplace moves existing Recs, so a pointer taken now
+		would dangle. They are collected in sort(), once every Rec has its final address. */
 	});
 }
 
 bool InputListenerStorage::HitTestRec::contains(const Vec2 &world, float padding) const {
-	// The AABB first: it rejects almost everything for the price of four comparisons, and the exact
-	// test below costs a matrix-vector product
+	// The AABB first: a cheap reject before the matrix-vector test below
 	if (!worldRect.containsPoint(world, padding)) {
 		return false;
 	}
 
 	if (scissorEnabled) {
-		// Float, not URect::containsPoint(UVec2): the location can be negative (a pointer dragged
-		// off the window), and the cast to unsigned would wrap it INTO the rect instead of out of it
+		// Float, not URect::containsPoint(UVec2): a location off the window can be negative and
+		// would wrap into the rect when cast to unsigned
 		if (world.x < float(scissor.x) || world.y < float(scissor.y)
 				|| world.x >= float(scissor.x + scissor.width)
 				|| world.y >= float(scissor.y + scissor.height)) {
@@ -156,7 +151,7 @@ void InputListenerStorage::addHitTest(NotNull<Node> node, const Mat4 &worldTrans
 
 bool InputListenerStorage::foreachHitTest(HitTestFlags mask,
 		const Callback<bool(const HitTestRec &)> &cb) const {
-	// Backwards: registration order is visit order is paint order, so the last match is the topmost
+	// Backwards: registration order is paint order, so the last match is the topmost
 	for (size_t i = _hitTest->size(); i > 0; --i) {
 		const auto &rec = _hitTest->at(i - 1);
 		if ((rec.flags & mask) == HitTestFlags::None) {
@@ -269,11 +264,8 @@ void InputDispatcher::commitStorage(core::RenderServerChannel *window,
 
 	sprt::window::Vector<WindowLayer> layers;
 	_events->foreachListener([&, this](const InputListenerStorage::Rec &rec) {
-		// Which frame this listener was drawn in, stamped here rather than read at visit time
-		// because the visit fills a storage that is not committed yet. A listener the dispatcher
-		// reaches OUTSIDE this walk - an active gesture chain holds the ones it captured - compares
-		// its stamp against the current one and finds it stale; see
-		// InputListener::_shouldProcessEvent
+		// Stamped at commit, not at visit (the visited storage is not committed yet). A listener
+		// reached outside this walk compares its stamp; see InputListener::_shouldProcessEvent
 		rec.listener->_visitGeneration = _generation;
 
 		if (rec.layer) {
@@ -352,8 +344,7 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 	case InputEventName::MouseMove: {
 		EventHandlersInfo handlers{getEventInfo(event)};
 
-		// Where the pointer is, kept for whoever has to re-run a hit test against it later with no
-		// event of their own to do it with - see getPointerEvent()
+		// Kept for re-running hit tests later without an event - see getPointerEvent()
 		_pointerEvent = handlers.event;
 		_hasPointerEvent = true;
 
@@ -651,8 +642,8 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		return false;
 	}
 
-	// Materialized once: the walk offers the same set to every listener, and a sided binding and a
-	// base one live in different buckets, so there is no single stored span to borrow
+	// Materialized once: the walk offers the same set to every listener, and sided and base
+	// bindings live in different buckets
 	Vector<HotkeyId> ids;
 	HotkeyRegistry::getInstance()->match(data, [&](HotkeyId id) {
 		ids.emplace_back(id);
@@ -665,9 +656,8 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 	auto event = getEventInfo(data);
 	auto exclusiveGroup = getExclusiveGroup(event);
 
-	// A listener is "focused" when its group would let it have keyboard events at all. That is
-	// the group's own rule rather than InputListener::isFocused(), which is what makes this work
-	// for ui::FormSystem, where focus belongs to a field's whole subtree - see XLHotkey.h
+	// "Focused" by the group's own rule, not InputListener::isFocused(), so ui::FormSystem focus
+	// covers a field's whole subtree - see XLHotkey.h
 	auto isFocused = [&](const InputListenerStorage::Rec &l) {
 		return !l.focus || l.focus->canHandleEventWithListener(event, l.listener);
 	};
@@ -680,9 +670,8 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		return l.focus != exclusiveGroup && !(l.focus && l.focus->isParentGroup(exclusiveGroup));
 	};
 
-	// Whether a listener's owner is on the committed selection chain - what SelectedOnly is tested
-	// against. Read from the storage, never from the live SelectionSystem: see
-	// InputListenerStorage::setSelectionChain for why that distinction is not pedantry
+	// Whether a listener's owner is on the committed selection chain (for SelectedOnly). Read
+	// from the storage, never from the live SelectionSystem; see setSelectionChain
 	auto isInSelection = [&](const InputListenerStorage::Rec &l) {
 		return _events->getSelectionDepth(l.listener->getOwner()) != maxOf<size_t>();
 	};
@@ -692,9 +681,8 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 			isInSelection(l)};
 	};
 
-	// The listener that currently owns the keyboard gets the first word, whatever the walk order
-	// would otherwise be. Only a SingleFocus group actually designates one; a group without it
-	// lets everybody through and would swallow the whole first pass.
+	// The listener that owns the keyboard is offered first. Only a SingleFocus group designates
+	// one; any other group lets everybody through.
 	Rc<InputListener> focusedListener;
 	HotkeyContext focusedContext;
 	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
@@ -711,18 +699,10 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		return true;
 	}
 
-	/* PASS B: the SELECTION CHAIN, deepest first.
-
-	The selected element's own listener, then its parents, then the container that owns it - which
-	is what makes an Undo land in the history of the thing the user is working on rather than in
-	whichever of two identical tables happens to be painted last.
-
-	It is a pass rather than a re-ordering of the walk below because the two orders answer different
-	questions. The ordinary walk is about the SCENE - bands, priorities, paint order - and is right
-	for a global binding. This one is about the SELECTION, and within it paint order means nothing:
-	a row is not "above" its own list in any sense a user would recognize.
-
-	A chain listener that declines is NOT offered the key again below; declining is an answer. */
+	/* Pass B: the selection chain, deepest first - the selected element's listener, its parents,
+	then the owning container, so an Undo reaches the history the user works in. A separate pass
+	because paint order means nothing within the selection. A chain listener that declines is not
+	offered the key again below. */
 	Vector<Rc<InputListener>> chainOffered;
 
 	if (!_events->getSelectionChain().empty()) {
@@ -743,10 +723,7 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 			return true;
 		}, nullptr);
 
-		// Depth first, and the ordinary walk order within one depth: a node may own several
-		// listeners, and nothing about the selection says which of them should come first, so the
-		// answer the rest of the engine already gives is kept. `seq` rather than a stable_sort
-		// because the tie-break is then written down instead of inherited from the algorithm
+		// Depth first, then the ordinary walk order within one depth (explicit `seq` tie-break)
 		sprt::sort(candidates.begin(), candidates.end(), [](const Candidate &l, const Candidate &r) {
 			return (l.depth != r.depth) ? (l.depth < r.depth) : (l.order < r.order);
 		});
@@ -754,8 +731,7 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 		for (auto &c : candidates) { chainOffered.emplace_back(c.rec->listener); }
 
 		for (auto &c : candidates) {
-			// Re-checked per candidate: an earlier one may have torn the scene down around this
-			// listener, which is precisely what a hotkey callback is entitled to do
+			// Re-checked per candidate: an earlier hotkey callback may have torn the scene down
 			if (c.rec->listener->handleHotkey(ids, event, contextFor(*c.rec, false))) {
 				return true;
 			}

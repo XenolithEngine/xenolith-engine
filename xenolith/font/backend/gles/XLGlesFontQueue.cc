@@ -399,13 +399,10 @@ void FontRenderPassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&syn
 
 	auto &input = _fontAttachment->getInput();
 	if (!input->image->getInstance()) {
-		// No instance on the target image: either compileImage has not run yet, or - and this is
-		// the one that actually happens - the controller finalized the image on the way out while
-		// a font frame was still in flight (FontControllerLocal::invalidate clears it, and the
-		// frame graph is unwound after). DynamicImage::updateInstance is a no-op without an
-		// instance, so there is nothing this pass could deliver in either case; failing it would
-		// only turn a dropped update into a failed render pass during shutdown. Release what waits
-		// on the frame and complete, the way the no-glyphs case below does.
+		// No instance on the target image: compileImage has not run, or the controller finalized
+		// the image during shutdown with a font frame in flight (FontControllerLocal::invalidate).
+		// updateInstance would be a no-op, so release what waits on the frame and complete, as
+		// the no-glyphs case below does, instead of failing the render pass.
 		q.getFrame()->signalDependencies(true);
 		if (onSubmited) { onSubmited(true); }
 		if (onComplete) { onComplete(true); }
@@ -453,10 +450,9 @@ void FontRenderPassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&syn
 		input->output(targetImage->getInfo(), composed);
 	}
 
-	// Signal the frame's dependencies (this is what releases the vertex stage that was waiting on
-	// the FontController event). The real work - the texture upload - already happened above, so
-	// there is no GL render to fence: acquire a host-only fence for the frame graph's bookkeeping,
-	// exactly the way the software backend does for its font pass (which also has no GPU submit).
+	// Signal the frame's dependencies (releasing the vertex stage waiting on the FontController
+	// event). The texture upload already happened, so there is no GL render to fence: a host-only
+	// fence serves the frame graph's bookkeeping, as in the software backend.
 	q.getFrame()->signalDependencies(true);
 
 	auto success = true;

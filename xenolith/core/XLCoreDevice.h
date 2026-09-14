@@ -134,9 +134,8 @@ public:
 	virtual void waitIdle() const;
 
 	// True while invalidateObjects() is running the destroy callbacks of everything that outlived
-	// the device. The device is still usable at that point, but it is the LAST moment it is: an
-	// object whose destroy callback normally defers the actual API call (see the portability path
-	// in vk::TextureSet) must do it immediately here, or it will run against a destroyed device.
+	// the device. The device is still usable, for the last time: a destroy callback that normally
+	// defers its API call (see vk::TextureSet) must run it immediately here.
 	bool isFinalizingObjects() const { return _finalizingObjects; }
 
 protected:

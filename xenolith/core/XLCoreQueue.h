@@ -82,8 +82,8 @@ public:
 	PassRecordingMode getRecordingMode() const;
 
 	// Which backend the graph was described for, what the renderer tagged it as, and what it opts
-	// into for damage. Set at build time (see Builder below) -- these describe the GRAPH, so they
-	// are readable on a queue that was never compiled, and on a remote mirror of somebody else's.
+	// into for damage. Set at build time (see Builder below); they describe the graph, so they are
+	// readable on a queue that was never compiled, or on a remote mirror.
 	InstanceApi getApi() const;
 	uint32_t getTypeTag() const;
 	QueueDamageFlags getDamageFlags() const;
@@ -189,7 +189,7 @@ protected:
 class SP_PUBLIC DescriptorSetBuilder final {
 public:
 	// add single descriptor
-	// compiler CAN inspect shaders to modify descriptors count, if descriptor is actually an array
+	// compiler can inspect shaders to modify descriptors count, if descriptor is actually an array
 	// if descriptor array size defined by spec constant - use addDescriptorArray instead
 	// note: UpdateAfterBind flag is set up by default
 	bool addDescriptor(const AttachmentPassData *, DescriptorType = DescriptorType::Unknown,
@@ -363,8 +363,7 @@ public:
 	void setDamageFlags(QueueDamageFlags);
 
 	// Which backend this graph is described for, and the renderer's own shape tag for it (see
-	// QueueData::api / QueueData::typeTag). Whoever emits the passes is who knows both, so the
-	// pass makers set them rather than the caller having to remember.
+	// QueueData::api / QueueData::typeTag). Set by the pass makers that emit the passes.
 	void setApi(InstanceApi);
 	void setTypeTag(uint32_t);
 

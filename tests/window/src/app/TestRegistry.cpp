@@ -547,7 +547,10 @@ static const TestInfo s_templateTests[] = {
 static const TestInfo s_renderTests[] = {
 	TestInfo{StringView("render-level"), StringView("XL_RENDER_LEVEL_TEST"), StringView("RenderingLevel passes"),
 		StringView("Rows 1 and 3 must each show four identical boxes over the blue strip; row 2 "
-				   "must show none - behind opaque geometry every level is hidden."),
+				   "must show none - behind opaque geometry every level is hidden. Row 4: two "
+				   "surface boxes in front of a translucent strip must both show - the one over it "
+				   "drawn in painter's order, the one beside it left in the surface pass "
+				   "(render-level.state, render-level.apart)."),
 		TestRegistry_make<RenderLevelLayout>},
 
 	TestInfo{StringView("scale9"), StringView("XL_SCALE9_TEST"), StringView("Scale9Sprite geometry"),

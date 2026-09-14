@@ -267,7 +267,7 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		if (auto img = image->getImage()) {
 			for (uint32_t i = 0; i < uint32_t(_images.size()); ++i) {
 				if (_images[i].image == img) {
-					// release the wgpu texture wrapper NOW, while the surface
+					// release the wgpu texture wrapper now, while the surface
 					// still counts it as presented; a deferred drop (after the
 					// next acquire) would discard the next frame's texture
 					static_cast<Image *>(_images[i].image.get())->invalidateTexture();
@@ -470,7 +470,7 @@ Status SimpleSwapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 	result = wgpuSurfacePresent(_surface.get_cast<Surface>()->getSurface());
 
 	if (_current.image) {
-		// release the wgpu texture wrapper NOW, while the surface still
+		// release the wgpu texture wrapper now, while the surface still
 		// counts it as presented; a deferred drop (after the next acquire)
 		// would discard the next frame's texture (wgpu-native v29)
 		static_cast<Image *>(_current.image.get())->invalidateTexture();

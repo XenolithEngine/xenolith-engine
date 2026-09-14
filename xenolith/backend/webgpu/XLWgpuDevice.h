@@ -66,8 +66,8 @@ public:
 	virtual void waitIdle() const override;
 
 	// asynchronous drain (portable, standard API): the callback fires when
-	// all work submitted to the queue SO FAR is complete; delivered by the
-	// device poll (loop timer) or the browser event loop - NOT necessarily
+	// all work submitted to the queue so far is complete; delivered by the
+	// device poll (loop timer) or the browser event loop - not necessarily
 	// on the caller's thread, see Loop::drain for a thread-routed variant
 	void drain(Function<void()> &&) const;
 

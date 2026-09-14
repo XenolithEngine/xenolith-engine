@@ -30,32 +30,19 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 /** Makes the node it is added to draggable.
 
-    node->addSystem(Rc<DragSource>::create([this](DragOffer &offer) {
-        offer.local = _item;
-        offer.localType = StringView("my/item");
-        offer.allowedActions = DragActions::Move | DragActions::Copy;
-        offer.decorator = [this] { return makeGhost(); };
-        offer.completion = [this](DragActions a) { if (a == DragActions::Move) { detach(); } };
-        return true;
-    }));
+	node->addSystem(Rc<DragSource>::create([this](DragOffer &offer) {
+		offer.local = _item;
+		offer.localType = StringView("my/item");
+		offer.allowedActions = DragActions::Move | DragActions::Copy;
+		offer.decorator = [this] { return makeGhost(); };
+		offer.completion = [this](DragActions a) { if (a == DragActions::Move) { detach(); } };
+		return true;
+	}));
 
-It is an InputListener, not a plain System, and that is not an implementation detail: the three
-things a source has to get right are all listener-level, and all three are easy to get wrong.
-
-- THE THRESHOLD. A press only becomes a drag after DefaultDragThreshold points of travel, which is
-  below the tap tolerance, so an ordinary click never starts one.
-
-- THE CAPTURE. The pointer leaves the source on the first frame of the drag, and the dispatcher
-  freezes the candidate list for an event chain at Begin - it can only shrink after that, never
-  re-target. So without setExclusive() the source stops receiving Move the moment the pointer
-  crosses its own edge, and the drag dies silently a few pixels in. That call is made here, once.
-
-- THE ABORT. The source node can leave the scene while the button is still down; in fact the drop
-  that ends the drag routinely destroys it. handleExit cancels this source's own drag - and only
-  its own, guarded by identity, so an unrelated node's teardown does not abort someone else's.
-
-The offer builder returns false to refuse: an item that happens not to be movable right now simply
-does not start a drag. */
+A press becomes a drag after `threshold` points of travel (below the tap tolerance). On start the
+source captures the pointer with setExclusive(), since the dispatcher freezes an event chain's
+listeners at Begin. The drag survives the source node leaving the scene. The offer builder returns
+false to refuse a drag. */
 class SP_PUBLIC DragSource : public InputListener {
 public:
 	// Fills the offer for one drag. False refuses to start
@@ -74,9 +61,7 @@ public:
 	// The system this source last started a drag with; null when idle
 	DragSystem *getDragSystem() const { return _drag; }
 
-	// The drag this source has in flight, or null when it has none. What a source with a deferred
-	// decorator calls once it finally has something to show - and null is the ordinary answer for
-	// anything that arrives after the drop.
+	// The drag this source has in flight, or null (e.g. after the drop); for deferred decorators
 	DragSession *getSession() const;
 
 protected:
@@ -92,8 +77,7 @@ protected:
 	DragSystem *_drag = nullptr;
 	bool _dragging = false;
 
-	// The owner left the scene while this drag was in flight. Kept so the recognizer teardown that
-	// follows is not mistaken for the user releasing the pointer - see handleExit.
+	// The owner left the scene mid-drag, so the recognizer teardown is not taken as a release
 	bool _detached = false;
 };
 

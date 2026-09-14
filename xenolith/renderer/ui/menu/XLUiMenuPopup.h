@@ -30,45 +30,30 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /** How a menu is opened as a surface of its own.
 
-Everything here is about the SURFACE. What the menu contains is the MenuSource, and how it is laid
-out is the MenuStyle inside this - openMenu measures the source with that style and asks the window
-system for exactly the extent the measurement produced, which is why the two can never disagree. */
+The surface only; contents come from MenuSource. openMenu measures the source with `style` and
+requests exactly that extent. */
 struct SP_PUBLIC MenuConfig {
 	MenuStyle style;
 
-	/* A stylesheet OF THE MENU'S OWN, replacing the inherited one. Used on the NATIVE path only.
-
-	A native popup is a scene of its own, and the ui::StyleSystem carrying the application's sheet
-	lives in the PARENT window's scene - so ui::openPopupSurface shares that sheet with it. Leaving
-	this empty is therefore the ordinary case and means "look like the application"; declare one
-	for a menu whose look is genuinely not the application's. If neither is available the menu
-	paints itself in its own neutral colours, the way ui::TooltipSystem's stock hint does.
-
-	On the overlay path neither is read: the menu is pushed under that same content and is already
-	inside the outer sheet's scope. */
+	/* A stylesheet of the menu's own, replacing the inherited one; native path only. Empty means
+	the parent window's sheet, which ui::openPopupSurface shares; with neither, the menu uses its
+	own neutral colours. The overlay path is already inside the outer sheet's scope. */
 	String stylesheet;
 	FileCategory stylesheetCategory = FileCategory::Bundled;
 
-	// The same thing as a literal, for a menu whose look is declared in code (a test stand, an
-	// auxiliary window that does not ship a .css). Applied after `stylesheet`, so the two compose.
+	// Stylesheet as literal source, applied after `stylesheet`.
 	String stylesheetSource;
 
 	String title;
 	String idPrefix;
 
-	/* The keyboard. A menu that is a surface of its own owns it - there is nothing else in that
-	scene to take it from - so this defaults to true and MenuSystem::setKeyboardEnabled is called
-	for the menu the popup builds. Turn it off for a surface that is only ever pointed at.
-
-	`highlight` names the row the keyboard starts on. A ui::Select passes its current value here:
-	a list opened from the keyboard that begins anywhere but at the current value is a list the
-	user has to find their place in. */
+	/* Whether the menu takes the keyboard (MenuSystem::setKeyboardEnabled); default true, as a
+	popup has nothing else to take it from. `highlight` is the row the keyboard starts on (a
+	ui::Select passes its current value). */
 	String highlight;
 	bool keyboard = true;
 
-	/* How the POINTER drives the chain: whether a hovered row opens its submenu, and after how
-	long. Carried down to every submenu, like `style`, so that one menu answers the pointer the same
-	way at every level. */
+	// Hover behaviour; passed down to every submenu, like `style`.
 	MenuHoverConfig hover;
 
 	// Fired after an item's own callback has run and after the menu chain has been taken down.
@@ -84,50 +69,34 @@ struct SP_PUBLIC MenuConfig {
 
 /** Resolve where a menu opening off `anchor` should be placed.
 
-The anchor rect itself is ui::placementAnchorRect's - corners, the conversion through the scene
-content that undoes the density scale, and the Y flip - so that a menu, a dropdown and a hint
-cannot drift apart on where the anchor is. What is added here is the SIDE.
-
-`gravity` in the result names which edge OF THE MENU lands on the anchor point, not the direction
-the menu opens - see the note in windows.adoc. */
+The anchor rect comes from ui::placementAnchorRect (density scale and Y flip); this
+adds the side. `gravity` in the result names the edge of the menu placed on the anchor point, not
+the opening direction; see windows.adoc. */
 SP_PUBLIC sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor,
 		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
 
-/** The same, resolved from a POINT rather than from a node - what a CONTEXT menu opens off.
+/** The same, resolved from a point in `space`'s coordinates; what a context menu opens off.
 
-`location` is in `space`'s own coordinates; `space` is only there to say which node's transform and
-which scene the point belongs to, so a canvas passes itself and the location the press arrived at.
-
-The anchor rect comes out EMPTY, which every backend reads as "this exact point". Everything else -
-the conversion through the scene content that undoes the density scale, the Y flip, and which edge
-of the menu lands on the anchor - is ui::placementAnchorPoint's and MenuPopup_applySide's, shared
-with placementForNode rather than spelled again. */
+The anchor rect is empty, which backends read as "this exact point". */
 SP_PUBLIC sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 &location,
 		MenuSide = MenuSide::Below, IVec2 offset = IVec2{0, 0});
 
 /** Open `source` as a popup surface at `placement`.
 
-Native subwindow where the platform has them, in-scene overlay where it does not - the caller never
-branches on it, and headless is on the native side, so a menu is a separately renderable window
-with no display in play.
-
-The returned object IS the handle: keep the Rc for as long as the menu should stay open. */
+Native subwindow where available (including headless), in-scene overlay otherwise. Keep the
+returned Rc for as long as the menu should stay open. */
 SP_PUBLIC Rc<SubWindow> openMenu(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
 		NotNull<MenuSource>, MenuConfig &&);
 
-// openMenu with the placement resolved from a node - the common case, and the one that gets the
-// coordinate spaces right.
+// openMenu with the placement resolved from a node.
 SP_PUBLIC Rc<SubWindow> openMenuForNode(NotNull<AppWindow>, NotNull<Node> anchor,
 		NotNull<MenuSource>, MenuConfig &&, MenuSide = MenuSide::Below);
 
 /** One link of an open menu chain, attached to the panel of a menu surface.
 
-A submenu is another popup, parented to the menu it opened from (the window system allows a Popup
-under a Popup for exactly this). The links form a strictly downward ownership chain - a parent link
-holds its child SURFACE, a child link points back at its parent with a raw pointer - so there is no
-cycle to break, and a parent that goes away takes its descendants with it through handleExit.
-
-Attached by openMenu; an application does not create one. */
+A submenu is another popup parented to its opener. A parent link holds its child surface and a
+child points back with a raw pointer, so there is no cycle, and a closing parent takes its
+descendants down in handleExit. Attached by openMenu. */
 class SP_PUBLIC MenuPopupChain : public System {
 public:
 	static uint64_t Id;
@@ -137,8 +106,7 @@ public:
 
 	virtual ~MenuPopupChain() = default;
 
-	// The config is carried down to submenus, so that a chain looks like one menu rather than a
-	// family of them.
+	// the config is passed down to submenus
 	virtual bool init(NotNull<SubWindow>, MenuPopupChain *parent, MenuConfig &&);
 
 	virtual void handleExit() override;
@@ -146,42 +114,28 @@ public:
 	// The surface this menu lives in. Raw: the surface owns the node this system is on.
 	SubWindow *getSurface() const { return _surface; }
 
-	// What this level was opened with. The ROOT's is the one that carries the application's
-	// onActivate: a chain reports as one menu.
+	// What this level was opened with. The root's carries the application's onActivate.
 	const MenuConfig &getConfig() const { return _config; }
 
 	MenuPopupChain *getParent() const { return _parent; }
 	SubWindow *getChild() const { return _child; }
 
-	// The row the open child belongs to, or null when nothing is open. This is the ONE record of
-	// which submenu is up: MenuSystem keeps none, because a copy of this would go stale.
+	// The row the open child belongs to, or null. The only record of the open submenu; MenuSystem
+	// keeps none.
 	MenuSourceButton *getChildItem() const { return _childItem; }
 
 	// The root of the chain - the menu the user opened first.
 	MenuPopupChain *getRoot();
 
-	/* Open `item`'s submenu beside `row`. Takes down whatever OTHER submenu was open here first.
-	False when the item has no submenu, or the surface it would hang off is gone.
-
-	IDEMPOTENT for the item that is already open, and that is not an optimization: the pointer
-	leaving a submenu back onto the row that opened it asks again, so does a second click, and
-	rebuilding the level would flicker it and lose whatever the user had opened below it. */
+	/* Open `item`'s submenu beside `row`, closing any other submenu at this level first. False when
+	the item has no submenu or the surface is gone. Idempotent for the already open item, so the
+	level is not rebuilt (no flicker, nested submenus stay open). */
 	virtual bool openSubmenu(NotNull<MenuSourceButton>, NotNull<Node> row);
 
 	virtual void dismissChild();
 
-	/* The pointer has arrived over THIS level; the levels above must forget whatever they had
-	pending.
-
-	Each of them armed a close the moment the pointer left the row that opened the level below - the
-	diagonal trip into a submenu crosses the rows under its opener, and every one of those is such a
-	hover. The close waits longer than the open so that the trip is survivable, but waiting is not
-	enough on its own: a pointer that took longer than the delay, or that stopped on the way, would
-	still have the level taken down from under it. Arriving here is the definite answer that the
-	trip succeeded, and it is the level that was arrived at that gives it.
-
-	Nothing is re-armed here. The pointer going back to a row of a level above arms that level's
-	close again, which is the only thing that should. */
+	/* The pointer arrived over this level: cancel pending closes on the levels above, which were
+	armed when the pointer left their opener rows. Nothing is re-armed here. */
 	virtual void handlePointerEntered();
 
 	// Take the whole chain down, from the root. Safe to call from inside a row of any level.
@@ -198,8 +152,7 @@ protected:
 	// Which row `_child` belongs to. Cleared with it, so the two can never disagree.
 	Rc<MenuSourceButton> _childItem;
 
-	// What openMenu was called with, minus the callbacks the chain replaces. A submenu is opened
-	// with a copy of it.
+	// What openMenu was called with, minus the callbacks the chain replaces; copied to submenus.
 	MenuConfig _config;
 };
 

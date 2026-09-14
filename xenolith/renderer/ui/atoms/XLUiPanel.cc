@@ -39,30 +39,25 @@ bool Panel::init() {
 	setType("panel");
 	addStyleClass("xl-ui-panel");
 
-	// DEFAULT, so that `getRealRenderingLevel` below can answer `Solid` for a panel that is an
-	// opaque hard-edged rectangle. It used to be a fixed `Surface`, which is a blended draw - and a
-	// blended draw never writes the destination alpha. See the header.
+	// Default, so that `getRealRenderingLevel` can pick `Solid` or `Surface`. See the header.
 	setRenderingLevel(RenderingLevel::Default);
 	registerStyleAppliers("panel");
 	return true;
 }
 
 RenderingLevel Panel::getRealRenderingLevel() const {
-	// The overlay outranks everything, exactly as it does for every other sprite: a subtree lifted
-	// onto it goes as a whole.
+	// The overlay outranks everything, as for every other sprite.
 	if (_inOverlay) {
 		return RenderingLevel::Overlay;
 	}
 
-	// Anything the caller asked for explicitly is the caller's, and VectorSprite already knows how
-	// to honour it.
+	// An explicit level is handled by VectorSprite.
 	if (_renderingLevel != RenderingLevel::Default) {
 		return VectorSprite::getRealRenderingLevel();
 	}
 
-	/* AN OPAQUE HARD-EDGED RECTANGLE IS A GROUND. `_imageIsSolid` is the rasterizer's own answer -
-	no antialiased path, every fill and stroke at full opacity - and the node's own opacity has to
-	be full as well, since it multiplies what the fragment writes. */
+	/* `_imageIsSolid` is the rasterizer's answer (no antialiased path, all paint opaque); the
+	node's opacity must be full too, since it multiplies the fragment. */
 	if (_imageIsSolid && _displayedColor.a >= 1.0f) {
 		return RenderingLevel::Solid;
 	}
@@ -73,9 +68,7 @@ RenderingLevel Panel::getRealRenderingLevel() const {
 void Panel::registerStyleAppliers(StringView type) {
 	using document::ParameterName;
 
-	// The appliers are the same for every surface atom, so a second registration for the same type
-	// would only rebuild an identical callback. Registry and node graph both live on the app
-	// thread, so a plain set is enough to keep this to once per type.
+	// Once per type. Registry and node graph live on the app thread, so a plain set suffices.
 	static Set<String> s_registered;
 	if (!s_registered.emplace(type.str<mem_std::Interface>()).second) {
 		return;
@@ -127,7 +120,7 @@ void Panel::updateBackgroundImage() {
 	const Rect box(inset, inset, _contentSize.width - inset * 2.0f,
 			_contentSize.height - inset * 2.0f);
 
-	// shrink each corner radius by the inset so the OUTER edge of the stroke keeps the requested
+	// shrink each corner radius by the inset so the outer edge of the stroke keeps the requested
 	// radius; addBox() itself clamps each corner to the half-box and resolves adjacent overlap
 	auto outer = [&](float r) { return r > 0.0f ? sprt::max(r - inset, 0.0f) : 0.0f; };
 	const float rtl = outer(style->borderRadiusTopLeft);
@@ -150,11 +143,8 @@ void Panel::updateBackgroundImage() {
 	})
 			.setFillColor(style->backgroundColor)
 			.setStyle(vg::DrawFlags::Fill)
-			/* ONLY A CURVE NEEDS IT. A rounded corner does; a straight edge does not, and neither
-			does the straight stroke around one - an axis-aligned outline rasterizes clean without
-			it. That matters beyond the pixels: an antialiased path is never `_imageIsSolid`, so
-			antialiasing a square panel is what would put a ground into the blended pass and leave
-			the destination alpha where it found it. */
+			/* Antialiasing only for rounded corners: an antialiased path is never `_imageIsSolid`,
+			so a square panel would lose the `Solid` level. */
 			.setAntialiased(rounded);
 
 	if (style->outlineWidth > 0.0f && style->outlineStyle != document::BorderStyle::None) {
@@ -195,9 +185,7 @@ void Panel::updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &cb) 
 }
 
 void Panel::setPathColor(const Color4B &color, bool withOpacity) {
-	// The alpha a colourless call keeps is the OWN layer's, not the one a stylesheet may have put
-	// on the node a moment ago: this is the widget painting itself, and what it is amending is its
-	// own previous paint.
+	// Without `withOpacity`, the alpha kept is the own layer's, not the stylesheet's.
 	_ownPainted = true;
 	_ownStyle.backgroundColor =
 			withOpacity ? color : Color4B(color.r, color.g, color.b, _ownStyle.backgroundColor.a);
@@ -260,17 +248,9 @@ bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 		const document::StyleValue &value) {
 	using document::ParameterName;
 
-	/* CmdReset arrives before the parameters of every style pass (it is not a CSS property, and no
-	stylesheet can produce it). It undoes the previous pass in full: whatever this pass still
-	declares is re-applied below, and whatever it no longer declares is gone - which is the only way
-	a rule that stopped matching can be undone.
-
-	IT UNDOES STYLING, NOT PAINT. What the widget put on itself through setPathColor and friends is
-	not a declaration and no pass owns it, so the reset rewinds the component to that layer instead
-	of dropping it; only a widget that never painted itself ends up with no component at all, which
-	is the state the defaults in updateBackgroundImage stand for. Storing both layers in the one
-	component (as this did) made them indistinguishable, and a widget painted from code lost its
-	paint to the first resolver pass that touched it. */
+	/* CmdReset precedes the parameters of every style pass and undoes the previous pass, so a rule
+	that stopped matching is undone. It undoes styling, not paint: the component rewinds to the own
+	paint, and is removed only when the widget never painted itself. */
 	if (name == ParameterName::CmdReset) {
 		if (_ownPainted) {
 			updateStyle([&](NotNull<PanelStyleComponent> c) {
@@ -341,9 +321,6 @@ bool Panel::setStyleValue(const ResolvedStyle &, document::ParameterName name,
 namespace {
 
 // A Panel answering to a type of its own.
-//
-// A derived class rather than a free function because Panel::registerStyleAppliers is protected:
-// the appliers route through Panel::setStyleValue, so whoever registers a type has to BE a Panel.
 class ScrollIndicatorPanel : public Panel {
 public:
 	virtual bool init(StringView type) {
@@ -351,8 +328,7 @@ public:
 			return false;
 		}
 
-		// Panel::init() made this a `panel`, and it is not one: a sheet's panel rules paint cards
-		// and dialogs, and the scroll bar has no business inheriting them
+		// not a `panel`: the sheet's panel rules must not paint the scroll bar
 		removeStyleClass("xl-ui-panel");
 		setType(type);
 		registerStyleAppliers(type);
@@ -363,13 +339,8 @@ protected:
 	using Panel::init;
 };
 
-// Carry over what the node being replaced actually PAINTED with.
-//
-// Not the node's colour: LayerRounded keeps its fill in a path colour and leaves the node's own
-// colour to mean opacity - the track is created black with alpha 0 - so copying that as a tint
-// would multiply every colour a sheet later asks for by black. The fill goes to the fill, and the
-// tint is reset to white, which leaves setIndicatorColor() meaning exactly what it meant before:
-// on a white fill a tint IS the colour.
+// Carries over what the replaced node painted with: LayerRounded's path colour goes to the fill,
+// not its node colour (which means opacity there, and would tint every sheet colour black).
 static void UiPanel_adoptIndicatorPaint(Node *from, ScrollIndicatorPanel *to) {
 	if (auto layer = dynamic_cast<basic2d::LayerRounded *>(from)) {
 		to->setPathColor(layer->getPathColor(), true);
@@ -382,8 +353,7 @@ static void UiPanel_adoptIndicatorPaint(Node *from, ScrollIndicatorPanel *to) {
 } // namespace
 
 void useStyledScrollIndicator(NotNull<basic2d::ScrollView> view) {
-	// Idempotent: TreeView and TableView each ask for this in init(), and an application that also
-	// asks must not end up with a second pair of nodes
+	// Idempotent: TreeView and TableView call this in init(), and applications may call it again
 	if (dynamic_cast<Panel *>(view->getIndicatorNode())) {
 		return;
 	}
@@ -394,8 +364,7 @@ void useStyledScrollIndicator(NotNull<basic2d::ScrollView> view) {
 		return;
 	}
 
-	// Read the old paint BEFORE the swap: setIndicator*Node re-imposes the view's own geometry and
-	// identity on the new node, and the old one is gone by the time it returns
+	// Read the old paint before the swap: the old nodes are gone once setIndicator*Node returns
 	UiPanel_adoptIndicatorPaint(view->getIndicatorTrackNode(), track);
 	UiPanel_adoptIndicatorPaint(view->getIndicatorNode(), thumb);
 
@@ -403,8 +372,7 @@ void useStyledScrollIndicator(NotNull<basic2d::ScrollView> view) {
 	view->setIndicatorTrackNode(Rc<Node>(track.get()));
 	view->setIndicatorNode(Rc<Node>(thumb.get()));
 
-	// setIndicatorNode carried the old colour across as a tint, which for a Panel would multiply
-	// the fill just adopted. The fill is the colour now
+	// setIndicatorNode carried the old colour as a tint, which would multiply the adopted fill
 	thumb->setColor(Color4F::WHITE, false);
 	track->setColor(Color4F::WHITE, false);
 }

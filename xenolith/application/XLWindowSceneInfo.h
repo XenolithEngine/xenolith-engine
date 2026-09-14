@@ -39,27 +39,21 @@ namespace core {
 class RenderServerChannel;
 }
 
-// Everything the application wants to say about a window that the runtime must not know: which
-// scene it runs, which already-compiled render queue that scene adopts, and what happens when the
-// window goes away.
+// What the application says about a window that the runtime must not know: the scene it runs, the
+// compiled render queue that scene adopts, and what happens when the window goes away.
 //
-// It rides to the window backend as WindowInfo::appData and comes back off on the thread that
-// owns the window's content, so a scene is named together with its window instead of being looked
-// up afterwards in a table keyed by WindowInfo::id. That matters beyond tidiness: the runtime
-// re-uniques a colliding id (ContextController::configureWindow), so the id the caller chose is
-// not necessarily the id the factory later sees.
+// Travels to the window backend as WindowInfo::appData and is taken back on the app thread, so the
+// scene is bound to its window rather than looked up by WindowInfo::id (which the runtime may
+// re-unique, see ContextController::configureWindow).
 //
-// This object IS the window handle — keep the Rc the opener returned. getWindow() is non-null
-// from the moment the AppWindow reaches the app thread until the window is torn down.
+// This object is the window handle; keep the Rc the opener returned. getWindow() is non-null from
+// the moment the AppWindow reaches the app thread until the window is torn down.
 //
-// Thread contract: constructed, used and destroyed on the app thread. In a DEBUG build the
-// destructor asserts that, because the one thing that would silently break it — leaving the
-// payload on a WindowInfo that dies on the context thread — has no other symptom.
+// Thread contract: constructed, used and destroyed on the app thread (asserted in debug builds).
 class SP_PUBLIC WindowSceneInfo : public Ref {
 public:
 	// Runs on the app thread when the window needs its scene. Returning null falls through to the
-	// process-wide `makeScene` symbol, which is what unattached windows (above all the root one)
-	// keep using.
+	// process-wide `makeScene` symbol, as used by unattached windows (e.g. the root one).
 	using SceneBuilder = Function<Rc<Scene>(NotNull<AppThread>,
 			NotNull<core::RenderServerChannel>, const core::FrameConstraints &)>;
 

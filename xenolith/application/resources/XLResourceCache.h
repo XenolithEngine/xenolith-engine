@@ -110,11 +110,9 @@ protected:
 	AppThread *_application = nullptr;
 	const core::Loop *_loop = nullptr;
 	Map<StringView, core::ImageData> _images;
-	// Refcounted by name. Several scenes can legitimately register the same resource: every scene
-	// built from Queue::Builder("Loader") produces one called "Loader_resource", so a second window
-	// registers the same name the first one did. Without the count the first scene to FINISH would
-	// erase the entry the others are still rendering through - which shows up as
-	// "Fail to acquire input for attachment" on a window that never closed.
+	// Refcounted by name: several scenes can register the same resource (every scene built from
+	// Queue::Builder("Loader") registers "Loader_resource"), and the entry must stay until the last
+	// one releases it.
 	struct ResourceSlot {
 		Rc<core::Resource> resource;
 		uint32_t refCount = 0;

@@ -145,8 +145,7 @@ bool SwapchainDamage::diff(const ImageState &prev, const FrameDamageState *state
 			push(n.bounds); // appeared
 			++j;
 		} else {
-			// Same element. A moved node keeps its generation, so the bounds have to be compared
-			// too - skipping that comparison is what leaves trails on screen.
+			// Same element. A moved node keeps its generation, so the bounds are compared too.
 			if (o.generation != n.generation || o.signature != n.signature
 					|| o.bounds != n.bounds) {
 				push(o.bounds);
@@ -370,10 +369,9 @@ void SwapchainImage::invalidateImage() {
 }
 
 void SwapchainImage::detachImage() {
-	// Hand the acquired image off to the engine's reuse pool: relinquish our references WITHOUT
-	// releasing the image to the swapchain (otherwise it would be returned twice -- once here and once
-	// when the pooled image is finally presented). The acquire (wait) semaphore travels with the pooled
-	// SwapchainAcquiredImage; only return the unused signal semaphore reserved in setImage.
+	// Hand the acquired image to the engine's reuse pool without releasing it to the swapchain (it
+	// is returned when the pooled image is presented). The wait semaphore travels with the pooled
+	// image; only return the unused signal semaphore reserved in setImage.
 	if (_signalSem && _swapchain) {
 		_swapchain->releaseSemaphore(sp::move(_signalSem));
 	}

@@ -35,11 +35,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::gles {
 
 // --- The flat shaders, in GLSL ES 3.0 ---------------------------------------------------------
 //
-// The Vulkan pair (glsl/shaders/xl_2d_flat.*) cannot be used here: it leans on buffer references
-// and push constants, neither of which exists in the ES API. These are its direct counterpart -
-// the same vertex math, the same single transform lookup, one 2D sample in the fragment stage -
-// with the per-draw values that a Vulkan pipeline would carry as dynamic state (texture, sampler,
-// view swizzle, first instance) arriving as uniforms and bound attributes instead.
+// Counterpart of glsl/shaders/xl_2d_flat.* (which need buffer references and push constants):
+// same vertex math and single transform lookup, one 2D sample in the fragment stage, with the
+// per-draw texture, sampler, swizzle and first instance passed as uniforms and attributes.
 
 static const char kFlatVertexShader[] = R"GLSL(
 #version 310 es
@@ -257,10 +255,9 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		plan->flatOrder = true;
 		plan->pool = pool;
 
-		// There is no shader to probe a glyph atlas, so the plan resolves it on the CPU - the same
-		// branch a Vulkan device without buffer device addresses takes. Glyph quads come out with
-		// real UVs into the font atlas image, which the fragment stage samples like any other
-		// texture; no per-glyph storage is needed here.
+		// There is no shader to probe a glyph atlas, so the plan resolves it on the CPU (as a
+		// Vulkan device without buffer device addresses does); glyph quads get real UVs into the
+		// atlas.
 		plan->hasGpuSideAtlases = false;
 		plan->keepAtlasObjects = false;
 
@@ -309,9 +306,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 
 		_spans = sp::move(ctx.materialSpans);
 
-		// The Overlay level, appended rather than kept apart: this backend does no frame capture, so
-		// there is nothing to record between the two - and drawing them in sequence is all "on top"
-		// needs here.
+		// The Overlay level is appended: this backend does no frame capture, so drawing the spans
+		// in sequence is enough.
 		for (auto &it : ctx.overlaySpans) { _spans.emplace_back(it); }
 
 		_drawStates = commands->states;
@@ -449,9 +445,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 		const core::AttachmentPassData *colorAttachment) {
 	using namespace core;
 
-	// The sources are text (GLSL ES), not SPIR-V: the backend's Shader compiles them at queue
-	// compile time and needs the stage declared explicitly - exactly what the Metal pass does for
-	// its MSL, since there is nothing to reflect.
+	// The sources are GLSL ES text, not SPIR-V: the backend's Shader compiles them at queue compile
+	// time and needs the stage declared explicitly (as the Metal pass does for MSL).
 	ProgramInfo vertInfo;
 	vertInfo.stage = ProgramStage::Vertex;
 
@@ -470,7 +465,7 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 
 	// PipelineMaterialInfo must stay byte-identical to basic2d::vk/soft's FlatPass: materials are
 	// matched to pipelines by this struct's value, and Sprite bakes DepthInfo into the request.
-	// The depth state is inert here (there is no depth attachment), exactly as it is there.
+	// The depth state is inert (no depth attachment).
 	auto materialPipeline =
 			subpassBuilder.addGraphicPipeline("Solid", layout2d->defaultFamily, shaderSpecInfo,
 					PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
@@ -483,10 +478,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
 
-	// All six variants have to exist even though the fragment stage samples a 2D view in every
-	// case: a material is matched to a pipeline by the *value* of PipelineMaterialInfo, and
-	// one that asks for an array or 3d view would otherwise find nothing - failing not with an
-	// error but with an empty frame.
+	// All six variants must exist though the fragment stage always samples a 2D view: a material
+	// is matched by the value of PipelineMaterialInfo, and a missing one yields an empty frame.
 	auto blendInfo = BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha, BlendOp::Add,
 			BlendFactor::Zero, BlendFactor::One, BlendOp::Add);
 
@@ -558,12 +551,10 @@ URect FlatPass_intersect(const URect &l, const URect &r) {
 	return URect{left, top, right - left, bottom - top};
 }
 
-// One host array as a GL buffer for this frame: dynamic usage (re-uploaded every submit) and the
-// bytes copied through at creation. The returned reference is what keeps the name alive while the
-// pass draws from it; dropping it queues the delete for the next drain, which only happens after
-// this frame's fence has been waited on - so the copy out of `data` is safe even though nothing
-// else holds onto the source array. The usage names the buffer's role: GLES must create each one
-// with a matching target (a storage buffer created as an array buffer reads back silently empty).
+// One host array as a GL buffer for this frame (dynamic usage, bytes copied at creation). The
+// returned reference keeps the name alive while the pass draws; dropping it queues the delete
+// for after this frame's fence. The usage must match the buffer's role: GLES needs a matching
+// target at creation (a storage buffer created as an array buffer reads back empty).
 static Rc<glesb::Buffer> FlatPass_upload(glesb::Device &dev, const void *data, uint64_t bytes,
 		core::BufferUsage usage) {
 	core::BufferData info;
@@ -599,8 +590,7 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 	uint32_t brokenSpans = 0;
 
 	// The span's indexes are relative to its vertex block (span.vertexOffset); GLES has no
-	// base-vertex draw, so they are rewritten here into absolute ids and drawn with a plain
-	// glDrawElements - exactly what the software rasterizer does with its index list.
+	// base-vertex draw, so they are rewritten into absolute ids for a plain glDrawElements.
 	Vector<uint32_t> recordedIndexes;
 
 	for (auto &span : _vertexHandle->getSpans()) {

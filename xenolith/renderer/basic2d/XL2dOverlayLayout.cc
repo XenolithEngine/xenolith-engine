@@ -33,7 +33,7 @@ bool OverlaySurface::init(InputEventMask &&mask, FocusGroup::Flags flags) {
 		return false;
 	}
 
-	// The group BEFORE the listener: a listener records the nearest group it finds on the frame
+	// The group before the listener: a listener records the nearest group it finds on the frame
 	// stack as it registers, so one added first would come up unaffiliated.
 	_focusGroup = addSystem(Rc<FocusGroup>::create());
 	_focusGroup->setEventMask(FocusGroup::EventMask(sp::move(mask)));
