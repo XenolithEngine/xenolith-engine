@@ -113,10 +113,8 @@ bool TextureSetLayout::init(Device &dev, const core::TextureSetLayoutData &data)
 	return core::Object::init(dev,
 			[](core::Device *dev, core::ObjectType, core::ObjectHandle ptr, void *data) {
 		auto d = ((Device *)dev);
-		// The deferral holds a raw device pointer and runs whenever the current pool is cleaned up,
-		// which can be long after the device is gone. During invalidateObjects() the device is
-		// being destroyed right now, so there is no later to defer to - destroy it inline, exactly
-		// as the non-portability branch always does.
+		// The deferral holds a raw device pointer and may run after the device is gone, so during
+		// invalidateObjects() destroy inline, as the non-portability branch does.
 		if (d->isPortabilityMode() && !d->isFinalizingObjects()) {
 			auto pool = memory::pool::acquire();
 			memory::pool::pre_cleanup_register(pool, [d, ptr = (VkDescriptorSetLayout)ptr.get()]() {

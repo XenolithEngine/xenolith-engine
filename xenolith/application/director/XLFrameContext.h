@@ -119,10 +119,8 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 	Rc<core::RenderClientChannel> client; // (to send stats)
 
 	/* Which shared window this frame is for, as RenderClientChannel numbers them (0 = local).
-	
-	It rides the frame's input because that is the last place it is known: the render pass that
-	reports the DrawStat runs on another thread well after the fact, and `client` above is one object
-	shared by every window of a server. Set beside `client`, always, so the two cannot disagree. */
+	Carried with the frame input because the DrawStat is reported later on another thread and
+	`client` is shared by all windows. Always set together with `client`. */
 	uint64_t windowId = 0;
 
 	FrameContext *context = nullptr;
@@ -187,11 +185,7 @@ struct SP_PUBLIC FrameInfo {
 	// (child node must be higher than or at the same level as parent)
 	mem_pool::Vector<float> depthStack;
 
-	// How deep the visit currently is inside subtrees marked with Node::setOverlay. A counter rather
-	// than a flag because overlays nest, and leaving an inner one must not leave the outer one.
-	//
-	// Not a stack, unlike its neighbours above: there is nothing per-level to remember - a node is
-	// either inside an overlay subtree or it is not.
+	// Nesting depth inside Node::setOverlay subtrees; a counter, since overlays nest.
 	uint32_t overlayDepth = 0;
 
 	// Stack of context manipulators. The context corresponds to a separate render queue

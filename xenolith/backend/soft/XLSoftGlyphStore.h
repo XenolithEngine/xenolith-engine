@@ -30,21 +30,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-// Rasterized glyphs, kept as they came out of FreeType.
+// Rasterized glyphs, kept as they came out of FreeType, instead of the GPU backends' atlas.
 //
-// The GPU backends pack glyphs into an atlas image so that a run of text costs one texture binding.
-// A software rasterizer has no bindings to save - picking a different source pointer per glyph is
-// free - so an atlas would buy nothing and cost plenty: every new character on screen re-packs and
-// re-allocates it and copies every glyph in again, on every update (FontFaceObject::_required only
-// ever grows, so the whole set is resubmitted each time).
+// Glyphs are appended to a slab and never moved. FreeType rasterizes each one in place into the
+// slot this class hands out (font::FontFaceObject::renderTextureUnsafe); pages arrive zeroed, as
+// FreeType composites coverage into its target.
 //
-// Here glyphs are simply appended to a slab and never moved. A glyph is rasterized once, in place,
-// by FreeType itself (font::FontFaceObject::renderTextureUnsafe writes into the slot this class
-// hands out), so it is never copied at all. Pages arrive zeroed, which is also what makes the
-// in-place rasterization legal - FreeType composites coverage into its target.
-//
-// Shared between the font-rendering worker threads and the render thread, hence the lock; it is
-// taken per glyph while filling the cache, never while drawing.
+// Shared between font worker threads and the render thread; the lock is taken per glyph while
+// filling the cache, never while drawing.
 class SP_PUBLIC GlyphStore : public Ref {
 public:
 	struct Glyph {

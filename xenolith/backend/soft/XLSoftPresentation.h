@@ -71,11 +71,9 @@ protected:
 
 	void markAcquired(uint32_t index);
 
-	// Release the slot as far as the engine is concerned. This must happen at present, not when
-	// the window system hands the buffer back: swapchain recreation waits for
-	// getAcquiredImagesCount() to reach zero, and a compositor is free to hold the last presented
-	// buffer indefinitely - tying the two together wedges every resize. Whether the buffer itself
-	// is reusable is a separate question, and the transport answers it.
+	// Release the slot as far as the engine is concerned. Must happen at present, not when the
+	// window system returns the buffer: recreation waits for getAcquiredImagesCount() to reach
+	// zero, and a compositor may hold the last buffer indefinitely. Buffer reuse is the transport's.
 	void markPresented(uint32_t index);
 
 	uint32_t findSlot(const core::ImageStorage *) const;

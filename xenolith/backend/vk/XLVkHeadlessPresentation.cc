@@ -55,13 +55,8 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 	info.maxImageExtent = _extent;
 	info.maxImageArrayLayers = 1;
 
-	/* Premultiplied as well as Opaque, though there is no compositor here.
-
-	The pseudo-swapchain is an ordinary RGBA image and Loop::captureImage reads it whole, alpha
-	included, so a window that asks to be blended renders exactly the pixels a real compositor would
-	have been handed. Claiming Opaque only would make a shaped window - a menu with rounded corners
-	is one - come out headless with its corners filled in, which is the one thing a headless frame
-	must not do differently from a windowed one. */
+	/* Premultiplied as well as Opaque, though there is no compositor: captureImage reads alpha too,
+	so a shaped window (e.g. a rounded menu) must render the same pixels as when windowed. */
 	info.supportedCompositeAlpha =
 			core::CompositeAlphaFlags::Opaque | core::CompositeAlphaFlags::Premultiplied;
 	info.supportedTransforms = core::SurfaceTransformFlags::Identity;
@@ -140,9 +135,8 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 	_acquired.resize(imageCount, false);
 
 	// The images are freshly allocated with undefined content, so the first frame into each index
-	// must report full damage. Note that the image indexes here are allocator-assigned object ids,
-	// not 0..N-1, so computeRedrawArea always falls back to a full redraw - which is exactly right
-	// for images nobody is compositing incrementally.
+	// must report full damage. Image indexes here are object ids, not 0..N-1, so computeRedrawArea
+	// always falls back to a full redraw.
 	_damage.resize(imageCount);
 
 	_presentMode = presentMode;

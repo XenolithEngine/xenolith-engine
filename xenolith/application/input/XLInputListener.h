@@ -153,9 +153,9 @@ public:
 	/* Subscribe to a global hotkey (see XLHotkey.h). Return true from the callback to consume the
 	   key: the dispatcher stops the walk there and the ordinary key route never runs.
 
-	   Unlike a key recognizer, this needs no key mask and is NOT hit-tested against the pointer
-	   position — the dispatcher calls handleHotkey directly, bypassing canHandleEvent and the
-	   touch filter. What still applies is the focus group: see HotkeyFlags::FocusedOnly. */
+	   Needs no key mask and is not hit-tested: the dispatcher calls handleHotkey directly,
+	   bypassing canHandleEvent and the touch filter. The focus group still applies (see
+	   HotkeyFlags::FocusedOnly). */
 	void addHotkey(HotkeyId, HotkeyCallback &&, HotkeyFlags = HotkeyFlags::None);
 	void removeHotkey(HotkeyId);
 	bool hasHotkey(HotkeyId) const;
@@ -220,13 +220,8 @@ protected:
 	URect _visitScissor;
 
 	/* Which committed frame this listener was last drawn in - stamped by InputDispatcher at commit.
-
-	It is what stands in for the old walk up the parent chain asking every ancestor whether it is
-	visible: a listener whose owner was not visited never registered, so it is not in the committed
-	storage and this does not match. Cheaper than the walk, and it answers about the frame the event
-	is actually being resolved against rather than about the tree as it is right now. A listener
-	reached OUTSIDE that walk - an active gesture chain holds the ones it captured - is exactly the
-	case that needs asking. */
+	A listener whose owner was not visited does not match, which matters for listeners reached
+	outside the dispatcher walk (e.g. held by an active gesture chain). */
 	uint64_t _visitGeneration = 0;
 
 	// The owner's opacity as of that frame, for _opacityFilter

@@ -39,12 +39,8 @@ static bool DragScroll_isWithin(const Node *node, const Node *root) {
 	return false;
 }
 
-/* Are the drop target and this scroller on the same branch? What Scope::TargetInside asks.
-
-Either direction counts, and both really occur: ui::TreeView and ui::TableView put their DropTarget
-on the WIDGET, which is the scroll view's parent, while a target attached to an individual row sits
-below it. Testing only one direction silently disables the pull for whichever arrangement was not
-the one in mind - which is exactly what a plain "is the target inside me" answered for the table. */
+/* Scope::TargetInside test. Either direction counts: TreeView and TableView put their DropTarget
+on the widget above the scroll view, while a per-row target sits below it. */
 static bool DragScroll_sameBranch(const Node *target, const Node *owner) {
 	return DragScroll_isWithin(target, owner) || DragScroll_isWithin(owner, target);
 }
@@ -70,8 +66,7 @@ void DragScrollSystem::handleAdded(Node *node) {
 	System::handleAdded(node);
 	resolveScroller();
 
-	// Scheduled unconditionally, and cheap when nothing is dragging: one null test per frame. The
-	// alternative - arming on the first drag - needs a notification the drag layer does not send.
+	// Scheduled unconditionally: the drag layer sends no drag-start notification to arm on.
 	scheduleUpdate();
 }
 
@@ -84,11 +79,8 @@ void DragScrollSystem::handleRemoved() {
 void DragScrollSystem::handleEnter(Scene *scene) {
 	System::handleEnter(scene);
 
-	// Cleared, not resolved: there may be no DragSystem yet. One is installed by the first
-	// DragSource that needs it, which for a virtualized list is when a row builds its grip - long
-	// after the scroll view entered the scene. So the answer is looked up lazily in update(), and
-	// dropped here because findForNode walks the parent chain and a cached pointer would survive a
-	// reparent into a different scene.
+	// Cleared, not resolved: the DragSystem may be installed later by the first DragSource, so
+	// update() looks it up lazily. A cached pointer would also survive a reparent to another scene.
 	_drag = nullptr;
 
 	// The scroller may have been given to the owner after this system was added.
@@ -121,9 +113,8 @@ void DragScrollSystem::resolveScroller() {
 	}
 
 	if (auto scroll = dynamic_cast<basic2d::ScrollViewBase *>(_owner)) {
-		/* One axis, one float, and it already counts DOWNWARD: getScrollMinPosition() is the top of
-		the content. So there is no sign flip here - the flip the text widgets warn about is between
-		NODE space, which is Y-up, and the offset, and it belongs in the ramp below. */
+		/* The scroll position already counts downward from getScrollMinPosition(), so no sign flip
+		here; the node-space flip is in the ramp in update(). */
 		_range = [scroll]() -> Vec2 {
 			const float pos = scroll->getScrollPosition();
 			const float min = scroll->getScrollMinPosition();
@@ -131,8 +122,7 @@ void DragScrollSystem::resolveScroller() {
 			if (sprt::isnan(pos) || sprt::isnan(min) || sprt::isnan(max)) {
 				return Vec2::ZERO;
 			}
-			// Room left BEFORE the current position and AFTER it, packed as (back, forward) on the
-			// axis this view scrolls.
+			// Room before and after the current position, as (back, forward) on the scroll axis.
 			const Vec2 room(sprt::max(pos - min, 0.0f), sprt::max(max - pos, 0.0f));
 			return scroll->isVertical() ? room : Vec2(room.x, 0.0f);
 		};
@@ -197,16 +187,15 @@ void DragScrollSystem::update(const UpdateTime &time) {
 		return;
 	}
 
-	// A third of the box at most: on a short list a band at each end would meet in the middle and
-	// there would be no neutral zone left to hold the pointer still in.
+	// A third of the box at most, so a short list keeps a neutral middle zone.
 	const float edge = sprt::min(_edge, box.height / 3.0f);
 	if (edge <= 0.0f) {
 		stop();
 		return;
 	}
 
-	/* The ramp, and the one sign flip in this file: node space is Y-UP, so the pointer being near
-	the TOP of the box (large y) has to pull the scroll offset BACKWARD, which is negative. */
+	/* Node space is y-up: a pointer near the top of the box (large y) pulls the scroll offset
+	backward, which is negative. */
 	float ramp = 0.0f;
 	if (local.y > box.height - edge) {
 		ramp = -(local.y - (box.height - edge)) / edge;
@@ -231,17 +220,14 @@ void DragScrollSystem::update(const UpdateTime &time) {
 
 	if (!_scrolling) {
 		_scrolling = true;
-		// Insurance, not the clock: a live pointer already keeps frames coming, but a drag driven
-		// by an API rather than by a gesture puts nothing in the dispatcher's active set.
+		// Keeps frames coming for a drag driven by an API, which leaves no active input.
 		if (!_owner->getActionByTag(RenderActionTag)) {
 			_owner->runAction(Rc<RenderContinuously>::create(), RenderActionTag);
 		}
 	}
 
-	// ONLY when something actually moved. Drag events come with pointer motion alone, so the drop
-	// position the target resolved is now about a row that has slid away - but asking for a
-	// re-resolve on every frame regardless would make handleDragOver a 60Hz event for every drag in
-	// the scene, to fix a case that arises only here.
+	// Re-resolve the drop position only when the content actually moved, so handleDragOver does
+	// not become a per-frame event for every drag.
 	if (_range().x != before) {
 		_drag->refreshDrag();
 	}

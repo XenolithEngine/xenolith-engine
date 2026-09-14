@@ -47,7 +47,7 @@ struct SP_PUBLIC SimpleGradient {
 	bool operator==(const SimpleGradient &) const;
 	bool operator!=(const SimpleGradient &) const;
 
-	// bl - br - tl - tr. NOT the order VertexArray::Quad wants (tl - bl - tr - br); Layer
+	// bl - br - tl - tr. Not the order VertexArray::Quad wants (tl - bl - tr - br); Layer
 	// transposes between the two, and a second reader of this array has to do the same.
 	Color4B colors[4];
 };

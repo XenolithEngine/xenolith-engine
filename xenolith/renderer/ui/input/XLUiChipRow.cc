@@ -29,14 +29,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The fallback's metrics, in points. Only the fallback: a styled row lays its chips out with
-// `display:flex; flex-wrap:wrap` and none of the arithmetic below runs.
+// Fallback metrics in points, used only without a LayoutSystem (no `display:flex`).
 static constexpr float s_chipRowPadding = 4.0f;
 static constexpr float s_chipRowGap = 6.0f;
 static constexpr float s_chipRowLineGap = 4.0f;
 
-// The "+" box. Its width is icon + 2 * 8 for the same reason ui::Chip's remove button's is: that is
-// what centres a glyph under ui::Button's own fallback placement.
+// The "+" box; width is icon + 2 * 8 to centre the glyph under ui::Button's fallback placement.
 static constexpr IconName s_chipRowAddIcon = IconName::Content_add_solid;
 static constexpr float s_chipRowAddIconSize = 12.0f;
 static constexpr float s_chipRowAddWidth = s_chipRowAddIconSize + 16.0f;
@@ -49,9 +47,8 @@ bool ChipRow::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist before anything reads isEnabled(): a node without one
+	reads as state 0, which matches `:disabled`. */
 	applyControlEnabled(this, true);
 
 	setType("chip-row");
@@ -60,7 +57,7 @@ bool ChipRow::init() {
 	registerStyleAppliers("chip-row");
 
 	_addButton = addChild(Rc<Button>::create([this] {
-		// The tap that opens the menu is also the tap that puts the row in the form's hands.
+		// opening the menu also focuses the row in the form
 		focus();
 		open();
 	}),
@@ -78,8 +75,7 @@ bool ChipRow::init() {
 	_listener = addSystem(Rc<InputListener>::create());
 
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
-		// Only the background gets here: a tap on a chip is consumed by the chip's own listener,
-		// which is deeper in the tree and therefore dispatched first.
+		// only background taps arrive here; chip listeners are deeper and dispatched first
 		if (tap.event == GestureEvent::Activated && isEnabled()) {
 			focus();
 		}
@@ -110,9 +106,8 @@ bool ChipRow::init() {
 	_listener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
 
-	// A key event carries the pointer location, so the default filter would answer the arrows only
-	// while the mouse hovers the row. A focused widget owns the keyboard wherever the pointer is -
-	// the same seam, and the same reason, as ui::Select's.
+	// Key events carry the pointer location; accept them while focused regardless of the pointer
+	// (as ui::Select does).
 	_listener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -126,8 +121,7 @@ bool ChipRow::init() {
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
 	_focusListener->addTapRecognizer([this](const GestureTap &) {
-		// Not while the menu is up: the tap that picks an option lands in another window, and
-		// blurring on it would take the row out of the form ring mid-choice.
+		// not while the menu is open: the tap picking an option lands in another window
 		if (!isOpen()) {
 			blur();
 		}
@@ -137,14 +131,11 @@ bool ChipRow::init() {
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &) {
 		return !isTouched(event.currentLocation, 0.0f);
 	});
-	// Off until there is focus to lose - ui::Select's and ui::TextInput's do the same.
+	// enabled only while focused
 	_focusListener->setEnabled(false);
 
-	/* The wrapped height, through the protocol every other measurable node answers.
-
-	Declined when a LayoutSystem is present: `display:flex` placed the chips, so the flex pass is
-	both the better answer and the only one that agrees with what is drawn. Returning false here
-	lets the request fall through to it. */
+	/* Answers the wrapped height. Declined (returns false) with a LayoutSystem present, so the flex
+	pass measures instead. */
 	setMeasureCallback([this](const MeasureConstraints &c, Size2 &result) {
 		if (!_autoHeight || getSystemByType<LayoutSystem>()) {
 			return false;
@@ -166,8 +157,7 @@ bool ChipRow::init() {
 }
 
 void ChipRow::handleExit() {
-	// The surface hangs off a window this node is leaving; a menu left standing over a row that is
-	// no longer on screen is one the user has to dismiss by hand.
+	// close the menu with the node leaving the window
 	close();
 	Panel::handleExit();
 }
@@ -175,8 +165,7 @@ void ChipRow::handleExit() {
 void ChipRow::handleContentSizeDirty() {
 	Panel::handleContentSizeDirty();
 
-	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and the
-	// placement below would be a second writer of the same positions.
+	// a LayoutSystem owns the children's geometry when present
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -238,8 +227,8 @@ bool ChipRow::removeItem(uint32_t index, bool silent) {
 
 	_items.erase(_items.begin() + index);
 
-	// The selection stays where the hand was: on whatever moved into the gap, or on the new last
-	// chip when the gap was at the end. That is what lets Delete be pressed twice in a row.
+	// The selection moves to the chip that filled the gap, or to the new last chip, so Delete can
+	// be repeated.
 	if (_selected >= 0) {
 		if (_selected > int32_t(index)) {
 			--_selected;
@@ -293,8 +282,7 @@ void ChipRow::setOptions(SpanView<ChipOption> options) {
 	for (auto &it : options) { _options.emplace_back(it); }
 
 	if (isOpen()) {
-		// The menu was built from the previous list. Rebuilding it under the user is worse than
-		// closing it: the row they were about to click would move.
+		// the menu was built from the previous list; close rather than rebuild it under the user
 		close();
 	}
 
@@ -320,9 +308,8 @@ void ChipRow::setMaxCount(uint32_t value) {
 		return;
 	}
 	_maxCount = value;
-	// Deliberately does NOT truncate: a limit lowered under a value that already exceeds it is a
-	// declaration about what may be ADDED, and silently dropping members would destroy data nobody
-	// asked to lose. The "+" goes dead until the row is back under the limit.
+	// Existing items are not truncated; the limit only restricts adding, and the "+" is disabled
+	// until the row is under it.
 	updateAddButton();
 }
 
@@ -333,8 +320,7 @@ void ChipRow::setUniqueIds(bool value) {
 		return;
 	}
 	_unique = value;
-	// Same rule as the limit's: existing duplicates are left alone, and the menu stops offering
-	// what is already there.
+	// existing duplicates are kept; the menu stops offering present ids
 	if (isOpen()) {
 		close();
 	}
@@ -350,8 +336,7 @@ void ChipRow::setWrapEnabled(bool value) {
 }
 
 void ChipRow::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// the edit lock has the last word and remembers the requested value for unlocking
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -379,13 +364,13 @@ void ChipRow::setAutoHeight(bool value) {
 float ChipRow::getIntrinsicHeight() const { return measureHeight(_contentSize.width); }
 
 float ChipRow::measureHeight(float width) const {
-	// The measurement is the placement with the writing turned off - see layoutRow.
+	// layoutRow without committing positions
 	return const_cast<ChipRow *>(this)->layoutRow(width, false);
 }
 
 void ChipRow::setIntrinsicHeightCallback(Function<void(float)> &&cb) {
 	_intrinsicHeightCallback = sp::move(cb);
-	// A fresh listener has been told nothing yet, so the current height is news to it.
+	// report the current height to the new listener
 	_reportedHeight = nan();
 	updateIntrinsicHeight();
 }
@@ -427,8 +412,7 @@ void ChipRow::blur() {
 		_focusListener->setEnabled(false);
 	}
 
-	// The selection exists to be what Delete takes off, and Delete needs the keyboard. Keeping it
-	// painted on a row that no longer has one would show a target that cannot be hit.
+	// the selection is a Delete target, which needs the keyboard
 	select(-1);
 	updateInteractiveState();
 
@@ -439,7 +423,7 @@ void ChipRow::blur() {
 
 void ChipRow::focusFromNavigation(bool backwards) {
 	if (_focused) {
-		// A tap already decided what is selected and the form is only catching up with it.
+		// a tap already chose the selection
 		return;
 	}
 	focus();
@@ -454,8 +438,7 @@ bool ChipRow::open() {
 		return false;
 	}
 
-	// A surface of the caller's own comes first: it is the reason the seam exists, and a row that
-	// has one is not offering the built-in list at all.
+	// the caller's surface replaces the built-in menu
 	if (_addCallback) {
 		return _addCallback(this);
 	}
@@ -487,8 +470,7 @@ bool ChipRow::open() {
 		removeStyleClass("open");
 	};
 
-	// Anchored on the "+" rather than on the row: the row may be three lines tall, and a menu
-	// dropped off its bottom edge would open nowhere near the button that was pressed.
+	// anchored on the "+", not on the row, which may span several lines
 	Node *anchor = (_addButton && _addButton->isVisible()) ? static_cast<Node *>(_addButton) : this;
 
 	_popup = openMenuForNode(window, anchor, source, sp::move(config), MenuSide::Below);
@@ -556,8 +538,7 @@ void ChipRow::updateAddButton() {
 		return;
 	}
 
-	// A button that opens nothing is worse than no button: it invites a press that cannot do
-	// anything and says nothing about why.
+	// hidden when there is nothing to open
 	const bool offers = _addCallback || !_options.empty();
 	_addButton->setVisible(offers);
 	_addButton->setEnabled(isEnabled() && !isFull());
@@ -573,7 +554,7 @@ void ChipRow::updateAddButton() {
 
 void ChipRow::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		// The Enabled bit is written by applyControlEnabled, from setEnabled.
 		bool dirty = false;
 		// The counters are cumulative, so each flag is pushed on an edge and never twice.
 		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);
@@ -604,8 +585,7 @@ float ChipRow::layoutRow(float width, bool commit) {
 	bool first = true;
 
 	auto place = [&](Node *node) {
-		// The natural size, through the protocol - which for a ui::Chip is its own measureNatural
-		// and for anything else is whatever that node answers with.
+		// the natural size through the measurement protocol (ui::Chip::measureNatural for chips)
 		Size2 size = LayoutSystem::measureNode(node, MeasureConstraints{MeasureMode::MaxContent});
 		if (size.width <= 0.0f) {
 			size.width = node->getContentSize().width;
@@ -628,8 +608,7 @@ float ChipRow::layoutRow(float width, bool commit) {
 		if (commit) {
 			node->setContentSize(size);
 			node->setAnchorPoint(Anchor::TopLeft);
-			// Lines run DOWN from the top of the box, so the first one stays put when the row grows
-			// a line - the alternative makes every chip jump whenever the last one wraps.
+			// lines run down from the top, so earlier lines stay put when the row grows
 			node->setPosition(
 					Vec2(s_chipRowPadding + x, _contentSize.height - s_chipRowPadding - lineTop));
 		}
@@ -674,8 +653,7 @@ Rc<MenuSource> ChipRow::makeSource() {
 	for (auto &option : _options) {
 		auto button = source->addButton(option.id, option.title, option.icon,
 				[this, id = option.id](NotNull<MenuSourceButton>) { addById(id); });
-		// What is already here is not on offer, and says so by being dead rather than by refusing
-		// after the fact.
+		// with unique ids, options already present are disabled
 		button->setEnabled(option.enabled && !(_unique && indexOf(option.id) >= 0));
 	}
 	return source;
@@ -691,8 +669,7 @@ bool ChipRow::handleKey(const GestureData &data) {
 		return false;
 	}
 
-	// While the menu is up its own MenuSystem answers the keyboard, in its own window. Anything
-	// this node did here would be a second reader of the same key.
+	// while the menu is open, its MenuSystem owns the keyboard
 	if (isOpen()) {
 		return false;
 	}
@@ -705,16 +682,14 @@ bool ChipRow::handleKey(const GestureData &data) {
 		}
 		int32_t next = _selected < 0 ? (delta > 0 ? 0 : count - 1) : _selected + delta;
 		if (next < 0 || next >= count) {
-			// Deliberately does not wrap: a row is not a dial, and running off its end by holding
-			// an arrow down is not a choice anyone made. Same as ui::Select::step.
+			// no wrap-around, as in ui::Select::step
 			return false;
 		}
 		select(next);
 		return true;
 	};
 
-	// Removal by key obeys the same `removable` flag the button does - a fixed member of a chain
-	// must not be reachable by one route and not by the other.
+	// removal by key obeys the same `removable` flag as the button
 	auto removeSelected = [&] {
 		if (_selected < 0 || _selected >= count) {
 			return false;
@@ -752,8 +727,7 @@ bool ChipRow::handleKey(const GestureData &data) {
 		if (count == 0) {
 			return false;
 		}
-		// Nothing is selected, so there is nothing to delete YET: this press selects the last chip
-		// and the next one takes it off. Removal always has a visible target.
+		// with nothing selected, select the last chip; the next press removes it
 		select(count - 1);
 		return true;
 
@@ -770,8 +744,7 @@ bool ChipRow::handleChipTap(uint32_t index) {
 	if (!isEnabled()) {
 		return false;
 	}
-	// The tap does two things, and the second one is not the widget's to do alone: focus() reports
-	// through the focus callback, which is how the FORM learns to hand this field the keyboard.
+	// focus() reports through the focus callback, which lets the form focus this field
 	focus();
 	select(int32_t(index));
 	return true;

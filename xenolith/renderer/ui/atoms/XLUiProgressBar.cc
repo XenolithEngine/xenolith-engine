@@ -74,8 +74,7 @@ void ProgressBar::handleContentSizeDirty() {
 }
 
 void ProgressBar::setProgress(float value) {
-	// Compared before clamping so that nan() -> nan() is caught here: nan == nan is false, which
-	// would otherwise re-run the whole update on every progress tick of an indeterminate bar.
+	// Compared before clamping so that nan() -> nan() is caught here (nan == nan is false).
 	const bool wasIndeterminate = isIndeterminate();
 	if (!sprt::isnan(value)) {
 		value = sprt::clamp(value, 0.0f, 1.0f);

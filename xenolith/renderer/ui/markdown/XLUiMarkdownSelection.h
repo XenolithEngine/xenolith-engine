@@ -33,38 +33,21 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class MarkdownView;
 
-/* SELECTING TEXT IN A DOCUMENT THAT ALSO SCROLLS.
+/* Text selection in a document whose view and code blocks also scroll (`ui::ScrollSystem` is an
+InputListener holding a swipe). A drag must become a selection before a scroll claims it, without
+taking the wheel away:
 
-The whole difficulty of this class is in one sentence: `ui::ScrollSystem` IS an InputListener and
-it already holds a swipe - on the view, for the document, and again inside a code block, for its
-sideways pan. A drag across text has to become a selection before either of them decides it is a
-scroll, and it has to do that without taking the mouse wheel away from them.
+ - Dispatch order: a higher system priority is offered events first, so this sits one above
+   ScrollDefaultPriority. Priority, not insertion order, because the style resolver re-adds the
+   ScrollSystem whenever `overflow` changes.
+ - Threshold: 4pt against the scrolls' 12pt tap tolerance, since the deeper `pre-scroll` is asked
+   first and would otherwise pan sideways.
+ - Capture: a pointer claim cannot be revoked, so the gesture callback returns `true` for the
+   whole drag; a single `false` tears the chain down. The scroll then gets Cancelled, no fling.
 
-Three decisions carry that, and each is load-bearing:
-
- - DISPATCH ORDER. On one node the system with the HIGHER system priority is offered an event
-   first, so this sits one above ScrollDefaultPriority. The number rather than the order of
-   addition, because the style resolver removes and re-adds the ScrollSystem whenever `overflow`
-   changes, and a re-added system re-inserts itself by priority.
-
- - THRESHOLD. Both ScrollSystems begin their swipe at the tap tolerance (12pt); this one begins at
-   4, so a drag is a selection before it is ever a scroll. Inside a code block that matters twice
-   over: `pre-scroll` is DEEPER in the tree and is therefore asked first, so with equal thresholds
-   the code would jump sideways before selection took over.
-
- - CAPTURE. The first listener to claim a pointer keeps it, and the claim cannot be revoked, so
-   the gesture callback must answer `true` for the whole drag: a single `false` tears the chain
-   down for every listener at once. The ScrollSystem, having claimed nothing, receives a clean
-   Cancelled and stops without a fling.
-
-No scroll recognizer is registered here, which is precisely why the wheel keeps working; and
-`setSwallowAllEvents` must never be called, because it would promote every Processed to Captured
-and eat the wheel with it.
-
-MOUSE AND FINGER ARE NOT THE SAME GESTURE. They cannot be told apart by button - Touch and
-MouseLeft are one button - only by InputModifier::Touch. A mouse drag always selects. A finger
-drag pans the document, because that is what a finger drag means everywhere else; selection on a
-finger starts from a long press and is then carried by the two handles. */
+No scroll recognizer is registered, so the wheel keeps working; never call `setSwallowAllEvents`,
+which would capture the wheel too. Mouse and finger are told apart only by InputModifier::Touch: a
+mouse drag selects, a finger drag pans, and a finger selects from a long press plus handles. */
 class SP_PUBLIC MarkdownSelectionSystem : public InputListener {
 public:
 	static constexpr uint32_t MarkdownSelectionPriority = ScrollSystem::ScrollDefaultPriority + 1;
@@ -91,8 +74,7 @@ public:
 	bool isDragging() const { return _dragging; }
 	bool isTouchMode() const { return _touchMode; }
 
-	// World position of a handle, or an invalid Vec2 when it is not shown. For a stand to assert
-	// on: a handle in the wrong place is the one failure a screenshot alone would not name.
+	// World position of a handle, or an invalid Vec2 when it is not shown.
 	Vec2 getHandlePosition(bool start) const;
 
 protected:

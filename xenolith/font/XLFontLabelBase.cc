@@ -124,8 +124,8 @@ Rect TextLayout::getObjectRect(uint32_t rangeIndex, float density, const Vec2 &o
 		return Rect::ZERO;
 	}
 
-	// The box is the range's last cell: `read(w, h)` appends exactly one, and taking the last is
-	// what the document layout engine does with the same structure.
+	// The box is the range's last cell: `read(w, h)` appends exactly one (same as the document
+	// layout engine).
 	auto charIndex = range.start + range.count - 1;
 	auto &spec = _data.chars[charIndex];
 
@@ -134,9 +134,8 @@ Rect TextLayout::getObjectRect(uint32_t rangeIndex, float density, const Vec2 &o
 		return Rect::ZERO;
 	}
 
-	/* The box sits ON the baseline, and the baseline is not the bottom of the line box: the
-	descender hangs below it. `line->pos` is the line's foot, so the box's own foot is that much
-	higher, and its top is one box-height above that. */
+	/* The box sits on the baseline, above the descender: `line->pos` is the line's foot, so the
+	box's foot is higher by the descent, and its top one box-height above. */
 	auto descent = float(range.metrics.height) - float(range.metrics.size);
 	auto top = (float(line->pos) - float(range.height) - descent) / density;
 
@@ -593,16 +592,9 @@ void LabelBase::setFillerChar(char32_t c) {
 }
 char32_t LabelBase::getFillerChar() const { return _fillerChar; }
 
-/* CALLING THIS AT ALL TAKES THE DECISION AWAY FROM `setString`.
-
-Auto-detection is what makes `setString("@Locale:Key")` work with no ceremony, and it is also what
-made a label that shows DATA localize it: every line of an open file is a Label, so a source line
-beginning with `@Locale:` rendered as NOTHING and a line holding `%foo%` was substituted if some
-table happened to define `foo`. Turning the flag off was no defence, because the next `setString`
-saw `!_localeEnabled`, detected tags and turned it straight back on.
-
-So an explicit call latches: `setLocaleEnabled(false)` means never, not until the next assignment.
-A widget that draws what a person typed or what a file holds says so once, in its constructor. */
+/* An explicit call latches: `setLocaleEnabled(false)` disables tag auto-detection in `setString`
+for good, so a label showing data (a file line starting with `@Locale:` or holding `%foo%`) is
+never localized. Widgets showing user text call it once in their constructor. */
 void LabelBase::setLocaleEnabled(bool value) {
 	_localeAuto = false;
 	if (_localeEnabled != value) {
@@ -650,9 +642,8 @@ void LabelBase::setLocalizedString(size_t idx) {
 	setLocaleEnabled(true);
 }
 
-// The auto-detection half of `setString`, and it does nothing once anyone has decided explicitly.
-// Assigning through the member rather than through `setLocaleEnabled` is the point: the setter
-// latches, and detection must not count as a decision.
+// The auto-detection half of `setString`; a no-op once anyone decided explicitly. Assigns the
+// member directly, because the setter latches and detection must not count as a decision.
 void LabelBase::enableLocaleIfTagged() {
 	if (_localeAuto && !_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
 		_localeEnabled = true;
@@ -794,16 +785,8 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 		formatter.setRequest(request);
 		formatter.setTextAlignment(eff.alignment);
 
-		/* A NEUTRAL BASE DIRECTION IS MEANINGLESS WITHOUT BIDI, and silently so.
-
-		`Neutral` says "resolve the base from the content", and only the bidi pass resolves
-		anything: with it off, Formatter leaves the line at LeftToRight and never says a word
-		(SPFontFormatter.cc, where the line's direction is guessed before layoutLine runs). A
-		Persian paragraph would then reorder correctly and align `start` to the LEFT.
-
-		It stayed hidden because `_bidiEnabled` is false by default and nothing could ask for
-		`text-align: start` - the CSS parser had no such keyword. Both of those are gone now, so
-		the invariant is enforced here rather than left as a trap. */
+		/* A `Neutral` base direction requires bidi: only the bidi pass resolves it, and without it
+		Formatter silently keeps LeftToRight, so RTL paragraphs would align `start` to the left. */
 		if (eff.direction == TextDirection::Neutral) {
 			eff.bidiEnabled = true;
 		}
@@ -835,13 +818,13 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			if (adjustValue > 0) {
 				params.font.fontSize -= FontSize(adjustValue);
 			}
-			// CSS `unicode-bidi` for the label's text (#6): inject the span's bidi mode + direction so
+			// CSS `unicode-bidi` for the label's text: inject the span's bidi mode + direction so
 			// the formatter brackets it with the matching Unicode controls.
 			if (eff.bidiMode != BidiMode::Normal) {
 				params.text.bidi = eff.bidiMode;
 				params.text.direction = eff.direction;
 			}
-			// CSS letter/word-spacing + font-variant-ligatures (#9)
+			// CSS letter/word-spacing + font-variant-ligatures
 			if (_letterSpacing != 0.0f) {
 				params.text.letterSpacing = int16_t(roundf(_letterSpacing * density));
 			}
@@ -855,15 +838,9 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			auto start = _string16.c_str() + it.start;
 			auto len = it.length;
 
-			/* A span carrying an inline object is read in pieces: the text before the object, a
-			BOX in place of the object's own character, then the text after it. The box takes the
-			character's place rather than being inserted beside it, so the layout still produces
-			one cell per character of the string and every index the label answers with keeps
-			meaning what it meant.
-
-			Locale tags are not consulted on such a span: resolving them rewrites the text and
-			moves every index in it, and a label is never both a translation target and a picture
-			frame. */
+			/* A span with an inline object is read in pieces: text before, a box in place of the
+			object's character, text after, so the layout keeps one cell per character. Locale
+			tags are not resolved on such a span, since that would move the indexes. */
 			if (!_inlineObjects.empty()) {
 				size_t pos = it.start;
 				size_t end = it.start + it.length;
@@ -882,11 +859,8 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 						}
 					}
 
-					/* An object wider than the line is scaled to fit it, keeping its aspect.
-
-					This is the moment the available width is known - it is what the label was
-					told to wrap at - and it is re-decided on every re-wrap, so a picture follows
-					the column it sits in instead of running off the edge of it. */
+					/* An object wider than the line is scaled to fit, keeping its aspect;
+					re-decided on every re-wrap. */
 					auto size = object.size;
 					if (_width > 0.0f && size.width > _width) {
 						size.height *= _width / size.width;

@@ -29,69 +29,39 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** A CSS-inspired placement engine for the ui kit, covering both the
-Flexible Box (flexbox) and Grid layout models.
+/** A CSS-inspired placement engine for the ui kit: flexbox, grid and table layout.
 
-The layout is driven entirely through the engine's component system:
-- the container node carries a `FlexLayoutInfo` (flex mode) or a `GridLayoutInfo`
-  (grid mode) component, describing the parameters shared by all items - the
-  analog of the CSS flex/grid container properties;
-- every direct child may carry a `FlexItemInfo` / `GridItemInfo` component,
-  describing the per-node properties (grow/shrink/basis, order, alignment,
-  placement, ...) - the analog of the CSS flex/grid item properties. Children
-  without the component are laid out with the default item parameters.
+The container node carries a `FlexLayoutInfo` / `GridLayoutInfo` / `TableLayoutInfo` component;
+each direct child may carry the matching item component (children without one get the defaults).
+`LayoutSystem` on the container reads them and places the children; `LayoutMode` selects the model.
 
-The `LayoutSystem` system, attached to the container node, reads those
-components and positions/sizes the children accordingly. `LayoutMode` selects
-which model runs. The terminology mirrors the CSS specifications as closely as
-the 2d node model allows.
+Xenolith's origin is bottom-left (y up); the engine compensates, so `FlexStart` on the main axis is
+left for rows and top for columns, and grid row 0 is the top row, as in CSS. */
 
-Note that Xenolith uses a bottom-left coordinate origin (Y axis points up),
-while CSS uses a top-left origin. The engine compensates internally, so
-`FlexStart` on the main axis means "left" for rows and "top" for columns, and
-grid row 0 is the top row, just like in CSS. */
-
-// Marker on a direct child: leave it out of the container's flow entirely.
-//
-// The CSS counterpart is `position: absolute` - an absolutely positioned box is not a flex item
-// or a grid item, it does not take part in sizing or in distributing free space, and its
-// container behaves as if it were not there. The node is still visited and drawn; only the
-// layout ignores it, so whoever placed it (the style resolver's absolute positioning, or the
-// application) keeps full control of its position and size.
-//
-// Written by ui::StyleResolver from `position: absolute`; an overlay built in code can set it
-// directly instead of having to live outside the container.
+// Marker on a direct child: the container's layout ignores it (CSS `position: absolute`). The node
+// is still visited and drawn; its position and size stay with whoever placed it. Written by
+// ui::StyleResolver from `position: absolute`, or set directly by code.
 struct SP_PUBLIC OutOfFlowComponent {
 	static ComponentId Id;
 
-	// True when ui::StyleResolver added this from `position: absolute`, and therefore the only case
-	// in which the resolver may take it away again. Without the distinction a style pass - which
-	// runs over EVERY node, whether or not a rule matched it - would strip the marker off any
-	// overlay an application set in code, silently putting it back into its container's flow.
+	// True when ui::StyleResolver added this; only then may the resolver remove it, so a marker set
+	// in code survives style passes.
 	bool styleManaged = false;
 
 	bool operator==(const OutOfFlowComponent &) const = default;
 };
 
-// Resolved CSS `overflow-x` / `overflow-y` for a node.
-//
-// Written by ui::StyleResolver, read by LayoutSystem (which axes may exceed the box) and by
-// ui::ScrollSystem (what to clip and what to slide).
-//
-// THE TWO AXES ARE INDEPENDENT, and are NOT reconciled on the way here. The web computes a
-// `visible` axis to `auto` when the other one is not `visible`, because a clip is a box; this engine
-// used to do the same for the harder reason that its only clip was one axis-aligned scissor RECT.
-// The rect is now built per axis (ui::ScissorAxes: the axis left out is opened past any surface
-// instead of narrowed to the box), so each axis holds exactly what the sheet declared - see the
-// `overflow` block of ui::StyleResolver::applyLayout for what the coercion cost while it lasted.
+// Resolved CSS `overflow-x` / `overflow-y` for a node. Written by ui::StyleResolver, read by
+// LayoutSystem (which axes may exceed the box) and ui::ScrollSystem (what to clip and slide).
+// The axes are independent: unlike the web, a `visible` axis is not computed to `auto` when the
+// other one clips (the scissor is built per axis, see ui::ScissorAxes).
 struct SP_PUBLIC OverflowComponent {
 	static ComponentId Id;
 
 	document::Overflow x = document::Overflow::Visible;
 	document::Overflow y = document::Overflow::Visible;
 
-	// Same contract as OutOfFlowComponent::styleManaged: only a component the resolver created may
-	// the resolver take away, so overflow set in code survives a pass that matched nothing.
+	// Same contract as OutOfFlowComponent::styleManaged.
 	bool styleManaged = false;
 
 	bool clipsX() const { return x != document::Overflow::Visible; }
@@ -112,7 +82,7 @@ struct SP_PUBLIC OverflowComponent {
 enum class LayoutMode : uint8_t {
 	Flex, // CSS Flexible Box, reads FlexLayoutInfo / FlexItemInfo
 	Grid, // CSS Grid, reads GridLayoutInfo / GridItemInfo
-	Table, // CSS table container, reads TableLayoutInfo / TableRowInfo; writes TableColumnsComponent
+	Table, // CSS table, reads TableLayoutInfo / TableRowInfo; writes TableColumnsComponent
 	TableRow, // one table row, reads the TableColumnsComponent on its own node + TableCellInfo
 };
 
@@ -171,29 +141,19 @@ public:
 
 	// --- overflow / scrolling ----------------------------------------------
 	// The union of the in-flow children's margin boxes plus the container padding, as the last pass
-	// placed them, WITHOUT the scroll offset. Size2::ZERO before the first pass.
-	//
-	// It is the size the content OCCUPIES, so it can be either larger than the owner's ContentSize
-	// (that surplus is what ui::ScrollSystem turns into a scroll range) or smaller (that shortfall
-	// is the room left over, which a caller may want to give to something else).
+	// placed them, without the scroll offset. Size2::ZERO before the first pass. May be larger than
+	// the owner's ContentSize (the scroll range) or smaller (the room left over).
 	Size2 getContentExtent() const { return _contentExtent; }
 
-	// Which axes the pass may exceed the box on. On such an axis the content is laid out at its
-	// natural size instead of being squeezed into the box: a measured base size is not truncated to
-	// the available space, the axis does not wrap, and flex-shrink does not crush the items. That
-	// last one stands in for CSS's automatic minimum size (`min-height: auto` == min-content on a
-	// flex item), which this engine has never implemented - without it the default shrink of 1
-	// would simply squash the content and there would be nothing left to scroll.
-	//
-	// Written by ui::ScrollSystem from the OverflowComponent.
+	// Which axes the pass may exceed the box on. On such an axis content keeps its natural size:
+	// base sizes are not truncated, the axis does not wrap, and flex-shrink is off (standing in for
+	// CSS's automatic minimum size, which is not implemented). Written by ui::ScrollSystem.
 	void setOverflowAxes(bool horizontal, bool vertical);
 	bool isOverflowX() const { return _overflowX; }
 	bool isOverflowY() const { return _overflowY; }
 
 	// Translation applied to every in-flow child on top of its placement, in CSS scroll orientation
-	// (x grows right, y grows DOWN - the engine's own Y grows up). Cheap: it replays the placement
-	// the last pass cached instead of re-running the algorithm, so a wheel tick costs one
-	// setPosition per child and no measurement.
+	// (y grows down). Replays the cached placement: one setPosition per child, no measurement.
 	void setScrollOffset(Vec2);
 	Vec2 getScrollOffset() const { return _scrollOffset; }
 
@@ -208,15 +168,9 @@ public:
 	// legacy flex-basis:auto fallback reads)
 	static Size2 measureNode(Node *, const MeasureConstraints &);
 
-	/* Can this node answer a measurement AT ALL - as against answer it with its current size?
-	
-	True when a system opted into the protocol (`SystemFlags::HandleMeasure`: a Label, a nested flex
-	container, one an application wrote) or when a `MeasureComponent` states the answer outright.
-	`measureNode` falls back to the node's ContentSize for everything else, which is a perfectly good
-	answer for laying out and a useless one for DECIDING whether to size a container by its content:
-	a container that did would be echoing back the size it gave that node last frame.
-	
-	The cheap predicate only - it asks nothing and measures nothing. */
+	/* True when the node really answers a measurement: a system with `SystemFlags::HandleMeasure`
+	or a `MeasureComponent`. Otherwise `measureNode` just echoes the current ContentSize, which must
+	not be used to decide content sizing. Measures nothing. */
 	static bool canMeasure(NotNull<Node>);
 
 	LayoutMode getMode() const { return _mode; }
@@ -238,12 +192,8 @@ public:
 
 	static void markItemDirty(NotNull<Node>);
 
-	/* This node's INTRINSIC size changed - every measure above it is stale.
-
-	For a node that answers `handleMeasure` or carries a `MeasureComponent` and has just changed what
-	it would answer. `markItemDirty` above dirties one level, which is all a change of PLACEMENT can
-	affect; a change of SIZE reaches every `fit-content` container that built its own height out of
-	this one, and those may be several levels up. See the definition. */
+	/* The node's intrinsic size changed: dirties every `fit-content` ancestor that measured it,
+	not just the one level `markItemDirty` does. */
 	static void markMeasureDirty(NotNull<Node>);
 
 	// helpers to read / assign per-item flex parameters via the component system
@@ -270,12 +220,9 @@ public:
 	static const TableCellInfo *getTableCell(NotNull<Node>);
 	static void setTableCell(NotNull<Node>, const TableCellInfo &);
 
-	// Impose a resolved column geometry on a row. This is the channel a virtualized view
-	// (ui::TableView) uses to make a row that has no table ancestor lay itself out, and the one a
-	// LayoutMode::Table pass uses on its own row children - the same call in both cases.
-	//
-	// `generation` is carried over and bumped only when the geometry actually differs, so an
-	// unchanged pass neither re-lays-out the row nor invalidates a view's node reuse.
+	// Imposes a resolved column geometry on a row; used by LayoutMode::Table on its rows and by a
+	// virtualized view (ui::TableView) whose rows have no table ancestor. `generation` is bumped
+	// only when the geometry differs, so an unchanged pass keeps the row and a view's node reuse.
 	static void setTableColumns(NotNull<Node>, const TableColumnsComponent &);
 
 protected:
@@ -289,17 +236,14 @@ protected:
 	// in-flow children's boxes, with the scroll offset added back.
 	Size2 measureChildrenExtent() const;
 
-	// The placement backends, dispatched by `apply()` from `_mode`. One per subunit of the module's
-	// SCU: layoutFlex in XLUiLayoutFlex.cc, layoutGrid in XLUiLayoutGrid.cc, the two table modes in
-	// XLUiLayoutTable.cc.
+	// Placement backends, dispatched by `apply()` from `_mode`; defined in XLUiLayoutFlex.cc,
+	// XLUiLayoutGrid.cc and XLUiLayoutTable.cc.
 	void layoutFlex();
 	void layoutGrid();
 	void layoutTable();
 	void layoutTableRow();
 
-	// Per-mode measurement, dispatched by `measure()` from `_mode`, and defined beside the matching
-	// backend. The null-owner guard and the mode switch belong to the dispatcher, so each of these
-	// runs with an owner that exists and a mode that already matches.
+	// Per-mode measurement, dispatched by `measure()`, which already checked the owner and mode.
 	Size2 measureFlex(const MeasureConstraints &);
 	Size2 measureTable(const MeasureConstraints &);
 	Size2 measureTableRow(const MeasureConstraints &);
@@ -313,10 +257,8 @@ protected:
 	// resulting handleChildContentSizeDirty notifications are ignored
 	bool _inApply = false;
 
-	// Unscrolled bottom-left of every in-flow child from the last pass, in owner space, so
-	// setScrollOffset can re-place them without re-running the algorithm. Rc rather than a raw
-	// pointer: a child removed between a pass and a scroll would otherwise dangle; setScrollOffset
-	// still re-checks getParent(), because a re-parented node must not be moved either.
+	// Unscrolled bottom-left of every in-flow child from the last pass, in owner space, replayed by
+	// setScrollOffset. Rc keeps removed children alive; setScrollOffset still checks getParent().
 	Vector<Pair<Rc<Node>, Vec2>> _placement;
 
 	Size2 _contentExtent;

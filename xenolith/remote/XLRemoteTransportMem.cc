@@ -22,16 +22,12 @@
 
 /* The `mem:` transport -- a connected pair of byte queues inside one process.
  *
- * It carries no data anywhere, which is the point: it makes the ENTIRE protocol above the transport
- * seam -- the setup handshake, framing, the reassembler, block transfer, the font exchange -- run in
- * a test with no socket, no TLS, no ports and no second process. Those paths could not be asserted
- * before, because both of their ends only ever spoke through an `SSL *`.
+ * Runs the whole protocol above the transport (handshake, framing, reassembly, block transfer, font
+ * exchange) in a test without sockets, TLS or a second process. It is the only transport available
+ * on every target (wasm has no sockets, an RTOS build may have no TLS).
  *
- * It is also the only transport that exists on every target: wasm has no sockets at all (every
- * entry point in the runtime's socket layer answers ENOSYS), and an RTOS build may have no TLS.
- *
- * Single-threaded by design. Both endpoints live on the caller's thread and are driven by explicit
- * pumping, so a test is deterministic: nothing arrives except where the test moved it.
+ * Single-threaded: both endpoints live on the caller's thread and are driven by explicit pumping,
+ * so tests are deterministic.
  */
 
 #include "XLRemoteTransport.h"
@@ -61,8 +57,7 @@ struct MemPipe : public Ref {
 			__sprt_memcpy(out, buffer.data() + offset, n);
 			offset += n;
 		}
-		// Reclaim the consumed prefix once it is worth moving, so a long exchange does not grow a
-		// buffer made entirely of bytes already read.
+		// Reclaim the consumed prefix once it is worth moving.
 		if (offset >= buffer.size()) {
 			buffer.clear();
 			offset = 0;
@@ -89,8 +84,7 @@ public:
 			written = 0;
 			return Status::ErrorNotPermitted;
 		}
-		// No flow control: the peer is in the same process and this is a test aid, so a write always
-		// takes everything. A transport that CAN refuse is exercised by the socket ones.
+		// No flow control: a write always takes everything.
 		_out->push(data);
 		written = data.size();
 		if (_onWritten) {
@@ -132,8 +126,7 @@ public:
 		if (!_control || !_bulk) {
 			return false;
 		}
-		// Both ends of a mem: pair are this process, so the peer is as authenticated as it gets --
-		// which is exactly what lets a test drive the "transport already knows who this is" policy.
+		// Both ends are this process, so the peer is authenticated (lets tests cover that policy).
 		_peer.authenticated = true;
 		_peer.uid = int64_t(::getuid());
 		_peer.pid = int64_t(::getpid());
@@ -142,21 +135,17 @@ public:
 	}
 
 	virtual TransportCaps getCaps() const override {
-		// MessageFramed is NOT declared: the pipe is a byte stream like every other transport here,
-		// so the reassembler above stays on the same code path a socket exercises. Claiming framing
-		// would make the tests stop covering the case that actually ships.
+		// MessageFramed is not declared: the pipe is a byte stream, so the reassembler runs the
+		// same path as with a socket.
 		//
-		// MultiStream IS declared, and it is real: Bulk is a genuinely independent pipe pair, so this
-		// is the transport on which the stream seam is exercised. It is deliberately the only one for
-		// now -- QUIC could offer the same but does not implement it yet, and declaring a capability
-		// nobody honours is how the protocol layer above ends up trusting a lie.
+		// MultiStream is declared and real: Bulk is an independent pipe pair. This is currently the
+		// only transport with real multiple streams.
 		return TransportCaps::Encrypted | TransportCaps::PeerAuthenticated
 				| TransportCaps::MultiStream;
 	}
 
-	// Control and Frame share a pipe; Bulk gets its own. Frame is not separated here because nothing
-	// above maps a domain onto it (see streamClassForDomain) -- a third pipe would be untestable
-	// scaffolding.
+	// Control and Frame share a pipe; Bulk gets its own. No domain maps onto Frame yet (see
+	// streamClassForDomain).
 	virtual TransportStream *getStream(StreamClass c) override {
 		return c == StreamClass::Bulk ? _bulk.get() : _control.get();
 	}
@@ -174,9 +163,8 @@ public:
 
 	virtual void setOnReadable(Function<void()> &&cb) override { _onReadable = sp::move(cb); }
 
-	// Liveness is a property of the CONNECTION, so it is read off the control pipe alone: the two
-	// pipes are closed together below, and a peer that has drained control but not bulk has not
-	// somehow half-disconnected.
+	// Liveness belongs to the connection, so it is read off the control pipe alone; both pipes are
+	// closed together below.
 	virtual bool isClosed() override { return _closed || _control->getIn()->closed; }
 
 	virtual void close(bool) override {
@@ -184,8 +172,8 @@ public:
 			return;
 		}
 		_closed = true;
-		// Close the direction WE write: the peer must still drain what we already sent, which is why
-		// MemStream::isClosed also waits for the buffer to empty.
+		// Close the direction we write: the peer still drains what was sent (MemStream::isClosed
+		// waits for the buffer to empty).
 		_control->getOut()->closed = true;
 		_bulk->getOut()->closed = true;
 	}
@@ -266,9 +254,8 @@ void MemListener::close() {
 }
 
 Rc<TransportConnection> MemListener::accept(StringView name) {
-	// One pipe per direction per stream class; the two endpoints get them crossed over. The pairing is
-	// positional and settled here, at accept, which is why the wire needs no preamble announcing what
-	// a stream is for -- a socket transport that opens streams later would need one.
+	// One pipe per direction per stream class, crossed over between endpoints. Pairing is
+	// positional and settled at accept, so no stream preamble is needed.
 	auto makeStreams = [](Rc<MemPipe> &controlIn, Rc<MemPipe> &controlOut, Rc<MemPipe> &bulkIn,
 								Rc<MemPipe> &bulkOut) {
 		return pair(Rc<MemStream>::create(Rc<MemPipe>(controlIn), Rc<MemPipe>(controlOut)),

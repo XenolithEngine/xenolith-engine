@@ -25,7 +25,7 @@
 
 #include "XLInput.h" // IWYU pragma: keep
 #include "XLNodeInfo.h" // IWYU pragma: keep
-#include "XLClipboard.h" // IWYU pragma: keep - preferMimeType and ClipboardOffer live there now
+#include "XLClipboard.h" // IWYU pragma: keep - preferMimeType and ClipboardOffer
 
 #include <sprt/runtime/window/clipboard.h>
 
@@ -34,12 +34,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class Node;
 class DragSession;
 
-// What a drop would DO with the payload. The three values are not an invention: they map one to one
-// onto XdndActionCopy/Move/Link, DROPEFFECT_COPY/MOVE/LINK, NSDragOperation{Copy,Move,Link} and
-// wl_data_device_manager_dnd_action. Modelling them from the start is what keeps the target API
-// from changing when the OS path lands.
-//
-// A mask says "any of these is acceptable"; the resolved action is always a SINGLE bit.
+// What a drop does with the payload; maps onto XdndAction*, DROPEFFECT_*, NSDragOperation* and
+// wl_data_device_manager_dnd_action. A mask means "any of these"; a resolved action is one bit.
 enum class DragActions : uint32_t {
 	None = 0,
 
@@ -52,13 +48,8 @@ enum class DragActions : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DragActions)
 
-// Whether this drag may leave the process. v1 implements Never only; Always is rejected by
-// beginDrag with a warning.
-//
-// It lives on the OFFER, not on the session, and that is deliberate. Wayland's start_drag needs the
-// serial of a live button press and X11 needs a grab taken at press time, so "start internally and
-// escalate when the pointer leaves the window" is not implementable on any of them. The decision
-// has to be made at begin or not at all.
+// Whether this drag may leave the process. Only Never is implemented; beginDrag rejects Always.
+// Set on the offer: Wayland and X11 need a live press serial/grab, so it cannot change mid-drag.
 enum class DragExternalPolicy : uint8_t {
 	Never,
 	Always,
@@ -66,21 +57,12 @@ enum class DragExternalPolicy : uint8_t {
 
 /** The payload of one drag, with two ways in.
 
-`getLocal()` is the in-process fast path: a live object the source and the target agree on out of
-band, keyed by `getLocalType()`. Nothing is serialized, nothing is copied.
+`getLocal()` is the in-process path: a live object keyed by `getLocalType()`, null for a drag from
+another process. The clipboard half (MIME types plus a lazy encoder) is all an external drag can
+carry, so targets should prefer `getTypes()`/`encode()` when the data is expressible as bytes.
 
-The clipboard half is the OS-shaped one: a list of MIME types and a lazy encoder. It is what an
-external drag can carry, and the ONLY thing it can carry - which is why it is also the API a target
-should be written against whenever the data is expressible as bytes.
-
-For a drag that came from another process `getLocal()` is null. A target that only understands
-`getLocal()` still works, it just refuses those drags; a target written against `getTypes()` and
-`encode()` accepts both without knowing the difference.
-
-THREADING. `encode()` runs the offer's encode callback on the CALLER's thread. In v1 that is always
-the app thread, but the callback is stored inside a `sprt::window::ClipboardData` whose contract
-says it may run anywhere, and once the OS path exists it will. So an encode callback must capture
-copies of what it needs and must never touch the scene graph. */
+`encode()` runs the encode callback on the caller's thread, which may be any thread: the callback
+must capture copies and never touch the scene graph. */
 class SP_PUBLIC DragData : public Ref {
 public:
 	virtual ~DragData() = default;
@@ -115,8 +97,7 @@ protected:
 
 /** What a source declares when it starts a drag.
 
-Everything is optional except the actions. A drag with no payload at all is legal (the source and
-the target may communicate purely through `local`), and so is a drag with no visual. */
+Everything is optional except the actions: a drag may have no clipboard payload and no visual. */
 struct SP_PUBLIC DragOffer {
 	// --- payload, in-process half -------------------------------------------
 	Rc<Ref> local;
@@ -136,39 +117,28 @@ struct SP_PUBLIC DragOffer {
 	DragExternalPolicy externalPolicy = DragExternalPolicy::Never;
 
 	// --- visual -------------------------------------------------------------
-	// Builds the node that follows the pointer. Called ONCE, inside beginDrag. The node must not
-	// carry an InputListener - it would sit between the pointer and the source that owns the drag.
+	// Builds the node that follows the pointer. Called once, inside beginDrag. The node must not
+	// carry an InputListener - it would sit between the pointer and the source.
 	// `decoratorOffset` is added to the pointer position, in the drag system owner's space
 	Function<Rc<Node>()> decorator;
 	Vec2 decoratorOffset;
 
-	/* Do not build the decorator at beginDrag; the source will supply it later, through
-	DragSession::setDecorator.
-
-	It exists for a decorator whose CONTENT is not available yet - the one case that matters being a
-	cutout of the frame, which needs a frame to be rendered before it holds anything. Building the
-	ghost first and filling it in afterwards would not do: the ghost is under the pointer, which at
-	that moment is over the very thing being captured, so it would photograph itself.
-
-	While there is no decorator there is simply nothing following the pointer. A frame or two of that
-	reads as the press taking effect, not as a missing ghost. */
+	/* Do not build the decorator at beginDrag; the source supplies it later through
+	DragSession::setDecorator (e.g. a frame cutout that needs a rendered frame first). Until then
+	nothing follows the pointer. */
 	bool decoratorDeferred = false;
 
-	// Where to park it. Null means the drag system's owner, which is the right answer whenever the
-	// decorator draws itself. It is NOT the right answer when the decorator takes its look from a
-	// stylesheet: a StyleResolver only sees its own subtree, so a ghost parked above that subtree
-	// comes out unstyled. Such a source names the node its own styling is resolved under
+	// Where to park it; null means the drag system's owner. A stylesheet-styled decorator needs a
+	// parent inside its StyleResolver's subtree, or it comes out unstyled
 	Node *decoratorParent = nullptr;
 
-	// Builds the OS-shaped half of this offer, MOVING `encode` out of it. This is the object the
-	// clipboard takes and the one an OS drag will carry, so a source that can be dragged and one
-	// that can be copied describe their payload exactly once, in one place
+	// Builds the clipboard half of this offer, moving `encode` out of it. The same object serves
+	// the clipboard and a drag
 	Rc<sprt::window::ClipboardData> takeClipboardData(Ref *owner = nullptr);
 
 	// --- completion ---------------------------------------------------------
-	// Runs exactly once, after the drop has been applied (or not). DragActions::None means the
-	// drag ended without a drop - cancelled, refused, or dropped nowhere. This is where a Move
-	// source deletes its original and a Copy source does not
+	// Runs exactly once, after the drop. DragActions::None means no drop (cancelled, refused, or
+	// dropped nowhere). A Move source deletes its original here
 	Function<void(DragActions)> completion;
 };
 
@@ -187,43 +157,32 @@ struct SP_PUBLIC DragEvent {
 	// the same point in the receiving target owner's node space
 	Vec2 location;
 
-	// Everything the SOURCE is willing to do. A target answers with a subset of this
+	// Everything the source allows. A target answers with a subset of this
 	DragActions allowed = DragActions::None;
 
-	// The single action the modifiers ask for, already clamped to `allowed`. It is a PREFERENCE,
-	// not a demand: a target that cannot do it may still accept something else, and then that
-	// something else is what happens. Which is why the two are separate fields - collapsing them
-	// would make a Copy-only target unable to take a drag the user happened to hold Shift over
+	// The single action the modifiers ask for, clamped to `allowed`. A preference: a target that
+	// cannot do it may accept something else, and that is what happens
 	DragActions preferred = DragActions::None;
 
 	InputModifier modifiers = InputModifier::None;
 };
 
-// A target's answer to "would you take this, and as what?".
+// A target's answer: whether it takes the drag, and as what.
 struct SP_PUBLIC DragResponse {
-	// Subset of DragEvent::allowed this target would accept - usually `event.allowed & whatICanDo`.
-	// None means "not here", and the search continues with whatever is under this target.
-	//
-	// If the set contains DragEvent::preferred, that is what the drop will do; otherwise the
-	// first of Copy/Move/Link in the set wins
+	// Subset of DragEvent::allowed this target accepts; None continues the search below it. The
+	// drop does DragEvent::preferred if present, otherwise the first of Copy/Move/Link in the set
 	DragActions accepted = DragActions::None;
 
 	// Optional: override the cursor the drag would otherwise derive from the resolved action
 	WindowCursor cursor = WindowCursor::Undefined;
 };
 
-/** The whole seam between a drop target and the drag system.
+/** The interface between a drop target and the drag system.
 
-`accept` is a PREDICATE and must be pure. It is called during hit testing, for candidates that may
-never become the current target, and possibly several times in one frame. Do not move indicators,
-do not touch the scene graph, do not remember anything in it.
-
-`enter` / `over` / `leave` are notifications for the CURRENT target only, and are where visual
-feedback belongs. `enter` and `leave` bracket exactly: every enter gets its leave, including when
-the drag is cancelled or the target leaves the scene mid-drag.
-
-An empty slot is a no-op. A target with no `accept` never accepts anything, which makes an
-unconfigured drop target inert rather than surprising. */
+`accept` must be pure: it runs during hit testing, for candidates that may never become the current
+target, possibly several times per frame. `enter`/`over`/`leave` fire only for the current target
+and carry visual feedback; every enter gets its leave, including on cancel or the target leaving
+the scene. An empty slot is a no-op; without `accept` the target accepts nothing. */
 struct SP_PUBLIC DropTargetSlots {
 	Function<DragResponse(const DragEvent &)> accept;
 
@@ -231,20 +190,14 @@ struct SP_PUBLIC DropTargetSlots {
 	Function<void(const DragEvent &)> over;
 	Function<void(const DragEvent &)> leave;
 
-	// Apply the drop. `action` is a single resolved bit. Returning false means nothing was
-	// actually done, and the source's completion is told DragActions::None
+	// Apply the drop. `action` is a single resolved bit. Returning false means nothing was done,
+	// and the source's completion gets DragActions::None
 	Function<bool(const DragEvent &, DragActions action)> drop;
 };
 
-// preferMimeType moved to XLClipboard.h, which is included above: the rule is the clipboard's, and
-// a paste needed it as much as a drop did.
-
-// Which single action the modifiers ask for, clamped to what the source allows.
-//
-// Ctrl = Copy, Shift = Move, Ctrl+Shift = Link - the convention every desktop shares. With no
-// modifier the source's default wins. The result is always a subset of `allowed`, and falls back to
-// the first of Copy/Move/Link present in `allowed` when the requested one is not offered, so a
-// caller never has to handle an empty answer for a non-empty `allowed`
+// Which single action the modifiers ask for: Ctrl = Copy, Shift = Move, Ctrl+Shift = Link, else
+// `dflt`. Falls back to the first of Copy/Move/Link in `allowed`, so it is never None for a
+// non-empty `allowed`
 SP_PUBLIC DragActions modifiersToActions(InputModifier mods, DragActions allowed,
 		DragActions dflt);
 

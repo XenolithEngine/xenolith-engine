@@ -52,10 +52,8 @@ protected:
 };
 
 // A linked program plus the plain state the pass executor applies for it. The blend description
-// is stored as-is (it is uint32-sized and comparable), so a change between two pipelines shows up
-// in one equality check; depth is deliberately not applied - the flat contract has no depth
-// attachment, exactly as in the software backend, and enabling DEPTH_TEST without a depth buffer
-// would make draws undefined.
+// is stored as-is (uint32-sized, compared in one check). Depth is not applied: the flat contract
+// has no depth attachment, and DEPTH_TEST without a depth buffer makes draws undefined.
 class SP_PUBLIC GraphicPipeline final : public core::GraphicPipeline {
 public:
 	virtual ~GraphicPipeline() = default;

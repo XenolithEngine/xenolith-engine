@@ -154,8 +154,9 @@ def centre(r, fx=0.5, fy=0.5):
     return r["x"] + r["width"] * fx, r["y"] + r["height"] * fy
 
 
-binary = sys.argv[1] if len(sys.argv) > 1 else \
-        "stappler-build/x86_64-unknown-linux-gnu/debug/cc/testapp"
+binary = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "stappler-build/x86_64-unknown-linux-gnu/debug/cc/testapp")
 addr = f"/tmp/xl-hit-test-{os.getpid()}.sock"
 
 app = Stand(binary, addr)

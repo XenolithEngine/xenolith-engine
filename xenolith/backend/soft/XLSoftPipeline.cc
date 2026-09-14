@@ -28,8 +28,7 @@ bool Shader::init(Device &dev, const core::ProgramData &data) {
 	_stage = data.stage;
 	_programName = data.key.str<Interface>();
 
-	// The SPIR-V blob (data / callback) is deliberately not read: there is no interpreter, and
-	// pretending to consume it would only hide a mismatch until nothing draws.
+	// The SPIR-V blob (data / callback) is not read: there is no interpreter.
 	return core::Object::init(dev,
 			[](core::Device *, core::ObjectType, core::ObjectHandle, void *) { },
 			core::ObjectType::ShaderModule, core::ObjectHandle::zero());

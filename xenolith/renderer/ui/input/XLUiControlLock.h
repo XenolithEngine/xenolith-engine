@@ -28,31 +28,15 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* WHY a control cannot be edited - and it is NOT a validation failure.
+/* Edit lock: a control that may not be written to because something else owns its value. This is
+not a validation failure (`:invalid`); both may apply at once.
 
-`:invalid` says "what is written here is wrong": the remedy is to fix the value, and an author who
-reads it goes looking for a typo. A lock says "you may not write here at all", and its remedy is
-somewhere else entirely - cut the wire that feeds this pin, declare the field, leave the read-only
-view. A control that says the first when it means the second sends the author hunting for a mistake
-they did not make, which is why the two are different words and both may be worn at once.
+The state lives in InteractiveComponent (Locked flag, the owner's requested enabled value, the
+reason code); this layer adds the `locked` style class (the CSS subset has no `:locked`), the
+tooltip and the widget's setEnabled. */
 
-THE STATE ITSELF LIVES IN InteractiveComponent (see XLInteractiveComponent.h): the Locked flag, what
-the widget last asked for, and the code of the sentence that says why. What lives HERE is the half
-that has to know what a widget is - the `locked` style class, the hint, and the widget's own
-setEnabled.
-
-`locked` STAYS A STYLE CLASS, unlike `invalid` and the rest which became pseudo-classes: the CSS
-subset has no `:locked` to become. It is the one such class that was never a crutch. */
-
-// What a lockable control offers, and the whole of it.
-//
-// There is no ui::Widget base and there must not be one - a widget is composed, not subclassed - so
-// the lock reaches the gate through the two methods nine widgets already declare with exactly these
-// signatures. No state, one line each to answer.
-//
-// It is reached with a dynamic_cast, so a node that is NOT a control still takes the mark, the
-// reason and the hint: a caption, a table row or a widget of your own can say "this cannot be
-// edited" without having to become a control first.
+// Interface a lockable control implements. Found with dynamic_cast; a node that does not implement
+// it still gets the style class, the reason and the tooltip.
 class SP_PUBLIC EditLockTarget {
 public:
 	virtual ~EditLockTarget() = default;
@@ -61,19 +45,13 @@ public:
 	virtual bool isEnabled() const = 0;
 };
 
-/* Lock a node, and say why with a diagnostic CODE.
+/* Lock a node; the reason is a diagnostic code registered once by the calling module:
 
-A code, not a string: the sentence is the same in every instance of one situation, and the registry
-that owns it (stappler::diagnostic) hands out one number for one text. Register the message as a
-constant of the calling module:
+    static const uint32_t s_lockedByWire = diagnostic::registerMessage("value arrives on a wire");
 
-    static const uint32_t s_lockedByWire = diagnostic::registerMessage("the value arrives on a wire");
-
-Applies the `locked` style class, clears the Enabled bit and raises ReadOnly (a locked control IS
-disabled and it may not be written to - `:disabled` and `:read-only` both match), installs a
-ui::TooltipComponent carrying the message IF the node has none of its own, and asks the widget to stop
-accepting edits. Synchronous: nothing here waits for the next frame, because a lock that arrives a
-frame late is a lock that let one more edit through. */
+Applies the `locked` style class, clears Enabled and sets ReadOnly (`:disabled` and `:read-only`
+both match), installs a tooltip with the message if the node has none, and disables the widget.
+Synchronous, so no edit slips through before the next frame. */
 SP_PUBLIC void setEditLock(NotNull<Node>, uint32_t reasonCode);
 SP_PUBLIC void clearEditLock(NotNull<Node>);
 

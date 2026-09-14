@@ -427,13 +427,9 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 		return false;
 	}
 
-	// Pacing depends on the present mode. The macOS window requests
-	// followDisplayLinkBarrier (the next frame is gated on the CADisplayLink
-	// tick), which caps the loop at the display refresh - correct for Fifo,
-	// but Immediate must run unbounded. Drop the barrier for Immediate so each
-	// present schedules the next frame right away (the layer's
-	// displaySyncEnabled=NO already lets present skip the vsync wait); restore
-	// it for any vsync-locked mode.
+	// The display-link barrier caps the loop at the display refresh: keep it
+	// for vsync-locked modes, drop it for Immediate so each present schedules
+	// the next frame right away.
 	_options.followDisplayLinkBarrier =
 			_windowFollowDisplayLinkBarrier && presentMode != core::PresentMode::Immediate;
 

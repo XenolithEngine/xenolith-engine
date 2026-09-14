@@ -103,7 +103,17 @@ the main axis (cross axis bounded by the container's content box), then clamps
 to the available space and to `minMain`/`maxMain`. After flexing, when the
 final main size is known, it re-measures the *cross* axis with
 `{Normal, max<main> = finalMainSize}` — this is what turns "width 220" into
-"wrapped height 66" for a label. At commit it calls `setContentSize`,
+"wrapped height 66" for a label.
+
+A **column** is the other way round: its main size is a height, and a height of
+wrapping content depends on the width. So where the column has a width (a bounded
+content box that is not an overflow axis), the main axis is measured with
+`{Normal, maxWidth = W}` instead, W being the item's own definite width or the
+content box less its cross margins — the width a stretched item gets — and the
+cross re-measure is bounded by the same W. Asked for `MaxContent`, a label answers
+with its one-line height, and the column used to place the next item one line down
+while the label, stretched to the column's width, wrapped over it.
+[`tests/uilayout` `column-wrap`] At commit it calls `setContentSize`,
 `setPosition`, and then `handleLayoutApplied` on the measured item.
 
 So a correct measurable node must satisfy one contract: **measurement must

@@ -29,8 +29,8 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 bool FormInputListener::init(StringView name, FormFieldRole role) {
-	// Priority 0 is load-bearing, not a default: the tab ring is the focus group's listener vector
-	// reversed, and that vector is only in document order for listeners of equal priority
+	// Priority 0 is required: the tab ring is the focus group's listener vector reversed, which
+	// is in document order only for listeners of equal priority
 	if (!InputListener::init(0)) {
 		return false;
 	}
@@ -41,10 +41,7 @@ bool FormInputListener::init(StringView name, FormFieldRole role) {
 	// Dispatched after the widget's own listener, so this only sees what the widget declined
 	setSystemPriority(SystemPriority);
 
-	/* Navigation and submission are hotkeys, so this listener needs neither a key mask nor a
-	   touch filter: the dispatcher delivers them out of band, and FocusedOnly means "entitled to
-	   keyboard events in this form" - which is exactly the question, where the old hit test
-	   ("is the mouse over the widget?") was exactly the wrong one. */
+	/* Navigation and submission are FocusedOnly hotkeys: no key mask or touch filter needed. */
 	auto &hk = EngineHotkeys::get();
 	auto bind = [this](HotkeyId id) {
 		addHotkey(id, [this](HotkeyId id, const InputEvent &ev) {
@@ -105,9 +102,8 @@ void FormInputListener::setFieldFlags(FormFieldFlags flags) {
 	updateRequiredState();
 }
 
-// `:required` / `:optional`. Called from both places the answer can change: the flags themselves,
-// and the moment the listener finds its owner (a field built by an adapter has its flags before it
-// has a node to publish them on).
+// `:required` / `:optional`. Called on flag changes and on enter, since flags may be set before
+// the owner exists.
 void FormInputListener::updateRequiredState() {
 	if (_owner) {
 		applyControlRequired(_owner, hasFlag(_fieldFlags, FormFieldFlags::Required));
@@ -119,8 +115,7 @@ void FormInputListener::setValidator(Validator &&v) { _validator = sp::move(v); 
 void FormInputListener::setSlots(FormFieldSlots &&slots) { _slots = sp::move(slots); }
 
 bool FormInputListener::isFocusable() const {
-	// A locked control is not a stop in the tab ring: if it only PAINTED as unreachable, Tab would
-	// still land on something that refuses every key, which is the worse half of both behaviours.
+	// A locked control is not a stop in the tab ring
 	return _slots.focusable && !isEditLocked(getOwner());
 }
 
@@ -183,9 +178,8 @@ bool FormInputListener::activate() {
 }
 
 bool FormInputListener::requestNavigate(bool backwards) {
-	// `this` is the anchor: the step is meant to be relative to the field that asked, not to
-	// whatever the group last committed. It matters when a field navigates without holding focus;
-	// in the key path the two agree
+	// Step relative to this field, not the group's committed focus; they differ when a field
+	// navigates without holding focus
 	return _form ? _form->focusNext(backwards, this) : false;
 }
 
@@ -221,14 +215,9 @@ void FormInputListener::updateFocusStyle(bool value) {
 	});
 }
 
-/* `:focus-visible`, written here rather than beside the `:focus` counter above - and for a widget
-that keeps that counter ITSELF (ownsFocusStyle) just the same, because this is a different bit and
-writing it twice is not the hazard a cumulative counter is.
-
-A TEXT FIELD IS ALWAYS FOCUS-VISIBLE. It shows a caret and takes characters the moment it has focus,
-however focus got there, so an outline that appears only after Tab would contradict the caret that
-appeared after the tap. Browsers landed on the same rule, and `ownsFocusStyle` happens to name
-exactly the widgets it applies to: the ones driven by the IME. */
+/* `:focus-visible` is a plain flag, written for every widget including ownsFocusStyle ones. IME
+driven widgets (ownsFocusStyle) are always focus-visible, since they show a caret however focus
+arrived. */
 void FormInputListener::updateFocusVisibleStyle(bool value) {
 	if (!_owner) {
 		return;
@@ -284,17 +273,15 @@ bool FormInputListener::handleFormHotkey(HotkeyId id, const InputEvent &) {
 		case FormFieldRole::Submit: return requestSubmit();
 		case FormFieldRole::Reset: return requestReset();
 		case FormFieldRole::Field:
-			// A widget that can act on Enter does; everything else means "I am done" - which is
-			// the DEFAULT BUTTON's action when the form has one, and a bare submit() when it does
-			// not. Going through the button is what makes `:default` an honest highlight.
+			// The widget acts on Enter if it can; otherwise fire the default button, or submit()
+			// when the form has none
 			if (activate()) {
 				return true;
 			}
 			return _form ? _form->activateDefault() : requestSubmit();
 		}
 	} else if (id == hk.formActivate) {
-		// Only for the widgets that have something to toggle - a text field never gets here,
-		// because Space is a character and the IME claimed it long before
+		// Text fields never get here: the IME consumes Space as a character
 		return activate();
 	} else if (id == hk.formReset) {
 		if (_form && _form->isResetOnEscape()) {

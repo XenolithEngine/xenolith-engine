@@ -65,8 +65,7 @@ bool MarkdownSelectionSystem::init(NotNull<MarkdownView> view) {
 	bind(hotkeys.textCopy);
 	bind(hotkeys.back);
 
-	// Copying the source rather than the normalized fragment has no engine-wide binding, so it
-	// gets one of its own - the same road ui::CodeEditor takes for Ctrl+S.
+	// Copying the source instead of the normalized fragment has no engine-wide binding.
 	_copySourceHotkey = HotkeyRegistry::getInstance()->add("xenolith.ui.markdown.copySource",
 			HotkeyCombo::parse("Ctrl+Shift+C"),
 			"Copy the selected markdown as a raw slice of the source");
@@ -75,11 +74,8 @@ bool MarkdownSelectionSystem::init(NotNull<MarkdownView> view) {
 	return true;
 }
 
-/* The two handles a finger drags the selection by.
-
-Built once, on demand: a document driven by a mouse never needs them. Each carries a
-DynamicStateSystem that ignores its parent's state, and that is not decoration - without it the
-document's scroll clips the handle in half exactly when it matters, at the edge of the view. */
+/* The handles a finger drags the selection by, built on demand. Each ignores its parent's
+DynamicStateSystem state, so the document's scroll does not clip it at the view's edge. */
 void MarkdownSelectionSystem::makeHandles() {
 	if (_handleStart || !_view) {
 		return;
@@ -107,9 +103,7 @@ void MarkdownSelectionSystem::makeHandles() {
 		state->setIgnoreParentState(true);
 		state->setStateApplyMode(DynamicStateApplyMode::ApplyForAll);
 
-		// The view is a flex column, and every child of it is an item of that column - a handle
-		// included, which the layout duly stacked under the document. It is placed by hand, so it
-		// has to say it is not in the flow.
+		// Placed by hand, so out of the view's flex flow.
 		handle->setComponent<OutOfFlowComponent>();
 		return handle;
 	};
@@ -153,8 +147,7 @@ Vec2 MarkdownSelectionSystem::getHandlePosition(bool start) const {
 		return Vec2::INVALID;
 	}
 
-	// Its anchor, not its origin: the anchor is the point of the teardrop, which is the caret it
-	// was put on, and that is the only part of a handle worth asserting about.
+	// The anchor, not the origin: the teardrop's point, on the caret.
 	return _view->convertToWorldSpace(handle->getPosition().xy());
 }
 
@@ -193,8 +186,7 @@ bool MarkdownSelectionSystem::handleTap(const GestureTap &tap) {
 		return true;
 	}
 
-	// A plain click on a link follows it. Only a click: a drag that happens to begin on a link is
-	// the start of a selection, and a tap is reported only when no drag was recognized.
+	// A tap on a link follows it; a drag starting on a link selects instead.
 	if (auto link = flow->findLink(position)) {
 		_view->clearSelection();
 		_view->handleLinkActivated(*link);
@@ -251,9 +243,8 @@ bool MarkdownSelectionSystem::handleSwipe(const GestureSwipe &swipe) {
 			auto range = _view->getSelectionRange();
 			_anchor = (_handleDrag == 1) ? range.second : range.first;
 		} else {
-			// A finger that is not on a handle pans the document, so this declines and the scroll
-			// keeps the gesture. Declining one recognizer does not remove the listener: the tap
-			// recognizer is still tracking the same pointer.
+			// A finger off the handles pans the document: decline so the scroll keeps the gesture.
+			// The tap recognizer still tracks the pointer.
 			if (hasFlag(swipe.input->data.getModifiers(), InputModifier::Touch)) {
 				return false;
 			}
@@ -264,8 +255,7 @@ bool MarkdownSelectionSystem::handleSwipe(const GestureSwipe &swipe) {
 
 		_dragging = true;
 
-		// Take the pointer before either ScrollSystem can act on it. Per touch rather than
-		// wholesale, so a second finger is still free.
+		// Take the pointer before either scroll acts; per touch, so a second finger stays free.
 		setExclusiveForTouch(swipe.getId());
 		return true;
 
@@ -290,8 +280,7 @@ bool MarkdownSelectionSystem::handleMove(const GestureData &data) {
 		return false;
 	}
 
-	// The cursor is the only thing that says a link is a link: an inline construct is a style
-	// range, not a node, so there is no `:hover` to reach it.
+	// Inline links are style ranges, not nodes, so there is no `:hover`; the cursor shows them.
 	auto position = flow->getPositionForPoint(data.location());
 	setCursor(flow->findLink(position) ? WindowCursor::Pointer : WindowCursor::Text);
 	return false; // a hover is nobody's to consume
@@ -327,8 +316,7 @@ void MarkdownSelectionSystem::setAutoScrollTarget(Vec2 world) {
 
 	_autoScrollTarget = world;
 
-	// Scheduling alone is not enough: the scheduler runs on frames, and a pointer parked at the
-	// edge of the view produces none.
+	// Scheduling alone is not enough: a pointer parked at the edge produces no frames.
 	if (!_owner) {
 		return;
 	}
@@ -358,8 +346,7 @@ void MarkdownSelectionSystem::update(const UpdateTime &time) {
 		return;
 	}
 
-	// Node space is Y-up and the scroll offset is Y-down, so the sign flips: near the BOTTOM of
-	// the view (a small local.y) means "further down the document".
+	// Node space is Y-up and the scroll offset Y-down: a small local.y scrolls further down.
 	auto delta = 0.0f;
 	if (local.y < edge) {
 		delta = 1.0f - math::clamp(local.y / edge, 0.0f, 1.0f);
@@ -370,8 +357,7 @@ void MarkdownSelectionSystem::update(const UpdateTime &time) {
 	if (delta != 0.0f) {
 		scroll->scrollBy(Vec2(0.0f, delta * AutoScrollSpeed * time.dt));
 
-		// The pointer has not moved, but the document under it has, so the selection has to be
-		// re-read from the same point.
+		// The document moved under a still pointer, so re-read the selection at the same point.
 		extendTo(_view->getFlow()->getPositionForPoint(_autoScrollTarget));
 	}
 }

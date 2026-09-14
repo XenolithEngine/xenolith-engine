@@ -69,15 +69,12 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 		_query->setPlaceholder(_config.placeholder);
 	}
 
-	/* The query hook. It is already composition-safe: TextInput withholds the change while an IME
-	is assembling a character, so this does not fire once per keystroke of a syllable. */
+	// TextInput withholds the change while an IME composes, so this fires once per character.
 	_query->setCallback([this](StringView value) { handleQueryChanged(value); });
 
 	if (_config.grouped) {
-		/* The grouped list is a TREE, because only a tree has a depth and an expansion state to
-		keep. Everything else about it is the flat list's: the same hits, the same title node, the
-		same highlight, and the same two callbacks - which is the point of doing it here rather than
-		in a second widget. */
+		// Grouped results use a tree for depth and expansion state; hits, title node, highlight and
+		// callbacks are shared with the flat list.
 		_tree = addChild(Rc<TreeView>::create(), ZOrder(1));
 		_tree->setName("search-picker-results");
 		_tree->addStyleClass("xl-ui-search-picker-results");
@@ -85,13 +82,11 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 		_tree->setSelectionEnabled(true);
 
 		_tree->setRowCallback([this](TreeView::RowBuilder &builder) {
-			// A row is addressed by what its own Value SAYS, never by its index into a list built
-			// beside the model: expanding a category shifts every row after it, and a parallel
-			// vector would then describe the wrong rows.
+			// A row is identified by its own Value, not by its position: expanding a category
+			// shifts the rows after it.
 			const auto &data = builder.getData();
 			if (!data.hasValue("index")) {
-				// A category. The standard decorated row draws it, so it gets the expander and the
-				// indent for nothing.
+				// A category, drawn by the standard decorated row (expander and indent).
 				builder.setLabel(data.getString("name"));
 				builder.setName(toString("search-picker-category-", builder.getIndex()));
 				return;
@@ -99,28 +94,17 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 
 			auto index = size_t(data.getInteger("index"));
 			if (index < _hits.size()) {
-				/* A LABEL, where the flat list gets a `table-cell` around one - and the difference
-				is not decoration. A tree row is a flex row declared by the stylesheet, and a flex
-				item is measured only if it can answer: a Label can, a Panel with no layout of its
-				own cannot and keeps whatever ContentSize it has, which is zero. Wrapped, every
-				result row came out as a zero box parked at the row's midpoint, so its text drew
-				half a row too high, overlapping the row above - and `tree-row > label`, the
-				selector an application writes for the category rows the tree builds itself, missed
-				it one level down, leaving the text at the Label's own near-black default. */
+				/* A bare Label, not a `table-cell` wrapper: a tree row is a flex row, which can
+				measure a Label but leaves a layout-less Panel at zero size. It also keeps
+				`tree-row > label` selectors matching. */
 				builder.setContent(buildTitleLabel(_hits[index]));
 			}
 			builder.setName(toString("search-picker-row-", builder.getIndex()));
 		});
 
 		_tree->setSelectCallback([this](size_t index, const TreeView::Row &row) {
-			/* A TAP IS THE CHOICE. This runs for a tap and for nothing else - TreeView::
-			setSelectedRow, which is what the arrow keys move, deliberately reports nothing - and
-			in a dropdown one click on a row is how a person picks it. Waiting for a second click
-			(which is what leaving this to the activate callback means) is not what any list a
-			person has ever used does.
-
-			So there is no activate callback on this tree: the first tap has already resolved the
-			interaction, and a second one would only toggle a category straight back shut. */
+			/* A tap picks the row. Runs only for taps (TreeView::setSelectedRow reports nothing),
+			so there is no activate callback on this tree. */
 			if (row.isCategory()) {
 				_tree->toggleRow(index);
 				return;
@@ -152,8 +136,7 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 			}
 		});
 		_results->setSelectCallback([this](size_t index, const TableView::Row &) {
-			// A tap, and in a dropdown that is the choice - the grouped list above says why, and
-			// the two modes of one widget must not disagree about what a click means.
+			// A tap picks the row, as in the grouped mode.
 			_selected = index;
 			activateSelected();
 		});
@@ -166,14 +149,9 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 	_status->setAlignment(font::TextAlign::Center);
 	_status->setVisible(false);
 
-	/* Priority 1 puts this in the dispatcher's PRE-SCENE band, so it sees the arrows before the
-	query line's own listener - which binds Up and Down as "go to the start/end of the line" and
-	would otherwise swallow them. Everything it does not claim falls straight through to the field.
-
-	This is the point where the widget stops resembling ui::Select: that one hands the keyboard over
-	to MenuSystem while its list is open, because nothing there is typing. Here the query line has
-	to keep focus for the whole interaction, so the surface takes only the keys that move a
-	selection and leaves the rest to the text field. */
+	/* Priority 1 puts this in the dispatcher's pre-scene band, ahead of the query line's listener
+	(which binds Up/Down to line start/end). The query line keeps focus; this takes only the
+	selection keys and the rest falls through to the field. */
 	_keyListener = addSystem(Rc<InputListener>::create());
 	_keyListener->setPriority(1);
 
@@ -187,16 +165,11 @@ bool SearchPickerContent::init(SearchPickerConfig &&config) {
 	_keyListener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
 
-	/* Escape is a HOTKEY here, not a key: the engine registers it as `back` ("Back / close") and
-	the hotkey pass consumes it before any key recognizer runs. Bound as a raw keycode it simply
-	never arrives - which is how a picker ends up being the one popup a person cannot dismiss. */
+	/* Escape is bound as the `back` hotkey: the hotkey pass consumes it before any key recognizer
+	runs, so a raw keycode binding never fires. */
 	_keyListener->addHotkey(EngineHotkeys::get().back, [this](HotkeyId, const InputEvent &) {
-		/* Gated on having somewhere to close TO, not on the query line holding focus.
-
-		Focus is the wrong test twice over: a surface in a popup may not have been given the
-		keyboard yet when the user hits Escape, and a surface parented into a panel among other
-		widgets has no business claiming Escape at all. A configuration with an onClose is exactly
-		the surface that was opened as a dismissable thing. */
+		/* Gated on having an onClose, not on focus: a popup may not have the keyboard yet, and an
+		embedded surface without onClose must not claim Escape. */
 		if (_config.onClose) {
 			_config.onClose();
 			return true;
@@ -224,8 +197,7 @@ void SearchPickerContent::handleEnter(Scene *scene) {
 		_query->focus();
 	}
 
-	// The list starts full rather than empty: a palette that shows nothing until something is typed
-	// hides the very thing the user opened it to look through.
+	// The list starts full, with results for the empty query.
 	refresh();
 }
 
@@ -242,8 +214,7 @@ void SearchPickerContent::handleContentSizeDirty() {
 	Panel::handleContentSizeDirty();
 
 	if (getSystemByType<LayoutSystem>()) {
-		// A LayoutSystem owns the children's geometry; this placement would be a second writer of
-		// the same positions. Same rule as ui::Select's.
+		// A LayoutSystem owns the children's geometry.
 		return;
 	}
 
@@ -285,12 +256,11 @@ StringView SearchPickerContent::getQuery() const {
 void SearchPickerContent::setItems(Vector<SearchItem> &&items) { _config.items = sp::move(items); }
 
 void SearchPickerContent::handleQueryChanged(StringView value) {
-	// What the hits about to be built answer. Everything downstream that needs to know the query -
-	// the display mode above all - reads this rather than the field, which may not have echoed yet.
+	// The query the hits about to be built answer. Downstream code (the display mode) reads this,
+	// not the field, which may not have echoed yet.
 	_resultQuery = value.str<Interface>();
 
-	// Before anything is matched: a caller whose own index does the ranking scores the list here,
-	// and `match` below is then only asked to report what that ranking said.
+	// Before matching, so a caller with its own index can replace the list first.
 	if (_config.onQuery) {
 		_config.onQuery(value);
 	}
@@ -366,16 +336,13 @@ void SearchPickerContent::handleResult(SearchResult &&result) {
 
 	rebuildModel();
 
-	// The current value if it is still in the list, the first row otherwise. Not "keep the previous
-	// index": after a query narrows the list, index 3 is a different thing than it was.
+	// The current value if it is still in the list, the first row otherwise.
 	size_t selected = _hits.empty() ? maxOf<size_t>() : 0;
 	bool highlighted = false;
 	if (!_config.highlight.empty()) {
 		for (uint32_t i = 0; i < _hits.size(); ++i) {
-			// THROUGH A CONST REFERENCE, because `data` is the caller's and `id` is optional in it:
-			// `_hits` is a non-const member, so the plain subscript would pick the non-const
-			// `getString`, which on a missing key hands back the shared null container and trips
-			// an assert - the normal case for items that identify a hit by its title.
+			// Through a const reference: `id` is optional in `data`, and the non-const getString
+			// asserts on a missing key.
 			const auto &hit = _hits[i];
 			if (hit.data.getString("id") == _config.highlight
 					|| StringView(hit.title) == StringView(_config.highlight)) {
@@ -386,14 +353,8 @@ void SearchPickerContent::handleResult(SearchResult &&result) {
 		}
 	}
 
-	/* Revealed BEFORE it is selected, and ONLY where `highlight` actually named it.
-
-	Grouped, the tree opens with every category closed - which is the overview it is for - so the
-	hit that answers `highlight` is at no row, and setSelected would tell the tree to select
-	nothing: a list asked to open ON its current value with no way to show it, no row for the arrows
-	to step off (they walk the display) and nothing for Enter to activate. Opening one category is
-	what "open on this value" means. The fallback to hit 0 is not that claim and reveals nothing,
-	or every grouped list would open with its first category unfolded for no reason anybody gave. */
+	/* Revealed before it is selected, and only when `highlight` named it: grouped categories open
+	collapsed, so the hit has no row until revealed. The fallback to hit 0 reveals nothing. */
 	if (highlighted) {
 		revealHit(selected);
 	}
@@ -409,17 +370,14 @@ StringView SearchPickerContent::groupOf(const SearchHit &hit) const {
 bool SearchPickerContent::isGrouping() const { return _config.grouped && _resultQuery.empty(); }
 
 void SearchPickerContent::rebuildModel() {
-	// A fresh model rather than a cleared one: setSource early-outs on the same pointer, and for a
-	// list this size building a new one is cheaper than reasoning about what a partial update
-	// leaves behind.
+	// A fresh model rather than a cleared one: setSource early-outs on the same pointer.
 	_model = Rc<data::Model>::create();
 
 	auto root = _model->getRoot();
 
 	auto addHit = [&](data::Model::Node *parent, uint32_t i) {
 		Value value;
-		// The index, not the payload: the row has to find its way back to the hit, and the hit's
-		// own id is the caller's and need not be unique.
+		// The hit index, since the caller's id need not be unique.
 		value.setInteger(int64_t(i), "index");
 		value.setString(_hits[i].title, "title");
 		value.setString(_hits[i].title, "name"); // the tree's standard label key
@@ -427,12 +385,8 @@ void SearchPickerContent::rebuildModel() {
 	};
 
 	if (isGrouping()) {
-		/* Categories in FIRST-APPEARANCE order, walked once per category over the hits.
-
-		That keeps the order INSIDE a category the one the source produced - which for a palette is
-		a deterministic order somebody's golden dump asserts - and it means the categories
-		themselves come out in the order the source first mentions them rather than in a collation
-		order, which is a matter of convention and is not promised stable across Unicode versions. */
+		/* Categories in first-appearance order, and hits inside each in source order, so the
+		output is deterministic and independent of collation. */
 		Vector<StringView> categories;
 		for (auto &hit : _hits) {
 			auto name = groupOf(hit);
@@ -512,12 +466,8 @@ StringView SearchPickerContent::getRowTitle(size_t row) const {
 
 size_t SearchPickerContent::getRowForHit(size_t hit) const {
 	if (hit >= _hits.size()) {
-		/* NOTHING SELECTED is not a hit, and asking where it shows has one answer: nowhere.
-
-		Without this the walk below compares maxOf against what getHitForRow returns for a CATEGORY
-		row - which is maxOf, meaning "this row stands for no hit" - and matches on the first one.
-		setSelected(maxOf) then told the tree to select that category, so an empty selection drew
-		as a highlighted category header. */
+		/* No selection shows nowhere. Checked here because getHitForRow returns maxOf for category
+		rows, which the walk below would otherwise match. */
 		return maxOf<size_t>();
 	}
 	if (!_tree) {
@@ -528,8 +478,7 @@ size_t SearchPickerContent::getRowForHit(size_t hit) const {
 			return i;
 		}
 	}
-	// Its category is collapsed, so it is not showing at all - which is an answer, and a different
-	// one from "there is no such hit".
+	// Its category is collapsed, so it is not showing.
 	return maxOf<size_t>();
 }
 
@@ -556,8 +505,7 @@ bool SearchPickerContent::revealHit(size_t hit) {
 		return false;
 	}
 
-	// By NAME rather than by walking children: a collapsed category has no rows to walk, and the
-	// name is what filed the hit there in the first place.
+	// By name: a collapsed category has no child rows to walk.
 	const auto category = groupOf(_hits[hit]);
 	for (size_t i = 0; i < _tree->getRowCount(); ++i) {
 		auto r = _tree->getRow(i);
@@ -596,8 +544,7 @@ bool SearchPickerContent::setSelected(size_t index) {
 		_results->setSelectedRow(index);
 	}
 	if (_tree) {
-		// A hit whose category is collapsed is showing nowhere, and the tree is told to select
-		// nothing rather than a row that stands for something else.
+		// A hit in a collapsed category selects no row.
 		_tree->setSelectedRow(getRowForHit(index));
 	}
 	scrollToSelected();
@@ -620,11 +567,7 @@ bool SearchPickerContent::moveSelection(int32_t delta) {
 		return setSelected(size_t(next));
 	}
 
-	/* One step through what is VISIBLE, skipping the category rows.
-
-	That is what an arrow key means to a person, and in this mode it is not one step through the
-	hits: a category sits between two of them, and hits under a collapsed category are not there to
-	step onto at all. Walking the DISPLAY and mapping back is the only way to get both right. */
+	// Walks the displayed rows, skipping category rows, and maps the result back to a hit.
 	const size_t rows = _tree->getRowCount();
 	if (rows == 0) {
 		return false;
@@ -643,7 +586,7 @@ bool SearchPickerContent::moveSelection(int32_t delta) {
 			next += step;
 		}
 		if (next < 0 || next >= int64_t(rows)) {
-			break; // the ends hold, exactly as they do in the flat list
+			break; // clamp at the ends, as in the flat list
 		}
 		at = next;
 	}
@@ -662,13 +605,9 @@ void SearchPickerContent::scrollToSelected() {
 		return;
 	}
 
-	/* Arithmetic on the row height rather than on the row's node: the selected row may not be built
-	at all - that is what virtualization means - and the position it WOULD have is what the scroller
-	needs to be told anyway. Correct because the picker sets one fixed row height; a table with a
-	per-row height callback would have to ask the controller instead. */
+	/* Computed from the fixed row height: the selected row may not be built (virtualized). */
 	const float rowHeight = _config.style.rowHeight;
-	// The DISPLAY row, which in the grouped mode is not the hit index: the categories above it are
-	// rows too.
+	// The display row, which in grouped mode differs from the hit index.
 	const auto row = getRowForHit(_selected);
 	if (row == maxOf<size_t>()) {
 		return;
@@ -710,14 +649,12 @@ bool SearchPickerContent::handleKey(const GestureData &data) {
 	}
 
 	const auto &ev = data.input->data;
-	// Repeats included: holding Down has to keep walking the list, which is the one place in this
-	// widget where auto-repeat is the expected behaviour rather than an accident.
+	// Repeats included, so holding Down keeps walking the list.
 	if (ev.event != InputEventName::KeyPressed && ev.event != InputEventName::KeyRepeated) {
 		return false;
 	}
 
-	// Only while the query line holds focus. Embedded in a panel among other widgets, this surface
-	// has no claim on the arrow keys when the user is somewhere else.
+	// Only while the query line holds focus, so an embedded surface leaves other keys alone.
 	if (!_query || !_query->isFocused()) {
 		return false;
 	}
@@ -737,20 +674,14 @@ bool SearchPickerContent::handleKey(const GestureData &data) {
 Rc<basic2d::Label> SearchPickerContent::buildTitleLabel(const SearchHit &hit) const {
 	auto label = Rc<basic2d::Label>::create();
 	label->setType("label");
-	/* BOTH classes. `table-label` is what the cell below puts a title in and what a sheet written
-	for the flat list addresses; `tree-label` is what ui::TreeView calls the label it builds itself,
-	so a row handed in from here answers to the same rule as the category rows beside it rather
-	than needing a selector nobody knew to write. */
+	// Both classes: `table-label` for the flat list, `tree-label` to match TreeView's own labels.
 	label->addStyleClass("table-label");
 	label->addStyleClass("tree-label");
 	label->addStyleClass("xl-ui-search-picker-title");
 	label->setAlignment(font::TextAlign::Left);
 	label->setString(hit.title);
 
-	/* The matched characters, in the units the label counts in. The conversion happened where the
-	match was produced (search::makeHighlightRanges); by the time a range reaches here it is
-	already a pair a label can be handed, which is the whole reason that arithmetic lives in the
-	engine instead of at every call site. */
+	// Ranges are already in label units (converted by search::makeHighlightRanges).
 	const auto &color = _config.style.matchColor;
 	for (auto &range : hit.ranges) {
 		label->setTextRangeStyle(range.first, range.second,
@@ -761,21 +692,16 @@ Rc<basic2d::Label> SearchPickerContent::buildTitleLabel(const SearchHit &hit) co
 }
 
 Rc<Node> SearchPickerContent::buildTitleNode(const SearchHit &hit) const {
-	/* The same shape TableView builds for a plain cell - a `table-cell` Panel with a `label`
-	inside - rather than a bare Label. The cell is what the TABLE sizes; a label handed to a table
-	directly is positioned and then left at zero width, which is a row that renders nothing.
-
-	A tree row is the other way round - see the row callback - which is why the wrapper lives here
-	and not in buildTitleLabel. */
+	/* The shape TableView builds for a plain cell: a `table-cell` Panel with a label inside. A
+	table sizes the cell and leaves a bare label at zero width; tree rows take the bare label. */
 	auto panel = Rc<Panel>::create();
 	panel->setType("table-cell");
 	panel->removeStyleClass("xl-ui-panel");
 	panel->addStyleClass("xl-ui-table-cell");
 	panel->addStyleClass("xl-ui-search-picker-cell");
 	Panel::registerStyleAppliers("table-cell");
-	// ... including the paint the view gives the cells it builds itself: a cell handed in from
-	// outside is the one place a table cannot do it, and Panel's default is opaque white, so this
-	// row's ground and its selection would be covered (TableView_paintCellDefaults).
+	// Transparent like the cells TableView builds itself; Panel's default opaque white would cover
+	// the row background and selection (TableView_paintCellDefaults).
 	panel->setPathColor(Color4B(0, 0, 0, 0), true);
 
 	panel->addChild(buildTitleLabel(hit), ZOrder(1));
@@ -792,9 +718,8 @@ bool SearchPicker::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist from the start: without one the state reads as 0, so
+	`:disabled` would match and isEnabled() would report false. */
 	applyControlEnabled(this, true);
 
 	setType("search-picker");
@@ -903,8 +828,7 @@ void SearchPicker::handleContentSizeDirty() {
 void SearchPicker::setConfig(SearchPickerConfig &&config) {
 	_config = sp::move(config);
 	if (isOpen()) {
-		// The surface was built from the previous configuration; rebuilding it under the user would
-		// move the row they were about to click.
+		// The open surface was built from the previous configuration.
 		close();
 	}
 	updateContent();
@@ -934,8 +858,7 @@ void SearchPicker::setChangeCallback(Function<void(const SearchHit &)> &&cb) {
 }
 
 void SearchPicker::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// The edit lock overrides the request and remembers it for unlock.
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -1068,8 +991,7 @@ bool SearchPicker::open() {
 	}
 
 	config.onActivate = [this, inner = _config.onActivate](const SearchHit &hit) {
-		// Close first: an activation is free to open something else in this surface's place, and a
-		// picker still standing behind it is one the user has to dismiss by hand.
+		// Close first: the activation may open something else in this surface's place.
 		close();
 		setValue(hit.data.getString("id"), hit.title);
 		if (inner) {
@@ -1109,9 +1031,8 @@ SearchPickerContent *SearchPicker::getContent() const {
 
 Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
 		SearchPickerConfig &&config, MenuSide side) {
-	/* The extent has to be settled BEFORE any node exists - it is what the window request carries.
-	The list is opened at its full height rather than at the height of the current answer: a surface
-	that resized itself on every keystroke would jump under the pointer while the user typed. */
+	/* The extent is part of the window request, so it is settled before any node exists. Full
+	height, so the surface does not resize on every keystroke. */
 	const Extent2 size(uint32_t(std::lround(config.style.minWidth)),
 			uint32_t(std::lround(
 					SearchPickerContent::measureHeight(config.style, config.style.maxRows))));
@@ -1120,8 +1041,7 @@ Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
 	surfaceConfig.stylesheet = config.stylesheet;
 	surfaceConfig.stylesheetCategory = config.stylesheetCategory;
 	surfaceConfig.stylesheetSource = config.stylesheetSource;
-	// Where the list's look comes from when the application named no sheet: the control it drops
-	// out of. Read before this call returns and never kept - see PopupSurfaceConfig::styleSource.
+	// The style source when no sheet is named; read before this call returns, never kept.
 	surfaceConfig.styleSource = anchor;
 	surfaceConfig.title = config.title.empty() ? String("Search") : config.title;
 	surfaceConfig.idPrefix = config.idPrefix.empty() ? String("search-picker") : config.idPrefix;
@@ -1131,16 +1051,11 @@ Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
 	surfaceConfig.fallbackColor = s_searchPickerSurfaceColor;
 	surfaceConfig.flags = config.flags;
 	surfaceConfig.preferNative = config.preferNative;
-	// COPIED, not moved: SearchPickerContent reads onClose itself - it is what Escape calls - so
-	// taking it out of the config here would leave the surface as the one popup that cannot be
-	// dismissed from inside.
+	// Copied, not moved: SearchPickerContent calls onClose itself on Escape.
 	surfaceConfig.onClose = config.onClose;
 
-	/* The surface IS the content: it types and classes itself in init, so nothing here names it
-	beyond the node name the inspector finds it by.
-
-	Captured BY COPY, not moved: on the native path this does not run until the popup's scene
-	exists, by which time whatever opened the picker may be gone. */
+	/* Captured by copy: on the native path this runs once the popup's scene exists, when the
+	opener may be gone. */
 	surfaceConfig.makePanel = [config = config](NotNull<SubWindow>, Extent2) mutable -> Rc<Panel> {
 		return Rc<SearchPickerContent>::create(sp::move(config));
 	};

@@ -50,10 +50,9 @@ bool IconSprite::init(IconName icon) {
 void IconSprite::handleComponentsDirty(const ComponentMask &mask) {
 	VectorSprite::handleComponentsDirty(mask);
 
-	// Inherited-style components on the label's OWN node changed (typically rewritten or
-	// removed by ui::StyleResolver) — re-shape with the new effective style. This is the
-	// node's own dirty protocol; changes on ancestors are NOT tracked here (see
-	// XLInheritedStyle.h).
+	// Inherited-style components on the label's own node changed (typically by
+	// ui::StyleResolver) - re-shape with the new effective style. Changes on ancestors are not
+	// tracked here (see XLInheritedStyle.h).
 	if (mask.contains(InheritedColorStyle::Id.value)) {
 		if (auto c = getComponent<InheritedColorStyle>()) {
 			if (c->defined & InheritedColorStyle::DefinedColor) {

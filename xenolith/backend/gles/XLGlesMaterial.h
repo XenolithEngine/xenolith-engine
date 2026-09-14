@@ -28,11 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
-// The flat draw path reads a material's image, sampler and pipeline straight out of the compiled
-// set at record time (there is no per-material GPU buffer to fill), so this adds nothing beyond
-// what core::MaterialAttachment already does - like the software one, it exists to give the
-// attachment the backend's own type. The typed wrapper is load-bearing: plain Attachment's
-// makeFrameHandle answers null and a frame with such an attachment dies in FrameQueue::setup.
+// Adds nothing to core::MaterialAttachment (the draw path reads materials from the compiled set)
+// but gives it a typed frame handle: plain Attachment's makeFrameHandle returns null, which fails
+// FrameQueue::setup.
 class SP_PUBLIC MaterialAttachment
 		: public core::AttachmentTyped<core::AttachmentHandle, core::MaterialAttachment> {
 public:

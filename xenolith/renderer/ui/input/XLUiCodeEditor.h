@@ -29,14 +29,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /* A source file in a monospace editor: line numbers, no wrapping, Tab indents, Ctrl+S saves.
 
-Everything that makes it an editor rather than a text view is configuration, not code — the defaults
-set in init() are the whole difference from the output pane of ui::Console, which is the same class
-with the opposite answers. What is left here is the file: reading it, writing it back, and the one
-hotkey that connects the two.
-
-Read-only is inherited from TextInput and means what it says at this level too: the widget still
-takes taps, drag-selection and the copy chord, and saveFile() refuses. A file VIEWER is therefore
-this class with setReadOnly(true) and nothing else.
+The editor behaviour is the TextView configuration set in init(); this class adds loading, saving
+and the save hotkey. With setReadOnly(true) it is a file viewer: selection and copy still work,
+saveFile() refuses.
 
 CSS: everything ui::TextView publishes (type `text-input`, class `text-view` and the gutter /
 current-line classes), plus the class `code-editor` on the widget. */
@@ -44,10 +39,8 @@ class SP_PUBLIC CodeEditor : public TextView {
 public:
 	virtual ~CodeEditor() = default;
 
-	// Takes a FileInfo rather than a StringView because Sprite has an init(StringView) that loads a
-	// texture by name, and an overload taking a StringView here would silently hide it. VectorSprite
-	// also has init(const FileInfo &) - an image from a file - so this IS an override, and "the file"
-	// just means something else at this level of the hierarchy.
+	// Loads a source file. Takes FileInfo to override VectorSprite::init(const FileInfo &); a
+	// StringView overload would hide Sprite::init(StringView).
 	virtual bool init(const FileInfo &) override;
 	virtual bool init() override;
 

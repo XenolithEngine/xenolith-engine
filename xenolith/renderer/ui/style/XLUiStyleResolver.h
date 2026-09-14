@@ -27,18 +27,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* Raw resolved style for a node: the merged CSS parameters plus the context needed to
-interpret them (media environment + the nearest sheet's string table). Nothing is compiled
-up front - every accessor computes only what it is asked for, so a consumer that needs one
-property pays only for that property (the default applier, a widget callback, or a test each
-read their own slice).
+/* Raw resolved style for a node: the merged CSS parameters plus the media environment and the
+nearest sheet's string table. Accessors compute lazily, only what is asked for.
 
-Move-only; owns a private memory pool holding the merged parameter list. The compiled views
-and string values reference the originating stylesheet, so a ResolvedStyle must be consumed
-while that sheet is alive - it is produced and read within a single apply().
-
-`has()` reports whether the sheets actually defined a parameter (media-filtered); appliers
-must not touch widget properties whose parameters are absent. */
+Move-only; owns a pool with the merged parameter list. Views reference the originating sheet,
+so consume it while that sheet is alive (within a single apply()). Appliers must not touch
+widget properties whose parameters are absent (`has()`, media-filtered). */
 class SP_PUBLIC ResolvedStyle {
 public:
 	using ParameterName = document::ParameterName;
@@ -61,15 +55,12 @@ public:
 	// the merged parameter list, for consumers that iterate raw parameters directly
 	const document::StyleList *parameters() const { return _style; }
 
-	// did any sheet in scope use a structural pseudo-class (`:nth-child` and friends)? Such a
-	// style depends on the node's position among its siblings, so the StyleResolver must
-	// invalidate the whole sibling set when the parent's child list changes.
+	// did any sheet in scope use a structural pseudo-class (`:nth-child` and friends)? Then the
+	// sibling set must be invalidated when the parent's child list changes.
 	bool hasStructuralSelectors() const { return _structural; }
 
-	// raw text of the custom property `--name` in effect for this node (declarations from the
-	// node's own rules plus every inherited one), empty when it is not declared. `var()` inside
-	// a declaration's value is already substituted by the time a parameter is read - this is
-	// for consumers that want the variable itself.
+	// raw text of the custom property `--name` in effect for this node (own and inherited),
+	// empty when not declared. Parameters already have `var()` substituted.
 	StringView getCustomProperty(StringView name) const;
 
 	// every custom property in effect, in no particular order
@@ -88,10 +79,8 @@ public:
 
 	void foreach (const Callback<void(ParameterName, const StyleValue &)> &) const;
 
-	// compiled views - each compiled on demand from the raw parameters. These build a WHOLE
-	// parameter block (every field of the struct) in one pass; use them only when a consumer
-	// genuinely needs many fields at once. To read a single property, prefer the individual
-	// accessors below - they resolve just that one parameter instead of expanding the block.
+	// compiled views: each builds a whole parameter block on demand. For a single property,
+	// prefer the individual accessors below.
 	document::FontStyleParameters font() const;
 	document::TextLayoutParameters text() const;
 	document::ParagraphLayoutParameters paragraph() const;
@@ -99,9 +88,8 @@ public:
 	document::BackgroundParameters background() const;
 	document::OutlineParameters outline() const;
 
-	// individual property accessors: resolve exactly one parameter from the raw list (mirroring the
-	// matching field of the compiled block above), so a consumer that needs one value never pays to
-	// expand the whole block. Each returns the CSS default when the parameter is absent.
+	// individual property accessors: resolve one parameter (mirroring the compiled block field);
+	// each returns the CSS default when the parameter is absent.
 	document::FontSize fontSize() const; // font-size (+ font-size-increment, like compileFontStyle)
 	document::FontStyle fontStyle() const;
 	document::FontWeight fontWeight() const;
@@ -127,7 +115,7 @@ public:
 	document::Overflow overflowY() const;
 	document::Metric width() const;
 	document::Metric height() const;
-	// min-/max-width/height. Only the flex MAIN axis is enforced (FlexItemInfo::minMain/maxMain);
+	// min-/max-width/height. Only the flex main axis is enforced (FlexItemInfo::minMain/maxMain);
 	// on the cross axis they are read but nothing applies them yet.
 	document::Metric minWidth() const;
 	document::Metric minHeight() const;
@@ -142,8 +130,8 @@ public:
 	document::Metric paddingBottom() const;
 	document::Metric paddingLeft() const;
 
-	// The inline-axis box properties. Which physical side each lands on is decided in
-	// applyLayout, against this node's computed `direction` - see Р7 of the RTL plan.
+	// inline-axis box properties; applyLayout maps each to a physical side by the node's
+	// computed `direction`
 	document::Metric paddingInlineStart() const;
 	document::Metric paddingInlineEnd() const;
 	document::Metric marginInlineStart() const;
@@ -187,9 +175,8 @@ public:
 	String gridRowStart() const;
 	String gridRowEnd() const;
 
-	// table. The column track list is `grid-template-columns` above - a table's columns ARE a track
-	// list. The per-side borders a cell contributes to border collapsing come from outline() (the
-	// compiled OutlineParameters block), which already carries style/width/colour per side.
+	// table. Columns come from `grid-template-columns`; per-side borders for border collapsing
+	// come from outline().
 	document::TableLayout tableLayout() const;
 	document::BorderCollapse borderCollapse() const;
 	document::Metric borderSpacingHorizontal() const;
@@ -200,8 +187,8 @@ public:
 private:
 	friend class StyleResolver;
 
-	// Custom properties resolved for the node, plus the strings that `var()` substitution had
-	// to intern. Pool-allocated with the parameter list; defined in the .cc.
+	// custom properties resolved for the node, plus strings interned by `var()` substitution;
+	// pool-allocated with the parameter list
 	struct VariableTable;
 
 	// create the variable table, seeding its string overlay from the nearest sheet's table so
@@ -221,44 +208,29 @@ private:
 	document::StyleList *_style = nullptr; // merged parameters, allocated in _pool (AllocPool)
 	VariableTable *_variables = nullptr; // null when no sheet in scope declares one
 	// non-owning views into the nearest sheet's media bits + string table; a plain value
-	// (NOT pool-allocated: SimpleStyleInterface is not an AllocPool)
+	// (not pool-allocated: SimpleStyleInterface is not an AllocPool)
 	document::SimpleStyleInterface _iface;
 	const document::MediaParameters *_media;
 };
 
 /* Auto-applies resolved styles to its owner node.
 
-Add to any styleable node. Initial application happens on scene enter (the
-ancestor chain is complete there); re-application rides the ComponentsDirty
-cascade (the system opts in via SystemFlags::HandleAncestorComponents).
+Initial application happens on scene enter; re-application rides the ComponentsDirty cascade
+(SystemFlags::HandleAncestorComponents). The optional callback runs before the defaults;
+returning true suppresses them.
 
-The optional callback runs before the default property application; returning
-true suppresses the defaults (widget-specific extension point).
+registerTypeApplier(type, attr, applier) registers per-attribute appliers for a node type;
+unregistered attributes fall through to the default mapping below.
 
-Per-type extension without a callback: a widget can statically register per-attribute
-appliers for its node type via registerTypeApplier(type, attr, applier). During apply,
-each attribute the type registered is applied by its handler; every other attribute falls
-through to the default mapping below.
+An applier whose mask lists `document::ParameterName::CmdReset` receives it first on every
+pass: drop what the previous pass applied, since a rule that stopped matching is not in the
+new pass. The reset undoes only styling, not what the widget set on itself from code; keep the
+two layers apart (see `ui::Panel` / `PanelStyleComponent`, pinned by `XL_PANEL_TEST`).
 
-An applier that lists `document::ParameterName::CmdReset` in its mask additionally receives
-that pseudo-parameter FIRST, on every pass, with an unspecified value: the signal to drop
-everything the previous pass left on the node, because a pass carries only the declarations
-that are present and a rule that stopped matching would otherwise stay applied forever. The
-intended shape is that the styling lives in a component, and the reset removes it - a widget
-with no component paints its defaults (see `ui::Panel` / `PanelStyleComponent`, shared by every
-atom built on a Panel: badge, checkbox, button).
+A recursive resolver (init(true)) styles its whole subtree: it publishes on the frame stack and
+resolves each descendant as its content-size / layout-children event arrives, once per version.
 
-THE RESET UNDOES STYLING, AND ONLY STYLING. What a widget painted on ITSELF from code - a scroll
-indicator, a colour swatch, a table cell that must not hide its row - is no pass's to take away:
-`ui::Panel` keeps that layer of its own and the reset rewinds the component to it rather than
-dropping it, so the pass that follows overrides only what it actually declares. An applier that
-stores both layers in the one place cannot tell them apart, and under a recursive resolver every
-widget painted from code loses its paint on the first restyle. Both halves pinned by
-`XL_PANEL_TEST`. A recursive resolver (init(true)) styles its whole
-subtree from one system: it publishes on the frame stack and resolves each descendant as
-that descendant's content-size / layout-children event arrives, once per source version.
-
-Default v1 property mapping:
+Default property mapping:
  - opacity -> Node::setOpacity
  - display: none, visibility: hidden -> VisibilityComponent (wrapVisit skips the subtree
    like setVisible(false); layout engines collapse display:none, visibility:hidden keeps
@@ -270,8 +242,8 @@ Default v1 property mapping:
    parent chain, a defined value overrides the label's explicit one)
  - width -> Label (non-inheritable, still pushed directly)
  - width/height (non-Label) -> setContentSize (percent resolved against the parent size;
-   parent resizes ARE tracked: percent-styled nodes re-resolve when the parent size
-   changes - see the freshness map _nodesUpdated and NodeEventFlags::HandleParentContentSize)
+   percent-styled nodes re-resolve on parent resize, see _nodesUpdated and
+   NodeEventFlags::HandleParentContentSize)
  - margin-* -> FlexItemInfo::margin (when the parent is a flex container)
  - padding-* -> owner's FlexLayoutInfo::padding (when the node is one)
 Component writes are equality-guarded to avoid dirty loops. */
@@ -303,9 +275,8 @@ public:
 	Returns `valid == false` when no stylesheet scope is present. */
 	static ResolvedStyle resolveStyleForNode(NotNull<Node>);
 
-	/* Drop the per-node match cache that resolveStyleForNode keeps (see its definition). Nothing in
-	the engine needs to call this - the cache validates itself against each node's CSS match stamp,
-	so a stale entry is never read - it is here for a test that wants to measure a cold resolve. */
+	/* Drop the per-node match cache of resolveStyleForNode. The cache self-validates against each
+	node's match stamp; this exists for tests measuring a cold resolve. */
 	static void dropMatchCache();
 
 	virtual ~StyleResolver() = default;
@@ -316,30 +287,25 @@ public:
 	virtual void handleAdded(Node *) override;
 	virtual void handleEnter(Scene *) override;
 
-	// a component changed on this node or (via HandleAncestorComponents) on a styled ancestor - most
-	// importantly the StyleSystemState version bump when the stylesheet reloads. Re-arm the layout-
-	// children phase so apply() re-resolves against the new sheet (sizes are settled by then).
+	// a component changed on this node or (via HandleAncestorComponents) on a styled ancestor,
+	// e.g. the StyleSystemState version bump on sheet reload; apply() re-resolves when needed
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	// owner's own content size changed - re-resolve when stale (own-size-relative
 	// paddings/gaps); gated by SystemFlags::HandleNodeEvents
 	virtual void handleContentSizeDirty() override;
 
-	// owner's PARENT content size changed - re-resolve when stale (percent metrics are computed
-	// against the parent size); gated by SystemFlags::HandleNodeEvents. Note: apply() cannot be
-	// used here - a resize changes neither the stylesheet version nor the interactive mask
+	// owner's parent content size changed - re-resolve when stale (percent metrics); gated by
+	// SystemFlags::HandleNodeEvents. apply() won't do: a resize changes neither version nor mask
 	virtual void handleLayoutInParent(Node *) override;
 
 	// recursive styling: a descendant's content-size event arrived via the frame stack - resolve
-	// it when stale (first touch this version, or the parent/own size changed since the last
-	// resolve). This is the path that styles descendants initially, re-styles the whole subtree
-	// after a CSS reload (see markSubtreeComponentsDirty in apply()), and tracks parent resizes
-	// (percent-styled nodes carry NodeEventFlags::HandleParentContentSize, so an ancestor resize
-	// re-fires their content-size phase)
+	// it when stale. Styles descendants initially, after a CSS reload, and on parent resizes
+	// (percent-styled nodes carry NodeEventFlags::HandleParentContentSize)
 	virtual void handleChildContentSizeDirty(Node *) override;
 
-	// recursive styling: a descendant's own components changed (via the frame stack) - re-resolve it
-	// so an interactive :hover/:focus/:active flip restyles the node (see .cc for the dedup contract)
+	// recursive styling: a descendant's own components changed (via the frame stack) - re-resolve
+	// it on identity, interactive state or style variable changes
 	virtual void handleChildComponentsDirty(Node *, const ComponentMask &) override;
 
 	void apply();
@@ -365,23 +331,15 @@ protected:
 	// container's per-item component
 	void applyLayout(Node *, const ResolvedStyle &);
 
-	// Freshness key of an applied style. Percent metrics resolve against the parent size and
-	// paddings/gaps against the own size, so a resize of either invalidates the style; with
-	// structural selectors (`:nth-child`) it also depends on the node's position among its
-	// siblings, which the parent's child-list version tracks.
+	// Freshness key of an applied style: parent size (percent metrics), own size (paddings/gaps),
+	// the parent's child-list version (structural selectors) and the style source version.
 	struct StyleFreshness {
 		Size2 parentSize;
 		Size2 ownSize;
 		uint32_t parentChildrenVersion = 0;
 
-		/* THE STYLE SOURCE'S VERSION, and without it this stamp answers the wrong question.
-
-		The other three fields ask "has this node's GEOMETRY changed", which is what a re-resolve
-		usually turns on. But a stylesheet reload, and a media flag flipped at run time - the
-		`rtl` one this engine seeds from the locale - change the ANSWER for a node whose geometry
-		did not move at all. A node was then held fresh for ever and the new rules never reached
-		it: an interface switched to a right-to-left language kept the layout of the old one, in
-		every application whose passes did not happen to disturb the tree. */
+		// style source version: a sheet reload or a media flag flip (e.g. `rtl`) must invalidate
+		// nodes whose geometry did not change
 		uint32_t sourceVersion = 0;
 
 		bool operator==(const StyleFreshness &) const = default;
@@ -393,8 +351,7 @@ protected:
 	ApplyCallback _callback;
 
 	// does any sheet in scope use a structural pseudo-class? Learned from each resolve; puts
-	// the parent's child-list version into the freshness key, so a sheet without them pays
-	// nothing when a sibling is inserted or removed.
+	// the parent's child-list version into the freshness key.
 	bool _structuralSelectors = false;
 
 	// local copy of the owner's InteractiveComponent state bits at the last resolve, so
@@ -403,29 +360,19 @@ protected:
 	uint32_t _sourceSystemVersion = 0;
 	uint64_t _sourceSystemId = 0;
 
-	/* Freshness map: a node's style is fresh while the stylesheet version is unchanged (the map
-	is cleared in apply() on a version change) AND its recorded StyleFreshness still matches.
-
-	Keyed by a POINTER, hence the spreading hasher: the default integer/pointer hashes leave the
-	low bits alone on purpose, and a bucket is chosen by those - so node addresses, which share
-	their alignment bits, would all target the same few buckets and every lookup here would walk
-	a chain. A document is tens of thousands of nodes, and this map is read for each of them on
-	every style pass. */
+	/* Freshness map: a node's style is fresh while the sheet version is unchanged (cleared in
+	apply() on change) and its recorded StyleFreshness matches. Pointer keys share alignment bits,
+	so a spreading hasher is required to avoid bucket collisions. */
 	sprt::__malloc_unordered_map<Node *, StyleFreshness, sprt::hash_spread<>, sprt::equal_to<void>>
 			_nodesUpdated;
 
-	// digest of the custom properties each node resolved to, for nodes that have any. Custom
-	// properties are inherited and are substituted at resolve time, so when a node's set
-	// changes (a class flip on it bringing in a different `--brand`) every descendant's applied
-	// style is stale - the descendants themselves saw no event at all.
+	// digest of the custom properties each node resolved to (nodes that have any). Properties are
+	// inherited, so a changed digest makes every descendant stale without an event of its own.
 	sprt::__malloc_unordered_map<Node *, uint64_t, sprt::hash_spread<>, sprt::equal_to<void>>
 			_nodeCustomProperties;
 
-	// applyDefault mutates components and size, which can re-enter this resolver (a nested
-	// handleChildComponentsDirty, or a scroll row attached mid-visit). A nested resolveForNode
-	// would run applyDefault on a second ResolvedStyle while the caller's is still live, so the
-	// inner pass writes into the outer pass's half-applied node. Queue the other node and drain
-	// when the outer apply returns.
+	// applyDefault can re-enter this resolver (a nested handleChildComponentsDirty, a scroll row
+	// attached mid-visit); nested resolves are queued and drained when the outer apply returns.
 	bool _inResolve = false;
 	Vector<Node *> _pendingResolve;
 };

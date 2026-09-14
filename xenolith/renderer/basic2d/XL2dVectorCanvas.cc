@@ -61,9 +61,8 @@ struct VectorCanvasCacheData {
 	geom::Tesselator::RelocateRule relocateRule = geom::Tesselator::RelocateRule::Auto;
 	vg::DrawFlags style = vg::DrawFlags::Fill;
 
-	// Digest of every path parameter that changes the geometry but is not a field of its own
-	// here. Without it two paths sharing a cacheId but differing in stroke width - or dash
-	// pattern, or cap - would collide and the second would be served the first one's vertexes.
+	// Digest of every geometry-changing path parameter without a field of its own here (stroke
+	// width, dash pattern, cap), so paths sharing a cacheId do not collide.
 	uint64_t paramsHash = 0;
 
 	bool operator<(const VectorCanvasCacheData &other) const {
@@ -514,17 +513,10 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	geom::LineDrawer line(approxScale * quality, Rc<geom::Tesselator>(fillTess),
 			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess), strokeConfig);
 
-	/* ---- the path is handed over centred on itself ---------------------------------------------
-
-	The tesselator normalizes too (SPTess.cc), and so does `LineDrawer` - but both of them have to
-	do it STREAMING, on the first point they are given, because neither has seen the path yet when
-	the first coordinate arrives. This has: the commands are right here. So the frame it can offer
-	is the CENTRE of the path's box rather than a corner of it, and a translation can do no better
-	than that - the largest magnitude any coordinate reaches is halved, and the mantissa spent on
-	position rather than on shape is halved with it.
-
-	Only actual POSITIONS move. An arc keeps its radii in `d[0]` and its flags in `d[2]`, and
-	neither is a place - translating them would deform the arc rather than move it. */
+	/* The path is handed over centred on its own bounding box, which halves the largest
+	coordinate magnitude and so the precision spent on position (the tesselator and `LineDrawer`
+	can only normalize on the first point they see). Only positions move: an arc's radii (`d[0]`)
+	and flags (`d[2]`) are not translated. */
 	Vec2 origin;
 	{
 		Vec2 bmin(maxOf<float>(), maxOf<float>());
@@ -705,10 +697,8 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 		if (verbose) {
 			log::source().error("VectorCanvasPathDrawer", "Failed path:\n", path->toString(true));
 		}
-		// A failed path draws NOTHING - refusing is the policy, but that makes a failure invisible
-		// except as a log line, and the log line does not say WHICH path. Point XL_TESS_DUMP at a
-		// directory and the first few come out as files, ready to be replayed headless through
-		// `vg-tess-frame`. That is how the wire in that section was caught.
+		// A failed path draws nothing and logs without naming the path. The disabled block below
+		// dumps the first few to XL_TESS_DUMP for replay through `vg-tess-frame`.
 		/*if (auto dir = ::getenv("XL_TESS_DUMP")) {
 			static sprt::atomic<uint32_t> s_dumpIndex(0);
 			auto idx = s_dumpIndex.fetch_add(1);
@@ -788,9 +778,8 @@ VectorCanvasCache::VectorCanvasCache() {
 	auto path = FileInfo("vector_cache.cbor", FileCategory::AppCache);
 
 	if (filesystem::exists(path)) {
-		// Read-only: the file may be unreadable or hold something that is not the array we wrote
-		// (a truncated or foreign cache). A const Value answers such reads with the shared null
-		// container instead of asserting, so a bad cache is skipped rather than fatal.
+		// Read-only: the file may be truncated or foreign. A const Value answers bad reads with the
+		// shared null container instead of asserting, so a bad cache is skipped.
 		const auto val = data::readFile<Interface>(path);
 		for (auto &it : val.asArray()) {
 			if (it.getInteger("version") != 3) {

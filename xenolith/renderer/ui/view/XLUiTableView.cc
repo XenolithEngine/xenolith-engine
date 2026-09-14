@@ -31,19 +31,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 static const Value s_nullValue;
 
-/* A CELL IS A WINDOW ONTO ITS ROW, not a surface of its own.
-
-The row carries the ground, the odd/even alternation, the hover and the selection; the cell carries
-the padding, the borders and the text. Panel's construction default is an OPAQUE WHITE surface, so
-a cell that says nothing covers all four of the row's colours a pixel after they are drawn - which
-is what every table built on this widget looked like: the rules matched, the row was painted, and
-the cells painted over it. Five of the six stylesheets in this tree and its sibling never wrote the
-one declaration that would have stopped it, including the one demonstrating the widget.
-
-So the view paints its own cells, in code and not in a sheet: it is the arithmetic of a table
-rather than a colour anyone chooses, and a table that needs the opposite is a table whose rows have
-nothing to show. A `table-cell { background-color: ... }` rule still overrides it - this is the
-layer UNDER the stylesheet, and it survives a restyle for the same reason (Panel::setPathColor). */
+/* Cells are transparent so the row's ground, alternation, hover and selection show through (an
+unstyled Panel is opaque white). Painted below the stylesheet (Panel::setPathColor), so a
+`table-cell { background-color: ... }` rule still overrides it. */
 static void TableView_paintCellDefaults(NotNull<Panel> cell) {
 	cell->setPathColor(Color4B(0, 0, 0, 0), true);
 }
@@ -77,14 +67,10 @@ bool TableView::init(Model *source) {
 	_controller = Rc<basic2d::ScrollController>::create();
 	_scroll->setController(_controller);
 
-	// On the SCROLL, not on this node: the header lives OUTSIDE it, and the edge band has to be
-	// measured against the viewport rows actually scroll in.
+	// On the scroll, not this node: the edge band is measured against the rows' viewport.
 	DragScrollSystem::acquireForNode(_scroll);
 
-	// The scroll bar is built by basic2d out of nodes that can paint a fill and one radius; this
-	// hands it nodes a stylesheet can paint outlines and four corners on, under the types
-	// `scroll-indicator` and `scroll-indicator-track`. Done here rather than left to the
-	// application because a widget of this layer is expected to answer to CSS everywhere else.
+	// A CSS-styleable scroll bar (`scroll-indicator`, `scroll-indicator-track`).
 	useStyledScrollIndicator(_scroll);
 
 	_sourceListener = addSystem(Rc<DataListener<Model>>::create(
@@ -98,9 +84,7 @@ bool TableView::init(Model *source) {
 		}
 	});
 
-	// Content measurement, answered ONLY in auto-height mode: a table that scrolls inside a fixed
-	// box has no intrinsic height to report, and returning false there lets the request fall
-	// through to whatever else on this node can answer it.
+	// Content measurement, answered only in auto-height mode; otherwise falls through.
 	setMeasureCallback([this](const MeasureConstraints &c, Size2 &result) {
 		if (!_autoHeight) {
 			return false;
@@ -121,8 +105,7 @@ void TableView::handleContentSizeDirty() {
 
 	const float headerH = getHeaderHeight();
 
-	// The header is a SIBLING of the scroll view, pinned to the top. That is the whole of "sticky":
-	// it is not inside the scrolled content, so there is no scroll offset to compensate for.
+	// The header is a sibling of the scroll view, pinned to the top, so it is sticky.
 	if (_header) {
 		_header->setVisible(_headerVisible);
 		_header->setAnchorPoint(Anchor::TopLeft);
@@ -246,8 +229,7 @@ void TableView::setHeaderHeight(float value) {
 float TableView::getIntrinsicHeight() const {
 	float height = getHeaderHeight();
 	for (auto &it : _rows) {
-		// getRowHeight(), not Row::height: the latter is only filled in by rebuildRows(), which is
-		// deferred to the next visit - and the whole point of this is to answer BEFORE that.
+		// getRowHeight(), not Row::height, which is filled only by the deferred rebuildRows().
 		height += getRowHeight(it);
 	}
 	return height;
@@ -259,7 +241,7 @@ void TableView::setAutoHeight(bool value) {
 	}
 	_autoHeight = value;
 	if (_scroll) {
-		// Nested scrollers would otherwise both claim the swipe that scrolls whatever contains us.
+		// Avoid nested scrollers claiming the same swipe.
 		_scroll->setEnabled(!value);
 	}
 	markMeasureDirty();
@@ -268,7 +250,7 @@ void TableView::setAutoHeight(bool value) {
 
 void TableView::setIntrinsicHeightCallback(Function<void(float)> &&cb) {
 	_intrinsicHeightCallback = sp::move(cb);
-	// A fresh listener has been told nothing yet, so the current height is news to it.
+	// Report the current height to the new listener.
 	_reportedHeight = nan();
 	updateIntrinsicHeight();
 }
@@ -323,7 +305,7 @@ void TableView::setSelectedIdentity(ItemId id) {
 
 	_selectedId = id;
 
-	// The index is a PROJECTION of the identity, so it is derived rather than assigned
+	// The index is derived from the identity
 	remapSelection();
 
 	const auto index = _selectedRow;
@@ -331,8 +313,7 @@ void TableView::setSelectedIdentity(ItemId id) {
 		return;
 	}
 
-	// Selection changes no row's SHAPE, so it never rebuilds: flip the class on the two nodes
-	// involved, if they happen to be on screen.
+	// No rebuild: update the class on the two affected nodes, if they are on screen.
 	if (auto node = getRowNode(prev)) {
 		updateRowNode(node, prev);
 	}
@@ -340,12 +321,7 @@ void TableView::setSelectedIdentity(ItemId id) {
 		updateRowNode(node, index);
 	}
 
-	/* The select callback deliberately does NOT fire here; handleRowTap sends it, exactly as
-	TreeView does. It used to fire from here, which meant a programmatic setSelectedRow() notified
-	on a TableView and stayed silent on a TreeView — the same call with two different meanings
-	depending on which widget the caller happened to hold. "Moving the selection" and "the user
-	picked a row" are different events, and only the widget that received the tap knows which one
-	happened. */
+	// The select callback is sent by handleRowTap (user picks only), as in TreeView.
 
 	publishSelection();
 }
@@ -357,16 +333,9 @@ void TableView::bindReorderHotkeys() {
 
 	auto &hk = EngineHotkeys::get();
 
-	/* SelectedOnly only once this table actually owns the scene's selection.
-
-	Unconditionally would silence reordering everywhere, because ownership is opt-in: a table that
-	never joined the selection is never on the chain, so the flag would decline the chord for it
-	forever. What the flag buys where it does apply is the case that has no other answer - two
-	tables that both have a selected row, resolved today by nothing but paint order.
-
-	The flag NARROWS WHO IS OFFERED the key; it does not replace handleReorderHotkey's own check
-	that there is a row to move. Those are different questions, and the engine contract is that a
-	handler with nothing to do returns false so the chord falls through to whoever is below. */
+	/* SelectedOnly only when this table owns the scene's selection: a non-owner is never on the
+	selection chain and would never receive the chord. handleReorderHotkey still returns false
+	when there is nothing to move, so the chord falls through. */
 	const auto flags = HotkeyFlags::Repeatable
 			| (_selectionOwned ? HotkeyFlags::SelectedOnly : HotkeyFlags::None);
 
@@ -380,14 +349,7 @@ void TableView::bindReorderHotkeys() {
 		return handleReorderHotkey(true);
 	}, flags);
 
-	/* No touch filter, deliberately, and the one that used to be here is gone.
-
-	Its comment said a key event carries the last pointer position, so the default filter would
-	answer Alt+Up only while the mouse happened to hover the table. That was true of the hand-rolled
-	key binding this replaced; it has not been true since the hotkey path arrived.
-	InputListener::handleHotkey is called by the dispatcher directly and consults neither
-	canHandleEvent nor the touch filter - so the filter guarded nothing, on a listener that has no
-	recognizers to guard. */
+	// No touch filter: InputListener::handleHotkey consults neither canHandleEvent nor the filter.
 }
 
 void TableView::setSelectionOwned(bool value) {
@@ -461,9 +423,8 @@ void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {
 	_applyingSelection = false;
 }
 
-// A model change does not rebuild the whole table: the node's revision is in the RowKey, so a
-// replaced payload fails to match on its own row and only that row is remade. What is dropped
-// here is what the key cannot see — a span's answers, which come from outside the model entirely.
+// Explicit rows are rebuilt through the revision in the RowKey; span answers come from outside the
+// model, so they are dropped here.
 void TableView::invalidateSource() {
 	dropSpanData();
 	refresh();
@@ -471,12 +432,10 @@ void TableView::invalidateSource() {
 }
 
 void TableView::requestRebuildNodes(bool force) {
-	// Sticky until the rebuild consumes it: a forced request coalesced into an already-pending
-	// unforced one must still force, or the reuse pass would quietly ignore it.
+	// Sticky until the rebuild consumes it, so a coalesced forced request still forces.
 	_forceRebuild = _forceRebuild || force;
 	_rebuildPending = true;
-	// The components phase is opt-in per visit, so asking for the rebuild is also asking for the
-	// phase that performs it.
+	// The rebuild runs in the components phase, which is opt-in per visit.
 	markComponentsDirty();
 }
 
@@ -496,10 +455,8 @@ void TableView::dropSpanData() {
 }
 
 void TableView::handleSourceDirty(SubscriptionFlags flags) {
-	// Unforced: a payload edit bumps the node's revision and the revision is in the RowKey, so
-	// exactly the rows that changed get new nodes and every other visible row keeps the one it has.
-	// Only a span's answers have to be dropped, because nothing about the model says when they went
-	// stale.
+	// Unforced: changed rows fail their RowKey revision match. Span answers are dropped on a
+	// structure change, since the model cannot tell when they went stale.
 	if (flags.hasFlag(Model::Update::Structure)) {
 		dropSpanData();
 	}
@@ -509,13 +466,10 @@ void TableView::handleSourceDirty(SubscriptionFlags flags) {
 
 void TableView::refresh() {
 	rebuildModel();
-	// before any node exists, so a source that answers inline has every payload in place by the
-	// time the first row is built and no placeholder frame is ever drawn
+	// before any node exists, so an inline source needs no placeholder frame
 	requestRowData();
 	requestRebuildNodes();
-	// The row COUNT is what usually moves the intrinsic height, and it is settled by now. Reported
-	// here rather than from rebuildRows(), which is deferred to the next visit: an owner sizing us
-	// from getIntrinsicHeight() has to learn about it before that frame, not after.
+	// Reported here, not from the deferred rebuildRows(), so an owner learns before that frame.
 	updateIntrinsicHeight();
 }
 
@@ -528,10 +482,8 @@ void TableView::resolveColumns() {
 		return;
 	}
 
-	// The track list comes from CSS (`grid-template-columns` on this node, mapped to
-	// TableLayoutInfo by the style resolver); Column::track fills in for columns the sheet does not
-	// mention. Both are GridTracks, so the same sizing routine the table layout uses applies here -
-	// which is the point: the widget and a static `display: table` cannot disagree about widths.
+	// Tracks come from CSS (`grid-template-columns` -> TableLayoutInfo), with Column::track as the
+	// fallback, sized by the same routine as a static `display: table`.
 	auto info = getComponent<TableLayoutInfo>();
 
 	Vector<GridTrack> tracks;
@@ -551,8 +503,6 @@ void TableView::resolveColumns() {
 			0.0f);
 
 	TableColumnsComponent next;
-	// the same track sizing the Table pass runs - see resolveTableColumns on why a virtualized
-	// table shares it rather than reimplementing it
 	resolveTableColumns(tracks, available, spacingH, padding.left, next);
 
 	next.borderCollapse = info ? info->borderCollapse : BorderCollapse::Separate;
@@ -562,8 +512,7 @@ void TableView::resolveColumns() {
 	next.alignItems = info ? info->alignItems : GridAlign::Stretch;
 	next.occupiedColumns.resize(count, 0);
 
-	// The generation is the writer's to advance, and only on a real change - a row keys its layout
-	// off it, and the node reuse must not see a resize as a new column set.
+	// Advance the generation only on a real change; rows key their layout off it.
 	next.generation = _geometry.generation;
 	TableColumnsComponent compare = next;
 	compare.rowHeight = _geometry.rowHeight;
@@ -591,7 +540,7 @@ void TableView::restampColumns() {
 	if (!_controller) {
 		return;
 	}
-	// the CONST overload: the non-const one marks the controller dirty, and this is a pure read
+	// the const overload: the non-const one marks the controller dirty
 	const auto &controller = *_controller;
 	for (auto &it : controller.getItems()) {
 		if (!it.node) {
@@ -604,8 +553,7 @@ void TableView::restampColumns() {
 }
 
 void TableView::rebuildModel() {
-	// Harvested BEFORE _rows is cleared: this map is what carries loaded payloads over the rebuild,
-	// so a window resize does not re-fetch the whole visible table.
+	// Harvested before _rows is cleared, carrying loaded span payloads over the rebuild.
 	Map<Model::Position, Value> loaded;
 	for (auto &row : _rows) {
 		if (row.dataLoaded && row.node && row.node->isSpan()) {
@@ -620,9 +568,7 @@ void TableView::rebuildModel() {
 		return;
 	}
 
-	/* The root's children, in order. A table is a tree read one level deep: an explicit child is one
-	row that already holds its payload, and a span child is N rows that do not exist until they are
-	asked for. Both kinds can sit in the same table. */
+	// The root's children, in order: an explicit child is one row, a span child is N rows.
 	for (auto &child : source->getRoot()->getChildren()) {
 		if (!child->isSpan()) {
 			Row row;
@@ -659,13 +605,12 @@ void TableView::requestRowData() {
 		return;
 	}
 
-	// Suppresses the redundant node rebuild a synchronous delivery would schedule from inside this
-	// loop: refresh() schedules one for the whole pass anyway.
+	// Suppresses the rebuild a synchronous delivery would schedule; refresh() schedules one anyway.
 	_inDataRequest = true;
 
 	size_t i = 0;
 	while (i < _rows.size()) {
-		// Everything that is not an unfetched span row already has its payload, in the model.
+		// Only unfetched span rows need a request.
 		if (_rows[i].dataLoaded || !_rows[i].node || !_rows[i].node->isSpan()) {
 			++i;
 			continue;
@@ -673,8 +618,7 @@ void TableView::requestRowData() {
 
 		Rc<ModelNode> span = _rows[i].node;
 
-		// One request per run of consecutive unloaded offsets of the same span - the cursor read
-		// that makes a table of fifty thousand rows a handful of calls rather than fifty thousand.
+		// One request per run of consecutive unloaded offsets of the same span.
 		const auto first = _rows[i].offset;
 		size_t count = 1;
 		while (i + count < _rows.size() && !_rows[i + count].dataLoaded
@@ -686,8 +630,7 @@ void TableView::requestRowData() {
 		if (span->getSpanData([self, span, first, count](Map<uint64_t, Value> &data) {
 			self->handleSliceData(span, first, count, data);
 		}, first, count) == 0) {
-			// The span planned no request, so no callback is coming. Mark the range resolved rather
-			// than re-ask for it on every rebuild from now on.
+			// No request planned, so no callback: mark the range resolved to avoid re-asking.
 			for (size_t j = 0; j < count; ++j) { _rows[i + j].dataLoaded = true; }
 		}
 
@@ -708,8 +651,7 @@ void TableView::handleSliceData(ModelNode *span, uint64_t first, size_t count,
 		if (it != data.end()) {
 			row.spanData = sp::move(it->second);
 		}
-		// Marked loaded even for an offset the span did not answer for: "loaded but empty" has to be
-		// terminal, or an under-delivering source would be asked again on every rebuild forever.
+		// Loaded even without an answer, so an under-delivering source is not asked again.
 		row.dataLoaded = true;
 		updated = true;
 	}
@@ -722,10 +664,8 @@ void TableView::handleSliceData(ModelNode *span, uint64_t first, size_t count,
 }
 
 void TableView::makeTableRow(Node *node) {
-	// A row lays its cells out with LayoutMode::TableRow, reading the geometry stamped on it. The
-	// marker keeps the style resolver from adding a second layout system on top; the cells still
-	// get their TableCellInfo from CSS, because the resolver's ITEM mapping keys off the parent
-	// carrying a TableColumnsComponent and runs regardless of the marker.
+	// LayoutMode::TableRow reads the stamped geometry. The marker stops the resolver adding another
+	// layout; cells still get TableCellInfo from CSS via the parent's TableColumnsComponent.
 	node->addSystem(Rc<LayoutSystem>::create(LayoutMode::TableRow));
 	node->setComponent<SystemManagedLayout>();
 	if (!_geometry.columns.empty()) {
@@ -754,8 +694,7 @@ void TableView::remapSelection() {
 		}
 	}
 
-	// No row shows this identity right now - hidden or gone, which need the same answer. Only the
-	// INDEX is dropped; see TreeView::remapSelection for why the identity is kept
+	// No row shows this identity now; only the index is dropped (see TreeView::remapSelection)
 	_selectedRow = maxOf<size_t>();
 }
 
@@ -764,8 +703,7 @@ void TableView::rebuildRows() {
 		return;
 	}
 
-	// BEFORE the nodes are made: makeRow() reads _selectedRow to decide whether the row it is
-	// building wears the selection
+	// Before the nodes are made: makeRow() reads _selectedRow
 	remapSelection();
 
 	const auto force = _forceRebuild;
@@ -779,10 +717,8 @@ void TableView::rebuildRows() {
 				continue;
 			}
 			_reusableRows.emplace_back(row);
-			// Detached HERE rather than by clear(), and without the cleanup: removeFromParent()
-			// defaults to stripping every system and component off the subtree, which for a node
-			// about to be re-attached would leave a Sprite whose scissor system is a dangling
-			// pointer. Nulling the item keeps clear() from doing it again.
+			// Detached here without cleanup, which would strip systems from a node about to be
+			// re-attached. Nulling the item keeps clear() from cleaning it.
 			it.node->removeFromParent(false);
 			it.node = nullptr;
 			it.handle = nullptr;
@@ -792,11 +728,10 @@ void TableView::rebuildRows() {
 	_controller->clear();
 
 	for (size_t i = 0; i < _rows.size(); ++i) {
-		// Resolved here, once, and remembered on the Row: the factory below runs only when the row
-		// scrolls into view, and must publish to CSS the same number the controller laid out with.
+		// Resolved once and stored, so the factory publishes the height the controller used.
 		_rows[i].height = getRowHeight(_rows[i]);
-		// `this` captured raw on purpose: this node owns _controller, which owns this factory - an
-		// Rc back would be a cycle. The index is safe because every change to _rows rebuilds.
+		// `this` captured raw: this node owns _controller, which owns the factory. The index is
+		// safe because every change to _rows rebuilds.
 		_controller->addItem([this, i](const basic2d::ScrollController::Item &) -> Rc<Node> {
 			return makeRow(i);
 		}, _rows[i].height);
@@ -805,13 +740,8 @@ void TableView::rebuildRows() {
 	_controller->commitChanges();
 	_reusableRows.clear();
 
-	/* The answer, delivered here and not a hop later.
-
-	Every row this pass built was attached while the frame is in flight, so each caught up on the
-	visit's phases as it was attached (Node::runPendingPhases) and commitChanges() above has placed
-	it - which makes this the first moment the new rows can be measured, and therefore the last
-	moment worth waiting for. Taken off the list BEFORE they run: a callback that asks for another
-	rebuild is answered by that one. */
+	/* New rows are already laid out here (Node::runPendingPhases, commitChanges). Callbacks are
+	taken off the list before they run, so a new request is served by the next rebuild. */
 	auto callbacks = sp::move(_rebuildCallbacks);
 	_rebuildCallbacks.clear();
 	for (auto &it : callbacks) { it(); }
@@ -847,7 +777,7 @@ auto TableView::getRowNode(size_t index) const -> RowNode * {
 	if (!_controller || index >= _rows.size()) {
 		return nullptr;
 	}
-	// the CONST overload: the non-const getItems() marks the controller dirty on a pure read
+	// the const overload: the non-const getItems() marks the controller dirty
 	const auto &controller = *_controller;
 	for (auto &it : controller.getItems()) {
 		if (auto row = dynamic_cast<RowNode *>(it.node)) {
@@ -868,8 +798,7 @@ void TableView::updateRowNode(RowNode *node, size_t index) {
 		node->removeStyleClass("selected");
 	}
 
-	// And the scene-wide half - a different claim from the class, and applied per node rather than
-	// once per selection change because a virtualized row's node is recycled underneath it. See
+	// The scene-wide selection flag, applied per node since row nodes are recycled; see
 	// TreeView::updateRowNode
 	if (_selectionOwned) {
 		setNodeSelected(node, selected);
@@ -930,8 +859,7 @@ Rc<Node> TableView::buildRowNode(RowBuilder &builder) {
 		node->setName(builder._name);
 	}
 
-	// The height the controller laid this row out with, published for the sheet: a rule reaches a
-	// SET of nodes and so cannot carry a per-row number.
+	// Per-row values for the stylesheet.
 	setStyleVariable(node, "--table-row-h", mem_std::toString(row.height, "px"));
 	setStyleVariable(node, "--table-row-index", mem_std::toString(index));
 	return node;
@@ -948,13 +876,11 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			break;
 		}
 
-		// The grip column is the view's to fill, and the caller's callback is not asked about it:
-		// what goes there is a DragSource, and a cell node from outside would have replaced it.
+		// The grip column is filled by the view (with a DragSource); the cell callback is skipped.
 		if (_reorderEnabled && StringView(_columns[i].key) == ReorderColumnKey) {
 			Rc<Node> gripCell;
 			if (header) {
-				// the header's grip cell is a bare Panel - no handle, nothing to drag from a
-				// column title - and it stands over the header's ground like any other cell
+				// the header's grip cell is a bare transparent Panel with no handle
 				auto panel = Rc<Panel>::create();
 				TableView_paintCellDefaults(panel);
 				gripCell = panel;
@@ -1003,8 +929,7 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			Panel::registerStyleAppliers("table-cell");
 			TableView_paintCellDefaults(panel);
 
-			// The icon goes in first and carries a lower ZOrder, so that a cell laid out as a flex
-			// row puts it before the label - document order is what the row layout reads.
+			// The icon has a lower ZOrder, so a flex row puts it before the label.
 			if (builder._icon != IconName::None) {
 				auto icon =
 						panel->addChild(Rc<basic2d::IconSprite>::create(builder._icon), ZOrder(0));
@@ -1036,8 +961,7 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 			cell->setName(builder._name);
 		}
 
-		// The cell's placement: its span, in the row's own column cursor. Everything else about
-		// where it lands comes from the stamped geometry.
+		// The cell's span; the rest of its placement comes from the stamped geometry.
 		TableCellInfo cfg;
 		if (auto existing = LayoutSystem::getTableCell(cell)) {
 			cfg = *existing;
@@ -1056,8 +980,7 @@ void TableView::buildCells(Node *node, const Row *row, size_t index, bool header
 
 namespace {
 
-// What a row drag carries. The table pointer is identity, not convenience: two tables on one scene
-// must not accept each other's rows just because both know how to reorder.
+// What a row drag carries. The table pointer keeps tables from accepting each other's rows.
 struct TableRowPayload : public Ref {
 	static constexpr auto TypeName = StringView("xl/table-row");
 
@@ -1065,7 +988,7 @@ struct TableRowPayload : public Ref {
 	size_t index = 0;
 };
 
-// Null unless the drag is one of ours AND came from this very table.
+// Null unless the drag is a row drag from this table.
 static TableRowPayload *TableView_payloadOf(const DragEvent &event, const TableView *view) {
 	if (!event.data || !event.data->isLocal(TableRowPayload::TypeName)) {
 		return nullptr;
@@ -1156,13 +1079,9 @@ Rc<Node> TableView::makeReorderCell(size_t index) {
 	icon->setType("icon");
 	icon->addStyleClass("table-icon");
 
-	/* The DragSource goes on the GRIP CELL, not on the row.
-
-	This table scrolls on the same axis a row drag moves along, which no other drag source in the
-	tree has had to contend with - the dock's tab strip is horizontal. A narrow grip is what keeps
-	the two apart: a swipe that starts here reaches this listener, which sits deeper than the
-	scroll view's, and DragSource takes the pointer exclusively on the first frame past the
-	threshold. A swipe starting anywhere else in the row still scrolls, which is what it should do. */
+	/* The DragSource is on the grip cell, not the row: the drag and the scroll share an axis, so
+	only a swipe starting on the grip drags (this listener is deeper than the scroll view's and
+	captures the pointer past the threshold); elsewhere the row scrolls. */
 	panel->addSystem(Rc<DragSource>::create([this, index](DragOffer &offer) -> bool {
 		if (!_reorderEnabled || index >= _rows.size()) {
 			return false;
@@ -1180,8 +1099,7 @@ Rc<Node> TableView::makeReorderCell(size_t index) {
 		Rect rect;
 		const Size2 size = getRowRect(index, rect) ? rect.size : Size2(120.0f, _rowHeight);
 		offer.decorator = [size]() -> Rc<Node> {
-			// A plain Layer, painted here: a decorator is parked outside this widget's subtree, so
-			// no StyleResolver reaches it and anything expecting CSS would come up unstyled.
+			// Painted in code: the decorator lives outside this subtree, out of reach of CSS.
 			auto ghost = Rc<basic2d::Layer>::create(Color4B(0xFC, 0xB4, 0x00, 0x60));
 			ghost->setContentSize(size);
 			ghost->setAnchorPoint(Anchor::MiddleLeft);
@@ -1227,8 +1145,7 @@ bool TableView::handleReorderDrop(size_t from, const Vec2 &nodeLocation) {
 		return false;
 	}
 
-	// A boundary is a gap between rows; the row's FINAL index is one less when it came from above,
-	// because taking it out closes the gap it used to occupy.
+	// The final index is one less than the boundary when the row came from above.
 	const size_t to = (boundary > from) ? boundary - 1 : boundary;
 	return reorderRow(from, to);
 }
@@ -1238,8 +1155,7 @@ bool TableView::reorderRow(size_t from, size_t to) {
 		return false;
 	}
 	if (from >= _rows.size() || to >= _rows.size() || from == to) {
-		// A move onto itself is not a refusal, it is not a move: reporting it would put an entry in
-		// somebody's undo history for a drag that changed nothing.
+		// A move onto itself is not reported to the callback.
 		return false;
 	}
 
@@ -1247,12 +1163,7 @@ bool TableView::reorderRow(size_t from, size_t to) {
 		return false;
 	}
 
-	/* The selection follows the ROW, and it does so BY ITSELF now.
-
-	This used to recompute the index by hand here - the only remap in either view, and correct only
-	for the one mutation it was written for. It is deleted rather than kept alongside remapSelection()
-	because the two would both fire on a reorder and apply the shift twice. The identity is stored,
-	the rebuild re-derives the index from it, and a reorder is simply a rebuild. */
+	// The selection follows the row via remapSelection() on the rebuild; no index shift here.
 	return true;
 }
 
@@ -1261,8 +1172,7 @@ bool TableView::handleReorderHotkey(bool down) {
 		return false;
 	}
 
-	// The gate is the selection: a table nobody has picked a row in has no claim on Alt+arrows, and
-	// declining leaves the combination for whoever is below.
+	// Without a selected row, decline so the chord falls through.
 	const size_t selected = _selectedRow;
 	if (selected == maxOf<size_t>() || selected >= _rows.size()) {
 		return false;
@@ -1296,9 +1206,7 @@ bool TableView::getCellRect(size_t row, size_t column, Rect &out) const {
 		return false;
 	}
 
-	// The column geometry is resolved by resolveColumns(), which needs a column set AND a non-zero
-	// width. Before that there is nothing to report - and reporting the whole row would be a lie
-	// that looks like an answer.
+	// No column geometry until resolveColumns() has a column set and a non-zero width.
 	if (column >= _geometry.columns.size()) {
 		return false;
 	}
@@ -1328,8 +1236,7 @@ void TableView::handleRowTap(size_t index, uint32_t count) {
 	}
 	setSelectedRow(index);
 
-	// Sent here rather than from setSelectedRow(), so that it means "the user picked this row" and
-	// not merely "the selection moved" — the same split TreeView makes.
+	// Sent here, not from setSelectedRow(): it reports a user pick, as in TreeView.
 	if (_selectCallback) {
 		_selectCallback(index, _rows[index]);
 	}
@@ -1390,8 +1297,7 @@ bool TableView::RowNode::init(TableView *view, size_t index, bool interactive) {
 	addStyleClass("xl-ui-table-row");
 	registerStyleAppliers("table-row");
 
-	// No listener at all unless the view wants selection: an always-present one would swallow the
-	// hover and the swipe the scroll view wants, for a widget that ignores both.
+	// No listener unless the view wants selection, so hover and swipes reach the scroll view.
 	if (interactive) {
 		_listener = addSystem(Rc<InputListener>::create());
 		_listener->addMouseOverRecognizer([this](const GestureData &data) {
@@ -1417,10 +1323,8 @@ bool TableView::RowNode::init(TableView *view, size_t index, bool interactive) {
 				_view->handleRowTap(_index, tap.count);
 			}
 			return true;
-			/* Two taps, reported IMMEDIATELY - the same reasoning as TreeView::RowNode's. Capped
-			at one, `count` could never be anything but 1 and setActivateCallback was unreachable
-			from any pointer; Immediate keeps the plain single click out of the double-tap
-			interval. */
+			// Up to two taps, so `count` can reach the activate callback; Immediate reports the
+			// first tap without waiting for the double-tap interval.
 		}, InputTapInfo{makeButtonMask({InputMouseButton::Touch}), 2, InputTapFlags::Immediate});
 	}
 
@@ -1441,8 +1345,7 @@ bool TableView::HeaderNode::init(TableView *view) {
 	addStyleClass("xl-ui-table-header");
 	registerStyleAppliers("table-header");
 
-	// The header is laid out by exactly the same machinery as a row - same mode, same component -
-	// which is why its cells cannot drift out of alignment with the rows below it.
+	// Laid out like a row, so header cells align with the rows.
 	view->makeTableRow(this);
 	return true;
 }

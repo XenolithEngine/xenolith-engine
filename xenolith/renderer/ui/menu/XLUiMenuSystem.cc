@@ -38,14 +38,13 @@ using DescriptionStyle = basic2d::Label::DescriptionStyle;
 static DescriptionStyle MenuSystem_textStyle(uint16_t fontSize, float density) {
 	DescriptionStyle ret;
 	ret.font.fontSize = font::FontSize(fontSize);
-	// The same density the Label will be shaped at. getLabelSize divides the shaped extent by it,
-	// so a mismatch here is a menu that is measured for one display and drawn on another.
+	// must match the density the Label is shaped at; getLabelSize divides by it
 	ret.font.density = density;
 	return ret;
 }
 
-// The columns and the fixed width they consume, before the text column gets what is left. A column
-// that is not there takes its gap with it - a menu with no icons is not indented by an empty one.
+// The columns and the fixed width they take before the text column gets the rest. An absent
+// column takes its gap with it.
 struct MenuSystem_Columns {
 	float leading = 0.0f;
 	float shortcut = 0.0f;
@@ -102,10 +101,7 @@ static MenuSystem_Columns MenuSystem_collectColumns(font::FontController *contro
 						basic2d::Label::getStringWidth(controller, shortcutStyle, text.str(), true));
 			}
 
-			/* MEASURED LOCALIZED, because the Label that draws it resolves its tags and this decides
-			the width of the WINDOW the menu opens in. Measured raw, a caption of `@Locale:Menu:Save`
-			sized the popup for the twenty-three characters of the tag and then drew four - and in the
-			other direction a Chinese caption, wider per character than its key, was cut off. */
+			/* Measured localized, as the Label resolves locale tags; this sets the popup width. */
 			if (auto title = button->getTitle(); !title.empty()) {
 				ret.naturalText = sprt::max(ret.naturalText,
 						basic2d::Label::getStringWidth(controller, titleStyle, title, true));
@@ -117,8 +113,7 @@ static MenuSystem_Columns MenuSystem_collectColumns(font::FontController *contro
 			break;
 		}
 		case MenuSourceItem::Type::Custom: {
-			// A custom node spans the whole row, not just the text column: it is not a caption
-			// with an icon beside it, it is whatever the application put there.
+			// a custom node spans the whole row, not just the text column
 			auto custom = static_cast<MenuSourceCustom *>(it.get());
 			ret.naturalCustom = sprt::max(ret.naturalCustom,
 					custom->measure(MeasureConstraints{MeasureMode::MaxContent}).width);
@@ -133,8 +128,7 @@ static MenuSystem_Columns MenuSystem_collectColumns(font::FontController *contro
 	return ret;
 }
 
-// Fill in the row heights for a width that is already decided. This is where the text actually
-// wraps, and it is the only place a row height is ever computed.
+// Fill in row heights for a decided width: the only place text wraps and row heights are computed.
 static void MenuSystem_resolveRows(font::FontController *controller, NotNull<MenuSource> source,
 		const MenuStyle &style, float density, MenuMetrics &metrics) {
 	const auto titleStyle = MenuSystem_textStyle(style.fontSize, density);
@@ -156,8 +150,7 @@ static void MenuSystem_resolveRows(font::FontController *controller, NotNull<Men
 		case MenuSourceItem::Type::Button: {
 			auto button = static_cast<MenuSourceButton *>(it.get());
 
-			// Localized here for the same reason as the width: a wrapped caption is as many lines as
-			// the TRANSLATION takes, not as many as its key would.
+			// localized, so the line count is that of the translation
 			if (auto title = button->getTitle(); !title.empty()) {
 				row.titleHeight = basic2d::Label::getLabelSize(controller, titleStyle, title,
 						style.wrapTitle ? metrics.textColumn : 0.0f, true)
@@ -204,8 +197,8 @@ MenuMetrics MenuSystem::measureAtWidth(font::FontController *controller, NotNull
 	ret.shortcutColumn = columns.shortcut;
 	ret.trailingColumn = columns.trailing;
 	ret.size.width = sprt::max(width, 0.0f);
-	// Never negative: a menu squeezed below its own furniture gets a zero text column and clipped
-	// text, which is ugly but is not a layout that runs backwards.
+	// never negative: a menu narrower than its fixed columns gets a zero text column and clipped
+	// text
 	ret.textColumn = sprt::max(ret.size.width - columns.fixed(style), 0.0f);
 
 	MenuSystem_resolveRows(controller, source, style, density, ret);
@@ -222,14 +215,11 @@ MenuMetrics MenuSystem::measure(font::FontController *controller, NotNull<MenuSo
 	const auto columns = MenuSystem_collectColumns(controller, source, style, density);
 	const float fixed = columns.fixed(style);
 
-	// What the menu would like: the widest row, either a caption between its columns or a custom
-	// node spanning the whole width.
+	// natural width: the widest caption with its columns, or the widest custom node
 	const float natural = sprt::max(fixed + columns.naturalText,
 			style.paddingHorizontal * 2.0f + columns.naturalCustom);
 
-	// MaxContent means "ideal, nothing wrapping it", so the caller's bound does not apply there -
-	// only the menu's own maximum, which is what keeps a long command from becoming a screen-wide
-	// menu even when there is room.
+	// MaxContent ignores the caller's bound; only style.maxWidth limits it
 	float limit = style.maxWidth;
 	if (constraints.mode != MeasureMode::MaxContent && constraints.maxWidth != maxOf<float>()) {
 		limit = sprt::min(limit, constraints.maxWidth);
@@ -237,8 +227,7 @@ MenuMetrics MenuSystem::measure(font::FontController *controller, NotNull<MenuSo
 
 	float width = sprt::clamp(natural, sprt::min(style.minWidth, limit), limit);
 	if (constraints.mode == MeasureMode::MinContent) {
-		// The narrowest a menu is willing to be: its furniture plus the declared minimum. Below
-		// that the text column is gone and there is nothing left to shrink.
+		// never narrower than the fixed columns plus the declared minimum
 		width = sprt::min(width, sprt::max(style.minWidth, fixed));
 	}
 
@@ -303,16 +292,15 @@ void MenuSystem::handleAdded(Node *owner) {
 	sprt_passert(owner->getSystemByType<LayoutSystem>() == nullptr,
 			"MenuSystem owns its children's geometry: the menu node must not carry a LayoutSystem");
 
-	// Tell the style resolver that the rows' ContentSize is this system's business: a CSS width on
-	// a menu-item becomes an intrinsic hint rather than a committed size that would be overwritten
-	// on every pass, and `display:flex` on the menu cannot add a second writer.
+	// A CSS width on a menu-item becomes a MeasureComponent hint instead of a committed size, and
+	// `display: flex` on the menu cannot add a second geometry writer.
 	owner->setComponent<SystemManagedLayout>();
 
 	if (_source) {
 		_source->addObserver(this);
 	}
 
-	// The mode may have been set before the system had an owner to hang the group off.
+	// keyboard mode may have been set before there was an owner
 	if (_keyboardEnabled) {
 		enableKeyboard();
 	}
@@ -328,7 +316,7 @@ void MenuSystem::handleRemoved() {
 	if (_source) {
 		_source->removeObserver(this);
 	}
-	// While the owner is still ours to stop the pending action on.
+	// while the owner can still stop the pending action
 	cancelSubmenuDelay();
 	disableKeyboard();
 	disablePointerListener();
@@ -336,8 +324,7 @@ void MenuSystem::handleRemoved() {
 }
 
 void MenuSystem::handleExit() {
-	// The rows are children of a node on its way out; nothing to tear down beyond dropping our own
-	// references to them, which keeps a removed menu from holding its items alive.
+	// the rows go with the owner; drop our references so a removed menu does not keep items alive
 	cancelSubmenuDelay();
 	System::handleExit();
 }
@@ -399,7 +386,7 @@ void MenuSystem::setHoverConfig(const MenuHoverConfig &config) {
 		return;
 	}
 	_hover = config;
-	// Whatever the pointer had pending was decided under the old numbers.
+	// pending timers used the old delays
 	cancelSubmenuDelay();
 }
 
@@ -423,13 +410,9 @@ void MenuSystem::enableKeyboard() {
 		return;
 	}
 
-	/* The group first, then the listener: a listener records the nearest group it finds on the
-	frame stack as it registers, so one added before the group would come up unaffiliated - and an
-	unaffiliated key listener is exactly the bug this whole arrangement exists to avoid.
-
-	Exclusive: the menu that is up owns the keyboard, and the dispatcher re-collects the receivers
-	scoped to this group. Propagate: a MenuSourceCustom row may carry a focus group of its own, and
-	a search field inside a menu must still be typeable. */
+	/* The group before the listener: a listener takes the nearest group from the frame stack when
+	it registers. Exclusive: this menu owns the keyboard. Propagate: a MenuSourceCustom row with its
+	own focus group (a search field) still receives keys. */
 	_focus = _owner->addSystem(Rc<FocusGroup>::create());
 	_focus->setEventMask(FocusGroup::EventMask(EventMaskKeyboard));
 	_focus->setFlags(FocusGroup::Flags::Exclusive | FocusGroup::Flags::Propagate);
@@ -450,10 +433,8 @@ void MenuSystem::enableKeyboard() {
 	_keyListener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
 
-	/* A key event carries the pointer location - the backends fill it in from the last mouse
-	position - so the default filter, "is this node under the pointer", would deliver the arrows
-	only while the mouse happens to hover the menu. A menu that owns the keyboard owns it wherever
-	the pointer is. Same reasoning, and the same seam, as ui::TextInput's. */
+	/* Key events carry the last pointer location, so the default under-pointer filter would deliver
+	keys only while the mouse hovers the menu; accept them regardless, as ui::TextInput does. */
 	_keyListener->setTouchFilter(
 			[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -475,7 +456,7 @@ void MenuSystem::disableKeyboard() {
 	_keyListener = nullptr;
 	_focus = nullptr;
 
-	// The highlight is the keyboard's cursor; with no keyboard there is nothing for it to mean.
+	// the highlight is the keyboard cursor; meaningless without a keyboard
 	setHighlighted(nullptr);
 }
 
@@ -500,7 +481,7 @@ bool MenuSystem::handleKey(const GestureData &data) {
 	case InputKeyCode::SPACE: return activateHighlighted();
 
 	case InputKeyCode::RIGHT: {
-		// The same navigation a click on a submenu row performs, and through the same handler.
+		// same navigation and handler as a click on a submenu row
 		auto button = (_highlighted && _highlighted->getType() == MenuSourceItem::Type::Button)
 				? static_cast<MenuSourceButton *>(_highlighted.get())
 				: nullptr;
@@ -513,7 +494,7 @@ bool MenuSystem::handleKey(const GestureData &data) {
 	}
 
 	case InputKeyCode::LEFT:
-		// One level, not the chain: Left in a submenu goes back to the menu that opened it.
+		// one level, not the chain: Left in a submenu returns to its opener
 		if (auto chain = MenuPopupChain::findForNode(_owner)) {
 			if (auto parent = chain->getParent()) {
 				parent->dismissChild();
@@ -523,8 +504,7 @@ bool MenuSystem::handleKey(const GestureData &data) {
 		return false;
 
 	case InputKeyCode::ESCAPE:
-		/* Only a menu that IS a surface can be closed by Escape. An inline menu has nothing to take
-		down, and must not eat the key from whoever put it there. */
+		/* Escape closes only a popup menu; an inline menu leaves the key to its container. */
 		if (auto chain = MenuPopupChain::findForNode(_owner)) {
 			chain->dismissChain();
 			return true;
@@ -583,7 +563,7 @@ bool MenuSystem::moveHighlight(int32_t delta) {
 	const int32_t step = delta > 0 ? 1 : -1;
 	int32_t index = indexOfHighlighted();
 	if (index < 0) {
-		// Nothing is on yet: Down starts above the first row, Up below the last one.
+		// nothing highlighted: Down starts above the first row, Up below the last
 		index = step > 0 ? -1 : count;
 	}
 
@@ -646,8 +626,7 @@ void MenuSystem::handleSourceDirty(MenuSource *source) {
 	}
 	_itemsDirty = true;
 	if (_owner) {
-		// Directly, not through a scheduled check: an application that renders on demand owes the
-		// frame loop a reason to run, and "the menu changed" is one.
+		// directly, not via a scheduled check, so an on-demand renderer gets a frame
 		_owner->markLayoutChildrenDirty();
 	}
 }
@@ -693,16 +672,14 @@ MenuSourceItem *MenuSystem::getItemForNode(NotNull<Node> node) const {
 }
 
 void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
-	// The pointer was only about to answer; the click just answered. A pending close left armed here
-	// would take down the submenu this very call is opening.
+	// the click decides now; a pending close would take down the submenu being opened
 	cancelSubmenuDelay();
 
 	auto button = (item->getType() == MenuSourceItem::Type::Button)
 			? static_cast<MenuSourceButton *>(item.get())
 			: nullptr;
 
-	// A row that opens a submenu is not a command: it navigates. Nothing is reported, and the
-	// item's own callback - which most submenu rows do not have - is not run.
+	// a submenu row navigates: nothing is reported and the item's callback does not run
 	if (button && button->hasSubmenu() && _submenuHandler) {
 		if (auto node = getNodeForItem(item)) {
 			if (_submenuHandler(button, node)) {
@@ -711,8 +688,7 @@ void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
 		}
 	}
 
-	// Before the command: this is where a popup takes its surface down, so that an action opening
-	// another surface does not leave the menu standing behind it.
+	// before the command, so a popup closes before an action opens another surface
 	if (_willActivateCallback) {
 		_willActivateCallback(item);
 	}
@@ -723,8 +699,7 @@ void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
 		}
 	}
 
-	// After the item's own callback: what the application hears is "this was chosen", once the
-	// command it stands for has already run.
+	// after the item's callback: reports the choice once the command has run
 	if (_activateCallback) {
 		_activateCallback(item);
 	}
@@ -744,8 +719,8 @@ void MenuSystem::handleItemHovered(NotNull<MenuSourceItem> item) {
 
 	const bool selectable = isSelectable(*hovered);
 
-	/* The keyboard's cursor, and only while the keyboard is in play: without it there is no
-	highlight to mean anything, and `:hover` alone is what a mouse-driven menu has always shown. */
+	/* The highlight follows the pointer only while the keyboard is enabled; otherwise `:hover` is
+	the only feedback. */
 	if (_keyboardEnabled && selectable) {
 		setHighlighted(item);
 	}
@@ -761,8 +736,7 @@ void MenuSystem::handleItemHovered(NotNull<MenuSourceItem> item) {
 	if (button && button->hasSubmenu()) {
 		armSubmenu(button, _hover.openDelay);
 	} else {
-		// ANY other row, disabled ones and separators included: the pointer has left the row that
-		// opened the submenu, and where it landed does not change that.
+		// any other row, including disabled rows and separators: the pointer left the opener row
 		armSubmenu(nullptr, _hover.closeDelay);
 	}
 }
@@ -772,18 +746,11 @@ void MenuSystem::enablePointerListener() {
 		return;
 	}
 
-	/* On the MENU, not on its rows, and that is the point: the answer has to be "the pointer is in
-	this menu", which a row cannot give for a separator, for the padding or for the gap between two
-	rows. The rows keep their own listeners; nesting two mouse-over listeners is ordinary here (a
-	ui::TreeView and its rows do the same).
-
-	onlyFocused false: a menu surface never takes the keyboard focus, so a hover gated on it would
-	never be reported at all. */
+	/* On the menu, not its rows, so separators, padding and gaps count; rows keep their own
+	listeners. onlyFocused is false: a menu surface never takes keyboard focus. */
 	_pointerListener = _owner->addSystem(Rc<InputListener>::create());
 	_pointerListener->addMouseOverRecognizer([this](const GestureData &data) {
-		// The entering edge alone. Leaving is not an event this seam has anything to say about: a
-		// pointer that left this menu either arrived at another one, which reports for itself, or
-		// left the chain entirely, and a menu is not dismissed by the pointer wandering off.
+		// entering edge only; the pointer leaving a menu does not dismiss it
 		if (data.event == GestureEvent::Began && _pointerEnterHandler) {
 			_pointerEnterHandler();
 		}
@@ -814,8 +781,7 @@ void MenuSystem::armSubmenu(MenuSourceButton *item, TimeInterval delay) {
 		return;
 	}
 
-	// Rc, not `this`: the action manager holds the action, and this system can be taken off its
-	// owner while it runs.
+	// Rc, not `this`: the system can be removed from its owner while the action runs
 	owner->runAction(
 			Rc<Sequence>::create(delay, [self = Rc<MenuSystem>(this)] { self->fireSubmenu(); }),
 			SubmenuDelayActionTag);
@@ -845,8 +811,7 @@ void MenuSystem::fireSubmenu() {
 		return;
 	}
 
-	// Re-read the row: the menu may have been rebuilt while the delay ran, and an item that is no
-	// longer there is an answer that no longer applies.
+	// re-check the row: the menu may have been rebuilt during the delay
 	if (_submenuHandler) {
 		if (auto node = getNodeForItem(item.get())) {
 			_submenuHandler(item.get(), node);
@@ -876,9 +841,8 @@ void MenuSystem::rebuild() {
 				continue;
 			}
 
-			// Reuse is keyed on item IDENTITY. A name may be empty (separators) or repeated, and
-			// rebuilding a row that is still there would drop its hover state and flicker under an
-			// open menu.
+			// reuse keyed on item identity (names may be empty or repeated); rebuilding a present
+			// row would drop its hover state and flicker
 			Rc<Node> node;
 			for (auto &row : _rows) {
 				if (row.item == it) {
@@ -901,7 +865,7 @@ void MenuSystem::rebuild() {
 		}
 	}
 
-	// Whatever is no longer in the model goes.
+	// remove rows no longer in the model
 	for (auto &old : _rows) {
 		bool kept = false;
 		for (auto &row : rows) {
@@ -917,8 +881,7 @@ void MenuSystem::rebuild() {
 
 	_rows = sp::move(rows);
 
-	// An item that left the model, or one that has just been disabled or hidden, cannot go on
-	// carrying the keyboard.
+	// an item removed, disabled or hidden loses the highlight
 	if (_highlighted) {
 		bool live = false;
 		for (auto &row : _rows) {
@@ -931,12 +894,10 @@ void MenuSystem::rebuild() {
 			_highlighted = nullptr;
 		}
 	}
-	// The rows may be new nodes, so the class is stamped after every rebuild rather than only when
-	// the highlight moves.
+	// rows may be new nodes, so restamp the class after every rebuild
 	updateHighlightClasses();
 
-	// Explicit, DISTINCT z-orders: sortAllChildren is an unstable sort, so equal orders would
-	// leave the order of the menu up to chance.
+	// distinct z-orders: sortAllChildren is unstable
 	ZOrder z = ZOrder(0);
 	for (auto &it : _rows) {
 		if (it.node->getParent() != _owner) {
@@ -962,16 +923,14 @@ void MenuSystem::apply() {
 
 	const float width = _owner->getContentSize().width;
 	if (width > 0.0f) {
-		// The owner already has a box - from its parent, from CSS, or from the popup surface it
-		// fills - so the columns are resolved to it rather than negotiated again.
+		// the owner already has a size (parent, CSS or popup surface), so resolve columns at it
 		_metrics = measureAtWidth(controller, _source, _style, width, _owner->getInputDensity());
 	} else {
 		_metrics = measure(controller, _source, _style, MeasureConstraints{},
 				_owner->getInputDensity());
 	}
 
-	// Top down, in CSS reading order; the scene's Y grows up, so the cursor counts down from the
-	// content box's top.
+	// top down; the scene's Y grows up, so count down from the content box's top
 	float y = _owner->getContentSize().height - _style.paddingVertical;
 
 	size_t index = 0;
@@ -983,8 +942,7 @@ void MenuSystem::apply() {
 		++index;
 
 		if (auto menuItem = dynamic_cast<MenuItem *>(row.node.get())) {
-			// Before the size: the row places its children from these numbers, and a size change
-			// would otherwise lay it out against the previous menu's columns.
+			// before the size: a size change lays the row out against these columns
 			menuItem->setRowGeometry(_style, _metrics, metrics);
 		}
 

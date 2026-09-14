@@ -50,14 +50,9 @@ core::SurfaceInfo WindowedSurface::getSurfaceOptions(const core::Device &,
 	info.minImageCount = 1;
 	info.maxImageCount = 8;
 
-	// This is where the swapchain's size comes from: Context::handleAppWindowSurfaceUpdate takes
-	// SwapchainConfig::extent straight from currentExtent. A Vulkan surface answers it from
-	// vkGetPhysicalDeviceSurfaceCapabilitiesKHR, which is the window system's own current answer;
-	// EGL has no such query (asking the wl_egl_window would return the size we ourselves gave it),
-	// so the extent is pushed in from the window instead - WindowedPresentationEngine refreshes it
-	// before every read. maxImageExtent must not be that same value: it is a ceiling, and a
-	// ceiling equal to the current size clamps every growth back to where it started, which is a
-	// window that goes fullscreen and keeps rendering at its old size.
+	// The swapchain size comes from currentExtent (Context::handleAppWindowSurfaceUpdate). EGL has
+	// no query for it, so WindowedPresentationEngine pushes the window extent in before each read.
+	// maxImageExtent must not equal it, or every growth is clamped back to the old size.
 	info.currentExtent = _extent;
 	info.minImageExtent = Extent2(1, 1);
 	info.maxImageExtent = Extent2(1 << 14, 1 << 14);
@@ -75,13 +70,9 @@ core::SurfaceInfo WindowedSurface::getSurfaceOptions(const core::Device &,
 			core::ColorSpace::SRGB_NONLINEAR_KHR);
 	info.formats.emplace_back(core::ImageFormat::R8_UNORM, core::ColorSpace::SRGB_NONLINEAR_KHR);
 
-	// EGL has two present modes and no third: eglSwapInterval(1) is Fifo and eglSwapInterval(0) is
-	// Immediate. Mailbox - present the newest frame, discard the ones overtaken by it, never tear -
-	// has no expression here at all; a driver may or may not behave that way behind interval 0, and
-	// there is no way to ask. Reporting it would be reporting a guarantee this backend cannot give,
-	// so it is left out and the engine picks from what is real. Immediate first: presentation is
-	// paced by the PresentationEngine's own clock, and a blocking swap on top of it parks the loop
-	// thread (see the swap interval in present()).
+	// EGL has two present modes: eglSwapInterval(1) is Fifo, eglSwapInterval(0) is Immediate;
+	// Mailbox cannot be guaranteed. Immediate first: the PresentationEngine paces presents itself,
+	// and a blocking swap would park the loop thread (see the swap interval in present()).
 	info.presentModes.emplace_back(core::PresentMode::Immediate);
 	info.presentModes.emplace_back(core::PresentMode::Fifo);
 
@@ -126,10 +117,9 @@ bool WindowedSwapchain::init(Device &dev, NotNull<core::Loop>, const core::Surfa
 
 	_extent = cfg.extent;
 
-	// The EGLWindowSurface is created lazily in present(), not here, to stay self-healing: a
-	// driver that refuses the surface once (no libwayland-egl on this box, a window whose handle
-	// is not live yet) is asked again on the next frame instead of failing swapchain creation
-	// outright. The native handle lives on the surface, which finalize() keeps reachable.
+	// The EGLWindowSurface is created lazily in present(), so a refused surface (no libwayland-egl,
+	// a handle not live yet) is retried instead of failing swapchain creation. The native handle
+	// lives on the surface, which finalize() keeps reachable.
 	_wsurface = surface;
 	_windowSurface = EGL_NO_SURFACE;
 
@@ -184,14 +174,9 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 			markPresented(slot);
 		}
 
-	// The image now holds a complete frame, and the core image storage has to be told: the swapchain
-	// keeps a per-image snapshot of what was drawn, and an image handed back WITHOUT this mark is
-	// treated as holding something unknown and has its snapshot dropped (invalidateImage). Only vk
-	// did this before, which is why the mark exists at all - it is what separates "this image was
-	// finished" from "this image was recycled mid-flight".
-	//
-	// It also clears ImageStorage::_image, so every use of getImageIndex() has to come first: the
-	// slot is captured above and reused below rather than looked up again.
+		// Mark the image as holding a complete frame; without it the swapchain drops the image's
+		// damage snapshot (invalidateImage). This clears ImageStorage::_image, so getImageIndex()
+		// must be used before it: the slot is captured above.
 		static_cast<core::SwapchainImage *>(image)->setPresented();
 	}
 
@@ -211,10 +196,8 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	auto dev = static_cast<Device *>(_object.device);
 	auto &t = dev->getTable();
 
-	// Lazily create (or retry creating) the window surface. It normally succeeds on the first
-	// present; the throttle is a backoff for the cases where it cannot (a driver without the
-	// platform entrypoint, a missing libwayland-egl), so a failing stack logs once a second
-	// rather than once a frame while the scene keeps rendering into its textures.
+	// Lazily create (or retry creating) the window surface; retries are throttled to once a second
+	// on a failing stack while the scene keeps rendering into its textures.
 	if (_windowSurface == EGL_NO_SURFACE) {
 		auto now = sp::platform::clock(ClockType::Monotonic);
 		if (_surfaceCreateAttempt != 0 && now - _surfaceCreateAttempt < TimeInterval::seconds(1).toMicros()) {
@@ -254,13 +237,9 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		return Status::ErrorNotSupported;
 	}
 
-	// Swap interval, once per surface - it is context+surface state, so it can only be set with the
-	// window surface current. This is what keeps the loop thread from being parked in a compositor:
-	// at the EGL default of 1, eglSwapBuffers below waits for a frame callback, and a surface the
-	// compositor is not showing never gets one - the thread then sits in wl_display_dispatch_queue
-	// forever, taking every other loop task (screenshots, resource compiles, shutdown) with it.
-	// Frame pacing belongs to the PresentationEngine, which schedules presents on its own clock, so
-	// only an explicit Fifo asks EGL to block as well.
+	// Swap interval, once per surface, set with the window surface current. Only Fifo blocks: at
+	// interval 1 eglSwapBuffers waits for a frame callback that a hidden surface never gets, which
+	// would park the loop thread. Pacing belongs to the PresentationEngine.
 	if (!_swapIntervalSet && t.eglSwapInterval) {
 		const EGLint interval = (getPresentMode() == core::PresentMode::Fifo) ? 1 : 0;
 		if (!t.eglSwapInterval(dpy, interval)) {
@@ -282,10 +261,8 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 			texture->getGlName(), 0);
 
 	t.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // the window's default framebuffer
-	// The one place GL's own convention is imposed from outside: the default framebuffer is shown
-	// with its row 0 at the BOTTOM of the window, while the rendered texture carries the image's
-	// top row there. So the source rectangle is read upside down (srcY0 = h, srcY1 = 0) - an index
-	// remap in fixed function, with no effect on what was rasterized.
+	// The default framebuffer shows row 0 at the bottom, while the texture holds the image's top
+	// row there, so the source rectangle is read upside down (srcY0 = h, srcY1 = 0).
 	t.glBlitFramebuffer(0, GLsizei(h), GLsizei(w), 0, 0, 0, GLsizei(w), GLsizei(h),
 			GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
@@ -294,12 +271,9 @@ Status WindowedSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		t.glDeleteFramebuffers(1, &fbo);
 	}
 
-	// Hand the compositor the damaged rectangles where the display can take them: it then repaints
-	// that much of the screen instead of the whole surface. The rectangles are what the core's
-	// tracker computed against the PRESENTED snapshot (an empty list means "assume everything"), and
-	// they arrive in this backend's top-origin space while EGL measures its own from the bottom left
-	// of the surface - hence the flip. More than MaxRects is not worth describing, and the tracker
-	// never produces more.
+	// Hand the compositor the damaged rectangles, computed against the presented snapshot (empty
+	// means everything). They are top-origin, while EGL measures from the bottom left, hence the
+	// flip. The tracker never produces more than MaxRects.
 	EGLint rects[4 * core::SwapchainDamage::MaxRects];
 	EGLint count = 0;
 	if (dev->hasSwapWithDamage() && !info.damage.empty()) {

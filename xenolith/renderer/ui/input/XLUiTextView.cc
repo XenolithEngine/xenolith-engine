@@ -32,17 +32,15 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// A wheel notch moves three lines, the same amount every desktop editor uses. Expressed in lines
-// rather than pixels so it stays right at any font size.
+// A wheel notch moves three lines (in lines, not pixels, so it scales with the font).
 static constexpr float kWheelLines = 3.0f;
 
-// How close to an edge the caret may come before the viewport follows it. Horizontally it is capped
-// against the box, because a margin wider than a quarter of the viewport would leave the caret
-// permanently re-centring.
+// How close to an edge the caret may come before the viewport follows it. Horizontally capped to a
+// quarter of the viewport, or the caret would re-centre constantly.
 static constexpr float kScrollMarginX = 48.0f;
 
 // Speed of the pull when a drag-selection parks the pointer outside the box, px/s. Matches the
-// stock single-line field, so the two feel the same.
+// single-line field.
 static constexpr float kAutoScrollSpeed = 300.0f;
 
 // Distance from an edge at which that pull starts.
@@ -78,8 +76,7 @@ bool TextViewContainer::init() {
 		return false;
 	}
 
-	// A child of the container rather than of a label, so the horizontal slide does not take the
-	// strip with it: the highlight marks a line across the whole viewport, not a run of glyphs.
+	// A child of the container, so it spans the viewport regardless of the horizontal slide.
 	// ZOrder(-1) puts it under the text; the scissor is ApplyForAll, so it is still clipped.
 	_currentLine = addChild(Rc<basic2d::Layer>::create(Color::White), ZOrder(-1));
 	_currentLine->setAnchorPoint(Anchor::BottomLeft);
@@ -90,17 +87,15 @@ bool TextViewContainer::init() {
 	_stage->setName("text-view-stage");
 	_stage->setAnchorPoint(Anchor::BottomLeft);
 
-	// The caret was created by the base as a child of ITS label so a single-line slide would move
-	// both for free. Here labels come and go with the scroll, so the caret moves to the stage and
-	// is positioned explicitly. The local Rc keeps it alive across the swap.
+	// The base made the caret a child of its label; labels here are pooled, so the caret moves to
+	// the stage and is positioned explicitly. The local Rc keeps it alive across the swap.
 	Rc<basic2d::Layer> caret(_caret);
 	_caret->removeFromParent(false);
 	_stage->addChild(sp::move(caret), ZOrder(2));
 
 	// The reference for the uniform line height and the monospace cell width. Same type and class
-	// as the content labels, so the CSS resolver styles it identically; VISIBLE, because an
-	// invisible node is never visited and therefore never styled or laid out - it merely sits
-	// above the viewport where the scissor clips it. See handleContentSizeDirty.
+	// as the content labels so it is styled identically; kept visible (an invisible node is never
+	// styled or laid out) above the viewport, where the scissor clips it.
 	_measure = _stage->addChild(Rc<basic2d::Label>::create());
 	_measure->setLocaleEnabled(false); // it measures the content, so it is content
 	_measure->setAnchorPoint(Anchor::BottomLeft);
@@ -113,19 +108,16 @@ bool TextViewContainer::init() {
 }
 
 void TextViewContainer::update(const UpdateTime &time) {
-	// Not TextInputContainer::update: it pulls on X only, and its early-out asks
-	// hasHorizontalOverflow(), so a vertical drag past the bottom edge of a non-overflowing-wide
-	// document would never move. Node::update is what the base would have called first anyway.
+	// Node::update, not TextInputContainer::update: the base pulls on X only and early-outs
+	// without horizontal overflow.
 	Node::update(time);
 
-	// Vec2::INVALID is a pair of NaNs, and NaN compares equal to nothing - "is a target set" has to
-	// be asked as isValid(), never as == Vec2::INVALID.
+	// Vec2::INVALID is a pair of NaNs: test with isValid(), never == Vec2::INVALID.
 	if (!_autoScrollTarget.isValid()) {
 		return;
 	}
 
-	// The pointer is parked outside the box, so no further gesture event is coming and the motion
-	// has to come from the clock.
+	// The pointer is parked outside the box with no gesture events, so the clock drives the motion.
 	const auto local = convertToNodeSpace(_autoScrollTarget);
 	const auto edgeX = sprt::min(kAutoScrollEdge, _contentSize.width / 3.0f);
 	const auto edgeY = sprt::min(kAutoScrollEdge, _contentSize.height / 3.0f);
@@ -172,10 +164,9 @@ bool TextViewContainer::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags) 
 		return false;
 	}
 
-	// The order is the contract. The font is measured first because every geometry below is in
-	// its units; the caret-follow runs before materialization so the window is built around the
-	// final offset; and all of it runs before the base, whose visitDraw flushes _caretDirty into
-	// updateCaretPosition against the labels this pass has just settled.
+	// Order matters: the font first (all geometry is in its units), caret-follow before
+	// materialization (so the window uses the final offset), and all before the base, whose
+	// visitDraw flushes _caretDirty against the labels settled here.
 	measureFont();
 	if (_doc && _lineHeight > 0.0f) {
 		if (_followCursor) {
@@ -189,7 +180,7 @@ bool TextViewContainer::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags) 
 }
 
 void TextViewContainer::handleLabelChanged() {
-	// The base resets caret geometry state for ITS label; the model view recomputes everything
+	// The base resets caret geometry state for its label; the model view recomputes everything
 	// per frame, so only the flag matters.
 	TextInputContainer::handleLabelChanged();
 	_caretDirty = true;
@@ -256,8 +247,8 @@ void TextViewContainer::scrollToRow(uint64_t row) {
 }
 
 void TextViewContainer::scrollToEnd() {
-	// Past the end on purpose: the clamp knows the real extent in double, which a float round
-	// trip through getScrollRange() would land 2 px short of at the bottom of a huge document.
+	// Past the end on purpose: the clamp uses the exact double extent, which a float round trip
+	// through getScrollRange() loses in a huge document.
 	_scrollY = docHeight();
 	clampScroll();
 	_caretDirty = true;
@@ -278,8 +269,7 @@ void TextViewContainer::setWrapWidth(float width) {
 		return;
 	}
 	_wrapWidth = width;
-	// Nothing else to do here: the width is applied per label at materialization, and the block
-	// structure change that goes with a wrap toggle is the widget's business (the chunk size).
+	// The width is applied per label at materialization; the chunk size change is the widget's.
 	_caretDirty = true;
 }
 
@@ -301,16 +291,13 @@ TextViewContainer::Slot *TextViewContainer::slotForBlock(uint32_t block) {
 }
 
 basic2d::Label *TextViewContainer::makeSlot() {
-	/* WHAT A PERSON TYPED, OR WHAT A FILE HOLDS - never a caption, so the locale must not touch it.
-	`setString` detects tags on its own, which is right for a caption and wrong here: a source line
-	beginning with `@Locale:` resolved to the empty string and DISAPPEARED, and a line holding `%foo%`
-	was substituted if some table happened to define `foo`. The call latches, so every later
-	assignment is taken literally too. */
+	/* User or file text, never a caption: disable locale tag detection so `@Locale:` or `%foo%`
+	in the text is shown literally. The setting latches for later assignments. */
 	auto label = Rc<basic2d::Label>::create();
 	label->setLocaleEnabled(false);
 	label->setAnchorPoint(Anchor::BottomLeft);
-	// Same selectors as the stock single-line label, so the stylesheet that styles one styles
-	// the other - and a dynamically added node is styled on its first visit, before drawing.
+	// Same selectors as the single-line label; a dynamically added node is styled on its first
+	// visit, before drawing.
 	label->setType("label");
 	label->addStyleClass("xl-ui-text-input-label");
 	label->setSelectionColor(_selectionColor);
@@ -326,9 +313,8 @@ void TextViewContainer::assignSlot(Slot &slot, uint32_t block) {
 	auto label = slot.label;
 	slot.block = block;
 
-	// Width first, then string: both are equality-guarded upstream, so an unchanged block costs
-	// two comparisons and no layout at all - which is what makes "reassign the window every
-	// frame" affordable.
+	// Width first, then string: both are equality-guarded, so an unchanged block costs no layout
+	// and reassigning the window every frame is cheap.
 	label->setWidth(_wrapWidth > 0.0f ? _wrapWidth : 0.0f);
 	label->setString(_doc->slice(span.start, span.length));
 	label->tryUpdateLabel();
@@ -351,9 +337,7 @@ void TextViewContainer::assignSlot(Slot &slot, uint32_t block) {
 }
 
 Vec2 TextViewContainer::blockPosition(uint32_t block) const {
-	// Double until the viewport-relative subtraction: the block top in document space reaches
-	// millions of px, where float's step is already 2 px and labels would jitter against the
-	// gutter at the bottom of a large file.
+	// Double until the viewport-relative subtraction: document-space Y reaches millions of px.
 	const double top = double(_doc->getRowsBefore(block)) * double(_lineHeight);
 	const double height = double(_doc->getBlockRows(block)) * double(_lineHeight);
 	return Vec2(float(-_scrollX), float(double(_contentSize.height) - (top - _scrollY) - height));
@@ -368,9 +352,8 @@ void TextViewContainer::materialize() {
 	uint32_t first = _doc->getBlockForRow(uint64_t(sprt::max(_scrollY, 0.0) / double(_lineHeight)));
 	first = first > kMaterializeMargin ? first - kMaterializeMargin : 0;
 
-	// Everything above the window frees first, so the walk below finds its slots free. Slots
-	// below the window are freed after the walk - transiently holding both windows caps the pool
-	// at roughly twice the viewport, which is the price of never re-shaping on a small scroll.
+	// Slots above the window are freed first, those below after the walk; the pool peaks at about
+	// twice the viewport, so a small scroll never re-shapes text.
 	for (auto &slot : _slots) {
 		if (slot.block != maxOf<uint32_t>() && slot.block < first) {
 			slot.block = maxOf<uint32_t>();
@@ -380,9 +363,8 @@ void TextViewContainer::materialize() {
 		}
 	}
 
-	// Walk down, assigning and measuring, until the viewport plus margin is covered. Measuring
-	// happens inside the walk because with wrapping the height of a block is only known after
-	// its label laid out - and the walk's own cursor advances by the measured value.
+	// Walk down, assigning and measuring, until the viewport plus margin is covered. With wrapping
+	// a block's height is known only after layout, and the walk advances by it.
 	uint32_t b = first;
 	double y = double(_doc->getRowsBefore(first)) * double(_lineHeight);
 	const double yEnd = _scrollY + double(_contentSize.height) + marginPx;
@@ -394,8 +376,8 @@ void TextViewContainer::materialize() {
 		assignSlot(*slot, b);
 		const auto newRows = _doc->getBlockRows(b);
 
-		// A block above the viewport top that measured taller than its estimate would push
-		// everything the user is looking at; moving the anchor with it keeps the view still.
+		// A block above the viewport top that measured taller than its estimate moves the anchor
+		// with it, so the view stays still.
 		if (newRows != oldRows && y < _scrollY) {
 			_scrollY += double(int64_t(newRows) - int64_t(oldRows)) * double(_lineHeight);
 		}
@@ -433,8 +415,7 @@ void TextViewContainer::materialize() {
 		_scrollCallback(offset);
 	}
 
-	// The gutter depends on the window, the scroll and the row structure; pack those and notify
-	// only on change, so a static frame costs no string building above.
+	// The gutter depends on the window, the scroll and the row structure; notify only on change.
 	const uint64_t state = uint64_t(_matFirst) ^ (uint64_t(_matLast) << 20)
 			^ (uint64_t(_doc->getLineCount()) << 40) ^ (_doc->getTotalRows() << 52);
 	if ((state != _notifiedState || offset != _notifiedScroll) && _materializeCallback) {
@@ -481,8 +462,8 @@ uint32_t TextViewContainer::getVisualLineForChar(uint32_t index) const {
 	uint64_t row = _doc->getRowsBefore(block);
 
 	if (_wrapWidth > 0.0f) {
-		// Inside a wrapped block the row split is the label's layout; without the label the
-		// block's first row is the honest answer (gestures run between frames).
+		// Inside a wrapped block the row split is the label's layout; without the label, answer
+		// the block's first row (gestures run between frames).
 		for (auto &slot : _slots) {
 			if (slot.block == block && slot.label->getLinesCount() > 0) {
 				const auto span = _doc->getBlock(block);
@@ -604,13 +585,11 @@ void TextViewContainer::setCursor(TextCursor cursor, uint32_t activePosition) {
 	const auto prev = _cursor;
 	const auto prevActive = _cursorActive;
 
-	// The base stores the state and pushes the range into ITS label, which is empty here and
+	// The base stores the state and pushes the range into its label, which is empty here and
 	// guarded; the materialized labels get their slices re-cut on the next frame's pass.
 	TextInputContainer::setCursor(cursor, activePosition);
 
-	// Only a real move arms the follow. The base is equality-guarded, so this also stays quiet
-	// when the same cursor is re-pushed - which the IME echo does on every keystroke that only
-	// changed the string.
+	// Only a real move arms the follow; re-pushing the same cursor (as echoes do) does not.
 	if (_cursor != prev || _cursorActive != prevActive) {
 		_followCursor = true;
 	}
@@ -625,8 +604,7 @@ void TextViewContainer::setMarked(TextCursor cursor) {
 void TextViewContainer::setSelectionColor(const Color4F &color) {
 	TextInputContainer::setSelectionColor(color);
 	_selectionColor = color;
-	// The color lives on every Label separately - the pool has to be told, or a recycled label
-	// would draw the next selection in whatever color it had last.
+	// The color lives on every Label separately, so every pooled label is updated.
 	for (auto &slot : _slots) { slot.label->setSelectionColor(color); }
 }
 
@@ -645,7 +623,7 @@ void TextViewContainer::scrollToCursor() {
 	const auto block = _doc->getBlockForIndex(idx);
 
 	// The caret's row within a wrapped block needs the block's layout; materialize it on demand
-	// so a far jump (a goto, an end-of-document paste) still lands exactly.
+	// for far jumps.
 	if (_wrapWidth > 0.0f) {
 		auto slot = slotForBlock(block);
 		if (slot->block != block) {
@@ -725,10 +703,9 @@ TextCursor TextViewContainer::getWordForPosition(const Vec2 &loc) const {
 	const auto span = _doc->getBlock(block);
 	for (auto &slot : _slots) {
 		if (slot.block == block && !slot.label->empty()) {
-			// getCharIndex with Center picks the glyph the pointer is over, not the nearest
-			// boundary, which is what "the word I am pointing at" means. Its space-skipping is
-			// right here (a word lookup in an indent should find nothing), unlike in
-			// getCursorForPosition where it would snap the caret out of the indent.
+			// getCharIndex with Center picks the glyph under the pointer, not the nearest
+			// boundary. Its space-skipping is wanted here (an indent has no word), unlike in
+			// getCursorForPosition.
 			const auto lp = p - slot.label->getPosition().xy();
 			const auto idx = slot.label->getCharIndex(lp, font::CharSelectMode::Center);
 			if (idx.first == maxOf<uint32_t>()) {
@@ -754,9 +731,8 @@ void TextViewContainer::updateCaretPosition() {
 	const auto span = _doc->getBlock(block);
 	const auto base = blockPosition(block);
 
-	// The caret is positioned even when its block is outside the window - the scissor clips it
-	// there. Hiding it instead would fight the blink action, which turns visibility back on
-	// every half second.
+	// The caret is positioned even when its block is outside the window, where the scissor clips
+	// it; hiding it would fight the blink action.
 	Vec2 cpos(base.x + float(idx - span.start) * _cellWidth,
 			base.y + float(_doc->getBlockRows(block) - 1) * _lineHeight);
 	for (auto &slot : _slots) {
@@ -770,8 +746,7 @@ void TextViewContainer::updateCaretPosition() {
 	_caret->setPosition(cpos);
 
 	// Drawn in container space so it spans the viewport whatever the horizontal slide is. Hidden
-	// while a selection is up: two overlapping highlights on the same line read as a rendering
-	// bug.
+	// while a selection is shown.
 	_currentLine->setVisible(_currentLineVisible && _cursor.length == 0);
 	if (_currentLine->isVisible()) {
 		_currentLine->setContentSize(Size2(_contentSize.width, _lineHeight));
@@ -790,21 +765,16 @@ bool TextView::init() {
 
 	addStyleClass("text-view");
 
-	// ON here, unlike a plain field: a multi-line editor is the thing a person expects Ctrl+Z from,
-	// and this one owns its document outright, so there is no other history it could be stealing
-	// the chord from. CodeEditor inherits the decision.
+	// On here, unlike a plain field: the view owns its document. CodeEditor inherits this.
 	setUndoEnabled(true);
 
-	// The bit that makes this multi-line at the platform level: TextInputProcessor stops declining
-	// ENTER and inserts it as text ('\r' remapped to '\n'). Without it Enter is "submit" and no
-	// amount of local editing would produce a newline the IME agrees exists.
+	// Multi-line at the platform level: TextInputProcessor inserts ENTER as text ('\r' remapped
+	// to '\n') instead of declining it.
 	setInputType(
 			TextInputType(toInt(TextInputType::Text_Text) | toInt(TextInputType::MultiLineBit)));
 
-	// TextInput's own filter answers `_focused` for every key event, and a read-only view is never
-	// focused - it acquires no input handler at all - so arrows and PageUp would never reach it.
-	// Scrolling a read-only pane with the keyboard is exactly what a console output is for, so a
-	// read-only view takes key events on the ordinary hit test instead.
+	// TextInput's filter requires `_focused` for key events, but a read-only view never acquires
+	// input; it takes key events on the ordinary hit test so it can be scrolled by keyboard.
 	_listener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -818,13 +788,13 @@ bool TextView::init() {
 	_listener->addScrollRecognizer([this](const GestureScroll &scroll) {
 		auto lh = getView()->getLineHeight();
 		if (lh <= 0.0f) {
-			lh = 16.0f; // the font has not measured yet; any sane step beats a dead wheel
+			lh = 16.0f; // fallback step until the font is measured
 		}
 		const auto step = lh * kWheelLines;
 		Vec2 delta(-scroll.amount.x * step, -scroll.amount.y * step);
 
-		// Shift+wheel is horizontal on every desktop, but only on backends that do not already
-		// report it as an x amount - so it is a fallback, not an override.
+		// Shift+wheel scrolls horizontally, only on backends that do not already report an x
+		// amount.
 		if (delta.x == 0.0f && hasFlag(scroll.input->data.input.modifiers, InputModifier::Shift)) {
 			delta.x = delta.y;
 			delta.y = 0.0f;
@@ -854,8 +824,7 @@ bool TextView::init() {
 	_gutterLabel->setPersistentGlyphData(true);
 
 	// The gutter is rebuilt when the materialized window, the scroll or the row structure
-	// changes - and from the container's own pass, AFTER the blocks are laid out: the widget's
-	// visitDraw runs before its children's and would see the previous frame.
+	// changes, from the container's pass after the blocks are laid out.
 	getView()->setMaterializeCallback([this] { rebuildGutter(); });
 
 	return true;
@@ -863,8 +832,7 @@ bool TextView::init() {
 
 Rc<TextInputContainer> TextView::makeContainer() {
 	auto container = Rc<TextViewContainer>::create();
-	// The document outlives every frame concern: it is a plain member of this widget, and the
-	// container only reads it and writes back measured row counts.
+	// The document is a member of this widget; the container reads it and writes back row counts.
 	container->setDocument(&_doc);
 	return container;
 }
@@ -880,9 +848,7 @@ void TextView::handleEnter(Scene *scene) {
 }
 
 void TextView::handleExit() {
-	// Before the base call: Node::handleExit() clears _scene at its very end, and a command whose
-	// lambda captured a destroyed widget is a dangling call from the inspector socket. Demos are
-	// swapped by removing them, so this really does run.
+	// Before the base call, which clears _scene; the commands' lambdas capture this widget.
 	if (_inspectorScene) {
 		if (auto content = _inspectorScene->getContent()) {
 			if (auto i = inspector::get(content)) {
@@ -897,11 +863,9 @@ void TextView::handleExit() {
 }
 
 bool TextView::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags) {
-	// The gutter label's width changes on its own the first time its font finishes LOADING, and
-	// again whenever the numbers grow a digit - with no notification either time. Marking here
-	// rather than resizing directly keeps handleContentSizeDirty the single writer of the
-	// geometry, and marking from OUTSIDE it is what makes the mark survive: the flag is cleared
-	// once the handler returns, so a re-mark issued inside it is lost.
+	// The gutter label's width changes without notification when its font loads or a digit is
+	// added. Mark here, outside handleContentSizeDirty (the single geometry writer), because a
+	// mark issued inside it is cleared when it returns.
 	const auto measured = _gutterVisible ? _gutterLabel->getContentSize().width : 0.0f;
 	if (measured != _gutterAppliedWidth) {
 		markContentSizeDirty();
@@ -943,10 +907,9 @@ uint32_t TextView::computePlainChunk() const {
 		return 512;
 	}
 
-	// A chunk drawn as ONE physical line must fit CharLayoutData::pos: int16_t, 32767 layout
-	// units, units being px * density. The *4 is the worst cell: a tab advances to the next
-	// multiple of four space widths, CJK is two cells - and 30000 rather than 32767 keeps slack
-	// for kerning and letter-spacing.
+	// A chunk drawn as one physical line must fit CharLayoutData::pos: int16_t, 32767 layout
+	// units (px * density). *4 is the widest cell (a tab); 30000 leaves slack for kerning and
+	// letter-spacing.
 	const auto worst = double(cell) * double(density) * 4.0;
 	return uint32_t(math::clamp(std::floor(30000.0 / worst), 512.0, 2000.0));
 }
@@ -959,9 +922,8 @@ void TextView::handleContentSizeDirty() {
 	// Sizes the container to the whole padded box and rebuilds the background image.
 	TextInput::handleContentSizeDirty();
 
-	// Then carve the gutter strip off its left. Done after the base rather than instead of it so
-	// the padding arithmetic stays in one place; setContentSize is equality-guarded downstream, so
-	// the container is not laid out twice for real.
+	// Then carve the gutter strip off its left, after the base so the padding arithmetic stays in
+	// one place; setContentSize is equality-guarded, so no double layout.
 	const auto pos = _container->getPosition().xy();
 	const auto size = _container->getContentSize();
 
@@ -974,10 +936,8 @@ void TextView::handleContentSizeDirty() {
 		strip = _gutterAppliedWidth + (_gutterAppliedWidth / float(_gutterColumns));
 	}
 
-	// Visible whenever the gutter is ON, even at zero width. A hidden node is not visited, a Label
-	// that is not visited never lays out, and a Label that never lays out measures zero - so hiding
-	// the strip until it has a width is a deadlock: it would never acquire one. A zero-wide layer
-	// draws nothing anyway.
+	// Visible whenever the gutter is on, even at zero width: a hidden label never lays out and so
+	// would never get a width.
 	_gutter->setVisible(_gutterVisible);
 	_gutter->setPosition(pos);
 	_gutter->setContentSize(Size2(strip, size.height));
@@ -987,10 +947,8 @@ void TextView::handleContentSizeDirty() {
 	_container->setPosition(Vec2(pos.x + strip, pos.y));
 	_container->setContentSize(Size2(inner, size.height));
 
-	// The one place the wrap width is decided, and it is pushed rather than pulled. Deriving it
-	// inside the container would mean reading a viewport width that markContentSizeDirty() has
-	// just invalidated - which is exactly the race that made a wrap toggle take effect only
-	// sometimes. Here `inner` was computed two lines up and is by construction current.
+	// The single place the wrap width is decided, pushed from the freshly computed `inner`; the
+	// container's own viewport width may be stale here after markContentSizeDirty().
 	getView()->setWrapWidth(_wordWrap ? inner : 0.0f);
 	applyChunkSize();
 }
@@ -1001,8 +959,7 @@ void TextView::setWordWrap(bool value) {
 	}
 	_wordWrap = value;
 
-	// Only the intent is recorded. handleContentSizeDirty() is where the viewport width exists
-	// and is therefore where the wrap width and the chunk size are applied.
+	// Only the intent is recorded; handleContentSizeDirty() applies the wrap width and chunk size.
 	markContentSizeDirty();
 }
 
@@ -1056,9 +1013,8 @@ WideString TextView::normalizeInput(WideStringView str, bool &changed) {
 			}
 			c = u'\n';
 		}
-		// Anything else below 0x20 is dropped by the formatter anyway (Formatter::readChars),
-		// and a character present in the string but absent from the layout breaks the identity
-		// the cursor depends on: index in the string == index in the layout.
+		// Anything else below 0x20 is dropped by the formatter (Formatter::readChars), which would
+		// break the cursor's string index == layout index identity.
 		if ((c < 0x20 && c != u'\n' && c != u'\t') || !handleInputChar(c)) {
 			changed = true;
 			continue;
@@ -1069,13 +1025,9 @@ WideString TextView::normalizeInput(WideStringView str, bool &changed) {
 }
 
 void TextView::applyDocEdit(uint32_t pos, uint32_t removed, WideStringView inserted) {
-	/* The one point every change to this document passes through - insertGlobal and everything
-	under it, setText, and the IME echo, which is where typing actually arrives. Recording here
-	rather than at a widget command is not tidiness: a typed character never reaches insertText at
-	all, because the platform owns the input and the widget only ever sees the echo.
-
-	Before _doc.apply, because after it the removed text is gone. _gCursor is still the caret as it
-	was: every caller assigns it AFTER this returns. */
+	/* Every document change passes through here (insertGlobal, setText, the IME echo, which is
+	where typing arrives). Recorded before _doc.apply, while the removed text exists; callers
+	update _gCursor after this returns. */
 	if (_history.isEnabled() && !_history.isApplying()) {
 		_history.recordEdit(pos, _doc.slice(pos, removed), inserted, _gCursor, _historyEditName,
 				_historyClock);
@@ -1083,9 +1035,8 @@ void TextView::applyDocEdit(uint32_t pos, uint32_t removed, WideStringView inser
 
 	_doc.apply(pos, removed, inserted);
 
-	// apply() reset the affected blocks' rows to 1; with wrapping on, restore honest estimates
-	// immediately - a scrollToEnd right after an append (the console's tail pinning) aims at
-	// the model height, and it must not aim short.
+	// apply() reset the affected blocks' rows to 1; with wrapping on, re-estimate immediately so a
+	// scrollToEnd right after an append uses the right model height.
 	if (_wordWrap && _estimatedColumns > 0) {
 		const auto firstLine = _doc.getLineForIndex(pos);
 		const auto lastLine = _doc.getLineForIndex(pos + uint32_t(inserted.size()));
@@ -1102,9 +1053,8 @@ Pair<uint32_t, uint32_t> TextView::computeWindow(uint32_t center) const {
 	uint32_t lo = center > kWindowMax / 2 ? center - kWindowMax / 2 : 0;
 	uint32_t hi = sprt::min(size, center + kWindowMax / 2);
 
-	// Snap to line boundaries when they are near - a window that starts mid-word confuses a
-	// real IME's context lookup for nothing - but never let the snap blow the window up: a
-	// single line longer than the window (a minified file) must be cut mid-line.
+	// Snap to nearby line boundaries (an IME uses the context), but a line longer than the window
+	// is cut mid-line.
 	const auto loSnap = _doc.getLineStart(_doc.getLineForIndex(lo));
 	if (lo - loSnap <= kWindowMax) {
 		lo = loSnap;
@@ -1154,8 +1104,8 @@ void TextView::pushWindow() {
 			? TextCursor::InvalidCursor
 			: clipToWindow(_gMarked, _windowAnchor, _windowLength);
 
-	// The manager clamps cursor.start silently, which would MASK a global index leaking into a
-	// window request - so the leak is reported here, where it is still attributable.
+	// The manager clamps cursor.start silently, which would hide a global index leaking into a
+	// window request, so it is reported here.
 	if (uint64_t(cursor.start) + cursor.length > string->size()) {
 		slog().error("TextView", "global cursor leaked into a window request: ", cursor.start, "+",
 				cursor.length, " > ", string->size());
@@ -1214,7 +1164,7 @@ uint32_t TextView::offsetGlobal(int32_t delta) const {
 	if (_gCursor.length > 0) {
 		if (_gSelAnchor == maxOf<uint32_t>()) {
 			// nothing is being extended: moving off a selection collapses it to the edge you
-			// are moving towards, as every editor does
+			// are moving towards
 			return uint32_t(math::clamp(
 					int64_t(delta < 0 ? _gCursor.start : _gCursor.start + _gCursor.length),
 					int64_t(0), size));
@@ -1317,8 +1267,8 @@ void TextView::insertGlobal(WideStringView text, TextCursor replace) {
 	_container->setMarked(TextCursor::InvalidCursor);
 	_container->setPlaceholderVisible(_doc.empty() && !_focused);
 
-	// A fresh window either way: the edit may be megabytes (a paste), and the processor must
-	// never see more than the window - the whole point of the design.
+	// A fresh window either way: the edit may be large (a paste), and the processor only sees
+	// the window.
 	pushWindow();
 
 	if (_callback) {
@@ -1334,10 +1284,8 @@ void TextView::setText(WideStringView str) {
 	bool filtered = false;
 	auto norm = normalizeInput(str, filtered);
 
-	/* Replacing the whole document is not an edit of it - it is a different document. A history
-	kept across this would undo into a file nobody has open, which is why a load drops it - and why
-	the replacement itself is not recorded either, which would put the old document back in the new
-	one's history one Ctrl+Z away. */
+	/* Replacing the whole document is not an edit: the history is cleared and the replacement is
+	not recorded. */
 	_history.clear();
 	_history.setRecording(false);
 
@@ -1391,8 +1339,7 @@ void TextView::handleTextInput(const TextInputState &data) {
 	const bool wasFocused = _focused;
 	const bool wasComposing = _inputState.marked.length > 0;
 
-	// Focus follows what the platform actually granted, not what was asked for - which is what
-	// makes `:focus` in CSS mean something.
+	// Focus follows what the platform granted, not what was asked for.
 	if (_focused != data.enabled) {
 		_focused = data.enabled;
 		if (!_focused) {
@@ -1448,9 +1395,8 @@ void TextView::handleTextInput(const TextInputState &data) {
 		auto ins = normalizeInput(WideStringView(echoView.data() + d.pos, d.inserted), filtered);
 		needRepush = filtered;
 
-		// A selection wider than the window was pushed as its clip; an edit that replaces the
-		// clip means "replace the WHOLE selection" - typing over a select-all must not leave
-		// the out-of-window part standing.
+		// A selection wider than the window was pushed clipped; an edit that replaces the clip
+		// replaces the whole selection.
 		const uint64_t selEnd = uint64_t(_gCursor.start) + _gCursor.length;
 		const bool selWider = _gCursor.length > 0
 				&& (_gCursor.start < anchor || selEnd > uint64_t(anchor) + push->base->size());
@@ -1473,11 +1419,9 @@ void TextView::handleTextInput(const TextInputState &data) {
 			// An edit moved the caret; the echo is authoritative.
 			_gCursor = TextCursor(anchor + data.cursor.start, data.cursor.length);
 		} else {
-			// A pure cursor echo. If it is exactly OUR OWN clip coming back, the global cursor
-			// must stand: the projection is lossy (a selection wider than the window clips),
-			// and overwriting the original with its own clip would silently shrink it - which
-			// is precisely how typing over a select-all would end up replacing only the
-			// window. Anything else is a platform-side cursor move and wins.
+			// A pure cursor echo. If it is our own clip coming back, the global cursor stands
+			// (the clip is lossy and would shrink a wide selection). Anything else is a
+			// platform-side cursor move and wins.
 			const auto expected = clipToWindow(_gCursor, anchor, uint32_t(push->base->size()));
 			if (data.cursor != expected) {
 				_gCursor = TextCursor(anchor + data.cursor.start, data.cursor.length);
@@ -1492,8 +1436,7 @@ void TextView::handleTextInput(const TextInputState &data) {
 	_container->setMarked(_gMarked);
 	_container->setPlaceholderVisible(_doc.empty() && !_focused);
 
-	// A marked range is a composition in progress, not committed text: reporting it as a
-	// change would make an autocomplete widget fire on every syllable being assembled.
+	// A marked range is a composition in progress, not committed text.
 	if (_callback
 			&& ((docChanged && _gMarked.length == 0)
 					|| (wasComposing && _gMarked.length == 0 && !docChanged))) {
@@ -1502,8 +1445,7 @@ void TextView::handleTextInput(const TextInputState &data) {
 
 	if (data.enabled && _handler.isActive()) {
 		if (needRepush) {
-			// The correction has to travel back, or the platform keeps editing the string it
-			// thinks it has and the next keystroke reverts it.
+			// Push the correction back, or the next keystroke would revert it.
 			pushWindow();
 		} else if (_gMarked.length == 0 && data.compose != InputKeyComposeState::Composing
 				&& needsReanchor()) {
@@ -1529,9 +1471,7 @@ void TextView::rebuildGutter() {
 		return;
 	}
 
-	// Wide enough for the largest number it will ever show, but never narrower than the
-	// stylesheet asked for - so the strip does not twitch as the document crosses a power of
-	// ten.
+	// Wide enough for the largest line number, but never narrower than the stylesheet asks.
 	uint32_t digits = 1;
 	for (auto n = _doc.getLineCount(); n >= 10; n /= 10) { ++digits; }
 	const auto columns = sprt::max(uint32_t(_gutterChars), digits);
@@ -1539,10 +1479,8 @@ void TextView::rebuildGutter() {
 	auto view = getView();
 	const auto range = view->getMaterializedBlocks();
 
-	// Numbers only for the window: a whole-document gutter string is O(document) per change,
-	// which is the exact cost the block design removes. A logical line is numbered on the first
-	// row of its first block; wrap continuations and chunk tails stay blank, which is what an
-	// editor shows.
+	// Numbers only for the window. A logical line is numbered on the first row of its first block;
+	// wrap continuations and chunk tails stay blank.
 	StringStream out;
 	bool firstRow = true;
 	for (uint32_t b = range.first; b < range.second; ++b) {
@@ -1566,17 +1504,15 @@ void TextView::rebuildGutter() {
 	_gutterLabel->setString(out.str());
 	_gutterLabel->tryUpdateLabel();
 
-	// Align the gutter window's first row with the block window's first row. The distance is
-	// computed in double and becomes float only after the subtraction - the same rule as the
-	// block positions, or the two columns would drift apart at the bottom of a large file.
+	// Align the gutter window's first row with the block window's first row, in double until the
+	// subtraction, as for block positions.
 	const double topPx = double(_doc.getRowsBefore(range.first)) * double(view->getLineHeight())
 			- double(view->getScrollOffset().y);
 	_gutterLabel->setPosition(Vec2(0.0f,
 			_gutter->getContentSize().height - float(topPx)
 					- _gutterLabel->getContentSize().height));
 
-	// Only the column count is this function's business; the measured width is reconciled in
-	// visitDraw, which is the one place a re-mark actually survives.
+	// Only the column count is set here; the measured width is reconciled in visitDraw.
 	if (_gutterColumns != columns) {
 		_gutterColumns = columns;
 		markContentSizeDirty();
@@ -1606,8 +1542,7 @@ void TextView::moveCursorVertical(int32_t rows, bool select) {
 	const auto row = int64_t(view->getVisualLineForChar(from)) + rows;
 	const auto clamped = uint32_t(math::clamp(row, int64_t(0), int64_t(count) - 1));
 
-	// moveGlobal(), not moveCursorHorizontal(): the goal column has to survive the step, which
-	// is the entire point of keeping it.
+	// moveGlobal(), not moveCursorHorizontal(): the goal column has to survive the step.
 	moveGlobal(view->getCharForVisualLine(clamped, _goalX), select);
 }
 
@@ -1624,8 +1559,7 @@ bool TextView::handleKey(const GestureData &data) {
 	auto view = getView();
 	const bool select = hasFlag(ev.input.modifiers, InputModifier::Shift);
 
-	// A read-only pane has no caret to move, so the same keys scroll it instead - which is the
-	// only way to read a long console log without a mouse.
+	// A read-only pane has no caret to move, so the same keys scroll it instead.
 	if (isReadOnly()) {
 		const auto lh = view->getLineHeight();
 		switch (ev.key.keycode) {
@@ -1674,9 +1608,8 @@ bool TextView::handleKey(const GestureData &data) {
 bool TextView::handleTextHotkey(HotkeyId id, const InputEvent &ev) {
 	auto &hk = EngineHotkeys::get();
 
-	// A read-only view is never `_focused` - it acquires no input handler at all - and the base
-	// declines every hotkey in that state, which would make the one thing a read-only view exists
-	// for, selecting and copying, impossible.
+	// A read-only view is never `_focused`, and the base declines every hotkey then; handled here
+	// so selecting and copying still work.
 	if (isReadOnly()) {
 		if (id == hk.textSelectAll) {
 			selectAll();
@@ -1692,9 +1625,8 @@ bool TextView::handleTextHotkey(HotkeyId id, const InputEvent &ev) {
 		return false;
 	}
 
-	// The runtime's processor always declines TAB (it is navigation everywhere, multi-line fields
-	// included), so Tab arrives here as the focusNext hotkey and is turned back into an indent.
-	// Shift+Tab is a separate id and keeps its meaning, which is how the field stays escapable.
+	// The processor always declines TAB, so Tab arrives as the focusNext hotkey and becomes an
+	// indent. Shift+Tab is a separate id and keeps navigating.
 	if (_tabInsertsIndent && id == hk.focusNext) {
 		insertGlobal(WideStringView(u"\t"), _gCursor);
 		return true;
@@ -1702,7 +1634,7 @@ bool TextView::handleTextHotkey(HotkeyId id, const InputEvent &ev) {
 
 	// Defensive: canHandleInputEvent only claims a key that carries a keychar, so on a backend
 	// where ENTER has none the processor cannot insert it even with MultiLineBit set and the key
-	// falls through to this binding instead. Untestable on Linux, which does carry one.
+	// falls through to this binding instead. Not reachable on Linux, which carries a keychar.
 	if (id == hk.textAccept || id == hk.textAcceptKeypad) {
 		insertGlobal(WideStringView(u"\n"), _gCursor);
 		return true;
@@ -1783,8 +1715,7 @@ bool TextView::handleSwipeBegin(const Vec2 &pt) {
 		return true;
 	}
 
-	// Not focused: a drag pans the viewport so the text can be read without editing it. Both
-	// axes - a multi-line view overflows vertically far more often than horizontally.
+	// Not focused: a drag pans the viewport on both axes.
 	if (getView()->hasHorizontalOverflow() || getView()->hasVerticalOverflow()) {
 		_panning = true;
 		_listener->setExclusive();
@@ -1813,8 +1744,8 @@ bool TextView::setStyleValue(const ResolvedStyle &style, document::ParameterName
 		const document::StyleValue &value) {
 	auto ret = TextInput::setStyleValue(style, name, value);
 
-	// CmdReset is the one call that carries the whole ResolvedStyle, and custom properties are
-	// never delivered as parameters - which is why the base reads --caret-color here too.
+	// CmdReset is the one call that carries the whole ResolvedStyle; custom properties are not
+	// delivered as parameters, so they are read here.
 	if (name == document::ParameterName::CmdReset) {
 		auto prop = style.getCustomProperty("--gutter-chars");
 		float chars = 0.0f;
@@ -1856,8 +1787,7 @@ Value TextView::encodeState() const {
 	const auto materialized = view->getMaterializedBlocks();
 
 	Value ret;
-	// Capped: a state poll must not serialize a multi-megabyte document into every answer. The
-	// size is always reported; a caller that needs the text of a huge document reads it in
+	// Capped at kStateTextCap; the size is always reported, and a large document is read in
 	// slices through the `lines` command.
 	if (_doc.size() <= kStateTextCap) {
 		ret.setString(getText(), "text");
@@ -1883,8 +1813,7 @@ Value TextView::encodeState() const {
 	ret.setInteger(int64_t(_gMarked.start), "markedStart");
 	ret.setInteger(int64_t(_gMarked.length), "markedLength");
 
-	// The IME window, laid bare: the document stays here, the platform only ever sees this
-	// slice. windowLength staying small while charCount grows is the entire point.
+	// The IME window: the slice of the document the platform sees.
 	ret.setInteger(int64_t(_windowAnchor), "windowAnchor");
 	ret.setInteger(int64_t(_windowLength), "windowLength");
 	ret.setInteger(int64_t(_windowSerial), "windowSerial");
@@ -1901,17 +1830,13 @@ Value TextView::encodeState() const {
 	ret.setDouble(double(range.width), "scrollRangeX");
 	ret.setDouble(double(range.height), "scrollRangeY");
 
-	// The viewport and the document model it shows. Reported because every scroll and wrap
-	// question is really a question about these two, and a zero viewport - a widget asked about
-	// before it was ever laid out - otherwise looks like a wrap bug.
+	// The viewport and the document model it shows (a zero viewport means not laid out yet).
 	ret.setDouble(double(view->getContentSize().width), "viewWidth");
 	ret.setDouble(double(view->getContentSize().height), "viewHeight");
 	ret.setDouble(double(view->getWrapWidth()), "wrapWidth");
 	ret.setDouble(double(_doc.getTotalRows()) * double(lineHeight), "docHeight");
 
-	// The virtualization, laid bare: how many blocks exist, how many hold labels, how big the
-	// pool got. materializedCount ≈ visible + margins is the health check; poolSize growing
-	// without bound would mean the recycling broke.
+	// Virtualization: block count, materialized count (expected ≈ visible + margins) and pool size.
 	ret.setInteger(int64_t(_doc.getBlockCount()), "blockCount");
 	ret.setInteger(int64_t(_doc.getChunkSize()), "chunkSize");
 	ret.setInteger(int64_t(materialized.first), "firstMaterializedBlock");
@@ -1923,18 +1848,15 @@ Value TextView::encodeState() const {
 	ret.setDouble(double(caret->getPosition().y), "caretY");
 	ret.setBool(caret->isVisible(), "caretVisible");
 
-	// The widget's cursor and the highlight the labels were actually told to draw are two
-	// different things, and only reporting both tells them apart when one of them is wrong.
-	// Selection outside the materialized window is (correctly) not drawn, so this equals
-	// cursorLength only when the selection fits the window.
+	// The highlight the labels were told to draw. Selection outside the materialized window is not
+	// drawn, so this equals cursorLength only when the selection fits the window.
 	ret.setInteger(int64_t(view->getDrawnSelectionLength()), "drawnSelectionLength");
 
 	ret.setString(string::toUtf8<Interface>(_gutterLabel->getString()), "gutterText");
 	ret.setInteger(int64_t(_gutterColumns), "gutterColumns");
 
-	// The history. `undoName` rather than only `canUndo`, because what a menu has to show is WHAT
-	// would be taken back; `historyDepth` counts COMMITTED entries, so a word still being typed is
-	// not in it yet - which is exactly why canUndo is asked separately and answers true anyway.
+	// The history. `historyDepth` counts committed entries only; canUndo also counts a run in
+	// progress.
 	ret.setBool(_history.isEnabled(), "undoEnabled");
 	ret.setBool(canUndo(), "canUndo");
 	ret.setBool(canRedo(), "canRedo");
@@ -1950,8 +1872,7 @@ bool TextView::handleInspectorCommand(StringView action, const Value &args, Valu
 	auto view = getView();
 
 	if (action.ends_with("doc-selftest")) {
-		// The document model is pure index arithmetic; this runs its own synthetic checks so the
-		// model is falsifiable over the socket without rendering a single frame.
+		// Runs the document model's synthetic self-checks, without rendering.
 		String err;
 		if (!TextDocument::selfTest(err)) {
 			result.setString(err, "error");
@@ -1993,9 +1914,7 @@ bool TextView::handleInspectorCommand(StringView action, const Value &args, Valu
 		setUndoEnabled(args.getBool("value"));
 		return true;
 	} else if (action.ends_with("history-break")) {
-		// End the run in progress without waiting for its idle window: what a caller does when it
-		// knows the thought is over, and what lets a check script assert coalescing without
-		// sleeping through a real one.
+		// End the run in progress without waiting for its idle window.
 		_history.breakRun();
 		return true;
 	} else if (action.ends_with("history-idle")) {
@@ -2038,8 +1957,7 @@ bool TextView::handleInspectorCommand(StringView action, const Value &args, Valu
 		focus();
 		return true;
 	} else if (action.ends_with("key")) {
-		// A synthetic key press, so vertical motion and the goal column are assertable without a
-		// real event and without a window manager.
+		// A synthetic key press, for checking vertical motion and the goal column.
 		const auto name = args.getString("name");
 		const bool select = args.getBool("shift");
 		if (name == "UP") {

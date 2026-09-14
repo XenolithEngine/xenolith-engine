@@ -202,7 +202,7 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &data) {
 		desc.fragmentFunction = fragmentFn;
 
 		// color targets from subpass output attachments; blend state comes
-		// from the PIPELINE's material info (Solid vs Transparent pipelines
+		// from the pipeline's material info (Solid vs Transparent pipelines
 		// differ exactly here), not from the subpass attachment defaults
 		auto &blendInfo = data.material.getBlendInfo();
 		NSUInteger targetIndex = 0;

@@ -323,9 +323,8 @@ void GestureTapRecognizer::update(uint64_t dt) {
 
 	auto now = Time::now();
 	if (_gesture.count > 0 && _gesture.time - now > TapIntervalAllowed) {
-		// An immediate recognizer has already reported every tap of the series, so the expiry only
-		// closes it and the next tap counts from one again. It does not ask for updates itself, but
-		// it can still be updated - another recognizer on the same listener may need them.
+		// An immediate recognizer has already reported every tap, so expiry only closes the series.
+		// It can still be updated when another recognizer on the listener requests updates.
 		if (!_info.isImmediate()) {
 			sendTap();
 		}
@@ -339,9 +338,8 @@ void GestureTapRecognizer::cancel() {
 }
 
 InputEventState GestureTapRecognizer::addEvent(const InputEvent &ev, float density) {
-	// A series must stay in one place, but only while it is still running: once the interval has
-	// run out the previous tap is history, and a tap anywhere is simply the start of a new series.
-	// (An immediate recognizer has no update() to expire it, so the check has to be made here.)
+	// A running series must stay in one place; after the interval a tap anywhere starts a new one.
+	// Checked here because an immediate recognizer may have no update() to expire it.
 	if (_gesture.count > 0 && Time::now() - _gesture.time < TapIntervalAllowed
 			&& _gesture.pos.distance(ev.currentLocation) > TapDistanceAllowedMulti * density) {
 		_gesture.cleanup();
@@ -404,10 +402,8 @@ bool GestureTapRecognizer::registerTap() {
 	_gesture.time = currentTime;
 
 	if (_info.isImmediate()) {
-		// Nothing is held back: the tap goes out now, carrying its number in the series, and the
-		// callback refines what it did for the previous one. Reporting immediately also means the
-		// event is never Delayed*, so no listener is kept alive (and no frames are forced) just to
-		// wait the interval out.
+		// Report now with the tap's number in the series; the event is never Delayed*, so no
+		// listener is kept alive to wait the interval out.
 		sendTap();
 		if (_gesture.count >= _info.maxTapCount) {
 			// the series is complete - the next tap counts from one again
@@ -1039,10 +1035,9 @@ InputEventState GestureMouseOverRecognizer::updateMouseOver(const InputEvent &ev
 	_hasMouseOver = v;
 	stateChanged = true;
 
-	/* Retain/Release, not just Processed: a listener the pointer has entered must keep receiving
-	   MouseMove after it stops being touched, or it would never see the one that takes the pointer
-	   off it - InputListener::_shouldProcessEvent hit-tests before delivering. That holds however
-	   the hover began, so the geometry path below reports it exactly the same way. */
+	/* Retain/Release, not just Processed: an entered listener must keep receiving MouseMove after
+	   the pointer leaves, since InputListener::_shouldProcessEvent hit-tests before delivering.
+	   The geometry path reports it the same way. */
 	return v ? InputEventState::Retain : InputEventState::Release;
 }
 
@@ -1053,9 +1048,7 @@ InputEventState GestureMouseOverRecognizer::handleGeometryUpdate(const InputEven
 		updateState(event);
 	}
 
-	// Nothing to report when the answer did not change: the pointer did not move, so there is no
-	// Moved to send, and returning Processed for every visited node would retain MouseMove
-	// deliveries nobody asked for
+	// Nothing to report when the answer did not change; Processed would retain MouseMove needlessly
 	return stateChanged ? ret : InputEventState::Declined;
 }
 

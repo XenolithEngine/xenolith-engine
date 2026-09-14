@@ -72,28 +72,20 @@ public:
 	bool signal(Queue *, bool);
 
 	// Safe to poll from any thread: it reads a flag the signalling thread publishes, not the queue
-	// set itself. Consumers outside the loop rely on this - a node holds a gating dependency until it
-	// fires (see basic2d::Sprite::visitDraw), and it checks from the app thread.
+	// set itself (basic2d::Sprite::visitDraw checks it from the app thread).
 	bool isSignaled() const;
 	bool isSuccessful() const;
 
 	void addQueue(Rc<Queue> &&);
 
-	/* THE EVENT WAS HANDED OVER, stamped by whoever hands it to the queue that will signal it.
-
-	A gating event's life has two halves and they have different owners: the WAIT TO BE SENT, which
-	belongs to whatever batches work up and decides when to submit it, and the WORK, which belongs to
-	the queue. A single "how long did this take" cannot be acted on - the answer has been "neither, it
-	was waiting to be sent" often enough to be the reason this exists. Idempotent: the first stamp
-	stands, so a re-submitted event still reports the wait that mattered.
-
-	Reported by `XL_DEP_ACCOUNT=1`, which logs both halves when the event fires. Costs one store. */
+	/* Stamps the hand-over to the queue that will signal the event, splitting its life into the
+	wait to be sent and the queue's work (both logged by `XL_DEP_ACCOUNT=1` when it fires).
+	Idempotent: the first stamp stands. */
 	void markSent();
 
-	// Register a callback fired exactly once, when the event becomes fully signalled (its last queue is
-	// signalled). It runs on the signalling thread (typically the GPU loop), so the callback must hop
-	// threads itself for any non-thread-safe work. Used by the remote server to drop a client-mirrored
-	// gating dependency from its registry once it has fired (otherwise the registry grows unbounded).
+	// Register a callback fired exactly once, when the event becomes fully signalled. It runs on the
+	// signalling thread (typically the GPU loop) and must hop threads for non-thread-safe work. The
+	// remote server uses it to drop a fired client-mirrored dependency from its registry.
 	void setSignalCallback(Function<void()> &&);
 
 protected:
@@ -116,12 +108,9 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 
 	Vector<Rc<DependencyEvent>> waitDependencies;
 
-	// Serialization seam for the remote render session (see XLCoreFrameRequestProxy.h). Polymorphic
-	// so each concrete input owns its wire format (e.g. basic2d FrameContextHandle2d serializes its
-	// command list / vertex buffers).
-	//
-	// Stage 2: STUB. The real wire format is a later stage; the defaults mean "no wire format yet"
-	// (serialize writes nothing and reports false; deserialize fails).
+	// Serialization for the remote render session (see XLCoreFrameRequestProxy.h). Each concrete
+	// input owns its wire format (e.g. basic2d serializes its command list). The defaults mean
+	// "no wire format": serialize writes nothing and reports false, deserialize fails.
 	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
 	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) { return false; }
 };
@@ -158,11 +147,8 @@ public:
 	// Mint an empty input-data object of the concrete type this attachment consumes, so a remote
 	// server can deserialize a wire blob into it (see AttachmentInputData::deserialize). Default null:
 	// only input attachments that participate in the remote render session override this.
-	//
-	// `windowId` is which shared window this frame belongs to. It travels with the input rather than
-	// being looked up later because this is the last point at which it is known for certain: the
-	// render pass that eventually reports a DrawStat runs on another thread, long after, and the
-	// channel it reports to serves every window at once.
+	// `windowId` travels with the input because the render pass that later reports a DrawStat runs
+	// on another thread, and the channel serves every window.
 	virtual Rc<AttachmentInputData> makeInputData(NotNull<RenderClientChannel>,
 			uint64_t windowId) const {
 		return nullptr;
@@ -181,12 +167,8 @@ public:
 	const AttachmentData *getData() const { return _data; }
 
 	// The render queue this attachment belongs to, or null before the queue took ownership.
-	//
-	// Everything reachable through getData() - the passes, the texture-set layout, the attachment
-	// data itself - lives in that queue's memory pool, which Queue::~Queue destroys. So anything
-	// that holds an attachment across a thread hop or a frame has to keep the QUEUE alive, not
-	// just the attachment: an Rc<Attachment> leaves the object valid but its data pointing into a
-	// destroyed pool.
+	// getData() lives in that queue's pool, so holding an attachment across a thread hop or a frame
+	// requires keeping the queue alive, not just the attachment.
 	Queue *getQueue() const;
 
 	virtual void setCompiled(Device &);
@@ -333,13 +315,9 @@ protected:
 
 /* Typed attachment base: creates HandleType in makeFrameHandle.
  *
- * Prefer this over overriding makeFrameHandle by hand: inside a member function
- * of a derived class, an unqualified handle name resolves via the base class
- * scope to the core::Attachment::AttachmentHandle alias, silently creating the
- * base handle. Here the handle type is spelled once at the inheritance site,
- * where unqualified lookup works in namespace scope.
- *
- * HandleType must be complete at the point of class instantiation.
+ * Prefer this over overriding makeFrameHandle by hand: inside a derived member function an
+ * unqualified handle name resolves to the base AttachmentHandle alias and silently creates the
+ * base handle. HandleType must be complete at the point of class instantiation.
  */
 template <typename HandleType, typename BaseAttachment = Attachment>
 class AttachmentTyped : public BaseAttachment {

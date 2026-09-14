@@ -27,7 +27,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// A listen/connect endpoint for the remote render session. The leading scheme selects WHICH
+// A listen/connect endpoint for the remote render session. The leading scheme selects which
 // transport carries the session; TransportRegistry resolves it to a registered implementation, so a
 // build only understands the schemes it actually linked.
 //

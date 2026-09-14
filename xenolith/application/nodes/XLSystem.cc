@@ -491,7 +491,7 @@ void CallbackSystem::updateFlags() {
 	}
 
 	// Child (descendant) events are delivered via the frame stack: to actually receive them the
-	// system must ALSO carry a FrameTag + SystemFlags::AddToFrameStack (set separately by the app)
+	// system must also carry a FrameTag + SystemFlags::AddToFrameStack (set separately by the app)
 	if (_handleChildContentSizeDirty) {
 		_systemFlags |= SystemFlags::HandleChildNodeEvents;
 	} else {

@@ -99,7 +99,7 @@ public:
 	SpanView<VertexSpan> getSpans() const { return _spans; }
 
 	// draw states (scissor) copied from the frame context for record time;
-	// the context itself must NOT be retained here - it is frame input data
+	// the context itself must not be retained here - it is frame input data
 	// and holding it creates a frame ownership cycle (frame never completes)
 	SpanView<DrawStateValues> getDrawStates() const { return _drawStates; }
 

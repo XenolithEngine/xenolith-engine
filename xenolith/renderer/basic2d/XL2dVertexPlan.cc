@@ -193,14 +193,15 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 	}
 #endif
 
-	// Before the isSolid() test on purpose: the overlay takes the command whatever its pipeline is.
-	// A solid pipeline is safe there because the overlay draws at the near plane, ahead of every
-	// content path - see updatePathsDepth.
+	// Before the isSolid() test: the overlay takes the command whatever its pipeline. A solid
+	// pipeline is safe there because the overlay draws at the near plane (see updatePathsDepth).
 	if (cmd->renderingLevel == RenderingLevel::Overlay) {
 		emplaceWritePlan(ctx.input, material, acquireOverlayPlan(cmd->zPath), c, cmd,
 				cmd->vertexes);
 	} else if (material->getPipeline()->isSolid()) {
 		emplaceWritePlan(ctx.input, material, solidWritePlan, c, cmd, cmd->vertexes);
+	} else if (cmd->renderingLevel == RenderingLevel::Surface && !flatOrder) {
+		deferSurface(material, c, cmd, cmd->vertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
 		emplaceWritePlan(ctx.input, material, surfaceWritePlan, c, cmd, cmd->vertexes);
 	} else {
@@ -210,6 +211,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 						.first;
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, cmd->vertexes);
+		notePainter(c, cmd, cmd->vertexes);
 	}
 
 #if XL_FRAME_ACCOUNT
@@ -273,16 +275,10 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 	SpanView<InstanceVertexData> storedVertexes;
 
 #if XL_FRAME_ACCOUNT
-	/* THE WAIT, which is a different quantity from the work and must never be added to it.
-
-	`acquireResult` blocks on the task's timeline when the task has not finished. This is measured
-	on the thread that STANDS STILL, so it is a part of this frame's own length - whereas the work
-	it is waiting for was done elsewhere and may have cost more than the whole frame.
-
-	`isReady` is asked FIRST and separately: a result that was already finished costs no wait at
-	all, and "how many did we actually stand on" is the number that says whether deferring bought
-	anything. Without it a frame that waited once for 10ms and a frame that waited ten times for
-	1ms report the same total. */
+	/* The wait is a different quantity from the work and must not be added to it: it is measured
+	on the blocked thread, so it is part of this frame's length, while the work ran elsewhere.
+	`isReady` is checked first so results that needed no wait are counted apart from the ones
+	that blocked. */
 	const bool wasReady = cmd->deferred->isReady();
 	const auto waitStart = core::getAccountClock();
 #endif
@@ -313,6 +309,8 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 				storedVertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Solid) {
 		emplaceWritePlan(ctx.input, material, solidWritePlan, c, cmd, storedVertexes);
+	} else if (cmd->renderingLevel == RenderingLevel::Surface && !flatOrder) {
+		deferSurface(material, c, cmd, storedVertexes);
 	} else if (cmd->renderingLevel == RenderingLevel::Surface) {
 		emplaceWritePlan(ctx.input, material, surfaceWritePlan, c, cmd, storedVertexes);
 	} else {
@@ -322,6 +320,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 						.first;
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, storedVertexes);
+		notePainter(c, cmd, storedVertexes);
 	}
 }
 
@@ -364,7 +363,143 @@ void VertexPlan::pushParticleEmitter(Context &ctx, const Command *c,
 						.first;
 		}
 		emplacePlan(v->second);
+		if (!flatOrder) {
+			// GPU-simulated: where it draws is not known here, so it covers everything
+			painterBounds.emplace_back(PainterBounds{cmd->zPath, Rect(), false});
+		}
 	}
+}
+
+bool VertexPlan::computeClipBounds(const Command *c, const CmdInfo *cmd,
+		SpanView<InstanceVertexData> vertexes, Rect &out) {
+	// `DamageCollector::addInstances`'s reading of the same data: the producer's box when it gave
+	// one, the vertexes otherwise, and every instance transform already maps to clip space.
+	if ((c->flags & CommandFlags::UnknownBounds) != CommandFlags::None) {
+		return false;
+	}
+	bool first = true;
+	for (auto &iv : vertexes) {
+		if (!iv.data || iv.instances.empty()) {
+			continue;
+		}
+		Rect model = cmd->bounds;
+		if (model.size.width <= 0.0f || model.size.height <= 0.0f) {
+			if (!iv.data->getBounds(model)) {
+				return false;
+			}
+		}
+		for (auto &inst : iv.instances) {
+			auto r = TransformRect(model, inst.transform);
+			if (first) {
+				out = r;
+				first = false;
+			} else {
+				out.merge(r);
+			}
+		}
+	}
+	// Nothing to draw covers nothing, and a surface of nothing is never in the way.
+	if (first) {
+		out = Rect();
+	}
+	return true;
+}
+
+void VertexPlan::deferSurface(const core::Material *material, const Command *c,
+		const CmdInfo *cmd, SpanView<InstanceVertexData> vertexes) {
+	PendingSurface pending;
+	pending.material = material;
+	pending.command = c;
+	pending.info = cmd;
+	pending.vertexes = vertexes;
+	pending.bounded = computeClipBounds(c, cmd, vertexes, pending.bounds);
+
+	/* Reserve the traversal stamps this command would have taken (one per state group and one per
+	block): painter's order inside a plan is read off them, so a command placed later still sorts
+	where it was met. */
+	pending.order = orderCounter;
+	orderCounter += uint32_t(vertexes.size()) * 2 + 2;
+
+	pendingSurfaces.emplace_back(sp::move(pending));
+}
+
+void VertexPlan::notePainter(const Command *c, const CmdInfo *cmd,
+		SpanView<InstanceVertexData> vertexes) {
+	PainterBounds entry;
+	entry.zPath = cmd->zPath;
+	entry.bounded = computeClipBounds(c, cmd, vertexes, entry.bounds);
+	painterBounds.emplace_back(sp::move(entry));
+}
+
+void VertexPlan::resolveSurfaceOrder(Context &ctx) {
+	if (pendingSurfaces.empty()) {
+		return;
+	}
+
+	Vector<uint8_t> promoted;
+	promoted.resize(pendingSurfaces.size(), 0);
+
+	if (!painterBounds.empty()) {
+		auto covers = [](const PainterBounds &behind, const PendingSurface &front) {
+			if (!behind.bounded || !front.bounded) {
+				return true; // unknown is assumed to be in the way
+			}
+			const auto &a = behind.bounds;
+			const auto &b = front.bounds;
+			// strictly overlapping: sharing an edge is not covering anything
+			return a.getMinX() < b.getMaxX() && b.getMinX() < a.getMaxX()
+					&& a.getMinY() < b.getMaxY() && b.getMinY() < a.getMaxY();
+		};
+
+		/* Back to front, so a promoted surface is itself painter geometry for surfaces in front of
+		it. Stable, so commands of one zPath keep their list order. */
+		Vector<uint32_t> byDepth;
+		byDepth.reserve(pendingSurfaces.size());
+		for (uint32_t i = 0; i < pendingSurfaces.size(); ++i) { byDepth.emplace_back(i); }
+		ZOrderLess zLess;
+		sprt::stable_sort(byDepth.begin(), byDepth.end(), [&](uint32_t l, uint32_t r) {
+			return zLess(pendingSurfaces[l].info->zPath, pendingSurfaces[r].info->zPath);
+		});
+
+		for (auto idx : byDepth) {
+			auto &front = pendingSurfaces[idx];
+			for (auto &behind : painterBounds) {
+				// the same zPath is the same plane, not behind: only a strictly farther path counts
+				if (zLess(behind.zPath, front.info->zPath) && covers(behind, front)) {
+					promoted[idx] = 1;
+					break;
+				}
+			}
+			if (promoted[idx]) {
+				painterBounds.emplace_back(
+						PainterBounds{front.info->zPath, front.bounds, front.bounded});
+			}
+		}
+	}
+
+	// In list order, each into the plan it was given, with the stamps it reserved.
+	const auto savedCounter = orderCounter;
+	for (size_t i = 0; i < pendingSurfaces.size(); ++i) {
+		auto &it = pendingSurfaces[i];
+		orderCounter = it.order;
+		if (promoted[i]) {
+			auto v = transparentWritePlan.find(it.info->zPath);
+			if (v == transparentWritePlan.end()) {
+				v = transparentWritePlan
+							.emplace(it.info->zPath, Map<core::MaterialId, MaterialWritePlan>())
+							.first;
+			}
+			emplaceWritePlan(ctx.input, it.material, v->second, it.command, it.info,
+					it.vertexes);
+			++ctx.surfacePromotedCmds;
+		} else {
+			emplaceWritePlan(ctx.input, it.material, surfaceWritePlan, it.command, it.info,
+					it.vertexes);
+		}
+	}
+	orderCounter = savedCounter;
+
+	pendingSurfaces.clear();
 }
 
 void VertexPlan::updatePathsDepth() {
@@ -375,17 +510,10 @@ void VertexPlan::updatePathsDepth() {
 		depthOffset -= depthScale;
 	}
 
-	/* The overlay draws at depth ZERO - the near plane - and every overlay path shares it.
-
-	Not a band of its own below the content, which is what this first tried. A band is not enough:
-	the depth buffer this level is tested against is not just "where the content geometry was". The
-	shadow queue runs two more subpasses after the general one, and what they leave in the depth
-	attachment can be nearer than any content path - measurably so, along the diagonal of a solid
-	quad. Zero is the one value that cannot lose, and it is exactly why the level is Transparent-
-	class (LessOrEqual, no depth write): at zero, LessOrEqual passes against anything at all.
-
-	Sharing one value between overlay paths costs nothing, because depth is not what orders them.
-	The overlay bucket is keyed by zPath and drawn in painter's order, like the transparent one. */
+	/* The overlay draws at depth zero (the near plane), shared by every overlay path. The shadow
+	subpasses can leave depth nearer than any content path, and zero with LessOrEqual (the
+	Transparent-class state, no depth write) passes against anything. Overlay paths are ordered by
+	zPath in painter's order, not by depth. */
 	for (auto &it : overlayPaths) { it.second = 0.0f; }
 }
 
@@ -536,7 +664,8 @@ void VertexPlan::pushPlanVertexes(WriteTarget &writeTarget,
 			}
 		} else {
 			for (; idx < vertexes.data->data.size(); ++idx) {
-				//target[idx].pos = transform.transform * target[idx].pos * transform.mask + transform.offset;
+				// target[idx].pos = transform.transform * target[idx].pos * transform.mask +
+				// transform.offset;
 				target[idx].material = materialId | transform << 16;
 			}
 		}
@@ -827,21 +956,11 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 		}
 	};
 
-	/* THE STATE GROUPS OF ONE MATERIAL, IN THE ORDER THEY WERE FIRST SEEN - which is painter's
-	order - and NOT in StateId order, which is what iterating the map gives.
-
-	A StateId is an allocation counter over interned state VALUES; two groups of one material are
-	ordered by it for no reason connected to drawing. That is harmless for the SOLID plan, which
-	writes depth and may be drawn in any order, and wrong for the SURFACE plan, which blends and
-	does NOT write depth (see Sprite::updateBlendAndDepth): two surface draws that overlap are
-	resolved by submission order alone, exactly as transparent ones are.
-
-	It went unnoticed because a material usually has exactly ONE state group, where map order and
-	traversal order are the same list. The moment an ancestor installs a scissor the material splits
-	in two, and the failure is SYSTEMATIC rather than a coin flip: `StateIdNone` is `maxOf`, so the
-	group with no state always sorted LAST and always painted over the group inside the scissor.
-	What that looked like was every ui::Panel and every ui::TextInput inside a clipped subtree
-	drawing nothing at all, while the labels beside them - Transparent, bucketed by zPath - drew. */
+	/* The state groups of one material in first-seen (painter's) order, not StateId order as the
+	map iterates. The solid plan writes depth and tolerates any order; the surface plan blends
+	without depth writes (see Sprite::updateBlendAndDepth), so overlapping draws resolve by
+	submission order. A scissor splits a material into several groups, and `StateIdNone` is
+	`maxOf`, so map order would always paint the unclipped group last. */
 	auto eachStateInOrder = [](const MaterialWritePlan &plan,
 									const Callback<void(StateId, const StatePlanInfo &)> &cb) {
 		Vector<const sprt::pair<const StateId, StatePlanInfo> *> ordered;
@@ -862,9 +981,8 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 		});
 	}
 
-	// The overlay is drawn after the scene has been lit and, on the Vulkan path, after it has been
-	// copied out. A shadow it cast would have to be composited into a frame that is already final,
-	// so it casts none.
+	// The overlay is drawn after lighting and, on Vulkan, after the frame copy, so it casts no
+	// shadow.
 	if (!withShadows) {
 		return;
 	}
@@ -886,12 +1004,10 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 	}
 }
 
-// Painter-order span emission for queues without a depth buffer.
-//
-// Routing into solid/surface/transparent plans stays untouched (that is what keeps geometry batched
-// per material); only the order in which spans are emitted changes. Every VertexDataPlanInfo across
-// all three plans is collected, sorted by (zPath, traversal order), and written out with absolute
-// vertex indexes so that adjacent entries sharing a material+state collapse into a single draw.
+// Painter-order span emission for queues without a depth buffer. Routing into solid/surface/
+// transparent plans is unchanged (keeps batching per material); all VertexDataPlanInfo entries are
+// sorted by (zPath, traversal order) and written with absolute vertex indexes, so adjacent entries
+// sharing a material+state collapse into a single draw.
 void VertexPlan::drawWritePlanFlat(Context &ctx, WriteTarget &writeTarget, bool overlay) {
 	struct FlatDrawEntry {
 		SpanView<ZOrder> zOrder;

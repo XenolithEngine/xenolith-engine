@@ -34,9 +34,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class ClientContext;
 
 // Client-side application thread: runs the scene graph and produces draw data for a remote server.
-// It owns a standalone ClientContext (not a Context) and has no native windows. Platform services
-// (clipboard / screen-info / URL) and the GL loop are remote-only; until the wire protocol exists
-// they are stubbed.
+// Owns a standalone ClientContext (not a Context) and no native windows. Platform services
+// (clipboard / screen-info / URL) are stubbed.
 class SP_PUBLIC ClientAppThread : public AppThread {
 public:
 	struct AppQueueInfo {
@@ -50,8 +49,8 @@ public:
 
 	virtual void run() override;
 
-	// Single-shot connect flow: dial the server, (locate each other), gracefully close, then return
-	// false so the thread loop ends and the client process exits.
+	// Connect and handshake with the server, then run the looper until the thread stops. Returns
+	// false when the connection fails, ending the client.
 	virtual bool worker() override;
 
 	ClientContext *getClientContext() const { return _clientContext; }
@@ -60,9 +59,8 @@ public:
 
 	remote::ObjectFactory *getSharedObjects() const { return _sharedObjects; }
 
-	// AppThread platform-services interface (TODO: route to the remote server).
-	// The remote transport carries no clipboard yet, and every call below is a stub. Said out loud
-	// so that a caller refuses visibly instead of writing into a void.
+	// AppThread platform-services interface (TODO: route to the remote server). The transport
+	// carries no clipboard, so every call below is a stub and hasClipboard() reports it.
 	virtual bool hasClipboard() const override { return false; }
 
 	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
@@ -83,10 +81,9 @@ public:
 
 	virtual const ContextInfo *getContextInfo() const override;
 
-	// The SERVER's identity, not this process's: the scene runs here, the window and the GPU are
-	// over there (M3.5). Null until the ServerInfo exchange completes, and against a version-1
-	// server that has no such message it stays null for the whole session -- so a caller must have
-	// a sensible answer for "not known".
+	// The server's identity, not this process's: the scene runs here, the window and GPU are on the
+	// server. Null until the ServerInfo exchange completes, and for the whole session against a
+	// version-1 server.
 	virtual const remote::PeerInfo *getServerInfo() const override {
 		return _hasServerInfo ? &_serverInfo : nullptr;
 	}
@@ -122,9 +119,8 @@ protected:
 
 	void pumpConnection();
 
-	// Parse a received message and route it by (domain, code). Returns true if the message was
-	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global
-	// ping/pong control messages are handled for now.
+	// Parse a received message and route it by (domain, code). Returns true if consumed, false to
+	// defer it for a later poll.
 	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload) override;
 
 	virtual Rc<Director> makeDirector(NotNull<RemoteWindow>, const core::FrameConstraints &);
@@ -135,8 +131,8 @@ protected:
 	// What this client tells the server about itself. Answers the ServerInfo request.
 	remote::PeerInfo makeClientInfo() const;
 
-	// Validate the server's PeerInfo and answer with ours -- or refuse with IncompatiblePeer and
-	// end the session. Runs before anything has been announced.
+	// Validate the server's PeerInfo and answer with ours, or refuse with IncompatiblePeer and end
+	// the session. Runs before anything is announced.
 	void handleServerInfo(const remote::MessageHeader &, BytesView payload);
 
 	ClientContext *_clientContext = nullptr;
@@ -151,8 +147,8 @@ protected:
 	remote::PeerInfo _serverInfo;
 	bool _hasServerInfo = false;
 
-	// Set by a dispatcher that has decided the session is over; acted on in pumpConnection, which
-	// is the only place allowed to drop the connection (a dispatcher runs inside its poll).
+	// Set by a dispatcher that ended the session; acted on in pumpConnection, the only place
+	// allowed to drop the connection (a dispatcher runs inside its poll).
 	bool _disconnectRequested = false;
 
 	// Keepalive (monotonic us): the server pings us periodically; if no ping arrives within the

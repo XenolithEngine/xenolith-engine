@@ -45,24 +45,19 @@ void Label::Selection::clear() {
 }
 
 void Label::Selection::emplaceRect(const Rect &rect) {
-	// The layout hands rects down from the TOP of the box; this node, like every node, measures
-	// from the bottom.
+	// The layout hands rects down from the top of the box; the node measures from the bottom.
 	const Rect placed(rect.origin.x, _contentSize.height - rect.origin.y - rect.size.height,
 			rect.size.width, rect.size.height);
 
 	_vertexes.addQuad().setGeometry(Vec4(placed.origin.x, placed.origin.y, _textureLayer, 1.0f),
 			placed.size);
 
-	// ZERO is the empty marker set by clear(); a real highlight always has a height, so it can
-	// never be mistaken for one.
+	// ZERO is the empty marker set by clear(); a real highlight always has a height.
 	_bounds = _bounds.equals(Rect::ZERO) ? placed : _bounds.unionWithRect(placed);
 }
 
-// Sprite::updateColor only marks the vertexes when the colour VALUE changed, which is right for a
-// sprite whose quad outlives the call. Here every call rebuilds the quads (clear + emplaceRect),
-// and a fresh quad starts out fully transparent, so the colour has to be re-applied every time.
-// Without this only the very first selection after a text change was visible: every later one -
-// a drag, Shift+arrows, Ctrl+A, a long press - was drawn with alpha 0.
+// Every call rebuilds the quads, and a fresh quad starts fully transparent, while
+// Sprite::updateColor only marks vertexes when the colour value changed - so re-apply it always.
 void Label::Selection::updateColor() {
 	Sprite::updateColor();
 	_vertexColorDirty = true;
@@ -140,13 +135,9 @@ static void Label_writeTextureQuad(float height, const font::Metrics &m,
 	}
 }
 
-// Model-space AABB of a laid-out label, in the same units as the written quads (layout units:
-// x = char pos, y = format->height - line.pos).
-//
-// It cannot be derived from the vertices: Quad::drawChar writes all four corners of a glyph at the
-// same point with Size2(0, 0), and the actual glyph box is added by the vertex shader from the GPU
-// atlas. So use the layout's own extent, padded by the tallest line to cover ascender/descender
-// overhang, glyph bearings and decorations. A superset is always safe for damage tracking.
+// Model-space AABB of a laid-out label, in layout units (x = char pos, y = format->height -
+// line.pos). Glyph quads are degenerate points sized by the shader from the atlas, so the bounds
+// come from the layout extent padded by the tallest line; a superset is safe for damage tracking.
 template <typename Interface>
 static Rect Label_computeBounds(const font::TextLayoutData<Interface> *format) {
 	if (format->chars.empty()) {
@@ -190,8 +181,7 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 
 		for (auto charIdx = start; charIdx < end; ++charIdx) {
 			const font::CharLayoutData &c = format->chars[charIdx];
-			// `c.gid` is the glyph index to render (from FontFaceObject::getChar during layout, or
-			// HarfBuzz shaping). 0 means "no glyph" -- skip it like whitespace/control characters.
+			// `c.gid` is the glyph index to render; 0 means "no glyph" - skip it like whitespace.
 			if (c.gid != 0 && !sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)
 					&& c.charID != char16_t(0x00AD)
 					&& c.charID != font::CharLayoutData::InvalidChar) {
@@ -417,16 +407,9 @@ void Label::handleEnter(xenolith::Scene *scene) {
 		}
 	}
 
-	/* THE ONE SUBSCRIBER TO `locale::onLocale` IN THE ENGINE, and what makes changing the language
-	redraw the window instead of only the next label somebody touches.
-
-	It is cheap because a label stores its string UNRESOLVED: `_string16` still holds `@Locale:Key`,
-	and the tags are expanded during layout. So re-localizing is marking the label dirty - no walk of
-	the tree re-assigning strings, and no second copy of the original text to keep in step.
-
-	Registered here rather than in `init()` because `_listener->clear()` above drops every delegate;
-	registered AFTER that block for the same reason, and guarded so that entering a scene twice leaves
-	one delegate rather than two. */
+	/* Relocalizes the window on a language change: `_string16` keeps `@Locale:Key` unresolved and
+	tags expand during layout, so marking the label dirty is enough. Registered after the
+	`_listener->clear()` above, which drops every delegate, and guarded against a double enter. */
 	if (!_localeDelegate) {
 		_localeDelegate = _listener->listenForEvent(locale::onLocale,
 				[this](const Event &) { handleLocaleChanged(); });
@@ -434,23 +417,10 @@ void Label::handleEnter(xenolith::Scene *scene) {
 	applyLocaleTextFeatures();
 }
 
-/* WHAT THE LOCALE DECIDES ABOUT THE TEXT, beyond which words it is.
-
-Without HarfBuzz shaping Persian and Arabic draw as isolated, unjoined letterforms; without the
-bidirectional algorithm they draw in visual rather than logical order. Both cost time per layout, so
-they follow the locale rather than being on for every label in every language.
-
-THE DIRECTION IS `Neutral` AND NOT `RightToLeft`, which is the half of this that had to be seen to be
-believed. Forcing the locale's direction onto every label is right only if every label is in that
-language, and in an editor it is not: a file path, a component name and a caption from a module that
-has not been translated yet are all Latin, and under an RTL base direction their neutral characters
-go to the wrong end - `/home/x/types.json` draws as `home/x/types.json/` and a sentence's full stop
-jumps to its front. `Neutral` is CSS `dir=auto`: the base level is resolved per paragraph from its
-first strong character (UAX #9, P2-P3), so a Persian caption is right-to-left and the path beside it
-is not.
-
-`_localeTextFeatures` records that THIS is what turned them on, so switching back to a left-to-right
-language turns off what the locale enabled and leaves alone what a caller asked for itself. */
+/* Enables shaping and bidi for RTL locales (both cost time per layout, so they follow the locale).
+The base direction is `Neutral` (CSS `dir=auto`, UAX #9 P2-P3), not `RightToLeft`: untranslated
+Latin text such as paths must keep its neutral characters in place.
+`_localeTextFeatures` records what the locale enabled, so switching back turns off only that. */
 void Label::applyLocaleTextFeatures() {
 	const bool rtl = (locale::getTextDirection() == font::TextDirection::RightToLeft);
 
@@ -477,10 +447,9 @@ void Label::handleExit() { Sprite::handleExit(); }
 void Label::handleComponentsDirty(const ComponentMask &mask) {
 	Sprite::handleComponentsDirty(mask);
 
-	// Inherited-style components on the label's OWN node changed (typically rewritten or
-	// removed by ui::StyleResolver) — re-shape with the new effective style. This is the
-	// node's own dirty protocol; changes on ancestors are NOT tracked here (see
-	// XLInheritedStyle.h).
+	// Inherited-style components on the label's own node changed (typically by
+	// ui::StyleResolver) - re-shape with the new effective style. Changes on ancestors are not
+	// tracked here (see XLInheritedStyle.h).
 	if (mask.contains(InheritedColorStyle::Id.value) || mask.contains(InheritedFontStyle::Id.value)
 			|| mask.contains(InheritedTextStyle::Id.value)) {
 		setLabelDirty();
@@ -569,7 +538,7 @@ Size2 Label::measureContent(const MeasureConstraints &c) {
 }
 
 void Label::applyMeasuredSize(const Size2 &size) {
-	// The width being written IS the measurement, so setLabelDirty must not announce it as a
+	// The width being written is the measurement, so setLabelDirty must not announce it as a
 	// change to it; see setLabelDirty.
 	_applyingMeasuredSize = true;
 	if (_width != size.width) {
@@ -601,9 +570,8 @@ void Label::setStyle(const DescriptionStyle &style) {
 
 const Label::DescriptionStyle &Label::getStyle() const { return _style; }
 
-// Same call, with the frame's spawn counter bumped first. A separate entry point rather than a
-// count inside runDeferred, because runDeferred is virtual and a subclass that overrode it would
-// silently stop counting.
+// Same call, with the frame's spawn counter bumped first. Kept out of runDeferred, which is
+// virtual, so an override cannot lose the count.
 Rc<LabelDeferredResult> Label::runDeferredCounted(sprt::dispatch::Looper *queue, TextLayout *format,
 		const Color4F &color) {
 #if XL_FRAME_ACCOUNT
@@ -620,8 +588,8 @@ Rc<LabelDeferredResult> Label::runDeferred(sprt::dispatch::Looper *queue, TextLa
 	queue->performAsync(
 			[format = Rc<Label::TextLayout>(format), color, ret, layer = _textureLayer]() mutable {
 #if XL_FRAME_ACCOUNT
-		// The other kind of deferred task, and it has to be counted too: a node view at full detail
-		// is a dozen Labels, so on a graph the text can outweigh the tesselation.
+		// Counted too: a node view at full detail is a dozen Labels, so text can outweigh
+		// tesselation.
 		const auto workStart = core::getAccountClock();
 #endif
 		auto result = Label::writeResult(format, color, layer);
@@ -743,45 +711,28 @@ void Label::makeEffectiveStyle(font::LabelBase::EffectiveStyle &out) const {
 		out.alignment = text.textAlign;
 	}
 
-	/* CSS `direction` and `unicode-bidi`, and the one place the three layers are ordered.
-
-	`direction` sets the label's BASE direction, as on the web. `unicode-bidi: plaintext` is the
-	other half and needs care: the implementation brackets a SPAN with FSI...PDI, which is right
-	for a nested run and wrong for the element's own paragraph - UAX #9 rule P2 skips everything
-	between an isolate and its PDI when it looks for the paragraph's base, so a label whose whole
-	text sat inside one would resolve to LeftToRight every time, and a Persian caption would align
-	left. On the label ROOT, therefore, `plaintext` means what it means in CSS - resolve the base
-	from the content - and that is spelled `Neutral`, with bidi on.
-
-	Which is exactly what applyLocaleTextFeatures already does for an RTL locale. The two layers
-	agree rather than race, and this is the order they agree in: CSS, then the caller, then the
-	locale. */
+	/* CSS `direction` and `unicode-bidi`. `direction` sets the base direction. On the label root
+	`plaintext` means "resolve the base from the content" (`Neutral` with bidi on), not an FSI...PDI
+	isolate: UAX #9 P2 skips isolates when looking for the paragraph base. Precedence: CSS, then
+	the caller, then the locale (applyLocaleTextFeatures). */
 	if (text.defined & InheritedTextStyle::DefinedDirection) {
 		out.direction = text.direction;
 		if (text.direction == font::TextDirection::RightToLeft) {
-			// An RTL base is only honoured by the bidi pass, and RTL scripts need shaping to join.
+			// An RTL base is honoured only by the bidi pass, and RTL scripts need shaping to join.
 			out.bidiEnabled = true;
 			out.shapingEnabled = true;
 		}
 	}
 
-	/* `unicode-bidi` AFTER `direction`, and the order is the whole of the rule.
-
-	`plaintext` means "resolve this box's base direction from its own content", which in CSS
-	overrides whatever `direction` said - that is what the keyword is for. Applied the other way
-	round, an inherited `direction: rtl` would clobber the Neutral a moment later and every Latin
-	path in the window would draw with its leading slash at the far end. */
+	/* `unicode-bidi` must be applied after `direction`: `plaintext` overrides an inherited
+	`direction: rtl`, not the other way round. */
 	if (text.defined & InheritedTextStyle::DefinedBidi) {
 		if (text.bidi == font::BidiMode::Plaintext) {
 			out.direction = font::TextDirection::Neutral;
 			out.bidiEnabled = true;
 			out.bidiMode = font::BidiMode::Normal; // no isolate around the whole paragraph
-			/* NOT shaping. `plaintext` is a statement about the BASE DIRECTION - ask the content,
-			   not the box - and says nothing about whether glyphs have to join. Turning shaping on
-			   here put every label in a sheet that writes `* { unicode-bidi: plaintext }` through
-			   HarfBuzz, which is both a cost nobody asked for and a change of metrics. Joining is
-			   the business of the two places that know the script is one that needs it: the
-			   `direction: rtl` branch above, and applyLocaleTextFeatures for an RTL locale. */
+			/* No shaping: `plaintext` concerns the base direction only. Joining is enabled by the
+			   `direction: rtl` branch above and by applyLocaleTextFeatures for an RTL locale. */
 		} else {
 			out.bidiMode = text.bidi;
 			if (text.bidi != font::BidiMode::Normal) {
@@ -802,12 +753,9 @@ void Label::handleContentSizeDirty() {
 	_selection->setContentSize(_contentSize);
 	_marked->setContentSize(_contentSize);
 
-	// The highlight quads are built against the HEIGHT of the node that carries them - the label is
-	// Y-up and the layout's rects are Y-down - and that height only arrives here, one phase after
-	// applyLayout computed the rects from the size it had just assigned. Rebuilding an open
-	// selection here is what keeps the height and the rects in agreement: on the first layout (an
-	// inline editor is seeded and selected before its first visit, with a height still zero) and
-	// on every later resize - a re-wrap, a font-size change.
+	// Highlight quads depend on the node height (label is Y-up, layout rects are Y-down), which is
+	// only known here, one phase after applyLayout; rebuild an open selection to keep them in step
+	// on the first layout and on every resize.
 	if (_selection->getTextCursor() != core::TextCursor::InvalidCursor) {
 		setSelectionCursor(_selection->getTextCursor());
 	}
@@ -867,14 +815,9 @@ void Label::refreshPendingDependencies() {
 		return;
 	}
 
-	// Asking once, at layout time, is not enough. addTextureChars() answers for the moment the label
-	// was laid out; an upload started AFTER that replaces the atlas instance, and this label - which
-	// has nothing to re-shape and so never calls addTextureChars() again - would keep drawing CharIds
-	// the current atlas cannot resolve. Nothing in its vertex data would show it: the quads are
-	// degenerate points and the glyph box comes from the atlas at draw time.
-	//
-	// So the gate is re-checked every frame against the generation these quads belong to, and re-armed
-	// while the atlas is behind it. Once it catches up this costs one atomic load per frame.
+	// An upload started after layout replaces the atlas instance, and a label with nothing to
+	// re-shape would keep drawing CharIds the atlas cannot resolve. So the gate is re-checked every
+	// frame against these quads' glyph generation (one atomic load once the atlas catches up).
 	if (_source->isGlyphGenerationUploaded(_glyphGeneration)) {
 		return;
 	}
@@ -1038,9 +981,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 		}
 	}
 
-	// Remember which glyph set these quads belong to. They carry CharIds, not atlas coordinates, so
-	// they stay drawable only for as long as the atlas holds that generation - and whether it does
-	// is decided later, by uploads this label knows nothing about.
+	// Remember which glyph set these quads belong to: they carry CharIds, not atlas coordinates,
+	// and stay drawable only while the atlas holds that generation.
 	_glyphGeneration = _source->getGlyphGeneration();
 
 	if (_deferred) {
@@ -1056,9 +998,8 @@ void Label::updateVertexes(FrameInfo &frame) {
 }
 
 void Label::onFontSourceUpdated() {
-	// (Re)bind the atlas texture. In the local case this is the same DynamicImage already set at
-	// handleEnter (harmless); it matters when the controller loads *after* the label entered (the remote
-	// client), where handleEnter took the onLoaded path and the texture was never set otherwise.
+	// (Re)bind the atlas texture: needed when the controller loads after handleEnter (the remote
+	// client), where the texture was never set.
 	if (_source) {
 		setTexture(Rc<Texture>(_source->getTexture()));
 	}
@@ -1084,17 +1025,15 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 			auto &c = d->chars[charIndex];
 			auto line = _format->getLine(charIndex);
 			if (line) {
-				// The caret edge follows the glyph direction: `front` (the insertion point before the
-				// char) is the LEFT edge for an LTR glyph but the RIGHT edge for an RTL glyph.
+				// The caret edge follows glyph direction: `front` is the left edge for an LTR
+				// glyph, the right edge for an RTL one.
 				const bool leftEdge = (front != bool(c.bidiLevel & 1));
 				return Vec2((leftEdge ? c.pos : c.pos + c.advance) / _labelDensity,
 						_contentSize.height - line->pos / _labelDensity);
 			}
 		} else if (charIndex >= d->chars.size() && charIndex != 0 && d->chars.empty()) {
-			// A layout can be non-empty as a STRING yet empty as a LAYOUT: every char undefined
-			// in the font (a CJK composition on a system with no CJK face) lays out to nothing.
-			// The cursor still sits past the end of the string, so answer the origin instead of
-			// calling back() on empty vectors.
+			// A non-empty string can lay out to nothing (every char missing from the font), so
+			// answer the origin instead of calling back() on empty vectors.
 			return getCursorOrigin();
 		} else if (charIndex >= d->chars.size() && charIndex != 0) {
 			auto &c = d->chars.back();
@@ -1114,17 +1053,14 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 }
 
 Vec2 Label::getCursorOrigin() const {
-	// No layout yet - a label that has never been laid out, which is exactly the state a freshly
-	// created empty text field is in when it first asks where to put its caret. getCursorPosition()
+	// No layout yet (e.g. a fresh empty text field asking for its caret); getCursorPosition()
 	// guards the same way.
 	if (!_format) {
 		return Vec2::ZERO;
 	}
 
-	/* `start`/`end` are direction-relative and have to be resolved before they can be a side. The
-	label's own base direction is the one the formatter used; a `Neutral` base resolved per
-	paragraph, and the first line's resolved direction is the honest answer for an empty or
-	single-paragraph field, which is what a caret origin is asked about. */
+	/* `start`/`end` are direction-relative. For a `Neutral` base the first line's resolved
+	direction is used, which is right for an empty or single-paragraph field. */
 	auto base = _direction;
 	if (base == font::TextDirection::Neutral) {
 		auto data = _format->getData();
@@ -1193,8 +1129,8 @@ Pair<uint32_t, bool> Label::getCharIndex(const Vec2 &pos, font::CharSelectMode m
 }
 
 core::TextCursor Label::selectWord(uint32_t chIdx) const {
-	// An empty label has no layout, and the usual caller-side guard does not hold: getCharIndex()
-	// answers {0, false} for it, not maxOf, so a double-tap on an empty field lands here anyway.
+	// An empty label has no layout, and getCharIndex() answers {0, false} for it rather than maxOf,
+	// so callers reach here anyway.
 	if (!_format) {
 		return core::TextCursor::InvalidCursor;
 	}

@@ -32,14 +32,8 @@ class DockSystem;
 
 // The divider between the two children of one split, as its own flat node in the dock root.
 //
-// It is a node rather than something the frames draw for two reasons. Hit testing and the resize
-// cursor come free from an InputListener - no rect arithmetic on every pointer move, no priority
-// juggling against the frames' own listeners. And a frame that drew its own divider would have to
-// know its neighbour and its parent split, which is exactly the coupling the flat design avoids.
-//
-// It sits in a ZOrder band ABOVE the frames. That is load-bearing, not cosmetic: sortAllChildren
-// is not a stable sort, so at equal ZOrder a frame could end up over the divider and swallow the
-// drag.
+// A separate node so hit testing and the resize cursor come from an InputListener. It sits in a
+// ZOrder band above the frames; at equal ZOrder the unstable sort could put a frame over it.
 //
 // CSS type "dock-splitter"; the style class `dragging` is on while it is being moved, and :hover
 // works through the usual InteractiveComponent counter.

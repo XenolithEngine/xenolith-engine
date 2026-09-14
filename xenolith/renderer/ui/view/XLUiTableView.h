@@ -42,57 +42,27 @@ class TableView;
 
 /* A scrolled, virtualized table over a data::Model.
 
-The model is a FLAT list of rows: the children of the model's root, in order. A child is one row —
-except a `Kind::Span` child, which stands for N rows nobody stores and is read the way a database
-cursor is read, in slices, with a row that has no payload yet drawn as `loading` and refreshed when
-the answer lands. So a table of fifty thousand database rows is one span, and costs fifty thousand
-small structs and as many nodes as fit on screen; a table of a hundred editable records is a hundred
-explicit nodes that can be reordered, removed and pointed at their originals.
+Rows are the children of the model's root. A `Kind::Span` child stands for N rows read in slices;
+a row without its payload yet has the `loading` class. Spans and explicit nodes can be mixed.
 
-The two mix freely in one table, because they are just children of the same category.
+A `Column` (set from code) says which Value key a column shows and its title; widths come from CSS
+`grid-template-columns` on the table-view, with `Column::track` as the fallback.
+`resolveColumns()` builds one `TableColumnsComponent` per width change and stamps it on the header
+and every row, laid out by `LayoutSystem` in `LayoutMode::TableRow`, so header and rows align.
+The header is a sibling of the ScrollView, which makes it sticky.
 
-Columns are the part a stylesheet cannot fully express, so they are split in two:
-- WHAT a column is - which key of the row's Value it shows, what its header says - lives in
-  `Column`, set from code;
-- HOW WIDE it is comes from CSS, as `grid-template-columns` on the table-view node (a table's
-  columns ARE a track list, which is why the grid property is reused rather than duplicated).
-  `Column::track` is the fallback for columns the sheet does not mention.
+setAutoHeight() reports the whole model's height and disables scrolling (no virtualization).
 
-Row geometry is resolved ONCE per width change and imposed on every row: `resolveColumns()` produces
-a single `TableColumnsComponent` and stamps that same value on the header and on every row node. The
-rows are laid out by `LayoutSystem` in `LayoutMode::TableRow`, exactly as the rows of a static
-`display: table` are - the only difference is who wrote the component. That is also why the sticky
-header cannot drift out of alignment with the rows: there is one source of column geometry and no
-second layout path.
+A row whose `RowKey` is unchanged keeps its node; the key has `columnsRevision` (the column set),
+not the geometry generation, so a resize rebuilds no rows.
 
-The header is a sibling of the ScrollView rather than a row inside it, which is the whole of
-"sticky" - there is no scroll offset to compensate.
+A row's height is resolved before its node exists, so cells must not be fit-content in height;
+use setRowHeightCallback() for variable heights.
 
-A table does not have to be a scroller. setAutoHeight() makes it report the height of its whole
-model instead (getIntrinsicHeight()) and stop scrolling, so it can sit as one BLOCK inside a larger
-scroll view - a page of headings and explanatory text with a table in the middle. That trades away
-virtualization for that table, which is the right trade for tens of rows and the wrong one for
-thousands; see setAutoHeight().
-
-Node reuse follows TreeView: a row whose `RowKey` is unchanged keeps the node it already has. Note
-that the key carries `columnsRevision` (the SET of columns) and NOT the `generation` of the resolved
-geometry (their pixel widths): a window resize re-lays-out every row but rebuilds none of them.
-
-CONSTRAINT: a row's height is resolved before its node exists, because that is the only moment a
-ScrollController can be told a size. So a cell must not be fit-content on the height axis - its
-height is the row's, and a cell that re-measured itself taller would disagree with the size the
-controller already committed to. Use setRowHeightCallback() for variable heights.
-
-CSS: the widget is type "table-view", the header "table-header", a row "table-row" and a cell
-"table-cell" (all Panels, so all take background-color / outline / border-radius - and note that a
-Panel with no fill declared is an opaque WHITE surface, so a row meant to show the view's own
-background must say so). THE CELLS ARE THE EXCEPTION: the view paints its own transparent, because
-a cell that covered its row would hide the ground, the alternation, the hover and the selection all
-at once - a sheet that wants an opaque cell says so and wins, as it does over any direct paint. A
-row carries `even`/`odd`, `selected` and `loading` style classes; a
-header cell carries `header-cell` plus the column's own `Column::styleClass`. Each row publishes the
-height it was laid out with as `--table-row-h`, and each cell its column index as
-`--table-col-index`.
+CSS: types "table-view", "table-header", "table-row" and "table-cell" (all Panels; an unstyled
+Panel is opaque white). Cells are painted transparent by the view; a sheet can override that.
+Rows get `even`/`odd`, `selected` and `loading` classes; header cells get `header-cell` plus
+`Column::styleClass`. Rows publish `--table-row-h`, cells `--table-col-index`.
 
   table-view   { display: table; grid-template-columns: 2fr 1fr 120px;
                  border-collapse: collapse; background-color: #1e1e1e; }
@@ -108,11 +78,9 @@ height it was laid out with as `--table-row-h`, and each cell its column index a
 
 The `table-icon` above is what CellBuilder::setIcon adds, before the cell's label.
 
-Declare the horizontal rules with `border-bottom` rather than `border-top`: a virtualized row
-collapses only the borders it can see - the vertical lines between its own cells, and its own top
-and bottom - so a line declared on both sides of a row boundary is drawn twice. */
-/* A table view can hold the SCENE'S selection, not just one of its own - opt-in per instance, see
-setSelectionOwned(). */
+Declare horizontal rules with `border-bottom` only: a virtualized row collapses only its own
+borders, so a line declared on both sides of a row boundary is drawn twice. */
+/* A table view can hold the scene's selection, opt-in per instance; see setSelectionOwned(). */
 class SP_PUBLIC TableView : public Panel, public SelectionOwner {
 public:
 	using Model = data::Model;
@@ -124,7 +92,7 @@ public:
 	class RowNode;
 	class HeaderNode;
 
-	// One column. Everything here is what a stylesheet cannot know; the width comes from CSS.
+	// One column; the width comes from CSS.
 	struct SP_PUBLIC Column {
 		String key; // key into the row's Value; empty -> only the cell callback fills it
 		String title; // header text
@@ -134,12 +102,9 @@ public:
 		bool operator==(const Column &) const = default;
 	};
 
-	/* One row of the model. `node` + `offset` is its identity and survives a rebuild, which is what
-	lets a payload that arrives late find its row again without carrying an index — and, because an
-	ItemId is never reused, what makes that identity survive an insertion or a removal too.
-
-	`offset` is meaningful only when `node` is a Span; an explicit node leaves it at zero and keeps
-	its payload in the model, so there is nothing to fetch for it. */
+	/* One row of the model. `node` + `offset` is its identity across rebuilds, insertions and
+	removals (ItemIds are never reused), so a late payload finds its row. `offset` is used only
+	for a Span; an explicit node keeps its payload in the model. */
 	struct SP_PUBLIC Row {
 		Rc<ModelNode> node;
 		uint64_t offset = 0;
@@ -156,13 +121,9 @@ public:
 		}
 	};
 
-	/* What a standard row node was built from. Two rows with the same key show the same thing, so
-	the node made for one can be handed to the other instead of being rebuilt.
-
-	`columnsRevision` is the revision of the column SET, not the generation of the resolved column
-	GEOMETRY. Adding a column changes what a row node looks like; making one 3px wider does not -
-	the row re-lays-out from the re-stamped component and keeps every node. Folding the two into one
-	counter would rebuild the whole visible table on every window resize. */
+	/* What a standard row node was built from; rows with equal keys can share a node.
+	`columnsRevision` is the column set revision, not the geometry generation, so a width change
+	re-lays-out rows without rebuilding them. */
 	struct SP_PUBLIC RowKey {
 		Rc<ModelNode> node;
 		uint64_t offset = 0;
@@ -211,10 +172,8 @@ public:
 	// Decorate one header cell.
 	virtual void setHeaderCellCallback(CellFunction &&);
 
-	// A row's height is consumed one pass earlier than its node is built (see the class doc), so it
-	// cannot be measured from the node and cannot come from the builder. This callback is the
-	// channel. It runs for every row on every rebuild, so keep it cheap, and answer for a row whose
-	// payload has not arrived yet (`dataLoaded == false`) rather than assume one.
+	// Row height, needed before the node is built. Runs for every row on every rebuild, so keep it
+	// cheap, and handle rows whose payload has not arrived (`dataLoaded == false`).
 	virtual void setRowHeightCallback(RowHeightFunction &&);
 
 	virtual void setRowHeight(float);
@@ -227,42 +186,22 @@ public:
 	float getHeaderHeight() const { return _headerVisible ? _headerHeight : 0.0f; }
 	HeaderNode *getHeader() const { return _header; }
 
-	/* The height the widget needs in order to show EVERY row: the header plus the sum of the rows'
-	heights.
-
-	Resolved from the MODEL, so not one node has to exist - which is the whole point. An outer
-	ScrollController must be told an item's size BEFORE it will ever call the factory that builds
-	it, exactly the constraint the rows themselves are under, so a table embedded in one cannot be
-	measured from its nodes either. Costs one setRowHeightCallback() call per row, so it is as cheap
-	as that callback is. */
+	/* The header plus the sum of all row heights, computed from the model without nodes (one
+	setRowHeightCallback() call per row). */
 	float getIntrinsicHeight() const;
 
-	/* Size the widget to its whole model instead of scrolling inside a fixed box.
-
-	This is what lets a table be a BLOCK inside a larger scroll view - a page of headings and
-	explanatory text with a table in the middle of it - rather than a scroller of its own. Two
-	things follow: the inner ScrollView is disabled, because nested scrollers would otherwise fight
-	over the same gesture, and the widget starts answering the content measurement protocol, so
-	`flex-basis: fit-content` on it resolves to getIntrinsicHeight() and a fit-content column
-	containing it composes recursively.
-
-	The owner still has to APPLY that size - through a fit-content layout, or by passing
-	getIntrinsicHeight() to ScrollController::addItem. Auto-height only reports and stops
-	scrolling; it never writes its own contentSize.
-
-	The cost is virtualization: the viewport becomes the whole content, so every row is
-	materialized. That is the right trade for tens of rows and the wrong one for thousands, which
-	should keep their own scroll in a fixed frame. */
+	/* Size to the whole model instead of scrolling. Disables the inner ScrollView and answers the
+	measurement protocol with getIntrinsicHeight(), so `flex-basis: fit-content` works. The owner
+	applies the size; this never writes its own contentSize. Every row is materialized, so use
+	it for tens of rows, not thousands. */
 	virtual void setAutoHeight(bool);
 	bool isAutoHeight() const { return _autoHeight; }
 
-	// Fires when the model changed the answer getIntrinsicHeight() gives. An outer ScrollController
-	// caches the size it was handed and cannot notice on its own; a fit-content layout re-measures
-	// by itself and can ignore this.
+	// Fires when getIntrinsicHeight() changes, for an outer ScrollController that caches sizes.
 	virtual void setIntrinsicHeightCallback(Function<void(float)> &&);
 
-	// Selection is off until one of these is set: only then does a row get an input listener at
-	// all, and only then can `table-row:hover` / `table-row.selected` match.
+	// Selection is off until one of these is set; only then do rows get an input listener and can
+	// match `table-row:hover` / `table-row.selected`.
 	virtual void setSelectCallback(RowEventFunction &&);
 	virtual void setActivateCallback(RowEventFunction &&);
 	virtual void setSelectionEnabled(bool);
@@ -271,11 +210,8 @@ public:
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
 	size_t getSelectedRow() const { return _selectedRow; }
 
-	/* Join the SCENE-WIDE selection - see TreeView::setSelectionOwned, which this mirrors exactly,
-	including why it is opt-in.
-
-	It is also what makes the reorder keys land in the right table: two tables that both have a
-	selected row are resolved today by nothing but paint order. */
+	/* Join the scene-wide selection, as TreeView::setSelectionOwned. It also scopes the reorder
+	keys to the table that owns the selection. */
 	virtual void setSelectionOwned(bool);
 	bool isSelectionOwned() const { return _selectionOwned; }
 
@@ -288,47 +224,25 @@ public:
 	// Re-derive the rows and re-request their data.
 	virtual void invalidateSource();
 
-	// Rebuild the row NODES at the start of the next visit. Coalesced, and deferred on purpose: the
-	// rebuild can destroy the node it is reached from, and a node attached while a frame is in
-	// flight is styled and laid out on that frame rather than the next.
+	// Rebuild the row nodes at the start of the next visit. Coalesced and deferred: the rebuild can
+	// destroy the node it is reached from, and nodes attached mid-frame are laid out on that frame.
 	virtual void requestRebuildNodes(bool force = false);
 
-	/* The same request, with an ANSWER: `cb` runs once the row nodes are current again.
-
-	It runs at the END of that rebuild, from inside the visit that performed it - and that is the
-	first moment a new row can be MEASURED, not merely the first moment it exists. A node attached
-	while a frame is in flight catches up on the phases the pass has already gone by, as it is
-	attached (Node::runPendingPhases), so every row this rebuild built is styled, sized and placed
-	by the time the rebuild returns. Anything later - a scheduled tick, a visit-end callback - is
-	asking after the answer was already there, and has to guess how long to wait for it.
-
-	One-shot, and coalesced into whatever rebuild is already pending: several callers asking in one
-	turn are all answered by the one rebuild, in the order they asked. A callback that asks again is
-	answered by the NEXT rebuild and never re-entrantly by this one.
-
-	What it may NOT assume is that the row it cares about has a node. A rebuild builds the rows
-	inside the scroll window and no others, so "the answer is ready" and "the row is on screen" are
-	different facts - the second is getRowNode()'s to give. */
+	/* The same, with `cb` run once at the end of that rebuild, inside the visit, when new rows are
+	already styled and laid out (Node::runPendingPhases). Callbacks coalesce and run in order; one
+	that asks again is served by the next rebuild. Only rows in the scroll window get nodes. */
 	virtual void requestRebuildNodes(Function<void()> &&cb, bool force = false);
 
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
-	/* Where a row and a cell LIE, in this node's coordinate space.
-
-	Answers for a row that has no node: only the nodes are virtualized, while rebuildRows() commits
-	one controller item per row with the height it resolved before any node existed. Reproducing
-	that outside the widget means copying arithmetic that lives in here and will change, which is
-	the whole reason these are public.
-
-	False before the first layout pass - there is nothing to report yet, and a zero rectangle is a
-	worse answer than an admitted absence. */
+	// Row and cell rectangles in this node's space, also for rows without a node. False before the
+	// first layout pass.
 	bool getRowRect(size_t index, Rect &out) const;
 	bool getCellRect(size_t row, size_t column, Rect &out) const;
 
-	/* Which row lies at a point, in CONTENT space rather than in the visible box: a point above or
-	below the viewport names the row that would be there, the same way getRowRect describes a row
-	that scrolled out of sight. maxOf<size_t>() only for a point outside the content entirely. */
+	// Which row lies at a point, in content space (see ui::getRowIndexAt); maxOf<size_t>() outside
+	// the content.
 	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
 
 	// The boundary an insertion would snap to: 0..getRowCount(), never a row index.
@@ -336,19 +250,12 @@ public:
 
 	/* Reordering rows by dragging a grip, and by Alt+Up / Alt+Down.
 
-	THE GRIP IS A COLUMN THE CALLER DECLARES, under this key, wherever it wants it and with whatever
-	track CSS gives it. The view fills that cell in - an icon and a DragSource - but does not insert
-	the column itself: doing that would renumber every other column behind the caller's back, and
-	the `grid-template-columns` list they already wrote would line up against the wrong cells.
+	The caller declares the grip column under ReorderColumnKey; the view fills that cell with an
+	icon and a DragSource but does not insert the column (that would shift the CSS track list).
 
-	`to` IS THE ROW'S FINAL INDEX, counted after it has been taken out of its old place. That is the
-	only reading under which "move this one down" is expressible, and it is the same convention
-	data::Model::moveNode states.
-
-	The callback returns FALSE to refuse: the order does not change and neither does the selection.
-	Nothing is moved by the view itself - the model belongs to the caller, and only the caller knows
-	whether the move is legal. On acceptance the view re-points the selection so that it follows the
-	ROW, not the index it used to sit at. */
+	`to` is the row's final index, counted after removal from its old place (as
+	data::Model::moveNode). The callback performs the move and returns false to refuse; on
+	acceptance the selection follows the row. */
 	static constexpr StringView ReorderColumnKey = StringView("__reorder");
 
 	virtual void setReorderEnabled(bool);
@@ -356,8 +263,8 @@ public:
 
 	virtual void setReorderCallback(Function<bool(size_t from, size_t to)> &&);
 
-	// Ask for a move as if the user had done it. What the keyboard path calls, and what a test
-	// drives the widget with. False when it was refused or was a no-op.
+	// Request a move as if the user had done it (used by the keyboard path). False when refused or
+	// a no-op.
 	virtual bool reorderRow(size_t from, size_t to);
 
 protected:
@@ -366,13 +273,11 @@ protected:
 	virtual void handleSourceDirty(SubscriptionFlags);
 	virtual void refresh();
 
-	// Mark every SPAN row's payload stale. Explicit nodes are not touched: their payload lives in
-	// the model and is read through, so it cannot be out of date with it.
+	// Mark every span row's payload stale; explicit nodes read their payload from the model.
 	void dropSpanData();
 
 	// Resolve the column geometry for the current width and stamp it on the header and every live
-	// row. One computation, one component, every consumer - that is what keeps the sticky header
-	// aligned with the rows without either measuring the other.
+	// row.
 	virtual void resolveColumns();
 	virtual void restampColumns();
 
@@ -383,16 +288,12 @@ protected:
 
 	virtual void rebuildRows();
 
-	/* Put _selectedRow back on the row it was on, by IDENTITY, after _rows has been re-derived.
-
-	Same job as TreeView::remapSelection, and the same reason. It also REPLACES the hand-written
-	index arithmetic reorderRow used to do: a reorder is a rebuild like any other, so the selection
-	follows the row through the identity it already has, and there is no second formula that has to
-	agree with the first. */
+	// Put _selectedRow back on its row by identity after _rows is re-derived (also after a
+	// reorder), as TreeView::remapSelection.
 	void remapSelection();
 
 	// The single mutator both setSelectedRow() and handleSelectionChanged() go through; see
-	// TreeView::setSelectedIdentity for what the indirection buys
+	// TreeView::setSelectedIdentity
 	void setSelectedIdentity(ItemId);
 
 	void publishSelection();
@@ -430,11 +331,10 @@ protected:
 	// give a node the systems and components that make it lay its children out as a table row
 	void makeTableRow(Node *);
 
-	// Re-derive the intrinsic height and report it if it moved. No-op unless auto-height is on -
-	// a scrolling table has no intrinsic height to report and nobody is listening for one.
+	// Re-derive the intrinsic height and report it if it changed. No-op unless auto-height is on.
 	virtual void updateIntrinsicHeight();
 
-	HeaderNode *_header = nullptr; // OUTSIDE the ScrollView - that is the whole of "sticky"
+	HeaderNode *_header = nullptr; // outside the ScrollView, so it is sticky
 	basic2d::ScrollView *_scroll = nullptr;
 	Rc<basic2d::ScrollController> _controller;
 	DataListener<Model> *_sourceListener = nullptr;
@@ -443,8 +343,7 @@ protected:
 	bool _reorderEnabled = false;
 	Function<bool(size_t from, size_t to)> _reorderCallback;
 	InputListener *_reorderKeys = nullptr;
-	// The target is a component on this node now, so there is nothing to hold - only whether it is
-	// currently declared
+	// Whether the drop target component is currently declared on this node
 	bool _hasDropTarget = false;
 	basic2d::Layer *_insertionLine = nullptr;
 
@@ -464,18 +363,16 @@ protected:
 
 	float _rowHeight = 28.0f;
 	float _headerHeight = 32.0f;
-	// The last height reported through _intrinsicHeightCallback; nan() until one has been reported,
-	// so the first answer is never swallowed as "unchanged".
+	// The last height reported through _intrinsicHeightCallback; nan() until the first report.
 	float _reportedHeight = nan();
 	size_t _selectedRow = maxOf<size_t>();
 
-	// WHAT is selected, as opposed to where it currently sits; _selectedRow is derived from this on
-	// every rebuild. See remapSelection()
+	// The selected identity; _selectedRow is derived from it on every rebuild (remapSelection)
 	ItemId _selectedId = ItemId(0);
 
 	bool _selectionOwned = false;
 
-	// Set while applying a change that came FROM the system; see TreeView
+	// Set while applying a change that came from the system; see TreeView
 	bool _applyingSelection = false;
 
 	bool _autoHeight = false;
@@ -485,15 +382,14 @@ protected:
 	bool _forceRebuild = false;
 	bool _inDataRequest = false;
 
-	// Who asked to be told when the nodes are next current. Taken off the list before they run, so
-	// one that asks again is served by the following rebuild.
+	// Callbacks for the next rebuild; taken off the list before they run.
 	Vector<Function<void()>> _rebuildCallbacks;
 };
 
 // Chooses what a row looks like. Every setter is optional: a builder the callback never touches
 // yields the standard row - one cell per column, each showing data[column.key].
 //
-// There is deliberately no height setter: the height is consumed one pass earlier (see TableView).
+// No height setter: the height is resolved before the row is built (see setRowHeightCallback).
 class SP_PUBLIC TableView::RowBuilder {
 public:
 	TableView *getView() const { return _view; }
@@ -504,9 +400,8 @@ public:
 	bool isLoaded() const { return _row->dataLoaded; } // false: the payload has not arrived yet
 	bool isSelected() const;
 
-	// The element behind the row, and the external object it stands for. Null for a table with no
-	// model; a span row answers with the span node, which is the honest answer — the row is an
-	// offset into a length, and there is no element there to point at.
+	// The element behind the row and its external object. Null with no model; a span row returns
+	// the span node.
 	ModelNode *getNode() const { return _row->node; }
 	Ref *getObject() const { return _row->node ? _row->node->getObject() : nullptr; }
 

@@ -102,16 +102,8 @@ URect QueuePassHandle::rotateScissor(const core::FrameConstraints &constraints,
 	return URect{uint32_t(x), uint32_t(y), width, height};
 }
 
-// How much of the presented image this frame actually has to repaint.
-//
-// The machinery is the swapchain's and is shared with every backend: it diffs this frame's damage
-// snapshot against what the target image already holds. What differs here is the payoff. A GPU
-// backend saves the load/store of a render pass; a software rasterizer saves the rasterization
-// itself, which is the whole cost of the frame - so a blinking cursor stops costing a full screen.
-//
-// Returns false when the frame can be skipped entirely; `area` is the region to repaint.
-// The single rectangle the regions would collapse into. Used as the recording scissor, and as the
-// number the damage log compares against so it is visible when keeping them apart bought anything.
+// The bounding rectangle of the redraw regions. Used as the recording scissor and reported in the
+// damage log for comparison with the separate regions.
 static URect QueuePassHandle_boundingRect(SpanView<URect> areas) {
 	if (areas.empty()) {
 		return URect{0, 0, 0, 0};
@@ -139,9 +131,8 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return value && StringView(value) != "0";
 	}();
 
-	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame. It exists for the
-	// benchmark: with damage tracking on, a static scene skips its frames entirely and every kernel
-	// set measures the same zero. Never for production - it throws away all of damage tracking.
+	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame, for benchmarks (a static
+	// scene otherwise skips its frames). Disables damage tracking; not for production.
 	static const bool forceFull = [] {
 		auto value = ::getenv("XL_SOFT_FORCE_FULL_REDRAW");
 		return value && StringView(value) != "0";
@@ -223,15 +214,9 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return true;
 	}
 
-	// Keep the regions apart rather than collapsing them into their bounding box. The damage
-	// tracker already merged the list down to at most SwapchainDamage::MaxRects, and it merged the
-	// pairs that wasted the least area doing so - taking the union here would throw that away, and
-	// two small changes in opposite corners would cost a full-screen repaint.
-	//
-	// They do have to be pairwise disjoint, though: each region is a separate rasterization pass,
-	// so a pixel covered twice would have every transparent command blended into it twice. The
-	// outward one-pixel padding the tracker applies is enough to make neighbours touch, so this is
-	// not a theoretical case.
+	// Keep the regions apart (the tracker already merged them to at most MaxRects), but make them
+	// pairwise disjoint: each region is a separate rasterization pass, and an overlap would blend
+	// transparent commands twice. The tracker's one-pixel padding makes neighbours touch.
 	areas.clear();
 	for (auto &it : damage) {
 		auto rect = it;
@@ -273,17 +258,8 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 	return true;
 }
 
-/* ---- the frame budget ---------------------------------------------------------------------------
-
-Counters are cumulative and every report is a running average over the whole run, like the
-rasterizer profile. That is what makes a short interval usable: any one frame of a software
-renderer is noise (a font atlas batch, a scheduler tick), and the average is the only form in which
-these numbers can be compared between two builds.
-
-Atomic because `present` need not be the thread that ran the pass - the presentation engine calls
-it wherever the swapchain lives - and because being wrong about that would show up as a plausible
-number rather than as a crash. Five relaxed increments a frame cost nothing next to the work being
-measured. */
+/* Frame budget counters: cumulative, so every report is a running average over the whole run.
+Atomic because `present` may run on a different thread than the pass. */
 static sprt::atomic<uint64_t> s_budgetStage[toInt(FrameStage::Count)] = {};
 static sprt::atomic<uint64_t> s_budgetFrames{0};
 static sprt::atomic<uint64_t> s_budgetPeriod{0};
@@ -314,9 +290,8 @@ void addFrameStageTime(FrameStage stage, uint64_t micros) {
 	}
 }
 
-// When the last present returned. Zero until the first one, which is what makes the first frame
-// of a run contribute nothing: it has no previous present to measure a gap from, and charging it
-// with everything that happened before the window existed would poison the average for good.
+// When the last present returned. Zero until the first one, so the first frame of a run
+// contributes nothing.
 static Time s_budgetPresented;
 
 void openFrameBudget() {
@@ -354,14 +329,11 @@ void closeFrameBudget() {
 
 	auto period = s_budgetPeriod.load();
 
-	// `other` is a subtraction, so it can come out negative: the stages are timed on the loop
-	// thread while the period is measured at present, and on the very first reports the two have
-	// not yet covered the same frames. Report it clamped rather than as a wrapped unsigned - a
-	// negative residual means "not enough frames yet", not "the app half is free".
+	// `other` can come out negative on the first reports (stages and period have not yet covered
+	// the same frames), so clamp it instead of wrapping.
 	auto other = period > accounted ? period - accounted : 0;
 
-	// Percentages of the period, not of the accounted total: the whole question is how much of the
-	// frame the render half is, and normalizing to itself would hide exactly that.
+	// Percentages of the period, not of the accounted total.
 	auto pct = [&] (uint64_t v) { return period ? double(v) * 100.0 / double(period) : 0.0; };
 	auto per = [&] (uint64_t v) { return double(v) / double(frames); };
 
@@ -382,21 +354,12 @@ void closeFrameBudget() {
 			" other=", per(other), "us ", pct(other), "%");
 }
 
-// XL_SOFT_PROFILE=1 reports what the rasterizer actually costs.
-//
-// It times raster::draw and nothing else, deliberately. A frame-level number would be useless
-// here: in a debug build everything except this module is unoptimized, so the scene graph and the
-// renderer would swamp the pixel loops - which are the only thing an ISA kernel can change.
-//
-// Runs on the loop thread only, so the counters need no synchronization. Tiles are fanned out to a
-// pool now, but the timing is still taken here - around the whole fork and join - so the counters
-// are still touched by one thread and the number still covers all the work, not one worker's share
-// of it.
+// XL_SOFT_PROFILE reports what the rasterizer costs: it times raster::draw only, around the whole
+// tile fork and join. Runs on the loop thread only, so the counters need no synchronization.
 static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> areas,
 		const raster::TilingStats &tiling, Extent2 surface) {
-	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. The
-	// interval is settable because the counters are cumulative - every line is the running
-	// average over the whole run, so a short run just needs a short interval to say anything.
+	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. Counters are
+	// cumulative: every line is the running average over the whole run.
 	static const uint64_t reportEvery = [] () -> uint64_t {
 		auto value = ::getenv("XL_SOFT_PROFILE");
 		if (!value) {
@@ -436,14 +399,8 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 		return;
 	}
 
-	// Mpx/s is the number to compare between kernel sets: it is independent of how much of the
-	// surface the damage tracker happened to hand over on these particular frames.
-	// kernels=, threads= and tiles/frame= are reported for the same reason: a benchmark must never
-	// print a number under a label it did not actually run. A fallback that went unnoticed produces
-	// a real measurement of the wrong thing, and nothing in the picture gives it away.
-	// threads= and tiles/frame= are what the rasterizer *did*, not what it was asked for: a pool
-	// that could not supply the workers, or a region too small to cut, turns a measurement of the
-	// parallel path into one of the serial path and looks exactly the same from here.
+	// Mpx/s compares kernel sets independently of the damage size. kernels=, threads= and
+	// tiles/frame= report what actually ran, not what was requested, so fallbacks are visible.
 	auto usec = sprt::max(micros, uint64_t(1));
 	log::source().debug("soft::profile", "kernels=", raster::getActiveKernelSetName(),
 			" threads=", double(workerCount) / double(frames), " frames=", frames,
@@ -451,16 +408,11 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 			" tiles/frame=", double(tileCount) / double(frames), " px/frame=", pixels / frames,
 			" us/frame=", double(micros) / double(frames), " Mpx/s=", double(pixels) / double(usec));
 
-	// Three different quantities, and the whole point is that they are different:
+	//   surface  - the window.
+	//   damage   - what the tracker handed the rasterizer.
+	//   filled   - what the kernels wrote; above damage is overdraw.
 	//
-	//   surface  - the window. Fixed.
-	//   damage   - what the tracker handed the rasterizer. surface means the damage protocol did
-	//              not narrow anything, whatever the reason.
-	//   filled   - what the kernels actually wrote. Above damage is overdraw (a pixel covered by
-	//              several commands); at or below it, the commands are sparse inside the region.
-	//
-	// damage/surface is therefore the answer to "is this a full repaint", and filled/damage the
-	// answer to "and how much work is spent inside whatever it repaints".
+	// damage/surface tells a full repaint apart; filled/damage is the work inside the repaint.
 	auto denom = sprt::max(pixels, uint64_t(1));
 	log::source().debug("soft::profile", "fill: surface/frame=", surfacePixels / frames,
 			" damage/frame=", pixels / frames, " filled/frame=", fill.total() / frames,
@@ -555,11 +507,8 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// then narrows it further at draw time.
 		buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
 
-		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
-		// outside them the image keeps the previous frame, which is exactly what makes the partial
-		// redraw correct rather than merely cheaper.
-		// The clear writes real pixels and belongs in the same budget as the draw - on a frame
-		// whose damage is the whole surface it is the single largest writer.
+		// Load op: clear only inside the damaged regions; outside them the image keeps the previous
+		// frame. The clear counts toward the fill stats like the draw.
 		raster::FillStats clearFill;
 		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
 			FrameStageTimer timer(FrameStage::Clear);
@@ -575,11 +524,9 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			recordSubpass(q, *subpass, *buf);
 		}
 
-		// The command list is built once; only the rasterization repeats, per tile of per region,
-		// and a command outside a tile is rejected before any pixel work. The tiling and the
-		// thread count come from the process settings - untiled and single-threaded unless
-		// SP_RASTER_TILE / SP_RASTER_THREADS say otherwise - so this is the same one call per
-		// region it always was until something asks for more.
+		// The command list is built once; rasterization repeats per tile of each region. Tiling and
+		// thread count come from SP_RASTER_TILE / SP_RASTER_THREADS (untiled, single-threaded by
+		// default).
 		raster::TilingStats tiling;
 		auto started = Time::now();
 		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
@@ -589,9 +536,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		QueuePassHandle_profileFrame(elapsed, redrawAreas, tiling,
 				Extent2(target.width, target.height));
 
-		// The same span the profile above reports, charged to the budget as well: the two
-		// instruments are turned on separately, and the budget must not depend on the profile
-		// being on to know what the rasterizer cost.
+		// The same span, charged to the budget independently of the profile.
 		if (isFrameBudgetEnabled()) {
 			addFrameStageTime(FrameStage::Raster, elapsed.toMicros());
 		}
@@ -629,9 +574,8 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 		onComplete(fenceSuccess);
 	}, this, "soft::QueuePassHandle::submit");
 
-	// Nothing armed this fence on a device queue - there is no queue - so arm it by hand. Without
-	// this core::Fence::check short-circuits on a non-Armed state and the release callbacks (which
-	// is how the frame graph learns the pass completed) never run.
+	// No device queue armed this fence, so arm it by hand; otherwise core::Fence::check skips it
+	// and the release callbacks that complete the pass never run.
 	_fence->setArmed();
 
 	for (auto &it : _data->submittedCallbacks) { it(q, *_data, success); }

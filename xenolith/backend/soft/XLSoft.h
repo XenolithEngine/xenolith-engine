@@ -31,14 +31,13 @@
 // shader compiler and no device memory - "device memory" is malloc'd, an image is a linear
 // bitmap and a pipeline is a key that selects a C++ kernel.
 //
-// Only what the flat queue needs is implemented; see soft-raster-backend-plan.md for the
-// contract and for what is deliberately out of scope (depth/stencil, MSAA, compute, sRGB).
+// Only what the flat queue needs is implemented; depth/stencil, MSAA, compute and sRGB are out
+// of scope (see soft-raster-backend-plan.md).
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-// The rasterizer is a stappler module (it depends on nothing but stappler_core and is useful
-// outside a renderer). The alias keeps the backend and the 2d renderer spelling it `soft::raster`,
-// which is where it reads best from their side.
+// The rasterizer is a stappler module; the alias lets the backend and the 2d renderer spell it
+// `soft::raster`.
 namespace raster = ::stappler::raster;
 
 class Instance;
@@ -72,41 +71,21 @@ inline uint32_t getPixelSize(core::ImageFormat format) {
 	return raster::getPixelSize(getRasterFormat(format));
 }
 
-/* ---- the frame budget (XL_SOFT_BUDGET=N) --------------------------------------------------------
+/* The frame budget (XL_SOFT_BUDGET=N): how the wall-clock period between two presents splits
+into stages, all on the loop thread:
 
-XL_SOFT_PROFILE answers "how fast did the rasterizer run". This answers the question one level up:
-of the wall-clock period between two presents, how much went where.
-
-Everything the software backend does to a frame happens on the loop thread, in a fixed order, so
-the frame really is a sum of named stages plus whatever is left:
-
-	wait     the gap between the previous present and the start of this frame's render half.
-	         The software presentation engine sets preStartFrame = false, so nothing overlaps
-	         here: this is the app thread's update and scene visit, plus whatever the frame graph
-	         spends getting from one to the other. It is a stage of the frame like any other, and
-	         on a scene-heavy build it is the largest one.
-	vertex   VertexAttachmentHandle::loadVertexes - the vertex plan and the vertex/index/transform
-	         arrays. Proportional to the scene, not to the damage: a frame that repaints twelve
-	         percent of the surface still walks every command.
-	record   recordSubpass - the vertex stage (per vertex), material and texture resolution, glyph
-	         run emission; produces the draw list.
+	wait     previous present -> start of this frame's render half (app update and visit;
+	         preStartFrame = false, so nothing overlaps). XL_FRAME_ACCOUNT=1 splits it further.
+	vertex   VertexAttachmentHandle::loadVertexes - the vertex plan and vertex/index/transform
+	         arrays; proportional to the scene, not to the damage.
+	record   recordSubpass - vertex stage, material and texture resolution, glyph runs.
 	clear    the attachment load op, inside the damaged regions only.
-	raster   drawTiled - the pixel loops, fork and join included. The same span XL_SOFT_PROFILE
-	         times, reported here so the two can be read against each other.
-	present  Swapchain::present - on a framebuffer window, the copy into the scanout mapping and
-	         the cache maintenance that publishes it.
-	other    period minus all of the above. NOT a stage: it is the residual, and with `wait` in
-	         place it should be small. A large `other` means a frame reached present without
-	         passing through the stages - the damage tracker skipping the pass is the ordinary
-	         cause - and the report is then describing frames it did not measure.
+	raster   drawTiled - the pixel loops, fork and join included (the XL_SOFT_PROFILE span).
+	present  Swapchain::present - on a framebuffer window, the copy into the scanout mapping.
+	other    the residual, not a stage; large when frames reach present without the pass
+	         (e.g. skipped by the damage tracker).
 
-`wait` is where the app thread's half lands, but it does not say what that half spent it on. When
-`wait` dominates, this instrument has said all it can and the next question needs XL_FRAME_ACCOUNT=1
-(the visit, and deferred work against waiting for it); see docs/agents/measuring-frames.md.
-
-Off unless the variable is set, and the check is one relaxed load in five places per frame - cheap
-enough to leave in a shipping build, which matters because the boards this backend runs on are not
-the boards a profiler runs on. */
+Off unless the variable is set; the check is cheap enough for shipping builds. */
 enum class FrameStage : uint32_t {
 	Wait,
 	Vertex,
@@ -117,20 +96,18 @@ enum class FrameStage : uint32_t {
 	Count
 };
 
-// Whether XL_SOFT_BUDGET named a non-zero interval. Read this before taking a clock: the point of
-// the guard is that a build with the instrument compiled in still pays nothing for it.
+// Whether XL_SOFT_BUDGET named a non-zero interval. Check before taking a clock.
 SP_PUBLIC bool isFrameBudgetEnabled();
 
 // Add to a stage of the frame being accounted. Safe from any thread.
 SP_PUBLIC void addFrameStageTime(FrameStage, uint64_t micros);
 
 // Open the frame: charges everything since the previous present to `wait`. Called once per frame,
-// at the first thing the render half does, so that what it measures is the gap and nothing else.
+// at the start of the render half.
 SP_PUBLIC void openFrameBudget();
 
 // Close the frame: charges the period since the previous close and reports every Nth time.
-// Called from present, because present is the last thing that happens to a frame and the only
-// place that sees every frame - a frame the damage tracker skipped never reaches runPass.
+// Called from present, the only place that sees every frame (skipped frames never reach runPass).
 SP_PUBLIC void closeFrameBudget();
 
 // Times its scope into one stage. Does nothing, not even a clock read, when the budget is off.

@@ -30,21 +30,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 /** Inherited-style data components ("values + defined-mask").
 
-Each component stores only the values actually defined by some styling source, plus a
-bitmask of which fields are defined. Consumers (Label first of all) read the component
-from their own node first, then walk the parent chain (Node::findParentWithComponent),
-taking the nearest defined value per field, until the mask is complete — see
-accumulateInheritedStyle(). A defined inherited value takes priority over the consumer's
-own explicitly-set value; when the component is removed, the consumer falls back to its
-explicit values.
+Each component stores only the values defined by some styling source, plus a mask of defined
+fields. Consumers (e.g. Label) take the nearest defined value per field from their node and its
+parents - see accumulateInheritedStyle(). A defined inherited value overrides the consumer's own
+explicit value; without the component the consumer uses its explicit values.
 
-NOTE: there is NO built-in reactivity for these components. ui::StyleResolver keeps them
-up to date through its own styling protocol (stylesheet version bump -> re-resolve ->
-component rewrite on the node itself -> the node's own components-dirty pass). Any OTHER
-producer that writes these components must itself trigger re-evaluation of the consumers:
-a Label only reacts to changes of the components on its OWN node (handleComponentsDirty);
-a change on an ancestor is picked up only when the label is re-laid-out for some other
-reason. */
+There is no built-in reactivity: ui::StyleResolver rewrites the components on the node itself.
+Any other producer must trigger re-evaluation: a Label reacts only to components on its own node
+(handleComponentsDirty), not to changes on an ancestor. */
 
 struct SP_PUBLIC InheritedColorStyle {
 	static ComponentId Id;
@@ -127,13 +120,9 @@ struct SP_PUBLIC InheritedTextStyle {
 	font::VerticalAlign verticalAlign = font::VerticalAlign::Baseline;
 	font::TextAlign textAlign = font::TextAlign::Left;
 
-	/* CSS `direction` and `unicode-bidi`. `direction` rides in this component and not in a
-	   component of its own because it IS an inherited text property, so the walk above already
-	   carries it - and because `direction` is inherited, the resolver stamps this component on
-	   every node under a root that declares one, which lets a layout container read its own
-	   direction with a single getComponent and no parent walk in the layout path.
-
-	   `unicode-bidi` is NOT inherited and is only ever written on the node that declared it. */
+	/* CSS `direction` and `unicode-bidi`. `direction` is inherited, so the resolver stamps this
+	   component on every node under a root that declares one, and a layout container reads it
+	   with a single getComponent. `unicode-bidi` is not inherited: only on the declaring node. */
 	font::TextDirection direction = font::TextDirection::LeftToRight;
 	font::BidiMode bidi = font::BidiMode::Normal;
 
@@ -167,30 +156,18 @@ inline T accumulateInheritedStyle(NotNull<const Node> node) {
 	return ret;
 }
 
-/* THE INLINE DIRECTION IN FORCE AT A NODE, for the code that asks OUTSIDE a style pass.
-
-The layout backends, the scroll indicator and the dock tree all need the direction and none of them
-runs inside StyleResolver. The node's own component answers immediately in the common case, because
-`direction` is inherited and the resolver therefore stamps InheritedTextStyle on every node under a
-root that declares one; the parent walk is the fallback for a subtree with no stylesheet at all.
-
-`LeftToRight` when nothing says otherwise, which keeps every application that never heard of
-`direction` laid out exactly as before. */
+/* The inline direction in force at a node, for code outside a style pass (layout backends, scroll
+indicator, dock tree). Reads the node's own component, then walks parents; `LeftToRight` if nothing
+declares a direction. */
 SP_PUBLIC font::TextDirection getInlineDirection(const Node *);
 
 inline bool isInlineRtl(const Node *node) {
 	return getInlineDirection(node) == font::TextDirection::RightToLeft;
 }
 
-/* PLACE A CHILD BY ITS INLINE EDGE, for a widget that lays its own row out in code.
-
-A widget like `ui::Select` walks a cursor in from the start of its box (icon, then label) and
-another in from the end (the arrow), then gives the label whatever is between them. Both cursors
-are DISTANCES, and only the last step turns a distance into an x - so these two functions are the
-whole of what such a widget needs to work in both directions: keep the arithmetic, swap the edge.
-
-`inset` is measured from the named edge. The anchor is set to match, so the child grows into the
-box rather than out of it. */
+/* Place a child by its inline edge, for a widget that lays its own row out in code (e.g.
+`ui::Select`). `inset` is a distance from the named edge; the anchor is set to match, so the child
+grows into the box. */
 inline void placeInlineStart(Node *child, float inset, float y, float boxWidth, bool rtl) {
 	child->setAnchorPoint(Vec2(rtl ? 1.0f : 0.0f, 0.5f));
 	child->setPosition(Vec2(rtl ? boxWidth - inset : inset, y));
@@ -201,11 +178,8 @@ inline void placeInlineEnd(Node *child, float inset, float y, float boxWidth, bo
 	child->setPosition(Vec2(rtl ? inset : boxWidth - inset, y));
 }
 
-/* Which way a widget's own caption hugs its box.
-
-NOT `TextAlign::Start`, which resolves against the TEXT's base direction: a Latin caption inside a
-right-to-left control would then hug the left of its box, and the box's left is the far side. What
-a caption follows is the CONTROL's direction, which is this. */
+/* Which way a widget's own caption hugs its box: follows the control's direction, not
+`TextAlign::Start`, which resolves against the text's base direction. */
 inline font::TextAlign inlineStartAlign(bool rtl) {
 	return rtl ? font::TextAlign::Right : font::TextAlign::Left;
 }

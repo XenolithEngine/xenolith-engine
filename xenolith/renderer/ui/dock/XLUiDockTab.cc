@@ -41,18 +41,10 @@ bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView 
 
 	setAnchorPoint(Anchor::BottomLeft);
 
-	// A tab has to size itself from its own title, and a ui::Button does not: like every button in
-	// this kit it is arranged by a flex layout, which normally comes from `display: flex` in a
-	// stylesheet. The dock cannot require an application to write that rule for a widget it did
-	// not create, so the layout is built here - and with it the measurement protocol, through
-	// which the strip and then the whole frame derive their floor from the actual titles.
-	//
-	// It carries NO SystemManagedLayout marker on purpose: the resolver only ever tears down a
-	// layout it created itself, so this one survives untouched. A stylesheet can still refine it,
-	// but only through a rule that ALSO declares `display: flex` - padding and the gaps are read
-	// inside the resolver's flex branch, and a rule without `display` never enters it. So the
-	// padding below is what an unstyled tab gets, not a placeholder a bare `dock-tab { padding }`
-	// would override.
+	// The flex layout is built here so the tab sizes itself from its title without a stylesheet
+	// rule; the strip and frame floors derive from that measurement. No SystemManagedLayout: the
+	// resolver does not remove layouts it did not create. CSS padding and gaps apply only in a rule
+	// that also declares `display: flex`.
 	addSystem(Rc<LayoutSystem>::create(FlexLayoutInfo{
 		.direction = FlexDirection::Row,
 		.justifyContent = FlexJustify::Center,
@@ -67,15 +59,8 @@ bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView 
 void DockTab::setString(StringView value) {
 	Button::setString(value);
 
-	// The title becomes the tab's HINT as well, because the title is the first thing a stylesheet
-	// takes away: an icon rail is `dock-tab.vertical > label { display: none }` and what is left
-	// on screen is a glyph with nothing to read. Declaring the hint HERE rather than leaving it to
-	// the application is what makes the two kinds of strip interchangeable - a tab dragged from a
-	// labelled strip into a rail must not arrive anonymous, and the application that dragged it
-	// never touched either node.
-	//
-	// It costs a component and the scene's hover delay, and it shows nothing until a pointer comes
-	// to rest, so the labelled strip pays no visible price for it.
+	// The title is also the tooltip, so a tab whose label a stylesheet hides (an icon rail) stays
+	// readable, including after being dragged in from a labelled strip.
 	if (value.empty()) {
 		removeTooltip(this);
 	} else {
@@ -117,8 +102,7 @@ bool DockTab::handleLeftTap() {
 		return false; // this pointer belongs to a drag; a tap on release would be a second action
 	}
 	if (_host) {
-		// Activation first, so a tap handler sees the panel it asked for already in front - a rail
-		// that unfolds on this tap unfolds onto the right body.
+		// activate first, so a tap handler already sees this panel in front
 		_host->activatePanel(_panelId);
 		_host->handlePanelTapped(_panelId);
 	}
@@ -126,8 +110,7 @@ bool DockTab::handleLeftTap() {
 }
 
 void DockTab::updatePanelDragOffer(DragOffer &, DockPanelPayload &payload) {
-	// The source frame, so a drop can recognise the no-ops - dropping a frame's only panel back
-	// into that same frame - without asking this node, which the drop may well destroy.
+	// the source frame lets a drop detect no-op moves without this node, which the drop may destroy
 	payload.source = _frame;
 }
 

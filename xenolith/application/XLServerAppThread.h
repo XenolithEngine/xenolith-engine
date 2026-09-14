@@ -45,9 +45,8 @@ class Context;
 class RemoteRenderClient;
 class RemoteFontServer;
 
-// Server (and local/single-process) application thread: owns the Context, the native windows and
-// their Directors, and the remote-connection listener. This is the thread the default factory
-// creates, so local apps behave exactly as before the client/server split.
+// Server (and local single-process) application thread: owns the Context, the native windows and
+// their Directors, and the remote-connection listener. The default factory creates this thread.
 class SP_PUBLIC ServerAppThread : public AppThread {
 public:
 	virtual ~ServerAppThread();
@@ -58,19 +57,16 @@ public:
 
 	remote::ObjectRegistry *getSharedObjects() const { return _sharedObjects; }
 
-	// SHA-256 of the listener's DER SubjectPublicKeyInfo, for handing to a client out-of-band so it
-	// can authenticate this server (see remote::Listener::getCertificateFingerprint). Empty while not
-	// listening -- the certificate is generated when the listener opens.
+	// SHA-256 of the listener's DER SubjectPublicKeyInfo, handed to a client out-of-band to
+	// authenticate this server (see remote::Listener::getCertificateFingerprint). Empty while not
+	// listening.
 	BytesView getListenerFingerprint() const;
 
-	// True while a remote client holds the single connection slot and its connection is live. The
-	// end-to-end check polls this to know the client actually got through the handshake, rather than
-	// inferring it from a screenshot.
+	// True while a remote client holds the connection slot (it passed the handshake).
 	bool hasRemoteClient() const;
 
-	// This process's own identity: OS, window subsystem, gAPI, features (M3.5). On a server the
-	// answer to "who owns the window" is itself, so local scene code asks the same question a
-	// remote scene does and gets the same shape of answer.
+	// This process's own identity: OS, window subsystem, gAPI, features. On a server the window
+	// owner is itself, so local and remote scenes get the same kind of answer.
 	virtual const remote::PeerInfo *getServerInfo() const override { return &_localInfo; }
 
 	// The server-side font endpoint (remote::Domain::Font). Persists across client reconnects; used by
@@ -149,38 +145,33 @@ protected:
 	void pumpListener();
 	void handleRemoteConnection(Rc<remote::ServerConnection> &&);
 
-	// Recompute _localInfo. Cheap; called from the few points where an answer can change (a window
-	// appears and names the window subsystem, the listener opens and names the transport, the font
-	// extension loads). Deliberately not lazy-on-read: the read is on a const getter used from
-	// scene code, and a mutable cache there would buy nothing at this rate.
+	// Recompute _localInfo. Called where the answer can change: a window appears, the listener
+	// opens, the font extension loads.
 	void updateServerInfo();
 
-	// The peer answered our ServerInfo request (or refused it). On a compatible peer this is where
-	// the session actually begins -- the announce happens here and not before.
+	// The peer answered (or refused) our ServerInfo request; on a compatible peer the session
+	// starts here with the announce.
 	void handleClientInfo(const remote::MessageHeader &, BytesView payload);
+
+	// Re-send the shared-object announce to a connected client when the set of shared windows
+	// changes; a no-op when nobody is connected.
+	void republishSharedObjects();
 
 	// Swap every shared window's render client: `client` (the connected remote client) takes over on
 	// connect; pass nullptr to revert each window to its own local Director on disconnect.
-	// Re-send the shared-object announce to a connected client. Called whenever the set of shared
-	// windows changes; a no-op when nobody is connected, because the announce sent at handshake time
-	// will carry whatever the set is by then.
-	void republishSharedObjects();
-
 	void takeoverSharedWindows(core::RenderClientChannel *client);
 
-	// Swap a single shared window's render client (resolved by its server-assigned id). Driven by the
-	// client's WindowCode::AttachQueue once it is ready to render that window; pass nullptr to revert
-	// just that window to its own local Director.
+	// Swap one shared window's render client (by its server-assigned id), driven by the client's
+	// WindowCode::AttachQueue; nullptr reverts that window to its local Director.
 	void takeoverSharedWindow(uint64_t windowId, core::RenderClientChannel *client);
 
-	// Tear down the current remote client: revert all shared windows to their local Directors (killing
-	// in-flight remote frames), drop outstanding reply waiters, close the connection and free the slot.
-	// Shared by the disconnect, request-timeout and keepalive-timeout paths.
+	// Tear down the current remote client: revert shared windows to local Directors (killing
+	// in-flight remote frames), drop reply waiters, close the connection and free the slot. Used by
+	// the disconnect, request-timeout and keepalive-timeout paths.
 	void resetRemoteClient();
 
-	// Parse a received message and route it by (domain, code). Returns true if the message was
-	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global
-	// ping/pong control messages are handled for now.
+	// Parse a received message and route it by (domain, code). Returns true if consumed, false to
+	// defer it for a later poll.
 	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload) override;
 
 	// Drive the (bounded, synchronous) setup handshake for a freshly accepted connection: validate
@@ -209,15 +200,13 @@ protected:
 	Rc<remote::Listener> _listener;
 	Rc<sprt::dispatch::PollHandle> _listenPoll;
 
-	// Readiness on the ACCEPTED connection, which is a different fd from the listener's on every
-	// transport whose accept yields a new socket (unix, tcp). QUIC hides this: one UDP socket carries
-	// both accepts and connection data, so listener readiness happened to cover the connection too --
-	// and a transport where it does not was serviced only by the 1s update tick.
+	// Readiness on the accepted connection, whose fd differs from the listener's on transports
+	// where accept yields a new socket (unix, tcp); with QUIC one UDP socket carries both.
 	Rc<sprt::dispatch::PollHandle> _clientPoll;
 	Rc<RemoteRenderClient> _remoteClient;
 
-	// Set by a dispatcher that decided the session is over; acted on in pumpListener, which is the
-	// only place allowed to drop the connection (a dispatcher runs inside its poll).
+	// Set by a dispatcher that ended the session; acted on in pumpListener, the only place allowed
+	// to drop the connection (a dispatcher runs inside its poll).
 	bool _resetClientRequested = false;
 
 	// Server font endpoint (Domain::Font). Created once in loadExtensions, persists across reconnects
@@ -231,15 +220,12 @@ protected:
 	// A just-accepted connection awaiting its setup handshake (driven from pumpListener).
 	Rc<remote::ServerConnection> _pendingConnection;
 
-	// Connections refused in the accept callback (the single-client slot was taken, or the handshake
-	// rate limit is in force). pumpListener answers each with GlobalError::Busy and drops it, so the
-	// peer is told rather than left to time its own handshake out.
+	// Connections refused in the accept callback (slot taken or handshake rate limit). pumpListener
+	// answers each with GlobalError::Busy and drops it.
 	Vector<Rc<remote::ServerConnection>> _refusedConnections;
 
 	// Handshake rate limit (monotonic us). Failures back off exponentially; a success resets both.
-	// The window is global rather than per-address because the QUIC listener multiplexes every peer
-	// over one UDP socket and exposes no per-connection address -- that lands with PeerIdentity in
-	// the transport abstraction.
+	// Global rather than per-address: the QUIC listener exposes no per-connection address.
 	uint64_t _handshakeBackoffUntil = 0;
 	uint32_t _handshakeFailures = 0;
 	Rc<remote::ObjectRegistry> _sharedObjects;

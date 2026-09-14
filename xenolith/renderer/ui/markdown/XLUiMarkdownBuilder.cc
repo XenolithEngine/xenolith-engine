@@ -27,8 +27,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // The node a text run lives in; see document::Node::pushValue.
 static constexpr auto s_valueTag = StringView("__value__");
 
-// An inline construct never becomes a node, so this is also the test for "does this child belong
-// in the block's own Label". `br` and the transparent wrappers are inline without being styled.
+// Whether a child belongs in the block's own Label. `br` and the transparent wrappers are inline
+// without being styled.
 static bool MarkdownBuilder_isInline(StringView tag) {
 	if (tag == s_valueTag || tag == "br" || tag == "span" || tag == "abbr" || tag == "img"
 			|| tag == "input") {
@@ -37,7 +37,7 @@ static bool MarkdownBuilder_isInline(StringView tag) {
 	return getMarkdownInlineForTag(tag) != MarkdownInline::Max;
 }
 
-// The tags open at a point of the descent, as the key the cascade is asked and cached on.
+// The open tags as the key the cascade is queried and cached on.
 static String MarkdownBuilder_chainKey(SpanView<StringView> chain) {
 	StringStream out;
 	for (size_t i = 0; i < chain.size(); ++i) {
@@ -73,9 +73,8 @@ uint32_t MarkdownBuilder::registerFlow(Node *node, MarkdownFlowKind kind,
 		const document::Node &source, uint32_t textLength) {
 	auto index = _flow->emplace(node, kind, spanOf(source), textLength, &source);
 
-	// The first thing readable inside a block is where that block's id points. A list item's `id`
-	// is on the item, but the item is a container with no position of its own - this is the
-	// moment a position exists for it.
+	// A block's id points at the first readable entry inside it; containers like a list item have
+	// no position of their own.
 	if (!_pendingAnchors.empty()) {
 		auto textBegin = _flow->getEntries()[index].textBegin;
 		for (auto &it : _pendingAnchors) { _anchors.emplace(sp::move(it), textBegin); }
@@ -88,8 +87,8 @@ uint32_t MarkdownBuilder::registerFlow(Node *node, MarkdownFlowKind kind,
 uint32_t MarkdownBuilder::build(const document::Node &page) {
 	_blocks = 0;
 
-	// Ten thousand blocks arrive here one at a time. Without this the root re-sorts and re-lays
-	// out everything already in it on each one, and the build is quadratic in the document.
+	// Blocks are added one at a time; without bulk mode the root re-sorts on each and the build
+	// is quadratic.
 	Node::BulkChildren bulk(_root);
 
 	buildChildren(_root, page);
@@ -100,27 +99,17 @@ void MarkdownBuilder::applyIdentity(Node *node, StringView type) {
 	node->setType(type);
 	node->addStyleClass(toString("md-", type));
 
-	/* A z-order of its own, taken from the position the node was just added at.
-
-	Document order is z-order here, and `sortAllChildren` is not stable - so siblings that all sit
-	at zero can come back permuted, which they did: a code block and a table drifted to the end of
-	the document and everything after them was laid out in the hole they left. Giving each block a
-	distinct order makes the ordering total, and the numbers are the order the parser produced. */
+	// Document order is z-order here, and `sortAllChildren` is not stable, so each block takes a
+	// distinct order from its insertion position.
 	if (auto parent = node->getParent()) {
 		node->setLocalZOrder(ZOrder(int16_t(parent->getChildren().size())));
 	}
 
-	// Every node a layout places is anchored at its box origin; the engine is Y-up, so that is
-	// the bottom-left corner (see ui::ScrollSystem and the layout widgets).
+	// Layout places nodes by their box origin, which is bottom-left in the Y-up engine.
 	node->setAnchorPoint(Anchor::BottomLeft);
 
-	// Here rather than where the label is created, because a label reaches the tree by two roads -
-	// a tag factory and the implicit run of a loose inline sequence - and both end up here.
-	//
-	// Code is the exception, and the reason is the same one that puts the system on everything
-	// else: it exists to wrap a block at the width it is offered, and a code block must not wrap.
-	// Its lines are its own, it scrolls sideways instead, and its height is the count of them -
-	// which is what the label answers for itself when nobody imposes a width.
+	// Labels arrive from a tag factory or an implicit inline run; both end here. Code is excluded:
+	// it must not wrap, scrolls sideways, and measures its own height from its lines.
 	if (type != "code" && dynamic_cast<basic2d::Label *>(node)
 			&& !node->getSystemByType<MarkdownTextSystem>()) {
 		node->addSystem(Rc<MarkdownTextSystem>::create());
@@ -134,9 +123,8 @@ basic2d::Label *MarkdownBuilder::makeLabel(Node *parent, StringView tag) {
 }
 
 void MarkdownBuilder::buildChildren(Node *parent, const document::Node &source) {
-	// A run of consecutive inline children with no block between them is a block in everything
-	// but syntax: a tight list item holds its text directly, and so does a table cell. It gets an
-	// implicit Label, typed after the block that contains it so a stylesheet can still reach it.
+	// Consecutive inline children with no block between them get an implicit Label, typed after
+	// the containing block (a tight list item, a table cell).
 	Vector<const document::Node *> pending;
 
 	auto flush = [&] {
@@ -148,19 +136,15 @@ void MarkdownBuilder::buildChildren(Node *parent, const document::Node &source) 
 		for (auto &it : pending) { collectText(state, *it, MarkdownInline::Text); }
 		pending.clear();
 
-		// A run of nothing but whitespace is the separator between two blocks, not a block: a
-		// list item whose text the parser put in a `p` still carries the spaces around it, and
-		// an empty label for each of them would litter the tree and the source map alike.
+		// A whitespace-only run separates blocks and gets no label.
 		auto trimmed = WideStringView(state.text);
 		trimmed.trimChars<WideStringView::WhiteSpace>();
 		if (trimmed.empty()) {
 			return;
 		}
 
-		// `<tag>-text`, never the container's own tag: a Label typed `li` would match the `li`
-		// rule, be given `display: flex` by it, and measure as an empty flex container - a label
-		// with text and a height of zero. The type still says where the text came from, so a
-		// sheet can address it, and the container's inherited text properties still reach it.
+		// `<tag>-text`, never the container's tag: a Label typed `li` would match the `li` rule,
+		// become a flex container and measure zero height. Inherited text properties still apply.
 		auto label = makeLabel(parent, toString(source.getHtmlName(), "-text"));
 		label->addStyleClass("md-text");
 		commitText(label, state, source);
@@ -182,8 +166,7 @@ void MarkdownBuilder::buildBlock(Node *parent, const document::Node &source) {
 	auto pending = _pendingAnchors.size();
 	buildBlockContent(parent, source);
 
-	// An id on a block that produced nothing readable stays unbound rather than drifting onto
-	// whatever block comes next.
+	// An id on a block that produced nothing readable stays unbound.
 	if (_pendingAnchors.size() > pending) {
 		_pendingAnchors.resize(pending);
 	}
@@ -196,8 +179,7 @@ void MarkdownBuilder::buildBlockContent(Node *parent, const document::Node &sour
 
 	auto factory = _registry->get(tag);
 	if (!factory || !factory->create) {
-		// An unknown block is transparent rather than fatal: its children still reach the tree,
-		// so a parser extension nobody taught the builder about loses its box, not its text.
+		// An unknown block is transparent: its children are still built.
 		buildChildren(parent, source);
 		return;
 	}
@@ -210,8 +192,7 @@ void MarkdownBuilder::buildBlockContent(Node *parent, const document::Node &sour
 	auto added = parent->addChild(sp::move(node));
 	applyIdentity(added, tag);
 
-	// The document's own id and classes: `#id` selectors (and, later, anchors) and whatever the
-	// parser attached, e.g. `language-cpp` on a fenced block.
+	// The document's own id and classes, e.g. `language-cpp` on a fenced block.
 	if (!source.getHtmlId().empty()) {
 		added->setName(source.getHtmlId());
 		_pendingAnchors.emplace_back(source.getHtmlId().str<Interface>());
@@ -243,9 +224,8 @@ void MarkdownBuilder::buildText(basic2d::Label *label, const document::Node &sou
 }
 
 void MarkdownBuilder::buildRawText(basic2d::Label *label, const document::Node &source) {
-	// A code fence has no inline markup by definition, so the walk is the same one without the
-	// style ranges - the runs still have to be recorded, because copying a fence is copying it
-	// out of the source.
+	// A code fence has no inline markup, but its runs are still recorded so a copy maps back to
+	// the source.
 	TextState state;
 	for (auto &it : source.getNodes()) { collectText(state, *it, MarkdownInline::Text); }
 	state.ranges.clear();
@@ -253,8 +233,8 @@ void MarkdownBuilder::buildRawText(basic2d::Label *label, const document::Node &
 }
 
 void MarkdownBuilder::applyInlineStyles(basic2d::Label *label, Vector<TextRange> &ranges) {
-	// Ascending by start, and an enclosing range before the range it encloses: a later range wins
-	// per parameter, which is what makes `**bold *and italic***` compose instead of fight.
+	// Ascending by start, enclosing ranges first: a later range wins per parameter, so nested
+	// constructs compose.
 	sprt::sort(ranges.begin(), ranges.end(), [](const TextRange &l, const TextRange &r) {
 		if (l.start != r.start) {
 			return l.start < r.start;
@@ -265,12 +245,8 @@ void MarkdownBuilder::applyInlineStyles(basic2d::Label *label, Vector<TextRange>
 	for (auto &it : ranges) {
 		basic2d::Label::Style style;
 
-		/* The stylesheet decides, and its SILENCE decides too.
-
-		A sheet in scope that says nothing about `strong` means the document is not to embolden
-		it - so the built-in table is consulted only when no sheet answered at all, which is the
-		case of a view built outside any scene. Anything else would make the table a floor no
-		stylesheet could lower. */
+		// A sheet in scope that says nothing about a construct leaves it unstyled; the built-in
+		// table is used only when no sheet is in scope at all.
 		if (!_inlineResolver.resolve(label, it.chain, style) && !_inlineResolver.isValid()) {
 			style = _styles.get(it.kind);
 		}
@@ -283,10 +259,8 @@ void MarkdownBuilder::applyInlineStyles(basic2d::Label *label, Vector<TextRange>
 }
 
 void MarkdownBuilder::restyleText(basic2d::Label *label, const document::Node &source) {
-	// The same walk as the build, for its POSITIONS only: the text it rebuilds is thrown away,
-	// and with it the runs and links, which the Label already carries and which a stylesheet
-	// cannot change. A verbatim block has no inline elements to find, so this correctly produces
-	// nothing for a code fence.
+	// The build walk repeated for range positions only; the rebuilt text, runs and links are
+	// discarded. A verbatim block yields nothing.
 	TextState state;
 	for (auto &it : source.getNodes()) { collectText(state, *it, MarkdownInline::Text); }
 
@@ -308,8 +282,7 @@ void MarkdownBuilder::collectText(TextState &state, const document::Node &source
 	}
 
 	if (tag == "br") {
-		// A hard break is a real newline: the label's white-space mode preserves it (the CSS the
-		// view ships sets `normal` for prose, which still honours an explicit \n).
+		// A hard break is a real newline, which `white-space: normal` still honours.
 		state.text.push_back(u'\n');
 		return;
 	}
@@ -323,8 +296,7 @@ void MarkdownBuilder::collectText(TextState &state, const document::Node &source
 	auto effective = (own == MarkdownInline::Max) ? kind : own;
 	auto inlineElement = (own != MarkdownInline::Max);
 
-	// The DOCUMENT's tag, not the canonical name of the kind: it is what a stylesheet author
-	// sees and writes, and the two differ wherever a construct has an alias (`b` for `strong`).
+	// The document's tag, not the kind's canonical name: stylesheets see aliases (`b`).
 	if (inlineElement) {
 		state.chain.emplace_back(tag);
 	}
@@ -333,8 +305,7 @@ void MarkdownBuilder::collectText(TextState &state, const document::Node &source
 	for (auto &it : source.getNodes()) { collectText(state, *it, effective); }
 	auto count = uint32_t(state.text.size()) - start;
 
-	// An id on an inline is the only record that the reference site exists: there is no node for
-	// it, and a footnote's way back is exactly such an id.
+	// An inline id is the only record of its site (e.g. a footnote reference).
 	if (inlineElement && !source.getHtmlId().empty()) {
 		state.anchors.emplace_back(source.getHtmlId().str<Interface>(), start);
 	}
@@ -359,10 +330,8 @@ void MarkdownBuilder::collectText(TextState &state, const document::Node &source
 	}
 }
 
-// A `width`/`height` the author wrote in the markup. MMD puts them in a `style` attribute, which
-// the document processor parsed into the node's own style list - so this is the resolved metric,
-// and only an absolute one is usable here: a percentage has nothing to be a percentage OF until
-// the paragraph is being laid out, which is after the box has to be known.
+// A `width`/`height` declared in the markup's `style` attribute. Only absolute metrics are used:
+// the box is needed before the paragraph is laid out, so a percentage has no base.
 static float MarkdownBuilder_declaredMetric(const document::Node &source,
 		document::ParameterName name) {
 	for (auto &it : source.getStyle().get(name)) {
@@ -385,9 +354,8 @@ void MarkdownBuilder::collectImage(TextState &state, const document::Node &sourc
 		resolved.size = request.declared;
 	}
 
-	/* Nothing to show and no size to keep: the picture leaves its alt text behind, which is what
-	a reader of a README with a missing badge should see. It is text like any other and takes no
-	run, because those characters are not a slice of the source. */
+	// Nothing to show: the alt text is inserted instead, with no run, since it is not a slice of
+	// the source.
 	if (resolved.size.width <= 0.0f || resolved.size.height <= 0.0f) {
 		auto alt = request.alt;
 		if (!alt.empty()) {
@@ -396,18 +364,15 @@ void MarkdownBuilder::collectImage(TextState &state, const document::Node &sourc
 		return;
 	}
 
-	/* ONE character stands for the picture, and the formatter is told to leave a box the size of
-	that picture where the character is. The character is what keeps the image in the reading
-	order: a caret can stand beside it, a selection can contain it, and the run below points it at
-	the `![alt](src)` that produced it - so copying a selection that crosses a picture copies the
-	picture's markup. */
+	// One character stands for the picture and the formatter reserves a box there. The character
+	// keeps the image in reading order, and its run maps a copy back to the `![alt](src)` markup.
 	auto charIndex = uint32_t(state.text.size());
 	state.text.push_back(MarkdownObjectChar);
 
 	auto span = source.getSourceSpan();
 	if (!span.empty() && span.end() <= _source.size()) {
-		// Not verbatim: one character on screen, a whole `![alt](src)` in the source. The flag is
-		// what stops a copy from slicing into the middle of it.
+		// Not verbatim: one character on screen, a whole `![alt](src)` in the source, so a copy
+		// never slices into it.
 		state.runs.emplace_back(MarkdownRunMap::Run{charIndex, 1, span.offset, span.length, false});
 	}
 
@@ -449,8 +414,7 @@ void MarkdownBuilder::commitImages(basic2d::Label *label, TextState &state) {
 			sprite->setTexture(Rc<Texture>(it.texture));
 		}
 
-		// It has no place in any layout: it stands where the text left a hole for it, and the
-		// only thing that may move it is the system that reads that hole back.
+		// Positioned only by the image system, over the hole the text reserved.
 		sprite->setComponent<OutOfFlowComponent>();
 		sprite->setVisible(false);
 
@@ -478,14 +442,8 @@ void MarkdownBuilder::appendValue(TextState &state, const document::Node &value)
 }
 
 bool MarkdownBuilder::isVerbatim(WideStringView text, document::SourceSpan span) const {
-	/* The comparison has to be against the DECODED source, because that is what the parser
-	produced: `&amp;` became one character, and smart typography turned quotes, dashes and
-	ellipses into single ones. An ellipsis even keeps the byte count, so comparing lengths would
-	call a substituted run verbatim.
-
-	Decoded as it is compared, never materialized: this runs once per text RUN, and a document of
-	ten thousand blocks was decoding the whole of its own source into a throwaway heap string tens
-	of thousands of times to answer a question that usually fails on the first character. */
+	// Compare against the decoded source (entities, smart typography); lengths alone cannot tell,
+	// an ellipsis keeps the byte count. Decoded lazily while comparing: this runs once per run.
 	auto fragment = _source.sub(span.offset, span.length);
 	size_t at = 0;
 	size_t pos = 0;
@@ -514,10 +472,8 @@ bool MarkdownBuilder::isVerbatim(WideStringView text, document::SourceSpan span)
 
 void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state,
 		const document::Node &source) {
-	// The document keeps its text verbatim, newlines and all, because a newline between two words
-	// is a space and only the block knows which one it is. Trailing whitespace, though, belongs to
-	// no word: it is trimmed once per block, and the last run shrinks with it so the source map
-	// still ends where the text does.
+	// Trailing whitespace is trimmed once per block, and the last run shrinks with it so the source
+	// map ends where the text does.
 	auto trimmed = uint32_t(state.text.size());
 	while (trimmed > 0
 			&& (state.text[trimmed - 1] == u'\n' || state.text[trimmed - 1] == u'\r'
@@ -542,19 +498,16 @@ void MarkdownBuilder::commitText(basic2d::Label *label, TextState &state,
 
 	applyInlineStyles(label, state.ranges);
 
-	// After the string and before anything reads the layout: the objects are part of how the text
-	// shapes, not decoration over it.
+	// After the string and before layout: objects affect shaping.
 	commitImages(label, state);
 
-	// Always, even with no runs at all: the component is also how a node finds itself in the
-	// reading order, and a block whose text the parser could not place still has a place in it.
+	// Always, even with no runs: the component is also how a node finds its reading-order entry.
 	label->setComponent<MarkdownRunMap>(
 			MarkdownRunMap{sp::move(state.objects), sp::move(state.runs), sp::move(state.links)});
 
 	auto index = registerFlow(label, MarkdownFlowKind::Text, source, uint32_t(state.text.size()));
 
-	// Now that the block has a place in the reading order, the inline ids collected inside it can
-	// be turned into document positions.
+	// Resolve inline ids into document positions now that the block has a place in the order.
 	if (!state.anchors.empty()) {
 		auto textBegin = _flow->getEntries()[index].textBegin;
 		for (auto &it : state.anchors) {

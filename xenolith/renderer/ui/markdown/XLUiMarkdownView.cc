@@ -30,26 +30,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* The appearance a document has before an application says anything.
-
-Bare tag selectors, deliberately: specificity 0,0,1 is the lowest a rule can have that still
-matches, so `.md-p` from an application sheet outranks every line of this without a fight. The
-layout lives here too - `display: flex` is what makes CSS padding and gaps reach a container at
-all, and it lets an application reshape the document with rules instead of a subclass.
-
-`white-space: normal` on the prose blocks is not decoration. A Label formats as `pre-wrap` unless
-CSS says otherwise, and under `pre-wrap` a newline inside a hard-wrapped source paragraph becomes
-a hard break on screen. Markdown means a space there. */
+/* The built-in document style. Bare tag selectors keep specificity at 0,0,1, so any application
+class (`.md-p`) overrides them. `display: flex` is required for padding and gaps to apply to a
+container. Prose blocks need `white-space: normal`: a Label defaults to `pre-wrap`, which would
+turn source line breaks inside a paragraph into hard breaks. */
 static constexpr auto s_markdownDefaultStyle = StringView(R"css(
-/* `align-items: flex-start`, and the body's own `width: 100%` below, are one decision.
-
-A flex container that overflows on an axis sizes that axis by its content, and `stretch` then hands
-the item that content size - so a stretched body would be as wide as its widest unwrapped paragraph
-and nothing would ever wrap. Aligning to the start leaves the item its own size, and the body says
-what that is. */
-/* `overflow-y` alone, and it really is alone: the axes are independent (see ui::ScissorAxes), so
-the document scrolls vertically and still takes its width from the view - which is what every
-paragraph in it wraps to. */
+/* Vertical overflow only; the width still comes from the view, so paragraphs wrap to it. */
 markdown-view {
 	overflow-y: auto;
 	display: flex;
@@ -92,10 +78,8 @@ h4 { font-size: 17px; }
 h5 { font-size: 15px; }
 h6 { font-size: 14px; color: #555555; }
 
-/* A `div` has no layout of its own, and in this widget that means it has NONE: the resolver
-builds a flex container for `display: flex` and for nothing else, so an unstyled container
-collapses its children onto the origin. The parser wraps footnotes and citations in one, which is
-how a document with a footnote used to come out in a heap. */
+/* Only `display: flex` builds a layout, so an unstyled container would stack its children at the
+origin. The parser wraps footnotes and citations in a `div`. */
 div, figure {
 	display: flex;
 	flex-direction: column;
@@ -186,9 +170,7 @@ pre {
 	border-radius: 4px;
 }
 
-/* The code's own box, kept apart from the painted one: this is the half that scrolls sideways,
-and the `pre` above is the half that paints. Splitting them is what lets the panel be as tall as
-the code while the code itself is as wide as its longest line. */
+/* The code's own box scrolls sideways; the `pre` above paints the panel. */
 pre-scroll {
 	display: flex;
 	flex-direction: column;
@@ -196,16 +178,9 @@ pre-scroll {
 	overflow-x: auto;
 }
 
-/* THE INLINE CONSTRUCTS.
-
-These are the rules that make a Markdown document restyleable at all. An inline is a style range
-inside its block's Label, not a node, so nothing here matches an element that exists - the widget
-manufactures a probe for the length of the cascade query and throws it away (ui::MarkdownInlineResolver).
-What reaches the range is only what these rules change ABOUT THE BLOCK, which is why `code` may
-name a family without also fixing a size: inline code in a heading stays heading-sized.
-
-Only the twelve properties a range style can carry are read here; `white-space` and friends are
-properties of a paragraph and are ignored on an inline. */
+/* Inline constructs. An inline is a style range inside its block's Label, matched through a
+temporary probe node (ui::MarkdownInlineResolver). Only what these rules change relative to the
+block reaches the range, and only the properties a range style carries are read. */
 strong, b { font-weight: bold; }
 em, i { font-style: italic; }
 del, s { text-decoration: line-through; }
@@ -216,8 +191,7 @@ sup { vertical-align: super; }
 
 a { color: #1565c0; text-decoration: underline; }
 
-/* `code` is BOTH the inline construct and the block inside a `pre`. The bare rule is the inline
-one; the block overrides the colour back, because a red fence would be unreadable. */
+/* The bare `code` rule is the inline one; the block inside `pre` restores the colour. */
 code { font-family: monospace; color: #b71c1c; }
 
 pre code {
@@ -271,25 +245,21 @@ bool MarkdownView::init() {
 	_registry = MarkdownRegistry::createDefault();
 	_flow = Rc<MarkdownFlow>::alloc();
 
-	// The view's own sheet, plus the one resolver that styles the whole produced subtree. One
-	// recursive resolver, never one per node: it publishes itself on the frame stack and every
-	// descendant delivers its events back to it.
+	// The view's own sheet and a single recursive resolver for the whole produced subtree.
 	_styleSystem = addSystem(Rc<StyleSystem>::create(s_markdownDefaultStyle));
 	addSystem(Rc<StyleResolver>::create(true));
 
-	// A separate content node so that rebuilding is one removeAllChildren, and so the systems
-	// above (and, later, a selection overlay) are never swept away with the document.
+	// A separate content node: a rebuild is one removeAllChildren and leaves the systems intact.
 	_content = addChild(Rc<Node>::create());
 	_content->setType("markdown-body");
 	_content->addStyleClass("md-body");
 	_content->setAnchorPoint(Anchor::BottomLeft);
 
-	// After the content node, so the handles it may create sit above the document; its system
-	// priority is what puts it ahead of the scroll the sheet asks for.
+	// Added after the content node so its handles sit above the document; its system priority
+	// puts it ahead of the scroll.
 	_selection = addSystem(Rc<MarkdownSelectionSystem>::create(this));
 
-	// A sheet an application puts ABOVE the view changes what the inlines resolve to, and only
-	// nodes that ask are told about an ancestor's components.
+	// An ancestor's sheet changes what the inlines resolve to.
 	setWantsAncestorComponents(true);
 
 	return true;
@@ -314,7 +284,7 @@ bool MarkdownView::init(const FileInfo &file) {
 void MarkdownView::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
 
-	// Not in init(): a node has no scene to hang a menu coordinator on until it is in one.
+	// Needs a scene for the menu coordinator, so not in init().
 	buildContextMenu();
 
 	updateInlineStyles();
@@ -352,10 +322,8 @@ void MarkdownView::update(const UpdateTime &time) {
 		auto pending =
 				_virtual.update(_contentSize.height, scroll ? scroll->getScrollPosition().y : 0.0f);
 
-		/* Kept scheduled for as long as the document is virtualized, measured or not: the window
-		follows the scroll, and a scroll produces frames rather than an event this view can hook
-		without taking the scroll's single callback away from whoever else may want it. The pass
-		is a walk of the block list and nothing else. */
+		// Kept scheduled while virtualized: the window follows the scroll, which produces frames
+		// rather than an event this view can hook without taking the scroll's single callback.
 		(void)pending;
 	}
 
@@ -384,8 +352,7 @@ void MarkdownView::invalidateInlineStyles() {
 
 	_styleVersion = generation;
 
-	// Nothing to restyle before the first build, and a rebuild resolves against the new sheet on
-	// its own.
+	// Nothing to restyle before the first build; a rebuild resolves against the new sheet itself.
 	if (_treeDirty || _blocks == 0) {
 		return;
 	}
@@ -397,8 +364,7 @@ void MarkdownView::invalidateInlineStyles() {
 }
 
 void MarkdownView::updateSelectionColor() {
-	// The custom property is read off the view's own resolved style, which is also the moment the
-	// inline deltas are decided - the two answer to the same reload.
+	// Read the custom property off the view's own resolved style.
 	auto style = StyleResolver::resolveStyleForNode(this);
 	if (!style.valid()) {
 		return;
@@ -444,8 +410,7 @@ void MarkdownView::setSource(StringView markdown) {
 }
 
 void MarkdownView::setSourceFile(const FileInfo &file) {
-	// A relative `src` in the document means "beside the document", so the document's own
-	// directory is the base unless the caller says otherwise afterwards.
+	// A relative `src` resolves beside the document unless the caller sets another base.
 	setImageBase(filepath::root(file.path), file.category);
 
 	auto start = sprt::platform::nanoclock(ClockType::Monotonic);
@@ -475,8 +440,7 @@ MarkdownImageSource MarkdownView::resolveImage(const MarkdownImageRequest &reque
 		return ret;
 	}
 
-	// Not a local file. Fetching it would put a network stack and a cache inside a widget whose
-	// job is to draw a document; an application that wants remote images supplies a resolver.
+	// Not a local file; remote images need an application-supplied resolver.
 	if (request.src.find("://") != maxOf<size_t>()) {
 		return ret;
 	}
@@ -487,10 +451,8 @@ MarkdownImageSource MarkdownView::resolveImage(const MarkdownImageRequest &reque
 
 	FileInfo file(path, _imageBaseCategory);
 
-	/* The extent comes from the file's HEADER, not from decoding it - a few bytes read here, and
-	the box the paragraph reserves is already the right one. The pixels arrive whenever the loop
-	gets to them and find their place kept, which is the whole reason a document does not re-flow
-	as its images appear. */
+	// The extent comes from the file header, not a decode, so the paragraph reserves the right
+	// box before the pixels arrive and the document does not re-flow.
 	uint32_t width = 0;
 	uint32_t height = 0;
 	if (!bitmap::getImageSize(file, width, height) || width == 0 || height == 0) {
@@ -499,8 +461,7 @@ MarkdownImageSource MarkdownView::resolveImage(const MarkdownImageRequest &reque
 
 	ret.size = Size2(float(width), float(height));
 
-	// What the markup asked for wins, one axis at a time; the other follows the file's own
-	// aspect so a lone `width=` does not squash the picture.
+	// Declared dimensions win per axis; a missing axis follows the file's aspect ratio.
 	if (request.declared.width > 0.0f && request.declared.height > 0.0f) {
 		ret.size = request.declared;
 	} else if (request.declared.width > 0.0f) {
@@ -515,8 +476,8 @@ MarkdownImageSource MarkdownView::resolveImage(const MarkdownImageRequest &reque
 		return ret;
 	}
 
-	// Keyed by the RESOLVED path: the cache is global, and two documents in two directories both
-	// referring to `image.png` are not the same image.
+	// Keyed by the resolved path: the cache is global, and equal relative names in different
+	// directories are different images.
 	if (auto cache = _director->getResourceCache()) {
 		ret.texture = cache->addExternalImage(path,
 				core::ImageInfo(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled), file,
@@ -531,8 +492,7 @@ void MarkdownView::setDocument(Rc<document::DocumentMarkdown> &&doc) {
 	_document = sp::move(doc);
 	_treeDirty = true;
 
-	// Before enter there is no font controller, so the inline table cannot be completed and the
-	// tree cannot be built; handleEnter picks it up.
+	// No font controller before enter, so building waits for handleEnter.
 	if (isRunning()) {
 		rebuild();
 	}
@@ -545,12 +505,10 @@ StringView MarkdownView::getSource() const {
 void MarkdownView::rebuild() {
 	auto started = sprt::platform::nanoclock(ClockType::Monotonic);
 
-	// Every label the selection was painted on is about to be discarded, and the positions it
-	// held indexed a document that no longer exists.
+	// The selection indexes labels and positions of the document being discarded.
 	_selectionBegin = _selectionEnd = 0;
 
-	// The flow holds every node it indexes, so it goes first - or a rebuilt document would keep
-	// the previous one alive in its own index.
+	// Replace the flow first: it holds every node it indexes.
 	_flow = Rc<MarkdownFlow>::alloc();
 	_anchors.clear();
 	_virtual.clear();
@@ -574,8 +532,7 @@ void MarkdownView::rebuild() {
 					  : nullptr);
 	builder.setSource(_document->getSource());
 
-	// A local `MarkdownImageResolver` so that the builder holds a pointer to something that
-	// outlives the build - a Callback owns nothing, and the view's own function is what it wraps.
+	// A local resolver so the builder's Callback refers to something that outlives the build.
 	MarkdownImageResolver resolver = [this](const MarkdownImageRequest &request) {
 		return _imageResolver ? _imageResolver(request) : resolveImage(request);
 	};
@@ -587,12 +544,10 @@ void MarkdownView::rebuild() {
 	_styleVersion = getStyleGeneration();
 	updateSelectionColor();
 
-	// The colour lives on each Label separately, so a fresh tree has to be told again.
+	// The colour is stored per Label, so a fresh tree needs it again.
 	_flow->setSelectionColor(_selectionColor);
 
-	/* Hide everything the reader cannot see, before the first layout rather than after it: a
-	document of ten thousand blocks would otherwise shape every one of them to produce a
-	screenful. Small documents are left exactly as they were. */
+	// Hide what the reader cannot see before the first layout; small documents are unaffected.
 	if (_virtual.init(_content, _virtualThreshold)) {
 		scheduleUpdate();
 	}
@@ -691,9 +646,8 @@ bool MarkdownView::scrollToAnchor(StringView id) {
 		return false;
 	}
 
-	/* A block that is not materialized has no position to scroll to - the layout skipped it, so
-	whatever it last reported is meaningless. Its place in the document is known all the same, as
-	the sum of the advances above it, and that is what the scroll is set from. */
+	// A non-materialized block has no valid layout position; scroll to its offset from the
+	// virtualizer instead (the sum of the advances above it).
 	if (_virtual.isEnabled()) {
 		auto index = _virtual.findBlock(entry->node);
 		if (index != maxOf<uint32_t>()) {
@@ -706,16 +660,13 @@ bool MarkdownView::scrollToAnchor(StringView id) {
 		}
 	}
 
-	// Every scroll between the node and here, not just this view's own: a footnote inside a
-	// scrolled block has two to satisfy.
+	// Satisfies every scroll between the node and here, not just this view's own.
 	scrollIntoView(entry->node, Padding(8.0f));
 	return true;
 }
 
 void MarkdownView::handleLinkActivated(const MarkdownRunMap::Link &link) {
-	// A link into the document is the document's own business, and answering it here is what
-	// makes footnotes work with no application code at all. Only what points outward is offered
-	// to the callback.
+	// In-document links are followed here; only outward links reach the callback.
 	if (link.href.starts_with("#") && scrollToAnchor(link.href)) {
 		return;
 	}
@@ -747,11 +698,8 @@ void MarkdownView::setSelectionRange(uint32_t begin, uint32_t end) {
 		_selection->updateHandles();
 	}
 
-	/* One selection per scene, and the document is now holding it.
-
-	Through `select()` with an item rather than `selectNode()`, and the difference is the whole
-	reason to be a SelectionOwner: an owner installed by `selectNode` is never told that the
-	selection moved elsewhere, so its highlight would stay on screen next to somebody else's. */
+	// Claim the scene's single selection through `select()` with an item: an owner installed by
+	// `selectNode` is never told when the selection moves elsewhere.
 	if (auto system = SelectionSystem::acquireForNode(this)) {
 		if (end > begin) {
 			SelectionItem item{Rc<Ref>(this), 0};
@@ -767,7 +715,7 @@ void MarkdownView::selectAll() { setSelectionRange(0, getTextLength()); }
 void MarkdownView::clearSelection() { setSelectionRange(0, 0); }
 
 Node *MarkdownView::resolveSelectionNode(const SelectionItem &) const {
-	// The document is one item and it is this node: there are no rows to materialize.
+	// The document is one item, and it is this node.
 	return const_cast<MarkdownView *>(this);
 }
 
@@ -776,8 +724,8 @@ void MarkdownView::handleSelectionChanged(SpanView<SelectionItem> items) {
 		return;
 	}
 
-	// The scene's selection went to somebody else. Drop the highlight WITHOUT touching the system
-	// again: it is in the middle of notifying, and this is the losing half of that call.
+	// The selection moved elsewhere. Drop the highlight without calling the system again: it is
+	// in the middle of notifying.
 	_selectionBegin = _selectionEnd = 0;
 	_flow->applySelection(0, 0);
 	if (_selection) {
@@ -825,12 +773,8 @@ bool MarkdownView::copy(document::MarkdownMarkup mode) {
 		return clipboard->writeText(plain) == Status::Ok;
 	}
 
-	/* Both representations, markup first.
-
-	The order is the advertisement's preference, not the answer: a reader negotiates its own list
-	against this one. What it buys is that an application that understands Markdown is OFFERED it,
-	while anything asking for plain text still gets something readable. The offer copies the bytes,
-	so these locals may die here. */
+	// Markup first, then plain text; the reader negotiates which it takes. The offer copies the
+	// bytes, so the locals may die here.
 	ClipboardOffer offer;
 	offer.setLabel("Markdown fragment")
 			.addText(getSelectedMarkup(mode), "text/markdown")
@@ -847,8 +791,7 @@ void MarkdownView::buildContextMenu() {
 	setContextMenu(this, [this](const ContextMenuRequest &) -> Rc<MenuSource> {
 		auto source = Rc<MenuSource>::create();
 
-		// The two copies are offered only when there is something to copy: a menu item that
-		// cannot act is worse than a menu without it.
+		// Copy items are offered only when a copy can actually happen.
 		if (hasSelection() && _copyPolicy != CopyPolicy::Nothing) {
 			source->addButton("copy", "Copy", [this](NotNull<MenuSourceButton>) { copy(); });
 			if (_copyPolicy == CopyPolicy::Both) {
@@ -874,9 +817,8 @@ bool MarkdownView::updateInlineStyles() {
 		return false;
 	}
 
-	// An index, not a name: a range style carries the family as the controller's own id. An
-	// unknown family stays at the sentinel, and inline code then renders in the block's face
-	// rather than in a wrong one.
+	// A range style carries the family as the controller's index. An unknown family stays at the
+	// sentinel, and inline code then uses the block's face.
 	auto family = controller->getFamilyIndex(StringView("monospace"));
 	if (family == _inlineStyles.monospaceFamily) {
 		return false;

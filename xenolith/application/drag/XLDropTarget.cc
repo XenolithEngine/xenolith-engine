@@ -33,8 +33,7 @@ const DropTargetComponent *setDropTarget(NotNull<Node> node, DropTargetSlots &&s
 		return true;
 	});
 
-	// The flag and the component are one declaration: the visit reads the flag, the hit test reads
-	// the component, and neither is any use without the other
+	// The visit reads the flag, the hit test reads the component; they are set together
 	node->addHitTestFlags(HitTestFlags::DropTarget);
 	return ret;
 }

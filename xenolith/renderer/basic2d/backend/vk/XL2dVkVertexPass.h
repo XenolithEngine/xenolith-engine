@@ -49,7 +49,8 @@ public:
 	// Whether this queue asked for per-frame damage tracking at all.
 	bool isDamageTracked() const { return _damageTracked; }
 
-	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
+	// Remote render session: the per-frame input this attachment consumes is a
+	// FrameContextHandle2d.
 	virtual Rc<core::AttachmentInputData> makeInputData(NotNull<core::RenderClientChannel> client,
 			uint64_t windowId) const override {
 		return makeFrameContextInput(client, windowId);
@@ -84,8 +85,9 @@ public:
 
 	SpanView<VertexSpan> getVertexData() const { return _spans; }
 
-	// The Overlay level, kept apart from the content spans so the pass can record it after the frame
-	// has been copied out. Empty in the ordinary case, and then the second pass is never opened.
+	// The Overlay level, kept apart from the content spans so the pass can record it after the
+	// frame has been copied out. Empty in the ordinary case, and then the second pass is never
+	// opened.
 	SpanView<VertexSpan> getOverlayData() const { return _overlaySpans; }
 
 	SpanView<VertexSpan> getShadowSolidData() const { return _shadowSolidSpans; }
@@ -142,7 +144,8 @@ public:
 	// Null for a queue that cannot capture; the handle then records no copy at all.
 	const AttachmentData *getCapture() const { return _capture; }
 
-	// The image this pass draws into - the presented one, and therefore what a capture copies out of.
+	// The image this pass draws into - the presented one, and therefore what a capture copies out
+	// of.
 	const AttachmentData *getOutput() const { return _output; }
 
 	virtual Rc<QueuePassHandle> makeFrameHandle(const FrameQueue &) override;
@@ -191,11 +194,10 @@ protected:
 	bool _captureSourcePresented = false;
 
 	// Draw the Overlay level in a second render pass instance over the same framebuffer. Records
-	// nothing when there is nothing on it - which is the ordinary case, and what makes an idle
-	// overlay free.
+	// nothing when the overlay is empty (the ordinary case).
 	void recordOverlayPass(CommandBuffer &);
 
-	// What goes INSIDE that instance. A queue with more than one subpass has to walk them all, so
+	// What goes inside that instance. A queue with more than one subpass has to walk them all, so
 	// this is the part a multi-subpass pass overrides.
 	virtual void recordOverlaySubpasses(CommandBuffer &, SpanView<VertexSpan> spans);
 

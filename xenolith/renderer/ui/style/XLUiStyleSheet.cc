@@ -29,15 +29,10 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* Adapts the scene-graph `Node` tree to StyleContainer::matchComplex. Ancestors walk via
-`getParent()`; the preceding sibling is the entry before the node in its parent's child list
-(insertion / z-order). A compound matches a node's `NodeIdentity` (type/id/classes) and its
-interactive pseudo-state (`:hover` etc.) read live from its `InteractiveComponent`; a node
-without an identity component matches only the universal `*`.
-
-Structural pseudo-classes read the node's position in its parent's child list. That list is
-ordered by z-order once sorted (`Node::sortAllChildren`), so `:nth-child` counts in DRAWING
-order, not insertion order - the same rule the `+`/`~` combinators already follow. */
+/* Adapts the scene-graph `Node` tree to StyleContainer::matchComplex. A compound matches the
+node's `NodeIdentity` and live `InteractiveComponent` state; without an identity only `*`
+matches. Sibling order (`+`, `~`, `:nth-child`) is the parent's child list, i.e. z-order once
+sorted, not insertion order. */
 struct SceneNodeAccess {
 	// the node owning the nearest stylesheet scope; what `:root` matches
 	const Node *scopeRoot = nullptr;
@@ -103,13 +98,11 @@ struct SceneNodeAccess {
 		if (auto ic = n ? n->getComponent<InteractiveComponent>() : nullptr) {
 			state = uint32_t(ic->state);
 		}
-		// `:focus-within` is published by a marker component instead, because a container must not
-		// be given interactive state just to carry it - see XLUiFocusWithin.h
+		// `:focus-within` comes from a marker component, so containers need no interactive state
 		if (hasFocusWithin(n)) {
 			state |= uint32_t(InteractiveState::FocusWithin);
 		}
-		// Same story, same reason: a selectable node is often a plain container, so both halves of
-		// the selection come from a marker component rather than from interactive state
+		// selection state also comes from marker components, for the same reason
 		if (hasSelectionWithin(n)) {
 			state |= uint32_t(InteractiveState::SelectionWithin);
 		}
@@ -119,8 +112,7 @@ struct SceneNodeAccess {
 		return state;
 	}
 
-	// One argument of `:not()`/`:is()`/`:where()`: the same four tests as a compound, minus
-	// everything an argument is not allowed to carry
+	// one argument of `:not()`/`:is()`/`:where()`: the compound tests without nested arguments
 	bool matchArg(Node *n, const document::StyleContainer::SelectorArg &a) const {
 		auto identity = n ? n->getComponent<NodeIdentity>() : nullptr;
 		if (!a.universal && !a.tag.empty()) {
@@ -209,11 +201,8 @@ struct StyleSheet::Container : document::StyleContainer {
 
 	Container(document::DocumentData *data) : StyleContainer(data) { }
 
-	// Append every rule matching `node` (simple string-keyed + structured combinator/pseudo)
-	// as a MatchedRule carrying its specificity + source order, WITHOUT merging. The caller
-	// (StyleResolver) gathers across scopes, sorts by (specificity, order) and merges - so the
-	// CSS cascade is honored across the whole set instead of a fixed lookup order.
-	// `orderBias` folds the sheet's scope rank into the tie-break; `media` is stamped per rule.
+	// append every matching rule with specificity + source order, without merging (see
+	// StyleSheet::collectMatches)
 	template <typename Vec>
 	void collectMatches(Vec &out, Node *node, uint64_t filterBits, uint64_t orderBias,
 			SpanView<bool> media, const Node *scopeRoot) const {

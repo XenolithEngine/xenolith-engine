@@ -302,7 +302,7 @@ DockNodeHandle DockTree::findLeafAt(const Vec2 &point) const {
 		if (n->axis == DockAxis::Horizontal) {
 			h = (point.x < first->rect.getMaxX()) ? n->first : n->second;
 		} else {
-			// Vertical: `first` is the TOP child, so it owns the higher Y
+			// Vertical: `first` is the top child, so it owns the higher Y
 			h = (point.y >= first->rect.origin.y) ? n->first : n->second;
 		}
 	}
@@ -376,12 +376,8 @@ void DockTree::updateMinimumsAt(DockNodeHandle h, const MeasureLeaf &measure, fl
 		// re-read: the callback runs arbitrary code and may have touched the arena
 		n = get(h);
 		if (collapsed) {
-			/* THE DECLARED FLOOR IS DROPPED TOO, and that is the point rather than an oversight.
-
-			`params.minSize` is what the application reserved for the place's CONTENT - a sidebar
-			says 250pt because a tree needs 250pt. A shut rail is showing no content, so honouring
-			that floor would leave the divider stuck exactly where it was and the collapse would do
-			nothing visible. What is left is the strip, which measureLeaf still reports. */
+			// the declared floor is dropped too: it reserves room for content a collapsed frame
+			// does not show, and would keep the divider from moving; only the strip remains
 			n->minSize = content;
 			return;
 		}
@@ -404,8 +400,7 @@ void DockTree::updateMinimumsAt(DockNodeHandle h, const MeasureLeaf &measure, fl
 		return;
 	}
 
-	// The divider is part of the split's own cost: leaving it out would let the tree claim it fits
-	// into less than it does, and distribute() would then hand out negative extents.
+	// the divider counts toward the split's minimum, or distribute() could produce negative extents
 	if (axis == DockAxis::Horizontal) {
 		n->minSize.width = a->minSize.width + b->minSize.width + thickness;
 		n->minSize.height = sprt::max(a->minSize.height, b->minSize.height);
@@ -459,8 +454,7 @@ void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPoli
 	float b = 0.0f;
 	if (minA + minB > usable) {
 		if (policy == DockOverflowPolicy::Scale) {
-			// everything stays visible and inside the root; the layout snaps back exactly once
-			// the root grows past the tree's minimum again
+			// everything stays inside the root
 			const float total = minA + minB;
 			const float k = (total > 0.0f) ? (usable / total) : 0.0f;
 			a = minA * k;
@@ -484,8 +478,7 @@ void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPoli
 	Rect secondRect;
 	if (horizontal) {
 		if (rtl) {
-			// `first` is the INLINE-START child, and under rtl the inline start is the right edge -
-			// the same reasoning the vertical case has always used for Y, one axis over.
+			// `first` is the inline-start child, which under rtl is the right edge
 			firstRect = Rect(rect.origin.x + b + thickness, rect.origin.y, a, rect.size.height);
 			splitRect = Rect(rect.origin.x + b, rect.origin.y, thickness, rect.size.height);
 			secondRect = Rect(rect.origin.x, rect.origin.y, b, rect.size.height);
@@ -496,14 +489,13 @@ void DockTree::distributeAt(DockNodeHandle h, const Rect &rect, DockOverflowPoli
 			secondRect = Rect(rect.origin.x + a + thickness, rect.origin.y, b, rect.size.height);
 		}
 	} else {
-		// Y points up, so `first` - the TOP child - starts at the high end of the rect
+		// Y points up, so `first` (the top child) starts at the high end of the rect
 		firstRect = Rect(rect.origin.x, rect.origin.y + b + thickness, rect.size.width, a);
 		splitRect = Rect(rect.origin.x, rect.origin.y + b, rect.size.width, thickness);
 		secondRect = Rect(rect.origin.x, rect.origin.y, rect.size.width, b);
 	}
 
-	// `n` still points into the arena here - distribute never allocates, so nothing can move -
-	// but the recursion below rewrites the children, so the divider band is stored first
+	// `n` stays valid (distribute never allocates); store the divider before recursing
 	n->splitterRect = splitRect;
 
 	distributeAt(first, firstRect, policy, thickness, rtl);
@@ -600,7 +592,7 @@ Value DockTree::saveNode(DockNodeHandle h) const {
 	if (!n->params.name.empty()) {
 		ret.setString(n->params.name, "name");
 	}
-	// the frame's DECLARED floor only; the propagated one is recomputed on restore
+	// the frame's declared floor only; the propagated one is recomputed on restore
 	ret.setValue(Value{Value(n->params.minSize.width), Value(n->params.minSize.height)}, "min");
 	ret.setInteger(toInt(n->params.flags), "flags");
 	ret.setString(DockTree_sideName(n->params.tabBarSide), "tabBar");
@@ -609,8 +601,7 @@ Value DockTree::saveNode(DockNodeHandle h) const {
 	for (auto &id : n->panels) { panels.addString(id); }
 	ret.setValue(sp::move(panels), "panels");
 	ret.setInteger(n->active, "active");
-	// Written only when it is TRUE - a file that says nothing about a frame's shut-ness describes an
-	// open one, which is what every layout written before this existed meant.
+	// written only when true; absence means expanded
 	if (n->collapsed) {
 		ret.setBool(true, "collapsed");
 	}
@@ -664,7 +655,7 @@ bool DockTree::readSpec(const Value &src, DockLayoutSpec &out,
 				continue;
 			}
 			if (!isPanelKnown || !isPanelKnown(id)) {
-				// a downgraded application, or a feature that was removed: not fatal
+				// not fatal: the panel may be gone from this build
 				log::source().warn("DockTree", "restore: unknown panel '", id, "', dropped");
 				continue;
 			}
@@ -690,9 +681,8 @@ bool DockTree::readSpec(const Value &src, DockLayoutSpec &out,
 }
 
 void DockTree::pruneEmptyLeaves() {
-	// A leaf can end up empty because every panel it held was dropped as unknown. Collapsing is
-	// iterative on purpose: merging one leaf away can leave its former parent's sibling as the
-	// only child, and the pass has to see the tree that results, not the one it started with.
+	// Leaves emptied by dropped unknown panels are removed one at a time, re-scanning after each
+	// merge, since a merge changes the tree the next candidate is found in.
 	bool changed = true;
 	while (changed) {
 		changed = false;
@@ -720,8 +710,7 @@ bool DockTree::restore(const Value &value, const Callback<bool(StringView)> &isP
 		return false;
 	}
 
-	// Build a spec first and validate it whole. Nothing here touches the live tree, so a malformed
-	// save leaves the layout on screen exactly as it was.
+	// build and validate a spec first; nothing touches the live tree until it succeeds
 	DockLayoutSpec spec;
 	if (!readSpec(value.getValue("root"), spec, isPanelKnown)) {
 		return false;

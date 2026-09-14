@@ -27,17 +27,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-//
 // FrameRequestProxy: the client's per-frame command-batch builder, abstracting how the batch
 // reaches the server's gapi backend (see XLCoreRenderSession.h):
 //   - LocalFrameRequestProxy  (single process): forwards directly to the server's FrameRequest.
-//   - RemoteFrameRequestProxy (networked):      accumulates + serializes; the server rebuilds a
-//                                               FrameRequest from the bytes. (Stubbed this stage.)
+//   - RemoteFrameRequestProxy (networked):      serializes; the server rebuilds a FrameRequest.
 //
-// The client surface is deliberately narrow: only the per-frame input the client owns. The render
-// graph is server-owned -- the client may only SELECT one of the queues the server has announced
-// (by name), never inject an arbitrary one. Outputs / render targets are the server's surface.
-//
+// The client provides only per-frame input. The render graph is server-owned: the client may only
+// select one of the queues the server announced, by name. Outputs belong to the server.
 
 class SP_PUBLIC FrameRequestProxy : public Ref {
 public:
@@ -47,8 +43,7 @@ public:
 	virtual void selectQueue(NotNull<core::Queue>) = 0;
 
 	// Keep the object that produced this frame's content alive until the frame is done. Local mode
-	// stores it on the real FrameRequest; remote mode ignores it (the server owns that request, and
-	// this pin never applied there).
+	// stores it on the real FrameRequest; remote mode ignores it (the server owns that request).
 	virtual void setSceneRef(Rc<Ref> &&) = 0;
 
 	// Per-frame input the client owns (the command batch is the primary payload).
@@ -93,13 +88,8 @@ protected:
 	Rc<FrameRequest> _request;
 };
 
-// Networked proxy: accumulates the per-frame batch on the client, then serializes it for the
-// server (which reconstructs a FrameRequest from the bytes and resolves the queue name against its
-// registry).
-//
-// STAGE 2: SKELETON ONLY. The accumulation captures what would cross the wire, but the actual
-// serialization (commit()) and the per-payload wire format (AttachmentInputData::serialize) are
-// STUBS -- the real wire format, transport, and output/result delivery are later stages.
+// Networked proxy: serializes the per-frame batch on the client for the server, which rebuilds a
+// FrameRequest from the bytes and resolves the queue name against its registry.
 class SP_PUBLIC RemoteFrameRequestProxy final : public FrameRequestProxy {
 public:
 	virtual ~RemoteFrameRequestProxy();
@@ -135,8 +125,7 @@ protected:
 	Function<void(SpanView<const AttachmentData *>, BytesView)> _sendInput;
 	Function<void()> _sendCommit;
 
-	// Frame-level signal dependencies are accumulated but not yet shipped (cross-process dependency
-	// wait/signal coordination is a later stage).
+	// Frame-level signal dependencies are accumulated but not shipped to the server.
 	Vector<Rc<DependencyEvent>> _signalDependencies;
 };
 

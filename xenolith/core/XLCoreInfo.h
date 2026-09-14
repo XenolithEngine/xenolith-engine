@@ -500,9 +500,8 @@ SP_PUBLIC inline String getImageUsageDescription(ImageUsage fmt) {
 
 using sprt::window::getFormatBlockSize;
 
-// The block arithmetic (see sprt/runtime/window/mode.h). Measuring an image is these functions and
-// never `getFormatBlockSize * width * height`: that spelling is right only where the block happens
-// to be one pixel, and it silently over-counts every compressed format by the size of its tile.
+// The block arithmetic (see sprt/runtime/window/mode.h). Measure images with these, never with
+// `getFormatBlockSize * width * height`, which over-counts compressed formats.
 using sprt::window::getFormatBlockExtent;
 using sprt::window::getFormatImageSize;
 using sprt::window::getFormatRowCount;

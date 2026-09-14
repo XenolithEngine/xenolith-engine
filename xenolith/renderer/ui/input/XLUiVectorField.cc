@@ -26,8 +26,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The fallback placement's breathing room, in points. Only the fallback: a styled row gets its
-// LayoutSystem from `display:flex` and none of this runs.
+// Padding of the fallback placement, in points; unused with a LayoutSystem.
 static constexpr float s_vectorPadding = 4.0f;
 static constexpr float s_vectorGap = 8.0f;
 static constexpr float s_vectorLabelGap = 4.0f;
@@ -35,9 +34,7 @@ static constexpr float s_vectorLabelGap = 4.0f;
 // Between the last component and the row's unit.
 static constexpr float s_vectorUnitGap = 6.0f;
 
-// x, y, z, w, and then the bare index. Four names because four is where the convention ends: a
-// six-component row has no letters everyone agrees on, so its parts are numbered instead of being
-// given invented ones.
+// x, y, z, w, and then the bare index.
 static constexpr StringView s_vectorDefaultLabels[] = {
 	StringView("x"),
 	StringView("y"),
@@ -45,13 +42,8 @@ static constexpr StringView s_vectorDefaultLabels[] = {
 	StringView("w"),
 };
 
-/* One component, and the two things only its owner needs to hear.
-
-A ui::NumberField says when a value was ACCEPTED (setValueCallback) and nothing else: whether it is
-currently holding text it refused, and whether it has the keyboard, are answered by asking, not by
-telling - which is right for a field somebody put on a panel and wrong for one inside a row that
-has to summarize its parts. Both hooks are already virtual, so this is an override rather than an
-addition to the public widget. */
+/* One component: overrides NumberField's virtual hooks to notify the row of focus and validity
+changes, which a plain NumberField only answers when asked. */
 class VectorField::Component : public NumberField {
 public:
 	virtual ~Component() = default;
@@ -75,10 +67,8 @@ protected:
 		}
 	}
 
-	/* The focus EDGE, which is not the same thing as the focus request.
-	   TextInput::focus() only asks the platform; `_focused` follows what the platform granted, and
-	   this is the one method called on that flip (XLUiTextInput.cc, handleTextInput). Hover and
-	   active come through here too, hence the guard. */
+	/* The focus edge, not the request: called when `_focused` flips to what the platform granted
+	   (TextInput::handleTextInput). Hover and active also come through here, hence the guard. */
 	virtual void updateInteractiveState() override {
 		NumberField::updateInteractiveState();
 		if (_reportedFocus != isFocused()) {
@@ -103,9 +93,8 @@ bool VectorField::init(uint32_t arity) {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist from the start: without one the state reads as 0, so
+	`:disabled` would match and isEnabled() would report false. */
 	applyControlEnabled(this, true);
 
 	setType("vector-field");
@@ -115,9 +104,7 @@ bool VectorField::init(uint32_t arity) {
 
 	rebuildComponents(sprt::max(arity, uint32_t(1)));
 
-	// See handleRowNavigate: the row answers a Tab that arrived while no component held the
-	// keyboard. Hotkeys are delivered out of band, so this listener needs no key mask and no touch
-	// filter - the same reason ui::FormInputListener's needs none.
+	// See handleRowNavigate. Hotkeys are delivered out of band, so no key mask or touch filter.
 	_keyListener = addSystem(Rc<InputListener>::create());
 
 	auto &hk = EngineHotkeys::get();
@@ -139,9 +126,7 @@ bool VectorField::init(uint32_t arity) {
 void VectorField::handleContentSizeDirty() {
 	Panel::handleContentSizeDirty();
 
-	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and
-	// the placement below would be a second writer of the same positions. Same rule as
-	// ui::Select's.
+	// A LayoutSystem (from `display:flex` or added by hand) owns the children's geometry.
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -152,9 +137,8 @@ void VectorField::handleContentSizeDirty() {
 		return;
 	}
 
-	// The row's unit is placed FIRST and the components share what is left: it is measured now for
-	// the same reason the component labels are - a label shapes itself on its own update, which
-	// runs after this pass.
+	// The row's unit is placed first and the components share the rest. Measured now, since a label
+	// shapes itself on its own update, after this pass.
 	float right = width - s_vectorPadding;
 	if (_unitLabel && _unitLabel->isVisible()) {
 		_unitLabel->tryUpdateLabel();
@@ -171,8 +155,7 @@ void VectorField::handleContentSizeDirty() {
 	for (uint32_t i = 0; i < count; ++i) {
 		float fieldLeft = left;
 		if (i < _labels.size() && _labels[i] && _labels[i]->isVisible()) {
-			// Measured NOW: a label shapes itself on its own update, which is after this, so its
-			// width would be zero here and the component would be placed over the top of it.
+			// Measured now: a label shapes itself on its own update, after this pass.
 			_labels[i]->tryUpdateLabel();
 			_labels[i]->setAnchorPoint(Anchor::MiddleLeft);
 			_labels[i]->setPosition(Vec2(fieldLeft, height / 2.0f));
@@ -204,8 +187,7 @@ void VectorField::setLabels(SpanView<StringView> labels) {
 	_labelStrings.reserve(labels.size());
 	for (auto &it : labels) { _labelStrings.emplace_back(it.str<Interface>()); }
 
-	// The difference between "not told" and "told none": an empty list is an instruction to show
-	// no labels at all, not a request for the defaults.
+	// An empty list means no labels, not the defaults.
 	_labelsExplicit = true;
 	updateLabels();
 }
@@ -271,8 +253,7 @@ void VectorField::setDragSensitivity(float value) {
 }
 
 void VectorField::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// The edit lock overrides the request and remembers it for unlock.
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -292,8 +273,7 @@ bool VectorField::setValue(SpanView<double> values, bool silent) {
 	}
 
 	for (uint32_t i = 0; i < uint32_t(values.size()); ++i) {
-		// silent on the component: the row reports the whole vector once below, and a per-component
-		// callback would report the same assignment as several changes
+		// silent on the component: the row reports the whole vector once below
 		_components[i]->setValue(values[i], true);
 		_values[i] = values[i];
 	}
@@ -345,8 +325,7 @@ void VectorField::blur() {
 
 void VectorField::focusFromNavigation(bool backwards) {
 	if (_focused >= 0) {
-		// A tap already put the caret somewhere in the row and the form is only catching up with
-		// it. Moving the caret now would take it away from what was clicked.
+		// A tap already put the caret in the row; the form is only catching up.
 		return;
 	}
 	if (_components.empty()) {
@@ -356,8 +335,7 @@ void VectorField::focusFromNavigation(bool backwards) {
 }
 
 void VectorField::rebuildComponents(uint32_t arity) {
-	// Values first: they are what has to survive the rebuild, and reading them out of the nodes
-	// after those nodes are gone is not possible.
+	// Values first, before the nodes are rebuilt.
 	_values.resize(arity, 0.0);
 
 	for (auto &it : _components) { it->removeFromParent(); }
@@ -365,8 +343,7 @@ void VectorField::rebuildComponents(uint32_t arity) {
 	_components.clear();
 	_labels.clear();
 
-	// Nothing holds the keyboard: the node that did has just left the scene, and its focus-out
-	// reaches a widget that no longer knows the index.
+	// Nothing holds the keyboard: the focused node has just left the scene.
 	_focused = -1;
 	_pending = -1;
 
@@ -430,9 +407,8 @@ void VectorField::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
 		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
 		bool dirty = false;
-		// The counter is cumulative, so it is pushed on an edge and never twice. The components
-		// paint their own `:focus`; this one is the ROW's, and it is on whenever any part of it
-		// holds the keyboard.
+		// The counter is cumulative, so it is pushed on an edge. This is the row's `:focus`, on
+		// whenever any component holds the keyboard.
 		const bool focus = _focused >= 0 && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
@@ -445,8 +421,7 @@ void VectorField::updateValidity() {
 	String message;
 	for (uint32_t i = 0; i < uint32_t(_components.size()); ++i) {
 		if (!_components[i]->isValid()) {
-			// The component is NAMED, because "past the maximum 999" about a row of four numbers
-			// does not say which one to fix.
+			// The component is named in the message.
 			message = mem_std::toString(getDefaultLabel(i), ": ",
 					_components[i]->getValidationMessage());
 			break;
@@ -457,9 +432,8 @@ void VectorField::updateValidity() {
 
 	const bool invalid = !_message.empty();
 	{
-		// Deliberately the same state ui::FormSystem marks a rejected field with: one word for one
-		// meaning. A row that stops refusing therefore also clears a stale mark left by a failed
-		// submit, which is what an author fixing the field expects to see.
+		// The same class ui::FormSystem marks a rejected field with, so a row that becomes valid
+		// also clears a mark left by a failed submit.
 		applyControlInvalid(this, invalid);
 	}
 }
@@ -477,13 +451,12 @@ void VectorField::handleComponentFocus(uint32_t index, bool focused) {
 	if (focused) {
 		_focused = int32_t(index);
 		if (_pending == int32_t(index)) {
-			// The step that was asked for has landed. A LATER one has not, and must go on being
-			// the anchor - which is why this is not simply cleared on any focus change.
+			// The requested step has landed. A later request stays pending.
 			_pending = -1;
 		}
 	} else if (_focused == int32_t(index)) {
-		// Only when it is still ours: moving from one component to the next raises the new one's
-		// focus before the old one's echo arrives, and clearing on that echo would lose it.
+		// Only when it is still ours: the new component's focus may arrive before the old one's
+		// focus-out echo.
 		_focused = -1;
 	} else {
 		return;
@@ -497,13 +470,8 @@ void VectorField::handleComponentFocus(uint32_t index, bool focused) {
 }
 
 bool VectorField::handleComponentNavigate(uint32_t index, bool backwards) {
-	/* Where the step is measured FROM, in order of how up to date each answer is.
-
-	`index` - the component whose listener got the key - is the least trustworthy of the three:
-	focus can leave it before the whole key batch has been dispatched. `_focused` is right whenever
-	a component actually holds the keyboard. `_pending` is the only right answer in the window
-	between a step being asked for and the platform granting it, which is where handleRowNavigate
-	calls in from. */
+	/* Where the step is measured from, most reliable first: `_pending` (a requested step not yet
+	granted), `_focused`, then `index` (focus may have left it within the key batch). */
 	int32_t from = int32_t(index);
 	if (_pending >= 0) {
 		from = _pending;
@@ -519,9 +487,8 @@ bool VectorField::handleComponentNavigate(uint32_t index, bool backwards) {
 
 	_pending = -1;
 
-	// Off the end of the row: this is navigation between FIELDS, and it is not this widget's to
-	// answer. Inside a form the adapter hands it to the form; standalone, the row gives focus up,
-	// which is what a lone ui::TextInput does with a Tab.
+	// Off the end of the row: navigation between fields. Inside a form the adapter hands it to the
+	// form; standalone, the row gives focus up.
 	if (_navigateCallback) {
 		return _navigateCallback(backwards);
 	}
@@ -531,13 +498,12 @@ bool VectorField::handleComponentNavigate(uint32_t index, bool backwards) {
 }
 
 bool VectorField::handleRowNavigate(bool backwards) {
-	// Only while the row is the one being walked. Without the guard this would answer a Tab meant
-	// for whatever else has the keyboard - the listener is entitled to the key, not to the intent.
+	// Only while the row is the one being walked, not for a Tab meant for another widget.
 	if (_focused < 0 && _pending < 0) {
 		return false;
 	}
 
-	// The anchor is resolved inside, and the index is only the last resort of three.
+	// The anchor is resolved inside; the index is the last resort.
 	return handleComponentNavigate(uint32_t(sprt::max(_focused, 0)), backwards);
 }
 

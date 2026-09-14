@@ -39,10 +39,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 uint64_t MenuPopupChain::Id = System::GetNextSystemId();
 
-// The menu's own paint, for a surface that reached the screen with no stylesheet in scope - a
-// native popup in an application that never passed MenuConfig::stylesheet. The same reasoning as
-// TooltipSystem's stock hint: an unstyled menu must still be readable, and ui::Panel with nothing
-// declared is opaque WHITE.
+// Surface colour for a menu with no stylesheet in scope; an unstyled ui::Panel is opaque white.
 static constexpr Color4B s_menuSurfaceColor = Color4B(0x20, 0x20, 0x26, 0xFF);
 
 static basic2d::SceneContent2d *MenuPopup_contentForWindow(AppWindow *w) {
@@ -51,12 +48,9 @@ static basic2d::SceneContent2d *MenuPopup_contentForWindow(AppWindow *w) {
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
 
-/* `gravity` names which edge OF THE MENU lands on the anchor point, not the direction the menu
-opens - so "hang below" is gravity Top, and the Wayland backend inverts it again for
-xdg_positioner.
-
-Lifted out of placementForNode so that a placement built from a POINT answers with the same four
-sides; a second spelling of this table would put a context menu on the other edge of the cursor. */
+/* `gravity` names the edge of the menu placed on the anchor point, not the opening direction, so
+"below" is gravity Top (the Wayland backend inverts it again for xdg_positioner). Shared by
+placementForNode and placementForPoint. */
 static void MenuPopup_applySide(sprt::window::WindowPlacement &ret, MenuSide side) {
 	using namespace sprt::window;
 
@@ -74,8 +68,7 @@ static void MenuPopup_applySide(sprt::window::WindowPlacement &ret, MenuSide sid
 				| WindowPlacementAdjustment::SlideY;
 		break;
 	case MenuSide::Right:
-		// A submenu: it opens off the row's top-right corner and flips to its left at the screen
-		// edge, which is the one adjustment a vertical menu cannot do without.
+		// a submenu: opens off the row's top-right corner and flips left at the screen edge
 		ret.anchor = WindowAnchor::TopRight;
 		ret.gravity = WindowAnchor::TopLeft;
 		ret.adjustment = WindowPlacementAdjustment::FlipX | WindowPlacementAdjustment::FlipY
@@ -94,9 +87,8 @@ sprt::window::WindowPlacement placementForNode(NotNull<Node> anchor, MenuSide si
 	sprt::window::WindowPlacement ret;
 	ret.offset = offset;
 
-	// The corners, the conversion through the scene content and the Y flip all live in
-	// ui::placementAnchorRect - a menu, a dropdown and a hint have to answer "where is the anchor"
-	// the same way, so there is one answer and this is not it.
+	// corners, conversion through the scene content and the Y flip are shared with dropdowns and
+	// hints
 	ret.anchorRect = placementAnchorRect(anchor);
 
 	MenuPopup_applySide(ret, side);
@@ -109,8 +101,7 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 	sprt::window::WindowPlacement ret;
 	ret.offset = offset;
 
-	// Empty by construction: every backend reads a zero-sized anchor as "this point", which is what
-	// a context menu means, and it keeps the four sides answering as they do for a node.
+	// empty anchor rect: backends read a zero-sized anchor as "this point"
 	ret.anchorRect = placementAnchorPoint(space, space->convertToWorldSpace(location));
 
 	MenuPopup_applySide(ret, side);
@@ -118,11 +109,8 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 	return ret;
 }
 
-// The one place a menu surface is built, for the root and for every submenu alike.
-//
-// What is a MENU here is the measurement, the chain and the keyboard; everything a popup surface
-// has to do to be one - the sheet its own scene needs, the panel's level and placement, the tap
-// that closes it - is left to ui::openPopupSurface.
+// Builds a menu surface, for the root and every submenu. Handles measurement, chain and keyboard;
+// the popup mechanics (stylesheet, panel, placement, outside tap) are ui::openPopupSurface's.
 static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
 		MenuConfig &&config, MenuPopupChain *parent) {
@@ -142,10 +130,8 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 
 	const float density = content->getInputDensity();
 
-	/* The extent has to be settled BEFORE any node exists - it is what the window request carries -
-	so it comes from the measurement rather than from the nodes. The very same call runs again
-	inside MenuSystem once the surface has a size, against the same source and the same style, so
-	the box the window was created for and the box that is drawn cannot drift apart. */
+	/* The extent must be known before any node exists, so it comes from measurement. MenuSystem
+	runs the same measurement once the surface has a size, so both boxes agree. */
 	MeasureConstraints constraints;
 	constraints.maxWidth = content->getContentSize().width;
 	constraints.maxHeight = content->getContentSize().height;
@@ -173,12 +159,10 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 	surfaceConfig.fallbackColor = s_menuSurfaceColor;
 	surfaceConfig.flags = config.flags;
 	surfaceConfig.preferNative = config.preferNative;
-	// COPIED, not moved: the chain keeps the config and hands a copy of it to every submenu, so a
-	// callback taken out here would be missing from every level below this one.
+	// copied, not moved: the chain keeps the config and passes copies to submenus
 	surfaceConfig.onClose = config.onClose;
 
-	// Clicking away takes the WHOLE CHAIN down, not this link: a submenu left standing over a menu
-	// that is gone is something the user has to dismiss by hand.
+	// clicking away closes the whole chain, not just this level
 	surfaceConfig.onOutsideTap = [](NotNull<SubWindow> surface, NotNull<Panel> panel) {
 		if (auto chain = MenuPopupChain::findForNode(panel)) {
 			chain->dismissChain();
@@ -187,8 +171,8 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		}
 	};
 
-	// Everything the builder reads is captured BY VALUE: on the native path it does not run until
-	// the popup's scene is created, by which time whatever opened the menu may be long gone.
+	// capture by value: on the native path the builder runs when the popup scene is created,
+	// possibly after the opener is gone
 	surfaceConfig.content = [source = Rc<MenuSource>(source), config = config, parent](
 									NotNull<SubWindow> surface, NotNull<Panel> panel) mutable {
 		auto chain =
@@ -200,13 +184,12 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 			return chain->openSubmenu(item, row);
 		});
 
-		// The pair of it, which is what a hover on another row asks for. dismissChild with nothing
-		// open is free, so the menu never has to know whether there is anything to take down.
+		// hovering another row closes the submenu; dismissChild with nothing open is a no-op
 		menu->setSubmenuCloseHandler([chain] { chain->dismissChild(); });
 
 		menu->setHoverConfig(chain->getConfig().hover);
 
-		// What keeps this level from being closed by the level above while the pointer is in it
+		// keeps the level above from closing this one while the pointer is in it
 		menu->setPointerEnterHandler([chain] { chain->handlePointerEntered(); });
 
 		if (chain->getConfig().keyboard) {
@@ -217,8 +200,8 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 			}
 		}
 
-		// Before the command runs: an action is free to put another surface up in this one's place,
-		// and a menu still on screen behind it is something the user then has to dismiss by hand.
+		// close before the command runs, so an action that opens another surface leaves no menu
+		// behind
 		menu->setWillActivateCallback([chain](NotNull<MenuSourceItem> item) {
 			if (!item->isKeepOpen()) {
 				chain->dismissChain();
@@ -226,7 +209,7 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		});
 
 		menu->setActivateCallback([chain](NotNull<MenuSourceItem> item) {
-			// The root's callback, not this level's: a chain reports as one menu.
+			// the root's callback: a chain reports as one menu
 			if (auto &cb = chain->getRoot()->getConfig().onActivate) {
 				cb(item);
 			}
@@ -273,8 +256,7 @@ bool MenuPopupChain::init(NotNull<SubWindow> surface, MenuPopupChain *parent, Me
 }
 
 void MenuPopupChain::handleExit() {
-	// This menu is going away; so does everything it opened. That is what makes dismissing the root
-	// take the whole chain down without anyone walking it.
+	// closing a level closes everything it opened, so dismissing the root closes the chain
 	dismissChild();
 	System::handleExit();
 }
@@ -290,14 +272,13 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 		return false;
 	}
 
-	/* Already up for this very row: say yes and change nothing. The pointer coming back out of a
-	submenu onto the row that opened it asks again on every entering edge, and so does a second
-	click - rebuilding here would flicker the level and drop everything opened below it. */
+	/* Already open for this row: succeed without rebuilding, which would flicker and close nested
+	levels. Re-entering the opener row and repeated clicks ask again. */
 	if (_child && _childItem == item.get() && _child->isOpen()) {
 		return true;
 	}
 
-	// getSubmenu, not getBuiltSubmenu: this IS the moment a lazy factory is meant to run.
+	// getSubmenu, not getBuiltSubmenu: a lazy factory runs here
 	auto source = item->getSubmenu();
 	if (!source) {
 		return false;
@@ -305,16 +286,15 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 
 	dismissChild();
 
-	/* Which window the submenu hangs off decides which coordinate space its placement is in, and
-	the two must match. On the native path the row lives in this popup's OWN scene, so the child is
-	parented to this popup's window (a Popup under a Popup, which is what the type is for). On the
-	overlay path the row lives in the parent window's scene, and so does the child. */
+	/* The parent window determines the placement's coordinate space. Native: the row is in this
+	popup's scene, so the child is parented to this popup's window. Overlay: the row and the child
+	are in the parent window's scene. */
 	auto parentWindow = _surface->isNative() ? _surface->getWindow() : _surface->getParent();
 	if (!parentWindow) {
 		return false;
 	}
 
-	// The submenu inherits the look, and reports through the root: a chain is one menu.
+	// the submenu inherits the look and reports through the root
 	MenuConfig config;
 	config.style = _config.style;
 	config.stylesheet = _config.stylesheet;
@@ -324,16 +304,12 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 	config.idPrefix = _config.idPrefix.empty() ? String("submenu") : _config.idPrefix;
 	config.flags = _config.flags;
 	config.preferNative = _config.preferNative;
-	// Inherited, unlike `highlight`: that one names a row of THIS menu and means nothing here.
+	// inherited, unlike `highlight`, which names a row of this menu
 	config.keyboard = _config.keyboard;
 	config.hover = _config.hover;
 
-	/* WHICH SIDE A SUBMENU OPENS ON, and it is the only thing in the menu chain that has a side.
-
-	A submenu opens away from the parent's inline start, so in a right-to-left interface it opens
-	to the LEFT. Both cases were written long ago - `MenuSide::Left` is a complete branch of
-	MenuPopup_applySide, screen-edge flip included - and nothing had ever asked for it. The
-	direction comes from the row, which inherits it like any other node. */
+	/* A submenu opens away from the inline start: to the left in a right-to-left interface. The
+	direction comes from the row. */
 	const auto side = isInlineRtl(row) ? MenuSide::Left : MenuSide::Right;
 
 	_child = MenuPopup_open(parentWindow, placementForNode(row, side), source, sp::move(config),
@@ -343,8 +319,7 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 }
 
 void MenuPopupChain::handlePointerEntered() {
-	// EVERY level above, not only the one that opened this: a pointer that reached a third level
-	// crossed the second and the first, and each of them armed a close on the way past.
+	// every level above: the pointer crossed each of them and each armed a close
 	for (auto parent = _parent; parent; parent = parent->_parent) {
 		auto owner = parent->getOwner();
 		if (auto menu = owner ? owner->getSystemByType<MenuSystem>() : nullptr) {
@@ -362,8 +337,7 @@ void MenuPopupChain::dismissChild() {
 }
 
 void MenuPopupChain::dismissChain() {
-	// Our own surface, held for the duration: dismissing the root destroys the parent that owns
-	// this surface, and with it the node this system lives on.
+	// hold our surface: dismissing the root destroys the parent that owns it and this system's node
 	Rc<SubWindow> self(_surface);
 
 	auto root = getRoot();

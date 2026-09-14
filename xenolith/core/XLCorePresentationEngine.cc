@@ -47,8 +47,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 bool PresentationEngine::isFrameValid(const PresentationFrame *frame) const {
-	// Both sides null must not count as equal: after end() that let callers touch a dead
-	// swapchain.
+	// Both sides null must not count as equal, or callers touch a dead swapchain after end().
 	if (_swapchain && frame->getSwapchain() == _swapchain && !_swapchain->isDeprecated()) {
 		return true;
 	}
@@ -131,11 +130,8 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 							frame->getRequest()->getQueue()->getName(),
 							"': no usable output attachments found");
 				}
-				// Full frame invalidation (not just engine bookkeeping): this returns the swapchain image
-				// the frame already acquired -- to the reuse pool when no queue was ever assigned (the
-				// usual case when a remote client never answered AcquireFrame), or to the swapchain when
-				// rendering had started. Calling handleFrameInvalidated() directly here would skip that and
-				// strand the acquired image.
+				// Full invalidation returns the acquired swapchain image (to the reuse pool, or
+				// to the swapchain if rendering started); handleFrameInvalidated() would strand it.
 				frame->invalidate();
 				return;
 			}
@@ -179,10 +175,8 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 		}
 	});
 
-	// Track a remote-served frame from the moment it is scheduled. The window marks it Remote (above, in
-	// acquireFrameData) when it is handed to a remote client; tracking it here -- before it enters
-	// _activeFrames via submitFrame -- means a connection reset can still force-invalidate a frame that
-	// is merely awaiting the client's AcquireFrame reply (the exact state a non-responding client wedges).
+	// Track a remote-served frame from scheduling, before it enters _activeFrames, so a connection
+	// reset can invalidate a frame still awaiting the client's AcquireFrame reply.
 	if (frame->hasFlag(PresentationFrame::Remote)) {
 		_remoteFrames.emplace(frame.get(), frame);
 	}
@@ -282,10 +276,8 @@ bool PresentationEngine::init(NotNull<Loop> loop, NotNull<Device> device,
 		_damageDebug = StringView(value) != "0";
 	}
 
-	// Bound the frame rate. On platforms with a display-link (vsync) callback presentation is
-	// driven by that; without one — e.g. the WebGPU/wasm backend — nothing limits the rate and the
-	// engine renders on every scheduler tick/event (hundreds of fps, wasted work + churn). Fall
-	// back to pacing at the surface's WM frame interval unless a rate was set explicitly.
+	// Without a display-link (e.g. WebGPU/wasm) nothing bounds the frame rate, so pace at the
+	// surface's WM frame interval unless a rate was set explicitly.
 	if (!_options.followDisplayLink && _targetFrameInterval == 0 && _constraints.frameInterval) {
 		_targetFrameInterval = _constraints.frameInterval;
 	}
@@ -471,9 +463,8 @@ void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<Presentati
 	auto clock = sp::platform::clock(ClockType::Monotonic);
 	auto res = _swapchain->present(queue, image, presentInfo);
 #if XL_FRAME_ACCOUNT
-	// Closes the timeline. Here and not in the backend's swapchain: every backend presents through
-	// this call, and the mark has to be the same point on every one of them for the buckets to
-	// mean the same thing.
+	// Closes the timeline here, not in the backend swapchain, so the mark is the same point on
+	// every backend.
 	markFrame(FrameMark::Presented);
 #endif
 	auto dt = updatePresentationInterval();
@@ -630,12 +621,8 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 	_activeFrames.erase(frame);
 	_totalFrames.erase(frame);
 
-	// A scheduled frame raises the display-link barrier (_waitForDisplayLink, see scheduleNextImage),
-	// which is normally lowered when a frame presents. A frame that is invalidated never presents, so if
-	// it was the last in-flight frame nothing remains to lower the barrier -- and in barrier mode the
-	// display-link signal is itself driven by presentation, so it would stay raised forever, wedging all
-	// further scheduling. Release it only in that no-frame-left case (so continuous, normally-presenting
-	// frames keep their display-link pacing untouched).
+	// The display-link barrier (_waitForDisplayLink) is lowered by a present. If the last in-flight
+	// frame is invalidated, nothing would lower it and scheduling would stall, so release it here.
 	if (_activeFrames.empty()) {
 		_waitForDisplayLink = false;
 	}
@@ -700,10 +687,8 @@ void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	}
 	if (auto h = frame->getHandle()) {
 		_lastFrameTime = h->getTimeEnd() - h->getTimeStart();
-		// Written INSIDE the existing block, after the DoNotPresent return above. Moving anything
-		// ahead of that return crashed the app once; a capture frame simply has no timing and is
-		// correctly absent from this account. That position is also what makes the number safe to
-		// WAIT on - see getLastFrameOrder: it advances when a frame has really been through.
+		// Must stay after the DoNotPresent return: capture frames have no timing, and
+		// getLastFrameOrder has to advance only for presented frames.
 		_lastFrameOrder = frame->getFrameOrder();
 		_avgFrameTime.addValue(_lastFrameTime);
 		_avgFrameTimeValue = _avgFrameTime.getAverage();
@@ -796,12 +781,8 @@ void PresentationEngine::invalidateRemoteFrames() {
 }
 
 void PresentationEngine::resetForRenderClientChange() {
-	// The window's render client just changed (a remote client took over, or the window reverted to its
-	// local Director after a reset). A frame that was dropped rather than presented may have left the
-	// display-link barrier raised; in barrier mode the display-link signal is driven by presentation, so
-	// once frames stop it can never fire again to clear it -- wedging all further scheduling. Clear it
-	// and pump one fresh frame to restart the present -> display-link cycle for the new client. This runs
-	// only on a client change, so it does not affect normal frame pacing.
+	// The render client changed; a dropped frame may have left the display-link barrier raised with
+	// no present to clear it. Clear it and pump one frame to restart the cycle for the new client.
 	_waitForDisplayLink = false;
 	_readyForNextFrame = true;
 	if (canScheduleNextFrame()) {
@@ -929,7 +910,8 @@ Status PresentationEngine::acquireScheduledImage() {
 			return Status::Ok;
 		}
 	} else {
-		// Without Fence, we have no ability to wait before image ACTUALLY ready, so, lock immediately (lockfree = false)
+		// Without Fence, we cannot wait until the image is actually ready, so lock immediately
+		// (lockfree = false)
 		acquiredImage = _swapchain->acquire(false, fence, status);
 		if (acquiredImage) {
 			_requestedSwapchainImage.emplace(acquiredImage);
@@ -956,12 +938,8 @@ Status PresentationEngine::acquireScheduledImage() {
 }
 
 void PresentationEngine::scheduleImageAcquisition() {
-	// One retry timer per engine, and it repeats on its own (count = Infinite), so a second one is
-	// never useful: each firing retries and schedules again on failure, so arming a new timer per
-	// failed acquire would double the timer population every interval.
-	//
-	// Status::Ok is "armed and running"; anything else means the handle is spent and a new one is
-	// needed (see Handle::getStatus).
+	// One repeating retry timer per engine; never arm a second one. Status::Ok means armed and
+	// running, anything else means the handle is spent (see Handle::getStatus).
 	if (_acquisitionTimer && _acquisitionTimer->getStatus() == Status::Ok) {
 		return;
 	}
@@ -972,10 +950,8 @@ void PresentationEngine::scheduleImageAcquisition() {
 				[](PresentationEngine *e, sprt::dispatch::TimerHandle *h, uint32_t, Status st) {
 		auto acquireStatus = st == Status::Ok ? e->acquireScheduledImage() : st;
 
-		// Timeout/Declined both mean "still no image": keep the timer, it will retry. Anything else
-		// ends the retry - either an image arrived, or the timer itself is finishing (cancelled,
-		// failed). Forget the handle in both cases, so the next failed acquire can arm a fresh one
-		// instead of finding a dead handle parked in _acquisitionTimer and never retrying again.
+		// Timeout/Declined mean "still no image": keep retrying. Anything else ends the retry; drop
+		// the handle so the next failed acquire can arm a fresh timer.
 		if (acquireStatus == Status::Timeout || acquireStatus == Status::Declined) {
 			return;
 		}

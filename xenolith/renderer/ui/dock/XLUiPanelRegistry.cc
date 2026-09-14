@@ -41,9 +41,7 @@ void PanelRegistry::registerPanel(DockPanelDescriptor &&desc) {
 void PanelRegistry::unregisterPanel(StringView id) {
 	auto key = id.str<Interface>();
 
-	// Close it where it is FIRST: the host has to take it out of its own structure while the
-	// descriptor is still here to be read (a dock frame re-measures itself from the descriptors of
-	// what it holds). Only then may the entry go.
+	// Close on the host first, while the descriptor is still available to re-measure the frame.
 	if (auto it = _hosts.find(key); it != _hosts.end()) {
 		auto host = it->second;
 		_hosts.erase(it);
@@ -101,9 +99,7 @@ Node *PanelRegistry::acquireContent(StringView panelId, NotNull<PanelHost> forHo
 		_content.emplace(key, sp::move(node));
 	}
 
-	// A container registered as one of its own panels would be parented into its own descendant:
-	// an infinite tree, and a crash the moment anything walks it. Refuse instead - and say so, since
-	// nothing else about the resulting empty body would explain itself.
+	// A container registered as its own panel would be parented into its own descendant; refuse.
 	if (isInSubtree(raw, forHost->getPanelDecoratorParent())) {
 		log::source().error("ui::PanelRegistry", "panel '", panelId,
 				"' cannot be parked inside itself");
@@ -118,8 +114,8 @@ Node *PanelRegistry::acquireContent(StringView panelId, NotNull<PanelHost> forHo
 	if (it != _hosts.end()) {
 		auto prev = it->second;
 
-		// Record the new owner BEFORE calling out: the release will restructure the old host, and
-		// anything that asks who holds this panel while that runs must already see the answer.
+		// record the new owner before calling out: the release restructures the old host, and any
+		// query during it must already see the new owner
 		it->second = forHost;
 
 		auto releasing = sp::move(_releasing);
@@ -160,8 +156,6 @@ void PanelRegistry::removeHost(NotNull<PanelHost> host) {
 }
 
 void PanelRegistry::releaseHost(NotNull<PanelHost> host) {
-	// Erase-while-iterating over a Map is fine node-by-node, but the host is gone either way, so
-	// collecting first keeps this readable and immune to whatever the erase invalidates.
 	Vector<String> claimed;
 	for (auto &[id, it] : _hosts) {
 		if (it == host.get()) {

@@ -98,9 +98,7 @@ public:
 
 	bool isPersistentMapping() const { return _persistentMappings; }
 
-	// Keeps whatever produced this frame's content alive for the frame's whole lifetime. It used
-	// to be a manual retain()/release() pair driven by the queue's begin/end callbacks, which is
-	// what made a Queue impossible to share between two scenes - the callbacks captured one Scene.
+	// Keeps whatever produced this frame's content alive for the frame's whole lifetime.
 	void setSceneRef(Rc<Ref> &&ref) { _sceneRef = sp::move(ref); }
 	Ref *getSceneRef() const { return _sceneRef; }
 

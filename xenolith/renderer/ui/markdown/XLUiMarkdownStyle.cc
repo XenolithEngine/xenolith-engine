@@ -26,9 +26,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 using ParameterName = document::ParameterName;
 
-// One node's CSS identity, written so that two nodes a selector cannot tell apart produce the
-// same text. Classes come out of a hash set, so they are sorted: an unordered key would split
-// the cache into as many entries as the set happens to iterate in.
+// One node's CSS identity; nodes a selector cannot tell apart produce the same text. Classes come
+// from a hash set, so they are sorted to keep the cache key stable.
 static void MarkdownStyle_appendIdentity(StringStream &out, Node *node) {
 	auto identity = node->getComponent<NodeIdentity>();
 	if (!identity) {
@@ -51,11 +50,8 @@ static void MarkdownStyle_appendIdentity(StringStream &out, Node *node) {
 	}
 }
 
-/* The whole ancestor path, root first.
-
-All of it, not just up to the nearest stylesheet: `resolveStyleForNode` collects EVERY sheet on
-the chain, and an application that puts its own sheet above the view (as the test stand does) is
-exactly the case where the part above the view decides the answer. */
+/* The whole ancestor path, root first: `resolveStyleForNode` collects every sheet on the chain,
+including an application sheet above the view. */
 static String MarkdownStyle_contextKey(Node *label) {
 	Vector<Node *> chain;
 	for (Node *p = label; p != nullptr; p = p->getParent()) { chain.emplace_back(p); }
@@ -70,13 +66,9 @@ static String MarkdownStyle_contextKey(Node *label) {
 	return out.str();
 }
 
-/* What the probe changes about the block, property by property.
-
-Both halves of the test matter. `has()` alone would take a property the probe merely INHERITED
-from the block and re-emit it as a range - harmless for a colour, wrong for anything the label
-computes from its own value. A value comparison alone would take a property nobody declared,
-because an undeclared property answers with the CSS default rather than with nothing: a block at
-`font-weight: bold` (every heading) would have each of its inlines forced back to normal. */
+/* What the probe changes about the block. Both tests are needed: `has()` alone re-emits inherited
+properties; a value comparison alone takes undeclared CSS defaults (a bold heading would force its
+inlines back to normal). */
 static void MarkdownStyle_delta(const ResolvedStyle &probe, const ResolvedStyle &base,
 		font::FontController *controller, basic2d::Label::Style &out) {
 	if (probe.has(ParameterName::CssFontSize) && probe.fontSize() != base.fontSize()) {
@@ -113,16 +105,13 @@ static void MarkdownStyle_delta(const ResolvedStyle &probe, const ResolvedStyle 
 		out.set(probe.hyphens());
 	}
 
-	// Opacity is NOT inherited, so a block's own opacity never reaches the probe and the two are
-	// compared against different things. `has()` carries the whole test here: only a rule that
-	// named the inline itself may dim it.
+	// Opacity is not inherited, so `has()` alone decides: only a rule naming the inline dims it.
 	if (probe.has(ParameterName::CssOpacity) && probe.opacity() != base.opacity()) {
 		out.set(basic2d::Label::Opacity(probe.opacity()));
 	}
 
-	// A range carries the family as the controller's index, not as a name. With no controller
-	// there is nothing to resolve it against, and a wrong index renders in a wrong face - so the
-	// property is dropped instead of guessed.
+	// A range carries the family as the controller's index; without a controller the property is
+	// dropped, since a wrong index renders a wrong face.
 	if (controller && probe.has(ParameterName::CssFontFamily)) {
 		auto family = probe.fontFamily();
 		if (family != base.fontFamily()) {
@@ -178,9 +167,8 @@ bool MarkdownInlineResolver::resolve(NotNull<basic2d::Label> label, StringView c
 		return false;
 	}
 
-	// The chain has to be a real chain of nodes: descendant and child combinators are matched by
-	// walking parents, and inheritance travels the same way. There is no API for a hypothetical
-	// element path, and inventing one would mean reimplementing the matcher.
+	// The probe must be a real chain of nodes: combinators and inheritance are resolved by
+	// walking parents.
 	Rc<Node> root;
 	Node *parent = label.get();
 	Node *inner = nullptr;
@@ -190,7 +178,7 @@ bool MarkdownInlineResolver::resolve(NotNull<basic2d::Label> label, StringView c
 		probe->setType(tag);
 		probe->addStyleClass(toString("md-", tag));
 
-		// Nothing to draw and nothing to lay out; it exists for one call and is gone.
+		// Exists for one call only.
 		probe->setVisible(false);
 
 		inner = parent->addChild(sp::move(probe));
@@ -207,8 +195,7 @@ bool MarkdownInlineResolver::resolve(NotNull<basic2d::Label> label, StringView c
 	auto resolved = StyleResolver::resolveStyleForNode(inner);
 	++_probes;
 
-	// Before anything can look at the tree again: the probe is not part of the document, and a
-	// Label that kept one would carry it into the frame.
+	// Detach before the tree is looked at again, so the probe never reaches a frame.
 	root->removeFromParent();
 
 	if (!resolved.valid()) {

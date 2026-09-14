@@ -38,35 +38,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 	auto view = addChild(Rc<ui::MarkdownView>::create());
 	view->setSourceFile(FileInfo{"README.md", FileCategory::Bundled});
 
-WHAT IT IS MADE OF. Every block becomes a node typed with its html tag (`p`, `h1`, `li`, `td`)
-and classed `md-<tag>`; every inline construct becomes a STYLE RANGE inside the block's Label
-rather than a node of its own, which is what lets a line break fall inside a bold phrase. See
-ui::MarkdownBuilder for the shape of the tree and ui::MarkdownRegistry for replacing one tag.
+Every block becomes a node typed with its html tag (`p`, `h1`, `li`, `td`) and classed
+`md-<tag>`; every inline construct is a style range inside the block's Label, so a line break can
+fall inside a bold phrase. See ui::MarkdownBuilder and ui::MarkdownRegistry.
 
-STYLING, AND HOW TO OVERRIDE IT. The view carries its own stylesheet so a document is readable
-with no application CSS at all, and that sheet is written with bare tag selectors on purpose. The
-cascade sorts by specificity and only breaks ties by which sheet is nearer, and the built-in one
-is the nearest - so an application rule of EQUAL specificity loses. Two routes win:
+The built-in stylesheet uses bare tag selectors and is the nearest sheet, so an application rule
+of equal specificity loses. Override with a class (`.md-p { … }`) or `view->addStyle(…)`;
+`getStyleSystem()->setStyleSheet(…)` replaces the built-in sheet.
 
-  .md-p { color: #b71c1c; }        // a class beats a tag, always
-  view->addStyle(".md-p { … }");   // or append into the view's own sheet
-
-`getDefaultStyleSheet()` returns the built-in text, and replacing the sheet outright
-(`getStyleSystem()->setStyleSheet(…)`) turns it off.
-
-READING A RANGE. The document has a reading order of its own (ui::MarkdownFlow), numbered across
-every block, and two questions can be asked of any range in it: what it SAID (`getTextForRange`)
-and how it was WRITTEN (`getMarkupForRange`). The second is the one this whole feature exists for -
-a range comes back as the original Markdown, closed up wherever an edge cut a construct in half.
-
-SELECTING AND COPYING. A drag, a double or triple click, Ctrl+A or `setSelectionRange` all end in
-the same place: a range of reading positions, painted by the labels themselves and copied out as
-the markup that produced it. `ui::MarkdownSelectionSystem` holds the gestures and explains how
-they are kept away from the two scrolls in this tree.
-
-The view is a `SelectionOwner`, which is what makes "one selection per scene" true for a document
-too: selecting a row in a tree elsewhere puts this one out, and the notification comes back here
-so the highlight goes with it. */
+Positions follow ui::MarkdownFlow's reading order. A range can be read as text
+(`getTextForRange`) or as the original Markdown (`getMarkupForRange`), closed up where an edge
+cuts a construct. Selection gestures live in ui::MarkdownSelectionSystem; as a `SelectionOwner`
+the view shares the scene's single selection with other owners. */
 class SP_PUBLIC MarkdownView : public Node, public SelectionOwner {
 public:
 	virtual ~MarkdownView() = default;
@@ -77,27 +60,18 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 
-	/* A stylesheet reload arrives at one of these two, and which one depends on WHOSE sheet moved:
-	the view's own (`addStyle`, a watched file) bumps a component on this node, an application's
-	sheet on an ancestor bumps one up there.
-
-	The resolver restyles every node of the subtree by itself; what it cannot reach is the style
-	RANGES inside the labels, which were resolved when the text was committed. Those are redone -
-	and only those, so the tree, the reading order and the selection all survive a reload. */
+	/* A stylesheet reload: the first for the view's own sheet, the second for an ancestor's.
+	Only the labels' inline style ranges are re-resolved; the tree, reading order and selection
+	survive. */
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 	virtual void handleAncestorComponentsDirty() override;
 
-	// Deferred, because both hooks above fire while the resolver is walking this subtree, and a
-	// probe added or removed under a Label in the middle of that walk would move the ground the
-	// walk stands on.
+	// Restyling is deferred to here: the hooks above fire during the resolver's walk of this
+	// subtree, which must not have probes added or removed under it.
 	virtual void update(const UpdateTime &) override;
 
-	/* The view's box is its owner's decision, and never its own content's.
-
-	A node carrying a HandleMeasure system - and a LayoutSystem is one - fixes its own size from its
-	content during the measure phase. For a document that is exactly backwards: the width is the
-	question the caller answers and the wrapping is the answer, so a view that grew to its widest
-	unwrapped paragraph would stop every paragraph in it from ever wrapping. */
+	// The owner sets the view's size; it never measures itself from content, or paragraphs
+	// would stop wrapping.
 	virtual void handleMeasure() override { }
 
 	// --- content ---
@@ -113,8 +87,7 @@ public:
 	// The text every source span indexes into; empty without a document.
 	StringView getSource() const;
 
-	// Discard the node tree and build it again. What a registry swap and a live style reload
-	// both go through.
+	// Discard the node tree and build it again.
 	void rebuild();
 
 	// --- reading order ---
@@ -129,7 +102,7 @@ public:
 	// mapping is not exact. `getMarkupForRange` is this plus document::writeMarkdownFragment.
 	Pair<uint32_t, uint32_t> getSourceRangeForTextRange(uint32_t begin, uint32_t end) const;
 
-	// The ORIGINAL markup for a range: what a copy puts on the clipboard.
+	// The original markup for a range: what a copy puts on the clipboard.
 	void writeMarkupForRange(const Callback<void(StringView)> &, uint32_t begin, uint32_t end,
 			document::MarkdownMarkup = document::MarkdownMarkup::Normalized) const;
 	String getMarkupForRange(uint32_t begin, uint32_t end,
@@ -148,9 +121,8 @@ public:
 		return pair(_selectionBegin, _selectionEnd);
 	}
 
-	/* Show a range as selected. Everything that selects goes through here - the gestures, the
-	hotkeys, and a caller driving the widget - so this is also where the scene is told that the
-	document now holds the one selection it allows. */
+	// Show a range as selected. All selection paths go through here, and it claims the scene's
+	// selection for the document.
 	void setSelectionRange(uint32_t begin, uint32_t end);
 	void selectAll();
 	void clearSelection();
@@ -164,9 +136,8 @@ public:
 
 	// --- copying ---
 
-	/* WHAT MAY LEAVE THE WIDGET, which is a policy and therefore the caller's to set. `Both` puts
-	the markup on the clipboard first and the plain text after it; `TextOnly` withholds the markup
-	from a document shown in confidence; `Nothing` refuses. */
+	/* What a copy may put on the clipboard. `Both`: markup first, then plain text; `TextOnly`:
+	plain text only; `Nothing`: copying is refused. */
 	enum class CopyPolicy {
 		Both,
 		TextOnly,
@@ -188,23 +159,17 @@ public:
 
 	// --- long documents ---
 
-	/* Only what the reader can see is laid out and shaped; see ui::MarkdownVirtualizer for what
-	that costs and why the nodes still all exist. Switches itself on past a few hundred blocks and
-	is invisible below that. */
+	// Only the visible part is laid out and shaped (see ui::MarkdownVirtualizer); enabled past
+	// the virtualization threshold.
 	const MarkdownVirtualizer &getVirtualizer() const { return _virtual; }
 
-	// How many blocks a document needs before only its visible part is laid out. maxOf turns the
-	// whole thing off, which is how a test compares a virtualized document against a plain one.
+	// Block count at which virtualization starts; maxOf disables it.
 	void setVirtualizationThreshold(uint32_t);
 	uint32_t getVirtualizationThreshold() const { return _virtualThreshold; }
 
 	// --- cost ---
 
-	/* WHAT THE LAST DOCUMENT COST, in nanoseconds and in counts.
-
-	Kept by the view because nothing outside it can see the halves apart: parsing happens inside
-	`setSource`, building inside `rebuild`, and re-resolving inline styles on a stylesheet reload -
-	three different budgets that a caller measuring from outside would only ever see summed. */
+	// Cost of the last document: times in nanoseconds, plus counts.
 	struct Timings {
 		uint64_t parse = 0; // the markdown parser, over the whole source
 		uint64_t build = 0; // the node tree, from the parsed document
@@ -213,8 +178,7 @@ public:
 		uint32_t blocks = 0;
 		uint32_t sourceLength = 0;
 
-		// Cascade probes the last build resolved. A document whose blocks repeat should cost a
-		// handful; a number near the range count means the cache is not working.
+		// Cascade probes the last build resolved; cached, so far fewer than the range count.
 		uint32_t probes = 0;
 	};
 
@@ -222,13 +186,12 @@ public:
 
 	// --- styling ---
 
-	// The built-in sheet, so a test can assert on what actually ships.
+	// The built-in stylesheet text.
 	static StringView getDefaultStyleSheet();
 
 	StyleSystem *getStyleSystem() const { return _styleSystem; }
 
-	// Append into the view's OWN sheet: later source order breaks the tie against the built-in
-	// rules, which is the second way an application overrides them.
+	// Append into the view's own sheet; later source order wins ties against built-in rules.
 	bool addStyle(StringView css);
 	bool addStyle(const FileInfo &);
 
@@ -239,16 +202,9 @@ public:
 
 	// --- images ---
 
-	/* WHERE THE PICTURES COME FROM.
-
-	The default reads a local file: `src` is resolved against `setImageBase` (which `setSourceFile`
-	fills in with the document's own directory), the size is taken from the file's header and the
-	decode is left to the render loop. A `src` that is not a local path - a URL above all - draws
-	nothing, because this widget depends on neither the network nor a storage backend.
-
-	An application that wants more replaces the whole step. It is handed what the markup said and
-	answers with a texture and a box; either may be empty, and an empty box means "show the alt
-	text instead". */
+	/* Replaces image resolution. The default reads a local file relative to `setImageBase`, sizing
+	it from the header; a non-local `src` (a URL) draws nothing. A resolver returns a texture and
+	a box, either may be empty; an empty box shows the alt text. */
 	void setImageResolver(MarkdownImageResolver &&);
 
 	// The directory a relative `src` is resolved against. Set for you by setSourceFile, from the
@@ -273,10 +229,8 @@ public:
 
 	// --- links and anchors ---
 
-	/* Fired by a plain click on a link range that LEFT the document. A drag that begins on a link
-	is a selection, not a visit, so only a tap gets here - and a link into the document itself
-	(`#fn_1`) is followed by the view before the callback is consulted, so an application handles
-	only what it can actually act on. */
+	// Fired by a tap on a link that points outside the document; in-document anchors (`#fn_1`)
+	// are followed by the view itself. A drag starting on a link selects instead.
 	void setLinkCallback(Function<void(StringView href, StringView title)> &&);
 	void handleLinkActivated(const MarkdownRunMap::Link &);
 
@@ -288,11 +242,8 @@ public:
 	// leading '#' is accepted, so an href can be passed straight in.
 	uint32_t getAnchorPosition(StringView id) const;
 
-	/* Bring an anchor into view. False when the document has no such id - which is what
-	`handleLinkActivated` uses to decide that a link points outward.
-
-	A footnote and its way back are the same operation in both directions, and so is a table of
-	contents: any `#id` a heading carries works the same way. */
+	// Bring an anchor into view. False when the document has no such id, which
+	// `handleLinkActivated` treats as an outward link.
 	bool scrollToAnchor(StringView id);
 
 protected:
@@ -310,8 +261,7 @@ protected:
 	void invalidateInlineStyles();
 
 	// A number that changes whenever any stylesheet in scope does: the versions of every
-	// StyleSystemState from this node up. One counter cannot do - the view carries its own sheet
-	// AND an application may put one above it, and either may move without the other.
+	// StyleSystemState from this node up, since the own and ancestor sheets change independently.
 	uint32_t getStyleGeneration() const;
 
 	ClipboardSession *acquireClipboard();

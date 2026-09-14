@@ -546,8 +546,8 @@ void VectorSprite::updateVertexesColor() {
 }
 
 RenderingLevel VectorSprite::getRealRenderingLevel() const {
-	// The Overlay level outranks everything a sprite could resolve for itself, including an explicit
-	// setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
 	if (_inOverlay) {
 		return RenderingLevel::Overlay;
 	}

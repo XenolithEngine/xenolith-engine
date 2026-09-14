@@ -304,8 +304,7 @@ Status Context::openDialog(NotNull<sprt::dispatch::Looper> target,
 		return _controller->openDialog(target, sp::move(req));
 	}
 
-	// Off the context thread the answer cannot be reported synchronously; the completion carries
-	// it instead, exactly as it does for a dialog the OS actually opened.
+	// Off the context thread the answer is delivered through the completion, as for a real dialog.
 	performOnThread(
 			[this, target = Rc<sprt::dispatch::Looper>(target), req = sp::move(req)]() mutable {
 		_controller->openDialog(target, sp::move(req));
@@ -407,8 +406,8 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 
 	// if we do not know format - use defaults
 	if (imageFormat == core::ImageFormat::Undefined) {
-		// Direct-KMS embed (Pi / QEMU Display): prefer RGB565 when the surface offers it —
-		// half the scanout bandwidth vs RGBA8 on HVS. Desktop WM paths keep their own default.
+		// Direct-KMS embed (Pi / QEMU Display): prefer RGB565 when offered (half the scanout
+		// bandwidth of RGBA8). Desktop WM paths keep their own default.
 		const bool embedDisplay = w->getSurfaceBackend() == sprt::window::SurfaceBackend::Display;
 		if (embedDisplay) {
 			imageFormat = core::ImageFormat::R5G6B5_UNORM_PACK16;
@@ -468,16 +467,11 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 		ret.colorSpace = it->second;
 	}
 
-	/* A window that is not a rectangle has to be BLENDED, not merely drawn.
-
-	Two of them ask for it. User-space decorations round the window's own corners and drop a shadow
-	outside them, and an undecorated Popup or Tooltip IS its panel - `ui::openPopupSurface` sizes the
-	window to the panel exactly, so a `border-radius` on that panel leaves the window's four corners
-	outside the shape it draws. With an Opaque surface those corners keep whatever the scene was
-	cleared to, and they used to keep WHITE: four bright specks around every menu on a dark theme.
-
-	Only asked for, never required: `supportedCompositeAlpha` is the compositor's answer, and where
-	it cannot blend the window stays opaque and the corners fall back to the clear colour. */
+	/* A non-rectangular window must be blended: user-space decorations round the corners and draw a
+	shadow, and an undecorated Popup/Tooltip is sized exactly to its panel, so a `border-radius`
+	leaves corners outside the shape. Blending is requested, not required: without compositor
+	support (`supportedCompositeAlpha`) the window stays opaque and corners show the clear
+	colour. */
 	const bool shaped = windowInfo
 			&& (hasFlag(windowInfo->flags, WindowCreationFlags::UserSpaceDecorations)
 					|| windowInfo->type == WindowType::Popup
@@ -684,9 +678,8 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 		}
 	}
 
-	// Drop an icon the platform will not use, so a backend never has to check the capability
-	// itself and encodeWindowInfo reports what the window actually got. Not a warning: an app is
-	// expected to set an icon unconditionally, and most platforms take it from elsewhere.
+	// Drop an icon the platform will not use, so backends need not check the capability and
+	// encodeWindowInfo reports what the window got. Not a warning: apps set icons unconditionally.
 	if (w->icon && !hasFlag(caps, WindowCapabilities::WindowIcon)) {
 		w->icon = nullptr;
 	}
@@ -703,9 +696,9 @@ void Context::createWindow(Rc<WindowInfo> &&info, Function<void(Status, StringVi
 			log::source().error("Context",
 					"Fail to create native window: ", sprt::status::getStatusName(status));
 
-			// This frame holds the last reference to a payload that was built on the app thread
-			// and may own scene-graph objects. It must not be released here — hand it back, and
-			// let its close callback answer the opener that asked for a window it never got.
+			// This frame holds the last reference to an app-thread payload that may own scene-graph
+			// objects. Do not release it here: hand it back so its close callback answers the
+			// opener.
 			if (auto payload = info->takeAppData()) {
 				_application->performOnAppThread([payload = move(payload)]() mutable {
 					if (auto sceneInfo = dynamic_cast<WindowSceneInfo *>(payload.get())) {
@@ -910,11 +903,10 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 			if (!isHeadless) {
 				ret.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
-				// The VK_KHR_display swapchain path (Mesa wsi_common_drm) builds
-				// dmabuf-backed scanout images and calls vkGetMemoryFdKHR / the DRM
-				// modifier queries unconditionally. Those entrypoints are null unless
-				// the matching device extensions are enabled, so enable them when the
-				// device advertises them (harmless for windowed surfaces).
+				// The VK_KHR_display swapchain path (Mesa wsi_common_drm) calls vkGetMemoryFdKHR
+				// and the DRM modifier queries unconditionally; they are null unless those device
+				// extensions are enabled, so enable them when advertised (harmless for windowed
+				// surfaces).
 				auto has = [&](const char *ext) {
 					return sprt::find(dev.availableExtensions.begin(),
 								   dev.availableExtensions.end(), String(ext))

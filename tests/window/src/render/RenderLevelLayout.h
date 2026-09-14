@@ -42,10 +42,19 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // included, and that is correct, not a bug.
 // Row 3 changes the level at runtime, after the boxes have been drawn once: each box must switch
 // to the new level's behaviour instead of keeping the material it was first drawn with.
+//
+// Row 4 is the case the passes got WRONG: TRANSPARENT geometry behind a SURFACE box. Neither writes
+// depth and the transparent pass is drawn after the surface one, so the picture behind painted over
+// the box in front - a label over an image with an alpha channel simply vanished. The box that
+// overlaps the translucent strip must be drawn over it; the box beside the strip, in front of it
+// by zPath but covering none of it, must stay in the surface pass, and `render-level.apart` moves it
+// over the strip to show that it is WHERE a surface draws, not only its zPath, that promotes it.
 class RenderLevelLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;
+
+	virtual void registerCommands() override;
 
 protected:
 	// one box per level, in the order Default, Solid, Surface, Transparent
@@ -60,6 +69,15 @@ protected:
 	basic2d::Layer *_behind[LevelCount] = {};
 	basic2d::Layer *_switched[LevelCount] = {};
 	basic2d::Layer *_switchedBackdrop = nullptr;
+
+	// row 4: a translucent strip, a surface box over it and a surface box beside it
+	basic2d::Layer *_strip = nullptr;
+	basic2d::Layer *_over = nullptr;
+	basic2d::Layer *_apart = nullptr;
+	bool _apartOverlaps = false;
+
+	void placeApart();
+	Value encodeState() const;
 
 	uint32_t _checks = 0;
 	uint32_t _failures = 0;

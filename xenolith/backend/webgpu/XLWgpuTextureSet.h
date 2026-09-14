@@ -34,7 +34,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::webgpu {
  * Bind group layout mirrors the Vulkan convention:
  *   binding 0: binding_array<sampler, SAMPLERS>
  *   binding 1: binding_array<texture_2d<f32>, IMAGES>
- * and is appended to a pipeline layout as the LAST bind group when
+ * and is appended to a pipeline layout as the last bind group when
  * PipelineLayoutData::textureSetLayout is set */
 class SP_PUBLIC TextureSetLayout final : public core::TextureSetLayout {
 public:

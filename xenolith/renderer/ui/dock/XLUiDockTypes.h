@@ -32,20 +32,13 @@ class PanelHost;
 
 /** The parking system: panels, frames and the tree that divides them.
 
-A PANEL is what an application actually wants on screen - an explorer, an editor, a console. It is
-identified by a string id, described once by a DockPanelDescriptor, and its node is built lazily on
-first show. A panel is never positioned by anyone: it lives inside whatever frame it is parked in.
+A panel is identified by a string id, described by a DockPanelDescriptor and built lazily on first
+show; it is placed only by the frame it is parked in. A frame holds panels as tabs, shows one at a
+time and carries its declared constraints. Splits and frames form a binary tree kept as data in
+DockSystem; all frame and splitter nodes are flat children of the dock root. */
 
-A FRAME is a parking place. It holds any number of panels as tabs, shows one of them at a time, and
-carries the constraints the application declared for that place.
-
-Frames are divided by SPLITS, and split + frame together form a binary tree. That tree is a pure
-data structure inside DockSystem: every frame node and every splitter node is a FLAT direct child
-of the dock root, and the system writes their geometry itself from the tree. Nothing here nests. */
-
-// Orientation of a split. Horizontal puts its two children side by side (the divider between them
-// is a vertical bar); Vertical stacks them, `first` on TOP - the scene's Y axis points up, so the
-// first child of a vertical split starts at the higher Y.
+// Orientation of a split. Horizontal puts the children side by side; Vertical stacks them with
+// `first` on top (the scene's Y points up, so `first` has the higher Y).
 enum class DockAxis : uint8_t {
 	Horizontal,
 	Vertical,
@@ -70,20 +63,9 @@ enum class DockFrameFlags : uint32_t {
 	AllowResize = 1 << 3, // the splitters bounding it are draggable
 	Permanent = 1 << 4, // never collapsed, even when it holds no panel at all
 
-	/* WHICH AXES A DROP MAY SUBDIVIDE THIS PLACE ALONG, and NEITHER of them set means BOTH.
-
-	A side rail that may only ever stack its panels declares AllowSplitVertical alone, and its left
-	and right edge bands stop being split zones - they fall through to the middle, which is the
-	honest answer for a place that cannot be divided that way.
-
-	The "neither means both" reading is what keeps this from being a format change: `AllowSplit` and
-	every flag word already written by an application or saved in a layout keep meaning exactly what
-	they meant. It is also why these are FLAGS rather than a field of their own - DockTree::saveNode
-	writes the word as an integer, so the pair survives save/restore for free.
-
-	They narrow AllowSplit and do not stand in for it: a frame with neither AllowSplit nor these is
-	not divisible at all. And they are about DROPS - `splitFrame` is the application asking for a
-	split outright, which is its own business and is never refused on an axis. */
+	/* Axes along which a drop may subdivide the frame; neither bit set means both. Edge bands on a
+	disallowed axis fall through to the center zone. They only narrow AllowSplit, and only apply
+	to drops: `splitFrame` is never refused on an axis. */
 	AllowSplitVertical = 1 << 5, // stacked: the SplitTop / SplitBottom zones
 	AllowSplitHorizontal = 1 << 6, // side by side: the SplitLeft / SplitRight zones
 
@@ -92,8 +74,7 @@ enum class DockFrameFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DockFrameFlags)
 
-// May a DROP subdivide a frame with these flags along this axis? Answers the "neither bit set means
-// both axes" rule in one place, so no caller has to remember it.
+// Whether a drop may subdivide a frame with these flags along this axis (neither bit means both).
 constexpr bool allowsSplitAxis(DockFrameFlags flags, DockAxis axis) {
 	if (!hasFlag(flags, DockFrameFlags::AllowSplit)) {
 		return false;
@@ -101,7 +82,7 @@ constexpr bool allowsSplitAxis(DockFrameFlags flags, DockAxis axis) {
 	const auto axes =
 			flags & (DockFrameFlags::AllowSplitVertical | DockFrameFlags::AllowSplitHorizontal);
 	if (axes == DockFrameFlags::None) {
-		return true; // nothing narrowed: both, which is what every layout written so far means
+		return true; // nothing narrowed: both axes
 	}
 	return hasFlag(flags,
 			axis == DockAxis::Horizontal ? DockFrameFlags::AllowSplitHorizontal
@@ -121,12 +102,10 @@ enum class DockPanelFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DockPanelFlags)
 
-// Everything the dock knows about a panel, registered before the panel is ever shown.
+// Everything the dock knows about a panel, registered before it is shown.
 //
-// `minSize` is the whole point of the registry: it is what strengthens the constraints of every
-// frame the panel is parked in, and through that of every split above it. `builder` is called at
-// most once, on first show; the node it returns is kept alive by the system across moves between
-// frames, so a panel does not lose its state when it is dragged somewhere else.
+// `minSize` raises the minimum of the frame holding the panel and of every split above it.
+// `builder` is called at most once, on first show; the node is kept across moves.
 struct SP_PUBLIC DockPanelDescriptor {
 	String id; // stable, unique, and the key the layout is serialized with
 	String title;
@@ -142,7 +121,7 @@ struct SP_PUBLIC DockPanelDescriptor {
 
 // The constraints of one parking place, as declared by the application.
 //
-// `minSize` is the frame's OWN floor; the effective minimum is the maximum of it, of the minimums
+// `minSize` is the frame's own floor; the effective minimum is the maximum of it, of the minimums
 // of the panels parked here, and of the intrinsic size of the tab strip.
 struct SP_PUBLIC DockFrameParams {
 	String name; // optional stable name; also written onto the frame node as its CSS #id
@@ -153,11 +132,8 @@ struct SP_PUBLIC DockFrameParams {
 	bool operator==(const DockFrameParams &) const = default;
 };
 
-// A reference to one node of the split tree.
-//
-// Generational on purpose: a splitter node holds the handle of its split across frames, and a drop
-// can merge that split away. Without the generation the freed slot would be silently reused and
-// the stale handle would retarget to an unrelated node; with it the handle simply stops resolving.
+// A reference to one node of the split tree. Generational: a handle to a released slot stops
+// resolving instead of retargeting to whatever reuses the slot.
 struct SP_PUBLIC DockNodeHandle {
 	static constexpr uint32_t InvalidIndex = maxOf<uint32_t>();
 
@@ -170,25 +146,16 @@ struct SP_PUBLIC DockNodeHandle {
 	bool operator==(const DockNodeHandle &) const = default;
 };
 
-// What a dragged panel handle carries as the drag's in-process payload.
-//
-// A Ref rather than a bare string, because DragData's fast path hands over a live object - and
-// because WHERE THE PANEL CAME FROM has to travel with it: a drop needs that to recognise the cases
-// that are no-ops, such as dropping a frame's only panel back into that same frame.
-//
-// The origin is recorded twice over, at two granularities, because a panel can be dragged between
-// containers of different kinds: `host` says which container, `source`/`sourceIndex` say where
-// inside it. A target compares the host first - a drag that arrived from somewhere else has no
-// no-op case to check, and its `source` handle means nothing in this container's tree.
+// In-process payload of a dragged panel: the id plus its origin, which a drop uses to detect
+// no-op moves. `host` names the container; `source`/`sourceIndex` are only meaningful inside that
+// host, so a target compares the host first.
 struct SP_PUBLIC DockPanelPayload : public Ref {
-	// The drag's local type tag. A target checks this before touching anything else, and a drag
-	// carrying anything else is simply not ours
+	// the drag's local type tag; a target checks it before anything else
 	static constexpr auto TypeName = StringView("xl/dock-panel");
 
 	String panelId;
 
-	// Two fields for one thing, because PanelHost is deliberately not a Ref (see XLUiPanelHost.h):
-	// `host` is identity and dispatch, `hostRef` is the only thing keeping it alive for the drag.
+	// PanelHost is not a Ref: `host` is used for identity and calls, `hostRef` keeps it alive.
 	PanelHost *host = nullptr;
 	Rc<Ref> hostRef;
 
@@ -196,11 +163,8 @@ struct SP_PUBLIC DockPanelPayload : public Ref {
 	size_t sourceIndex = maxOf<size_t>(); // the position within a linear host; unset for a dock
 };
 
-// Marker on every frame node: which slot of the tree it materializes.
-//
-// Written once, when the node is created. It is what lets the system map a node back to the tree
-// without a dynamic_cast, and what a hit test or an inspector dump identifies a frame by - the
-// node's position among the root's children means nothing (sortAllChildren is unstable).
+// Marker on every frame node: which tree slot it materializes. Written once on creation; use it
+// to identify a frame, since child order is unstable.
 struct SP_PUBLIC DockFrameComponent {
 	static ComponentId Id;
 
@@ -209,10 +173,8 @@ struct SP_PUBLIC DockFrameComponent {
 	bool operator==(const DockFrameComponent &) const = default;
 };
 
-// Where a dragged panel would land if it were dropped right now.
-//
-// The zones are ordered by how specific they are, and that is also the order the hit test tries
-// them in: the tab strip wins over the body, an edge band of the body wins over its middle.
+// Where a dragged panel would land if dropped now. The hit test prefers the tab strip over the
+// body, and an edge band over the body's middle.
 struct SP_PUBLIC DockDropTarget {
 	enum class Kind : uint8_t {
 		None, // nowhere: outside the dock, or over a frame that refuses drops
@@ -241,18 +203,15 @@ struct SP_PUBLIC DockDropTarget {
 
 // What to do when the root is smaller than the tree's propagated minimum.
 enum class DockOverflowPolicy : uint8_t {
-	// shrink every minimum on the offending axis proportionally: everything stays visible and
-	// inside the root, nothing overlaps, and the layout snaps back exactly once the root grows
+	// shrink every minimum on the offending axis proportionally, keeping everything inside the root
 	Scale,
 
 	// honour the minimums and let the tail run outside the root
 	Clip,
 };
 
-// One node of the split tree, as the application describes it to setLayout().
-//
-// A plain aggregate mirroring the tree it describes: `isSplit` nodes carry exactly two children,
-// leaves carry the parking place. Built with the three static helpers, which read like the tree:
+// One node of the split tree as passed to setLayout(). Split nodes have exactly two children,
+// leaves carry the frame. Built with the static helpers:
 //
 //   Spec::hsplit(0.22f,
 //       Spec::leaf({"explorer"}, {.name = "sidebar"}),
@@ -263,7 +222,7 @@ struct SP_PUBLIC DockLayoutSpec {
 	// --- split -------------------------------------------------------------
 	DockAxis axis = DockAxis::Horizontal;
 
-	// share of `first` in the space left AFTER both children got their minimums; see DockTree
+	// share of `first` in the space left after both children got their minimums; see DockTree
 	float ratio = 0.5f;
 
 	Vector<DockLayoutSpec> children; // exactly two when isSplit
@@ -273,7 +232,7 @@ struct SP_PUBLIC DockLayoutSpec {
 	Vector<String> panels; // in tab order
 	size_t active = 0; // index into `panels`
 
-	// shut to its tab strip; see DockTreeNode::collapsed and DockSystem::setFrameCollapsed
+	// collapsed to its tab strip; see DockTreeNode::collapsed and DockSystem::setFrameCollapsed
 	bool collapsed = false;
 
 	static DockLayoutSpec leaf(Vector<String> &&panels, DockFrameParams && = DockFrameParams());

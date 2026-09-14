@@ -130,8 +130,8 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 		case core::PresentMode::Mailbox: configData = toString("M", cfg.imageCount); break;
 		}
 
-		// Only a CPU rasterizer reports this; a GPU backend leaves pixelsTotal at 0, and printing
-		// "0/0" under a label would read as a measurement rather than as its absence.
+		// Only a CPU rasterizer reports this; a GPU backend leaves pixelsTotal at 0, and "0/0"
+		// would read as a measurement.
 		String pixelData;
 		if (stat.pixelsTotal != 0) {
 			pixelData = toString("\nPx: ", stat.pixelsFilled, "/", stat.pixelsTotal, " ",
@@ -210,15 +210,13 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 // Fill `builder` with the standard 2d render graph for the current gAPI.
 //
-// Static on purpose: this is the part of scene construction that needs no Scene, so a queue can be
-// built - and cached, and compiled - before the scene or the window that will use it exists.
-// See QueueCache.
+// Static: needs no Scene, so a queue can be built, cached and compiled before the scene or window
+// exists. See QueueCache.
 bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 		core::Queue::Builder &builder) {
 	if (queueInfo.damage == core::QueueDamageFlags(maxOf<uint32_t>())) {
-		// Partial redraw and frame skipping both rest on being able to preserve an image between
-		// frames, which only the lightweight queue can do; the full queue only pays for damage
-		// tracking when asked.
+		// Partial redraw and frame skipping need an image preserved between frames, which only the
+		// lightweight queue can do; the full queue tracks damage only when asked.
 		queueInfo.damage = (queueInfo.type == QueueType::Flat)
 				? (core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw
 						  | core::QueueDamageFlags::SkipEmptyFrames)
@@ -396,9 +394,8 @@ bool Scene2d::init(Queue::Builder &&builder, const core::FrameConstraints &const
 
 bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		Rc<core::Queue> &&queue, const core::FrameConstraints &constraints) {
-	// Adopting a queue skips the whole build-and-dispatch block above: the graph already exists and
-	// is already compiled, which is the point of the cache. buildQueueResources is NOT called - the
-	// resources belong to the queue, and the queue was built once, for everyone.
+	// Adopting a cached queue skips building and compiling; buildQueueResources is not called,
+	// since the resources belong to the shared queue.
 	if (!xenolith::Scene::init(sp::move(queue), constraints)) {
 		return false;
 	}
@@ -446,8 +443,8 @@ void Scene2d::initialize() {
 		return true;
 	});
 
-	// Not a hotkey: this shows the pointer overlay for as long as the key is HELD, so it needs the
-	// press/release pair a recognizer gives. A hotkey is a single moment - the press.
+	// Not a hotkey: the pointer overlay shows while the key is held, which needs the press/release
+	// pair a recognizer gives.
 	_listener->addKeyRecognizer([this](const GestureData &ev) {
 		_pointerReal->setVisible(
 				ev.event != GestureEvent::Ended && ev.event != GestureEvent::Cancelled);
@@ -624,9 +621,8 @@ StringView Scene2d::selectServerQueue(NotNull<AppThread> app,
 	const RemoteWindow::RemoteQueueInfo *compatible = nullptr;
 
 	for (auto &it : rw->getQueues()) {
-		// A queue built for another backend describes passes and pipelines this server cannot run;
-		// it is not a downgrade, it is unusable. A queue that never said (an untagged one, or a
-		// version-1 server) is not excluded -- silence is not a mismatch.
+		// A queue built for another backend is unusable on this server. An untagged queue (or a
+		// version-1 server) is not excluded.
 		if (serverApi != core::InstanceApi::None && it.api != core::InstanceApi::None
 				&& it.api != serverApi) {
 			continue;
@@ -644,10 +640,8 @@ StringView Scene2d::selectServerQueue(NotNull<AppThread> app,
 		return exact->name;
 	}
 	if (compatible) {
-		// Both graphs draw the same 2d content; they differ in what they can additionally do
-		// (shadows, particles, depth). Taking the other one is the same downgrade buildQueue
-		// already performs locally for a backend that has only the flat path -- worth saying out
-		// loud, not worth refusing to render over.
+		// Both graphs draw the same 2d content and differ in shadows, particles and depth; taking
+		// the other one is the same downgrade buildQueue performs locally, so log and continue.
 		log::source().info("Scene2d", "no server queue of the requested type (", toInt(info.type),
 				"); rendering through '", compatible->name, "' (type ", compatible->typeTag, ")");
 		return compatible->name;

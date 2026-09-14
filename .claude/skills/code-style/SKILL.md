@@ -305,6 +305,14 @@ lifetime, or for error detection. Details and examples:
     explicit call in the widget that wants it, and it is asymmetric: taking focus
     may select, losing focus must not clear.
 
+31. **Comments are short and describe working code.** One to three lines as a
+    rule; no capital-letter headings or words stressed in capitals
+    (`/* THE CLIP IS A SYSTEM OF ITS OWN ...` is banned — acronyms and identifiers
+    are fine), no history of fixed bugs, measurements or what the code "used to"
+    do (that is the commit message), no prose arguing for the design. A rule a fix
+    leaves behind is one sentence. Details:
+    [formatting.adoc](../../../docs/usage/codestyle/sources/formatting.adoc#comments).
+
 ## Where to read more
 
 | Task | Article |

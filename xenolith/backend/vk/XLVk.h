@@ -133,13 +133,9 @@ enum class RenderPassVariant : uint32_t {
 	// preserve what the image already holds instead of clearing it, for partial redraw
 	Load = 2,
 
-	/* Load EVERY attachment and keep every final layout, for a second pass instance over a frame
-	that is already drawn - which is what the Overlay level is recorded into.
-
-	Distinct from Load, and the difference is the load op: Load deliberately keeps a CLEAR, because
-	the background of a partial redraw comes from the clear rather than from geometry. Here a clear
-	would erase the very frame this pass is meant to draw on top of - and, on the Vulkan path, the
-	frame that was just copied out. */
+	/* Load every attachment and keep every final layout, for a second pass instance over an
+	already drawn frame (the Overlay level). Unlike Load, which keeps a clear for the partial-redraw
+	background, this never clears. */
 	Overlay = 3,
 
 	// the same, for the offscreen attachment set

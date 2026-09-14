@@ -32,8 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
 
-// One case-insensitive extension test. The tables below are short and consulted once per row build,
-// so a linear walk is cheaper than anything with a hash in it.
+// Case-insensitive extension test; a linear walk over the short tables below.
 static bool matchExtension(StringView ext, SpanView<StringView> list) {
 	for (auto &it : list) {
 		if (sp::platform::caseCompare_u(ext, it) == 0) {
@@ -57,10 +56,8 @@ static StringView s_textExt[] = {"txt", "md", "adoc", "rst", "log", "csv", "doc"
 } // namespace
 
 auto FilesystemModel::getFileRef(const Node *node) -> FileRef * {
-	// Every node this model builds carries a FileRef, so the cast is exact rather than a guess. A
-	// node that came from somewhere else — the synthetic root of the multi-root form, or something a
-	// caller emplaced itself — has no object at all, and answering null for it is what lets every
-	// caller below treat "not one of mine" and "not a file" as the same case.
+	// Every node this model builds carries a FileRef; other nodes (the synthetic root, caller
+	// nodes) have no object and yield null.
 	return node ? static_cast<FileRef *>(node->getObject()) : nullptr;
 }
 
@@ -120,8 +117,7 @@ bool FilesystemModel::init() {
 		return false;
 	}
 
-	// The root stays a synthetic container with no FileRef: it is not a directory, so nothing can be
-	// moved into it and nothing tries to list it. Directories arrive through addRoot().
+	// The root is a synthetic container with no FileRef: never listed, not a move target.
 	return initFilesystem();
 }
 
@@ -143,13 +139,8 @@ bool FilesystemModel::init(const FileInfo &root, StringView title) {
 	auto node = getRoot();
 	setNodeObject(node, ref);
 
-	/* The model is captured RAW: the model owns the node, the node owns this callback, so an Rc
-	either way round would be a cycle nothing could break — and the model outlives every node in it
-	by construction.
-
-	Nothing about WHICH directory this is is captured either. The path is read back out of the
-	node's FileRef every time, and that is what makes a move work: "this directory is somewhere else
-	now" is one write to the FileRef, and the next listing walks the new location. */
+	/* The model is captured raw (it owns the node that owns this callback). The path is read from
+	the node's FileRef on each listing, so a move only has to update the FileRef. */
 	node->setChildsCallback([this](Node *self, const Function<void()> &complete) {
 		requestListing(self, Function<void()>(complete));
 	});
@@ -159,9 +150,8 @@ bool FilesystemModel::init(const FileInfo &root, StringView title) {
 
 bool FilesystemModel::initFilesystem() {
 	setSlots(Slots{
-		// Pure predicates — they are asked speculatively, for every candidate parent a drag passes
-		// over, so no syscalls here. Whether the target NAME is taken is performMove's problem,
-		// because only it can answer that without racing the answer.
+		// Pure predicates, asked speculatively during a drag: no syscalls. Name collisions are
+		// checked in performMove.
 		.canMove =
 				[this](const Node *node, const Node *dstParent, size_t) {
 		if (!_moveEnabled) {
@@ -199,8 +189,7 @@ auto FilesystemModel::addRoot(const FileInfo &info, StringView title) -> Node * 
 	ref->dir = true;
 	filesystem::stat(info, ref->stat);
 
-	// Appended in call order and NOT sorted: the order of the places is the caller's statement about
-	// them, not something to be derived from their names.
+	// Appended in call order, not sorted.
 	return emplaceEntry(getRoot(), maxOf<size_t>(), sp::move(ref));
 }
 
@@ -246,9 +235,7 @@ void FilesystemModel::setWindow(AppWindow *window) { _window = window; }
 // --- listing --------------------------------------------------------------------------------
 
 void FilesystemModel::readDirectory(StringView path, bool withStat, Vector<Entry> &out) {
-	// depth 1 = this directory's own entries, with subdirectories reported but not descended into;
-	// dirFirst = true makes the walk report the directory ITSELF before its contents, which is the
-	// one callback that has to be skipped.
+	// Depth 1: own entries only. With dirFirst the walk also reports the directory itself; skip it.
 	filesystem::ftw(FileInfo{path}, [&](const FileInfo &info, FileType type) -> bool {
 		if (info.path == path) {
 			return true;
@@ -258,9 +245,7 @@ void FilesystemModel::readDirectory(StringView path, bool withStat, Vector<Entry
 		entry.path = info.path.str<Interface>();
 		entry.name = filepath::lastComponent(info.path).str<Interface>();
 
-		// A directory the process cannot open is reported as a File by the walk, which is exactly
-		// the behaviour to keep: it becomes an Item rather than a Category, so it gets no expander,
-		// because there is nothing behind it that could be shown.
+		// An unreadable directory is reported as a File, so it becomes an Item with no expander.
 		entry.dir = type == FileType::Dir;
 
 		if (withStat) {
@@ -298,8 +283,7 @@ void FilesystemModel::requestListing(Node *dir, Function<void()> &&complete) {
 	Rc<FilesystemModel> self(this);
 	Rc<Node> node(dir);
 
-	// Read BEFORE the hop and compared after it: a refresh while the worker is walking retires this
-	// answer, because it describes children that have already been replaced.
+	// Compared after the hop: a refresh during the walk makes this answer stale.
 	const auto generation = dir->getChildsGeneration();
 
 	auto st = looper->performAsync(
@@ -313,8 +297,7 @@ void FilesystemModel::requestListing(Node *dir, Function<void()> &&complete) {
 				self->applyListing(node, sp::move(entries));
 			}
 
-			// Called either way: it is what takes the node out of Loading, and the guard inside
-			// Node::requestChilds drops it harmlessly when this load was the retired one.
+			// Called either way to leave Loading; Node::requestChilds ignores a retired load.
 			if (complete) {
 				complete();
 			}
@@ -322,8 +305,7 @@ void FilesystemModel::requestListing(Node *dir, Function<void()> &&complete) {
 	}, self);
 
 	if (!sprt::status::isSuccessful(st)) {
-		// No worker pool on this looper. A blocking walk is worse than an async one and better than
-		// a branch that never fills, so the fallback is the synchronous path.
+		// No worker pool on this looper: fall back to the synchronous path.
 		log::source().debug("FilesystemModel", "no worker pool, listing inline: ", path);
 
 		Vector<Entry> entries;
@@ -336,14 +318,8 @@ void FilesystemModel::requestListing(Node *dir, Function<void()> &&complete) {
 }
 
 void FilesystemModel::applyListing(Node *dir, Vector<Entry> &&entries) {
-	/* A DIFF, not a rebuild.
-
-	Every entry that is still there keeps the node it had, which means it keeps its ItemId — and
-	therefore its expansion, its selection and its whole open subtree. Rebuilding instead would be
-	four lines shorter and would collapse the tree under the user on every refresh.
-
-	It is also what makes an insertion from elsewhere correct with no special case: a node that a
-	move already put here is recognized by its path and kept, rather than added a second time. */
+	/* A diff by path, not a rebuild: surviving entries keep their node and ItemId, and a node
+	already inserted by a move is kept rather than duplicated. */
 	Map<StringView, Rc<Node>> existing;
 	for (auto &it : dir->getChildren()) {
 		if (auto ref = getFileRef(it)) {
@@ -359,13 +335,11 @@ void FilesystemModel::applyListing(Node *dir, Vector<Entry> &&entries) {
 			auto node = iit->second.get();
 			auto ref = getFileRef(node);
 
-			// Same path, different kind: a file replaced by a directory of that name is a different
-			// element, and keeping the node would leave a leaf where a branch belongs.
+			// Same path but a different kind (file vs directory) is replaced.
 			if (ref->dir == entry.dir) {
 				ref->stat = entry.stat;
 
-				// The name is NOT overwritten from the listing: a root carries the title it was
-				// given, and re-listing its parent must not take that away.
+				// The name is not overwritten from the listing, so a root keeps its title.
 				if (isVisible(*ref)) {
 					updateNode(node, *ref);
 					kept.emplace(node);
@@ -412,13 +386,12 @@ bool FilesystemModel::isVisible(const FileRef &ref) const {
 	if (!_showFiles && !ref.dir) {
 		return false;
 	}
-	// Asked last, so a filter only ever sees what the standard rules already let through.
+	// Asked last, after the standard rules.
 	return _filterCallback ? _filterCallback(ref) : true;
 }
 
 bool FilesystemModel::compare(const FileRef &l, const FileRef &r) const {
-	// Applied before anything else and NOT reversed by the sort direction: "folders at the top" is
-	// what the setting says, and a descending sort that moved them to the bottom would surprise.
+	// Applied first and not reversed by the sort direction.
 	if (_dirsFirst && l.dir != r.dir) {
 		return l.dir;
 	}
@@ -450,8 +423,7 @@ bool FilesystemModel::compare(const FileRef &l, const FileRef &r) const {
 		cmp = sp::platform::caseCompare_u(StringView(l.name), StringView(r.name));
 	}
 	if (cmp == 0) {
-		// Two entries of one directory cannot share a name, but a comparator that answered "less"
-		// in both directions would be undefined behaviour inside the sort, so ties end here.
+		// Ties are not "less", keeping a strict weak ordering.
 		return false;
 	}
 	return _sortAscending ? cmp < 0 : cmp > 0;
@@ -459,15 +431,14 @@ bool FilesystemModel::compare(const FileRef &l, const FileRef &r) const {
 
 void FilesystemModel::sortDirectory(Node *dir) {
 	if (_sortField == SortField::None && !_compareCallback && !_dirsFirst) {
-		return; // the walk order IS the answer; sorting would only cost a Structure update
+		return; // keep the walk order and avoid a Structure update
 	}
 
 	sortChildren(dir, [this](const Node *l, const Node *r) {
 		auto lr = getFileRef(l);
 		auto rr = getFileRef(r);
 
-		// Anything without a FileRef is not ours to order — a span, or a node a caller added — and
-		// sinks to the end rather than being compared, which keeps this a strict weak ordering.
+		// Nodes without a FileRef sink to the end.
 		if (!lr) {
 			return false;
 		}
@@ -484,8 +455,7 @@ auto FilesystemModel::makeValue(const FileRef &ref) -> Value {
 	ret.setString(ref.path, "path");
 	ret.setBool(ref.dir, "dir");
 
-	// Only when there is something to report: with setStatEnabled(false) the Stat is untouched, and
-	// writing zeroes would be indistinguishable from an empty file made in 1970.
+	// Omitted when no stat was taken (setStatEnabled(false)).
 	if (ref.stat.type != FileType::Unknown) {
 		ret.setInteger(int64_t(ref.stat.size), "size");
 		ret.setInteger(int64_t(ref.stat.mtime.toMicros()), "mtime");
@@ -496,9 +466,7 @@ auto FilesystemModel::makeValue(const FileRef &ref) -> Value {
 void FilesystemModel::updateNode(Node *node, const FileRef &ref) {
 	auto value = makeValue(ref);
 
-	// Only when it actually differs: setNodeData bumps the revision, and a revision that changes
-	// for nothing makes a view rebuild a row node for nothing. A refresh over an unchanged
-	// directory must cost no row rebuilds at all.
+	// Only when it differs: setNodeData bumps the revision and rebuilds the row.
 	if (!(value == node->getData())) {
 		setNodeData(node, sp::move(value));
 	}
@@ -528,8 +496,7 @@ static data::Model::Node *findNodeForPath(data::Model::Node *node, StringView pa
 		if (StringView(ref->path) == path) {
 			return node;
 		}
-		// Descend only where the answer can be: a directory that is not a prefix of the target
-		// cannot contain it, which is what keeps this the depth of the tree rather than its size.
+		// Descend only into directories whose path is a prefix of the target.
 		if (!ref->dir || !path.starts_with(StringView(ref->path))) {
 			return nullptr;
 		}
@@ -574,7 +541,7 @@ bool FilesystemModel::renameNode(Node *node, StringView newName) {
 	filesystem::stat(FileInfo{target}, ref->stat);
 	updateNode(node, *ref);
 
-	// The node keeps its id through all of this, so the row stays selected and stays open.
+	// The node keeps its id, so the row stays selected and open.
 	if (ref->dir) {
 		rebaseSubtree(node, oldPath, target);
 	}
@@ -609,8 +576,7 @@ auto FilesystemModel::createDirectory(Node *parent, StringView name) -> Node * {
 	ref->dir = true;
 	filesystem::stat(FileInfo{target}, ref->stat);
 
-	// Safe even when `parent` has never been listed: the listing that eventually runs recognizes
-	// this node by its path and keeps it, rather than producing a second one for the same directory.
+	// Safe for an unlisted parent: its later listing keeps this node by path.
 	auto node = emplaceEntry(parent, maxOf<size_t>(), sp::move(ref));
 	sortDirectory(parent);
 	return node;
@@ -630,8 +596,7 @@ void FilesystemModel::refresh(Node *dir) {
 		dir = getRoot();
 	}
 
-	// A directory nobody has opened has nothing to reconcile, and walking it here would be exactly
-	// the eager listing the whole design avoids.
+	// Only listed directories are refreshed.
 	if (!dir->isCategory() || dir->getChildsState() != ChildsState::Loaded) {
 		return;
 	}
@@ -640,9 +605,7 @@ void FilesystemModel::refresh(Node *dir) {
 }
 
 void FilesystemModel::refreshAll() {
-	// Collected before anything is touched: a refresh edits the child vectors this walks. Top-down,
-	// so a parent is reconciled first — and because that keeps its surviving children, the entries
-	// collected below them are still the right ones to refresh.
+	// Collected first, since a refresh edits child vectors; top-down, and isLive skips removed ones.
 	Vector<Rc<Node>> dirs;
 
 	Function<void(Node *)> collect = [&](Node *node) {
@@ -650,9 +613,7 @@ void FilesystemModel::refreshAll() {
 			return;
 		}
 
-		// The walk does NOT stop at a category that is not a listed directory: the root of the
-		// addRoot() form is a synthetic container with no callback and no FileRef, and every
-		// directory in that model hangs below it.
+		// Continue through categories without a FileRef, such as the synthetic addRoot() root.
 		if (getFileRef(node) && node->getChildsState() == ChildsState::Loaded) {
 			dirs.emplace_back(node);
 		}
@@ -686,7 +647,7 @@ void FilesystemModel::performMove(Node *node, Node *dstParent, CompletionCallbac
 		return;
 	}
 
-	// Refused rather than silently clobbering: filesystem::move renames over an existing file.
+	// Refused: filesystem::move renames over an existing file.
 	if (!_overwrite && filesystem::exists(FileInfo{target})) {
 		log::source().warn("FilesystemModel", "move refused, target exists: ", target);
 		done(Status::ErrorFileExists);
@@ -695,7 +656,7 @@ void FilesystemModel::performMove(Node *node, Node *dstParent, CompletionCallbac
 
 	if (!filesystem::move(FileInfo{src->path}, FileInfo{target})) {
 		log::source().error("FilesystemModel", "move failed: ", src->path, " -> ", target);
-		// The model applied the move optimistically; a failure here is what puts the row back.
+		// A failure status reverts the model's optimistic move.
 		done(Status::ErrorNotPermitted);
 		return;
 	}
@@ -710,20 +671,13 @@ void FilesystemModel::performMove(Node *node, Node *dstParent, CompletionCallbac
 	}
 	updateNode(node, *src);
 
-	/* A moved directory's descendants were listed under the old path.
-
-	Rewriting them — rather than dropping them with resetChilds(), which is what a model without
-	stable identity has to do — is what keeps the subtree the user had open, open. And nothing has
-	to be re-walked on the destination side either: it either has not been listed yet, in which case
-	its first listing will recognize this node, or it has, in which case the model just put the node
-	where the disk now has it. */
+	// Rewrite descendants' paths to keep the open subtree; the destination needs no re-walk.
 	if (src->dir) {
 		rebaseSubtree(node, oldPath, target);
 	}
 
-	// Reported BEFORE the sort on purpose: under MutationPolicy::Confirmed the node is not in
-	// `dstParent` until the completion runs, and sorting a list the node has not joined yet would
-	// leave it wherever the requested index put it.
+	// Completed before the sort: under MutationPolicy::Confirmed the node joins `dstParent` only
+	// when the completion runs.
 	done(Status::Ok);
 	sortDirectory(dstParent);
 
@@ -740,10 +694,6 @@ void FilesystemModel::performRemove(Node *node, CompletionCallback &&done) {
 	switch (_removeMode) {
 	case RemoveMode::Deny: done(Status::ErrorNotPermitted); break;
 	case RemoveMode::Trash: {
-		/* The shell's Trash, never filesystem::remove — that is what RemoveMode::Delete is for, and
-		it is opt-in. A tree widget with a Delete key wired to it is one keystroke away from an
-		unrecoverable loss, and this deletion is one the user can undo with the file manager they
-		already know. */
 		auto st = openShellDialog(DialogType::MoveToTrash, ref->path, sp::move(done));
 		if (!sprt::status::isSuccessful(st)) {
 			// openShellDialog has already answered through the completion.
@@ -766,7 +716,7 @@ void FilesystemModel::performRemove(Node *node, CompletionCallback &&done) {
 Status FilesystemModel::openShellDialog(DialogType type, StringView path,
 		CompletionCallback &&done) {
 	if (!_window) {
-		// Both of these are OS shell actions, and the OS wants to know which window asked.
+		// Shell actions need a parent window.
 		if (done) {
 			done(Status::ErrorInvalidArguemnt);
 		}
@@ -777,9 +727,8 @@ Status FilesystemModel::openShellDialog(DialogType type, StringView path,
 	request->type = type;
 	request->paths.emplace_back(path.data(), path.size());
 
-	// The model is held for the duration: the answer may outlive the view that asked for it, and it
-	// has to find the model still there. The loop this makes with _dialogs is broken by the erase
-	// below, which runs exactly once because the completion does.
+	// The model is held until the answer arrives; the cycle with _dialogs is broken by the erase
+	// in the callback, which runs exactly once.
 	Rc<FilesystemModel> self(this);
 	auto req = request.get();
 
@@ -792,18 +741,16 @@ Status FilesystemModel::openShellDialog(DialogType type, StringView path,
 			}
 		}
 
-		// Straight through: Declined — the user said no, or there is no trash backend — reverts the
-		// optimistic removal, which is exactly right.
+		// Passed through: Declined reverts the optimistic removal.
 		if (done) {
 			done(res.status);
 		}
 	};
 
-	// The request IS the cancellation token, so it is kept until its completion has run.
+	// The request is the cancellation token, kept until its completion has run.
 	_dialogs.emplace_back(request);
 
-	// On failure openDialog still answers through the callback, which is what takes the request back
-	// out of _dialogs — so there is nothing to clean up here.
+	// On failure openDialog still calls the callback, which removes the request from _dialogs.
 	return _window->openDialog(request);
 }
 

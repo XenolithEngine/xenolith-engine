@@ -31,8 +31,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // A two-state toggle: a rounded box (Panel) hosting a check-mark icon. Tapping flips the state,
-// publishes `:checked` (so CSS can swap fill/icon colour) and fires the callback. The state lives in
-// the node's InteractiveComponent and nowhere else - the widget keeps no copy of its own.
+// publishes `:checked` and fires the callback. The state lives only in the InteractiveComponent.
 // CSS:
 //   checkbox { width:17px; height:17px; border-radius:4px;
 //              background-color:#292929; border:1px solid rgba(255,255,255,0.3); }

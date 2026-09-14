@@ -42,15 +42,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // are replaced by a server-assigned object id (via ObjectRegistry) on encode and by a thin handle
 // (via ObjectFactory, see XLRemoteObject.h) on decode.
 //
-// NOT serialized (server-only / deferred to the frame-protocol stage): all callbacks (queue
-// begin/end/attach/detach/release, attachment input acquisition/submission/validation, subpass
-// prepare/commands, pass availability/submitted/complete); the polymorphic Rc<Attachment> object
-// (AttachmentData structure IS mirrored, but `attachment` is left null); the RenderPass recording
+// Not serialized (server-only): all callbacks (queue begin/end/attach/detach/release, attachment
+// input acquisition/submission/validation, subpass prepare/commands, pass
+// availability/submitted/complete); the polymorphic Rc<Attachment> object
+// (AttachmentData structure is mirrored, but `attachment` is left null); the RenderPass recording
 // internals (the thin RenderPass carries id + type + index only); inter-pass scheduling metadata
 // (QueuePassDependency, QueuePassRequirements, source/target queue dependencies) and PipelineFamily
 // grouping. Each QueuePassData on the mirror gets a bare stub Rc<core::QueuePass> so the queue tears
-// down safely (QueueData::clear() invalidates it); describe() is NOT usable on the mirror because it
-// dereferences the (null) attachment object.
+// down safely (QueueData::clear() invalidates it); describe() is not usable on the mirror because
+// it dereferences the (null) attachment object.
 class SP_PUBLIC QueueCodec {
 public:
 	// Encode a compiled queue (with its internal + linked resources) to a CBOR blob; gAPI objects get
@@ -86,28 +86,19 @@ SP_PUBLIC Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &);
 SP_PUBLIC Value serializeSwapchainConfig(const core::SwapchainConfig &);
 SP_PUBLIC core::SwapchainConfig deserializeSwapchainConfig(const Value &);
 
-// Where the window is, in the logical space WindowInfo::rect uses. A sibling of FrameConstraints and
-// not part of it, for the same reason handleWindowGeometryChanged is a sibling of
-// handleConstraintsChanged: a window that only MOVED must not cost a scene relayout.
+// Where the window is, in the logical space WindowInfo::rect uses. Separate from FrameConstraints,
+// so a window move does not cause a scene relayout.
 SP_PUBLIC Value serializeWindowGeometry(const sprt::window::WindowGeometry &);
 SP_PUBLIC sprt::window::WindowGeometry deserializeWindowGeometry(const Value &);
 
-/* Frame telemetry, sent to the client alongside every AcquireFrame.
- *
- * Field-by-field, and NOT as a raw dump, because both structs grow extra members under
- * `#if XL_FRAME_ACCOUNT` -- their size is a build-flag fact. The ABI tag from M3 hashes only
- * InputEventData and WindowLayer, so a server built with the flag and a client built without it
- * connect successfully TODAY; a dump would corrupt that pair rather than merely disagree.
- *
- * The flagged fields are therefore appended at the END of the array and read only when both the
- * array is long enough and this build has the members to put them in. That is what lets the two
- * sides agree on the prefix and ignore the rest. */
-// Already used by the WindowInfo codec; exported because WindowControl's SetFullscreen carries the
-// same structure. EdidInfo::vendor is deliberately NOT serialized -- it is a derived lookup cache
-// over vendorId, and a StringView into a string that would not survive the trip.
+// Used by the WindowInfo codec and by WindowControl's SetFullscreen. EdidInfo::vendor is not
+// serialized: it is a lookup cache derived from vendorId.
 SP_PUBLIC Value serializeFullscreenInfo(const sprt::window::FullscreenInfo &);
 SP_PUBLIC sprt::window::FullscreenInfo deserializeFullscreenInfo(const Value &);
 
+/* Frame telemetry, sent to the client alongside every AcquireFrame. Field-by-field: both structs
+ * grow members under `#if XL_FRAME_ACCOUNT`. Those fields are appended at the end and read only
+ * when the array is long enough and this build has the members. */
 SP_PUBLIC Value serializeFrameTiming(const core::FrameTimingInfo &);
 SP_PUBLIC core::FrameTimingInfo deserializeFrameTiming(const Value &);
 
@@ -116,17 +107,12 @@ SP_PUBLIC core::DrawStat deserializeDrawStat(const Value &);
 
 /* Text input, in both directions (WindowCode::TextInputControl and ::TextInputState).
  *
- * The text is carried as UTF-8 while the cursors stay UTF-16 INDICES, which is only sound because
- * the round trip reproduces the same UTF-16 sequence -- UTF-8 is the transport encoding here, not a
- * re-indexing. Everything on both sides of the wire indexes in UTF-16 (TextCursor is defined
- * against it), so converting the offsets too would be the bug, not the fix.
+ * Text travels as UTF-8 while cursors stay UTF-16 indices; the round trip reproduces the same
+ * UTF-16 sequence, so offsets are not converted. Known limitation: a lone surrogate (possible
+ * mid-IME composition) cannot be carried.
  *
- * The one text this cannot carry is a lone surrogate, which a live IME can legally produce
- * mid-composition and UTF-8 cannot represent. Known limitation; the headless processor does not
- * compose, so it does not arise on the test path.
- *
- * TextCursor::InvalidCursor is {Max<uint32_t>, 0} and is a VALUE, not an absence -- it is the
- * default for a command's replacement/marked ranges. It travels as those numbers. */
+ * TextCursor::InvalidCursor ({Max<uint32_t>, 0}) is a value, the default for a command's
+ * replacement/marked ranges, and travels as those numbers. */
 SP_PUBLIC Value serializeTextInputRequest(const core::TextInputRequest &);
 SP_PUBLIC core::TextInputRequest deserializeTextInputRequest(const Value &);
 
@@ -146,41 +132,26 @@ SP_PUBLIC Value serializeMaterialImage(const core::MaterialImage &);
 // for the caller to resolve to a real image.
 SP_PUBLIC core::MaterialImage deserializeMaterialImage(const Value &, uint64_t &outImageId);
 
-/* --- the typed wire format for input and layers (M6) -----------------------------------------
+/* --- the typed wire format for input and layers ---------------------------------------------
  *
- * These two are the only structures that used to travel as a RAW DUMP of their C++ layout, and the
- * only reason the ABI tag from M3 had to gate a session: with a dump, a build disagreement is not a
- * rejected message, it is one process reading another's padding as a keycode. Everything else on
- * this wire has always been field-by-field.
- *
- * Packed binary rather than a CBOR array -- unlike every other codec in this header, and on purpose.
- * Input is the hot path: a batch travels on every frame that saw a pointer move, and a data::Value
- * per field per event would allocate on both sides for no benefit. The layout below is fixed, so
- * there is nothing for a self-describing encoding to describe.
+ * Packed binary rather than CBOR: input is the hot path, and the layout is fixed.
  *
  * Batch envelope, both messages:
  *
  *   [u64 windowId][u16 recordSize][u16 reserved][u32 count][record x count]
  *
- * `recordSize` is what makes the format extensible without a version: a peer that appends a field
- * to the record stays readable by an older one, which decodes the prefix it knows and STEPS BY THE
- * DECLARED SIZE to the next record. That is the binary form of the trick the CBOR codecs above get
- * from a short array, and it is why the size is on the wire rather than assumed from a constant.
+ * `recordSize` makes records extensible: an older reader decodes the prefix it knows and steps by
+ * the declared size to the next record.
  *
- * Every field is written explicitly, including padding, so what travels is a fact of the protocol
- * rather than of the compiler. Floats travel as their IEEE bits (WireWriter::writeFloatBits): NaN is
- * a value here, not an absence -- InputEventData::input.x defaults to NaN and hasLocation() is
- * defined by isnan().
+ * Every field, including padding, is written explicitly. Floats travel as their IEEE bits
+ * (WireWriter::writeFloatBits), since NaN is meaningful (InputEventData::input.x, hasLocation()).
  *
- * NOT fixed by any of this: what the NUMBERS mean. `event` rides as an integer, so two builds that
- * disagree about which InputEventName is 7 -- a value inserted in the middle -- misread each other
- * exactly as a dump would. The enum values are part of the wire contract, and tests/remote pins
- * them; that is the half of the old ABI tag that was doing real work. */
+ * Enum values (e.g. InputEventName in `event`) are part of the wire contract; tests/remote pins
+ * them. */
 
 // InputEventData record: 40 bytes.
 //   [u32 id][u32 event][u32 button][u32 modifiers][u32 x bits][u32 y bits][16 bytes variant]
-// The variant is selected by InputEventInfo[event].dataType, so it is the EVENT that says how the
-// last 16 bytes are read -- not the sender's memory layout:
+// The variant is selected by InputEventInfo[event].dataType:
 //   Point  : [u32 valueX bits][u32 valueY bits][u32 density bits][u32 zero]
 //   Key    : [u16 keycode][u16 compose][u32 keysym][u32 keychar][u32 zero]
 //   Window : [u64 state][u64 changes]

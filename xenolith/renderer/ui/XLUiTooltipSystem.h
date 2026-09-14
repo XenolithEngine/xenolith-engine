@@ -42,21 +42,18 @@ struct TooltipInfo;
 
 // Where the hint hangs off.
 enum class TooltipAnchorMode {
-	// The hovered node's own world rect. The hint lands in the same place however the pointer
-	// wandered in, which is what a hint describing a WIDGET should do.
+	// The hovered node's own world rect, independent of where the pointer entered.
 	NodeRect,
 
-	// The pointer, as of the moment the delay elapsed. For a node that is not one thing - a canvas,
-	// a map, a chart - where the hint describes what is UNDER the pointer, not the node.
+	// The pointer, as of the moment the delay elapsed. For a node whose hint describes what is
+	// under the pointer (a canvas, a map, a chart).
 	Pointer,
 };
 
 // Which materialization to ask SubWindow for.
 enum class TooltipMode {
-	// An in-scene overlay on the parent's SceneContent2d. The default, and not merely the portable
-	// choice: a native tip costs a swapchain for a few hundred milliseconds of hint and takes the
-	// pointer away from the node it describes, which turns the leave that should hide it into a
-	// leave that fires immediately.
+	// An in-scene overlay on the parent's SceneContent2d. The default: a native tip costs a
+	// swapchain and takes the pointer away from the node, firing the leave that hides it at once.
 	Overlay,
 
 	// A real subwindow where the platform advertises WindowCapabilities::Subwindows, an overlay
@@ -72,32 +69,30 @@ struct SP_PUBLIC TooltipPlacement {
 
 	TooltipAnchorMode anchorMode = TooltipAnchorMode::NodeRect;
 
-	// The point ON the anchor rect the hint attaches to. Y-DOWN, like the rest of WindowPlacement:
-	// `Bottom` is the node's lower edge on screen.
+	// The point on the anchor rect the hint attaches to. Y-down, like WindowPlacement: `Bottom` is
+	// the node's lower edge on screen.
 	WindowAnchor anchor = WindowAnchor::Bottom;
 
-	// WHICH EDGE OF THE HINT lands on that point - NOT the direction it opens, which is the reading
-	// the name invites. `Top` puts the hint's top edge at the anchor, so the hint hangs BELOW it;
-	// `Bottom` would put the hint above. See originForGravity in SPRuntimeWindowSupport.cc.
+	// Which edge of the hint lands on that point, not the opening direction: `Top` puts the hint's
+	// top edge at the anchor, so it hangs below. See originForGravity in SPRuntimeWindowSupport.cc.
 	WindowAnchor gravity = WindowAnchor::Top;
 
 	// Y-down as well: positive y pushes the hint further down, away from a node it sits under.
 	IVec2 offset = IVec2{0, 8};
 
-	// FlipY first: a hint under a node near the bottom edge belongs above it, not slid up over the
-	// node it describes.
+	// FlipY first: a hint under a node near the bottom edge goes above it rather than sliding over
+	// the node.
 	WindowPlacementAdjustment adjustment = WindowPlacementAdjustment::FlipY
 			| WindowPlacementAdjustment::SlideX | WindowPlacementAdjustment::SlideY;
 };
 
-// What a factory is handed. Everything the hint could want to know about why it is being built.
+// What a factory is handed.
 struct SP_PUBLIC TooltipRequest {
 	// The hovered node.
 	Node *target = nullptr;
 
-	// What the node declared, so a factory shared by many nodes can read back whatever it put
-	// there. Never null while the factory runs - it is a copy, taken when the hint was built, and
-	// not a pointer into a widget that may be gone by then on the native path.
+	// What the node declared. Never null while the factory runs; a copy taken when the hint was
+	// built, not a pointer into a widget that may be gone on the native path.
 	const TooltipInfo *info = nullptr;
 
 	StringView text;
@@ -105,21 +100,18 @@ struct SP_PUBLIC TooltipRequest {
 	// Never null; an empty Value when the target declared none.
 	const Value *data = nullptr;
 
-	// The target's world rect, as of the moment the delay elapsed. SCENE space - physical pixels,
-	// since the Scene scales its subtree by the density - which is the space a factory's own nodes
-	// convert to and from. It is NOT the space a WindowPlacement is resolved in; see
-	// ui::placementAnchorRect for that one.
+	// The target's world rect when the delay elapsed, in scene space (physical pixels, the space a
+	// factory's nodes use). Not WindowPlacement space; see ui::placementAnchorRect.
 	Rect nodeWorldRect;
 
 	// Pointer position, same moment and the same scene space.
 	Vec2 pointer;
 
-	// The extent the surface was opened with. A factory that builds to a different size will be
-	// clipped on the native path, so build to this.
+	// The extent the surface was opened with; content built larger is clipped on the native path.
 	Extent2 size;
 };
 
-// Builds the hint's content. Runs on BOTH materializations, which is what keeps a caller portable.
+// Builds the hint's content, on both materializations.
 using TooltipFactory =
 		Function<Rc<basic2d::SceneLayout2d>(NotNull<SubWindow>, const TooltipRequest &)>;
 
@@ -140,8 +132,7 @@ struct SP_PUBLIC TooltipInfo {
 	// factory building something other than a line of text must set this.
 	Extent2 size = Extent2::ZERO;
 
-	// Inflates the hover test, the same idea as InputListener::setTouchPadding: a thin target is
-	// hard to rest a pointer on.
+	// Inflates the hover test, like InputListener::setTouchPadding, for thin targets.
 	float hoverPadding = 0.0f;
 };
 
@@ -154,15 +145,9 @@ struct SP_PUBLIC TooltipInfo {
         .factory = [](NotNull<SubWindow>, const TooltipRequest &req) { ... },
     });
 
-IT IS DATA, NOT A LISTENER. This used to be an InputListener of its own on every node with a hint -
-one registration in the dispatcher's storage, one sort entry and one hit test per event, for a node
-whose hint is used perhaps once a session. Now the node publishes itself into the frame's hit-test
-registry like every other participant (see HitTestFlags), and ONE listener on the scene resolves
-which of them the pointer is resting on.
-
-THE DELAY IS NOT HERE. This says what the hint is; TooltipSystem decides how long a pointer must
-rest. One node's hint appearing sooner than its neighbour's is a bug, not a feature, so there is
-deliberately no per-node override.
+The node publishes itself into the frame's hit-test registry (see HitTestFlags) and one listener
+on the scene resolves which target the pointer rests on. The hover delay belongs to TooltipSystem
+and has no per-node override.
 
 App-thread only. */
 struct SP_PUBLIC TooltipComponent {
@@ -170,34 +155,34 @@ struct SP_PUBLIC TooltipComponent {
 
 	TooltipInfo info;
 
-	// A disabled hint is not found. For a widget that carries a hint only in some of its states
+	// A disabled hint is not found, for widgets that carry a hint only in some states.
 	bool enabled = true;
 };
 
 // Attaches a hint to `node`, or replaces the one it has, and marks the node as a participant in the
-// hit-test registry. The only supported way in: the flag is a cache of this component's presence
+// hit-test registry. The only supported way in: the flag caches this component's presence.
 SP_PUBLIC const TooltipComponent *setTooltip(NotNull<Node>, TooltipInfo &&);
 SP_PUBLIC const TooltipComponent *setTooltip(NotNull<Node>, StringView text);
 
 SP_PUBLIC const TooltipComponent *getTooltip(NotNull<Node>);
 
-// Changing the text of a hint that is currently UP rebuilds it in place
+// Changing the text of a hint that is currently up rebuilds it in place.
 SP_PUBLIC void setTooltipText(NotNull<Node>, StringView);
 SP_PUBLIC void setTooltipEnabled(NotNull<Node>, bool);
 
 SP_PUBLIC void removeTooltip(NotNull<Node>);
 
 // How the scene's hints behave. Everything here is a default a TooltipComponent may override,
-// except the delay - see the note on TooltipComponent.
+// except the delay.
 struct SP_PUBLIC TooltipConfig {
 	using WindowCreationFlags = sprt::window::WindowCreationFlags;
 
-	// How long the pointer must REST on a target. Every move within the node restarts it, so this
-	// is dwell time, not time-since-entry.
+	// How long the pointer must rest on a target. Every move within the node restarts it (dwell
+	// time, not time since entry).
 	TimeInterval hoverDelay = TimeInterval::milliseconds(600);
 
-	// How long the hint stays once shown. Zero means "until something takes it down" - a leave,
-	// a popup, the scene going away. See the hideOnLeave note for when zero is a bad idea.
+	// How long the hint stays once shown. Zero means until something takes it down (a leave, a
+	// popup, the scene going away); see hideOnLeave.
 	TimeInterval hideDelay = TimeInterval();
 
 	TooltipPlacement placement;
@@ -210,8 +195,7 @@ struct SP_PUBLIC TooltipConfig {
 	Extent2 defaultSize = Extent2(160, 34);
 	Extent2 minExtent = Extent2::ZERO;
 
-	// A hint is a hint: a width that runs to the window edge is a paragraph. Zero per dimension
-	// means unconstrained, as everywhere else.
+	// Zero per dimension means unconstrained.
 	Extent2 maxExtent = Extent2(360, 0);
 
 	WindowCreationFlags flags = WindowCreationFlags::None;
@@ -222,14 +206,12 @@ struct SP_PUBLIC TooltipConfig {
 
 	// The pointer leaving the target hides the hint.
 	//
-	// IGNORED under TooltipMode::Native, and not as a simplification: a native tip takes the
-	// pointer off the parent window, WindowState::Pointer drops, and the target reports a leave it
-	// never had. There the hide timer is the only honest closer, so a Native config with a zero
-	// hideDelay is given SubWindowSession::DefaultHideDelay rather than a hint that never goes away.
+	// Ignored under TooltipMode::Native: a native tip takes the pointer off the parent window, so
+	// the target reports a false leave. There a zero hideDelay is replaced with
+	// SubWindowSession::DefaultHideDelay.
 	bool hideOnLeave = true;
 
-	// A press or a keystroke anywhere hides the hint. A hint is for a pointer at rest; the moment
-	// the user does something they have stopped reading it.
+	// A press or a keystroke anywhere hides the hint.
 	bool hideOnInput = true;
 };
 
@@ -238,18 +220,12 @@ struct SP_PUBLIC TooltipConfig {
 	auto *tips = TooltipSystem::acquireForNode(node);
 	tips->setHoverDelay(TimeInterval::milliseconds(400));
 
-WHERE IT LIVES. On SceneContent, and acquireForNode puts it there if nobody did - so a widget can
-carry a hint without the application having arranged anything. Found by walking the parent chain,
-because everything that reaches it runs outside a visit.
+Lives on SceneContent; acquireForNode installs it if missing. Found by walking the parent chain,
+since callers run outside a visit.
 
-WHY THE DELAY IS AN ACTION. Not just because dwell is naturally expressed as "start a timer, restart
-it on every move". A running action makes Director::hasActiveInteractions() true, so the frame loop
-stays awake and the delay actually elapses in an app that renders on demand. A looper timer would
-fire on a thread that has stopped drawing. The action is tracked by TAG rather than by Rc, so "is
-one running?" is always asked of the node and a finished action leaves nothing stale behind.
-
-ONE HINT AT A TIME is not enforced here but by SubWindowSession, which owns the window's single tip
-slot and drops it when a popup opens. This system is a client of that slot, not a second owner.
+The delay is a running action (tracked by tag), which keeps Director::hasActiveInteractions() true
+so the delay elapses in an app that renders on demand. The single tip slot per window is owned by
+SubWindowSession, which drops it when a popup opens; this system is a client of that slot.
 
 App-thread only. */
 class SP_PUBLIC TooltipSystem : public System {
@@ -259,12 +235,10 @@ public:
 	// The dwell action on the owner.
 	static constexpr uint32_t DelayActionTag = "XLUiTooltipDelay"_tag;
 
-	// The hover listener's priority. Post-scene, like the dismiss one, and for the same reason: it
-	// only watches, so it belongs after everything that acts. It consumes nothing either way.
+	// The hover listener's priority: post-scene, since it only watches. It consumes nothing.
 	static constexpr int32_t HoverListenerPriority = -0x1F00;
 
-	// Deeply negative so the dismiss listener sits in the dispatcher's post-scene band and sees
-	// what every widget already had its chance at. It swallows nothing.
+	// In the dispatcher's post-scene band, after every widget had its chance. It swallows nothing.
 	static constexpr int32_t DismissListenerPriority = -0x2000;
 
 	// The nearest TooltipSystem at or above `node`.
@@ -290,9 +264,8 @@ public:
 	virtual void handleExit() override;
 	virtual void handleVisitBegin(FrameInfo &) override;
 
-	// One hit-test query per frame, and only while the scene has a hint in it at all. This is what
-	// notices a node sliding out from under a pointer that did not move - a scrolling list, a panel
-	// animating into place
+	// One hit-test query per frame while the scene has any hint: notices a node sliding out from
+	// under a still pointer (a scrolling list, an animating panel).
 	virtual void update(const UpdateTime &) override;
 
 	virtual void setConfig(const TooltipConfig &);
@@ -319,9 +292,8 @@ public:
 
 	bool isVisible() const;
 
-	// The node's hint changed - text, factory, or the component going away. Rebuilds a hint that is
-	// currently up for it, and is a no-op otherwise. Public because the component setters are free
-	// functions: a node's hint can be edited from anywhere, and something has to notice.
+	// The node's hint changed (text, factory, or the component removed). Rebuilds a hint currently
+	// up for it; otherwise a no-op. Public because the component setters are free functions.
 	void handleNodeChanged(NotNull<Node>);
 
 	// The node whose hint is up, or null.
@@ -336,12 +308,9 @@ public:
 	InputListener *getHoverListener() const { return _hoverListener; }
 
 protected:
-	/* Which node the pointer is resting on, asked of the frame's hit-test registry.
-
-	`fromMove` says whether the pointer actually moved. It is the difference between the two callers
-	and it decides one thing: a move restarts the dwell (that is what makes the delay "the pointer
-	stopped" rather than "the pointer arrived"), a per-frame re-resolution must not, or a hint would
-	never appear in a scene that keeps drawing. */
+	/* Which node the pointer is resting on, from the frame's hit-test registry. `fromMove`: a real
+	move restarts the dwell; a per-frame re-resolution must not, or a hint never appears in a scene
+	that keeps drawing. */
 	void resolveHover(const Vec2 &pointerWorld, bool fromMove);
 
 	// Pointer entered the node, or moved within it. Both restart the dwell.
@@ -368,8 +337,8 @@ protected:
 
 	InputDispatcher *getDispatcher() const;
 
-	// One listener on the owner, in place of one per node with a hint. It carries a move
-	// recognizer and nothing else: it decides nothing, it only says the pointer went somewhere
+	// One listener on the owner for all hinted nodes, with only a move recognizer: it reports where
+	// the pointer went and decides nothing.
 	void updateHoverListener();
 
 	AppWindow *getWindow() const;
@@ -379,12 +348,8 @@ protected:
 	TooltipConfig _config;
 	TooltipFactory _defaultFactory;
 
-	/* Rc now, where the old target pointers were raw.
-
-	A target used to announce its own departure from handleExit; a component cannot, so a node that
-	leaves the scene while its hint is up would leave a dangling pointer behind. Holding it is also
-	what lets `fire` run against the node the dwell was armed for even if it has just been detached -
-	it finds it not running and declines, instead of reading freed memory. */
+	// Held strongly: a component cannot report the node's exit, so a raw pointer could dangle.
+	// `fire` then finds a detached node not running and declines.
 	Rc<Node> _pending;
 	Rc<Node> _shown;
 	Rc<Node> _hovered;

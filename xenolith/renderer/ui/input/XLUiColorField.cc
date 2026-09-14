@@ -23,7 +23,7 @@
 #include "XLUiColorField.h"
 
 #include "XLInheritedStyle.h" // placeInline*: the row follows the inline direction
-#include "XLUiMenuPopup.h" // placementForNode: the arithmetic every popup needs and only this has
+#include "XLUiMenuPopup.h" // placementForNode
 #include "XLUiLayoutSystem.h"
 #include "XLInteractiveComponent.h"
 #include "XLInputListener.h"
@@ -34,8 +34,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 static constexpr IconName s_colorFieldIcon = IconName::Image_colorize_outline;
 
-// The closed control's fallback placement. Only the fallback: a styled field gets its LayoutSystem
-// from `display:flex` and none of it runs.
+// Fallback placement metrics, used only without a LayoutSystem (no `display:flex`).
 static constexpr float s_colorPadding = 8.0f;
 static constexpr float s_colorGap = 8.0f;
 static constexpr float s_colorSwatchWidth = 32.0f;
@@ -43,12 +42,8 @@ static constexpr float s_colorSwatchRadius = 3.0f;
 
 // ---- the hex line --------------------------------------------------------------------------
 
-/* A ui::TextInput that reports the focus EDGE.
-
-TextInput::focus() only ASKS the platform; `_focused` follows what the platform granted, and
-updateInteractiveState is the one method called on that flip. The owner needs the edge twice over:
-a blur is where the text has to agree with the value again, and a focus is what tells a form that
-this field now holds the keyboard. */
+/* A ui::TextInput that reports the focus edge to the owner. TextInput::focus() only requests
+focus; `_focused` follows what the platform granted, and updateInteractiveState runs on the flip. */
 class ColorField::Input : public TextInput {
 public:
 	virtual ~Input() = default;
@@ -61,10 +56,8 @@ public:
 		return true;
 	}
 
-	/* blur() does not always echo: TextInput::blur cancels the handler, and a cancel is not an
-	edit. So the two ways an edit can end are hooked separately - this one, and the echo below for
-	when the platform takes input away with nobody calling blur() at all. ui::NumberField splits it
-	the same way. */
+	/* blur() does not echo (it cancels the handler), so an explicit blur is hooked here and a
+	platform-side end of input through the echo below. */
 	virtual void blur() override {
 		TextInput::blur();
 		if (_owner) {
@@ -78,8 +71,7 @@ protected:
 	virtual void handleTextInput(const TextInputState &state) override {
 		TextInput::handleTextInput(state);
 		if (_owner) {
-			// AFTER the base call: the echoed state is stored in there, and anything written back
-			// before it lands is overwritten by it.
+			// after the base call, which stores the echoed state
 			_owner->handleInputEcho(isFocused());
 		}
 	}
@@ -107,9 +99,8 @@ bool ColorField::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist before anything reads isEnabled(): a node without one
+	reads as state 0, which matches `:disabled`. */
 	applyControlEnabled(this, true);
 
 	setType("color-field");
@@ -133,10 +124,8 @@ bool ColorField::init() {
 	_icon->setType("icon");
 	_icon->addStyleClass("xl-ui-color-icon");
 
-	/* Priority 1, above the hex line's own listener, with a filter that takes only what is NOT over
-	the text: a tap on the swatch or the icon opens the picker, a tap on the text puts the caret in
-	it. Two targets in one control, and the split is by where the tap landed rather than by which
-	listener happened to be asked first. */
+	/* Priority 1, above the hex line's listener, filtered to points outside the text: a tap on the
+	swatch or icon opens the picker, a tap on the text goes to the hex line. */
 	_listener = addSystem(Rc<InputListener>::create());
 	_listener->setPriority(1);
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
@@ -161,9 +150,7 @@ bool ColorField::init() {
 }
 
 void ColorField::handleExit() {
-	// The surface hangs off a window this node is leaving, and a dialog outlives the widget that
-	// asked for it unless it is cancelled - a picker over a control that is gone is one the user
-	// has to dismiss by hand.
+	// close the surface and cancel a system dialog, which would otherwise outlive the widget
 	close();
 	Panel::handleExit();
 }
@@ -176,8 +163,7 @@ void ColorField::handleLayoutChildren() {
 }
 
 void ColorField::placeInlineParts() {
-	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and the
-	// placement below would be a second writer of the same positions. Same rule as ui::Select's.
+	// a LayoutSystem owns the children's geometry when present
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -188,12 +174,8 @@ void ColorField::placeInlineParts() {
 		return;
 	}
 
-	/* PHASE 6 AND NOT PHASE 4. An ancestor's StyleResolver re-resolves this node in reaction to its
-	content-size phase, so a direction read from inside handleContentSizeDirty is the one the node
-	had a pass ago. Switching a window back from a right-to-left language left these on the edge
-	they had a moment before, with nothing afterwards to correct the record. handleLayoutChildren
-	runs later in the same visit, when the resolved style has settled. */
-	// The swatch leads, the picker icon trails, and the field takes what is between them.
+	/* Runs from handleLayoutChildren: the resolved direction is not yet current in
+	handleContentSizeDirty. The swatch leads, the icon trails, the text line fills the rest. */
 	const bool rtl = isInlineRtl(this);
 
 	float startInset = s_colorPadding;
@@ -218,8 +200,7 @@ void ColorField::placeInlineParts() {
 
 void ColorField::setValue(const Color4B &value, bool silent) {
 	if (_value == value) {
-		// Still refresh the text: a refused edit left the line showing something else, and this is
-		// how "assign what it already holds" puts it back.
+		// still refresh the text, which may show a refused edit
 		updateContent();
 		return;
 	}
@@ -239,8 +220,7 @@ bool ColorField::setValueFromString(StringView str, bool silent) {
 		return false;
 	}
 	if (!_alpha) {
-		// The field does not carry alpha, so it does not silently acquire one from a string that
-		// happened to have it.
+		// alpha from the string is ignored when the field has no alpha
 		color.a = 255;
 	}
 	setValue(color, silent);
@@ -250,8 +230,7 @@ bool ColorField::setValueFromString(StringView str, bool silent) {
 String ColorField::formatValue() const { return formatColor(_value, _alpha); }
 
 String ColorField::formatColor(const Color4B &color, bool alpha) {
-	// Lower case and always the long form: one spelling per colour, so that what a form collects
-	// and what a file already holds can be compared as text.
+	// lower case, always the long form: one spelling per colour, comparable as text
 	auto digits = StringView("0123456789abcdef");
 	String ret;
 	ret.reserve(alpha ? 9 : 7);
@@ -283,8 +262,7 @@ void ColorField::setAlphaEnabled(bool value) {
 }
 
 void ColorField::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// the edit lock has the last word and remembers the requested value for unlocking
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -312,8 +290,7 @@ void ColorField::setPalette(SpanView<Color4B> palette) {
 	for (auto &it : palette) { _palette.emplace_back(it); }
 
 	if (isOpen()) {
-		// The surface was built from the previous palette; rebuilding it under the pointer would
-		// move the swatch the user was about to click.
+		// the surface was built from the previous palette; close rather than rebuild it
 		close();
 	}
 }
@@ -323,7 +300,7 @@ bool ColorField::open() {
 		return false;
 	}
 
-	// Each attempt answers for itself: whatever the last one could not do is not this one's verdict.
+	// clear the previous attempt's unavailable state
 	setUnavailable(false, StringView());
 
 	switch (_mode) {
@@ -332,8 +309,7 @@ bool ColorField::open() {
 	case PickerMode::Auto: break;
 	}
 
-	// Asked NOW, not remembered: a widget can be moved to another window, and the answer is the
-	// window's.
+	// checked on every open: the widget may have moved to another window
 	return isSystemPickerAvailable() ? openSystemPicker() : openFallbackPicker();
 }
 
@@ -348,8 +324,7 @@ void ColorField::close() {
 		_dialog = nullptr;
 		removeStyleClass("open");
 		if (auto window = getAppWindow()) {
-			// The completion still runs, with ErrorCancelled: that is the contract, and it is what
-			// clears whatever the callback owns.
+			// the completion still runs with ErrorCancelled and releases what the callback owns
 			window->cancelDialog(dialog);
 		}
 	}
@@ -360,8 +335,7 @@ void ColorField::setPickerConfig(PopupSurfaceConfig &&config) { _pickerConfig = 
 void ColorField::setPickerColorMode(ColorPickerMode mode) {
 	_pickerMode = mode;
 
-	// The surface that is already up follows: an application switching the mode with the picker
-	// open means the picker in front of the user, not the next one.
+	// an open surface follows the mode change
 	auto panel = _picker ? _picker->getPanel() : nullptr;
 	if (auto content = dynamic_cast<ColorPickerContent *>(panel)) {
 		content->setMode(mode);
@@ -375,8 +349,7 @@ void ColorField::setFocusCallback(FocusCallback &&cb) { _focusCallback = sp::mov
 void ColorField::setNavigateCallback(NavigateCallback &&cb) {
 	_navigateCallback = sp::move(cb);
 
-	// Passed straight through: the row has one part, so Tab out of the hex line IS Tab out of the
-	// field, and there is no inner ring to walk first.
+	// Tab out of the hex line is Tab out of the field
 	if (_input) {
 		_input->setNavigateCallback([this](bool backwards) {
 			return _navigateCallback ? _navigateCallback(backwards) : false;
@@ -408,13 +381,12 @@ bool ColorField::commitText(bool fromEnter) {
 	Color4B color;
 	if (!sprt::geom::readColor(_input->getText(), color)) {
 		if (fromEnter) {
-			// ENTER is "take this": the refusal stays on screen, with the text that caused it.
+			// on Enter the refused text stays, marked invalid
 			setInvalid(true, StringView("not a colour"));
 			return false;
 		}
 
-		/* BLUR is "I am done", and a field that keeps unreadable text would say one thing on screen
-		and another through getValue(). The value's own text goes back, and the mark goes with it. */
+		// on blur the value's text is restored and the mark cleared
 		setInvalid(false, StringView());
 		updateContent();
 		return false;
@@ -431,14 +403,12 @@ bool ColorField::commitText(bool fromEnter) {
 
 void ColorField::updateContent() {
 	if (_swatch) {
-		// WITH the alpha: the swatch is the value, and a half-transparent colour shown opaque is a
-		// swatch that lies about what it holds.
+		// with alpha: the swatch shows the value as it is
 		_swatch->setPathColor(_value, true);
 	}
 
 	if (_input) {
-		// The field agreeing with itself, not an edit: the guard keeps the echo of this write from
-		// being read back as one.
+		// guarded so the echo of this write is not read back as an edit
 		_inUpdate = true;
 		_input->setText(formatValue());
 		_inUpdate = false;
@@ -447,10 +417,10 @@ void ColorField::updateContent() {
 
 void ColorField::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		// The Enabled bit is written by applyControlEnabled, from setEnabled.
 		bool dirty = false;
-		// The counter is cumulative, so it moves on an edge and never twice. The hex line paints
-		// its own `:focus`; this one is the FIELD's.
+		// The counter is cumulative, so it moves only on an edge. This is the field's `:focus`;
+		// the hex line has its own.
 		const bool focus = isFocused() && sprt::hasFlag(state->state, InteractiveState::Enabled);
 		if (focus != sprt::hasFlag(state->state, InteractiveState::Focus)) {
 			dirty = state->handleFocus(focus ? 1 : -1) || dirty;
@@ -464,7 +434,7 @@ void ColorField::setInvalid(bool value, StringView message) {
 	_message = message.str<Interface>();
 
 	{
-		// The same state ui::FormSystem marks a rejected field with: one word for one meaning
+		// the same state ui::FormSystem marks a rejected field with
 		applyControlInvalid(this, value);
 	}
 }
@@ -475,10 +445,7 @@ void ColorField::setUnavailable(bool value, StringView message) {
 		return;
 	}
 	_unavailable = value;
-	/* Its OWN class, deliberately not `invalid`. The two mean opposite remedies - `invalid` says
-	"fix what you wrote", this says "there is nothing wrong with what you wrote, the way in is
-	missing" - and a control that says the first when it means the second is worse than one that
-	says nothing. */
+	// the `unavailable` class, not `:invalid`: the value is fine, the picker route is missing
 	if (value) {
 		addStyleClass("unavailable");
 	} else {
@@ -493,12 +460,7 @@ bool ColorField::openSystemPicker() {
 	}
 
 	if (!window->isDialogSupported(sprt::window::DialogType::Color)) {
-		/* Named rather than swallowed. This is the whole reason isDialogSupported exists, and an
-		application that offers a control which does nothing on this platform has to be able to find
-		out why.
-
-		Through setUnavailable, not setInvalid: nothing is wrong with the colour this field holds,
-		and marking it `invalid` would say there was. */
+		// reported through setUnavailable, not setInvalid: the value itself is fine
 		setUnavailable(true, StringView("no system colour picker on this platform"));
 		return false;
 	}
@@ -520,13 +482,12 @@ bool ColorField::openSystemPicker() {
 		}
 
 		if (res.status == Status::Declined) {
-			// The user pressed Cancel. An ordinary outcome, and reporting it as a failure is the
-			// trap the dialog documentation names.
+			// the user cancelled; not a failure
 			return;
 		}
 
 		if (!sprt::status::isSuccessful(res.status)) {
-			// The dialog failed, which says nothing about the value the field is holding.
+			// the dialog failed; the value is unaffected
 			setUnavailable(true, sprt::status::getStatusName(res.status));
 			return;
 		}
@@ -542,8 +503,7 @@ bool ColorField::openSystemPicker() {
 	addStyleClass("open");
 
 	if (auto st = window->openDialog(request); !sprt::status::isSuccessful(st)) {
-		// Anything but Ok means the completion has ALREADY been scheduled with that status, so this
-		// only names the refusal - it must not answer the callback itself.
+		// on failure the completion is already scheduled with that status; do not call it here
 		log::source().debug("ui::ColorField",
 				"openDialog refused: ", sprt::status::getStatusName(st));
 		return false;
@@ -564,26 +524,21 @@ bool ColorField::openFallbackPicker() {
 
 	params.mode = _pickerMode;
 
-	/* The tab is kept across an open and a close, and that is a property of the FIELD rather than
-	of the surface: a person who edits in HSL edits in HSL, and a picker that came back on RGB every
-	time would make them say so once per colour. */
+	// the field remembers the tab across opens
 	params.onMode = [this](ColorPickerMode mode) { _pickerMode = mode; };
 
-	/* A BAR IS BEING DRAGGED, and the surface stays up. The swatch and the hex line follow it live,
-	which is the whole reason a field carries a picker with bars rather than a grid of swatches: a
-	colour chosen without seeing it applied is a colour chosen blind. */
+	// live update while a bar is dragged; the surface stays open
 	params.onChange = [this](const Color4B &color) { setValue(color); };
 
 	params.onPick = [this](const Color4B &color) {
-		// Close FIRST: the value's callback is free to put something else in this surface's place,
-		// and a picker still standing behind it is one the user has to dismiss by hand.
+		// close first: the value callback may open another surface in its place
 		close();
 		setValue(color);
 	};
 	params.onClose = [this] { close(); };
 
 	auto config = _pickerConfig;
-	// The field is where the picker's look comes from when the application named no sheet.
+	// the field's stylesheet is used when the config names none
 	config.styleSource = this;
 	config.size = ColorPickerContent::measure(params);
 	config.title = config.title.empty() ? String("Colour") : config.title;
@@ -592,7 +547,7 @@ bool ColorField::openFallbackPicker() {
 	config.panelName = String("color-picker");
 	config.fallbackColor = ColorPickerContent::SurfaceColor;
 
-	// The surface IS the content, and it types and classes itself in init.
+	// the content sets its own type and classes in init
 	config.makePanel = [params = sp::move(params)](NotNull<SubWindow>,
 							   Extent2) mutable -> Rc<Panel> {
 		return Rc<ColorPickerContent>::create(ColorPickerParams(params));
@@ -632,8 +587,7 @@ void ColorField::handleInputFocus(bool focused) {
 }
 
 void ColorField::handleInputEcho(bool focused) {
-	// The platform can take input away with nobody calling blur() - Escape cancels it - so this is
-	// where the text and the value have to agree again, whatever ended the edit.
+	// the platform can end input without blur() (Escape), so the blur commit happens here
 	if (_inUpdate || focused) {
 		return;
 	}

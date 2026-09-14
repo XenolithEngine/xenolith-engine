@@ -30,8 +30,7 @@
 #include <sprt/runtime/dispatch/handle.h>
 
 #if MODULE_XENOLITH_FONT
-// Downstream module, reached only through the font::FontController extension type - the same way
-// XLClientAppThread.cc reaches it.
+// Downstream module, reached only through the font::FontController extension type.
 #include "XLFontController.h"
 #endif
 
@@ -64,11 +63,9 @@ void AppThread::threadInit() {
 #endif
 	});
 
-	// Steady app-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, an app-event
-	// cadence -- NOT the screen/frame interval). It drives performAppUpdate regardless of frame
-	// production, which in the remote subclasses pumps the connection and runs the ~1s keepalive
-	// (ping/pong) even while the window is idle. See ServerAppThread::pumpListener /
-	// ClientAppThread::pumpConnection.
+	// App-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, not the frame
+	// interval). It drives performAppUpdate regardless of frames, which pumps the connection and
+	// the keepalive in the remote subclasses.
 	_timer = _appLooper->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::TimerInfo::Completion::create<AppThread>(this,
 				[](AppThread *data, sprt::dispatch::TimerHandle *self, uint32_t value,
@@ -242,8 +239,8 @@ bool AppThread::stopListening() { return false; }
 bool AppThread::setBearerKey(BytesView) { return false; }
 bool AppThread::setCompressionDictionary(BytesView) { return false; }
 
-// Connection send facade: no connection on the base, so everything fails. Overridden by the server /
-// client subclasses to route through their active connection.
+// Connection send facade: the base has no connection, so everything fails; subclasses route
+// through their active connection.
 bool AppThread::remoteSendCbor(remote::Domain, uint8_t, const Value &, uint32_t *) { return false; }
 bool AppThread::remoteSendRaw(remote::Domain, uint8_t, BytesView, uint32_t *) { return false; }
 bool AppThread::remoteSendCborReply(uint32_t, remote::Domain, uint8_t, const Value &) {
@@ -272,8 +269,7 @@ bool AppThread::failTimedOutRequests() {
 
 	auto now = sp::platform::clock(ClockType::Monotonic);
 
-	// Collect the expired serials first: invoking a waiter's callback may register new requests (or
-	// erase this one), so we must not iterate _requests while calling back into it.
+	// Collect expired serials first: a waiter's callback may register or erase requests.
 	Vector<uint32_t> expired;
 	for (auto &it : _requests) {
 		if (it.second.deadline != 0 && now >= it.second.deadline) {
@@ -284,8 +280,8 @@ bool AppThread::failTimedOutRequests() {
 		return false;
 	}
 
-	// Synthesize a local protocol-error reply: the peer that owed us this reply is the opposite role, so
-	// tag the error as coming from it. code == NetworkBackend marks a local/transport-level failure.
+	// Synthesize a local protocol-error reply, tagged as coming from the peer role that owed it.
+	// code == NetworkBackend marks a local/transport-level failure.
 	auto errType =
 			isServerThread() ? remote::MessageType::ClientError : remote::MessageType::ServerError;
 	for (auto serial : expired) {
@@ -323,10 +319,8 @@ void AppThread::performUpdate(bool wakeup) {
 	_clock = sp::platform::clock(ClockType::Monotonic);
 
 	_time.delta = _clock - _lastUpdate;
-	// Clamp the frame delta. When the tab is backgrounded the browser throttles/pauses the
-	// worker clock, so on the next tick `_clock - _lastUpdate` can be many seconds; feeding that
-	// into the action/animation system makes it lurch far past the end of an interval and appear
-	// to freeze. Cap the step so time keeps flowing smoothly after a resume.
+	// Clamp the frame delta: a backgrounded browser tab throttles the worker clock, and a delta of
+	// many seconds would push animations far past their intervals.
 	if (_lastUpdate != 0 && _time.delta > 100'000 /* 100 ms */) {
 		_time.delta = 100'000;
 	}

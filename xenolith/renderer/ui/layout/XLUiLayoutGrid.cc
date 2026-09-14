@@ -103,8 +103,7 @@ static bool parseGridTrackToken(StringView token, GridTrack &out) {
 
 } // namespace
 
-// Parse a track list, expanding repeat(). Recursion depth is bounded by the
-// nesting of repeat(), which CSS does not allow, so this is effectively flat.
+// Parse a track list, expanding repeat() by recursion (CSS does not nest repeat()).
 Vector<GridTrack> parseGridTemplate(StringView input) {
 	Vector<GridTrack> ret;
 	StringView r(input);
@@ -309,9 +308,8 @@ static void gridContentDistribution(GridAlign align, float freeSpace, size_t cou
 
 } // namespace
 
-// The track-sizing algorithm, shared with the table backend (declared in XLUiLayoutInternal.h).
-// It knows nothing about grid items or table cells - only about TrackContributions - which is why
-// two placement models can share it.
+// The track-sizing algorithm, shared with the table backend (declared in XLUiLayoutInternal.h);
+// it sees only TrackContributions, not grid items or table cells.
 void resolveTrackSizes(Vector<GridTrackSize> &tracks, SpanView<TrackContribution> items,
 		float axisContent, float gap) {
 	const size_t n = tracks.size();
@@ -408,8 +406,8 @@ void LayoutSystem::layoutGrid() {
 	const Size2 containerSize = _owner->getContentSize();
 	const float contentW = sprt::max(containerSize.width - info.padding.horizontal(), 0.0f);
 
-	// CSS `direction: rtl` runs the inline axis - a grid's COLUMN axis - backwards. The tracks are
-	// sized and positioned in logical coordinates and mirrored once at projection, below.
+	// `direction: rtl` reverses the column axis; tracks stay in logical coordinates and are
+	// mirrored at projection, below.
 	const bool rtl = isInlineRtl(_owner);
 	const float contentH = sprt::max(containerSize.height - info.padding.vertical(), 0.0f);
 
@@ -501,7 +499,7 @@ void LayoutSystem::layoutGrid() {
 	auto commit = [&](GridItem &it, uint32_t maj, uint32_t mn) {
 		auto &mnAxis = minorOf(it);
 		auto &mjAxis = majorOf(it);
-		// capture spans BEFORE mutating start (span() == end - start)
+		// capture spans before mutating start (span() == end - start)
 		const uint32_t mnSp = mnAxis.span();
 		const uint32_t mjSp = mjAxis.span();
 		mnAxis.start = mn;
@@ -603,8 +601,7 @@ void LayoutSystem::layoutGrid() {
 	Vector<GridTrackSize> cols = buildTracks(colCount, info.columnTracks, info.autoColumn);
 	Vector<GridTrackSize> rows = buildTracks(rowCount, info.rowTracks, info.autoRow);
 
-	// Project the placed items onto each axis as track contributions - the only thing the sizing
-	// algorithm needs from them, and what lets the table backend reuse it verbatim.
+	// project the placed items onto each axis as track contributions
 	auto contributions = [&](bool isColumn) {
 		Vector<TrackContribution> ret;
 		ret.reserve(items.size());
@@ -648,8 +645,8 @@ void LayoutSystem::layoutGrid() {
 		const float cellY = rows[it.row.start].position;
 		const float cellBottom = rows[it.row.end - 1].position + rows[it.row.end - 1].base;
 
-		// inset the cell by the item margin. `margin.left` stays the LEFT margin under rtl - only
-		// the mirror below moves the box, and it moves the margins with it.
+		// inset the cell by the item margin; under rtl the physical margins are swapped here
+		// because the mirror below flips the box
 		float availX = cellX + (rtl ? it.cfg.margin.right : it.cfg.margin.left);
 		float availW = sprt::max((cellRight - cellX) - it.cfg.margin.horizontal(), 0.0f);
 		float availY = cellY + it.cfg.margin.top;
@@ -666,10 +663,8 @@ void LayoutSystem::layoutGrid() {
 		it.boxW = w;
 		it.boxH = h;
 
-		/* THE ONE PHYSICAL STEP. Everything above stayed in logical inline coordinates - the track
-		order, `justify-self`, `grid-column: 2 / 4` - so an RTL grid is the same arithmetic mirrored
-		once, here, inside the content box. Reversing the track array instead would have put the
-		tracks, the alignment and the line numbers into three different spaces. */
+		/* The only physical step: everything above is in logical inline coordinates, so an RTL
+		grid is mirrored once, here, inside the content box. */
 		Vec2 bottomLeft;
 		bottomLeft.x = info.padding.left + (rtl ? contentW - (it.boxX + it.boxW) : it.boxX);
 		bottomLeft.y = containerSize.height - info.padding.top - it.boxY - it.boxH;

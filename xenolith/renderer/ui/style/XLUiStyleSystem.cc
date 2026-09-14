@@ -35,9 +35,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 ComponentId StyleSystemState::Id;
 ComponentId StyleVariables::Id;
 
-// Custom property names are case-insensitive in this engine (a deviation from the web) and are
-// stored by the stylesheet with their leading "--". Normalising here is what lets a caller write
-// either form and still collide with a sheet-declared property of the same name.
+// custom property names are case-insensitive here (unlike the web) and stored with the leading
+// "--", matching sheet-declared names
 static String normalizeVariableName(StringView name) {
 	String result;
 	result.reserve(name.size() + 2);
@@ -263,8 +262,7 @@ void StyleSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 	owner->setComponent<StyleSystemState>();
 
-	// Added with the owner, subscribed on enter. Adding it from inside handleEnter would be adding
-	// a system while the owner is walking its system list, and the new one would miss the pass.
+	// added here, subscribed on enter: a system added during handleEnter would miss the pass
 	if (!_localeListener) {
 		_localeListener = owner->addSystem(Rc<EventListener>::create());
 	}
@@ -283,11 +281,7 @@ void StyleSystem::handleEnter(Scene *scene) {
 	updateMedia();
 	registerWatches();
 
-	/* The language can change while the window is open, and the interface's direction changes with
-	it. The listener itself was added in handleAdded - a system added from inside a system's own
-	enter callback does not reliably enter the scene with it - and only the SUBSCRIPTION is made
-	here, guarded so that entering twice leaves one delegate. Same split, and for the same reason,
-	as basic2d::Label. */
+	// follow locale changes; guarded so repeated enters leave one delegate
 	if (_localeListener && !_localeDelegate) {
 		_localeDelegate = _localeListener->listenForEvent(locale::onLocale, [this](const Event &) {
 			setMediaOption(StringView("rtl"),
@@ -303,15 +297,13 @@ void StyleSystem::handleEnter(Scene *scene) {
 }
 
 void StyleSystem::handleExit() {
-	// The listener stays - it belongs to the owner, not to this visit - but the delegate goes, so
-	// re-entering re-subscribes exactly once.
+	// the listener stays with the owner; drop the delegate so re-entering subscribes once
 	_localeDelegate = nullptr;
 	cancelWatches();
 	System::handleExit();
 }
 
-// Every descendant, so each one's resolver re-asks. Recursive rather than a frame-stack event,
-// because this runs from a locale change and not from inside a pass.
+// mark every descendant so its resolver re-resolves; recursive, since this runs outside a pass
 static void StyleSystem_markSubtree(Node *node) {
 	for (auto &child : node->getChildren()) {
 		child->markContentSizeDirty();
@@ -328,28 +320,12 @@ void StyleSystem::setMediaOption(StringView name, bool enabled) {
 	} else {
 		_media.removeOption(name);
 	}
-	// Both halves are needed: the first makes getMediaResolved() re-evaluate every query, the
-	// second makes every resolver in the subtree notice that its answer may have changed.
-	// Both halves are needed: the first makes getMediaResolved() re-evaluate every query, the
-	// second makes every resolver in the subtree notice that its answer may have changed.
+	// re-evaluate media queries and bump the version for resolvers in the subtree
 	_resolvedForVersion = maxOf<uint32_t>();
 	invalidateStyles();
 
-	/* AND A PASS TO NOTICE IT IN.
-
-	`invalidateStyles` bumps a version, and a version is only READ when a style pass happens for
-	some other reason - so a media flag flipped between frames would sit there unnoticed until
-	something else disturbed the tree. That is not hypothetical: the studio only appeared to work
-	because its own locale handler marks the content dirty a line later, and the same change in an
-	application that did not think to do that did nothing at all.
-
-	Asking here makes the flag's effect the engine's promise rather than each caller's homework.
-
-	The whole SUBTREE and not just the owner: a StyleResolver re-resolves a node when that node's
-	own phase fires, and a media flag changes the answer for every node under the scope at once.
-	Marking only the owner leaves a window styled by the flag it had a frame ago - which is exactly
-	what a language switch looked like before this walk was here. It is a rare event; a style pass
-	over the subtree is what it costs. */
+	// a version bump is only read during a pass, so request one over the whole subtree: each
+	// resolver re-resolves a node only when that node's own phase fires
 	if (_owner) {
 		_owner->markContentSizeDirty();
 		StyleSystem_markSubtree(_owner);
@@ -361,13 +337,8 @@ void StyleSystem::updateMedia() {
 		return;
 	}
 
-	/* THE INTERFACE'S WRITING DIRECTION, as a media flag, seeded by the ENGINE.
-
-	Here rather than in the application, because every StyleSystem passes through this function on
-	the way in - including the one a popup window builds for itself, which inherits nothing from
-	the window it opened over. One line here gives every window of every application an
-	`@media (x-option: rtl)` that follows the locale, and costs an application that never heard of
-	RTL exactly nothing: with no such block in its sheet, the flag matches no rule. */
+	// seed the `rtl` media flag from the locale for every StyleSystem, including popup windows
+	// that inherit nothing from their parent window
 	setMediaOption(StringView("rtl"),
 			locale::getTextDirection() == font::TextDirection::RightToLeft);
 

@@ -101,14 +101,9 @@ struct SP_PUBLIC EglTable {
 	PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC eglSwapBuffersWithDamageKHR = nullptr;
 
 	// --- wayland-egl (libwayland-egl.so.1) ---
-	// EGL_EXT_platform_wayland does not take the wl_surface: its native window is a
-	// `struct wl_egl_window *`, the client-side buffer queue that libwayland-egl binds to a
-	// surface. Handing eglCreatePlatformWindowSurfaceEXT the wl_surface itself is what an
-	// EGL_BAD_NATIVE_WINDOW (12299) reports, and no frame ever reaches the compositor.
-	//
-	// The library is opened separately from libEGL, and its absence is not an error: it only
-	// means windowed presentation on wayland is unavailable (headless and xcb still work). The
-	// wayland types are not declared here - the handles are opaque to this backend.
+	// EGL_EXT_platform_wayland takes a `struct wl_egl_window *`, not the wl_surface (which fails
+	// with EGL_BAD_NATIVE_WINDOW). The library is optional: without it only windowed wayland
+	// presentation is unavailable. Handles are opaque here.
 	using WlEglWindowCreateProc = void *(*)(void *surface, int width, int height);
 	using WlEglWindowDestroyProc = void (*)(void *window);
 

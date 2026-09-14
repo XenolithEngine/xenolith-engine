@@ -177,9 +177,7 @@ core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &, core::FullScr
 	info.currentTransform = core::SurfaceTransformFlags::Identity;
 
 	// The transport fills in the formats, image counts, present modes and extent it can honour.
-	// The extent is its job and not the window's: only WaylandWindow overrides
-	// NativeWindow::getSurfaceOptions (to scale by output density), and the base is a pass-through
-	// - so on X nothing else would ever set it, and the swapchain would be asked for 0x0 buffers.
+	// The extent must come from it: the base NativeWindow::getSurfaceOptions leaves it unset (0x0).
 	return _software->getSurfaceOptions(move(info));
 }
 
@@ -291,9 +289,7 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		}
 
 		{
-			// On a framebuffer window this is the copy into the scanout mapping plus the cache
-			// maintenance that publishes it - the one stage whose cost is set by the window
-			// system rather than by the scene.
+			// On a framebuffer window: the copy into the scanout mapping and its publication.
 			FrameStageTimer timer(FrameStage::Present);
 			st = _software->present(index, info.damage);
 		}
@@ -306,9 +302,8 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		++_presentedFrames;
 		_presentTime = sp::platform::clock(ClockType::Monotonic);
 
-		// Close the account here rather than in runPass: a frame the damage tracker let through
-		// unchanged never reaches the pass, and charging the period only to the frames that did
-		// rasterize would report a frame rate the window never ran at.
+		// Close the account here, not in runPass: frames skipped by the damage tracker never
+		// reach the pass but still count toward the frame rate.
 		closeFrameBudget();
 	} while (0);
 
@@ -442,9 +437,8 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 		core::SwapchainConfig &&cfg, core::PresentMode presentMode, bool) {
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
-	// Build the new swapchain BEFORE retiring the old one. With window-system memory the previous
-	// buffers may still be held by the compositor, and the transport keeps its pool alive until
-	// they come back - tearing down first would pull the mapping out from under them.
+	// Build the new swapchain before retiring the old one: the compositor may still hold the
+	// previous buffers, whose mapping must stay alive until they come back.
 	auto newSwapchain = makeSwapchain(info, cfg, move(swapchainImageInfo), presentMode);
 
 	auto oldSwapchain = move(_swapchain);

@@ -110,8 +110,7 @@ void Scene::render(FrameInfo &info) {
 
 	info.input = eventDispatcher->acquireNewStorage();
 
-	// Published for the duration of the visit only: a node attached while a frame is in flight
-	// reaches it through getFrameInfo() and catches up on the phases the visit has already passed.
+	// Valid during the visit only; a node attached mid-frame uses getFrameInfo() to catch up.
 	_frameInfo = &info;
 
 	visitDraw(info, NodeVisitFlags::None);
@@ -155,10 +154,8 @@ void Scene::handlePresented(Director *dir) {
 		setContentSize(Size2(_constraints.getScreenSize()) / _constraints.density);
 	}
 
-	// Only for a queue this scene built. A shared queue's internal resource is registered by its
-	// owner (QueueCache) for as long as the cache entry lives; registering it again here would let
-	// whichever scene finishes first erase it for everyone (ResourceCache is name-keyed, no
-	// refcount).
+	// Only for a queue this scene built; a shared queue's resource is registered by its owner
+	// (QueueCache), and ResourceCache is name-keyed with no refcount.
 	if (_ownsQueue) {
 		if (auto res = _queue->getInternalResource()) {
 			auto cache = dir->getResourceCache();
@@ -207,9 +204,7 @@ void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 }
 
 void Scene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &) {
-	// Nothing for a scene graph to do by default - the size half of this already arrived as
-	// FrameConstraints, and the position half means nothing to the layout. Present so a subclass
-	// has somewhere to put what it does care about.
+	// Nothing by default: size arrives as FrameConstraints, and position does not affect layout.
 }
 
 Size2 Scene::getContentSize() const { return _content ? _content->getContentSize() : _contentSize; }
@@ -229,13 +224,8 @@ void Scene::setClipContent(bool value) {
 bool Scene::isClipContent() const { return _content ? _content->isScissorEnabled() : false; }
 
 auto Scene::makeQueue(Queue::Builder &&builder) -> Rc<Queue> {
-	// No begin/end/attach/detach callbacks are installed here any more. They existed only to pin
-	// this Scene's refcount for the duration of a frame, and because they captured `this` they made
-	// the queue permanently scene-specific - two scenes could never share one. The pin now rides on
-	// the FrameRequest itself (Director::acquireFrame -> FrameRequestProxy::setSceneRef), which has
-	// exactly the same lifetime and leaves the queue free of any scene identity.
-	//
-	// Queue::Builder::set*Callback remain in the API for queues that are not scene-backed.
+	// No queue callbacks capture the scene, so queues can be shared; the frame pins the scene via
+	// FrameRequestProxy::setSceneRef instead.
 	return Rc<Queue>::create(move(builder));
 }
 

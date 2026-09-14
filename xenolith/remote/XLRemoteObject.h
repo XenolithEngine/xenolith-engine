@@ -38,9 +38,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // handles are process-local and cannot cross the wire. The client mirror replaces each with one of
 // the thin handles below: a subclass of the matching core:: gAPI base that carries only the
 // server-assigned object id (stored in ObjectData::handle) plus the relevant info struct. These are
-// constructed WITHOUT a core::Device (Object::init is bypassed; device/callback stay null so the
-// destructor's invalidate() is a no-op), and they perform no GPU work -- they exist so the client's
-// queue/resource graph is structurally complete and can reference objects by id in later stages.
+// constructed without a core::Device (Object::init is bypassed; device/callback stay null so the
+// destructor's invalidate() is a no-op), and they perform no GPU work -- they keep the client's
+// queue/resource graph structurally complete and let it reference objects by id.
 
 // Read the server object id back from any handle minted here (0 if none).
 SP_PUBLIC uint64_t getRemoteObjectId(const core::Object &);
@@ -164,8 +164,8 @@ protected:
 };
 
 // Client-side factory: mints a thin handle for a server object id (info comes from the wire) and
-// caches id -> handle so repeated references in the same stream resolve to the SAME handle. The
-// reverse map is exposed for the frame stage (client -> server id-referenced commands). id 0 == null.
+// caches id -> handle so repeated references in the same stream resolve to the same handle. The
+// reverse map serves client -> server id-referenced commands. id 0 == null.
 class SP_PUBLIC ObjectFactory : public Ref {
 public:
 	virtual ~ObjectFactory() = default;

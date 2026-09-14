@@ -40,29 +40,17 @@ bool DockDragGhost::init(const DockPanelDescriptor &desc) {
 	// under the pointer, not beside it
 	setAnchorPoint(Anchor::Middle);
 
-	// A box to draw on, before any stylesheet is consulted: see the class comment for why this is
-	// the widget's job and not the layout's.
+	// default size before any stylesheet; nothing else sizes a decorator
 	setContentSize(DefaultSize);
 
-	/* And a PAINT to draw with, for the same reason - the way ui::TreeView ships the colours of its
-	own drag feedback. A ui::Panel with nothing declared is opaque WHITE (see Panel's own note), so
-	an application that has not written a `dock-drag-ghost` rule was dragging a solid white slab
-	around its scene.
-
-	Translucent on purpose: the ghost is under the pointer, over the very layout the drop is being
-	aimed at, and an opaque one hides the drop indicator it is meant to be aimed by. `withOpacity`
-	is what puts that alpha in the FILL - a Panel's own paint is its background, not the node's
-	opacity, so the icon and the caption stay at full strength.
-
-	This is a layer UNDER the sheet, not beside it: any `dock-drag-ghost { background-color: … }`
-	replaces it outright. */
+	/* Default paint: an unstyled Panel is opaque white. Translucent so the drop indicator stays
+	visible under the ghost; the alpha is in the fill, so icon and caption stay opaque. Any
+	`dock-drag-ghost { background-color }` rule replaces it. */
 	setPathColor(Color4B(0x26, 0x26, 0x2E, 0xC8), true);
 	setBorderRadius(6.0f);
 
-	// Its own flex run, built here for the same reason DockTab builds one: the ghost is the tab's
-	// icon-and-title pair again, and it must look like one without an application having written a
-	// rule for a widget it did not create. NOTHING SIZES IT, though - the drag system only moves
-	// its decorator - so a sheet that wants more than the default box gives it `width`/`height`.
+	// Own flex layout so the ghost looks like a tab without a stylesheet rule. Nothing sizes it; a
+	// stylesheet sets `width`/`height` for a size other than the default.
 	setComponent<SystemManagedLayout>();
 	addSystem(Rc<LayoutSystem>::create(FlexLayoutInfo{
 		.direction = FlexDirection::Row,
@@ -86,10 +74,8 @@ bool DockDragGhost::init(const DockPanelDescriptor &desc) {
 void DockDragGhost::handleComponentsDirty(const ComponentMask &mask) {
 	Panel::handleComponentsDirty(mask);
 
-	// The size a `dock-drag-ghost { width: …; height: … }` rule asked for. It arrives as the
-	// intrinsic HINT a layout would have read - the resolver refuses to commit a size on a node
-	// whose parent places its own children - and this is the node that has to read it instead.
-	// An axis the sheet said nothing about is negative and keeps whatever is there.
+	// Apply `width`/`height` from a `dock-drag-ghost` rule. The resolver only stores them as a
+	// MeasureComponent hint, since the parent places its own children; a negative axis is unset.
 	if (auto measure = getComponent<MeasureComponent>()) {
 		auto size = getContentSize();
 		if (measure->normal.width > 0.0f) {

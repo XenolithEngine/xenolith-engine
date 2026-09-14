@@ -24,21 +24,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The mark a checked item shows when it has no leading icon of its own. It occupies the same
-// column, which is why a menu with one checkable item indents every row alike.
+// Mark for a checked item without its own leading icon; uses the leading column.
 static constexpr IconName s_menuCheckIcon = IconName::Navigation_check_solid;
 
-// What a row that opens a submenu shows on the right when it declares no trailing icon.
+// Trailing mark of a submenu row that declares no trailing icon.
 static constexpr IconName s_menuSubmenuIcon = IconName::Navigation_chevron_right_solid;
 
-/* The row's own colours, for a menu that reached the screen with no stylesheet in scope - which
-since ui::openPopupSurface started sharing the opener's sheet means an application that has no
-ui::StyleSystem at all, a test stand or a tool. Same reasoning as the stock tooltip: the default
-menu surface is dark, and a Label's default ink is black, so without these such a menu is black on
-black.
-
-CSS still wins: `color` arrives as an inherited style component, which overrides a Label's explicit
-setter by design. */
+/* Text colour for a menu with no stylesheet in scope (no ui::StyleSystem at all): the default
+surface is dark and a Label's default ink is black. An inherited CSS `color` still overrides it. */
 static constexpr Color4F s_menuTextColor = Color4F(0.91f, 0.91f, 0.93f, 1.0f);
 static constexpr Color4F s_menuSecondaryTextColor = Color4F(0.60f, 0.60f, 0.64f, 1.0f);
 
@@ -52,8 +45,7 @@ bool MenuItem::init(NotNull<MenuSystem> system, NotNull<MenuSourceButton> item) 
 	_system = system;
 	_item = item;
 
-	// Its own CSS type, with the shared surface appliers registered under it: `menu-item` must be
-	// stylable without every rule having to say `button.menu-item`.
+	// own CSS type with the surface appliers, so rules need not say `button.menu-item`
 	setType("menu-item");
 	removeStyleClass("xl-ui-button");
 	addStyleClass("xl-ui-menu-item");
@@ -62,8 +54,7 @@ bool MenuItem::init(NotNull<MenuSystem> system, NotNull<MenuSourceButton> item) 
 	if (_label) {
 		_label->removeStyleClass("xl-ui-button-label");
 		_label->addStyleClass("xl-ui-menu-item-label");
-		// The text of a menu does not change while it is open, so the shaped glyphs are worth
-		// keeping rather than re-requesting on every atlas pass.
+		// menu text does not change while open, so keep the shaped glyphs
 		_label->setPersistentGlyphData(true);
 		_label->setAlignment(font::TextAlign::Left);
 		_label->setColor(s_menuTextColor, false);
@@ -75,8 +66,7 @@ bool MenuItem::init(NotNull<MenuSystem> system, NotNull<MenuSourceButton> item) 
 		_icon->setColor(s_menuTextColor, false);
 	}
 
-	// The activation goes through Button, which is what applies the `_enabled` gate: a disabled row
-	// must not reach the system at all.
+	// activation goes through Button, whose `_enabled` gate keeps disabled rows from the system
 	setCallback([this] {
 		if (_system && _item) {
 			_system->handleItemActivated(_item);
@@ -92,7 +82,7 @@ void MenuItem::updateFromSource() {
 		return;
 	}
 
-	// The name IS the CSS id, and it is what a test addresses the row by.
+	// the name is the CSS id, and what tests address the row by
 	setName(_item->getName());
 
 	setString(_item->getTitle());
@@ -101,8 +91,7 @@ void MenuItem::updateFromSource() {
 	applyControlChecked(this, _item->isChecked());
 
 	const auto leading = _item->getLeadingIcon();
-	// A checked item with no icon of its own borrows the mark; one that HAS an icon keeps it, since
-	// the icon is what the command is and the check is only its state.
+	// a checked item with no icon of its own shows the mark; one with an icon keeps it
 	setIcon(leading != IconName::None ? leading
 									  : (_item->isChecked() ? s_menuCheckIcon : IconName::None));
 
@@ -168,14 +157,13 @@ void MenuItem::setRowGeometry(const MenuStyle &style, const MenuMetrics &metrics
 		_trailing->setContentSize(Size2(style.iconSize, style.iconSize));
 	}
 
-	// The size may not change between two passes (a checked flag flipped, nothing else), and then
-	// handleContentSizeDirty never runs - so place the children here too.
+	// the size may be unchanged (e.g. only the checked flag flipped), so handleContentSizeDirty may
+	// not run; place the children here too
 	layoutContent();
 }
 
 void MenuItem::handleContentSizeDirty() {
-	// Not Button::handleContentSizeDirty: its fallback centering is a second writer of exactly the
-	// positions this row owns.
+	// not Button's: its fallback centering would also write the positions this row owns
 	Panel::handleContentSizeDirty();
 	layoutContent();
 }
@@ -196,8 +184,7 @@ void MenuItem::handleComponentsDirty(const ComponentMask &mask) {
 	}
 	_hoverApplied = hovered;
 
-	// Only the entering edge: leaving a row does not clear the highlight, because a menu with
-	// nothing highlighted after the pointer wandered off is a menu the keyboard has to start over.
+	// entering edge only: leaving a row keeps the highlight, so the keyboard can continue from it
 	if (hovered && _system && _item) {
 		_system->handleItemHovered(_item);
 	}
@@ -216,19 +203,18 @@ void MenuItem::layoutContent() {
 			_icon->setAnchorPoint(Anchor::MiddleLeft);
 			_icon->setPosition(Vec2(x, height / 2.0f));
 		}
-		// The column is reserved whether or not THIS row fills it: that is what lines the titles up.
+		// reserved even when this row leaves it empty, so titles line up
 		x += _leadingColumn + _style.gap;
 	}
 
-	// The title/subtitle block is centered vertically as one unit, so a two-line row and a one-line
-	// row read as the same list rather than as two lists.
+	// title and subtitle are centered vertically as one block
 	const float textHeight = _titleHeight + _subtitleHeight;
 	float top = height - (height - textHeight) / 2.0f;
 
 	if (_label && _label->isVisible()) {
 		_label->setAnchorPoint(Anchor::TopLeft);
 		_label->setPosition(Vec2(x, top));
-		// Wrapping happens here, at exactly the width the metrics wrapped it at.
+		// wrap at the same width the metrics used
 		_label->setWidth(_style.wrapTitle ? _textColumn : 0.0f);
 		if (!_style.wrapTitle) {
 			_label->setMaxWidth(_textColumn);
@@ -249,8 +235,7 @@ void MenuItem::layoutContent() {
 
 	if (_shortcutColumn > 0.0f) {
 		if (_shortcut && _shortcut->isVisible()) {
-			// Right-aligned inside its own column: accelerators read as a column only when their
-			// ends line up, and they never wrap.
+			// right-aligned in its column so accelerators line up; never wraps
 			_shortcut->setAnchorPoint(Anchor::MiddleRight);
 			_shortcut->setPosition(Vec2(x + _shortcutColumn, height / 2.0f));
 		}
@@ -317,8 +302,7 @@ bool MenuSeparator::init(NotNull<MenuSystem> system, NotNull<MenuSourceItem> ite
 	_line->setType("menu-separator");
 	_line->addStyleClass("xl-ui-menu-separator");
 	_line->setAnchorPoint(Anchor::MiddleLeft);
-	// A Panel with no declared fill is opaque WHITE, which is a visible line on a dark menu and an
-	// invisible one on a light one. Neutral grey until a stylesheet says otherwise.
+	// an unstyled Panel is opaque white; neutral grey until a stylesheet sets it
 	_line->setPathColor(Color4B(128, 128, 128, 96), false);
 
 	return true;

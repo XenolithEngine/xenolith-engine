@@ -105,11 +105,8 @@ LogCapture &logCapture() {
 // handleEnter/handleExit, i.e. on the app thread, so it needs no synchronization of its own.
 SceneInspector *s_listenerOwner = nullptr;
 
-// Every inspector attached to a running scene, in attach order. SceneContent attaches one per
-// scene, so this is one entry per window - which is what lets the single session that owns the
-// socket reach a popup's or a dialog's scene, not only the one it happens to live on. Same thread
-// discipline as s_listenerOwner; function-local so it is built on first use rather than at static
-// init, like logCapture() above.
+// Every inspector attached to a running scene (one per window), in attach order, so the socket
+// owner can reach any window. App thread only; built on first use.
 Vector<SceneInspector *> &inspectors() {
 	static Vector<SceneInspector *> s;
 	return s;
@@ -214,10 +211,7 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 		}
 	}
 
-	/* ...and the STATE, written the way a stylesheet asks for it. A control used to publish
-	`:checked` and `:disabled` as style classes, so a dump showed them for free; now they are bits
-	in InteractiveComponent, and a dump that showed only classes would show a checked row exactly
-	like an unchecked one. */
+	// Interactive state (InteractiveComponent bits), written as selector pseudo-classes
 	if (auto ic = node->getComponent<InteractiveComponent>()) {
 		auto state = ic->state;
 		auto put = [&](InteractiveState flag, StringView name) {
@@ -225,7 +219,7 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 				out << " :" << name;
 			}
 		};
-		// `:disabled` is the ABSENCE of Enabled, which is why it is printed by hand
+		// `:disabled` is the absence of Enabled
 		if (!sprt::hasFlag(state, InteractiveState::Enabled)) {
 			out << " :disabled";
 		}
@@ -256,7 +250,7 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 	auto position = node->getPosition();
 	auto color = node->getColor();
 
-	// io_fixed's second argument is the number of SIGNIFICANT digits (not decimal places): 6 keeps
+	// io_fixed's second argument is the number of significant digits (not decimal places): 6 keeps
 	// sub-pixel layout values readable, 2 is the useful resolution of a 0..1 colour channel
 	out << (node->isVisible() ? "  V" : "  H") << "  sz=" << sprt::io_fixed(size.width, 6) << "x"
 		<< sprt::io_fixed(size.height, 6) << " pos=(" << sprt::io_fixed(position.x, 6) << ","
@@ -264,11 +258,8 @@ void writeNode(const Callback<void(StringView)> &out, Node *node, uint32_t depth
 		<< sprt::io_fixed(color.r, 2) << "," << sprt::io_fixed(color.g, 2) << ","
 		<< sprt::io_fixed(color.b, 2) << "," << sprt::io_fixed(color.a, 2) << ")";
 
-	// The one property of a node that has no appearance of its own and decides everything about
-	// where it lands: an overlay subtree is drawn in a pass of its own, last, at zero depth. Two
-	// nodes with the same box and the same z draw in opposite orders depending on it, so a check
-	// that a popup is ABOVE the scene has nothing else to read. Inherited and not escapable, so
-	// only the root of such a subtree says it.
+	// An overlay subtree draws last, in its own pass, which decides stacking. Inherited, so only
+	// the subtree root is marked.
 	if (node->isOverlay()) {
 		out << " overlay";
 	}
@@ -300,9 +291,7 @@ sprt::dispatch::SocketAddress resolveAddress() {
 	return sprt::dispatch::SocketAddress::parse(DEFAULT_ADDRESS);
 }
 
-// The listener is not free (a socket, a path in /tmp), so it is armed only where it is wanted:
-// during development, when explicitly addressed, and always in headless mode - there the socket is
-// the only interface the process has.
+// Armed only in debug builds, when explicitly addressed, or in headless mode (the only interface).
 bool isInspectorEnabled(const ContextInfo *info) {
 #if defined(DEBUG)
 	return true;
@@ -317,8 +306,7 @@ bool isInspectorEnabled(const ContextInfo *info) {
 #endif
 }
 
-// Reverse lookups for the enum names the protocol speaks. Derived from the same name tables the
-// engine prints with, so they can not drift.
+// Reverse lookups for the protocol's enum names, from the engine's own name tables.
 sprt::window::InputEventName parseEventName(StringView name) {
 	for (uint32_t i = 0; i < toInt(sprt::window::InputEventName::Max); ++i) {
 		auto value = sprt::window::InputEventName(i);
@@ -440,8 +428,7 @@ void SceneInspector::writeSceneDump(const Callback<void(StringView)> &out) const
 }
 
 #if MODULE_XENOLITH_FONT
-// The controller is an extension of the APPLICATION, not of the window, so every window's inspector
-// reports the same one - a font set is shared by every scene the app thread drives.
+// The controller is an application extension, so every window's inspector reports the same one.
 static font::FontController *getFontController(const Node *owner) {
 	auto director = owner ? owner->getDirector() : nullptr;
 	auto app = director ? director->getApplication() : nullptr;
@@ -661,9 +648,7 @@ Value SceneInspector::getWindowList() const {
 		entry.setInteger(int64_t(c.extent.height), "height");
 		entry.setDouble(double(c.density), "density");
 
-		// Where the window is, when the platform knows. Reported alongside the surface extent
-		// rather than instead of it: the two are in different units, and a caller that wants to
-		// reopen a window where it was needs the logical rect, not the pixel one.
+		// Window position when known, in logical units, alongside the pixel surface extent
 		auto &g = server->getWindowGeometry();
 		if (g.hasPosition) {
 			entry.setInteger(int64_t(g.rect.x), "x");
@@ -681,8 +666,7 @@ Value SceneInspector::getWindowList() const {
 
 SceneInspector *SceneInspector::resolveTarget(NotNull<Session> session, int64_t serial,
 		const Value &req) {
-	// Absent `window` means "the scene this session lives on", which is what every client that
-	// predates auxiliary windows expects.
+	// Absent `window` means the scene this session lives on
 	if (!req.isString("window")) {
 		return this;
 	}
@@ -703,8 +687,7 @@ void SceneInspector::handleEnter(Scene *scene) {
 
 	startLogCapture();
 
-	// Before any of the early returns below: a window whose inspector never takes the listener is
-	// exactly the one that has to stay reachable through the `window` argument.
+	// Before the early returns: an inspector without the listener must stay reachable by `window`
 	inspectors().emplace_back(this);
 
 	if (s_listenerOwner) {
@@ -727,9 +710,7 @@ void SceneInspector::handleEnter(Scene *scene) {
 		return;
 	}
 
-	// The listener lives on the app looper, so every accept/read callback below runs on the app
-	// thread - the same thread that owns the scene graph. That is what lets the dump be built on
-	// demand instead of being snapshotted on a timer.
+	// The listener lives on the app looper, so callbacks run on the scene graph's thread
 	_listener = looper->listenSocket(address, [this](Rc<sprt::dispatch::StreamHandle> &&stream) {
 		serveConnection(sp::move(stream));
 	}, this);
@@ -762,10 +743,9 @@ void SceneInspector::handleExit() {
 		}
 	}
 
-	// Drop every open connection too. The scene is going away, so there is nothing left to serve,
-	// and any handle still armed on the app looper would keep it running - Context::handleDidStop
-	// blocks in AppThread::waitStopped() until that looper returns. Copied out first: cancelling
-	// runs the close callback, which erases from _sessions.
+	// Drop every open connection: an armed handle keeps the app looper running, and
+	// Context::handleDidStop blocks in AppThread::waitStopped() until it returns. Moved out first,
+	// since cancelling erases from _sessions.
 	auto sessions = sp::move(_sessions);
 	_sessions.clear();
 	for (auto &it : sessions) { it->handle->cancel(Status::Done); }
@@ -796,9 +776,8 @@ void SceneInspector::serveConnection(Rc<sprt::dispatch::StreamHandle> &&stream) 
 	});
 }
 
-// The peer will send nothing more. Stop reading AND release the handle: a reader that keeps
-// returning Ok on an EOF'd socket leaves it armed forever, and the app looper can then never
-// drain - which wedges shutdown in waitStopped().
+// The peer will send nothing more. Stop reading and release the handle: an armed handle on an
+// EOF'd socket keeps the app looper from draining and blocks shutdown in waitStopped().
 Status SceneInspector::finishSession(NotNull<Session> session) {
 	session->handle->cancel(Status::Done);
 	return Status::Done;
@@ -937,20 +916,15 @@ void SceneInspector::sendError(NotNull<Session> session, int64_t serial, StringV
 }
 
 void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
-	// Every read of `request` below goes through this const reference. The request is untrusted
-	// socket input, so a key may simply be absent; a NON-const get*() on a missing key hands out
-	// the shared null container and aborts the debug build (assertMutableNullAccess). The const
-	// accessors are the sanctioned defensive read and return the sentinel harmlessly — without
-	// them a single malformed frame (`{"command":…}` instead of `{"cmd":…}`) kills the app.
+	// Untrusted input: read through a const reference, since a non-const get*() on a missing key
+	// asserts in debug builds (assertMutableNullAccess).
 	const Value &req = request;
 
 	auto serial = req.getInteger("serial", 0);
 	auto cmd = req.getString("cmd");
 
-	// Everything below "logs" (which is a process-wide ring buffer, not a window's) acts on ONE
-	// window's scene. `window: "<id>"` picks which; without it, the one this inspector lives on.
-	// That is what makes an auxiliary window - a menu, a dialog - reachable at all: it has an
-	// inspector of its own, but only the first one to attach owns the socket.
+	// Everything below "logs" acts on one window's scene, picked by `window: "<id>"` or defaulting
+	// to this inspector's; only the first inspector owns the socket.
 	auto target = resolveTarget(session, serial, req);
 	if (!target) {
 		return; // resolveTarget answered the request
@@ -995,18 +969,10 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 			sendError(session, serial, "no render session");
 			return;
 		}
-		/* The headless window renders on demand, so this is what actually produces frames. Each
-		window has its own presentation engine, so each one has to be stepped on its own.
-
-		ASKING IS NOT DRAWING, and `presented` below is what closes that gap. `setReadyForNextFrame`
-		sets a flag and returns - it is a request, not a frame - so this reply has always come back
-		before anything was rendered, in about a tenth of a millisecond. A caller that then read the
-		scene, or shot it, was racing the render loop and could only sleep and hope; every flaky
-		check in this repository and in xlstudio has been that race. `presented` is the order of the
-		last frame that actually COMPLETED (PresentationEngine::getLastFrameOrder), so the wait is:
-		read it, ask for a frame, and poll until it has advanced.
-
-		`count` may be 0, which asks for nothing and only reports - that is the poll. */
+		/* Steps this window's presentation engine (headless renders on demand). The request only
+		sets a flag, so `presented` reports the order of the last completed frame
+		(PresentationEngine::getLastFrameOrder): callers poll until it advances. `count` 0 only
+		reports. */
 		auto count = sprt::max(req.getInteger("count", 1), int64_t(0));
 		for (int64_t i = 0; i < count; ++i) { server->setReadyForNextFrame(); }
 
@@ -1015,21 +981,9 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		result.setInteger(int64_t(server->getFrameTiming().lastFrameOrder), "presented");
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "render") {
-		/* Hold the render loop OPEN, for everything that changes without anyone touching it.
-
-		A window is drawn when something dirties it, and plenty of what a check wants to look at
-		dirties nothing an outside caller can see: a deferred style pass, an action's step, a probe
-		landing, a load finishing. Nobody moves the mouse during an automated run, so those changes
-		are computed and never drawn - which reads from the outside as "the fix did nothing", and
-		reads in a screenshot as the frame before it. This makes the scene redraw regardless.
-
-		It does not produce frames by itself: in headless mode `frame` is still what advances the
-		presentation engine, and this is what makes each of those frames redraw the scene rather
-		than re-present the last one. The pair is the idiom - `render` once, `frame` as needed.
-
-		{seconds: N} bounds it; without one it runs until the window closes. {stop: true} takes it
-		off. Re-invoking replaces the previous one: the action is tagged, and per window, so an
-		auxiliary window is held open through its own `window` id. */
+		/* Keep the scene redrawing on every frame (a tagged RenderContinuously), so changes nobody
+		triggers from outside get drawn. In headless mode `frame` still advances presentation.
+		{seconds: N} bounds it, {stop: true} removes it; re-invoking replaces it. Per window. */
 		if (!target->_owner) {
 			sendError(session, serial, "no scene");
 			return;
@@ -1057,8 +1011,7 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 	} else if (cmd == "window") {
 		target->handleWindow(session, serial, sp::move(request));
 	} else if (cmd == "quit") {
-		// Not routed: this shuts the process down, so it always means the root window - closing a
-		// popup here would just dismiss the menu.
+		// Not routed: this shuts the process down, so it always targets the root window.
 		auto server = getRenderServer();
 		if (!server) {
 			sendError(session, serial, "no render session");
@@ -1177,9 +1130,8 @@ void SceneInspector::handleInput(NotNull<Session> session, int64_t serial, Value
 		data.emplace_back(event);
 	}
 
-	// "native" routes through the OS window instead of straight into the client, which is what puts
-	// the events in front of the text-input processor. Without it a typed character never becomes
-	// text, it stays a key event nobody consumes.
+	// "native" routes through the OS window, so the text-input processor sees the events; without
+	// it typed characters stay key events.
 	auto native = static_cast<const Value &>(request).getBool("native");
 
 	auto count = int64_t(data.size());
@@ -1293,9 +1245,7 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	} else if (op == "geometry") {
 		sendResponse(session, serial, encodeGeometry(server->getWindowGeometry()));
 	} else if (op == "state") {
-		// The raw bits AND the names: a test asserts on a name, while a bug report wants the number
-		// that produced it. getWindowStateDescription is the runtime's own printer, so the two can
-		// never drift apart the way a table copied over here would.
+		// Both raw bits and names, via the runtime's getWindowStateDescription
 		auto state = server->getWindowState();
 
 		Value result;
@@ -1327,10 +1277,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 			sendResponse(session, serial, sp::move(result));
 		}, this);
 	} else if (op == "updatable") {
-		// Which state flags this window will act on, as bits and as names. Exists so a driver can
-		// compare the two sides of a remote session: the rules live on the shared channel base, so
-		// a local window and a remote proxy must answer identically -- and a proxy reading the
-		// wrong mirror shows up here as a different number rather than as a mysterious refusal.
+		// Which state flags this window will act on, as bits and names; a local window and a remote
+		// proxy must answer identically.
 		auto flags = server->getUpdatableStateFlags();
 
 		Value result;
@@ -1357,9 +1305,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 			return;
 		}
 
-		// `accepted` is the SYNCHRONOUS answer - the window's own precondition - and not whether
-		// the window system honoured it. That distinction is the point on a remote session: the
-		// client decides this from its mirrors without a round trip.
+		// `accepted` is the synchronous precondition check, not whether the window system honoured
+		// it (a remote client answers from its mirrors).
 		Value result;
 		result.setBool(op == "enable-state" ? server->enableState(state)
 											: server->disableState(state),

@@ -33,19 +33,13 @@ bool PanelHandle::init(NotNull<PanelHost> host, StringView panelId) {
 	_host = host;
 	_panelId = panelId.str<Interface>();
 
-	/* A TITLE, not a caption. ui::Button centres what it says, because that is what a button is;
-	   a tab and a section header name the thing beside their icon and belong against the leading
-	   edge, the same choice ui::MenuItem makes for a row. Stated here rather than left to whatever
-	   Button happens to default to, because a subclass that reads differently from its base is
-	   the subclass's own business to declare. */
+	// left-aligned title, unlike Button's centered caption, as ui::MenuItem does for rows
 	if (_label) {
 		_label->setAlignment(font::TextAlign::Left);
 	}
 
-	// A drag pulls the panel out of wherever it is parked. It only begins after DragThreshold points
-	// of travel, which is past the tap tolerance, so the tap recognizer on the same listener has
-	// normally already given up by then - handleLeftTap still refuses while _dragging, belt and
-	// braces, the same guard shape ui::TextInput uses around its drag-selection.
+	// The drag begins after DragThreshold points, past the tap tolerance; handleLeftTap also
+	// refuses while _dragging.
 	_listener->addSwipeRecognizer(
 			[this](const GestureSwipe &swipe) {
 		switch (swipe.event) {
@@ -63,9 +57,8 @@ bool PanelHandle::init(NotNull<PanelHost> host, StringView panelId) {
 }
 
 void PanelHandle::handleExit() {
-	// The handle is leaving the scene for whatever reason - its frame collapsed, the layout was
-	// restored, the whole container was removed. A drag that outlived its own handle has nothing
-	// left to commit, so it is aborted here rather than at each of those call sites.
+	// a drag that outlives its handle (frame collapsed, layout restored, container removed) is
+	// aborted
 	if (_dragging && _drag) {
 		_drag->cancelDrag(this);
 	}
@@ -79,10 +72,8 @@ bool PanelHandle::handleDragBegin(const GestureSwipe &swipe) {
 		return false;
 	}
 
-	// Where the press STARTED. NOT GestureSwipe::firstTouch, whose name says otherwise: the
-	// recognizer assigns it the CURRENT point on every event (XLGestureRecognizer.cc, renewEvent),
-	// so by the time Began fires it is already a threshold's travel away from the press - which for
-	// a grab point smaller than the threshold means it has left it. `originalLocation` is the press.
+	// Use where the press started: GestureSwipe::firstTouch is updated to the current point on
+	// every event, so at Began it is already a threshold away and may be outside a small grip.
 	if (swipe.input && !canBeginDragAt(swipe.input->originalLocation)) {
 		return false;
 	}
@@ -97,15 +88,13 @@ bool PanelHandle::handleDragBegin(const GestureSwipe &swipe) {
 		return false;
 	}
 
-	// The origin travels with the panel: a drop needs it to recognise the moves that would change
-	// nothing, and this node may not survive long enough to be asked.
+	// the origin lets a drop detect no-op moves; this node may not survive to be asked
 	auto payload = Rc<DockPanelPayload>::create();
 	payload->panelId = _panelId;
 	payload->host = _host;
 	payload->hostRef = _host->getPanelHostRef();
 
-	// Only the three fields the ghost draws, copied out. Capturing the descriptor whole would drag
-	// its `builder` along - a Function copy for something the ghost never calls
+	// copy only what the ghost draws, not the descriptor's `builder`
 	DockPanelDescriptor ghost;
 	ghost.id = desc->id;
 	ghost.title = desc->title;
@@ -115,15 +104,13 @@ bool PanelHandle::handleDragBegin(const GestureSwipe &swipe) {
 	offer.local = payload;
 	offer.localType = DockPanelPayload::TypeName.str<Interface>();
 	offer.label = desc->title.empty() ? desc->id : desc->title;
-	// A panel is MOVED between containers, never copied: there is one node with one identity, and
-	// the registry keeps it alive across the move precisely so it is not rebuilt
+	// always a move: one node, kept alive by the registry across the move
 	offer.allowedActions = DragActions::Move;
 	offer.defaultAction = DragActions::Move;
 	offer.decorator = [ghost = sp::move(ghost)]() -> Rc<Node> {
 		return Rc<DockDragGhost>::create(ghost);
 	};
-	// Inside the host's own subtree, not on the scene content: the ghost takes its look from
-	// `dock-drag-ghost` in a stylesheet, and a StyleResolver only ever sees its own subtree
+	// inside the host's StyleResolver subtree, so the `dock-drag-ghost` rule applies
 	offer.decoratorParent = _host->getPanelDecoratorParent();
 
 	updatePanelDragOffer(offer, *payload);
@@ -135,7 +122,7 @@ bool PanelHandle::handleDragBegin(const GestureSwipe &swipe) {
 	_drag = drag;
 	_dragging = true;
 
-	// capture: the pointer immediately leaves this node, and the recognizer has to keep delivering
+	// capture: the pointer leaves this node immediately and the recognizer must keep delivering
 	_listener->setExclusive();
 
 	_drag->updateDrag(swipe.location(), swipe.input->data.getModifiers());

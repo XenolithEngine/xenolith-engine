@@ -630,14 +630,9 @@ float DataScrollView::getIndicatorRelativePosition() const {
 }
 
 void DataScrollView::setIndicatorRelativePosition(float value) {
-	/* Deliberately inert: this view's thumb maps over the WHOLE data set, most of which is not
-	loaded, so the inverse is not a scroll position at all - it is a request for a slice that does
-	not exist yet. Inheriting the base class's inverse would take the number literally and teleport
-	the view to a position inside the loaded slice, which is a different place entirely.
-
-	So a data view's bar SHOWS where the reader is in the whole set and cannot be dragged. Making it
-	draggable means loading a slice from a fraction, which is the data source's decision and not
-	this widget's - see setSource. */
+	/* Inert: the thumb maps over the whole data set, most of it not loaded, so the inverse would be
+	a request for a slice rather than a scroll position. The bar shows the position in the set but
+	cannot be dragged; loading a slice from a fraction is the data source's decision (setSource). */
 }
 
 void DataScrollView::onOverscroll(float delta) {

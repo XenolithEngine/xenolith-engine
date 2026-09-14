@@ -49,25 +49,16 @@ struct TablePlacedCell {
 	float measuredHeight = 0.0f;
 };
 
-// Everything the container pass works out before it commits anything: the rows, the cells placed
-// into columns, the resolved column tracks and the row heights.
-//
-// It is a separate step because `measure()` is contractually a DRY RUN - it must report the
-// container's natural size without writing a single ContentSize. Committing from measure would
-// make the container fight whatever is measuring it (and re-enter through the child-dirty
-// notifications, which only apply() guards with _inApply).
+// The container pass's result before commit: rows, placed cells, column tracks and row heights.
+// Kept separate because `measure()` is a dry run and must not write any ContentSize.
 struct TableSolution {
 	Vector<TableRowEntry> rows;
 	Vector<TablePlacedCell> cells;
 	Vector<GridTrackSize> columns;
 
-	// Per row, two different things that must not be confused:
-	// - `occupancy` is the working set the row's own cursor consumes; by the end of the pass it
-	//   holds every column the row uses, its own cells included;
-	// - `inherited` is the snapshot taken BEFORE that cursor ran, so it holds only what a rowspan
-	//   from an earlier row already claimed.
-	// A row is stamped with `inherited`. Stamping `occupancy` instead would tell the row that every
-	// one of its columns is already taken, and it would place nothing at all.
+	// Per row: `occupancy` ends up holding every column the row uses, its own cells included;
+	// `inherited` is the snapshot before the row's cursor ran (rowspans from above only). Rows are
+	// stamped with `inherited`.
 	Vector<Vector<uint8_t>> occupancy;
 	Vector<Vector<uint8_t>> inherited;
 	uint32_t columnCount = 0;
@@ -90,12 +81,8 @@ inline void collectCells(Node *row, const Callback<void(Node *, const TableCellI
 	}
 }
 
-// Assign `cellCount` cells to columns, starting at the first free slot and honouring both their own
-// columnSpan and the slots a rowspan from an earlier row already claimed. Returns the column index
-// one past the last one used.
-//
-// `occupied` is indexed by column and may grow: a row can need more columns than the template
-// declares, exactly as a grid grows implicit tracks.
+// Assigns cells to the first free columns, honouring columnSpan and slots claimed by rowspans from
+// earlier rows. `occupied` is indexed by column and grows past the template when needed.
 struct ColumnCursor {
 	Vector<uint8_t> *occupied = nullptr;
 	uint32_t next = 0;
@@ -160,8 +147,8 @@ void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount, ui
 		return;
 	}
 
-	// Slot -> occupant, filled by span, so any (row, column) names the cell covering it. A segment
-	// whose two sides are the SAME cell is a span's interior and has no border of its own.
+	// Slot -> occupant, filled by span. A segment with the same cell on both sides is a span's
+	// interior and has no border.
 	Vector<const TableCellBox *> grid;
 	grid.resize(size_t(columnCount) * rowCount, nullptr);
 	for (auto &c : cells) {
@@ -176,12 +163,8 @@ void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount, ui
 		return (r < rowCount && c < columnCount) ? grid[size_t(r) * columnCount + c] : nullptr;
 	};
 
-	/* The x of vertical line `c` and the y of horizontal line `r`.
-
-	A spanning cell must not be asked where a line in its MIDDLE is: its box starts at the first
-	track it covers, so a colspan cell occupying (r, c) answers with column `c - n`'s left edge, and
-	a rowspan cell occupying (r, c) answers with row `r - n`'s top. Only a cell that begins exactly
-	on the line, or ends exactly on it, knows where it is. */
+	/* The x of vertical line `c` and the y of horizontal line `r`, taken only from a cell that
+	starts or ends exactly on the line; a spanning cell's box says nothing about lines inside it. */
 	auto lineX = [&](uint32_t c) -> float {
 		for (uint32_t r = 0; r < rowCount; ++r) {
 			if (auto cell = at(r, c); cell && cell->column == c) {
@@ -196,7 +179,7 @@ void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount, ui
 		}
 		return 0.0f;
 	};
-	// Y grows upward here, so "row r's top edge" is the MAX y of the cells that start in row r.
+	// y grows upward, so row r's top edge is the max y of the cells starting in row r
 	auto lineY = [&](uint32_t r) -> float {
 		for (uint32_t c = 0; c < columnCount; ++c) {
 			if (auto cell = at(r, c); cell && cell->row == r) {
@@ -212,7 +195,7 @@ void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount, ui
 		return 0.0f;
 	};
 
-	// Winner on vertical line `c` between rows `r` and `r+1`... i.e. within row `r`.
+	// winner on vertical line `c` within row `r`
 	auto verticalAt = [&](uint32_t c, uint32_t r) -> TableBorderEdge {
 		auto left = (c > 0) ? at(r, c - 1) : nullptr;
 		auto right = (c < columnCount) ? at(r, c) : nullptr;
@@ -234,9 +217,8 @@ void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount, ui
 		return resolveEdge(a, b);
 	};
 
-	// Verticals run the full height of their run, junctions included; horizontals are inset at each
-	// end by half the winning vertical there. That is what makes the rects non-overlapping, which
-	// matters because a border colour with alpha < 255 would otherwise double-blend at every cross.
+	// Verticals span junctions; horizontals are inset by half the vertical width at each end, so
+	// rects never overlap and translucent colours do not double-blend.
 	auto verticalWidthAtCorner = [&](uint32_t c, uint32_t r) -> float {
 		// the widest vertical segment meeting horizontal line r on vertical line c
 		float w = 0.0f;
@@ -385,8 +367,7 @@ static bool solveTable(Node *owner, const TableLayoutInfo &info, float contentW,
 	}
 	out.columnCount = columnCount;
 
-	// 3. Size the columns. Only an Auto track ever needs a measurement, and `table-layout: fixed`
-	// says not to measure at all - which is what makes a table of thousands of rows affordable.
+	// 3. Size the columns. Only Auto tracks are measured, never under `table-layout: fixed`.
 	auto &columns = out.columns;
 	columns.resize(columnCount);
 	for (uint32_t i = 0; i < columnCount; ++i) {
@@ -405,8 +386,7 @@ static bool solveTable(Node *owner, const TableLayoutInfo &info, float contentW,
 	if (anyAuto && info.algorithm == TableLayout::Auto) {
 		contributions.reserve(cells.size());
 		for (auto &cell : cells) {
-			// max-content: what the cell would like if nothing wrapped it. The measurement protocol
-			// answers for a Label; anything else falls back to its intrinsic size.
+			// max-content size if measurable, otherwise the intrinsic size
 			const Size2 m = LayoutSystem_canMeasure(cell.node)
 					? LayoutSystem::measureNode(cell.node,
 							  MeasureConstraints{MeasureMode::MaxContent})
@@ -438,9 +418,8 @@ static bool solveTable(Node *owner, const TableLayoutInfo &info, float contentW,
 	}
 	out.usedWidth = (columnCount > 0) ? (x - out.spacingH) : 0.0f;
 
-	// 4. Row heights: an explicit height wins, otherwise the tallest cell that starts in the row.
-	// A rowspan cell contributes nothing here - it is sized from the rows it covers, once they are
-	// known - which mirrors the deficit pass of track sizing without needing a second solve.
+	// 4. Row heights: an explicit height wins, otherwise the tallest non-spanning cell in the row.
+	// Rowspan cells are applied afterwards as a deficit spread over the rows they cover.
 	for (uint32_t r = 0; r < rowCount; ++r) {
 		if (rows[r].cfg.height >= 0.0f) {
 			rows[r].height = rows[r].cfg.height;
@@ -507,9 +486,8 @@ void LayoutSystem::layoutTable() {
 	const Size2 containerSize = _owner->getContentSize();
 	const float contentW = sprt::max(containerSize.width - info.padding.horizontal(), 0.0f);
 
-	// The columns are solved and positioned in logical inline coordinates; rtl mirrors the rows
-	// and the collapsed-border boxes once, at projection. Each ROW mirrors its own cells, in
-	// layoutTableRow, against the same direction it inherits from here.
+	// Columns are in logical inline coordinates; rtl mirrors rows and border boxes at projection.
+	// Each row mirrors its own cells in layoutTableRow.
 	const bool rtl = isInlineRtl(_owner);
 
 	TableSolution sol;
@@ -524,9 +502,8 @@ void LayoutSystem::layoutTable() {
 	const float usedWidth = sol.usedWidth;
 	const float spacingV = sol.spacingV;
 
-	// 5. Stamp the resolved geometry on every row and commit its box. The stamp goes out BEFORE the
-	// rows lay their own cells out - a row reads its columns from the component, so it has to be
-	// there first. Writing it marks the row's components dirty, which re-arms its layout pass.
+	// 5. Stamp the resolved geometry on every row and commit its box. The stamp must precede the
+	// row's own pass; writing it marks the row dirty, which re-arms that pass.
 	TableColumnsComponent stamp;
 	stamp.columns.resize(columnCount);
 	for (uint32_t i = 0; i < columnCount; ++i) {
@@ -540,14 +517,13 @@ void LayoutSystem::layoutTable() {
 	stamp.justifyItems = info.justifyItems;
 	stamp.alignItems = info.alignItems;
 
-	float y = 0.0f; // distance from the container's content-box TOP, CSS-style
+	float y = 0.0f; // distance from the container's content-box top, CSS-style
 	for (uint32_t r = 0; r < rowCount; ++r) {
 		auto &row = rows[r];
 
 		stamp.rowHeight = row.height;
 		stamp.occupiedColumns.clear();
-		// what THIS row inherited from a rowspan above - NOT sol.occupancy[r], which by now also
-		// holds the row's own cells (see TableSolution)
+		// only what this row inherited from rowspans above (see TableSolution)
 		stamp.occupiedColumns.resize(columnCount, 0);
 		for (uint32_t c = 0; c < columnCount && c < sol.inherited[r].size(); ++c) {
 			stamp.occupiedColumns[c] = sol.inherited[r][c];
@@ -558,8 +534,7 @@ void LayoutSystem::layoutTable() {
 		LayoutSystem::setTableColumns(row.node, stamp);
 
 		const Size2 rowSize(usedWidth, row.height);
-		// A row narrower than the content box sits at the inline START of it, which under rtl is
-		// the right edge. Rows usually fill the box, in which case this is the same number.
+		// a row narrower than the content box sits at its inline start (the right edge under rtl)
 		const float rowX = info.padding.left + (rtl ? contentW - usedWidth : 0.0f);
 		const Vec2 bottomLeft(rowX, containerSize.height - info.padding.top - y - row.height);
 		row.node->setContentSize(rowSize);
@@ -626,15 +601,13 @@ void LayoutSystem::layoutTable() {
 void LayoutSystem::layoutTableRow() {
 	auto colsPtr = _owner->getComponent<TableColumnsComponent>();
 	if (!colsPtr || colsPtr->columns.empty()) {
-		// Nothing has told this row where its columns are yet. That is a normal state, not an
-		// error: a `display:table-row` node is styled before its table's first pass, and a
-		// TableView row exists for a moment before the view stamps it. The stamp marks the row's
-		// components dirty, which brings us back here.
+		// not stamped yet (normal before the table's or TableView's first pass); the stamp marks
+		// the row dirty and re-runs this
 		return;
 	}
 	const TableColumnsComponent cols = *colsPtr;
 	const Size2 rowSize = _owner->getContentSize();
-	// The row asks for its OWN direction, which it inherits from the table: `direction` cascades.
+	// the row's own direction, inherited from the table
 	const bool rtl = isInlineRtl(_owner);
 	const uint32_t columnCount = uint32_t(cols.columns.size());
 
@@ -656,8 +629,8 @@ void LayoutSystem::layoutTableRow() {
 		const float cellW = cols.columns[last].position + cols.columns[last].width - cellX
 				+ cols.borderSpacingH * static_cast<float>(last - start);
 
-		// A rowspan cell reaches DOWN out of its own row: it is a child of this node, so it simply
-		// overflows the row's box. The rows below skip its columns via their own occupiedColumns.
+		// a rowspan cell overflows this row's box downward; rows below skip its columns via
+		// occupiedColumns
 		const uint32_t rowSpan = sprt::max(cfg.rowSpan, 1u);
 		float cellH = rowSize.height;
 		if (rowSpan > 1 && !cols.spanRowHeights.empty()) {
@@ -668,8 +641,8 @@ void LayoutSystem::layoutTableRow() {
 			cellH = sprt::max(cellH - cols.borderSpacingV, 0.0f);
 		}
 
-		// inset by the cell's own margin, then align inside what is left. `margin.left` is still
-		// the left margin under rtl; the mirror below moves the box and takes the margins with it.
+		// inset by the cell's margin, then align; under rtl the physical margins are swapped here
+		// because the mirror below flips the box
 		const float availX = cellX + (rtl ? cfg.margin.right : cfg.margin.left);
 		const float availW = sprt::max(cellW - cfg.margin.horizontal(), 0.0f);
 		const float availY = cfg.margin.top;
@@ -691,15 +664,8 @@ void LayoutSystem::layoutTableRow() {
 			}
 		};
 
-		/* The cell's natural size - what a `vertical-align` other than stretch commits as the
-		cell's box. It has to be MEASURED, not read back off the node.
-
-		A cell whose size this layout owns does not keep what its own formatter came to: the
-		previous pass already overwrote its ContentSize with the box that pass decided on. Reading
-		that back makes zero a FIXED POINT - a Label placed once at height zero reports zero
-		forever after, and the row ends up correctly tall around cells that draw nothing. Ask it
-		instead, at the width it is about to be given, exactly as the track sizing and the row
-		height above already do. */
+		/* The cell's natural size for non-stretch alignment. Measured at the width it is about to
+		get, not read from ContentSize, which holds the box the previous pass committed. */
 		const Size2 natural = LayoutSystem_canMeasure(node)
 				? LayoutSystem::measureNode(node, MeasureConstraints{MeasureMode::Normal, availW})
 				: intrinsicSize(node);
@@ -734,9 +700,8 @@ void LayoutSystem::layoutTableRow() {
 		}
 	});
 
-	// A row on its own can only collapse what it can see: the vertical lines between its cells, and
-	// its own top and bottom. The line it SHARES with the next row is therefore declared once, by
-	// `border-bottom` - see the TableView documentation.
+	// A row collapses only its own lines: verticals between cells, its top and bottom. The line
+	// shared with the next row should be declared once, via `border-bottom` (see TableView).
 	if (cols.borderCollapse == BorderCollapse::Collapse && !boxes.empty()) {
 		const TableBorderEdge outer[4] = {};
 		Vector<TableBorderRect> rects;
@@ -759,12 +724,8 @@ Size2 LayoutSystem::measureTable(const MeasureConstraints &c) {
 	auto infoPtr = _owner->getComponent<TableLayoutInfo>();
 	const TableLayoutInfo info = infoPtr ? *infoPtr : TableLayoutInfo();
 
-	// The same solve the placement pass runs, so measurement and placement can never disagree - but
-	// nothing is committed here. `solveTable` writes no node state, which is the whole reason it is
-	// a separate function.
-	//
-	// MaxContent measures against an unconstrained width, so Fraction tracks collapse to their base
-	// and the Auto tracks report what the content actually wants.
+	// Same solve as the placement pass, without committing. MaxContent gives fr tracks no free
+	// space, so Auto tracks report their content size.
 	float contentW = maxOf<float>();
 	if (c.mode != MeasureMode::MaxContent && c.maxWidth != maxOf<float>()) {
 		contentW = sprt::max(c.maxWidth - info.padding.horizontal(), 0.0f);

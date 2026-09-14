@@ -28,25 +28,17 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-/** What every in-scene overlay surface has to do, with nothing about WHERE its content goes.
+/** Common behaviour of every in-scene overlay surface, independent of content placement:
 
-An overlay that holds content the user interacts with owes four things, and each of them is a thing
-to get wrong exactly once:
+ 1. a FocusGroup, installed before any listener on the same node (a listener binds to the nearest
+    group at registration). Mask and flags are arguments: a menu needs EventMaskTouch, a surface
+    with a text field needs the keyboard too;
+ 2. a press outside the content closes the surface (SceneContent2d::pushOverlay stretches the
+    layout over the whole parent, so this layer can tell "outside");
+ 3. a display-size change closes it, since its placement geometry is gone;
+ 4. `ready` and `close` are reported to the opener, once each.
 
- 1. a FocusGroup, installed BEFORE any listener on the same node. A listener records the nearest
-    group it finds as it registers, so one added first comes up unaffiliated - and an unaffiliated
-    listener is exactly the bug the group exists to prevent. The mask and flags are arguments
-    because they are the one part that genuinely differs: a menu that only has to swallow taps
-    wants EventMaskTouch, while anything holding a text field needs the keyboard too;
- 2. a press outside the content takes the surface down. SceneContent2d::pushOverlay stretches the
-    layout over the whole parent, so "outside" is a real question this layer can answer and its
-    content cannot;
- 3. a display-size change takes it down. An overlay is placed against a geometry that no longer
-    exists once the window is resized, and moving it somewhere plausible is worse than closing it;
- 4. `ready` and `close` are reported to whoever opened it, once each.
-
-What a subclass adds is the placement: `layoutContent()` is called when the surface is up and sized,
-and that is the whole of the difference between an expanding menu and an editor pinned to a rect. */
+Subclasses add placement in `layoutContent()`, called once the surface is up and sized. */
 class SP_PUBLIC OverlaySurface : public SceneLayout2d {
 public:
 	virtual ~OverlaySurface() = default;

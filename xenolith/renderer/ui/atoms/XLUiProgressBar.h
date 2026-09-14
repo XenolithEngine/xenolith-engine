@@ -28,22 +28,13 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /* A determinate progress bar built out of two Panels: the widget itself is the track, and it owns
-one child that is the filled part.
+one child that is the filled part. C++ sets only the fraction; all colours come from CSS.
 
-Two Panels rather than one node painted from code, because that is what keeps the colours in the
-stylesheet. basic2d::LinearProgress takes its palette through setLineColor()/setBarColor(), so an
-application using it has to name colours in C++; here C++ writes exactly one number - the fraction -
-and everything visible comes from CSS.
+The widget places its own child (SystemManagedLayout); size the track like any other atom.
 
-The widget places its own child, so it carries SystemManagedLayout: a stylesheet must not add a
-second writer of that geometry. Give the track its size the way you would any other atom (a fixed
-height plus flex-grow, a width, a grid cell).
-
-CSS: the widget is type "progress-bar" and the fill is a child of type "progress-fill" (both
-Panels, so both take background-color / outline / border-radius - and note that a Panel with no
-fill declared is an opaque WHITE surface, so both need a colour). An indeterminate bar carries the
-`indeterminate` style class and draws NO fill at all: there is no honest fraction to show, and a
-full-looking bar would claim one. Style the track itself for that state.
+CSS: the widget is type "progress-bar" and the fill is a child of type "progress-fill". Both are
+Panels, so both need a background-color (the default fill is opaque white). An indeterminate bar
+carries the `indeterminate` style class and draws no fill; style the track for that state.
 
   progress-bar   { height:4px; border-radius:2px; background-color:#292929; }
   progress-fill  { border-radius:2px; background-color:#FCB400; }
@@ -57,8 +48,7 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	// Clamped into [0, 1]. Pass nan() when the total is unknown - `cloneEngine` reports bytes
-	// received and no total, and a bar that invented one would be lying. See isIndeterminate().
+	// Clamped into [0, 1]. Pass nan() when the total is unknown. See isIndeterminate().
 	virtual void setProgress(float);
 	float getProgress() const { return _progress; }
 

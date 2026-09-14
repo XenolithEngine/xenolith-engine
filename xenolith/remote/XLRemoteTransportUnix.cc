@@ -20,18 +20,11 @@
  THE SOFTWARE.
  **/
 
-/* The `unix:` transport: an AF_UNIX stream socket.
+/* The `unix:` transport: an AF_UNIX stream socket, for sessions that stay on the machine (live
+ * reload, local tools). No TLS, certificate or UDP port; bytes never leave the kernel.
  *
- * The right carrier for a session that never leaves the machine, which is what live reload and every
- * local tool actually are. Compared with running QUIC over loopback for the same job it removes the
- * whole TLS apparatus -- no ephemeral certificate, no SPKI to hand over out of band, no handshake in
- * the startup path, no free UDP port to find -- and it removes the man in the middle with it: the
- * bytes never leave the kernel, and the peer is identified by credentials the kernel vouches for
- * rather than by a secret the two sides happen to share.
- *
- * Hence PeerAuthenticated: with SO_PEERCRED the server knows the peer's uid before a single protocol
- * byte is read, which is strictly stronger than the bearer key and lets the server stop requiring it.
- * Access control is the socket's filesystem permissions (0600 by default).
+ * PeerAuthenticated: SO_PEERCRED gives the peer's uid before any protocol byte, so the server does
+ * not require the bearer key. Access control is the socket's filesystem permissions (0600 default).
  */
 
 #include "XLRemoteTransport.h"
@@ -43,9 +36,8 @@
 #include <fcntl.h>
 #include <errno.h>
 
-// AF_UNIX with SO_PEERCRED. Windows has AF_UNIX but no peer credentials, and wasm has no
-// sockets at all -- without the credentials the transport could not claim PeerAuthenticated, which
-// is the whole reason to prefer it locally.
+// AF_UNIX with SO_PEERCRED. Windows has AF_UNIX but no peer credentials, and wasm has no sockets;
+// without credentials the transport could not claim PeerAuthenticated.
 #if SPRT_LINUX || SPRT_APPLE || SPRT_ANDROID
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
@@ -61,9 +53,8 @@ static bool unixSetNonBlocking(int fd) {
 	return flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-// Fill a sockaddr_un from a path. Returns false when the path does not fit -- sun_path is a fixed
-// buffer, and silently truncating it would bind (or connect to) a different socket than the caller
-// asked for.
+// Fill a sockaddr_un from a path. Returns false when the path does not fit the fixed sun_path;
+// truncating would address a different socket.
 static bool unixMakeAddr(StringView path, struct sockaddr_un &addr, socklen_t &len) {
 	__sprt_memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
@@ -77,12 +68,8 @@ static bool unixMakeAddr(StringView path, struct sockaddr_un &addr, socklen_t &l
 	return true;
 }
 
-// SO_PEERCRED's payload, declared here rather than taken from the libc.
-//
-// `struct ucred` is not exposed by the sprt shim on a cross target (SO_PEERCRED itself is), and this
-// is one getsockopt result rather than a type the rest of the tree needs -- so the three fields are
-// spelled out locally instead of growing the libc surface for them. The layout is the kernel's and
-// is stable ABI: three 32-bit values, pid then uid then gid.
+// SO_PEERCRED's payload, declared locally: the sprt shim does not expose `struct ucred` on cross
+// targets. Stable kernel ABI: three 32-bit values, pid then uid then gid.
 struct PeerCred {
 	uint32_t pid;
 	uint32_t uid;
@@ -98,8 +85,7 @@ static PeerIdentity readPeerIdentity(int fd) {
 		id.uid = int64_t(cred.uid);
 		id.gid = int64_t(cred.gid);
 		id.pid = int64_t(cred.pid);
-		// The kernel vouches for this: it is not a claim the peer made, which is what makes it
-		// stronger than the bearer key and lets the server stop requiring one.
+		// The kernel vouches for this, so the server does not require the bearer key.
 		id.authenticated = true;
 		id.description = toString("unix:uid=", id.uid, " pid=", id.pid);
 	}
@@ -187,8 +173,7 @@ public:
 	}
 
 	virtual TransportCaps getCaps() const override {
-		// No Encrypted: the bytes never leave the kernel, so there is nothing to encrypt them
-		// against -- claiming it would be a lie the policy layer might trust.
+		// No Encrypted: the bytes never leave the kernel.
 		// No MultiStream: one ordered stream, so every StreamClass folds onto it.
 		return TransportCaps::PeerAuthenticated | TransportCaps::Pollable;
 	}
@@ -200,8 +185,7 @@ public:
 		return sprt::dispatch::NativeHandle(_fd);
 	}
 
-	// Nothing to service: a stream socket has no timers of its own, and the kernel already moved the
-	// bytes. Readability is what the looper waits on.
+	// Nothing to service: a stream socket has no timers; the looper waits on readability.
 	virtual Status handleEvents() override { return Status::Ok; }
 
 	virtual bool isClosed() override { return _fd < 0 || _stream->isClosed(); }
@@ -211,8 +195,8 @@ public:
 			return;
 		}
 		if (graceful) {
-			// Half-close: the peer sees EOF after draining everything we already wrote, which is what
-			// lets a final message still arrive.
+			// Half-close: the peer sees EOF after draining what was written, so a final message
+			// still arrives.
 			::shutdown(_fd, SHUT_WR);
 		}
 		_stream->invalidate();
@@ -279,10 +263,9 @@ Status UnixListener::open(const Address &addr, const TransportServerConfig &cfg)
 		return Status::ErrorNotPermitted;
 	}
 
-	// A socket file left behind by a crashed process would make bind() fail with EADDRINUSE for ever.
-	// Removing it is safe precisely because bind() below is what re-creates it: a LIVE listener still
-	// holding the path keeps working through its own fd, and the next connect() then finds our new
-	// socket -- which is why two servers must not share a path (the caller picks per-session names).
+	// Remove a stale socket file (a crashed process would make bind() fail with EADDRINUSE). A live
+	// listener on the path keeps its fd but new connects reach this socket, so two servers must not
+	// share a path.
 	::unlink(addr.path.data());
 
 	if (::bind(fd, (struct sockaddr *)&sa, len) != 0) {
@@ -291,8 +274,7 @@ Status UnixListener::open(const Address &addr, const TransportServerConfig &cfg)
 		return Status::ErrorNotPermitted;
 	}
 
-	// The socket's permissions ARE the access control here -- there is no bearer key to fall back on
-	// once PeerAuthenticated lets the server drop it.
+	// The socket's permissions are the access control: the server does not require a bearer key.
 	if (::chmod(addr.path.data(), mode_t(cfg.socketMode)) != 0) {
 		log::source().warn("remote::unix", "chmod(", addr.path, ") failed: ", errno);
 	}
@@ -366,9 +348,8 @@ public:
 			log::source().error("remote::unix", "socket() failed: ", errno);
 			return nullptr;
 		}
-		// Connect while still blocking: an AF_UNIX connect either succeeds or fails at once (there is
-		// no network round trip), so this costs nothing and keeps the error handling simple. The
-		// socket goes non-blocking in UnixConnection::init, before any protocol byte moves.
+		// Connect while still blocking: an AF_UNIX connect completes at once. The socket goes
+		// non-blocking in UnixConnection::init.
 		if (::connect(fd, (struct sockaddr *)&sa, len) != 0) {
 			log::source().error("remote::unix", "connect(", addr.path, ") failed: ", errno);
 			::close(fd);
@@ -403,8 +384,8 @@ void registerUnixTransport() { TransportRegistry::registerTransport(Rc<UnixTrans
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// Not available in this build: without the credentials the transport could not claim PeerAuthenticated, which
-// is the whole reason to prefer it locally.
+// Not available in this build: no peer credentials, so the transport could not claim
+// PeerAuthenticated.
 void registerUnixTransport() { }
 
 } // namespace stappler::xenolith::remote

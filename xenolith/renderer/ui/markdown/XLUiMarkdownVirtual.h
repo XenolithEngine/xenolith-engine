@@ -27,54 +27,36 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* ONLY THE PART OF THE DOCUMENT THE READER CAN SEE COSTS ANYTHING.
+/* Lays out and shapes only the visible part of a long document. Nodes all exist and are hidden,
+not built lazily, so run maps, reading order, anchors and selection work off screen. Hiding saves
+the per-frame cost:
 
-WHAT IS VIRTUALIZED, AND WHAT IS NOT. The nodes all exist - this hides them, it does not build them
-lazily. That distinction is the whole reason the rest of the widget is untouched: the run maps, the
-reading order, the anchors and the selection are all read off nodes, and every one of them keeps
-working on a block that is off screen. What goes away is the expensive half, and it is the half
-that is paid per FRAME rather than once:
+  - `Node::wrapVisit` skips a hidden node before `processParentFlags`, where a Label shapes;
+    `setVisible(false)` is the only gate that early (`display: none`, `visibility: hidden` and
+    the scroll clip all act later);
+  - a hidden child is not a flex item (`isDisplayed`), so it is never measured;
+  - nothing of it is drawn or waits on the glyph atlas.
 
-  - a hidden node is skipped by `Node::wrapVisit` before `processParentFlags`, which is where a
-    Label shapes its text. `setVisible(false)` is the ONLY gate that runs that early - `display:
-    none` and `visibility: hidden` are both checked after it, and the scroll only clips the draw;
-  - a hidden child is not an item of the flex layout (`isDisplayed`), so it is never measured -
-    and measuring a Label is a full shaping pass of its own;
-  - nothing is drawn for it, and no glyph of it holds the frame back waiting for the atlas.
-
-Measured on ten thousand lines: twelve seconds of shaping for a screenful of text.
-
-WHY SPACERS. A hidden child takes no space, so the document would collapse to what is on screen.
-Two ordinary nodes stand in for what is hidden above and below, each as tall as the blocks it
-replaces. The column stays an ordinary CSS flex column, so margins, gaps and alignment keep working
-and none of it is reimplemented here.
-
-HEIGHTS ARE MEASURED, NEVER ESTIMATED. A block's height is known only after its text is shaped at
-the current width, so the blocks are measured in chunks, a chunk per frame, and the document's
-scroll range grows as that proceeds. The alternative - guessing a height and correcting it when the
-block is finally shown - is the loop that `tests/window/src/widgets/ScrollThrashLayout` exists to
-pin: the correction moves the window, which shows a different block, which corrects again.
-
-WHEN IT IS ON. Only past `kMinBlocks`. A document of forty blocks costs nothing to lay out whole,
-and switching machinery on for it would mean two behaviours to keep correct instead of one. */
+Two spacer nodes stand in for the hidden blocks above and below, so the column stays a plain CSS
+flex column. Heights are measured, never estimated: blocks are shaped at the current width a chunk
+per frame and the scroll range grows; estimates would feed back into the visible window (see
+`tests/window/src/widgets/ScrollThrashLayout`). Enabled only past `kMinBlocks`. */
 class SP_PUBLIC MarkdownVirtualizer final {
 public:
-	// Below this many top-level blocks the whole document is simply laid out, as it always was.
+	// Below this many top-level blocks the whole document is laid out.
 	static constexpr uint32_t kMinBlocks = 400;
 
-	// Blocks measured per frame. Large enough that a long document settles in a second or two,
-	// small enough that the frame it happens in is not the one the reader notices.
+	// Blocks measured per frame.
 	static constexpr uint32_t kMeasureChunk = 256;
 
 	// How much beyond the viewport is kept materialized, as a fraction of the viewport height.
-	// A reader scrolling a page at a time lands inside what is already shaped.
 	static constexpr float kOverscan = 0.5f;
 
 	// Adopt the blocks currently under `content`. Returns false when the document has fewer than
 	// `threshold` blocks, in which case nothing is touched. A threshold of maxOf turns it off.
 	bool init(NotNull<Node> content, uint32_t threshold = kMinBlocks);
 
-	// Give up everything: every block visible, the spacers gone. What a rebuild goes through.
+	// Make every block visible and remove the spacers.
 	void clear();
 
 	bool isEnabled() const { return _enabled; }
@@ -93,16 +75,15 @@ public:
 	// Where a block starts, in the document's own coordinates; maxOf when it is not measured yet.
 	float getBlockTop(uint32_t index) const;
 
-	// A block's measured advance: its height plus whatever the layout put between it and the next
-	// one. Negative for an index that is not a block. Reported so a test can compare the heights a
-	// virtualized document recorded against the ones a plain layout produces.
+	// A block's measured advance: its height plus the layout's gap to the next one. Negative for
+	// an index that is not a block.
 	float getAdvance(uint32_t i) const { return i < _blocks.size() ? _blocks[i].advance : -1.0f; }
 
 	// The block a node belongs to, or maxOf. The node may be the block itself or anything inside.
 	uint32_t findBlock(const Node *) const;
 
-	// Bring a block on screen whatever the measuring pass has reached, so an anchor can be
-	// followed into a part of the document that has not been measured yet.
+	// Measure up to a block regardless of the measuring pass, so an anchor can be followed into an
+	// unmeasured part of the document.
 	bool ensureMeasuredTo(uint32_t index);
 
 protected:
@@ -131,11 +112,8 @@ protected:
 	uint32_t _chunkBegin = maxOf<uint32_t>();
 	uint32_t _chunkEnd = maxOf<uint32_t>();
 
-	/* Frames the current chunk has been visible for.
-
-	A block cannot be measured on the frame it appears: the layout measures a Label unwrapped
-	first, assigns it a width, and only then does the Label re-shape to it - so a paragraph that
-	needs two lines reports one on that first pass. Read a frame later and it is settled. */
+	// Frames the current chunk has been visible for. A Label measures unwrapped first and
+	// re-shapes to its width after, so heights are read a frame later.
 	uint32_t _chunkAge = 0;
 
 	float _knownHeight = 0.0f;

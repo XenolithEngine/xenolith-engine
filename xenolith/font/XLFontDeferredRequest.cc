@@ -26,10 +26,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-// Debug knob (XL_FONT_GLYPH_DELAY_US): sleep this long after rasterising each glyph, on the worker
-// thread that does it. It stretches the interval between "the batch was handed to the GPU" and "the
-// glyphs are in the atlas" - normally shorter than one app tick, so anything that draws ungated in
-// that interval gets away with it and the gating cannot be tested end to end. Off unless set.
+// Debug knob (XL_FONT_GLYPH_DELAY_US): sleep this long after rasterising each glyph on the worker,
+// widening the gap between batch submission and atlas update so glyph gating can be tested end to
+// end. Off unless set.
 static uint64_t getGlyphRenderDelay() {
 	static const uint64_t s_delay = [] {
 		auto v = ::getenv("XL_FONT_GLYPH_DELAY_US");
@@ -93,8 +92,8 @@ void DeferredRequest::runThread() {
 	Vector<Rc<FontFaceObjectHandle>> threadFaces;
 	threadFaces.resize(faces.size(), nullptr);
 
-	// An empty batch still has to report: the frame that waits on this input has no other way to
-	// become ready. (It also cannot be caught below — `nrequests - 1` underflows to UINT32_MAX.)
+	// An empty batch still has to report: the frame waiting on this input has no other way to
+	// become ready (and `nrequests - 1` below would underflow).
 	if (nrequests == 0) {
 		if (!completed.exchange(true)) {
 			onComplete();
@@ -133,9 +132,7 @@ void DeferredRequest::runThread() {
 	}
 	threadFaces.clear();
 
-	// Only the thread that pushed the counter to nrequests reports, and only once. The previous
-	// test compared a counter that stayed 0 on a thread which never got a request, so a
-	// single-request batch fired the completion once per idle worker.
+	// Only the thread that pushed the counter to nrequests reports, and only once.
 	if (finishedLast && !completed.exchange(true)) {
 		onComplete();
 	}

@@ -68,11 +68,8 @@ public:
 			Rc<core::Queue> &&, const core::FrameConstraints &);
 
 	// Fill `builder` with the standard 2d render graph for the current gAPI, honouring
-	// QueueInfo::type and defaulting QueueInfo::damage for it.
-	//
-	// Static on purpose: this is the part of scene construction that needs no Scene, so a queue
-	// can be built - and cached, and compiled - before the scene or the window that will use it
-	// exists. QueueCache is the intended caller.
+	// QueueInfo::type and defaulting QueueInfo::damage for it. Static: needs no Scene, so a queue
+	// can be built, cached and compiled before the scene or window exists (used by QueueCache).
 	static bool buildQueue(NotNull<AppThread>, QueueInfo &, core::Queue::Builder &);
 
 	virtual void update(const UpdateTime &time) override;
@@ -85,13 +82,9 @@ public:
 	virtual void setContent(SceneContent *) override;
 
 protected:
-	// What kind of queue this scene wants, before anything is built.
-	//
-	// Separate from buildQueueResources because it is the half that is meaningful on BOTH paths: a
-	// local scene turns the answer into a graph, a remote one matches it against the graphs the
-	// server already has. Setting `type` from buildQueueResources worked only locally -- a client
-	// never builds a queue, so the preference had nowhere to be read from and every remote scene
-	// silently got whatever the server's first queue happened to be.
+	// What kind of queue this scene wants, before anything is built. Used on both paths: a local
+	// scene builds a graph from it, a remote one matches it against the server's queues, so set
+	// `type` here rather than in buildQueueResources (which a client never calls).
 	virtual void describeQueue(QueueInfo &);
 
 	// override this to add initial resources to be compiled woth render queue

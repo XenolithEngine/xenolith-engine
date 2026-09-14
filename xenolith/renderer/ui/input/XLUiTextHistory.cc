@@ -24,22 +24,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// One replacement, and its own inverse.
+// One replacement, and its own inverse. Both directions go through the target's
+// applyHistoryEdit. Both strings are captured at construction; nothing is allocated on apply.
 //
-// Both directions go through the target's applyHistoryEdit, which is the widget's ordinary
-// insertion path - so an undo pushes a window, fires a change callback and repaints exactly as a
-// typed character does, and nothing downstream has to know the difference.
-//
-// Nothing here is ALLOCATED on apply, so the bus's one rule for commands ("whatever you allocate,
-// allocate on the first apply and remember it") is satisfied trivially: both strings are captured
-// when the command is built and redo re-inserts the same characters it inserted the first time.
-//
-// THE FIRST apply() IS A NO-OP, and it has to be. Everywhere else a command is what MAKES the
-// edit, so the bus applies it on the way in. Here the edit has already happened - a person typed
-// a character, or the platform echoed one - and this command exists to record it. Doing it again
-// would insert the text twice and, because the widget's insertion path is the same one this calls,
-// recurse until the stack runs out. Redo is the second apply, exactly as the bus's charter says,
-// and that one does the work.
+// The first apply() is a no-op: the edit has already happened when the command is recorded, and
+// re-applying would insert twice through the same path. Redo is the second apply.
 class TextReplaceCommand final : public hist::Command<TextEditContext, TextEditEvent> {
 public:
 	TextReplaceCommand(uint32_t pos, WideStringView removed, WideStringView inserted,
@@ -71,9 +60,7 @@ public:
 			return Status::ErrorInvalidArguemnt;
 		}
 		ctx.target->applyHistoryEdit(_pos, uint32_t(_inserted.size()), WideStringView(_removed));
-		// The caret as it stood before the edit, selection and all: undoing a "type over the
-		// selection" has to give the selection back, or the next keystroke would not be able to
-		// repeat what was just undone.
+		// The caret as it stood before the edit, selection included.
 		ctx.target->setHistoryCursor(_cursorBefore);
 		return Status::Ok;
 	}
@@ -107,9 +94,7 @@ protected:
 	StringView _name;
 };
 
-// A newline ends the thought, so a run never spans one. Written out rather than searched for
-// because StringViewBase has no find-a-character: the string here is one keystroke long in the
-// case that matters.
+// A run never spans a newline. A manual loop, since StringViewBase has no character search.
 static bool TextHistory_hasNewline(WideStringView str) {
 	for (auto &c : str) {
 		if (c == u'\n') {
@@ -125,10 +110,8 @@ bool TextHistory::init(TextHistoryTarget *target) {
 	}
 	_context.target = target;
 
-	/* groupIdle stays 0 on purpose: the bus would then close a group from inside apply(), and
-	this class would learn about it only afterwards - leaving the keystroke that outran the window
-	as an entry of one, followed by a new run starting at the NEXT character. One clock, one
-	decider; the window is checked here, before anything is applied. */
+	/* groupIdle stays 0: the idle window is checked here before applying, not by the bus from
+	inside apply(). */
 	return _bus.init(&_context, TextCommandBus::Config{.maxDepth = 0, .groupIdle = 0});
 }
 
@@ -138,8 +121,7 @@ void TextHistory::setEnabled(bool value) {
 	}
 	_enabled = value;
 	if (!_enabled) {
-		// Whatever was half-collected stops being collectable. The text keeps whatever it has -
-		// turning a history off is not an undo.
+		// The open run is closed; the text is left as is.
 		breakRun();
 		_bus.clearHistory();
 	}
@@ -151,8 +133,7 @@ void TextHistory::setRecording(bool value) {
 	if (_recording == value) {
 		return;
 	}
-	// A run cannot span the gap: whatever the owner is doing while recording is off is precisely
-	// the thing the next keystroke must not be glued to.
+	// A run cannot span a pause in recording.
 	breakRun();
 	_recording = value;
 }
@@ -167,8 +148,7 @@ bool TextHistory::continuesRun(RunKind kind, uint32_t pos, uint32_t removed,
 		// Typing continues where the last character landed.
 		return pos == _runAnchor;
 	case RunKind::Erase:
-		// Backspace eats the character before the anchor; Delete eats the one after it. Either
-		// way the caret stays put, which is why both stay one entry.
+		// Backspace eats the character before the anchor; Delete eats the one after it.
 		return pos + removed == _runAnchor || pos == _runAnchor;
 	case RunKind::None: break;
 	}
@@ -184,14 +164,13 @@ bool TextHistory::recordEdit(uint32_t pos, WideStringView removed, WideStringVie
 		return false; // an edit that changed nothing is not an edit
 	}
 
-	// The window is checked before the decision, not after: a character that arrives after the
-	// pause has to START the new run rather than land alone between two of them.
+	// The window is checked first, so a character after the pause starts the new run.
 	tickIdle(now);
 
 	RunKind kind = RunKind::None;
 	if (name == NameTyping) {
 		if (removed.empty() && !inserted.empty() && !TextHistory_hasNewline(inserted)) {
-			// A newline ends the thought: it is where an undo most usefully stops.
+			// A newline ends the run.
 			kind = RunKind::Insert;
 		} else if (inserted.empty() && !removed.empty()) {
 			kind = RunKind::Erase;
@@ -206,8 +185,7 @@ bool TextHistory::recordEdit(uint32_t pos, WideStringView removed, WideStringVie
 			&& continuesRun(kind, pos, uint32_t(removed.size()), uint32_t(inserted.size()));
 
 	if (!joins) {
-		// A paste, a cut, a replacement, a jump elsewhere - each is its own entry, and each ends
-		// whatever run was in progress.
+		// A paste, cut, replacement or non-adjacent edit is its own entry and ends the run.
 		breakRun();
 	}
 
@@ -237,8 +215,7 @@ void TextHistory::tickIdle(uint64_t now) {
 	if (_runKind == RunKind::None) {
 		return;
 	}
-	// The `now >= _runTouched` guard is the bus's, for the same reason: a clock that went
-	// backwards must not read as an eternity of silence.
+	// `now >= _runTouched`: a clock that went backwards must not read as a long idle.
 	if (now >= _runTouched && now - _runTouched >= _idle) {
 		breakRun();
 	}
@@ -256,9 +233,7 @@ bool TextHistory::undo() {
 	if (!_enabled) {
 		return false;
 	}
-	// The run in progress is committed FIRST, and the question is asked afterwards: Ctrl+Z in the
-	// middle of a word takes back the word, not the entry before it - and while that word is the
-	// only thing in the history, asking the log first would answer "nothing to undo".
+	// The run in progress is committed first, so Ctrl+Z mid-word undoes that word.
 	breakRun();
 	if (!_bus.canUndo()) {
 		return false;

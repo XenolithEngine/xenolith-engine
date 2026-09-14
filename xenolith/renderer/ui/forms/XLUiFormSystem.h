@@ -28,50 +28,19 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The form: a system on whatever node the form is rooted at, and the focus group for its fields.
+// A form: a system on the form's root node and the focus group for the FormInputListeners in its
+// subtree. Collects, clears, validates and navigates fields only through their slots. A field
+// joins the nearest form above it, so nested forms are disjoint. Public calls happen outside a
+// visit, so fields find their form by walking parents, not the frame stack.
 //
-// IT IS A FocusGroup ON PURPOSE. A form cannot work without one - the group is what arbitrates
-// who gets the keyboard and what order Tab walks - and a focus group with form semantics is not
-// useful to anything else. Keeping them apart meant the form had to create, own and forward to a
-// second system, and left room for one to exist without the other.
+// Overrides two FocusGroup behaviours: focus is per widget (any listener at or below the focused
+// field's node receives keys, not only the focused listener), and a lost focus falls back to a
+// real field rather than listeners.front().
 //
-// It collects from, clears, validates and navigates the FormInputListeners in its subtree. It
-// never touches a widget directly - only through the listeners' slots - so a form works the same
-// whether its fields are ui::TextInputs or something an application wrote itself.
-//
-// Nesting is by construction: a field joins the nearest form above it, and a nested form's fields
-// join the nested group, so neither form sees the other's.
-//
-// EVERYTHING PUBLIC HERE HAPPENS OUTSIDE A VISIT - a key press, collect(), submit(). That is why
-// fields find their form by walking the parent chain rather than through the frame stack, which is
-// only alive while a node is being visited.
-//
-// TWO THINGS THE BASE FocusGroup CANNOT DO, and why this overrides them:
-//
-// First, focus has to be per WIDGET, not per listener. FocusGroup::canHandleEventWithListener
-// filters by listener id, and every InputListener in the subtree joins the nearest group - so with
-// plain SingleFocus, the moment a field's FormInputListener takes focus, ui::TextInput's own
-// listener stops receiving keys and the arrows, Home/End, Shift-selection and Ctrl+A all die
-// inside the focused field. Here a listener passes when its owner IS the focused field's node or
-// sits below it.
-//
-// Second, when the base class loses its focused listener it falls back to listeners.front(), and
-// after InputListenerStorage::sort() that is whichever listener has the highest priority - for a
-// form full of text inputs, one of their priority-1 blur-on-outside-tap listeners, which is not a
-// field at all. Here the fallback can only ever land on a real field.
-//
-// THE TAB RING. The vector the dispatcher hands updateWithListeners is already sorted by priority
-// DESC, then visit order DESC. Every FormInputListener keeps InputListener priority 0, so among
-// themselves reversing that vector yields document order - one entry per field NODE, because only
-// FormInputListeners are taken and a widget carries exactly one. The things that should not be in
-// the ring are already gone, for free: a display:none, visibility:hidden or invisible subtree is
-// never visited, so its listeners never registered; a disabled listener does not register either;
-// and a nested form's fields joined that form's own group instead of this one.
-//
-// This group is deliberately NOT Exclusive. An exclusive group makes the dispatcher re-collect
-// listeners scoped to it, which would cut the form off from everything outside - and an outer
-// exclusive group (basic2d::OverlayLayout installs one) already needs Flags::Propagate for a form
-// nested inside it to receive input at all.
+// The tab ring is the dispatcher's listener vector (priority desc, visit order desc) reversed:
+// with all fields at priority 0 that is document order. Hidden subtrees and disabled listeners
+// never register, so they are excluded. Not Exclusive: that would cut the form off from outside
+// listeners; inside an exclusive group (basic2d::OverlayLayout) it needs Flags::Propagate.
 class SP_PUBLIC FormSystem : public FocusGroup {
 public:
 	using SubmitCallback = Function<void(Value &&)>;
@@ -91,8 +60,7 @@ public:
 	virtual void setValueMode(FormValueMode);
 	virtual FormValueMode getValueMode() const { return _valueMode; }
 
-	// Escape on a focused field resets the form. Off by default: losing what was typed to a
-	// stray Escape is worse than having to reach for the button
+	// Escape on a focused field resets the form. Off by default
 	virtual void setResetOnEscape(bool value) { _resetOnEscape = value; }
 	virtual bool isResetOnEscape() const { return _resetOnEscape; }
 
@@ -126,50 +94,34 @@ public:
 	// Focusable fields in document order, as of the last committed frame
 	SpanView<Rc<FormInputListener>> getTabRing() const { return _tabRing; }
 
-	// The field that currently HOLDS focus - committed, i.e. as of the last frame
+	// The field holding focus as of the last commit
 	FormInputListener *getFocusedField() const { return _focusedField.get(); }
 
-	// The field a focus change has been REQUESTED for and not yet committed, if any. This is the
-	// difference between what the form has been told to do and what has actually happened
+	// The field a focus change was requested for but not yet committed, if any
 	FormInputListener *getPendingField() const;
 
 	// Indices into getTabRing(), or maxOf<size_t>()
 	size_t getFocusedIndex() const;
 	size_t getPendingIndex() const;
 
-	// Step the tab ring, wrapping around.
-	//
-	// `from` is the field the request came from - normally the one that received the Tab. It is
-	// only the anchor when nothing is pending; see the implementation for why a pending request
-	// has to win, and what goes wrong when it does not.
+	// Step the tab ring, wrapping around. The anchor is the pending field, else `from`, else the
+	// focused field
 	virtual bool focusNext(bool backwards, FormInputListener *from = nullptr);
 
 	virtual bool focusField(NotNull<FormInputListener>);
 
 	// --- the default button ---------------------------------------------------------------------
 
-	/* What Enter does from a field that does not consume it - and, because it is a real widget
-	rather than a hidden rule, what `:default` paints.
-
-	The first FormFieldRole::Submit field in the tab ring. The ring is already in document order and
-	already excludes what is hidden, disabled or locked, so the button that lights up is the button
-	that will actually fire; a form whose only submit button is locked has no default button at all
-	and Enter falls back to submit(), which is what it always did. */
+	/* The first FormFieldRole::Submit field in the tab ring, marked `:default`; fired by Enter from
+	a field that does not consume it. Null when no submit button is reachable. */
 	FormInputListener *getDefaultButton() const { return _defaultButton.get(); }
 
 	// Activate the default button, or submit when there is none. Called by a field that received
 	// Enter and had nothing of its own to do with it.
 	virtual bool activateDefault();
 
-	/* Did the pending focus change come from the KEYBOARD? What `:focus-visible` is written from.
-
-	The answer is the PATH, not the event: focusNext() is the tab ring being walked, focusField() is
-	a tap or a direct request, and the focus submit() puts on the first rejected field is neither -
-	but it is not a tap either, and its outline is half of what tells the author which field was
-	refused. So it counts as visible.
-
-	Scope, named rather than discovered: this is a rule of the FORM, so a widget focused outside one
-	never takes the bit. A stylesheet that wants an outline there asks for `:focus`. */
+	/* Whether the pending focus change should show `:focus-visible`: true for focusNext() and for
+	the first rejected field in submit(), false for focusField(). Applies only inside a form. */
 	bool isFocusVisible() const { return _focusVisible; }
 
 protected:
@@ -194,28 +146,22 @@ protected:
 	ResetCallback _resetCallback;
 	InvalidCallback _invalidCallback;
 
-	// Lookup and registration order. The tab order is NOT read from here - it comes from the ring
-	// below, which is in document order and already excludes what is hidden or disabled
+	// Registration order, for lookup; tab order comes from _tabRing
 	Vector<FormInputListener *> _fields;
 
 	Vector<Rc<FormInputListener>> _tabRing;
 
-	// Held by Rc, not raw: the focused field can be destroyed between two commits (its node was
-	// removed), and the focus-out that follows has to reach a live object
+	// Rc: the field may be destroyed between commits, and its focus-out must reach a live object
 	Rc<FormInputListener> _focusedField;
 
-	// Recomputed with the ring, and holder of the `:default` bit while it holds this slot
+	// Recomputed with the ring; carries the `:default` bit
 	Rc<FormInputListener> _defaultButton;
 
-	// The direction of the navigation that asked for the pending focus change, waiting for the
-	// commit that will deliver it. It has to be remembered rather than passed along, because
-	// focusNext() only RECORDS a request and the swap happens on the next commit - and by then the
-	// key that carried the Shift is long gone. Cleared by a focusField() that is not navigation,
-	// and by the commit that consumes it
+	// Direction of the pending navigation, kept until the commit applies it. Cleared by
+	// focusField() and by that commit
 	bool _navigateBackwards = false;
 
-	// How the PENDING focus change was asked for; read at the commit that delivers it, exactly as
-	// _navigateBackwards is, and for the same reason: by then the key is long gone
+	// Focus-visible state of the pending change, read at commit like _navigateBackwards
 	bool _focusVisible = false;
 
 	bool _resetOnEscape = false;

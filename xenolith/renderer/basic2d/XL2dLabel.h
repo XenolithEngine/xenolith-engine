@@ -80,7 +80,7 @@ public:
 		virtual void setTextCursor(core::TextCursor c) { _cursor = c; }
 
 		// Union of the quads currently emplaced, in this node's own space. Empty when nothing is
-		// highlighted. See Label::getSelectionRect on why the drawn extent is worth asking for.
+		// highlighted.
 		const Rect &getBounds() const { return _bounds; }
 
 	protected:
@@ -145,11 +145,9 @@ public:
 	virtual Vec2 getCursorPosition(uint32_t charIndex, bool prefix = true) const;
 	virtual Vec2 getCursorOrigin() const;
 
-	/* WHERE AN INLINE OBJECT'S BOX ENDED UP, in this node's own space (Y-up from its origin).
-
-	`index` is into `getInlineObjects()`. The rectangle is empty until the text has been shaped,
-	and it moves with every re-wrap - a caller that draws over the box has to ask again whenever
-	the label's layout can have changed, which is what ui::MarkdownImageSystem does. */
+	/* Where an inline object's box ended up, in this node's own space (Y-up from its origin).
+	`index` is into `getInlineObjects()`. Empty until the text is shaped, and it moves with every
+	re-wrap, so callers drawing over it must ask again after layout changes. */
 	virtual Rect getInlineObjectRect(uint32_t index) const;
 
 	/*
@@ -175,12 +173,9 @@ public:
 	virtual void setSelectionColor(const Color4F &);
 	virtual Color4F getSelectionColor() const;
 
-	/* Where the highlight is actually DRAWN, in the label's own space; empty without a selection.
-
-	Not the same question as getSelectionCursor(), and the difference is the load-bearing one: the
-	cursor is what the label was TOLD to highlight, this is the geometry it built from it. The two
-	part company whenever the quads were computed against a size the label no longer has, which is
-	also how a selection can be set, reported and still be invisible. */
+	/* Where the highlight is actually drawn, in the label's own space; empty without a selection.
+	Unlike getSelectionCursor() (what the label was told to highlight) this is the built geometry;
+	they differ when the quads were computed against a stale size. */
 	virtual Rect getSelectionRect() const;
 	virtual Rect getMarkedRect() const;
 
@@ -234,7 +229,7 @@ protected:
 	void updateLabelDensity(const Mat4 &parent);
 
 	// Held while handleLayoutApplied writes the measured box back, so that the assignment does not
-	// re-expire the measurement it came from - that would be a container that never settles.
+	// re-expire the measurement it came from.
 	bool _applyingMeasuredSize = false;
 
 	EventListener *_listener = nullptr;
@@ -254,13 +249,9 @@ protected:
 	uint8_t _adjustValue = 0;
 	size_t _updateCount = 0;
 
-	/* WHAT A MEASUREMENT ANSWERED, so it is not shaped again for the same question.
-
-	A measurement is a full shape - HarfBuzz and all - whose layout is then thrown away, and the
-	layout asks for several per pass: the main axis unwrapped, the cross axis at a real width, and
-	the commit. None of them change anything, so the second and third can be answered from here.
-	Keyed by the label's revision and density, which together cover everything that would change
-	the answer; a handful of entries is all a layout pass ever asks for. */
+	/* Cached measurement results, so the same question is not shaped again within a layout pass.
+	Keyed by the label's revision and density, which cover everything that changes the answer; a
+	handful of entries is enough. */
 	struct MeasureCacheEntry {
 		MeasureMode mode = MeasureMode::Normal;
 		float maxWidth = 0.0f;

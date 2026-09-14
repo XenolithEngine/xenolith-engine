@@ -147,10 +147,8 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::MouseRight}), 1});
 
-	/* From the FIRST frame, not from the first thing that touches the button. A node with no
-	InteractiveComponent reads as state 0 to the style resolver, and `:disabled` is "not :enabled" -
-	so an untouched button matched `button:disabled` while it was perfectly usable, and
-	`button:enabled` matched nothing. The component is cheap; being invisible to CSS is not. */
+	/* Set the enabled state from the first frame: a node with no InteractiveComponent reads as
+	state 0 to the style resolver, which matches `button:disabled`. */
 	applyControlEnabled(this, true);
 
 	return true;
@@ -174,15 +172,8 @@ void Button::handleEnter(Scene *scene) {
 
 	_windowState = _director->getRenderServer()->getWindowState();
 
-	/* Which OS these window controls belong to, asked of the thread rather than of the build.
-	`#if SPRT_APPLE` was the right answer only while the scene and the window were in the same
-	process: a remote client draws the chrome for the SERVER's window, so a Linux client against a
-	macOS server drew the wrong traffic lights, and a macOS client against a Linux server drew Apple
-	ones onto a window that has none. Locally getServerInfo() answers "this process", so the local
-	behaviour is unchanged.
-
-	Deferred to handleEnter because the answer needs a director; a button built before it is in a
-	scene has nobody to ask. */
+	/* The icon theme follows the platform of the server that owns the window (a remote client
+	draws the server's chrome), not the build. Resolved here because it needs a director. */
 	auto theme = ButtonIconTheme::Default;
 	if (auto app = _director ? _director->getApplication() : nullptr) {
 		if (auto peer = app->getServerInfo()) {
@@ -222,9 +213,8 @@ void Button::handleContentSizeDirty() {
 	}
 
 	if (_label) {
-		// the label takes what the icon left of the content box, and is centered in it. The
-		// alignment INSIDE the label is not this fallback's to set - it is a property of being a
-		// button, and it is set once in init() so that the flex path has it too.
+		// the label is centered in the space the icon leaves; its text alignment is set in init()
+		// so the flex path has it too
 		const float offset = hasIcon ? _icon->getContentSize().width + s_labelPadding : 0.0f;
 		_label->setAnchorPoint(Anchor::Middle);
 		_label->setPosition(Vec2((_contentSize.width + offset) / 2.0f, _contentSize.height / 2.0f));
@@ -242,8 +232,7 @@ void Button::setString(StringView str) {
 void Button::setCallback(Function<void()> &&cb) { _leftCallback = sp::move(cb); }
 
 void Button::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// the edit lock has the last word and remembers the requested value for unlocking
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -326,9 +315,7 @@ void Button::updateState() {
 		}
 		break;
 	case ButtonIconTheme::Apple: {
-		// Traffic-light chrome is ONLY for OS window buttons. General buttons keep whatever
-		// setIcon()/IconName drew — unconditionally replacing _icon with a circle here is what
-		// turned every toolbar/row icon into a grey disk on macOS.
+		// Traffic-light chrome is only for OS window buttons; general buttons keep their icon.
 		if (_type == ButtonType::General) {
 			break;
 		}
@@ -347,9 +334,8 @@ void Button::updateState() {
 			hovered = ic->hoverCounter > 0;
 		}
 		if (hovered) {
-			// macOS hover glyphs. All FILLED: a path with only a stroke does not render on the
-			// icon sprite, so the ✕/− lines were invisible while the filled zoom triangles showed.
-			// close = ✕ (filled outline), minimize = − (filled bar), zoom = two filled triangles.
+			// Hover glyphs must be filled: a stroke-only path does not render on the icon sprite.
+			// close = ✕, minimize = −, zoom = two triangles.
 			image->addPath()
 					->setStyle(vg::DrawFlags::FillAndStroke)
 					.setFillColor(Color4B(0x33, 0x33, 0x33, 0xFF))

@@ -191,7 +191,7 @@ void CommandBuffer::cmdBindTextureSet(const core::PipelineLayoutData *,
 
 	// argument buffer handles bypass driver residency tracking: the bound
 	// textures are made resident explicitly for this encoder. The set exposes
-	// UNIQUE textures (the empty-image padding collapses to one), so this is
+	// Unique textures (the empty-image padding collapses to one), so this is
 	// O(materials), not O(imageCount)
 	for (auto &view : texSet->getResidencyViews()) {
 		if (!view) {
@@ -493,7 +493,7 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 	// the loop thread, so this may run from a worker; the queue-level
 	// submittedCallbacks + fence schedule are put on the loop thread to match
 	// the Vulkan backend. On a recording failure only onSubmited(false) is
-	// reported (the frame is invalidated), as in the original inline path.
+	// reported (the frame is invalidated).
 	auto finalize = [this, buf, q = Rc<core::FrameQueue>(&q), onSubmited = sp::move(onSubmited),
 							onComplete = sp::move(onComplete)](bool recorded) mutable {
 		if (!recorded) {
@@ -535,7 +535,7 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 	};
 
 	if (isThreadedRecording()) {
-		// reserve GPU execution order NOW (loop thread, in frame-graph order),
+		// reserve GPU execution order now (loop thread, in frame-graph order),
 		// then record + commit on the worker pool without stalling presentation
 		buf->enqueue();
 		_loop->performInQueue(

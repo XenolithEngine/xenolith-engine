@@ -73,11 +73,8 @@ enum class TextInputPasswordMode {
 
 // Clipped viewport of a TextInput: the text label, the placeholder label and the caret.
 //
-// It exists as a separate node because horizontal overflow of a single-line field is "slide the
-// label inside a fixed box": the box is this node, its scissor bounds the slide, and the caret
-// rides the label as a child so it needs no offset arithmetic of its own. TextInput itself is a
-// VectorSprite, which already owns a DynamicStateSystem for its image, so a second scissor cannot
-// live there.
+// A separate node so its scissor bounds the horizontal slide of the label; the caret is a child of
+// the label. TextInput itself is a VectorSprite whose DynamicStateSystem is already taken.
 class SP_PUBLIC TextInputContainer : public Node {
 public:
 	virtual ~TextInputContainer();
@@ -95,8 +92,8 @@ public:
 	basic2d::Label *getPlaceholder() const { return _placeholder; }
 	basic2d::Layer *getCaret() const { return _caret; }
 
-	// caret visible and blinking; mirrors "the platform granted us input" - which is NOT the
-	// control state `:enabled` reads, and so is kept here rather than in InteractiveComponent
+	// caret visible and blinking; mirrors "the platform granted us input", which is not the
+	// control state `:enabled` reads, so it is kept here rather than in InteractiveComponent
 	virtual void setEnabled(bool);
 	bool isEnabled() const { return _enabled; }
 
@@ -142,9 +139,8 @@ public:
 	virtual void setAutoScrollTarget(const Vec2 &worldLocation);
 
 protected:
-	// Centres the text and the placeholder in the box, vertically. Virtual because "in the middle
-	// of one line" is only what a SINGLE-line field means: ui::TextViewContainer starts its text
-	// at the top and positions its own labels.
+	// Centres the text and the placeholder vertically. ui::TextViewContainer overrides it to
+	// start at the top.
 	virtual void updateLabelPosition();
 
 	virtual void updateCaretPosition();
@@ -179,36 +175,26 @@ protected:
 //   text-input:hover { outline-color:rgba(255,255,255,.30); }
 //   text-input:focus { outline-color:#FCB400; }
 //
-// THE BOX. The line is centred VERTICALLY in what `height` and `padding` leave, so vertical
-// padding is symmetry rather than placement, and a box far taller than its line still reads as one
-// field. It matters most where the field is standing in for something else: an ui::InlineEditor
-// gets the height of the row it covers, and a line resting on the floor of that box would sit
-// visibly below the label it replaced.
+// The line is centred vertically in what `height` and `padding` leave (an ui::InlineEditor gives
+// it the height of the row it covers).
 //
-// STATE OWNERSHIP. The OS-side IME owns the text input state; this widget does not. `_inputState`
-// is a read-only mirror written ONLY by handleTextInput(), the TextInputHandler callback. Every
-// local edit - arrow keys, Home/End, Shift-selection, a click, setText(), selectAll() - is a
-// REQUEST pushed with TextInputHandler::update(); nothing moves on screen until the platform
-// echoes it back. That is what lets system autocorrection, CJK composition and platform paste
-// rewrite the text without the widget asking. The one exception is a field with no active handler
-// (read-only, or not focused): there is no platform authority to defer to, so setText() writes
-// locally - see the comment at that call site.
+// The OS-side IME owns the text input state. `_inputState` is a read-only mirror written only by
+// handleTextInput(), the TextInputHandler callback. Every local edit (arrows, Home/End, selection,
+// a click, setText(), selectAll()) is a request pushed with TextInputHandler::update() and shows
+// only once the platform echoes it, so autocorrection, composition and platform paste can rewrite
+// the text. Without an active handler (read-only or not focused) setText() writes locally.
 //
-// KEYBOARD. The runtime's TextInputProcessor claims events BEFORE the scene sees them: printable
-// characters, Backspace and Delete never reach this widget's key recognizer. What it declines, and
-// this widget therefore binds, is everything that is a command rather than text: the arrows,
-// Home/End and Shift-selection; the Ctrl chords (A/C/X/V) - which the processor has to decline
-// explicitly, because the backends disagree on whether Ctrl+C's keychar is 'c' or 0x03 and either
-// one would be typed into the field; and Tab/Enter, which need their modifiers intact so Shift+Tab
-// can mean "the previous field". Escape stays with the processor, which cancels input; the widget
-// learns about it from an echo with enabled=false.
+// The runtime's TextInputProcessor claims printable characters, Backspace and Delete before the
+// scene sees them. This widget binds what it declines: arrows, Home/End, Shift-selection, the Ctrl
+// chords A/C/X/V (declined explicitly, since backends disagree on Ctrl+C's keychar), and Tab/Enter
+// with modifiers intact for Shift+Tab. Escape stays with the processor, which cancels input; the
+// widget sees an echo with enabled=false.
 //
-// validateInput() still strips '\n'/'\r'/'\t' out of the echoed string. That is the degraded path
-// for a platform that delivers Enter/Tab as text anyway (macOS insertText:) - it fires the enter
-// callback, but a character carries no modifiers, so Shift+Tab degrades to Tab there.
-/* TextHistoryTarget is here rather than on TextView because BOTH are text authorities and neither
-   is the other's special case: a view owns a document and edits it locally, a field owns nothing and
-   asks the platform. One history serves both by asking whoever owns the text to move it. */
+// validateInput() also strips '\n'/'\r'/'\t' from the echo, for platforms that deliver Enter/Tab as
+// text (macOS insertText:); there Shift+Tab degrades to Tab.
+//
+// TextHistoryTarget is implemented here and by TextView: the field asks the platform, the view
+// edits its own document.
 class SP_PUBLIC TextInput : public basic2d::VectorSprite,
 						   public TextHistoryTarget,
 						   public EditLockTarget {
@@ -217,7 +203,7 @@ public:
 	using EnterCallback = Function<void()>;
 
 	// Tab on a focused field, `backwards` when Shift was held. Return true to consume it; with no
-	// callback installed the field blurs, which is what a standalone field has always done
+	// callback installed the field blurs
 	using NavigateCallback = Function<bool(bool backwards)>;
 
 	virtual ~TextInput();
@@ -256,13 +242,11 @@ public:
 	virtual bool isFocused() const { return _focused; }
 	virtual void selectAll();
 
-	// The selection to and from the OS clipboard. A password field refuses to copy or cut - its
-	// contents are exactly what must not leave the widget.
+	// The selection to and from the OS clipboard. A password field refuses to copy or cut.
 	//
-	// paste() is ASYNCHRONOUS and returns whether the read was STARTED: the clipboard answer comes
-	// back on the app thread, and the insert it performs is a text-input request like any other,
-	// so nothing has moved by the time this returns. A read that lands after the field was edited,
-	// blurred or pasted into again is discarded.
+	// paste() is asynchronous and returns whether the read was started; the insert is a text-input
+	// request on the app thread. A read that lands after the field was edited, blurred or pasted
+	// into again is discarded.
 	virtual bool copy();
 	virtual bool cut();
 	virtual bool paste();
@@ -288,12 +272,8 @@ public:
 	virtual TextCursor getCursor() const { return _inputState.cursor; }
 	virtual TextCursor getMarked() const { return _inputState.marked; }
 
-	/* Undo, and it is OFF here and ON in TextView.
-	
-	A field in a property panel commits its value into somebody's document, and Ctrl+Z there has to
-	take back the document edit rather than the typing - so a field that swallowed the chord by
-	default would be deciding, silently, an arbitration question that belongs to the application.
-	A field that genuinely wants its own history says so in one line. */
+	/* Undo is off by default here (on in TextView), so Ctrl+Z in a plain field reaches the
+	application's document undo. */
 	virtual void setUndoEnabled(bool);
 	virtual bool isUndoEnabled() const { return _history.isEnabled(); }
 
@@ -302,7 +282,7 @@ public:
 	virtual bool canUndo() const { return _history.canUndo(); }
 	virtual bool canRedo() const { return _history.canRedo(); }
 
-	// WHAT Ctrl+Z would take back, for a menu that names it. Empty when there is nothing.
+	// What Ctrl+Z would take back, for a menu that names it. Empty when there is nothing.
 	virtual StringView getUndoName() const { return _history.getUndoName(); }
 	virtual StringView getRedoName() const { return _history.getRedoName(); }
 
@@ -332,31 +312,16 @@ public:
 protected:
 	/* Registers the per-attribute appliers (background, outline, radius, padding, CmdReset) for CSS
 	type `type`, routing them into TextInput::setStyleValue. Every field built on this widget calls
-	it from init() with its own type; repeated calls for the same type are ignored. Same seam, and
-	the same reason, as Panel::registerStyleAppliers. */
+	it from init() with its own type; repeated calls for the same type are ignored. */
 	static void registerStyleAppliers(StringView type);
 
-	// The viewport node, built once by init(). A subclass returns its own container here to replace
-	// the geometry the stock one implements: caret placement, the label slide and the point->cursor
-	// mapping all assume a single line, and a multi-line view has to answer all three differently.
-	//
-	// A factory rather than a swap after the fact, because init() wires the result into _container
-	// and everything below reaches the text through it - a container replaced later would leave the
-	// first frame, and any style pass before it, addressing the old one.
+	// The viewport node, built once by init(). A subclass returns its own container to replace the
+	// single-line caret placement, label slide and point->cursor mapping.
 	virtual Rc<TextInputContainer> makeContainer();
 
-	/* Extra room a subclass takes OUT OF THE TEXT VIEWPORT, on top of the CSS padding, for
-	something it draws inside the field's own box - ui::NumberField's unit label is the one case
-	today.
-
-	A seam rather than an overridden handleContentSizeDirty, because the base must stay the single
-	writer of the container's geometry: the caret (updateCaretPosition), the label slide
-	(runAdjustLabel), the overflow test and the point->cursor mapping are every one of them
-	expressed against the container's size, so shrinking it here makes all four follow for free
-	while a second placement written in the subclass would have to keep them in step by hand.
-
-	Read BEFORE the container is sized, so whatever the subclass measures it from has to be
-	measured by then - see NumberField::handleContentSizeDirty. */
+	/* Extra room a subclass takes out of the text viewport, on top of the CSS padding (e.g.
+	ui::NumberField's unit label). The base stays the single writer of the container's geometry.
+	Read before the container is sized, so the subclass must measure first. */
 	virtual Padding getViewportInset() const { return Padding(); }
 
 	// (re)build the VectorImage: a (optionally rounded) rect filled with the resolved background,
@@ -374,9 +339,8 @@ protected:
 	virtual void pushRequest(TextInputString *, TextCursor,
 			TextCursor marked = TextCursor::InvalidCursor);
 
-	// Replace `replace` with `text` as a REQUEST. Falls back to a local write when no handler is
-	// active, for the same reason setText() does: with no platform authority there is nothing to
-	// defer to. Length and character filtering are left to validateInput() on the echo
+	// Replace `replace` with `text` as a request. Writes locally when no handler is active, as
+	// setText() does. Length and character filtering are left to validateInput() on the echo
 	virtual void insertText(WideStringView text, TextCursor replace);
 
 	// TextInputHandler::onData - the only writer of _inputState
@@ -392,8 +356,7 @@ protected:
 	virtual void updateDisplayString();
 	virtual void updateStyleColors();
 
-	// Only scheduled while a history is enabled, and only to give it a clock: nothing here reads
-	// one, so the frame is where "how long since the last keystroke" comes from.
+	// Only scheduled while a history is enabled, to feed it the frame time as its clock.
 	virtual void update(const UpdateTime &) override;
 
 	virtual bool handleKey(const GestureData &);
@@ -402,7 +365,7 @@ protected:
 	virtual bool handlePress(const GesturePress &, bool begin);
 
 	// A press held past the long-press interval, once per interval. The first one selects the word
-	// under the finger, the second the whole text; after that there is nothing left to widen to.
+	// under the finger, the second the whole text.
 	virtual bool handleLongPress(const GesturePress &);
 
 	virtual bool handleSwipeBegin(const Vec2 &);
@@ -420,11 +383,9 @@ protected:
 	// A read-only field never acquires it - it can be selected, not edited.
 	void applyGestureCursor(TextCursor);
 
-	// Where the widget last ASKED the cursor to be. Successive local edits chain onto this instead
-	// of onto _inputState.cursor, because two keystrokes can arrive in one batch (key repeat) and
-	// the echo for the first has not come back yet - without it the second move would recompute
-	// from the same stale position and the caret would appear stuck. Overwritten by every echo, so
-	// a platform-side rewrite always wins.
+	// Where the widget last asked the cursor to be. Successive local edits chain onto this rather
+	// than _inputState.cursor, since two keystrokes can arrive before the first echo. Overwritten
+	// by every echo, so a platform-side rewrite wins.
 	TextCursor pendingCursor() const;
 
 	// End of `cursor` the user is moving: the one opposite _selectionAnchor. The container scrolls
@@ -432,14 +393,9 @@ protected:
 	// maxOf<uint32_t>() when no selection is being extended.
 	uint32_t activeCursorPosition(TextCursor cursor) const;
 
-	/* THE THREE PLACES A TEXT VIEW DIFFERS FROM A FIELD, named so that copy/cut/paste/drop can exist
-	ONCE. TextView keeps a document rather than the IME's window, so its cursor and its text come
-	from elsewhere - but the sequence (negotiate a type, decode, insert at the caret AS IT IS NOW)
-	is the same, and used to be duplicated verbatim.
-
-	There are two cursor hooks rather than one, and the difference is load-bearing: cut() removes
-	what is SELECTED, while a paste lands at the caret the widget has REQUESTED and the platform has
-	not echoed yet (see pendingCursor). Folding them together silently breaks cut. */
+	/* Hooks TextView overrides so copy/cut/paste/drop are shared. Two cursor hooks: cut() removes
+	the echoed selection, while paste lands at the requested, not yet echoed caret (see
+	pendingCursor). */
 
 	// What copy() copies and cut() removes.
 	virtual TextCursor selectionCursor() const { return _inputState.cursor; }
@@ -450,9 +406,7 @@ protected:
 	// The text under `cursor`. A view into live storage, valid until the next edit.
 	virtual WideStringView getTextForCursor(TextCursor) const;
 
-	// Whether the SELECTION may leave the widget. This is POLICY, and it stays with the widget: a
-	// masked field's contents are exactly what must not reach the clipboard. TextView overrides it
-	// because it never masks.
+	// Whether the selection may leave the widget: false for a masked field. TextView never masks.
 	virtual bool canCopySelection() const {
 		return _passwordMode == TextInputPasswordMode::NotPassword;
 	}
@@ -460,17 +414,13 @@ protected:
 	// Built on first use, because most fields never touch the clipboard at all.
 	ClipboardSession *acquireClipboard();
 
-	/* Record one edit against the history, reading what is about to go BEFORE it goes. Called from
-	whichever point actually mutates the text - the echo here, applyDocEdit in TextView.
-
-	`cursorBefore` must be the caret as it stands at that moment, because that is what an undo
-	restores; every caller has it, and none of them has updated it yet when they call. */
+	/* Record one edit against the history before the text changes. Called from the mutation point
+	(the echo here, applyDocEdit in TextView); `cursorBefore` is the caret an undo restores. */
 	void recordHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted,
 			TextCursor cursorBefore);
 
-	/* What to call the edit now in flight. Typing is the default because most edits arrive as an
-	echo with nobody left to name them; the operations that DO know what they are set this around
-	their own call, which is why a paste undoes in one step and a typed word in one run. */
+	/* Scoped name for the edit in flight. Defaults to typing (plain echoes); paste, cut and similar
+	operations set it around their call so they form their own entry. */
 	struct HistoryEditName {
 		HistoryEditName(TextInput *input, StringView name)
 		: _input(input), _previous(input->_historyEditName) {
@@ -492,23 +442,18 @@ protected:
 	TextHistory _history;
 	StringView _historyEditName = TextHistory::NameTyping;
 
-	// The last frame time seen, in the UpdateTime `global` domain. `app` is NOT used: AppThread
-	// computes it as (start - now) rather than (now - start), so it runs backwards.
+	// The last frame time seen, in the UpdateTime `global` domain. `app` is not used: AppThread
+	// computes it as (start - now), so it runs backwards.
 	uint64_t _historyClock = 0;
 
-	/* The IME-owned half of undo, and the reason a plain field's history is the harder of the two.
-	An undo here is a REQUEST: the string it asks for is not present until the platform echoes it,
-	so the caret cannot be pushed alongside it (that push would carry the OLD string and cancel the
-	edit), and the echo, when it comes, must not be recorded as a fresh edit of its own.
-
-	`_historyEchoes` counts history-driven edits in flight; `_historyPendingCursor` is the caret
-	waiting for the echo that will make it meaningful. TextView overrides both target methods and
-	uses neither: it owns its document and edits it outright. */
+	/* Undo in an IME-owned field is a request: the caret is applied only after the echo (pushing it
+	earlier would carry the old string), and that echo is not recorded as a new edit.
+	`_historyEchoes` counts history-driven edits in flight; `_historyPendingCursor` waits for the
+	echo. Unused by TextView. */
 	uint32_t _historyEchoes = 0;
 	TextCursor _historyPendingCursor = TextCursor::InvalidCursor;
 
-	// The text an undo is building, edit by edit, before any of it is asked for. One entry can
-	// hold a whole typed word, and the platform must be asked for its result once.
+	// The text an undo builds edit by edit, so a multi-edit entry becomes one platform request.
 	WideString _historyShadow;
 	bool _historyBatch = false;
 
@@ -526,8 +471,8 @@ protected:
 	// anchor of a Shift-selection or a drag-selection; InvalidCursor when none is running
 	uint32_t _selectionAnchor = maxOf<uint32_t>();
 
-	// The clipboard transport, built on first use. It carries the staleness serial and can be
-	// CANCELLED - which is what blur() and a focus the platform revoked do.
+	// The clipboard transport, built on first use. Carries the staleness serial; cancelled by
+	// blur() and by a platform focus loss.
 	Rc<ClipboardSession> _clipboard;
 
 	// see pendingCursor()
@@ -537,9 +482,8 @@ protected:
 	bool _dragSelecting = false;
 	bool _panning = false;
 
-	// A long press ends with a release, and a release is also a tap: without this the tap that
-	// closes the gesture would drop the selection the long press had just made. Cleared when the
-	// next press starts.
+	// Suppresses the tap from a long press's release, which would drop its selection. Cleared
+	// when the next press starts.
 	bool _longPressApplied = false;
 
 	// edge trackers for InteractiveComponent's cumulative counters

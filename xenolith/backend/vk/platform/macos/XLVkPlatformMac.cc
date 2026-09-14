@@ -70,14 +70,9 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 	}
 
 	if (isBundled) {
-		// Restrict the loader to the ICD we ship. Left to its own devices it *adds* the system-wide
-		// manifests (/usr/local/share/vulkan/icd.d) to the bundled one, so a machine with the
-		// Vulkan SDK installed ends up with two libMoltenVK images in the process. They export the
-		// same Objective-C classes (MVKBlockObserver & co), and the ObjC runtime keeps only one
-		// implementation per class name — so command-buffer completion handlers run against objects
-		// laid out by the *other* library. That corrupts Metal's resource bookkeeping and surfaces
-		// as VK_ERROR_DEVICE_LOST / kIOGPUCommandBufferCallbackErrorInvalidResource, mostly once
-		// several windows are presenting at once.
+		// Restrict the loader to the ICD we ship. Otherwise it adds system-wide manifests, and two
+		// libMoltenVK images in one process share ObjC class names, corrupting Metal's bookkeeping
+		// (VK_ERROR_DEVICE_LOST with several windows presenting).
 		auto icdPath = filepath::merge<Interface>(root, "Resources", "vulkan", "icd.d",
 				"MoltenVK_icd.json");
 		if (filesystem::exists(FileInfo{icdPath})) {

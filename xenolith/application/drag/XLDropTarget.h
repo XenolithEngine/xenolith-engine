@@ -37,52 +37,25 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
         .drop = [this](const DragEvent &e, DragActions) { return take(e.data->getLocal()); },
     });
 
-IT CARRIES DATA AND NOTHING ELSE. There is no object here with a lifecycle, no visit hook and no
-input: being a drop target is a fact about a node, and a fact belongs in a Component. What used to be
-a Ref-derived System with a virtual visit hook on every target is now one bit in
-Node::getHitTestFlags(), and the node publishes itself into the frame's hit-test registry like
-everything else that wants to be found under a pointer.
-
-HOW IT IS FOUND. Not by a registry of the drag system's own and not by walking the scene: the NODE
-registers itself, once per frame, from inside its own visit (see HitTestFlags). Three things fall out
-of that and none of them are otherwise cheap to get right:
-
-- the world rect comes from the visit's own transform, so it is exactly the rect that was drawn, with
-  no re-derivation - and a rotated target is hit where it was drawn, not across its bounding box;
-- registration order is visit order is PAINT order, so the drag finds the topmost target by walking
-  the registry backwards;
-- a node that is not visited is not registered. An invisible subtree, a `display: none` one, a
-  detached one - all of them stop being drop targets for free, with no bookkeeping and no stale
-  entries.
-
-The registry is therefore one frame old when a pointer event reads it. That is not a compromise: it
-is exactly the staleness ordinary input already has, since the dispatcher resolves every event
-against the previously committed listener storage.
-
-WHAT THE SLOTS MAY DO. `accept` is a predicate and is called during hit testing - for candidates that
-may never become the current target, possibly several times per frame. It must be pure. All visual
-feedback belongs in `enter`/`over`/`leave`, which fire only for the current target and are bracketed
-exactly. See DropTargetSlots. */
+A plain data component: no lifecycle, visit hook or input. The node has HitTestFlags::DropTarget and
+registers itself into the frame's hit-test registry during its own visit, so the rect is the drawn
+one (rotation included), registration order is paint order (topmost last), and unvisited nodes are
+never targets. The registry is one frame old when a pointer event reads it, like ordinary input.
+See DropTargetSlots for what the slots may do. */
 struct SP_PUBLIC DropTargetComponent {
 	static ComponentId Id;
 
 	DropTargetSlots slots;
 
-	// Inflates the hit test on every side, in world units. The same idea as
-	// InputListener::setTouchPadding: a thin target is hard to hit. It lives here rather than in the
-	// registry record because how far outside itself a target reaches is a property of the TARGET,
-	// not of the frame it was drawn in
+	// Inflates the hit test on every side, in world units, like InputListener::setTouchPadding
 	float padding = 0.0f;
 
-	// A disabled target is not found. Cheaper and clearer than removing and re-adding the component
-	// around a mode the node moves in and out of
+	// A disabled target is not found
 	bool enabled = true;
 };
 
-// Attaches a drop target to `node`, or replaces the slots of the one it already has, and marks the
-// node as a participant in the hit-test registry. The only supported way in: the flag is a cache of
-// this component's presence, and setting one without the other makes a node that wins a hit test and
-// then offers nothing
+// Attaches a drop target to `node` (or replaces its slots) and sets the hit-test flag. The only
+// supported way in: the flag must match the component's presence
 SP_PUBLIC const DropTargetComponent *setDropTarget(NotNull<Node>, DropTargetSlots &&);
 
 SP_PUBLIC const DropTargetComponent *getDropTarget(NotNull<Node>);
@@ -90,8 +63,7 @@ SP_PUBLIC const DropTargetComponent *getDropTarget(NotNull<Node>);
 SP_PUBLIC void setDropTargetEnabled(NotNull<Node>, bool);
 SP_PUBLIC void setDropTargetPadding(NotNull<Node>, float);
 
-// Removes both the component and the flag. A drag hovering the node when this runs gets its `leave`
-// on the next frame, the same way it would if the node had left the scene
+// Removes both the component and the flag. A drag hovering the node gets its `leave` next frame
 SP_PUBLIC void removeDropTarget(NotNull<Node>);
 
 } // namespace stappler::xenolith

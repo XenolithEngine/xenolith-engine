@@ -38,16 +38,8 @@ enum class DynamicStateApplyMode : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DynamicStateApplyMode)
 
-/* WHICH AXES A SCISSOR ACTUALLY CLIPS.
-
-The hardware scissor is one rectangle, so a clip is always two ranges - but a caller often means
-only one of them. A document that scrolls vertically clips top and bottom and has no business
-cutting anything off at its sides; a code block that scrolls sideways is the same statement turned
-ninety degrees.
-
-An axis left out is not narrowed to the box: the rect is opened on it, and what remains is whatever
-an ancestor scissor already imposed. So one rectangle expresses both axes independently, and
-`overflow-x` and `overflow-y` no longer have to agree. */
+/* Which axes a scissor clips. An axis left out is opened rather than narrowed to the box, so only
+an ancestor scissor limits it; this lets `overflow-x` and `overflow-y` differ. */
 enum class ScissorAxes : uint32_t {
 	None = 0,
 	Horizontal = 1 << 0,

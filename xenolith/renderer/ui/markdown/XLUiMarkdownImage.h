@@ -38,55 +38,38 @@ struct SP_PUBLIC MarkdownImageRequest {
 	Size2 declared;
 };
 
-/* What an image resolves to: a texture that may still be loading, and the BOX to reserve for it.
-
-The two are separate on purpose. The box has to be known while the paragraph is being shaped, and
-the pixels do not - a texture arrives whenever the loop gets to it, and finds its place already
-kept. That is the whole reason a Markdown document does not re-flow as its images appear. */
+/* What an image resolves to: a texture that may still be loading, and the box to reserve. The box
+is needed while the paragraph is shaped; the texture can arrive later without a re-flow. */
 struct SP_PUBLIC MarkdownImageSource {
 	Rc<Texture> texture;
 	Size2 size;
 };
 
-/* How a `src` becomes something to draw.
-
-The default (ui::MarkdownView) reads a local file: the path is resolved against the document's own
-directory, its EXTENT is read from the file header - not by decoding it - and the decode itself is
-left to the render loop. Anything else, a URL above all, is the application's business: this
-widget deliberately depends on neither the network nor a storage backend, and an application that
-wants remote images already has whichever of the two it prefers. */
+/* How a `src` becomes something to draw. The default (ui::MarkdownView) reads a local file
+relative to the document, sizing it from the file header; URLs need an application resolver. */
 using MarkdownImageResolver = Function<MarkdownImageSource(const MarkdownImageRequest &)>;
 
-/* KEEPS THE PICTURES ON THE BOXES THE TEXT LEFT FOR THEM.
-
-An inline image is a box the formatter reserved inside a Label's layout, and a scene node drawn
-over that box. The two are joined only by the index of the layout range that reserved it, so
-something has to look up where the box ended up and move the node there - after every re-wrap, at
-every width, on every line the paragraph gains or loses.
-
-It hangs on the Label itself, which is where both halves live. */
+/* Keeps inline image nodes on the boxes their Label's layout reserved. The two are joined only by
+the layout range index, so nodes are repositioned after every re-wrap. Attached to the Label. */
 class SP_PUBLIC MarkdownImageSystem : public System {
 public:
 	virtual ~MarkdownImageSystem() = default;
 
 	virtual bool init() override;
 
-	// `objectIndex` indexes the Label's own inline objects, which is what carries the range the
-	// formatter answered with.
+	// `objectIndex` indexes the Label's inline objects, which carry the formatter's range.
 	void addImage(NotNull<Node>, uint32_t objectIndex);
 
 	// The layout is current at this point of the visit: Label::processParentFlags re-shapes a
 	// dirty label before its children are reached.
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags) override;
 
-	/* Also here, and not only at the visit: a box's place is read out of the LAYOUT but expressed
-	against the node's own height, and those two are assigned in different phases. Repositioning
-	when the height lands is what keeps the picture from spending a frame off its box after every
-	re-wrap. */
+	// Also repositions here: the box comes from the layout but is expressed against the node's
+	// height, assigned in a different phase; without this a picture lags a frame after re-wrap.
 	virtual void handleContentSizeDirty() override;
 
-	// Move every picture onto its box. Cheap and idempotent: a node whose box has not moved is
-	// left alone, because writing a position marks a subtree dirty.
+	// Move every picture onto its box. Idempotent; unmoved nodes are not touched, since setting a
+	// position marks the subtree dirty.
 	void reposition();
 
 	uint32_t getImageCount() const { return uint32_t(_images.size()); }

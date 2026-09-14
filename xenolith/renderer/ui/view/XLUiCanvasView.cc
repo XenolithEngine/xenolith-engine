@@ -28,30 +28,21 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
 
-// The control's own metrics. Deliberately not stylesheet-driven defaults: a canvas with no sheet in
-// scope must still be able to read its zoom and step it, which is the same argument ui::TreeView
-// makes for the colours of its drag feedback.
-// 28 and not 20, and that is not a matter of taste: ui::Button reserves 8pt on each side of its
-// label, so a button narrower than about 24 hands its glyph a box of four points and the "+" comes
-// out clipped and off-centre. The button is what carries :hover and :active, and it is worth being
-// wide enough to keep.
+// The control's own metrics, not stylesheet-driven: a canvas may have no sheet in scope.
+// ui::Button reserves 8pt on each side of its label, so a button below ~24pt clips its glyph.
 constexpr float ZoomButtonSize = 28.0f;
 constexpr float ZoomControlPadding = 3.0f;
 constexpr float ZoomControlGap = 2.0f;
 constexpr uint16_t ZoomFontSize = 14;
 
-// The wider space between the pair that STEPS the zoom and the three that FRAME it. Five buttons in
-// an even row would be five buttons a person has to read one at a time; the gap is what says the row
-// is two groups, and it costs nothing to draw.
+// The wider gap between the zoom step buttons and the framing buttons.
 constexpr float ZoomControlGroupGap = 8.0f;
 
-// The glyph inside a framing button, and the colour every one of the control's marks is drawn in -
-// see the note on setZoomControlEnabled for why a colour is written here at all.
+// The glyph inside a framing button, and the colour of the control's marks.
 constexpr float ZoomIconSize = 18.0f;
 constexpr Color4F ZoomControlInk = Color4F(0.94f, 0.94f, 0.96f, 1.0f);
 
-// Above the world, and above whatever a caller has put in it: this is chrome, and a document drawn
-// over its own zoom readout would be a document nobody can zoom out of.
+// Above the world and anything the caller puts in it.
 constexpr ZOrder ZoomControlZOrder = ZOrder(1'000);
 
 } // namespace
@@ -65,8 +56,7 @@ bool CanvasView::init(const sprt::geom::ZoomLimits &limits) {
 
 	_limits = limits;
 
-	// The world's anchor is (0,0) and stays there: `screen = world * zoom + offset` is only true of
-	// a node whose origin is its bottom-left corner, and every conversion in this class assumes it.
+	// The world's anchor stays (0,0): conversions here assume `screen = world * zoom + offset`.
 	_world = addChild(Rc<Node>::create());
 	_world->setName("canvas-world");
 	_world->setAnchorPoint(Vec2(0.0f, 0.0f));
@@ -79,27 +69,15 @@ bool CanvasView::init(const sprt::geom::ZoomLimits &limits) {
 void CanvasView::handleContentSizeDirty() {
 	Node::handleContentSizeDirty();
 
-	// Nothing to re-apply for the VIEWPORT: it is the world's transform and the surface size is read
-	// off this node when it is asked for. A canvas that mirrored the size into a field would have to
-	// remember to do it here, which is the class of bug this arrangement removes.
-	//
-	// The control is another matter - it hangs off a corner, and the corner has just moved.
+	// The viewport needs no update (size is read on demand); the control follows its corner.
 	layoutZoomControl();
 }
 
 void CanvasView::handleGlobalTransformDirty(const Mat4 &parentTransform) {
 	Node::handleGlobalTransformDirty(parentTransform);
 
-	/* What a gesture delta has to be divided by. Gestures arrive in scene units - physical pixels,
-	since the Scene scales its subtree by the density - and the world's position is in this node's
-	own space; see the header note.
-
-	THE GLOBAL PHASE AND NOT THE LOCAL ONE. handleTransformDirty fires when THIS node's transform
-	moved within its parent, which a density change several ancestors up never does; the global one
-	is the phase whose whole stated purpose is "global parameters (like pixel density) can be
-	recalculated". Node::getInputDensity() is the same number reduced to its minimum axis, and both
-	axes are kept here for the same reason ui::ScrollSystem keeps them. Zero would be a canvas that
-	cannot be panned at all, so it degrades to one rather than to a division by zero. */
+	/* The scale gesture deltas are divided by, per axis. Computed in the global phase so a density
+	change on an ancestor is seen; zero falls back to one. */
 	Vec3 scale;
 	parentTransform.decompose(&scale, nullptr, nullptr);
 	const auto own = getScale();
@@ -121,18 +99,13 @@ sprt::geom::Viewport CanvasView::getViewport() const {
 }
 
 void CanvasView::setViewport(const sprt::geom::Viewport &view) {
-	// The ZOOM is clamped and the OFFSET is not, and the asymmetry is deliberate: a zoom has limits
-	// this widget was told, while what a sensible offset would be depends on what is drawn - which
-	// is exactly what this widget does not know.
+	// The zoom is clamped; a valid offset depends on the content, which only the caller knows.
 	_world->setScale(sprt::geom::clampZoom(view.zoom, _limits));
 	_world->setPosition(view.offset);
 	updateZoomControl();
 }
 
 void CanvasView::zoomAt(const Vec2 &anchor, float factor) {
-	// The order - clamp, then read the world anchor from the OLD view, then solve the offset - is
-	// the whole content of sprt::geom::zoomAt, and getting it wrong is invisible until somebody scrolls
-	// at a limit.
 	setViewport(sprt::geom::zoomAt(getViewport(), anchor, factor, _limits));
 }
 
@@ -143,15 +116,11 @@ void CanvasView::zoomBy(float factor) {
 void CanvasView::fit(const sprt::geom::Bounds &bounds, const sprt::geom::FitConfig &config,
 		const sprt::geom::ZoomLimits &limits) {
 	if (_contentSize.width <= 0.0f || _contentSize.height <= 0.0f) {
-		// Framing into a surface that has no size yet centres the world in a 1x1 frame. The caller
-		// carries the "do it again when the size is real" flag, because only the caller knows
-		// whether it still wants to.
+		// No surface size yet; the caller is responsible for retrying after layout.
 		return;
 	}
 
-	// Framing has a range of its own, wider than the gesture's, and it is applied HERE rather than
-	// through setViewport - which would clamp the result back into the gesture range and undo the
-	// fit for exactly the worlds that needed one.
+	// Applied directly, not through setViewport, which would clamp to the narrower gesture range.
 	auto view = sprt::geom::fitBounds(bounds, Vec2(_contentSize.width, _contentSize.height), config,
 			limits);
 	_world->setScale(view.zoom);
@@ -162,8 +131,6 @@ void CanvasView::fit(const sprt::geom::Bounds &bounds, const sprt::geom::FitConf
 void CanvasView::setFitBounds(Function<sprt::geom::Bounds()> &&fn) {
 	_fitBounds = sp::move(fn);
 
-	// The buttons say so at once rather than at the next press: a control that looks available and
-	// answers nothing is worse than one that says what it cannot do.
 	if (_fitWidth) {
 		_fitWidth->setEnabled(!!_fitBounds);
 		_fitHeight->setEnabled(!!_fitBounds);
@@ -181,10 +148,7 @@ void CanvasView::fit(sprt::geom::FitAxis axis) {
 }
 
 void CanvasView::setZoom(float zoom) {
-	/* THE CENTRE FIRST, and against the OLD viewport. `offset = screenCentre - worldCentre * zoom` is
-	the same equation `fitBounds` solves, with the zoom given instead of computed - and reading the
-	world centre after the scale is written would read it through the NEW zoom, which is the
-	arithmetic that makes a change of scale slide the picture sideways. */
+	// The world centre is read through the old viewport, before the new zoom is applied.
 	auto view = getViewport();
 	const Vec2 screenCentre(_contentSize.width * 0.5f, _contentSize.height * 0.5f);
 	const Vec2 worldCentre = view.toWorld(screenCentre);
@@ -203,14 +167,11 @@ void CanvasView::attachGestures(InputListener *listener) {
 		return;
 	}
 
-	// Pan on the middle and right buttons. The left one belongs to the caller, whatever it means
-	// there - which is the whole reason these go on the caller's listener rather than on one here.
+	// Pan on the middle and right buttons; the left one belongs to the caller.
 	listener->addSwipeRecognizer(
 			[this](const GestureSwipe &swipe) {
 		if (swipe.event == GestureEvent::Activated) {
-			// Divided by this node's world scale, and that division is the whole of the difference
-			// between the picture following the pointer and sliding out from under it - see the
-			// header note. The delta is in scene units; the world's position is in this node's.
+			// The delta is in scene units; divide by the world scale to move in this node's space.
 			_world->setPosition(_world->getPosition().xy()
 					+ Vec2(swipe.delta.x / _surfaceScale.x, swipe.delta.y / _surfaceScale.y));
 		}
@@ -220,12 +181,8 @@ void CanvasView::attachGestures(InputListener *listener) {
 				makeButtonMask({InputMouseButton::MouseMiddle, InputMouseButton::MouseRight})});
 
 	listener->addScrollRecognizer([this](const GestureScroll &scroll) {
-		// DIVIDED BY THE NOTCH, and that division is not a taste. A Scroll event carries a scroll
-		// AMOUNT rather than a count of clicks - a trackpad has no clicks to count - and one detent
-		// of a wheel is worth `InputScrollNotch` of it. ZoomStepRatio is stated per NOTCH, so the
-		// amount has to be turned into notches before it is an exponent. Handing the raw amount to
-		// wheelZoomRatio raises the step to the tenth power: one click of the wheel came out as
-		// 1.1^10, two and a half times the scale, which is what this widget shipped with.
+		// The scroll amount is converted to notches: ZoomStepRatio is per notch, and one notch is
+		// `InputScrollNotch` of the amount.
 		zoomAt(convertToNodeSpace(scroll.input->currentLocation),
 				sprt::geom::wheelZoomRatio(scroll.amount.y / sprt::window::InputScrollNotch,
 						ZoomStepRatio));
@@ -233,16 +190,9 @@ void CanvasView::attachGestures(InputListener *listener) {
 	});
 }
 
-/* THE CONTROL IS BUILT BY HAND AND LAID OUT BY HAND, and both are deliberate.
-
-By hand, because a `ui::LayoutSystem` here would make the control's box the answer to a flex pass
-that nothing else in this widget takes part in, and because three children in a row at fixed sizes
-is less code than the declaration of that pass. It is what ui::WindowDecorations does with its eight
-grips, for the same reason.
-
-With a paint of its own, because a canvas is routinely drawn with no stylesheet in scope at all -
-four of them in this repository are - and a ui::Panel with nothing declared is opaque WHITE. The
-type is registered so a sheet that DOES say `canvas-zoom { … }` replaces this outright. */
+/* The control is built and laid out by hand, without a LayoutSystem. It paints itself because
+a canvas may have no stylesheet (an unstyled ui::Panel is opaque white); the `canvas-zoom` type
+is registered so a sheet can override it. */
 void CanvasView::setZoomControlEnabled(bool value) {
 	if (value == (_zoomControl != nullptr)) {
 		return;
@@ -268,8 +218,7 @@ void CanvasView::setZoomControlEnabled(bool value) {
 	_zoomControl->setAnchorPoint(Vec2(0.0f, 0.0f));
 	_zoomControl->setContentSize(ZoomControlSize);
 
-	// One step each way, the wheel's own step. A control that stepped by some figure of its own
-	// would be the fifth copy of the constant this widget exists to have one of.
+	// One step each way, the same step as the wheel.
 	_zoomOut = _zoomControl->addChild(
 			Rc<Button>::create(StringView("-"), [this] { zoomBy(1.0f / ZoomStepRatio); }));
 	_zoomOut->setName("canvas-zoom-out");
@@ -277,11 +226,8 @@ void CanvasView::setZoomControlEnabled(bool value) {
 			Rc<Button>::create(StringView("+"), [this] { zoomBy(ZoomStepRatio); }));
 	_zoomIn->setName("canvas-zoom-in");
 
-	/* AND THE THREE THAT FRAME. The two axes go through `fit(FitAxis)`, which asks the owner what
-	there is to frame - so a canvas that never said is a canvas whose two buttons are disabled, and
-	`setFitBounds` turns them on the moment it is told. "1:1" is not one of them: a reset needs no
-	bounds and is therefore always available, which is also why it is the button of the three that a
-	canvas with nothing declared can still be got out of a bad zoom with. */
+	// Fit buttons go through `fit(FitAxis)` and are enabled by `setFitBounds`; "1:1" needs no
+	// bounds and is always available.
 	_fitWidth =
 			_zoomControl->addChild(Rc<Button>::create([this] { fit(sprt::geom::FitAxis::Width); }));
 	_fitWidth->setName("canvas-zoom-fit-width");
@@ -294,8 +240,6 @@ void CanvasView::setZoomControlEnabled(bool value) {
 	_fitHeight->setIcon(IconName::Action_swap_vert_solid);
 	_fitHeight->setEnabled(!!_fitBounds);
 
-	// In words rather than as a glyph, and next to a readout in percent on purpose: "1:1" is what the
-	// percentage will say once it is pressed, and no icon in the set says that without being learned.
 	_zoomReset =
 			_zoomControl->addChild(Rc<Button>::create(StringView("1:1"), [this] { resetZoom(); }));
 	_zoomReset->setName("canvas-zoom-reset");
@@ -340,9 +284,7 @@ void CanvasView::layoutZoomControl() {
 
 	const auto size = _zoomControl->getContentSize();
 
-	// The corner is an anchor of THIS node's box and the margin runs INWARD from it, which is what
-	// makes one pair of numbers describe all four corners: at (0,0) the margin adds, at (1,1) it
-	// subtracts, and the control never hangs outside the surface it belongs to.
+	// The corner is an anchor of this node's box and the margin runs inward from it.
 	_zoomControl->setPosition(Vec2((_contentSize.width - size.width) * _zoomCorner.x
 					+ _zoomMargin * (1.0f - 2.0f * _zoomCorner.x),
 			(_contentSize.height - size.height) * _zoomCorner.y
@@ -351,14 +293,12 @@ void CanvasView::layoutZoomControl() {
 	const float inner = size.height - ZoomControlPadding * 2.0f;
 	const float mid = size.height * 0.5f;
 
-	// The readout takes WHATEVER IS LEFT, and is given it as a fixed width: the number changing from
-	// two digits to three must not walk the buttons around under the pointer. Everything else in the
-	// row has a size stated here, so "what is left" is arithmetic rather than a measurement.
+	// The readout gets the remaining width as a fixed size, so digit count changes do not move
+	// the buttons.
 	const float labelWidth = size.width - ZoomControlPadding * 2.0f - ZoomButtonSize * 5.0f
 			- ZoomControlGap * 4.0f - ZoomControlGroupGap;
 
-	// LEFT TO RIGHT WITH ONE CURSOR. Six things in a row, and the alternative - each placed against
-	// the edge it is nearest - is six expressions that have to be kept consistent by hand.
+	// Placed left to right with one cursor.
 	float x = ZoomControlPadding;
 	auto place = [&](Node *node, float width, float gapAfter) {
 		node->setAnchorPoint(Vec2(0.0f, 0.5f));
@@ -386,9 +326,7 @@ void CanvasView::updateZoomControl() {
 		return;
 	}
 
-	// Guarded on the number that is SHOWN rather than on the zoom: a pan writes the world's
-	// transform on every pointer move and changes no percentage, and rewriting a label is a text
-	// layout.
+	// Guarded on the shown percentage: pans write the transform often, and relabeling is costly.
 	const auto percent = int32_t(sprt::lroundf(_world->getScale().x * 100.0f));
 	if (percent == _zoomShown) {
 		return;

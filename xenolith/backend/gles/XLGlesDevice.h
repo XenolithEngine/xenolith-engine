@@ -28,12 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
-// One GL context per device, current on the loop thread. The instance probes each EGL device
-// with a temporary context and hands back everything it learned (DeviceInfo); init reopens that
-// same display - platform device, surfaceless or default - and keeps its own context alive for
-// the life of the loop. Everything that touches the API (object creation, pass submission,
-// readback) runs on the thread that made the context current; a call from anywhere else must go
-// through scheduleRelease() instead of issuing GL directly.
+// One GL context per device, current on the loop thread. init reopens the display the instance
+// probe used (DeviceInfo) and keeps its context for the life of the loop. All GL calls run on
+// that thread; other threads must go through scheduleRelease().
 class SP_PUBLIC Device final : public core::Device {
 public:
 	virtual ~Device() = default;
@@ -47,10 +44,8 @@ public:
 	// they check this and hand their delete to scheduleRelease() instead of calling GL themselves.
 	bool isAlive() const { return _alive.load(); }
 
-	// The instance owns the resolved function pointers and outlives every device it made, so a
-	// pointer hop is enough - keeping a copy (or a reference) here would only duplicate state.
-	// Defined in XLGlesInstance.cc: the downcast needs Instance to be complete, which this header
-	// does not guarantee for every includer.
+	// The instance owns the resolved function pointers and outlives every device. Defined in
+	// XLGlesInstance.cc, where Instance is complete.
 	const EglTable &getTable() const;
 
 	// Monotonic id handed to every ImageView: the frame cache keys framebuffers by it, so it must
@@ -70,21 +65,16 @@ public:
 	bool hasSwapWithDamage() const { return _swapWithDamage; }
 
 	// Create an EGLWindowSurface on this device's display for the given native window handle.
-	// Each platform extension spells its native window differently, and neither spells it the way
-	// the window system hands it over: wayland needs the wl_surface wrapped in a wl_egl_window
-	// (created here, returned through outNativeWindow, and owned by the caller), xcb needs a
-	// pointer to the window id rather than the id itself. Fails when the driver lacks
-	// eglCreatePlatformWindowSurfaceEXT, when libwayland-egl is missing, or when the config does
-	// not carry EGL_WINDOW_BIT - all of which are the "windowed presentation unavailable" case.
+	// Wayland wraps the wl_surface in a wl_egl_window (returned through outNativeWindow, owned by
+	// the caller); xcb takes a pointer to the window id. Fails when the driver lacks
+	// eglCreatePlatformWindowSurfaceEXT, libwayland-egl is missing, or the config lacks
+	// EGL_WINDOW_BIT, meaning windowed presentation is unavailable.
 	bool createWindowSurface(sprt::window::SurfaceBackend backend, void *nativeWindow,
 			Extent2 extent, EGLSurface &out, void *&outNativeWindow);
 
 	// Undo createWindowSurface: the EGLSurface first, then the native window it was built on -
 	// the wl_egl_window has to outlive the surface that references it. Both handles are cleared.
-	//
-	// There is no resize counterpart on purpose: a window that changes size makes the presentation
-	// engine build a new swapchain, and the new one creates its own pair at the new extent while
-	// the old one destroys its own here.
+	// No resize counterpart: a resize builds a new swapchain with its own pair.
 	void destroyWindowSurface(EGLSurface &surface, void *&nativeWindow);
 
 	// Queue a GL delete for execution on the loop thread (drainPendingReleases). Safe from any

@@ -247,12 +247,9 @@ const AssetVersionData *Asset::getReadableVersion() const {
 	return nullptr;
 }
 
-// Build a filesystem-safe version-path component from the (untrusted, server-supplied) ETag.
-// The raw etag may contain '/', '\\' or ".." which would let a malicious or compromised asset
-// server escape the cache directory (path traversal -> arbitrary file write). Hex-encoding the
-// trimmed tag yields a [0-9a-f]* component with no path separators. Must be used identically by
-// both parseVersions (which scans existing cache files) and startNewDownload (which creates them),
-// or a downloaded file would never be matched on the next scan.
+// Build a filesystem-safe version-path component from the untrusted, server-supplied ETag by
+// hex-encoding the trimmed tag, so '/', '\\' or ".." cannot escape the cache directory. Must be
+// used identically by parseVersions and startNewDownload, or downloads never match on rescan.
 static auto Asset_encodeVersionTag(StringView etag) {
 	etag.trimChars<StringView::Chars<'"', '\'', ' ', '-'>>();
 	return base16::encode<Interface>(etag);

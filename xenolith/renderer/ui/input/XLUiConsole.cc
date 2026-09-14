@@ -57,8 +57,7 @@ bool ConsoleInput::handleKey(const GestureData &data) {
 		}
 	}
 
-	// Left/Right/Home/End are still the base's business, and so are Up/Down when no history is
-	// installed - falling through keeps the field behaving like an ordinary one.
+	// other keys, and Up/Down without a history callback, go to the base
 	return TextInput::handleKey(data);
 }
 
@@ -77,9 +76,8 @@ bool Console::init() {
 	_output = addChild(Rc<TextView>::create());
 	_output->setName("console-output");
 	_output->addStyleClass("console-output");
-	// Read-only, so it never acquires the IME and never shows a caret - but it still takes taps,
-	// drag-selection and the copy chord. Wrapped, because a log line has no meaningful column and
-	// horizontal scrolling to read one is hostile. No gutter: log lines are not numbered.
+	// Read-only: no IME or caret, but taps, drag-selection and copy still work. Word-wrapped, with
+	// no gutter.
 	_output->setReadOnly(true);
 	_output->setWordWrap(true);
 	_output->setGutterVisible(false);
@@ -110,8 +108,7 @@ void Console::handleEnter(Scene *scene) {
 }
 
 void Console::handleExit() {
-	// Before the base call: Node::handleExit() clears _scene at its very end, and a command whose
-	// lambda captured a destroyed widget is a dangling call from the inspector socket.
+	// Before the base call, which clears _scene; the commands' lambdas capture this widget.
 	if (_inspectorScene) {
 		if (auto content = _inspectorScene->getContent()) {
 			if (auto i = inspector::get(content)) {
@@ -133,16 +130,13 @@ void Console::setPrompt(StringView str) {
 void Console::appendLine(StringView str) { appendOutput(mem_std::toString(str, "\n")); }
 
 void Console::appendOutput(StringView str) {
-	// The pane's scroll follows the tail only while it is already at the tail: a user who scrolled
-	// up to read something must not be yanked back down by the next line of output.
+	// follow the tail only if already scrolled to the end
 	const auto view = _output->getView();
 	const auto stick = view->getScrollRange().height - view->getScrollOffset().y < 1.0f;
 
 	_outputText.append(string::toUtf16<Interface>(str));
 
-	// Drop whole lines off the front until the line limit holds. Only the line count is bounded:
-	// each visible line is its own Label, so there is no character ceiling to keep, and the ring
-	// exists so an immortal console does not grow without bound.
+	// Drop whole lines off the front until the line limit holds; only the line count is bounded.
 	size_t lines = 0;
 	for (auto c : _outputText) {
 		if (c == u'\n') {
@@ -206,8 +200,7 @@ bool Console::moveHistory(int32_t direction) {
 			// already at the draft, there is nothing newer
 			return false;
 		}
-		// Stepping into the history for the first time: remember what was being typed, so stepping
-		// back out restores it rather than losing it.
+		// entering the history: save the draft to restore on the way back
 		_draft = _input->getText().str<Interface>();
 	}
 
@@ -315,8 +308,7 @@ void Console::addInspectorCommands(Scene *scene) {
 		done(sp::move(result));
 	});
 
-	// The output pane is a read-only ui::TextView, so its own command handler already knows how
-	// to select, copy and scroll - these only route to it under a console-shaped name.
+	// route console command names to the output pane's own TextView commands
 	auto route = [this, scene](StringView name, StringView desc, StringView action) {
 		auto act = action.pdup();
 		addInspectorCommand(scene, name, desc,

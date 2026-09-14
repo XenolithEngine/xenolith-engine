@@ -34,16 +34,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 class MenuSource;
 class MenuSystem;
 
-/** One entry of a menu, as DATA. It knows what it is and what it says; it knows nothing about the
-nodes some consumer may or may not have built for it.
+/** One entry of a menu, as data, independent of any nodes built for it.
 
-It is a Subscription, so a consumer outside this kit can watch it with the engine's own
-DataListener<MenuSourceItem>. ui::MenuSystem does not: an item's change is pushed straight through
-its MenuSource to the systems showing it (see MenuSource::setDirty), because a menu must repaint in
-an application that only renders on demand, and a scheduled check would wait for a frame that has
-no other reason to happen.
+A Subscription, so external consumers can use DataListener<MenuSourceItem>. ui::MenuSystem is
+notified directly through MenuSource::setDirty instead, so an on-demand renderer repaints without
+waiting for a scheduled check.
 
-App-thread only, like everything the scene graph touches. */
+App-thread only. */
 class SP_PUBLIC MenuSourceItem : public Subscription {
 public:
 	enum class Type {
@@ -60,11 +57,9 @@ public:
 
 	Type getType() const { return _type; }
 
-	/* The item's stable identity, and the only thing a consumer is allowed to key on: it becomes
-	the node's name (hence its CSS `#id`), it is what the activation callback reports, and it is
-	what a test drives the item by. The title is presentation and may be localized out from under
-	you. Names are not required to be unique, but a duplicate makes getItem() and node reuse pick
-	the first. */
+	/* Stable identity: the node's name (CSS `#id`), what the activation callback reports and what
+	tests drive; the title may be localized. Not required to be unique, but getItem() and node reuse
+	pick the first duplicate. */
 	virtual void setName(StringView);
 	StringView getName() const { return _name; }
 
@@ -87,9 +82,8 @@ public:
 	virtual void setData(Value &&);
 	const Value &getData() const { return _data; }
 
-	/* Hides Subscription::setDirty deliberately: an item's change IS its source's change, and a
-	consumer watching the source has to see it. Call Subscription::setDirty explicitly for the
-	flags-only form. */
+	/* Hides Subscription::setDirty: an item change is also its source's change. Call
+	Subscription::setDirty explicitly for the flags-only form. */
 	void setDirty(Flags flags = Initial);
 
 	// Set by MenuSource when the item is added, cleared when it is removed. Non-owning: the source
@@ -111,16 +105,13 @@ protected:
 
 /** A command: two texts, two icons, an accelerator and either a callback or a submenu.
 
-The two texts and the two icons are four independent slots, not one styled string: the title and
-the leading icon are the command, the subtitle is the explanation under it, the trailing icon is
-the state to its right. Every one of them may be absent, and an absent slot costs no column. */
+Title, subtitle, leading and trailing icon are independent slots; an absent one takes no column. */
 class SP_PUBLIC MenuSourceButton : public MenuSourceItem {
 public:
 	using ActionCallback = Function<void(NotNull<MenuSourceButton>)>;
 
-	/* Builds the submenu the first time it is opened. A menu whose contents depend on state that
-	does not exist until the user asks for it - a recent-files list, a device list - declares this
-	instead of a source. The result is cached: the factory runs once per item. */
+	/* Builds the submenu the first time it is opened, for contents that depend on later state
+	(recent files, devices). Runs once per item; the result is cached. */
 	using SubmenuFactory = Function<Rc<MenuSource>(NotNull<MenuSourceButton>)>;
 
 	virtual ~MenuSourceButton();
@@ -148,15 +139,13 @@ public:
 	virtual void setHotkey(HotkeyId);
 	HotkeyId getHotkey() const { return _hotkey; }
 
-	/* Register the combination and take the id in one step, for the common case where the menu IS
-	where a command is declared. Idempotent by name, exactly like HotkeyRegistry::add - two call
-	sites naming the same hotkey get the same id. */
+	/* Register the combination and set the id in one step. Idempotent by name, like
+	HotkeyRegistry::add. */
 	virtual HotkeyId setHotkey(StringView name, StringView combo,
 			StringView description = StringView(), HotkeyOptions = HotkeyOptions::None);
 
-	/* Overrides what the accelerator column shows. HotkeyCombo::encode prints the engine's own
-	spelling - `Mod3+S`, `LEFT` - which is right for a keymap file and wrong for a menu on macOS.
-	Set this to print something else without touching the binding. */
+	/* Override the accelerator text. HotkeyCombo::encode prints the engine spelling (`Mod3+S`,
+	`LEFT`), which suits keymap files but not, e.g., macOS menus. Does not change the binding. */
 	virtual void setShortcutText(StringView);
 	StringView getShortcutText() const { return _shortcutText; }
 
@@ -176,8 +165,7 @@ public:
 	// The submenu, running the factory on first use. Null when this item has none.
 	MenuSource *getSubmenu();
 
-	// The submenu only if it has already been built - for a consumer that must not force a lazy
-	// factory to run (bindMenuHotkeys, a metrics pass).
+	// The submenu only if already built; does not run a lazy factory.
 	MenuSource *getBuiltSubmenu() const { return _submenu; }
 
 	bool hasSubmenu() const { return _submenu || _submenuFactory != nullptr; }
@@ -196,17 +184,15 @@ protected:
 
 /** An arbitrary node in the menu, built by a factory.
 
-The measurement is separate from the factory and must work WITHOUT it, because the menu's own size
-is settled before any node exists - a popup surface needs its Extent2 up front. So a custom item
-answers the measurement protocol itself, in the same terms every other measurable node does. */
+Measurement must work without the factory, since the menu size is settled before any node exists
+(a popup needs its Extent2 up front). */
 class SP_PUBLIC MenuSourceCustom : public MenuSourceItem {
 public:
 	// Handed the system that is building the row, so one factory can serve several menus.
 	using FactoryFunction = Function<Rc<Node>(NotNull<MenuSystem>, NotNull<MenuSourceCustom>)>;
 
-	/* MaxContent asks "how wide would you like to be", Normal with a bounded maxWidth asks "given
-	this width, how tall are you" - the same contract Label answers, and the same one that makes a
-	wrapped row work. */
+	/* MaxContent asks for the preferred width; Normal with a bounded maxWidth asks for the height
+	at that width, the same contract as Label. */
 	using MeasureFunction = Function<Size2(NotNull<MenuSourceCustom>, const MeasureConstraints &)>;
 
 	virtual ~MenuSourceCustom() = default;
@@ -231,8 +217,8 @@ protected:
 
 /** An ordered list of items: the menu, as data.
 
-It is what a consumer is pointed at, what a submenu hangs off, and what survives the nodes built
-from it. Mutating it marks it dirty; every ui::MenuSystem showing it rebuilds on the next visit.
+Outlives the nodes built from it. Mutating it marks it dirty; every ui::MenuSystem showing it
+rebuilds on the next visit.
 
 App-thread only. */
 class SP_PUBLIC MenuSource : public Subscription {
@@ -274,16 +260,14 @@ public:
 
 	void clear();
 
-	// A deep copy: every item is copied too, so the two menus share no state. A lazily built
-	// submenu is copied as its factory when it has not been built yet, and as a copy of the built
-	// source when it has.
+	// A deep copy; no state is shared. An unbuilt lazy submenu is copied as its factory, a built
+	// one as a copy of the source.
 	Rc<MenuSource> copy() const;
 
 	// See MenuSourceItem::setDirty.
 	void setDirty(Flags flags = Initial);
 
-	// Consumers watching this source imperatively. Non-owning both ways: a system unregisters in
-	// its handleExit, and this list is never what keeps anything alive.
+	// Systems watching this source; non-owning both ways, a system unregisters in handleExit.
 	void addObserver(NotNull<MenuSystem>);
 	void removeObserver(NotNull<MenuSystem>);
 
@@ -292,16 +276,11 @@ protected:
 	Vector<MenuSystem *> _observers;
 };
 
-/** Subscribe `listener` to every hotkey the menu declares, so that the menu is the one place a
-command is written down: what it is called, what it does, and which keys run it.
+/** Subscribe `listener` to every hotkey the menu declares. Returns the number of subscriptions.
 
-Returns how many subscriptions were made. A subscription fires the item's own callback and consumes
-the key; a DISABLED item declines instead, so the combination carries on down the dispatcher's walk
-rather than being silently eaten by a greyed-out command.
-
-`recursive` descends into submenus that HAVE ALREADY BEEN BUILT. A lazy SubmenuFactory is not run -
-binding a keystroke must not have the side effect of materializing a menu the user never opened, so
-a command that lives behind one has to be bound where it is declared. */
+A subscription runs the item's callback and consumes the key; a disabled item declines, so the
+combination continues down the dispatcher's walk. `recursive` descends only into submenus already
+built: a lazy SubmenuFactory is not run, so commands behind one must be bound where declared. */
 SP_PUBLIC size_t bindMenuHotkeys(NotNull<InputListener>, NotNull<MenuSource>,
 		HotkeyFlags = HotkeyFlags::None, bool recursive = true);
 

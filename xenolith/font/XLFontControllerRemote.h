@@ -28,7 +28,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-// FontLibrary (stappler::font) is visible via the `using namespace stappler::font` in XLFontConfig.h.
+// FontLibrary (stappler::font) is visible via the `using namespace stappler::font` in
+// XLFontConfig.h.
 
 // Headless, client-side FontController leaf. It does glyph positioning locally (its own FontLibrary, for
 // metrics only -- no bitmaps) and forwards rasterization to the GPU server over remote::Domain::Font: it
@@ -41,8 +42,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 // symbol, mirroring how the server reaches FontComponent::createDefaultController.
 class SP_PUBLIC FontControllerRemote : public FontController {
 public:
-	// SharedModule factory. Returns the controller as the abstract base so the application can register
-	// it via addExtension under font::FontController.
+	// SharedModule factory. Returns the controller as the abstract base so the application can
+	// register it via addExtension under font::FontController.
 	static Rc<FontController> createRemoteController(AppThread *owner);
 
 	virtual ~FontControllerRemote();
@@ -52,8 +53,8 @@ public:
 	virtual void initialize(AppThread *) override;
 	virtual void invalidate(AppThread *) override;
 
-	// Sends the SourcesAnnounce on the first tick once the connection is up (it is not yet established
-	// when initialize() runs), then defers to the base update().
+	// Sends the SourcesAnnounce on the first tick once the connection is up (it is not yet
+	// established when initialize() runs), then defers to the base update().
 	virtual void update(AppThread *, const UpdateTime &clock, bool) override;
 
 	virtual const Rc<core::DynamicImage> &getImage() const override { return _image; }
@@ -66,8 +67,9 @@ protected:
 	// Serialize the glyph-raster batch (+ gating dependency id) and ship it to the server.
 	virtual void submitGlyphs(AppThread *, Vector<FontUpdateRequest> &&,
 			Rc<core::DependencyEvent> &&) override;
-	// Client-minted dependency with an empty queue-set: it never signals locally (the client has no font
-	// queue); its id travels to the server, which reconciles it to the real, frame-gating event.
+	// Client-minted dependency with an empty queue-set: it never signals locally (the client has no
+	// font queue); its id travels to the server, which reconciles it to the real, frame-gating
+	// event.
 	virtual Rc<core::DependencyEvent> makeDependency() override;
 	virtual void applyBuilder(AppThread *app, Builder &&) override;
 
@@ -78,9 +80,9 @@ protected:
 	AppThread *_owner = nullptr;
 	bool _announced = false;
 	Rc<FontLibrary> _ownLibrary; // headless metrics library; base _library points at it
-	// Static mirror of the server atlas image: a thin ImageData whose ImageObject carries the server's
-	// wire id, so a Label's MaterialInfo hashes to the server font material. Declared before _texture so
-	// it outlives the Texture that points at it.
+	// Static mirror of the server atlas image: a thin ImageData whose ImageObject carries the
+	// server's wire id, so a Label's MaterialInfo hashes to the server font material. Declared
+	// before _texture so it outlives the Texture that points at it.
 	core::ImageData _mirrorData;
 	Rc<Texture> _texture;
 	Rc<core::DynamicImage> _image;

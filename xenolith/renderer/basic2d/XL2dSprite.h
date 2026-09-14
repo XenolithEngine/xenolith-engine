@@ -134,10 +134,10 @@ protected:
 
 	virtual bool checkVertexDirty() const;
 
-	// Called on every frame this node draws, right before its pending dependencies are handed to the
-	// frame. A node whose vertex data is resolved on the GPU against asynchronously uploaded data
-	// (Label: glyph ids resolved through the font atlas) overrides this to re-arm its gate - the data
-	// can go stale AFTER the node was laid out, and its own vertices carry no sign of it.
+	// Called on every frame this node draws, right before its pending dependencies go to the frame.
+	// Nodes whose vertex data is resolved on the GPU against asynchronously uploaded data (Label:
+	// glyph ids via the font atlas) re-arm their gate here, since the data can go stale after
+	// layout.
 	virtual void refreshPendingDependencies() { }
 
 	virtual CmdInfo buildCmdInfo(const FrameInfo &) const;
@@ -173,9 +173,8 @@ protected:
 	RenderingLevel _realRenderingLevel = RenderingLevel::Default;
 
 	// Whether this sprite was drawn inside a subtree marked with Node::setOverlay, as of the last
-	// frame. Read back from FrameInfo in draw() rather than resolved from the parent chain: the
-	// answer changes when an ANCESTOR is marked or when this node is reparented, and neither of
-	// those is something a cached parent walk would hear about.
+	// frame. Read from FrameInfo in draw(): marking an ancestor or reparenting would not invalidate
+	// a cached parent walk.
 	bool _inOverlay = false;
 	core::MaterialId _materialId = 0;
 

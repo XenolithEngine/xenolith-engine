@@ -58,19 +58,13 @@ struct SP_PUBLIC PresentInfo {
 
 // Turns "current frame vs a stored snapshot of what was drawn" into a list of damaged rectangles.
 //
-// Two different snapshots are kept, because the two consumers ask different questions:
+// Two snapshots are kept:
 //
-//   * per swapchain image index - "what does this particular image buffer already hold?", which is
-//     what bounds a LOAD_OP_LOAD partial redraw. Diffing against a per-index snapshot rather than
-//     against "the previous frame" is what makes this correct: image indexes are pooled and reused
-//     out of order, and frames can be dropped after their data was built. A dropped frame simply
-//     never updates a snapshot.
+//   * per swapchain image index - what that image buffer already holds; bounds a LOAD_OP_LOAD
+//     partial redraw (indexes are reused out of order, and dropped frames update nothing).
 //
-//   * the presented snapshot - "what is on screen right now?". VK_KHR_incremental_present
-//     rectangles are relative to the previously presented image, not to the previous contents of
-//     the image being presented, so the per-index snapshot is the wrong baseline for them: with
-//     content going A -> B -> A the per-index diff can come out empty while the screen still shows
-//     B, and the compositor would then never repaint.
+//   * the presented snapshot - what is on screen; the baseline for VK_KHR_incremental_present
+//     rectangles, which are relative to the previously presented image.
 class SP_PUBLIC SwapchainDamage {
 public:
 	// beyond this, the compositor gains nothing over a plain full present
@@ -240,7 +234,7 @@ public:
 
 	void invalidateImage();
 
-	// Relinquish the acquired image WITHOUT returning it to the swapchain. Used when the acquired image
+	// Relinquish the acquired image without returning it to the swapchain. Used when the image
 	// is handed back to the engine's reuse pool (a frame discarded before rendering): clearing _image
 	// makes the destructor's invalidateImage a no-op, so the pooled image is accounted for exactly once.
 	void detachImage();

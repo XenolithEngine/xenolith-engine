@@ -30,13 +30,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// One tip slot and one popup chain PER WINDOW: showing a tip replaces that window's previous one,
-// and opening a popup drops it.
-//
-// It is a System on the window's own SceneContent, not a process singleton — two windows must be
-// able to show a hint each, and a session that outlives its window is a bug waiting to happen.
-// get() attaches one lazily, so nothing has to be registered up front.
-//
+// One tip slot and one popup chain per window: showing a tip replaces that window's previous one,
+// and opening a popup drops it. A System on the window's SceneContent, attached lazily by get().
 // App-thread only.
 class SP_PUBLIC SubWindowSession : public System {
 public:
@@ -57,35 +52,26 @@ public:
 	void showTip(StringView text, Vec2 anchorSceneYUp, float sceneHeight,
 			TimeInterval hideDelay = DefaultHideDelay);
 
-	// Replace this window's hint with a surface of the caller's own making — this is what a hint
-	// richer than a line of text goes through, and what ui::TooltipSystem uses.
+	// Replace this window's hint with a caller-built surface (used by ui::TooltipSystem).
 	//
-	// `key` identifies what is being shown, so that re-showing the same thing refreshes the hide
-	// timer instead of a dismiss/recreate flap. It is compared, never parsed: the text overload
-	// passes the text, TooltipSystem passes its target's identity. An empty key never matches, so
-	// an unkeyed tip is always rebuilt.
-	//
-	// `config.type` is forced to Tooltip and `config.onClose` is chained, so the session's own slot
-	// bookkeeping cannot be lost by a caller that wants a close callback of its own.
-	//
-	// A zero `hideDelay` means "no hide timer": the tip stays until something takes it down.
+	// `key` identifies the content: an equal key refreshes the hide timer instead of rebuilding.
+	// Compared, never parsed; an empty key never matches. `config.type` is forced to Tooltip and
+	// `config.onClose` is chained. A zero `hideDelay` means no hide timer.
 	Rc<SubWindow> showTip(SubWindow::Config &&, StringView key,
 			TimeInterval hideDelay = DefaultHideDelay);
 
-	// Restart the live tip's hide timer. For an owner that knows the user is still engaged with a
-	// hint it did not just rebuild. A no-op when nothing is up.
+	// Restart the live tip's hide timer; a no-op when nothing is up.
 	void refreshTip(TimeInterval hideDelay = DefaultHideDelay);
 
 	void dismissTip();
 
 	bool hasTip() const { return _tip && _tip->isOpen(); }
 
-	// What the live tip is keyed on. For a text tip that IS the text.
+	// What the live tip is keyed on; for a text tip, the text.
 	StringView getTipKey() const { return _tipKey; }
 	StringView getTipText() const { return _tipKey; }
 
-	// Open a popup for this window, dropping any live tip first (the tip is an overlay on the same
-	// scene, and a menu taking over from a hint is what a user expects).
+	// Open a popup for this window, dropping any live tip first.
 	Rc<SubWindow> openPopup(SubWindow::Config &&);
 
 protected:

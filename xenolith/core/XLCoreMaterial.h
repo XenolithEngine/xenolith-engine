@@ -49,11 +49,8 @@ using MaterialId = uint32_t;
 struct SP_PUBLIC MaterialInputData : AttachmentInputData {
 	const MaterialAttachment *attachment = nullptr;
 
-	// Compilation is asynchronous - it crosses a thread hop into the loop and then runs as one or
-	// more frames - and the window that asked for it can close in the middle. `attachment` and
-	// everything reachable through it live in the render queue's memory pool, so the request has
-	// to keep that queue alive for as long as it exists. Always set the pair through
-	// setAttachment().
+	// Keeps the render queue alive: compilation is asynchronous, and `attachment` lives in the
+	// queue's pool. Always set the pair through setAttachment().
 	Rc<Ref> attachmentOwner;
 
 	Vector<Rc<Material>> materialsToAddOrUpdate;

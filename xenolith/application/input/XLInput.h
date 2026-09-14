@@ -91,8 +91,6 @@ using InputKeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 SP_PUBLIC extern InputEventMask EventMaskTouch;
 
-// Was declared as EventMaskKey while XLInputListener.cc defined EventMaskKeyboard, so the first
-// user of either name got a link error. The definition's spelling wins.
 SP_PUBLIC extern InputEventMask EventMaskKeyboard;
 
 SP_PUBLIC InputButtonMask makeButtonMask(sprt::initializer_list<InputMouseButton> &&);
@@ -118,20 +116,10 @@ enum class InputTapFlags : uint32_t {
 	// (Listeners earlier in hierarchy still can receive taps)
 	Exclusive = 1 << 0,
 
-	// Report every tap the moment it is recognized, with `count` saying which one of the series it
-	// is (1, then 2, then 3...), instead of waiting out TapIntervalAllowed to find out whether more
-	// are coming.
-	//
-	// Without it a recognizer with maxTapCount > 1 delays EVERY tap by that interval - the first
-	// tap of a double-tap widget is only reported once it is known that no second tap follows, and
-	// that wait is plainly visible in the UI. With it the callback is called for tap 1 at once, for
-	// tap 2 as soon as it happens, and so on up to maxTapCount, after which the next tap starts a
-	// new series.
-	//
-	// The callback has to be written for it: each call REFINES what the previous one did (place the
-	// caret, then select the word under it, then select everything) rather than choosing between
-	// mutually exclusive reactions. A callback that cannot undo its own tap-1 reaction should keep
-	// waiting instead.
+	// Report every tap as soon as it is recognized, with `count` giving its number in the series,
+	// instead of waiting out TapIntervalAllowed; after maxTapCount a new series starts.
+	// Each call must refine the previous one's reaction (caret, then word, then all), not choose
+	// between exclusive reactions.
 	Immediate = 1 << 1,
 };
 
@@ -228,22 +216,14 @@ struct InputMoveInfo {
 struct InputMouseOverInfo {
 	float padding = 0.0f;
 
-	/* Whether the window must hold the KEYBOARD focus for a hover to count.
-
-	True is right for an ordinary window: one sitting in the background should not light up under a
-	pointer crossing it on its way somewhere else. It is wrong for anything living in a POPUP - a
-	menu row, a dropdown list - because a popup surface never takes focus at all, so with this on
-	the hover is never reported: no row highlights, and no submenu opens by pointing at it. */
+	/* Whether the window must hold the keyboard focus for a hover to count. Set to false for
+	content of popups (menus, dropdowns): a popup surface never takes focus. */
 	bool onlyFocused = true;
 
 	InputMouseOverInfo() = default;
 
-	/* A bool on its own means `onlyFocused`, which is what every call site that passes one means.
-
-	An overload rather than a default argument, and this is the whole reason it exists: against
-	`(float, bool)` alone a bare `false` converts to a PADDING of zero and leaves onlyFocused at
-	true. Silently - and it did, in every widget that had asked to be hoverable without focus,
-	which is why a menu row never highlighted and a submenu only ever opened on a click. */
+	/* A bool on its own means `onlyFocused`. A separate overload, so a bare `false` does not
+	convert to a zero padding of the `(float, bool)` constructor. */
 	InputMouseOverInfo(bool f) : onlyFocused(f) { }
 
 	InputMouseOverInfo(float p, bool f = true) : padding(p), onlyFocused(f) { }

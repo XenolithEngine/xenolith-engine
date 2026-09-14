@@ -29,13 +29,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Small, standalone host for the client process. Unlike the server Context, it does NOT derive from
-// sprt::window::Context and pulls in none of the windowing / ContextController stack: a client owns
-// no native window. It holds the config, runs a ClientAppThread as its main thread, and receives
-// that thread's lifecycle callbacks.
-//
-// Scaffolding for now: the remote transport, the client-side FontController/context extensions, and
-// the entry-point bootstrap are later stages.
+// Small standalone host for the client process. Unlike the server Context, it does not derive from
+// sprt::window::Context and owns no native windows. It holds the config, runs a ClientAppThread as
+// its main thread, and receives that thread's lifecycle callbacks.
 class SP_PUBLIC ClientContext : public Ref {
 public:
 	virtual ~ClientContext();

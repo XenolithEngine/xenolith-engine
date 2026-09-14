@@ -60,15 +60,11 @@ using sprt::window::WindowIconImage;
 SP_PUBLIC Value encodeWindowInfo(const WindowInfo &info);
 SP_PUBLIC StringView getWindowCursorName(WindowCursor);
 
-// Decode an image into a WindowInfo::icon, producing one square raster per requested size.
+// Decode an image into a WindowInfo::icon, producing one square raster per requested size. Lives
+// here because runtime_window has no image decoder (see sprt::window::WindowIcon).
 //
-// This lives here, and not in the runtime, because runtime_window is PRIVATE_STANDALONE and has no
-// image decoder - see the note on sprt::window::WindowIcon.
-//
-// `sizes` defaults to getDefaultWindowIconSizes(). A requested size larger than the source is
-// skipped rather than upscaled: a blurry raster is worse than none, since the window system picks
-// from whatever set it is given. The source's own size is always emitted, so a single-size source
-// still produces a usable icon. A non-square source is center-cropped to its shorter side.
+// `sizes` defaults to getDefaultWindowIconSizes(). Sizes larger than the source are skipped, not
+// upscaled; the source's own size is always emitted. A non-square source is center-cropped.
 //
 // Returns nullptr when the file is missing or does not decode.
 SP_PUBLIC Rc<WindowIcon> makeWindowIcon(const FileInfo &, SpanView<uint32_t> sizes = SpanView<uint32_t>());

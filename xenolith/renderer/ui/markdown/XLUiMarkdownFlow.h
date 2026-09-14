@@ -32,11 +32,11 @@ enum class MarkdownFlowKind {
 	// A Label whose characters came from the source, and which therefore carries a run map.
 	Text,
 
-	// A Label the builder wrote itself: a bullet, an item number. It is read, so it is in the
-	// flow; it is not source, so it maps to the block it marks and to nothing finer.
+	// A Label the builder wrote itself (a bullet, an item number): in the flow, but it maps only
+	// to the block it marks.
 	Marker,
 
-	// A block with no text of its own - a rule, a task checkbox, later an image.
+	// A block with no text of its own: a rule, a task checkbox.
 	Atomic,
 };
 
@@ -47,33 +47,18 @@ struct SP_PUBLIC MarkdownFlowEntry {
 	document::SourceSpan span; // the block this entry belongs to, whole
 	MarkdownFlowKind kind = MarkdownFlowKind::Text;
 
-	/* The document node this entry was built from. A pointer, not a reference held: the document
-	outlives every tree built from it, and the flow is discarded with the tree.
-
-	It is here so that the inline appearance can be resolved AGAIN - a stylesheet reload has to
-	restyle ranges that were baked into a Label at build time, and re-walking the source is what
-	recovers where each range was. Rebuilding the tree instead would work too, and would throw
-	away the selection. */
+	// The document node this entry was built from; the document outlives the tree and the flow.
+	// Used to re-walk the source when inline styles are re-resolved on a stylesheet reload.
 	const document::Node *source = nullptr;
 };
 
-/* THE DOCUMENT IN READING ORDER, as one flat vector.
+/* The document in reading order, as one flat vector with continuous numbering, so a selection
+can ask what lies between two points without walking the tree.
 
-A tree answers "what is inside what". A selection asks something else entirely - "what lies between
-these two points" - and the tree cannot answer it without a walk per question. So the order a
-reader reads in is recorded once, while the tree is being built, as a sequence of entries with a
-continuous numbering across all of them.
-
-POSITIONS. Entry i occupies `[textBegin, textBegin + textLength]`, and the next entry starts one
-past that end: the extra position is the boundary between two blocks, so a range that crosses it
-is a range that crosses a paragraph break. The numbers index the LABEL'S STRING, not the glyphs on
-screen - `white-space: normal` collapses runs of spaces during layout while the string stays
-verbatim, and `Label::getCharIndex` answers in the string's own units too.
-
-WHAT IT IS FOR. Two questions, and everything else in the milestones ahead is built on them:
-`getSourceRange` turns a range of positions into a range of source bytes (which
-`document::writeMarkdownFragment` turns into markup), and `writeText` turns it into the text that
-was on screen. */
+Entry i occupies `[textBegin, textBegin + textLength]`; the next entry starts one past that end,
+the extra position being the block boundary. Positions index the Label's string (UTF-16), not
+glyphs: `white-space: normal` collapses spaces only in layout. `getSourceRange` maps positions to
+source bytes (for `document::writeMarkdownFragment`); `writeText` yields the displayed text. */
 class SP_PUBLIC MarkdownFlow : public Ref {
 public:
 	virtual ~MarkdownFlow() = default;
@@ -98,44 +83,31 @@ public:
 	// O(1) through the run map the builder leaves on every entry's Label.
 	const MarkdownFlowEntry *findByNode(const Node *) const;
 
-	/* Positions to source bytes.
-
-	The edges move OUTWARD wherever the mapping is not exact: a run the parser rewrote (an entity,
-	a smart quote) has no per character mapping and is taken whole, a position between two runs
-	belongs to a character the builder inserted and takes the nearer run's boundary, and an entry
-	with no runs at all (a marker) answers with the block it marks. */
+	/* Positions to source bytes. Edges move outward where the mapping is not exact: a rewritten
+	run (entity, smart quote) is taken whole, a position between runs takes the nearer run's
+	boundary, and an entry with no runs answers with its block. */
 	Pair<uint32_t, uint32_t> getSourceRange(uint32_t begin, uint32_t end) const;
 
 	// The text as it was read: the labels' own strings, with a break between blocks.
 	void writeText(const Callback<void(StringView)> &, uint32_t begin, uint32_t end) const;
 
-	/* --- geometry, which is what a selection asks of the reading order ---
+	// --- geometry: all in world coordinates; each entry converts through its own transform ---
 
-	The flow answers these rather than the widget, because it is the only thing that holds both the
-	order and the nodes. Everything here works in WORLD coordinates: a pointer event arrives in
-	them, and every entry converts for itself - the tree between the view and a Label is several
-	nodes deep and a scroll offset sits in the middle of it. */
-
-	// The position under a point. A point inside an entry answers exactly; a point between blocks
-	// or past the document takes the nearest entry by vertical distance and then its nearest edge,
-	// which is what a reader dragging past the end of a line expects.
+	// The position under a point. A point between blocks or past the document takes the nearest
+	// entry by vertical distance, then its nearest edge.
 	uint32_t getPositionForPoint(Vec2 worldLocation) const;
 
-	/* The caret for a position: where its BASE stands, in world coordinates, and how tall it is.
-	Invalid (see Vec2::isValid) when the position has no geometry.
-
-	The base is the baseline, which is what a Label answers with and where a handle hangs from -
-	and it is BELOW the text, not inside it. A caller looking for a point the reader would call
-	"on this word" wants `y + height`; a caller drawing something under the line wants `y`. */
+	/* The caret for a position: its base (the baseline, below the text) in world coordinates, and
+	its height; invalid (see Vec2::isValid) without geometry. A point on the word is
+	`y + height`. */
 	Pair<Vec2, float> getPointForPosition(uint32_t position) const;
 
 	// The word and the whole block around a position: a double and a triple tap.
 	Pair<uint32_t, uint32_t> getWordRange(uint32_t position) const;
 	Pair<uint32_t, uint32_t> getBlockRange(uint32_t position) const;
 
-	/* Paint a range: slice it into each entry's own coordinates and hand the slice to the Label.
-	Entries outside the range are cleared, so this is also how a selection is erased (an empty
-	range clears everything). Only labels are painted; an atomic entry has nothing to paint. */
+	/* Paint a range: each Label gets its slice, other entries are cleared, so an empty range erases
+	the selection. Atomic entries paint nothing. */
 	void applySelection(uint32_t begin, uint32_t end) const;
 
 	// Colour for every label of the document; a Label keeps its own.

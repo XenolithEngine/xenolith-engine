@@ -54,10 +54,8 @@ bool Checkbox::init() {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
 
-	/* The InteractiveComponent has to EXIST from the first frame, not from the first call that
-	changes something. A node without one reads as state 0 to the style resolver, and `:disabled` is
-	"not :enabled" - so a checkbox that had never been touched matched `checkbox:disabled` while it
-	was perfectly enabled, and `checkbox:enabled` matched nothing at all. */
+	/* The InteractiveComponent must exist from the first frame: a node without one reads as state 0
+	to the style resolver, which matches `checkbox:disabled`. */
 	applyControlEnabled(this, true);
 	applyControlChecked(this, false);
 
@@ -76,14 +74,13 @@ void Checkbox::setChecked(bool c, bool silent) {
 }
 
 void Checkbox::setEnabled(bool e) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it back.
+	// the edit lock has the last word and remembers the requested value for unlocking
 	e = resolveEditLock(this, e);
 	if (isEnabled() == e) {
 		return;
 	}
 	applyControlEnabled(this, e);
-	// Kept beside the state: an application whose stylesheet says nothing about `:disabled` would
-	// otherwise lose the only sign that a checkbox is dead.
+	// visible even when the stylesheet has no `:disabled` rule
 	setOpacity(e ? 1.0f : 0.4f);
 }
 

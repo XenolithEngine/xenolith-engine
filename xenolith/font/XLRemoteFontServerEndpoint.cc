@@ -45,8 +45,8 @@ RemoteFontServerEndpoint::~RemoteFontServerEndpoint() { }
 bool RemoteFontServerEndpoint::init(AppThread *owner, FontComponent *comp) {
 	_owner = owner;
 	_component = comp;
-	// Dedicated network library + controller: a FaceId space fully isolated from the server's local-scene
-	// controller, with its own atlas (the one a connected client references).
+	// Dedicated network library + controller: a FaceId space fully isolated from the server's
+	// local-scene controller, with its own atlas (the one a connected client references).
 	_library = Rc<FontLibrary>::alloc();
 	_controller =
 			Rc<FontControllerLocal>::create(comp, "RemoteFontServerController", _library.get());
@@ -58,8 +58,8 @@ bool RemoteFontServerEndpoint::init(AppThread *owner, FontComponent *comp) {
 }
 
 void RemoteFontServerEndpoint::preloadDefaultFonts() {
-	// The server holds the default resource fonts persistently; pin them by content hash so a client that
-	// announces the same fonts never has to re-send their bytes.
+	// The server holds the default resource fonts persistently; pin them by content hash so a
+	// client that announces the same fonts never has to re-send their bytes.
 	auto builder = FontComponent::makeDefaultControllerBuilder("RemoteFontServer");
 	for (auto &it : builder.getDataQueries()) {
 		auto sourcePtr = &it.second;
@@ -117,9 +117,9 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 		}
 	}
 
-	// Pin the network atlas image to a stable wire id and announce it, so the client can build a mirror
-	// Texture with the matching index -- the identity its Label materials must carry to hash to the
-	// server's font material.
+	// Pin the network atlas image to a stable wire id and announce it, so the client can build a
+	// mirror Texture with the matching index -- the identity its Label materials must carry to hash
+	// to the server's font material.
 	uint64_t atlasId = pinAtlasImage();
 	if (atlasId == 0) {
 		log::source().warn("RemoteFontServerEndpoint",
@@ -165,9 +165,10 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 
 	auto dep = getOrCreateDep(depId);
 
-	// Rasterize into the network controller's atlas. The same dependency object is the font frame's signal
-	// dependency (FontComponent::updateImage adds it) and the render frame's wait dependency (reconciled
-	// in RemoteRenderClient::handleFrameInput) -- so the frame can't render until these glyphs are packed.
+	// Rasterize into the network controller's atlas. The same dependency object is the font frame's
+	// signal dependency (FontComponent::updateImage adds it) and the render frame's wait dependency
+	// (reconciled in RemoteRenderClient::handleFrameInput) -- so the frame can't render until these
+	// glyphs are packed.
 	_component->updateImage(_owner->getLooper(), _controller->getImage(), sp::move(requests),
 			Rc<core::DependencyEvent>(dep), [this, depId](bool ok) {
 		// Hop to the app thread (the connection is app-thread-only) to notify the client.
@@ -187,11 +188,12 @@ Rc<core::DependencyEvent> RemoteFontServerEndpoint::getOrCreateDep(uint32_t depI
 	}
 	auto dep = Rc<core::DependencyEvent>::alloc(
 			core::DependencyEvent::QueueSet{_component->getQueue()}, "RemoteFontServerDep");
-	// Drop the gating dependency from _deps once the atlas update signals it, so the registry does not
-	// grow unbounded (one entry per GlyphRequest, otherwise cleared only on reset). The signal fires on
-	// the GPU loop thread and the event can outlive this connection, so guard `this` by refcount (Rc
-	// captured now, while `this` is alive) and hop to the app thread, where _deps lives. A later frame
-	// referencing a removed id finds nothing in reconcileDependency and treats it as already satisfied.
+	// Drop the gating dependency from _deps once the atlas update signals it, so the registry does
+	// not grow unbounded (one entry per GlyphRequest, otherwise cleared only on reset). The signal
+	// fires on the GPU loop thread and the event can outlive this connection, so guard `this` by
+	// refcount (Rc captured now, while `this` is alive) and hop to the app thread, where _deps
+	// lives. A later frame referencing a removed id finds nothing in reconcileDependency and treats
+	// it as already satisfied.
 	dep->setSignalCallback([self = Rc<RemoteFontServerEndpoint>(this), depId]() {
 		self->_owner->performOnAppThread([self, depId]() { self->_deps.erase(depId); }, self.get());
 	});
@@ -200,8 +202,8 @@ Rc<core::DependencyEvent> RemoteFontServerEndpoint::getOrCreateDep(uint32_t depI
 }
 
 Rc<core::DependencyEvent> RemoteFontServerEndpoint::reconcileDependency(uint32_t depId) {
-	// Lookup-only: gate a frame only on a dependency we are actually rasterizing for. An id we have not
-	// seen a GlyphRequest for (e.g. a non-font dependency) is left ungated.
+	// Lookup-only: gate a frame only on a dependency we are actually rasterizing for. An id we have
+	// not seen a GlyphRequest for (e.g. a non-font dependency) is left ungated.
 	auto it = _deps.find(depId);
 	return it != _deps.end() ? it->second : nullptr;
 }
@@ -210,8 +212,8 @@ void RemoteFontServerEndpoint::receiveFontData(uint64_t contentHash, BytesView b
 	if (bytes.empty() || _store.find(contentHash) != _store.end()) {
 		return;
 	}
-	// TODO(e2e): route through FontLibrary::openFontData so variable-font params are inspected. A direct
-	// FontFaceData is enough to pin the bytes for compile-stage / the block-transfer path.
+	// TODO(e2e): route through FontLibrary::openFontData so variable-font params are inspected. A
+	// direct FontFaceData is enough to pin the bytes for compile-stage / the block-transfer path.
 	if (auto data = Rc<FontFaceData>::create(toString("remote:", contentHash), bytes, false)) {
 		_store.emplace(contentHash, data);
 	}
@@ -246,9 +248,9 @@ Rc<core::DynamicImageInstance> RemoteFontServerEndpoint::resolveAtlasInstance(ui
 }
 
 void RemoteFontServerEndpoint::reset() {
-	// Drop per-connection gating events; keep the persistent font store and the network atlas for the next
-	// client (font data is stored persistently across reconnects). The pinned atlas id is also dropped: a
-	// new connection re-shares (a fresh ObjectRegistry is used per connection).
+	// Drop per-connection gating events; keep the persistent font store and the network atlas for
+	// the next client (font data is stored persistently across reconnects). The pinned atlas id is
+	// also dropped: a new connection re-shares (a fresh ObjectRegistry is used per connection).
 	_deps.clear();
 	_atlasStableId = 0;
 }
@@ -257,8 +259,9 @@ void RemoteFontServerEndpoint::invalidate() {
 	reset();
 
 	// The atlas holds a cycle through its DynamicImage instances, which is what finalize() breaks -
-	// the same teardown the local-scene controller gets from AppThread::finalizeExtensions(). Dropping
-	// the controller without it leaves the image (and its device memory) alive past the gapi device.
+	// the same teardown the local-scene controller gets from AppThread::finalizeExtensions().
+	// Dropping the controller without it leaves the image (and its device memory) alive past the
+	// gapi device.
 	if (_controller) {
 		_controller->invalidate(_owner);
 		_controller = nullptr;

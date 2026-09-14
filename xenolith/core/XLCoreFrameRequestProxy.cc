@@ -24,7 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-// Out-of-line virtual destructors anchor the vtables in this single TU (stage-1 vtable lesson).
+// Out-of-line virtual destructors anchor the vtables in this single TU.
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 FrameRequestProxy::~FrameRequestProxy() = default;
@@ -77,7 +77,7 @@ void LocalFrameRequestProxy::commit() {
 	// Local mode: nothing to do -- the client wrote straight into the server's FrameRequest.
 }
 
-// --- RemoteFrameRequestProxy (skeleton; serialization is a stub this stage) ---
+// --- RemoteFrameRequestProxy ---
 
 bool RemoteFrameRequestProxy::init(const FrameConstraints &c, uint64_t frameId,
 		Function<void(SpanView<const AttachmentData *>, BytesView)> &&sendInput,
@@ -96,8 +96,7 @@ void RemoteFrameRequestProxy::selectQueue(NotNull<core::Queue> q) {
 }
 
 void RemoteFrameRequestProxy::setSceneRef(Rc<Ref> &&) {
-	// No local FrameRequest to pin to: the server owns the request, and this pin never applied on
-	// the remote path even when it lived in the queue callbacks.
+	// No local FrameRequest to pin to: the server owns the request.
 }
 
 bool RemoteFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {

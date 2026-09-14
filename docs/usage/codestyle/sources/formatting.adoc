@@ -11,6 +11,8 @@
   are inserted automatically.
 * Includes are **not** sorted and comments are **not** reflowed — those stay
   under your control.
+* Comments are short and describe working code: no capital-letter headings, no history of
+  fixed bugs — see [Comments](#comments).
 
 ## Running it
 
@@ -99,3 +101,22 @@ clang-format normalizes layout, not structure. Naming
 ([sources/naming.adoc](../sources/naming.adoc)), file organization
 ([sources/file-layout.adoc](../sources/file-layout.adoc)), include order, and comment content
 are review concerns, not tool output. A formatted diff is not a reviewed diff.
+
+## Comments
+
+A comment describes the code as it works now: what it does, and the constraint that is not
+obvious from reading it. Keep it short — one to three lines is the norm; a longer block is
+for a genuinely intricate algorithm or contract, and is still written tersely.
+
+* **No capital-letter headings.** Do not open a comment with a shouted lead-in
+  (`/* THE CLIP IS A SYSTEM OF ITS OWN, ...`) and do not stress words in capitals
+  (`NOT`, `ONLY`, `EVERY`). Write an ordinary sentence. Acronyms, identifiers and macros
+  (`CSS`, `GPU`, `XL_FONT_CACHE_LOG`) are not headings and stay as they are.
+* **No history.** How a bug looked, what was measured and reverted, what the code "used to"
+  do, which stage introduced it — that belongs in the commit message. If the fix leaves a
+  rule the next editor must keep, state the rule in one sentence
+  (`// Runs in phase 6: the ancestor's resolver re-resolves this node in phase 4.`).
+* **No argument.** Do not justify a design against alternatives nobody wrote or defend it
+  in prose; name the reason in a clause and stop.
+* Doc comments on public API keep the contract: parameters, return value, ownership,
+  threading, units.

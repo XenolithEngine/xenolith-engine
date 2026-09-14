@@ -47,30 +47,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Keepalive cadence: ping the connected client this often, and terminate it if it has not answered a
-// pong within the timeout.
+// Keepalive cadence: ping the connected client this often, and terminate it if it has not answered
+// a pong within the timeout.
 static constexpr uint64_t kKeepalivePingIntervalUs = 1'000'000; // 1s
 static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000; // 5s
 
-// Rate limit on setup handshakes. Every failure (bad key, bad protocol) doubles a cool-off window
-// during which further connections are refused outright, so guessing a 64-byte bearer key costs the
-// attacker wall-clock time instead of being free. A successful handshake clears it, so a legitimate
-// client that mistypes a token once is delayed by 250ms, not locked out.
+// Rate limit on setup handshakes: every failure doubles a cool-off window during which connections
+// are refused, so key guessing costs wall-clock time. A successful handshake clears it.
 static constexpr uint64_t kHandshakeBackoffBaseUs = 250'000; // after the 1st failure
 static constexpr uint64_t kHandshakeBackoffMaxUs = 8'000'000; // ceiling
 
-// A client must answer ServerInfo within this budget. Generous compared to a frame deadline -- it
-// is answered from the client's app thread on its first update tick, before anything is running --
-// but bounded, because nothing is announced until it arrives.
+// A client must answer ServerInfo within this budget (from its first app-thread tick); nothing is
+// announced until it arrives.
 static constexpr uint64_t kPeerInfoReplyTimeoutUs = 5'000'000; // 5s
 
-/* Where a screenshot sits in the sender's own queue: BELOW the default.
- *
- * A screenshot is diagnostics. Anything else this side ever streams in bulk -- a font payload, most
- * obviously -- is something a frame is waiting on, and a frame waiting behind a capture nobody is
- * looking at yet is the wrong trade. Negative rather than "everything else positive" so that a
- * future caller which says nothing about priority still outranks it without having to know this
- * exists. */
+/* Screenshot transfers sit below the default priority, so bulk data a frame waits on (fonts)
+ * goes first; negative so a caller with the default priority still outranks it. */
 static constexpr int32_t kScreenshotTransferPriority = -1;
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
@@ -89,8 +81,7 @@ BytesView ServerAppThread::getListenerFingerprint() const {
 }
 
 bool ServerAppThread::hasRemoteClient() const {
-	// isClosed() is non-const on the connection (it pumps events), and this accessor is a read for
-	// diagnostics, so ask only whether the slot is taken.
+	// isClosed() is non-const (it pumps events), so only check whether the slot is taken.
 	return _remoteClient != nullptr;
 }
 
@@ -114,17 +105,9 @@ void ServerAppThread::updateServerInfo() {
 		}
 	}
 
-	// The window subsystem is a property of the windows, not of the process: the same binary on the
-	// same Linux is xcb or wayland or headless depending on what it opened. A server with none yet
-	// honestly answers Unknown.
-	//
-	// PeerInfo describes the PROCESS, so with several windows the subsystem is taken from the first
-	// and the capability is a UNION. That asymmetry is not sloppiness: every window of a process
-	// shares one window subsystem (they come from the same ContextController), so any of them is the
-	// right answer; a capability, on the other hand, is granted per window, and reporting "no
-	// subwindows" because the first window happened not to ask for them would deny a feature the
-	// client can really use. Per-window truth travels per window, in the announce -- this field is
-	// the coarse process-level answer and says so.
+	// The window subsystem comes from the windows (Unknown with none). All windows share one
+	// subsystem, so the first is taken; capabilities are per window, so they are a union.
+	// Per-window values travel in the announce.
 	bool first = true;
 	for (auto w : _windows) {
 		if (first) {
@@ -147,8 +130,7 @@ void ServerAppThread::updateServerInfo() {
 
 	if (!_listenAddress.empty()) {
 		info.transportScheme = remote::getSchemeName(_listenAddress.scheme).str<Interface>();
-		// Caps belong to the TRANSPORT, not to this particular listener, so ask the registry: the
-		// answer is the same before the socket is bound and after it is gone.
+		// Caps belong to the transport, not the listener, so they are valid without a bound socket.
 		if (auto t = remote::TransportRegistry::get(_listenAddress.scheme)) {
 			info.transportCaps = t->getCaps();
 		}
@@ -167,8 +149,9 @@ void ServerAppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) {
 	AppThread::handleMatrialsUpdated(set);
 
 	if (_remoteClient && !_remoteClient->isClosed()) {
-		// Keep the font atlas image's wire id constant across its (per-update-replaced) ImageObjects, so a
-		// dynamic font material's encoded image identity stays stable for the client's mirror.
+		// Keep the font atlas image's wire id constant across its (per-update-replaced)
+		// ImageObjects, so a dynamic font material's encoded image identity stays stable for the
+		// client's mirror.
 		if (_fontServer) {
 			_fontServer->pinAtlasImage();
 		}
@@ -178,25 +161,16 @@ void ServerAppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) {
 	}
 }
 
-/* ONE ANSWER, WHOEVER GETS THERE FIRST.
-
-Neither clipboard entry point below is answered exactly once by the layer under it, and the two
-failures are opposite ones. `ContextController`'s base implementation calls the callback AND returns
-a failure, so a platform with no clipboard answers TWICE. Wayland does the reverse: a selector that
-returns a type the offer did not contain makes the request return an error with `dataCallback` never
-called at all, so the caller waits forever.
-
-So the callback is owned HERE, by a holder both paths reach, and the first of them to arrive takes
-it. `take()` is app-thread-only, which is why no atomic is needed: the backend's answer is hopped
-here, and the "it never started" answer is posted here too. */
+/* Delivers a clipboard callback exactly once: the backend may both call it and return a failure
+(base ContextController), or return a failure without calling it (Wayland). The first answer wins;
+`take()` is app-thread-only, so no atomic is needed. */
 template <typename Callback>
 struct ClipboardAnswer : public Ref {
 	Callback callback;
 	Rc<Ref> target;
 	bool claimed = false;
 
-	// Null on every call after the first. Also drops the caller's Ref, which is what the old
-	// `ref = nullptr` at the end of each lambda was doing.
+	// Null on every call after the first. Also drops the caller's Ref.
 	Callback take() {
 		if (claimed) {
 			return nullptr;
@@ -232,9 +206,8 @@ void ServerAppThread::readFromClipboard(Function<void(Status, BytesView, StringV
 			deliver(st, data, type);
 		}, sp::move(tcb), this);
 
-		// The read never started, and on wayland that is the ONLY sign of it: reporting the status
-		// here is what turns a silent drop into a refusal the caller can see. A backend that
-		// answered anyway (the base controller does both) finds the answer already claimed.
+		// The read never started (on Wayland this is the only signal); if the backend answered
+		// anyway, the answer is already claimed.
 		if (st != Status::Ok) {
 			deliver(st, BytesView(), StringView());
 		}
@@ -242,9 +215,7 @@ void ServerAppThread::readFromClipboard(Function<void(Status, BytesView, StringV
 }
 
 void ServerAppThread::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref) {
-	// Same holder as read() above: the callback is claimed exactly once, by whichever branch gets
-	// there first - the probe's own answer, or the failure fallback below, which is the path every
-	// platform without a probe (Windows, macOS) takes.
+	// Claimed once by the probe's answer or the failure fallback (platforms without a probe).
 	auto answer = Rc<ClipboardAnswer<Function<void(Status, SpanView<StringView>)>>>::alloc();
 	answer->callback = sp::move(cb);
 	answer->target = ref;
@@ -373,9 +344,8 @@ void ServerAppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director
 	updateServerInfo();
 
 	if (_windows.empty()) {
-		// In practice, listening is started by loader Scene, that rxist if at least one window exists;
-		// If no window exists - we should stop listening, or app can not be closed properly;
-		// If new window will be spawned - it's loader scene can restart listening
+		// Listening is started by a window's loader scene; with no windows left it must stop, or
+		// the app can not close. A new window's loader scene can restart it.
 		stopListening();
 	}
 }
@@ -413,10 +383,8 @@ bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q,
 
 	_sharedObjects->shareWindow(w, q, materials);
 
-	// A client that is ALREADY connected has to be told, or the window it cannot see is a window it
-	// can never draw into. The announce is a full snapshot and the client reconciles it (adding what
-	// is new, dropping what is gone), so re-sending it is the whole mechanism -- no incremental
-	// message, and no way for the two sides to drift.
+	// A connected client must be told: the announce is a full snapshot the client reconciles, so
+	// re-sending it is the whole update mechanism.
 	republishSharedObjects();
 	return true;
 }
@@ -527,9 +495,8 @@ bool ServerAppThread::startListening() {
 
 	_sharedObjects = Rc<remote::ObjectRegistry>::create();
 
-	// Drive accept on this looper: readiness on the listener socket gives a prompt wakeup; QUIC's
-	// internal timers are pumped from performAppUpdate() (same appUpdateInterval cadence as the main
-	// update timer), so no separate listen timer is needed.
+	// Socket readiness wakes accept promptly; QUIC timers are pumped from performAppUpdate(), so no
+	// separate listen timer is needed.
 	_listenPoll = _appLooper->listenPollableHandle(_listener->getPollHandle(),
 			sprt::dispatch::PollFlags::In,
 			[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
@@ -570,13 +537,12 @@ void ServerAppThread::pumpListener() {
 	if (!_listener) {
 		return;
 	}
-	// Pump the listener first: read the socket, route datagrams to the active connection, and accept
-	// any new ones.
+	// Pump the listener first: read the socket, route datagrams to the active connection, and
+	// accept any new ones.
 	_listener->handleEvents([this](Rc<remote::ServerConnection> &&conn) {
 		handleRemoteConnection(sp::move(conn));
 	});
-	// Then service the active connection and detect a disconnect, freeing the single-connection slot
-	// so a new client can connect after the previous one went away.
+	// Then detect a disconnect of the active connection, freeing the single-connection slot.
 	if (_remoteClient && _remoteClient->isClosed()) {
 		log::source().info("AppThread", "remote client disconnected; window reverts to fallback");
 		resetRemoteClient();
@@ -597,8 +563,7 @@ void ServerAppThread::pumpListener() {
 		completePendingHandshake();
 	}
 
-	// Drain + dispatch any messages from the active connection; deferred ones (cb returns false) stay
-	// queued in the connection's reader for a later poll.
+	// Drain and dispatch messages; deferred ones (cb returns false) stay queued for a later poll.
 	if (_remoteClient) {
 		if (auto conn = _remoteClient->getConnection()) {
 			conn->poll([this](const remote::MessageHeader &h, BytesView payload) -> bool {
@@ -607,18 +572,15 @@ void ServerAppThread::pumpListener() {
 		}
 	}
 
-	// A dispatcher may decide the session is over (an incompatible peer), but it runs INSIDE the
-	// poll above -- inside the reader that is iterating its own pending messages. Dropping the
-	// connection there frees the reader out from under that loop, so the decision is recorded and
-	// carried out here instead.
+	// A dispatcher may end the session, but it runs inside the reader's poll loop above, so
+	// dropping the connection there would free the reader under it; the reset is carried out here.
 	if (_resetClientRequested) {
 		_resetClientRequested = false;
 		resetRemoteClient();
 	}
 
-	// Request watchdog (same Looper cadence as keepalive below): if the client left one of our requests
-	// unanswered past that request's own reply deadline -- e.g. it received AcquireFrame but never
-	// replied -- the waiters were just failed with a local protocol error, so drop the connection.
+	// Request watchdog: if the client left a request unanswered past its reply deadline, the
+	// waiters were already failed locally, so drop the connection.
 	if (_remoteClient && !_remoteClient->isClosed()) {
 		if (failTimedOutRequests()) {
 			log::source().info("AppThread",
@@ -627,15 +589,9 @@ void ServerAppThread::pumpListener() {
 		}
 	}
 
-	// Keepalive: a pong resets _lastPongTime (see dispatchMessage). If the client has not answered for
-	// kKeepalivePongTimeoutUs, terminate it (drops the connection, freeing the slot for a new client);
-	// otherwise send a ping at most every kKeepalivePingIntervalUs.
-	//
-	// The cadence is driven by AppThread's internal Looper timer (scheduleTimer, interval =
-	// ContextInfo::appUpdateInterval, default 1s, count = Infinite -> performAppUpdate -> pumpListener),
-	// NOT by frame/presentation timing. So keepalive keeps ticking at ~1s even when the window is idle
-	// and producing no frames (the display-link/PresentationEngine cadence is a separate path). Socket
-	// readiness also calls pumpListener, but only the timer guarantees progress while idle.
+	// Keepalive: a pong resets _lastPongTime (see dispatchMessage). Terminate the client after
+	// kKeepalivePongTimeoutUs of silence, otherwise ping every kKeepalivePingIntervalUs. Driven by
+	// the AppThread update timer (appUpdateInterval), not frame timing, so it ticks while idle.
 	if (_remoteClient && !_remoteClient->isClosed()) {
 		auto now = sp::platform::clock(ClockType::Monotonic);
 		if (now - _lastPongTime >= kKeepalivePongTimeoutUs) {
@@ -652,9 +608,8 @@ void ServerAppThread::pumpListener() {
 }
 
 void ServerAppThread::resetRemoteClient() {
-	// Revert every shared window to its local Director (this also kills the windows' in-flight remote
-	// frames), drop any still-outstanding reply waiters for the dead connection (their frames were just
-	// invalidated), then close the connection and free the single-connection slot for a new client.
+	// Revert shared windows to their local Directors (killing in-flight remote frames), drop
+	// pending reply waiters, then close the connection and free the slot.
 	takeoverSharedWindows(nullptr);
 	_resetClientRequested = false;
 	_requests.clear();
@@ -706,8 +661,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
 		switch (remote::WindowCode(h.code)) {
 		case remote::WindowCode::CompileQueue: {
-			// Every reply below goes through `conn`, which is null once the client is gone (the
-			// message can still be sitting in the reader's deferred queue), so bail before using it.
+			// Replies go through `conn`, which is null once the client is gone (the message may
+			// still sit in the deferred queue).
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
@@ -730,8 +685,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		};
 		case remote::WindowCode::FrameInput: {
-			// client -> server: one streamed input addressed to one or more attachments [frameId,
-			// keys[], bytes]
+			// client -> server: one streamed input for one or more attachments [frameId, keys[],
+			// bytes]
 			if (_remoteClient) {
 				auto val = data::read<Interface>(payload);
 				Vector<StringView> keys;
@@ -749,17 +704,17 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		};
 		case remote::WindowCode::CompileMaterials: {
-			// client -> server: compile a runtime (font atlas) material the headless client can't compile.
+			// client -> server: compile a runtime (font atlas) material the headless client can't
+			// compile.
 			if (_remoteClient) {
 				_remoteClient->handleCompileMaterials(payload);
 			}
 			return true;
 		};
 		case remote::WindowCode::AttachQueue: {
-			// client -> server: the client compiled the shared queue and attached it to its Director, so
-			// it is now ready to serve frames. Hand the named window's frame production over to the
-			// remote client (its PresentationEngine starts pulling through RemoteRenderClient::acquireFrame
-			// instead of the local Director) and acknowledge with an empty atomic reply.
+			// client -> server: the client attached the compiled shared queue to its Director. Hand
+			// the window's frame production over to the remote client and acknowledge with an empty
+			// reply.
 			if (_remoteClient) {
 				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
 				takeoverSharedWindow(windowId, _remoteClient);
@@ -770,9 +725,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		};
 		case remote::WindowCode::ReadyForNextFrame: {
-			// client -> server: the client's scene has active actions/input and wants the next frame
-			// produced. Schedule it on the window's PresentationEngine so animation keeps progressing.
-			// Notification only: no reply.
+			// client -> server: the client's scene wants the next frame (active actions/input);
+			// schedule it on the window's PresentationEngine. Notification only, no reply.
 			if (_sharedObjects) {
 				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
 				if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
@@ -782,10 +736,9 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		};
 		case remote::WindowCode::RequestScreenshot: {
-			// client -> server: capture the named window's current contents (which, while the client is
-			// attached, is the client's own remote-rendered output) and hand them back over Domain::Data
-			// as a Screenshot transfer. The announce `reason` points back at this request so the client
-			// can match the asynchronously-arriving pixels to its captureScreenshot() call. No reply here.
+			// client -> server: capture the window's current contents and send them back over
+			// Domain::Data as a Screenshot transfer; `reason` references this request so the client
+			// can match it. No reply.
 			if (_sharedObjects) {
 				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
 				auto reqSerial = h.serial;
@@ -793,9 +746,9 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 					w->captureScreenshot(
 							[this, reqSerial, windowId](const core::ImageInfoData &info,
 									BytesView pixels) {
-						// On the GL loop thread: the pixels view is transient, so copy it (and the image
-						// info), then hop to the app thread -- the connection / block-transfer must be
-						// touched there -- and offer the blob.
+						// GL loop thread: the pixels view is transient, so copy it, then hop to the
+						// app thread (the connection and block transfer live there) to offer the
+						// blob.
 						auto pixelsCopy = pixels.bytes<Interface>();
 						auto infoCopy = info;
 						performOnAppThread(
@@ -822,8 +775,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 									sp::move(reason), [this](uint64_t tid, bool ok) {
 								log::source().info("AppThread", "screenshot transfer ",
 										ok ? "completed" : "failed");
-								// One-shot push: once the client has it (or it failed) we will never
-								// reference it again, so release it to free the client's retained copy.
+								// One-shot push: release it once done to free the client's retained
+								// copy.
 								if (ok && _blockTransfer) {
 									_blockTransfer->releaseObject(tid);
 								}
@@ -842,9 +795,9 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		};
 		case remote::WindowCode::UpdateLayers: {
-			// client -> server: the window's interaction layers (hit/cursor/drag regions) computed by the
-			// client's scene graph, in the typed wire format (see serializeWindowLayers).
-			// Reconstruct and apply to the real window so the OS does cursor/hit-testing/decorations.
+			// client -> server: the window's interaction layers (hit/cursor/drag regions) in the
+			// typed wire format (see serializeWindowLayers), applied to the real window for OS
+			// hit-testing.
 			if (!_sharedObjects) {
 				return true;
 			}
@@ -896,8 +849,7 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		}
 		case remote::WindowCode::WindowControl: {
-			// One handler for every op a remote scene can ask of its window. The reply is always a
-			// Status, so the client's callback path is the same whatever it asked for.
+			// Handles every window op a remote scene can request; the reply is always a Status.
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
@@ -918,16 +870,13 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 
 			switch (remote::WindowControlOp(val.getInteger("op"))) {
 			case remote::WindowControlOp::Close:
-				// Answer BEFORE closing. The reply travels over a connection the close is about to
-				// tear down, so the other order loses it and the client waits out its deadline for
-				// a window that did shut. The scene inspector's own close op is ordered the same
-				// way for the same reason.
+				// Reply before closing: the close tears down the connection the reply travels over.
 				reply(Status::Ok);
 				w->close(val.getBool("graceful"));
 				break;
 			case remote::WindowControlOp::EnableState:
-				// The client already refused what its mirrors said was impossible; this re-check is
-				// against a peer that sent it anyway.
+				// The client already refuses impossible states; this re-checks a peer that sent one
+				// anyway.
 				reply(w->enableState(core::WindowState(uint64_t(val.getInteger("state"))))
 								? Status::Ok
 								: Status::Declined);
@@ -1010,8 +959,7 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 }
 
 void ServerAppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn) {
-	// Inside the cool-off that a failed handshake opened: refuse without doing any handshake work, so
-	// repeated key guesses cost the peer time rather than costing us CPU.
+	// Inside the cool-off after a failed handshake: refuse without handshake work.
 	if (_handshakeBackoffUntil
 			&& sp::platform::clock(ClockType::Monotonic) < _handshakeBackoffUntil) {
 		log::source().warn("AppThread", "handshake rate limit in force; refusing new connection");
@@ -1022,9 +970,8 @@ void ServerAppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn
 	if (_remoteClient || _pendingConnection) {
 		log::source().warn("AppThread",
 				"remote client already connected; refusing new connection (single connection)");
-		// Answer the refusal instead of dropping the connection silently -- a dropped one leaves the
-		// peer waiting out its whole handshake deadline with no idea why. Deferred like the accepting
-		// path below, so no handshake I/O runs nested inside the accept callback.
+		// Answer the refusal instead of dropping silently, so the peer does not wait out its
+		// handshake deadline. Deferred so no handshake I/O runs inside the accept callback.
 		_refusedConnections.emplace_back(sp::move(conn));
 		return;
 	}
@@ -1050,7 +997,7 @@ void ServerAppThread::completePendingHandshake() {
 		return; // conn dropped, slot stays free
 	}
 
-	// A real client got through: forget the failures so one mistyped token does not linger.
+	// A client got through: reset the failure count.
 	_handshakeFailures = 0;
 	_handshakeBackoffUntil = 0;
 
@@ -1058,13 +1005,12 @@ void ServerAppThread::completePendingHandshake() {
 
 	_remoteClient = Rc<RemoteRenderClient>::create(this, sp::move(conn));
 	if (_remoteClient) {
-		// Wake on the connection's own readiness. Without this the session advances only on the app
-		// update tick (1s), which is not a slow session -- it is a broken one: every request/reply
-		// round trip costs a second and the frame protocol never keeps up.
+		// Wake on the connection's own readiness; otherwise the session advances only on the 1s app
+		// update tick and the frame protocol can not keep up.
 		if (auto c = _remoteClient->getConnection()) {
 			auto handle = c->getPollHandle();
-			// native_handle is a bare union with no comparison; compare the fd it carries. A transport
-			// whose accept returns the listening socket itself (QUIC) is already covered by _listenPoll.
+			// native_handle is a union with no comparison, so compare the fd. A transport whose
+			// accept returns the listening socket itself (QUIC) is already covered by _listenPoll.
 			if (handle.fd >= 0 && handle.fd != _listener->getPollHandle().fd) {
 				_clientPoll = _appLooper->listenPollableHandle(handle,
 						sprt::dispatch::PollFlags::In,
@@ -1077,11 +1023,7 @@ void ServerAppThread::completePendingHandshake() {
 		// Start the keepalive clock fresh so the timeout is measured from connection establishment.
 		_lastPingTime = _lastPongTime = sp::platform::clock(ClockType::Monotonic);
 
-		// Say who we are and find out who they are BEFORE anything is announced. Until the wire
-		// format becomes build-independent (M6) InputEvents and UpdateLayers are raw struct dumps,
-		// so a build mismatch is memory corruption rather than a rejected message -- and a check
-		// that runs after the client has already been handed the shared objects would be checking
-		// too late. handleClientInfo is where the session actually starts.
+		// Exchange peer info before anything is announced; handleClientInfo starts the session.
 		updateServerInfo();
 		if (!sendMessageWithReply(remote::Domain::Global, toInt(remote::GlobalCode::ServerInfo),
 					remote::serializePeerInfo(_localInfo),
@@ -1101,9 +1043,8 @@ void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView
 
 	if (remote::isError(h)) {
 		if (remote::GlobalError(h.code) == remote::GlobalError::NotImplemented) {
-			// A version-1 client: it does not know this message, and that is a supported answer.
-			// It has the same wire format we do or it would not have got this far on anything else,
-			// so the session proceeds exactly as it did before this milestone existed.
+			// A version-1 client does not know this message; the session proceeds without peer
+			// info.
 			log::source().info("AppThread",
 					"client does not implement ServerInfo; continuing as a version-1 peer");
 		} else {
@@ -1114,16 +1055,11 @@ void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView
 		}
 	} else {
 		auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
-		// An honest client refuses first -- it computes the same tag from the same facts and can
-		// see the mismatch the moment ServerInfo arrives, which is why the usual outcome is the
-		// error branch above. This one catches a peer that answered anyway: a stale build with a
-		// broken check, or one that is not the client it claims to be.
+		// A compliant client refuses a mismatch itself (error branch above); this catches a peer
+		// that answered anyway.
 		if (!_localInfo.isWireCompatible(info)) {
-			// Said out loud, and no longer fatal. Before M6 this was the difference between
-			// rendering and corrupting memory, because InputEvents and UpdateLayers were dumps of
-			// each side's struct layout. They are field-by-field now, so a differing tag means the
-			// two builds disagree about some enum's ceiling -- worth knowing when something later
-			// looks wrong, not worth refusing to draw over.
+			// Not fatal: the wire format is field-by-field, so a differing tag only means the
+			// builds disagree about some enum range. Logged for diagnostics.
 			StringStream clientDesc;
 			StringStream localDesc;
 			info.description([&](StringView str) { clientDesc << str; });
@@ -1137,9 +1073,7 @@ void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView
 		info.description([&](StringView str) { desc << str; });
 		log::source().info("AppThread", "client: ", desc.str());
 
-		// What the client's build does NOT implement, named. The point of the mask is that this is
-		// knowable at connect time rather than one NotImplemented at a time, once something has
-		// already gone looking for the message.
+		// Log the codes the client's build does not implement.
 		StringStream missing;
 		_localInfo.describeMissingCodes(info, [&](StringView str) { missing << str; });
 		if (!missing.empty()) {
@@ -1147,10 +1081,8 @@ void ServerAppThread::handleClientInfo(const remote::MessageHeader &h, BytesView
 		}
 	}
 
-	// Do NOT take the windows over yet: the client must first compile each shared queue and attach
-	// it to its Director. The per-window handover happens when the client sends WindowCode::AttachQueue
-	// (handled in dispatchMessage); until then the server keeps rendering through the local Directors,
-	// so AcquireFrame requests never reach a client that isn't ready to serve them.
+	// Do not take the windows over yet: each is handed over when the client sends
+	// WindowCode::AttachQueue, so AcquireFrame never reaches a client not ready to serve it.
 	_remoteClient->announce(_sharedObjects);
 }
 
@@ -1164,24 +1096,20 @@ void ServerAppThread::takeoverSharedWindows(core::RenderClientChannel *client) {
 			continue;
 		}
 		if (!client) {
-			// Reverting to the local Director: kill any in-flight frames the (now-gone) remote client was
-			// producing so a frame stuck on it cannot wedge presentation before the local scene resumes.
+			// Reverting to the local Director: kill in-flight remote frames so none can wedge
+			// presentation.
 			w->invalidateRemoteFrames();
 
-			/* And give the keyboard back. If the departed client had acquired text input, the native
-			window's processor is still enabled with ITS request -- so it keeps claiming printable
-			keys, Backspace, Delete and Escape before the server's own scene ever sees them, and on
-			a mobile backend the OS keyboard stays up. The symptom is "the server stopped accepting
-			typing after the client left", which is very hard to trace back to here.
-			
-			Called unconditionally: releasing input that was never acquired is a no-op, and a flag
-			tracking whether it was would be one more thing to get wrong on a disconnect path. */
+			/* Release text input the departed client may have acquired, otherwise the native
+			window keeps claiming keys (and the OS keyboard stays up on mobile). Releasing
+			unacquired input is a no-op. */
 			w->releaseTextInput();
 		}
 		// On revert (client == nullptr) restore the window's own local Director.
 		w->setRenderClient(
 				client ? client : static_cast<core::RenderClientChannel *>(w->getDirector()));
-		// Restart presentation for the new client (clears a stale display-link barrier + pumps a frame).
+		// Restart presentation for the new client (clears a stale display-link barrier, pumps a
+		// frame).
 		w->resetForRenderClientChange();
 	}
 }
@@ -1198,16 +1126,15 @@ void ServerAppThread::takeoverSharedWindow(uint64_t windowId, core::RenderClient
 	// On revert (client == nullptr) restore the window's own local Director.
 	w->setRenderClient(
 			client ? client : static_cast<core::RenderClientChannel *>(w->getDirector()));
-	// Restart presentation for the new client (clears a stale display-link barrier + pumps a frame).
+	// Restart presentation for the new client (clears a stale display-link barrier, pumps a frame).
 	w->resetForRenderClientChange();
 }
 
 void ServerAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 	AppThread::performAppUpdate(time, wakeup);
 
-	// Service the remote listener's QUIC timers on the regular app-update cadence (no-op unless a
-	// scene started listening). Socket readiness is handled promptly via _listenPoll. The keepalive
-	// ping/timeout is driven from pumpListener.
+	// Service the listener's QUIC timers on the app-update cadence (no-op unless listening).
+	// Socket readiness is handled via _listenPoll; keepalive runs from pumpListener.
 	pumpListener();
 }
 
@@ -1227,9 +1154,9 @@ void ServerAppThread::loadExtensions() {
 			}
 		}
 
-		// Network-serving font endpoint (remote::Domain::Font): a *separate* controller with its own
-		// FontLibrary + atlas, so the FaceIds a client forces never collide with the local-scene
-		// controller's. Owned here (not a registered extension); persists across client reconnects.
+		// Network font endpoint (remote::Domain::Font): a separate controller with its own
+		// FontLibrary and atlas, so client FaceIds never collide with the local controller's. Owned
+		// here, persists across client reconnects.
 		auto createServerFontEndpoint = SharedModule::acquireTypedSymbol<
 				decltype(&font::RemoteFontServerEndpoint::createServerFontEndpoint)>(
 				buildconfig::MODULE_XENOLITH_FONT_NAME,
@@ -1246,10 +1173,8 @@ void ServerAppThread::loadExtensions() {
 void ServerAppThread::finalizeExtensions() {
 	AppThread::finalizeExtensions();
 
-	// The font endpoint is created in loadExtensions but held as a plain member rather than a
-	// registered extension, so the loop above never reaches it. Release it here, on the same hook and
-	// therefore while the gapi device is still up: its atlas is a device image, and a plain member
-	// would otherwise only be dropped with the thread itself - after the device is gone.
+	// The font endpoint is a plain member, not a registered extension, so release it here while the
+	// gapi device is still up: its atlas is a device image.
 	if (_fontServer) {
 		_fontServer->invalidate();
 		_fontServer = nullptr;
@@ -1304,8 +1229,7 @@ Rc<Director> ServerAppThread::makeDirector(NotNull<AppWindow> w, const core::Fra
 Rc<Scene> ServerAppThread::makeScene(NotNull<AppWindow> w, const core::FrameConstraints &c) {
 	Rc<Scene> scene;
 
-	// The window's own data wins: a window created with a WindowSceneInfo says what it runs, so
-	// nothing has to be looked up by id afterwards.
+	// A window created with a WindowSceneInfo defines its own scene.
 	if (auto sceneInfo = w->getSceneInfo()) {
 		scene = sceneInfo->makeScene(this, w, c);
 		if (scene) {

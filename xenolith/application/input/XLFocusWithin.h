@@ -28,24 +28,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-/* `:focus-within` - the only interactive state a node does NOT carry in its InteractiveComponent,
-and the reason is worth the extra type.
+/* Marker for `:focus-within`. Kept out of InteractiveComponent: containers above a control would
+otherwise get a default Enabled state and change `:enabled`/`:disabled` matching while focused.
 
-Every other flag belongs to a CONTROL. This one belongs to whatever happens to be above one: a
-panel, a card, a toolbar, the layout root. InteractiveComponent defaults to Enabled, so giving these
-containers one - which is what writing the bit there would do - switches `:enabled` on and
-`:disabled` off for them, and only while focus is somewhere inside. A panel that matches `:disabled`
-until the user tabs into it and stops matching afterwards is a worse bug than the missing feature:
-it is the same trap already described in XLInteractiveComponent.h, walking.
-
-PRESENCE IS THE STATE, and the counter is why the component can be trusted to disappear again.
-Focus moves as a pair of events - the new chain is retained BEFORE the old one is released - so a
-shared ancestor goes 1 -> 2 -> 1 and never blinks. Its style is not recomputed, and nothing below it
-is either.
-
-The bit itself still lives in document::InteractiveFlags, because that is what a selector asks
-about; three places read the marker and fold it in - see XLUiStyleSheet.cc (matching) and
-XLUiStyleResolver.cc (the restyle mask and the recursive-resolver whitelist). */
+Presence is the state; the counter removes the component on the last release. The bit is still
+document::InteractiveFlags - see XLUiStyleSheet.cc (matching) and XLUiStyleResolver.cc (restyle
+mask and the recursive-resolver whitelist). */
 struct SP_PUBLIC FocusWithinComponent {
 	static ComponentId Id;
 
@@ -57,12 +45,9 @@ struct SP_PUBLIC FocusWithinComponent {
 // Does a rule asking for `:focus-within` match this node?
 SP_PUBLIC bool hasFocusWithin(const Node *);
 
-/* Move the marker from one chain of ancestors to another, `from` and `to` being the focused NODES
-(either may be null). Retains the new chain first, so a common ancestor keeps its component and its
-style throughout.
-
-Walks to the scene root: `:focus-within` is a claim about ancestry, not about forms, and a stylesheet
-is free to put the rule on any container above the field. */
+/* Moves the marker from the ancestor chain of `from` to that of `to` (focused nodes, either may
+be null), up to the scene root. Retains the new chain first, so a shared ancestor keeps its
+style. */
 SP_PUBLIC void updateFocusWithinChain(Node *from, Node *to);
 
 } // namespace stappler::xenolith

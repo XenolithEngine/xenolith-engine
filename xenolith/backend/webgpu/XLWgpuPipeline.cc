@@ -232,7 +232,7 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &data) {
 		WGPUColorTargetState target = WGPU_COLOR_TARGET_STATE_INIT;
 		target.format = getWGPUFormat(attachment->getImageInfo().format);
 
-		// blend state comes from the PIPELINE's material info (Solid vs
+		// blend state comes from the pipeline's material info (Solid vs
 		// Transparent pipelines differ exactly here), not from the subpass
 		// attachment defaults
 		auto &blendInfo = data.material.getBlendInfo();

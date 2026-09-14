@@ -37,8 +37,8 @@ bool FrameCaptureTarget::init(StringView key, const URect &region, core::ImageFo
 
 	_region = region;
 
-	// TransferDst for the copy that fills it, Sampled for the material that draws it. Nothing else:
-	// this image is never rendered into and never read back.
+	// TransferDst for the filling copy, Sampled for the drawing material; never rendered into or
+	// read back.
 	core::ImageInfo info(Extent2(region.width, region.height),
 			core::ForceImageUsage(core::ImageUsage::TransferDst | core::ImageUsage::Sampled),
 			format);
@@ -47,10 +47,9 @@ bool FrameCaptureTarget::init(StringView key, const URect &region, core::ImageFo
 			size_t(region.width) * size_t(region.height) * core::getFormatBlockSize(format);
 
 	_dynamic = Rc<core::DynamicImage>::create([&](core::DynamicImage::Builder &builder) {
-		// The payload is produced on demand rather than stored: it exists for the duration of the
-		// upload and nothing needs it afterwards. Its point is not the zeroes - it is that going
-		// through the ordinary compile path leaves the image in ShaderReadOnlyOptimal with defined
-		// contents, so it is safe to sample before any capture has landed in it.
+		// The payload is generated on demand for the upload only. Using the ordinary compile path
+		// leaves the image in ShaderReadOnlyOptimal with defined contents, safe to sample before a
+		// capture lands.
 		return builder.setImage(key, sp::move(info),
 					   [bytes](uint8_t *, uint64_t, const core::ImageData::DataCallback &dcb) {
 			Bytes transparent;
@@ -80,8 +79,7 @@ void FrameCaptureTarget::handleCompiled(bool success) {
 	}
 
 	if (!_texture) {
-		// Report at once: a caller that waits for a capture which can never arrive would wait
-		// forever, and it has no other way to learn that the image never happened.
+		// Report at once, so the caller does not wait for a capture that can never arrive.
 		_state = State::Failed;
 		if (auto cb = sp::move(_callback)) {
 			_callback = nullptr;
@@ -109,18 +107,15 @@ bool FrameCapture::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	_application = app;
 	_channel = channel;
 
-	// Half of the answer: only the Vulkan backend has a copy path. Whether the presented image of
-	// THIS surface can actually be read is the other half, and it arrives later - once a swapchain
-	// has been configured - through setSurfaceSupported().
+	// Only the Vulkan backend has a copy path. Whether this surface's presented image is readable
+	// arrives later, via setSurfaceSupported(), once a swapchain is configured.
 	if (auto loop = _application->getGlLoop()) {
 		if (auto instance = loop->getInstance()) {
 			_backendSupported = instance->getApi() == core::InstanceApi::Vulkan;
 		}
 	}
 
-	// XL_NO_FRAME_CAPTURE=1 - turn the whole facility off. Every consumer is required to have
-	// something else to draw, and this is how that path gets exercised on a machine whose surface
-	// supports capturing perfectly well.
+	// XL_NO_FRAME_CAPTURE=1 disables the facility, to exercise consumers' fallback drawing.
 	if (auto value = ::getenv("XL_NO_FRAME_CAPTURE")) {
 		if (StringView(value) != "0") {
 			_backendSupported = false;
@@ -137,16 +132,14 @@ URect FrameCapture::makeRegion(const Rect &world, const Mat4 &viewProjection, Ex
 	const float w = float(extent.width);
 	const float h = float(extent.height);
 
-	// clip y = -1 is the TOP row, which is what makes the result y-down without a separate flip
+	// clip y = -1 is the top row, so the result is y-down without a separate flip
 	const float x0 = (clip.getMinX() * 0.5f + 0.5f) * w;
 	const float x1 = (clip.getMaxX() * 0.5f + 0.5f) * w;
 	const float y0 = (clip.getMinY() * 0.5f + 0.5f) * h;
 	const float y1 = (clip.getMaxY() * 0.5f + 0.5f) * h;
 
-	// To NEAREST rather than outward: a rect whose edges land on whole pixels - the normal case for
-	// a laid-out widget - has to come back at exactly its own size, or every consumer ends up
-	// resizing itself to whatever the rounding produced. Rounding out instead costs a row of the
-	// neighbouring content along every edge that is not quite integral.
+	// Round to nearest, not outward: a pixel-aligned rect must come back at exactly its size;
+	// rounding out would add a row of neighbouring content on non-integral edges.
 	auto x0i = int64_t(sprt::round(sprt::min(x0, x1)));
 	auto y0i = int64_t(sprt::round(sprt::min(y0, y1)));
 	auto x1i = int64_t(sprt::round(sprt::max(x0, x1)));
@@ -185,8 +178,8 @@ Rc<FrameCaptureTarget> FrameCapture::request(const URect &region,
 
 	target->_callback = sp::move(cb);
 
-	// compileImage answers on the LOOP thread, and everything this object owns is app-thread state -
-	// hence the hop. The Rc on `this` is what keeps the window's capture alive across it.
+	// compileImage answers on the loop thread, but this object's state is app-thread only, hence
+	// the hop. The Rc on `this` keeps the window's capture alive across it.
 	_channel->compileImage(target->_dynamic,
 			[self = Rc<FrameCapture>(this), target](bool success) mutable {
 		self->_application->performOnAppThread([self, target, success] {
@@ -197,9 +190,8 @@ Rc<FrameCaptureTarget> FrameCapture::request(const URect &region,
 
 			self->_pending.emplace_back(target);
 
-			// Scheduled here rather than in request(): a frame that runs before the image exists
-			// would find nothing pending and copy nothing, and the target would then wait for a
-			// second offscreen frame that nobody is going to ask for.
+			// Scheduled here, not in request(): a frame before the image exists would copy nothing,
+			// and the target would wait for another offscreen frame nobody requests.
 			if (!self->_surfaceSupported) {
 				if (!self->_channel->scheduleOffscreenFrame()) {
 					self->_pending.pop_back();

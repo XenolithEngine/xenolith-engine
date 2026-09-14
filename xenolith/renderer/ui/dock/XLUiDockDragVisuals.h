@@ -29,20 +29,15 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // What follows the pointer while a panel is being dragged: the panel's icon and title on a small
-// surface. It carries NO InputListener at all - one would put it between the pointer and the tab
-// that owns the drag.
+// surface. It has no InputListener, which would come between the pointer and the dragging tab.
 //
-// NOTHING LAYS A DECORATOR OUT. DragSystem only moves it, and its parent - the dock root - places
-// its children by its own rules, so the style resolver hands a CSS `width`/`height` down as a
-// MeasureComponent hint rather than committing it. There is no layout here to read that hint, so
-// this widget reads it itself; see handleComponentsDirty. Without that a ghost is a surface of
-// zero extent with a caption drawn beside it, which does not look like a bug the first time.
+// No layout places a decorator, so the CSS `width`/`height` arrive only as a MeasureComponent hint;
+// handleComponentsDirty applies it.
 //
 // CSS type "dock-drag-ghost".
 class SP_PUBLIC DockDragGhost : public Panel {
 public:
-	// What an unstyled ghost is. Big enough for a 16pt icon and a short title at the padding the
-	// widget gives itself.
+	// size of an unstyled ghost: a 16pt icon and a short title
 	static constexpr Size2 DefaultSize = Size2(150.0f, 32.0f);
 
 	virtual ~DockDragGhost() = default;

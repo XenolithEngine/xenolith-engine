@@ -791,11 +791,9 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 void ShadowPassHandle::recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
 	VertexPassHandle::recordOverlaySubpasses(buf, spans);
 
-	// This queue's render pass has three subpasses and an instance has to walk all of them, whatever
-	// it draws. The overlay only ever draws in the first: it is composited onto a frame whose
-	// lighting is already resolved, so the SDF and shadow subpasses have nothing left to contribute.
-	// Advancing through them empty is the same thing this pass already does for a frame with no
-	// lights.
+	// The render pass has three subpasses and an instance must walk all of them. The overlay draws
+	// only in the first (lighting is already resolved); SDF and shadow subpasses are advanced
+	// empty, as for a frame with no lights.
 	buf.cmdNextSubpass();
 	buf.cmdNextSubpass();
 }

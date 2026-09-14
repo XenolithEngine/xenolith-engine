@@ -46,11 +46,9 @@ static DataValue bytesValue(BytesView v) { return DataValue(Bytes(v.data(), v.da
 // indexed access into a flat-array node; bounds-checked, returns Null when out of range
 static const DataValue &at(const DataValue &n, size_t i) { return n.getValue(i); }
 
-// read a node-table reference index stored as a plain integer element. IMPORTANT: never use the
-// single-argument DataValue::getInteger(def) here -- for a single integer argument the keyed
-// getInteger(key, def) template overload is a better match and would treat the argument as an array
-// index (returning the default) instead of returning the element's value. Read via the no-arg form
-// and fall back to -1 (the "null ref" sentinel deref() expects) only when the element is absent.
+// read a node-table reference index stored as a plain integer element; -1 (the "null ref" sentinel
+// deref() expects) when absent. Do not use getInteger(def): the keyed getInteger(key, def) overload
+// is a better match and would treat the default as an array index.
 static int64_t refAt(const DataValue &n, size_t i) {
 	auto &v = at(n, i);
 	return v.isInteger() ? v.getInteger() : -1;
@@ -387,9 +385,7 @@ sprt::window::WindowGeometry deserializeWindowGeometry(const Value &v) {
 	g.rect.y = int32_t(at(1).getInteger());
 	g.rect.width = int32_t(at(2).getInteger());
 	g.rect.height = int32_t(at(3).getInteger());
-	// Not derived from a zero origin: on Wayland and the windowless backends the platform never
-	// reports a position, and "0,0" there means unknown rather than top-left. The flag is the only
-	// thing that distinguishes the two, so it travels explicitly.
+	// Explicit flag: on Wayland and windowless backends "0,0" means unknown, not top-left.
 	g.hasPosition = at(4).getBool();
 	return g;
 }
@@ -421,9 +417,7 @@ core::FrameTimingInfo deserializeFrameTiming(const Value &v) {
 	t.lastFrameTime = at(2);
 	t.lastFenceFrameTime = at(3);
 	t.lastTimestampFrameTime = at(4);
-	// Absent when the peer predates this entry; `at` answers 0, which is what "not measured" means
-	// everywhere else in this struct - and a peer that sends one to a reader that does not want it
-	// is reading by index and ignores the tail, so the pair stays compatible both ways.
+	// May be absent; `at` answers 0, meaning "not measured". Readers ignore extra trailing entries.
 	t.lastFrameOrder = at(5);
 	return t;
 }
@@ -460,8 +454,7 @@ Value serializeDrawStat(const core::DrawStat &d) {
 	v.addInteger(int64_t(d.planTime));
 	v.addInteger(int64_t(d.queueWaitTime));
 	v.addInteger(int64_t(d.fillTime));
-	// APPENDED, like every field before them: the wire is positional and a reader takes what it
-	// knows, so a peer built without these three is unaffected by a peer that sends them.
+	// Appended: the wire is positional and a reader takes only the prefix it knows.
 	v.addInteger(int64_t(d.dependencyWaitTime));
 	v.addInteger(int64_t(d.dependencyCount));
 	v.addInteger(int64_t(d.dependencyWaited));
@@ -470,9 +463,8 @@ Value serializeDrawStat(const core::DrawStat &d) {
 }
 
 core::DrawStat deserializeDrawStat(const Value &v) {
-	// Brace-initialized: most members of DrawStat carry no default initializer, so a plain
-	// declaration would leave them holding whatever was on the stack (see the note in
-	// XL2dSoftFlatPass.cc). A short array must decode to zeros, not to garbage.
+	// Brace-initialized: most DrawStat members have no default initializer, and a short array must
+	// decode to zeros.
 	core::DrawStat d{};
 	if (!v.isArray()) {
 		return d;
@@ -1299,9 +1291,7 @@ Bytes QueueCodec::encodeQueue(const core::Queue &queue,
 	root.setInteger(int64_t(kCodecVersion), "v");
 	root.setString(queue.getName(), "name");
 	root.setInteger(ei(queue.getDefaultSyncPassState()), "syncState");
-	// The graph's own description of itself (M3.3). Carried so the client's mirror answers
-	// getApi()/getTypeTag() truthfully -- the announce tells the client which queue to pick, this
-	// makes the queue it picked still know what it is afterwards.
+	// The graph's own description, so the client's mirror answers getApi()/getTypeTag().
 	root.setInteger(ei(queue.getApi()), "api");
 	root.setInteger(queue.getTypeTag(), "typeTag");
 	root.setInteger(ei(queue.getDamageFlags()), "damage");
@@ -1993,23 +1983,18 @@ bool QueueCodec::decodeMaterials(BytesView bytes, ObjectFactory &factory) {
 	return true;
 }
 
-// --- the typed wire format for input and layers (M6) -----------------------
+// --- the typed wire format for input and layers ----------------------------
 //
-// See the long note in XLRemoteSerialize.h for the envelope and why this one codec is packed binary
-// rather than a CBOR array like everything above it.
+// See XLRemoteSerialize.h for the envelope and record layouts.
 
 namespace {
 
 // Batch header: [u64 windowId][u16 recordSize][u16 reserved][u32 count]
 constexpr size_t kBatchHeaderSize = sizeof(uint64_t) + sizeof(uint16_t) * 2 + sizeof(uint32_t);
 
-// Which 16-byte variant the trailing part of an InputEventData record carries. Answered by the
-// EVENT, through the engine's own table, so encoder and decoder cannot disagree about it.
-//
-// The bounds check is not defensive programming, it is the documented contract: `event` comes from
-// platform back-ends and InputEventData::hasInput() itself checks the range before indexing this
-// table (see the note in runtime/.../window/input.h). A value off the wire deserves at least as
-// much suspicion as one off a back-end.
+// Which 16-byte variant the trailing part of an InputEventData record carries, taken from the
+// event through InputEventInfo. The range is checked before indexing, as InputEventData::hasInput()
+// does: `event` may come off the wire.
 static sprt::window::InputEventDataType variantOf(sprt::window::InputEventName event) {
 	auto idx = toInt(event);
 	if (idx >= toInt(sprt::window::InputEventName::Max)) {
@@ -2025,11 +2010,8 @@ static void writeBatchHeader(WireWriter &w, uint64_t windowId, uint16_t recordSi
 	w.writeU32(count);
 }
 
-/* Parse the envelope and leave the reader positioned at the first record.
- *
- * Returns false for a malformed batch and true for a well-formed one, with the record count in
- * `outCount` -- rather than returning the count, because zero is a legitimate batch and "no records"
- * must not be reported the same way as "this is not a batch". */
+/* Parse the envelope and leave the reader positioned at the first record. Returns false for a
+ * malformed batch; the record count (possibly zero) goes to `outCount`. */
 static bool readBatchHeader(BytesViewNetwork &in, uint64_t &outWindowId, uint16_t &outRecordSize,
 		uint32_t &outCount, uint16_t minimumRecordSize) {
 	outCount = 0;
@@ -2041,8 +2023,7 @@ static bool readBatchHeader(BytesViewNetwork &in, uint64_t &outWindowId, uint16_
 	in.readUnsigned16(); // reserved
 	auto count = in.readUnsigned32();
 
-	// A record shorter than what this build reads is not a peer we can decode a prefix of -- the
-	// prefix IS the whole of what we read. Longer is fine and expected: that is a newer peer.
+	// A record shorter than what this build reads is undecodable; a longer one is a newer peer.
 	if (outRecordSize < minimumRecordSize) {
 		return false;
 	}
@@ -2066,9 +2047,8 @@ void serializeInputEvents(Bytes &out, uint64_t windowId, SpanView<core::InputEve
 		w.writeU32(e.id);
 		w.writeU32(toInt(e.event));
 
-		// union #1 is always the `input` variant: InputEventType::Custom appears nowhere in
-		// InputEventInfo, so `custom` is unreachable today -- and it has the same shape anyway
-		// (u32, u32, f32, f32), so these four fields serve it unchanged if it ever becomes reachable.
+		// union #1 is always the `input` variant: InputEventType::Custom is not in InputEventInfo,
+		// and `custom` has the same shape (u32, u32, f32, f32) anyway.
 		w.writeU32(toInt(e.input.button));
 		w.writeU32(uint32_t(toInt(e.input.modifiers)));
 		w.writeFloatBits(e.input.x);
@@ -2119,8 +2099,7 @@ bool deserializeInputEvents(BytesView payload, uint64_t &outWindowId,
 		e.input.x = readFloatBits(r);
 		e.input.y = readFloatBits(r);
 
-		// The variant is chosen from the event we just read, not from anything the sender asserted
-		// separately -- so a record cannot claim to be one shape and be read as another.
+		// The variant is chosen from the event just read, not from a separate sender claim.
 		switch (variantOf(e.event)) {
 		case sprt::window::InputEventDataType::Point:
 			e.point.valueX = readFloatBits(r);
@@ -2138,8 +2117,7 @@ bool deserializeInputEvents(BytesView payload, uint64_t &outWindowId,
 			e.window.changes = sprt::window::WindowState(r.readUnsigned64());
 			break;
 		case sprt::window::InputEventDataType::None:
-			// An event this build does not know. It is kept rather than dropped: the batch's other
-			// events are still meaningful, and the dispatcher already ignores an out-of-range name.
+			// An unknown event is kept: the dispatcher ignores an out-of-range name.
 			break;
 		}
 		out.emplace_back(e);
@@ -2161,8 +2139,7 @@ void serializeWindowLayers(Bytes &out, uint64_t windowId,
 		w.writeFloatBits(l.rect.size.width);
 		w.writeFloatBits(l.rect.size.height);
 		w.writeU8(uint8_t(toInt(l.cursor)));
-		// Explicit, where the dump shipped whatever the compiler left between `cursor` and `flags`.
-		// Those three bytes also fed the memcmp that decides whether the layers changed at all.
+		// Explicit padding between `cursor` and `flags`.
 		w.writeZero(3);
 		w.writeU32(uint32_t(toInt(l.flags)));
 	}

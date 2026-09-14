@@ -55,12 +55,14 @@ bool FontControllerRemote::init(AppThread *owner) {
 }
 
 void FontControllerRemote::initialize(AppThread *app) {
-	// Placeholder mirror atlas. A real client mirrors the server atlas image's gAPI id (announced in
-	// SourcesReady) so Label materials hash to the server's font material; for now this is a local
-	// placeholder image/texture, never GPU-compiled on the client (the client has no gl Loop).
+	// Placeholder mirror atlas. A real client mirrors the server atlas image's gAPI id (announced
+	// in SourcesReady) so Label materials hash to the server's font material; for now this is a
+	// local placeholder image/texture, never GPU-compiled on the client (the client has no gl
+	// Loop).
 	_image = FontComponent::makeInitialImage(_name);
 	_texture = Rc<Texture>::create(_image);
-	// The announce is sent from update() once the connection is up (it is not yet established here).
+	// The announce is sent from update() once the connection is up (it is not yet established
+	// here).
 }
 
 void FontControllerRemote::update(AppThread *app, const UpdateTime &clock, bool wakeup) {
@@ -79,8 +81,9 @@ void FontControllerRemote::invalidate(AppThread *) {
 }
 
 void FontControllerRemote::loadSources() {
-	// Load the default resource fonts into our own headless library so getLayout() can answer metrics
-	// queries locally. The client always has the resource fonts embedded, so this needs no transfer.
+	// Load the default resource fonts into our own headless library so getLayout() can answer
+	// metrics queries locally. The client always has the resource fonts embedded, so this needs no
+	// transfer.
 	auto builder = FontComponent::makeDefaultControllerBuilder(_name);
 
 	for (auto &it : builder.getDataQueries()) {
@@ -118,8 +121,8 @@ bool FontControllerRemote::sendSourcesAnnounce() {
 		return false;
 	}
 
-	// Build the announce from the loaded source state: families -> source names, the unique sources with
-	// their content hash (so the server can skip the ones it already holds), and aliases.
+	// Build the announce from the loaded source state: families -> source names, the unique sources
+	// with their content hash (so the server can skip the ones it already holds), and aliases.
 	Value sources;
 	Value families;
 	Set<const FontFaceData *> seen;
@@ -167,8 +170,9 @@ void FontControllerRemote::handleSourcesReady(BytesView payload) {
 	auto v = data::read<Interface>(payload);
 	_atlasImageServerId = uint64_t(v.getInteger("atlas"));
 
-	// Hashes the server lacks must be shipped (small -> FontInline, large -> Domain::Data Font) before we
-	// flip loaded. For the resource-font scenario the server already holds them, so this is empty.
+	// Hashes the server lacks must be shipped (small -> FontInline, large -> Domain::Data Font)
+	// before we flip loaded. For the resource-font scenario the server already holds them, so this
+	// is empty.
 	auto &missing = v.getValue("missing");
 	if (missing.isArray() && !missing.empty()) {
 		// TODO(e2e): ship the missing font bytes before flipping loaded.
@@ -176,9 +180,9 @@ void FontControllerRemote::handleSourcesReady(BytesView payload) {
 				" font(s); inline / block transfer not wired yet");
 	}
 
-	// Build the mirror Texture: a static ImageData whose ImageObject carries the server's atlas wire id, so
-	// a Label's MaterialInfo.images[0] == that id and hashes to the server's font material. The DataAtlas
-	// itself never crosses the wire -- only the matching id is needed.
+	// Build the mirror Texture: a static ImageData whose ImageObject carries the server's atlas
+	// wire id, so a Label's MaterialInfo.images[0] == that id and hashes to the server's font
+	// material. The DataAtlas itself never crosses the wire -- only the matching id is needed.
 	if (auto factory = static_cast<ClientAppThread *>(_owner)->getSharedObjects()) {
 		if (_atlasImageServerId) {
 			_mirrorData.format = core::ImageFormat::R8_UNORM;
@@ -204,8 +208,8 @@ void FontControllerRemote::handleSourcesReady(BytesView payload) {
 bool FontControllerRemote::dispatchFontMessage(uint8_t code, uint32_t serial, BytesView payload) {
 	switch (remote::FontCode(code)) {
 	case remote::FontCode::AtlasReady:
-		// Gating is enforced server-side (the frame waits on the reconciled dependency there); the client
-		// just consumes the notification.
+		// Gating is enforced server-side (the frame waits on the reconciled dependency there); the
+		// client just consumes the notification.
 		return true;
 	default:
 		log::source().warn("FontControllerRemote", "unhandled font message (code ", uint32_t(code),
@@ -221,8 +225,8 @@ void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest
 	}
 
 	// GlyphRequest: the gating dependency id + one entry per face carrying (contentHash, spec, the
-	// client-minted FaceId, chars). The server resolves the font by hash, opens the face with the forced
-	// id, rasterizes the chars, and gates the dependency.
+	// client-minted FaceId, chars). The server resolves the font by hash, opens the face with the
+	// forced id, rasterizes the chars, and gates the dependency.
 	Vector<GlyphRequestFace> faces;
 	faces.reserve(objects.size());
 	for (auto &it : objects) {
@@ -249,8 +253,8 @@ void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest
 }
 
 Rc<core::DependencyEvent> FontControllerRemote::makeDependency() {
-	// Empty queue-set: this event never signals on the client (no font queue here). Its id (in the client
-	// half of the id space) is what the server reconciles to its real signalling event.
+	// Empty queue-set: this event never signals on the client (no font queue here). Its id (in the
+	// client half of the id space) is what the server reconciles to its real signalling event.
 	return Rc<core::DependencyEvent>::alloc(core::DependencyEvent::QueueSet{},
 			"FontControllerRemote");
 }

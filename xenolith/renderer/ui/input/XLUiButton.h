@@ -63,10 +63,8 @@ public:
 	virtual void handleEnter(Scene *scene) override;
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
-	// Fallback placement for a button built without a stylesheet: when nothing owns the layout of
-	// the children (no LayoutSystem, so no `display:flex` came from CSS), the label and the icon
-	// are centered here. A styled button gets its LayoutSystem from the resolver and this is a
-	// no-op - the flex pass places them instead.
+	// Fallback placement without a stylesheet: with no LayoutSystem on the button, the label and
+	// the icon are centered here; a styled button is laid out by the flex pass instead.
 	virtual void handleContentSizeDirty() override;
 
 	virtual void setString(StringView);
@@ -74,24 +72,21 @@ public:
 
 	virtual void setCallback(Function<void()> &&);
 
-	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match), adds
-	// the `disabled` style class and stops the tap callbacks from firing
+	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match) and
+	// stops the tap callbacks from firing
 	virtual void setEnabled(bool) override;
 	virtual bool isEnabled() const override { return isControlEnabled(this); }
 
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
 
-	// Direct label styling, for buttons built outside a stylesheet (auxiliary windows that do not
-	// share the main StyleSystem). These forward to the internal label; CSS `color`/`font-weight`
-	// remain the primary path for normally-styled buttons, but a popup/dialog needs the colour set
-	// without a stylesheet in scope.
+	// Direct label styling for buttons with no stylesheet in scope (auxiliary windows); forwards to
+	// the internal label. Styled buttons use CSS `color`/`font-weight`.
 	virtual void setLabelColor(const Color4F &);
 	virtual void setLabelFontWeight(font::FontWeight);
 	virtual basic2d::Label *getLabel() const;
 
-	// The icon NODE, for the size and the colour a stylesheet would otherwise have set. Named apart
-	// from getIcon(), which answers with the IconName rather than with what draws it.
+	// The icon node, for size and colour without a stylesheet; getIcon() returns the IconName.
 	virtual basic2d::IconSprite *getIconSprite() const;
 
 protected:

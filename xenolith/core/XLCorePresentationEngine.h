@@ -136,18 +136,9 @@ public:
 	uint64_t getAvgFrameInterval() const;
 	uint64_t getLastFrameTime() const;
 
-	/* THE ORDER OF THE LAST FRAME THAT ACTUALLY COMPLETED, and it is not only an accounting field.
-
-	It began as one - a "last" value with no name cannot be attributed, so getLastFrameTime() needed
-	to say which frame it was about - and was gated behind XL_FRAME_ACCOUNT accordingly. It is
-	ungated because it answers a second question that has no other answer: HAS A FRAME BEEN DRAWN
-	SINCE I ASKED. Nothing else exposes that. `setReadyForNextFrame` only sets a flag and returns,
-	rendering is on demand, and a screenshot hands back the frame BEFORE the one you asked for - so
-	an external driver stepping this window had no way to wait for its own request and could only
-	sleep and hope. Watching this number advance is that wait, and it costs one store per frame.
-
-	Monotonic among completed frames, and it counts frames that were PRESENTED: a capture frame
-	returns before this is written and is correctly absent. */
+	/* Order of the last presented frame (capture frames excluded); monotonic. Tells which frame
+	getLastFrameTime() describes, and lets an external driver wait for a frame to be drawn by
+	watching it advance. */
 	uint64_t getLastFrameOrder() const { return _lastFrameOrder; }
 	uint64_t getLastFenceFrameTime() const;
 	uint64_t getLastTimestampFrameTime() const;
@@ -186,11 +177,9 @@ public:
 
 	virtual void captureScreenshot(Function<void(const ImageInfoData &info, BytesView view)> &&cb);
 
-	/* Render one frame into an offscreen image and present nothing.
-
-	The same frame captureScreenshot renders, minus the readback: what it is for is the work a pass
-	does INSIDE that frame - a frame capture copying rectangles out of the image, where the
-	presented image cannot be read. `cb` runs on the presentation thread when the frame ends. */
+	/* Render one frame into an offscreen image and present nothing, for work a pass does inside it
+	(frame capture where the presented image cannot be read). `cb` runs on the presentation thread
+	when the frame ends. */
 	virtual void scheduleOffscreenFrame(Function<void(bool)> &&cb);
 
 	virtual void synchronizeClose();
@@ -309,10 +298,9 @@ protected:
 	// Per-frame deadline timers (cancel a frame stuck waiting for input/dependencies)
 	Map<PresentationFrame *, Rc<sprt::dispatch::Handle>> _frameDeadlines;
 
-	// In-flight frames tagged Remote (served by a remote render client). Tracked from scheduling -- even
-	// while still awaiting the client's reply, before they enter _activeFrames -- so they can be killed
-	// on a connection reset (invalidateRemoteFrames). The value Rc keeps an awaiting frame alive after
-	// the connection (its only other owner) drops. Erased at every terminal frame transition.
+	// In-flight Remote frames, tracked from scheduling so invalidateRemoteFrames can kill them on a
+	// connection reset. The Rc keeps an awaiting frame alive after the connection drops; erased at
+	// every terminal frame transition.
 	Map<PresentationFrame *, Rc<PresentationFrame>> _remoteFrames;
 
 	// Async request for a swapchain images

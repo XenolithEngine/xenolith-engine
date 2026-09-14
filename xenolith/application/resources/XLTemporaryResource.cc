@@ -171,7 +171,12 @@ bool TemporaryResource::clear() {
 	return (_flags & TemporaryResourceFlags::RemoveOnClear) != TemporaryResourceFlags::None;
 }
 
-StringView TemporaryResource::getName() const { return _resource->getName(); }
+StringView TemporaryResource::getName() const {
+	if (_resource) {
+		return _resource->getName();
+	}
+	return StringView();
+}
 
 bool TemporaryResource::isDeprecated(const UpdateTime &time) const {
 	if (_users > 0 || !_loaded) {

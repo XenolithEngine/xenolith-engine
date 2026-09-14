@@ -76,7 +76,7 @@ Rc<FrameContextHandle> FrameContext2d::makeHandle(FrameInfo &frame) {
 	auto h = Rc<FrameContextHandle2d>::alloc();
 	h->clock = frame.director->getUpdateTime().app;
 	h->client = frame.director;
-	// Locally built frame: the client IS this window's Director, so the id is the local-request 0.
+	// Locally built frame: the client is this window's Director, so the id is the local-request 0.
 	h->windowId = 0;
 	h->context = this;
 	h->commands = Rc<CommandList>::create(frame.pool);
@@ -94,21 +94,14 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 		handle->waitDependencies.emplace_back(_materialDependency);
 	}
 
-	// Submit materials (which forwards CompileMaterials on the remote path) BEFORE the frame input, so the
-	// server registers the material gating dependency before it reconciles the frame against it -- the
-	// frame's waitDependencies already captured _materialDependency above. Order is immaterial locally
-	// (the dependency is shared by pointer); it matters only for the remote message ordering.
+	// Submit materials (which forwards CompileMaterials on the remote path) before the frame input,
+	// so the server registers the material gating dependency before reconciling the frame against
+	// it. Locally the order does not matter.
 	FrameContext::submitHandle(frame, handle);
 
-	/* Rectangles of this frame the window wants copied out.
-
-	Asked for here rather than in the render-thread lambda below because the request lives on the
-	app thread, and TAKEN rather than read: two frames must never carry the same capture.
-
-	Submitted on EVERY frame, empty when nothing is armed. An attachment declared as input and then
-	not fed does not degrade - the frame waits for an input that never comes and wedges - which is
-	the whole reason the flat queue carries IgnoredInputAttachment for lights and particles. An
-	empty input costs one small Rc and makes the pass record nothing. */
+	/* Rectangles of this frame the window wants copied out. Taken on the app thread, where the
+	request lives, so no two frames carry the same capture. Submitted every frame, empty when
+	nothing is armed: an unfed input attachment would stall the frame. */
 	Rc<core::FrameCaptureInput> capture;
 	if (_captureAttachmentData) {
 		if (auto server = frame.director->getRenderServer()) {

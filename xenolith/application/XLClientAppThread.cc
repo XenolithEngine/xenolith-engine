@@ -34,14 +34,14 @@
 #include "XLRemoteBlockTransfer.h"
 
 #if MODULE_XENOLITH_FONT
-// Downstream module: reached only by SharedModule symbol + the font::FontController extension type.
+// Downstream module: reached only via SharedModule symbol and the font::FontController type.
 #include "XLFontControllerRemote.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Top bit of the DependencyEvent id space reserved for the remote client so its ids never collide
-// with server/local-minted ones (which use the low half).
+// Top bit of the DependencyEvent id space is reserved for the remote client, so its ids never
+// collide with server/local ones (low half).
 static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
 
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
@@ -109,7 +109,8 @@ bool ClientAppThread::worker() {
 		// Kick off the ping/pong exchange with one control ping.
 		_connection->ping();
 
-		// Start the keepalive clock: the server pings us ~1/s; if it goes silent we disconnect + exit.
+		// Start the keepalive clock: the server pings ~1/s; if it goes silent we disconnect and
+		// exit.
 		_lastPingTime = sp::platform::clock(ClockType::Monotonic);
 
 		_sharedObjects = Rc<remote::ObjectFactory>::create();
@@ -190,9 +191,9 @@ void ClientAppThread::handleWindowDisconnected(NotNull<RemoteWindow> w) {
 void ClientAppThread::loadExtensions() {
 	AppThread::loadExtensions();
 
-	// Accept incoming Screenshot block transfers (the server's response to our RequestScreenshot) and
-	// route the assembled raw pixels to the RemoteWindow whose captureScreenshot() call triggered them,
-	// matched by the announce reason's serial.
+	// Accept Screenshot block transfers (replies to RequestScreenshot) and route the raw pixels to
+	// the RemoteWindow whose captureScreenshot() requested them, matched by the announce reason's
+	// serial.
 	if (_blockTransfer) {
 		_blockTransfer->acceptPolicy = [](BlockTransferManager::DataType t, uint64_t, const Value &,
 											   const Value &) {
@@ -218,11 +219,8 @@ void ClientAppThread::loadExtensions() {
 					" had no matching captureScreenshot() waiter (serial ", serial, ")");
 		};
 
-		// The other outcome. A screenshot that is called off -- the server cancelled it, or the link
-		// dropped with packets still to come -- leaves a captureScreenshot() callback that would
-		// otherwise wait for the rest of the session. Empty info + empty pixels is already this
-		// path's "it did not work" (captureScreenshot answers exactly that when it cannot even send),
-		// so the waiter needs no new shape to understand it.
+		// A cancelled screenshot (server cancel or dropped link) answers the waiting
+		// captureScreenshot() with empty info and pixels, the same as a failed send.
 		_blockTransfer->onCancelled = [this](uint64_t id, BlockTransferManager::DataType t,
 											  const Value &, const Value &reason) {
 			if (t != remote::DataType::Screenshot) {
@@ -240,9 +238,9 @@ void ClientAppThread::loadExtensions() {
 	}
 
 #if MODULE_XENOLITH_FONT
-	// Construct the headless client-side FontController (positioning + source announce + glyph requests
-	// over remote::Domain::Font). Reached via SharedModule symbol because xenolith_font is downstream of
-	// this module; registered under font::FontController so Labels' getExtension<FontController>() find it.
+	// Create the headless client FontController (positioning, source announce, glyph requests over
+	// remote::Domain::Font) via SharedModule symbol, since xenolith_font is downstream; registered
+	// as font::FontController so getExtension<FontController>() finds it.
 	auto createRemoteController = SharedModule::acquireTypedSymbol<
 			decltype(&font::FontControllerRemote::createRemoteController)>(
 			buildconfig::MODULE_XENOLITH_FONT_NAME, "FontControllerRemote::createRemoteController");
@@ -258,34 +256,25 @@ void ClientAppThread::pumpConnection() {
 	if (!_connection) {
 		return;
 	}
-	// Drain buffered frames and hand each (header, payload) to the dispatcher; the reader keeps any
-	// message the dispatcher defers (returns false) for a later poll.
+	// Dispatch buffered messages; the reader keeps messages the dispatcher defers (returns false).
 	_connection->poll([this](const remote::MessageHeader &h, BytesView payload) -> bool {
 		return dispatchMessage(h, payload);
 	});
 
-	// A dispatcher can decide the session is over (an incompatible peer, say); it must not tear the
-	// connection down from inside the poll that is iterating it.
+	// A dispatcher can end the session, but must not tear the connection down inside the poll.
 	bool disconnect = _disconnectRequested;
 
-	// Request watchdog (same cadence as keepalive): if the server left one of our requests unanswered
-	// past that request's own reply deadline, the waiter was just failed with a local protocol error --
-	// treat the server as gone and end the client.
+	// Request watchdog: if the server left a request unanswered past its reply deadline, the waiter
+	// was already failed locally; treat the server as gone and end the client.
 	if (_connection && failTimedOutRequests()) {
 		log::source().info("ClientAppThread",
 				"request reply timeout; disconnecting from unresponsive server");
 		disconnect = true;
 	}
 
-	// Keepalive: the server pings us ~1/s (resetting _lastPingTime). If it has gone silent past the
-	// timeout, the server is gone -- disconnect and end the client (stop() unwinds the looper, worker()
-	// returns, and the client process exits).
-	//
-	// Both checks are driven by AppThread's internal Looper timer (scheduleTimer, interval =
-	// ContextInfo::appUpdateInterval, default 1s, count = Infinite -> performAppUpdate -> pumpConnection),
-	// NOT by frame timing -- the client has no gapi loop / presentation cadence at all. So the timeouts
-	// are evaluated at a steady ~1s regardless of whether the scene is animating or idle. Socket readiness
-	// also calls pumpConnection, but only the timer guarantees this runs while no datagrams arrive.
+	// Keepalive: the server pings ~1/s (resetting _lastPingTime); past the timeout, disconnect and
+	// end the client. Both checks run from the AppThread update timer (appUpdateInterval), not
+	// frame timing, so they are evaluated steadily while idle.
 	if (!disconnect && _connection
 			&& sp::platform::clock(ClockType::Monotonic) - _lastPingTime
 					>= kKeepalivePingTimeoutUs) {
@@ -295,15 +284,9 @@ void ClientAppThread::pumpConnection() {
 	}
 
 	if (disconnect && _connection) {
-		/* Tell the focused widget its authority is gone. The state belongs to the server's
-		processor, so once the connection is down no echo will ever arrive again -- and a field left
-		"enabled" would keep its caret blinking and go on waiting for text that cannot come.
-		cancel() delivers enabled=false to the handler and then calls releaseTextInput(), which
-		no-ops on a dead connection.
-		
-		Invisible in the current end-to-end check, because the client process exits on disconnect.
-		That is exactly why it is written here rather than discovered later by whoever first keeps a
-		client alive across a reconnect. */
+		/* Tell focused widgets their text input is gone: no echo can arrive after disconnect, and
+		an enabled field would wait forever. cancel() delivers enabled=false, then
+		releaseTextInput() no-ops on the dead connection. */
 		for (auto &it : _windows) {
 			if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
 				if (auto tm = dir->getTextInputManager()) {
@@ -395,10 +378,9 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		default:
 			log::source().warn("ClientAppThread", "unhandled global message (code ",
 					uint32_t(h.code), ")");
-			// A request we do not understand must be ANSWERED, not just dropped: the peer is
-			// holding a waiter with a deadline, and silence turns "I don't know that message" into
-			// "the client is dead" two seconds later. This is what lets a newer server probe an
-			// older client (ServerInfo does exactly that) instead of killing the session.
+			// An unknown request must be answered, not dropped: the peer holds a waiter with a
+			// deadline, and an answer lets a newer server probe an older client (as ServerInfo
+			// does).
 			if (!remote::isReplyOrError(h) && _connection) {
 				_connection->sendError(remote::Domain::Global,
 						toInt(remote::GlobalError::NotImplemented), h.serial);
@@ -415,7 +397,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		case remote::WindowCode::AcquireFrame: {
 			// server -> client: drive the window's scene graph to select a render queue; reply with
-			// that queue's server id (per-frame attachment input is a later stage).
+			// that queue's server id.
 			auto val = data::read<Interface>(payload);
 			auto frameId = uint64_t(val.getInteger(0));
 			auto windowId = uint64_t(val.getInteger(1));
@@ -439,9 +421,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 
-			// Indices 3/4 are the server's frame telemetry, appended in M4. Read them by TYPE:
-			// absent (a version-1 server, or a frame with no new stat) means "no update", and the
-			// window keeps what it had.
+			// Indices 3/4 are the server's frame telemetry; check the type: absent means no update.
 			core::FrameTimingInfo timing;
 			core::DrawStat stat{};
 			const core::FrameTimingInfo *timingPtr = nullptr;
@@ -522,8 +502,8 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		return _blockTransfer ? _blockTransfer->dispatch(h, payload) : true;
 	} else if (remote::Domain(h.domain) == remote::Domain::Font) {
 #if MODULE_XENOLITH_FONT
-		// Route to the client FontController (the SourcesReady reply is handled by the serial waiter, not
-		// here; this path is for server->client notifications like AtlasReady).
+		// Route to the client FontController (SourcesReady replies are handled by the serial
+		// waiter; this path is for notifications like AtlasReady).
 		if (auto fc = getExtension<font::FontController>()) {
 			return fc->dispatchFontMessage(h.code, h.serial, payload);
 		}
@@ -571,9 +551,8 @@ Rc<Scene> ClientAppThread::makeScene(NotNull<RemoteWindow> w, const core::FrameC
 
 remote::PeerInfo ClientAppThread::makeClientInfo() const {
 	auto ret = remote::PeerInfo::makeLocal();
-	// A client renders nothing itself: it leaves `api` at None and claims no window subsystem,
-	// because the window it draws for belongs to the server. Saying "xcb" here because the client
-	// process happens to run under X would be answering a question nobody asked.
+	// A client renders nothing itself: `api` stays None and no window subsystem is claimed, since
+	// the window belongs to the server.
 	if (_connection) {
 		if (auto t = _connection->getTransport()) {
 			ret.transportCaps = t->getCaps();
@@ -583,13 +562,8 @@ remote::PeerInfo ClientAppThread::makeClientInfo() const {
 			remote::getSchemeName(_clientContext->getServerAddress().scheme).str<Interface>();
 
 #if DEBUG
-	// XL_REMOTE_FAKE_ABI=<hex> -- report a different ABI tag than this build actually has.
-	//
-	// A test hook, and it exists because the alternative is worse: the rejection path is the one
-	// thing in this exchange that must work and can never be reached by running two binaries from
-	// the same tree. Without it "an incompatible client is refused" is a claim nobody has run.
-	// Debug-only, and it can only make this client be REFUSED -- there is no value it can carry
-	// that gets a client accepted which would not have been.
+	// XL_REMOTE_FAKE_ABI=<hex>: report a different ABI tag, to test the mismatch path with binaries
+	// from one tree. Debug-only.
 	if (auto env = ::getenv("XL_REMOTE_FAKE_ABI")) {
 		auto str = StringView(env);
 		auto forced = uint64_t(str.readInteger(16).get(0));
@@ -607,10 +581,8 @@ void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView
 	auto local = makeClientInfo();
 
 	if (!local.isWireCompatible(info)) {
-		// Reported, not refused. Until M6 the two sides memcpy'd InputEventData/WindowLayer at each
-		// other and this was memory corruption waiting to happen; the messages are typed now, so a
-		// differing tag says the builds disagree about an enum ceiling -- something to have in the
-		// log if a later symptom needs explaining, not a reason to refuse the session.
+		// Reported, not refused: messages are typed field-by-field, so a differing tag only means
+		// the builds disagree about some enum range.
 		StringStream serverDesc;
 		StringStream localDesc;
 		info.description([&](StringView str) { serverDesc << str; });
@@ -702,12 +674,9 @@ void ClientAppThread::handleAnnounce(const Value &data) {
 
 	performOnAppThread([this, connectedWindows, disconnectedWindows] {
 		for (auto &it : disconnectedWindows) {
-			// End the window's Director before anyone is told the window is gone. Dropping the last
-			// reference is NOT enough: a scene that is never exited never runs handleExit, so
-			// everything it registered on the way in -- its inspector among them -- stays registered
-			// for a window that no longer exists. The server does exactly this in
-			// handleAppWindowDestroyed; the client simply never had a path that removed a window,
-			// because until now the only way to lose one was to lose the whole connection.
+			// End the window's Director before announcing the window is gone: dropping the
+			// reference does not exit the scene, so whatever it registered (e.g. its inspector)
+			// would stay registered. The server does the same in handleAppWindowDestroyed.
 			if (auto dir = dynamic_cast<Director *>(it->getRenderClient())) {
 				dir->end();
 			}

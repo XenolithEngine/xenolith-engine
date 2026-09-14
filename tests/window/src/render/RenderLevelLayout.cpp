@@ -24,6 +24,7 @@
 
 #include "render/RenderLevelLayout.h"
 #include "XLAction.h"
+#include "director/XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -68,6 +69,18 @@ bool RenderLevelLayout::init() {
 	_switchedBackdrop = addChild(Rc<Layer>::create(Color::Blue_900), ZOrder(1));
 	makeRow(_switched, ZOrder(2), Color::Amber_500);
 	for (auto &it : _switched) { it->setRenderingLevel(core::RenderingLevel::Solid); }
+
+	// Row 4: a TRANSLUCENT strip - transparent by its alpha - and two surface boxes in front of it.
+	_strip = addChild(Rc<Layer>::create(Color::Blue_900), ZOrder(3));
+	_strip->setName("strip");
+	_strip->setOpacity(0.9f);
+	_strip->setRenderingLevel(core::RenderingLevel::Transparent);
+	_over = addChild(Rc<Layer>::create(Color::Amber_500), ZOrder(4));
+	_over->setName("over");
+	_over->setRenderingLevel(core::RenderingLevel::Surface);
+	_apart = addChild(Rc<Layer>::create(Color::Amber_500), ZOrder(4));
+	_apart->setName("apart");
+	_apart->setRenderingLevel(core::RenderingLevel::Surface);
 
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(1.0f), [this] { runPhase1(); }));
 
@@ -136,6 +149,68 @@ void RenderLevelLayout::handleContentSizeDirty() {
 	placeRow(_frontBackdrop, _front, top);
 	placeRow(_behindCover, _behind, top - 160.0f);
 	placeRow(_switchedBackdrop, _switched, top - 320.0f);
+
+	// Row 4: the strip is as wide as two boxes; `over` sits inside it, `apart` well to its right.
+	const float stripTop = top - 480.0f;
+	_strip->setAnchorPoint(Vec2(0.0f, 1.0f));
+	_strip->setPosition(Vec2(left - 15.0f, stripTop + 15.0f));
+	_strip->setContentSize(Size2(BoxStep + BoxSize + 30.0f, BoxSize + 30.0f));
+	_over->setAnchorPoint(Vec2(0.0f, 1.0f));
+	_over->setPosition(Vec2(left, stripTop));
+	_over->setContentSize(Size2(BoxSize, BoxSize));
+	placeApart();
+}
+
+void RenderLevelLayout::placeApart() {
+	const float left = 40.0f;
+	const float stripTop = getWorkTop() - 30.0f - 480.0f;
+	_apart->setAnchorPoint(Vec2(0.0f, 1.0f));
+	// over the strip's second slot, or three steps right of it - clear of the strip by a whole box
+	_apart->setPosition(Vec2(left + (_apartOverlaps ? BoxStep : BoxStep * 3.0f), stripTop));
+	_apart->setContentSize(Size2(BoxSize, BoxSize));
+}
+
+Value RenderLevelLayout::encodeState() const {
+	Value ret;
+	auto box = [&](Layer *node, StringView name) {
+		Value v;
+		const auto size = node->getContentSize();
+		const auto at = node->convertToWorldSpace(Vec2(size.width * 0.5f, size.height * 0.5f));
+		v.setDouble(at.x, "x");
+		v.setDouble(at.y, "y");
+		switch (node->getRenderingLevel()) {
+		case core::RenderingLevel::Solid: v.setString("solid", "level"); break;
+		case core::RenderingLevel::Surface: v.setString("surface", "level"); break;
+		case core::RenderingLevel::Transparent: v.setString("transparent", "level"); break;
+		default: v.setString("other", "level"); break;
+		}
+		ret.setValue(sp::move(v), name);
+	};
+	box(_strip, "strip");
+	box(_over, "over");
+	box(_apart, "apart");
+	ret.setBool(_apartOverlaps, "apartOverlaps");
+
+	if (auto director = _director) {
+		auto &stat = director->getDrawStat();
+		ret.setInteger(stat.surfacePromotedCmds, "surfacePromoted");
+		ret.setInteger(stat.surfaceCmds, "surfaceCmds");
+		ret.setInteger(stat.transparentCmds, "transparentCmds");
+	}
+	ret.setDouble(_contentSize.height, "height");
+	return ret;
+}
+
+void RenderLevelLayout::registerCommands() {
+	addCommand("state", "The row-4 boxes (centres in window coordinates) and the frame's pass counters",
+			[this](Value &&) { return encodeState(); });
+
+	addCommand("apart", "Move the second surface box over the strip or clear of it: { overlap }",
+			[this](Value &&args) {
+		_apartOverlaps = args.getBool("overlap");
+		placeApart();
+		return encodeState();
+	});
 }
 
 } // namespace stappler::xenolith::app

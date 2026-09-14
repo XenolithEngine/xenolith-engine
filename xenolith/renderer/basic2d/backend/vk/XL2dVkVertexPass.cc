@@ -44,8 +44,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::vk {
 
 struct VertexMaterialVertexProcessor;
 
-// The frame's draw plan itself is backend-neutral and lives in basic2d::VertexPlan. What is left
-// here is the Vulkan half: device buffers to write that plan into, and the frame plumbing.
+// The draw plan lives in basic2d::VertexPlan; this is the Vulkan half: device buffers to write the
+// plan into, and the frame plumbing.
 struct VertexMaterialVertexProcessor : public Ref {
 	using WriteTarget = VertexWriteTarget;
 
@@ -86,13 +86,8 @@ struct VertexMaterialVertexProcessor : public Ref {
 	void finalize(VertexPlan *plan);
 
 #if XL_FRAME_ACCOUNT
-	/* Read off the FrameHandle in `run`, not in `finalize`.
-
-	`run` is inside the callback of the wait that gates THIS data, so what is read is that wait -
-	which is the interesting one - and the handle is in hand; `finalize` runs later, on another
-	thread, and reaching back for the frame to read three integers would be borrowing a lifetime for
-	nothing. A wait of another attachment that is still in flight is correctly not counted here: the
-	stat describes what the vertex data waited for. */
+	/* Read off the FrameHandle in `run`, which executes inside the callback of the wait gating this
+	data, so the value is that wait; `finalize` runs later on another thread without the handle. */
 	uint64_t _depWaitTime = 0;
 	uint32_t _depCount = 0;
 	uint32_t _depWaited = 0;
@@ -166,16 +161,20 @@ bool VertexMaterialVertexProcessor::loadVertexes() {
 				shadowSize.height / float(shadowExtent.height));
 
 #if XL_FRAME_ACCOUNT
-		// One clock read at each boundary, so the four phases add up to the stage instead of being
-		// four independent measurements of overlapping things.
+		// One clock read at each boundary, so the four phases add up to the stage.
 		auto phaseMark = core::getAccountClock();
 #endif
 
+		_plan.surfacePromotedCmds = 0;
 		auto cmd = _input->commands->getFirst();
 		while (cmd) {
 			plan->pushCommand(_plan, cmd);
 			cmd = cmd->next;
 		}
+
+		// Surfaces waited for the whole list (see VertexPlan::PendingSurface); before the buffers
+		// are sized, because placing one is what counts its vertexes.
+		plan->resolveSurfaceOrder(_plan);
 
 #if XL_FRAME_ACCOUNT
 		{
@@ -282,15 +281,12 @@ void VertexMaterialVertexProcessor::finalize(VertexPlan *plan) {
 	_drawStat.solidCmds = _plan.solidCmds;
 	_drawStat.surfaceCmds = _plan.surfaceCmds;
 	_drawStat.transparentCmds = _plan.transparentCmds;
+	_drawStat.surfacePromotedCmds = _plan.surfacePromotedCmds;
 	_drawStat.shadowsCmds = shadowsCmds;
 	_drawStat.vertexInputTime = uint32_t(t - _time);
 #if XL_FRAME_ACCOUNT
-	/* The PRESENTATION frame's order, not the FrameHandle's.
-
-	They are two different counters and they do not agree - measured, one apart - so a reader that
-	took one from here and the other from the completion bookkeeping would be comparing two
-	numbering schemes and calling the mismatch an error. The presentation frame is the one the
-	engine's own timing block names, so it is the one that goes here. */
+	/* The presentation frame's order, not the FrameHandle's: the two counters differ, and the
+	engine's timing block names the presentation frame. */
 	if (auto pf = _request ? _request->getPresentationFrame() : nullptr) {
 		_drawStat.frameOrder = pf->getFrameOrder();
 	}
@@ -450,11 +446,9 @@ bool VertexPassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 				static_cast<const ParticleEmitterAttachmentHandle *>(particleBuffer->handle.get());
 	}
 
-	/* A frame that was asked for no cutout leaves these null, and recordFrameCapture then records
-	nothing - which is the whole cost of an idle capture.
-
-	An input with no regions is the ordinary case, not an error: FrameContext2d submits one on every
-	frame because an input attachment that is not fed wedges the frame waiting for it. */
+	/* A frame with no cutout requested leaves these null, and recordFrameCapture records nothing.
+	An input with no regions is the ordinary case: FrameContext2d submits one every frame, since an
+	unfed input attachment would stall the frame. */
 	_captureInput = nullptr;
 	_captureSource = nullptr;
 	_captureSourcePresented = false;
@@ -474,8 +468,8 @@ bool VertexPassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 			}
 		}
 		if (!_captureSource) {
-			// Nothing to copy out of. The frame still completes, and the input's completion still
-			// runs - the targets are simply told the capture did not happen.
+			// Nothing to copy out of. The frame and the input's completion still run; the targets
+			// are told the capture did not happen.
 			_captureInput = nullptr;
 		}
 	}
@@ -550,12 +544,9 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 	drawSpans(materials, buf, _vertexBuffer->getVertexData());
 }
 
-/* Record one set of spans.
-
-Split out of prepareMaterialCommands so it can be run twice over two disjoint sets: the content, and
-then - after the frame has been copied out - the Overlay level. Nothing here depends on the iteration
-index or on the previous span, and the spans carry absolute firstIndex/vertexOffset/firstInstance, so
-two runs produce exactly the pixels one run over the concatenation would. */
+/* Record one set of spans. Run twice over disjoint sets: the content, then the Overlay level after
+the frame copy. Spans carry absolute firstIndex/vertexOffset/firstInstance and nothing depends on
+iteration order, so two runs equal one run over the concatenation. */
 void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &buf,
 		SpanView<VertexSpan> spans) {
 	auto commands = _vertexBuffer->getCommands();
@@ -700,17 +691,15 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 void VertexPassHandle::finalizeRenderPass(CommandBuffer &buf) {
 	buf.cmdWriteTimestamp(core::PipelineStage::BottomOfPipe, TimestampEndTag);
 
-	// The order here is the whole point of the Overlay level: the frame is copied out first, and only
-	// then does the overlay draw on top of it. So a cutout can never contain the overlay - a drag
-	// ghost cannot photograph itself - and that holds however the ghost was created and whenever.
+	// The frame is copied out before the overlay draws, so a cutout never contains the overlay (a
+	// drag ghost cannot capture itself).
 	recordFrameCapture(buf);
 	recordOverlayPass(buf);
 }
 
 void VertexPassHandle::recordOverlayPass(CommandBuffer &buf) {
-	// isRedrawSkipped: the target image already holds this exact frame and RenderPass::perform
-	// recorded nothing at all, not even the barriers - so the image is in a layout this pass has not
-	// established, and there is by definition nothing new to draw over it.
+	// isRedrawSkipped: the target already holds this frame and RenderPass::perform recorded
+	// nothing, not even barriers, so there is nothing new to draw.
 	if (isRedrawSkipped()) {
 		return;
 	}
@@ -725,9 +714,8 @@ void VertexPassHandle::recordOverlayPass(CommandBuffer &buf) {
 		return;
 	}
 
-	// Same render area as the content pass: with a partial redraw everything outside the damaged
-	// rectangle is unchanged, overlay geometry included - the damage collector walks the overlay
-	// commands like any other, so anything the overlay moved is already inside it.
+	// Same render area as the content pass: the damage collector walks overlay commands too, so
+	// anything the overlay moved is already inside the damaged rectangle.
 	const VkRect2D *renderArea = nullptr;
 	VkRect2D area;
 	if (hasPartialRedrawArea(area)) {
@@ -757,13 +745,9 @@ void VertexPassHandle::recordFrameCapture(CommandBuffer &buf) {
 		return;
 	}
 
-	/* The layout the pass left the source in. RenderPass::perform has already written its output
-	barriers by the time this runs, so this is what the image is in right now.
-
-	Restoring it afterwards is not tidiness: the next frame's partial redraw begins its render pass
-	with initialLayout = PRESENT_SRC and loadOp = LOAD (see XLVkRenderPass.cc, Variant::Load), so a
-	presented image left in TRANSFER_SRC would make the next frame load from a layout the image is
-	not in. */
+	/* The layout the pass left the source in (its output barriers are already written). It must
+	be restored afterwards: the next partial redraw starts with initialLayout = PRESENT_SRC and
+	loadOp = LOAD (see XLVkRenderPass.cc, Variant::Load). */
 	const VkImageLayout sourceLayout = _captureSourcePresented
 			? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 			: VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -778,9 +762,8 @@ void VertexPassHandle::recordFrameCapture(CommandBuffer &buf) {
 	}
 
 	for (auto &it : _captureInput->regions) {
-		// UNDEFINED rather than the SHADER_READ_ONLY the target actually holds: the copy overwrites
-		// every pixel of it, so there is nothing to preserve. A target is written exactly once and
-		// nothing samples it before its capture completes, so there is no reader to race with.
+		// UNDEFINED rather than the SHADER_READ_ONLY the target holds: the copy overwrites every
+		// pixel, and nothing samples a target before its capture completes.
 		barriers.emplace_back(ImageMemoryBarrier(static_cast<Image *>(it.target.get()),
 				VkAccessFlags(0), VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL));
@@ -847,7 +830,8 @@ void VertexPassHandle::applyDynamicState(const FrameContextHandle2d *commands, C
 
 	auto currentExtent = getFramebuffer()->getExtent();
 	auto state = commands->getState(stateId);
-	//log::source().verbose("VertexPassHandle", (void *)this, " enable state: ", stateId, " ", (void *)state);
+	// log::source().verbose("VertexPassHandle", (void *)this, " enable state: ", stateId, " ",
+	// (void *)state);
 	if (!state) {
 		if (_dynamicState.isScissorEnabled()) {
 			_dynamicState.enabled &= ~(core::DynamicState::Scissor);

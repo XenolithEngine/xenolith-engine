@@ -27,12 +27,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
 
-/* The row's box in the SCROLL's own space, before any conversion.
-
-The chain, so that the two constants below are not magic: ScrollViewBase anchors its root at the
-top-left and puts it at `scrollPosition + scrollSize`; a row node inside that root sits at `-pos.y`
-with the same anchor. So the row's top edge is `scrollPosition + scrollSize - pos.y`, and the box
-grows downward from it. */
+/* The row's box in the scroll's own space. The root is anchored top-left at
+`scrollPosition + scrollSize` and a row sits at `-pos.y` in it, so the row's top edge is
+`scrollPosition + scrollSize - pos.y` and the box grows downward. */
 static bool RowGeometry_boxInScroll(const RowGeometrySource &source,
 		const basic2d::ScrollController::Item &item, Vec2 &low, Vec2 &high) {
 	auto root = source.scroll->getRoot();
@@ -47,8 +44,7 @@ static bool RowGeometry_boxInScroll(const RowGeometrySource &source,
 		return false;
 	}
 
-	// The width comes from the root, never from the item: an item's width is nan() until a node is
-	// built for it, and a row that was never built is precisely the case this exists for.
+	// The width comes from the root: an item's width is nan() until a node is built for it.
 	const float left = root->getPosition().x;
 	const float width = root->getContentSize().width;
 
@@ -68,8 +64,7 @@ static bool RowGeometry_offsetAt(const RowGeometrySource &source, const Vec2 &vi
 }
 
 static Rect RowGeometry_toViewSpace(const RowGeometrySource &source, Vec2 low, Vec2 high) {
-	// Through the world rather than by assuming the two share an origin: TableView pins its scroll
-	// at zero, TreeView never places it at all, and a third view need not do either.
+	// Converted through world space: the scroll and the view need not share an origin.
 	const Vec2 corners[4] = {
 		source.view->convertToNodeSpace(source.scroll->convertToWorldSpace(low)),
 		source.view->convertToNodeSpace(source.scroll->convertToWorldSpace(Vec2(high.x, low.y))),
@@ -128,8 +123,7 @@ size_t getRowIndexAt(const RowGeometrySource &source, const Vec2 &viewLocation) 
 		return maxOf<size_t>();
 	}
 
-	/* Binary search, not a walk: the items are ordered by pos.y because addItem stacks them, and a
-	drag asks this on every pointer move over a list that may be tens of thousands of rows long. */
+	// Binary search: items are ordered by pos.y, and a drag queries this on every pointer move.
 	size_t low = 0;
 	size_t high = items.size();
 	while (low < high) {
@@ -157,20 +151,19 @@ bool getRowBoundaryRect(const RowGeometrySource &source, size_t boundary, Rect &
 		return false;
 	}
 
-	// The boundary BELOW row `boundary`, or the bottom edge of the last row when it is one past
-	// the end. Expressed as a zero-height box first, then inflated, so the two cases share the
-	// conversion.
+	// The top edge of row `boundary`, or the bottom edge of the last row when one past the end,
+	// as a zero-height box that is inflated after conversion.
 	Vec2 low, high;
 	if (boundary < items.size()) {
 		if (!RowGeometry_boxInScroll(source, items.at(boundary), low, high)) {
 			return false;
 		}
-		low.y = high.y; // the boundary is this row's TOP edge
+		low.y = high.y; // the boundary is this row's top edge
 	} else {
 		if (!RowGeometry_boxInScroll(source, items.at(items.size() - 1), low, high)) {
 			return false;
 		}
-		high.y = low.y; // one past the end: the last row's BOTTOM edge
+		high.y = low.y; // one past the end: the last row's bottom edge
 	}
 
 	auto rect = RowGeometry_toViewSpace(source, low, high);
@@ -208,8 +201,7 @@ size_t getRowBoundaryAt(const RowGeometrySource &source, const Vec2 &viewLocatio
 			if (index == maxOf<size_t>()) {
 				return maxOf<size_t>();
 			}
-			// The half the pointer is in decides which side of the row it lands on. Anything else
-			// puts the line through the middle of a row.
+			// The half of the row the pointer is in decides which side it lands on.
 			auto &item = items.at(index);
 			boundary = (offset < item.pos.y + item.size.height / 2.0f) ? index : index + 1;
 		}

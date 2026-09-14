@@ -39,45 +39,17 @@ class TreeView;
 
 /* A scrolled view over a data::Model tree.
 
-What is on screen is a FLAT list of visible rows, not a tree of nodes: an open category's children
-follow it in the list, and only the rows that fit the viewport are ever materialized. A directory
-with ten thousand entries costs ten thousand small structs and as many nodes as fit on screen —
-whereas a node per entry, built up front, would cost a full subtree walk before the first frame.
+The view shows a flat list of visible rows (an open category's children follow it, in model order)
+and materializes only rows in the viewport. The view owns expansion state; the model owns data.
+A `Kind::Span` child stands for N rows read in slices, drawn as `loading` until they arrive.
+A category with a childs callback is populated on first expand. Everything runs on the app thread.
 
-The model is a plain data::Model and stays one: this widget owns the expand/collapse state, the
-Model owns the data. A category's display children are simply its `children`, IN ORDER — categories,
-items and spans interleaved however the owner arranged them. There is no rule here about branches
-coming before leaves, because the model does not have one.
+The row list is re-derived on every change, never spliced, so factory indices stay valid. Row nodes
+are reused by RowKey, and a selection change only updates classes. Rebuilds run at the start of the
+visit, so new rows are laid out on the frame they appear (Node::runPendingPhases).
 
-A row is one of two things. An explicit node's payload lives in the node, so there is nothing to
-fetch and nothing to wait for. A `Kind::Span` child stands for N rows that nobody stores; those are
-read in slices, drawn as `loading` until their slice lands, and are the reason a table of fifty
-thousand database rows still costs only the nodes on screen.
-
-A category with a childs callback is populated on its first expand. A model that can answer inline
-(a filesystem walk) does so before the first frame; one that answers later has its rows refreshed
-when the payload lands. Nothing here runs on a worker thread.
-
-The row list is re-derived on every change, never spliced: that is what keeps the index captured by
-a row's factory valid, and it is why collapsing a category no longer forgets which of its
-descendants were open.
-
-Re-deriving the list does NOT mean re-building the nodes. A row node records the RowKey it was made
-from and is handed to whichever index that row moved to, so opening a category rebuilds only the
-rows that are genuinely new; and a change that alters no row at all - moving the selection - never
-touches the controller, it flips a style class on the two nodes involved. And the rebuild itself runs
-at the start of the visit that will draw its result, so a row joins the tree while the frame is in
-flight and catches up on the visit's phases there and then (Node::runPendingPhases) - styled and
-laid out on the frame it appears rather than the one after. Together that is why a click on a row
-does not flicker.
-
-CSS: the widget is type "tree-view" and a row is type "tree-row" (both Panels, so both take the
-usual background-color / outline / border-radius - and note that a Panel with no fill declared is
-an opaque WHITE surface, so a row meant to show the tree's own background must say so). A row
-publishes its depth and the height the
-controller laid it out with as node-local custom properties — a rule reaches a SET of nodes and so
-cannot carry a per-row number — and the sheet does the arithmetic, so neither number is duplicated
-in C++:
+CSS: types "tree-view" and "tree-row" (Panels; an unstyled Panel is opaque white). A row publishes
+`--tree-depth` and `--tree-row-h`, and the sheet computes the indent:
 
   tree-view { background-color:#1e1e1e; }
   tree-row  { background-color: transparent;
@@ -93,17 +65,12 @@ in C++:
   .tree-label { flex-grow:1; font-size:13px; white-space:nowrap;
                 text-align:start; unicode-bidi:normal; }
 
-The indent is written LOGICALLY on purpose: it is what carries the hierarchy, and in a right-to-left
-window `padding-left` would have kept it on the left - correctly, per CSS - leaving the tree the one
-widget that did not turn round. The label's pair is the other half of the same point: it GROWS, so
-that trailing nodes reach the far edge, and `text-align:start` is what keeps the name against the
-row's own edge inside that grown box. `unicode-bidi:normal` opts the name out of a sheet-wide
-`plaintext`, which would otherwise derive the line's base direction from the name's own script and
-strand a Latin name at the wrong edge of a right-to-left row.
+Use logical properties (`padding-inline-start`, `text-align:start`) so the tree mirrors in
+right-to-left windows; `unicode-bidi:normal` keeps a sheet-wide `plaintext` from deriving the
+label's direction from its script.
 
 A row also carries `expanded` / `collapsed` / `leaf`, `loading` and `selected` style classes. */
-/* A tree view can hold the SCENE'S selection, not just one of its own - opt-in per instance, see
-setSelectionOwned(). */
+/* A tree view can hold the scene's selection, opt-in per instance; see setSelectionOwned(). */
 class SP_PUBLIC TreeView : public Panel, public SelectionOwner {
 public:
 	using Model = data::Model;
@@ -113,13 +80,8 @@ public:
 	class RowBuilder;
 	class RowNode;
 
-	/* One visible row. `node` + `offset` is the row's IDENTITY, and it is stable: an ItemId is
-	allocated once and never reused, so an insertion or a removal ANYWHERE cannot make a row's
-	identity mean a different element. That is what lets this widget carry payloads and expansion
-	across a rebuild — and why, unlike a Source-backed tree, it never has to throw them all away
-	when the data changes.
-
-	`offset` is meaningful only when `node` is a Span; every other row leaves it at zero. */
+	/* One visible row. `node` + `offset` is its stable identity (ItemIds are never reused), which
+	carries payloads and expansion across rebuilds. `offset` is used only for a Span. */
 	struct SP_PUBLIC Row {
 		Rc<ModelNode> node; // the element itself, or the SPAN a span row belongs to
 		uint64_t offset = 0; // index within the span
@@ -135,27 +97,20 @@ public:
 
 		ItemId getId() const { return node ? node->getId() : ItemId(0); }
 
-		// A span row shows what its slice delivered; anything else shows what the model holds, with
-		// no copy and nothing to keep in sync.
+		// A span row shows its slice data; other rows read the model directly.
 		const Value &getData() const {
 			return (node && !node->isSpan()) ? node->getData() : spanData;
 		}
 	};
 
-	/* Everything a standard row node was built from.
-
-	Two rows with the same key are the same row showing the same thing, so the node made for one
-	can be handed to the other instead of being destroyed and built again. That is what keeps an
-	expand or a collapse from redrawing the rows it did not touch: they keep their nodes, and only
-	their index moves. Presentation that can change WITHOUT changing the row - the selection - is
-	deliberately not part of the key; it is re-applied on the node it moves between (see
-	updateRowNode). */
+	/* Everything a standard row node was built from; rows with equal keys can share a node, so an
+	expand or collapse keeps untouched rows' nodes. The selection is not in the key; it is applied
+	by updateRowNode. */
 	struct SP_PUBLIC RowKey {
 		Rc<ModelNode> node;
 		uint64_t offset = 0;
 		uint32_t depth = 0;
-		// In the key, so editing ONE row's payload rebuilds ONE row's node. A Source-backed tree had
-		// to force a full rebuild for this, because an index cannot tell that its contents changed.
+		// So editing one row's payload rebuilds only that row's node.
 		uint32_t revision = 0;
 		float height = 0.0f;
 		bool expanded = false;
@@ -168,29 +123,13 @@ public:
 		}
 	};
 
-	/* Where a drop into this tree would land, resolved from one point.
+	/* Where a drop into this tree would land. A leaf row splits in halves (before/after). A
+	category row has a CategoryDropBand at each end for before/after and a wide middle for into.
 
-	THE ZONES ARE NOT THE SAME ON EVERY ROW, and that is the whole of this type.
-
-	A LEAF is a POSITION and nothing else: its upper half means "before this element", its lower
-	half "after it", so both insertion points around it are reachable without aiming at the hairline
-	between two rows.
-
-	A CATEGORY is both - it is somewhere to go INTO and something to stand beside - so its row is
-	split three ways, by CategoryDropBand: a thin band at each end means "before it" / "after it",
-	and the wide middle means "into it". The middle is deliberately the large share. Even thirds
-	would make "into this folder" as easy to miss as to hit, and it is the answer a drag over a
-	folder almost always wants; the two edge bands only have to be reachable, which is why one
-	fifth of the row is enough for each.
-
-	`parent` and `index` are the answer in MODEL terms, ready for data::Model::moveNode or
-	emplaceItem(): `index` is maxOf<size_t>() for an append. `row` is the row the pointer was over,
-	kept because the feedback is drawn against it, and maxOf<size_t>() when the point was in the
-	empty space below the last row - which answers for the root, and is what makes an EMPTY tree a
-	place to drop at all.
-
-	Geometry and the model decide it and nothing else: getDropPositionAt() answers the same with no
-	drag in flight, which is what lets a test drive the zone rule directly. */
+	`parent` and `index` are in model terms for data::Model::moveNode or emplaceItem(); `index` is
+	maxOf<size_t>() for an append. `row` is the row under the pointer, or maxOf<size_t>() for the
+	empty space below the last row, which targets the root. Depends only on geometry and the model,
+	so it works without a drag in flight. */
 	struct SP_PUBLIC DropPosition {
 		enum class Kind {
 			None, // nowhere: there is no model at all
@@ -202,8 +141,7 @@ public:
 		Kind kind = Kind::None;
 		size_t row = maxOf<size_t>();
 
-		// Rc, not a raw pointer: a position outlives the event it was resolved from - the dwell
-		// below holds one across a rebuild - and a category can be taken out of the model meanwhile.
+		// Rc: a position can outlive its event and a rebuild, while the category may be removed.
 		Rc<ModelNode> parent;
 		size_t index = maxOf<size_t>();
 
@@ -215,18 +153,12 @@ public:
 		}
 	};
 
-	/* The seam between a tree and whatever may be dropped into it.
+	/* Caller hooks for dropping. The view resolves positions, draws feedback and opens categories
+	under a dwell; the caller decides acceptance and applies the drop.
 
-	The view answers WHERE a drop would land, draws the feedback for it and opens the categories the
-	drag rests on; the caller answers WHETHER this payload may land there and what to do when it
-	does. Neither half knows the other's business, which is why the zone rule, the insertion line
-	and the dwell can live in the widget for every caller instead of each one growing its own.
-
-	`accept` is a PREDICATE and must be pure. It is called during hit testing, for positions the drag
-	may never come to rest on and possibly several times in one frame. Answer with the subset of
-	`event.allowed` acceptable AT `pos`, or DragActions::None for "not here" - which lets the drag
-	fall through to whatever is drawn under this view. There is nothing for a caller to draw: all
-	feedback is the view's. */
+	`accept` must be pure: it runs during hit testing, possibly several times a frame. Return the
+	subset of `event.allowed` acceptable at `pos`, or DragActions::None to let the drag fall
+	through to what is under this view. */
 	struct SP_PUBLIC DropSlots {
 		Function<DragActions(const DragEvent &, const DropPosition &)> accept;
 
@@ -257,34 +189,27 @@ public:
 	size_t getRowCount() const { return _rows.size(); }
 	const Row *getRow(size_t) const;
 
-	// Expansion is keyed by ItemId, so collapsing and re-expanding a category restores the subtree
-	// that was open under it — and, unlike a key held by pointer, it also survives the category
-	// being reloaded. The model is updated immediately; the nodes follow on the next frame.
+	// Expansion is keyed by ItemId, so re-expanding or reloading a category restores its open
+	// subtree. Rows update immediately; the nodes follow on the next frame.
 	virtual bool expandRow(size_t);
 	virtual bool collapseRow(size_t);
 	virtual bool toggleRow(size_t);
 
 	bool isRowExpanded(size_t) const;
 
-	/* Move the element a row stands for. A convenience over Model::moveNode for callers that think
-	in row indices; the MODEL is what decides whether the move is allowed and what it means outside
-	the process, so a refusal here is the model's, not the view's.
-
-	Refused for a span row: the items inside a span are not elements, they are a length. */
+	// Move the element a row stands for, via Model::moveNode (the model may refuse). Refused for
+	// a span row.
 	virtual bool moveRow(size_t index, ModelNode *dstParent, size_t childIndex);
 
-	// false: collapsing forgets the subtree's expansion AND drops its lazily loaded children.
+	// false: collapsing forgets the subtree's expansion and drops its lazily loaded children.
 	virtual void setKeepExpandedState(bool);
 	bool isKeepExpandedState() const { return _keepExpanded; }
 
 	virtual void setRowCallback(RowFunction &&);
 
-	// A row's height is resolved during the geometry pass, BEFORE the row node exists — that is the
-	// only moment the ScrollController can be told a size, and it is what lets the controller place
-	// the scrollbar and build only the rows in view. So the height cannot be measured from the node
-	// and cannot come from the RowBuilder; this callback is the channel. It runs for every row on
-	// every rebuild, so keep it cheap and free of side effects, and answer for a row whose payload
-	// has not arrived yet (`dataLoaded == false`) rather than assume one.
+	// Row height, needed by the ScrollController before the node exists. Runs for every row on
+	// every rebuild: keep it cheap and side-effect free, and handle rows whose payload has not
+	// arrived (`dataLoaded == false`).
 	virtual void setRowHeightCallback(RowHeightFunction &&);
 
 	// The height of every row the callback does not resize, and the value it falls back to.
@@ -296,8 +221,8 @@ public:
 	virtual void setLabelKey(StringView);
 	StringView getLabelKey() const { return _labelKey; }
 
-	// Selection is off until one of these is set: only then does a row get an input listener at all,
-	// and only then can `.tree-row:hover` / `.tree-row.selected` match.
+	// Selection is off until one of these is set; only then do rows get an input listener and can
+	// match `.tree-row:hover` / `.tree-row.selected`.
 	virtual void setSelectCallback(RowEventFunction &&);
 	virtual void setActivateCallback(RowEventFunction &&);
 	virtual void setSelectionEnabled(bool);
@@ -306,16 +231,9 @@ public:
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
 	size_t getSelectedRow() const { return _selectedRow; }
 
-	/* Join the SCENE-WIDE selection: this view's selected row becomes the one thing the scene
-	considers current, its rows match `:selected`, the view itself matches `:selection-within`, and
-	hotkeys are offered to the row and then to this view before anything else (see
-	SelectionSystem, XLSelectionSystem.h).
-
-	OPT-IN, and it has to be. A TreeView is also what ui::SearchPicker and ui::Select put inside a
-	popup, and those drive setSelectedRow() on lists of their own. If every view joined on
-	construction, opening a picker would take the scene's selection away from whatever the user was
-	actually working on and never give it back. So a private list keeps the private index it has
-	always had, and an application says which view is the real one. */
+	/* Join the scene-wide selection (SelectionSystem): rows match `:selected`, the view matches
+	`:selection-within`, and hotkeys go to the row, then this view, first. Opt-in, because popup
+	lists (ui::SearchPicker, ui::Select) must not take the scene's selection. */
 	virtual void setSelectionOwned(bool);
 	bool isSelectionOwned() const { return _selectionOwned; }
 
@@ -328,77 +246,39 @@ public:
 
 	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
 
-	// Re-derive the rows and re-request their data. Only the ROOT Source is watched through a
-	// DataListener — Source has no parent links, so a subcategory's setDirty() does not reach it —
-	// so call this after mutating a subcategory from outside.
+	// Re-derive the rows and re-request their data.
 	virtual void invalidateSource();
 
-	// Rebuild the row NODES at the start of this widget's next visit. Coalesced, and deferred on
-	// purpose: the rebuild can destroy the row node it is reached from - a tap on an expander
-	// living in one of them - and a node attached while a frame is in flight is styled and laid
-	// out on that frame rather than the next (see Node::runPendingPhases).
-	//
-	// A row whose RowKey is unchanged keeps the node it already has, so the rebuild only builds
-	// what is genuinely new. Pass `force` when something OUTSIDE the row decided how the row looks
-	// and changed - a new row callback, a new label key - because the key cannot see that.
+	// Rebuild the row nodes at the start of the next visit. Coalesced and deferred: the rebuild can
+	// destroy the node it is reached from, and nodes attached mid-frame are laid out on that frame.
+	// Rows with an unchanged RowKey keep their nodes; pass `force` when something outside the key
+	// (row callback, label key) changed.
 	virtual void requestRebuildNodes(bool force = false);
 
-	/* The same request, with an ANSWER: `cb` runs once the row nodes are current again.
-
-	It runs at the END of that rebuild, from inside the visit that performed it - and that is the
-	first moment a new row can be MEASURED, not merely the first moment it exists. A node attached
-	while a frame is in flight catches up on the phases the pass has already gone by, as it is
-	attached (Node::runPendingPhases), so every row this rebuild built is styled, sized and placed
-	by the time the rebuild returns. Anything later - a scheduled tick, a visit-end callback - is
-	asking after the answer was already there, and has to guess how long to wait for it.
-
-	One-shot, and coalesced into whatever rebuild is already pending: several callers asking in one
-	turn are all answered by the one rebuild, in the order they asked. A callback that asks again is
-	answered by the NEXT rebuild and never re-entrantly by this one.
-
-	What it may NOT assume is that the row it cares about has a node. A rebuild builds the rows
-	inside the scroll window and no others, so "the answer is ready" and "the row is on screen" are
-	different facts - the second is getRowNode()'s to give. */
+	/* The same, with `cb` run once at the end of that rebuild, inside the visit, when new rows are
+	already styled and laid out (Node::runPendingPhases). Callbacks coalesce and run in order; one
+	that asks again is served by the next rebuild. Only rows in the scroll window get nodes. */
 	virtual void requestRebuildNodes(Function<void()> &&cb, bool force = false);
 
 	basic2d::ScrollView *getScroll() const { return _scroll; }
 	basic2d::ScrollController *getController() const { return _controller; }
 
-	/* Where a row LIES, in this node's coordinate space - see ui::RowGeometrySource.
-
-	The same answer TableView gives, from the same shared arithmetic: a row that scrolled out of
-	sight still has a rectangle, because only its node was virtualized. What an inline editor
-	placed over a row of the explorer needs, and what it cannot compute from outside.
-
-	There is no getCellRect here: a tree row is not divided into columns. */
+	// A row's rectangle in this node's space (ui::RowGeometrySource), also for rows without a node.
 	bool getRowRect(size_t index, Rect &out) const;
 
-	/* The same rectangle, with its LEFT edge moved to where the row's content starts.
-
-	A row is an indent, an expander slot, an icon and then the label; an editor opened over the
-	whole row starts its text at the view's edge, several columns left of the name it is replacing.
-	This is what puts it exactly over the text instead. The vertical extent stays the ROW's - the
-	label's own box is a line of text inside a taller row, and an editor that height would be a slot
-	rather than a row being edited.
-
-	Only a materialized row can answer, because where the content starts is decided by the sheet
-	(the indent is a padding computed from --tree-depth) and is not derivable from the model. For a
-	row that scrolled out of the window this falls back to getRowRect, which always answers. */
+	/* The row rectangle with its left edge at the content node (after indent, expander and icon),
+	e.g. for an inline editor. Needs a materialized row, since the indent comes from the sheet;
+	otherwise falls back to getRowRect. */
 	bool getRowContentRect(size_t index, Rect &out) const;
 
 	size_t getRowIndexAt(const Vec2 &nodeLocation) const;
 
 	/* --- dropping into the tree ---------------------------------------------------------------
 
-	ONE drop target, ON THE VIEW, never one per row. Not an optimization: a row that scrolled out of
-	sight is no longer a node, while the geometry still answers for it, so a per-row target can only
-	ever cover the handful of rows that happen to be materialized - and the empty space below the
-	last row, which is the only way to reach the root of a tree, has no row to carry one. The view
-	resolves the row from the pointer instead (getDropPositionAt), and both cases fall out of the
-	same arithmetic. */
+	One drop target on the view, not per row: rows are virtualized and the empty space below the
+	last row (the root) has no row. The row is resolved from the pointer (getDropPositionAt). */
 
-	// The share of a CATEGORY's row, at each end, that means "beside it" rather than "into it". A
-	// leaf has no such band - its two halves are its only two answers.
+	// The share of a category's row, at each end, that means "beside it" rather than "into it".
 	static constexpr float CategoryDropBand = 0.2f;
 
 	virtual void setDropSlots(DropSlots &&); // also enables dropping
@@ -407,44 +287,26 @@ public:
 	virtual void setDropEnabled(bool);
 	bool isDropEnabled() const { return _dropEnabled; }
 
-	/* How long a drag has to rest on a COLLAPSED category before the view opens it. Zero opens
-	none.
-
-	The dwell is NOT restarted by movement, unlike a tooltip's: it measures how long the drag has
-	been over THIS category, so a pointer creeping across a folder still opens it, and only moving
-	off the folder cancels it. It is an Action rather than a looper timer, because a running action
-	keeps the frame loop awake and so the delay actually elapses in an app that renders on demand. */
+	/* How long a drag has to rest on a collapsed category before the view opens it; zero disables.
+	Movement within the category does not restart the dwell; leaving it cancels. Runs as an
+	Action, which keeps the frame loop awake in on-demand rendering. */
 	virtual void setDropExpandDelay(TimeInterval);
 	TimeInterval getDropExpandDelay() const { return _dropExpandDelay; }
 
 	// Where a drop would land for a point in this node's space.
 	DropPosition getDropPositionAt(const Vec2 &nodeLocation) const;
 
-	/* The position row `index` answers for, `offset` saying how far DOWN the row the pointer is: 0
-	at its top edge, 1 at its bottom. maxOf<size_t>() asks for the empty space below the last row.
-
-	A float rather than a side, because a category has three answers and a leaf two, and the number
-	is what both are read out of - see DropPosition and CategoryDropBand. */
+	/* The position for row `index`, with `offset` 0 at the row's top edge and 1 at its bottom.
+	maxOf<size_t>() asks for the empty space below the last row. See DropPosition. */
 	DropPosition getDropPositionForRow(size_t index, float offset) const;
 
-	/* The rectangle the feedback for `pos` occupies, in this node's space: the row's own box for
-	Into, a thin bar on the boundary for Before/After. False when there is nothing to draw, the
-	empty space below the last row having no rectangle of its own.
-
-	Both are cut back on the left to the ANCHOR row's indent, so the indicator sits at the level the
-	element would land at. That is not decoration: "after this row" and "after its parent" are the
-	same horizontal line drawn across a tree, and the indent is the only thing that tells them
-	apart. */
+	/* The feedback rectangle for `pos` in this node's space: the row box for Into, a thin bar for
+	Before/After, both starting at the anchor row's indent so nesting levels are distinguishable.
+	False when there is nothing to draw. */
 	bool getDropPositionRect(const DropPosition &, Rect &out) const;
 
-	/* Where row `index` begins its own content, in this node's space - its indent.
-
-	Read back off the laid-out row rather than computed: TreeView writes `--tree-depth` onto the row
-	and a SHEET turns it into a padding, so the pixel indent never exists in C++ (see makeRow). What
-	does exist, once the row has been laid out, is where its children actually start.
-
-	nan() for a row that has no node - one scrolled out of the window. Nothing here needs an answer
-	for one, since the only row this is asked about is the row under the pointer. */
+	/* Where row `index` begins its content (its indent), read from the laid-out row since the sheet
+	computes the padding. nan() for a row without a node. */
 	float getRowIndentX(size_t index) const;
 
 	// What the view is showing feedback for right now; Kind::None while no drag is over it.
@@ -455,15 +317,12 @@ protected:
 
 	virtual void handleSourceDirty(SubscriptionFlags);
 
-	// Mark every SPAN row's payload stale, so the next model pass re-asks for it. Explicit nodes are
-	// deliberately not touched: their payload lives in the model, so there is nothing here that
-	// could be out of date with it. This is the whole of what a Source-backed tree had to do
-	// wholesale, and the reason it had to is gone — an ItemId cannot come to mean another element.
+	// Mark every span row's payload stale, so the next model pass re-asks for it. Explicit nodes
+	// read their payload from the model.
 	void dropSpanData();
 
-	// Re-derive the model, ask for what it still needs, and schedule the nodes. The data request
-	// runs BEFORE any node exists, so a model that answers inline has every payload in place by
-	// the time the first row is built and no placeholder frame is ever drawn.
+	// Re-derive the model, request missing data, and schedule the nodes. Data is requested before
+	// any node exists, so an inline model needs no placeholder frame.
 	virtual void refresh();
 
 	// Model passes. Both are synchronous and touch no scene node, so they are safe to run from
@@ -481,25 +340,12 @@ protected:
 	// requestRebuildNodes(). Rows whose RowKey survived keep their nodes.
 	virtual void rebuildRows();
 
-	/* Put _selectedRow back on the row it was on, by IDENTITY, after _rows has been re-derived.
-
-	The index alone does not survive a rebuild and never did: expanding a category above the
-	selected row shifts every row below it, so the same number now names a different element and
-	the highlight silently moves. Nothing about that is visible in a layout dump - the selection is
-	still "row 7", it is simply the wrong row 7.
-
-	The identity is what is stored (see _selectedId); the index is a PROJECTION of it, recomputed
-	here. A selection whose row is gone from the model entirely - its category collapsed, its
-	element deleted - is dropped rather than moved to a neighbour. */
+	/* Recompute _selectedRow from _selectedId after _rows is re-derived, since indices shift on
+	expand/collapse. If no row shows the identity, the index becomes maxOf<size_t>(). */
 	void remapSelection();
 
-	/* Move the selection to an IDENTITY rather than to an index - the single mutator both
-	setSelectedRow() and handleSelectionChanged() go through, so the two cannot drift.
-
-	An identity that is not currently a row (its category is collapsed) is still REMEMBERED: the
-	index becomes maxOf, and re-expanding the category brings the selection back. That is the
-	difference between "not on screen" and "not selected", and only the identity can tell them
-	apart. */
+	/* Select by identity; the single mutator for setSelectedRow() and handleSelectionChanged().
+	An identity with no current row (collapsed parent) is kept, so re-expanding restores it. */
 	void setSelectedIdentity(ItemId, uint64_t offset);
 
 	// Hand the current selection to the scene's SelectionSystem. No-op unless owned
@@ -511,16 +357,12 @@ protected:
 	virtual Rc<Node> makeRow(size_t index);
 	virtual Rc<Node> buildRowNode(RowBuilder &);
 
-	// The live node of a materialized row; null when the row is outside the scroll window - and
-	// then there is nothing to update, because the row is built with the current state when it
-	// scrolls in.
 	RowGeometrySource makeGeometrySource() const;
 
+	// The live node of a materialized row; null when the row is outside the scroll window.
 	RowNode *getRowNode(size_t index) const;
 
-	// Re-apply the presentation a row node can change WITHOUT becoming a different row, on the node
-	// it already has. Only the selection qualifies today: everything else is in the RowKey and
-	// therefore rebuilds the node.
+	// Re-apply presentation outside the RowKey (the selection) on an existing row node.
 	virtual void updateRowNode(RowNode *, size_t index);
 
 	// Claim a node carried over the current rebuild for row `index`, or null when none matches.
@@ -533,8 +375,7 @@ protected:
 	// Drop the expansion of everything under `cat` and release the children it loaded lazily.
 	void forgetSubtree(ModelNode *cat);
 
-	// The dwell that opens a collapsed category under a drag, tracked by TAG on this node: "is one
-	// running?" is then always a question for the node, and a finished one leaves nothing stale.
+	// Action tag of the dwell that opens a collapsed category under a drag.
 	static constexpr uint32_t DropExpandActionTag = "XLUiTreeDropExpand"_tag;
 	static constexpr float InsertionLineThickness = 2.0f;
 
@@ -560,29 +401,20 @@ protected:
 
 	Vector<Row> _rows;
 
-	/* WHAT IS SELECTED, as opposed to where it currently sits. `_selectedRow` is derived from this
-	on every rebuild; this is the thing that is actually true across one.
-
-	Both halves are needed: a Span node stands for many rows that share its ItemId and differ only
-	by offset, so the id alone could not tell the third element of a span from the fourth. */
+	// The selected identity; `_selectedRow` is derived from it on every rebuild. The offset
+	// distinguishes rows of one span, which share an ItemId.
 	ItemId _selectedId = ItemId(0);
 	uint64_t _selectedOffset = 0;
 
 	bool _selectionOwned = false;
 
-	// Set while this view is applying a change that CAME FROM the system, so publishSelection()
-	// does not hand the system back what it just said. The equality checks would stop the cycle
-	// anyway; this stops it from starting
+	// Set while applying a change that came from the system, so publishSelection() does not echo it
 	bool _applyingSelection = false;
 
-	// By id rather than by node pointer: a category that is collapsed, dropped and lazily reloaded
-	// comes back as a different object but the same element, and the subtree that was open under it
-	// should still be open.
+	// By id, so a reloaded category keeps its open subtree.
 	Set<ItemId> _expanded;
 
-	// Row nodes carried across the rebuild that is running right now, waiting for makeRow() to
-	// claim them. Empty at every other moment: whatever is left when the pass ends belonged to a
-	// row that is gone or that now looks different, and is released with the vector.
+	// Row nodes carried across the running rebuild for makeRow() to claim; empty otherwise.
 	Vector<Rc<RowNode>> _reusableRows;
 
 	RowFunction _rowCallback;
@@ -594,9 +426,8 @@ protected:
 	float _rowHeight = 26.0f;
 	size_t _selectedRow = maxOf<size_t>();
 
-	// Non-zero while expandRow() is asking a category for its children: a source that answers
-	// inline completes before the call returns, and its refresh is covered by the one expandRow()
-	// makes afterwards.
+	// Non-zero while expandRow() requests children; an inline answer's refresh is left to
+	// expandRow().
 	uint32_t _deferRefresh = 0;
 
 	bool _rootVisible = false;
@@ -605,25 +436,21 @@ protected:
 	bool _rebuildPending = false;
 	bool _inDataRequest = false;
 
-	// The pending rebuild must build every row from scratch: something the RowKey cannot see - the
-	// row callback itself - decides how a row looks, and it changed.
+	// The pending rebuild ignores RowKey reuse (something outside the key changed).
 	bool _forceRebuild = false;
 
-	// Who asked to be told when the nodes are next current. Taken off the list before they run, so
-	// one that asks again is served by the following rebuild.
+	// Callbacks for the next rebuild; taken off the list before they run.
 	Vector<Function<void()>> _rebuildCallbacks;
 
 	// --- dropping into the tree ---
-	// The target is a component on this node now, so there is nothing to hold - only whether it is
-	// currently declared
+	// Whether the drop target component is currently declared on this node
 	bool _hasDropTarget = false;
 	DropSlots _dropSlots;
 	DropPosition _dropPosition; // what the feedback on screen is showing
 	basic2d::Layer *_insertionLine = nullptr;
 	basic2d::Layer *_dropHighlight = nullptr;
 
-	// The category the dwell is running for. Held by Rc rather than by row index, because the row
-	// list can be re-derived while the dwell runs and the index would then name something else.
+	// The category the dwell is running for; by Rc, since rows can be re-derived meanwhile.
 	Rc<ModelNode> _dropExpandCandidate;
 	TimeInterval _dropExpandDelay = TimeInterval::milliseconds(500);
 	bool _dropEnabled = false;
@@ -633,9 +460,8 @@ protected:
 // yields the standard row — an expander when the row has children, no icon, and a label reading
 // data[labelKey].
 //
-// There is deliberately no height setter here. The height is consumed one pass earlier than this
-// runs: rebuildRows() must hand ScrollController::addItem a size before it will ever call the
-// factory. Use TreeView::setRowHeightCallback().
+// No height setter: the height is resolved before the row is built. Use
+// TreeView::setRowHeightCallback().
 class SP_PUBLIC TreeView::RowBuilder {
 public:
 	TreeView *getView() const { return _view; }
@@ -649,9 +475,7 @@ public:
 	bool isLoaded() const { return _row->dataLoaded; } // false: the payload has not arrived yet
 	bool isSelected() const;
 
-	// The element behind the row, and the external object it stands for — this is how a row callback
-	// reaches the file, record or component the row is about, instead of re-deriving it from the
-	// Value. Null for a row of a view with no model.
+	// The element behind the row and its external object. Null for a view with no model.
 	ModelNode *getNode() const { return _row->node; }
 	Ref *getObject() const { return _row->node ? _row->node->getObject() : nullptr; }
 
@@ -706,23 +530,19 @@ public:
 
 	size_t getRowIndex() const { return _index; }
 
-	// A rebuild moves a surviving row to a new index, and the index is what the expander and the
-	// tap route through - so it is stored here rather than captured, and re-stamped on reuse.
+	// Stored rather than captured: a rebuild moves a reused row to a new index.
 	void setRowIndex(size_t index) { _index = index; }
 
 	const RowKey &getRowKey() const { return _key; }
 	void setRowKey(RowKey &&key) { _key = sp::move(key); }
 
-	// The node in the CONTENT slot - the label, or whatever a row callback put in its place. What
-	// an inline editor is placed over; see TreeView::getRowContentRect.
+	// The node in the content slot (the label or a replacement); see
+	// TreeView::getRowContentRect.
 	Node *getContentNode() const { return _content; }
 	void setContentNode(Node *node) { _content = node; }
 
-	// The node occupying the expander slot, when it is one that handles its own taps. A tap inside
-	// it is the expander's alone: the row does not also select on it. Nothing else could arbitrate
-	// this - the row's listener and the expander's are two independent listeners over overlapping
-	// areas, and a plain ui::Button does not swallow the touch (it must not: a button inside a
-	// ScrollView would then eat the swipe that scrolls it).
+	// The expander node, when it handles its own taps; the row does not select on a tap inside it.
+	// Needed because ui::Button does not swallow the touch (it must not block scroll swipes).
 	void setExpanderNode(Node *node) { _expander = node; }
 
 protected:

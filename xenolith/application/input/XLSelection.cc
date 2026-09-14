@@ -50,8 +50,7 @@ void buildSelectionChain(Node *anchor, Vector<Rc<Node>> &out) {
 static void retainSelectionWithin(Node *node) {
 	node->setOrUpdateComponent<SelectionComponent>([](NotNull<SelectionComponent> c) {
 		++c->withinCounter;
-		// Only the first one changes what a selector sees; the rest must not re-dirty the node, or
-		// a selection moving between two rows would restyle everything above them.
+		// Only the first retain changes what a selector sees, so only it dirties the node.
 		return c->withinCounter == 1;
 	});
 }
@@ -63,26 +62,21 @@ static void releaseSelectionWithin(Node *node) {
 	}
 
 	if (c->withinCounter <= 1 && !c->selected) {
-		// Presence is the state, so the last release takes the component away rather than leaving a
-		// zero behind for a matcher to read. NOT when the node is itself selected: that bit is the
-		// other half of this component and outlives the chain.
+		// Presence is the state: the last release removes the component, unless the node is
+		// itself selected.
 		node->removeComponent<SelectionComponent>();
 	} else {
 		node->updateComponent<SelectionComponent>([](NotNull<SelectionComponent> c) {
 			const auto before = c->withinCounter;
 			--c->withinCounter;
-			// Re-style only when the ANSWER changes, which for the counter is the 1 -> 0 edge. A
-			// node kept alive by `selected` still stops matching `:selection-within` there, so that
-			// edge has to dirty even though the component stays.
+			// The 1 -> 0 edge changes `:selection-within` even when `selected` keeps the component.
 			return before == 1;
 		});
 	}
 }
 
 void updateSelectionChain(SpanView<Rc<Node>> from, SpanView<Rc<Node>> to) {
-	// Retain BEFORE release: a shared ancestor of the two chains goes 1 -> 2 -> 1 and never loses
-	// the component, so neither it nor anything under it is restyled for a move that did not leave
-	// it. The same order, and the same reason, as updateFocusWithinChain.
+	// Retain before release, so a shared ancestor is not restyled (as in updateFocusWithinChain).
 	for (auto &node : to) { retainSelectionWithin(node); }
 	for (auto &node : from) { releaseSelectionWithin(node); }
 }
@@ -108,8 +102,7 @@ void setNodeSelected(Node *node, bool value) {
 		return;
 	}
 	if (c->withinCounter <= 0) {
-		// Nothing else is holding the component up - the chain was released first, or this node
-		// never had one. Take it away rather than leave a false behind for a matcher to read.
+		// No chain holds the component: remove it rather than leave `false` behind.
 		node->removeComponent<SelectionComponent>();
 		return;
 	}

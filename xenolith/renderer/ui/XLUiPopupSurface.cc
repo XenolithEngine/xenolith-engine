@@ -34,9 +34,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The stylesheet in force for `node`, for a native surface's own scene to share - see
-// PopupSurfaceConfig::styleSource. Nearest wins, and the node itself counts: putting the
-// ui::StyleSystem on the SceneContent is as ordinary as putting it on the layout.
+// The stylesheet in force for `node` (see PopupSurfaceConfig::styleSource). Nearest wins, and the
+// node itself counts.
 static Rc<StyleSheet> PopupSurface_sheetForNode(Node *node) {
 	for (auto n = node; n; n = n->getParent()) {
 		if (auto system = n->getSystemByType<StyleSystem>()) {
@@ -54,16 +53,11 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 	auto scene = director ? director->getScene() : nullptr;
 	auto parentContent = scene ? scene->getContent() : nullptr;
 
-	// The overlay path places the panel from the parent's height, and it is read HERE rather than
-	// in the builder: on the native path the builder runs in another scene entirely.
+	// Read here: on the native path the builder runs in another scene.
 	const float parentHeight = parentContent ? parentContent->getContentSize().height : 0.0f;
 
-	/* (1). Resolved HERE for the same reason: `styleSource` is a live node in THIS scene and the
-	builder runs later, in the popup's. What crosses over is the parsed sheet, shared rather than
-	re-read - so a dropdown costs no second parse of the application's CSS.
-
-	Skipped when a sheet was named: a caller that said what the surface should look like has said
-	it, and inheriting underneath would only make `:root` resolve somewhere else. */
+	/* Resolved here for the same reason: `styleSource` lives in this scene. The parsed sheet is
+	shared, not re-read. Skipped when a sheet was named, so `:root` stays on the surface's own. */
 	Rc<StyleSheet> inheritedSheet;
 	if (config.stylesheet.empty() && config.stylesheetSource.empty()) {
 		Node *source = config.styleSource;
@@ -78,9 +72,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 		inheritedSheet = PopupSurface_sheetForNode(source);
 	}
 
-	// Dropped before the builder below copies the config: the node has served its purpose, and a
-	// raw pointer that survives into a lambda which may not run until the popup's scene exists is
-	// exactly the dangling one the field's documentation promises never to keep.
+	// Cleared before the builder copies the config, so no raw pointer outlives this call.
 	config.styleSource = nullptr;
 
 	SubWindow::Config surfaceConfig;
@@ -97,10 +89,8 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 		surfaceConfig.onClose = [cb = config.onClose](NotNull<SubWindow>) { cb(); };
 	}
 
-	/* Captured BY COPY, not moved: on the native path this does not run until the popup's scene
-	exists, by which time whatever opened the surface may be gone - and SubWindow::Config holds its
-	title and id prefix as non-owning StringViews into the config above, which a move would leave
-	pointing at nothing before openPopup ever reads them. */
+	/* Captured by copy, not moved: on the native path this runs after the opener may be gone, and
+	SubWindow::Config holds title and id prefix as StringViews into the config above. */
 	surfaceConfig.content =
 			[config = config, parentHeight, inheritedSheet](
 					NotNull<SubWindow> surface) mutable -> Rc<basic2d::SceneLayout2d> {
@@ -125,14 +115,9 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			}
 			layout->addSystem(Rc<StyleResolver>::create(true));
 		} else if (native && inheritedSheet) {
-			/* Nothing was named, so the surface inherits - the very sheet that styles whatever
-			opened it, the object itself rather than another parse of the same CSS. Native only: on
-			the overlay path the layout is already inside that sheet's scope, and a second system
-			would just move `:root` down here for no reason.
-
-			A live reload is not followed. ui::StyleSystem answers a changed file by building a NEW
-			sheet, and this surface keeps the one it opened with - which for something that lives
-			for as long as a dropdown is up is the right amount of machinery. */
+			/* Nothing was named: share the opener's sheet object. Native only; the overlay layout
+			is already in that sheet's scope. A live reload is not followed: ui::StyleSystem builds
+			a new sheet, and the surface keeps the one it opened with. */
 			layout->addSystem(Rc<StyleSystem>::create(Rc<StyleSheet>(inheritedSheet)));
 			layout->addSystem(Rc<StyleResolver>::create(true));
 		}
@@ -145,8 +130,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			return layout;
 		}
 
-		// The surface remembers what it was built around, so a caller that asked for a typed panel
-		// can have it back without guessing at this structure. See SubWindow::getPanel.
+		// Lets a caller get its typed panel back (see SubWindow::getPanel).
 		surface->_panel = panel;
 
 		if (!config.panelName.empty()) {
@@ -155,31 +139,23 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 		if (!config.panelType.empty()) {
 			panel->setType(config.panelType);
 
-			/* A type of its own needs the surface appliers registered UNDER that name.
-
-			The type is what a stylesheet addresses (`menu { … }`), and with nothing registered for
-			it the resolver reads the declarations and finds nobody to consume them: the fill keeps
-			the fallback and `background-color` lands on the node's TINT instead, which then
-			multiplies the fallback rather than replacing it. That is a menu asked to be #2b3038
-			and drawn almost black. Idempotent, and a panel class that already registered richer
-			appliers for this type keeps them. */
+			// A custom type needs the surface appliers registered under that name, or
+			// `background-color` lands on the node's tint and multiplies the fallback. Idempotent;
+			// richer appliers already registered for the type are kept.
 			Panel::registerStyleAppliers(config.panelType);
 		}
 		if (!config.panelClass.empty()) {
 			panel->addStyleClass(config.panelClass);
 		}
 
-		/* A SceneLayout2d paints nothing, so the surface IS this panel. It keeps the DEFAULT
-		rendering level: on the overlay path SubWindow::openOverlay lifts the whole layout onto
-		RenderingLevel::Overlay, which is a pass of its own drawn after everything, and on the
-		native path there is nothing behind the panel to be resolved against. */
+		// A SceneLayout2d paints nothing, so the panel is the surface. Default rendering level: the
+		// overlay path already lifts the layout onto RenderingLevel::Overlay.
 		panel->setPathColor(config.fallbackColor, false);
 		panel->setAnchorPoint(Anchor::TopLeft);
 		panel->setContentSize(Size2(float(size.width), float(size.height)));
 
 		if (native) {
-			// The surface IS the panel: it fills whatever extent the window system settled on,
-			// which is not necessarily the one that was asked for.
+			// Fill the extent the window system settled on, which may differ from the request.
 			panel->setPosition(Vec2(0.0f, float(size.height)));
 			layout->setContentSizeDirtyCallback([layout = layout.get(), panel] {
 				const auto s = layout->getContentSize();
@@ -189,10 +165,8 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 				}
 			});
 		} else {
-			/* The overlay path. SceneContent2d::pushOverlay stretches the layout it is given over
-			the whole parent content and puts its origin at the bottom left - right for an overlay
-			and wrong for a popup - so the panel is placed inside it, at the placement the surface
-			already resolved. That rect is Y-down from the content's top; the scene is Y-up. */
+			// Overlay path: pushOverlay stretches the layout over the parent with a bottom-left
+			// origin, so the panel goes at the resolved placement (Y-down from the top).
 			panel->addStyleClass("overlay");
 			const auto rect = surface->getOverlayRect();
 			panel->setPosition(Vec2(float(rect.x), parentHeight - float(rect.y)));
@@ -203,33 +177,16 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 		}
 
 		if (!native) {
-			/* A native Popup is dismissed by the window system when the user clicks away from it.
-			An overlay has no such contract, so the layout - which covers the whole parent content -
-			listens for a press outside the panel and takes the surface down itself.
+			/* An overlay has no window system dismissal, so the full-parent layout listens for a
+			press outside the panel. Installed after the content, which the outside test and a
+			menu's handler depend on.
 
-			Installed AFTER the content: whatever the content put on the panel is what the outside
-			tap has to be measured against, and a menu's handler needs the chain that content made.
-
-			WHAT KEEPS THE PRESS OFF THE SCENE UNDER THE OVERLAY IS THE FOCUS GROUP, not a
-			swallowing listener, and the distinction is the whole of (5).
-
-			A swallowed event makes its own listener the EXCLUSIVE owner of the rest of the
-			gesture, so a layout-wide listener that answered "handled" to every press took the
-			End along with it - and every tap inside an overlay popup died between its halves. A
-			menu item could be pressed and never activated, a list row highlighted and never
-			chosen, a colour swatch clicked and never picked; only the keyboard reached an
-			overlay at all. Answering "not mine" instead hands the gesture back to the panel's own
-			widgets, but it also lets the press fall through to whatever the overlay covers - and
-			a text field down there captures it and steals the End just the same.
-
-			An exclusive focus group is the one thing that separates the two: it removes every
-			listener OUTSIDE the group from the dispatch without making any single listener the
-			gesture's owner. basic2d::OverlaySurface does exactly this, for exactly this reason.
-
-			The group goes on BEFORE the listener below it - systems on one node register in
-			order, and a listener that registers first records no group. Touch only (the keyboard
-			is not ours to claim), and Propagate, because the content is free to carry groups of
-			its own: a ui::MenuSystem, a ui::FormSystem, an editor. */
+			The press is kept off the scene below by an exclusive focus group, not by swallowing:
+			a swallowing listener owns the whole gesture and eats the End of taps inside the panel,
+			while declining lets a covered text field capture the press. The group excludes outside
+			listeners without owning the gesture (as basic2d::OverlaySurface does). It must be added
+			before the listener, which otherwise records no group. Touch only, Propagate, since the
+			content may have groups of its own (ui::MenuSystem, ui::FormSystem). */
 			auto focus = layout->addSystem(Rc<FocusGroup>::create());
 			focus->setEventMask(FocusGroup::EventMask(EventMaskTouch));
 			focus->setFlags(FocusGroup::Flags::Exclusive | FocusGroup::Flags::Propagate);
@@ -237,7 +194,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			auto listener = layout->addSystem(Rc<InputListener>::create());
 			listener->addTouchRecognizer([surface = surface.get(), panel, cb = config.onOutsideTap](
 												 const GestureData &data) {
-				// Not ours: the panel's own widgets own every gesture that starts on them.
+				// The panel's own widgets own gestures that start on them.
 				if (panel->isTouched(data.location())) {
 					return false;
 				}
@@ -251,16 +208,14 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 				}
 				return true;
 			});
-			// Reached only for a press OUTSIDE the panel now. The group already hides it from
-			// everything behind the overlay; this hides it from the surface's own content too.
+			// Only presses outside the panel reach here; hide them from the surface's content too.
 			listener->setSwallowEvents(EventMaskTouch);
 		}
 
 		return layout;
 	};
 
-	// Through the session rather than SubWindow::open directly: it is what drops a live tooltip
-	// before the popup takes over.
+	// Through the session, which drops a live tooltip before the popup opens.
 	if (auto session = SubWindowSession::get(window)) {
 		return session->openPopup(sp::move(surfaceConfig));
 	}

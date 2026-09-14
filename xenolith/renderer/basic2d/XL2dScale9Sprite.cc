@@ -47,8 +47,8 @@ void Scale9Sprite::setFillCenter(bool value) {
 
 void Scale9Sprite::setTextureAutofit(Autofit value) {
 	if (value != Autofit::None) {
-		// A nine-slice covers the whole content rect by construction, so autofit has nothing left
-		// to decide. Refused rather than ignored: a setter that quietly does nothing is worse.
+		// A nine-slice covers the whole content rect by construction, so autofit has nothing to
+		// decide; the refusal is reported rather than ignored.
 		log::source().warn("Scale9Sprite", "Autofit is not applicable to a nine-slice sprite; "
 										   "the value is refused and autofit stays None");
 		return;
@@ -67,9 +67,8 @@ bool Scale9Sprite::checkVertexDirty() const {
 		return true;
 	}
 
-	// Sprite::draw watches the texture's size only under autofit, because that is the only case in
-	// which the base class needs it. Here the slice is measured in pixels of that texture, so a
-	// texture that arrived (or was swapped for one of another size) changes the geometry.
+	// Sprite::draw watches the texture size only under autofit; here the slice is in texture
+	// pixels, so a new or resized texture changes the geometry.
 	return _texture && _targetTextureSize != _texture->getExtent();
 }
 
@@ -77,8 +76,8 @@ uint32_t Scale9Sprite::buildPieces(const ImagePlacementResult &placement, const 
 		Piece *out) const {
 	auto &fragment = placement.imageFragmentSize;
 
-	// The authoring refusal: no middle to stretch. An all-zero slice is NOT this case - it is a
-	// plain sprite, and comes out of the loop below as a single centre piece.
+	// The authoring refusal: no middle to stretch. An all-zero slice is not this case - it is a
+	// plain sprite and yields a single centre piece below.
 	if (_slice.top < 0.0f || _slice.right < 0.0f || _slice.bottom < 0.0f || _slice.left < 0.0f
 			|| _slice.horizontal() >= fragment.width || _slice.vertical() >= fragment.height) {
 		return 0;
@@ -102,15 +101,14 @@ uint32_t Scale9Sprite::buildPieces(const ImagePlacementResult &placement, const 
 		bottom *= k;
 	}
 
-	// View edges, y growing UP: y[0] is the bottom of the sprite, y[3] its top.
+	// View edges, y growing up: y[0] is the bottom of the sprite, y[3] its top.
 	const float x[4] = {view.origin.x, view.origin.x + left,
 		view.origin.x + view.size.width - right, view.origin.x + view.size.width};
 	const float y[4] = {view.origin.y, view.origin.y + bottom,
 		view.origin.y + view.size.height - top, view.origin.y + view.size.height};
 
-	// Texture edges, v growing DOWN: v[0] is the top row of the fragment. The slice is in pixels of
-	// the fragment while the rect is normalized against the whole texture, so it divides by the
-	// texture's size - not by the fragment's.
+	// Texture edges, v growing down: v[0] is the top row of the fragment. The slice is in fragment
+	// pixels while the rect is normalized to the whole texture, so divide by the texture size.
 	auto &tex = placement.textureRect;
 	const float u[4] = {tex.origin.x, tex.origin.x + _slice.left / texSize.width,
 		tex.origin.x + tex.size.width - _slice.right / texSize.width,
@@ -121,8 +119,8 @@ uint32_t Scale9Sprite::buildPieces(const ImagePlacementResult &placement, const 
 
 	uint32_t count = 0;
 
-	// Rows are walked TOP-DOWN, because that is the direction the texture is read in, while the
-	// view is built bottom-up: row 0 is the top band, and it takes y[3]..y[2].
+	// Rows are walked top-down, the texture's direction, while the view is built bottom-up: row 0
+	// is the top band and takes y[3]..y[2].
 	for (uint32_t row = 0; row < 3; ++row) {
 		const float yTop = y[3 - row];
 		const float yBottom = y[2 - row];
@@ -169,8 +167,7 @@ void Scale9Sprite::updateVertexes(FrameInfo &frame) {
 			_sliceReported = true;
 		}
 
-		// Visibly wrong beats invisible: a frame drawn stretched is a bug an author can see, a
-		// frame that is not drawn at all is a bug they have to look for.
+		// Fall back to a stretched single quad, so the authoring error is visible.
 		Sprite::updateVertexes(frame);
 		return;
 	}

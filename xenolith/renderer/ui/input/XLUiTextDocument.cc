@@ -95,7 +95,7 @@ void TextDocument::apply(uint32_t pos, uint32_t removed, WideStringView inserted
 	const uint32_t firstLine = getLineForIndex(pos);
 
 	// Line starts strictly inside (pos, oldEnd] vanish with the removed range. Everything the
-	// edit touches - the old affected span and the block count it owned - is measured BEFORE
+	// edit touches - the old affected span and the block count it owned - is measured before
 	// the arrays change, because both are expressed through the old prefix values.
 	auto lo = std::upper_bound(_lineStarts.begin(), _lineStarts.end(), pos);
 	auto hi = std::upper_bound(_lineStarts.begin(), _lineStarts.end(), oldEnd);
@@ -106,7 +106,7 @@ void TextDocument::apply(uint32_t pos, uint32_t removed, WideStringView inserted
 	_text.replace(pos, removed, inserted.data(), inserted.size());
 	const int64_t delta = int64_t(inserted.size()) - int64_t(removed);
 
-	Vector<uint32_t> fresh; // starts of the lines the inserted text creates, in NEW coordinates
+	Vector<uint32_t> fresh; // starts of the lines the inserted text creates, in new coordinates
 	for (size_t i = 0; i < inserted.size(); ++i) {
 		if (inserted[i] == u'\n') {
 			fresh.emplace_back(pos + uint32_t(i) + 1);
@@ -174,7 +174,7 @@ uint32_t TextDocument::getBlockForIndex(uint32_t index) const {
 	const uint32_t line = getLineForIndex(index);
 	const uint32_t offset = index - _lineStarts[line];
 	// An index at the very end of the line (on its '\n', or past a chunk-aligned tail) belongs
-	// to the LAST chunk: it is a caret position there, not the start of a chunk that does not
+	// to the last chunk: it is a caret position there, not the start of a chunk that does not
 	// exist.
 	const uint32_t chunk = std::min(offset / _chunk, getBlocksForLine(line) - 1);
 	return _blockPrefix[line] + chunk;

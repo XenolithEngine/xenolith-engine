@@ -83,7 +83,7 @@ public:
 	void cmdDispatch(uint32_t groupsX, uint32_t groupsY = 1, uint32_t groupsZ = 1,
 			uint32_t threadsX = 1, uint32_t threadsY = 1, uint32_t threadsZ = 1);
 
-	// reserve this buffer's place in the queue's execution order NOW, so it may
+	// reserve this buffer's place in the queue's execution order now, so it may
 	// be recorded and committed later (on a worker thread) without reordering:
 	// the GPU runs enqueued buffers in enqueue order, not commit order
 	void enqueue();

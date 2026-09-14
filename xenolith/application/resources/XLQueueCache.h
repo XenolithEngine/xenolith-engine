@@ -32,32 +32,19 @@ namespace core {
 class RenderServerChannel;
 }
 
-// Named, already-compiled render graphs, kept for scenes that want to adopt one instead of
-// building their own.
+// Named, already-compiled render graphs for scenes that adopt one instead of building their own,
+// so frequently opened popups and dialogs compile their queue once.
 //
-// What it buys: a popup or a dialog opens dozens of times over a session, and building its queue
-// runs the whole render-queue compiler - render passes, pipelines, texture-set layout, the
-// internal resource. Prewarm the graph once and every later open is a Rc copy.
+// A compiled Queue holds nothing window-specific (extent comes from FrameConstraints, framebuffers
+// live in the loop-global FrameCache, the format from Loop::getCommonFormat(), the scene is pinned
+// per frame on the FrameRequest), so it can be built before its window exists.
 //
-// Why it is safe to build a queue before the window that will use it exists: a compiled Queue holds
-// nothing window-specific. Extent is not baked (FrameQueue::setup rewrites every image attachment's
-// extent from the frame's FrameConstraints), framebuffers live in the loop-global FrameCache, the
-// attachment format comes from Loop::getCommonFormat() and is the same for every window on the
-// loop, and the queue is bound to a frame per-frame through FrameRequest::setQueue - the scene is
-// pinned per frame on the FrameRequest, never captured by the queue itself.
+// Key: the application-chosen queue name, which must identify the graph (buildQueueResources is
+// arbitrary, so there is nothing to hash). Scenes sharing a queue share its MaterialAttachment and
+// texture-set array. The cache registers the queue's internal resource in the ResourceCache for the
+// entry's lifetime; an adopting Scene must not (see Scene::_ownsQueue).
 //
-// Key: the queue name, chosen by the application. Not a derived hash - buildQueueResources is a
-// virtual an application fills with arbitrary content, so there is no canonical form to hash. The
-// contract that comes with that: THE NAME IDENTIFIES THE GRAPH. Two scenes asking for the same
-// name must want the same graph.
-//
-// Consequence to know about: scenes sharing a queue share its MaterialAttachment, so their
-// materials land in one MaterialSet and one texture-set descriptor array. Ids cannot collide
-// (getNextMaterialId is atomic), but the array grows with the union of what every sharer brings.
-// The queue's internal resource is registered in the ResourceCache by this cache, once, for as long
-// as the entry lives - an adopting Scene must not register it (see Scene::_ownsQueue).
-//
-// App-thread only, so nothing here locks.
+// App-thread only, no locking.
 class SP_PUBLIC QueueCache : public ApplicationExtension {
 public:
 	enum class State {
@@ -74,16 +61,12 @@ public:
 	virtual void invalidate(AppThread *) override;
 	virtual void update(AppThread *, const UpdateTime &, bool) override;
 
-	// Build (once) and compile the queue named `name`.
+	// Build (once) and compile the queue named `name`. `build` runs synchronously, only on a miss.
+	// `complete` runs on this thread when compiled, or immediately if already Ready. Calls during a
+	// build queue behind it: one compileRenderQueue per name.
 	//
-	// `build` runs synchronously, on this thread, and ONLY on a miss. `complete` runs on this
-	// thread once the queue is compiled - or on the next call, immediately, if it already was.
-	// Calls that arrive while a build is in flight queue behind it: there is exactly one
-	// compileRenderQueue per name, ever.
-	//
-	// `channel` is used only to reach the render loop, and the loop belongs to the Context, not to
-	// a window - so ANY live window will do. That is what makes it legal to prewarm a popup's queue
-	// from the root window, before the popup exists.
+	// `channel` only reaches the render loop, which belongs to the Context, so any live window
+	// works (e.g. prewarm a popup's queue from the root window).
 	void acquire(StringView name, NotNull<core::RenderServerChannel> channel,
 			const Callback<bool(core::Queue::Builder &)> &build,
 			Function<void(Rc<core::Queue> &&)> && = nullptr);
@@ -94,8 +77,7 @@ public:
 	State getState(StringView name) const;
 	bool has(StringView name) const;
 
-	// Drop the cache's own reference. Any Scene that adopted the queue, and any frame still in
-	// flight, holds one of its own, so this can never free a queue out from under live work.
+	// Drop the cache's own reference; adopting Scenes and in-flight frames hold their own.
 	void release(StringView name);
 
 	// Drop every entry nothing else references. Returns how many went.

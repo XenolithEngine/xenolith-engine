@@ -37,8 +37,8 @@ bool FontControllerLocal::init(FontComponent *comp, StringView name, FontLibrary
 	// Local gAPI endpoint: the FontComponent (direct to the gl Loop / VkFontQueue).
 	_gapi = comp;
 	_name = name.str<Interface>();
-	// Default to the component's shared library; a separate library isolates this controller's FaceId
-	// space (the server's network-serving controller passes its own).
+	// Default to the component's shared library; a separate library isolates this controller's
+	// FaceId space (the server's network-serving controller passes its own).
 	_library = lib ? lib : comp->getLibrary();
 	return true;
 }

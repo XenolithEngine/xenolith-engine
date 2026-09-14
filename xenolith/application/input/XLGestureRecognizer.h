@@ -210,8 +210,7 @@ public:
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
 
-	// An immediate recognizer has nothing to wait for: every tap is reported as it happens, so the
-	// interval timer in update() is not needed at all
+	// An immediate recognizer reports every tap as it happens and needs no interval timer
 	virtual bool requiresUpdate() const override { return !_info.isImmediate(); }
 
 protected:
@@ -245,8 +244,7 @@ public:
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
 
-	// The hold is counted in update(), so the listener has to be scheduled for it: this recognizer
-	// declares that itself, rather than relying on another one on the same listener to ask.
+	// The hold is counted in update(), so this recognizer requests updates itself.
 	virtual bool requiresUpdate() const override { return true; }
 
 protected:

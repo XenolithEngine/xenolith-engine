@@ -108,9 +108,7 @@ void QueuePassHandle::preparePartialRedraw(core::FrameQueue &q) {
 	_skipRedraw = false;
 	_partialRedraw = false;
 
-	// XL_GLES_DAMAGE_LOG=1 reports what each frame decided. Without it a working partial redraw and
-	// a silently disabled one are indistinguishable - the picture is identical either way. Same
-	// switch, same reason, as the software backend's XL_SOFT_DAMAGE_LOG.
+	// XL_GLES_DAMAGE_LOG=1 reports what each frame decided (like XL_SOFT_DAMAGE_LOG).
 	static const bool damageLog = [] {
 		auto value = ::getenv("XL_GLES_DAMAGE_LOG");
 		return value && StringView(value) != "0";
@@ -191,11 +189,8 @@ void QueuePassHandle::preparePartialRedraw(core::FrameQueue &q) {
 		return;
 	}
 
-	// One scissor rectangle, so the union of the damaged ones. Unlike the software rasterizer,
-	// which can run a separate pass per region for free, every extra region here would mean
-	// re-issuing the whole draw list with another clip - the vertex work would be paid twice to
-	// save fragments. The tracker already merged the list down to at most MaxRects, so the union
-	// of what is left is close to it.
+	// One scissor rectangle: the union of the damaged ones. A pass per region would re-issue the
+	// whole draw list; the tracker already merged the list down to at most MaxRects.
 	uint32_t x0 = damage.front().x, y0 = damage.front().y;
 	uint32_t x1 = x0 + damage.front().width, y1 = y0 + damage.front().height;
 	for (auto &it : damage) {
@@ -244,20 +239,16 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 	table.glViewport(0, 0, GLsizei(extent.width), GLsizei(extent.height));
 
 	if (_skipRedraw) {
-		// The image already holds this frame: no clear, no draws, nothing bound. It keeps its
-		// content and is presented as it stands - the frame still runs through the graph so the
-		// fence chain and the presentation pacing are what they always are.
+		// The image already holds this frame: no clear, no draws. The frame still runs through the
+		// graph so the fence chain and presentation pacing are unchanged.
 		table.glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		return true;
 	}
 
 	bool ok = true;
-	// Load ops must see exactly the area being redrawn, and GL applies the scissor test to glClear*.
-	// A full redraw therefore has to DISABLE the test - a scissor left enabled by the previous
-	// frame's draws would clip the clear and keep every stale pixel outside it (the "clip" parity
-	// case) - while a partial redraw has to ENABLE it on the damaged rectangle, which is what
-	// preserves the rest of the image. executeDrawList re-enables the test per its first scissored
-	// draw either way.
+	// GL applies the scissor test to glClear*, so load ops must see exactly the redrawn area: a full
+	// redraw disables the test (a leftover scissor would clip the clear), a partial redraw enables
+	// it on the damaged rectangle. executeDrawList re-enables it for scissored draws either way.
 	if (_partialRedraw) {
 		table.glEnable(GL_SCISSOR_TEST);
 		table.glScissor(GLint(_partialRedrawArea.x), GLint(_partialRedrawArea.y),
@@ -411,9 +402,8 @@ bool QueuePassHandle::executeDrawList(const CommandBuffer &buf) {
 			lastBlend = &blend;
 		}
 
-		// A partial redraw bounds every draw as well as the clear: the recorder's scissor is what
-		// the frame asked to clip to, and the damaged rectangle is what this image is allowed to
-		// have written. Intersecting is what keeps the preserved area preserved.
+		// A partial redraw bounds every draw as well as the clear: intersect the recorded scissor
+		// with the damaged rectangle so the preserved area stays untouched.
 		auto scissor = _partialRedraw ? intersectRects(draw.scissor, _partialRedrawArea)
 									  : draw.scissor;
 		if (scissor.width == 0 || scissor.height == 0) {
@@ -487,9 +477,8 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 
 	auto success = runPass(q);
 
-	// The frame graph learns about completion through the fence's release callbacks, so a failed
-	// pass still has to produce one - otherwise the frame would stall in Submission state with no
-	// diagnostics (the base handle fails for exactly this reason).
+	// Completion is reported through the fence's release callbacks, so a failed pass still needs
+	// one, or the frame stalls in Submission state.
 	_fence = _loop->acquireFence(core::FenceType::Default);
 	if (!_fence) {
 		onSubmited(false);
@@ -518,9 +507,8 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 		onComplete(fenceSuccess);
 	}, this, "gles::QueuePassHandle::submit");
 
-	// Nothing armed this fence on a device queue - there is no queue - so arm it by hand. Without
-	// this core::Fence::check short-circuits on a non-Armed state and the release callbacks never
-	// run (the soft backend needs the same call for the same reason).
+	// No device queue armed this fence, so arm it by hand; otherwise core::Fence::check skips it
+	// and the release callbacks never run.
 	_fence->setArmed();
 
 	for (auto &it : _data->submittedCallbacks) { it(q, *_data, success); }

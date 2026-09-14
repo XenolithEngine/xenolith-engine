@@ -28,20 +28,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** One command row.
+/** One command row: a Button (hover, press, `:hover`/`:active`/`:disabled`) plus a subtitle, an
+accelerator, a trailing icon and the menu's shared column geometry.
 
-It is a Button, so hover, press, `:hover`/`:active`/`:disabled` and the fill/outline/corner
-appliers all come for free - the same reason DockTab is one. What it adds is the four extra slots a
-menu row has over a button: a second line of text, an accelerator, a trailing icon, and the shared
-column geometry that lines every row in the menu up with its neighbours.
-
-Button's own `_label` IS the title and `_icon` IS the leading icon; only the subtitle, the
-accelerator and the trailing icon are extra nodes, and each of them exists only while it has
-something to show.
-
-THE ROW DOES NOT MEASURE ITSELF. Its size and its column widths are handed to it by MenuSystem,
-which resolved them for the whole menu at once - that is what makes the icons of different rows
-line up, and the accelerators sit in one right-hand column.
+Button's `_label` is the title and `_icon` the leading icon; the other nodes exist only while they
+have something to show. The row does not measure itself: MenuSystem assigns size and columns for
+the whole menu.
 
 CSS type "menu-item"; children `label`, `menu-item-subtitle`, `menu-item-shortcut`, `icon`,
 `menu-item-trailing`. Style classes: `checked` while the item is on, `disabled` from Button,
@@ -54,14 +46,12 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	// The pointer entering a row is what moves the keyboard highlight onto it, so that a menu shows
-	// one current row rather than a hover on one and a keyboard cursor on another.
+	// Hovering a row moves the keyboard highlight onto it, so there is one current row.
 	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	MenuSourceButton *getItem() const { return _item; }
 
-	// Re-read everything from the model. Cheap enough to run on any change: every setter below it
-	// is equality-guarded by the widget it writes to.
+	// Re-read everything from the model; setters are equality-guarded, so it is cheap.
 	virtual void updateFromSource();
 
 	/* The shared column geometry of the menu this row belongs to, plus this row's own wrapped text
@@ -75,17 +65,15 @@ public:
 protected:
 	using Button::init;
 
-	// Places the row's children from the stamped columns. Not a measurement: every number it uses
-	// was decided for the whole menu already.
+	// Places the children from the assigned columns; measures nothing.
 	virtual void layoutContent();
 
-	// Creates the node the first time there is something to put in it, so a menu with no
-	// accelerators and no trailing icons builds none of either.
+	// Created on first use, so rows without these build no nodes.
 	basic2d::Label *acquireSubtitle();
 	basic2d::Label *acquireShortcut();
 	basic2d::IconSprite *acquireTrailing();
 
-	// Non-owning: the system outlives every node it built, and an Rc here would be a cycle.
+	// non-owning: the system outlives the nodes it built; an Rc would be a cycle
 	MenuSystem *_system = nullptr;
 	Rc<MenuSourceButton> _item;
 
@@ -93,8 +81,8 @@ protected:
 	basic2d::Label *_shortcut = nullptr;
 	basic2d::IconSprite *_trailing = nullptr;
 
-	// Edge tracker for the hover above: the component is cumulative and reported on every dirty
-	// pass, so without it a row would re-announce a hover it has been holding all along.
+	// Edge tracker: the hover component is reported on every dirty pass, so only transitions
+	// are acted on.
 	bool _hoverApplied = false;
 
 	MenuStyle _style;
@@ -108,9 +96,8 @@ protected:
 
 /** The rule between two groups of commands.
 
-A Node rather than a Panel, with the line as a child: the row occupies MenuStyle::separatorHeight
-so that the groups are spaced, while the line itself is one or two points in the middle of it. One
-node cannot be both.
+A Node with the line as a child: the row takes MenuStyle::separatorHeight while the line is a
+thin panel centred in it.
 
 CSS type "menu-separator" on the line; the row itself is "menu-separator-row" and paints nothing. */
 class SP_PUBLIC MenuSeparator : public Node {

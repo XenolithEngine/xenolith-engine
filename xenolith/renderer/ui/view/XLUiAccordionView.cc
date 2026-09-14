@@ -43,16 +43,9 @@ bool AccordionHeader::init(NotNull<AccordionSection> section, NotNull<PanelHost>
 
 	setAnchorPoint(Anchor::BottomLeft);
 
-	// A header sizes itself from its own title, and a ui::Button does not: like every button in this
-	// kit it is arranged by a flex layout, which normally comes from `display: flex` in a stylesheet.
-	// The view cannot require an application to write that rule for a widget it did not create, so
-	// the layout is built here - and with it the measurement protocol, through which the section and
-	// then the whole stack derive their floor from the actual titles.
-	//
-	// NO SystemManagedLayout marker, on purpose: the resolver only ever tears down a layout it
-	// created itself, so this one survives. A stylesheet can still refine it, but only through a
-	// rule that ALSO declares `display: flex` - padding and the gaps are read inside the resolver's
-	// flex branch, and a rule without `display` never enters it.
+	// The flex layout is built here so a header measures from its title without a stylesheet.
+	// No SystemManagedLayout marker: the resolver keeps a layout it did not create. A stylesheet
+	// refines padding and gaps only in a rule that also declares `display: flex`.
 	addSystem(Rc<LayoutSystem>::create(FlexLayoutInfo{
 		.direction = FlexDirection::Row,
 		.alignItems = FlexAlign::Center,
@@ -65,8 +58,7 @@ bool AccordionHeader::init(NotNull<AccordionSection> section, NotNull<PanelHost>
 	_chevron->addStyleClass("accordion-chevron");
 	LayoutSystem::setItem(_chevron, FlexItemInfo{.grow = 0.0f, .shrink = 0.0f, .order = 0});
 
-	// The grab point. It is the ONLY part of the header a drag may start from, which is what keeps
-	// an imprecise click on a header from pulling its panel out - see the class comment.
+	// The grab point: the only part of the header a drag may start from.
 	_grip = addChild(Rc<basic2d::IconSprite>::create(IconName::Editor_drag_handle_outline),
 			ZOrder(2));
 	_grip->setType("icon");
@@ -94,17 +86,15 @@ void AccordionHeader::setExpanded(bool value) {
 		removeStyleClass("expanded");
 	}
 	if (_chevron) {
-		// The icon is swapped rather than the sprite rotated: the CSS subset has no transform, so a
-		// rotation would be invisible to a stylesheet that wanted to restyle the two states apart.
+		// The icon is swapped rather than rotated, since the CSS subset has no transform.
 		_chevron->setIconName(_expanded ? IconExpanded : IconCollapsed);
 	}
 }
 
 void AccordionHeader::setIcon(IconName name) {
 	Button::setIcon(name);
-	// Order 2: after the chevron and the grip, before the title. Without it the sprite keeps the
-	// default order of 0 and ties with the chevron - and a tie is resolved by child order, which
-	// follows ZOrder, so the two would swap places between frames.
+	// Order 2: after the chevron and the grip, before the title. The default 0 would tie with the
+	// chevron and the two could swap between frames.
 	if (auto icon = getIconSprite()) {
 		LayoutSystem::setItem(icon, FlexItemInfo{.grow = 0.0f, .shrink = 0.0f, .order = 2});
 	}
@@ -129,9 +119,8 @@ void AccordionHeader::setClosable(bool value) {
 }
 
 bool AccordionHeader::canBeginDragAt(const Vec2 &worldLocation) const {
-	// isTouched, not the hit-test registry: this runs inside a live input callback on our own
-	// subtree, where the tree as it is right now IS what the user pressed on. The registry's test is
-	// for a drop target being resolved against a frame that has already been committed.
+	// isTouched, not the hit-test registry: this runs in a live input callback on our own subtree;
+	// the registry is for drop targets resolved against a committed frame.
 	return _grip && _grip->isTouched(worldLocation);
 }
 
@@ -140,8 +129,7 @@ bool AccordionHeader::handleLeftTap() {
 		return false; // this pointer belongs to a drag; a tap on release would be a second action
 	}
 	if (_host && _section) {
-		// Toggle rather than activate: a header's press means "open this so I can see inside", and
-		// pressing it again means "shut it". A dock tab has no second state to return to.
+		// Toggle rather than activate.
 		if (auto view = dynamic_cast<AccordionView *>(_host)) {
 			view->togglePanel(_panelId);
 			return true;
@@ -152,8 +140,7 @@ bool AccordionHeader::handleLeftTap() {
 
 void AccordionHeader::updatePanelDragOffer(DragOffer &, DockPanelPayload &payload) {
 	if (auto view = dynamic_cast<AccordionView *>(_host)) {
-		// A linear container: the position in the stack, not a frame handle - `source` stays empty,
-		// which is how a dock reading this payload knows the handle would mean nothing in its tree.
+		// The position in the stack; `source` stays empty, so a dock knows there is no frame handle.
 		payload.sourceIndex = view->getSectionIndex(_panelId);
 	}
 }
@@ -181,9 +168,7 @@ bool AccordionSection::init(NotNull<AccordionView> view, NotNull<PanelHost> host
 		.alignItems = FlexAlign::Stretch,
 	}));
 
-	// The header keeps the higher ZOrder because it draws over the body's edge, while the FLOW has
-	// to put it first. Child order follows ZOrder, so `order` is what separates the two - the same
-	// reason DockFrame sets it on its tab strip.
+	// The header has the higher ZOrder to draw over the body's edge; `order` puts it first in flow.
 	_header = addChild(Rc<AccordionHeader>::create(this, host, panelId), ZOrder(1));
 	LayoutSystem::setItem(_header,
 			FlexItemInfo{
@@ -203,7 +188,7 @@ bool AccordionSection::init(NotNull<AccordionView> view, NotNull<PanelHost> host
 				.basis = 0.0f,
 				.order = 1,
 			});
-	// A panel parked in a node with no layout would keep whatever size it was built with - none.
+	// The body needs a layout, or a parked panel keeps its build-time (zero) size.
 	_body->addSystem(Rc<LayoutSystem>::create(FlexLayoutInfo{
 		.direction = FlexDirection::Column,
 		.alignItems = FlexAlign::Stretch,
@@ -226,8 +211,7 @@ void AccordionSection::setExpanded(bool value) {
 		_header->setExpanded(value);
 	}
 	if (_body) {
-		// The body is taken out of the flow rather than resized to nothing: a zero-height flex item
-		// still participates in every pass, and its own content would go on being measured.
+		// Hidden and capped at zero while collapsed; updateSectionFlex rewrites this item.
 		_body->setVisible(_expanded);
 		LayoutSystem::setItem(_body,
 				FlexItemInfo{
@@ -269,8 +253,8 @@ bool AccordionView::init(Rc<PanelRegistry> &&registry) {
 	// intrinsic hint rather than a committed size that would fight handleContentSizeDirty.
 	setComponent<SystemManagedLayout>();
 
-	// NO LayoutSystem on THIS node - see the class comment. The viewport is the flex column, and it
-	// is the only child, sized from handleContentSizeDirty.
+	// No LayoutSystem on this node. The viewport is the flex column and the only child, sized from
+	// handleContentSizeDirty.
 	_viewport = addChild(Rc<Node>::create(), ZOrder(0));
 	_viewport->setType("accordion-viewport");
 	_viewport->setAnchorPoint(Anchor::BottomLeft);
@@ -280,26 +264,14 @@ bool AccordionView::init(Rc<PanelRegistry> &&registry) {
 		.alignItems = FlexAlign::Stretch,
 	}));
 
-	// Built here rather than left to a stylesheet: the scroll is what makes Fit sizing work at all,
-	// and an application cannot be asked to write `overflow` for a widget it did not create. It
-	// carries no StyleManagedScroll marker, so the resolver - which only ever removes a system it
-	// added itself - leaves it alone.
-	//
-	// The HORIZONTAL axis stays Visible, and that is not the same as "unclipped". ScrollSystem hands
-	// LayoutSystem `setOverflowAxes(clipsX(), clipsY())`, and `Hidden` clips - so declaring it would
-	// mark the cross axis as one the content may exceed, which is exactly what tells the flex pass
-	// to leave the sections at their own width instead of stretching them to the viewport. The box
-	// is still scissored, because that is gated on clipsX() OR clipsY().
+	// Built here since Fit sizing needs it; no StyleManagedScroll marker, so the resolver keeps it.
+	// The horizontal axis is Visible: `Hidden` would let content exceed the cross axis and stop the
+	// flex pass stretching sections to the viewport width. The vertical axis still scissors the box.
 	_scroll = _viewport->addSystem(
 			Rc<ScrollSystem>::create(document::Overflow::Visible, document::Overflow::Auto));
 
-	// How this stack receives dragged panels. ONE target on the view, never one per section: a
-	// per-section target could not answer for the gap after the last one, which is the append
-	// position, and the drop resolves an index by arithmetic over the sections anyway.
-	//
-	// On the VIEW rather than the viewport, because the view is the node whose drawn rect should
-	// accept a drop - the viewport carries the same rect but is clipped, and a target only exists
-	// where it was drawn.
+	// One drop target on the view (not per section, so the append gap is covered; not on the
+	// clipped viewport). The index is resolved from section geometry.
 	setDropTarget(this,
 			DropTargetSlots{
 				.accept = [this](const DragEvent &event) { return handleDragAccept(event); },
@@ -319,17 +291,15 @@ void AccordionView::handleEnter(Scene *scene) {
 
 	_registry->addHost(this);
 
-	// A node has no scene until it is added to one, so this cannot happen in init(). Scoped to
-	// TargetInside by default, or dragging a dock tab clear across the screen would scroll every
-	// accordion it passed over. On the VIEWPORT: the edge band is measured against the scrollport.
+	// Needs a scene, so not in init(). Scoped to TargetInside by default; on the viewport, since the
+	// edge band is measured against the scrollport.
 	DragScrollSystem::acquireForNode(_viewport);
 }
 
 void AccordionView::handleExit() {
 	clearDropIndicator();
 
-	// Give up every claim without touching a node: the panels keep their content, so re-opening one
-	// anywhere brings back exactly what was there.
+	// Release all claims without touching the nodes; panels keep their content.
 	_registry->releaseHost(this);
 
 	Panel::handleExit();
@@ -443,10 +413,8 @@ bool AccordionView::closePanel(StringView id) {
 }
 
 void AccordionView::releasePanel(StringView id) {
-	// Structurally the same as a close - the section goes - but NOT reported as one: the panel is
-	// moving to another container, and an application treating `closed` as "the user is done with
-	// this" would act on something that did not happen. The node is not touched here; the registry
-	// hands it to the new host.
+	// Like a close but without the closed callback: the panel moves to another host, and the
+	// registry hands its node over.
 	auto index = getSectionIndex(id);
 	if (index == maxOf<size_t>()) {
 		return;
@@ -493,8 +461,7 @@ bool AccordionView::collapsePanel(StringView id) {
 		return false;
 	}
 
-	// In Single mode the open section is the only one; collapsing it would leave the stack with
-	// nothing showing, which is a state the mode does not have. Refuse rather than invent one.
+	// Single mode always keeps one section open.
 	if (_expansion == AccordionExpansion::Single) {
 		return false;
 	}
@@ -541,9 +508,7 @@ void AccordionView::setExpansion(AccordionExpansion value) {
 		return;
 	}
 
-	// Single means exactly one, so an existing arrangement has to be reduced to one - and to a
-	// DEFINITE one: with nothing open the stack would show only headers, which is the state this
-	// mode exists to rule out. The first open section wins, or the first section if none is.
+	// Reduce to exactly one open section: the first open one, or the first section if none is.
 	StringView keep;
 	for (auto &id : _order) {
 		if (auto section = getSection(id); section && section->isExpanded()) {
@@ -562,10 +527,8 @@ void AccordionView::setExpansion(AccordionExpansion value) {
 void AccordionView::setSizing(AccordionSizing value) {
 	_sizing = value;
 	if (_scroll) {
-		// Fill leaves nothing to scroll: the open sections absorb whatever height there is. It has
-		// to be Visible rather than Hidden for the same reason the horizontal axis is (see init) -
-		// on a Hidden axis the layout lays the content out at its NATURAL size so there is something
-		// to clip, and a section that sizes itself can no longer be grown to fill the box.
+		// Fill does not scroll. Visible, not Hidden: on a Hidden axis content is laid out at its
+		// natural size and sections could not grow to fill the box.
 		_scroll->setOverflow(document::Overflow::Visible,
 				_sizing == AccordionSizing::Fit ? document::Overflow::Auto
 												: document::Overflow::Visible);
@@ -585,8 +548,7 @@ void AccordionView::setSectionSizing(StringView id, AccordionSizing value) {
 	}
 	_sectionSizing.emplace(sp::move(key), value).first->second = value;
 
-	// The section may not exist yet: an override set before the panel arrives is honoured when it
-	// does, because updateSectionFlex reads the map rather than a field on the section.
+	// The section may not exist yet; updateSectionFlex reads the map when it is built.
 	if (auto section = getSection(id)) {
 		updateSectionFlex(section);
 	}
@@ -627,9 +589,7 @@ void AccordionView::syncSections() {
 		return;
 	}
 
-	// Reuse by panel id, wherever in the stack it was: a reorder or a panel arriving beside one must
-	// not destroy and rebuild a section - that would drop its hover state and, worse, the drag that
-	// is quite possibly in flight on its header right now.
+	// Reuse by panel id, so a reorder keeps hover state and any drag in flight on a header.
 	Vector<AccordionSection *> kept;
 	kept.reserve(_order.size());
 
@@ -637,8 +597,7 @@ void AccordionView::syncSections() {
 		auto section = getSection(id);
 		if (!section) {
 			auto created = Rc<AccordionSection>::create(this, this, id);
-			// Parent it BEFORE the local Rc goes out of scope: `kept` holds raw pointers, so letting
-			// the only reference die at the end of this block would leave the entry dangling.
+			// Parent it before the local Rc goes out of scope: `kept` holds raw pointers.
 			_viewport->addChild(created, SectionZOrder);
 			if (auto desc = _registry->getPanelDescriptor(id)) {
 				if (auto header = created->getHeader()) {
@@ -651,8 +610,7 @@ void AccordionView::syncSections() {
 			section = created;
 			_sections.emplace(id, section);
 
-			// A new section starts open in Single mode only if nothing else is - collapseOthers
-			// below settles it either way.
+			// New sections start open in Multi mode; Single mode is settled below.
 			if (_expansion == AccordionExpansion::Multi) {
 				section->setExpanded(true);
 			}
@@ -660,8 +618,7 @@ void AccordionView::syncSections() {
 		kept.emplace_back(section);
 	}
 
-	// Sections that fell out of the order. Their panels go back to being parked nowhere: the node
-	// survives in the registry, so whatever picks one up next gets it whole.
+	// Sections that fell out of the order; their panel nodes stay alive in the registry.
 	Vector<AccordionSection *> gone;
 	for (auto &[id, section] : _sections) {
 		if (sprt::find(kept.begin(), kept.end(), section) == kept.end()) {
@@ -670,7 +627,7 @@ void AccordionView::syncSections() {
 	}
 	for (auto section : gone) {
 		auto id = section->getPanelId().str<Interface>();
-		// Take the panel OUT before the section is cleaned: Node::cleanup() recurses into children
+		// Take the panel out before the section is cleaned: Node::cleanup() recurses into children
 		// and would destroy the panel's systems while the registry still holds it.
 		if (auto body = section->getBody()) {
 			auto children = body->getChildren();
@@ -682,9 +639,7 @@ void AccordionView::syncSections() {
 		section->removeFromParent(true);
 	}
 
-	// Distinct, increasing ZOrder: child order follows ZOrder and IS the flow order here, and
-	// sortAllChildren is not a stable sort - siblings sharing an order would reshuffle on screen
-	// between frames.
+	// Distinct, increasing ZOrder: child order is flow order and sortAllChildren is not stable.
 	for (size_t i = 0; i < kept.size(); ++i) {
 		kept[i]->setLocalZOrder(SectionZOrder + ZOrder(int32_t(i)));
 		updateSectionContent(kept[i]);
@@ -712,9 +667,7 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 		return;
 	}
 
-	// The floor of a section: its header, plus - when it is open - the minimum its panel declared.
-	// This is where the registry's minSize means something on this side, the way it floors a dock
-	// frame on the other.
+	// The floor of a section: its header, plus the panel's declared minSize when open.
 	float floor = section->getHeaderHeight();
 	if (section->isExpanded()) {
 		if (auto desc = _registry->getPanelDescriptor(section->getPanelId())) {
@@ -723,7 +676,7 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 	}
 
 	if (!section->isExpanded()) {
-		// Just the header, whatever the policy: a collapsed section has nothing else to show.
+		// Just the header, whatever the policy.
 		LayoutSystem::setItem(section,
 				FlexItemInfo{
 					.grow = 0.0f,
@@ -734,30 +687,14 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 		return;
 	}
 
-	// THIS SECTION'S POLICY, which is the view's unless the section answers for itself - see
-	// setSectionSizing. Read here and nowhere else, so the two cases below are the only place the
-	// difference between them exists.
+	// The section's override or the view's policy; read only here.
 	const auto sizing = getSectionSizing(section->getPanelId());
 
-	/* AND THE BODY CARRIES THE SAME POLICY - WHEN THE PANEL CAN ANSWER FOR ITS OWN HEIGHT.
-
-	A section is measured through its own flex run, and the measurement pass resolves an item with a
-	DEFINITE basis to that basis: `grow` is skipped while measuring, since there is no free space to
-	share out in a size nobody has fixed yet. The body's basis is 0, so a section measured with
-	`FitContent` came back as its HEADER and nothing else, and `Fit` meant "the declared floor"
-	rather than "the content decides". The panel inside already got `FitContent` from
-	`updateSectionContent`; the one item between it and the section did not.
-
-	AND ONLY WHEN THERE IS SOMETHING TO MEASURE. `measureNode` answers with a node's CURRENT
-	ContentSize when nothing in it opted into the protocol - a fine answer for placing that node and
-	a useless one here, because it is the size this very layout gave it last frame: a section would
-	then keep whatever height it happened to have and never give any of it back. So a panel that
-	states its height (a `MeasureComponent`, a `HandleMeasure` system) sizes its section, and one
-	that says nothing leaves the section at its declared floor, which is what `Fit` has always done
-	for it.
-
-	Written here rather than in `AccordionSection::setExpanded`, which also writes this item: that
-	method knows nothing about the view's policy, and every call to it is followed by this one. */
+	/* The body and the panel follow the same policy. Measurement resolves a definite basis without
+	`grow`, so under `Fit` the body and panel need `FitContent` to be measured at all - but only when
+	the panel can measure itself (MeasureComponent, HandleMeasure system): otherwise measureNode
+	returns last frame's size and the section would never shrink, so it stays at its floor.
+	Rewritten on every policy change; this overrides what AccordionSection::setExpanded wrote. */
 	if (auto body = section->getBody()) {
 		auto content = body->getChildren().empty() ? nullptr : body->getChildren().front();
 		const bool measurable = sizing == AccordionSizing::Fit && content
@@ -771,14 +708,6 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 					.order = 1,
 				});
 
-		/* AND THE PANEL INSIDE IT, EVERY TIME AND NOT ONLY WHEN IT ARRIVES.
-
-		`updateSectionContent` writes this item too - but only on the pass that PARKS the node, and a
-		section's policy changes long after that: the findings panel switches a section to `Fit` the
-		moment its list becomes a sentence, with the panel parked since the tab opened. The item
-		stayed on the basis the section had when it was first shown, so the whole chain above it
-		measured a panel that had been told to fill. Written here because this is the one place the
-		policy is read. */
 		if (content) {
 			LayoutSystem::setItem(content,
 					FlexItemInfo{
@@ -801,8 +730,7 @@ void AccordionView::updateSectionFlex(AccordionSection *section) {
 				});
 		break;
 	case AccordionSizing::Fill:
-		// The open sections divide what the collapsed headers left. `basis = 0` is what makes them
-		// share it evenly rather than in proportion to whatever they happen to contain.
+		// The open sections share what the collapsed headers left; `basis = 0` makes it even.
 		LayoutSystem::setItem(section,
 				FlexItemInfo{
 					.grow = 1.0f,
@@ -823,17 +751,12 @@ void AccordionView::updateSectionContent(AccordionSection *section) {
 		return;
 	}
 
-	// Only an OPEN section holds its panel. Acquiring here rather than when the section is built is
-	// what makes the builder lazy in the same sense the dock's is: a section nobody has opened has
-	// never built anything.
+	// Only an open section holds its panel; acquiring here keeps the builder lazy.
 	Node *content = section->isExpanded() ? _registry->acquireContent(section->getPanelId(), this)
 										  : nullptr;
 
-	// Take out whatever else is in there. Detach WITHOUT cleanup: the node stays alive in the
-	// registry, and Node::cleanup() would destroy its systems (a Label's EventListener among them),
-	// which handleEnter then reads as freed memory on the next present. A plain detach fires
-	// handleExit, which is exactly how a system pauses while its node leaves the scene; re-entry
-	// replays it through handleEnter.
+	// Take out whatever else is in there, without cleanup: the node stays alive in the registry,
+	// and Node::cleanup() would destroy its systems, which handleEnter reads on re-entry.
 	auto children = body->getChildren();
 	for (auto &it : Vector<Rc<Node>>(children.begin(), children.end())) {
 		if (it.get() != content) {
@@ -844,9 +767,7 @@ void AccordionView::updateSectionContent(AccordionSection *section) {
 	if (content && content->getParent() != body) {
 		content->removeFromParent(false);
 		body->addChild(content);
-		// Fill the body; a panel that wants less says so with CSS on its own node. A SEED and not
-		// the decision: `updateSectionFlex` writes this item again on every change of policy and is
-		// where the rule lives, because a section's policy changes long after its panel is parked.
+		// Initial item only; updateSectionFlex rewrites it on every policy change.
 		LayoutSystem::setItem(content,
 				FlexItemInfo{
 					.grow = 1.0f,
@@ -884,9 +805,7 @@ size_t AccordionView::getDropIndexAt(const Vec2 &viewportLocal) const {
 		return 0;
 	}
 
-	// Midpoint comparison, top-down. The scene's Y axis points UP while the stack reads downwards,
-	// so the first section is at the HIGHEST y - which is why this walks the order and compares
-	// against each section's own middle rather than dividing the extent.
+	// Midpoint comparison, top-down: Y points up, so the first section has the highest y.
 	for (size_t i = 0; i < _order.size(); ++i) {
 		auto section = getSection(_order[i]);
 		if (!section) {
@@ -919,7 +838,7 @@ bool AccordionView::getDropIndicatorRect(size_t index, Rect &out) const {
 		if (!section) {
 			return false;
 		}
-		// the boundary ABOVE that section
+		// the boundary above that section
 		const float top = section->getPosition().y + section->getContentSize().height;
 		out = Rect(0.0f, top - half, width, DefaultIndicatorThickness);
 		return true;
@@ -938,8 +857,7 @@ void AccordionView::setDropEnabled(bool value) {
 		return;
 	}
 	_dropEnabled = value;
-	// The flag on the node is a cache of the component's presence: a node carrying one and not the
-	// other wins a hit test and then offers nothing, so both have to move together.
+	// The node flag and the component have to change together.
 	setDropTargetEnabled(this, value);
 	if (!_dropEnabled) {
 		clearDropIndicator();
@@ -967,15 +885,12 @@ DragResponse AccordionView::handleDragAccept(const DragEvent &event) {
 		return DragResponse(); // a panel from a registry we do not share: not ours to take
 	}
 
-	// A section holds one panel and there is nothing to subdivide, so the only no-op is dragging the
-	// ONLY section of this stack around inside it: every insertion index puts it back where it was.
+	// Dragging the only section within its own stack is a no-op.
 	if (payload->host == this && _order.size() == 1) {
 		return DragResponse();
 	}
 
-	// Pure: the index is resolved and thrown away. Nothing is drawn and nothing is remembered - this
-	// runs during hit testing, several times a frame, for candidates that may never become current.
-	// A panel is MOVED between containers, never copied: one node, one identity.
+	// Pure: runs during hit testing. Panels are only moved, never copied.
 	return DragResponse{event.allowed & DragActions::Move};
 }
 
@@ -988,8 +903,7 @@ void AccordionView::handleDragEnter(const DragEvent &event) {
 	_indicator = _viewport->addChild(Rc<basic2d::Layer>::create(), IndicatorZOrder);
 	_indicator->setType("accordion-drop-indicator");
 	_indicator->setAnchorPoint(Anchor::BottomLeft);
-	// Out of the flow: the viewport is a flex column, and an indicator left in it would be laid out
-	// as one more section instead of floating over the boundary it is pointing at.
+	// Out of the flow, or the viewport's flex column would lay it out as a section.
 	_indicator->setComponent<OutOfFlowComponent>();
 
 	handleDragOver(event);
@@ -1032,8 +946,7 @@ bool AccordionView::handleDragDrop(const DragEvent &event, DragActions) {
 		return false;
 	}
 
-	// Read everything the drop needs BEFORE anything mutates: applying it destroys the header that
-	// delivered the drag whenever the panel came from this very stack.
+	// Read everything before mutating: a drop from this stack destroys the header that sent it.
 	const auto panelId = payload->panelId;
 	const bool fromHere = (payload->host == this);
 	const size_t index = getDropIndexAt(_viewport->convertToNodeSpace(event.worldLocation));
@@ -1045,8 +958,7 @@ bool AccordionView::handleDragDrop(const DragEvent &event, DragActions) {
 	clearDropIndicator();
 
 	if (fromHere) {
-		// A reorder. The index was resolved against the stack WITH this section still in it, so an
-		// index past its own position counts one slot too many once it is taken out.
+		// A reorder. The index includes this section, so one past its position shifts down by one.
 		const auto from = getSectionIndex(panelId);
 		size_t to = index;
 		if (from != maxOf<size_t>() && to > from) {
@@ -1055,8 +967,7 @@ bool AccordionView::handleDragDrop(const DragEvent &event, DragActions) {
 		return movePanel(panelId, to);
 	}
 
-	// From somewhere else: the registry evicts the previous host as part of handing over the node,
-	// on the acquire updateSectionContent does at the end of this.
+	// From another host: the registry evicts it on the acquire in updateSectionContent.
 	return openPanel(panelId, index);
 }
 
@@ -1084,8 +995,7 @@ bool AccordionView::restore(const Value &value) {
 		return false;
 	}
 
-	// Build the whole candidate first and swap it in only when it holds together, so a malformed
-	// file leaves what is on screen untouched - the same rule DockSystem::restore follows.
+	// Build the candidate order first, dropping unknown and duplicate panels, then apply it.
 	Vector<String> order;
 	Vector<bool> expanded;
 	for (auto &entry : value.getArray("sections")) {

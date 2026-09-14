@@ -47,12 +47,8 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &);
 
-	// Adopt an already-built (usually already-compiled) queue instead of building one.
-	//
-	// The scene does NOT own it: whoever owns the queue also owns the registration of its internal
-	// resource in the ResourceCache. That matters - ResourceCache entries are keyed by name with no
-	// refcount, so if two scenes sharing a queue each registered and unregistered it, the first one
-	// to finish would pull the resource out from under the second.
+	// Adopt an already-built (usually compiled) queue. The scene does not register its internal
+	// resource: ResourceCache is name-keyed with no refcount, so the queue's owner does that.
 	virtual bool init(Rc<Queue> &&, const core::FrameConstraints &);
 
 	virtual void renderRequest(const Rc<core::FrameRequestProxy> &, sprt::PoolRef *pool);
@@ -77,16 +73,9 @@ public:
 
 	virtual void setFrameConstraints(const core::FrameConstraints &);
 
-	/* The window this scene lives in moved or changed size.
-
-	Notification only: the scene's own geometry follows FrameConstraints, which arrives separately
-	and is what a resize really means to a scene graph. This is for a scene that cares WHERE its
-	window is - one that saves the position to reopen there next time, or places something against
-	a screen coordinate.
-
-	The same snapshot is readable at any moment through
-	Director::getRenderServer()->getWindowGeometry(); this hook exists so that a scene does not
-	have to poll for a change that has no other signal. App thread. */
+	/* The window moved or changed size. Notification only: scene geometry follows
+	FrameConstraints. For scenes that care where the window is; the same snapshot is available
+	from Director::getRenderServer()->getWindowGeometry(). App thread. */
 	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 

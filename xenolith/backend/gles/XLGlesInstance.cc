@@ -370,7 +370,7 @@ void Instance::probeXcbVisual(const char *clientExtensions) {
 		return;
 	}
 
-	// Alpha is left unconstrained on purpose: the window whose visual this is checked against is
+	// Alpha is left unconstrained: the window whose visual this is checked against is
 	// usually a plain depth-24 TrueColor one, which maps to a config with no alpha bits. Device::
 	// init picks the config the same way, so the two have to ask the same question.
 	const EGLint attribs[] = {

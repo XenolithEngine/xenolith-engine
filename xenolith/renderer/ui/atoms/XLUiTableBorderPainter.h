@@ -31,21 +31,16 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /* Draws the collapsed table borders a layout pass published.
 
-The LayoutSystem resolves the CSS border conflicts and leaves the answer as geometry - a flat list
-of rects in a `TableBordersComponent`. It cannot draw them itself: a layout system must never create
-nodes. This is the consumer that turns that list into one filled path per colour.
+The LayoutSystem resolves CSS border conflicts into a flat list of rects in a
+`TableBordersComponent` (a layout system must not create nodes); this sprite draws them.
 
 Add it as a child of the node carrying the component - the table container for a static
 `display: table`, or the row for a virtualized one (`ui::TableView` does this per row):
 
     auto painter = table->addChild(Rc<TableBorderPainter>::create(), ZOrder(10));
 
-It sizes itself to its parent and re-reads the component whenever the parent's geometry or
-components change, so nothing has to be re-plumbed when the table re-lays-out. Give it a z-order
-above the cells: the borders sit on the cell boundaries and would otherwise be painted over.
-
-Nothing installs it automatically. A table with `border-collapse: collapse` and no painter is not a
-bug - it is a table whose borders someone else is drawing, or nobody is. */
+It sizes itself to its parent and re-reads the component when the parent's geometry or components
+change. Give it a z-order above the cells. Nothing installs it automatically. */
 class SP_PUBLIC TableBorderPainter : public basic2d::VectorSprite {
 public:
 	virtual ~TableBorderPainter() = default;
@@ -54,8 +49,8 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	// Where to read the rects from. Defaults to the parent, which is what a child of the table (or
-	// of the row) wants; point it elsewhere when the painter cannot be a child of the owner.
+	// Where to read the rects from. Defaults to the parent; set it when the painter cannot be a
+	// child of the owner.
 	void setSource(Node *);
 	Node *getSource() const { return _source; }
 
@@ -68,10 +63,8 @@ protected:
 	Node *_source = nullptr; // not owned: it is this node's own ancestor
 	uint64_t _generation = maxOf<uint64_t>(); // forces the first build
 
-	// The size the current image was built for. A VectorImage is STRETCHED to the node's content
-	// size, so an image built at one size and kept across a resize draws the borders scaled - which
-	// looks like a layout bug and is not one. The border generation alone cannot catch this: a
-	// resize that produces the same rects leaves it untouched.
+	// The size the current image was built for. A VectorImage is stretched to the content size, and
+	// a resize may keep the same rects and generation, so the size is checked separately.
 	Size2 _sourceSize;
 };
 

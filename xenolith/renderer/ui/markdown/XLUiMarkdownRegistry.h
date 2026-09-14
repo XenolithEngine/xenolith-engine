@@ -41,16 +41,11 @@ struct SP_PUBLIC MarkdownBuilderContext {
 
 /* One markdown tag: what node it becomes, and who fills it.
 
-Three fields rather than one function because three different decisions are being made, and a
-tag usually needs to change exactly one of them:
-
-- `create` answers WHAT the block is. Returning nullptr drops the node and its subtree - that is
-  how a document part is hidden without teaching the builder about it;
-- `textContent` says the node IS the text: the block's inline content becomes this Label's string
-  with a style range per construct. Only a Label may say so;
-- `buildContent` takes over the CHILDREN, for the handful of blocks whose shape is not a plain
-  recursion (a list item and its marker, a table and its columns). Return false to fall back to
-  the default walk after doing something else. */
+- `create` makes the node; nullptr drops the node and its subtree;
+- `textContent` makes the node's inline content its string, with a style range per construct
+  (Labels only);
+- `buildContent` takes over the children (a list item and its marker, a table); return false to
+  fall back to the default walk. */
 struct SP_PUBLIC MarkdownTagFactory {
 	Function<Rc<Node>(const MarkdownBuilderContext &)> create;
 
@@ -61,10 +56,8 @@ struct SP_PUBLIC MarkdownTagFactory {
 
 /* Extensible html-tag -> node factory, keyed by the tag the Markdown parser produced.
 
-`createDefault()` registers every tag the parser emits (see stappler/markdown): the headings, `p`,
-the two list kinds and `li`, `blockquote`, `hr`, `pre`/`code`, the table family, `dl`/`dt`/`dd`,
-`figure`/`figcaption`, and the task-list checkbox. Inline tags are NOT here - they never become
-nodes (see MarkdownInline).
+`createDefault()` registers every block tag the parser emits (see stappler/markdown). Inline tags
+are not here: they never become nodes (see MarkdownInline).
 
 An application replaces one tag and keeps the rest:
 

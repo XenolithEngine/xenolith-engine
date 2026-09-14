@@ -295,7 +295,7 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 		dst.origin = WGPUOrigin3D{0, 0, 0};
 		dst.aspect = WGPUTextureAspect_All;
 
-		// Rows OF BLOCKS, both of them - see core::getFormatRowSize.
+		// Rows of blocks, both of them - see core::getFormatRowSize.
 		WGPUTexelCopyBufferLayout layout;
 		layout.offset = 0;
 		layout.bytesPerRow = uint32_t(core::getFormatRowSize(info.format, info.extent.width));

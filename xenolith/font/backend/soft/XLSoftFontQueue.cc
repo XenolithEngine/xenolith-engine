@@ -144,9 +144,8 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 	_input = sp::move(d);
 	_onInput = sp::move(cb);
 
-	// The store outlives the frame: it is carried on the dynamic image's instance, so a glyph
-	// rasterized for one frame is still there for the next. This is what makes the whole update
-	// incremental - only characters never seen before cost anything.
+	// The store outlives the frame on the dynamic image's instance, so updates are incremental:
+	// only characters never seen before cost anything.
 	if (auto instance = _input->image->getInstance()) {
 		_store = instance->userdata.cast<GlyphStore>();
 	}
@@ -156,10 +155,9 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 
 	_store->emplaceWhitePixel();
 
-	// The controller resends every character a face has ever needed, not just the new ones
-	// (FontFaceObject::_required only grows), so most of a request is usually already in the store.
-	// Dropping those here is what the Vulkan backend does with its persistent-glyph buffers, minus
-	// the copying.
+	// The controller resends every character a face has ever needed (FontFaceObject::_required only
+	// grows), so already stored ones are dropped here, as the Vulkan backend's persistent-glyph
+	// buffers do.
 	uint32_t pending = 0;
 	for (auto &it : _input->requests) {
 		for (auto &c : it.chars) {
@@ -189,12 +187,9 @@ void FontAttachmentHandle::doSubmitInput(core::FrameHandle &handle, Function<voi
 void FontAttachmentHandle::buildAtlas(core::FrameHandle &handle) {
 	auto count = _store->getGlyphCount();
 
-	// The atlas keeps its job of mapping a glyph id to the four corner offsets of its quad - that
-	// part is backend-neutral and the shared vertex plan reads it directly. Only the texture
-	// coordinates change meaning: with no atlas image to address, each glyph is its own texture and
-	// the corners are the unit square.
-	//
-	// The extent must not be left at zero: the plan divides by it when a glyph is missing.
+	// The atlas still maps a glyph id to its quad's four corner offsets (read by the shared vertex
+	// plan). Only texture coordinates change: each glyph is its own texture, so corners are the
+	// unit square. The extent must not be zero: the plan divides by it when a glyph is missing.
 	auto atlas = Rc<core::DataAtlas>::create(core::DataAtlas::ImageAtlas, count * 4,
 			uint32_t(sizeof(font::FontAtlasValue)), Extent2(1, 1));
 
@@ -280,9 +275,8 @@ void FontRenderPassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&syn
 		return;
 	}
 
-	// A material needs an image, and nothing samples this one: the renderer resolves glyphs from
-	// the store instead. One texel keeps it honest - if something ever does sample it, the result
-	// is a visible flat colour rather than a plausible-looking wrong glyph.
+	// A material needs an image, but glyphs are resolved from the store. One texel, so an
+	// accidental sample shows a flat colour rather than a wrong glyph.
 	core::ImageInfo info = input->image->getInfo();
 	info.format = core::ImageFormat::R8_UNORM;
 	info.extent = Extent3(1, 1, 1);
@@ -308,9 +302,8 @@ void FontRenderPassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&syn
 			Rc<Ref>(_fontAttachment->getStore().get()), frame->getSignalDependencies(),
 			sp::move(view));
 
-	// Signal before submitting, and through a retained handle: this backend runs its passes
-	// synchronously, so by the time the base submit returns the frame can already be finished and
-	// released - reaching for q.getFrame() afterwards reads freed memory.
+	// Signal before submitting, through a retained handle: passes run synchronously, so the frame
+	// may be released by the time the base submit returns.
 	frame->signalDependencies(true);
 
 	QueuePassHandle::submit(q, sp::move(sync), sp::move(onSubmited), sp::move(onComplete));

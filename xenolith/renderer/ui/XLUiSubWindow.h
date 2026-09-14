@@ -45,35 +45,24 @@ struct PopupSurfaceConfig;
 
 // One auxiliary surface belonging to a parent window: Dialog, Utility, Popup or Tooltip.
 //
-// It materializes as a native subwindow where the platform advertises
-// WindowCapabilities::Subwindows, and as an in-scene overlay on the parent's SceneContent2d where
-// it does not (Android, wasm, direct output). Both paths honour the same placement, the same
-// dismiss rules and the same close callback, so the caller never branches on the platform.
+// Materializes as a native subwindow where the platform advertises WindowCapabilities::Subwindows
+// (headless included: the pseudo-controller gives each one a pseudo-swapchain), and as an in-scene
+// overlay on the parent's SceneContent2d otherwise (Android, wasm, direct output). Both paths
+// honour the same placement, dismiss rules and close callback.
 //
-// Headless is on the native side of that line: the pseudo-controller emulates the window manager
-// and gives each auxiliary window a pseudo-swapchain of its own, so a menu or a dialog is a real,
-// separately renderable window with no display in play.
-//
-// The returned object IS the handle — keep the Rc. There is no lookup by id anywhere: what the
-// surface should contain travels with the window request itself, as WindowSceneInfo.
-//
-// App-thread only.
+// The returned object is the handle; keep the Rc. Content travels with the window request as
+// WindowSceneInfo, with no lookup by id. App-thread only.
 class SP_PUBLIC SubWindow : public Ref {
 public:
 	using WindowType = sprt::window::WindowType;
 	using WindowPlacement = sprt::window::WindowPlacement;
 	using WindowCreationFlags = sprt::window::WindowCreationFlags;
 
-	// Builds the surface's content. Used by BOTH materializations, which is what keeps a caller
-	// portable; it is handed the handle so the content can dismiss itself.
+	// Builds the surface's content, on both paths; handed the handle so content can dismiss itself.
 	using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(NotNull<SubWindow>)>;
 
-	// Escape hatch for a surface that needs its own Scene subclass. Only the native path can honour
-	// it — with `content` unset and no subwindow support, open() fails rather than silently
-	// producing something different.
-	//
-	// It is handed the handle, so a scene can be told what it is (which menu level, which document)
-	// by the closure that asked for the window, with nothing looked up by id afterwards.
+	// For a surface that needs its own Scene subclass. Native path only: with `content` unset and
+	// no subwindow support, open() fails. Handed the handle, so the scene needs no id lookup.
 	using SceneBuilder = Function<Rc<Scene>(NotNull<SubWindow>, NotNull<AppThread>,
 			NotNull<core::RenderServerChannel>, const core::FrameConstraints &)>;
 
@@ -84,7 +73,7 @@ public:
 		WindowType type = WindowType::Popup;
 		WindowCreationFlags flags = WindowCreationFlags::None;
 
-		// Popup/Tooltip: where it opens relative to the parent. Dialog/Utility are placed by the WM.
+		// Popup/Tooltip: placement relative to the parent. Dialog/Utility are placed by the WM.
 		WindowPlacement placement;
 
 		Extent2 size = Extent2(320, 200);
@@ -104,8 +93,7 @@ public:
 		CloseCallback onClose;
 
 		// False forces the in-scene path even where subwindows exist. Tooltips default to false:
-		// a native tip costs a swapchain for a few hundred milliseconds of hint, and it takes hover
-		// away from the node it describes.
+		// a native tip costs a swapchain and takes hover away from the node it describes.
 		bool preferNative = true;
 	};
 
@@ -128,29 +116,19 @@ public:
 	// True while the surface is on screen.
 	bool isOpen() const;
 
-	/* Overlay path only: where the placement put the surface, in the parent SceneContent's own
-	Y-DOWN coordinates (x, y = the surface's top-left; w, h = the size it was opened with).
-
-	Meaningful inside the content builder, which is what needs it: everything but a Tooltip is pushed
-	as a full-parent overlay, so the builder - not the push - is what decides where the visible box of
-	a menu or a palette actually sits. Empty on the native path, where the window system owns the
-	position. */
+	/* Overlay path only: where the placement put the surface, in the parent SceneContent's Y-down
+	coordinates (x, y: top-left; w, h: opened size). For the content builder: everything but a
+	Tooltip is pushed as a full-parent overlay, so the builder positions the visible box. Empty on
+	the native path. */
 	IRect getOverlayRect() const { return _overlayRect; }
 
 	// The surface's own window (native path) or the layout it was pushed as (overlay path).
 	AppWindow *getWindow() const;
 	basic2d::SceneLayout2d *getLayout() const { return _layout; }
 
-	/* The panel the surface was built AROUND: what `PopupSurfaceConfig::makePanel` returned, or the
-	plain Panel that stands in for it. Null for a surface built from a bare ContentBuilder, which
-	owes nobody a panel.
-
-	The layout above is a wrapper - it paints nothing, and exists to carry the style systems a
-	native path needs and to be the thing pushOverlay stretches - so the node a caller asked to
-	have built is a child of it and not it. Without this a caller reaching for its own content had
-	to walk the layout's children and cast, which is a guess about a structure this class owns and
-	changes: it was wrong the first time anyone tried, and silently, because a failed cast and an
-	unopened surface both read as null. */
+	/* The panel the surface was built around: what `PopupSurfaceConfig::makePanel` returned, or the
+	plain Panel standing in for it; null for a bare ContentBuilder. The layout is a non-painting
+	wrapper, so the panel is its child; use this instead of walking the layout's children. */
 	Panel *getPanel() const { return _panel; }
 
 	// The parent this surface hangs off. Null once the parent is gone.
@@ -169,8 +147,7 @@ public:
 
 protected:
 	friend class SubWindowSession;
-	// Sets _panel while the content is being built. Not part of the surface's public life: the
-	// panel is settled once, by whoever builds it, and is read-only from then on.
+	// Sets _panel while the content is being built; read-only afterwards.
 	friend Rc<SubWindow> openPopupSurface(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
 			PopupSurfaceConfig &&);
 
@@ -194,7 +171,7 @@ protected:
 	WindowType _type = WindowType::Popup;
 
 	// Overlay path, modal Dialog only: the node that covers the parent's content and eats its
-	// input. There is no second window to block, so this is what "modal" means there.
+	// input, since there is no second window to block.
 	Rc<basic2d::Layer> _backdrop;
 
 	// Overlay path only: the placement the surface resolved to, published for the content builder.
@@ -206,40 +183,23 @@ protected:
 	bool _closeFired = false;
 };
 
-/** The anchor rect a WindowPlacement wants for `anchor`: the box that node actually occupies, in
-the coordinates the placement is resolved in.
+/** The anchor rect a WindowPlacement wants for `anchor`: the box the node occupies on screen, in
+placement coordinates. Everything that opens off a node (menus, dropdowns, hints) uses this.
 
-This is the arithmetic every hand-written popup in this tree has got wrong at least once, so it has
-one answer and everything that opens off a node calls it - menus, dropdowns, hints:
+- built from the node's four corners, so rotation and scale are honoured;
+- converted into the scene content's space: world space is physical pixels (Scene scales by the
+  density), while WindowPlacement is in the window's logical points;
+- scaled by `density / surfaceDensity` (the application's `WindowInfo::density`, usually 1), since
+  content space is pixels over the full density and window points are pixels over the display's;
+- flipped into WindowPlacement's Y-down space from the content's top-left.
 
-- the box is built from the node's four CORNERS, not from its origin and size, because the node may
-  be rotated or scaled and what the popup hangs off is the box that is actually on screen;
-- the corners are then converted into the scene CONTENT's space. Both conversions are load-bearing:
-  convertToWorldSpace alone answers in SCENE space, which is physical pixels - Scene scales its
-  whole subtree by the density - while WindowPlacement is in the window's logical points. On a
-  HiDPI display the two differ by a factor of two, and mixing them puts the popup somewhere off the
-  window entirely;
-- and the result is then scaled by `density / surfaceDensity`, which is the application's own
-  `WindowInfo::density` and is 1 unless something asked for another. The content's space is pixels
-  over the FULL density and the window's points are pixels over the DISPLAY's alone, so the two are
-  the same space only while that factor is one. `--density 1.5` was enough to open every menu a
-  third of the way from the widget it belonged to; the implementation says the rest;
-- and it is flipped into WindowPlacement's Y-DOWN space at the end, from the content's top-left.
-
-Answers an empty rect for a node that is in no scene, which is the same thing every backend reads
-as "the origin", and is the only sane answer when there is no space to be placed in. */
+An empty rect for a node in no scene, which backends read as the origin. */
 SP_PUBLIC IRect placementAnchorRect(NotNull<Node> anchor);
 
-/** The same, for a POINT rather than a node - what a context menu and a pointer-anchored hint open
-off.
-
-`worldLocation` is in WORLD space, which is what an input event carries and what
-convertToWorldSpace answers; `inScene` is any node of the scene the point belongs to, and is only
-there to find the content. A caller holding a point in some node's OWN coordinates converts it
-first - naming the space in the signature is what keeps the density scale from being applied twice
-or not at all.
-
-The rect comes out EMPTY, which every backend reads as "this exact point". */
+/** The same for a point: what a context menu or pointer-anchored hint opens off. `worldLocation`
+is in world space (as input events and convertToWorldSpace give); `inScene` is any node of that
+scene, used to find the content. Convert node-local points first, or the density scale is wrong.
+The rect is empty, which backends read as this exact point. */
 SP_PUBLIC IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation);
 
 } // namespace ui

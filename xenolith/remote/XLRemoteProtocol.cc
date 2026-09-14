@@ -173,26 +173,16 @@ BytesView getDevBearerKey() {
 // size AND the decompressed size, so a compressed frame can never expand past it.
 static constexpr uint32_t kMaxFrameSize = 64u * 1'024 * 1'024;
 
-// The single decision point for "may this frame decompress to rawSize", shared by both decode
-// paths (readFrame and MessageReader::append) so they cannot drift apart.
-//
-// The bound is ABSOLUTE, with no compression-ratio test on top, and that is deliberate. A ratio cap
-// would have to sit below what LZ4 can actually produce to reject anything at all (its own ceiling
-// is around 250:1), and legitimate traffic on this protocol reaches that range: a batch of near
-// identical InputEventData structs, or a CBOR queue blob full of zeroed fields, compresses an order
-// of magnitude better than typical data. So a ratio low enough to fire would refuse real frames,
-// and one high enough to be safe could never fire. kMaxFrameSize bounds the allocation either way,
-// which is the property that actually matters against a decompression bomb.
+// The single decision point for "may this frame decompress to rawSize", shared by readFrame and
+// MessageReader::append. The bound is absolute (kMaxFrameSize), with no compression-ratio test:
+// legitimate traffic (input batches, zero-filled CBOR blobs) reaches LZ4's ratio ceiling.
 static bool isAcceptableRawSize(const MessageHeader &, uint32_t rawSize, size_t) {
 	return rawSize <= kMaxFrameSize;
 }
 
-// Read exactly n bytes, bounded by an absolute deadline.
-//
-// Still blocking, and still only used by the SETUP HANDSHAKE: it runs once per connection, before
-// any frame, and its deadline is the point. Every other path goes through OutgoingQueue and the
-// non-blocking drain in poll(). Between retries the transport is pumped, which is what lets a
-// datagram-based one make progress at all.
+// Read exactly n bytes, bounded by an absolute deadline. Blocking, so used only by the setup
+// handshake; other paths use OutgoingQueue. The transport is pumped between retries, which a
+// datagram-based transport needs to make progress.
 static bool streamReadFull(TransportConnection &conn, uint8_t *buf, size_t n, uint64_t deadline) {
 	auto stream = conn.getStream(StreamClass::Control);
 	if (!stream) {
@@ -217,7 +207,7 @@ static bool streamReadFull(TransportConnection &conn, uint8_t *buf, size_t n, ui
 	return true;
 }
 
-// Write exactly n bytes, bounded by an absolute deadline. Handshake-only, for the same reason.
+// Write exactly n bytes, bounded by an absolute deadline. Handshake-only.
 static bool streamWriteAll(TransportConnection &conn, const uint8_t *buf, size_t n,
 		uint64_t deadline) {
 	auto stream = conn.getStream(StreamClass::Control);
@@ -380,8 +370,7 @@ void encodeFrame(Bytes &out, BytesView dict, MessageType t, Domain d, uint8_t ms
 	mh->code = msg;
 	mh->serial = sprt::byteorder::HostToNetwork(serial);
 
-	// See the note in sendFrame's original body: Domain::Data blocks do not survive the LZ4
-	// dictionary round-trip, and the dictionary buys raw pixels nothing anyway.
+	// Domain::Data blocks do not survive the LZ4 dictionary round-trip, and gain nothing from it.
 	bool useDict = !dict.empty() && d != Domain::Data;
 
 	uint32_t clen = 0;
@@ -539,9 +528,8 @@ void MessageReader::addMessage(const MessageHeader &h, BytesView data) {
 }
 
 void MessageReader::dispatch(const Callback<bool(const MessageHeader &, BytesView)> &cb) {
-	// Re-try deferred messages within this call until a full pass consumes nothing -- so a reply and a
-	// message it depends on can both resolve in one pump regardless of arrival order. Terminates
-	// because every productive pass shrinks _pending.
+	// Retry deferred messages until a full pass consumes nothing, so a reply and a message it
+	// depends on resolve in one pump regardless of arrival order.
 	bool progress = true;
 	while (progress && !_pending.empty()) {
 		progress = false;
@@ -583,8 +571,7 @@ void WireWriter::writeU64(uint64_t v) {
 }
 
 void WireWriter::writeFloatBits(float v) {
-	// Through the bits, never through a numeric conversion: NaN is a value this protocol carries on
-	// purpose (see the class comment), and a NaN is not required to survive float -> anything -> float.
+	// Through the bits, never a numeric conversion: NaN must round-trip exactly (see WireWriter).
 	uint32_t bits = 0;
 	__sprt_memcpy(&bits, &v, sizeof(bits));
 	writeU32(bits);
@@ -633,23 +620,19 @@ static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 	h.status = in.readUnsigned();
 	h.dictSource = in.readUnsigned();
 
-	// The magic answers "is this our protocol at all". A reply from a foreign one used to be accepted
-	// as far as its status byte; the readers zero-fill past the end, so a truncated hello lands here
-	// as magic == 0 and is caught by the same check.
+	// The magic identifies the protocol. Readers zero-fill past the end, so a truncated hello is
+	// caught here as magic == 0.
 	if (h.magic != kProtocolMagic) {
 		return false;
 	}
 
-	// The STATUS is read before the version is judged, and the order matters. A refusal carries a
-	// reason -- Busy, AuthFailed -- and rejecting the hello on its version first threw that reason
-	// away, leaving the client to report a local BadProtocol for a server that had told it exactly
-	// what was wrong. A peer that got the magic right has earned being listened to.
+	// Status before version: a refusal's reason (Busy, AuthFailed) must reach the client instead of
+	// a local BadProtocol.
 	if (h.status != 0) {
 		return true;
 	}
 
-	// An accepting hello of another version is not usable: the codes are the same and the bytes
-	// under them are not (see kProtocolVersion).
+	// An accepting hello of another version is not usable (see kProtocolVersion).
 	if (h.version != kProtocolVersion) {
 		return false;
 	}
@@ -661,13 +644,8 @@ static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 	return true;
 }
 
-/* The version this client puts in its ClientHello.
- *
- * Normally kProtocolVersion. XL_REMOTE_FAKE_VERSION=<n> makes it something else, and it exists for
- * the same reason XL_REMOTE_FAKE_ABI does: two binaries built from one tree necessarily agree on the
- * version, so "a peer of the wrong version is refused" would be a claim nobody had ever executed.
- * Debug-only, and it can only get this client REFUSED -- there is no value it can carry that gets a
- * client accepted which would not have been.
+/* The version this client puts in its ClientHello: kProtocolVersion, or XL_REMOTE_FAKE_VERSION=<n>
+ * to test version refusal (like XL_REMOTE_FAKE_ABI). Debug-only; it can only get a client refused.
  */
 static uint16_t announcedProtocolVersion() {
 #if DEBUG
@@ -713,8 +691,7 @@ GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView 
 		buf = writeData(buf, dict);
 	}
 
-	// Free before branching: the early return on a write failure would otherwise leak `d` whenever
-	// __sprt_malloca fell back to the heap (a large suggested dictionary).
+	// Free before branching: `d` may be heap-allocated by __sprt_malloca.
 	auto sent = streamWriteAll(conn, d, clientHelloSize + sizeof(MessageHeader), deadline);
 
 	__sprt_freea(d);
@@ -748,7 +725,7 @@ GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView 
 static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey,
 		bool requireBearerKey) {
 	GlobalError status;
-	// The magic was parsed but never checked, so a foreign protocol reached the key comparison.
+	// Reject a foreign protocol or version before the key comparison.
 	if (ch.magic != kProtocolMagic || ch.version != kProtocolVersion) {
 		status = GlobalError::BadProtocol;
 	} else if (ch.authMode != toInt(AuthMode::BearerKey)) {
@@ -787,14 +764,13 @@ static bool writeServerHello(TransportConnection &conn, GlobalError status, Dict
 	buf = writeValue8(buf, toInt(dictSource));
 
 	if (withDict) {
-		// Network byte order, like every other size on the wire: decodeServerHello reads it through
-		// a BytesViewNetwork, so a host-order write here was byte-swapped on every little-endian peer.
+		// Network byte order, like every other size on the wire (decodeServerHello reads it through
+		// a BytesViewNetwork).
 		buf = writeValue16(buf, sprt::byteorder::HostToNetwork(uint16_t(serverDict.size())));
 		buf = writeData(buf, serverDict);
 	}
 
-	// Free the ALLOCATION, not the write cursor: `buf` has been advanced past the start of `d`, and
-	// releasing it corrupted the heap whenever __sprt_malloca had spilled (a large dictionary).
+	// Free the allocation `d`, not the advanced write cursor `buf`.
 	auto result = streamWriteAll(conn, d, serverHello + sizeof(MessageHeader), deadline);
 	__sprt_freea(d);
 	return result;
@@ -856,29 +832,15 @@ StringView getGlobalErrorName(GlobalError e) {
 	return StringView("Unknown");
 }
 
-// How long a refusal waits for the ClientHello before answering anyway. Short on purpose -- see
-// serverHandshakeReject.
+// How long a refusal waits for the ClientHello before answering anyway; see serverHandshakeReject.
 static constexpr uint64_t kRejectHelloWaitUs = 100'000;
 
 GlobalError serverHandshakeReject(TransportConnection &conn, GlobalError status,
 		uint64_t deadline) {
-	/* Read the ClientHello and throw it away, THEN answer.
-	 *
-	 * This used to write immediately, on the reasoning that "QUIC's two directions are independent,
-	 * so the refusal is delivered whether or not the hello has arrived". That is wrong, and the way
-	 * it is wrong is invisible on any other transport. QUIC has no single byte pipe: it has streams,
-	 * and this connection runs in OpenSSL's AUTO_BIDI default-stream mode, where each side's default
-	 * stream is the FIRST one to exist. A client's default stream is the one it created by sending
-	 * its hello. A server that writes before anything has arrived has no incoming stream to bind to,
-	 * so it creates a server-initiated one instead -- and the client, reading its own default stream,
-	 * never sees a byte of it. The refusal was written successfully, to a stream nobody was reading,
-	 * and the peer learned of it by timing out: exactly the silence this function exists to replace.
-	 *
-	 * So the read is not a formality, it is what binds the default stream to the client's. The wait
-	 * is short and separate from `deadline` because the original concern was real: a peer that
-	 * connects and says nothing must not park this thread. A legitimate client's hello is already in
-	 * flight when the connection completes, and one that misses the window is no worse off than
-	 * before -- it times out, as it did for every refusal until now. */
+	/* Read the ClientHello and discard it, then answer. With QUIC in OpenSSL's AUTO_BIDI mode, a
+	 * server writing before the client's stream arrives creates its own stream the client never
+	 * reads, so the read binds the default stream. The wait is short and separate from `deadline`,
+	 * so a silent peer cannot park this thread. */
 	auto helloDeadline = sprt::min(deadline,
 			sp::platform::clock(ClockType::Monotonic) + kRejectHelloWaitUs);
 	readFrame(conn, helloDeadline, BytesView(), [](const MessageHeader &, BytesView) { });

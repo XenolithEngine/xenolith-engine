@@ -32,46 +32,43 @@ namespace core {
 struct DynamicImageInstance;
 } // namespace core
 
-// Server-side endpoint that serves remote::Domain::Font for a connected client: it owns a dedicated,
-// network-only FontController (a separate FontLibrary + atlas from the server's local-scene controller),
-// a persistent content-hash font store, and a registry of the dependency events that gate client frames.
+// Server-side endpoint serving remote::Domain::Font for a connected client: owns a network-only
+// FontController (its own FontLibrary and atlas), a persistent content-hash font store, and the
+// registry of dependency events that gate client frames.
 //
-// Abstract interface declared here (xenolith_application) so the server can hold and drive it without a
-// hard build-time dependency on xenolith_font; the concrete RemoteFontServerEndpoint lives in
-// xenolith_font and is constructed via a SharedModule factory (mirroring createDefaultController).
+// Declared here so the server can drive it without depending on xenolith_font; the concrete
+// RemoteFontServerEndpoint lives in xenolith_font and is created via a SharedModule factory.
 class SP_PUBLIC RemoteFontServer : public Ref {
 public:
 	virtual ~RemoteFontServer() = default;
 
-	// Route a Domain::Font request/notification (SourcesAnnounce / GlyphRequest / ...). Always consumes.
+	// Route a Domain::Font request/notification (SourcesAnnounce, GlyphRequest, ...). Always
+	// consumes.
 	virtual bool dispatch(uint8_t code, uint32_t serial, BytesView payload) = 0;
 
-	// A font blob assembled by the block-transfer (remote::DataType::Font), keyed by its content hash.
+	// A font blob assembled by block transfer (remote::DataType::Font), keyed by content hash.
 	virtual void receiveFontData(uint64_t contentHash, BytesView bytes) = 0;
 
-	// Map a client-minted dependency id (carried in a frame's remoteWaitDependencyIds) to the server-local
-	// event the atlas update will signal, so the frame waits for it. Returns nullptr for an id the server
-	// is not rasterizing for (e.g. a non-font dependency) -- such frames are simply not gated here.
+	// Map a client-minted dependency id (from a frame's remoteWaitDependencyIds) to the
+	// server-local event the atlas update will signal. Returns nullptr for ids this server does not
+	// rasterize for; such frames are not gated here.
 	virtual Rc<core::DependencyEvent> reconcileDependency(uint32_t depId) = 0;
 
-	// Pin the network atlas's current ImageObject to a stable wire id and return it. Called right before a
-	// MaterialSet push (the atlas image is replaced on each glyph update, so its id must stay constant for
-	// the client's mirror identity to hold). Returns 0 if the atlas is not compiled yet.
+	// Pin the network atlas's current ImageObject to a stable wire id and return it; called before
+	// a MaterialSet push, since the atlas image is replaced on each glyph update. Returns 0 if the
+	// atlas is not compiled yet.
 	virtual uint64_t pinAtlasImage() = 0;
 
-	// Resolve a wire image id to the network atlas's current DynamicImageInstance (so a forwarded font
-	// material can be rebuilt as a dynamic, atlas-tracked material on the server). Returns null if the id
-	// is not the atlas's pinned id.
+	// Resolve a wire image id to the network atlas's current DynamicImageInstance, to rebuild a
+	// forwarded font material as atlas-tracked. Returns null if the id is not the pinned atlas id.
 	virtual Rc<core::DynamicImageInstance> resolveAtlasInstance(uint64_t imageId) = 0;
 
-	// Drop per-connection transient state (the dependency registry) on client disconnect; the persistent
-	// font store and the network atlas survive for the next client.
+	// Drop per-connection state (the dependency registry) on disconnect; the font store and network
+	// atlas persist.
 	virtual void reset() = 0;
 
-	// Final teardown, as opposed to reset(): release the network atlas and everything behind it. The
-	// endpoint is not a registered ApplicationExtension, so nothing else gives it the invalidate() the
-	// local-scene controller gets - it has to be called while the render device is still alive, or the
-	// atlas image outlives the device it was allocated on.
+	// Final teardown, unlike reset(): release the network atlas. Not a registered extension, so the
+	// owner must call it while the render device is still alive.
 	virtual void invalidate() = 0;
 };
 

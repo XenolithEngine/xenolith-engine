@@ -21,20 +21,17 @@
  **/
 
 #include "XLUiColorPicker.h"
-#include "XLUiLayoutSystem.h" // the marker that says a real layout owns the children's geometry
-#include "XLUiControlLock.h" // applyControlInvalid: the one word for "this was refused"
+#include "XLUiLayoutSystem.h"
+#include "XLUiControlLock.h" // applyControlInvalid
 #include "XLInputListener.h"
-#include "XLInheritedStyle.h" // the text colour every Label under the surface inherits
+#include "XLInheritedStyle.h" // inherited text colour
 #include "XLClipboard.h"
 #include "XLDirector.h"
 #include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* The surface's metrics, in points, and DELIBERATELY not stylesheet-driven - the same choice
-ui::TooltipSystem's stock hint makes. This surface exists for the platforms where the system colour
-dialog does not, and it may well come up in an application that never named a stylesheet for it; a
-picker that needs a sheet to be usable is not a fallback. */
+// Surface metrics in points, set in code so the picker is usable without a stylesheet.
 static constexpr float s_pickerPadding = 12.0f;
 static constexpr float s_pickerGap = 8.0f;
 static constexpr float s_pickerRowHeight = 28.0f;
@@ -51,31 +48,21 @@ static constexpr float s_pickerNumberWidth = 68.0f;
 static constexpr float s_pickerButtonWidth = 56.0f;
 static constexpr float s_pickerRadius = 3.0f;
 
-/* Wide enough for the row that needs the most: the preview, a hex line that can show `#rrggbbaa`
-without scrolling, and the two clipboard buttons. Every other row then has room to spare, which is
-why nothing else is measured into this. */
+// Fits the widest row: the preview, a hex line showing `#rrggbbaa`, and two clipboard buttons.
 static constexpr float s_pickerMinWidth = 340.0f;
 
-/* How many quads a gradient strip is made of.
-
-A ramp per channel is drawn as a run of two-colour ui::basic2d::Layers rather than as one
-multi-stop LinearGradient. The engine HAS the second - Sprite::setLinearGradient, wired all the way
-through the vertex plan - and there is not one call to it anywhere in the tree, so a widget that
-depended on it would be the thing that discovered whatever is wrong with it. A SimpleGradient quad
-is the path every Layer in the engine already takes.
-
-Eight segments for a channel that is nearly linear in RGB, twelve for the hue, which sweeps the
-whole wheel and is the only one where the eye can see the joins. */
+/* Quads per gradient strip. A ramp is a run of two-colour basic2d::Layer quads (SimpleGradient),
+not a multi-stop LinearGradient (Sprite::setLinearGradient is unused elsewhere). The hue sweeps the
+whole wheel and needs more segments to hide the joins. */
 static constexpr uint32_t s_pickerSegments = 8;
 static constexpr uint32_t s_pickerHueSegments = 12;
 
-// The checkerboard under the alpha bar. Two rows of squares; a cell that divides the bar's height
-// exactly is what keeps the bottom row from being a sliver.
+// The checkerboard under the alpha bar: two rows of cells dividing the bar height exactly.
 static constexpr float s_pickerCheckerCell = s_pickerBarHeight / 2.0f;
 static constexpr Color4B s_pickerCheckerLight = Color4B(0x9E, 0x9E, 0x9E, 0xFF);
 static constexpr Color4B s_pickerCheckerDark = Color4B(0x61, 0x61, 0x61, 0xFF);
 
-// The surface's own palette, for the parts that are not the colour being edited.
+// The surface's own colours, for the parts that are not the edited colour.
 static constexpr Color4B s_pickerTextColor = Color4B(0xE8, 0xE8, 0xE8, 0xFF);
 static constexpr Color4B s_pickerControlColor = Color4B(0x2E, 0x2E, 0x36, 0xFF);
 static constexpr Color4B s_pickerActiveColor = Color4B(0x3D, 0x7E, 0xCF, 0xFF);
@@ -104,8 +91,7 @@ static constexpr Color4B s_defaultPalette[] = {
 SpanView<Color4B> getDefaultColorPalette() { return SpanView<Color4B>(s_defaultPalette); }
 
 String formatColorHex(const Color4B &color, bool alpha) {
-	// Lower case and always the long form: one spelling per colour, so that what a form collects
-	// and what a file already holds can be compared as text.
+	// lower case, always the long form: one spelling per colour, comparable as text
 	auto digits = StringView("0123456789abcdef");
 	String ret;
 	ret.reserve(alpha ? 9 : 7);
@@ -164,8 +150,7 @@ static float channelMax(ColorPickerMode mode, uint32_t index) {
 	if (mode == ColorPickerMode::RGB) {
 		return 255.0f;
 	}
-	// The hue wraps, so 360 IS 0 and putting a notch on both ends would give the wheel two reds
-	// with nothing between them.
+	// the hue wraps: 360 is 0
 	return index == 0 ? 359.0f : 100.0f;
 }
 
@@ -176,12 +161,8 @@ static uint32_t channelSegments(ColorPickerMode mode, uint32_t index) {
 
 } // namespace
 
-/* PAINTING A CHILD IN CODE, and why every one of them needs it.
-
-On the native path this surface is a scene of its own and the application's stylesheet does not
-reach it; on any path it may be running in an application that never wrote one. A ui::TextInput with
-nothing declared is WHITE with BLACK text, and a ui::Button the same - so a picker that left them
-alone would be three white boxes on a dark panel in exactly the case it exists for. */
+/* Child controls are styled in code: without a stylesheet a ui::TextInput or ui::Button is white
+with black text, which does not fit the dark panel. */
 static void paintPickerField(NotNull<TextInput> input) {
 	input->setOrUpdateComponent<TextInputStyleComponent>([](NotNull<TextInputStyleComponent> s) {
 		s->backgroundColor = s_pickerControlColor;
@@ -208,17 +189,10 @@ static void paintPickerButton(NotNull<Button> button, const Color4B &fill) {
 
 // ---- the bar -----------------------------------------------------------------------------------
 
-/* One channel's slider, with the colours that channel produces drawn under its track.
+/* One channel's ui::Slider, with the colours that channel produces drawn under its track.
 
-It is a ui::Slider and adds one thing to it. The base already carries the press-to-jump, the drag,
-the arrows, Home/End, PageUp/PageDown, the focus and the disabled state; a bar that reimplemented
-any of that would be a second, worse slider that drifted from the first.
-
-THE STRIP IS INSET BY HALF A HANDLE at each end, and that is not a margin. The handle's centre
-travels [thumb/2, width - thumb/2] - that is Slider's arithmetic, and the reason index 0 sits inside
-the track rather than half outside it. A strip spanning the full width would therefore put the
-colour the handle is ON somewhere the handle never reaches, and the swatch under the grip would
-disagree with the preview by a couple of steps at both ends. */
+The strip is inset by half a handle at each end: the handle centre travels
+[thumb/2, width - thumb/2], so the colour under the handle matches the value. */
 class ColorPickerContent::Bar : public Slider {
 public:
 	virtual ~Bar() = default;
@@ -233,18 +207,15 @@ public:
 		addStyleClass("xl-ui-color-picker-bar");
 		registerStyleAppliers("color-picker-bar");
 
-		// The track paints NOTHING: the strip under it is the whole point, and a ui::Panel with
-		// nothing declared is an opaque WHITE surface that would cover it.
+		// transparent track: an unstyled ui::Panel is opaque white and would cover the strip
 		setPathColor(Color4B(0, 0, 0, 0), false);
 
-		/* The fill says "how far along the value is" - which a colour bar already says by where the
-		colour under the handle changes. Left drawn, it paints a solid block over the half of the
-		ramp the value has passed, which is the half that matters most. */
+		// the fill would cover the passed half of the ramp
 		if (auto fill = getFill()) {
 			fill->setVisible(false);
 		}
 
-		// Below the fill (1) and the handle (2), which is where a background belongs.
+		// below the fill (1) and the handle (2)
 		_strip = addChild(Rc<Node>::create(), ZOrder(0));
 		_strip->setAnchorPoint(Anchor::BottomLeft);
 
@@ -252,18 +223,15 @@ public:
 			thumb->setContentSize(Size2(s_pickerThumb, s_pickerThumb));
 			thumb->setPathColor(s_pickerThumbColor, false);
 			thumb->setBorderRadius(s_pickerThumb / 2.0f);
-			// A pale handle over a pale part of the ramp is a handle nobody can find.
+			// outline keeps the pale handle visible over pale ramps
 			thumb->setOutline(Color4B(0x1A, 0x1A, 0x1A, 0xFF), 1.0f);
 		}
 
 		return true;
 	}
 
-	/* The ramp, as N+1 sample colours: N quads are built between them.
-
-	Kept and compared, because this runs for every bar on every edit - moving the hue re-ramps
-	saturation and lightness both - and rebuilding four strips of eight nodes per drag step would
-	be the one expensive thing on the surface. */
+	/* The ramp as N+1 sample colours with N quads between them. Stops are compared and nodes
+	reused, since this runs for every bar on every edit. */
 	void setStops(SpanView<Color4B> stops) {
 		if (stops.size() < 2) {
 			return;
@@ -296,8 +264,7 @@ public:
 		}
 
 		for (size_t i = 0; i < count; ++i) {
-			// The four-corner constructor rather than the along-vector one: "left colour on both
-			// left corners, right colour on both right" is the gradient this wants, said outright.
+			// four-corner form: left colour on both left corners, right colour on both right
 			_segments[i]->setGradient(
 					basic2d::SimpleGradient(_stops[i], _stops[i + 1], _stops[i], _stops[i + 1]));
 		}
@@ -305,8 +272,7 @@ public:
 		layoutStrip();
 	}
 
-	// Draw a checkerboard under the ramp. What makes a half-transparent colour READ as one rather
-	// than as a darker version of itself.
+	// A checkerboard under the ramp, so transparency is visible.
 	void setCheckerVisible(bool value) {
 		if (value == (_checker != nullptr)) {
 			return;
@@ -316,7 +282,7 @@ public:
 			_checker = nullptr;
 			return;
 		}
-		// Under the ramp, so the ramp's own alpha is what lets it through.
+		// under the ramp, showing through its alpha
 		_checker = _strip->addChild(Rc<Node>::create(), ZOrder(0));
 		_checker->setAnchorPoint(Anchor::BottomLeft);
 		layoutStrip();
@@ -348,8 +314,7 @@ protected:
 
 		const float step = width / float(_segments.size());
 		for (size_t i = 0; i < _segments.size(); ++i) {
-			// Each quad runs to where the NEXT one starts, computed from the same expression, so
-			// rounding cannot leave a hairline between two of them.
+			// each quad ends where the next starts (same expression), so rounding leaves no gaps
 			const float from = float(i) * step;
 			const float to = float(i + 1) * step;
 			_segments[i]->setPosition(Vec2(from, 0.0f));
@@ -385,8 +350,7 @@ protected:
 				const float x = float(column) * s_pickerCheckerCell;
 				const float y = float(row) * s_pickerCheckerCell;
 				cell->setPosition(Vec2(x, y));
-				// The last cell of a row or column is clipped by arithmetic rather than by a
-				// stencil: the board is decoration and must not paint past the bar.
+				// the last cell is clipped arithmetically so the board stays within the bar
 				cell->setContentSize(Size2(sprt::min(s_pickerCheckerCell, width - x),
 						sprt::min(s_pickerCheckerCell, height - y)));
 				cell->setColor(
@@ -416,7 +380,7 @@ Extent2 ColorPickerContent::measure(const ColorPickerParams &params) {
 						+ float(columns - 1) * s_pickerSwatchGap);
 	}
 
-	// The hex row, the tabs, and one row per channel. Everything below is conditional.
+	// the hex row, the tabs and one row per channel; the rest is conditional
 	float height = s_pickerPadding * 2.0f + s_pickerRowHeight + s_pickerGap + s_pickerTabHeight
 			+ float(ChannelCount) * (s_pickerGap + s_pickerRowHeight);
 
@@ -442,7 +406,7 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 	_mode = _params.mode;
 	_value = _params.value;
 	if (!_params.alpha) {
-		// The surface must not report an alpha it never showed a way to change.
+		// no alpha bar, so the value is opaque
 		_value.a = 255;
 	}
 
@@ -452,9 +416,8 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 	registerStyleAppliers("color-picker");
 	setPathColor(SurfaceColor, false);
 
-	/* The text colour for everything below, declared once at the root the way a stylesheet would.
-	A basic2d::Label with nothing inherited is BLACK, which on this panel is a label nobody can
-	read. An outer sheet that does reach the surface overwrites this on its own pass. */
+	/* Inherited text colour for all labels (an uninherited basic2d::Label is black); a stylesheet
+	that reaches the surface overwrites it. */
 	setOrUpdateComponent<InheritedColorStyle>([](NotNull<InheritedColorStyle> style) {
 		style->color = Color3B(s_pickerTextColor.r, s_pickerTextColor.g, s_pickerTextColor.b);
 		style->defined |= InheritedColorStyle::DefinedColor;
@@ -465,17 +428,10 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 
 	// --- the preview and the hex line ---------------------------------------------------------
 
-	/* TWO swatches, not one. The colour the picker OPENED on is the only reference a person has for
-	"how far have I moved"; a preview showing just the current value answers a question nobody asked
-	while it is being dragged. */
-	/* BOTH ARE CREATED WHITE and coloured through setPathColor, and the white is the point.
-
-	A LayerRounded's NODE colour multiplies the colour of the path it draws, and setPathColor only
-	ever writes the path. Built with the value, a swatch that is later RE-coloured keeps the
-	original as a tint for every colour it is given afterwards - so the preview of a green, in a
-	picker opened on purple, comes out near-black. White is the identity for that multiply. The
-	palette swatches below are built with their colour instead, which is safe for exactly the
-	reason it is wrong here: nothing ever gives one of them a second colour. */
+	/* Two previews: the colour the picker opened on and the current one. Both are created white
+	and coloured via setPathColor: the LayerRounded node colour multiplies the path colour, so a
+	recoloured swatch must have a white node colour. Palette swatches never change colour and are
+	built with it directly. */
 	_previewOld =
 			addChild(Rc<basic2d::LayerRounded>::create(Color4F::WHITE, s_pickerRadius), ZOrder(1));
 	_previewOld->setName("preview-old");
@@ -483,8 +439,7 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 
 	_preview =
 			addChild(Rc<basic2d::LayerRounded>::create(Color4F::WHITE, s_pickerRadius), ZOrder(1));
-	// Named `preview` and not `preview-new`: it is THE preview - what the picker currently holds -
-	// and the reference beside it is the one that needs a qualifier.
+	// the current colour; the reference beside it is `preview-old`
 	_preview->setName("preview");
 
 	_hex = addChild(Rc<TextInput>::create(), ZOrder(1));
@@ -508,8 +463,7 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 
 	// --- the tabs -----------------------------------------------------------------------------
 
-	// The title is written out rather than derived from the id: one is read by a person and the
-	// other by a command, and a case conversion between them is a dependency neither needs.
+	// display titles, independent of the mode ids
 	static constexpr StringView tabTitles[3] = {StringView("RGB"), StringView("HSL"),
 		StringView("HSV")};
 
@@ -519,7 +473,7 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 				ZOrder(2));
 		button->setType("color-picker-tab");
 		button->setName(mem_std::toString("tab-", getColorPickerModeName(mode)));
-		// The fill is updateTabs's, since it says which tab is on; the rest is settled here.
+		// the fill is set by updateTabs to mark the active tab
 		paintPickerButton(button, s_pickerControlColor);
 		_tabs[i] = button;
 	}
@@ -592,12 +546,8 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
 
-	/* Escape is a HOTKEY, not a key: the engine registers it as `back` and the hotkey pass consumes
-	it before any key recognizer runs, so bound as a raw keycode it would simply never arrive. The
-	same trap ui::SearchPickerContent names.
-
-	Gated on having somewhere to close TO rather than on focus: a surface in a popup may not have
-	been given the keyboard yet when the user hits Escape. */
+	/* Escape must be bound as the `back` hotkey: the hotkey pass consumes it before key
+	recognizers. Gated on onClose rather than focus, since a popup may not have the keyboard yet. */
 	_listener->addHotkey(EngineHotkeys::get().back, [this](HotkeyId, const InputEvent &) {
 		if (_params.onClose) {
 			_params.onClose();
@@ -608,8 +558,7 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 
 	_listener->setTouchFilter(
 			[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
-		// A key event carries a pointer location, so the default filter would answer only while the
-		// mouse happens to be over the surface.
+		// key events carry the pointer location; accept them regardless of the pointer
 		if (event.data.isKeyEvent()) {
 			return true;
 		}
@@ -626,15 +575,14 @@ bool ColorPickerContent::init(ColorPickerParams &&params) {
 void ColorPickerContent::handleEnter(Scene *scene) {
 	Panel::handleEnter(scene);
 
-	// The caret starts in the hex line: it is the part of this surface a keyboard reaches first,
-	// and the only one that can express a colour with no pointer at all.
+	// the caret starts in the hex line
 	if (_hex) {
 		_hex->focus();
 	}
 }
 
 void ColorPickerContent::handleExit() {
-	// The read in flight belongs to a surface that is going away, and its callback captures `this`.
+	// cancel a pending read: its callback captures `this`
 	if (_clipboard) {
 		_clipboard->cancel();
 	}
@@ -676,8 +624,7 @@ void ColorPickerContent::channelsFromValue() {
 	case ColorPickerMode::HSL: {
 		float h, s, l;
 		sprt::geom::rgbToHsl(rgb, h, s, l);
-		// A GREY REPORTS HUE 0, which is a fact about the colour and not about what the person was
-		// doing with it - so the hue they were last on is what the bar keeps. See the class comment.
+		// a grey reports hue 0; keep the last hue instead
 		_channels[0] = (s > 0.0f) ? h : _hue;
 		_channels[1] = s * 100.0f;
 		_channels[2] = l * 100.0f;
@@ -698,16 +645,13 @@ void ColorPickerContent::channelsFromValue() {
 
 void ColorPickerContent::applyChannels(bool silent) {
 	if (_mode != ColorPickerMode::RGB) {
-		// The bar the person is holding is the truth about the hue, whatever the colour it
-		// currently produces has to say.
+		// the hue bar value is kept even when the colour has no hue
 		_hue = _channels[0];
 	}
 
 	const auto color = colorFromChannels();
 	if (color == _value) {
-		// Two adjacent notches of a coarse channel can round to one colour - a saturation of 0 and
-		// of 1 percent on a very dark value, say. The bar has moved and the colour has not, so
-		// there is nothing to report and nothing to repaint but the bar's own handle.
+		// adjacent channel steps can round to the same colour: update the controls, report nothing
 		updateContent();
 		return;
 	}
@@ -729,8 +673,7 @@ void ColorPickerContent::setValue(const Color4B &value, bool silent) {
 	}
 
 	if (color == _value) {
-		// Still refresh: a refused edit left the hex line showing something else, and this is how
-		// "assign what it already holds" puts it back.
+		// still refresh the hex line, which may show a refused edit
 		updateContent();
 		return;
 	}
@@ -738,8 +681,7 @@ void ColorPickerContent::setValue(const Color4B &value, bool silent) {
 	_value = color;
 	setInvalid(false);
 
-	// An ASSIGNMENT, so the channels are rebuilt from it - see the class comment on why an edit
-	// does not do this.
+	// an assignment rebuilds the channels; an edit does not
 	channelsFromValue();
 
 	updateContent();
@@ -771,8 +713,7 @@ void ColorPickerContent::setMode(ColorPickerMode mode) {
 
 	_mode = mode;
 
-	// The colour has not changed - only what it is spelled as. So this is a re-read of the value,
-	// not an edit, and the VALUE is not reported.
+	// the colour is unchanged, so nothing is reported
 	channelsFromValue();
 
 	updateTabs();
@@ -813,8 +754,7 @@ void ColorPickerContent::setAlpha(float value, bool silent) {
 	_value.a = a;
 	updateContent();
 
-	// The alpha changes what every OTHER bar looks like - each of them shows its channel at the
-	// current transparency - but not what any of them MEANS, so the channels stay put.
+	// the alpha changes the other bars' gradients but not the channels
 	updateGradients();
 
 	if (!silent && _params.onChange) {
@@ -829,8 +769,7 @@ bool ColorPickerContent::commitText(bool fromEnter) {
 
 	Color4B color;
 	if (!sprt::geom::readColor(_hex->getText(), color)) {
-		// The refusal is marked HERE and the surface stays: the text is what the user is still
-		// working on, and answering a mistake by hiding it is worse than leaving it on screen.
+		// mark the refusal and keep the surface open with the text
 		setInvalid(true);
 		return false;
 	}
@@ -842,8 +781,7 @@ bool ColorPickerContent::commitText(bool fromEnter) {
 	setInvalid(false);
 	setValue(color);
 
-	/* ENTER IS A DECISION and closes the surface; a paste is not. The two share this function
-	because they share the reading, not because they mean the same thing. */
+	// Enter picks and closes the surface; a paste does not.
 	if (fromEnter && _params.onPick) {
 		_params.onPick(_value);
 	}
@@ -853,7 +791,7 @@ bool ColorPickerContent::commitText(bool fromEnter) {
 void ColorPickerContent::setInvalid(bool value) {
 	_valid = !value;
 	if (_hex) {
-		// The same state ui::FormSystem marks a rejected field with: one word for one meaning.
+		// the same state ui::FormSystem marks a rejected field with
 		applyControlInvalid(_hex, value);
 	}
 }
@@ -882,13 +820,11 @@ void ColorPickerContent::updateTabs() {
 }
 
 void ColorPickerContent::updateContent() {
-	// Everything below WRITES to widgets that report their changes back. Without this guard the
-	// echo of a write lands in the very callback that produced it.
+	// guard: the widgets written below report their changes back
 	_inUpdate = true;
 
 	if (_preview) {
-		// WITH the alpha: the preview is the value, and a half-transparent colour shown opaque is a
-		// preview that lies about what it holds.
+		// with alpha: the preview shows the value as it is
 		_preview->setPathColor(_value, true);
 	}
 
@@ -922,9 +858,8 @@ void ColorPickerContent::updateContent() {
 void ColorPickerContent::updateGradients() {
 	Vector<Color4B> stops;
 
-	// Sampled by RUNNING THE MODEL, not by interpolating the endpoints: saturation and lightness
-	// are not linear in RGB, and a two-stop ramp for either of them draws a colour the bar will
-	// never produce anywhere but at its ends.
+	// Sampled by evaluating the colour model, not interpolating endpoints: saturation and
+	// lightness are not linear in RGB.
 	auto sample = [&](uint32_t channel, uint32_t segments) {
 		stops.clear();
 		const float max = channelMax(_mode, channel);
@@ -932,8 +867,7 @@ void ColorPickerContent::updateGradients() {
 		for (uint32_t i = 0; i <= segments; ++i) {
 			_channels[channel] = max * float(i) / float(segments);
 			auto color = colorFromChannels();
-			// The ramp shows what the CHANNEL does, so it is drawn opaque whatever the alpha is;
-			// only the alpha bar is about transparency.
+			// channel ramps are opaque; only the alpha bar shows transparency
 			color.a = 255;
 			stops.emplace_back(color);
 		}
@@ -949,8 +883,7 @@ void ColorPickerContent::updateGradients() {
 	}
 
 	if (_alphaBar) {
-		// Two stops are exact here: alpha IS linear, and the checkerboard under it is what the
-		// transparent end is read against.
+		// two stops suffice: alpha is linear
 		Color4B clear = _value;
 		clear.a = 0;
 		Color4B solid = _value;
@@ -983,12 +916,10 @@ bool ColorPickerContent::pasteFromClipboard() {
 		return false;
 	}
 
-	// `this` is safe in the callback: ClipboardSession retains its target until the answer lands,
-	// and handleExit cancels the read outright.
+	// `this` is safe: ClipboardSession retains its target, and handleExit cancels the read
 	return clipboard->readText([this](const ClipboardSession::Result &result) {
 		if (!result.ok()) {
-			// Nothing to take. Not a validation failure of anything the user typed, but the hex
-			// line is the only place this surface can say so at all.
+			// nothing to paste; the hex line is the only place to show it
 			setInvalid(true);
 			return;
 		}
@@ -1013,14 +944,11 @@ bool ColorPickerContent::handleTap(const Vec2 &location) {
 			if (!_params.alpha) {
 				color.a = 255;
 			} else {
-				// A swatch names a colour, not a transparency: taking one must not silently undo
-				// an alpha the person set on the bar right above it.
+				// a swatch keeps the current alpha
 				color.a = _value.a;
 			}
 
-			/* A swatch is a CHOICE and closes the surface, so it reports through onPick alone -
-			the value is assigned silently first, because onChange here would report the same
-			colour twice through two different contracts. */
+			// a swatch is a pick: assign silently, report only through onPick
 			setValue(color, true);
 			if (_params.onPick) {
 				_params.onPick(_value);
@@ -1040,9 +968,7 @@ void ColorPickerContent::handleContentSizeDirty() {
 		return;
 	}
 
-	// A LayoutSystem - from `display:flex`, or added by hand - owns the children's geometry, and
-	// everything below would be a second writer of the same positions. The same line ui::Slider and
-	// ui::Select carry, for the same reason.
+	// a LayoutSystem owns the children's geometry when present
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -1063,7 +989,7 @@ void ColorPickerContent::handleContentSizeDirty() {
 	// --- the preview, the hex line and the two clipboard buttons --------------------------------
 
 	{
-		// The two halves of the preview share one slot: the colour opened on, then the current one.
+		// the two previews share one slot: the original colour, then the current one
 		const float half = s_pickerPreviewWidth / 2.0f;
 		place(_previewOld, Vec2(left, top), Size2(half, s_pickerRowHeight));
 		place(_preview, Vec2(left + half, top), Size2(half, s_pickerRowHeight));
@@ -1101,15 +1027,13 @@ void ColorPickerContent::handleContentSizeDirty() {
 
 	// --- one row per channel, then the alpha ----------------------------------------------------
 
-	// The bar is what is left after the letter and the box, so every row lines up whatever the
-	// surface was sized to.
+	// the bar takes what is left after the letter and the box, so rows line up
 	const float barLeft = left + s_pickerLabelWidth + s_pickerGap;
 	const float barWidth = sprt::max(right - s_pickerNumberWidth - s_pickerGap - barLeft, 0.0f);
 	const float numberLeft = right - s_pickerNumberWidth;
 
 	auto placeRow = [&](Node *label, Node *bar, Node *input) {
-		// The bar is thinner than the row, so it is centred against the box beside it rather than
-		// hung from the same top edge.
+		// the bar is thinner than the row and centred vertically
 		const float barTop = top - (s_pickerRowHeight - s_pickerBarHeight) / 2.0f;
 		place(label, Vec2(left, top), Size2(s_pickerLabelWidth, s_pickerRowHeight));
 		place(bar, Vec2(barLeft, barTop), Size2(barWidth, s_pickerBarHeight));

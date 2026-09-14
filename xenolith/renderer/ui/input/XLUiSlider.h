@@ -31,58 +31,32 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /** A value picked by sliding: a track, the part of it behind the handle, and the handle.
 
-THE WIDGET CARRIES AN INDEX, NOT A FRACTION, and that is the whole design.
+The widget stores a step index, not a fraction: `getValue()` is `min + step * index`, so a drag and
+a key press landing on the same notch give the same exact number. The fraction is only used to draw.
 
-A slider that held 0..1 and multiplied would answer 0.5499999999999999 to a drag that landed exactly
-on the middle notch, and two runs on two ABIs would disagree in the last place. Here the position
-under the pointer is turned into a STEP INDEX and nothing else is stored; the fraction is computed
-once, when the fill is drawn, and never read back. So `getValue()` is `min + step * index` - an
-arithmetic expression over three declared numbers, identical everywhere - and a drag and an arrow
-press that land on the same notch produce the same number rather than two close ones.
+The widget is the track and owns two ui::Panels, the fill and the handle; everything visible comes
+from CSS. It does not use SystemManagedLayout, so the handle's CSS size is committed: children are
+positioned in handleContentSizeDirty unless a LayoutSystem is present, and only the fill's geometry
+is written outright.
 
-WHAT IT IS MADE OF, and none of it is new: three ui::Panels, the same shape as ui::ProgressBar -
-the widget is the track, and it owns the fill and the handle. Everything visible comes from CSS; C++
-writes geometry only. Give the track its size the way you would any other atom.
+The travel is `track - handle` and the handle's centre is `handle/2 + travel * fraction`, so the
+handle stays inside the track and the coordinate-to-index map is exactly reversible.
 
-IT IS NOT A ui::ProgressBar AND DOES NOT DERIVE FROM ONE. The picture is nearly the same and the
-widget is not: an indicator has no step, takes no focus, cannot be locked, and answers `nan` for
-"unknown", which is not a thing a slider can mean. A shared silhouette is not a base class.
+A max that is not a whole number of steps from min is kept, not trimmed: `setRange(0, 10, 3)` has
+notches 0, 3, 6, 9, and `getValueAt(getMaxIndex())` reports that 10 is unreachable.
 
-IT DOES NOT CARRY SystemManagedLayout, and that is deliberate rather than an omission. The handle
-takes its size from CSS - a rule saying `slider-thumb { width:16px }` has to reach it - and under a
-system-managed parent a child's declared size is routed into a MeasureComponent for the owner to
-read instead of being committed. So this widget follows ui::Select: it POSITIONS its children in
-handleContentSizeDirty, stands aside the moment a real LayoutSystem is present, and reads the
-handle's size the way Select reads its icon's. The one geometry the widget writes outright is the
-fill's, which no sheet has any reason to declare.
+Arrow keys work only along the widget's axis; Home/End and PageUp/PageDown work on both. Keys are
+answered only while focused (via ui::FormSystem, or tap to focus and tap outside to blur).
 
-THE HANDLE HAS WIDTH, and the arithmetic respects it. The travel is `track - handle`, and the
-handle's centre is `handle/2 + travel * fraction`, so at index 0 the handle sits inside the track
-rather than half outside it, and the map from coordinate to index is exactly reversible.
-
-AN UNREACHABLE MAXIMUM IS REPORTED, NOT TRIMMED. `setRange(0, 10, 3)` has four notches - 0, 3, 6, 9 -
-and 10 is not one of them. The widget keeps the max it was given and lets `getValueAt(getMaxIndex())`
-say that the end is not reachable; an owner that cares (a screen editor validating an author's
-binding) can then say so in its own words. Silently moving the max to 9, or adding a notch at 10 that
-is not a whole step from its neighbour, would take that away and put a number nobody wrote on screen.
-
-KEYS ANSWER ALONG THE WIDGET'S OWN AXIS ONLY. A horizontal slider ignores Up/Down and a vertical one
-ignores Left/Right: on a horizontal track "up" names no direction, and a control that guesses one
-takes the key away from whatever beside it meant something by it. Home/End and PageUp/PageDown work
-either way, because "the end" and "a big step" are unambiguous. Keys are answered only while the
-widget is FOCUSED - inside a ui::FormSystem that works because the group passes events to listeners
-at or below the focused field's node, and standalone because a tap takes focus and a tap outside
-gives it up.
-
-THE CALLBACK FIRES THROUGHOUT A DRAG, not at its end: a value that arrives only on release gives no
-live feedback. As with ui::NumberField, grouping one drag into one history entry is the owner's job.
+The callback fires on every step during a drag; grouping a drag into one history entry is the
+owner's job.
 
 CSS: type `slider`, class `xl-ui-slider`; children `slider > slider-fill` and
 `slider > slider-thumb`, each with its own type so a rule can tell them apart. Classes `vertical`
 while the axis is vertical, `dragging` between press and release, plus `disabled` / `locked` from
 ui::applyControlEnabled and ui::setEditLock. `:hover`, `:focus`, `:active` and `:disabled` come from
 InteractiveComponent, as they do for ui::Select. All three parts are Panels, and a Panel with no
-fill declared is an opaque WHITE surface - so all three need a colour.
+fill declared is opaque white, so all three need a colour.
 
     slider              { width:220px; height:20px; }
     slider-fill         { background-color:#FCB400; border-radius:2px; }
@@ -90,10 +64,10 @@ fill declared is an opaque WHITE surface - so all three need a colour.
     slider:focus > slider-thumb { background-color:#FCB400; } */
 class SP_PUBLIC Slider : public Panel, public EditLockTarget {
 public:
-	// The index now chosen. The value is `getValue()`; the index is what MOVED.
+	// The index now chosen; the value is `getValue()`.
 	using Callback = Function<void(int64_t index)>;
 
-	// What PageUp / PageDown are worth, in steps.
+	// PageUp / PageDown size, in steps.
 	static constexpr uint32_t DefaultPageSteps = 10;
 
 	virtual ~Slider();
@@ -102,11 +76,8 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	/* Declare the scale. `step` must be > 0 and `max` >= `min`, or nothing moves and this answers
-	false - a range nobody can express is a programming mistake, not a value.
-
-	The current index is kept where it still exists and clamped to the new end otherwise: a widget
-	whose scale changed under it must not report a notch that is no longer there. */
+	/* Declare the scale. Returns false and changes nothing unless `step` > 0 and `max` >= `min`.
+	The current index is kept if still in range, clamped to the new end otherwise. */
 	virtual bool setRange(double min, double max, double step);
 
 	double getMin() const { return _min; }
@@ -123,20 +94,15 @@ public:
 	double getValue() const { return getValueAt(_index); }
 	double getValueAt(int64_t index) const;
 
-	/* The NEAREST notch to `value`. A value exactly between two of them goes to the HIGHER one,
-	always - not "away from zero", which is what a plain round() would do and which would tie
-	upward on a positive range and downward on a range that straddles or sits below zero. Where the
-	scale happens to sit must not change what the widget does with the same input. */
+	// The nearest notch to `value`. Ties always go to the higher notch, regardless of sign.
 	virtual void setValue(double, bool silent = false);
 
-	/* Whether the value is a whole number - DECLARED, exactly as ui::NumberField declares it, and
-	never inferred from min and step happening to be integral. A float-typed field with a step of 1
-	is still a float field, and a form that collected it as an integer would have changed the value
-	on its way out. */
+	// Whether the value is a whole number. Declared, as in ui::NumberField, never inferred from an
+	// integral min and step.
 	virtual void setInteger(bool);
 	bool isInteger() const { return _integer; }
 
-	// The axis. Vertical grows UPWARD: this is a level, not a scrollbar.
+	// The axis. Vertical grows upward (the minimum is at the bottom).
 	virtual void setVertical(bool);
 	bool isVertical() const { return _vertical; }
 
@@ -154,10 +120,8 @@ public:
 	virtual void blur();
 	bool isFocused() const { return _focused; }
 
-	/* Told when the widget takes focus BY ITSELF - a tap on the track. A form needs this or it goes
-	on filtering keys to the field it focused last, and the arrows die in the widget the user just
-	clicked. The widget cannot ask for it: forms/ knows about input/ and never the other way round.
-	The same seam ui::ColorField and ui::ChipRow need, for the same reason. */
+	/* Told when the widget takes or loses focus by itself (a tap), so a form can move its key
+	routing here. input/ cannot depend on forms/, hence the callback. */
 	virtual void setFocusCallback(Function<void(bool)> &&cb) { _focusCallback = sp::move(cb); }
 
 	// True between the press and the release of a drag.

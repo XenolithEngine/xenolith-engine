@@ -42,9 +42,8 @@ bool SceneContent::init() {
 	_inputListener = addSystem(Rc<InputListener>::create());
 	_inputListener->setPriority(-1);
 
-	// The scene-wide back/close. As a hotkey it is delivered ahead of the ordinary key route and
-	// last among subscribers (priority -1 puts this listener in the post-scene band), so anything
-	// focused - a form resetting on Escape - still gets first refusal.
+	// The scene-wide back/close hotkey. Priority -1 puts it in the post-scene band, so focused
+	// widgets (e.g. a form resetting on Escape) handle it first.
 	_inputListener->addHotkey(EngineHotkeys::get().back,
 			[this](HotkeyId, const InputEvent &) -> bool {
 		if (!handleBackButton()) {

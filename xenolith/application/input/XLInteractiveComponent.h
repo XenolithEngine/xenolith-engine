@@ -31,17 +31,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 using InteractiveState = sprt::window::InteractiveFlags;
 
-/* What a control knows about itself BESIDE the state a stylesheet can see.
-
-These are not InteractiveFlags and must not be: that enumeration is exactly the set of pseudo-
-classes, and mixing in something CSS has no word for would make `matchesPseudo` answer questions
-nobody asked it. These four are bookkeeping.
-
-`OwnerEnabled` and `OwnerReadOnly` are what the WIDGET last asked for, kept while a lock overrides
-it. Enablement and the lock are two independent sources of one effect - a control locked because a
-wire owns its value AND disabled because its whole panel is inactive has to stay unusable until BOTH
-are cleared - so unlocking restores what the application wanted rather than switching on something
-it had switched off for reasons of its own. */
+/* Control bookkeeping that is not visible to stylesheets (InteractiveFlags is exactly the set of
+pseudo-classes). `OwnerEnabled` and `OwnerReadOnly` keep what the widget last asked for while a
+lock overrides it, so unlocking restores the application's choice. */
 enum class ControlFlags : uint32_t {
 	None = 0,
 
@@ -51,8 +43,7 @@ enum class ControlFlags : uint32_t {
 	OwnerEnabled = 1 << 1,
 	OwnerReadOnly = 1 << 2,
 
-	// The lock installed the hint, so the lock may take it away again. A hint the application put
-	// there itself is never touched.
+	// The lock installed the hint and may remove it; an application's own hint is never touched.
 	OwnsTooltip = 1 << 3,
 };
 
@@ -68,13 +59,10 @@ struct InteractiveComponent {
 	int hoverCounter = 0;
 	InteractiveState state = InteractiveState::Enabled;
 
-	// Bookkeeping, not style. Default: nobody has locked anything and the widget considers itself
-	// enabled.
+	// Bookkeeping, not style. Default: unlocked, and the widget considers itself enabled.
 	ControlFlags flags = ControlFlags::OwnerEnabled;
 
 	// Why this control is locked, as a code in the diagnostic registry; NoMessage when it is not.
-	// A code rather than a String: the sentence is identical in every instance of one situation,
-	// and a per-node copy of it would be an allocation per node for nothing.
 	uint32_t lockReason = diagnostic::NoMessage;
 
 	bool handleHover(int value) {
@@ -117,20 +105,15 @@ struct InteractiveComponent {
 
 	bool hasControlFlag(ControlFlags flag) const { return sprt::hasFlag(flags, flag); }
 
-	// Bookkeeping changes nothing a selector can see, so it never reports "dirty": a style pass
-	// triggered by remembering what setEnabled asked for would be a pass for nothing.
+	// Bookkeeping changes nothing a selector can see, so it never reports "dirty".
 	void setControlFlag(ControlFlags flag, bool value) {
 		flags = value ? (flags | flag) : (flags & ~flag);
 	}
 };
 
-/* The writers. Every bit a stylesheet can ask about is written HERE and nowhere else.
-
-Six widgets used to carry a copy of these lines inside updateInteractiveState() and two more inline
-in setEnabled(); five of the nine added a style class and four did not, so half the kit could not be
-painted by a stylesheet at all. Worse, a node with no InteractiveComponent reads as state 0, and
-`:disabled` is "not :enabled" - so a widget that never wrote the component matched `:disabled` while
-it was perfectly ENABLED. Calling applyControlEnabled once from init() is what closes that. */
+/* The writers: every bit a stylesheet can ask about is written here and nowhere else. A node
+without InteractiveComponent reads as state 0 and matches `:disabled`, so widgets call
+applyControlEnabled once from init(). */
 SP_PUBLIC bool applyControlEnabled(NotNull<Node>, bool enabled);
 SP_PUBLIC bool applyControlChecked(NotNull<Node>, bool checked);
 SP_PUBLIC bool applyControlInvalid(NotNull<Node>, bool invalid);
@@ -138,33 +121,24 @@ SP_PUBLIC bool applyControlIndeterminate(NotNull<Node>, bool indeterminate);
 SP_PUBLIC bool applyControlRequired(NotNull<Node>, bool required);
 SP_PUBLIC bool applyControlDefault(NotNull<Node>, bool isDefault);
 
-/* `:focus-visible` - focus that arrived by KEYBOARD and therefore wants to be seen. Written by
-whoever owns the focus change, never by the widget: a widget knows it has focus and cannot know how
-focus got to it, which is the whole difference this pseudo-class exists to draw. */
+/* `:focus-visible` - focus that arrived by keyboard. Written by whoever owns the focus change,
+not by the widget, which cannot know how focus got to it. */
 SP_PUBLIC bool applyControlFocusVisible(NotNull<Node>, bool visible);
 
-/* The readers. A widget asks the component rather than keeping its own copy of the answer.
-
-WHY NOT A CACHED POINTER, which would be the obvious optimisation: a Component keeps its payload in
-28 bytes of IN-PLACE storage inside the container's hash set, so adding any other component to the
-node can rehash the set and move this one. A pointer taken in init() would be dangling by the time
-anybody trusted it. The lookup is a hash probe on a uint32 id and these are called on gestures, not
-per frame per node. */
+/* The readers. A widget asks the component rather than keeping its own copy or a cached pointer:
+component payloads are stored in place in a hash set, so adding another component can move it. */
 SP_PUBLIC bool isControlEnabled(const Node *);
 SP_PUBLIC bool isControlChecked(const Node *);
 SP_PUBLIC bool isControlReadOnly(const Node *);
 SP_PUBLIC bool isControlInvalid(const Node *);
 
-/* `:read-only` has TWO sources - the widget's own mode and a lock owning its value - and one bit.
-While a lock is on it has the last word, but what the widget asked for is remembered, so unlocking
-gives back the widget's answer instead of declaring the control writable. */
+/* `:read-only` has two sources - the widget's own mode and a lock. While locked the lock wins, but
+the widget's request is remembered and restored on unlock. */
 SP_PUBLIC bool applyControlReadOnly(NotNull<Node>, bool readOnly);
 
-/* The lock, in terms of state alone: no style class, no tooltip, no widget interface. Those need to
-know what a widget IS and live one layer up, in ui::setEditLock.
-
-`ownerEnabled` is what the control answered before the lock took it away, captured by the caller
-because only the caller knows how to ask. */
+/* The lock, in terms of state alone: style class, tooltip and widget interface are handled in
+ui::setEditLock. `ownerEnabled` is the control's enabled state before locking, captured by the
+caller. */
 SP_PUBLIC bool lockControl(NotNull<Node>, uint32_t reasonCode, bool ownerEnabled);
 
 // What the lock was holding, so the caller can put the control back the way it found it
@@ -183,15 +157,12 @@ SP_PUBLIC uint32_t getControlLockReason(const Node *);
 // Record that the lock owns the hint it just installed
 SP_PUBLIC void setControlOwnsTooltip(NotNull<Node>, bool);
 
-/* Restore what the widget wanted, after the lock had to ask it something.
-
-Taking a control away calls its setEnabled(false), which runs through resolveControlLock and records
-the LOCK's own `false` as the owner's wish - so unlocking would restore "disabled" forever. The
-caller captures the answer before it locks and writes it back with this. */
+/* Restore the widget's enabled wish after locking: setEnabled(false) during lock goes through
+resolveControlLock and records the lock's `false`, so the caller writes its captured answer back. */
 SP_PUBLIC void setControlOwnerEnabled(NotNull<Node>, bool);
 
-/* Widget side: one line at the top of setEnabled(). Records what was asked for and answers what the
-widget must actually apply - the lock has the last word while it is on. */
+/* Widget side: call at the top of setEnabled(). Records the request and returns what the widget
+must apply; the lock wins while it is on. */
 SP_PUBLIC bool resolveControlLock(NotNull<Node>, bool requested);
 
 } // namespace stappler::xenolith

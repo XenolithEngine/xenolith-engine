@@ -32,9 +32,8 @@ class ClientAppThread;
 
 class SP_PUBLIC RemoteWindow : public Ref, public core::RenderServerChannel {
 public:
-	// One shared queue as the server announced it. `api` and `typeTag` are what a scene matches
-	// against to pick a queue it can drive (see Scene2d::selectServerQueue); `name` is left for
-	// diagnostics and for a scene that really does want a queue by name.
+	// One shared queue as announced by the server. Scenes match `api` and `typeTag` to pick a queue
+	// they can drive (see Scene2d::selectServerQueue); `name` is for diagnostics or lookup by name.
 	struct RemoteQueueInfo {
 		uint64_t id;
 		String name;
@@ -72,16 +71,14 @@ public:
 
 	virtual void handleBackButton() override;
 
-	// Not overridden before: the base answered ErrorNotSupported, which is right for a channel with
-	// no window and wrong for one whose window is simply elsewhere.
+	// Forwarded to the server window (the base answers ErrorNotSupported).
 	virtual void setWindowExtent(Extent2, Function<void(Status)> && = nullptr,
 			Ref * = nullptr) override;
 
 	virtual const sprt::window::WindowInfo *getInfo() const override;
 
-	// Mirror of AppWindow::getSceneInfo(). A remote window is announced by the server rather than
-	// created locally, so the client sets this itself before the window takes a Director. App
-	// thread.
+	// Mirror of AppWindow::getSceneInfo(). The client sets it before the window takes a Director,
+	// since remote windows are announced by the server. App thread.
 	WindowSceneInfo *getSceneInfo() const { return _sceneInfo; }
 	void setSceneInfo(Rc<WindowSceneInfo> &&s) { _sceneInfo = sp::move(s); }
 
@@ -96,24 +93,22 @@ public:
 	virtual void captureScreenshot(
 			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
 
-	// Deliver a screenshot that returned over Domain::Data: invoke the captureScreenshot() callback
-	// registered for `serial` (the RequestScreenshot serial echoed in the transfer's announce reason).
-	// Returns true iff a matching pending capture was found and fulfilled.
+	// Deliver a screenshot received over Domain::Data to the captureScreenshot() callback
+	// registered for `serial` (echoed in the announce reason). Returns true if a pending capture
+	// matched.
 	bool deliverScreenshot(uint32_t serial, const core::ImageInfoData &info, BytesView pixels);
 
 	virtual bool openWindowMenu(Vec2 pos) override;
 
 	virtual void handleInputEvents(Vector<core::InputEventData> &&events) override;
 
-	// Server-pushed text-input state (WindowCode::TextInputState) -- the echo from the window's
-	// processor. Not an override, for the same reason handleWindowGeometryChanged is not: this is
-	// the receiving end of a RenderClientChannel call the server made.
+	// Server-pushed text-input state (WindowCode::TextInputState), the echo from the window's
+	// processor. Not an override: the receiving end of a RenderClientChannel call on the server.
 	void handleTextInput(const core::TextInputState &);
 
-	// Server-pushed window geometry (WindowCode::WindowGeometryChanged). Updates the mirror
-	// getWindowGeometry() serves and forwards to the local Director, so a remote scene hears about
-	// a move on the same hook a local one does. Not an override: RenderServerChannel has no such
-	// method -- this is the receiving end of a RenderClientChannel call made on the server.
+	// Server-pushed window geometry (WindowCode::WindowGeometryChanged): updates the
+	// getWindowGeometry() mirror and notifies the local Director. Not an override: the receiving
+	// end of a RenderClientChannel call on the server.
 	void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
 
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) override;
@@ -122,13 +117,10 @@ public:
 
 	SpanView<RemoteQueueInfo> getQueues() const { return _queues; }
 
-	// Drive the local Director for a server frame request: the scene graph selects one of the shared
-	// queues; `reply` is invoked with that queue's server id (0 if none could be selected). Per-frame
-	// attachment input is NOT serialized at this stage.
-	// `timing` and `stat` ride along with the request (see RemoteRenderClient::acquireFrame); pass
-	// null for either when the server did not send it, which is how a version-1 server looks. Null
-	// means "no update", NOT zeros -- overwriting the mirror with zeros every frame would make the
-	// client's FPS overlay flicker to nothing against an older server.
+	// Drive the local Director for a server frame request: the scene graph selects a shared queue;
+	// `reply` receives its server id (0 if none). `timing` and `stat` ride along with the request
+	// (see RemoteRenderClient::acquireFrame); null means no update (e.g. a version-1 server), not
+	// zeros.
 	void acquireFrame(uint64_t frameId, const core::FrameConstraints &,
 			const core::FrameTimingInfo *timing, const core::DrawStat *stat,
 			Function<void(uint64_t queueId)> &&reply);
@@ -145,13 +137,8 @@ protected:
 	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
 	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;
 
-	/* Send one WindowCode::WindowControl request and route its Status back to `cb`.
-	
-	Every control op funnels through here. The reply is delivered by the ordinary reply machinery
-	(AppThread::waitForReply keys by serial), so a dropped connection is already handled: the request
-	watchdog synthesizes an error reply and `cb` gets an error Status instead of silence. That is
-	precisely the defect this milestone fixes elsewhere in this class -- acquireScreenInfo and
-	setFullscreen used to take a callback and never call it. */
+	/* Send one WindowCode::WindowControl request and route its Status back to `cb`. Replies use
+	AppThread::waitForReply, so on a dropped connection the watchdog delivers an error Status. */
 	void sendWindowControl(remote::WindowControlOp, Value &&args, Function<void(Status)> &&cb);
 
 	// Fire-and-forget counterpart for the text-input ops; the answer is the state echo, not a reply.
@@ -161,8 +148,8 @@ protected:
 	// the wire cannot answer. Fed by the AcquireFrame piggyback.
 	core::FrameTimingInfo _frameTiming;
 
-	// Last forwarded WindowLayer payload (the raw WindowLayer[] bytes, no window-id prefix), so identical
-	// per-frame layer sets are not re-sent (updateLayers is driven every input commit).
+	// Last forwarded serialized layer payload, so identical layer sets are not re-sent
+	// (updateLayers runs on every input commit).
 	Bytes _lastLayersBlob;
 };
 

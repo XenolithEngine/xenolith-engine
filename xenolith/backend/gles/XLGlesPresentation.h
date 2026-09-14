@@ -70,11 +70,9 @@ protected:
 
 	void markAcquired(uint32_t index);
 
-	// Release the slot as far as the engine is concerned. This must happen at present, not when
-	// the window system hands the buffer back: swapchain recreation waits for
-	// getAcquiredImagesCount() to reach zero, and a compositor is free to hold the last presented
-	// buffer indefinitely - tying the two together wedges every resize. Whether the buffer itself
-	// is reusable is a separate question, and the transport answers it.
+	// Release the slot as far as the engine is concerned. Must happen at present, not when the
+	// window system returns the buffer: recreation waits for getAcquiredImagesCount() to reach
+	// zero, and a compositor may hold the last buffer indefinitely.
 	void markPresented(uint32_t index);
 
 	uint32_t findSlot(const core::ImageStorage *) const;
@@ -104,10 +102,8 @@ public:
 			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
 
 protected:
-	// The transport-specific half of createSwapchain. Everything around it - constraints, the
-	// frame cache registration, retiring the previous swapchain - is the same either way. The base
-	// has no transport of its own and answers an error; the headless and windowed engines override
-	// it with a real construction.
+	// The transport-specific half of createSwapchain. The base returns an error; the headless and
+	// windowed engines override it.
 	virtual Rc<SwapchainBase> makeSwapchain(const core::SurfaceInfo &,
 			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode);
 };

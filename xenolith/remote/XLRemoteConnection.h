@@ -33,8 +33,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // Server and client are the same class: poll() is identical for both, and the role is data -- it
 // only decides which MessageType a send stamps.
 //
-// Everything here runs on the owning AppThread. The transport underneath may be QUIC, a unix socket,
-// TLS over TCP or an in-process pipe; this class does not know and must not care.
+// Everything here runs on the owning AppThread. The transport underneath (QUIC, unix socket, TLS
+// over TCP, in-process pipe) is opaque to this class.
 class SP_PUBLIC Connection : public Ref {
 public:
 	virtual ~Connection();
@@ -77,9 +77,8 @@ public:
 protected:
 	static constexpr uint32_t kStreamClassCount = 3;
 
-	// Everything that belongs to ONE transport stream. A reassembler holds the bytes of a single
-	// ordered channel -- feeding it two streams would interleave their bytes and scramble the framing
-	// -- so a stream that is really independent needs its own, and its own send queue with it.
+	// Per-transport-stream state: a reassembler handles a single ordered channel, so each
+	// independent stream needs its own, and its own send queue.
 	struct StreamState {
 		TransportStream *stream = nullptr;
 		MessageReader reader; // receive-side stream reassembler + deferred-message queue
@@ -97,17 +96,14 @@ protected:
 	Role _role = Role::Generic;
 	Bytes _dict; // negotiated LZ4 dictionary (empty == none)
 
-	// One serial space for the whole connection, not one per stream. A request and its reply belong to
-	// the same domain and therefore ride the same stream, so nothing is gained by splitting the space
-	// -- while a shared one keeps AppThread::_requests a plain map keyed by serial.
+	// One serial space for the whole connection, not one per stream (a request and its reply ride
+	// the same stream), so AppThread::_requests stays a plain map keyed by serial.
 	uint32_t _serial = 1; // the handshake is always serial 0
 	bool _shutdown = false;
 
-	// Indexed by StreamClass. A slot is populated only if it is the CANONICAL owner of its transport
-	// stream: a transport that folds classes together (unix, quic, and every class of a single-stream
-	// transport) returns the same pointer for several classes, and then the first of them owns the
-	// state and the rest alias it through _canonicalClass. So a single-stream transport ends up with
-	// exactly one state and behaves precisely as it did before this existed -- no branch on caps.
+	// Indexed by StreamClass. A slot is populated only for the canonical owner of its transport
+	// stream: when a transport returns the same stream for several classes, the first owns the
+	// state and the rest alias it through _canonicalClass. A single-stream transport has one state.
 	StreamState _streams[kStreamClassCount];
 	uint8_t _canonicalClass[kStreamClassCount] = {0, 1, 2};
 	uint8_t _distinctClasses[kStreamClassCount] = {0, 0, 0};

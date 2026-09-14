@@ -29,33 +29,17 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** The grab point of a parked panel, whatever it is parked in: a dock tab, an accordion header.
+/** The grab point of a parked panel: a dock tab, an accordion header. A Button that also drags
+the panel out of its host.
 
-It is a Button, so the whole tap/hover/active machinery - and with it `:hover` and `:active` in CSS -
-comes for free. What it adds is the drag that pulls the panel out of wherever it currently is, which
-is why the panel id and the host are on it rather than just a caption.
+ - the drag starts after DefaultDragThreshold points, past the tap tolerance, and handleLeftTap
+   refuses while _dragging;
+ - setExclusive() is required once dragging: the pointer leaves the node and the listener set is
+   frozen at Begin, so without it Move events stop arriving;
+ - the drop usually destroys this node; handleExit cancels a drag that outlives its handle.
 
-WHY THIS IS A BASE CLASS AND NOT A HELPER FUNCTION. Building the DragOffer is the obvious thing to
-share and it is the smaller half. The other half is the part that is easy to get wrong, and getting
-it wrong is silent:
-
- - THE THRESHOLD. The drag only begins after DefaultDragThreshold points of travel, which is past the
-   tap tolerance, so a click never starts one - and handleLeftTap still refuses while _dragging,
-   because the release would otherwise be a second action on the same press;
-
- - THE CAPTURE. The pointer leaves this node on the first frame of the drag, and the dispatcher
-   freezes an event chain's listener set at Begin. Without setExclusive() the recognizer stops
-   receiving Move a few pixels in and the drag dies silently;
-
- - THE ABORT. This node is routinely destroyed by the very drop that ends the drag - that is what a
-   move IS. handleExit cancels a drag that outlived its own handle.
-
-The swipe rides the listener the Button already owns rather than a second InputListener of its own:
-a second one would sit between the pointer and this one.
-
-Two seams for a subclass: canBeginDragAt() decides WHERE on this node a drag may start (a dock tab
-says anywhere; an accordion header says only on its grip), and updatePanelDragOffer() adds whatever
-the host needs to recognise where the panel came from. */
+The swipe uses the Button's own listener. Subclasses override canBeginDragAt() to limit where a drag
+may start and updatePanelDragOffer() to record the panel's origin. */
 class SP_PUBLIC PanelHandle : public Button {
 public:
 	virtual ~PanelHandle() = default;
@@ -72,14 +56,10 @@ public:
 protected:
 	using Button::init;
 
-	// May a press at this WORLD point start a drag? The default is the whole node, which is what a
-	// tab wants; a widget that also does something else with a press narrows it to a grip, which a
-	// world point answers directly - `_grip->isTouched(p)`, the same test TreeView's row uses to
-	// keep a tap on its expander from counting as a tap on the row.
+	// Whether a press at this world point may start a drag; the whole node by default.
 	virtual bool canBeginDragAt(const Vec2 &worldLocation) const { return true; }
 
-	// Stamp whatever the host needs onto the payload and the offer the base has just filled in. A
-	// dock tab records the frame it was sitting in; a linear container records its index.
+	// Add host-specific origin data to the payload and offer after the base filled them in.
 	virtual void updatePanelDragOffer(DragOffer &, DockPanelPayload &) { }
 
 	bool handleDragBegin(const GestureSwipe &);

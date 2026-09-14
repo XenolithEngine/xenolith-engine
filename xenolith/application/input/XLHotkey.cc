@@ -26,13 +26,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-/* The modifier families a chord can be built from, in the order encode() prints them.
-
-   Everything outside this table is dropped by normalize(): the lock states and the mouse buttons
-   describe the machine's state rather than the user's intent, LayoutAlternative is a Linux-only
-   experiment, and bit 31 is the overloaded ValueTrue/Unmanaged flag.
-
-   Mod5 has no sided variants in InputModifier, so its left/right entries are None. */
+/* The modifier families a chord can be built from, in the order encode() prints them. Anything
+   outside this table is dropped by normalize(). Mod5 has no sided variants, so its left/right
+   entries are None. */
 struct HotkeyModifierFamily {
 	InputModifier base;
 	InputModifier left;
@@ -95,24 +91,9 @@ bool HotkeyCombo::matchesSides(InputModifier eventModifiers) const {
 	return true;
 }
 
-/* NAMES ARE MATCHED WITHOUT REGARD TO CASE, and that is a fix rather than a courtesy.
-
-The two name-spaces this parser reads are spelled in two different styles - the modifiers CamelCase
-(`Ctrl`, `ShiftL`), the keys SHOUTING (`EQUAL`, `RIGHT_BRACKET`, `KP_ADD`) - and a combination is
-written with both in one string. `Ctrl+SHIFT+RIGHT_BRACKET` is what somebody writes who has just
-written the key half; it used to fall through the modifier table, be looked up as a KEY, fail (the
-keycodes are `LEFT_SHIFT` and `RIGHT_SHIFT`, there is no `SHIFT`), and take the whole combination
-down with it. `HotkeyRegistry::add` then answered HotkeyId(0) and the subscription bound nothing, so
-the command simply never worked - which is what two of the studio's screen-editor commands had been
-doing since they were written.
-
-IT IS UNAMBIGUOUS, and that was checked rather than assumed: no modifier name is also a key name
-under any capitalisation, and no two key names differ only by case. So folding the comparison cannot
-make one spelling mean two things.
-
-ASCII folding (`caseCompare_c`), not the Unicode one: these are identifiers out of a table in this
-repository, not text in somebody's language, and the rule about case mapping strings rather than
-characters is about the latter. */
+/* Names are matched case-insensitively (ASCII), so `Ctrl+SHIFT+RIGHT_BRACKET` parses: modifiers
+are CamelCase and keys upper case in one string. Unambiguous: no modifier name is also a key name,
+and no two key names differ only by case. */
 static bool hotkeyNameIs(StringView token, StringView name) {
 	return !name.empty() && sprt::detail::caseCompare_c(token, name) == 0;
 }
@@ -199,40 +180,24 @@ HotkeyRegistry *HotkeyRegistry::getInstance() {
 	static sprt::qonce s_once;
 	static HotkeyRegistry *s_instance = nullptr;
 	s_once([] {
-		// Deliberately never destroyed: the registry outlives every scene and every window, and a
-		// static destructor would race with whatever is still tearing down
+		// Never destroyed: the registry outlives every scene and window, and a static destructor
+		// would race with teardown
 		s_instance = new (sprt::nothrow) HotkeyRegistry();
 		if (s_instance) {
 			s_instance->_entries.emplace_back(nullptr); // index 0 is the invalid id
 
-			/* Installed here rather than at application startup so that it can not be forgotten:
-			   the moment anything registers a hotkey, the text-input processor starts declining
-			   the combinations that are now reserved. An application that never uses hotkeys
-			   never touches the registry and the filter stays null. */
+			/* Installed on first registry access, so the text-input processor declines reserved
+			   combinations as soon as any hotkey exists. */
 			core::TextInputProcessor::setReservedKeyFilter(&HotkeyRegistry_reservedKeyFilter);
 		}
 	});
 	return s_instance;
 }
 
-/* THE KEYCODE GOES IN THE LOW BITS, AND THE ORDER IS THE WHOLE OF THIS FUNCTION.
-
-It used to be the other way round - `keycode << 32 | mods` - and that is a key with 32 CONSTANT low
-bits for every combination that carries no modifier. `sprt::hash` of an unsigned integer is the
-IDENTITY, and the table buckets by `hash % capacity` with a capacity that comes out of the allocator
-as a power of two: so `keycode << 32` is congruent to 0 for every capacity up to 2^32, and every
-modifier-less hotkey in the process landed in bucket ZERO.
-
-That is not a slow lookup, it is a runaway. `find_bucket_or_grow` reads the collision count back as
-a load factor, and once the misses catch up with the size it rehashes on EVERY insert, doubling as
-it goes: an application that registered a couple of dozen hotkeys - Escape, Tab, Enter, Space, the
-four arrows, a slash - grew this table to a hundred and sixty million buckets and thirty-nine
-gigabytes before the machine stopped it. It was found from a studio that added seven more.
-
-Both halves still fit and the mapping is still one-to-one: InputKeyCode is a uint16_t and
-InputModifier's highest bit is 1 << 25, so the two occupy 42 bits between them and no pair of
-combinations can collide by construction. What changed is only which half a table sees when it looks
-at the bottom of the number. */
+/* The keycode goes in the low bits. `sprt::hash` of an integer is the identity and the table
+buckets by a power-of-two modulus, so `keycode << 32` would put every modifier-less combination
+in bucket 0 and make the table rehash on every insert. InputKeyCode is uint16_t and the highest
+InputModifier bit is 1 << 25, so the key is still one-to-one. */
 uint64_t HotkeyRegistry::comboKey(InputKeyCode keycode, InputModifier mods) {
 	return (uint64_t(toInt(mods)) << 16) | uint64_t(toInt(keycode));
 }
@@ -279,8 +244,7 @@ HotkeyId HotkeyRegistry::add(StringView name, HotkeyCombo combo, StringView desc
 
 	auto it = _byName.find(name);
 	if (it != _byName.end()) {
-		// Idempotent by name. A different combination is a rebind, not a duplicate: two modules
-		// declaring the same hotkey must agree on the id, and the later configuration wins.
+		// Idempotent by name; a different combination is a rebind and the later one wins.
 		auto entry = _entries[it->second.get()];
 		if (entry->combo != combo) {
 			log::source().info("Hotkey", "Rebinding '", name, "' to a different combination");
@@ -381,10 +345,8 @@ void HotkeyRegistry::match(InputKeyCode keycode, InputModifier mods,
 
 	sprt::unique_lock lock(_mutex);
 
-	/* Two buckets, in this order: the sided bindings for exactly the side the event reports,
-	   then the ones that named no side at all. When the backend reports no side the two keys
-	   coincide and the second probe is skipped — which is also why a sided binding never fires
-	   on a backend that does not report sides. */
+	/* Two buckets, in order: sided bindings for the side the event reports, then unsided ones.
+	   Without a reported side the keys coincide and the second probe is skipped. */
 	auto report = [&](uint64_t key) {
 		auto it = _byCombo.find(key);
 		if (it == _byCombo.end()) {
@@ -458,8 +420,8 @@ const EngineHotkeys &EngineHotkeys::get() {
 				add("org.stappler.xenolith.form.activate", "SPACE", "Activate the focused field");
 		s_hotkeys.formReset = add("org.stappler.xenolith.form.reset", "ESCAPE", "Reset the form");
 
-		/* ReserveFromTextInput, and it is not optional: an Alt chord carries a keychar, so the
-		runtime's text-input processor would swallow it before the scene ever saw it. */
+		/* ReserveFromTextInput is required: an Alt chord carries a keychar, so the text-input
+		processor would swallow it. */
 		s_hotkeys.moveItemUp =
 				reg->add("org.stappler.xenolith.list.move-item-up", HotkeyCombo::parse("Alt+UP"),
 						"Move the selected item up", HotkeyOptions::ReserveFromTextInput);
@@ -478,8 +440,7 @@ const EngineHotkeys &EngineHotkeys::get() {
 		s_hotkeys.textCut = add("org.stappler.xenolith.text-input.cut", "Ctrl+X", "Cut");
 		s_hotkeys.textPaste = add("org.stappler.xenolith.text-input.paste", "Ctrl+V", "Paste");
 
-		/* `edit`, not `text-input`: the same ids carry a document's history and a project's, and
-		the focused handler decides which one answers. See the comment in the header. */
+		/* `edit`, not `text-input`: the focused handler decides whose history answers. */
 		s_hotkeys.undo = add("org.stappler.xenolith.edit.undo", "Ctrl+Z", "Undo");
 		s_hotkeys.redo = add("org.stappler.xenolith.edit.redo", "Ctrl+Y", "Redo");
 		s_hotkeys.redoAlt =

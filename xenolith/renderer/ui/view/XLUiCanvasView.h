@@ -33,87 +33,26 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** A WORLD ON A SURFACE: pan, anchored zoom, framing, and clipping.
+/** A world on a surface: pan, anchored zoom, framing and clipping. Knows nothing about what is
+drawn; layout, hit testing, selection and overlays stay with the caller.
 
-Four applications had written this by hand before it was written here - three editor canvases in one
-studio and `basic2d::ImageLayer`, which had no caller at all - and the copies had already parted
-company in two places that a person can see. One notch of the wheel zoomed one canvas by a tenth more
-than another, because each carried its own "how many pixels is a notch" constant. And only one of the
-four clipped, so a thing dragged past the edge of the other three painted over whatever sat beside
-them. Neither divergence is a matter of taste; both are what happens to a fifth copy of anything.
+The viewport is the world node's transform (anchor (0,0), no rotation, set in init()):
+`screen = world * zoom + offset`, with no separate copy to keep in sync.
 
----- WHAT IS HERE AND WHAT IS NOT -----------------------------------------------------------------
+Gestures are added to the caller's listener (attachGestures) so a modal canvas keeps all its
+gestures on one listener: pan on middle and right buttons, zoom on the wheel.
 
-Here: a child node that IS the world, the two gestures that move it, the arithmetic that keeps a
-point under the cursor while the zoom changes, framing, and the scissor.
+`ZoomStepRatio` is the zoom per wheel notch and per control button press. A Scroll event carries
+an amount, not a count; one notch is `sprt::window::InputScrollNotch` of it.
 
-Not here: anything that knows what is being drawn. Layout, hit testing, selection, drag modes,
-overlays and themes stay with the caller. This widget cannot name a single thing it shows.
-
----- THE VIEWPORT LIVES IN THE TRANSFORM, NOT IN A FIELD ------------------------------------------
-
-`getViewport()` reads the world node's position and scale rather than a remembered struct, and
-`setViewport()` writes them. That is not a saving of four bytes: two of the four callers this
-replaces kept a `Viewport` member and mirrored it into the node on every change, and a mirror is a
-thing that can be out of step with what is actually on screen. With the transform as the only copy,
-`screen = world * zoom + offset` holds by construction and there is nothing to keep in step.
-
-The world's anchor point is (0,0) and its rotation is never touched. Both are invariants this class
-relies on, and both are set once in init().
-
----- WHAT THERE IS TO FRAME IS ASKED FOR, NOT HANDED OVER -----------------------------------------
-
-`fit(bounds)` frames a rectangle a caller worked out at that moment, and that is right for a caller
-that has just decided to frame. It is not enough for the control's own framing buttons, which are
-pressed at a moment nobody can predict and after the world has changed size any number of times: a
-remembered rectangle is the one handed over at the last `fit`. So `setFitBounds` takes a FUNCTION and
-the buttons ask it. A canvas that never declares one keeps them, disabled - a control whose row of
-buttons depended on how its owner was configured would look different in every canvas that has one.
-
----- GESTURES GO ON SOMEBODY ELSE'S LISTENER ------------------------------------------------------
-
-`attachGestures(InputListener *)` rather than a listener of this widget's own, and the reason comes
-from the caller that has the most to lose. An editing canvas is MODAL: the same button means a rubber
-band, a drag of an object or a drag of a connection depending on what is under the cursor, and that
-decision needs every gesture on ONE listener to be made once. A widget that brought its own listener
-on a nested node would make them two, and the two would race for the same press.
-
-So the caller keeps its listener and asks this to add its pan and zoom to it. Pan is the middle and
-right buttons, zoom is the wheel; neither collides with a left-button gesture, which is what makes
-the arrangement safe as well as necessary.
-
----- ONE CONSTANT, AND WHY IT IS A RATIO -----------------------------------------------------------
-
-`ZoomStepRatio` is the only place the size of one step lives, and it is stated as the RATIO a step is
-worth rather than as a distance. Equal steps must be equal ratios, which is why the curve is
-exponential; and a ratio is the form of the number anybody actually chooses - a tenth is 1.1, and
-nobody has to know what a tenth is in wheel pixels. It stood at 90 pixels over a divisor of 500,
-which is `exp(0.18) = 1.197` per notch: a fifth at a time, which overshoots what a person aims at.
-The wheel and the floating control's two buttons both take one step, so the two cannot disagree.
-
-PER NOTCH, and the wheel has to divide before it can use it. A Scroll event carries an AMOUNT and not
-a count of clicks - there is nothing to count on a trackpad - and one detent of a wheel is worth
-`sprt::window::InputScrollNotch` of that amount. The first version of this handed the raw amount to
-the exponent, so a detent raised the step to the TENTH power and one click of the wheel was 1.1^10:
-two and a half times the scale, which is what "the wheel zooms too much" turned out to be. The check
-that can see that has to inject a real event; one that asks in notches is asserting the curve and
-never the units.
-
----- THE POINTER MOVES THE WORLD BY WHAT IT MOVED, AND NOT BY A MULTIPLE OF IT ----------------------
-
-Gesture deltas arrive in SCENE units - physical pixels, because the Scene scales its whole subtree
-by the display density - while the world's position is in THIS node's own space. A pan that added
-the raw delta moved the world by `density` times what the pointer moved, and the picture slid out
-from under the cursor: at density 2 a drag of 100pt moved the world 200. So the delta is divided by
-this node's accumulated world scale, which folds in the density and any scaled ancestor at once.
-`ui::ScrollSystem` divides by the same thing for the same reason. */
+Gesture deltas are in scene units, so pan divides them by this node's accumulated world scale
+(display density and scaled ancestors), like `ui::ScrollSystem`. */
 class SP_PUBLIC CanvasView : public Node {
 public:
-	// One wheel notch, and one press of the control's buttons, as a ratio. See the header note.
+	// One wheel notch, and one press of the control's buttons, as a ratio.
 	static constexpr float ZoomStepRatio = 1.1f;
 
-	// The floating control's box, and how far it is kept from the corner it hangs in. Seven things in
-	// a row: the step pair around the readout, then the three that frame.
+	// The floating control's box and its distance from the corner it hangs in.
 	static constexpr Size2 ZoomControlSize = Size2(212.0f, 26.0f);
 	static constexpr float ZoomControlMargin = 8.0f;
 
@@ -125,24 +64,21 @@ public:
 	virtual void handleContentSizeDirty() override;
 	virtual void handleGlobalTransformDirty(const Mat4 &) override;
 
-	// Everything the caller draws goes under this. Its position IS the viewport's offset and its
-	// scale IS the zoom, which is what makes the two impossible to disagree.
+	// Everything the caller draws goes under this. Its position is the viewport's offset and its
+	// scale is the zoom.
 	Node *getWorld() const { return _world; }
 
-	// Read from the transform, with the surface size taken from this node - so a viewport asked for
-	// before the first layout honestly reports a zero surface rather than a stale one.
+	// Read from the transform; the surface size is this node's (zero before the first layout).
 	sprt::geom::Viewport getViewport() const;
 
-	// The zoom is clamped to the limits this was built with; the offset is taken as given. A caller
-	// that wants a clamped offset has to say what it would be clamped to, and no two callers agree.
+	// The zoom is clamped to the limits this was built with; the offset is taken as given.
 	void setViewport(const sprt::geom::Viewport &);
 
-	// Zoom by `factor` keeping the world point under `anchor` where it is. `anchor` is in THIS
+	// Zoom by `factor` keeping the world point under `anchor` where it is. `anchor` is in this
 	// node's space - use convertToNodeSpace on a pointer location first.
 	void zoomAt(const Vec2 &anchor, float factor);
 
-	// Zoom about the middle of the surface. What a button press means: there is no cursor to keep a
-	// point under, so the centre is the only anchor that does not move the view sideways.
+	// Zoom about the middle of the surface (for buttons, where there is no cursor).
 	void zoomBy(float factor);
 
 	// Frame `worldBounds` in the surface. Framing has its own, wider zoom range: a world too big to
@@ -151,31 +87,18 @@ public:
 			const sprt::geom::FitConfig & = sprt::geom::FitConfig(),
 			const sprt::geom::ZoomLimits & = sprt::geom::FramingZoom);
 
-	/* WHAT THERE IS TO FRAME, ASKED FOR RATHER THAN REMEMBERED.
-
-	This widget cannot name a single thing it shows, so the bounds are the owner's - and the control's
-	framing buttons are pressed at a moment nobody can predict. A remembered rectangle would be the
-	one handed over at the last `fit`, which is stale the moment the document changes size; asking is
-	the only form of this that cannot go out of date, and it costs a call per press.
-
-	Without one the framing buttons are disabled rather than absent: a control whose row of buttons
-	depends on how its owner was configured is a control that looks different in every canvas. */
+	/* Provider of the world bounds to frame, called on each framing button press.
+	Without one the control's framing buttons are disabled, not hidden. */
 	void setFitBounds(Function<sprt::geom::Bounds()> &&);
 	bool hasFitBounds() const { return !!_fitBounds; }
 
 	// Frame what `setFitBounds` answers, along the given axes. Does nothing without a provider.
 	void fit(sprt::geom::FitAxis = sprt::geom::FitAxis::Both);
 
-	/* SET THE ZOOM WITHOUT MOVING THE CENTRE - the world point in the middle of the surface stays
-	where it is. What a scale CHOSEN from a list means, and what "100 %" means: writing the scale
-	alone would also move the picture, by an amount that depends on how far the world's origin
-	happens to be from the middle, so a canvas stepped through a list of scales walks sideways.
-
-	The same anchoring as `zoomBy`, stated as a destination instead of as a factor - which is the
-	form a preset arrives in. */
+	// Set the zoom keeping the world point in the middle of the surface in place, like `zoomBy`.
 	void setZoom(float);
 
-	// 100 %, which is that with the destination named.
+	// 100 %.
 	void resetZoom() { setZoom(1.0f); }
 
 	// A location as an InputEvent carries it, in world coordinates.
@@ -184,45 +107,29 @@ public:
 	// Pan on middle and right, zoom on the wheel, added to the caller's listener. Called once.
 	void attachGestures(InputListener *);
 
-	// On by default. A world is unbounded and a surface is not, so a caller that turns this off is
-	// saying it wants what leaves the surface to be drawn on top of its neighbours.
+	// Scissor clipping of the world to this node's box. On by default.
 	void setClipped(bool);
 	bool isClipped() const { return _clipped; }
 
 	const sprt::geom::ZoomLimits &getZoomLimits() const { return _limits; }
 
-	/* THE FLOATING ZOOM CONTROL: "-", the zoom as a percentage, "+", then fit-width, fit-height and
-	1:1. On by default.
-
-	It is chrome about the VIEWPORT, which is the one thing this widget does own - it names nothing
-	that is drawn, and every canvas that has a wheel has the same need for a readout and a step that
-	does not require one. A step is `ZoomStepRatio`, the wheel's own, so the two roads to a zoom
-	cannot disagree.
-
-	The three on the right are here for the same reason and not in any caller's toolbar: "as wide as
-	the surface", "as tall as it" and "1:1" are questions about the viewport and about nothing else.
-	The first two need to know what there is to frame, which only the owner does - see
-	`setFitBounds`, without which they are disabled.
-
-	It hangs in the BOTTOM-LEFT corner by default, because the corner a canvas already uses for its
-	own chrome is the bottom-right one (a minimap, an overview). `setZoomControlPlacement` moves it,
-	and a caller with something of its own there turns it off. */
+	/* The floating zoom control: "-", the zoom as a percentage, "+", then fit-width, fit-height
+	and 1:1. On by default, in the bottom-left corner. A step is `ZoomStepRatio`; the fit buttons
+	need `setFitBounds`. */
 	void setZoomControlEnabled(bool);
 	bool isZoomControlEnabled() const { return _zoomControl != nullptr; }
 
-	// Which corner it hangs in, as an anchor of THIS node's box: (0,0) is the bottom-left and the
+	// Which corner it hangs in, as an anchor of this node's box: (0,0) is the bottom-left and the
 	// default, (1,1) the top-right. `margin` is in points, on both axes.
 	void setZoomControlPlacement(const Vec2 &corner, float margin = ZoomControlMargin);
 
-	// The control itself, for a caller that wants to restyle it. Null while it is off. Its type is
-	// `canvas-zoom`, its buttons are ordinary `button`s and its readout an ordinary `label`, so a
-	// stylesheet reaches all three without this.
+	// The control itself, null while it is off. Its type is `canvas-zoom`, with ordinary `button`
+	// and `label` children, so a stylesheet reaches it too.
 	Node *getZoomControl() const { return _zoomControl; }
 
 protected:
-	// Rebuild the readout when the zoom has changed, and put the control back in its corner. Both
-	// are called from the three places the world's transform is written - see the note on
-	// setZoomControlEnabled for why nothing polls.
+	// Rebuild the readout when the zoom has changed, and put the control back in its corner.
+	// Called wherever the world's transform is written; nothing polls.
 	void updateZoomControl();
 	void layoutZoomControl();
 
@@ -231,15 +138,12 @@ protected:
 	sprt::geom::ZoomLimits _limits = sprt::geom::InteractiveZoom;
 	bool _clipped = true;
 
-	// This node's scale in SCENE units, folded from its ancestors and its own - what a gesture delta
-	// is divided by. One, and never zero, until the first transform pass. Taken in the GLOBAL
-	// transform phase rather than the local one: the density lives on the Scene, several ancestors
-	// up, and a phase that only fires when THIS node's own transform moved would never see it
-	// change.
+	// This node's scale in scene units, including ancestors; gesture deltas are divided by it.
+	// One until the first transform pass. Taken in the global transform phase, since the density
+	// lives on the Scene.
 	Vec2 _surfaceScale = Vec2(1.0f, 1.0f);
 
-	// What there is to frame, asked at the moment of a press. Null is the ordinary state for a canvas
-	// that frames itself and never offers the buttons.
+	// Bounds provider for the framing buttons; may be null.
 	Function<sprt::geom::Bounds()> _fitBounds;
 
 	// The floating control and its six parts. Null together.

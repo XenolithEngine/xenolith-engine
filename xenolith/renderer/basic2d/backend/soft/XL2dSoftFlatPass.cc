@@ -93,9 +93,8 @@ void VertexAttachmentHandle::submitInput(core::FrameQueue &q, Rc<core::Attachmen
 
 bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		const Rc<FrameContextHandle2d> &commands) {
-	// The first thing the render half does, so the gap since the previous present closes here and
-	// is charged to `wait`. Order matters: open the frame before starting the vertex timer, or the
-	// app thread's half lands in the vertex stage.
+	// Closes the gap since the previous present, charged to `wait`. Open the frame before starting
+	// the vertex timer, or the app thread's half lands in the vertex stage.
 	sf::openFrameBudget();
 
 #if XL_FRAME_ACCOUNT
@@ -104,10 +103,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 	core::markFrame(core::FrameMark::VertexStart);
 #endif
 
-	// The frame budget's `vertex` stage: the plan, and the vertex/index/transform arrays it
-	// writes. This is the part of the render half that scales with the scene rather than with the
-	// damage - every command is walked even on a frame that repaints a cursor - so it is the one
-	// place where a big static scene can cost more than the pixels it produces.
+	// The frame budget's `vertex` stage: the plan and the arrays it writes. It scales with the
+	// scene rather than the damage, since every command is walked even for a tiny repaint.
 	sf::FrameStageTimer timer(sf::FrameStage::Vertex);
 
 	auto attachment = static_cast<VertexAttachment *>(_attachment.get());
@@ -132,8 +129,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		plan->flatOrder = true;
 		plan->pool = pool;
 
-		// There is no shader to probe a glyph atlas, so the plan resolves it on the CPU. That is
-		// the same branch a Vulkan device without buffer device addresses takes.
+		// There is no shader to probe a glyph atlas, so the plan resolves it on the CPU (as on a
+		// Vulkan device without buffer device addresses).
 		plan->hasGpuSideAtlases = false;
 
 		// Glyphs are drawn from their own storage rather than from an atlas image, so the object id
@@ -184,9 +181,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 
 		_spans = sp::move(ctx.materialSpans);
 
-		// The Overlay level, appended rather than kept apart: this backend does no frame capture, so
-		// there is nothing to record between the two - and drawing them in sequence is all "on top"
-		// needs here.
+		// The Overlay level is appended: this backend does no frame capture, so drawing the spans
+		// in sequence is enough.
 		for (auto &it : ctx.overlaySpans) { _spans.emplace_back(it); }
 
 		_drawStates = commands->states;
@@ -360,7 +356,7 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 
 	// PipelineMaterialInfo must stay byte-identical to basic2d::vk::FlatPass: materials are
 	// matched to pipelines by this struct's value, and Sprite bakes DepthInfo into the request.
-	// The depth state is inert here (there is no depth attachment), exactly as it is there.
+	// The depth state is inert (no depth attachment).
 	auto materialPipeline =
 			subpassBuilder.addGraphicPipeline("Solid", layout2d->defaultFamily, shaderSpecInfo,
 					PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
@@ -373,10 +369,9 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
 
-	// All six variants have to exist even though the kernels branch on the view type at record
-	// time: a material is matched to a pipeline by the *value* of PipelineMaterialInfo, and one
-	// that asks for an array or 3d view would otherwise find nothing - failing not with an error
-	// but with an empty frame.
+	// All six variants must exist though the kernels branch on view type at record time: a
+	// material is matched by the value of PipelineMaterialInfo, and a missing one yields an empty
+	// frame, not an error.
 	auto blendInfo = BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha, BlendOp::Add,
 			BlendFactor::Zero, BlendFactor::One, BlendOp::Add);
 
@@ -441,19 +436,14 @@ void FlatPassHandle::handlePassRasterized(core::FrameQueue &) {
 		return;
 	}
 
-	// Only the two fields this backend can honestly fill. The rest of DrawStat describes a GPU
-	// submission - draw calls, cached framebuffers, the vertex stage's own timings - and reporting
-	// zeroes for them would be indistinguishable from a frame that really had none.
-	// Braces, not a bare declaration: DrawStat carries no initializer for most of its fields, so a
-	// default-initialized local would push whatever was on the stack under the labels this backend
-	// does not fill.
+	// Only the two fields this backend can fill; zeroes for GPU submission stats would look like
+	// real values. Braces, not a bare declaration: most DrawStat fields have no initializer.
 	core::DrawStat stat{};
 	stat.pixelsTotal = uint64_t(_frameSurface.width) * uint64_t(_frameSurface.height);
 	stat.pixelsFilled = _frameFill.total();
 
 #if XL_FRAME_ACCOUNT
-	// The vertex stage's own account. Not part of "only the two fields" above: these come from the
-	// VertexPlan, which this backend really does run, so they are measured rather than assumed.
+	// The vertex stage's own account, measured from the VertexPlan this backend does run.
 	_vertexHandle->fillAccount(stat);
 #endif
 
@@ -462,10 +452,8 @@ void FlatPassHandle::handlePassRasterized(core::FrameQueue &) {
 
 namespace {
 
-// A material's first image, resolved to what the rasterizer samples. This is the software
-// counterpart of what vk::VertexPassHandle::prepareMaterialCommands puts into push constants
-// (imageIdx/samplerIdx) - except that with no bindless array in the way, the view can simply be
-// dereferenced.
+// A material's first image, resolved to what the rasterizer samples: the software counterpart of
+// vk::VertexPassHandle::prepareMaterialCommands (imageIdx/samplerIdx), with the view dereferenced.
 struct ResolvedTexture {
 	sf::raster::TextureKind kind = sf::raster::TextureKind::Solid;
 	sf::raster::Texture texture;
@@ -536,10 +524,9 @@ ResolvedTexture FlatPass_resolveTexture(const core::Material *material,
 		out.sampler.addressW = FlatPass_addressMode(samplerInfo.addressModeW);
 	}
 
-	// A 1x1 image samples to the same value at every coordinate, so the fetch collapses into a
-	// per-command constant. Every predefined material of the flat queue lands here, which is what
-	// keeps a plain Layer byte-identical to the GPU - and it is not an approximation: the empty
-	// image is not white, and folding its actual texel is exactly what the shader would compute.
+	// A 1x1 image samples to the same value everywhere, so the fetch becomes a per-command
+	// constant. Every predefined flat material lands here; folding the actual texel (the empty
+	// image is not white) matches the shader exactly.
 	if (out.texture.width == 1 && out.texture.height == 1 && out.texture.depth == 1
 			&& out.texture.layers == 1) {
 		out.kind = sf::raster::TextureKind::Solid;
@@ -551,8 +538,7 @@ ResolvedTexture FlatPass_resolveTexture(const core::Material *material,
 }
 
 // The glyph storage behind a font material, or null for everything else. The store rides on the
-// dynamic image's instance, which is the same seam the Vulkan backend uses to carry its persistent
-// glyph buffers from frame to frame.
+// dynamic image's instance, as the Vulkan backend's persistent glyph buffers do.
 const sf::GlyphStore *FlatPass_resolveGlyphStore(const core::Material *material) {
 	if (!material->getAtlas()) {
 		return nullptr;
@@ -581,9 +567,8 @@ URect FlatPass_intersect(const URect &l, const URect &r) {
 // function. `transformIndex` is the shader's `(vertex.material >> 16) + gl_InstanceIndex`.
 sf::raster::Vertex FlatPass_runVertexStage(const Vertex &v, const TransformData &t,
 		const sf::raster::Target &target) {
-	// The layer is the vertex's z BEFORE the transform: makeMask clears z by default, and
-	// transform.offset.z then carries the painter-order depth instead. Reading z afterwards would
-	// silently sample a different array layer.
+	// The layer is the vertex's z before the transform: makeMask clears z and transform.offset.z
+	// carries the painter-order depth instead.
 	float layer = v.pos.z;
 
 	auto mask = glsl::makeMask(t.flags);
@@ -597,7 +582,7 @@ sf::raster::Vertex FlatPass_runVertexStage(const Vertex &v, const TransformData 
 
 	sf::raster::Vertex out;
 	// Clip space to framebuffer pixels. The 2d pipeline is affine (w == 1), so there is no
-	// perspective divide; a general path with one is a later concern.
+	// perspective divide.
 	out.x = (pos.x * 0.5f + 0.5f) * float(target.width);
 	out.y = (pos.y * 0.5f + 0.5f) * float(target.height);
 	out.u = v.tex.x;
@@ -614,14 +599,10 @@ struct GlyphEmitStats {
 	uint32_t missing = 0;
 };
 
-// One run of triangles that all name the same glyph, turned into draw work.
-//
-// The engine's typography guarantee makes the common case exact: a Label is normalized, so
-// VertexPlan::applyNormalized rebuilds its model matrix as identity plus a floored translation, and
-// the label's scale went into the font size rather than the quad. The glyph therefore covers a
-// whole number of pixels at 1:1 and can simply be copied. Everything else - a caller that turned
-// normalization off, an underline rectangle stretched from a single texel - falls back to sampling
-// the glyph as an ordinary texture, and is counted so the fallback is never silent.
+// One run of triangles that all name the same glyph, turned into draw work. A normalized Label has
+// an identity-plus-floored-translation model matrix (VertexPlan::applyNormalized), so its glyphs
+// map 1:1 to pixels and are blitted. Anything else (normalization off, stretched underlines)
+// samples the glyph as a texture and is counted.
 void FlatPass_emitGlyphRun(sf::raster::DrawList &list, const sf::GlyphStore::Glyph &glyph,
 		uint32_t firstIndex, uint32_t indexCount, uint32_t base, uint32_t minIndex,
 		SpanView<uint32_t> srcIndexes, uint32_t vertexOffset, sf::BlendMode blend,
@@ -667,9 +648,8 @@ void FlatPass_emitGlyphRun(sf::raster::DrawList &list, const sf::GlyphStore::Gly
 		return sprt::fabs(value - rounded) < (1.0f / 512.0f);
 	};
 
-	// XL_SOFT_GLYPH_SAMPLING=1 forces every glyph down the fallback. The blit is supposed to
-	// produce exactly what a nearest fetch of the same coverage produces, and this is how that is
-	// checked: render a scene both ways and diff. It is a verification hook, not a feature.
+	// XL_SOFT_GLYPH_SAMPLING=1 forces every glyph down the fallback, to diff the blit against a
+	// nearest fetch of the same coverage. A verification hook.
 	static const bool forceSampling = [] {
 		auto value = ::getenv("XL_SOFT_GLYPH_SAMPLING");
 		return value && StringView(value) != "0";
@@ -678,9 +658,8 @@ void FlatPass_emitGlyphRun(sf::raster::DrawList &list, const sf::GlyphStore::Gly
 	const float width = maxX - minX;
 	const float height = maxY - minY;
 
-	// Every condition here is a property the blit relies on: one texel per pixel, no rotation or
-	// mirroring (the first texel sits at the top-left corner), a single colour for the whole glyph,
-	// and a destination that starts on a pixel boundary.
+	// Conditions the blit relies on: one texel per pixel, no rotation or mirroring, a single colour
+	// for the whole glyph, and a destination starting on a pixel boundary.
 	const bool blittable = !forceSampling && uniformColor && glyph.metricWidth == glyph.width
 			&& glyph.metricHeight == glyph.rows && isIntegral(width) && isIntegral(height)
 			&& uint32_t(sprt::round(width)) == glyph.width
@@ -814,8 +793,7 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 			}
 		}
 
-		// The blend state is a property of the material's pipeline, and the pipeline object is
-		// ours - so the rasterizer's mode comes straight out of it, with nothing to re-derive.
+		// The blend state comes straight from the material's pipeline object, which is ours.
 		auto blend = sf::BlendMode::Solid;
 		if (auto pipelineData = material->getPipeline()) {
 			if (auto pipeline = pipelineData->pipeline.get_cast<sf::GraphicPipeline>()) {
@@ -866,11 +844,9 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 						FlatPass_runVertexStage(v, transforms[transformIndex], target));
 			}
 
-			// Text does not go through the sampler. Each glyph is drawn from its own coverage
-			// bitmap, so the span is split into runs of triangles that name the same glyph - the
-			// object id survives the vertex plan for exactly this (VertexPlan::keepAtlasObjects).
-			// Splitting per glyph costs nothing: the triangle count is the same, only the source
-			// pointer changes between them.
+			// Text does not go through the sampler: each glyph is drawn from its own coverage
+			// bitmap, so the span is split into runs naming the same glyph (the object id survives
+			// the plan via VertexPlan::keepAtlasObjects).
 			if (glyphStore) {
 				uint32_t i = 0;
 				while (i + 2 < span.indexCount) {
@@ -891,9 +867,8 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 								minIndex, srcIndexes, span.vertexOffset, blend, scissor,
 								glyphTextures, glyphStats);
 					} else {
-						// Not in the store: it was never rasterized (an unsupported code point, or
-						// storage ran out). Drawing the placeholder here would put a solid block
-						// where a character belongs, so draw nothing and report it.
+						// Not in the store (unsupported code point, or storage ran out): draw
+						// nothing rather than a placeholder block, and report it.
 						++glyphStats.missing;
 					}
 

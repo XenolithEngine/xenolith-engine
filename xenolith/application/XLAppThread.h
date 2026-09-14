@@ -46,21 +46,17 @@ class Director;
 class AppWindow;
 class BlockTransferManager;
 
-// Font remote endpoints (defined in xenolith_font, downstream): the client-side controller and the
-// server-side endpoint both emit Domain::Font messages through this thread's remoteSend* facade, like
-// BlockTransferManager. Forward-declared here only to befriend them.
+// Font remote endpoints (xenolith_font, downstream) send Domain::Font messages through this
+// thread's remoteSend* facade; forward-declared only to befriend them.
 namespace font {
 class FontControllerRemote;
 class RemoteFontServerEndpoint;
 } // namespace font
 
-// Base application thread: pure thread/extension/update machinery. It holds NO reference to a
-// Context (the full Context* lives only on the server subclass). The few context-derived services
-// the base needs are reached through the protected virtual hooks below; window management, the
-// remote listener, clipboard/screen/URL, and the lifecycle source differ per subclass.
-//
-// Concrete subclasses: ServerAppThread (owns a Context, windows, the listener) and ClientAppThread
-// (owns a standalone ClientContext). The base is abstract.
+// Base application thread: thread, extension and update machinery. It holds no Context reference;
+// context-derived services are reached through the protected virtual hooks below. Concrete
+// subclasses: ServerAppThread (owns a Context, windows, the listener) and ClientAppThread (owns a
+// standalone ClientContext).
 class SP_PUBLIC AppThread : public sprt::dispatch::Thread {
 public:
 	static EventHeader onNetworkState;
@@ -108,12 +104,9 @@ public:
 	// Platform-services interface (clipboard / screen-info / URL). On the server these delegate to
 	// the OS via the Context; on the client they are routed to the remote server (stubbed for now).
 
-	// Whether this process can reach a system clipboard at all.
-	//
-	// False on a remote client, where the three calls below are still safe to make but a write goes
-	// nowhere. Reported rather than pretended: ClipboardSession::write refuses instead of answering
-	// Ok on a transport that discards. This is a question about the TRANSPORT - whether the
-	// PLATFORM has a clipboard is WindowCapabilities' business.
+	// Whether this process can reach a system clipboard at all. False on a remote client, where the
+	// calls below are safe but writes go nowhere. This is about the transport; platform clipboard
+	// support is reported by WindowCapabilities.
 	virtual bool hasClipboard() const { return true; }
 
 	// Read data from OS clipboard
@@ -147,11 +140,8 @@ public:
 			sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
 			SpanView<StringView> types, Ref *ref = nullptr, StringView label = StringView()) = 0;
 
-	// Provide already-assembled clipboard data
-	//
-	// This is the same object an OS drag carries, so a source that can be dragged and a source
-	// that can be copied build their payload once and hand it to either path. `data->owner` is
-	// what keeps the encode callback's captures alive, exactly as with the overloads above
+	// Provide already-assembled clipboard data (the same object an OS drag carries).
+	// `data->owner` keeps the encode callback's captures alive.
 	virtual void writeToClipboard(Rc<sprt::window::ClipboardData> &&data) = 0;
 
 	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) = 0;
@@ -161,21 +151,12 @@ public:
 	// Config source for the base thread machinery (looper/timer) and external consumers (network).
 	virtual const ContextInfo *getContextInfo() const = 0;
 
-	// Local GPU loop, server-only; nullptr on a client (no local rendering). Used by the graphics
-	// path (Director / ResourceCache / 2D renderer) that still reaches the loop directly.
+	// Local GPU loop, server-only; nullptr on a client (no local rendering).
 	virtual core::Loop *getGlLoop() const { return nullptr; }
 
-	// Who owns the window this thread draws into: the OS, the window system and the gAPI (M3.5).
-	//
-	// Deliberately answered by BOTH kinds of thread. Locally the answer is this process itself,
-	// which is the truth and needs no special case; on a client it is the SERVER, because the
-	// scene runs here but the window is over there. That is what lets scene code ask "which
-	// platform am I drawing for" once, instead of a `#if` that is silently wrong the moment the
-	// scene is remote.
-	//
-	// Null only while the answer is not known yet (a client before the ServerInfo exchange, a
-	// server before its gAPI loop exists). A caller that gets null should keep its previous
-	// behaviour rather than assume a platform.
+	// Who owns the window this thread draws into: the OS, the window system and the gAPI. Locally
+	// this process; on a client, the server. Null while unknown (client before ServerInfo, server
+	// before its gAPI loop exists); callers should then keep their previous behaviour.
 	virtual const remote::PeerInfo *getServerInfo() const { return nullptr; }
 
 	sprt::dispatch::Looper *getLooper() const { return _appLooper; }
@@ -186,17 +167,10 @@ public:
 	bool addListener(NotNull<Ref>, Function<void(const UpdateTime &, bool)> &&);
 	bool removeListener(NotNull<Ref>);
 
-	/* SEND THE FONT CONTROLLER'S PENDING GLYPH BATCH NOW, rather than on the next update.
-
-	A glyph request is minted during a LAYOUT - inside the visit - and gates the very frame that is
-	being built; the controller's own flush runs from `update()`, once per application update, so left
-	to itself the batch is not even SENT until the next frame begins. Measured (`XL_DEP_ACCOUNT=1`):
-	up to 13 ms of a gated frame spent with the batch still in hand.
-
-	So both frame-production roads call this as soon as the frame is out: the remote one before its
-	FrameInput (the server has to register the gate before it reconciles the frame), the local one
-	right after the request is committed. On the base because the two roads have different AppThreads
-	and the same need. No-op where the font module or its controller is absent. */
+	/* Send the font controller's pending glyph batch now, rather than on the next update().
+	Glyph requests made during the visit gate the frame being built, so frame producers call this
+	once the frame is out (remote: before FrameInput; local: after commit). No-op without the font
+	module or controller. */
 	void flushPendingFontGlyphs();
 
 	template <typename T>
@@ -220,25 +194,20 @@ public:
 	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>,
 			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> & = {});
 
-	// Remote auth/compression config (server-side; set by the local-only Director API). The bearer
-	// key a connecting client must present (empty ⇒ reject all) and the server's LZ4 dictionary
-	// (priority over the client's suggestion). No-ops on the base / client.
+	// Remote auth/compression config (server-side): the bearer key a client must present (empty
+	// rejects all) and the server's LZ4 dictionary (overrides the client's suggestion). No-ops on
+	// the base / client.
 	virtual bool setBearerKey(BytesView);
 	virtual bool setCompressionDictionary(BytesView);
 
-	// Register a reply waiter for `serial`. `timeoutUs` is this request's own reply deadline (relative,
-	// microseconds): if no reply arrives within it, failTimedOutRequests() completes the waiter with a
-	// local protocol error and the connection is reset. 0 == no deadline (wait indefinitely).
+	// Register a reply waiter for `serial`. `timeoutUs` is the relative reply deadline
+	// (microseconds): on expiry failTimedOutRequests() completes the waiter with a local protocol
+	// error and the connection is reset. 0 means no deadline.
 	virtual void waitForReply(uint32_t,
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
-	/* Abandon every Domain::Data block this side is still streaming, telling the peer (Cancel) and
-	settling each waiting caller with a failure. Returns how many were cancelled.
-	
-	Bulk transfers are the one thing on this connection that keeps running long after the request
-	that started it was answered, so it is also the one thing that needs a way to be called off --
-	when what the blob was for has gone away, or when the process is winding down and would otherwise
-	spend seconds pushing pixels nobody will look at. App thread only. */
+	/* Abandon every Domain::Data block still streaming from this side: sends Cancel to the peer and
+	fails each waiting caller. Returns the number cancelled. App thread only. */
 	size_t cancelOutgoingTransfers();
 
 protected:
@@ -265,18 +234,14 @@ protected:
 
 	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
 
-	// Watchdog over outstanding request/reply waiters, driven on the same 1s Looper cadence as the
-	// keepalive (see ServerAppThread::pumpListener / ClientAppThread::pumpConnection). Any request whose
-	// reply deadline has passed is completed with a synthesized local protocol-error header (so the
-	// waiter unwinds) and dropped. Returns true if at least one request timed out -- the caller should
-	// then reset the connection (a peer that ignores our requests is treated as gone).
+	// Watchdog over pending reply waiters, run on the keepalive cadence. Expired requests are
+	// completed with a synthesized local protocol-error header and dropped. Returns true if any
+	// timed out; the caller should then reset the connection.
 	bool failTimedOutRequests();
 
-	// Connection send facade used by the block-transfer manager (so it can emit messages without
-	// knowing the connection type). The base has no connection, so these default to false;
-	// ServerAppThread / ClientAppThread override them to route through their active connection (server:
-	// _remoteClient->getConnection(); client: _connection). remoteSendCborWithReply forwards to the
-	// subclass sendMessageWithReply, which registers the reply waiter via waitForReply.
+	// Connection send facade for the block-transfer manager. The base has no connection and returns
+	// false; subclasses route to their active connection. remoteSendCborWithReply registers the
+	// reply waiter via waitForReply.
 	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
 			uint32_t *outSerial = nullptr);
 	virtual bool remoteSendRaw(remote::Domain, uint8_t code, BytesView,
@@ -313,8 +278,7 @@ protected:
 	// Requests waiting for a response from the remote side, keyed by message serial.
 	HashMap<uint32_t, PendingReply> _requests;
 
-	// Bidirectional large-binary block transfer (remote::Domain::Data). Constructed in threadInit; a
-	// base member so a transfer can be initiated in either direction (server->client or client->server).
+	// Bidirectional block transfer (remote::Domain::Data), constructed in threadInit.
 	Rc<BlockTransferManager> _blockTransfer;
 };
 
@@ -323,9 +287,8 @@ auto AppThread::addExtension(Rc<T> &&t) -> T * {
 	auto it = _extensions.find(sprt::type_index(typeid(T)));
 	if (it == _extensions.end()) {
 		auto ref = t.get();
-		// Key on the declared type T (not the dynamic type) so getExtension<T>() resolves the same
-		// slot -- this lets a concrete leaf (e.g. FontControllerLocal) be registered and retrieved
-		// under its abstract base (font::FontController).
+		// Key on the declared type T, not the dynamic type, so a leaf (e.g. FontControllerLocal)
+		// can be registered and retrieved under its abstract base (font::FontController).
 		it = _extensions.emplace(sprt::type_index(typeid(T)), move(t)).first;
 		if (_extensionsInitialized) {
 			ref->initialize(this);
