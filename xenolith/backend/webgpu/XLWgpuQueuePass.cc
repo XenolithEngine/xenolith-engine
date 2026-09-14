@@ -192,7 +192,7 @@ bool RenderPass::makeLayout(Device &dev, const core::PipelineLayoutData &data, L
 		out.bindGroupLayouts.emplace_back(bindGroupLayout);
 	}
 
-	// texture set (material textures) is bound as the LAST bind group,
+	// texture set (material textures) is bound as the last bind group,
 	// mirroring the Vulkan backend convention
 	if (data.textureSetLayout && data.textureSetLayout->layout) {
 		auto texLayout =

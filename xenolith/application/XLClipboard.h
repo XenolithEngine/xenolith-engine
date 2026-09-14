@@ -31,34 +31,20 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppThread;
 
-// The single place the MIME preference rule lives: matching is by PREFIX, and the first entry of
-// `preference` that matches anything wins. That is what makes a caller asking for "text/plain" also
-// accept "text/plain;charset=utf-8", which is what half the world actually puts on a clipboard.
-//
-// It is a free function because both sides of the boundary need it and only one of them has a
-// DragData: a paste's type selector is handed a bare list of strings, on an unknown thread.
-//
-// The returned view points INTO `available`, and that is load-bearing rather than incidental: a
-// selector must hand the platform back one of the strings the platform offered, not a string it
-// spelled itself. Wayland compares by identity and answers a near-miss with silence.
+// MIME preference rule: matching is by prefix, and the first entry of `preference` that matches
+// wins (so "text/plain" accepts "text/plain;charset=utf-8"). A free function, since a paste type
+// selector has only a list of strings, on an unknown thread. The result points into `available`:
+// the platform must get back one of its own strings (Wayland compares by identity).
 SP_PUBLIC StringView preferMimeType(SpanView<StringView> available,
 		SpanView<StringView> preference);
 
-/* ONE PAYLOAD, IN EVERY REPRESENTATION IT HAS.
+/* One payload in all its representations: the payload half of DragOffer, so copy and drag sources
+describe themselves the same way; both produce `sprt::window::ClipboardData`.
 
-The payload half of DragOffer, standing on its own so that a source which can be copied and a source
-which can be dragged describe themselves the same way. What reaches the OS is the same
-`sprt::window::ClipboardData` in both cases.
+Order is preference: put the specific type first and `text/plain` last.
 
-ORDER IS PREFERENCE. `types` is what the platform advertises and what a reader negotiates against,
-so the specific type goes first and `text/plain` last: a foreign application asking only for text
-still gets something readable, and a peer asking for the specific one never has to parse the
-fallback.
-
-TWO WAYS TO SUPPLY BYTES, and they compose. `addRepresentation` is for bytes that already exist -
-they are COPIED into the offer, so the caller's buffer may die immediately. `setEncoder` is for
-bytes worth producing only if someone asks: the callback may run minutes later, in another process's
-paste, ON AN UNKNOWN THREAD - so it must capture copies, never a scene node, and never touch the
+`addRepresentation` copies bytes that exist now. `setEncoder` produces bytes on demand; the
+callback may run much later on an unknown thread, so it must capture copies and never touch the
 scene graph. */
 struct SP_PUBLIC ClipboardOffer {
 	String label;
@@ -79,9 +65,8 @@ struct SP_PUBLIC ClipboardOffer {
 
 	bool empty() const { return types.empty(); }
 
-	// Builds the object the clipboard takes and an OS drag will carry, MOVING `encode` out of this
-	// offer. `owner` is what keeps the encoder's captures alive for as long as the platform holds
-	// the data.
+	// Builds the object the clipboard or an OS drag takes, moving `encode` out of this offer.
+	// `owner` keeps the encoder's captures alive while the platform holds the data.
 	Rc<sprt::window::ClipboardData> takeClipboardData(Ref *owner = nullptr);
 
 protected:
@@ -90,37 +75,24 @@ protected:
 		sprt::window::Bytes data;
 	};
 
-	// malloc-backed, because it travels into the encode callback and from there to whatever thread
-	// the platform asks on
+	// malloc-backed: it travels into the encode callback, to whatever thread the platform uses
 	sprt::window::Vector<Representation> _eager;
 };
 
-/* ONE CONSUMER'S TYPED EXCHANGE WITH THE SYSTEM CLIPBOARD.
+/* One consumer's typed exchange with the system clipboard:
 
-What this buys over calling AppThread directly, in the order the reasons were found:
+1. Exactly one answer, on the app thread; the first answer wins, even when the transport answers
+   twice or not at all.
+2. A staleness serial: every read supersedes the previous one, and cancel() drops the answer in
+   flight.
+3. Type negotiation from a preference list, with the chosen type taken from what the platform
+   offered.
+4. The answer reports what arrived, and a refusal reports what was available.
 
-1. EXACTLY ONE ANSWER, on the app thread. The transport underneath is neither exactly-once nor
-   guaranteed: wayland answers a type it did not offer with SILENCE, the base controller calls back
-   AND returns a failure, and Windows has no read at all. Half of the fix is in ServerAppThread,
-   which now reports a start that failed; the other half is here, where the first answer wins and
-   the rest are dropped. Neither half is sufficient alone.
-
-2. THE STALENESS SERIAL, which used to be a field in each widget. Every read supersedes the one
-   before it on this session, and cancel() drops the answer to what is in flight - which is what a
-   widget losing focus needs, and what no widget actually did.
-
-3. TYPE NEGOTIATION stated as a LIST and resolved by one rule, with the chosen type taken from what
-   the platform offered rather than spelled by the caller. That makes wayland's silence unreachable
-   instead of merely handled.
-
-4. AN ANSWER THAT SAYS WHAT ARRIVED, and a refusal that says what WAS there - so a consumer can
-   report "this is a graph fragment, not a component one" instead of guessing.
-
-WHAT IT DOES NOT DO: policy. A masked field does not copy, and this seam never learns that rule - it
-carries bytes, it does not decide who may. And write() is not a receipt: no platform gives one. */
+It carries no policy (e.g. masked fields not copying), and write() is not a receipt. */
 class SP_PUBLIC ClipboardSession : public Ref {
 public:
-	// One answer. Every view in here is BORROWED for the duration of the call - copy what must
+	// One answer. Every view in here is borrowed for the duration of the call; copy what must
 	// outlive it.
 	struct Result {
 		Status status = Status::Declined;
@@ -130,16 +102,14 @@ public:
 		StringView type;
 		BytesView data;
 
-		// What the clipboard was holding, when the refusal was ours because nothing matched. This
-		// is how a caller names the reason instead of reporting a bare failure.
+		// What the clipboard held, when the refusal was ours because nothing matched.
 		SpanView<StringView> available;
 
 		StringView text() const {
 			return StringView(reinterpret_cast<const char *>(data.data()), data.size());
 		}
 
-		// sprt::status:: spelled out: the member below is called `status` and would shadow the
-		// namespace if it were not.
+		// sprt::status:: spelled out: the `status` member would shadow the namespace.
 		bool ok() const { return sprt::status::isSuccessful(status); }
 		explicit operator bool() const { return ok(); }
 	};
@@ -151,48 +121,38 @@ public:
 
 	virtual bool init(NotNull<AppThread>);
 
-	// Read the first of `preference` the clipboard can produce. Supersedes whatever this session
-	// had in flight: that answer is dropped, not applied.
-	//
-	// The callback runs EXACTLY ONCE, on the app thread, unless cancel() or destruction intervenes
-	// - in which case it does not run at all. `target` is retained until then, and is what makes a
-	// callback capturing a raw `this` safe; it defaults to the session itself.
-	//
+	// Read the first of `preference` the clipboard can produce, superseding any read in flight (its
+	// answer is dropped). The callback runs exactly once on the app thread, unless cancel() or
+	// destruction intervenes. `target` is retained until then (defaults to the session).
 	// Returns the serial of the read, or 0 if it could not be started.
 	uint64_t read(SpanView<StringView> preference, ReadCallback &&, Ref *target = nullptr);
 	uint64_t readText(ReadCallback &&, Ref *target = nullptr);
 
-	// Drop the answer to whatever is in flight and release its target: a blur, a focus the platform
-	// revoked, a document closed under an editor.
+	// Drop the answer in flight and release its target (e.g. on blur or document close).
 	void cancel();
 
 	bool isPending() const { return _pending != nullptr; }
 	uint64_t getSerial() const { return _serial; }
 
-	// What the clipboard can produce right now. Answers exactly once on the app thread, INCLUDING
-	// on the platforms whose probe is not implemented - they answer ErrorNotImplemented, which is
-	// how a Paste item greys itself out honestly rather than by pretending.
+	// What the clipboard can produce now. Answers exactly once on the app thread, with
+	// ErrorNotImplemented on platforms without a probe.
 	void probe(ProbeCallback &&, Ref *target = nullptr);
 
-	// Put one payload, with all of its representations, on the clipboard.
-	//
-	// Ok means the offer reached the transport carrying at least one representation. It is NOT a
-	// receipt - see the class comment. An offer with no types is REFUSED rather than sent: Android
-	// reads empty types as "clear the clipboard" and everything else as a no-op, so sending one
-	// would mean destroying the user's clipboard on one platform and doing nothing on the rest.
+	// Put one payload, with all its representations, on the clipboard. Ok means the offer reached
+	// the transport, not a receipt. An offer with no types is refused: Android treats it as
+	// clearing the clipboard.
 	Status write(ClipboardOffer &&, Ref *owner = nullptr);
 	Status writeText(StringView utf8, StringView label = StringView());
 
-	// Whether this process can reach a clipboard at all. False on a remote client, where a write
-	// would be discarded in silence.
+	// Whether this process can reach a clipboard at all. False on a remote client, where a write is
+	// silently discarded.
 	bool isAvailable() const;
 
 protected:
 	struct Pending;
 
-	// Held as Rc<Ref> rather than Rc<Pending>: the read in flight is this unit's business and stays
-	// defined in the .cc, and an Rc of an incomplete type cannot be destroyed at a construction
-	// site in another translation unit. Re-typed by pending() below, which is the only reader.
+	// Held as Rc<Ref>: Pending is defined in the .cc and an Rc of an incomplete type can not be
+	// destroyed elsewhere. pending() re-types it.
 	Pending *pending() const;
 
 	Rc<AppThread> _app;

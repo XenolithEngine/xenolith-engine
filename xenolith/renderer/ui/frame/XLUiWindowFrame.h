@@ -33,20 +33,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 /* The title bar of a window that draws its own decorations.
 
-A window created with WindowCreationFlags::UserSpaceDecorations gets no title bar from the system,
-only the eight invisible resize grips that xenolith::WindowDecorations provides. This is the other
-half: the OS button cluster, the application icon, the draggable strip carrying the title, and two
-slots an application fills with buttons or menus of its own.
+For a window with WindowCreationFlags::UserSpaceDecorations (which gets only the resize grips of
+xenolith::WindowDecorations): the OS button cluster, the application icon, the draggable title
+strip, and two application slots. The buttons are ui::Buttons of ButtonType::Os*, which handle the
+window actions themselves.
 
-The buttons are ui::Buttons of ButtonType::Os*, so minimize / maximize / close / the window menu
-already work, the maximize glyph already swaps when the window state changes, and macOS already
-gets the Apple traffic-light icon theme. Nothing here talks to the window directly.
-
-ARRANGEMENT IS THE STYLESHEET'S. The children are created in a fixed order and this class writes no
-`order` at all, because the arrangement is per-platform: the OS cluster sits at the right on
-Linux/Windows and at the LEFT on macOS, where the title also centres over the whole bar. Doing that
-in C++ would mean a platform #if in every application; in CSS it is one `@media (platform: macos)`
-block. The contract this publishes, and which a sheet writes against:
+The arrangement is the stylesheet's: this class writes no `order`, so a per-platform layout is an
+`@media (platform: macos)` block. The contract a sheet writes against:
 
   type      window-frame
   names     #os-minimize #os-maximize #os-close #os-menu #frame-icon #frame-title
@@ -74,14 +67,9 @@ A workable default, with the leading slot after the icon and the trailing slot b
       window-frame > #frame-icon  { display: none; }
   }
 
-Note that this is a Panel, so a fill it does not declare is an opaque WHITE surface: the sheet MUST
-give `window-frame` a background-color. The title strip is a Panel for the same reason, and is
-transparent only because the default sheet above leaves it so.
-
-The two SLOTS, on the other hand, are plain Nodes: they draw nothing at all, and a sheet must NOT
-give them `background-color: transparent` to say so. A colour with alpha is written into the node's
-OPACITY, which multiplies down the whole subtree - so that declaration hides whatever the
-application put in the slot. */
+The frame and the title strip are Panels: an undeclared fill is opaque white, so the sheet must
+give `window-frame` a background-color. The slots are plain Nodes: do not give them
+`background-color: transparent`, which becomes node opacity and hides the slot's contents. */
 class SP_PUBLIC WindowFrame : public Panel {
 public:
 	struct Config {
@@ -95,8 +83,7 @@ public:
 		bool minimize = true;
 		bool maximize = true;
 		bool close = true;
-		// The window menu button. Off by default: the icon already opens the menu on either
-		// click, and most applications do not want a second affordance for it.
+		// The window menu button. Off by default: the icon already opens the menu.
 		bool menuButton = false;
 	};
 
@@ -108,12 +95,8 @@ public:
 	virtual void setTitle(StringView);
 	StringView getTitle() const;
 
-	/* Application controls.
-
-	Leading sits next to the application icon, trailing next to the OS button cluster - "next to"
-	rather than a side, because which side that is depends on the platform and is the sheet's to
-	decide. Both append in call order and stamp `.frame-item` on the node, so a sheet can size and
-	space whatever an application puts there without knowing what it is. */
+	/* Application controls. Leading sits next to the icon, trailing next to the OS buttons (the
+	side is the sheet's). Both append in call order and stamp `.frame-item` on the node. */
 	virtual Node *addLeading(Rc<Node> &&);
 	virtual Node *addTrailing(Rc<Node> &&);
 	virtual void clearLeading();
@@ -131,13 +114,8 @@ public:
 	// Null for a button the Config switched off.
 	Button *getOsButton(ButtonType) const;
 
-	/* The height the frame occupies, so code that has to reason about it - an overlay covering
-	everything below the bar - does not duplicate the number.
-
-	This is the height the stylesheet gave it, read back from the resolved contentSize, and
-	kDefaultFrameHeight only until the first layout has run. Reading it back rather than storing it
-	is what keeps the value in one place: a title bar height that is also a constant in C++ is a
-	number two files have to agree about, and they drift. */
+	/* The height the stylesheet gave the frame, read back from the content size;
+	kDefaultFrameHeight until the first layout. */
 	float getFrameHeight() const;
 
 	static constexpr float kDefaultFrameHeight = 32.0f;

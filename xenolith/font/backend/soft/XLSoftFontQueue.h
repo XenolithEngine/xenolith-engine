@@ -31,17 +31,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
-/* Glyph queue for the software backend.
- *
- * It builds no atlas image. Where the other backends pack glyphs into a texture and upload it, this
- * one rasterizes each new glyph once, in place, into a GlyphStore that survives between frames, and
- * publishes only the quad geometry - the DataAtlas keeps its role as the table of per-glyph offsets
- * while its texture coordinates become the glyph-local unit square. See XLSoftGlyphStore.h for why
- * an atlas is a cost rather than a saving here.
- *
- * The image attached to the dynamic image is a 1x1 placeholder: materials need one, nothing samples
- * it. The store travels alongside as the instance's userdata, which is the same seam the Vulkan
- * queue uses for its persistent glyph buffers. */
+/* Glyph queue for the software backend. Builds no atlas image: each new glyph is rasterized once
+ * into a GlyphStore that survives between frames (see XLSoftGlyphStore.h), and only quad geometry
+ * is published - the DataAtlas keeps per-glyph offsets, with texture coordinates as the glyph-local
+ * unit square. The dynamic image holds a 1x1 placeholder (materials need one, nothing samples it);
+ * the store travels as the instance's userdata, like the Vulkan queue's persistent glyph
+ * buffers. */
 class SP_PUBLIC FontQueue : public core::Queue {
 public:
 	virtual ~FontQueue();

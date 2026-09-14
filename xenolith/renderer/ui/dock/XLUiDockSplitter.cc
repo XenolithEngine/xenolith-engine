@@ -45,8 +45,7 @@ bool DockSplitter::init(NotNull<DockSystem> system, DockNodeHandle handle, DockA
 
 	_listener = addSystem(Rc<InputListener>::create());
 	_listener->setTouchPadding(GrabPadding);
-	// a Horizontal split divides left from right, so the divider itself is a VERTICAL bar and the
-	// cursor is the one for moving a column edge
+	// a Horizontal split's divider is a vertical bar, hence the column-resize cursor
 	_listener->setCursor(
 			axis == DockAxis::Horizontal ? WindowCursor::ResizeCol : WindowCursor::ResizeRow);
 
@@ -76,8 +75,7 @@ bool DockSplitter::init(NotNull<DockSystem> system, DockNodeHandle handle, DockA
 		}
 		return false;
 	},
-			// threshold 0 with sendThreshold: a divider has to follow the pointer from the first
-			// pixel, not jump once the gesture has travelled the default tap tolerance
+			// threshold 0: the divider follows the pointer from the first pixel
 			InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
 				0.0f, true});
 
@@ -90,8 +88,7 @@ bool DockSplitter::handleDragBegin() {
 	}
 
 	_dragging = true;
-	// capture: the pointer keeps reaching this listener once it leaves the 6pt band, which it does
-	// immediately. Same mechanism ui::TextInput uses for drag-selection.
+	// capture: the pointer leaves the thin band immediately
 	_listener->setExclusive();
 	addStyleClass("dragging");
 	setOrUpdateComponent<InteractiveComponent>(

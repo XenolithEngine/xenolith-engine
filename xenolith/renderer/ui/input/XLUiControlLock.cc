@@ -26,8 +26,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The narrower second word for a control that is disabled BECAUSE something else owns its value.
-// A class rather than a pseudo-class, because the CSS subset has no `:locked`.
+// Marks a control disabled because something else owns its value; a class, since the CSS subset
+// has no `:locked`.
 static constexpr auto s_editLockClass = StringView("locked");
 
 bool isEditLocked(const Node *node) { return isControlLocked(node); }
@@ -43,9 +43,8 @@ bool resolveEditLock(NotNull<Node> node, bool requested) {
 }
 
 void setEditLock(NotNull<Node> node, uint32_t reasonCode) {
-	// Asked BEFORE the lock takes the control away: only this layer knows how to ask a widget, and
-	// the very next call goes through resolveEditLock, which would otherwise record the LOCK's own
-	// `false` as the owner's wish - and unlocking would then restore "disabled" forever.
+	// Read the owner's enabled state before locking; resolveEditLock would otherwise record the
+	// lock's own `false` as the owner's wish.
 	bool ownerEnabled = true;
 	auto target = dynamic_cast<EditLockTarget *>(node.get());
 	if (target) {
@@ -54,21 +53,15 @@ void setEditLock(NotNull<Node> node, uint32_t reasonCode) {
 
 	const bool wasLocked = isControlLocked(node);
 
-	/* The widget is taken away FIRST, while it still believes it is enabled.
-
-	Order matters and it cost a check to find out: lockControl clears the Enabled bit, and a widget
-	whose setEnabled(false) then sees itself already disabled returns early - taking its blur() and
-	its "drop the gesture" with it. Locked but still holding the keyboard is exactly the state a
-	lock exists to prevent. */
+	/* Disable the widget before lockControl clears the Enabled bit: otherwise setEnabled(false)
+	returns early and skips its blur() and gesture cancel. */
 	if (target && !wasLocked) {
 		target->setEnabled(false);
 	}
 
 	lockControl(node, reasonCode, ownerEnabled);
 
-	// ...and put back what the control WANTED. The call above ran through resolveEditLock, which
-	// records the lock's own `false` as the owner's wish - and unlocking would then restore
-	// "disabled" forever.
+	// restore the owner's wish, which the setEnabled(false) above overwrote via resolveEditLock
 	setControlOwnerEnabled(node, ownerEnabled);
 
 	node->addStyleClass(s_editLockClass);
@@ -76,10 +69,8 @@ void setEditLock(NotNull<Node> node, uint32_t reasonCode) {
 	auto reason = diagnostic::getMessage(reasonCode);
 	if (!reason.empty()) {
 		if (getTooltip(node)) {
-			// Someone else's hint. Changing its text would silently destroy what the application
-			// put there, and clearing the lock would then take away a hint the lock never owned -
-			// so it is left exactly as it is, and the reason stays readable through
-			// getEditLockReason() for whoever lays the control out.
+			// A tooltip the lock does not own is left untouched; the reason stays available
+			// through getEditLockReason().
 			if (isControlLocked(node)
 					&& node->getComponent<InteractiveComponent>()->hasControlFlag(
 							ControlFlags::OwnsTooltip)) {

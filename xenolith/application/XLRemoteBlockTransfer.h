@@ -30,19 +30,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppThread;
 
-// Bidirectional large-binary block transfer over remote::Domain::Data. Owned by AppThread (the base),
-// so the same instance serves both directions on each peer: OUTGOING transfers (we are the sender)
-// are keyed by our own minted id in _outgoing; INCOMING transfers (we are the receiver) by the peer's
-// id in _incoming. The two id spaces never collide because every Data message is routed by direction
-// into exactly one of the maps (a Packet/Complete/Release/Unavailable looks up the map for the role
-// it implies), so a sender-id 5 and a receiver-id 5 are distinct entries.
+// Bidirectional large-binary block transfer over remote::Domain::Data, owned by AppThread. Outgoing
+// transfers are keyed by our id in _outgoing, incoming ones by the peer's id in _incoming; each
+// message is routed by the role it implies, so the id spaces never collide.
 //
-// Wire format (see XLRemoteProtocol.h DataCode): Announce is a CBOR request whose reply (no error)
-// means "accepted"; Packet is a raw-binary notification [u64 id][u32 index][chunk] (the transport's
-// LZ4 supplies compression); Complete/Release/Unavailable are small CBOR {id} notifications.
+// Wire format (see XLRemoteProtocol.h DataCode): Announce is a CBOR request whose non-error reply
+// means accepted; Packet is a raw notification [u64 id][u32 index][chunk] (LZ4 from the transport);
+// Complete/Release/Unavailable are small CBOR {id} notifications.
 //
-// All methods run on the owning AppThread and touch the connection only through its remoteSend*
-// facade -- the manager never sees ServerConnection/ClientConnection directly.
+// All methods run on the owning AppThread and use only its remoteSend* facade.
 class SP_PUBLIC BlockTransferManager : public Ref {
 public:
 	using DataType = remote::DataType;
@@ -51,54 +47,45 @@ public:
 
 	bool init(AppThread *owner);
 
-	// Sender entry. Packetizes + hashes `data` (copied into the transfer), sends the Announce carrying
-	// `meta` (type-specific, opaque to the manager) and `reason` (which message/type triggered this).
-	// On accept it streams every packet, then settles when the peer sends Complete: onComplete(id, true)
-	// on success, onComplete(id, false) on decline / reply-timeout / a later Unavailable. The id matches
-	// the return value, so the callback can release(id) once it is done referencing the blob. Returns the
-	// new transfer id, or 0 on immediate failure.
+	// Sender entry. Packetizes and hashes a copy of `data`, sends the Announce with `meta` (opaque,
+	// type-specific) and `reason` (the triggering message). On accept it streams all packets, then
+	// calls onComplete(id, true) when the peer sends Complete, or onComplete(id, false) on decline,
+	// reply timeout or a later Unavailable; the callback may release(id). Returns the transfer id,
+	// or 0 on immediate failure.
 	//
-	// `priority` orders this transfer against the OTHER transfers this manager is streaming: higher
-	// goes first, equal priorities take turns. It says nothing to the peer and is not on the wire --
-	// the order in which a sender empties its own queue is the sender's business, and telling the
-	// receiver would only invite it to have an opinion it cannot act on.
+	// `priority` orders this transfer against others from this manager (higher first, equal ones
+	// take turns); it is local and not sent on the wire.
 	uint64_t startTransfer(DataType, BytesView data, Value &&meta, Value &&reason,
 			Function<void(uint64_t id, bool ok)> &&onComplete, int32_t priority = 0);
 
-	// Sender: announce we will no longer reference id (Release notification) and drop our retained copy.
-	//
-	// Release means "I am done REFERENCING this", not "stop sending". Calling it mid-stream does stop
-	// the stream, as a side effect of the record going away -- use cancelTransfer for that, which says
-	// so and reports it.
+	// Sender: announce we no longer reference id (Release) and drop our copy. Mid-stream this also
+	// stops streaming; use cancelTransfer to abandon a transfer explicitly.
 	void releaseObject(uint64_t id);
 
-	// Sender: abandon a transfer that is still streaming (Cancel notification). The receiver drops
-	// whatever it has assembled; onComplete fires with false, so the caller learns the outcome instead
-	// of waiting for a completion that is never coming.
+	// Sender: abandon a transfer still streaming (Cancel). The receiver drops what it assembled;
+	// onComplete fires with false.
 	void cancelTransfer(uint64_t id);
 
-	// Cancel every transfer still streaming; returns how many. Not the same as reset(), which is the
-	// disconnect path and cannot tell the peer anything.
+	// Cancel every transfer still streaming; returns how many. Unlike reset() (disconnect), this
+	// notifies the peer.
 	size_t cancelAllTransfers();
 
-	// Receiver: announce we can no longer hold id (Unavailable notification) and drop our retained copy.
+	// Receiver: announce we can no longer hold id (Unavailable) and drop our retained copy.
 	void markUnavailable(uint64_t id);
 
-	// Receiver policy + delivery, set by the owning subclass. acceptPolicy decides whether to accept an
-	// incoming offer; onReceived delivers the fully-assembled, hash-validated blob (just before Complete
-	// is sent back). If acceptPolicy is unset every offer is accepted under the size ceiling.
+	// Receiver policy and delivery, set by the owning subclass. acceptPolicy decides whether to
+	// accept an offer (unset: everything under the size ceiling); onReceived delivers the
+	// assembled, hash-validated blob just before Complete is sent.
 	Function<bool(DataType, uint64_t size, const Value &meta, const Value &reason)> acceptPolicy;
 	Function<void(uint64_t id, DataType, const Value &meta, const Value &reason, BytesView data)>
 			onReceived;
 
-	// Receiver: an accepted transfer will NOT arrive after all -- the sender cancelled it, or the
-	// connection dropped mid-stream. Whoever was waiting on the blob has to be told, or it waits
-	// forever; onReceived cannot carry that, because there is no data to deliver.
+	// Receiver: an accepted transfer will not arrive (sender cancelled, or the connection dropped
+	// mid-stream).
 	Function<void(uint64_t id, DataType, const Value &meta, const Value &reason)> onCancelled;
 
-	// Route a Domain::Data request/notification (called from the subclass dispatchMessage). The Announce
-	// *reply* never arrives here -- it is consumed by AppThread::dispatchMessage's reply-by-serial path
-	// into the startTransfer waiter. Always returns true (consume; never defer).
+	// Route a Domain::Data request/notification (from the subclass dispatchMessage). The Announce
+	// reply arrives through AppThread's reply-by-serial path instead. Always returns true.
 	bool dispatch(const remote::MessageHeader &, BytesView payload);
 
 	// Drop every in-flight transfer (on disconnect).
@@ -113,8 +100,7 @@ protected:
 		uint32_t packetCount = 0;
 		uint32_t nextPacket = 0; // paced sender cursor (see pumpOutgoing)
 		bool completed = false;
-		// Streaming starts only once the receiver has accepted the Announce; until then the transfer
-		// exists but must not be picked by the scheduler.
+		// Streaming starts only after the receiver accepts the Announce.
 		bool accepted = false;
 		int32_t priority = 0;
 		Function<void(uint64_t, bool)> onComplete;
@@ -134,21 +120,16 @@ protected:
 		Value reason;
 	};
 
-	/* Paced sender: emit a bounded batch of packets for ONE transfer, then -- if anything remains
-	anywhere -- reschedule on the app looper so the peer can drain and extend its flow-control window.
-	Streaming a whole blob synchronously instead exhausts the QUIC window and truncates a frame
-	mid-write (corrupting the stream).
-	
-	ONE pump for the manager, not one per transfer. Each transfer used to reschedule itself, which
-	meant there was no point at which "which packet goes next" was decided -- two transfers simply
-	interleaved in whatever order the looper ran their tasks, and a priority had nowhere to apply.
-	Now selectNextTransfer is that point. */
+	/* Paced sender: emit a bounded batch for one transfer (chosen by selectNextTransfer), then
+	reschedule on the app looper if anything remains, so the peer can extend its flow-control
+	window. Streaming a whole blob synchronously exhausts the QUIC window and corrupts the
+	stream. One pump serves the whole manager. */
 	void schedulePump();
 	void pumpOutgoing();
 	OutgoingTransfer *selectNextTransfer();
 
-	// Drop an outgoing transfer and settle its caller. `ok` is what onComplete is told; the callback
-	// is moved out BEFORE the erase, because it commonly owns things that reference the manager.
+	// Drop an outgoing transfer and settle its caller with `ok`; the callback is moved out before
+	// the erase, since it often owns things that reference the manager.
 	void finishOutgoing(uint64_t id, bool ok);
 
 	void deliverIncoming(IncomingTransfer &);
@@ -168,11 +149,9 @@ protected:
 	HashMap<uint64_t, OutgoingTransfer> _outgoing; // keyed by our id (we are the sender)
 	HashMap<uint64_t, IncomingTransfer> _incoming; // keyed by the peer's id (we are the receiver)
 
-	// One pump task in flight at a time; without this every accept and every batch would queue
-	// another, and N transfers would get N times the looper's attention rather than sharing it.
+	// At most one pump task in flight, so transfers share the looper's attention.
 	bool _pumpScheduled = false;
-	// Last transfer served a batch, so equal priorities take turns instead of the first-found one
-	// starving the rest.
+	// Last transfer served, so equal priorities take turns.
 	uint64_t _lastServed = 0;
 };
 

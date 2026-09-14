@@ -57,10 +57,8 @@ public:
 	bool init(Device &, const core::SamplerInfo &);
 };
 
-// A linear bitmap. Rows are tightly packed (stride == width * pixelSize): there is no hardware
-// alignment to respect, and a predictable stride keeps the capture path a straight memcpy. An
-// externally backed image keeps whatever stride its provider chose, but the capture path only
-// accepts the packed one - see _external below.
+// A linear bitmap with tightly packed rows (stride == width * pixelSize), so capture is a straight
+// memcpy. Externally backed images must use the same packed stride (see _external below).
 class SP_PUBLIC Image final : public core::ImageObject {
 public:
 	virtual ~Image() = default;
@@ -71,10 +69,8 @@ public:
 	// damage tracker indexes its per-image snapshots by
 	bool init(Device &, StringView, const core::ImageInfoData &, uint64_t index);
 
-	// Backed by memory the window system owns - a wl_shm buffer, an X SHM segment - so the
-	// rasterizer writes the frame straight into what gets presented, with no copy in between.
-	// The image does not own the memory and must outlive nothing: the swapchain that handed it
-	// over keeps the mapping alive.
+	// Backed by window-system memory (a wl_shm buffer, an X SHM segment), so the rasterizer writes
+	// straight into what gets presented. Non-owning: the swapchain keeps the mapping alive.
 	bool init(Device &, StringView, const core::ImageInfoData &, uint64_t index, uint8_t *external,
 			uint32_t stride, size_t size);
 
@@ -99,10 +95,9 @@ protected:
 			const Callback<size_t(uint8_t *, uint64_t)> *fill);
 
 	Bytes _storage;
-	// Window-system memory, when the image is externally backed. Non-owning: `_storage` stays
-	// empty, the buffer is never cleared on creation (its previous frame is what partial redraw
-	// diffs against), and `_externalSize` must cover exactly one slot - the capture path feeds it
-	// to the bitmap encoder, which rejects any length that is not extent * bytes-per-pixel.
+	// Window-system memory, when externally backed. Non-owning: `_storage` stays empty, the buffer
+	// is never cleared (partial redraw diffs against its previous frame), and `_externalSize` must
+	// be exactly extent * bytes-per-pixel, as the capture path's bitmap encoder requires.
 	uint8_t *_external = nullptr;
 	size_t _externalSize = 0;
 	uint32_t _stride = 0;

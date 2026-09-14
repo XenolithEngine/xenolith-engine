@@ -86,7 +86,7 @@ struct StyleScope {
 	SpanView<bool> media;
 };
 
-// Bloom bits of a node's identity tokens; MUST use the same kinds (tag=0/class=1/id=2)
+// Bloom bits of a node's identity tokens; must use the same kinds (tag=0/class=1/id=2)
 // as document::StyleContainer::addComplexSelector so the parse-side and match-side sets align
 static uint64_t foldIdentityBits(const NodeIdentity *identity) {
 	uint64_t bits = 0;
@@ -106,17 +106,10 @@ static uint64_t foldIdentityBits(const NodeIdentity *identity) {
 
 } // namespace
 
-/* Custom properties in effect for one node, plus the strings that `var()` substitution had to
-intern. Lives in the ResolvedStyle's pool.
-
-`vars` maps a property name to its raw, unexpanded text; both views point into the string table
-of whichever sheet declared it, which outlives the ResolvedStyle.
-
-`strings` is empty unless substitution produced a STRING-valued parameter (`font-family:
-var(--face)`). It cannot go through DocumentData::addString - that table never dedupes, so
-re-resolving a node every frame would grow the sheet without bound. Instead it starts as a copy
-of the nearest sheet's table, so ids already handed out stay valid, and the substituted strings
-are appended to it. */
+/* Custom properties in effect for one node; lives in the ResolvedStyle's pool. `vars` maps a name
+to raw text (views into the declaring sheet or StyleVariables). `strings` copies the nearest
+sheet's table and appends strings from substitution; DocumentData::addString never dedupes, so
+using it would grow the sheet on every resolve. */
 struct ResolvedStyle::VariableTable : memory::AllocPool {
 	memory::PoolInterface::MapType<StringView, StringView> vars;
 	memory::PoolInterface::VectorType<StringView> strings;
@@ -167,10 +160,8 @@ uint64_t ResolvedStyle::getCustomPropertiesHash() const {
 	return h ? h : 1; // 0 is reserved for "no custom properties"
 }
 
-// Expand and parse the deferred `var()` declarations of one matched rule into `dst`, at the
-// point in the cascade where the rule itself is being merged. A declaration whose expansion
-// fails (undefined variable with no fallback, or a reference cycle) is dropped, exactly as CSS
-// requires - it never reaches `dst`, so whatever a less specific rule set simply stands.
+// Expand the deferred `var()` declarations of one matched rule into `dst` at the rule's cascade
+// position. A failed expansion (undefined variable without fallback, or a cycle) is dropped.
 void ResolvedStyle::expandPendingRule(document::StyleList &dst,
 		const document::StyleContainer::MatchedRule &rule) {
 	for (auto &p : rule.style->pending) {
@@ -200,33 +191,11 @@ void ResolvedStyle::expandPendingRule(document::StyleList &dst,
 	}
 }
 
-/* THE MATCH CACHE: which rules match ONE node, kept so the nodes under it do not each re-derive it.
-
-A resolve walks the node's ancestor chain and asks, at every level, which of the sheets' rules match
-that level's node. The studio's nodes sit eighteen levels deep, so that is eighteen questions per
-node - and seventeen of them are about ancestors, asked again by every one of the five hundred nodes
-in the subtree. The answers were identical every time: `collectMatches` is given the level's node,
-that node's own index in the chain (which decides the sheets in scope) and the Bloom bits of that
-node's own ancestors, so a level's match set is a property of THAT NODE ALONE. Measured at 3.6 ms of
-a 6.0 ms style cost on a cold page, i.e. the largest single item left in the visit.
-
-So it is cached per node, and the cache is checked against the CSS match stamp
-(`Node::getStyleMatchId`, folded over the node and every ancestor above it) rather than against an
-epoch: a global epoch would be cleared by every addChild of a page being built, which is exactly when
-the cache has to work. A stamp covers one chain, so building a subtree invalidates that subtree and
-nothing above it.
-
-Entries keyed by a raw pointer are never read for a node that died: the stamp folds in a per-node id
-that is unique for the life of the process, so an address the allocator hands out again cannot match
-what the previous tenant stored. A node removed from its parent also bumps its parent's child-list
-stamp, and the entries left behind are overwritten or dropped with the cache. They carry pointers
-into the sheets (the rule, its string table, its media bits), which a sheet reload would dangle -
-and cannot be read after one, because the sheet lives on the chain and its StyleSystemState version
-is part of the stamp.
-
-The bound is the crude one on purpose: a resolve needs eighteen entries and a page a few hundred, so
-the map is cleared wholesale when it grows past a limit no real page reaches. Cost of being wrong:
-one re-gather per level, the thing that used to happen every time. */
+/* Match cache: the rules matching one chain level depend only on that node and its ancestors, so
+they are cached per node and shared by every descendant's resolve. An entry is valid while its
+stamp matches the chain stamp (per-node unique id, components and child-list versions folded up
+to the root), so reused addresses and sheet reloads never read a stale entry. The map is cleared
+wholesale past MatchCacheLimit. */
 namespace {
 
 struct MatchCacheEntry {
@@ -234,14 +203,11 @@ struct MatchCacheEntry {
 	Vector<document::StyleContainer::MatchedRule> matches;
 };
 
-/* Keyed by a POINTER, hence the spreading hasher - the same reason StyleResolver::_nodesUpdated
-gives: node addresses share their alignment bits, and the default pointer hash leaves exactly those
-low bits to choose the bucket. */
+// pointer keys share alignment bits, hence the spreading hasher
 using MatchCacheMap = sprt::__malloc_unordered_map<const Node *, MatchCacheEntry,
 		sprt::hash_spread<>, sprt::equal_to<void>>;
 
-// thread_local rather than global: a process can run several app threads, each with its own scene
-// graph, and nothing here is shared between them
+// thread_local: each app thread has its own scene graph
 static MatchCacheMap &getMatchCache() {
 	static thread_local MatchCacheMap tl_cache;
 	return tl_cache;
@@ -312,10 +278,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		anyCustom = anyCustom || sheet->hasCustomProperties();
 	}
 
-	// A node-local declaration (StyleVariables) is a source of custom properties no sheet knows
-	// about, so the variable table has to exist even when not one sheet in scope declares any.
-	// Only the levels PASS 1 actually visits are checked, which is the same range gatherLevel
-	// covers.
+	// node-local StyleVariables need the variable table even when no sheet declares any; check
+	// the same levels pass 1 visits
 	if (!anyCustom) {
 		for (size_t i = 0; i <= scopes.back().chainIndex; ++i) {
 			if (chain[i]->getComponent<StyleVariables>()) {
@@ -325,9 +289,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		}
 	}
 
-	// Gather every rule matching `levelNode` (simple + combinator/pseudo) from every scope
-	// visible at `chainIndex`, across sheets, into one list sorted by CSS specificity (ties
-	// broken by scope rank + source order) - i.e. in the order the cascade must apply them.
+	// gather rules matching `levelNode` from every scope visible at `chainIndex`, sorted in
+	// cascade order (specificity, then scope rank + source order)
 	auto gatherLevel = [&](Vector<document::StyleContainer::MatchedRule> &matches, Node *levelNode,
 							   size_t chainIndex) {
 		uint64_t rank = 0; // outer sheets get a lower rank -> lose ties to nearer sheets
@@ -345,9 +308,7 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 #endif
 	};
 
-	// Build ONLY the raw merged parameter list plus the interpretation context here.
-	// Nothing is compiled or extracted - each consumer reads what it needs from the
-	// returned ResolvedStyle. The pool is owned by `ret` and freed with it.
+	// build only the raw merged parameter list plus context; the pool is owned by `ret`
 	ret._pool = memory::pool::create(static_cast<memory::pool_t *>(nullptr));
 	ret._media = &nearest.system->getMediaParameters();
 	auto nearestStrings = nearest.system->getStyleSheet()->getStrings();
@@ -355,14 +316,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 	memory::perform([&] {
 		auto style = new (ret._pool) document::StyleList();
 
-		// Both passes walk the SAME levels - the chain from the outermost sheet scope down to the
-		// node - and at each level they need the SAME specificity-sorted rule list. Gathering it
-		// twice was the single biggest item in a resolve (a lookup in every sheet in scope plus a
-		// sort, about 0.44us, twice per chain level). Gather once here; both passes read it.
-		//
-		// In two steps, and the order matters: every level is put in the cache FIRST, and only then
-		// are the pointers taken. An insert may rehash the map, and a pointer taken before one
-		// would be left pointing at a moved entry.
+		// Gather each level's sorted matches once for both passes. Fill the cache for every level
+		// first, then take pointers: an insert may rehash the map.
 		const size_t outerLevel = scopes.back().chainIndex;
 		auto &cache = getMatchCache();
 		if (cache.size() > MatchCacheLimit) {
@@ -391,15 +346,14 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		}
 
 #if XL_FRAME_ACCOUNT
-		// the gather is prologue work now, not part of either pass
+		// the gather is accounted outside either pass
 		account.styleChainNs += core::getAccountClock() - chainStart;
 		const auto pass1Start = core::getAccountClock();
 #endif
 
-		// PASS 1 - custom properties only, every level, outermost first. They are always
-		// inherited, and the whole cascade of them must be known before a single var() is
-		// substituted: CSS resolves a variable to its computed value on the element, so a
-		// variable declared by a MORE specific rule is visible to a use in a less specific one.
+		// Pass 1: custom properties, every level, outermost first. All of them must be known
+		// before any var() is substituted, since a more specific rule's variable is visible to a
+		// less specific rule's use.
 		if (anyCustom) {
 			ret.initVariables(nearestStrings);
 			auto declare = [&](StringView key, StringView value) {
@@ -423,10 +377,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 					}
 				}
 
-				// The node's own declarations go in after every rule that matched it: a
-				// node-local property is the most specific source there is, the same standing an
-				// inline style would have. The views point into the component, which outlives
-				// this resolve - a ResolvedStyle is produced and consumed inside one apply().
+				// node-local declarations go last (most specific); the views point into the
+				// component, which outlives this resolve
 				if (auto vars = levelNode->getComponent<StyleVariables>()) {
 					for (auto &it : vars->vars) { declare(it.first, it.second); }
 				}
@@ -439,9 +391,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		const auto pass2Start = core::getAccountClock();
 #endif
 
-		// PASS 2 - the parameters themselves, in cascade order. A rule's deferred var()
-		// declarations are expanded right after its literal ones, so a substituted value takes
-		// exactly the cascade position it was written at instead of winning by arriving last.
+		// Pass 2: parameters in cascade order; a rule's deferred var() declarations expand right
+		// after its literal ones, keeping their cascade position.
 		auto resolveLevel = [&](document::StyleList &dst, size_t chainIndex, bool inherit) {
 			for (auto &m : *levelMatches[chainIndex]) {
 				dst.merge(*m.style, m.media, inherit);
@@ -464,10 +415,8 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 #endif
 	}, ret._pool);
 
-	// note: string parameters (font-family, background-image, grid tracks) resolve against
-	// the NEAREST sheet's string table; with multiple sheets in scope, string values defined
-	// by outer sheets may resolve incorrectly - documented v1 limitation. Strings produced by
-	// var() substitution are appended to a private copy of that table (see VariableTable).
+	// string parameters resolve against the nearest sheet's string table, so strings defined by
+	// outer sheets may resolve incorrectly (known limitation); var() strings use VariableTable
 	ret._iface = document::SimpleStyleInterface(nearest.media,
 			ret._variables ? SpanView<StringView>(ret._variables->strings) : nearestStrings, 1.0f,
 			ret._media->fontScale);
@@ -607,8 +556,7 @@ document::OutlineParameters ResolvedStyle::outline() const {
 	return ret;
 }
 
-// individual property accessors: resolve exactly one parameter (mirroring the matching field of the
-// compiled block) so a single-value read never expands a whole block. No allocation, one list scan.
+// individual property accessors: one list scan, no allocation
 
 document::FontSize ResolvedStyle::fontSize() const {
 	document::FontSize ret(14); // FontSpecializationVector default
@@ -616,7 +564,7 @@ document::FontSize ResolvedStyle::fontSize() const {
 	if (getValue(document::ParameterName::CssFontSize, v)) {
 		ret = v.fontSize;
 	}
-	// font-size-increment scales the resolved size (mirrors StyleList::modifySize in compileFontStyle)
+	// font-size-increment scales the resolved size (mirrors StyleList::modifySize)
 	if (getValue(document::ParameterName::CssFontSizeIncrement, v)
 			&& v.sizeValue.metric != document::Metric::Auto) {
 		ret = ret.scale(v.sizeValue.value);
@@ -1007,8 +955,7 @@ document::TableLayout ResolvedStyle::tableLayout() const {
 }
 document::BorderCollapse ResolvedStyle::borderCollapse() const {
 	document::StyleValue v;
-	// CSS initial value is `separate`, even though the document engine's compiled block model
-	// defaults the other way
+	// CSS initial value is `separate`, unlike the document engine's compiled block model
 	return getValue(document::ParameterName::CssBorderCollapse, v)
 			? v.borderCollapse
 			: document::BorderCollapse::Separate;
@@ -1040,16 +987,14 @@ bool StyleResolver::init(bool recursive) {
 	_recursive = recursive;
 
 	// HandleNodeEvents: react to the owner's own resize (handleContentSizeDirty) and to the
-	// owner's PARENT resize (handleLayoutInParent) - percent metrics depend on the parent size
+	// owner's parent resize (handleLayoutInParent) - percent metrics depend on the parent size
 	auto flags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleNodeEvents | SystemFlags::HandleComponents
 			| SystemFlags::HandleAncestorComponents | SystemFlags::HandleLayoutChildren;
 
 	if (_recursive) {
-		// publish on the frame stack so every descendant delivers its content-size / layout-children
-		// event back to this single resolver, which then resolves that descendant's style.
-		// HandleChildComponents additionally catches a descendant's own components change (its
-		// interactive :hover/:focus/:active flip), which the content-size cascade would miss
+		// publish on the frame stack so descendants deliver their content-size / layout-children
+		// events here; HandleChildComponents also catches their interactive state flips
 		flags |= SystemFlags::HandleChildNodeEvents | SystemFlags::HandleChildComponents
 				| SystemFlags::AddToFrameStack;
 		setFrameTag(SystemFrameTag);
@@ -1103,11 +1048,8 @@ void StyleResolver::handleLayoutInParent(Node *parent) {
 }
 
 void StyleResolver::handleChildContentSizeDirty(Node *child) {
-	// A descendant's content-size phase fired (delivered via the frame stack): its own size
-	// changed, or - for nodes carrying NodeEventFlags::HandleParentContentSize (percent metrics
-	// OR absolute insets) - an ancestor resized. Re-resolve unless the style is still fresh
-	// (same version, resolved against the same parent/own sizes); equality-guarded writes make
-	// re-resolution converge.
+	// a descendant resized, or an ancestor did (nodes with HandleParentContentSize: percent
+	// metrics or absolute insets); re-resolve unless still fresh
 	if (_recursive && _owner && !isNodeFresh(child)) {
 		resolveForNode(child);
 	}
@@ -1125,18 +1067,15 @@ void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask 
 				|| mask.count(FocusWithinComponent::Id.value) != 0
 				|| mask.count(SelectionComponent::Id.value) != 0
 				|| mask.count(StyleSystemState::Id.value) != 0
-				// a node-local custom property changed: nothing moved and no rule started or
-				// stopped matching, so this is the only signal that its style is stale
+				// a node-local custom property changed: the only signal that its style is stale
 				|| mask.count(StyleVariables::Id.value) != 0) {
 			resolveForNode(child);
 		}
 	}
 }
 
-// Force every descendant to re-run its content-size phase so each fires the frame-stack child event
-// that makes the nearest recursive resolver re-resolve it. Needed when the stylesheet itself changes
-// (CSS reload): a style-only change moves no geometry, so descendants would otherwise never signal
-// and would keep their stale styles until some unrelated relayout happened to wake them.
+// re-arm every descendant's content-size phase so the recursive resolver re-resolves it after a
+// CSS reload, which moves no geometry and so raises no event by itself
 static void markSubtreeComponentsDirty(Node *node) {
 	for (auto &child : node->getChildren()) {
 		child->markContentSizeDirty();
@@ -1173,8 +1112,7 @@ void StyleResolver::apply() {
 		currentInteractiveMask = toInt(ic->state);
 	}
 
-	// ...and the one state that is NOT in that component. Without this the early return below
-	// fires on a node whose only change was gaining or losing `:focus-within`.
+	// marker-component states, so a `:focus-within` or selection change is not skipped below
 	if (hasFocusWithin(_owner)) {
 		currentInteractiveMask |= toInt(InteractiveState::FocusWithin);
 	}
@@ -1192,8 +1130,7 @@ void StyleResolver::apply() {
 		return; // no changes to run style resolver
 	}
 
-	// the stylesheet source (id) or its version changed - i.e. the CSS was (re)loaded, not merely a
-	// local interactive-state flip; the whole subtree's resolved styles are now potentially stale
+	// the stylesheet source or version changed (not just interactive state): the subtree is stale
 	const bool sourceChanged =
 			currentSourceId != _sourceSystemId || currentSourceVersion != _sourceSystemVersion;
 
@@ -1205,16 +1142,13 @@ void StyleResolver::apply() {
 	_sourceSystemId = currentSourceId;
 	_sourceSystemVersion = currentSourceVersion;
 
-	// resolve the owner's own style. A recursive resolver is pushed onto the frame stack only AFTER
-	// its owner's phases, so the owner never delivers its events back to its own resolver - the owner
-	// must be resolved directly here (descendants cascade via their frame-stack child events).
+	// resolve the owner directly: the resolver joins the frame stack after the owner's phases, so
+	// the owner's events never reach it
 	resolveForNode(_owner);
 
 	if (_recursive && sourceChanged) {
-		// Sync-resolve every descendant now. markSubtreeComponentsDirty alone only arms a later
-		// content-size phase; a layout pushed after the scene's enter pass (aux popup bodies) would
-		// otherwise present its first frame with unresolved Inherited* styles on labels. Deduped
-		// per node via _nodesUpdated inside resolveForNode.
+		// resolve descendants synchronously, so a layout pushed after the enter pass (popup bodies)
+		// has no unstyled first frame; deduped via _nodesUpdated
 		forEachInSubtree(_owner, [&](Node *child) { resolveForNode(child); });
 	}
 }
@@ -1254,31 +1188,22 @@ static GridAutoFlow toGridAutoFlow(document::GridAutoFlow f) {
 	return GridAutoFlow::Row;
 }
 
-/* ONE AXIS, described well enough to place a CSS Box Alignment keyword on it.
-
-The three keyword families mean three different things, and collapsing them is what this struct
-exists to stop:
-
-  * `flex-start`/`flex-end` are FLEX-relative. The backend lays every line out in flow coordinates
-    and mirrors the whole line when the axis is reversed, so these two map straight through and the
-    backend's own reversal is the answer.
-  * `start`/`end` (and `self-start`/`self-end`) are FLOW-relative - the writing mode's start, not
-    the flex direction's. On a row they are the inline start, which under `direction: rtl` is the
-    right edge; the backend also reverses an RTL row, and the two flips CANCEL. That is why
-    `logicalStart()` below asks only about `reversed`: the direction has already been paid for.
-  * `left`/`right` are PHYSICAL, and are the only family that has to ask the direction here. On an
-    axis that is not the inline one CSS says they behave as `start`, which is what `inlineAxis`
-    selects. */
+/* One axis, for placing a CSS Box Alignment keyword:
+  * `flex-start`/`flex-end` are flex-relative and map straight through (the backend mirrors
+    reversed lines);
+  * `start`/`end` are flow-relative; the backend already reverses an RTL row, so only `reversed`
+    matters;
+  * `left`/`right` are physical and depend on direction; on a non-inline axis they act as
+    `start`. */
 struct AlignAxis {
 	bool reversed = false; // the axis is laid out against its natural order
 	bool inlineAxis = false; // this axis is the inline (horizontal) one
 	bool rtl = false; // the inline direction is right-to-left
 
-	// A flow-relative `start` sits at the axis's flow start unless the axis is reversed.
+	// a flow-relative `start` sits at the axis's flow start unless the axis is reversed
 	bool logicalStart() const { return !reversed; }
 
-	// A physical `left` sits at the flow start when the axis runs that way visually. On a
-	// non-inline axis `left` degrades to `start`, per CSS Box Alignment.
+	// a physical `left` sits at the flow start when the axis runs that way visually
 	bool physicalLeftIsStart() const { return inlineAxis ? !(reversed != rtl) : !reversed; }
 };
 
@@ -1330,12 +1255,9 @@ static FlexAlign toFlexAlignSelf(Align a, const AlignAxis &ax) {
 	return toFlexAlignItems(a, ax);
 }
 
-/* Grid justify/align (content or items).
-
-A grid track order is never "reversed" the way a flex line is, so the flow-relative keywords map
-straight through and the backend mirrors the whole inline axis once, at projection. Only the
-physical pair has to ask the direction, and only on the inline axis - `align-*` runs down the block
-axis, where CSS says `left`/`right` behave as `start`. */
+/* Grid justify/align (content or items). Flow-relative keywords map straight through (the backend
+mirrors the inline axis at projection); `left`/`right` depend on direction only on the inline
+axis, and act as `start` on the block axis. */
 static GridAlign toGridAlign(Align a, bool rtl, bool inlineAxis) {
 	const bool leftIsStart = inlineAxis ? !rtl : true;
 	switch (a) {
@@ -1364,9 +1286,8 @@ static GridAlign toGridAlignSelf(Align a, bool rtl, bool inlineAxis) {
 	return toGridAlign(a, rtl, inlineAxis);
 }
 
-// One compiled border side -> the edge the table's collapse pass resolves. `border-*-width` is a
-// Metric, so it has to be computed like any other length; `border-style: none` (the CSS initial
-// value) yields an edge that loses every conflict.
+// one compiled border side -> table collapse edge; `border-style: none` yields an edge that loses
+// every conflict
 static TableBorderEdge toTableBorder(const document::OutlineParameters::Params &p,
 		const document::MediaParameters &media, float fontSize, float base) {
 	TableBorderEdge edge;
@@ -1383,24 +1304,10 @@ static TableBorderEdge toTableBorder(const document::OutlineParameters::Params &
 // the state the style was applied against - see StyleResolver::StyleFreshness
 StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) const {
 	auto p = node->getParent();
-	// the child-list version enters the key only when some sheet in scope actually uses a
-	// structural pseudo-class; otherwise a sibling insertion would needlessly re-resolve the
-	// whole child list (Node::markChildrenStructureDirty re-arms every sibling's phase)
-	// The style system's version rides along, so that a sheet reload or a media flag flipped
-	// between frames makes every node stale even when nothing moved.
-	/* EVERY SCOPE ON THE CHAIN, AND THE NODE'S OWN FIRST.
-
-	The node that OWNS a StyleSystem is in that system's scope - `:root` is that node - and
-	`findParentWithComponent` starts at the parent, so the owner used to see no version at all and was
-	never stale for a flag its own sheet flipped. It kept whatever it had resolved first: a window
-	opened in a right-to-left language kept `direction: rtl` on its root for good, and every node below
-	that did not declare a direction of its own walked up to it - switching to a left-to-right language
-	changed the text and left the whole layout mirrored. A window opened left-to-right never showed it,
-	because its root had never resolved a direction to keep.
-
-	And ALL the scopes rather than the nearest: a node inside a nested sheet (a document tab's) is still
-	matched against the outer sheet's rules, so a media flag flipped on the outer one changes its answer
-	too. The versions are folded, so a change in any of them changes the stamp. */
+	// the child-list version enters the key only when a sheet in scope uses structural
+	// pseudo-classes, so sibling insertions don't re-resolve the whole child list.
+	// Source versions of every scope on the chain are folded, the node's own first: the owner of a
+	// StyleSystem is in its scope, and outer sheets' rules still match inside nested ones.
 	uint32_t sourceVersion = 0;
 	auto foldVersion = [&](uint32_t version) {
 		sourceVersion = (sourceVersion ^ version) * 0x9E37'79B1u + 1;
@@ -1418,16 +1325,9 @@ StyleResolver::StyleFreshness StyleResolver::makeStyleFreshness(Node *node) cons
 		(p && _structuralSelectors) ? p->getChildrenVersion() : 0, sourceVersion};
 }
 
-// Does the resolved style depend on the parent's content size? Such nodes must re-resolve when
-// an ancestor resizes — they opt into NodeEventFlags::HandleParentContentSize.
-//
-// Two cases:
-// 1. Any Percent metric (width/height/margin/inset/…) — classic `%` against the parent box.
-// 2. `position: absolute` with a non-auto inset (`top`/`right`/`bottom`/`left`), even in px —
-//    placement is `y = parentHeight - top` (and left+right / top+bottom stretch the size), so a
-//    first resolve against a zero-sized parent would stick forever. That is the installer
-//    title-line bug: the bar's height arrives only after the flex pass writes MeasureComponent
-//    into ContentSize, and without this bit the absolute child never sees the update.
+// Does the resolved style depend on the parent's content size (then the node needs
+// NodeEventFlags::HandleParentContentSize)? True for any percent metric, and for
+// `position: absolute` with a non-auto inset, whose placement uses the parent size even in px.
 static bool hasParentRelativeMetrics(const ResolvedStyle &s) {
 	using document::ParameterName;
 
@@ -1469,9 +1369,7 @@ void StyleResolver::resolveForNode(Node *node) {
 	if (!node) {
 		return;
 	}
-	// Re-entrancy: applyDefault below mutates components and size, and that can come back here
-	// for another node while this node's ResolvedStyle is still live. Queue it instead and drain
-	// once the outer pass is done, so no node is ever half-applied when the next one starts.
+	// re-entrant call from applyDefault: queue the node and drain after the outer pass
 	if (_inResolve) {
 		for (auto *n : _pendingResolve) {
 			if (n == node) {
@@ -1510,25 +1408,18 @@ void StyleResolver::resolveForNode(Node *node) {
 		return;
 	}
 
-	// Whether the sibling order matters is learned from the resolve rather than scanned up
-	// front: apply() early-outs when the sheet lives on the resolver's own node, so it is not a
-	// reliable place to look. Never cleared - a sheet that loses its structural selectors on
-	// reload only costs a redundant freshness field.
+	// learned from the resolve (apply() may early-out); never cleared, which only costs a
+	// redundant freshness field
 	_structuralSelectors = _structuralSelectors || style.hasStructuralSelectors();
 
-	// Custom properties are inherited and are substituted into values at resolve time, so when
-	// a node's set changes - a class flip on it that brings in a different `--brand` - every
-	// descendant's applied style is stale. The descendants get no event of their own (nothing
-	// moved or resized), so re-arm the subtree by hand.
+	// a changed custom property set makes every descendant stale without an event; re-arm them
 	if (auto hash = style.getCustomPropertiesHash()) {
 		auto vit = _nodeCustomProperties.find(node);
 		if (vit == _nodeCustomProperties.end()) {
 			_nodeCustomProperties.emplace(node, hash);
 		} else if (vit->second != hash) {
 			vit->second = hash;
-			// dropping the freshness entries is what makes the nudge land: nothing about the
-			// descendants' geometry changed, so isNodeFresh() would otherwise swallow the
-			// re-fired phase and they would keep the old variable's value
+			// drop freshness entries, or isNodeFresh() swallows the re-fired phase
 			forEachInSubtree(node, [&](Node *child) { _nodesUpdated.erase(child); });
 			markSubtreeComponentsDirty(node);
 		}
@@ -1570,20 +1461,10 @@ void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
 		return;
 	}
 
-	// The reset command, delivered BEFORE any parameter and on EVERY pass (not only when
-	// something changed). A style pass carries only the declarations that are present, so when a
-	// rule stops matching - a class flip, an edited stylesheet - its properties just go missing
-	// and nothing below would undo them. The applier answers by dropping whatever it took from
-	// the previous pass - and no more than that: what the widget painted on itself is not the
-	// pass's to take. The loop underneath then re-applies what is still declared.
-	//
-	// It is a pseudo-parameter: no CSS syntax produces it, so it never appears in `s` and an
-	// applier only sees it if it listed CmdReset in its ParameterMask. Its value is unspecified.
-	//
-	// An applier may freely add or remove components here: a component change on the styled node
-	// carries only that component's id, and handleChildComponentsDirty re-resolves a node it has
-	// already seen only for NodeIdentity / InteractiveComponent / StyleSystemState - so the
-	// remove-then-recreate this causes does not feed back into another resolve.
+	// CmdReset goes first on every pass (only to appliers that list it; value unspecified): undo
+	// the previous pass's styling, not the widget's own state, then the loop re-applies what is
+	// declared. Adding/removing components here does not re-trigger a resolve, since
+	// handleChildComponentsDirty filters by component id.
 	if (it->second.mask.test(toInt(document::ParameterName::CmdReset))) {
 		document::StyleValue val;
 		if (it->second.applier(*this, node, s, document::ParameterName::CmdReset, val)) {
@@ -1627,9 +1508,8 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setOpacity(float(s.opacity()) / 255.0f);
 	}
 
-	// -xl-z-order: the node's ZOrder. Set it up front (before applyLayout): changing it marks the
-	// parent's reorder dirty, and the reorder phase runs before handleLayoutChildren, so the flex/grid
-	// LayoutSystem sees the children in the requested order. setLocalZOrder is equality-guarded.
+	// -xl-z-order: set before applyLayout, so the reorder phase sorts children before the
+	// LayoutSystem runs; setLocalZOrder is equality-guarded
 	if (def(ParameterName::CssXlZOrder)) {
 		node->setLocalZOrder(ZOrder(int16_t(s.xlZOrder())));
 	}
@@ -1658,10 +1538,8 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		}
 	}
 
-	// Inheritable color/font/text properties -> data components on the node itself. Label and
-	// other consumers accumulate them over the parent chain (see XLInheritedStyle.h), so any
-	// descendant — styled or not — picks them up. Writes are equality-guarded; a component with
-	// nothing defined is removed so consumers revert to their explicit values.
+	// inheritable color/font/text properties -> Inherited*Style components, accumulated by
+	// consumers over the parent chain (XLInheritedStyle.h); an empty component is removed
 	{
 		InheritedColorStyle v;
 		if (def(ParameterName::CssColor)) {
@@ -1808,18 +1686,9 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		const bool heightExplicit = def(ParameterName::CssHeight) && !height.isAuto()
 				&& height.metric != document::Metric::Units::FitContent;
 
-		// When a parent flex/grid container lays this node out, the LayoutSystem is the SOLE writer of
-		// its ContentSize. Publishing the CSS-requested size here via setContentSize too would create a
-		// cycle (style writes ContentSize <-> layout reads it as the natural size <-> layout writes it):
-		// a re-resolve then re-imposes the CSS size over the laid-out size (the os-button double-height
-		// bug). Instead hand the requested size to the layout as intrinsic INPUT in a MeasureComponent
-		// (a per-axis value < 0 means "unspecified"); the layout reads it and owns ContentSize.
-		// ...unless this node is out of the container's flow (`position: absolute`), in which case
-		// no layout will ever read that component and the CSS size has to be committed directly.
-		//
-		// SystemManagedLayout is the same claim made without flex/grid parameters: a container that
-		// places its children by its own rules (ui::DockSystem) is just as much the sole writer of
-		// their ContentSize, and reads the MeasureComponent as an intrinsic hint the same way.
+		// Under a flex/grid/SystemManagedLayout parent the layout is the sole writer of
+		// ContentSize: pass the CSS size as MeasureComponent input (< 0 per axis = unspecified)
+		// instead of setContentSize. Out-of-flow (`position: absolute`) nodes commit it directly.
 		auto parent = node->getParent();
 		const bool parentManagesSize = parent
 				&& (parent->getComponent<FlexLayoutInfo>() || parent->getComponent<GridLayoutInfo>()
@@ -1863,9 +1732,7 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 	// positioning: `position: absolute` places the node via top/right/bottom/left
 	// offsets against the parent; every other `position` value applies -xl-anchor-point
 	if (s.position() == document::Position::Absolute) {
-		// An absolutely positioned box is not a flex/grid item: it must not take space in its
-		// container nor be moved by it, or the offsets computed below are overwritten by the
-		// container's own placement on the very next layout pass. Tell the layout to skip it.
+		// not a flex/grid item: the layout must skip it, or it overwrites the offsets below
 		node->setComponent<OutOfFlowComponent>(OutOfFlowComponent{true});
 
 		auto nodeSize = node->getContentSize();
@@ -1879,10 +1746,8 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		const bool hasTop = s.has(ParameterName::CssTop) && !top.isAuto();
 		const bool hasBottom = s.has(ParameterName::CssBottom) && !bottom.isAuto();
 
-		// CSS over-constrained resolution: when the size is `auto` and both offsets on an
-		// axis are given, the size stretches to fill the gap between them; when all three
-		// (both offsets + explicit size) are set, the end offset (right/bottom) is ignored,
-		// which the position math below already does by preferring left/top
+		// auto size with both offsets on an axis stretches to fill; when over-constrained, the
+		// right/bottom offset is ignored (the position math prefers left/top)
 		const bool widthAuto = !s.has(ParameterName::CssWidth) || width.isAuto();
 		const bool heightAuto = !s.has(ParameterName::CssHeight) || height.isAuto();
 
@@ -1926,9 +1791,8 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setAnchorPoint(Vec2(0.0f, 1.0f));
 		node->setPosition(Vec2(x, y));
 	} else {
-		// Back in flow if the rule that took it out is gone - but only if it was OUR rule. An
-		// overlay an application put out of the flow in code carries styleManaged == false and must
-		// survive a style pass that matched nothing (see OutOfFlowComponent).
+		// back in flow only if the style put it out; code-set OutOfFlowComponent has
+		// styleManaged == false and is kept
 		if (auto c = node->getComponent<OutOfFlowComponent>(); c && c->styleManaged) {
 			node->removeComponent<OutOfFlowComponent>();
 		}
@@ -1970,14 +1834,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		return s.media().computeValueAuto(m, base, fontSize);
 	};
 
-	/* THE COMPUTED DIRECTION OF THIS NODE, and the only place in the engine that turns an
-	inline-axis declaration into a physical side.
-
-	It has to be here because it is the only place that knows BOTH: the parser saw a declaration
-	and no node, and the layout backend sees a node and no declaration. Note what this does NOT
-	do - it never touches the physical properties. `padding-left` under `direction: rtl` is still
-	the left edge, exactly as on the web; what follows the direction is the inline axis (in the
-	backends) and the `*-inline-*` properties (here). */
+	// computed direction: maps `*-inline-*` properties to physical sides here; physical
+	// properties (`padding-left`) are never flipped
 	const bool rtl = s.direction() == document::TextDirection::RightToLeft;
 
 	// map the CSS padding-* onto a container Padding (percent against own width)
@@ -1994,9 +1852,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		if (auto m = s.paddingLeft(); s.has(ParameterName::CssPaddingLeft) && !m.isAuto()) {
 			pad.left = computeMetric(m, ownSize.width);
 		}
-		// The inline pair AFTER the physical sides, so a sheet declaring both gets the logical
-		// one. CSS would decide that by source order; StyleList records none, and a cross-name
-		// order index would cost the whole cascade a field. Documented in the css-engine skill.
+		// inline pair after the physical sides: when both are declared the logical one wins
+		// (StyleList keeps no cross-name source order)
 		if (auto m = s.paddingInlineStart();
 				s.has(ParameterName::CssPaddingInlineStart) && !m.isAuto()) {
 			(rtl ? pad.right : pad.left) = computeMetric(m, ownSize.width);
@@ -2006,10 +1863,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			(rtl ? pad.left : pad.right) = computeMetric(m, ownSize.width);
 		}
 	};
-	// Map the four CSS border sides onto the edges the table's collapse pass resolves, touching only
-	// the sides the sheet actually declares. Every other item mapping is guarded the same way, and
-	// for the same reason: applyLayout runs for EVERY node on every style pass, so an unguarded
-	// write would erase whatever an application set in code.
+	// map CSS border sides onto table collapse edges, only for declared sides, so values set in
+	// code survive (applyLayout runs for every node on every pass)
 	auto fillTableBorders = [&](const ResolvedStyle &st, TableCellInfo &cfg, float base) {
 		const auto outline = st.outline();
 		auto side = [&](ParameterName styleName, ParameterName widthName, ParameterName colorName,
@@ -2029,9 +1884,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				ParameterName::CssBorderLeftColor, outline.left, cfg.borderLeft);
 	};
 
-	// Map the CSS margin-* onto an item Margin (percent against parent width). `auto` is not a
-	// length: it is recorded in the mask instead and resolved from the free space by the flex
-	// engine (see FlexAutoMargin). `autoMask` is null for containers that cannot honour it.
+	// map CSS margin-* onto an item Margin (percent against parent width); `auto` goes into
+	// `autoMask` (FlexAutoMargin), which is null for containers that cannot honour it
 	auto fillMargin = [&](Padding &mrg, FlexAutoMargin *autoMask) {
 		auto side = [&](ParameterName name, const document::Metric &m, float &out,
 							FlexAutoMargin flag) {
@@ -2054,18 +1908,15 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		side(ParameterName::CssMarginRight, s.marginRight(), mrg.right, FlexAutoMargin::Right);
 		side(ParameterName::CssMarginBottom, s.marginBottom(), mrg.bottom, FlexAutoMargin::Bottom);
 		side(ParameterName::CssMarginLeft, s.marginLeft(), mrg.left, FlexAutoMargin::Left);
-		// See fillPadding: the inline pair resolves last and wins over the physical one.
+		// see fillPadding: the inline pair resolves last and wins over the physical one
 		side(ParameterName::CssMarginInlineStart, s.marginInlineStart(),
 				rtl ? mrg.right : mrg.left, rtl ? FlexAutoMargin::Right : FlexAutoMargin::Left);
 		side(ParameterName::CssMarginInlineEnd, s.marginInlineEnd(), rtl ? mrg.left : mrg.right,
 				rtl ? FlexAutoMargin::Left : FlexAutoMargin::Right);
 	};
 
-	// A system on this node already owns its children's geometry (SystemManagedLayout): a
-	// stylesheet must neither add a second writer of it, nor reshape the layout that system built
-	// for itself. Pretending the node asked for no container at all, with no layout to tear down,
-	// disables the whole container block below. The per-item mapping after it still runs - this
-	// node remains an item of whatever lays IT out.
+	// SystemManagedLayout: a system owns the children's geometry, so the container block below is
+	// disabled; the per-item mapping for this node still runs
 	const bool systemManaged = node->getComponent<SystemManagedLayout>() != nullptr;
 
 	const bool wantFlex =
@@ -2074,19 +1925,12 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			!systemManaged && (display == Display::Grid || display == Display::InlineGrid);
 	const bool wantRow = !systemManaged && display == Display::TableRow;
 
-	// `display: table` is the one container mapping that survives SystemManagedLayout. The reason is
-	// ui::TableView: it owns its children's geometry (header + scroll), so it must carry that
-	// marker, yet the column track list it lays its rows out with is CSS. Writing the parameter
-	// component under the marker is safe - a component is not a second writer of anything; only a
-	// SYSTEM would be, and none is added below. applyDefault already writes MeasureComponent under
-	// the same marker on the same reasoning.
+	// `display: table` survives SystemManagedLayout (ui::TableView takes its column tracks from
+	// CSS): only the parameter component is written, no system is added
 	const bool wantTable = display == Display::Table;
 
-	// `overflow-x` / `overflow-y`: record the resolved pair and add or drop the ScrollSystem that
-	// acts on it. Deliberately NOT gated on systemManaged - a dock or a TableView that asks for
-	// clipping should get it. ScrollSystem writes no ContentSize of its own; without a LayoutSystem
-	// to read an extent from it simply clips, which is the right answer for a widget that scrolls
-	// itself.
+	// `overflow-x` / `overflow-y`: record the pair and add or drop the ScrollSystem. Not gated on
+	// systemManaged; ScrollSystem writes no ContentSize and without a LayoutSystem only clips.
 	{
 		using document::Overflow;
 		const bool declared =
@@ -2104,18 +1948,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if (s.has(ParameterName::CssOverflowY)) {
 				next.y = s.overflowY();
 			}
-			/* The axes stay as they were declared, and CSS's own "a visible axis computes to auto"
-			rule is deliberately NOT applied here.
-
-			That rule exists on the web because a clip is a box. It used to be enforced here for a
-			harder reason - the only clip the engine had was an axis-aligned scissor RECT - and it
-			cost more than it bought: an `overflow-y: auto` document also overflowed horizontally,
-			and a flex container sized by its content on the overflowing axis then took the width of
-			its widest unwrapped line, so nothing in it ever wrapped.
-
-			A scissor is still one rectangle. It is now built per axis (ui::ScissorAxes): the axis
-			nobody asked to clip is opened past any surface, leaving whatever an ancestor scissor
-			imposed. So one axis really can scroll while the other flows. */
+			// axes stay as declared: CSS's "visible computes to auto" rule is not applied, since
+			// the scissor is built per axis (ui::ScissorAxes)
 			node->setOrUpdateComponent<OverflowComponent>([&](NotNull<OverflowComponent> c) {
 				if (*c != next) {
 					*c = next;
@@ -2177,9 +2011,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				next.alignItems = toGridAlign(s.alignItems(), rtl, false);
 			}
 			fillPadding(next.padding);
-			// the table's own border is the outside participant of the collapse pass. Reuse the
-			// cell mapping through a scratch TableCellInfo: the four edges are the same shape and
-			// need the same "only what the sheet declares" guard.
+			// the table's own border takes part in the collapse pass; reuse the cell mapping
+			// through a scratch TableCellInfo
 			{
 				TableCellInfo scratch;
 				scratch.borderTop = next.borderTop;
@@ -2201,15 +2034,14 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 	}
 
 	if (!wantFlex && !wantGrid && !wantTable && !wantRow) {
-		// only tear down layouts that WE added (marker present)
+		// only tear down layouts the resolver added (marker present)
 		if (layout && node->getComponent<StyleManagedLayout>()) {
 			node->removeSystem(layout);
 			node->removeComponent<FlexLayoutInfo>();
 			node->removeComponent<GridLayoutInfo>();
 			node->removeComponent<TableLayoutInfo>();
-			// NOT TableColumnsComponent / TableBordersComponent: those are OUTPUTS, owned by the
-			// table pass or by the widget that owns the rows. The style never wrote them and must
-			// not delete them, or a virtualized row would lose the geometry it lays out with.
+			// keep TableColumnsComponent / TableBordersComponent: outputs owned by the table pass
+			// or the widget owning the rows
 			node->removeComponent<StyleManagedLayout>();
 		}
 	} else if (systemManaged) {
@@ -2240,10 +2072,7 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 					next.wrap = toFlexWrap(s.flexWrap());
 				}
 
-				/* The two axes as they stand AFTER `flex-direction` and `flex-wrap` are decided,
-				which is why those two are assigned above rather than below: a container whose
-				direction was set in code and whose `justify-content: left` comes from the sheet
-				has to resolve that keyword against the direction actually in force. */
+				// axes are derived after direction and wrap are final, including values set in code
 				const bool isRowFlow = next.direction == FlexDirection::Row
 						|| next.direction == FlexDirection::RowReverse;
 				const bool flowReversed = next.direction == FlexDirection::RowReverse
@@ -2336,11 +2165,9 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 	}
 
 	bool itemChanged = false;
-	// Table first, and keyed on the parent's TableColumnsComponent rather than on TableRowInfo: that
-	// component is what a row carries in BOTH the static case (the table pass stamped it) and the
-	// virtualized one (ui::TableView stamped it), so one branch covers a table that exists as a node
-	// and one that does not.
-	if (parent->getComponent<TableColumnsComponent>()) { // this node is a CELL
+	// table cells are keyed on the parent's TableColumnsComponent, which rows carry both in static
+	// tables and in virtualized ui::TableView
+	if (parent->getComponent<TableColumnsComponent>()) { // this node is a cell
 		node->setOrUpdateComponent<TableCellInfo>([&](NotNull<TableCellInfo> info) {
 			TableCellInfo next = *info;
 			if (s.has(ParameterName::CssXlColumnSpan)) {
@@ -2355,8 +2182,7 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if (s.has(ParameterName::CssAlignSelf)) {
 				next.alignSelf = toGridAlignSelf(s.alignSelf(), rtl, false);
 			}
-			// `vertical-align` is the table-cell spelling of the cross-axis alignment; it is also an
-			// inherited text property, so only map it when this node declares one.
+			// `vertical-align` is the cell's cross-axis alignment; mapped only when declared here
 			if (s.has(ParameterName::CssVerticalAlign)) {
 				switch (s.verticalAlign()) {
 				case document::VerticalAlign::Top: next.alignSelf = GridAlign::Start; break;
@@ -2365,9 +2191,6 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				default: break; // baseline / sub / super have no table meaning here
 				}
 			}
-			// Only touch a side the sheet actually declares. Writing all four unconditionally would
-			// erase borders an application set in code on every style pass - and a style pass runs
-			// for every node, including ones no rule matches.
 			fillTableBorders(s, next, parentSize.width);
 			// a cell has no auto-margin behaviour: an `auto` side resolves to zero
 			fillMargin(next.margin, nullptr);
@@ -2378,11 +2201,10 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			}
 			return false;
 		});
-	} else if (parent->getComponent<TableLayoutInfo>()) { // this node is a ROW
+	} else if (parent->getComponent<TableLayoutInfo>()) { // this node is a row
 		node->setOrUpdateComponent<TableRowInfo>([&](NotNull<TableRowInfo> info) {
 			TableRowInfo next = *info;
-			// Guarded, like every other item mapping: a row whose sheet says nothing about height
-			// keeps whatever it has, rather than being reset to Auto on every style pass.
+			// guarded: an undeclared height keeps its current value
 			if (s.has(ParameterName::CssHeight)) {
 				next.height =
 						(!height.isAuto() && height.metric != document::Metric::Units::FitContent)
@@ -2488,11 +2310,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			if ((parentIsRow ? widthFit : heightFit) && !s.has(ParameterName::CssFlexBasis)) {
 				next.basis = FlexItemInfo::FitContent;
 			}
-			// min-/max-width/height on the MAIN axis map onto the item's own clamps, which the flex
-			// algorithm already honours for both the base size and the flexed size. The cross axis
-			// has no equivalent in FlexItemInfo, so those two are still ignored - which is why the
-			// CSS reference tells you to size a flex item with basis/grow/shrink rather than
-			// min-/max- on the cross axis.
+			// min-/max- on the main axis map onto the item's clamps; cross-axis ones are ignored
+			// (FlexItemInfo has no field for them)
 			{
 				const auto minMain = parentIsRow ? s.minWidth() : s.minHeight();
 				const auto maxMain = parentIsRow ? s.maxWidth() : s.maxHeight();
@@ -2512,11 +2331,8 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 				}
 			}
 			if (s.has(ParameterName::CssAlignSelf)) {
-				/* `align-self` sits on the CONTAINER's cross axis, so the axis has to come from
-				the parent - this mapping runs on the item. A parent with no FlexLayoutInfo yet
-				(the style pass reaches children in tree order, and a container written in code
-				may be configured later) falls back to the default row, which is what the item
-				would have got before this change. */
+				// `align-self` uses the container's cross axis; default row when the parent has
+				// no FlexLayoutInfo
 				AlignAxis selfAxis{false, false, rtl};
 				if (auto parent = node->getParent()) {
 					if (auto pinfo = parent->getComponent<FlexLayoutInfo>()) {

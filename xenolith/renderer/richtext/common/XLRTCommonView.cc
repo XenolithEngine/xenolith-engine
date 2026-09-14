@@ -465,7 +465,8 @@ void CommonView::emplaceResultData(RendererResult *res, float contentOffset) {
 		}
 
 		for (auto &obj : res->result->getObjects()) {
-			// sprt::cout << "Obj: " << int(toInt(obj->type)) << " " << obj->bbox << " " << obj->zIndex << "\n";
+			// sprt::cout << "Obj: " << int(toInt(obj->type)) << " " << obj->bbox << " " <<
+			// obj->zIndex << "\n";
 			_controller->addItem(
 					[obj, res = Rc<RendererResult>(res)](
 							const basic2d::ScrollController::Item &item) {

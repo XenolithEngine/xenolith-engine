@@ -30,8 +30,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 bool CodeEditor::init(const FileInfo &file) {
-	// The file-less init does the widget; this overload only adds the file, so an editor opened
-	// empty and one opened on a path are configured by exactly the same code.
+	// the file-less init configures the widget; this overload only adds the file
 	if (!init()) {
 		return false;
 	}
@@ -53,8 +52,8 @@ bool CodeEditor::init() {
 
 	setCallback([this](StringView) { _dirty = true; });
 
-	// A Ctrl chord is already declined by the runtime's text-input processor, so this reaches the
-	// scene even while the field holds the IME — no reserved-key filter needed.
+	// Ctrl chords are declined by the runtime's text-input processor, so this reaches the scene
+	// while the IME is active.
 	auto save = HotkeyRegistry::getInstance()->add("xenolith.ui.editor.save",
 			HotkeyCombo::parse("Ctrl+S"), "Save the file open in the code editor");
 	_listener->addHotkey(save, [this](HotkeyId, const InputEvent &) { return saveFile(); },
@@ -100,16 +99,13 @@ bool CodeEditor::loadFile(const FileInfo &file) {
 		return false;
 	}
 
-	// No size cut: the block model renders a window of the document and the IME only ever sees
-	// a window of it, so the file's size is bounded by memory, not by any layout ceiling.
+	// No size limit: the block model renders and exposes to the IME only a window of the document.
 
-	// filesystem::readTextFile resolves the category; keep the resolved path so a save goes back to
-	// the same file rather than to a bundle-relative name that no longer resolves the same way.
+	// keep the resolved path so a save writes back to the same file
 	auto resolved = filesystem::findPath<Interface>(file);
 	_path = resolved.empty() ? file.path.str<Interface>() : resolved;
 
-	// No handler is running yet on a freshly built editor, so this takes setText's local-write path
-	// and lands immediately instead of waiting for a platform echo.
+	// with no input handler running, setText applies locally without waiting for a platform echo
 	setText(data);
 	_dirty = false;
 
@@ -120,8 +116,7 @@ bool CodeEditor::loadFile(const FileInfo &file) {
 }
 
 bool CodeEditor::saveFile() {
-	// A read-only editor is a VIEWER, and Ctrl+S in one must not write the file back — the text is
-	// the file's own, so the write would be a no-op on a good day and a truncation on a bad one.
+	// a read-only editor never writes the file back
 	if (isReadOnly() || _path.empty()) {
 		return false;
 	}
@@ -145,10 +140,7 @@ Value CodeEditor::encodeState() const {
 }
 
 bool CodeEditor::handleInspectorCommand(StringView action, const Value &args, Value &result) {
-	// Before the base: "editor.load" would otherwise never be reached, because the base matches
-	// commands by suffix and has no case for it at all — but "editor.save" and "select" do overlap
-	// with nothing, so the ordering is about keeping the file cases together rather than about
-	// ambiguity.
+	// file commands first; the base matches the rest by suffix
 	if (action.ends_with("load")) {
 		return loadFile(FileInfo{args.getString("path")});
 	} else if (action.ends_with("save")) {

@@ -44,9 +44,7 @@ bool WindowFrame::init(Config &&config) {
 	// "window-frame"
 	registerStyleAppliers("window-frame");
 
-	/* Creation order below is NOT display order. Every child is placed by the sheet's `order`, so
-	that the macOS media block can move the traffic lights to the other end of the bar without a
-	line of C++ changing - see the class documentation. */
+	/* Creation order is not display order: the sheet's `order` places every child. */
 
 	if (config.minimize) {
 		_osMinimize = makeOsButton(ButtonType::OsMinimize, "os-minimize");
@@ -69,8 +67,7 @@ bool WindowFrame::init(Config &&config) {
 
 	if (_icon) {
 		_icon->setName("frame-icon");
-		// Either click opens the window menu, which is what a title bar icon is for. This is also
-		// why Config::menuButton defaults off: the affordance already exists.
+		// Either click opens the window menu (hence Config::menuButton defaults off).
 		auto listener = _icon->addSystem(Rc<InputListener>::create());
 		listener->setLayerFlags(
 				WindowLayerFlags::WindowMenuRight | WindowLayerFlags::WindowMenuLeft);
@@ -92,8 +89,7 @@ bool WindowFrame::init(Config &&config) {
 		_titleLabel->setName("frame-title");
 		_titleLabel->setString(config.title);
 
-		// MoveGrip is what makes a drag anywhere on the strip move the window; WindowMenuRight is
-		// the conventional right-click-the-title-bar menu.
+		// MoveGrip: a drag on the strip moves the window; WindowMenuRight: right-click menu.
 		auto listener = _titleLine->addSystem(Rc<InputListener>::create());
 		listener->setLayerFlags(WindowLayerFlags::MoveGrip | WindowLayerFlags::WindowMenuRight);
 	}
@@ -146,8 +142,7 @@ Button *WindowFrame::getOsButton(ButtonType type) const {
 }
 
 float WindowFrame::getFrameHeight() const {
-	// Zero until the first layout: the sheet has not been applied yet, so there is nothing to read
-	// back and the default is the only honest answer.
+	// Zero until the first layout, when the sheet has not been applied yet.
 	return _contentSize.height > 0.0f ? _contentSize.height : kDefaultFrameHeight;
 }
 

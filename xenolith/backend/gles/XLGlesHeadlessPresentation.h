@@ -28,9 +28,8 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::gles {
 
 // A surface with no window system behind it. Capabilities are synthesized from the window
-// extent, exactly as soft::HeadlessSurface does - there is nothing to query. The format list is
-// limited to what gles::Image can allocate and lists R8G8B8A8 first: that is also the loop's
-// common format, so the queue's output attachment lands on it without a conversion.
+// extent, as in soft::HeadlessSurface. The format list is limited to what gles::Image can
+// allocate, with R8G8B8A8 first.
 class SP_PUBLIC HeadlessSurface final : public core::Surface {
 public:
 	virtual ~HeadlessSurface() = default;
@@ -50,10 +49,8 @@ protected:
 
 // Pseudo-swapchain: a ring of GL textures that stand in for swapchain images.
 //
-// Acquisition is synchronous and hands out no semaphore - nothing produced the image
-// asynchronously, so there is nothing to wait on - and present is bookkeeping only. The texture
-// that was presented last is kept addressable, which is what lets a screenshot read "the current
-// screen" without rendering another frame.
+// Acquisition is synchronous and hands out no semaphore; present is bookkeeping only. The last
+// presented texture stays addressable, so a screenshot can read it without rendering a frame.
 class SP_PUBLIC HeadlessSwapchain final : public SwapchainBase {
 public:
 	virtual ~HeadlessSwapchain();

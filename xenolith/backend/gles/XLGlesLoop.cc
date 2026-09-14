@@ -275,9 +275,8 @@ void Loop::compileQueue(const Rc<core::Queue> &req, Function<void(bool)> &&cb) c
 						}
 					}
 
-					// Compute is not part of the flat contract; a queue that asks for it is not one
-					// this backend can execute, and silently ignoring it would render a half-correct
-					// frame instead of saying so.
+					// Compute is not part of the flat contract; reject the queue rather
+					// than render a half-correct frame.
 					if (!subpass->computePipelines.empty()) {
 						log::source().error("gles::Loop",
 								"Compute pipelines are not supported by the GLES backend: ",
@@ -350,8 +349,7 @@ bool Loop::updateMaterialSet(NotNull<core::MaterialSet> data,
 		it.set->write(it);
 	}
 
-	// The software backend fills a per-material buffer here for its CPU rasterizer; the GLES draw
-	// path reads a material's image and pipeline directly at record time, so it has no such data.
+	// No per-material data: the GLES draw path reads a material's image and pipeline at record time.
 
 	return true;
 }
@@ -381,8 +379,8 @@ void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 
 		loop->signalDependencies(deps, nullptr, success);
 	}, loop, false);
-	// NOT immediate: the caller (updateDynamicImage) holds the attachment's dynamic-tracker mutex
-	// and signalling walks it through the dependency graph - same reason as the software backend.
+	// Not immediate: the caller (updateDynamicImage) holds the attachment's dynamic-tracker mutex,
+	// and signalling walks it through the dependency graph.
 }
 
 void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)> &&cb) const {
@@ -639,7 +637,7 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 		}
 
 		// No row flip: glReadPixels hands back rows starting at GL row 0, and GL row 0 is where
-		// this backend puts the image's TOP row (the vertex shader does not mirror the geometry -
+		// this backend puts the image's top row (the vertex shader does not mirror the geometry -
 		// see XL2dGlesFlatPass.cc), so what comes out is already host order.
 		cb(info, BytesView(_captureStorage));
 	}, this, true);

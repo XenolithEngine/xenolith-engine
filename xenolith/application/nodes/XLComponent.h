@@ -231,16 +231,9 @@ public:
 
 	void resetComponentsDirty();
 
-	/* Monotone per-container counter, bumped by every component mutation below.
-
-	It is the CSS MATCH STAMP's component half (see Node's style-match stamp): what a selector can
-	read about a node - its NodeIdentity, its InteractiveComponent state, the focus-within and
-	selection markers, the StyleSystemState version - lives in components, so one counter over all
-	of them is a conservative "has anything a selector reads changed here". Conservative on purpose:
-	a styling write (an InheritedTextStyle, a PanelStyleComponent) bumps it too and costs the node's
-	cached match list, which is one re-gather out of the chain's eighteen. A filtered version would
-	need a registry of match-relevant component ids and would go stale the first time somebody adds
-	a component a selector can read. */
+	/* Monotone per-container counter, bumped by every component mutation below. The component half
+	of Node's style-match stamp: everything a selector reads lives in components, so any write
+	(styling-only ones included) conservatively invalidates the node's cached match list. */
 	uint64_t getComponentsVersion() const { return _componentsVersion; }
 
 protected:
@@ -319,18 +312,14 @@ bool ComponentContainer::removeComponent() {
 	return false;
 }
 
-// Style-driven visibility (CSS `display: none` / `visibility: hidden`). When either flag is
-// set, the node reacts at visit like setVisible(false): it is not drawn, receives no input and
-// its children are skipped entirely. Unlike setVisible(false), the hidden node's OWN data
-// phases (components/measure/content-size) keep running each visit, so the styling protocol
-// can still reach it and remove the component to un-hide it. The node's explicit `setVisible`
-// state is never touched — removing the component restores it. Layout engines additionally
-// collapse `displayNone` nodes (no box), while `visibilityHidden` nodes keep their layout box,
-// matching CSS semantics. The visit checks the component live, no extra invalidation needed.
+// Style-driven visibility (CSS `display: none` / `visibility: hidden`). Either flag skips drawing,
+// input and children at visit, but the node's own data phases keep running so styling can remove
+// the component; `setVisible` state is untouched. Layout collapses `displayNone` nodes, while
+// `visibilityHidden` keeps its box. Checked live at visit, no invalidation needed.
 struct SP_PUBLIC VisibilityComponent {
 	static ComponentId Id;
 
-	bool displayNone = false; // display: none — skipped at visit AND collapsed by layout
+	bool displayNone = false; // display: none — skipped at visit and collapsed by layout
 	bool visibilityHidden = false; // visibility: hidden — skipped at visit, keeps its box
 
 	bool visible() const { return !displayNone && !visibilityHidden; }
@@ -338,15 +327,9 @@ struct SP_PUBLIC VisibilityComponent {
 	bool operator==(const VisibilityComponent &) const = default;
 };
 
-// Precomputed measurement fallback, and the second way a node takes part in content sizing: when
-// it has no HandleMeasure system to answer a request, the measure phase (Node::handleMeasure) and
-// a parent layout engine (LayoutSystem::measureNode) read the sizes stored here instead. Fill in
-// whichever you know ahead of time.
-//
-// A whole entry left at Size2::ZERO means "not filled in"; a negative value on one axis of an
-// entry means "that axis is unspecified" (which is how the style resolver publishes a CSS width
-// with no height). `normal` doubles as the node's definite size for the layout: an axis it
-// specifies is treated as an explicit `width`/`height` and is never replaced by a measurement.
+// Precomputed measurement, read by Node::handleMeasure and LayoutSystem::measureNode when no
+// HandleMeasure system answers. An entry at Size2::ZERO is unset; a negative axis is unspecified.
+// An axis `normal` specifies is the node's definite size and is never replaced by a measurement.
 struct SP_PUBLIC MeasureComponent {
 	static ComponentId Id;
 
@@ -354,10 +337,8 @@ struct SP_PUBLIC MeasureComponent {
 	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent
 	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent
 
-	// The entry for the requested mode, per axis, falling back to the other entries where it has
-	// nothing to say. So a component that only carries `maxContent` still answers a Normal
-	// request - without the fallback it measured as nothing and the node collapsed to zero.
-	// An axis no entry specifies is returned negative, and the caller keeps its current size.
+	// The entry for the requested mode, per axis, falling back to the other entries. An axis no
+	// entry specifies is returned negative, and the caller keeps its current size.
 	Size2 measure(const MeasureConstraints &c) const {
 		Size2 ret(-1.0f, -1.0f);
 

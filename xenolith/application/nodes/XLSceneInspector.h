@@ -54,37 +54,27 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // `text`, `frame`, `render`, `window`, `quit`. `commands`/`invoke` expose whatever the running
 // scene registered through addCommand.
 //
-// `frame` and `render` are the pair that makes a headless run show what it is doing: `frame`
-// advances the presentation engine, `render` (a tagged RenderContinuously on the scene) is what
-// makes each of those frames redraw a scene nobody is touching. Without the second one, anything
-// that dirties itself from a callback - a deferred style pass, an action, a probe landing - is
-// computed and never drawn, and a screenshot shows the frame before it.
+// In headless mode `frame` advances the presentation engine and `render` (a tagged
+// RenderContinuously) makes those frames redraw an untouched scene, so changes made from callbacks
+// get drawn.
 //
-// Every command except `logs` (a process-wide ring buffer), `fonts` (the application's font
-// controller, shared by every window) and `quit` (which shuts the process down) acts on ONE
-// window's scene, chosen by an optional `"window": "<id>"` argument and
-// defaulting to the scene this system is attached to. `windows` lists the ids. That is what makes
-// an auxiliary window reachable: SceneContent attaches an inspector to every scene, but only the
-// first one to attach owns the socket - so a popup, a dialog or a second root window is inspected,
-// screenshotted, stepped and driven through the id, not through a second connection. Each window
-// also has its own presentation engine, so in headless mode `frame` has to be sent per window.
+// Every command except `logs`, `fonts` and `quit` acts on one window's scene, chosen by an optional
+// `"window": "<id>"` (default: this system's scene); `windows` lists the ids. Every scene has an
+// inspector but only the first owns the socket, so auxiliary windows are reached by id. `frame` is
+// per window.
 //
-// `input` injects events; with "native": true they go through the OS window first, so the
-// platform's text-input processor claims printable keys, Backspace, Delete and Escape exactly as
-// it would for a real keyboard. `text` drives that processor directly - insert, marked/unmark
-// (IME composition, which no keystroke can express), delete-backward/forward, cancel - and
-// `{"op":"state"}` reads the application-side mirror back.
+// `input` injects events; with "native": true they pass through the OS window and its text-input
+// processor. `text` drives that processor directly (insert, marked/unmark, delete-backward/forward,
+// cancel); `{"op":"state"}` reads the application-side mirror back.
 //
 // Address: the XENOLITH_INSPECTOR_ADDRESS environment variable ("unix:/path", "unix:@abstract",
 // "host:port" or ":port"), with per-platform defaults: unix:/tmp/xenolith-inspector.sock on
 // Linux/macOS, unix:@xenolith-inspector on Android (adb forward tcp:4490
-// localabstract:xenolith-inspector), 127.0.0.1:4490 on Windows. On platforms without socket
-// support (wasm) the inspector silently does not start.
+// localabstract:xenolith-inspector), 127.0.0.1:4490 on Windows. Without socket support (wasm) the
+// inspector does not start.
 //
-// The listener is armed in debug builds, whenever XENOLITH_INSPECTOR_ADDRESS is set, and always in
-// headless mode (where it is the only way to talk to the process). Otherwise the system is present
-// but idle. Only one inspector per process holds the listener; a second one attaches, finds the
-// address taken and stays idle until the first releases it on exit.
+// The listener is armed in debug builds, when XENOLITH_INSPECTOR_ADDRESS is set, and in headless
+// mode; otherwise the system is idle. One inspector per process holds the listener.
 class SP_PUBLIC SceneInspector : public System {
 public:
 	// A command the scene exposes to the outside world. `done` reports the result and must be
@@ -101,9 +91,8 @@ public:
 	// Walks the owner's subtree and writes the text dump; app thread only
 	void writeSceneDump(const Callback<void(StringView)> &) const;
 
-	// Every font set the application's FontController currently holds, with what each one costs:
-	// glyphs required from the atlas, cached shaping entries, kerning pairs, and how many nodes
-	// still hold the set (`users`: zero means the next update drops it). App thread only.
+	// Every font set the application's FontController holds, with atlas glyphs, cached shaping
+	// entries, kerning pairs and `users` (zero: dropped on next update). App thread only.
 	//
 	// { "controller": {...totals...}, "layouts": [ { ..., "faces": [...] } ] }
 	Value getFontInfo() const;
@@ -153,9 +142,8 @@ protected:
 
 	void handleRequest(NotNull<Session>, Value &&request);
 
-	// The inspector a request is aimed at: the one whose window matches `request["window"]`, or
-	// this one when the key is absent. Null means the id named no live window - the request has
-	// already been answered with an error.
+	// The inspector whose window matches `request["window"]`, or this one when absent. Null if no
+	// live window matches; the request has then been answered with an error.
 	SceneInspector *resolveTarget(NotNull<Session>, int64_t serial, const Value &request);
 
 	void sendResponse(NotNull<Session>, int64_t serial, Value &&result);

@@ -37,9 +37,8 @@ bool Connection::init(Rc<TransportConnection> &&conn, Role role) {
 		return false;
 	}
 
-	// Resolve the class -> stream mapping ONCE, here, and deduplicate by pointer. Asking the transport
-	// again later would be both wasteful and unsafe: the state that belongs to a stream (its partial
-	// frame, its unsent tail) is keyed by the identity we settle on now.
+	// Resolve the class -> stream mapping once and deduplicate by pointer: per-stream state
+	// (partial frame, unsent tail) is keyed by the identity settled here.
 	for (uint32_t i = 0; i < kStreamClassCount; ++i) {
 		auto stream = _transport->getStream(StreamClass(i));
 		uint32_t canonical = i;
@@ -135,9 +134,8 @@ void Connection::poll(const Callback<bool(const MessageHeader &, BytesView)> &di
 		return;
 	}
 
-	// Drain whatever the send queues still hold from earlier enqueues that hit backpressure. This is
-	// the only place a stalled write makes progress, which is why the looper drives poll() on
-	// readiness AND on every update tick.
+	// Drain send queues left by backpressure. This is the only place a stalled write makes
+	// progress, so the looper drives poll() on readiness and on every update tick.
 	for (uint32_t i = 0; i < _distinctCount; ++i) {
 		auto &state = _streams[_distinctClasses[i]];
 		if (!state.out.flush(state.stream)) {
@@ -147,13 +145,11 @@ void Connection::poll(const Callback<bool(const MessageHeader &, BytesView)> &di
 		}
 	}
 
-	// Service the transport (datagrams, retransmit timers) ONCE, not per stream: a multi-stream
-	// transport still has a single event source underneath (QUIC multiplexes every stream over one UDP
-	// socket), so servicing it per stream would repeat the same work.
+	// Service the transport (datagrams, retransmit timers) once, not per stream: a multi-stream
+	// transport still has a single event source underneath.
 	_transport->handleEvents();
 
-	// Streams are visited in StreamClass order, so Control drains before Bulk. That is the point of
-	// separating them: a screenshot in flight must not push input to the back of this pump either.
+	// Streams are visited in StreamClass order, so Control drains before Bulk.
 	uint8_t buf[4'096];
 	for (uint32_t i = 0; i < _distinctCount; ++i) {
 		auto &state = _streams[_distinctClasses[i]];
@@ -165,15 +161,9 @@ void Connection::poll(const Callback<bool(const MessageHeader &, BytesView)> &di
 
 			BytesViewNetwork nw(buf, n);
 
-			// Fast path: only when the reassembler is fully idle -- no buffered partial AND nothing
-			// queued. Then this chunk begins on a frame boundary and can be parsed (and dispatched
-			// inline) straight out of it, no copy into _buffer. Requiring an empty buffer avoids desync:
-			// with a buffered partial the fresh bytes are that frame's continuation, and parsing them as
-			// a new header would scramble the stream. Requiring an empty pending queue preserves order:
-			// queued frames dispatch at end-of-poll, so fast-path-dispatching newer frames ahead of them
-			// would reorder the stream (e.g. a FrameInput after its FrameCommit). When either holds,
-			// fall through to append(). Both conditions are per stream, which is exactly why the state
-			// is per stream too.
+			// Fast path, only when the reassembler is idle: no buffered partial (the chunk then
+			// starts on a frame boundary) and nothing pending (so newer frames cannot overtake
+			// queued ones, e.g. a FrameInput after its FrameCommit). Otherwise use append().
 			if (!state.reader.hasPartialMessage() && !state.reader.hasPending()) {
 				while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
 					if (!dispatchCb(h, data)) {
@@ -203,8 +193,7 @@ void Connection::close() {
 	if (!_transport || _shutdown) {
 		return;
 	}
-	// Give the queued messages one last chance to leave before the shutdown handshake: whatever the
-	// caller enqueued a moment ago has not necessarily reached the wire yet.
+	// Flush queued messages before the shutdown handshake.
 	for (uint32_t i = 0; i < _distinctCount; ++i) {
 		auto &state = _streams[_distinctClasses[i]];
 		state.out.flush(state.stream);

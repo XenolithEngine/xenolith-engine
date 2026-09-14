@@ -98,16 +98,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::locale {
 // It's useful when some term has variadic spelling on some condition:
 // `locale::pluralForm(n)` is what the <number> normally is.
 //
-// Tag %<number>% (like %1%, one-based) is a POSITIONAL ARGUMENT, replaced by the
+// Tag %<number>% (like %1%, one-based) is a positional argument, replaced by the
 // n-th argument of the `resolveLocaleTags` / `format` overload that takes a span.
-// Without arguments such a tag is looked up in the table like any other, so a
-// template is only a template where one is passed.
+// Without arguments such a tag is looked up in the table like any other.
 //
 
 // Locale can be set in POSIX format (en_US.utf8, [language[_territory][.codeset]]) or
-// LOWERCASE XML format (en-us, [language]-[subscript])
+// lowercase XML format (en-us, [language]-[subscript])
 //
-// For definitions (`define`) you should always use LOWERCASE XML format.
+// For definitions (`define`) you should always use lowercase XML format.
 
 
 // `using namespace stappler::font` in XLFontConfig.h reaches xenolith::font and not here, and a
@@ -136,15 +135,16 @@ enum class TimeTokens {
 };
 
 //Event: Locale was changed
-// Exported: a subscriber outside this module has to be able to link against it, and the one the
-// engine itself installs - every Label, so that a locale change redraws the text - is in
-// xenolith_renderer_basic2d.
+// Exported: subscribers outside this module link against it (every Label in
+// xenolith_renderer_basic2d redraws on a locale change).
 SP_PUBLIC extern EventHeader onLocale;
 
-// Defines key-value pairs for locale-based substitutuion, locale must be an lowercased XML land-territory pair
+// Defines key-value pairs for locale-based substitutuion, locale must be an lowercased XML
+// land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleInitList &&);
 
-// Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML land-territory pair
+// Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML
+// land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleIndexList &&);
 SP_PUBLIC void define(const StringView &locale,
 		const sprt::array<StringView, toInt(TimeTokens::Max)> &);
@@ -171,11 +171,9 @@ SP_PUBLIC LocaleInfo getLocaleInfo();
 SP_PUBLIC WideStringView string(const WideStringView &);
 SP_PUBLIC WideStringView string(size_t);
 
-// The key is widened into a LOCAL and the view is taken of that: a WideStringView built from a
-// temporary string dangles before the lookup reads it. What comes back points into the manager's
-// own pool and not into the key, so the local may die with the call.
-//
-// The argument is the BARE key (`"MyKey"_meta`). A `"MyKey"_locale` literal carries the `@Locale:`
+// The key is widened into a local and the view is taken of that (a WideStringView of a temporary
+// would dangle). The result points into the manager's pool, not into the key.
+// The argument is the bare key (`"MyKey"_meta`); a `"MyKey"_locale` literal carries the `@Locale:`
 // prefix and belongs in `setString` / `resolveLocaleTags`, which strip it.
 template <char... Chars>
 SP_PUBLIC WideStringView string(const metastring::metastring<Chars...> &str) {
@@ -199,13 +197,9 @@ SP_PUBLIC WideString resolveLocaleTags(const WideStringView &);
 SP_PUBLIC WideString resolveLocaleTags(const WideStringView &, SpanView<WideStringView> args);
 
 // Resolves the key and substitutes the arguments, in UTF-8. The key is taken with or without the
-// `@Locale:` prefix, so a call site that is building a string need not spell it.
-//
-// This is how a sentence with a value in it is built: the TEMPLATE holds the word order, so
-// `format("Studio:Menu:Undo", {name})` against "Отменить %1%" and against "Undo %1%" puts the verb
-// where each language puts it. Concatenation cannot, and that is the whole reason this exists.
-// With no arguments it is a plain lookup that answers UTF-8, which is what the places a TAG cannot
-// reach need: a window title, an OS dialog's caption, a string handed to the inspector socket.
+// `@Locale:` prefix. The template holds the word order, so `format("Studio:Menu:Undo", {name})`
+// places the value where each language needs it. With no arguments it is a plain UTF-8 lookup
+// (window titles, OS dialog captions, inspector strings).
 SP_PUBLIC String format(StringView key, SpanView<StringView> args = SpanView<StringView>());
 
 // Which form of a word a count takes in the current locale, as the <number> of a %?n:key% tag or the
@@ -216,18 +210,14 @@ SP_PUBLIC String format(StringView key, SpanView<StringView> args = SpanView<Str
 // - so a language is added by writing its words, not by changing a call site.
 SP_PUBLIC uint32_t pluralForm(uint32_t n);
 
-/* A SENTENCE WITH A COUNT IN IT, in the form that count's own language takes.
-
-`key` names a word LIST, and the form is chosen by `pluralForm(count)`. The COUNT is argument `%1%`
-and anything in `extra` continues from `%2%`, so a definition reads
+/* A sentence with a count in it, in the form the count takes in the current language. `key`
+names a word list, the form is chosen by `pluralForm(count)`; the count is `%1%` and `extra`
+continues from `%2%`:
 
 	en  "%1% error:%1% errors"
 	ru  "%1% ошибка:%1% ошибки:%1% ошибок"
 	zh  "%1% 个错误"
-
-and the call site never branches on the number. Without this a plural is a `count == 1 ? … : …` at
-the call site, which is the English rule spelled out in C++ and wrong in most languages - and more
-often it is not written at all, which is how "1 errors · 1 warnings" gets shipped. */
+*/
 SP_PUBLIC String pluralFormat(StringView key, uint32_t count,
 		SpanView<StringView> extra = SpanView<StringView>());
 

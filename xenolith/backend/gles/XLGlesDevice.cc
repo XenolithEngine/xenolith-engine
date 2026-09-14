@@ -44,13 +44,9 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 
 	_deviceInfo = info;
 
-	// The render context and the window surface it presents must live on the SAME EGLDisplay. A
-	// headless device (no session window handle) reopens whatever display the probe used - a GPU
-	// platform device or the surfaceless platform - exactly as before. A windowed device instead
-	// opens the session's own wayland/xcb platform display, because only that display can both
-	// render into textures and create the EGLWindowSurface the compositor presents. The support
-	// snapshot travels with the instance; an empty backendMask is what a headless controller
-	// reports, so it is the clean discriminator.
+	// The render context and the window surface must live on the same EGLDisplay. A headless
+	// device (empty backendMask) reopens the display the probe used; a windowed device opens the
+	// session's wayland/xcb platform display, the only one that can create its EGLWindowSurface.
 	auto &support = instance->getBackendInfo()->supportInfo;
 	EGLDisplay dpy = EGL_NO_DISPLAY;
 	if (support.backendMask.test(toInt(sprt::window::SurfaceBackend::Wayland))
@@ -117,21 +113,15 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 		}
 	};
 
-	// Config selection. A windowed device needs a config that can back an EGLWindowSurface, so
-	// WINDOW_BIT is mandatory there; PBUFFER is a bonus (a render pbuffer) but not required - the
-	// surfaceless-context extension covers rendering without one. Headless devices only ever need
-	// pbuffer/surfaceless. The old "any" fallback that dropped the surface-type constraint is what
-	// handed back a non-window config on a windowed display and produced EGL_BAD_CONFIG at surface
-	// creation, so it is gone: a windowed device fails cleanly when no window-capable config exists.
+	// Config selection. A windowed device requires WINDOW_BIT (PBUFFER optional, surfaceless
+	// contexts cover rendering without it) and fails when no such config exists; headless devices
+	// need only pbuffer/surfaceless. Never drop the surface-type constraint.
 	EGLConfig config = nullptr;
 	EGLint numConfigs = 0;
 
-	// X first, and by the window's visual rather than by channel depth. An xcb window already has
-	// a visual by the time a surface is created, and eglCreatePlatformWindowSurfaceEXT rejects
-	// (EGL_BAD_MATCH) every config whose EGL_NATIVE_VISUAL_ID is not exactly that visual - so
-	// asking for RGBA8 and hoping is how a window renders every frame and shows none. Alpha is
-	// deliberately not constrained here: a plain depth-24 TrueColor window, which is what a
-	// toolkit-less window creation gets, maps to a config with no alpha bits at all.
+	// On X select by the window's visual, not channel depth: eglCreatePlatformWindowSurfaceEXT
+	// rejects (EGL_BAD_MATCH) any config whose EGL_NATIVE_VISUAL_ID differs. Alpha is not
+	// constrained, since a plain depth-24 TrueColor window maps to a config without alpha bits.
 	if (windowed && support.backendMask.test(toInt(sprt::window::SurfaceBackend::Xcb))
 			&& support.xcb.visual_id != 0) {
 		const EGLint visualAttribs[] = {
@@ -240,8 +230,7 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	EGLSurface surface = EGL_NO_SURFACE;
 	bool surfacelessOk = hasExtension(displayExtensions, "EGL_KHR_surfaceless_context");
 
-	// A display extension, so it is a property of THIS display and has to be asked here rather than
-	// of the client string, which does not list it.
+	// A display extension: query it on this display, not in the client string.
 	_swapWithDamage = table.eglSwapBuffersWithDamageKHR != nullptr
 			&& hasExtension(displayExtensions, "EGL_KHR_swap_buffers_with_damage");
 
@@ -292,9 +281,7 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 	_alive.store(true);
 	log::source().info("gles::Device", "Context ready on ", info.deviceName, " (", info.version,
 			") windowed=", windowed ? "yes" : "no",
-			// Whether a present can carry a damage region is not visible from anywhere else, and a
-			// missing extension looks exactly like a working one: the picture is the same, the
-			// compositor just repaints more of the screen.
+			// Logged because a missing damage extension is otherwise invisible.
 			windowed ? (_swapWithDamage ? " swap-with-damage=yes" : " swap-with-damage=no") : "");
 
 	// The same two formats the probe's config guarantees: everything else the backend could accept
@@ -315,11 +302,8 @@ bool Device::init(const Instance *instance, const DeviceInfo &info) {
 }
 
 void Device::end() {
-	// The compiled programs live in this device's own shader cache (Loop::compileQueue hands every
-	// Shader to addProgram), and nothing else drops that cache: left alone it holds them until
-	// ~Device, where core::Device::invalidateObjects reports each one as "not destroyed before
-	// device destruction". They are ours to release, and here is where the context is still alive
-	// to release them - vk::Device does the same before its own invalidateObjects.
+	// Release the compiled programs from the shader cache while the context is alive; otherwise
+	// core::Device::invalidateObjects reports them as leaked (vk::Device does the same).
 	clearShaders();
 
 	// Close the door to deferred deletions and drop what is queued: eglDestroyContext below
@@ -341,12 +325,9 @@ void Device::end() {
 		_surface = EGL_NO_SURFACE;
 	}
 	if (_display != EGL_NO_DISPLAY) {
-		// Only a display this backend opened for itself (the surfaceless/device probe path) gets
-		// terminated. A windowed display is EGL's shared handle for the session's wayland or xcb
-		// connection, which is already gone by the time this runs (Context::handleWillDestroy
-		// drops the window-system controller before it stops the loop), so eglTerminate would
-		// marshal requests through freed proxies. Everything this device created - context,
-		// render surface, GL objects - is released above.
+		// Terminate only a display this backend opened itself. A windowed display belongs to the
+		// session's wayland/xcb connection, already gone here (Context::handleWillDestroy drops the
+		// controller before stopping the loop), so eglTerminate would use freed proxies.
 		if (_ownsDisplay) {
 			t.eglTerminate(_display);
 		}
@@ -401,10 +382,8 @@ bool Device::createWindowSurface(sprt::window::SurfaceBackend backend, void *nat
 		return false;
 	}
 
-	// The device's display was opened on the matching platform (wayland or xcb), but neither takes
-	// the handle the window system reports: each platform extension names its own native window
-	// type, and getting it wrong is an EGL_BAD_NATIVE_WINDOW at surface creation - a window that
-	// renders every frame and shows none.
+	// Each platform extension takes its own native window type, not the handle the window system
+	// reports; a wrong one fails with EGL_BAD_NATIVE_WINDOW.
 	EGLSurface surface = EGL_NO_SURFACE;
 	void *created = nullptr;
 	EGLint attribs[] = {EGL_NONE};
@@ -429,7 +408,7 @@ bool Device::createWindowSurface(sprt::window::SurfaceBackend backend, void *nat
 		break;
 	}
 	case sprt::window::SurfaceBackend::Xcb: {
-		// EGL_EXT_platform_xcb: a POINTER to the xcb_window_t, where the pre-platform
+		// EGL_EXT_platform_xcb: a pointer to the xcb_window_t, where the pre-platform
 		// eglCreateWindowSurface took the id by value. The pointer is read during the call only,
 		// so a local holds it.
 		auto windowId = uint32_t(reinterpret_cast<uintptr_t>(nativeWindow));

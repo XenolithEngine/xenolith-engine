@@ -29,13 +29,11 @@ uint32_t MarkdownFlow::emplace(Node *node, MarkdownFlowKind kind, document::Sour
 	auto index = uint32_t(_entries.size());
 	_entries.emplace_back(MarkdownFlowEntry{node, _next, textLength, span, kind, source});
 
-	// One position past the end of the entry: the boundary between two blocks, which a range has
-	// to be able to contain or "select these two paragraphs" would not include the break.
+	// One position past the entry's end: the block boundary, so a range can include the break.
 	_next += textLength + 1;
 
 	auto textBegin = _entries.back().textBegin;
-	// Created when it is missing: the component is how a node finds its own place in the
-	// reading order, and a marker or a rule has no runs to put in it but is still in the flow.
+	// Created when missing: markers and rules have no runs but still need to find their entry.
 	node->setOrUpdateComponent<MarkdownRunMap>([&](NotNull<MarkdownRunMap> map) {
 		map->flowIndex = index;
 		map->textBegin = textBegin;
@@ -103,8 +101,7 @@ uint32_t MarkdownFlow::mapEdge(const MarkdownFlowEntry &entry, uint32_t position
 
 	auto map = entry.node ? entry.node->getComponent<MarkdownRunMap>() : nullptr;
 	if (!map || map->runs.empty()) {
-		// A marker, a rule, a checkbox: nothing here is a slice of the source, so the answer is
-		// the block it stands for.
+		// A marker, rule or checkbox is not a slice of the source; answer with its block.
 		return leftEdge ? entry.span.offset : entry.span.end();
 	}
 
@@ -117,8 +114,8 @@ uint32_t MarkdownFlow::mapEdge(const MarkdownFlowEntry &entry, uint32_t position
 		}
 
 		if (charIndex < run.charStart) {
-			// Between two runs: a character the builder inserted, which is a slice of nothing.
-			// The edge takes the boundary on the side it came from.
+			// Between two runs: a builder-inserted character. The edge takes the boundary on the
+			// side it came from.
 			if (leftEdge || !previous) {
 				return run.srcOffset;
 			}
@@ -126,13 +123,11 @@ uint32_t MarkdownFlow::mapEdge(const MarkdownFlowEntry &entry, uint32_t position
 		}
 
 		if (!run.verbatim) {
-			// The characters are not the bytes, so there is no offset inside this run to answer
-			// with; it is taken whole (see MarkdownRunMap::Run::verbatim).
+			// Not verbatim, so there is no inner offset; the run is taken whole.
 			return leftEdge ? run.srcOffset : run.srcOffset + run.srcLength;
 		}
 
-		// Characters to bytes by WALKING, never by adding: a Cyrillic character is two bytes and
-		// an emoji is a surrogate pair, so arithmetic lands in the middle of a code point.
+		// Walk characters to bytes: multibyte UTF-8 and surrogate pairs rule out arithmetic.
 		auto fragment = _source.sub(run.srcOffset, run.srcLength);
 		auto wanted = charIndex - run.charStart;
 		uint32_t bytes = 0;
@@ -238,10 +233,8 @@ void MarkdownFlow::writeText(const Callback<void(StringView)> &out, uint32_t beg
 			continue;
 		}
 
-		/* An object character renders as nothing outside this widget, so it is replaced by the alt
-		text the author wrote for exactly that purpose. Everything between two objects is copied
-		whole. The MARKUP copy needs none of this: the run at that character already points at the
-		whole `![alt](src)`. */
+		/* Object characters are replaced by the image's alt text; text between objects is copied
+		whole. The markup copy needs none of this: the object's run covers its `![alt](src)`. */
 		auto map = label->getComponent<MarkdownRunMap>();
 		auto pos = from;
 		for (auto i = from; i < to; ++i) {
@@ -281,8 +274,7 @@ uint32_t MarkdownFlow::getPositionForPoint(Vec2 world) const {
 			continue;
 		}
 
-		// The frame that was DRAWN, not the tree as it stands: a pointer event is answered against
-		// what the reader saw, and a scroll may have moved the tree since.
+		// Hit-test the frame as drawn: a scroll may have moved the tree since.
 		if (label->isTouchedAsDrawn(world)) {
 			auto local = label->convertToNodeSpace(world);
 			auto index = label->getCharIndex(local, font::CharSelectMode::Best);
@@ -292,8 +284,7 @@ uint32_t MarkdownFlow::getPositionForPoint(Vec2 world) const {
 				return it.textBegin + sprt::min(charIndex, it.textLength);
 			}
 
-			// Inside the box but past the end of a line, which is where a reader drags to select
-			// "to the end of this line".
+			// Inside the box but past the end of a line.
 			return it.textBegin + (local.x <= 0.0f ? 0 : it.textLength);
 		}
 
@@ -336,13 +327,11 @@ Pair<Vec2, float> MarkdownFlow::getPointForPosition(uint32_t position) const {
 
 	auto charIndex = sprt::min(position - entry->textBegin, entry->textLength);
 
-	// The BASELINE of the line the position sits on, in the label's own space: that is what
-	// `getCursorPosition` answers, and the text stands on it rather than around it.
+	// The baseline of the position's line in the label's space, as `getCursorPosition` answers.
 	auto local = label->empty() ? label->getCursorOrigin() : label->getCursorPosition(charIndex);
 	auto height = float(label->getFontHeight());
 
-	// Converted as two points rather than a point and a number, so the height comes back in world
-	// units too - a label under a scaled parent would otherwise report its own.
+	// Converted as two points so the height comes back in world units under a scaled parent.
 	auto base = label->convertToWorldSpace(local);
 	auto top = label->convertToWorldSpace(local + Vec2(0.0f, height));
 	return pair(base, top.y - base.y);
@@ -379,12 +368,9 @@ Pair<uint32_t, uint32_t> MarkdownFlow::getBlockRange(uint32_t position) const {
 	return pair(entry->textBegin, entry->textBegin + entry->textLength);
 }
 
-/* The selection, sliced into the labels that draw it.
-
-A Label paints its own highlight (`Label::Selection`), so this IS the whole of "show a selection":
-give every label the part of the range that falls inside it, and the invalid cursor to the rest.
-The equality guard is not an optimisation - setSelectionCursor rebuilds its quads unconditionally,
-and this runs on every pointer move of a drag. */
+/* Slices the selection into the labels, each painting its own highlight (`Label::Selection`);
+the rest get the invalid cursor. The equality guard matters: setSelectionCursor rebuilds its quads
+unconditionally, and this runs on every pointer move of a drag. */
 void MarkdownFlow::applySelection(uint32_t begin, uint32_t end) const {
 	for (auto &it : _entries) {
 		auto label = labelOf(it);

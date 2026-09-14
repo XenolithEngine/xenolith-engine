@@ -86,7 +86,7 @@ public:
 
 	virtual void waitIdle() override;
 
-	// asynchronous GPU drain: the callback runs on the LOOP thread after all
+	// asynchronous GPU drain: the callback runs on the loop thread after all
 	// work submitted so far completes; the browser-compatible counterpart of
 	// waitIdle (which requires synchronous polling)
 	void drain(Function<void()> &&);

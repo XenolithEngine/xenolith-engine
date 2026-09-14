@@ -33,7 +33,7 @@ NodeBuilder::NodeBuilder(NotNull<Node> root, BuilderConfig &&config)
 		_root->addSystem(Rc<StyleSystem>::create(Rc<StyleSheet>(_config.styleSheet)));
 	}
 	if (_config.styleSheet || _config.enableStyles) {
-		// ONE recursive resolver covers the whole produced subtree; a rebuild reuses the
+		// One recursive resolver covers the whole produced subtree; a rebuild reuses the
 		// resolver already on the root instead of stacking a second writer of the same styles
 		if (!_root->getSystemByType<StyleResolver>()) {
 			_root->addSystem(Rc<StyleResolver>::create(true));

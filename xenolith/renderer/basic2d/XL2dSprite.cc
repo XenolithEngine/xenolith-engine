@@ -237,14 +237,10 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		_materialDirty = false;
 	}
 
-	// Gate EVERY frame that would draw before the data is on the GPU, not just the one in which this
-	// node re-rendered: with continuous rendering several more frames are produced while the upload
-	// is still running, and drawing against data that is not there yet means, for a Label, point
-	// sprites whose CharId the atlas cannot resolve - they collapse to zero size, i.e. missing
-	// text. So the dependency is kept until it fires and a reference handed to each frame between.
-	//
-	// The list is also re-armed here rather than only at layout time: the resource can be replaced
-	// after this node was laid out, and nothing in its vertex data would show it.
+	// Gate every frame that would draw before the data is on the GPU, not only the one that
+	// re-rendered: continuous rendering produces more frames during the upload (for a Label,
+	// unresolved CharIds collapse to missing text). The dependency is kept until it fires. Re-armed
+	// here since the resource can be replaced after layout.
 	refreshPendingDependencies();
 
 	auto depIt = _pendingDependencies.begin();
@@ -499,9 +495,8 @@ void Sprite::updateBlendAndDepth() {
 		shouldWriteDepth = false;
 		break;
 	case RenderingLevel::Transparent:
-	// A sprite never resolves to Overlay on its own - the level is applied to the COMMAND, from the
-	// visit (see Sprite::buildCmdInfo), and the material is left as the sprite chose it. This case
-	// exists for a direct setRenderingLevel(Overlay), and treats it as what it behaves like.
+	// A sprite never resolves to Overlay on its own: the level is applied to the command from the
+	// visit (see Sprite::buildCmdInfo). This case handles a direct setRenderingLevel(Overlay).
 	case RenderingLevel::Overlay:
 		shouldBlendColors = true;
 		shouldWriteDepth = false;
@@ -560,8 +555,8 @@ void Sprite::updateBlendAndDepth() {
 }
 
 RenderingLevel Sprite::getRealRenderingLevel() const {
-	// The Overlay level outranks everything a sprite could resolve for itself, including an explicit
-	// setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
 	if (_inOverlay) {
 		return RenderingLevel::Overlay;
 	}
@@ -610,10 +605,9 @@ bool Sprite::checkVertexDirty() const { return _vertexesDirty; }
 
 CmdInfo Sprite::buildCmdInfo(const FrameInfo &frame) const {
 	auto handle = static_cast<const FrameContextHandle2d *>(frame.currentContext);
-	// The overlay wins over whatever this sprite resolved for itself: a subtree lifted onto the
-	// overlay goes as a whole, or the ghost's label would stay behind with the content it was cut out
-	// of. getRealRenderingLevel says the same thing for the material; this covers the command even in
-	// the frame the two have not agreed yet.
+	// The overlay wins over whatever this sprite resolved for itself, so a lifted subtree moves as
+	// a whole. getRealRenderingLevel does the same for the material; this covers the command in the
+	// frame before they agree.
 	return CmdInfo{frame.zPath, _materialId, handle->getCurrentState(),
 		frame.isOverlay() ? RenderingLevel::Overlay : _realRenderingLevel,
 		_displayedColor.a > 0.0f ? frame.depthStack.back() : 0.0f};

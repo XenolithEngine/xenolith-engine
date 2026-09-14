@@ -34,8 +34,8 @@ class MeshIndex;
 struct SP_PUBLIC MeshInputData : AttachmentInputData {
 	const MeshAttachment *attachment = nullptr;
 
-	// Keeps the render queue that owns `attachment` alive for as long as this request exists -
-	// same contract, and same reason, as MaterialInputData::attachmentOwner.
+	// Keeps the render queue that owns `attachment` alive for as long as this request exists
+	// (see MaterialInputData::attachmentOwner).
 	Rc<Ref> attachmentOwner;
 
 	Vector<Rc<MeshIndex>> meshesToAdd;

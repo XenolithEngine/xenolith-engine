@@ -34,19 +34,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 /*
 	Global hotkeys.
 
-	A hotkey is a named key combination, registered once in a process-wide registry and
-	subscribed to by any InputListener (see InputListener::addHotkey). Delivery happens in
-	InputDispatcher, ahead of the ordinary key route, so a subscriber needs neither a key
-	recognizer nor a key mask nor a touch filter — in particular it is NOT hit-tested against
-	the pointer position, which is what every hand-rolled key binding in the engine has had to
-	work around.
+	A hotkey is a named key combination in a process-wide registry, subscribed to by any
+	InputListener (see InputListener::addHotkey). InputDispatcher delivers it ahead of the ordinary
+	key route, without key recognizers, key masks or pointer hit-testing.
 
-	The name is the stable identity — reverse-DNS, `org.stappler.xenolith.<area>.<action>` for
-	engine-owned ones. The combination is data: it can be rebound at runtime from a keymap
-	(setCombo), and the numeric id stays valid across a rebind.
-
-	A registration is idempotent by name, so two modules that both declare the same hotkey get
-	the same id back. Registration is normally done once, at startup:
+	The name (reverse-DNS, `org.stappler.xenolith.<area>.<action>` for engine hotkeys) is the stable
+	identity; the combination can be rebound at runtime (setCombo) and the id survives a rebind.
+	Registration is idempotent by name and normally done once, at startup:
 
 		auto reg = HotkeyRegistry::getInstance();
 		auto save = reg->add("org.example.editor.save", HotkeyCombo::parse("Ctrl+S"), "Save");
@@ -60,18 +54,12 @@ struct SP_PUBLIC HotkeyCombo {
 	InputKeyCode keycode = InputKeyCode::Unknown;
 	InputModifier modifiers = InputModifier::None; // always normalized
 
-	/* Adds the base bit for every sided modifier present (CtrlL implies Ctrl) and drops
-	   everything that is not part of a chord: the lock states (CapsLock, NumLock, ScrollLock),
-	   the mouse buttons, LayoutAlternative, and the overloaded bit 31 (ValueTrue/Unmanaged).
-
-	   The sided bits are KEPT, because a combination is allowed to demand one side specifically
-	   (see below). What normalization removes is the ambiguity in the other direction: a plain
-	   `Ctrl` combination matches whichever Ctrl the user pressed, and NumLock being on never
-	   changes whether anything matches. */
+	/* Adds the base bit for every sided modifier present (CtrlL implies Ctrl) and drops everything
+	   that is not part of a chord: lock states, mouse buttons, LayoutAlternative and bit 31
+	   (ValueTrue/Unmanaged). Sided bits are kept, so a combination may demand a specific side. */
 	static InputModifier normalize(InputModifier);
 
-	// The same set with every sided bit stripped — the part two combinations must agree on
-	// before their side constraints are even compared
+	// The same set with every sided bit stripped
 	static InputModifier baseModifiers(InputModifier);
 
 	/* True when an event carrying `eventModifiers` satisfies this combination's side
@@ -84,10 +72,8 @@ struct SP_PUBLIC HotkeyCombo {
 	   Command/Meta/Win), Mod4, Mod5 — each of the first five also in a sided form (`CtrlL`,
 	   `ShiftR`, …). Key names follow InputKeyCode (see getInputKeyCodeName).
 
-	   A sided combination only fires where the window backend reports which side was pressed:
-	   Windows, macOS, Android and both Linux backends do. wasm does not — the browser knows
-	   (KeyboardEvent.location) but the backend does not pass it on — so a sided binding is never
-	   matched there. */
+	   A sided combination fires only where the backend reports the side: Windows, macOS, Android
+	   and both Linux backends do, wasm does not. */
 	static HotkeyCombo parse(StringView);
 
 	void encode(const Callback<void(StringView)> &) const;
@@ -102,15 +88,10 @@ struct SP_PUBLIC HotkeyCombo {
 enum class HotkeyOptions : uint32_t {
 	None = 0,
 
-	/* Decline this combination in the runtime's text-input processor, so that it reaches the
-	   scene even while a field holds the IME.
-
-	   Opt-in on purpose. The processor claims a key for text unless it recognizes it as a
-	   command, and some of what it claims is genuinely the IME's: Escape releases input,
-	   Backspace and Delete edit. Reserving every registered combination would take those away
-	   from the field the moment the engine registered `…app.back` on Escape. Set this only for a
-	   combination that must win over typing — typically an Alt or Super chord, which the
-	   processor would otherwise swallow because it carries a keychar. */
+	/* Decline this combination in the runtime's text-input processor, so it reaches the scene
+	   even while a field holds the IME. Opt-in, because some keys belong to the IME (Escape,
+	   Backspace, Delete); use it for chords that must win over typing, e.g. Alt or Super chords
+	   that carry a keychar. */
 	ReserveFromTextInput = 1 << 0,
 };
 
@@ -119,13 +100,9 @@ SP_DEFINE_ENUM_AS_MASK(HotkeyOptions)
 enum class HotkeyFlags : uint32_t {
 	None = 0,
 
-	/* Deliver only while this listener is entitled to keyboard events in its focus group.
-
-	   That is deliberately not `isFocused()`: ui::TextInput's own listener never holds focus —
-	   the FormInputListener above it does — so the test that actually works is the one the
-	   dispatcher already uses, FocusGroup::canHandleEventWithListener. For a plain SingleFocus
-	   group that means "this is the focused listener"; for ui::FormSystem it means "inside the
-	   focused field's subtree". A listener with no focus group above it always qualifies. */
+	/* Deliver only while this listener is entitled to keyboard events in its focus group, as tested
+	   by FocusGroup::canHandleEventWithListener, not `isFocused()` (ui::TextInput's listener never
+	   holds focus; its FormInputListener does). A listener with no focus group always qualifies. */
 	FocusedOnly = 1 << 0,
 
 	/* Deliver even when an Exclusive focus group has scoped the walk to itself. For the few
@@ -135,27 +112,15 @@ enum class HotkeyFlags : uint32_t {
 	// Also fire on key auto-repeat, not just on the initial press
 	Repeatable = 1 << 2,
 
-	/* Deliver only while this listener's owner is on the committed SELECTION CHAIN - the mirror of
-	   FocusedOnly, and the reason an Undo lands in the right history rather than in the unknown.
-
-	   A listener with nothing selected above it is simply not OFFERED the chord, which leaves it
-	   for whoever is below. That is the whole meaning of the flag: it narrows who is asked, it
-	   never makes a handler consume a key it cannot serve. The engine contract stays "a handler
-	   with nothing to do returns false", and this flag does not replace it - a selected TableView
-	   still checks that it has a row to move.
-
-	   See SelectionSystem (XLSelectionSystem.h) for what puts a node on the chain, and
-	   InputDispatcher::handleHotkey for the pass that walks it. */
+	/* Deliver only while this listener's owner is on the committed selection chain (see
+	   SelectionSystem and InputDispatcher::handleHotkey). It narrows who is offered the chord; a
+	   handler with nothing to do must still return false. */
 	SelectedOnly = 1 << 3,
 };
 
 SP_DEFINE_ENUM_AS_MASK(HotkeyFlags)
 
-/* Everything about the DELIVERY that a binding's flags are tested against.
-
-Four booleans threaded through three functions became one struct when the fourth arrived: at the
-call sites they were four adjacent `bool`s in a row, which is a swap waiting to happen and which no
-compiler would ever diagnose. */
+/* Delivery state that a binding's flags are tested against. */
 struct SP_PUBLIC HotkeyContext {
 	// This listener is entitled to keyboard events in its focus group. Not isFocused(): see
 	// HotkeyFlags::FocusedOnly
@@ -195,15 +160,9 @@ public:
 	// Rebinds an already-registered hotkey; the id is unaffected
 	bool setCombo(HotkeyId, HotkeyCombo);
 
-	/* Reports every hotkey bound to this event's combination, in registration order; the callback
-	   is not called at all when the event matches nothing. Return false from it to stop.
-
-	   It reports a set, not a single id, because one combination legitimately carries several
-	   meanings at once: Escape is both `…form.reset` and `…app.back`. Which of them fires is
-	   decided by the order in which listeners are visited, not here.
-
-	   The callback form is what lets a sided binding and a base one both be reported for the same
-	   event: they live in different buckets, so there is no single stored span to hand back. */
+	/* Reports every hotkey bound to this event's combination (sided and base bindings), in
+	   registration order; return false from the callback to stop. One combination may carry
+	   several meanings (Escape: `…form.reset` and `…app.back`); listener visit order decides. */
 	void match(const InputEventData &, const Callback<bool(HotkeyId)> &) const;
 	void match(InputKeyCode, InputModifier, const Callback<bool(HotkeyId)> &) const;
 
@@ -230,15 +189,10 @@ protected:
 	void bind(HotkeyId, HotkeyCombo);
 	void unbind(HotkeyId, HotkeyCombo);
 
-	/* The bucket a combination is filed under. A combination with no side constraint is filed
-	   under its base modifiers alone; a sided one under base+side. Lookup therefore probes two
-	   buckets — the event's full modifiers and its base ones — which is exactly "the sided
-	   bindings for this side, plus every binding that does not care".
-
-	   THE KEYCODE IS IN THE LOW BITS AND MUST STAY THERE. The implementation says at length what
-	   putting it in the high ones cost; the short version is that these keys are hashed by
-	   identity and bucketed by a power-of-two modulus, so a constant low half is a table that
-	   rehashes itself to death. */
+	/* The bucket a combination is filed under: base modifiers for an unsided combination,
+	   base+side for a sided one. Lookup probes the event's full and base modifiers.
+	   The keycode must stay in the low bits: keys are hashed by identity into power-of-two
+	   buckets. */
 	static uint64_t comboKey(InputKeyCode, InputModifier);
 
 	mutable sprt::qmutex _mutex;
@@ -252,12 +206,8 @@ protected:
 	sprt::__malloc_unordered_map<uint64_t, sprt::__malloc_vector<HotkeyId>> _byCombo;
 };
 
-/* The hotkeys the engine itself binds. Kept in one place so that the names — which are the
-   stable identity an application rebinds against — are visible together rather than scattered
-   across the widgets that happen to use them.
-
-   Registered on first access, not at static-init: an application that rebinds them wants the
-   registry to exist first, and one that never uses forms or text input pays nothing. */
+/* The hotkeys the engine itself binds, with their stable names in one place. Registered on
+   first access, not at static init, so an application can rebind them after the registry exists. */
 struct SP_PUBLIC EngineHotkeys {
 	HotkeyId back; // Escape — SceneContent's back/close
 	HotkeyId toggleFps; // F12 — the basic2d FPS widget
@@ -271,17 +221,13 @@ struct SP_PUBLIC EngineHotkeys {
 	HotkeyId formActivate; // Space
 	HotkeyId formReset; // Escape — shares the combination with `back`, and wins when focused
 
-	/* Enter also means "accept" to a text field. It shares the combination with formSubmit and is
-	   offered first, because a field's own accept callback must win over the form's submit — the
-	   walk order does that, exactly as the recognizer dispatch order used to. */
+	/* Enter as a text field's accept; shares the combination with formSubmit and is offered first
+	   so the field's accept wins over the form's submit. */
 	HotkeyId textAccept; // Enter
 	HotkeyId textAcceptKeypad; // KP_Enter
 
-	/* Move the selected element of a list one place, without a pointer.
-
-	Reordering by drag is unreachable from the keyboard in a virtualized list - the row you want to
-	drop on may not exist as a node - and for an editor whose order IS the data, that makes the
-	keyboard path the primary one rather than an accommodation. */
+	/* Move the selected list element one place; the keyboard path for reordering, since a
+	   virtualized list may have no node to drop on. */
 	HotkeyId moveItemUp; // Alt+Up
 	HotkeyId moveItemDown; // Alt+Down
 
@@ -290,20 +236,9 @@ struct SP_PUBLIC EngineHotkeys {
 	HotkeyId textCut; // Ctrl+X
 	HotkeyId textPaste; // Ctrl+V
 
-	/* Undo and redo, and they are named for the ACTION rather than for the widget.
-
-	Deliberately not `textUndo`: whoever owns the focused thing answers these - a text view answers
-	with its own history, a document editor with the document's, a file browser with the project's -
-	and a shell that binds a file-rename history to an id spelled `text-input.*` would be lying to
-	the registry. A handler that has nothing to undo must answer false rather than swallow the
-	chord, so the one below it gets its turn.
-
-	Redo has two spellings and the registry holds one combination per id, so it has two ids. Both
-	are live at once on every platform; Ctrl+Y is what Windows tools train, Ctrl+Shift+Z is what
-	Linux and macOS ones do, and a person who has learned one should not have to discover the other.
-
-	No ReserveFromTextInput here, unlike the Alt chords above: the runtime's text-input processor
-	already declines every Ctrl chord that has no Alt, so these reach the scene on their own. */
+	/* Undo and redo, answered by whoever owns the focused thing; a handler with nothing to undo
+	   must return false. Redo has two ids for its two combinations (Ctrl+Y, Ctrl+Shift+Z). No
+	   ReserveFromTextInput needed: the text-input processor declines Ctrl chords without Alt. */
 	HotkeyId undo; // Ctrl+Z
 	HotkeyId redo; // Ctrl+Y
 	HotkeyId redoAlt; // Ctrl+Shift+Z — the same action, the other habit

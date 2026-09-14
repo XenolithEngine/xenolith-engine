@@ -83,7 +83,7 @@ public:
 	SpanView<TransformData> getTransforms() const { return _transforms; }
 
 	// Draw states (scissor/viewport) copied out of the frame context for record time; the context
-	// itself must NOT be retained here - it is frame input data, and holding it creates a frame
+	// itself must not be retained here - it is frame input data, and holding it creates a frame
 	// ownership cycle (the frame would never complete).
 	SpanView<DrawStateValues> getDrawStates() const { return _drawStates; }
 

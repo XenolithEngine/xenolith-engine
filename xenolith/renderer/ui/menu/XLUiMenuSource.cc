@@ -43,7 +43,7 @@ void MenuSourceItem::copyTo(MenuSourceItem *target) const {
 	target->_name = _name;
 	target->_flags = _flags;
 	target->_data = _data;
-	// _source is deliberately NOT copied: a copy belongs to whichever menu adopts it.
+	// _source is not copied: a copy belongs to whichever menu adopts it
 }
 
 void MenuSourceItem::setName(StringView value) {
@@ -130,8 +130,7 @@ Rc<MenuSourceItem> MenuSourceButton::copy() const {
 	ret->_trailingIcon = _trailingIcon;
 	ret->_hotkey = _hotkey;
 	ret->_callback = _callback;
-	// A built submenu is copied as a menu of its own, so the two items do not share state; an
-	// unbuilt one is copied as its factory, so the copy stays as lazy as the original.
+	// a built submenu is copied as its own menu (no shared state); an unbuilt one as its factory
 	if (_submenu) {
 		ret->_submenu = _submenu->copy();
 	}
@@ -218,8 +217,7 @@ void MenuSourceButton::encodeShortcut(const Callback<void(StringView)> &out) con
 
 void MenuSourceButton::setCallback(ActionCallback &&cb) {
 	_callback = sp::move(cb);
-	// Not equality-guarded: a Function is not comparable, and a rebound command is a change even
-	// when the closure looks the same.
+	// not equality-guarded: a Function is not comparable
 	setDirty();
 }
 
@@ -241,8 +239,7 @@ void MenuSourceButton::setSubmenu(SubmenuFactory &&factory) {
 MenuSource *MenuSourceButton::getSubmenu() {
 	if (!_submenu && _submenuFactory) {
 		_submenu = _submenuFactory(this);
-		// The factory has done its job; keeping it would make a second call rebuild a menu the
-		// user may have scrolled or expanded.
+		// drop the factory so a second call does not rebuild the menu
 		_submenuFactory = nullptr;
 	}
 	return _submenu;
@@ -423,8 +420,7 @@ Rc<MenuSource> MenuSource::copy() const {
 void MenuSource::setDirty(Flags flags) {
 	Subscription::setDirty(flags);
 
-	// A copy, because a system may take itself off the list from inside handleSourceDirty (a
-	// rebuild that drops the node the system lives on).
+	// iterate a copy: a system may remove itself inside handleSourceDirty
 	auto observers = _observers;
 	for (auto &it : observers) { it->handleSourceDirty(this); }
 }
@@ -459,12 +455,11 @@ size_t bindMenuHotkeys(NotNull<InputListener> listener, NotNull<MenuSource> sour
 
 		auto button = static_cast<MenuSourceButton *>(it.get());
 		if (auto id = button->getHotkey(); !id.empty()) {
-			// Rc: the binding outlives whatever built the menu, and a subscription that dangles is
-			// worse than one that keeps a few strings alive.
+			// Rc: the binding may outlive whatever built the menu
 			listener->addHotkey(id,
 					[item = Rc<MenuSourceButton>(button)](HotkeyId, const InputEvent &) -> bool {
-				// A greyed-out command declines rather than swallowing the key: the same
-				// combination may mean something else further along the dispatcher's walk.
+				// a disabled command declines, so the combination continues down the dispatcher's
+				// walk
 				if (!item->isEnabled()) {
 					return false;
 				}
@@ -478,8 +473,7 @@ size_t bindMenuHotkeys(NotNull<InputListener> listener, NotNull<MenuSource> sour
 		}
 
 		if (recursive) {
-			// getBuiltSubmenu, not getSubmenu: binding a key must never run a lazy factory and
-			// materialize a menu nobody opened.
+			// getBuiltSubmenu: binding keys must not run a lazy factory
 			if (auto sub = button->getBuiltSubmenu()) {
 				ret += bindMenuHotkeys(listener, sub, flags, true);
 			}

@@ -37,16 +37,9 @@ bool DockTabBar::init(DockTabBarSide side) {
 
 	setAnchorPoint(Anchor::BottomLeft);
 
-	// Its own flex run, built here rather than expected from a stylesheet. No SystemManagedLayout
-	// marker: the resolver never tears down a layout it did not create, so this one survives.
-	//
-	// A stylesheet can still refine it, but only through a rule that ALSO declares `display: flex`
-	// - padding, the gaps and the alignment are read inside the resolver's flex branch, and a rule
-	// without `display` never enters it. `dock-tab-bar { display: flex; padding: 2px; }` works;
-	// `dock-tab-bar { padding: 2px; }` alone is silently ignored.
-	//
-	// Only the DIRECTION is the widget's own business - it follows the strip's side - and setSide
-	// re-asserts it after any such refinement.
+	// Own flex layout; no SystemManagedLayout, the resolver does not remove layouts it did not
+	// create. CSS padding, gaps and alignment apply only in a rule that also declares `display:
+	// flex`. The direction follows the side and setSide re-asserts it.
 	addSystem(Rc<LayoutSystem>::create());
 
 	setSide(side);
@@ -77,11 +70,8 @@ void DockTabBar::setSide(DockTabBarSide side) {
 	for (auto &it : _tabs) { applyOrientation(it); }
 }
 
-// Re-run the content-size phase of everything below `node`. That is what makes the nearest
-// recursive StyleResolver resolve those nodes again - the same thing the resolver does to itself
-// when a stylesheet reloads, and for the same reason: a style-only change moves no geometry, so a
-// descendant would otherwise never signal and would keep its stale style until some unrelated
-// relayout happened to wake it.
+// Mark every node below `node` content-size dirty so the recursive StyleResolver resolves them
+// again; a style-only change moves no geometry and would not trigger it otherwise.
 static void DockTabBar_restyleSubtree(Node *node) {
 	for (auto &child : node->getChildren()) {
 		child->markContentSizeDirty();
@@ -99,19 +89,14 @@ void DockTabBar::applyOrientation(DockTab *tab) const {
 	tab->removeStyleClass(vertical ? StringView("horizontal") : StringView("vertical"));
 	tab->addStyleClass(want);
 
-	/* And re-arm what is INSIDE the tab.
-
-	The class flipped on the tab, but the rules that make an icon rail what it is are written for
-	its children - `dock-tab.vertical > label { display: none }` is the whole trick. A recursive
-	resolver re-resolves a descendant when THAT descendant's own phase fires, and a label whose own
-	identity did not change has no reason to fire one; without this a strip could turn on its side
-	while its tabs kept the kind they were built with. */
+	// Restyle the tab's children too: rules like `dock-tab.vertical > label` target them, and the
+	// resolver does not revisit a child whose own identity did not change.
 	DockTabBar_restyleSubtree(tab);
 }
 
 void DockTabBar::setTabs(SpanView<DockTab *> tabs) {
-	// take out whatever is no longer wanted, keep the rest: a tab that stays parked here must not
-	// lose its node - and with it its hover state and any drag in flight - to a reorder
+	// remove tabs no longer wanted, keep the rest: a kept tab must not lose its node (hover state,
+	// a drag in flight) to a reorder
 	for (auto &it : _tabs) {
 		bool kept = false;
 		for (auto &next : tabs) {
@@ -134,31 +119,28 @@ void DockTabBar::setTabs(SpanView<DockTab *> tabs) {
 		} else {
 			reorderChild(it, z);
 		}
-		// each tab is sized by its own content and neither grows nor shrinks: the strip is as long
-		// as its tabs, which is what makes its measured size the frame's floor
+		// tabs neither grow nor shrink, so the strip's measured size is the frame's floor
 		LayoutSystem::setItem(it,
 				FlexItemInfo{
 					.grow = 0.0f,
 					.shrink = 0.0f,
 					.basis = FlexItemInfo::FitContent,
 				});
-		// a tab that has just ARRIVED from another strip carries that strip's kind
+		// a tab arriving from another strip carries that strip's orientation
 		applyOrientation(it);
 		z = ZOrder(z.get() + 1);
 	}
 }
 
 size_t DockTabBar::indexForPosition(const Vec2 &point) const {
-	// The slot a drop at `point` would land in: the first tab whose midpoint the point has not
-	// reached yet. Comparing against midpoints rather than edges is what makes the caret flip over
-	// exactly when the pointer passes the middle of a tab.
+	// The slot a drop at `point` lands in: the first tab whose midpoint the point has not reached.
 	const bool vertical = isVertical();
 	for (size_t i = 0; i < _tabs.size(); ++i) {
 		auto tab = _tabs[i];
 		const auto pos = tab->getPosition();
 		const auto size = tab->getContentSize();
 		if (vertical) {
-			// Y points up, so the strip runs from the TOP down: the first tab has the highest Y
+			// Y points up, so the strip runs top-down: the first tab has the highest Y
 			const float middle = pos.y + size.height / 2.0f;
 			if (point.y > middle) {
 				return i;

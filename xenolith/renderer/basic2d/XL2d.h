@@ -59,15 +59,10 @@ using glsl::Polygon2DIndex;
 
 using stappler::font::Autofit;
 
-/* Which of the two 2d render graphs a queue is.
- *
- * It lives here, and not inside Scene2d, because it is written into core::QueueData::typeTag by the
- * backend pass makers -- the pass IS what decides the shape, so having it set there is what keeps a
- * hand-built queue (one that never went through Scene2d::buildQueue) from being untagged. Scene2d
- * re-exports it as Scene2d::QueueType.
- *
- * The values are explicit and start at 1 because they now travel: 0 is `typeTag` unset, and a value
- * here may not be renumbered while a client may be matching against a server's.
+/* Which of the two 2d render graphs a queue is. Written into core::QueueData::typeTag by the
+ * backend pass makers, so hand-built queues are tagged too; Scene2d re-exports it as
+ * Scene2d::QueueType. Values start at 1 (0 is `typeTag` unset) and must not be renumbered: clients
+ * match against a server's.
  */
 enum class QueueType : uint32_t {
 	// full-featured queue: shadows, pseudo-SDF, particles, depth buffer, post-processing
@@ -211,28 +206,13 @@ public:
 	bool isWaitOnReady() const { return _waitOnReady; }
 
 #if XL_FRAME_ACCOUNT
-	/* WHAT THE TASK ITSELF SPENT, stamped by the task before it raises the signal.
-
-	It has to be recorded here, by the producer, and it cannot be derived by the consumer: this
-	result is made on a worker thread the consumer never sees, and the interval between handing the
-	task out and taking the result back is queue latency plus work plus however long the result sat
-	ready before anybody asked. Only the task knows which part of that was work.
-
-	READ IT AS A SUM ACROSS THREADS, never as a share of the frame. Several of these run at once, so
-	the total may legitimately exceed the frame it belongs to - which is the opposite of the wait
-	below, and why the two are reported as separate categories rather than as parts of one whole.
-
-	Plain, not atomic: written once by the task before the timeline signal, read after that signal
-	has been observed. The signal is the barrier. */
+	/* Work time of the task, stamped by the task before it raises the signal (the consumer cannot
+	separate work from queue latency). A sum across threads that may exceed the frame, reported
+	apart from the wait. Plain, not atomic: written before the timeline signal, read after it. */
 	void setWorkTime(uint64_t ns) { _workTime = ns; }
 
-	/* TAKEN, not read, and that is the whole correctness of the number.
-
-	A result outlives the frame that produced it - a sprite whose content did not change re-pushes
-	the SAME result every frame and the consumer takes it again each time. A plain getter would
-	therefore report the tesselation cost on every steady frame forever, which is precisely the
-	claim this account exists to refute. Taking it once attributes the work to the frame that
-	actually paid for it, and every later frame correctly reports zero. */
+	/* Taken, not read: a result is re-pushed every frame while its content is unchanged, so the
+	work is attributed once, to the frame that paid for it, and later frames report zero. */
 	uint64_t takeWorkTime() {
 		auto ret = _workTime;
 		_workTime = 0;

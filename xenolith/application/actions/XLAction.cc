@@ -103,8 +103,6 @@ bool ActionInterval::init(float duration) {
 	_duration = duration;
 
 	// prevent division by 0
-	// This comparison could be in step:, but it might decrease the performance
-	// by 3% in heavy based action games.
 	_duration = sprt::max(_duration, sprt::Epsilon<float>);
 	if (_duration == 0) {
 		_duration = sprt::Epsilon<float>;

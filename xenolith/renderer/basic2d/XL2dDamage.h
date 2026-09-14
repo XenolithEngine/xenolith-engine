@@ -28,12 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-// Accumulates a core::FrameDamageState while a backend walks the frame's command list.
-//
-// It is deliberately not a walker of its own: the backends already visit every command to build
-// their write plans, and deferred results are already resolved there, so damage is collected by
-// the same pass - no second traversal, no second acquireResult, and the bounds of a deferred
-// command are exact instead of unknown.
+// Accumulates a core::FrameDamageState while a backend walks the frame's command list for its
+// write plans, where deferred results are already resolved - so no second traversal is needed and
+// deferred bounds are exact.
 class SP_PUBLIC DamageCollector {
 public:
 	bool init(const FrameContextHandle2d *, const core::FrameConstraints &);

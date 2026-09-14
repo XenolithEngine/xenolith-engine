@@ -27,13 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The prompt line. A plain single-line ui::TextInput is the right base: Enter already reaches the
-// enter callback, the clipboard chords and the gesture set are already there, and none of the
-// multi-line machinery is wanted on one line.
-//
-// One thing has to change. The stock handleKey sends Up and Down to the ends of the string, which
-// on a single line is a reasonable reading of "there is nowhere to go vertically" — but on a
-// console prompt those two keys are the history, and that is the whole reason this class exists.
+// The prompt line: a single-line ui::TextInput where Up and Down walk the history instead of
+// moving the caret to the ends of the string.
 class SP_PUBLIC ConsoleInput : public TextInput {
 public:
 	// `direction` is -1 for older, +1 for newer. Return true to consume the key.
@@ -53,17 +48,13 @@ protected:
 
 /* Console I/O: an append-only output pane over a prompt row.
 
-The output pane is a read-only ui::TextView, and that single fact is the whole answer to "selection
-and copying over the output" — a read-only view still takes taps, drag-selection and Ctrl+A/Ctrl+C
-(see ui::TextView::handleTextHotkey, which exists mostly for this). There is no second selection
-mechanism anywhere in this class.
+The output pane is a read-only ui::TextView, which provides selection and Ctrl+A/Ctrl+C
+(ui::TextView::handleTextHotkey).
 
-The prompt is a separate label, never part of the input string: it cannot then be deleted, cannot be
-copied by accident, and does not offset any cursor arithmetic.
+The prompt is a separate label, not part of the input string, so it cannot be deleted or copied and
+does not affect cursor positions.
 
-Output is a ring: whole lines are dropped off the front once the line count passes the limit. There
-is no character ceiling — the pane renders a Label per visible line — so the ring's only job is
-keeping an immortal console from growing without bound.
+Output is a ring of at most kMaxOutputLines lines; whole lines are dropped from the front.
 
 CSS: the widget is a plain Node carrying the class `console`, over `.console-output` (a
 ui::TextView, so everything that widget publishes applies), `.console-row`, `.console-prompt` (the
@@ -101,8 +92,7 @@ protected:
 
 	void addInspectorCommands(Scene *);
 
-	// Registers through here so handleExit() can drop the lot: a command whose lambda captured a
-	// destroyed widget is a dangling call from the inspector socket.
+	// Registers the command so handleExit() can remove it; the lambdas capture this widget.
 	void addInspectorCommand(Scene *, StringView name, StringView desc,
 			Function<void(Value &&, Function<void(Value &&)> &&)> &&);
 

@@ -130,16 +130,13 @@ struct SP_PUBLIC GridItemInfo {
 	bool operator!=(const GridItemInfo &) const = default;
 };
 
-// Parse a CSS `grid-template-columns` / `grid-template-rows` track list into a
-// flat GridTrack vector. Supports `<length>`, `<percentage>`, `<number>fr`,
-// `auto`, and `repeat(<count>, <tracks>)`. Named lines / minmax() / fit-content()
-// / auto-fill|auto-fit are not supported (silently skipped). An empty or
-// unparseable input yields an empty list.
+// Parse a CSS `grid-template-columns` / `grid-template-rows` track list into a flat vector.
+// Supports `<length>`, `<percentage>`, `<number>fr`, `auto` and `repeat(<count>, <tracks>)`;
+// named lines, minmax(), fit-content() and auto-fill/auto-fit are skipped.
 SP_PUBLIC Vector<GridTrack> parseGridTemplate(StringView);
 
-// Parse a single CSS grid line placement string of the form `N`, `span N`, or
-// `N / M` into 1-based start/end lines (0 == auto) and a span count. Returns
-// false and leaves the outputs untouched on a fully empty / unparseable input.
+// Parse a grid line placement (`N`, `span N`, `N / M`) into 1-based start/end lines
+// (0 == auto) and a span count. Returns false, outputs untouched, on empty input.
 SP_PUBLIC bool parseGridLine(StringView, uint32_t &start, uint32_t &end, uint32_t &span);
 
 } // namespace stappler::xenolith::ui

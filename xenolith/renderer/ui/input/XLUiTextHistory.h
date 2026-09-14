@@ -28,63 +28,49 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// UNDO FOR TEXT, OVER THE ONE POINT WHERE TEXT ACTUALLY CHANGES.
+// Undo for text, recorded at the owner's mutation choke point. Undo restores the caret as well as
+// the characters, and the owner re-pushes the IME window afterwards.
 //
-// The history sits beside TextDocument rather than inside it, at the choke point that mutates it.
-// A document is flat data and index arithmetic - it has no caret, no selection and no way to
-// tell the platform anything. Undo has to put back the caret as well as the characters, and then
-// re-push the IME window, or the next echo would be diffed against a base that no longer exists.
+// The target is an interface because TextView owns its TextDocument and edits locally, while a
+// plain TextInput's string is owned by the IME and every edit is a request. The history never
+// touches text itself.
 //
-// WHY THE TARGET IS AN INTERFACE. There are two text authorities in this stack and they are not
-// alike. TextView owns a TextDocument outright and edits it locally. A plain TextInput owns
-// nothing: the OS-side IME owns the string, every edit is a REQUEST, and the widget renders what
-// comes back. One history serves both because it never touches text itself - it asks whoever owns
-// the text to do it, and that owner is also the one who can talk to the platform afterwards.
-//
-// TIME ARRIVES AS AN ARGUMENT, inherited from the bus below and kept for the same reason: a check
-// script advances a counter and never sleeps. Nothing here reads a clock.
+// Time is passed as an argument; nothing here reads a clock.
 
 class TextHistory;
 
-/* Whoever owns the text. Three questions, all in UTF-16 code units, which is the domain of every
-   index in this stack - TextDocument's, TextCursor's and the IME's alike. */
+/* Whoever owns the text. All indices are UTF-16 code units, as in TextDocument, TextCursor and
+   the IME. */
 class SP_PUBLIC TextHistoryTarget {
 public:
 	virtual ~TextHistoryTarget() = default;
 
-	// The text about to be replaced, read BEFORE it goes. The view may not outlive the next
+	// The text about to be replaced, read before it goes. The view may not outlive the next
 	// mutation, so the history copies it immediately.
 	virtual WideStringView sliceForHistory(uint32_t pos, uint32_t len) const = 0;
 
-	// Put this text where that text was. Implementations route this through their OWN single
-	// insertion path, so an undo is indistinguishable from an edit to everything downstream -
-	// including the window push and the change callback.
+	// Replace text. Implementations route this through their own single insertion path, so an
+	// undo also pushes the window and fires the change callback.
 	virtual void applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView inserted) = 0;
 
 	// The caret an undo restores. Called after applyHistoryEdit, which has already left the
 	// caret at the end of what it inserted; this is what overrides that with what was recorded.
 	virtual void setHistoryCursor(TextCursor) = 0;
 
-	/* Around every undo and every redo, because ONE entry can hold many edits - a run of
-	keystrokes is exactly that.
-
-	A target that owns its text applies them one by one and needs neither hook. A target whose text
-	belongs to someone else does: each of its edits is a REQUEST computed against a string that has
-	not come back yet, so N requests in a row all describe the same starting point and only the
-	last one survives. Such a target folds the batch into a single request here. */
+	/* Around every undo and redo, since one entry can hold many edits. A target whose edits are
+	requests against a string not yet echoed back folds the batch into a single request here;
+	a target owning its text can ignore both. */
 	virtual void beginHistoryBatch() { }
 	virtual void endHistoryBatch() { }
 };
 
-// What a text command edits. One member, and it is the seam rather than the document: a command
-// never reads text it did not keep, and the caret it restores belongs to the widget.
+// What a text command edits: the target, not the document.
 struct TextEditContext {
 	TextHistoryTarget *target = nullptr;
 };
 
-// What a command reports having done, in the direction it was run. Carried by the bus per
-// command (as opposed to per committed entry) and offered to whoever asks; the widget itself
-// does not subscribe, because what it needs after an edit it already did while making it.
+// What a command reports having done, in the direction it was run. Emitted by the bus per
+// command, not per committed entry; the widget itself does not subscribe.
 struct TextEditEvent {
 	uint32_t pos = 0;
 	uint32_t removed = 0;
@@ -96,13 +82,10 @@ using TextCommandBus = hist::CommandBus<TextEditContext, TextEditEvent>;
 
 class SP_PUBLIC TextHistory final {
 public:
-	/* How long a run of keystrokes stays one undo entry. 700 ms is the pause that separates
-	"still typing the same word" from "stopped and thought", and it is the one number here a
-	person could reasonably want to change, so it is settable. */
+	// Idle time, in microseconds, after which a run of keystrokes stops coalescing into one entry.
 	static constexpr uint64_t DefaultCoalesceIdle = 700'000;
 
-	// The names an entry can carry. They are what getUndoName() answers and what a menu shows,
-	// so they are words rather than codes, and they are literals so they outlive the command.
+	// Entry names, as reported by getUndoName(). Literals, so they outlive the command.
 	static constexpr StringView NameTyping = StringView("typing");
 	static constexpr StringView NameDelete = StringView("delete");
 	static constexpr StringView NamePaste = StringView("paste");
@@ -112,52 +95,36 @@ public:
 
 	bool init(TextHistoryTarget *);
 
-	/* OFF by default, and TextView is the only thing in the engine that turns it on for itself.
-	A plain field in a property panel commits its value into somebody's document, and Ctrl+Z there
-	has to take back the DOCUMENT edit; a field that silently swallowed the chord would be the way
-	a person eventually undoes the wrong thing. Turning it on is one line for whoever wants it. */
+	/* Off by default (TextView enables it): in a plain field Ctrl+Z must reach the owning
+	document's undo. */
 	void setEnabled(bool);
 	bool isEnabled() const { return _enabled; }
 
 	void setCoalesceIdle(uint64_t idleMicros);
 	uint64_t getCoalesceIdle() const { return _idle; }
 
-	/* Stop recording without forgetting anything, for an owner that is about to do something which
-	is not an edit. Replacing a whole document is the case that matters: it is a NEW document, and
-	recording it would leave the old one's text sitting in the new one's history, one Ctrl+Z away
-	from a file the person never opened. */
+	/* Stop recording without forgetting anything, around a change that is not an edit, such as
+	replacing the whole document. */
 	void setRecording(bool);
 	bool isRecording() const { return _recording; }
 
-	/* Record one replacement, called from the owner's mutation choke point BEFORE the text moves.
-	`cursorBefore` is the caret as it stands right now, which is what an undo restores - so undoing
-	"type over a selection" brings the selection back too.
-
-	Answers false when nothing was recorded: disabled, or the history is applying an edit of its
-	own, which is the re-entry that would otherwise turn one undo into an infinite one. */
+	/* Record one replacement, called from the owner's mutation choke point before the text
+	changes. `cursorBefore` (selection included) is what an undo restores. Returns false when
+	nothing was recorded: disabled, or re-entered while applying undo/redo. */
 	bool recordEdit(uint32_t pos, WideStringView removed, WideStringView inserted,
 			TextCursor cursorBefore, StringView name, uint64_t now);
 
-	/* Close a run whose idle window has passed, so the next keystroke starts a new entry rather
-	than joining one the person has already stopped making.
-
-	recordEdit() calls this itself before deciding anything, so nothing here needs a frame
-	scheduled to stay correct - which is why no text widget pays for one. It is public because a
-	check script has to be able to advance the clock without sleeping, and because an owner that
-	already ticks per frame may as well commit runs promptly. */
+	/* Close a run whose idle window has passed. recordEdit() calls this itself, so no per-frame
+	tick is required; public for checks and for owners that tick anyway. */
 	void tickIdle(uint64_t now);
 
-	/* Close the current run explicitly. The caret moved, the focus went, a newline was typed, a
-	paste landed: all of them mean the next character is a new thought. */
+	// Close the current run explicitly (caret moved, focus lost, paste, and so on).
 	void breakRun();
 
 	bool undo();
 	bool redo();
 
-	/* A run in progress counts. While a word is being typed its keystrokes sit in an open group
-	that the log has not seen yet, and a menu asking "can I undo?" in the middle of that word would
-	otherwise be told no - which is false, and visibly so. undo() commits the run before taking it
-	back, so the answer and the action agree. */
+	// An uncommitted run in progress counts; undo() commits it before undoing.
 	bool canUndo() const { return _bus.canUndo() || _runKind != RunKind::None; }
 	bool canRedo() const { return _bus.canRedo(); }
 
@@ -166,8 +133,7 @@ public:
 	}
 	StringView getRedoName() const { return _bus.getRedoName(); }
 
-	// Forgets how the text got here without changing it. A load calls this: a history of edits to
-	// a file that is no longer open would undo into a document nobody ever had.
+	// Forgets the history without changing the text. Called on load.
 	void clear();
 
 	uint32_t getDepth() const { return _bus.getDepth(); }
@@ -186,7 +152,7 @@ protected:
 
 	// Whether this edit continues the run in progress, by kind and by adjacency. A typed run is
 	// contiguous forward; a Backspace run eats backwards and a Delete run forwards, and both keep
-	// the same anchor, which is what makes them one entry either way.
+	// the same anchor.
 	bool continuesRun(RunKind, uint32_t pos, uint32_t removed, uint32_t inserted) const;
 
 	TextEditContext _context;

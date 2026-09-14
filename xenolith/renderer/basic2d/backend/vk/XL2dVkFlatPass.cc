@@ -48,7 +48,7 @@ bool FlatPass::makeRenderQueue(Queue::Builder &builder, RenderQueueInfo &info) {
 	using namespace core;
 
 	builder.setDamageFlags(info.damage);
-	// What this graph IS, recorded on the graph itself: a remote client adopts a queue built here
+	// What this graph is, recorded on the graph itself: a remote client adopts a queue built here
 	// and has no device to ask.
 	builder.setApi(InstanceApi::Vulkan);
 	builder.setTypeTag(toInt(QueueType::Flat));
@@ -139,9 +139,9 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 		return Rc<IgnoredInputAttachment>::create(builder);
 	});
 
-	// Rectangles of the presented image to copy out after the render pass ends. Generic and
-	// input-only: it owns no GPU resource (every image belongs to the cutout that asked for it) and
-	// takes no framebuffer slot - it is in the graph so the frame knows the dependency exists.
+	// Rectangles of the presented image to copy out after the render pass ends. Input-only: it owns
+	// no GPU resource (images belong to the requesting cutout) and takes no framebuffer slot; it
+	// exists so the frame knows about the dependency.
 	_capture = queueBuilder.addAttachemnt(core::FrameCaptureAttachmentName,
 			[](AttachmentBuilder &builder) -> Rc<Attachment> {
 		builder.defineAsInput();

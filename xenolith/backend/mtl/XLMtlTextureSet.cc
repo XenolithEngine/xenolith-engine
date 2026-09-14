@@ -105,9 +105,8 @@ void TextureSet::write(const core::MaterialLayout &set) {
 	_layoutIndexes.clear();
 	_layoutIndexes.resize(imageCount, 0);
 
-	// residency needs each UNIQUE texture once, not one entry per slot: the
-	// padding below points thousands of slots at the same empty image, and
-	// calling useResource per slot (O(imageCount)) dominated frame recording
+	// residency needs each unique texture once, not one entry per slot: the
+	// padding below points thousands of slots at the same empty image
 	_residencyViews.clear();
 	_residencyViews.emplace_back(emptyViewRc);
 

@@ -356,8 +356,8 @@ bool Registry::applyGenericAttribute(const BuilderContext &ctx, Node *node, Stri
 			return true;
 		}
 	} else if (name == "style") {
-		// inline css declarations lost their backend in the StyleIdentity ->
-		// NodeIdentity migration; report instead of dropping them silently
+		// inline css declarations have no backend on NodeIdentity; report instead of dropping
+		// them silently
 		if (value.isString()) {
 			ctx.error("pug: inline `style` attribute is not supported yet");
 			return true;

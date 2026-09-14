@@ -39,11 +39,9 @@ void LayerRounded::handleContentSizeDirty() {
 			_borderRadius);
 
 	if (radius != _realBorderRadius || _contentSize != _image->getImageSize()) {
-		// Radius 0 still draws a filled rect (Panel CmdReset briefly hits 0 before CSS
-		// re-applies border-radius). Clearing to an empty image and returning without updating
-		// `_realBorderRadius` left a stale non-zero real radius, so the subsequent restore to a
-		// positive radius saw "no change" and kept the empty image — invisible panels after the
-		// first style pass (installer confirm dialog, any ui::Panel that gets CmdReset).
+		// Radius 0 still draws a filled rect (Panel CmdReset briefly hits 0 before CSS re-applies
+		// border-radius), and `_realBorderRadius` must be updated on every path, or a later
+		// restore of the same positive radius is seen as "no change".
 		auto img = Rc<VectorImage>::create(_contentSize);
 		auto path = img->addPath();
 		path->openForWriting([&](vg::PathWriter &writer) {

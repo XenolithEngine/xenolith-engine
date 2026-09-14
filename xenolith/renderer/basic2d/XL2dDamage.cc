@@ -63,7 +63,7 @@ Rect DamageCollector::toPixels(const Rect &clip) const {
 }
 
 uint32_t DamageCollector::makeSignature(const CmdInfo *cmd, const InstanceVertexData &iv) const {
-	// Everything that changes pixels without changing the geometry. StateId itself must NOT be
+	// Everything that changes pixels without changing the geometry. StateId itself must not be
 	// hashed: it is an insertion index into the frame's state list and is not stable across frames.
 	uint64_t acc = sprt::hash64(reinterpret_cast<const char *>(&cmd->material),
 			sizeof(cmd->material));

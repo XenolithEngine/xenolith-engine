@@ -160,7 +160,7 @@ bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
 		data->images.reserve(imageCount);
 		data->presentSemaphores.resize(imageCount);
 
-		// deliberately NOT carried over from `old`: the new images have undefined content, so the
+		// not carried over from `old`: the new images have undefined content, so the
 		// first frame into each index must report full-surface damage
 		_damage.resize(imageCount);
 
@@ -387,22 +387,16 @@ Status SwapchainHandle::present(core::DeviceQueue *queue, core::ImageStorage *im
 		nullptr,
 	};
 
-	// VK_GOOGLE_display_timing is broken on MoltenVK (portability): a VkPresentTimeGOOGLE with a
-	// desiredPresentTime in our monotonic domain makes MoltenVK schedule the CAMetalDrawable present
-	// so that only the very first frame composites -- the window then freezes on frame 0 while
-	// vkQueuePresentKHR keeps returning VK_SUCCESS. Skip present timing on portability devices; frame
-	// pacing there comes from the OS display link (followDisplayLinkBarrier) anyway.
+	// Skip VK_GOOGLE_display_timing on portability devices: on MoltenVK a desiredPresentTime freezes
+	// the window on its first frame. Pacing there comes from the OS display link.
 	if (!dev->isPortabilityMode() && dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
 		presentTimeInfo.pNext = presentInfo.pNext;
 		presentInfo.pNext = &presentTimeInfo;
 	}
 
-	// VK_KHR_incremental_present: tell the compositor which regions differ from what this image
-	// last showed. Purely a hint - the image is fully rendered either way - so an inaccurate list
-	// costs correctness nothing here. `rects` must outlive the call below, which it does.
-	//
-	// An empty damage list means "full surface": deliberately chain nothing rather than pass
-	// rectangleCount == 0, which would claim nothing changed at all.
+	// VK_KHR_incremental_present: a hint of which regions changed; `rects` must outlive the call.
+	// An empty damage list means "full surface": chain nothing, since rectangleCount == 0
+	// would claim nothing changed.
 	Vector<VkRectLayerKHR> rects;
 	VkPresentRegionKHR region{};
 	VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR, nullptr, 1, &region};

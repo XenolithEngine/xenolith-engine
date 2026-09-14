@@ -33,33 +33,17 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // length-framed ([u32 len][payload]); subsequent data messages are LZ4-compressed with the
 // dictionary negotiated here. Everything is network byte order.
 
-/* 'XLRP' -- version-NEUTRAL, and that is the change.
- *
- * It used to be 'XLR1', with the version digit inside the magic as well as in its own field. That
- * makes the version unnegotiable in principle: a peer of a different version fails on the magic, at
- * the first four bytes, before anything can look at a version field or a status byte and say what
- * went wrong. Bumping such a magic also means every future bump has two places to keep in step.
- * From here the magic answers only "is this our protocol at all", and the version answers "which
- * one" -- which is the question a peer can actually be told the answer to. */
+/* 'XLRP' -- version-neutral: the magic only identifies the protocol, so a peer of another version
+ * still reaches the version field and gets a proper status. */
 constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
 
-/* Version 2: InputEvents and UpdateLayers stopped being raw dumps of C++ structs and became a typed
- * format (see XLRemoteSerialize.h). The same code carrying different bytes is exactly the change a
- * version exists for -- a version-1 peer would parse a v2 batch as its own struct array and act on
- * whatever that produced, so the two are refused for each other at the handshake rather than left
- * to find out.
- *
- * Compatibility with version 1 is deliberately NOT kept. Doing so would mean both codecs living
- * side by side forever and the layout tag still gating v1 sessions -- that is, the milestone half
- * done, in exchange for old peers that do not exist: the only client anyone runs is rebuilt from
- * this tree by live-reload. */
+/* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h). Version 1
+ * peers are refused at the handshake; no compatibility is kept. */
 constexpr uint16_t kProtocolVersion = 2;
 constexpr uint32_t kBearerKeySize = 64;
 
 // Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).
-// The layout each one describes is documented with its codec in XLRemoteSerialize.h; the numbers
-// live here because they are facts about the wire, and because the peer-info fingerprint reports
-// them without wanting the codec's headers.
+// Layouts are documented with the codec in XLRemoteSerialize.h; peer info reports these sizes.
 constexpr uint16_t kInputEventRecordSize = 40;
 constexpr uint16_t kWindowLayerRecordSize = 24;
 
@@ -86,29 +70,18 @@ enum class Domain : uint8_t {
 	Error = 255,
 };
 
-// Which transport stream a domain's messages ride. On a transport without TransportCaps::MultiStream
-// every class folds onto the same stream and this mapping changes nothing.
+// Which transport stream a domain's messages ride. Without TransportCaps::MultiStream every class
+// folds onto one stream.
 //
-// The split is by ORDERING OBLIGATION, not by message size, and that is why Font sits with Window
-// rather than with the other bulk carrier:
+// Split by ordering requirement, not size:
+//   Control -- Global, Window, Font. Their relative order matters: SharedObjectsAnnounce precedes
+//     the first AcquireFrame for a new window, AttachQueue precedes the frames it enables, and a
+//     frame's Domain::Font glyph requests precede its FrameInput (XLRemoteWindow.cc) so the server
+//     registers the gating dependency first. Large font payloads travel as Domain::Data.
+//   Bulk -- Data. Order-independent; kept apart to avoid head-of-line blocking of input.
 //
-//   Control -- Global, Window, Font. Their relative order carries meaning and the wire is what
-//     enforces it: SharedObjectsAnnounce must precede the first AcquireFrame for a window the client
-//     has not heard of; AttachQueue must precede the frames it enables; and the client flushes a
-//     frame's Domain::Font glyph requests immediately BEFORE its FrameInput (XLRemoteWindow.cc), so
-//     that the server registers the gating dependency before it reconciles the frame against it.
-//     Putting Font on its own stream would break exactly that, and only under load -- the frame
-//     would reconcile against a dependency that has not arrived and the glyphs would go ungated.
-//     Font is cheap to keep here anyway: the large font payloads travel as Domain::Data blocks
-//     (DataType::Font), so what remains on this domain is requests and metadata.
-//
-//   Bulk -- Data. The only domain that owes nothing to the order of another, and precisely the one
-//     that causes head-of-line blocking today: an 8 MiB screenshot delays every InputEvents behind
-//     it. Separating it is the whole point of the exercise.
-//
-// StreamClass::Frame is deliberately unused for now. Separating frame traffic from input needs the
-// "input then frame" ordering to be re-established explicitly, which belongs with the typed wire
-// format rather than here; until then it folds onto Control and costs nothing.
+// StreamClass::Frame is unused: separating frames from input needs the "input then frame" ordering
+// to be enforced explicitly; until then it folds onto Control.
 constexpr StreamClass streamClassForDomain(Domain d) {
 	switch (d) {
 	case Domain::Data: return StreamClass::Bulk; break;
@@ -124,18 +97,10 @@ enum class GlobalCode {
 	Pong = 3,
 	SharedObjectsAnnounce = 4,
 
-	// Who each side is: CBOR PeerInfo (XLRemotePeerInfo.h). A REQUEST the server sends immediately
-	// after the handshake and BEFORE it announces anything; the client answers with its own PeerInfo
-	// in the reply, or refuses with GlobalError::IncompatiblePeer. Nothing is shared until that
-	// exchange completes -- the point of it is to stop a build mismatch before the first raw struct
-	// dump, not to report one afterwards.
-	//
-	// One request/reply rather than two independent notifications: both directions are checked, and
-	// the server has an answer before it announces rather than a message it hopes arrived.
-	//
-	// A version-1 peer that predates this code answers with a NotImplemented error, and the session
-	// continues exactly as it did before -- which is what makes this an extension of version 1 and
-	// not a new version.
+	// Who each side is: CBOR PeerInfo (XLRemotePeerInfo.h). A request the server sends right after
+	// the handshake, before it announces anything; the client replies with its own PeerInfo or
+	// refuses with GlobalError::IncompatiblePeer. A NotImplemented answer continues the session
+	// without peer info.
 	ServerInfo = 5,
 };
 
@@ -145,28 +110,19 @@ enum class GlobalError : uint8_t {
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
 	Busy = 5, // the server's client slot is taken; it accepts no second connection right now
-	IncompatiblePeer = 6, // reserved. Until M6 this refused a peer whose struct layout differed,
-	// because InputEvents/UpdateLayers were raw dumps of it; the typed format retired the reason,
-	// and a differing wire-contract tag is now reported rather than acted on (see PeerInfo::abi).
-	// Kept because a peer may still send it, and because renumbering a wire code buys nothing
+	IncompatiblePeer = 6, // a peer may still send it; a differing wire-contract tag is only
+	// reported, not refused (see PeerInfo::abi)
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
 
 /* --- what this build knows how to receive -------------------------------------------------------
  *
- * One bit per message code, one mask per domain, exchanged in PeerInfo (XLRemotePeerInfo.h). A peer
- * can then ask before it sends, rather than sending and learning from a NotImplemented reply -- and,
- * more usefully, a log can say up front what the other side is missing instead of leaving a later
- * symptom unexplained.
+ * One bit per message code, one mask per domain, exchanged in PeerInfo (XLRemotePeerInfo.h), so a
+ * peer can check before sending and logs can report what the other side is missing.
  *
- * BUILD-level, not role-level: the mask says "my dispatcher has a case for this code", not "I expect
- * to receive it". Who sends what is already fixed by the protocol's own direction, so narrowing
- * these per role would encode the same fact twice.
- *
- * Maintained by hand beside the enum, which is a second source of truth -- so tests/remote pins the
- * contents, and a code added without a handler (or a handler added without a bit) shows up as a
- * failing assertion rather than as a message that quietly does nothing.
+ * Build-level, not role-level: a bit means "my dispatcher has a case for this code". Maintained by
+ * hand beside the enums; tests/remote pins the contents.
  */
 constexpr uint64_t codeBit(uint8_t code) { return code < 64 ? (uint64_t(1) << code) : 0; }
 
@@ -179,9 +135,7 @@ constexpr uint64_t kSupportedGlobalCodes = codeBit(GlobalCode::ClientHello)
 		| codeBit(GlobalCode::ServerHello) | codeBit(GlobalCode::Ping) | codeBit(GlobalCode::Pong)
 		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo);
 
-// A name for a handshake/global failure, for logs. A refusal is the one thing a client learns about
-// a server it could not talk to, and "status 5" is not an answer a person can act on -- "Busy" says
-// to try later, "AuthFailed" says the key is wrong, and they call for opposite responses.
+// A name for a handshake/global failure, for logs.
 SP_PUBLIC StringView getGlobalErrorName(GlobalError);
 
 enum class WindowCode {
@@ -212,58 +166,35 @@ enum class WindowCode {
 	// back via UpdateMaterials. Fire-and-forget (the push + gating carry the result).
 	InputEvents =
 			9, // server -> client notification: platform input + window-state events for a window.
-	// RAW BINARY (not CBOR): [u64 windowId (network order)][InputEventData[] native layout].
-	// The server owns the OS window, so input originates there; it ships the same
-	// core::InputEventData batch the local Director would receive. InputEventData is
-	// trivially copyable, so the batch travels as an opaque blob (client/server share one
-	// build/ABI). Fire-and-forget; the client replays the batch into its Director's scene.
+	// Packed binary (not CBOR) batch of core::InputEventData records, see
+	// serializeInputEvents. The server owns the OS window, so input originates there.
+	// Fire-and-forget; the client replays the batch into its Director's scene.
 	UpdateLayers =
 			10, // client -> server notification: the window's interaction layers (hit/cursor/drag
-	// regions) for the OS window. RAW BINARY (not CBOR): [u64 windowId (network order)]
-	// [WindowLayer[] native layout]. The reverse of InputEvents: the client's scene graph
-	// computes the layers (InputDispatcher) but the server owns the real window, so the
-	// client forwards them and the server applies them to the native window (cursor,
-	// hit-testing, server-side decorations). WindowLayer is trivially copyable -> opaque
-	// blob. Fire-and-forget; the client only sends on change.
-
-	// --- M4: window domain completeness ------------------------------------------------------
+	// regions). Packed binary (not CBOR) batch of WindowLayer records, see
+	// serializeWindowLayers. The client's scene computes the layers; the server applies them
+	// to the native window (cursor, hit-testing, server-side decorations).
+	// Fire-and-forget; the client only sends on change.
 
 	WindowGeometryChanged = 11, // server -> client notification: [windowId, WindowGeometry]. Where
-	// the window now is, in the logical space WindowInfo::rect uses. A SIBLING of the frame
-	// constraints and not part of them: a title-bar drag must not cost a scene relayout.
-	//
-	// Constraints have deliberately NO message of their own. They already travel in every
-	// AcquireFrame, and the client's Director applies them there exactly as a local one does
-	// (Director::acquireFrame -> setFrameConstraints), so a second carrier would be a second
-	// source of truth for the same fact. Geometry has no such carrier -- and, unlike constraints,
-	// the server already has a live hook that fires only on a real change
-	// (AppWindow::notifyWindowGeometry), so the deduplication is done before the wire.
+	// the window now is, in the logical space WindowInfo::rect uses. Separate from the frame
+	// constraints (which travel in AcquireFrame), so a window move does not cause a relayout.
+	// Sent only on a real change (AppWindow::notifyWindowGeometry).
 
-	WindowControl = 12, // client -> server REQUEST: everything a scene can ask of the window it
-	// draws into -- close, state flags, fullscreen, frame rate/interval, extent, window menu, back
-	// button. ONE code with an operation discriminant rather than nine codes, because the reply is
-	// the same for all of them (a Status) and the routing is identical.
-	//
-	// Payload is a keyed CBOR map, not a positional array: the arguments differ per operation, and
-	// "which index means what depends on the op" is exactly the fragility the flat-array style
-	// avoids where the fields are homogeneous. Keys: "w" (window id), "op" (WindowControlOp), plus
-	// at most one operation-specific value -- see WindowControlOp.
-	//
-	// Reply: [int32 Status]. The `bool` these calls return to the scene is decided LOCALLY, from
-	// the mirrored window state, and is a precondition; the Status is what the window actually did.
-	// The server re-checks the precondition, because a client can send anything.
+	WindowControl = 12, // client -> server request: close, state flags, fullscreen, frame
+	// rate/interval, extent, window menu, back button, with an operation discriminant.
+	// Payload is a keyed CBOR map: "w" (window id), "op" (WindowControlOp), plus at most one
+	// operation-specific value -- see WindowControlOp.
+	// Reply: [int32 Status]. The `bool` returned to the scene is a local precondition check
+	// against the mirrored window state; the server re-checks it.
 
 	TextInputControl = 13, // client -> server notification: [w, op, req|cmd]. The scene asking the
-	// window's text-input processor to start, stop, or perform an edit (see TextInputOp).
-	//
-	// A NOTIFICATION and not a request, deliberately. The answer to "did the IME accept this" does
-	// not come back as a return value even locally -- it comes back as a state echo, below. Making
-	// it a request would also mean an IME activation that timed out could take the whole session
-	// down through the request watchdog, and losing a keyboard must not cost the connection.
-	// server -> client notification: [windowId, TextInputState]. The echo: what the processor
-	// decided the state now is. This is the ONLY source of truth for the client's widget -- the
-	// state belongs to the IME on the OS side, never to the application, so a client that updated
-	// its own field when it sent the request would be showing text the server has not accepted.
+	// window's text-input processor to start, stop, or perform an edit (see TextInputOp). A
+	// notification, so a timed-out IME activation cannot trip the request watchdog; the result
+	// comes back as TextInputState.
+
+	// server -> client notification: [windowId, TextInputState], the state the processor settled
+	// on. The only source of truth for the client's widget: it must not apply its own request.
 	TextInputState = 14,
 };
 
@@ -309,11 +240,11 @@ enum class WindowError : uint8_t {
 
 // Domain::Data: move a large opaque binary blob in either direction and reference it later by id.
 //
-// Lifecycle (the "sender" is whoever offers the data; works client->server AND server->client):
-//   Announce  (REQUEST, CBOR header) -- sender offers a blob: id, type, total size, packet count,
+// Lifecycle (the "sender" is whoever offers the data; works in both directions):
+//   Announce  (request, CBOR header) -- sender offers a blob: id, type, total size, packet count,
 //             packet size and a per-packet hash. The receiver agrees by replying without error (a
 //             mirror reply == accept) or declines with an error reply.
-//   Packet    (notification, RAW BINARY -- not CBOR) -- one chunk: [u64 id][u32 index][chunk bytes];
+//   Packet    (notification, binary -- not CBOR) -- one chunk: [u64 id][u32 index][chunk bytes];
 //             the transport LZ4 in sendFrame supplies the compression. Streamed back-to-back.
 //   Complete  (notification) -- receiver: all packets arrived and every per-packet hash matched.
 //   Release   (notification) -- sender: it will no longer reference the blob; the receiver may drop it.
@@ -328,18 +259,9 @@ enum class DataCode : uint8_t {
 	Release = 3,
 	Unavailable = 4,
 
-	// Cancel (notification, CBOR {id}) -- the SENDER abandons a transfer it is still streaming; the
-	// receiver drops the partial buffer and answers nothing.
-	//
-	// The receiver's half of this already exists and is called Unavailable: "I can no longer hold
-	// this". Cancel is deliberately not made to work in both directions, because then one fact would
-	// have two names on the wire. What was missing was only the sender's side -- until now the only
-	// way to stop sending was Release, which MEANS "I no longer reference the blob" and merely
-	// stopped the stream as a side effect of the transfer record going away.
-	//
-	// Additive: a peer that predates this answers a notification it does not know with nothing at
-	// all (an unknown NOTIFICATION is dropped, only a request gets NotImplemented), so the worst case
-	// against an old peer is the transfer completing as it does today.
+	// Cancel (notification, CBOR {id}) -- the sender abandons a transfer it is still streaming; the
+	// receiver drops the partial buffer and answers nothing. Sender-only: the receiver's
+	// counterpart is Unavailable. A peer without it drops the unknown notification.
 	Cancel = 5,
 };
 
@@ -355,9 +277,7 @@ enum class DataError : uint8_t {
 	BadHeader = 3, // malformed/inconsistent Announce header
 	HashMismatch = 4, // a received packet failed its announced hash
 	UnknownTransfer = 5, // a Packet/Complete/Release/Unavailable referenced an unknown id
-	Cancelled = 6, // the sender abandoned the transfer (DataCode::Cancel), or the local side did.
-	// Reported to whoever was waiting on the blob so that "it was called off" is distinguishable
-	// from "it arrived corrupt" (HashMismatch) and from "the peer refused it" (Declined)
+	Cancelled = 6, // the sender abandoned the transfer (DataCode::Cancel), or the local side did
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
@@ -371,11 +291,8 @@ enum class DataType : uint16_t {
 	Font = 2, // a large font-file blob; meta = {contentHash}; the receiver pins it in its font store
 };
 
-// Default chunk size. Must stay <= kMaxFrameSize and small enough that one packet is a modest frame:
-// the receiver validates the announced packet size against this, which (since every packet's
-// decompressed size is then bounded) is the real safeguard against a decompression bomb on this
-// domain -- the transport keeps only absolute (non-ratio) frame caps, so a strongly-compressed
-// screenshot packet is never rejected for its ratio.
+// Default chunk size. Must stay <= kMaxFrameSize. The receiver validates the announced packet size
+// against it, which bounds decompressed packet size (the transport has no ratio-based caps).
 constexpr uint32_t kRecommendedPacketSize = 64u * 1'024; // 64 KiB
 constexpr uint32_t kMaxBlockTransferSize = 512u * 1'024 * 1'024; // whole-blob policy ceiling
 
@@ -385,15 +302,16 @@ constexpr uint32_t kMaxBlockTransferSize = 512u * 1'024 * 1'024; // whole-blob p
 // content-addressed (a hash of the file bytes) and stored persistently on the server, so a font the
 // server already holds is never re-sent.
 //
-//   SourcesAnnounce (REQUEST, CBOR) -- client lists families/aliases/sources, each source tagged with
-//             its contentHash. Reply SourcesReady names the hashes the server is still missing (plus
-//             the atlas image's server object id); an error reply means the announce was rejected.
-//   FontInline (notification, CBOR {contentHash, bytes}) -- a small missing font shipped inline; large
-//             ones come over Domain::Data (DataType::Font, meta={contentHash}).
-//   GlyphRequest (notification, RAW BINARY) -- [u32 depId][faces...] asks the server to rasterize a set
+//   SourcesAnnounce (request, CBOR) -- client lists families/aliases/sources, each source tagged
+//             with its contentHash. Reply SourcesReady names the hashes the server is still
+//             missing (plus the atlas image's server object id); an error reply means the announce
+//             was rejected.
+//   FontInline (notification, CBOR {contentHash, bytes}) -- a small missing font shipped inline;
+//             large ones come over Domain::Data (DataType::Font, meta={contentHash}).
+//   GlyphRequest (notification, binary) -- [u32 depId][faces...] asks the server to rasterize a set
 //             of (contentHash, spec, faceId) glyphs; depId gates the frame that uses them.
 //   AtlasReady (notification, CBOR {depId, ok}) -- the server finished the atlas update for depId.
-//   CompileImage (REQUEST) -- reserved; the client never GPU-compiles, so the server just acks.
+//   CompileImage (request) -- reserved; not dispatched by either side.
 enum class FontCode : uint8_t {
 	SourcesAnnounce = 0,
 	SourcesReady = 1,
@@ -403,9 +321,7 @@ enum class FontCode : uint8_t {
 	CompileImage = 5,
 };
 
-// CompileImage is deliberately ABSENT: the code is declared but neither side dispatches it, and a
-// peer that advertised it would be promising something it drops on the floor. It is the one entry
-// that makes this mask carry information rather than restate the enum.
+// CompileImage is absent: the code is declared but neither side dispatches it.
 constexpr uint64_t kSupportedFontCodes = codeBit(FontCode::SourcesAnnounce)
 		| codeBit(FontCode::SourcesReady) | codeBit(FontCode::FontInline)
 		| codeBit(FontCode::GlyphRequest) | codeBit(FontCode::AtlasReady);
@@ -455,9 +371,8 @@ enum class MessageType : uint8_t {
 };
 
 // Map a Role onto the matching MessageType for a request / reply / error. The offsets follow the
-// MessageType layout above: Server=1/Client=2, ServerReply=4/ClientReply=5, ServerError=6/ClientError=7
-// -- i.e. reply is role+3 and error is role+5 (there is a reserved gap at value 3). Getting these wrong
-// mistypes messages so the peer's isReply()/isError() routing misclassifies them.
+// MessageType layout above: reply is role+3 and error is role+5 (value 3 is a reserved gap);
+// isReply()/isError() routing depends on it.
 static inline constexpr MessageType MessageTypeRequest(Role role) {
 	return MessageType(toInt(role));
 }
@@ -535,24 +450,16 @@ struct ServerHello {
 
 #if DEBUG
 // Shared 64-byte development bearer key (both demo client and server use this by default).
-//
-// Debug-only on purpose: the value is a fixed pattern computed from a constant, so a release build
-// that shipped it would present -- and accept -- a key every reader of this header already knows.
-// A release build must be handed a real key (AppThread::setBearerKey / ClientContext::setBearerKey).
+// Debug-only: the key is a public constant. Release builds must be given a real key
+// (AppThread::setBearerKey / ClientContext::setBearerKey).
 SP_PUBLIC BytesView getDevBearerKey();
 #endif
 
-/* Append scalars to a buffer in network byte order.
+/* Append scalars to a buffer in network byte order; the write-side counterpart of
+ * BytesViewNetwork. Values are passed in host order and converted here.
  *
- * The counterpart of BytesViewNetwork, which the tree has had all along. The write side did not: it
- * was a handful of private helpers taking an ALREADY-swapped value, so every call site had to
- * remember `writeValue32(buf, HostToNetwork(x))` -- and one of them did not, which is why
- * writeServerHello carries a note about a dictionary size that arrived byte-swapped on every
- * little-endian peer. Here the conversion is the writer's, and there is nothing left to forget.
- *
- * Floats travel as their BIT PATTERN rather than as a number, because some of them are not numbers:
- * InputEventData::input.x defaults to NaN and hasLocation() is defined by isnan(), so a NaN that
- * came back as a different NaN -- or as zero -- would change what the event means. */
+ * Floats travel as their bit pattern: InputEventData::input.x defaults to NaN and hasLocation() is
+ * defined by isnan(), so NaN must round-trip exactly. */
 class SP_PUBLIC WireWriter {
 public:
 	explicit WireWriter(Bytes &out) : _out(&out) { }
@@ -567,16 +474,14 @@ public:
 
 	void writeBytes(BytesView);
 
-	// `count` zero bytes. Padding inside a fixed-size record is written explicitly so that what
-	// travels is defined -- the raw dumps this replaces shipped whatever the compiler left there.
+	// `count` zero bytes; padding inside a fixed-size record is written explicitly.
 	void writeZero(size_t count);
 
 protected:
 	Bytes *_out = nullptr;
 };
 
-// Read the IEEE-754 bits of a float back. Symmetric with WireWriter::writeFloatBits, and used
-// instead of BytesViewNetwork::readFloat32 for the same reason: the bit pattern is what was sent.
+// Read the IEEE-754 bits of a float back; the counterpart of WireWriter::writeFloatBits.
 SP_PUBLIC float readFloatBits(BytesViewNetwork &);
 
 // --- stream I/O over a TransportConnection. All reads are bounded by an absolute wall-clock
@@ -597,20 +502,12 @@ SP_PUBLIC bool readFrame(TransportConnection &, uint64_t deadline, BytesView dic
 SP_PUBLIC void encodeFrame(Bytes &out, BytesView dict, MessageType, Domain, uint8_t msg,
 		uint32_t serial, BytesView payload);
 
-// Send-side buffer.
-//
-// sendFrame BLOCKS the calling thread: when the QUIC send buffer or the peer's flow-control window
-// is full, SSL_write_ex accepts nothing and it busy-waits in 1ms sleeps up to its deadline. On the
-// app thread that stalls the frame the scene is building, and the peer decides for how long.
-//
-// So a message is framed into this queue instead and drained non-blockingly from the connection's
-// poll(), which the looper already drives on socket readiness and on every update tick. Ordering is
-// FIFO, which is what the protocol needs; the handshake stays synchronous on purpose (it runs once,
-// before any frame, and its deadline is the point).
+// Send-side buffer. sendFrame blocks while the transport's send buffer or the peer's flow-control
+// window is full, so messages are framed into this FIFO queue and drained non-blockingly from the
+// connection's poll() (socket readiness and update ticks). The handshake stays synchronous.
 class SP_PUBLIC OutgoingQueue {
 public:
-	// A peer that never drains must not grow our memory without bound. Past this the connection is
-	// not stalled, it is dead, and the caller should drop it.
+	// Past this many pending bytes the peer is considered dead and the caller should drop it.
 	static constexpr size_t kMaxPending = 64u * 1'024 * 1'024;
 
 	// Frame a message and append it. Never blocks. False once the queue is over kMaxPending.
@@ -679,17 +576,15 @@ SP_PUBLIC GlobalError clientHandshake(TransportConnection &, BytesView bearerKey
 // `expectedKey`), negotiate the dictionary (server priority, else client suggestion, else none),
 // and reply with ServerHello (window info on success). Fills `outStatus` and `negotiatedDict`.
 // Returns true iff authenticated.
-// `requireBearerKey` false accepts the client whatever key it presents. Pass false only when the
-// TRANSPORT already established who the peer is (TransportCaps::PeerAuthenticated -- unix-domain
-// credentials), where the key would add nothing: the kernel's answer is stronger than a shared
-// secret, and access control is the socket's permissions.
+// `requireBearerKey` false accepts any key. Pass false only when the transport authenticated the
+// peer (TransportCaps::PeerAuthenticated -- unix-domain credentials, socket permissions).
 SP_PUBLIC GlobalError serverHandshake(TransportConnection &, BytesView expectedKey,
 		BytesView serverDict, Bytes &negotiatedDict, uint64_t deadlineUs,
 		bool requireBearerKey = true);
 
-// Server side: answer a connection with `status` instead of negotiating -- the way to turn one away
-// (GlobalError::Busy) so the peer gets a real answer rather than waiting out its own handshake
-// deadline. The ClientHello is not read (see the .cc), so this only ever blocks on the write.
+// Server side: answer a connection with `status` instead of negotiating (e.g. GlobalError::Busy),
+// so the peer does not wait out its handshake deadline. The ClientHello is not read, so this only
+// blocks on the write.
 // Returns `status`; the caller closes the connection afterwards.
 SP_PUBLIC GlobalError serverHandshakeReject(TransportConnection &, GlobalError status,
 		uint64_t deadlineUs);

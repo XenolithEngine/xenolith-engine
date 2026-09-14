@@ -163,11 +163,9 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 	}
 
 	if (damage.empty()) {
-		// This image already holds exactly what the frame wants to draw, down to the last vertex.
-		// With the queue opted into frame skipping, record nothing at all: the image keeps its
-		// content and stays in PRESENT_SRC, so it can be presented untouched. The frame itself is
-		// not cancelled - it still submits (an empty command buffer) and still presents, which
-		// keeps the semaphore chain and the presentation pacing exactly as they always are.
+		// The image already holds this frame. With SkipEmptyFrames, record nothing: the image stays
+		// in PRESENT_SRC, and the frame still submits an empty command buffer and presents, keeping
+		// the semaphore chain and pacing unchanged.
 		if (hasFlag(_data->queue->damage, core::QueueDamageFlags::SkipEmptyFrames)) {
 			_skipRedraw = true;
 			request->setRedrawSkipped(true);
@@ -696,7 +694,7 @@ QueuePassHandle::BufferInputOutputBarrier QueuePassHandle::getBufferInputOutputB
 			ret.input = BufferMemoryBarrier(buffer, VkAccessFlags(prev->dependency.finalAccessMask),
 					VkAccessFlags(current->dependency.initialAccessMask), transfer, offset, size);
 
-			// Vulkan VUID-vkCmdPipelineBarrier-dstStageMask-06462 states to check against CURRENT queue
+			// VUID-vkCmdPipelineBarrier-dstStageMask-06462: check against the current queue
 			ret.inputFrom = getApplicableStage(current, prev->dependency.finalUsageStage);
 			if (ret.inputFrom == core::PipelineStage::None) {
 				ret.inputFrom = core::PipelineStage::AllCommands;
@@ -718,7 +716,7 @@ QueuePassHandle::BufferInputOutputBarrier QueuePassHandle::getBufferInputOutputB
 						VkAccessFlags(next->dependency.initialAccessMask),
 						QueueFamilyTransfer{currentQueue->index, nextQueue->index}, offset, size);
 
-				// Vulkan VUID-vkCmdPipelineBarrier-dstStageMask-06462 states to check against CURRENT queue
+				// VUID-vkCmdPipelineBarrier-dstStageMask-06462: check against the current queue
 				ret.outputFrom = getApplicableStage(current, current->dependency.finalUsageStage);
 				ret.outputTo = getApplicableStage(current, next->dependency.initialUsageStage);
 				if (ret.outputTo == core::PipelineStage::None) {

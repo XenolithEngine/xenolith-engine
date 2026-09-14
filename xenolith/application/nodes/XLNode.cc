@@ -34,15 +34,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 #if XL_FRAME_ACCOUNT
 VisitAccount &getVisitAccount() {
-	// One frame at a time on one thread - see the declaration. A function-local static, like every
-	// other account's storage in this engine.
+	// One frame at a time on one thread - see the declaration
 	static VisitAccount s_account;
 	return s_account;
 }
 
 namespace {
-// Adds its own span to one bucket when it goes out of scope. A struct rather than two clock reads at
-// every call site, so a phase cannot be measured with its `else` branch left out.
+// Adds its own span to one bucket when it goes out of scope, covering every exit path.
 struct VisitPhase {
 	uint64_t *bucket;
 	uint64_t start;
@@ -177,9 +175,8 @@ Mat4 Node::getChainParentToNodeTransform(Node *parent, Node *node, bool withPare
 	return ret;
 }
 
-/* Unique per node for the life of the process - see Node::getStyleMatchId(). Atomic for the same
-reason DataIdentity::allocate is: nodes are built on worker threads too. Nothing compares two ids or
-reads order out of them - uniqueness is the whole contract - and it costs one increment per node. */
+/* Unique per node for the life of the process - see Node::getStyleMatchId(). Atomic: nodes are
+built on worker threads too. Only uniqueness is guaranteed, not order. */
 static uint64_t allocateStyleMatchId() {
 	static sprt::atomic<uint64_t> s_styleMatchId(1);
 	return s_styleMatchId.fetch_add(1);
@@ -362,14 +359,8 @@ void Node::setVisible(bool visible) {
 }
 
 void Node::setOverlay(bool value) {
-	// Nothing to mark: the flag is read by the visit, on the next frame, for this node and everything
-	// under it - there is no cached per-descendant state to invalidate, which is exactly why the level
-	// is carried on FrameInfo rather than resolved into each node.
-	//
-	// What it does NOT do is produce damage. Changing only the level moves pixels between passes
-	// without moving any geometry, so a partial redraw has nothing to notice. In practice this is set
-	// while a node is being attached, which damages the area anyway; a live flip on a settled node
-	// wants a setVisible() cycle or a moved node around it.
+	// Read by the next visit and carried on FrameInfo, so nothing to invalidate. No damage is
+	// produced: a live flip on a settled node needs a setVisible() cycle or a geometry change.
 	_overlay = value;
 }
 
@@ -428,17 +419,10 @@ static void pushChainSystems(FrameInfo &info, Node *node,
 
 /* Puts the frame's system stack into the state this node would have seen, and takes it back off.
 
-`info.systemStack` is built by the visit as it descends, so it describes wherever the pass has got
-to - and the events a catch-up raises (`handleChildComponentsDirty`, `handleChildContentSizeDirty`,
-`handleChildLayoutChildren`) are delivered to `back()` of each tag on it. isVisitPassed() is what
-makes this safe to fix by pushing alone: it holds only when info.currentNode is this node or one of
-its ancestors, so what is on the stack is a PREFIX of this node's own chain, never anything foreign.
-What is missing is the ancestors between there and here, and this pushes exactly those, in the
-order the visit would have.
-
-The self region is separate because a node's own systems are on the stack for its CHILDREN and off
-it for its own phases - the same asymmetry wrapVisit has, and the reason a node never delivers its
-events to itself. */
+Catch-up events (`handleChildComponentsDirty`, `handleChildContentSizeDirty`,
+`handleChildLayoutChildren`) go to `back()` of each tag. isVisitPassed() guarantees the stack holds
+a prefix of this node's chain, so pushing the missing ancestors in visit order is enough. A node's
+own systems are pushed only for its children (as in wrapVisit), never for its own events. */
 struct Node::VisitCatchUp {
 	// `info` null: no frame in flight, or the pass has not gone past this node - every method is
 	// then a no-op, so the call sites stay linear
@@ -456,8 +440,8 @@ struct Node::VisitCatchUp {
 	VisitCatchUp(const VisitCatchUp &) = delete;
 	VisitCatchUp &operator=(const VisitCatchUp &) = delete;
 
-	// The pass is now inside `node`: its systems join the stack and it becomes the node the stack
-	// describes, exactly as in wrapVisit, so the children entering below see what they would have
+	// The pass is now inside `node`: its systems join the stack and it becomes info.currentNode, as
+	// in wrapVisit
 	void enterSelf(Node *node) {
 		if (!_info) {
 			return;
@@ -495,11 +479,9 @@ struct Node::VisitCatchUp {
 };
 
 bool Node::isVisitPassed(const FrameInfo &info) const {
-	// info.currentNode is the deepest node the pass has fully entered - the one the system stack
-	// describes. If it is this node or one of its ancestors, the pass has run this node's phases
-	// (a node's own phases run before its children are visited) and a catch-up is both needed and
-	// safe. Anywhere else it either has not reached here yet, and will run the phases in the
-	// ordinary order, or it is off in a branch of its own, where nothing here applies.
+	// info.currentNode is the deepest node the pass has entered. If it is this node or an ancestor,
+	// this node's phases have already run and a catch-up is needed; otherwise the pass has not
+	// reached here or is in another branch.
 	for (auto n = this; n; n = n->getParent()) {
 		if (n == info.currentNode) {
 			return true;
@@ -541,13 +523,10 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 		child->handleEnter(_scene);
 		child->handleLayoutInParent(this);
 
-		// The child arrived after this node measured itself and laid its children out for this
-		// frame, so both answers are now out of date - a fit-content container is the size of a
-		// child list it no longer has. Redo them here, with the child already caught up by its own
-		// handleEnter above. markMeasureDirty is self-selecting: a node with nothing to measure by
-		// commits no size (see handleMeasure).
+		// The child arrived after this node measured and laid out for this frame; redo both, with
+		// the child caught up by its handleEnter. A node with nothing to measure commits no size.
 		if (_bulkChildren > 0) {
-			// Owed, not skipped: BulkChildren pays it once when the filling is done.
+			// Owed: BulkChildren performs it once when the scope closes.
 			_bulkCatchUpOwed = true;
 		} else {
 			auto info = _scene ? _scene->getFrameInfo() : nullptr;
@@ -560,13 +539,8 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 		}
 	}
 
-	/* Only the NEW child's subtree is recoloured, not this node's whole one.
-
-	Gaining a child cannot change what this node displays, so the siblings already here keep the
-	values they had - and re-deriving them costs a walk of the entire subtree, on every single
-	add. Filling a container is then quadratic in the size of what is in it: a Markdown document
-	of ten thousand blocks spent ninety per cent of its build time in this pair of calls and
-	arrived at the answer it already had. */
+	/* Only the new child's subtree is recoloured: gaining a child does not change this node's
+	displayed values, and recolouring the whole subtree makes filling a container quadratic. */
 	if (_cascadeColorEnabled) {
 		child->updateDisplayedColor(_displayedColor);
 	}
@@ -610,15 +584,8 @@ void Node::markChildrenStructureDirty() {
 		return;
 	}
 
-	/* The fan-out to the children is RECORDED here and performed once, in the phase that applies
-	the reorder this same call just asked for.
-
-	Doing it here instead is quadratic, and not subtly: filling a container with N children calls
-	this N times - twice per child, because writing a z-order reorders too - and each call walked
-	every child already in it. A ten-thousand-block Markdown document spent twenty seconds in this
-	loop and nowhere else. Deferring changes nothing about who ends up dirty: the flag is consumed
-	in runChildrenPhases, which is what re-sorts the list and re-lays it out, and a node that
-	catches up mid-visit runs those phases too. */
+	/* The fan-out to the children is recorded here and performed once in runChildrenPhases, which
+	applies the reorder; doing it per call makes filling a container quadratic. */
 	for (auto &child : _children) { child->markContentSizeDirty(); }
 }
 
@@ -817,9 +784,8 @@ StringView Node::getName() const {
 	return StringView();
 }
 
-/* An identity change is an input of the SIBLINGS' selectors too (`.a + .b`, `:nth-of-type`), and
-those are matched against the parent's child list - so the parent's child-list stamp has to move as
-well. O(1): the siblings are not touched, only the number they all read. */
+/* An identity change feeds siblings' selectors (`.a + .b`, `:nth-of-type`), so the parent's
+child-list stamp moves too. O(1): the siblings themselves are not touched. */
 void Node::markStyleIdentityDirty() {
 	if (_parent) {
 		++_parent->_childrenStyleVersion;
@@ -1009,13 +975,8 @@ bool Node::removeSystem(System *com) {
 		return false;
 	}
 
-	/* The erase happens AFTER the callbacks, and the position is looked up again for it.
-
-	handleExit and handleRemoved are entitled to remove other systems from this same node, and the
-	ones that carry listeners of their own routinely do - DragSystem takes its cursor layer with it,
-	ContextMenuSystem and TooltipSystem their listeners. Any iterator taken before those calls has
-	had the ground moved under it: erase() shifts everything after the hole, so an index from before
-	can point one element past what it named, and this would then remove the wrong system. */
+	/* Erase after the callbacks, looking the position up again: handleExit/handleRemoved may remove
+	other systems from this node (e.g. DragSystem its cursor layer), shifting indices. */
 	auto it = sprt::find(_systems.begin(), _systems.end(), com);
 	if (it == _systems.end()) {
 		return false;
@@ -1160,10 +1121,8 @@ void Node::handleEnter(Scene *scene) {
 		}
 	}
 
-	// Entering in the middle of a visit, with the pass already past this place in the tree: the
-	// phases have to be caught up here, because next frame is too late. Anywhere else - the pass
-	// has not reached us, or is off in a branch of its own - there is nothing to catch up, and an
-	// ordinary scene build pays for none of this.
+	// Entering mid-visit after the pass went past this place: catch the phases up now, not next
+	// frame. Otherwise there is nothing to catch up.
 	auto frameInfo = scene->getFrameInfo();
 	if (frameInfo && !(_parent && _parent->isVisitPassed(*frameInfo))) {
 		frameInfo = nullptr;
@@ -1173,13 +1132,11 @@ void Node::handleEnter(Scene *scene) {
 	VisitCatchUp catchUp(frameInfo, this);
 
 	if (frameInfo) {
-		// The components phase runs HERE, on the way down, because that is the direction style
-		// cascades: a container has to have been resolved - become a flex container, publish its
-		// custom properties - before the children below map their own item properties onto it.
+		// Components run on the way down, the direction style cascades: a container must be
+		// resolved before its children map their item properties onto it.
 		runComponentsPhase(*frameInfo, false);
 
-		// From here on the pass IS at this node, exactly as wrapVisit has it while it visits its
-		// children: this node's own systems on the stack, and the stack describing this node
+		// From here on the pass is at this node, as in wrapVisit while it visits children
 		catchUp.enterSelf(this);
 	}
 
@@ -1193,11 +1150,8 @@ void Node::handleEnter(Scene *scene) {
 	_running = true;
 	this->resume();
 
-	// The other half of the catch-up, on the way OUT: size and layout resolve upward, so by the
-	// time a container gets here its children have run their own and it lays out against children
-	// that already carry their style and their size. leaveSelf() first, because a node's own
-	// phases run with only its ANCESTORS on the stack - that is what keeps it from delivering its
-	// own events to itself.
+	// Size and layout catch up on the way out, so a container lays out styled, sized children.
+	// leaveSelf() first: a node's own phases run with only its ancestors on the stack.
 	if (frameInfo) {
 		catchUp.leaveSelf();
 		runPendingPhases(*frameInfo);
@@ -1290,7 +1244,7 @@ void Node::handleMeasure() {
 
 // Deliver a descendant event to the nearest opted-in ancestor system on each frame-stack tag.
 // The node's own systems are not on the stack yet during its phase processing (pushed later in
-// wrapVisit), so only strict ancestors are visited - exactly the intended bubble-up semantics
+// wrapVisit), so only strict ancestors receive it
 template <typename Fn>
 static void notifyStackChildEvent(FrameInfo &info, SystemFlags flag, const Fn &fn) {
 	for (auto &it : info.systemStack) {
@@ -1360,17 +1314,14 @@ void Node::runPendingPhases(FrameInfo &info) {
 
 	_inPendingPhases = true;
 
-	// The same phase bodies the visit runs, in the same order, with nothing inherited from a
-	// parent pass - there was none. Phase 1 has usually already run on the way down (see
-	// handleEnter); it is repeated here for a node that gained a child after it had entered, and
-	// costs a flag read when there is nothing left to do.
+	// The visit's phase bodies in the same order, with no parent flags. Phase 1 usually ran in
+	// handleEnter; repeated for a node that gained a child after entering (a flag read otherwise).
 	runComponentsPhase(info, false);
 	runMeasurePhase(info);
 	runContentSizePhase(info, false);
 
-	// By the time a container gets here its new children have run their own catch-up (they do it
-	// at the tail of handleEnter, i.e. deepest first), so it lays out against styled, sized
-	// children rather than against whatever they looked like before the stylesheet reached them.
+	// New children have already caught up (deepest first, in handleEnter), so layout sees styled,
+	// sized children.
 	runChildrenPhases(info, false);
 
 	_inPendingPhases = false;
@@ -1438,9 +1389,7 @@ void Node::handleTransformDirty(const Mat4 &parentTransform) {
 	++getVisitAccount().transformCalls;
 #endif
 
-	// The copy below is what lets a system remove itself from inside its own callback; a node with no
-	// systems - most of a scene - should not pay for the possibility. Measured as nothing on its own
-	// (the phase's cost turned out to be one callback, see the account), and kept because it is free.
+	// The copy below lets a system remove itself from its callback; skipped when there are none
 	if (_systems.empty()) {
 		return;
 	}
@@ -1456,12 +1405,7 @@ void Node::handleTransformDirty(const Mat4 &parentTransform) {
 #endif
 			it->handleTransformDirty(parentTransform);
 #if XL_FRAME_ACCOUNT
-			/* A TRIPWIRE WITH A NAME, because the account can say "the dispatch" and no more.
-
-			This is how the largest item in a studio page's visit was found: 56 dispatches at 103 us
-			each, and the type was `CallbackSystem` - `basic2d::ScrollViewBase`'s answer to a transform,
-			which hands a virtualized controller a full pass. A millisecond inside one system's
-			notification is pathological by any measure, so it says so, with the name. */
+			// Names a system that spends over a millisecond answering one transform
 			const auto oneTime = core::getAccountClock() - oneStart;
 			if (oneTime > 1'000'000) {
 				log::source().debug("visit::account", "a system spent ",
@@ -1863,8 +1807,7 @@ const Mat4 &Node::getModelToNodeTransform() const {
 }
 
 bool Node::isTouchedAsDrawn(const Vec2 &worldLocation, float padding) const {
-	// Never visited: there is no drawn frame to answer about, and the identity matrix would put
-	// the node at the origin and answer for whatever happens to be there
+	// Never visited: no drawn frame to test against
 	if (!_modelViewValid || !_visible) {
 		return false;
 	}
@@ -1945,12 +1888,11 @@ Mat4 Node::transform(const Mat4 &parentTransform) {
 }
 
 bool Node::runComponentsPhase(FrameInfo &info, bool ancestorDirty) {
-	// Before the style is resolved, not after: the resolver reads `:hover` off this node, and a
-	// node that has only just been attached has never run the hit test that answers it. Flipping
-	// here re-dirties the components, which the loop below is already written to absorb
+	// Before style resolution: the resolver reads `:hover`, which a just-attached node has not hit
+	// tested yet. A flip re-dirties components, which the loop below absorbs
 	settlePointerState();
 
-	// Handlers may change node structure AND the node's own components. If a handler re-dirties
+	// Handlers may change node structure and the node's own components. If a handler re-dirties
 	// components, repeat handleComponentsDirty (bounded to 12 iterations)
 	const bool ownComponentsDirty = _componentsDirty;
 	if (ancestorDirty) {
@@ -1997,8 +1939,7 @@ bool Node::runChildrenPhases(FrameInfo &info, bool parentReordered) {
 	// runs last of the two - sortAllChildren() only applies a reorder already asked for
 	bool reordered = false;
 	if (sortAllChildren() || parentReordered) {
-		// The structure change recorded by markChildrenStructureDirty, paid once for however many
-		// children arrived since the last visit.
+		// The structure change recorded by markChildrenStructureDirty, once per visit
 		handleReorderChildDirty();
 		_layoutChildrenDirty = true; // child order changed -> re-lay-out children
 		reordered = true;
@@ -2043,9 +1984,8 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 		runMeasurePhase(info);
 	}
 
-	// The transform phase and the model-matrix rebuild below are the visit's alone: both need the
-	// PARENT's final world matrix, which only a top-down pass has, which is why runPendingPhases
-	// does without them (see its comment).
+	// The transform phase and model-matrix rebuild are visit-only: both need the parent's final
+	// world matrix, so runPendingPhases skips them.
 
 	// Phase 3: transform notifications - the node's position is fixed. The world matrix itself
 	// is rebuilt below, once the size is final (the matrix depends on content size)
@@ -2090,13 +2030,8 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera) {
 	XL_VISIT_PHASE(self);
 
-	/* Publish this node into the frame's hit-test registry, if it offers anything to it.
-
-	Here, and not in a system of its own, is the whole point: the rect is the one that was drawn (the
-	visit has just built _modelViewTransform), the order is paint order, and a node the visit does
-	not reach is not registered - so invisible, clipped-away and detached subtrees stop answering
-	with no bookkeeping at all. What used to cost a Ref-derived System with a virtual visit hook on
-	every drop target, context-menu target and tooltip is now one flag test. */
+	/* Publish this node into the frame's hit-test registry: the rect is the drawn one, order is
+	paint order, and nodes the visit does not reach are not registered. */
 	if (_hitTestFlags != HitTestFlags::None && info.input) {
 		const URect *scissor = nullptr;
 		if (auto ctx = info.currentContext) {
@@ -2159,10 +2094,8 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 
 	NodeVisitFlags flags = processParentFlags(info, parentFlags);
 
-	// Style-driven visibility (VisibilityComponent) cuts the visit HERE, after the node's own
-	// data phases, not at the top like the explicit _visible flag: nothing below runs (no draw,
-	// no children, no input), yet the hidden node keeps processing its components each frame,
-	// so the styling protocol can still reach it and un-hide it (class change, CSS reload).
+	// Style-driven visibility (VisibilityComponent) cuts the visit here, after the node's own data
+	// phases (unlike _visible): no draw, children or input, but styling can still un-hide it.
 	if (!_running || !isEffectivelyVisible()) {
 		if (hasFrameContext) {
 			info.popContext();
@@ -2203,9 +2136,9 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 	}
 
 	// End of node-local processing.
-	// Publish AddToFrameStack systems onto info.systemStack AFTER this node's own phases ran, so a
-	// node only ever sees ANCESTOR systems on the stack (never its own) - this is what makes the
-	// child-event dispatch in handle{Measure,ContentSizeDirty,LayoutChildren}(FrameInfo&) bubble up.
+	// Publish AddToFrameStack systems onto info.systemStack after this node's own phases ran, so a
+	// node only sees ancestor systems on the stack - how child events in
+	// handle{Measure,ContentSizeDirty,LayoutChildren}(FrameInfo&) bubble up.
 	// The stack stays live while children are visited below, and is popped once they are done
 
 	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;

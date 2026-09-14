@@ -29,66 +29,42 @@
 #include "XL2dLayerRounded.h"
 #include "XL2dIconSprite.h"
 #include "XLUiControlLock.h"
-#include "XLUiColorPicker.h" // the built-in picker: its surface, its params and its tabs
+#include "XLUiColorPicker.h" // the built-in picker
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** A colour: a swatch of it, its hex, and a way to pick another one.
+/** A colour field: a swatch, a hex text line and a picker.
 
-A swatch with a picker, not four spin boxes - which is the whole reason a colour is a type of its
-own rather than a vector of four numbers.
+Two pickers: the platform colour dialog and a built-in surface. PickerMode selects which one a tap
+opens; `Auto` checks `AppWindow::isDialogSupported(DialogType::Color)` at the moment of opening.
 
-TWO PICKERS, AND WHICH ONE IS A DECLARED CHOICE. The platform's colour dialog is the right one
-where it exists: it is the one the user already knows, and it can reach the whole screen. It does
-not exist everywhere - `AppWindow::isDialogSupported(DialogType::Color)` is exactly the question -
-and a widget with no answer for that case is a widget that does not work on the machine in front of
-you. So this carries a picker of its own, and PickerMode says which one a tap opens: `Auto` asks the
-window AT THE MOMENT OF OPENING (the window can change under a widget), `System` and `Fallback` are
-the direct answers. A mode is not a debug switch: an application that wants its own picker
-everywhere, for one look across platforms, says so.
+The hex line is parsed with `sprt::geom::readColor` (the stylesheet parser: `#rgb`, `#rrggbb`,
+`#rrggbbaa`, `rgb()`, `hsl()`, named colours); formatColor is its inverse.
 
-THE HEX FIELD IS REAL. Typing `#3a7` is how a colour is entered without any picker at all, and it
-is the only path a keyboard user has where no dialog exists. Reading it is NOT this widget's work:
-`sprt::geom::readColor` already reads `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `hsl()` and the
-named colours, and it is the same function a stylesheet is parsed with - so what this field accepts
-and what CSS accepts cannot drift apart. Printing has no such function, and formatColor is its
-inverse: `readColor(formatColor(c)) == c` for every colour this field can hold.
+Text is committed on Enter and on blur, not per keystroke (unlike ui::NumberField), since partial
+hex strings are rarely valid. Enter keeps a refused text with its message; blur restores the value's
+text and clears the mark.
 
-IT COMMITS ON ENTER AND ON BLUR, and that is a deliberate difference from ui::NumberField, which
-commits on every keystroke. A number has valid prefixes - "-", "1", "1." are all on the way to a
-number - while a colour has almost none: `#ff0` is a colour and `#ff00` is nothing, so committing
-per keystroke would flash a refusal through the middle of every value typed. The two keys therefore
-mean different things: ENTER is "take this", so a refusal stays on screen with its reason, while
-BLUR is "I am done", so the text goes back to what the value actually is and the mark clears.
+In a form it is one field, joined like ui::VectorField: the form focuses the hex line, a tap in the
+hex line reports focus to the form, and Tab leaves to the form.
 
-INSIDE A FORM it is ONE field - the swatch, the hex line and the button are one value - and it
-joins by the same three seams ui::VectorField uses: the form focuses it and the hex line takes the
-caret, a tap in the hex line tells the form to catch up, and Tab out of it goes to the form rather
-than to nowhere.
-
-CSS: type `color-field`, class `xl-ui-color-field`, states `.open`, `.invalid`, `.disabled`.
+CSS: type `color-field`, class `xl-ui-color-field`, states `.open`, `.unavailable`, `:invalid`,
+`:disabled`.
 Children are `color-field > swatch`, `color-field > text-input` and `color-field > icon`. The
-swatch's colour is the VALUE, so it is written in code rather than by a sheet - it is data, not
-decoration. The built-in picker's surface is type `color-picker`. */
+swatch colour is the value and is set in code. The built-in picker's surface is type
+`color-picker`. */
 class SP_PUBLIC ColorField : public Panel, public EditLockTarget {
 public:
-	/* The accepted colour. Not fired for a refusal, and not for a value a program assigned
-	silently.
-
-	IT FIRES THROUGHOUT A DRAG of the built-in picker's bars, the way ui::Slider's callback does and
-	for the same reason: a colour that only arrived when the surface closed would leave the swatch,
-	the hex line and whatever the application paints from this all showing the old value while the
-	person is choosing. An owner that records history is the one that groups a gesture into a single
-	entry. */
+	/* The accepted colour; not fired for a refusal or a silent assignment. Fires throughout a drag
+	of the built-in picker's bars (as ui::Slider does); an owner recording history groups a gesture
+	into one entry. */
 	using ColorCallback = Function<void(const Color4B &)>;
 
-	// The hex line took or lost the caret. The FORM ADAPTER listens here: a tap that puts the caret
-	// in it has to make the form focus this FIELD, or the form goes on filtering keys to whatever
-	// it focused last. The widget cannot do that itself - forms/ knows about input/, never the
-	// other way round.
+	// The hex line took or lost the caret. The form adapter uses it to focus this field on a tap
+	// (forms/ depends on input/, not the other way).
 	using FocusCallback = Function<void(bool focused)>;
 
-	// Tab out of the hex line. Exactly ui::TextInput's seam, for its reason.
+	// Tab out of the hex line, as in ui::TextInput.
 	using NavigateCallback = Function<bool(bool backwards)>;
 
 	enum class PickerMode {
@@ -102,9 +78,8 @@ public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;
 
-	/* Phase 6. The side these parts take comes from the resolved `direction`, and an ancestor's
-	   StyleResolver re-resolves this node in reaction to its content-size phase - so phase 4
-	   reads the direction from before the pass. See placeInlineParts. */
+	/* Places the parts by the resolved `direction`, which is only settled at this phase, not in
+	   handleContentSizeDirty. */
 	virtual void handleLayoutChildren() override;
 
 	void placeInlineParts();
@@ -113,15 +88,14 @@ public:
 	virtual void setValue(const Color4B &, bool silent = false);
 	const Color4B &getValue() const { return _value; }
 
-	// Everything sprt::geom::readColor reads. False leaves the value exactly as it was.
+	// Accepts what sprt::geom::readColor reads. False leaves the value unchanged.
 	virtual bool setValueFromString(StringView, bool silent = false);
 
 	// "#rrggbb", or "#rrggbbaa" when alpha is enabled.
 	String formatValue() const;
 	static String formatColor(const Color4B &, bool alpha);
 
-	// Whether the value carries an alpha channel: it decides the hex the field prints and collects,
-	// and it is what asks the system dialog for an alpha slider.
+	// Whether the value carries alpha: selects the hex format and the system dialog's alpha slider.
 	virtual void setAlphaEnabled(bool);
 	bool isAlphaEnabled() const { return _alpha; }
 
@@ -131,35 +105,26 @@ public:
 	virtual void setPickerMode(PickerMode);
 	PickerMode getPickerMode() const { return _mode; }
 
-	// Whether the system dialog can be served for this window right now. What `Auto` asks.
+	// Whether the system dialog is available for this window now; used by `Auto`.
 	bool isSystemPickerAvailable() const;
 
-	// The built-in surface's swatches. A modest set is built in; an empty list hides the grid and
-	// leaves the hex line as the whole picker.
+	// The built-in surface's swatches (a default set is provided); an empty list hides the grid.
 	virtual void setPalette(SpanView<Color4B>);
 	SpanView<Color4B> getPalette() const { return _palette; }
 
-	// False when the field is disabled, when the surface is already up, or when the mode asks for a
-	// system dialog the platform will not serve.
+	// False when disabled, already open, or the mode requires an unavailable system dialog.
 	virtual bool open();
 	virtual void close();
 	bool isOpen() const { return _picker != nullptr; }
 	SubWindow *getPicker() const { return _picker; }
 
-	// The template the built-in surface is opened from: its stylesheet, its title, its flags. The
-	// content, the size and the placement are the widget's and are overwritten.
+	// The template for the built-in surface (stylesheet, title, flags); content, size and placement
+	// are overwritten by the widget.
 	virtual void setPickerConfig(PopupSurfaceConfig &&);
 	const PopupSurfaceConfig &getPickerConfig() const { return _pickerConfig; }
 
-	/* Which of RGB / HSL / HSV the built-in surface opens on.
-
-	Named for the COLOUR mode, because `PickerMode` above already means something else on this
-	widget - which picker a tap opens at all. The two never appear in one sentence and would be a
-	trap in one name.
-
-	Kept HERE rather than in the surface, because the surface does not outlive a choice: it is
-	created on every open and destroyed on every close, so a tab remembered inside it would be
-	remembered for exactly as long as the person could still see it. */
+	/* Which of RGB / HSL / HSV the built-in surface opens on (distinct from PickerMode). Stored
+	here because the surface is recreated on every open. */
 	virtual void setPickerColorMode(ColorPickerMode);
 	ColorPickerMode getPickerColorMode() const { return _pickerMode; }
 
@@ -167,24 +132,15 @@ public:
 	virtual void setFocusCallback(FocusCallback &&);
 	virtual void setNavigateCallback(NavigateCallback &&);
 
-	// The hex line, for what only it can be told.
+	// The hex line.
 	TextInput *getInput() const;
 
-	// Whether the last commit of the text was taken. False is what the `invalid` class is painted
-	// from, and the message is why.
+	// Whether the last text commit was accepted; false sets `:invalid`, with the message.
 	bool isValid() const { return _valid; }
 	StringView getValidationMessage() const { return _message; }
 
-	/* WHY THE PICKER DID NOT OPEN - which is a different question from whether the value is any
-	good, and used to be answered through the same channel.
-
-	Two things reach here: a platform with no colour dialog at all, and a dialog that ran and came
-	back failed. Neither is a validation failure. The value is untouched, the hex line still takes
-	the colour typed by hand, and only one ROUTE into the field is missing - so painting `invalid`
-	sent the author hunting for a typo in a value that had none.
-
-	Cleared by the next open() that gets somewhere, because "the picker is unavailable" is a
-	statement about the attempt, not a property the field keeps for ever. */
+	/* Why the picker did not open: no colour dialog on the platform, or the dialog failed. Separate
+	from validation; the value is untouched. Cleared by the next successful open(). */
 	bool isUnavailable() const { return _unavailable; }
 	StringView getUnavailableMessage() const { return _unavailableMessage; }
 
@@ -195,19 +151,19 @@ public:
 protected:
 	using Panel::init;
 
-	// The hex line. A ui::TextInput that reports the focus EDGE - which is not the same thing as
-	// the focus request, and is the only moment the row can act on. Defined in the .cc.
+	// The hex line: a ui::TextInput that reports the focus edge (the granted focus, not the
+	// request). Defined in the .cc.
 	class Input;
 
-	// Reads the text and takes it, or refuses it. `fromEnter` decides what a refusal means: Enter
-	// keeps the text and the mark, a blur puts the value's own text back.
+	// Parses and accepts or refuses the text. On refusal, Enter keeps the text and the mark, blur
+	// restores the value's text.
 	virtual bool commitText(bool fromEnter);
 
 	virtual void updateContent();
 	virtual void updateInteractiveState();
 	virtual void setInvalid(bool, StringView message);
 
-	// The other channel: an ACTION this control offers could not be performed, and why.
+	// An action this control offers (opening a picker) could not be performed, and why.
 	virtual void setUnavailable(bool, StringView message);
 
 	virtual bool openSystemPicker();
@@ -217,12 +173,9 @@ protected:
 
 	void handleInputFocus(bool);
 
-	/* The hex line's echo has just been applied, and `focused` is what the platform granted.
-
-	The BLUR commit has to happen here rather than on the focus edge: the edge is reported from
-	inside TextInput::handleTextInput, BEFORE the echoed state is stored, so text written back there
-	is overwritten by the very echo that announced the blur. ui::NumberField restores in the same
-	two places and for the same reason. */
+	/* The hex line's echo has been applied; `focused` is what the platform granted. The blur commit
+	happens here: the focus edge is reported before the echoed state is stored, so text written
+	there would be overwritten. */
 	void handleInputEcho(bool focused);
 
 	AppWindow *getAppWindow() const;
@@ -251,9 +204,8 @@ protected:
 	PopupSurfaceConfig _pickerConfig;
 	ColorPickerMode _pickerMode = ColorPickerMode::RGB;
 
-	// The cancellation token of the system dialog that is up, and what says one IS up. Kept because
-	// a second tap must not open a second dialog, and because a field leaving the scene has to take
-	// its dialog with it.
+	// The open system dialog's cancellation token, if any: prevents a second dialog and is
+	// cancelled when the field leaves the scene.
 	Rc<sprt::window::DialogRequest> _dialog;
 
 	ColorCallback _valueCallback;

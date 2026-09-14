@@ -27,32 +27,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The text model behind TextView: the document itself, its logical lines, and the "blocks"
-// the view materializes - one block per chunk of a line, one Label per block.
+// The text model behind TextView: the whole document, its logical lines, and the blocks the view
+// materializes (one Label per block). TextInput's _inputState holds only a window of it, since the
+// IME string costs O(size) per echo. Plain data and index arithmetic, no nodes or fonts.
 //
-// This exists because the widget stopped keeping the document inside TextInput's _inputState.
-// The IME contract carries a single string whose layout, echo and re-echo are all O(size of that
-// string), so the widget keeps only a small window of the document there - and something else has
-// to be the authority on the whole text. This is that something: plain data and index arithmetic,
-// no nodes, no fonts, testable over the inspector socket without a single frame rendered.
+// A logical line is split on '\n'. Lines longer than the chunk size are cut into chunk-sized
+// blocks, because the font formatter lays out in a uint16_t domain (charNum caps a label at 65535
+// chars, CharLayoutData::pos caps an unwrapped line at 32767 layout units). A chunk boundary acts
+// as a forced line break on screen.
 //
-// LINES AND BLOCKS. A logical line is what the string says (split on '\n'). A block is what one
-// Label is allowed to hold: lines longer than the chunk size are cut into chunk-sized blocks,
-// because the font formatter lays out in a uint16_t domain (charNum caps one label at 65535
-// chars, CharLayoutData::pos caps an unwrapped line at 32767 layout units) and a block is the
-// unit that provably fits. A chunk boundary therefore acts as a forced line break on screen.
+// apply() updates the index incrementally: the tail of the arrays is shifted and only the inserted
+// text is scanned.
 //
-// INDEX MAINTENANCE IS INCREMENTAL. Every keystroke lands here as apply(); rebuilding the line
-// index from scratch would be O(document) per keystroke, which is the exact cost this design
-// removes. Instead the tail of the index is shifted and only the inserted text is scanned. The
-// tail shift itself (a memmove of the arrays past the edit) is the accepted price: ~4 MB per
-// million lines, fractions of a millisecond.
-//
-// ROWS. The vertical model counts visual rows per block: 1 without wrapping, measured or
-// estimated with it. Row prefix sums answer "which block is at scroll offset Y" and "how tall is
-// the document"; they are rebuilt lazily from the first dirty block. Rows are integers on
-// purpose - multiplying by the (uniform, monospace) line height happens in the view, in double:
-// document Y coordinates reach millions of pixels, where float's 1-ulp step is already 2 px.
+// Rows: visual rows per block, 1 without wrapping, measured or estimated with it. Row prefix sums
+// map a scroll offset to a block and give the document height; rebuilt lazily from the first dirty
+// block. Rows are integers; the view multiplies by the line height in double, since document Y
+// reaches millions of pixels.
 class SP_PUBLIC TextDocument {
 public:
 	// One single-range replacement: `removed` code units at `pos` replaced by `inserted` ones.
@@ -81,7 +71,7 @@ public:
 
 	// Visual cells of a monospace slice: tab counts as 4 (the formatter advances to the next
 	// multiple of 4 space widths), wide (CJK and fullwidth) as 2, everything else as 1. Feeds
-	// the row ESTIMATE for blocks that were never laid out; the measured value from a real
+	// the row estimate for blocks that were never laid out; the measured value from a real
 	// Label replaces it once the block is materialized.
 	static uint32_t countCells(WideStringView);
 
@@ -116,10 +106,9 @@ public:
 
 	// -- blocks --
 
-	// The chunk size defines the block structure wholesale, so changing it rebuilds the block
-	// index and resets every row to 1 (the caller re-estimates). It changes when wrapping is
-	// toggled: an unwrapped block must fit the formatter's X ceiling, a wrapped one only its
-	// char-count ceiling, so the two modes want very different chunks.
+	// Rebuilds the block index and resets every row to 1 (the caller re-estimates). Changed when
+	// wrapping is toggled: unwrapped blocks must fit the formatter's X ceiling, wrapped ones only
+	// its char-count ceiling.
 	void setChunkSize(uint32_t);
 	uint32_t getChunkSize() const { return _chunk; }
 
@@ -141,8 +130,7 @@ public:
 	void estimateRows(uint32_t columns);
 
 	// The incremental counterpart: re-estimates [firstBlock, pastLast) after an edit reset the
-	// affected blocks' rows to 1. Without this a scroll pinned to the bottom would aim at a
-	// document whose freshly edited tail claims one row per block until it is measured.
+	// affected blocks' rows to 1, so the document height stays close before measurement.
 	void estimateRowsRange(uint32_t firstBlock, uint32_t pastLast, uint32_t columns);
 
 	uint64_t getRowsBefore(uint32_t blockIndex) const;
@@ -158,7 +146,7 @@ protected:
 	// Replaces the block entries of `oldLines` lines starting at firstLine with entries for
 	// `newLines` lines (the affected span of an apply()), shifting the tail - the incremental
 	// counterpart of rebuildAllBlocks. `oldBlocks` is the block count of the replaced span,
-	// measured against the prefix BEFORE the line index changed.
+	// measured against the prefix before the line index changed.
 	void spliceBlocks(uint32_t firstLine, uint32_t oldLines, uint32_t newLines, uint32_t oldBlocks);
 
 	void ensureRowPrefix() const;

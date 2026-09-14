@@ -27,9 +27,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 WindowSceneInfo::~WindowSceneInfo() {
 #if DEBUG
-	// Destroying this anywhere but the app thread means the payload was left on a WindowInfo that
-	// died on the context thread — the one failure mode of the whole transport, and one with no
-	// other symptom until a captured scene-graph node is released off-thread much later.
+	// Destruction off the app thread means the payload was left on a WindowInfo destroyed on the
+	// context thread, releasing captured scene-graph objects off-thread.
 	if (_owner && _owner != sprt::dispatch::Looper::acquire()) {
 		log::source().error("WindowSceneInfo",
 				"destroyed on a foreign thread; the payload was not taken off WindowInfo");
@@ -72,8 +71,7 @@ void WindowSceneInfo::fireClose() {
 	}
 	_closeFired = true;
 
-	// Move out before invoking: a callback that opens the next window is a normal thing to write,
-	// and it must not be able to reenter this one.
+	// Move out before invoking: the callback may open another window and must not reenter this one.
 	auto cb = sp::move(_onClose);
 	_onClose = nullptr;
 	if (cb) {

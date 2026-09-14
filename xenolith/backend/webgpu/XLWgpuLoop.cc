@@ -398,7 +398,7 @@ bool Loop::updateMaterialSet(NotNull<core::MaterialSet> data,
 
 void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<DependencyEvent>> &deps) const {
-	// deps are events OTHERS wait on: signal them when the update is applied
+	// deps are events others wait on: signal them when the update is applied
 	auto loop = const_cast<Loop *>(this);
 	loop->performOnThread([loop, req = sp::move(req), deps = deps]() mutable {
 		bool success = false;
@@ -422,7 +422,7 @@ void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 
 		loop->signalDependencies(deps, nullptr, success);
 	}, loop, false);
-	// NOT immediate: the caller (updateDynamicImage) holds the attachment's
+	// Not immediate: the caller (updateDynamicImage) holds the attachment's
 	// dynamic-tracker mutex, updateMaterials re-locks it via addDynamicTracker
 }
 
@@ -448,7 +448,7 @@ void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)
 			WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
 			dst.texture = img->getTexture();
 
-			// Both of these are counted in BLOCKS, which is what WebGPU means by them and what a
+			// Both of these are counted in blocks, which is what WebGPU means by them and what a
 			// pixel count is only by accident of the block being 1x1.
 			WGPUTexelCopyBufferLayout layout;
 			layout.offset = 0;
@@ -679,7 +679,7 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 	performOnThread([this, cb = sp::move(cb), image]() mutable {
 		auto info = image->getInfo();
 		// bytesPerRow must be 256-aligned for texture-to-buffer copies. The unaligned row is a row
-		// of BLOCKS - the same thing for a swapchain image and not for a compressed one.
+		// of blocks - the same thing for a swapchain image and not for a compressed one.
 		const uint64_t rowBytes = core::getFormatRowSize(info.format, info.extent.width);
 		const uint32_t rowCount = core::getFormatRowCount(info.format, info.extent.height);
 		const uint64_t bytesPerRow = math::align(rowBytes, uint64_t(256));

@@ -35,10 +35,9 @@ class ScrollView;
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // The resolved paint of a Panel and of everything built on one (badge, checkbox, button, ...): a
-// fill, an optional outline stroke and the four CSS corner radii. Created on the first styled
-// attribute or on the first direct paint, and rewound by CmdReset to whatever the widget painted
-// on ITSELF - so a widget that no rule matches and that never painted itself carries NO component
-// at all and draws the defaults below.
+// fill, an optional outline stroke and the four CSS corner radii. CmdReset rewinds it to the
+// widget's own paint; a widget with no matching rule and no own paint has no component and draws
+// the defaults below.
 struct PanelStyleComponent {
 	static ComponentId Id;
 
@@ -66,38 +65,14 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	/* THE LEVEL A PANEL DRAWS AT, and it is not the fixed `Surface` it used to be.
-
-	`Surface` means blending is ON, and a blended draw leaves the DESTINATION ALPHA where it found
-	it. On an opaque window nobody can tell; on a transparent one - a popup, which inherits
-	`UserSpaceDecorations` from the window it hangs off - the whole surface comes out with alpha 0
-	and the window behind it shows through, colour and all. A menu drawn over a file tree showed the
-	tree.
-
-	So a panel that is genuinely an opaque hard-edged rectangle - no radius, no translucency, an
-	image the rasterizer drew without antialiasing - draws at `Solid`, where blending is off and the
-	fragment's own alpha is what lands in the framebuffer. Everything else keeps `Surface`: a
-	rounded corner and a translucent fill both NEED the blend, and neither can be a ground.
-
-	`Surface` rather than `Transparent` for that remainder, which is what the fixed level bought and
-	is worth keeping: a surface is depth-ordered like the rest of the interface instead of being
-	sorted into the painter's-order bucket by zPath. An explicit `setRenderingLevel` still wins over
-	all of it. */
+	/* An opaque hard-edged rectangle (no radius, no translucency, no antialiasing) draws at
+	`Solid`, which writes destination alpha; a blended draw would leave a transparent window (a
+	popup) see-through. Everything else draws at `Surface`. An explicit `setRenderingLevel` wins. */
 	virtual RenderingLevel getRealRenderingLevel() const override;
 
-	/* Direct paint: for surfaces built outside a stylesheet (auxiliary windows that do not share
-	the main StyleSystem), and for the default a widget gives itself - a scroll indicator, a colour
-	swatch, a menu separator, a table cell that must not hide the row it stands on.
-
-	CSS remains the primary path and still wins: these values are the layer UNDER the stylesheet,
-	and a pass that declares the attribute overrides them for as long as its rule matches.
-
-	What they are NOT is styling, and that is what CmdReset turns on. The reset does not take this
-	layer away - it rewinds the component TO it, and the pass that follows re-applies whatever it
-	still declares. Kept in the styled component itself (as they were), they were indistinguishable
-	from a declaration and every resolver pass wiped them: under a recursive resolver the swatch,
-	the indicator, the separator and every panel painted from code turned white on the first
-	restyle, whether or not any rule matched them. */
+	/* Direct paint, for surfaces outside a stylesheet and for a widget's own defaults. It is the
+	layer under the stylesheet: a matching rule overrides it, and CmdReset rewinds the component to
+	it rather than removing it. */
 	virtual void setPathColor(const Color4B &, bool withOpacity);
 	virtual Color4B getPathColor() const;
 
@@ -112,13 +87,8 @@ public:
 
 	/* Registers the shared surface appliers (background-color, outline-*, border-radius, CmdReset)
 	for CSS type `type`, routing them all into Panel::setStyleValue. Repeated calls for the same
-	type are ignored.
-
-	Every Panel-derived atom calls it with its own type from init(). It is PUBLIC because a caller
-	that renames a panel's type from outside - ui::openPopupSurface gives the menu surface the type
-	`menu` - has to register the appliers under that name too: without them the type matches, the
-	declarations are read, and nothing consumes them, so `background-color` ends up as the node's
-	TINT and multiplies the fill instead of replacing it. */
+	type are ignored. Code that renames a panel's type (ui::openPopupSurface: `menu`) must call it
+	too, or `background-color` falls through to the node tint. */
 	static void registerStyleAppliers(StringView type);
 
 protected:
@@ -132,20 +102,16 @@ protected:
 	// background is rebuilt. The guard keeps an unchanged value from re-dirtying the cascade.
 	void updateStyle(const Callback<bool(NotNull<PanelStyleComponent>)> &);
 
-	// The widget's OWN paint - what setPathColor / setBorderRadius / setOutline wrote, and the
-	// layer CmdReset rewinds to. The flag is what tells "painted white on purpose" apart from
-	// "never painted", and therefore whether a reset restores the component or drops it: a widget
-	// nobody painted and no rule styles must carry no component at all.
+	// The widget's own paint (setPathColor / setBorderRadius / setOutline), which CmdReset rewinds
+	// to. The flag decides whether a reset restores the component or drops it.
 	PanelStyleComponent _ownStyle;
 	bool _ownPainted = false;
 };
 
 /* Give a scroll view a bar a stylesheet can paint.
 
-basic2d builds the bar out of LayerRounded, which draws a fill and one radius - so `background-color`
-and `opacity` reach it already, and `outline-*` and four separate corners have nowhere to land. This
-swaps both of its nodes for Panels, which paint all of it, and registers the surface appliers for the
-two types the view gives them:
+Swaps the view's LayerRounded track and thumb for Panels, so `outline-*` and per-corner radii apply,
+and registers the surface appliers for their two types:
 
     scroll-indicator-track        { background-color: transparent; border-radius: 5px; }
     scroll-indicator-track:hover  { background-color: rgba(0,0,0,0.25); }
@@ -153,11 +119,9 @@ two types the view gives them:
     scroll-indicator.active       { outline: 1px solid rgba(0,0,0,0.4); }
     tree-view scroll-indicator-track { display: none; }
 
-`.active` is on both nodes while the bar is grabbable - see ScrollView. `display: none` removes the
-bar; its SIZE is not a style, because the view rewrites it on every scroll (setIndicatorThickness).
-
-ui::TreeView and ui::TableView call this for themselves. Idempotent, and it keeps whatever the bar
-was painted with, so calling it changes nothing until a rule matches. */
+`.active` is on both nodes while the bar is grabbable. `display: none` removes the bar; its size is
+not a style (setIndicatorThickness). Idempotent, and keeps the existing paint until a rule matches;
+ui::TreeView and ui::TableView call it themselves. */
 SP_PUBLIC void useStyledScrollIndicator(NotNull<basic2d::ScrollView>);
 
 } // namespace stappler::xenolith::ui

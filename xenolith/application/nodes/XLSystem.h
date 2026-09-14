@@ -59,9 +59,8 @@ enum class SystemFlags : uint32_t {
 
 	// When this flag is set and FrameTag != InvalidTag, system will be added to frame stack by it's owner.
 	// It means, that descendant nodes can access this system with FrameInfo::systemStack and FrameTag.
-	// Publishing on the stack is also what lets a descendant deliver its own events back UP to this
-	// system: pair AddToFrameStack with HandleChild{NodeEvents,Measure,LayoutChildren} and the nearest
-	// opted-in ancestor on the stack receives the descendant's ContentSize / Measure / LayoutChildren
+	// Paired with HandleChild{NodeEvents,Measure,LayoutChildren}, the nearest opted-in ancestor on
+	// the stack receives the descendant's ContentSize / Measure / LayoutChildren events
 	AddToFrameStack = 1 << 6,
 
 	Default = HandleOwnerEvents | HandleSceneEvents | HandleNodeEvents | HandleVisitSelf
@@ -144,15 +143,13 @@ public:
 	// A descendant node's own components changed, delivered during the descendant's visit via the
 	// frame stack (requires SystemFlags::HandleChildComponents + AddToFrameStack + a valid FrameTag).
 	// `child` is the nearest descendant whose components went dirty; this system is the nearest
-	// opted-in ancestor. Unlike HandleAncestorComponents (which pushes an ancestor's change DOWN to
-	// descendant systems), this bubbles a descendant's change UP - e.g. so a subtree-wide style
-	// resolver can re-resolve a node whose interactive :hover/:focus/:active state just flipped
+	// opted-in ancestor. The upward counterpart of HandleAncestorComponents (e.g. a style resolver
+	// re-resolving a node whose :hover/:focus/:active state flipped)
 	virtual void handleChildComponentsDirty(Node *child, const ComponentMask &);
 
-	// Settle whatever this system derives from the pointer's position against the owner's current
-	// geometry. A pull, like Node::settleForMeasure: it is called on a node whose visit has not
-	// reached its transform phase yet - or will not this frame, because the node was attached
-	// after the visit passed - by the phase that READS the result. See InputListener
+	// Settle pointer-derived state against the owner's current geometry. A pull, like
+	// Node::settleForMeasure: called by the reading phase on a node whose transform phase has not
+	// run yet this frame. See InputListener
 	virtual void settlePointerState();
 
 	// Lay out the owner's children (requires SystemFlags::HandleLayoutChildren).

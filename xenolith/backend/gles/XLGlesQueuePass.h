@@ -113,10 +113,8 @@ class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {
 public:
 	virtual ~QueuePassHandle() = default;
 
-	// Scene-space scissor -> target pixels, honouring the surface pre-rotation, and the source of
-	// every glScissor this backend issues. Ported from soft: the transform is a property of the
-	// presented surface, not of the API, so both backends have to agree on it or clipped content
-	// would land in different places.
+	// Scene-space scissor -> target pixels, honouring the surface pre-rotation; the source of every
+	// glScissor this backend issues. Must match the soft and vk backends.
 	static URect rotateScissor(const core::FrameConstraints &constraints, const URect &scissor);
 
 	virtual bool prepare(core::FrameQueue &, Function<void(bool)> &&) override;
@@ -136,12 +134,9 @@ protected:
 	// issue each draw with state applied only on change. Runs where the context is current.
 	bool executeDrawList(const CommandBuffer &);
 
-	// Ask the swapchain's damage tracker what this frame actually has to redraw into the image it
-	// was given, and record the answer in the three members below. Vulkan expresses it as a render
-	// area and soft as a list of rasterized regions; GL has neither, so it is a scissor rectangle -
-	// which bounds the load-op clears as well as the draws, because glClear* obeys the scissor
-	// test. That makes the fragment work and the clear proportional to what changed; the vertex
-	// work is not, and the redraw the frame skips entirely is where the real saving is.
+	// Ask the swapchain's damage tracker what this frame has to redraw into its image, and record
+	// the answer in the three members below. GL expresses it as a scissor rectangle, which bounds
+	// the load-op clears as well as the draws (glClear* obeys the scissor test).
 	void preparePartialRedraw(core::FrameQueue &);
 
 	Device *_device = nullptr;

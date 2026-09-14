@@ -29,20 +29,17 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// What carries the session, separated from what the session SAYS.
-//
-// This is the seam. Above it the protocol only ever moves bytes over an ordered stream; below it a
-// transport decides how those bytes travel, who the peer is, and how the looper learns there is
-// work -- QUIC, a unix-domain socket, plain TLS over TCP, a browser WebTransport client or an
-// in-process loopback for tests. Each implementation registers itself under an address scheme, so
-// a build understands exactly the schemes it managed to link.
+// What carries the session, separated from the protocol. Above this the protocol moves bytes over
+// an ordered stream; a transport decides how bytes travel, who the peer is, and how the looper
+// learns there is work (QUIC, unix-domain socket, TLS over TCP, WebTransport, in-process loopback).
+// Each implementation registers under an address scheme; a build knows the schemes it linked.
 
 // What a transport can do. The protocol adapts rather than assuming; anything not declared here is
 // emulated above (or simply not used).
 enum class TransportCaps : uint32_t {
 	None = 0,
 	Encrypted = 1 << 0, // confidentiality is provided by the transport itself
-	PeerAuthenticated = 1 << 1, // the transport established WHO the peer is (SO_PEERCRED, mTLS),
+	PeerAuthenticated = 1 << 1, // the transport established who the peer is (SO_PEERCRED, mTLS),
 	// so the protocol's own bearer key may be treated as optional
 	MultiStream = 1 << 2, // independent ordered streams; StreamClass maps onto real streams
 	Datagrams = 1 << 3, // unreliable datagrams are available
@@ -52,18 +49,16 @@ enum class TransportCaps : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(TransportCaps)
 
-// Which logical channel a message belongs to. On a transport without MultiStream all three resolve
-// to the same stream and the protocol interleaves exactly as it does today; the distinction only
-// starts paying off when independent streams exist (a bulk screenshot must not delay input).
+// Which logical channel a message belongs to. Without MultiStream all three resolve to the same
+// stream; with independent streams bulk data does not delay input.
 enum class StreamClass {
 	Control, // handshake, ping/pong, window control
 	Frame, // frame acquisition and per-frame input
 	Bulk, // Domain::Data blocks, font payloads
 };
 
-// Who is on the other end, as far as the transport can tell. `authenticated` is the load-bearing
-// field: when it is true the server may accept a connection without a bearer key, because something
-// stronger than a shared secret already established the peer's identity.
+// Who is on the other end, as far as the transport can tell. When `authenticated` is true the
+// server may accept a connection without a bearer key.
 struct SP_PUBLIC PeerIdentity {
 	bool authenticated = false;
 	Bytes spki; // TLS/QUIC: SHA-256 of the peer's DER SubjectPublicKeyInfo
@@ -139,8 +134,8 @@ struct SP_PUBLIC TransportServerConfig {
 struct SP_PUBLIC TransportClientConfig {
 	// Expected SHA-256 of the server's DER SubjectPublicKeyInfo. When non-empty a TLS-based
 	// transport refuses to connect unless the server presents exactly that key; without it the
-	// server is not authenticated at all and anything the session then sends (the bearer key
-	// included) goes to whoever answered. Ignored by transports that authenticate by other means.
+	// server is not authenticated (the bearer key goes to whoever answered). Ignored by transports
+	// that authenticate by other means.
 	Bytes expectedFingerprint;
 };
 
@@ -180,9 +175,8 @@ public:
 	virtual Rc<TransportListener> listen(const Address &, const TransportServerConfig &) = 0;
 };
 
-// Scheme -> implementation. Each transport registers itself from its own translation unit, which is
-// compiled only where it can be linked, so the set of schemes a build understands IS the set it can
-// actually carry -- asking for one that is not there fails with a message instead of a link error.
+// Scheme -> implementation. Each transport registers from its own translation unit, compiled only
+// where it can be linked; asking for a missing scheme fails with a message, not a link error.
 class SP_PUBLIC TransportRegistry {
 public:
 	static void registerTransport(Rc<Transport> &&);
@@ -199,8 +193,7 @@ public:
 };
 
 // Register every transport this build linked, once. Called from the app-thread setup and from the
-// tests; each registerXxxTransport below is compiled only where its dependencies exist, so this is
-// where "what schemes does this build understand" is actually decided.
+// tests; each registerXxxTransport is a no-op where its dependencies do not exist.
 SP_PUBLIC void initializeTransports();
 
 } // namespace stappler::xenolith::remote

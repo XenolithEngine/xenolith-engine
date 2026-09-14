@@ -92,10 +92,8 @@ bool Image::setup(Device &dev, const core::ImageInfoData &info,
 		return false;
 	}
 
-	// Tightly packed rows: no hardware alignment to honour, and a stride that is exactly
-	// width * pixelSize keeps readback a single memcpy. An externally backed image keeps the
-	// stride its provider chose - which for the transports that exist today is this same packed
-	// value, because the allocation is ours to size (see the note on _external in the header).
+	// Tightly packed rows (stride == width * pixelSize) keep readback a single memcpy. External
+	// images keep their provider's stride, which must be the same packed value (see _external).
 	if (!_external) {
 		_stride = info.extent.width * pixelSize;
 	}
@@ -105,10 +103,8 @@ bool Image::setup(Device &dev, const core::ImageInfoData &info,
 	auto total = uint64_t(_layerSize) * uint64_t(layers) * uint64_t(sprt::max(info.extent.depth, 1U));
 
 	if (_external) {
-		// Deliberately neither allocated nor cleared: this is the window system's buffer, and it
-		// still holds the frame it last displayed. Partial redraw is correct only because that
-		// content survives - zeroing here would show as a flash on every swapchain recreation,
-		// with the frame after it looking right and hiding the cause.
+		// Neither allocated nor cleared: the window system's buffer still holds the frame it last
+		// displayed, and partial redraw depends on that content.
 		if (_externalSize < size_t(total)) {
 			log::source().error("soft::Image", "External buffer is too small: ", _externalSize,
 					" < ", total);

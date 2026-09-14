@@ -28,6 +28,9 @@ header, a platform branch, or an allocation. The essentials:
 - Layout is [.clang-format](../../.clang-format)'s job: tabs (4), continuation 8,
   column limit 100, `Node *node`, attached braces
   ([formatting](../usage/codestyle/sources/formatting.adoc)).
+- Comments are short and describe the code as it works: no capital-letter headings or
+  words stressed in capitals, no history of fixed bugs (that is the commit message), no
+  prose defending the design ([comments](../usage/codestyle/sources/formatting.adoc#comments)).
 - `data::Value` is the boundary type (config, files, IPC, command line):
   `setValue(value, key)` takes the **value first**, a failed lookup returns the
   shared `Value::Null` — read-only memory, so assigning through it asserts in

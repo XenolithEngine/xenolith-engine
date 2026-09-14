@@ -32,34 +32,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
     DragScrollSystem::acquireForNode(scrollView);
 
-A list you cannot drag past the bottom of is a list you cannot drop into the part you cannot see.
-This is the general answer to that, for any scroller and any drag - not a feature of one widget.
-
-WHY IT LIVES HERE. It has to know both a live drag and a scroller, and `renderer/ui` is the only
-layer that can see both: the drag layer sits BELOW basic2d and cannot reference a ScrollView, and
-basic2d has no idea what a drop target is. So DropTarget cannot carry this, however natural that
-would read.
-
-WHICH SCROLLER. Either of the two the engine has - a `basic2d::ScrollViewBase` the system is placed
-on, or a `ui::ScrollSystem` on that node - resolved ONCE when the system is added and thereafter
-reached through two callbacks. The type question is asked at attach time and never in the loop.
-
-WHAT IT SCROLLS FOR. By default only a drag whose current target is inside this node's subtree
-(Scope::TargetInside). Anything else would mean a dock tab dragged across a panel scrolls every list
-it happens to pass over, which is not help, it is noise.
-
-AND THE PART THAT IS EASY TO MISS: after each nudge it calls DragSystem::refreshDrag(). Drag events
-arrive only on pointer MOTION, so a pointer held still at the edge would leave the drop position
-pointing at a row that has since scrolled away - the insertion line frozen over nothing. */
+It lives in renderer/ui because the drag layer sits below basic2d and cannot see a scroller.
+The scroller (a basic2d::ScrollViewBase or a ui::ScrollSystem on the node) is resolved once, on
+add. After each nudge it calls DragSystem::refreshDrag(): drag events arrive only on pointer motion,
+so a still pointer would otherwise keep a stale drop position. */
 class SP_PUBLIC DragScrollSystem : public System {
 public:
-	// Matching ui::TextViewContainer's edge pull, so the two behave alike where a user meets both.
+	// Matches ui::TextViewContainer's edge pull.
 	static constexpr float DefaultSpeed = 300.0f; // points per second, at the very edge
 	static constexpr float DefaultEdge = 48.0f; // width of the band that pulls
 
 	enum class Scope {
-		// Only while the drag's current target is this node or inside it. The default, and what
-		// keeps a scroller from reacting to a drag that has nothing to do with it.
+		// Only while the drag's current target is this node or inside it. The default.
 		TargetInside,
 
 		// Any live drag whose pointer is over this node. For a scroller that accepts drops through
@@ -84,8 +68,7 @@ public:
 	virtual void setSpeed(float);
 	float getSpeed() const { return _speed; }
 
-	// Width of the pulling band, in points. Clamped to a third of the box, so a short list does not
-	// become one band from edge to edge with no neutral middle.
+	// Width of the pulling band, in points. Clamped to a third of the box.
 	virtual void setEdge(float);
 	float getEdge() const { return _edge; }
 
@@ -98,13 +81,11 @@ public:
 protected:
 	static constexpr uint32_t RenderActionTag = "XLUiDragScrollRender"_tag;
 
-	// Resolve which of the two scrollers the owner is, once. Empty callbacks mean "not a scroller",
-	// and then this system does nothing at all.
+	// Resolves which scroller the owner is. Empty callbacks mean "not a scroller": nothing runs.
 	void resolveScroller();
 
-	// How much room is left in each direction, and the nudge itself. Both in the CSS orientation -
-	// x grows right, y grows DOWN - which is ui::ScrollSystem's, so the basic2d adapter is the one
-	// that has to say which way is which.
+	// Room left in each direction, and the nudge itself. Both in CSS orientation (y grows down);
+	// the basic2d adapter converts.
 	Function<Vec2()> _range;
 	Function<void(Vec2)> _scrollBy;
 

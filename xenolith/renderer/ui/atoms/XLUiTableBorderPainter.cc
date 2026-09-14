@@ -30,20 +30,14 @@ bool TableBorderPainter::init() {
 	}
 
 	setType("table-borders");
-	// The borders are hairlines over the cells; drawing them in the transparent pass keeps them
-	// from being depth-rejected behind the opaque cell surfaces they sit on.
+	// Transparent pass, so the hairlines are not depth-rejected behind the opaque cells.
 	setRenderingLevel(RenderingLevel::Transparent);
 
-	// The painter lives INSIDE the node whose borders it draws, so without this the table would
-	// collect it as one more row - an empty one, which then stretches every vertical line down to
-	// the bottom of the table box. Out of flow is exactly the right claim: it is an overlay, it
-	// takes no space, and it sizes itself.
+	// The painter is a child of the table; out of flow keeps it from being laid out as a row.
 	setComponent<OutOfFlowComponent>();
 
-	// A node's own handleComponentsDirty fires for ITS components, never for its parent's - and the
-	// component we live off belongs to the parent. So check the generation at the start of each
-	// visit instead: it is an integer compare when nothing changed, and it cannot miss an update
-	// the way a one-shot notification can.
+	// handleComponentsDirty does not fire for the parent's components, so the generation is
+	// checked on each visit instead.
 	makeDefaultCallbackSystem()->setVisitBeginCallback(
 			[this](CallbackSystem *, FrameInfo &) { updateBorders(); });
 	return true;
@@ -77,9 +71,7 @@ void TableBorderPainter::updateBorders(bool force) {
 		}
 		return;
 	}
-	// Match the owner exactly: the rects are in ITS content-box space, and the painter is the same
-	// box drawn on top. Doing this here rather than making the caller do it is what lets a painter
-	// be added with a bare addChild().
+	// Match the owner exactly: the rects are in its content-box space.
 	const Size2 size = source->getContentSize();
 	if (size.width <= 0.0f || size.height <= 0.0f) {
 		return;
@@ -98,14 +90,10 @@ void TableBorderPainter::updateBorders(bool force) {
 
 	auto image = Rc<VectorImage>::create(size);
 
-	// One path per rect. Batching several rects into one path per colour looks cheaper, but the
-	// tessellator does not treat the closed subpaths as independent shapes - it fills across them,
-	// which shows up as triangles spanning the whole table. The rect list is short by construction
-	// (collapseTableBorders merges each grid line into runs), so a path each is the honest cost.
+	// One path per rect: the tessellator fills across closed subpaths of a shared path. The list is
+	// short (collapseTableBorders merges each grid line into runs).
 	for (auto &r : borders->rects) {
-		// The rects go in as they are: a VectorImage built for a node's content size shares that
-		// node's axes, so no y mirroring is needed (what Panel's addBox corner comment describes is
-		// addBox's own corner ORDER, not a flipped image space).
+		// No y mirroring: a VectorImage built for the content size shares the node's axes.
 		auto path = image->addPath();
 		path->openForWriting([&](vg::PathWriter &writer) { writer.addRect(r.rect); })
 				.setFillColor(r.color)

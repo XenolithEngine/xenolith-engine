@@ -88,12 +88,8 @@ void SwapchainBase::invalidateImage(const core::ImageStorage *image, bool releas
 		return;
 	}
 
-	// An image handed back WITHOUT having been presented takes its damage snapshot with it: the
-	// snapshot was committed when the pass asked what to redraw, and what actually reached the
-	// image after that is unknown - the frame may have been dropped before it drew anything. Left
-	// standing, that snapshot tells the next frame the image already holds content it never
-	// received, and the difference is skipped for good: a line of text that never appears, in an
-	// image the tracker believes is up to date.
+	// An image handed back without having been presented drops its damage snapshot: the frame may
+	// have been dropped before drawing, so the snapshot cannot describe the image content.
 	if (!static_cast<const core::SwapchainImage *>(image)->isPresented()) {
 		invalidateImage(uint32_t(image->getImageIndex()), release);
 		return;
@@ -161,9 +157,7 @@ bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> de
 	// Acquisition is host-side and instantaneous; an external fence carries no information.
 	opts.acquireImageWithoutFence = true;
 
-	// Rendering happens on the GPU but in a single-threaded context: starting the next frame
-	// before the previous one finished does not fill an idle pipeline, it just makes two frames
-	// race for the same GL state.
+	// A single-threaded GL context: overlapping frames would race for the same GL state.
 	opts.preStartFrame = false;
 
 	return core::PresentationEngine::init(loop, device, window, opts);
@@ -280,9 +274,8 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 		core::SwapchainConfig &&cfg, core::PresentMode presentMode, bool) {
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
-	// Build the new swapchain BEFORE retiring the old one. The previous textures may still be
-	// attached to a framebuffer the frame graph holds, and tearing them down first would pull the
-	// names out from under it.
+	// Build the new swapchain before retiring the old one: the previous textures may still be
+	// attached to a framebuffer the frame graph holds.
 	auto newSwapchain = makeSwapchain(info, cfg, move(swapchainImageInfo), presentMode);
 
 	auto oldSwapchain = move(_swapchain);

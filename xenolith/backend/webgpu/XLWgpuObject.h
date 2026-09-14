@@ -79,8 +79,8 @@ public:
 	WGPUTexture getTexture() const { return _texture; }
 
 	// early release of the wgpu handle (before the wrapper object dies):
-	// REQUIRED for presented surface textures - wgpu-native's texture wrapper
-	// discards the surface's CURRENT texture when dropped after the next
+	// required for presented surface textures - wgpu-native's texture wrapper
+	// discards the surface's current texture when dropped after the next
 	// acquire (has_surface_presented is a per-surface flag, reset by acquire)
 	void invalidateTexture() {
 		invalidate();

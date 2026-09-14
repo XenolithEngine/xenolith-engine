@@ -102,13 +102,9 @@ public:
 	}
 
 	// Serializes host access to the device's VkQueues, which Vulkan requires to be externally
-	// synchronized: vkQueueSubmit runs on render worker threads while vkQueuePresentKHR runs on the
-	// window thread, and vkDeviceWaitIdle/vkQueueWaitIdle must be synchronized against every queue.
-	// With one window these rarely overlap; with several on one device they overlap constantly.
-	//
-	// Never hold this across a wait for work that is not yet submitted — image acquisition and
-	// fence waits deliberately stay outside, or a thread blocked on a fence would keep the submit
-	// that signals it from ever running.
+	// synchronized (submits on workers, presents on window threads, wait-idle against all queues).
+	// Never hold it across a wait for unsubmitted work: image acquisition and fence waits stay
+	// outside, or the submit that signals them could never run.
 	template <typename Callback>
 	void makeQueueApiCall(const Callback &cb) {
 		static_assert(sprt::is_invocable_v<Callback, const DeviceTable &, VkDevice>,

@@ -41,10 +41,9 @@ Selector support:
 `:nth-last-child()` `:first-child` `:last-child` `:only-child`, the four `*-of-type` forms,
 `:empty`, `:root`).
 
-Combinator rules are bucketed by their rightmost ("target") compound and matched right-to-left
-against the scene-graph tree. Full CSS specificity is honored by the caller (see
-`collectMatches`). Attribute selectors and pseudo-elements are NOT supported (such rules are
-dropped at parse time). `@media` queries are fully supported. */
+Combinator rules are bucketed by their rightmost compound and matched right-to-left; the caller
+applies specificity (see `collectMatches`). Attribute selectors and pseudo-elements are not
+supported (dropped at parse time). `@media` queries are supported. */
 class SP_PUBLIC StyleSheet : public Ref {
 public:
 	virtual ~StyleSheet();
@@ -57,27 +56,21 @@ public:
 	bool addStyle(StringView css);
 	bool addStyle(const FileInfo &);
 
-	/* Append every rule matching `node` (simple string-keyed selectors + structured
-	combinator/pseudo selectors) to `out`, each as a MatchedRule carrying its CSS specificity
-	and source order - WITHOUT merging. The caller gathers matches across all in-scope sheets,
-	sorts them by (specificity, order) and merges in that order, so the full CSS cascade is
-	honored (a `#id` rule beats a lower-specificity `.a .b`, ties broken by source order).
+	/* Append every rule matching `node` to `out` as a MatchedRule with specificity and source
+	order, without merging; the caller sorts matches from all sheets by (specificity, order).
 
-	`ancestorFilterBits` is the Bloom filter of the node's ancestor tokens (lets descendant/
-	child rules be rejected in O(1) before the right-to-left walk). `orderBias` folds the
-	sheet's scope rank into the tie-break; `mediaResolved` is stamped on each matched rule and
-	applied when the caller merges. `scopeRoot` is the node owning the nearest stylesheet
-	scope - what `:root` matches. Must be called within a memory pool context. */
+	`ancestorFilterBits` is the Bloom filter of ancestor tokens (early reject of combinator
+	rules); `orderBias` folds the sheet's scope rank into the tie-break; `mediaResolved` is
+	stamped on each match; `scopeRoot` is what `:root` matches. Call within a pool context. */
 	void collectMatches(Vector<document::StyleContainer::MatchedRule> &out, NotNull<Node> node,
 			uint64_t ancestorFilterBits, uint64_t orderBias, SpanView<bool> mediaResolved,
 			const Node *scopeRoot) const;
 
-	// does any rule in the sheet use a structural pseudo-class? A node's style then depends on
-	// its position among its siblings, so the resolver must invalidate on child-list changes.
+	// does any rule use a structural pseudo-class? Then the resolver must invalidate on
+	// child-list changes.
 	bool hasStructuralSelectors() const;
 
-	// does any rule declare a custom property or reference one with var()? Lets the cascade
-	// skip its custom-property pass for an ordinary sheet.
+	// does any rule declare or reference (var()) a custom property?
 	bool hasCustomProperties() const;
 
 	/* Parse an inline `style="..."` declaration list; parsed once per distinct text,

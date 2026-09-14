@@ -24,8 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// A spacer is not part of the document and must not be mistaken for one: no type a selector can
-// reach, nothing to draw, and a size the layout takes at face value.
+// A spacer: no selector-reachable type, nothing to draw, and a fixed size for the layout.
 static Rc<Node> MarkdownVirtual_makeSpacer() {
 	auto node = Rc<Node>::create();
 	node->setAnchorPoint(Anchor::BottomLeft);
@@ -48,14 +47,12 @@ bool MarkdownVirtualizer::init(NotNull<Node> content, uint32_t threshold) {
 		return false;
 	}
 
-	/* The spacers bracket the document, and their z-order says so: the blocks were numbered from
-	their position in the child list as they were built, so the top spacer has to sort before the
-	first of them and the bottom one after the last. */
+	// Blocks took z-order from their build position, so the spacers sort before and after them.
 	_spacerTop = _content->addChild(MarkdownVirtual_makeSpacer(), ZOrder(-1));
 	_spacerBottom = _content->addChild(MarkdownVirtual_makeSpacer(),
 			ZOrder(int16_t(sprt::min(size_t(maxOf<int16_t>() - 1), _blocks.size() + 1))));
 
-	// Everything starts hidden: the first frame then costs one chunk, not the document.
+	// Everything starts hidden, so the first frame costs one chunk.
 	for (auto &it : _blocks) { collapse(it); }
 
 	_enabled = true;
@@ -97,8 +94,7 @@ void MarkdownVirtualizer::setSpacer(Node *spacer, float height) {
 		return;
 	}
 
-	// Both, and in this order: the component is what the flex pass measures, the content size is
-	// what it reads back if it measures nothing at all.
+	// The flex pass measures the component; the content size is read if nothing is measured.
 	spacer->setComponent<MeasureComponent>(MeasureComponent{Size2(0.0f, height)});
 	spacer->setContentSize(Size2(0.0f, height));
 }
@@ -158,17 +154,14 @@ void MarkdownVirtualizer::commitChunk() {
 		return;
 	}
 
-	/* The advance is the distance to the NEXT block's top, not this block's height: the gap
-	between two blocks belongs to the flex layout (a margin, a row gap), and reading it back this
-	way is what keeps a virtual document the same height as a real one. The last block of a chunk
-	has no next one yet and takes its own height; the next chunk corrects it. */
+	// The advance is the distance to the next block's top, so flex gaps and margins are counted
+	// and a virtual document is as tall as a real one.
 	auto top = [](const Node *node) {
 		return node->getPosition().y + node->getContentSize().height;
 	};
 
-	/* The last block of a chunk is deliberately left unmeasured unless it ends the document: its
-	successor is not on screen, so its advance would be its bare height and the gap between it and
-	the next block would be lost. The next chunk begins with it, and then it has a successor. */
+	// The chunk's last block stays unmeasured unless it ends the document: without a visible
+	// successor its gap is unknown. The next chunk starts with it.
 	auto last = sprt::min(_chunkEnd, uint32_t(_blocks.size()));
 	if (last < _blocks.size() && last > _chunkBegin + 1) {
 		--last;
@@ -192,8 +185,7 @@ void MarkdownVirtualizer::commitChunk() {
 		block.advance = height;
 	}
 
-	// Prefix sums over everything measured so far; unmeasured blocks contribute nothing yet,
-	// which is what makes the scroll range grow rather than jump.
+	// Prefix sums over measured blocks; unmeasured ones contribute nothing, so the range grows.
 	float offset = 0.0f;
 	for (auto &it : _blocks) {
 		it.top = offset;
@@ -213,8 +205,7 @@ bool MarkdownVirtualizer::ensureMeasuredTo(uint32_t index) {
 		return true;
 	}
 
-	// Measuring is per frame; a caller that needs a position NOW gets the rest of the document
-	// measured in one pass instead. Rare - an anchor into a part nobody has scrolled to yet.
+	// Measure the rest of the document in one pass for a caller that needs a position now.
 	for (auto &it : _blocks) {
 		if (!it.measured) {
 			materialize(it);
@@ -260,11 +251,10 @@ bool MarkdownVirtualizer::update(float viewportHeight, float scrollY) {
 		}
 	}
 
-	// The next chunk to measure goes at the end of what is already there, so the blocks the
-	// layout sees are contiguous and their spacing is the spacing they will really have.
+	// The next chunk goes right after what is measured, so its spacing is real.
 	auto pending = false;
 	if (_chunkBegin != maxOf<uint32_t>()) {
-		// The chunk from the previous frame is still settling; leave it alone and come back.
+		// The previous frame's chunk is still settling.
 		pending = true;
 	} else if (_measured < _blocks.size()) {
 		uint32_t first = maxOf<uint32_t>();
@@ -285,8 +275,7 @@ bool MarkdownVirtualizer::update(float viewportHeight, float scrollY) {
 			_chunkEnd = first + count;
 			_chunkAge = 0;
 
-			// The chunk is laid out below everything measured, so nothing under it is hidden
-			// away while it is being measured.
+			// The chunk sits below everything measured, so nothing below it is hidden.
 			after = 0.0f;
 			pending = true;
 		}

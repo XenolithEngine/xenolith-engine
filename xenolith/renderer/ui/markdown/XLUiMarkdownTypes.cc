@@ -74,9 +74,8 @@ basic2d::Label::Style MarkdownInlineStyles::get(MarkdownInline value) const {
 	case MarkdownInline::Strong: return Style(font::FontWeight::Bold);
 	case MarkdownInline::Emphasis: return Style(font::FontStyle::Italic);
 	case MarkdownInline::Code:
-		// The family is a delta like every other parameter: code inside a heading keeps the
-		// heading's size and only changes the face. An unresolved family is left alone rather
-		// than replaced with a wrong index.
+		// The family is a delta: code in a heading keeps the heading's size. An unresolved family
+		// is left alone.
 		if (monospaceFamily == maxOf<uint32_t>()) {
 			return Style(codeColor);
 		}
@@ -97,8 +96,7 @@ basic2d::Label::Style MarkdownInlineStyles::get(MarkdownInline value) const {
 }
 
 auto MarkdownRunMap::findRun(uint32_t charIndex) const -> const Run * {
-	// Runs are ascending and disjoint, but not gapless: characters the builder inserted itself
-	// (a marker, a separator) belong to no run, and answering nullptr for them is the point.
+	// Runs are ascending and disjoint but not gapless: builder-inserted characters have no run.
 	for (auto &it : runs) {
 		if (charIndex < it.charStart) {
 			return nullptr;
@@ -144,22 +142,13 @@ bool MarkdownTextSystem::handleMeasure(const MeasureConstraints &c, Size2 &resul
 		return false;
 	}
 
-	// A width of zero is not a narrow column, it is the absence of an answer: a container asks
-	// that way while its own box is still being resolved. Only a real width is a question about
-	// wrapping, and anything else is the label's own to answer.
+	// Zero or unbounded width means no width is known yet; the label answers itself.
 	if (c.maxWidth == maxOf<float>() || c.maxWidth <= 0.0f) {
 		return false;
 	}
 
-	// The whole of this system, in one substitution: ask the label how tall it is AT THIS WIDTH
-	// instead of how wide it would be if it never wrapped.
-	//
-	// A flex column sizes its items by their max-content MAIN size, which for a column is the
-	// height - and a label answers a max-content request without wrapping, because the max-content
-	// WIDTH of a text is its unwrapped width. Correct answer, wrong question. `MeasureMode::Normal`
-	// is the same question with the width supplied, and `Label::measureContent` shapes into a
-	// layout of its own to answer it: nothing about the label's current layout is disturbed, and
-	// the density and the inherited font style are resolved the way the label itself would.
+	// Ask for the height at this width instead of the unwrapped max-content size.
+	// `Label::measureContent` shapes into a separate layout, leaving the label's own undisturbed.
 	MeasureConstraints mc = c;
 	mc.mode = MeasureMode::Normal;
 	result = label->measureContent(mc);

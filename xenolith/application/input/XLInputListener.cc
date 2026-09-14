@@ -99,16 +99,12 @@ bool InputListener::init(int32_t priority) {
 void InputListener::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 
-	// A node with a listener is a node that can be found under a pointer, so it joins the frame's
-	// hit-test registry like every other participant. What the listener itself needs from that
-	// registry is its OWN geometry (see handleVisitSelf); the record is there so that anything
-	// asking "is there an interactive widget here" gets one answer rather than a second copy
+	// A node with a listener can be found under a pointer: register it for hit tests
 	owner->addHitTestFlags(HitTestFlags::Pointer);
 }
 
 void InputListener::handleRemoved() {
-	// Only when this was the last one: a node routinely carries several listeners, and the flag
-	// describes the NODE
+	// Only when this was the last listener: the flag describes the node, which may carry several
 	if (_owner) {
 		bool other = false;
 		for (auto &it : _owner->getSystems()) {
@@ -159,8 +155,7 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 	System::handleVisitSelf(info, node, flags);
 
 	// Remember the clip the owner is drawn under, so _shouldProcessEvent can reject pointer events
-	// over the clipped-away part of it (see the member docs). This is the only hook where the
-	// inherited state is available - it lives on the frame context stack, not on the node.
+	// over the clipped-away part. Only available here, on the frame context stack.
 	_visitScissorEnabled = false;
 	if (auto ctx = info.currentContext) {
 		if (auto state = ctx->getState(ctx->getCurrentState())) {
@@ -171,9 +166,7 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 		}
 	}
 
-	// The owner's paint as of this frame, for the opacity filter. Read here rather than at event
-	// time for the same reason as everything else in this hook: the event is about the frame that
-	// was drawn
+	// The owner's opacity as of this frame, for the opacity filter
 	_visitOpacity = node->getOpacity();
 
 	if (_enabled) {
@@ -196,21 +189,16 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 void InputListener::handleTransformDirty(const Mat4 &parentTransform) {
 	System::handleTransformDirty(parentTransform);
 
-	/* The transform phase, not the visit: this runs BEFORE the owner's components phase, so a
-	   hover that starts here is a hover the frame's styling, measurement and layout are all
-	   decided with. Learning about it any later means a frame drawn as if the pointer were
-	   somewhere else.
-
-	   Content size needs no hook of its own - setContentSize() dirties the transform as well,
-	   because the anchor offset is a function of the size. */
+	/* The transform phase runs before the owner's components phase, so a hover starting here is
+	   seen by this frame's styling and layout. setContentSize() also dirties the transform, so
+	   size needs no separate hook. */
 	updatePointerState();
 }
 
 void InputListener::settlePointerState() { updatePointerState(); }
 
 void InputListener::updatePointerState() {
-	// _enabled among them: a listener the visit does not even register receives no MouseMove, so
-	// it has no business acquiring a hover from its geometry either
+	// A listener the visit does not register (e.g. disabled) must not acquire a hover either
 	if (!_geometryRecognizers || !_running || !_enabled || !_owner) {
 		return;
 	}
@@ -570,13 +558,8 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 		return false;
 	}
 
-	/* Was the owner drawn in the frame this event is being resolved against?
-
-	This one comparison replaces the walk up the parent chain that used to ask every ancestor
-	whether it was visible. It answers strictly more: a listener whose owner is invisible, has a
-	`display: none` ancestor, was detached, or is simply disabled never registered, so it is not in
-	the committed storage - and it answers about the frame the user was looking at rather than about
-	a tree that may have moved since. */
+	/* Was the owner drawn in the frame this event is resolved against? An invisible, detached,
+	`display: none` or disabled owner never registered in the committed storage. */
 	auto dispatcher = _scene ? _scene->getDirector()->getInputDispatcher() : nullptr;
 	if (!dispatcher || _visitGeneration != dispatcher->getCommittedGeneration()) {
 		return false;
@@ -584,9 +567,8 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 
 	if (event.data.hasLocation()) {
 		if (_visitScissorEnabled) {
-			// Compared in float rather than through URect::containsPoint(UVec2): the location can
-			// be negative (a pointer dragged off the window), and the cast to unsigned would wrap
-			// it into the rect instead of out of it.
+			// Float, not URect::containsPoint(UVec2): a location off the window can be negative
+			// and would wrap into the rect when cast to unsigned.
 			const auto &loc = event.currentLocation;
 			if (loc.x < float(_visitScissor.x) || loc.y < float(_visitScissor.y)
 					|| loc.x >= float(_visitScissor.x + _visitScissor.width)
@@ -596,8 +578,7 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 			}
 		}
 
-		// Against the transform the node was DRAWN with, not one rebuilt by multiplying its way up
-		// the parent chain and inverting the result on every event
+		// Against the transform the node was drawn with
 		if (!node->isTouchedAsDrawn(event.currentLocation, _touchPadding)) {
 			return false;
 		}
@@ -626,8 +607,7 @@ GestureRecognizer *InputListener::addRecognizer(GestureRecognizer *rec) {
 			scheduleUpdate();
 		}
 		if (ret->requiresGeometryUpdate() && _owner) {
-			// Added to a listener already on screen: its owner HAS geometry, but this recognizer
-			// has never been told the pointer's position
+			// Added to a listener already on screen: the recognizer does not know the pointer yet
 			_owner->markPointerStateDirty();
 		}
 	}

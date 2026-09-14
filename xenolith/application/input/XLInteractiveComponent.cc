@@ -28,9 +28,8 @@ ComponentId InteractiveComponent::Id;
 
 namespace {
 
-// setOrUpdate, not update: the component has to EXIST even when a bit is being cleared, because its
-// absence reads as state 0 - indistinguishable from "cleared" for this bit and also "not enabled"
-// for the next one.
+// setOrUpdate, not update: the component must exist even when a bit is cleared, because its
+// absence reads as state 0, i.e. also "not enabled".
 static bool applyStateFlag(NotNull<Node> node, InteractiveState flag, bool value) {
 	return node->setOrUpdateComponent<InteractiveComponent>(
 				   [&](NotNull<InteractiveComponent> state) {
@@ -69,9 +68,8 @@ bool applyControlFocusVisible(NotNull<Node> node, bool visible) {
 }
 
 bool applyControlReadOnly(NotNull<Node> node, bool readOnly) {
-	// Two sources, one bit. While a lock is on it has the last word - it is the stronger claim -
-	// but what the widget asked for is remembered, exactly as setEnabled's answer is, so that
-	// unlockControl can give it back instead of declaring the field writable.
+	// Two sources, one bit. While locked the lock wins, but the widget's request is remembered
+	// for unlockControl.
 	if (isControlLocked(node)) {
 		node->updateComponent<InteractiveComponent>([&](NotNull<InteractiveComponent> state) {
 			state->setControlFlag(ControlFlags::OwnerReadOnly, readOnly);
@@ -88,9 +86,8 @@ static bool hasState(const Node *node, InteractiveState flag) {
 	if (auto ic = node ? node->getComponent<InteractiveComponent>() : nullptr) {
 		return sprt::hasFlag(ic->state, flag);
 	}
-	// No component at all: the node was never written as a control. `Enabled` is the only bit whose
-	// absence would be a lie about a widget that simply forgot to publish itself - and that is
-	// caught by applyControlEnabled() in init(), not by guessing here.
+	// No component: the node was never written as a control (widgets publish `Enabled` via
+	// applyControlEnabled() in init()).
 	return false;
 }
 
@@ -123,20 +120,17 @@ bool lockControl(NotNull<Node> node, uint32_t reasonCode, bool ownerEnabled) {
 
 	node->setOrUpdateComponent<InteractiveComponent>([&](NotNull<InteractiveComponent> state) {
 		if (!wasLocked) {
-			// What the control is being taken away FROM, recorded before the lock takes it - and
-			// the read-only answer it was giving, read off the bit it already publishes rather
-			// than through one more method on every widget.
+			// The state before locking; read-only is read off the published bit.
 			state->setControlFlag(ControlFlags::OwnerEnabled, ownerEnabled);
 			state->setControlFlag(ControlFlags::OwnerReadOnly,
 					sprt::hasFlag(state->state, InteractiveState::ReadOnly));
 			state->setControlFlag(ControlFlags::Locked, true);
 		}
 		state->lockReason = reasonCode;
-		return false; // the visible half is written below, and only that is worth a restyle
+		return false; // the visible half is written below and dirties the style
 	});
 
-	// A locked control IS disabled, and it may not be written to. Both are what a stylesheet asks
-	// about, so both go through the writers.
+	// A locked control is disabled and read-only; both go through the writers.
 	applyControlEnabled(node, false);
 	applyStateFlag(node, InteractiveState::ReadOnly, true);
 	return !wasLocked;
@@ -162,8 +156,7 @@ ControlLockRelease unlockControl(NotNull<Node> node) {
 		return false;
 	});
 
-	// What the APPLICATION last asked for, not "on": a control it had disabled for its own reasons
-	// stays disabled, and one that was read-only stays read-only.
+	// Restore what the application last asked for, not "on".
 	applyControlEnabled(node, ret.ownerEnabled);
 	applyStateFlag(node, InteractiveState::ReadOnly, ret.ownerReadOnly);
 	return ret;
@@ -184,7 +177,7 @@ void setControlOwnsTooltip(NotNull<Node> node, bool value) {
 }
 
 bool resolveControlLock(NotNull<Node> node, bool requested) {
-	// Nothing to compose with: the overwhelmingly common case, and it costs a pointer test
+	// Not locked: the common case
 	if (!isControlLocked(node)) {
 		return requested;
 	}

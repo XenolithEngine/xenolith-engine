@@ -27,18 +27,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** THE ARITHMETIC OF A SCRUB, apart from the widget that runs one.
+/** Scrub (drag-to-change) arithmetic, shared by NumberField and callers that scrub a value without
+a field, so both land on the same number.
 
-A drag that changes a number is not only a field's gesture: a canvas may scrub a literal it draws
-itself, with no field anywhere, and it must land on the same number this widget would. Two
-spellings of that answer agree on the day the second is written and on no day after - the same
-argument that keeps a connection rule in one place - so the widget calls these too.
-
-Travel is ACCUMULATED BY THE CALLER and passed whole. A movement shorter than one step has to be
-remembered, or a slow drag rounds to nothing every frame and the value never moves.
-
-The range CLAMPS here, unlike a typed value, which is refused: a gesture is continuous and has no
-wrong state to be in, so it stops at the end of the range the way a slider does. */
+Travel is accumulated by the caller and passed whole, so movements shorter than one step are not
+lost. The range clamps here (a typed value is refused instead). */
 struct SP_PUBLIC ScrubRange {
 	bool has = false;
 	double min = 0.0;
@@ -53,39 +46,28 @@ SP_PUBLIC double scrubSteps(float travel, float sensitivity);
 SP_PUBLIC double scrubValue(double base, double steps, double step, bool integer,
 		const ScrubRange & = ScrubRange());
 
-/** A text field that holds a NUMBER.
+/** A text field that holds a number. Filtering is done here: TextInputType::Number_* is only an
+IME hint.
 
-IT HAS TO BE A WIDGET, not a flag. TextInputType::Number_* is a hint to the platform's IME and
-nothing more - it reaches `_inputState.type` and never filters a keystroke - so a field that only
-accepts numbers is code, here.
+Range handling:
 
-THE RANGE IS DECLARED, NOT DERIVED, and what happens at its edge depends on how the value got
-there:
+  * typed out of range - refused: the value and callback do not change, the node matches `:invalid`
+    and getValidationMessage() says why;
+  * dragged or stepped out of range - clamped.
 
-  * TYPED out of range - REFUSED. The value does not move, the callback does not fire, the node
-    takes the `invalid` style class and getValidationMessage() says why. Silently correcting what
-    someone typed shows them a number they did not write and does not say why;
-  * DRAGGED out of range - CLAMPED. A drag is a continuous gesture with no "wrong" state to be in,
-    and stopping at the end of the range is what a slider does.
+setValue() does not clamp a program-assigned value.
 
-The asymmetry is declared rather than accidental. Nothing here clamps the value a program assigns
-through setValue() either: the range is guidance for the person editing, and a store that refused
-to show what it holds would be worse than one that shows an out-of-range number.
+Blur restores the text of the held value when the text does not parse; `:invalid` applies only
+while editing.
 
-BLUR RESTORES. A field left holding text that does not parse would say one thing on screen and
-another through getValue(); the `invalid` mark lives only while the text is being edited.
+Dragging scrubs only an unfocused field; a focused field is dragged to select text. The callback
+fires throughout the drag; an owner recording history groups it into one entry.
 
-THE DRAG runs on an UNFOCUSED field only. A focused field is dragged to select text, and TextInput
-already does that; the rule "click to type, drag to scrub" costs the widget no gesture of its own.
-The callback fires continuously through the drag - a value that only arrives at the end has no live
-feedback - so an owner that records history is the one that groups a drag into a single entry.
-
-CSS: type `number-field`, class `xl-ui-number-field`, and the same attributes ui::TextInput takes
-(they are the same appliers, registered for this type as well). The refusal mark is the class
-`invalid`, because the engine's CSS subset has no `:invalid`. */
+CSS: type `number-field`, class `xl-ui-number-field`, the same attributes as ui::TextInput, and
+`:invalid` for a refused value. */
 class SP_PUBLIC NumberField : public TextInput {
 public:
-	// The value as accepted. Not fired for a refusal, and not for text that has not been committed.
+	// The accepted value; not fired for a refusal or uncommitted text.
 	using ValueCallback = Function<void(double)>;
 
 	// Points of horizontal travel per step of the value, at the default sensitivity.
@@ -95,8 +77,7 @@ public:
 
 	virtual bool init() override;
 
-	// Whole numbers only: the fractional separator stops being an accepted character and the text
-	// is printed without one.
+	// Whole numbers only: the fractional separator is not accepted or printed.
 	virtual void setInteger(bool);
 	bool isInteger() const { return _integer; }
 
@@ -113,25 +94,15 @@ public:
 	virtual void setValue(double, bool silent = false);
 	double getValue() const { return _value; }
 
-	// Whether the text as it stands right now parses and is in range. False is what the `invalid`
-	// class is painted from.
+	// Whether the current text parses and is in range; false sets `:invalid`.
 	bool isValid() const { return _valid; }
 	StringView getValidationMessage() const { return _message; }
 
 	virtual void setValueCallback(ValueCallback &&);
 
-	/* A word shown BESIDE the number - px, s, hp, deg. IT IS A LABEL AND NOTHING ELSE: nothing
-	here converts, scales, or validates against a unit. A unit that meant conversion would be a
-	TYPE, and arithmetic hidden inside presentation is the worst place to keep it - the same line
-	the studio's control hints draw, carried here so both ends agree.
-
-	It is a SIBLING of the text viewport, never part of the text. commit() requires the WHOLE text
-	to be the number and parse(format(v)) == v is this widget's contract, so a suffix living in the
-	string would break both, and getText() would start returning something no one typed.
-
-	What it costs is width: the viewport is inset by what the unit measures, so the caret, the
-	selection and the horizontal slide all go on working inside a narrower box. An empty unit takes
-	the label away and gives the width back. */
+	/* A unit label shown beside the number (px, s, deg); display only, no conversion. It is a
+	sibling of the text viewport, not part of the text, and the viewport is inset by its width. An
+	empty unit hides the label. */
 	virtual void setUnit(StringView);
 	StringView getUnit() const { return _unit; }
 	basic2d::Label *getUnitLabel() const { return _unitLabel; }
@@ -142,53 +113,42 @@ public:
 	virtual void setDragSensitivity(float);
 	float getDragSensitivity() const { return _dragSensitivity; }
 
-	// Restores the text when it does not parse: what is shown and what is held must agree the
-	// moment the field stops being edited.
+	// Restores the value's text when the current text does not parse.
 	virtual void blur() override;
 
-	/* Text written from outside is read as an edit, exactly like text typed into the field.
-
-	The two paths differ inside TextInput - a focused field defers to the platform and hears its
-	own echo, an unfocused one writes locally and there is no echo at all - so hooking only the
-	echo would leave setText() changing what is shown without changing what is held. The narrow
-	overload forwards to this one, so this is the single seam. */
+	/* Text set from outside is committed like typed text. Needed because an unfocused field writes
+	locally with no echo; the narrow overload forwards here. */
 	virtual void setText(WideStringView) override;
 	using TextInput::setText;
 
 	// True while a drag is changing the value, i.e. between the press and the release.
 	bool isDragging() const { return _dragging; }
 
-	// The canonical text of a value, and the inverse of what commit() reads. parse(format(v)) == v
-	// for every value this field can hold - a pair that is not reversible is a field that changes
-	// the number by being looked at.
+	// The canonical text of a value; parse(format(v)) == v for every value the field can hold.
 	String formatValue(double) const;
 
 protected:
 	using TextInput::init;
 
-	/* Read the text and take it, or refuse it. Returns whether the value moved.
-
-	This is the only place the text becomes a number, and the only writer of `_valid` and of the
-	`invalid` class. */
+	// Parses and accepts or refuses the text; returns whether the value changed. The only writer of
+	// `_valid` and `:invalid`.
 	virtual bool commit();
 
-	// Write the value back out as text. Silent as far as commit() is concerned: this is the field
-	// agreeing with itself, not an edit.
+	// Writes the value as text without triggering commit().
 	virtual void updateText();
 
 	virtual void setInvalid(bool, StringView message);
 
 	virtual void handleContentSizeDirty() override;
 
-	/* Phase 6. The unit's side comes from the resolved `direction`, and an ancestor's StyleResolver
-	   resolves this node in reaction to its content-size phase - so phase 4 reads the direction the
-	   node had a pass ago. See placeUnitLabel. */
+	/* Places the unit by the resolved `direction`, which is only settled at this phase, not in
+	   handleContentSizeDirty. */
 	virtual void handleLayoutChildren() override;
 
 	void placeUnitLabel();
 
-	// The unit's width plus its gap, on the right. Measured in handleContentSizeDirty BEFORE the
-	// base sizes the viewport, which is the only moment it can be trusted.
+	// The unit's width plus its gap, measured in handleContentSizeDirty before the base sizes the
+	// viewport.
 	virtual Padding getViewportInset() const override;
 
 	virtual void handleTextInput(const TextInputState &) override;
@@ -208,16 +168,14 @@ protected:
 	double _max = 0.0;
 	double _step = 1.0;
 
-	// Accumulated horizontal travel of the running drag, so a movement smaller than one step is
-	// remembered instead of being rounded away on every frame.
+	// Accumulated horizontal travel of the running drag, so sub-step movements are not lost.
 	float _dragTravel = 0.0f;
 	double _dragOrigin = 0.0;
 	float _dragSensitivity = DefaultDragSensitivity;
 
 	String _message;
 
-	// Built on the first non-empty unit and kept afterwards: a field that never names a unit costs
-	// no node at all.
+	// Created on the first non-empty unit and kept afterwards.
 	basic2d::Label *_unitLabel = nullptr;
 	String _unit;
 	float _unitInset = 0.0f;

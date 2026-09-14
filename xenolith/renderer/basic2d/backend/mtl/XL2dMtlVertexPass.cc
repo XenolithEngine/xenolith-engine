@@ -338,7 +338,7 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 
 		auto &image = material->getImages().front();
 		const uint32_t samplerImageIdx = image.descriptor | (uint32_t(image.sampler) << 16);
-		// ComponentMapping (ColorMode) is baked into the texture VIEW on Metal
+		// ComponentMapping (ColorMode) is baked into the texture view on Metal
 		// (MTLTextureSwizzleChannels, like the vk backend) - the shader-side
 		// swizzle stays identity, otherwise it would apply twice
 		const uint32_t colorMode = 0;
@@ -401,9 +401,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		}
 	};
 
-	// Two walks, content then overlay: this backend emits spans straight in list order, so the only
-	// way the Overlay level gets to be last is to visit it last. There is no frame capture here to
-	// record in between, which is why one pass is enough for both.
+	// Two walks, content then overlay: spans are emitted in list order, so the Overlay level is
+	// visited last. No frame capture happens in between.
 	for (int overlayPass = 0; overlayPass < 2; ++overlayPass) {
 		cmd = commands->commands->getFirst();
 		while (cmd) {
@@ -876,7 +875,7 @@ void MaterialVertexPassHandle::recordSubpass(core::FrameQueue &q,
 			boundLayoutIndex = maxOf<uint32_t>();
 		}
 
-		// verify the material's texture slot is still valid in the CURRENT
+		// verify the material's texture slot is still valid in the current
 		// layout: a material that missed a dynamic-image update points into
 		// a slot that no longer holds its view
 		{

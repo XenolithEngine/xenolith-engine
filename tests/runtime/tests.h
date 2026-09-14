@@ -60,6 +60,7 @@ void performRttiTests();
 
 void performRefTests();
 void performDispatchTests();
+void performBusTests();
 void performWatchFileTests();
 void performProcessTests();
 void performFileTests();

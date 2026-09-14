@@ -96,8 +96,7 @@ DragActions modifiersToActions(InputModifier mods, DragActions allowed, DragActi
 		return want & allowed;
 	}
 
-	// The modifier asked for something this source does not offer. Refusing outright would make
-	// a stray Ctrl silently break a drag, so fall back to whatever IS offered
+	// The requested action is not offered; fall back to what is, so a stray Ctrl does not break it
 	for (auto it : {DragActions::Copy, DragActions::Move, DragActions::Link}) {
 		if (hasFlag(allowed, it)) {
 			return it;

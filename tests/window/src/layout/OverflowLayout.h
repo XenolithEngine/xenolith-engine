@@ -25,6 +25,7 @@
 
 #include "app/TestLayout.h"
 #include "XL2dLayer.h"
+#include "XLUiPanel.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -40,12 +41,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 // - a `flex-grow: 1` filler in an `overflow-y: auto` box whose content FITS: the filler must still
 //   grow and the range must stay zero. That is the guard against freeing the axis unconditionally.
 //
+// And `hidden` once more on a ui::Panel rather than a Layer, which is checked by PIXELS
+// (tests/window/overflow-check.py): a Panel's own DynamicStateSystem once took the clip and applied
+// it to nothing.
+//
 // Plus an `overflow-x: visible; overflow-y: hidden` box, which must compute BOTH axes to
 // non-visible (the scissor is one rect and cannot clip a single axis).
 class OverflowLayout : public TestLayout {
 public:
 	virtual bool init() override;
 	virtual void handleContentSizeDirty() override;
+
+	virtual void registerCommands() override;
 
 protected:
 	void runPhase1();
@@ -68,6 +75,10 @@ protected:
 	basic2d::Layer *_loosePanelBox = nullptr;
 	basic2d::Layer *_tearBox = nullptr;
 	basic2d::Layer *_tearFirst = nullptr;
+
+	// `overflow: hidden` on a ui::Panel: the same oversized child as `_hiddenBox`, in a box that is
+	// a VectorSprite and so already carries a DynamicStateSystem of its own (see where it is built).
+	ui::Panel *_hiddenPanel = nullptr;
 
 	// where the touch drag left off, before the fling had a chance to coast
 	float _flingFrom = 0.0f;

@@ -30,23 +30,19 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The chevron, and the horizontal breathing room the fallback placement leaves around the parts.
-// Only the fallback: a styled select gets its LayoutSystem from `display:flex` and none of this
-// runs.
+// The chevron and the padding of the fallback placement, used only without a LayoutSystem.
 static constexpr IconName s_selectArrowIcon = IconName::Navigation_arrow_drop_down_outline;
 static constexpr float s_selectPadding = 10.0f;
 static constexpr float s_selectGap = 8.0f;
 
-// The two spellings differ only in what they read from; see the note in the header on why one
-// cannot serve both.
+// The two overloads differ only in the element type they read.
 template <typename Source>
 static Vector<SelectOption> Select_makeOptions(Source names) {
 	Vector<SelectOption> ret;
 	ret.reserve(names.size());
 	for (auto &it : names) {
 		auto id = StringView(it).str<Interface>();
-		// The title is a COPY of the id, not a view of it: the two are separate fields and an
-		// option whose title aliased its id would change both when either was rewritten.
+		// The title is a copy of the id, not a view of it.
 		ret.emplace_back(SelectOption{id, id});
 	}
 	return ret;
@@ -65,9 +61,8 @@ bool Select::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist from the start: without one the state reads as 0, so
+	`:disabled` would match and isEnabled() would report false. */
 	applyControlEnabled(this, true);
 
 	setType("select");
@@ -86,8 +81,7 @@ bool Select::init() {
 	// Reset every layout from the control's own direction - see updateLayout below.
 	_label->setAlignment(font::TextAlign::Left);
 
-	// Its own type rather than a second `icon`: a rule addressing `select > icon` cannot tell two
-	// children of the same type apart, and the two mean different things.
+	// Its own type, so `select > icon` does not also match the chevron.
 	_arrow = addChild(Rc<basic2d::IconSprite>::create(), ZOrder(1));
 	_arrow->setType("select-arrow");
 	_arrow->addStyleClass("xl-ui-select-arrow");
@@ -124,9 +118,8 @@ bool Select::init() {
 	_listener->addKeyRecognizer([this](const GestureData &data) { return handleKey(data); },
 			InputKeyInfo{sp::move(keys)});
 
-	// A key event carries the pointer location, so the default filter would answer the arrows only
-	// while the mouse hovers the control. A focused widget owns the keyboard wherever the pointer
-	// is - the same seam, and the same reason, as ui::TextInput's.
+	// A key event carries the pointer location, so the default filter would answer only while the
+	// mouse hovers the control; a focused widget takes keys wherever the pointer is.
 	_listener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -140,8 +133,7 @@ bool Select::init() {
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
 	_focusListener->addTapRecognizer([this](const GestureTap &) {
-		// Not while the list is up: the tap that picks a row lands in another window, and blurring
-		// on it would take the control out of the form ring mid-choice.
+		// Not while the list is up: the tap that picks a row lands in another window.
 		if (!isOpen()) {
 			blur();
 		}
@@ -151,8 +143,7 @@ bool Select::init() {
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &) {
 		return !isTouched(event.currentLocation, 0.0f);
 	});
-	// Off until there is focus to lose. A listener that registers every frame to watch for a blur
-	// that cannot happen is work nobody asked for - ui::TextInput's does the same.
+	// Off until there is focus to lose.
 	_focusListener->setEnabled(false);
 
 	updateContent();
@@ -162,8 +153,7 @@ bool Select::init() {
 }
 
 void Select::handleExit() {
-	// The surface hangs off a window this node is leaving; a list left standing over a control that
-	// is no longer on screen is one the user has to dismiss by hand.
+	// Close the surface along with the control leaving the scene.
 	close();
 	Panel::handleExit();
 }
@@ -176,8 +166,7 @@ void Select::handleLayoutChildren() {
 }
 
 void Select::placeInlineParts() {
-	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and the
-	// placement below would be a second writer of the same positions. Same rule as ui::Button's.
+	// A LayoutSystem (from `display:flex` or added by hand) owns the children's geometry.
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -188,15 +177,10 @@ void Select::placeInlineParts() {
 		return;
 	}
 
-	/* PHASE 6 AND NOT PHASE 4. An ancestor's StyleResolver re-resolves this node in reaction to its
-	content-size phase, so a direction read from inside handleContentSizeDirty is the one the node
-	had a pass ago. Switching a window back from a right-to-left language left these on the edge
-	they had a moment before, with nothing afterwards to correct the record. handleLayoutChildren
-	runs later in the same visit, when the resolved style has settled. */
-	/* Two cursors walking in from the two INLINE edges - the icon and the caption from the start,
-	the arrow from the end - and the caption takes what is left between them. Written as distances
-	rather than as x, so the same arithmetic serves both directions and only the last step, where
-	a distance becomes a position, knows which edge it is measuring from. */
+	/* Runs from handleLayoutChildren: in handleContentSizeDirty the direction is still the one from
+	before an ancestor's StyleResolver re-resolved this node. */
+	/* Insets from both inline edges (icon and caption from the start, arrow from the end); the
+	caption takes the rest. Distances map to positions by direction only at the last step. */
 	const bool rtl = isInlineRtl(this);
 
 	float startInset = s_selectPadding;
@@ -223,15 +207,13 @@ void Select::setOptions(SpanView<SelectOption> options) {
 	_options.reserve(options.size());
 	for (auto &it : options) { _options.emplace_back(it); }
 
-	// A list that no longer carries the current value leaves the control with nothing chosen: a
-	// title held over from a set of options that is gone describes nothing.
+	// A list that no longer carries the current value leaves nothing chosen.
 	if (!_value.empty() && indexOf(_value) < 0) {
 		_value.clear();
 	}
 
 	if (isOpen()) {
-		// The surface was built from the previous list. Rebuilding it under the user is worse than
-		// closing it: the row they were about to click would move.
+		// The open surface was built from the previous list.
 		close();
 	}
 
@@ -291,8 +273,7 @@ void Select::setPlaceholder(StringView text) {
 void Select::setChangeCallback(ChangeCallback &&cb) { _changeCallback = sp::move(cb); }
 
 void Select::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// The edit lock overrides the request and remembers it for unlock.
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -334,8 +315,7 @@ Rc<MenuSource> Select::makeSource() {
 		auto button = source->addButton(option.id, option.title, option.icon,
 				[this, id = option.id](NotNull<MenuSourceButton>) { setValue(id); });
 		button->setEnabled(option.enabled);
-		// The check rides the menu's own leading column, so a list of options with icons and one
-		// without them still lines up.
+		// The check uses the menu's leading column, so rows with and without icons line up.
 		button->setChecked(StringView(option.id) == StringView(_value));
 	}
 	return source;
@@ -373,8 +353,7 @@ bool Select::open() {
 		config.style.maxWidth = config.style.minWidth;
 	}
 
-	// Where the keyboard starts. Without it a list opened with Space would begin at the top rather
-	// than at what is currently chosen.
+	// The keyboard starts at the current value.
 	config.highlight = _value;
 
 	config.onClose = [this] {
@@ -450,8 +429,7 @@ bool Select::handleKey(const GestureData &data) {
 		return false;
 	}
 
-	// While the list is up its own MenuSystem answers the keyboard, in its own window. Anything
-	// this node did here would be a second reader of the same key.
+	// While the list is up its own MenuSystem answers the keyboard, in its own window.
 	if (isOpen()) {
 		return false;
 	}
@@ -463,7 +441,7 @@ bool Select::handleKey(const GestureData &data) {
 	case InputKeyCode::KP_ENTER:
 	case InputKeyCode::SPACE: return open();
 
-	// Alt+Down is "show me the list" everywhere else, and it costs nothing to honour here.
+	// Alt+Down opens the list.
 	case InputKeyCode::DOWN: return alt ? open() : step(1);
 	case InputKeyCode::UP: return step(-1);
 
