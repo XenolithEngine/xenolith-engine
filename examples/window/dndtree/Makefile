@@ -39,9 +39,6 @@ LOCAL_MODULES := \
 	xenolith_renderer_ui \
 	xenolith_resources_assets
 ifeq ($(findstring wasm,$(STAPPLER_TARGET)),wasm)
-ifeq ($(findstring wasm64,$(STAPPLER_TARGET)),wasm64)
-$(error WebGPU on wasm64 is not supported yet: the host glue in runtime/wasm-js/webgpu.mjs assumes 32-bit pointers)
-endif
 LOCAL_MODULES += xenolith_backend_webgpu xenolith_renderer_basic2d_webgpu
 else
 LOCAL_MODULES += xenolith_backend_vk
